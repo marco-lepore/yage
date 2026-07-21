@@ -4,7 +4,7 @@ import type { EventToken } from "./EventToken.js";
 import type { Blueprint } from "./Blueprint.js";
 import type { SnapshotResolver } from "./Serializable.js";
 import type { Scene, SpawnOptions, ClassSpawnArgs } from "./Scene.js";
-import { TRAITS_KEY, type TraitToken } from "./Trait.js";
+import { TRAITS_KEY, entityClassHasTrait, type TraitToken } from "./Trait.js";
 import { Transform } from "./Transform.js";
 
 /** Auto-incrementing entity ID counter. */
@@ -410,15 +410,7 @@ export class Entity {
 
   /** Check if this entity's class implements a given trait. Acts as a type guard. */
   hasTrait<T>(token: TraitToken<T>): this is this & T {
-    // Walk the constructor chain so plain subclasses inherit parent traits
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let ctor: any = this.constructor;
-    while (ctor) {
-      const traits = ctor[TRAITS_KEY] as Set<symbol> | undefined;
-      if (traits?.has(token.symbol)) return true;
-      ctor = Object.getPrototypeOf(ctor);
-    }
-    return false;
+    return entityClassHasTrait(this.constructor as new () => Entity, token);
   }
 
   /**

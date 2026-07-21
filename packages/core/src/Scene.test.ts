@@ -82,6 +82,87 @@ describe("Scene", () => {
     expect(handler).toHaveBeenCalledOnce();
   });
 
+  it("removes a failed class entity and its descendants immediately", () => {
+    class NestedChild extends Entity {
+      static latest: NestedChild | undefined;
+      static grandchild: Entity | undefined;
+
+      constructor() {
+        super();
+        NestedChild.latest = this;
+      }
+
+      override setup(): void {
+        this.add(new TestComponent());
+        const grandchild = this.spawnChild("grandchild", {
+          key: "failed-grandchild",
+        });
+        grandchild.add(new TestComponent());
+        NestedChild.grandchild = grandchild;
+      }
+    }
+
+    class BrokenSetup extends Entity {
+      static latest: BrokenSetup | undefined;
+
+      constructor() {
+        super();
+        BrokenSetup.latest = this;
+      }
+
+      override setup(params: { message: string }): void {
+        this.add(new TestComponent());
+        this.spawnChild("child", NestedChild, { key: "failed-child" });
+        throw new Error(params.message);
+      }
+    }
+
+    const { ctx, bus } = createContext();
+    const destroyed: number[] = [];
+    bus.on("entity:destroyed", ({ entity }) => destroyed.push(entity.id));
+    const scene = new TestScene();
+    scene._setContext(ctx);
+    const unrelated = scene.spawn("unrelated");
+    unrelated.add(new TestComponent());
+    unrelated.destroy();
+
+    expect(() =>
+      scene.spawn(
+        BrokenSetup,
+        { message: "broken setup" },
+        { key: "broken" },
+      ),
+    ).toThrow("broken setup");
+
+    const failed = BrokenSetup.latest;
+    const child = NestedChild.latest;
+    const grandchild = NestedChild.grandchild;
+    if (!failed || !child || !grandchild) {
+      throw new Error("Expected the failed spawn subtree to be created.");
+    }
+    expect(failed.isDestroyed).toBe(true);
+    expect(child.isDestroyed).toBe(true);
+    expect(grandchild.isDestroyed).toBe(true);
+    expect(failed.tryGet(TestComponent)).toBeUndefined();
+    expect(child.tryGet(TestComponent)).toBeUndefined();
+    expect(grandchild.tryGet(TestComponent)).toBeUndefined();
+    expect([...scene.getEntities()]).toEqual([unrelated]);
+    expect(scene.findByKey("broken")).toBeUndefined();
+    expect(scene.findByKey("failed-child")).toBeUndefined();
+    expect(scene.findByKey("failed-grandchild")).toBeUndefined();
+    expect(destroyed).toEqual([grandchild.id, child.id, failed.id]);
+    expect(unrelated.tryGet(TestComponent)).toBeDefined();
+
+    scene._flushDestroyQueue();
+    expect(unrelated.tryGet(TestComponent)).toBeUndefined();
+    expect(destroyed).toEqual([
+      grandchild.id,
+      child.id,
+      failed.id,
+      unrelated.id,
+    ]);
+  });
+
   it("findEntity by name", () => {
     const { ctx } = createContext();
     const scene = new TestScene();

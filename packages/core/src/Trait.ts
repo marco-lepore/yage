@@ -40,6 +40,25 @@ export function defineTrait<T>(name: string): TraitToken<T> {
   return new TraitToken<T>(name);
 }
 
+type EntityClass = abstract new (...args: never[]) => Entity;
+
+type TraitClass = EntityClass & {
+  [TRAITS_KEY]?: ReadonlySet<symbol>;
+};
+
+/** Check whether an entity class declares or inherits a trait. */
+export function entityClassHasTrait<T>(
+  target: EntityClass,
+  token: TraitToken<T>,
+): boolean {
+  let current: TraitClass | null = target as TraitClass;
+  while (current) {
+    if (current[TRAITS_KEY]?.has(token.symbol)) return true;
+    current = Object.getPrototypeOf(current) as TraitClass | null;
+  }
+  return false;
+}
+
 /**
  * Class decorator that registers a trait on an entity subclass.
  * The type constraint enforces that the class implements all trait members.

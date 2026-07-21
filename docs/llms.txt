@@ -33,6 +33,7 @@ Installable, opinionated gameplay patterns (`@yagejs-addons` scope), independent
 
 - [dialogue](llms/addons/dialogue.md): Branching runner, typewriter box & bubbles, markup, themeable presenters
 - [inventory](llms/addons/inventory.md): Slot inventory — stacking, item actions, sorting, one slot view with swappable cell presets
+- [abilities](llms/addons/abilities.md): Phase-based abilities, input intent mapping, and a concrete hit contract
 
 ## Optional
 

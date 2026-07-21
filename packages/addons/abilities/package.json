@@ -1,0 +1,82 @@
+{
+  "name": "@yagejs-addons/abilities",
+  "version": "0.0.0",
+  "description": "Phase-based abilities and a concrete hit contract for YAGE — intents, cooldowns, combos, hitboxes, projectiles, health, guards, and reactions",
+  "keywords": [
+    "yage",
+    "yage-addon",
+    "game-engine",
+    "2d",
+    "typescript",
+    "abilities",
+    "combat",
+    "hitbox",
+    "projectile",
+    "health",
+    "damage"
+  ],
+  "license": "MIT",
+  "author": "Marco Lepore",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
+    "directory": "packages/addons/abilities"
+  },
+  "homepage": "https://yage.dev",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./input": {
+      "import": {
+        "types": "./dist/input.d.ts",
+        "default": "./dist/input.js"
+      },
+      "require": {
+        "types": "./dist/input.d.cts",
+        "default": "./dist/input.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@yagejs/core": ">=0.9.0 <0.10.0",
+    "@yagejs/input": ">=0.9.0 <0.10.0",
+    "@yagejs/physics": ">=0.9.0 <0.10.0"
+  },
+  "peerDependenciesMeta": {
+    "@yagejs/input": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.18",
+    "@yagejs/core": ">=0.8.0",
+    "@yagejs/input": ">=0.8.0",
+    "@yagejs/physics": ">=0.8.0"
+  }
+}

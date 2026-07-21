@@ -58,7 +58,12 @@ export { AssetManager } from "./AssetManager.js";
 export { defineBlueprint } from "./Blueprint.js";
 export type { Blueprint } from "./Blueprint.js";
 
-export { TraitToken, defineTrait, trait } from "./Trait.js";
+export {
+  TraitToken,
+  defineTrait,
+  entityClassHasTrait,
+  trait,
+} from "./Trait.js";
 export {
   serializable,
   SERIALIZABLE_KEY,

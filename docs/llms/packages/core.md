@@ -339,6 +339,7 @@ a dropped promise can hide errors). Production builds suppress the warning.
 | `defineTrait<T>(name)` | Define a trait token |
 | `@trait(token)` | Decorator: declare entity implements trait |
 | `TraitToken<T>` | Token used with `entity.hasTrait(token)` |
+| `entityClassHasTrait(EntityClass, token)` | Check whether an entity class declares or inherits a trait before spawning it |
 
 ### Entity Queries
 
@@ -376,6 +377,8 @@ const chest = scene.findByKey<Chest>("forest/chest-01");
 The class form derives its trailing args from the entity's `setup` PARAMETER. No declared `setup`, or a zero-parameter `setup(): void` → `spawn(Class, options?)` (no params slot). `setup(params)` with a required parameter → params is required: `spawn(Class, params, options?)`, and `spawn(Class)` is a type error (even when every field of `params` is optional — a required parameter still means `setup(undefined)` would crash). `setup(params?)` or a defaulted parameter → params optional: `spawn(Class, params?, options?)`. Omitting a required field reports that field as missing on the params object (`Property 'spawnPoint' is missing`), naming the field that's actually absent.
 
 The params slot takes the setup param type, not `SpawnOptions`, so a `SpawnOptions`-shaped literal (e.g. `{ key }`) is rejected there; key an all-optional-param class via the 3-arg form `spawn(Class, {}, { key })`. Residual: if the setup param type itself declares an optional `key`, `{ key }` satisfies the params slot and the runtime routes it to options — don't name a top-level setup-params field `key`; if you must, use the 3-arg form. The 3-arg form `spawn(Class, params, options)` is always unambiguous.
+
+If a class entity's `setup()` method throws, `scene.spawn()` destroys and removes the entity immediately, including its components and stable-key entry, then rethrows the original error.
 
 Duplicate keys throw at spawn time with no orphan side-effect — the entity is not added to `scene.entities` and `entity:created` is not emitted. Keys are immutable for an entity's lifetime; destroy + respawn to swap. The index is per-scene and clears on scene teardown. Identity is independent of `@yagejs/save` — game code uses `entity.key` as a stable id in persistent stores (`createSet<string>()`).
 

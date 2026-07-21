@@ -87,7 +87,6 @@ test.describe("Examples", () => {
         { timeout: 10_000 },
       );
 
-
       // Replay the script in-page against the inspector.
       await page.evaluate(
         ({ warmup, actions }) => {
@@ -140,8 +139,8 @@ test.describe("Examples", () => {
         // synchronously, so the frozen clock never steps and the PNG shows
         // the same frame as the JSON above.
         await page.evaluate(() => {
-          window.__yage__!.inspector
-            .getExtension<DebugDiagnostics>("debug")
+          window
+            .__yage__!.inspector.getExtension<DebugDiagnostics>("debug")
             ?.setHudVisible(false);
         });
         await page
@@ -153,4 +152,154 @@ test.describe("Examples", () => {
       expect(errors, `console/page errors in ${slug}`).toEqual([]);
     });
   }
+
+  test("abilities-addon replaces active loadouts cleanly", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("console", (msg) => {
+      if (msg.type() === "error") errors.push(msg.text());
+    });
+    page.on("pageerror", (err) => errors.push(err.message));
+
+    await page.goto("/abilities-addon.html?test");
+    await page.waitForFunction(
+      () => {
+        const inspector = window.__yage__?.inspector;
+        return (
+          inspector?.time.isFrozen() === true &&
+          inspector.getSceneStack().at(-1)?.name === "abilities-addon-demo"
+        );
+      },
+      undefined,
+      { timeout: 10_000 },
+    );
+
+    await page.evaluate(async () => {
+      const inspector = window.__yage__!.inspector;
+      inspector.events.clearLog();
+      inspector.input.keyDown("ShiftLeft");
+      await inspector.time.step(1);
+      inspector.input.keyUp("ShiftLeft");
+      await inspector.time.step(1);
+    });
+
+    const activeDash = await page.evaluate(
+      () =>
+        window.__yage__!.inspector.getComponentData(
+          "hotbar-dash-time",
+          "TextComponent",
+        ) as { text: string },
+    );
+    expect(activeDash.text).not.toBe("0.0");
+
+    const tapLoadout = async (): Promise<void> => {
+      await page.evaluate(async () => {
+        const inspector = window.__yage__!.inspector;
+        inspector.input.keyDown("KeyE");
+        await inspector.time.step(1);
+        inspector.input.keyUp("KeyE");
+        await inspector.time.step(1);
+      });
+    };
+    const hudText = (): Promise<string> =>
+      page.evaluate(
+        () =>
+          (
+            window.__yage__!.inspector.getComponentData(
+              "hud",
+              "TextComponent",
+            ) as { text: string }
+          ).text,
+      );
+
+    await tapLoadout();
+    expect(await hudText()).toContain("LOADOUT KICKS");
+
+    const resetDash = await page.evaluate(
+      () =>
+        window.__yage__!.inspector.getComponentData(
+          "hotbar-dash-time",
+          "TextComponent",
+        ) as { text: string },
+    );
+    expect(resetDash.text).toBe("0.0");
+
+    const endedDash = await page.evaluate(() =>
+      window
+        .__yage__!.inspector.events.getLog()
+        .find(
+          (event) =>
+            event.source === "entity" && event.type === "ability:ended",
+        ),
+    );
+    expect(endedDash?.frame).toBe(2);
+
+    for (const expected of ["FISTS", "KICKS", "FISTS"]) {
+      await tapLoadout();
+      expect(await hudText()).toContain(`LOADOUT ${expected}`);
+    }
+
+    expect(errors).toEqual([]);
+  });
+
+  test("abilities-addon distinguishes tap-dash from hold-run", async ({
+    page,
+  }) => {
+    await page.goto("/abilities-addon.html?test");
+    await page.waitForFunction(
+      () =>
+        window.__yage__?.inspector.getSceneStack().at(-1)?.name ===
+        "abilities-addon-demo",
+      undefined,
+      { timeout: 10_000 },
+    );
+
+    const result = await page.evaluate(async () => {
+      const inspector = window.__yage__!.inspector;
+      await inspector.time.step(1);
+      const start = inspector.getEntityPosition("PlayerEntity")!;
+
+      inspector.input.keyDown("KeyD");
+      inspector.input.keyDown("ShiftLeft");
+      await inspector.time.step(30);
+      const runEnd = inspector.getEntityPosition("PlayerEntity")!;
+      const runAnimation = (
+        inspector.getComponentData("PlayerEntity", "AnimationController") as {
+          current: string;
+        }
+      ).current;
+      inspector.input.keyUp("ShiftLeft");
+      inspector.input.keyUp("KeyD");
+      await inspector.time.step(2);
+      const heldDashCooldown = (
+        inspector.getComponentData("hotbar-dash-time", "TextComponent") as {
+          text: string;
+        }
+      ).text;
+
+      inspector.input.keyDown("ShiftLeft");
+      await inspector.time.step(1);
+      inspector.input.keyUp("ShiftLeft");
+      await inspector.time.step(2);
+      const tappedDashCooldown = (
+        inspector.getComponentData("hotbar-dash-time", "TextComponent") as {
+          text: string;
+        }
+      ).text;
+
+      return {
+        distance: runEnd.x - start.x,
+        runAnimation,
+        heldDashCooldown,
+        tappedDashCooldown,
+        errors: inspector.getErrors(),
+      };
+    });
+
+    expect(result.distance).toBeGreaterThan(105);
+    expect(result.runAnimation).toBe("sprint_dir6");
+    expect(result.heldDashCooldown).toBe("0.0");
+    expect(result.tappedDashCooldown).not.toBe("0.0");
+    expect(result.errors.disabledComponents).toEqual([]);
+    expect(result.errors.disabledSystems).toEqual([]);
+  });
 });

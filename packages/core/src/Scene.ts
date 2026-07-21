@@ -349,6 +349,8 @@ export abstract class Scene {
    *     params and `setup()` (no real params) keyed.
    *   - Else → `X` is params (forwarded to `setup`).
    * The 3-arg form is always unambiguous: `spawn(Class, params, options)`.
+   * If `setup()` throws, the entity is destroyed and removed before the
+   * error is rethrown.
    *
    * Don't name a top-level setup-params field `key` — the shape check would
    * misroute it. If you must, use the 3-arg form.
@@ -407,7 +409,12 @@ export abstract class Scene {
       if (options?.key !== undefined) this._registerKey(entity, options.key);
       this.entities.add(entity);
       this.bus?.emit("entity:created", { entity });
-      entity.setup?.(params);
+      try {
+        entity.setup?.(params);
+      } catch (error) {
+        this._discardFailedSpawn(entity);
+        throw error;
+      }
       return entity;
     }
 
@@ -747,22 +754,45 @@ export abstract class Scene {
    */
   _flushDestroyQueue(): void {
     for (const entity of this.destroyQueue) {
-      entity._performDestroy();
-      this.queryCache?.onEntityDestroyed(entity);
-      this.entities.delete(entity);
-      if (
-        entity.key !== undefined &&
-        this._identityIndex?.get(entity.key) === entity
-      ) {
-        // Only evict if the slot still points to *this* entity. A
-        // same-frame destroy + respawn with the same key replaces the
-        // map entry inside `_registerKey`; we must not delete the
-        // replacement here.
-        this._identityIndex.delete(entity.key);
-      }
-      this.bus?.emit("entity:destroyed", { entity });
+      this._finalizeEntityDestroy(entity);
     }
     this.destroyQueue.length = 0;
+  }
+
+  /** Remove a class-spawned entity and its descendants when setup fails. */
+  private _discardFailedSpawn(entity: Entity): void {
+    const subtree: Entity[] = [];
+    const collectChildrenFirst = (member: Entity): void => {
+      for (const child of member.children.values()) {
+        collectChildrenFirst(child);
+      }
+      subtree.push(member);
+    };
+    collectChildrenFirst(entity);
+
+    entity.destroy();
+    const discarded = new Set(subtree);
+    this.destroyQueue = this.destroyQueue.filter(
+      (pending) => !discarded.has(pending),
+    );
+    for (const member of subtree) {
+      this._finalizeEntityDestroy(member);
+    }
+  }
+
+  private _finalizeEntityDestroy(entity: Entity): void {
+    entity._performDestroy();
+    this.queryCache?.onEntityDestroyed(entity);
+    this.entities.delete(entity);
+    if (
+      entity.key !== undefined &&
+      this._identityIndex?.get(entity.key) === entity
+    ) {
+      // Only evict if the slot still points to this entity. A same-frame
+      // destroy + respawn can replace the map entry before destruction flushes.
+      this._identityIndex.delete(entity.key);
+    }
+    this.bus?.emit("entity:destroyed", { entity });
   }
 
   /**

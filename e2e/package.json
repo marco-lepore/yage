@@ -16,6 +16,7 @@
     "vite-plugin-wasm": "^3.6.0"
   },
   "dependencies": {
+    "@yagejs-addons/abilities": "^0.0.0",
     "@yagejs-addons/steering": "^0.1.0",
     "@yagejs-addons/dialogue": "^0.2.0",
     "@yagejs-addons/inventory": "^0.1.0",

@@ -42,6 +42,7 @@ export default defineConfig({
         "tooltip-glued": resolve(__dirname, "tooltip-glued.html"),
         platformer: resolve(__dirname, "platformer.html"),
         "dialogue-addon": resolve(__dirname, "dialogue-addon.html"),
+        "abilities-addon": resolve(__dirname, "abilities-addon.html"),
         interaction: resolve(__dirname, "interaction.html"),
         steering: resolve(__dirname, "steering.html"),
       },
