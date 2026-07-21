@@ -6,14 +6,7 @@ import type { AbilityActivation } from "../core/types.js";
 export type AbilityGesture = "press" | "tap" | "hold" | "release";
 
 /** A value captured when an input interaction triggers. */
-export type AbilityData =
-  | null
-  | string
-  | number
-  | boolean
-  | bigint
-  | symbol
-  | object;
+export type AbilityData = unknown;
 
 /** Stable information about the input interaction that triggered a send. */
 export interface AbilityGestureContext<
@@ -192,9 +185,7 @@ function assertDuration(name: string, value: number): void {
 }
 
 function phaseIsHeld(activation: AbilityActivation): boolean {
-  const def = activation.def;
-  if (def.phases === undefined) return false;
-  return Boolean(def.phases[activation.phase]?.hold);
+  return activation.isHolding;
 }
 
 /**
@@ -285,10 +276,14 @@ export class AbilityDriver<
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    for (const dispose of this.disposers.splice(0)) dispose();
-    this.records.length = 0;
-    this.pending.length = 0;
-    this.presses.clear();
+    try {
+      this.cancelOwnedHolds();
+    } finally {
+      for (const dispose of this.disposers.splice(0)) dispose();
+      this.records.length = 0;
+      this.pending.length = 0;
+      this.presses.clear();
+    }
   }
 
   private resolveBinding(
@@ -558,13 +553,13 @@ export class AbilityDriver<
       onSuccess?.(result);
       return;
     }
-    if (slot.buffer === undefined) return;
+    if (deadline === undefined) return;
     const pending: PendingSend<TAction, TIntent> = {
       binding: state.binding,
       owner: state,
       slot,
       context,
-      deadline: triggerTime + slot.buffer,
+      deadline,
       requireNeutral,
       onSuccess,
       cancelled: false,
@@ -600,16 +595,18 @@ export class AbilityDriver<
     if (binding.gate && !binding.gate(context)) return null;
     if (requireNeutral && this.abilities.isActive(binding.lane)) return null;
     if (
-      !this.abilities.canSend(
-        slot.send,
-        binding.lane,
-        polite ? undefined : { interrupts: true },
-      )
+      !this.abilities.canSend(slot.send, {
+        lane: binding.lane,
+        ...(polite ? {} : { interrupts: true }),
+      })
     ) {
       return null;
     }
     this.beforeFire?.(context);
-    const result = this.abilities.send(slot.send, context.data, binding.lane);
+    const result = this.abilities.send(slot.send, {
+      data: context.data,
+      lane: binding.lane,
+    });
     return result.ok ? result.activation : null;
   }
 
@@ -663,5 +660,18 @@ export class AbilityDriver<
       this.abilities.active(activation.lane) === activation &&
       phaseIsHeld(activation)
     );
+  }
+
+  private cancelOwnedHolds(): void {
+    const candidates = new Set<AbilityActivation>();
+    for (const state of this.presses.values()) {
+      if (state.pressActivation) candidates.add(state.pressActivation);
+      if (state.holdActivation) candidates.add(state.holdActivation);
+    }
+    for (const activation of candidates) {
+      if (this.ownsActiveHold(activation)) {
+        this.abilities.cancel(activation.lane);
+      }
+    }
   }
 }

@@ -38,6 +38,10 @@ export interface AbilityActivation {
    * `Infinity` for an uncapped one.
    */
   readonly phaseDuration: number;
+  /** Whether the current phase is a hold phase. */
+  readonly isHolding: boolean;
+  /** Whether an open window step with `kind` is active in the current phase. */
+  isStepActive(kind: string): boolean;
   /** Seconds since the run started, summed across every phase visited. Stops advancing once the run ends. */
   readonly elapsed: number;
   /** Seconds accumulated in `phase` during this activation — 0 if unvisited; re-entry accumulates. */
@@ -150,14 +154,30 @@ export interface CancelWindow {
  * completes, the same intent starts a NEW activation entering at `to`, with
  * cooldown neither checked nor re-armed (see `Abilities.send`).
  */
-export interface PhaseTransition {
+interface PhaseTransitionBase {
   /** Target phase. */
   to: string;
+}
+
+/** A transition window with an absolute phase-local end. */
+export interface AbsolutePhaseTransition extends PhaseTransitionBase {
   /** Seconds from phase start the transition becomes available. Default 0. */
   from?: number;
-  /** Seconds from phase start it stops being available. Omitted = while the phase is active (no linger). */
+  /** Seconds from phase start it stops being available. Omitted = while the phase is active. */
   until?: number;
+  for?: never;
 }
+
+/** A transition window expressed as a duration from its start. */
+export interface RelativePhaseTransition extends PhaseTransitionBase {
+  /** Seconds from phase start, or the resolved end of a fixed phase. Default 0. */
+  from?: number | "end";
+  /** Seconds the transition remains available after `from`. */
+  for: number;
+  until?: never;
+}
+
+export type PhaseTransition = AbsolutePhaseTransition | RelativePhaseTransition;
 
 /** One named state in an ability's phase graph. */
 export interface PhaseDef {
@@ -259,6 +279,22 @@ export type AbilityDef = TimelineAbilityDef | PhasedAbilityDef;
  *   for the queried lane.
  */
 export type PlayRejection = "cooldown" | "busy" | "noMatch";
+
+/** Options for {@link Abilities.send}. */
+export interface AbilitySendOptions {
+  /** Data stored on the activation when this intent enters or transitions it. */
+  data?: unknown;
+  /** Restrict intent resolution to one lane. */
+  lane?: string;
+}
+
+/** Options for {@link Abilities.canSend}. */
+export interface AbilityCanSendOptions {
+  /** Restrict intent resolution to one lane. */
+  lane?: string;
+  /** Include admission through a higher-priority interrupt. Default false. */
+  interrupts?: boolean;
+}
 
 /** Result of `send`/`force`: check `ok` for the common case; on success, `activation` is the run's handle (the existing one for a phase transition); on refusal, `reason` says why. */
 export type PlayResult =

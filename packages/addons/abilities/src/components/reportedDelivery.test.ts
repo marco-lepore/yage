@@ -1,15 +1,28 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Entity, Transform, Vec2, createMockScene, trait } from "@yagejs/core";
 import type { Scene } from "@yagejs/core";
 import { Hittable } from "../core/hit/types.js";
 import type { HitResult } from "../core/hit/types.js";
+import type { Hit } from "../core/hit/types.js";
 import { createHitDelivery } from "../core/hit/delivery.js";
+import { HitReceiver } from "./HitReceiver.js";
 import { HitDealt, createReportingDelivery } from "./reportedDelivery.js";
+
+vi.mock("@yagejs/physics", async () => {
+  const core =
+    await vi.importActual<typeof import("@yagejs/core")>("@yagejs/core");
+  class RigidBodyComponent extends core.Component {
+    setVelocity(): void {}
+  }
+  return { RigidBodyComponent };
+});
 
 @trait(Hittable)
 class Target extends Entity {
   result: HitResult = "hit";
-  receiveHit(): HitResult {
+  received: Hit[] = [];
+  receiveHit(hit: Hit): HitResult {
+    this.received.push(hit);
     return this.result;
   }
 }
@@ -149,5 +162,25 @@ describe("createReportingDelivery", () => {
     const plain = createReportingDelivery({ source });
     plain.deliver(spawnTarget(scene, 10, 0), new Vec2(0, 0));
     expect("ability" in withProv[1]!).toBe(false);
+  });
+
+  it("inherits the source HitReceiver team and lets an explicit team override it", () => {
+    const { scene } = createMockScene();
+    const source = scene.spawn("attacker");
+    source.add(new HitReceiver({ team: "player", steps: [] }));
+    const inheritedTarget = spawnTarget(scene, 10, 0);
+    const overrideTarget = spawnTarget(scene, 20, 0);
+
+    createReportingDelivery({ source }).deliver(
+      inheritedTarget,
+      new Vec2(0, 0),
+    );
+    createReportingDelivery({ source, team: "boss" }).deliver(
+      overrideTarget,
+      new Vec2(0, 0),
+    );
+
+    expect(inheritedTarget.received[0]?.team).toBe("player");
+    expect(overrideTarget.received[0]?.team).toBe("boss");
   });
 });

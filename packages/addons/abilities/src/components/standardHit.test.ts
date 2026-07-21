@@ -183,7 +183,7 @@ describe("full chain: delivery → trait → receiver → consequences", () => {
     });
     const attacker = scene.spawn("attacker");
     const received: Hit[] = [];
-    victim.on(HitReceived, (hit) => received.push(hit));
+    victim.on(HitReceived, ({ hit }) => received.push(hit));
 
     const delivery = createHitDelivery({
       source: attacker,

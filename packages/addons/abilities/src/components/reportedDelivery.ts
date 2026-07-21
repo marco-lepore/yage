@@ -4,6 +4,7 @@ import { createHitDelivery } from "../core/hit/delivery.js";
 import type { HitDelivery, HitDeliveryOptions } from "../core/hit/delivery.js";
 import type { HitResult, StandardHitData } from "../core/hit/types.js";
 import type { AbilityDef } from "../core/types.js";
+import { HitReceiver } from "./HitReceiver.js";
 
 /**
  * Emitted on the attacking entity (`hit.source`) each time one of its
@@ -16,19 +17,20 @@ import type { AbilityDef } from "../core/types.js";
  *
  * `data` carries a fire-time shallow copy of the delivery's resolved hit data
  * — the values as fired, before per-victim guard reduction (a partial block
- * halves the victim's own copy, not this one). It is typed `unknown` because
- * the event token is a singleton typed against no vocabulary; a standard-data
- * game narrows it to
- * `StandardHitData` (reading `data.hitstop` to drive a freeze frame, say). For
- * a delivery fired by an ability step, `ability` is the def that fired
+ * halves the victim's own copy, not this one). The singleton event uses the
+ * addon's default `StandardHitData` vocabulary. Custom combat systems narrow
+ * the payload at this boundary with their own predicate. For a delivery
+ * fired by an ability step, `ability` is the def that fired
  * (`StepContext.def`); continuous sources like `TouchDamage` omit it.
  */
-export const HitDealt = defineEvent<{
+export interface HitDealtPayload {
   target: Entity;
   result: HitResult;
-  data: unknown;
+  data: StandardHitData;
   ability?: AbilityDef;
-}>("hit:dealt");
+}
+
+export const HitDealt = defineEvent<HitDealtPayload>("hit:dealt");
 
 /** Frozen provenance stamped into every `HitDealt` of a reporting delivery. */
 export interface DeliveryProvenance {
@@ -50,9 +52,15 @@ export function createReportingDelivery<TData = StandardHitData>(
   options: HitDeliveryOptions<TData>,
   provenance?: DeliveryProvenance,
 ): HitDelivery {
-  const delivery = createHitDelivery<TData>(options);
   const { source } = options;
-  const data: unknown = { ...(options.data ?? {}) };
+  const inheritedTeam = source.tryGet(HitReceiver)?.team;
+  const team = options.team ?? inheritedTeam;
+  const resolvedOptions: HitDeliveryOptions<TData> = {
+    ...options,
+    ...(team !== undefined ? { team } : {}),
+  };
+  const delivery = createHitDelivery<TData>(resolvedOptions);
+  const data = { ...(options.data ?? {}) } as StandardHitData;
   const ability = provenance?.ability;
   return {
     deliver(target, from) {

@@ -13,11 +13,10 @@ import type { Aim } from "./aim.js";
 import { HitReceiver } from "./HitReceiver.js";
 import { createReportingDelivery } from "./reportedDelivery.js";
 
-/** Shared resolution the `spawn` and `hitbox` steps both need before they decide their own entity/position. */
+/** Shared resolution the `spawn` and `hitbox` steps need before they decide their own position. */
 export interface ResolvedAbilitySpawn {
   readonly caster: Entity;
   readonly aim: Vec2;
-  readonly transform: Transform;
   readonly team: string | undefined;
   readonly delivery: HitDelivery | undefined;
 }
@@ -25,8 +24,6 @@ export interface ResolvedAbilitySpawn {
 /** Arguments a delivery step passes to `resolveAbilitySpawn`. */
 export interface AbilitySpawnResolveArgs<TData = StandardHitData> {
   ctx: StepContext;
-  /** Step kind, for error messages — `hitbox`'s own kind, or `spawn`'s (which can vary per built-in layered on it). */
-  kind: string;
   aim?: Aim;
   team?: string;
   hit?: HitSpec<TData>;
@@ -34,9 +31,8 @@ export interface AbilitySpawnResolveArgs<TData = StandardHitData> {
 }
 
 /**
- * Resolve the caster, aim, world transform, canonical team fallback, and an
- * optional hit delivery for a step that spawns an attack entity (`spawn`,
- * `hitbox`). Throws if the running entity has no `Transform`, naming `kind`.
+ * Resolve the caster, aim, canonical team fallback, and optional hit delivery
+ * for a step that spawns an attack entity (`spawn`, `hitbox`).
  *
  * Team resolution order: an explicit `team` argument, then the running
  * entity's own inherited spawn team (`resolveAbilityTeam` — set when the
@@ -50,14 +46,8 @@ export interface AbilitySpawnResolveArgs<TData = StandardHitData> {
 export function resolveAbilitySpawn<TData = StandardHitData>(
   args: AbilitySpawnResolveArgs<TData>,
 ): ResolvedAbilitySpawn {
-  const { ctx, kind } = args;
+  const { ctx } = args;
   const aim = resolveAim(args.aim, ctx);
-  const transform = ctx.entity.tryGet(Transform);
-  if (!transform) {
-    throw new Error(
-      `Abilities: step "${kind}" requires a Transform component on the entity.`,
-    );
-  }
   const caster = resolveAbilitySource(ctx.entity);
   const team =
     args.team ??
@@ -75,5 +65,19 @@ export function resolveAbilitySpawn<TData = StandardHitData>(
           },
           { ability: ctx.def },
         );
-  return { caster, aim, transform, team, delivery };
+  return { caster, aim, team, delivery };
+}
+
+/** Resolve the running entity's position source for steps that require it. */
+export function resolveAbilityTransform(
+  ctx: StepContext,
+  kind: string,
+): Transform {
+  const transform = ctx.entity.tryGet(Transform);
+  if (!transform) {
+    throw new Error(
+      `Abilities: step "${kind}" requires a Transform component on the entity.`,
+    );
+  }
+  return transform;
 }

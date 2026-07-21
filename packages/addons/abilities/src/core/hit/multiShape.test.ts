@@ -110,7 +110,7 @@ describe("per-system hit data (two combat systems, discriminated payloads)", () 
     const source = scene.spawn("attacker");
     const shrine = spawnShrine(scene, []);
     const aspects: string[] = [];
-    shrine.on(HitReceived, (hit) => {
+    shrine.on(HitReceived, ({ hit }) => {
       if (isSpiritHit(hit)) aspects.push(hit.data.aspect);
     });
 

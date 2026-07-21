@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createMockEntity,
   KeyframeAnimator,
@@ -8,11 +8,11 @@ import {
   Abilities,
   AbilityEnded,
   AbilityStarted,
-  PhaseChanged,
+  AbilityPhaseChanged,
 } from "./Abilities.js";
 import { defineStep } from "./defineStep.js";
 import { anim } from "../components/steps/anim.js";
-import type { AbilityActivation, AbilityDef } from "./types.js";
+import type { AbilityActivation, AbilityDef, PlayResult } from "./types.js";
 
 const beep = defineStep<{ id: string }>("beep", {
   fire: (params, ctx) => {
@@ -310,6 +310,203 @@ describe("Abilities — activation gating", () => {
   });
 });
 
+describe("Abilities — definition replacement", () => {
+  it("leaves the live runner untouched when the prospective set is invalid", () => {
+    const { pc, abilities } = setup([
+      {
+        id: "old",
+        cooldown: 5,
+        timeline: [zone({ from: 0, to: 1, id: "old" })],
+      },
+    ]);
+    const result = abilities.send("old");
+    if (!result.ok) throw new Error("expected send to succeed");
+    pc._tick(0.2);
+    const remaining = abilities.cooldownRemaining("old");
+
+    expect(() =>
+      abilities.replaceDefinitions([
+        { id: "next", timeline: [] },
+        { id: "next", timeline: [] },
+      ]),
+    ).toThrow(/duplicate ability id "next"/);
+
+    expect(abilities.active()).toBe(result.activation);
+    expect(result.activation.state).toBe("active");
+    expect(abilities.cooldownRemaining("old")).toBeCloseTo(remaining);
+    expect(() => abilities.send("next")).toThrow(/unknown intent "next"/);
+  });
+
+  it("cancels the old run and lets ended listeners use the new definitions", () => {
+    const { entity, pc, abilities, log } = setup([
+      { id: "old", timeline: [zone({ from: 0, to: 1, id: "old" })] },
+    ]);
+    const result = abilities.send("old");
+    if (!result.ok) throw new Error("expected send to succeed");
+    pc._tick(0.2);
+    const ended: string[] = [];
+    entity.on(AbilityEnded, ({ activation, cancelled }) => {
+      ended.push(`${activation.def.id}:${cancelled}`);
+      expect(() => abilities.send("old")).toThrow(/unknown intent "old"/);
+      expect(abilities.send("next")).toEqual(okResult);
+    });
+
+    abilities.replaceDefinitions([{ id: "next", timeline: [] }]);
+
+    expect(result.activation.state).toBe("cancelled");
+    expect(log).toEqual(["enter:old", "exit:old:true"]);
+    expect(ended).toEqual(["old:true"]);
+    expect(abilities.activeId()).toBe("next");
+  });
+
+  it("discards linger and cooldown state, removing the cooldown slot", () => {
+    const def: AbilityDef = {
+      id: "attack",
+      cooldown: 5,
+      phases: {
+        jab: {
+          timeline: [],
+          duration: 0.2,
+          on: { attack: { to: "cross", until: 0.6 } },
+        },
+        cross: { timeline: [], duration: 0.2 },
+      },
+    };
+    const { pc, abilities } = setup([def]);
+    abilities.send("attack");
+    pc._tick(0.2);
+    expect(abilities.canSend("attack")).toBe(true);
+    expect(abilities.cooldownRemaining("attack")).toBeCloseTo(4.8);
+    const removeSlot = vi.spyOn(pc, "removeSlot");
+
+    abilities.replaceDefinitions([{ id: "attack", timeline: [] }]);
+
+    expect(removeSlot).toHaveBeenCalledOnce();
+    expect(abilities.cooldownRemaining("attack")).toBe(0);
+    expect(pc.count).toBe(0);
+    expect(abilities.send("attack")).toEqual(okResult);
+  });
+
+  it("recompiles a reused definition object", () => {
+    const def: AbilityDef = {
+      id: "combo",
+      start: "one",
+      phases: {
+        one: { timeline: [], duration: 1 },
+        two: { timeline: [], duration: 1 },
+      },
+    };
+    const { abilities } = setup([def]);
+    expect(abilities.send("combo")).toEqual(okResult);
+    expect(abilities.active()?.phase).toBe("one");
+    abilities.cancel();
+
+    def.start = "two";
+    abilities.replaceDefinitions([def]);
+
+    expect(abilities.send("combo")).toEqual(okResult);
+    expect(abilities.active()?.phase).toBe("two");
+  });
+
+  it("component removal releases cooldown slots and linger processes", () => {
+    const { entity, pc, abilities } = setup([
+      {
+        id: "attack",
+        cooldown: 5,
+        phases: {
+          jab: {
+            timeline: [],
+            duration: 0.2,
+            on: { attack: { to: "cross", until: 0.6 } },
+          },
+          cross: { timeline: [], duration: 0.2 },
+        },
+      },
+    ]);
+    abilities.send("attack");
+    pc._tick(0.2);
+    expect(pc.count).toBe(2);
+    const removeSlot = vi.spyOn(pc, "removeSlot");
+
+    entity.remove(Abilities);
+
+    expect(removeSlot).toHaveBeenCalledOnce();
+    expect(pc.count).toBe(0);
+  });
+
+  it("component removal refuses work started by an ended listener", () => {
+    const { entity, pc, abilities } = setup([
+      {
+        id: "attack",
+        cooldown: 5,
+        timeline: [zone({ from: 0, to: 1, id: "attack" })],
+      },
+    ]);
+    abilities.send("attack");
+    pc._tick(0.2);
+    const reactivation: PlayResult[] = [];
+    entity.on(AbilityEnded, () => {
+      reactivation.push(abilities.send("attack"));
+    });
+
+    entity.remove(Abilities);
+
+    expect(reactivation).toEqual([{ ok: false, reason: "busy" }]);
+    expect(abilities.canSend("attack")).toBe(false);
+    expect(pc.count).toBe(0);
+  });
+});
+
+describe("Abilities — additive definitions", () => {
+  it("adds an atomically validated set without disturbing runtime state", () => {
+    const attack: AbilityDef = {
+      id: "attack",
+      cooldown: 5,
+      phases: {
+        jab: {
+          duration: 0.2,
+          timeline: [],
+          on: { attack: { to: "cross", from: "end", for: 0.4 } },
+        },
+        cross: { duration: 0.2, timeline: [] },
+      },
+    };
+    const channel: AbilityDef = {
+      id: "channel",
+      lane: "side",
+      duration: 1,
+      timeline: [zone({ from: 0, to: 1, id: "channel" })],
+    };
+    const { pc, abilities } = setup([attack, channel]);
+    abilities.send("attack");
+    const channelResult = abilities.send("channel");
+    if (!channelResult.ok) throw new Error("expected channel to start");
+    pc._tick(0.2);
+    const cooldown = abilities.cooldownRemaining("attack");
+
+    expect(() =>
+      abilities.addDefinitions([
+        { id: "utility", lane: "utility", timeline: [] },
+        { id: "utility", lane: "other", timeline: [] },
+      ]),
+    ).toThrow(/duplicate ability id "utility"/);
+    expect(() => abilities.send("utility")).toThrow(/unknown intent/);
+    expect(abilities.active("side")).toBe(channelResult.activation);
+    expect(abilities.cooldownRemaining("attack")).toBeCloseTo(cooldown);
+    expect(abilities.canSend("attack")).toBe(true);
+
+    abilities.addDefinitions([
+      { id: "utility", lane: "utility", duration: 0.5, timeline: [] },
+    ]);
+
+    expect(abilities.active("side")).toBe(channelResult.activation);
+    expect(abilities.cooldownRemaining("attack")).toBeCloseTo(cooldown);
+    expect(abilities.canSend("attack")).toBe(true);
+    expect(abilities.send("utility")).toEqual(okResult);
+    expect(abilities.canSend("channel", { lane: "side" })).toBe(false);
+  });
+});
+
 describe("Abilities — construction validation", () => {
   it("throws on duplicate ability ids", () => {
     const def: AbilityDef = { id: "a", timeline: [] };
@@ -335,9 +532,9 @@ describe("Abilities — construction validation", () => {
   });
 
   it("throws on an empty phases map and on a start that is not a phase key", () => {
-    expect(
-      () => new Abilities([{ id: "empty", phases: {} }]),
-    ).toThrow(/has no phases/);
+    expect(() => new Abilities([{ id: "empty", phases: {} }])).toThrow(
+      /has no phases/,
+    );
     expect(
       () =>
         new Abilities([
@@ -420,7 +617,9 @@ describe("Abilities — construction validation", () => {
             timeline: [beep({ at: 0.1, id: "r" })],
           },
         ]),
-    ).toThrow(/entry intent "dash" collides between abilities "dash" and "roll"/);
+    ).toThrow(
+      /entry intent "dash" collides between abilities "dash" and "roll"/,
+    );
     expect(
       () =>
         new Abilities([
@@ -513,7 +712,7 @@ describe("Abilities — construction validation", () => {
     ).toThrow(/after\.at=0\.3 at or past the phase's end 0\.3/);
   });
 
-  it('throws on an "end" window with no room before a fixed phase\'s boundary, and on the deleted "release" sentinel', () => {
+  it('rejects an "end" window with no duration and a nonnumeric window bound', () => {
     expect(
       () =>
         new Abilities([
@@ -525,9 +724,7 @@ describe("Abilities — construction validation", () => {
         new Abilities([
           {
             id: "a",
-            timeline: [
-              zone({ from: 0, to: "release" as never, id: "z" }),
-            ],
+            timeline: [zone({ from: 0, to: "release" as never, id: "z" })],
           },
         ]),
     ).toThrow(/has to=release — expected a number or "end"/);
@@ -553,7 +750,7 @@ describe("Abilities — construction validation", () => {
     ).toThrow(/is the same step object/);
   });
 
-  it("keeps the step-shape checks: negative times, every<=0, to<=from, steps past an explicit duration", () => {
+  it("rejects invalid step times and intervals", () => {
     expect(
       () =>
         new Abilities([
@@ -782,9 +979,7 @@ describe("Abilities — lanes", () => {
     // Polite default: a retried/buffered press must not preempt the jab...
     expect(abilities.canSend("burst")).toBe(false);
     // ...but the full dry-run answers what a direct send would do:
-    expect(abilities.canSend("burst", undefined, { interrupts: true })).toBe(
-      true,
-    );
+    expect(abilities.canSend("burst", { interrupts: true })).toBe(true);
     expect(abilities.send("burst")).toEqual(okResult);
     expect(abilities.activeId()).toBe("burst");
   });
@@ -798,18 +993,23 @@ describe("Abilities — lanes", () => {
           kick: { priority: 110, timeline: [], duration: 0.5 },
         },
       },
-      { id: "stomp", priority: 100, cooldown: 5, timeline: [beep({ at: 0.1, id: "s" })] },
+      {
+        id: "stomp",
+        priority: 100,
+        cooldown: 5,
+        timeline: [beep({ at: 0.1, id: "s" })],
+      },
     ]);
     abilities.send("charge");
     pc._tick(0.1);
     // Windup phase (priority 0): 100 would win the lane.
-    expect(abilities.canSend("stomp", undefined, { interrupts: true })).toBe(true);
+    expect(abilities.canSend("stomp", { interrupts: true })).toBe(true);
     abilities.release("charge"); // → kick, phase priority 110
-    expect(abilities.canSend("stomp", undefined, { interrupts: true })).toBe(false);
+    expect(abilities.canSend("stomp", { interrupts: true })).toBe(false);
     pc._tick(0.6); // kick completes → idle
     abilities.send("stomp"); // arms the 5s cooldown
     pc._tick(0.2); // stomp completes; cooldown still running
-    expect(abilities.canSend("stomp", undefined, { interrupts: true })).toBe(false);
+    expect(abilities.canSend("stomp", { interrupts: true })).toBe(false);
   });
 
   it("an explicit lane argument scopes send/canSend to that lane", () => {
@@ -818,13 +1018,13 @@ describe("Abilities — lanes", () => {
       { id: "b", lane: "side", timeline: [beep({ at: 1, id: "b" })] },
     ]);
     // The entry door's own lane must match the queried one.
-    expect(abilities.canSend("b", "main")).toBe(false);
-    expect(abilities.send("b", undefined, "main")).toEqual({
+    expect(abilities.canSend("b", { lane: "main" })).toBe(false);
+    expect(abilities.send("b", { lane: "main" })).toEqual({
       ok: false,
       reason: "noMatch",
     });
-    expect(abilities.canSend("b", "side")).toBe(true);
-    expect(abilities.send("b", undefined, "side")).toEqual(okResult);
+    expect(abilities.canSend("b", { lane: "side" })).toBe(true);
+    expect(abilities.send("b", { lane: "side" })).toEqual(okResult);
   });
 });
 
@@ -843,18 +1043,23 @@ describe("Abilities — combo (guarded on: transitions)", () => {
         duration: 0.5,
         on: { attack: { to: "hook", from: 0.25, until: 0.6 } },
       },
-      hook: { timeline: [zone({ from: 0, to: 0.3, id: "hook" })], duration: 1.1 },
+      hook: {
+        timeline: [zone({ from: 0, to: 0.3, id: "hook" })],
+        duration: 1.1,
+      },
     },
   });
 
-  it("a guarded press advances the phase in place — same activation, no new Started, PhaseChanged fires", () => {
+  it("a transition-window press advances the phase in place and emits AbilityPhaseChanged", () => {
     const { entity, pc, abilities } = setup([combo()]);
     const started: string[] = [];
     const phases: string[] = [];
     entity.on(AbilityStarted, ({ activation }) =>
       started.push(activation.def.id),
     );
-    entity.on(PhaseChanged, ({ from, to }) => phases.push(`${from}->${to}`));
+    entity.on(AbilityPhaseChanged, ({ from, to }) =>
+      phases.push(`${from}->${to}`),
+    );
 
     const result = abilities.send("attack");
     if (!result.ok) throw new Error("expected send to succeed");
@@ -868,6 +1073,73 @@ describe("Abilities — combo (guarded on: transitions)", () => {
     expect(abilities.active()?.phase).toBe("cross");
     expect(started).toEqual(["attack"]); // one run
     expect(phases).toEqual(["jab->cross"]);
+  });
+
+  it("opens a relative transition window from the fixed phase end", () => {
+    const { pc, abilities } = setup([
+      {
+        id: "combo",
+        phases: {
+          first: {
+            duration: 0.3,
+            timeline: [],
+            on: { next: { to: "second", from: "end", for: 0.2 } },
+          },
+          second: { duration: 0.2, timeline: [] },
+        },
+      },
+    ]);
+
+    abilities.send("combo");
+    pc._tick(0.29);
+    expect(abilities.canSend("next")).toBe(false);
+    pc._tick(0.01);
+    expect(abilities.isActive()).toBe(false);
+    expect(abilities.canSend("next")).toBe(true);
+    pc._tick(0.19);
+    expect(abilities.canSend("next")).toBe(true);
+    pc._tick(0.02);
+    expect(abilities.canSend("next")).toBe(false);
+  });
+
+  it('rejects from: "end" on a hold phase', () => {
+    expect(
+      () =>
+        new Abilities([
+          {
+            id: "charge",
+            phases: {
+              hold: {
+                hold: true,
+                timeline: [],
+                on: { release: { to: "fire", from: "end", for: 0.2 } },
+              },
+              fire: { duration: 0.2, timeline: [] },
+            },
+          },
+        ]),
+    ).toThrow(/from="end" on a hold phase/);
+  });
+
+  it("requires transition windows to choose absolute until or relative for", () => {
+    const invalidDefinition = (): AbilityDef => {
+      const invalid: AbilityDef = {
+        id: "invalid",
+        phases: {
+          first: {
+            duration: 1,
+            timeline: [],
+            on: {
+              // @ts-expect-error until and for are mutually exclusive
+              next: { to: "second", from: 0.2, until: 0.4, for: 0.2 },
+            },
+          },
+          second: { duration: 1, timeline: [] },
+        },
+      };
+      return invalid;
+    };
+    expect(invalidDefinition).toBeTypeOf("function");
   });
 
   it('a declared intent with a failing guard refuses "noMatch", does not fall through, and canSend is false', () => {
@@ -1094,7 +1366,9 @@ describe("Abilities — hold phases + release", () => {
       },
     ]);
     const phases: string[] = [];
-    entity.on(PhaseChanged, ({ from, to }) => phases.push(`${from}->${to}`));
+    entity.on(AbilityPhaseChanged, ({ from, to }) =>
+      phases.push(`${from}->${to}`),
+    );
     abilities.send("charge");
     const activation = abilities.active()!;
     pc._tick(0.4);
@@ -1245,9 +1519,8 @@ describe("Abilities — hold phases + release", () => {
       },
     ]);
     abilities.send("buster");
-    // One frame in which BOTH the 0.7s threshold passes and the key is
-    // released: ability processes tick first (Update/500), the controller's
-    // release lands after (Update/1000) — the timer wins.
+    // Ability updates run before input updates. This tick crosses the timer
+    // threshold before input reports the release.
     pc._tick(0.75);
     expect(abilities.active()?.phase).toBe("charge2");
     expect(abilities.release("buster")).toBe(true);
@@ -1264,8 +1537,8 @@ describe("Abilities — hold phases + release", () => {
         log(ctx).push(`exit:${params.id}:${cancelled}`),
       tick: (params, ctx) => log(ctx).push(`tick:${params.id}`),
     });
-    // Destructured as `entries` so the step above still resolves `log` to
-    // the module-level helper, not this array.
+    // Keep the captured array distinct from the module-level `log` helper used
+    // by the custom step.
     const {
       pc,
       abilities,
@@ -1277,7 +1550,9 @@ describe("Abilities — hold phases + release", () => {
           one: {
             hold: true,
             on: { go: "two" },
-            timeline: [hijackZone({ from: 0, to: "end", every: 0.05, id: "h" })],
+            timeline: [
+              hijackZone({ from: 0, to: "end", every: 0.05, id: "h" }),
+            ],
           },
           two: { timeline: [], duration: 1 },
         },
@@ -1314,7 +1589,7 @@ describe("Abilities — entry doors + payload", () => {
 
   it("an entry alias enters at its door phase with the payload on the handle", () => {
     const { pc, abilities } = setup([chargeWithDoor()]);
-    const result = abilities.send("attack-release", 1.4);
+    const result = abilities.send("attack-release", { data: 1.4 });
     if (!result.ok) throw new Error("expected send to succeed");
     expect(result.activation.phase).toBe("kick");
     expect(result.activation.payload).toBe(1.4);
@@ -1371,13 +1646,13 @@ describe("Abilities — entry doors + payload", () => {
         },
       },
     ]);
-    const result = abilities.send("a", "entry-data");
+    const result = abilities.send("a", { data: "entry-data" });
     if (!result.ok) throw new Error("expected send to succeed");
     pc._tick(0.1);
     abilities.send("go");
     expect(result.activation.payload).toBe("entry-data"); // no data → untouched
     pc._tick(0.1);
-    abilities.send("jump", 42);
+    abilities.send("jump", { data: 42 });
     expect(result.activation.payload).toBe(42);
   });
 });
@@ -1439,6 +1714,52 @@ describe('Abilities — windows ending at "end"', () => {
     pc._tick(0.2);
     abilities.send("big");
     expect(log).toEqual(["enter:g", "exit:g:true"]);
+  });
+
+  it("reports the active hold phase and open step kinds on the activation", () => {
+    const { pc, abilities } = setup([
+      {
+        id: "charge",
+        phases: {
+          hold: {
+            hold: true,
+            timeline: [zone({ from: 0.1, to: "end", id: "movement" })],
+          },
+        },
+      },
+    ]);
+    const result = abilities.send("charge");
+    if (!result.ok) throw new Error("expected charge to start");
+
+    expect(result.activation.isHolding).toBe(true);
+    expect(result.activation.isStepActive("zone")).toBe(false);
+    pc._tick(0.1);
+    expect(result.activation.isStepActive("zone")).toBe(true);
+
+    abilities.cancel();
+    expect(result.activation.isStepActive("zone")).toBe(false);
+  });
+
+  it("reports false for a fixed phase", () => {
+    const { abilities } = setup([{ id: "swing", duration: 1, timeline: [] }]);
+    const result = abilities.send("swing");
+    if (!result.ok) throw new Error("expected swing to start");
+    expect(result.activation.isHolding).toBe(false);
+  });
+});
+
+describe("Abilities — option-object calls", () => {
+  it("does not expose the removed positional data or lane arguments", () => {
+    const { abilities } = setup([{ id: "a", timeline: [] }]);
+    const invalidCalls = (): void => {
+      // @ts-expect-error send data belongs in the options object
+      abilities.send("a", 42);
+      // @ts-expect-error canSend lane belongs in the options object
+      abilities.canSend("a", "main");
+      // @ts-expect-error canSend no longer accepts a third options argument
+      abilities.canSend("a", { lane: "main" }, { interrupts: true });
+    };
+    expect(invalidCalls).toBeTypeOf("function");
   });
 });
 
@@ -1622,8 +1943,8 @@ describe("Abilities — mid-tick interruption + phase-token guards", () => {
         ctx.abilities.force(reactionDef);
       },
     });
-    // Destructured as `entries` (not `log`) so the `interrupt` step above still
-    // resolves `log` to the module-level helper, not this array.
+    // Keep the captured array distinct from the module-level `log` helper used
+    // by the custom step.
     const {
       pc,
       abilities,
@@ -1656,8 +1977,8 @@ describe("Abilities — mid-tick interruption + phase-token guards", () => {
         ctx.abilities.send("go");
       },
     });
-    // Destructured as `entries` so the `advance` step above still resolves
-    // `log` to the module-level helper, not this array.
+    // Keep the captured array distinct from the module-level `log` helper used
+    // by the custom step.
     const {
       pc,
       abilities,
@@ -1741,8 +2062,12 @@ describe("Abilities — mid-tick interruption + phase-token guards", () => {
       },
     ]);
     const events: string[] = [];
-    entity.on(PhaseChanged, ({ from, to }) => events.push(`phase:${from}->${to}`));
-    entity.on(AbilityEnded, ({ cancelled }) => events.push(`ended:${cancelled}`));
+    entity.on(AbilityPhaseChanged, ({ from, to }) =>
+      events.push(`phase:${from}->${to}`),
+    );
+    entity.on(AbilityEnded, ({ cancelled }) =>
+      events.push(`ended:${cancelled}`),
+    );
 
     abilities.send("a");
     const activation = abilities.active()!;
@@ -1763,8 +2088,16 @@ describe("Abilities — mid-tick interruption + phase-token guards", () => {
       {
         id: "a",
         phases: {
-          one: { timeline: [beep({ at: 0.1, id: "1" })], duration: 0.2, next: "two" },
-          two: { timeline: [beep({ at: 0.1, id: "2" })], duration: 0.2, next: "three" },
+          one: {
+            timeline: [beep({ at: 0.1, id: "1" })],
+            duration: 0.2,
+            next: "two",
+          },
+          two: {
+            timeline: [beep({ at: 0.1, id: "2" })],
+            duration: 0.2,
+            next: "three",
+          },
           three: { timeline: [beep({ at: 0.1, id: "3" })], duration: 0.2 },
         },
       },
@@ -1779,7 +2112,7 @@ describe("Abilities — mid-tick interruption + phase-token guards", () => {
 });
 
 describe("Abilities — transition re-entrancy (generation counter)", () => {
-  it("an exit hook that sends during a transition supersedes it: the outer transition aborts, one settled phase, one PhaseChanged", () => {
+  it("an exit-hook send supersedes the outer transition and emits one settled phase event", () => {
     const hijack = defineStep<object>("hijack", {
       exit: (_params, ctx) => {
         ctx.abilities.send("swerve");
@@ -1799,7 +2132,9 @@ describe("Abilities — transition re-entrancy (generation counter)", () => {
       },
     ]);
     const phases: string[] = [];
-    entity.on(PhaseChanged, ({ from, to }) => phases.push(`${from}->${to}`));
+    entity.on(AbilityPhaseChanged, ({ from, to }) =>
+      phases.push(`${from}->${to}`),
+    );
 
     abilities.send("a");
     pc._tick(0.1); // open the window so the transition has an exit hook to run
@@ -1837,7 +2172,9 @@ describe("Abilities — transition re-entrancy (generation counter)", () => {
     entity.on(AbilityEnded, ({ activation }) =>
       events.push(`ended:${activation.def.id}`),
     );
-    entity.on(PhaseChanged, ({ from, to }) => events.push(`phase:${from}->${to}`));
+    entity.on(AbilityPhaseChanged, ({ from, to }) =>
+      events.push(`phase:${from}->${to}`),
+    );
 
     abilities.send("a");
     pc._tick(0.1);
@@ -2133,7 +2470,7 @@ describe("Abilities — lifecycle events + activation handle", () => {
     expect(events).toEqual(["ended:a", "started:b", "ended:b", "started:c"]);
   });
 
-  it("a PhaseChanged listener observes the settled lane state (the new phase is already current)", () => {
+  it("an AbilityPhaseChanged listener observes the settled lane state", () => {
     const { entity, pc, abilities } = setup([
       {
         id: "a",
@@ -2144,7 +2481,7 @@ describe("Abilities — lifecycle events + activation handle", () => {
       },
     ]);
     let observed: string | undefined;
-    entity.on(PhaseChanged, ({ activation }) => {
+    entity.on(AbilityPhaseChanged, ({ activation }) => {
       observed = activation.phase;
     });
     abilities.send("a");

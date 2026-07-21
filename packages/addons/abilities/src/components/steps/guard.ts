@@ -7,7 +7,6 @@ import type { StandardHitData } from "../../core/hit/types.js";
 export type GuardStepArgs<TData = StandardHitData> = GuardParams<TData> & {
   from: number;
   to: number | "end";
-  every?: number;
 };
 
 /**
@@ -22,16 +21,14 @@ export type GuardStepArgs<TData = StandardHitData> = GuardParams<TData> & {
 export function guard<TData = StandardHitData>(
   args: GuardStepArgs<TData>,
 ): WindowStep<GuardParams<TData>> {
-  const { from, to, every, ...params } = args;
-  const step: WindowStep<GuardParams<TData>> = {
+  const { from, to, ...params } = args;
+  return {
     kind: "guard",
     from,
     to,
     params,
     hooks: { enter: enterGuard, exit: exitGuard },
   };
-  if (every !== undefined) step.every = every;
-  return step;
 }
 
 function enterGuard<TData>(params: GuardParams<TData>, ctx: StepContext): void {
@@ -62,7 +59,7 @@ function requireReceiver<TData>(ctx: StepContext): HitReceiver<TData> {
  */
 export function parry(args: {
   from: number;
-  to: number;
+  to: number | "end";
   punish?: StandardHitData;
 }): WindowStep<GuardParams> {
   return guard<StandardHitData>({

@@ -1,4 +1,5 @@
 export { AbilityDriver } from "./input/AbilityDriver.js";
+export { AbilityDriverComponent } from "./input/AbilityDriverComponent.js";
 export type {
   AbilityBinding,
   AbilityData,

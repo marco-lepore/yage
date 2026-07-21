@@ -2,13 +2,14 @@
  * The first example for @yagejs-addons/abilities: a close-quarters top-down
  * arena brawl exercising the full timeline-ability + hit-contract surface.
  *
- * - Player `Abilities`: a 1-2-3 combo authored as one `attack` def with
- *   `jab`/`cross`/`hook` phases (each stage a `hitbox` window; `send("attack")`
- *   enters when idle and advances through each phase's guarded `on:` window,
- *   which lingers through the recovery gap after the run completes), a
- *   tap-vs-hold charge (`CHARGE`: a hold phase released through a declared
- *   intent into a super-armored `kick` phase), "dash" (`invulnerable` + a
- *   game-defined movement step, buffered mid-combo by `AbilityDriver`), a
+ * - Player `Abilities`: two complete tap-vs-hold loadouts. FISTS chains a
+ *   jab, cross, and lunging hook, then releases a held charge as a homing
+ *   fireball. KICKS chains front, high, and flying kicks, then releases the
+ *   existing lunging charge kick. Both combos use one phased def whose
+ *   guarded `on:` windows linger through the recovery gap. `AbilityDriverComponent`
+ *   owns tap-vs-hold classification for each loadout. Tapping dash performs
+ *   the invulnerable roll; holding it runs, while a buffered tap may still
+ *   cancel an attack's recovery. The rest of the kit is a
  *   hold-vs-tap
  *   guard (`GUARD_HOLD`/`PARRY`: holding reduces every landed hit in place
  *   with no stagger and never closes early, tapping cancels into a short
@@ -18,7 +19,7 @@
  *   while the main lane is busy). Every player attack phase is windup
  *   → active (hitbox/effect) → recovery: the phase `duration` extends past
  *   the active window so landing (or whiffing) a swing leaves the lane busy
- *   for a beat afterward. Every combo/charge-kick/counter phase additionally
+ *   for a beat afterward. Every committed attack/counter phase additionally
  *   carries `priority: SUPER_ARMOR_PRIORITY` (above the addon's built-in
  *   stagger reaction) so a committed attack still takes damage but can't be
  *   flinched or knocked back out of it — see the ability defs below.
@@ -68,11 +69,15 @@
  *   `AbilitiesDemoScene.onEnter`. R tears down and rebuilds the whole scene
  *   (`PlayerController.resetDemo`) without a page reload.
  * - A bottom-center hotbar (`HotbarSlot`) mirrors the player's four action
- *   slots (combo/charge share one slot) with a per-frame clock-wipe arc and
- *   an `X.X` countdown, read off `Abilities.cooldownRemaining`/
+ *   slots (both loadouts share one attack slot) with a per-frame clock-wipe
+ *   arc and an `X.X` countdown, read off `Abilities.cooldownRemaining`/
  *   `cooldownRatio` for dash/guardHold/potion and off the active def's own
- *   elapsed/duration for the shared attack/charge slot, which has no single
+ *   elapsed/duration for the shared attack slot, which has no single
  *   cooldown id to poll (see `PlayerController.attackSlotState`).
+ * - E swaps between the FISTS and KICKS definition sets.
+ *   `PlayerController.swapLoadout` calls `Abilities.replaceDefinitions` and
+ *   replaces the mounted driver's input mapping. The swap cancels active
+ *   abilities and resets every cooldown.
  *
  * Visuals are the CC0 "8-Directional Melee Character (Boxer)" sprite pack
  * (see `examples/public/assets/CREDITS.md`) via `AnimatedSpriteComponent` +
@@ -134,7 +139,6 @@ import { AudioManagerKey, AudioPlugin, sound } from "@yagejs/audio";
 import {
   Abilities,
   AbilityEnded,
-  AbilityStarted,
   Facing,
   Health,
   HealthDamaged,
@@ -145,18 +149,18 @@ import {
   HitGuarded,
   HitReceived,
   HitReceiver,
-  PhaseChanged,
   Projectile,
   REACTION_PRIORITY,
   Stagger,
-  aimAt,
   block,
-  createHitTools,
   createReportingDelivery,
   defaultHitSteps,
   defineStep,
+  hitbox,
   invulnerable,
   parry,
+  slowmo,
+  spawn,
 } from "@yagejs-addons/abilities";
 import type {
   AbilityDef,
@@ -170,22 +174,9 @@ import type {
   StandardHitData,
   WindowStep,
 } from "@yagejs-addons/abilities";
-import { AbilityDriver } from "@yagejs-addons/abilities/input";
+import { AbilityDriverComponent } from "@yagejs-addons/abilities/input";
+import type { AbilityDriverOptions } from "@yagejs-addons/abilities/input";
 import { injectStyles, setupGameContainer } from "./shared.js";
-
-function isStandardHitData(data: unknown): data is StandardHitData {
-  if (typeof data !== "object" || data === null || Array.isArray(data)) {
-    return false;
-  }
-  const candidate = data as Record<string, unknown>;
-  return ["damage", "knockback", "stun", "hitstop"].every(
-    (field) =>
-      candidate[field] === undefined || typeof candidate[field] === "number",
-  );
-}
-
-const hitTools = createHitTools<StandardHitData>({ isData: isStandardHitData });
-const { hitbox, spawn } = hitTools;
 
 injectStyles(`
   #dead-banner {
@@ -225,6 +216,7 @@ const CAMERA_FOLLOW_SMOOTHING = 0.1;
 // PLAYER_SPEED/ENEMY_SPEED keep their original ~2.07:1 ratio (145:70) — see
 // the tuning note on `BOXER_ANIM_SPECS.run` for why both moved together.
 const PLAYER_SPEED = 195;
+const PLAYER_RUN_SPEED = 280;
 const ENEMY_SPEED = 95;
 /** Beyond this distance the token-holding enemy closes in instead of attacking; within it, melee. */
 const ENEMY_MELEE_RANGE = 80;
@@ -263,24 +255,9 @@ const ENEMY_TINT = 0xff8a8a;
 // pixel-by-pixel against every direction of every sheet this example uses:
 // all match exactly, no shifted/partial cells from a wrong count.
 //
-// Direction convention: dir1=SW dir2=W dir3=NW dir4=N dir5=SE dir6=E dir7=NE
-// dir8=S. This is NOT a uniform rotation by direction number — the pack
-// orders the four diagonals as left/right mirror pairs of the nearest
-// cardinal (dir1/dir5 and dir3/dir7 are mirror images), not by sweeping
-// angle. In the engine's screen-space angle (0=east, 90°=south, clockwise,
-// since Vec2 Y is down) the 8 sheet directions land exactly on 45° octants,
-// so quantizing `Facing.unit`'s angle to the nearest octant and looking up
-// the matching `dirN` is a straight table lookup.
-//
-// Verified per-sheet-family, not just once: every `dirN` of FightIdle,
-// LeftJab, RightJab, FlyingKick, HighKick, ForwardRoll, FrontKick, Die1, and
-// HitBody was diffed frame-by-frame at high zoom against the front-vs-back
-// signature (face + chest visible vs. cap-from-behind + shoulder blades) —
-// all 9 agree with the convention above. RunForward alone does not: its
-// `_dir5.png` draws the back-right (NE) pose and `_dir7.png` draws the
-// front-right (SE) pose, the two transposed from every other sheet in the
-// pack — this is what read as "up-right/down-right swapped" during a run,
-// not a wrong global mapping. `resolveSheetDir` below corrects for it.
+// The pack's published direction order is dir1=SW, dir2=W, dir3=NW, dir4=N,
+// dir5=NE, dir6=E, dir7=SE, dir8=S. The numbers do not sweep around the
+// character, so `Facing.sector(8)` needs the lookup below.
 
 const DIR_COUNT = 8;
 const FRAME_W = 126;
@@ -289,7 +266,7 @@ const FRAME_H = 132;
 const DEFAULT_DIR = 6;
 
 /** Octant index (0=E, 1=SE, 2=S, ... 7=NE, going clockwise) -> sheet `dirN`. */
-const OCTANT_TO_DIR = [6, 5, 8, 1, 2, 3, 4, 7] as const;
+const OCTANT_TO_DIR = [6, 7, 8, 1, 2, 3, 4, 5] as const;
 
 /** Map a facing to the sprite sheet's `dirN` (1-8): `Facing.sector(8)` gives the
  *  octant (0=E, clockwise), this pack's own table names the matching sheet. */
@@ -297,21 +274,13 @@ function facingToDir(facing: Facing): number {
   return OCTANT_TO_DIR[facing.sector(DIR_COUNT)]!;
 }
 
-/** Corrects `facingToDir`'s otherwise-uniform octant table for RunForward's
- *  transposed dir5/dir7 files (see the direction-convention doc above) —
- *  every other animation uses the octant table's `dirN` as-is. */
-function resolveSheetDir(anim: BoxerAnim, dir: number): number {
-  if (anim !== "run") return dir;
-  if (dir === 5) return 7;
-  if (dir === 7) return 5;
-  return dir;
-}
-
 type BoxerAnim =
   | "idle"
   | "run"
+  | "sprint"
   | "attack1"
   | "attack2"
+  | "powerPunch"
   | "attack3"
   | "chargeHold"
   | "chargeRelease"
@@ -349,6 +318,9 @@ const BOXER_ANIM_SPECS: Record<BoxerAnim, BoxerAnimSpec> = {
   // position through a full loop), and consecutive frames in a run now show
   // steady, proportional forward progress with no stall or flail.
   run: { sheet: "RunForward", frames: 14, speed: 0.32, loop: true },
+  // Same cycle at the same ratio as PLAYER_RUN_SPEED / PLAYER_SPEED, so the
+  // faster held-dash movement keeps the planted foot moving proportionally.
+  sprint: { sheet: "RunForward", frames: 14, speed: 0.46, loop: true },
   // Attack/telegraph speeds (attack1/2/3, chargeRelease, melee, cast) are
   // ~12% slower than a plain sprite-accurate playback rate — every hitbox/
   // telegraph/projectile window below is timed against these speeds, not
@@ -356,10 +328,12 @@ const BOXER_ANIM_SPECS: Record<BoxerAnim, BoxerAnimSpec> = {
   // frame; re-derive both together if either changes.
   attack1: { sheet: "LeftJab", frames: 15, speed: 0.696, loop: false },
   attack2: { sheet: "RightJab", frames: 11, speed: 0.714, loop: false },
-  // The combo finisher: a leaping flying kick (48 real frames — the whole
-  // sheet bar one empty trailing cell) instead of a third punch, paired with
-  // a real forward lunge (see `lungeMove` / `ATTACK`'s hook phase) so the drawn leap and
-  // the body's actual travel read as one motion.
+  // Fourteen real frames. The arm reaches full extension around frames 7-9;
+  // the fist finisher's lunge and hitbox below are timed to that contact.
+  powerPunch: { sheet: "RightHook", frames: 14, speed: 0.55, loop: false },
+  // The KICKS combo finisher: a leaping flying kick (48 real frames — the
+  // whole sheet bar one empty trailing cell), paired with `lungeMove` so the
+  // drawn leap and the body's actual travel read as one motion.
   attack3: { sheet: "FlyingKick", frames: 48, speed: 0.893, loop: false },
   // A single held frame (no block/parry animation in the pack) — same
   // one-frame-slice trick as `guard` below, from the Battlecry sheet's
@@ -390,6 +364,8 @@ const BOXER_ANIM_SPECS: Record<BoxerAnim, BoxerAnimSpec> = {
  *  spanning the whole throw, not just the projectile's release instant. */
 const CAST_DURATION =
   BOXER_ANIM_SPECS.cast.frames / (60 * BOXER_ANIM_SPECS.cast.speed);
+const CAST_RELEASE_FRAME = 29;
+const CAST_RELEASE_AT = CAST_RELEASE_FRAME / (60 * BOXER_ANIM_SPECS.cast.speed);
 
 /** Composite `AnimationController` key for one (animation, direction) pair. */
 function boxerKey(anim: BoxerAnim, dir: number): string {
@@ -411,9 +387,13 @@ function handlesFor(sheet: string): TextureHandle[] {
 }
 
 /** Every texture handle the boxer pack needs, for the scene's `preload`. */
-const BOXER_PRELOAD = (Object.keys(BOXER_ANIM_SPECS) as BoxerAnim[]).flatMap(
-  (anim) => handlesFor(BOXER_ANIM_SPECS[anim].sheet),
-);
+const BOXER_PRELOAD = [
+  ...new Set(
+    (Object.keys(BOXER_ANIM_SPECS) as BoxerAnim[]).flatMap((anim) =>
+      handlesFor(BOXER_ANIM_SPECS[anim].sheet),
+    ),
+  ),
+];
 
 /** The serializable frame source for one (animation, direction) pair — a
  *  single-row grid slice of that direction's sheet. Assets must already be
@@ -432,7 +412,9 @@ function sourceFor(anim: BoxerAnim, dir: number): SheetFrameSource {
  *  one entry per (animation, direction) — a player needs 8 animations x 8
  *  directions, an enemy fewer. `AnimationController` has no direction axis
  *  of its own, so directions are folded into the key name. */
-function buildBoxerAnimDefs(anims: readonly BoxerAnim[]): Record<string, AnimationDef> {
+function buildBoxerAnimDefs(
+  anims: readonly BoxerAnim[],
+): Record<string, AnimationDef> {
   const defs: Record<string, AnimationDef> = {};
   for (const anim of anims) {
     const spec = BOXER_ANIM_SPECS[anim];
@@ -450,18 +432,29 @@ function buildBoxerAnimDefs(anims: readonly BoxerAnim[]): Record<string, Animati
 const PLAYER_ANIMS: readonly BoxerAnim[] = [
   "idle",
   "run",
+  "sprint",
   "attack1",
   "attack2",
+  "powerPunch",
   "attack3",
   "chargeHold",
   "chargeRelease",
+  "melee",
+  "cast",
   "dash",
   "guard",
   "potion",
   "stagger",
   "death",
 ];
-const ENEMY_ANIMS: readonly BoxerAnim[] = ["idle", "run", "cast", "melee", "stagger", "death"];
+const ENEMY_ANIMS: readonly BoxerAnim[] = [
+  "idle",
+  "run",
+  "cast",
+  "melee",
+  "stagger",
+  "death",
+];
 
 const SPRITE_SCALE = 0.6;
 
@@ -489,6 +482,35 @@ const SPRITE_SCALE = 0.6;
  */
 const SPRITE_ANCHOR = { x: 0.5, y: 0.5 };
 
+/** Joined-glove position on frame 29 of each Fireball direction, measured in
+ *  the source frame's 126×132 pixel coordinates. These are attachment points,
+ *  not sprite anchors: the projectile starts here while the character keeps
+ *  its torso-centered anchor. */
+const CAST_HAND_PX: readonly Vec2Like[] = [
+  { x: 29, y: 72 }, // dir1: SW
+  { x: 31, y: 58 }, // dir2: W
+  { x: 49, y: 47 }, // dir3: NW
+  { x: 81, y: 53 }, // dir4: N
+  { x: 96, y: 59 }, // dir5: NE
+  { x: 96, y: 73 }, // dir6: E
+  { x: 75, y: 82 }, // dir7: SE
+  { x: 49, y: 82 }, // dir8: S
+];
+
+function castHandPosition(entity: Entity): Vec2 {
+  const state = boxerAnimState.get(entity);
+  const dir =
+    state?.anim === "cast" ? state.dir : facingToDir(entity.get(Facing));
+  const hand = CAST_HAND_PX[dir - 1]!;
+  const anchorX = FRAME_W * SPRITE_ANCHOR.x;
+  const anchorY = FRAME_H * SPRITE_ANCHOR.y;
+  return entity
+    .get(Transform)
+    .worldPosition.add(
+      new Vec2(hand.x - anchorX, hand.y - anchorY).scale(SPRITE_SCALE),
+    );
+}
+
 /** Matches both combatants' `ColliderComponent` circle radius — shared so
  *  the contact-point approximation in `contactPoint` (see `reactToHit`)
  *  stays in sync with the actual collider size. The collider is centered on
@@ -515,6 +537,7 @@ const HP_BAR_TOP = -34;
  * `AnimatedSprite.anchor`, offset by `GROUND_OFFSET_ROWS` so the ground line
  * renders a fixed distance below the torso anchor instead of at it.
  */
+// prettier-ignore
 const FOOT_ANCHOR_PX: Partial<
   Record<BoxerAnim, readonly (readonly [number, number])[][]>
 > = {
@@ -574,7 +597,11 @@ const GROUND_OFFSET_ROWS = 45;
  *  table itself compensates for. */
 function applyFootAnchor(entity: Entity, frame: number): void {
   const state = boxerAnimState.get(entity);
-  const px = state && FOOT_ANCHOR_PX[state.anim]?.[state.dir - 1]?.[frame];
+  const anchorAnim = state?.anim === "sprint" ? "run" : state?.anim;
+  const px =
+    state && anchorAnim
+      ? FOOT_ANCHOR_PX[anchorAnim]?.[state.dir - 1]?.[frame]
+      : undefined;
   const sprite = entity.get(AnimatedSpriteComponent).animatedSprite;
   if (px) {
     sprite.anchor.set(px[1] / FRAME_W, (px[0] - GROUND_OFFSET_ROWS) / FRAME_H);
@@ -598,7 +625,7 @@ function installFootAnchorTracking(entity: Entity): void {
  *  from its `Facing` (falling back to `DEFAULT_DIR` without one). Records
  *  the (anim, dir) pair in `boxerAnimState` for `applyFootAnchor` to read.
  *  `startFrame` jumps a one-shot past its own opening frames instead of
- *  always starting at 0 — `CHARGE`'s kick phase uses this to open onto the kick's
+ *  always starting at 0 — `KICK_CHARGE` uses this to open onto the kick's
  *  windup already partway coiled, landing contact sooner without re-timing
  *  the whole clip. `lockDuration` overrides `AnimationController`'s own
  *  frames/speed-derived lock length to match, so `AnimationController.locked`
@@ -609,7 +636,7 @@ function playBoxerAnim(
   options: { oneShot: boolean; startFrame?: number; lockDuration?: number },
 ): void {
   const facing = entity.tryGet(Facing);
-  const dir = resolveSheetDir(anim, facing ? facingToDir(facing) : DEFAULT_DIR);
+  const dir = facing ? facingToDir(facing) : DEFAULT_DIR;
   const state = boxerAnimState.get(entity);
   if (state) {
     state.anim = anim;
@@ -622,10 +649,14 @@ function playBoxerAnim(
   if (options.oneShot) {
     controller.playOneShot(
       key,
-      options.lockDuration !== undefined ? { duration: options.lockDuration } : undefined,
+      options.lockDuration !== undefined
+        ? { duration: options.lockDuration }
+        : undefined,
     );
     if (options.startFrame !== undefined) {
-      entity.get(AnimatedSpriteComponent).animatedSprite.gotoAndPlay(options.startFrame);
+      entity
+        .get(AnimatedSpriteComponent)
+        .animatedSprite.gotoAndPlay(options.startFrame);
     }
   } else {
     controller.play(key);
@@ -650,7 +681,10 @@ function playStaggerAnim(entity: Entity, stun: number): void {
   playBoxerAnim(entity, "stagger", { oneShot: true });
   const frames = BOXER_ANIM_SPECS.stagger.frames;
   const rawSpeed = frames / (60 * Math.max(stun, 0.05));
-  const speed = Math.min(STAGGER_SPEED_MAX, Math.max(STAGGER_SPEED_MIN, rawSpeed));
+  const speed = Math.min(
+    STAGGER_SPEED_MAX,
+    Math.max(STAGGER_SPEED_MIN, rawSpeed),
+  );
   entity.get(AnimatedSpriteComponent).animatedSprite.animationSpeed = speed;
 }
 
@@ -673,7 +707,11 @@ function damageWeight(damage: number): HitWeight {
   return "light";
 }
 
-const IMPACT_BURST_COUNT: Record<HitWeight, number> = { light: 12, medium: 22, heavy: 38 };
+const IMPACT_BURST_COUNT: Record<HitWeight, number> = {
+  light: 12,
+  medium: 22,
+  heavy: 38,
+};
 
 /** Pale strobe marking invulnerability from any source — distinct from both
  *  combatants' base tints (pure white for the player, a pink cast for
@@ -751,11 +789,19 @@ function reactToHit(
       // Hand off to the invulnerability strobe for whatever's left of the
       // i-frame window this hit just armed (read fresh here, after the red
       // flash's own delay, so the two never fight for the sprite's tint).
-      runInvulnFlash(entity, pc, baseTint, entity.get(HitReceiver).iframesRemaining);
+      runInvulnFlash(
+        entity,
+        pc,
+        baseTint,
+        entity.get(HitReceiver).iframesRemaining,
+      );
     }),
   );
   const weight = damageWeight(hit.data.damage ?? 0);
-  fxOf(entity).impactBurst(contactPoint(entity, hit), IMPACT_BURST_COUNT[weight]);
+  fxOf(entity).impactBurst(
+    contactPoint(entity, hit),
+    IMPACT_BURST_COUNT[weight],
+  );
   playHitSfx(entity);
 }
 
@@ -783,7 +829,12 @@ function reactToBlockedHit(
       // A hold-block's "modified" verdict still ends in a `"hit"` result
       // (see `GUARD_HOLD`), so `HitReceiver` still arms its post-hit
       // i-frames — same hand-off as `reactToHit`.
-      runInvulnFlash(entity, pc, baseTint, entity.get(HitReceiver).iframesRemaining);
+      runInvulnFlash(
+        entity,
+        pc,
+        baseTint,
+        entity.get(HitReceiver).iframesRemaining,
+      );
     }),
   );
   fxOf(entity).impactBurst(contactPoint(entity, hit), BLOCK_BURST_COUNT);
@@ -793,7 +844,11 @@ function reactToBlockedHit(
 /** A brief white flash on the attacker for a heavy landed hit — separate
  *  from the victim's red `reactToHit` flash, and skipped for light taps so
  *  a fast combo doesn't strobe. */
-function flashAttacker(entity: Entity, pc: ProcessComponent, baseTint: number): void {
+function flashAttacker(
+  entity: Entity,
+  pc: ProcessComponent,
+  baseTint: number,
+): void {
   const sprite = entity.get(AnimatedSpriteComponent).animatedSprite;
   sprite.tint = ATTACKER_FLASH_TINT;
   pc.run(
@@ -941,7 +996,8 @@ class EngagementToken extends Component {
     let nearest: Entity | null = null;
     let nearestDist = Infinity;
     for (const entity of this.scene.getEntities()) {
-      if (!entity.tags.has("enemy") || (entity.tryGet(Health)?.isDead ?? true)) continue;
+      if (!entity.tags.has("enemy") || (entity.tryGet(Health)?.isDead ?? true))
+        continue;
       const dist = entity.get(Transform).worldPosition.sub(playerPos).length();
       if (dist < nearestDist) {
         nearestDist = dist;
@@ -968,10 +1024,15 @@ const HitSfx = sound("/assets/hurt.wav");
 const BlockSfx = sound("/assets/land.wav");
 const DeathSfx = sound("/assets/explosion.wav");
 
-function playHitSfx(entity: Entity, options?: { speed?: number; volume?: number }): void {
-  entity.scene.context
-    .resolve(AudioManagerKey)
-    .play(HitSfx.path, { channel: "sfx", speed: options?.speed ?? 1, volume: options?.volume ?? 0.7 });
+function playHitSfx(
+  entity: Entity,
+  options?: { speed?: number; volume?: number },
+): void {
+  entity.scene.context.resolve(AudioManagerKey).play(HitSfx.path, {
+    channel: "sfx",
+    speed: options?.speed ?? 1,
+    volume: options?.volume ?? 0.7,
+  });
 }
 
 function playBlockSfx(entity: Entity): void {
@@ -1006,42 +1067,32 @@ function slowmoVelocityCompensation(time: SceneTime, entity: Entity): number {
   return time.effectiveScaleForUpdates(entity) / world;
 }
 
-/** Entities with a step currently owning their body's velocity — `dashMove`
- *  (the dash roll), `lungeMove` (the combo finisher's forward kick), and
- *  `punchMove` (the jabs' forward step) all add themselves for their
- *  window's life. Read by `PlayerController`'s movement-gate damping (see
- *  its `update`) so it stops fighting these steps' own velocity writes
- *  instead of guessing from the active ability id, which would also have to
- *  know about every future velocity-owning step. */
-const velocityOwnedByStep = new Set<Entity>();
-
 /** Builds a step that owns the body's velocity for its window, in the
  *  caster's `Facing`, at a fixed speed — the mechanism shared by `dashMove`
  *  (the dash roll), `lungeMove` (the combo finisher's forward kick), and
- *  `punchMove` (the jabs' forward step). */
-function velocityStep(kind: string) {
-  return defineStep<{ speed: number }>(kind, {
+ *  `punchMove` (the jabs' forward step). All three share the `velocity`
+ *  kind so presenters can query ownership through the active activation. */
+function velocityStep() {
+  return defineStep<{ speed: number }>("velocity", {
     enter(params, ctx) {
-      velocityOwnedByStep.add(ctx.entity);
       const facing = ctx.entity.get(Facing);
       const speed =
         params.speed * slowmoVelocityCompensation(ctx.time, ctx.entity);
       ctx.entity.get(RigidBodyComponent).setVelocity(facing.unit.scale(speed));
     },
     exit(_params, ctx) {
-      velocityOwnedByStep.delete(ctx.entity);
       ctx.entity.get(RigidBodyComponent).setVelocity(Vec2.ZERO);
     },
   });
 }
 
-const dashMove = velocityStep("dashMove");
-/** A forward lunge — the combo finisher (`ATTACK`'s hook phase) and the
- *  charge kick (`CHARGE`'s kick phase) both ride this same step kind at
+const dashMove = velocityStep();
+/** A forward lunge — both combo finishers and the charge kick ride this step
+ *  kind at
  *  their own speed/window. */
-const lungeMove = velocityStep("lungeMove");
-/** The 1-2 combo jabs' forward step — see `ATTACK`'s jab/cross phases. */
-const punchMove = velocityStep("punchMove");
+const lungeMove = velocityStep();
+/** The fist combo's first two punches step forward through this window. */
+const punchMove = velocityStep();
 
 /** A point step: restore HP through the sibling `Health`. */
 const heal = defineStep<{ amount: number }>("heal", {
@@ -1054,18 +1105,23 @@ const heal = defineStep<{ amount: number }>("heal", {
  *  sibling `AnimationController` (built by `buildBoxerAnimDefs`) must
  *  include `name` for every direction. `startFrame`/`lockDuration` are the
  *  windup-skip escape hatch `CHARGE_RELEASE` uses — see `playBoxerAnim`. */
-const spriteAnim = defineStep<{ name: BoxerAnim; startFrame?: number; lockDuration?: number }>(
-  "spriteAnim",
-  {
-    fire(params, ctx) {
-      playBoxerAnim(ctx.entity, params.name, {
-        oneShot: true,
-        ...(params.startFrame !== undefined ? { startFrame: params.startFrame } : {}),
-        ...(params.lockDuration !== undefined ? { lockDuration: params.lockDuration } : {}),
-      });
-    },
+const spriteAnim = defineStep<{
+  name: BoxerAnim;
+  startFrame?: number;
+  lockDuration?: number;
+}>("spriteAnim", {
+  fire(params, ctx) {
+    playBoxerAnim(ctx.entity, params.name, {
+      oneShot: true,
+      ...(params.startFrame !== undefined
+        ? { startFrame: params.startFrame }
+        : {}),
+      ...(params.lockDuration !== undefined
+        ? { lockDuration: params.lockDuration }
+        : {}),
+    });
   },
-);
+});
 
 /** Window step: holds a boxer animation (its first frame, for the one-frame
  *  `guard`/`chargeHold` stand-ins) for the window's duration. Used where an
@@ -1082,21 +1138,29 @@ const TELEGRAPH_TINT = 0xfff2a8;
  *  warning color for the whole span (restored to `baseTint` on exit) and
  *  bursts "charging" particles on enter and every `every` tick — the
  *  player's visual cue to dash or guard before the attack goes active. */
-const telegraph = defineStep<{ baseTint: number; burstCount?: number }>("telegraph", {
-  enter(params, ctx) {
-    ctx.entity.get(AnimatedSpriteComponent).animatedSprite.tint = TELEGRAPH_TINT;
-    fxOf(ctx.entity).chargeBurst(ctx.entity.get(Transform).worldPosition, params.burstCount ?? 10);
+const telegraph = defineStep<{ baseTint: number; burstCount?: number }>(
+  "telegraph",
+  {
+    enter(params, ctx) {
+      ctx.entity.get(AnimatedSpriteComponent).animatedSprite.tint =
+        TELEGRAPH_TINT;
+      fxOf(ctx.entity).chargeBurst(
+        ctx.entity.get(Transform).worldPosition,
+        params.burstCount ?? 10,
+      );
+    },
+    tick(params, ctx) {
+      fxOf(ctx.entity).chargeBurst(
+        ctx.entity.get(Transform).worldPosition,
+        Math.round((params.burstCount ?? 10) / 2),
+      );
+    },
+    exit(params, ctx) {
+      ctx.entity.get(AnimatedSpriteComponent).animatedSprite.tint =
+        params.baseTint;
+    },
   },
-  tick(params, ctx) {
-    fxOf(ctx.entity).chargeBurst(
-      ctx.entity.get(Transform).worldPosition,
-      Math.round((params.burstCount ?? 10) / 2),
-    );
-  },
-  exit(params, ctx) {
-    ctx.entity.get(AnimatedSpriteComponent).animatedSprite.tint = params.baseTint;
-  },
-});
+);
 
 /** Per-entity strobe phase for `invulnFlash` below — a plain boolean toggled
  *  each tick, the same WeakMap-per-entity-state shape as `boxerAnimState`. */
@@ -1111,7 +1175,8 @@ const invulnFlashOn = new WeakMap<Entity, boolean>();
 const invulnFlash = defineStep<{ baseTint: number }>("invulnFlash", {
   enter(_params, ctx) {
     invulnFlashOn.set(ctx.entity, true);
-    ctx.entity.get(AnimatedSpriteComponent).animatedSprite.tint = INVULN_FLASH_TINT;
+    ctx.entity.get(AnimatedSpriteComponent).animatedSprite.tint =
+      INVULN_FLASH_TINT;
   },
   tick(params, ctx) {
     const on = !(invulnFlashOn.get(ctx.entity) ?? false);
@@ -1122,7 +1187,8 @@ const invulnFlash = defineStep<{ baseTint: number }>("invulnFlash", {
   },
   exit(params, ctx) {
     invulnFlashOn.delete(ctx.entity);
-    ctx.entity.get(AnimatedSpriteComponent).animatedSprite.tint = params.baseTint;
+    ctx.entity.get(AnimatedSpriteComponent).animatedSprite.tint =
+      params.baseTint;
   },
 });
 
@@ -1174,7 +1240,12 @@ class Stats extends Component {
   level = 1;
   kills = 0;
 
-  constructor(init: { atk: number; def: number; maxHp: number; atkSpeed?: number }) {
+  constructor(init: {
+    atk: number;
+    def: number;
+    maxHp: number;
+    atkSpeed?: number;
+  }) {
     super();
     this.atk = init.atk;
     this.def = init.def;
@@ -1187,13 +1258,18 @@ function statsOf(entity: Entity): Stats | undefined {
   return entity.tryGet(Stats);
 }
 
+function scaleHitByAtk(entity: Entity, base: StandardHitData): StandardHitData {
+  const atk = statsOf(entity)?.atk ?? BASE_ATK;
+  return {
+    ...base,
+    damage: Math.round((base.damage ?? 0) * (atk / BASE_ATK)),
+  };
+}
+
 /** atk hook: a fire-time `hit` builder scaling `base.damage` by the caster's
  *  atk relative to `BASE_ATK`; knockback/stun stay as authored. */
 function byAtk(base: StandardHitData): HitSpec {
-  return (ctx) => {
-    const atk = statsOf(ctx.entity)?.atk ?? BASE_ATK;
-    return { ...base, damage: Math.round((base.damage ?? 0) * (atk / BASE_ATK)) };
-  };
+  return (ctx) => scaleHitByAtk(ctx.entity, base);
 }
 
 /** atkSpeed hook: a `Scalar` cooldown of `base` seconds divided by the
@@ -1205,7 +1281,10 @@ function hasten(base: number): Scalar {
 /** def hook: a fold `HitStage` subtracting the receiver's armor from a landed
  *  hit's damage, in place, before the addon's damage step. Blessed mutation —
  *  the delivery has already copied `hit.data` per victim. */
-const defenseStage: HitStage<StandardHitData, HitReceiver> = (hit, receiver) => {
+const defenseStage: HitStage<StandardHitData, HitReceiver> = (
+  hit,
+  receiver,
+) => {
   const def = statsOf(receiver.entity)?.def ?? 0;
   if (def > 0 && hit.data.damage !== undefined) {
     hit.data.damage = Math.max(0, hit.data.damage - def);
@@ -1233,6 +1312,55 @@ function pushMaxHp(entity: Entity): void {
   else health.hp = Math.min(health.hp, health.max);
 }
 
+function nearestLivingEnemy(scene: Scene, position: Vec2): Entity | null {
+  let nearest: Entity | null = null;
+  let nearestDistance = Infinity;
+  for (const enemy of scene.findEntitiesByTag("enemy")) {
+    if (enemy.tryGet(Health)?.isDead ?? true) continue;
+    const distance = enemy.get(Transform).worldPosition.sub(position).length();
+    if (distance < nearestDistance) {
+      nearest = enemy;
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
+}
+
+/** Re-aims the projectile at the nearest living enemy each update. The
+ *  projectile keeps its last velocity while no target exists. */
+class HomingProjectileMotion extends Component {
+  private readonly rb = this.sibling(RigidBodyComponent);
+  private readonly transform = this.sibling(Transform);
+
+  constructor(private readonly speed: number) {
+    super();
+  }
+
+  update(): void {
+    const target = nearestLivingEnemy(this.scene, this.transform.worldPosition);
+    if (!target) return;
+    const aim = target
+      .get(Transform)
+      .worldPosition.sub(this.transform.worldPosition)
+      .normalize();
+    if (aim !== Vec2.ZERO) this.rb.setVelocity(aim.scale(this.speed));
+  }
+}
+
+class HomingFireballProjectile extends Projectile {
+  override setup(context: AbilitySpawnContext<ProjectileConfig>): void {
+    super.setup(context);
+    this.add(new HomingProjectileMotion(context.params.speed));
+    this.add(
+      new GraphicsComponent().draw((graphics) => {
+        graphics.circle(0, 0, 9).fill({ color: 0xef4444, alpha: 0.5 });
+        graphics.circle(0, 0, 6).fill({ color: 0xf97316 });
+        graphics.circle(0, 0, 2.5).fill({ color: 0xfef3c7 });
+      }),
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Ability defs — every timeline below is windup → active → recovery:
 // `duration` extends past the last hitbox/effect window so committing to an
@@ -1242,8 +1370,8 @@ function pushMaxHp(entity: Entity): void {
 // contact still lands on the visible extension frame.
 //
 // `SUPER_ARMOR_PRIORITY` (above the built-in stagger reaction's own
-// `REACTION_PRIORITY`) marks every player attack def below as uninterruptible
-// once committed: a landed hit still deals damage, but `HitReceiver`'s
+// `REACTION_PRIORITY`) marks every committed player attack phase below as
+// uninterruptible: a landed hit still deals damage, but `HitReceiver`'s
 // reaction step forcing the stagger reaction onto this def's lane is refused
 // (lower priority), so neither the flinch nor the knockback ramp it carries
 // ever starts. The enemy's `melee`/`shoot` carry no `priority` at all
@@ -1255,19 +1383,24 @@ function pushMaxHp(entity: Entity): void {
 // ---------------------------------------------------------------------------
 
 const SUPER_ARMOR_PRIORITY = REACTION_PRIORITY + 10;
+const FIST_ATTACK_INTENT = "fists/attack";
+const FIST_RELEASE_INTENT = "fists/attack-release";
+const KICK_ATTACK_INTENT = "kicks/attack";
+const KICK_RELEASE_INTENT = "kicks/attack-release";
+const CHARGE_SLOWMO_SCALE = 0.3;
+const CHARGE_SLOWMO_DURATION = 1.5;
 
-/** Seconds a combo `on:` window stays open past the stage's own end (its
- *  `until` = the stage's duration plus this), so a tap landing in the
- *  recovery gap still advances the combo through the runner's linger before
- *  the entry resets. A touch more forgiving than the animations' in-swing
- *  pace. */
+/** Seconds a combo transition window stays open from the stage's end, so a
+ *  tap in the recovery gap still advances through the runner's linger before
+ *  the entry resets. A touch more forgiving than the animations' pace. */
 const COMBO_WINDOW = 0.6;
 
-/** The 1-2-3 combo: one def, one phase per stage. `send("attack")` enters at
- *  `jab` when the lane is idle and advances `jab` → `cross` → `hook` through
- *  each stage's `on: { attack }` window — fully post-end (`from` = the
- *  stage's own duration), reaching `COMBO_WINDOW` past it, so a tap advances
- *  the instant a swing finishes and through the recovery gap after it (the
+/** The FISTS 1-2-3 combo: one def, one phase per stage.
+ *  `send("fists/attack")` enters at `jab` when the lane is idle and advances
+ *  `jab` → `cross` → `hook` through each stage's
+ *  `on: { "fists/attack" }` transition window — fully post-end with
+ *  `from: "end"`, staying open for `COMBO_WINDOW`, so a tap advances the
+ *  instant a swing finishes and through the recovery gap after it (the
  *  runner's linger). `AbilityDriver` owns tap-vs-charge classification and
  *  the buffered intent.
  *
@@ -1281,38 +1414,25 @@ const COMBO_WINDOW = 0.6;
  *    earlier; recovery still runs ~0.19s past it. `punchMove`'s window is
  *    narrower than the jab's (the cross's hitbox window is itself narrower)
  *    at a higher speed, landing a comparable ~28px step.
- *  - `hook`, the finisher: a leaping flying kick with no `on:` window — a
- *    completed combo lingers nothing and the next tap re-enters at `jab`.
- *    Also the parry counter's sprite — see `COUNTER` below, which plays the
- *    same animation with different numbers and a shorter recovery (and no
- *    lunge — a point-blank counter has nowhere to travel to). `lungeMove`
- *    rides the FlyingKick sheet's own airborne extension (measured apex
- *    around frame 24 of 48, i.e. ~0.45s in at this speed): it opens partway
- *    through the leap so the kick is already carrying the body forward by
- *    the time the hitbox opens on top of it. The speed is tuned against a
- *    colliding target, not free space — a body-to-body collision with the
- *    struck target eats a big chunk of the requested velocity, so covering
- *    90-120px on landing (measured at collider-contact distances from a
- *    tight clinch to `ENEMY_MELEE_RANGE`) takes ~820px/s, which covers
- *    ~180px if nothing is in the way. This is a one-shot attack, exempt from
- *    the per-frame foot compensation in `FOOT_ANCHOR_PX` — the leap's own
- *    in-frame motion is the point. The finisher's recovery (~0.2s past the
- *    animation's natural end) is the longest of the three stages — the
- *    commitment move. `hitbox`'s `follow: true` re-anchors the sensor to the
- *    caster's position every frame through the whole active window — the
- *    lunge is still accelerating when the window opens, so a
- *    fire-time-snapshot hitbox lands short of where the kick visually
- *    connects.
+ *  - `hook`, the finisher: RightHook reaches full extension around frames
+ *    7-9. A stronger lunge carries the body through that contact pose, while
+ *    `follow: true` keeps the active hitbox attached through the travel.
  *
  *  Per-phase `cancels`: a buffered dash may cancel each stage's recovery
  *  once its hit has landed. */
-const ATTACK: AbilityDef = {
-  id: "attack",
+const FIST_COMBO: AbilityDef = {
+  id: FIST_ATTACK_INTENT,
   priority: SUPER_ARMOR_PRIORITY,
   phases: {
     jab: {
       duration: 0.448,
-      on: { attack: { to: "cross", from: 0.448, until: 0.448 + COMBO_WINDOW } },
+      on: {
+        [FIST_ATTACK_INTENT]: {
+          to: "cross",
+          from: "end",
+          for: COMBO_WINDOW,
+        },
+      },
       cancels: [{ from: 0.246, into: ["dash"] }],
       timeline: [
         spriteAnim({ at: 0, name: "attack1" }),
@@ -1328,7 +1448,13 @@ const ATTACK: AbilityDef = {
     },
     cross: {
       duration: 0.358,
-      on: { attack: { to: "hook", from: 0.358, until: 0.358 + COMBO_WINDOW } },
+      on: {
+        [FIST_ATTACK_INTENT]: {
+          to: "hook",
+          from: "end",
+          for: COMBO_WINDOW,
+        },
+      },
       cancels: [{ from: 0.168, into: ["dash"] }],
       timeline: [
         spriteAnim({ at: 0, name: "attack2" }),
@@ -1343,36 +1469,87 @@ const ATTACK: AbilityDef = {
       ],
     },
     hook: {
-      duration: 1.12,
-      cancels: [{ from: 0.515, into: ["dash"] }],
+      duration: 0.72,
+      cancels: [{ from: 0.36, into: ["dash"] }],
       timeline: [
-        spriteAnim({ at: 0, name: "attack3" }),
-        lungeMove({ from: 0.32, to: 0.54, speed: 820 }),
+        spriteAnim({ at: 0, name: "powerPunch" }),
+        lungeMove({ from: 0.14, to: 0.38, speed: 620 }),
         hitbox({
-          from: 0.403,
-          to: 0.515,
+          from: 0.212,
+          to: 0.36,
           shape: { type: "capsule", halfHeight: 26, radius: 16, axis: "x" },
-          offset: { x: 46, y: 0 },
+          offset: { x: 48, y: 0 },
           follow: true,
-          hit: byAtk({ damage: 26, knockback: 530, stun: 0.45, hitstop: 0.12 }),
+          hit: byAtk({ damage: 28, knockback: 560, stun: 0.48, hitstop: 0.13 }),
         }),
       ],
     },
   },
 };
 
-/** The tap-vs-hold charge attack: one def, two phases.
+/** FISTS hold release: keep the same vulnerable charge pose, then cast a
+ *  homing fireball. Frame 29 is where the Fireball sheet joins both gloves,
+ *  so the projectile appears at the measured per-direction socket there. */
+const FIST_CHARGE: AbilityDef = {
+  id: "fists/charge",
+  tags: ["charge"],
+  entry: { [FIST_RELEASE_INTENT]: "cast" },
+  phases: {
+    charge: {
+      hold: { max: 10 },
+      next: "cast",
+      on: { [FIST_RELEASE_INTENT]: "cast" },
+      timeline: [spriteHold({ from: 0, to: "end", name: "chargeHold" })],
+    },
+    cast: {
+      priority: SUPER_ARMOR_PRIORITY,
+      duration: CAST_DURATION,
+      cancels: [{ from: CAST_RELEASE_AT, into: ["dash"] }],
+      timeline: [
+        spriteAnim({ at: 0, name: "cast" }),
+        spawn({
+          at: CAST_RELEASE_AT,
+          entity: HomingFireballProjectile,
+          position: (ctx) => castHandPosition(ctx.entity),
+          aim: (ctx) => {
+            const position = castHandPosition(ctx.entity);
+            const target = nearestLivingEnemy(ctx.entity.scene, position);
+            return target
+              ? target.get(Transform).worldPosition.sub(position).normalize()
+              : ctx.entity.get(Facing).unit;
+          },
+          params: {
+            speed: 285,
+            lifetime: 3.5,
+            shape: { type: "circle", radius: 9 },
+          },
+          hit: byAtk({
+            damage: 30,
+            knockback: 460,
+            stun: 0.5,
+            hitstop: 0.12,
+          }),
+        }),
+      ],
+    },
+  },
+};
+
+/** The KICKS tap-vs-hold charge attack: one def, three phases.
  *
  *  `charge` is the windup hold — `chargeHold`'s single-frame sprite sits on
  *  an open-ended `to: "end"` window until the input driver sends
- *  `attack-release` on key-up. The active phase handles that intent through
- *  `on:`; the matching `entry:` door can deliver the kick after an
+ *  `kicks/attack-release` on key-up. The active phase handles that intent in
+ *  `on:`; the matching `entry:` door can deliver the release after an
  *  interruption. `hold.max` is a generous cap the gesture never reaches in
  *  practice — it exists so a stuck key can't hold the lane forever. No
- *  `priority` on the phase: the windup is staggerable, and only the kick
- *  carries super armor.
+ *  `priority` on the phase: the windup is staggerable; the bullet-time
+ *  lead-in and kick carry super armor once the release commits.
  *
- *  `kick` is the heavy payoff: a bigger hitbox, more damage, and a longer
+ *  `bulletTime` starts the timed scale request, then waits 0.06 seconds before
+ *  entering `kick`. The slowdown therefore has a visible lead instead of
+ *  starting after the kick animation. `kick` is the heavy payoff: a bigger
+ *  hitbox, more damage, and a longer
  *  stun/knockback than any combo stage, plus the longest recovery in the
  *  kit (~0.41s past the hit). The hold already reads as the windup, so the
  *  kick shouldn't wind up a second time — `spriteAnim`'s `startFrame: 6`
@@ -1392,22 +1569,41 @@ const ATTACK: AbilityDef = {
  *  single `Process` ticks), less against a colliding target the same way
  *  the combo finisher's lunge is. `hitbox`'s `follow: true` keeps the
  *  sensor over the caster through that same travel. */
-const CHARGE: AbilityDef = {
-  id: "charge",
-  entry: { "attack-release": "kick" },
+const KICK_CHARGE: AbilityDef = {
+  id: "kicks/charge",
+  tags: ["charge"],
+  entry: { [KICK_RELEASE_INTENT]: "bulletTime" },
   phases: {
     charge: {
       hold: { max: 10 },
-      next: "kick",
-      on: { "attack-release": "kick" },
+      next: "bulletTime",
+      on: { [KICK_RELEASE_INTENT]: "bulletTime" },
       timeline: [spriteHold({ from: 0, to: "end", name: "chargeHold" })],
+    },
+    bulletTime: {
+      priority: SUPER_ARMOR_PRIORITY,
+      duration: 0.08,
+      after: { at: 0.06, to: "kick" },
+      timeline: [
+        slowmo({
+          at: 0,
+          for: CHARGE_SLOWMO_DURATION,
+          scale: CHARGE_SLOWMO_SCALE,
+          key: "charge-bullet-time",
+        }),
+      ],
     },
     kick: {
       priority: SUPER_ARMOR_PRIORITY,
       duration: 0.751,
       cancels: [{ from: 0.337, into: ["dash"] }],
       timeline: [
-        spriteAnim({ at: 0, name: "chargeRelease", startFrame: 6, lockDuration: 0.751 }),
+        spriteAnim({
+          at: 0,
+          name: "chargeRelease",
+          startFrame: 6,
+          lockDuration: 0.751,
+        }),
         lungeMove({ from: 0.08, to: 0.32, speed: 300 }),
         hitbox({
           from: 0.18,
@@ -1422,19 +1618,10 @@ const CHARGE: AbilityDef = {
   },
 };
 
-/** Fast punish thrown by `PlayerController.counterattack` on a successful
- *  parry against a target within melee reach. `priority` clears both the
- *  still-open `parry` window's default 0 (so forcing this from `HitGuarded`
- *  — emitted mid-fold, before the guard step's own `exit` — is what actually
- *  closes the parry pose out) and the stagger reaction's `REACTION_PRIORITY`,
- *  so the counter itself commits like any other attack. Snappier than the
- *  plain finisher (shorter windup and recovery) — it's a reward hit, not a
- *  committed swing. Force-only. Rides the same (now ~12%-slower) `attack3`
- *  sprite as the finisher, so its own window is scaled the same way.
- *  `invulnerable` covers the counter start-to-active-end (the same
- *  def-authored pattern `DASH` uses), paired via `invulnerableWithFlash` so
- *  a second enemy landing a hit mid-counter is visibly no-sold instead of
- *  only mechanically ignored. */
+/** Force-only melee response to a successful parry. The short lunge closes
+ *  the gap to the attacker before the flying-kick hitbox opens. The parry
+ *  itself only negates the incoming hit; this is the single source of the
+ *  counter's damage, knockback, and stagger. */
 const COUNTER: AbilityDef = {
   id: "counter",
   priority: SUPER_ARMOR_PRIORITY,
@@ -1447,11 +1634,13 @@ const COUNTER: AbilityDef = {
       every: INVULN_FLASH_INTERVAL,
       baseTint: PLAYER_TINT,
     }),
+    lungeMove({ from: 0, to: 0.18, speed: 420 }),
     hitbox({
       from: 0.101,
       to: 0.213,
       shape: { type: "capsule", halfHeight: 26, radius: 16, axis: "x" },
       offset: { x: 42, y: 0 },
+      follow: true,
       hit: byAtk({ damage: 16, knockback: 420, stun: 0.35, hitstop: 0.08 }),
     }),
   ],
@@ -1504,18 +1693,10 @@ const GUARD_HOLD: AbilityDef = {
   },
 };
 
-/** Parry: what a hold-block cancels into on a quick release (see
- *  `PARRY_TAP_WINDOW`) — a window where any
- *  landed hit is negated and punished back at the attacker (see
- *  `HitReceiver`'s guard resolution). `PlayerController` layers a
- *  hand-rolled counterattack/reflect on top via `HitGuarded` — see `COUNTER`
- *  above and `counterattack` below; this punish (chip damage back through
- *  the guard) stays as-is alongside it. Costlier than the hold-block's own
- *  cooldown — the negate-and-punish payoff is the higher-risk, higher-reward
- *  half of the split. Widened from an original 0.22s active window (and a
- *  1.1s cooldown) to 0.35s/0.85s after a playtest pass found the original
- *  frame-perfect against a telegraphed hit — see `06-guard-resolution.md`'s
- *  2026-07-12 tuning note. */
+/** A quick guard release opens a full-negate parry window. `HitGuarded`
+ *  starts either the melee `COUNTER` or a projectile reflection; the guard
+ *  has no separate punish delivery, so the response cannot damage or stagger
+ *  an attacker before its matching animation and hitbox. */
 const PARRY_ID = "parry";
 const PARRY_ACTIVE_WINDOW = 0.35;
 const PARRY: AbilityDef = {
@@ -1524,11 +1705,7 @@ const PARRY: AbilityDef = {
   duration: 0.44,
   timeline: [
     spriteHold({ from: 0, to: PARRY_ACTIVE_WINDOW, name: "guard" }),
-    parry({
-      from: 0,
-      to: PARRY_ACTIVE_WINDOW,
-      punish: { damage: 10, knockback: 335, stun: 0.45 },
-    }),
+    parry({ from: 0, to: PARRY_ACTIVE_WINDOW }),
   ],
 };
 
@@ -1540,8 +1717,112 @@ const POTION: AbilityDef = {
   lane: "item",
   cooldown: hasten(5),
   duration: 0.85,
-  timeline: [heal({ at: 0, amount: 30 }), spriteAnim({ at: 0, name: "potion" })],
+  timeline: [
+    heal({ at: 0, amount: 30 }),
+    spriteAnim({ at: 0, name: "potion" }),
+  ],
 };
+
+/** KICKS 1-2-3 combo: trim the run-up from FrontKick and the opening coil
+ *  from HighKick, then finish with the former combo's full FlyingKick lunge. */
+const KICK_COMBO: AbilityDef = {
+  id: KICK_ATTACK_INTENT,
+  priority: SUPER_ARMOR_PRIORITY,
+  phases: {
+    front: {
+      duration: 0.65,
+      on: {
+        [KICK_ATTACK_INTENT]: {
+          to: "high",
+          from: "end",
+          for: COMBO_WINDOW,
+        },
+      },
+      cancels: [{ from: 0.34, into: ["dash"] }],
+      timeline: [
+        spriteAnim({ at: 0, name: "melee", startFrame: 7, lockDuration: 0.65 }),
+        lungeMove({ from: 0.1, to: 0.34, speed: 240 }),
+        hitbox({
+          from: 0.17,
+          to: 0.34,
+          shape: { type: "capsule", halfHeight: 26, radius: 16, axis: "x" },
+          offset: { x: 47, y: 0 },
+          follow: true,
+          hit: byAtk({ damage: 10, knockback: 250, stun: 0.17, hitstop: 0.05 }),
+        }),
+      ],
+    },
+    high: {
+      duration: 0.66,
+      on: {
+        [KICK_ATTACK_INTENT]: {
+          to: "flying",
+          from: "end",
+          for: COMBO_WINDOW,
+        },
+      },
+      cancels: [{ from: 0.34, into: ["dash"] }],
+      timeline: [
+        spriteAnim({
+          at: 0,
+          name: "chargeRelease",
+          startFrame: 6,
+          lockDuration: 0.66,
+        }),
+        lungeMove({ from: 0.1, to: 0.34, speed: 270 }),
+        hitbox({
+          from: 0.18,
+          to: 0.34,
+          shape: { type: "capsule", halfHeight: 30, radius: 18, axis: "x" },
+          offset: { x: 50, y: 0 },
+          follow: true,
+          hit: byAtk({ damage: 13, knockback: 300, stun: 0.2, hitstop: 0.06 }),
+        }),
+      ],
+    },
+    flying: {
+      duration: 1.12,
+      cancels: [{ from: 0.515, into: ["dash"] }],
+      timeline: [
+        spriteAnim({ at: 0, name: "attack3" }),
+        lungeMove({ from: 0.32, to: 0.54, speed: 820 }),
+        hitbox({
+          from: 0.403,
+          to: 0.515,
+          shape: { type: "capsule", halfHeight: 26, radius: 16, axis: "x" },
+          offset: { x: 46, y: 0 },
+          follow: true,
+          hit: byAtk({ damage: 26, knockback: 530, stun: 0.45, hitstop: 0.12 }),
+        }),
+      ],
+    },
+  },
+};
+
+interface PlayerLoadout {
+  readonly name: string;
+  readonly attackIntent: string;
+  readonly charge: AbilityDef;
+  readonly releaseIntent: string;
+  readonly defs: readonly AbilityDef[];
+}
+
+const PLAYER_LOADOUTS: readonly PlayerLoadout[] = [
+  {
+    name: "FISTS",
+    attackIntent: FIST_ATTACK_INTENT,
+    charge: FIST_CHARGE,
+    releaseIntent: FIST_RELEASE_INTENT,
+    defs: [FIST_COMBO, FIST_CHARGE, DASH, GUARD_HOLD, PARRY, POTION],
+  },
+  {
+    name: "KICKS",
+    attackIntent: KICK_ATTACK_INTENT,
+    charge: KICK_CHARGE,
+    releaseIntent: KICK_RELEASE_INTENT,
+    defs: [KICK_COMBO, KICK_CHARGE, DASH, GUARD_HOLD, PARRY, POTION],
+  },
+];
 
 /** Enemy melee: `FrontKick`'s own run-up-and-kick cycle doubles as the
  *  windup — the `telegraph` step covers the run-in and knee-raise (the
@@ -1560,7 +1841,13 @@ const MELEE: AbilityDef = {
   duration: 1.176,
   timeline: [
     spriteAnim({ at: 0, name: "melee" }),
-    telegraph({ from: 0, to: 0.437, every: 0.168, baseTint: ENEMY_TINT, burstCount: 8 }),
+    telegraph({
+      from: 0,
+      to: 0.437,
+      every: 0.168,
+      baseTint: ENEMY_TINT,
+      burstCount: 8,
+    }),
     hitbox({
       from: 0.437,
       to: 0.538,
@@ -1583,46 +1870,57 @@ class FireballProjectile extends Projectile {
   }
 }
 
-/** Ranged enemy attack: `aim` is an explicit fire-time resolver — the other
- *  half of the aim vocabulary (the player instead omits `aim` and falls
- *  back to its `Facing`). The explicit `duration` spans the whole cast
- *  animation, not just the projectile's release instant, so
- *  `Abilities.isActive("main")` stays true (and `EnemyAI` stays planted,
- *  holding the throwing pose) through the follow-through — see `EnemyAI`.
- *  The `telegraph` step covers the whole hold, ending exactly as the
- *  projectile fires. `spawn`'s `at` is timed to the Fireball sheet's
- *  own release frame (the arm snapping down past the shoulder, ~0.83 of the
- *  way through the windup-spin-throw cycle at this speed). No `priority`,
- *  same as `MELEE` — a landed hit cancels the cast before it releases. */
+/** Ranged enemy attack. Frame 29 is the first frame where the Fireball
+ *  animation's gloves meet, so the telegraph ends and the projectile appears
+ *  at that exact frame. The ability remains active through the follow-through
+ *  to keep the caster planted. */
 const SHOOT: AbilityDef = {
   id: "shoot",
   cooldown: 2,
   duration: CAST_DURATION,
   timeline: [
     spriteAnim({ at: 0, name: "cast" }),
-    telegraph({ from: 0, to: 0.874, every: 0.213, baseTint: ENEMY_TINT, burstCount: 7 }),
+    telegraph({
+      from: 0,
+      to: CAST_RELEASE_AT,
+      every: 0.16,
+      baseTint: ENEMY_TINT,
+      burstCount: 7,
+    }),
     spawn({
-      at: 0.874,
+      at: CAST_RELEASE_AT,
       entity: FireballProjectile,
+      position: (ctx) => castHandPosition(ctx.entity),
+      aim: (ctx) => {
+        const target = ctx.entity.scene.findEntity("PlayerEntity");
+        if (!target) {
+          throw new Error('SHOOT: target "PlayerEntity" was not found.');
+        }
+        return target
+          .get(Transform)
+          .worldPosition.sub(castHandPosition(ctx.entity))
+          .normalize();
+      },
       params: {
         speed: 240,
         lifetime: 2.5,
         shape: { type: "circle", radius: 7 },
       },
-      aim: aimAt((ctx) => ctx.entity.scene.findEntity("PlayerEntity")),
       hit: { damage: 10, knockback: 180, stun: 0.3 },
     }),
   ],
 };
 
-/** The player abilities that share the attack/charge hotbar slot, keyed by id.
+/** The player abilities that share the attack hotbar slot, keyed by id.
  *  `attackSlotState` only checks id membership against this table; it reads
  *  the active run's `phaseElapsed`/`phaseDuration` off
  *  `Abilities.active("main")`. */
 const PLAYER_MAIN_DEFS: Readonly<Record<string, AbilityDef>> = {
-  attack: ATTACK,
-  charge: CHARGE,
-  counter: COUNTER,
+  [FIST_COMBO.id]: FIST_COMBO,
+  [FIST_CHARGE.id]: FIST_CHARGE,
+  [KICK_COMBO.id]: KICK_COMBO,
+  [KICK_CHARGE.id]: KICK_CHARGE,
+  [COUNTER.id]: COUNTER,
 };
 
 /** Camera-shake profile per landed-hit weight — a heavier hit shakes harder
@@ -1630,7 +1928,10 @@ const PLAYER_MAIN_DEFS: Readonly<Record<string, AbilityDef>> = {
  *  `HitDealt` listener; light taps skip the shake entirely (no `"light"`
  *  entry). Camera shake stays game-side feedback — the addon ships only the
  *  freeze frame (`hit.hitstop` → `SceneTime.freezeFor`). */
-const SHAKE_BY_WEIGHT: Record<"medium" | "heavy", { intensity: number; duration: number }> = {
+const SHAKE_BY_WEIGHT: Record<
+  "medium" | "heavy",
+  { intensity: number; duration: number }
+> = {
   medium: { intensity: 5, duration: 0.12 },
   heavy: { intensity: 9, duration: 0.18 },
 };
@@ -1676,7 +1977,11 @@ class CombatLog extends Component {
 // Shared HP bar
 // ---------------------------------------------------------------------------
 
-function drawHealthBar(gfx: GraphicsComponent, hpFrac: number, color: number): void {
+function drawHealthBar(
+  gfx: GraphicsComponent,
+  hpFrac: number,
+  color: number,
+): void {
   const frac = Math.max(0, hpFrac);
   gfx.graphics
     .clear()
@@ -1692,18 +1997,14 @@ function drawHealthBar(gfx: GraphicsComponent, hpFrac: number, color: number): v
 
 /** Seconds the attack key must be held before it's a charge rather than a tap. */
 const CHARGE_HOLD_TIME = 0.5;
+/** A shorter dash press is a roll; crossing this raw-time threshold runs. */
+const DASH_HOLD_TIME = 0.22;
 /** Raw seconds after a tap release during which the combo intent may fire. */
 const ATTACK_BUFFER_WINDOW = 0.5;
 /** Seconds a mid-attack dash press keeps retrying its cancel before it lapses. */
 const DASH_BUFFER_WINDOW = 0.3;
 /** Seconds a charge release may wait for the main lane after an interruption. */
 const CHARGE_RELEASE_BUFFER_WINDOW = 1.5;
-/** Bullet-time tail on a charge release: from the moment the release fires,
- *  the world runs at this scale for `CHARGE_SLOWMO_DURATION` seconds with
- *  the player excluded — so once the release's own recovery ends, the
- *  player acts at full speed inside the slowed world. */
-const CHARGE_SLOWMO_SCALE = 0.3;
-const CHARGE_SLOWMO_DURATION = 1.5;
 /** Player melee reach for the parry counter — comfortably past contact
  *  range but short of the enemy's ranged stand-off distance, so a parried
  *  touch hit counters in melee and a parried fireball (whose source is far
@@ -1746,7 +2047,10 @@ const CHARGE_SPARK_ALPHA = 0.35; // dimmer than the old rising-ember stream
 const CHARGE_SPARK_COLOR = 0xffe066;
 
 function spawnChargeSpark(): ChargeSpark {
-  return { angle: Math.random() * Math.PI * 2, radius: CHARGE_SPARK_RING_RADIUS };
+  return {
+    angle: Math.random() * Math.PI * 2,
+    radius: CHARGE_SPARK_RING_RADIUS,
+  };
 }
 
 class PlayerController extends Component {
@@ -1760,34 +2064,91 @@ class PlayerController extends Component {
   private readonly health = this.sibling(Health);
   private readonly pc = this.sibling(ProcessComponent);
   private readonly stagger = this.sibling(Stagger);
-  private driver: AbilityDriver | null = null;
+  private readonly driver = this.sibling(AbilityDriverComponent);
+  private loadoutIndex = 0;
   dead = false;
 
   charging = false;
   private chargeSparks: ChargeSpark[] = [];
 
   onAdd(): void {
+    this.listen(this.entity, HealthDied, () => {
+      this.dead = true;
+      if (this.charging) {
+        this.charging = false;
+        this.stopChargeSparks();
+      }
+      this.rb.setVelocity(Vec2.ZERO);
+      this.rb.setEnabledTranslations(false, false); // corpse: physics can't push it
+      playBoxerAnim(this.entity, "death", { oneShot: true });
+      cameraOf(this.entity).shake(9, 0.22, { decay: 0.75 });
+      playDeathSfx(this.entity);
+    });
+    this.listen(this.entity, HitReceived, ({ hit, guardOutcomes }) => {
+      if (this.dead) return;
+      if (guardOutcomes.includes("blocked")) {
+        reactToBlockedHit(this.entity, this.pc, PLAYER_TINT, hit);
+      } else {
+        reactToHit(this.entity, this.pc, PLAYER_TINT, hit);
+      }
+    });
+    this.listen(this.entity, HitDealt, ({ result, data }) => {
+      if (result !== "hit") return;
+      // Freeze frame: the ability def declares its own hitstop next to its
+      // damage numbers (see the attack defs' `hit.hitstop`), so the arbitration
+      // primitive freezes the whole scene without a parallel id->weight table.
+      if (data.hitstop) this.time.freezeFor(data.hitstop);
+      // Camera shake / attacker flash stay game-side (feedback, not
+      // arbitration), keyed off how hard the hit landed.
+      const weight = damageWeight(data.damage ?? 0);
+      if (weight !== "light") {
+        flashAttacker(this.entity, this.pc, PLAYER_TINT);
+        const shake = SHAKE_BY_WEIGHT[weight];
+        cameraOf(this.entity).shake(shake.intensity, shake.duration, {
+          decay: 0.85,
+        });
+      }
+    });
+    this.listen(this.entity, HitGuarded, ({ hit, outcome }) => {
+      if (outcome !== "parried") return;
+      fxOf(this.entity).parrySpark(this.entity.get(Transform).worldPosition);
+      cameraOf(this.entity).shake(5, 0.12, { decay: 0.85 });
+      // No bespoke "parry ring" asset exists in the pack — the hit thock
+      // pitched up reads as a bright, distinct chime instead (see the SFX
+      // section's doc comment).
+      playHitSfx(this.entity, { speed: 1.8, volume: 0.55 });
+      this.counterattack(hit.source);
+    });
+  }
+
+  driverOptions(loadout: PlayerLoadout): AbilityDriverOptions {
     const alive = () => !this.dead;
-    this.driver = new AbilityDriver(this.input, this.abilities, {
+    const attack = {
+      tap: { send: loadout.attackIntent, buffer: ATTACK_BUFFER_WINDOW },
+      hold: {
+        send: loadout.charge.id,
+        fromNeutral: true,
+        resume: true,
+        release: {
+          send: loadout.releaseIntent,
+          buffer: CHARGE_RELEASE_BUFFER_WINDOW,
+          data: ({ heldFor }: { heldFor: number }) => heldFor,
+        },
+      },
+      gate: alive,
+    };
+
+    return {
       defaults: { holdAt: CHARGE_HOLD_TIME },
       beforeFire: () => this.resampleFacing(),
       bindings: {
-        attack: {
-          tap: { send: "attack", buffer: ATTACK_BUFFER_WINDOW },
-          hold: {
-            send: "charge",
-            fromNeutral: true,
-            resume: true,
-            release: {
-              send: "attack-release",
-              buffer: CHARGE_RELEASE_BUFFER_WINDOW,
-              data: ({ heldFor }) => heldFor,
-            },
-          },
-          gate: alive,
-        },
+        attack,
         dash: {
-          press: { send: "dash", buffer: DASH_BUFFER_WINDOW },
+          tap: {
+            send: "dash",
+            within: DASH_HOLD_TIME,
+            buffer: DASH_BUFFER_WINDOW,
+          },
           gate: alive,
         },
         guard: {
@@ -1801,78 +2162,7 @@ class PlayerController extends Component {
           gate: alive,
         },
       },
-    });
-    this.listen(this.entity, HealthDied, () => {
-      this.dead = true;
-      if (this.charging) {
-        this.charging = false;
-        this.stopChargeSparks();
-      }
-      this.rb.setVelocity(Vec2.ZERO);
-      this.rb.setEnabledTranslations(false, false); // corpse: physics can't push it
-      playBoxerAnim(this.entity, "death", { oneShot: true });
-      cameraOf(this.entity).shake(9, 0.22, { decay: 0.75 });
-      playDeathSfx(this.entity);
-    });
-    this.listen(this.entity, HitReceived, (hit) => {
-      if (this.dead) return;
-      // The hold-block's `"modified"` guard verdict ends in `"hit"` (see
-      // `GUARD_HOLD`), so `HitReceived` fires for a blocked hit too — read
-      // whether the hold is still the active def to route it to the lighter
-      // reaction instead of a full stagger-flinch.
-      if (this.abilities.activeId("main") === GUARD_HOLD_ID) {
-        reactToBlockedHit(this.entity, this.pc, PLAYER_TINT, hit);
-      } else {
-        reactToHit(this.entity, this.pc, PLAYER_TINT, hit);
-      }
-    });
-    this.listen(this.entity, HitDealt, ({ result, data }) => {
-      if (result !== "hit") return;
-      if (!hitTools.isData(data)) return;
-      // Freeze frame: the ability def declares its own hitstop next to its
-      // damage numbers (see the attack defs' `hit.hitstop`), so the arbitration
-      // primitive freezes the whole scene without a parallel id->weight table.
-      if (data.hitstop) this.time.freezeFor(data.hitstop);
-      // Camera shake / attacker flash stay game-side (feedback, not
-      // arbitration), keyed off how hard the hit landed.
-      const weight = damageWeight(data.damage ?? 0);
-      if (weight !== "light") {
-        flashAttacker(this.entity, this.pc, PLAYER_TINT);
-        const shake = SHAKE_BY_WEIGHT[weight];
-        cameraOf(this.entity).shake(shake.intensity, shake.duration, { decay: 0.85 });
-      }
-    });
-    this.listen(this.entity, HitGuarded, ({ hit, outcome }) => {
-      if (outcome !== "parried") return;
-      fxOf(this.entity).parrySpark(this.entity.get(Transform).worldPosition);
-      cameraOf(this.entity).shake(5, 0.12, { decay: 0.85 });
-      // No bespoke "parry ring" asset exists in the pack — the hit thock
-      // pitched up reads as a bright, distinct chime instead (see the SFX
-      // section's doc comment).
-      playHitSfx(this.entity, { speed: 1.8, volume: 0.55 });
-      this.counterattack(hit.source);
-    });
-    this.listen(this.entity, AbilityStarted, ({ activation }) => {
-      if (activation.def !== CHARGE) return;
-      if (activation.phase === "charge") {
-        this.charging = true;
-        this.startChargeSparks();
-      } else if (activation.phase === "kick") {
-        this.startChargeKickEffects();
-      }
-    });
-    this.listen(this.entity, AbilityEnded, ({ activation }) => {
-      if (activation.def !== CHARGE) return;
-      this.charging = false;
-      this.stopChargeSparks();
-    });
-    // The normal charge flow enters kick through a phase change. Interrupted
-    // late delivery enters the def directly at kick and is handled by the
-    // AbilityStarted branch above.
-    this.listen(this.entity, PhaseChanged, ({ activation, to }) => {
-      if (activation.def !== CHARGE || to !== "kick") return;
-      this.startChargeKickEffects();
-    });
+    };
   }
 
   update(dt: number): void {
@@ -1880,36 +2170,50 @@ class PlayerController extends Component {
       this.resetDemo();
       return;
     }
-    this.driver?.update();
+    if (this.input.isJustPressed("loadout")) this.swapLoadout();
     if (this.dead) {
       this.redraw();
       return;
     }
 
+    const activeMain = this.abilities.active("main");
+    const charging = Boolean(
+      activeMain?.isHolding && activeMain.def.tags?.includes("charge"),
+    );
+    if (charging !== this.charging) {
+      this.charging = charging;
+      if (charging) this.startChargeSparks();
+      else this.stopChargeSparks();
+    }
     if (this.charging) this.updateChargeSparks(dt);
 
-    const activeMain = this.abilities.active("main");
     if (!activeMain) {
       const dx = this.input.getAxis("left", "right");
       const dy = this.input.getAxis("up", "down");
       const moving = dx !== 0 || dy !== 0;
+      const running = moving && this.input.isHeldFor("dash", DASH_HOLD_TIME);
       if (moving) {
         this.facing.set(dx, dy);
         const speed =
-          PLAYER_SPEED * slowmoVelocityCompensation(this.time, this.entity);
+          (running ? PLAYER_RUN_SPEED : PLAYER_SPEED) *
+          slowmoVelocityCompensation(this.time, this.entity);
         this.rb.setVelocity(new Vec2(dx, dy).normalize().scale(speed));
       } else {
         this.rb.setVelocity(Vec2.ZERO);
       }
       if (!this.anim.locked) {
-        playBoxerAnim(this.entity, moving ? "run" : "idle", { oneShot: false });
+        playBoxerAnim(
+          this.entity,
+          moving ? (running ? "sprint" : "run") : "idle",
+          { oneShot: false },
+        );
       }
     } else {
-      if (activeMain.def === CHARGE && activeMain.phase === "charge") {
+      if (activeMain.isHolding && activeMain.def.tags?.includes("charge")) {
         this.resampleFacing();
         playBoxerAnim(this.entity, "chargeHold", { oneShot: false });
       }
-      if (!velocityOwnedByStep.has(this.entity) && !this.stagger.active) {
+      if (!activeMain.isStepActive("velocity") && !this.stagger.active) {
         // Movement is gated by an ability (attack/guard/charge/counter) with
         // no movement step of its own — a hard stop instead of coasting on
         // whatever WASD velocity was live when the ability started. Skipped
@@ -1921,10 +2225,6 @@ class PlayerController extends Component {
     this.redraw();
   }
 
-  onDestroy(): void {
-    this.driver?.dispose();
-  }
-
   /** Tears down and rebuilds the whole scene from scratch — a fresh
    *  `AbilitiesDemoScene` instance re-spawns the arena, camera, VfxHub,
    *  combatants, and HUD from `onEnter`, so nothing needs manual cleanup
@@ -1934,9 +2234,23 @@ class PlayerController extends Component {
     engine.scenes.replace(new AbilitiesDemoScene()).catch(() => {});
   }
 
-  /** Hotbar read for the shared attack/charge slot: it has no single
-   *  `cooldownRemaining` id to poll (three ids share it — the combo, the
-   *  charge, and the parry counter), so it's driven off the active run's
+  /** Replace the definitions and the input driver as one game-owned loadout. */
+  private swapLoadout(): void {
+    if (this.dead) return;
+    const nextIndex = (this.loadoutIndex + 1) % PLAYER_LOADOUTS.length;
+    const next = PLAYER_LOADOUTS[nextIndex]!;
+    this.abilities.replaceDefinitions(next.defs);
+    this.loadoutIndex = nextIndex;
+    this.driver.replace(this.driverOptions(next));
+  }
+
+  get loadoutName(): string {
+    return PLAYER_LOADOUTS[this.loadoutIndex]!.name;
+  }
+
+  /** Hotbar read for the shared attack slot: it has no single
+   *  `cooldownRemaining` id to poll (both combos, both charges, and the parry
+   *  counter share it), so it's driven off the active run's
    *  current phase instead — `phaseElapsed`/`phaseDuration` resolved
    *  directly off the activation handle, so each combo stage and the charge
    *  kick each wipe over their own span. Idle (or holding a def not in
@@ -1968,23 +2282,14 @@ class PlayerController extends Component {
   // -------------------------------------------------------------------------
 
   private startChargeSparks(): void {
-    this.chargeSparks = Array.from({ length: CHARGE_SPARK_COUNT }, spawnChargeSpark);
+    this.chargeSparks = Array.from(
+      { length: CHARGE_SPARK_COUNT },
+      spawnChargeSpark,
+    );
   }
 
   private stopChargeSparks(): void {
     this.chargeSparks = [];
-  }
-
-  /** Starts the charge kick's timed bullet-time tail. This is a timed request,
-   *  not a `slowmo` window: cancelling the kick must not end the effect early. */
-  private startChargeKickEffects(): void {
-    this.charging = false;
-    this.stopChargeSparks();
-    this.time.scaleBy(CHARGE_SLOWMO_SCALE, {
-      for: CHARGE_SLOWMO_DURATION,
-      key: "charge-bullet-time",
-      excludeUpdates: [this.entity],
-    });
   }
 
   private updateChargeSparks(dt: number): void {
@@ -2001,8 +2306,11 @@ class PlayerController extends Component {
     for (const spark of this.chargeSparks) {
       const x = Math.cos(spark.angle) * spark.radius;
       const y = Math.sin(spark.angle) * spark.radius;
-      const alpha = CHARGE_SPARK_ALPHA * (spark.radius / CHARGE_SPARK_RING_RADIUS);
-      this.gfx.graphics.circle(x, y, 3).fill({ color: CHARGE_SPARK_COLOR, alpha });
+      const alpha =
+        CHARGE_SPARK_ALPHA * (spark.radius / CHARGE_SPARK_RING_RADIUS);
+      this.gfx.graphics
+        .circle(x, y, 3)
+        .fill({ color: CHARGE_SPARK_COLOR, alpha });
     }
   }
 
@@ -2013,7 +2321,10 @@ class PlayerController extends Component {
    *  axis because the driver runs before `update`'s WASD refresh. `Facing.set`
    *  ignores a zero vector, so releasing WASD preserves the last direction. */
   private resampleFacing(): void {
-    this.facing.set(this.input.getAxis("left", "right"), this.input.getAxis("up", "down"));
+    this.facing.set(
+      this.input.getAxis("left", "right"),
+      this.input.getAxis("up", "down"),
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -2039,11 +2350,13 @@ class PlayerController extends Component {
 
   private reflectProjectile(direction: Vec2): void {
     const from = this.entity.get(Transform).worldPosition;
-    const team = this.entity.get(HitReceiver).team;
     const delivery = createReportingDelivery({
       source: this.entity,
-      data: { damage: REFLECT_DAMAGE, knockback: REFLECT_KNOCKBACK, stun: REFLECT_STUN },
-      ...(team !== undefined ? { team } : {}),
+      data: {
+        damage: REFLECT_DAMAGE,
+        knockback: REFLECT_KNOCKBACK,
+        stun: REFLECT_STUN,
+      },
     });
     this.scene.spawn(FireballProjectile, {
       caster: this.entity,
@@ -2055,7 +2368,6 @@ class PlayerController extends Component {
         shape: { type: "circle", radius: 7 },
         lifetime: 2.5,
       },
-      ...(team !== undefined ? { team } : {}),
     });
   }
 
@@ -2102,10 +2414,12 @@ class PlayerEntity extends Entity {
     this.add(
       new HitReceiver({ team: "player", iframes: 0.25, steps: playerHitSteps }),
     );
+    this.add(new Abilities(PLAYER_LOADOUTS[0]!.defs));
+    const controller = new PlayerController();
     this.add(
-      new Abilities([ATTACK, CHARGE, DASH, GUARD_HOLD, PARRY, POTION]),
+      new AbilityDriverComponent(controller.driverOptions(PLAYER_LOADOUTS[0]!)),
     );
-    this.add(new PlayerController());
+    this.add(controller);
   }
 }
 
@@ -2130,7 +2444,9 @@ class EnemyAI extends Component {
 
   onAdd(): void {
     this.listen(this.entity, HealthDied, () => this.die());
-    this.listen(this.entity, HitReceived, (hit) => reactToHit(this.entity, this.pc, ENEMY_TINT, hit));
+    this.listen(this.entity, HitReceived, ({ hit }) =>
+      reactToHit(this.entity, this.pc, ENEMY_TINT, hit),
+    );
     // Releases the engagement token the instant my own "main" lane ability
     // ends, for any reason (recovers naturally, gets interrupted) — filtered
     // to that lane, since `melee`/`shoot`/the forced stagger reaction are
@@ -2162,13 +2478,16 @@ class EnemyAI extends Component {
         if (!this.stagger.active) this.rb.setVelocity(Vec2.ZERO);
       } else {
         this.rb.setVelocity(Vec2.ZERO);
-        if (!this.anim.locked) playBoxerAnim(this.entity, "idle", { oneShot: false });
+        if (!this.anim.locked)
+          playBoxerAnim(this.entity, "idle", { oneShot: false });
       }
       this.redraw();
       return;
     }
 
-    const toPlayer = player.get(Transform).worldPosition.sub(this.transform.worldPosition);
+    const toPlayer = player
+      .get(Transform)
+      .worldPosition.sub(this.transform.worldPosition);
     const dist = toPlayer.length();
     this.facing.set(toPlayer.x, toPlayer.y);
 
@@ -2209,7 +2528,11 @@ class EnemyAI extends Component {
    *  stack, and stepping back a bit further during the token's handoff
    *  pause (the beat right after the current attacker recovers). Returns
    *  whether it moved. */
-  private reposition(token: EngagementToken, toPlayer: Vec2, dist: number): boolean {
+  private reposition(
+    token: EngagementToken,
+    toPlayer: Vec2,
+    dist: number,
+  ): boolean {
     const inward = toPlayer.normalize(); // unit vector toward the player
     const tangent = new Vec2(-inward.y, inward.x).scale(this.orbitDir);
 
@@ -2226,11 +2549,16 @@ class EnemyAI extends Component {
       const away = this.transform.worldPosition.sub(otherPos);
       const away2 = away.length();
       if (away2 > 0 && away2 < ORBIT_SEPARATION_RANGE) {
-        separation = separation.add(away.scale((ORBIT_SEPARATION_RANGE - away2) / away2));
+        separation = separation.add(
+          away.scale((ORBIT_SEPARATION_RANGE - away2) / away2),
+        );
       }
     }
 
-    const dir = tangent.scale(0.7).add(radial.scale(0.7)).add(separation.scale(0.05));
+    const dir = tangent
+      .scale(0.7)
+      .add(radial.scale(0.7))
+      .add(separation.scale(0.05));
     if (dir.lengthSq() <= 0) {
       this.rb.setVelocity(Vec2.ZERO);
       return false;
@@ -2255,7 +2583,9 @@ class EnemyAI extends Component {
     this.rb.setVelocity(Vec2.ZERO);
     this.rb.setEnabledTranslations(false, false);
     this.gfx.graphics.clear(); // no HP bar on a corpse
-    this.pc.slot({ duration: CORPSE_LINGER, onComplete: () => entity.destroy() }).start();
+    this.pc
+      .slot({ duration: CORPSE_LINGER, onComplete: () => entity.destroy() })
+      .start();
     entity.remove(EnemyAI);
     cameraOf(entity).shake(8, 0.2, { decay: 0.8 });
     playDeathSfx(entity);
@@ -2275,7 +2605,9 @@ class EnemyEntity extends Entity {
   setup(params: { position: Vec2Like }): void {
     this.tags.add("enemy");
     const transform = this.add(
-      new Transform({ position: new Vec2(params.position.x, params.position.y) }),
+      new Transform({
+        position: new Vec2(params.position.x, params.position.y),
+      }),
     );
     transform.setScale(SPRITE_SCALE, SPRITE_SCALE);
     this.add(
@@ -2345,7 +2677,12 @@ class Pickup extends Component {
 
 /** Grant a collected/leveled stat, routing maxHp through the `Health.max`
  *  push so the bar grows immediately. */
-function grantStat(player: Entity, stats: Stats, kind: StatKind, amount: number): void {
+function grantStat(
+  player: Entity,
+  stats: Stats,
+  kind: StatKind,
+  amount: number,
+): void {
   if (kind === "atk") stats.atk += amount;
   else if (kind === "def") stats.def += amount;
   else if (kind === "atkSpeed") stats.atkSpeed += amount;
@@ -2433,7 +2770,13 @@ class GameDirector extends Component {
     const player = this.scene.findEntity("PlayerEntity");
     const stats = player && statsOf(player);
     const playerPos = player?.tryGet(Transform)?.worldPosition;
-    if (!player || !stats || !playerPos || (player.tryGet(Health)?.isDead ?? false)) return;
+    if (
+      !player ||
+      !stats ||
+      !playerPos ||
+      (player.tryGet(Health)?.isDead ?? false)
+    )
+      return;
     for (const e of this.scene.getEntities()) {
       const pickup = e.tryGet(Pickup);
       const pos = e.tryGet(Transform)?.worldPosition;
@@ -2448,7 +2791,9 @@ class GameDirector extends Component {
    *  so a spawn never lands on top of them. */
   private randomArenaPoint(minPlayerDist: number): Vec2 {
     const pad = ARENA_MARGIN + 40;
-    const playerPos = this.scene.findEntity("PlayerEntity")?.tryGet(Transform)?.worldPosition;
+    const playerPos = this.scene
+      .findEntity("PlayerEntity")
+      ?.tryGet(Transform)?.worldPosition;
     for (let i = 0; i < 8; i++) {
       const p = new Vec2(
         pad + Math.random() * (WIDTH - 2 * pad),
@@ -2477,6 +2822,7 @@ class Hud extends Component {
   update(): void {
     const player = this.scene.findEntity("PlayerEntity");
     const health = player?.tryGet(Health);
+    const controller = player?.tryGet(PlayerController);
     const stats = player && statsOf(player);
     const statsLine = stats
       ? `LVL ${stats.level} · ATK ${stats.atk} · DEF ${stats.def} · SPD ${stats.atkSpeed.toFixed(2)}x · kills ${stats.kills}`
@@ -2484,9 +2830,10 @@ class Hud extends Component {
     this.text.setText(
       [
         `HP ${health ? Math.ceil(health.hp) : 0} / ${health?.max ?? 0}`,
-        statsLine,
-        "WASD/arrows move · Space attack (hold to charge) · Shift dash (buffers mid-attack) ·",
-        "F hold to block, tap to parry · Q potion · walk over gems to boost stats · H hitbox debug · R reset",
+        `LOADOUT ${controller?.loadoutName ?? "—"} · ${statsLine}`,
+        "WASD/arrows move · Space tap combo / hold charge · E swap FISTS/KICKS ·",
+        "Shift tap dash / hold run · F hold block / tap parry · Q potion ·",
+        "gems boost stats · H hitbox debug · R reset",
         "",
         this.log.text,
       ].join("\n"),
@@ -2495,7 +2842,7 @@ class Hud extends Component {
 }
 
 // ---------------------------------------------------------------------------
-// Hotbar — a bottom-center row of 4 slots (attack/combo+charge, dash,
+// Hotbar — a bottom-center row of 4 slots (loadout attack+charge, dash/run,
 // guard, potion), each a rounded square with a key label, an ability name,
 // and a clock-wipe: a semi-opaque pie overlay that shrinks via an arc sweep
 // as the ability comes off cooldown, plus the remaining seconds as `X.X`
@@ -2555,7 +2902,9 @@ class HotbarSlot extends Component {
         ? controller.attackSlotState()
         : {
             ratio: abilities.cooldownRatio(HOTBAR_COOLDOWN_ID[this.kind]),
-            label: abilities.cooldownRemaining(HOTBAR_COOLDOWN_ID[this.kind]).toFixed(1),
+            label: abilities
+              .cooldownRemaining(HOTBAR_COOLDOWN_ID[this.kind])
+              .toFixed(1),
           };
 
     this.redraw(ratio);
@@ -2582,7 +2931,8 @@ class HotbarSlot extends Component {
 
 function spawnHotbar(scene: Scene): void {
   const totalWidth =
-    HOTBAR_SLOTS.length * HOTBAR_SLOT_SIZE + (HOTBAR_SLOTS.length - 1) * HOTBAR_GAP;
+    HOTBAR_SLOTS.length * HOTBAR_SLOT_SIZE +
+    (HOTBAR_SLOTS.length - 1) * HOTBAR_GAP;
   const startX = WIDTH / 2 - totalWidth / 2 + HOTBAR_SLOT_SIZE / 2;
   const y = HEIGHT - 44;
 
@@ -2646,7 +2996,9 @@ class Wall extends Entity {
     );
     this.add(new RigidBodyComponent({ type: "static" }));
     this.add(
-      new ColliderComponent({ shape: { type: "box", width: params.w, height: params.h } }),
+      new ColliderComponent({
+        shape: { type: "box", width: params.w, height: params.h },
+      }),
     );
   }
 }
@@ -2654,7 +3006,9 @@ class Wall extends Entity {
 class AbilitiesDemoScene extends Scene {
   readonly name = "abilities-addon-demo";
   readonly preload = [...BOXER_PRELOAD, HitSfx, BlockSfx, DeathSfx];
-  readonly layers: readonly LayerDef[] = [{ name: HUD_LAYER, order: 1200, space: "screen" }];
+  readonly layers: readonly LayerDef[] = [
+    { name: HUD_LAYER, order: 1200, space: "screen" },
+  ];
 
   camera!: CameraEntity;
   fx!: VfxHub;
@@ -2687,10 +3041,18 @@ class AbilitiesDemoScene extends Scene {
     // automatically: `CameraShake` only ever offsets `effectivePosition`,
     // never `CameraComponent.position` itself (the field `CameraFollow` and
     // `CameraBoundsComponent` read/write) — so the two never fight or drift.
-    this.camera.follow(player.get(Transform), { smoothing: CAMERA_FOLLOW_SMOOTHING });
-    this.spawn(EnemyEntity, { position: new Vec2(WIDTH / 2 - 200, HEIGHT / 2 - 110) });
-    this.spawn(EnemyEntity, { position: new Vec2(WIDTH / 2 + 200, HEIGHT / 2 - 110) });
-    this.spawn(EnemyEntity, { position: new Vec2(WIDTH / 2, HEIGHT / 2 + 170) });
+    this.camera.follow(player.get(Transform), {
+      smoothing: CAMERA_FOLLOW_SMOOTHING,
+    });
+    this.spawn(EnemyEntity, {
+      position: new Vec2(WIDTH / 2 - 200, HEIGHT / 2 - 110),
+    });
+    this.spawn(EnemyEntity, {
+      position: new Vec2(WIDTH / 2 + 200, HEIGHT / 2 - 110),
+    });
+    this.spawn(EnemyEntity, {
+      position: new Vec2(WIDTH / 2, HEIGHT / 2 + 170),
+    });
 
     // Drives the stats-boundary demo: respawns, stat-gem drops, and the
     // kill-fed level-up loop (see `GameDirector`).
@@ -2772,9 +3134,16 @@ async function main(): Promise<void> {
         dash: ["ShiftLeft", "KeyK"],
         guard: ["KeyF", "KeyL"],
         potion: ["KeyQ", "Digit1"],
+        loadout: ["KeyE"],
         reset: ["KeyR"],
       },
-      preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
+      preventDefaultKeys: [
+        "Space",
+        "ArrowUp",
+        "ArrowDown",
+        "ArrowLeft",
+        "ArrowRight",
+      ],
     }),
   );
   engine.use(new ParticlesPlugin());

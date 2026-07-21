@@ -8,7 +8,9 @@ import {
 import type { Entity, ProcessSlot } from "@yagejs/core";
 import type {
   AbilityActivation,
+  AbilityCanSendOptions,
   AbilityDef,
+  AbilitySendOptions,
   AbilityStep,
   CancelWindow,
   PhaseDef,
@@ -62,7 +64,7 @@ export const AbilityEnded = defineEvent<{
  * deferred queue as the other lifecycle events, so listeners observe settled
  * lane state; a transition superseded by a nested call never emits.
  */
-export const PhaseChanged = defineEvent<{
+export const AbilityPhaseChanged = defineEvent<{
   activation: AbilityActivation;
   from: string;
   to: string;
@@ -118,6 +120,14 @@ interface CompiledAbility {
 interface EntryDoor {
   readonly def: AbilityDef;
   readonly phase: string;
+}
+
+/** A fully validated definition set ready to replace the runner's live indexes. */
+interface DefinitionSet {
+  readonly defsById: Map<string, AbilityDef>;
+  readonly compiledByDef: WeakMap<AbilityDef, CompiledAbility>;
+  readonly entryIndex: Map<string, EntryDoor>;
+  readonly knownIntents: Set<string>;
 }
 
 /**
@@ -218,6 +228,17 @@ class ActivationHandle implements AbilityActivation {
     return this.track.duration;
   }
 
+  get isHolding(): boolean {
+    return this.compiledPhase.hold;
+  }
+
+  isStepActive(kind: string): boolean {
+    for (const step of this.openWindows) {
+      if (step.kind === kind) return true;
+    }
+    return false;
+  }
+
   get elapsed(): number {
     return (
       this.foldedTotal + (this._state === "active" ? this.phaseElapsed : 0)
@@ -243,7 +264,10 @@ class ActivationHandle implements AbilityActivation {
    * the next phase.
    */
   foldPhase(t: number): void {
-    this.visited.set(this.phaseName, (this.visited.get(this.phaseName) ?? 0) + t);
+    this.visited.set(
+      this.phaseName,
+      (this.visited.get(this.phaseName) ?? 0) + t,
+    );
     this.foldedTotal += t;
   }
 
@@ -297,26 +321,26 @@ class ActivationHandle implements AbilityActivation {
  *    entry-phase priority or an admitting cancel window on the occupant
  *    (which cancels it), and otherwise refuses `"busy"`.
  *
- * An intent matching none of the instance's construction-time vocabulary
+ * An intent matching none of the instance's installed vocabulary
  * (def ids, `entry:` aliases, `on:` keys) throws — that's a programmer
  * error, not a runtime refusal.
  *
  * `force(def)` differs from entry in exactly two things: it neither checks
  * nor arms cooldown, and a busy lane restarts when the same forced def
  * re-activates itself. Emits `AbilityStarted`/`AbilityEnded` per run and
- * `PhaseChanged` per within-run transition; `active(lane)` returns the
+ * `AbilityPhaseChanged` per within-run transition; `active(lane)` returns the
  * current run's `AbilityActivation` handle.
  */
 export class Abilities extends Component {
   private readonly pc = this.sibling(ProcessComponent);
-  private readonly defsById = new Map<string, AbilityDef>();
-  private readonly compiledByDef = new WeakMap<AbilityDef, CompiledAbility>();
+  private defsById = new Map<string, AbilityDef>();
+  private compiledByDef = new WeakMap<AbilityDef, CompiledAbility>();
   private readonly cooldowns = new Map<string, Cooldown>();
   private readonly lanes = new Map<string, ActivationHandle>();
   /** Intent → cross-def entry door (def ids + `entry:` aliases). Collisions are construction errors. */
-  private readonly entryIndex = new Map<string, EntryDoor>();
-  /** Every intent the registered defs can ever answer to — `send`/`canSend` throw outside it (typo guard). */
-  private readonly knownIntents = new Set<string>();
+  private entryIndex = new Map<string, EntryDoor>();
+  /** Every intent the installed defs can answer to — `send`/`canSend` throw outside it (typo guard). */
+  private knownIntents = new Set<string>();
   /** Per-lane linger memory of the last completed ability (see `LingerMemory`). */
   private readonly lastEnded = new Map<string, LingerMemory>();
 
@@ -324,6 +348,8 @@ export class Abilities extends Component {
   private entryDepth = 0;
   private draining = false;
   private readonly emissionQueue: Array<() => void> = [];
+  /** Component removal is terminal; lifecycle listeners cannot start replacement work. */
+  private disposed = false;
 
   /**
    * Depth of this component's own track event/completion hooks on the call
@@ -340,37 +366,90 @@ export class Abilities extends Component {
 
   constructor(defs: readonly AbilityDef[]) {
     super();
+    this.installDefinitionSet(this.buildDefinitionSet(defs));
+  }
+
+  /**
+   * Replace the registered definitions without replacing this component.
+   *
+   * The prospective set is fully recompiled and validated first. On success,
+   * active runs end as cancelled, linger and cooldown state are discarded,
+   * and lifecycle listeners observe the new intent vocabulary.
+   */
+  replaceDefinitions(defs: readonly AbilityDef[]): void {
+    const next = this.buildDefinitionSet(defs);
+    this.runEntry(() => {
+      this.cancelAll();
+      this.clearAllLinger();
+      this.removeAllCooldowns();
+      this.installDefinitionSet(next);
+    });
+  }
+
+  /**
+   * Add definitions without disturbing active runs, cooldowns, or linger.
+   * The complete prospective set is validated before the live indexes change.
+   */
+  addDefinitions(defs: readonly AbilityDef[]): void {
+    const next = this.buildDefinitionSet([...this.defsById.values(), ...defs]);
+    this.installDefinitionSet(next);
+  }
+
+  private buildDefinitionSet(defs: readonly AbilityDef[]): DefinitionSet {
+    const defsById = new Map<string, AbilityDef>();
+    const compiledByDef = new WeakMap<AbilityDef, CompiledAbility>();
+    const compiledDefs: Array<{
+      readonly def: AbilityDef;
+      readonly compiled: CompiledAbility;
+    }> = [];
+    const entryIndex = new Map<string, EntryDoor>();
+    const knownIntents = new Set<string>();
+
     for (const def of defs) {
-      if (this.defsById.has(def.id)) {
+      if (defsById.has(def.id)) {
         throw new Error(`Abilities: duplicate ability id "${def.id}".`);
       }
-      this.defsById.set(def.id, def);
-      this.getCompiled(def); // compile eagerly so a malformed def fails at construction, not first send
+      defsById.set(def.id, def);
+      const compiled = this.compile(def);
+      compiledByDef.set(def, compiled);
+      compiledDefs.push({ def, compiled });
     }
-    // All defs are compiled — build the entry index and intent vocabulary.
-    for (const def of defs) {
-      const compiled = this.getCompiled(def);
-      this.addEntryDoor(def.id, def, compiled.start);
+
+    const addEntryDoor = (
+      intent: string,
+      def: AbilityDef,
+      phase: string,
+    ): void => {
+      const existing = entryIndex.get(intent);
+      if (existing) {
+        throw new Error(
+          `Abilities: entry intent "${intent}" collides between abilities "${existing.def.id}" and "${def.id}".`,
+        );
+      }
+      entryIndex.set(intent, { def, phase });
+      knownIntents.add(intent);
+    };
+
+    for (const { def, compiled } of compiledDefs) {
+      addEntryDoor(def.id, def, compiled.start);
       for (const [intent, phase] of Object.entries(def.entry ?? {})) {
-        this.addEntryDoor(intent, def, phase);
+        addEntryDoor(intent, def, phase);
       }
       for (const phase of compiled.phases.values()) {
         for (const intent of Object.keys(phase.on ?? {})) {
-          this.knownIntents.add(intent);
+          knownIntents.add(intent);
         }
       }
     }
+
+    return { defsById, compiledByDef, entryIndex, knownIntents };
   }
 
-  private addEntryDoor(intent: string, def: AbilityDef, phase: string): void {
-    const existing = this.entryIndex.get(intent);
-    if (existing) {
-      throw new Error(
-        `Abilities: entry intent "${intent}" collides between abilities "${existing.def.id}" and "${def.id}".`,
-      );
-    }
-    this.entryIndex.set(intent, { def, phase });
-    this.knownIntents.add(intent);
+  private installDefinitionSet(definitions: DefinitionSet): void {
+    this.defsById = definitions.defsById;
+    this.compiledByDef = definitions.compiledByDef;
+    this.entryIndex = definitions.entryIndex;
+    this.knownIntents = definitions.knownIntents;
   }
 
   /** Id of the lane's active ability, or null if idle. Defaults to the `"main"` lane. */
@@ -402,8 +481,13 @@ export class Abilities extends Component {
    * lanes are scanned in start order and the entry door picks its own def's
    * lane). Throws for an intent no registered def can ever answer to.
    */
-  send(intent: string, data?: unknown, lane?: string): PlayResult {
+  send(intent: string, options: AbilitySendOptions = {}): PlayResult {
+    const { data, lane } = options;
     return this.runEntry(() => {
+      if (this.disposed) {
+        this.mustKnowIntent(intent);
+        return { ok: false as const, reason: "busy" as const };
+      }
       // 1. Active phase `on:` maps — stop on a declared intent.
       for (const [laneName, activation] of this.lanes) {
         if (lane !== undefined && laneName !== lane) continue;
@@ -463,7 +547,7 @@ export class Abilities extends Component {
   }
 
   /**
-   * Whether `send(intent, lane?)` would succeed right now — with no side
+   * Whether `send(intent, { lane })` would succeed right now — with no side
    * effects. By default the entry step answers "would this be admitted
    * WITHOUT cutting the occupant off": a declared guard, linger, an idle
    * lane, or a cancel-window admission — deliberately excluding the
@@ -477,11 +561,12 @@ export class Abilities extends Component {
    * lane by interrupt — "would a direct `send` succeed", preemption
    * included.
    */
-  canSend(
-    intent: string,
-    lane?: string,
-    options?: { interrupts?: boolean },
-  ): boolean {
+  canSend(intent: string, options: AbilityCanSendOptions = {}): boolean {
+    const { lane } = options;
+    if (this.disposed) {
+      this.mustKnowIntent(intent);
+      return false;
+    }
     for (const [laneName, activation] of this.lanes) {
       if (lane !== undefined && laneName !== lane) continue;
       const guard = activation.compiledPhase.on?.[intent];
@@ -509,8 +594,9 @@ export class Abilities extends Component {
     const occupant = this.lanes.get(targetLane);
     if (!occupant) return true;
     if (options?.interrupts) {
-      const entryPriority = this.getCompiled(door.def).phases.get(door.phase)!
-        .priority;
+      const entryPriority = this.getCompiled(door.def).phases.get(
+        door.phase,
+      )!.priority;
       if (entryPriority > occupant.compiledPhase.priority) return true;
     }
     return this.cancelWindowAdmits(occupant, door.def);
@@ -549,6 +635,7 @@ export class Abilities extends Component {
    */
   force(def: AbilityDef): PlayResult {
     return this.runEntry(() => {
+      if (this.disposed) return { ok: false, reason: "busy" };
       const compiled = this.getCompiled(def);
       return this.activate(def, compiled.start, true, undefined, undefined);
     });
@@ -581,6 +668,17 @@ export class Abilities extends Component {
     });
   }
 
+  private clearAllLinger(): void {
+    for (const lane of [...this.lastEnded.keys()]) this.clearLinger(lane);
+  }
+
+  private removeAllCooldowns(): void {
+    for (const cooldown of this.cooldowns.values()) {
+      this.pc.removeSlot(cooldown.slot);
+    }
+    this.cooldowns.clear();
+  }
+
   /** Seconds remaining on `id`'s cooldown. 0 when ready. Throws for an unknown id. */
   cooldownRemaining(id: string): number {
     this.mustGetDef(id);
@@ -598,7 +696,17 @@ export class Abilities extends Component {
   }
 
   override onDestroy(): void {
-    this.cancelAll();
+    this.runEntry(() => {
+      try {
+        this.cancelAll();
+        this.clearAllLinger();
+        this.removeAllCooldowns();
+      } finally {
+        // Exit hooks run during cancellation and may create replacement work;
+        // cancelAll handles it. Event listeners run afterward and must not.
+        this.disposed = true;
+      }
+    });
   }
 
   /**
@@ -627,8 +735,8 @@ export class Abilities extends Component {
     viaIntent: string | undefined,
   ): PlayResult {
     const lane = def.lane ?? "main";
-    const entryPriority = this.getCompiled(def).phases.get(entryPhase)!
-      .priority;
+    const entryPriority =
+      this.getCompiled(def).phases.get(entryPhase)!.priority;
     for (;;) {
       const active = this.lanes.get(lane);
       if (!active) {
@@ -853,7 +961,7 @@ export class Abilities extends Component {
     activation.track.process.cancel();
     this.startPhase(activation, to, viaIntent);
     this.enqueue(() =>
-      this.entity.emit(PhaseChanged, { activation, from, to }),
+      this.entity.emit(AbilityPhaseChanged, { activation, from, to }),
     );
   }
 
@@ -900,7 +1008,7 @@ export class Abilities extends Component {
     // An exit hook may have transitioned this SAME activation while its
     // windows closed (lane identity can't see that). An end is final:
     // cancel the nested transition's freshly started track so it can't
-    // outlive the run as an orphaned process. Its queued PhaseChanged still
+    // outlive the run as an orphaned process. Its queued phase event still
     // delivers — the activation did enter that phase for zero time before
     // ending, and the queue is history.
     if (activation.track !== trackAtEntry) activation.track.process.cancel();
@@ -1082,7 +1190,7 @@ export class Abilities extends Component {
     return def;
   }
 
-  /** Throw for an intent outside the construction-time vocabulary — a typo, not a runtime refusal. */
+  /** Throw for an intent outside the installed vocabulary — a typo, not a runtime refusal. */
   private mustKnowIntent(intent: string): void {
     if (!this.knownIntents.has(intent)) {
       throw new Error(
@@ -1092,8 +1200,8 @@ export class Abilities extends Component {
   }
 
   /**
-   * Validate and compile `def`, caching by def object identity — registered
-   * defs compile once at construction; forced defs (typically built fresh
+   * Validate and compile `def`, caching by def object identity — installed
+   * defs compile once per definition set; forced defs (typically built fresh
    * per reaction) compile once each and are cheap enough at these sizes not
    * to warrant sharing.
    */
@@ -1228,8 +1336,7 @@ export class Abilities extends Component {
       `Abilities: ability "${def.id}" phase "${name}" step "${step.kind}" (step #${index})`;
 
     const hold = Boolean(phase.hold);
-    const holdMax =
-      typeof phase.hold === "object" ? phase.hold.max : undefined;
+    const holdMax = typeof phase.hold === "object" ? phase.hold.max : undefined;
     if (holdMax !== undefined && holdMax <= 0) {
       throw new Error(
         `Abilities: ability "${def.id}" phase "${name}" has hold.max=${holdMax} <= 0.`,
@@ -1314,10 +1421,30 @@ export class Abilities extends Component {
       null,
     ) as Record<string, ResolvedTransition>;
     for (const [intent, raw] of Object.entries(phase.on ?? {})) {
-      const guard =
-        typeof raw === "string"
-          ? { to: raw, from: 0, until: undefined }
-          : { to: raw.to, from: raw.from ?? 0, until: raw.until };
+      let guard: ResolvedTransition;
+      if (typeof raw === "string") {
+        guard = { to: raw, from: 0, until: undefined };
+      } else {
+        const rawFrom = raw.from ?? 0;
+        if (rawFrom === "end" && hold) {
+          throw new Error(
+            `Abilities: ability "${def.id}" phase "${name}" on:"${intent}" uses from="end" on a hold phase.`,
+          );
+        }
+        const from = rawFrom === "end" ? duration : rawFrom;
+        let until: number | undefined;
+        if (raw.for !== undefined) {
+          if (!Number.isFinite(raw.for) || raw.for <= 0) {
+            throw new Error(
+              `Abilities: ability "${def.id}" phase "${name}" on:"${intent}" has for=${raw.for}; expected a finite duration > 0.`,
+            );
+          }
+          until = from + raw.for;
+        } else {
+          until = raw.until;
+        }
+        guard = { to: raw.to, from, until };
+      }
       if (guard.from < 0) {
         throw new Error(
           `Abilities: ability "${def.id}" phase "${name}" on:"${intent}" has from=${guard.from} < 0.`,

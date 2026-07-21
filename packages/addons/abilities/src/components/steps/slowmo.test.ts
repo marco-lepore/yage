@@ -47,7 +47,9 @@ describe("slowmo step", () => {
       new Abilities([
         {
           id: "bt",
-          timeline: [slowmo({ from: 0, to: 1, scale: 0.5, includeOwner: true })],
+          timeline: [
+            slowmo({ from: 0, to: 1, scale: 0.5, includeOwner: true }),
+          ],
         },
       ]),
     );
@@ -72,6 +74,38 @@ describe("slowmo step", () => {
     expect(time.effectiveScale).toBe(1);
   });
 
+  it("keeps a timed request alive after phase completion and cancellation", () => {
+    const completed = setup();
+    const completedAbilities = completed.entity.add(
+      new Abilities([
+        { id: "bt", timeline: [slowmo({ at: 0, for: 0.5, scale: 0.25 })] },
+      ]),
+    );
+    completedAbilities.send("bt");
+    completed.pc._tick(0.01);
+    expect(completedAbilities.isActive()).toBe(false);
+    expect(completed.time.effectiveScale).toBe(0.25);
+    completed.time._tick(0.5);
+    expect(completed.time.effectiveScale).toBe(1);
+
+    const cancelled = setup();
+    const cancelledAbilities = cancelled.entity.add(
+      new Abilities([
+        {
+          id: "bt",
+          duration: 1,
+          timeline: [slowmo({ at: 0, for: 0.5, scale: 0.4 })],
+        },
+      ]),
+    );
+    cancelledAbilities.send("bt");
+    cancelled.pc._tick(0.01);
+    cancelledAbilities.cancel();
+    expect(cancelled.time.effectiveScale).toBe(0.4);
+    cancelled.time._tick(0.5);
+    expect(cancelled.time.effectiveScale).toBe(1);
+  });
+
   it("passes key/label through to the request", () => {
     const { entity, pc, time } = setup();
     const abilities = entity.add(
@@ -79,7 +113,13 @@ describe("slowmo step", () => {
         {
           id: "bt",
           timeline: [
-            slowmo({ from: 0, to: 1, scale: 0.5, key: "slowmo", label: "bullet-time" }),
+            slowmo({
+              from: 0,
+              to: 1,
+              scale: 0.5,
+              key: "slowmo",
+              label: "bullet-time",
+            }),
           ],
         },
       ]),

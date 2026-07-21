@@ -1,8 +1,8 @@
 export {
   Abilities,
   AbilityEnded,
+  AbilityPhaseChanged,
   AbilityStarted,
-  PhaseChanged,
 } from "./core/Abilities.js";
 export { defineStep } from "./core/defineStep.js";
 export {
@@ -18,12 +18,16 @@ export type {
 } from "./core/AbilitySpawned.js";
 export type {
   AbilityActivation,
+  AbilityCanSendOptions,
   AbilityDef,
   AbilityMatcher,
+  AbilitySendOptions,
   AbilityStep,
   CancelWindow,
   PhaseDef,
   PhaseTransition,
+  AbsolutePhaseTransition,
+  RelativePhaseTransition,
   PhasedAbilityDef,
   PlayRejection,
   PlayResult,
@@ -65,8 +69,10 @@ export {
 } from "./components/HitReceiver.js";
 export type {
   GuardParams,
+  GuardOutcome,
   GuardPolicy,
   HitFilter,
+  HitReceivedPayload,
   HitReceiverOptions,
 } from "./components/HitReceiver.js";
 export { createHitTools } from "./components/createHitTools.js";
@@ -81,6 +87,7 @@ export {
   HealthDied,
   HealthHealed,
 } from "./components/Health.js";
+export type { HealthSnapshot } from "./components/Health.js";
 export { Stagger } from "./components/Stagger.js";
 export {
   damageStep,
@@ -93,7 +100,10 @@ export {
   HitDealt,
   createReportingDelivery,
 } from "./components/reportedDelivery.js";
-export type { DeliveryProvenance } from "./components/reportedDelivery.js";
+export type {
+  DeliveryProvenance,
+  HitDealtPayload,
+} from "./components/reportedDelivery.js";
 export { aimAt, resolveAim } from "./components/aim.js";
 export type { Aim } from "./components/aim.js";
 export { anim } from "./components/steps/anim.js";
@@ -101,7 +111,11 @@ export { block, guard, parry } from "./components/steps/guard.js";
 export type { GuardStepArgs } from "./components/steps/guard.js";
 export { invulnerable } from "./components/steps/invulnerable.js";
 export { slowmo } from "./components/steps/slowmo.js";
-export type { SlowmoParams } from "./components/steps/slowmo.js";
+export type {
+  SlowmoParams,
+  SlowmoWindowArgs,
+  TimedSlowmoArgs,
+} from "./components/steps/slowmo.js";
 export {
   REACTION_PRIORITY,
   staggerMotion,
@@ -116,6 +130,10 @@ export type {
   HitboxStepArgs,
 } from "./components/steps/hitbox.js";
 export { spawn } from "./components/steps/spawn.js";
-export type { SpawnParams, SpawnStepArgs } from "./components/steps/spawn.js";
+export type {
+  SpawnParams,
+  SpawnPosition,
+  SpawnStepArgs,
+} from "./components/steps/spawn.js";
 export { TouchDamage } from "./components/TouchDamage.js";
 export type { TouchDamageOptions } from "./components/TouchDamage.js";

@@ -8,7 +8,11 @@ import {
   trait,
 } from "@yagejs/core";
 import { AbilitySpawned } from "../../core/AbilitySpawned.js";
-import type { AbilitySpawnContext } from "../../core/AbilitySpawned.js";
+import type {
+  AbilitySpawnContext,
+  AbilitySpawnedClass,
+  AbilitySpawnParams,
+} from "../../core/AbilitySpawned.js";
 import { Abilities } from "../../core/Abilities.js";
 import { Hittable } from "../../core/hit/types.js";
 import type { Hit, HitResult } from "../../core/hit/types.js";
@@ -105,6 +109,93 @@ describe("spawn step", () => {
     // PlayResult, AbilitySpawnContext, and the live `active(lane)` read.
     expect(context?.activation).toBe(result.activation);
     expect(context?.activation).toBe(entity.get(Abilities).active("main"));
+  });
+
+  it("resolves an absolute position when the step fires", () => {
+    const { entity, scene, pc } = setup();
+    let position = new Vec2(30, 40);
+    const resolvePosition = vi.fn(() => position);
+    entity.add(
+      new Abilities([
+        {
+          id: "orb",
+          timeline: [
+            spawn({
+              at: 0.1,
+              entity: Orb,
+              params: { power: 4, label: "arc" },
+              position: resolvePosition,
+            }),
+          ],
+        },
+      ]),
+    );
+
+    entity.get(Transform).setPosition(99, 99);
+    position = new Vec2(50, 60);
+    entity.get(Abilities).send("orb");
+    pc._tick(0.1);
+
+    expect(resolvePosition).toHaveBeenCalledOnce();
+    expect(findOrb(scene.findEntities()).abilitySpawnContext?.position).toEqual(
+      new Vec2(50, 60),
+    );
+  });
+
+  it("uses an explicit position without a Transform on the running entity", () => {
+    const { entity, scene } = createMockEntity("transformless-caster");
+    const pc = entity.add(new ProcessComponent());
+    entity.add(
+      new Abilities([
+        {
+          id: "orb",
+          timeline: [
+            spawn({
+              at: 0,
+              entity: Orb,
+              params: { power: 4, label: "arc" },
+              aim: { x: 1, y: 0 },
+              position: { x: 50, y: 60 },
+            }),
+          ],
+        },
+      ]),
+    );
+
+    entity.get(Abilities).send("orb");
+    pc._tick(0.01);
+
+    expect(findOrb(scene.findEntities()).abilitySpawnContext?.position).toEqual(
+      new Vec2(50, 60),
+    );
+  });
+
+  it("applies the facing-local offset after an absolute position", () => {
+    const { entity, scene, pc } = setup();
+    entity.add(
+      new Abilities([
+        {
+          id: "orb",
+          timeline: [
+            spawn({
+              at: 0,
+              entity: Orb,
+              params: { power: 4, label: "arc" },
+              position: { x: 30, y: 40 },
+              offset: { x: 5, y: 0 },
+            }),
+          ],
+        },
+      ]),
+    );
+
+    entity.get(Abilities).send("orb");
+    pc._tick(0.01);
+
+    const position = findOrb(scene.findEntities()).abilitySpawnContext
+      ?.position;
+    expect(position?.x).toBeCloseTo(30);
+    expect(position?.y).toBeCloseTo(45);
   });
 
   it("omits activation on a direct scene.spawn not fired through the spawn step", () => {
@@ -361,12 +452,35 @@ describe("spawn step", () => {
   });
 
   it("requires params to match the spawned entity class", () => {
+    const inferred: AbilitySpawnParams<typeof Orb> = {
+      power: 2,
+      label: "typed",
+    };
+    expect(inferred.power).toBe(2);
+
     spawn({
       at: 0,
       entity: Orb,
       // @ts-expect-error power must be a number
       params: { power: "high", label: "typed" },
     });
+  });
+
+  it("requires setup to accept AbilitySpawnContext for parameter inference", () => {
+    class WrongSetup extends Entity {
+      abilitySpawnContext: AbilitySpawnContext<OrbParams> | undefined;
+
+      override setup(params: OrbParams): void {
+        void params;
+      }
+    }
+
+    const invalidAssignment = (): AbilitySpawnedClass => {
+      // @ts-expect-error setup must receive AbilitySpawnContext<OrbParams>
+      const entityClass: AbilitySpawnedClass = WrongSetup;
+      return entityClass;
+    };
+    expect(invalidAssignment).toBeTypeOf("function");
   });
 
   it("requires trait classes to declare abilitySpawnContext", () => {

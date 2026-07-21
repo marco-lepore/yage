@@ -5,24 +5,24 @@ changing anything under `packages/addons/`.
 
 ## What an addon is
 
-An **addon** is an *installable, opinionated implementation of one cohesive
-gameplay pattern*, designed so its opinions are overridable without forking. One
+An **addon** is an _installable, opinionated implementation of one cohesive
+gameplay pattern_, designed so its opinions are overridable without forking. One
 addon = one thing a developer reaches for by name (dialogue, inventory, combat,
 player-controllers, prototype kit).
 
 It is **not** a generic data-structure library, a batteries-welded-shut system,
-or a mainline plugin. Addons are *gameplay patterns*; mainline plugins (`core`,
-`renderer`, `physics`, …) are *engine infrastructure* — many games ship zero
+or a mainline plugin. Addons are _gameplay patterns_; mainline plugins (`core`,
+`renderer`, `physics`, …) are _engine infrastructure_ — many games ship zero
 dialogue/inventory. The distinction from mainline is **editorial, not
 engineering**. If you'd describe it as "a game like X" (an RPG), that's a
 **template** (a `create-yage` starter), not an addon.
 
 ## The two failure modes
 
-| Failure | Symptom | Root cause |
-|---|---|---|
-| **Too generic** | User writes as much config as building it themselves; "it's just a `Map` with events" | The addon owns *abstraction* instead of the fiddly *concrete logic* |
-| **Cornered** | Works until the user's game differs, then they fork/abandon | The addon baked *domain decisions* into its *plumbing* |
+| Failure         | Symptom                                                                               | Root cause                                                          |
+| --------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| **Too generic** | User writes as much config as building it themselves; "it's just a `Map` with events" | The addon owns _abstraction_ instead of the fiddly _concrete logic_ |
+| **Cornered**    | Works until the user's game differs, then they fork/abandon                           | The addon baked _domain decisions_ into its _plumbing_              |
 
 The fix is not a perfect mid-level abstraction. It is **separating layers so each
 is opinionated at its own level and replaceable independently**, plus the seven
@@ -39,9 +39,10 @@ An addon uses **only the layers its pattern needs**.
   `@yagejs/core`-only. Fully unit-testable. **Enforce headlessness as an
   invariant** ("no `@yagejs/renderer`/`pixi` import in the model layer, ever").
 - **L2 Engine integration — two co-equal forms (use either or both):**
-  - **L2a Component** — per-entity behavior; hosts the model, bridges model
-    events → entity events, integrates save. `@yagejs/core` only. Zero setup:
-    user `entity.add()`s it; `ComponentUpdateSystem` drives it.
+  - **L2a Component** — per-entity ownership; hosts the model, bridges model
+    events → entity events, integrates save, and may use the engine peers its
+    behavior requires (for example physics or input). Zero setup: user
+    `entity.add()`s it; `ComponentUpdateSystem` drives it.
   - **L2b Plugin (+ System + Service)** — cross-cutting orchestration: a System
     for cross-entity per-frame work, a `ServiceKey` Service for global shared
     state, scene hooks, DOM/gamepad/loop wiring. User must `engine.use(...)`.
@@ -50,7 +51,7 @@ An addon uses **only the layers its pattern needs**.
 - **L3 View** — presentation behind an interface, with a default presenter,
   reachable only via a `/presenters` subpath so the headless path never pulls
   pixi. For views with multiple independently-varying parts, **split the
-  interface into *capability channels* rather than one coarse presenter**
+  interface into _capability channels_ rather than one coarse presenter**
   (see the channels pattern below). One coarse presenter is fine only when the
   view is one indivisible thing.
 
@@ -65,7 +66,7 @@ a Plugin costs the user an `engine.use()` line.
 ### Refinement — host-owned cross-cutting
 
 "This pattern touches pause/focus/global state, therefore it needs L2b" is **not
-automatic**. When *which instance is active* or *whether the world pauses* is
+automatic**. When _which instance is active_ or _whether the world pauses_ is
 genuinely **game policy** — especially when multiple instances can run at once —
 owning it in a global Service is wrong. **Dialogue is the worked
 counter-example:** it ships as an L2a `Component` the game spawns, exposes
@@ -95,7 +96,7 @@ calls **once** with its type parameter and full config catalog. It converts
 - **Retyped def/step/policy factories** — no per-call-site type parameters.
 - **New event tokens, created per factory call** and typed to the game's
   payload, so handlers need no narrowing. Entity events dispatch by token
-  *string name* (`packages/core/src/Entity.ts`), so the factory must
+  _string name_ (`packages/core/src/Entity.ts`), so the factory must
   namespace event names via a required `id` option and warn in dev mode on
   duplicate ids — two instances creating tokens with the same name would
   collide silently.
@@ -146,11 +147,11 @@ Boundaries and caveats:
 ## The seven rules
 
 1. **Ship a concrete default, not a framework.** The primary export is an
-   opinionated *working* implementation. The 5-minute path must run.
-2. **Opinions are *data and functions*, not *structure*.** Express opinionated
+   opinionated _working_ implementation. The 5-minute path must run.
+2. **Opinions are _data and functions_, not _structure_.** Express opinionated
    bits as config values + injected pure policy functions, never hardwired
-   branches or subclass-only behavior. The user overrides the *policy*, not the
-   *plumbing*.
+   branches or subclass-only behavior. The user overrides the _policy_, not the
+   _plumbing_.
 3. **The domain type is the user's, not yours — for data/state addons.** Be
    generic over the game's type (`Inventory<TItem>`), requiring only a tiny
    accessor/policy. Behavior addons (controllers, bullet-time) have no domain
@@ -161,7 +162,7 @@ Boundaries and caveats:
 5. **Rules in, consequences out — and when blurry, a pipeline of steps** (above).
 6. **Escape hatches at every layer.** Underlying state is readable; documented
    direct-mutation methods exist; the model is swappable inside the component.
-   Never let the *only* API be a convenience that hides state.
+   Never let the _only_ API be a convenience that hides state.
 7. **The "would you write this yourself?" test (scoping).** Own the
    annoying-but-non-trivial logic (stack merge/split, slot swap, hitbox overlap,
    save round-trip, typewriter + branching). Expose a hook for anything trivial
@@ -183,12 +184,12 @@ A theme is a plain data object (no behavior), serializable, authored inline or s
 - **Collection** — many interchangeable pieces/variants/assets (prototype,
   player-controllers). Usually L0/L2a/L3, light on L1.
 - **Single system** — one cohesive installed system (dialogue, combat). Usually
-  L1 + L2a-or-L2b (+ L3). *Dialogue's shape:* L1 headless core + **L2a
+  L1 + L2a-or-L2b (+ L3). _Dialogue's shape:_ L1 headless core + **L2a
   Component** (host owns focus/pause) + **L3 capability channels** + **save via
   a `SnapshotContributor`**.
 - **Pure library** — headless logic only (stats-formula). L1 only.
 
-Single *tiny* mechanics (e.g. bullet-time) are usually **recipes/examples** (a
+Single _tiny_ mechanics (e.g. bullet-time) are usually **recipes/examples** (a
 copyable snippet), not packages — promote to a package only on demonstrated
 reuse, to avoid sprawl.
 
@@ -209,7 +210,7 @@ reuse, to avoid sprawl.
   zero collisions where dialogue's original generic names did not.
 - **Granularity:** one package per addon, each with its own curated dependency
   closure. (A single `@yagejs/addons` package with subpath exports was rejected:
-  subpath exports split *code*, not *dependencies* or *versions*.)
+  subpath exports split _code_, not _dependencies_ or _versions_.)
 - **Repo location:** `packages/addons/<domain>/` inside this Turborepo. The npm
   workspaces glob `packages/addons/*` (added to the root `package.json`) picks
   them up — note `packages/*` is single-level and does **not** match the nested
@@ -223,7 +224,8 @@ reuse, to avoid sprawl.
   duplicated — this avoids duplicate-instance DI/`ServiceKey` hazards. Use a
   pre-1.0 floor like `">=0.7.0 <0.8.0"` (a future 0.8.0 is breaking per the
   pre-1.0 rule); re-floor on each engine minor. Mirror the engine versions in
-  `devDependencies` (`^0.7.0`) so it builds/tests in-workspace.
+  `devDependencies` with an open floor (`>=0.7.0`) so the current workspace
+  and the next engine minor remain accepted during development.
 
 ## Export split (the one packaging mistake to avoid)
 
@@ -330,7 +332,7 @@ grep -c "@yagejs/renderer\|pixi.js" packages/addons/dialogue/dist/index.d.ts
 grep -lc "@yagejs/renderer\|pixi.js" packages/addons/dialogue/dist/chunk-*.js
 ```
 
-`DialogueController` is the trap: it lives in the root entry but references presenter contracts. Keep those as `import type` only (TextPresenter/ChromePresenter/ChoicePresenter/AvatarPresenter), and import only pixi-free *values* (e.g. `InputManagerKey` from `@yagejs/input`). `input/*` is pixi-free and intentionally belongs with the root entry, not presenters.
+`DialogueController` is the trap: it lives in the root entry but references presenter contracts. Keep those as `import type` only (TextPresenter/ChromePresenter/ChoicePresenter/AvatarPresenter), and import only pixi-free _values_ (e.g. `InputManagerKey` from `@yagejs/input`). `input/*` is pixi-free and intentionally belongs with the root entry, not presenters.
 
 ### Canvas-default vs bitmap-opt-in font split
 

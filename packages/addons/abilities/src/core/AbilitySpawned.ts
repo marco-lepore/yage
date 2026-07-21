@@ -41,7 +41,12 @@ export interface AbilitySpawnedEntity<TParams = unknown> {
 /** Entity constructor accepted by the typed ability `spawn` step. */
 export type AbilitySpawnedClass = new () => Entity & AbilitySpawnedEntity;
 
-/** Game-defined params inferred from an ability-spawned class's setup context. */
+/**
+ * Game-defined params inferred from an ability-spawned class's
+ * `setup(context: AbilitySpawnContext<TParams>)` signature. If inference
+ * produces `never`, give the entity that exact setup parameter type and
+ * declare its `abilitySpawnContext` field.
+ */
 export type AbilitySpawnParams<TClass extends AbilitySpawnedClass> =
   SetupParams<InstanceType<TClass>> extends AbilitySpawnContext<infer TParams>
     ? TParams

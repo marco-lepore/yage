@@ -9,8 +9,14 @@ import type {
 import type { HitSpec } from "../../core/hit/delivery.js";
 import type { StandardHitData } from "../../core/hit/types.js";
 import type { PointStep, StepContext } from "../../core/types.js";
-import { resolveAbilitySpawn } from "../spawnResolution.js";
+import {
+  resolveAbilitySpawn,
+  resolveAbilityTransform,
+} from "../spawnResolution.js";
 import type { Aim } from "../aim.js";
+
+/** Absolute world position for a spawned entity, resolved when the step fires. */
+export type SpawnPosition = Vec2Like | ((ctx: StepContext) => Vec2Like);
 
 /** Parameters shared by `spawn` and built-ins implemented through it. */
 export interface SpawnParams<
@@ -31,6 +37,8 @@ export interface SpawnParams<
   tags?: readonly string[];
   /** Spawn offset in the +x facing-local frame, rotated by aim. */
   offset?: Vec2Like;
+  /** Absolute world-position base; omit to use the running entity's Transform. */
+  position?: SpawnPosition;
 }
 
 /** Arguments accepted by the typed point-in-time `spawn` factory. */
@@ -47,23 +55,14 @@ export function spawn<
   TClass extends AbilitySpawnedClass,
   TData = StandardHitData,
 >(args: SpawnStepArgs<TClass, TData>): PointStep<SpawnParams<TClass, TData>> {
-  return createSpawnStep("spawn", args);
-}
-
-/** Build a point step that uses the shared spawned-attack mechanism. */
-function createSpawnStep<
-  TClass extends AbilitySpawnedClass,
-  TData = StandardHitData,
->(
-  kind: string,
-  args: SpawnStepArgs<TClass, TData>,
-): PointStep<SpawnParams<TClass, TData>> {
   const { at, ...params } = args;
   return {
-    kind,
+    kind: "spawn",
     at,
     params,
-    hooks: { fire: fireSpawn },
+    hooks: {
+      fire: fireSpawn,
+    },
   };
 }
 
@@ -71,27 +70,32 @@ function fireSpawn<TClass extends AbilitySpawnedClass, TData>(
   params: SpawnParams<TClass, TData>,
   ctx: StepContext,
 ): void {
-  const kind = ctxStepKind(ctx, params);
   if (!entityClassHasTrait(params.entity, AbilitySpawned)) {
     throw new Error(
-      `Abilities: step "${kind}" requires the spawned entity to declare the AbilitySpawned trait.`,
+      `Abilities: step "spawn" requires the spawned entity to declare the AbilitySpawned trait.`,
     );
   }
 
   const resolved = resolveAbilitySpawn<TData>({
     ctx,
-    kind,
     ...(params.aim !== undefined ? { aim: params.aim } : {}),
     ...(params.team !== undefined ? { team: params.team } : {}),
     ...(params.hit !== undefined ? { hit: params.hit } : {}),
     ...(params.tags ? { tags: params.tags } : {}),
   });
 
+  const rawPosition =
+    typeof params.position === "function"
+      ? params.position(ctx)
+      : params.position;
+  const basePosition = rawPosition
+    ? new Vec2(rawPosition.x, rawPosition.y)
+    : resolveAbilityTransform(ctx, "spawn").worldPosition;
   const position = params.offset
-    ? resolved.transform.worldPosition.add(
+    ? basePosition.add(
         new Vec2(params.offset.x, params.offset.y).rotate(resolved.aim.angle()),
       )
-    : resolved.transform.worldPosition;
+    : basePosition;
   const context: AbilitySpawnContext<AbilitySpawnParams<TClass>> = {
     caster: resolved.caster,
     aim: resolved.aim,
@@ -103,18 +107,4 @@ function fireSpawn<TClass extends AbilitySpawnedClass, TData>(
   };
 
   ctx.entity.scene.spawn(params.entity, context);
-}
-
-function ctxStepKind<TClass extends AbilitySpawnedClass, TData>(
-  ctx: StepContext,
-  params: SpawnParams<TClass, TData>,
-): string {
-  const timelines = ctx.def.phases
-    ? Object.values(ctx.def.phases).map((phase) => phase.timeline)
-    : [ctx.def.timeline ?? []];
-  for (const timeline of timelines) {
-    const step = timeline.find((entry) => entry.params === params);
-    if (step) return step.kind;
-  }
-  return "spawn";
 }

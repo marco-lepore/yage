@@ -7,6 +7,7 @@ import { AbilityDriver } from "./AbilityDriver.js";
 import type {
   AbilityDriverOptions,
   AbilityFireContext,
+  AbilityGestureContext,
 } from "./AbilityDriver.js";
 
 function timeline(id: string, duration = 0.2): AbilityDef {
@@ -439,7 +440,7 @@ describe("AbilityDriver", () => {
               resume: true,
               release: {
                 send: "charge-release",
-                data: ({ activation, heldFor }) => ({
+                data: ({ activation, heldFor }: AbilityGestureContext) => ({
                   heldFor,
                   scaled: activation?.elapsedIn("hold"),
                 }),
@@ -860,7 +861,7 @@ describe("AbilityDriver", () => {
           attack: {
             tap: {
               send: "tap",
-              data: (context) => {
+              data: (context: AbilityGestureContext) => {
                 heldFor = context.heldFor;
                 return context.heldFor;
               },
@@ -919,6 +920,22 @@ describe("AbilityDriver", () => {
     driver.update();
 
     expect(abilities.activeId()).toBe(null);
+  });
+
+  it("cancels an active hold it owns when disposed", () => {
+    const { input, abilities, driver } = setup([held("charge")], {
+      bindings: { attack: { hold: { send: "charge", at: 0 } } },
+    });
+
+    input.fireActionDown("attack");
+    driver.update();
+    const activation = abilities.active();
+    expect(activation?.isHolding).toBe(true);
+
+    driver.dispose();
+
+    expect(activation?.state).toBe("cancelled");
+    expect(abilities.active()).toBeNull();
   });
 
   it("narrows action and intent strings through AbilityDriverOptions", () => {

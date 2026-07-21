@@ -56,6 +56,10 @@ can safely:
 - Emit events that other entities can receive
 - Add components that depend on the scene context
 
+If `setup()` throws, `scene.spawn()` removes the entity, its components, and
+its stable-key entry before it rethrows the original error. Callers never see
+a partly initialized entity left in the scene.
+
 ```typescript
 class Enemy extends Entity<EnemyParams> {
   setup(params: EnemyParams) {
@@ -129,6 +133,17 @@ for (const entity of nearby) {
   if (entity.hasTrait(Interactable)) {
     entity.interact(); // TypeScript knows this method exists
   }
+}
+```
+
+Use `entityClassHasTrait()` when code must validate a class before it creates
+an instance. The check includes traits inherited from parent classes:
+
+```typescript
+import { entityClassHasTrait } from "@yagejs/core";
+
+if (!entityClassHasTrait(Chest, Interactable)) {
+  throw new Error("Chest must implement Interactable");
 }
 ```
 

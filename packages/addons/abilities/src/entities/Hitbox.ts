@@ -40,6 +40,8 @@ export class Hitbox extends Entity {
   private delivery!: HitDelivery;
   private from!: Vec2;
   private readonly hit = new Set<Entity>();
+  private readonly overlapping = new Set<Entity>();
+  private repeats = false;
 
   setup(config: HitboxConfig): void {
     this.delivery = config.delivery;
@@ -50,19 +52,33 @@ export class Hitbox extends Entity {
       new ColliderComponent({
         shape: config.shape,
         sensor: true,
-        ...(config.offset ? { offset: { x: config.offset.x, y: config.offset.y } } : {}),
-        ...(config.groups?.layers !== undefined ? { layers: config.groups.layers } : {}),
-        ...(config.groups?.mask !== undefined ? { mask: config.groups.mask } : {}),
+        ...(config.offset
+          ? { offset: { x: config.offset.x, y: config.offset.y } }
+          : {}),
+        ...(config.groups?.layers !== undefined
+          ? { layers: config.groups.layers }
+          : {}),
+        ...(config.groups?.mask !== undefined
+          ? { mask: config.groups.mask }
+          : {}),
       }),
     );
     collider.onTrigger((ev) => {
-      if (!ev.entered || this.hit.has(ev.other)) return;
+      if (!ev.entered) {
+        this.overlapping.delete(ev.other);
+        if (this.repeats) this.hit.delete(ev.other);
+        return;
+      }
+      this.overlapping.add(ev.other);
+      if (this.hit.has(ev.other)) return;
       this.hit.add(ev.other); // once per target per window; deliver() re-excludes source
       this.delivery.deliver(ev.other, this.from);
     });
     if (config.follow) {
       if (!config.caster) {
-        throw new Error("Abilities: Hitbox config has follow=true but no caster to track.");
+        throw new Error(
+          "Abilities: Hitbox config has follow=true but no caster to track.",
+        );
       }
       this.add(new HitboxFollow(config.caster, this));
     }
@@ -74,6 +90,18 @@ export class Hitbox extends Entity {
   moveTo(pos: Vec2): void {
     this.from = pos;
     this.get(Transform).setPosition(pos.x, pos.y);
+  }
+
+  /** Deliver another hit to every target that still overlaps this hitbox. */
+  repeatHits(): void {
+    for (const target of this.overlapping) {
+      if (!target.isDestroyed) this.delivery.deliver(target, this.from);
+    }
+  }
+
+  /** @internal Allow contact re-entry to count as a new immediate hit. */
+  enableRepeatHits(): void {
+    this.repeats = true;
   }
 }
 

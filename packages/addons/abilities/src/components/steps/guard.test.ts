@@ -128,6 +128,36 @@ describe("parry wrapper", () => {
     const without = parry({ from: 0, to: 0.3 });
     expect("punish" in without.params).toBe(false);
   });
+
+  it('accepts to: "end" like block', () => {
+    const { entity, pc, receiver } = setup();
+    const { entity: attacker } = createMockEntity("attacker");
+    const abilities = entity.add(
+      new Abilities([
+        { id: "p", duration: 0.3, timeline: [parry({ from: 0, to: "end" })] },
+      ]),
+    );
+
+    abilities.send("p");
+    pc._tick(0.2);
+    expect(receiver.receive(makeHit(attacker))).toBe("parried");
+    pc._tick(0.1);
+    expect(receiver.receive(makeHit(attacker))).toBe("hit");
+  });
+
+  it("does not expose interval ticks on guards", () => {
+    const invalidCall = (): void => {
+      guard({
+        from: 0,
+        to: 1,
+        outcome: "blocked",
+        policy: () => "negate",
+        // @ts-expect-error guards engage on incoming hits, not timeline intervals
+        every: 0.1,
+      });
+    };
+    expect(invalidCall).toBeTypeOf("function");
+  });
 });
 
 describe("block wrapper", () => {
@@ -147,7 +177,9 @@ describe("block wrapper", () => {
       new Abilities([
         {
           id: "b",
-          timeline: [block({ from: 0, to: 1, damageScale: 0.5, knockbackScale: 0.25 })],
+          timeline: [
+            block({ from: 0, to: 1, damageScale: 0.5, knockbackScale: 0.25 }),
+          ],
         },
       ]),
     );

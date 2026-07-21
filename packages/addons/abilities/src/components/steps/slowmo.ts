@@ -1,6 +1,5 @@
 import type { SceneTimeScaleOptions, TimeEffectHandle } from "@yagejs/core";
-import { defineStep } from "../../core/defineStep.js";
-import type { StepContext } from "../../core/types.js";
+import type { PointStep, StepContext, WindowStep } from "../../core/types.js";
 
 export interface SlowmoParams {
   /**
@@ -32,6 +31,22 @@ export interface SlowmoParams {
   label?: string;
 }
 
+/** A cancellation-bound slow-motion window. */
+export type SlowmoWindowArgs = SlowmoParams & {
+  from: number;
+  to: number | "end";
+};
+
+/** A raw-time slow-motion request that can outlive its ability phase. */
+export type TimedSlowmoArgs = SlowmoParams & {
+  at: number;
+  for: number;
+};
+
+interface TimedSlowmoParams extends SlowmoParams {
+  for: number;
+}
+
 // Per-run handle ledger: `ctx` is unique per (entity, activation), and
 // `Abilities`'s construction-time validator rejects the same step object
 // appearing twice in one timeline, so (ctx, params) identifies one open
@@ -50,24 +65,62 @@ const open = new WeakMap<StepContext, Map<object, TimeEffectHandle>>();
  * slowmo({ from: 0, to: 0.3, scale: 0.4 })
  * ```
  */
-export const slowmo = defineStep<SlowmoParams>("slowmo", {
-  enter(params, ctx) {
-    const options: SceneTimeScaleOptions = {
-      ...(params.key !== undefined ? { key: params.key } : {}),
-      ...(params.label !== undefined ? { label: params.label } : {}),
-      ...(params.includeOwner ? {} : { excludeUpdates: [ctx.entity] }),
+export function slowmo(args: SlowmoWindowArgs): WindowStep<SlowmoParams>;
+export function slowmo(args: TimedSlowmoArgs): PointStep<TimedSlowmoParams>;
+export function slowmo(
+  args: SlowmoWindowArgs | TimedSlowmoArgs,
+): WindowStep<SlowmoParams> | PointStep<TimedSlowmoParams> {
+  if ("at" in args) {
+    const { at, ...params } = args;
+    return {
+      kind: "slowmo",
+      at,
+      params,
+      hooks: {
+        fire(timed, ctx) {
+          ctx.time.scaleBy(timed.scale, scaleOptions(timed, ctx, timed.for));
+        },
+      },
     };
-    const handle = ctx.time.scaleBy(params.scale, options);
-    let byParams = open.get(ctx);
-    if (!byParams) open.set(ctx, (byParams = new Map()));
-    byParams.set(params, handle);
-  },
-  exit(params, ctx) {
-    const byParams = open.get(ctx);
-    const handle = byParams?.get(params);
-    if (handle) {
-      handle.release();
-      byParams!.delete(params);
-    }
-  },
-});
+  }
+
+  const { from, to, ...params } = args;
+  return {
+    kind: "slowmo",
+    from,
+    to,
+    params,
+    hooks: {
+      enter(window, ctx) {
+        const handle = ctx.time.scaleBy(
+          window.scale,
+          scaleOptions(window, ctx),
+        );
+        let byParams = open.get(ctx);
+        if (!byParams) open.set(ctx, (byParams = new Map()));
+        byParams.set(window, handle);
+      },
+      exit(window, ctx) {
+        const byParams = open.get(ctx);
+        const handle = byParams?.get(window);
+        if (handle) {
+          handle.release();
+          byParams!.delete(window);
+        }
+      },
+    },
+  };
+}
+
+function scaleOptions(
+  params: SlowmoParams,
+  ctx: StepContext,
+  duration?: number,
+): SceneTimeScaleOptions {
+  return {
+    ...(duration !== undefined ? { for: duration } : {}),
+    ...(params.key !== undefined ? { key: params.key } : {}),
+    ...(params.label !== undefined ? { label: params.label } : {}),
+    ...(params.includeOwner ? {} : { excludeUpdates: [ctx.entity] }),
+  };
+}

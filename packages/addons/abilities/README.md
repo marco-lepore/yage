@@ -2,7 +2,16 @@
 
 Phase-based abilities and a concrete hit contract for [YAGE](https://yage.dev).
 
-**Status: in development — no published release yet.**
+## Install
+
+```bash
+npm install @yagejs-addons/abilities @yagejs/core @yagejs/physics
+# Add only when using the optional input entry:
+npm install @yagejs/input
+```
+
+Register `PhysicsPlugin` before using hitboxes, projectiles, touch damage, or
+the default knockback reaction. The addon has no plugin of its own.
 
 ## Scope
 
@@ -20,6 +29,60 @@ The addon covers two halves that games use together:
 The hit contract also works outside combat: breakable crates, hazards,
 bumpers — anything that receives a hit.
 
+## Quick start
+
+```ts
+import { Entity, ProcessComponent, Transform, trait } from "@yagejs/core";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
+import {
+  Abilities,
+  Facing,
+  Health,
+  Hittable,
+  HitReceiver,
+  Stagger,
+  hitbox,
+} from "@yagejs-addons/abilities";
+import type { AbilityDef, Hit, HitResult } from "@yagejs-addons/abilities";
+
+const SLASH: AbilityDef = {
+  id: "slash",
+  cooldown: 0.45,
+  duration: 0.35,
+  timeline: [
+    hitbox({
+      from: 0.08,
+      to: 0.2,
+      shape: { type: "capsule", halfHeight: 18, radius: 10, axis: "x" },
+      offset: { x: 30, y: 0 },
+      hit: { damage: 18, knockback: 260, stun: 0.3 },
+    }),
+  ],
+};
+
+@trait(Hittable)
+class Fighter extends Entity {
+  receiveHit(hit: Hit): HitResult {
+    return this.get(HitReceiver).receive(hit);
+  }
+
+  setup(): void {
+    this.add(new Transform());
+    this.add(new ProcessComponent());
+    this.add(new RigidBodyComponent({ type: "dynamic" }));
+    this.add(new ColliderComponent({ shape: { type: "circle", radius: 12 } }));
+    this.add(new Facing()); // default +x aim when a delivery step omits `aim`
+    this.add(new Health({ max: 100 }));
+    this.add(new Stagger());
+    this.add(new HitReceiver({ team: "player", iframes: 0.15 }));
+    this.add(new Abilities([SLASH]));
+  }
+}
+
+const fighter = scene.spawn(Fighter);
+fighter.get(Abilities).send("slash");
+```
+
 ## The runtime in short
 
 A def is either a plain timeline (one phase, no extra syntax) or a named
@@ -28,11 +91,11 @@ phase in an `on:` map keyed by **intent** strings, with optional time-window
 guards. The caster surface is five verbs:
 
 ```ts
-abilities.send("attack");        // the one way in — for players AND AI
-abilities.canSend("attack");     // dry-run: admitted without preempting?
-abilities.release("charge");     // completes a hold; true when it did
-abilities.cancel();              // stop the lane's run
-abilities.force(STAGGER);        // reactions only — see below
+abilities.send("attack"); // the one way in — for players AND AI
+abilities.canSend("attack"); // dry-run: admitted without preempting?
+abilities.release("charge"); // completes a hold; true when it did
+abilities.cancel(); // stop the lane's run
+abilities.force(STAGGER); // reactions only — see below
 ```
 
 A simple ability looks exactly like a timeline:
@@ -41,7 +104,7 @@ A simple ability looks exactly like a timeline:
 const DASH: AbilityDef = {
   id: "dash",
   cooldown: 1.1,
-  timeline: [invulnerable({ from: 0.03, to: 0.24 }), /* … */],
+  timeline: [invulnerable({ from: 0.03, to: 0.24 }) /* … */],
 };
 abilities.send("dash");
 ```
@@ -55,11 +118,26 @@ const ATTACK: AbilityDef = {
   id: "attack",
   cooldown: 0.3,
   phases: {
-    jab:   { timeline: [/* … */], duration: 0.45,
-             on: { attack: { to: "cross", from: 0.25, until: 0.6 } } },
-    cross: { timeline: [/* … */], duration: 0.5,
-             on: { attack: { to: "hook", from: 0.25, until: 0.6 } } },
-    hook:  { timeline: [/* … */], duration: 1.1 },
+    jab: {
+      timeline: [
+        /* … */
+      ],
+      duration: 0.45,
+      on: { attack: { to: "cross", from: 0.25, until: 0.6 } },
+    },
+    cross: {
+      timeline: [
+        /* … */
+      ],
+      duration: 0.5,
+      on: { attack: { to: "hook", from: 0.25, until: 0.6 } },
+    },
+    hook: {
+      timeline: [
+        /* … */
+      ],
+      duration: 1.1,
+    },
   },
 };
 ```
@@ -73,13 +151,25 @@ const CHARGE: AbilityDef = {
   id: "charge",
   cooldown: 0.2,
   phases: {
-    charge: { hold: { max: 3 }, next: "kick",
-              timeline: [anim({ at: 0, name: "charge" })] },
-    kick:   { priority: 110,   // super armor for the payoff only
-              timeline: [hitbox({ from: 0.1, to: 0.25, hit })] },
+    charge: {
+      hold: { max: 3 },
+      next: "kick",
+      timeline: [anim({ at: 0, name: "charge" })],
+    },
+    kick: {
+      priority: 110, // super armor for the payoff only
+      timeline: [
+        hitbox({
+          from: 0.1,
+          to: 0.25,
+          shape: { type: "capsule", halfHeight: 18, radius: 10, axis: "x" },
+          hit: { damage: 24, knockback: 320, stun: 0.35 },
+        }),
+      ],
+    },
   },
 };
-abilities.send("charge");    // key down (past the game's hold threshold)
+abilities.send("charge"); // key down (past the game's hold threshold)
 abilities.release("charge"); // key up → kick
 ```
 
@@ -96,9 +186,10 @@ Rules worth knowing:
   door: it exists to gate buffered/retried presses, which must wait for the
   occupant instead of preempting it. So `canSend` false does not always mean
   `send` would fail. For the full dry-run — "would a direct `send` succeed,
-  preemption included" — pass `canSend(intent, lane, { interrupts: true })`.
+  preemption included" — pass
+  `canSend(intent, { lane, interrupts: true })`.
 - **Phase transitions are not ends.** One `AbilityStarted`/`AbilityEnded`
-  pair per run; transitions emit `PhaseChanged`. Window steps close with
+  pair per run; transitions emit `AbilityPhaseChanged`. Window steps close with
   `cancelled: false` on transitions and natural ends, `true` on
   cancel/interrupt.
 - **Cooldown is checked and armed at cross-def entry only.** Transitions and
@@ -107,34 +198,70 @@ Rules worth knowing:
   interrupts the game imposes on an entity. It bypasses cooldown and can
   restart its own def in place. Input-driven actions go through `send`; a
   gesture is never a `force`.
+- **The default hit reaction requires positive `stun`.** With a sibling
+  `Abilities`, the receiver forces `staggerReaction`; without a runner, it
+  falls back to a sibling `Stagger`. Knockback alone does not start a
+  reaction.
+- **Definition tags match cancel windows only.** Put `tags` on a definition
+  and use `{ tag: "movement" }` in `cancels[].into`. The addon does not treat
+  tags as state, resources, or a general rule graph.
 - Windows end at `to: number | "end"` — `"end"` is the phase's boundary,
   elastic in a hold phase (a guard's `block({ from: 0, to: "end" })`).
 
-## Input composition
+## Replacing definitions
 
-Use `AbilityDriver` from the optional `/input` entry when player input drives
-these abilities:
+To install optional definitions without touching current state, use
+`addDefinitions(defs)`. It validates the whole prospective set first, then
+preserves active runs, cooldowns, linger, and existing definitions.
+
+For an out-of-combat weapon or skill-loadout swap, replace the runner's whole
+definition set without replacing the `Abilities` component:
 
 ```ts
-import { AbilityDriver } from "@yagejs-addons/abilities/input";
-
-const driver = new AbilityDriver(input, abilities, {
-  defaults: { holdAt: 0.5 },
-  bindings: {
-    attack: {
-      tap: { send: "attack", buffer: 0.5 },
-      hold: { send: "charge", fromNeutral: true },
-    },
-    dash: { press: { send: "dash", buffer: 0.3 } },
-  },
-});
+abilities.replaceDefinitions(next.defs);
+driverComponent.replace(next.input);
 ```
 
-Call `driver.update()` once from the normal gameplay update, not from
-`fixedUpdate()`, and call `driver.dispose()` when its owner is removed. These
-are lifecycle calls. The driver owns edge capture, gesture classification,
-raw-time buffers, admission retries, payload capture, hold release, and
-interrupted-hold resumption.
+`replaceDefinitions()` recompiles and validates the complete prospective set
+before changing live state. A validation error leaves the current runner
+untouched. A successful replacement cancels active runs, clears linger and
+cooldown state, and installs the new intent vocabulary before delivering the
+resulting `AbilityEnded` events. Every new definition starts ready.
+
+The game owns the loadout object and replaces its `AbilityDriver` separately.
+Driver replacement discards recorded edges, buffered sends, and held-input
+ownership. An action held across the swap must be released and pressed again.
+Use namespaced definition ids and loadout-specific entry intents when several
+loadouts may contain similarly named moves.
+
+## Input composition
+
+Use `AbilityDriverComponent` from the optional `/input` entry for a mounted
+entity. It resolves `InputManagerKey`, updates its plain driver, and disposes
+listeners and buffers with the component:
+
+```ts
+import { AbilityDriverComponent } from "@yagejs-addons/abilities/input";
+
+this.add(
+  new AbilityDriverComponent({
+    defaults: { holdAt: 0.5 },
+    bindings: {
+      attack: {
+        tap: { send: "attack", buffer: 0.5 },
+        hold: { send: "charge", fromNeutral: true },
+      },
+      dash: { press: { send: "dash", buffer: 0.3 } },
+    },
+  }),
+);
+```
+
+Use the plain `AbilityDriver(input, abilities, options)` when another object
+owns lifecycle. Call its `update()` once from normal update, not
+`fixedUpdate()`, and call `dispose()` when that owner is removed. Both forms
+own edge capture, gesture classification, raw-time buffers, admission retries,
+payload capture, hold release, and interrupted-hold resumption.
 
 ### Press, tap, and hold
 
@@ -233,6 +360,15 @@ if (abilities.canSend("attack") && input.consumeBufferedPress("attack", 0.12)) {
 Do not handle the same action through both a driver binding and raw input code.
 Both consumers would receive the edge.
 
+## Save boundary
+
+`Health` is serializable and restores `{ hp, max }` without emitting health
+events. Every other addon value is transient: cooldowns, active phases and
+lanes, payloads, linger, forced reactions, input-driver state, receiver
+i-frames, guards, invulnerability, stagger, facing, and time requests are not
+resumed from a snapshot. Rebuild the definitions and input driver when loading
+into a safe gameplay state.
+
 ## Out of scope
 
 The name overlaps with Unreal's Gameplay Ability System; the scope does not.
@@ -245,11 +381,11 @@ This addon excludes:
   functions instead.
 - **Resource systems** (mana, stamina) — these stay game-side and reach the
   addon through its policy hooks.
-- **AI** — deciding *when* to activate an ability belongs to the game; the
+- **AI** — deciding _when_ to activate an ability belongs to the game; the
   addon's job ends at `send`.
 
 ## Peer dependencies
 
 `@yagejs/core` and `@yagejs/physics` are required. `@yagejs/input` is optional
-and used only by the `/input` entry. `@yagejs/renderer` is optional and used
-only by presentation code.
+and used only by the `/input` entry. The package has no renderer, Pixi, or
+presenter dependency.

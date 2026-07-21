@@ -3,7 +3,10 @@ import type { ColliderShape } from "@yagejs/physics";
 import type { StepContext, WindowStep } from "../../core/types.js";
 import type { HitSpec } from "../../core/hit/delivery.js";
 import type { StandardHitData } from "../../core/hit/types.js";
-import { resolveAbilitySpawn } from "../spawnResolution.js";
+import {
+  resolveAbilitySpawn,
+  resolveAbilityTransform,
+} from "../spawnResolution.js";
 import type { Aim } from "../aim.js";
 import { Hitbox } from "../../entities/Hitbox.js";
 
@@ -42,14 +45,16 @@ export type HitboxStepArgs<TData = StandardHitData> = HitboxParams<TData> & {
 // appearing twice in one timeline, so (ctx, params) identifies one open
 // window. WeakMap-by-ctx releases when the activation ends.
 const open = new WeakMap<StepContext, Map<object, Hitbox>>();
+const repeated = new WeakSet<object>();
 
 /**
  * A window during which a detached kinematic sensor hitbox is spawned in
  * front of the caster: `enter` spawns it, `exit` destroys it (whether the
  * window closed naturally or the ability was cancelled), so a swing can
- * never leave a stale hitbox behind. Delivers once per target for the
- * window's life. `TData` keeps custom hit data typed through the fire-time
- * builder and delivery.
+ * never leave a stale hitbox behind. Without `every`, it delivers once per
+ * target for the window's life. With `every`, it delivers immediately on
+ * contact and again to current overlaps at each interval. `TData` keeps
+ * custom hit data typed through the fire-time builder and delivery.
  */
 export function hitbox<TData = StandardHitData>(
   args: HitboxStepArgs<TData>,
@@ -60,10 +65,20 @@ export function hitbox<TData = StandardHitData>(
     from,
     to,
     params,
-    hooks: { enter: enterHitbox, exit: exitHitbox },
+    hooks: { enter: enterHitbox, exit: exitHitbox, tick: repeatHitbox },
   };
-  if (every !== undefined) step.every = every;
+  if (every !== undefined) {
+    step.every = every;
+    repeated.add(params);
+  }
   return step;
+}
+
+function repeatHitbox<TData>(
+  params: HitboxParams<TData>,
+  ctx: StepContext,
+): void {
+  open.get(ctx)?.get(params)?.repeatHits();
 }
 
 function enterHitbox<TData>(
@@ -72,7 +87,6 @@ function enterHitbox<TData>(
 ): void {
   const resolved = resolveAbilitySpawn<TData>({
     ctx,
-    kind: "hitbox",
     ...(params.aim !== undefined ? { aim: params.aim } : {}),
     ...(params.team !== undefined ? { team: params.team } : {}),
     hit: params.hit,
@@ -82,7 +96,7 @@ function enterHitbox<TData>(
   // resolves a delivery here.
   const delivery = resolved.delivery!;
   const entity = ctx.entity.scene.spawn(Hitbox, {
-    position: resolved.transform.worldPosition,
+    position: resolveAbilityTransform(ctx, "hitbox").worldPosition,
     rotation: resolved.aim.angle(),
     shape: params.shape,
     ...(params.offset ? { offset: params.offset } : {}),
@@ -93,6 +107,7 @@ function enterHitbox<TData>(
     },
     ...(params.follow ? { follow: true, caster: ctx.entity } : {}),
   });
+  if (repeated.has(params)) entity.enableRepeatHits();
   let byParams = open.get(ctx);
   if (!byParams) open.set(ctx, (byParams = new Map()));
   byParams.set(params, entity);

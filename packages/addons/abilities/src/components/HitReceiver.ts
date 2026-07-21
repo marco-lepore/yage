@@ -1,9 +1,18 @@
 import { Component, Transform, Vec2, defineEvent } from "@yagejs/core";
 import type { Hit, HitResult, StandardHitData } from "../core/hit/types.js";
-import { createHitDelivery } from "../core/hit/delivery.js";
 import type { HitStage } from "../core/hit/resolve.js";
 import { resolveHit } from "../core/hit/resolve.js";
 import { defaultHitSteps } from "./standardHit.js";
+import { createReportingDelivery } from "./reportedDelivery.js";
+
+/** A guard outcome recorded when a guard engages during hit resolution. */
+export type GuardOutcome = Exclude<HitResult, "hit" | "ignored">;
+
+/** Payload emitted after a hit lands and its receipt stages have run. */
+export interface HitReceivedPayload {
+  readonly hit: Hit;
+  readonly guardOutcomes: readonly GuardOutcome[];
+}
 
 /**
  * Emitted by `HitReceiver` after a landed hit's receipt steps have run.
@@ -11,7 +20,7 @@ import { defaultHitSteps } from "./standardHit.js";
  * `StandardHitData` vocabulary; multi-system handlers narrow with their own
  * type guard.
  */
-export const HitReceived = defineEvent<Hit>("hit:received");
+export const HitReceived = defineEvent<HitReceivedPayload>("hit:received");
 
 /**
  * Emitted after the resolution fold completes, once per open `guard` that
@@ -20,7 +29,7 @@ export const HitReceived = defineEvent<Hit>("hit:received");
  * stage itself: a handler typically cancels the ability that owns the
  * still-executing window, and doing that mid-fold would be reentrant.
  */
-export const HitGuarded = defineEvent<{ hit: Hit; outcome: HitResult }>(
+export const HitGuarded = defineEvent<{ hit: Hit; outcome: GuardOutcome }>(
   "hit:guarded",
 );
 
@@ -48,7 +57,7 @@ export type GuardPolicy<TData = StandardHitData> = (
 /** Params carried by the `guard` window step (see `src/components/steps/guard.ts`). */
 export interface GuardParams<TData = StandardHitData> {
   /** The `HitResult` label this guard reports when it engages ("blocked", "parried", ...). */
-  outcome: Exclude<HitResult, "hit" | "ignored">;
+  outcome: GuardOutcome;
   policy: GuardPolicy<TData>;
   /**
    * Hit data delivered back to the attacker when this guard engages
@@ -189,16 +198,22 @@ export class HitReceiver<TData = StandardHitData> extends Component {
     ];
     const result = resolveHit(hit, chain, this);
 
+    // Capture before any event or punish delivery can re-enter receive() and
+    // replace the field. The payload records every guard that engaged, even
+    // when a later guard negated the hit.
+    const engaged = this._engagedGuards;
+    const guardOutcomes = engaged.map((guard) => guard.outcome);
+
     if (result === "hit") {
       if (this.iframes > 0) this._iframesRemaining = this.iframes;
       // `HitReceived` is a singleton token typed against the default
       // vocabulary; handlers of per-system hits narrow via their type guard.
-      this.entity.emit(HitReceived, hit as Hit);
+      this.entity.emit(HitReceived, {
+        hit: hit as Hit,
+        guardOutcomes,
+      });
     }
 
-    // Capture before emitting: a punish can re-enter receive() on this
-    // receiver (mutual punish guards), which reassigns the field.
-    const engaged = this._engagedGuards;
     for (const guard of engaged) {
       this.entity.emit(HitGuarded, {
         hit: hit as Hit,
@@ -238,7 +253,7 @@ export class HitReceiver<TData = StandardHitData> extends Component {
   /** Route a guard's `punish` back to the attacker: direction defender→attacker, team stamped from the defender. */
   private deliverPunish(hit: Hit<TData>, punish: TData): void {
     const from = this.entity.tryGet(Transform)?.worldPosition ?? Vec2.ZERO;
-    createHitDelivery<TData>({
+    createReportingDelivery<TData>({
       source: this.entity,
       data: punish,
       ...(this.team !== undefined ? { team: this.team } : {}),

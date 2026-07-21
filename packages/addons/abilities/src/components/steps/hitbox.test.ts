@@ -97,6 +97,11 @@ function fireHitboxTrigger(spawned: Hitbox, target: Entity): void {
   captured.triggerHandlers.get(collider)?.({ other: target, entered: true });
 }
 
+function leaveHitboxTrigger(spawned: Hitbox, target: Entity): void {
+  const collider = spawned.get(ColliderComponent);
+  captured.triggerHandlers.get(collider)?.({ other: target, entered: false });
+}
+
 describe("hitbox step", () => {
   it("aims off the caster's Facing when aim is omitted", () => {
     const { entity, scene, pc } = setup();
@@ -396,6 +401,111 @@ describe("hitbox step", () => {
 
     abilities.cancel();
     expect(spawned.isDestroyed).toBe(true);
+  });
+
+  it("redelivers to current overlaps at every interval and stops after cancellation", () => {
+    const { entity, scene, pc } = setup();
+    entity.add(new Facing());
+    const abilities = entity.add(
+      new Abilities([
+        {
+          id: "aura",
+          timeline: [
+            hitbox({
+              from: 0,
+              to: 1,
+              every: 0.1,
+              shape: { type: "circle", radius: 5 },
+              hit: { damage: 1 },
+            }),
+          ],
+        },
+      ]),
+    );
+
+    abilities.send("aura");
+    pc._tick(0.01);
+    const spawned = findHitbox(scene);
+    const target = scene.spawn(Target);
+    target.add(new Transform({ position: new Vec2(10, 0) }));
+    fireHitboxTrigger(spawned, target);
+    expect(target.received).toHaveLength(1);
+
+    pc._tick(0.1);
+    expect(target.received).toHaveLength(2);
+    pc._tick(0.1);
+    expect(target.received).toHaveLength(3);
+
+    abilities.cancel();
+    pc._tick(0.3);
+    expect(target.received).toHaveLength(3);
+  });
+
+  it("stops interval hits outside the overlap and hits immediately on re-entry", () => {
+    const { entity, scene, pc } = setup();
+    entity.add(new Facing());
+    entity.add(
+      new Abilities([
+        {
+          id: "aura",
+          timeline: [
+            hitbox({
+              from: 0,
+              to: 1,
+              every: 0.1,
+              shape: { type: "circle", radius: 5 },
+              hit: {},
+            }),
+          ],
+        },
+      ]),
+    );
+
+    entity.get(Abilities).send("aura");
+    pc._tick(0.01);
+    const spawned = findHitbox(scene);
+    const target = scene.spawn(Target);
+    target.add(new Transform({ position: new Vec2(10, 0) }));
+    fireHitboxTrigger(spawned, target);
+    leaveHitboxTrigger(spawned, target);
+
+    pc._tick(0.19);
+    expect(target.received).toHaveLength(1);
+    fireHitboxTrigger(spawned, target);
+    expect(target.received).toHaveLength(2);
+    pc._tick(0.1);
+    expect(target.received).toHaveLength(3);
+  });
+
+  it("keeps once-per-window behavior across exit and re-entry when every is omitted", () => {
+    const { entity, scene, pc } = setup();
+    entity.add(new Facing());
+    entity.add(
+      new Abilities([
+        {
+          id: "swing",
+          timeline: [
+            hitbox({
+              from: 0,
+              to: 1,
+              shape: { type: "circle", radius: 5 },
+              hit: {},
+            }),
+          ],
+        },
+      ]),
+    );
+
+    entity.get(Abilities).send("swing");
+    pc._tick(0.01);
+    const spawned = findHitbox(scene);
+    const target = scene.spawn(Target);
+    target.add(new Transform({ position: new Vec2(10, 0) }));
+    fireHitboxTrigger(spawned, target);
+    leaveHitboxTrigger(spawned, target);
+    fireHitboxTrigger(spawned, target);
+
+    expect(target.received).toHaveLength(1);
   });
 
   it("tracks two overlapping hitbox windows in one timeline independently", () => {

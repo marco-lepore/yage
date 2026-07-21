@@ -1,4 +1,10 @@
-import { Component, defineEvent } from "@yagejs/core";
+import { Component, defineEvent, serializable } from "@yagejs/core";
+
+/** Serialized `Health` state. */
+export interface HealthSnapshot {
+  hp: number;
+  max: number;
+}
 
 /** Damage landed on a `Health`. `amount` is the HP actually subtracted (post-clamp). */
 export const HealthDamaged = defineEvent<{ amount: number; hp: number }>(
@@ -20,6 +26,7 @@ export const HealthDied = defineEvent("health:died");
  * fields for direct reads/tweaks — writing them directly skips the events
  * and clamping.
  */
+@serializable({ type: "@yagejs-addons/abilities/Health" })
 export class Health extends Component {
   hp: number;
   max: number;
@@ -52,5 +59,13 @@ export class Health extends Component {
     this.hp += applied;
     this.entity.emit(HealthHealed, { amount: applied, hp: this.hp });
     return applied;
+  }
+
+  serialize(): HealthSnapshot {
+    return { hp: this.hp, max: this.max };
+  }
+
+  static fromSnapshot(data: HealthSnapshot): Health {
+    return new Health({ max: data.max, initial: data.hp });
   }
 }

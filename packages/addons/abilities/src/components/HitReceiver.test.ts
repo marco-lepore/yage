@@ -8,7 +8,11 @@ import {
   trait,
 } from "@yagejs/core";
 import { HitGuarded, HitReceived, HitReceiver } from "./HitReceiver.js";
-import type { GuardParams, HitReceiverOptions } from "./HitReceiver.js";
+import type {
+  GuardParams,
+  HitReceivedPayload,
+  HitReceiverOptions,
+} from "./HitReceiver.js";
 import { Health } from "./Health.js";
 import { HitDealt } from "./reportedDelivery.js";
 import { Hittable } from "../core/hit/types.js";
@@ -40,10 +44,14 @@ function setup(options?: HitReceiverOptions) {
   const { entity } = createMockEntity("victim");
   const receiver = entity.add(new HitReceiver(options));
   const received: Hit[] = [];
+  const receivedPayloads: HitReceivedPayload[] = [];
   const guarded: Array<{ hit: Hit; outcome: HitResult }> = [];
-  entity.on(HitReceived, (hit) => received.push(hit));
+  entity.on(HitReceived, (payload) => {
+    received.push(payload.hit);
+    receivedPayloads.push(payload);
+  });
   entity.on(HitGuarded, (e) => guarded.push(e));
-  return { entity, receiver, received, guarded };
+  return { entity, receiver, received, receivedPayloads, guarded };
 }
 
 function makeHit(source: Entity, over: Partial<Hit> = {}): Hit {
@@ -392,6 +400,20 @@ describe("HitReceiver — guards", () => {
     expect(guarded).toEqual([{ hit, outcome: "blocked" }]);
   });
 
+  it("includes every engaged guard outcome when a modified hit lands", () => {
+    const { receiver, receivedPayloads } = setup({ steps: [] });
+    receiver.openGuard(
+      guardParams({ outcome: "blocked", policy: () => "modified" }),
+    );
+    receiver.openGuard(
+      guardParams({ outcome: "parried", policy: () => "modified" }),
+    );
+    const { entity: attacker } = createMockEntity("attacker");
+
+    expect(receiver.receive(makeHit(attacker))).toBe("hit");
+    expect(receivedPayloads[0]?.guardOutcomes).toEqual(["blocked", "parried"]);
+  });
+
   it("delivers a guard's punish to the attacker post-fold (direction defender→attacker)", () => {
     const { entity, receiver } = setup();
     entity.add(new Transform({ position: new Vec2(0, 0) }));
@@ -453,7 +475,7 @@ describe("HitReceiver — guards", () => {
     expect(() => receiver.receive(makeHit(attackerEntity))).not.toThrow();
   });
 
-  it("a punish delivery does not emit HitDealt on the defender (unreported in v1)", () => {
+  it("a punish delivery emits HitDealt on the defender", () => {
     const { entity, receiver } = setup();
     entity.add(new Transform({ position: new Vec2(0, 0) }));
     const { scene } = createMockScene();
@@ -467,8 +489,13 @@ describe("HitReceiver — guards", () => {
     );
     receiver.receive(makeHit(attacker));
 
-    expect(attacker.received).toHaveLength(1); // the punish still lands
-    expect(dealt).toEqual([]); // but the defender emits no HitDealt for it
+    expect(attacker.received).toHaveLength(1);
+    expect(dealt).toHaveLength(1);
+    expect(dealt[0]).toMatchObject({
+      target: attacker,
+      result: "hit",
+      data: { stun: 0.2 },
+    });
   });
 });
 

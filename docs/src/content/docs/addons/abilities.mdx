@@ -1,0 +1,502 @@
+---
+title: Abilities
+description: Phase-based abilities and a concrete hit contract for combos, holds, cooldowns, hitboxes, projectiles, guards, health, and reactions
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+`@yagejs-addons/abilities` supplies the timed action and hit-receipt code that
+action games usually repeat for every attack. Abilities are phase graphs driven
+by intent strings. The same package supplies hitboxes, projectiles, touch
+damage, guards, health, knockback, and hit-stun.
+
+The root entry is headless. It depends on `@yagejs/core` and
+`@yagejs/physics`, but has no renderer or Pixi dependency. Player input is an
+optional adapter under `@yagejs-addons/abilities/input`; AI and scripted actors
+call the runner directly.
+
+## Install
+
+```bash
+npm install @yagejs-addons/abilities @yagejs/core @yagejs/physics
+# Add this only when using AbilityDriver:
+npm install @yagejs/input
+```
+
+Register `PhysicsPlugin` before using hitboxes, projectiles, touch damage, or
+the default knockback reaction. The addon does not add a plugin of its own.
+
+## Quick start
+
+<Steps>
+
+1. **Define an ability.** A plain `timeline` is a single phase.
+
+   ```ts
+   import type { AbilityDef } from "@yagejs-addons/abilities";
+   import { hitbox } from "@yagejs-addons/abilities";
+
+   const SLASH: AbilityDef = {
+     id: "slash",
+     cooldown: 0.45,
+     duration: 0.35,
+     timeline: [
+       hitbox({
+         from: 0.08,
+         to: 0.2,
+         shape: { type: "capsule", halfHeight: 18, radius: 10, axis: "x" },
+         offset: { x: 30, y: 0 },
+         hit: { damage: 18, knockback: 260, stun: 0.3 },
+       }),
+     ],
+   };
+   ```
+
+2. **Add the runner and receiver components.** A hittable entity declares the
+   `Hittable` trait and delegates `receiveHit` to `HitReceiver`. `Facing`
+   supplies the default aim for delivery steps; update it from movement or
+   pass an explicit `aim` resolver.
+
+   ```ts
+   import { Entity, ProcessComponent, Transform, trait } from "@yagejs/core";
+   import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
+   import {
+     Abilities, Facing, Health, Hittable, HitReceiver, Stagger,
+   } from "@yagejs-addons/abilities";
+   import type { Hit, HitResult } from "@yagejs-addons/abilities";
+
+   @trait(Hittable)
+   class Fighter extends Entity {
+     receiveHit(hit: Hit): HitResult {
+       return this.get(HitReceiver).receive(hit);
+     }
+
+     setup(): void {
+       this.add(new Transform());
+       this.add(new ProcessComponent());
+       this.add(new RigidBodyComponent({ type: "dynamic" }));
+       this.add(new ColliderComponent({ shape: { type: "circle", radius: 12 } }));
+       this.add(new Facing()); // defaults to +x
+       this.add(new Health({ max: 100 }));
+       this.add(new Stagger());
+       this.add(new HitReceiver({ team: "player", iframes: 0.15 }));
+       this.add(new Abilities([SLASH]));
+     }
+   }
+   ```
+
+3. **Send an intent.** Players and AI use the same runner call.
+
+   ```ts
+   const abilities = fighter.get(Abilities);
+   const result = abilities.send("slash");
+   if (!result.ok) console.log(result.reason);
+   ```
+
+</Steps>
+
+## Author timelines and phases
+
+Every timeline step is either a point (`at`) or a window (`from`/`to`). The
+built-in steps cover common combat work: `hitbox`, `spawn`, `guard`, `parry`,
+`block`, `invulnerable`, `slowmo`, `anim`, and `staggerMotion`. Use
+`defineStep` for game-specific movement, animation, sound, or effects.
+
+A combo is one definition with named phases. Each phase can handle an intent
+through `on`. A guarded transition accepts the intent only inside its
+transition window. Use `from: "end"` with `for` for a post-phase combo input:
+
+```ts
+const COMBO: AbilityDef = {
+  id: "attack",
+  tags: ["melee"],
+  phases: {
+    jab: {
+      duration: 0.4,
+      timeline: [/* jab steps */],
+      on: { attack: { to: "cross", from: "end", for: 0.25 } },
+    },
+    cross: {
+      duration: 0.46,
+      timeline: [/* cross steps */],
+      on: { attack: { to: "hook", from: "end", for: 0.25 } },
+    },
+    hook: { duration: 0.8, timeline: [/* finisher steps */] },
+  },
+};
+```
+
+An absolute `until` value past the phase duration also creates linger. A
+transition chooses either absolute `until` or relative `for`. `from: "end"`
+is valid only on a fixed-duration phase. Sending the intent during linger
+starts a new activation at the target phase without checking or re-arming the
+original cooldown.
+
+A hold phase lasts until `release(intent)`, `hold.max`, or an `after`
+transition. `next` is the normal release destination:
+
+```ts
+const CHARGE: AbilityDef = {
+  id: "charge",
+  phases: {
+    windup: {
+      hold: { max: 3 },
+      next: "strike",
+      timeline: [anim({ at: 0, name: "charge" })],
+    },
+    strike: {
+      priority: 110,
+      timeline: [hitbox({
+        from: 0.1,
+        to: 0.25,
+        shape: { type: "capsule", halfHeight: 18, radius: 10, axis: "x" },
+        hit: { damage: 24, knockback: 320, stun: 0.35 },
+      })],
+    },
+  },
+};
+
+abilities.send("charge");
+abilities.release("charge");
+```
+
+`priority` decides whether an incoming definition may interrupt a busy lane.
+`cancels` opens an explicit admission window. String matchers name resolved
+definition ids; `{ tag: "movement" }` matches any definition carrying that
+tag:
+
+```ts
+const attack: AbilityDef = {
+  id: "attack",
+  duration: 0.7,
+  cancels: [{ from: 0.35, into: [{ tag: "movement" }] }],
+  timeline: [/* ... */],
+};
+
+const dash: AbilityDef = {
+  id: "dash",
+  tags: ["movement"],
+  timeline: [/* ... */],
+};
+```
+
+Only one activation occupies a lane. Definitions use the `"main"` lane by
+default; actions such as potions can use `lane: "item"` and run at the same
+time.
+
+## Drive the runner
+
+The runtime surface is small:
+
+```ts
+abilities.send(intent, { data, lane });                 // PlayResult
+abilities.canSend(intent, { lane, interrupts: true });  // boolean dry-run
+abilities.release(intent);                             // complete a matching hold
+abilities.cancel(lane);                                // cancel one lane
+abilities.cancelAll();                                 // cancel every lane
+abilities.force(reactionDef);                          // reactions only
+```
+
+`send` returns `{ ok: true, activation }` or `{ ok: false, reason }`. Rejection
+reasons are `"cooldown"`, `"busy"`, and `"noMatch"`. An unknown intent throws
+because it is an authoring error.
+
+`canSend` is polite by default: it does not count a higher-priority interrupt
+as available, which lets buffered presses wait instead of cutting off the
+current action. Pass `{ interrupts: true }` for a full dry-run of a direct
+`send`.
+
+`active(lane)` returns `AbilityActivation | null`. The handle exposes the
+definition, phase, phase clock, total elapsed time, payload, lane, entity,
+forced flag, terminal state, `isHolding`, and `isStepActive(kind)`. Use
+`activeId`, `isActive`, `elapsed`,
+`cooldownRemaining`, and `cooldownRatio` for simpler reads.
+
+Listen to `AbilityStarted`, `AbilityPhaseChanged`, and `AbilityEnded` on the entity.
+One run emits one start/end pair; phase changes do not end the activation.
+
+## Map input actions to intents
+
+`AbilityDriverComponent` handles input edges, tap/hold classification, retry
+buffers, hold release, payload capture, and resuming an interrupted hold. Add
+it after `Abilities`; it resolves `InputManagerKey`, updates automatically,
+and cleans up with the entity:
+
+```ts
+import { AbilityDriverComponent } from "@yagejs-addons/abilities/input";
+
+this.add(new AbilityDriverComponent({
+  defaults: { tapWithin: 0.22, holdAt: 0.5 },
+  bindings: {
+    attack: {
+      tap: { send: "attack", buffer: 0.18 },
+      hold: {
+        send: "charge",
+        fromNeutral: true,
+        resume: true,
+        release: { send: "charge-release", buffer: 0.4 },
+      },
+    },
+    dash: { press: { send: "dash", buffer: 0.12 } },
+  },
+}));
+```
+
+Use the plain `AbilityDriver(input, abilities, options)` when another object
+owns lifecycle. Call its `update()` from normal update, not `fixedUpdate`, and
+call `dispose()` on removal. Gesture thresholds and buffers use raw input
+seconds; ability phases use scaled scene time.
+
+Every `press`, `tap`, `hold`, and nested `hold.release` send accepts `buffer`
+and `data`. A data resolver runs at the input edge and receives the action,
+gesture, intent, lane, raw `heldFor`, and the activation owned by the press.
+The captured value becomes `activation.payload` even when a buffered send
+fires later.
+
+Use `gate(context)` for game-side admission such as stamina. Use
+`beforeFire(context)` to sample or spend state immediately before an admitted
+send. Games that do not want the adapter call `send` and `release` directly.
+
+## Replace a complete loadout
+
+Use `addDefinitions(defs)` to install optional definitions without cancelling
+runs or clearing cooldown and linger state. The method validates the complete
+prospective set before changing the live indexes.
+
+`replaceDefinitions` validates and compiles the complete prospective set
+before changing live state. A validation failure leaves the installed set
+untouched. A successful replacement cancels every active run, removes linger
+and cooldown work, installs the new intent vocabulary, and emits cancellation
+events after listeners can observe the new set.
+
+```ts
+abilities.replaceDefinitions(next.defs);
+driverComponent.replace(next.input);
+```
+
+The game owns the matching input map. Replacing definitions does not reload an
+input mapping. Driver replacement discards buffered sends, recorded edges,
+and held-input ownership; a held action must be released and pressed again.
+Use namespaced ids such as `"sword/attack"` and `"staff/attack"` when
+loadouts use different intent vocabularies.
+
+## Receive and deliver hits
+
+`HitReceiver` resolves a hit in this order: team filter, i-frames, open guards,
+then ordered consequence stages. The default stages subtract
+`StandardHitData.damage` through `Health` and apply
+`knockback`/`stun` through `Stagger`.
+
+`Hit` carries the source entity, unit direction, optional team, string tags,
+and typed data. The default data fields are:
+
+```ts
+interface StandardHitData {
+  damage?: number;
+  knockback?: number; // px/s
+  stun?: number;      // seconds
+  hitstop?: number;   // carried to HitDealt; the game applies it
+}
+```
+
+The built-in delivery paths share one `HitDelivery` contract:
+
+- `hitbox` creates a sensor for a timeline window. It accepts circle, box,
+  capsule, or polygon shapes, a facing-local offset, optional follow, collider
+  layers/mask, aim, team, tags, and a static or fire-time `HitSpec`. With
+  `every`, current overlaps receive repeat deliveries; without it, each target
+  receives at most one hit per window.
+- `spawn` creates a game-defined `@trait(AbilitySpawned)` entity. The setup
+  context carries the original caster, aim, team, spawn position, typed params,
+  activation, and optional reporting delivery. `position` accepts an absolute
+  world point or fire-time resolver; facing-local `offset` applies afterward.
+  `Projectile` is the supplied moving entity for this path.
+- `TouchDamage` delivers on contact at a fixed interval.
+- `createHitDelivery` is the lower-level escape route for a custom overlap
+  source.
+
+`HitReceived` fires on the victim with `{ hit, guardOutcomes }` after a hit
+lands. `HitGuarded` fires for an engaged guard. `createReportingDelivery` also
+emits `HitDealt` on the original attacker with the result, typed default
+fire-time data, target, and optional ability provenance. Reporting deliveries
+inherit the source `HitReceiver.team`; an explicit delivery team wins.
+
+## Guards, invulnerability, reactions, and time
+
+`guard` opens a window whose policy returns `"pass"`, `"modified"`, or
+`"negate"`. Use `block` for scaled damage/knockback/stun and `parry` for a
+negating result with an optional punish hit. `invulnerable` opens a receipt
+window that coexists with the receiver's post-hit i-frames.
+
+`staggerReaction` creates the default forced reaction definition. The default
+`reactionStep` runs only when a landed hit has positive `stun`. With
+`Abilities`, it prefers a forced `staggerReaction`; `Stagger` is the direct
+fallback when no runner is present. Knockback without positive stun does not
+start a reaction. Reaction priority is `REACTION_PRIORITY` (`100`). Give a
+phase a higher priority only when that phase has earned super armor.
+
+`anim` drives core's renderer-free `KeyframeAnimator`. Sprite-sheet and other
+renderer animation controllers remain game code; define a custom timeline step
+when those controllers should follow an ability.
+
+`slowmo({ from, to, ... })` is a cancellation-bound window.
+`slowmo({ at, for, ... })` creates a raw-time request that can outlive phase
+completion or cancellation. Hitstop stays game-owned: declare `hitstop` beside
+the hit numbers, then respond to
+`HitDealt` with `SceneTime.freezeFor(data.hitstop)`. This lets one game choose
+which landed hits freeze time and which entities are excluded.
+
+## Define game-specific steps
+
+`defineStep(name, hooks)` returns a typed point/window factory. Components own
+the effect; the step only opens, updates, and closes it:
+
+```ts
+const lunge = defineStep<{ speed: number }>("velocity", {
+  enter({ speed }, ctx) {
+    const direction = ctx.entity.get(Facing).unit;
+    ctx.entity.get(RigidBodyComponent).setVelocity(direction.scale(speed));
+  },
+  exit(_params, ctx) {
+    ctx.entity.get(RigidBodyComponent).setVelocity(Vec2.ZERO);
+  },
+});
+```
+
+Give every velocity-owning window the same kind, then damp or overwrite
+velocity only when `!abilities.active()?.isStepActive("velocity")` and
+`Stagger.active` is false.
+
+## Integrate game stats and costs
+
+The addon has no attribute or resource model. Four existing boundaries cover
+the common numeric cases:
+
+- **Attack values:** pass a fire-time `HitSpec` builder to `hitbox` or `spawn`.
+- **Defense:** prepend a game-authored `HitStage` that adjusts `hit.data`
+  before `defaultHitSteps`.
+- **Maximum HP:** push the computed value into the public `Health.max` field,
+  then clamp or heal `hp` according to game rules.
+- **Cooldown speed:** use a `Scalar` function. The runner resolves it once when
+  the ability starts, so an already armed cooldown does not change under a
+  later haste update.
+
+```ts
+const ATTACK: AbilityDef = {
+  id: "attack",
+  cooldown: (ctx) => 0.8 / statsOf(ctx.entity).attackSpeed,
+  timeline: [
+    hitbox({
+      from: 0.1,
+      to: 0.2,
+      shape: { type: "capsule", halfHeight: 18, radius: 10, axis: "x" },
+      hit: (ctx) => ({ damage: statsOf(ctx.entity).attack, stun: 0.2 }),
+    }),
+  ],
+};
+```
+
+Resource costs use input or game policy: check in a binding `gate`, then spend
+in `beforeFire` after admission. AI can perform the same check before calling
+`send`.
+
+## Use custom hit data
+
+Raw primitives accept generics directly:
+
+```ts
+interface ElementHit extends StandardHitData {
+  element: "fire" | "ice";
+}
+
+const receiver = new HitReceiver<ElementHit>({ steps });
+const burn = hitbox<ElementHit>({ ...args, hit: { element: "fire", damage: 8 } });
+```
+
+For a game or combat system that uses the same data type throughout, call
+`createHitTools` once. The returned factories pin the type and supply guards
+for singleton trait and event boundaries:
+
+```ts
+const elementHits = createHitTools<ElementHit>({
+  isData(data): data is ElementHit {
+    return typeof data === "object" && data !== null && "element" in data;
+  },
+});
+
+const receiver = elementHits.receiver({ steps: [elementHits.stage(resist)] });
+const burn = elementHits.hitbox({ ...args, hit: { element: "fire", damage: 8 } });
+
+attacker.on(HitDealt, ({ data }) => {
+  if (elementHits.isData(data)) applyElementFeedback(data.element);
+});
+```
+
+Use `isHit` before passing an unknown `Hit` across the global `Hittable`
+boundary to a typed receiver. The helper does not create components, events,
+ability catalogs, or input drivers; every returned operation is also available
+as a raw export.
+
+## Save and restore
+
+`Health` is serializable under a stable namespaced type and round-trips
+`{ hp, max }` without emitting damage, heal, or death events during restore.
+
+All other addon runtime values are transient. Snapshots do not resume
+cooldowns, active phases or lanes, activation payloads, linger, forced
+reactions, driver buffers or held-input ownership, receiver i-frames, open
+guards, invulnerability windows, stagger, facing, or time requests. Loading a
+snapshot is a game-owned reconstruction point: restore entity state, rebuild
+the definitions and input driver, then re-enter safe gameplay state.
+
+## Death and corpses
+
+`HealthDied` reports death; the game decides what death does. Removing a
+controller from inside its own event listener is safe. A dynamic physics body
+can act as an immovable corpse by zeroing velocity and disabling translation:
+
+```ts
+entity.on(HealthDied, () => {
+  body.setVelocity(Vec2.ZERO);
+  body.setEnabledTranslations(false, false);
+  entity.remove(EnemyController);
+});
+```
+
+Corpses remain hittable unless the receiver filter rejects them. Preserve the
+default team rule when adding the dead-state check:
+
+```ts
+const health = entity.get(Health);
+
+const sameTeamAllowed = (hit: Hit, receiver: HitReceiver) =>
+  receiver.team === undefined || hit.team === undefined || hit.team !== receiver.team;
+
+entity.add(
+  new HitReceiver({
+    team: "enemy",
+    filter: (hit, receiver) => !health.isDead && sameTeamAllowed(hit, receiver),
+  }),
+);
+```
+
+## Try the example
+
+The repository's `examples/abilities-addon.html` is a playable arena brawl. It
+shows phased combos, charge/release, cancel windows, guards, reactions,
+hitstop, a game-side stats slice, an input driver, and complete combo/power
+loadout replacement. Press **E** to replace the definitions and matching input
+driver while the same `Abilities` component stays mounted.
+
+<Aside type="note">
+The package is renderer-free and has no presenter entry. Damage numbers,
+health bars, and impact presentation remain game code. The addon emits state
+and events for those views without requiring a renderer.
+</Aside>
+
+## Deliberate boundaries
+
+The addon does not supply a generic stats/buff/resource system, AI decision
+logic, a generic motion controller, tag-based loadout filtering, hierarchical
+or stateful tag rules, transient combat save state, or built-in presenters.
+These remain game policy or later additions to the existing public boundaries.
