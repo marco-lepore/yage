@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-addons/inventory",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Slot-based inventory model with stacking, item actions, and a themeable slot view with swappable cell presets for YAGE",
   "keywords": [
     "yage",

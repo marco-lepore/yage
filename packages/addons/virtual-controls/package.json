@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-addons/virtual-controls",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Mobile touch overlay for YAGE — virtual joystick + on-screen action buttons that drive the action map, with swappable presenters",
   "keywords": [
     "yage",

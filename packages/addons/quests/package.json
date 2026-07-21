@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-addons/quests",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Headless quest log with objectives, prerequisite chains, and auto-complete rollup for YAGE",
   "keywords": [
     "yage",
