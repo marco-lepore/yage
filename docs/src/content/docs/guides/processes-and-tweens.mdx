@@ -86,6 +86,17 @@ const invincibility = pc.slot({
 });
 ```
 
+Cancelling a slot keeps it registered so it can start again. When its owner
+will never reuse it, remove the slot from the component:
+
+```typescript
+pc.removeSlot(invincibility);
+```
+
+`removeSlot()` cancels an active slot, unregisters it, and returns `true`.
+It returns `false` when the slot belongs to another `ProcessComponent` or was
+already removed.
+
 ## One-Off Processes
 
 For fire-and-forget delays or single-use timers, use `pc.run()`:
@@ -221,9 +232,9 @@ timer.run(Process.delay(3, () => {
 }));
 ```
 
-`TimerEntity` exposes `.run()`, `.slot()`, and `.cancel()` directly — they
-forward to its internal `ProcessComponent`, so you don't need to fetch
-the component manually.
+`TimerEntity` exposes `.run()`, `.slot()`, `.removeSlot()`, and `.cancel()`
+directly. They forward to its internal `ProcessComponent`, so you don't need
+to fetch the component manually.
 
 ## Cancelling by Tag
 

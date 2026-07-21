@@ -117,6 +117,7 @@ export class ProcessSlot {
 
     // Run per-frame update
     const result = this.config.update?.(dt, this._elapsed);
+    if (this._completed) return;
 
     // Check duration-based completion
     const duration = this.config.duration;

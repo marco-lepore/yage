@@ -118,6 +118,66 @@ describe("ProcessComponent", () => {
     expect(pc.count).toBe(0);
   });
 
+  it("removeSlot() unregisters and cancels an owned slot", () => {
+    const pc = makeComponent();
+    const cleanup = vi.fn();
+    const update = vi.fn();
+    const slot = pc.slot({ duration: 100, cleanup, update });
+    slot.start();
+
+    expect(pc.removeSlot(slot)).toBe(true);
+    expect(slot.completed).toBe(true);
+    expect(cleanup).toHaveBeenCalledOnce();
+
+    pc._tick(1);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("removeSlot() removes a completed slot without running cleanup again", () => {
+    const pc = makeComponent();
+    const cleanup = vi.fn();
+    const slot = pc.slot({ duration: 1, cleanup });
+    slot.start();
+    pc._tick(1);
+    expect(cleanup).toHaveBeenCalledOnce();
+
+    expect(pc.removeSlot(slot)).toBe(true);
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(pc.removeSlot(slot)).toBe(false);
+  });
+
+  it("removeSlot() leaves a foreign slot untouched", () => {
+    const owner = makeComponent();
+    const other = makeComponent();
+    const slot = other.slot({ duration: 100 });
+    slot.start();
+
+    expect(owner.removeSlot(slot)).toBe(false);
+    expect(slot.completed).toBe(false);
+  });
+
+  it("removeSlot() during update prevents completion and a second cleanup", () => {
+    const pc = makeComponent();
+    const onComplete = vi.fn();
+    const cleanup = vi.fn();
+    const slot = pc.slot({
+      duration: 1,
+      update: () => {
+        pc.removeSlot(slot);
+        return true;
+      },
+      onComplete,
+      cleanup,
+    });
+    slot.start();
+
+    pc._tick(1);
+
+    expect(slot.completed).toBe(true);
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
+
   it("cancel() cancels all slots", () => {
     const pc = makeComponent();
     const cleanup = vi.fn();

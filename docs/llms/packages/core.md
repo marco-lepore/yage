@@ -207,6 +207,11 @@ Decision matrix:
 
 Tag processes with `pc.run(p, { tags: ["vfx"] })` then cancel groups with `pc.cancel("vfx")`. Processes and slots auto-cancel on entity destroy via `ProcessComponent.onDestroy()`.
 
+`pc.removeSlot(slot): boolean` cancels and unregisters one owned `ProcessSlot`.
+It returns `false` for a foreign or already-removed slot. Use it when a
+component permanently discards a dynamically-created slot; `slot.cancel()`
+alone keeps the reusable slot registered with its `ProcessComponent`.
+
 ### Animation
 
 Keyframe-based property animation on top of `ProcessComponent`. Runs multiple named animations concurrently; values interpolate between keyframes via an easing function and are pushed to a user-supplied setter.

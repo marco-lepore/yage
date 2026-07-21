@@ -36,6 +36,13 @@ export class ProcessComponent extends Component {
     return s;
   }
 
+  /** Stop managing a slot, cancelling it first when active. */
+  removeSlot(slot: ProcessSlot): boolean {
+    if (!this.slots.delete(slot)) return false;
+    slot.cancel();
+    return true;
+  }
+
   /** Cancel all processes and slots, or only those matching a tag. */
   cancel(tag?: string): void {
     // Cancel one-off processes
