@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-addons/interaction",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Proximity-based interaction (\"walk up, see a prompt, press E\") for YAGE — nearest-in-range focus selection and an interact event, headless and input-optional",
   "keywords": [
     "yage",
