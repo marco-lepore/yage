@@ -1,0 +1,17 @@
+# @yagejs/pathfinding
+
+## 0.9.0
+
+### Minor Changes
+
+- [#173](https://github.com/marco-lepore/yage/pull/173) [`bd3132d`](https://github.com/marco-lepore/yage/commit/bd3132d11274e3dfc29282b8ce802cfef1e73a57) Thanks [@marco-lepore](https://github.com/marco-lepore)! - New `@yagejs/pathfinding` package: grid A\* pathfinding.
+  - `GridGraph` — a grid graph with A\* search. `findPath(startWorld, goalWorld)` takes world-pixel coordinates and returns a `Path` of tile-centre waypoints, or `null` when no path exists. Configurable `isWalkable`/`cost` predicates (re-read on every search, so live map changes need no rebuild), diagonal movement policy (`"never"` / `"always"` / `"no-corner-cutting"`, default `"no-corner-cutting"`), and heuristic (`"manhattan"` / `"chebyshev"` / `"octile"` / `"euclidean"`, auto-picked from the diagonal policy by default).
+  - `gridFromTilemap` (import from `@yagejs/pathfinding/tilemap`) builds a `GridGraph` from a `@yagejs/tilemap` `TilemapData`'s tile layers, with `layers`/`blocked`/`cost`/`origin` options. The subpath keeps `@yagejs/tilemap` a type-only, optional peer — the root entry pulls in nothing beyond `@yagejs/core`.
+  - `gridFromColliders` (same subpath) builds a `GridGraph` from Tiled object-layer collision shapes (rects, circles, capsules, polygons, polylines) instead of tile gids — a cell blocks if any shape overlaps any part of it, with exact per-shape overlap (rotated OBB, capsule core distance, concave-safe polygon fill).
+
+  Deferred to a later minor: path smoothing, async/time-sliced search, nearest-walkable goal snapping, endpoint snapping, per-object cost, agent-radius inflation, waypoint/navmesh graphs and flow fields.
+
+### Patch Changes
+
+- Updated dependencies [[`0574e44`](https://github.com/marco-lepore/yage/commit/0574e44d68df2568c57d0275aff139bddebb06da), [`3f7a367`](https://github.com/marco-lepore/yage/commit/3f7a367edc5af8d0d78e6e95bcc709bd8b77d783), [`a5d7d53`](https://github.com/marco-lepore/yage/commit/a5d7d5370fb8db567f4ceb39934574ab5c37a174), [`22f8534`](https://github.com/marco-lepore/yage/commit/22f8534e8dbc9ef054c23a570ab851f8710db68f), [`da97f10`](https://github.com/marco-lepore/yage/commit/da97f10ba7cb7627f48efccf3bfe1836bfac3dbc), [`f6c2fa8`](https://github.com/marco-lepore/yage/commit/f6c2fa8e508620fb5356b8e4481a199115a73a45), [`10d3ac5`](https://github.com/marco-lepore/yage/commit/10d3ac5ec3f3dca593f35728b175df3bfd073bb6), [`8a933db`](https://github.com/marco-lepore/yage/commit/8a933db95eedb908ad98e95631d5022fe1e0ef28), [`9b637bc`](https://github.com/marco-lepore/yage/commit/9b637bcd832476a6c47eb4dacb8cf33e9c5139b0), [`9b02d02`](https://github.com/marco-lepore/yage/commit/9b02d024fe54ea30efef01a109387b839266b791), [`8156b6d`](https://github.com/marco-lepore/yage/commit/8156b6dcc8429b738c3efeb949fafd1cce245330), [`8d061c5`](https://github.com/marco-lepore/yage/commit/8d061c54eb0bbf3aed75b2b943fef1affdce7667)]:
+  - @yagejs/core@0.9.0

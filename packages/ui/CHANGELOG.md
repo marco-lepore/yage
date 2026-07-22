@@ -1,5 +1,50 @@
 # @yagejs/ui
 
+## 0.9.0
+
+### Minor Changes
+
+- [#194](https://github.com/marco-lepore/yage/pull/194) [`8156b6d`](https://github.com/marco-lepore/yage/commit/8156b6dcc8429b738c3efeb949fafd1cce245330) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Rename the UI element/Component split so the `UI*` prefix uniformly means "renderable UIElement".
+  - `PanelNode` → `UIPanel`, `ScrollViewNode` → `UIScrollView`; props types `PanelProps` → `UIPanelProps`, `ScrollViewProps` → `UIScrollViewProps` (aligning with the `UI<Element>Props` convention).
+  - The `UIPanel` Component is now `UISurface` (options type `UIPanelOptions` → `UISurfaceOptions`). Its root element is exposed as a public `readonly root: UIPanel`, replacing the internal `_node` field.
+  - `attachTooltip` takes `anchor: UIElement` only — the `UIElement | UIPanel` union is gone. A caller holding a surface passes `surface.root`.
+  - Save-snapshot caveat: the serializable type string follows the class name, so saves written before this rename that contain a `UIPanel` component no longer restore it (no registry alias is provided).
+
+- [#172](https://github.com/marco-lepore/yage/pull/172) [`8d061c5`](https://github.com/marco-lepore/yage/commit/8d061c54eb0bbf3aed75b2b943fef1affdce7667) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fixes the ui-react reconciler's element teardown and prop-removal handling — both required underlying changes here.
+  - Every element's `destroy()` (`PanelNode`, `UIButton`, `UICheckbox`, `UIImage`, `UINineSlice`, `UIProgressBar`, `UIText`, `UISplitText`, `ScrollViewNode`) is now idempotent — a second call is a no-op instead of double-freeing its Yoga node.
+  - `update()` on every element now treats a present-but-`undefined` prop key as "reset this prop to its default" (a cleared background, an unbound handler, a layout value back to its Yoga default) instead of silently ignoring it. `applyLayoutProps`/`applyLayoutValue` apply the same key-presence contract for the shared `LayoutProps` fields.
+
+- [#178](https://github.com/marco-lepore/yage/pull/178) [`82db867`](https://github.com/marco-lepore/yage/commit/82db867c0176208d5968ae3aa68296db3d724955) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Unify the five visual components' options, delete the raw-texture escape
+  hatches, and stop leaking raw `pixi.js` types from public signatures.
+  - Every UI primitive's public `container` / `displayObject` field (and
+    `SplitText`-related fields on `UISplitText`, `FloatingHandle.container`,
+    the exported `applyConsumeInput`/`clearConsumeInput`/`PointerEvents`
+    signatures) is now typed through `@yagejs/renderer`'s alias layer
+    (`DisplayContainer`, `DisplaySprite`, `NineSliceSprite`,
+    `DisplaySplitText`, `DisplaySplitBitmapText`, ...) instead of a raw
+    `pixi.js` import. Type-only change — the values are unchanged, and every
+    field still holds the real Pixi object.
+
+### Patch Changes
+
+- [#182](https://github.com/marco-lepore/yage/pull/182) [`a5c8be9`](https://github.com/marco-lepore/yage/commit/a5c8be9527ce31a5a8f0ce6b6d94a830d2322c83) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Close the raw `pixi.js` type positions that survived the type-alias sweep.
+  - Internal type positions (`floating.ts`'s overlay entries and layer,
+    `UIImage`/`UINineSlice`'s texture handles) now use the renderer aliases;
+    every remaining `pixi.js` import in the package is a value import for
+    constructing Pixi objects. No public API or behavior change.
+
+- [#197](https://github.com/marco-lepore/yage/pull/197) [`408fea0`](https://github.com/marco-lepore/yage/commit/408fea01e49c45b72fe54d37d389d54873b8594f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fix panel children that render outside the panel's box — an open `PixiSelect` dropdown, a popover — receiving no pointer or hover events.
+
+  Pixi treats a container's `hitArea` as a subtree prune gate: for a point outside the rectangle it skips the container and every descendant. A panel set its box-covering `hitArea` on its own container, so a child extending past the box (a dropdown opening downward) was pruned — only the portion still inside the box was clickable. The box-covering hitArea now lives on a dedicated transparent leaf child, which prunes nothing else: empty-region hover/click and the UI auto-consume fallback still cover the whole box, and overflowing children stay hittable.
+
+- [#198](https://github.com/marco-lepore/yage/pull/198) [`7832026`](https://github.com/marco-lepore/yage/commit/7832026be2366c774a6119ee830940be31733083) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `PixiSelect`'s open dropdown now draws above all other UI.
+
+  `@pixi/ui`'s `Select` renders its dropdown list inline — a child of the Select at the Select's own z-position — so a sibling drawn later (a label under the Select, a panel below it) painted over the open list and intercepted its pointer events, leaving the lower options unhoverable and unclickable. The dropdown is now lifted to the top of the render tree while open (its on-screen position and scale preserved via the world transform) and dropped back on close, so options that overflow the Select's panel stay visible and interactive.
+
+- Updated dependencies [[`a5c8be9`](https://github.com/marco-lepore/yage/commit/a5c8be9527ce31a5a8f0ce6b6d94a830d2322c83), [`c62453b`](https://github.com/marco-lepore/yage/commit/c62453b48a5f5dbebdb26c6bab495cc7d5b64195), [`0574e44`](https://github.com/marco-lepore/yage/commit/0574e44d68df2568c57d0275aff139bddebb06da), [`3f7a367`](https://github.com/marco-lepore/yage/commit/3f7a367edc5af8d0d78e6e95bcc709bd8b77d783), [`a5d7d53`](https://github.com/marco-lepore/yage/commit/a5d7d5370fb8db567f4ceb39934574ab5c37a174), [`22c05c8`](https://github.com/marco-lepore/yage/commit/22c05c8a561d6361ca3489eaa2d0a0ea5caf2492), [`22f8534`](https://github.com/marco-lepore/yage/commit/22f8534e8dbc9ef054c23a570ab851f8710db68f), [`da97f10`](https://github.com/marco-lepore/yage/commit/da97f10ba7cb7627f48efccf3bfe1836bfac3dbc), [`f6c2fa8`](https://github.com/marco-lepore/yage/commit/f6c2fa8e508620fb5356b8e4481a199115a73a45), [`f6c2fa8`](https://github.com/marco-lepore/yage/commit/f6c2fa8e508620fb5356b8e4481a199115a73a45), [`10d3ac5`](https://github.com/marco-lepore/yage/commit/10d3ac5ec3f3dca593f35728b175df3bfd073bb6), [`8a933db`](https://github.com/marco-lepore/yage/commit/8a933db95eedb908ad98e95631d5022fe1e0ef28), [`9b637bc`](https://github.com/marco-lepore/yage/commit/9b637bcd832476a6c47eb4dacb8cf33e9c5139b0), [`3fbbe3d`](https://github.com/marco-lepore/yage/commit/3fbbe3d3c936f636d5069e296a4ca228b7511c86), [`9b02d02`](https://github.com/marco-lepore/yage/commit/9b02d024fe54ea30efef01a109387b839266b791), [`8156b6d`](https://github.com/marco-lepore/yage/commit/8156b6dcc8429b738c3efeb949fafd1cce245330), [`8d061c5`](https://github.com/marco-lepore/yage/commit/8d061c54eb0bbf3aed75b2b943fef1affdce7667), [`0735a9a`](https://github.com/marco-lepore/yage/commit/0735a9a3a1fa6e3f7b8549887b9b87d43674df98), [`82db867`](https://github.com/marco-lepore/yage/commit/82db867c0176208d5968ae3aa68296db3d724955)]:
+  - @yagejs/renderer@0.9.0
+  - @yagejs/core@0.9.0
+
 ## 0.8.0
 
 ### Minor Changes

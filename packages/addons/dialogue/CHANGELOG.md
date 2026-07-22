@@ -1,5 +1,52 @@
 # @yagejs-addons/dialogue
 
+## 0.3.0
+
+### Minor Changes
+
+- [#155](https://github.com/marco-lepore/yage/pull/155) [`369b486`](https://github.com/marco-lepore/yage/commit/369b486fce03405d0d930dd85d4920fecb623b88) Thanks [@marco-lepore](https://github.com/marco-lepore)! - DialogueController's zero-config input now uses `dialogueControls()` (keyboard + pointer) so mouse/touch advance works out of the box, and it warns in dev when none of the default keyboard action names exist in the live `InputManager` action map. `KeyboardInputBinding` and `CompositeInputBinding` gain an `actionNames()` accessor exposing the action names a binding polls.
+
+- [#161](https://github.com/marco-lepore/yage/pull/161) [`2f1dd08`](https://github.com/marco-lepore/yage/commit/2f1dd088f928fd53b5c1156b594250decb539f9d) Thanks [@marco-lepore](https://github.com/marco-lepore)! - All author-facing durations are now **seconds**, matching the engine's time unit (there is no millisecond option left in the addon).
+  - `SayStep.autoAdvanceMs` → `autoAdvance` (seconds); the compact format's `auto=` hint follows (`auto=1.5`).
+  - `setAutoAdvance(seconds | null)` on the controller and session.
+  - `[pause=N/]` markup holds N **seconds** (`[pause=0.4/]`); `PauseToken.ms` → `PauseToken.seconds`.
+  - `createVoiceChannel`: `livenessMs` → `liveness` (seconds).
+  - `KeyboardInputBinding` / `dialogueControls`: `skipHoldMs` → `skipHold` (seconds).
+  - `CaretTheme.blinkMs` → `blink` (seconds); `DEFAULT_CARET_BLINK_MS` → `DEFAULT_CARET_BLINK` (`0.26`).
+  - `evaluateEffect` / `caretAlpha` take elapsed **seconds** (same visual output).
+  - Engine peerDependencies move to `>=0.9.0 <0.10.0` — the addon requires the seconds-based engine and does not work on the millisecond-`dt` 0.8 line.
+
+  Migration: divide any previous millisecond value by 1000 (`autoAdvanceMs: 1500` → `autoAdvance: 1.5`, `[pause=400/]` → `[pause=0.4/]`). Every renamed option fails as a type error, so stale call sites can't run 1000x slow silently.
+
+- [#164](https://github.com/marco-lepore/yage/pull/164) [`3d30d76`](https://github.com/marco-lepore/yage/commit/3d30d768846403a2e506b2957e6fea7b83cfafe4) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Domain-prefix the input and theme value exports so a game using both the dialogue and inventory addons never collides on an auto-import (both addons previously exported `fullControls`, `DEFAULT_ACTIONS`, and a generic `defaultTheme` with incompatible shapes).
+  - `fullControls` → `dialogueControls`
+  - `DEFAULT_ACTIONS` → `DEFAULT_DIALOGUE_ACTIONS`
+  - `FULL_ACTIONS` → `FULL_DIALOGUE_ACTIONS`
+  - `defaultTheme` → `defaultDialogueTheme`
+
+  The binding classes (`KeyboardInputBinding`, `PointerInputBinding`, `CompositeInputBinding`) and the `InputBinding` type keep their generic names — a wrong import there is a compile error, not a silent hazard, and identical shapes are harmless.
+
+  Migration: update imports and call sites to the new names. Behavior is unchanged; every renamed symbol fails as a type error, so stale sites can't run silently.
+
+- [#193](https://github.com/marco-lepore/yage/pull/193) [`d42ff58`](https://github.com/marco-lepore/yage/commit/d42ff5802a1421724954fb713b9267c54f954e4d) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Three-mode `input` option on `DialogueController`, matching the inventory controller's contract: `input?: InputBinding | null`.
+  - Omitted `input` now wires the default binding's pointer side to the bundle's own choices presenter — mouse/touch tap picks a choice row and hover highlights it out of the box (previously the zero-config pointer binding could only tap-to-advance). A custom choices presenter without `choiceAtPoint` keeps the old behavior.
+  - `input: null` attaches no binding at all — the ambient/cutscene/host-driven mode. The host calls `advance()`/`moveSelection()`/`choose()`/`skip()` itself; `setInputEnabled` becomes a no-op.
+  - An explicit `InputBinding` is used as-is, unchanged.
+
+- [#157](https://github.com/marco-lepore/yage/pull/157) [`a5018e2`](https://github.com/marco-lepore/yage/commit/a5018e21461e6959c3cd0b0f8e64166b18914d23) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add `createRecordStorage(record)` — a `VariableStorage` over a plain mutable `Record<string, string | number | boolean>` you already own, with no null guard to write by hand. The runtime can write `null` to a storage (from a literal `null` in a `set` directive and from reading an absent variable); by convention `null` means unset, so `createRecordStorage` deletes the key on a `null` write and the backing record stays typed non-null. Documents this null contract on the `VariableStorage.set` JSDoc.
+
+- [#159](https://github.com/marco-lepore/yage/pull/159) [`9b637bc`](https://github.com/marco-lepore/yage/commit/9b637bcd832476a6c47eb4dacb8cf33e9c5139b0) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Adapt to the seconds-based engine time unit.
+
+  `Component.update(dt)` now delivers seconds, so the dialogue clocks integrate in seconds: the typewriter reveal (`charsPerSec`), the auto-advance timer, the voice liveness budget, and the caret/bob animations. The authored durations move to seconds too (see the dedicated entry in this release). This release requires the `@yagejs/*` engine build that ships the seconds-based time unit.
+
+- [#156](https://github.com/marco-lepore/yage/pull/156) [`9f73abb`](https://github.com/marco-lepore/yage/commit/9f73abbafe83aaefcb768c741bf77c00fca7888c) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A speaker's id is now the `speakers` map key. `SpeakerDef` drops its `id` field, so authored entries no longer repeat the key (`gwen: { name: "Gwen" }` instead of `gwen: { id: "gwen", name: "Gwen" }`). The loader derives the id from the key, making a key/id mismatch impossible to write.
+
+### Patch Changes
+
+- [#165](https://github.com/marco-lepore/yage/pull/165) [`63c5722`](https://github.com/marco-lepore/yage/commit/63c572290d993e03371fdffece50b4e7cb160cef) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fix a layout-listener leak in the dialogue presenters. `BoxLayout.onChange` and `BubbleLayout.onChange` now return an unsubscribe function, and `DialogueChrome`, `InBoxAvatarPresenter`, and `BubbleAvatarPresenter` call it in `dispose()`. Before, the listener was never removed: a presenter disposed and re-created against a layout that outlived it stacked a second `onChange` callback that kept firing `applyGeometry`/`place`/`follow` over the destroyed entities. The built-in factories rebuild the layout together with the presenters, so no shipped setup hit this — the fix covers the public `@yagejs-addons/dialogue/presenters` exports, whose constructors take a layout the caller can retain.
+
+- [#169](https://github.com/marco-lepore/yage/pull/169) [`fa3619e`](https://github.com/marco-lepore/yage/commit/fa3619e331be0841598c57bcf7bb385341b92663) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `PointerInputBinding` skips taps on consumed pointers. A tap another handler claimed via `InputManager.consumePointer` (e.g. a virtual-controls overlay) no longer also advances the conversation or picks a choice. The check runs at poll time, where the consume mark is still set regardless of listener registration order.
+
 ## 0.2.0
 
 ### Minor Changes

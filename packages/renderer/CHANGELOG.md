@@ -1,5 +1,75 @@
 # @yagejs/renderer
 
+## 0.9.0
+
+### Minor Changes
+
+- [#188](https://github.com/marco-lepore/yage/pull/188) [`c62453b`](https://github.com/marco-lepore/yage/commit/c62453b48a5f5dbebdb26c6bab495cc7d5b64195) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Make animated sprite playback follow scene and entity time scaling.
+
+  `AnimatedSpriteComponent` animations freeze while their scene is paused, while
+  `scene.timeScale` is `0`, or while the component is disabled. Other scene and
+  entity time-scale values compose with Pixi's `animationSpeed`.
+
+- [#196](https://github.com/marco-lepore/yage/pull/196) [`22c05c8`](https://github.com/marco-lepore/yage/commit/22c05c8a561d6361ca3489eaa2d0a0ea5caf2492) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Explicit programmatic-texture path: runtime-created textures now register under asset keys.
+  - New `registerTexture(key, texture)` / `unregisterTexture(key)`: put a runtime-created texture (e.g. from `RendererPlugin.createTexture`) into the global asset cache under a key, so every key-based surface resolves it like a preloaded asset — `SpriteComponent`'s `texture`, `FrameSource.sheet` strips, and particles' `textureKey`. Registering over a loaded asset's key throws; unregistering never destroys the texture (the creator owns it).
+  - New `TextureRef` type (`string | TextureHandle`) — the serializable texture reference serialized components accept.
+  - Breaking: `SpriteComponentOptions.texture` and `setTexture()` narrow from `TextureInput` to `TextureRef` — raw `Texture` objects are no longer accepted. `serialize()` always returns full `SpriteData` (the null-with-console.warn path is gone) and `SpriteData.textureKey` is non-null. Reference runtime textures by registered key instead.
+  - Breaking: resolving a texture key that is neither preloaded nor registered now throws an error naming the key (`resolveTextureInput`, `sliceSheet`, and every component built on them) instead of producing an empty texture or an obscure downstream `TypeError`.
+
+- [#159](https://github.com/marco-lepore/yage/pull/159) [`9b637bc`](https://github.com/marco-lepore/yage/commit/9b637bcd832476a6c47eb4dacb8cf33e9c5139b0) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Change the engine time unit from milliseconds to seconds.
+
+  `Component.update(dt)` / `fixedUpdate(dt)` now receive seconds (~0.0167 at 60fps) instead of milliseconds. `EngineConfig.fixedTimestep` defaults to `1/60` and is expressed in seconds. All duration-based APIs follow: `Process.delay`, `ProcessSlot`/`ProcessComponent.slot` durations, `Tween`/`Sequence.wait`/`Tween.stagger` step, `KeyframeTrack` keyframe `time`, `LoadingScene.minDuration`, scene-transition durations (`fade`/`flash`/`crossFade`/`iris`/`irisReveal`/`chessboard`/`slidePush`), `CameraComponent.shake`/`zoomTo`, `AnimationController.playOneShot`, and effect durations/fades (`hitFlash`, `shockwave`, `fadeIn`/`fadeOut`) are all in seconds.
+
+  Migration: drop any `dt / 1000` conversion in your `update`/`fixedUpdate` code, and pass durations in seconds (e.g. `300` ms becomes `0.3`).
+
+- [#190](https://github.com/marco-lepore/yage/pull/190) [`3fbbe3d`](https://github.com/marco-lepore/yage/commit/3fbbe3d3c936f636d5069e296a4ca228b7511c86) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `FrameSource` sheet slicing covers multi-row grid sheets: the sheet variant (renamed `SheetFrameSource`, with `isSheetSource`; previously `StripFrameSource`/`isStripSource`) gains the full uniform-grid options (`count`, `columns`, `startX`, `startY`, `gapX`, `gapY`), so `AnimatedSpriteComponent` and `AnimationController` can address any frame grid serializably — a plain `{ sheet, frameWidth }` still reads the single top row. The shared slicer is exported as `sliceGrid(texture, options)`; `sliceSheet` and `sliceTextureFrames` delegate to it unchanged.
+
+- [#158](https://github.com/marco-lepore/yage/pull/158) [`0735a9a`](https://github.com/marco-lepore/yage/commit/0735a9a3a1fa6e3f7b8549887b9b87d43674df98) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Warn and fall back to the default layer when a renderable targets an undeclared layer.
+  - A visual component (`SpriteComponent`, `GraphicsComponent`, `AnimatedSpriteComponent`, `TextComponent`, `SplitTextComponent`, or a custom `LayerRenderable`) whose `layer` names a layer the scene never declared now emits a dev-mode `[yage]` warning — naming the entity, the missing layer, and the scene — and renders into the `"default"` layer, instead of failing with an opaque `RenderLayer not found` error and a silently missing sprite. The warning is tree-shaken from production builds.
+  - Clarified that `RendererAdapter.hitTestUI` only detects surfaces marked via `markPointerConsumeContainer` (`@yagejs/ui` primitives and `Sprite` / `AnimatedSprite` components), not raw-Pixi UI such as the dialogue addon's box; dialogue-aware callers should gate on `DialogueController.isActive()` / `isChoosing()`.
+
+- [#178](https://github.com/marco-lepore/yage/pull/178) [`82db867`](https://github.com/marco-lepore/yage/commit/82db867c0176208d5968ae3aa68296db3d724955) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Unify the five visual components' options, delete the raw-texture escape
+  hatches, and stop leaking raw `pixi.js` types from public signatures.
+  - `SpriteComponent`, `AnimatedSpriteComponent`, `GraphicsComponent`,
+    `TextComponent`, and `SplitTextComponent` all accept the same
+    `visible?`, `tint?: ColorValue`, `alpha?: number`, and
+    `interactive?: { eventMode?, consumeOnInteraction? }` options, with
+    matching `visible`/`tint`/`alpha` runtime accessors — `GraphicsComponent`
+    previously had none of these, and `SplitTextComponent` previously had no
+    effects/mask support (`fx`, `setMask`, `clearMask`) at all; both now
+    match the other three.
+  - **Breaking:** `AnimatedSpriteComponentOptions.textures` and
+    `AnimationDef.frames` are removed — `source` (a `FrameSource`) is now
+    required on both `AnimatedSpriteComponent` and `AnimationController`, so
+    every controller/sprite is always fully serializable (no more
+    `serialize(): null` + warn path for raw frames). The AnimatedSprite
+    tuple anchor form (`[x, y]`) is also removed — use `{ x, y }`.
+  - **Breaking:** `RendererConfig.pixi` is now `Partial<ApplicationOptions>`
+    instead of `Record<string, unknown>` — a misspelled Pixi Application
+    option now fails typecheck instead of being silently dropped.
+  - **Breaking:** no exported field, parameter, or return type in
+    `@yagejs/renderer` uses a raw `pixi.js` type anymore — every one goes
+    through this package's own alias layer (`DisplayContainer`,
+    `DisplaySprite`, `DisplayAnimatedSprite`, `DisplaySplitText`,
+    `DisplaySplitBitmapText`, `GraphicsContext`, `NineSliceSprite`, `Filter`,
+    `ParticleContainer`, `Application`, `ApplicationOptions`, ...). The
+    aliases are transparent type equalities, so this is type-only — no
+    runtime behavior changes, and every escape hatch (`.sprite`, `.graphics`,
+    `RendererPlugin.application`, ...) still returns the real Pixi object.
+
+### Patch Changes
+
+- [#182](https://github.com/marco-lepore/yage/pull/182) [`a5c8be9`](https://github.com/marco-lepore/yage/commit/a5c8be9527ce31a5a8f0ce6b6d94a830d2322c83) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Close the raw `pixi.js` type positions that survived the type-alias sweep.
+  - New `DestroyOptions` alias in the public type vocabulary (exported from
+    the barrel) — the visual components' protected `destroyOptions()` hook no
+    longer names a raw `pixi.js` type in the public `.d.ts`.
+
+- [#192](https://github.com/marco-lepore/yage/pull/192) [`f6c2fa8`](https://github.com/marco-lepore/yage/commit/f6c2fa8e508620fb5356b8e4481a199115a73a45) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Snapshot restore order is now driven by a `restorePriority` static on each component class.
+  - `VisualComponent` declares priority 30 (inherited by all visual components) and `AnimationController` declares 40, so on restore the animated sprite exists before the controller's `onAdd()` drives it.
+
+- Updated dependencies [[`0574e44`](https://github.com/marco-lepore/yage/commit/0574e44d68df2568c57d0275aff139bddebb06da), [`3f7a367`](https://github.com/marco-lepore/yage/commit/3f7a367edc5af8d0d78e6e95bcc709bd8b77d783), [`a5d7d53`](https://github.com/marco-lepore/yage/commit/a5d7d5370fb8db567f4ceb39934574ab5c37a174), [`22f8534`](https://github.com/marco-lepore/yage/commit/22f8534e8dbc9ef054c23a570ab851f8710db68f), [`da97f10`](https://github.com/marco-lepore/yage/commit/da97f10ba7cb7627f48efccf3bfe1836bfac3dbc), [`f6c2fa8`](https://github.com/marco-lepore/yage/commit/f6c2fa8e508620fb5356b8e4481a199115a73a45), [`10d3ac5`](https://github.com/marco-lepore/yage/commit/10d3ac5ec3f3dca593f35728b175df3bfd073bb6), [`8a933db`](https://github.com/marco-lepore/yage/commit/8a933db95eedb908ad98e95631d5022fe1e0ef28), [`9b637bc`](https://github.com/marco-lepore/yage/commit/9b637bcd832476a6c47eb4dacb8cf33e9c5139b0), [`9b02d02`](https://github.com/marco-lepore/yage/commit/9b02d024fe54ea30efef01a109387b839266b791), [`8156b6d`](https://github.com/marco-lepore/yage/commit/8156b6dcc8429b738c3efeb949fafd1cce245330), [`8d061c5`](https://github.com/marco-lepore/yage/commit/8d061c54eb0bbf3aed75b2b943fef1affdce7667)]:
+  - @yagejs/core@0.9.0
+
 ## 0.8.0
 
 ### Minor Changes

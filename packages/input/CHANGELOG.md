@@ -1,5 +1,43 @@
 # @yagejs/input
 
+## 0.9.0
+
+### Minor Changes
+
+- [#152](https://github.com/marco-lepore/yage/pull/152) [`96e356e`](https://github.com/marco-lepore/yage/commit/96e356ec3c2eba86c494555b78f38ea3a60d1175) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add action-level synthetic hold injection. `fireActionDown` / `fireActionUp` / `setActionHeld` drive an action by name: they sustain `isPressed` across frames, emit a real `isJustReleased` edge, fire `onActionReleased`, and feed `getHoldDuration` — so synthetic devices like touch buttons and virtual controls can drive hold and charge actions with no keymap knowledge, symmetric to the physical-key `fireKeyDown` / `fireKeyUp` path.
+
+  `consumePointer` is now documented as the way to forward or replay a synthetic pointer to the canvas without leaking the tap into gameplay action edges.
+
+- [#163](https://github.com/marco-lepore/yage/pull/163) [`da97f10`](https://github.com/marco-lepore/yage/commit/da97f10ba7cb7627f48efccf3bfe1836bfac3dbc) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Analog read coherence for synthetic stick sources (virtual/touch controls, test probes):
+  - `getStick` / `getTrigger` now fall back to synthetic axis state (`fireGamepadAxis`) not only when no pad is active but also when the active pad's own input rests inside its deadzone — an idle controller sitting plugged in no longer masks an actively-deflected virtual stick. A pad deflected past the deadzone always wins.
+  - Export `applyRadialDeadzone(x, y, deadzone)` — the exact radial dead-zone + magnitude-rescale curve `getStick` applies to pad hardware, so synthetic stick sources shape their values with the same response instead of re-deriving the formula.
+
+- [#199](https://github.com/marco-lepore/yage/pull/199) [`223e900`](https://github.com/marco-lepore/yage/commit/223e900db261387992434fcb414cad73462104f2) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Expose the deterministic raw input clock through `InputManager.getClockTime()`.
+
+- [#163](https://github.com/marco-lepore/yage/pull/163) [`da97f10`](https://github.com/marco-lepore/yage/commit/da97f10ba7cb7627f48efccf3bfe1836bfac3dbc) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add `InputManager.hasAction(name)` — whether a name is defined in the current action map. The synthetic injection methods (`fireAction` / `fireActionDown` / `setActionHeld`) throw on unknown actions; callers that bind action names from config (virtual controls, rebind UIs) can now validate up front instead of catching mid-gesture.
+
+- [#187](https://github.com/marco-lepore/yage/pull/187) [`a714691`](https://github.com/marco-lepore/yage/commit/a714691d97b06938d5c735f1f4a3839218262ffd) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add tap/hold classifier and buffered-press queries to `InputManager`, and move the hold-duration surface to seconds.
+  - `isJustHeldFor(action, seconds)` — hold-start edge, true only on the frame the hold crosses the threshold. Call-site thresholds, no per-action config.
+  - `getReleaseDuration(action)` — seconds the action was held, valid on the release frame (survives `getHoldDuration` resetting to 0 that frame).
+  - `isJustTapped(action, maxSeconds)` / `isJustReleasedAfter(action, minSeconds)` — release-frame conveniences over `isJustReleased` + `getReleaseDuration`.
+  - `consumeBufferedPress(action, windowSeconds)` — consuming query: true if the action was pressed within the last window and unclaimed; claims the press so it fires at most once, re-arming only on a new press. Scoped to this query — `isJustPressed` and listeners still see every press.
+
+  All four are manager-level, so synthetic and touch input (`fireActionDown` / `setActionHeld`) drive them with no extra work.
+
+  `getHoldDuration` and `isHeldFor` now take and return **seconds** instead of milliseconds, matching engine time everywhere else. Divide-by-1000 call sites go away; hold thresholds are now plain seconds (`isHeldFor("attack", 0.5)`).
+
+- [#159](https://github.com/marco-lepore/yage/pull/159) [`9b637bc`](https://github.com/marco-lepore/yage/commit/9b637bcd832476a6c47eb4dacb8cf33e9c5139b0) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Change the engine time unit from milliseconds to seconds.
+
+  `Component.update(dt)` / `fixedUpdate(dt)` now receive seconds (~0.0167 at 60fps) instead of milliseconds. `EngineConfig.fixedTimestep` defaults to `1/60` and is expressed in seconds. All duration-based APIs follow: `Process.delay`, `ProcessSlot`/`ProcessComponent.slot` durations, `Tween`/`Sequence.wait`/`Tween.stagger` step, `KeyframeTrack` keyframe `time`, `LoadingScene.minDuration`, scene-transition durations (`fade`/`flash`/`crossFade`/`iris`/`irisReveal`/`chessboard`/`slidePush`), `CameraComponent.shake`/`zoomTo`, `AnimationController.playOneShot`, and effect durations/fades (`hitFlash`, `shockwave`, `fadeIn`/`fadeOut`) are all in seconds.
+
+  Migration: drop any `dt / 1000` conversion in your `update`/`fixedUpdate` code, and pass durations in seconds (e.g. `300` ms becomes `0.3`).
+
+### Patch Changes
+
+- Updated dependencies [[`3d7d69e`](https://github.com/marco-lepore/yage/commit/3d7d69ee94ea1dc4db7b2369127cb3b36eb53556), [`0574e44`](https://github.com/marco-lepore/yage/commit/0574e44d68df2568c57d0275aff139bddebb06da), [`3f7a367`](https://github.com/marco-lepore/yage/commit/3f7a367edc5af8d0d78e6e95bcc709bd8b77d783), [`a5d7d53`](https://github.com/marco-lepore/yage/commit/a5d7d5370fb8db567f4ceb39934574ab5c37a174), [`22f8534`](https://github.com/marco-lepore/yage/commit/22f8534e8dbc9ef054c23a570ab851f8710db68f), [`da97f10`](https://github.com/marco-lepore/yage/commit/da97f10ba7cb7627f48efccf3bfe1836bfac3dbc), [`f6c2fa8`](https://github.com/marco-lepore/yage/commit/f6c2fa8e508620fb5356b8e4481a199115a73a45), [`10d3ac5`](https://github.com/marco-lepore/yage/commit/10d3ac5ec3f3dca593f35728b175df3bfd073bb6), [`8a933db`](https://github.com/marco-lepore/yage/commit/8a933db95eedb908ad98e95631d5022fe1e0ef28), [`9b637bc`](https://github.com/marco-lepore/yage/commit/9b637bcd832476a6c47eb4dacb8cf33e9c5139b0), [`9b02d02`](https://github.com/marco-lepore/yage/commit/9b02d024fe54ea30efef01a109387b839266b791), [`8156b6d`](https://github.com/marco-lepore/yage/commit/8156b6dcc8429b738c3efeb949fafd1cce245330), [`8d061c5`](https://github.com/marco-lepore/yage/commit/8d061c54eb0bbf3aed75b2b943fef1affdce7667)]:
+  - @yagejs/debug@0.9.0
+  - @yagejs/core@0.9.0
+
 ## 0.8.0
 
 ### Patch Changes

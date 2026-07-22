@@ -1,5 +1,27 @@
 # @yagejs/ui-react
 
+## 0.9.0
+
+### Minor Changes
+
+- [#172](https://github.com/marco-lepore/yage/pull/172) [`8d061c5`](https://github.com/marco-lepore/yage/commit/8d061c54eb0bbf3aed75b2b943fef1affdce7667) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fixes three long-standing reconciler bugs and derives JSX prop types from `@yagejs/ui` instead of hand-copying them.
+  - Unmounting a React-managed UI element (a `{open && <Panel/>}` toggle, a list item diffed away, or the whole `<UIRoot>` tree torn down) now destroys it, freeing its Yoga node and Pixi resources. Previously only the imperative `@yagejs/ui` API did this — every React unmount leaked.
+  - `commitUpdate` now diffs old vs. new props and forwards removed keys as explicit `undefined`, so `bg={selected ? hl : undefined}` and conditional prop spreads (`{...(open ? { onClick } : {})}`) reset the prop instead of leaving the old value.
+  - `useQuery` releases its `QueryCache` registration on unmount (see the `@yagejs/core` changeset in this release) instead of leaking one live query per mount.
+  - JSX prop interfaces (`PanelProps`, `ButtonProps`, `TextProps`, `CheckboxProps`, `ScrollViewReactProps`, the `Pixi*ReactProps` types, and the rest) now extend their `@yagejs/ui` imperative counterparts instead of hand-copied fields, fixing drift where `consumeInput` compiled on the imperative API but not in JSX (`Checkbox`, `ScrollView`, the Pixi\* wrappers). The dead `PanelProps.anchor` field is removed.
+  - `bg` is now a documented JSX-only shorthand for `background` on `Panel`, `Button`, and `ScrollView`, expanded through a shared alias table. Passing both `bg` and `background` on the same element resolves to `background` and dev-warns once per element type. `PixiProgressBar`/`PixiSlider`/`PixiInput`'s own `bg` (a required `@pixi/ui` view-slot prop) is untouched.
+  - A bare text/number JSX child (`<Panel>Score: {score}</Panel>`) now dev-warns once, since this reconciler has no host text node and previously dropped the content silently.
+
+### Patch Changes
+
+- [#194](https://github.com/marco-lepore/yage/pull/194) [`8156b6d`](https://github.com/marco-lepore/yage/commit/8156b6dcc8429b738c3efeb949fafd1cce245330) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Rename the UI element/Component split so the `UI*` prefix uniformly means "renderable UIElement".
+  - Internal adaptation to the `@yagejs/ui` renames (`UIPanel`, `UIScrollView`, `UIPanelProps`, `UIScrollViewProps`); the public JSX API is unchanged.
+
+- Updated dependencies [[`a5c8be9`](https://github.com/marco-lepore/yage/commit/a5c8be9527ce31a5a8f0ce6b6d94a830d2322c83), [`a5c8be9`](https://github.com/marco-lepore/yage/commit/a5c8be9527ce31a5a8f0ce6b6d94a830d2322c83), [`c62453b`](https://github.com/marco-lepore/yage/commit/c62453b48a5f5dbebdb26c6bab495cc7d5b64195), [`0574e44`](https://github.com/marco-lepore/yage/commit/0574e44d68df2568c57d0275aff139bddebb06da), [`408fea0`](https://github.com/marco-lepore/yage/commit/408fea01e49c45b72fe54d37d389d54873b8594f), [`7832026`](https://github.com/marco-lepore/yage/commit/7832026be2366c774a6119ee830940be31733083), [`3f7a367`](https://github.com/marco-lepore/yage/commit/3f7a367edc5af8d0d78e6e95bcc709bd8b77d783), [`a5d7d53`](https://github.com/marco-lepore/yage/commit/a5d7d5370fb8db567f4ceb39934574ab5c37a174), [`22c05c8`](https://github.com/marco-lepore/yage/commit/22c05c8a561d6361ca3489eaa2d0a0ea5caf2492), [`22f8534`](https://github.com/marco-lepore/yage/commit/22f8534e8dbc9ef054c23a570ab851f8710db68f), [`da97f10`](https://github.com/marco-lepore/yage/commit/da97f10ba7cb7627f48efccf3bfe1836bfac3dbc), [`f6c2fa8`](https://github.com/marco-lepore/yage/commit/f6c2fa8e508620fb5356b8e4481a199115a73a45), [`f6c2fa8`](https://github.com/marco-lepore/yage/commit/f6c2fa8e508620fb5356b8e4481a199115a73a45), [`10d3ac5`](https://github.com/marco-lepore/yage/commit/10d3ac5ec3f3dca593f35728b175df3bfd073bb6), [`8a933db`](https://github.com/marco-lepore/yage/commit/8a933db95eedb908ad98e95631d5022fe1e0ef28), [`9b637bc`](https://github.com/marco-lepore/yage/commit/9b637bcd832476a6c47eb4dacb8cf33e9c5139b0), [`3fbbe3d`](https://github.com/marco-lepore/yage/commit/3fbbe3d3c936f636d5069e296a4ca228b7511c86), [`9b02d02`](https://github.com/marco-lepore/yage/commit/9b02d024fe54ea30efef01a109387b839266b791), [`8156b6d`](https://github.com/marco-lepore/yage/commit/8156b6dcc8429b738c3efeb949fafd1cce245330), [`8156b6d`](https://github.com/marco-lepore/yage/commit/8156b6dcc8429b738c3efeb949fafd1cce245330), [`8d061c5`](https://github.com/marco-lepore/yage/commit/8d061c54eb0bbf3aed75b2b943fef1affdce7667), [`8d061c5`](https://github.com/marco-lepore/yage/commit/8d061c54eb0bbf3aed75b2b943fef1affdce7667), [`0735a9a`](https://github.com/marco-lepore/yage/commit/0735a9a3a1fa6e3f7b8549887b9b87d43674df98), [`82db867`](https://github.com/marco-lepore/yage/commit/82db867c0176208d5968ae3aa68296db3d724955), [`82db867`](https://github.com/marco-lepore/yage/commit/82db867c0176208d5968ae3aa68296db3d724955)]:
+  - @yagejs/renderer@0.9.0
+  - @yagejs/ui@0.9.0
+  - @yagejs/core@0.9.0
+
 ## 0.8.0
 
 ### Minor Changes

@@ -1,5 +1,55 @@
 # @yagejs/core
 
+## 0.9.0
+
+### Minor Changes
+
+- [#201](https://github.com/marco-lepore/yage/pull/201) [`0574e44`](https://github.com/marco-lepore/yage/commit/0574e44d68df2568c57d0275aff139bddebb06da) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Make class-based entity spawning safe for addon-authored setup hooks.
+  - Add `entityClassHasTrait()` for checking inherited traits before spawning an entity class.
+  - Remove a class-spawned entity and its descendants immediately when its `setup()` method throws, then rethrow the original error.
+
+- [#166](https://github.com/marco-lepore/yage/pull/166) [`3f7a367`](https://github.com/marco-lepore/yage/commit/3f7a367edc5af8d0d78e6e95bcc709bd8b77d783) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add `Process.elapsed` — seconds accumulated from the dt the process is ticked with, so it reflects any time scaling applied by the caller. Does not advance while paused.
+
+- [#153](https://github.com/marco-lepore/yage/pull/153) [`a5d7d53`](https://github.com/marco-lepore/yage/commit/a5d7d5370fb8db567f4ceb39934574ab5c37a174) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `createList` / `s.list` accept an optional `keyBy` to look up items by a domain field in O(1). With it, `ReactiveList` exposes `findId(key)`, `getByKey(key)`, and `upsert(key, item)` — useful for inventories or registries keyed by something like an `itemId`. The key index is derived, so existing saves load unchanged.
+
+- [#200](https://github.com/marco-lepore/yage/pull/200) [`22f8534`](https://github.com/marco-lepore/yage/commit/22f8534e8dbc9ef054c23a570ab851f8710db68f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Allow `ProcessComponent` and `TimerEntity` to cancel and unregister an owned `ProcessSlot` by handle with `removeSlot()`.
+
+- [#163](https://github.com/marco-lepore/yage/pull/163) [`da97f10`](https://github.com/marco-lepore/yage/commit/da97f10ba7cb7627f48efccf3bfe1836bfac3dbc) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `RendererAdapter` gains an optional `visibleVirtualRect` — the on-screen region of virtual space clamped to the declared virtual rect, fresh per access. Renderer-agnostic screen-space overlays lay out against it instead of mapping canvas corners through `canvasToVirtual`: under letterbox fit the corners extend into the masked bars, where drawn content is clipped invisible while pointer input still lands. `RendererPlugin` already exposes the getter and now declares the adapter interface, so the member is compile-checked.
+
+- [#192](https://github.com/marco-lepore/yage/pull/192) [`f6c2fa8`](https://github.com/marco-lepore/yage/commit/f6c2fa8e508620fb5356b8e4481a199115a73a45) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Snapshot restore order is now driven by a `restorePriority` static on each component class.
+  - New `Component.restorePriority` static: on load, an entity's components are re-added in ascending priority (undeclared = 100, engine components reserve 0-99), so a component whose `onAdd()` reads a sibling can rely on lower-priority siblings being present. Subclasses inherit the base class's value unless they declare their own.
+  - `Transform` declares priority 0 — it restores before every other component.
+
+- [#191](https://github.com/marco-lepore/yage/pull/191) [`10d3ac5`](https://github.com/marco-lepore/yage/commit/10d3ac5ec3f3dca593f35728b175df3bfd073bb6) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Scene lifecycle signals: teardown gets full destroy semantics, and `onPause`/`onResume` fire on every effective pause transition.
+  - Scene teardown (`pop`, `replace`, engine shutdown) now marks every entity destroyed before any component `onDestroy` runs, and emits `entity:destroyed` once per entity — including entities queued with `destroy()` but not yet flushed. Cached references and lifetime-tracking listeners see the same contract on both destroy paths.
+  - After destruction — end-of-frame flush or scene teardown — `entity.scene` throws and `entity.tryScene` returns `null`. Component `onDestroy` hooks still see the scene; the entity detaches after component teardown.
+  - `Scene.paused` is now an accessor: assigning it fires `onPause`/`onResume` when the effective pause state (`isPaused`) flips. Manual pauses, `autoPauseOnBlur`, and snapshot restore of a paused scene all reach the hooks; writes that don't change the effective state (repeated assignments, flips masked by a stack pause, pre-push writes) fire nothing. To start a scene paused, set `paused = true` before pushing it; writing `paused` from inside a lifecycle hook races the transition's pause diff and logs a dev-mode warning.
+
+- [#189](https://github.com/marco-lepore/yage/pull/189) [`8a933db`](https://github.com/marco-lepore/yage/commit/8a933db95eedb908ad98e95631d5022fe1e0ef28) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `SceneTime`: per-scene arbitration for time effects — hitstop, slow motion, bullet time, freeze frames.
+  - New per-scene `SceneTime` service under the scene-scoped `SceneTimeKey`, registered by the engine for every scene. `scaleBy(factor, { for?, key?, excludeUpdates?, label? })` and `freezeFor(duration, { key?, label? })` return idempotent `TimeEffectHandle`s. Each `key` is a channel: within a channel the latest active request wins (older still-active entries apply again when it ends); across channels winners multiply; freeze is a ×0 factor. `scene.timeScale` stays the game's persistent knob and is never written by the service: `effectiveScale = scene.timeScale × channel winners`.
+  - Component updates and `ProcessComponent` ticks run under the per-entity `effectiveScaleForUpdates(entity)`, so `excludeUpdates` keeps chosen entities (e.g. a bullet-time caster) at full speed; `entity.timeScale` composes on top and is never written. Scene-pool processes run at the full `effectiveScale`.
+  - Request durations age on raw frame time at the start of each frame and hold while the scene is stack-paused; all requests release on scene exit, and effects are transient across save/load.
+  - `Scene.tryResolveScoped(key)` is public: read a scene-scoped service without engine-scope fallback.
+  - Inspector scene snapshots gain `effectiveTimeScale` and `frozen`.
+
+- [#159](https://github.com/marco-lepore/yage/pull/159) [`9b637bc`](https://github.com/marco-lepore/yage/commit/9b637bcd832476a6c47eb4dacb8cf33e9c5139b0) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Change the engine time unit from milliseconds to seconds.
+
+  `Component.update(dt)` / `fixedUpdate(dt)` now receive seconds (~0.0167 at 60fps) instead of milliseconds. `EngineConfig.fixedTimestep` defaults to `1/60` and is expressed in seconds. All duration-based APIs follow: `Process.delay`, `ProcessSlot`/`ProcessComponent.slot` durations, `Tween`/`Sequence.wait`/`Tween.stagger` step, `KeyframeTrack` keyframe `time`, `LoadingScene.minDuration`, scene-transition durations (`fade`/`flash`/`crossFade`/`iris`/`irisReveal`/`chessboard`/`slidePush`), `CameraComponent.shake`/`zoomTo`, `AnimationController.playOneShot`, and effect durations/fades (`hitFlash`, `shockwave`, `fadeIn`/`fadeOut`) are all in seconds.
+
+  Migration: drop any `dt / 1000` conversion in your `update`/`fixedUpdate` code, and pass durations in seconds (e.g. `300` ms becomes `0.3`).
+
+- [#154](https://github.com/marco-lepore/yage/pull/154) [`9b02d02`](https://github.com/marco-lepore/yage/commit/9b02d024fe54ea30efef01a109387b839266b791) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Omitting a required `setup()` field in `scene.spawn(Class, params)` or `entity.spawnChild(name, Class, params)` reports the missing field by name (`Property 'X' is missing`) instead of a confusing `SpawnOptions` error.
+
+  The class form derives its params slot from the `setup` parameter itself: a required parameter makes the params argument required (`spawn(Class)` is a type error even when the parameter object's fields are all optional), and the params slot only accepts the setup param type — a `SpawnOptions`-shaped literal is no longer silently accepted where params belong.
+
+- [#172](https://github.com/marco-lepore/yage/pull/172) [`8d061c5`](https://github.com/marco-lepore/yage/commit/8d061c54eb0bbf3aed75b2b943fef1affdce7667) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fixes a `useQuery` leak in `@yagejs/ui-react`: every mounted component registered a live query in the engine-wide `QueryCache` with no way to release it.
+  - `QueryCache` gains `unregister(result)` to stop a registered query from receiving further `onComponentAdded`/`onComponentRemoved` updates. A second call (or a result that was never registered) is a no-op. Queries registered once at system-install time (`DisplaySystem`, `UILayoutSystem`) are engine-lifetime by design and are unaffected.
+
+### Patch Changes
+
+- [#194](https://github.com/marco-lepore/yage/pull/194) [`8156b6d`](https://github.com/marco-lepore/yage/commit/8156b6dcc8429b738c3efeb949fafd1cce245330) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Rename the UI element/Component split so the `UI*` prefix uniformly means "renderable UIElement".
+  - The Inspector's UI-tree snapshot recognizes the renamed root component: it matches components named `UISurface` with a `root` element (previously `UIPanel` with `_node`) and emits `entity-<id>:UISurface:<i>` node ids.
+
 ## 0.8.0
 
 ### Minor Changes
