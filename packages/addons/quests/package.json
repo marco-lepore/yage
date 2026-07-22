@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-addons/quests",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Headless quest log with objectives, prerequisite chains, and auto-complete rollup for YAGE",
   "keywords": [
     "yage",
@@ -55,6 +55,6 @@
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.18",
-    "@yagejs/core": ">=0.8.0"
+    "@yagejs/core": ">=0.9.0"
   }
 }

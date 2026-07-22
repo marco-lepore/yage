@@ -1,5 +1,13 @@
 # create-yage
 
+## 0.9.0
+
+### Minor Changes
+
+- [#159](https://github.com/marco-lepore/yage/pull/159) [`9b637bc`](https://github.com/marco-lepore/yage/commit/9b637bcd832476a6c47eb4dacb8cf33e9c5139b0) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Update the scaffolded template for the seconds-based engine time unit.
+
+  The `Oscillate` component in the recommended template integrates `dt` directly; `Component.update(dt)` now delivers seconds, so it accumulates `dt` without the old millisecond conversion.
+
 ## 0.8.0
 
 ## 0.7.0
