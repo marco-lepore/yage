@@ -53,21 +53,39 @@ import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js"
 // ---------------------------------------------------------------------------
 const HUD_LAYER = "hud";
 
-let toastText: TextComponent | undefined;
-let toastTimer = 0;
+/**
+ * In-canvas toast: reveals its text and hides it after a delay counted in scene
+ * time (respects pause), instead of a wall-clock setTimeout. Destroyed with the
+ * scene, so no stale timer can fire against a torn-down component.
+ */
+class Toast extends Component {
+  private remaining = 0;
 
-function bindToast(text: TextComponent): void {
-  toastText = text;
+  constructor(private readonly text: TextComponent) {
+    super();
+  }
+
+  show(msg: string, seconds = 1.5): void {
+    this.text.setText(msg);
+    this.text.visible = true;
+    this.remaining = seconds;
+  }
+
+  update(dt: number): void {
+    if (this.remaining <= 0) return;
+    this.remaining -= dt;
+    if (this.remaining <= 0) this.text.visible = false;
+  }
+}
+
+let toast: Toast | undefined;
+
+function bindToast(t: Toast): void {
+  toast = t;
 }
 
 function showToast(msg: string): void {
-  if (!toastText) return;
-  toastText.setText(msg);
-  toastText.visible = true;
-  clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => {
-    if (toastText) toastText.visible = false;
-  }, 1500);
+  toast?.show(msg);
 }
 
 // ---------------------------------------------------------------------------
@@ -542,10 +560,10 @@ class SaveDemoScene extends Scene {
         anchor: { x: 0.5, y: 0.5 },
         style: { fontFamily: "monospace", fontSize: 14, fill: 0x22c55e },
         layer: HUD_LAYER,
+        visible: false,
       }),
     );
-    toastText.visible = false;
-    bindToast(toastText);
+    bindToast(toastEntity.add(new Toast(toastText)));
   }
 
   private buildStaticGeometry() {

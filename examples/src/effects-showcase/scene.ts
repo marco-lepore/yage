@@ -63,7 +63,7 @@ import {
   BlockEntity,
   GemEntity,
 } from "./entities.js";
-import { bindToast, showToast } from "./toast.js";
+import { Toast, bindToast, showToast } from "./toast.js";
 import { bindSidebar } from "./sidebar-scroll.js";
 
 @serializable
@@ -163,10 +163,10 @@ export class ShowcaseScene extends Scene {
         anchor: { x: 0.5, y: 0.5 },
         style: { fontFamily: "monospace", fontSize: 13, fill: 0x22c55e },
         layer: "ui",
+        visible: false,
       }),
     );
-    toastText.visible = false;
-    bindToast(toastText);
+    bindToast(toastEntity.add(new Toast(toastText)));
   }
 
   private buildPanel(): void {
