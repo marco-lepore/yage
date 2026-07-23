@@ -304,6 +304,10 @@ const { mocks } = vi.hoisted(() => {
       }
     }
 
+    removeCollider(collider: MockCollider) {
+      this._colliders.delete(collider.handle);
+    }
+
     castRayAndGetNormal() {
       return null;
     }
@@ -1023,6 +1027,26 @@ describe("PhysicsWorld", () => {
 
       expect(pw.bodyMap.has(bodyHandle)).toBe(false);
       expect(pw.colliderMap.has(colHandle)).toBe(false);
+    });
+  });
+
+  describe("removeCollider", () => {
+    it("removes the collider mapping, leaving the body intact", () => {
+      const pw = new PhysicsWorld();
+      const entity = new Entity("test");
+      const bodyHandle = pw.createBody(entity, { type: "dynamic" });
+      const comp = createMockColliderComponent();
+      const colHandle = pw.createCollider(entity, bodyHandle, {
+        shape: { type: "box", width: 10, height: 10 },
+      }, comp);
+
+      expect(pw.colliderMap.has(colHandle)).toBe(true);
+
+      pw.removeCollider(colHandle);
+
+      expect(pw.colliderMap.has(colHandle)).toBe(false);
+      expect(pw._colliderComponents.has(colHandle)).toBe(false);
+      expect(pw.bodyMap.has(bodyHandle)).toBe(true);
     });
   });
 

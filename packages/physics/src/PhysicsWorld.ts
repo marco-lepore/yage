@@ -359,6 +359,21 @@ export class PhysicsWorld {
     this.bodyMap.delete(handle);
   }
 
+  /**
+   * Remove a single collider from the world, leaving its body (if any)
+   * intact. No-ops if the handle is already gone — removing a body already
+   * tears down its colliders, so this covers the case where that ran first.
+   */
+  removeCollider(handle: number): void {
+    const collider = this.world.getCollider(handle);
+    if (!collider) return;
+
+    this.world.removeCollider(collider, true);
+    this.colliderMap.delete(handle);
+    this._colliderComponents.delete(handle);
+    this._layerInfo.delete(handle);
+  }
+
   /** Get a Rapier rigid body by handle. */
   getBody(handle: number): RAPIER.RigidBody | undefined {
     try {

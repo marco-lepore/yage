@@ -115,6 +115,11 @@ entity.add(new ColliderComponent({
 
 All dimensions are in pixels; rotation is in radians.
 
+Removing a `ColliderComponent` on its own (`entity.remove(ColliderComponent)`)
+frees its Rapier collider while the sibling `RigidBodyComponent` and body stay
+alive. Destroying the whole entity, or removing just the `RigidBodyComponent`,
+also removes every collider attached to that body.
+
 ## Collision Layers
 
 `CollisionLayers` lets you control which objects can collide using named layer
@@ -230,6 +235,13 @@ rb.setVelocityY(-300);    // set Y, keep X
 
 // Read velocity
 const vel = rb.getVelocity(); // Vec2 in px/s
+
+// Reading a single axis or the magnitude — these read numbers straight from
+// Rapier without allocating a Vec2, so prefer them on a per-frame read path.
+rb.velocityX;      // number, px/s
+rb.velocityY;      // number, px/s
+rb.speed;          // number, px/s — velocity magnitude
+rb.speedSquared;   // number — cheaper than speed when only comparing magnitudes
 
 // Impulse (instant momentum change)
 rb.applyImpulse(new Vec2(0, -4000));

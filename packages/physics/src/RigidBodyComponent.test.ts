@@ -378,6 +378,37 @@ describe("RigidBodyComponent", () => {
     });
   });
 
+  describe("velocityX / velocityY / speed / speedSquared", () => {
+    it("reads each scalar in pixels/s without allocating a Vec2", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      body._linvel = { x: 3, y: 4 }; // meters -> 150, 200 px/s
+
+      expect(rb.velocityX).toBeCloseTo(150);
+      expect(rb.velocityY).toBeCloseTo(200);
+      expect(rb.speed).toBeCloseTo(250); // 3-4-5 triangle scaled by 50
+      expect(rb.speedSquared).toBeCloseTo(62500); // 250^2
+    });
+
+    it("returns 0 when the body is gone", async () => {
+      const { scene } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      entity.remove(RigidBodyComponent);
+
+      expect(rb.velocityX).toBe(0);
+      expect(rb.velocityY).toBe(0);
+      expect(rb.speed).toBe(0);
+      expect(rb.speedSquared).toBe(0);
+    });
+  });
+
   describe("applyTorque", () => {
     it("delegates to Rapier", async () => {
       const { scene, physicsWorld } = await createPhysicsTestContext();
