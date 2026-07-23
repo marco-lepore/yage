@@ -366,7 +366,7 @@ function GameOver({ label }: { label: string }) {
   const reveal = () => {
     split.chars.forEach((c) => (c.alpha = 0));
     // stagger each char's fade-in by 0.05s; run() returns a cancel handle.
-    split.run(Tween.stagger(split.chars, (c) => Tween.to(c, "alpha", 1, 0.3), 0.05));
+    split.run(Tween.stagger(split.chars, (c) => Tween.custom((v) => (c.alpha = v), 0, 1, 0.3), 0.05));
   };
 
   return (

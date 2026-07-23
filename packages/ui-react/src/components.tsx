@@ -301,7 +301,7 @@ export type SplitTextProps = UIElementSplitTextProps;
  * ```tsx
  * const [ref, split] = useSplitText();
  * const reveal = () =>
- *   split.run(Tween.stagger(split.chars, (c) => Tween.to(c, "alpha", 1, 300), 50));
+ *   split.run(Tween.stagger(split.chars, (c) => Tween.custom((v) => (c.alpha = v), 0, 1, 0.3), 0.05));
  * return <SplitText ref={ref} charAnchor={0.5} onPointerOver={reveal}>{label}</SplitText>;
  * ```
  *

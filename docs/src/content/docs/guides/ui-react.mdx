@@ -108,7 +108,7 @@ function HUD() {
 
   return (
     <Panel direction="column" gap={8} padding={16} bg={{ color: 0x000000, alpha: 0.7 }}>
-      <Text style={{ fontSize: 24, fill: 0xffffff }}>Score: {score}</Text>
+      <Text style={{ fontSize: 24, fill: 0xffffff }}>{`Score: ${score}`}</Text>
 
       {/* width/height are optional — omit them and the button shrinks to
           fit its content. */}
@@ -150,6 +150,15 @@ labeled-button case (it's auto-wrapped in a centered `<Text>` styled with
   <Image texture={saveIcon} width={16} height={16} />
   <Text style={{ fontSize: 14, fill: 0xffffff }}>Save</Text>
 </Button>
+```
+
+`<Text>` is the counterpart: it takes a single **string** child. Pre-join
+interpolated values into one template string rather than mixing static
+text with expressions:
+
+```tsx
+<Text>{`Score: ${score}`}</Text>   // one string child
+<Text>Score: {score}</Text>        // mixed children — fails typecheck
 ```
 
 ### Available Components
@@ -203,7 +212,7 @@ Every component accepts the shared layout props `position`, `left`, `top`,
 <Panel position="relative" width={400} height={300}>
   <ProgressBar width={400} height={300} value={progress} />
   <Panel position="absolute" top={8} right={8} padding={4} bg={{ color: 0x000000, alpha: 0.6 }}>
-    <Text style={{ fontSize: 12 }}>{Math.round(progress * 100)}%</Text>
+    <Text style={{ fontSize: 12 }}>{`${Math.round(progress * 100)}%`}</Text>
   </Panel>
 </Panel>
 ```
@@ -531,7 +540,7 @@ function EnemyCount() {
     [EnemyTag],
     (result) => result.size,
   );
-  return <Text>Enemies: {count}</Text>;
+  return <Text>{`Enemies: ${count}`}</Text>;
 }
 ```
 
@@ -551,7 +560,7 @@ import { useSceneSelector } from "@yagejs/ui-react";
 
 function EntityCounter() {
   const count = useSceneSelector((scene) => scene.getEntities().length);
-  return <Text>Entities: {count}</Text>;
+  return <Text>{`Entities: ${count}`}</Text>;
 }
 ```
 

@@ -55,6 +55,8 @@ entity.add(new RigidBodyComponent({
 
 The required component order is: `Transform` → `RigidBodyComponent` → `ColliderComponent`.
 
+Every collider needs a sibling `RigidBodyComponent`, including a `sensor: true` one. For a trigger you move through its `Transform` (a bobbing pickup, say), use a `kinematic` body. Leaving out the body throws when the collider is added, not when you construct it.
+
 ```typescript
 import { ColliderComponent } from "@yagejs/physics";
 
@@ -152,11 +154,18 @@ also have A in their mask.
 A **sensor** collider detects overlaps without producing a physical response.
 Use sensors for trigger zones, collectibles, and hit detection.
 
+A `sensor: true` collider fires only `onTrigger`; a solid collider fires only
+`onCollision`. Register the wrong handler and nothing fires — dev builds log a
+warning when you add it.
+
 ```typescript
 const collider = new ColliderComponent({
   shape: { type: "circle", radius: 10 },
   sensor: true,
 });
+// A collider needs a sibling RigidBodyComponent, even a sensor — use a
+// kinematic body for a trigger you position through its Transform.
+entity.add(new RigidBodyComponent({ type: "kinematic" }));
 entity.add(collider);
 
 collider.onTrigger((event) => {
@@ -211,9 +220,14 @@ You can query which entities currently overlap a sensor collider:
 
 ```typescript
 const overlapping = collider.getOverlapping();
-const enemies = collider.getOverlapping({ has: [EnemyTag] });
+const enemies = collider.getOverlapping({ tags: ["enemy"] });
 const components = collider.getOverlappingComponents(HealthComponent);
 ```
+
+This reports an overlap only when this collider or the overlapping one is a
+`sensor: true`. Two solid colliders never report each other here, however
+deeply they penetrate — for solid-vs-solid contact such as contact damage, use
+`onCollision`.
 
 ## Velocity and Forces
 

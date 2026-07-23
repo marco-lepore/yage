@@ -22,6 +22,8 @@ Add more packages as needed:
 npm install @yagejs/physics @yagejs/input @yagejs/audio @yagejs/debug
 ```
 
+Gameplay addons (dialogue, inventory, quests, and more) ship under the separate `@yagejs-addons/*` scope. Their docs are co-located at `packages/addons/<name>/docs/llms/`; the full list is in `llms.txt`.
+
 ## Minimal Example
 
 ```ts
@@ -85,6 +87,8 @@ When the engine is constructed with `debug: true`, it installs an introspection 
 
 ```ts
 const engine = new Engine({ debug: true });
+engine.use(new DebugPlugin()); // inspector.time (freeze/step) needs DebugPlugin
+engine.use(new InputPlugin({ actions: {} })); // inspector.input needs InputPlugin
 await engine.start();
 
 // In the browser console:
@@ -104,6 +108,8 @@ window.__yage__.inspector.events.getLog();                  // recorded engine +
 await window.__yage__.inspector.events.waitFor("scene:pushed", { withinFrames: 30 });
 ```
 
+Snapshot and query calls work with `debug: true` alone. Frame stepping (`inspector.time.*`) needs `DebugPlugin`; synthetic input (`inspector.input.*`) needs `InputPlugin`. Without those plugins, the gated calls throw.
+
 Diagnostics that need optional plugins live under inspector extension
 namespaces. For example, `DebugPlugin` registers `debug` while installed.
 Pass the extension's interface as the type parameter so calls type-check:
@@ -116,7 +122,7 @@ debug?.getCameraStack();
 debug?.getLayerTransform("game", "world");
 ```
 
-`getEntities()` returns an array of `EntitySnapshot` objects with `id`, `name`, `tags`, `components` (class-name strings), and `position`, so filtering by tag or component name is a one-liner:
+`getEntities()` returns an array of `EntitySnapshot` objects with `id`, `name`, `tags`, `components` (class-name strings), and `position`, so filtering by tag or component name is one line:
 
 ```ts
 const enemies = window.__yage__.inspector
@@ -124,7 +130,7 @@ const enemies = window.__yage__.inspector
   .filter((e) => e.tags.includes("enemy"));
 ```
 
-For agent-driven debugging — write a throwaway Playwright spec, boot the game, freeze the clock, drive scripted input, snapshot — see `packages/debug.md` → *Agent-driven debugging: throwaway Inspector specs*.
+For agent-driven debugging: write a throwaway Playwright spec, boot the game, freeze the clock, drive scripted input, and snapshot. See `packages/debug.md` → *Agent-driven debugging: throwaway Inspector specs*.
 
 ### Unit tests (deterministic frame stepping)
 
@@ -142,4 +148,4 @@ advanceFrames(engine, 10);
 expect(player.get(Transform).position.x).toBeGreaterThan(0);
 ```
 
-For component-in-isolation tests, reach for `createMockScene()` / `createMockEntity()`. See `patterns.md` → Testing Patterns for the full cookbook (component unit tests, system tests, process tests, integration tests).
+For component-in-isolation tests, use `createMockScene()` / `createMockEntity()`. See `patterns.md` → Testing Patterns for the full cookbook (component unit tests, system tests, process tests, integration tests).

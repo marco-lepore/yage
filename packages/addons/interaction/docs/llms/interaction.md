@@ -101,6 +101,15 @@ distances, which would turn a negative total back into a positive one and match
 distant targets; each component dev-warns once on add rather than guarding every
 candidate. Use `range: 0` to reach only what the interactor overlaps.
 
+The auto-input press fires on the `interact` action — a common gameplay action
+name. Disabling an input group that holds `interact` to freeze the world while a
+menu or panel is open also stops the interactor's own press: the proximity
+prompt still shows, but pressing the button does nothing. A shared `interact`
+press is one global state, so gating on group enablement can't stop the
+interactor while other consumers keep it. Give the interactor a different
+`action`, or pause it directly (`interactor.enabled = false`, which also clears
+the prompt).
+
 ## `Interactor` API
 
 Each `update()` builds ONE ranked snapshot from one geometry pass. `inRange` is

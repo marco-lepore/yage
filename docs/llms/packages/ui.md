@@ -16,7 +16,7 @@ engine.use(new UIPlugin({ defaultTextStyle: { fontFamily: "Inter", fill: 0xfffff
 
 ## UISurface
 
-Root UI component — mounts a UI tree on an entity. Its public `root` is the tree's root `UIPanel` element (`surface.root`); the builder methods below forward to it. Positioning is chosen explicitly via the `positioning` option (default `"anchor"`):
+Root UI component — mounts a UI tree on an entity. Its public `root` is the tree's root `UIPanel` element (`surface.root`). The builder methods below forward to it. Positioning is chosen explicitly via the `positioning` option (default `"anchor"`):
 
 - `positioning: "anchor"` — `anchor` resolves against the viewport (`virtualSize`), `offset` is a pixel nudge. Classic HUD. No Transform required.
 - `positioning: "transform"` — panel is positioned at `entity.get(Transform).worldPosition` in the target layer's local coord space; `anchor` is reinterpreted as the pivot on the panel itself (e.g. `Anchor.BottomCenter` → panel's bottom-center sits at the Transform). `offset` is still a pixel nudge. Throws at add time if the entity has no `Transform`.
@@ -79,7 +79,7 @@ btn.setText("Loading...");
 btn.setDisabled(true);
 
 // Long/i18n labels: a fixed-size button can't grow, so keep the label on one
-// line and ellipsize it instead of letting it spill out of the frame.
+// line and ellipsize it instead of letting it overflow the frame.
 panel.button("A very long label that won't fit", { width: 120, truncate: "ellipsis" });
 
 // Button is a flex container — addElement on it for icon + label rows etc.
@@ -136,13 +136,13 @@ row.button("Buy", { width: 68, onClick: () => {} }); // fixed
 
 **Text only wraps when a width constraint reaches it** — some ancestor must have
 a definite width (an explicit `width`, or a `flex`/`flexShrink` child shrunk to
-a definite size). The root is laid out shrink-to-content (no viewport width is
-imposed, so bigger-than-screen UIs like skill trees work); give a top-level
+a definite size). The root is laid out shrink-to-content: no viewport width is
+imposed, so bigger-than-screen UIs like skill trees work. Give a top-level
 panel an explicit `width` to bound and wrap its contents.
 
-- **Dev-mode overflow warning.** When an in-flow child's computed box spills
-  past its container, a `console.warn` fires once for that node. Silenced in
-  production builds (`NODE_ENV=production`), and for intentional overflow —
+- **Dev-mode overflow warning.** When an in-flow child's computed box overflows
+  its container, a `console.warn` fires once for that node. Silenced in
+  production builds (`NODE_ENV=production`) and for intentional overflow:
   `overflow: "hidden"` containers, `position: "absolute"` children, and
   ScrollView content.
 
@@ -174,7 +174,7 @@ Use `installBitmapFont(...)` / `bitmapFont(...)` from `@yagejs/renderer` to obta
 
 ## UISplitText — animated / per-glyph text
 
-UI sibling of `@yagejs/renderer`'s `SplitTextComponent` (wraps Pixi's experimental `SplitText` / `SplitBitmapText`). Lays the whole block out as one Yoga element and exposes `chars` / `words` / `lines` for animation. **No `truncate` / word-wrap** (pre-break with `\n`, or use `UIText` for paragraphs); measures its natural size via Pixi text metrics so the Yoga box doesn't jitter as you animate glyphs.
+UI sibling of `@yagejs/renderer`'s `SplitTextComponent` (wraps Pixi's experimental `SplitText` / `SplitBitmapText`). Lays the whole block out as one Yoga element and exposes `chars` / `words` / `lines` for animation. **No `truncate` / word-wrap** (pre-break with `\n`, or use `UIText` for paragraphs). It measures its natural size via Pixi text metrics, so the Yoga box doesn't jitter as you animate glyphs.
 
 ```ts
 import { UISplitText } from "@yagejs/ui";
@@ -193,13 +193,13 @@ title.setText("YOU WIN");           // destroys + recreates chars, then onSplit
 
 API: `chars` / `words` / `lines` getters, `segments`, `setText`, `setStyle`, `resplit()`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `onSplit(cb) → unsubscribe`. Animate the segments with the engine's `Tween` / `Process` — the element doesn't impose an animation API.
 
-**React:** `<SplitText>` (props mirror `<Text>` minus `truncate`, plus the three anchors + `autoSplit`) and the `useSplitText()` hook. The hook returns a `[ref, controls]` tuple — `controls` has live `chars` / `words` / `lines` / `segments` getters, `resplit()`, and `run(process | process[])`. `run` enqueues on a scene-scoped process queue (pauses with the scene; cancelled on unmount and on re-split, so a tween never writes to a destroyed glyph) and returns `{ cancel() }` for that batch. Animate imperatively from any handler — pair `run` with `Tween.stagger(items, factory, stepMs)` to cascade a tween across the segments.
+**React:** `<SplitText>` (props mirror `<Text>` minus `truncate`, plus the three anchors + `autoSplit`) and the `useSplitText()` hook. The hook returns a `[ref, controls]` tuple — `controls` has live `chars` / `words` / `lines` / `segments` getters, `resplit()`, and `run(process | process[])`. `run` enqueues on a scene-scoped process queue (pauses with the scene; cancelled on unmount and on re-split, so a tween never writes to a destroyed glyph) and returns `{ cancel() }` for that batch. Animate imperatively from any handler — pair `run` with `Tween.stagger(items, factory, stepSeconds)` to cascade a tween across the segments.
 
 ```tsx
 const [ref, split] = useSplitText();
 const reveal = () => {
   split.chars.forEach((c) => (c.alpha = 0));
-  split.run(Tween.stagger(split.chars, (c) => Tween.to(c, "alpha", 1, 300), 50));
+  split.run(Tween.stagger(split.chars, (c) => Tween.custom((v) => (c.alpha = v), 0, 1, 0.3), 0.05));
 };
 return <SplitText ref={ref} charAnchor={0.5} onPointerDown={reveal}>{label}</SplitText>;
 ```
@@ -251,9 +251,9 @@ const badge = panel.panel({
 
 Absolute children are lifted out of the flex flow and resolved against the
 parent's content box. `left` / `top` / `right` / `bottom` accept a number
-(px) or a `"<n>%"` string that resolves against the containing block — so
-`top: "100%"` is flush below the parent (powers edge-anchored overlays like
-tooltips without measuring). Omit unused edges.
+(px) or a `"<n>%"` string that resolves against the containing block, so
+`top: "100%"` is flush below the parent. This is useful for edge-anchored
+overlays like tooltips, without measuring. Omit unused edges.
 
 ## Hover / pointer events
 
@@ -262,9 +262,9 @@ tooltips without measuring). Omit unused edges.
 combinable `onPointerOver?()` / `onPointerOut?()` and a convenience
 `onHover?(hovering: boolean)` (`true` on enter, `false` on leave). Every UI
 primitive's container is already `eventMode: "static"` (consume-input
-fallback), so wiring is a fan-out. The shared `PointerEvents` helper (also
-exported) binds one listener pair and swaps callbacks in place on
-`update()`; `UIButton` suppresses callbacks while disabled.
+fallback), so these callbacks need no extra setup. The shared `PointerEvents`
+helper (also exported) binds one listener pair and swaps callbacks in place on
+`update()`. `UIButton` suppresses callbacks while disabled.
 
 ```ts
 new UIButton({ children: "Save", onHover: (h) => setGlow(h) });
@@ -278,7 +278,7 @@ JSX components plus a Mantine-style `<Tooltip content=…>` built on
 ## Floating UI (tooltips / popovers / menus)
 
 `UIPlugin` provisions one scene-scoped `FloatingOverlay` per scene — a
-top-most, screen-space surface that floating elements parent into. It draws
+top-most, screen-space surface that floating elements attach to. It draws
 above all other UI, escapes any `<ScrollView>` clip, never reflows siblings,
 and anchors correctly even for world-space / camera-transformed triggers
 (e.g. a `ScreenFollow` namecard). A `FloatingOverlaySystem` (registered by
@@ -306,14 +306,14 @@ const tip = attachTooltip(surface.root, scene, { // any UIElement
   offset: 8,        // px gap between trigger and bubble (default 6)
   maxWidth: 200,    // px; content wraps + clamps to available space
 });
-// Activation is yours — wire it on hover (the usual case):
+// Activation is yours — connect it on hover (the usual case):
 surface.setPointerHandlers({ onHover: tip.setActive }); // entity-mounted surface
 // a child element instead? element.update({ onHover: tip.setActive })
 // later: tip.dispose();  // releases the overlay slot
 ```
 
 `attachTooltip` builds the floating parts and returns a `{ setActive, dispose }`
-controller — it wires **no input itself**, so it can't clobber the anchor's
+controller — it **registers no input itself**, so it can't overwrite the anchor's
 handlers. `anchor` is any `UIElement` (`UIButton`, `UIImage`, a nested
 `UIPanel`, …), read only for positioning; for an entity-mounted surface pass
 `surface.root`. Drive it yourself: set `onHover` on a surface via
@@ -321,10 +321,11 @@ handlers. `anchor` is any `UIElement` (`UIButton`, `UIImage`, a nested
 via `element.update({ onHover: tip.setActive })` — or trigger from focus /
 long-press / a programmatic call.
 Setting `onHover` *replaces* that single slot (which is what you want when the
-anchor has none); if it already handles hover, compose (`onHover: (h) => {
-existing(h); tip.setActive(h); }`). `content` is a factory (called once); **headless** — return a
-styled node for visuals, nothing is added for you. `setActive` stays a no-op
-after `dispose()`, so a lingering hover wiring is harmless.
+anchor has none). If it already handles hover, compose (`onHover: (h) => {
+existing(h); tip.setActive(h); }`). `content` is a factory, called once, and
+headless. Return a styled node for visuals — nothing is added automatically.
+`setActive` stays a no-op after `dispose()`, so a lingering hover handler is
+harmless.
 Requires the scene to have the `FloatingOverlay` (i.e. `UIPlugin` is
 registered); throws otherwise. The bubble flips to the opposite side and
 shifts along the cross axis to stay on-screen, and z-stacks above other floats
@@ -332,12 +333,12 @@ on each (re)open.
 
 ### Escape hatches
 
-For custom popovers / menus reach for the lower-level pieces directly:
+For custom popovers / menus, use the lower-level pieces directly:
 
 - `scene._resolveScoped(FloatingOverlayKey).acquire()` → a
   `FloatingHandle` with `setReference(get)`, `setConfig(FloatConfig)`,
   `setLayout(fn)`, `setActive(bool)`, `bringToFront()`, `release()`, and a
-  `container` to parent content into. `FloatingOverlayKey` is a
+  `container` to add content to. `FloatingOverlayKey` is a
   scene-scoped `ServiceKey`; resolve it on the scene first, then call
   `acquire()` on the resulting `FloatingOverlay`.
 - `computePosition(reference, floating, viewport, config)` — the pure

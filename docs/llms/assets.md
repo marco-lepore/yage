@@ -65,7 +65,7 @@ The cache is engine-wide. Scenes don't own assets.
 | `assets.unload(handle)` | Drops one handle, calls loader's `unload?()` |
 | `assets.clear()` | Drops everything |
 
-For a small game, never unload — cache hits are cheap. Reach for `unload`/`clear` between large levels, when streaming chapters, or when freeing audio bound to a scene.
+For a small game, never unload — cache hits are cheap. Use `unload`/`clear` between large levels, when streaming chapters, or when freeing audio bound to a scene.
 
 ```ts
 class Level1 extends Scene {

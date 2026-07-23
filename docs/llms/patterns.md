@@ -12,7 +12,7 @@ class PlayerController extends Component {
   // For physics entities — always go through the rigid body
   private rb = this.sibling(RigidBodyComponent);
 
-  // Camera is now an entity — pass it as a constructor parameter if needed
+  // Camera is an entity — pass it as a constructor parameter if needed
   constructor(private readonly camera?: CameraEntity) {
     super();
   }
@@ -145,6 +145,34 @@ class Enemy extends Entity {
 scene.spawn(Enemy, { type: "goblin", pos: new Vec2(100, 200) });
 ```
 
+### Child entities for independent parts
+
+`spawnChild()` spawns an entity and attaches it under this one in a single
+call. The child keeps its own `Transform`, so it can rotate or move
+independently while still following the parent. Use it when one object needs a
+separately-transformed part — a turret barrel that aims while the base stays
+put.
+
+```ts
+class Turret extends Entity {
+  private barrel!: Entity;
+
+  setup() {
+    this.add(new Transform());
+    this.add(new SpriteComponent({ texture: "turret-base.png" }));
+
+    // Barrel is a child entity — its Transform rotates independent of the base.
+    this.barrel = this.spawnChild("barrel");
+    this.barrel.add(new Transform({ position: new Vec2(0, -8) }));
+    this.barrel.add(new SpriteComponent({ texture: "turret-barrel.png" }));
+  }
+
+  aimAt(angle: number) {
+    this.barrel.get(Transform).setRotation(angle); // base stays upright
+  }
+}
+```
+
 ### Traits for polymorphic behavior
 
 ```ts
@@ -182,6 +210,8 @@ class Weapon extends Component {
   private cooldown!: ProcessSlot;
 
   onAdd() {
+    // slot() lives on ProcessComponent, so make sure the entity has one
+    if (!this.entity.tryGet(ProcessComponent)) this.entity.add(new ProcessComponent());
     this.cooldown = this.pc.slot({ duration: 0.5 });
   }
 
@@ -196,10 +226,19 @@ class Weapon extends Component {
 ### Sequence for cutscenes
 
 ```ts
+const bossT = boss.get(Transform);
 const seq = new Sequence()
   .call(() => ui.showDialogue("Watch out!"))
   .wait(2)
-  .then(Tween.to(boss, "y", 100, 0.8, easeOutQuad))
+  .then(
+    Tween.vec2(
+      (v) => bossT.setPosition(v.x, v.y),
+      bossT.position,
+      new Vec2(bossT.position.x, 100),
+      0.8,
+      easeOutQuad,
+    ),
+  )
   .call(() => ui.hideDialogue())
   .then(Tween.custom((v) => (camera.zoom = v), 1, 1.5, 0.5));
 
@@ -209,19 +248,22 @@ pc.run(seq.start());
 ### Tween animation
 
 ```ts
-// Property tween
-pc.run(Tween.to(transform, "rotation", Math.PI, 500, easeInOutQuad));
+// Rotate over time. Tween.to only accepts a plain Record<string, number>
+// target, so a Transform (a class instance) uses Tween.custom with a setter.
+pc.run(
+  Tween.custom((v) => transform.setRotation(v), 0, Math.PI, 0.5, easeInOutQuad),
+);
 
 // Custom setter
-pc.run(Tween.custom((v) => (sprite.alpha = v), 1, 0, 300));
+pc.run(Tween.custom((v) => (sprite.alpha = v), 1, 0, 0.3));
 
 // Vec2 tween
 pc.run(
   Tween.vec2(
-    (v) => transform.setPosition(v),
+    (v) => transform.setPosition(v.x, v.y),
     Vec2.ZERO,
     new Vec2(200, 100),
-    600,
+    0.6,
     easeOutBounce,
   ),
 );
@@ -252,12 +294,12 @@ Use `createMockEntity` for isolated component tests — no Engine overhead, but 
 
 ```ts
 import { describe, it, expect } from "vitest";
-import { createMockEntity, Transform, Vec2, Component } from "@yagejs/core";
+import { createMockEntity, Transform, Component } from "@yagejs/core";
 
 class Gravity extends Component {
   fixedUpdate(dt: number) {
     const t = this.entity.get(Transform);
-    t.translate(new Vec2(0, 9.8 * dt)); // dt is seconds
+    t.translate(0, 9.8 * dt); // dt is seconds
   }
 }
 
@@ -290,7 +332,7 @@ describe("Gravity", () => {
 
 ### Unit testing a system
 
-Use `createMockScene` to wire up a system without a full Engine:
+Use `createMockScene` to set up a system without a full Engine:
 
 ```ts
 import { describe, it, expect } from "vitest";
@@ -342,7 +384,6 @@ import {
   Scene,
   Component,
   Transform,
-  Vec2,
 } from "@yagejs/core";
 
 class GameScene extends Scene {
@@ -351,7 +392,7 @@ class GameScene extends Scene {
 
 class Mover extends Component {
   update(dt: number) {
-    this.entity.get(Transform).translate(new Vec2(1, 0));
+    this.entity.get(Transform).translate(1, 0);
   }
 }
 
@@ -490,7 +531,7 @@ class PauseScene extends Scene {
 ### Time scale
 
 ```ts
-scene.timeScale = 0.25; // slow-mo (persistent knob)
+scene.timeScale = 0.25; // slow-mo (persistent option)
 scene.timeScale = 2; // fast-forward
 
 // Per-entity multiplier, composes on top of the scene's effective scale.
@@ -524,8 +565,8 @@ time.scaleBy(2, { for: 5, key: "haste" }); // speed-up, auto-releases after 5s
 time.scaleBy(0.25, { key: "slowmo", excludeUpdates: [player] });
 
 // Composition: each `key` is a channel. Within a channel the latest active
-// request wins (older still-active ones apply again when it ends); across
-// channels winners multiply; freeze is a x0 factor. scene.timeScale is
+// request wins; older still-active ones apply again when it ends. Across
+// channels, winners multiply. Freeze is a x0 factor. scene.timeScale is
 // input-only: effectiveScale = scene.timeScale x channel winners.
 time.effectiveScale; // what physics and scene-pool processes run at
 time.isFrozen; // effectiveScale === 0
@@ -621,7 +662,7 @@ const grounded = hit !== null; // add coyote timer for better feel
 
 ## Common Gotchas
 
-**setup() vs constructor**: Entity constructors run before scene wiring. Always use `setup()` for adding components and resolving services.
+**setup() vs constructor**: Entity constructors run before the entity is attached to the scene. Always use `setup()` for adding components and resolving services.
 
 **Deferred destruction**: `entity.destroy()` marks for destruction. Actual cleanup happens in EndOfFrame phase. Don't assume immediate removal.
 

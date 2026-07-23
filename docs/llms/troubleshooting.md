@@ -2,7 +2,7 @@
 
 Dev-mode warnings YAGE emits to flag silent failure modes. All warnings are
 prefixed with `[yage]` and gated on `process.env.NODE_ENV !== "production"`,
-so they tree-shake out of minified production bundles.
+so they don't appear in production builds.
 
 ## Component.use(...) called before the component is bound to an entity
 
@@ -31,7 +31,7 @@ class Foo extends Component {
 ## ColliderComponent at &lt;entity&gt;: sensor: true colliders fire onTrigger, not onCollision
 
 Sensor colliders never fire `onCollision`; non-sensor colliders never fire
-`onTrigger`. The warning surfaces a handler attached to the wrong channel.
+`onTrigger`. The warning flags a handler attached to the wrong channel.
 
 ```ts
 const col = entity.add(new ColliderComponent({

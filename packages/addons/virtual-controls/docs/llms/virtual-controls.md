@@ -214,3 +214,8 @@ built-in theme knobs live on `ControlsTheme`
 - Two `VirtualControls` instances both listen for pointers; the
   first-registered claims first. One instance per scene is the intended
   shape.
+- `controls.model.buttons` / `controls.model.sticks` are readonly ARRAYS of
+  `VirtualButton` / `VirtualStick` (each exposing `.id` and `.layout`); there is
+  no id-keyed layout object. To read one control's resolved geometry (a tutorial
+  highlight, a HUD hint), look it up by id: `controls.button(id)?.layout` /
+  `controls.stick(id)?.layout`.

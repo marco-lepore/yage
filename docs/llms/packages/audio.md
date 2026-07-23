@@ -18,7 +18,7 @@ engine.use(new AudioPlugin({
 
 ## Unlock & Tab Mute
 
-Browsers suspend the `AudioContext` until the user interacts with the page; `@pixi/sound` already resumes it on the first pointer/touch gesture, so "play on click" works out of the box. That means **music scheduled on page-load stays silent until first click** — not a bug, but surprising. Use `isUnlocked` / `onUnlock` to schedule autoplay that survives the delay:
+Browsers suspend the `AudioContext` until the user interacts with the page. `@pixi/sound` already resumes it on the first pointer/touch gesture, so "play on click" works without extra setup. That means **music scheduled on page-load stays silent until first click** — not a bug, but surprising. Use `isUnlocked` / `onUnlock` to schedule autoplay that survives the delay:
 
 ```ts
 const audio = this.use(AudioManagerKey);
@@ -52,7 +52,7 @@ const audio = this.use(AudioManagerKey);
 
 // Play
 const handle = audio.play(CoinSfx.path, { channel: "sfx", volume: 1, loop: false, speed: 1 });
-audio.playOnce(alias, opts);            // skip if already playing via playOnce
+audio.playOnce(alias, opts);            // skips playback if already playing
 audio.playRandom([a, b, c], opts);      // random pick
 
 // SoundHandle

@@ -30,16 +30,6 @@ npm install @yagejs/core @yagejs/input @yagejs/renderer
   subpath needs it (and it brings `pixi.js` transitively). The headless model
   and component work without it.
 
-## Two entry points
-
-```ts
-// Headless — model, component, events, presenter contracts. No pixi.
-import { VirtualControls, prefersTouchControls } from "@yagejs-addons/virtual-controls";
-
-// Pixi presentation — the built-in Graphics look + theme.
-import { createControlsPresenter } from "@yagejs-addons/virtual-controls/presenters";
-```
-
 ## Quick start
 
 The overlay drives actions that already exist — define them in your
@@ -102,6 +92,16 @@ the bottom-right corner. Every default is derived, not hardcoded:
   theme (`createControlsPresenter({ buttonPressedColor: 0xf472b6 })`) to
   restyle it.
 
+## Two entry points
+
+```ts
+// Headless — model, component, events, presenter contracts. No pixi.
+import { VirtualControls, prefersTouchControls } from "@yagejs-addons/virtual-controls";
+
+// Pixi presentation — the built-in Graphics look + theme.
+import { createControlsPresenter } from "@yagejs-addons/virtual-controls/presenters";
+```
+
 ## Showing it only on mobile
 
 The overlay defaults to `visible: "auto"`: shown when the device's **primary
@@ -151,8 +151,8 @@ The stick mirrors three ways at once:
   sitting plugged in doesn't mask the stick. A second stick defaults to the
   right side — twin-stick works out of the box. `getStick()` applies the
   input system's own stick deadzone here, exactly as it does for physical
-  pads — the stick's `deadZone` option shapes only the digital mirror and
-  `value` (both use the same exported `applyRadialDeadzone` curve).
+  pads — the stick's `deadZone` option shapes only the digital mirror and its
+  `value`.
 - **Direct** — `controls.stick().value` is the dead-zoned vector,
   `.rawValue` the unfiltered one.
 
@@ -173,6 +173,12 @@ The component emits entity events (they bubble to the scene):
 `VirtualStickEngageEvent` / `VirtualStickReleaseEvent` (`{ id }`). They're the
 hook for haptics, UI sounds, tutorials — or buttons that deliberately have no
 `action` and exist only as events.
+
+For a tutorial highlight or a custom HUD hint, read a control's resolved geometry
+by id: `controls.button("a")?.layout` or `controls.stick("left")?.layout`.
+`controls.model.buttons` and `controls.model.sticks` are readonly arrays of the
+`VirtualButton` / `VirtualStick` instances, each carrying its own `.id` and
+`.layout` — there is no id-keyed layout lookup object.
 
 ## Custom presenters
 

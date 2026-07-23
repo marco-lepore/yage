@@ -99,30 +99,36 @@ follow. Destroying the parent destroys all children.
 Use `ProcessSlot` for cooldowns and timed abilities:
 
 ```typescript
-import { ProcessSlot, Process } from "@yagejs/core";
+import { Component, ProcessComponent, ProcessSlot } from "@yagejs/core";
 
 class ShootAbility extends Component {
-  private readonly cooldown = this.add(new ProcessSlot("shoot-cooldown"));
+  private pc = this.sibling(ProcessComponent);
+  private cooldown!: ProcessSlot;
+
+  onAdd(): void {
+    // slot() lives on ProcessComponent, so make sure the entity has one
+    if (!this.entity.tryGet(ProcessComponent)) this.entity.add(new ProcessComponent());
+    this.cooldown = this.pc.slot({ duration: 0.3 }); // 0.3s cooldown
+  }
 
   update(): void {
-    if (this.input.isJustPressed("fire") && !this.cooldown.active) {
+    if (this.input.isJustPressed("fire") && this.cooldown.completed) {
       this.fireBullet();
-
-      // Start cooldown (0.3 seconds)
-      this.cooldown.run(new Process(0.3));
+      this.cooldown.start(); // begin the cooldown; completed is false until it elapses
     }
   }
 }
 ```
 
-The slot tracks whether the process is active, so you can gate actions on it.
+The slot exposes `completed` and `running`, so you can gate actions on it.
 
-For repeating effects, restart the process:
+For repeating effects, give the slot an `onComplete`, then `restart()` it:
 
 ```typescript
-this.cooldown.run(new Process(0.5), {
-  onComplete: () => this.spawnWave(),
-});
+const wave = this.pc.slot({ duration: 0.5, onComplete: () => this.spawnWave() });
+wave.start();
+// later, to run it again:
+wave.restart();
 ```
 
 ## Health and Damage
@@ -259,9 +265,9 @@ Or use the `QueryCache` for efficient repeated queries from systems:
 class DamageSystem extends System {
   private enemies!: QueryResult;
 
-  init(): void {
+  onRegister(): void {
     const cache = this.use(QueryCacheKey);
-    this.enemies = cache.query({ has: [HealthComponent, EnemyTag] });
+    this.enemies = cache.register([HealthComponent, EnemyTag]);
   }
 
   update(): void {

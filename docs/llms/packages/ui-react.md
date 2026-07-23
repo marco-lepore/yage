@@ -59,6 +59,8 @@ import { Panel, ZStack, Text, Button, Image, ProgressBar, Checkbox } from "@yage
 </Panel>
 ```
 
+`<Text>` takes a single string child. Pre-join interpolated content into one template string (`` `Boats: ${count}/3` ``); mixing text and expressions (`Boats: {count}/3`) produces a `(string | number)[]` and fails typechecking. `<Button>`, by contrast, accepts arbitrary `ReactNode` children.
+
 PixiUI wrappers: `PixiFancyButton`, `PixiCheckbox`, `PixiProgressBar`, `PixiSlider`, `PixiInput`, `PixiSelect`, `PixiRadioGroup`.
 
 Each JSX prop type extends its `@yagejs/ui` imperative counterpart (e.g. `ButtonProps` extends `UIButtonProps`). A prop the imperative class accepts is always a valid JSX prop too. `consumeInput` works on every element, including `Checkbox`, `ScrollView`, and the Pixi* wrappers.
@@ -71,7 +73,7 @@ Removing an element destroys it: a child removed from a container, or the whole 
 
 ## Scrolling lists
 
-`<ScrollView>` is the scroll primitive for any list that can outgrow its container — inventories, quest logs, chat, order panels, leaderboards. A plain `<Panel>` clips overflow silently; `<ScrollView>` adds wheel + drag scrolling, is a true Yoga container (children are normal elements, not handed to a foreign widget), and **preserves scroll position across re-renders** — fulfilling/refilling a store-driven list does not jump the scroll.
+`<ScrollView>` is the scroll primitive for any list that can outgrow its container — inventories, quest logs, chat, order panels, leaderboards. A plain `<Panel>` clips overflow silently. `<ScrollView>` adds wheel + drag scrolling and is a true Yoga container: children are normal elements, not handed to a foreign widget. It also **preserves scroll position across re-renders** — fulfilling/refilling a store-driven list does not jump the scroll.
 
 ```tsx
 import { ScrollView, Panel, Button, Text } from "@yagejs/ui-react";
@@ -97,9 +99,9 @@ function OrdersPanel({ orders, fulfill, endDay }: OrdersProps) {
 }
 ```
 
-Size the viewport with `LayoutProps` (`height` / `flexGrow`); content overflowing the scroll axis is clipped and pannable (wheel + drag work anywhere over the box, including gaps and the gutter). Props: `direction` (`"vertical"` default / `"horizontal"`), `gap`, `padding`, `bg`, `onScroll(offset)`, and `scrollbar` — `true` (default) / `false`, or a `ScrollbarOptions` object (`thickness`, `color`, `alpha`, `radius`, `minThumbLength`, `margin`). When the scrollbar is shown a gutter equal to the thumb footprint is auto-reserved so content never sits under it (`node.scrollbarGutter` is the px). Keep fixed elements (a footer button, a header) as **siblings** of `<ScrollView>`, not children. The same node is available without React via the `UIPanel` / `UISurface` `.scrollView(opts)` builder, and exposes `scrollBy()` / `scrollTo()` / `scrollOffset` / `maxScroll`.
+Size the viewport with `LayoutProps` (`height` / `flexGrow`). Content overflowing the scroll axis is clipped and pannable (wheel + drag work anywhere over the box, including gaps and the gutter). Props: `direction` (`"vertical"` default / `"horizontal"`), `gap`, `padding`, `bg`, `onScroll(offset)`, and `scrollbar` — `true` (default) / `false`, or a `ScrollbarOptions` object (`thickness`, `color`, `alpha`, `radius`, `minThumbLength`, `margin`). When the scrollbar is shown a gutter equal to the thumb footprint is auto-reserved so content never sits under it (`node.scrollbarGutter` is the px). Keep fixed elements (a footer button, a header) as **siblings** of `<ScrollView>`, not children. The same node is available without React via the `UIPanel` / `UISurface` `.scrollView(opts)` builder, and exposes `scrollBy()` / `scrollTo()` / `scrollOffset` / `maxScroll`.
 
-> Appending JSX children to a layout-leaf element (one with no `addElement`, e.g. `<PixiSelect>`) silently drops them; the reconciler now emits a one-shot dev `console.warn` pointing you at `<ScrollView>` / a container.
+> Appending JSX children to a layout-leaf element (one with no `addElement`, e.g. `<PixiSelect>`) silently drops them. The reconciler emits a one-shot dev `console.warn` pointing you at `<ScrollView>` / a container.
 
 ### ZStack (Z-axis overlay primitive)
 
@@ -107,7 +109,7 @@ Size the viewport with `LayoutProps` (`height` / `flexGrow`); content overflowin
 (`width: "100%"`, `height: "100%"`) with `position: "relative"`, so
 children declared `position="absolute"` layer on the Z axis. Useful for
 modal backdrops, HUD layers, and badge markers. The name follows the
-SwiftUI convention (`VStack` / `HStack` / `ZStack`); for column / row
+SwiftUI convention (`VStack` / `HStack` / `ZStack`). For column / row
 stacking use `<Panel direction="column" | "row">`.
 
 ```tsx
@@ -121,7 +123,7 @@ stacking use `<Panel direction="column" | "row">`.
 
 ### Absolute positioning
 
-`LayoutProps` (every component) now accepts `position`, `left`, `top`,
+`LayoutProps` (every component) accepts `position`, `left`, `top`,
 `right`, `bottom`:
 
 ```tsx
@@ -131,15 +133,15 @@ stacking use `<Panel direction="column" | "row">`.
 ```
 
 `position` defaults to `"relative"`. Set `"absolute"` to lift the element out
-of the flex flow; `left` / `top` / `right` / `bottom` are offsets against the
-nearest relative ancestor — a number is px, a `"<n>%"` string resolves
+of the flex flow. `left` / `top` / `right` / `bottom` are offsets against the
+nearest relative ancestor: a number is px, a `"<n>%"` string resolves
 against the containing block (so `top="100%"` is flush below it).
 
 `Panel` accepts `consumeInput?: boolean` (default `true`). The UI
-auto-consume fallback claims pointer events that land on the panel so they
-don't leak through to gameplay actions; set `false` for a decorative /
+auto-consume fallback claims pointer events that land on the panel, so they
+don't leak through to gameplay actions. Set `false` for a decorative /
 pass-through container (e.g. a full-screen overlay) that should let clicks
-reach elements beneath it. It does not gate the panel's own
+reach elements beneath it. It does not block the panel's own
 hover/click callbacks (those still fire), and a `<Tooltip>` trigger placed
 under such a panel still works. The `<Tooltip>` overlay and its bubbles use
 `consumeInput={false}` so they never block input to the UI behind them.
@@ -147,8 +149,8 @@ under such a panel still works. The `<Tooltip>` overlay and its bubbles use
 ### Hover events
 
 `Panel`, `Button`, `Text`, `Image`, `NineSlice`, `ProgressBar` accept hover
-callbacks (the container is already interactive — this is a fan-out, not new
-infra). Three independent, combinable props:
+callbacks (the container is already interactive, so these need no new
+listeners). Three independent, combinable props:
 
 - `onPointerOver?: () => void` / `onPointerOut?: () => void` — mirror Pixi
   events and the existing `onClick` naming; use when enter / leave need
@@ -161,7 +163,7 @@ infra). Three independent, combinable props:
 <Panel onPointerOver={preview} onPointerOut={clearPreview}>…</Panel>
 ```
 
-Callbacks are suppressed while a `<Button disabled>`.
+Callbacks are suppressed on a disabled `<Button>`.
 
 ### Tooltip
 
@@ -196,9 +198,9 @@ bypass hover), `disabled` (render trigger only).
 
 ### useFloating (headless)
 
-The primitive `<Tooltip>` is built on. `useFloating({ open, placement,
+The primitive `<Tooltip>` is built on: `useFloating({ open, placement,
 offset, padding, maxWidth, flip, shift })` → `{ setReference(el),
-renderFloating(content), hasOverlay }`. Wire `setReference` to the
+renderFloating(content), hasOverlay }`. Connect `setReference` to the
 trigger's ref, render `renderFloating(node)` in your tree (it portals into
 the scene overlay while `open`, returns `null` when closed / no overlay).
 Use for custom popovers, menus, hovercards. `computePosition()` (the pure
@@ -237,7 +239,7 @@ const entityCount = useSceneSelector((scene) => scene.getEntities().length);
 
 `useStore(compound)` is supported — it returns the encoded snapshot of the whole tree. Reading individual leaves keeps subscription granularity per-leaf. Dispatch is symbol-driven (each shape carries a `[STATE_KIND]` brand from `@yagejs/core`).
 
-`useQuery` registers its `QueryCache` query in an effect on mount and releases it when the component unmounts (`QueryCache.unregister`), so a query does not keep matching new entities after the component is gone. Passing an inline array literal as `filter` (`useQuery([EnemyTag], ...)`) is fine — re-registration is keyed off the filter's contents, not its identity, so a new array with the same component classes on every render does not churn the registration. Before the effect commits (first paint, or the frame after `filter`'s contents change), reads fall back to `QueryCache.queryOnce`, a detached snapshot seeded with the same currently-matching entities the live query will pick up.
+`useQuery` registers its `QueryCache` query in an effect on mount and releases it when the component unmounts (`QueryCache.unregister`), so a query does not keep matching new entities after the component is gone. Passing an inline array literal as `filter` (`useQuery([EnemyTag], ...)`) is fine. Re-registration is keyed off the filter's contents, not its identity, so a new array with the same component classes on every render does not churn the registration. Before the effect commits (first paint, or the frame after `filter`'s contents change), reads fall back to `QueryCache.queryOnce`, a detached snapshot seeded with the same currently-matching entities the live query will pick up.
 
 ```ts
 const inv  = useStore(game.inventory);                          // entries snapshot

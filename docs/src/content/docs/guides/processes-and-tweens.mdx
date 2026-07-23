@@ -118,8 +118,8 @@ respect pause state and entity lifetime.
 ```typescript
 import { Tween, Transform, easeOutQuad, easeInOutQuad } from "@yagejs/core";
 
-// Tween a single property (durations in seconds)
-pc.run(Tween.to(sprite, "alpha", 0, 0.3, easeOutQuad));
+// Tween a component property with a setter (durations in seconds)
+pc.run(Tween.custom((v) => (sprite.alpha = v), 1, 0, 0.3, easeOutQuad));
 
 // Tween a Vec2 (e.g., position) — pass a setter that applies the value
 const t = entity.get(Transform);
@@ -165,7 +165,7 @@ pc.run(
   new Sequence()
     .call(() => sprite.alpha = 1)
     .wait(0.2)
-    .then(Tween.to(sprite, "alpha", 0, 0.4, easeOutQuad))
+    .then(Tween.custom((v) => (sprite.alpha = v), 1, 0, 0.4, easeOutQuad))
     .call(() => entity.destroy())
     .start(),
 );
@@ -180,7 +180,7 @@ const t = entity.get(Transform);
 pc.run(
   new Sequence()
     .parallel(
-      Tween.to(sprite, "alpha", 0, 0.3, easeOutQuad),
+      Tween.custom((v) => (sprite.alpha = v), 1, 0, 0.3, easeOutQuad),
       Tween.vec2((v) => t.setPosition(v.x, v.y), t.position, offscreen, 0.3, easeInQuad),
     )
     .call(() => entity.destroy())
@@ -201,8 +201,8 @@ actually tick.
 // Loop forever
 pc.run(
   new Sequence()
-    .then(Tween.to(sprite, "alpha", 0.5, 0.5, easeInOutQuad))
-    .then(Tween.to(sprite, "alpha", 1.0, 0.5, easeInOutQuad))
+    .then(Tween.custom((v) => (sprite.alpha = v), 1, 0.5, 0.5, easeInOutQuad))
+    .then(Tween.custom((v) => (sprite.alpha = v), 0.5, 1, 0.5, easeInOutQuad))
     .loop()
     .start(),
 );
@@ -241,8 +241,9 @@ to fetch the component manually.
 Tag processes so you can cancel groups of them later:
 
 ```typescript
-pc.run(Tween.to(sprite, "alpha", 0, 0.3, easeOutQuad), { tags: ["vfx"] });
-pc.run(Tween.to(sprite, "scale", 2, 0.3, easeOutQuad), { tags: ["vfx"] });
+const t = entity.get(Transform);
+pc.run(Tween.custom((v) => (sprite.alpha = v), 1, 0, 0.3, easeOutQuad), { tags: ["vfx"] });
+pc.run(Tween.custom((v) => t.setScale(v, v), 1, 2, 0.3, easeOutQuad), { tags: ["vfx"] });
 
 // Cancel all processes tagged "vfx"
 pc.cancel("vfx");
@@ -271,6 +272,7 @@ import {
   KeyframeAnimator,
   ProcessComponent,
   Transform,
+  Vec2,
   easeInOutQuad,
 } from "@yagejs/core";
 
@@ -286,7 +288,10 @@ const anim = entity.add(
         { time: 0.5, data: 10 },
         { time: 1, data: 0 },
       ],
-      setter: (v) => (entity.get(Transform).y = 200 + (v as number)),
+      setter: (v) => {
+        const t = entity.get(Transform);
+        t.setPosition(t.position.x, 200 + (v as number));
+      },
       loop: true,
       easing: easeInOutQuad,
     },
@@ -315,7 +320,10 @@ const anim = entity.add(
         { time: 0.5, data: 10 },
         { time: 1, data: 0 },
       ],
-      setter: (v) => (entity.get(Transform).y = baseY + (v as number)),
+      setter: (v) => {
+        const t = entity.get(Transform);
+        t.setPosition(t.position.x, baseY + (v as number));
+      },
       loop: true,
     },
     pulse: {
@@ -389,7 +397,10 @@ pc.run(
       { time: 0, data: 0 },
       { time: 0.6, data: 100 },
     ],
-    setter: (v) => (entity.get(Transform).x = v as number),
+    setter: (v) => {
+      const t = entity.get(Transform);
+      t.setPosition(v as number, t.position.y);
+    },
   }),
 );
 
@@ -466,13 +477,15 @@ both magnitude and the per-frame jitter.
 ```typescript
 function shake(camera: Entity, magnitude = 8, duration = 0.25) {
   const t = camera.get(Transform);
-  const baseX = t.x, baseY = t.y;
+  const base = t.position;
   camera.get(ProcessComponent).run(
     Tween.custom(
       (k) => {
         const m = magnitude * (1 - k);
-        t.x = baseX + (Math.random() * 2 - 1) * m;
-        t.y = baseY + (Math.random() * 2 - 1) * m;
+        t.setPosition(
+          base.x + (Math.random() * 2 - 1) * m,
+          base.y + (Math.random() * 2 - 1) * m,
+        );
       },
       0, 1, duration, easeOutQuad,
     ),
@@ -482,7 +495,7 @@ function shake(camera: Entity, magnitude = 8, duration = 0.25) {
 ```
 
 Cancel with `pc.cancel("shake")` if a stronger shake supersedes a weaker
-one. Reset `t.x`/`t.y` to baseline after cancellation if your camera
+one. Reset the camera to its base position after cancellation if your camera
 controller doesn't already.
 
 ### Hit-Pause (Time Freeze)
@@ -514,7 +527,7 @@ function telegraph(enemy: Entity, attack: () => void) {
   pc.run(
     new Sequence()
       .call(() => (sprite.tint = 0xff5050))
-      .then(Tween.to(sprite, "alpha", 0.5, 0.2, easeInOutQuad))
+      .then(Tween.custom((v) => (sprite.alpha = v), 1, 0.5, 0.2, easeInOutQuad))
       .wait(0.3)
       .call(() => {
         sprite.alpha = 1;
@@ -537,7 +550,7 @@ function fadeIn(entity: Entity, duration = 0.2) {
   sprite.alpha = 0;
   entity.get(ProcessComponent).cancel("fade");
   entity.get(ProcessComponent).run(
-    Tween.to(sprite, "alpha", 1, duration, easeOutQuad),
+    Tween.custom((v) => (sprite.alpha = v), 0, 1, duration, easeOutQuad),
     { tags: ["fade"] },
   );
 }
@@ -547,7 +560,7 @@ function fadeOut(entity: Entity, duration = 0.2, onDone?: () => void) {
   entity.get(ProcessComponent).cancel("fade");
   entity.get(ProcessComponent).run(
     new Sequence()
-      .then(Tween.to(sprite, "alpha", 0, duration, easeInQuad))
+      .then(Tween.custom((v) => (sprite.alpha = v), 1, 0, duration, easeInQuad))
       .call(() => onDone?.())
       .start(),
     { tags: ["fade"] },
@@ -568,7 +581,10 @@ const anim = entity.add(new KeyframeAnimator<"idle">({
       { time: 0.8, data: 4 },
       { time: 1.6, data: 0 },
     ],
-    setter: (v) => (entity.get(Transform).y = baseY + (v as number)),
+    setter: (v) => {
+      const t = entity.get(Transform);
+      t.setPosition(t.position.x, baseY + (v as number));
+    },
     loop: true,
     easing: easeInOutQuad,
   },

@@ -33,6 +33,8 @@ That's all that's required for `@yagejs/physics`. See `examples/vite.config.ts` 
 
 `Transform` → `RigidBodyComponent` → `ColliderComponent` (required order).
 
+Every `ColliderComponent` needs a sibling `RigidBodyComponent`, including a `sensor: true` one. For a trigger you move through its `Transform` (a bobbing pickup), use a `kinematic` body. Omitting the body throws when the collider is added, not at construction.
+
 ## RigidBodyComponent
 
 ```ts
@@ -85,6 +87,9 @@ entity.add(new ColliderComponent({
 ```
 
 Events:
+
+A `sensor: true` collider fires only `onTrigger`; a solid collider fires only `onCollision`. Register the wrong one and it never fires — dev builds log a warning when you add the handler.
+
 ```ts
 collider.onTrigger((ev) => { ev.other; ev.entered; });       // sensor events
 collider.onCollision((ev) => {
@@ -107,11 +112,12 @@ collider.onCollision((ev) => {
 });
 ```
 
-Overlap queries:
+Overlap queries report only pairs where this collider or the other is `sensor: true`; two solid colliders never report, however deeply they penetrate. For solid-vs-solid contact (contact damage, say) use `onCollision`.
+
 ```ts
-collider.getOverlapping();                    // Entity[]
-collider.getOverlapping({ has: [EnemyTag] }); // filtered
-collider.getOverlappingComponents(Health);    // Component[]
+collider.getOverlapping();                     // Entity[]
+collider.getOverlapping({ tags: ["enemy"] });  // filtered
+collider.getOverlappingComponents(Health);     // Component[]
 ```
 
 ## CollisionLayers
@@ -139,8 +145,8 @@ const world = this.use(PhysicsWorldKey);
 // Gravity
 world.setGravity(0, -980);
 
-// Raycast — direction can be any non-zero vector (normalized internally,
-// e.g. target.sub(origin) works); a zero-length direction throws.
+// Raycast direction can be any non-zero vector (normalized internally,
+// e.g. target.sub(origin) works). A zero-length direction throws.
 const hit = world.raycast(origin, direction, maxDistance, { filterGroups });
 // hit: { entity, point: Vec2, normal: Vec2, distance } | null
 

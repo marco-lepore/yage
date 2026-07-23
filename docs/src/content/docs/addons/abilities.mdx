@@ -367,6 +367,12 @@ Give every velocity-owning window the same kind, then damp or overwrite
 velocity only when `!abilities.active()?.isStepActive("velocity")` and
 `Stagger.active` is false.
 
+For a step that takes no params, write `defineStep<Record<never, never>>(...)` or
+omit the type argument. Avoid `Record<string, never>`: its `[string]: never` index
+signature also covers the timing fields `defineStep` adds to the returned factory
+(`at` for a point step; `from` / `to` / `every?` for a window step), forcing them
+to `never` so the factory can't be called.
+
 ## Integrate game stats and costs
 
 The addon has no attribute or resource model. Four existing boundaries cover
@@ -493,10 +499,3 @@ The package is renderer-free and has no presenter entry. Damage numbers,
 health bars, and impact presentation remain game code. The addon emits state
 and events for those views without requiring a renderer.
 </Aside>
-
-## Deliberate boundaries
-
-The addon does not supply a generic stats/buff/resource system, AI decision
-logic, a generic motion controller, tag-based loadout filtering, hierarchical
-or stateful tag rules, transient combat save state, or built-in presenters.
-These remain game policy or later additions to the existing public boundaries.
