@@ -177,7 +177,7 @@ function slideIn(duration: number): SceneTransition {
 Notes:
 - `begin` fires synchronously when `SceneManager` starts the transition, before any frame is rendered — paint your start state here (hide incoming scene, offset it, etc.) to avoid a flash.
 - `end` always fires at the end of the duration, never mid-run. Restore any persistent properties (visibility, alpha) on surviving scenes as good practice.
-- **Read the right dimension source for the right parent.** Stage-direct overlays (fade / flash / iris) live in canvas pixels — size them from `app.screen`. Scene-root masks and translations (chessboard / irisReveal / slidePush) live in virtual pixels — size them from `getVirtualBounds(ctx)`. Mixing the two silently mis-scales under non-1.0 fit ratios.
+- **Read the right dimension source for the right parent.** Scene-root masks and translations (chessboard / irisReveal / slidePush) live in virtual pixels — size them from `getVirtualBounds(ctx)`. Overlays on `renderer.worldRoot` (fade / flash / iris by default) also live in virtual pixels — size them from `renderer.visibleCanvasRect`. Only stage-direct overlays on `app.stage` (fade / flash / iris under `coverScreen: true`) live in canvas pixels — size those from `app.screen`. Mixing the two silently mis-scales under non-1.0 fit ratios.
 
 ## Composition with LoadingScene
 

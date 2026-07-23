@@ -50,8 +50,9 @@ input.isJustHeldFor("fire", 0.5); // hold-start edge: true the frame hold crosse
 input.isJustTapped("fire", 0.2); // release frame, held <= 0.2s (a tap)
 input.isJustReleasedAfter("fire", 0.5); // release frame, held >= 0.5s
 input.getReleaseDuration("fire"); // seconds held, valid only on the release frame
-// "Release frame" = the frame the action's last bound key or synthetic
-// input releases. A multi-key chord's partial release reports 0 / false.
+// "Release frame" = the frame the action's last held input releases — a bound
+// key, mouse button, gamepad button, or synthetic press. A chord's partial
+// release reports 0 / false.
 
 // Buffered press — consuming query; true once per press within the window
 input.consumeBufferedPress("jump", 0.12); // pressed within last 0.12s and unclaimed → claim + true
@@ -219,6 +220,8 @@ overlayEl.addEventListener("pointerdown", (e) => {
   canvas.dispatchEvent(
     new PointerEvent("pointerdown", {
       pointerId: e.pointerId,
+      pointerType: e.pointerType, // else a forwarded touch/pen reads as mouse
+      isPrimary: e.isPrimary,     // drives primary-pointer reads
       clientX: e.clientX,
       clientY: e.clientY,
       button: 0,

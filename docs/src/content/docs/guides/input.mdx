@@ -311,6 +311,8 @@ overlayEl.addEventListener("pointerdown", (e) => {
   canvas.dispatchEvent(
     new PointerEvent("pointerdown", {
       pointerId: e.pointerId,
+      pointerType: e.pointerType, // else a forwarded touch/pen reads as mouse
+      isPrimary: e.isPrimary,     // drives primary-pointer reads
       clientX: e.clientX,
       clientY: e.clientY,
       button: 0,

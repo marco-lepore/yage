@@ -20,7 +20,7 @@ interface PlayerParams {
 
 class Player extends Entity<PlayerParams> {
   setup(params: PlayerParams) {
-    this.add(new Transform(params.position));
+    this.add(new Transform({ position: params.position }));
     this.add(new SpriteComponent({ texture: params.texture }));
     this.add(new ProcessComponent());
     this.add(new HealthComponent({ max: 100 }));
@@ -65,7 +65,7 @@ class Enemy extends Entity<EnemyParams> {
   setup(params: EnemyParams) {
     // Safe — the entity is attached to the scene, so scene-dependent
     // components (physics body, collider) can be added here.
-    this.add(new Transform(params.position));
+    this.add(new Transform({ position: params.position }));
     this.add(new RigidBodyComponent({ type: "dynamic" }));
     this.add(new ColliderComponent({ shape: { type: "circle", radius: 16 } }));
   }
@@ -110,7 +110,7 @@ import { trait } from "@yagejs/core";
 @trait(Interactable)
 class Chest extends Entity<ChestParams> {
   setup(params: ChestParams) {
-    this.add(new Transform(params.position));
+    this.add(new Transform({ position: params.position }));
     this.add(new SpriteComponent({ texture: chestTexture }));
   }
 
@@ -124,7 +124,7 @@ class Chest extends Entity<ChestParams> {
 @trait(Damageable)
 class NPC extends Entity<NPCParams> {
   setup(params: NPCParams) {
-    this.add(new Transform(params.position));
+    this.add(new Transform({ position: params.position }));
     this.add(new HealthComponent({ max: 50 }));
   }
 

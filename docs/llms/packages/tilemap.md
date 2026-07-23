@@ -247,7 +247,7 @@ for (const cfg of configs) {
 }
 ```
 
-`toPhysicsColliders` handles every emitted shape: rects → `box`, circles → `circle`, capsules → `capsule` (with `axis` preserved — `"x"` rotates the capsule 90°), polygons → `polygon`, polylines → `polyline`. The offset is included so the Rapier collider sits at the Tiled object's bounding-box center; rect/capsule `rotation` is forwarded to the physics config with the offset rotated about the Tiled pivot.
+`toPhysicsColliders` handles every emitted shape: rects → `box`, circles → `circle`, capsules → `capsule` (with `axis` preserved — `"x"` rotates the capsule 90°), polygons → `polygon`, polylines → `polyline`. Box, circle, and capsule colliders take the Tiled object's bounding-box center as their offset; polygon and polyline colliders keep the object's top-left position, with vertices relative to it. Rect and capsule `rotation` is forwarded to the physics config, with the center offset rotated about the Tiled pivot.
 
 Polylines are static-only (no inertia is computed). Attach them to a `RigidBodyComponent({ type: "static" })`.
 

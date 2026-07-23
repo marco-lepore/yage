@@ -104,10 +104,11 @@ The auto-input press fires on the `interact` action, a common gameplay action
 name. A common way to freeze the world while a menu or panel is open is to
 disable the input group that holds the gameplay actions
 (`InputManager.disableGroup("gameplay")`). That stops the interactor's own press
-too: the proximity prompt still shows, but pressing the button does nothing. Gate
-world interactions on `InputManager.isGroupEnabled("gameplay")` instead of
-disabling the group that holds `interact`, or give the interactor a different
-`action`.
+too: the proximity prompt still shows, but pressing the button does nothing.
+Because every consumer reads the same `interact` press, disabling a shared group
+can't free the interactor alone. Give the interactor a different `action`, or
+pause it directly with `interactor.enabled = false` (which also clears the
+orphaned prompt).
 </Aside>
 
 ## Per-interactable overrides

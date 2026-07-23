@@ -29,8 +29,10 @@ replaceable independently:
   unit-testable.
 - **Component** — a `@yagejs/core` Component the game spawns; bridges model
   events to entity events. The host owns focus and pause.
-- **Presenters** — the visual layer, with a default presenter, reachable only
-  via a `/presenters` subpath so the headless path never pulls a renderer.
+- **Presenters** _(renderer-backed addons only)_ — the visual layer, with a
+  default presenter, reachable through a `/presenters` subpath so the headless
+  path never pulls a renderer. Headless addons (interaction, quests, steering,
+  abilities) ship none.
 
 ## Available addons
 

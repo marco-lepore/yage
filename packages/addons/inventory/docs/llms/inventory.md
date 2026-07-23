@@ -503,9 +503,10 @@ re-check), same trust level as `setSlot`.
   Freezing the world while the panel is open by disabling its input group
   (`InputManager.disableGroup("gameplay")`) also silences the panel's own
   confirm when `interact` is in that group. Keep the panel's actions out of any
-  group you disable, or gate world interactions on `isGroupEnabled("gameplay")`
-  instead of disabling the group that holds `interact`. Otherwise rename the
-  confirm action, or drive the panel host-side (`input: null`).
+  group you disable, rename the confirm action, or drive the panel host-side
+  (`input: null`). The panel confirm and the world interactor can't share one
+  disabled `interact` action — a group toggle reads a single global state, so it
+  can't separate the two consumers.
 - `consumes: true` removes the unit itself — the action event's `consumes`
   flag says so; don't also remove in the handler.
 - Anonymous `remove()`/`transfer()` drain fungible stacks first, then data

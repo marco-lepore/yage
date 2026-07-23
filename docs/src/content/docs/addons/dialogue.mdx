@@ -1012,10 +1012,12 @@ controller.addChannel({
 
 :::note
 To shake **mid-line** instead — at an exact character offset as the text reveals —
-write an inline `[shake/]` marker in the line. It surfaces as
-`DialogueRevealMarkerEvent` (see [Reveal events](#reveal-events-typewriter-ticks-and-inline-markers)),
-so the same handler drives the effect. The command step fires once when the line
-shows; the marker fires as the cursor reaches it.
+write an inline `[shake/]` marker in the line. It does **not** reach the `command`
+handler above: it surfaces as `DialogueRevealMarkerEvent` on the entity bus, and
+reaches a registered channel through its `revealBeat` hook (see
+[Reveal events](#reveal-events-typewriter-ticks-and-inline-markers)). Drive the
+effect from a marker listener. The command step fires once when the line shows;
+the marker fires as the cursor reaches it.
 :::
 
 ### Save / restore
