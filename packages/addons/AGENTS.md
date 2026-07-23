@@ -219,6 +219,12 @@ reuse, to avoid sprawl.
   `fixed` group** in `.changeset/config.json` so they iterate without forcing
   core bumps and vice-versa. Do not add an addon's name to that array. Use
   `minor` for initial/feature 0.x releases (pre-1.0 rule; never propose 1.0.0).
+  When an engine minor pushes a capped peer range out of range, changesets
+  force-bumps the addon by `major` (→ `1.0.0` on a 0.x package) and opens the
+  peer cap to `>=<engine>`. `scripts/clamp-addon-versions.mjs` runs inside
+  `version-packages` right after `changeset version` to undo both: it clamps the
+  addon back to a `0.x` minor and restores the `<next-minor>` peer cap. Don't
+  hand-fix addon versions in the Version Packages PR — the script owns this.
 - **Engine deps as `peerDependencies`** (optional via `peerDependenciesMeta`
   where presentation-only), so the user's single engine install is reused, never
   duplicated — this avoids duplicate-instance DI/`ServiceKey` hazards. Use a
