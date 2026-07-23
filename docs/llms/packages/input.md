@@ -50,8 +50,8 @@ input.isJustHeldFor("fire", 0.5); // hold-start edge: true the frame hold crosse
 input.isJustTapped("fire", 0.2); // release frame, held <= 0.2s (a tap)
 input.isJustReleasedAfter("fire", 0.5); // release frame, held >= 0.5s
 input.getReleaseDuration("fire"); // seconds held, valid only on the release frame
-// "Release frame" = the action fully releases (last bound key/synthetic lets
-// go); a multi-key chord's partial release reports 0 / false.
+// "Release frame" = the frame the action's last bound key or synthetic
+// input releases. A multi-key chord's partial release reports 0 / false.
 
 // Buffered press — consuming query; true once per press within the window
 input.consumeBufferedPress("jump", 0.12); // pressed within last 0.12s and unclaimed → claim + true
@@ -71,7 +71,7 @@ input.isPointerDown(); // primary pointer has any of buttons 0/1/2 held
 
 Mouse buttons map to actions: `MouseLeft`, `MouseMiddle`, `MouseRight`. Touch / pen primary contacts fire `MouseLeft` (matches `PointerEvent.button === 0`), so existing click-handler bindings work for taps unchanged.
 
-The singular getters above always report the **primary** pointer (the one the browser flagged `isPrimary`). Multi-touch state lives behind `getPointers`.
+The singular getters above always report the **primary** pointer (the one the browser flagged `isPrimary`). Multi-touch state is available through `getPointers`.
 
 ### Multi-pointer / touch
 
@@ -92,7 +92,7 @@ off();
 
 `button` is the edge that triggered the event: `0`/`1`/`2` for the pressed/released button in an `onPointerDown`/`onPointerUp` listener, `-1` for `onPointerMove`, `pointercancel`-driven up notifications, and `getPointers()`/`getPointer()` snapshots. **In a down/up listener, filter by `p.button`, not `p.buttons`** — listeners fire synchronously *before* the press/release edge is drained into `buttons`, so `buttons` does not yet reflect this event (gating on `p.buttons.has(0)` in `onPointerDown` is a permanent no-op).
 
-Touch / pen pointers are removed from `getPointers()` once their last button releases (or on `pointercancel`); mouse pointers persist across click cycles. The `MouseLeft/Middle/Right` action codes are aggregate "any pointer holds this button" — two simultaneous taps holding button 0 emit one down edge, one up edge.
+Touch / pen pointers are removed from `getPointers()` once their last button releases (or on `pointercancel`). Mouse pointers persist across click cycles. The `MouseLeft/Middle/Right` action codes are aggregate "any pointer holds this button" — two simultaneous taps holding button 0 emit one down edge, one up edge.
 
 ### Pointer coords under responsive fit
 
@@ -115,9 +115,9 @@ import { MyCustomRendererKey } from "./my-renderer.js";
 engine.use(new InputPlugin({ rendererKey: MyCustomRendererKey, actions: { /* … */ } }));
 ```
 
-### Camera wiring for world coordinates
+### Camera setup for world coordinates
 
-`getPointerPosition()` returns screen coords by default. To get world coords, wire the camera in your scene:
+`getPointerPosition()` returns screen coords by default. To get world coords, set the camera in your scene:
 
 ```ts
 import { CameraEntity } from "@yagejs/renderer";
@@ -162,7 +162,7 @@ Action listeners honor group enable/disable — a disabled group's actions don't
 
 ## Scroll wheel
 
-`wheel` events surface as one-frame action edges (`WheelUp`, `WheelDown`, `WheelLeft`, `WheelRight`) — rebindable like keys, never linger in `pressedKeys`. Direct callback access via `onWheel(fn)` for raw deltas.
+`wheel` events appear as one-frame action edges (`WheelUp`, `WheelDown`, `WheelLeft`, `WheelRight`) — rebindable like keys, never linger in `pressedKeys`. Direct callback access via `onWheel(fn)` for raw deltas.
 
 ```ts
 new InputPlugin({
@@ -194,9 +194,9 @@ F0:  rAF tick — InputPollSystem drains the queue
 F0:  user systems read state
 ```
 
-Why: any listener that wants to claim the event (`consumePointer`, the renderer's UI hit-test fallback) gets a chance to run before action-map edges fire. Removes the "Pixi must register listeners before YAGE" load-bearing assumption.
+Why: any listener that wants to claim the event (`consumePointer`, the renderer's UI hit-test fallback) gets a chance to run before action-map edges fire. Removes the assumption that Pixi must register listeners before YAGE.
 
-Synthetic injection bypasses the queue and applies state synchronously, so existing tests using `fireKeyDown` / `firePointerDown` / `fireGamepadButton` need no changes. Tests that drive `dispatchEvent` directly need an explicit `manager._drainInputQueue()` (or a frame step) before assertions.
+Synthetic injection bypasses the queue and applies state synchronously — tests using `fireKeyDown` / `firePointerDown` / `fireGamepadButton` read updated state immediately. Tests that drive `dispatchEvent` directly need an explicit `manager._drainInputQueue()` (or a frame step) before assertions.
 
 ## Pointer / wheel consume
 
@@ -210,7 +210,7 @@ input.consumeWheel();              // suppress wheel action edges for this frame
 
 `consumePointer` lifetime is per-pointer-event-cycle: cleared when the pointer's last button releases (drained `pointerUp`) or on `pointercancel`. So a tap-and-drag pattern works naturally — claim on `pointerdown`, the matching `pointerup` is also gated, and a fresh down later starts unmarked.
 
-`consumePointer` is also the answer to **forwarding or replaying a synthetic pointer to the canvas**. A DOM overlay above the canvas (virtual joystick, accessibility overlay, input-replay tooling) that dispatches a synthetic `PointerEvent` so listeners underneath still receive it must pair the dispatch with `consumePointer`, or every forwarded tap leaks into the `MouseLeft/Middle/Right` action edge:
+`consumePointer` also covers **forwarding or replaying a synthetic pointer to the canvas**. A DOM overlay above the canvas (virtual joystick, accessibility overlay, input-replay tooling) that dispatches a synthetic `PointerEvent` so listeners underneath still receive it must pair the dispatch with `consumePointer`, or every forwarded tap leaks into the `MouseLeft/Middle/Right` action edge:
 
 ```ts
 overlayEl.addEventListener("pointerdown", (e) => {
@@ -232,9 +232,9 @@ overlayEl.addEventListener("pointerdown", (e) => {
 
 ## UI auto-consume
 
-Every primitive in `@yagejs/ui` (and `UIRoot` in `@yagejs/ui-react`) marks its underlying Pixi `Container` as a "consume surface" via a shared `WeakSet` in `@yagejs/core`. The renderer's optional `RendererAdapter.hitTestUI(x, y)` walks `EventBoundary.hitTest`'s parent chain looking for a marked ancestor; `@yagejs/input`'s drain step calls it on each `pointerdown` and auto-claims the pointer when the press lands on UI. Result: clicks on UI panels, buttons, decorative text, layout containers — **none of them fire gameplay actions** by default, with no per-component handler boilerplate.
+Every primitive in `@yagejs/ui` (and `UIRoot` in `@yagejs/ui-react`) marks its underlying Pixi `Container` as a "consume surface" via a shared `WeakSet` in `@yagejs/core`. The renderer's optional `RendererAdapter.hitTestUI(x, y)` walks `EventBoundary.hitTest`'s parent chain looking for a marked ancestor. `@yagejs/input`'s drain step calls it on each `pointerdown` and auto-claims the pointer when the press lands on UI. Result: clicks on UI panels, buttons, decorative text, layout containers — **none of them fire gameplay actions** by default, with no per-component handler boilerplate.
 
-`hitTestUI` only sees surfaces marked via `markPointerConsumeContainer` — `@yagejs/ui` primitives plus `Sprite` / `AnimatedSprite` components configured with `interactive: { consumeOnInteraction: true }` (a plain sprite is not a consume surface). Raw-Pixi UI drawn directly with `GraphicsComponent` / `TextComponent` (e.g. the `@yagejs-addons/dialogue` box) never marks its containers, so `hitTestUI` is blind to it. Dialogue-aware callers should gate on `DialogueController.isActive()` / `isChoosing()` instead.
+`hitTestUI` only sees surfaces marked via `markPointerConsumeContainer` — `@yagejs/ui` primitives plus `Sprite` / `AnimatedSprite` components configured with `interactive: { consumeOnInteraction: true }` (a plain sprite is not a consume surface). Raw-Pixi UI drawn directly with `GraphicsComponent` / `TextComponent` (e.g. the `@yagejs-addons/dialogue` box) never marks its containers, so `hitTestUI` never detects it. Dialogue-aware callers should gate on `DialogueController.isActive()` / `isChoosing()` instead.
 
 Per-component escape hatch via `consumeInput?: boolean` (default `true`):
 
@@ -377,7 +377,7 @@ specific pad regardless of active.
 
 A single pad is "active" at any time — the most-recently-used controller
 auto-promotes via input activity (button press or stick/trigger above its
-deadzone). The active pad's own activity protects it from being stolen, so
+deadzone). The active pad's own activity keeps it from being reassigned, so
 two players each pressing buttons doesn't bounce active back and forth.
 
 ```ts
@@ -460,5 +460,5 @@ input.hasAction("attack");           // is the name in the action map? Validate
 
 For deterministic inspector probes with a real controller plugged in, pair
 `new InputPlugin({ pollGamepads: false })` with
-`new DebugPlugin({ deterministicSeed: 42 })` so polling can't clobber injected
+`new DebugPlugin({ deterministicSeed: 42 })` so polling can't overwrite injected
 state. `setPollingEnabled(false)` flips the same flag at runtime.

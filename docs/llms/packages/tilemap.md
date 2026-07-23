@@ -107,7 +107,7 @@ tilemap.getTileAt(worldX, worldY, "ground"); // tile GID | null
 
 ## Map Data
 
-The `tilemap.data` property exposes the parsed map in a format-agnostic shape (separate from Tiled-specific JSON). Useful for gameplay code that needs raw tile layers or object layers without reaching into Pixi containers:
+The `tilemap.data` property exposes the parsed map in a format-agnostic shape (separate from Tiled-specific JSON). Useful for gameplay code that needs raw tile layers or object layers without accessing Pixi containers directly:
 
 ```ts
 interface TilemapData {
@@ -169,7 +169,7 @@ tiledObjectKey("/assets/dungeon.json", 42);
 // → "/assets/dungeon.json#object:42"
 
 // On the component:
-tilemap.objectKey(obj);            // prefix already wired up
+tilemap.objectKey(obj);            // prefix already applied
 tilemap.forEachObject("interactables", (obj, key) => {
   if (obj.class === "EnemySpawn") {
     scene.spawn(EnemyEntity, { object: obj }, { key });
@@ -203,7 +203,7 @@ resolveObjectRef(obj, "target", allObjs);             // single object ref
 resolveObjectRefArray(obj, "spawns", allObjs);        // spawns[0], spawns[1], ...
 ```
 
-The component-method variants of `resolveRef` / `resolveRefArray` walk every object layer for you; reach for the standalone helpers only when you've already collected the pool yourself.
+The component-method variants of `resolveRef` / `resolveRefArray` walk every object layer for you; use the standalone helpers only when you've already collected the pool yourself.
 
 ## Collision Extraction
 
@@ -231,7 +231,7 @@ Standalone functions: `extractCollisionShapes()`, `toPhysicsColliders()`.
 
 ## Physics Integration
 
-`toPhysicsColliders(shapes)` converts the tilemap collision shapes (top-left origin, as stored in Tiled) into `@yagejs/physics` `ColliderConfig` shape-plus-offset pairs (center origin, as Rapier expects). Use it when wiring extracted walls to a static physics body:
+`toPhysicsColliders(shapes)` converts the tilemap collision shapes (top-left origin, as stored in Tiled) into `@yagejs/physics` `ColliderConfig` shape-plus-offset pairs (center origin, as Rapier expects). Use it when attaching extracted walls to a static physics body:
 
 ```ts
 import { toPhysicsColliders } from "@yagejs/tilemap";
@@ -247,7 +247,7 @@ for (const cfg of configs) {
 }
 ```
 
-`toPhysicsColliders` handles every emitted shape: rects → `box`, circles → `circle`, capsules → `capsule` (with `axis` preserved — `"x"` rotates the capsule 90°), polygons → `polygon`, polylines → `polyline`. The offset is baked in so the Rapier collider sits at the Tiled object's bounding-box center; rect/capsule `rotation` is forwarded to the physics config with the offset rotated about the Tiled pivot.
+`toPhysicsColliders` handles every emitted shape: rects → `box`, circles → `circle`, capsules → `capsule` (with `axis` preserved — `"x"` rotates the capsule 90°), polygons → `polygon`, polylines → `polyline`. The offset is included so the Rapier collider sits at the Tiled object's bounding-box center; rect/capsule `rotation` is forwarded to the physics config with the offset rotated about the Tiled pivot.
 
 Polylines are static-only (no inertia is computed). Attach them to a `RigidBodyComponent({ type: "static" })`.
 

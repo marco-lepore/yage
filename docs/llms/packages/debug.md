@@ -30,7 +30,7 @@ window.__yage__.inspector.time.thaw();
 
 `inspector.time.step(N)` advances `N` frames at the configured dt — each frame is its own full pass through the SystemScheduler, so tweens, AI, and `Component.update(dt)` see one normal-sized frame at a time. To change the per-frame dt, call `inspector.time.setDelta(ms)` first.
 
-The lower-level `window.__yage__.clock` exposes a custom-dt API: `clock.step(dtMs)` (one frame at `dtMs`) and `clock.stepFrames(count, dtMs?)` (loops `clock.step` `count` times). Avoid `clock.step(bigDt)` to "fast-forward" — it collapses everything into a single fat frame. Physics still runs the right number of fixed sub-steps, but `Component.update(dt)`, tweens, and AI logic only see one update at the full `bigDt`, which diverges from real gameplay. Always advance frame-by-frame when simulating gameplay sequences.
+The lower-level `window.__yage__.clock` exposes a custom-dt API: `clock.step(dtMs)` (one frame at `dtMs`) and `clock.stepFrames(count, dtMs?)` (loops `clock.step` `count` times). Avoid `clock.step(bigDt)` to "fast-forward" — it collapses everything into a single large frame. Physics still runs the right number of fixed sub-steps, but `Component.update(dt)`, tweens, and AI logic only see one update at the full `bigDt`, which diverges from real gameplay. Always advance frame-by-frame when simulating gameplay sequences.
 
 ## Inspector test surface
 
@@ -54,7 +54,7 @@ state alongside its `serialize()` output, under `facets.render`
 (`RenderFacetSnapshot` from `@yagejs/renderer`). This is computed on demand from
 the live display object — never from `serialize()` — so it reflects what is
 actually painted, not the declared/persisted state. The facet only appears when
-`RendererPlugin` is active (it registers the contributor that produces it).
+`RendererPlugin` is active (it registers the contributor that produces the facet).
 
 ```ts
 const scene = inspector.snapshot().scenes[0];
@@ -70,9 +70,9 @@ e.components.find((c) => c.type === "SpriteComponent")?.facets?.render;
 `bounds` are **world-space** pixels — the same coordinate space as
 `entity.transform`, before the camera and responsive `fit` transform are
 applied. They are measured from the geometry itself, so a sized-but-hidden
-object still reports its real box; `bounds` is `null` only when there is no
-geometry to measure (an empty `Graphics`, a zero-area object), never merely
-because the object is hidden — read `visible` for the hidden/shown state.
+object still reports its real box. `bounds` is `null` only when there is no
+geometry to measure (an empty `Graphics`, a zero-area object) — never merely
+because the object is hidden. Read `visible` for the hidden/shown state.
 
 `SplitTextComponent` adds per-glyph reporting, so a typewriter reveal is
 observable without touching Pixi internals — where `serialize()` reports the
@@ -89,13 +89,13 @@ split?.visibleText;   // painted glyphs joined, e.g. "Hel"
 excludes whitespace, so a fully-revealed `"Hello world"` reports `"Helloworld"`.
 Compare *which glyphs* are visible, not the verbatim string. `visible` is the
 component's own (local) flag; Pixi v8 has no world-resolved getter, so a hidden
-ancestor is not folded in.
+ancestor's state is not reflected.
 
-**How it is wired (no core↔renderer coupling).** `@yagejs/core`'s Inspector is
-renderer-agnostic: it exposes a generic facet seam — `registerFacetContributor()`
-attaches namespaced `facets` to component/entity snapshots — and knows nothing
-about "render". `RendererPlugin` registers a `RenderFacetContributor` (the same
-contributor idiom as `DebugContributor` / save's `SnapshotContributor`) that
+**How it connects (no core↔renderer coupling).** `@yagejs/core`'s Inspector is
+renderer-agnostic: it exposes a generic extension point — `registerFacetContributor()`
+attaches namespaced `facets` to component/entity snapshots — with no
+rendering-specific code. `RendererPlugin` registers a `RenderFacetContributor` (the same
+contributor pattern as `DebugContributor` / save's `SnapshotContributor`) that
 owns the `render` namespace: it duck-types `inspectRender()` off each graphical
 component and picks the first painted one for the entity-level facet. `bounds` /
 `visible` are the shared fields; a component reports richer, mode-specific state
@@ -142,7 +142,7 @@ const inventory = window.__yage__.inspector.getExtension<{
 
 ## Agent-driven debugging: throwaway Inspector specs
 
-The Inspector + frozen clock + scripted input together make a tight short-loop
+The Inspector + frozen clock + scripted input together make a fast feedback loop
 for LLM-assisted debugging and gameplay validation. The intended workflow is a
 **throwaway Playwright spec**: write it, run it, delete it. Not a CI fixture.
 
@@ -170,26 +170,26 @@ test("can the player jump onto the ledge?", async ({ page }) => {
 });
 ```
 
-Reach for it when:
+Use it when:
 
 - Validating a gameplay change you just made.
 - Troubleshooting a reported bug ("does the door open after 30 frames of holding the lever?").
 - Spot-checking emergent behavior in a scratch session.
 
 Do **not** commit these to a CI suite. Magic frame counts tied to balance
-constants are a brittleness trap — when the player accelerates 5% faster, every
+constants make these specs brittle — when the player accelerates 5% faster, every
 spec with `step(45)` breaks. Keep the spec for the duration of one debugging
 session, then delete it.
 
 Always advance via `inspector.time.step(N)` — it loops one fixed-timestep
 frame at a time (see the `clock.step(bigDt)` guidance above). `step(bigDt)`
-collapses the whole interval into one fat frame, so `Component.update`,
+collapses the whole interval into one large frame, so `Component.update`,
 tweens, and AI logic only see one update at the full `bigDt` and diverge from
 real gameplay.
 
-Honest limits — these are truths, not bugs to fix:
+Known limitations:
 
-- **Visuals**: `snapshotJSON()` covers structural state (positions, components, scene stack), not pixel output. `page.screenshot()` helps but agent-grade interpretation of pixels is imperfect — combine both for confidence.
+- **Visuals**: `snapshotJSON()` covers structural state (positions, components, scene stack), not pixel output. `page.screenshot()` helps, but an agent's interpretation of the pixels is imperfect — combine both for confidence.
 - **Audio**: no introspection surface, and WebAudio doesn't pause in step mode.
 - **Wall-clock leaks**: `setTimeout`, `Date.now()`, and raw `performance.now()` reads bypass the frame clock. None in core YAGE today, but custom plugins might.
 - **`step(bigDt)` ≠ `stepFrames(N)`** for variable-update logic — always prefer the latter in probes.

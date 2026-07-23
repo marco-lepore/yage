@@ -116,7 +116,7 @@ debug?.getCameraStack();
 debug?.getLayerTransform("game", "world");
 ```
 
-`getEntities()` returns an array of `EntitySnapshot` objects with `id`, `name`, `tags`, `components` (class-name strings), and `position`, so filtering by tag or component name is a one-liner:
+`getEntities()` returns an array of `EntitySnapshot` objects with `id`, `name`, `tags`, `components` (class-name strings), and `position`, so filtering by tag or component name is one line:
 
 ```ts
 const enemies = window.__yage__.inspector
@@ -124,7 +124,7 @@ const enemies = window.__yage__.inspector
   .filter((e) => e.tags.includes("enemy"));
 ```
 
-For agent-driven debugging — write a throwaway Playwright spec, boot the game, freeze the clock, drive scripted input, snapshot — see `packages/debug.md` → *Agent-driven debugging: throwaway Inspector specs*.
+For agent-driven debugging: write a throwaway Playwright spec, boot the game, freeze the clock, drive scripted input, and snapshot. See `packages/debug.md` → *Agent-driven debugging: throwaway Inspector specs*.
 
 ### Unit tests (deterministic frame stepping)
 
@@ -142,4 +142,4 @@ advanceFrames(engine, 10);
 expect(player.get(Transform).position.x).toBeGreaterThan(0);
 ```
 
-For component-in-isolation tests, reach for `createMockScene()` / `createMockEntity()`. See `patterns.md` → Testing Patterns for the full cookbook (component unit tests, system tests, process tests, integration tests).
+For component-in-isolation tests, use `createMockScene()` / `createMockEntity()`. See `patterns.md` → Testing Patterns for the full cookbook (component unit tests, system tests, process tests, integration tests).

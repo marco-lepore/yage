@@ -31,23 +31,6 @@ npm install @yagejs/core @yagejs/input @yagejs/renderer
   subpath needs it (and it brings `pixi.js` transitively). Using your own UI?
   Skip it.
 
-## Two entry points
-
-The package is split so the headless path never pulls a renderer:
-
-```ts
-// Headless + input only — no pixi, fully unit-testable.
-import { defineItems, Inventory, InventoryController } from "@yagejs-addons/inventory";
-
-// Pixi presentation — the slot view, cell presets, themes, factory.
-import { createInventoryPanel, defaultInventoryTheme } from "@yagejs-addons/inventory/presenters";
-```
-
-| Entry          | Imports                         | Contains |
-| -------------- | ------------------------------- | -------- |
-| `.`            | `@yagejs/core`, `@yagejs/input` | catalog + `Inventory` model, `filteredView` (a subset projection of one model), sort comparators, `InventorySession` + channel contracts, `InventoryController`, engine events, input bindings |
-| `./presenters` | + `@yagejs/renderer` (brings pixi) | `SlotsView` + the `iconCell` / `rowCell` presets, `DetailView` / `ActionMenuView` / `InventoryChrome`, `PanelLayout`, `defaultInventoryTheme()`, the `createInventoryPanel` factory, `INVENTORY_LAYERS` |
-
 ## Quick start
 
 The default presenters are **zero-asset**: Graphics for the panel and cells,
@@ -133,6 +116,23 @@ under the same names, so alias at import if you use both). YAGE input is
 non-consuming, so while both are active one press reaches both: give one focus with
 `setInputEnabled(false)` on the other, or remap one addon's actions.
 </Aside>
+
+## Two entry points
+
+The package is split so the headless path never pulls a renderer:
+
+```ts
+// Headless + input only — no pixi, fully unit-testable.
+import { defineItems, Inventory, InventoryController } from "@yagejs-addons/inventory";
+
+// Pixi presentation — the slot view, cell presets, themes, factory.
+import { createInventoryPanel, defaultInventoryTheme } from "@yagejs-addons/inventory/presenters";
+```
+
+| Entry          | Imports                         | Contains |
+| -------------- | ------------------------------- | -------- |
+| `.`            | `@yagejs/core`, `@yagejs/input` | catalog + `Inventory` model, `filteredView` (a subset projection of one model), sort comparators, `InventorySession` + channel contracts, `InventoryController`, engine events, input bindings |
+| `./presenters` | + `@yagejs/renderer` (brings pixi) | `SlotsView` + the `iconCell` / `rowCell` presets, `DetailView` / `ActionMenuView` / `InventoryChrome`, `PanelLayout`, `defaultInventoryTheme()`, the `createInventoryPanel` factory, `INVENTORY_LAYERS` |
 
 ## The model is always live
 
@@ -276,7 +276,7 @@ partial stacks of the same item into full ones, and orders by a comparator —
 
 ## Rules in: filters and constraints
 
-What an inventory *accepts* is injected policy, not subclassing:
+What an inventory *accepts* is a function you pass, not a subclass:
 
 ```ts
 const keyItems = new Inventory({
@@ -394,8 +394,6 @@ sensible default when omitted:
 | `headerGap` / `detailGap` | `10` / `10` |
 | `tileLetterColor` | `0x1a1a2e` |
 
-A drift-guard test keeps the theme-to-config mapping honest.
-
 **Textured chrome** is opt-in per surface via `textured?: { panel?, menu? }`.
 A present key swaps that surface's drawn frame for a stretched nine-slice
 texture — the panel keeps its divider lines, the menu keeps its highlight bar
@@ -432,15 +430,15 @@ Each is a `(theme) => Presenter` passed **uncalled**; the factory calls it with
 the resolved theme, and the preset reads the shared tokens (palette, fonts,
 layers) so one theme keeps every surface consistent. `layoutActionMenu(...)` is
 exported for a wholesale menu replacement — it computes the menu size, the
-anchored/flipped/clamped placement, and the row rects, the way `cellGeometry`
-serves the grid. Changing placement, windowing, or navigation behavior means
+anchored/flipped/clamped placement, and the row rects. Changing placement,
+windowing, or navigation behavior means
 replacing the whole view.
 
 ## Standalone or embedded — one API
 
 The default configuration is a self-sufficient panel: it centers itself, draws
 its own chrome, toggles on the `inventory` action, and Esc closes it. Living
-inside an existing menu is **subtraction, not a different API**:
+inside an existing menu uses the same API — you just turn features off:
 
 ```ts
 const bundle = createInventoryPanel(theme, {
@@ -455,8 +453,8 @@ const ctrl = host.add(new InventoryController({
   onCancel: () => menu.focusTabs(),
 }));
 
-// The host's focus handling drives the panel through the same seam the
-// default bindings use:
+// The host drives the panel through the same controller methods the default
+// bindings call:
 menu.onTabFocus("items", () => ctrl.open());
 menu.onKey("down", () => ctrl.move("down"));
 menu.onKey("confirm", () => ctrl.confirm());

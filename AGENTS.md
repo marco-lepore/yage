@@ -80,6 +80,18 @@ npx turbo run build --filter=@yagejs/docs
 
 This runs `copy-llms.mjs` (regenerates `public/llms/`) then builds the Astro site.
 
+### Language & audience
+
+Docs are for the **user of the API**, not its author. Focus on the available API, how to use it, and what it produces. Apply these when writing or editing any doc:
+
+- **Internals are a black box — except to explain a limitation or a gotcha.** Keep an internal detail only when a user would hit it (state persists across plays; a timer runs on your clock; an unmapped action silently does nothing). Cut pure mechanism ("the session fans its stream", "a layout owner … so they never drift", "drain order"), packaging rationale (tree-shaking, "lives on the root entry"), and testing notes ("a test asserts …").
+- **Don't document what isn't shipped.** No roadmap, "deferred", "future", "purely additive", or internal milestone names (v1, v1.1). Delete "what's deferred" sections — their useful positive bits usually live elsewhere. Exception: a limitation a user would 100% expect (rare).
+- **Lead with the outcome, not the architecture.** Intros and section openers say what you get and what it's for before how it's built. Order sections the way a user moves: install → make it work → then reference, packaging, and extension.
+- **No invented terms.** Never coin a label and reuse it as if it were real YAGE vocabulary ("seam", "the multi-instance story", "leader"). Left in the docs, agents parrot them as de-facto terms. Jargon (orthogonal, drain order, syntactic sugar) is usually a symptom of over-detailed internals — first ask whether the passage should exist, then plain-word what remains.
+- **Plain language.** One idea per sentence; don't stack em-dashes and parentheticals; plain words over idioms ("for free" → automatically, "lands normally" → completes, "wire up" → connect); no nouns as verbs ("poke a variable" → set a variable); name the referent; no LLM-ese.
+- **Method.** Read each file end-to-end — grep finds words, not buried problems or inaccuracies. Edits stay focused but are not only word-swaps: rework hard sentences, reorder sections, and cut paragraphs that fail the tests above. Surface structural moves (section reorders, large cuts) as proposals. Verify a suspicious factual claim against the source yourself rather than shipping it.
+- **LLM docs (`docs/llms/`): same rules, terser bar.** Less hand-holding is fine (the audience is agents), but still clean the language and kill invented terms.
+
 ## Key Commands
 
 ```bash

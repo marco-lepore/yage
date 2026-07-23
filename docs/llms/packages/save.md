@@ -35,7 +35,7 @@ import {
 
 interface Potion { name: string; quality: number }
 
-// Compound — bundle leaves so they serialise/restore atomically.
+// Compound — bundle leaves so they serialize/restore atomically.
 const game = createStore((s) => ({
   inventory:  s.map<string, number>(),
   recipes:    s.set<string>(),
@@ -187,7 +187,7 @@ class CheckpointOnRest extends Component {
 
 ## Codecs
 
-Stores accept a `Codec<T, TEncoded>` for non-JSON-native value types. `TEncoded` defaults to `T` for identity codecs and surfaces in `serialize()`/`hydrate()` and `RestoreOptions.migrate` so migrations get the right type. Built-ins live in `@yagejs/core`:
+Stores accept a `Codec<T, TEncoded>` for non-JSON-native value types. `TEncoded` defaults to `T` for identity codecs and appears in `serialize()`/`hydrate()` and `RestoreOptions.migrate` so migrations get the right type. Built-ins live in `@yagejs/core`:
 
 ```ts
 import { jsonCodec, setCodec, mapCodec, dateCodec } from "@yagejs/core";
@@ -267,7 +267,7 @@ await save.restore("run", game, {
 });
 ```
 
-Future versions throw `StoreVersionTooNewError` on read.
+A stored version newer than the read's `version` throws `StoreVersionTooNewError`.
 
 ## Test setup
 
@@ -421,7 +421,7 @@ async doLoad(): Promise<void> {
 }
 ```
 
-Same caveat for any caller-side handle captured before save — the `EffectHandle` / `MaskHandle` you got from `.fx.addEffect(...)` is dead after load. Re-acquire via `findEffect(definition)` on the new scene's `tree` (renderer-contributed effects are restored by name + options).
+Same caveat for any caller-side handle captured before save — the `EffectHandle` / `MaskHandle` you got from `.fx.addEffect(...)` is invalid after load. Re-acquire via `findEffect(definition)` on the new scene's `tree` (renderer-contributed effects are restored by name + options).
 
 ## Snapshot schema
 

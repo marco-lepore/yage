@@ -33,8 +33,8 @@ npm install @yagejs/core @yagejs/input
   `@yagejs/input`, so a headless install carries zero runtime footprint from
   it.
 
-There is a single entry point — no `./presenters` subpath, because there is
-no bundled presenter yet:
+There is a single entry point — no `./presenters` subpath, because the addon
+draws nothing:
 
 ```ts
 import {
@@ -58,7 +58,7 @@ games never leave the first row.
 | Multi-target selection UI | `interactor.inRange` | `InteractionInRangeChangedEvent` | `interactor.interact(chosen)` |
 | Scene-wide or custom query | `interactablesIn(scene)`, `rankInteractables` | none — query on demand | `interactable.interact()` (scripted bypass) |
 
-`focus` is simply `inRange[0]` — one snapshot, not two sources of truth.
+`focus` is simply `inRange[0]`.
 
 ## Quick start
 
@@ -101,7 +101,8 @@ while something is focused calls that interactable's `onInteract` and emits
 
 ## Per-interactable overrides
 
-Every field on `InteractableOptions` is config subtraction — no subclassing:
+Every field on `InteractableOptions` is optional — configure per interactable, no
+subclassing:
 
 ```ts
 lever.add(
@@ -163,20 +164,18 @@ order — deterministic even when two interactables sit exactly on top of each
 other.
 
 <Aside type="caution">
-`range` and `radius` must be non-negative. The reach test compares squared
-distances, so a negative total would come back positive and start matching
-distant targets. Rather than pay for that check on every candidate every frame,
-`Interactor` and `Interactable` each warn once (in dev) when they're added with
-a negative value. Use `range: 0` to reach only what the interactor overlaps.
+`range` and `radius` must be non-negative — a negative value would start matching
+distant targets. `Interactor` and `Interactable` each warn once (in dev) when
+they're added with a negative value. Use `range: 0` to reach only what the
+interactor overlaps.
 </Aside>
 
 ## Multiple targets, selection UI, and highlighting
 
 `focus` is the single default target. Behind it, `interactor.inRange` is the
-full set of in-range, enabled interactables **in the same order focus is picked
-by** — so `inRange[0]` *is* the current `focus`. Both come from one snapshot
-rebuilt each `update()`, so they can never disagree; it reads empty before the
-first frame and while the interactor is disabled.
+full set of in-range, enabled interactables, in the order focus picks from — so
+`inRange[0]` *is* the current `focus`. It reads empty before the first frame and
+while the interactor is disabled.
 
 Use it when several things overlap and the player should choose — the pickup
 selection in games like Genshin. Listen to `InteractionInRangeChangedEvent`,
@@ -250,8 +249,6 @@ target — the pause is not something an argument can bypass.
 
 <Aside type="note">
 This addon is pure distance-query proximity — no `@yagejs/physics` dependency
-and no facing-cone. A physics-sensor discovery source, facing-cone priority, and
-a bundled world-anchored prompt presenter are deferred; the focus event and
-`inRange` already carry what a presenter would draw, so one stays purely
-additive later.
+and no facing-cone, so range is omnidirectional. To show a prompt, draw your own
+from the focus event and `inRange`, which carry what a prompt would need.
 </Aside>

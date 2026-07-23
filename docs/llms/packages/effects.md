@@ -1,6 +1,6 @@
 # @yagejs/effects
 
-Depends on `@yagejs/renderer` (peer), `pixi.js` (peer), `pixi-filters`. Built-in visual-effect presets that plug into `.fx.addEffect` at any of the four scopes (component / layer / scene / screen). Each preset is registered through `defineEffect`, so attached effects round-trip through `SaveService.saveSnapshot` / `loadSnapshot` automatically.
+Depends on `@yagejs/renderer` (peer), `pixi.js` (peer), `pixi-filters`. Built-in visual-effect presets added via `.fx.addEffect` at any of the four scopes (component / layer / scene / screen). Each preset is registered through `defineEffect`, so attached effects round-trip through `SaveService.saveSnapshot` / `loadSnapshot` automatically.
 
 ## Setup
 
@@ -32,7 +32,7 @@ Each preset returns the same `EffectHandle` shape (`remove`, `setEnabled`, `enab
 | `vignette` | `{ radius?, alpha?, blur? }` | `CRTFilter` (with CRT features zeroed) | `vignettingAlpha` |
 | `colorGrade` | `{ preset?, amount? }` | built-in `ColorMatrixFilter` | filter `alpha` (cross-fades to identity) |
 | `godRay` | `{ angle?, gain?, lacunarity?, alpha? }` | `pixi-filters` `GodrayFilter` | `gain` (rays scale 0 → full) |
-| `shockwave` | `{ speed?, amplitude?, wavelength?, brightness?, radius?, duration? }` | `pixi-filters` `ShockwaveFilter` | `amplitude × brightness` (parked off until `trigger`) |
+| `shockwave` | `{ speed?, amplitude?, wavelength?, brightness?, radius?, duration? }` | `pixi-filters` `ShockwaveFilter` | `amplitude × brightness` (zero until `trigger`) |
 | `motionBlur` | `{ velocity?, kernelSize?, offset? }` | `pixi-filters` `MotionBlurFilter` | configured `velocity` magnitude |
 | `oldFilm` | `{ sepia?, noise?, noiseSize?, scratch?, scratchDensity?, scratchWidth?, vignetting?, vignettingAlpha?, vignettingBlur? }` | `pixi-filters` `OldFilmFilter` | filter `alpha` (whole effect; noise self-animates) |
 | `bulgePinch` | `{ strength?, radius?, center? }` | `pixi-filters` `BulgePinchFilter` | configured `strength` (sign preserved) |
@@ -44,19 +44,19 @@ All `duration` options and `fadeIn`/`fadeOut` arguments are in seconds (`hitFlas
 
 Color-grade presets: `"neutral"` (identity), `"sepia"`, `"grayscale"`, `"negative"`, `"night"`, `"warm"` (orange tint + brightness boost), `"cool"` (blue tint).
 
-`motionBlur.kernelSize` must be odd and ≥ 5. Invalid values are coerced up to the nearest valid kernel and a one-shot `console.warn` fires naming the requested + final value. `bulgePinch.strength` is signed: negative pinches, positive bulges; `setIntensity` scales magnitude while preserving the sign so a pinch fades flat → pinch (not flat → bulge → pinch). `bulgePinch.center` is normalized 0..1 screen coords (`{ x: 0.5, y: 0.5 }` is the host's middle).
+`motionBlur.kernelSize` must be odd and ≥ 5. Invalid values are coerced up to the nearest valid kernel and a one-shot `console.warn` fires naming the requested + final value. `bulgePinch.strength` is signed: negative pinches, positive bulges. `setIntensity` scales magnitude while preserving the sign, so a pinch fades flat → pinch (not flat → bulge → pinch). `bulgePinch.center` is normalized 0..1 screen coords (`{ x: 0.5, y: 0.5 }` is the host's middle).
 
-`setIntensity` is the canonical "how strong is this effect right now" dial — fades, gameplay-driven scaling (HP-linked tinting), and looping animation (heartbeat glow, breathing vignette) all go through it. The `set*` setters that change a preset's "full" value (`bloom.setBloomScale`, `glow.setOuterStrength`, `outline.setThickness`, `dropShadow.setAlpha`, `vignette.setStrength`, `chromaticAberration.setSeparation`, `pixelate.setSize`, `glow.setInnerStrength`, `godRay.setGain`, `motionBlur.setVelocity`, `bulgePinch.setStrength`, `halftone.setAmount`, `wave.setAmplitude`, `colorize.setStrength`) preserve the current intensity ratio — adjusting the ceiling mid-pulse raises the pulse height instead of snapping the visible effect back to 1.
+`setIntensity` is the canonical control for how strong an effect is right now — fades, gameplay-driven scaling (HP-linked tinting), and looping animation (heartbeat glow, breathing vignette) all use it. The `set*` setters that change a preset's "full" value (`bloom.setBloomScale`, `glow.setOuterStrength`, `outline.setThickness`, `dropShadow.setAlpha`, `vignette.setStrength`, `chromaticAberration.setSeparation`, `pixelate.setSize`, `glow.setInnerStrength`, `godRay.setGain`, `motionBlur.setVelocity`, `bulgePinch.setStrength`, `halftone.setAmount`, `wave.setAmplitude`, `colorize.setStrength`) preserve the current intensity ratio — adjusting the ceiling mid-pulse raises the pulse height instead of snapping the visible effect back to 1.
 
 ## Scope rationale
 
-Three presets read best at scene scope (or higher) rather than on a single component:
+Three presets work best at scene scope (or higher) rather than on a single component:
 
-- `godRay` — its alpha-aware fragment shader treats fully transparent host pixels as black, so on a per-component sprite the rays render against a black box; at scene scope the layer rasterizes alpha=1 across the visible area and the rays blend into the world as intended.
+- `godRay` — its alpha-aware fragment shader treats fully transparent host pixels as black, so on a per-component sprite the rays render against a black box. At scene scope, the layer rasterizes alpha=1 across the visible area, and the rays blend into the world as intended.
 - `bulgePinch` — distortion samples outside the host's bounding rect, so a sprite-scoped bulge clips at the sprite edges. Apply at scene/layer scope so the lens has room to bend pixels around its `radius`.
-- `shockwave` — the ring expands outward from `center` and is naturally clipped at the host's bounds, so a component-scoped shockwave on a small sprite reads as a tiny "bump" rather than a ring. Scene scope makes `trigger(heroX, heroY)` line up with the entity's transform.
+- `shockwave` — the ring expands outward from `center` and is naturally clipped at the host's bounds, so a component-scoped shockwave on a small sprite looks like a tiny "bump" rather than a ring. Scene scope makes `trigger(heroX, heroY)` line up with the entity's transform.
 
-The `examples/src/effects-showcase.ts` demo wires each of these at the recommended scope — copy that as the worked-out reference.
+The `examples/src/effects-showcase.ts` demo sets up each of these at the recommended scope — copy that as the worked-out reference.
 
 ## Unit reference (and a known limitation)
 
@@ -64,7 +64,7 @@ Pixel-valued options on every preset *except `shockwave` and `bulgePinch.center`
 
 Two presets ship with built-in resolution-stability today:
 - `bulgePinch.center` is normalized 0..1 (resolution-independent by construction).
-- `shockwave` accepts container-local coords for `trigger(x, y)` AND for every dimensional option, and converts each frame against the filter target's live `worldTransform`. **This wrapper pattern is experimental** — it's the working answer for one preset, not the committed answer for the package. Don't depend on `shockwave`'s exact unit story across versions; whichever direction the broader fix takes, the API may shift.
+- `shockwave` accepts container-local coords for `trigger(x, y)` AND for every dimensional option, and converts each frame against the filter target's live `worldTransform`. **This is experimental** — don't depend on `shockwave`'s exact unit behavior across versions.
 
 If you need resolution-stable visual output today on the other presets, scale your option values by `renderer.canvasSize.width / renderer.virtualSize.width` at the call site.
 
@@ -96,7 +96,7 @@ g.setOuterStrength(4);
 g.setInnerStrength(1);
 g.setColor(0xff8800);
 
-tree.fx.addEffect(crt({}));   // noise self-animates; no caller wiring
+tree.fx.addEffect(crt({}));   // noise self-animates; no caller setup
 
 const ca = layer.fx.addEffect(chromaticAberration({ separation: 4 }));
 ca.setSeparation(8);
@@ -165,7 +165,7 @@ If you need to drive a non-primary uniform (or any custom fade shape), schedule 
 import { Tween } from "@yagejs/core";
 
 const h = sprite.fx.addEffect(bloom({ bloomScale: 1.5 }));
-h.run(Tween.custom((v) => h.someExtra(v), 1, 0, 0.5));   // pauses with scene, dies with effect
+h.run(Tween.custom((v) => h.someExtra(v), 1, 0, 0.5));   // pauses with scene, ends with effect
 ```
 
 For work that should outlive a single effect (e.g. a global animator), schedule directly on the matching scope's queue and manage cancellation yourself:

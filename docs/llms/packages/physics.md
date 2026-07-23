@@ -139,8 +139,8 @@ const world = this.use(PhysicsWorldKey);
 // Gravity
 world.setGravity(0, -980);
 
-// Raycast — direction can be any non-zero vector (normalized internally,
-// e.g. target.sub(origin) works); a zero-length direction throws.
+// Raycast direction can be any non-zero vector (normalized internally,
+// e.g. target.sub(origin) works). A zero-length direction throws.
 const hit = world.raycast(origin, direction, maxDistance, { filterGroups });
 // hit: { entity, point: Vec2, normal: Vec2, distance } | null
 

@@ -28,7 +28,7 @@ Every exported field, parameter, and return type across `@yagejs/renderer` (and 
 | `TextStyle` | `TextStyleOptions` | every `style` option |
 | `TextureRef` | none — `string \| TextureHandle`, a serializable key/handle reference | `SpriteComponent.texture`, `setTexture()` |
 
-The aliases are transparent (`type DisplayContainer = Container`) — this is a discoverability and import-surface policy, not encapsulation. Escape hatches (`RendererPlugin.application`, every `renderObject` getter, `.sprite`/`.graphics`/`.text`/`.splitText`/`.animatedSprite`) still return the real Pixi object; only the *type* used to describe it is aliased, so calling any native Pixi method on it works exactly as it would on the raw type.
+The aliases are transparent (`type DisplayContainer = Container`) and provide no encapsulation. Escape hatches (`RendererPlugin.application`, every `renderObject` getter, `.sprite`/`.graphics`/`.text`/`.splitText`/`.animatedSprite`) still return the real Pixi object. Only the *type* used to describe it is aliased, so calling any native Pixi method on it works exactly as it would on the raw type.
 
 ## Setup
 
@@ -55,7 +55,7 @@ One flag for pixel-art games. When `true`, the plugin:
 
 - Sets `TextureStyle.defaultOptions.scaleMode = "nearest"` before `Application.init` so textures loaded by `Assets` sample without bilinear blur.
 - Passes `roundPixels: true` into the Pixi `Application` so subpixel transforms don't smear sprite edges.
-- Writes `image-rendering: -webkit-optimize-contrast; image-rendering: pixelated;` onto the canvas `style.cssText` so the browser scales the backing store with nearest-neighbor (the Safari fallback is the first declaration; modern browsers pick the second from the cascade).
+- Writes `image-rendering: -webkit-optimize-contrast; image-rendering: pixelated;` onto the canvas `style.cssText` so the browser scales the backing store with nearest-neighbor. The Safari fallback is the first declaration; modern browsers pick the second from the cascade.
 
 Default: `false`. Composes with `pixi`: explicit `pixi: { roundPixels: false }` wins over the preset, so games can opt parts back out. Per-texture overrides (`source.scaleMode = "linear"` on a specific texture) keep working — the preset only sets the *default*.
 
@@ -69,7 +69,7 @@ new RendererPlugin({
 
 Registers `RendererKey`, `SceneRenderTreeProviderKey`, and the cross-package `RendererAdapterKey` (from `@yagejs/core`, consumed by `@yagejs/input`) in `EngineContext`, plus a `beforeEnter` scene hook that materializes a per-scene `SceneRenderTree` (accessible via the scene-scoped `SceneRenderTreeKey`).
 
-The adapter contract (`RendererAdapter` in `@yagejs/core`) carries `canvas`, `canvasToVirtual`, `hitTestUI`, and the optional `visibleVirtualRect` — the on-screen region of virtual space CLAMPED to the declared virtual rect. Renderer-agnostic overlays (e.g. `@yagejs-addons/virtual-controls`) lay out against `visibleVirtualRect`, NOT against `canvasToVirtual`-mapped canvas corners: under letterbox the corners map into the masked bars, where drawn content is clipped but pointer input still lands.
+The adapter contract (`RendererAdapter` in `@yagejs/core`) carries `canvas`, `canvasToVirtual`, `hitTestUI`, and the optional `visibleVirtualRect` — the on-screen region of virtual space CLAMPED to the declared virtual rect. Renderer-agnostic overlays (e.g. `@yagejs-addons/virtual-controls`) lay out against `visibleVirtualRect`, NOT against `canvasToVirtual`-mapped canvas corners: under letterbox the corners map into the masked bars, where drawn content is clipped but pointer input still registers.
 
 ## Responsive fit
 
@@ -96,7 +96,7 @@ new RendererPlugin({
 
 A `ResizeObserver` drives updates; it's disposed in `onDestroy`. In headless environments (no DOM target, no `document`) the plugin applies a one-shot transform against the initial `width × height` and installs no observer.
 
-**Give the fit container a bounded height.** The fit host's size is fed back into the canvas every resize, so a container with no height of its own (only content-driven height) has no stable size and the observer can grow without bound. The renderer sets `display:block` on the canvas (kills the ~4px inline-canvas baseline gap that otherwise drives this), which makes the common case converge with zero CSS — but you still want the container to have an explicit or bounded height (`height: 100%` under a sized ancestor, or `max-height`). If a true feedback loop is detected anyway (residual margin / sub-pixel growth), `FitController` freezes auto-resize and logs a one-time `console.warn` rather than hang the tab.
+**Give the fit container a bounded height.** The fit host's size is fed back into the canvas every resize, so a container with no height of its own (only content-driven height) has no stable size and the observer can grow without bound. The renderer sets `display:block` on the canvas, which removes the ~4px inline-canvas baseline gap that otherwise causes this and makes the common case converge with zero CSS. You still want the container to have an explicit or bounded height (`height: 100%` under a sized ancestor, or `max-height`). If a true feedback loop is detected anyway (residual margin / sub-pixel growth), `FitController` freezes auto-resize and logs a one-time `console.warn` rather than hang the tab.
 
 Runtime API on the plugin:
 
@@ -148,11 +148,11 @@ Rectangles of the visible canvas that sit **outside** the declared virtual rect 
 | `cover` | `[]` (virtual covers the entire canvas) |
 | `stretch` | `[]` (virtual exactly fills the canvas) |
 
-Under `expand` these are the play-adjacent strips the game is expected to draw into. The `responsive-ui` example fills each with a solid dark rect plus a short gradient along the inner edge (touching the play area) so the bars read as "not the play area, but still part of the rendered world." Under `letterbox` the same rects tell you where the `backgroundColor` bars are — handy for layering optional bar customization on top of an otherwise-plain letterbox render.
+Under `expand` these are the play-adjacent strips the game is expected to draw into. The `responsive-ui` example fills each with a solid dark rect plus a short gradient along the inner edge (touching the play area) so the bars read as "not the play area, but still part of the rendered world." Under `letterbox` the same rects tell you where the `backgroundColor` bars are — useful for adding optional bar customization to an otherwise-plain letterbox render.
 
 Note: "screen" in the engine (UI `LayerSpace: "screen"`, `Camera.screenToWorld`) means *virtual viewport space*. The `canvasToVirtual` method is named after its inputs (DOM CSS pixels on the canvas) to avoid that collision.
 
-Pair with `@yagejs/input` — `InputPlugin` auto-resolves the renderer via `RendererAdapterKey` (core), so pointer events target this canvas and coordinates route through `canvasToVirtual` out of the box. `InputManager.getPointerPosition()` stays correct under fit with no config.
+Pair with `@yagejs/input` — `InputPlugin` auto-resolves the renderer via `RendererAdapterKey` (core), so pointer events target this canvas and coordinates route through `canvasToVirtual` without extra setup. `InputManager.getPointerPosition()` stays correct under fit with no config.
 
 ## Fullscreen & Orientation
 
@@ -180,7 +180,7 @@ bus.on("screen:orientation", ({ type }) => layoutHud(type));
 button.addEventListener("click", () => renderer.requestFullscreen());
 ```
 
-Listeners are wired in `install()` (gated by `typeof document/window !== "undefined"`) and torn down in `onDestroy()`. iOS Safari requires `requestFullscreen` to run inside a user-gesture handler.
+Listeners are registered in `install()` (gated by `typeof document/window !== "undefined"`) and torn down in `onDestroy()`. iOS Safari requires `requestFullscreen` to run inside a user-gesture handler.
 
 ## Components
 
@@ -197,11 +197,11 @@ Listeners are wired in `install()` (gated by `typeof document/window !== "undefi
 
 Default to `@yagejs/ui` for any text that lives inside a widget, has padding, or stacks with other rows. `TextComponent` is the narrow case where the text is its own world-space primitive with no layout.
 
-For procedural shapes plus a label, use a parent entity with `GraphicsComponent` + a child entity with `TextComponent` — pixi v8 has no `g.text(...)` method; text is always a separate display object.
+For procedural shapes plus a label, use a parent entity with `GraphicsComponent` + a child entity with `TextComponent`. Pixi v8 has no `g.text(...)` method: text is always a separate display object.
 
 ### Shared options vocabulary
 
-All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitText) accept the same `visible` / `tint` / `alpha` / `interactive` options, with runtime accessors for the first three — Pixi's `Container` carries all four natively, so nothing about this differs per component:
+All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitText) accept the same `visible` / `tint` / `alpha` / `interactive` options, with runtime accessors for the first three. Pixi's `Container` carries all four natively, so the behavior is identical across every component:
 
 ```ts
 {
@@ -215,7 +215,7 @@ All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitT
 }
 ```
 
-`comp.visible` / `comp.tint` / `comp.alpha` read/write the live object; `interactive` is option-only (set once at construction, persisted through save/load). `anchor` (`{x, y}`) is shared by Sprite, AnimatedSprite, and Text — Graphics has no anchor (a raw Pixi `Container` has none), and SplitText uses its own per-segment `charAnchor` / `wordAnchor` / `lineAnchor` instead (see below).
+`comp.visible` / `comp.tint` / `comp.alpha` read/write the live object; `interactive` is option-only (set once at construction, persisted through save/load). `anchor` (`{x, y}`) is shared by Sprite, AnimatedSprite, and Text. Graphics has no anchor (a raw Pixi `Container` has none). SplitText uses its own per-segment `charAnchor` / `wordAnchor` / `lineAnchor` instead (see below).
 
 ### SpriteComponent
 
@@ -235,7 +235,7 @@ entity.add(new SpriteComponent({
 
 **Escape hatch:** `.sprite` is the underlying pixi `Sprite` instance — full pixi API surface available, including `sprite.tint`. See [pixi Sprite docs](https://pixijs.com/8.x/guides/components/scene-objects/sprite).
 
-> `sprite.tint` multiplies the source RGB by the tint colour. That's free on the GPU and right for "darken / desaturate / multiply with a colour" effects, but it turns saturated source colours into mud (a blue mushroom × yellow tint reads as olive). For replace-style recolour — where black stays black, white reaches the target colour, and midtones blend proportionally — use the `colorize` effect from `@yagejs/effects` instead.
+> `sprite.tint` multiplies the source RGB by the tint colour. That's cheap on the GPU and right for "darken / desaturate / multiply with a colour" effects, but it turns saturated source colours into mud (a blue mushroom × yellow tint reads as olive). For replace-style recolour — where black stays black, white reaches the target colour, and midtones blend proportionally — use the `colorize` effect from `@yagejs/effects` instead.
 
 ### GraphicsComponent
 
@@ -257,7 +257,7 @@ Gradient fills: use `linearGradient` / `radialGradient` (see below) instead of r
 
 ### TextComponent
 
-Renders text on a layer, Transform-synced like sprites. For free-positioned strings only — for laid-out text widgets, use `UISurface` + `UIText` from `@yagejs/ui` (see decision tree above).
+Renders text on a layer, Transform-synced like sprites. For free-positioned strings only — for laid-out text widgets, use `UISurface` + `UIText` from `@yagejs/ui` (see "Pick a component" above).
 
 ```ts
 import { TextComponent } from "@yagejs/renderer";
@@ -303,7 +303,7 @@ new TextComponent({ text: "HUD", resolution: window.devicePixelRatio });
 
 **Engine default text style.** `new RendererPlugin({ defaultTextStyle: { fontFamily, fill, resolution } })` sets an app-wide base under every `TextComponent` / `UIText` `style` (per-text values win) — no need to import pixi to touch `TextStyle.defaultTextStyle`. `@yagejs/ui`'s `UIPlugin({ defaultTextStyle })` layers a UI-only override on top (precedence: per-text style > UIPlugin default > RendererPlugin default > pixi default). The default also re-applies on `setStyle`, so a recolour keeps it.
 
-**`bitmap` is a sibling of `style`, not a style key.** Folding it into `style` (`style: { …, bitmap: true }`) is ignored and emits a dev warning — keep it top-level: `{ style: { … }, bitmap: true }`.
+**`bitmap` is a sibling of `style`, not a style key.** Merging it into `style` (`style: { …, bitmap: true }`) is ignored and emits a dev warning — keep it top-level: `{ style: { … }, bitmap: true }`.
 
 ### SplitTextComponent
 
@@ -335,7 +335,7 @@ API: `chars` / `words` / `lines` (getters), `setText(v)`, `setStyle(s)`, `charAn
 
 ### AnimatedSpriteComponent
 
-`source` is required — there's no raw-`Texture[]` construction path, so every `AnimatedSpriteComponent` serializes fully. A `FrameSource` is either a sheet (`SheetFrameSource`: `{ sheet, frameWidth, frameHeight?, count?, columns?, startX?, startY?, gapX?, gapY? }` — top row by default; `count` wraps rows every `columns` frames for multi-row grid sheets) or an atlas animation (`{ atlas, animation }`). `sliceGrid(texture, options)` is the underlying slicer for Texture-in-hand use.
+`source` is required — there's no raw-`Texture[]` construction path, so every `AnimatedSpriteComponent` serializes fully. A `FrameSource` is either a sheet (`SheetFrameSource`: `{ sheet, frameWidth, frameHeight?, count?, columns?, startX?, startY?, gapX?, gapY? }` — top row by default; `count` wraps rows every `columns` frames for multi-row grid sheets) or an atlas animation (`{ atlas, animation }`). `sliceGrid(texture, options)` is the underlying slicer for use when you already have a `Texture` object.
 
 ```ts
 import { AnimatedSpriteComponent } from "@yagejs/renderer";
@@ -384,7 +384,7 @@ anim.playOneShot("attack"); // locks until complete, then reverts
 
 ### Typing the controller
 
-`AnimationController<T extends string = string>` is generic on the animation-name union — `play("walk")` autocompletes, and a typo like `play("wal")` is a compile error. But the runtime class isn't generic: there's no `AnimationController<HeroAnim>` expression to pass to `entity.get()` or `Component.sibling()`, and a default `AnimationController<string>` isn't sound-assignable to `AnimationController<HeroAnim>` (the `current: T | ""` getter is covariant on `T`, so a string-returning instance can't substitute for one promising the narrow union). Annotate the field with an `as` cast — the cast is required because the type parameter is type-only, and the field annotation makes every downstream call site narrow for free:
+`AnimationController<T extends string = string>` is generic on the animation-name union — `play("walk")` autocompletes, and a typo like `play("wal")` is a compile error. But the runtime class isn't generic: there's no `AnimationController<HeroAnim>` expression to pass to `entity.get()` or `Component.sibling()`, and a default `AnimationController<string>` isn't sound-assignable to `AnimationController<HeroAnim>` (the `current: T | ""` getter is covariant on `T`, so a string-returning instance can't substitute for one promising the narrow union). Annotate the field with an `as` cast — the cast is required because the type parameter is type-only, and the field annotation makes every downstream call site narrow automatically:
 
 ```ts
 type HeroAnim = "idle" | "walk" | "attack";
@@ -437,9 +437,9 @@ layered.playOneShot("attack", { onComplete: () => layered.play("idle") });
 
 ### Layered characters: one-shot lock drift (the underlying problem)
 
-`LayeredAnimationController` is the recommended fix. If you'd rather not introduce a wrapper component — for prototypes, or when each layer already has a custom controller — the same insight can live as a one-line helper. The underlying issue: `AnimationController.playOneShot` computes its lock duration from `frames.length / speed` (in whole-frame increments). When layers have different frame counts or speeds (a 12-frame outfit at `speed: 0.2` and a 10-frame body at `speed: 0.18` round differently), the locks expire on different frames and one sprite snaps back to idle while the others are still mid-swing — a single layer flickering at the tail of every attack animation.
+`LayeredAnimationController` is the recommended fix. If you'd rather not introduce a wrapper component — for prototypes, or when each layer already has a custom controller — the same fix can be written as a short helper function. The underlying issue: `AnimationController.playOneShot` computes its lock duration from `frames.length / speed` (in whole-frame increments). When layers have different frame counts or speeds (a 12-frame outfit at `speed: 0.2` and a 10-frame body at `speed: 0.18` round differently), the locks expire on different frames and one sprite snaps back to idle while the others are still mid-swing — a single layer flickering at the end of every attack animation.
 
-Precompute the duration on a designated "lead" controller and broadcast it via `options.duration`:
+Precompute the duration on the first controller and broadcast it via `options.duration`:
 
 ```ts
 function playOneShotLayered(
@@ -461,7 +461,7 @@ playOneShotLayered([bodyAnim, headAnim, outfitAnim], "attack");
 
 ## Gradient fills
 
-`linearGradient` and `radialGradient` return a `GradientFill` (pixi `FillGradient` under the hood) usable anywhere a graphics fill style is accepted. Stops use yage-style numeric color + alpha pairs — no CSS color strings needed.
+`linearGradient` and `radialGradient` return a `GradientFill` (pixi `FillGradient` internally) usable anywhere a graphics fill style is accepted. Stops use yage-style numeric color + alpha pairs — no CSS color strings needed.
 
 ```ts
 import { linearGradient, radialGradient, GraphicsComponent } from "@yagejs/renderer";
@@ -571,9 +571,9 @@ class GameScene extends Scene {
 }
 ```
 
-**The `"default"` layer.** Every scene's tree auto-creates a layer named `"default"` at order 0; any sprite/text/graphics with no explicit `layer` renders there. Declaring `{ name: "default", ... }` *configures* that pre-created layer (its `sort` / `space` / `isRenderGroup`) rather than adding a second one — `{ name: "default", sort: ySort }` is the canonical "depth-sort the layer my entities already use" setup, with no per-component `layer` wiring. The declared `order` is ignored (default is order 0 by definition). To change a live layer's sort after the scene is running, call `layer.setSort(fn)` — `tree.defaultLayer.setSort(ySort)`. Passing `undefined` stops the per-frame re-sort but does **not** restore the original insertion order (Pixi reorders `children` in place; clearing `sortableChildren` just halts further sorting), so children keep their last-sorted order.
+**The `"default"` layer.** Every scene's tree auto-creates a layer named `"default"` at order 0; any sprite/text/graphics with no explicit `layer` renders there. Declaring `{ name: "default", ... }` *configures* that pre-created layer (its `sort` / `space` / `isRenderGroup`) rather than adding a second one — `{ name: "default", sort: ySort }` is the canonical "depth-sort the layer my entities already use" setup, without setting `layer` on each component. The declared `order` is ignored (default is order 0 by definition). To change a live layer's sort after the scene is running, call `layer.setSort(fn)` — `tree.defaultLayer.setSort(ySort)`. Passing `undefined` stops the per-frame re-sort but does **not** restore the original insertion order (Pixi reorders `children` in place; clearing `sortableChildren` just halts further sorting), so children keep their last-sorted order.
 
-**Undeclared `layer` name.** A visual component (`SpriteComponent`, `GraphicsComponent`, etc.) whose `layer` names a layer the scene never declared emits a dev-mode `[yage]` warning (naming the entity, the missing layer, and the scene) and falls back to the `"default"` layer — the visual still renders, just on the wrong layer. The fix is to add `{ name: "<layer>", order: N }` to the scene's `layers`. The warning is tree-shaken from production builds.
+**Undeclared `layer` name.** A visual component (`SpriteComponent`, `GraphicsComponent`, etc.) whose `layer` names a layer the scene never declared emits a dev-mode `[yage]` warning (naming the entity, the missing layer, and the scene) and falls back to the `"default"` layer — the visual still renders, just on the wrong layer. The fix is to add `{ name: "<layer>", order: N }` to the scene's `layers`.
 
 ### Camera binding rule
 
@@ -614,7 +614,7 @@ Two built-in helpers cover the common cases:
 | Helper | Returns |
 |---|---|
 | `ySort` | `c.position.y` — classic top-down depth, characters with higher y paint on top. |
-| `ySortBy(offsetOf)` | `c.position.y + offsetOf(c)` — each container can advertise a per-sprite Y offset (Godot's `y_sort_origin`) so the depth key tracks the visual "footprint" instead of the top-left. `offsetOf` returns `undefined` to fall through to plain `position.y`. |
+| `ySortBy(offsetOf)` | `c.position.y + offsetOf(c)` — each container can provide a per-sprite Y offset (Godot's `y_sort_origin`) so the depth key tracks the visual "footprint" instead of the top-left. `offsetOf` returns `undefined` to fall through to plain `position.y`. |
 
 ```ts
 import { ySort, ySortBy, type LayerDef } from "@yagejs/renderer";
@@ -632,7 +632,7 @@ Game code that manually writes `child.zIndex` on individual sprites doesn't need
 
 ### `SortGroupComponent` — keep a multi-part entity from splitting
 
-Under a layer `sort`, every visual is a flat child of the layer with its own independent depth key. So a multi-part entity — a body plus an offset child sprite (held item, mount, floating crystal) — can be **split**: an unrelated entity whose key lands between the parts renders *between* them. (Unity's `SortingGroup`, Godot's nested y-sort scopes.)
+Under a layer `sort`, every visual is a flat child of the layer with its own independent depth key. So a multi-part entity — a body plus an offset child sprite (held item, mount, floating crystal) — can be **split**: an unrelated entity whose key falls between the parts renders *between* them. (Unity's `SortingGroup`, Godot's nested y-sort scopes.)
 
 `SortGroupComponent` gives an entity its own Pixi sub-container. Its members sort *within* the group; the group sorts as **one unit** against the rest of the layer.
 
@@ -686,11 +686,9 @@ readonly layers: readonly LayerDef[] = [
 ```
 
 **Not** required for filter isolation around tilemaps. `@yagejs/tilemap`'s
-`TilemapPlugin` already runtime-patches `@pixi/tilemap`'s `TilemapPipe`
-to read the currently-bound uniform group (not the stale push log) and
-to use `tilemap.groupTransform` (not `worldTransform`), so a filtered
-sibling layer no longer drifts the canopy regardless of render-group
-configuration. See `packages/tilemap/src/patch-tilemap-pipe.ts`.
+`TilemapPlugin` already patches `@pixi/tilemap`'s `TilemapPipe` so a
+filtered sibling layer no longer causes the canopy to drift, regardless
+of render-group configuration. See `packages/tilemap/src/patch-tilemap-pipe.ts`.
 
 ### CameraBinding — per-axis ratios
 
@@ -814,7 +812,7 @@ await engine.scenes.replace(newScene, { transition: crossFade({ duration: 0.5 })
 
 ## Effects
 
-Handle-based filter API. Same shape at four scopes — component, layer, scene, screen — exposed uniformly as `.fx` on every attach site. The renderer ships only the primitives; pre-built presets live in `@yagejs/effects`.
+Handle-based filter API. Same shape at four scopes — component, layer, scene, screen — exposed uniformly as `.fx` at every scope. The renderer ships only the primitives; pre-built presets live in `@yagejs/effects`.
 
 ```ts
 import { rawFilter } from "@yagejs/renderer";
@@ -840,10 +838,10 @@ const restored = sprite.fx.findEffect(hitFlash);  // EffectHandle | null
 
 | Export | Signature | Description |
 |---|---|---|
-| `.fx` (on every scope) | `EffectsHost` | Per-attach-site holder. `addEffect(factory)`, `findEffect(definition)`, `serialize()`, `restore(snap)`, `destroy()`, `size`. The underlying `EffectStack` is built lazily on first attach. |
+| `.fx` (on every scope) | `EffectsHost` | Per-scope holder. `addEffect(factory)`, `findEffect(definition)`, `serialize()`, `restore(snap)`, `destroy()`, `size`. The underlying `EffectStack` is built lazily on first attach. |
 | `EffectsHost` | class | Constructor: `(getContainer: () => Container, scope: EffectScope, makeQueue: (() => ScopedProcessQueue) \| undefined)`. Auto-built on each scope's host object — components, layers, scenes, the renderer. |
 | `EffectHandle` | interface | `remove()` / `setEnabled(on)` / `enabled` / `fadeIn(duration): Process` / `fadeOut(duration): Process` / `run(p: Process): Process`. The `run` schedules a `Process` scoped to the effect's lifetime — pauses with the owning scene, time-scales with it, auto-cancels when the effect is removed. |
-| `Effect.onActivate?(base)` | optional factory hook | Runs once after `buildExtras` has merged its keys onto the handle. Use to self-schedule per-effect tickers via `base.run(...)` so callers don't have to wire `step(dt)` (e.g. CRT noise animator). `buildExtras` itself stays pure — no side effects there. |
+| `Effect.onActivate?(base)` | optional factory hook | Runs once after `buildExtras` has merged its keys onto the handle. Use to self-schedule per-effect tickers via `base.run(...)` so callers don't have to call `step(dt)` themselves (e.g. CRT noise animator). `buildExtras` itself stays pure — no side effects there. |
 | `defineEffect` | `<H, O>({ name, factory: (opts: O) => Effect<H> }) => (opts: O) => EffectFactory<H>` | Register a preset under a stable string name. The returned callable produces save-aware factories — built effects are tagged with `{ name, options }` for snapshot round-trip. |
 | `rawFilter` | `(filter: Filter, opts?: { intensity?: { get, set } }) => EffectFactory` | Escape hatch for any pixi `Filter`. Without `intensity`, fade calls no-op + warn once. NOT serializable. |
 | `EffectStack` | class | Internal — `EffectsHost` owns one. `serialize() / restoreFrom(snap)` for save/load. |
@@ -1012,4 +1010,4 @@ new TextComponent({ text: "menu", style: { fontFamily: "Inter" } });            
 new TextComponent({ text: "SCORE", bitmap: true, style: { fontFamily: "Inter" } });  // bitmap atlas
 ```
 
-`WebFontBakeOptions` is `{ size?, chars?, resolution?, padding?, style?, variants? }` — the same knobs as `installBitmapFont` minus `name`/`family` (the atlas always registers under the web font's `family`). `bitmap` **requires** `family`; without it the bake is skipped with a warning (the atlas needs a stable name to register under and uninstall on scene teardown). When the web font is unloaded, its canvas face is dropped and its hold on the baked atlas is released — the atlas (base + variants) is `BitmapFont.uninstall`ed only once every owner sharing the family (another web-font load, or an `installBitmapFont`) has released it. Two scenes preloading the same `webFont` are reference-counted by the `AssetManager`, so the atlas survives until the last scene unloads it.
+`WebFontBakeOptions` is `{ size?, chars?, resolution?, padding?, style?, variants? }` — the same options as `installBitmapFont` minus `name`/`family` (the atlas always registers under the web font's `family`). `bitmap` **requires** `family`; without it the bake is skipped with a warning (the atlas needs a stable name to register under and uninstall on scene teardown). When the web font is unloaded, its canvas face is dropped and its hold on the baked atlas is released — the atlas (base + variants) is `BitmapFont.uninstall`ed only once every owner sharing the family (another web-font load, or an `installBitmapFont`) has released it. Two scenes preloading the same `webFont` are reference-counted by the `AssetManager`, so the atlas survives until the last scene unloads it.

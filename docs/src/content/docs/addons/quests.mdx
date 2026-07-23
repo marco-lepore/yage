@@ -79,11 +79,9 @@ wolf.on(WolfDiedEvent, () => log.advance("thinThePack", "wolf"));
 ```
 
 <Aside type="tip">
-This is the whole binding mechanism. A published "collect-item objective" or
-"dialogue-command objective" adapter would need quests to depend on
-inventory/dialogue as peers — the first addon-to-addon package dependency in
-the toolkit. Ready-made adapters are deferred; the one-line game-authored form
-is the v1 path.
+This is the whole binding mechanism — one line per objective, driven by your
+game's own events. Quests stays decoupled from inventory and dialogue: you
+translate their events into `advance()` calls yourself.
 </Aside>
 
 ## React to consequences
@@ -115,18 +113,17 @@ log.canComplete("gatherHerbs"); // false
 log.get("gatherHerbs"); // full QuestState { status, objectives: {...counts} }
 ```
 
-`status()` has no separate stored "locked" state — it derives from stored
-phase (active/completed/failed) or, for a never-started quest, from whether
-every `requires` quest is `completed`.
+`status()` returns the stored phase (active/completed/failed) for a started
+quest. A never-started quest is `available` once every quest in its `requires`
+is `completed`, and `locked` until then.
 
 ## Prerequisites
 
 `requires` is a flat list of quest ids that must be `completed` before a quest
-unlocks — no nested graph object. The dependency graph is the implicit union
-across every quest's `requires` list. Forward references (naming a
-later-declared quest) are fine; naming a quest absent from the whole
-`defineQuests` call throws at definition time. A prerequisite **cycle** is not
-detected in v1 — the cycle's quests simply stay `locked` forever, no crash.
+unlocks — no nested graph object. Forward references (naming a later-declared
+quest) are fine; naming a quest absent from the whole `defineQuests` call throws
+at definition time. A prerequisite **cycle** leaves its
+quests `locked` forever (no crash) — each waits on another that never completes.
 `fail` is terminal, so a failed quest never reaches `completed` again — any
 quest that `requires` it stays `locked` permanently.
 
@@ -226,17 +223,3 @@ ids no longer declared within a restored quest, clamping surviving counts to
 the current target. A quest never started stays absent from the snapshot; its
 status re-derives from `requires` on restore, same as before any snapshot
 existed.
-
-## What's deferred
-
-- **Journal / tracker presenter** — v1 is headless-first, like the behaviors
-  and interaction addons. The events plus `active()`/`get()` state carry
-  everything a list view or HUD tracker needs, so a `./presenters` subpath is
-  purely additive later.
-- **Published per-addon adapters** (a ready-made "collect-item objective"
-  bound to `InventoryItemAddedEvent`) — the one-line game-authored form covers
-  v1; an optional `./adapters` entry is a future addition.
-- **Quest abandon / reset / fail-then-retry** — `fail` is terminal in v1.
-- **Timed objectives, hidden objectives, "any N of M" branching, prerequisite
-  cycle detection, reward payloads** — all out of scope for v1; the game
-  layers these on top via events.

@@ -12,7 +12,7 @@ class PlayerController extends Component {
   // For physics entities — always go through the rigid body
   private rb = this.sibling(RigidBodyComponent);
 
-  // Camera is now an entity — pass it as a constructor parameter if needed
+  // Camera is an entity — pass it as a constructor parameter if needed
   constructor(private readonly camera?: CameraEntity) {
     super();
   }
@@ -290,7 +290,7 @@ describe("Gravity", () => {
 
 ### Unit testing a system
 
-Use `createMockScene` to wire up a system without a full Engine:
+Use `createMockScene` to set up a system without a full Engine:
 
 ```ts
 import { describe, it, expect } from "vitest";
@@ -490,7 +490,7 @@ class PauseScene extends Scene {
 ### Time scale
 
 ```ts
-scene.timeScale = 0.25; // slow-mo (persistent knob)
+scene.timeScale = 0.25; // slow-mo (persistent option)
 scene.timeScale = 2; // fast-forward
 
 // Per-entity multiplier, composes on top of the scene's effective scale.
@@ -524,8 +524,8 @@ time.scaleBy(2, { for: 5, key: "haste" }); // speed-up, auto-releases after 5s
 time.scaleBy(0.25, { key: "slowmo", excludeUpdates: [player] });
 
 // Composition: each `key` is a channel. Within a channel the latest active
-// request wins (older still-active ones apply again when it ends); across
-// channels winners multiply; freeze is a x0 factor. scene.timeScale is
+// request wins; older still-active ones apply again when it ends. Across
+// channels, winners multiply. Freeze is a x0 factor. scene.timeScale is
 // input-only: effectiveScale = scene.timeScale x channel winners.
 time.effectiveScale; // what physics and scene-pool processes run at
 time.isFrozen; // effectiveScale === 0
@@ -621,7 +621,7 @@ const grounded = hit !== null; // add coyote timer for better feel
 
 ## Common Gotchas
 
-**setup() vs constructor**: Entity constructors run before scene wiring. Always use `setup()` for adding components and resolving services.
+**setup() vs constructor**: Entity constructors run before the entity is attached to the scene. Always use `setup()` for adding components and resolving services.
 
 **Deferred destruction**: `entity.destroy()` marks for destruction. Actual cleanup happens in EndOfFrame phase. Don't assume immediate removal.
 

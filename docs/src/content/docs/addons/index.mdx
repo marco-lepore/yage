@@ -16,7 +16,7 @@ release never forces an addon bump and vice-versa.
 
 <Aside type="note">
 An addon is a *gameplay pattern*, not engine infrastructure. Many games ship
-zero dialogue or inventory — that's the editorial line between an addon and a
+zero dialogue or inventory — that's the line between an addon and a
 mainline plugin like `@yagejs/renderer`.
 </Aside>
 
@@ -29,12 +29,8 @@ replaceable independently:
   unit-testable.
 - **Component** — a `@yagejs/core` Component the game spawns; bridges model
   events to entity events. The host owns focus and pause.
-- **Presenters** — presentation behind capability-channel interfaces, with a
-  default presenter, reachable only via a `/presenters` subpath so the headless
-  path never pulls a renderer.
-
-This is what makes "logic installed, presentation swappable, copy-paste/eject
-for UI only" actually hold.
+- **Presenters** — the visual layer, with a default presenter, reachable only
+  via a `/presenters` subpath so the headless path never pulls a renderer.
 
 ## Available addons
 
