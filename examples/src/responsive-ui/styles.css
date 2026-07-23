@@ -1,0 +1,15 @@
+#game-container {
+  max-width: 100%;
+  height: 70vh;
+  aspect-ratio: auto;
+}
+#readout {
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+  color: #aaa;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 6px 10px;
+  text-align: center;
+}

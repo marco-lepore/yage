@@ -56,7 +56,7 @@ Three presets work best at scene scope (or higher) rather than on a single compo
 - `bulgePinch` — distortion samples outside the host's bounding rect, so a sprite-scoped bulge clips at the sprite edges. Apply at scene/layer scope so the lens has room to bend pixels around its `radius`.
 - `shockwave` — the ring expands outward from `center` and is naturally clipped at the host's bounds, so a component-scoped shockwave on a small sprite looks like a tiny "bump" rather than a ring. Scene scope makes `trigger(heroX, heroY)` line up with the entity's transform.
 
-The `examples/src/effects-showcase.ts` demo sets up each of these at the recommended scope — copy that as the worked-out reference.
+The `examples/src/effects-showcase/main.ts` demo sets up each of these at the recommended scope — copy that as the worked-out reference.
 
 Scene scope and screen scope also post-process the UI. `@yagejs/ui` mounts its screen-space `"ui"` layer inside the scene's render tree, so `tree.fx.addEffect(...)` (scene scope) and a renderer-level effect (screen scope) both filter the HUD along with the world. To keep an effect off the HUD, attach it at the content layer instead — `tree.get("world").fx.addEffect(...)` (layer scope, per the Setup examples) — so only that layer is filtered.
 

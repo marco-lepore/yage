@@ -7,4 +7,4 @@ type Globals = typeof globalThis & {
 
 // Dynamic import — a static import would be hoisted above the assignments,
 // so the example's `main()` would read the globals before they're set.
-await import("../../../examples/src/platformer.ts");
+await import("../../../examples/src/platformer/main.ts");
