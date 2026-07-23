@@ -288,7 +288,8 @@ rng.getSeed();        // current seed
 ```
 
 `globalRandom` is a process-wide `RandomService` for boot-time or cross-scene
-code that runs outside any scene.
+code that runs outside any scene. `inspector.setSeed` does not reseed it, so keep
+replay-critical rolls on the scene RNG (`RandomKey`).
 
 ### Pause on Tab Blur
 

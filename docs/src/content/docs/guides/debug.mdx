@@ -249,7 +249,7 @@ test("can the player jump onto the ledge?", async ({ page }) => {
 });
 ```
 
-`setSeed(seed)` reseeds the scene RNG that game code reads through `RandomKey`, a scene-scoped `ServiceKey<RandomService>` resolved in a Component with `this.use(RandomKey)` (`float`, `range`, `int`, `pick`, `shuffle`, `getSeed`). Read random values through it rather than `Math.random()`, or a replay diverges from the seeded run. For boot-time or cross-scene code that runs outside a scene, use `globalRandom`.
+`setSeed(seed)` reseeds the scene RNG that game code reads through `RandomKey`, a scene-scoped `ServiceKey<RandomService>` resolved in a Component with `this.use(RandomKey)` (`float`, `range`, `int`, `pick`, `shuffle`, `getSeed`). Read random values through it rather than `Math.random()`, or a replay diverges from the seeded run. For boot-time or cross-scene code that runs outside a scene, use `globalRandom` — but `setSeed` does not reseed it, so keep replay-critical rolls on `RandomKey`.
 
 The two spec styles serve very different purposes:
 
