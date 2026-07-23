@@ -615,6 +615,17 @@ choice-hover tick, skip-used analytics, an auto-advance beat. Observation is
 events-only: the session owns when the reveal-completed callback fires, so there
 is no public field a game can accidentally overwrite.
 
+<Aside type="caution">
+To gate gameplay on a conversation — freeze player movement while one runs — read
+`controller.isActive()` each frame rather than mirroring `DialogueStartedEvent` /
+`DialogueEndedEvent` into a boolean. `stop()` resets the conversation to idle
+**without** emitting `DialogueEndedEvent` (only reaching an in-script `end` step
+does). A flag driven by those events therefore stays stuck "active" after a
+`stop()` and soft-locks the player, even though `isActive()` already reads
+`false`. Set the block straight from the method — for example
+`player.movementEnabled = !dlg.isActive()`.
+</Aside>
+
 ## Timed choices (a recipe)
 
 A Telltale-style "pick within 5 seconds or a default fires" is a short recipe you

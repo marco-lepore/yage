@@ -117,6 +117,17 @@ non-consuming, so while both are active one press reaches both: give one focus w
 `setInputEnabled(false)` on the other, or remap one addon's actions.
 </Aside>
 
+<Aside type="caution">
+The panel's confirm is the `interact` action, a common gameplay action name. A
+common way to freeze the world while the panel is open is to disable the input
+group that holds the gameplay actions (`InputManager.disableGroup("gameplay")`).
+That also silences the panel's own confirm when `interact` is in the disabled
+group. Keep the panel's actions out of any group you disable, or gate world
+interactions on `InputManager.isGroupEnabled("gameplay")` instead of disabling
+the group. Otherwise rename the confirm action, or drive the panel host-side
+with `input: null`.
+</Aside>
+
 ## Two entry points
 
 The package is split so the headless path never pulls a renderer:
@@ -245,7 +256,9 @@ The `data` argument and the predicate narrow by the item id you pass to `add`,
 (`new Inventory<ItemId>(...)`) or an untyped catalog keeps the permissive
 `Record<string, unknown>`, so code that doesn't declare `instance` types is
 unaffected. Metadata `data` on the def (weight, base value) stays an opaque
-object; only the per-stack `instance` data is typed.
+object; only the per-stack `instance` data is typed. Reading a typed shape off a
+def needs an explicit cast, as in `catalog.get(id).data as ItemMeta` (the
+`weightLimit` constraint below reads `def.data?.weight as number` the same way).
 
 ## Arranging: move, split, sort
 

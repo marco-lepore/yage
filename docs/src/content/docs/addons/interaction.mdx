@@ -99,6 +99,17 @@ With `@yagejs/input` installed and an `interact` action bound, pressing it
 while something is focused calls that interactable's `onInteract` and emits
 `InteractionPerformedEvent`. No setup beyond the three steps above.
 
+<Aside type="caution">
+The auto-input press fires on the `interact` action, a common gameplay action
+name. A common way to freeze the world while a menu or panel is open is to
+disable the input group that holds the gameplay actions
+(`InputManager.disableGroup("gameplay")`). That stops the interactor's own press
+too: the proximity prompt still shows, but pressing the button does nothing. Gate
+world interactions on `InputManager.isGroupEnabled("gameplay")` instead of
+disabling the group that holds `interact`, or give the interactor a different
+`action`.
+</Aside>
+
 ## Per-interactable overrides
 
 Every field on `InteractableOptions` is optional — configure per interactable, no

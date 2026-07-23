@@ -59,6 +59,8 @@ import { Panel, ZStack, Text, Button, Image, ProgressBar, Checkbox } from "@yage
 </Panel>
 ```
 
+`<Text>` takes a single string child. Pre-join interpolated content into one template string (`` `Boats: ${count}/3` ``); mixing text and expressions (`Boats: {count}/3`) produces a `(string | number)[]` and fails typechecking. `<Button>`, by contrast, accepts arbitrary `ReactNode` children.
+
 PixiUI wrappers: `PixiFancyButton`, `PixiCheckbox`, `PixiProgressBar`, `PixiSlider`, `PixiInput`, `PixiSelect`, `PixiRadioGroup`.
 
 Each JSX prop type extends its `@yagejs/ui` imperative counterpart (e.g. `ButtonProps` extends `UIButtonProps`). A prop the imperative class accepts is always a valid JSX prop too. `consumeInput` works on every element, including `Checkbox`, `ScrollView`, and the Pixi* wrappers.

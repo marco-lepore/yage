@@ -193,13 +193,13 @@ title.setText("YOU WIN");           // destroys + recreates chars, then onSplit
 
 API: `chars` / `words` / `lines` getters, `segments`, `setText`, `setStyle`, `resplit()`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `onSplit(cb) → unsubscribe`. Animate the segments with the engine's `Tween` / `Process` — the element doesn't impose an animation API.
 
-**React:** `<SplitText>` (props mirror `<Text>` minus `truncate`, plus the three anchors + `autoSplit`) and the `useSplitText()` hook. The hook returns a `[ref, controls]` tuple — `controls` has live `chars` / `words` / `lines` / `segments` getters, `resplit()`, and `run(process | process[])`. `run` enqueues on a scene-scoped process queue (pauses with the scene; cancelled on unmount and on re-split, so a tween never writes to a destroyed glyph) and returns `{ cancel() }` for that batch. Animate imperatively from any handler — pair `run` with `Tween.stagger(items, factory, stepMs)` to cascade a tween across the segments.
+**React:** `<SplitText>` (props mirror `<Text>` minus `truncate`, plus the three anchors + `autoSplit`) and the `useSplitText()` hook. The hook returns a `[ref, controls]` tuple — `controls` has live `chars` / `words` / `lines` / `segments` getters, `resplit()`, and `run(process | process[])`. `run` enqueues on a scene-scoped process queue (pauses with the scene; cancelled on unmount and on re-split, so a tween never writes to a destroyed glyph) and returns `{ cancel() }` for that batch. Animate imperatively from any handler — pair `run` with `Tween.stagger(items, factory, stepSeconds)` to cascade a tween across the segments.
 
 ```tsx
 const [ref, split] = useSplitText();
 const reveal = () => {
   split.chars.forEach((c) => (c.alpha = 0));
-  split.run(Tween.stagger(split.chars, (c) => Tween.to(c, "alpha", 1, 300), 50));
+  split.run(Tween.stagger(split.chars, (c) => Tween.custom((v) => (c.alpha = v), 0, 1, 0.3), 0.05));
 };
 return <SplitText ref={ref} charAnchor={0.5} onPointerDown={reveal}>{label}</SplitText>;
 ```

@@ -7,6 +7,7 @@
 - [Core Concepts](llms/core-concepts.md): Architecture, lifecycle, ECS, scenes, events, DI, processes, serialization
 - [Quick Start](llms/quick-start.md): Installation, engine setup, scene class, first project
 - [Patterns](llms/patterns.md): Component, entity, process, and testing patterns; common gotchas
+- [Performance](llms/performance.md): Allocation-aware APIs, hot-loop tips, debug-mode cost, pooling
 - [Assets](llms/assets.md): Asset handles, scene preload, manifests, cache lifetime, base path
 - [Loading Scene](llms/loading-scene.md): Loading-scene orchestration, progress events, error handling
 - [Scene Transitions](llms/scene-transitions.md): Built-in transitions and the SceneTransition contract
@@ -34,6 +35,10 @@ Installable, opinionated gameplay patterns (`@yagejs-addons` scope), independent
 - [dialogue](llms/addons/dialogue.md): Branching runner, typewriter box & bubbles, markup, themeable presenters
 - [inventory](llms/addons/inventory.md): Slot inventory — stacking, item actions, sorting, one slot view with swappable cell presets
 - [abilities](llms/addons/abilities.md): Phase-based abilities, input intent mapping, and a concrete hit contract
+- [interaction](llms/addons/interaction.md): Proximity interaction — walk up, see a prompt, press E; headless
+- [quests](llms/addons/quests.md): Headless quest log — objectives and progression
+- [steering](llms/addons/steering.md): Movement AI — seek, flee, arrive, wander, pursue/evade, obstacle avoidance, flocking, path-following
+- [virtual-controls](llms/addons/virtual-controls.md): Mobile touch overlay — virtual joystick(s) and on-screen buttons driving InputManager
 
 ## Optional
 

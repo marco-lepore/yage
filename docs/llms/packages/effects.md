@@ -44,9 +44,9 @@ All `duration` options and `fadeIn`/`fadeOut` arguments are in seconds (`hitFlas
 
 Color-grade presets: `"neutral"` (identity), `"sepia"`, `"grayscale"`, `"negative"`, `"night"`, `"warm"` (orange tint + brightness boost), `"cool"` (blue tint).
 
-`motionBlur.kernelSize` must be odd and ≥ 5. Invalid values are coerced up to the nearest valid kernel and a one-shot `console.warn` fires naming the requested + final value. `bulgePinch.strength` is signed: negative pinches, positive bulges. `setIntensity` scales magnitude while preserving the sign, so a pinch fades flat → pinch (not flat → bulge → pinch). `bulgePinch.center` is normalized 0..1 screen coords (`{ x: 0.5, y: 0.5 }` is the host's middle).
+`motionBlur.kernelSize` must be odd and ≥ 5. Invalid values are coerced up to the nearest valid kernel and a one-shot `console.warn` fires naming the requested + final value. `bulgePinch.strength` is signed: negative pinches, positive bulges. A fade scales the magnitude while preserving the sign, so a pinch fades flat → pinch, not flat → bulge → pinch. `bulgePinch.center` is normalized 0..1 screen coords (`{ x: 0.5, y: 0.5 }` is the host's middle).
 
-`setIntensity` is the canonical control for how strong an effect is right now — fades, gameplay-driven scaling (HP-linked tinting), and looping animation (heartbeat glow, breathing vignette) all use it. The `set*` setters that change a preset's "full" value (`bloom.setBloomScale`, `glow.setOuterStrength`, `outline.setThickness`, `dropShadow.setAlpha`, `vignette.setStrength`, `chromaticAberration.setSeparation`, `pixelate.setSize`, `glow.setInnerStrength`, `godRay.setGain`, `motionBlur.setVelocity`, `bulgePinch.setStrength`, `halftone.setAmount`, `wave.setAmplitude`, `colorize.setStrength`) preserve the current intensity ratio — adjusting the ceiling mid-pulse raises the pulse height instead of snapping the visible effect back to 1.
+The public handle controls an effect's strength three ways. `fadeIn(seconds)` and `fadeOut(seconds)` tween the primary intensity (column 4 above) between 0 and 1 and return a `Process`. The per-preset `set*` setters that change a preset's "full" value (`bloom.setBloomScale`, `glow.setOuterStrength`, `outline.setThickness`, `dropShadow.setAlpha`, `vignette.setStrength`, `chromaticAberration.setSeparation`, `pixelate.setSize`, `glow.setInnerStrength`, `godRay.setGain`, `motionBlur.setVelocity`, `bulgePinch.setStrength`, `halftone.setAmount`, `wave.setAmplitude`, `colorize.setStrength`) rebase that ceiling while preserving the current intensity ratio, so raising the ceiling mid-pulse raises the pulse height instead of snapping the visible effect back to 1. For gameplay-driven strength (HP-linked tinting) or looping animation (heartbeat glow, breathing vignette), drive the preset's `set*` setter from a scheduled tween — `vignette.run(Tween.custom((v) => vignette.setStrength(v), from, to, seconds))` — which is scoped to the effect and auto-cancels on `.remove()` (see Fade behavior below).
 
 ## Scope rationale
 
@@ -57,6 +57,8 @@ Three presets work best at scene scope (or higher) rather than on a single compo
 - `shockwave` — the ring expands outward from `center` and is naturally clipped at the host's bounds, so a component-scoped shockwave on a small sprite looks like a tiny "bump" rather than a ring. Scene scope makes `trigger(heroX, heroY)` line up with the entity's transform.
 
 The `examples/src/effects-showcase.ts` demo sets up each of these at the recommended scope — copy that as the worked-out reference.
+
+Scene scope and screen scope also post-process the UI. `@yagejs/ui` mounts its screen-space `"ui"` layer inside the scene's render tree, so `tree.fx.addEffect(...)` (scene scope) and a renderer-level effect (screen scope) both filter the HUD along with the world. To keep an effect off the HUD, attach it at the content layer instead — `tree.get("world").fx.addEffect(...)` (layer scope, per the Setup examples) — so only that layer is filtered.
 
 ## Unit reference (and a known limitation)
 

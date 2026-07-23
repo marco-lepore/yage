@@ -367,6 +367,12 @@ Give every velocity-owning window the same kind, then damp or overwrite
 velocity only when `!abilities.active()?.isStepActive("velocity")` and
 `Stagger.active` is false.
 
+For a step that takes no params, write `defineStep<Record<never, never>>(...)` or
+omit the type argument. Avoid `Record<string, never>`: its `[string]: never` index
+signature also covers the timing fields `defineStep` adds to the returned factory
+(`at` for a point step; `from` / `to` / `every?` for a window step), forcing them
+to `never` so the factory can't be called.
+
 ## Integrate game stats and costs
 
 The addon has no attribute or resource model. Four existing boundaries cover

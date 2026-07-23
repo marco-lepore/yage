@@ -174,6 +174,12 @@ The component emits entity events (they bubble to the scene):
 hook for haptics, UI sounds, tutorials — or buttons that deliberately have no
 `action` and exist only as events.
 
+For a tutorial highlight or a custom HUD hint, read a control's resolved geometry
+by id: `controls.button("a")?.layout` or `controls.stick("left")?.layout`.
+`controls.model.buttons` and `controls.model.sticks` are readonly arrays of the
+`VirtualButton` / `VirtualStick` instances, each carrying its own `.id` and
+`.layout` — there is no id-keyed layout lookup object.
+
 ## Custom presenters
 
 The model owns hit-testing, routing, and layout; a presenter only draws. Two

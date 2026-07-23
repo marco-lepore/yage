@@ -198,7 +198,7 @@ Decision matrix:
 | Cooldown / restartable timer (`completed`, `restart`) | `pc.slot()` |
 | Animate one property A → B | `Tween.to()` / `.vec2()` |
 | Interpolate a number from→to with a custom setter | `Tween.custom(setter, from, to, duration, easing?)` |
-| Cascade a tween across an array (staggered starts) | `Tween.stagger(items, (item, i) => Process, stepMs)` → `Process[]` |
+| Cascade a tween across an array (staggered starts) | `Tween.stagger(items, (item, i) => Process, stepSeconds)` → `Process[]` |
 | Arbitrary per-frame logic (no interpolation) | `new Process({ update })` |
 | Multi-step "do this, then this, then this" | `Sequence` |
 | Run several animations together | `Sequence.parallel()` |
@@ -236,7 +236,10 @@ const anim = entity.add(new KeyframeAnimator({
       { time: 0.5, data: 10 },
       { time: 1, data: 0 },
     ],
-    setter: (v) => (entity.get(Transform).y = v as number),
+    setter: (v) => {
+      const t = entity.get(Transform);
+      t.setPosition(t.position.x, v as number);
+    },
     loop: true,
   },
 }));
@@ -253,8 +256,8 @@ new KeyframeAnimator({
   intro: {
     keyframes: [
       { time: 0,    data: 0, event: () => audio.play("step") },
-      { time: 250,  data: 0, event: () => audio.play("step") },
-      { time: 500,  data: 0, event: () => audio.play("door") },
+      { time: 0.25, data: 0, event: () => audio.play("step") },
+      { time: 0.5,  data: 0, event: () => audio.play("door") },
     ],
     // no setter — only the events matter
   },
@@ -264,6 +267,28 @@ new KeyframeAnimator({
 `KeyframeAnimationDef.setter` is declared with method syntax so it's
 contravariance-friendly: a `Record<string, KeyframeAnimationDef<number>>`
 flows into the constructor unchanged, no `as` cast or widening helper needed.
+
+### Randomness
+
+Seeded per-scene RNG. `RandomKey` is a scene-scoped `ServiceKey<RandomService>`;
+resolve it in a Component with `this.use(RandomKey)`. It stays deterministic
+under `inspector.setSeed(seed)` and replays; `Math.random()` does not, so using
+it breaks replay determinism.
+
+```ts
+import { RandomKey } from "@yagejs/core";
+
+const rng = this.use(RandomKey);
+rng.float();          // [0, 1)
+rng.range(min, max);  // float in [min, max)
+rng.int(min, max);    // integer in [min, max], inclusive
+rng.pick(array);      // random element of a non-empty array
+rng.shuffle(array);   // shuffle in place, returns the same array
+rng.getSeed();        // current seed
+```
+
+`globalRandom` is a process-wide `RandomService` for boot-time or cross-scene
+code that runs outside any scene.
 
 ### Pause on Tab Blur
 

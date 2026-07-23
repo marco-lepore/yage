@@ -204,6 +204,12 @@ const lunge = defineStep<{ speed: number }>("lunge", {
 const step = lunge({ from: 0.1, to: 0.25, speed: 300 });
 ```
 
+For a step with no params, write `defineStep<Record<never, never>>(...)` or omit
+the type argument. `Record<string, never>` does NOT work: its `[string]: never`
+index signature also covers the timing fields `defineStep` adds to the factory
+argument (`at` for a point step; `from` / `to` / `every?` for a window step),
+forcing them to `never` so the factory can't be called.
+
 Built-in step factories:
 
 - `anim({ at, name })`: starts the named renderer-free `KeyframeAnimator`

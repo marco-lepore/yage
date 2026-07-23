@@ -22,6 +22,8 @@ Add more packages as needed:
 npm install @yagejs/physics @yagejs/input @yagejs/audio @yagejs/debug
 ```
 
+Gameplay addons (dialogue, inventory, quests, and more) ship under the separate `@yagejs-addons/*` scope. Their docs are co-located at `packages/addons/<name>/docs/llms/`; the full list is in `llms.txt`.
+
 ## Minimal Example
 
 ```ts
@@ -85,6 +87,7 @@ When the engine is constructed with `debug: true`, it installs an introspection 
 
 ```ts
 const engine = new Engine({ debug: true });
+engine.use(new DebugPlugin()); // inspector.time (freeze/step) needs DebugPlugin
 await engine.start();
 
 // In the browser console:
@@ -96,13 +99,15 @@ window.__yage__.inspector.getSceneStack();                  // scenes + pause st
 window.__yage__.inspector.getErrors();                      // anything disabled by ErrorBoundary
 window.__yage__.inspector.time.freeze();                    // stop auto-advance
 window.__yage__.inspector.time.step(1);                     // advance one frame (sync)
-window.__yage__.inspector.input.keyDown("ArrowRight");      // synthetic input
+window.__yage__.inspector.input.keyDown("ArrowRight");      // synthetic input (needs InputPlugin)
 window.__yage__.inspector.input.hold("ArrowRight", 30);     // press, run N frames, release
 window.__yage__.inspector.snapshotJSON();                   // stable JSON snapshot
 window.__yage__.inspector.setSeed(42);                      // pin every scene RNG (for replays)
 window.__yage__.inspector.events.getLog();                  // recorded engine + entity events
 await window.__yage__.inspector.events.waitFor("scene:pushed", { withinFrames: 30 });
 ```
+
+Snapshot and query calls work with `debug: true` alone. Frame stepping (`inspector.time.*`) needs `DebugPlugin`; synthetic input (`inspector.input.*`) needs `InputPlugin`. Without those plugins, the gated calls throw.
 
 Diagnostics that need optional plugins live under inspector extension
 namespaces. For example, `DebugPlugin` registers `debug` while installed.

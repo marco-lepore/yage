@@ -141,6 +141,8 @@ class Player extends Entity {
 // scene.spawn(Player, { x: 100, y: 200 });
 ```
 
+Entity subclasses have no `use()` / `service()` / `context` of their own — only `this.scene`. From an entity method, resolve an engine-scope service through the scene: `this.scene.context.resolve(key)` (throws if missing) or `this.scene.context.tryResolve(key)` (undefined if missing). Per-scene infrastructure (physics world, render tree) and any service-heavy logic belong in a `Component`, where `this.use(key)` resolves the correct scope automatically.
+
 ## Traits
 
 Compile-time enforced, runtime-queryable capabilities on entity subclasses.

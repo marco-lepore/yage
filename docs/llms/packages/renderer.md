@@ -251,7 +251,7 @@ entity.add(new GraphicsComponent({ layer: "world", tint: 0x88ccff }).draw((g) =>
 
 Serializes `layer` / `visible` / `tint` / `alpha` / `interactive` / effects / mask — the drawn geometry itself is not persisted (Pixi has no way to read commands back off a `Graphics` object), so redo the `draw()` call in `afterRestore()`.
 
-**Escape hatch:** `.graphics` (and the `g` passed to `.draw(fn)`) is a raw pixi `Graphics` with the v8 fluent API: `rect` / `circle` / `roundRect` / `poly` / `moveTo` / `lineTo` / `fill` / `stroke`. See [pixi Graphics docs](https://pixijs.com/8.x/guides/components/scene-objects/graphics).
+**Escape hatch:** `.graphics` (and the `g` passed to `.draw(fn)`) is a raw pixi `Graphics` with the v8 fluent API: `rect` / `circle` / `roundRect` / `poly` / `moveTo` / `lineTo` / `arc` / `fill` / `stroke`. `arc` continues the current path like Canvas 2D: call `moveTo(x, y)` at the arc's start point first for a standalone arc, otherwise a line connects it from the previous point. See [pixi Graphics docs](https://pixijs.com/8.x/guides/components/scene-objects/graphics).
 
 Gradient fills: use `linearGradient` / `radialGradient` (see below) instead of reaching into `pixi.js` for `FillGradient`.
 
@@ -301,7 +301,7 @@ new TextComponent({ text: "HUD", resolution: window.devicePixelRatio });
 
 `resolution` is ignored when `bitmap` is set — bitmap resolution is fixed when the font is baked (see `installBitmapFont({ resolution })`).
 
-**Engine default text style.** `new RendererPlugin({ defaultTextStyle: { fontFamily, fill, resolution } })` sets an app-wide base under every `TextComponent` / `UIText` `style` (per-text values win) — no need to import pixi to touch `TextStyle.defaultTextStyle`. `@yagejs/ui`'s `UIPlugin({ defaultTextStyle })` layers a UI-only override on top (precedence: per-text style > UIPlugin default > RendererPlugin default > pixi default). The default also re-applies on `setStyle`, so a recolour keeps it.
+**Engine default text style.** `new RendererPlugin({ defaultTextStyle: { fontFamily, fill } })` sets an app-wide base under every `TextComponent` / `UIText` `style` (per-text values win) — no need to import pixi to touch `TextStyle.defaultTextStyle`. `@yagejs/ui`'s `UIPlugin({ defaultTextStyle })` layers a UI-only override on top (precedence: per-text style > UIPlugin default > RendererPlugin default > pixi default). The default also re-applies on `setStyle`, so a recolour keeps it.
 
 **`bitmap` is a sibling of `style`, not a style key.** Merging it into `style` (`style: { …, bitmap: true }`) is ignored and emits a dev warning — keep it top-level: `{ style: { … }, bitmap: true }`.
 
@@ -328,7 +328,7 @@ title.lines;   // Container[] — line groups
 // Typewriter: stagger each glyph's fade-in (0.05s apart) via a ProcessComponent.
 title.chars.forEach((c) => (c.alpha = 0));
 const pc = entity.add(new ProcessComponent());
-Tween.stagger(title.chars, (c) => Tween.to(c, "alpha", 1, 0.3), 0.05).forEach((p) => pc.run(p));
+Tween.stagger(title.chars, (c) => Tween.custom((v) => (c.alpha = v), 0, 1, 0.3), 0.05).forEach((p) => pc.run(p));
 ```
 
 API: `chars` / `words` / `lines` (getters), `setText(v)`, `setStyle(s)`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `resplit()` (manual split when `autoSplit: false`), `visible` / `tint` / `alpha`, `fx` / `setMask` / `clearMask` (same effects/mask surface as the other four components), `splitText` (underlying Pixi object), `isBitmap`. Serializable (text/style/bitmap/anchors/layer/visible/tint/alpha/interactive/effects/mask; re-splits on restore). Caveats: `SplitText` is experimental, re-lays-out on every `text`/`style` change (prefer `TextComponent` for static/simple text), and char spacing can differ slightly from `Text` (kerning lost when glyphs split).

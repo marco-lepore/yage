@@ -53,8 +53,8 @@ export interface SplitTextControls {
  *   split.run(
  *     Tween.stagger(
  *       split.chars,
- *       (char) => Tween.to(char, "alpha", 1, 300),
- *       50,
+ *       (char) => Tween.custom((v) => (char.alpha = v), 0, 1, 0.3),
+ *       0.05,
  *     ),
  *   );
  * return <SplitText ref={ref} onPointerOver={reveal}>{label}</SplitText>;

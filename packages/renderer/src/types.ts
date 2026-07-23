@@ -76,8 +76,9 @@ export interface RendererConfig {
   /**
    * Engine-level default text style, applied as the base under every
    * `TextComponent` / `UIText` `style` (per-text values win). Lets you set an
-   * app-wide font / fill / resolution without importing pixi to touch
-   * `TextStyle.defaultTextStyle`. `@yagejs/ui`'s `UIPlugin({ defaultTextStyle })`
+   * app-wide font / fill without importing pixi to touch
+   * `TextStyle.defaultTextStyle`. `resolution` is not a style property — pass it
+   * per `TextComponent`. `@yagejs/ui`'s `UIPlugin({ defaultTextStyle })`
    * can layer a UI-only override on top.
    */
   defaultTextStyle?: TextStyle;
