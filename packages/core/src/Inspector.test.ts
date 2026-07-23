@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { Inspector } from "./Inspector.js";
 import type { InspectorFacetContributor } from "./Inspector.js";
 import { Scene } from "./Scene.js";
@@ -447,6 +447,249 @@ describe("Inspector", () => {
         payload: null,
       },
     ]);
+  });
+
+  it("events.setEnabled/isEnabled mirror the internal toggle", () => {
+    const { inspector } = setup();
+    expect(inspector.events.isEnabled()).toBe(false);
+
+    inspector.events.setEnabled(true);
+    expect(inspector.events.isEnabled()).toBe(true);
+
+    inspector.events.setEnabled(false);
+    expect(inspector.events.isEnabled()).toBe(false);
+  });
+
+  it("getSceneStack entries carry the same id snapshotScene() accepts", async () => {
+    const { inspector, scenes } = setup();
+    await scenes.push(new TestScene("game"));
+
+    const [entry] = inspector.getSceneStack();
+    expect(entry?.id).toBeDefined();
+    expect(inspector.snapshotScene(entry!.id).id).toBe(entry!.id);
+  });
+
+  describe("snapshotScene", () => {
+    it("resolves by scene name", async () => {
+      const { inspector, scenes } = setup();
+      await scenes.push(new TestScene("game"));
+
+      expect(inspector.snapshotScene("game").name).toBe("game");
+    });
+
+    it("falls back to id when no scene has that name", async () => {
+      const { inspector, scenes } = setup();
+      await scenes.push(new TestScene("game"));
+      const id = inspector.snapshot().scenes[0]!.id;
+
+      expect(inspector.snapshotScene(id).id).toBe(id);
+    });
+
+    it("throws when more than one active scene shares the name", async () => {
+      const { inspector, scenes } = setup();
+      await scenes.push(new TestScene("dup"));
+      await scenes.push(new TestScene("dup"));
+
+      expect(() => inspector.snapshotScene("dup")).toThrow(
+        'Inspector.snapshotScene(): "dup" matches 2 active scenes; use the scene id from snapshot().scenes[].id instead.',
+      );
+    });
+
+    it("throws for an unknown name or id", async () => {
+      const { inspector, scenes } = setup();
+      await scenes.push(new TestScene("game"));
+
+      expect(() => inspector.snapshotScene("nope")).toThrow(
+        'Inspector.snapshotScene(): unknown scene name or id "nope".',
+      );
+    });
+  });
+
+  describe("component state reflection", () => {
+    class Cooldown extends Component {
+      private _ready = false;
+      _internalTimer = 5;
+
+      get isReady(): boolean {
+        return this._ready;
+      }
+
+      makeReady(): void {
+        this._ready = true;
+      }
+    }
+
+    class ThrowingGetter extends Component {
+      get boom(): never {
+        throw new Error("not attached yet");
+      }
+    }
+
+    it("reflects a public getter when the component has no serialize()", async () => {
+      const { inspector, scenes } = setup();
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+      const e = scene.spawn("timer");
+      const comp = new Cooldown();
+      comp.makeReady();
+      e.add(comp);
+
+      const data = inspector.getComponentData("timer", "Cooldown") as Record<
+        string,
+        unknown
+      >;
+      expect(data["isReady"]).toBe(true);
+      // Underscore-prefixed own fields stay excluded, getters included or not.
+      expect(data["_internalTimer"]).toBeUndefined();
+
+      const snapState = inspector.snapshot().scenes[0]?.entities[0]
+        ?.components[0]?.state as Record<string, unknown>;
+      expect(snapState["isReady"]).toBe(true);
+    });
+
+    it("snapshot no longer reports state: null by default for a component without serialize()", async () => {
+      const { inspector, scenes } = setup();
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+      const e = scene.spawn("player");
+      e.add(new Health(30));
+
+      const comp = inspector.snapshot().scenes[0]?.entities[0]?.components[0];
+      expect(comp?.state).not.toBeNull();
+      expect((comp?.state as Record<string, unknown>)["hp"]).toBe(30);
+    });
+
+    it("skips a getter that throws instead of failing the whole snapshot", async () => {
+      const { inspector, scenes } = setup();
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+      const e = scene.spawn("broken");
+      e.add(new ThrowingGetter());
+
+      const data = inspector.getComponentData(
+        "broken",
+        "ThrowingGetter",
+      ) as Record<string, unknown>;
+      expect(data["boom"]).toBeUndefined();
+    });
+  });
+
+  describe("time.isAdvancing", () => {
+    it("is false before the game loop has ever ticked", () => {
+      const { inspector } = setup();
+      expect(inspector.time.isAdvancing()).toBe(false);
+    });
+
+    it("is true within the window right after a real tick", () => {
+      const { inspector, engine } = setup();
+      engine.loop.setCallbacks({
+        earlyUpdate() {},
+        fixedUpdate() {},
+        update() {},
+        lateUpdate() {},
+        render() {},
+        endOfFrame() {},
+      });
+      engine.loop.start();
+      engine.loop.tick(16);
+
+      expect(inspector.time.isAdvancing()).toBe(true);
+      // A negative window can never be satisfied by a non-negative elapsed
+      // time — deterministic false without depending on real clock precision.
+      expect(inspector.time.isAdvancing(-1)).toBe(false);
+    });
+  });
+
+  describe("time.stepUntil / time.stepAsync", () => {
+    function fakeController(
+      onStep: (count: number, dtMs?: number) => void,
+      getFrame: () => number,
+    ) {
+      return {
+        isFrozen: true,
+        freeze() {},
+        thaw() {},
+        stepFrames: onStep,
+        setDelta() {},
+        getFrame,
+      };
+    }
+
+    it("stepUntil resolves 0 without stepping if the predicate is already true", async () => {
+      const { inspector } = setup();
+      const onStep = vi.fn();
+      inspector.attachTimeController(fakeController(onStep, () => 0));
+
+      await expect(inspector.time.stepUntil(() => true)).resolves.toBe(0);
+      expect(onStep).not.toHaveBeenCalled();
+    });
+
+    it("advances frame-by-frame, yielding a macrotask so a microtask-deferred change is observed", async () => {
+      const { inspector } = setup();
+      let frame = 0;
+      let transitionSettled = false;
+      inspector.attachTimeController(
+        fakeController((count) => {
+          frame += count;
+          // Mirrors a SceneManager transition that resolves in a microtask
+          // rather than synchronously within stepFrames().
+          Promise.resolve().then(() => {
+            transitionSettled = true;
+          });
+        }, () => frame),
+      );
+
+      const frames = await inspector.time.stepUntil(() => transitionSettled);
+
+      expect(frames).toBe(1);
+      expect(transitionSettled).toBe(true);
+    });
+
+    it("throws once maxFrames is reached without the predicate becoming true", async () => {
+      const { inspector } = setup();
+      inspector.attachTimeController(fakeController(() => {}, () => 0));
+
+      await expect(
+        inspector.time.stepUntil(() => false, { maxFrames: 3 }),
+      ).rejects.toThrow(
+        "Inspector.time.stepUntil(): predicate still false after 3 frames.",
+      );
+    });
+
+    it("stepAsync advances a fixed frame count, passing dtMs through each step", async () => {
+      const { inspector } = setup();
+      const dts: Array<number | undefined> = [];
+      let frame = 0;
+      inspector.attachTimeController(
+        fakeController((count, dtMs) => {
+          frame += count;
+          dts.push(dtMs);
+        }, () => frame),
+      );
+
+      await inspector.time.stepAsync(2, { dtMs: 32 });
+
+      expect(frame).toBe(2);
+      expect(dts).toEqual([32, 32]);
+    });
+
+    it("rejects a non-positive or non-finite dtMs without stepping", async () => {
+      const { inspector } = setup();
+      const onStep = vi.fn();
+      inspector.attachTimeController(fakeController(onStep, () => 0));
+
+      await expect(
+        inspector.time.stepUntil(() => false, { dtMs: -1 }),
+      ).rejects.toThrow(
+        "Inspector.time.stepUntil(dtMs) requires a positive number.",
+      );
+      await expect(
+        inspector.time.stepAsync(1, { dtMs: Number.NaN }),
+      ).rejects.toThrow(
+        "Inspector.time.stepAsync(dtMs) requires a positive number.",
+      );
+      expect(onStep).not.toHaveBeenCalled();
+    });
   });
 });
 

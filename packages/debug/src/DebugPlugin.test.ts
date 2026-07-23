@@ -320,6 +320,19 @@ describe("DebugPlugin", () => {
     plugin.onDestroy();
   });
 
+  it("skips enabling the event log at startup when eventLog: false", async () => {
+    const { context, scheduler, inspector } = createContext();
+    const plugin = new DebugPlugin({ eventLog: false });
+
+    plugin.install(context);
+    plugin.registerSystems(scheduler);
+    await plugin.onStart();
+
+    expect(inspector.setEventLogEnabled).toHaveBeenCalledWith(false);
+
+    plugin.onDestroy();
+  });
+
   it("forwards a deterministic seed to the inspector when configured", async () => {
     const { context, scheduler, inspector } = createContext();
     const plugin = new DebugPlugin({ deterministicSeed: 0x00c0ffee });

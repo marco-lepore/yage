@@ -44,6 +44,13 @@ export interface DebugConfig {
   maxHudLines?: number;
   /** Whether the overlay starts enabled. Default: false */
   startEnabled?: boolean;
+  /**
+   * Whether the Inspector records bus + entity events at startup. Default:
+   * true. Set false to skip the per-event allocation entirely (the EventBus
+   * tap never attaches) when nothing reads `inspector.events.getLog()` or
+   * `waitFor()` — toggle back on at runtime with `inspector.events.setEnabled(true)`.
+   */
+  eventLog?: boolean;
   /** Initial flag overrides, keyed by "contributorName.flagName". */
   flags?: Record<string, boolean>;
   /**
@@ -237,7 +244,7 @@ export class DebugPlugin implements Plugin {
       createPixiTickerHost(app, gameLoop.fixedTimestep * 1000),
     );
     inspector.attachTimeController(this.clock);
-    inspector.setEventLogEnabled(true);
+    inspector.setEventLogEnabled(this.config.eventLog ?? true);
     this.attachToGlobal(this.clock);
     if (this.config.startFrozen) {
       // `install()` already called `app.stop()`. Run the clock's own

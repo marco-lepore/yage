@@ -136,6 +136,29 @@ describe("GameLoop", () => {
       expect(loop.frameCount).toBe(2);
     });
 
+    it("stamps lastTickAt on each real tick and leaves it at 0 before any tick", () => {
+      const loop = new GameLoop();
+      const cbs = createCallbacks();
+      loop.setCallbacks(cbs);
+      expect(loop.lastTickAt).toBe(0);
+
+      loop.start();
+      loop.tick(16);
+      const first = loop.lastTickAt;
+      expect(first).toBeGreaterThan(0);
+
+      loop.tick(16);
+      expect(loop.lastTickAt).toBeGreaterThanOrEqual(first);
+    });
+
+    it("does not stamp lastTickAt for a tick ignored before start", () => {
+      const loop = new GameLoop();
+      const cbs = createCallbacks();
+      loop.setCallbacks(cbs);
+      loop.tick(16);
+      expect(loop.lastTickAt).toBe(0);
+    });
+
     it("reaches a seconds-based timer threshold after the expected frame count", () => {
       // Regression: a component doing `timer += dt` against a 0.28s threshold
       // must take ~17 frames at 60fps, not a single frame (which is what

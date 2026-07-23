@@ -1,6 +1,6 @@
 import { Transform } from "./Transform.js";
 import type { Entity } from "./Entity.js";
-import type { Component } from "./Component.js";
+import { Component } from "./Component.js";
 import type { Scene } from "./Scene.js";
 import type { SceneManager } from "./SceneManager.js";
 import type { GameLoop } from "./GameLoop.js";
@@ -118,6 +118,8 @@ export interface EntitySnapshot {
 
 /** Backward-compatible scene stack summary. */
 export interface SceneSnapshot {
+  /** Inspector-assigned scene id — same value as `WorldSceneSnapshot.id`. */
+  id: string;
   name: string;
   entityCount: number;
   paused: boolean;
@@ -342,7 +344,8 @@ export interface InspectorTimeController {
   readonly isFrozen: boolean;
   freeze(): void;
   thaw(): void;
-  stepFrames(count: number): void;
+  /** `dtMs` overrides the configured per-frame delta for this call only. */
+  stepFrames(count: number, dtMs?: number): void;
   setDelta(ms: number): void;
   getFrame(): number;
 }
@@ -427,14 +430,80 @@ export class Inspector {
       this.expireDeadlineWaiters();
     },
     setDelta: (ms: number): void => {
-      if (!Number.isFinite(ms) || ms <= 0) {
-        throw new Error("Inspector.time.setDelta(ms) requires a positive number.");
-      }
+      this.assertPositiveDelta(ms, "Inspector.time.setDelta(ms)");
       this.requireTimeController().setDelta(ms);
     },
     isFrozen: (): boolean => this.timeController?.isFrozen ?? false,
     getFrame: (): number =>
       this.timeController?.getFrame() ?? this.engine.loop.frameCount,
+    /**
+     * True if a real `GameLoop.tick()` happened within the last `withinMs`
+     * (default 250) milliseconds of wall-clock time. Independent of
+     * `isFrozen()`: a frozen clock that isn't being stepped reads `false`
+     * (nothing is ticking), but a manual `step`/`stepUntil`/`stepAsync` fires a
+     * real tick, so this reads `true` for `withinMs` after one. A
+     * stalled-but-not-frozen game — a hung `await`, a runaway synchronous loop —
+     * also reads `false`, the case this method exists to tell apart from
+     * "frozen on purpose".
+     */
+    isAdvancing: (withinMs = 250): boolean => {
+      const lastTickAt = this.engine.loop.lastTickAt;
+      if (lastTickAt === 0) return false;
+      return performance.now() - lastTickAt <= withinMs;
+    },
+    /**
+     * Advance frame-by-frame until `predicate()` returns true, yielding a real
+     * macrotask between frames so async work parked on the microtask queue —
+     * a scene transition's `await`, a dialogue runner's promise chain — gets a
+     * chance to settle before the next frame steps. Checks `predicate` before
+     * the first frame (resolves `0` if already satisfied) and after each
+     * subsequent frame. Throws if `predicate` is still false after
+     * `opts.maxFrames` (default 600, i.e. 10s at 60fps).
+     */
+    stepUntil: async (
+      predicate: () => boolean,
+      opts?: { maxFrames?: number; dtMs?: number },
+    ): Promise<number> => {
+      if (predicate()) return 0;
+      const maxFrames = opts?.maxFrames ?? 600;
+      this.assertNonNegativeInteger(
+        maxFrames,
+        "Inspector.time.stepUntil(maxFrames)",
+      );
+      if (opts?.dtMs !== undefined) {
+        this.assertPositiveDelta(opts.dtMs, "Inspector.time.stepUntil(dtMs)");
+      }
+      const controller = this.requireTimeController();
+      for (let frame = 1; frame <= maxFrames; frame++) {
+        controller.stepFrames(1, opts?.dtMs);
+        this.expireDeadlineWaiters();
+        await yieldMacrotask();
+        if (predicate()) return frame;
+      }
+      throw new Error(
+        `Inspector.time.stepUntil(): predicate still false after ${maxFrames} frames.`,
+      );
+    },
+    /**
+     * Advance a fixed number of frames, yielding a real macrotask between each
+     * so the same async draining as {@link stepUntil} applies — for call sites
+     * that already know how many frames they need.
+     */
+    stepAsync: async (
+      frames = 1,
+      opts?: { dtMs?: number },
+    ): Promise<void> => {
+      this.assertNonNegativeInteger(frames, "Inspector.time.stepAsync(frames)");
+      if (opts?.dtMs !== undefined) {
+        this.assertPositiveDelta(opts.dtMs, "Inspector.time.stepAsync(dtMs)");
+      }
+      const controller = this.requireTimeController();
+      for (let i = 0; i < frames; i++) {
+        controller.stepFrames(1, opts?.dtMs);
+        this.expireDeadlineWaiters();
+        await yieldMacrotask();
+      }
+    },
   };
 
   readonly input = {
@@ -534,6 +603,16 @@ export class Inspector {
       this.eventLog.length = 0;
       this.eventLogHead = 0;
     },
+    /**
+     * Turn event-log recording on/off at runtime. Off means zero per-event
+     * allocation: the EventBus tap detaches and `recordBusEvent` is never
+     * called. `DebugConfig.eventLog` controls the startup default; this is
+     * the runtime switch for toggling mid-session.
+     */
+    setEnabled: (enabled: boolean): void => {
+      this.setEventLogEnabled(enabled);
+    },
+    isEnabled: (): boolean => this.eventLogEnabled,
     setCapacity: (n: number): void => {
       this.assertNonNegativeInteger(
         n,
@@ -690,13 +769,31 @@ export class Inspector {
     return stableStringify(this.snapshot());
   }
 
-  /** Snapshot one scene by inspector scene id. */
-  snapshotScene(id: string): WorldSceneSnapshot {
-    const scene = this.engine.scenes.all.find(
-      (candidate) => this.getSceneId(candidate) === id,
+  /**
+   * Snapshot one scene by its public `scene.name` or its inspector-assigned
+   * id (`snapshot().scenes[].id`). Name is tried first. If more than one
+   * active scene shares that name, throws rather than guessing — pass the id
+   * instead. Falls back to an id match when no scene has that name.
+   */
+  snapshotScene(nameOrId: string): WorldSceneSnapshot {
+    const byName = this.engine.scenes.all.filter(
+      (candidate) => candidate.name === nameOrId,
     );
+    if (byName.length > 1) {
+      throw new Error(
+        `Inspector.snapshotScene(): "${nameOrId}" matches ${byName.length} active scenes; ` +
+          `use the scene id from snapshot().scenes[].id instead.`,
+      );
+    }
+    const scene =
+      byName[0] ??
+      this.engine.scenes.all.find(
+        (candidate) => this.getSceneId(candidate) === nameOrId,
+      );
     if (!scene) {
-      throw new Error(`Inspector.snapshotScene(): unknown scene id "${id}".`);
+      throw new Error(
+        `Inspector.snapshotScene(): unknown scene name or id "${nameOrId}".`,
+      );
     }
     return this.sceneToWorldSnapshot(scene);
   }
@@ -726,11 +823,7 @@ export class Inspector {
   getComponentData(entityName: string, componentClass: string): unknown {
     const comp = this.findComponentByName(entityName, componentClass);
     if (!comp) return undefined;
-    if (typeof comp.serialize === "function") {
-      const data = trySerialize(comp);
-      if (data !== undefined) return data;
-    }
-    return this.serializeComponentOwnProperties(comp);
+    return this.reflectComponentState(comp);
   }
 
   /** Get all entities in the active scene as lightweight snapshots. */
@@ -749,6 +842,7 @@ export class Inspector {
   /** Get scene stack info. */
   getSceneStack(): SceneSnapshot[] {
     return this.engine.scenes.all.map((scene) => ({
+      id: this.getSceneId(scene),
       name: scene.name,
       entityCount: scene.getEntities().size,
       paused: scene.isPaused,
@@ -1089,10 +1183,7 @@ export class Inspector {
   ): ComponentStateSnapshot {
     const snapshot: ComponentStateSnapshot = {
       type: component.constructor.name,
-      state:
-        typeof component.serialize === "function"
-          ? trySerialize(component) ?? null
-          : null,
+      state: this.reflectComponentState(component),
     };
     let facets: Record<string, unknown> | undefined;
     for (const contributor of contributors) {
@@ -1109,6 +1200,22 @@ export class Inspector {
     }
     if (facets) snapshot.facets = facets;
     return snapshot;
+  }
+
+  /**
+   * A component's `serialize()` result if it defines one, else its reflected
+   * public state (own properties + getters — see
+   * {@link serializeComponentOwnProperties}) so a component reports something
+   * useful in a snapshot without opting in. The reflected object is routed
+   * through `safeClone` for cycle-safety: `isSerializableValue` only checks
+   * that a value's *own* shape is a plain object/array, not that everything
+   * nested inside it is acyclic.
+   */
+  private reflectComponentState(component: Component): unknown {
+    if (typeof component.serialize === "function") {
+      return trySerialize(component) ?? null;
+    }
+    return safeClone(this.serializeComponentOwnProperties(component)) ?? null;
   }
 
   /**
@@ -1325,6 +1432,13 @@ export class Inspector {
     return entity.has(Transform) ? entity.get(Transform) : undefined;
   }
 
+  /**
+   * Reflect a component's own enumerable fields plus its public prototype
+   * getters — the zero-config fallback when a component defines no
+   * `serialize()`. Getters make derived read-only state (`get isOnCooldown()`,
+   * `get health()`) visible without the component author writing a
+   * `serialize()` just to expose them.
+   */
   private serializeComponentOwnProperties(comp: Component): unknown {
     const result: Record<string, unknown> = {};
     for (const key of Object.getOwnPropertyNames(comp)) {
@@ -1334,11 +1448,52 @@ export class Inspector {
       // snapshots would either crash JSON.stringify on cycles or leak
       // meaningless object identities.
       if (key.startsWith("_")) continue;
-      const value = (comp as unknown as Record<string, unknown>)[key];
+      let value: unknown;
+      try {
+        value = (comp as unknown as Record<string, unknown>)[key];
+      } catch {
+        // Own accessor property whose getter threw — skip it, same as a
+        // prototype getter below, rather than blank the whole snapshot.
+        continue;
+      }
+      if (!isSerializableValue(value)) continue;
+      result[key] = value;
+    }
+    for (const key of this.collectGetterNames(comp)) {
+      if (key in result) continue;
+      let value: unknown;
+      try {
+        value = (comp as unknown as Record<string, unknown>)[key];
+      } catch {
+        // Getter threw (e.g. reads a sibling that isn't attached yet) — skip
+        // it rather than let one bad getter blank the whole snapshot.
+        continue;
+      }
       if (!isSerializableValue(value)) continue;
       result[key] = value;
     }
     return result;
+  }
+
+  /**
+   * Public getter names declared anywhere from `comp`'s own prototype up to
+   * (excluding) `Component.prototype` — so a subclass's `get isOnCooldown()`
+   * is reflected, but the base class's own getters (`scene`, `context`) never
+   * are, since those resolve entity/DI wiring rather than component state.
+   */
+  private collectGetterNames(comp: Component): string[] {
+    const names = new Set<string>();
+    let proto: object | null = Object.getPrototypeOf(comp) as object | null;
+    while (proto && proto !== Component.prototype) {
+      for (const [key, descriptor] of Object.entries(
+        Object.getOwnPropertyDescriptors(proto),
+      )) {
+        if (key === "constructor" || key.startsWith("_")) continue;
+        if (typeof descriptor.get === "function") names.add(key);
+      }
+      proto = Object.getPrototypeOf(proto) as object | null;
+    }
+    return [...names];
   }
 
   private countEntities(): number {
@@ -1367,6 +1522,12 @@ export class Inspector {
     }
   }
 
+  private assertPositiveDelta(ms: number, name: string): void {
+    if (!Number.isFinite(ms) || ms <= 0) {
+      throw new Error(`${name} requires a positive number.`);
+    }
+  }
+
   private assertNonEmptyString(value: string, name: string): void {
     if (value.trim().length === 0) {
       throw new Error(`${name} requires a non-empty string.`);
@@ -1383,6 +1544,26 @@ function isSerializableValue(value: unknown): boolean {
   // Plain objects pass; class instances (Pixi, Rapier, Yoga, etc.) don't.
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;
+}
+
+/**
+ * Yield to a real macrotask (not just a microtask/`Promise.resolve()`), so
+ * any microtask chain queued during the synchronous `stepFrames()` call above
+ * it — a scene transition's `await`, a dialogue runner's promise chain — gets
+ * to fully drain before the next frame steps. Posting through a
+ * `MessageChannel` schedules a genuine macrotask in both browsers and Node,
+ * without `setTimeout`'s minimum-delay clamping.
+ */
+function yieldMacrotask(): Promise<void> {
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      channel.port2.close();
+      resolve();
+    };
+    channel.port2.postMessage(undefined);
+  });
 }
 
 function safeClone(value: unknown): unknown | undefined {
