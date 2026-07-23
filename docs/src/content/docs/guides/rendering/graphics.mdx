@@ -32,7 +32,9 @@ call in `afterRestore()`; everything else restores on its own.
 **Escape hatch:** `.graphics` (and the `g` passed to `.draw(fn)`) is a raw
 pixi `Graphics` instance. The fluent API mirrors Canvas 2D vocabulary —
 `moveTo`, `lineTo`, `arc`, `bezierCurveTo`, plus shape shortcuts like
-`rect` and `circle`. Fill and stroke take options bags (`{ color, alpha,
+`rect` and `circle`. `arc` continues the current path: `moveTo()` to its
+start point first for a standalone arc, otherwise a line connects it from
+the previous point. Fill and stroke take options bags (`{ color, alpha,
 width, ... }`). See the [pixi Graphics docs](https://pixijs.com/8.x/guides/components/scene-objects/graphics).
 
 ## Gradient fills

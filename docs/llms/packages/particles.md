@@ -39,7 +39,7 @@ NumberRange: `number | [min, max]`. Lerped: `{ start: NumberRange, end: NumberRa
 Control:
 ```ts
 emitter.emit();              // start continuous
-emitter.stop();              // stop (existing continue)
+emitter.stop();              // stop spawning (existing particles continue)
 emitter.burst(50);           // immediate spawn
 emitter.burst(10, x, y);    // burst at position
 emitter.isEmitting;          // boolean

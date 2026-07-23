@@ -62,6 +62,14 @@ Layer / scene / screen filters operate on **screen-space pixels**
 post-camera-transform — a bloom radius is in screen pixels, not world
 units. Plan accordingly when zooming.
 
+:::caution[Scene and screen scope also filter the UI]
+`@yagejs/ui` mounts its screen-space `"ui"` layer inside the scene's
+render tree, so a scene-scope effect (`tree.fx.addEffect(...)`) and a
+screen-scope effect both post-process the HUD along with the world. To
+keep an effect off the HUD, attach it at the content layer instead —
+`tree.get("world").fx.addEffect(...)` — so only that layer is filtered.
+:::
+
 ## Lifecycle
 
 | Scope | Cleaned up when | Fades pause with |
@@ -92,7 +100,7 @@ import {
 } from "@yagejs/effects";
 ```
 
-| Preset | One-line | Drives `getIntensity` |
+| Preset | One-line | Primary intensity |
 |---|---|---|
 | `hitFlash` | Damage flash with `trigger()` | additive tint amount |
 | `bloom` | Soft glow on bright pixels | bloom scale |
@@ -113,15 +121,19 @@ import {
 | `wave` | Sinusoidal x-displacement via custom shader; scene-time animator | configured `amplitude` |
 | `colorize` | Luminance-to-colour recolour via custom WebGL+WGSL shader pair — the replace-style alternative to `sprite.tint`'s multiply | `strength` (cross-fades back to source) |
 
-`setIntensity` doubles as the "how strong is this effect right now" dial —
-use it for fades AND for gameplay-driven scaling (HP-linked tinting,
-heartbeat glow, breathing vignette). The `set*` setters that change a
-preset's "full" value (`bloom.setBloomScale`, `glow.setOuterStrength`,
-`outline.setThickness`, `godRay.setGain`, `motionBlur.setVelocity`,
-`bulgePinch.setStrength`, `halftone.setAmount`, `wave.setAmplitude`,
-`colorize.setStrength`, etc.) preserve the current intensity ratio, so
-adjusting the ceiling mid-pulse raises the pulse height instead of
-snapping the visible effect back to 1.
+The handle controls an effect's strength at runtime. `fadeIn(seconds)`
+and `fadeOut(seconds)` tween the primary intensity between 0 and 1. The
+`set*` setters that change a preset's "full" value (`bloom.setBloomScale`,
+`glow.setOuterStrength`, `outline.setThickness`, `godRay.setGain`,
+`motionBlur.setVelocity`, `bulgePinch.setStrength`, `halftone.setAmount`,
+`wave.setAmplitude`, `colorize.setStrength`, etc.) rebase that ceiling
+while preserving the current intensity ratio, so adjusting it mid-pulse
+raises the pulse height instead of snapping the visible effect back to 1.
+For gameplay-driven strength (HP-linked tinting) or looping animation
+(heartbeat glow, breathing vignette), drive the preset's `set*` setter
+from a scheduled tween —
+`vignette.run(Tween.custom((v) => vignette.setStrength(v), from, to, seconds))`
+— which is scoped to the effect and auto-cancels on `remove()`.
 
 Most presets wrap either a built-in `ColorMatrixFilter` or a `pixi-filters`
 filter and expose typed extras specific to it. Three — `halftone`, `wave`,

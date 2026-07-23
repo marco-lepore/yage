@@ -55,8 +55,6 @@ const grid = gridFromTilemap(tilemap.data, {
 
 Callbacks receive base tile ids — Tiled flip/rotation flag bits are masked off, so `gid === 1` matches a flipped instance of tile 1.
 
-The `./tilemap` subpath keeps `@yagejs/tilemap` a type-only, optional peer — importing from the root `@yagejs/pathfinding` entry pulls in nothing beyond `@yagejs/core`.
-
 ## gridFromColliders
 
 ```ts
@@ -70,9 +68,9 @@ const grid = gridFromColliders(tilemap.data, {
 });
 ```
 
-Builds a grid from Tiled object-layer shapes instead of tile gids. A cell blocks if any shape overlaps any part of it — a shape grazing a cell's edge blocks it too. Cost is 1 everywhere (no `cost` option). `shapes` is typically `TilemapComponent.getCollisionShapes(layerName?)`, called separately so this subpath never imports `@yagejs/tilemap` at runtime.
+Builds a grid from Tiled object-layer shapes instead of tile gids. A cell blocks if any shape overlaps any part of it — a shape grazing a cell's edge blocks it too. Cost is 1 everywhere (no `cost` option). `shapes` is typically `TilemapComponent.getCollisionShapes(layerName?)`.
 
-Shape overlap is exact per cell, not bounding-box: a rotated rect uses its true OBB, a capsule its rounded core, and a polygon its true (possibly concave) outline — cells inside a concave notch stay walkable. A closed polyline (first vertex repeated at the end — the shape a Tiled Polygon-tool object extracts as) is a filled, possibly concave region; an open polyline chain blocks only the cells its segments cross (a thin wall).
+Shape overlap is exact per cell, not bounding-box: a rotated rect uses its true OBB, a capsule its rounded core, and a polygon its true (possibly concave) outline — cells inside a concave notch stay walkable. A closed polyline (first vertex repeated at the end, matching what a Tiled Polygon-tool object extracts) is a filled, possibly concave region. An open polyline chain blocks only the cells its segments cross (a thin wall).
 
 ## Not supported
 

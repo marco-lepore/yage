@@ -319,11 +319,11 @@ const title = entity.add(
   }),
 );
 
-// Typewriter reveal — stagger each glyph's fade-in by 50ms, ticked by a
+// Typewriter reveal — stagger each glyph's fade-in by 0.05s, ticked by a
 // ProcessComponent (the renderer-side equivalent of useSplitText's `run`).
 title.chars.forEach((char) => (char.alpha = 0));
 const pc = entity.add(new ProcessComponent());
-Tween.stagger(title.chars, (char) => Tween.to(char, "alpha", 1, 300), 50).forEach((p) =>
+Tween.stagger(title.chars, (char) => Tween.custom((v) => (char.alpha = v), 0, 1, 0.3), 0.05).forEach((p) =>
   pc.run(p),
 );
 

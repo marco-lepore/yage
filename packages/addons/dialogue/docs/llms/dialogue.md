@@ -517,6 +517,21 @@ filters whitespace). Observation is events-only: the reveal-completed seam is
 session-owned (no public mutable field
 a game can clobber).
 
+### Gating gameplay on a conversation
+
+To freeze movement (or anything else) while a conversation runs, derive the block
+from `controller.isActive()` each frame — do NOT mirror `DialogueStartedEvent` /
+`DialogueEndedEvent` into a flag. `stop()` resets the session to idle without
+emitting `DialogueEndedEvent` or calling `onEnded`; only reaching an in-script
+`end` step fires those. An event-mirrored flag therefore stays "active" and
+soft-locks the player after a `stop()`, even though `isActive()` already reads
+false.
+
+```ts
+// per frame:
+player.movementEnabled = !dlg.isActive();
+```
+
 ## Timed choices — a recipe, not a feature
 
 There is no `timeout` in the model. Express a timed choice with a non-blocking

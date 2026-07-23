@@ -44,8 +44,8 @@ class Entity {
 }
 ```
 
-- `entity.scene` throws with a clear error when the entity is detached (not yet spawned, or already destroyed — both the end-of-frame flush and scene teardown null it). Prefer it in user code — failing loud beats a silent `null` propagation. Use `entity.tryScene` only in defensive paths (e.g. systems iterating query results during teardown) where detachment is expected.
-- `entity.isDestroyed` is true after `destroy()` and for entities torn down with their scene on exit. Teardown also emits `entity:destroyed` once per entity, so listeners that track entity lifetimes see every death, including deaths caused by scene exit.
+- `entity.scene` throws with a clear error when the entity is detached (not yet spawned, or already destroyed — both the end-of-frame flush and scene teardown clear it). Prefer it in user code — throwing beats letting a `null` propagate silently. Use `entity.tryScene` only in defensive paths (e.g. systems iterating query results during teardown) where detachment is expected.
+- `entity.isDestroyed` is true after `destroy()` and for entities torn down with their scene on exit. Teardown also emits `entity:destroyed` once per entity, so listeners tracking entity lifetimes are notified of every destruction, including destruction caused by scene exit.
 - `entity.spawnChild(name, Class, params?)` combines `scene.spawn(...)` + `this.addChild(name, ...)`. Child is auto-added to the parent's scene. Use for sub-entities owned by a parent (enemy body + health bar, player + weapon, etc.).
 
 ### Events
@@ -98,7 +98,7 @@ someEntity.emit(DamagedEvent, { amount: 10 });    // handler runs with entity = 
 
 `Scene.on` returns an unsubscribe function. The handler param is `(data, entity?)` regardless of which side emitted — game code should check `entity` to decide whether to read source state.
 
-`Scene.registerScoped<T>(key: ServiceKey<T>, value: T)` (public) attaches a scene-scoped service resolvable via `Component.use(key)` — and via `Scene.use(key)` / `Scene.service(key)` from the scene itself, which are scope-aware (scene scope first, then engine). Plugins call it from `beforeEnter`; game code can call it from `onEnter` for scene-local state. Every key registered this way is auto-unregistered on scene exit (after `onExit` and plugin `afterExit` hooks), so scenes don't leak services into one another. `Scene.tryResolveScoped<T>(key)` (public) reads a scene-scoped service without engine-scope fallback, returning `undefined` when absent — the read for systems that iterate scenes. `_registerScoped` / `_resolveScoped` are kept internal aliases — prefer the public names in new code.
+`Scene.registerScoped<T>(key: ServiceKey<T>, value: T)` (public) attaches a scene-scoped service resolvable via `Component.use(key)`, and via `Scene.use(key)` / `Scene.service(key)` from the scene itself. Both are scope-aware: scene scope first, then engine. Plugins call it from `beforeEnter`; game code can call it from `onEnter` for scene-local state. Every key registered this way is auto-unregistered on scene exit (after `onExit` and plugin `afterExit` hooks), so scenes don't leak services into one another. `Scene.tryResolveScoped<T>(key)` (public) reads a scene-scoped service without engine-scope fallback, returning `undefined` when absent. Use it in systems that iterate scenes. `_registerScoped` / `_resolveScoped` are kept internal aliases — prefer the public names in new code.
 
 ### SceneTime — hitstop, slow motion, bullet time, freeze frames
 
@@ -113,7 +113,7 @@ Per-scene arbitration for competing time effects. The engine registers one insta
 | `isFrozen` | `effectiveScale === 0` |
 | `activeLabels` | Display labels of active requests (`label` option, defaults to `key`) |
 
-Composition: each `key` is a channel; within a channel the latest active request wins, and older still-active entries apply again when it ends; across channels winners multiply; an unkeyed call is its own anonymous channel. `scene.timeScale` is input-only — the service never writes it (nor `entity.timeScale`). Durations (`for`, `freezeFor`) age on raw frame time at the start of each frame, only while the scene is active — a stack-paused scene holds its effects, so pause-menu time does not consume a hitstop. `for: 0` / `freezeFor(0)` return an inactive handle without adding a request. All requests release on scene exit; effects are transient across save/load — games re-issue them after loading a snapshot. `excludeUpdates` covers component updates, the entity's `ProcessComponent`, and its particle emitters — NOT physics: the excluded entity's rigid body still integrates at world speed, and physics-writing components under exclusion push forces at the excluded rate into a slowed world. Inspector scene snapshots report `effectiveTimeScale` and `frozen`.
+Composition: each `key` is a channel. Within a channel, the latest active request wins, and older still-active entries apply again when it ends. Across channels, winners multiply. An unkeyed call is its own anonymous channel. `scene.timeScale` is input-only — the service never writes it (nor `entity.timeScale`). Durations (`for`, `freezeFor`) age on raw frame time at the start of each frame, only while the scene is active — a stack-paused scene holds its effects, so pause-menu time does not consume a hitstop. `for: 0` / `freezeFor(0)` return an inactive handle without adding a request. All requests release on scene exit. Effects are transient across save/load — games re-issue them after loading a snapshot. `excludeUpdates` covers component updates, the entity's `ProcessComponent`, and its particle emitters. It does NOT cover physics: the excluded entity's rigid body still integrates at world speed, and physics-writing components under exclusion push forces at the excluded rate into a slowed world. Inspector scene snapshots report `effectiveTimeScale` and `frozen`.
 
 ### Math
 
@@ -146,12 +146,12 @@ Vec2.moveTowards(current: Vec2Like, target: Vec2Like, maxDelta: number): Vec2
 ```
 
 For `smoothDamp`, pass the returned `velocity` into the next frame. `smoothTime`
-and `deltaTime` must use the same unit — pass the `dt` (seconds) the engine
-gives you and express `smoothTime` in seconds; `maxSpeed` is in units per second.
+and `deltaTime` must use the same unit: pass the `dt` (seconds) the engine
+gives you and express `smoothTime` in seconds. `maxSpeed` is in units per second.
 
 ### Scale inheritance
 
-`Transform.worldScale` composes through the parent chain (`parent.worldScale * local.scale`), the same way `worldPosition` and `worldRotation` do. `DisplaySystem` reads `worldScale` each Render phase, so flipping a parent flips every descendant sprite for free — useful for multi-layer characters (head + body + outfit) where every layer must mirror in lockstep.
+`Transform.worldScale` composes through the parent chain (`parent.worldScale * local.scale`), the same way `worldPosition` and `worldRotation` do. `DisplaySystem` reads `worldScale` each Render phase, so flipping a parent flips every descendant sprite automatically — useful for multi-layer characters (head + body + outfit) where every layer must flip together.
 
 ```ts
 import { Entity, Transform } from "@yagejs/core";
@@ -192,13 +192,13 @@ Negative scale on a child still composes — a child with `setScale(-1, 1)` unde
 
 Decision matrix:
 
-| Need | Reach for |
+| Need | Use |
 |---|---|
 | Wait N seconds then run a callback | `Process.delay()` |
 | Cooldown / restartable timer (`completed`, `restart`) | `pc.slot()` |
 | Animate one property A → B | `Tween.to()` / `.vec2()` |
 | Interpolate a number from→to with a custom setter | `Tween.custom(setter, from, to, duration, easing?)` |
-| Cascade a tween across an array (staggered starts) | `Tween.stagger(items, (item, i) => Process, stepMs)` → `Process[]` |
+| Cascade a tween across an array (staggered starts) | `Tween.stagger(items, (item, i) => Process, stepSeconds)` → `Process[]` |
 | Arbitrary per-frame logic (no interpolation) | `new Process({ update })` |
 | Multi-step "do this, then this, then this" | `Sequence` |
 | Run several animations together | `Sequence.parallel()` |
@@ -236,7 +236,10 @@ const anim = entity.add(new KeyframeAnimator({
       { time: 0.5, data: 10 },
       { time: 1, data: 0 },
     ],
-    setter: (v) => (entity.get(Transform).y = v as number),
+    setter: (v) => {
+      const t = entity.get(Transform);
+      t.setPosition(t.position.x, v as number);
+    },
     loop: true,
   },
 }));
@@ -253,8 +256,8 @@ new KeyframeAnimator({
   intro: {
     keyframes: [
       { time: 0,    data: 0, event: () => audio.play("step") },
-      { time: 250,  data: 0, event: () => audio.play("step") },
-      { time: 500,  data: 0, event: () => audio.play("door") },
+      { time: 0.25, data: 0, event: () => audio.play("step") },
+      { time: 0.5,  data: 0, event: () => audio.play("door") },
     ],
     // no setter — only the events matter
   },
@@ -264,6 +267,29 @@ new KeyframeAnimator({
 `KeyframeAnimationDef.setter` is declared with method syntax so it's
 contravariance-friendly: a `Record<string, KeyframeAnimationDef<number>>`
 flows into the constructor unchanged, no `as` cast or widening helper needed.
+
+### Randomness
+
+Seeded per-scene RNG. `RandomKey` is a scene-scoped `ServiceKey<RandomService>`;
+resolve it in a Component with `this.use(RandomKey)`. It stays deterministic
+under `inspector.setSeed(seed)` and replays; `Math.random()` does not, so using
+it breaks replay determinism.
+
+```ts
+import { RandomKey } from "@yagejs/core";
+
+const rng = this.use(RandomKey);
+rng.float();          // [0, 1)
+rng.range(min, max);  // float in [min, max)
+rng.int(min, max);    // integer in [min, max], inclusive
+rng.pick(array);      // random element of a non-empty array
+rng.shuffle(array);   // shuffle in place, returns the same array
+rng.getSeed();        // current seed
+```
+
+`globalRandom` is a process-wide `RandomService` for boot-time or cross-scene
+code that runs outside any scene. `inspector.setSeed` does not reseed it, so keep
+replay-critical rolls on the scene RNG (`RandomKey`).
 
 ### Pause on Tab Blur
 
@@ -376,7 +402,7 @@ const chest = scene.findByKey<Chest>("forest/chest-01");
 
 The class form derives its trailing args from the entity's `setup` PARAMETER. No declared `setup`, or a zero-parameter `setup(): void` → `spawn(Class, options?)` (no params slot). `setup(params)` with a required parameter → params is required: `spawn(Class, params, options?)`, and `spawn(Class)` is a type error (even when every field of `params` is optional — a required parameter still means `setup(undefined)` would crash). `setup(params?)` or a defaulted parameter → params optional: `spawn(Class, params?, options?)`. Omitting a required field reports that field as missing on the params object (`Property 'spawnPoint' is missing`), naming the field that's actually absent.
 
-The params slot takes the setup param type, not `SpawnOptions`, so a `SpawnOptions`-shaped literal (e.g. `{ key }`) is rejected there; key an all-optional-param class via the 3-arg form `spawn(Class, {}, { key })`. Residual: if the setup param type itself declares an optional `key`, `{ key }` satisfies the params slot and the runtime routes it to options — don't name a top-level setup-params field `key`; if you must, use the 3-arg form. The 3-arg form `spawn(Class, params, options)` is always unambiguous.
+The params slot takes the setup param type, not `SpawnOptions`, so a `SpawnOptions`-shaped literal (e.g. `{ key }`) is rejected there; assign a key to an all-optional-param class via the 3-arg form `spawn(Class, {}, { key })`. Edge case: if the setup param type itself declares an optional `key`, `{ key }` satisfies the params slot and the runtime routes it to options — don't name a top-level setup-params field `key`; if you must, use the 3-arg form. The 3-arg form `spawn(Class, params, options)` is always unambiguous.
 
 If a class entity's `setup()` method throws, `scene.spawn()` destroys and removes the entity immediately, including its components and stable-key entry, then rethrows the original error.
 
@@ -393,7 +419,7 @@ Duplicate keys throw at spawn time with no orphan side-effect — the entity is 
 
 | Export | Purpose |
 |---|---|
-| `createTestEngine(config?)` | Fully wired Engine for integration tests |
+| `createTestEngine(config?)` | Fully assembled Engine for integration tests |
 | `createMockScene(name?)` | Lightweight scene with EngineContext for unit tests |
 | `createMockEntity(name?)` | Entity spawned in a mock scene |
 | `advanceFrames(engine, n, dtMs?)` | Advance game loop by N frames (`dtMs` is the per-frame ms delta; default `1000/60`) |
@@ -425,7 +451,7 @@ engine.logger.error("render", "Texture missing", { key: "hero.png" });
 console.log(engine.logger.formatRecentLogs(20));
 ```
 
-`bufferSize` (default 500) caps the ring buffer; `categories` restricts which categories are accepted; `output` overrides the default `console.*` handler with a custom sink (e.g., to ship logs to a remote service).
+`bufferSize` (default 500) caps the ring buffer. `categories` restricts which categories are accepted. `output` overrides the default `console.*` handler with a custom sink (e.g., to ship logs to a remote service).
 
 ### Well-known DI Keys
 
@@ -459,7 +485,7 @@ Typed reactive primitives for game-wide singleton state. Used by `@yagejs/ui-rea
 
 ### Contracts
 
-Three orthogonal interfaces; every `Reactive*` shape implements all three:
+Three independent interfaces; every `Reactive*` shape implements all three:
 
 ```ts
 interface Reactive            { subscribe(fn: () => void): () => void }
@@ -541,7 +567,7 @@ game.gold.increment(10);
 game.inventory.set("moonleaf", 3);
 ```
 
-Factories take no id and no version — they return fresh, pure data instances. Ids and version envelopes live at the save call site (`@yagejs/save`); `useStore(compound)` works (returns the encoded snapshot), though reading individual leaves keeps subscription granularity per-leaf.
+Factories take no id and no version — they return fresh, pure data instances. Ids and version envelopes live at the save call site (`@yagejs/save`). `useStore(compound)` works and returns the encoded snapshot, though reading individual leaves keeps subscription granularity per-leaf.
 
 Codecs for non-JSON-native types: `jsonCodec()`, `setCodec<K>()`, `mapCodec<K,V>()`, `dateCodec()`. Set/Map/Counter/List bundle codecs internally; you only specify a codec on `createRecord<T>` / `createValue<T>` (or the matching `s.record`/`s.value` leaves) for exotic types.
 

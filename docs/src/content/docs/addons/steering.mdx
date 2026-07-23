@@ -14,8 +14,8 @@ physics, no input. Physics integration lives behind
 
 <Aside type="note">
 This is steering, not decision-making. It answers "which way do I move right
-now", not "should I attack or flee". A behavior tree or state machine for the
-decision layer is a separate, future addon that would sit above this one.
+now", not "should I attack or flee" — pair it with your own behavior tree or
+state machine for the decision layer.
 </Aside>
 
 ## Install
@@ -81,16 +81,14 @@ enemy.add(
 );
 ```
 
-It defaults to **impulse drive**: each frame the agent applies
-`clamp(desired − actual, maxAcceleration·dt) × mass` through `applyImpulse`,
-so steering *composes* with the physics world instead of overriding it. A
-dynamic agent shoves lighter bodies out of its way, gets deflected when
-something hits it, and a knockback impulse sends it flying — then steering
-pulls it back on course at `maxAcceleration`. The cap is doing two jobs:
-it lets external impulses persist instead of being cancelled on the next
-tick, and it low-passes the blend so direction changes are curves, not
-frame-to-frame flips. It defaults to `4 × maxSpeed` (top speed in 0.25 s);
-pass `Infinity` for an instant snap.
+It defaults to **impulse drive**: steering *composes* with the physics world
+instead of overriding it. A dynamic agent shoves lighter bodies out of its way,
+gets deflected when something hits it, and a knockback impulse sends it flying —
+then steering pulls it back on course at `maxAcceleration`. That cap does two
+things: external impulses persist instead of being cancelled on the next tick,
+and direction changes come out as curves rather than frame-to-frame flips. It
+defaults to `4 × maxSpeed` (top speed in 0.25 s); pass `Infinity` for an instant
+snap.
 
 Pass `drive: "velocity"` for full-authority movers — the commanded velocity
 is written with `setVelocity` every frame. Combined with a kinematic
@@ -125,12 +123,11 @@ steering instead of the model computing over them.
 
 ## Blending behaviors
 
-Two knobs govern how behaviors combine. `weight` (default 1) is the volume
-within a tier: contributions are summed, each scaled by its weight, and the
-result is clamped to `maxSpeed`. `priority` (default 0) picks who speaks:
-tiers are consulted highest-first each frame, and the first tier whose
-weighted sum is non-zero wins outright — lower tiers aren't evaluated that
-frame.
+Two options govern how behaviors combine. `weight` (default 1) sets how strongly
+a behavior contributes within a tier: contributions are summed, each scaled by
+its weight, then clamped to `maxSpeed`. `priority` (default 0) sets which tier
+wins: tiers are checked highest-first each frame, and the first whose weighted
+sum is non-zero wins outright — lower tiers aren't evaluated that frame.
 
 Weights shade a blend:
 
@@ -355,12 +352,12 @@ arrive(waypoint, {
 });
 ```
 
-## Not in v1
+## Drawing and saving state
 
-A bundled debug presenter is deferred — read `agent.velocity` and draw the
-arrow yourself, as the steering example does. Two absences are by design,
-not deferrals: arrival is a callback (`onArrive` — mirror it to your own
-event in a line), and the addon ships no snapshot/restore serialization —
-steering state is transient and re-derives. The one piece of progress worth
-keeping, `followPath`'s waypoint index, is saved by the game: read
-`waypointIndex`, store it, pass it back as `startAt`.
+To visualize steering, read `agent.velocity` and draw the arrow yourself, as the
+steering example does. Arrival is delivered through the `onArrive` callback —
+mirror it to your own event in a line if you want one.
+
+Steering state is transient and re-derives, so there's nothing to serialize. The
+one piece of progress worth keeping is `followPath`'s waypoint index: read
+`waypointIndex`, store it with your save, and pass it back as `startAt`.

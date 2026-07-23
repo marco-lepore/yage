@@ -138,7 +138,8 @@ inv.add("potion", 1, { data: { quality: 1 } });   // ✗ compile error: potion c
 `findAll`/`remove`/`transfer`. An explicit id-only type (`Inventory<ItemId>`) or
 an untyped catalog keeps the permissive `Record<string, unknown>`, so existing
 code is unaffected. Metadata `data` (on the def) stays opaque; only the per-stack
-`instance` data is typed.
+`instance` data is typed. Reading a typed shape off a def needs an explicit cast:
+`catalog.get(id).data as ItemMeta`.
 
 ## Inventory — options
 
@@ -190,7 +191,7 @@ transfer(target, ref): TransferResult              // moves exactly one located 
 transferSlot(target, slot, qty?): TransferResult   // carries the data payload
 count(itemId, where?) / has(itemId, qty = 1, where?)   // where = (data, stack) => boolean; data stacks only
 find(itemId, where?) / findAll(itemId, where?)         // LocatedStack { slot, stack } — the ref remove/transfer take
-get(slot) / firstSlot(itemId) / stacks()
+get(slot) / firstSlot(itemId) / stacks(): LocatedStack[]  // stacks() = every occupied slot as { slot, stack }, in slot order
 slots / capacity / used / isFull                   // readonly state
 snapshot(): InventorySnapshot                      // JSON-able whole state
 restore(snapshot): { dropped }                     // unknown ids/bad qty dropped; capacity-shrink overflow re-flows into free slots, drops only when full
@@ -498,6 +499,14 @@ re-check), same trust level as `setSlot`.
 - Running the DIALOGUE addon too? Both bind `interact` by default, and both
   react to one press while both are active — give one focus
   (`setInputEnabled(false)` on the other) or remap one addon's actions.
+- The panel's confirm is the `interact` action, a common gameplay action name.
+  Freezing the world while the panel is open by disabling its input group
+  (`InputManager.disableGroup("gameplay")`) also silences the panel's own
+  confirm when `interact` is in that group. Keep the panel's actions out of any
+  group you disable, rename the confirm action, or drive the panel host-side
+  (`input: null`). The panel confirm and the world interactor can't share one
+  disabled `interact` action — a group toggle reads a single global state, so it
+  can't separate the two consumers.
 - `consumes: true` removes the unit itself — the action event's `consumes`
   flag says so; don't also remove in the handler.
 - Anonymous `remove()`/`transfer()` drain fungible stacks first, then data

@@ -128,7 +128,7 @@ e.destroy();
 
 ## Entity Subclasses and setup()
 
-Use `setup()` instead of the constructor -- it runs after the entity is wired to its scene, so services and `onAdd` hooks work.
+Use `setup()` instead of the constructor -- it runs after the entity is attached to its scene, so services and `onAdd` hooks work.
 
 ```ts
 class Player extends Entity {
@@ -140,6 +140,8 @@ class Player extends Entity {
 
 // scene.spawn(Player, { x: 100, y: 200 });
 ```
+
+Entity subclasses have no `use()` / `service()` / `context` of their own — only `this.scene`. From an entity method, resolve an engine-scope service through the scene: `this.scene.context.resolve(key)` (throws if missing) or `this.scene.context.tryResolve(key)` (undefined if missing). Per-scene infrastructure (physics world, render tree) and any service-heavy logic belong in a `Component`, where `this.use(key)` resolves the correct scope automatically.
 
 ## Traits
 
@@ -231,7 +233,7 @@ Some keys (`PhysicsWorldKey`, `SceneRenderTreeKey`, `SceneTimeKey`) are per-scen
 works from both `Component` code and from a `Scene` subclass: `Scene.use(key)`
 / `Scene.service(key)` are scope-aware, so `this.use(SceneRenderTreeKey)`
 resolves from `onEnter` onward (scene-scoped values are registered by plugin
-`beforeEnter` hooks, which run before `onEnter`). Don't reach for the
+`beforeEnter` hooks, which run before `onEnter`). Don't use the
 provider key (`SceneRenderTreeProviderKey`) from game code — that's tooling-only
 (inspector, debug, save) for enumerating trees across scenes.
 
@@ -299,7 +301,7 @@ pc.run(seq.start());
 
 ### TimerEntity
 
-Pre-built entity with `ProcessComponent` API. No manual component wiring:
+Pre-built entity with `ProcessComponent` API. No manual component setup:
 
 ```ts
 const timers = scene.spawn(TimerEntity);

@@ -85,7 +85,7 @@ transitions. All built-ins live in `@yagejs/renderer` (PIXI-based).
 For multi-step sequences (delayed fades, strobing flashes, etc.) write a
 custom transition against the contract — it's usually simpler and more
 correct than composing the built-ins, each of which manages its own
-scene-visibility and would fight each other if chained.
+scene-visibility and would conflict with each other if chained.
 
 ## Lifecycle
 
@@ -144,7 +144,7 @@ Coordinate-space rule: pick the parent and size source for what your transition 
 | `renderer.worldRoot`         | virtual pixels     | `renderer.visibleCanvasRect`              | virtual rect under letterbox; virtual + bars under expand |
 | `app.stage` (direct)         | canvas / CSS px    | `app.screen.width / .height`              | full canvas including letterbox bars  |
 
-`worldRoot`-parented overlays are the saner default for full-screen effects because they paint into the bars under `expand` (where the game treats them as drawable area) and stay clipped to the play area under `letterbox`. Reach for `app.stage` only when you also need to obscure the letterbox bars — e.g., the host page background is jarring during a dip-to-black. The built-in `fade` / `flash` / `iris` expose this via `coverScreen?: boolean`.
+`worldRoot`-parented overlays are the safer default for full-screen effects because they paint into the bars under `expand` (where the game treats them as drawable area) and stay clipped to the play area under `letterbox`. Use `app.stage` only when you also need to obscure the letterbox bars — e.g., the host page background is jarring during a dip-to-black. The built-in `fade` / `flash` / `iris` expose this via `coverScreen?: boolean`.
 
 ```ts
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
@@ -176,12 +176,12 @@ function slideIn(duration: number): SceneTransition {
 
 Notes:
 - `begin` fires synchronously when `SceneManager` starts the transition, before any frame is rendered — paint your start state here (hide incoming scene, offset it, etc.) to avoid a flash.
-- `end` always fires at the end of the duration, never mid-run. Restore any persistent properties (visibility, alpha) on surviving scenes as a matter of hygiene.
-- **Read the right dimension source for the right parent.** Stage-direct overlays (fade / flash / iris) live in canvas pixels — size them from `app.screen`. Scene-root masks and translations (chessboard / irisReveal / slidePush) live in virtual pixels — size them from `getVirtualBounds(ctx)`. Mixing the two silently mis-scales under non-1.0 fit ratios.
+- `end` always fires at the end of the duration, never mid-run. Restore any persistent properties (visibility, alpha) on surviving scenes as good practice.
+- **Read the right dimension source for the right parent.** Scene-root masks and translations (chessboard / irisReveal / slidePush) live in virtual pixels — size them from `getVirtualBounds(ctx)`. Overlays on `renderer.worldRoot` (fade / flash / iris by default) also live in virtual pixels — size them from `renderer.visibleCanvasRect`. Only stage-direct overlays on `app.stage` (fade / flash / iris under `coverScreen: true`) live in canvas pixels — size those from `app.screen`. Mixing the two silently mis-scales under non-1.0 fit ratios.
 
 ## Composition with LoadingScene
 
-`LoadingScene` (core) carries its own `transition` — the one used for the handoff to its target. That composes with any call-site transition passed to `push`/`replace`:
+`LoadingScene` (core) carries its own `transition` — the one used for the handoff to its target. That transition composes with any call-site transition passed to `push`/`replace`:
 
 ```ts
 await engine.scenes.replace(new Boot(), {

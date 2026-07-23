@@ -69,8 +69,8 @@ export interface CameraEntityParams {
  * });
  *
  * // All camera operations are available directly on the entity:
- * cam.shake(8, 300);
- * cam.zoomTo(1.5, 1000);
+ * cam.shake(8, 0.3);
+ * cam.zoomTo(1.5, 1);
  * cam.follow(otherTarget, { smoothing: 0.1 });
  * ```
  */
