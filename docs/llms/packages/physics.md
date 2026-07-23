@@ -55,7 +55,9 @@ entity.add(new RigidBodyComponent({
 Methods:
 - `setVelocity(v: Vec2Like)` — set linear velocity (px/s). Preferred over impulse.
 - `setVelocityX(vx)` / `setVelocityY(vy)` — set single axis
-- `getVelocity(): Vec2` — read velocity (px/s)
+- `getVelocity(): Vec2` — read velocity (px/s), allocates a `Vec2`
+- `velocityX` / `velocityY` — allocation-free scalar reads (px/s); reading both calls into Rapier twice
+- `speed` / `speedSquared` — allocation-free velocity magnitude (px/s) / squared magnitude
 - `applyImpulse(v: Vec2Like)` — instant momentum change
 - `applyForce(v: Vec2Like)` — continuous force
 - `setPosition(x, y)` — teleport a dynamic body (skips interpolation). For kinematic bodies, use `transform.setPosition()` instead — the physics system syncs Transform → Rapier automatically each frame.
@@ -119,6 +121,8 @@ collider.getOverlapping();                     // Entity[]
 collider.getOverlapping({ tags: ["enemy"] });  // filtered
 collider.getOverlappingComponents(Health);     // Component[]
 ```
+
+Removing just the collider (`entity.remove(ColliderComponent)`) frees the Rapier collider and its internal lookup entries while the sibling body stays alive. Removing the whole entity, or the `RigidBodyComponent`, also removes every attached collider.
 
 ## CollisionLayers
 

@@ -122,6 +122,10 @@ const { mocks } = vi.hoisted(() => {
       for (const c of body._colliders) this._colliders.delete(c.handle);
     }
 
+    removeCollider(collider: MockCollider) {
+      this._colliders.delete(collider.handle);
+    }
+
     free() {}
   }
 
@@ -382,6 +386,29 @@ describe("ColliderComponent", () => {
       expect(handler).not.toHaveBeenCalled();
       expect(triggerHandler).not.toHaveBeenCalled();
       warn.mockRestore();
+    });
+
+    it("removes the Rapier collider and its map entries, leaving the body intact", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const col = entity.add(
+        new ColliderComponent({
+          shape: { type: "box", width: 10, height: 10 },
+        }),
+      );
+      const colliderHandle = col._colliderHandle;
+
+      expect(physicsWorld.colliderMap.has(colliderHandle)).toBe(true);
+
+      // Remove only the collider — the sibling body stays alive.
+      entity.remove(ColliderComponent);
+
+      expect(physicsWorld.colliderMap.has(colliderHandle)).toBe(false);
+      expect(physicsWorld._colliderComponents.has(colliderHandle)).toBe(false);
+      expect(col._colliderHandle).toBe(-1);
+      expect(physicsWorld.bodyMap.has(rb._bodyHandle)).toBe(true);
     });
   });
 

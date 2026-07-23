@@ -49,6 +49,10 @@ export class ColliderComponent extends Component {
   }
 
   onDestroy(): void {
+    if (this._colliderHandle !== -1) {
+      this.physicsWorld.removeCollider(this._colliderHandle);
+      this._colliderHandle = -1;
+    }
     this.collisionHandlers.length = 0;
     this.triggerHandlers.length = 0;
   }

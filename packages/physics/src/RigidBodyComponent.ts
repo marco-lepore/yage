@@ -151,6 +151,43 @@ export class RigidBodyComponent extends Component {
     );
   }
 
+  /**
+   * X component of linear velocity in pixels/s. Allocation-free — prefer
+   * this and `velocityY` over `getVelocity()` on a per-frame read path.
+   * Reading both components calls into Rapier twice; for both as numbers
+   * without the double call, `getVelocity()` is still the option.
+   */
+  get velocityX(): number {
+    const body = this.physicsWorld.getBody(this._bodyHandle);
+    if (!body) return 0;
+    return this.physicsWorld.toPixels(body.linvel().x);
+  }
+
+  /** Y component of linear velocity in pixels/s. Allocation-free. */
+  get velocityY(): number {
+    const body = this.physicsWorld.getBody(this._bodyHandle);
+    if (!body) return 0;
+    return this.physicsWorld.toPixels(body.linvel().y);
+  }
+
+  /** Speed (velocity magnitude) in pixels/s. Allocation-free. */
+  get speed(): number {
+    return Math.sqrt(this.speedSquared);
+  }
+
+  /**
+   * Squared speed in (pixels/s)². Cheaper than `speed` when only comparing
+   * magnitudes (e.g. against a threshold).
+   */
+  get speedSquared(): number {
+    const body = this.physicsWorld.getBody(this._bodyHandle);
+    if (!body) return 0;
+    const v = body.linvel();
+    const vx = this.physicsWorld.toPixels(v.x);
+    const vy = this.physicsWorld.toPixels(v.y);
+    return vx * vx + vy * vy;
+  }
+
   /** Apply torque. */
   applyTorque(torque: number): void {
     const body = this.physicsWorld.getBody(this._bodyHandle);
