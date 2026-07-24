@@ -2001,5 +2001,41 @@ describe("InputManager", () => {
         kind: "Active pad listener",
       });
     });
+
+    it("a throwing pointer-down listener rethrows, stopping later listeners for the same event", () => {
+      const { boundary } = wireBoundary();
+      const calls: string[] = [];
+      input.onPointerDown(() => calls.push("before"));
+      input.onPointerDown(() => {
+        throw new Error("boom");
+      });
+      input.onPointerDown(() => calls.push("after"));
+
+      expect(() => input.firePointerDown(0)).toThrow("boom");
+      expect(calls).toEqual(["before"]);
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Pointer listener",
+        event: "pointerdown",
+      });
+    });
+
+    it("a throwing wheel listener rethrows, stopping later listeners for the same event", () => {
+      const { boundary } = wireBoundary();
+      const calls: string[] = [];
+      input.onWheel(() => calls.push("before"));
+      input.onWheel(() => {
+        throw new Error("boom");
+      });
+      input.onWheel(() => calls.push("after"));
+
+      expect(() => input.fireWheel(0, 1)).toThrow("boom");
+      expect(calls).toEqual(["before"]);
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Wheel listener",
+        event: "wheel",
+      });
+    });
   });
 });

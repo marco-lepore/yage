@@ -607,8 +607,9 @@ and rethrows.
   through `Logger`, and rethrows.
 - `wrapCallback(fn, info)` wraps a developer-supplied callback the engine
   invokes on its own — collision/trigger handlers, entity/scene event
-  handlers, the global `EventBus`, input listeners (key/action/gamepad),
-  process and process-slot callbacks, the audio unlock callback. It catches a
+  handlers, the global `EventBus`, input listeners (key/action/gamepad/
+  pointer/wheel), process and process-slot callbacks, the audio unlock
+  callback. It catches a
   synchronous throw and, since these callbacks are typed void-returning but
   nothing stops a caller from passing an `async` function, a rejected
   thenable too — the thenable case is re-raised as a new unhandled rejection,
