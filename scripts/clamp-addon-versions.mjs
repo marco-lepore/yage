@@ -5,7 +5,7 @@
  * defaults. Intended to run right after `changeset version` in the
  * `version-packages` script.
  *
- * Two corrections, both a consequence of the same changesets behavior: addons
+ * Three corrections, all a consequence of the same changesets behavior: addons
  * declare engine packages as `peerDependencies` with a capped range
  * (e.g. `>=0.9.0 <0.10.0`), and when an engine minor pushes that peer out of
  * range changesets force-bumps the addon.
@@ -14,20 +14,29 @@
  *      On a pre-1.0 package `semver.inc("0.3.0", "major")` is `1.0.0`, so every
  *      addon jumps to 1.0.0 regardless of its current 0.x version. In pre-1.0
  *      semver a breaking change is a *minor* bump, so we clamp that back to
- *      `0.(minor+1).0`. (See packages/addons/AGENTS.md — "never propose 1.0.0".)
+ *      `0.(minor+1).0` — and rewrite the generated CHANGELOG headings (the
+ *      addon's own, and the "Updated dependencies" lines in consumers) so no
+ *      release note cites a version that will never be published.
+ *      (See packages/addons/AGENTS.md — "never propose 1.0.0".)
  *
  *   2. Peer range: changesets rewrites the capped `>=0.9.0 <0.10.0` to an
  *      open-ended `>=0.10.0`, dropping the upper bound the addon relies on
  *      (each engine minor is breaking pre-1.0). We restore the cap, re-flooring
  *      to the engine's new version: `>=0.10.0 <0.11.0`.
  *
- * Dev-dependency floors are left open (`>=0.10.0`) — that matches the addon
- * policy and is already what changesets produces. Only addons whose version
- * actually changed this release are touched, so a no-op release stays a no-op.
+ *   3. Engine dev-dependency floors must stay open (`>=<engine>`) per policy so
+ *      the current workspace and the next engine minor both resolve. We
+ *      normalize them, in case an addon authored a capped or caret range that
+ *      changesets carried forward.
+ *
+ * Only addons whose version actually changed this release are touched, so a
+ * no-op release stays a no-op.
  *
  * The "previous" version of each addon is read from a git ref (default `HEAD`,
  * which during `changeset version` is the pre-bump commit). Override with
- * ADDON_CLAMP_BASE_REF when running against an already-committed bump.
+ * ADDON_CLAMP_BASE_REF when running against an already-committed bump. The ref
+ * must resolve — an unresolvable ref aborts the run rather than silently
+ * skipping every addon (which would publish unclamped 1.0.0 versions).
  *
  * Usage:
  *   node scripts/clamp-addon-versions.mjs
@@ -45,7 +54,6 @@ const repoRoot = resolve(scriptDir, "..");
 const baseRef = process.env.ADDON_CLAMP_BASE_REF || "HEAD";
 
 const ENGINE_SCOPE = "@yagejs/";
-const ADDON_SCOPE = "@yagejs-addons/";
 const DEP_SECTIONS = ["dependencies", "devDependencies", "peerDependencies"];
 
 // name -> current workspace version, for every engine package under packages/*.
@@ -58,8 +66,10 @@ for (const entry of readdirSync(join(repoRoot, "packages"))) {
     engineVersions.set(pkg.name, pkg.version);
 }
 
+assertBaseRefResolves(baseRef);
+
 const addonsRoot = join(repoRoot, "packages", "addons");
-const clamped = new Map(); // addon name -> final version, for dependent re-pin
+const clamped = new Map(); // addon name -> { generated, final }
 
 for (const entry of readdirSync(addonsRoot)) {
   const pkgPath = join(addonsRoot, entry, "package.json");
@@ -88,12 +98,20 @@ for (const entry of readdirSync(addonsRoot)) {
     peers[name] = `>=${engineVersion} <${nextBreaking(engineVersion)}`;
   }
 
+  // 3. Keep engine dev-dependency floors open per policy.
+  const devDeps = pkg.devDependencies ?? {};
+  for (const name of Object.keys(devDeps)) {
+    const engineVersion = engineVersions.get(name);
+    if (!engineVersion) continue;
+    devDeps[name] = `>=${engineVersion}`;
+  }
+
   if (finalVersion !== generated) {
     rewriteChangelogHeading(join(addonsRoot, entry), generated, finalVersion);
   }
   pkg.version = finalVersion;
   writeJson(pkgPath, pkg);
-  clamped.set(pkg.name, finalVersion);
+  clamped.set(pkg.name, { generated, final: finalVersion });
 
   const note =
     finalVersion === generated
@@ -103,7 +121,8 @@ for (const entry of readdirSync(addonsRoot)) {
 }
 
 // Re-point every workspace dependent at the clamped addon versions — changesets
-// wrote e.g. "^1.0.0" into examples/e2e when it graduated the addons.
+// wrote e.g. "^1.0.0" into examples/e2e when it graduated the addons — and fix
+// the version each dependent's generated changelog cites.
 if (clamped.size > 0) {
   for (const pkgPath of workspacePackageJsons()) {
     const pkg = readJson(pkgPath);
@@ -116,7 +135,7 @@ if (clamped.size > 0) {
         const range = deps[name];
         if (/^(workspace|file|link):/.test(range)) continue; // local protocol — leave it
         const prefix = range.match(/^[\^~]/)?.[0] ?? "^";
-        const desired = `${prefix}${clamped.get(name)}`;
+        const desired = `${prefix}${clamped.get(name).final}`;
         if (range !== desired) {
           deps[name] = desired;
           touched = true;
@@ -125,10 +144,9 @@ if (clamped.size > 0) {
     }
     if (touched) {
       writeJson(pkgPath, pkg);
-      console.log(
-        `  re-pinned addon deps in ${pkgPath.slice(repoRoot.length + 1)}`,
-      );
+      console.log(`  re-pinned addon deps in ${rel(pkgPath)}`);
     }
+    rewriteDependencyChangelog(dirname(pkgPath));
   }
 }
 
@@ -151,17 +169,39 @@ function nextBreaking(version) {
   return maj === 0 ? `0.${min + 1}.0` : `${maj + 1}.0.0`;
 }
 
-function versionAtRef(ref, relPath) {
+// A bad base ref must abort, not be mistaken for "every addon is new" — that
+// would skip clamping entirely and publish 1.0.0 addons with uncapped peers.
+function assertBaseRefResolves(ref) {
   try {
-    const raw = execFileSync("git", ["show", `${ref}:${relPath}`], {
+    execFileSync(
+      "git",
+      ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`],
+      {
+        cwd: repoRoot,
+        stdio: "ignore",
+      },
+    );
+  } catch {
+    throw new Error(
+      `Base ref "${ref}" does not resolve — aborting so a bad ref can't ` +
+        `silently skip clamping. Set ADDON_CLAMP_BASE_REF to a valid commit.`,
+    );
+  }
+}
+
+function versionAtRef(ref, relPath) {
+  let raw;
+  try {
+    raw = execFileSync("git", ["show", `${ref}:${relPath}`], {
       cwd: repoRoot,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     });
-    return JSON.parse(raw).version ?? null;
   } catch {
-    return null; // file absent at ref (new addon) or git unavailable
+    return null; // file absent at this (already-validated) ref — a new addon
   }
+  // Malformed JSON is a real problem — let it throw rather than skip clamping.
+  return JSON.parse(raw).version ?? null;
 }
 
 function rewriteChangelogHeading(addonDir, fromVersion, toVersion) {
@@ -171,6 +211,29 @@ function rewriteChangelogHeading(addonDir, fromVersion, toVersion) {
   const heading = `## ${fromVersion}`;
   if (!src.includes(heading)) return;
   writeFileSync(changelogPath, src.replace(heading, `## ${toVersion}`));
+}
+
+// Rewrite "Updated dependencies" lines that still cite a pre-clamp addon
+// version (e.g. "@yagejs-addons/dialogue@1.0.0" -> "@0.4.0"). The clamped-away
+// version only appears in the entry changesets just generated, so a targeted
+// string replace is safe.
+function rewriteDependencyChangelog(dir) {
+  const changelogPath = join(dir, "CHANGELOG.md");
+  if (!existsSync(changelogPath)) return;
+  let src = readFileSync(changelogPath, "utf8");
+  let changed = false;
+  for (const [name, { generated, final }] of clamped) {
+    if (generated === final) continue;
+    const needle = `${name}@${generated}`;
+    if (src.includes(needle)) {
+      src = src.split(needle).join(`${name}@${final}`);
+      changed = true;
+    }
+  }
+  if (changed) {
+    writeFileSync(changelogPath, src);
+    console.log(`  rewrote changelog dep refs in ${rel(changelogPath)}`);
+  }
 }
 
 function workspacePackageJsons() {
@@ -186,6 +249,10 @@ function workspacePackageJsons() {
     if (existsSync(p)) paths.push(p);
   }
   return paths;
+}
+
+function rel(path) {
+  return path.slice(repoRoot.length + 1);
 }
 
 function readJson(path) {
