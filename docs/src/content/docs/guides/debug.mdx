@@ -604,9 +604,12 @@ Uncaught TypeError: Cannot read properties of undefined (reading 'has')
 
 That console line follows the same dev-only default as any other `logger.error`
 call — see [LoggerConfig](#loggerconfig) above. The thrown error itself is not
-gated by that default: it reaches `window.onerror`, your own `try`/`catch`
-around `engine.start()`/`engine.scenes.push(...)`, or a Node
-`uncaughtException` handler, whichever the host provides.
+gated by that default, but it doesn't surface through a `try`/`catch` around
+`engine.start()` — a collision handler like the one above fires on a later
+game-loop tick, well after `start()` has already returned. Catch it at the
+host level instead: `window.onerror` in a browser, `uncaughtException` in
+Node. Or wrap whatever synchronous call actually invokes the callback — a
+manual `engine.loop.tick(dt)`, for instance.
 
 An `async` callback that rejects can't be rethrown into the call that
 triggered it — that call already returned by the time the rejection settles.
@@ -678,14 +681,17 @@ What happens to the callback next depends on where it was registered:
 | The global `EventBus` (`.on`, `.tap`) | Stays subscribed. Only the first throw for that handler and event is reported — later throws from the same handler are silent. |
 | A `Process` (tweens, sequences, coroutines) or `ProcessSlot`, whether owned by a `ProcessComponent` on an entity or added directly to the scene/engine | That one process or slot is cancelled. Every other process — on the same entity, on other entities, and in the pool — keeps running. |
 | The audio-unlock callback | Reported only — it already runs once, so there's nothing to unsubscribe. |
-| Scene lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`, a plugin's `beforeEnter`) | Reported, and the error keeps propagating regardless of policy — `await engine.scenes.replace(...)` still rejects the way it did before. |
+| Scene lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`, a plugin's `beforeEnter`) | Reported, regardless of policy. A *synchronous* throw also keeps propagating to the caller — `await engine.scenes.replace(...)` still rejects the way it did before. An `async` hook's rejection is reported only, not propagated: the call has already returned by the time the rejection settles. |
 
-An `async` callback is covered the same way: if it rejects instead of
-throwing, the rejection is caught and handled exactly like a synchronous
-throw, for every row in the table above.
+An `async` callback is covered the same way as a synchronous throw, for every
+row above except scene lifecycle hooks: the rejection is caught and handled
+identically to a throw from that same callback. Scene lifecycle hooks are the
+exception — see the table row above.
 
-Every failure is also recorded, so a test or crash reporter can check for it
-without scraping console output:
+Every failure is also recorded — except a muted `EventBus` handler's repeat
+failures for the same event, which stay silent past the first (see the table
+above) — so a test or crash reporter can check for it without scraping
+console output:
 
 ```typescript
 const errors = engine.inspector.getErrors();

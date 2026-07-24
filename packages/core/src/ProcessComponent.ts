@@ -18,11 +18,18 @@ export class ProcessComponent extends Component {
   private slots = new Set<ProcessSlot>();
   private errorBoundary: ErrorBoundary | undefined;
 
-  onAdd(): void {
-    // Unlike ColliderComponent, ProcessComponent works detached from any
-    // scene (tweening a standalone entity is a supported, scene-free use
-    // case), so this can't use `this.context`, which throws when the entity
-    // has no scene. `tryScene` degrades to `undefined` instead.
+  /**
+   * Resolve and cache the error boundary from the entity's scene context.
+   * Unlike ColliderComponent, ProcessComponent works detached from any scene
+   * (tweening a standalone entity is a supported, scene-free use case), so
+   * this can't use `this.context`, which throws when the entity has no
+   * scene — `tryScene` degrades to `null` instead. An entity can also gain a
+   * scene after `onAdd` (`Entity.addChild` auto-adds a scene-less child to
+   * its parent's scene), so this retries on every `_tick` until a boundary
+   * is found, then caches it to avoid a repeated lookup per frame.
+   */
+  private _resolveBoundary(): void {
+    if (this.errorBoundary) return;
     this.errorBoundary = this.entity.tryScene?.context?.tryResolve(ErrorBoundaryKey);
   }
 
@@ -94,6 +101,7 @@ export class ProcessComponent extends Component {
    * @internal — called by ProcessSystem
    */
   _tick(dt: number, scene?: string): void {
+    this._resolveBoundary();
     const entity = this.entity?.name;
     for (const p of this.processes) {
       tickProcessGuarded(

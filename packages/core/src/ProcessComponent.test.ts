@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { ProcessComponent } from "./ProcessComponent.js";
 import { Process } from "./Process.js";
 import { Entity } from "./Entity.js";
-import { createMockEntity } from "./test-utils.js";
+import { createMockEntity, createMockScene } from "./test-utils.js";
 import { ErrorBoundaryKey } from "./EngineContext.js";
 
 function makeComponent(): ProcessComponent {
@@ -355,6 +355,32 @@ describe("ProcessComponent", () => {
       });
       pc.run(process);
       expect(() => pc._tick(16)).toThrow("boom");
+    });
+
+    it("picks up the boundary when the entity gains a scene after onAdd, via addChild", () => {
+      const { scene, context } = createMockScene(undefined, "isolate");
+      const boundary = context.tryResolve(ErrorBoundaryKey)!;
+      const parent = scene.spawn("parent");
+
+      const bullet = new Entity("bullet");
+      const pc = new ProcessComponent();
+      bullet.add(pc); // onAdd runs while bullet is still detached — no scene yet
+      parent.addChild("bullet", bullet); // bullet now has a scene
+
+      pc.run(
+        new Process({
+          update: () => {
+            throw new Error("boom");
+          },
+        }),
+      );
+
+      expect(() => pc._tick(16)).not.toThrow();
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Process callback",
+        outcome: "cancelled",
+      });
     });
   });
 });

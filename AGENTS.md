@@ -59,17 +59,20 @@ Enforced by tooling — match these conventions exactly:
   the game registered (event handlers, collision handlers, input listeners,
   process callbacks) runs it through `ErrorBoundary.wrapCallback`. Scene
   lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`, `beforeEnter`)
-  use `ErrorBoundary.wrapLifecycleHook` instead, which reports and rethrows
-  rather than swallowing the error, regardless of policy. `Logger`'s own
-  `output` sink guards itself the same way, since it can't route through the
-  boundary it's reporting into. `ErrorBoundary`'s policy — `EngineConfig.errors`,
+  use `ErrorBoundary.wrapLifecycleHook` instead: a synchronous throw is
+  reported and rethrown regardless of policy, but a rejected async hook can
+  only be reported — the call has already returned by the time the rejection
+  settles, so there's no stack left to rethrow into. `Logger`'s own `output`
+  sink guards itself the same way, since it can't route through the boundary
+  it's reporting into. `ErrorBoundary`'s policy — `EngineConfig.errors`,
   default `"fatal"` — decides what "guard" means: `"fatal"` reports the culprit,
-  stops the game loop, and rethrows; `"isolate"` disables/removes/mutes the
-  offender instead and keeps the game running. Either way, a new dispatch site
-  needs the wrap: unguarded, a throw is attributed to whoever emitted — the
-  surrounding `System` or `Component` is disabled instead, so one bad line in a
-  game listener stops a whole subsystem. Iterate a snapshot of the handler list
-  wherever the boundary can remove the thrower.
+  stops the game loop, and rethrows without touching the offender; `"isolate"`
+  disables/removes/mutes the offender instead and keeps the game running.
+  Either way, a new dispatch site needs the wrap: unguarded, a throw
+  propagates to the surrounding `System` or `Component`'s own wrap, which
+  under `"isolate"` disables it — so one bad line in a game listener stops a
+  whole subsystem instead of just itself. Iterate a snapshot of the handler
+  list wherever the boundary can remove the thrower.
 
 ## Testing
 

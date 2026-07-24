@@ -627,18 +627,23 @@ attributed to whoever threw, not whoever it reached. Policy is
     one-shot audio unlock callback). `options.onError` runs the outcome's
     actual side effect; `wrapCallback` itself never mutates call-site state.
 - `wrapLifecycleHook(fn, info)` wraps a scene lifecycle hook
-  (`onEnter`/`onExit`/`onPause`/`onResume`/`beforeEnter`). Regardless of
-  policy, it reports through `Logger` and rethrows, so a scene half-built by
-  a throwing hook always fails the same way — a half-built scene must not
-  look like it mounted cleanly.
+  (`onEnter`/`onExit`/`onPause`/`onResume`/`beforeEnter`). A synchronous
+  throw is reported through `Logger` and rethrown regardless of policy, so a
+  scene half-built by a throwing hook always fails the same way — it must
+  not look like it mounted cleanly. A rejected thenable can only be reported
+  (via `reportLifecycleError()`), not rethrown — the hook call has already
+  returned by the time the rejection settles, so there's no caller stack
+  left to rethrow into.
 - Every failure is recorded in `ErrorBoundary.getCallbackErrors()` and
   surfaced as `Inspector.getErrors().callbackErrors`, alongside
-  `disabledSystems`/`disabledComponents`. Under `"isolate"` this covers
-  wrapped callback failures (systems/components go to `disabledSystems`/
-  `disabledComponents` instead). Under `"fatal"`, `disabledSystems`/
-  `disabledComponents` stay empty — nothing is disabled — but whichever
-  system, component, or callback stopped the loop gets a `callbackErrors`
-  entry with `outcome: "fatal"`.
+  `disabledSystems`/`disabledComponents` — except repeat failures from a
+  `"muted"` callback: only the first failure per handler+event is recorded
+  (and logged), later ones for the same pair are dropped before either.
+  Under `"isolate"` this covers wrapped callback failures (systems/components
+  go to `disabledSystems`/`disabledComponents` instead). Under `"fatal"`,
+  `disabledSystems`/`disabledComponents` stay empty — nothing is disabled —
+  but whichever system, component, or callback stopped the loop gets a
+  `callbackErrors` entry with `outcome: "fatal"`.
 - Writing a new dispatch site that calls developer-supplied code should route it through `wrapCallback`/`wrapLifecycleHook` rather than calling the callback directly — see the "Guard developer-supplied callbacks" rule in the repo-root `AGENTS.md`.
 - `"removed"`/`"muted"` unsubscribe by function identity. Re-registering the same function reference for an `async` handler before its prior rejection has settled can have the late rejection remove the new registration instead of the failed one — use a fresh function reference per registration to avoid it.
 

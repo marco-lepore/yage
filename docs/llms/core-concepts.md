@@ -339,9 +339,20 @@ useful information. `"isolate"` disables the offending system/component
 (`enabled = false`) or removes/mutes/cancels the offending callback instead,
 and the game keeps running.
 
+Scene lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`, a plugin's
+`beforeEnter`) are the one exception: a synchronous throw is reported and
+rethrown regardless of policy — `"isolate"` does not recover them, since a
+scene half-built by a throwing hook must not look like it mounted cleanly. A
+rejected async hook is reported only, not rethrown, since the call has
+already returned by the time the rejection settles.
+
 ```ts
 const engine = new Engine({ errors: "isolate" }); // opt in to degrading instead of stopping
 
 // Under "isolate", check what got disabled:
 const { systems, components } = context.resolve(ErrorBoundaryKey).getDisabled();
+
+// Every recorded failure, under either policy:
+const { callbackErrors } = engine.inspector.getErrors();
+// [{ kind: "Collision handler", entity: "DoorPad", outcome: "removed", error: "..." }]
 ```
