@@ -48,6 +48,7 @@ export function createAudioTestContext(
   // that specifically exercises recovery (a throwing onUnlock callback
   // reported instead of rethrown).
   const boundary = new ErrorBoundary(logger, errorPolicy, gameLoop);
+  bus._setErrorBoundary(boundary);
   const scheduler = new SystemScheduler();
   scheduler.setErrorBoundary(boundary);
 

@@ -54,6 +54,9 @@ export function createMockScene(
   const logger = new Logger({ level: LogLevel.Debug });
   const loop = new GameLoop();
   const boundary = new ErrorBoundary(logger, errorPolicy, loop);
+  // Engine wires the bus to the boundary; a test context that skips it runs
+  // bus handlers unguarded, which no production engine does.
+  bus._setErrorBoundary(boundary);
 
   ctx.register(QueryCacheKey, queryCache);
   ctx.register(EventBusKey, bus);

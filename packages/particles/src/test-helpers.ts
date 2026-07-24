@@ -101,6 +101,7 @@ export function createParticlesTestContext(
   // Defaults to "fatal", matching a real Engine. Pass "isolate" for a test
   // that specifically exercises recovery.
   const boundary = new ErrorBoundary(logger, errorPolicy, gameLoop);
+  bus._setErrorBoundary(boundary);
   const scheduler = new SystemScheduler();
   scheduler.setErrorBoundary(boundary);
 

@@ -66,6 +66,7 @@ export async function createPhysicsTestContext(
   // that specifically exercises recovery (a throwing collision handler
   // leaving PhysicsSystem enabled).
   const boundary = new ErrorBoundary(logger, errorPolicy, gameLoop);
+  bus._setErrorBoundary(boundary);
   const scheduler = new SystemScheduler();
   scheduler.setErrorBoundary(boundary);
   const sceneManager = new SceneManager();
