@@ -114,6 +114,9 @@ export class EffectStack {
         for (const f of effectFilters(effect)) f.enabled = on;
       },
       enabled: true,
+      setIntensity: (value: number) => {
+        effect.setIntensity(Math.min(1, Math.max(0, value)));
+      },
       fadeIn: (duration: number) =>
         trackProcess(
           Tween.custom(

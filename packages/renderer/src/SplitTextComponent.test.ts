@@ -4,6 +4,14 @@ const { mocks } = vi.hoisted(() => {
   class MockContainer {
     children: MockContainer[] = [];
     position = { x: 0, y: 0 };
+    pivot = {
+      x: 0,
+      y: 0,
+      set(this: { x: number; y: number }, x: number, y: number) {
+        this.x = x;
+        this.y = y;
+      },
+    };
     scale = { x: 1, y: 1 };
     rotation = 0;
     visible = true;
@@ -222,6 +230,43 @@ describe("SplitTextComponent", () => {
     expect(comp.splitText.wordAnchor).toEqual({ x: 0, y: 1 });
   });
 
+  it("anchors the whole text block from its local bounds", () => {
+    const comp = new SplitTextComponent({
+      text: "hi",
+      anchor: { x: 0.5, y: 1 },
+    });
+    const split = comp.splitText as unknown as InstanceType<
+      typeof mocks.MockSplitText
+    >;
+    split.boundsBox = { x: 4, y: 6, width: 80, height: 20 };
+
+    comp.resplit();
+
+    expect(split.pivot).toMatchObject({ x: 44, y: 26 });
+  });
+
+  it("recomputes the block anchor after text, style, and manual split changes", () => {
+    const comp = new SplitTextComponent({
+      text: "hi",
+      anchor: { x: 1, y: 0.5 },
+    });
+    const split = comp.splitText as unknown as InstanceType<
+      typeof mocks.MockSplitText
+    >;
+
+    split.boundsBox = { x: 0, y: 0, width: 20, height: 10 };
+    comp.setText("hello");
+    expect(split.pivot).toMatchObject({ x: 20, y: 5 });
+
+    split.boundsBox = { x: 2, y: 4, width: 50, height: 16 };
+    comp.setStyle({ fontSize: 24 });
+    expect(split.pivot).toMatchObject({ x: 52, y: 12 });
+
+    split.boundsBox = { x: -3, y: 1, width: 30, height: 8 };
+    comp.resplit();
+    expect(split.pivot).toMatchObject({ x: 27, y: 5 });
+  });
+
   it("sets visibility, tint, and alpha when provided", () => {
     const comp = new SplitTextComponent({
       text: "x",
@@ -293,6 +338,7 @@ describe("SplitTextComponent", () => {
       layer: "hud",
       style: { fontSize: 16, fontFamily: "PressStart" },
       bitmap: true,
+      anchor: { x: 0.5, y: 1 },
       charAnchor: 0.5,
       autoSplit: false,
       tint: 0x123456,
@@ -305,6 +351,7 @@ describe("SplitTextComponent", () => {
       layer: "hud",
       style: { fontSize: 16, fontFamily: "PressStart" },
       bitmap: true,
+      anchor: { x: 0.5, y: 1 },
       charAnchor: 0.5,
       autoSplit: false,
       tint: 0x123456,
@@ -315,6 +362,7 @@ describe("SplitTextComponent", () => {
     const restored = SplitTextComponent.fromSnapshot(data);
     expect(restored.splitText).toBeInstanceOf(mocks.MockSplitBitmapText);
     expect(restored.splitText.text).toBe("score");
+    expect(restored.serialize().anchor).toEqual({ x: 0.5, y: 1 });
     expect(restored.charAnchor).toBe(0.5);
     expect(restored.tint).toBe(0x123456);
   });
@@ -345,6 +393,18 @@ describe("SplitTextComponent", () => {
     charAnchor.x = 0.1;
     charAnchor.y = 0.9;
     expect(comp.serialize().charAnchor).toEqual({ x: 0.5, y: 0.5 });
+  });
+
+  it("decouples the block anchor from caller and snapshot mutation", () => {
+    const anchor = { x: 0.5, y: 1 };
+    const comp = new SplitTextComponent({ text: "x", anchor });
+    anchor.x = 0;
+    const snapshot = comp.serialize();
+    expect(snapshot.anchor).toEqual({ x: 0.5, y: 1 });
+
+    if (!snapshot.anchor) throw new Error("Expected a serialized block anchor.");
+    snapshot.anchor.y = 0;
+    expect(comp.serialize().anchor).toEqual({ x: 0.5, y: 1 });
   });
 
   it("decouples the serialized anchor from the cache (mutating the snapshot)", () => {

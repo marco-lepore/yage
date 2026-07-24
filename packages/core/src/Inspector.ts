@@ -1260,7 +1260,7 @@ export class Inspector {
 
     return {
       root: {
-        id: `scene-${this.getSceneId(scene)}:ui`,
+        id: `${this.getSceneId(scene)}:ui`,
         type: "UIRoot",
         layout: { x: 0, y: 0, width: 0, height: 0 },
         children: roots,

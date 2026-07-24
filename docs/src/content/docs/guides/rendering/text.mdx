@@ -315,6 +315,7 @@ const title = entity.add(
   new SplitTextComponent({
     text: "GAME OVER",
     style: { fontFamily: "monospace", fontSize: 48, fill: 0xffffff },
+    anchor: { x: 0.5, y: 0.5 }, // center the whole block on its Transform
     charAnchor: 0.5, // rotate / scale each glyph about its center
   }),
 );
@@ -333,10 +334,15 @@ title.chars.forEach((char, i) => {
 });
 ```
 
-The transform origins — `charAnchor`, `wordAnchor`, `lineAnchor`
-(normalized 0–1, settable at construction or at runtime) — control the
-pivot each segment rotates and scales about. `chars` are `Text` /
-`BitmapText`; `words` and `lines` are containers grouping them.
+`anchor` is the normalized transform origin for the whole text block. The
+component recalculates it from the current bounds after text, style, or
+manual split updates. This keeps centered labels centered when their content
+changes.
+
+The segment origins — `charAnchor`, `wordAnchor`, `lineAnchor` (also
+normalized 0–1, settable at construction or at runtime) — control the pivot
+each segment rotates and scales about. `chars` are `Text` / `BitmapText`;
+`words` and `lines` are containers grouping them.
 
 :::caution[Experimental, and not free]
 `SplitText` is flagged experimental in Pixi, and splitting re-lays-out

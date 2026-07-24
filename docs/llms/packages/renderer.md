@@ -215,7 +215,7 @@ All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitT
 }
 ```
 
-`comp.visible` / `comp.tint` / `comp.alpha` read/write the live object; `interactive` is option-only (set once at construction, persisted through save/load). `anchor` (`{x, y}`) is shared by Sprite, AnimatedSprite, and Text. Graphics has no anchor (a raw Pixi `Container` has none). SplitText uses its own per-segment `charAnchor` / `wordAnchor` / `lineAnchor` instead (see below).
+`comp.visible` / `comp.tint` / `comp.alpha` read/write the live object; `interactive` is option-only (set once at construction, persisted through save/load). `anchor` (`{x, y}`) is shared by Sprite, AnimatedSprite, Text, and SplitText. Graphics has no anchor (a raw Pixi `Container` has none). SplitText also has per-segment `charAnchor` / `wordAnchor` / `lineAnchor` values (see below).
 
 ### SpriteComponent
 
@@ -317,6 +317,7 @@ const title = entity.add(new SplitTextComponent({
   text: "GAME OVER",
   style: { fontSize: 48, fill: 0xffffff },
   bitmap: true,                     // optional — SplitBitmapText (font via style.fontFamily)
+  anchor: { x: 0.5, y: 0.5 },       // pivot for the whole text block
   charAnchor: 0.5,                  // segment pivots (0–1): char / word / lineAnchor
   // autoSplit: false,              // batch text/style edits, then resplit()
 }));
@@ -331,7 +332,9 @@ const pc = entity.add(new ProcessComponent());
 Tween.stagger(title.chars, (c) => Tween.custom((v) => (c.alpha = v), 0, 1, 0.3), 0.05).forEach((p) => pc.run(p));
 ```
 
-API: `chars` / `words` / `lines` (getters), `setText(v)`, `setStyle(s)`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `resplit()` (manual split when `autoSplit: false`), `visible` / `tint` / `alpha`, `fx` / `setMask` / `clearMask` (same effects/mask surface as the other four components), `splitText` (underlying Pixi object), `isBitmap`. Serializable (text/style/bitmap/anchors/layer/visible/tint/alpha/interactive/effects/mask; re-splits on restore). Caveats: `SplitText` is experimental, re-lays-out on every `text`/`style` change (prefer `TextComponent` for static/simple text), and char spacing can differ slightly from `Text` (kerning lost when glyphs split).
+`anchor` positions the whole block around its entity Transform. It uses the current split text bounds and is recomputed after text, style, or manual split updates. `charAnchor`, `wordAnchor`, and `lineAnchor` only affect their individual segments.
+
+API: `chars` / `words` / `lines` (getters), `setText(v)`, `setStyle(s)`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `resplit()` (manual split when `autoSplit: false`), `visible` / `tint` / `alpha`, `fx` / `setMask` / `clearMask` (same effects/mask surface as the other four components), `splitText` (underlying Pixi object), `isBitmap`. Serializable (text/style/bitmap/anchor/segment anchors/layer/visible/tint/alpha/interactive/effects/mask; re-splits on restore). Caveats: `SplitText` is experimental, re-lays-out on every `text`/`style` change (prefer `TextComponent` for static/simple text), and char spacing can differ slightly from `Text` (kerning lost when glyphs split).
 
 ### AnimatedSpriteComponent
 
@@ -840,7 +843,7 @@ const restored = sprite.fx.findEffect(hitFlash);  // EffectHandle | null
 |---|---|---|
 | `.fx` (on every scope) | `EffectsHost` | Per-scope holder. `addEffect(factory)`, `findEffect(definition)`, `serialize()`, `restore(snap)`, `destroy()`, `size`. The underlying `EffectStack` is built lazily on first attach. |
 | `EffectsHost` | class | Constructor: `(getContainer: () => Container, scope: EffectScope, makeQueue: (() => ScopedProcessQueue) \| undefined)`. Auto-built on each scope's host object — components, layers, scenes, the renderer. |
-| `EffectHandle` | interface | `remove()` / `setEnabled(on)` / `enabled` / `fadeIn(duration): Process` / `fadeOut(duration): Process` / `run(p: Process): Process`. The `run` schedules a `Process` scoped to the effect's lifetime — pauses with the owning scene, time-scales with it, auto-cancels when the effect is removed. |
+| `EffectHandle` | interface | `remove()` / `setEnabled(on)` / `enabled` / `setIntensity(value)` / `fadeIn(duration): Process` / `fadeOut(duration): Process` / `run(p: Process): Process`. `setIntensity` clamps to 0–1 and controls the effect's primary intensity. `run` schedules a `Process` scoped to the effect's lifetime — pauses with the owning scene, time-scales with it, auto-cancels when the effect is removed. |
 | `Effect.onActivate?(base)` | optional factory hook | Runs once after `buildExtras` has merged its keys onto the handle. Use to self-schedule per-effect tickers via `base.run(...)` so callers don't have to call `step(dt)` themselves (e.g. CRT noise animator). `buildExtras` itself stays pure — no side effects there. |
 | `defineEffect` | `<H, O>({ name, factory: (opts: O) => Effect<H> }) => (opts: O) => EffectFactory<H>` | Register a preset under a stable string name. The returned callable produces save-aware factories — built effects are tagged with `{ name, options }` for snapshot round-trip. |
 | `rawFilter` | `(filter: Filter, opts?: { intensity?: { get, set } }) => EffectFactory` | Escape hatch for any pixi `Filter`. Without `intensity`, fade calls no-op + warn once. NOT serializable. |

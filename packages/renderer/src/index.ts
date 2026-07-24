@@ -1,6 +1,7 @@
 // Side-effect import activates `declare module "@yagejs/core"` augmentation
 // that types Scene's `readonly layers` field.
 import "./scene-augmentation.js";
+import "./internal/duplicateModuleGuard.js";
 
 // Service keys & config
 export { RendererKey } from "./types.js";

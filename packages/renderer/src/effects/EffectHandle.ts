@@ -6,7 +6,7 @@ import type { Process } from "@yagejs/core";
  * `filters` array.
  *
  * Effect factories may return a richer handle that extends this — see each
- * factory's typed return for extras like `setIntensity` or `trigger`.
+ * factory's typed return for extras like `setThickness` or `trigger`.
  */
 export interface EffectHandle {
   /** Remove the effect immediately. Idempotent. */
@@ -15,6 +15,8 @@ export interface EffectHandle {
   setEnabled(on: boolean): void;
   /** Whether the effect is currently enabled. */
   readonly enabled: boolean;
+  /** Set the effect's primary intensity. Values are clamped to 0–1. */
+  setIntensity(value: number): void;
   /** Tween the effect's primary intensity 0 → 1 over `duration` seconds. */
   fadeIn(duration: number): Process;
   /** Tween the effect's primary intensity → 0 over `duration` seconds. */
