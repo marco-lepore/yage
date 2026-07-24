@@ -186,7 +186,8 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 | `src/ParticleEmitterComponent.ts` | Emitter component with config               |
 | `src/ParticleSystem.ts`           | Update phase: tick emitters                 |
 | `src/ParticlePool.ts`             | Allocation-free particle recycling          |
-| `src/ParticlePresets.ts`          | Built-in presets: fire, smoke, sparks, rain |
+| `src/presets.ts`                  | Built-in presets: fire, smoke, sparks, rain |
+| `src/shapes.ts`                   | Generated shape textures (no asset needed)  |
 
 ### `@yagejs/tilemap`
 
@@ -672,7 +673,7 @@ Snapshots store only the key. The register-before-restore contract: a game that 
 | `AnimatedSpriteComponent`  | Full                                       | `source: { sheet, frameWidth }` or `{ atlas, animation }` |
 | `AnimationController`      | Full                                       | Same as above                                             |
 | `SoundComponent`           | Full                                       | `alias` is already a string                               |
-| `ParticleEmitterComponent` | Full when using `textureKey`               | `textureKey: "particle.png"`                              |
+| `ParticleEmitterComponent` | Full when using `textureKey` or `shape`    | `textureKey: "particle.png"` or `shape: "softCircle"`     |
 | `TilemapComponent`         | Full when using `mapKey`                   | `mapKey: "dungeon.json"`                                  |
 | `UISurface` / `UIRoot`     | Options snapshot (construction options only) | Runtime tree state belongs in owning component/entity   |
 
@@ -1002,7 +1003,7 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 | **Using `setTimeout` or `setInterval` in game logic**         | Breaks deterministic frame execution. Timers drift and don't respect pause.                                                                                                                       | Use `ProcessComponent` with slots for cooldowns/timers, `pc.run()` for one-offs, or `TimerEntity` for scene-level timing.   |
 | **Using boolean flags for cooldown state**                    | Manual booleans + `Process.delay` to reset them is error-prone and verbose.                                                                                                                       | Use `ProcessSlot` — `slot.completed` IS the state. No separate boolean needed.                                              |
 | **Assuming render order = spawn order**                       | Render order is controlled by `RenderLayer` and draw priority, not entity creation order.                                                                                                         | Use layers for explicit draw ordering.                                                                                      |
-| **Passing raw `Texture` objects to serializable components**  | `Texture` is a PixiJS runtime object — not JSON-serializable. Sprites and animations reject it at the type level; `ParticleEmitterComponent`'s raw `texture` option still compiles but makes `serialize()` return `null`.                    | Use string keys: `source: { sheet, frameWidth }` for animations, `textureKey` for particles, `texture: "path"` for sprites. Runtime-created textures get a key via `registerTexture(key, texture)`. |
+| **Passing raw `Texture` objects to serializable components**  | `Texture` is a PixiJS runtime object — not JSON-serializable. Sprites and animations reject it at the type level; `ParticleEmitterComponent`'s raw `texture` option still compiles but makes `serialize()` return `null`.                    | Use string keys: `source: { sheet, frameWidth }` for animations, `textureKey` (or a built-in `shape`, which also serializes) for particles, `texture: "path"` for sprites. Runtime-created textures get a key via `registerTexture(key, texture)`. |
 
 ### Type Safety Checklist
 

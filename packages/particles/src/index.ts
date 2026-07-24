@@ -13,11 +13,23 @@ export { ParticlePool } from "./ParticlePool.js";
 // Presets
 export { ParticlePresets } from "./presets.js";
 
+// Built-in shapes
+export { shapeTexture } from "./shapes.js";
+export type {
+  ParticleShape,
+  ShapeConfig,
+  ShapeSize,
+  ResolvedShape,
+} from "./shapes.js";
+
 // Types
 export { resolveRange, isLerped } from "./types.js";
 export type {
   NumberRange,
   Lerped,
   EmitterConfig,
+  EmitterOptions,
+  TextureSource,
   ParticleEmitterData,
+  ParticleEmitterSource,
 } from "./types.js";

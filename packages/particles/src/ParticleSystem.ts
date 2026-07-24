@@ -32,7 +32,9 @@ export class ParticleSystem extends System {
         time?.effectiveScaleForUpdates(entity) ?? scene?.timeScale ?? 1;
       const emitter = entity.get(ParticleEmitterComponent);
       if (!emitter.enabled) continue;
-      const pos = entity.get(Transform).position;
+      // World position, so parented emitters spawn where they are drawn:
+      // particles live in the layer container and carry absolute coordinates.
+      const pos = entity.get(Transform).worldPosition;
       emitter._update(
         dt * sceneTimeScale * entity.timeScale,
         pos.x,

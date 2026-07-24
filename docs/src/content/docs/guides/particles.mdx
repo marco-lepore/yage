@@ -18,11 +18,37 @@ The plugin depends on `@yagejs/renderer`.
 
 ## Creating an Emitter
 
-Add a `ParticleEmitterComponent` to an entity. Particles spawn at the entity's
-`Transform` position.
+Add a `ParticleEmitterComponent` to an entity that has a `Transform`. Particles
+spawn centred on the entity's world position, so a child entity emits where it
+is drawn.
+
+The `Transform` is required, not optional: the system that drives emitters looks
+for entities that have both, so an emitter on its own never emits and never ages
+the particles a `burst` already spawned. The first `emit()` or `burst()` on an
+entity with no `Transform` logs a warning to the console.
+
+The smallest emitter needs only a lifetime — with no texture, particles are
+white squares you can color with `tint`. The default shape is a single pixel,
+so set `scale` to the size you want:
 
 ```typescript
 import { ParticleEmitterComponent } from "@yagejs/particles";
+
+const sparkle = entity.add(new ParticleEmitterComponent({
+  lifetime: [0.3, 0.6],
+  speed: [60, 120],
+  angle: [0, Math.PI * 2],
+  scale: [2, 4],
+  tint: 0xffdd55,
+}));
+
+sparkle.burst(20);
+```
+
+For an image asset, pass `texture` (or `textureKey`, which also survives
+save/load):
+
+```typescript
 import { texture } from "@yagejs/renderer";
 
 const Particle = texture("assets/particle.png");
@@ -51,6 +77,7 @@ emitter.emit();  // start continuous emission
 |---|---|---|---|
 | `texture` | `TextureInput` | — | Particle texture |
 | `textureKey` | `string` | — | Asset key (serializable alternative to `texture`) |
+| `shape` | `ParticleShape \| ShapeConfig` | `"pixel"` | Built-in shape, optionally sized |
 | `maxParticles` | `number` | `100` | Maximum live particles |
 | `rate` | `number` | `10` | Emission rate (particles/sec) |
 | `lifetime` | `NumberRange` | — | Particle lifetime in seconds (required) |
@@ -75,13 +102,82 @@ scale: { start: [0.8, 1.2], end: 0 }   // shrink to nothing
 alpha: { start: 1, end: [0, 0.3] }     // fade out with variation
 ```
 
+The three texture options are mutually exclusive: setting more than one is a
+type error. An emitter that sets none of them uses the `"pixel"` shape.
+
+## Built-in Shapes
+
+Six shapes ship with the package, so effects work before you have any art:
+
+| Shape | Looks like | Default size |
+|---|---|---|
+| `"pixel"` | A white rectangle | 1×1 |
+| `"circle"` | A solid disc, an ellipse on a non-square size | 64×64 |
+| `"softCircle"` | A disc fading to transparent at the edge — smoke, glows, embers | 64×64 |
+| `"diamond"` | A solid diamond | 64×64 |
+| `"softDiamond"` | A diamond fading to transparent, which reads as a four-point sparkle | 64×64 |
+| `"line"` | A filled streak — rain, speed trails | 64×8 |
+
+```typescript
+entity.add(new ParticleEmitterComponent({
+  shape: "softCircle",
+  lifetime: [0.6, 1.2],
+  speed: [30, 60],
+  angle: [-Math.PI / 2 - 0.3, -Math.PI / 2 + 0.3],
+  scale: { start: 0.5, end: 1.2 },
+  alpha: { start: 0.5, end: 0 },
+  tint: 0x888888,   // shapes are white; tint gives them their color
+}));
+```
+
+Every shape is white so `tint` fully controls the color. The first emitter to
+ask for a shape at a given size builds it; the rest share that one texture.
+
+### Sizing a Shape
+
+Pass an object instead of the shape name to choose the texture size — one
+number for a square, or `[width, height]`:
+
+```typescript
+{ shape: "softCircle" }                        // 64×64
+{ shape: { type: "softCircle", size: 16 } }    // 16×16 texture
+{ shape: { type: "circle", size: [32, 16] } }  // an ellipse
+{ shape: { type: "line", size: [4, 32] } }     // a vertical streak, for rain
+```
+
+`size` is the generated texture's size in pixels, which at the default
+`scale: 1` is also the size a particle covers on screen. The two options do
+different jobs:
+
+- **`size`** sets the shape's own dimensions. Keep to a few fixed values —
+  every distinct size generates and caches its own texture.
+- **`scale`** sizes each particle relative to that and animates over its
+  lifetime, and generates nothing. Vary particle size here.
+
+A size has to be a finite number above 0; anything else throws instead of
+producing an empty texture.
+
+No shape forces an aspect ratio: a `"circle"` in a `[32, 16]` texture is an
+ellipse that fills it. `"line"` is horizontal at its default 64×8, so for
+falling rain either size it vertically (`[4, 32]`) or set `rotation` to aim it
+along the direction of travel — diagonal rain needs `rotation` either way.
+
+Every shape stays visible at every size, down to 1×1. `"pixel"` and `"line"`
+fill their texture edge to edge. The other four draw an outline inside the
+texture with a one-pixel antialiased edge, and fill their texture instead once
+they get too thin to hold one — at 3 pixels or less on either axis, a 1-pixel
+border would be the whole shape.
+
+An emitter using a shape saves and restores like one using `textureKey` — the
+shape and its size go into the snapshot.
+
 ## Runtime Control
 
 ```typescript
 emitter.emit();              // start continuous emission
 emitter.stop();              // stop emitting (existing particles continue)
-emitter.burst(50);           // spawn 50 particles immediately
-emitter.burst(10, 400, 300); // burst at specific world position
+emitter.burst(50);           // spawn 50 at the entity's world position
+emitter.burst(10, 400, 300); // burst at an explicit world position
 
 emitter.isEmitting;          // boolean
 emitter.activeCount;         // number of live particles
@@ -90,38 +186,72 @@ emitter.activeCount;         // number of live particles
 ## Presets
 
 `ParticlePresets` provides ready-made configs for common effects. Each preset
-takes a texture and returns a complete `EmitterConfig`:
+returns a complete `EmitterConfig` and works with no arguments at all:
 
 ```typescript
 import { ParticlePresets } from "@yagejs/particles";
 
 // Fire — upward, warm colors, shrinking
-entity.add(new ParticleEmitterComponent(ParticlePresets.fire(Particle)));
+entity.add(new ParticleEmitterComponent(ParticlePresets.fire()));
 
 // Smoke — slow, expanding, fading
-entity.add(new ParticleEmitterComponent(ParticlePresets.smoke(Particle)));
+entity.add(new ParticleEmitterComponent(ParticlePresets.smoke()));
 
 // Sparks — fast, short-lived, gravity-affected
-entity.add(new ParticleEmitterComponent(ParticlePresets.sparks(Particle)));
+entity.add(new ParticleEmitterComponent(ParticlePresets.sparks()));
 
 // Rain — downward, uniform, long-lived
-entity.add(new ParticleEmitterComponent(ParticlePresets.rain(Particle)));
+entity.add(new ParticleEmitterComponent(ParticlePresets.rain()));
 ```
 
-You can spread a preset and override specific properties:
+Each one falls back to a built-in shape sized for the effect: a 32px soft circle
+for fire, a 40px one for smoke, a 10×3 streak for sparks, a 2×20 one for rain.
+
+Pass your own art as the argument — a texture, a texture handle, or an asset key:
+
+```typescript
+entity.add(new ParticleEmitterComponent(ParticlePresets.fire(Particle)));
+entity.add(new ParticleEmitterComponent(ParticlePresets.fire("assets/flame.png")));
+```
+
+The presets keep on-screen size in the shape's `size` and use `scale` only for
+lifetime animation and per-particle variation, centred on 1. That is why the
+same preset reads correctly both ways: with your texture the effect animates it
+at its natural size instead of scaling it against a size the preset guessed.
+
+### Overriding a Preset
+
+Spread a preset to override anything except where its particles get their look:
 
 ```typescript
 entity.add(new ParticleEmitterComponent({
-  ...ParticlePresets.fire(Particle),
+  ...ParticlePresets.fire(),
   rate: 50,
   tint: 0x00ccff,  // blue fire
 }));
 ```
 
+A preset already sets a texture source, and the three sources are mutually
+exclusive, so adding another by spreading does not compile:
+
+```typescript
+// Type error — the preset's shape and your texture are both sources
+{ ...ParticlePresets.fire(), texture: Particle }
+
+// Pass it as the argument instead
+{ ...ParticlePresets.fire(Particle), rate: 50 }
+```
+
 ## Tips
 
 - Position the emitter entity where you want particles to spawn — particles
-  inherit the entity's world position at the moment they're created.
+  take the entity's world position at the moment they're created, including
+  when the entity is a child of another one.
+- A particle is centred on its spawn point, and `rotationSpeed` turns it about
+  its own centre. That holds for your own textures too, so a 64px sprite covers
+  32px either side of the emitter rather than hanging down and to the right.
+- Particles live in world space. Once spawned they keep going on their own
+  path; moving the emitter afterwards does not drag them along.
 - Destroying the emitter entity stops emission and cleans up all particles.
 - Keep `maxParticles` reasonable. Hundreds are fine; thousands may impact
   performance on lower-end devices.

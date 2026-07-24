@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { EmitterConfig } from "./types.js";
+import type { EmitterConfig, EmitterOptions } from "./types.js";
 
 const { mocks } = vi.hoisted(() => {
   class MockParticle {
@@ -14,15 +14,23 @@ const { mocks } = vi.hoisted(() => {
     color = 0xffffffff;
 
     constructor(textureOrOpts: unknown) {
-      if (textureOrOpts && typeof textureOrOpts === "object" && "texture" in (textureOrOpts as Record<string, unknown>)) {
+      if (
+        textureOrOpts &&
+        typeof textureOrOpts === "object" &&
+        "texture" in (textureOrOpts as Record<string, unknown>)
+      ) {
         this.texture = (textureOrOpts as Record<string, unknown>).texture;
       } else {
         this.texture = textureOrOpts;
       }
     }
 
-    get tint(): number { return this._tint; }
-    set tint(v: number) { this._tint = v; }
+    get tint(): number {
+      return this._tint;
+    }
+    set tint(v: number) {
+      this._tint = v;
+    }
   }
 
   class MockParticleContainer {
@@ -50,8 +58,12 @@ const { mocks } = vi.hoisted(() => {
       return p;
     }
 
-    removeFromParent(): void { this.parent = null; }
-    destroy(): void { this.destroyed = true; }
+    removeFromParent(): void {
+      this.parent = null;
+    }
+    destroy(): void {
+      this.destroyed = true;
+    }
   }
 
   // Mock Container for RenderLayerManager
@@ -85,36 +97,72 @@ const { mocks } = vi.hoisted(() => {
       return child;
     }
 
-    removeFromParent(): void { /* noop for test */ }
+    removeFromParent(): void {
+      /* noop for test */
+    }
 
     sortChildren(): void {
-      this.children.sort((a, b) =>
-        ((a as Record<string, number>).zIndex ?? 0) - ((b as Record<string, number>).zIndex ?? 0),
+      this.children.sort(
+        (a, b) =>
+          ((a as Record<string, number>).zIndex ?? 0) -
+          ((b as Record<string, number>).zIndex ?? 0),
       );
     }
 
-    destroy(): void { this.destroyed = true; }
+    destroy(): void {
+      this.destroyed = true;
+    }
   }
 
-  return { mocks: { MockParticle, MockParticleContainer, MockContainer } };
+  // Enough of a texture backend for the built-in shape generator to run.
+  class MockBufferImageSource {
+    resource: unknown;
+    constructor(opts: Record<string, unknown>) {
+      this.resource = opts.resource;
+    }
+  }
+
+  class MockTexture {
+    source: unknown;
+    constructor(opts: Record<string, unknown>) {
+      this.source = opts.source;
+    }
+    static from(key: string): unknown {
+      return { label: key };
+    }
+    static WHITE = { label: "WHITE" };
+  }
+
+  return {
+    mocks: {
+      MockParticle,
+      MockParticleContainer,
+      MockContainer,
+      MockTexture,
+      MockBufferImageSource,
+    },
+  };
 });
 
 vi.mock("pixi.js", () => ({
   Particle: mocks.MockParticle,
   ParticleContainer: mocks.MockParticleContainer,
   Container: mocks.MockContainer,
-  Texture: { from: (key: string) => ({ label: key }) },
+  Texture: mocks.MockTexture,
+  BufferImageSource: mocks.MockBufferImageSource,
 }));
 
-import { Transform } from "@yagejs/core";
-import { createParticlesTestContext, spawnEntityInScene } from "./test-helpers.js";
+import { Transform, Vec2 } from "@yagejs/core";
+import {
+  createParticlesTestContext,
+  spawnEntityInScene,
+} from "./test-helpers.js";
 import { ParticleEmitterComponent } from "./ParticleEmitterComponent.js";
+import { shapeTexture } from "./shapes.js";
 
 const tex = { label: "test" } as never;
 
-function createEmitter(
-  overrides: Partial<EmitterConfig> = {},
-) {
+function createEmitter(overrides: Partial<EmitterOptions> = {}) {
   return new ParticleEmitterComponent({
     texture: tex,
     lifetime: 1,
@@ -122,10 +170,13 @@ function createEmitter(
   });
 }
 
-function setupEntity(emitter: ParticleEmitterComponent) {
+function setupEntity(
+  emitter: ParticleEmitterComponent,
+  transform: Transform | null = new Transform(),
+) {
   const ctx = createParticlesTestContext();
   const entity = spawnEntityInScene(ctx.scene);
-  entity.add(new Transform());
+  if (transform) entity.add(transform);
   entity.add(emitter);
   return { ...ctx, entity };
 }
@@ -150,6 +201,53 @@ describe("ParticleEmitterComponent", () => {
       const emitter = createEmitter();
       expect(emitter.activeCount).toBe(0);
     });
+
+    it("needs no texture — defaults to the shared white pixel", () => {
+      const emitter = new ParticleEmitterComponent({ lifetime: 1 });
+      const container = emitter.container as unknown as InstanceType<
+        typeof mocks.MockParticleContainer
+      >;
+      expect(container.texture).toEqual({ label: "WHITE" });
+    });
+
+    it("rejects more than one texture source at the type level", () => {
+      const rejected: EmitterConfig[] = [
+        // @ts-expect-error texture and textureKey are mutually exclusive.
+        { texture: "spark.png", textureKey: "other.png", lifetime: 1 },
+        // @ts-expect-error texture and shape are mutually exclusive.
+        { texture: "spark.png", shape: "circle", lifetime: 1 },
+        // @ts-expect-error textureKey and shape are mutually exclusive.
+        { textureKey: "spark.png", shape: "circle", lifetime: 1 },
+      ];
+      expect(rejected).toHaveLength(3);
+    });
+
+    it("prefers texture over textureKey and shape for a plain-JS caller", () => {
+      // Only reachable without type checking, which is why the precedence
+      // survives: the union above rules it out for TypeScript callers.
+      const emitter = new ParticleEmitterComponent({
+        texture: tex,
+        textureKey: "also-set.png",
+        shape: "circle",
+        lifetime: 1,
+      } as unknown as EmitterConfig);
+      const container = emitter.container as unknown as InstanceType<
+        typeof mocks.MockParticleContainer
+      >;
+      expect(container.texture).toBe(tex);
+    });
+
+    it("prefers textureKey over shape for a plain-JS caller", () => {
+      const emitter = new ParticleEmitterComponent({
+        textureKey: "spark.png",
+        shape: "circle",
+        lifetime: 1,
+      } as unknown as EmitterConfig);
+      const container = emitter.container as unknown as InstanceType<
+        typeof mocks.MockParticleContainer
+      >;
+      expect(container.texture).toEqual({ label: "spark.png" });
+    });
   });
 
   describe("emit / stop", () => {
@@ -172,6 +270,15 @@ describe("ParticleEmitterComponent", () => {
       const emitter = createEmitter({ maxParticles: 50 });
       emitter.burst(10);
       expect(emitter.activeCount).toBe(10);
+    });
+
+    it("rejects a single coordinate at the type level", () => {
+      // Either both coordinates or neither: one alone would mix an explicit x
+      // with an implied y of 0.
+      const emitter = createEmitter();
+      // @ts-expect-error burst takes (count) or (count, x, y).
+      emitter.burst(1, 100);
+      expect(emitter.activeCount).toBe(1);
     });
 
     it("does not exceed maxParticles", () => {
@@ -240,7 +347,9 @@ describe("ParticleEmitterComponent", () => {
     it("removed particles are taken off the container", () => {
       const emitter = createEmitter({ lifetime: 0.1, maxParticles: 5 });
       emitter.burst(3);
-      const container = emitter.container as unknown as InstanceType<typeof mocks.MockParticleContainer>;
+      const container = emitter.container as unknown as InstanceType<
+        typeof mocks.MockParticleContainer
+      >;
       expect(container.children.length).toBe(3);
       emitter._update(0.2, 0, 0);
       expect(container.children.length).toBe(0);
@@ -337,11 +446,74 @@ describe("ParticleEmitterComponent", () => {
 
   describe("spawn positioning", () => {
     it("spawns particles at the given world position", () => {
-      const emitter = createEmitter({ speed: 0, lifetime: 10, maxParticles: 1 });
+      const emitter = createEmitter({
+        speed: 0,
+        lifetime: 10,
+        maxParticles: 1,
+      });
       emitter.burst(1, 100, 200);
       const p = emitter._active[0]!.particle;
       expect(p.x).toBe(100);
       expect(p.y).toBe(200);
+    });
+
+    it("a no-arg burst spawns at the entity's world position", () => {
+      const emitter = createEmitter({
+        speed: 0,
+        lifetime: 10,
+        maxParticles: 1,
+      });
+      setupEntity(emitter, new Transform({ position: new Vec2(30, 40) }));
+      emitter.burst(1);
+      const p = emitter._active[0]!.particle;
+      expect(p.x).toBe(30);
+      expect(p.y).toBe(40);
+    });
+
+    it("a no-arg burst on a parented entity uses the world, not local, position", () => {
+      const emitter = createEmitter({
+        speed: 0,
+        lifetime: 10,
+        maxParticles: 1,
+      });
+      const { scene, entity } = setupEntity(
+        emitter,
+        new Transform({ position: new Vec2(5, 7) }),
+      );
+      const parent = spawnEntityInScene(scene, "parent");
+      parent.add(new Transform({ position: new Vec2(100, 200) }));
+      parent.addChild("child", entity);
+
+      emitter.burst(1);
+      const p = emitter._active[0]!.particle;
+      expect(p.x).toBe(105);
+      expect(p.y).toBe(207);
+    });
+
+    it("falls back to (0, 0) when the entity has no Transform", () => {
+      const emitter = createEmitter({
+        speed: 0,
+        lifetime: 10,
+        maxParticles: 1,
+      });
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      setupEntity(emitter, null);
+      emitter.burst(1);
+      const p = emitter._active[0]!.particle;
+      expect(p.x).toBe(0);
+      expect(p.y).toBe(0);
+    });
+
+    it("falls back to (0, 0) when the emitter is not on an entity", () => {
+      const emitter = createEmitter({
+        speed: 0,
+        lifetime: 10,
+        maxParticles: 1,
+      });
+      emitter.burst(1);
+      const p = emitter._active[0]!.particle;
+      expect(p.x).toBe(0);
+      expect(p.y).toBe(0);
     });
   });
 
@@ -349,15 +521,56 @@ describe("ParticleEmitterComponent", () => {
     it("onAdd adds container to the render layer", () => {
       const emitter = createEmitter();
       const { layerManager } = setupEntity(emitter);
-      const layerContainer = layerManager.defaultLayer.container as unknown as InstanceType<typeof mocks.MockContainer>;
+      const layerContainer = layerManager.defaultLayer
+        .container as unknown as InstanceType<typeof mocks.MockContainer>;
       expect(layerContainer.children).toContain(emitter.container);
+    });
+
+    it("adding the emitter does not warn on its own", () => {
+      // Adding an emitter before the entity's Transform is legitimate, so the
+      // check belongs on first use, not on add.
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      setupEntity(createEmitter(), null);
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it("warns on first use when the entity has no Transform", () => {
+      // The system that ticks emitters queries for a Transform too, so such an
+      // emitter silently does nothing at all.
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const emitter = createEmitter();
+      setupEntity(emitter, null);
+      emitter.emit();
+      expect(warnSpy).toHaveBeenCalledOnce();
+      expect(warnSpy.mock.calls[0]![0]).toMatch(/no Transform/);
+    });
+
+    it("warns only once across repeated use", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const emitter = createEmitter();
+      setupEntity(emitter, null);
+      emitter.emit();
+      emitter.burst(3);
+      emitter.emit();
+      expect(warnSpy).toHaveBeenCalledOnce();
+    });
+
+    it("stays quiet on use when the entity has a Transform", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const emitter = createEmitter();
+      setupEntity(emitter);
+      emitter.emit();
+      emitter.burst(3);
+      expect(warnSpy).not.toHaveBeenCalled();
     });
 
     it("onDestroy destroys the container", () => {
       const emitter = createEmitter();
       setupEntity(emitter);
       emitter.onDestroy?.();
-      const container = emitter.container as unknown as InstanceType<typeof mocks.MockParticleContainer>;
+      const container = emitter.container as unknown as InstanceType<
+        typeof mocks.MockParticleContainer
+      >;
       expect(container.destroyed).toBe(true);
     });
   });
@@ -369,6 +582,19 @@ describe("ParticleEmitterComponent", () => {
       expect(emitter.serialize()).toBeNull();
       expect(warnSpy).toHaveBeenCalledOnce();
       warnSpy.mockRestore();
+    });
+
+    it("serialize returns null when a raw texture outranks a stray key", () => {
+      // Only reachable from plain JS. The raw texture is what renders, so the
+      // key describes art the restored emitter would not have drawn.
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const emitter = new ParticleEmitterComponent({
+        texture: tex,
+        textureKey: "other.png",
+        lifetime: 1,
+      } as unknown as EmitterConfig);
+      expect(emitter.serialize()).toBeNull();
+      expect(warnSpy).toHaveBeenCalledOnce();
     });
 
     it("serialize returns full config when using textureKey", () => {
@@ -407,10 +633,39 @@ describe("ParticleEmitterComponent", () => {
       expect(restored.serialize()).toEqual(data);
     });
 
-    it("throws when neither texture nor textureKey provided", () => {
-      expect(
-        () => new ParticleEmitterComponent({ lifetime: 1 } as never),
-      ).toThrow(/requires either/);
+    it("serializes the built-in shape with its size filled in", () => {
+      const emitter = new ParticleEmitterComponent({
+        shape: "softCircle",
+        lifetime: 1,
+      });
+      const data = emitter.serialize()!;
+      expect(data.shape).toEqual({ type: "softCircle", size: [64, 64] });
+      expect(data.textureKey).toBeUndefined();
+      expect(ParticleEmitterComponent.fromSnapshot(data).serialize()).toEqual(
+        data,
+      );
+    });
+
+    it("round-trips an explicit shape size", () => {
+      const emitter = new ParticleEmitterComponent({
+        shape: { type: "circle", size: [32, 16] },
+        lifetime: 1,
+      });
+      const data = emitter.serialize()!;
+      expect(data.shape).toEqual({ type: "circle", size: [32, 16] });
+      const restored = ParticleEmitterComponent.fromSnapshot(data);
+      expect(restored.serialize()).toEqual(data);
+      expect(restored.container.texture).toBe(
+        shapeTexture({ type: "circle", size: [32, 16] }),
+      );
+    });
+
+    it("serializes the default shape for a config with no texture at all", () => {
+      const emitter = new ParticleEmitterComponent({ lifetime: 1 });
+      expect(emitter.serialize()!.shape).toEqual({
+        type: "pixel",
+        size: [1, 1],
+      });
     });
   });
 });

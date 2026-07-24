@@ -12,9 +12,11 @@ export class ParticlePool {
     this.texture = texture;
     this.capacity = capacity;
 
-    // Pre-allocate all particles
+    // Pre-allocate all particles. Anchored at the middle so a particle is drawn
+    // centred on its spawn point and rotates about its own centre; nothing
+    // moves the anchor afterwards, so `release()` has none to reset.
     for (let i = 0; i < capacity; i++) {
-      this.free.push(new PixiParticle(texture));
+      this.free.push(new PixiParticle({ texture, anchorX: 0.5, anchorY: 0.5 }));
     }
   }
 
