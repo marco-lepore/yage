@@ -660,3 +660,24 @@ describe("ColliderComponent", () => {
     });
   });
 });
+
+describe("dispatch iteration safety", () => {
+  it("a handler that unsubscribes itself does not skip the next handler", async () => {
+    const { scene } = await createPhysicsTestContext();
+    const e = scene.spawn("e");
+    e.add(new Transform());
+    e.add(new RigidBodyComponent({ type: "dynamic" }));
+    const col = e.add(new ColliderComponent({ shape: { type: "box", width: 10, height: 10 } }));
+
+    const seen: string[] = [];
+    const unsub = col.onCollision(() => {
+      seen.push("first");
+      unsub();
+    });
+    col.onCollision(() => seen.push("second"));
+
+    col._dispatchCollision({} as never);
+
+    expect(seen).toEqual(["first", "second"]);
+  });
+});

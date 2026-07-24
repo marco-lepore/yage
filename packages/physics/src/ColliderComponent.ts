@@ -178,7 +178,10 @@ export class ColliderComponent extends Component {
     kind: string,
   ): void {
     const sceneName = this.entity?.tryScene?.name;
-    for (const handler of live) {
+    // Snapshot: `onCollision`/`onTrigger` hand back an unsubscribe that
+    // splices this array, so a handler removing itself mid-dispatch would
+    // otherwise shift the next one past the iterator.
+    for (const handler of [...live]) {
       if (this.errorBoundary) {
         this.errorBoundary.wrapCallback(() => invoke(handler), {
           kind,
