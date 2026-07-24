@@ -22,9 +22,9 @@ Attach an emitter to an entity:
 
 ```ts
 entity.add(new ParticleEmitterComponent({
-  ...ParticlePresets.fire,
+  ...ParticlePresets.fire(),
   rate: 60,
-  lifetime: { min: 300, max: 600 },
+  lifetime: [0.3, 0.6],
 }));
 ```
 

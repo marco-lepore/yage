@@ -1,5 +1,6 @@
 import type { RandomService } from "@yagejs/core";
 import type { TextureInput } from "@yagejs/renderer";
+import type { ParticleShape, ResolvedShape, ShapeConfig } from "./shapes.js";
 
 /** A value or [min, max] range to randomize from. */
 export type NumberRange = number | [min: number, max: number];
@@ -10,12 +11,25 @@ export interface Lerped {
   end: NumberRange;
 }
 
-/** Emitter configuration. */
-export interface EmitterConfig {
-  /** The texture for all particles in this emitter. */
-  texture?: TextureInput;
-  /** Texture asset key (serializable alternative to `texture`). */
-  textureKey?: string;
+/**
+ * Where an emitter's particles get their look. The three options are mutually
+ * exclusive: setting more than one is a type error. With none of them set, the
+ * emitter renders the default `"pixel"` shape.
+ */
+export type TextureSource =
+  // A texture, texture handle, or asset path.
+  | { texture: TextureInput; textureKey?: never; shape?: never }
+  // An asset key — the serializable alternative to a raw texture.
+  | { texture?: never; textureKey: string; shape?: never }
+  // A built-in white shape, optionally sized. Color it with `tint`.
+  | {
+      texture?: never;
+      textureKey?: never;
+      shape?: ParticleShape | ShapeConfig;
+    };
+
+/** Everything an emitter configures apart from where its texture comes from. */
+export interface EmitterOptions {
   /** Maximum number of live particles. Default: 100. */
   maxParticles?: number;
   /** Particles per second for continuous emission. Default: 10. */
@@ -49,9 +63,22 @@ export interface EmitterConfig {
   layer?: string;
 }
 
+/** Emitter configuration: a texture source plus the emission options. */
+export type EmitterConfig = EmitterOptions & TextureSource;
+
+/**
+ * Where a restored emitter gets its look. Carries the same one-source rule as
+ * `TextureSource`: a snapshot holds the asset key or the shape, never both. A
+ * raw texture object is not serializable, so it has no arm here.
+ */
+export type ParticleEmitterSource =
+  // Serialized from an asset key or handle.
+  | { textureKey: string; shape?: never }
+  // Serialized from a built-in shape, with its size filled in.
+  | { textureKey?: never; shape: ResolvedShape };
+
 /** Serializable snapshot of a ParticleEmitterComponent. */
-export interface ParticleEmitterData {
-  textureKey: string;
+export type ParticleEmitterData = ParticleEmitterSource & {
   maxParticles: number;
   rate: number;
   lifetime: NumberRange;
@@ -66,7 +93,7 @@ export interface ParticleEmitterData {
   gravity?: { x: number; y: number };
   spawnOffset?: { x?: NumberRange; y?: NumberRange };
   layer: string;
-}
+};
 
 /** Resolve a NumberRange to a concrete value. */
 export function resolveRange(v: NumberRange, random: RandomService): number {
@@ -78,9 +105,6 @@ export function resolveRange(v: NumberRange, random: RandomService): number {
 /** Check if a value is a Lerped config. */
 export function isLerped(v: NumberRange | Lerped): v is Lerped {
   return (
-    typeof v === "object" &&
-    !Array.isArray(v) &&
-    "start" in v &&
-    "end" in v
+    typeof v === "object" && !Array.isArray(v) && "start" in v && "end" in v
   );
 }

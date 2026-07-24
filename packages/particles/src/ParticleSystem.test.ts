@@ -117,6 +117,25 @@ describe("ParticleSystem", () => {
     expect(spy).toHaveBeenCalledWith(0.1, 50, 75);
   });
 
+  it("uses the world position of a parented emitter, not its local one", () => {
+    const ctx = setup();
+    const parent = spawnEntityInScene(ctx.scene, "parent");
+    parent.add(new Transform({ position: new Vec2(100, 200) }));
+
+    const child = spawnEntityInScene(ctx.scene, "child");
+    child.add(new Transform({ position: new Vec2(5, 7) }));
+    const emitter = child.add(
+      new ParticleEmitterComponent({ texture: tex, lifetime: 1, rate: 100 }),
+    );
+    parent.addChild("muzzle", child);
+    emitter.emit();
+
+    const spy = vi.spyOn(emitter, "_update");
+    system.update(0.1);
+
+    expect(spy).toHaveBeenCalledWith(0.1, 105, 207);
+  });
+
   it("skips disabled emitters", () => {
     const ctx = setup();
     const entity = spawnEntityInScene(ctx.scene);

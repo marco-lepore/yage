@@ -8,11 +8,13 @@ const { mocks } = vi.hoisted(() => {
     scaleY = 1;
     rotation = 0;
     alpha = 1;
+    anchorX = 0;
+    anchorY = 0;
     texture: unknown;
     tint = 0xffffff;
 
-    constructor(texture: unknown) {
-      this.texture = texture;
+    constructor(opts: Record<string, unknown>) {
+      Object.assign(this, opts);
     }
   }
 
@@ -32,6 +34,15 @@ describe("ParticlePool", () => {
     const pool = new ParticlePool(texture, 10);
     expect(pool.freeCount).toBe(10);
     expect(pool.activeCount).toBe(0);
+  });
+
+  it("anchors particles at their centre", () => {
+    // Otherwise a particle is drawn with its top-left corner on the spawn
+    // point, and rotationSpeed swings it around that corner.
+    const pool = new ParticlePool(texture, 1);
+    const p = pool.acquire()!;
+    expect(p.anchorX).toBe(0.5);
+    expect(p.anchorY).toBe(0.5);
   });
 
   it("acquire returns a particle", () => {
