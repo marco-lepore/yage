@@ -143,10 +143,12 @@ export interface ErrorSnapshot {
     error: string;
   }>;
   /**
-   * Developer callbacks (collision/event/input/process handlers, scene
-   * lifecycle hooks, ...) that threw, most recent last. Unlike
-   * `disabledSystems`/`disabledComponents`, a callback error doesn't disable
-   * anything wholesale — see each entry's `outcome`.
+   * Failures recorded under either error policy, most recent last: developer
+   * callbacks (collision/event/input/process handlers, scene lifecycle
+   * hooks, ...), plus — under `"fatal"` — the system/component failure that
+   * stopped the game loop. Check each entry's `outcome`: `"fatal"` means
+   * nothing was disabled, unsubscribed, or muted; the other values describe
+   * what happened under `"isolate"`.
    */
   callbackErrors: CallbackErrorRecord[];
 }

@@ -23,15 +23,18 @@ export type ErrorPolicy = "fatal" | "isolate";
  * reported: the handler was unsubscribed (`removed`), left registered but
  * silenced against repeat failures (`muted`), its owning `Process` was
  * cancelled (`cancelled`), nothing further happens because the site has no
- * removal mechanism (`reported`), or the throw continues up the call stack
- * unchanged (`propagated`, scene lifecycle hooks).
+ * removal mechanism (`reported`), the throw continues up the call stack
+ * unchanged (`propagated`, scene lifecycle hooks), or the game loop stopped
+ * because the policy is `"fatal"` (`fatal` — nothing was unsubscribed, muted,
+ * or cancelled, since the game is stopping regardless).
  */
 export type CallbackOutcome =
   | "removed"
   | "muted"
   | "cancelled"
   | "reported"
-  | "propagated";
+  | "propagated"
+  | "fatal";
 
 /** Identifies what threw, for the log message and the error snapshot. */
 export interface CallbackErrorInfo {
@@ -45,7 +48,12 @@ export interface CallbackErrorInfo {
   event?: string;
 }
 
-/** A recorded callback failure, readable via `Inspector.getErrors()`. */
+/**
+ * A recorded failure, readable via `Inspector.getErrors().callbackErrors`.
+ * Covers developer callbacks under either policy, plus system/component
+ * failures under `"fatal"` (under `"isolate"` those go to `disabledSystems`/
+ * `disabledComponents` instead, since they're disabled rather than reported).
+ */
 export interface CallbackErrorRecord extends CallbackErrorInfo {
   outcome: CallbackOutcome;
   error: string;
@@ -88,13 +96,14 @@ export class ErrorBoundary {
   private callbackErrors: CallbackErrorRecord[] = [];
   private mutedCallbacks = new WeakMap<object, Set<string>>();
   /**
-   * Errors already logged and used to stop the loop under `"fatal"`. A
-   * fatal error thrown from `wrapCallback` (or a nested `wrapComponent`) is
-   * typically caught again by an outer `wrapSystem`/`wrapComponent` as it
-   * keeps propagating — e.g. a collision handler's throw reaching the
-   * `SystemScheduler` wrap around `PhysicsSystem.update`. This keeps that
-   * second catch from logging the same failure again under a less specific
-   * message, or calling `loop.stop()` a second time.
+   * Errors already recorded, logged, and used to stop the loop under
+   * `"fatal"`. A fatal error thrown from `wrapCallback` (or a nested
+   * `wrapComponent`) is typically caught again by an outer
+   * `wrapSystem`/`wrapComponent` as it keeps propagating — e.g. a collision
+   * handler's throw reaching the `SystemScheduler` wrap around
+   * `PhysicsSystem.update`. This keeps that second catch from recording or
+   * logging the same failure again under a less specific message, or calling
+   * `loop.stop()` a second time.
    */
   private fatalReported = new WeakSet<Error>();
 
@@ -110,7 +119,7 @@ export class ErrorBoundary {
       fn();
     } catch (err) {
       if (this.policy === "fatal") {
-        this._raiseFatal(err, `System ${system.constructor.name} threw`);
+        this._raiseFatal(err, { kind: `System ${system.constructor.name}` });
         return;
       }
       const message = err instanceof Error ? err.message : String(err);
@@ -131,10 +140,10 @@ export class ErrorBoundary {
     } catch (err) {
       const entityName = component.entity?.name ?? "unknown";
       if (this.policy === "fatal") {
-        this._raiseFatal(
-          err,
-          `Component ${component.constructor.name} on entity "${entityName}" threw`,
-        );
+        this._raiseFatal(err, {
+          kind: `Component ${component.constructor.name}`,
+          entity: entityName,
+        });
         return;
       }
       const message = err instanceof Error ? err.message : String(err);
@@ -158,8 +167,10 @@ export class ErrorBoundary {
    *
    * Under `"isolate"`, never disables a System or Component — `options.onError`
    * performs whatever the call site's outcome requires (unsubscribe, mute,
-   * cancel). Under `"fatal"`, `outcome` and `options.onError` are ignored:
-   * the callback's owner isn't touched because the whole game is stopping.
+   * cancel), and the failure is recorded with the passed-in `outcome`. Under
+   * `"fatal"`, `outcome` and `options.onError` are ignored — the callback's
+   * owner isn't touched because the whole game is stopping — but the failure
+   * is still recorded, with `outcome: "fatal"` in place of the passed-in one.
    */
   wrapCallback(
     fn: () => void,
@@ -176,7 +187,7 @@ export class ErrorBoundary {
             // never consumed — this rejects that promise, which surfaces as
             // a new unhandled rejection since nothing can rethrow into the
             // original (already-returned) call stack.
-            this._raiseFatal(err, this._describe(info));
+            this._raiseFatal(err, info);
             return;
           }
           this._reportCallback(err, info, outcome, options);
@@ -184,7 +195,7 @@ export class ErrorBoundary {
       }
     } catch (err) {
       if (this.policy === "fatal") {
-        this._raiseFatal(err, this._describe(info));
+        this._raiseFatal(err, info);
         return;
       }
       this._reportCallback(err, info, outcome, options);
@@ -239,16 +250,21 @@ export class ErrorBoundary {
     }
 
     const error = err instanceof Error ? err : new Error(String(err));
-    this.callbackErrors.push({ ...info, outcome, error: error.message });
-    if (this.callbackErrors.length > MAX_CALLBACK_ERRORS) {
-      this.callbackErrors.shift();
-    }
+    this._record(info, outcome, error);
 
     this.logger.error("core", `${this._describe(info)} and was ${outcome}`, {
       error,
     });
 
     options?.onError?.();
+  }
+
+  /** Push a record, enforcing {@link MAX_CALLBACK_ERRORS}. Shared by isolate-policy reporting and `_raiseFatal`. */
+  private _record(info: CallbackErrorInfo, outcome: CallbackOutcome, error: Error): void {
+    this.callbackErrors.push({ ...info, outcome, error: error.message });
+    if (this.callbackErrors.length > MAX_CALLBACK_ERRORS) {
+      this.callbackErrors.shift();
+    }
   }
 
   /** Human-readable "kind threw on entity X in scene Y for event Z" prefix, shared by isolate and fatal reporting. */
@@ -261,14 +277,17 @@ export class ErrorBoundary {
   }
 
   /**
-   * Report a `"fatal"`-policy error with its original stack, stop the game
-   * loop, and rethrow. Idempotent per error object — see {@link fatalReported}.
+   * Report a `"fatal"`-policy error with its original stack, record it with
+   * outcome `"fatal"`, stop the game loop, and rethrow. Idempotent per error
+   * object — see {@link fatalReported} — so an error that keeps propagating
+   * through nested wraps is recorded, logged, and stops the loop exactly once.
    */
-  private _raiseFatal(err: unknown, message: string): never {
+  private _raiseFatal(err: unknown, info: CallbackErrorInfo): never {
     const error = err instanceof Error ? err : new Error(String(err));
     if (!this.fatalReported.has(error)) {
       this.fatalReported.add(error);
-      this.logger.error("core", `${message} and stopped the game loop`, {
+      this._record(info, "fatal", error);
+      this.logger.error("core", `${this._describe(info)} and stopped the game loop`, {
         error,
       });
       this.loop?.stop();
@@ -287,7 +306,7 @@ export class ErrorBoundary {
     };
   }
 
-  /** Get recorded developer-callback failures for inspection. */
+  /** Get recorded failures for inspection — developer callbacks under either policy, plus system/component failures under `"fatal"`. */
   getCallbackErrors(): readonly CallbackErrorRecord[] {
     return this.callbackErrors;
   }

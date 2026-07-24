@@ -2021,7 +2021,7 @@ describe("InputManager", () => {
       });
     });
 
-    it("under errors: \"fatal\", a throwing action listener stops the loop and rethrows out of fireAction()", () => {
+    it("under errors: \"fatal\", a throwing action listener stops the loop, rethrows out of fireAction(), and records the failure", () => {
       const { boundary, loop } = wireBoundary("fatal");
       loop.start();
       input.onAction("jump", () => {
@@ -2030,7 +2030,12 @@ describe("InputManager", () => {
 
       expect(() => input.fireAction("jump")).toThrow("boom");
       expect(loop.isRunning).toBe(false);
-      expect(boundary.getCallbackErrors()).toHaveLength(0);
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Action listener",
+        event: "jump",
+        outcome: "fatal",
+      });
     });
   });
 });

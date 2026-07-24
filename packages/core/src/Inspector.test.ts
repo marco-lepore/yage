@@ -53,9 +53,9 @@ function setup() {
   const ctx = new EngineContext();
   const logger = new Logger({ level: LogLevel.Debug });
   const loop = new GameLoop();
-  // These tests assert getErrors() surfaces disabled/recorded state, which
-  // only accumulates under "isolate" — under "fatal" the boundary stops the
-  // loop and rethrows instead of recording anything.
+  // These tests assert getErrors() surfaces disabledSystems/disabledComponents,
+  // which only accumulate under "isolate" — under "fatal" a failure is
+  // recorded in callbackErrors instead of being disabled.
   const boundary = new ErrorBoundary(logger, "isolate", loop);
   const scheduler = new SystemScheduler();
   const queryCache = new QueryCache();

@@ -631,11 +631,14 @@ attributed to whoever threw, not whoever it reached. Policy is
   policy, it reports through `Logger` and rethrows, so a scene half-built by
   a throwing hook always fails the same way — a half-built scene must not
   look like it mounted cleanly.
-- Every wrapped callback failure under `"isolate"` is recorded in
-  `ErrorBoundary.getCallbackErrors()` and surfaced as
-  `Inspector.getErrors().callbackErrors`, alongside `disabledSystems`/
-  `disabledComponents`. Both stay empty under `"fatal"` — nothing is disabled
-  or muted, since the game loop has stopped.
+- Every failure is recorded in `ErrorBoundary.getCallbackErrors()` and
+  surfaced as `Inspector.getErrors().callbackErrors`, alongside
+  `disabledSystems`/`disabledComponents`. Under `"isolate"` this covers
+  wrapped callback failures (systems/components go to `disabledSystems`/
+  `disabledComponents` instead). Under `"fatal"`, `disabledSystems`/
+  `disabledComponents` stay empty — nothing is disabled — but whichever
+  system, component, or callback stopped the loop gets a `callbackErrors`
+  entry with `outcome: "fatal"`.
 - Writing a new dispatch site that calls developer-supplied code should route it through `wrapCallback`/`wrapLifecycleHook` rather than calling the callback directly — see the "Guard developer-supplied callbacks" rule in the repo-root `AGENTS.md`.
 - `"removed"`/`"muted"` unsubscribe by function identity. Re-registering the same function reference for an `async` handler before its prior rejection has settled can have the late rejection remove the new registration instead of the failed one — use a fresh function reference per registration to avoid it.
 

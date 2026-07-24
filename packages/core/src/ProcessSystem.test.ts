@@ -433,7 +433,7 @@ describe("ProcessSystem", () => {
       expect(boundary.getCallbackErrors()).toHaveLength(1);
     });
 
-    it("under errors: \"fatal\", a throwing process stops the loop and rethrows instead of being cancelled", () => {
+    it("under errors: \"fatal\", a throwing process stops the loop, rethrows instead of being cancelled, and records the failure", () => {
       const { sys, boundary, loop } = setupWithBoundary("fatal");
       loop.start();
       const throwing = new Process({
@@ -446,7 +446,11 @@ describe("ProcessSystem", () => {
       expect(() => sys.update(16)).toThrow("boom");
       expect(throwing.completed).toBe(false);
       expect(loop.isRunning).toBe(false);
-      expect(boundary.getCallbackErrors()).toHaveLength(0);
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Process callback",
+        outcome: "fatal",
+      });
     });
   });
 });

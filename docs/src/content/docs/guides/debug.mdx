@@ -621,6 +621,21 @@ parse, a network request that might fail); anything you didn't wrap is a bug,
 and `"fatal"` surfaces it immediately instead of hiding it behind a silently
 disabled system.
 
+The failure that stopped the loop is also recorded, with `outcome: "fatal"`:
+
+```typescript
+const errors = engine.inspector.getErrors();
+console.log(errors.callbackErrors);
+// [{ kind: "Collision handler", entity: "DoorPad", outcome: "fatal",
+//    error: "Cannot read properties of undefined (reading 'has')" }]
+```
+
+`disabledSystems` and `disabledComponents` stay empty under `"fatal"` —
+nothing is disabled, since the loop already stopped — but whatever threw
+(system, component, or callback alike) gets a `callbackErrors` entry, so a
+test or crash reporter can check what happened without scraping console
+output.
+
 ### `"isolate"`
 
 For a shipped build that must not die in front of a player, opt into
@@ -680,9 +695,10 @@ console.log(errors.callbackErrors);
 ```
 
 `callbackErrors` sits alongside `disabledSystems` and `disabledComponents`.
-Under `"fatal"` all three stay empty — nothing is disabled, removed, or
-muted, since the game has already stopped; check the thrown error or the
-console instead.
+Under `"fatal"` it's populated the same way — see the previous section —
+just with `outcome: "fatal"` instead of `"removed"`/`"muted"`/`"cancelled"`/
+`"reported"`, and `disabledSystems`/`disabledComponents` staying empty since
+nothing is disabled.
 
 **Unsubscribe is by function identity.** For the "unsubscribed" row above, the
 engine removes the exact function reference that threw. If you unsubscribe an

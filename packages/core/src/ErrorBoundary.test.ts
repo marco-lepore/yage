@@ -351,7 +351,7 @@ describe("ErrorBoundary", () => {
 
   describe("errors: \"fatal\"", () => {
     describe("wrapSystem", () => {
-      it("rethrows, stops the loop, and does not disable the system", () => {
+      it("rethrows, stops the loop, records a fatal error, and does not disable the system", () => {
         const { boundary, loop } = createFatalBoundary();
         loop.start();
         const sys = new TestSystem();
@@ -363,11 +363,18 @@ describe("ErrorBoundary", () => {
         expect(sys.enabled).toBe(true);
         expect(loop.isRunning).toBe(false);
         expect(boundary.getDisabled().systems).toHaveLength(0);
+        const errors = boundary.getCallbackErrors();
+        expect(errors).toHaveLength(1);
+        expect(errors[0]).toMatchObject({
+          kind: "System TestSystem",
+          outcome: "fatal",
+          error: "boom",
+        });
       });
     });
 
     describe("wrapComponent", () => {
-      it("rethrows, stops the loop, and does not disable the component", () => {
+      it("rethrows, stops the loop, records a fatal error, and does not disable the component", () => {
         const { boundary, loop } = createFatalBoundary();
         loop.start();
         const comp = new TestComponent();
@@ -380,11 +387,19 @@ describe("ErrorBoundary", () => {
         expect(comp.enabled).toBe(true);
         expect(loop.isRunning).toBe(false);
         expect(boundary.getDisabled().components).toHaveLength(0);
+        const errors = boundary.getCallbackErrors();
+        expect(errors).toHaveLength(1);
+        expect(errors[0]).toMatchObject({
+          kind: "Component TestComponent",
+          entity: "player",
+          outcome: "fatal",
+          error: "crash",
+        });
       });
     });
 
     describe("wrapCallback", () => {
-      it("rethrows a synchronous throw, stops the loop, and never calls onError", () => {
+      it("rethrows a synchronous throw, stops the loop, records it with outcome \"fatal\", and never calls onError", () => {
         const { boundary, logger, loop } = createFatalBoundary();
         loop.start();
         const onError = vi.fn();
@@ -400,7 +415,14 @@ describe("ErrorBoundary", () => {
         ).toThrow("boom");
         expect(onError).not.toHaveBeenCalled();
         expect(loop.isRunning).toBe(false);
-        expect(boundary.getCallbackErrors()).toHaveLength(0);
+        const errors = boundary.getCallbackErrors();
+        expect(errors).toHaveLength(1);
+        expect(errors[0]).toMatchObject({
+          kind: "Collision handler",
+          entity: "DoorPad",
+          outcome: "fatal",
+          error: "boom",
+        });
         const logs = logger.getRecent(1);
         expect(logs[0]?.message).toBe(
           'Collision handler threw on entity "DoorPad" and stopped the game loop',
@@ -425,6 +447,9 @@ describe("ErrorBoundary", () => {
         const reason = await rejection;
         expect((reason as Error).message).toBe("async boom");
         expect(loop.isRunning).toBe(false);
+        expect(boundary.getCallbackErrors()).toMatchObject([
+          { kind: "Test callback", outcome: "fatal", error: "async boom" },
+        ]);
       });
 
       it("does not report or stop the loop twice for the same error propagating through nested wraps", () => {
@@ -453,6 +478,8 @@ describe("ErrorBoundary", () => {
         expect(messages).toEqual([
           'Collision handler threw on entity "DoorPad" and stopped the game loop',
         ]);
+        // The error propagated through two wrap methods but is recorded once.
+        expect(boundary.getCallbackErrors()).toHaveLength(1);
       });
     });
 
