@@ -43,7 +43,7 @@ function setup() {
   const logger = new Logger({ level: LogLevel.Error });
   ctx.register(QueryCacheKey, new QueryCache());
   ctx.register(EventBusKey, new EventBus<EngineEvents>());
-  ctx.register(ErrorBoundaryKey, new ErrorBoundary(logger));
+  ctx.register(ErrorBoundaryKey, new ErrorBoundary(logger, "isolate"));
   ctx.register(LoggerKey, logger);
 
   const assets = new AssetManager();

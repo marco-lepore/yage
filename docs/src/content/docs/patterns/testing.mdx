@@ -249,7 +249,7 @@ const spriteState = window.__yage__.inspector.getComponentData(
 | `hasComponent(entity, class)` | Boolean: does the named entity have this component class? |
 | `getComponentData(entity, class)` | Plain-object snapshot of a component's state |
 | `getSystems()` | Every registered system, with phase/priority/enabled flags |
-| `getErrors()` | Systems or components disabled by the error boundary |
+| `getErrors()` | Systems/components disabled by the error boundary, plus recorded callback failures (`callbackErrors`) — populated only under `errors: "isolate"`; empty under the default `"fatal"`, which stops the engine and rethrows instead |
 
 `getEntities()` returns plain `EntitySnapshot` objects carrying class-name
 strings in `components` (not class references), so filtering by component

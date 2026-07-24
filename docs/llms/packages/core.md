@@ -596,4 +596,47 @@ type ComponentClass<C> = new (...args: never[]) => C;
 
 ## Error Handling
 
-`ErrorBoundary` wraps all system and component execution. Errors disable the offending system/component. The game loop never crashes. Query disabled items via `ErrorBoundary.getDisabled()`.
+`ErrorBoundary` wraps system, component, and callback execution so a throw is
+attributed to whoever threw, not whoever it reached. Policy is
+`EngineConfig.errors`, `"fatal" | "isolate"`, default `"fatal"`.
+
+- **`"fatal"`** — `wrapSystem`, `wrapComponent`, and `wrapCallback` report the
+  culprit (the original `Error`, with its stack) through `Logger`, stop the
+  game loop (`GameLoop.stop()`), and rethrow. A rejected thenable can't be
+  rethrown into the original call stack — it's re-raised as a new unhandled
+  rejection instead, so it still reaches the host's unhandled-rejection
+  channel.
+- **`"isolate"`** — nothing stops; the offender is disabled/removed/muted
+  instead:
+  - `wrapSystem`/`wrapComponent` (used internally by `SystemScheduler` and
+    `ComponentUpdateSystem`) disable the offending system/component. Query
+    via `ErrorBoundary.getDisabled()`.
+  - `wrapCallback(fn, info, outcome, options?)` wraps a developer-supplied
+    callback the engine invokes on its own — collision/trigger handlers,
+    entity/scene event handlers, the global `EventBus`, input listeners
+    (key/action/gamepad), process and process-slot callbacks, the audio
+    unlock callback. It catches a synchronous throw and, since these
+    callbacks are typed void-returning but nothing stops a caller from
+    passing an `async` function, a rejected thenable too. `outcome` is one of
+    `"removed"` (the handler is unsubscribed — collision/trigger,
+    entity/scene events, input listeners), `"muted"` (stays registered, only
+    the first failure per handler+event is reported — the global bus and its
+    `tap` observers), `"cancelled"` (that one `Process`/`ProcessSlot` is
+    cancelled — every other process, on the same entity, other entities, or
+    the pool, keeps running), or `"reported"` (no further consequence — the
+    one-shot audio unlock callback). `options.onError` runs the outcome's
+    actual side effect; `wrapCallback` itself never mutates call-site state.
+- `wrapLifecycleHook(fn, info)` wraps a scene lifecycle hook
+  (`onEnter`/`onExit`/`onPause`/`onResume`/`beforeEnter`). Regardless of
+  policy, it reports through `Logger` and rethrows, so a scene half-built by
+  a throwing hook always fails the same way — a half-built scene must not
+  look like it mounted cleanly.
+- Every wrapped callback failure under `"isolate"` is recorded in
+  `ErrorBoundary.getCallbackErrors()` and surfaced as
+  `Inspector.getErrors().callbackErrors`, alongside `disabledSystems`/
+  `disabledComponents`. Both stay empty under `"fatal"` — nothing is disabled
+  or muted, since the game loop has stopped.
+- Writing a new dispatch site that calls developer-supplied code should route it through `wrapCallback`/`wrapLifecycleHook` rather than calling the callback directly — see the "Guard developer-supplied callbacks" rule in the repo-root `AGENTS.md`.
+- `"removed"`/`"muted"` unsubscribe by function identity. Re-registering the same function reference for an `async` handler before its prior rejection has settled can have the late rejection remove the new registration instead of the failed one — use a fresh function reference per registration to avoid it.
+
+`Logger` writes to the console by default in dev builds (gated by `isDev()`, tree-shakable in production the same way as `devWarn`). Pass `logger: { output }` in the `Engine` config to replace it; `LogLevel.None` silences everything. The `output` sink itself is guarded under both policies — a throwing sink is disabled after its first failure instead of taking down whatever was being reported.

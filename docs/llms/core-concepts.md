@@ -331,9 +331,17 @@ Entities: `@serializable` + optional `serialize()` / `afterRestore(data, resolve
 
 ## Error Boundary
 
-Component/system errors are caught by `ErrorBoundary`. The offending component is disabled (`enabled = false`), logged, and the game continues. The game loop never crashes.
+`ErrorBoundary` wraps every system, component, and developer-callback call.
+Policy is `new Engine({ errors: "fatal" | "isolate" })`, default `"fatal"`:
+report the culprit with its stack, stop the game loop, and rethrow — a game
+running with one part silently disabled is worse than one that stopped with
+useful information. `"isolate"` disables the offending system/component
+(`enabled = false`) or removes/mutes/cancels the offending callback instead,
+and the game keeps running.
 
 ```ts
-// Check disabled items:
+const engine = new Engine({ errors: "isolate" }); // opt in to degrading instead of stopping
+
+// Under "isolate", check what got disabled:
 const { systems, components } = context.resolve(ErrorBoundaryKey).getDisabled();
 ```

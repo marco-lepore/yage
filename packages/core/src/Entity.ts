@@ -6,6 +6,7 @@ import type { SnapshotResolver } from "./Serializable.js";
 import type { Scene, SpawnOptions, ClassSpawnArgs } from "./Scene.js";
 import { TRAITS_KEY, entityClassHasTrait, type TraitToken } from "./Trait.js";
 import { Transform } from "./Transform.js";
+import { ErrorBoundaryKey } from "./EngineContext.js";
 
 /** Auto-incrementing entity ID counter. */
 let nextEntityId = 1;
@@ -319,10 +320,26 @@ export class Entity {
     if (this._destroyed) return;
 
     const handlers = this._eventHandlers?.get(token.name);
-    if (handlers) {
+    if (handlers && handlers.size > 0) {
+      const boundary = this._scene?.context.tryResolve(ErrorBoundaryKey);
+      const sceneName = this._scene?.name;
       // Snapshot for safe unsubscribe during iteration
       for (const handler of [...handlers]) {
-        handler(data as never);
+        if (boundary) {
+          boundary.wrapCallback(
+            () => handler(data as never),
+            {
+              kind: "Entity event handler",
+              entity: this.name,
+              event: token.name,
+              ...(sceneName !== undefined ? { scene: sceneName } : {}),
+            },
+            "removed",
+            { onError: () => handlers.delete(handler) },
+          );
+        } else {
+          handler(data as never);
+        }
       }
     }
 

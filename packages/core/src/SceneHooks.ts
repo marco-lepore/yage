@@ -1,6 +1,7 @@
 import type { Scene } from "./Scene.js";
 import { ServiceKey, LoggerKey } from "./EngineContext.js";
 import type { Logger } from "./Logger.js";
+import type { ErrorBoundary } from "./ErrorBoundary.js";
 
 /**
  * Plugin hooks invoked by the SceneManager at scene lifecycle points.
@@ -29,6 +30,17 @@ export interface SceneHooks {
  */
 export class SceneHookRegistry {
   private readonly hooks: SceneHooks[] = [];
+  private errorBoundary: ErrorBoundary | undefined;
+
+  /**
+   * Wire the error boundary. Called once from `Engine`'s constructor, since
+   * this registry is constructed directly rather than resolved through
+   * `EngineContext`.
+   * @internal
+   */
+  _setErrorBoundary(boundary: ErrorBoundary): void {
+    this.errorBoundary = boundary;
+  }
 
   register(hooks: SceneHooks): () => void {
     this.hooks.push(hooks);
@@ -38,10 +50,22 @@ export class SceneHookRegistry {
     };
   }
 
-  /** Run all `beforeEnter` hooks serially. */
+  /**
+   * Run all `beforeEnter` hooks serially. A throwing hook is reported
+   * through the error boundary and rethrown, stopping later hooks —
+   * propagation to the caller (`SceneManager`) is unchanged.
+   */
   async runBeforeEnter(scene: Scene): Promise<void> {
     for (const h of this.hooks) {
-      await h.beforeEnter?.(scene);
+      try {
+        await h.beforeEnter?.(scene);
+      } catch (err) {
+        this.errorBoundary?.reportLifecycleError(err, {
+          kind: "Scene beforeEnter hook",
+          scene: scene.name,
+        });
+        throw err;
+      }
     }
   }
 

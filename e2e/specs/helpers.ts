@@ -26,6 +26,14 @@ export interface EngineSnapshot {
       component: string;
       error: string;
     }>;
+    callbackErrors: Array<{
+      kind: string;
+      outcome: string;
+      error: string;
+      entity?: string;
+      scene?: string;
+      event?: string;
+    }>;
   };
 }
 

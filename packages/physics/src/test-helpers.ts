@@ -20,7 +20,7 @@ import {
   Entity,
   _resetEntityIdCounter,
 } from "@yagejs/core";
-import type { EngineEvents } from "@yagejs/core";
+import type { EngineEvents, ErrorPolicy } from "@yagejs/core";
 import { PhysicsWorld } from "./PhysicsWorld.js";
 import { PhysicsWorldManager } from "./PhysicsWorldManager.js";
 import { PhysicsWorldKey, PhysicsWorldManagerKey } from "./types.js";
@@ -53,6 +53,7 @@ export interface PhysicsTestContext {
 
 export async function createPhysicsTestContext(
   config?: PhysicsConfig,
+  errorPolicy: ErrorPolicy = "isolate",
 ): Promise<PhysicsTestContext> {
   _resetEntityIdCounter();
 
@@ -60,8 +61,11 @@ export async function createPhysicsTestContext(
   const queryCache = new QueryCache();
   const bus = new EventBus<EngineEvents>();
   const logger = new Logger({ level: LogLevel.Debug });
-  const boundary = new ErrorBoundary(logger);
   const gameLoop = new GameLoop();
+  // Defaults to "isolate" — most physics tests exercise recovery semantics
+  // (a throwing collision handler leaves PhysicsSystem enabled). Pass
+  // "fatal" to exercise the stop-the-loop-and-rethrow path instead.
+  const boundary = new ErrorBoundary(logger, errorPolicy, gameLoop);
   const scheduler = new SystemScheduler();
   scheduler.setErrorBoundary(boundary);
   const sceneManager = new SceneManager();

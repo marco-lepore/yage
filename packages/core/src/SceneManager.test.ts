@@ -7,10 +7,13 @@ import {
   EventBusKey,
   SceneManagerKey,
   ServiceKey,
+  ErrorBoundaryKey,
 } from "./EngineContext.js";
 import { QueryCache } from "./QueryCache.js";
 import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
+import { ErrorBoundary } from "./ErrorBoundary.js";
+import { Logger, LogLevel } from "./Logger.js";
 import { _resetEntityIdCounter } from "./Entity.js";
 import { SceneHookRegistry, SceneHookRegistryKey } from "./SceneHooks.js";
 import type { SceneTransition } from "./SceneTransition.js";
@@ -1144,6 +1147,244 @@ describe("SceneManager", () => {
       await manager.pop();
       expect(scene.exitCalled).toBe(true);
       expect(onResume).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("lifecycle hook errors (with an error boundary wired)", () => {
+    function setupWithBoundary() {
+      _resetEntityIdCounter();
+      const ctx = new EngineContext();
+      ctx.register(QueryCacheKey, new QueryCache());
+      ctx.register(EventBusKey, new EventBus<EngineEvents>());
+      const logger = new Logger({ level: LogLevel.Debug });
+      const boundary = new ErrorBoundary(logger, "isolate");
+      ctx.register(ErrorBoundaryKey, boundary);
+      const manager = new SceneManager();
+      ctx.register(SceneManagerKey, manager);
+      manager._setContext(ctx);
+      return { manager, ctx, boundary };
+    }
+
+    it("a throwing onEnter is reported and still rejects push()", async () => {
+      const { manager, boundary } = setupWithBoundary();
+      class BrokenEnter extends GameScene {
+        override onEnter(): void {
+          throw new Error("setup failed");
+        }
+      }
+      const scene = new BrokenEnter("broken");
+
+      await expect(manager.push(scene)).rejects.toThrow("setup failed");
+
+      const errors = boundary.getCallbackErrors();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({
+        kind: "Scene onEnter hook",
+        scene: "broken",
+        outcome: "propagated",
+        error: "setup failed",
+      });
+    });
+
+    it("a throwing onExit is reported and still rejects pop()", async () => {
+      const { manager, boundary } = setupWithBoundary();
+      class BrokenExit extends GameScene {
+        override onExit(): void {
+          throw new Error("teardown failed");
+        }
+      }
+      const scene = new BrokenExit("broken");
+      await manager.push(scene);
+
+      await expect(manager.pop()).rejects.toThrow("teardown failed");
+
+      const errors = boundary.getCallbackErrors();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({
+        kind: "Scene onExit hook",
+        scene: "broken",
+        outcome: "propagated",
+      });
+    });
+
+    it("a throwing manual onPause is reported and still propagates from the setter", async () => {
+      const { manager, boundary } = setupWithBoundary();
+      class BrokenPause extends GameScene {
+        override onPause(): void {
+          throw new Error("pause failed");
+        }
+      }
+      const scene = new BrokenPause("broken");
+      await manager.push(scene);
+
+      expect(() => {
+        scene.paused = true;
+      }).toThrow("pause failed");
+
+      const errors = boundary.getCallbackErrors();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({
+        kind: "Scene onPause hook",
+        scene: "broken",
+        outcome: "propagated",
+      });
+    });
+
+    it("a throwing stack-driven onPause is reported and still rejects push()", async () => {
+      const { manager, boundary } = setupWithBoundary();
+      class BrokenPause extends GameScene {
+        override onPause(): void {
+          throw new Error("pause failed");
+        }
+      }
+      const below = new BrokenPause("below");
+      await manager.push(below);
+
+      await expect(manager.push(new GameScene("top"))).rejects.toThrow(
+        "pause failed",
+      );
+
+      const errors = boundary.getCallbackErrors();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({ kind: "Scene onPause hook", scene: "below" });
+    });
+
+    it("a throwing beforeEnter hook is reported and still rejects push()", async () => {
+      const ctx = new EngineContext();
+      ctx.register(QueryCacheKey, new QueryCache());
+      ctx.register(EventBusKey, new EventBus<EngineEvents>());
+      const logger = new Logger({ level: LogLevel.Debug });
+      const boundary = new ErrorBoundary(logger, "isolate");
+      ctx.register(ErrorBoundaryKey, boundary);
+      const hooks = new SceneHookRegistry();
+      hooks._setErrorBoundary(boundary);
+      ctx.register(SceneHookRegistryKey, hooks);
+      hooks.register({
+        beforeEnter: () => {
+          throw new Error("plugin setup failed");
+        },
+      });
+      const manager = new SceneManager();
+      ctx.register(SceneManagerKey, manager);
+      manager._setContext(ctx);
+
+      await expect(manager.push(new GameScene("broken"))).rejects.toThrow(
+        "plugin setup failed",
+      );
+
+      const errors = boundary.getCallbackErrors();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({
+        kind: "Scene beforeEnter hook",
+        scene: "broken",
+        outcome: "propagated",
+      });
+    });
+
+    it("a throwing onPause is reported when blur auto-pauses the active scene", async () => {
+      const { manager, boundary } = setupWithBoundary();
+      class BrokenPause extends GameScene {
+        override onPause(): void {
+          throw new Error("blur pause failed");
+        }
+      }
+      const scene = new BrokenPause("broken");
+      await manager.push(scene);
+      manager.autoPauseOnBlur = true;
+
+      expect(() => manager._handleVisibilityChange(true)).toThrow("blur pause failed");
+
+      const errors = boundary.getCallbackErrors();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({ kind: "Scene onPause hook", scene: "broken" });
+    });
+
+    it("a throwing onResume is reported when blur restores the active scene", async () => {
+      const { manager, boundary } = setupWithBoundary();
+      class BrokenResume extends GameScene {
+        override onResume(): void {
+          throw new Error("blur resume failed");
+        }
+      }
+      const scene = new BrokenResume("broken");
+      await manager.push(scene);
+      manager.autoPauseOnBlur = true;
+      manager._handleVisibilityChange(true); // pauses cleanly — onResume is the broken hook
+      expect(scene.isPaused).toBe(true);
+
+      expect(() => manager._handleVisibilityChange(false)).toThrow("blur resume failed");
+
+      const errors = boundary.getCallbackErrors();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({
+        kind: "Scene onResume hook",
+        scene: "broken",
+        outcome: "propagated",
+      });
+    });
+
+    it("a throwing onEnter is reported when mounting a detached scene", async () => {
+      const { manager, boundary } = setupWithBoundary();
+      class BrokenEnter extends GameScene {
+        override onEnter(): void {
+          throw new Error("detached enter failed");
+        }
+      }
+      const scene = new BrokenEnter("broken");
+
+      await expect(manager._mountDetached(scene)).rejects.toThrow(
+        "detached enter failed",
+      );
+
+      const errors = boundary.getCallbackErrors();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({
+        kind: "Scene onEnter hook",
+        scene: "broken",
+        outcome: "propagated",
+      });
+    });
+
+    it("a throwing onExit is reported when unmounting a detached scene", async () => {
+      const { manager, boundary } = setupWithBoundary();
+      class BrokenExit extends GameScene {
+        override onExit(): void {
+          throw new Error("detached exit failed");
+        }
+      }
+      const scene = new BrokenExit("broken");
+      await manager._mountDetached(scene);
+
+      expect(() => manager._unmountDetached(scene)).toThrow("detached exit failed");
+
+      const errors = boundary.getCallbackErrors();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({
+        kind: "Scene onExit hook",
+        scene: "broken",
+        outcome: "propagated",
+      });
+    });
+
+    it("a throwing onExit is reported when the manager is destroyed", async () => {
+      const { manager, boundary } = setupWithBoundary();
+      class BrokenExit extends GameScene {
+        override onExit(): void {
+          throw new Error("destroy teardown failed");
+        }
+      }
+      const scene = new BrokenExit("broken");
+      await manager.push(scene);
+
+      expect(() => manager._destroy()).toThrow("destroy teardown failed");
+
+      const errors = boundary.getCallbackErrors();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({
+        kind: "Scene onExit hook",
+        scene: "broken",
+        outcome: "propagated",
+      });
     });
   });
 });

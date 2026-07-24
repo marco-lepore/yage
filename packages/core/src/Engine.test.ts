@@ -252,8 +252,8 @@ describe("Engine", () => {
       engine.destroy();
     });
 
-    it("disables crashing component via ErrorBoundary", async () => {
-      const engine = new Engine();
+    it("disables crashing component via ErrorBoundary under errors: \"isolate\"", async () => {
+      const engine = new Engine({ errors: "isolate" });
       await engine.start();
       const scene = new TestScene();
       await engine.scenes.push(scene);
@@ -263,6 +263,21 @@ describe("Engine", () => {
 
       engine.loop.tick(16); // Should not throw
       expect(comp.enabled).toBe(false);
+      engine.destroy();
+    });
+
+    it("under the default errors: \"fatal\" policy, a crashing component stops the loop and throws out of tick()", async () => {
+      const engine = new Engine();
+      await engine.start();
+      const scene = new TestScene();
+      await engine.scenes.push(scene);
+      const entity = scene.spawn("buggy");
+      const comp = new CrashingComponent();
+      entity.add(comp);
+
+      expect(() => engine.loop.tick(16)).toThrow("crash!");
+      expect(comp.enabled).toBe(true);
+      expect(engine.loop.isRunning).toBe(false);
       engine.destroy();
     });
   });

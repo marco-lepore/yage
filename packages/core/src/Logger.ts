@@ -1,3 +1,6 @@
+import { isDev } from "./internal/dev.js";
+import { isThenable } from "./internal/thenable.js";
+
 /** Log severity levels. */
 export enum LogLevel {
   Debug = 0,
@@ -43,6 +46,25 @@ const LEVEL_LABELS: Record<LogLevel, string> = {
   [LogLevel.None]: "NONE",
 };
 
+const CONSOLE_METHODS: Record<LogLevel, "debug" | "info" | "warn" | "error"> = {
+  [LogLevel.Debug]: "debug",
+  [LogLevel.Info]: "info",
+  [LogLevel.Warn]: "warn",
+  [LogLevel.Error]: "error",
+  [LogLevel.None]: "error", // unreachable — level filtering excludes None-level entries
+};
+
+/** Default `output`: prints through the matching `console.*` method. */
+function consoleOutput(entry: LogEntry): void {
+  const method = CONSOLE_METHODS[entry.level] ?? "log";
+  const label = LEVEL_LABELS[entry.level] ?? "LOG";
+  if (entry.data !== undefined) {
+    console[method](`[yage] ${label} ${entry.category}  ${entry.message}`, entry.data);
+  } else {
+    console[method](`[yage] ${label} ${entry.category}  ${entry.message}`);
+  }
+}
+
 /** Structured logger with ring buffer, levels, and category filtering. */
 export class Logger {
   private readonly level: LogLevel;
@@ -53,12 +75,16 @@ export class Logger {
   private writeIndex = 0;
   private count = 0;
   private currentFrame = 0;
+  private outputDisabled = false;
 
   constructor(config?: LoggerConfig) {
     this.level = config?.level ?? LogLevel.Info;
     this.categories = new Set(config?.categories ?? []);
     this.bufferSize = config?.bufferSize ?? 500;
-    this.output = config?.output;
+    // Falls back to a console handler in dev builds only, gated the same way
+    // `devWarn` gates its own console output, so the path can be tree-shaken
+    // out of a production bundle. An explicit `output` always overrides it.
+    this.output = config?.output ?? (isDev() ? consoleOutput : undefined);
     this.buffer = new Array<LogEntry>(this.bufferSize);
   }
 
@@ -143,6 +169,29 @@ export class Logger {
     this.writeIndex = (this.writeIndex + 1) % this.bufferSize;
     this.count++;
 
-    this.output?.(entry);
+    if (this.outputDisabled || !this.output) return;
+    // The output sink is itself a developer-supplied callback — a throwing
+    // sink invoked while reporting some other error (e.g. a collision
+    // handler) would escape into the caller instead of being reported.
+    // Guard it and mute after the first failure so it can't spam or crash.
+    // The sink is typed void-returning but nothing stops an async sink, so a
+    // rejected thenable is caught the same way a synchronous throw is —
+    // otherwise a rejecting async sink would keep running, unmuted, forever.
+    try {
+      const result = this.output(entry) as unknown;
+      if (isThenable(result)) {
+        result.then(undefined, (err: unknown) => this._disableOutput(err));
+      }
+    } catch (err) {
+      this._disableOutput(err);
+    }
+  }
+
+  private _disableOutput(err: unknown): void {
+    this.outputDisabled = true;
+    console.error(
+      "[yage] Logger output sink threw and was disabled for the rest of the session:",
+      err,
+    );
   }
 }

@@ -1,5 +1,5 @@
 import { Vec2 } from "@yagejs/core";
-import type { RendererAdapter } from "@yagejs/core";
+import type { RendererAdapter, ErrorBoundary } from "@yagejs/core";
 import { applyRadialDeadzone } from "./deadzone.js";
 import type {
   ActionMapDefinition,
@@ -141,6 +141,12 @@ export class InputManager {
    * read it cheaply each frame.
    */
   private renderer: RendererAdapter | null = null;
+  /**
+   * Wired by {@link _setErrorBoundary} during `InputPlugin.install`, since
+   * this manager is constructed directly (no `EngineContext` of its own)
+   * rather than resolved through DI.
+   */
+  private errorBoundary: ErrorBoundary | undefined;
   private pointerDownListeners: Array<(info: PointerInfo) => void> = [];
   private pointerUpListeners: Array<(info: PointerInfo) => void> = [];
   private pointerMoveListeners: Array<(info: PointerInfo) => void> = [];
@@ -1125,7 +1131,12 @@ export class InputManager {
     if (this.activePadIndex === index) return;
     this.activePadIndex = index;
     const info = this.getActivePad();
-    for (const fn of this.activePadListeners) fn(info);
+    this._callListeners(
+      this.activePadListeners,
+      (fn) => fn(info),
+      "Active pad listener",
+      String(index),
+    );
   }
 
   // -- Gamepad runtime config --
@@ -1190,7 +1201,12 @@ export class InputManager {
     if (this.activePadIndex === null) {
       this.setActivePadInternal(info.index);
     }
-    for (const fn of this.gamepadConnectListeners) fn(info);
+    this._callListeners(
+      this.gamepadConnectListeners,
+      (fn) => fn(info),
+      "Gamepad connect listener",
+      String(info.index),
+    );
   }
 
   /** @internal Called by InputPlugin from `gamepaddisconnected` event or by
@@ -1222,7 +1238,12 @@ export class InputManager {
     } else {
       this._releaseAllGamepadState();
     }
-    for (const fn of this.gamepadDisconnectListeners) fn(info);
+    this._callListeners(
+      this.gamepadDisconnectListeners,
+      (fn) => fn(info),
+      "Gamepad disconnect listener",
+      String(info.index),
+    );
   }
 
   /**
@@ -1612,6 +1633,15 @@ export class InputManager {
    */
   _setRenderer(renderer: RendererAdapter | null): void {
     this.renderer = renderer;
+  }
+
+  /**
+   * @internal Wire the error boundary so a throwing key/action listener is
+   * reported and unsubscribed instead of stopping input polling for the
+   * rest of the session. Called by `InputPlugin.install`.
+   */
+  _setErrorBoundary(boundary: ErrorBoundary | undefined): void {
+    this.errorBoundary = boundary;
   }
 
   /** @internal */
@@ -2013,11 +2043,9 @@ export class InputManager {
     code: string,
   ): void {
     const list = perCode.get(code);
-    if (list) {
-      for (const fn of [...list]) fn(code);
-    }
+    if (list) this._callListeners(list, (fn) => fn(code), "Key listener", code);
     if (anyList.length > 0) {
-      for (const fn of [...anyList]) fn(code);
+      this._callListeners(anyList, (fn) => fn(code), "Key listener", "*");
     }
   }
 
@@ -2027,7 +2055,39 @@ export class InputManager {
   ): void {
     const list = perAction.get(name);
     if (!list) return;
-    for (const fn of [...list]) fn(name);
+    this._callListeners(list, (fn) => fn(name), "Action listener", name);
+  }
+
+  /**
+   * Shared listener fan-out for key/action edges and gamepad/active-pad
+   * events. Iterates a snapshot so a listener that unsubscribes itself
+   * doesn't skip the next one. A throwing listener is removed from the live
+   * array so it can't throw again on the next edge; `reported` avoids a
+   * double report in the rare case the same function is registered twice,
+   * and is allocated only once a listener actually throws — the common,
+   * no-error path stays a single array snapshot.
+   */
+  private _callListeners<T>(
+    live: T[],
+    invoke: (fn: T) => void,
+    kind: string,
+    event: string,
+  ): void {
+    let reported: Set<T> | undefined;
+    for (const fn of [...live]) {
+      if (reported?.has(fn)) continue;
+      if (this.errorBoundary) {
+        this.errorBoundary.wrapCallback(() => invoke(fn), { kind, event }, "removed", {
+          onError: () => {
+            (reported ??= new Set()).add(fn);
+            const idx = live.indexOf(fn);
+            if (idx !== -1) live.splice(idx, 1);
+          },
+        });
+      } else {
+        invoke(fn);
+      }
+    }
   }
 
   /**

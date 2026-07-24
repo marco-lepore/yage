@@ -488,7 +488,7 @@ const engine = new Engine({
     level: LogLevel.Info,              // drop anything below Info
     categories: ["physics", "ai"],     // only accept these categories (empty = all)
     bufferSize: 1000,                  // keep the last 1000 entries
-    output: (entry) => {               // optional: override console output
+    output: (entry) => {               // optional: replace the default dev console output
       console.log(`[${entry.category}] ${entry.message}`, entry.data);
     },
   },
@@ -534,9 +534,12 @@ reproducing frame-specific bugs.
 
 ### Custom Output Sinks
 
-The `output` option replaces the default `console.*` handler. Use it to ship
-logs somewhere else — an in-game debug panel, a remote telemetry service, or
-a file (in Electron/Tauri builds):
+In a dev build, the logger prints every accepted entry through the matching
+`console.*` method by default — no `output` needed. That default drops out of
+a production build, so a shipped game logs to the ring buffer only unless you
+supply your own `output`. Passing `output` always overrides the default,
+in dev or production. Use it to ship logs somewhere else — an in-game debug
+panel, a remote telemetry service, or a file (in Electron/Tauri builds):
 
 ```typescript
 const engine = new Engine({
@@ -565,3 +568,127 @@ const engine = new Engine({
 
 Custom sinks don't replace the ring buffer — entries are still stored
 in-memory and accessible via `getRecent()` regardless of what the sink does.
+
+## Errors
+
+The engine calls a lot of code you supply directly — collision and trigger
+handlers, entity/scene/global event listeners, input listeners, process
+callbacks, scene lifecycle hooks, and your own systems' and components'
+`update()`. What happens when one of those throws is controlled by the
+`errors` option:
+
+```typescript
+const engine = new Engine({ errors: "fatal" });   // default
+const engine = new Engine({ errors: "isolate" }); // degrade instead of stopping
+```
+
+### `"fatal"` (default)
+
+The engine reports the culprit with its stack, stops the game loop, and
+rethrows. A game running in an indeterminate state — one system quietly
+disabled while everything else keeps going on stale assumptions — is worse
+than one that stopped with useful information:
+
+```typescript
+// A door pad. The typo is real: `otherr`.
+pad.get(ColliderComponent).onTrigger((e) => {
+  if (e.otherr.has(PlayerTag)) openDoor(); // throws on every touch
+});
+```
+
+```
+[yage] ERROR core  Collision handler threw on entity "DoorPad" and stopped the game loop
+  TypeError: Cannot read properties of undefined (reading 'has')
+Uncaught TypeError: Cannot read properties of undefined (reading 'has')
+```
+
+That console line follows the same dev-only default as any other `logger.error`
+call — see [LoggerConfig](#loggerconfig) above. The thrown error itself is not
+gated by that default: it reaches `window.onerror`, your own `try`/`catch`
+around `engine.start()`/`engine.scenes.push(...)`, or a Node
+`uncaughtException` handler, whichever the host provides.
+
+An `async` callback that rejects can't be rethrown into the call that
+triggered it — that call already returned by the time the rejection settles.
+The engine reports it and stops the loop the same way, then re-raises the
+rejection so it reaches the host's unhandled-rejection channel
+(`window.onunhandledrejection`, or Node's `unhandledRejection` event) instead
+of vanishing.
+
+Catch what you expect and let the rest surface. Wrap a call in your own
+`try`/`catch` when a failure there is routine (a save file that might not
+parse, a network request that might fail); anything you didn't wrap is a bug,
+and `"fatal"` surfaces it immediately instead of hiding it behind a silently
+disabled system.
+
+### `"isolate"`
+
+For a shipped build that must not die in front of a player, opt into
+degrading instead: the engine disables or removes only the offending system,
+component, or callback and keeps everything else running. This was the
+engine's only behavior before `errors` existed as an option — the tables
+below describe it.
+
+A throw inside your own `System.update()` or a `Component`'s
+`update()`/`fixedUpdate()` disables that system or component
+(`enabled = false`) and logs it:
+
+```
+[yage] ERROR core  Component EnemyAI on entity "Goblin" threw and was disabled
+  TypeError: Cannot read properties of undefined (reading 'target')
+```
+
+```typescript
+import { ErrorBoundaryKey } from "@yagejs/core";
+
+const { systems, components } = engine.context
+  .resolve(ErrorBoundaryKey)
+  .getDisabled();
+```
+
+A throw inside a callback the engine invokes on your behalf — collision
+handlers, event listeners, input listeners, process callbacks — is handled
+per callback instead of disabling a whole system or component:
+
+```
+[yage] ERROR core  Collision handler threw on entity "DoorPad" and was removed
+  TypeError: Cannot read properties of undefined (reading 'has')
+```
+
+What happens to the callback next depends on where it was registered:
+
+| Registered through | After a throw |
+|---|---|
+| Collision/trigger handlers (`ColliderComponent.onCollision`/`onTrigger`), entity events (`entity.on`), scene events (`scene.on`, `Component.listenScene`), key/action/gamepad listeners (`InputManager`) | Unsubscribed. It won't run again; re-register it yourself if you want another chance. |
+| The global `EventBus` (`.on`, `.tap`) | Stays subscribed. Only the first throw for that handler and event is reported — later throws from the same handler are silent. |
+| A `Process` (tweens, sequences, coroutines) or `ProcessSlot`, whether owned by a `ProcessComponent` on an entity or added directly to the scene/engine | That one process or slot is cancelled. Every other process — on the same entity, on other entities, and in the pool — keeps running. |
+| The audio-unlock callback | Reported only — it already runs once, so there's nothing to unsubscribe. |
+| Scene lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`, a plugin's `beforeEnter`) | Reported, and the error keeps propagating regardless of policy — `await engine.scenes.replace(...)` still rejects the way it did before. |
+
+An `async` callback is covered the same way: if it rejects instead of
+throwing, the rejection is caught and handled exactly like a synchronous
+throw, for every row in the table above.
+
+Every failure is also recorded, so a test or crash reporter can check for it
+without scraping console output:
+
+```typescript
+const errors = engine.inspector.getErrors();
+console.log(errors.callbackErrors);
+// [{ kind: "Collision handler", entity: "DoorPad", outcome: "removed",
+//    error: "Cannot read properties of undefined (reading 'has')" }]
+```
+
+`callbackErrors` sits alongside `disabledSystems` and `disabledComponents`.
+Under `"fatal"` all three stay empty — nothing is disabled, removed, or
+muted, since the game has already stopped; check the thrown error or the
+console instead.
+
+**Unsubscribe is by function identity.** For the "unsubscribed" row above, the
+engine removes the exact function reference that threw. If you unsubscribe an
+`async` handler and re-register a new one with the same function reference
+before the old call's rejection has settled, the late rejection removes the
+new registration instead of the one that actually failed. This only matters
+if you reuse a function reference across subscribe/unsubscribe cycles for an
+`async` handler — use a fresh function (or a bound method with distinct
+identity) per registration to avoid it.

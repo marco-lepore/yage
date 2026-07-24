@@ -1,5 +1,17 @@
-import { Component, devWarn, filterEntities, serializable } from "@yagejs/core";
-import type { Entity, ComponentClass, EntityFilter, TraitToken } from "@yagejs/core";
+import {
+  Component,
+  devWarn,
+  filterEntities,
+  serializable,
+  ErrorBoundaryKey,
+} from "@yagejs/core";
+import type {
+  Entity,
+  ComponentClass,
+  EntityFilter,
+  TraitToken,
+  ErrorBoundary,
+} from "@yagejs/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { PhysicsWorldKey } from "./types.js";
@@ -28,6 +40,7 @@ export class ColliderComponent extends Component {
 
   private readonly rb = this.sibling(RigidBodyComponent);
   private physicsWorld!: PhysicsWorld;
+  private errorBoundary: ErrorBoundary | undefined;
   private collisionHandlers: Array<(e: CollisionEvent) => void> = [];
   private triggerHandlers: Array<(e: TriggerEvent) => void> = [];
   private _warnedSensorMismatch = false;
@@ -38,6 +51,10 @@ export class ColliderComponent extends Component {
   }
 
   onAdd(): void {
+    // Resolve before creating the Rapier collider: an optional lookup can't
+    // throw, so a hand-built test context with no boundary registered still
+    // leaves onAdd fully completed rather than half-done.
+    this.errorBoundary = this.context.tryResolve(ErrorBoundaryKey);
     this.physicsWorld = this.use(PhysicsWorldKey);
 
     this._colliderHandle = this.physicsWorld.createCollider(
@@ -144,17 +161,57 @@ export class ColliderComponent extends Component {
    * @internal Called by PhysicsWorld during event dispatch.
    */
   _dispatchCollision(event: CollisionEvent): void {
-    for (const handler of this.collisionHandlers) {
-      handler(event);
-    }
+    this._dispatch(this.collisionHandlers, (h) => h(event), "Collision handler");
   }
 
   /**
    * @internal Called by PhysicsWorld during event dispatch.
    */
   _dispatchTrigger(event: TriggerEvent): void {
-    for (const handler of this.triggerHandlers) {
-      handler(event);
+    this._dispatch(this.triggerHandlers, (h) => h(event), "Trigger handler");
+  }
+
+  /**
+   * Shared dispatch for collision/trigger handlers. Iterates a snapshot,
+   * not the live array — the unsubscribe closures `splice` the live array
+   * (`onCollision`/`onTrigger` above), and removing index *i* mid-iteration
+   * would shift the next handler into that slot and skip it. A throwing
+   * handler is removed so it can't throw again next frame; `reported`
+   * guards against invoking the same handler twice in one dispatch when
+   * it's registered more than once (arrays, unlike the Set-backed entity/
+   * scene listeners, permit duplicates). Allocated only once a handler
+   * actually throws, so a clean dispatch — the overwhelming majority, every
+   * frame, for every collider — costs only the snapshot array.
+   */
+  private _dispatch<H>(
+    live: H[],
+    invoke: (handler: H) => void,
+    kind: string,
+  ): void {
+    let reported: Set<H> | undefined;
+    const sceneName = this.entity?.tryScene?.name;
+    for (const handler of [...live]) {
+      if (reported?.has(handler)) continue;
+      if (this.errorBoundary) {
+        this.errorBoundary.wrapCallback(
+          () => invoke(handler),
+          {
+            kind,
+            entity: this.entity?.name,
+            ...(sceneName !== undefined ? { scene: sceneName } : {}),
+          },
+          "removed",
+          {
+            onError: () => {
+              (reported ??= new Set()).add(handler);
+              const idx = live.indexOf(handler);
+              if (idx !== -1) live.splice(idx, 1);
+            },
+          },
+        );
+      } else {
+        invoke(handler);
+      }
     }
   }
 }

@@ -1,5 +1,5 @@
 import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
-import { RendererAdapterKey } from "@yagejs/core";
+import { RendererAdapterKey, ErrorBoundaryKey } from "@yagejs/core";
 import { DebugRegistryKey } from "@yagejs/debug/api";
 import { InputManager } from "./InputManager.js";
 import {
@@ -29,6 +29,7 @@ export class InputPlugin implements Plugin {
   install(context: EngineContext): void {
     this.context = context;
     this.manager = new InputManager();
+    this.manager._setErrorBoundary(context.tryResolve(ErrorBoundaryKey));
 
     if (this.config.actions) {
       this.manager.setActionMap(this.config.actions);

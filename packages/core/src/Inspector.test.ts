@@ -52,7 +52,11 @@ function setup() {
   _resetEntityIdCounter();
   const ctx = new EngineContext();
   const logger = new Logger({ level: LogLevel.Debug });
-  const boundary = new ErrorBoundary(logger);
+  const loop = new GameLoop();
+  // These tests assert getErrors() surfaces disabled/recorded state, which
+  // only accumulates under "isolate" — under "fatal" the boundary stops the
+  // loop and rethrows instead of recording anything.
+  const boundary = new ErrorBoundary(logger, "isolate", loop);
   const scheduler = new SystemScheduler();
   const queryCache = new QueryCache();
   const bus = new EventBus<EngineEvents>();
@@ -65,7 +69,6 @@ function setup() {
   const scenes = new SceneManager();
   ctx.register(SceneManagerKey, scenes);
   scenes._setContext(ctx);
-  const loop = new GameLoop();
 
   const engine = { context: ctx, scenes, loop, logger, events: bus };
   const inspector = new Inspector(engine);
@@ -344,6 +347,26 @@ describe("Inspector", () => {
     expect(errors.disabledComponents[0]?.entity).toBe("enemy");
     expect(errors.disabledComponents[0]?.component).toBe("Health");
     expect(errors.disabledComponents[0]?.error).toBe("comp-fail");
+  });
+
+  it("getErrors returns recorded callback failures alongside disabled systems/components", async () => {
+    const { inspector, boundary } = setup();
+    boundary.wrapCallback(
+      () => {
+        throw new Error("callback-fail");
+      },
+      { kind: "Test callback", entity: "player" },
+      "removed",
+    );
+
+    const errors = inspector.getErrors();
+    expect(errors.callbackErrors).toHaveLength(1);
+    expect(errors.callbackErrors[0]).toMatchObject({
+      kind: "Test callback",
+      entity: "player",
+      outcome: "removed",
+      error: "callback-fail",
+    });
   });
 
   it("getErrors uses 'unknown' for component without entity", async () => {

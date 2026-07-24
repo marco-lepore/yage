@@ -400,7 +400,7 @@ describe("Integration Tests", () => {
     context.register(SceneHookRegistryKey, new SceneHookRegistry());
     const scheduler = new SystemScheduler();
     const logger = new Logger({ level: LogLevel.Debug });
-    const boundary = new ErrorBoundary(logger);
+    const boundary = new ErrorBoundary(logger, "isolate");
     scheduler.setErrorBoundary(boundary);
 
     const plugin = new PhysicsPlugin({ gravity: { x: 0, y: 500 }, pixelsPerMeter: 100 });

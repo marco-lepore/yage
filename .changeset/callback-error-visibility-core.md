@@ -1,0 +1,12 @@
+---
+"@yagejs/core": minor
+---
+
+Errors thrown inside code the engine calls on your behalf — event listeners, collision handlers, process callbacks, a system or component's own `update()`, scene lifecycle hooks — are fatal by default: the engine reports the culprit with its stack, stops the game loop, and rethrows.
+
+- New `EngineConfig.errors` option, `"fatal" | "isolate"`, default `"fatal"`. A game running with one part silently disabled is worse than one that stopped with useful information, so nothing self-heals unless you opt in.
+- `"fatal"` reports through `Logger` (see below) with the original `Error` and its stack, stops `GameLoop`, and rethrows so the failure reaches your own `try`/`catch`, `window.onerror`, or an unhandled-rejection handler for a rejected `async` callback.
+- `"isolate"` is the previous recovery behavior, now opt-in: a throwing `System`/`Component` is disabled; a throwing event listener, collision handler, input listener, or process callback is unsubscribed, muted, or cancelled depending on where it's registered. Scene lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`, plugin `beforeEnter`) are always reported and rethrown regardless of policy — a half-built scene must not look like it mounted cleanly.
+- `Logger` prints every accepted entry through `console.*` by default in dev builds, so `logger.error` calls (including the ones above) are visible without configuring an `output` sink. The default drops out of a production build; passing your own `output` always overrides it. A throwing `output` sink is itself caught, logged once, and disabled for the rest of the session instead of escaping into whatever it was trying to report — this is the one thing that still catches under both policies.
+- `Inspector.getErrors()` gains a `callbackErrors` array alongside the existing `disabledSystems`/`disabledComponents`, listing every recorded callback failure with its kind, outcome, and owning entity/scene/event where known. Both arrays stay empty under `"fatal"`, since nothing is disabled or muted — the game has stopped.
+- Known limitation under `"isolate"`: unsubscribing a throwing handler is by function identity. Re-registering an `async` handler with the same function reference before its earlier call's rejection has settled can remove the new registration instead of the one that actually failed — use a fresh function reference per registration if you re-subscribe the same handler.

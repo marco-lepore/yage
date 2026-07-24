@@ -6,7 +6,9 @@ import {
 import { Component } from "./Component.js";
 import { Entity, _resetEntityIdCounter } from "./Entity.js";
 import { ErrorBoundary } from "./ErrorBoundary.js";
+import type { ErrorPolicy } from "./ErrorBoundary.js";
 import { Logger, LogLevel } from "./Logger.js";
+import { GameLoop } from "./GameLoop.js";
 import { EngineContext, SceneManagerKey, ErrorBoundaryKey } from "./EngineContext.js";
 import { Phase } from "./types.js";
 
@@ -63,10 +65,11 @@ class CrashingComponent extends Component {
 class PlainComponent extends Component {}
 
 describe("ComponentUpdateSystem", () => {
-  function setup() {
+  function setup(policy: ErrorPolicy = "isolate") {
     _resetEntityIdCounter();
     const logger = new Logger({ level: LogLevel.Debug });
-    const boundary = new ErrorBoundary(logger);
+    const loop = new GameLoop();
+    const boundary = new ErrorBoundary(logger, policy, loop);
     const sceneManager = new MockSceneManager();
     const ctx = new EngineContext();
     ctx.register(SceneManagerKey, sceneManager as never);
@@ -80,7 +83,7 @@ describe("ComponentUpdateSystem", () => {
     fixedSys._setContext(ctx);
     fixedSys.onRegister?.(ctx);
 
-    return { updateSys, fixedSys, sceneManager, boundary, logger };
+    return { updateSys, fixedSys, sceneManager, boundary, logger, loop };
   }
 
   it("has correct phases", () => {
@@ -165,6 +168,19 @@ describe("ComponentUpdateSystem", () => {
     expect(comp.enabled).toBe(false);
     const disabled = boundary.getDisabled();
     expect(disabled.components).toHaveLength(1);
+  });
+
+  it("under errors: \"fatal\", rethrows and stops the loop instead of disabling the component", () => {
+    const { updateSys, sceneManager, loop } = setup("fatal");
+    loop.start();
+    const scene = new MockScene();
+    sceneManager.activeScene = scene;
+    const entity = scene.spawn("test");
+    const comp = new CrashingComponent();
+    entity.add(comp);
+    expect(() => updateSys.update(16)).toThrow("crash!");
+    expect(comp.enabled).toBe(true);
+    expect(loop.isRunning).toBe(false);
   });
 
   describe("timeScale", () => {

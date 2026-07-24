@@ -158,7 +158,9 @@ function createTestContext() {
   const queryCache = new QueryCache();
   const bus = new EventBus<EngineEvents>();
   const logger = new Logger({ level: LogLevel.Debug });
-  const boundary = new ErrorBoundary(logger);
+  // Not exercising error-boundary behavior — "isolate" just keeps this
+  // context's unrelated tests from throwing if something misbehaves.
+  const boundary = new ErrorBoundary(logger, "isolate");
   const sceneManager = new SceneManager();
 
   ctx.register(QueryCacheKey, queryCache);

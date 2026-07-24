@@ -156,6 +156,76 @@ describe("Logger", () => {
     expect(recent.length).toBeLessThanOrEqual(2);
   });
 
+  describe("default console output", () => {
+    it("writes to console.error by default when no output is configured", () => {
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const logger = new Logger({ level: LogLevel.Debug });
+      logger.error("core", "something broke");
+      expect(spy).toHaveBeenCalledOnce();
+      expect(spy.mock.calls[0]?.[0]).toContain("something broke");
+      spy.mockRestore();
+    });
+
+    it("passes the original Error object, not just its message, as console.error's data argument", () => {
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const logger = new Logger({ level: LogLevel.Debug });
+      const original = new Error("boom");
+      logger.error("core", "something broke", { error: original });
+      expect(spy.mock.calls[0]?.[1]).toEqual({ error: original });
+      expect((spy.mock.calls[0]?.[1] as { error: unknown }).error).toBeInstanceOf(Error);
+      spy.mockRestore();
+    });
+
+    it("an explicit output overrides the default console handler", () => {
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const output = vi.fn();
+      const logger = new Logger({ level: LogLevel.Debug, output });
+      logger.error("core", "something broke");
+      expect(output).toHaveBeenCalledOnce();
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+    });
+
+    it("guards a throwing output sink and mutes it after the first failure", () => {
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const output = vi.fn(() => {
+        throw new Error("sink boom");
+      });
+      const logger = new Logger({ level: LogLevel.Debug, output });
+
+      expect(() => logger.error("core", "first")).not.toThrow();
+      expect(() => logger.error("core", "second")).not.toThrow();
+
+      // The sink itself only ran once — it's disabled after its first failure.
+      expect(output).toHaveBeenCalledOnce();
+      // Both entries are still buffered even though the sink is disabled.
+      expect(logger.getRecent().map((e) => e.message)).toEqual(["first", "second"]);
+      consoleSpy.mockRestore();
+    });
+
+    it("guards an async output sink that rejects and mutes it once the rejection settles", async () => {
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const output = vi.fn(() => Promise.reject(new Error("async sink boom")));
+      const logger = new Logger({ level: LogLevel.Debug, output });
+
+      logger.error("core", "first");
+      expect(output).toHaveBeenCalledOnce(); // the sink call itself doesn't throw
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      logger.error("core", "second");
+      // Disabled once the rejection was observed — not called again.
+      expect(output).toHaveBeenCalledOnce();
+      expect(logger.getRecent().map((e) => e.message)).toEqual(["first", "second"]);
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("disabled"),
+        expect.any(Error),
+      );
+      consoleSpy.mockRestore();
+    });
+  });
+
   it("formatRecentLogs handles unknown log level gracefully", () => {
     const logger = new Logger({ level: LogLevel.Debug, bufferSize: 4 });
     logger.info("test", "msg");

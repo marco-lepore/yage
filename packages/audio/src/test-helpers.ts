@@ -42,8 +42,10 @@ export function createAudioTestContext(
   const queryCache = new QueryCache();
   const bus = new EventBus<EngineEvents>();
   const logger = new Logger({ level: LogLevel.Debug });
-  const boundary = new ErrorBoundary(logger);
   const gameLoop = new GameLoop();
+  // Audio tests exercise recovery semantics (a throwing onUnlock callback is
+  // reported, not fatal), so this shared context stays "isolate".
+  const boundary = new ErrorBoundary(logger, "isolate", gameLoop);
   const scheduler = new SystemScheduler();
   scheduler.setErrorBoundary(boundary);
 

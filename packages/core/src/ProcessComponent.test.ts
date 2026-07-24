@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import { ProcessComponent } from "./ProcessComponent.js";
 import { Process } from "./Process.js";
 import { Entity } from "./Entity.js";
+import { createMockEntity } from "./test-utils.js";
+import { ErrorBoundaryKey } from "./EngineContext.js";
 
 function makeComponent(): ProcessComponent {
   const pc = new ProcessComponent();
@@ -245,5 +247,114 @@ describe("ProcessComponent", () => {
     pc._tick(0);
     expect(slot.elapsed).toBe(0);
     expect(slot.completed).toBe(false);
+  });
+
+  describe("error boundary", () => {
+    function makeWiredComponent() {
+      const { entity, context } = createMockEntity("player", "isolate");
+      const pc = new ProcessComponent();
+      entity.add(pc);
+      const boundary = context.tryResolve(ErrorBoundaryKey)!;
+      return { pc, entity, boundary };
+    }
+
+    it("cancels only the throwing process; sibling processes keep running", () => {
+      const { pc, boundary } = makeWiredComponent();
+      const throwing = new Process({
+        update: () => {
+          throw new Error("boom");
+        },
+      });
+      const okSpy = vi.fn();
+      const ok = new Process({ update: okSpy });
+      pc.run(throwing);
+      pc.run(ok);
+
+      expect(() => pc._tick(16)).not.toThrow();
+
+      expect(throwing.completed).toBe(true);
+      expect(okSpy).toHaveBeenCalledWith(16, 16);
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Process callback",
+        outcome: "cancelled",
+      });
+    });
+
+    it("cancels only the throwing slot; sibling slots keep running", () => {
+      const { pc, boundary } = makeWiredComponent();
+      const throwingSlot = pc.slot({
+        duration: 100,
+        update: () => {
+          throw new Error("boom");
+        },
+      });
+      const okSpy = vi.fn();
+      const okSlot = pc.slot({ duration: 100, update: okSpy });
+      throwingSlot.start();
+      okSlot.start();
+
+      expect(() => pc._tick(16)).not.toThrow();
+
+      expect(throwingSlot.completed).toBe(true);
+      expect(okSpy).toHaveBeenCalledWith(16, 16);
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Process slot callback",
+        outcome: "cancelled",
+      });
+    });
+
+    it("cancels a process whose async update rejects", async () => {
+      const { pc, boundary } = makeWiredComponent();
+      const process = new Process({
+        update: (() => Promise.reject(new Error("async boom"))) as unknown as
+          // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
+          (dt: number, elapsed: number) => boolean | void,
+      });
+      pc.run(process);
+
+      pc._tick(16);
+      expect(process.completed).toBe(false); // the rejection hasn't settled yet
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(process.completed).toBe(true);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        outcome: "cancelled",
+        error: "async boom",
+      });
+    });
+
+    it("records the owning entity and scene name", () => {
+      const { pc, entity, boundary } = makeWiredComponent();
+      pc.run(
+        new Process({
+          update: () => {
+            throw new Error("boom");
+          },
+        }),
+      );
+
+      pc._tick(16, "TestScene");
+
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Process callback",
+        entity: entity.name,
+        scene: "TestScene",
+      });
+    });
+
+    it("falls back to an unguarded tick when no boundary is registered", () => {
+      const pc = makeComponent(); // detached entity, never added to a scene
+      const process = new Process({
+        update: () => {
+          throw new Error("boom");
+        },
+      });
+      pc.run(process);
+      expect(() => pc._tick(16)).toThrow("boom");
+    });
   });
 });

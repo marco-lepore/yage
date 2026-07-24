@@ -1,5 +1,5 @@
 import type { SoundLibrary } from "@pixi/sound";
-import { globalRandom, type RandomService } from "@yagejs/core";
+import { globalRandom, type RandomService, type ErrorBoundary } from "@yagejs/core";
 import { SoundHandle } from "./SoundHandle.js";
 import type { AudioConfig, AudioPlayOptions } from "./types.js";
 
@@ -23,6 +23,12 @@ export class AudioManager {
 
   private _autoMuteOnBlur: boolean;
   private readonly _unlockListeners: Array<() => void> = [];
+  /**
+   * Wired by {@link _setErrorBoundary} during `AudioPlugin.install`, since
+   * this manager is constructed directly (no `EngineContext` of its own)
+   * rather than resolved through DI.
+   */
+  private _errorBoundary: ErrorBoundary | undefined;
 
   constructor(
     sound: SoundLibrary,
@@ -217,14 +223,11 @@ export class AudioManager {
    */
   onUnlock(cb: () => void): () => void {
     if (this.isUnlocked()) {
-      try {
-        cb();
-      } catch {
-        // Match the queued path's behavior: a throwing listener must not
-        // propagate back to the registration site. Otherwise the same
-        // callback behaves differently depending on whether it was queued
-        // or fired synchronously.
-      }
+      // Match the queued path's behavior: a throwing listener must not
+      // propagate back to the registration site. Otherwise the same
+      // callback behaves differently depending on whether it was queued
+      // or fired synchronously.
+      this._runUnlockCallback(cb);
       return () => {};
     }
     this._unlockListeners.push(cb);
@@ -264,10 +267,31 @@ export class AudioManager {
     if (!this.isUnlocked()) return;
     const pending = this._unlockListeners.splice(0);
     for (const cb of pending) {
+      this._runUnlockCallback(cb);
+    }
+  }
+
+  /**
+   * Wire the error boundary so a throwing `onUnlock` callback is reported
+   * instead of silently swallowed. Called by `AudioPlugin.install`.
+   * @internal
+   */
+  _setErrorBoundary(boundary: ErrorBoundary | undefined): void {
+    this._errorBoundary = boundary;
+  }
+
+  /**
+   * Run one `onUnlock` callback. One-shot, so there's nothing to unsubscribe
+   * or mute — a throw is reported and otherwise has no consequence.
+   */
+  private _runUnlockCallback(cb: () => void): void {
+    if (this._errorBoundary) {
+      this._errorBoundary.wrapCallback(cb, { kind: "Audio unlock callback" }, "reported");
+    } else {
       try {
         cb();
       } catch {
-        // Swallow: a throwing listener must not poison the rest of the queue.
+        // No boundary registered — match the historical swallow behavior.
       }
     }
   }

@@ -55,6 +55,21 @@ Enforced by tooling — match these conventions exactly:
 - **Entity subclasses with `setup()` for entity types** — preferred pattern for game entities. `defineBlueprint()` still works for simple parametric factories but is deprecated.
 - **Entity events for game logic** — `defineEvent()` / `entity.on()` / `entity.emit()` for entity-scoped events. `EventBus` for global engine events.
 - **`@serializable` for save/load** — decorate Component/Entity/Scene subclasses. Implement `serialize()` + `static fromSnapshot()` for auto-restore. Components with non-serializable state (Textures, Graphics) use `FrameSource` or `textureKey` string alternatives; when raw objects are used, `serialize()` returns `null` and the entity handles reconstruction in `afterRestore()`.
+- **Guard developer-supplied callbacks** — engine code that invokes a callback
+  the game registered (event handlers, collision handlers, input listeners,
+  process callbacks) runs it through `ErrorBoundary.wrapCallback`. Scene
+  lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`, `beforeEnter`)
+  use `ErrorBoundary.wrapLifecycleHook` instead, which reports and rethrows
+  rather than swallowing the error, regardless of policy. `Logger`'s own
+  `output` sink guards itself the same way, since it can't route through the
+  boundary it's reporting into. `ErrorBoundary`'s policy — `EngineConfig.errors`,
+  default `"fatal"` — decides what "guard" means: `"fatal"` reports the culprit,
+  stops the game loop, and rethrows; `"isolate"` disables/removes/mutes the
+  offender instead and keeps the game running. Either way, a new dispatch site
+  needs the wrap: unguarded, a throw is attributed to whoever emitted — the
+  surrounding `System` or `Component` is disabled instead, so one bad line in a
+  game listener stops a whole subsystem. Iterate a snapshot of the handler list
+  wherever the boundary can remove the thrower.
 
 ## Testing
 

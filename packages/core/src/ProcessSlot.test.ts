@@ -200,4 +200,27 @@ describe("ProcessSlot", () => {
     slot.restart(); // restart while running — cleanup fires
     expect(cleanup).toHaveBeenCalledTimes(3);
   });
+
+  describe("_tick return value", () => {
+    it("returns the update callback's result", () => {
+      const slot = new ProcessSlot({ update: () => true });
+      slot.start();
+      expect(slot._tick(16)).toBe(true);
+    });
+
+    it("returns a rejected thenable from an async update callback unchanged, so a caller can attach a rejection handler", async () => {
+      const rejection = Promise.reject(new Error("boom"));
+      const slot = new ProcessSlot({
+        // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
+        update: (() => rejection) as unknown as (dt: number, elapsed: number) => boolean | void,
+      });
+      slot.start();
+
+      const result = slot._tick(16);
+      expect(result).toBe(rejection);
+
+      // Attach a handler so the rejection doesn't surface as unhandled.
+      await expect(result).rejects.toThrow("boom");
+    });
+  });
 });

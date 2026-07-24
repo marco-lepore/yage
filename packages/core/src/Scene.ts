@@ -20,7 +20,9 @@ import {
   AssetManagerKey,
   SceneManagerKey,
   LoggerKey,
+  ErrorBoundaryKey,
 } from "./EngineContext.js";
+import type { ErrorBoundary } from "./ErrorBoundary.js";
 import { devWarn } from "./internal/dev.js";
 
 /**
@@ -196,10 +198,29 @@ export abstract class Scene {
           "`paused = true` before pushing it.",
       );
     }
+    const boundary = this._context.tryResolve(ErrorBoundaryKey);
     if (isEffective) {
-      this.onPause?.();
+      this._invokeLifecycleHook(boundary, "onPause", () => this.onPause?.());
     } else {
-      this.onResume?.();
+      this._invokeLifecycleHook(boundary, "onResume", () => this.onResume?.());
+    }
+  }
+
+  /**
+   * Run a lifecycle hook (`onPause`/`onResume` triggered from this setter,
+   * separate from the push/pop/replace-driven calls in `SceneManager`)
+   * through the error boundary when one is available. Reports and rethrows
+   * so a throwing hook still surfaces exactly as it does today.
+   */
+  private _invokeLifecycleHook(
+    boundary: ErrorBoundary | undefined,
+    phase: string,
+    fn: () => void,
+  ): void {
+    if (boundary) {
+      boundary.wrapLifecycleHook(fn, { kind: `Scene ${phase} hook`, scene: this.name });
+    } else {
+      fn();
     }
   }
 
@@ -595,9 +616,20 @@ export abstract class Scene {
   emit<T>(token: EventToken<T>, data: T): void;
   emit<T>(token: EventToken<T>, data?: T): void {
     const handlers = this._entityEventHandlers?.get(token.name);
-    if (handlers) {
+    if (handlers && handlers.size > 0) {
+      const boundary = this._context?.tryResolve(ErrorBoundaryKey);
       for (const handler of [...handlers]) {
-        (handler as (data: unknown, entity?: Entity) => void)(data, undefined);
+        const call = handler as (data: unknown, entity?: Entity) => void;
+        if (boundary) {
+          boundary.wrapCallback(
+            () => call(data, undefined),
+            { kind: "Scene event handler", scene: this.name, event: token.name },
+            "removed",
+            { onError: () => handlers.delete(handler) },
+          );
+        } else {
+          call(data, undefined);
+        }
       }
     }
   }
@@ -608,9 +640,25 @@ export abstract class Scene {
    */
   _onEntityEvent(eventName: string, data: unknown, entity: Entity): void {
     const handlers = this._entityEventHandlers?.get(eventName);
-    if (handlers) {
+    if (handlers && handlers.size > 0) {
+      const boundary = this._context?.tryResolve(ErrorBoundaryKey);
       for (const handler of [...handlers]) {
-        (handler as (data: unknown, entity?: Entity) => void)(data, entity);
+        const call = handler as (data: unknown, entity?: Entity) => void;
+        if (boundary) {
+          boundary.wrapCallback(
+            () => call(data, entity),
+            {
+              kind: "Scene event handler",
+              scene: this.name,
+              entity: entity.name,
+              event: eventName,
+            },
+            "removed",
+            { onError: () => handlers.delete(handler) },
+          );
+        } else {
+          call(data, entity);
+        }
       }
     }
   }

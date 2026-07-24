@@ -150,7 +150,7 @@ vi.mock("@dimforge/rapier2d", () => ({
   },
 }));
 
-import { Transform } from "@yagejs/core";
+import { Transform, ErrorBoundaryKey } from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { ColliderComponent } from "./ColliderComponent.js";
 import { createPhysicsTestContext, spawnEntityInScene } from "./test-helpers.js";
@@ -285,6 +285,70 @@ describe("ColliderComponent", () => {
       });
       expect(handler).toHaveBeenCalledOnce(); // still 1
     });
+
+    it("removes a throwing handler without disabling the collider or skipping siblings", async () => {
+      const { scene, context } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const col = entity.add(
+        new ColliderComponent({
+          shape: { type: "box", width: 10, height: 10 },
+        }),
+      );
+
+      const calls: string[] = [];
+      // Registered before the throwing handler: iterating a live array (not a
+      // snapshot) would let removing this handler mid-loop shift the next
+      // entry into its slot and skip it, so the ordering here is deliberate.
+      col.onCollision(() => calls.push("before"));
+      col.onCollision(() => {
+        throw new Error("boom");
+      });
+      col.onCollision(() => calls.push("after"));
+
+      col._dispatchCollision({ other: entity, otherCollider: col, started: true });
+
+      expect(calls).toEqual(["before", "after"]);
+
+      const boundary = context.tryResolve(ErrorBoundaryKey)!;
+      const errors = boundary.getCallbackErrors();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({
+        kind: "Collision handler",
+        entity: "test",
+        scene: "test-scene",
+        outcome: "removed",
+        error: "boom",
+      });
+
+      // Second dispatch: the throwing handler is gone, so it can't throw again.
+      calls.length = 0;
+      col._dispatchCollision({ other: entity, otherCollider: col, started: true });
+      expect(calls).toEqual(["before", "after"]);
+      expect(errors).toHaveLength(1); // no repeat report
+    });
+
+    it("under errors: \"fatal\", a throwing handler stops the loop and rethrows out of dispatch", async () => {
+      const { scene, gameLoop } = await createPhysicsTestContext(undefined, "fatal");
+      gameLoop.start();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const col = entity.add(
+        new ColliderComponent({
+          shape: { type: "box", width: 10, height: 10 },
+        }),
+      );
+      col.onCollision(() => {
+        throw new Error("boom");
+      });
+
+      expect(() =>
+        col._dispatchCollision({ other: entity, otherCollider: col, started: true }),
+      ).toThrow("boom");
+      expect(gameLoop.isRunning).toBe(false);
+    });
   });
 
   describe("onTrigger / _dispatchTrigger", () => {
@@ -344,6 +408,38 @@ describe("ColliderComponent", () => {
         entered: false,
       });
       expect(handler).toHaveBeenCalledOnce();
+    });
+
+    it("removes a throwing trigger handler and reports it once even if registered twice", async () => {
+      const { scene, context } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const col = entity.add(
+        new ColliderComponent({
+          shape: { type: "box", width: 10, height: 10 },
+          sensor: true,
+        }),
+      );
+
+      const handler = (): void => {
+        throw new Error("door pad exploded");
+      };
+      // The handler array (unlike the Set-backed entity/scene listeners)
+      // permits registering the same function twice.
+      col.onTrigger(handler);
+      col.onTrigger(handler);
+
+      expect(() =>
+        col._dispatchTrigger({ other: entity, otherCollider: col, entered: true }),
+      ).not.toThrow();
+
+      const boundary = context.tryResolve(ErrorBoundaryKey)!;
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Trigger handler",
+        scene: "test-scene",
+      });
     });
   });
 

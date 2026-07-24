@@ -107,37 +107,42 @@ export class ProcessSlot {
   }
 
   /**
-   * Advance the slot by dt seconds.
+   * Advance the slot by dt seconds. Returns whatever `config.update` returned
+   * — `boolean | void` per its declared type, but nothing stops a caller from
+   * passing an `async` function anyway, so the caller-observed return can
+   * also be a thenable. Returning it lets `tickProcessGuarded` attach a
+   * rejection handler, mirroring `Process._update`.
    * @internal — called by ProcessComponent
    */
-  _tick(dt: number): void {
+  _tick(dt: number): unknown {
     if (this._completed || this._paused) return;
 
     this._elapsed += dt;
 
     // Run per-frame update
     const result = this.config.update?.(dt, this._elapsed);
-    if (this._completed) return;
+    if (this._completed) return result;
 
     // Check duration-based completion
     const duration = this.config.duration;
     if (duration !== undefined && this._elapsed >= duration) {
       if (this.config.loop && result !== true) {
         this._elapsed = this._elapsed % duration;
-        return;
+        return result;
       }
       this._complete();
-      return;
+      return result;
     }
 
     // Check callback-based completion
     if (result === true) {
       if (this.config.loop) {
         this._elapsed = 0;
-        return;
+        return result;
       }
       this._complete();
     }
+    return result;
   }
 
   private _complete(): void {

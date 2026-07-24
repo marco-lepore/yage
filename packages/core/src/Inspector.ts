@@ -5,6 +5,7 @@ import type { Scene } from "./Scene.js";
 import type { SceneManager } from "./SceneManager.js";
 import type { GameLoop } from "./GameLoop.js";
 import type { EventBus, EngineEvents } from "./EventBus.js";
+import type { CallbackErrorRecord } from "./ErrorBoundary.js";
 import {
   EngineContext,
   ErrorBoundaryKey,
@@ -141,6 +142,13 @@ export interface ErrorSnapshot {
     component: string;
     error: string;
   }>;
+  /**
+   * Developer callbacks (collision/event/input/process handlers, scene
+   * lifecycle hooks, ...) that threw, most recent last. Unlike
+   * `disabledSystems`/`disabledComponents`, a callback error doesn't disable
+   * anything wholesale — see each entry's `outcome`.
+   */
+  callbackErrors: CallbackErrorRecord[];
 }
 
 export interface ComponentStateSnapshot {
@@ -864,7 +872,9 @@ export class Inspector {
   /** Get disabled components/systems from error boundary. */
   getErrors(): ErrorSnapshot {
     const boundary = this.engine.context.tryResolve(ErrorBoundaryKey);
-    if (!boundary) return { disabledSystems: [], disabledComponents: [] };
+    if (!boundary) {
+      return { disabledSystems: [], disabledComponents: [], callbackErrors: [] };
+    }
     const disabled = boundary.getDisabled();
     return {
       disabledSystems: disabled.systems.map(
@@ -875,6 +885,7 @@ export class Inspector {
         component: c.component.constructor.name,
         error: c.error,
       })),
+      callbackErrors: [...boundary.getCallbackErrors()],
     };
   }
 

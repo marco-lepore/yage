@@ -2,6 +2,7 @@ import type { Component } from "./Component.js";
 import type { ComponentClass } from "./types.js";
 import type { SceneTransitionKind } from "./SceneTransition.js";
 import type { Scene } from "./Scene.js";
+import type { ErrorBoundary } from "./ErrorBoundary.js";
 
 // Forward declarations for event payloads
 type EntityRef = { readonly id: number; readonly name: string };
@@ -47,6 +48,18 @@ export interface EngineEvents {
 export class EventBus<E = EventMap> {
   private handlers = new Map<keyof E, Array<(data: never) => void>>();
   private observers = new Set<(event: keyof E, data: E[keyof E]) => void>();
+  private errorBoundary: ErrorBoundary | undefined;
+
+  /**
+   * Wire the error boundary so a throwing handler or `tap` observer is
+   * reported instead of stopping every other listener. `EventBus` has no
+   * `EngineContext` of its own (a no-arg constructor, usable standalone), so
+   * `Engine` calls this once after both are constructed.
+   * @internal
+   */
+  _setErrorBoundary(boundary: ErrorBoundary): void {
+    this.errorBoundary = boundary;
+  }
 
   /** Subscribe to an event. Returns an unsubscribe function. */
   on<K extends keyof E>(event: K, handler: (data: E[K]) => void): () => void {
@@ -67,19 +80,37 @@ export class EventBus<E = EventMap> {
 
   /** Subscribe to an event, auto-unsubscribe after first emission. */
   once<K extends keyof E>(event: K, handler: (data: E[K]) => void): () => void {
+    // Returns handler's result (rather than discarding it) so a rejected
+    // thenable from an async handler still reaches emit()'s wrapCallback.
     const unsub = this.on(event, (data) => {
       unsub();
-      handler(data);
+      return handler(data);
     });
     return unsub;
   }
 
-  /** Emit an event. Handlers are called synchronously in registration order. */
+  /**
+   * Emit an event. Handlers are called synchronously in registration order.
+   * A throwing handler or `tap` observer stays registered — the boundary
+   * mutes repeat failures from the same handler+event pair rather than
+   * removing it, since bus listeners are usually engine plugins (renderer,
+   * debug overlay, ...) that every other listener depends on staying wired.
+   */
   emit<K extends keyof E>(event: K, data: E[K]): void {
+    const eventName = String(event);
     if (this.observers.size > 0) {
       const observers = [...this.observers];
       for (const observer of observers) {
-        observer(event, data);
+        if (this.errorBoundary) {
+          this.errorBoundary.wrapCallback(
+            () => observer(event, data),
+            { kind: "Event bus observer", event: eventName },
+            "muted",
+            { muteKey: { handler: observer, event: eventName } },
+          );
+        } else {
+          observer(event, data);
+        }
       }
     }
 
@@ -88,7 +119,16 @@ export class EventBus<E = EventMap> {
     // Iterate a copy so handlers can unsubscribe during emission
     const snapshot = [...list];
     for (const handler of snapshot) {
-      handler(data as never);
+      if (this.errorBoundary) {
+        this.errorBoundary.wrapCallback(
+          () => handler(data as never),
+          { kind: "Event bus handler", event: eventName },
+          "muted",
+          { muteKey: { handler, event: eventName } },
+        );
+      } else {
+        handler(data as never);
+      }
     }
   }
 

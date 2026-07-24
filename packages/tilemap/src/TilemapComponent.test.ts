@@ -122,8 +122,10 @@ function createTestContext() {
   const queryCache = new QueryCache();
   const bus = new EventBus<EngineEvents>();
   const logger = new Logger({ level: LogLevel.Debug });
-  const boundary = new ErrorBoundary(logger);
   const gameLoop = new GameLoop();
+  // Not exercising error-boundary behavior — "isolate" just keeps this
+  // context's unrelated tests from throwing if something misbehaves.
+  const boundary = new ErrorBoundary(logger, "isolate", gameLoop);
   const scheduler = new SystemScheduler();
   scheduler.setErrorBoundary(boundary);
 
