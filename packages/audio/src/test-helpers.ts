@@ -16,7 +16,7 @@ import {
   Entity,
   _resetEntityIdCounter,
 } from "@yagejs/core";
-import type { EngineEvents } from "@yagejs/core";
+import type { EngineEvents, ErrorPolicy } from "@yagejs/core";
 import { AudioManagerKey } from "./types.js";
 import type { AudioManager } from "./AudioManager.js";
 
@@ -35,6 +35,7 @@ export interface AudioTestContext {
 
 export function createAudioTestContext(
   audioManager: AudioManager,
+  errorPolicy: ErrorPolicy = "fatal",
 ): AudioTestContext {
   _resetEntityIdCounter();
 
@@ -43,9 +44,10 @@ export function createAudioTestContext(
   const bus = new EventBus<EngineEvents>();
   const logger = new Logger({ level: LogLevel.Debug });
   const gameLoop = new GameLoop();
-  // Audio tests exercise recovery semantics (a throwing onUnlock callback is
-  // reported, not fatal), so this shared context stays "isolate".
-  const boundary = new ErrorBoundary(logger, "isolate", gameLoop);
+  // Defaults to "fatal", matching a real Engine. Pass "isolate" for a test
+  // that specifically exercises recovery (a throwing onUnlock callback
+  // reported instead of rethrown).
+  const boundary = new ErrorBoundary(logger, errorPolicy, gameLoop);
   const scheduler = new SystemScheduler();
   scheduler.setErrorBoundary(boundary);
 

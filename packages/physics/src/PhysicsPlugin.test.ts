@@ -114,7 +114,7 @@ describe("PhysicsPlugin", () => {
       plugin.install(context);
 
       const logger = new Logger({ level: LogLevel.Debug });
-      const boundary = new ErrorBoundary(logger, "isolate");
+      const boundary = new ErrorBoundary(logger, "fatal");
       const scheduler = new SystemScheduler();
       scheduler.setErrorBoundary(boundary);
 

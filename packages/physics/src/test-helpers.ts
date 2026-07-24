@@ -53,7 +53,7 @@ export interface PhysicsTestContext {
 
 export async function createPhysicsTestContext(
   config?: PhysicsConfig,
-  errorPolicy: ErrorPolicy = "isolate",
+  errorPolicy: ErrorPolicy = "fatal",
 ): Promise<PhysicsTestContext> {
   _resetEntityIdCounter();
 
@@ -62,9 +62,9 @@ export async function createPhysicsTestContext(
   const bus = new EventBus<EngineEvents>();
   const logger = new Logger({ level: LogLevel.Debug });
   const gameLoop = new GameLoop();
-  // Defaults to "isolate" — most physics tests exercise recovery semantics
-  // (a throwing collision handler leaves PhysicsSystem enabled). Pass
-  // "fatal" to exercise the stop-the-loop-and-rethrow path instead.
+  // Defaults to "fatal", matching a real Engine. Pass "isolate" for a test
+  // that specifically exercises recovery (a throwing collision handler
+  // leaving PhysicsSystem enabled).
   const boundary = new ErrorBoundary(logger, errorPolicy, gameLoop);
   const scheduler = new SystemScheduler();
   scheduler.setErrorBoundary(boundary);

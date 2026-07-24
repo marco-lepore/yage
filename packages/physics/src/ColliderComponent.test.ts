@@ -287,7 +287,7 @@ describe("ColliderComponent", () => {
     });
 
     it("removes a throwing handler without disabling the collider or skipping siblings", async () => {
-      const { scene, context } = await createPhysicsTestContext();
+      const { scene, context } = await createPhysicsTestContext(undefined, "isolate");
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -411,7 +411,7 @@ describe("ColliderComponent", () => {
     });
 
     it("removes a throwing trigger handler and reports it once even if registered twice", async () => {
-      const { scene, context } = await createPhysicsTestContext();
+      const { scene, context } = await createPhysicsTestContext(undefined, "isolate");
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       entity.add(new RigidBodyComponent({ type: "dynamic" }));

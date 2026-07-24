@@ -18,7 +18,7 @@ import {
   Entity,
   _resetEntityIdCounter,
 } from "@yagejs/core";
-import type { EngineEvents } from "@yagejs/core";
+import type { EngineEvents, ErrorPolicy } from "@yagejs/core";
 import {
   RenderLayerManager,
   SceneRenderTreeKey,
@@ -88,7 +88,9 @@ export interface ParticlesTestContext {
   layerManager: RenderLayerManager;
 }
 
-export function createParticlesTestContext(): ParticlesTestContext {
+export function createParticlesTestContext(
+  errorPolicy: ErrorPolicy = "fatal",
+): ParticlesTestContext {
   _resetEntityIdCounter();
 
   const ctx = new EngineContext();
@@ -96,9 +98,9 @@ export function createParticlesTestContext(): ParticlesTestContext {
   const bus = new EventBus<EngineEvents>();
   const logger = new Logger({ level: LogLevel.Debug });
   const gameLoop = new GameLoop();
-  // Not exercising error-boundary behavior — "isolate" just keeps this
-  // context's unrelated tests from throwing if something misbehaves.
-  const boundary = new ErrorBoundary(logger, "isolate", gameLoop);
+  // Defaults to "fatal", matching a real Engine. Pass "isolate" for a test
+  // that specifically exercises recovery.
+  const boundary = new ErrorBoundary(logger, errorPolicy, gameLoop);
   const scheduler = new SystemScheduler();
   scheduler.setErrorBoundary(boundary);
 

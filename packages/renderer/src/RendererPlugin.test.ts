@@ -140,13 +140,13 @@ import {
   SceneHookRegistry,
   SceneHookRegistryKey,
 } from "@yagejs/core";
-import type { EngineEvents, SceneTransition } from "@yagejs/core";
+import type { EngineEvents, ErrorPolicy, SceneTransition } from "@yagejs/core";
 import { RendererPlugin } from "./RendererPlugin.js";
 import { RendererKey } from "./types.js";
 import { SceneRenderTreeProviderKey } from "./SceneRenderTree.js";
 import type { RendererConfig } from "./types.js";
 
-function createInstallContext(): {
+function createInstallContext(errorPolicy: ErrorPolicy = "fatal"): {
   context: EngineContext;
   gameLoop: GameLoop;
   scheduler: SystemScheduler;
@@ -157,9 +157,9 @@ function createInstallContext(): {
   const queryCache = new QueryCache();
   const bus = new EventBus<EngineEvents>();
   const logger = new Logger({ level: LogLevel.Debug });
-  // Not exercising error-boundary behavior — "isolate" just keeps this
-  // context's unrelated tests from throwing if something misbehaves.
-  const boundary = new ErrorBoundary(logger, "isolate", gameLoop);
+  // Defaults to "fatal", matching a real Engine. Pass "isolate" for a test
+  // that specifically exercises recovery.
+  const boundary = new ErrorBoundary(logger, errorPolicy, gameLoop);
 
   context.register(GameLoopKey, gameLoop);
   context.register(SystemSchedulerKey, scheduler);

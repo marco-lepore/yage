@@ -18,7 +18,7 @@ import {
   SceneManager,
   serializable,
 } from "@yagejs/core";
-import type { EngineEvents } from "@yagejs/core";
+import type { EngineEvents, ErrorPolicy } from "@yagejs/core";
 import type { SnapshotResolver } from "@yagejs/core";
 import { MemoryStorage } from "./test-helpers.js";
 import type { GameSnapshot } from "./types.js";
@@ -152,15 +152,15 @@ class PauseTrackingScene extends Scene {
 
 // ---- Helpers ----
 
-function createTestContext() {
+function createTestContext(errorPolicy: ErrorPolicy = "fatal") {
   _resetEntityIdCounter();
   const ctx = new EngineContext();
   const queryCache = new QueryCache();
   const bus = new EventBus<EngineEvents>();
   const logger = new Logger({ level: LogLevel.Debug });
-  // Not exercising error-boundary behavior — "isolate" just keeps this
-  // context's unrelated tests from throwing if something misbehaves.
-  const boundary = new ErrorBoundary(logger, "isolate");
+  // Defaults to "fatal", matching a real Engine. Pass "isolate" for a test
+  // that specifically exercises recovery.
+  const boundary = new ErrorBoundary(logger, errorPolicy);
   const sceneManager = new SceneManager();
 
   ctx.register(QueryCacheKey, queryCache);
