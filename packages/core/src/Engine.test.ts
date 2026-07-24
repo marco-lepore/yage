@@ -4,6 +4,7 @@ import { Scene } from "./Scene.js";
 import { Component } from "./Component.js";
 import type { Plugin } from "./types.js";
 import { _resetEntityIdCounter } from "./Entity.js";
+import { defineEvent } from "./EventToken.js";
 import {
   EngineKey,
   EventBusKey,
@@ -252,7 +253,7 @@ describe("Engine", () => {
       engine.destroy();
     });
 
-    it("disables crashing component via ErrorBoundary", async () => {
+    it("a crashing component stops the loop and throws out of tick(), without being disabled", async () => {
       const engine = new Engine();
       await engine.start();
       const scene = new TestScene();
@@ -261,8 +262,34 @@ describe("Engine", () => {
       const comp = new CrashingComponent();
       entity.add(comp);
 
-      engine.loop.tick(16); // Should not throw
-      expect(comp.enabled).toBe(false);
+      expect(() => engine.loop.tick(16)).toThrow("crash!");
+      expect(comp.enabled).toBe(true);
+      expect(engine.loop.isRunning).toBe(false);
+      engine.destroy();
+    });
+  });
+
+  describe("error handling", () => {
+    it("a caller's own try/catch around a dispatching call leaves the loop running", async () => {
+      const engine = new Engine();
+      await engine.start();
+      const scene = new TestScene();
+      await engine.scenes.push(scene);
+      const entity = scene.spawn("emitter");
+      const Boom = defineEvent("boom");
+      entity.on(Boom, () => {
+        throw new Error("handler blew up");
+      });
+
+      let caught: unknown;
+      try {
+        entity.emit(Boom);
+      } catch (err) {
+        caught = err;
+      }
+
+      expect((caught as Error)?.message).toBe("handler blew up");
+      expect(engine.loop.isRunning).toBe(true);
       engine.destroy();
     });
   });

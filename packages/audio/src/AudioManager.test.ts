@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { SoundLibrary, IMediaInstance } from "@pixi/sound";
+import { ErrorBoundary, Logger, LogLevel } from "@yagejs/core";
 import { AudioManager } from "./AudioManager.js";
 
 type MockMediaInstance = IMediaInstance & { _emit(event: string): void };
@@ -398,6 +399,48 @@ describe("AudioManager", () => {
           throw new Error("boom");
         }),
       ).not.toThrow();
+    });
+
+    describe("with an error boundary wired", () => {
+      it("reports and rethrows a throwing queued listener, leaving the rest of the queue unrun", () => {
+        const s = createMockSoundLibrary({ state: "suspended" });
+        const m = new AudioManager(s);
+        const logger = new Logger({ level: LogLevel.Debug });
+        const boundary = new ErrorBoundary(logger);
+        m._setErrorBoundary(boundary);
+        const after = vi.fn();
+
+        m.onUnlock(() => {
+          throw new Error("boom");
+        });
+        m.onUnlock(after);
+        setAudioContextState(s, "running");
+
+        expect(() => m._handleGesture()).toThrow("boom");
+
+        expect(after).not.toHaveBeenCalled();
+        const errors = boundary.getCallbackErrors();
+        expect(errors).toHaveLength(1);
+        expect(errors[0]).toMatchObject({
+          kind: "Audio unlock callback",
+          error: "boom",
+        });
+      });
+
+      it("reports and rethrows a throwing listener on the synchronous (already-unlocked) path", () => {
+        const s = createMockSoundLibrary({ state: "running" });
+        const m = new AudioManager(s);
+        const logger = new Logger({ level: LogLevel.Debug });
+        const boundary = new ErrorBoundary(logger);
+        m._setErrorBoundary(boundary);
+
+        expect(() =>
+          m.onUnlock(() => {
+            throw new Error("boom");
+          }),
+        ).toThrow("boom");
+        expect(boundary.getCallbackErrors()).toHaveLength(1);
+      });
     });
   });
 

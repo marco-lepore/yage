@@ -150,7 +150,7 @@ vi.mock("@dimforge/rapier2d", () => ({
   },
 }));
 
-import { Transform } from "@yagejs/core";
+import { Transform, ErrorBoundaryKey } from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { ColliderComponent } from "./ColliderComponent.js";
 import { createPhysicsTestContext, spawnEntityInScene } from "./test-helpers.js";
@@ -285,6 +285,41 @@ describe("ColliderComponent", () => {
       });
       expect(handler).toHaveBeenCalledOnce(); // still 1
     });
+
+    it("a throwing collision handler rethrows, stopping later handlers in the same dispatch", async () => {
+      const { scene, context } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const col = entity.add(
+        new ColliderComponent({
+          shape: { type: "box", width: 10, height: 10 },
+        }),
+      );
+
+      const calls: string[] = [];
+      col.onCollision(() => calls.push("before"));
+      col.onCollision(() => {
+        throw new Error("boom");
+      });
+      col.onCollision(() => calls.push("after"));
+
+      expect(() =>
+        col._dispatchCollision({ other: entity, otherCollider: col, started: true }),
+      ).toThrow("boom");
+
+      expect(calls).toEqual(["before"]);
+
+      const boundary = context.tryResolve(ErrorBoundaryKey)!;
+      const errors = boundary.getCallbackErrors();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({
+        kind: "Collision handler",
+        entity: "test",
+        scene: "test-scene",
+        error: "boom",
+      });
+    });
   });
 
   describe("onTrigger / _dispatchTrigger", () => {
@@ -344,6 +379,39 @@ describe("ColliderComponent", () => {
         entered: false,
       });
       expect(handler).toHaveBeenCalledOnce();
+    });
+
+    it("a throwing trigger handler rethrows and is reported once, even when registered twice", async () => {
+      const { scene, context } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const col = entity.add(
+        new ColliderComponent({
+          shape: { type: "box", width: 10, height: 10 },
+          sensor: true,
+        }),
+      );
+
+      const handler = (): void => {
+        throw new Error("door pad exploded");
+      };
+      // The handler array (unlike the Set-backed entity/scene listeners)
+      // permits registering the same function twice. The first entry's throw
+      // stops dispatch before the second entry runs.
+      col.onTrigger(handler);
+      col.onTrigger(handler);
+
+      expect(() =>
+        col._dispatchTrigger({ other: entity, otherCollider: col, entered: true }),
+      ).toThrow("door pad exploded");
+
+      const boundary = context.tryResolve(ErrorBoundaryKey)!;
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Trigger handler",
+        scene: "test-scene",
+      });
     });
   });
 
@@ -590,5 +658,26 @@ describe("ColliderComponent", () => {
         ColliderComponent.restorePriority,
       );
     });
+  });
+});
+
+describe("dispatch iteration safety", () => {
+  it("a handler that unsubscribes itself does not skip the next handler", async () => {
+    const { scene } = await createPhysicsTestContext();
+    const e = scene.spawn("e");
+    e.add(new Transform());
+    e.add(new RigidBodyComponent({ type: "dynamic" }));
+    const col = e.add(new ColliderComponent({ shape: { type: "box", width: 10, height: 10 } }));
+
+    const seen: string[] = [];
+    const unsub = col.onCollision(() => {
+      seen.push("first");
+      unsub();
+    });
+    col.onCollision(() => seen.push("second"));
+
+    col._dispatchCollision({} as never);
+
+    expect(seen).toEqual(["first", "second"]);
   });
 });

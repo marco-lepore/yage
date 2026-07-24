@@ -1,8 +1,11 @@
 import { Component } from "./Component.js";
 import type { Process } from "./Process.js";
+import { tickProcessGuarded } from "./Process.js";
 import { ProcessSlot } from "./ProcessSlot.js";
 import type { ProcessSlotConfig } from "./ProcessSlot.js";
 import { serializable } from "./Serializable.js";
+import { ErrorBoundaryKey } from "./EngineContext.js";
+import type { ErrorBoundary, CallbackErrorInfo } from "./ErrorBoundary.js";
 
 /**
  * A component that holds a set of processes on an entity.
@@ -13,6 +16,22 @@ import { serializable } from "./Serializable.js";
 export class ProcessComponent extends Component {
   private processes = new Set<Process>();
   private slots = new Set<ProcessSlot>();
+  private errorBoundary: ErrorBoundary | undefined;
+
+  /**
+   * Resolve and cache the error boundary from the entity's scene context.
+   * Unlike ColliderComponent, ProcessComponent works detached from any scene
+   * (tweening a standalone entity is a supported, scene-free use case), so
+   * this can't use `this.context`, which throws when the entity has no
+   * scene — `tryScene` degrades to `null` instead. An entity can also gain a
+   * scene after `onAdd` (`Entity.addChild` auto-adds a scene-less child to
+   * its parent's scene), so this retries on every `_tick` until a boundary
+   * is found, then caches it to avoid a repeated lookup per frame.
+   */
+  private _resolveBoundary(): void {
+    if (this.errorBoundary) return;
+    this.errorBoundary = this.entity.tryScene?.context?.tryResolve(ErrorBoundaryKey);
+  }
 
   /**
    * Run a one-off process (tween, sequence, delay).
@@ -74,19 +93,43 @@ export class ProcessComponent extends Component {
   }
 
   /**
-   * Advance all processes and slots by dt seconds and remove completed one-offs.
+   * Advance all processes and slots by dt seconds and remove completed
+   * one-offs, via the same `tickProcessGuarded` path `ProcessSystem` uses
+   * for its pools.
    * @internal — called by ProcessSystem
    */
-  _tick(dt: number): void {
+  _tick(dt: number, scene?: string): void {
+    this._resolveBoundary();
+    const entity = this.entity?.name;
     for (const p of this.processes) {
-      p._update(dt);
+      tickProcessGuarded(
+        this.errorBoundary,
+        () => p._update(dt),
+        this._info("Process callback", entity, scene),
+      );
       if (p.completed) {
         this.processes.delete(p);
       }
     }
     for (const s of this.slots) {
-      s._tick(dt);
+      tickProcessGuarded(
+        this.errorBoundary,
+        () => s._tick(dt),
+        this._info("Process slot callback", entity, scene),
+      );
     }
+  }
+
+  private _info(
+    kind: string,
+    entity: string | undefined,
+    scene: string | undefined,
+  ): CallbackErrorInfo {
+    return {
+      kind,
+      ...(entity !== undefined ? { entity } : {}),
+      ...(scene !== undefined ? { scene } : {}),
+    };
   }
 
   /** Cancel all processes and slots on entity destroy. */

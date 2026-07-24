@@ -85,13 +85,19 @@ export class Engine {
     this.events = new EventBus<EngineEvents>();
     this.logger = new Logger(config?.logger);
     this.queryCache = new QueryCache();
-    this.errorBoundary = new ErrorBoundary(this.logger);
     this.loop = new GameLoop(config);
+    this.errorBoundary = new ErrorBoundary(this.logger);
     this.scenes = new SceneManager();
     this.scheduler = new SystemScheduler();
     this.inspector = new Inspector(this);
     this.assets = new AssetManager();
     this.sceneHooks = new SceneHookRegistry();
+
+    // EventBus and SceneHookRegistry are constructed directly rather than
+    // resolved through EngineContext, so they can't reach the boundary the
+    // way a Component/System does — wire it once here.
+    this.events._setErrorBoundary(this.errorBoundary);
+    this.sceneHooks._setErrorBoundary(this.errorBoundary);
 
     // Wire up the scheduler with error boundary
     this.scheduler.setErrorBoundary(this.errorBoundary);

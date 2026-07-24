@@ -97,7 +97,7 @@ window.__yage__.inspector.getEntities();                    // all entities in a
 window.__yage__.inspector.getEntityByName("player");        // single entity
 window.__yage__.inspector.getComponentData("player", "SpriteComponent");
 window.__yage__.inspector.getSceneStack();                  // scenes + pause state
-window.__yage__.inspector.getErrors();                      // anything disabled by ErrorBoundary
+window.__yage__.inspector.getErrors();                      // failures recorded by ErrorBoundary
 window.__yage__.inspector.time.freeze();                    // stop auto-advance
 window.__yage__.inspector.time.step(1);                     // advance one frame (sync)
 window.__yage__.inspector.input.keyDown("ArrowRight");      // synthetic input

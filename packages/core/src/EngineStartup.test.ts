@@ -33,7 +33,7 @@ describe("Engine startup", () => {
       await startPromise;
 
       expect(engine.loop.frameCount).toBe(0);
-      expect(engine.inspector.getErrors().disabledSystems).toEqual([]);
+      expect(engine.inspector.getErrors().callbackErrors).toEqual([]);
       expect(engine.inspector.getSystems().every((system) => system.enabled)).toBe(
         true,
       );

@@ -1,4 +1,24 @@
 import type { EasingFunction } from "./types.js";
+import type { ErrorBoundary, CallbackErrorInfo } from "./ErrorBoundary.js";
+
+/**
+ * Ticks one process or slot through the error boundary — a throw, synchronous
+ * or from a rejected thenable returned by an `async` update/completion
+ * callback, is attributed and rethrown. Shared by `ProcessSystem` (pool
+ * processes) and `ProcessComponent` (entity-owned processes and slots) so
+ * there is one guarded code path regardless of where the process lives.
+ */
+export function tickProcessGuarded(
+  boundary: ErrorBoundary | undefined,
+  run: () => unknown,
+  info: CallbackErrorInfo,
+): void {
+  if (!boundary) {
+    run();
+    return;
+  }
+  boundary.wrapCallback(run, info);
+}
 
 /** Options for creating a Process. */
 export interface ProcessOptions {
@@ -102,10 +122,15 @@ export class Process {
   }
 
   /**
-   * Advance the process by dt seconds.
+   * Advance the process by dt seconds. Returns whatever `updateFn` returned —
+   * `boolean | void` per its declared type, but nothing stops a caller from
+   * passing an `async` function anyway, so the caller-observed return can
+   * also be a thenable. Returning it lets `tickProcessGuarded` attach a
+   * rejection handler; the `boolean | void` typing means every existing
+   * caller that ignores the return value keeps compiling.
    * @internal
    */
-  _update(dt: number): void {
+  _update(dt: number): unknown {
     if (this._completed || this._paused || this._cancelled) return;
 
     this._elapsed += dt;
@@ -115,10 +140,10 @@ export class Process {
       const result = this.updateFn(dt, this._elapsed);
       if (this.loop && result !== true) {
         this._elapsed = this._elapsed % this.duration;
-        return;
+        return result;
       }
       this.complete();
-      return;
+      return result;
     }
 
     // Check callback-based completion
@@ -126,10 +151,11 @@ export class Process {
     if (result === true) {
       if (this.loop) {
         this._elapsed = 0;
-        return;
+        return result;
       }
       this.complete();
     }
+    return result;
   }
 
   /**

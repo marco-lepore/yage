@@ -125,6 +125,12 @@ export class GameLoop {
    * Process one frame. `dtMs` is the wall-clock delta in milliseconds (the
    * unit PixiJS tickers report). It is converted to seconds here, so every
    * callback receives seconds.
+   *
+   * A throw that escapes the whole frame — nothing downstream caught it —
+   * stops the loop and rethrows, so it reaches the host (a caller's own
+   * `try`/`catch`, `window.onerror`, or an unhandled-rejection handler). An
+   * error handled inside the frame (a caller's `try`/`catch` around, say,
+   * `entity.emit(...)`) never reaches here, so the loop keeps running.
    */
   tick(dtMs: number): void {
     if (!this.running || !this.callbacks) return;
@@ -134,31 +140,36 @@ export class GameLoop {
 
     const dt = dtMs / 1000;
 
-    // 1. Early Update
-    this.callbacks.earlyUpdate(dt);
+    try {
+      // 1. Early Update
+      this.callbacks.earlyUpdate(dt);
 
-    // 2. Fixed Update (accumulator-based)
-    this.accumulator += dt;
-    let steps = 0;
-    while (
-      this.accumulator >= this.fixedTimestep &&
-      steps < this.maxFixedStepsPerFrame
-    ) {
-      this.callbacks.fixedUpdate(this.fixedTimestep);
-      this.accumulator -= this.fixedTimestep;
-      steps++;
+      // 2. Fixed Update (accumulator-based)
+      this.accumulator += dt;
+      let steps = 0;
+      while (
+        this.accumulator >= this.fixedTimestep &&
+        steps < this.maxFixedStepsPerFrame
+      ) {
+        this.callbacks.fixedUpdate(this.fixedTimestep);
+        this.accumulator -= this.fixedTimestep;
+        steps++;
+      }
+
+      // 3. Update
+      this.callbacks.update(dt);
+
+      // 4. Late Update
+      this.callbacks.lateUpdate(dt);
+
+      // 5. Render
+      this.callbacks.render(dt);
+
+      // 6. End of Frame
+      this.callbacks.endOfFrame(dt);
+    } catch (err) {
+      this.stop();
+      throw err;
     }
-
-    // 3. Update
-    this.callbacks.update(dt);
-
-    // 4. Late Update
-    this.callbacks.lateUpdate(dt);
-
-    // 5. Render
-    this.callbacks.render(dt);
-
-    // 6. End of Frame
-    this.callbacks.endOfFrame(dt);
   }
 }

@@ -3,10 +3,17 @@ import { ProcessSystem } from "./ProcessSystem.js";
 import { ProcessComponent } from "./ProcessComponent.js";
 import { Process } from "./Process.js";
 import { Entity, _resetEntityIdCounter } from "./Entity.js";
-import { EngineContext, SceneManagerKey } from "./EngineContext.js";
+import { EngineContext, SceneManagerKey, ErrorBoundaryKey } from "./EngineContext.js";
+import { ErrorBoundary } from "./ErrorBoundary.js";
+import { Logger, LogLevel } from "./Logger.js";
 import { Phase } from "./types.js";
 
 class MockScene {
+  name = "TestScene";
+  // Set by tests that need ProcessComponent.onAdd() to resolve a real
+  // ErrorBoundary — a bare MockScene has no context, matching an entity
+  // that was never routed through the engine's scene binding.
+  context: EngineContext | undefined;
   private entities = new Set<Entity>();
   timeScale = 1;
   isPaused = false;
@@ -275,6 +282,138 @@ describe("ProcessSystem", () => {
       sys.add(new Process({ update: spy }));
       sys.update(20);
       expect(spy).toHaveBeenCalledWith(10, 10);
+    });
+  });
+
+  describe("throwing process callbacks (with an error boundary wired)", () => {
+    function setupWithBoundary() {
+      _resetEntityIdCounter();
+      const sceneManager = new MockSceneManager();
+      const ctx = new EngineContext();
+      ctx.register(SceneManagerKey, sceneManager as never);
+      const logger = new Logger({ level: LogLevel.Debug });
+      const boundary = new ErrorBoundary(logger);
+      ctx.register(ErrorBoundaryKey, boundary);
+
+      const sys = new ProcessSystem();
+      sys._setContext(ctx);
+      sys.onRegister?.(ctx);
+
+      return { sys, sceneManager, boundary, ctx };
+    }
+
+    it("a throwing global process rethrows, stopping later processes in the same update", () => {
+      const { sys, boundary } = setupWithBoundary();
+      const throwing = new Process({
+        update: () => {
+          throw new Error("boom");
+        },
+      });
+      const otherSpy = vi.fn();
+      const other = new Process({ update: otherSpy });
+      sys.add(throwing);
+      sys.add(other);
+
+      expect(() => sys.update(16)).toThrow("boom");
+
+      expect(throwing.completed).toBe(false);
+      expect(otherSpy).not.toHaveBeenCalled();
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+    });
+
+    it("a global process's async rejection is reported without completing it", async () => {
+      const { sys, boundary } = setupWithBoundary();
+      const rejection = new Promise<unknown>((resolve) => {
+        process.once("unhandledRejection", resolve);
+      });
+      const p = new Process({
+        update: (() => Promise.reject(new Error("async boom"))) as unknown as
+          // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
+          (dt: number, elapsed: number) => boolean | void,
+      });
+      sys.add(p);
+
+      sys.update(16);
+      expect(p.completed).toBe(false); // the rejection hasn't settled yet
+
+      const reason = await rejection;
+      expect((reason as Error).message).toBe("async boom");
+      expect(p.completed).toBe(false); // never cancelled — resilience is deferred
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        error: "async boom",
+      });
+    });
+
+    it("a process whose onComplete callback throws still completes, and rethrows", () => {
+      const { sys, boundary } = setupWithBoundary();
+      const p = new Process({
+        update: () => true, // completes immediately
+        onComplete: () => {
+          throw new Error("onComplete boom");
+        },
+      });
+      sys.add(p);
+
+      expect(() => sys.update(16)).toThrow("onComplete boom");
+      expect(p.completed).toBe(true); // Process.complete() flips this before onComplete runs
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        error: "onComplete boom",
+      });
+    });
+
+    it("scene-pool process errors record the scene name", () => {
+      const { sys, sceneManager, boundary } = setupWithBoundary();
+      const scene = new MockScene();
+      sceneManager.activeScene = scene;
+      sys.addForScene(
+        scene as never,
+        new Process({
+          update: () => {
+            throw new Error("boom");
+          },
+        }),
+      );
+
+      expect(() => sys.update(16)).toThrow("boom");
+
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Process callback",
+        scene: "TestScene",
+      });
+    });
+
+    it("a throwing entity-owned process rethrows, stopping other entities' processes for that update", () => {
+      const { sys, sceneManager, boundary, ctx } = setupWithBoundary();
+      const scene = new MockScene();
+      scene.context = ctx;
+      sceneManager.activeScene = scene;
+
+      const thrower = scene.spawn("thrower");
+      const throwerPc = new ProcessComponent();
+      thrower.add(throwerPc);
+      throwerPc.run(
+        new Process({
+          update: () => {
+            throw new Error("boom");
+          },
+        }),
+      );
+
+      const ok = scene.spawn("ok");
+      const okPc = new ProcessComponent();
+      ok.add(okPc);
+      const okSpy = vi.fn();
+      okPc.run(new Process({ update: okSpy }));
+
+      expect(() => sys.update(16)).toThrow("boom");
+
+      expect(okSpy).not.toHaveBeenCalled();
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Process callback",
+        entity: "thrower",
+        scene: "TestScene",
+      });
     });
   });
 });

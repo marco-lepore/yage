@@ -1,5 +1,17 @@
-import { Component, devWarn, filterEntities, serializable } from "@yagejs/core";
-import type { Entity, ComponentClass, EntityFilter, TraitToken } from "@yagejs/core";
+import {
+  Component,
+  devWarn,
+  filterEntities,
+  serializable,
+  ErrorBoundaryKey,
+} from "@yagejs/core";
+import type {
+  Entity,
+  ComponentClass,
+  EntityFilter,
+  TraitToken,
+  ErrorBoundary,
+} from "@yagejs/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { PhysicsWorldKey } from "./types.js";
@@ -28,6 +40,7 @@ export class ColliderComponent extends Component {
 
   private readonly rb = this.sibling(RigidBodyComponent);
   private physicsWorld!: PhysicsWorld;
+  private errorBoundary: ErrorBoundary | undefined;
   private collisionHandlers: Array<(e: CollisionEvent) => void> = [];
   private triggerHandlers: Array<(e: TriggerEvent) => void> = [];
   private _warnedSensorMismatch = false;
@@ -38,6 +51,10 @@ export class ColliderComponent extends Component {
   }
 
   onAdd(): void {
+    // Resolve before creating the Rapier collider: an optional lookup can't
+    // throw, so a hand-built test context with no boundary registered still
+    // leaves onAdd fully completed rather than half-done.
+    this.errorBoundary = this.context.tryResolve(ErrorBoundaryKey);
     this.physicsWorld = this.use(PhysicsWorldKey);
 
     this._colliderHandle = this.physicsWorld.createCollider(
@@ -144,17 +161,36 @@ export class ColliderComponent extends Component {
    * @internal Called by PhysicsWorld during event dispatch.
    */
   _dispatchCollision(event: CollisionEvent): void {
-    for (const handler of this.collisionHandlers) {
-      handler(event);
-    }
+    this._dispatch(this.collisionHandlers, (h) => h(event), "Collision handler");
   }
 
   /**
    * @internal Called by PhysicsWorld during event dispatch.
    */
   _dispatchTrigger(event: TriggerEvent): void {
-    for (const handler of this.triggerHandlers) {
-      handler(event);
+    this._dispatch(this.triggerHandlers, (h) => h(event), "Trigger handler");
+  }
+
+  /** Shared dispatch for collision/trigger handlers. */
+  private _dispatch<H>(
+    live: H[],
+    invoke: (handler: H) => void,
+    kind: string,
+  ): void {
+    const sceneName = this.entity?.tryScene?.name;
+    // Snapshot: `onCollision`/`onTrigger` hand back an unsubscribe that
+    // splices this array, so a handler removing itself mid-dispatch would
+    // otherwise shift the next one past the iterator.
+    for (const handler of [...live]) {
+      if (this.errorBoundary) {
+        this.errorBoundary.wrapCallback(() => invoke(handler), {
+          kind,
+          entity: this.entity?.name,
+          ...(sceneName !== undefined ? { scene: sceneName } : {}),
+        });
+      } else {
+        invoke(handler);
+      }
     }
   }
 }

@@ -337,7 +337,7 @@ window.__yage__.inspector.getSceneStack();
 
 // Error state
 window.__yage__.inspector.getErrors();
-// → { disabledSystems: [], disabledComponents: [] }
+// → { callbackErrors: [] }
 ```
 
 ### In Playwright Tests
@@ -1029,7 +1029,7 @@ Quick summary of the key architectural decisions:
 | Deterministic frame phases                              | Predictable execution order; no setTimeout, no async in game loop                                                                              |
 | Physics is optional                                     | Core has zero knowledge of physics; no WASM download for non-physics games                                                                     |
 | Internal coordinate conversion                          | `PhysicsWorld` handles pixels ↔ meters; users never see Rapier units                                                                           |
-| Error resilience (`ErrorBoundary`)                      | One bad component/system never crashes the loop; errors are logged and inspectable                                                             |
+| Error attribution (`ErrorBoundary`)                      | A throw is attributed to the system/component/callback that threw, logged, and inspectable, before it stops the loop                            |
 | Inspector + Logger as core features                     | Testing and debugging are first-class; `window.__yage__` enables Playwright assertions                                                         |
 | `@serializable` decorator in core                       | Components/entities self-register at import time. `SnapshotService` reads the registry — no manual registration needed                         |
 | String keys for texture-dependent components            | `FrameSource` (animation), `textureKey` (particles), string texture key (sprites) enable serialization without coupling to PixiJS objects      |

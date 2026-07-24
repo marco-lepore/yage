@@ -4,8 +4,10 @@ import type { EngineContext } from "./EngineContext.js";
 import type { Scene } from "./Scene.js";
 import type { SceneManager } from "./SceneManager.js";
 import type { Process } from "./Process.js";
+import { tickProcessGuarded } from "./Process.js";
 import { ProcessComponent } from "./ProcessComponent.js";
-import { SceneManagerKey } from "./EngineContext.js";
+import { SceneManagerKey, ErrorBoundaryKey } from "./EngineContext.js";
+import type { ErrorBoundary } from "./ErrorBoundary.js";
 import { SceneHookRegistryKey } from "./SceneHooks.js";
 import { SceneTimeKey } from "./SceneTime.js";
 
@@ -24,12 +26,14 @@ export class ProcessSystem extends System {
   timeScale = 1;
 
   private sceneManager!: SceneManager;
+  private errorBoundary: ErrorBoundary | undefined;
   private globalProcesses = new Set<Process>();
   private scenePools = new Map<Scene, Set<Process>>();
   private _unregisterSceneHook: (() => void) | null = null;
 
   override onRegister(context: EngineContext): void {
     this.sceneManager = context.resolve(SceneManagerKey);
+    this.errorBoundary = context.tryResolve(ErrorBoundaryKey);
     // Drop the scene's pool on exit so cancelled processes (e.g. effect
     // fades torn down with the scene) don't keep the dead Scene key
     // alive in the pool map. Hold onto the unregister callback so engine
@@ -113,7 +117,7 @@ export class ProcessSystem extends System {
 
     // Engine-global processes — global timeScale only, not scene-bound.
     for (const p of this.globalProcesses) {
-      p._update(globalScaledDt);
+      this._tickProcess(p, globalScaledDt);
       if (p.completed) {
         this.globalProcesses.delete(p);
       }
@@ -136,7 +140,7 @@ export class ProcessSystem extends System {
       const pool = this.scenePools.get(scene);
       if (pool) {
         for (const p of pool) {
-          p._update(effectiveDt);
+          this._tickProcess(p, effectiveDt, scene.name);
           if (p.completed) pool.delete(p);
         }
         if (pool.size === 0) this.scenePools.delete(scene);
@@ -152,8 +156,22 @@ export class ProcessSystem extends System {
           globalScaledDt *
           (time?.effectiveScaleForUpdates(entity) ?? scene.timeScale) *
           entity.timeScale;
-        pc._tick(entityDt);
+        pc._tick(entityDt, scene.name);
       }
     }
+  }
+
+  /**
+   * Advance one process through the error boundary, via the same
+   * `tickProcessGuarded` path `ProcessComponent` uses for entity-owned
+   * processes. `scene` is omitted for engine-global processes, which have no
+   * owning scene.
+   */
+  private _tickProcess(p: Process, dt: number, scene?: string): void {
+    tickProcessGuarded(
+      this.errorBoundary,
+      () => p._update(dt),
+      scene !== undefined ? { kind: "Process callback", scene } : { kind: "Process callback" },
+    );
   }
 }

@@ -154,17 +154,16 @@ describe("ComponentUpdateSystem", () => {
     expect(() => updateSys.update(16)).not.toThrow();
   });
 
-  it("disables crashing component via ErrorBoundary", () => {
+  it("rethrows a crashing component's error instead of disabling it", () => {
     const { updateSys, sceneManager, boundary } = setup();
     const scene = new MockScene();
     sceneManager.activeScene = scene;
     const entity = scene.spawn("test");
     const comp = new CrashingComponent();
     entity.add(comp);
-    updateSys.update(16);
-    expect(comp.enabled).toBe(false);
-    const disabled = boundary.getDisabled();
-    expect(disabled.components).toHaveLength(1);
+    expect(() => updateSys.update(16)).toThrow("crash!");
+    expect(comp.enabled).toBe(true);
+    expect(boundary.getCallbackErrors()).toHaveLength(1);
   });
 
   describe("timeScale", () => {

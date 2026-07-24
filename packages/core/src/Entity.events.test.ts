@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { _resetEntityIdCounter } from "./Entity.js";
 import { defineEvent } from "./EventToken.js";
+import { ErrorBoundaryKey } from "./EngineContext.js";
 import { createMockScene, createMockEntity } from "./test-utils.js";
 
 beforeEach(() => {
@@ -93,6 +94,50 @@ describe("Entity events", () => {
       calls.length = 0;
       entity.emit(Ping);
       expect(calls).toEqual(["h2"]);
+    });
+  });
+
+  describe("throwing handlers", () => {
+    it("a throwing handler stops later handlers in the same emit and rethrows", () => {
+      const { entity, context } = createMockEntity();
+      const Ping = defineEvent("ping");
+      const calls: string[] = [];
+
+      entity.on(Ping, () => calls.push("before"));
+      entity.on(Ping, () => {
+        throw new Error("boom");
+      });
+      entity.on(Ping, () => calls.push("after"));
+
+      expect(() => entity.emit(Ping)).toThrow("boom");
+      expect(calls).toEqual(["before"]);
+
+      const boundary = context.tryResolve(ErrorBoundaryKey)!;
+      const errors = boundary.getCallbackErrors();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({
+        kind: "Entity event handler",
+        entity: entity.name,
+        event: "ping",
+      });
+    });
+
+    it("records the owning scene's name alongside the entity", () => {
+      const { scene } = createMockScene("Level1");
+      const entity = scene.spawn("player");
+      const Ping = defineEvent("ping");
+
+      entity.on(Ping, () => {
+        throw new Error("boom");
+      });
+      expect(() => entity.emit(Ping)).toThrow("boom");
+
+      const boundary = scene.context.tryResolve(ErrorBoundaryKey)!;
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Entity event handler",
+        entity: "player",
+        scene: "Level1",
+      });
     });
   });
 
@@ -216,6 +261,37 @@ describe("Entity events", () => {
 
       expect(entityHandler).not.toHaveBeenCalled();
       expect(sceneHandler).toHaveBeenCalledOnce();
+    });
+
+    it("a throwing scene handler stops later handlers in the same emit and rethrows", () => {
+      const { scene } = createMockScene();
+      const Ping = defineEvent("ping");
+      const calls: string[] = [];
+
+      scene.on(Ping, () => calls.push("before"));
+      scene.on(Ping, () => {
+        throw new Error("boom");
+      });
+      scene.on(Ping, () => calls.push("after"));
+
+      expect(() => scene.emit(Ping)).toThrow("boom");
+      expect(calls).toEqual(["before"]);
+    });
+
+    it("a throwing handler for a bubbled entity event stops later handlers and rethrows", () => {
+      const { scene } = createMockScene();
+      const entity = scene.spawn("test");
+      const Ping = defineEvent("ping");
+      const calls: string[] = [];
+
+      scene.on(Ping, () => calls.push("before"));
+      scene.on(Ping, () => {
+        throw new Error("boom");
+      });
+      scene.on(Ping, () => calls.push("after"));
+
+      expect(() => entity.emit(Ping)).toThrow("boom");
+      expect(calls).toEqual(["before"]);
     });
   });
 

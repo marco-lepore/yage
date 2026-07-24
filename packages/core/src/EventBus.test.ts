@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { EventBus } from "./EventBus.js";
+import { ErrorBoundary } from "./ErrorBoundary.js";
+import { Logger, LogLevel } from "./Logger.js";
 
 interface TestEvents {
   greet: { name: string };
@@ -128,5 +130,79 @@ describe("EventBus", () => {
     unsub(); // second call: arr exists but indexOf returns -1
     bus.emit("greet", { name: "test" });
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  describe("with an error boundary wired", () => {
+    function createWiredBus() {
+      const logger = new Logger({ level: LogLevel.Debug });
+      const boundary = new ErrorBoundary(logger);
+      const bus = new EventBus<TestEvents>();
+      bus._setErrorBoundary(boundary);
+      return { bus, boundary };
+    }
+
+    it("a throwing handler stays registered and rethrows on later emits too", () => {
+      const { bus } = createWiredBus();
+      let calls = 0;
+      bus.on("greet", () => {
+        calls++;
+        throw new Error("boom");
+      });
+
+      expect(() => bus.emit("greet", { name: "a" })).toThrow("boom");
+      expect(() => bus.emit("greet", { name: "b" })).toThrow("boom");
+      expect(() => bus.emit("greet", { name: "c" })).toThrow("boom");
+
+      expect(calls).toBe(3); // never removed
+    });
+
+    it("a throwing handler stops later handlers on the same emit and rethrows", () => {
+      const { bus } = createWiredBus();
+      const after = vi.fn();
+      bus.on("greet", () => {
+        throw new Error("boom");
+      });
+      bus.on("greet", after);
+
+      expect(() => bus.emit("greet", { name: "test" })).toThrow("boom");
+
+      expect(after).not.toHaveBeenCalled();
+    });
+
+    it("a throwing tap observer stops handlers on the same emit and rethrows", () => {
+      const { bus } = createWiredBus();
+      const handler = vi.fn();
+      bus.tap(() => {
+        throw new Error("observer boom");
+      });
+      bus.on("greet", handler);
+
+      expect(() => bus.emit("greet", { name: "a" })).toThrow("observer boom");
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("an async once() handler that rejects is reported through emit's boundary", async () => {
+      const { bus, boundary } = createWiredBus();
+      const rejection = new Promise<unknown>((resolve) => {
+        process.once("unhandledRejection", resolve);
+      });
+      bus.once(
+        "greet",
+        (() => Promise.reject(new Error("async boom"))) as unknown as (
+          data: TestEvents["greet"],
+        ) => void,
+      );
+
+      bus.emit("greet", { name: "a" });
+      const reason = await rejection;
+
+      expect((reason as Error).message).toBe("async boom");
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Event bus handler",
+        error: "async boom",
+      });
+    });
   });
 });

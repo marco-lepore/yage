@@ -201,7 +201,7 @@ function createContext() {
       sceneStack: [],
       entityCount: 0,
       systemCount: 0,
-      errors: { disabledSystems: [], disabledComponents: [] },
+      errors: { callbackErrors: [] },
     }),
     attachTimeController: vi.fn(),
     detachTimeController: vi.fn(),

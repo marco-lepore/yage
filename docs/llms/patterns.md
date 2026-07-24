@@ -44,7 +44,7 @@ class DamageReceiver extends Component {
 
 ### Error boundary behavior
 
-If `update()` or `fixedUpdate()` throws, the component is disabled (`enabled = false`). The game continues running. Disabled components are skipped by `ComponentUpdateSystem`. Check `ErrorBoundary.getDisabled()` for diagnostics.
+If `update()` or `fixedUpdate()` throws, the error is attributed to the component, logged, recorded (`Inspector.getErrors().callbackErrors`), and rethrown. `GameLoop.tick()` stops the loop if the error escapes the whole frame unhandled.
 
 ## System Patterns
 

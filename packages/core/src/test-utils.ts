@@ -40,6 +40,9 @@ export function createMockScene(name = "mock-scene"): {
   const bus = new EventBus<EngineEvents>();
   const logger = new Logger({ level: LogLevel.Debug });
   const boundary = new ErrorBoundary(logger);
+  // Engine wires the bus to the boundary; a test context that skips it runs
+  // bus handlers unguarded, which no production engine does.
+  bus._setErrorBoundary(boundary);
 
   ctx.register(QueryCacheKey, queryCache);
   ctx.register(EventBusKey, bus);
@@ -59,7 +62,7 @@ export function createMockEntity(name = "mock-entity"): {
   scene: Scene;
   context: EngineContext;
 } {
-  const { scene, context } = createMockScene();
+  const { scene, context } = createMockScene(undefined);
   const entity = scene.spawn(name);
   return { entity, scene, context };
 }

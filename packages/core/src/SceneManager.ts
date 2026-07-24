@@ -2,10 +2,16 @@ import type { Scene } from "./Scene.js";
 import type { EngineContext } from "./EngineContext.js";
 import type { EventBus, EngineEvents } from "./EventBus.js";
 import type { AssetManager } from "./AssetManager.js";
-import { EventBusKey, AssetManagerKey, LoggerKey } from "./EngineContext.js";
+import {
+  EventBusKey,
+  AssetManagerKey,
+  LoggerKey,
+  ErrorBoundaryKey,
+} from "./EngineContext.js";
 import type { SceneHookRegistry } from "./SceneHooks.js";
 import { SceneHookRegistryKey } from "./SceneHooks.js";
 import type { Logger } from "./Logger.js";
+import type { ErrorBoundary } from "./ErrorBoundary.js";
 import { devWarn } from "./internal/dev.js";
 import {
   resolveTransition,
@@ -40,6 +46,7 @@ export class SceneManager {
   private assetManager: AssetManager | undefined;
   private hookRegistry: SceneHookRegistry | undefined;
   private logger: Logger | undefined;
+  private errorBoundary: ErrorBoundary | undefined;
   private _currentRun: TransitionRun | undefined;
   private _pendingChain: Promise<void> = Promise.resolve();
   private _mutationDepth = 0;
@@ -84,6 +91,7 @@ export class SceneManager {
     this.assetManager = context.tryResolve(AssetManagerKey);
     this.hookRegistry = context.tryResolve(SceneHookRegistryKey);
     this.logger = context.tryResolve(LoggerKey);
+    this.errorBoundary = context.tryResolve(ErrorBoundaryKey);
 
     if (this._visibilityListenerCleanup || typeof document === "undefined") {
       return;
@@ -278,7 +286,7 @@ export class SceneManager {
       scene._setContext(this._context);
       await this.hookRegistry?.runBeforeEnter(scene);
       await this._preloadScene(scene);
-      scene.onEnter?.();
+      this._invokeLifecycle(scene, "onEnter", () => scene.onEnter?.());
     });
   }
 
@@ -381,7 +389,7 @@ export class SceneManager {
       // un-entered scene on the stack.
       await this._preloadScene(scene);
       this.stack.push(scene);
-      scene.onEnter?.();
+      this._invokeLifecycle(scene, "onEnter", () => scene.onEnter?.());
       this._firePauseTransitions(wasPaused);
       if (!suppressEvent) {
         this.bus?.emit("scene:pushed", { scene });
@@ -418,7 +426,7 @@ export class SceneManager {
       const old = this.stack.pop();
       if (old) this._teardownScene(old);
       this.stack.push(scene);
-      scene.onEnter?.();
+      this._invokeLifecycle(scene, "onEnter", () => scene.onEnter?.());
 
       this._firePauseTransitions(wasPaused);
       this._fireResumeTransitions(wasPaused);
@@ -454,7 +462,7 @@ export class SceneManager {
   }
 
   private _teardownScene(scene: Scene): void {
-    scene.onExit?.();
+    this._invokeLifecycle(scene, "onExit", () => scene.onExit?.());
     scene._destroyAllEntities();
     this.hookRegistry?.runAfterExit(scene);
     scene._clearScopedServices();
@@ -615,7 +623,7 @@ export class SceneManager {
     for (const scene of this.stack) {
       const was = wasPaused.get(scene) ?? false;
       if (scene.isPaused && !was) {
-        scene.onPause?.();
+        this._invokeLifecycle(scene, "onPause", () => scene.onPause?.());
       }
     }
   }
@@ -625,8 +633,28 @@ export class SceneManager {
     for (const scene of this.stack) {
       const was = wasPaused.get(scene) ?? false;
       if (!scene.isPaused && was) {
-        scene.onResume?.();
+        this._invokeLifecycle(scene, "onResume", () => scene.onResume?.());
       }
+    }
+  }
+
+  /**
+   * Run a scene-lifecycle hook (`onEnter`/`onExit`/`onPause`/`onResume`)
+   * through the error boundary when one is available. Reports and
+   * rethrows, so a throwing hook propagates to the caller exactly as it
+   * does today — `_mountDetached`, blur-driven pause/resume, and
+   * `Engine.destroy()`'s synchronous teardown all invoke hooks directly
+   * here rather than through `_enqueue`, so this is the one place that
+   * covers all of them.
+   */
+  private _invokeLifecycle(scene: Scene, phase: string, fn: () => void): void {
+    if (this.errorBoundary) {
+      this.errorBoundary.wrapLifecycleHook(fn, {
+        kind: `Scene ${phase} hook`,
+        scene: scene.name,
+      });
+    } else {
+      fn();
     }
   }
 }

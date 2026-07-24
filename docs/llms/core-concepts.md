@@ -331,9 +331,26 @@ Entities: `@serializable` + optional `serialize()` / `afterRestore(data, resolve
 
 ## Error Boundary
 
-Component/system errors are caught by `ErrorBoundary`. The offending component is disabled (`enabled = false`), logged, and the game continues. The game loop never crashes.
+`ErrorBoundary` wraps every system, component, and developer-callback call —
+a collision handler, an event listener, a component's own `update()`, a scene
+lifecycle hook. A throw is attributed to the culprit, logged through
+`Logger`, recorded (readable via `engine.inspector.getErrors().callbackErrors`),
+and rethrown. Nothing is disabled, unsubscribed, or muted.
+
+`GameLoop.tick()` is the one place that decides a failure is terminal: an
+error that escapes an entire frame unhandled stops the loop and rethrows, so
+it reaches your own `try`/`catch`, `window.onerror`, or an
+unhandled-rejection handler. An error your own code catches inside the frame
+leaves the loop running.
+
+Scene lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`, a plugin's
+`beforeEnter`) are reported the same way, and a synchronous throw is
+rethrown — a scene half-built by a throwing hook must not look like it
+mounted cleanly. A rejected async hook is reported only, not rethrown, since
+the call has already returned by the time the rejection settles.
 
 ```ts
-// Check disabled items:
-const { systems, components } = context.resolve(ErrorBoundaryKey).getDisabled();
+// Every recorded failure:
+const { callbackErrors } = engine.inspector.getErrors();
+// [{ kind: "Collision handler", entity: "DoorPad", error: "..." }]
 ```

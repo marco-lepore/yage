@@ -1,5 +1,5 @@
 import { Vec2 } from "@yagejs/core";
-import type { RendererAdapter } from "@yagejs/core";
+import type { RendererAdapter, ErrorBoundary } from "@yagejs/core";
 import { applyRadialDeadzone } from "./deadzone.js";
 import type {
   ActionMapDefinition,
@@ -141,6 +141,12 @@ export class InputManager {
    * read it cheaply each frame.
    */
   private renderer: RendererAdapter | null = null;
+  /**
+   * Wired by {@link _setErrorBoundary} during `InputPlugin.install`, since
+   * this manager is constructed directly (no `EngineContext` of its own)
+   * rather than resolved through DI.
+   */
+  private errorBoundary: ErrorBoundary | undefined;
   private pointerDownListeners: Array<(info: PointerInfo) => void> = [];
   private pointerUpListeners: Array<(info: PointerInfo) => void> = [];
   private pointerMoveListeners: Array<(info: PointerInfo) => void> = [];
@@ -927,7 +933,7 @@ export class InputManager {
    * action edges and `onWheel` listener notification — matching the DOM path
    * so tests and inspector probes drive the full surface. */
   fireWheel(dx: number, dy: number): void {
-    for (const fn of [...this.wheelListeners]) fn(dx, dy);
+    this._callListeners(this.wheelListeners, (fn) => fn(dx, dy), "Wheel listener", "wheel");
     this.applyWheelEdges(dx, dy);
   }
 
@@ -1125,7 +1131,12 @@ export class InputManager {
     if (this.activePadIndex === index) return;
     this.activePadIndex = index;
     const info = this.getActivePad();
-    for (const fn of this.activePadListeners) fn(info);
+    this._callListeners(
+      this.activePadListeners,
+      (fn) => fn(info),
+      "Active pad listener",
+      String(index),
+    );
   }
 
   // -- Gamepad runtime config --
@@ -1190,7 +1201,12 @@ export class InputManager {
     if (this.activePadIndex === null) {
       this.setActivePadInternal(info.index);
     }
-    for (const fn of this.gamepadConnectListeners) fn(info);
+    this._callListeners(
+      this.gamepadConnectListeners,
+      (fn) => fn(info),
+      "Gamepad connect listener",
+      String(info.index),
+    );
   }
 
   /** @internal Called by InputPlugin from `gamepaddisconnected` event or by
@@ -1222,7 +1238,12 @@ export class InputManager {
     } else {
       this._releaseAllGamepadState();
     }
-    for (const fn of this.gamepadDisconnectListeners) fn(info);
+    this._callListeners(
+      this.gamepadDisconnectListeners,
+      (fn) => fn(info),
+      "Gamepad disconnect listener",
+      String(info.index),
+    );
   }
 
   /**
@@ -1614,6 +1635,14 @@ export class InputManager {
     this.renderer = renderer;
   }
 
+  /**
+   * @internal Wire the error boundary so a throwing key/action listener is
+   * attributed and reported. Called by `InputPlugin.install`.
+   */
+  _setErrorBoundary(boundary: ErrorBoundary | undefined): void {
+    this.errorBoundary = boundary;
+  }
+
   /** @internal */
   _enqueueKeyDown(code: string): void {
     this.inputQueue.push({ kind: "keyDown", code });
@@ -1633,7 +1662,7 @@ export class InputManager {
   _enqueuePointerMove(info: PointerEventInfo): void {
     const pointer = this.upsertPointer(info);
     pointer.screenPos = new Vec2(info.screenX, info.screenY);
-    this.notifyPointerListeners(this.pointerMoveListeners, pointer);
+    this.notifyPointerListeners(this.pointerMoveListeners, pointer, "pointermove");
   }
 
   /**
@@ -1655,7 +1684,7 @@ export class InputManager {
   _enqueuePointerDown(info: PointerEventInfo): void {
     const pointer = this.upsertPointer(info);
     pointer.screenPos = new Vec2(info.screenX, info.screenY);
-    this.notifyPointerListeners(this.pointerDownListeners, pointer, info.button);
+    this.notifyPointerListeners(this.pointerDownListeners, pointer, "pointerdown", info.button);
     this.inputQueue.push({ kind: "pointerDown", info });
   }
 
@@ -1663,7 +1692,7 @@ export class InputManager {
   _enqueuePointerUp(info: PointerEventInfo): void {
     const pointer = this.upsertPointer(info);
     pointer.screenPos = new Vec2(info.screenX, info.screenY);
-    this.notifyPointerListeners(this.pointerUpListeners, pointer, info.button);
+    this.notifyPointerListeners(this.pointerUpListeners, pointer, "pointerup", info.button);
     this.inputQueue.push({ kind: "pointerUp", info });
   }
 
@@ -1671,7 +1700,7 @@ export class InputManager {
   _enqueuePointerCancel(id: number): void {
     const pointer = this.pointers.get(id);
     if (pointer) {
-      this.notifyPointerListeners(this.pointerUpListeners, pointer);
+      this.notifyPointerListeners(this.pointerUpListeners, pointer, "pointercancel");
     }
     this.inputQueue.push({ kind: "pointerCancel", id });
   }
@@ -1679,7 +1708,7 @@ export class InputManager {
   /** @internal */
   _enqueueWheel(dx: number, dy: number): void {
     // Notify wheel listeners synchronously — they're explicit user opt-ins.
-    for (const fn of [...this.wheelListeners]) fn(dx, dy);
+    this._callListeners(this.wheelListeners, (fn) => fn(dx, dy), "Wheel listener", "wheel");
     this.inputQueue.push({ kind: "wheel", dx, dy });
   }
 
@@ -1859,7 +1888,7 @@ export class InputManager {
   _applyPointerMove(info: PointerEventInfo): void {
     const pointer = this.upsertPointer(info);
     pointer.screenPos = new Vec2(info.screenX, info.screenY);
-    this.notifyPointerListeners(this.pointerMoveListeners, pointer);
+    this.notifyPointerListeners(this.pointerMoveListeners, pointer, "pointermove");
   }
 
   /**
@@ -1877,7 +1906,7 @@ export class InputManager {
     } else {
       pointer.isDown = pointer.buttons.size > 0;
     }
-    this.notifyPointerListeners(this.pointerDownListeners, pointer, info.button);
+    this.notifyPointerListeners(this.pointerDownListeners, pointer, "pointerdown", info.button);
   }
 
   /**
@@ -1892,7 +1921,7 @@ export class InputManager {
       this.recomputeMouseAggregate(info.button);
     }
     pointer.isDown = pointer.buttons.size > 0;
-    this.notifyPointerListeners(this.pointerUpListeners, pointer, info.button);
+    this.notifyPointerListeners(this.pointerUpListeners, pointer, "pointerup", info.button);
     if (!pointer.isDown) {
       this.consumedPointers.delete(info.id);
       if (pointer.type !== "mouse") {
@@ -1915,7 +1944,7 @@ export class InputManager {
     for (const button of heldButtons) {
       this.recomputeMouseAggregate(button);
     }
-    this.notifyPointerListeners(this.pointerUpListeners, pointer);
+    this.notifyPointerListeners(this.pointerUpListeners, pointer, "pointercancel");
     this.consumedPointers.delete(id);
     if (pointer.type !== "mouse") {
       this.removePointer(id);
@@ -1994,17 +2023,14 @@ export class InputManager {
   private notifyPointerListeners(
     listeners: Array<(info: PointerInfo) => void>,
     pointer: MutablePointerInfo,
+    event: "pointerdown" | "pointerup" | "pointermove" | "pointercancel",
     button = -1,
   ): void {
     if (listeners.length === 0) return;
-    // Snapshot once per emission so all listeners see the same view and a
-    // misbehaving consumer can't mutate manager state. Iterate a copy of
-    // `listeners` so a callback that calls its own disposer doesn't skip the
-    // next one.
+    // Snapshot happens inside `_callListeners`; build the shared `PointerInfo`
+    // view once so all listeners see the same values.
     const info = this.toPointerInfo(pointer, button);
-    for (const fn of [...listeners]) {
-      fn(info);
-    }
+    this._callListeners(listeners, (fn) => fn(info), "Pointer listener", event);
   }
 
   private notifyKeyListeners(
@@ -2013,11 +2039,9 @@ export class InputManager {
     code: string,
   ): void {
     const list = perCode.get(code);
-    if (list) {
-      for (const fn of [...list]) fn(code);
-    }
+    if (list) this._callListeners(list, (fn) => fn(code), "Key listener", code);
     if (anyList.length > 0) {
-      for (const fn of [...anyList]) fn(code);
+      this._callListeners(anyList, (fn) => fn(code), "Key listener", "*");
     }
   }
 
@@ -2027,7 +2051,27 @@ export class InputManager {
   ): void {
     const list = perAction.get(name);
     if (!list) return;
-    for (const fn of [...list]) fn(name);
+    this._callListeners(list, (fn) => fn(name), "Action listener", name);
+  }
+
+  /**
+   * Shared listener fan-out for key/action edges, gamepad/active-pad events,
+   * and pointer/wheel events. Iterates a snapshot so a listener that
+   * unsubscribes itself doesn't skip the next one.
+   */
+  private _callListeners<T>(
+    live: readonly T[],
+    invoke: (fn: T) => void,
+    kind: string,
+    event: string,
+  ): void {
+    for (const fn of [...live]) {
+      if (this.errorBoundary) {
+        this.errorBoundary.wrapCallback(() => invoke(fn), { kind, event });
+      } else {
+        invoke(fn);
+      }
+    }
   }
 
   /**

@@ -24,6 +24,9 @@ const engine = new Engine({
 | `fixedTimestep` | `1 / 60` | Seconds per fixed-update tick |
 | `maxFixedStepsPerFrame` | `5` | Cap on fixed-update iterations per frame |
 
+Errors thrown inside code the engine calls on your behalf are reported and
+rethrown — see [Errors](/guides/debug/#errors).
+
 ## Engine Lifecycle
 
 The three-step lifecycle is intentionally simple:

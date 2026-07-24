@@ -596,4 +596,46 @@ type ComponentClass<C> = new (...args: never[]) => C;
 
 ## Error Handling
 
-`ErrorBoundary` wraps all system and component execution. Errors disable the offending system/component. The game loop never crashes. Query disabled items via `ErrorBoundary.getDisabled()`.
+`ErrorBoundary` wraps system, component, and callback execution so a throw is
+attributed to whoever threw, not whoever it reached. It never disables,
+unsubscribes, mutes, or cancels anything — it records the culprit, logs it,
+and rethrows.
+
+- `wrapSystem(system, fn)` / `wrapComponent(component, fn)` — used internally
+  by `SystemScheduler` and `ComponentUpdateSystem`. On throw, records the
+  system/component's identity (and owning entity for a component), logs it
+  through `Logger`, and rethrows.
+- `wrapCallback(fn, info)` wraps a developer-supplied callback the engine
+  invokes on its own — collision/trigger handlers, entity/scene event
+  handlers, the global `EventBus`, input listeners (key/action/gamepad/
+  pointer/wheel), process and process-slot callbacks, the audio unlock
+  callback. It catches a
+  synchronous throw and, since these callbacks are typed void-returning but
+  nothing stops a caller from passing an `async` function, a rejected
+  thenable too — the thenable case is re-raised as a new unhandled rejection,
+  since a rejected `.then()` handler can't rethrow into the original
+  (already-returned) call stack.
+- `wrapLifecycleHook(fn, info)` wraps a scene lifecycle hook
+  (`onEnter`/`onExit`/`onPause`/`onResume`/`beforeEnter`). A synchronous
+  throw is reported through `Logger` and rethrown, so a scene half-built by a
+  throwing hook always fails the same way — it must not look like it mounted
+  cleanly. A rejected thenable can only be reported (via
+  `reportLifecycleError()`), not rethrown — the hook call has already
+  returned by the time the rejection settles, so there's no caller stack
+  left to rethrow into.
+- Every failure is recorded in `ErrorBoundary.getCallbackErrors()` and
+  surfaced as `Inspector.getErrors().callbackErrors` — a bounded history (the
+  200 most recent) with each entry's kind and owning entity/scene/event where
+  known. The same `Error` object propagating through nested wraps (a
+  collision handler's throw reaching the surrounding `wrapSystem`) is
+  recorded and logged once, not once per wrap.
+- `GameLoop.tick()` is the one place that decides a failure is terminal: an
+  error that escapes an entire frame unhandled stops the loop and rethrows,
+  so it reaches the host. A caller's own `try`/`catch` around a dispatching
+  call (`entity.emit(...)`, `bus.emit(...)`, ...) leaves the loop running.
+- Writing a new dispatch site that calls developer-supplied code should route
+  it through `wrapCallback`/`wrapLifecycleHook` rather than calling the
+  callback directly — see the "Attribute developer-supplied callbacks" rule
+  in the repo-root `AGENTS.md`.
+
+`Logger` writes to the console by default in dev builds (gated by `isDev()`, tree-shakable in production the same way as `devWarn`). Pass `logger: { output }` in the `Engine` config to replace it; `LogLevel.None` silences everything. The `output` sink itself is guarded — a throwing sink is disabled after its first failure instead of taking down whatever was being reported.

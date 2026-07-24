@@ -122,8 +122,8 @@ function createTestContext() {
   const queryCache = new QueryCache();
   const bus = new EventBus<EngineEvents>();
   const logger = new Logger({ level: LogLevel.Debug });
-  const boundary = new ErrorBoundary(logger);
   const gameLoop = new GameLoop();
+  const boundary = new ErrorBoundary(logger);
   const scheduler = new SystemScheduler();
   scheduler.setErrorBoundary(boundary);
 

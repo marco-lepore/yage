@@ -5,6 +5,7 @@ import type { Scene } from "./Scene.js";
 import type { SceneManager } from "./SceneManager.js";
 import type { GameLoop } from "./GameLoop.js";
 import type { EventBus, EngineEvents } from "./EventBus.js";
+import type { CallbackErrorRecord } from "./ErrorBoundary.js";
 import {
   EngineContext,
   ErrorBoundaryKey,
@@ -135,12 +136,12 @@ export interface SystemSnapshot {
 
 /** Snapshot of error boundary state. */
 export interface ErrorSnapshot {
-  disabledSystems: string[];
-  disabledComponents: Array<{
-    entity: string;
-    component: string;
-    error: string;
-  }>;
+  /**
+   * Failures recorded via the error boundary, most recent last: system and
+   * component update failures, plus developer callbacks (collision/event/
+   * input/process handlers, scene lifecycle hooks, ...).
+   */
+  callbackErrors: CallbackErrorRecord[];
 }
 
 export interface ComponentStateSnapshot {
@@ -861,21 +862,11 @@ export class Inspector {
     }));
   }
 
-  /** Get disabled components/systems from error boundary. */
+  /** Get recorded failures from the error boundary. */
   getErrors(): ErrorSnapshot {
     const boundary = this.engine.context.tryResolve(ErrorBoundaryKey);
-    if (!boundary) return { disabledSystems: [], disabledComponents: [] };
-    const disabled = boundary.getDisabled();
-    return {
-      disabledSystems: disabled.systems.map(
-        (s) => s.system.constructor.name,
-      ),
-      disabledComponents: disabled.components.map((c) => ({
-        entity: c.component.entity?.name ?? "unknown",
-        component: c.component.constructor.name,
-        error: c.error,
-      })),
-    };
+    if (!boundary) return { callbackErrors: [] };
+    return { callbackErrors: [...boundary.getCallbackErrors()] };
   }
 
   /** Create a new scene-scoped RNG instance using the current inspector seed policy. */

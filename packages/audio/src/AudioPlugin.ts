@@ -1,4 +1,4 @@
-import { AssetManagerKey, globalRandom } from "@yagejs/core";
+import { AssetManagerKey, ErrorBoundaryKey, globalRandom } from "@yagejs/core";
 import type { EngineContext, Plugin } from "@yagejs/core";
 import { sound } from "@pixi/sound";
 import type { Sound as PixiSound } from "@pixi/sound";
@@ -20,6 +20,7 @@ export class AudioPlugin implements Plugin {
 
   install(context: EngineContext): void {
     const manager = new AudioManager(sound, this._config, globalRandom);
+    manager._setErrorBoundary(context.tryResolve(ErrorBoundaryKey));
     context.register(AudioManagerKey, manager);
 
     // Register sound asset loader (if AssetManager is available)

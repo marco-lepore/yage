@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { Vec2 } from "@yagejs/core";
+import { Vec2, ErrorBoundary, Logger, LogLevel } from "@yagejs/core";
 import { InputManager } from "./InputManager.js";
 import type { PointerInfo } from "./types.js";
 
@@ -1896,6 +1896,146 @@ describe("InputManager", () => {
       const snap = input.snapshotState();
       expect(snap.keys).toEqual(["Space"]);
       expect(snap.gamepad.buttons).toEqual(["GamepadA"]);
+    });
+  });
+
+  describe("throwing listeners (with an error boundary wired)", () => {
+    function wireBoundary(): { boundary: ErrorBoundary } {
+      const logger = new Logger({ level: LogLevel.Debug });
+      const boundary = new ErrorBoundary(logger);
+      input._setErrorBoundary(boundary);
+      return { boundary };
+    }
+
+    it("a throwing action listener rethrows, stopping later listeners for the same fire", () => {
+      const { boundary } = wireBoundary();
+      const calls: string[] = [];
+      input.onAction("jump", () => calls.push("before"));
+      input.onAction("jump", () => {
+        throw new Error("boom");
+      });
+      input.onAction("jump", () => calls.push("after"));
+
+      expect(() => input.fireAction("jump")).toThrow("boom");
+      expect(calls).toEqual(["before"]);
+
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Action listener",
+        event: "jump",
+      });
+    });
+
+    it("a throwing key listener stays registered and rethrows on every trigger", () => {
+      const { boundary } = wireBoundary();
+      let calls = 0;
+      input.onKeyDown("Space", () => {
+        calls++;
+        throw new Error("boom");
+      });
+
+      expect(() => input._onKeyDown("Space")).toThrow("boom");
+      input._onKeyUp("Space");
+      expect(() => input._onKeyDown("Space")).toThrow("boom");
+
+      expect(calls).toBe(2); // never removed
+      expect(boundary.getCallbackErrors()).toHaveLength(2);
+    });
+
+    it("a throwing gamepad-connect listener rethrows, stopping later listeners for the same connect", () => {
+      const { boundary } = wireBoundary();
+      const calls: string[] = [];
+      input.onGamepadConnected(() => calls.push("before"));
+      input.onGamepadConnected(() => {
+        throw new Error("boom");
+      });
+      input.onGamepadConnected(() => calls.push("after"));
+
+      expect(() => input._onGamepadConnected({ index: 0, id: "pad-0" })).toThrow("boom");
+      expect(calls).toEqual(["before"]);
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Gamepad connect listener",
+      });
+    });
+
+    it("a throwing gamepad-disconnect listener rethrows, stopping later listeners for the same disconnect", () => {
+      const { boundary } = wireBoundary();
+      input._onGamepadConnected({ index: 0, id: "pad-0" });
+      const calls: string[] = [];
+      input.onGamepadDisconnected(() => calls.push("before"));
+      input.onGamepadDisconnected(() => {
+        throw new Error("boom");
+      });
+      input.onGamepadDisconnected(() => calls.push("after"));
+
+      expect(() => input._onGamepadDisconnected({ index: 0, id: "pad-0" })).toThrow("boom");
+      expect(calls).toEqual(["before"]);
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Gamepad disconnect listener",
+      });
+    });
+
+    it("a throwing active-pad listener rethrows, stopping later listeners for the same change", () => {
+      const { boundary } = wireBoundary();
+      const calls: string[] = [];
+      // onActivePadChanged replays synchronously (and unguarded) on subscribe,
+      // so the throwing listener stays quiet for that initial replay and only
+      // throws once armed — isolating the guarded fan-out in
+      // setActivePadInternal, which is what this test targets.
+      let armed = false;
+      input.onActivePadChanged(() => calls.push("before"));
+      input.onActivePadChanged(() => {
+        if (!armed) return;
+        throw new Error("boom");
+      });
+      input.onActivePadChanged(() => calls.push("after"));
+      calls.length = 0;
+      armed = true;
+
+      expect(() => input._onGamepadConnected({ index: 0, id: "pad-0" })).toThrow("boom");
+      expect(calls).toEqual(["before"]);
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Active pad listener",
+      });
+    });
+
+    it("a throwing pointer-down listener rethrows, stopping later listeners for the same event", () => {
+      const { boundary } = wireBoundary();
+      const calls: string[] = [];
+      input.onPointerDown(() => calls.push("before"));
+      input.onPointerDown(() => {
+        throw new Error("boom");
+      });
+      input.onPointerDown(() => calls.push("after"));
+
+      expect(() => input.firePointerDown(0)).toThrow("boom");
+      expect(calls).toEqual(["before"]);
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Pointer listener",
+        event: "pointerdown",
+      });
+    });
+
+    it("a throwing wheel listener rethrows, stopping later listeners for the same event", () => {
+      const { boundary } = wireBoundary();
+      const calls: string[] = [];
+      input.onWheel(() => calls.push("before"));
+      input.onWheel(() => {
+        throw new Error("boom");
+      });
+      input.onWheel(() => calls.push("after"));
+
+      expect(() => input.fireWheel(0, 1)).toThrow("boom");
+      expect(calls).toEqual(["before"]);
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Wheel listener",
+        event: "wheel",
+      });
     });
   });
 });

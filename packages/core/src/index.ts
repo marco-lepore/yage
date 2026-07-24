@@ -96,6 +96,7 @@ export {
 } from "./ComponentUpdateSystem.js";
 
 export { ErrorBoundary } from "./ErrorBoundary.js";
+export type { CallbackErrorInfo, CallbackErrorRecord } from "./ErrorBoundary.js";
 
 export { GameLoop } from "./GameLoop.js";
 export type { GameLoopCallbacks, GameLoopConfig } from "./GameLoop.js";
