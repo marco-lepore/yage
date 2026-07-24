@@ -286,7 +286,7 @@ export class AudioManager {
    */
   private _runUnlockCallback(cb: () => void): void {
     if (this._errorBoundary) {
-      this._errorBoundary.wrapCallback(cb, { kind: "Audio unlock callback" }, "reported");
+      this._errorBoundary.wrapCallback(cb, { kind: "Audio unlock callback" });
     } else {
       try {
         cb();

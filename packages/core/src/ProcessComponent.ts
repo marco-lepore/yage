@@ -94,10 +94,8 @@ export class ProcessComponent extends Component {
 
   /**
    * Advance all processes and slots by dt seconds and remove completed
-   * one-offs. A throwing update/completion callback cancels only that
-   * process or slot, via the same `tickProcessGuarded` path `ProcessSystem`
-   * uses for its pools — without it, a throw would disable the whole
-   * `ProcessSystem` and stop every process on every entity.
+   * one-offs, via the same `tickProcessGuarded` path `ProcessSystem` uses
+   * for its pools.
    * @internal — called by ProcessSystem
    */
   _tick(dt: number, scene?: string): void {
@@ -107,7 +105,6 @@ export class ProcessComponent extends Component {
       tickProcessGuarded(
         this.errorBoundary,
         () => p._update(dt),
-        () => p.cancel(),
         this._info("Process callback", entity, scene),
       );
       if (p.completed) {
@@ -118,7 +115,6 @@ export class ProcessComponent extends Component {
       tickProcessGuarded(
         this.errorBoundary,
         () => s._tick(dt),
-        () => s.cancel(),
         this._info("Process slot callback", entity, scene),
       );
     }

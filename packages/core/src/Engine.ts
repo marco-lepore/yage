@@ -19,7 +19,6 @@ import { Logger } from "./Logger.js";
 import type { LoggerConfig } from "./Logger.js";
 import { QueryCache } from "./QueryCache.js";
 import { ErrorBoundary } from "./ErrorBoundary.js";
-import type { ErrorPolicy } from "./ErrorBoundary.js";
 import { GameLoop } from "./GameLoop.js";
 import { SceneManager } from "./SceneManager.js";
 import { SystemScheduler } from "./SystemScheduler.js";
@@ -46,17 +45,6 @@ export interface EngineConfig {
   maxFixedStepsPerFrame?: number;
   /** Logger configuration. */
   logger?: LoggerConfig;
-  /**
-   * What the engine does when developer code throws — a collision handler,
-   * an event listener, a component's own `update`, a scene lifecycle hook.
-   * `"fatal"` reports the culprit with its stack, stops the game loop, and
-   * rethrows so the failure reaches your own `try`/`catch`, `window.onerror`,
-   * or an unhandled-rejection handler. `"isolate"` disables or removes just
-   * the offender and keeps the game running. Default: `"fatal"` — a game
-   * running with one part silently disabled is worse than one that stopped
-   * with useful information.
-   */
-  errors?: ErrorPolicy;
 }
 
 /**
@@ -98,11 +86,7 @@ export class Engine {
     this.logger = new Logger(config?.logger);
     this.queryCache = new QueryCache();
     this.loop = new GameLoop(config);
-    this.errorBoundary = new ErrorBoundary(
-      this.logger,
-      config?.errors ?? "fatal",
-      this.loop,
-    );
+    this.errorBoundary = new ErrorBoundary(this.logger);
     this.scenes = new SceneManager();
     this.scheduler = new SystemScheduler();
     this.inspector = new Inspector(this);

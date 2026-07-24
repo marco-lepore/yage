@@ -171,44 +171,20 @@ export class ColliderComponent extends Component {
     this._dispatch(this.triggerHandlers, (h) => h(event), "Trigger handler");
   }
 
-  /**
-   * Shared dispatch for collision/trigger handlers. Iterates a snapshot,
-   * not the live array — the unsubscribe closures `splice` the live array
-   * (`onCollision`/`onTrigger` above), and removing index *i* mid-iteration
-   * would shift the next handler into that slot and skip it. A throwing
-   * handler is removed so it can't throw again next frame; `reported`
-   * guards against invoking the same handler twice in one dispatch when
-   * it's registered more than once (arrays, unlike the Set-backed entity/
-   * scene listeners, permit duplicates). Allocated only once a handler
-   * actually throws, so a clean dispatch — the overwhelming majority, every
-   * frame, for every collider — costs only the snapshot array.
-   */
+  /** Shared dispatch for collision/trigger handlers. */
   private _dispatch<H>(
     live: H[],
     invoke: (handler: H) => void,
     kind: string,
   ): void {
-    let reported: Set<H> | undefined;
     const sceneName = this.entity?.tryScene?.name;
-    for (const handler of [...live]) {
-      if (reported?.has(handler)) continue;
+    for (const handler of live) {
       if (this.errorBoundary) {
-        this.errorBoundary.wrapCallback(
-          () => invoke(handler),
-          {
-            kind,
-            entity: this.entity?.name,
-            ...(sceneName !== undefined ? { scene: sceneName } : {}),
-          },
-          "removed",
-          {
-            onError: () => {
-              (reported ??= new Set()).add(handler);
-              const idx = live.indexOf(handler);
-              if (idx !== -1) live.splice(idx, 1);
-            },
-          },
-        );
+        this.errorBoundary.wrapCallback(() => invoke(handler), {
+          kind,
+          entity: this.entity?.name,
+          ...(sceneName !== undefined ? { scene: sceneName } : {}),
+        });
       } else {
         invoke(handler);
       }

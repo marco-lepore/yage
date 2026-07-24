@@ -136,19 +136,10 @@ export interface SystemSnapshot {
 
 /** Snapshot of error boundary state. */
 export interface ErrorSnapshot {
-  disabledSystems: string[];
-  disabledComponents: Array<{
-    entity: string;
-    component: string;
-    error: string;
-  }>;
   /**
-   * Failures recorded under either error policy, most recent last: developer
-   * callbacks (collision/event/input/process handlers, scene lifecycle
-   * hooks, ...), plus — under `"fatal"` — the system/component failure that
-   * stopped the game loop. Check each entry's `outcome`: `"fatal"` means
-   * nothing was disabled, unsubscribed, or muted; the other values describe
-   * what happened under `"isolate"`.
+   * Failures recorded via the error boundary, most recent last: system and
+   * component update failures, plus developer callbacks (collision/event/
+   * input/process handlers, scene lifecycle hooks, ...).
    */
   callbackErrors: CallbackErrorRecord[];
 }
@@ -871,24 +862,11 @@ export class Inspector {
     }));
   }
 
-  /** Get disabled components/systems from error boundary. */
+  /** Get recorded failures from the error boundary. */
   getErrors(): ErrorSnapshot {
     const boundary = this.engine.context.tryResolve(ErrorBoundaryKey);
-    if (!boundary) {
-      return { disabledSystems: [], disabledComponents: [], callbackErrors: [] };
-    }
-    const disabled = boundary.getDisabled();
-    return {
-      disabledSystems: disabled.systems.map(
-        (s) => s.system.constructor.name,
-      ),
-      disabledComponents: disabled.components.map((c) => ({
-        entity: c.component.entity?.name ?? "unknown",
-        component: c.component.constructor.name,
-        error: c.error,
-      })),
-      callbackErrors: [...boundary.getCallbackErrors()],
-    };
+    if (!boundary) return { callbackErrors: [] };
+    return { callbackErrors: [...boundary.getCallbackErrors()] };
   }
 
   /** Create a new scene-scoped RNG instance using the current inspector seed policy. */

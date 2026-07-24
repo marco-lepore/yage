@@ -91,10 +91,6 @@ export class EventBus<E = EventMap> {
 
   /**
    * Emit an event. Handlers are called synchronously in registration order.
-   * A throwing handler or `tap` observer stays registered — the boundary
-   * mutes repeat failures from the same handler+event pair rather than
-   * removing it, since bus listeners are usually engine plugins (renderer,
-   * debug overlay, ...) that every other listener depends on staying wired.
    */
   emit<K extends keyof E>(event: K, data: E[K]): void {
     const eventName = String(event);
@@ -102,12 +98,10 @@ export class EventBus<E = EventMap> {
       const observers = [...this.observers];
       for (const observer of observers) {
         if (this.errorBoundary) {
-          this.errorBoundary.wrapCallback(
-            () => observer(event, data),
-            { kind: "Event bus observer", event: eventName },
-            "muted",
-            { muteKey: { handler: observer, event: eventName } },
-          );
+          this.errorBoundary.wrapCallback(() => observer(event, data), {
+            kind: "Event bus observer",
+            event: eventName,
+          });
         } else {
           observer(event, data);
         }
@@ -120,12 +114,10 @@ export class EventBus<E = EventMap> {
     const snapshot = [...list];
     for (const handler of snapshot) {
       if (this.errorBoundary) {
-        this.errorBoundary.wrapCallback(
-          () => handler(data as never),
-          { kind: "Event bus handler", event: eventName },
-          "muted",
-          { muteKey: { handler, event: eventName } },
-        );
+        this.errorBoundary.wrapCallback(() => handler(data as never), {
+          kind: "Event bus handler",
+          event: eventName,
+        });
       } else {
         handler(data as never);
       }

@@ -15,7 +15,6 @@ const engine = new Engine({
   debug: true,
   fixedTimestep: 1 / 60, // ~0.0167 s (default)
   maxFixedStepsPerFrame: 5,  // spiral-of-death protection
-  errors: "fatal", // default — see below
 });
 ```
 
@@ -24,7 +23,9 @@ const engine = new Engine({
 | `debug` | `false` | Enable verbose logging and dev tools |
 | `fixedTimestep` | `1 / 60` | Seconds per fixed-update tick |
 | `maxFixedStepsPerFrame` | `5` | Cap on fixed-update iterations per frame |
-| `errors` | `"fatal"` | What happens when developer code throws — see [Errors](/guides/debug/#errors) |
+
+Errors thrown inside code the engine calls on your behalf are reported and
+rethrown — see [Errors](/guides/debug/#errors).
 
 ## Engine Lifecycle
 

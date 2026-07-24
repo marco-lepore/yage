@@ -53,10 +53,7 @@ function setup() {
   const ctx = new EngineContext();
   const logger = new Logger({ level: LogLevel.Debug });
   const loop = new GameLoop();
-  // These tests assert getErrors() surfaces disabledSystems/disabledComponents,
-  // which only accumulate under "isolate" — under "fatal" a failure is
-  // recorded in callbackErrors instead of being disabled.
-  const boundary = new ErrorBoundary(logger, "isolate", loop);
+  const boundary = new ErrorBoundary(logger);
   const scheduler = new SystemScheduler();
   const queryCache = new QueryCache();
   const bus = new EventBus<EngineEvents>();
@@ -329,56 +326,62 @@ describe("Inspector", () => {
     expect(inspector.getSystems()).toEqual([]);
   });
 
-  it("getErrors returns disabled items", async () => {
+  it("getErrors returns recorded system/component/callback failures", async () => {
     const { inspector, boundary } = setup();
     const sys = new TestSystem();
-    boundary.wrapSystem(sys, () => {
-      throw new Error("sys-fail");
-    });
+    expect(() =>
+      boundary.wrapSystem(sys, () => {
+        throw new Error("sys-fail");
+      }),
+    ).toThrow("sys-fail");
+
     const comp = new Health();
     comp.entity = { name: "enemy" } as never;
-    boundary.wrapComponent(comp, () => {
-      throw new Error("comp-fail");
-    });
+    expect(() =>
+      boundary.wrapComponent(comp, () => {
+        throw new Error("comp-fail");
+      }),
+    ).toThrow("comp-fail");
+
+    expect(() =>
+      boundary.wrapCallback(
+        () => {
+          throw new Error("callback-fail");
+        },
+        { kind: "Test callback", entity: "player" },
+      ),
+    ).toThrow("callback-fail");
 
     const errors = inspector.getErrors();
-    expect(errors.disabledSystems).toContain("TestSystem");
-    expect(errors.disabledComponents).toHaveLength(1);
-    expect(errors.disabledComponents[0]?.entity).toBe("enemy");
-    expect(errors.disabledComponents[0]?.component).toBe("Health");
-    expect(errors.disabledComponents[0]?.error).toBe("comp-fail");
-  });
-
-  it("getErrors returns recorded callback failures alongside disabled systems/components", async () => {
-    const { inspector, boundary } = setup();
-    boundary.wrapCallback(
-      () => {
-        throw new Error("callback-fail");
-      },
-      { kind: "Test callback", entity: "player" },
-      "removed",
+    expect(errors.callbackErrors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "System TestSystem", error: "sys-fail" }),
+        expect.objectContaining({
+          kind: "Component Health",
+          entity: "enemy",
+          error: "comp-fail",
+        }),
+        expect.objectContaining({
+          kind: "Test callback",
+          entity: "player",
+          error: "callback-fail",
+        }),
+      ]),
     );
-
-    const errors = inspector.getErrors();
-    expect(errors.callbackErrors).toHaveLength(1);
-    expect(errors.callbackErrors[0]).toMatchObject({
-      kind: "Test callback",
-      entity: "player",
-      outcome: "removed",
-      error: "callback-fail",
-    });
   });
 
-  it("getErrors uses 'unknown' for component without entity", async () => {
+  it("getErrors uses 'unknown' for a component without an entity", async () => {
     const { inspector, boundary } = setup();
     const comp = new Health();
     // Don't set comp.entity — it should fall back to "unknown"
-    boundary.wrapComponent(comp, () => {
-      throw new Error("no-entity-error");
-    });
+    expect(() =>
+      boundary.wrapComponent(comp, () => {
+        throw new Error("no-entity-error");
+      }),
+    ).toThrow("no-entity-error");
     const errors = inspector.getErrors();
-    expect(errors.disabledComponents).toHaveLength(1);
-    expect(errors.disabledComponents[0]?.entity).toBe("unknown");
+    expect(errors.callbackErrors).toHaveLength(1);
+    expect(errors.callbackErrors[0]?.entity).toBe("unknown");
   });
 
   it("getComponentData filters out function own-properties", async () => {
@@ -423,8 +426,7 @@ describe("Inspector", () => {
     };
     const inspector = new Inspector(engine);
     const errors = inspector.getErrors();
-    expect(errors.disabledSystems).toEqual([]);
-    expect(errors.disabledComponents).toEqual([]);
+    expect(errors.callbackErrors).toEqual([]);
   });
 
   it("snapshot uses the attached logical frame controller", async () => {

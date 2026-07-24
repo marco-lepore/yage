@@ -7,8 +7,6 @@ import { QueryCache } from "./QueryCache.js";
 import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
 import { ErrorBoundary } from "./ErrorBoundary.js";
-import type { ErrorPolicy } from "./ErrorBoundary.js";
-import { GameLoop } from "./GameLoop.js";
 import { Logger, LogLevel } from "./Logger.js";
 import { RandomKey, createRandomService } from "./Random.js";
 import { SceneTime, SceneTimeKey } from "./SceneTime.js";
@@ -31,19 +29,8 @@ export async function createTestEngine(
   return engine;
 }
 
-/**
- * Create a lightweight mock scene with EngineContext for unit tests.
- *
- * The error boundary defaults to `"fatal"`, matching a real `Engine`'s
- * default — a component/callback throw propagates out of whatever `update`/
- * `emit`/`_tick` call triggered it instead of being isolated. Pass
- * `"isolate"` for a test that specifically exercises the opt-in recovery
- * behavior (a component disabled, a handler removed, and so on).
- */
-export function createMockScene(
-  name = "mock-scene",
-  errorPolicy: ErrorPolicy = "fatal",
-): {
+/** Create a lightweight mock scene with EngineContext for unit tests. */
+export function createMockScene(name = "mock-scene"): {
   scene: Scene;
   context: EngineContext;
 } {
@@ -52,8 +39,7 @@ export function createMockScene(
   const queryCache = new QueryCache();
   const bus = new EventBus<EngineEvents>();
   const logger = new Logger({ level: LogLevel.Debug });
-  const loop = new GameLoop();
-  const boundary = new ErrorBoundary(logger, errorPolicy, loop);
+  const boundary = new ErrorBoundary(logger);
   // Engine wires the bus to the boundary; a test context that skips it runs
   // bus handlers unguarded, which no production engine does.
   bus._setErrorBoundary(boundary);
@@ -71,15 +57,12 @@ export function createMockScene(
 }
 
 /** Create a mock entity spawned in a mock scene with full EngineContext access. */
-export function createMockEntity(
-  name = "mock-entity",
-  errorPolicy: ErrorPolicy = "fatal",
-): {
+export function createMockEntity(name = "mock-entity"): {
   entity: Entity;
   scene: Scene;
   context: EngineContext;
 } {
-  const { scene, context } = createMockScene(undefined, errorPolicy);
+  const { scene, context } = createMockScene(undefined);
   const entity = scene.spawn(name);
   return { entity, scene, context };
 }

@@ -5,9 +5,7 @@ import { Process } from "./Process.js";
 import { Entity, _resetEntityIdCounter } from "./Entity.js";
 import { EngineContext, SceneManagerKey, ErrorBoundaryKey } from "./EngineContext.js";
 import { ErrorBoundary } from "./ErrorBoundary.js";
-import type { ErrorPolicy } from "./ErrorBoundary.js";
 import { Logger, LogLevel } from "./Logger.js";
-import { GameLoop } from "./GameLoop.js";
 import { Phase } from "./types.js";
 
 class MockScene {
@@ -288,24 +286,23 @@ describe("ProcessSystem", () => {
   });
 
   describe("throwing process callbacks (with an error boundary wired)", () => {
-    function setupWithBoundary(policy: ErrorPolicy = "isolate") {
+    function setupWithBoundary() {
       _resetEntityIdCounter();
       const sceneManager = new MockSceneManager();
       const ctx = new EngineContext();
       ctx.register(SceneManagerKey, sceneManager as never);
       const logger = new Logger({ level: LogLevel.Debug });
-      const loop = new GameLoop();
-      const boundary = new ErrorBoundary(logger, policy, loop);
+      const boundary = new ErrorBoundary(logger);
       ctx.register(ErrorBoundaryKey, boundary);
 
       const sys = new ProcessSystem();
       sys._setContext(ctx);
       sys.onRegister?.(ctx);
 
-      return { sys, sceneManager, boundary, ctx, loop };
+      return { sys, sceneManager, boundary, ctx };
     }
 
-    it("cancels only the throwing global process, leaving others ticking", () => {
+    it("a throwing global process rethrows, stopping later processes in the same update", () => {
       const { sys, boundary } = setupWithBoundary();
       const throwing = new Process({
         update: () => {
@@ -317,19 +314,18 @@ describe("ProcessSystem", () => {
       sys.add(throwing);
       sys.add(other);
 
-      expect(() => sys.update(16)).not.toThrow();
+      expect(() => sys.update(16)).toThrow("boom");
 
-      expect(throwing.completed).toBe(true);
-      expect(otherSpy).toHaveBeenCalledWith(16, 16);
-      expect(boundary.getCallbackErrors()).toHaveLength(1);
-
-      // Second tick: the cancelled process is pruned, no repeat report.
-      sys.update(16);
+      expect(throwing.completed).toBe(false);
+      expect(otherSpy).not.toHaveBeenCalled();
       expect(boundary.getCallbackErrors()).toHaveLength(1);
     });
 
-    it("cancels a global process whose async update rejects", async () => {
+    it("a global process's async rejection is reported without completing it", async () => {
       const { sys, boundary } = setupWithBoundary();
+      const rejection = new Promise<unknown>((resolve) => {
+        process.once("unhandledRejection", resolve);
+      });
       const p = new Process({
         update: (() => Promise.reject(new Error("async boom"))) as unknown as
           // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
@@ -340,17 +336,15 @@ describe("ProcessSystem", () => {
       sys.update(16);
       expect(p.completed).toBe(false); // the rejection hasn't settled yet
 
-      await Promise.resolve();
-      await Promise.resolve();
-
-      expect(p.completed).toBe(true);
+      const reason = await rejection;
+      expect((reason as Error).message).toBe("async boom");
+      expect(p.completed).toBe(false); // never cancelled — resilience is deferred
       expect(boundary.getCallbackErrors()[0]).toMatchObject({
-        outcome: "cancelled",
         error: "async boom",
       });
     });
 
-    it("cancels a process whose onComplete callback throws", () => {
+    it("a process whose onComplete callback throws still completes, and rethrows", () => {
       const { sys, boundary } = setupWithBoundary();
       const p = new Process({
         update: () => true, // completes immediately
@@ -360,10 +354,9 @@ describe("ProcessSystem", () => {
       });
       sys.add(p);
 
-      expect(() => sys.update(16)).not.toThrow();
-      expect(p.completed).toBe(true);
+      expect(() => sys.update(16)).toThrow("onComplete boom");
+      expect(p.completed).toBe(true); // Process.complete() flips this before onComplete runs
       expect(boundary.getCallbackErrors()[0]).toMatchObject({
-        outcome: "cancelled",
         error: "onComplete boom",
       });
     });
@@ -381,16 +374,15 @@ describe("ProcessSystem", () => {
         }),
       );
 
-      sys.update(16);
+      expect(() => sys.update(16)).toThrow("boom");
 
       expect(boundary.getCallbackErrors()[0]).toMatchObject({
         kind: "Process callback",
         scene: "TestScene",
-        outcome: "cancelled",
       });
     });
 
-    it("cancels only the throwing entity-owned process, leaving siblings and other entities running", () => {
+    it("a throwing entity-owned process rethrows, stopping other entities' processes for that update", () => {
       const { sys, sceneManager, boundary, ctx } = setupWithBoundary();
       const scene = new MockScene();
       scene.context = ctx;
@@ -413,43 +405,14 @@ describe("ProcessSystem", () => {
       const okSpy = vi.fn();
       okPc.run(new Process({ update: okSpy }));
 
-      expect(() => sys.update(16)).not.toThrow();
+      expect(() => sys.update(16)).toThrow("boom");
 
-      // The throwing process is cancelled and pruned; ProcessSystem itself,
-      // and every other entity's processes, keep running.
-      expect(throwerPc.count).toBe(0);
-      expect(okSpy).toHaveBeenCalledWith(16, 16);
+      expect(okSpy).not.toHaveBeenCalled();
       expect(boundary.getCallbackErrors()).toHaveLength(1);
       expect(boundary.getCallbackErrors()[0]).toMatchObject({
         kind: "Process callback",
         entity: "thrower",
         scene: "TestScene",
-        outcome: "cancelled",
-      });
-
-      // Second tick: no repeat report, and the healthy entity keeps ticking.
-      sys.update(16);
-      expect(okSpy).toHaveBeenCalledTimes(2);
-      expect(boundary.getCallbackErrors()).toHaveLength(1);
-    });
-
-    it("under errors: \"fatal\", a throwing process stops the loop, rethrows instead of being cancelled, and records the failure", () => {
-      const { sys, boundary, loop } = setupWithBoundary("fatal");
-      loop.start();
-      const throwing = new Process({
-        update: () => {
-          throw new Error("boom");
-        },
-      });
-      sys.add(throwing);
-
-      expect(() => sys.update(16)).toThrow("boom");
-      expect(throwing.completed).toBe(false);
-      expect(loop.isRunning).toBe(false);
-      expect(boundary.getCallbackErrors()).toHaveLength(1);
-      expect(boundary.getCallbackErrors()[0]).toMatchObject({
-        kind: "Process callback",
-        outcome: "fatal",
       });
     });
   });

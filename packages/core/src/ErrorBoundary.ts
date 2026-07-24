@@ -1,40 +1,7 @@
 import type { System } from "./System.js";
 import type { Component } from "./Component.js";
 import type { Logger } from "./Logger.js";
-import type { GameLoop } from "./GameLoop.js";
 import { isThenable } from "./internal/thenable.js";
-
-/**
- * What the engine does when developer code throws — a system or component's
- * own `update`, or a callback the engine invokes on the developer's behalf
- * (collision handler, event listener, process callback, ...).
- *
- * `"fatal"` reports the culprit with its stack, stops the game loop, and
- * rethrows so the failure reaches the host's error channel: a game running
- * with one part silently disabled is worse than one that stopped with
- * useful information. `"isolate"` disables/removes/mutes only the offender
- * and keeps the game running — a deliberate opt-in for a shipped build that
- * must not die in front of a player.
- */
-export type ErrorPolicy = "fatal" | "isolate";
-
-/**
- * How a throwing developer-supplied callback was handled after being
- * reported: the handler was unsubscribed (`removed`), left registered but
- * silenced against repeat failures (`muted`), its owning `Process` was
- * cancelled (`cancelled`), nothing further happens because the site has no
- * removal mechanism (`reported`), the throw continues up the call stack
- * unchanged (`propagated`, scene lifecycle hooks), or the game loop stopped
- * because the policy is `"fatal"` (`fatal` — nothing was unsubscribed, muted,
- * or cancelled, since the game is stopping regardless).
- */
-export type CallbackOutcome =
-  | "removed"
-  | "muted"
-  | "cancelled"
-  | "reported"
-  | "propagated"
-  | "fatal";
 
 /** Identifies what threw, for the log message and the error snapshot. */
 export interface CallbackErrorInfo {
@@ -48,112 +15,56 @@ export interface CallbackErrorInfo {
   event?: string;
 }
 
-/**
- * A recorded failure, readable via `Inspector.getErrors().callbackErrors`.
- * Covers developer callbacks under either policy, plus system/component
- * failures under `"fatal"` (under `"isolate"` those go to `disabledSystems`/
- * `disabledComponents` instead, since they're disabled rather than reported).
- */
+/** A recorded failure, readable via `Inspector.getErrors().callbackErrors`. */
 export interface CallbackErrorRecord extends CallbackErrorInfo {
-  outcome: CallbackOutcome;
   error: string;
-}
-
-/** Options for {@link ErrorBoundary.wrapCallback}. */
-export interface WrapCallbackOptions {
-  /**
-   * Runs once when the callback throws (synchronously, or via a rejected
-   * thenable) and the failure isn't suppressed by `muteKey`. Performs the
-   * outcome's actual consequence — unsubscribe the handler, cancel a
-   * process, and so on. `wrapCallback` itself never mutates call-site state.
-   */
-  onError?: () => void;
-  /**
-   * Dedupe key for "muted" sites (the global event bus): a throwing handler
-   * stays registered and keeps running, but only its first failure per event
-   * is logged and recorded. Keyed on the handler function plus the event
-   * name, since the same function can be registered for more than one event.
-   */
-  muteKey?: { handler: object; event: string };
 }
 
 const MAX_CALLBACK_ERRORS = 200;
 
 /**
  * Wraps system, component, and developer-callback execution so a throw is
- * attributed to whoever threw, not whoever it reached. Behavior is governed
- * by an {@link ErrorPolicy} fixed at construction: under `"fatal"` (the
- * engine default) every wrap method reports the culprit, stops the game
- * loop, and rethrows; under `"isolate"` it disables/removes/mutes the
- * offender and keeps the game running.
+ * attributed to whoever threw, not whoever it reached: the culprit is
+ * recorded (readable via `Inspector.getErrors().callbackErrors`), logged
+ * through `Logger`, and rethrown. Nothing is disabled, unsubscribed,
+ * cancelled, or muted — `GameLoop.tick()` is the one place that decides an
+ * error is terminal, stopping the loop when a throw escapes an entire frame.
  */
 export class ErrorBoundary {
   private logger: Logger;
-  private policy: ErrorPolicy;
-  private loop: GameLoop | undefined;
-  private disabledSystems: Array<{ system: System; error: string }> = [];
-  private disabledComponents: Array<{ component: Component; error: string }> = [];
   private callbackErrors: CallbackErrorRecord[] = [];
-  private mutedCallbacks = new WeakMap<object, Set<string>>();
   /**
-   * Errors already recorded, logged, and used to stop the loop under
-   * `"fatal"`. A fatal error thrown from `wrapCallback` (or a nested
-   * `wrapComponent`) is typically caught again by an outer
+   * Errors already recorded and logged. A throw from `wrapCallback` (or a
+   * nested `wrapComponent`) is typically caught again by an outer
    * `wrapSystem`/`wrapComponent` as it keeps propagating — e.g. a collision
    * handler's throw reaching the `SystemScheduler` wrap around
    * `PhysicsSystem.update`. This keeps that second catch from recording or
-   * logging the same failure again under a less specific message, or calling
-   * `loop.stop()` a second time.
+   * logging the same failure again under a less specific message.
    */
-  private fatalReported = new WeakSet<Error>();
+  private reported = new WeakSet<Error>();
 
-  constructor(logger: Logger, policy: ErrorPolicy, loop?: GameLoop) {
+  constructor(logger: Logger) {
     this.logger = logger;
-    this.policy = policy;
-    this.loop = loop;
   }
 
-  /** Wrap a system update call. Under `"isolate"`, disables the system on throw. */
+  /** Wrap a system update call. Attributes a throw to the system, logs it, and rethrows. */
   wrapSystem(system: System, fn: () => void): void {
     try {
       fn();
     } catch (err) {
-      if (this.policy === "fatal") {
-        this._raiseFatal(err, { kind: `System ${system.constructor.name}` });
-        return;
-      }
-      const message = err instanceof Error ? err.message : String(err);
-      system.enabled = false;
-      this.disabledSystems.push({ system, error: message });
-      this.logger.error(
-        "core",
-        `System ${system.constructor.name} threw and was disabled`,
-        { error: message },
-      );
+      this._raise(err, { kind: `System ${system.constructor.name}` });
     }
   }
 
-  /** Wrap a component lifecycle or update call. Under `"isolate"`, disables the component on throw. */
+  /** Wrap a component lifecycle or update call. Attributes a throw to the component, logs it, and rethrows. */
   wrapComponent(component: Component, fn: () => void): void {
     try {
       fn();
     } catch (err) {
-      const entityName = component.entity?.name ?? "unknown";
-      if (this.policy === "fatal") {
-        this._raiseFatal(err, {
-          kind: `Component ${component.constructor.name}`,
-          entity: entityName,
-        });
-        return;
-      }
-      const message = err instanceof Error ? err.message : String(err);
-      component.enabled = false;
-      this.disabledComponents.push({ component, error: message });
-      this.logger.error(
-        "core",
-        `Component ${component.constructor.name} on entity "${entityName}" threw and was disabled`,
-        { error: message },
-      );
+      this._raise(err, {
+        kind: `Component ${component.constructor.name}`,
+        entity: component.entity?.name ?? "unknown",
+      });
     }
   }
 
@@ -163,42 +74,19 @@ export class ErrorBoundary {
    * listener, a process callback, an audio unlock callback. Catches a
    * synchronous throw and, since these callbacks are typed void-returning
    * but nothing stops a caller from passing an `async` function anyway, a
-   * rejected thenable too.
-   *
-   * Under `"isolate"`, never disables a System or Component — `options.onError`
-   * performs whatever the call site's outcome requires (unsubscribe, mute,
-   * cancel), and the failure is recorded with the passed-in `outcome`. Under
-   * `"fatal"`, `outcome` and `options.onError` are ignored — the callback's
-   * owner isn't touched because the whole game is stopping — but the failure
-   * is still recorded, with `outcome: "fatal"` in place of the passed-in one.
+   * rejected thenable too. Both are recorded, logged, and rethrown — a
+   * rejected thenable is rethrown from inside its `.then` rejection handler,
+   * which surfaces as a new unhandled rejection since nothing can rethrow
+   * into the original (already-returned) call stack.
    */
-  wrapCallback(
-    fn: () => void,
-    info: CallbackErrorInfo,
-    outcome: CallbackOutcome,
-    options?: WrapCallbackOptions,
-  ): void {
+  wrapCallback(fn: () => void, info: CallbackErrorInfo): void {
     try {
       const result = fn() as unknown;
       if (isThenable(result)) {
-        result.then(undefined, (err: unknown) => {
-          if (this.policy === "fatal") {
-            // Thrown from inside a .then rejection handler whose result is
-            // never consumed — this rejects that promise, which surfaces as
-            // a new unhandled rejection since nothing can rethrow into the
-            // original (already-returned) call stack.
-            this._raiseFatal(err, info);
-            return;
-          }
-          this._reportCallback(err, info, outcome, options);
-        });
+        result.then(undefined, (err: unknown) => this._raise(err, info));
       }
     } catch (err) {
-      if (this.policy === "fatal") {
-        this._raiseFatal(err, info);
-        return;
-      }
-      this._reportCallback(err, info, outcome, options);
+      this._raise(err, info);
     }
   }
 
@@ -214,9 +102,7 @@ export class ErrorBoundary {
     try {
       const result = fn() as unknown;
       if (isThenable(result)) {
-        result.then(undefined, (err: unknown) => {
-          this.reportLifecycleError(err, info);
-        });
+        result.then(undefined, (err: unknown) => this.reportLifecycleError(err, info));
       }
     } catch (err) {
       this.reportLifecycleError(err, info);
@@ -229,45 +115,28 @@ export class ErrorBoundary {
    * inside its own try/catch, for instance) without invoking anything.
    */
   reportLifecycleError(err: unknown, info: CallbackErrorInfo): void {
-    this._reportCallback(err, info, "propagated");
+    this._report(err, info);
   }
 
-  private _reportCallback(
-    err: unknown,
-    info: CallbackErrorInfo,
-    outcome: CallbackOutcome,
-    options?: WrapCallbackOptions,
-  ): void {
-    const muteKey = options?.muteKey;
-    if (muteKey) {
-      let muted = this.mutedCallbacks.get(muteKey.handler);
-      if (muted?.has(muteKey.event)) return; // already reported once — stay silent
-      if (!muted) {
-        muted = new Set();
-        this.mutedCallbacks.set(muteKey.handler, muted);
-      }
-      muted.add(muteKey.event);
-    }
+  /** Record, log, and rethrow — the shared path for wrapSystem/wrapComponent/wrapCallback. */
+  private _raise(err: unknown, info: CallbackErrorInfo): never {
+    throw this._report(err, info);
+  }
 
+  /** Record and log an error once per error object, returning the normalized `Error`. */
+  private _report(err: unknown, info: CallbackErrorInfo): Error {
     const error = err instanceof Error ? err : new Error(String(err));
-    this._record(info, outcome, error);
-
-    this.logger.error("core", `${this._describe(info)} and was ${outcome}`, {
-      error,
-    });
-
-    options?.onError?.();
-  }
-
-  /** Push a record, enforcing {@link MAX_CALLBACK_ERRORS}. Shared by isolate-policy reporting and `_raiseFatal`. */
-  private _record(info: CallbackErrorInfo, outcome: CallbackOutcome, error: Error): void {
-    this.callbackErrors.push({ ...info, outcome, error: error.message });
+    if (this.reported.has(error)) return error;
+    this.reported.add(error);
+    this.callbackErrors.push({ ...info, error: error.message });
     if (this.callbackErrors.length > MAX_CALLBACK_ERRORS) {
       this.callbackErrors.shift();
     }
+    this.logger.error("core", this._describe(info), { error });
+    return error;
   }
 
-  /** Human-readable "kind threw on entity X in scene Y for event Z" prefix, shared by isolate and fatal reporting. */
+  /** Human-readable "kind threw on entity X in scene Y for event Z" prefix. */
   private _describe(info: CallbackErrorInfo): string {
     let message = `${info.kind} threw`;
     if (info.entity !== undefined) message += ` on entity "${info.entity}"`;
@@ -276,42 +145,12 @@ export class ErrorBoundary {
     return message;
   }
 
-  /**
-   * Report a `"fatal"`-policy error with its original stack, record it with
-   * outcome `"fatal"`, stop the game loop, and rethrow. Idempotent per error
-   * object — see {@link fatalReported} — so an error that keeps propagating
-   * through nested wraps is recorded, logged, and stops the loop exactly once.
-   */
-  private _raiseFatal(err: unknown, info: CallbackErrorInfo): never {
-    const error = err instanceof Error ? err : new Error(String(err));
-    if (!this.fatalReported.has(error)) {
-      this.fatalReported.add(error);
-      this._record(info, "fatal", error);
-      this.logger.error("core", `${this._describe(info)} and stopped the game loop`, {
-        error,
-      });
-      this.loop?.stop();
-    }
-    throw error;
-  }
-
-  /** Get all disabled systems and components for inspection. */
-  getDisabled(): {
-    systems: ReadonlyArray<{ system: System; error: string }>;
-    components: ReadonlyArray<{ component: Component; error: string }>;
-  } {
-    return {
-      systems: this.disabledSystems,
-      components: this.disabledComponents,
-    };
-  }
-
-  /** Get recorded failures for inspection — developer callbacks under either policy, plus system/component failures under `"fatal"`. */
+  /** Get recorded failures for inspection. */
   getCallbackErrors(): readonly CallbackErrorRecord[] {
     return this.callbackErrors;
   }
 
-  /** Clear recorded callback failures. Disabled systems/components are untouched. */
+  /** Clear recorded callback failures. */
   clearCallbackErrors(): void {
     this.callbackErrors.length = 0;
   }

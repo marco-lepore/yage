@@ -331,28 +331,26 @@ Entities: `@serializable` + optional `serialize()` / `afterRestore(data, resolve
 
 ## Error Boundary
 
-`ErrorBoundary` wraps every system, component, and developer-callback call.
-Policy is `new Engine({ errors: "fatal" | "isolate" })`, default `"fatal"`:
-report the culprit with its stack, stop the game loop, and rethrow — a game
-running with one part silently disabled is worse than one that stopped with
-useful information. `"isolate"` disables the offending system/component
-(`enabled = false`) or removes/mutes/cancels the offending callback instead,
-and the game keeps running.
+`ErrorBoundary` wraps every system, component, and developer-callback call —
+a collision handler, an event listener, a component's own `update()`, a scene
+lifecycle hook. A throw is attributed to the culprit, logged through
+`Logger`, recorded (readable via `engine.inspector.getErrors().callbackErrors`),
+and rethrown. Nothing is disabled, unsubscribed, or muted.
+
+`GameLoop.tick()` is the one place that decides a failure is terminal: an
+error that escapes an entire frame unhandled stops the loop and rethrows, so
+it reaches your own `try`/`catch`, `window.onerror`, or an
+unhandled-rejection handler. An error your own code catches inside the frame
+leaves the loop running.
 
 Scene lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`, a plugin's
-`beforeEnter`) are the one exception: a synchronous throw is reported and
-rethrown regardless of policy — `"isolate"` does not recover them, since a
-scene half-built by a throwing hook must not look like it mounted cleanly. A
-rejected async hook is reported only, not rethrown, since the call has
-already returned by the time the rejection settles.
+`beforeEnter`) are reported the same way, and a synchronous throw is
+rethrown — a scene half-built by a throwing hook must not look like it
+mounted cleanly. A rejected async hook is reported only, not rethrown, since
+the call has already returned by the time the rejection settles.
 
 ```ts
-const engine = new Engine({ errors: "isolate" }); // opt in to degrading instead of stopping
-
-// Under "isolate", check what got disabled:
-const { systems, components } = context.resolve(ErrorBoundaryKey).getDisabled();
-
-// Every recorded failure, under either policy:
+// Every recorded failure:
 const { callbackErrors } = engine.inspector.getErrors();
-// [{ kind: "Collision handler", entity: "DoorPad", outcome: "removed", error: "..." }]
+// [{ kind: "Collision handler", entity: "DoorPad", error: "..." }]
 ```

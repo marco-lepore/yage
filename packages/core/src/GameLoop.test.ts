@@ -182,6 +182,41 @@ describe("GameLoop", () => {
     });
   });
 
+  describe("error handling", () => {
+    it("an error escaping a callback stops the loop and rethrows out of tick()", () => {
+      const loop = new GameLoop({ fixedTimestep: 0.016 });
+      loop.setCallbacks({
+        ...createCallbacks(),
+        update: () => {
+          throw new Error("boom");
+        },
+      });
+      loop.start();
+      expect(loop.isRunning).toBe(true);
+      expect(() => loop.tick(16)).toThrow("boom");
+      expect(loop.isRunning).toBe(false);
+    });
+
+    it("a callback that throws after earlier phases still runs those phases first", () => {
+      const loop = new GameLoop({ fixedTimestep: 0.016 });
+      const order: string[] = [];
+      loop.setCallbacks({
+        earlyUpdate: () => order.push("early"),
+        fixedUpdate: () => order.push("fixed"),
+        update: () => {
+          order.push("update");
+          throw new Error("boom");
+        },
+        lateUpdate: () => order.push("late"),
+        render: () => order.push("render"),
+        endOfFrame: () => order.push("end"),
+      });
+      loop.start();
+      expect(() => loop.tick(16)).toThrow("boom");
+      expect(order).toEqual(["early", "fixed", "update"]);
+    });
+  });
+
   describe("start/stop", () => {
     it("start sets running to true", () => {
       const loop = new GameLoop();

@@ -1637,8 +1637,7 @@ export class InputManager {
 
   /**
    * @internal Wire the error boundary so a throwing key/action listener is
-   * reported and unsubscribed instead of stopping input polling for the
-   * rest of the session. Called by `InputPlugin.install`.
+   * attributed and reported. Called by `InputPlugin.install`.
    */
   _setErrorBoundary(boundary: ErrorBoundary | undefined): void {
     this.errorBoundary = boundary;
@@ -2061,29 +2060,17 @@ export class InputManager {
   /**
    * Shared listener fan-out for key/action edges and gamepad/active-pad
    * events. Iterates a snapshot so a listener that unsubscribes itself
-   * doesn't skip the next one. A throwing listener is removed from the live
-   * array so it can't throw again on the next edge; `reported` avoids a
-   * double report in the rare case the same function is registered twice,
-   * and is allocated only once a listener actually throws — the common,
-   * no-error path stays a single array snapshot.
+   * doesn't skip the next one.
    */
   private _callListeners<T>(
-    live: T[],
+    live: readonly T[],
     invoke: (fn: T) => void,
     kind: string,
     event: string,
   ): void {
-    let reported: Set<T> | undefined;
     for (const fn of [...live]) {
-      if (reported?.has(fn)) continue;
       if (this.errorBoundary) {
-        this.errorBoundary.wrapCallback(() => invoke(fn), { kind, event }, "removed", {
-          onError: () => {
-            (reported ??= new Set()).add(fn);
-            const idx = live.indexOf(fn);
-            if (idx !== -1) live.splice(idx, 1);
-          },
-        });
+        this.errorBoundary.wrapCallback(() => invoke(fn), { kind, event });
       } else {
         invoke(fn);
       }

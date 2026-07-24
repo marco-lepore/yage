@@ -299,7 +299,6 @@ test.describe("Examples", () => {
     expect(result.runAnimation).toBe("sprint_dir6");
     expect(result.heldDashCooldown).toBe("0.0");
     expect(result.tappedDashCooldown).not.toBe("0.0");
-    expect(result.errors.disabledComponents).toEqual([]);
-    expect(result.errors.disabledSystems).toEqual([]);
+    expect(result.errors.callbackErrors).toEqual([]);
   });
 });

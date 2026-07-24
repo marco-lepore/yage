@@ -20,15 +20,8 @@ export interface EngineSnapshot {
   entityCount: number;
   systemCount: number;
   errors: {
-    disabledSystems: string[];
-    disabledComponents: Array<{
-      entity: string;
-      component: string;
-      error: string;
-    }>;
     callbackErrors: Array<{
       kind: string;
-      outcome: string;
       error: string;
       entity?: string;
       scene?: string;

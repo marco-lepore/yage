@@ -2,25 +2,22 @@ import type { EasingFunction } from "./types.js";
 import type { ErrorBoundary, CallbackErrorInfo } from "./ErrorBoundary.js";
 
 /**
- * Ticks one process or slot through the error boundary: a throw — synchronous,
+ * Ticks one process or slot through the error boundary — a throw, synchronous
  * or from a rejected thenable returned by an `async` update/completion
- * callback — cancels only this instance and is recorded as "cancelled",
- * instead of disabling the surrounding System via `SystemScheduler.wrapSystem`
- * and stopping every other tween and sequence. Shared by `ProcessSystem`
- * (pool processes), `ProcessComponent` (entity-owned processes and slots), so
+ * callback, is attributed and rethrown. Shared by `ProcessSystem` (pool
+ * processes) and `ProcessComponent` (entity-owned processes and slots) so
  * there is one guarded code path regardless of where the process lives.
  */
 export function tickProcessGuarded(
   boundary: ErrorBoundary | undefined,
   run: () => unknown,
-  cancel: () => void,
   info: CallbackErrorInfo,
 ): void {
   if (!boundary) {
     run();
     return;
   }
-  boundary.wrapCallback(run, info, "cancelled", { onError: cancel });
+  boundary.wrapCallback(run, info);
 }
 
 /** Options for creating a Process. */

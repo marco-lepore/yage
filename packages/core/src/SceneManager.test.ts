@@ -1157,7 +1157,7 @@ describe("SceneManager", () => {
       ctx.register(QueryCacheKey, new QueryCache());
       ctx.register(EventBusKey, new EventBus<EngineEvents>());
       const logger = new Logger({ level: LogLevel.Debug });
-      const boundary = new ErrorBoundary(logger, "isolate");
+      const boundary = new ErrorBoundary(logger);
       ctx.register(ErrorBoundaryKey, boundary);
       const manager = new SceneManager();
       ctx.register(SceneManagerKey, manager);
@@ -1181,7 +1181,6 @@ describe("SceneManager", () => {
       expect(errors[0]).toMatchObject({
         kind: "Scene onEnter hook",
         scene: "broken",
-        outcome: "propagated",
         error: "setup failed",
       });
     });
@@ -1203,7 +1202,6 @@ describe("SceneManager", () => {
       expect(errors[0]).toMatchObject({
         kind: "Scene onExit hook",
         scene: "broken",
-        outcome: "propagated",
       });
     });
 
@@ -1226,7 +1224,6 @@ describe("SceneManager", () => {
       expect(errors[0]).toMatchObject({
         kind: "Scene onPause hook",
         scene: "broken",
-        outcome: "propagated",
       });
     });
 
@@ -1254,7 +1251,7 @@ describe("SceneManager", () => {
       ctx.register(QueryCacheKey, new QueryCache());
       ctx.register(EventBusKey, new EventBus<EngineEvents>());
       const logger = new Logger({ level: LogLevel.Debug });
-      const boundary = new ErrorBoundary(logger, "isolate");
+      const boundary = new ErrorBoundary(logger);
       ctx.register(ErrorBoundaryKey, boundary);
       const hooks = new SceneHookRegistry();
       hooks._setErrorBoundary(boundary);
@@ -1277,7 +1274,6 @@ describe("SceneManager", () => {
       expect(errors[0]).toMatchObject({
         kind: "Scene beforeEnter hook",
         scene: "broken",
-        outcome: "propagated",
       });
     });
 
@@ -1319,7 +1315,6 @@ describe("SceneManager", () => {
       expect(errors[0]).toMatchObject({
         kind: "Scene onResume hook",
         scene: "broken",
-        outcome: "propagated",
       });
     });
 
@@ -1341,7 +1336,6 @@ describe("SceneManager", () => {
       expect(errors[0]).toMatchObject({
         kind: "Scene onEnter hook",
         scene: "broken",
-        outcome: "propagated",
       });
     });
 
@@ -1362,7 +1356,6 @@ describe("SceneManager", () => {
       expect(errors[0]).toMatchObject({
         kind: "Scene onExit hook",
         scene: "broken",
-        outcome: "propagated",
       });
     });
 
@@ -1383,7 +1376,6 @@ describe("SceneManager", () => {
       expect(errors[0]).toMatchObject({
         kind: "Scene onExit hook",
         scene: "broken",
-        outcome: "propagated",
       });
     });
   });

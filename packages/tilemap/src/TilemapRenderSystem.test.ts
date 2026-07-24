@@ -95,7 +95,7 @@ import {
   Phase,
   _resetEntityIdCounter,
 } from "@yagejs/core";
-import type { EngineEvents, ErrorPolicy } from "@yagejs/core";
+import type { EngineEvents } from "@yagejs/core";
 import {
   SceneRenderTreeKey,
   SceneRenderTreeProviderKey,
@@ -110,7 +110,7 @@ class TestScene extends Scene {
   readonly name = "test-scene";
 }
 
-function createTestContext(errorPolicy: ErrorPolicy = "fatal") {
+function createTestContext() {
   _resetEntityIdCounter();
 
   const ctx = new EngineContext();
@@ -118,9 +118,7 @@ function createTestContext(errorPolicy: ErrorPolicy = "fatal") {
   const bus = new EventBus<EngineEvents>();
   const logger = new Logger({ level: LogLevel.Debug });
   const gameLoop = new GameLoop();
-  // Defaults to "fatal", matching a real Engine. Pass "isolate" for a test
-  // that specifically exercises recovery.
-  const boundary = new ErrorBoundary(logger, errorPolicy, gameLoop);
+  const boundary = new ErrorBoundary(logger);
   const scheduler = new SystemScheduler();
   scheduler.setErrorBoundary(boundary);
 

@@ -251,14 +251,14 @@ describe("ProcessComponent", () => {
 
   describe("error boundary", () => {
     function makeWiredComponent() {
-      const { entity, context } = createMockEntity("player", "isolate");
+      const { entity, context } = createMockEntity("player");
       const pc = new ProcessComponent();
       entity.add(pc);
       const boundary = context.tryResolve(ErrorBoundaryKey)!;
       return { pc, entity, boundary };
     }
 
-    it("cancels only the throwing process; sibling processes keep running", () => {
+    it("a throwing process rethrows, leaving it uncompleted and later processes untouched", () => {
       const { pc, boundary } = makeWiredComponent();
       const throwing = new Process({
         update: () => {
@@ -270,18 +270,17 @@ describe("ProcessComponent", () => {
       pc.run(throwing);
       pc.run(ok);
 
-      expect(() => pc._tick(16)).not.toThrow();
+      expect(() => pc._tick(16)).toThrow("boom");
 
-      expect(throwing.completed).toBe(true);
-      expect(okSpy).toHaveBeenCalledWith(16, 16);
+      expect(throwing.completed).toBe(false);
+      expect(okSpy).not.toHaveBeenCalled();
       expect(boundary.getCallbackErrors()).toHaveLength(1);
       expect(boundary.getCallbackErrors()[0]).toMatchObject({
         kind: "Process callback",
-        outcome: "cancelled",
       });
     });
 
-    it("cancels only the throwing slot; sibling slots keep running", () => {
+    it("a throwing slot rethrows, leaving it uncompleted and later slots untouched", () => {
       const { pc, boundary } = makeWiredComponent();
       const throwingSlot = pc.slot({
         duration: 100,
@@ -294,35 +293,35 @@ describe("ProcessComponent", () => {
       throwingSlot.start();
       okSlot.start();
 
-      expect(() => pc._tick(16)).not.toThrow();
+      expect(() => pc._tick(16)).toThrow("boom");
 
-      expect(throwingSlot.completed).toBe(true);
-      expect(okSpy).toHaveBeenCalledWith(16, 16);
+      expect(throwingSlot.completed).toBe(false);
+      expect(okSpy).not.toHaveBeenCalled();
       expect(boundary.getCallbackErrors()).toHaveLength(1);
       expect(boundary.getCallbackErrors()[0]).toMatchObject({
         kind: "Process slot callback",
-        outcome: "cancelled",
       });
     });
 
-    it("cancels a process whose async update rejects", async () => {
+    it("an async process's rejection is reported without completing it", async () => {
       const { pc, boundary } = makeWiredComponent();
-      const process = new Process({
+      const rejection = new Promise<unknown>((resolve) => {
+        process.once("unhandledRejection", resolve);
+      });
+      const proc = new Process({
         update: (() => Promise.reject(new Error("async boom"))) as unknown as
           // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
           (dt: number, elapsed: number) => boolean | void,
       });
-      pc.run(process);
+      pc.run(proc);
 
       pc._tick(16);
-      expect(process.completed).toBe(false); // the rejection hasn't settled yet
+      expect(proc.completed).toBe(false); // the rejection hasn't settled yet
 
-      await Promise.resolve();
-      await Promise.resolve();
-
-      expect(process.completed).toBe(true);
+      const reason = await rejection;
+      expect((reason as Error).message).toBe("async boom");
+      expect(proc.completed).toBe(false); // never cancelled — resilience is deferred
       expect(boundary.getCallbackErrors()[0]).toMatchObject({
-        outcome: "cancelled",
         error: "async boom",
       });
     });
@@ -337,7 +336,7 @@ describe("ProcessComponent", () => {
         }),
       );
 
-      pc._tick(16, "TestScene");
+      expect(() => pc._tick(16, "TestScene")).toThrow("boom");
 
       expect(boundary.getCallbackErrors()[0]).toMatchObject({
         kind: "Process callback",
@@ -358,7 +357,7 @@ describe("ProcessComponent", () => {
     });
 
     it("picks up the boundary when the entity gains a scene after onAdd, via addChild", () => {
-      const { scene, context } = createMockScene(undefined, "isolate");
+      const { scene, context } = createMockScene();
       const boundary = context.tryResolve(ErrorBoundaryKey)!;
       const parent = scene.spawn("parent");
 
@@ -375,11 +374,10 @@ describe("ProcessComponent", () => {
         }),
       );
 
-      expect(() => pc._tick(16)).not.toThrow();
+      expect(() => pc._tick(16)).toThrow("boom");
       expect(boundary.getCallbackErrors()).toHaveLength(1);
       expect(boundary.getCallbackErrors()[0]).toMatchObject({
         kind: "Process callback",
-        outcome: "cancelled",
       });
     });
   });

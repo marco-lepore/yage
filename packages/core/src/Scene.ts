@@ -621,12 +621,11 @@ export abstract class Scene {
       for (const handler of [...handlers]) {
         const call = handler as (data: unknown, entity?: Entity) => void;
         if (boundary) {
-          boundary.wrapCallback(
-            () => call(data, undefined),
-            { kind: "Scene event handler", scene: this.name, event: token.name },
-            "removed",
-            { onError: () => handlers.delete(handler) },
-          );
+          boundary.wrapCallback(() => call(data, undefined), {
+            kind: "Scene event handler",
+            scene: this.name,
+            event: token.name,
+          });
         } else {
           call(data, undefined);
         }
@@ -645,17 +644,12 @@ export abstract class Scene {
       for (const handler of [...handlers]) {
         const call = handler as (data: unknown, entity?: Entity) => void;
         if (boundary) {
-          boundary.wrapCallback(
-            () => call(data, entity),
-            {
-              kind: "Scene event handler",
-              scene: this.name,
-              entity: entity.name,
-              event: eventName,
-            },
-            "removed",
-            { onError: () => handlers.delete(handler) },
-          );
+          boundary.wrapCallback(() => call(data, entity), {
+            kind: "Scene event handler",
+            scene: this.name,
+            entity: entity.name,
+            event: eventName,
+          });
         } else {
           call(data, entity);
         }

@@ -162,19 +162,15 @@ export class ProcessSystem extends System {
   }
 
   /**
-   * Advance one process, cancelling it (and only it) if its update or
-   * completion callback throws, via the same `tickProcessGuarded` path
-   * `ProcessComponent` uses for entity-owned processes. Without this, a
-   * throw from `p._update` would disable the whole `ProcessSystem` via
-   * `SystemScheduler.wrapSystem`, stopping every other tween and sequence
-   * for the rest of the session. `scene` is omitted for engine-global
-   * processes, which have no owning scene.
+   * Advance one process through the error boundary, via the same
+   * `tickProcessGuarded` path `ProcessComponent` uses for entity-owned
+   * processes. `scene` is omitted for engine-global processes, which have no
+   * owning scene.
    */
   private _tickProcess(p: Process, dt: number, scene?: string): void {
     tickProcessGuarded(
       this.errorBoundary,
       () => p._update(dt),
-      () => p.cancel(),
       scene !== undefined ? { kind: "Process callback", scene } : { kind: "Process callback" },
     );
   }

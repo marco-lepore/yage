@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { Vec2, ErrorBoundary, GameLoop, Logger, LogLevel } from "@yagejs/core";
-import type { ErrorPolicy } from "@yagejs/core";
+import { Vec2, ErrorBoundary, Logger, LogLevel } from "@yagejs/core";
 import { InputManager } from "./InputManager.js";
 import type { PointerInfo } from "./types.js";
 
@@ -1901,17 +1900,14 @@ describe("InputManager", () => {
   });
 
   describe("throwing listeners (with an error boundary wired)", () => {
-    function wireBoundary(
-      policy: ErrorPolicy = "isolate",
-    ): { boundary: ErrorBoundary; loop: GameLoop } {
+    function wireBoundary(): { boundary: ErrorBoundary } {
       const logger = new Logger({ level: LogLevel.Debug });
-      const loop = new GameLoop();
-      const boundary = new ErrorBoundary(logger, policy, loop);
+      const boundary = new ErrorBoundary(logger);
       input._setErrorBoundary(boundary);
-      return { boundary, loop };
+      return { boundary };
     }
 
-    it("removes a throwing action listener without skipping siblings", () => {
+    it("a throwing action listener rethrows, stopping later listeners for the same fire", () => {
       const { boundary } = wireBoundary();
       const calls: string[] = [];
       input.onAction("jump", () => calls.push("before"));
@@ -1920,23 +1916,17 @@ describe("InputManager", () => {
       });
       input.onAction("jump", () => calls.push("after"));
 
-      input.fireAction("jump");
-      expect(calls).toEqual(["before", "after"]);
+      expect(() => input.fireAction("jump")).toThrow("boom");
+      expect(calls).toEqual(["before"]);
 
       expect(boundary.getCallbackErrors()).toHaveLength(1);
       expect(boundary.getCallbackErrors()[0]).toMatchObject({
         kind: "Action listener",
         event: "jump",
-        outcome: "removed",
       });
-
-      calls.length = 0;
-      input.fireAction("jump");
-      expect(calls).toEqual(["before", "after"]); // thrower is gone
-      expect(boundary.getCallbackErrors()).toHaveLength(1);
     });
 
-    it("removes a throwing key listener without disabling input polling", () => {
+    it("a throwing key listener stays registered and rethrows on every trigger", () => {
       const { boundary } = wireBoundary();
       let calls = 0;
       input.onKeyDown("Space", () => {
@@ -1944,15 +1934,15 @@ describe("InputManager", () => {
         throw new Error("boom");
       });
 
-      expect(() => input._onKeyDown("Space")).not.toThrow();
+      expect(() => input._onKeyDown("Space")).toThrow("boom");
       input._onKeyUp("Space");
-      expect(() => input._onKeyDown("Space")).not.toThrow();
+      expect(() => input._onKeyDown("Space")).toThrow("boom");
 
-      expect(calls).toBe(1); // removed after the first throw
-      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(calls).toBe(2); // never removed
+      expect(boundary.getCallbackErrors()).toHaveLength(2);
     });
 
-    it("removes a throwing gamepad-connect listener without skipping siblings", () => {
+    it("a throwing gamepad-connect listener rethrows, stopping later listeners for the same connect", () => {
       const { boundary } = wireBoundary();
       const calls: string[] = [];
       input.onGamepadConnected(() => calls.push("before"));
@@ -1961,22 +1951,15 @@ describe("InputManager", () => {
       });
       input.onGamepadConnected(() => calls.push("after"));
 
-      expect(() => input._onGamepadConnected({ index: 0, id: "pad-0" })).not.toThrow();
-      expect(calls).toEqual(["before", "after"]);
+      expect(() => input._onGamepadConnected({ index: 0, id: "pad-0" })).toThrow("boom");
+      expect(calls).toEqual(["before"]);
       expect(boundary.getCallbackErrors()).toHaveLength(1);
       expect(boundary.getCallbackErrors()[0]).toMatchObject({
         kind: "Gamepad connect listener",
-        outcome: "removed",
       });
-
-      // Second connect (a different pad): the thrower is gone, no repeat report.
-      calls.length = 0;
-      input._onGamepadConnected({ index: 1, id: "pad-1" });
-      expect(calls).toEqual(["before", "after"]);
-      expect(boundary.getCallbackErrors()).toHaveLength(1);
     });
 
-    it("removes a throwing gamepad-disconnect listener without skipping siblings", () => {
+    it("a throwing gamepad-disconnect listener rethrows, stopping later listeners for the same disconnect", () => {
       const { boundary } = wireBoundary();
       input._onGamepadConnected({ index: 0, id: "pad-0" });
       const calls: string[] = [];
@@ -1986,16 +1969,15 @@ describe("InputManager", () => {
       });
       input.onGamepadDisconnected(() => calls.push("after"));
 
-      expect(() => input._onGamepadDisconnected({ index: 0, id: "pad-0" })).not.toThrow();
-      expect(calls).toEqual(["before", "after"]);
+      expect(() => input._onGamepadDisconnected({ index: 0, id: "pad-0" })).toThrow("boom");
+      expect(calls).toEqual(["before"]);
       expect(boundary.getCallbackErrors()).toHaveLength(1);
       expect(boundary.getCallbackErrors()[0]).toMatchObject({
         kind: "Gamepad disconnect listener",
-        outcome: "removed",
       });
     });
 
-    it("removes a throwing active-pad listener without skipping siblings", () => {
+    it("a throwing active-pad listener rethrows, stopping later listeners for the same change", () => {
       const { boundary } = wireBoundary();
       const calls: string[] = [];
       // onActivePadChanged replays synchronously (and unguarded) on subscribe,
@@ -2012,29 +1994,11 @@ describe("InputManager", () => {
       calls.length = 0;
       armed = true;
 
-      expect(() => input._onGamepadConnected({ index: 0, id: "pad-0" })).not.toThrow();
-      expect(calls).toEqual(["before", "after"]);
+      expect(() => input._onGamepadConnected({ index: 0, id: "pad-0" })).toThrow("boom");
+      expect(calls).toEqual(["before"]);
       expect(boundary.getCallbackErrors()).toHaveLength(1);
       expect(boundary.getCallbackErrors()[0]).toMatchObject({
         kind: "Active pad listener",
-        outcome: "removed",
-      });
-    });
-
-    it("under errors: \"fatal\", a throwing action listener stops the loop, rethrows out of fireAction(), and records the failure", () => {
-      const { boundary, loop } = wireBoundary("fatal");
-      loop.start();
-      input.onAction("jump", () => {
-        throw new Error("boom");
-      });
-
-      expect(() => input.fireAction("jump")).toThrow("boom");
-      expect(loop.isRunning).toBe(false);
-      expect(boundary.getCallbackErrors()).toHaveLength(1);
-      expect(boundary.getCallbackErrors()[0]).toMatchObject({
-        kind: "Action listener",
-        event: "jump",
-        outcome: "fatal",
       });
     });
   });

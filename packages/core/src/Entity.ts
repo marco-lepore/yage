@@ -326,17 +326,12 @@ export class Entity {
       // Snapshot for safe unsubscribe during iteration
       for (const handler of [...handlers]) {
         if (boundary) {
-          boundary.wrapCallback(
-            () => handler(data as never),
-            {
-              kind: "Entity event handler",
-              entity: this.name,
-              event: token.name,
-              ...(sceneName !== undefined ? { scene: sceneName } : {}),
-            },
-            "removed",
-            { onError: () => handlers.delete(handler) },
-          );
+          boundary.wrapCallback(() => handler(data as never), {
+            kind: "Entity event handler",
+            entity: this.name,
+            event: token.name,
+            ...(sceneName !== undefined ? { scene: sceneName } : {}),
+          });
         } else {
           handler(data as never);
         }

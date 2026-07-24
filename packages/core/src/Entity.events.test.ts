@@ -98,8 +98,8 @@ describe("Entity events", () => {
   });
 
   describe("throwing handlers", () => {
-    it("removes a throwing handler; sibling handlers still fire, on this and later emits", () => {
-      const { entity, context } = createMockEntity(undefined, "isolate");
+    it("a throwing handler stops later handlers in the same emit and rethrows", () => {
+      const { entity, context } = createMockEntity();
       const Ping = defineEvent("ping");
       const calls: string[] = [];
 
@@ -109,8 +109,8 @@ describe("Entity events", () => {
       });
       entity.on(Ping, () => calls.push("after"));
 
-      entity.emit(Ping);
-      expect(calls).toEqual(["before", "after"]);
+      expect(() => entity.emit(Ping)).toThrow("boom");
+      expect(calls).toEqual(["before"]);
 
       const boundary = context.tryResolve(ErrorBoundaryKey)!;
       const errors = boundary.getCallbackErrors();
@@ -119,24 +119,18 @@ describe("Entity events", () => {
         kind: "Entity event handler",
         entity: entity.name,
         event: "ping",
-        outcome: "removed",
       });
-
-      calls.length = 0;
-      entity.emit(Ping);
-      expect(calls).toEqual(["before", "after"]); // thrower is gone, not re-invoked
-      expect(errors).toHaveLength(1); // no repeat report
     });
 
     it("records the owning scene's name alongside the entity", () => {
-      const { scene } = createMockScene("Level1", "isolate");
+      const { scene } = createMockScene("Level1");
       const entity = scene.spawn("player");
       const Ping = defineEvent("ping");
 
       entity.on(Ping, () => {
         throw new Error("boom");
       });
-      entity.emit(Ping);
+      expect(() => entity.emit(Ping)).toThrow("boom");
 
       const boundary = scene.context.tryResolve(ErrorBoundaryKey)!;
       expect(boundary.getCallbackErrors()[0]).toMatchObject({
@@ -269,8 +263,8 @@ describe("Entity events", () => {
       expect(sceneHandler).toHaveBeenCalledOnce();
     });
 
-    it("removes a throwing scene handler without skipping siblings", () => {
-      const { scene } = createMockScene(undefined, "isolate");
+    it("a throwing scene handler stops later handlers in the same emit and rethrows", () => {
+      const { scene } = createMockScene();
       const Ping = defineEvent("ping");
       const calls: string[] = [];
 
@@ -280,16 +274,12 @@ describe("Entity events", () => {
       });
       scene.on(Ping, () => calls.push("after"));
 
-      scene.emit(Ping);
-      expect(calls).toEqual(["before", "after"]);
-
-      calls.length = 0;
-      scene.emit(Ping);
-      expect(calls).toEqual(["before", "after"]); // thrower is gone
+      expect(() => scene.emit(Ping)).toThrow("boom");
+      expect(calls).toEqual(["before"]);
     });
 
-    it("removes a throwing handler for a bubbled entity event", () => {
-      const { scene } = createMockScene(undefined, "isolate");
+    it("a throwing handler for a bubbled entity event stops later handlers and rethrows", () => {
+      const { scene } = createMockScene();
       const entity = scene.spawn("test");
       const Ping = defineEvent("ping");
       const calls: string[] = [];
@@ -300,8 +290,8 @@ describe("Entity events", () => {
       });
       scene.on(Ping, () => calls.push("after"));
 
-      entity.emit(Ping);
-      expect(calls).toEqual(["before", "after"]);
+      expect(() => entity.emit(Ping)).toThrow("boom");
+      expect(calls).toEqual(["before"]);
     });
   });
 

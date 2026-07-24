@@ -55,24 +55,24 @@ Enforced by tooling — match these conventions exactly:
 - **Entity subclasses with `setup()` for entity types** — preferred pattern for game entities. `defineBlueprint()` still works for simple parametric factories but is deprecated.
 - **Entity events for game logic** — `defineEvent()` / `entity.on()` / `entity.emit()` for entity-scoped events. `EventBus` for global engine events.
 - **`@serializable` for save/load** — decorate Component/Entity/Scene subclasses. Implement `serialize()` + `static fromSnapshot()` for auto-restore. Components with non-serializable state (Textures, Graphics) use `FrameSource` or `textureKey` string alternatives; when raw objects are used, `serialize()` returns `null` and the entity handles reconstruction in `afterRestore()`.
-- **Guard developer-supplied callbacks** — engine code that invokes a callback
-  the game registered (event handlers, collision handlers, input listeners,
-  process callbacks) runs it through `ErrorBoundary.wrapCallback`. Scene
+- **Attribute developer-supplied callbacks** — engine code that invokes a
+  callback the game registered (event handlers, collision handlers, input
+  listeners, process callbacks) runs it through `ErrorBoundary.wrapCallback`,
+  and a `System`/`Component`'s own update call goes through
+  `wrapSystem`/`wrapComponent`. All three record the culprit (readable via
+  `Inspector.getErrors().callbackErrors`), log it through `Logger`, and
+  rethrow — nothing is disabled, unsubscribed, muted, or cancelled. Scene
   lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`, `beforeEnter`)
   use `ErrorBoundary.wrapLifecycleHook` instead: a synchronous throw is
-  reported and rethrown regardless of policy, but a rejected async hook can
-  only be reported — the call has already returned by the time the rejection
-  settles, so there's no stack left to rethrow into. `Logger`'s own `output`
-  sink guards itself the same way, since it can't route through the boundary
-  it's reporting into. `ErrorBoundary`'s policy — `EngineConfig.errors`,
-  default `"fatal"` — decides what "guard" means: `"fatal"` reports the culprit,
-  stops the game loop, and rethrows without touching the offender; `"isolate"`
-  disables/removes/mutes the offender instead and keeps the game running.
-  Either way, a new dispatch site needs the wrap: unguarded, a throw
-  propagates to the surrounding `System` or `Component`'s own wrap, which
-  under `"isolate"` disables it — so one bad line in a game listener stops a
-  whole subsystem instead of just itself. Iterate a snapshot of the handler
-  list wherever the boundary can remove the thrower.
+  reported and rethrown the same way, but a rejected async hook can only be
+  reported — the call has already returned by the time the rejection settles,
+  so there's no stack left to rethrow into. `Logger`'s own `output` sink
+  guards itself the same way, since it can't route through the boundary it's
+  reporting into. `GameLoop.tick()` is the one place that decides a failure is
+  terminal: an error that escapes an entire frame unhandled stops the loop and
+  rethrows so it reaches the host. A new dispatch site still needs the wrap —
+  it's what attributes the throw to the actual callback instead of whatever
+  caller happened to be on the stack when it escaped.
 
 ## Testing
 
