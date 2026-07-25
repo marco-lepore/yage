@@ -280,10 +280,14 @@ export class EntityPool<
    * @internal
    */
   _flushPendingReleases(): void {
-    for (const member of this.pendingRelease) {
-      if (!member.isDestroyed) this.freeList.push(member);
+    const held = this.pendingRelease.splice(0, this.pendingRelease.length);
+    for (const member of held) {
+      if (member.isDestroyed) {
+        this.forget(member);
+      } else {
+        this.freeList.push(member);
+      }
     }
-    this.pendingRelease.length = 0;
   }
 
   // ---- Internals ----
@@ -356,14 +360,19 @@ export class EntityPool<
 
   /** Put a member to sleep and back into the pool's keeping. */
   private stow(member: T): void {
-    member.setActive(false);
+    // Filed before the deactivation, because a component's `onDisable` is
+    // game code: if it throws, the member is still somewhere the pool can
+    // reach rather than in no collection at all.
     if (member.isDestroyed) {
       this.forget(member);
-    } else if (this.scene._poolReleasesHeld) {
+      return;
+    }
+    if (this.scene._poolReleasesHeld) {
       this.pendingRelease.push(member);
     } else {
       this.freeList.push(member);
     }
+    member.setActive(false);
   }
 
   /** Release the lowest-priority live member and hand it straight back. */
@@ -375,7 +384,7 @@ export class EntityPool<
       const age = this.acquiredAt.get(member)!;
       // A throw here aborts the reclaim before anything is mutated.
       const priority = this.reclaimPriority
-        ? this.reclaimPriority(member)
+        ? this.callPriority(this.reclaimPriority, member)
         : age;
       if (priority < best || (priority === best && age < bestAge)) {
         victim = member;
@@ -394,6 +403,13 @@ export class EntityPool<
         this.stow(victim);
         throw error;
       }
+      // `onRelease` is game code and may have destroyed the victim. Handing
+      // it back would return an entity that refuses to reactivate, so drop it
+      // and pick again.
+      if (victim.isDestroyed) {
+        this.forget(victim);
+        return this.reclaim();
+      }
       // Straight back to the caller: a reclaimed member skips the free list,
       // and with it the release hold, which is what "force" buys.
       victim.setActive(false);
@@ -408,6 +424,26 @@ export class EntityPool<
       `EntityPool<${this.Class.name}>.forceAcquire() found no member to reclaim. ` +
         `The pool is empty — its members were destroyed outside it.`,
     );
+  }
+
+  private callPriority(
+    priority: (member: T) => number,
+    member: T,
+  ): number {
+    const boundary = this.scene.context.tryResolve(ErrorBoundaryKey);
+    if (!boundary) return priority(member);
+    let value = 0;
+    boundary.wrapCallback(
+      () => {
+        value = priority(member);
+      },
+      {
+        kind: "EntityPool reclaimPriority",
+        entity: member.name,
+        scene: this.scene.name,
+      },
+    );
+    return value;
   }
 
   private callAcquire(member: T, args: unknown[]): void {

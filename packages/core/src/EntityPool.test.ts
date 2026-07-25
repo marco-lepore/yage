@@ -336,6 +336,29 @@ describe("EntityPool", () => {
       expect(pool.leased).toBe(1);
     });
 
+    it("skips a victim its own onRelease destroyed", () => {
+      class SelfDestruct extends Entity {
+        doomed = false;
+        onAcquire(): void {}
+        override onRelease(): void {
+          if (this.doomed) this.destroy();
+        }
+      }
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, SelfDestruct, { maxSize: 2 });
+      const first = pool.acquire()!;
+      const second = pool.acquire()!;
+      first.doomed = true;
+
+      // Reclaiming `first` destroys it inside the hook, so the pool moves on
+      // rather than handing back an entity that refuses to reactivate.
+      const taken = pool.forceAcquire();
+
+      expect(taken).toBe(second);
+      expect(taken.isDestroyed).toBe(false);
+      expect(taken.isActive).toBe(true);
+    });
+
     it("forceAcquire on an elastic pool just grows", () => {
       const { scene } = createMockScene();
       const pool = new EntityPool(scene, Spark);
@@ -448,6 +471,29 @@ describe("EntityPool", () => {
       expect(member.isActive).toBe(false);
       expect(pool.free).toBe(1);
       expect(pool.acquire()).toBe(member);
+    });
+
+    it("parks the member anyway when a component onDisable throws", () => {
+      class Brittle extends Component {
+        override onDisable(): void {
+          throw new Error("disable failed");
+        }
+      }
+      class Fragile extends Entity {
+        override setup(): void {
+          this.add(new Brittle());
+        }
+        onAcquire(): void {}
+      }
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Fragile);
+      const member = pool.acquire();
+
+      expect(() => pool.release(member)).toThrow("disable failed");
+      // Filed before the deactivation, so the throw does not strand it
+      // outside every collection the pool tracks.
+      expect(pool.leased).toBe(0);
+      expect(pool.free).toBe(1);
     });
   });
 
