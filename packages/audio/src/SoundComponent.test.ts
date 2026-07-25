@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { SoundLibrary, IMediaInstance } from "@pixi/sound";
+import { Entity } from "@yagejs/core";
 import { SoundComponent } from "./SoundComponent.js";
 import { AudioManager } from "./AudioManager.js";
 import { createAudioTestContext, spawnEntityInScene } from "./test-helpers.js";
@@ -111,12 +112,19 @@ describe("SoundComponent", () => {
   });
 
   it("playOnAdd survives being spawned as a child of a dormant parent", () => {
+    // The component must be added from `setup()`: that runs inside the spawn,
+    // before the parent link exists, which is the window the sound has to
+    // survive. Adding it after `spawnChild` returns tests nothing.
+    class Jukebox extends Entity {
+      setup() {
+        this.add(new SoundComponent({ alias: "music", playOnAdd: true }));
+      }
+    }
     const { scene } = createAudioTestContext(manager);
     const parent = spawnEntityInScene(scene, "parent");
     parent.setActive(false);
 
-    const child = parent.spawnChild("child");
-    child.add(new SoundComponent({ alias: "music", playOnAdd: true }));
+    parent.spawnChild("child", Jukebox);
     expect(mockSound.play).not.toHaveBeenCalled();
 
     parent.setActive(true);

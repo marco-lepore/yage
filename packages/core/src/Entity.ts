@@ -173,6 +173,14 @@ export class Entity {
     if (child === this) {
       throw new Error(`Entity "${this.name}" cannot be a child of itself.`);
     }
+    // Destruction is deferred, so a destroyed parent is still reachable until
+    // the end-of-frame flush. Its cascade has already run, so a child attached
+    // now would never be destroyed with it and would outlive it in the scene.
+    if (this._destroyed) {
+      throw new Error(
+        `Entity "${this.name}" is destroyed and cannot take a child.`,
+      );
+    }
     if (child._parent) {
       throw new Error(
         `Entity "${child.name}" already has a parent ("${child._parent.name}"). Remove it first.`,
@@ -243,8 +251,13 @@ export class Entity {
     const scene = this.scene;
     // Validate before spawning so we don't leave an orphan entity in the
     // scene if addChild would reject the name. addChild also throws on
-    // this, but by then the spawn side-effects (scene.entities insert,
+    // these, but by then the spawn side-effects (scene.entities insert,
     // `entity:created` emit, setup() / blueprint.build()) have all run.
+    if (this._destroyed) {
+      throw new Error(
+        `Entity "${this.name}" is destroyed and cannot spawn a child.`,
+      );
+    }
     if (this._children?.has(name)) {
       throw new Error(
         `Entity "${this.name}" already has a child named "${name}".`,

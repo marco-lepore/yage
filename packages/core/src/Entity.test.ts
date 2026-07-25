@@ -433,11 +433,17 @@ describe("Entity activeness", () => {
     const parent = scene.spawn("parent");
     parent.setActive(false);
 
-    const child = parent.spawnChild("child");
-    const comp = child.add(new HookComponent());
+    // The component has to be added from `setup()`. That runs inside the
+    // spawn, before the parent link exists, which is the window being guarded —
+    // adding it after `spawnChild` returns exercises nothing.
+    let comp!: HookComponent;
+    class Kid extends Entity {
+      setup() {
+        comp = this.add(new HookComponent());
+      }
+    }
+    const child = parent.spawnChild("child", Kid);
     expect(child.isActive).toBe(false);
-    // The spawn ran `setup()` before the parent link existed, but the child was
-    // never effectively enabled, so nothing was enabled and undone.
     expect(comp.log).toEqual([]);
 
     parent.setActive(true);
@@ -460,6 +466,18 @@ describe("Entity activeness", () => {
     const turret = parent.spawnChild("turret", Turret);
     expect(turret.isActive).toBe(false);
     expect(turret.sibling!.isActive).toBe(true);
+  });
+
+  it("refuses to spawn or take a child once destroyed", () => {
+    const { scene } = createMockScene();
+    const parent = scene.spawn("parent");
+    const orphan = scene.spawn("orphan");
+    parent.destroy();
+
+    // The destruction cascade has already run, so a child attached now would
+    // outlive the parent in the scene.
+    expect(() => parent.spawnChild("child")).toThrow(/destroyed/);
+    expect(() => parent.addChild("child", orphan)).toThrow(/destroyed/);
   });
 
   it("does not reactivate a destroyed child when the parent wakes", () => {
