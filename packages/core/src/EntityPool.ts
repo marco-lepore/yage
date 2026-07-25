@@ -215,6 +215,11 @@ export class EntityPool<
    * One case bends the release hold: a capped pool whose every member was
    * released inside the current hold has nothing live to reclaim, so it hands
    * a held member back rather than fail a call that promises a member.
+   *
+   * The one call it cannot serve is from inside `onRelease` on a capped pool
+   * with no other member left. The member that hook belongs to is mid-release
+   * and handing it straight back would run the rest of its release over a
+   * fresh acquisition, so this throws instead.
    */
   forceAcquire(...args: Parameters<T["onAcquire"]>): T {
     this.assertUsable("forceAcquire");
@@ -457,6 +462,17 @@ export class EntityPool<
     // call whose whole contract is that it returns a member.
     const held = this.pendingRelease.shift();
     if (held) return held;
+    if (this.members.length > 0) {
+      // A member whose `onRelease` is still running has left the lease set and
+      // has not reached the free list. The pool cannot hand it out — the rest
+      // of its release hook would run against a fresh acquisition — and it is
+      // already at `maxSize`, so it cannot build one either.
+      throw new Error(
+        `EntityPool<${this.Class.name}>.forceAcquire() has no member to hand out. ` +
+          `The pool is capped at ${this.maxSize} and its members are all being released. ` +
+          `A call made from onRelease cannot take the member that release belongs to.`,
+      );
+    }
     throw new Error(
       `EntityPool<${this.Class.name}>.forceAcquire() found no member to reclaim. ` +
         `The pool is empty — its members were destroyed outside it.`,

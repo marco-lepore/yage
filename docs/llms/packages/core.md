@@ -139,6 +139,7 @@ interface EntityPoolOptions<T, TMax> {
 ```
 
 - Elastic by default: `acquire` grows the pool and returns `T`. With `maxSize`, a saturated `acquire` returns `undefined` and the return type widens to `T | undefined`.
+- A capped pool assigned to an unannotated `const` keeps the literal cap in its type (`EntityPool<Bullet, 32>`), which does not assign to `EntityPool<Bullet, number>`. Annotate the field or variable and the cap infers as `number`.
 - `forceAcquire` always returns a member. On a saturated capped pool it reclaims the lowest `reclaimPriority` (default: acquired longest ago), running `onRelease` then `onAcquire` in the same call.
 - `onAcquire` is required on a pooled class — an inherited one counts. It must be synchronous and non-overloaded, since `acquire`'s signature is derived from it. Declare an empty `onAcquire() {}` when there is nothing to reset.
 - Prewarm builds members and runs `setup()`, never `onAcquire`.

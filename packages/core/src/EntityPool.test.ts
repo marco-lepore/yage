@@ -541,6 +541,33 @@ describe("EntityPool", () => {
       expect(() => pool.acquire()).toThrow(/destroyed the member being acquired/);
     });
 
+    it("says why forceAcquire cannot serve a call from the last member's onRelease", () => {
+      class Greedy extends Entity {
+        pool!: EntityPool<Greedy, number>;
+        armed = false;
+        onAcquire(): void {}
+        override onRelease(): void {
+          if (!this.armed) return;
+          this.armed = false;
+          this.pool.forceAcquire();
+        }
+      }
+      const { scene } = createMockScene();
+      const pool: EntityPool<Greedy, number> = new EntityPool(scene, Greedy, {
+        maxSize: 1,
+      });
+      const member = pool.forceAcquire();
+      member.pool = pool;
+      member.armed = true;
+
+      // The member is mid-release, so it is neither leased nor free, and the
+      // cap stops the pool building another. The old message blamed an empty
+      // pool, which is the one thing it is not.
+      expect(() => pool.release(member)).toThrow(/all being released/);
+      expect(pool.size).toBe(1);
+      expect(pool.free).toBe(1);
+    });
+
     it("keeps ownership single when onRelease acquires from the same pool", () => {
       class Reacquiring extends Entity {
         pool!: EntityPool<Reacquiring>;
