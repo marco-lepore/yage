@@ -15,7 +15,7 @@ tree.fx.addEffect(crt({}));
 this.use(RendererKey).fx.addEffect(vignette({ alpha: 0.4 }));
 ```
 
-Each preset returns the same `EffectHandle` shape (`remove`, `setEnabled`, `enabled`, `fadeIn(duration)`, `fadeOut(duration)`) plus typed extras specific to the preset (e.g. `OutlineHandle.setThickness(n)`).
+Each preset returns the same `EffectHandle` shape (`remove`, `setEnabled`, `enabled`, `setIntensity(value)`, `fadeIn(duration)`, `fadeOut(duration)`) plus typed extras specific to the preset (e.g. `OutlineHandle.setThickness(n)`).
 
 ## Presets
 
@@ -46,7 +46,7 @@ Color-grade presets: `"neutral"` (identity), `"sepia"`, `"grayscale"`, `"negativ
 
 `motionBlur.kernelSize` must be odd and ≥ 5. Invalid values are coerced up to the nearest valid kernel and a one-shot `console.warn` fires naming the requested + final value. `bulgePinch.strength` is signed: negative pinches, positive bulges. A fade scales the magnitude while preserving the sign, so a pinch fades flat → pinch, not flat → bulge → pinch. `bulgePinch.center` is normalized 0..1 screen coords (`{ x: 0.5, y: 0.5 }` is the host's middle).
 
-The public handle controls an effect's strength three ways. `fadeIn(seconds)` and `fadeOut(seconds)` tween the primary intensity (column 4 above) between 0 and 1 and return a `Process`. The per-preset `set*` setters that change a preset's "full" value (`bloom.setBloomScale`, `glow.setOuterStrength`, `outline.setThickness`, `dropShadow.setAlpha`, `vignette.setStrength`, `chromaticAberration.setSeparation`, `pixelate.setSize`, `glow.setInnerStrength`, `godRay.setGain`, `motionBlur.setVelocity`, `bulgePinch.setStrength`, `halftone.setAmount`, `wave.setAmplitude`, `colorize.setStrength`) rebase that ceiling while preserving the current intensity ratio, so raising the ceiling mid-pulse raises the pulse height instead of snapping the visible effect back to 1. For gameplay-driven strength (HP-linked tinting) or looping animation (heartbeat glow, breathing vignette), drive the preset's `set*` setter from a scheduled tween — `vignette.run(Tween.custom((v) => vignette.setStrength(v), from, to, seconds))` — which is scoped to the effect and auto-cancels on `.remove()` (see Fade behavior below).
+The public handle controls an effect's strength three ways. `setIntensity(value)` sets the primary intensity immediately and clamps the value to 0–1. `fadeIn(seconds)` and `fadeOut(seconds)` tween that same value and return a `Process`. The per-preset `set*` setters that change a preset's "full" value (`bloom.setBloomScale`, `glow.setOuterStrength`, `outline.setThickness`, `dropShadow.setAlpha`, `vignette.setStrength`, `chromaticAberration.setSeparation`, `pixelate.setSize`, `glow.setInnerStrength`, `godRay.setGain`, `motionBlur.setVelocity`, `bulgePinch.setStrength`, `halftone.setAmount`, `wave.setAmplitude`, `colorize.setStrength`) rebase that ceiling while preserving the current intensity ratio. For example, `bloom.setIntensity(0.5)` displays half of the configured bloom scale, while `bloom.setBloomScale(2)` changes what full strength means. For a custom timed animation, pass a tween to `run`; the process is scoped to the effect and stops on `.remove()`.
 
 ## Scope rationale
 

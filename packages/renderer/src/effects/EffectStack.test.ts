@@ -198,6 +198,17 @@ describe("EffectStack", () => {
     expect(handle.enabled).toBe(false);
   });
 
+  it("setIntensity clamps public input before updating the effect", () => {
+    const a = makeEffect();
+    const handle = stack.add(a.factory);
+
+    handle.setIntensity(0.4);
+    handle.setIntensity(2);
+    handle.setIntensity(-1);
+
+    expect(a.setIntensity.mock.calls).toEqual([[0.4], [1], [0]]);
+  });
+
   it("fadeIn enqueues a process via the host", () => {
     const a = makeEffect();
     const handle = stack.add(a.factory);

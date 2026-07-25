@@ -40,8 +40,15 @@ const { mocks } = vi.hoisted(() => {
       this.parent?.removeChild(this);
     }
 
-    toLocal(p: { x: number; y: number }): { x: number; y: number } {
-      return { x: p.x, y: p.y };
+    toLocal(
+      p: { x: number; y: number },
+      from?: MockContainer,
+      out?: { x: number; y: number },
+    ): { x: number; y: number } {
+      const result = out ?? { x: 0, y: 0 };
+      result.x = p.x + (from?.position.x ?? 0);
+      result.y = p.y + (from?.position.y ?? 0);
+      return result;
     }
 
     destroy(): void {
@@ -171,6 +178,74 @@ describe("attachTooltip", () => {
     tip.setActive(false);
     overlay.update(VIEWPORT);
     expect(bubble.visible).toBe(false);
+  });
+
+  it("skips stable layout and invalidates for content, trigger, viewport, and reopening", () => {
+    const { layer } = makeScene(overlay);
+    const anchor = makeAnchor();
+    const handle = overlay.acquire();
+    const layout = vi.fn(() => ({ width: 80, height: 24 }));
+    handle.setReference(() => anchor);
+    handle.setLayout(layout);
+    handle.setConfig({ placement: "bottom" });
+    handle.setActive(true);
+
+    overlay.update(VIEWPORT);
+    overlay.update(VIEWPORT);
+    expect(layout).toHaveBeenCalledTimes(1);
+
+    handle.setConfig({ placement: "bottom" });
+    overlay.update(VIEWPORT);
+    expect(layout).toHaveBeenCalledTimes(2);
+
+    handle.setLayout(layout);
+    overlay.update(VIEWPORT);
+    expect(layout).toHaveBeenCalledTimes(3);
+
+    handle.setReference(() => anchor);
+    overlay.update(VIEWPORT);
+    expect(layout).toHaveBeenCalledTimes(4);
+
+    handle.invalidateLayout();
+    overlay.update(VIEWPORT);
+    expect(layout).toHaveBeenCalledTimes(5);
+
+    const anchorDisplay = anchor.displayObject as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    anchorDisplay.position.x = 20;
+    overlay.update(VIEWPORT);
+    expect(layout).toHaveBeenCalledTimes(6);
+
+    overlay.update({ width: 640, height: 480 });
+    expect(layout).toHaveBeenCalledTimes(7);
+
+    handle.setActive(false);
+    handle.setActive(true);
+    overlay.update({ width: 640, height: 480 });
+    expect(layout).toHaveBeenCalledTimes(8);
+    expect(layer.children).toContain(handle.container);
+  });
+
+  it("repositions after imperative content invalidates its cached layout", () => {
+    makeScene(overlay);
+    const anchor = makeAnchor();
+    const handle = overlay.acquire();
+    let width = 80;
+    handle.setReference(() => anchor);
+    handle.setLayout(() => ({ width, height: 24 }));
+    handle.setConfig({ placement: "top", shift: false });
+    handle.setActive(true);
+
+    overlay.update(VIEWPORT);
+    const initialX = handle.container.position.x;
+    width = 160;
+    overlay.update(VIEWPORT);
+    expect(handle.container.position.x).toBe(initialX);
+
+    handle.invalidateLayout();
+    overlay.update(VIEWPORT);
+    expect(handle.container.position.x).toBe(initialX - 40);
   });
 
   it("wires no input on the anchor — activation is the caller's", () => {

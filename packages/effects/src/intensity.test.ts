@@ -293,6 +293,8 @@ vi.mock("pixi.js", async () => {
   };
 });
 
+import type { Process, ScopedProcessQueue } from "@yagejs/core";
+import { EffectsHost } from "@yagejs/renderer";
 import { bloom } from "./bloom.js";
 import { chromaticAberration } from "./chromaticAberration.js";
 import { crt } from "./crt.js";
@@ -390,6 +392,32 @@ describe("intensity model", () => {
   });
 
   describe("preserve-ratio setters", () => {
+    it("typed preset handles expose clamped base intensity and preset setters", () => {
+      const target = { filters: null };
+      const queue: ScopedProcessQueue = {
+        run: (process: Process) => process,
+        cancelAll: () => {},
+      };
+      const host = new EffectsHost(
+        () => target as never,
+        "component",
+        () => queue,
+      );
+      const factory = bloom({ bloomScale: 1 });
+      const handle = host.addEffect(factory);
+      const filter = (
+        target.filters as unknown as Array<{ bloomScale: number }>
+      )[0];
+      if (!filter) throw new Error("Expected the bloom filter to be attached.");
+
+      handle.setIntensity(2);
+      expect(filter.bloomScale).toBe(1);
+
+      handle.setIntensity(0.5);
+      handle.setBloomScale(2);
+      expect(filter.bloomScale).toBe(1);
+    });
+
     it("bloom.setBloomScale preserves intensity ratio", () => {
       const e = buildBloom({ bloomScale: 1 });
       e.setIntensity(0.4);

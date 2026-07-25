@@ -3,7 +3,7 @@ import { ServiceKey } from "@yagejs/core";
 import type { DisplayContainer, SceneRenderTree } from "@yagejs/renderer";
 import type { UIElement } from "./types.js";
 import { computePosition } from "./positioning.js";
-import type { Placement } from "./positioning.js";
+import type { Dimensions, Placement, Rect } from "./positioning.js";
 
 /**
  * Per-floating-element config. All optional; the floating layer fills
@@ -38,16 +38,19 @@ export interface FloatingHandle {
    * side lays out the node it parented in.
    */
   setLayout(fn: (maxWidth: number | undefined) => Dimensions): void;
+  /**
+   * Re-run content layout on the next overlay update.
+   *
+   * Call this after changing content without replacing the layout callback.
+   * Trigger movement, viewport changes, config changes, and reopening are
+   * detected automatically.
+   */
+  invalidateLayout(): void;
   /** Show/position (`true`) or hide (`false`) without releasing. */
   setActive(active: boolean): void;
   /** Restack above all current floats (call when (re)opening). */
   bringToFront(): void;
   release(): void;
-}
-
-interface Dimensions {
-  width: number;
-  height: number;
 }
 
 interface Entry {
@@ -57,12 +60,26 @@ interface Entry {
   layout: (maxWidth: number | undefined) => Dimensions;
   active: boolean;
   z: number;
+  dirty: boolean;
+  referenceRect: Rect | null;
+  viewportWidth: number;
+  viewportHeight: number;
 }
 
 const OVERLAY_LAYER = "ui-overlay";
 const OVERLAY_LAYER_ORDER = 1_000_000;
 const ZERO = { x: 0, y: 0 } as const;
 const EMPTY_SIZE: Dimensions = { width: 0, height: 0 };
+
+function sameRect(a: Rect | null, b: Rect): boolean {
+  return (
+    a !== null &&
+    a.x === b.x &&
+    a.y === b.y &&
+    a.width === b.width &&
+    a.height === b.height
+  );
+}
 
 /**
  * One screen-space, top-most overlay per scene that every floating element
@@ -77,6 +94,15 @@ const EMPTY_SIZE: Dimensions = { width: 0, height: 0 };
 export class FloatingOverlay {
   private layer: DisplayContainer | null = null;
   private readonly entries = new Set<Entry>();
+  private readonly referenceTopLeft = { x: 0, y: 0 };
+  private readonly referenceBottomRight = { x: 0, y: 0 };
+  private readonly referenceBottomRightInput = { x: 0, y: 0 };
+  private readonly currentReferenceRect: Rect = {
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+  };
   private zSeq = 1;
 
   /** Idempotently ensure the overlay layer exists in this scene's tree. */
@@ -102,6 +128,10 @@ export class FloatingOverlay {
       layout: () => EMPTY_SIZE,
       active: false,
       z: 0,
+      dirty: true,
+      referenceRect: null,
+      viewportWidth: Number.NaN,
+      viewportHeight: Number.NaN,
     };
     this.entries.add(entry);
     if (this.layer) this.layer.addChild(container);
@@ -110,14 +140,21 @@ export class FloatingOverlay {
       container,
       setReference: (get) => {
         entry.getReference = get;
+        entry.dirty = true;
       },
       setConfig: (cfg) => {
-        entry.config = cfg;
+        entry.config = { ...cfg };
+        entry.dirty = true;
       },
       setLayout: (fn) => {
         entry.layout = fn;
+        entry.dirty = true;
+      },
+      invalidateLayout: () => {
+        entry.dirty = true;
       },
       setActive: (active) => {
+        if (active && !entry.active) entry.dirty = true;
         entry.active = active;
         if (!active) container.visible = false;
       },
@@ -141,12 +178,24 @@ export class FloatingOverlay {
       const ref = e.getReference();
       if (!ref) {
         e.container.visible = false;
+        e.dirty = true;
         continue;
       }
 
-      const triggerRect = this.referenceRect(ref);
-      if (!triggerRect) {
+      if (!this.readReferenceRect(ref, this.currentReferenceRect)) {
         e.container.visible = false;
+        e.dirty = true;
+        continue;
+      }
+
+      const triggerRect = this.currentReferenceRect;
+      const inputsChanged =
+        e.dirty ||
+        !sameRect(e.referenceRect, triggerRect) ||
+        e.viewportWidth !== viewport.width ||
+        e.viewportHeight !== viewport.height;
+      if (!inputsChanged) {
+        e.container.visible = true;
         continue;
       }
 
@@ -164,6 +213,14 @@ export class FloatingOverlay {
 
       e.container.position.set(pos.x, pos.y);
       e.container.visible = true;
+      e.referenceRect ??= { x: 0, y: 0, width: 0, height: 0 };
+      e.referenceRect.x = triggerRect.x;
+      e.referenceRect.y = triggerRect.y;
+      e.referenceRect.width = triggerRect.width;
+      e.referenceRect.height = triggerRect.height;
+      e.viewportWidth = viewport.width;
+      e.viewportHeight = viewport.height;
+      e.dirty = false;
     }
   }
 
@@ -177,19 +234,25 @@ export class FloatingOverlay {
   }
 
   /** Trigger box projected into the overlay's coordinate space. */
-  private referenceRect(
-    ref: UIElement,
-  ): { x: number; y: number; width: number; height: number } | null {
+  private readReferenceRect(ref: UIElement, out: Rect): boolean {
     const layer = this.layer;
-    if (!layer) return null;
+    if (!layer) return false;
     const w = ref.yogaNode.getComputedWidth();
     const h = ref.yogaNode.getComputedHeight();
-    if (!Number.isFinite(w) || !Number.isFinite(h)) return null;
-    const a = layer.toLocal(ZERO, ref.displayObject);
-    const b = layer.toLocal({ x: w, y: h }, ref.displayObject);
-    const x = Math.min(a.x, b.x);
-    const y = Math.min(a.y, b.y);
-    return { x, y, width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y) };
+    if (!Number.isFinite(w) || !Number.isFinite(h)) return false;
+    this.referenceBottomRightInput.x = w;
+    this.referenceBottomRightInput.y = h;
+    const a = layer.toLocal(ZERO, ref.displayObject, this.referenceTopLeft);
+    const b = layer.toLocal(
+      this.referenceBottomRightInput,
+      ref.displayObject,
+      this.referenceBottomRight,
+    );
+    out.x = Math.min(a.x, b.x);
+    out.y = Math.min(a.y, b.y);
+    out.width = Math.abs(b.x - a.x);
+    out.height = Math.abs(b.y - a.y);
+    return true;
   }
 }
 

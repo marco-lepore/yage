@@ -337,10 +337,13 @@ For custom popovers / menus, use the lower-level pieces directly:
 
 - `scene._resolveScoped(FloatingOverlayKey).acquire()` → a
   `FloatingHandle` with `setReference(get)`, `setConfig(FloatConfig)`,
-  `setLayout(fn)`, `setActive(bool)`, `bringToFront()`, `release()`, and a
-  `container` to add content to. `FloatingOverlayKey` is a
-  scene-scoped `ServiceKey`; resolve it on the scene first, then call
-  `acquire()` on the resulting `FloatingOverlay`.
+  `setLayout(fn)`, `invalidateLayout()`, `setActive(bool)`,
+  `bringToFront()`, `release()`, and a `container` to add content to.
+  The overlay caches layout while the reference geometry, config, and
+  viewport stay the same. Call `invalidateLayout()` after changing
+  imperative content without replacing its layout callback.
+  `FloatingOverlayKey` is a scene-scoped `ServiceKey`; resolve it on the
+  scene first, then call `acquire()` on the resulting `FloatingOverlay`.
 - `computePosition(reference, floating, viewport, config)` — the pure
   positioning engine (`offset → flip → shift → size`), no Pixi / engine
   deps. Returns `{ x, y, placement, available }`. `Placement` / `Side` /

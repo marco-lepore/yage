@@ -289,6 +289,12 @@ with `scene._resolveScoped(FloatingOverlayKey).acquire()` for a
 build on this exact overlay — see the
 [React UI guide](/guides/ui-react/).
 
+The overlay reuses a floating element's layout while its trigger, config,
+and viewport stay the same. If you change imperative content without
+calling `setLayout` again, call `handle.invalidateLayout()` so the next
+overlay update measures and positions it again. React floating content does
+this automatically through its normal render update.
+
 ## Text
 
 Add text to a panel with the builder API:

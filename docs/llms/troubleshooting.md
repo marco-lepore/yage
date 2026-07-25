@@ -4,6 +4,16 @@ Dev-mode warnings YAGE emits to flag silent failure modes. All warnings are
 prefixed with `[yage]` and gated on `process.env.NODE_ENV !== "production"`,
 so they don't appear in production builds.
 
+## Multiple copies of @yagejs/renderer are loaded
+
+More than one renderer module instance is present in the same page. This can
+make `instanceof` checks fail and can surface Pixi errors far from the
+dependency problem.
+
+Deduplicate `@yagejs/renderer` and `pixi.js` in the package-manager tree.
+If an addon brings its own copies, it should declare the YAGE renderer and
+Pixi as peer dependencies instead of regular dependencies.
+
 ## Component.use(...) called before the component is bound to an entity
 
 `this.use(Key)` reads `this.entity.scene` eagerly, which crashes when called

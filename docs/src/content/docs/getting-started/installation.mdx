@@ -58,6 +58,14 @@ The full list of packages:
 `@yagejs/core` sits at the base of the dependency graph — every other package
 depends on it, so it is always installed automatically.
 
+:::caution[Duplicate renderer warning]
+In development, YAGE warns if the page loads more than one
+`@yagejs/renderer` module instance. Duplicate renderer or Pixi packages can
+break `instanceof` checks and cause errors far from the dependency problem.
+Deduplicate `@yagejs/renderer` and `pixi.js`. Addons should declare both as
+peer dependencies so they reuse the game's copies.
+:::
+
 ## Prerequisites
 
 - **Node.js** 18 or later

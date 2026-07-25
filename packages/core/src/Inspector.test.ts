@@ -114,6 +114,24 @@ describe("Inspector", () => {
     expect(ui?.root.layout).toEqual({ x: 1, y: 2, width: 30, height: 40 });
   });
 
+  it("uses the scene id once for a snapshot with multiple UI roots", async () => {
+    const { inspector, scenes } = setup();
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+
+    class UISurface extends Component {
+      readonly root = { children: [] };
+    }
+    scene.spawn("hud-a").add(new UISurface());
+    scene.spawn("hud-b").add(new UISurface());
+
+    const snapshot = inspector.snapshot();
+    const sceneSnapshot = snapshot.scenes[0];
+    if (!sceneSnapshot) throw new Error("Expected one scene snapshot.");
+    expect(sceneSnapshot.ui?.root.id).toBe(`${sceneSnapshot.id}:ui`);
+    expect(sceneSnapshot.ui?.root.children).toHaveLength(2);
+  });
+
   it("registers and resolves inspector extensions by namespace", () => {
     const { inspector } = setup();
     const inventory = {

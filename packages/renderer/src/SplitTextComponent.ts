@@ -56,6 +56,11 @@ export interface SplitTextComponentOptions extends VisualComponentOptions {
   /** Text style — forwards to PixiJS TextStyleOptions (CSS-like font properties). */
   style?: TextStyle;
   /**
+   * Transform origin for the whole text block, normalized 0–1.
+   * Default: { x: 0, y: 0 } (top-left).
+   */
+  anchor?: { x: number; y: number };
+  /**
    * Render the segments with a bitmap font (`SplitBitmapText`) instead of
    * canvas `Text` (`SplitText`). Pass the installed/baked font name as
    * `style.fontFamily` (and glyph size as `style.fontSize`).
@@ -79,6 +84,7 @@ export interface SplitTextData extends VisualComponentData {
   text: string;
   style?: TextStyle;
   bitmap?: boolean;
+  anchor?: { x: number; y: number };
   charAnchor?: SegmentAnchor;
   wordAnchor?: SegmentAnchor;
   lineAnchor?: SegmentAnchor;
@@ -110,6 +116,7 @@ export class SplitTextComponent extends VisualComponent {
   // (whose getters don't faithfully round-trip through JSON). Mirrors TextComponent.
   private _styleOptions?: TextStyle;
   private _bitmap?: boolean;
+  private _anchor?: { x: number; y: number };
   private _charAnchor?: SegmentAnchor;
   private _wordAnchor?: SegmentAnchor;
   private _lineAnchor?: SegmentAnchor;
@@ -151,6 +158,7 @@ export class SplitTextComponent extends VisualComponent {
     // our cached snapshot away from the live pixi state.
     if (options.style) this._styleOptions = { ...options.style };
     if (options.bitmap !== undefined) this._bitmap = options.bitmap;
+    if (options.anchor) this._anchor = { ...options.anchor };
     if (options.charAnchor !== undefined)
       this._charAnchor = cloneAnchor(options.charAnchor);
     if (options.wordAnchor !== undefined)
@@ -159,6 +167,7 @@ export class SplitTextComponent extends VisualComponent {
       this._lineAnchor = cloneAnchor(options.lineAnchor);
     if (options.autoSplit !== undefined) this._autoSplit = options.autoSplit;
 
+    this.applyBlockAnchor();
     this.applyVisualOptions(options);
   }
 
@@ -185,6 +194,7 @@ export class SplitTextComponent extends VisualComponent {
   /** Replace the displayed string (re-splits when `autoSplit` is on). */
   setText(value: string): void {
     this.splitText.text = value;
+    this.applyBlockAnchor();
   }
 
   /** Replace the text style (re-splits when `autoSplit` is on). */
@@ -197,6 +207,7 @@ export class SplitTextComponent extends VisualComponent {
     );
     this.splitText.style = options.style ?? style;
     this._styleOptions = { ...style };
+    this.applyBlockAnchor();
   }
 
   /**
@@ -205,6 +216,7 @@ export class SplitTextComponent extends VisualComponent {
    */
   resplit(): void {
     this.splitText.split();
+    this.applyBlockAnchor();
   }
 
   /** Transform origin for each character (normalized 0–1). */
@@ -241,6 +253,7 @@ export class SplitTextComponent extends VisualComponent {
     };
     if (this._styleOptions) data.style = { ...this._styleOptions };
     if (this._bitmap !== undefined) data.bitmap = this._bitmap;
+    if (this._anchor) data.anchor = { ...this._anchor };
     if (this._charAnchor !== undefined)
       data.charAnchor = cloneAnchor(this._charAnchor);
     if (this._wordAnchor !== undefined)
@@ -263,6 +276,7 @@ export class SplitTextComponent extends VisualComponent {
     };
     if (data.style) opts.style = data.style;
     if (data.bitmap !== undefined) opts.bitmap = data.bitmap;
+    if (data.anchor) opts.anchor = data.anchor;
     if (data.charAnchor !== undefined) opts.charAnchor = data.charAnchor;
     if (data.wordAnchor !== undefined) opts.wordAnchor = data.wordAnchor;
     if (data.lineAnchor !== undefined) opts.lineAnchor = data.lineAnchor;
@@ -272,6 +286,15 @@ export class SplitTextComponent extends VisualComponent {
     if (data.visible !== undefined) opts.visible = data.visible;
     if (data.interactive) opts.interactive = { ...data.interactive };
     return new SplitTextComponent(opts);
+  }
+
+  private applyBlockAnchor(): void {
+    if (!this._anchor) return;
+    const bounds = this.splitText.getLocalBounds();
+    this.splitText.pivot.set(
+      bounds.x + bounds.width * this._anchor.x,
+      bounds.y + bounds.height * this._anchor.y,
+    );
   }
 
   /**
