@@ -351,6 +351,63 @@ describe("VirtualControls — visibility", () => {
     expect(controls.button("a")!.pressed).toBe(true);
   });
 
+  it("a dormant host claims nothing and releases what it held", () => {
+    const { entity, input, controls } = setup();
+    const { center } = controls.button("a")!.layout;
+    touchDown(input, 7, center.x, center.y);
+    expect(input.isPressed("jump")).toBe(true);
+
+    entity.setActive(false);
+    expect(input.isPressed("jump")).toBe(false);
+    expect(input.isJustReleased("jump")).toBe(true);
+
+    touchDown(input, 8, center.x, center.y);
+    expect(controls.button("a")!.pressed).toBe(false);
+    expect(input.isPointerConsumed(8)).toBe(false);
+  });
+
+  it("a hand-set setVisible(false) survives a deactivate/reactivate cycle", () => {
+    const view = { update: vi.fn(), setVisible: vi.fn(), dispose: vi.fn() };
+    const presenter = {
+      mount: vi.fn(),
+      createStickView: vi.fn(() => view),
+      createButtonView: vi.fn(() => view),
+      dispose: vi.fn(),
+    };
+    const { entity, controls } = setup({ presenter });
+
+    controls.setVisible(false);
+    entity.setActive(false);
+    view.setVisible.mockClear();
+    entity.setActive(true);
+
+    expect(controls.visible).toBe(false);
+    // Two views (stick + button), both told to stay hidden.
+    expect(view.setVisible).toHaveBeenCalledTimes(2);
+    expect(view.setVisible).toHaveBeenLastCalledWith(false);
+  });
+
+  it("reactivating restores a visible overlay", () => {
+    const view = { update: vi.fn(), setVisible: vi.fn(), dispose: vi.fn() };
+    const presenter = {
+      mount: vi.fn(),
+      createStickView: vi.fn(() => view),
+      createButtonView: vi.fn(() => view),
+      dispose: vi.fn(),
+    };
+    const { entity, input, controls } = setup({ presenter });
+
+    entity.setActive(false);
+    expect(view.setVisible).toHaveBeenLastCalledWith(false);
+
+    entity.setActive(true);
+    expect(view.setVisible).toHaveBeenLastCalledWith(true);
+
+    const { center } = controls.button("a")!.layout;
+    touchDown(input, 7, center.x, center.y);
+    expect(input.isPressed("jump")).toBe(true);
+  });
+
   it("visible: 'auto' resolves false without a window (SSR/node)", () => {
     const { controls } = setup({ visible: "auto" });
     expect(controls.visible).toBe(false);

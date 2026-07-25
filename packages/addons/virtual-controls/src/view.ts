@@ -26,9 +26,10 @@ export interface ControlView {
    */
   update(dt: number): void;
   /**
-   * Show/hide this control's visuals. The component calls this once right
-   * after the view is created (with the resolved initial visibility), so a
-   * view needs no default-state guess. Hidden views should stay cheap.
+   * Show/hide this control's visuals. The component calls this right after
+   * the view is created, so a view needs no default-state guess, and again
+   * whenever the overlay is toggled or the host entity goes dormant and comes
+   * back. Hidden views should stay cheap.
    */
   setVisible(visible: boolean): void;
   /** Destroy spawned entities / listeners. Must be idempotent. */

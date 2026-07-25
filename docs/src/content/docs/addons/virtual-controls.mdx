@@ -123,6 +123,11 @@ Hiding releases every engaged control — mirrored actions get a real release
 edge and the synthetic stick axes reset — so nothing sticks when the overlay
 disappears mid-hold.
 
+Deactivating the host entity (`entity.setActive(false)`) does the same, and so
+does `controls.enabled = false`: the controls leave the screen and stop
+claiming touches. Whatever you passed to `setVisible` is remembered, so turning
+the entity back on restores the overlay you asked for, not a forced-on one.
+
 ## Touches never leak into gameplay
 
 A classic virtual-joystick bug: the thumb that drives the stick *also* counts
