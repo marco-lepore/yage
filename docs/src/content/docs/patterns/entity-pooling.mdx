@@ -19,7 +19,7 @@ pooled and spawn-and-destroy — with live counters, so you can see what changes
 A pooled class looks like any other entity subclass, plus one required hook:
 
 ```typescript
-import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { Entity, EntityPool, Scene, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
 import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 
@@ -87,6 +87,14 @@ this.bullets.release(bullet);
 `acquire`'s arguments are the entity's own `onAcquire` parameters, so the
 compiler checks the call against the hook. `release` runs the optional
 `onRelease` hook, puts the entity to sleep, and returns it to the pool.
+
+<Aside type="note" title="Releasing from a collision handler">
+  A member released while collision events are being processed goes to sleep
+  right away, but only rejoins the pool once the whole batch has been handled.
+  That is what stops a collision queued for its previous life from reaching it
+  after someone else acquires it. So a release inside `onCollision` is not
+  available to an `acquire` you make later in the same batch.
+</Aside>
 
 By default the pool is elastic: it grows whenever every member is out, and
 `acquire` always returns a bullet.
