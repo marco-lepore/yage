@@ -255,8 +255,6 @@ export abstract class Scene {
   private _identityIndex?: Map<string, Entity>;
   private _pools?: Set<ScenePool>;
   private _releaseHoldDepth = 0;
-  private _dormantSpawnDepth = 0;
-  private _dormantSpawned: Entity[] | undefined;
 
   /**
    * Set by `Entity.spawnChild` while the parent is dormant. A spawn runs
@@ -455,7 +453,6 @@ export abstract class Scene {
         entity._setActiveSuppressed(true);
       }
       entity._setScene(this, this.entityCallbacks);
-      this._parkDormantSpawn(entity);
       // Register key BEFORE adding to entities/emitting created — a duplicate
       // key throw must not leave a half-spawned entity in the scene.
       if (options?.key !== undefined) this._registerKey(entity, options.key);
@@ -513,7 +510,6 @@ export abstract class Scene {
       entity._setActiveSuppressed(true);
     }
     entity._setScene(this, this.entityCallbacks);
-    this._parkDormantSpawn(entity);
     if (options?.key !== undefined) this._registerKey(entity, options.key);
     this.entities.add(entity);
     this.bus?.emit("entity:created", { entity });
@@ -582,38 +578,6 @@ export abstract class Scene {
    */
   get _poolReleasesHeld(): boolean {
     return this._releaseHoldDepth > 0;
-  }
-
-  /**
-   * Internal: spawn everything `fn` creates dormant. Components run `onAdd`
-   * but no `onEnable`, and nothing joins a query — the round trip an entity
-   * would otherwise make when it is deactivated a moment later. `EntityPool`
-   * builds its members through this, and so does `spawnChild` under a dormant
-   * parent. An entity created in the window that ends up without a parent
-   * settles to its own `activeSelf` when the window closes.
-   * @internal
-   */
-  _spawnDormant<R>(fn: () => R): R {
-    this._dormantSpawnDepth++;
-    try {
-      return fn();
-    } finally {
-      this._dormantSpawnDepth--;
-      if (this._dormantSpawnDepth === 0 && this._dormantSpawned) {
-        const spawned = this._dormantSpawned;
-        this._dormantSpawned = undefined;
-        for (const entity of spawned) {
-          if (!entity.parent) entity._resyncActive();
-        }
-      }
-    }
-  }
-
-  /** Hold a freshly spawned entity inert while a dormant-spawn window is open. */
-  private _parkDormantSpawn(entity: Entity): void {
-    if (this._dormantSpawnDepth === 0) return;
-    entity._setActiveSuppressed(entity.activeSelf);
-    (this._dormantSpawned ??= []).push(entity);
   }
 
   /**

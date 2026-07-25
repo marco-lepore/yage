@@ -7,7 +7,7 @@
 - `new EntityPool(scene, Bullet, options)` with `acquire` / `forceAcquire` / `release` / `releaseAll` / `dispose`, and `size` / `leased` / `free` counters. Options: `prewarm`, `maxSize`, `reclaimPriority`, and the entity's `setup` params when its `setup()` requires them.
 - A pooled class declares `onAcquire(...)`, whose parameters become `acquire`'s arguments; `onRelease()` is optional. Both are hooks on `Entity`, and the pool's generic constraint rejects a class that declares no `onAcquire`.
 - Elastic by default: the pool grows and `acquire` returns the entity. With `maxSize` a saturated `acquire` returns `undefined` — and the return type widens to match — while `forceAcquire` reclaims the lowest-`reclaimPriority` member in flight, default oldest-acquired.
-- Pool members are built dormant, so they never join a query or fire an enable hook on the way in. `entity.spawnChild` under a dormant parent takes the same path instead of firing `onEnable` and `onDisable` back to back.
+- Pool members are built dormant, so they never join a query or fire an enable hook on the way in. Children a member's `setup()` spawns inherit that.
 - `entity.isPooled` marks a member so the save layer can skip it, and pools register with their scene: scene exit disposes them, and a disposed pool throws on `acquire`.
 - `scene.deferPoolReleases(fn)` holds releases for the duration of a batch of queued entity events, so a member released inside the batch rejoins the pool only once the batch finishes and events for its previous life cannot reach a reacquired one.
 - `Scene` exports `SetupParamTuple`, the `setup()` parameter tuple the spawn and pool signatures are derived from.

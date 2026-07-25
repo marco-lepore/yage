@@ -328,24 +328,29 @@ export class EntityPool<
    * joins a query or fires an enable hook on the way in.
    */
   private construct(): T {
-    const member = this.scene._spawnDormant(() => {
-      // The setup params were typed against this class at the constructor;
-      // `spawn`'s overloads can't re-derive that from the erased generic. The
-      // three-argument form is the unambiguous one: a params object whose only
-      // field is `key` would be read as spawn options in the short form.
-      const spawn = this.scene.spawn as (
-        this: Scene,
-        Class: new () => T,
-        params: unknown,
-        options: object,
-      ) => T;
-      const entity = spawn.call(this.scene, this.Class, this.setupParams, {});
-      // Park by the entity's own bit: the window only clears the inherited
-      // one, which would let the member wake with an ancestor.
-      entity._setActiveSuppressed(false);
-      entity._markPooled();
-      return entity;
-    });
+    // The setup params were typed against this class at the constructor;
+    // `spawn`'s overloads can't re-derive that from the erased generic. The
+    // three-argument form is the unambiguous one: a params object whose only
+    // field is `key` would be read as spawn options in the short form.
+    const spawn = this.scene.spawn as (
+      this: Scene,
+      Class: new () => T,
+      params: unknown,
+      options: object,
+    ) => T;
+    // The member is born inert, so it never fires an enable hook or joins a
+    // query only to leave both when it is parked a moment later. Children its
+    // `setup()` spawns inherit that through `spawnChild`.
+    this.scene._spawnInert = true;
+    let member: T;
+    try {
+      member = spawn.call(this.scene, this.Class, this.setupParams, {});
+    } finally {
+      this.scene._spawnInert = false;
+    }
+    // A member has no parent to settle its state, so clear its own bit too.
+    member._setActiveSuppressed(false);
+    member._markPooled();
     this.members.push(member);
     return member;
   }
