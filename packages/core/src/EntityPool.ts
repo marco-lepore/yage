@@ -368,6 +368,10 @@ export class EntityPool<
    * member being acquired would otherwise put it back in the pool while the
    * caller still holds it, and the next acquisition would hand the same
    * entity to someone else.
+   *
+   * Re-leasing follows the same rule as a first acquisition: a component
+   * `onEnable` that throws during the reactivation leaves the member leased
+   * and active, not half-filed. `releaseAll()` still reaches it.
    */
   private reclaimFromHook(member: T): void {
     // Destruction first: it leaves the pool's bookkeeping untouched, so a
