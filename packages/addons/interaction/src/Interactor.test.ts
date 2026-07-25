@@ -201,6 +201,72 @@ describe("Interactor", () => {
     expect(events).toHaveLength(2);
   });
 
+  it("enabled: false at construction starts halted, without a hook firing", () => {
+    const { scene } = createMockScene();
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    const interactor = player.add(new Interactor({ range: 100, enabled: false }));
+
+    const chest = scene.spawn("chest");
+    chest.add(new Transform({ position: { x: 10, y: 0 } }));
+    chest.add(new Interactable({ onInteract: () => {} }));
+
+    expect(interactor.enabled).toBe(false);
+    expect(interactor.effectiveEnabled).toBe(false);
+
+    interactor.update();
+    expect(interactor.focus).toBeNull();
+
+    interactor.enabled = true;
+    interactor.update();
+    expect(interactor.focus).not.toBeNull();
+  });
+
+  it("deactivating the host entity empties the snapshot and reactivating resumes", () => {
+    const { scene } = createMockScene();
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    const interactor = player.add(new Interactor({ range: 100 }));
+
+    const chest = scene.spawn("chest");
+    chest.add(new Transform({ position: { x: 10, y: 0 } }));
+    const chestInteractable = chest.add(new Interactable({ onInteract: () => {} }));
+
+    interactor.update();
+    expect(interactor.focus).toBe(chestInteractable);
+
+    player.setActive(false);
+    expect(interactor.focus).toBeNull();
+    // Still `enabled` — the entity is what went dormant.
+    expect(interactor.enabled).toBe(true);
+
+    player.setActive(true);
+    interactor.update();
+    expect(interactor.focus).toBe(chestInteractable);
+  });
+
+  it("a dormant target is dropped from the snapshot and cannot be interacted with", () => {
+    const { scene } = createMockScene();
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    const interactor = player.add(new Interactor({ range: 100 }));
+
+    const chest = scene.spawn("chest");
+    chest.add(new Transform({ position: { x: 10, y: 0 } }));
+    const onInteract = vi.fn();
+    const chestInteractable = chest.add(new Interactable({ onInteract }));
+
+    interactor.update();
+    expect(interactor.focus).toBe(chestInteractable);
+
+    chest.setActive(false);
+    interactor.update();
+    expect(interactor.inRange).toEqual([]);
+
+    interactor.interact(chestInteractable);
+    expect(onInteract).not.toHaveBeenCalled();
+  });
+
   it("focus getter reflects live state", () => {
     const { scene } = createMockScene();
     const player = scene.spawn("player");

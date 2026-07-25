@@ -32,12 +32,22 @@ describe("interactableRegistryFor", () => {
     expect([...registry]).toEqual([a, b]);
   });
 
-  it("register returns increasing registration order", () => {
+  it("claimOrder hands out increasing registration order", () => {
     const { scene } = createMockScene();
     const registry = interactableRegistryFor(scene);
-    expect(registry.register(fakeInteractable())).toBe(0);
-    expect(registry.register(fakeInteractable())).toBe(1);
-    expect(registry.register(fakeInteractable())).toBe(2);
+    expect(registry.claimOrder()).toBe(0);
+    expect(registry.claimOrder()).toBe(1);
+    expect(registry.claimOrder()).toBe(2);
+  });
+
+  it("re-registering the same interactable does not duplicate it", () => {
+    const { scene } = createMockScene();
+    const registry = interactableRegistryFor(scene);
+    const a = fakeInteractable();
+    registry.register(a);
+    registry.unregister(a);
+    registry.register(a);
+    expect([...registry]).toEqual([a]);
   });
 
   it("unregister removes only the matching instance", () => {

@@ -4,8 +4,13 @@ import type { InteractableOptions } from "./core/types.js";
 
 /**
  * Marks any entity as something an `Interactor` can focus and interact with.
- * Self-registers into the scene's interactable registry on `onAdd` and
- * unregisters on `onDestroy` — no manual wiring beyond `entity.add()`.
+ * Self-registers into the scene's interactable registry — no manual wiring
+ * beyond `entity.add()`.
+ *
+ * Registration tracks the component: a disabled component, a dormant entity,
+ * or a removed component drops the target out of every interactor's candidate
+ * set. The order that breaks focus ties is claimed once, so a target that
+ * comes back keeps its place.
  */
 export class Interactable extends Component {
   private readonly transform = this.sibling(Transform);
@@ -18,7 +23,10 @@ export class Interactable extends Component {
   }
 
   onAdd(): void {
-    this._order = interactableRegistryFor(this.scene).register(this);
+    // A component is never effectively enabled during `onAdd` — `onEnable`
+    // runs right after, and only for an active entity, so registration
+    // happens there. The order is claimed here to keep it stable.
+    this._order = interactableRegistryFor(this.scene).claimOrder();
 
     // `radius` is the other half of the reach an interactor squares. A negative
     // one shrinks the reach, and once the total drops below zero the squaring
@@ -33,7 +41,11 @@ export class Interactable extends Component {
     }
   }
 
-  onDestroy(): void {
+  onEnable(): void {
+    interactableRegistryFor(this.scene).register(this);
+  }
+
+  onDisable(): void {
     interactableRegistryFor(this.scene).unregister(this);
   }
 
@@ -57,10 +69,14 @@ export class Interactable extends Component {
     return this.opts.priority ?? 0;
   }
 
-  /** Resolves the live-or-static enabled gate. Default true. Named as a
-   *  method, not a property, to avoid colliding with the inherited
-   *  `Component.enabled` field (the ComponentUpdateSystem run-gate — a
-   *  distinct concept from this resolved, provider-driven focus gate). */
+  /** Resolves the live-or-static enabled gate — the game's own answer to
+   *  "is this usable right now?". Default true. Named as a method, not a
+   *  property, to avoid colliding with the inherited `Component.enabled`
+   *  accessor, a distinct concept.
+   *
+   *  It says nothing about whether the entity is live: a disabled component or
+   *  a dormant entity leaves the registry, so its interactable is not a
+   *  candidate at all and this gate is never consulted for it. */
   isEnabled(): boolean {
     const enabled = this.opts.enabled;
     if (enabled === undefined) return true;

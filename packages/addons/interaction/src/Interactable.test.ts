@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createMockScene, Logger, LoggerKey, LogLevel, Transform } from "@yagejs/core";
 import { Interactable } from "./Interactable.js";
-import { interactableRegistryFor } from "./core/registry.js";
+import { interactableRegistryFor, interactablesIn } from "./core/registry.js";
 
 describe("Interactable", () => {
   it("registers into the scene registry on add and unregisters on destroy", () => {
@@ -16,6 +16,55 @@ describe("Interactable", () => {
     entity.destroy();
     scene._flushDestroyQueue();
     expect([...registry]).not.toContain(interactable);
+  });
+
+  it("leaves the registry while the component is disabled and rejoins on enable", () => {
+    const { scene } = createMockScene();
+    const entity = scene.spawn("chest");
+    entity.add(new Transform());
+    const interactable = entity.add(new Interactable({ onInteract: () => {} }));
+    const registry = interactableRegistryFor(scene);
+
+    interactable.enabled = false;
+    expect(registry.has(interactable)).toBe(false);
+
+    interactable.enabled = true;
+    expect(registry.has(interactable)).toBe(true);
+  });
+
+  it("a dormant entity's interactable is not a focus candidate", () => {
+    const { scene } = createMockScene();
+    const entity = scene.spawn("chest");
+    entity.add(new Transform());
+    const interactable = entity.add(new Interactable({ onInteract: () => {} }));
+    const registry = interactableRegistryFor(scene);
+
+    entity.setActive(false);
+    expect(registry.has(interactable)).toBe(false);
+    expect(interactablesIn(scene)).toEqual([]);
+
+    entity.setActive(true);
+    expect(registry.has(interactable)).toBe(true);
+  });
+
+  it("keeps its registration order across a dormant period", () => {
+    const { scene } = createMockScene();
+    const first = scene.spawn("first");
+    first.add(new Transform());
+    const firstInteractable = first.add(new Interactable({ onInteract: () => {} }));
+
+    const second = scene.spawn("second");
+    second.add(new Transform());
+    const secondInteractable = second.add(new Interactable({ onInteract: () => {} }));
+
+    expect(firstInteractable.order).toBe(0);
+    expect(secondInteractable.order).toBe(1);
+
+    // The tie-break must not renumber, or a target that blinked off screen
+    // would jump the focus queue on its way back.
+    first.setActive(false);
+    first.setActive(true);
+    expect(firstInteractable.order).toBe(0);
   });
 
   it("radius and priority default to 0", () => {

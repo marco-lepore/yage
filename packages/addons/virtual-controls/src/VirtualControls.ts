@@ -126,13 +126,15 @@ export class VirtualControls extends Component {
       // fresh presses — releases of already-claimed pointers stay ungated.
       canClaim: (pointerId) =>
         this._visible &&
-        this.enabled &&
+        this.effectiveEnabled &&
         !this.scene.isPaused &&
         !(this.input?.isPointerConsumed(pointerId) ?? false),
     });
   }
 
-  /** Whether the overlay is currently on (see `setVisible`). */
+  /** The requested overlay state (see `setVisible`), whatever the host
+   *  entity's activeness. A dormant host draws and claims nothing, and the
+   *  value set here comes back with it. */
   get visible(): boolean {
     return this._visible;
   }
@@ -155,7 +157,7 @@ export class VirtualControls extends Component {
     const was = this._visible;
     this._visible = visible;
     if (!visible && was) this.model.releaseAll();
-    for (const v of this.views) v.setVisible(visible);
+    this.applyViewVisibility();
   }
 
   override onAdd(): void {
@@ -205,9 +207,31 @@ export class VirtualControls extends Component {
     for (const v of this.views) v.update(dt);
   }
 
-  override onDestroy(): void {
-    // Release first so mirrored holds/axes reset while input is reachable.
+  override onEnable(): void {
+    this.applyViewVisibility();
+  }
+
+  /**
+   * A dormant host (or `enabled = false`) takes the overlay off screen and
+   * releases every engaged control, so a deactivated HUD entity leaves no
+   * painted controls and no stuck action holds. The requested `visible` value
+   * is untouched and applies again on reactivation.
+   */
+  override onDisable(): void {
     this.model.releaseAll();
+    this.applyViewVisibility();
+  }
+
+  /** The views are on screen only when the overlay is on AND the component is
+   *  running, so `setVisible` and the enable hooks share one place to say it. */
+  private applyViewVisibility(): void {
+    const on = this._visible && this.effectiveEnabled;
+    for (const v of this.views) v.setVisible(on);
+  }
+
+  override onDestroy(): void {
+    // Mirrored holds and axes were already reset: teardown runs `onDisable`
+    // first, while input is still reachable.
     for (const v of this.views) v.dispose();
     this.views.length = 0;
     this.opts.presenter?.dispose();
@@ -216,7 +240,7 @@ export class VirtualControls extends Component {
 
   private handleDown(p: PointerInfo): void {
     const input = this.input;
-    if (!input || !this._visible || !this.enabled) return;
+    if (!input || !this._visible || !this.effectiveEnabled) return;
     // While paused (e.g. a pause scene pushed on top), take no new claims —
     // but moves/releases of already-claimed pointers keep flowing above so
     // nothing sticks.

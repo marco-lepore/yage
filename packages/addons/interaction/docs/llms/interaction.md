@@ -82,6 +82,13 @@ interface InteractableOptions {
 `prompt` and `enabled` accept a live provider, re-resolved every frame — no
 extra setup needed for a lever's "Turn on"/"Turn off" or a busy-gated door.
 
+The `enabled` option is the game's own gate; the component's inherited
+`enabled` flag and `entity.setActive(false)` are separate and stronger. A
+disabled component or a dormant entity leaves the scene registry entirely, so
+its interactable is not a candidate for any interactor and `interactablesIn()`
+does not return it. Focus tie-break order is claimed once and survives the
+round trip.
+
 ## `InteractorOptions`
 
 ```ts
@@ -133,7 +140,8 @@ when a target moves between updates.
   the tracking toggle. `false` empties the snapshot immediately (emitting the
   transitions) and halts tracking, input polling, and `interact()`; `true`
   resumes next frame. Flip it to pause one interactor during a cutscene, or to
-  switch tracking between several.
+  switch tracking between several. `entity.setActive(false)` does the same,
+  and reactivating resumes — a pooled or dormant interactor focuses nothing.
 
 ```ts
 // Manual / headless drive — no @yagejs/input, or a test:

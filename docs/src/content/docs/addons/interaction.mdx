@@ -259,6 +259,17 @@ interactor.enabled = false; // empties the snapshot immediately (emitting the
 A disabled interactor interacts with nothing, even when handed an explicit
 target — the pause is not something an argument can bypass.
 
+Deactivating an entity has the same effect on both sides, so an entity you
+turn off or hand back to a pool leaves nothing behind:
+
+```ts
+player.setActive(false); // its interactor drops the snapshot and stops tracking
+chest.setActive(false);  // no interactor can focus or interact with the chest
+```
+
+Turn the entity back on and it picks up where it left off, including its place
+in the focus tie-break order.
+
 <Aside type="note">
 This addon is pure distance-query proximity — no `@yagejs/physics` dependency
 and no facing-cone, so range is omnidirectional. To show a prompt, draw your own

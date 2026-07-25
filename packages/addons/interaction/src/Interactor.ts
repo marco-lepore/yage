@@ -45,6 +45,8 @@ function sameRanking(a: readonly Interactable[], b: readonly Interactable[]): bo
  * transitions) and halts tracking, input polling, and `interact()`; setting it
  * `true` resumes tracking next frame. Flip it to pause one interactor during a
  * cutscene, or to switch focus tracking between several interactors.
+ * Deactivating the host entity does the same thing, and reactivating it
+ * resumes — an interactor on a dormant entity focuses nothing.
  */
 export class Interactor extends Component {
   private readonly ownTransform = this.sibling(Transform);
@@ -66,24 +68,10 @@ export class Interactor extends Component {
     super();
     this.range = opts.range ?? DEFAULT_RANGE;
     this.action = opts.action === undefined ? DEFAULT_ACTION : opts.action;
-
-    // `Component.enabled` is a plain inherited field (ComponentUpdateSystem's
-    // update-gate) with no assignment hook, and TS forbids overriding a
-    // field with an accessor at the class level (TS2611). Defining it as an
-    // own-instance accessor here instead lets toggling `interactor.enabled`
-    // empty the snapshot immediately rather than silently freezing whatever
-    // was in range when tracking stopped.
-    let trackingEnabled = opts.enabled ?? true;
-    Object.defineProperty(this, "enabled", {
-      configurable: true,
-      enumerable: true,
-      get: (): boolean => trackingEnabled,
-      set: (value: boolean): void => {
-        if (value === trackingEnabled) return;
-        trackingEnabled = value;
-        if (!value) this.setInRange([]);
-      },
-    });
+    // An assignment, not a field: `Component.enabled` is an accessor whose
+    // setter fires the enable hooks. Safe this early — the component has no
+    // entity yet, so the effective state stays false and no hook runs.
+    this.enabled = opts.enabled ?? true;
   }
 
   onAdd(): void {
@@ -103,16 +91,22 @@ export class Interactor extends Component {
     }
   }
 
-  onDestroy(): void {
-    // `entity.remove(Interactor)` leaves the entity alive, so the transitions
-    // emitted here reach listeners normally. `entity.destroy()` marks the
-    // entity destroyed before the deferred teardown that runs this hook, so
-    // `Entity.emit` silently drops them — as with any post-destroy emit.
+  /**
+   * Empties the snapshot the moment the interactor stops running — `enabled`
+   * set false, the entity deactivated, the component removed or destroyed —
+   * rather than freezing whatever happened to be in range.
+   *
+   * `entity.remove(Interactor)` leaves the entity alive, so the transitions
+   * emitted here reach listeners normally. `entity.destroy()` marks the entity
+   * destroyed before the deferred teardown that runs this hook, so
+   * `Entity.emit` silently drops them — as with any post-destroy emit.
+   */
+  onDisable(): void {
     this.setInRange([]);
   }
 
   update(): void {
-    if (!this.enabled) return;
+    if (!this.effectiveEnabled) return;
 
     const registry = interactableRegistryFor(this.scene);
     const position = this.ownTransform.worldPosition;
@@ -154,15 +148,16 @@ export class Interactor extends Component {
 
   /** Fires an interactable's `onInteract` and emits `InteractionPerformedEvent`.
    *  Targets the current `focus` by default; pass one from `inRange` to act on a
-   *  chosen target instead. No-op unless the interactor is enabled and the target
-   *  is in the current `inRange` snapshot and still live (host not destroyed,
-   *  component not removed, `enabled` gate still true).
+   *  chosen target instead. No-op unless the interactor is running (enabled, on
+   *  an active entity) and the target is in the current `inRange` snapshot and
+   *  still live (host not destroyed, component not removed or dormant,
+   *  `isEnabled()` gate still true).
    *
    *  To fire an interactable the interactor can't reach — a scripted or remote
    *  trigger — call `interactable.interact()` directly. That bypasses every
    *  check here and emits no interactor event. */
   interact(target?: Interactable): void {
-    if (!this.enabled) return;
+    if (!this.effectiveEnabled) return;
 
     const interactable = target ?? this.focus;
     if (

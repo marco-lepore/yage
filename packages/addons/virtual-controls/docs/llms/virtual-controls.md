@@ -92,6 +92,10 @@ fresh component.
 - `controls.setVisible(bool)` at runtime. Hiding releases every engaged
   control: mirrored actions get a real release edge, axes reset, views hide.
   While hidden nothing is claimed or consumed.
+- `controls.enabled = false` and `entity.setActive(false)` do the same,
+  independently of `visible`: the views hide and every hold is released. The
+  requested `visible` value is kept and applies again on reactivation, so a
+  HUD entity you turn off and back on returns to the state you set.
 
 ## How input flows (the consumption contract)
 
