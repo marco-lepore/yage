@@ -1451,9 +1451,13 @@ export class Inspector {
    * `serialize()` just to expose them.
    */
   private serializeComponentOwnProperties(comp: Component): unknown {
-    // `enabled` lives on Component.prototype as an accessor, so neither loop
-    // below reaches it — but it is the one base-class field worth reporting.
-    const result: Record<string, unknown> = { enabled: comp.enabled };
+    // Both live on Component.prototype as accessors, so neither loop below
+    // reaches them. `enabled` alone is ambiguous once entities can be dormant:
+    // `effectiveEnabled` is what says whether the component is running.
+    const result: Record<string, unknown> = {
+      enabled: comp.enabled,
+      effectiveEnabled: comp.effectiveEnabled,
+    };
     for (const key of Object.getOwnPropertyNames(comp)) {
       if (key === "entity") continue;
       // Skip private-by-convention fields. Components hold pixi/rapier handles

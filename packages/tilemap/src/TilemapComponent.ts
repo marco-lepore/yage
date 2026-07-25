@@ -53,6 +53,8 @@ export class TilemapComponent extends Component {
   static restorePriority = 50;
 
   readonly container: DisplayContainer;
+  /** Container visibility to restore on enable, so a hand-set hide survives. */
+  private _visibleWhenActive = true;
   readonly data: TilemapData;
   /** Asset path of this map, or `null` if constructed from a raw `TiledMapData` without one. */
   readonly mapKey: string | null;
@@ -123,11 +125,12 @@ export class TilemapComponent extends Component {
   }
 
   onDisable(): void {
+    this._visibleWhenActive = this.container.visible;
     this.container.visible = false;
   }
 
   onEnable(): void {
-    this.container.visible = true;
+    this.container.visible = this._visibleWhenActive;
   }
 
   onDestroy(): void {

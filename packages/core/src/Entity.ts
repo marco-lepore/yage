@@ -452,6 +452,13 @@ export class Entity {
     // Unchanged here means unchanged for every descendant too — their cached
     // bits were computed against this same value.
     if (next === this._activeInHierarchy) return;
+    // A destroyed entity is waiting for the end-of-frame flush. An activation
+    // must not walk into it: rejoining queries or reacquiring a body and a
+    // display object it is about to release leaves systems iterating an entity
+    // on its way out. Its children are destroyed with it, so stopping here
+    // strands no live descendant. Deactivation still propagates — releasing
+    // those resources early is harmless.
+    if (next && this._destroyed) return;
     this._activeInHierarchy = next;
 
     if (next) {

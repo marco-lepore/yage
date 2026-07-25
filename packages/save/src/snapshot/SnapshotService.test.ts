@@ -514,8 +514,14 @@ describe("SnapshotService", () => {
       const entries = (
         JSON.parse(storage.load("yage:snapshot:test")!) as GameSnapshot
       ).scenes[0]!.entities;
-      // Only the parent's own bit is stored — the child is dormant by descent.
+      // Only the parent's own bit is stored — the child is dormant by descent,
+      // and an active entity omits the field entirely rather than writing true.
       expect(entries.filter((e) => e.activeSelf === false)).toHaveLength(1);
+      expect(
+        entries.filter((e) =>
+          Object.prototype.hasOwnProperty.call(e, "activeSelf"),
+        ),
+      ).toHaveLength(1);
 
       await service.loadSnapshot("test");
 

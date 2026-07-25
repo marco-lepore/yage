@@ -312,6 +312,16 @@ const { mocks } = vi.hoisted(() => {
       this._colliders.delete(collider.handle);
     }
 
+    /** Narrow-phase pairs any `intersectionPairsWith` call reports. */
+    _pairs: MockCollider[] = [];
+
+    intersectionPairsWith(
+      _collider: MockCollider,
+      cb: (other: MockCollider) => boolean,
+    ) {
+      for (const other of this._pairs) cb(other);
+    }
+
     castRayAndGetNormal() {
       return null;
     }
@@ -489,6 +499,50 @@ describe("PhysicsWorld", () => {
         ccd: true,
       });
       expect(pw.bodyMap.has(handle)).toBe(true);
+    });
+  });
+
+  describe("queryOverlapping", () => {
+    function setupPair() {
+      const pw = new PhysicsWorld();
+      const self = new Entity("self");
+      const other = new Entity("other");
+      const selfHandle = pw.createCollider(
+        self,
+        pw.createBody(self, { type: "dynamic" }),
+        { shape: { type: "box", width: 10, height: 10 } },
+        createMockColliderComponent(),
+      );
+      const otherHandle = pw.createCollider(
+        other,
+        pw.createBody(other, { type: "dynamic" }),
+        { shape: { type: "box", width: 10, height: 10 } },
+        createMockColliderComponent(),
+      );
+      const world = (
+        pw as unknown as {
+          world: { _pairs: unknown[]; getCollider(h: number): unknown };
+        }
+      ).world;
+      world._pairs = [world.getCollider(otherHandle)];
+      return { pw, self, other, selfHandle };
+    }
+
+    it("reports an overlapping active peer", () => {
+      const { pw, other, selfHandle } = setupPair();
+      expect(pw.queryOverlapping(selfHandle)).toEqual([other]);
+    });
+
+    it("returns nothing when the querying entity is dormant", () => {
+      const { pw, self, selfHandle } = setupPair();
+      self.setActive(false);
+      expect(pw.queryOverlapping(selfHandle)).toEqual([]);
+    });
+
+    it("skips a dormant peer", () => {
+      const { pw, other, selfHandle } = setupPair();
+      other.setActive(false);
+      expect(pw.queryOverlapping(selfHandle)).toEqual([]);
     });
   });
 

@@ -418,10 +418,28 @@ describe("Entity activeness", () => {
     const { scene } = createMockScene();
     const parent = scene.spawn("parent");
     const child = parent.spawnChild("child");
+    const comp = child.add(new HookComponent());
     child.setActive(false);
     parent.setActive(false);
+    comp.log.length = 0;
+
     parent.setActive(true);
     expect(child.isActive).toBe(false);
+    expect(comp.log).toEqual([]);
+  });
+
+  it("does not reactivate a destroyed child when the parent wakes", () => {
+    const { scene } = createMockScene();
+    const parent = scene.spawn("parent");
+    const child = parent.spawnChild("child");
+    const comp = child.add(new HookComponent());
+    child.destroy();
+    parent.setActive(false);
+    comp.log.length = 0;
+
+    parent.setActive(true);
+    expect(child.isActive).toBe(false);
+    expect(comp.log).toEqual([]);
   });
 
   it("propagates through grandchildren", () => {
