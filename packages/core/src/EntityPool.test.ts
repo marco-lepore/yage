@@ -323,6 +323,19 @@ describe("EntityPool", () => {
       expect(pool.size).toBe(2);
     });
 
+    it("drops a member destroyed while leased from an elastic pool", () => {
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Spark);
+      const doomed = pool.acquire(1);
+      doomed.destroy();
+
+      // Next growth sweeps it, so neither collection keeps a dead entity.
+      pool.acquire(2);
+
+      expect(pool.size).toBe(1);
+      expect(pool.leased).toBe(1);
+    });
+
     it("forceAcquire on an elastic pool just grows", () => {
       const { scene } = createMockScene();
       const pool = new EntityPool(scene, Spark);

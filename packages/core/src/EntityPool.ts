@@ -309,9 +309,12 @@ export class EntityPool<
 
   /** A brand-new member, or `undefined` when a capped pool is full. */
   private grow(): T | undefined {
+    // Growth is the rare path — a pool in steady state serves from the free
+    // list — so it is where members destroyed behind the pool's back are
+    // dropped, rather than on every acquisition.
+    this.evictDestroyed();
     if (this.maxSize !== undefined && this.members.length >= this.maxSize) {
-      this.evictDestroyed();
-      if (this.members.length >= this.maxSize) return undefined;
+      return undefined;
     }
     return this.construct();
   }
