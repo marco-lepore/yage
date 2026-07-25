@@ -305,6 +305,24 @@ describe("EntityPool", () => {
       expect(pool.forceAcquire(99)).toBe(cheapest);
     });
 
+    it("never reclaims a member destroyed while leased", () => {
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Spark, { maxSize: 2 });
+      const doomed = pool.acquire(1)!;
+      const alive = pool.acquire(2)!;
+      doomed.destroy();
+
+      // The saturation check drops destroyed members first, so the pool has
+      // room again and grows rather than reclaiming a member being torn down.
+      const taken = pool.forceAcquire(3);
+
+      expect(taken).not.toBe(doomed);
+      expect(taken).not.toBe(alive);
+      expect(taken.isActive).toBe(true);
+      expect(alive.releases).toBe(0);
+      expect(pool.size).toBe(2);
+    });
+
     it("forceAcquire on an elastic pool just grows", () => {
       const { scene } = createMockScene();
       const pool = new EntityPool(scene, Spark);
