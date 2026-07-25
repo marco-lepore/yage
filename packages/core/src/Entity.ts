@@ -255,19 +255,29 @@ export class Entity {
     // into `Scene.spawn`'s matching overloads without per-variant
     // branches. When no class/blueprint is provided, forward `name` as
     // the entity's own name so `child.name` matches the child-map key.
+    // Spawning runs `setup()` before `addChild` links the parent, so a child of
+    // a dormant parent would otherwise be active for that window and fire
+    // enable hooks the link immediately undoes. Hold it inert instead and let
+    // `addChild`'s resync settle the subtree once.
+    const inert = !this._activeInHierarchy;
+    if (inert) scene._spawnInert = true;
     let child: Entity;
-    if (classOrBlueprintOrOptions === undefined) {
-      child = scene.spawn(name);
-    } else if (
-      typeof classOrBlueprintOrOptions === "object" &&
-      !("build" in classOrBlueprintOrOptions)
-    ) {
-      // spawnChild(name, options)
-      child = scene.spawn(name, classOrBlueprintOrOptions as SpawnOptions);
-    } else {
-      child = (
-        scene.spawn as (a?: unknown, b?: unknown, c?: unknown) => Entity
-      )(classOrBlueprintOrOptions, paramsOrOptions, maybeOptions);
+    try {
+      if (classOrBlueprintOrOptions === undefined) {
+        child = scene.spawn(name);
+      } else if (
+        typeof classOrBlueprintOrOptions === "object" &&
+        !("build" in classOrBlueprintOrOptions)
+      ) {
+        // spawnChild(name, options)
+        child = scene.spawn(name, classOrBlueprintOrOptions as SpawnOptions);
+      } else {
+        child = (
+          scene.spawn as (a?: unknown, b?: unknown, c?: unknown) => Entity
+        )(classOrBlueprintOrOptions, paramsOrOptions, maybeOptions);
+      }
+    } finally {
+      if (inert) scene._spawnInert = false;
     }
     this.addChild(name, child);
     return child;

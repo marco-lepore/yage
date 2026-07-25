@@ -428,6 +428,22 @@ describe("Entity activeness", () => {
     expect(comp.log).toEqual([]);
   });
 
+  it("fires no hooks while spawning a child under a dormant parent", () => {
+    const { scene } = createMockScene();
+    const parent = scene.spawn("parent");
+    parent.setActive(false);
+
+    const child = parent.spawnChild("child");
+    const comp = child.add(new HookComponent());
+    expect(child.isActive).toBe(false);
+    // The spawn ran `setup()` before the parent link existed, but the child was
+    // never effectively enabled, so nothing was enabled and undone.
+    expect(comp.log).toEqual([]);
+
+    parent.setActive(true);
+    expect(comp.log).toEqual(["enable"]);
+  });
+
   it("does not reactivate a destroyed child when the parent wakes", () => {
     const { scene } = createMockScene();
     const parent = scene.spawn("parent");

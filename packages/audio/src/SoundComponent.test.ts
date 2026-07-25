@@ -110,6 +110,20 @@ describe("SoundComponent", () => {
     expect(mockSound.play).toHaveBeenCalledWith("music", expect.anything());
   });
 
+  it("playOnAdd survives being spawned as a child of a dormant parent", () => {
+    const { scene } = createAudioTestContext(manager);
+    const parent = spawnEntityInScene(scene, "parent");
+    parent.setActive(false);
+
+    const child = parent.spawnChild("child");
+    child.add(new SoundComponent({ alias: "music", playOnAdd: true }));
+    expect(mockSound.play).not.toHaveBeenCalled();
+
+    parent.setActive(true);
+    expect(mockSound.play).toHaveBeenCalledTimes(1);
+    expect(mockSound.play).toHaveBeenCalledWith("music", expect.anything());
+  });
+
   it("playOnAdd is one-shot across a deactivate/reactivate cycle", () => {
     const { scene } = createAudioTestContext(manager);
     const entity = spawnEntityInScene(scene);

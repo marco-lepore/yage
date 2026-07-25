@@ -245,6 +245,14 @@ export abstract class Scene {
   private _scopedServices?: Map<string, unknown>;
   private _identityIndex?: Map<string, Entity>;
 
+  /**
+   * Set by `Entity.spawnChild` while the parent is dormant. A spawn runs
+   * `setup()` before the parent link exists, so without this the child would
+   * be briefly active and fire enable hooks it is about to undo.
+   * @internal
+   */
+  _spawnInert = false;
+
   /** Access the EngineContext. */
   get context(): EngineContext {
     return this._context;
@@ -424,6 +432,7 @@ export abstract class Scene {
       }
 
       const entity = new Ctor();
+      if (this._spawnInert) entity._setActiveSuppressed(true);
       entity._setScene(this, this.entityCallbacks);
       // Register key BEFORE adding to entities/emitting created — a duplicate
       // key throw must not leave a half-spawned entity in the scene.
@@ -477,6 +486,7 @@ export abstract class Scene {
     }
 
     const entity = new Entity(name);
+    if (this._spawnInert) entity._setActiveSuppressed(true);
     entity._setScene(this, this.entityCallbacks);
     if (options?.key !== undefined) this._registerKey(entity, options.key);
     this.entities.add(entity);
