@@ -26,6 +26,8 @@ export function _resetEntityIdCounter(): void {
 export interface EntityCallbacks {
   onComponentAdded(entity: Entity, componentClass: ComponentClass): void;
   onComponentRemoved(entity: Entity, componentClass: ComponentClass): void;
+  onEntityActivated(entity: Entity): void;
+  onEntityDeactivated(entity: Entity): void;
 }
 
 /**
@@ -64,6 +66,9 @@ export class Entity {
 
   private components = new Map<ComponentClass, Component>();
   private _destroyed = false;
+  private _activeSelf = true;
+  /** Cached `activeSelf && every ancestor's activeSelf`, kept current by `_applyActive`. */
+  private _activeInHierarchy = true;
   private _scene: Scene | null = null;
   private callbacks: EntityCallbacks | null = null;
   private _eventHandlers?: Map<string, Set<(data: never) => void>>;
@@ -110,6 +115,49 @@ export class Entity {
     return this._destroyed;
   }
 
+  /**
+   * This entity's own activeness bit — what `setActive` last wrote. An entity
+   * whose `activeSelf` is `true` can still be dormant, if an ancestor is not.
+   * Use {@link isActive} for the state the engine acts on.
+   */
+  get activeSelf(): boolean {
+    return this._activeSelf;
+  }
+
+  /**
+   * Whether the entity is active: its own `activeSelf` and every ancestor's.
+   * A dormant entity keeps all of its components and its place in
+   * `scene.getEntities()`, but drops out of queries, `findEntity`,
+   * `findEntitiesByTag` and `findEntities`, and its components stop updating.
+   */
+  get isActive(): boolean {
+    return this._activeInHierarchy;
+  }
+
+  /**
+   * Turn the entity on or off without destroying it. Descendants follow: a
+   * child of a dormant entity is dormant whatever its own `activeSelf` says.
+   *
+   * Components whose effective enabled-ness flips get `onDisable` /
+   * `onEnable`. Per-component `enabled` flags are left alone, so a component
+   * you disabled by hand stays disabled after the entity comes back.
+   *
+   * ```ts
+   * bullet.setActive(false);                    // hidden, updates skipped
+   * bullet.get(Transform).setPosition(x, y);
+   * bullet.setActive(true);                     // back in play, no respawn
+   * ```
+   *
+   * An entity with a `RigidBodyComponent` must be moved through
+   * `rb.setPosition(x, y)` instead — physics owns the transform of a dynamic
+   * body and overwrites a direct `Transform` write on the next frame.
+   */
+  setActive(active: boolean): void {
+    if (this._activeSelf === active) return;
+    this._activeSelf = active;
+    this._resyncActive();
+  }
+
   /** The parent entity, or null if this is a root entity. */
   get parent(): Entity | null {
     return this._parent;
@@ -146,6 +194,9 @@ export class Entity {
     if (this._scene && !child._scene) {
       this._scene._addExistingEntity(child);
     }
+
+    // The subtree inherits the new parent's activeness.
+    child._resyncActive();
   }
 
   /**
@@ -234,6 +285,9 @@ export class Entity {
     // Mark child transform dirty so world values recompute without parent
     child.tryGet(Transform)?._markDirty();
 
+    // Detached from a dormant parent, the subtree goes by its own bits again.
+    child._resyncActive();
+
     return child;
   }
 
@@ -263,6 +317,7 @@ export class Entity {
     this.components.set(cls, component);
     component.onAdd?.();
     this.callbacks?.onComponentAdded(this, cls);
+    component._refreshEnabled();
     return component;
   }
 
@@ -291,6 +346,7 @@ export class Entity {
   remove(cls: ComponentClass): void {
     const comp = this.components.get(cls);
     if (!comp) return;
+    comp._applyEnabled(false);
     comp._runCleanups();
     comp.onRemove?.();
     comp.onDestroy?.();
@@ -363,6 +419,55 @@ export class Entity {
   }
 
   /**
+   * Internal: recompute effective activeness against the current parent and
+   * propagate to descendants. Called after `setActive`, after a re-parent,
+   * and once per restored root when a snapshot finishes rebuilding the
+   * hierarchy.
+   * @internal
+   */
+  _resyncActive(): void {
+    this._applyActive(this._parent ? this._parent._activeInHierarchy : true);
+  }
+
+  /**
+   * Internal: write `activeSelf` and park the entity as dormant without
+   * firing hooks or touching queries. Used by snapshot restore, which must
+   * hold every restored entity inert until the parent links are back — the
+   * single `_resyncActive` per root afterwards fires each hook exactly once.
+   * @internal
+   */
+  _setActiveSuppressed(activeSelf: boolean): void {
+    this._activeSelf = activeSelf;
+    this._activeInHierarchy = false;
+  }
+
+  /**
+   * Apply an ancestor's effective activeness to this entity and, on a flip,
+   * to its whole subtree. Query membership is added before the enable hooks
+   * and removed after the disable hooks, so a hook always runs while the
+   * entity is still a query member and can reach its siblings through one.
+   */
+  private _applyActive(parentActive: boolean): void {
+    const next = parentActive && this._activeSelf;
+    // Unchanged here means unchanged for every descendant too — their cached
+    // bits were computed against this same value.
+    if (next === this._activeInHierarchy) return;
+    this._activeInHierarchy = next;
+
+    if (next) {
+      this.callbacks?.onEntityActivated(this);
+      for (const comp of this.components.values()) comp._refreshEnabled();
+    } else {
+      for (const comp of this.components.values()) comp._refreshEnabled();
+      this.callbacks?.onEntityDeactivated(this);
+    }
+
+    if (this._children) {
+      for (const child of this._children.values()) child._applyActive(next);
+    }
+  }
+
+  /**
    * Internal: mark the entity destroyed without queueing it. Called by Scene
    * during teardown so every entity reads `isDestroyed === true` before any
    * component `onDestroy` runs. Idempotent.
@@ -393,6 +498,7 @@ export class Entity {
     this._children?.clear();
 
     for (const [cls, comp] of this.components) {
+      comp._applyEnabled(false);
       comp._runCleanups();
       comp.onRemove?.();
       comp.onDestroy?.();

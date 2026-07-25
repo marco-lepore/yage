@@ -37,10 +37,13 @@ export class UISurface extends Component {
   /** @internal */ readonly _layer: string | undefined;
   /** @internal */ readonly _positioning: "anchor" | "transform";
   private readonly _snapshot: UISurfaceOptions;
+  /** The visibility the game asked for; the tree also needs the entity active. */
+  private _userVisible: boolean;
 
   constructor(opts?: UISurfaceOptions) {
     super();
     this.root = new UIPanel(opts ?? {});
+    this._userVisible = opts?.visible ?? true;
     this._anchor = opts?.anchor;
     this._offset = opts?.offset ?? { x: 0, y: 0 };
     this._layer = opts?.layer;
@@ -109,13 +112,25 @@ export class UISurface extends Component {
     this.root.insertElementBefore(child, before);
   }
 
-  /** Whether the mounted UI tree is visible. */
+  /**
+   * Whether the mounted UI tree is visible. Reads back what you set, even
+   * while the entity is dormant and the tree is hidden.
+   */
   get visible(): boolean {
-    return this.root.visible;
+    return this._userVisible;
   }
 
   set visible(v: boolean) {
-    this.root.visible = v;
+    this._userVisible = v;
+    this.root.visible = v && this.effectiveEnabled;
+  }
+
+  onEnable(): void {
+    this.root.visible = this._userVisible;
+  }
+
+  onDisable(): void {
+    this.root.visible = false;
   }
 
   onAdd(): void {
@@ -147,6 +162,10 @@ export class UISurface extends Component {
 
     layer.container.eventMode = "static";
     layer.container.addChild(this.root.container);
+    // A component is never effectively enabled during `onAdd` — `onEnable`
+    // runs right after, and only for an active entity. Start hidden so a tree
+    // mounted on a dormant entity doesn't show before it should.
+    this.root.visible = false;
   }
 
   onDestroy(): void {

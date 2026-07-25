@@ -5,7 +5,7 @@ import type { Logger } from "./Logger.js";
 import type { Scene } from "./Scene.js";
 import type { SnapshotResolver } from "./Serializable.js";
 import type { ComponentClass } from "./types.js";
-import { LoggerKey } from "./EngineContext.js";
+import { LoggerKey, ErrorBoundaryKey } from "./EngineContext.js";
 
 /**
  * Base class for all components.
@@ -21,11 +21,40 @@ export abstract class Component {
    */
   entity!: Entity;
 
-  /** Whether this component is active. Disabled components are skipped by ComponentUpdateSystem. */
-  enabled = true;
-
+  private _enabled = true;
+  /** Whether `onEnable` has fired without a matching `onDisable` yet. */
+  private _effectivelyEnabled = false;
   private _serviceCache: Map<string, unknown> | undefined;
   private _cleanups?: Array<() => void>;
+
+  /**
+   * Whether this component runs. Disabled components are skipped by
+   * ComponentUpdateSystem.
+   *
+   * Writing this fires {@link onEnable} / {@link onDisable} when the
+   * *effective* state changes — `enabled && entity.isActive`. A component
+   * disabled here stays disabled through a `setActive(false)` /
+   * `setActive(true)` cycle on its entity.
+   */
+  get enabled(): boolean {
+    return this._enabled;
+  }
+
+  set enabled(value: boolean) {
+    if (this._enabled === value) return;
+    this._enabled = value;
+    this._refreshEnabled();
+  }
+
+  /**
+   * Whether the component is actually running: `enabled`, on an active
+   * entity, and past `onAdd`. This is the state {@link onEnable} and
+   * {@link onDisable} track — read it when a method has to behave one way
+   * live and another way dormant.
+   */
+  get effectiveEnabled(): boolean {
+    return this._effectivelyEnabled;
+  }
 
   /**
    * Access the entity's scene. Throws if the entity is not in a scene.
@@ -195,8 +224,58 @@ export abstract class Component {
     }
   }
 
+  /**
+   * Recompute effective enabled-ness from `enabled` and the entity's
+   * activeness, firing the hook on a flip.
+   * @internal
+   */
+  _refreshEnabled(): void {
+    const entity = this.entity as Entity | undefined;
+    this._applyEnabled(this._enabled && entity?.isActive === true);
+  }
+
+  /**
+   * Force an effective-enabled transition, firing the hook on a flip. Used by
+   * `Entity` for teardown, where `enabled` and the entity's activeness both
+   * still read `true`.
+   * @internal
+   */
+  _applyEnabled(effective: boolean): void {
+    if (this._effectivelyEnabled === effective) return;
+    this._effectivelyEnabled = effective;
+    const hook = effective ? this.onEnable : this.onDisable;
+    if (!hook) return;
+    const boundary = (
+      this.entity as Entity | undefined
+    )?.tryScene?.context.tryResolve(ErrorBoundaryKey);
+    if (boundary) {
+      boundary.wrapComponent(this, () => hook.call(this));
+    } else {
+      hook.call(this);
+    }
+  }
+
   /** Called when the component is added to an entity. */
   onAdd?(): void;
+
+  /**
+   * Called when the component becomes effectively enabled — `enabled` is
+   * `true` and the entity is active. Fires right after `onAdd()` for a
+   * component added to an active entity, and again on every later flip.
+   * Bring live resources back online here (unpause a sound, show a display
+   * object, re-enable a physics body). Game-state reset does not belong here:
+   * the hook sees whatever state the component held while dormant.
+   */
+  onEnable?(): void;
+
+  /**
+   * Called when the component stops being effectively enabled — `enabled`
+   * went `false`, the entity (or an ancestor) was deactivated, or the
+   * component is being removed or destroyed. Put live resources to sleep
+   * here; the component is reused afterwards, so do not free anything
+   * `onEnable` cannot rebuild.
+   */
+  onDisable?(): void;
 
   /** Called when the component is removed from an entity. */
   onRemove?(): void;

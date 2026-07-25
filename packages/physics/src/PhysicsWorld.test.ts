@@ -64,6 +64,7 @@ const { mocks } = vi.hoisted(() => {
       this._sensor = s;
     }
     setShape() {}
+    setEnabled() {}
   }
 
   class MockRigidBody {
@@ -129,6 +130,9 @@ const { mocks } = vi.hoisted(() => {
     }
     sleep() {}
     wakeUp() {}
+    setEnabled() {}
+    resetForces() {}
+    resetTorques() {}
   }
 
   class MockColliderDesc {

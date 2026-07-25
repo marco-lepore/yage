@@ -549,36 +549,40 @@ export abstract class Scene {
     this.destroyQueue.push(entity);
   }
 
-  /** Get all active entities. */
+  /**
+   * Every entity in the scene, dormant ones included — this is the set save
+   * and teardown walk. The lookups below and the query cache return active
+   * entities only.
+   */
   getEntities(): ReadonlySet<Entity> {
     return this.entities;
   }
 
-  /** Find entity by name (first match). */
+  /** Find an active entity by name (first match). */
   findEntity(name: string): Entity | undefined {
     for (const e of this.entities) {
-      if (e.name === name && !e.isDestroyed) return e;
+      if (e.name === name && !e.isDestroyed && e.isActive) return e;
     }
     return undefined;
   }
 
-  /** Find entities by tag. */
+  /** Find active entities by tag. */
   findEntitiesByTag(tag: string): Entity[] {
     const result: Entity[] = [];
     for (const e of this.entities) {
-      if (e.tags.has(tag) && !e.isDestroyed) result.push(e);
+      if (e.tags.has(tag) && !e.isDestroyed && e.isActive) result.push(e);
     }
     return result;
   }
 
-  /** Find entities matching a filter. Trait filter narrows the return type. */
+  /** Find active entities matching a filter. Trait filter narrows the return type. */
   findEntities<T>(filter: EntityFilter & { trait: TraitToken<T> }): (Entity & T)[];
   findEntities(filter?: EntityFilter): Entity[];
   findEntities(filter?: EntityFilter): Entity[] {
     if (!filter) {
       const result: Entity[] = [];
       for (const e of this.entities) {
-        if (!e.isDestroyed) result.push(e);
+        if (!e.isDestroyed && e.isActive) result.push(e);
       }
       return result;
     }
@@ -785,6 +789,12 @@ export abstract class Scene {
       onComponentRemoved: (entity, cls) => {
         this.queryCache?.onComponentRemoved(entity);
         this.bus?.emit("component:removed", { entity, componentClass: cls });
+      },
+      onEntityActivated: (entity) => {
+        this.queryCache?.onEntityActivated(entity);
+      },
+      onEntityDeactivated: (entity) => {
+        this.queryCache?.onEntityDeactivated(entity);
       },
     };
   }

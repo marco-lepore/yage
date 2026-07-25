@@ -242,3 +242,58 @@ describe("GraphicsComponent", () => {
     });
   });
 });
+
+describe("GraphicsComponent activeness", () => {
+  it("hides the display object while the entity is dormant and restores after", () => {
+    const { scene } = createRendererTestContext();
+    const entity = spawnEntityInScene(scene);
+    entity.add(new Transform());
+    const gfx = entity.add(new GraphicsComponent());
+    expect(gfx.graphics.visible).toBe(true);
+
+    entity.setActive(false);
+    expect(gfx.graphics.visible).toBe(false);
+    // The game's own value is untouched, so it reads back unchanged.
+    expect(gfx.visible).toBe(true);
+
+    entity.setActive(true);
+    expect(gfx.graphics.visible).toBe(true);
+  });
+
+  it("keeps a hand-hidden component hidden across an activeness cycle", () => {
+    const { scene } = createRendererTestContext();
+    const entity = spawnEntityInScene(scene);
+    entity.add(new Transform());
+    const gfx = entity.add(new GraphicsComponent());
+    gfx.visible = false;
+
+    entity.setActive(false);
+    entity.setActive(true);
+    expect(gfx.visible).toBe(false);
+    expect(gfx.graphics.visible).toBe(false);
+  });
+
+  it("stays hidden when added to an already-dormant entity", () => {
+    const { scene } = createRendererTestContext();
+    const entity = spawnEntityInScene(scene);
+    entity.add(new Transform());
+    entity.setActive(false);
+    const gfx = entity.add(new GraphicsComponent());
+    expect(gfx.graphics.visible).toBe(false);
+
+    entity.setActive(true);
+    expect(gfx.graphics.visible).toBe(true);
+  });
+
+  it("drops out of the DisplaySystem query while dormant", () => {
+    const { scene, queryCache } = createRendererTestContext();
+    const entity = spawnEntityInScene(scene);
+    entity.add(new Transform());
+    entity.add(new GraphicsComponent());
+    const query = queryCache.register([Transform, GraphicsComponent]);
+    expect(query.size).toBe(1);
+
+    entity.setActive(false);
+    expect(query.size).toBe(0);
+  });
+});

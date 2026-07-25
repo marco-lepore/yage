@@ -503,7 +503,9 @@ export class PhysicsWorld {
     const seen = new Set<Entity>();
     this.world.intersectionPairsWith(collider, (other) => {
       const entity = this.colliderMap.get(other.handle);
-      if (entity && !seen.has(entity)) {
+      // Disabling a collider leaves the pair in the narrow phase until the
+      // next step, so a same-frame query can still reach a dormant entity.
+      if (entity && entity.isActive && !seen.has(entity)) {
         seen.add(entity);
         result.push(entity);
       }

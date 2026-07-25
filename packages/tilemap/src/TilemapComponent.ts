@@ -117,6 +117,17 @@ export class TilemapComponent extends Component {
 
     const renderLayer = this.use(SceneRenderTreeKey).get(this.renderLayerName);
     renderLayer.container.addChild(this.container);
+    // A component is never effectively enabled during `onAdd` — `onEnable`
+    // runs right after, and only for an active entity.
+    this.container.visible = false;
+  }
+
+  onDisable(): void {
+    this.container.visible = false;
+  }
+
+  onEnable(): void {
+    this.container.visible = true;
   }
 
   onDestroy(): void {

@@ -33,7 +33,7 @@ export class PhysicsInterpolationSystem extends System {
       const alpha = ctx.alphaRef.value;
 
       for (const entity of scene.getEntities()) {
-        if (entity.isDestroyed) continue;
+        if (entity.isDestroyed || !entity.isActive) continue;
         const rb = entity.tryGet(RigidBodyComponent);
         if (!rb || rb._bodyHandle === -1 || rb.type !== "dynamic") continue;
 

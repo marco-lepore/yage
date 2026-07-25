@@ -44,7 +44,7 @@ export class ComponentFixedUpdateSystem extends BaseComponentUpdateSystem {
       // entered through the engine's scene hooks).
       const time = scene.tryResolveScoped(SceneTimeKey);
       for (const entity of scene.getEntities()) {
-        if (entity.isDestroyed) continue;
+        if (entity.isDestroyed || !entity.isActive) continue;
         const entityDt =
           dt *
           (time?.effectiveScaleForUpdates(entity) ?? scene.timeScale) *
@@ -70,7 +70,7 @@ export class ComponentUpdateSystem extends BaseComponentUpdateSystem {
       // Same per-entity SceneTime composition as the fixed-update pass above.
       const time = scene.tryResolveScoped(SceneTimeKey);
       for (const entity of scene.getEntities()) {
-        if (entity.isDestroyed) continue;
+        if (entity.isDestroyed || !entity.isActive) continue;
         const entityDt =
           dt *
           (time?.effectiveScaleForUpdates(entity) ?? scene.timeScale) *

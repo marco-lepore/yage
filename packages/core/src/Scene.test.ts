@@ -692,4 +692,25 @@ describe("Scene service resolution", () => {
     const proxy = scene.pubService(SceneScopedKey);
     expect(proxy.tag).toBe("scene-tree");
   });
+  describe("dormant entities and lookups", () => {
+    it("getEntities() keeps dormant entities, the lookups drop them", () => {
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const e = scene.spawn("npc", { key: "elder" });
+      e.tags.add("villager");
+      e.setActive(false);
+
+      expect(scene.getEntities().has(e)).toBe(true);
+      expect(scene.findEntity("npc")).toBeUndefined();
+      expect(scene.findEntitiesByTag("villager")).toEqual([]);
+      expect(scene.findEntities()).toEqual([]);
+      expect(scene.findEntities({ name: "npc" })).toEqual([]);
+
+      e.setActive(true);
+      expect(scene.findEntity("npc")).toBe(e);
+      expect(scene.findEntitiesByTag("villager")).toEqual([e]);
+      expect(scene.findEntities({ name: "npc" })).toEqual([e]);
+    });
+  });
 });

@@ -104,6 +104,13 @@ export abstract class VisualComponent extends Component {
   readonly fx: EffectsHost;
   private _mask: MaskHandle | undefined;
   private _interactive: VisualInteractiveOptions | undefined;
+  /**
+   * The visibility the game asked for. The Pixi flag is this AND the
+   * component being effectively enabled, so hiding a sprite by hand survives
+   * a `setActive(false)` / `setActive(true)` cycle and a snapshot taken while
+   * the entity is dormant still records the game's value.
+   */
+  private _userVisible = true;
 
   constructor(layer: string | undefined) {
     super();
@@ -121,7 +128,7 @@ export abstract class VisualComponent extends Component {
    * concrete Pixi object is created.
    */
   protected applyVisualOptions(options: VisualComponentOptions): void {
-    if (options.visible !== undefined) this.renderObject.visible = options.visible;
+    if (options.visible !== undefined) this.visible = options.visible;
     if (options.tint !== undefined) this.renderObject.tint = options.tint;
     if (options.alpha !== undefined) this.renderObject.alpha = options.alpha;
     if (options.interactive) {
@@ -153,14 +160,18 @@ export abstract class VisualComponent extends Component {
     return this.renderObject.alpha;
   }
 
-  /** Set the container's visibility. */
+  /**
+   * Set the container's visibility. Written while the entity is dormant, it
+   * is remembered and applied when the entity is activated.
+   */
   set visible(value: boolean) {
-    this.renderObject.visible = value;
+    this._userVisible = value;
+    this.renderObject.visible = value && this.effectiveEnabled;
   }
 
-  /** Get the container's visibility. */
+  /** Get the requested visibility, whatever the entity's activeness. */
   get visible(): boolean {
-    return this.renderObject.visible;
+    return this._userVisible;
   }
 
   /**
@@ -173,7 +184,7 @@ export abstract class VisualComponent extends Component {
       layer: this.layerName,
       tint: this.renderObject.tint,
       alpha: this.renderObject.alpha,
-      visible: this.renderObject.visible,
+      visible: this._userVisible,
     };
     if (this._interactive) data.interactive = { ...this._interactive };
     const effects = this.fx.serialize();
@@ -241,6 +252,19 @@ export abstract class VisualComponent extends Component {
     resolveRenderParent(this.entity, this.layerName, tree).addChild(
       this.renderObject,
     );
+    // A component is never effectively enabled during `onAdd` — `onEnable`
+    // runs right after, and only for an active entity. Start hidden so a
+    // component added to a dormant entity doesn't inherit Pixi's
+    // visible-by-default and show before it should.
+    this.renderObject.visible = false;
+  }
+
+  onEnable(): void {
+    this.renderObject.visible = this._userVisible;
+  }
+
+  onDisable(): void {
+    this.renderObject.visible = false;
   }
 
   onDestroy(): void {

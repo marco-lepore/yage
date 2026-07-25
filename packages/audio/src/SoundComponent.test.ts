@@ -97,6 +97,32 @@ describe("SoundComponent", () => {
     expect(comp.handle).not.toBeNull();
   });
 
+  it("playOnAdd stays quiet on a dormant entity until it is activated", () => {
+    const { scene } = createAudioTestContext(manager);
+    const entity = spawnEntityInScene(scene);
+    entity.setActive(false);
+
+    const comp = new SoundComponent({ alias: "music", playOnAdd: true });
+    entity.add(comp);
+    expect(mockSound.play).not.toHaveBeenCalled();
+
+    entity.setActive(true);
+    expect(mockSound.play).toHaveBeenCalledWith("music", expect.anything());
+  });
+
+  it("playOnAdd is one-shot across a deactivate/reactivate cycle", () => {
+    const { scene } = createAudioTestContext(manager);
+    const entity = spawnEntityInScene(scene);
+    const comp = new SoundComponent({ alias: "music", playOnAdd: true });
+    entity.add(comp);
+    expect(mockSound.play).toHaveBeenCalledTimes(1);
+
+    entity.setActive(false);
+    entity.setActive(true);
+    expect(mockSound.play).toHaveBeenCalledTimes(1);
+    expect(comp.handle).toBeNull();
+  });
+
   it("does not play on add by default", () => {
     const { scene } = createAudioTestContext(manager);
     const entity = spawnEntityInScene(scene);

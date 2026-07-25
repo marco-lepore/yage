@@ -50,7 +50,11 @@ export class QueryResult {
  */
 export class QueryCache {
   private queries: QueryResult[] = [];
-  /** Every entity currently alive in this cache's scene, for seeding new queries. */
+  /**
+   * Every active entity in this cache's scene, for seeding new queries.
+   * Dormant entities (`entity.isActive === false`) are excluded, so a query
+   * registered while they sleep does not pick them up either.
+   */
   private readonly liveEntities = new Set<Entity>();
 
   /**
@@ -92,14 +96,14 @@ export class QueryCache {
     if (idx !== -1) this.queries.splice(idx, 1);
   }
 
-  /** Called by Entity when a component is added. */
+  /**
+   * Called by Entity when a component is added. A component added to a
+   * dormant entity joins nothing — `onEntityActivated` picks the entity up
+   * with its full component set when it wakes.
+   */
   onComponentAdded(entity: Entity): void {
-    this.liveEntities.add(entity);
-    for (const q of this.queries) {
-      if (this.matches(entity, q._filter)) {
-        q._entities.add(entity);
-      }
-    }
+    if (!entity.isActive) return;
+    this.join(entity);
   }
 
   /** Called by Entity when a component is removed. */
@@ -113,6 +117,29 @@ export class QueryCache {
 
   /** Called when an entity is destroyed. */
   onEntityDestroyed(entity: Entity): void {
+    this.leave(entity);
+  }
+
+  /** Called when an entity becomes active — re-seeds its query membership. */
+  onEntityActivated(entity: Entity): void {
+    this.join(entity);
+  }
+
+  /** Called when an entity goes dormant — same removals as destruction. */
+  onEntityDeactivated(entity: Entity): void {
+    this.leave(entity);
+  }
+
+  private join(entity: Entity): void {
+    this.liveEntities.add(entity);
+    for (const q of this.queries) {
+      if (this.matches(entity, q._filter)) {
+        q._entities.add(entity);
+      }
+    }
+  }
+
+  private leave(entity: Entity): void {
     this.liveEntities.delete(entity);
     for (const q of this.queries) {
       q._entities.delete(entity);

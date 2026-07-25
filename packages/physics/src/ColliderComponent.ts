@@ -65,6 +65,20 @@ export class ColliderComponent extends Component {
     );
   }
 
+  /**
+   * Take the collider out of the simulation, keeping its Rapier allocation.
+   * Rapier does not re-emit a collision-start for a collider disabled and
+   * re-enabled while still overlapping something — a reused entity dropped
+   * onto an existing contact gets no `onCollision` for it.
+   */
+  onDisable(): void {
+    this.physicsWorld.getCollider(this._colliderHandle)?.setEnabled(false);
+  }
+
+  onEnable(): void {
+    this.physicsWorld.getCollider(this._colliderHandle)?.setEnabled(true);
+  }
+
   onDestroy(): void {
     if (this._colliderHandle !== -1) {
       this.physicsWorld.removeCollider(this._colliderHandle);
@@ -177,6 +191,9 @@ export class ColliderComponent extends Component {
     invoke: (handler: H) => void,
     kind: string,
   ): void {
+    // Events are drained after the step, so a collider disabled mid-frame can
+    // still have queued events naming it. A dormant entity must not see them.
+    if (this.entity?.isActive === false) return;
     const sceneName = this.entity?.tryScene?.name;
     // Snapshot: `onCollision`/`onTrigger` hand back an unsubscribe that
     // splices this array, so a handler removing itself mid-dispatch would

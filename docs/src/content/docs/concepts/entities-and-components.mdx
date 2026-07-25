@@ -126,6 +126,55 @@ destruction — on either path — `entity.scene` throws and `entity.tryScene`
 returns `null`; use `tryScene` when a cached reference may outlive its
 entity.
 
+### Turning an Entity Off
+
+Not every entity that leaves play has to be destroyed. `setActive(false)` puts
+an entity to sleep and keeps everything it owns allocated — its components, its
+physics body, its display object:
+
+```typescript
+bullet.setActive(false);                          // hidden, body off, updates skipped
+
+// later, for the next shot
+bullet.get(Transform).setPosition(muzzleX, muzzleY);
+bullet.setActive(true);
+```
+
+An entity carrying a `RigidBodyComponent` has to be moved through the body
+instead — `rb.setPosition(x, y)`. Physics owns the transform of a dynamic body
+and overwrites a direct `Transform` write on the next frame, so a recycled
+bullet repositioned that way would reappear where it went to sleep.
+
+A dormant entity is hidden, its physics body is out of the simulation, its
+components stop updating, and it disappears from every query and from
+`scene.findEntity`, `scene.findEntitiesByTag`, and `scene.findEntities`. It
+stays in `scene.getEntities()`, so saving and teardown still see it.
+
+Two properties read the state. `activeSelf` is the entity's own switch, the
+one `setActive` writes. `isActive` is `activeSelf` combined with every
+ancestor's, so deactivating a parent puts the whole subtree to sleep:
+
+```typescript
+const enemy = scene.spawn("enemy");
+const healthBar = enemy.spawnChild("hp", HealthBar);
+
+enemy.setActive(false);
+healthBar.activeSelf; // true  — its own switch is untouched
+healthBar.isActive;   // false — its parent is asleep
+```
+
+Because each descendant keeps its own switch, a child you deactivated
+individually stays asleep when the parent wakes up.
+
+While an entity sleeps its components stop updating and its `ProcessComponent`
+stops being ticked, so tweens and coroutines pause and pick up where they left
+off on reactivation.
+
+Reactivation restores the engine's state, not your game state. The entity's
+`timeScale`, its animation position, its process progress, and its event
+listeners all survive. Reset whatever the new life needs yourself, and register
+listeners in `setup()` so they are not re-added on every reuse.
+
 ## Components
 
 Components hold state and game logic. Extend the `Component` base class:
@@ -156,6 +205,18 @@ class PlayerController extends Component {
     // The entity and scene are available here.
   }
 
+  onEnable() {
+    // Called when the component starts running: `enabled` is true and the
+    // entity is active. Fires right after onAdd() on an active entity.
+    // Bring live resources online here.
+  }
+
+  onDisable() {
+    // Called when the component stops running — `enabled` went false, the
+    // entity was deactivated, or the component is being torn down.
+    // Put live resources to sleep here.
+  }
+
   onRemove() {
     // Called when the component is removed from the entity.
   }
@@ -176,6 +237,31 @@ class PlayerController extends Component {
   }
 }
 ```
+
+`onEnable` and `onDisable` track *effective* enabled-ness — `component.enabled`
+combined with `entity.isActive`. Writing `component.enabled` fires them just
+like deactivating the entity does, and `component.effectiveEnabled` reads the
+current state.
+
+The order is `onAdd` → query join → `onEnable` when a component is added, and
+`onDisable` → `onRemove` / `onDestroy` when it is torn down. A component added
+to a dormant entity gets `onAdd` but waits for `onEnable` until the entity is
+activated.
+
+`onEnable` sees whatever state the component held while it was dormant, so use
+it for live resources — a looping sound, a physics body, a display object —
+rather than for resetting game state.
+
+The engine packages already implement the pair. Rigid bodies and colliders are
+switched out of the Rapier simulation without freeing them, and the body's
+velocity, queued forces, and torques are cleared so it cannot resume a motion
+from a previous life. Sprites, text, UI surfaces, particle emitters, and
+tilemaps hide their display object. `SoundComponent` stops playback, and does
+not restart on its own when the entity comes back.
+
+One Rapier behavior to know: a collider disabled and re-enabled while it still
+overlaps something gets no fresh collision-start event. An entity you reactivate
+directly on top of an existing contact will not receive `onCollision` for it.
 
 ### Cached Service Resolution
 

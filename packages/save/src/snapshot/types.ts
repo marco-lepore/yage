@@ -66,6 +66,12 @@ export interface EntitySnapshotEntry {
    * default) to keep snapshots compact; restored to `1` when absent.
    */
   timeScale?: number;
+  /**
+   * `entity.activeSelf` at save time. Omitted when `true` (the default);
+   * restored to `true` when absent. Only the entity's own bit is stored —
+   * dormancy inherited from an ancestor follows from that ancestor's entry.
+   */
+  activeSelf?: boolean;
 }
 
 /** Serialized state for a single component. */

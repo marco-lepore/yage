@@ -204,7 +204,12 @@ describe("Entity", () => {
       const e = new Entity("test");
       const onAdd = vi.fn();
       const onRemove = vi.fn();
-      e._setScene(null, { onComponentAdded: onAdd, onComponentRemoved: onRemove });
+      e._setScene(null, {
+        onComponentAdded: onAdd,
+        onComponentRemoved: onRemove,
+        onEntityActivated: vi.fn(),
+        onEntityDeactivated: vi.fn(),
+      });
       e.add(new PositionComponent());
       expect(onAdd).toHaveBeenCalledWith(e, PositionComponent);
     });
@@ -213,7 +218,12 @@ describe("Entity", () => {
       const e = new Entity("test");
       const onAdd = vi.fn();
       const onRemove = vi.fn();
-      e._setScene(null, { onComponentAdded: onAdd, onComponentRemoved: onRemove });
+      e._setScene(null, {
+        onComponentAdded: onAdd,
+        onComponentRemoved: onRemove,
+        onEntityActivated: vi.fn(),
+        onEntityDeactivated: vi.fn(),
+      });
       e.add(new PositionComponent());
       e.remove(PositionComponent);
       expect(onRemove).toHaveBeenCalledWith(e, PositionComponent);
@@ -222,7 +232,12 @@ describe("Entity", () => {
     it("notifies on _performDestroy", () => {
       const e = new Entity("test");
       const onRemove = vi.fn();
-      e._setScene(null, { onComponentAdded: vi.fn(), onComponentRemoved: onRemove });
+      e._setScene(null, {
+        onComponentAdded: vi.fn(),
+        onComponentRemoved: onRemove,
+        onEntityActivated: vi.fn(),
+        onEntityDeactivated: vi.fn(),
+      });
       e.add(new PositionComponent());
       e.add(new VelocityComponent());
       e._performDestroy();
@@ -357,5 +372,186 @@ describe("Entity", () => {
       e._setKey("first");
       expect(() => e._setKey("second")).toThrow(/already has key "first"/);
     });
+  });
+});
+
+describe("Entity activeness", () => {
+  class HookComponent extends Component {
+    log: string[] = [];
+    onEnable() {
+      this.log.push("enable");
+    }
+    onDisable() {
+      this.log.push("disable");
+    }
+  }
+
+  it("is active by default", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+    expect(e.activeSelf).toBe(true);
+    expect(e.isActive).toBe(true);
+  });
+
+  it("setActive(false) clears both bits, setActive(true) restores them", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+    e.setActive(false);
+    expect(e.activeSelf).toBe(false);
+    expect(e.isActive).toBe(false);
+    e.setActive(true);
+    expect(e.isActive).toBe(true);
+  });
+
+  it("a child of a dormant parent is dormant but keeps its own bit", () => {
+    const { scene } = createMockScene();
+    const parent = scene.spawn("parent");
+    const child = parent.spawnChild("child");
+    parent.setActive(false);
+    expect(child.activeSelf).toBe(true);
+    expect(child.isActive).toBe(false);
+    parent.setActive(true);
+    expect(child.isActive).toBe(true);
+  });
+
+  it("a child deactivated on its own stays dormant when the parent wakes", () => {
+    const { scene } = createMockScene();
+    const parent = scene.spawn("parent");
+    const child = parent.spawnChild("child");
+    child.setActive(false);
+    parent.setActive(false);
+    parent.setActive(true);
+    expect(child.isActive).toBe(false);
+  });
+
+  it("propagates through grandchildren", () => {
+    const { scene } = createMockScene();
+    const root = scene.spawn("root");
+    const mid = root.spawnChild("mid");
+    const leaf = mid.spawnChild("leaf");
+    root.setActive(false);
+    expect(leaf.isActive).toBe(false);
+    root.setActive(true);
+    expect(leaf.isActive).toBe(true);
+  });
+
+  it("re-parenting under a dormant parent puts the subtree to sleep", () => {
+    const { scene } = createMockScene();
+    const dormant = scene.spawn("dormant");
+    dormant.setActive(false);
+    const loose = scene.spawn("loose");
+    const leaf = loose.spawnChild("leaf");
+    expect(leaf.isActive).toBe(true);
+
+    dormant.addChild("adopted", loose);
+    expect(loose.isActive).toBe(false);
+    expect(leaf.isActive).toBe(false);
+
+    dormant.removeChild("adopted");
+    expect(loose.isActive).toBe(true);
+    expect(leaf.isActive).toBe(true);
+  });
+
+  it("does not write per-component enabled flags", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+    const comp = e.add(new HookComponent());
+    comp.enabled = false;
+    e.setActive(false);
+    e.setActive(true);
+    expect(comp.enabled).toBe(false);
+    expect(comp.effectiveEnabled).toBe(false);
+  });
+
+  it("fires onEnable when a component is added to an active entity", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+    const comp = e.add(new HookComponent());
+    expect(comp.log).toEqual(["enable"]);
+    expect(comp.effectiveEnabled).toBe(true);
+  });
+
+  it("fires no hook when a component is added to a dormant entity", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+    e.setActive(false);
+    const comp = e.add(new HookComponent());
+    expect(comp.log).toEqual([]);
+    expect(comp.effectiveEnabled).toBe(false);
+    e.setActive(true);
+    expect(comp.log).toEqual(["enable"]);
+  });
+
+  it("fires the hooks on each activeness flip, once per flip", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+    const comp = e.add(new HookComponent());
+    comp.log.length = 0;
+    e.setActive(false);
+    e.setActive(false);
+    e.setActive(true);
+    expect(comp.log).toEqual(["disable", "enable"]);
+  });
+
+  it("fires the hooks when `enabled` is written directly", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+    const comp = e.add(new HookComponent());
+    comp.log.length = 0;
+    comp.enabled = false;
+    comp.enabled = true;
+    expect(comp.log).toEqual(["disable", "enable"]);
+  });
+
+  it("fires onDisable before onRemove when a component is removed", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+    class OrderedComponent extends HookComponent {
+      override onRemove() {
+        this.log.push("remove");
+      }
+    }
+    const comp = e.add(new OrderedComponent());
+    comp.log.length = 0;
+    e.remove(OrderedComponent);
+    expect(comp.log).toEqual(["disable", "remove"]);
+  });
+
+  it("fires onDisable before onDestroy when the entity is destroyed", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+    class OrderedComponent extends HookComponent {
+      override onDestroy() {
+        this.log.push("destroy");
+      }
+    }
+    const comp = e.add(new OrderedComponent());
+    comp.log.length = 0;
+    e.destroy();
+    scene._flushDestroyQueue();
+    expect(comp.log).toEqual(["disable", "destroy"]);
+  });
+
+  it("skips onDisable at teardown for an already-dormant entity", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+    const comp = e.add(new HookComponent());
+    e.setActive(false);
+    comp.log.length = 0;
+    e.destroy();
+    scene._flushDestroyQueue();
+    expect(comp.log).toEqual([]);
+  });
+
+  it("propagates a throwing onDisable to the caller", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+    class ThrowingComponent extends Component {
+      onDisable() {
+        throw new Error("boom");
+      }
+    }
+    e.add(new ThrowingComponent());
+    expect(() => e.setActive(false)).toThrow("boom");
   });
 });

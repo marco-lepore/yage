@@ -88,7 +88,7 @@ export class PhysicsSystem extends System {
   /** Pre-step: store prev state and sync kinematic bodies. */
   private preStep(scene: Scene, world: PhysicsWorld): void {
     for (const entity of scene.getEntities()) {
-      if (entity.isDestroyed) continue;
+      if (entity.isDestroyed || !entity.isActive) continue;
       const rb = entity.tryGet(RigidBodyComponent);
       if (!rb || rb._bodyHandle === -1) continue;
 
@@ -119,7 +119,7 @@ export class PhysicsSystem extends System {
   /** Post-step: sync Rapier state back to transforms for dynamic bodies. */
   private postStep(scene: Scene, world: PhysicsWorld): void {
     for (const entity of scene.getEntities()) {
-      if (entity.isDestroyed) continue;
+      if (entity.isDestroyed || !entity.isActive) continue;
       const rb = entity.tryGet(RigidBodyComponent);
       if (!rb || rb._bodyHandle === -1) continue;
 

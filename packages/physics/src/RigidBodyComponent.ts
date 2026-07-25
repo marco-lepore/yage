@@ -82,6 +82,44 @@ export class RigidBodyComponent extends Component {
     this._currRotation = this.transform.worldRotation;
   }
 
+  /**
+   * Put the Rapier body to sleep without freeing it — the allocation is
+   * exactly what a reused entity gets to keep. Momentum and queued
+   * forces/torques are cleared, so waking the body cannot resume a motion
+   * that started a life ago.
+   */
+  onDisable(): void {
+    const body = this.physicsWorld.getBody(this._bodyHandle);
+    if (!body) return;
+    body.setLinvel({ x: 0, y: 0 }, false);
+    body.setAngvel(0, false);
+    body.resetForces(false);
+    body.resetTorques(false);
+    body.setEnabled(false);
+  }
+
+  /**
+   * Bring the body back and snap interpolation to its current pose, so the
+   * first frame after reuse renders where the body is rather than lerping
+   * from where it slept.
+   */
+  onEnable(): void {
+    const body = this.physicsWorld.getBody(this._bodyHandle);
+    if (!body) return;
+    body.setEnabled(true);
+    body.wakeUp();
+
+    const translation = body.translation();
+    const pos = new Vec2(
+      this.physicsWorld.toPixels(translation.x),
+      this.physicsWorld.toPixels(translation.y),
+    );
+    this._prevPosition = pos;
+    this._currPosition = pos;
+    this._prevRotation = body.rotation();
+    this._currRotation = body.rotation();
+  }
+
   onDestroy(): void {
     if (this._bodyHandle !== -1) {
       this.physicsWorld.removeBody(this._bodyHandle);

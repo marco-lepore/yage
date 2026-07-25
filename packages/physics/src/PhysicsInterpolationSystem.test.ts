@@ -48,6 +48,9 @@ const { mocks } = vi.hoisted(() => {
     collider(i: number) { return this._colliders[i]; }
     sleep() {}
     wakeUp() {}
+    setEnabled() {}
+    resetForces() {}
+    resetTorques() {}
   }
 
   class MockColliderDesc {

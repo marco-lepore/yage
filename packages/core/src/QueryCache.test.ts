@@ -20,6 +20,8 @@ describe("QueryCache", () => {
     e._setScene(null, {
       onComponentAdded: (entity) => cache.onComponentAdded(entity),
       onComponentRemoved: (entity) => cache.onComponentRemoved(entity),
+      onEntityActivated: (entity) => cache.onEntityActivated(entity),
+      onEntityDeactivated: (entity) => cache.onEntityDeactivated(entity),
     });
     return e;
   }
@@ -203,5 +205,40 @@ describe("QueryCache", () => {
 
     expect(() => cache.unregister(result)).not.toThrow();
     expect(result.size).toBe(1);
+  });
+  describe("dormant entities", () => {
+    it("leaves every query when deactivated and rejoins when reactivated", () => {
+      const e = makeEntity("e");
+      e.add(new Position());
+      const result = cache.register([Position]);
+      expect(result.size).toBe(1);
+
+      e.setActive(false);
+      expect(result.size).toBe(0);
+
+      e.setActive(true);
+      expect(result.size).toBe(1);
+      expect(result.first).toBe(e);
+    });
+
+    it("does not join a query for a component added while dormant", () => {
+      const e = makeEntity("e");
+      e.add(new Position());
+      e.setActive(false);
+      const result = cache.register([Position, Velocity]);
+
+      e.add(new Velocity());
+      expect(result.size).toBe(0);
+
+      e.setActive(true);
+      expect(result.size).toBe(1);
+    });
+
+    it("does not seed a query registered while the entity is dormant", () => {
+      const e = makeEntity("e");
+      e.add(new Position());
+      e.setActive(false);
+      expect(cache.register([Position]).size).toBe(0);
+    });
   });
 });

@@ -41,6 +41,28 @@ Short-lived, high-churn objects — bullets, one-shot particle bursts, damage
 popups — are the main source of per-frame garbage: each creates and discards
 entities, physics bodies, graphics, and event records. Some of the engine
 already recycles: particle emitters reuse their particles internally, and the
-debug overlay pools its `Graphics` and `Text`. For your own short-lived objects,
-prefer reusing a small set of instances over creating and destroying them every
-frame.
+debug overlay pools its `Graphics` and `Text`.
+
+For your own short-lived objects, reuse a small set of entities instead of
+creating and destroying them every frame. `entity.setActive(false)` turns an
+entity off — hidden, physics body disabled, out of every query, components
+stopped — while keeping the Rapier body, the Pixi display object, and the
+component instances allocated:
+
+```ts
+// Recycling a bullet: no spawn, no destroy queue, no reallocation.
+bullet.setActive(false);
+
+// ...on the next shot. Reposition through the body, not the Transform:
+// physics owns a dynamic body's transform and overwrites a direct write.
+const rb = bullet.get(RigidBodyComponent);
+rb.setPosition(muzzleX, muzzleY);
+rb.setVelocity({ x: dirX * 900, y: dirY * 900 });
+bullet.setActive(true);
+```
+
+Reactivation does not reset game state. `timeScale`, animation position,
+process progress, and entity event listeners all survive — processes pause
+while the entity sleeps and resume where they left off. Reset what the new life
+needs yourself. Components that own a live resource get `onEnable()` /
+`onDisable()` to release and reacquire it; see the core package reference.
