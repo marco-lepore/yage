@@ -202,6 +202,7 @@ export class EntityPool<
     if (!member) return undefined as AcquireResult<T, TMax>;
     this.lease(member);
     this.callAcquire(member, args);
+    this.reclaimFromHook(member);
     return member as AcquireResult<T, TMax>;
   }
 
@@ -220,6 +221,7 @@ export class EntityPool<
     const member = this.takeFree() ?? this.grow() ?? this.reclaim();
     this.lease(member);
     this.callAcquire(member, args);
+    this.reclaimFromHook(member);
     return member;
   }
 
@@ -353,6 +355,36 @@ export class EntityPool<
     member._markPooled();
     this.members.push(member);
     return member;
+  }
+
+  /**
+   * Restore the promise `acquire` makes — you own the member you are handed.
+   * An `onAcquire` (or an `onEnable` the activation fired) that releases the
+   * member being acquired would otherwise put it back in the pool while the
+   * caller still holds it, and the next acquisition would hand the same
+   * entity to someone else.
+   */
+  private reclaimFromHook(member: T): void {
+    // Destruction first: it leaves the pool's bookkeeping untouched, so a
+    // destroyed member still reads as leased.
+    if (member.isDestroyed) {
+      this.forget(member);
+      throw new Error(
+        `EntityPool<${this.Class.name}>: the acquire hooks destroyed the member being acquired ` +
+          `("${member.name}"), so there is nothing to return. Destroy a member after the ` +
+          `acquisition completes, not during it.`,
+      );
+    }
+    if (this.leases.has(member)) return;
+    devWarn(
+      `EntityPool<${this.Class.name}>: the acquire hooks released the member being acquired ` +
+        `("${member.name}"). The pool has taken it back — release it after the acquisition, not during it.`,
+    );
+    const free = this.freeList.indexOf(member);
+    if (free !== -1) this.freeList.splice(free, 1);
+    const pending = this.pendingRelease.indexOf(member);
+    if (pending !== -1) this.pendingRelease.splice(pending, 1);
+    this.lease(member);
   }
 
   private lease(member: T): void {

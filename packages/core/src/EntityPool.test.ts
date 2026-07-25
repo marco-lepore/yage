@@ -497,6 +497,79 @@ describe("EntityPool", () => {
     });
   });
 
+  describe("hooks that reenter the pool", () => {
+    it("takes the member back when onAcquire releases it", () => {
+      class SelfReleasing extends Entity {
+        pool!: EntityPool<SelfReleasing>;
+        armed = false;
+        onAcquire(): void {
+          if (!this.armed) return;
+          this.armed = false;
+          this.pool.release(this);
+        }
+        override onRelease(): void {}
+      }
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, SelfReleasing);
+      const member = pool.acquire();
+      member.pool = pool;
+      pool.release(member);
+      member.armed = true;
+
+      const handed = pool.acquire();
+
+      // Without the take-back the member would sit in the free list while the
+      // caller held it, and the next acquire would hand it to a second owner.
+      expect(handed).toBe(member);
+      expect(pool.acquire()).not.toBe(handed);
+      expect(pool.leased).toBe(2);
+      expect(pool.free).toBe(0);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("released the member being acquired"),
+      );
+    });
+
+    it("refuses to hand back a member onAcquire destroyed", () => {
+      class SelfDestroying extends Entity {
+        onAcquire(): void {
+          this.destroy();
+        }
+      }
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, SelfDestroying);
+
+      expect(() => pool.acquire()).toThrow(/destroyed the member being acquired/);
+    });
+
+    it("keeps ownership single when onRelease acquires from the same pool", () => {
+      class Reacquiring extends Entity {
+        pool!: EntityPool<Reacquiring>;
+        armed = false;
+        taken: Reacquiring | undefined;
+        onAcquire(): void {}
+        override onRelease(): void {
+          if (!this.armed) return;
+          this.armed = false;
+          this.taken = this.pool.acquire();
+        }
+      }
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Reacquiring);
+      const member = pool.acquire();
+      member.pool = pool;
+      member.armed = true;
+
+      pool.release(member);
+
+      // The member leaves the lease set before its hook runs, so the nested
+      // acquisition cannot reach it and grows instead.
+      expect(member.taken).not.toBe(member);
+      expect(pool.leased).toBe(1);
+      expect(pool.free).toBe(1);
+      expect(member.isActive).toBe(false);
+    });
+  });
+
   describe("disposal", () => {
     it("destroys its members and refuses further acquisitions", () => {
       const { scene } = createMockScene();
