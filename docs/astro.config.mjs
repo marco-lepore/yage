@@ -137,6 +137,7 @@ export default defineConfig({
           items: [
             { label: "Project Layout", slug: "patterns/project-layout" },
             { label: "Entity Subclasses", slug: "patterns/entity-subclasses" },
+            { label: "Entity Pooling", slug: "patterns/entity-pooling" },
             { label: "Testing", slug: "patterns/testing" },
             { label: "Scene Management", slug: "patterns/scene-management" },
             { label: "State Management", slug: "patterns/state-management" },

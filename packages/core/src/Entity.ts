@@ -66,6 +66,7 @@ export class Entity {
 
   private components = new Map<ComponentClass, Component>();
   private _destroyed = false;
+  private _pooled = false;
   private _activeSelf = true;
   /** Cached `activeSelf && every ancestor's activeSelf`, kept current by `_applyActive`. */
   private _activeInHierarchy = true;
@@ -113,6 +114,24 @@ export class Entity {
    */
   get isDestroyed(): boolean {
     return this._destroyed;
+  }
+
+  /**
+   * True while an {@link EntityPool} owns this entity. Pool members are left
+   * out of save snapshots: a pool restores empty and refills, so whatever was
+   * in flight when the game was saved is gone on load.
+   */
+  get isPooled(): boolean {
+    return this._pooled;
+  }
+
+  /**
+   * Internal: mark the entity as a pool member. Called by `EntityPool` when
+   * it constructs one.
+   * @internal
+   */
+  _markPooled(): void {
+    this._pooled = true;
   }
 
   /**
@@ -549,6 +568,29 @@ export class Entity {
    * Override in subclasses — do NOT use the constructor for component setup.
    */
   setup?(params: unknown): void;
+
+  /**
+   * Per-reuse reset, called by {@link EntityPool} every time the entity is
+   * handed out — including the first time, right after `setup()`. Its
+   * parameters become the pool's `acquire(...)` arguments, so a bullet that
+   * needs a position and a direction declares
+   * `onAcquire(x: number, y: number, dir: Vec2)`.
+   *
+   * A pooled class must declare this hook: nothing else resets the state the
+   * entity kept while dormant. Declare an empty one if there is genuinely
+   * nothing to reset. It runs on a fully active entity, and must be
+   * synchronous and non-overloaded — the pool derives `acquire`'s signature
+   * from it, and a set of overloads keeps only the last.
+   */
+  onAcquire?(...args: unknown[]): void;
+
+  /**
+   * Called by {@link EntityPool} when the entity is released, before it goes
+   * dormant. Optional even for pooled classes: turning components off is the
+   * job of `onDisable`, so this is for game-level cleanup — dropping a
+   * target reference, clearing a listener registered outside `setup()`.
+   */
+  onRelease?(): void;
 
   /** Return a JSON-serializable snapshot of this entity's custom state. Used by the save system. */
   serialize?(): unknown;

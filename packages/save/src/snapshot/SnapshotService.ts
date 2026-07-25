@@ -22,6 +22,18 @@ const SNAPSHOT_VERSION = 4;
 /** Restore priority for components whose class declares no `restorePriority`. */
 const DEFAULT_RESTORE_PRIORITY = 100;
 
+/**
+ * Is this entity part of an `EntityPool`, or attached below one? Pools restore
+ * empty and refill, so their members — and any children they built — stay out
+ * of the snapshot instead of coming back as orphans nothing owns.
+ */
+function isPooledEntity(entity: Entity): boolean {
+  for (let e: Entity | null = entity; e; e = e.parent) {
+    if (e.isPooled) return true;
+  }
+  return false;
+}
+
 /** Orchestrates full game-state serialization and hydration. */
 export class SnapshotService<TSlots extends UntypedSlots = UntypedSlots> {
   private readonly storage: SnapshotStorage;
@@ -180,6 +192,7 @@ export class SnapshotService<TSlots extends UntypedSlots = UntypedSlots> {
       const entities: EntitySnapshotEntry[] = [];
       for (const entity of scene.getEntities()) {
         if (!isSerializable(entity)) continue;
+        if (isPooledEntity(entity)) continue;
         entities.push(this.serializeEntity(entity));
       }
 

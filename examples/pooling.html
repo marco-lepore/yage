@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Entity Pooling</title>
+    <link rel="stylesheet" href="/shared.css">
+  </head>
+  <body>
+    <a class="back-link" href="/">&larr; All Examples</a>
+    <h1>Entity Pooling</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <span><kbd>P</kbd> pooled / spawn + destroy</span>
+      <span><kbd>C</kbd> elastic / capped pool</span>
+      <span><kbd>&uarr;</kbd> <kbd>&darr;</kbd> sparks per frame</span>
+    </div>
+    <p style="max-width: 680px; color: #999; font-size: 0.85rem; line-height: 1.5; margin: 0 1rem;">
+      Each spark carries a physics body and a display object. Pooled, the scene
+      builds a spark once and cycles it by deactivation. A spark is amber for
+      the life it was built for and cyan for every reused life afterwards.
+      Press <kbd>P</kbd> to run the same
+      fountain by spawning and destroying an entity per shot, and watch
+      <em>entities made</em> climb instead of settling. <kbd>C</kbd> caps the
+      pool, so a new spark reclaims the oldest one still in flight.
+    </p>
+    <script type="module" src="/src/pooling/main.ts"></script>
+  </body>
+</html>

@@ -81,8 +81,10 @@ export class PhysicsSystem extends System {
     // Update per-scene interpolation alpha for smooth rendering
     ctx.alphaRef.value = Math.max(0, Math.min(1, ctx.accumulator / dt));
 
-    // Process collision events once after all steps
-    ctx.world.processCollisionEvents();
+    // Process collision events once after all steps. Releases are held for
+    // the whole batch: an entity a handler puts back must not be handed out
+    // again while events queued for its previous life are still dispatching.
+    scene.deferPoolReleases(() => ctx.world.processCollisionEvents());
   }
 
   /** Pre-step: store prev state and sync kinematic bodies. */

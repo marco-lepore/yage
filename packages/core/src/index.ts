@@ -124,7 +124,20 @@ export type {
 } from "./Inspector.js";
 
 export { Scene } from "./Scene.js";
-export type { SpawnOptions, SetupParams, ClassSpawnArgs } from "./Scene.js";
+export type {
+  SpawnOptions,
+  SetupParams,
+  SetupParamTuple,
+  ClassSpawnArgs,
+} from "./Scene.js";
+
+export { EntityPool } from "./EntityPool.js";
+export type {
+  PoolableEntity,
+  EntityPoolOptions,
+  EntityPoolArgs,
+  AcquireResult,
+} from "./EntityPool.js";
 
 export { SceneTime, SceneTimeKey } from "./SceneTime.js";
 export type {

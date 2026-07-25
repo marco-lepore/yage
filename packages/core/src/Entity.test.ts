@@ -3,6 +3,8 @@ import { Entity, _resetEntityIdCounter } from "./Entity.js";
 import { Component } from "./Component.js";
 import { createMockScene } from "./test-utils.js";
 import { defineBlueprint } from "./Blueprint.js";
+import { QueryCacheKey } from "./EngineContext.js";
+import type { QueryCache } from "./QueryCache.js";
 
 class PositionComponent extends Component {
   constructor(
@@ -520,6 +522,31 @@ describe("Entity activeness", () => {
     dormant.removeChild("adopted");
     expect(loose.isActive).toBe(true);
     expect(leaf.isActive).toBe(true);
+  });
+
+  it("spawns a child of a dormant parent without an enable/disable round trip", () => {
+    const { scene, context } = createMockScene();
+    const queries = context.resolve(QueryCacheKey) as QueryCache;
+    const query = queries.register([HookComponent]);
+    const parent = scene.spawn("parent");
+    parent.setActive(false);
+
+    class Child extends Entity {
+      comp!: HookComponent;
+      override setup(): void {
+        this.comp = this.add(new HookComponent());
+      }
+    }
+    const child = parent.spawnChild("child", Child);
+
+    expect(child.isActive).toBe(false);
+    expect(child.activeSelf).toBe(true);
+    expect(child.comp.log).toEqual([]);
+    expect(query.size).toBe(0);
+
+    parent.setActive(true);
+    expect(child.comp.log).toEqual(["enable"]);
+    expect(query.size).toBe(1);
   });
 
   it("does not write per-component enabled flags", () => {
