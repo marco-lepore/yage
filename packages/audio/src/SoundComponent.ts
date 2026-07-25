@@ -14,6 +14,7 @@ export class SoundComponent extends Component {
   private readonly _playOnAdd: boolean;
 
   private _handle: SoundHandle | null = null;
+  private _autoplayPending = false;
 
   constructor(options: SoundComponentOptions) {
     super();
@@ -25,9 +26,19 @@ export class SoundComponent extends Component {
   }
 
   onAdd(): void {
+    // A component is never effectively enabled during `onAdd`. Defer the
+    // autoplay to `onEnable` so a sound added to a dormant entity stays quiet
+    // until the entity is active. It stays one-shot: later reactivations do
+    // not replay it.
     if (this._playOnAdd) {
-      this.play();
+      this._autoplayPending = true;
     }
+  }
+
+  onEnable(): void {
+    if (!this._autoplayPending) return;
+    this._autoplayPending = false;
+    this.play();
   }
 
   play(): SoundHandle {
@@ -67,6 +78,14 @@ export class SoundComponent extends Component {
 
   static fromSnapshot(data: SoundData): SoundComponent {
     return new SoundComponent(data);
+  }
+
+  /**
+   * Stop playback. A dormant entity goes quiet; it does not resume on its
+   * own when reactivated, so call `play()` again if the sound should restart.
+   */
+  onDisable(): void {
+    this.stop();
   }
 
   onDestroy(): void {

@@ -275,8 +275,11 @@ describe("AnimatedSpriteComponent", () => {
 
     comp.visible = true;
     comp.alpha = 1;
-    expect(comp.animatedSprite.visible).toBe(true);
+    expect(comp.visible).toBe(true);
     expect(comp.animatedSprite.alpha).toBe(1);
+    // The Pixi flag is `visible && effectiveEnabled`, and this component was
+    // never added to an entity, so it stays hidden.
+    expect(comp.animatedSprite.visible).toBe(false);
   });
 
   it("play() starts the animation", () => {

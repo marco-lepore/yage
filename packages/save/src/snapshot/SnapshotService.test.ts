@@ -500,6 +500,52 @@ describe("SnapshotService", () => {
     });
   });
 
+  describe("entity activeness", () => {
+    it("round-trips a dormant entity and omits the field when active", async () => {
+      const { service, sceneManager, storage } = createTestContext();
+      await sceneManager.push(new HierarchyScene());
+
+      const parent = [...sceneManager.active!.getEntities()].find(
+        (e) => e instanceof ParentEntity,
+      )!;
+      parent.setActive(false);
+
+      service.saveSnapshot("test");
+      const entries = (
+        JSON.parse(storage.load("yage:snapshot:test")!) as GameSnapshot
+      ).scenes[0]!.entities;
+      // Only the parent's own bit is stored — the child is dormant by descent,
+      // and an active entity omits the field entirely rather than writing true.
+      expect(entries.filter((e) => e.activeSelf === false)).toHaveLength(1);
+      expect(
+        entries.filter((e) =>
+          Object.prototype.hasOwnProperty.call(e, "activeSelf"),
+        ),
+      ).toHaveLength(1);
+
+      await service.loadSnapshot("test");
+
+      const restored = [...sceneManager.active!.getEntities()];
+      const restoredParent = restored.find((e) => e instanceof ParentEntity)!;
+      const restoredChild = restored.find((e) => e instanceof ChildEntity)!;
+      expect(restoredParent.activeSelf).toBe(false);
+      expect(restoredChild.activeSelf).toBe(true);
+      expect(restoredChild.isActive).toBe(false);
+    });
+
+    it("restores an all-active hierarchy as active", async () => {
+      const { service, sceneManager } = createTestContext();
+      await sceneManager.push(new HierarchyScene());
+
+      service.saveSnapshot("test");
+      await service.loadSnapshot("test");
+
+      for (const entity of sceneManager.active!.getEntities()) {
+        expect(entity.isActive).toBe(true);
+      }
+    });
+  });
+
   describe("SnapshotResolver", () => {
     it("afterRestore receives resolver that maps saved IDs to entities", async () => {
       const { service, sceneManager } = createTestContext();

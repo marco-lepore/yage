@@ -26,6 +26,9 @@ class Entity {
   readonly key?: string;                      // stable identity (opt-in)
   get scene(): Scene;                         // throws if detached
   get tryScene(): Scene | null;               // null if detached
+  get activeSelf(): boolean;                  // own bit
+  get isActive(): boolean;                    // own bit AND every ancestor's
+  setActive(active: boolean): void;
   requireKey(): string;                       // throws if no key
   addChild(name: string, child: Entity): void;
   spawnChild(name: string, options?: SpawnOptions): Entity;
@@ -47,6 +50,47 @@ class Entity {
 - `entity.scene` throws with a clear error when the entity is detached (not yet spawned, or already destroyed — both the end-of-frame flush and scene teardown clear it). Prefer it in user code — throwing beats letting a `null` propagate silently. Use `entity.tryScene` only in defensive paths (e.g. systems iterating query results during teardown) where detachment is expected.
 - `entity.isDestroyed` is true after `destroy()` and for entities torn down with their scene on exit. Teardown also emits `entity:destroyed` once per entity, so listeners tracking entity lifetimes are notified of every destruction, including destruction caused by scene exit.
 - `entity.spawnChild(name, Class, params?)` combines `scene.spawn(...)` + `this.addChild(name, ...)`. Child is auto-added to the parent's scene. Use for sub-entities owned by a parent (enemy body + health bar, player + weapon, etc.).
+
+### Activeness
+
+`setActive(false)` turns an entity off without destroying it — the cheap way to recycle a bullet, a hit spark, or an enemy instead of respawning one.
+
+```ts
+bullet.setActive(false);                   // hidden, physics body off, updates skipped
+// ...later
+bullet.get(Transform).setPosition(x, y);
+bullet.setActive(true);                    // back in play, nothing reallocated
+```
+
+- Move a `RigidBodyComponent` entity with `rb.setPosition(x, y)`, not a direct `Transform` write: physics owns the transform of a dynamic body and overwrites the write on the next frame.
+
+- `activeSelf` is the entity's own bit; `isActive` is that bit AND every ancestor's. Deactivating a parent puts the whole subtree to sleep, and each descendant keeps its own `activeSelf` for when the parent wakes.
+- A dormant entity drops out of every `QueryCache` query, and out of `scene.findEntity`, `scene.findEntitiesByTag`, `scene.findEntities`, and `filterEntities`. `scene.getEntities()` still returns it, so save and teardown see it. `scene.findByKey` also still returns it — key lookup is identity, not a search.
+- Components keep their own `enabled` flags. A component you disabled by hand is still disabled after the entity comes back.
+- Adding a component to a dormant entity runs `onAdd()` but not `onEnable()`, and the entity joins no queries until it is activated.
+- A dormant entity's components and its `ProcessComponent` stop being ticked, so tweens and coroutines pause where they are and resume on reactivation.
+- Reuse resets nothing: `entity.timeScale`, animation position, process progress, entity event listeners and addon state all survive. Register listeners in `setup()`, and reset game state yourself when you bring an entity back.
+
+### Component enable/disable hooks
+
+`onEnable()` / `onDisable()` fire when a component's *effective* enabled-ness — `component.enabled && entity.isActive` — changes. `component.effectiveEnabled` reads that state.
+
+```ts
+class Turret extends Component {
+  private beam?: SoundHandle;
+  onEnable() { this.beam = this.use(AudioManagerKey).play("hum", { loop: true }); }
+  onDisable() { this.beam?.stop(); }
+}
+```
+
+- Order on add: `onAdd()`, then query join, then `onEnable()`. Order on remove or destroy: `onDisable()`, then cleanups, then `onRemove()` / `onDestroy()`.
+- `onEnable()` sees whatever state the component held while dormant. Put live resources there (sounds, bodies, display objects), not game-state resets.
+- Writing `component.enabled` fires the hooks too, so a component disabled by hand releases its resources the same way.
+- A throwing hook is attributed to its component and rethrown, like a throwing `update()`. A throw from `onDisable()` during scene teardown stops teardown at that entity.
+
+Engine implementations: a dormant rigid body and collider leave the simulation but keep their allocation, which is what makes reuse cheap; the body's velocity, forces, and torques are cleared on disable, so it comes back at rest. The renderer's visual components, `UISurface`, `ParticleEmitterComponent`, and `TilemapComponent` hide their display object. `SoundComponent` stops playback and does not resume on its own.
+
+Gotcha: a collider disabled and re-enabled while it still overlaps something gets no new collision-start. A reused entity dropped onto an existing contact receives no `onCollision` for it.
 
 ### Events
 
@@ -374,9 +418,9 @@ a dropped promise can hide errors). Production builds suppress the warning.
 | `QueryCache` | Incremental entity query cache |
 | `QueryResult` | Iterable result from `cache.register([Component, ...])` |
 | `cache.queryOnce([Component, ...])` | Detached, seeded, one-shot `QueryResult` — never registered, never updated |
-| `filterEntities(entities, filter)` | One-off filter by name, tag, component, or trait |
+| `filterEntities(entities, filter)` | One-off filter by name, tag, component, or trait; skips destroyed and dormant entities |
 
-`cache.register(filter)` returns a `QueryResult` pre-populated with entities that already match, then kept current via `onComponentAdded`/`onComponentRemoved`/`onEntityDestroyed`. Call `cache.unregister(result)` when it no longer needs live updates — otherwise it keeps receiving updates forever. Queries registered once at system-install time (`DisplaySystem`, `UILayoutSystem`) are engine-lifetime by design and are never unregistered; per-mount registrations (e.g. `@yagejs/ui-react`'s `useQuery`) release on unmount.
+`cache.register(filter)` returns a `QueryResult` pre-populated with entities that already match, then kept current via `onComponentAdded`/`onComponentRemoved`/`onEntityDestroyed`/`onEntityActivated`/`onEntityDeactivated`. Only active entities are ever members — see Activeness above. Call `cache.unregister(result)` when it no longer needs live updates — otherwise it keeps receiving updates forever. Queries registered once at system-install time (`DisplaySystem`, `UILayoutSystem`) are engine-lifetime by design and are never unregistered; per-mount registrations (e.g. `@yagejs/ui-react`'s `useQuery`) release on unmount.
 
 `cache.queryOnce(filter)` builds the same seeded snapshot but skips registration entirely — use it for a point-in-time read (e.g. a render-phase snapshot) that must not hold a live entry in the cache.
 

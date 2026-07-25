@@ -47,6 +47,7 @@ const { mocks } = vi.hoisted(() => {
     isSensor() {
       return false;
     }
+    setEnabled() {}
   }
 
   class MockRigidBody {
@@ -64,6 +65,10 @@ const { mocks } = vi.hoisted(() => {
     addTorqueSpy = vi.fn();
     setTranslationSpy = vi.fn();
     setRotationSpy = vi.fn();
+    wakeUpSpy = vi.fn();
+    resetForcesSpy = vi.fn();
+    resetTorquesSpy = vi.fn();
+    _enabled = true;
 
     constructor() {
       this.handle = nextBodyHandle++;
@@ -122,7 +127,21 @@ const { mocks } = vi.hoisted(() => {
       return false;
     }
     sleep() {}
-    wakeUp() {}
+    wakeUp() {
+      this.wakeUpSpy();
+    }
+    setEnabled(enabled: boolean) {
+      this._enabled = enabled;
+    }
+    isEnabled() {
+      return this._enabled;
+    }
+    resetForces() {
+      this.resetForcesSpy();
+    }
+    resetTorques() {
+      this.resetTorquesSpy();
+    }
   }
 
   class MockColliderDesc {
@@ -503,4 +522,89 @@ describe("RigidBodyComponent", () => {
       expect(rb._teleported).toBe(false);
     });
   });
+  describe("activeness hooks", () => {
+    it("leaves the body disabled when added to a dormant entity", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.setActive(false);
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      // Rapier creates a body enabled and no hook fires on add for a dormant
+      // entity, so the body would otherwise keep simulating.
+      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as {
+        isEnabled(): boolean;
+      };
+      expect(body.isEnabled()).toBe(false);
+
+      entity.setActive(true);
+      expect(body.isEnabled()).toBe(true);
+    });
+
+    it("clears momentum and disables the body when the entity goes dormant", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      rb.setVelocity({ x: 300, y: -120 });
+      rb.setAngularVelocity(4);
+
+      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as {
+        isEnabled(): boolean;
+        resetForcesSpy: { mock: { calls: unknown[] } };
+        resetTorquesSpy: { mock: { calls: unknown[] } };
+        wakeUpSpy: { mock: { calls: unknown[] } };
+      };
+
+      entity.setActive(false);
+
+      expect(body.isEnabled()).toBe(false);
+      expect(rb.getVelocity().x).toBe(0);
+      expect(rb.getVelocity().y).toBe(0);
+      expect(rb.getAngularVelocity()).toBe(0);
+      expect(body.resetForcesSpy.mock.calls).toHaveLength(1);
+      expect(body.resetTorquesSpy.mock.calls).toHaveLength(1);
+
+      // `onEnable` also ran when the component was added, so this is the
+      // second wake.
+      entity.setActive(true);
+      expect(body.isEnabled()).toBe(true);
+      expect(body.wakeUpSpy.mock.calls).toHaveLength(2);
+    });
+
+    it("keeps a setPosition made while dormant", async () => {
+      const { scene } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform({ position: new Vec2(100, 200) }));
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      entity.setActive(false);
+      // The documented reuse recipe: reposition through the body, because
+      // physics owns a dynamic body's transform.
+      rb.setPosition(700, 40);
+      entity.setActive(true);
+
+      expect(rb._currPosition.x).toBe(700);
+      expect(rb._currPosition.y).toBe(40);
+      expect(rb._prevPosition.x).toBe(700);
+    });
+
+    it("snaps interpolation to the body pose on reactivation", async () => {
+      const { scene } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform({ position: new Vec2(100, 200) }));
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      entity.setActive(false);
+      // Stale interpolation state from the life before, as a physics step
+      // would have left it.
+      rb._prevPosition = new Vec2(-500, -500);
+      entity.setActive(true);
+
+      expect(rb._prevPosition.x).toBe(rb._currPosition.x);
+      expect(rb._prevPosition.y).toBe(rb._currPosition.y);
+      expect(rb._currPosition.x).toBe(100);
+    });
+  });
+
 });

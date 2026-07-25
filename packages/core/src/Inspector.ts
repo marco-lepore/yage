@@ -115,6 +115,12 @@ export interface EntitySnapshot {
   tags: string[];
   components: string[];
   position?: { x: number; y: number };
+  /**
+   * `entity.isActive` — own activeness AND every ancestor's. `getEntities()`
+   * lists dormant entities; the name-based lookups do not, so this is how a
+   * caller tells "asleep and reusable" from "gone".
+   */
+  active: boolean;
 }
 
 /** Backward-compatible scene stack summary. */
@@ -203,6 +209,11 @@ export interface WorldEntitySnapshot {
   id: string;
   type: string;
   parent: string | null;
+  /**
+   * `entity.isActive` — own activeness AND every ancestor's. Dormant entities
+   * stay in the snapshot; they are out of queries and stop updating.
+   */
+  active: boolean;
   transform: {
     x: number;
     y: number;
@@ -1150,6 +1161,7 @@ export class Inspector {
       id: String(entity.id),
       type: entity.constructor.name,
       parent: entity.parent ? String(entity.parent.id) : null,
+      active: entity.isActive,
       transform: {
         x: worldPosition?.x ?? 0,
         y: worldPosition?.y ?? 0,
@@ -1319,7 +1331,9 @@ export class Inspector {
 
       let highest: CameraComponentLike | undefined;
       for (const entity of scene.getEntities()) {
-        if (entity.isDestroyed) continue;
+        // Matches DisplaySystem, which reaches cameras through a query and so
+        // never sees a dormant one.
+        if (entity.isDestroyed || !entity.isActive) continue;
         for (const component of entity.getAll()) {
           if (component.constructor.name !== "CameraComponent") continue;
           const camera = component as unknown as CameraComponentLike;
@@ -1384,6 +1398,11 @@ export class Inspector {
     return maybeEntity.tryScene ?? this.extractScene(value);
   }
 
+  /**
+   * Name lookup for the query helpers. `findEntity` skips dormant entities,
+   * so a deactivated entity reads as absent here — `getEntities()` is where
+   * its `active: false` entry shows up.
+   */
   private findActiveEntity(name: string): Entity | undefined {
     return this.engine.scenes.active?.findEntity(name);
   }
@@ -1409,6 +1428,7 @@ export class Inspector {
       components: [...entity.getAll()]
         .map((component) => component.constructor.name)
         .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+      active: entity.isActive,
     };
     if (transform) {
       snapshot.position = {
@@ -1431,7 +1451,13 @@ export class Inspector {
    * `serialize()` just to expose them.
    */
   private serializeComponentOwnProperties(comp: Component): unknown {
-    const result: Record<string, unknown> = {};
+    // Both live on Component.prototype as accessors, so neither loop below
+    // reaches them. `enabled` alone is ambiguous once entities can be dormant:
+    // `effectiveEnabled` is what says whether the component is running.
+    const result: Record<string, unknown> = {
+      enabled: comp.enabled,
+      effectiveEnabled: comp.effectiveEnabled,
+    };
     for (const key of Object.getOwnPropertyNames(comp)) {
       if (key === "entity") continue;
       // Skip private-by-convention fields. Components hold pixi/rapier handles

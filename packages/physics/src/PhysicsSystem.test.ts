@@ -20,6 +20,7 @@ const { mocks } = vi.hoisted(() => {
     handle: number;
     constructor() { this.handle = nextColliderHandle++; }
     isSensor() { return false; }
+    setEnabled() {}
   }
 
   class MockRigidBody {
@@ -65,6 +66,9 @@ const { mocks } = vi.hoisted(() => {
     collider(i: number) { return this._colliders[i]; }
     sleep() {}
     wakeUp() {}
+    setEnabled() {}
+    resetForces() {}
+    resetTorques() {}
   }
 
   class MockColliderDesc {

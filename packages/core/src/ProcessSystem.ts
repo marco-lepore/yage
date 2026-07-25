@@ -147,7 +147,7 @@ export class ProcessSystem extends System {
       }
 
       for (const entity of scene.getEntities()) {
-        if (entity.isDestroyed) continue;
+        if (entity.isDestroyed || !entity.isActive) continue;
         const pc = entity.tryGet(ProcessComponent);
         if (!pc) continue;
         // Entity ProcessComponents compose the per-entity timeScale on top of

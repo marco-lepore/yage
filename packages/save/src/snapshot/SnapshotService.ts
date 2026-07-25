@@ -326,6 +326,11 @@ export class SnapshotService<TSlots extends UntypedSlots = UntypedSlots> {
       if (entityEntry.timeScale !== undefined) {
         entity.timeScale = entityEntry.timeScale;
       }
+      // Hold every restored entity dormant until phase 2 has rebuilt the
+      // parent links. Deciding activeness before then would fire onEnable on
+      // an entity whose ancestor turns out to be dormant, then onDisable a
+      // moment later; phase 2.5 settles it with one hook per component.
+      entity._setActiveSuppressed(entityEntry.activeSelf ?? true);
       scene._addExistingEntity(entity);
       const restoredComponents = this.restoreEntityComponents(
         entity,
@@ -348,6 +353,13 @@ export class SnapshotService<TSlots extends UntypedSlots = UntypedSlots> {
           );
         }
       }
+    }
+
+    // Phase 2.5: settle activeness now that the hierarchy is complete. Each
+    // root propagates down, so every entity gets its query membership and its
+    // components' onEnable exactly once, before any afterRestore runs.
+    for (const { entity } of entityEntries) {
+      if (!entity.parent) entity._resyncActive();
     }
 
     // Build resolver for afterRestore hooks
@@ -395,6 +407,11 @@ export class SnapshotService<TSlots extends UntypedSlots = UntypedSlots> {
     // Persist a non-default per-entity timeScale; absence implies 1.
     if (entity.timeScale !== 1) {
       result.timeScale = entity.timeScale;
+    }
+
+    // Same shape for activeness: absence implies active.
+    if (!entity.activeSelf) {
+      result.activeSelf = false;
     }
 
     // Capture parent/child relationship

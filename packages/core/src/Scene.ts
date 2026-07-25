@@ -245,6 +245,19 @@ export abstract class Scene {
   private _scopedServices?: Map<string, unknown>;
   private _identityIndex?: Map<string, Entity>;
 
+  /**
+   * Set by `Entity.spawnChild` while the parent is dormant. A spawn runs
+   * `setup()` before the parent link exists, so without this the child would
+   * be briefly active and fire enable hooks it is about to undo.
+   *
+   * Consumed by the first entity the spawn creates — that is the child itself,
+   * built before its `setup()` runs. Anything `setup()` spawns on its own is a
+   * separate entity with no parent to resync it, so it must not inherit the
+   * suppression and stay dormant forever.
+   * @internal
+   */
+  _spawnInert = false;
+
   /** Access the EngineContext. */
   get context(): EngineContext {
     return this._context;
@@ -424,6 +437,10 @@ export abstract class Scene {
       }
 
       const entity = new Ctor();
+      if (this._spawnInert) {
+        this._spawnInert = false;
+        entity._setActiveSuppressed(true);
+      }
       entity._setScene(this, this.entityCallbacks);
       // Register key BEFORE adding to entities/emitting created — a duplicate
       // key throw must not leave a half-spawned entity in the scene.
@@ -477,6 +494,10 @@ export abstract class Scene {
     }
 
     const entity = new Entity(name);
+    if (this._spawnInert) {
+      this._spawnInert = false;
+      entity._setActiveSuppressed(true);
+    }
     entity._setScene(this, this.entityCallbacks);
     if (options?.key !== undefined) this._registerKey(entity, options.key);
     this.entities.add(entity);
@@ -549,36 +570,40 @@ export abstract class Scene {
     this.destroyQueue.push(entity);
   }
 
-  /** Get all active entities. */
+  /**
+   * Every entity in the scene, dormant ones included — this is the set save
+   * and teardown walk. The lookups below and the query cache return active
+   * entities only.
+   */
   getEntities(): ReadonlySet<Entity> {
     return this.entities;
   }
 
-  /** Find entity by name (first match). */
+  /** Find an active entity by name (first match). */
   findEntity(name: string): Entity | undefined {
     for (const e of this.entities) {
-      if (e.name === name && !e.isDestroyed) return e;
+      if (e.name === name && !e.isDestroyed && e.isActive) return e;
     }
     return undefined;
   }
 
-  /** Find entities by tag. */
+  /** Find active entities by tag. */
   findEntitiesByTag(tag: string): Entity[] {
     const result: Entity[] = [];
     for (const e of this.entities) {
-      if (e.tags.has(tag) && !e.isDestroyed) result.push(e);
+      if (e.tags.has(tag) && !e.isDestroyed && e.isActive) result.push(e);
     }
     return result;
   }
 
-  /** Find entities matching a filter. Trait filter narrows the return type. */
+  /** Find active entities matching a filter. Trait filter narrows the return type. */
   findEntities<T>(filter: EntityFilter & { trait: TraitToken<T> }): (Entity & T)[];
   findEntities(filter?: EntityFilter): Entity[];
   findEntities(filter?: EntityFilter): Entity[] {
     if (!filter) {
       const result: Entity[] = [];
       for (const e of this.entities) {
-        if (!e.isDestroyed) result.push(e);
+        if (!e.isDestroyed && e.isActive) result.push(e);
       }
       return result;
     }
@@ -785,6 +810,12 @@ export abstract class Scene {
       onComponentRemoved: (entity, cls) => {
         this.queryCache?.onComponentRemoved(entity);
         this.bus?.emit("component:removed", { entity, componentClass: cls });
+      },
+      onEntityActivated: (entity) => {
+        this.queryCache?.onEntityActivated(entity);
+      },
+      onEntityDeactivated: (entity) => {
+        this.queryCache?.onEntityDeactivated(entity);
       },
     };
   }

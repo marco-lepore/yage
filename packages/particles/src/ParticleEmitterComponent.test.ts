@@ -250,6 +250,30 @@ describe("ParticleEmitterComponent", () => {
     });
   });
 
+  describe("activeness", () => {
+    it("hides the container while dormant and shows it again on activation", () => {
+      const emitter = createEmitter();
+      const { entity } = setupEntity(emitter);
+      expect(emitter.container.visible).toBe(true);
+
+      entity.setActive(false);
+      expect(emitter.container.visible).toBe(false);
+
+      entity.setActive(true);
+      expect(emitter.container.visible).toBe(true);
+    });
+
+    it("keeps a hand-set hide across a deactivate/reactivate cycle", () => {
+      const emitter = createEmitter();
+      const { entity } = setupEntity(emitter);
+      emitter.container.visible = false;
+
+      entity.setActive(false);
+      entity.setActive(true);
+      expect(emitter.container.visible).toBe(false);
+    });
+  });
+
   describe("emit / stop", () => {
     it("emit() starts continuous emission", () => {
       const emitter = createEmitter();

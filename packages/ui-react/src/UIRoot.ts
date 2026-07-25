@@ -127,6 +127,10 @@ export class UIRoot extends Component {
 
     layer.container.eventMode = "static";
     layer.container.addChild(this._container);
+    // A component is never effectively enabled during `onAdd` — `onEnable`
+    // runs right after, and only for an active entity. Start hidden so a tree
+    // mounted on a dormant entity is neither painted nor hit-tested.
+    this._container.visible = false;
 
     this.root = createRoot(this._container);
 
@@ -242,6 +246,15 @@ export class UIRoot extends Component {
     } else {
       this._container.position.set(this._offset.x, this._offset.y);
     }
+  }
+
+  onEnable(): void {
+    this._container.visible = true;
+  }
+
+  /** Hiding the container also takes the React tree out of pointer hit-testing. */
+  onDisable(): void {
+    this._container.visible = false;
   }
 
   onDestroy(): void {

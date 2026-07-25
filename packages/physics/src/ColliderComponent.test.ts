@@ -25,9 +25,13 @@ const { mocks } = vi.hoisted(() => {
       this.handle = nextColliderHandle++;
     }
 
+    _enabled = true;
+
     isSensor() { return this._sensor; }
     setSensor(s: boolean) { this._sensor = s; this.setSensorSpy(s); }
     setShape() {}
+    setEnabled(enabled: boolean) { this._enabled = enabled; }
+    isEnabled() { return this._enabled; }
   }
 
   class MockRigidBody {
@@ -58,6 +62,9 @@ const { mocks } = vi.hoisted(() => {
     isKinematic() { return false; }
     sleep() {}
     wakeUp() {}
+    setEnabled() {}
+    resetForces() {}
+    resetTorques() {}
   }
 
   class MockColliderDesc {
@@ -646,6 +653,31 @@ describe("ColliderComponent", () => {
       expect(mainCol._colliderHandle).not.toBe(sensor._colliderHandle);
       expect(entity.has(ColliderComponent)).toBe(true);
       expect(entity.has(GroundSensor)).toBe(true);
+    });
+  });
+
+  describe("activeness hooks", () => {
+    it("leaves the collider disabled when added to a dormant entity", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.setActive(false);
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const col = entity.add(
+        new ColliderComponent({
+          shape: { type: "box", width: 10, height: 10 },
+        }),
+      );
+
+      // Rapier creates a collider enabled and no hook fires on add for a
+      // dormant entity, so it would otherwise stay in the simulation.
+      const collider = physicsWorld.getCollider(
+        col._colliderHandle,
+      ) as unknown as { isEnabled(): boolean };
+      expect(collider.isEnabled()).toBe(false);
+
+      entity.setActive(true);
+      expect(collider.isEnabled()).toBe(true);
     });
   });
 

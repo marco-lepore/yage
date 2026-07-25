@@ -84,6 +84,7 @@ export interface CameraStackSnapshot {
   scene: string;
   name: string | undefined;
   priority: number;
+  /** Whether the camera applies: its own `enabled` flag and an active entity. */
   enabled: boolean;
 }
 
@@ -431,7 +432,7 @@ export class DebugPlugin implements Plugin {
               scene: scene.name,
               name: cam.cameraName,
               priority: cam.priority,
-              enabled: cam.enabled,
+              enabled: cam.effectiveEnabled,
             });
           }
         }
@@ -531,6 +532,9 @@ export function findTopmostCamera(
     if (!scene) continue;
     let highestPriorityCamera: CameraComponent | undefined;
     for (const entity of scene.getEntities()) {
+      // Matches DisplaySystem, which reaches cameras through a query and so
+      // never sees a dormant one.
+      if (entity.isDestroyed || !entity.isActive) continue;
       const cam = entity.tryGet(CameraComponent);
       if (
         cam &&

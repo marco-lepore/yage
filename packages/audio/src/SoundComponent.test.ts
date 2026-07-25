@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { SoundLibrary, IMediaInstance } from "@pixi/sound";
+import { Entity } from "@yagejs/core";
 import { SoundComponent } from "./SoundComponent.js";
 import { AudioManager } from "./AudioManager.js";
 import { createAudioTestContext, spawnEntityInScene } from "./test-helpers.js";
@@ -95,6 +96,53 @@ describe("SoundComponent", () => {
 
     expect(mockSound.play).toHaveBeenCalledWith("music", expect.anything());
     expect(comp.handle).not.toBeNull();
+  });
+
+  it("playOnAdd stays quiet on a dormant entity until it is activated", () => {
+    const { scene } = createAudioTestContext(manager);
+    const entity = spawnEntityInScene(scene);
+    entity.setActive(false);
+
+    const comp = new SoundComponent({ alias: "music", playOnAdd: true });
+    entity.add(comp);
+    expect(mockSound.play).not.toHaveBeenCalled();
+
+    entity.setActive(true);
+    expect(mockSound.play).toHaveBeenCalledWith("music", expect.anything());
+  });
+
+  it("playOnAdd survives being spawned as a child of a dormant parent", () => {
+    // The component must be added from `setup()`: that runs inside the spawn,
+    // before the parent link exists, which is the window the sound has to
+    // survive. Adding it after `spawnChild` returns tests nothing.
+    class Jukebox extends Entity {
+      setup() {
+        this.add(new SoundComponent({ alias: "music", playOnAdd: true }));
+      }
+    }
+    const { scene } = createAudioTestContext(manager);
+    const parent = spawnEntityInScene(scene, "parent");
+    parent.setActive(false);
+
+    parent.spawnChild("child", Jukebox);
+    expect(mockSound.play).not.toHaveBeenCalled();
+
+    parent.setActive(true);
+    expect(mockSound.play).toHaveBeenCalledTimes(1);
+    expect(mockSound.play).toHaveBeenCalledWith("music", expect.anything());
+  });
+
+  it("playOnAdd is one-shot across a deactivate/reactivate cycle", () => {
+    const { scene } = createAudioTestContext(manager);
+    const entity = spawnEntityInScene(scene);
+    const comp = new SoundComponent({ alias: "music", playOnAdd: true });
+    entity.add(comp);
+    expect(mockSound.play).toHaveBeenCalledTimes(1);
+
+    entity.setActive(false);
+    entity.setActive(true);
+    expect(mockSound.play).toHaveBeenCalledTimes(1);
+    expect(comp.handle).toBeNull();
   });
 
   it("does not play on add by default", () => {

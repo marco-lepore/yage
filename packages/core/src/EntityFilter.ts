@@ -14,14 +14,14 @@ export interface EntityFilter {
   filter?: (entity: Entity) => boolean;
 }
 
-/** Apply a filter to an iterable of entities. Skips destroyed entities. */
+/** Apply a filter to an iterable of entities. Skips destroyed and dormant entities. */
 export function filterEntities(
   entities: Iterable<Entity>,
   filter: EntityFilter,
 ): Entity[] {
   const result: Entity[] = [];
   for (const entity of entities) {
-    if (entity.isDestroyed) continue;
+    if (entity.isDestroyed || !entity.isActive) continue;
     if (filter.name !== undefined && entity.name !== filter.name) continue;
     if (filter.tags) {
       let allMatch = true;

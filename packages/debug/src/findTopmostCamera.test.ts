@@ -44,6 +44,7 @@ import { findTopmostCamera } from "./DebugPlugin.js";
 
 function makeSceneWithCameras(cameras: CameraComponent[]): Scene {
   const entities = cameras.map((camera) => ({
+    isActive: true,
     tryGet: (C: unknown) =>
       C === CameraComponent ? (camera as unknown) : undefined,
   }));

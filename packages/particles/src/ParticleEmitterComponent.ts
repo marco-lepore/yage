@@ -49,6 +49,8 @@ export class ParticleEmitterComponent extends Component {
   static restorePriority = 50;
 
   readonly container: ParticleContainer;
+  /** Container visibility to restore on enable, so a hand-set hide survives. */
+  private _visibleWhenActive = true;
   /** @internal */ readonly _pool: ParticlePool;
   /** @internal */ readonly _active: ParticleState[] = [];
   /** @internal */ _accumulator = 0;
@@ -233,6 +235,23 @@ export class ParticleEmitterComponent extends Component {
   onAdd(): void {
     const layer = this.use(SceneRenderTreeKey).get(this.config.layer);
     layer.container.addChild(this.container);
+    // A component is never effectively enabled during `onAdd` — `onEnable`
+    // runs right after, and only for an active entity.
+    this.container.visible = false;
+  }
+
+  /**
+   * Hide the live particles. Emission stops on its own — a dormant entity is
+   * out of the query `ParticleSystem` iterates — and the pooled particles are
+   * kept, so the emitter picks up mid-flight when the entity comes back.
+   */
+  onDisable(): void {
+    this._visibleWhenActive = this.container.visible;
+    this.container.visible = false;
+  }
+
+  onEnable(): void {
+    this.container.visible = this._visibleWhenActive;
   }
 
   onDestroy(): void {

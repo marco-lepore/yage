@@ -498,12 +498,17 @@ export class PhysicsWorld {
   /** Return all entities whose colliders currently overlap the given collider. */
   queryOverlapping(colliderHandle: number): Entity[] {
     const collider = this.getCollider(colliderHandle);
-    if (!collider) return [];
+    // A dormant entity is out of the simulation, so it overlaps nothing —
+    // including the peers its stale narrow-phase pairs still name.
+    const self = this.colliderMap.get(colliderHandle);
+    if (!collider || !self?.isActive) return [];
     const result: Entity[] = [];
     const seen = new Set<Entity>();
     this.world.intersectionPairsWith(collider, (other) => {
       const entity = this.colliderMap.get(other.handle);
-      if (entity && !seen.has(entity)) {
+      // Disabling a collider leaves the pair in the narrow phase until the
+      // next step, so a same-frame query can still reach a dormant entity.
+      if (entity && entity.isActive && !seen.has(entity)) {
         seen.add(entity);
         result.push(entity);
       }
