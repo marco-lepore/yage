@@ -249,6 +249,11 @@ export abstract class Scene {
    * Set by `Entity.spawnChild` while the parent is dormant. A spawn runs
    * `setup()` before the parent link exists, so without this the child would
    * be briefly active and fire enable hooks it is about to undo.
+   *
+   * Consumed by the first entity the spawn creates — that is the child itself,
+   * built before its `setup()` runs. Anything `setup()` spawns on its own is a
+   * separate entity with no parent to resync it, so it must not inherit the
+   * suppression and stay dormant forever.
    * @internal
    */
   _spawnInert = false;
@@ -432,7 +437,10 @@ export abstract class Scene {
       }
 
       const entity = new Ctor();
-      if (this._spawnInert) entity._setActiveSuppressed(true);
+      if (this._spawnInert) {
+        this._spawnInert = false;
+        entity._setActiveSuppressed(true);
+      }
       entity._setScene(this, this.entityCallbacks);
       // Register key BEFORE adding to entities/emitting created — a duplicate
       // key throw must not leave a half-spawned entity in the scene.
@@ -486,7 +494,10 @@ export abstract class Scene {
     }
 
     const entity = new Entity(name);
-    if (this._spawnInert) entity._setActiveSuppressed(true);
+    if (this._spawnInert) {
+      this._spawnInert = false;
+      entity._setActiveSuppressed(true);
+    }
     entity._setScene(this, this.entityCallbacks);
     if (options?.key !== undefined) this._registerKey(entity, options.key);
     this.entities.add(entity);

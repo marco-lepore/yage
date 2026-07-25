@@ -444,6 +444,24 @@ describe("Entity activeness", () => {
     expect(comp.log).toEqual(["enable"]);
   });
 
+  it("leaves an entity setup() spawns on its own active, even under a dormant parent", () => {
+    const { scene } = createMockScene();
+    class Turret extends Entity {
+      sibling?: Entity;
+      setup() {
+        // Not a child — an independent entity that must not inherit the
+        // child's spawn-time suppression, since nothing would resync it.
+        this.sibling = this.scene.spawn("sibling");
+      }
+    }
+    const parent = scene.spawn("parent");
+    parent.setActive(false);
+
+    const turret = parent.spawnChild("turret", Turret);
+    expect(turret.isActive).toBe(false);
+    expect(turret.sibling!.isActive).toBe(true);
+  });
+
   it("does not reactivate a destroyed child when the parent wakes", () => {
     const { scene } = createMockScene();
     const parent = scene.spawn("parent");
