@@ -523,6 +523,24 @@ describe("RigidBodyComponent", () => {
     });
   });
   describe("activeness hooks", () => {
+    it("leaves the body disabled when added to a dormant entity", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.setActive(false);
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      // Rapier creates a body enabled and no hook fires on add for a dormant
+      // entity, so the body would otherwise keep simulating.
+      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as {
+        isEnabled(): boolean;
+      };
+      expect(body.isEnabled()).toBe(false);
+
+      entity.setActive(true);
+      expect(body.isEnabled()).toBe(true);
+    });
+
     it("clears momentum and disables the body when the entity goes dormant", async () => {
       const { scene, physicsWorld } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");

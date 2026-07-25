@@ -63,6 +63,12 @@ export class ColliderComponent extends Component {
       this.config,
       this,
     );
+
+    // A component is never effectively enabled during `onAdd` — `onEnable`
+    // runs right after, and only for an active entity. Rapier creates a
+    // collider enabled, so without this a collider added to a dormant entity
+    // would stay in the simulation and report contacts.
+    this.physicsWorld.getCollider(this._colliderHandle)?.setEnabled(false);
   }
 
   /**

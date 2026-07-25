@@ -80,6 +80,12 @@ export class RigidBodyComponent extends Component {
     this._currPosition = this.transform.worldPosition;
     this._prevRotation = this.transform.worldRotation;
     this._currRotation = this.transform.worldRotation;
+
+    // A component is never effectively enabled during `onAdd` — `onEnable`
+    // runs right after, and only for an active entity. Rapier creates a body
+    // enabled, so without this a body added to a dormant entity would keep
+    // simulating: drifting under gravity and reporting collisions.
+    body?.setEnabled(false);
   }
 
   /**
