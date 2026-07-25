@@ -128,6 +128,24 @@ does `controls.enabled = false`: the controls leave the screen and stop
 claiming touches. Whatever you passed to `setVisible` is remembered, so turning
 the entity back on restores the overlay you asked for, not a forced-on one.
 
+## Change one button at runtime
+
+Show or hide a configured button without rebuilding the overlay:
+
+```ts
+controls.setButtonVisible("restart", gameOver);
+controls.setButtonEnabled("jump", canJump);
+```
+
+`controls.enabled` controls the whole overlay. `setButtonEnabled` affects only
+the named button.
+
+A hidden button does not draw or claim touches. It keeps its layout slot, so
+the other buttons do not move. A disabled button remains visible but does not
+claim touches; the built-in presenter dims it. Hiding or disabling a held
+button releases its pointer and action before the setter returns. Both
+methods throw if the id is not in the configured button set.
+
 ## Touches never leak into gameplay
 
 A classic virtual-joystick bug: the thumb that drives the stick *also* counts
@@ -198,7 +216,7 @@ interface ControlsPresenter {
   dispose(): void;
 }
 interface ControlView {
-  update(dt: number): void;   // poll stick.basePos / knobPos / active, button.pressed / layout
+  update(dt: number): void;   // poll stick state or button.pressed / visible / enabled / layout
   setVisible(visible: boolean): void;
   dispose(): void;
 }
@@ -209,9 +227,10 @@ when a DOM overlay or a fully custom render path draws them. (Omitting the
 option entirely warns once: an active-but-invisible overlay is usually a
 forgotten import, not a choice.)
 
-The control set is fixed at construction. To change buttons or bindings at
-runtime — a layout editor, a mode switch — destroy the host entity and spawn
-a fresh component; teardown releases all mirrored input state cleanly.
+The control set and bindings are fixed at construction. Individual button
+visibility and enabled state can change through the methods above. To add or
+remove a button or change a binding, destroy the host entity and spawn a
+fresh component; teardown releases all mirrored input state cleanly.
 
 <Aside type="tip">
 Set `touch-action: none` on the canvas container, or the browser will hijack

@@ -85,9 +85,10 @@ export interface VirtualControlsOptions extends VirtualControlsConfig {
  * zones). The synthetic action state mirrors physical keys exactly —
  * press/release edges, hold durations, group enable/disable.
  *
- * The control set is fixed at construction. To change buttons or bindings
- * at runtime (a layout editor, a mode switch), destroy the host entity and
- * spawn a fresh component — teardown releases all mirrored state cleanly.
+ * The control set and bindings are fixed at construction. Individual buttons
+ * can be shown, hidden, enabled, or disabled at runtime. To add or remove a
+ * button or change a binding, destroy the host entity and spawn a fresh
+ * component — teardown releases all mirrored state cleanly.
  */
 export class VirtualControls extends Component {
   /** The headless model — read stick values, button state, layouts. */
@@ -146,6 +147,27 @@ export class VirtualControls extends Component {
 
   button(id: string): VirtualButton | undefined {
     return this.model.button(id);
+  }
+
+  /**
+   * Show or hide one button without moving the other buttons. Hiding a held
+   * button releases its pointer and mirrored action.
+   *
+   * @throws If `id` is not in the configured button set.
+   */
+  setButtonVisible(id: string, visible: boolean): void {
+    this.model.setButtonVisible(id, visible);
+  }
+
+  /**
+   * Enable or disable one button. A disabled button stays visible but does
+   * not claim pointers. Disabling a held button releases its pointer and
+   * mirrored action.
+   *
+   * @throws If `id` is not in the configured button set.
+   */
+  setButtonEnabled(id: string, enabled: boolean): void {
+    this.model.setButtonEnabled(id, enabled);
   }
 
   /**

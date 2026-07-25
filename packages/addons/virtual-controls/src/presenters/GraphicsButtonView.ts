@@ -14,6 +14,8 @@ import type { ControlsTheme } from "./theme.js";
 const FADE_SPEED = 10;
 /** Scale while pressed (the whole disc + label dips). */
 const PRESSED_SCALE = 0.92;
+/** Alpha multiplier while the button is disabled. */
+const DISABLED_ALPHA = 0.45;
 
 /**
  * The built-in button visual: a translucent disc with a rim and a centered
@@ -30,7 +32,7 @@ export class GraphicsButtonView implements ControlView {
   private drawnPressed = false;
   private drawnRadius = 0;
   private drawnAlpha = 0;
-  private visible = true;
+  private globallyVisible = true;
   private disposed = false;
 
   constructor(
@@ -62,18 +64,27 @@ export class GraphicsButtonView implements ControlView {
   }
 
   update(dt: number): void {
-    if (this.disposed || !this.visible) return;
+    if (this.disposed) return;
+    const visible = this.globallyVisible && this.button.visible;
+    this.gfx.graphics.visible = visible;
+    this.text.text.visible = visible;
+    if (!visible) return;
+
     const layout = this.button.layout;
     this.transform.setPosition(layout.center.x, layout.center.y);
 
-    const targetAlpha = this.button.pressed
-      ? this.theme.activeAlpha
-      : this.theme.idleAlpha;
+    const targetAlpha = !this.button.enabled
+      ? this.theme.idleAlpha * DISABLED_ALPHA
+      : this.button.pressed
+        ? this.theme.activeAlpha
+        : this.theme.idleAlpha;
     this.alpha = MathUtils.lerp(
       this.alpha,
       targetAlpha,
       Math.min(1, dt * FADE_SPEED),
     );
+    this.text.text.alpha =
+      this.theme.labelAlpha * (this.button.enabled ? 1 : DISABLED_ALPHA);
 
     const scale = this.button.pressed ? PRESSED_SCALE : 1;
     this.transform.setScale(scale, scale);
@@ -96,10 +107,11 @@ export class GraphicsButtonView implements ControlView {
   }
 
   setVisible(visible: boolean): void {
-    this.visible = visible;
+    this.globallyVisible = visible;
     if (this.disposed) return;
-    this.gfx.graphics.visible = visible;
-    this.text.text.visible = visible;
+    const shown = visible && this.button.visible;
+    this.gfx.graphics.visible = shown;
+    this.text.text.visible = shown;
   }
 
   dispose(): void {

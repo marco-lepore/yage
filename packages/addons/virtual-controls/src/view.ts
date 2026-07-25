@@ -14,7 +14,8 @@ import type { VirtualStick } from "./core/stick.js";
  * One control's visual. Views hold a reference to their control (passed at
  * creation) and poll its state on each `update`: `layout` (the resolved
  * geometry, re-resolved by the model on viewport changes), the stick's
- * `basePos`/`knobPos`/`active`, the button's `pressed`/`label`. All
+ * `basePos`/`knobPos`/`active`, the button's
+ * `pressed`/`visible`/`enabled`/`label`. All
  * coordinates are VIRTUAL px anchored to the screen — draw on a
  * screen-space render layer, or the visuals will scroll with the world
  * camera.
@@ -40,9 +41,9 @@ export interface ControlView {
  * Creates the per-control views. `mount` runs once when the component is
  * added (before any `create*View`) — provision your render layer there (the
  * built-in presenter `ensureLayer`s a screen-space one); `dispose` runs
- * after every view was disposed. The control set is fixed at construction:
- * to change buttons or bindings at runtime, destroy the host entity and add
- * a fresh `VirtualControls`.
+ * after every view was disposed. The control set and bindings are fixed at
+ * construction. A button view reads `button.visible` and `button.enabled`
+ * on each update so it can reflect runtime state changes.
  */
 export interface ControlsPresenter {
   mount(scene: Scene): void;
