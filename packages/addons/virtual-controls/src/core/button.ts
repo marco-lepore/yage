@@ -10,7 +10,7 @@ export const LEAVE_SLOP = 1.15;
 /**
  * Headless on-screen button: a circle that one pointer at a time may own.
  * Press/release transitions are driven by the model (down/slide/up routing);
- * presenters read `pressed` + `layout` to draw.
+ * presenters read `pressed`, `visible`, `enabled`, and `layout` to draw.
  */
 export class VirtualButton {
   readonly id: string;
@@ -19,6 +19,8 @@ export class VirtualButton {
   private _layout: ButtonLayout = { center: { x: 0, y: 0 }, radius: 1 };
   private _pointerId: number | null = null;
   private _pressed = false;
+  private _visible = true;
+  private _enabled = true;
 
   constructor(config: ResolvedButtonConfig) {
     this.id = config.id;
@@ -44,6 +46,16 @@ export class VirtualButton {
     return this._pressed;
   }
 
+  /** Whether a presenter should draw this button. */
+  get visible(): boolean {
+    return this._visible;
+  }
+
+  /** Whether the button may claim a pointer. */
+  get enabled(): boolean {
+    return this._enabled;
+  }
+
   /** The owning pointer id, or null while released. */
   get pointerId(): number | null {
     return this._pointerId;
@@ -51,6 +63,16 @@ export class VirtualButton {
 
   setLayout(layout: ButtonLayout): void {
     this._layout = layout;
+  }
+
+  /** Model mutation hook. Use `VirtualControls.setButtonVisible` in a scene. */
+  setVisible(visible: boolean): void {
+    this._visible = visible;
+  }
+
+  /** Model mutation hook. Use `VirtualControls.setButtonEnabled` in a scene. */
+  setEnabled(enabled: boolean): void {
+    this._enabled = enabled;
   }
 
   /** Whether (x, y) falls inside the button circle × `slop`. */

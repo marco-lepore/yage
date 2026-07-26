@@ -319,6 +319,43 @@ describe("VirtualControls — visibility", () => {
     expect(controls.button("a")!.pressed).toBe(false);
   });
 
+  it("hidden and disabled buttons leave touches to gameplay", () => {
+    const { input, controls } = setup();
+    const { center } = controls.button("a")!.layout;
+
+    controls.setButtonVisible("a", false);
+    touchDown(input, 7, center.x, center.y);
+    expect(input.isPointerConsumed(7)).toBe(false);
+    expect(input.isPressed("jump")).toBe(false);
+    expect(input.isPressed("fire")).toBe(true);
+    touchUp(input, 7, center.x, center.y);
+    input._clearFrameState();
+
+    controls.setButtonVisible("a", true);
+    controls.setButtonEnabled("a", false);
+    touchDown(input, 8, center.x, center.y);
+    expect(input.isPointerConsumed(8)).toBe(false);
+    expect(input.isPressed("jump")).toBe(false);
+    expect(input.isPressed("fire")).toBe(true);
+  });
+
+  it("hiding or disabling a held button releases its mirrored action", () => {
+    const { input, controls } = setup();
+    const { center } = controls.button("a")!.layout;
+
+    touchDown(input, 7, center.x, center.y);
+    controls.setButtonVisible("a", false);
+    expect(input.isPressed("jump")).toBe(false);
+    expect(input.isJustReleased("jump")).toBe(true);
+
+    input._clearFrameState();
+    controls.setButtonVisible("a", true);
+    touchDown(input, 8, center.x, center.y);
+    controls.setButtonEnabled("a", false);
+    expect(input.isPressed("jump")).toBe(false);
+    expect(input.isJustReleased("jump")).toBe(true);
+  });
+
   it("a paused scene takes no new claims but existing gestures release", () => {
     const { input, controls, scene } = setup();
     const { center } = controls.button("a")!.layout;
@@ -408,6 +445,24 @@ describe("VirtualControls — visibility", () => {
     expect(input.isPressed("jump")).toBe(true);
   });
 
+  it("per-button state survives a deactivate/reactivate cycle", () => {
+    const { entity, input, controls } = setup();
+
+    controls.setButtonVisible("a", false);
+    controls.setButtonEnabled("a", false);
+    entity.setActive(false);
+    entity.setActive(true);
+
+    expect(controls.button("a")!.visible).toBe(false);
+    expect(controls.button("a")!.enabled).toBe(false);
+
+    controls.setButtonVisible("a", true);
+    const { center } = controls.button("a")!.layout;
+    touchDown(input, 7, center.x, center.y);
+    expect(input.isPointerConsumed(7)).toBe(false);
+    expect(input.isPressed("jump")).toBe(false);
+  });
+
   it("visible: 'auto' resolves false without a window (SSR/node)", () => {
     const { controls } = setup({ visible: "auto" });
     expect(controls.visible).toBe(false);
@@ -472,5 +527,33 @@ describe("VirtualControls — events + teardown", () => {
     scene._flushDestroyQueue(); // entity destruction is end-of-frame deferred
     expect(view.dispose).toHaveBeenCalledTimes(2);
     expect(presenter.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("exposes button visibility and enabled state to custom presenters", () => {
+    const seen: Array<{ visible: boolean; enabled: boolean }> = [];
+    const view = { update: vi.fn(), setVisible: vi.fn(), dispose: vi.fn() };
+    const presenter = {
+      mount: vi.fn(),
+      createStickView: vi.fn(() => view),
+      createButtonView: vi.fn((button) => ({
+        update: () => {
+          seen.push({ visible: button.visible, enabled: button.enabled });
+        },
+        setVisible: vi.fn(),
+        dispose: vi.fn(),
+      })),
+      dispose: vi.fn(),
+    };
+    const { controls } = setup({ presenter });
+
+    controls.update(1 / 60);
+    controls.setButtonVisible("a", false);
+    controls.setButtonEnabled("a", false);
+    controls.update(1 / 60);
+
+    expect(seen).toEqual([
+      { visible: true, enabled: true },
+      { visible: false, enabled: false },
+    ]);
   });
 });

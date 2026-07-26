@@ -102,13 +102,35 @@ export class VirtualControlsModel {
   }
 
   /**
+   * Show or hide one button without changing its layout slot. Hiding a held
+   * button releases its pointer before returning.
+   */
+  setButtonVisible(id: string, visible: boolean): void {
+    const button = this.requireButton(id);
+    if (button.visible === visible) return;
+    button.setVisible(visible);
+    if (!visible) this.releaseButtonForStateChange(button);
+  }
+
+  /**
+   * Enable or disable one button. Disabling a held button releases its
+   * pointer before returning.
+   */
+  setButtonEnabled(id: string, enabled: boolean): void {
+    const button = this.requireButton(id);
+    if (button.enabled === enabled) return;
+    button.setEnabled(enabled);
+    if (!enabled) this.releaseButtonForStateChange(button);
+  }
+
+  /**
    * Route a pointer press. Returns `true` when a control claimed the pointer
    * (the host should consume it so the press stays out of gameplay actions).
    */
   pointerDown(id: number, x: number, y: number): boolean {
     if (this.owners.has(id)) return false;
     for (const b of this.buttons) {
-      if (!b.pressed && b.hitTest(x, y)) {
+      if (b.visible && b.enabled && !b.pressed && b.hitTest(x, y)) {
         this.claim(id, b, x, y);
         b.press(id);
         this.cb.onButtonPress?.(b);
@@ -150,7 +172,13 @@ export class VirtualControlsModel {
     }
     if (this.strays.has(id)) {
       for (const b of this.buttons) {
-        if (b.config.pressOnEnter && !b.pressed && b.hitTest(x, y)) {
+        if (
+          b.visible &&
+          b.enabled &&
+          b.config.pressOnEnter &&
+          !b.pressed &&
+          b.hitTest(x, y)
+        ) {
           if (this.cb.canClaim && !this.cb.canClaim(id)) return false;
           this.strays.delete(id);
           this.claim(id, b, x, y);
@@ -240,5 +268,19 @@ export class VirtualControlsModel {
     this.owners.delete(id);
     this.ownerPos.delete(id);
     this.cb.onButtonRelease?.(button);
+  }
+
+  private releaseButtonForStateChange(button: VirtualButton): void {
+    const pointerId = button.pointerId;
+    if (pointerId === null) return;
+    this.releaseButton(pointerId, button);
+  }
+
+  private requireButton(id: string): VirtualButton {
+    const button = this.button(id);
+    if (!button) {
+      throw new Error(`VirtualControls: unknown button id "${id}".`);
+    }
+    return button;
   }
 }

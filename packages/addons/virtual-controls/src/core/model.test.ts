@@ -135,6 +135,87 @@ describe("VirtualControlsModel — slide behavior", () => {
   });
 });
 
+describe("VirtualControlsModel — button state", () => {
+  it("hidden and disabled buttons do not claim direct presses", () => {
+    const model = makeModel({ buttons: [{ id: "a" }] });
+    const button = model.button("a")!;
+    const { center } = button.layout;
+
+    model.setButtonVisible("a", false);
+    expect(button.visible).toBe(false);
+    expect(model.pointerDown(1, center.x, center.y)).toBe(false);
+
+    model.setButtonVisible("a", true);
+    model.setButtonEnabled("a", false);
+    expect(button.enabled).toBe(false);
+    expect(model.pointerDown(2, center.x, center.y)).toBe(false);
+
+    model.setButtonEnabled("a", true);
+    expect(model.pointerDown(3, center.x, center.y)).toBe(true);
+  });
+
+  it("hidden and disabled buttons do not claim slide-ins", () => {
+    const model = makeModel({
+      buttons: [{ id: "a", pressOnEnter: true }],
+    });
+    const { center } = model.button("a")!.layout;
+
+    model.setButtonVisible("a", false);
+    model.pointerDown(1, 100, 100);
+    expect(model.pointerMove(1, center.x, center.y)).toBe(false);
+
+    model.setButtonVisible("a", true);
+    model.setButtonEnabled("a", false);
+    expect(model.pointerMove(1, center.x, center.y)).toBe(false);
+
+    model.setButtonEnabled("a", true);
+    expect(model.pointerMove(1, center.x, center.y)).toBe(true);
+  });
+
+  it("hiding or disabling a held button releases its pointer once", () => {
+    const onButtonRelease = vi.fn();
+    const model = makeModel({ buttons: [{ id: "a" }] }, { onButtonRelease });
+    const button = model.button("a")!;
+    const { center } = button.layout;
+
+    model.pointerDown(1, center.x, center.y);
+    model.setButtonVisible("a", false);
+    expect(button.pressed).toBe(false);
+    expect(button.pointerId).toBeNull();
+    model.pointerUp(1);
+    expect(onButtonRelease).toHaveBeenCalledTimes(1);
+
+    model.setButtonVisible("a", true);
+    model.pointerDown(2, center.x, center.y);
+    model.setButtonEnabled("a", false);
+    expect(button.pressed).toBe(false);
+    expect(button.pointerId).toBeNull();
+    model.pointerUp(2);
+    expect(onButtonRelease).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps hidden buttons in their layout slots", () => {
+    const model = makeModel({
+      buttons: [{ id: "a" }, { id: "b" }, { id: "x" }],
+    });
+    const before = model.button("b")!.layout;
+
+    model.setButtonVisible("a", false);
+
+    expect(model.button("b")!.layout).toEqual(before);
+  });
+
+  it("throws when a state setter receives an unknown button id", () => {
+    const model = makeModel({ buttons: [{ id: "a" }] });
+    expect(() => model.setButtonVisible("nope", false)).toThrow(
+      'VirtualControls: unknown button id "nope".',
+    );
+    expect(() => model.setButtonEnabled("nope", false)).toThrow(
+      'VirtualControls: unknown button id "nope".',
+    );
+  });
+});
+
 describe("VirtualControlsModel — lifecycle", () => {
   it("releaseAll releases every engaged control with callbacks", () => {
     const onStickRelease = vi.fn();

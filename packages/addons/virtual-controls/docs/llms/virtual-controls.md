@@ -79,10 +79,11 @@ the viewport (stick 11% / button 6.5% of min(w, h)), overlay
 The presenter auto-provisions its screen-space layer (`"virtual-controls"`,
 order 1080) — no `Scene.layers` declaration needed; declare
 `...VIRTUAL_CONTROLS_LAYERS` only to pin ordering. The control set is fixed
-at construction — reconfigure by destroying the host entity and adding a
-fresh component.
+at construction, but individual buttons can be shown, hidden, enabled, or
+disabled at runtime. To add/remove buttons or change bindings, destroy the
+host entity and add a fresh component.
 
-## Visibility — `visible: "auto"` (the mobile default)
+## Runtime visibility and button availability
 
 - `"auto"` (default): on iff the device's primary pointer is coarse
   (`prefersTouchControls()` — `(pointer: coarse)`, falls back to
@@ -96,6 +97,22 @@ fresh component.
   independently of `visible`: the views hide and every hold is released. The
   requested `visible` value is kept and applies again on reactivation, so a
   HUD entity you turn off and back on returns to the state you set.
+
+Change one configured button without rebuilding the overlay:
+
+```ts
+controls.setButtonVisible("restart", gameOver);
+controls.setButtonEnabled("jump", canJump);
+```
+
+`controls.enabled` controls the whole overlay. `setButtonEnabled` affects only
+the named button.
+
+A hidden button does not draw or claim pointers. It keeps its layout slot, so
+the other buttons do not move. A disabled button remains visible but does not
+claim pointers; the built-in presenter dims it. Hiding or disabling a held
+button releases its pointer and mirrored action before the setter returns.
+Both methods throw for an unknown button id.
 
 ## How input flows (the consumption contract)
 
@@ -192,7 +209,7 @@ stays in the model (views only draw):
 interface ControlsPresenter {
   mount(scene: Scene): void;
   createStickView(stick: VirtualStick): ControlView;   // poll stick.basePos/knobPos/active/layout
-  createButtonView(button: VirtualButton): ControlView; // poll button.pressed/layout/label
+  createButtonView(button: VirtualButton): ControlView; // poll button.pressed/visible/enabled/layout/label
   dispose(): void;
 }
 interface ControlView { update(dt): void; setVisible(v): void; dispose(): void; }
@@ -219,7 +236,8 @@ built-in theme knobs live on `ControlsTheme`
   first-registered claims first. One instance per scene is the intended
   shape.
 - `controls.model.buttons` / `controls.model.sticks` are readonly ARRAYS of
-  `VirtualButton` / `VirtualStick` (each exposing `.id` and `.layout`); there is
-  no id-keyed layout object. To read one control's resolved geometry (a tutorial
+  `VirtualButton` / `VirtualStick`. Buttons expose `.id`, `.layout`, `.pressed`,
+  `.visible`, and `.enabled`; sticks expose `.id` and `.layout`. There is no
+  id-keyed layout object. To read one control's resolved geometry (a tutorial
   highlight, a HUD hint), look it up by id: `controls.button(id)?.layout` /
   `controls.stick(id)?.layout`.
