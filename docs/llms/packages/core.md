@@ -14,7 +14,7 @@ Zero runtime dependencies. ECS foundation, DI, game loop, scenes, events, proces
 | `Scene` | Abstract scene base class |
 | `SceneManager` | Stack-based scene management (push/pop/replace) |
 | `Entity` | Named component container |
-| `EntityPool` | Reuses a fixed group of entities instead of spawning and destroying them |
+| `EntityPool` | Reuses entities instead of spawning and destroying them; grows on demand unless capped |
 | `Component` | Base class for game logic |
 | `System` | Base class for engine-level systems |
 | `Phase` | Enum: EarlyUpdate, FixedUpdate, Update, LateUpdate, Render, EndOfFrame |

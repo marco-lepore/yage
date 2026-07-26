@@ -676,6 +676,32 @@ describe("EntityPool", () => {
       expect(pool.free).toBe(1);
     });
 
+    it("fails the outer acquisition when a nested one takes its member", () => {
+      class Greedy extends Entity {
+        pool!: EntityPool<Greedy>;
+        armed = false;
+        taken?: Greedy;
+        onAcquire(): void {
+          if (!this.armed) return;
+          this.armed = false;
+          this.destroy();
+          this.taken = this.pool.acquire();
+        }
+      }
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Greedy);
+      const member = pool.acquire();
+      member.pool = pool;
+      pool.release(member);
+      member.armed = true;
+
+      // The hook gave the member away and a nested acquire claimed it. Being
+      // leased is not enough — the outer call has to own *that* lease.
+      expect(() => pool.acquire()).toThrow(/nested acquisition took it/);
+      expect(member.taken).toBe(member);
+      expect(pool.leased).toBe(1);
+    });
+
     it("keeps ownership single when onRelease acquires from the same pool", () => {
       class Reacquiring extends Entity {
         pool!: EntityPool<Reacquiring>;

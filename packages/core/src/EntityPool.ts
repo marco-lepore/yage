@@ -29,7 +29,7 @@ interface MemberState {
 /** Pool behaviour. `TMax` carries whether the pool is capped into `acquire`'s return type. */
 export interface EntityPoolOptions<
   T extends PoolableEntity,
-  TMax extends number | undefined = number,
+  TMax extends number | undefined = undefined,
 > {
   /**
    * Members to construct up front, parked dormant. They run their
@@ -222,9 +222,9 @@ export class EntityPool<
     this.assertUsable("acquire");
     const member = this.takeFree() ?? this.grow();
     if (!member) return undefined as AcquireResult<T, TMax>;
-    this.lease(member);
+    const seq = this.lease(member);
     this.callAcquire(member, args);
-    this.takeBackIfReleased(member);
+    this.takeBackIfReleased(member, seq);
     return member as AcquireResult<T, TMax>;
   }
 
@@ -246,9 +246,9 @@ export class EntityPool<
   forceAcquire(...args: Parameters<T["onAcquire"]>): T {
     this.assertUsable("forceAcquire");
     const member = this.takeFree() ?? this.grow() ?? this.reclaim();
-    this.lease(member);
+    const seq = this.lease(member);
     this.callAcquire(member, args);
-    this.takeBackIfReleased(member);
+    this.takeBackIfReleased(member, seq);
     return member;
   }
 
@@ -419,8 +419,17 @@ export class EntityPool<
    * `onEnable` that throws during the reactivation leaves the member leased
    * and active, not half-filed. `releaseAll()` still reaches it.
    */
-  private takeBackIfReleased(member: T): void {
-    if (this.state.get(member)?.status === "leased") return;
+  private takeBackIfReleased(member: T, seq: number): void {
+    const st = this.state.get(member);
+    if (st?.status === "leased") {
+      // Leased is not enough — it has to still be *this* acquisition's lease.
+      if (st.seq === seq) return;
+      throw new Error(
+        `EntityPool<${this.Class.name}>: the acquire hooks released the member being acquired ` +
+          `("${member.name}") and a nested acquisition took it. Two callers cannot hold one ` +
+          `entity, so this acquisition fails. Release a member after its acquisition, not during it.`,
+      );
+    }
     devWarn(
       `EntityPool<${this.Class.name}>: the acquire hooks released the member being acquired ` +
         `("${member.name}"). The pool has taken it back — release it after the acquisition, not during it.`,
@@ -428,13 +437,15 @@ export class EntityPool<
     this.lease(member);
   }
 
-  private lease(member: T): void {
+  private lease(member: T): number {
     // Bookkeeping first: a throwing hook below leaves the pool consistent,
     // with the member leased and active rather than stuck mid-transition.
+    const seq = ++this.acquireCount;
     const st = this.state.get(member);
-    if (st) st.seq = ++this.acquireCount;
+    if (st) st.seq = seq;
     this.setStatus(member, "leased");
     member.setActive(true);
+    return seq;
   }
 
   /** Put a member to sleep and back into the pool's keeping. */
