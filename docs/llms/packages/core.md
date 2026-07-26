@@ -15,6 +15,7 @@ Zero runtime dependencies. ECS foundation, DI, game loop, scenes, events, proces
 | `SceneManager` | Stack-based scene management (push/pop/replace) |
 | `Entity` | Named component container |
 | `EntityPool` | Reuses entities instead of spawning and destroying them; grows on demand unless capped |
+| `EntityHandle<T>` | Reference to one life of an entity; reads `undefined` once that life ends |
 | `Component` | Base class for game logic |
 | `System` | Base class for engine-level systems |
 | `Phase` | Enum: EarlyUpdate, FixedUpdate, Update, LateUpdate, Render, EndOfFrame |
@@ -29,7 +30,9 @@ class Entity {
   get tryScene(): Scene | null;               // null if detached
   get activeSelf(): boolean;                  // own bit
   get isActive(): boolean;                    // own bit AND every ancestor's
+  get generation(): number;                   // which life; moves on when one ends
   setActive(active: boolean): void;
+  handle(): EntityHandle<this>;               // reference that expires with this life
   requireKey(): string;                       // throws if no key
   addChild(name: string, child: Entity): void;
   spawnChild(name: string, options?: SpawnOptions): Entity;
@@ -149,7 +152,38 @@ interface EntityPoolOptions<T, TMax> {
 - Pools belong to their scene and are disposed on exit; `acquire` on a disposed pool throws. Build them in `onEnter()`, where scene services exist.
 - The pool owns its members' lifetimes. `entity.destroy()` on a member releases it back to the pool instead of tearing it down, so retire sites holding a plain `Entity` (collision handlers, `update`, event listeners) need no pool reference and the same code works pooled or not. `isDestroyed` stays `false` for such a member; destroying an entity with a member below it detaches and returns that member. Only `dispose()` destroys members.
 - Save snapshots skip members and everything parented under one. A pool restores empty and refills, so entities in flight at save time are gone on load.
-- A member released inside the physics collision drain rejoins the pool when the drain finishes, so events queued for its previous life cannot reach a reacquired one. The one exception is `forceAcquire` on a capped pool with nothing live left to reclaim: it hands a held member back rather than fail.
+- A released member is alive and `isDestroyed` is `false`, so a stored reference to one silently follows the entity into its next life. Store `entity.handle()` instead when something else owns the release.
+- The physics collision drain captures both sides of every pair before running any handler, so a pair naming an entity a handler released is dropped instead of reaching whoever acquired it next.
+
+### Entity handles
+
+`entity.handle()` returns an `EntityHandle<T>`: a reference that stops resolving when that entity's life ends. Read it through `.current`.
+
+```ts
+class Turret extends Entity {
+  private target?: EntityHandle<Enemy>;
+
+  onSpotted(enemy: Enemy) { this.target = enemy.handle(); }
+
+  update() {
+    const enemy = this.target?.current;   // undefined once that enemy is gone
+    if (enemy) this.aimAt(enemy);
+  }
+}
+```
+
+```ts
+interface EntityHandle<out T extends Entity = Entity> {
+  readonly current: T | undefined;
+}
+```
+
+- Rule of thumb: use a handle whenever pooled entities are involved — a member can be retired from anywhere (`destroy()` in its own collision handler releases it), so a stored plain reference goes stale silently. A plain reference is fine for entities that live as long as the scene, or when the code storing the reference also controls when the entity goes away.
+- `.current` means "same life", not "currently active": an entity turned off with `setActive(false)` still resolves.
+- A life ends on `destroy()`, on scene teardown, on every path that ends a member's lease — `release`, `releaseAll`, a `forceAcquire` reclaim — and on `dispose()`, which destroys the members outright. A member's children end their lives with it, so a handle on a pooled entity's hitbox expires too.
+- `entity.generation` is the counter behind it: 0 for a fresh entity, increased whenever a life ends. Compare it for equality — a destruction cascade can advance it more than once, so it does not count lives. Public read, engine write. It is not saved and not in the Inspector snapshot.
+- `handle()` on a pool member the pool is not currently lending out returns a handle that never resolves, and warns in dev builds. The caller is holding a stale reference, so a handle from it would come alive at the next acquisition.
+- Handles are created by `entity.handle()` only; `EntityHandle` is a type, not a constructor. `T` is output-only, so an `EntityHandle<Enemy>` is assignable to `EntityHandle<Entity>` and not the other way round.
 
 ### Events
 

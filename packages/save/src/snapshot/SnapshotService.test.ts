@@ -20,7 +20,7 @@ import {
   serializable,
 } from "@yagejs/core";
 import type { EngineEvents } from "@yagejs/core";
-import type { SnapshotResolver } from "@yagejs/core";
+import type { EntityHandle, SnapshotResolver } from "@yagejs/core";
 import { MemoryStorage } from "./test-helpers.js";
 import type { GameSnapshot } from "./types.js";
 import { SnapshotService } from "./SnapshotService.js";
@@ -102,6 +102,44 @@ class RefHolderEntity extends Entity {
   afterRestore(data: { targetId: number }, resolve: SnapshotResolver) {
     this.targetId = data.targetId;
     this.resolvedTarget = resolve.entity(data.targetId);
+  }
+}
+
+/** The same cross-entity reference, held as a handle instead of a raw id. */
+@serializable
+class HandleHolderEntity extends Entity {
+  target: EntityHandle<Entity> | undefined;
+
+  setup() {
+    this.add(new Transform());
+  }
+
+  serialize() {
+    return { targetId: this.target?.current?.id ?? null };
+  }
+
+  afterRestore(data: { targetId: number | null }, resolve: SnapshotResolver) {
+    this.target = resolve.handle(data.targetId);
+  }
+}
+
+/** Captures what `resolver.handle` returns for ids that resolve to nothing. */
+@serializable
+class HandleProbeEntity extends Entity {
+  fromNull: unknown = "unset";
+  fromUnknownId: unknown = "unset";
+
+  setup() {
+    this.add(new Transform());
+  }
+
+  serialize() {
+    return {};
+  }
+
+  afterRestore(_data: unknown, resolve: SnapshotResolver) {
+    this.fromNull = resolve.handle(null);
+    this.fromUnknownId = resolve.handle(99999);
   }
 }
 
@@ -614,6 +652,90 @@ describe("SnapshotService", () => {
       expect(holder).toBeDefined();
       expect(holder.resolvedTarget).not.toBeNull();
       expect(holder.resolvedTarget).toBeInstanceOf(MockEntity);
+    });
+
+    it("resolves a saved id to a live handle on the restored entity", async () => {
+      const { service, sceneManager } = createTestContext();
+
+      @serializable
+      class HandleScene extends Scene {
+        readonly name = "handle";
+        onEnter() {
+          const target = this.spawn(MockEntity);
+          const holder = this.spawn(HandleHolderEntity);
+          holder.target = target.handle();
+        }
+      }
+
+      await sceneManager.push(new HandleScene());
+
+      service.saveSnapshot("test");
+      await service.loadSnapshot("test");
+
+      const scene = sceneManager.active!;
+      const holder = [...scene.getEntities()].find(
+        (e) => e instanceof HandleHolderEntity,
+      ) as HandleHolderEntity;
+
+      // A fresh instance with a new runtime id, reached through the handle.
+      expect(holder.target?.current).toBeInstanceOf(MockEntity);
+      expect(holder.target?.current).toBe(
+        [...scene.getEntities()].find((e) => e instanceof MockEntity),
+      );
+    });
+
+    it("leaves a handle empty when its target is not in the snapshot", async () => {
+      const { service, sceneManager, storage } = createTestContext();
+
+      @serializable
+      class DanglingHandleScene extends Scene {
+        readonly name = "dangling-handle";
+        onEnter() {
+          const holder = this.spawn(HandleHolderEntity);
+          holder.target = undefined;
+        }
+      }
+
+      await sceneManager.push(new DanglingHandleScene());
+
+      service.saveSnapshot("test");
+
+      // The empty reference is written as an explicit null, not a missing
+      // key — a JSON round trip must not erase the field.
+      expect(storage.load("yage:snapshot:test")).toContain('"targetId":null');
+      await service.loadSnapshot("test");
+
+      const scene = sceneManager.active!;
+      const holder = [...scene.getEntities()].find(
+        (e) => e instanceof HandleHolderEntity,
+      ) as HandleHolderEntity;
+
+      expect(holder.target).toBeUndefined();
+    });
+
+    it("resolver.handle returns undefined for a null id and an unknown id", async () => {
+      const { service, sceneManager } = createTestContext();
+
+      @serializable
+      class HandleProbeScene extends Scene {
+        readonly name = "handle-probe";
+        onEnter() {
+          this.spawn(HandleProbeEntity);
+        }
+      }
+
+      await sceneManager.push(new HandleProbeScene());
+
+      service.saveSnapshot("test");
+      await service.loadSnapshot("test");
+
+      const scene = sceneManager.active!;
+      const probe = [...scene.getEntities()].find(
+        (e) => e instanceof HandleProbeEntity,
+      ) as HandleProbeEntity;
+
+      expect(probe.fromNull).toBeUndefined();
+      expect(probe.fromUnknownId).toBeUndefined();
     });
 
     it("resolver returns null for unknown IDs", async () => {

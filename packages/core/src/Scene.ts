@@ -132,7 +132,6 @@ function _looksLikeSpawnOptions(v: unknown): v is SpawnOptions {
  * import of the pool it owns.
  */
 interface ScenePool {
-  _flushPendingReleases(): void;
   dispose(): void;
 }
 
@@ -254,7 +253,6 @@ export abstract class Scene {
   private _scopedServices?: Map<string, unknown>;
   private _identityIndex?: Map<string, Entity>;
   private _pools?: Set<ScenePool>;
-  private _releaseHoldDepth = 0;
 
   /**
    * Set by `Entity.spawnChild` while the parent is dormant. A spawn runs
@@ -554,35 +552,8 @@ export abstract class Scene {
   }
 
   /**
-   * Run `fn` with pool releases held back: a member released inside it
-   * returns to its pool only once `fn` completes. Engine code that dispatches
-   * a batch of queued entity events wraps the batch — the physics collision
-   * drain does — so an event queued for a member's previous life can never
-   * land on a reacquired one. Nests.
-   */
-  deferPoolReleases<R>(fn: () => R): R {
-    this._releaseHoldDepth++;
-    try {
-      return fn();
-    } finally {
-      this._releaseHoldDepth--;
-      if (this._releaseHoldDepth === 0 && this._pools) {
-        for (const pool of this._pools) pool._flushPendingReleases();
-      }
-    }
-  }
-
-  /**
-   * Internal: whether `deferPoolReleases` is holding releases right now.
-   * @internal
-   */
-  get _poolReleasesHeld(): boolean {
-    return this._releaseHoldDepth > 0;
-  }
-
-  /**
-   * Internal: track a pool so the scene can flush its held releases and
-   * dispose it on exit. Called by the `EntityPool` constructor.
+   * Internal: track a pool so the scene can dispose it on exit. Called by the
+   * `EntityPool` constructor.
    * @internal
    */
   _registerPool(pool: ScenePool): void {

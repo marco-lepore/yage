@@ -384,7 +384,7 @@ vi.mock("@dimforge/rapier2d", () => ({
   },
 }));
 
-import { Vec2, Entity } from "@yagejs/core";
+import { Vec2, Entity, EntityPool, createMockScene } from "@yagejs/core";
 import { PhysicsWorld } from "./PhysicsWorld.js";
 import type { ColliderComponent } from "./ColliderComponent.js";
 import type { CollisionEvent, TriggerEvent } from "./types.js";
@@ -910,6 +910,232 @@ describe("PhysicsWorld", () => {
       expect(ev1.contactNormal).toBeUndefined();
       expect(ev1.contactPoint).toBeUndefined();
       expect(ev1.penetrationDepth).toBeUndefined();
+    });
+  });
+
+  describe("collisions naming an entity a handler retired", () => {
+    class Pooled extends Entity {
+      onAcquire(): void {}
+    }
+
+    /** Give an entity a body and a collider, so it can appear in events. */
+    function addCollider<E extends Entity>(
+      pw: PhysicsWorld,
+      entity: E,
+      opts: { sensor?: boolean } = {},
+    ): { entity: E; collider: ColliderComponent; handle: number } {
+      const comp = createMockColliderComponent(opts);
+      const handle = pw.createCollider(
+        entity,
+        pw.createBody(entity, { type: "dynamic" }),
+        {
+          shape: { type: "box", width: 10, height: 10 },
+          ...(opts.sensor ? { sensor: true } : {}),
+        },
+        comp,
+      );
+      return { entity, collider: comp, handle };
+    }
+
+    function queue(pw: PhysicsWorld, a: number, b: number): void {
+      const eq = (
+        pw as unknown as {
+          eventQueue: InstanceType<typeof mocks.MockEventQueue>;
+        }
+      ).eventQueue;
+      eq._events.push([a, b, true]);
+    }
+
+    it("drops the rest of a released member's events, and the pair that named it", () => {
+      const pw = new PhysicsWorld();
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Pooled);
+
+      const shooter = addCollider(pw, pool.acquire());
+      const target = addCollider(pw, pool.acquire());
+      const wall = addCollider(pw, pool.acquire());
+
+      // The first pair's handler retires the target, which goes straight back
+      // out of the pool — the same object, a different life.
+      shooter.collider.onCollision(() => {
+        target.entity.destroy();
+        expect(pool.acquire()).toBe(target.entity);
+      });
+
+      const targetEvents: CollisionEvent[] = [];
+      const wallEvents: CollisionEvent[] = [];
+      target.collider.onCollision((e) => targetEvents.push(e));
+      wall.collider.onCollision((e) => wallEvents.push(e));
+
+      queue(pw, shooter.handle, target.handle);
+      queue(pw, wall.handle, target.handle);
+      pw.processCollisionEvents();
+
+      // Both sides of both pairs named the retired life.
+      expect(targetEvents).toHaveLength(0);
+      expect(wallEvents).toHaveLength(0);
+    });
+
+    it("still delivers events between entities the handler left alone", () => {
+      const pw = new PhysicsWorld();
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Pooled);
+
+      const shooter = addCollider(pw, pool.acquire());
+      const target = addCollider(pw, pool.acquire());
+      const other = addCollider(pw, pool.acquire());
+
+      shooter.collider.onCollision(() => {
+        target.entity.destroy();
+      });
+
+      const otherEvents: CollisionEvent[] = [];
+      other.collider.onCollision((e) => otherEvents.push(e));
+
+      queue(pw, shooter.handle, target.handle);
+      queue(pw, shooter.handle, other.handle);
+      pw.processCollisionEvents();
+
+      expect(otherEvents).toHaveLength(1);
+      expect(otherEvents[0]!.other).toBe(shooter.entity);
+    });
+
+    it("drops trigger events the same way", () => {
+      const pw = new PhysicsWorld();
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Pooled);
+
+      const zone = addCollider(pw, pool.acquire(), { sensor: true });
+      const walker = addCollider(pw, pool.acquire());
+      const second = addCollider(pw, pool.acquire(), { sensor: true });
+
+      zone.collider.onTrigger(() => {
+        walker.entity.destroy();
+        pool.acquire();
+      });
+
+      const secondTriggers: TriggerEvent[] = [];
+      second.collider.onTrigger((e) => secondTriggers.push(e));
+
+      queue(pw, zone.handle, walker.handle);
+      queue(pw, second.handle, walker.handle);
+      pw.processCollisionEvents();
+
+      expect(secondTriggers).toHaveLength(0);
+    });
+
+    it("drops events for a collider a handler removed mid-drain", () => {
+      const pw = new PhysicsWorld();
+      const { scene } = createMockScene();
+
+      const striker = addCollider(pw, scene.spawn("striker"));
+      const wall = addCollider(pw, scene.spawn("wall"));
+      const sentry = addCollider(pw, scene.spawn("sentry"));
+
+      // Same engine state a component teardown produces: the wall's collider
+      // leaves the world while its entity stays alive, generation unchanged.
+      striker.collider.onCollision(() => {
+        pw.removeCollider(wall.handle);
+      });
+
+      const sentryEvents: CollisionEvent[] = [];
+      sentry.collider.onCollision((e) => sentryEvents.push(e));
+
+      queue(pw, striker.handle, wall.handle);
+      queue(pw, sentry.handle, wall.handle);
+      pw.processCollisionEvents();
+
+      expect(sentryEvents).toHaveLength(0);
+    });
+
+    it("drops events when a removed handle is reused by a new collider", () => {
+      const pw = new PhysicsWorld();
+      const { scene } = createMockScene();
+
+      const striker = addCollider(pw, scene.spawn("striker"));
+      const wall = addCollider(pw, scene.spawn("wall"));
+      const sentry = addCollider(pw, scene.spawn("sentry"));
+
+      // Rapier can hand a removed collider's numeric handle to the next
+      // collider it creates. Model that by re-registering the wall's handle
+      // to a different component mid-drain: presence alone would pass, only
+      // component identity tells the captured side from the newcomer.
+      const replacement = createMockColliderComponent();
+      const replacementEvents: CollisionEvent[] = [];
+      replacement.onCollision((e) => replacementEvents.push(e));
+      striker.collider.onCollision(() => {
+        pw.removeCollider(wall.handle);
+        const maps = pw as unknown as {
+          colliderMap: Map<number, Entity>;
+          _colliderComponents: Map<number, ColliderComponent>;
+        };
+        maps.colliderMap.set(wall.handle, sentry.entity);
+        maps._colliderComponents.set(wall.handle, replacement);
+      });
+
+      const sentryEvents: CollisionEvent[] = [];
+      sentry.collider.onCollision((e) => sentryEvents.push(e));
+
+      queue(pw, striker.handle, wall.handle);
+      queue(pw, sentry.handle, wall.handle);
+      pw.processCollisionEvents();
+
+      expect(sentryEvents).toHaveLength(0);
+      expect(replacementEvents).toHaveLength(0);
+    });
+
+    it("drops events for a member forceAcquire took back mid-drain", () => {
+      const pw = new PhysicsWorld();
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Pooled, { maxSize: 2 });
+
+      const shooter = addCollider(pw, pool.acquire()!);
+      const target = addCollider(pw, pool.acquire()!);
+
+      const targetEvents: CollisionEvent[] = [];
+      target.collider.onCollision((e) => targetEvents.push(e));
+
+      shooter.collider.onCollision(() => {
+        // Saturated, so this reclaims the oldest live member — the shooter
+        // itself — ending the life the queued pair named on its side.
+        expect(pool.forceAcquire()).toBe(shooter.entity);
+      });
+
+      queue(pw, shooter.handle, target.handle);
+      pw.processCollisionEvents();
+
+      expect(targetEvents).toHaveLength(0);
+    });
+
+    it("drops events naming an entity a handler destroyed outright", () => {
+      const pw = new PhysicsWorld();
+      const { scene } = createMockScene();
+
+      const shooter = scene.spawn("shooter");
+      const target = scene.spawn("target");
+      const shooterComp = createMockColliderComponent();
+      const targetComp = createMockColliderComponent();
+      const shooterHandle = pw.createCollider(
+        shooter,
+        pw.createBody(shooter, { type: "dynamic" }),
+        { shape: { type: "box", width: 10, height: 10 } },
+        shooterComp,
+      );
+      const targetHandle = pw.createCollider(
+        target,
+        pw.createBody(target, { type: "dynamic" }),
+        { shape: { type: "box", width: 10, height: 10 } },
+        targetComp,
+      );
+
+      shooterComp.onCollision(() => target.destroy());
+      const targetEvents: CollisionEvent[] = [];
+      targetComp.onCollision((e) => targetEvents.push(e));
+
+      queue(pw, shooterHandle, targetHandle);
+      pw.processCollisionEvents();
+
+      expect(targetEvents).toHaveLength(0);
     });
   });
 

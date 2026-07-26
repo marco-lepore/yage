@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Entity } from "./Entity.js";
 import { Component } from "./Component.js";
 import { EntityPool } from "./EntityPool.js";
+import type { EntityHandle } from "./EntityHandle.js";
 import { QueryCacheKey } from "./EngineContext.js";
 import type { QueryCache } from "./QueryCache.js";
 import { createMockScene } from "./test-utils.js";
@@ -401,42 +402,166 @@ describe("EntityPool", () => {
     });
   });
 
-  describe("held releases", () => {
-    it("keeps a member released inside the hold out of reach until it ends", () => {
+  describe("handles across lives", () => {
+    it("stops resolving as soon as the member is released", () => {
       const { scene } = createMockScene();
       const pool = new EntityPool(scene, Spark, { prewarm: 1 });
       const spark = pool.acquire(1);
+      const handle = spark.handle();
 
-      scene.deferPoolReleases(() => {
-        pool.release(spark);
-        expect(spark.isActive).toBe(false);
-        // Counted as neither leased nor free while the hold lasts.
-        expect(pool.leased).toBe(0);
-        expect(pool.free).toBe(0);
-        expect(pool.acquire(2)).not.toBe(spark);
-      });
+      expect(handle.current).toBe(spark);
 
-      expect(pool.acquire(3)).toBe(spark);
+      // Dead before any re-lease: the member is dormant in the pool, and
+      // nothing about it says so to a plain reference.
+      pool.release(spark);
+      expect(spark.isDestroyed).toBe(false);
+      expect(handle.current).toBeUndefined();
+
+      expect(pool.acquire(2)).toBe(spark);
+      expect(handle.current).toBeUndefined();
     });
 
-    it("forceAcquire hands back a held member when nothing is live", () => {
+    it("gives each acquisition its own live handle", () => {
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Spark, { prewarm: 1 });
+
+      const first = pool.acquire(1);
+      const firstHandle = first.handle();
+      pool.release(first);
+
+      const second = pool.acquire(2);
+      const secondHandle = second.handle();
+
+      expect(second).toBe(first);
+      expect(firstHandle.current).toBeUndefined();
+      expect(secondHandle.current).toBe(second);
+    });
+
+    it("ends a child's life with its parent's", () => {
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Spark, { prewarm: 1 });
+      const spark = pool.acquire(1);
+      const hitbox = spark.spawnChild("hitbox");
+      const handle = hitbox.handle();
+
+      expect(handle.current).toBe(hitbox);
+
+      pool.release(spark);
+      expect(handle.current).toBeUndefined();
+
+      pool.acquire(2);
+      expect(handle.current).toBeUndefined();
+    });
+
+    it("kills a handle taken during member construction", () => {
+      const { scene } = createMockScene();
+
+      const takenInSetup: Array<EntityHandle<Entity>> = [];
+      class Eager extends Entity {
+        override setup(): void {
+          takenInSetup.push(this.handle());
+        }
+        onAcquire(): void {}
+      }
+
+      const pool = new EntityPool(scene, Eager, { prewarm: 1 });
+      const member = pool.acquire()!;
+
+      // `setup()` ran before the pool owned the member, so that handle
+      // belongs to no life and must not resolve into the first lease.
+      expect(takenInSetup).toHaveLength(1);
+      expect(takenInSetup[0]!.current).toBeUndefined();
+      expect(member.handle().current).toBe(member);
+    });
+
+    it("releaseAll leaves leases created by release hooks alone", () => {
+      const { scene } = createMockScene();
+
+      let swapped = false;
+      let reacquired: Entity | undefined;
+      class Swapper extends Entity {
+        onAcquire(): void {}
+        override onRelease(): void {
+          if (swapped) return;
+          swapped = true;
+          // Retire the other member and take it straight back. The new
+          // lease belongs to this hook, not to the releaseAll in progress —
+          // only the leases that existed at call time may end.
+          const other = acquired.find((e) => e !== this)!;
+          pool.release(other);
+          reacquired = pool.acquire();
+        }
+      }
+
+      const pool = new EntityPool(scene, Swapper, { prewarm: 2 });
+      const acquired: Swapper[] = [pool.acquire()!, pool.acquire()!];
+
+      pool.releaseAll();
+
+      expect(reacquired).toBeDefined();
+      expect(pool.leased).toBe(1);
+      expect(reacquired!.handle().current).toBe(reacquired);
+    });
+
+    it("ends the life before onRelease runs", () => {
+      const { scene } = createMockScene();
+
+      const seenDuringRelease: Array<Entity | undefined> = [];
+      class Fader extends Entity {
+        handleFromLife?: EntityHandle<Fader>;
+        onAcquire(): void {}
+        override onRelease(): void {
+          // Even the releasing code's own handle is already dead in here.
+          seenDuringRelease.push(this.handleFromLife?.current);
+        }
+      }
+
+      const pool = new EntityPool(scene, Fader, { prewarm: 1 });
+      const fader = pool.acquire()!;
+      fader.handleFromLife = fader.handle();
+
+      pool.release(fader);
+
+      expect(seenDuringRelease).toEqual([undefined]);
+    });
+
+    it("hands out a dead handle when the member is not leased", () => {
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Spark, { prewarm: 1 });
+      const spark = pool.acquire(1);
+      pool.release(spark);
+
+      // A stale direct reference is all the caller has here, so the handle
+      // must not come alive at the next acquisition.
+      const handle = spark.handle();
+      expect(handle.current).toBeUndefined();
+      expect(warn).toHaveBeenCalled();
+
+      pool.acquire(2);
+      expect(handle.current).toBeUndefined();
+    });
+
+    it("ends the reclaimed member's life on forceAcquire", () => {
       const { scene } = createMockScene();
       const pool = new EntityPool(scene, Spark, { maxSize: 1 });
       const spark = pool.acquire(1)!;
+      const handle = spark.handle();
 
-      scene.deferPoolReleases(() => {
-        pool.release(spark);
-        // The only member is held, so the reclaim falls through to the batch
-        // rather than failing a call that promises a member.
-        expect(pool.forceAcquire(2)).toBe(spark);
-        expect(spark.isActive).toBe(true);
-        expect(pool.leased).toBe(1);
-      });
+      expect(pool.forceAcquire(2)).toBe(spark);
+      expect(handle.current).toBeUndefined();
+      expect(spark.handle().current).toBe(spark);
+    });
 
-      // Taken out of the batch, so the hold ending does not free it twice.
-      expect(pool.leased).toBe(1);
-      expect(pool.free).toBe(0);
-      expect(pool.size).toBe(1);
+    it("ends every member's life when the pool is disposed", () => {
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Spark, { prewarm: 1 });
+      const spark = pool.acquire(1);
+      const handle = spark.handle();
+
+      pool.dispose();
+
+      expect(spark.isDestroyed).toBe(true);
+      expect(handle.current).toBeUndefined();
     });
   });
 
