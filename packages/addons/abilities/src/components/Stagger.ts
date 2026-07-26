@@ -19,6 +19,7 @@ export class Stagger extends Component {
   private total = 0;
   private vx = 0;
   private vy = 0;
+  private suspended = false;
 
   get active(): boolean {
     return this.remaining > 0;
@@ -43,18 +44,50 @@ export class Stagger extends Component {
     this.vy = unit.y * options.knockback;
     this.remaining = options.stun;
     this.total = options.stun;
-    this.body.setVelocity(new Vec2(this.vx, this.vy));
+    this.applyVelocity();
   }
 
   /** End the stun early, zeroing the body's velocity. */
   end(): void {
     this.remaining = 0;
+    this.suspended = false;
     this.body.setVelocity(Vec2.ZERO);
   }
 
+  /** Pause the current knockback output without consuming its remaining time. */
+  suspend(): void {
+    if (this.suspended) return;
+    this.suspended = true;
+    this.body.setVelocity(Vec2.ZERO);
+  }
+
+  /** Resume knockback output after {@link suspend}. */
+  resume(): void {
+    if (!this.suspended) return;
+    this.suspended = false;
+    this.applyVelocity();
+  }
+
+  onDisable(): void {
+    if (this.active) this.body.setVelocity(Vec2.ZERO);
+  }
+
+  onEnable(): void {
+    this.applyVelocity();
+  }
+
   update(dt: number): void {
-    if (this.remaining <= 0) return;
+    if (!this.effectiveEnabled || this.remaining <= 0 || this.suspended) return;
     this.remaining = Math.max(0, this.remaining - dt);
+    if (this.remaining === 0) {
+      this.body.setVelocity(Vec2.ZERO);
+      return;
+    }
+    this.applyVelocity();
+  }
+
+  private applyVelocity(): void {
+    if (!this.effectiveEnabled || this.suspended || this.remaining <= 0) return;
     const t = this.remaining / this.total;
     this.body.setVelocity(new Vec2(this.vx * t, this.vy * t));
   }

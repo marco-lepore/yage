@@ -189,6 +189,7 @@ export class HitReceiver<TData = StandardHitData> extends Component {
 
   /** Run the resolution fold for one hit: team → i-frames → guards → apply. */
   receive(hit: Hit<TData>): HitResult {
+    if (!this.effectiveEnabled) return "ignored";
     this._engagedGuards = [];
     const chain: readonly HitStage<TData, HitReceiver<TData>>[] = [
       this.teamStage,

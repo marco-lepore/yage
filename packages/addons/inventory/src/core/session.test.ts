@@ -96,9 +96,17 @@ class MockDetail implements DetailChannel<Id> {
 }
 
 class MockChrome implements InventoryChromeChannel {
-  infos: { title: string | undefined; used: number; capacity: number | undefined }[] = [];
+  infos: {
+    title: string | undefined;
+    used: number;
+    capacity: number | undefined;
+  }[] = [];
   visible: boolean | undefined;
-  present(info: { title: string | undefined; used: number; capacity: number | undefined }): void {
+  present(info: {
+    title: string | undefined;
+    used: number;
+    capacity: number | undefined;
+  }): void {
     this.infos.push(info);
   }
   setVisible(visible: boolean): void {
@@ -106,11 +114,13 @@ class MockChrome implements InventoryChromeChannel {
   }
 }
 
-function setup(opts: {
-  capacity?: number;
-  actions?: ConstructorParameters<typeof Inventory<Id>>[0]["actions"];
-  session?: ConstructorParameters<typeof InventorySession<Id>>[2];
-} = {}) {
+function setup(
+  opts: {
+    capacity?: number;
+    actions?: ConstructorParameters<typeof Inventory<Id>>[0]["actions"];
+    session?: ConstructorParameters<typeof InventorySession<Id>>[2];
+  } = {},
+) {
   const inventory = new Inventory<Id>({
     catalog,
     capacity: opts.capacity ?? 6,
@@ -144,7 +154,11 @@ describe("lifecycle", () => {
     inventory.add("potion", 3);
     const onOpened = vi.fn();
     const onClosed = vi.fn();
-    const s2 = new InventorySession<Id>(inventory, { slots }, { onOpened, onClosed });
+    const s2 = new InventorySession<Id>(
+      inventory,
+      { slots },
+      { onOpened, onClosed },
+    );
 
     s2.open();
     expect(s2.isOpen()).toBe(true);
@@ -169,12 +183,65 @@ describe("lifecycle", () => {
   });
 
   it("chrome receives title and slot usage", () => {
-    const { session, inventory, chrome } = setup({ session: { title: "Items" } });
+    const { session, inventory, chrome } = setup({
+      session: { title: "Items" },
+    });
     inventory.add("potion", 2);
     session.open();
-    expect(chrome.infos.at(-1)).toEqual({ title: "Items", used: 1, capacity: 6 });
+    expect(chrome.infos.at(-1)).toEqual({
+      title: "Items",
+      used: 1,
+      capacity: 6,
+    });
     session.setTitle("Backpack");
     expect(chrome.infos.at(-1)?.title).toBe("Backpack");
+  });
+
+  it("can hide every channel without closing the session", () => {
+    const { session, slots, menu, detail, chrome, inventory } = setup({
+      actions: [{ id: "drop", label: "Drop" }],
+    });
+    inventory.add("potion");
+    session.open();
+    session.confirm();
+
+    session.setHidden(true);
+    expect(session.isOpen()).toBe(true);
+    expect(session.isMenuOpen()).toBe(true);
+    expect(slots.visible).toBe(false);
+    expect(menu.visible).toBe(false);
+    expect(detail.visible).toBe(false);
+    expect(chrome.visible).toBe(false);
+
+    session.setHidden(false);
+    expect(slots.visible).toBe(true);
+    expect(menu.visible).toBe(true);
+    expect(detail.visible).toBe(true);
+    expect(chrome.visible).toBe(true);
+  });
+
+  it("pauses input, channel updates, and model presentation without losing state", () => {
+    const { session, slots, menu, detail, inventory } = setup();
+    session.open();
+    const presented = slots.presented.length;
+
+    session.setPaused(true);
+    inventory.add("potion");
+    session.move("down");
+    session.update(0.016);
+
+    expect(session.isOpen()).toBe(true);
+    expect(session.selection()).toBe(0);
+    expect(slots.presented).toHaveLength(presented);
+    expect(menu.ticks).toBe(0);
+    expect(detail.ticks).toBe(0);
+
+    session.setPaused(false);
+    expect(slots.presented.length).toBeGreaterThan(presented);
+    expect(slots.lastPresented[0]?.stack?.itemId).toBe("potion");
+    session.update(0.016);
+    expect(menu.ticks).toBe(1);
+    expect(detail.ticks).toBe(1);
   });
 });
 
@@ -197,7 +264,10 @@ describe("selection", () => {
 
   it("clamps to the slot range and dedupes no-moves", () => {
     const changes = vi.fn();
-    const { session } = setup({ capacity: 2, session: { onSelectionChanged: changes } });
+    const { session } = setup({
+      capacity: 2,
+      session: { onSelectionChanged: changes },
+    });
     session.open();
     session.move("up"); // -1 -> clamped to 0, no change event
     expect(changes).not.toHaveBeenCalled();
@@ -207,7 +277,9 @@ describe("selection", () => {
   });
 
   it("select() ignores hovers while the menu is open", () => {
-    const { session, inventory } = setup({ actions: [{ id: "drop", label: "Drop" }] });
+    const { session, inventory } = setup({
+      actions: [{ id: "drop", label: "Drop" }],
+    });
     inventory.add("potion");
     session.open();
     session.confirm(); // opens menu on slot 0
@@ -293,7 +365,8 @@ describe("action menu", () => {
       {
         id: "pair",
         label: "Pair",
-        available: (ctx: { stack: { quantity: number } }) => ctx.stack.quantity >= 2,
+        available: (ctx: { stack: { quantity: number } }) =>
+          ctx.stack.quantity >= 2,
       },
       { id: "drop", label: "Drop" },
     ];
@@ -301,7 +374,10 @@ describe("action menu", () => {
     inventory.add("potion", 2);
     session.open();
     session.confirm();
-    expect(menu.presented.at(-1)?.actions.map((a) => a.id)).toEqual(["pair", "drop"]);
+    expect(menu.presented.at(-1)?.actions.map((a) => a.id)).toEqual([
+      "pair",
+      "drop",
+    ]);
     inventory.removeAt(0, 1); // quantity drops to 1 -> "pair" gone
     expect(session.isMenuOpen()).toBe(true);
     expect(menu.presented.at(-1)?.actions.map((a) => a.id)).toEqual(["drop"]);
@@ -325,7 +401,9 @@ describe("action menu", () => {
     inventory.on("action", dropped);
     session.confirmSlot(0);
     session.confirmAction(0);
-    expect(dropped).toHaveBeenCalledWith(expect.objectContaining({ actionId: "use", slot: 0 }));
+    expect(dropped).toHaveBeenCalledWith(
+      expect.objectContaining({ actionId: "use", slot: 0 }),
+    );
   });
 });
 
@@ -387,7 +465,9 @@ describe("model sync", () => {
 
   it("onConfirm fires for picker flows, with the empty-slot case null", () => {
     const confirmed: { slot: number; itemId: Id | null }[] = [];
-    const { session, inventory } = setup({ session: { onConfirm: (e) => confirmed.push(e) } });
+    const { session, inventory } = setup({
+      session: { onConfirm: (e) => confirmed.push(e) },
+    });
     inventory.add("potion");
     session.open();
     session.confirm();
@@ -400,7 +480,9 @@ describe("model sync", () => {
   });
 
   it("setSource swaps the model, retitles, resets the cursor, rewires events", () => {
-    const { session, inventory, slots, chrome } = setup({ session: { title: "Items" } });
+    const { session, inventory, slots, chrome } = setup({
+      session: { title: "Items" },
+    });
     const pouch = new Inventory<Id>({ catalog, capacity: 3 });
     pouch.add("gem", 9);
     inventory.add("potion");

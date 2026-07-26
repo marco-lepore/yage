@@ -17,12 +17,20 @@ export interface DialogueActorOptions {
   /** Offset from the entity transform to the bubble anchor (head), in px. */
   readonly anchor?: { readonly x: number; readonly y: number };
   /** Map a script expression id onto this entity's character system. */
-  readonly onExpression?: (entity: Entity, expression: string | undefined) => void;
+  readonly onExpression?: (
+    entity: Entity,
+    expression: string | undefined,
+  ) => void;
   /** Toggle a talk animation / mouth flap. */
   readonly onSpeaking?: (entity: Entity, speaking: boolean) => void;
 }
 
 export class DialogueActor extends Component {
+  private expression: string | undefined;
+  private expressionRequested = false;
+  private speaking = false;
+  private speakingRequested = false;
+
   constructor(private readonly opts: DialogueActorOptions) {
     super();
   }
@@ -31,12 +39,24 @@ export class DialogueActor extends Component {
     return this.opts.speaker;
   }
 
-  onAdd(): void {
+  onEnable(): void {
     actorRegistryFor(this.scene).register(this.opts.speaker, this);
+    if (this.expressionRequested) {
+      this.opts.onExpression?.(this.entity, this.expression);
+    }
+    if (this.speakingRequested) {
+      this.opts.onSpeaking?.(this.entity, this.speaking);
+    }
   }
 
-  onDestroy(): void {
-    actorRegistryFor(this.scene).unregister(this.opts.speaker, this);
+  onDisable(): void {
+    try {
+      if (this.speakingRequested && this.speaking) {
+        this.opts.onSpeaking?.(this.entity, false);
+      }
+    } finally {
+      actorRegistryFor(this.scene).unregister(this.opts.speaker, this);
+    }
   }
 
   /** Bubble anchor in world space: the entity position plus the configured offset. */
@@ -48,10 +68,18 @@ export class DialogueActor extends Component {
   }
 
   setExpression(expression: string | undefined): void {
-    this.opts.onExpression?.(this.entity, expression);
+    this.expression = expression;
+    this.expressionRequested = true;
+    if (this.effectiveEnabled) {
+      this.opts.onExpression?.(this.entity, expression);
+    }
   }
 
   setSpeaking(speaking: boolean): void {
-    this.opts.onSpeaking?.(this.entity, speaking);
+    this.speaking = speaking;
+    this.speakingRequested = true;
+    if (this.effectiveEnabled) {
+      this.opts.onSpeaking?.(this.entity, speaking);
+    }
   }
 }

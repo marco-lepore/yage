@@ -37,18 +37,33 @@ export const invulnerable = defineStep<object>("invulnerable", {
     byParams.set(params, key);
     receiver.openInvulnerability(key);
   },
+  suspend: (params, ctx) => {
+    const receiver = requireReceiver(ctx);
+    const key = keys.get(ctx)?.get(params);
+    if (key) receiver.closeInvulnerability(key);
+  },
+  resume: (params, ctx) => {
+    const receiver = requireReceiver(ctx);
+    const key = keys.get(ctx)?.get(params);
+    if (key) receiver.openInvulnerability(key);
+  },
   exit: (params, ctx) => {
-    const receiver = ctx.entity.tryGet(HitReceiver);
-    if (!receiver) {
-      throw new Error(
-        `Abilities: step "invulnerable" requires a HitReceiver component on the entity.`,
-      );
-    }
+    const receiver = requireReceiver(ctx);
     const byParams = keys.get(ctx);
     const key = byParams?.get(params);
     if (key) {
       receiver.closeInvulnerability(key);
-      byParams!.delete(params);
+      byParams?.delete(params);
     }
   },
 });
+
+function requireReceiver(ctx: StepContext): HitReceiver {
+  const receiver = ctx.entity.tryGet(HitReceiver);
+  if (!receiver) {
+    throw new Error(
+      `Abilities: step "invulnerable" requires a HitReceiver component on the entity.`,
+    );
+  }
+  return receiver;
+}

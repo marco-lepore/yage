@@ -54,7 +54,10 @@ describe("QuestController", () => {
       count: 5,
       done: true,
     });
-    expect(objCompleted).toHaveBeenCalledWith({ questId: "gatherHerbs", objectiveId: "herb" });
+    expect(objCompleted).toHaveBeenCalledWith({
+      questId: "gatherHerbs",
+      objectiveId: "herb",
+    });
     expect(completed).toHaveBeenCalledWith({ questId: "gatherHerbs" });
 
     const other = herbLog();
@@ -91,6 +94,40 @@ describe("QuestController", () => {
 
     log.start("gatherHerbs");
     expect(changed).not.toHaveBeenCalled();
+  });
+
+  it("stops mirroring while disabled and resumes without replaying old events", () => {
+    const { scene } = createMockScene();
+    const log = herbLog();
+    const host = scene.spawn("quest-host");
+    const controller = host.add(new QuestController({ log }));
+    const changed = vi.fn();
+    host.on(QuestChangedEvent, changed);
+
+    controller.enabled = false;
+    log.start("gatherHerbs");
+    expect(changed).not.toHaveBeenCalled();
+
+    controller.enabled = true;
+    log.advance("gatherHerbs", "herb");
+    expect(changed).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the same mirror lifecycle while the host entity is inactive", () => {
+    const { scene } = createMockScene();
+    const log = herbLog();
+    const host = scene.spawn("quest-host");
+    host.add(new QuestController({ log }));
+    const changed = vi.fn();
+    host.on(QuestChangedEvent, changed);
+
+    host.setActive(false);
+    log.start("gatherHerbs");
+    expect(changed).not.toHaveBeenCalled();
+
+    host.setActive(true);
+    log.advance("gatherHerbs", "herb");
+    expect(changed).toHaveBeenCalledTimes(1);
   });
 
   it(".log returns the hosted model", () => {

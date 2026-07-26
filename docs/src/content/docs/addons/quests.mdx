@@ -206,6 +206,10 @@ scene.on(QuestCompletedEvent, ({ questId }) => achievements.check(questId));
 The controller is entirely optional — `log.on(...)` reaches the same
 consequences with no component at all.
 
+Disabling `QuestController`, or deactivating its entity, stops this event
+mirror. The standalone `QuestLog` remains live. Model events that occur while
+the controller is dormant are not replayed when it enables.
+
 ## Save
 
 `snapshot()` / `restore()` round-trip the whole log as plain JSON. Wire it to

@@ -177,6 +177,30 @@ describe("TouchDamage", () => {
     expect(target.received).toHaveLength(1);
   });
 
+  it("releases collision callbacks while disabled and restores them on enable", () => {
+    const { scene, collider, touch } = setup(true);
+    const target = spawnTarget(scene);
+
+    touch.enabled = false;
+    expect(captured.triggerHandlers.has(collider)).toBe(false);
+
+    touch.enabled = true;
+    captured.triggerHandlers.get(collider)?.({ other: target, entered: true });
+    expect(target.received).toHaveLength(1);
+  });
+
+  it("uses the same callback lifecycle while the host entity is inactive", () => {
+    const { entity, scene, collider } = setup(true);
+    const target = spawnTarget(scene);
+
+    entity.setActive(false);
+    expect(captured.triggerHandlers.has(collider)).toBe(false);
+
+    entity.setActive(true);
+    captured.triggerHandlers.get(collider)?.({ other: target, entered: true });
+    expect(target.received).toHaveLength(1);
+  });
+
   it("inherits team from a sibling HitReceiver when the options omit team", () => {
     const { scene, collider } = setup(true, {}, "player");
     const target = spawnTarget(scene);

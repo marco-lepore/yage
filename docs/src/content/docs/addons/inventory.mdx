@@ -473,6 +473,18 @@ menu.onKey("down", () => ctrl.move("down"));
 menu.onKey("confirm", () => ctrl.confirm());
 ```
 
+Disabling `InventoryController`, or deactivating its entity, hides the panel,
+pauses the session, releases input listeners, and stops mirroring model events
+onto the entity. The open state, cursor, action menu, and selected source remain
+intact. Controller driving methods are inert while dormant. Enabling the
+component again refreshes the current model and restores the panel and input.
+An `openOnAdd` panel waits until its first effective enable.
+
+Custom hosts can apply the same split directly to `InventorySession`:
+`setHidden` changes channel visibility without closing the panel, while
+`setPaused` stops input methods, channel updates, and source-driven
+presentation. Both preserve browsing state.
+
 <Aside type="tip">
 Going further, the presenter contracts themselves are the escape hatch: the
 session drives plain interfaces (`SlotsPresenter` is the only required one),

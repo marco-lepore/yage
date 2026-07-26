@@ -82,6 +82,36 @@ describe("guard step", () => {
     expect(receiver.receive(makeHit(attacker))).toBe("hit");
   });
 
+  it("closes an open guard while abilities are dormant and restores it on enable", () => {
+    const { entity, pc, receiver } = setup();
+    const { entity: attacker } = createMockEntity("attacker");
+    const abilities = entity.add(
+      new Abilities([
+        {
+          id: "block",
+          timeline: [
+            guard({
+              from: 0,
+              to: 1,
+              outcome: "blocked",
+              policy: () => "negate",
+            }),
+          ],
+        },
+      ]),
+    );
+
+    abilities.send("block");
+    pc._tick(0.1);
+    expect(receiver.receive(makeHit(attacker))).toBe("blocked");
+
+    abilities.enabled = false;
+    expect(receiver.receive(makeHit(attacker))).toBe("hit");
+
+    abilities.enabled = true;
+    expect(receiver.receive(makeHit(attacker))).toBe("blocked");
+  });
+
   it("throws on an entity with no HitReceiver", () => {
     const { entity } = createMockEntity("no-receiver");
     const pc = entity.add(new ProcessComponent());

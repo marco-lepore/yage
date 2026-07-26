@@ -215,12 +215,19 @@ forced flag, terminal state, `isHolding`, and `isStepActive(kind)`. Use
 Listen to `AbilityStarted`, `AbilityPhaseChanged`, and `AbilityEnded` on the entity.
 One run emits one start/end pair; phase changes do not end the activation.
 
+Disabling `Abilities`, or deactivating its entity, pauses active phases, linger,
+and cooldowns. New `send`, `canSend`, `force`, and `release` calls are refused.
+Open hitbox, guard, invulnerability, slow-motion, and stagger windows release
+their live effects while dormant. Enabling the component again resumes the
+same activation and clocks.
+
 ## Map input actions to intents
 
 `AbilityDriverComponent` handles input edges, tap/hold classification, retry
 buffers, hold release, payload capture, and resuming an interrupted hold. Add
 it after `Abilities`; it resolves `InputManagerKey`, updates automatically,
-and cleans up with the entity:
+and cleans up with the entity. Disabling the component or its entity releases
+the input listeners and any owned hold. Enabling it binds a fresh driver:
 
 ```ts
 import { AbilityDriverComponent } from "@yagejs-addons/abilities/input";
@@ -362,6 +369,10 @@ const lunge = defineStep<{ speed: number }>("velocity", {
   },
 });
 ```
+
+If a custom window owns a live resource, add `suspend` and `resume` hooks.
+`suspend` temporarily releases the resource when `Abilities` becomes dormant;
+`resume` restores it without reopening the window or resetting its clock.
 
 Give every velocity-owning window the same kind, then damp or overwrite
 velocity only when `!abilities.active()?.isStepActive("velocity")` and

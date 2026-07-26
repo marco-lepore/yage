@@ -27,7 +27,12 @@ export function guard<TData = StandardHitData>(
     from,
     to,
     params,
-    hooks: { enter: enterGuard, exit: exitGuard },
+    hooks: {
+      enter: enterGuard,
+      suspend: exitGuard,
+      resume: enterGuard,
+      exit: exitGuard,
+    },
   };
 }
 

@@ -74,6 +74,25 @@ describe("slowmo step", () => {
     expect(time.effectiveScale).toBe(1);
   });
 
+  it("releases an open request while abilities are dormant and restores it on enable", () => {
+    const { entity, pc, time } = setup();
+    const abilities = entity.add(
+      new Abilities([
+        { id: "bt", timeline: [slowmo({ from: 0, to: 1, scale: 0.3 })] },
+      ]),
+    );
+
+    abilities.send("bt");
+    pc._tick(0.1);
+    expect(time.effectiveScale).toBe(0.3);
+
+    abilities.enabled = false;
+    expect(time.effectiveScale).toBe(1);
+
+    abilities.enabled = true;
+    expect(time.effectiveScale).toBe(0.3);
+  });
+
   it("keeps a timed request alive after phase completion and cancellation", () => {
     const completed = setup();
     const completedAbilities = completed.entity.add(

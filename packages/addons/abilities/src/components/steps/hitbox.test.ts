@@ -128,6 +128,37 @@ describe("hitbox step", () => {
     expect(findHitbox(scene).get(Transform).rotation).toBeCloseTo(Math.PI / 2);
   });
 
+  it("deactivates an open hitbox while abilities are dormant and restores it on enable", () => {
+    const { entity, scene, pc } = setup();
+    entity.add(new Facing());
+    const abilities = entity.add(
+      new Abilities([
+        {
+          id: "swing",
+          timeline: [
+            hitbox({
+              from: 0,
+              to: 1,
+              shape: { type: "circle", radius: 5 },
+              hit: {},
+            }),
+          ],
+        },
+      ]),
+    );
+
+    abilities.send("swing");
+    pc._tick(0.1);
+    const spawned = findHitbox(scene);
+    expect(spawned.isActive).toBe(true);
+
+    abilities.enabled = false;
+    expect(spawned.isActive).toBe(false);
+
+    abilities.enabled = true;
+    expect(spawned.isActive).toBe(true);
+  });
+
   it("aims along an explicit aim vector", () => {
     const { entity, scene, pc } = setup();
     entity.add(

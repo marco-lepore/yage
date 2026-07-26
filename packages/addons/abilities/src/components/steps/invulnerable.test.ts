@@ -68,6 +68,26 @@ describe("invulnerable step", () => {
     expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("hit");
   });
 
+  it("closes an open window while abilities are dormant and restores it on enable", () => {
+    const { entity, pc, receiver } = setup();
+    const { entity: attacker } = createMockEntity("attacker");
+    const abilities = entity.add(
+      new Abilities([
+        { id: "dodge", timeline: [invulnerable({ from: 0, to: 1 })] },
+      ]),
+    );
+
+    abilities.send("dodge");
+    pc._tick(0.1);
+    expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("ignored");
+
+    abilities.enabled = false;
+    expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("hit");
+
+    abilities.enabled = true;
+    expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("ignored");
+  });
+
   it("overlapping windows in one timeline stay protected until the last closes", () => {
     const { entity, pc, receiver } = setup();
     const { entity: attacker } = createMockEntity("attacker");

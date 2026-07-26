@@ -99,6 +99,32 @@ describe("HitReceiver — receipt sequence", () => {
     expect(seen).toEqual([{ hit, receiver }]);
     expect(seen[0]!.receiver.entity).toBe(entity);
   });
+
+  it("ignores hits while disabled and resumes without replaying them", () => {
+    const steps = vi.fn();
+    const { receiver, received } = setup({ steps: [steps] });
+    const { entity: attacker } = createMockEntity("attacker");
+
+    receiver.enabled = false;
+    expect(receiver.receive(makeHit(attacker))).toBe("ignored");
+    expect(steps).not.toHaveBeenCalled();
+    expect(received).toEqual([]);
+
+    receiver.enabled = true;
+    expect(receiver.receive(makeHit(attacker))).toBe("hit");
+    expect(steps).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the same hit gate while the host entity is inactive", () => {
+    const { entity, receiver } = setup();
+    const { entity: attacker } = createMockEntity("attacker");
+
+    entity.setActive(false);
+    expect(receiver.receive(makeHit(attacker))).toBe("ignored");
+
+    entity.setActive(true);
+    expect(receiver.receive(makeHit(attacker))).toBe("hit");
+  });
 });
 
 describe("HitReceiver — team filter", () => {

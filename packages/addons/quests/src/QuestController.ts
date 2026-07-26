@@ -42,22 +42,29 @@ export class QuestController<
     return this.opts.log;
   }
 
-  onAdd(): void {
+  onEnable(): void {
+    if (this.unsubs.length > 0) return;
     const log = this.opts.log;
     this.unsubs.push(
       log.on("questStarted", (e) => this.entity.emit(QuestStartedEvent, e)),
       log.on("objectiveProgressChanged", (e) =>
         this.entity.emit(QuestObjectiveProgressChangedEvent, e),
       ),
-      log.on("objectiveCompleted", (e) => this.entity.emit(QuestObjectiveCompletedEvent, e)),
+      log.on("objectiveCompleted", (e) =>
+        this.entity.emit(QuestObjectiveCompletedEvent, e),
+      ),
       log.on("questCompleted", (e) => this.entity.emit(QuestCompletedEvent, e)),
       log.on("questFailed", (e) => this.entity.emit(QuestFailedEvent, e)),
       log.on("changed", (e) => this.entity.emit(QuestChangedEvent, e)),
     );
   }
 
-  onDestroy(): void {
+  onDisable(): void {
     for (const unsub of this.unsubs) unsub();
     this.unsubs.length = 0;
+  }
+
+  onDestroy(): void {
+    this.onDisable();
   }
 }

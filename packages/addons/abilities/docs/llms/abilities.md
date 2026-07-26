@@ -171,6 +171,8 @@ interface WindowStep<P extends object = object> {
     enter?(params: P, ctx: StepContext): void;
     exit?(params: P, ctx: StepContext, cancelled: boolean): void;
     tick?(params: P, ctx: StepContext): void;
+    suspend?(params: P, ctx: StepContext): void;
+    resume?(params: P, ctx: StepContext): void;
   };
 }
 
@@ -187,6 +189,9 @@ interface StepContext {
 fire once. Window `enter`/`exit` fire once; `tick` fires at `every` intervals
 strictly before the end. Phase transitions and natural completion close
 windows with `cancelled: false`; cancellation and interruption pass `true`.
+When `Abilities` becomes disabled, `suspend` temporarily releases an open
+window's live resources. `resume` restores them when the component becomes
+effective again. These hooks do not close the window or reset its clock.
 
 Custom step factory:
 
@@ -300,6 +305,13 @@ Stable entity-event tokens:
 Events are deferred until the current runner entry settles. Listeners observe
 settled lane state. One run has one start/end pair; phase changes do not end it.
 
+Disabling `Abilities`, or deactivating its entity, pauses active phases, linger,
+and cooldown clocks. It also suspends open window resources. `send`, `canSend`,
+`force`, and `release` refuse new work while dormant. Enabling the component
+again resumes the same activation and clocks. Built-in hitbox, guard,
+invulnerability, slow-motion, and stagger windows already implement this
+resource lifecycle.
+
 ### Definition replacement
 
 `addDefinitions(next)` validates the complete existing-plus-next set before
@@ -397,7 +409,8 @@ class Fighter extends Entity {
 
 `AbilityDriverComponent` resolves `InputManagerKey`, calls the plain driver's
 `update`, and disposes listeners, recorded edges, buffers, and holds when the
-component is removed. `replace(options)` swaps the owned driver without
+component becomes dormant or is removed. It binds again when the component or
+entity becomes active. `replace(options)` swaps the owned driver without
 replacing the component. Use `new AbilityDriver(input, abilities, options)`
 only when another object owns those lifecycle calls; call its `update()` in
 normal component update and `dispose()` on removal. Gesture timing,
@@ -494,6 +507,8 @@ class Stagger extends Component {
     stun: number;
   }): void;
   end(): void;
+  suspend(): void;
+  resume(): void;
 }
 ```
 
@@ -501,6 +516,8 @@ Controllers must not write velocity while `Stagger.active`. Give every
 game-specific movement window one shared kind, such as `"velocity"`, and let
 the controller write idle velocity only when
 `!abilities.active()?.isStepActive("velocity")` and Stagger is inactive.
+Disabling `Stagger`, or deactivating its entity, writes zero velocity and keeps
+the remaining stun. Enabling it restores the current knockback ramp.
 
 ## Deliveries
 

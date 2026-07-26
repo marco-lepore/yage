@@ -7,6 +7,7 @@ import { Inventory } from "./core/Inventory.js";
 import type { InventorySource } from "./core/InventorySource.js";
 import { InventoryController } from "./InventoryController.js";
 import type { InputBinding } from "./input/index.js";
+import type { InventorySessionDriver } from "./core/session.js";
 import type {
   ActionMenuPresenter,
   DetailPresenter,
@@ -39,6 +40,7 @@ class StubSlots implements SlotsPresenter<Id> {
   /** Was the diagnostics sink wired before mount() ran? (mount-time warnings
    *  need it in place — see the setDiagnostics-before-mount ordering). */
   diagnosticsBeforeMount = false;
+  visible: boolean | undefined;
   private warn?: (message: string) => void;
   mount(): void {
     this.mounted++;
@@ -57,7 +59,9 @@ class StubSlots implements SlotsPresenter<Id> {
   navigate(from: number, dir: NavDirection): number {
     return dir === "down" || dir === "right" ? from + 1 : from - 1;
   }
-  setVisible(): void {}
+  setVisible(visible: boolean): void {
+    this.visible = visible;
+  }
   clear(): void {}
 }
 
@@ -87,10 +91,20 @@ class StubMenu implements ActionMenuPresenter {
 }
 
 class RecordingBinding implements InputBinding {
+  binds = 0;
+  disposes = 0;
   polls = 0;
-  bind(): void {}
+  session: InventorySessionDriver | undefined;
+  bind(_input: InputManager, session: InventorySessionDriver): void {
+    this.binds++;
+    this.session = session;
+  }
   poll(): void {
     this.polls++;
+  }
+  dispose(): void {
+    this.disposes++;
+    this.session = undefined;
   }
 }
 
@@ -173,6 +187,76 @@ describe("lifecycle guards", () => {
     // potion in slot 0).
     expect(inventory.slots[0]?.itemId).toBe("sword");
   });
+
+  it("sleeps the panel, input, and event mirror while the component is disabled", () => {
+    const { scene } = createMockScene();
+    const binding = new RecordingBinding();
+    const inventory = makeInventory();
+    const { controller, slots } = makeController(inventory, { input: binding });
+    const host = scene.spawn("inv");
+    host.add(controller);
+    const changed = vi.fn();
+    host.on(InventoryChangedEvent, changed);
+
+    controller.open();
+    expect(slots.visible).toBe(true);
+    expect(binding.binds).toBe(1);
+
+    controller.enabled = false;
+    expect(controller.isOpen()).toBe(true);
+    expect(slots.visible).toBe(false);
+    expect(binding.disposes).toBe(1);
+    inventory.add("potion");
+    expect(changed).not.toHaveBeenCalled();
+    controller.open();
+    expect(controller.isOpen()).toBe(true);
+
+    controller.enabled = true;
+    expect(slots.visible).toBe(true);
+    expect(binding.binds).toBe(2);
+    inventory.add("potion");
+    expect(changed).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the same dormant behavior while the host entity is inactive", () => {
+    const { scene } = createMockScene();
+    const binding = new RecordingBinding();
+    const { controller, slots } = makeController(makeInventory(), {
+      input: binding,
+    });
+    const host = scene.spawn("inv");
+    host.add(controller);
+    controller.open();
+
+    host.setActive(false);
+    expect(controller.isOpen()).toBe(true);
+    expect(slots.visible).toBe(false);
+    expect(binding.disposes).toBe(1);
+
+    host.setActive(true);
+    expect(slots.visible).toBe(true);
+    expect(binding.binds).toBe(2);
+  });
+
+  it("defers openOnAdd and input binding until an initially disabled component enables", () => {
+    const { scene } = createMockScene();
+    const binding = new RecordingBinding();
+    const { controller, slots } = makeController(makeInventory(), {
+      input: binding,
+      openOnAdd: true,
+    });
+    controller.enabled = false;
+    scene.spawn("inv").add(controller);
+
+    expect(controller.isOpen()).toBe(false);
+    expect(slots.visible).toBe(false);
+    expect(binding.binds).toBe(0);
+
+    controller.enabled = true;
+    expect(controller.isOpen()).toBe(true);
+    expect(slots.visible).toBe(true);
+    expect(binding.binds).toBe(1);
+  });
 });
 
 describe("engine events", () => {
@@ -205,9 +289,14 @@ describe("engine events", () => {
     const host = scene.spawn("inv");
     host.add(controller);
 
-    const added: { itemId: string; quantity: number; slots: readonly number[] }[] = [];
+    const added: {
+      itemId: string;
+      quantity: number;
+      slots: readonly number[];
+    }[] = [];
     const changed = vi.fn();
-    const rejections: { itemId: string; quantity: number; reason: string }[] = [];
+    const rejections: { itemId: string; quantity: number; reason: string }[] =
+      [];
     host.on(InventoryItemAddedEvent, (e) => added.push(e));
     host.on(InventoryChangedEvent, changed);
     host.on(InventoryRejectedEvent, (e) => rejections.push(e));
@@ -217,7 +306,9 @@ describe("engine events", () => {
     expect(changed).toHaveBeenCalledTimes(1);
 
     inventory.add("sword", 9); // 4 slots, 1 used, unstackable sword -> 3 land, 6 rejected
-    expect(rejections).toEqual([{ itemId: "sword", quantity: 6, reason: "capacity" }]);
+    expect(rejections).toEqual([
+      { itemId: "sword", quantity: 6, reason: "capacity" },
+    ]);
   });
 
   it("emits the action event when the menu flow invokes an action", () => {
@@ -245,7 +336,13 @@ describe("engine events", () => {
     expect(controller.isMenuOpen()).toBe(true);
     controller.confirm(); // invokes "drop"
     expect(actions).toEqual([
-      { actionId: "drop", slot: 0, itemId: "potion", quantity: 2, consumes: false },
+      {
+        actionId: "drop",
+        slot: 0,
+        itemId: "potion",
+        quantity: 2,
+        consumes: false,
+      },
     ]);
   });
 
@@ -311,6 +408,25 @@ describe("input focus", () => {
     expect(controller.isMenuOpen()).toBe(false);
     expect(controller.isOpen()).toBe(true); // only the menu closes, not the panel
   });
+
+  it("closes an open action menu after focus is removed during dormancy", () => {
+    const { scene } = createMockScene();
+    const inventory = makeInventory();
+    const { controller } = makeController(inventory);
+    scene.spawn("inv").add(controller);
+    inventory.add("potion");
+    controller.open();
+    controller.confirm();
+    expect(controller.isMenuOpen()).toBe(true);
+
+    controller.enabled = false;
+    controller.setInputEnabled(false);
+    expect(controller.isMenuOpen()).toBe(true);
+
+    controller.enabled = true;
+    expect(controller.isMenuOpen()).toBe(false);
+    expect(controller.isOpen()).toBe(true);
+  });
 });
 
 describe("zero-config input", () => {
@@ -319,13 +435,15 @@ describe("zero-config input", () => {
   function fakeInput() {
     const pressed = new Set<string>();
     let pointer = { x: -1, y: -1 };
-    const downHandlers: ((info: { button: number; id: number }) => void)[] = [];
+    const downHandlers = new Set<
+      (info: { button: number; id: number }) => void
+    >();
     const fake = {
       isJustPressed: (a: string) => pressed.has(a),
       isPressed: () => false,
       onPointerDown: (fn: (info: { button: number; id: number }) => void) => {
-        downHandlers.push(fn);
-        return () => {};
+        downHandlers.add(fn);
+        return () => downHandlers.delete(fn);
       },
       isPointerConsumed: () => false,
       getPointerScreenPosition: () => pointer,
@@ -373,6 +491,32 @@ describe("zero-config input", () => {
     expect(controller.isMenuOpen()).toBe(true);
   });
 
+  it("drops pointer presses received before a dormant cycle", () => {
+    const { scene } = createMockScene();
+    const input = fakeInput();
+    scene.context.register(InputManagerKey, input.manager);
+
+    const inventory = makeInventory();
+    const slots = new StubSlots();
+    slots.slotAtPoint = () => 0;
+    const controller = new InventoryController({
+      slots,
+      actionMenu: new StubMenu(),
+      inventory,
+    });
+    const host = scene.spawn("inv");
+    host.add(controller);
+    inventory.add("potion");
+    controller.open();
+
+    input.click(42, 42);
+    controller.enabled = false;
+    controller.enabled = true;
+    controller.update(0.016);
+
+    expect(controller.isMenuOpen()).toBe(false);
+  });
+
   it("infers the item-id type from `inventory` with no explicit type argument", () => {
     const { scene } = createMockScene();
     const inventory = makeInventory();
@@ -397,7 +541,10 @@ describe("filtered source (a filteredView passed as `inventory`)", () => {
     const inventory = makeInventory(); // actions: [{ id: "drop", label: "Drop" }]
     inventory.add("sword"); // slot 0 — excluded from the view
     inventory.add("potion", 2); // slot 1 — the only match
-    const usableOnly = filteredView(inventory, (_stack, def) => def.name === "Potion");
+    const usableOnly = filteredView(
+      inventory,
+      (_stack, def) => def.name === "Potion",
+    );
 
     const slots = new StubSlots();
     const controller = new InventoryController({
@@ -423,7 +570,9 @@ describe("filtered source (a filteredView passed as `inventory`)", () => {
     controller.confirm(); // opens the menu on presented slot 0 -> model slot 1
     controller.confirm(); // invokes "drop"
     // The mirrored engine event carries the REAL model slot, not the presented one.
-    expect(actions).toEqual([expect.objectContaining({ actionId: "drop", slot: 1, itemId: "potion" })]);
+    expect(actions).toEqual([
+      expect.objectContaining({ actionId: "drop", slot: 1, itemId: "potion" }),
+    ]);
   });
 });
 

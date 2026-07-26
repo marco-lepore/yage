@@ -350,6 +350,14 @@ export class Abilities extends Component {
   private readonly emissionQueue: Array<() => void> = [];
   /** Component removal is terminal; lifecycle listeners cannot start replacement work. */
   private disposed = false;
+  /**
+   * Exit hooks may install replacement work while destruction cancels every
+   * lane. `cancelAll` re-reads the lanes and cancels that work in the same
+   * teardown pass.
+   */
+  private tearingDown = false;
+  /** Open-window resources and owned clocks are asleep while the component is dormant. */
+  private suspended = true;
 
   /**
    * Depth of this component's own track event/completion hooks on the call
@@ -484,7 +492,7 @@ export class Abilities extends Component {
   send(intent: string, options: AbilitySendOptions = {}): PlayResult {
     const { data, lane } = options;
     return this.runEntry(() => {
-      if (this.disposed) {
+      if (this.disposed || (!this.effectiveEnabled && !this.tearingDown)) {
         this.mustKnowIntent(intent);
         return { ok: false as const, reason: "busy" as const };
       }
@@ -563,7 +571,7 @@ export class Abilities extends Component {
    */
   canSend(intent: string, options: AbilityCanSendOptions = {}): boolean {
     const { lane } = options;
-    if (this.disposed) {
+    if (this.disposed || (!this.effectiveEnabled && !this.tearingDown)) {
       this.mustKnowIntent(intent);
       return false;
     }
@@ -613,6 +621,7 @@ export class Abilities extends Component {
    */
   release(intent: string): boolean {
     return this.runEntry(() => {
+      if (!this.effectiveEnabled && !this.tearingDown) return false;
       for (const [lane, activation] of this.lanes) {
         if (activation.heldIntent !== intent) continue;
         if (!activation.compiledPhase.hold) continue;
@@ -635,7 +644,9 @@ export class Abilities extends Component {
    */
   force(def: AbilityDef): PlayResult {
     return this.runEntry(() => {
-      if (this.disposed) return { ok: false, reason: "busy" };
+      if (this.disposed || (!this.effectiveEnabled && !this.tearingDown)) {
+        return { ok: false, reason: "busy" };
+      }
       const compiled = this.getCompiled(def);
       return this.activate(def, compiled.start, true, undefined, undefined);
     });
@@ -695,8 +706,39 @@ export class Abilities extends Component {
     return cooldown.slot.ratio;
   }
 
+  override onEnable(): void {
+    if (!this.suspended) return;
+    this.suspended = false;
+    this.resumeOpenWindows();
+    for (const activation of this.lanes.values()) {
+      activation.track.process.resume();
+    }
+    for (const memory of this.lastEnded.values()) {
+      memory.process.resume();
+    }
+    for (const cooldown of this.cooldowns.values()) {
+      cooldown.slot.resume();
+    }
+  }
+
+  override onDisable(): void {
+    if (this.suspended) return;
+    this.suspended = true;
+    for (const activation of this.lanes.values()) {
+      activation.track.process.pause();
+    }
+    for (const memory of this.lastEnded.values()) {
+      memory.process.pause();
+    }
+    for (const cooldown of this.cooldowns.values()) {
+      cooldown.slot.pause();
+    }
+    this.suspendOpenWindows();
+  }
+
   override onDestroy(): void {
     this.runEntry(() => {
+      this.tearingDown = true;
       try {
         this.cancelAll();
         this.clearAllLinger();
@@ -705,6 +747,7 @@ export class Abilities extends Component {
         // Exit hooks run during cancellation and may create replacement work;
         // cancelAll handles it. Event listeners run afterward and must not.
         this.disposed = true;
+        this.tearingDown = false;
       }
     });
   }
@@ -1081,6 +1124,28 @@ export class Abilities extends Component {
     for (const step of activation.compiledPhase.steps) {
       if (isWindowStep(step) && activation.openWindows.delete(step)) {
         step.hooks.exit?.(step.params, activation.ctx, cancelled);
+      }
+    }
+  }
+
+  private suspendOpenWindows(): void {
+    for (const [lane, activation] of [...this.lanes]) {
+      if (this.lanes.get(lane) !== activation) continue;
+      for (const step of activation.compiledPhase.steps) {
+        if (!isWindowStep(step) || !activation.openWindows.has(step)) continue;
+        step.hooks.suspend?.(step.params, activation.ctx);
+        if (this.lanes.get(lane) !== activation) break;
+      }
+    }
+  }
+
+  private resumeOpenWindows(): void {
+    for (const [lane, activation] of [...this.lanes]) {
+      if (this.lanes.get(lane) !== activation) continue;
+      for (const step of activation.compiledPhase.steps) {
+        if (!isWindowStep(step) || !activation.openWindows.has(step)) continue;
+        step.hooks.resume?.(step.params, activation.ctx);
+        if (this.lanes.get(lane) !== activation) break;
       }
     }
   }

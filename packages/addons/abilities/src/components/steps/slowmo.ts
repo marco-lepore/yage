@@ -91,25 +91,27 @@ export function slowmo(
     to,
     params,
     hooks: {
-      enter(window, ctx) {
-        const handle = ctx.time.scaleBy(
-          window.scale,
-          scaleOptions(window, ctx),
-        );
-        let byParams = open.get(ctx);
-        if (!byParams) open.set(ctx, (byParams = new Map()));
-        byParams.set(window, handle);
-      },
-      exit(window, ctx) {
-        const byParams = open.get(ctx);
-        const handle = byParams?.get(window);
-        if (handle) {
-          handle.release();
-          byParams!.delete(window);
-        }
-      },
+      enter: openSlowmo,
+      suspend: closeSlowmo,
+      resume: openSlowmo,
+      exit: closeSlowmo,
     },
   };
+}
+
+function openSlowmo(params: SlowmoParams, ctx: StepContext): void {
+  const handle = ctx.time.scaleBy(params.scale, scaleOptions(params, ctx));
+  let byParams = open.get(ctx);
+  if (!byParams) open.set(ctx, (byParams = new Map()));
+  byParams.set(params, handle);
+}
+
+function closeSlowmo(params: SlowmoParams, ctx: StepContext): void {
+  const byParams = open.get(ctx);
+  const handle = byParams?.get(params);
+  if (!handle) return;
+  handle.release();
+  byParams?.delete(params);
 }
 
 function scaleOptions(

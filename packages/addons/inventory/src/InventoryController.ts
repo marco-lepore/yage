@@ -104,25 +104,34 @@ export class InventoryController<
    *  consumes no device input — the seam for two panels side by side (player
    *  chest transfer screens) or an embedded host that forwards input itself. */
   private inputEnabled = true;
+  private bindingActive = false;
+  private openOnEnable: boolean;
+  private dismissMenuOnEnable = false;
   /** Disposers for the model→engine event mirror (rewired by setSource). */
   private readonly modelUnsubs: (() => void)[] = [];
 
   constructor(private readonly opts: InventoryControllerOptions<TId, TData>) {
     super();
+    this.openOnEnable = opts.openOnAdd ?? false;
     // Zero-config: keyboard/gamepad + mouse/touch, with pointer hit-testing
     // wired to the presenters this controller already holds. `input: null` =
     // no device input at all (embedded mode).
     this.binding =
       opts.input === null
         ? undefined
-        : (opts.input ?? inventoryControls({ slots: opts.slots, actionMenu: opts.actionMenu }));
+        : (opts.input ??
+          inventoryControls({
+            slots: opts.slots,
+            actionMenu: opts.actionMenu,
+          }));
   }
 
   onAdd(): void {
     this.logger = this.context.tryResolve(LoggerKey);
     // One diagnostics seam shared by presenter-level warnings — they land on
     // the engine Logger, never console.warn.
-    const warn = (message: string): void => this.logger?.warn("inventory", message);
+    const warn = (message: string): void =>
+      this.logger?.warn("inventory", message);
 
     // Wire diagnostics BEFORE mounting: a presenter may run a mount-time check
     // (the slot view warns when its window overflows the panel), which needs
@@ -151,27 +160,48 @@ export class InventoryController<
         sortComparator: this.opts.sortComparator,
         onOpened: () => this.entity.emit(InventoryOpenedEvent),
         onClosed: () => this.entity.emit(InventoryClosedEvent),
-        onSelectionChanged: (e) => this.entity.emit(InventorySelectionChangedEvent, e),
+        onSelectionChanged: (e) =>
+          this.entity.emit(InventorySelectionChangedEvent, e),
         onConfirm: this.opts.onConfirm,
         onCancel: this.opts.onCancel,
       },
     );
-    this.mirrorModel(this.opts.inventory);
-    this.binding?.bind(this.inputManager, this.session);
     this.warnIfActionsUnmapped(warn);
-    if (this.opts.openOnAdd) this.session.open();
+    this.session.setPaused(true);
+    this.session.setHidden(true);
+  }
+
+  onEnable(): void {
+    this.session?.setPaused(false);
+    if (this.dismissMenuOnEnable && this.session?.isMenuOpen()) {
+      this.session.cancel();
+    }
+    this.dismissMenuOnEnable = false;
+    this.session?.setHidden(false);
+    if (this.openOnEnable) {
+      this.openOnEnable = false;
+      this.session?.open();
+    }
+    this.mirrorModel(this.inventory);
+    this.syncBinding();
+  }
+
+  onDisable(): void {
+    this.deactivateBinding();
+    this.clearModelMirror();
+    this.session?.setPaused(true);
+    this.session?.setHidden(true);
   }
 
   onDestroy(): void {
     this.destroyed = true;
-    for (const unsub of this.modelUnsubs) unsub();
-    this.modelUnsubs.length = 0;
+    this.clearModelMirror();
     this.session?.dispose();
     // Clear it: the convenience methods (close/move/confirm/…) drive
     // `this.session?.x()`, so a stale reference calling them after removal must
     // no-op, not reach into torn-down presenters or re-sort the model.
     this.session = undefined;
-    this.binding?.dispose?.();
+    this.deactivateBinding();
     this.opts.slots.dispose();
     this.opts.chrome?.dispose();
     this.opts.detail?.dispose();
@@ -183,7 +213,7 @@ export class InventoryController<
     // Polled only when focused, so a backgrounded panel consumes no device
     // input. The toggle key comes through the binding, so an unfocused
     // controller doesn't even open.
-    if (this.inputEnabled) this.binding?.poll();
+    if (this.bindingActive) this.binding?.poll();
   }
 
   // ------------------------------------------------------------- lifecycle
@@ -191,17 +221,17 @@ export class InventoryController<
   /** Show the panel. Refuses after removal (warns); throws before `onAdd`. */
   open(): void {
     const session = this.guard("open");
-    if (!session) return;
+    if (!session || !this.effectiveEnabled) return;
     session.open();
   }
 
   close(): void {
-    this.session?.close();
+    if (this.effectiveEnabled) this.session?.close();
   }
 
   toggle(): void {
     const session = this.guard("toggle");
-    if (!session) return;
+    if (!session || !this.effectiveEnabled) return;
     session.toggle();
   }
 
@@ -219,11 +249,14 @@ export class InventoryController<
    * a category tab swaps in a {@link filteredView} of the same model).
    * Re-mirrors source events onto the entity and re-presents when open.
    */
-  setSource(source: InventorySource<TId, TData>, opts: { readonly title?: string } = {}): void {
+  setSource(
+    source: InventorySource<TId, TData>,
+    opts: { readonly title?: string } = {},
+  ): void {
     const session = this.guard("setSource");
     if (!session) return;
     session.setSource(source, opts);
-    this.mirrorModel(source);
+    if (this.effectiveEnabled) this.mirrorModel(source);
   }
 
   setTitle(title: string | undefined): void {
@@ -252,7 +285,13 @@ export class InventoryController<
     this.inputEnabled = enabled;
     // cancel() with the menu open closes ONLY the menu — exactly the scoped
     // dismissal wanted when focus leaves.
-    if (!enabled && this.session?.isMenuOpen()) this.session?.cancel();
+    if (enabled) {
+      this.dismissMenuOnEnable = false;
+    } else if (this.session?.isMenuOpen()) {
+      if (this.effectiveEnabled) this.session.cancel();
+      else this.dismissMenuOnEnable = true;
+    }
+    this.syncBinding();
   }
 
   // ------------------------------------------- input-agnostic driving seam
@@ -261,12 +300,12 @@ export class InventoryController<
    *  {@link InputBinding} makes; lets a host menu or a test drive the panel
    *  without synthesising device input. */
   move(dir: NavDirection): void {
-    this.session?.move(dir);
+    if (this.effectiveEnabled) this.session?.move(dir);
   }
 
   /** Move the cursor to `slot` (clamped; inert while the menu is open). */
   select(slot: number): void {
-    this.session?.select(slot);
+    if (this.effectiveEnabled) this.session?.select(slot);
   }
 
   /** The cursor's slot index. */
@@ -276,17 +315,17 @@ export class InventoryController<
 
   /** Confirm the selected slot (browse) or the highlighted action (menu). */
   confirm(): void {
-    this.session?.confirm();
+    if (this.effectiveEnabled) this.session?.confirm();
   }
 
   /** Close the menu — or, at browse level, cancel out of the panel. */
   cancel(): void {
-    this.session?.cancel();
+    if (this.effectiveEnabled) this.session?.cancel();
   }
 
   /** Sort the presented inventory with the configured comparator. */
   sort(): void {
-    this.session?.sort();
+    if (this.effectiveEnabled) this.session?.sort();
   }
 
   // ------------------------------------------------------------- internals
@@ -296,15 +335,44 @@ export class InventoryController<
    *  {@link filteredView} forwards everything but `"changed"` straight from
    *  its underlying model, so these still carry real item ids/quantities. */
   private mirrorModel(source: InventorySource<TId, TData>): void {
-    for (const unsub of this.modelUnsubs) unsub();
-    this.modelUnsubs.length = 0;
+    this.clearModelMirror();
     this.modelUnsubs.push(
       source.on("action", (e) => this.entity.emit(InventoryActionEvent, e)),
-      source.on("itemAdded", (e) => this.entity.emit(InventoryItemAddedEvent, e)),
-      source.on("itemRemoved", (e) => this.entity.emit(InventoryItemRemovedEvent, e)),
+      source.on("itemAdded", (e) =>
+        this.entity.emit(InventoryItemAddedEvent, e),
+      ),
+      source.on("itemRemoved", (e) =>
+        this.entity.emit(InventoryItemRemovedEvent, e),
+      ),
       source.on("rejected", (e) => this.entity.emit(InventoryRejectedEvent, e)),
       source.on("changed", (e) => this.entity.emit(InventoryChangedEvent, e)),
     );
+  }
+
+  private clearModelMirror(): void {
+    for (const unsub of this.modelUnsubs) unsub();
+    this.modelUnsubs.length = 0;
+  }
+
+  private syncBinding(): void {
+    if (
+      !this.binding ||
+      !this.session ||
+      !this.effectiveEnabled ||
+      !this.inputEnabled
+    ) {
+      this.deactivateBinding();
+      return;
+    }
+    if (this.bindingActive) return;
+    this.binding.bind(this.inputManager, this.session);
+    this.bindingActive = true;
+  }
+
+  private deactivateBinding(): void {
+    if (!this.bindingActive) return;
+    this.binding?.dispose?.();
+    this.bindingActive = false;
   }
 
   /** Shared refuse/throw policy for state-changing calls: returns the live

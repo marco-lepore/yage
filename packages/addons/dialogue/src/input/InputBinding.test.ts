@@ -60,13 +60,16 @@ class FakeSession {
   advanced = 0;
   skipped = 0;
   choosing = false;
+  fastForward: boolean[] = [];
   advance(): void {
     this.advanced++;
   }
   skip(): void {
     this.skipped++;
   }
-  setFastForward(): void {}
+  setFastForward(on: boolean): void {
+    this.fastForward.push(on);
+  }
   moveSelection(): void {}
   isChoosing(): boolean {
     return this.choosing;
@@ -114,6 +117,21 @@ describe("KeyboardInputBinding — hold-to-skip", () => {
     input.hold.set("skip", 0);
     b.poll();
     expect(session.skipped).toBe(1);
+  });
+
+  it("re-binding releases fast-forward on the previous session", () => {
+    const firstInput = new FakeInput();
+    const secondInput = new FakeInput();
+    const firstSession = new FakeSession();
+    const secondSession = new FakeSession();
+    const binding = new KeyboardInputBinding();
+    binding.bind(firstInput.asManager(), firstSession.asSession());
+    firstInput.pressed.add("attack");
+    binding.poll();
+
+    binding.bind(secondInput.asManager(), secondSession.asSession());
+
+    expect(firstSession.fastForward).toEqual([true, false]);
   });
 });
 
