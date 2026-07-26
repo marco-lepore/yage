@@ -487,6 +487,57 @@ describe("EntityPool", () => {
       expect(pool.acquire()).toBe(member);
     });
 
+    it("tears the parent down even when a pooled child's onRelease throws", () => {
+      class Difficult extends Entity {
+        onAcquire(): void {}
+        override onRelease(): void {
+          throw new Error("release failed");
+        }
+      }
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Difficult);
+      const member = pool.acquire();
+      const carrier = scene.spawn("carrier");
+      carrier.addChild("held", member);
+
+      expect(() => carrier.destroy()).toThrow("release failed");
+
+      // The throw comes from the child's hook. If it skipped the parent's
+      // queue step the carrier would stay marked destroyed and never be torn
+      // down — alive in the scene with nothing left to clean it up.
+      scene._flushDestroyQueue();
+      expect(carrier.isDestroyed).toBe(true);
+      expect(scene.getEntities().has(carrier)).toBe(false);
+    });
+
+    it("puts a member to sleep before it can be acquired again", () => {
+      const seen: boolean[] = [];
+      class Nosy extends Component {
+        pool!: EntityPool<Watcher>;
+        override onDisable(): void {
+          // Acquiring from inside the release must not hand back the member
+          // whose deactivation is still running.
+          const other = this.pool.acquire();
+          seen.push(other === this.entity);
+        }
+      }
+      class Watcher extends Entity {
+        nosy!: Nosy;
+        override setup(): void {
+          this.nosy = this.add(new Nosy());
+        }
+        onAcquire(): void {}
+      }
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Watcher);
+      const member = pool.acquire();
+      member.nosy.pool = pool;
+
+      pool.release(member);
+
+      expect(seen).toEqual([false]);
+    });
+
     it("keeps the slot when a reclaim victim's onDisable throws", () => {
       class Brittle extends Component {
         armed = false;

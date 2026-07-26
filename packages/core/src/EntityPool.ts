@@ -439,11 +439,15 @@ export class EntityPool<
 
   /** Put a member to sleep and back into the pool's keeping. */
   private stow(member: T): void {
-    // Filed before the deactivation, because a component's `onDisable` is
-    // game code: if it throws, the member is still somewhere the pool can
-    // reach rather than in no collection at all.
-    this.fileAsAvailable(member);
-    member.setActive(false);
+    try {
+      // Asleep before it is filed, so an `onDisable` that acquires cannot be
+      // handed the very member being released, half disabled.
+      member.setActive(false);
+    } finally {
+      // Filed even if a hook threw: the member is out of its lease either
+      // way, and losing track of it would cost a capped pool the slot.
+      this.fileAsAvailable(member);
+    }
   }
 
   /**

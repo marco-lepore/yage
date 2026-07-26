@@ -483,21 +483,26 @@ export class Entity {
     if (this._destroyed) return;
     this._destroyed = true;
 
-    // Cascade to children
-    if (this._children) {
-      for (const [name, child] of [...this._children]) {
-        if (child._pool) {
-          // A member hung under this entity outlives it. Detach it and hand
-          // it back rather than destroy something the pool owns.
-          this.removeChild(name);
-          child._pool._releaseMember(child);
-        } else {
-          child._destroyOwned();
+    // Cascade to children. Releasing a pooled child runs its `onRelease` and
+    // its components' `onDisable`, so game code executes in here — the queue
+    // step has to survive a throw from it, or this entity would stay marked
+    // destroyed and never actually be torn down.
+    try {
+      if (this._children) {
+        for (const [name, child] of [...this._children]) {
+          if (child._pool) {
+            // A member hung under this entity outlives it. Detach it and hand
+            // it back rather than destroy something the pool owns.
+            this.removeChild(name);
+            child._pool._releaseMember(child);
+          } else {
+            child._destroyOwned();
+          }
         }
       }
+    } finally {
+      this._scene?._queueDestroy(this);
     }
-
-    this._scene?._queueDestroy(this);
   }
 
   /**
