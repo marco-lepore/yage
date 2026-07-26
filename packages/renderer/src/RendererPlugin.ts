@@ -49,6 +49,11 @@ import type {
   TextureResource,
 } from "./public-types.js";
 import { getDefaultTextStyle, setDefaultTextStyle } from "./internal/textConstruction.js";
+import { createRenderTarget } from "./RenderTarget.js";
+import type {
+  RenderTargetHandle,
+  RenderTargetOptions,
+} from "./RenderTarget.js";
 import { RendererKey } from "./types.js";
 import type { RendererConfig, RendererFitOptions } from "./types.js";
 import type { SceneRenderTreeProvider } from "./SceneRenderTree.js";
@@ -640,7 +645,11 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     return this._provider;
   }
 
-  /** Create a texture by drawing into a temporary graphics context. */
+  /**
+   * Bake a texture once by drawing into a temporary graphics context. The
+   * result never changes again; for a buffer the game redraws, use
+   * {@link createRenderTarget}.
+   */
   createTexture(draw: (graphics: GraphicsContext) => void): TextureResource {
     const graphics = new Graphics();
     try {
@@ -649,6 +658,24 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     } finally {
       graphics.destroy();
     }
+  }
+
+  /**
+   * Create an offscreen buffer that draws `source` into a texture the game
+   * owns and redraws on its own schedule — the repeatable counterpart of
+   * {@link createTexture}, with control over when the buffer refreshes and
+   * how many texels it gets.
+   *
+   * Composite the result by showing `target.texture` (a `SpriteComponent`, a
+   * mask, a filter input). See {@link RenderTargetHandle} for the coordinate
+   * space the source is drawn in and the reasons to keep it out of the live
+   * scene graph.
+   */
+  createRenderTarget(
+    source: DisplayContainer,
+    options: RenderTargetOptions,
+  ): RenderTargetHandle {
+    return createRenderTarget(this._app.renderer, source, options);
   }
 
   // ─── Fullscreen ──────────────────────────────────────────────────

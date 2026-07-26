@@ -32,7 +32,9 @@ typed handle (`TextureRef`) — never a raw `Texture` object — so every sprite
 serializes fully for save/load. A key that isn't preloaded (or registered,
 see [Runtime-generated textures](#runtime-generated-textures)) throws an
 error naming the key. The `layer` property controls z-ordering — see
-[Camera & Layers](/guides/rendering/camera/#render-layers).
+[Camera & Layers](/guides/rendering/camera/#render-layers). A `blendMode`
+option decides how the sprite combines with what is drawn beneath it — see
+[Blend modes](/guides/rendering/effects/#blend-modes).
 
 :::tip[`tint` multiplies — for replace-style recolour, use the `colorize` effect]
 `sprite.tint` is the cheap built-in way to tint a sprite, but it
@@ -92,7 +94,7 @@ anim.playOneShot("jump", { onComplete: () => anim.play("idle") });
 ```
 
 `AnimatedSpriteComponent` also takes the same `visible` / `tint` / `alpha` /
-`interactive` options as `SpriteComponent` above.
+`blendMode` / `interactive` options as `SpriteComponent` above.
 
 Animated sprites use engine-scaled component time. `scene.timeScale` and
 `entity.timeScale` compose with the animation's `speed`: `0.25` plays at

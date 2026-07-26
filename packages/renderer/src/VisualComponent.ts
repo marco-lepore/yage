@@ -14,6 +14,7 @@ import { attachMask, reattachMaskFromSnapshot } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
 import type {
+  BlendMode,
   ColorValue,
   DestroyOptions,
   DisplayContainer,
@@ -45,6 +46,12 @@ export interface VisualComponentOptions {
   /** Alpha (opacity). Default: 1. */
   alpha?: number;
   /**
+   * How this object's pixels combine with what is drawn beneath it.
+   * Default: `"normal"`. See {@link BlendMode} for the modes that need
+   * `import "pixi.js/advanced-blend-modes"`.
+   */
+  blendMode?: BlendMode;
+  /**
    * Make the container interactive. When set, Pixi `eventMode` is configured
    * so it participates in pointer hit-testing — required for any
    * `.on("pointerdown", ...)` listener to fire.
@@ -65,6 +72,8 @@ export interface VisualComponentData {
   tint?: ColorValue;
   alpha?: number;
   visible?: boolean;
+  /** Omitted while the object blends normally, which is the common case. */
+  blendMode?: BlendMode;
   /**
    * See {@link VisualComponentOptions.interactive} — persisted so restored
    * scenes keep `eventMode` and the `consumeOnInteraction` mark on the
@@ -73,6 +82,23 @@ export interface VisualComponentData {
   interactive?: VisualInteractiveOptions;
   effects?: EffectStackSnapshot;
   mask?: MaskSnapshot;
+}
+
+/**
+ * Copy the shared visual fields out of a snapshot into the options object a
+ * subclass's `fromSnapshot` hands to its constructor. Each subclass then adds
+ * only its own fields (texture key, text, anchor, ...) on top.
+ */
+export function visualOptionsFromData(
+  data: VisualComponentData,
+): VisualComponentOptions {
+  const options: VisualComponentOptions = { layer: data.layer };
+  if (data.tint !== undefined) options.tint = data.tint;
+  if (data.alpha !== undefined) options.alpha = data.alpha;
+  if (data.visible !== undefined) options.visible = data.visible;
+  if (data.blendMode !== undefined) options.blendMode = data.blendMode;
+  if (data.interactive) options.interactive = { ...data.interactive };
+  return options;
 }
 
 /**
@@ -131,6 +157,9 @@ export abstract class VisualComponent extends Component {
     if (options.visible !== undefined) this.visible = options.visible;
     if (options.tint !== undefined) this.renderObject.tint = options.tint;
     if (options.alpha !== undefined) this.renderObject.alpha = options.alpha;
+    if (options.blendMode !== undefined) {
+      this.renderObject.blendMode = options.blendMode;
+    }
     if (options.interactive) {
       this._interactive = { ...options.interactive };
       this.renderObject.eventMode = options.interactive.eventMode ?? "static";
@@ -160,6 +189,16 @@ export abstract class VisualComponent extends Component {
     return this.renderObject.alpha;
   }
 
+  /** Set how the container combines with what is drawn beneath it. */
+  set blendMode(mode: BlendMode) {
+    this.renderObject.blendMode = mode;
+  }
+
+  /** Get the container's blend mode. */
+  get blendMode(): BlendMode {
+    return this.renderObject.blendMode;
+  }
+
   /**
    * Set the container's visibility. Written while the entity is dormant, it
    * is remembered and applied when the entity is activated.
@@ -175,9 +214,9 @@ export abstract class VisualComponent extends Component {
   }
 
   /**
-   * Serialise the shared layer/visible/tint/alpha/interactive/effects/mask
-   * fields. Subclasses spread this into their own `Data` object alongside
-   * their own-specific fields (texture key, text, anchor, ...).
+   * Serialise the shared layer/visible/tint/alpha/blendMode/interactive/
+   * effects/mask fields. Subclasses spread this into their own `Data` object
+   * alongside their own-specific fields (texture key, text, anchor, ...).
    */
   protected serializeVisual(): VisualComponentData {
     const data: VisualComponentData = {
@@ -186,6 +225,11 @@ export abstract class VisualComponent extends Component {
       alpha: this.renderObject.alpha,
       visible: this._userVisible,
     };
+    // Pixi constructs every display object at `"inherit"`, not `"normal"` —
+    // so `"inherit"` is the value worth omitting. Recording an explicit
+    // `"normal"` matters: under a non-normal parent the two differ.
+    const blendMode = this.renderObject.blendMode;
+    if (blendMode !== "inherit") data.blendMode = blendMode;
     if (this._interactive) data.interactive = { ...this._interactive };
     const effects = this.fx.serialize();
     if (effects) data.effects = effects;

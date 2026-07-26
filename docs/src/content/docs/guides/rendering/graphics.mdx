@@ -23,7 +23,7 @@ Call `.draw()` again at any time to redraw. The callback receives a PixiJS
 `roundRect`, `poly`, `moveTo`/`lineTo`, `stroke`, and `fill`.
 
 `GraphicsComponent` takes the same `visible` / `tint` / `alpha` /
-`interactive` options as `SpriteComponent`, plus `setMask()` / `fx` for
+`blendMode` / `interactive` options as `SpriteComponent`, plus `setMask()` / `fx` for
 masking and filters. `serialize()` persists `layer`, those options, and any
 attached effects and mask — only the drawn geometry isn't recorded (Pixi has
 no way to read commands back off a `Graphics` object), so redo the `.draw()`

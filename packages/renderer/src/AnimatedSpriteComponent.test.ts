@@ -14,6 +14,7 @@ const { mocks } = vi.hoisted(() => {
     label = "";
     destroyed = false;
     tint = 0xffffff;
+    blendMode = "inherit";
     eventMode = "passive";
     anchor = {
       x: 0,
@@ -524,6 +525,14 @@ describe("AnimatedSpriteComponent", () => {
       expect(restored.animatedSprite.anchor.y).toBe(1);
       expect(restored.animatedSprite.tint).toBe(0xff0000);
       expect(restored.serialize()).toEqual(data);
+    });
+
+    it("round-trips blendMode", () => {
+      const source = { sheet: "player.png", frameWidth: 48 };
+      const original = new AnimatedSpriteComponent({ source, blendMode: "add" });
+      const data = original.serialize();
+      expect(data.blendMode).toBe("add");
+      expect(AnimatedSpriteComponent.fromSnapshot(data).blendMode).toBe("add");
     });
   });
 

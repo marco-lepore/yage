@@ -8,6 +8,7 @@ import type {
 } from "./public-types.js";
 import {
   VisualComponent,
+  visualOptionsFromData,
   type VisualComponentData,
   type VisualComponentOptions,
 } from "./VisualComponent.js";
@@ -145,17 +146,13 @@ export class TextComponent extends VisualComponent {
 
   static fromSnapshot(data: TextData): TextComponent {
     const opts: TextComponentOptions = {
+      ...visualOptionsFromData(data),
       text: data.text,
-      layer: data.layer,
     };
     if (data.style) opts.style = data.style;
     if (data.bitmap !== undefined) opts.bitmap = data.bitmap;
     if (data.resolution !== undefined) opts.resolution = data.resolution;
-    if (data.tint !== undefined) opts.tint = data.tint;
-    if (data.alpha !== undefined) opts.alpha = data.alpha;
     if (data.anchor) opts.anchor = data.anchor;
-    if (data.visible !== undefined) opts.visible = data.visible;
-    if (data.interactive) opts.interactive = { ...data.interactive };
     return new TextComponent(opts);
   }
 }

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Render Targets &amp; Blend Modes</title>
+    <link rel="stylesheet" href="/shared.css">
+  </head>
+  <body>
+    <a class="back-link" href="/">&larr; All Examples</a>
+    <h1>Render Targets &amp; Blend Modes</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <span>
+        <b>C</b> switch composite &middot; <b>R</b> cycle buffer resolution &middot;
+        <b>Space</b> pause the orbiting light
+      </span>
+      <span>
+        The lights are drawn into an offscreen buffer, then composited over the world.
+        <b>cut-out</b> erases soft holes in darkness — true colours, no tint.
+        <b>multiply</b> adds coloured lights into an ambient floor — tinted and
+        accumulating, but every surface takes the lamp's colour.
+        <b>cut-out&nbsp;+&nbsp;glow</b> uses the cut-out buffer plus a second additive
+        overlay, for true colours <em>and</em> tint at the cost of two passes.
+        The strip below uses <code>blendMode</code> directly, with no buffer.
+      </span>
+    </div>
+    <script type="module" src="/src/render-targets/main.ts"></script>
+  </body>
+</html>

@@ -13,6 +13,7 @@ import type {
 import type { RenderFacetSnapshot } from "./internal/renderFacet.js";
 import {
   VisualComponent,
+  visualOptionsFromData,
   type VisualComponentData,
   type VisualComponentOptions,
 } from "./VisualComponent.js";
@@ -271,8 +272,8 @@ export class SplitTextComponent extends VisualComponent {
 
   static fromSnapshot(data: SplitTextData): SplitTextComponent {
     const opts: SplitTextComponentOptions = {
+      ...visualOptionsFromData(data),
       text: data.text,
-      layer: data.layer,
     };
     if (data.style) opts.style = data.style;
     if (data.bitmap !== undefined) opts.bitmap = data.bitmap;
@@ -281,10 +282,6 @@ export class SplitTextComponent extends VisualComponent {
     if (data.wordAnchor !== undefined) opts.wordAnchor = data.wordAnchor;
     if (data.lineAnchor !== undefined) opts.lineAnchor = data.lineAnchor;
     if (data.autoSplit !== undefined) opts.autoSplit = data.autoSplit;
-    if (data.tint !== undefined) opts.tint = data.tint;
-    if (data.alpha !== undefined) opts.alpha = data.alpha;
-    if (data.visible !== undefined) opts.visible = data.visible;
-    if (data.interactive) opts.interactive = { ...data.interactive };
     return new SplitTextComponent(opts);
   }
 

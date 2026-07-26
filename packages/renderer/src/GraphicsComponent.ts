@@ -3,6 +3,7 @@ import { Graphics } from "pixi.js";
 import type { GraphicsContext } from "./public-types.js";
 import {
   VisualComponent,
+  visualOptionsFromData,
   type VisualComponentData,
   type VisualComponentOptions,
 } from "./VisualComponent.js";
@@ -42,12 +43,7 @@ export class GraphicsComponent extends VisualComponent {
 
   /** Create a GraphicsComponent from a serialised snapshot. */
   static fromSnapshot(data: GraphicsData): GraphicsComponent {
-    const opts: GraphicsComponentOptions = { layer: data.layer };
-    if (data.tint !== undefined) opts.tint = data.tint;
-    if (data.alpha !== undefined) opts.alpha = data.alpha;
-    if (data.visible !== undefined) opts.visible = data.visible;
-    if (data.interactive) opts.interactive = { ...data.interactive };
-    return new GraphicsComponent(opts);
+    return new GraphicsComponent(visualOptionsFromData(data));
   }
 
   /** Restore effects and mask after the graphics object is parented. */

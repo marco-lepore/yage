@@ -4,6 +4,7 @@ import { resolveTextureInput } from "./assets.js";
 import type { DisplaySprite, TextureRef } from "./public-types.js";
 import {
   VisualComponent,
+  visualOptionsFromData,
   type VisualComponentData,
   type VisualComponentOptions,
 } from "./VisualComponent.js";
@@ -74,14 +75,10 @@ export class SpriteComponent extends VisualComponent {
   /** Create a SpriteComponent from a serialised snapshot. */
   static fromSnapshot(data: SpriteData): SpriteComponent {
     const opts: SpriteComponentOptions = {
+      ...visualOptionsFromData(data),
       texture: data.textureKey,
-      layer: data.layer,
     };
-    if (data.tint !== undefined) opts.tint = data.tint;
-    if (data.alpha !== undefined) opts.alpha = data.alpha;
     if (data.anchor) opts.anchor = data.anchor;
-    if (data.visible !== undefined) opts.visible = data.visible;
-    if (data.interactive) opts.interactive = { ...data.interactive };
     return new SpriteComponent(opts);
   }
 }

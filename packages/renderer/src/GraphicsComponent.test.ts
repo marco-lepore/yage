@@ -9,6 +9,7 @@ const { mocks } = vi.hoisted(() => {
     visible = true;
     alpha = 1;
     tint = 0xffffff;
+    blendMode = "inherit";
     eventMode = "passive";
     parent: MockContainer | null = null;
     sortableChildren = false;
@@ -188,6 +189,34 @@ describe("GraphicsComponent", () => {
     expect(comp.alpha).toBe(0.5);
   });
 
+  it("applies the blendMode option and exposes it as an accessor", () => {
+    const comp = new GraphicsComponent({ blendMode: "add" });
+    expect(comp.graphics.blendMode).toBe("add");
+    expect(comp.blendMode).toBe("add");
+
+    comp.blendMode = "erase";
+    expect(comp.graphics.blendMode).toBe("erase");
+    expect(comp.blendMode).toBe("erase");
+  });
+
+  it("defaults to inherited blending", () => {
+    // Pixi constructs display objects at "inherit", which renders as normal
+    // until an ancestor sets a mode of its own.
+    expect(new GraphicsComponent().blendMode).toBe("inherit");
+  });
+
+  it("omits an inherited blendMode from the snapshot but records an explicit one", () => {
+    expect(new GraphicsComponent().serialize()).not.toHaveProperty("blendMode");
+
+    // "normal" is NOT the default, and the two differ under a non-normal
+    // parent — so an explicit "normal" has to survive the round trip.
+    const explicit = new GraphicsComponent({ blendMode: "normal" });
+    expect(explicit.serialize()?.blendMode).toBe("normal");
+
+    const additive = new GraphicsComponent({ blendMode: "add" });
+    expect(additive.serialize()?.blendMode).toBe("add");
+  });
+
   it("applies the interactive option, defaulting eventMode to static", () => {
     const comp = new GraphicsComponent({ interactive: {} });
     expect(comp.graphics.eventMode).toBe("static");
@@ -217,6 +246,18 @@ describe("GraphicsComponent", () => {
       expect(restored.graphics.alpha).toBe(0.7);
       expect(restored.graphics.visible).toBe(false);
       expect(restored.serialize()).toEqual(data);
+    });
+
+    it("leaves blendMode out of the snapshot while blending is normal", () => {
+      const data = new GraphicsComponent().serialize();
+      expect(data).not.toHaveProperty("blendMode");
+    });
+
+    it("round-trips a non-default blendMode", () => {
+      const original = new GraphicsComponent({ blendMode: "multiply" });
+      const data = original.serialize();
+      expect(data.blendMode).toBe("multiply");
+      expect(GraphicsComponent.fromSnapshot(data).blendMode).toBe("multiply");
     });
   });
 
