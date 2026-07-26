@@ -123,7 +123,6 @@ class EntityPool<T extends PoolableEntity, TMax extends number | undefined = und
   get size(): number;        // total members
   get leased(): number;      // handed out
   get free(): number;        // available
-  get isDisposed(): boolean;
   acquire(...args: Parameters<T["onAcquire"]>): T | undefined;  // T when elastic
   forceAcquire(...args: Parameters<T["onAcquire"]>): T;
   release(member: T): void;
@@ -148,6 +147,7 @@ interface EntityPoolOptions<T, TMax> {
 - Bookkeeping completes before the hooks run. A throwing `onAcquire` leaves the member leased and active; a throwing `onRelease` still parks it. Both throws are attributed to the entity and propagate.
 - Releasing an entity the pool has not leased — a double release, another pool's member — is a reported no-op. `setActive` called from outside does not change who holds the lease.
 - Pools belong to their scene and are disposed on exit; `acquire` on a disposed pool throws. Build them in `onEnter()`, where scene services exist.
+- The pool owns its members' lifetimes: `entity.destroy()` on a member throws and names `release` instead, as does destroying an entity with a member below it. Only `dispose()` destroys members.
 - Save snapshots skip members and everything parented under one. A pool restores empty and refills, so entities in flight at save time are gone on load.
 - A member released inside the physics collision drain rejoins the pool when the drain finishes, so events queued for its previous life cannot reach a reacquired one. The one exception is `forceAcquire` on a capped pool with nothing live left to reclaim: it hands a held member back rather than fail.
 

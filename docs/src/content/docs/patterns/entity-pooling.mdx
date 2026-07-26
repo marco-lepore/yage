@@ -179,6 +179,20 @@ a member.
 
 ## Mistakes the pool reports
 
+**Destroying a member throws.** The pool owns its members' lifetimes, so
+`bullet.destroy()` on a pooled entity is refused and names `release` instead.
+A member destroyed behind the pool's back would be handed out dead on the next
+acquisition, so the mistake is stopped at the call site rather than absorbed:
+
+```typescript
+bullet.destroy();               // throws — belongs to an EntityPool
+this.bullets.release(bullet);   // the way back
+```
+
+The pool destroys its own members when it is disposed, which the scene does on
+exit. The same refusal applies to destroying an entity that has a pool member
+somewhere below it, so keep members out of trees you tear down.
+
 Releasing an entity the pool has not leased is a no-op with a warning: a double
 release, or a member of another pool. Calling `setActive` on a leased member
 from outside does not return it to the pool either — only `release` does.

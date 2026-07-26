@@ -137,6 +137,26 @@ describe("EntityPool", () => {
       expect(pool.acquire().color).toBe(0x30);
     });
 
+    it("leaves nothing behind when a prewarm fails", () => {
+      class Fragile extends Entity {
+        static builds = 0;
+        override setup(): void {
+          if (++Fragile.builds === 2) throw new Error("setup failed");
+        }
+        onAcquire(): void {}
+      }
+      const { scene } = createMockScene();
+
+      expect(() => new EntityPool(scene, Fragile, { prewarm: 3 })).toThrow(
+        "setup failed",
+      );
+
+      // The constructor threw, so nobody holds the pool. Neither the member
+      // it did build nor the pool's registration may outlive the call.
+      scene._flushDestroyQueue();
+      expect(scene.getEntities().size).toBe(0);
+    });
+
     it("rejects an unusable capacity", () => {
       const { scene } = createMockScene();
       expect(() => new EntityPool(scene, Spark, { maxSize: 0 })).toThrow(
@@ -249,18 +269,17 @@ describe("EntityPool", () => {
       expect(pool.acquire(2)).not.toBe(spark);
     });
 
-    it("drops a member destroyed behind the pool's back", () => {
+    it("refuses to destroy a member, naming release instead", () => {
       const { scene } = createMockScene();
       const pool = new EntityPool(scene, Spark, { prewarm: 1 });
       const spark = pool.acquire(1);
+
+      expect(() => spark.destroy()).toThrow(/belongs to an EntityPool/);
+      expect(spark.isDestroyed).toBe(false);
+      expect(pool.leased).toBe(1);
+
       pool.release(spark);
-      spark.destroy();
-      scene._flushDestroyQueue();
-
-      const replacement = pool.acquire(2);
-
-      expect(replacement).not.toBe(spark);
-      expect(pool.size).toBe(1);
+      expect(pool.acquire(2)).toBe(spark);
     });
   });
 
@@ -305,58 +324,31 @@ describe("EntityPool", () => {
       expect(pool.forceAcquire(99)).toBe(cheapest);
     });
 
-    it("never reclaims a member destroyed while leased", () => {
+    it("refuses to destroy a leased member of a capped pool", () => {
       const { scene } = createMockScene();
       const pool = new EntityPool(scene, Spark, { maxSize: 2 });
-      const doomed = pool.acquire(1)!;
-      const alive = pool.acquire(2)!;
-      doomed.destroy();
-
-      // The saturation check drops destroyed members first, so the pool has
-      // room again and grows rather than reclaiming a member being torn down.
-      const taken = pool.forceAcquire(3);
-
-      expect(taken).not.toBe(doomed);
-      expect(taken).not.toBe(alive);
-      expect(taken.isActive).toBe(true);
-      expect(alive.releases).toBe(0);
-      expect(pool.size).toBe(2);
-    });
-
-    it("drops a member destroyed while leased from an elastic pool", () => {
-      const { scene } = createMockScene();
-      const pool = new EntityPool(scene, Spark);
-      const doomed = pool.acquire(1);
-      doomed.destroy();
-
-      // Next growth sweeps it, so neither collection keeps a dead entity.
+      const first = pool.acquire(1)!;
       pool.acquire(2);
 
-      expect(pool.size).toBe(1);
-      expect(pool.leased).toBe(1);
+      expect(() => first.destroy()).toThrow(/belongs to an EntityPool/);
+      // Capacity is untouched, so the reclaim still has a live victim.
+      expect(pool.size).toBe(2);
+      expect(pool.forceAcquire(3)).toBe(first);
     });
 
-    it("skips a victim its own onRelease destroyed", () => {
+    it("propagates a reclaim whose onRelease tries to destroy the victim", () => {
       class SelfDestruct extends Entity {
-        doomed = false;
         onAcquire(): void {}
         override onRelease(): void {
-          if (this.doomed) this.destroy();
+          this.destroy();
         }
       }
       const { scene } = createMockScene();
-      const pool = new EntityPool(scene, SelfDestruct, { maxSize: 2 });
-      const first = pool.acquire()!;
-      const second = pool.acquire()!;
-      first.doomed = true;
+      const pool = new EntityPool(scene, SelfDestruct, { maxSize: 1 });
+      const only = pool.forceAcquire();
 
-      // Reclaiming `first` destroys it inside the hook, so the pool moves on
-      // rather than handing back an entity that refuses to reactivate.
-      const taken = pool.forceAcquire();
-
-      expect(taken).toBe(second);
-      expect(taken.isDestroyed).toBe(false);
-      expect(taken.isActive).toBe(true);
+      expect(() => pool.forceAcquire()).toThrow(/belongs to an EntityPool/);
+      expect(only.isDestroyed).toBe(false);
     });
 
     it("forceAcquire on an elastic pool just grows", () => {
@@ -529,7 +521,7 @@ describe("EntityPool", () => {
       );
     });
 
-    it("refuses to hand back a member onAcquire destroyed", () => {
+    it("propagates when onAcquire tries to destroy its own member", () => {
       class SelfDestroying extends Entity {
         onAcquire(): void {
           this.destroy();
@@ -538,7 +530,7 @@ describe("EntityPool", () => {
       const { scene } = createMockScene();
       const pool = new EntityPool(scene, SelfDestroying);
 
-      expect(() => pool.acquire()).toThrow(/destroyed the member being acquired/);
+      expect(() => pool.acquire()).toThrow(/belongs to an EntityPool/);
     });
 
     it("says why forceAcquire cannot serve a call from the last member's onRelease", () => {
@@ -607,7 +599,6 @@ describe("EntityPool", () => {
       scene._flushDestroyQueue();
 
       expect(spark.isDestroyed).toBe(true);
-      expect(pool.isDisposed).toBe(true);
       expect(pool.size).toBe(0);
       expect(() => pool.acquire(1)).toThrow(/disposed pool/);
     });
@@ -618,7 +609,6 @@ describe("EntityPool", () => {
 
       scene._destroyAllEntities();
 
-      expect(pool.isDisposed).toBe(true);
       expect(() => pool.forceAcquire(1)).toThrow(/disposed pool/);
     });
 

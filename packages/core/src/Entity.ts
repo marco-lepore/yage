@@ -445,15 +445,51 @@ export class Entity {
     return this.components.values();
   }
 
-  /** Mark for deferred destruction. Actual cleanup happens at end of frame. */
+  /**
+   * Mark for deferred destruction. Actual cleanup happens at end of frame.
+   *
+   * A pool member cannot be destroyed this way — its pool owns its lifetime,
+   * and a member destroyed behind the pool's back would be handed out dead.
+   * Release it instead; the pool destroys its members when it is disposed.
+   */
   destroy(): void {
+    if (this._destroyed) return;
+    // Check the whole subtree before touching anything, so a rejected
+    // destroy leaves the tree intact rather than half torn down.
+    const pooled = this._pooled ? this : this._findPooledDescendant();
+    if (pooled) {
+      throw new Error(
+        `Entity "${pooled.name}" belongs to an EntityPool and cannot be destroyed directly. ` +
+          `Release it to its pool instead — the pool destroys its members when it is disposed.`,
+      );
+    }
+    this._destroyOwned();
+  }
+
+  /** First pooled entity below this one, or `null`. Leaves cost one read. */
+  private _findPooledDescendant(): Entity | null {
+    if (!this._children) return null;
+    for (const child of this._children.values()) {
+      if (child._pooled) return child;
+      const found = child._findPooledDescendant();
+      if (found) return found;
+    }
+    return null;
+  }
+
+  /**
+   * Internal: destroy without the pool-ownership check. The subtree has
+   * already been cleared by `destroy`, or the caller is the owning pool.
+   * @internal
+   */
+  _destroyOwned(): void {
     if (this._destroyed) return;
     this._destroyed = true;
 
     // Cascade to children
     if (this._children) {
       for (const child of this._children.values()) {
-        child.destroy();
+        child._destroyOwned();
       }
     }
 
@@ -622,10 +658,7 @@ export class Entity {
    * Internal: set the scene and callbacks. Called by Scene.spawn().
    * @internal
    */
-  _setScene(
-    scene: Scene | null,
-    callbacks: EntityCallbacks | null,
-  ): void {
+  _setScene(scene: Scene | null, callbacks: EntityCallbacks | null): void {
     this._scene = scene;
     this.callbacks = callbacks;
   }
@@ -638,9 +671,7 @@ export class Entity {
    */
   _setKey(key: string): void {
     if (this.key !== undefined) {
-      throw new Error(
-        `Entity "${this.name}" already has key "${this.key}".`,
-      );
+      throw new Error(`Entity "${this.name}" already has key "${this.key}".`);
     }
     (this as { key?: string }).key = key;
   }

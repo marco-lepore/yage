@@ -1,11 +1,7 @@
 export const VERSION = "0.0.0";
 
 export { Phase } from "./types.js";
-export type {
-  ComponentClass,
-  Plugin,
-  EasingFunction,
-} from "./types.js";
+export type { ComponentClass, Plugin, EasingFunction } from "./types.js";
 
 export { Vec2 } from "./Vec2.js";
 export type { Vec2Like } from "./Vec2.js";
@@ -96,7 +92,10 @@ export {
 } from "./ComponentUpdateSystem.js";
 
 export { ErrorBoundary } from "./ErrorBoundary.js";
-export type { CallbackErrorInfo, CallbackErrorRecord } from "./ErrorBoundary.js";
+export type {
+  CallbackErrorInfo,
+  CallbackErrorRecord,
+} from "./ErrorBoundary.js";
 
 export { GameLoop } from "./GameLoop.js";
 export type { GameLoopCallbacks, GameLoopConfig } from "./GameLoop.js";
@@ -132,12 +131,7 @@ export type {
 } from "./Scene.js";
 
 export { EntityPool } from "./EntityPool.js";
-export type {
-  PoolableEntity,
-  EntityPoolOptions,
-  EntityPoolArgs,
-  AcquireResult,
-} from "./EntityPool.js";
+export type { PoolableEntity, EntityPoolOptions } from "./EntityPool.js";
 
 export { SceneTime, SceneTimeKey } from "./SceneTime.js";
 export type {

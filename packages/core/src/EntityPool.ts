@@ -14,6 +14,18 @@ import { devWarn } from "./internal/dev.js";
  */
 export type PoolableEntity = Entity & { onAcquire(...args: never[]): void };
 
+/**
+ * Where a member stands. `releasing` covers the window inside `onRelease`:
+ * no longer leased, not yet available, and not handed out by anything.
+ */
+type MemberStatus = "free" | "leased" | "releasing" | "pending";
+
+interface MemberState {
+  status: MemberStatus;
+  /** Acquisition order, for the default oldest-first reclaim. */
+  seq: number;
+}
+
 /** Pool behaviour. `TMax` carries whether the pool is capped into `acquire`'s return type. */
 export interface EntityPoolOptions<
   T extends PoolableEntity,
@@ -100,16 +112,24 @@ export class EntityPool<
   private readonly maxSize: number | undefined;
   private readonly reclaimPriority: ((member: T) => number) | undefined;
 
-  /** Every member, in construction order. */
-  private readonly members: T[] = [];
-  /** Members available right now. */
-  private readonly freeList: T[] = [];
-  /** Members handed out and not yet released. */
-  private readonly leases = new Set<T>();
-  /** Released while the scene holds releases; moved to `freeList` on flush. */
-  private readonly pendingRelease: T[] = [];
-  /** Acquisition order, for the default oldest-first reclaim. */
-  private readonly acquiredAt = new Map<T, number>();
+  /**
+   * Every member and where it stands. One record per member and one status
+   * field inside it, so a member is always in exactly one state — it cannot
+   * be filed twice or lost between two collections.
+   */
+  private readonly state = new Map<T, MemberState>();
+  /**
+   * Members believed free, newest first. A hint, not the truth: an entry
+   * whose status has moved on is skipped when popped, which is why nothing
+   * has to splice this list.
+   */
+  private readonly freeHint: T[] = [];
+  private readonly counts: Record<MemberStatus, number> = {
+    free: 0,
+    leased: 0,
+    releasing: 0,
+    pending: 0,
+  };
   private acquireCount = 0;
   private _disposed = false;
 
@@ -157,33 +177,35 @@ export class EntityPool<
 
     scene._registerPool(this);
 
-    for (let i = 0; i < prewarm; i++) {
-      this.freeList.push(this.construct());
+    try {
+      for (let i = 0; i < prewarm; i++) {
+        this.construct();
+      }
+    } catch (error) {
+      // The constructor throws, so the caller never gets a reference and
+      // could not dispose the members already built. Undo it here.
+      this.dispose();
+      throw error;
     }
   }
 
   /** Total members, leased and free together. */
   get size(): number {
-    return this.members.length;
+    return this.state.size;
   }
 
   /** Members currently handed out. */
   get leased(): number {
-    return this.leases.size;
+    return this.counts.leased;
   }
 
   /**
-   * Members ready for the next `acquire`. A member released while the scene
-   * is holding releases (`Scene.deferPoolReleases`) counts in neither `free`
-   * nor `leased` until the hold ends.
+   * Members ready for the next `acquire`. A member part-way through its
+   * release, or released while the scene is holding releases
+   * (`Scene.deferPoolReleases`), counts in neither `free` nor `leased`.
    */
   get free(): number {
-    return this.freeList.length;
-  }
-
-  /** True once `dispose()` has run, or the scene that owns the pool has exited. */
-  get isDisposed(): boolean {
-    return this._disposed;
+    return this.counts.free;
   }
 
   /**
@@ -202,7 +224,7 @@ export class EntityPool<
     if (!member) return undefined as AcquireResult<T, TMax>;
     this.lease(member);
     this.callAcquire(member, args);
-    this.reclaimFromHook(member);
+    this.takeBackIfReleased(member);
     return member as AcquireResult<T, TMax>;
   }
 
@@ -226,7 +248,7 @@ export class EntityPool<
     const member = this.takeFree() ?? this.grow() ?? this.reclaim();
     this.lease(member);
     this.callAcquire(member, args);
-    this.reclaimFromHook(member);
+    this.takeBackIfReleased(member);
     return member;
   }
 
@@ -237,28 +259,30 @@ export class EntityPool<
    */
   release(member: T): void {
     if (this._disposed) return;
-    if (!this.leases.has(member)) {
+    if (this.state.get(member)?.status !== "leased") {
       devWarn(
         `EntityPool<${this.Class.name}>.release() ignored an entity it has not leased ` +
           `("${member.name}") — already released, or never acquired from this pool.`,
       );
       return;
     }
-    this.leases.delete(member);
-    this.acquiredAt.delete(member);
+    // `releasing` is its own state rather than an absence: the member is no
+    // longer leased and not yet available, and nothing can hand it out while
+    // its hook runs.
+    this.setStatus(member, "releasing");
     try {
       this.callRelease(member);
     } finally {
-      // A throwing hook still parks the member: it is out of the lease set
-      // either way, and losing track of it would leak a live entity.
+      // A throwing hook still parks the member rather than leaving it stuck
+      // mid-release.
       this.stow(member);
     }
   }
 
   /** Release every leased member. */
   releaseAll(): void {
-    for (const member of [...this.leases]) {
-      this.release(member);
+    for (const [member, st] of [...this.state]) {
+      if (st.status === "leased") this.release(member);
     }
   }
 
@@ -271,14 +295,17 @@ export class EntityPool<
     if (this._disposed) return;
     this._disposed = true;
     this.scene._unregisterPool(this);
-    for (const member of this.members) {
-      if (!member.isDestroyed) member.destroy();
+    for (const member of this.state.keys()) {
+      // The pool owns their lifetime, so it destroys them through the path
+      // that `Entity.destroy` refuses.
+      member._destroyOwned();
     }
-    this.members.length = 0;
-    this.freeList.length = 0;
-    this.pendingRelease.length = 0;
-    this.leases.clear();
-    this.acquiredAt.clear();
+    this.state.clear();
+    this.freeHint.length = 0;
+    this.counts.free = 0;
+    this.counts.leased = 0;
+    this.counts.releasing = 0;
+    this.counts.pending = 0;
   }
 
   /**
@@ -287,13 +314,8 @@ export class EntityPool<
    * @internal
    */
   _flushPendingReleases(): void {
-    const held = this.pendingRelease.splice(0, this.pendingRelease.length);
-    for (const member of held) {
-      if (member.isDestroyed) {
-        this.forget(member);
-      } else {
-        this.freeList.push(member);
-      }
+    for (const [member, st] of this.state) {
+      if (st.status === "pending") this.setStatus(member, "free");
     }
   }
 
@@ -308,23 +330,34 @@ export class EntityPool<
     }
   }
 
-  /** Next available member, dropping any that were destroyed behind the pool's back. */
+  /** Next available member, skipping hints whose member has moved on. */
   private takeFree(): T | undefined {
-    let member = this.freeList.pop();
-    while (member?.isDestroyed) {
-      this.forget(member);
-      member = this.freeList.pop();
+    for (
+      let member = this.freeHint.pop();
+      member;
+      member = this.freeHint.pop()
+    ) {
+      if (this.state.get(member)?.status === "free") return member;
     }
-    return member;
+    return undefined;
+  }
+
+  /**
+   * The one place a member's status changes, so the counters and the free
+   * hint cannot drift from it.
+   */
+  private setStatus(member: T, next: MemberStatus): void {
+    const st = this.state.get(member);
+    if (!st || st.status === next) return;
+    this.counts[st.status]--;
+    this.counts[next]++;
+    st.status = next;
+    if (next === "free") this.freeHint.push(member);
   }
 
   /** A brand-new member, or `undefined` when a capped pool is full. */
   private grow(): T | undefined {
-    // Growth is the rare path — a pool in steady state serves from the free
-    // list — so it is where members destroyed behind the pool's back are
-    // dropped, rather than on every acquisition.
-    this.evictDestroyed();
-    if (this.maxSize !== undefined && this.members.length >= this.maxSize) {
+    if (this.maxSize !== undefined && this.state.size >= this.maxSize) {
       return undefined;
     }
     return this.construct();
@@ -358,7 +391,9 @@ export class EntityPool<
     // A member has no parent to settle its state, so clear its own bit too.
     member._setActiveSuppressed(false);
     member._markPooled();
-    this.members.push(member);
+    this.state.set(member, { status: "free", seq: 0 });
+    this.counts.free++;
+    this.freeHint.push(member);
     return member;
   }
 
@@ -373,34 +408,21 @@ export class EntityPool<
    * `onEnable` that throws during the reactivation leaves the member leased
    * and active, not half-filed. `releaseAll()` still reaches it.
    */
-  private reclaimFromHook(member: T): void {
-    // Destruction first: it leaves the pool's bookkeeping untouched, so a
-    // destroyed member still reads as leased.
-    if (member.isDestroyed) {
-      this.forget(member);
-      throw new Error(
-        `EntityPool<${this.Class.name}>: the acquire hooks destroyed the member being acquired ` +
-          `("${member.name}"), so there is nothing to return. Destroy a member after the ` +
-          `acquisition completes, not during it.`,
-      );
-    }
-    if (this.leases.has(member)) return;
+  private takeBackIfReleased(member: T): void {
+    if (this.state.get(member)?.status === "leased") return;
     devWarn(
       `EntityPool<${this.Class.name}>: the acquire hooks released the member being acquired ` +
         `("${member.name}"). The pool has taken it back — release it after the acquisition, not during it.`,
     );
-    const free = this.freeList.indexOf(member);
-    if (free !== -1) this.freeList.splice(free, 1);
-    const pending = this.pendingRelease.indexOf(member);
-    if (pending !== -1) this.pendingRelease.splice(pending, 1);
     this.lease(member);
   }
 
   private lease(member: T): void {
     // Bookkeeping first: a throwing hook below leaves the pool consistent,
-    // with the member leased and active rather than in two places or none.
-    this.leases.add(member);
-    this.acquiredAt.set(member, ++this.acquireCount);
+    // with the member leased and active rather than stuck mid-transition.
+    const st = this.state.get(member);
+    if (st) st.seq = ++this.acquireCount;
+    this.setStatus(member, "leased");
     member.setActive(true);
   }
 
@@ -409,15 +431,7 @@ export class EntityPool<
     // Filed before the deactivation, because a component's `onDisable` is
     // game code: if it throws, the member is still somewhere the pool can
     // reach rather than in no collection at all.
-    if (member.isDestroyed) {
-      this.forget(member);
-      return;
-    }
-    if (this.scene._poolReleasesHeld) {
-      this.pendingRelease.push(member);
-    } else {
-      this.freeList.push(member);
-    }
+    this.setStatus(member, this.scene._poolReleasesHeld ? "pending" : "free");
     member.setActive(false);
   }
 
@@ -426,8 +440,9 @@ export class EntityPool<
     let victim: T | undefined;
     let best = Number.POSITIVE_INFINITY;
     let bestAge = Number.POSITIVE_INFINITY;
-    for (const member of this.leases) {
-      const age = this.acquiredAt.get(member)!;
+    for (const [member, st] of this.state) {
+      if (st.status !== "leased") continue;
+      const age = st.seq;
       // A throw here aborts the reclaim before anything is mutated.
       const priority = this.reclaimPriority
         ? this.callPriority(this.reclaimPriority, member)
@@ -439,8 +454,7 @@ export class EntityPool<
       }
     }
     if (victim) {
-      this.leases.delete(victim);
-      this.acquiredAt.delete(victim);
+      this.setStatus(victim, "releasing");
       try {
         this.callRelease(victim);
       } catch (error) {
@@ -449,24 +463,22 @@ export class EntityPool<
         this.stow(victim);
         throw error;
       }
-      // `onRelease` is game code and may have destroyed the victim. Handing
-      // it back would return an entity that refuses to reactivate, so drop it
-      // and pick again.
-      if (victim.isDestroyed) {
-        this.forget(victim);
-        return this.reclaim();
-      }
       // Straight back to the caller: a reclaimed member skips the free list,
-      // and with it the release hold, which is what "force" buys.
+      // and with it the release hold, which is what "force" buys. It stays
+      // `releasing` until `lease` takes it, so nothing else can pick it up.
       victim.setActive(false);
       return victim;
     }
     // Nothing is live, so every member sits in a held release batch. Handing
     // one back inside the batch is the last resort — better than failing a
     // call whose whole contract is that it returns a member.
-    const held = this.pendingRelease.shift();
-    if (held) return held;
-    if (this.members.length > 0) {
+    for (const [member, st] of this.state) {
+      if (st.status === "pending") {
+        this.setStatus(member, "releasing");
+        return member;
+      }
+    }
+    if (this.state.size > 0) {
       // A member whose `onRelease` is still running has left the lease set and
       // has not reached the free list. The pool cannot hand it out — the rest
       // of its release hook would run against a fresh acquisition — and it is
@@ -483,10 +495,7 @@ export class EntityPool<
     );
   }
 
-  private callPriority(
-    priority: (member: T) => number,
-    member: T,
-  ): number {
+  private callPriority(priority: (member: T) => number, member: T): number {
     const boundary = this.scene.context.tryResolve(ErrorBoundaryKey);
     if (!boundary) return priority(member);
     let value = 0;
@@ -530,23 +539,5 @@ export class EntityPool<
     } else {
       hook.call(member);
     }
-  }
-
-  private evictDestroyed(): void {
-    for (const member of [...this.members]) {
-      if (member.isDestroyed) this.forget(member);
-    }
-  }
-
-  /** Drop a member the pool no longer owns (destroyed from outside). */
-  private forget(member: T): void {
-    const index = this.members.indexOf(member);
-    if (index !== -1) this.members.splice(index, 1);
-    const free = this.freeList.indexOf(member);
-    if (free !== -1) this.freeList.splice(free, 1);
-    const pending = this.pendingRelease.indexOf(member);
-    if (pending !== -1) this.pendingRelease.splice(pending, 1);
-    this.leases.delete(member);
-    this.acquiredAt.delete(member);
   }
 }
