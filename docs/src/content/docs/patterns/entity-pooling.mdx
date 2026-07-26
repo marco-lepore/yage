@@ -195,9 +195,10 @@ the pool is disposed, which destroys its members.
 Children end their lives with their parent, so a handle on a member's hitbox
 expires when the member is released.
 
-Handles work on any entity, pooled or not, and they survive a save. See
-[Snapshot quicksave](/guides/snapshot-quicksave/) for the serialize and restore
-pattern.
+Handles work on any entity, pooled or not, and a handle on a non-pooled entity
+survives a save. Pool members are left out of snapshots, so a handle on one
+restores empty. See [Snapshot quicksave](/guides/snapshot-quicksave/) for the
+serialize and restore pattern.
 
 ## Timing and visibility
 

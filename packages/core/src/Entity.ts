@@ -146,7 +146,8 @@ export class Entity {
    * Which life of this entity is current. An {@link EntityPool} member is
    * reused, so one object serves many lives; the counter moves on whenever a
    * life ends, by release or by destruction. {@link handle} compares against
-   * it. Written by the engine only.
+   * it. Compare for equality only — a destruction cascade can advance it more
+   * than once, so it does not count lives. Written by the engine only.
    */
   get generation(): number {
     return this._generation;

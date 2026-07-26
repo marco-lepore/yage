@@ -181,7 +181,7 @@ interface EntityHandle<out T extends Entity = Entity> {
 - Rule of thumb: use a handle whenever pooled entities are involved — a member can be retired from anywhere (`destroy()` in its own collision handler releases it), so a stored plain reference goes stale silently. A plain reference is fine for entities that live as long as the scene, or when the code storing the reference also controls when the entity goes away.
 - `.current` means "same life", not "currently active": an entity turned off with `setActive(false)` still resolves.
 - A life ends on `destroy()`, on scene teardown, on every path that ends a member's lease — `release`, `releaseAll`, a `forceAcquire` reclaim — and on `dispose()`, which destroys the members outright. A member's children end their lives with it, so a handle on a pooled entity's hitbox expires too.
-- `entity.generation` is the counter behind it: 0 for a fresh entity, one higher after each life. Public read, engine write. It is not saved and not in the Inspector snapshot.
+- `entity.generation` is the counter behind it: 0 for a fresh entity, increased whenever a life ends. Compare it for equality — a destruction cascade can advance it more than once, so it does not count lives. Public read, engine write. It is not saved and not in the Inspector snapshot.
 - `handle()` on a pool member the pool is not currently lending out returns a handle that never resolves, and warns in dev builds. The caller is holding a stale reference, so a handle from it would come alive at the next acquisition.
 - Handles are created by `entity.handle()` only; `EntityHandle` is a type, not a constructor. `T` is output-only, so an `EntityHandle<Enemy>` is assignable to `EntityHandle<Entity>` and not the other way round.
 

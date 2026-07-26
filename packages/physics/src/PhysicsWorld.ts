@@ -39,6 +39,7 @@ interface ContactData {
 
 /** One side of a drained collision, pinned to the life it was queued for. */
 interface CollisionSide {
+  readonly handle: number;
   readonly entity: Entity;
   readonly collider: ColliderComponent;
   readonly life: number;
@@ -50,11 +51,6 @@ interface CollisionPair {
   readonly second: CollisionSide;
   readonly started: boolean;
   readonly contact: ContactData | undefined;
-}
-
-/** Is this entity still living the life the event was queued for? */
-function isSameLife(side: CollisionSide): boolean {
-  return !side.entity.isDestroyed && side.entity.generation === side.life;
 }
 
 /**
@@ -116,8 +112,9 @@ export class PhysicsWorld {
    * else, so both sides of every pair are captured with the life they were
    * queued for before any handler runs. Each side is re-checked immediately
    * before its own callback: the first handler can retire the second side's
-   * receiver. A pair naming a life that has ended is dropped rather than
-   * delivered to whoever holds the entity now.
+   * receiver. A pair naming a life that has ended, or a collider that was
+   * removed mid-drain, is dropped rather than delivered against the changed
+   * state.
    */
   processCollisionEvents(): void {
     const pairs: CollisionPair[] = [];
@@ -137,8 +134,18 @@ export class PhysicsWorld {
         : undefined;
 
       pairs.push({
-        first: { entity: entity1, collider: comp1, life: entity1.generation },
-        second: { entity: entity2, collider: comp2, life: entity2.generation },
+        first: {
+          handle: handle1,
+          entity: entity1,
+          collider: comp1,
+          life: entity1.generation,
+        },
+        second: {
+          handle: handle2,
+          entity: entity2,
+          collider: comp2,
+          life: entity2.generation,
+        },
         started,
         contact,
       });
@@ -152,14 +159,28 @@ export class PhysicsWorld {
     }
   }
 
-  /** Deliver one side of a drained pair, unless either life has since ended. */
+  /**
+   * Is this side still what the event was queued for — the collider still
+   * registered here, the entity still living that life? A handler earlier in
+   * the dispatch can remove a collider or retire an entity; events still
+   * queued against the old state are dropped rather than delivered.
+   */
+  private _sideStillLive(side: CollisionSide): boolean {
+    return (
+      this._colliderComponents.get(side.handle) === side.collider &&
+      !side.entity.isDestroyed &&
+      side.entity.generation === side.life
+    );
+  }
+
+  /** Deliver one side of a drained pair, unless either side has since ended. */
   private _dispatchSide(
     pair: CollisionPair,
     self: CollisionSide,
     other: CollisionSide,
     flipNormal: boolean,
   ): void {
-    if (!isSameLife(self) || !isSameLife(other)) return;
+    if (!this._sideStillLive(self) || !this._sideStillLive(other)) return;
 
     if (self.collider.config.sensor) {
       self.collider._dispatchTrigger({

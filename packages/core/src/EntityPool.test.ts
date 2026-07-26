@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Entity } from "./Entity.js";
 import { Component } from "./Component.js";
 import { EntityPool } from "./EntityPool.js";
+import type { EntityHandle } from "./EntityHandle.js";
 import { QueryCacheKey } from "./EngineContext.js";
 import type { QueryCache } from "./QueryCache.js";
 import { createMockScene } from "./test-utils.js";
@@ -450,6 +451,28 @@ describe("EntityPool", () => {
 
       pool.acquire(2);
       expect(handle.current).toBeUndefined();
+    });
+
+    it("ends the life before onRelease runs", () => {
+      const { scene } = createMockScene();
+
+      const seenDuringRelease: Array<Entity | undefined> = [];
+      class Fader extends Entity {
+        handleFromLife?: EntityHandle<Fader>;
+        onAcquire(): void {}
+        override onRelease(): void {
+          // Even the releasing code's own handle is already dead in here.
+          seenDuringRelease.push(this.handleFromLife?.current);
+        }
+      }
+
+      const pool = new EntityPool(scene, Fader, { prewarm: 1 });
+      const fader = pool.acquire()!;
+      fader.handleFromLife = fader.handle();
+
+      pool.release(fader);
+
+      expect(seenDuringRelease).toEqual([undefined]);
     });
 
     it("hands out a dead handle when the member is not leased", () => {

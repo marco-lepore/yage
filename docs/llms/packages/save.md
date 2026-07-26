@@ -457,7 +457,7 @@ interface ComponentSnapshot {
 
 `SnapshotResolver.entity(oldId)` consults `EntitySnapshotEntry.id` inside `afterRestore()` hooks to rewire cross-entity references.
 
-`SnapshotResolver.handle<E>(oldId)` does the same for a reference held as an `EntityHandle` — the save-side counterpart of `entity.handle()`:
+`SnapshotResolver.handle<E>(oldId)` does the same for a reference held as an `EntityHandle` — the load-side counterpart of `entity.handle()`:
 
 ```ts
 serialize() { return { targetId: this.target?.current?.id ?? null }; }

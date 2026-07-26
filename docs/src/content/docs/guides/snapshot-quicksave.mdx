@@ -216,7 +216,8 @@ class Enemy extends Entity {
 ```
 
 A reference held as an `EntityHandle` — the safe way to point at an entity
-someone else retires — saves the same way, through `resolver.handle()`:
+someone else retires — survives a save the same way: serialize the target's
+id, then restore it through `resolver.handle()`:
 
 ```typescript
 @serializable

@@ -91,7 +91,7 @@ describe("EntityHandle", () => {
     expect(enemy.generation).toBe(1);
   });
 
-  it("starts every entity at generation 0 and moves it on once per life", () => {
+  it("starts every entity at generation 0 and moves it on when a life ends", () => {
     const { scene } = createMockScene();
     const first = scene.spawn("first");
     const second = scene.spawn("second");

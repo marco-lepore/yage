@@ -1024,6 +1024,30 @@ describe("PhysicsWorld", () => {
       expect(secondTriggers).toHaveLength(0);
     });
 
+    it("drops events for a collider a handler removed mid-drain", () => {
+      const pw = new PhysicsWorld();
+      const { scene } = createMockScene();
+
+      const striker = addCollider(pw, scene.spawn("striker"));
+      const wall = addCollider(pw, scene.spawn("wall"));
+      const sentry = addCollider(pw, scene.spawn("sentry"));
+
+      // Same engine state a component teardown produces: the wall's collider
+      // leaves the world while its entity stays alive, generation unchanged.
+      striker.collider.onCollision(() => {
+        pw.removeCollider(wall.handle);
+      });
+
+      const sentryEvents: CollisionEvent[] = [];
+      sentry.collider.onCollision((e) => sentryEvents.push(e));
+
+      queue(pw, striker.handle, wall.handle);
+      queue(pw, sentry.handle, wall.handle);
+      pw.processCollisionEvents();
+
+      expect(sentryEvents).toHaveLength(0);
+    });
+
     it("drops events for a member forceAcquire took back mid-drain", () => {
       const pw = new PhysicsWorld();
       const { scene } = createMockScene();
@@ -1036,8 +1060,8 @@ describe("PhysicsWorld", () => {
       target.collider.onCollision((e) => targetEvents.push(e));
 
       shooter.collider.onCollision(() => {
-        // Saturated, so this reclaims the oldest live member: the shooter's
-        // own target.
+        // Saturated, so this reclaims the oldest live member — the shooter
+        // itself — ending the life the queued pair named on its side.
         expect(pool.forceAcquire()).toBe(shooter.entity);
       });
 
