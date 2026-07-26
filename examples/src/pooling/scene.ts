@@ -213,11 +213,9 @@ class Fountain extends Component {
   }
 
   private retire(spark: Spark): void {
-    if (spark.isPooled) {
-      (this.stats.capped ? this.capped : this.elastic).release(spark);
-    } else {
-      spark.destroy();
-    }
+    // One line for both modes: a pooled spark goes back to its pool, a
+    // spawned one is destroyed. The retire site never learns which.
+    spark.destroy();
   }
 
   private publish(dt: number): void {

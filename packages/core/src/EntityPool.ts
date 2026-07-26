@@ -309,6 +309,17 @@ export class EntityPool<
   }
 
   /**
+   * Internal: take a member back because `Entity.destroy` was called on it.
+   * A member that is not currently leased is already back in the pool, so
+   * retiring it again is a no-op rather than a reported double release.
+   * @internal
+   */
+  _releaseMember(member: Entity): void {
+    const pooled = member as T;
+    if (this.state.get(pooled)?.status === "leased") this.release(pooled);
+  }
+
+  /**
    * Internal: move releases that happened while the scene held them into the
    * free list. Called by `Scene.deferPoolReleases` when the batch completes.
    * @internal
@@ -390,7 +401,7 @@ export class EntityPool<
     }
     // A member has no parent to settle its state, so clear its own bit too.
     member._setActiveSuppressed(false);
-    member._markPooled();
+    member._markPooled(this);
     this.state.set(member, { status: "free", seq: 0 });
     this.counts.free++;
     this.freeHint.push(member);
@@ -431,8 +442,16 @@ export class EntityPool<
     // Filed before the deactivation, because a component's `onDisable` is
     // game code: if it throws, the member is still somewhere the pool can
     // reach rather than in no collection at all.
-    this.setStatus(member, this.scene._poolReleasesHeld ? "pending" : "free");
+    this.fileAsAvailable(member);
     member.setActive(false);
+  }
+
+  /**
+   * Mark a member available again: held back while the scene is draining a
+   * batch of queued events, otherwise straight to free.
+   */
+  private fileAsAvailable(member: T): void {
+    this.setStatus(member, this.scene._poolReleasesHeld ? "pending" : "free");
   }
 
   /** Release the lowest-priority live member and hand it straight back. */
@@ -457,16 +476,21 @@ export class EntityPool<
       this.setStatus(victim, "releasing");
       try {
         this.callRelease(victim);
+        // The old life ends here, so components disable and a rigid body
+        // drops its velocity before the next `onAcquire` poses it.
+        victim.setActive(false);
       } catch (error) {
-        // The caller never receives the member, so park it instead of losing
-        // track of an entity that is in no collection.
+        // The caller never receives the member. File it rather than leave it
+        // stuck part-way through its release — on a capped pool that would
+        // cost the slot for good. `stow` re-runs the deactivation, which is a
+        // no-op when that is what threw: `setActive` writes the flag before
+        // running the hooks, so the second call returns early.
         this.stow(victim);
         throw error;
       }
       // Straight back to the caller: a reclaimed member skips the free list,
       // and with it the release hold, which is what "force" buys. It stays
       // `releasing` until `lease` takes it, so nothing else can pick it up.
-      victim.setActive(false);
       return victim;
     }
     // Nothing is live, so every member sits in a held release batch. Handing

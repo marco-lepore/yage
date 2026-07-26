@@ -8,6 +8,14 @@ import { TRAITS_KEY, entityClassHasTrait, type TraitToken } from "./Trait.js";
 import { Transform } from "./Transform.js";
 import { ErrorBoundaryKey } from "./EngineContext.js";
 
+/**
+ * The pool side of member ownership, kept structural so `Entity` does not
+ * depend on `EntityPool`.
+ */
+interface EntityPoolOwner {
+  _releaseMember(member: Entity): void;
+}
+
 /** Auto-incrementing entity ID counter. */
 let nextEntityId = 1;
 
@@ -67,6 +75,7 @@ export class Entity {
   private components = new Map<ComponentClass, Component>();
   private _destroyed = false;
   private _pooled = false;
+  private _pool: EntityPoolOwner | null = null;
   private _activeSelf = true;
   /** Cached `activeSelf && every ancestor's activeSelf`, kept current by `_applyActive`. */
   private _activeInHierarchy = true;
@@ -130,8 +139,9 @@ export class Entity {
    * it constructs one.
    * @internal
    */
-  _markPooled(): void {
+  _markPooled(owner: EntityPoolOwner): void {
     this._pooled = true;
+    this._pool = owner;
   }
 
   /**
@@ -446,40 +456,27 @@ export class Entity {
   }
 
   /**
-   * Mark for deferred destruction. Actual cleanup happens at end of frame.
+   * Retire the entity. For an ordinary entity that means deferred
+   * destruction, with the real cleanup at end of frame.
    *
-   * A pool member cannot be destroyed this way — its pool owns its lifetime,
-   * and a member destroyed behind the pool's back would be handed out dead.
-   * Release it instead; the pool destroys its members when it is disposed.
+   * A pool member is retired by going back to its pool instead — its pool
+   * owns its lifetime and destroys it only when the pool itself is disposed.
+   * That keeps `destroy()` usable from the places retirement is actually
+   * decided: a collision handler, an update, an event listener, all of which
+   * see a plain `Entity` and hold no pool reference.
    */
   destroy(): void {
     if (this._destroyed) return;
-    // Check the whole subtree before touching anything, so a rejected
-    // destroy leaves the tree intact rather than half torn down.
-    const pooled = this._pooled ? this : this._findPooledDescendant();
-    if (pooled) {
-      throw new Error(
-        `Entity "${pooled.name}" belongs to an EntityPool and cannot be destroyed directly. ` +
-          `Release it to its pool instead — the pool destroys its members when it is disposed.`,
-      );
+    if (this._pool) {
+      this._pool._releaseMember(this);
+      return;
     }
     this._destroyOwned();
   }
 
-  /** First pooled entity below this one, or `null`. Leaves cost one read. */
-  private _findPooledDescendant(): Entity | null {
-    if (!this._children) return null;
-    for (const child of this._children.values()) {
-      if (child._pooled) return child;
-      const found = child._findPooledDescendant();
-      if (found) return found;
-    }
-    return null;
-  }
-
   /**
-   * Internal: destroy without the pool-ownership check. The subtree has
-   * already been cleared by `destroy`, or the caller is the owning pool.
+   * Internal: destroy for real, skipping the pool redirect. Used by the
+   * owning pool when it disposes, and by the cascade below.
    * @internal
    */
   _destroyOwned(): void {
@@ -488,8 +485,15 @@ export class Entity {
 
     // Cascade to children
     if (this._children) {
-      for (const child of this._children.values()) {
-        child._destroyOwned();
+      for (const [name, child] of [...this._children]) {
+        if (child._pool) {
+          // A member hung under this entity outlives it. Detach it and hand
+          // it back rather than destroy something the pool owns.
+          this.removeChild(name);
+          child._pool._releaseMember(child);
+        } else {
+          child._destroyOwned();
+        }
       }
     }
 

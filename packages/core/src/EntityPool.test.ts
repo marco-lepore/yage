@@ -269,17 +269,36 @@ describe("EntityPool", () => {
       expect(pool.acquire(2)).not.toBe(spark);
     });
 
-    it("refuses to destroy a member, naming release instead", () => {
+    it("returns a member to its pool when destroy() retires it", () => {
       const { scene } = createMockScene();
       const pool = new EntityPool(scene, Spark, { prewarm: 1 });
       const spark = pool.acquire(1);
 
-      expect(() => spark.destroy()).toThrow(/belongs to an EntityPool/);
-      expect(spark.isDestroyed).toBe(false);
-      expect(pool.leased).toBe(1);
+      // The retire site — a collision handler, an update — holds a plain
+      // Entity and no pool reference, so destroy() has to do the right thing.
+      spark.destroy();
 
-      pool.release(spark);
+      expect(spark.isDestroyed).toBe(false);
+      expect(spark.isActive).toBe(false);
+      expect(spark.releases).toBe(1);
+      expect(pool.leased).toBe(0);
       expect(pool.acquire(2)).toBe(spark);
+    });
+
+    it("releases a member hung under an entity that gets destroyed", () => {
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Spark, { prewarm: 1 });
+      const spark = pool.acquire(1);
+      const carrier = scene.spawn("carrier");
+      carrier.addChild("spark", spark);
+
+      carrier.destroy();
+
+      // The carrier owns the tree, but not the member inside it.
+      expect(carrier.isDestroyed).toBe(true);
+      expect(spark.isDestroyed).toBe(false);
+      expect(spark.parent).toBeNull();
+      expect(pool.free).toBe(1);
     });
   });
 
@@ -324,19 +343,19 @@ describe("EntityPool", () => {
       expect(pool.forceAcquire(99)).toBe(cheapest);
     });
 
-    it("refuses to destroy a leased member of a capped pool", () => {
+    it("frees the slot when destroy() retires a member of a capped pool", () => {
       const { scene } = createMockScene();
-      const pool = new EntityPool(scene, Spark, { maxSize: 2 });
+      const pool = new EntityPool(scene, Spark, { maxSize: 1 });
       const first = pool.acquire(1)!;
-      pool.acquire(2);
 
-      expect(() => first.destroy()).toThrow(/belongs to an EntityPool/);
-      // Capacity is untouched, so the reclaim still has a live victim.
-      expect(pool.size).toBe(2);
-      expect(pool.forceAcquire(3)).toBe(first);
+      first.destroy();
+
+      expect(pool.leased).toBe(0);
+      expect(pool.free).toBe(1);
+      expect(pool.acquire(2)).toBe(first);
     });
 
-    it("propagates a reclaim whose onRelease tries to destroy the victim", () => {
+    it("ignores a destroy() from the victim's own onRelease", () => {
       class SelfDestruct extends Entity {
         onAcquire(): void {}
         override onRelease(): void {
@@ -347,8 +366,11 @@ describe("EntityPool", () => {
       const pool = new EntityPool(scene, SelfDestruct, { maxSize: 1 });
       const only = pool.forceAcquire();
 
-      expect(() => pool.forceAcquire()).toThrow(/belongs to an EntityPool/);
+      // Mid-release the member is already on its way back, so retiring it
+      // again does nothing and the reclaim completes.
+      expect(pool.forceAcquire()).toBe(only);
       expect(only.isDestroyed).toBe(false);
+      expect(pool.leased).toBe(1);
     });
 
     it("forceAcquire on an elastic pool just grows", () => {
@@ -465,6 +487,34 @@ describe("EntityPool", () => {
       expect(pool.acquire()).toBe(member);
     });
 
+    it("keeps the slot when a reclaim victim's onDisable throws", () => {
+      class Brittle extends Component {
+        armed = false;
+        override onDisable(): void {
+          if (this.armed) throw new Error("disable failed");
+        }
+      }
+      class Fragile extends Entity {
+        brittle!: Brittle;
+        override setup(): void {
+          this.brittle = this.add(new Brittle());
+        }
+        onAcquire(): void {}
+      }
+      const { scene } = createMockScene();
+      const pool: EntityPool<Fragile, number> = new EntityPool(scene, Fragile, {
+        maxSize: 1,
+      });
+      const only = pool.forceAcquire();
+      only.brittle.armed = true;
+
+      expect(() => pool.forceAcquire()).toThrow("disable failed");
+      // The deactivation runs after the victim leaves the lease, so a throw
+      // there must not strand it: a capped pool would lose the slot for good.
+      expect(pool.size).toBe(1);
+      expect(pool.leased + pool.free).toBe(1);
+    });
+
     it("parks the member anyway when a component onDisable throws", () => {
       class Brittle extends Component {
         override onDisable(): void {
@@ -521,16 +571,31 @@ describe("EntityPool", () => {
       );
     });
 
-    it("propagates when onAcquire tries to destroy its own member", () => {
+    it("takes the member back when onAcquire destroys it", () => {
       class SelfDestroying extends Entity {
+        armed = false;
         onAcquire(): void {
+          if (!this.armed) return;
+          this.armed = false;
           this.destroy();
         }
       }
       const { scene } = createMockScene();
       const pool = new EntityPool(scene, SelfDestroying);
+      const member = pool.acquire();
+      pool.release(member);
+      member.armed = true;
 
-      expect(() => pool.acquire()).toThrow(/belongs to an EntityPool/);
+      // destroy() is a release here, so it hits the same take-back as any
+      // other hook that hands its member away mid-acquisition.
+      const handed = pool.acquire();
+
+      expect(handed).toBe(member);
+      expect(handed.isDestroyed).toBe(false);
+      expect(pool.leased).toBe(1);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("released the member being acquired"),
+      );
     });
 
     it("says why forceAcquire cannot serve a call from the last member's onRelease", () => {
