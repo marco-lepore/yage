@@ -88,13 +88,9 @@ this.bullets.release(bullet);
 compiler checks the call against the hook. `release` runs the optional
 `onRelease` hook, puts the entity to sleep, and returns it to the pool.
 
-<Aside type="note" title="Releasing from a collision handler">
-  A member released while collision events are being processed goes to sleep
-  right away, but only rejoins the pool once the whole batch has been handled.
-  That is what stops a collision queued for its previous life from reaching it
-  after someone else acquires it. So a release inside `onCollision` is not
-  available to an `acquire` you make later in the same batch.
-</Aside>
+Releasing from a collision handler is safe. The physics drain reads every
+collision pair before it runs any handler, so a collision queued for a member's
+previous life is dropped rather than delivered to whoever acquires it next.
 
 By default the pool is elastic: it grows whenever every member is out, and
 `acquire` always returns a bullet.
@@ -151,6 +147,57 @@ Two consequences worth planning for:
 - Components that own a live resource use `onEnable()` / `onDisable()` to put
   it to sleep and bring it back. The engine's own components already do:
   physics bodies leave the simulation, visuals hide, sounds stop.
+
+## Keeping a reference to a pooled entity
+
+<Aside type="caution" title="A released member is alive, not destroyed">
+A reference to a pooled entity keeps working after the entity goes back to the
+pool — it now points at whatever the pool handed out next. `isDestroyed` is
+`false`, so nothing in a plain reference tells you the enemy you were tracking
+is a different enemy across the map.
+</Aside>
+
+`entity.handle()` gives you a reference that expires with the life you took it
+in. Read it back through `.current`:
+
+```typescript
+import { Entity, type EntityHandle } from "@yagejs/core";
+
+class Turret extends Entity {
+  private target?: EntityHandle<Enemy>;
+
+  onSpotted(enemy: Enemy) {
+    this.target = enemy.handle();
+  }
+
+  update() {
+    const enemy = this.target?.current;   // undefined once that enemy is gone
+    if (enemy) this.aimAt(enemy);
+  }
+}
+```
+
+The rule for when to reach for one:
+
+- **Handle** whenever pooled entities are involved. A member can be retired
+  from anywhere — its own collision handler calling `destroy()` releases it —
+  so a stored plain reference can go stale without you hearing about it.
+- **Plain reference** for entities that live as long as the scene (the
+  player, a manager), or when the same piece of code stores the reference
+  and retires the entity, so the lifecycle is controlled right where the
+  reference lives.
+
+`.current` means "the same life", not "active right now": an entity switched
+off with `setActive(false)` still resolves. A life ends when the entity is
+destroyed, when its scene tears down, on every path that returns a member to
+its pool — `release`, `releaseAll`, and a `forceAcquire` reclaim — and when
+the pool is disposed, which destroys its members.
+Children end their lives with their parent, so a handle on a member's hitbox
+expires when the member is released.
+
+Handles work on any entity, pooled or not, and they survive a save. See
+[Snapshot quicksave](/guides/snapshot-quicksave/) for the serialize and restore
+pattern.
 
 ## Timing and visibility
 

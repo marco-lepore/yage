@@ -30,6 +30,33 @@ function flattenVertices(
   return flat;
 }
 
+/** Contact data shared by both sides of a started, non-sensor pair. */
+interface ContactData {
+  normal: Vec2;
+  point: Vec2;
+  penetrationDepth: number;
+}
+
+/** One side of a drained collision, pinned to the life it was queued for. */
+interface CollisionSide {
+  readonly entity: Entity;
+  readonly collider: ColliderComponent;
+  readonly life: number;
+}
+
+/** A drained collision, captured before any handler runs. */
+interface CollisionPair {
+  readonly first: CollisionSide;
+  readonly second: CollisionSide;
+  readonly started: boolean;
+  readonly contact: ContactData | undefined;
+}
+
+/** Is this entity still living the life the event was queued for? */
+function isSameLife(side: CollisionSide): boolean {
+  return !side.entity.isDestroyed && side.entity.generation === side.life;
+}
+
 /**
  * Central Rapier2D wrapper. All public API values are in pixels.
  * Pixel-to-meter conversion is handled internally.
@@ -81,68 +108,82 @@ export class PhysicsWorld {
     this.world.step(this.eventQueue);
   }
 
-  /** Drain collision events and dispatch to ColliderComponents. */
+  /**
+   * Drain collision events and dispatch them to their `ColliderComponent`s.
+   *
+   * Draining and dispatching are separate passes. A handler can retire an
+   * entity, and a pooled one goes straight back out of its pool as something
+   * else, so both sides of every pair are captured with the life they were
+   * queued for before any handler runs. Each side is re-checked immediately
+   * before its own callback: the first handler can retire the second side's
+   * receiver. A pair naming a life that has ended is dropped rather than
+   * delivered to whoever holds the entity now.
+   */
   processCollisionEvents(): void {
+    const pairs: CollisionPair[] = [];
     this.eventQueue.drainCollisionEvents((handle1, handle2, started) => {
       const comp1 = this._colliderComponents.get(handle1);
       const comp2 = this._colliderComponents.get(handle2);
       const entity1 = this.colliderMap.get(handle1);
       const entity2 = this.colliderMap.get(handle2);
+      if (!comp1 || !comp2 || !entity1 || !entity2) return;
 
       const needsContact =
-        started &&
-        ((comp1 && !comp1.config.sensor) || (comp2 && !comp2.config.sensor));
+        started && (!comp1.config.sensor || !comp2.config.sensor);
+      // Extracted here, while Rapier's narrow phase still holds the manifold
+      // for this step and no handler has touched the world.
       const contact = needsContact
         ? this._extractContact(handle1, handle2)
         : undefined;
 
-      if (comp1 && entity2 && comp2) {
-        if (comp1.config.sensor) {
-          comp1._dispatchTrigger({
-            other: entity2,
-            otherCollider: comp2,
-            entered: started,
-          });
-        } else {
-          comp1._dispatchCollision({
-            other: entity2,
-            otherCollider: comp2,
-            started,
-            ...(contact
-              ? {
-                  contactNormal: contact.normal,
-                  contactPoint: contact.point,
-                  penetrationDepth: contact.penetrationDepth,
-                }
-              : {}),
-          });
-        }
-      }
+      pairs.push({
+        first: { entity: entity1, collider: comp1, life: entity1.generation },
+        second: { entity: entity2, collider: comp2, life: entity2.generation },
+        started,
+        contact,
+      });
+    });
 
-      if (comp2 && entity1 && comp1) {
-        if (comp2.config.sensor) {
-          comp2._dispatchTrigger({
-            other: entity1,
-            otherCollider: comp1,
-            entered: started,
-          });
-        } else {
-          comp2._dispatchCollision({
-            other: entity1,
-            otherCollider: comp1,
-            started,
-            ...(contact
-              ? {
-                  // Self (entity2) toward other (entity1): opposite of the
-                  // handle1-toward-handle2 normal extracted below.
-                  contactNormal: contact.normal.scale(-1),
-                  contactPoint: contact.point,
-                  penetrationDepth: contact.penetrationDepth,
-                }
-              : {}),
-          });
-        }
-      }
+    for (const pair of pairs) {
+      // The normal points from the first collider toward the second, so the
+      // second side gets it negated.
+      this._dispatchSide(pair, pair.first, pair.second, false);
+      this._dispatchSide(pair, pair.second, pair.first, true);
+    }
+  }
+
+  /** Deliver one side of a drained pair, unless either life has since ended. */
+  private _dispatchSide(
+    pair: CollisionPair,
+    self: CollisionSide,
+    other: CollisionSide,
+    flipNormal: boolean,
+  ): void {
+    if (!isSameLife(self) || !isSameLife(other)) return;
+
+    if (self.collider.config.sensor) {
+      self.collider._dispatchTrigger({
+        other: other.entity,
+        otherCollider: other.collider,
+        entered: pair.started,
+      });
+      return;
+    }
+
+    const contact = pair.contact;
+    self.collider._dispatchCollision({
+      other: other.entity,
+      otherCollider: other.collider,
+      started: pair.started,
+      ...(contact
+        ? {
+            contactNormal: flipNormal
+              ? contact.normal.scale(-1)
+              : contact.normal,
+            contactPoint: contact.point,
+            penetrationDepth: contact.penetrationDepth,
+          }
+        : {}),
     });
   }
 
@@ -156,8 +197,8 @@ export class PhysicsWorld {
   private _extractContact(
     handle1: number,
     handle2: number,
-  ): { normal: Vec2; point: Vec2; penetrationDepth: number } | undefined {
-    let contact: { normal: Vec2; point: Vec2; penetrationDepth: number } | undefined;
+  ): ContactData | undefined {
+    let contact: ContactData | undefined;
     let handled = false;
     this.world.narrowPhase.contactPair(handle1, handle2, (manifold, flipped) => {
       if (handled) return;

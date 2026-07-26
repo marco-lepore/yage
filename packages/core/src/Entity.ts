@@ -7,6 +7,12 @@ import type { Scene, SpawnOptions, ClassSpawnArgs } from "./Scene.js";
 import { TRAITS_KEY, entityClassHasTrait, type TraitToken } from "./Trait.js";
 import { Transform } from "./Transform.js";
 import { ErrorBoundaryKey } from "./EngineContext.js";
+import {
+  DEAD_ENTITY_HANDLE,
+  _createEntityHandle,
+  type EntityHandle,
+} from "./EntityHandle.js";
+import { devWarn } from "./internal/dev.js";
 
 /**
  * The pool side of member ownership, kept structural so `Entity` does not
@@ -14,6 +20,7 @@ import { ErrorBoundaryKey } from "./EngineContext.js";
  */
 interface EntityPoolOwner {
   _releaseMember(member: Entity): void;
+  _isLeased(member: Entity): boolean;
 }
 
 /** Auto-incrementing entity ID counter. */
@@ -74,6 +81,7 @@ export class Entity {
 
   private components = new Map<ComponentClass, Component>();
   private _destroyed = false;
+  private _generation = 0;
   private _pooled = false;
   private _pool: EntityPoolOwner | null = null;
   private _activeSelf = true;
@@ -132,6 +140,66 @@ export class Entity {
    */
   get isPooled(): boolean {
     return this._pooled;
+  }
+
+  /**
+   * Which life of this entity is current. An {@link EntityPool} member is
+   * reused, so one object serves many lives; the counter moves on whenever a
+   * life ends, by release or by destruction. {@link handle} compares against
+   * it. Written by the engine only.
+   */
+  get generation(): number {
+    return this._generation;
+  }
+
+  /**
+   * Capture a reference that expires with this entity's current life, read
+   * back through `.current`.
+   *
+   * ```ts
+   * class Turret extends Entity {
+   *   private target?: EntityHandle<Enemy>;
+   *
+   *   onSpotted(enemy: Enemy) { this.target = enemy.handle(); }
+   *
+   *   update() {
+   *     const enemy = this.target?.current;   // undefined once that enemy is gone
+   *     if (enemy) this.aimAt(enemy);
+   *   }
+   * }
+   * ```
+   *
+   * Take a handle whenever pooled entities are involved — a member can be
+   * retired from anywhere, so a stored plain reference goes stale silently.
+   * A plain reference is fine for entities that live as long as the scene,
+   * or when the code storing the reference also controls when the entity
+   * goes away.
+   *
+   * A handle taken on a pool member that is not currently leased never
+   * resolves: the caller is holding a reference from a life that is already
+   * over, and the pool is free to hand the entity to someone else.
+   */
+  handle(): EntityHandle<this> {
+    if (Entity.isBackInPool(this)) {
+      devWarn(
+        `entity.handle() on "${this.name}" was called while its pool is not lending it out. ` +
+          `The handle is dead on arrival — take one during the life you mean to track.`,
+      );
+      return DEAD_ENTITY_HANDLE;
+    }
+    return _createEntityHandle(this, this._generation);
+  }
+
+  /**
+   * Is this entity, or the pool member it hangs under, sitting back in its
+   * pool? Then every reference to it belongs to a life that is already over.
+   */
+  private static isBackInPool(entity: Entity): boolean {
+    for (let e: Entity | null = entity; e; e = e._parent) {
+      const pool = e._pool;
+      if (pool) return !pool._isLeased(e);
+    }
+    return false;
   }
 
   /**
@@ -481,7 +549,17 @@ export class Entity {
    */
   _destroyOwned(): void {
     if (this._destroyed) return;
-    this._destroyed = true;
+    this._markDestroyed();
+
+    // Every descendant's life ends up front, before the cascade runs any
+    // game code: a pooled child's `onRelease` must not see a handle to a
+    // not-yet-visited sibling still resolving, and a throw mid-cascade must
+    // not leave the unvisited part of the subtree's handles live. The
+    // cascade bumps each child again through its own path — harmless, a
+    // handle only checks equality.
+    if (this._children) {
+      for (const child of this._children.values()) child._endLife();
+    }
 
     // Cascade to children. Releasing a pooled child runs its `onRelease` and
     // its components' `onDisable`, so game code executes in here — the queue
@@ -564,11 +642,28 @@ export class Entity {
   /**
    * Internal: mark the entity destroyed without queueing it. Called by Scene
    * during teardown so every entity reads `isDestroyed === true` before any
-   * component `onDestroy` runs. Idempotent.
+   * component `onDestroy` runs, and by `_destroyOwned`. Idempotent, and the
+   * one place a destruction ends a life.
    * @internal
    */
   _markDestroyed(): void {
+    if (this._destroyed) return;
     this._destroyed = true;
+    this._generation++;
+  }
+
+  /**
+   * Internal: end this life so handles taken during it stop resolving. The
+   * subtree follows, because it is released or destroyed with this entity.
+   * Called by `EntityPool` when a lease ends; destruction goes through
+   * `_markDestroyed` instead.
+   * @internal
+   */
+  _endLife(): void {
+    this._generation++;
+    if (this._children) {
+      for (const child of this._children.values()) child._endLife();
+    }
   }
 
   /**

@@ -215,6 +215,34 @@ class Enemy extends Entity {
 }
 ```
 
+A reference held as an `EntityHandle` — the safe way to point at an entity
+someone else retires — saves the same way, through `resolver.handle()`:
+
+```typescript
+@serializable
+class Turret extends Entity {
+  target?: EntityHandle<Enemy>;
+
+  serialize() {
+    return { targetId: this.target?.current?.id ?? null };
+  }
+
+  afterRestore(data: { targetId: number | null }, resolver: SnapshotResolver) {
+    this.target = resolver.handle<Enemy>(data.targetId);
+  }
+}
+```
+
+Serialize `null` when the handle is empty — an explicit `null` survives a
+JSON round trip, while a missing key does not. `resolver.handle()` accepts
+the `null` and returns `undefined`.
+
+Both resolvers only see entities from the scene being restored: each scene's
+`afterRestore` runs before the next scene is pushed, so a reference into
+another scene does not resolve. A target that was already gone at save time
+gives `undefined`, and the reference restores empty — which is also what
+happens to a reference to a pool member, since pool members are not saved.
+
 ## Quicksave pattern
 
 ```typescript

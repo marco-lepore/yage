@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- Constructor types require `any` for TS decorator compatibility */
 
 import type { Entity } from "./Entity.js";
+import type { EntityHandle } from "./EntityHandle.js";
 
 /**
  * Passed to `afterRestore` hooks so user code can resolve entity references
@@ -9,6 +10,23 @@ import type { Entity } from "./Entity.js";
 export interface SnapshotResolver {
   /** Resolve a save-time entity ID to the restored entity instance. Returns null if not found. */
   entity(savedId: number): Entity | null;
+  /**
+   * Resolve a save-time entity ID to a handle on the restored entity — the
+   * load-side counterpart of `entity.handle()`. `undefined` when the id is
+   * `null` or not in the snapshot, which covers a reference that was already
+   * empty at save time, a target destroyed before the save, and a pool
+   * member the snapshot left out. Serialize the id as `null` when the handle
+   * is empty — an explicit value survives a JSON round trip, a missing key
+   * does not.
+   *
+   * ```ts
+   * serialize() { return { targetId: this.target?.current?.id ?? null }; }
+   * afterRestore(data, resolve) { this.target = resolve.handle<Enemy>(data.targetId); }
+   * ```
+   */
+  handle<E extends Entity = Entity>(
+    savedId: number | null | undefined,
+  ): EntityHandle<E> | undefined;
 }
 
 /** Symbol stored on classes decorated with @serializable. Holds the type string. */

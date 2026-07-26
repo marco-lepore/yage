@@ -79,6 +79,7 @@ export type { TransformData } from "./Transform.js";
 
 export { Entity, _resetEntityIdCounter } from "./Entity.js";
 export type { EntityCallbacks } from "./Entity.js";
+export type { EntityHandle } from "./EntityHandle.js";
 
 export { QueryCache, QueryResult } from "./QueryCache.js";
 

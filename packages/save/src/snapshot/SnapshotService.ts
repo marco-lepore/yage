@@ -1,4 +1,10 @@
-import type { Scene, Entity, Component, SnapshotResolver } from "@yagejs/core";
+import type {
+  Scene,
+  Entity,
+  Component,
+  EntityHandle,
+  SnapshotResolver,
+} from "@yagejs/core";
 import {
   SceneManagerKey,
   SerializableRegistry,
@@ -379,6 +385,12 @@ export class SnapshotService<TSlots extends UntypedSlots = UntypedSlots> {
     const resolver: SnapshotResolver = {
       entity(savedId: number) {
         return idMap.get(savedId) ?? null;
+      },
+      handle<E extends Entity = Entity>(savedId: number | null | undefined) {
+        if (savedId == null) return undefined;
+        // The restored entity is fresh and no pool owns it, so its handle is
+        // live; the cast is the same narrowing `scene.findByKey<E>` does.
+        return idMap.get(savedId)?.handle() as EntityHandle<E> | undefined;
       },
     };
 

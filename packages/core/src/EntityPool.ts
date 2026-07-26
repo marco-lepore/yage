@@ -18,7 +18,7 @@ export type PoolableEntity = Entity & { onAcquire(...args: never[]): void };
  * Where a member stands. `releasing` covers the window inside `onRelease`:
  * no longer leased, not yet available, and not handed out by anything.
  */
-type MemberStatus = "free" | "leased" | "releasing" | "pending";
+type MemberStatus = "free" | "leased" | "releasing";
 
 interface MemberState {
   status: MemberStatus;
@@ -128,7 +128,6 @@ export class EntityPool<
     free: 0,
     leased: 0,
     releasing: 0,
-    pending: 0,
   };
   private acquireCount = 0;
   private _disposed = false;
@@ -201,8 +200,7 @@ export class EntityPool<
 
   /**
    * Members ready for the next `acquire`. A member part-way through its
-   * release, or released while the scene is holding releases
-   * (`Scene.deferPoolReleases`), counts in neither `free` nor `leased`.
+   * release counts in neither `free` nor `leased`.
    */
   get free(): number {
     return this.counts.free;
@@ -234,10 +232,6 @@ export class EntityPool<
    * live member is released and handed straight back, running `onRelease`,
    * then `onAcquire`, in the same call.
    *
-   * One case bends the release hold: a capped pool whose every member was
-   * released inside the current hold has nothing live to reclaim, so it hands
-   * a held member back rather than fail a call that promises a member.
-   *
    * The one call it cannot serve is from inside `onRelease` on a capped pool
    * with no other member left. The member that hook belongs to is mid-release
    * and handing it straight back would run the rest of its release over a
@@ -266,10 +260,7 @@ export class EntityPool<
       );
       return;
     }
-    // `releasing` is its own state rather than an absence: the member is no
-    // longer leased and not yet available, and nothing can hand it out while
-    // its hook runs.
-    this.setStatus(member, "releasing");
+    this.endLease(member);
     try {
       this.callRelease(member);
     } finally {
@@ -305,7 +296,6 @@ export class EntityPool<
     this.counts.free = 0;
     this.counts.leased = 0;
     this.counts.releasing = 0;
-    this.counts.pending = 0;
   }
 
   /**
@@ -320,14 +310,13 @@ export class EntityPool<
   }
 
   /**
-   * Internal: move releases that happened while the scene held them into the
-   * free list. Called by `Scene.deferPoolReleases` when the batch completes.
+   * Internal: is this member currently lent out? `Entity.handle()` asks,
+   * so a handle taken on a member sitting in the pool is born dead instead
+   * of coming alive at the next acquisition.
    * @internal
    */
-  _flushPendingReleases(): void {
-    for (const [member, st] of this.state) {
-      if (st.status === "pending") this.setStatus(member, "free");
-    }
+  _isLeased(member: Entity): boolean {
+    return this.state.get(member as T)?.status === "leased";
   }
 
   // ---- Internals ----
@@ -448,6 +437,20 @@ export class EntityPool<
     return seq;
   }
 
+  /**
+   * End the lease this member is holding. Its generation moves on before any
+   * hook runs, so a handle taken during that life stops resolving the moment
+   * the life is over — including for the code doing the releasing.
+   *
+   * `releasing` is its own state rather than an absence: the member is no
+   * longer leased and not yet available, and nothing can hand it out while
+   * its hook runs.
+   */
+  private endLease(member: T): void {
+    member._endLife();
+    this.setStatus(member, "releasing");
+  }
+
   /** Put a member to sleep and back into the pool's keeping. */
   private stow(member: T): void {
     try {
@@ -457,16 +460,8 @@ export class EntityPool<
     } finally {
       // Filed even if a hook threw: the member is out of its lease either
       // way, and losing track of it would cost a capped pool the slot.
-      this.fileAsAvailable(member);
+      this.setStatus(member, "free");
     }
-  }
-
-  /**
-   * Mark a member available again: held back while the scene is draining a
-   * batch of queued events, otherwise straight to free.
-   */
-  private fileAsAvailable(member: T): void {
-    this.setStatus(member, this.scene._poolReleasesHeld ? "pending" : "free");
   }
 
   /** Release the lowest-priority live member and hand it straight back. */
@@ -488,7 +483,7 @@ export class EntityPool<
       }
     }
     if (victim) {
-      this.setStatus(victim, "releasing");
+      this.endLease(victim);
       try {
         this.callRelease(victim);
         // The old life ends here, so components disable and a rigid body
@@ -503,19 +498,10 @@ export class EntityPool<
         this.stow(victim);
         throw error;
       }
-      // Straight back to the caller: a reclaimed member skips the free list,
-      // and with it the release hold, which is what "force" buys. It stays
-      // `releasing` until `lease` takes it, so nothing else can pick it up.
+      // Straight back to the caller: a reclaimed member skips the free list.
+      // It stays `releasing` until `lease` takes it, so nothing else can pick
+      // it up.
       return victim;
-    }
-    // Nothing is live, so every member sits in a held release batch. Handing
-    // one back inside the batch is the last resort — better than failing a
-    // call whose whole contract is that it returns a member.
-    for (const [member, st] of this.state) {
-      if (st.status === "pending") {
-        this.setStatus(member, "releasing");
-        return member;
-      }
     }
     if (this.state.size > 0) {
       // A member whose `onRelease` is still running has left the lease set and

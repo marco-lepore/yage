@@ -457,6 +457,19 @@ interface ComponentSnapshot {
 
 `SnapshotResolver.entity(oldId)` consults `EntitySnapshotEntry.id` inside `afterRestore()` hooks to rewire cross-entity references.
 
+`SnapshotResolver.handle<E>(oldId)` does the same for a reference held as an `EntityHandle` — the save-side counterpart of `entity.handle()`:
+
+```ts
+serialize() { return { targetId: this.target?.current?.id ?? null }; }
+afterRestore(data: { targetId: number | null }, resolve: SnapshotResolver) {
+  this.target = resolve.handle<Enemy>(data.targetId);
+}
+```
+
+- Serialize the id, not the handle, and serialize `null` when the handle is empty — an explicit `null` survives a JSON round trip, a missing key does not. `resolve.handle()` accepts the `null` and returns `undefined`. A target already gone at save time restores empty the same way.
+- Both resolver methods only see entities from the scene being restored. A reference into another scene does not resolve, because each scene's `afterRestore` runs before the next scene is pushed.
+- Pool members are not in the snapshot, so a handle on one always restores empty.
+
 ## SnapshotStorage
 
 ```ts
