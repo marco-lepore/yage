@@ -309,6 +309,26 @@ describe("PhysicsSystem", () => {
       expect(spy).toHaveBeenCalled();
     });
 
+    it("drains collision events with pool releases held", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext();
+      const system = new PhysicsSystem();
+      system._setContext(context);
+
+      let heldDuringDrain: boolean | undefined;
+      vi.spyOn(physicsWorld, "processCollisionEvents").mockImplementation(() => {
+        heldDuringDrain = scene._poolReleasesHeld;
+      });
+
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      system.update(16.67);
+
+      expect(heldDuringDrain).toBe(true);
+      expect(scene._poolReleasesHeld).toBe(false);
+    });
+
     it("skips destroyed entities", async () => {
       const { scene, context } = await createPhysicsTestContext();
       const system = new PhysicsSystem();

@@ -175,6 +175,10 @@ Reactivation restores the engine's state, not your game state. The entity's
 listeners all survive. Reset whatever the new life needs yourself, and register
 listeners in `setup()` so they are not re-added on every reuse.
 
+For a whole group of short-lived entities, `EntityPool` keeps the bookkeeping —
+which ones are out, which are ready, how many exist — and calls a per-reuse
+reset hook on each one. See [Entity Pooling](/patterns/entity-pooling).
+
 ## Components
 
 Components hold state and game logic. Extend the `Component` base class:

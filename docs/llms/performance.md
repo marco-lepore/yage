@@ -61,8 +61,33 @@ rb.setVelocity({ x: dirX * 900, y: dirY * 900 });
 bullet.setActive(true);
 ```
 
+`EntityPool` keeps that bookkeeping for a group of them. It tracks which
+members are out and which are free, grows or caps the group, and calls the
+entity's own `onAcquire` each time one is handed out:
+
+```ts
+class Bullet extends Entity {
+  setup() { /* Transform, GraphicsComponent, RigidBodyComponent, collider */ }
+  onAcquire(x: number, y: number, dirX: number, dirY: number) {
+    const rb = this.get(RigidBodyComponent);
+    rb.setPosition(x, y);
+    rb.setVelocity({ x: dirX * 900, y: dirY * 900 });
+  }
+}
+
+// In the scene's onEnter.
+this.bullets = new EntityPool(this, Bullet, { prewarm: 32 });
+
+const bullet = this.bullets.acquire(muzzleX, muzzleY, dirX, dirY);
+this.bullets.release(bullet);        // dormant, ready for the next shot
+```
+
+See the core package reference for the full API, and the `pooling` example for
+the same fountain of physics sparks run both ways with live counters.
+
 Reactivation does not reset game state. `timeScale`, animation position,
 process progress, and entity event listeners all survive — processes pause
 while the entity sleeps and resume where they left off. Reset what the new life
-needs yourself. Components that own a live resource get `onEnable()` /
-`onDisable()` to release and reacquire it; see the core package reference.
+needs yourself, in `onAcquire` for a pooled entity. Components that own a live
+resource get `onEnable()` / `onDisable()` to release and reacquire it; see the
+core package reference.

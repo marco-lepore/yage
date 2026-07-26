@@ -14,6 +14,7 @@ Zero runtime dependencies. ECS foundation, DI, game loop, scenes, events, proces
 | `Scene` | Abstract scene base class |
 | `SceneManager` | Stack-based scene management (push/pop/replace) |
 | `Entity` | Named component container |
+| `EntityPool` | Reuses entities instead of spawning and destroying them; grows on demand unless capped |
 | `Component` | Base class for game logic |
 | `System` | Base class for engine-level systems |
 | `Phase` | Enum: EarlyUpdate, FixedUpdate, Update, LateUpdate, Render, EndOfFrame |
@@ -91,6 +92,64 @@ class Turret extends Component {
 Engine implementations: a dormant rigid body and collider leave the simulation but keep their allocation, which is what makes reuse cheap; the body's velocity, forces, and torques are cleared on disable, so it comes back at rest. The renderer's visual components, `UISurface`, `ParticleEmitterComponent`, and `TilemapComponent` hide their display object. `SoundComponent` stops playback and does not resume on its own.
 
 Gotcha: a collider disabled and re-enabled while it still overlaps something gets no new collision-start. A reused entity dropped onto an existing contact receives no `onCollision` for it.
+
+### EntityPool
+
+A group of entities cycled by deactivation rather than spawn and destroy. A member is built once and reused, so its Rapier body, Pixi display object and component instances stay allocated between lives.
+
+```ts
+class Bullet extends Entity {
+  setup() { /* Transform, GraphicsComponent, RigidBodyComponent, collider */ }
+  // Required for a pooled class. Its parameters become acquire()'s arguments.
+  onAcquire(x: number, y: number, dir: Vec2) {
+    const rb = this.get(RigidBodyComponent);
+    rb.setPosition(x, y);
+    rb.setVelocity({ x: dir.x * 900, y: dir.y * 900 });
+  }
+  onRelease() { this.target = undefined; }   // optional, game-level cleanup
+}
+
+// In onEnter — members' components resolve scene services during setup().
+this.bullets = new EntityPool(this, Bullet, { prewarm: 32 });
+
+const bullet = this.bullets.acquire(x, y, dir);   // Bullet
+this.bullets.release(bullet);
+```
+
+```ts
+class EntityPool<T extends PoolableEntity, TMax extends number | undefined = undefined> {
+  // Third argument carries { setup } when the class's setup() requires params.
+  constructor(scene: Scene, Class: new () => T, options?: EntityPoolOptions<T, TMax>);
+  get size(): number;        // total members
+  get leased(): number;      // handed out
+  get free(): number;        // available
+  acquire(...args: Parameters<T["onAcquire"]>): T | undefined;  // T when elastic
+  forceAcquire(...args: Parameters<T["onAcquire"]>): T;
+  release(member: T): void;
+  releaseAll(): void;
+  dispose(): void;           // destroys members; the scene does this on exit
+}
+
+interface EntityPoolOptions<T, TMax> {
+  prewarm?: number;                       // built up front, parked dormant
+  maxSize?: TMax;                         // total members; unset = elastic
+  reclaimPriority?: (member: T) => number; // lowest is reclaimed first
+}
+```
+
+- Elastic by default: `acquire` grows the pool and returns `T`. With `maxSize`, a saturated `acquire` returns `undefined` and the return type widens to `T | undefined`.
+- A capped pool assigned to an unannotated `const` keeps the literal cap in its type (`EntityPool<Bullet, 32>`), which does not assign to `EntityPool<Bullet, number>`. Annotate the field or variable and the cap infers as `number`.
+- `forceAcquire` always returns a member. On a saturated capped pool it reclaims the lowest `reclaimPriority` (default: acquired longest ago), running `onRelease` then `onAcquire` in the same call.
+- `onAcquire` is required on a pooled class — an inherited one counts. It must be synchronous and non-overloaded, since `acquire`'s signature is derived from it. Declare an empty `onAcquire() {}` when there is nothing to reset.
+- Prewarm builds members and runs `setup()`, never `onAcquire`.
+- The member is active, in its queries, and past `onEnable` before `onAcquire` runs. Acquire during Update and it renders the same frame; acquire in Render or EndOfFrame and it first draws on the next one.
+- Nothing else resets: position, health, animation frame, `timeScale`, processes, and entity listeners all survive a cycle. Reset them in `onAcquire`, and register listeners in `setup()` or drop them in `onRelease`.
+- Bookkeeping completes before the hooks run. A throwing `onAcquire` leaves the member leased and active; a throwing `onRelease` still parks it. Both throws are attributed to the entity and propagate.
+- Releasing an entity the pool has not leased — a double release, another pool's member — is a reported no-op. `setActive` called from outside does not change who holds the lease.
+- Pools belong to their scene and are disposed on exit; `acquire` on a disposed pool throws. Build them in `onEnter()`, where scene services exist.
+- The pool owns its members' lifetimes. `entity.destroy()` on a member releases it back to the pool instead of tearing it down, so retire sites holding a plain `Entity` (collision handlers, `update`, event listeners) need no pool reference and the same code works pooled or not. `isDestroyed` stays `false` for such a member; destroying an entity with a member below it detaches and returns that member. Only `dispose()` destroys members.
+- Save snapshots skip members and everything parented under one. A pool restores empty and refills, so entities in flight at save time are gone on load.
+- A member released inside the physics collision drain rejoins the pool when the drain finishes, so events queued for its previous life cannot reach a reacquired one. The one exception is `forceAcquire` on a capped pool with nothing live left to reclaim: it hands a held member back rather than fail.
 
 ### Events
 

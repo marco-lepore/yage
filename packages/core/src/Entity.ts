@@ -8,6 +8,14 @@ import { TRAITS_KEY, entityClassHasTrait, type TraitToken } from "./Trait.js";
 import { Transform } from "./Transform.js";
 import { ErrorBoundaryKey } from "./EngineContext.js";
 
+/**
+ * The pool side of member ownership, kept structural so `Entity` does not
+ * depend on `EntityPool`.
+ */
+interface EntityPoolOwner {
+  _releaseMember(member: Entity): void;
+}
+
 /** Auto-incrementing entity ID counter. */
 let nextEntityId = 1;
 
@@ -66,6 +74,8 @@ export class Entity {
 
   private components = new Map<ComponentClass, Component>();
   private _destroyed = false;
+  private _pooled = false;
+  private _pool: EntityPoolOwner | null = null;
   private _activeSelf = true;
   /** Cached `activeSelf && every ancestor's activeSelf`, kept current by `_applyActive`. */
   private _activeInHierarchy = true;
@@ -113,6 +123,25 @@ export class Entity {
    */
   get isDestroyed(): boolean {
     return this._destroyed;
+  }
+
+  /**
+   * True while an {@link EntityPool} owns this entity. Pool members are left
+   * out of save snapshots: a pool restores empty and refills, so whatever was
+   * in flight when the game was saved is gone on load.
+   */
+  get isPooled(): boolean {
+    return this._pooled;
+  }
+
+  /**
+   * Internal: mark the entity as a pool member. Called by `EntityPool` when
+   * it constructs one.
+   * @internal
+   */
+  _markPooled(owner: EntityPoolOwner): void {
+    this._pooled = true;
+    this._pool = owner;
   }
 
   /**
@@ -426,19 +455,54 @@ export class Entity {
     return this.components.values();
   }
 
-  /** Mark for deferred destruction. Actual cleanup happens at end of frame. */
+  /**
+   * Retire the entity. For an ordinary entity that means deferred
+   * destruction, with the real cleanup at end of frame.
+   *
+   * A pool member is retired by going back to its pool instead — its pool
+   * owns its lifetime and destroys it only when the pool itself is disposed.
+   * That keeps `destroy()` usable from the places retirement is actually
+   * decided: a collision handler, an update, an event listener, all of which
+   * see a plain `Entity` and hold no pool reference.
+   */
   destroy(): void {
+    if (this._destroyed) return;
+    if (this._pool) {
+      this._pool._releaseMember(this);
+      return;
+    }
+    this._destroyOwned();
+  }
+
+  /**
+   * Internal: destroy for real, skipping the pool redirect. Used by the
+   * owning pool when it disposes, and by the cascade below.
+   * @internal
+   */
+  _destroyOwned(): void {
     if (this._destroyed) return;
     this._destroyed = true;
 
-    // Cascade to children
-    if (this._children) {
-      for (const child of this._children.values()) {
-        child.destroy();
+    // Cascade to children. Releasing a pooled child runs its `onRelease` and
+    // its components' `onDisable`, so game code executes in here — the queue
+    // step has to survive a throw from it, or this entity would stay marked
+    // destroyed and never actually be torn down.
+    try {
+      if (this._children) {
+        for (const [name, child] of [...this._children]) {
+          if (child._pool) {
+            // A member hung under this entity outlives it. Detach it and hand
+            // it back rather than destroy something the pool owns.
+            this.removeChild(name);
+            child._pool._releaseMember(child);
+          } else {
+            child._destroyOwned();
+          }
+        }
       }
+    } finally {
+      this._scene?._queueDestroy(this);
     }
-
-    this._scene?._queueDestroy(this);
   }
 
   /**
@@ -550,6 +614,29 @@ export class Entity {
    */
   setup?(params: unknown): void;
 
+  /**
+   * Per-reuse reset, called by {@link EntityPool} every time the entity is
+   * handed out — including the first time, right after `setup()`. Its
+   * parameters become the pool's `acquire(...)` arguments, so a bullet that
+   * needs a position and a direction declares
+   * `onAcquire(x: number, y: number, dir: Vec2)`.
+   *
+   * A pooled class must declare this hook: nothing else resets the state the
+   * entity kept while dormant. Declare an empty one if there is genuinely
+   * nothing to reset. It runs on a fully active entity, and must be
+   * synchronous and non-overloaded — the pool derives `acquire`'s signature
+   * from it, and a set of overloads keeps only the last.
+   */
+  onAcquire?(...args: unknown[]): void;
+
+  /**
+   * Called by {@link EntityPool} when the entity is released, before it goes
+   * dormant. Optional even for pooled classes: turning components off is the
+   * job of `onDisable`, so this is for game-level cleanup — dropping a
+   * target reference, clearing a listener registered outside `setup()`.
+   */
+  onRelease?(): void;
+
   /** Return a JSON-serializable snapshot of this entity's custom state. Used by the save system. */
   serialize?(): unknown;
 
@@ -580,10 +667,7 @@ export class Entity {
    * Internal: set the scene and callbacks. Called by Scene.spawn().
    * @internal
    */
-  _setScene(
-    scene: Scene | null,
-    callbacks: EntityCallbacks | null,
-  ): void {
+  _setScene(scene: Scene | null, callbacks: EntityCallbacks | null): void {
     this._scene = scene;
     this.callbacks = callbacks;
   }
@@ -596,9 +680,7 @@ export class Entity {
    */
   _setKey(key: string): void {
     if (this.key !== undefined) {
-      throw new Error(
-        `Entity "${this.name}" already has key "${this.key}".`,
-      );
+      throw new Error(`Entity "${this.name}" already has key "${this.key}".`);
     }
     (this as { key?: string }).key = key;
   }

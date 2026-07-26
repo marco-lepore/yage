@@ -5,6 +5,8 @@ export interface EntitySnapshot {
   name: string;
   tags: string[];
   components: string[];
+  /** `entity.isActive` — false for a dormant entity, e.g. a parked pool member. */
+  active: boolean;
   position?: { x: number; y: number };
 }
 

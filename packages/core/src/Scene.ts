@@ -62,7 +62,7 @@ export type SetupParams<E> = E extends { setup(params: infer P): void }
  * signature is optional, so a class that doesn't override it fails the
  * required-method match.
  */
-type SetupParamTuple<E> = E extends { setup(...args: infer A): void }
+export type SetupParamTuple<E> = E extends { setup(...args: infer A): void }
   ? A
   : never;
 
@@ -125,6 +125,15 @@ function _looksLikeSpawnOptions(v: unknown): v is SpawnOptions {
     if (!_SPAWN_OPTION_KEYS.has(k)) return false;
   }
   return true;
+}
+
+/**
+ * The part of an `EntityPool` a scene drives. Structural, so `Scene` needs no
+ * import of the pool it owns.
+ */
+interface ScenePool {
+  _flushPendingReleases(): void;
+  dispose(): void;
 }
 
 /**
@@ -244,6 +253,8 @@ export abstract class Scene {
     | undefined;
   private _scopedServices?: Map<string, unknown>;
   private _identityIndex?: Map<string, Entity>;
+  private _pools?: Set<ScenePool>;
+  private _releaseHoldDepth = 0;
 
   /**
    * Set by `Entity.spawnChild` while the parent is dormant. A spawn runs
@@ -540,6 +551,50 @@ export abstract class Scene {
     }
     entity._setKey(key);
     this._identityIndex.set(key, entity);
+  }
+
+  /**
+   * Run `fn` with pool releases held back: a member released inside it
+   * returns to its pool only once `fn` completes. Engine code that dispatches
+   * a batch of queued entity events wraps the batch — the physics collision
+   * drain does — so an event queued for a member's previous life can never
+   * land on a reacquired one. Nests.
+   */
+  deferPoolReleases<R>(fn: () => R): R {
+    this._releaseHoldDepth++;
+    try {
+      return fn();
+    } finally {
+      this._releaseHoldDepth--;
+      if (this._releaseHoldDepth === 0 && this._pools) {
+        for (const pool of this._pools) pool._flushPendingReleases();
+      }
+    }
+  }
+
+  /**
+   * Internal: whether `deferPoolReleases` is holding releases right now.
+   * @internal
+   */
+  get _poolReleasesHeld(): boolean {
+    return this._releaseHoldDepth > 0;
+  }
+
+  /**
+   * Internal: track a pool so the scene can flush its held releases and
+   * dispose it on exit. Called by the `EntityPool` constructor.
+   * @internal
+   */
+  _registerPool(pool: ScenePool): void {
+    (this._pools ??= new Set()).add(pool);
+  }
+
+  /**
+   * Internal: stop tracking a pool. Called by `EntityPool.dispose`.
+   * @internal
+   */
+  _unregisterPool(pool: ScenePool): void {
+    this._pools?.delete(pool);
   }
 
   /**
@@ -878,6 +933,13 @@ export abstract class Scene {
    * @internal
    */
   _destroyAllEntities(): void {
+    // Pools go first: their members are about to be destroyed with the rest
+    // of the scene, and a pool that outlived it would hand out dead entities.
+    if (this._pools) {
+      for (const pool of [...this._pools]) pool.dispose();
+      this._pools.clear();
+    }
+
     // Mark everything first, so a component's onDestroy never observes a
     // half-alive sibling: by the time any teardown runs, every entity in
     // the scene already reads isDestroyed === true.

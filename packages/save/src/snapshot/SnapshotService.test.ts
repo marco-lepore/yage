@@ -16,6 +16,7 @@ import {
   Logger,
   LogLevel,
   SceneManager,
+  EntityPool,
   serializable,
 } from "@yagejs/core";
 import type { EngineEvents } from "@yagejs/core";
@@ -137,6 +138,27 @@ class HierarchyScene extends Scene {
     const parent = this.spawn(ParentEntity);
     const child = this.spawn(ChildEntity);
     parent.addChild("arm", child);
+  }
+}
+
+@serializable
+class PooledEntity extends Entity {
+  setup() {
+    this.add(new Transform());
+  }
+  onAcquire() {}
+}
+
+@serializable
+class PoolScene extends Scene {
+  readonly name = "pool";
+  pool!: EntityPool<PooledEntity>;
+
+  onEnter() {
+    this.spawn(SimpleEntity);
+    this.pool = new EntityPool(this, PooledEntity, { prewarm: 2 });
+    const member = this.pool.acquire();
+    member.spawnChild("trail", SimpleEntity);
   }
 }
 
@@ -531,6 +553,24 @@ describe("SnapshotService", () => {
       expect(restoredParent.activeSelf).toBe(false);
       expect(restoredChild.activeSelf).toBe(true);
       expect(restoredChild.isActive).toBe(false);
+    });
+
+    it("leaves pool members and their children out of the snapshot", async () => {
+      const { service, sceneManager, storage } = createTestContext();
+      await sceneManager.push(new PoolScene());
+
+      service.saveSnapshot("test");
+      const entries = (
+        JSON.parse(storage.load("yage:snapshot:test")!) as GameSnapshot
+      ).scenes[0]!.entities;
+
+      // Only the scene's own entity survives: two pool members and the child
+      // one of them built are the pool's business, and it restores empty.
+      expect(entries).toHaveLength(1);
+      expect(entries[0]!.type).toBe("SimpleEntity");
+
+      await service.loadSnapshot("test");
+      expect([...sceneManager.active!.getEntities()]).toHaveLength(1);
     });
 
     it("restores an all-active hierarchy as active", async () => {

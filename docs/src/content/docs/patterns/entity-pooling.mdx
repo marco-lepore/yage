@@ -1,0 +1,208 @@
+---
+title: "Entity Pooling"
+description: "Reuse bullets, sparks and enemies with EntityPool instead of spawning and destroying one per shot."
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+A game that fires twenty bullets a second builds and throws away twenty
+entities a second, each with a physics body, a display object and a set of
+components. `EntityPool` builds a small group of them once and cycles that
+group: a spent bullet goes dormant and comes back on the next shot, with
+nothing reallocated in between.
+
+The `pooling` example runs the same fountain of physics sparks both ways —
+pooled and spawn-and-destroy — with live counters, so you can see what changes.
+
+## A pooled entity
+
+A pooled class looks like any other entity subclass, plus one required hook:
+
+```typescript
+import { Entity, EntityPool, Scene, Transform, Vec2 } from "@yagejs/core";
+import { GraphicsComponent } from "@yagejs/renderer";
+import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
+
+class Bullet extends Entity {
+  damage = 1;
+
+  setup() {
+    this.add(new Transform());
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.circle(0, 0, 4).fill({ color: 0xfbbf24 });
+      }),
+    );
+    this.add(new RigidBodyComponent({ type: "dynamic" }));
+    this.add(new ColliderComponent({ shape: { type: "circle", radius: 4 } }));
+  }
+
+  // Runs every time the pool hands this bullet out.
+  onAcquire(x: number, y: number, dir: Vec2, damage: number) {
+    this.damage = damage;
+    const rb = this.get(RigidBodyComponent);
+    rb.setPosition(x, y);
+    rb.setVelocity({ x: dir.x * 900, y: dir.y * 900 });
+  }
+}
+```
+
+`setup()` runs once per member, when the pool builds it. `onAcquire` runs on
+every acquisition, and it is where the entity returns to a known state.
+
+## Creating the pool
+
+Create pools in `onEnter()`, so the members' components can resolve the scene's
+services — the physics world and the render tree are registered by then.
+
+```typescript
+class ArenaScene extends Scene {
+  readonly name = "arena";
+  private bullets!: EntityPool<Bullet>;
+
+  onEnter() {
+    this.bullets = new EntityPool(this, Bullet, { prewarm: 32 });
+  }
+}
+```
+
+`prewarm` builds members up front and parks them dormant. They run their
+constructor and `setup()`, not `onAcquire` — prewarming is not an acquisition.
+
+If the entity's `setup()` takes parameters, pass them as `setup` and the
+constructor demands them, the same way `scene.spawn` does:
+
+```typescript
+new EntityPool(this, Spark, { setup: { color: 0x38bdf8 }, prewarm: 16 });
+```
+
+## Firing and recycling
+
+```typescript
+const bullet = this.bullets.acquire(muzzleX, muzzleY, aimDir, 1);
+// ...on impact or when it leaves the screen
+this.bullets.release(bullet);
+```
+
+`acquire`'s arguments are the entity's own `onAcquire` parameters, so the
+compiler checks the call against the hook. `release` runs the optional
+`onRelease` hook, puts the entity to sleep, and returns it to the pool.
+
+<Aside type="note" title="Releasing from a collision handler">
+  A member released while collision events are being processed goes to sleep
+  right away, but only rejoins the pool once the whole batch has been handled.
+  That is what stops a collision queued for its previous life from reaching it
+  after someone else acquires it. So a release inside `onCollision` is not
+  available to an `acquire` you make later in the same batch.
+</Aside>
+
+By default the pool is elastic: it grows whenever every member is out, and
+`acquire` always returns a bullet.
+
+## Capping the pool
+
+Pass `maxSize` to bound the total number of members. A saturated `acquire`
+then returns `undefined`, and the return type says so:
+
+```typescript
+const bullets = new EntityPool(this, Bullet, { maxSize: 64 });
+
+const bullet = bullets.acquire(x, y, dir, 1);
+if (!bullet) return;                       // 64 already in flight
+```
+
+`forceAcquire` always returns a bullet. On a saturated capped pool it reclaims
+one: the lowest-priority member in flight is released and handed straight back,
+running `onRelease` and then `onAcquire` in the same call. The default victim
+is the member acquired longest ago; `reclaimPriority` picks another:
+
+```typescript
+const sparks = new EntityPool(this, Spark, {
+  maxSize: 200,
+  reclaimPriority: (spark) => spark.remainingLife,  // steal the faintest
+});
+
+const spark = sparks.forceAcquire(x, y);   // never undefined
+```
+
+On an elastic pool `forceAcquire` just grows the pool, so it is also the call
+to use when you never want to handle an empty result.
+
+## Reading the pool
+
+`size` is the total member count, `leased` how many are out, and `free` how
+many are ready. They are the numbers to put on a debug overlay when tuning
+`prewarm` and `maxSize`.
+
+## What reuse does not reset
+
+<Aside type="caution">
+**A recycled entity remembers everything.** Position, velocity, health,
+animation frame, `entity.timeScale`, process progress and entity event
+listeners all survive a release. `onAcquire` is the only thing that resets
+them, so anything the next life depends on has to be written there.
+</Aside>
+
+Two consequences worth planning for:
+
+- Register entity event listeners in `setup()`, not in `onAcquire` — otherwise
+  every acquisition adds another copy. A listener you do add per life has to be
+  removed again in `onRelease`.
+- Components that own a live resource use `onEnable()` / `onDisable()` to put
+  it to sleep and bring it back. The engine's own components already do:
+  physics bodies leave the simulation, visuals hide, sounds stop.
+
+## Timing and visibility
+
+A member is active, in its queries and past `onEnable` before `onAcquire`
+runs, so the hook can reach its own components and its siblings. Acquire
+during Update and the entity renders on the same frame; acquire during Render
+or EndOfFrame and it first draws on the next one.
+
+While a member sits in the pool it is dormant: hidden, out of the simulation,
+out of every query, and absent from `scene.findEntity` and
+`scene.findEntitiesByTag`. It still appears in `scene.getEntities()`.
+
+## Lifetime and saves
+
+Pools belong to the scene that created them. Scene exit disposes the pool and
+destroys its members, and `acquire` on a disposed pool throws. Calling
+`dispose()` yourself does the same thing early.
+
+<Aside type="note">
+**Pool members are not saved.** Snapshots skip them and everything parented
+under one, and a pool restores empty and refills on demand. An entity in flight
+when the game is saved — a bullet mid-air — is gone after a load. Anything that
+has to survive a save belongs on an entity outside the pool, not as a child of
+a member.
+</Aside>
+
+## Mistakes the pool reports
+
+**`destroy()` on a member is a release.** Retirement is usually decided
+somewhere that holds a plain entity and no pool reference — a collision
+handler, an `update`, an event listener — so `destroy()` sends a pool member
+back to its pool instead of tearing it down:
+
+```typescript
+// The player is hit. `event.other` is an Entity; it may or may not be pooled.
+onCollision((event) => {
+  this.takeDamage(10);
+  event.other.destroy();   // pooled -> released; not pooled -> destroyed
+});
+```
+
+The same game code therefore works whether or not the bullet came from a pool,
+which is what lets you add pooling without hunting down every retire site. Two
+consequences to know: `isDestroyed` stays `false` for a member you "destroyed",
+and destroying an entity that has a member below it detaches that member and
+returns it rather than destroying it. Only `dispose()` destroys members, which
+the scene does on exit.
+
+Releasing an entity the pool has not leased is a no-op with a warning: a double
+release, or a member of another pool. Calling `setActive` on a leased member
+from outside does not return it to the pool either — only `release` does.
+
+A throwing `onAcquire` leaves the member leased and active; a throwing
+`onRelease` still parks it. Both are attributed to the entity and then
+propagate, exactly like a throw from `update()`.
