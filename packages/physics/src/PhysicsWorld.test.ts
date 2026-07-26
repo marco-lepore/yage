@@ -1048,6 +1048,42 @@ describe("PhysicsWorld", () => {
       expect(sentryEvents).toHaveLength(0);
     });
 
+    it("drops events when a removed handle is reused by a new collider", () => {
+      const pw = new PhysicsWorld();
+      const { scene } = createMockScene();
+
+      const striker = addCollider(pw, scene.spawn("striker"));
+      const wall = addCollider(pw, scene.spawn("wall"));
+      const sentry = addCollider(pw, scene.spawn("sentry"));
+
+      // Rapier can hand a removed collider's numeric handle to the next
+      // collider it creates. Model that by re-registering the wall's handle
+      // to a different component mid-drain: presence alone would pass, only
+      // component identity tells the captured side from the newcomer.
+      const replacement = createMockColliderComponent();
+      const replacementEvents: CollisionEvent[] = [];
+      replacement.onCollision((e) => replacementEvents.push(e));
+      striker.collider.onCollision(() => {
+        pw.removeCollider(wall.handle);
+        const maps = pw as unknown as {
+          colliderMap: Map<number, Entity>;
+          _colliderComponents: Map<number, ColliderComponent>;
+        };
+        maps.colliderMap.set(wall.handle, sentry.entity);
+        maps._colliderComponents.set(wall.handle, replacement);
+      });
+
+      const sentryEvents: CollisionEvent[] = [];
+      sentry.collider.onCollision((e) => sentryEvents.push(e));
+
+      queue(pw, striker.handle, wall.handle);
+      queue(pw, sentry.handle, wall.handle);
+      pw.processCollisionEvents();
+
+      expect(sentryEvents).toHaveLength(0);
+      expect(replacementEvents).toHaveLength(0);
+    });
+
     it("drops events for a member forceAcquire took back mid-drain", () => {
       const pw = new PhysicsWorld();
       const { scene } = createMockScene();

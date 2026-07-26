@@ -685,7 +685,7 @@ describe("SnapshotService", () => {
     });
 
     it("leaves a handle empty when its target is not in the snapshot", async () => {
-      const { service, sceneManager } = createTestContext();
+      const { service, sceneManager, storage } = createTestContext();
 
       @serializable
       class DanglingHandleScene extends Scene {
@@ -699,6 +699,10 @@ describe("SnapshotService", () => {
       await sceneManager.push(new DanglingHandleScene());
 
       service.saveSnapshot("test");
+
+      // The empty reference is written as an explicit null, not a missing
+      // key — a JSON round trip must not erase the field.
+      expect(storage.load("yage:snapshot:test")).toContain('"targetId":null');
       await service.loadSnapshot("test");
 
       const scene = sceneManager.active!;

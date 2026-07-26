@@ -270,10 +270,20 @@ export class EntityPool<
     }
   }
 
-  /** Release every leased member. */
+  /**
+   * Release every member leased when the call was made. A lease a release
+   * hook creates while this runs is the hook's to keep: only the leases that
+   * existed at call time end, and each only if it is still the same lease
+   * when its turn comes.
+   */
   releaseAll(): void {
-    for (const [member, st] of [...this.state]) {
-      if (st.status === "leased") this.release(member);
+    const leases: Array<[T, number]> = [];
+    for (const [member, st] of this.state) {
+      if (st.status === "leased") leases.push([member, st.seq]);
+    }
+    for (const [member, seq] of leases) {
+      const st = this.state.get(member);
+      if (st?.status === "leased" && st.seq === seq) this.release(member);
     }
   }
 
@@ -391,6 +401,11 @@ export class EntityPool<
     // A member has no parent to settle its state, so clear its own bit too.
     member._setActiveSuppressed(false);
     member._markPooled(this);
+    // Construction ran game code — `setup()`, component `onAdd`, the scene's
+    // spawn events — with the member live and not yet pool-owned. That
+    // proto-life ends here, so a handle taken during it does not resolve
+    // into the first lease.
+    member._endLife();
     this.state.set(member, { status: "free", seq: 0 });
     this.counts.free++;
     this.freeHint.push(member);

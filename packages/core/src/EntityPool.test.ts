@@ -453,6 +453,56 @@ describe("EntityPool", () => {
       expect(handle.current).toBeUndefined();
     });
 
+    it("kills a handle taken during member construction", () => {
+      const { scene } = createMockScene();
+
+      const takenInSetup: Array<EntityHandle<Entity>> = [];
+      class Eager extends Entity {
+        override setup(): void {
+          takenInSetup.push(this.handle());
+        }
+        onAcquire(): void {}
+      }
+
+      const pool = new EntityPool(scene, Eager, { prewarm: 1 });
+      const member = pool.acquire()!;
+
+      // `setup()` ran before the pool owned the member, so that handle
+      // belongs to no life and must not resolve into the first lease.
+      expect(takenInSetup).toHaveLength(1);
+      expect(takenInSetup[0]!.current).toBeUndefined();
+      expect(member.handle().current).toBe(member);
+    });
+
+    it("releaseAll leaves leases created by release hooks alone", () => {
+      const { scene } = createMockScene();
+
+      let swapped = false;
+      let reacquired: Entity | undefined;
+      class Swapper extends Entity {
+        onAcquire(): void {}
+        override onRelease(): void {
+          if (swapped) return;
+          swapped = true;
+          // Retire the other member and take it straight back. The new
+          // lease belongs to this hook, not to the releaseAll in progress —
+          // only the leases that existed at call time may end.
+          const other = acquired.find((e) => e !== this)!;
+          pool.release(other);
+          reacquired = pool.acquire();
+        }
+      }
+
+      const pool = new EntityPool(scene, Swapper, { prewarm: 2 });
+      const acquired: Swapper[] = [pool.acquire()!, pool.acquire()!];
+
+      pool.releaseAll();
+
+      expect(reacquired).toBeDefined();
+      expect(pool.leased).toBe(1);
+      expect(reacquired!.handle().current).toBe(reacquired);
+    });
+
     it("ends the life before onRelease runs", () => {
       const { scene } = createMockScene();
 

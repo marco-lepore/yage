@@ -57,11 +57,16 @@ describe("EntityHandle", () => {
     const { scene } = createMockScene();
 
     const seenDuringRelease: Array<Entity | undefined> = [];
+    const takenDuringRelease: Array<Entity | undefined> = [];
     class Probe extends Entity {
       sibling?: EntityHandle<Entity>;
+      siblingRef?: Entity;
       onAcquire(): void {}
       override onRelease(): void {
         seenDuringRelease.push(this.sibling?.current);
+        // A handle taken NOW must be dead too: the sibling sits under a
+        // destroyed parent, even though the cascade has not reached it yet.
+        takenDuringRelease.push(this.siblingRef?.handle().current);
       }
     }
 
@@ -71,12 +76,14 @@ describe("EntityHandle", () => {
     parent.addChild("member", member);
     const sibling = parent.spawnChild("sibling");
     member.sibling = sibling.handle();
+    member.siblingRef = sibling;
 
     parent.destroy();
 
     // The pooled child's `onRelease` ran mid-cascade, before the sibling was
     // visited — the sibling's handle must already be dead by then.
     expect(seenDuringRelease).toEqual([undefined]);
+    expect(takenDuringRelease).toEqual([undefined]);
   });
 
   it("stops resolving after scene teardown", () => {

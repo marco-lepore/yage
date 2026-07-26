@@ -176,15 +176,18 @@ export class Entity {
    * or when the code storing the reference also controls when the entity
    * goes away.
    *
-   * A handle taken on a pool member that is not currently leased never
-   * resolves: the caller is holding a reference from a life that is already
-   * over, and the pool is free to hand the entity to someone else.
+   * A handle taken outside a live life never resolves: on a pool member (or
+   * an entity under one) whose pool is not currently lending it out, or on
+   * an entity that is destroyed or sits under a destroyed ancestor. In all
+   * of those the caller is holding a reference from a life that is already
+   * over.
    */
   handle(): EntityHandle<this> {
-    if (Entity.isBackInPool(this)) {
+    if (Entity.lifeAlreadyOver(this)) {
       devWarn(
-        `entity.handle() on "${this.name}" was called while its pool is not lending it out. ` +
-          `The handle is dead on arrival — take one during the life you mean to track.`,
+        `entity.handle() on "${this.name}" was taken outside a live life — the entity is ` +
+          `destroyed, mid-teardown, or parked in its pool. The handle is dead on arrival — ` +
+          `take one during the life you mean to track.`,
       );
       return DEAD_ENTITY_HANDLE;
     }
@@ -192,11 +195,14 @@ export class Entity {
   }
 
   /**
-   * Is this entity, or the pool member it hangs under, sitting back in its
-   * pool? Then every reference to it belongs to a life that is already over.
+   * Is there no live life to hand out? True once the entity or an ancestor
+   * is destroyed — a destroyed ancestor means this subtree is mid-teardown,
+   * or was abandoned when a teardown hook threw — and for a pool member (or
+   * an entity under one) whose pool is not currently lending it out.
    */
-  private static isBackInPool(entity: Entity): boolean {
+  private static lifeAlreadyOver(entity: Entity): boolean {
     for (let e: Entity | null = entity; e; e = e._parent) {
+      if (e._destroyed) return true;
       const pool = e._pool;
       if (pool) return !pool._isLeased(e);
     }
