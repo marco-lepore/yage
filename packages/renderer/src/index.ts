@@ -12,6 +12,7 @@ export type {
   ApplicationOptions,
   BitmapFontHandle,
   BitmapFontResource,
+  BlendMode,
   ColorValue,
   DestroyOptions,
   DisplayAnimatedSprite,
@@ -211,6 +212,12 @@ export type { EffectDefinition } from "./effects/defineEffect.js";
 export { rawFilter } from "./effects/rawFilter.js";
 export type { RawFilterOptions } from "./effects/rawFilter.js";
 export type { RendererSnapshotData } from "./effects/RendererSnapshotContributor.js";
+
+// Offscreen buffers
+export type {
+  RenderTargetHandle,
+  RenderTargetOptions,
+} from "./RenderTarget.js";
 
 // Masks
 export type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";

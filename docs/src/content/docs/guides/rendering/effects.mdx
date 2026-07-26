@@ -1,6 +1,6 @@
 ---
 title: "Visual Effects & Masks"
-description: "Apply filters at component / layer / scene / screen scope; mask shapes; ship-ready presets via @yagejs/effects."
+description: "Filters at component / layer / scene / screen scope, masks, blend modes, and offscreen render targets."
 ---
 
 YAGE wraps PixiJS filters and masks behind a consistent handle-based API
@@ -327,6 +327,148 @@ Two gotchas inside a `graphicsMask` closure:
 Three factories ship today: `rectMask` (savable), `spriteMask` (caller owns
 the sprite — not savable), `graphicsMask` (custom drawn — closure can't be
 saved). For savable custom shapes, register one with `defineMask`.
+
+## Blend modes
+
+Every visual component takes a `blendMode` option deciding how its pixels
+combine with what is already drawn beneath it. It is also a live accessor,
+so it can change at runtime.
+
+```ts
+import { SpriteComponent } from "@yagejs/renderer";
+
+// A muzzle flash that brightens whatever it lands on.
+entity.add(new SpriteComponent({ texture: "flash", blendMode: "add" }));
+
+// Later, back to plain compositing.
+sprite.blendMode = "normal";
+```
+
+`"normal"`, `"add"`, `"multiply"`, `"screen"`, `"erase"`, `"min"`, `"max"`,
+`"none"` and the `-npm` variants run directly on the GPU and work with no
+setup. The photoshop-style rest — `"darken"`, `"lighten"`, `"overlay"`,
+`"color-dodge"`, `"soft-light"` and the rest — are drawn with filters that
+PixiJS only registers when you ask for them. Add one import to your entry
+file:
+
+```ts
+import "pixi.js/advanced-blend-modes";
+```
+
+Without it, PixiJS logs a warning naming the mode and draws the object
+normally.
+
+:::caution[`erase` needs its own buffer]
+`erase` subtracts the object's alpha from what is beneath it, and "beneath"
+means whatever is already in the framebuffer being drawn to. Put an `erase`
+object straight into a scene layer and it erases the whole world behind it,
+not just the shape you meant to cut. To cut a hole in one thing, draw both
+into an [offscreen render target](#offscreen-render-targets) so the erase
+only reaches that buffer.
+:::
+
+`serialize()` records `blendMode` only when it is something other than
+`"normal"`, and `fromSnapshot` restores it.
+
+## Offscreen render targets
+
+`createRenderTarget` draws a container into a texture your game owns, on a
+schedule you control. Reach for it when several objects need to composite
+against each other before they reach the screen, or when redrawing expensive
+static content every frame is wasteful.
+
+```ts
+import { Container, Graphics } from "pixi.js";
+import { RendererKey, SpriteComponent, registerTexture } from "@yagejs/renderer";
+
+const renderer = this.context.resolve(RendererKey);
+
+// The offscreen content. Not part of the scene render tree.
+const buffer = new Container();
+const darkness = new Graphics()
+  .rect(0, 0, 1280, 720)
+  .fill({ color: 0x05060a, alpha: 0.85 });
+const lamp = new Graphics().circle(400, 300, 120).fill({ color: 0xffffff });
+lamp.blendMode = "erase"; // only reaches `darkness`, because both live in the buffer
+buffer.addChild(darkness, lamp);
+
+const target = renderer.createRenderTarget(buffer, {
+  width: 1280,
+  height: 720,
+  resolutionScale: 0.5, // a quarter of the texels — invisible on a soft gradient
+});
+
+// Show the texture like any other.
+registerTexture("lighting", target.texture);
+overlay.add(new SpriteComponent({ texture: "lighting", layer: "overlay" }));
+```
+
+A registered key outlives the target it came from. `destroy()` frees the GPU
+texture but leaves the key resolving to it, so tear the two down together:
+
+```ts
+onExit(): void {
+  unregisterTexture("lighting");
+  target.destroy();
+}
+```
+
+The buffer starts out needing a draw and is redrawn only when you ask:
+
+```ts
+// In a component's update:
+lamp.position.set(player.x, player.y);
+target.invalidate();       // the content changed
+target.renderIfNeeded();   // draws, and returns true because it did
+```
+
+For content that changes rarely — a baked background, a fog-of-war map
+revealed on discovery — call `invalidate()` from the event that changes it
+and leave `renderIfNeeded()` in the update. For content that moves every
+frame, call `render()` directly and use `resolutionScale` to keep the cost
+down.
+
+### Where things land inside the buffer
+
+Content is drawn in the source container's **own** coordinate space. A child
+at local `(100, 50)` lands at texture pixel `(100, 50)`. Ancestor transforms
+never reach the buffer, so neither the camera nor the responsive `fit` scale
+moves or resizes what you draw. Two consequences:
+
+- **To follow the camera, move the children yourself.** Run the world point
+  through `camera.worldToScreen(x, y)` and place the child at the result —
+  reading `camera.position` alone drifts as soon as zoom, rotation, or shake
+  are in play. Or size the buffer to
+  `renderer.visibleVirtualRect` and place content in that rectangle.
+- **The source's own transform still applies.** Setting `source.position`
+  shifts everything inside the texture. Leave the source untransformed
+  unless you want that.
+
+### Rules worth knowing
+
+- **Keep the source out of the scene render tree.** PixiJS promotes a
+  rendered container to a render group, changing how it batches wherever it
+  is parented, and buffer content is normally shown through the texture
+  rather than drawn twice.
+- **A hidden source draws nothing.** PixiJS skips a container whose
+  `visible` is `false`. The pending draw is kept — and set, if you forced
+  one — so the buffer catches up the first time the source is shown.
+- **A destroyed source throws.** Once the source container is destroyed the
+  buffer can never draw again, so `render()` and `renderIfNeeded()` raise a
+  named error instead of leaving a permanently stale texture. Destroy the
+  target alongside its source.
+- **`resolutionScale` costs sharpness, not layout.** Only the texel count
+  changes. The exception is rounding: PixiJS stores whole texels, so a size
+  that lands between them is rounded up and the measured size grows to
+  match. Good for gradients and glows, bad for text and pixel art.
+- **`resize()` keeps the density you asked for.** Omit the third argument
+  and the buffer re-derives its resolution from the renderer's current one
+  using the configured `resolutionScale`; pass one to replace that scale.
+- **`destroy()` frees the GPU memory.** Call it when the buffer's owner goes
+  away — nothing reclaims it automatically.
+- **WebGPU is unverified.** PixiJS tries WebGL first unless you pass
+  `pixi: { preference: "webgpu" }`, and blend behaviour inside a render
+  target has only been checked on WebGL.
 
 ## Save / load
 

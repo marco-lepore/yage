@@ -14,6 +14,7 @@ const { mocks } = vi.hoisted(() => {
     label = "";
     destroyed = false;
     tint = 0xffffff;
+    blendMode = "inherit";
     eventMode = "passive";
     anchor = {
       x: 0,

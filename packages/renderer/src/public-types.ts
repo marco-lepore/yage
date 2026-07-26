@@ -5,6 +5,7 @@ import type {
   ApplicationOptions as PixiApplicationOptions,
   BitmapFont,
   BitmapText,
+  BLEND_MODES,
   ColorSource,
   Container,
   DestroyOptions as PixiDestroyOptions,
@@ -108,6 +109,24 @@ export type GradientFill = FillGradient;
 
 /** Generic color input accepted by UI helpers. */
 export type ColorValue = ColorSource;
+
+/**
+ * How a display object's pixels combine with what is already drawn beneath
+ * it — accepted by every visual component's `blendMode` option.
+ *
+ * `"normal"`, `"add"`, `"multiply"`, `"screen"`, `"erase"`, `"min"`,
+ * `"max"`, `"none"` and the `-npm` variants are GPU-native and work as
+ * soon as the renderer starts. The photoshop-style rest (`"darken"`,
+ * `"overlay"`, `"color-dodge"`, ...) are filter-backed and need a
+ * side-effect import in the game's entry file:
+ *
+ * ```ts
+ * import "pixi.js/advanced-blend-modes";
+ * ```
+ *
+ * Without it the renderer logs a warning and draws the object normally.
+ */
+export type BlendMode = BLEND_MODES;
 
 /** Point-like data used by UI callbacks and options. */
 export type PointLike = PointData;

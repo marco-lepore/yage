@@ -24,6 +24,7 @@ Every exported field, parameter, and return type across `@yagejs/renderer` (and 
 | `ApplicationOptions` | `ApplicationOptions` | `RendererConfig.pixi` |
 | `DestroyOptions` | `DestroyOptions` | visual components' `destroyOptions()` override hook |
 | `ColorValue` | `ColorSource` | every `tint` option/accessor |
+| `BlendMode` | `BLEND_MODES` | every visual component's `blendMode` option/accessor |
 | `PointLike` | `PointData` | point-shaped callbacks/options |
 | `TextStyle` | `TextStyleOptions` | every `style` option |
 | `TextureRef` | none — `string \| TextureHandle`, a serializable key/handle reference | `SpriteComponent.texture`, `setTexture()` |
@@ -201,13 +202,14 @@ For procedural shapes plus a label, use a parent entity with `GraphicsComponent`
 
 ### Shared options vocabulary
 
-All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitText) accept the same `visible` / `tint` / `alpha` / `interactive` options, with runtime accessors for the first three. Pixi's `Container` carries all four natively, so the behavior is identical across every component:
+All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitText) accept the same `visible` / `tint` / `alpha` / `blendMode` / `interactive` options, with runtime accessors for the first four. Pixi's `Container` carries all five natively, so the behavior is identical across every component:
 
 ```ts
 {
   visible?: boolean;   // initial visibility, default true
   tint?: ColorValue;    // number (0xff0000) or CSS color string ("red", "#ff0000")
   alpha?: number;       // opacity, default 1
+  blendMode?: BlendMode; // how the pixels combine with what is beneath, default "normal"
   interactive?: {
     eventMode?: "static" | "dynamic"; // default "static" when the object is set
     consumeOnInteraction?: boolean;    // claim the press for @yagejs/input's action map
@@ -215,7 +217,15 @@ All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitT
 }
 ```
 
-`comp.visible` / `comp.tint` / `comp.alpha` read/write the live object; `interactive` is option-only (set once at construction, persisted through save/load). `anchor` (`{x, y}`) is shared by Sprite, AnimatedSprite, Text, and SplitText. Graphics has no anchor (a raw Pixi `Container` has none). SplitText also has per-segment `charAnchor` / `wordAnchor` / `lineAnchor` values (see below).
+`comp.visible` / `comp.tint` / `comp.alpha` / `comp.blendMode` read/write the live object; `interactive` is option-only (set once at construction, persisted through save/load).
+
+**`blendMode`.** `"normal"`, `"add"`, `"multiply"`, `"screen"`, `"erase"`, `"min"`, `"max"`, `"none"` and the `-npm` variants are GPU-native and need nothing extra. The photoshop-style rest (`"darken"`, `"lighten"`, `"overlay"`, `"color-dodge"`, `"soft-light"`, ...) are filter-backed and need one side-effect import in the game's entry file — without it Pixi logs a warning and draws normally:
+
+```ts
+import "pixi.js/advanced-blend-modes";
+```
+
+Pixi constructs every display object at `"inherit"`, not `"normal"` — inherited blending renders as normal until an ancestor sets a mode, and the two differ under a non-normal parent. `serialize()` omits `blendMode` only when it is `"inherit"`, so an explicit `"normal"` survives a round trip. `"erase"` composites against whatever framebuffer the object lands in, so it only cuts a hole out of the darkness you intend when both are drawn into their own offscreen buffer — see [Offscreen render targets](#offscreen-render-targets). `anchor` (`{x, y}`) is shared by Sprite, AnimatedSprite, Text, and SplitText. Graphics has no anchor (a raw Pixi `Container` has none). SplitText also has per-segment `charAnchor` / `wordAnchor` / `lineAnchor` values (see below).
 
 ### SpriteComponent
 
@@ -249,7 +259,7 @@ entity.add(new GraphicsComponent({ layer: "world", tint: 0x88ccff }).draw((g) =>
 }));
 ```
 
-Serializes `layer` / `visible` / `tint` / `alpha` / `interactive` / effects / mask — the drawn geometry itself is not persisted (Pixi has no way to read commands back off a `Graphics` object), so redo the `draw()` call in `afterRestore()`.
+Serializes `layer` / `visible` / `tint` / `alpha` / `blendMode` / `interactive` / effects / mask — the drawn geometry itself is not persisted (Pixi has no way to read commands back off a `Graphics` object), so redo the `draw()` call in `afterRestore()`.
 
 **Escape hatch:** `.graphics` (and the `g` passed to `.draw(fn)`) is a raw pixi `Graphics` with the v8 fluent API: `rect` / `circle` / `roundRect` / `poly` / `moveTo` / `lineTo` / `arc` / `fill` / `stroke`. `arc` continues the current path like Canvas 2D: call `moveTo(x, y)` at the arc's start point first for a standalone arc, otherwise a line connects it from the previous point. See [pixi Graphics docs](https://pixijs.com/8.x/guides/components/scene-objects/graphics).
 
@@ -884,6 +894,64 @@ tree.setMask(graphicsMask((g) => { g.circle(0, 0, 100).fill(0xffffff); }));
 | `graphicsMask` | `(draw: (g: Graphics) => void) => MaskFactory` | Custom drawn mask; call `handle.redraw()` after dependencies change. NOT serializable (closure can't be saved). The closure must `g.clear()` first (pixi commands accumulate) and read live state from a captured object/getter — `const` snapshots stay stale across `redraw()`. |
 | `defineMask` | `<O>({ name, factory: (opts: O) => Mask }) => (opts: O) => MaskFactory` | Register a savable mask preset. Only `rectMask` uses this today. |
 | `attachMask` / `restoreMask` | low-level helpers | `attachMask(target, factory)` returns a `MaskHandle`; `restoreMask(target, snap)` reattaches from a snapshot. |
+
+## Offscreen render targets
+
+`renderer.createRenderTarget(source, options)` draws a container into a texture the game owns and redraws on its own schedule. Use it when several objects must composite against each other before reaching the screen (a light buffer, a trail buffer, a downscaled blur source), or to cache expensive static content as one texture.
+
+```ts
+import { Container, Graphics } from "pixi.js";
+import { RendererKey, SpriteComponent, registerTexture } from "@yagejs/renderer";
+
+const renderer = this.context.resolve(RendererKey); // in a Scene
+
+// Build the offscreen content. Keep it out of the scene render tree.
+const buffer = new Container();
+const darkness = new Graphics().rect(0, 0, 1280, 720).fill({ color: 0x05060a, alpha: 0.85 });
+const hole = new Graphics().circle(400, 300, 120).fill({ color: 0xffffff });
+hole.blendMode = "erase";                 // cuts the darkness INSIDE the buffer
+buffer.addChild(darkness, hole);
+
+const target = renderer.createRenderTarget(buffer, {
+  width: 1280,
+  height: 720,
+  resolutionScale: 0.5,                   // quarter the texels; invisible on soft gradients
+});
+
+// Show the result like any other texture.
+registerTexture("lighting", target.texture);
+overlay.add(new SpriteComponent({ texture: "lighting", layer: "overlay" }));
+
+// In a component's update: redraw only when the content changed.
+hole.position.set(player.x, player.y);
+target.invalidate();
+target.renderIfNeeded();
+```
+
+| Member | Signature | Description |
+|---|---|---|
+| `RendererPlugin.createRenderTarget` | `(source: DisplayContainer, options: RenderTargetOptions) => RenderTargetHandle` | Allocate the buffer. The repeatable counterpart of `createTexture`, which bakes once and never changes. |
+| `RenderTargetOptions` | `{ width, height, resolutionScale?, antialias?, clearColor?, label? }` | `width` / `height` are in source coordinates. `resolutionScale` (default `1`) multiplies the renderer's own resolution. `clearColor` defaults to transparent. |
+| `handle.texture` | `TextureResource` | What the buffer draws into. Feed it to `SpriteComponent` (via `registerTexture`), `spriteMask`, or a filter uniform. |
+| `handle.render()` | `() => void` | Draw now and clear the pending flag. |
+| `handle.renderIfNeeded()` | `() => boolean` | Draw only when pending; returns whether it drew. |
+| `handle.invalidate()` | `() => void` | Mark the buffer stale. |
+| `handle.needsRender` | `boolean` | Whether a render is pending. |
+| `handle.resize(w, h, scale?)` | `(number, number, number?) => void` | Resize and mark stale. Anything showing the texture picks up the new size on its next draw. Omitting `scale` keeps the configured `resolutionScale`, re-derived against the renderer's current resolution; passing one replaces it. |
+| `handle.width` / `height` / `resolution` | `number` | Measured size in source coordinates, and the texels-per-pixel actually allocated. |
+| `handle.destroy()` | `() => void` | Free the texture's GPU memory. Repeatable. |
+
+Semantics:
+
+- **Coordinate space.** The buffer is drawn in the source container's OWN space: a child at local `(100, 50)` lands at texture pixel `(100, 50)`. Ancestor transforms never reach it, so neither the camera nor the responsive `fit` scale moves or resizes the content. To follow the camera, move the source's children yourself. `camera.position` alone is not enough once zoom, rotation, or shake are in play — run the world point through `camera.worldToScreen(x, y)` and place the child at the result, or size the buffer to `renderer.visibleVirtualRect`.
+- **The source's own transform DOES apply.** Setting `source.position` or `source.scale` shifts everything inside the texture. Leave the source untransformed unless that is what you want.
+- **Keep the source out of the scene render tree.** Pixi promotes a rendered container to a render group, which changes how it batches wherever it is parented, and content drawn into a buffer is normally shown through the buffer's texture rather than twice.
+- **A hidden source draws nothing.** Pixi skips a container with `visible === false`; the pending flag is kept — and set, if the draw was forced — so the buffer catches up when it is shown again.
+- **A destroyed source throws.** Once the source container is destroyed the buffer can never draw again, so `render()` and `renderIfNeeded()` throw a named error rather than leaving a permanently stale texture. Destroy the target alongside its source.
+- **`resolutionScale` costs sharpness, not layout.** Only the texel count drops. The one exception is rounding: Pixi stores whole texels, so a `width × resolution` that lands between them is rounded up and the measured size grows to match — at `resolutionScale: 0.25` on a resolution-2 renderer, `resize(1279, 719)` measures `1280 × 720`. Use sizes that divide evenly by the effective resolution if the exact measurement matters. Worth it for gradients and glows, not for text or pixel art.
+- **A registered key outlives the target.** `registerTexture(key, handle.texture)` keeps handing out that texture after `destroy()` — pair the teardown with `unregisterTexture(key)` or the next lookup resolves a destroyed texture.
+- **Cost.** Every `render()` is a full draw of the source plus a render-target switch. A buffer that only changes when the game state does should be invalidated on that change, not every frame. A buffer that tracks moving content pays that cost per frame — `resolutionScale` is the lever there.
+- **Backends.** Pixi's default backend order is WebGL first, so a game that doesn't pass `pixi: { preference: "webgpu" }` runs on WebGL. Blend behaviour inside a render target, `"erase"` included, is verified on WebGL and unmeasured on WebGPU.
 
 ## Save/load (effects + masks)
 

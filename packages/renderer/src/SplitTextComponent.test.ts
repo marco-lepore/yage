@@ -17,6 +17,7 @@ const { mocks } = vi.hoisted(() => {
     visible = true;
     alpha = 1;
     tint = 0xffffff;
+    blendMode = "inherit";
     eventMode = "passive";
     parent: MockContainer | null = null;
     zIndex = 0;

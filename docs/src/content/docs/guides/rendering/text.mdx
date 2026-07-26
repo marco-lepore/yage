@@ -28,9 +28,10 @@ entity.add(
 );
 ```
 
-`TextComponent` also takes `visible` and `interactive` (same shape as
-`SpriteComponent`'s), so a raw `Text` can mark itself as a pointer-consume
-surface without going through `@yagejs/ui`.
+`TextComponent` also takes `visible`, `blendMode`, and `interactive` (same shape
+as `SpriteComponent`'s), so a raw `Text` can blend additively over what is
+beneath it, or mark itself as a pointer-consume surface without going through
+`@yagejs/ui`.
 
 Update at runtime with `setText()` / `setStyle()`, or tweak `tint` and
 `alpha` directly. `setStyle()` **replaces** the style — properties you
