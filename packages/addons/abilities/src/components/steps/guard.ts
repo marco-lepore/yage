@@ -29,8 +29,8 @@ export function guard<TData = StandardHitData>(
     params,
     hooks: {
       enter: enterGuard,
-      suspend: exitGuard,
-      resume: enterGuard,
+      onDisable: exitGuard,
+      onEnable: enterGuard,
       exit: exitGuard,
     },
   };

@@ -82,7 +82,7 @@ describe("guard step", () => {
     expect(receiver.receive(makeHit(attacker))).toBe("hit");
   });
 
-  it("closes an open guard while abilities are dormant and restores it on enable", () => {
+  it("closes an open guard while abilities are disabled and restores it on enable", () => {
     const { entity, pc, receiver } = setup();
     const { entity: attacker } = createMockEntity("attacker");
     const abilities = entity.add(

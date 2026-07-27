@@ -92,8 +92,8 @@ export function slowmo(
     params,
     hooks: {
       enter: openSlowmo,
-      suspend: closeSlowmo,
-      resume: openSlowmo,
+      onDisable: closeSlowmo,
+      onEnable: openSlowmo,
       exit: closeSlowmo,
     },
   };

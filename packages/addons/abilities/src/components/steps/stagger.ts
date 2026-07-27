@@ -1,5 +1,5 @@
 import { defineStep } from "../../core/defineStep.js";
-import { Stagger } from "../Stagger.js";
+import { Stagger, setStaggerWindowEnabled } from "../Stagger.js";
 import type { AbilityDef, StepContext } from "../../core/types.js";
 import type { Vec2Like } from "@yagejs/core";
 
@@ -26,11 +26,11 @@ export const staggerMotion = defineStep<{
   enter(params, ctx) {
     requireStagger(ctx).begin(params);
   },
-  suspend(_params, ctx) {
-    requireStagger(ctx).suspend();
+  onDisable(_params, ctx) {
+    setStaggerWindowEnabled(requireStagger(ctx), false);
   },
-  resume(_params, ctx) {
-    requireStagger(ctx).resume();
+  onEnable(_params, ctx) {
+    setStaggerWindowEnabled(requireStagger(ctx), true);
   },
   exit(_params, ctx) {
     requireStagger(ctx).end();

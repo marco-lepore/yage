@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Vec2, createMockEntity } from "@yagejs/core";
 import { RigidBodyComponent } from "@yagejs/physics";
-import { Stagger } from "./Stagger.js";
+import { Stagger, setStaggerWindowEnabled } from "./Stagger.js";
 
 // Stagger only calls `setVelocity` on its sibling body; a real
 // RigidBodyComponent needs a live Rapier world, so the class is replaced
@@ -119,11 +119,10 @@ describe("Stagger", () => {
     expect(captured.velocities.at(-1)).toEqual({ x: 0, y: 60 });
   });
 
-  it("can start a fresh stagger after a suspended one ends", () => {
+  it("does not disable a future stagger when no window effect is active", () => {
     const { stagger } = setup();
-    stagger.begin({ direction: new Vec2(1, 0), knockback: 100, stun: 0.5 });
-    stagger.suspend();
-    stagger.end();
+
+    setStaggerWindowEnabled(stagger, false);
     stagger.begin({ direction: new Vec2(0, 1), knockback: 60, stun: 0.5 });
 
     expect(captured.velocities.at(-1)).toEqual({ x: 0, y: 60 });

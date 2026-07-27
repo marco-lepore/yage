@@ -67,8 +67,8 @@ export function hitbox<TData = StandardHitData>(
     params,
     hooks: {
       enter: enterHitbox,
-      suspend: suspendHitbox,
-      resume: resumeHitbox,
+      onDisable: disableHitbox,
+      onEnable: enableHitbox,
       exit: exitHitbox,
       tick: repeatHitbox,
     },
@@ -87,14 +87,14 @@ function repeatHitbox<TData>(
   open.get(ctx)?.get(params)?.repeatHits();
 }
 
-function suspendHitbox<TData>(
+function disableHitbox<TData>(
   params: HitboxParams<TData>,
   ctx: StepContext,
 ): void {
   open.get(ctx)?.get(params)?.setActive(false);
 }
 
-function resumeHitbox<TData>(
+function enableHitbox<TData>(
   params: HitboxParams<TData>,
   ctx: StepContext,
 ): void {

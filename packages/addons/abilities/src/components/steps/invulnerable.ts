@@ -37,12 +37,12 @@ export const invulnerable = defineStep<object>("invulnerable", {
     byParams.set(params, key);
     receiver.openInvulnerability(key);
   },
-  suspend: (params, ctx) => {
+  onDisable: (params, ctx) => {
     const receiver = requireReceiver(ctx);
     const key = keys.get(ctx)?.get(params);
     if (key) receiver.closeInvulnerability(key);
   },
-  resume: (params, ctx) => {
+  onEnable: (params, ctx) => {
     const receiver = requireReceiver(ctx);
     const key = keys.get(ctx)?.get(params);
     if (key) receiver.openInvulnerability(key);

@@ -128,7 +128,7 @@ describe("hitbox step", () => {
     expect(findHitbox(scene).get(Transform).rotation).toBeCloseTo(Math.PI / 2);
   });
 
-  it("deactivates an open hitbox while abilities are dormant and restores it on enable", () => {
+  it("deactivates an open hitbox with abilities or their host", () => {
     const { entity, scene, pc } = setup();
     entity.add(new Facing());
     const abilities = entity.add(
@@ -156,6 +156,12 @@ describe("hitbox step", () => {
     expect(spawned.isActive).toBe(false);
 
     abilities.enabled = true;
+    expect(spawned.isActive).toBe(true);
+
+    entity.setActive(false);
+    expect(spawned.isActive).toBe(false);
+
+    entity.setActive(true);
     expect(spawned.isActive).toBe(true);
   });
 

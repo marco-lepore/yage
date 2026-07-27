@@ -82,13 +82,13 @@ export interface PointStepHooks<P> {
 export interface WindowStepHooks<P> {
   enter?(params: P, ctx: StepContext): void;
   /**
-   * Put resources owned by an open window to sleep while its `Abilities`
-   * component is disabled or its entity is inactive. The window remains open
-   * and its clock does not advance.
+   * Release resources owned by an open window when its `Abilities` component
+   * becomes ineffective. The window remains open and its clock does not
+   * advance.
    */
-  suspend?(params: P, ctx: StepContext): void;
-  /** Restore resources released by {@link suspend}. */
-  resume?(params: P, ctx: StepContext): void;
+  onDisable?(params: P, ctx: StepContext): void;
+  /** Restore resources released by {@link onDisable}. */
+  onEnable?(params: P, ctx: StepContext): void;
   /**
    * `cancelled` is true when the window was cut short against the ability's
    * will — `Abilities.cancel()`, an interruption, or a cancel-window

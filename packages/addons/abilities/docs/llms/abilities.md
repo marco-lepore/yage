@@ -171,8 +171,8 @@ interface WindowStep<P extends object = object> {
     enter?(params: P, ctx: StepContext): void;
     exit?(params: P, ctx: StepContext, cancelled: boolean): void;
     tick?(params: P, ctx: StepContext): void;
-    suspend?(params: P, ctx: StepContext): void;
-    resume?(params: P, ctx: StepContext): void;
+    onDisable?(params: P, ctx: StepContext): void;
+    onEnable?(params: P, ctx: StepContext): void;
   };
 }
 
@@ -189,8 +189,8 @@ interface StepContext {
 fire once. Window `enter`/`exit` fire once; `tick` fires at `every` intervals
 strictly before the end. Phase transitions and natural completion close
 windows with `cancelled: false`; cancellation and interruption pass `true`.
-When `Abilities` becomes disabled, `suspend` temporarily releases an open
-window's live resources. `resume` restores them when the component becomes
+When `Abilities` becomes ineffective, `onDisable` temporarily releases an open
+window's live resources. `onEnable` restores them when the component becomes
 effective again. These hooks do not close the window or reset its clock.
 
 Custom step factory:
@@ -306,11 +306,11 @@ Events are deferred until the current runner entry settles. Listeners observe
 settled lane state. One run has one start/end pair; phase changes do not end it.
 
 Disabling `Abilities`, or deactivating its entity, pauses active phases, linger,
-and cooldown clocks. It also suspends open window resources. `send`, `canSend`,
-`force`, and `release` refuse new work while dormant. Enabling the component
-again resumes the same activation and clocks. Built-in hitbox, guard,
-invulnerability, slow-motion, and stagger windows already implement this
-resource lifecycle.
+and cooldown clocks. It also releases the effects owned by open windows without
+changing any sibling component's `enabled` value. `send`, `canSend`, `force`,
+and `release` refuse new work while dormant. Enabling `Abilities` restores the
+same activation, clocks, and open-window effects. Built-in hitbox, guard,
+invulnerability, slow-motion, and stagger windows implement this lifecycle.
 
 ### Definition replacement
 
@@ -507,8 +507,6 @@ class Stagger extends Component {
     stun: number;
   }): void;
   end(): void;
-  suspend(): void;
-  resume(): void;
 }
 ```
 

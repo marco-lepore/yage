@@ -1,5 +1,6 @@
 import {
   Component,
+  ErrorBoundaryKey,
   Process,
   ProcessComponent,
   SceneTimeKey,
@@ -356,8 +357,8 @@ export class Abilities extends Component {
    * teardown pass.
    */
   private tearingDown = false;
-  /** Open-window resources and owned clocks are asleep while the component is dormant. */
-  private suspended = true;
+  /** Whether this component's clocks and open-window effects are enabled. */
+  private resourcesEnabled = false;
 
   /**
    * Depth of this component's own track event/completion hooks on the call
@@ -707,9 +708,9 @@ export class Abilities extends Component {
   }
 
   override onEnable(): void {
-    if (!this.suspended) return;
-    this.suspended = false;
-    this.resumeOpenWindows();
+    if (this.resourcesEnabled) return;
+    this.resourcesEnabled = true;
+    this.enableOpenWindows();
     for (const activation of this.lanes.values()) {
       activation.track.process.resume();
     }
@@ -722,8 +723,8 @@ export class Abilities extends Component {
   }
 
   override onDisable(): void {
-    if (this.suspended) return;
-    this.suspended = true;
+    if (!this.resourcesEnabled) return;
+    this.resourcesEnabled = false;
     for (const activation of this.lanes.values()) {
       activation.track.process.pause();
     }
@@ -733,7 +734,7 @@ export class Abilities extends Component {
     for (const cooldown of this.cooldowns.values()) {
       cooldown.slot.pause();
     }
-    this.suspendOpenWindows();
+    this.disableOpenWindows();
   }
 
   override onDestroy(): void {
@@ -1128,23 +1129,45 @@ export class Abilities extends Component {
     }
   }
 
-  private suspendOpenWindows(): void {
+  private disableOpenWindows(): void {
     for (const [lane, activation] of [...this.lanes]) {
       if (this.lanes.get(lane) !== activation) continue;
       for (const step of activation.compiledPhase.steps) {
         if (!isWindowStep(step) || !activation.openWindows.has(step)) continue;
-        step.hooks.suspend?.(step.params, activation.ctx);
+        const hook = step.hooks.onDisable;
+        if (hook) {
+          this.use(ErrorBoundaryKey).wrapCallback(
+            () => hook(step.params, activation.ctx),
+            {
+              kind: "Ability window onDisable hook",
+              entity: this.entity.name,
+              scene: this.scene.name,
+              event: step.kind,
+            },
+          );
+        }
         if (this.lanes.get(lane) !== activation) break;
       }
     }
   }
 
-  private resumeOpenWindows(): void {
+  private enableOpenWindows(): void {
     for (const [lane, activation] of [...this.lanes]) {
       if (this.lanes.get(lane) !== activation) continue;
       for (const step of activation.compiledPhase.steps) {
         if (!isWindowStep(step) || !activation.openWindows.has(step)) continue;
-        step.hooks.resume?.(step.params, activation.ctx);
+        const hook = step.hooks.onEnable;
+        if (hook) {
+          this.use(ErrorBoundaryKey).wrapCallback(
+            () => hook(step.params, activation.ctx),
+            {
+              kind: "Ability window onEnable hook",
+              entity: this.entity.name,
+              scene: this.scene.name,
+              event: step.kind,
+            },
+          );
+        }
         if (this.lanes.get(lane) !== activation) break;
       }
     }

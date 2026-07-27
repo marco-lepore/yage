@@ -74,7 +74,7 @@ describe("slowmo step", () => {
     expect(time.effectiveScale).toBe(1);
   });
 
-  it("releases an open request while abilities are dormant and restores it on enable", () => {
+  it("releases an open request with abilities or their host", () => {
     const { entity, pc, time } = setup();
     const abilities = entity.add(
       new Abilities([
@@ -90,6 +90,12 @@ describe("slowmo step", () => {
     expect(time.effectiveScale).toBe(1);
 
     abilities.enabled = true;
+    expect(time.effectiveScale).toBe(0.3);
+
+    entity.setActive(false);
+    expect(time.effectiveScale).toBe(1);
+
+    entity.setActive(true);
     expect(time.effectiveScale).toBe(0.3);
   });
 
