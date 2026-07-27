@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Vec2, createMockEntity } from "@yagejs/core";
 import { RigidBodyComponent } from "@yagejs/physics";
-import { Stagger } from "./Stagger.js";
+import { Stagger, setStaggerWindowEnabled } from "./Stagger.js";
 
 // Stagger only calls `setVelocity` on its sibling body; a real
 // RigidBodyComponent needs a live Rapier world, so the class is replaced
@@ -93,5 +93,38 @@ describe("Stagger", () => {
     ]);
     stagger.update(0.1); // ended — no further writes
     expect(captured.velocities).toHaveLength(3);
+  });
+
+  it("zeroes active knockback while disabled and restores the same ramp on enable", () => {
+    const { stagger } = setup();
+    stagger.begin({ direction: new Vec2(1, 0), knockback: 100, stun: 0.5 });
+    stagger.update(0.1);
+
+    stagger.enabled = false;
+    expect(captured.velocities.at(-1)).toEqual({ x: 0, y: 0 });
+
+    stagger.enabled = true;
+    expect(captured.velocities.at(-1)).toEqual({ x: 80, y: 0 });
+    expect(stagger.active).toBe(true);
+  });
+
+  it("uses the same knockback lifecycle while the host entity is inactive", () => {
+    const { entity, stagger } = setup();
+    stagger.begin({ direction: new Vec2(0, 1), knockback: 60, stun: 0.5 });
+
+    entity.setActive(false);
+    expect(captured.velocities.at(-1)).toEqual({ x: 0, y: 0 });
+
+    entity.setActive(true);
+    expect(captured.velocities.at(-1)).toEqual({ x: 0, y: 60 });
+  });
+
+  it("does not disable a future stagger when no window effect is active", () => {
+    const { stagger } = setup();
+
+    setStaggerWindowEnabled(stagger, false);
+    stagger.begin({ direction: new Vec2(0, 1), knockback: 60, stun: 0.5 });
+
+    expect(captured.velocities.at(-1)).toEqual({ x: 0, y: 60 });
   });
 });

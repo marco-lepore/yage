@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createMockScene,
   Transform,
@@ -73,6 +73,59 @@ describe("SceneFigurePresenter — talk bob vs entity movement", () => {
     presenter.setSpeaker(speaker); // next line, same figure
     expect(t.position.x).toBe(300);
     expect(t.position.y).toBe(200);
+  });
+
+  it("sleeps fallback callbacks and bobbing while the figure is inactive", () => {
+    const { scene, npc, speaker } = setup();
+    const onExpression = vi.fn();
+    const onSpeaking = vi.fn();
+    const presenter = new SceneFigurePresenter({
+      onExpression,
+      onSpeaking,
+    });
+    presenter.mount(scene);
+    presenter.setSpeaker(speaker);
+    presenter.setExpression("angry");
+    presenter.setSpeaking(true);
+    presenter.update(0.04);
+    const transform = npc.get(Transform);
+
+    npc.setActive(false);
+    presenter.update(0.04);
+    expect(onSpeaking).toHaveBeenLastCalledWith(npc, false);
+    const dormantY = transform.position.y;
+    presenter.setExpression("calm");
+    presenter.update(0.04);
+    expect(transform.position.y).toBe(dormantY);
+
+    npc.setActive(true);
+    presenter.update(0.04);
+    expect(onExpression).toHaveBeenLastCalledWith(npc, "calm");
+    expect(onSpeaking).toHaveBeenLastCalledWith(npc, true);
+  });
+
+  it("finds an initially inactive fallback figure and applies state when it activates", () => {
+    const { scene, npc, speaker } = setup();
+    const onExpression = vi.fn();
+    const onSpeaking = vi.fn();
+    const presenter = new SceneFigurePresenter({
+      onExpression,
+      onSpeaking,
+    });
+    presenter.mount(scene);
+    npc.setActive(false);
+
+    presenter.setSpeaker(speaker);
+    presenter.setExpression("calm");
+    presenter.setSpeaking(true);
+    presenter.update(0.04);
+    expect(onExpression).not.toHaveBeenCalled();
+    expect(onSpeaking).not.toHaveBeenCalled();
+
+    npc.setActive(true);
+    presenter.update(0.04);
+    expect(onExpression).toHaveBeenLastCalledWith(npc, "calm");
+    expect(onSpeaking).toHaveBeenLastCalledWith(npc, true);
   });
 });
 

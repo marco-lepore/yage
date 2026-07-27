@@ -44,7 +44,10 @@ export interface InputBinding {
   bind(input: InputManager, session: DialogueSession): void;
   /** Poll the device and drive the session. Called once per frame by the host. */
   poll(): void;
-  /** Optional teardown (e.g. unsubscribe pointer listeners). */
+  /**
+   * Release resources held by the current bind. The host may call `bind`
+   * again when its component becomes active.
+   */
   dispose?(): void;
   /**
    * The `InputManager` action names this binding polls, if it polls any. The
@@ -91,8 +94,8 @@ export class CompositeInputBinding implements InputBinding {
 
 /** Keyboard/gamepad action-map binding (the default). */
 export class KeyboardInputBinding implements InputBinding {
-  private input?: InputManager;
-  private session?: DialogueSession;
+  private input: InputManager | undefined;
+  private session: DialogueSession | undefined;
   /** Latch so a held skip fires once per hold, not every frame past threshold. */
   private skipFired = false;
 
@@ -106,14 +109,25 @@ export class KeyboardInputBinding implements InputBinding {
   ) {}
 
   bind(input: InputManager, session: DialogueSession): void {
+    this.session?.setFastForward(false);
     this.input = input;
     this.session = session;
+    this.skipFired = false;
+  }
+
+  dispose(): void {
+    this.session?.setFastForward(false);
+    this.input = undefined;
+    this.session = undefined;
+    this.skipFired = false;
   }
 
   /** Every action name this binding polls, across all slots (de-duplicated). */
   actionNames(): readonly string[] {
     const { advance, speed, up, down, skip } = this.actions;
-    return [...new Set([...advance, ...speed, ...up, ...down, ...(skip ?? [])])];
+    return [
+      ...new Set([...advance, ...speed, ...up, ...down, ...(skip ?? [])]),
+    ];
   }
 
   poll(): void {
@@ -160,8 +174,8 @@ function held(input: InputManager, actions: readonly string[]): boolean {
  * Works for both mouse and touch since it rides the unified pointer stream.
  */
 export class PointerInputBinding implements InputBinding {
-  private input?: InputManager;
-  private session?: DialogueSession;
+  private input: InputManager | undefined;
+  private session: DialogueSession | undefined;
   // Explicit `| undefined` so `dispose()` can null it (exactOptionalPropertyTypes).
   private unsub: (() => void) | undefined;
   /** Pointer ids of the primary-button presses since the last poll. poll()
@@ -228,7 +242,9 @@ export class PointerInputBinding implements InputBinding {
     // is safe whatever order the down-listeners ran in. Presses are checked
     // individually: a claimed tap must not shadow an unclaimed one landing
     // the same frame.
-    const clicked = this.clickedPointers.some((id) => !input.isPointerConsumed(id));
+    const clicked = this.clickedPointers.some(
+      (id) => !input.isPointerConsumed(id),
+    );
     this.clickedPointers.length = 0;
     if (!clicked) return;
     if (choosing) {
@@ -247,6 +263,12 @@ export class PointerInputBinding implements InputBinding {
   dispose(): void {
     this.unsub?.();
     this.unsub = undefined;
+    this.input = undefined;
+    this.session = undefined;
+    this.clickedPointers.length = 0;
+    this.lastX = Number.NaN;
+    this.lastY = Number.NaN;
+    this.wasChoosing = false;
   }
 }
 

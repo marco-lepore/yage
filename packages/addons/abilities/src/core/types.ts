@@ -82,6 +82,14 @@ export interface PointStepHooks<P> {
 export interface WindowStepHooks<P> {
   enter?(params: P, ctx: StepContext): void;
   /**
+   * Release resources owned by an open window when its `Abilities` component
+   * becomes ineffective. The window remains open and its clock does not
+   * advance.
+   */
+  onDisable?(params: P, ctx: StepContext): void;
+  /** Restore resources released by {@link onDisable}. */
+  onEnable?(params: P, ctx: StepContext): void;
+  /**
    * `cancelled` is true when the window was cut short against the ability's
    * will — `Abilities.cancel()`, an interruption, or a cancel-window
    * admission. False when it closed as flow: reaching `to`, a phase

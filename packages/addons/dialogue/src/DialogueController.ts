@@ -63,8 +63,9 @@ export interface DialogueBundle {
   readonly skipMultiplier?: number | undefined;
 }
 
-export interface DialogueControllerOptions<TStorage extends VariableStorage = VariableStorage>
-  extends DialogueBundle {
+export interface DialogueControllerOptions<
+  TStorage extends VariableStorage = VariableStorage,
+> extends DialogueBundle {
   readonly i18n?: I18nAdapter | undefined;
   /**
    * The variable storage installed for every `play()`. Persists across
@@ -141,6 +142,8 @@ export class DialogueController<
   /** Hidden. Mirrors the session's hide so a `setHidden` issued before the
    *  component was added isn't lost — it's re-applied once the session exists. */
   private hidden = false;
+  /** Whether the current input binding owns live device resources. */
+  private bindingActive = false;
   /** Disposers for every registered extra channel (ctor `channels` + live
    *  `addChannel`). `onDestroy` runs them all — each idempotent — to unregister
    *  and dispose (unmounting the Mountable ones). */
@@ -152,7 +155,9 @@ export class DialogueController<
     // hit-testing wired to the choices presenter this controller already
     // holds. `input: null` = no device input at all (host-driven mode).
     this.binding =
-      opts.input === null ? undefined : (opts.input ?? dialogueControls(opts.choices));
+      opts.input === null
+        ? undefined
+        : (opts.input ?? dialogueControls(opts.choices));
   }
 
   onAdd(): void {
@@ -160,7 +165,8 @@ export class DialogueController<
     // One diagnostics seam shared by the session's onError AND presenter-level
     // warnings (e.g. a missing actor) — both land on the engine Logger, never
     // console.warn.
-    const warn = (message: string): void => this.logger?.warn("dialogue", message);
+    const warn = (message: string): void =>
+      this.logger?.warn("dialogue", message);
 
     this.opts.chrome.mount(this.scene);
     this.opts.choices.mount(this.scene);
@@ -206,8 +212,10 @@ export class DialogueController<
         // Observation events — the controller is the one canonical path that
         // turns the session's callbacks into entity→scene events (no matching
         // controller callback options).
-        onRevealCompleted: (e) => this.entity.emit(DialogueRevealCompletedEvent, e),
-        onSelectionChanged: (e) => this.entity.emit(DialogueSelectionChangedEvent, e),
+        onRevealCompleted: (e) =>
+          this.entity.emit(DialogueRevealCompletedEvent, e),
+        onSelectionChanged: (e) =>
+          this.entity.emit(DialogueSelectionChangedEvent, e),
         onSkipUsed: (e) => this.entity.emit(DialogueSkipUsedEvent, e),
         onAutoAdvance: (e) => this.entity.emit(DialogueAutoAdvanceEvent, e),
         // Inline markers fan to an entity event; per-grapheme ticks stay a direct
@@ -217,22 +225,29 @@ export class DialogueController<
         onRevealTick: this.opts.onRevealTick,
       },
     );
-    this.binding?.bind(this.input, this.session);
     this.warnIfActionsUnmapped(warn);
 
-    // Re-apply any lifecycle lever a host set BEFORE the component was added:
-    // setPaused/setHidden could only update the controller mirror back then (no
-    // session existed), so sync the freshly-created session to match. Without
-    // this, a "configure then add" host gets a half-applied state (e.g. paused
-    // input but a still-ticking reveal). setInputEnabled needs no sync — it's
-    // controller-only and read live in update().
-    if (this.paused) this.session.setPaused(true);
-    if (this.hidden) this.session.setHidden(true);
+    // `onEnable` runs after `onAdd`. Keep the session dormant until then so a
+    // component added with `enabled = false` never paints or claims input.
+    this.session.setPaused(true);
+    this.session.setHidden(true);
 
     // Register any pre-wired extra channels (a factory bundle can include a
     // voice channel). Same path as a live addChannel: mount the scene-needing
     // ones, hand each to the session, and track its disposer for onDestroy.
     for (const ch of this.opts.channels ?? []) this.addChannel(ch);
+  }
+
+  onEnable(): void {
+    this.session.setPaused(this.paused);
+    this.session.setHidden(this.hidden);
+    this.syncBinding();
+  }
+
+  onDisable(): void {
+    this.deactivateBinding();
+    this.session?.setPaused(true);
+    this.session?.setHidden(true);
   }
 
   onDestroy(): void {
@@ -244,7 +259,7 @@ export class DialogueController<
     // Tear down every registered extra channel — unregister + dispose, which
     // unmounts the Mountable ones. A snapshot copy: each disposer mutates the set.
     for (const dispose of [...this.channelDisposers]) dispose();
-    this.binding?.dispose?.();
+    this.deactivateBinding();
     this.opts.text.dispose();
     this.opts.choices.dispose();
     this.opts.chrome.dispose();
@@ -279,6 +294,7 @@ export class DialogueController<
         "DialogueController.play() called before the component was added to an entity (onAdd has not run yet).",
       );
     }
+    if (!this.effectiveEnabled) return undefined;
     return this.session.play(script, overrides);
   }
 
@@ -361,7 +377,7 @@ export class DialogueController<
    */
   setHidden(hidden: boolean): void {
     this.hidden = hidden;
-    this.session?.setHidden(hidden);
+    this.session?.setHidden(hidden || !this.effectiveEnabled);
   }
 
   /**
@@ -373,7 +389,8 @@ export class DialogueController<
    */
   setPaused(paused: boolean): void {
     this.paused = paused;
-    this.session?.setPaused(paused);
+    this.session?.setPaused(paused || !this.effectiveEnabled);
+    this.syncBinding();
   }
 
   /**
@@ -388,6 +405,7 @@ export class DialogueController<
    */
   setInputEnabled(enabled: boolean): void {
     this.inputEnabled = enabled;
+    this.syncBinding();
   }
 
   /**
@@ -427,7 +445,29 @@ export class DialogueController<
     // paused. The binding is polled only when focused AND not paused, so a
     // backgrounded or frozen conversation consumes no device input.
     this.session?.update(dt);
-    if (this.inputEnabled && !this.paused) this.binding?.poll();
+    if (this.bindingActive) this.binding?.poll();
+  }
+
+  private syncBinding(): void {
+    if (
+      !this.binding ||
+      !this.session ||
+      !this.effectiveEnabled ||
+      !this.inputEnabled ||
+      this.paused
+    ) {
+      this.deactivateBinding();
+      return;
+    }
+    if (this.bindingActive) return;
+    this.binding.bind(this.input, this.session);
+    this.bindingActive = true;
+  }
+
+  private deactivateBinding(): void {
+    if (!this.bindingActive) return;
+    this.binding?.dispose?.();
+    this.bindingActive = false;
   }
 
   /**

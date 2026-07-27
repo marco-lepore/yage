@@ -36,6 +36,7 @@ export class TouchDamage extends Component {
   private readonly interval: number;
   private elapsed = 0;
   private delivery!: HitDelivery;
+  private unsubscribe: (() => void) | undefined;
 
   constructor(private readonly options: TouchDamageOptions) {
     super();
@@ -53,11 +54,24 @@ export class TouchDamage extends Component {
       ...(team !== undefined ? { team } : {}),
       ...(this.options.tags ? { tags: this.options.tags } : {}),
     });
-    if (this.collider.config.sensor === true) {
-      this.collider.onTrigger((ev) => this.contact(ev.other, ev.entered));
-    } else {
-      this.collider.onCollision((ev) => this.contact(ev.other, ev.started));
-    }
+  }
+
+  onEnable(): void {
+    if (this.unsubscribe) return;
+    this.unsubscribe =
+      this.collider.config.sensor === true
+        ? this.collider.onTrigger((ev) => this.contact(ev.other, ev.entered))
+        : this.collider.onCollision((ev) => this.contact(ev.other, ev.started));
+  }
+
+  onDisable(): void {
+    this.unsubscribe?.();
+    this.unsubscribe = undefined;
+    this.last.clear();
+  }
+
+  onDestroy(): void {
+    this.onDisable();
   }
 
   update(dt: number): void {
@@ -75,6 +89,7 @@ export class TouchDamage extends Component {
   }
 
   private contact(other: Entity, begin: boolean): void {
+    if (!this.effectiveEnabled) return;
     if (begin) {
       this.deliver(other);
       this.last.set(other, this.elapsed);

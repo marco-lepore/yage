@@ -313,6 +313,17 @@ while closed too (the model is live; the panel picks the order up on open).
 Guards: methods refuse (dev-warn) after the component is removed; `open()`
 before `onAdd` throws.
 
+Disabling `InventoryController`, or deactivating its entity, hides the panel,
+pauses the session, releases the input binding, and stops the model-to-entity
+event mirror. The open state, cursor, menu, and selected source remain intact.
+Driving methods are inert while dormant. Enabling the component again refreshes
+the current model, restores visibility, and rebinds input. An `openOnAdd` panel
+waits until its first effective enable.
+
+For custom hosts, `InventorySession.setHidden` changes only channel visibility.
+`setPaused` stops input methods, channel updates, and source-driven
+presentation. Both preserve the session's browsing state.
+
 ## Presenters, factory, themes (`./presenters`)
 
 ONE factory, ONE view. The `cell` preset decides what a cell looks like; flat

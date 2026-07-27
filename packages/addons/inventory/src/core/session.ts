@@ -175,17 +175,17 @@ export interface InventorySessionOptions<
 }
 
 export class InventorySession<
-    TId extends string = string,
-    TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
-  >
-  implements InventorySessionDriver
-{
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> implements InventorySessionDriver {
   private source: InventorySource<TId, TData>;
   private readonly channels: InventoryChannels<TId, TData>;
   private readonly opts: InventorySessionOptions<TId, TData>;
   private title: string | undefined;
 
   private opened = false;
+  private hidden = false;
+  private paused = false;
   private selected = 0;
   private menuActions: readonly ItemActionDef<TId, TData>[] = [];
   private menuIndex = 0;
@@ -203,9 +203,10 @@ export class InventorySession<
     // Presenter-owned commit paths (pointer/DOM views activate rows directly).
     channels.slots.onSlotChosen = (slot) => this.confirmSlot(slot);
     if (channels.actionMenu) {
-      channels.actionMenu.onActionChosen = (position) => this.confirmAction(position);
+      channels.actionMenu.onActionChosen = (position) =>
+        this.confirmAction(position);
     }
-    this.setAllVisible(false);
+    this.applyVisibility();
     this.subscribe();
   }
 
@@ -213,26 +214,29 @@ export class InventorySession<
 
   /** Show the panel and present the current model state. Idempotent. */
   open(): void {
+    if (this.paused) return;
     if (this.opened) return;
     this.opened = true;
     this.selected = this.clampSlot(this.selected);
     this.refresh();
-    this.setAllVisible(true);
     // The menu never survives a close; make sure it starts closed too.
     this.closeMenu();
+    this.applyVisibility();
     this.opts.onOpened?.();
   }
 
   /** Hide the panel (views keep their content for the next open). Idempotent. */
   close(): void {
+    if (this.paused) return;
     if (!this.opened) return;
     this.closeMenu();
     this.opened = false;
-    this.setAllVisible(false);
+    this.applyVisibility();
     this.opts.onClosed?.();
   }
 
   toggle(): void {
+    if (this.paused) return;
     if (this.opened) this.close();
     else this.open();
   }
@@ -246,6 +250,38 @@ export class InventorySession<
     return this.menuActions.length > 0;
   }
 
+  /** Hide or show every channel without changing the open state. */
+  setHidden(hidden: boolean): void {
+    this.hidden = hidden;
+    this.applyVisibility();
+  }
+
+  /** True while every channel is hidden by {@link setHidden}. */
+  isHidden(): boolean {
+    return this.hidden;
+  }
+
+  /**
+   * Pause input, animation, and source-driven presentation updates while
+   * preserving the open state, cursor, and menu.
+   */
+  setPaused(paused: boolean): void {
+    if (this.paused === paused) return;
+    this.paused = paused;
+    if (paused) {
+      this.unsubscribe?.();
+      this.unsubscribe = undefined;
+      return;
+    }
+    this.subscribe();
+    this.onModelChanged();
+  }
+
+  /** True while input, animation, and source-driven updates are paused. */
+  isPaused(): boolean {
+    return this.paused;
+  }
+
   /** The cursor's slot index. */
   selection(): number {
     return this.selected;
@@ -257,13 +293,17 @@ export class InventorySession<
    * Resets the cursor, re-subscribes source events, and re-presents when
    * open. Pass `title` to relabel the chrome in the same step.
    */
-  setSource(source: InventorySource<TId, TData>, opts: { readonly title?: string } = {}): void {
+  setSource(
+    source: InventorySource<TId, TData>,
+    opts: { readonly title?: string } = {},
+  ): void {
     this.unsubscribe?.();
+    this.unsubscribe = undefined;
     this.source = source;
     if (opts.title !== undefined) this.title = opts.title;
     this.selected = 0;
     this.subscribe();
-    if (this.opened) {
+    if (this.opened && !this.paused) {
       this.closeMenu();
       this.refresh();
     }
@@ -271,7 +311,7 @@ export class InventorySession<
 
   setTitle(title: string | undefined): void {
     this.title = title;
-    if (this.opened) this.presentChrome();
+    if (this.opened && !this.paused) this.presentChrome();
   }
 
   /** The source currently presented — the escape hatch to everything else. */
@@ -281,6 +321,7 @@ export class InventorySession<
 
   /** Forward the frame tick to channels that animate. */
   update(dt: number): void {
+    if (this.paused) return;
     this.channels.slots.update?.(dt);
     this.channels.chrome?.update?.(dt);
     this.channels.detail?.update?.(dt);
@@ -291,7 +332,7 @@ export class InventorySession<
 
   /** Move the cursor (browse) or the menu highlight (menu open, up/down). */
   move(dir: NavDirection): void {
-    if (!this.opened) return;
+    if (this.paused || !this.opened) return;
     if (this.isMenuOpen()) {
       if (dir === "left" || dir === "right") return;
       const delta = dir === "up" ? -1 : 1;
@@ -305,19 +346,22 @@ export class InventorySession<
   /** Move the cursor to `slot` (clamped). No-op while the menu is open — a
    *  hover shouldn't yank the selection out from under an open menu. */
   select(slot: number): void {
-    if (!this.opened || this.isMenuOpen()) return;
+    if (this.paused || !this.opened || this.isMenuOpen()) return;
     const next = this.clampSlot(slot);
     if (next === this.selected) return;
     this.selected = next;
     this.channels.slots.setSelected(next);
     this.presentDetail();
-    this.opts.onSelectionChanged?.({ slot: next, itemId: this.stackAt(next)?.itemId ?? null });
+    this.opts.onSelectionChanged?.({
+      slot: next,
+      itemId: this.stackAt(next)?.itemId ?? null,
+    });
   }
 
   /** Browse: fire `onConfirm`, then open the action menu when the selected
    *  stack offers actions. Menu: invoke the highlighted action. */
   confirm(): void {
-    if (!this.opened) return;
+    if (this.paused || !this.opened) return;
     if (this.isMenuOpen()) {
       this.invokeMenu(this.menuIndex);
       return;
@@ -334,28 +378,31 @@ export class InventorySession<
    *  default pointer binding does exactly that when a click lands off the
    *  menu, so pointer and programmatic driving stay consistent. */
   confirmSlot(slot: number): void {
-    if (!this.opened || this.isMenuOpen()) return;
+    if (this.paused || !this.opened || this.isMenuOpen()) return;
     this.select(slot);
     this.confirm();
   }
 
   /** Pointer path: move the menu highlight (hover). */
   highlightMenu(position: number): void {
-    if (!this.isMenuOpen()) return;
-    this.menuIndex = Math.max(0, Math.min(position, this.menuActions.length - 1));
+    if (this.paused || !this.isMenuOpen()) return;
+    this.menuIndex = Math.max(
+      0,
+      Math.min(position, this.menuActions.length - 1),
+    );
     this.channels.actionMenu?.highlight(this.menuIndex);
   }
 
   /** Pointer path: commit the menu row at `position`. */
   confirmAction(position: number): void {
-    if (!this.isMenuOpen()) return;
+    if (this.paused || !this.isMenuOpen()) return;
     this.invokeMenu(position);
   }
 
   /** Menu open: close it. Browse: fire `onCancel`, then close the inventory
    *  when `closeOnCancel` (the default). */
   cancel(): void {
-    if (!this.opened) return;
+    if (this.paused || !this.opened) return;
     if (this.isMenuOpen()) {
       this.closeMenu();
       return;
@@ -369,12 +416,14 @@ export class InventorySession<
    *  closed panel picks the new order up on the next open. (Device bindings
    *  only reach this while open; the gate is theirs, not the model's.) */
   sort(): void {
+    if (this.paused) return;
     this.source.sort(this.opts.sortComparator ?? byCatalogOrder);
   }
 
   // ------------------------------------------------------------- internals
 
   private subscribe(): void {
+    if (this.paused || this.unsubscribe) return;
     this.unsubscribe = this.source.on("changed", () => this.onModelChanged());
   }
 
@@ -433,7 +482,7 @@ export class InventorySession<
       this.menuActions.map((a) => ({ id: a.id, label: a.label })),
       this.selected,
     );
-    menu.setVisible(true);
+    menu.setVisible(this.opened && !this.hidden);
     menu.highlight(this.menuIndex);
   }
 
@@ -481,10 +530,11 @@ export class InventorySession<
     return Math.max(0, Math.min(slot, Math.max(0, max)));
   }
 
-  private setAllVisible(visible: boolean): void {
+  private applyVisibility(): void {
+    const visible = this.opened && !this.hidden;
     this.channels.slots.setVisible(visible);
     this.channels.chrome?.setVisible(visible);
     this.channels.detail?.setVisible(visible);
-    if (!visible) this.channels.actionMenu?.setVisible(false);
+    this.channels.actionMenu?.setVisible(visible && this.isMenuOpen());
   }
 }

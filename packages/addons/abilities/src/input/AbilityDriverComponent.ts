@@ -26,7 +26,15 @@ export class AbilityDriverComponent<
 
   override onAdd(): void {
     this.mounted = true;
+  }
+
+  override onEnable(): void {
     this.mountDriver();
+  }
+
+  override onDisable(): void {
+    this.driver?.dispose();
+    this.driver = null;
   }
 
   override update(): void {
@@ -36,7 +44,7 @@ export class AbilityDriverComponent<
   /** Replace the input bindings without replacing the component or abilities. */
   replace(options: AbilityDriverOptions<TAction, TIntent>): void {
     this.options = options;
-    if (!this.mounted) return;
+    if (!this.mounted || !this.effectiveEnabled) return;
     this.driver?.dispose();
     this.driver = null;
     this.mountDriver();
@@ -44,8 +52,7 @@ export class AbilityDriverComponent<
 
   override onDestroy(): void {
     this.mounted = false;
-    this.driver?.dispose();
-    this.driver = null;
+    this.onDisable();
   }
 
   private mountDriver(): void {

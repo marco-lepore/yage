@@ -154,6 +154,10 @@ ids (event tokens can't be generic). No per-frame `update`. `.log` exposes the
 hosted model. Entirely optional — `log.on(...)` alone reaches the same
 consequences.
 
+Disabling `QuestController`, or deactivating its entity, stops the event mirror.
+The standalone `QuestLog` remains live and keeps every model change. Events
+that occur while the controller is dormant are not replayed when it enables.
+
 ## Binding objectives to other addons — no addon dependency
 
 Quests declares only `@yagejs/core`. The game subscribes to whatever events it

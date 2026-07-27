@@ -88,6 +88,26 @@ describe("staggerMotion (via force)", () => {
     );
     expect(() => pc._tick(0.01)).toThrow(/requires a Stagger component/);
   });
+
+  it("disables stagger output while abilities are disabled", () => {
+    const { entity, pc, stagger } = setup();
+    const abilities = entity.add(new Abilities([]));
+
+    abilities.force(
+      staggerReaction({ direction: new Vec2(1, 0), knockback: 100, stun: 0.2 }),
+    );
+    pc._tick(0.01);
+    abilities.enabled = false;
+
+    stagger.update(0.2);
+
+    expect(stagger.active).toBe(true);
+    expect(captured.velocities.at(-1)).toEqual({ x: 0, y: 0 });
+    expect(abilities.isActive()).toBe(true);
+
+    abilities.enabled = true;
+    expect(captured.velocities.at(-1)).toEqual({ x: 100, y: 0 });
+  });
 });
 
 describe("scenario: a recovery skill breaks out of an active stagger", () => {

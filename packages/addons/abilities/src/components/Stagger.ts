@@ -2,6 +2,8 @@ import { Component, Vec2 } from "@yagejs/core";
 import type { Vec2Like } from "@yagejs/core";
 import { RigidBodyComponent } from "@yagejs/physics";
 
+const windowControls = new WeakMap<Stagger, (enabled: boolean) => void>();
+
 /**
  * Hit-stun + knockback ride-along. While active it owns the body's
  * velocity: the knockback vector ramps linearly to zero across the stun
@@ -19,6 +21,12 @@ export class Stagger extends Component {
   private total = 0;
   private vx = 0;
   private vy = 0;
+  private windowEnabled = true;
+
+  constructor() {
+    super();
+    windowControls.set(this, (enabled) => this.setWindowEnabled(enabled));
+  }
 
   get active(): boolean {
     return this.remaining > 0;
@@ -43,19 +51,64 @@ export class Stagger extends Component {
     this.vy = unit.y * options.knockback;
     this.remaining = options.stun;
     this.total = options.stun;
-    this.body.setVelocity(new Vec2(this.vx, this.vy));
+    this.applyVelocity();
   }
 
   /** End the stun early, zeroing the body's velocity. */
   end(): void {
     this.remaining = 0;
+    this.windowEnabled = true;
     this.body.setVelocity(Vec2.ZERO);
   }
 
+  private setWindowEnabled(enabled: boolean): void {
+    if (this.windowEnabled === enabled) return;
+    if (!enabled && !this.active) return;
+    this.windowEnabled = enabled;
+    if (enabled) {
+      this.applyVelocity();
+    } else {
+      this.body.setVelocity(Vec2.ZERO);
+    }
+  }
+
+  onDisable(): void {
+    if (this.active) this.body.setVelocity(Vec2.ZERO);
+  }
+
+  onEnable(): void {
+    this.applyVelocity();
+  }
+
   update(dt: number): void {
-    if (this.remaining <= 0) return;
+    if (!this.effectiveEnabled || !this.windowEnabled || this.remaining <= 0) {
+      return;
+    }
     this.remaining = Math.max(0, this.remaining - dt);
+    if (this.remaining === 0) {
+      this.body.setVelocity(Vec2.ZERO);
+      return;
+    }
+    this.applyVelocity();
+  }
+
+  private applyVelocity(): void {
+    if (!this.effectiveEnabled || !this.windowEnabled || this.remaining <= 0) {
+      return;
+    }
     const t = this.remaining / this.total;
     this.body.setVelocity(new Vec2(this.vx * t, this.vy * t));
   }
+}
+
+/** @internal Controls the stagger effect owned by an open ability window. */
+export function setStaggerWindowEnabled(
+  stagger: Stagger,
+  enabled: boolean,
+): void {
+  const control = windowControls.get(stagger);
+  if (!control) {
+    throw new Error("Stagger window control is unavailable.");
+  }
+  control(enabled);
 }

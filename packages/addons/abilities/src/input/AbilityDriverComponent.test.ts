@@ -136,4 +136,42 @@ describe("AbilityDriverComponent", () => {
     expect(activation?.state).toBe("cancelled");
     expect(abilities.active()).toBeNull();
   });
+
+  it("releases input while disabled and rebinds when enabled", () => {
+    const { input, abilities, component } = setup(
+      [timeline("dash")],
+      ["dash"],
+      { dash: { press: { send: "dash" } } },
+    );
+
+    component.enabled = false;
+    input.fireActionDown("dash");
+    component.update();
+    expect(abilities.active()).toBeNull();
+
+    component.enabled = true;
+    input.fireActionUp("dash");
+    input.fireActionDown("dash");
+    component.update();
+    expect(abilities.activeId()).toBe("dash");
+  });
+
+  it("uses the same input lifecycle while the host entity is inactive", () => {
+    const { entity, input, abilities, component } = setup(
+      [timeline("dash")],
+      ["dash"],
+      { dash: { press: { send: "dash" } } },
+    );
+
+    entity.setActive(false);
+    input.fireActionDown("dash");
+    component.update();
+    expect(abilities.active()).toBeNull();
+
+    entity.setActive(true);
+    input.fireActionUp("dash");
+    input.fireActionDown("dash");
+    component.update();
+    expect(abilities.activeId()).toBe("dash");
+  });
 });

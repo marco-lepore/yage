@@ -466,8 +466,13 @@ survive `stop()`/`play()`, so a forgotten unhide/unpause stays in effect.
   freeze.
 - `setInputEnabled(bool)` — **input focus**. `session.update` keeps pumping (an
   ambient conversation stays alive and animating) but the binding isn't polled,
-  so this instance consumes no input. NOT `Component.enabled` (which would freeze
-  the whole component).
+  so this instance consumes no input.
+
+Disabling the `DialogueController`, or deactivating its entity, is full
+dormancy: the UI hides, the session pauses, and the input binding releases its
+listeners. The active conversation and the requested hidden/paused/input-focus
+settings remain intact. `play` refuses new conversations while dormant.
+Enabling the component again restores the same conversation and settings.
 
 ```ts
 // Two conversations, one interactive — focus is the game's one-liner.
@@ -579,6 +584,10 @@ Defaults: `DialogueChrome`, `ChoiceListPresenter`, `BoxTextView` (box);
 (box, reflows the text) + `BubbleAvatarPresenter` (a portrait inside the bubble, text reflows),
 `NullAvatarPresenter`; `DialogueActor` (component on a world entity, self-registers
 by speaker id) + `actorRegistryFor(scene)`.
+
+A disabled `DialogueActor`, or one on an inactive entity, unregisters until it
+becomes effective again. Its expression and speaking state remain requested,
+but actor callbacks and world-figure animation sleep while dormant.
 
 - **Layout owners** (one per coordinate model, behind `./presenters`):
   `BubbleLayout` is the single source of bubble sizing + speaker anchor (incl. the

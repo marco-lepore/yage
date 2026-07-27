@@ -710,10 +710,16 @@ hide the UI for a cutscene and forget to show it again, it stays hidden.
 | ----- | ------------ |
 | `setHidden(bool)` | **Visual only.** Hides/shows the whole UI without ending or freezing the conversation. State-preserving — hide mid-typewriter and show again to resume the exact line and cursor. A composite chrome restores its *active* variant on show (a bubble line comes back as a bubble, not an empty box frame). |
 | `setPaused(bool)` | **Freezes time and input.** The reveal, auto-advance clock, caret blink, and avatar animation all halt, and input is inert — with no state lost (an in-flight blocking command keeps running and completes normally). It does **not** block host-driven `handle.setVar` / storage writes: a paused conversation can still be driven programmatically. |
-| `setInputEnabled(bool)` | **Input focus.** The conversation keeps updating (an ambient one stays alive and animating) but stops consuming device input. This is how you hand input focus between conversations — not `Component.enabled`, which would freeze the whole component. |
+| `setInputEnabled(bool)` | **Input focus.** The conversation keeps updating (an ambient one stays alive and animating) but stops consuming device input. This is how you hand input focus between conversations. |
 
 Compose them: a **cutscene takeover** is hidden + paused; a **pause menu** is
 paused; an **ambient** conversation is input-disabled.
+
+Disabling `DialogueController`, or deactivating its entity, puts the whole
+conversation host to sleep. The UI hides, the session pauses, and input
+listeners are released. The active conversation and the three requested lever
+settings stay intact, while `play` refuses a new conversation. Enabling the
+component again restores the same state.
 
 ```ts
 // Cutscene takeover: hide + freeze, pan the camera, then restore the exact line.
@@ -796,6 +802,11 @@ Avatars are decoupled too: `PortraitPresenter` (a sprite beside the box),
 A `DialogueActor` component on a world entity self-registers under a speaker id
 (via `actorRegistryFor(scene)`) so a speech bubble can find and follow the
 speaker's head anchor.
+
+Disabling the actor, or deactivating its entity, removes it from that registry.
+The requested expression and speaking state remain intact, while actor
+callbacks and world-figure animation sleep. They resume when the actor becomes
+effective again.
 
 ### Writing a custom presenter
 

@@ -28,15 +28,19 @@ import type {
 import type { InputBinding } from "./input/index.js";
 
 class StubChrome implements ChromePresenter {
+  visible = false;
   mount(): void {}
   dispose(): void {}
   setNameplate(): void {}
   setContinueVisible(): void {}
-  setVisible(): void {}
+  setVisible(visible: boolean): void {
+    this.visible = visible;
+  }
   update(): void {}
 }
 
 class StubText implements TextPresenter {
+  visible = false;
   mount(): void {}
   dispose(): void {}
   present(): void {}
@@ -48,7 +52,9 @@ class StubText implements TextPresenter {
     return false;
   }
   setSpeedMultiplier(): void {}
-  setVisible(): void {}
+  setVisible(visible: boolean): void {
+    this.visible = visible;
+  }
   setRevealListener(): void {}
   setBeatListener(): void {}
   update(): void {}
@@ -56,6 +62,7 @@ class StubText implements TextPresenter {
 }
 
 class StubChoices implements ChoicePresenter {
+  visible = false;
   onChoiceChosen?: (position: number) => void;
   /** Assignable per test — a presenter without it degrades the pointer side. */
   choiceAtPoint?: (x: number, y: number) => number | undefined;
@@ -63,7 +70,9 @@ class StubChoices implements ChoicePresenter {
   dispose(): void {}
   present(): void {}
   highlight(): void {}
-  setVisible(): void {}
+  setVisible(visible: boolean): void {
+    this.visible = visible;
+  }
   clear(): void {}
 }
 
@@ -115,10 +124,20 @@ const noopBinding: InputBinding = { bind() {}, poll() {} };
 
 /** A binding that counts poll() calls, to prove the focus/pause gating. */
 class RecordingBinding implements InputBinding {
+  binds = 0;
+  disposes = 0;
   polls = 0;
-  bind(): void {}
+  session: DialogueSession | undefined;
+  bind(_input: unknown, session: DialogueSession): void {
+    this.binds++;
+    this.session = session;
+  }
   poll(): void {
     this.polls++;
+  }
+  dispose(): void {
+    this.disposes++;
+    this.session = undefined;
   }
 }
 
@@ -256,7 +275,9 @@ describe("DialogueController — observation events forwarded entity→scene", (
     id: "say",
     start: "a",
     speakers: { npc: { name: "Bee" } },
-    nodes: { a: { id: "a", steps: [{ kind: "say", speaker: "npc", text: "hi" }] } },
+    nodes: {
+      a: { id: "a", steps: [{ kind: "say", speaker: "npc", text: "hi" }] },
+    },
   };
 
   it("forwards onRevealCompleted → DialogueRevealCompletedEvent with the line text", async () => {
@@ -287,7 +308,12 @@ describe("DialogueController — observation events forwarded entity→scene", (
     host.on(DialogueRevealMarkerEvent, markerSeen);
     controller.play(sayScript);
 
-    const marker: MarkerToken = { kind: "marker", atChar: 0, name: "sfx", props: { sfx: "ding" } };
+    const marker: MarkerToken = {
+      kind: "marker",
+      atChar: 0,
+      name: "sfx",
+      props: { sfx: "ding" },
+    };
     text.fireBeat({ kind: "marker", marker, viaSkip: false });
     text.fireBeat({ kind: "tick", index: 2 });
 
@@ -307,7 +333,9 @@ describe("DialogueController — observation events forwarded entity→scene", (
       nodes: {
         a: {
           id: "a",
-          steps: [{ kind: "choice", options: [{ text: "left" }, { text: "right" }] }],
+          steps: [
+            { kind: "choice", options: [{ text: "left" }, { text: "right" }] },
+          ],
         },
       },
     });
@@ -354,7 +382,7 @@ describe("DialogueController — levers set before onAdd reach the session", () 
   // A host that configures the controller BEFORE adding it must not get a
   // half-applied state (paused input but a still-ticking session); onAdd
   // re-syncs the freshly-created session to the controller's mirrors.
-  function configureThenAdd(configure: (c: DialogueController) => void): DialogueSession {
+  function configureThenAdd(configure: (c: DialogueController) => void) {
     const { scene } = createMockScene();
     const binding = new CapturingBinding();
     const controller = new DialogueController({
@@ -365,23 +393,112 @@ describe("DialogueController — levers set before onAdd reach the session", () 
     });
     configure(controller); // lever set while the session does NOT yet exist
     scene.spawn("dlg").add(controller); // onAdd creates the session + re-syncs
-    const session = binding.session;
-    if (!session) throw new Error("controller did not bind a session on add");
-    return session;
+    return { controller, binding };
   }
 
-  it("applies a pre-add setPaused(true) to the session", () => {
-    expect(configureThenAdd((c) => c.setPaused(true)).isPaused()).toBe(true);
+  it("keeps a pre-add setPaused(true) session paused and unbound", () => {
+    const { controller, binding } = configureThenAdd((c) => c.setPaused(true));
+    expect(binding.session).toBeUndefined();
+
+    controller.setPaused(false);
+    expect(binding.session?.isPaused()).toBe(false);
   });
 
   it("applies a pre-add setHidden(true) to the session", () => {
-    expect(configureThenAdd((c) => c.setHidden(true)).isHidden()).toBe(true);
+    const { binding } = configureThenAdd((c) => c.setHidden(true));
+    expect(binding.session?.isHidden()).toBe(true);
   });
 
   it("leaves an unconfigured controller's session at its defaults", () => {
-    const session = configureThenAdd(() => {});
-    expect(session.isPaused()).toBe(false);
-    expect(session.isHidden()).toBe(false);
+    const { binding } = configureThenAdd(() => {});
+    expect(binding.session?.isPaused()).toBe(false);
+    expect(binding.session?.isHidden()).toBe(false);
+  });
+});
+
+describe("DialogueController — component and entity dormancy", () => {
+  function mountLifecycleController() {
+    const { scene } = createMockScene();
+    const host = scene.spawn("dlg");
+    const chrome = new StubChrome();
+    const text = new StubText();
+    const choices = new StubChoices();
+    const binding = new RecordingBinding();
+    const controller = host.add(
+      new DialogueController({
+        chrome,
+        text,
+        choices,
+        input: binding,
+      }),
+    );
+    return { host, chrome, text, choices, binding, controller };
+  }
+
+  it("hides and pauses a live session while the component is disabled", () => {
+    const { text, binding, controller } = mountLifecycleController();
+    controller.play(SCRIPT);
+    expect(text.visible).toBe(true);
+    expect(binding.binds).toBe(1);
+
+    controller.enabled = false;
+
+    expect(controller.isActive()).toBe(true);
+    expect(text.visible).toBe(false);
+    expect(binding.disposes).toBe(1);
+    expect(controller.play(SCRIPT)).toBeUndefined();
+
+    controller.enabled = true;
+
+    expect(controller.isActive()).toBe(true);
+    expect(text.visible).toBe(true);
+    expect(binding.binds).toBe(2);
+  });
+
+  it("applies the same lifecycle when the host entity becomes inactive", () => {
+    const { host, text, binding, controller } = mountLifecycleController();
+    controller.play(SCRIPT);
+
+    host.setActive(false);
+    expect(text.visible).toBe(false);
+    expect(binding.disposes).toBe(1);
+
+    host.setActive(true);
+    expect(text.visible).toBe(true);
+    expect(binding.binds).toBe(2);
+  });
+
+  it("preserves explicit pause and hidden state across a dormant cycle", () => {
+    const { host, text, binding, controller } = mountLifecycleController();
+    controller.play(SCRIPT);
+    controller.setPaused(true);
+    controller.setHidden(true);
+
+    host.setActive(false);
+    host.setActive(true);
+
+    expect(text.visible).toBe(false);
+    expect(binding.session).toBeUndefined();
+  });
+
+  it("does not bind an initially disabled component until it is enabled", () => {
+    const { scene } = createMockScene();
+    const text = new StubText();
+    const binding = new RecordingBinding();
+    const controller = new DialogueController({
+      chrome: new StubChrome(),
+      text,
+      choices: new StubChoices(),
+      input: binding,
+    });
+    controller.enabled = false;
+    scene.spawn("dlg").add(controller);
+
+    expect(binding.binds).toBe(0);
+    expect(text.visible).toBe(false);
+
+    controller.enabled = true;
+    expect(binding.binds).toBe(1);
   });
 });
 
@@ -485,14 +602,16 @@ describe("DialogueController — zero-config pointer input drives choices", () =
    *  the controller's default binding has a device to bind to. */
   function fakeInput() {
     let pointer = { x: -1, y: -1 };
-    const downHandlers: ((info: { button: number; id: number }) => void)[] = [];
+    const downHandlers = new Set<
+      (info: { button: number; id: number }) => void
+    >();
     const fake = {
       isJustPressed: () => false,
       isPressed: () => false,
       isHeldFor: () => false,
       onPointerDown: (fn: (info: { button: number; id: number }) => void) => {
-        downHandlers.push(fn);
-        return () => {};
+        downHandlers.add(fn);
+        return () => downHandlers.delete(fn);
       },
       isPointerConsumed: () => false,
       getPointerScreenPosition: () => pointer,
@@ -503,7 +622,7 @@ describe("DialogueController — zero-config pointer input drives choices", () =
       manager: fake as unknown as InputManager,
       /** Number of live onPointerDown subscriptions. */
       get subscriptions() {
-        return downHandlers.length;
+        return downHandlers.size;
       },
       move: (x: number, y: number) => {
         pointer = { x, y };
@@ -521,7 +640,9 @@ describe("DialogueController — zero-config pointer input drives choices", () =
     nodes: {
       a: {
         id: "a",
-        steps: [{ kind: "choice", options: [{ text: "left" }, { text: "right" }] }],
+        steps: [
+          { kind: "choice", options: [{ text: "left" }, { text: "right" }] },
+        ],
       },
     },
   };
@@ -555,7 +676,9 @@ describe("DialogueController — zero-config pointer input drives choices", () =
     controller.update(0.016);
     await flush();
 
-    expect(made).toHaveBeenCalledWith(expect.objectContaining({ text: "right" }));
+    expect(made).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "right" }),
+    );
   });
 
   it("hover with the default binding moves the selection to the row under the pointer", async () => {
@@ -602,7 +725,10 @@ describe("DialogueController — zero-config pointer input drives choices", () =
   });
 
   it("input: null attaches no binding — no pointer subscription, host-driven advance still works", async () => {
-    const { host, controller, device } = mountZeroConfig(new StubChoices(), null);
+    const { host, controller, device } = mountZeroConfig(
+      new StubChoices(),
+      null,
+    );
     expect(device.subscriptions).toBe(0); // nothing listens to the device
 
     controller.play(SCRIPT);
@@ -613,6 +739,26 @@ describe("DialogueController — zero-config pointer input drives choices", () =
     expect(controller.isActive()).toBe(false);
 
     expect(() => host.remove(DialogueController)).not.toThrow(); // clean destroy
+  });
+
+  it("drops pointer presses received while the controller is disabled", async () => {
+    const choices = new StubChoices();
+    choices.choiceAtPoint = () => 1;
+    const { host, controller, device } = mountZeroConfig(choices);
+    const made = vi.fn();
+    host.on(DialogueChoiceMadeEvent, made);
+    controller.play(CHOICE_SCRIPT);
+    await flush();
+
+    controller.enabled = false;
+    expect(device.subscriptions).toBe(0);
+    device.click(42, 42);
+    controller.enabled = true;
+    controller.update(0.016);
+    await flush();
+
+    expect(made).not.toHaveBeenCalled();
+    expect(controller.isChoosing()).toBe(true);
   });
 });
 

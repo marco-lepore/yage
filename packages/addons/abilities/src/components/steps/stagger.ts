@@ -1,6 +1,6 @@
 import { defineStep } from "../../core/defineStep.js";
-import { Stagger } from "../Stagger.js";
-import type { AbilityDef } from "../../core/types.js";
+import { Stagger, setStaggerWindowEnabled } from "../Stagger.js";
+import type { AbilityDef, StepContext } from "../../core/types.js";
 import type { Vec2Like } from "@yagejs/core";
 
 /**
@@ -24,24 +24,28 @@ export const staggerMotion = defineStep<{
   stun: number;
 }>("staggerMotion", {
   enter(params, ctx) {
-    const stagger = ctx.entity.tryGet(Stagger);
-    if (!stagger) {
-      throw new Error(
-        `Abilities: step "staggerMotion" requires a Stagger component on the entity.`,
-      );
-    }
-    stagger.begin(params);
+    requireStagger(ctx).begin(params);
+  },
+  onDisable(_params, ctx) {
+    setStaggerWindowEnabled(requireStagger(ctx), false);
+  },
+  onEnable(_params, ctx) {
+    setStaggerWindowEnabled(requireStagger(ctx), true);
   },
   exit(_params, ctx) {
-    const stagger = ctx.entity.tryGet(Stagger);
-    if (!stagger) {
-      throw new Error(
-        `Abilities: step "staggerMotion" requires a Stagger component on the entity.`,
-      );
-    }
-    stagger.end();
+    requireStagger(ctx).end();
   },
 });
+
+function requireStagger(ctx: StepContext): Stagger {
+  const stagger = ctx.entity.tryGet(Stagger);
+  if (!stagger) {
+    throw new Error(
+      `Abilities: step "staggerMotion" requires a Stagger component on the entity.`,
+    );
+  }
+  return stagger;
+}
 
 /**
  * Builds the forced stagger reaction def for one hit: a single-window

@@ -65,7 +65,13 @@ export function hitbox<TData = StandardHitData>(
     from,
     to,
     params,
-    hooks: { enter: enterHitbox, exit: exitHitbox, tick: repeatHitbox },
+    hooks: {
+      enter: enterHitbox,
+      onDisable: disableHitbox,
+      onEnable: enableHitbox,
+      exit: exitHitbox,
+      tick: repeatHitbox,
+    },
   };
   if (every !== undefined) {
     step.every = every;
@@ -79,6 +85,21 @@ function repeatHitbox<TData>(
   ctx: StepContext,
 ): void {
   open.get(ctx)?.get(params)?.repeatHits();
+}
+
+function disableHitbox<TData>(
+  params: HitboxParams<TData>,
+  ctx: StepContext,
+): void {
+  open.get(ctx)?.get(params)?.setActive(false);
+}
+
+function enableHitbox<TData>(
+  params: HitboxParams<TData>,
+  ctx: StepContext,
+): void {
+  const entity = open.get(ctx)?.get(params);
+  if (entity && !entity.isDestroyed) entity.setActive(true);
 }
 
 function enterHitbox<TData>(

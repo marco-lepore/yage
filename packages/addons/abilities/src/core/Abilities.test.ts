@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createMockEntity,
+  ErrorBoundaryKey,
   KeyframeAnimator,
   ProcessComponent,
 } from "@yagejs/core";
@@ -25,6 +26,14 @@ const zone = defineStep<{ id: string }>("zone", {
   exit: (params, ctx, cancelled) =>
     log(ctx).push(`exit:${params.id}:${cancelled}`),
   tick: (params, ctx) => log(ctx).push(`tick:${params.id}`),
+});
+
+const dormantZone = defineStep<{ id: string }>("dormantZone", {
+  enter: (params, ctx) => log(ctx).push(`enter:${params.id}`),
+  onDisable: (params, ctx) => log(ctx).push(`onDisable:${params.id}`),
+  onEnable: (params, ctx) => log(ctx).push(`onEnable:${params.id}`),
+  exit: (params, ctx, cancelled) =>
+    log(ctx).push(`exit:${params.id}:${cancelled}`),
 });
 
 // Steps read the shared log off the ability's def id via a WeakMap keyed by
@@ -204,6 +213,116 @@ describe("Abilities — timeline playback (single-phase sugar)", () => {
     entity.destroy();
     scene._flushDestroyQueue();
     expect(log).toEqual(["enter:z", "exit:z:true"]);
+  });
+});
+
+describe("Abilities — component dormancy", () => {
+  it("pauses tracks, rejects new actions, and disables open window effects", () => {
+    const { pc, abilities, log } = setup([
+      {
+        id: "test",
+        duration: 1,
+        timeline: [dormantZone({ from: 0, to: 0.8, id: "z" })],
+      },
+      { id: "other", duration: 0.1, timeline: [] },
+    ]);
+
+    abilities.send("test");
+    pc._tick(0.2);
+    const before = abilities.elapsed();
+    expect(log).toEqual(["enter:z"]);
+
+    abilities.enabled = false;
+    expect(log).toEqual(["enter:z", "onDisable:z"]);
+    expect(abilities.send("other")).toEqual({ ok: false, reason: "busy" });
+    expect(abilities.canSend("other")).toBe(false);
+    expect(abilities.force({ id: "forced", timeline: [] })).toEqual({
+      ok: false,
+      reason: "busy",
+    });
+    pc._tick(1);
+    expect(abilities.elapsed()).toBe(before);
+
+    abilities.enabled = true;
+    expect(log).toEqual(["enter:z", "onDisable:z", "onEnable:z"]);
+    pc._tick(0.6);
+    expect(log).toEqual([
+      "enter:z",
+      "onDisable:z",
+      "onEnable:z",
+      "exit:z:false",
+    ]);
+  });
+
+  it("uses the same timeline lifecycle while the host entity is inactive", () => {
+    const { entity, pc, abilities, log } = setup([
+      {
+        id: "test",
+        duration: 1,
+        timeline: [dormantZone({ from: 0, to: 0.8, id: "z" })],
+      },
+    ]);
+
+    abilities.send("test");
+    pc._tick(0.2);
+    entity.setActive(false);
+    expect(log.at(-1)).toBe("onDisable:z");
+    pc._tick(1);
+    expect(abilities.elapsed()).toBeCloseTo(0.2);
+
+    entity.setActive(true);
+    expect(log.at(-1)).toBe("onEnable:z");
+  });
+
+  it("attributes a throwing window onDisable hook", () => {
+    const broken = defineStep<Record<never, never>>("broken", {
+      enter() {},
+      onDisable() {
+        throw new Error("disable failed");
+      },
+    });
+    const { scene, pc, abilities } = setup([
+      { id: "test", duration: 1, timeline: [broken({ from: 0, to: 1 })] },
+    ]);
+    abilities.send("test");
+    pc._tick(0.1);
+
+    expect(() => {
+      abilities.enabled = false;
+    }).toThrow("disable failed");
+    expect(
+      scene.context.resolve(ErrorBoundaryKey).getCallbackErrors().at(-1),
+    ).toMatchObject({
+      kind: "Ability window onDisable hook",
+      event: "broken",
+      error: "disable failed",
+    });
+  });
+
+  it("attributes a throwing window onEnable hook", () => {
+    const broken = defineStep<Record<never, never>>("broken", {
+      enter() {},
+      onEnable() {
+        throw new Error("enable failed");
+      },
+    });
+    const { scene, pc, abilities } = setup([
+      { id: "test", duration: 1, timeline: [broken({ from: 0, to: 1 })] },
+    ]);
+    abilities.send("test");
+    pc._tick(0.1);
+    abilities.enabled = false;
+
+    expect(() => {
+      abilities.enabled = true;
+    }).toThrow("enable failed");
+    expect(
+      scene.context.resolve(ErrorBoundaryKey).getCallbackErrors().at(-1),
+    ).toMatchObject({
+      kind: "Ability window onEnable hook",
+      event: "broken",
+      error: "enable failed",
+    });
   });
 });
 

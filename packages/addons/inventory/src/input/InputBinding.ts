@@ -54,7 +54,10 @@ export interface InputBinding {
   bind(input: InputManager, session: InventorySessionDriver): void;
   /** Poll the device and drive the session. Called once per frame by the host. */
   poll(): void;
-  /** Optional teardown (e.g. unsubscribe pointer listeners). */
+  /**
+   * Release resources held by the current bind. The host may call `bind`
+   * again when its component becomes active.
+   */
   dispose?(): void;
   /**
    * The `InputManager` action names this binding polls, if it polls any. The
@@ -111,8 +114,8 @@ export class CompositeInputBinding implements InputBinding {
 
 /** Keyboard/gamepad action-map binding (the default). */
 export class KeyboardInputBinding implements InputBinding {
-  private input?: InputManager;
-  private session?: InventorySessionDriver;
+  private input: InputManager | undefined;
+  private session: InventorySessionDriver | undefined;
 
   constructor(private readonly actions: InventoryActions = INVENTORY_ACTIONS) {}
 
@@ -121,9 +124,15 @@ export class KeyboardInputBinding implements InputBinding {
     this.session = session;
   }
 
+  dispose(): void {
+    this.input = undefined;
+    this.session = undefined;
+  }
+
   /** Every action name this binding polls, across all slots (de-duplicated). */
   actionNames(): readonly string[] {
-    const { up, down, left, right, confirm, cancel, sort, toggle } = this.actions;
+    const { up, down, left, right, confirm, cancel, sort, toggle } =
+      this.actions;
     return [
       ...new Set([
         ...up,
@@ -142,7 +151,8 @@ export class KeyboardInputBinding implements InputBinding {
     const { input, session } = this;
     if (!input || !session) return;
     // Toggle is the one control that works while closed.
-    if (this.actions.toggle && justPressed(input, this.actions.toggle)) session.toggle();
+    if (this.actions.toggle && justPressed(input, this.actions.toggle))
+      session.toggle();
     if (!session.isOpen()) return;
     if (justPressed(input, this.actions.up)) session.move("up");
     else if (justPressed(input, this.actions.down)) session.move("down");
@@ -150,7 +160,8 @@ export class KeyboardInputBinding implements InputBinding {
     else if (justPressed(input, this.actions.right)) session.move("right");
     if (justPressed(input, this.actions.confirm)) session.confirm();
     if (justPressed(input, this.actions.cancel)) session.cancel();
-    if (this.actions.sort && justPressed(input, this.actions.sort)) session.sort();
+    if (this.actions.sort && justPressed(input, this.actions.sort))
+      session.sort();
   }
 }
 
@@ -165,8 +176,8 @@ function justPressed(input: InputManager, actions: readonly string[]): boolean {
  * Works for both mouse and touch since it rides the unified pointer stream.
  */
 export class PointerInputBinding implements InputBinding {
-  private input?: InputManager;
-  private session?: InventorySessionDriver;
+  private input: InputManager | undefined;
+  private session: InventorySessionDriver | undefined;
   // Explicit `| undefined` so `dispose()` can null it (exactOptionalPropertyTypes).
   private unsub: (() => void) | undefined;
   /** Pointer ids of the primary-button presses since the last poll. poll()
@@ -240,7 +251,9 @@ export class PointerInputBinding implements InputBinding {
     // safe whatever order the down-listeners ran in. Presses are checked
     // individually: a claimed tap must not shadow an unclaimed one landing
     // the same frame.
-    const clicked = this.clickedPointers.some((id) => !input.isPointerConsumed(id));
+    const clicked = this.clickedPointers.some(
+      (id) => !input.isPointerConsumed(id),
+    );
     this.clickedPointers.length = 0;
     if (!clicked) return;
     if (menuOpen) {
@@ -257,6 +270,12 @@ export class PointerInputBinding implements InputBinding {
   dispose(): void {
     this.unsub?.();
     this.unsub = undefined;
+    this.input = undefined;
+    this.session = undefined;
+    this.clickedPointers.length = 0;
+    this.lastX = Number.NaN;
+    this.lastY = Number.NaN;
+    this.wasMenuOpen = false;
   }
 }
 
