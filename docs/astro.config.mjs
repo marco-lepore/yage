@@ -24,6 +24,7 @@ export default defineConfig({
           entryPoints: [
             "../packages/core",
             "../packages/renderer",
+            "../packages/lighting",
             "../packages/input",
             "../packages/physics",
             "../packages/audio",
@@ -110,6 +111,7 @@ export default defineConfig({
                 },
               ],
             },
+            { label: "Lighting", slug: "guides/lighting" },
             { label: "Input", slug: "guides/input" },
             {
               label: "Processes & Tweens",

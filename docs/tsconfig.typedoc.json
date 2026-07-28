@@ -8,6 +8,7 @@
   "include": [
     "../packages/core/src",
     "../packages/renderer/src",
+    "../packages/lighting/src",
     "../packages/input/src",
     "../packages/physics/src",
     "../packages/audio/src",

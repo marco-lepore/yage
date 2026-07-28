@@ -1,0 +1,209 @@
+---
+title: "Lighting"
+description: "Add radial lights and query how lit a point is"
+---
+
+`@yagejs/lighting` adds soft radial lights to a scene and gives gameplay code a
+continuous `0..1` light level. A stealth game can use the same light sources
+for its visuals and detection rules.
+
+## Install and enable lighting
+
+```bash
+npm install @yagejs/lighting
+```
+
+Install `LightingPlugin` after `RendererPlugin`:
+
+```typescript
+import { Engine } from "@yagejs/core";
+import { LightingPlugin } from "@yagejs/lighting";
+import { RendererPlugin } from "@yagejs/renderer";
+
+const engine = new Engine();
+engine.use(new RendererPlugin());
+engine.use(
+  new LightingPlugin({
+    ambient: {
+      level: 0.2,
+      color: 0xb0b8cc,
+    },
+  }),
+);
+```
+
+The ambient `level` controls how bright the scene and gameplay query are where
+no light reaches. Both `level` and light `intensity` use a range from `0` to
+`1`.
+
+## Add a light
+
+A light follows the world position of the `Transform` on the same entity:
+
+```typescript
+import { Transform, Vec2 } from "@yagejs/core";
+import { LightSource } from "@yagejs/lighting";
+
+const torch = this.spawn("torch");
+torch.add(new Transform({ position: new Vec2(320, 180) }));
+
+const light = torch.add(
+  new LightSource({
+    radius: 180,
+    intensity: 0.9,
+    color: 0xffb060,
+  }),
+);
+```
+
+`radius` is measured in world pixels. The light follows parent transforms, but
+transform scale does not resize it. Change the light directly when its
+gameplay radius changes:
+
+```typescript
+light.radius = 240;
+light.intensity = 0.7;
+light.color = 0x80aaff;
+light.enabled = false;
+```
+
+Disabling the light or its entity removes it from rendering and queries until
+it becomes active again. Light sources save and restore through
+`@yagejs/save`.
+
+## Query the light level
+
+Resolve the scene's `LightingWorld` from a component:
+
+```typescript
+import { Component } from "@yagejs/core";
+import { LightingWorldKey } from "@yagejs/lighting";
+
+class GuardVision extends Component {
+  private readonly lighting = this.service(LightingWorldKey);
+
+  canSee(x: number, y: number): boolean {
+    return this.lighting.levelAt(x, y) >= 0.45;
+  }
+}
+```
+
+`levelAt(x, y)` starts with the ambient level, adds the contribution from each
+enabled light, and clamps the answer to `1`. Each light fades linearly from its
+full intensity at the centre to zero at its radius. The query is scalar, so
+light colours do not affect it.
+
+Change the scene's ambient light at runtime:
+
+```typescript
+const lighting = this.service(LightingWorldKey);
+
+lighting.setAmbient(0.05);
+lighting.setAmbient(0.2, 0x8090b8);
+```
+
+## Configure the built-in renderer
+
+The default renderer draws ambient colour and radial lights into an offscreen
+buffer, then multiplies it over the scene. Coloured lights tint the surfaces
+they reach, as real coloured illumination does.
+
+```typescript
+import { LightingPlugin, overlayLighting } from "@yagejs/lighting";
+
+engine.use(
+  new LightingPlugin({
+    renderer: overlayLighting({
+      layer: "lighting",
+      order: 900,
+      resolutionScale: 0.5,
+      antialias: true,
+    }),
+  }),
+);
+```
+
+The default layer is screen-space and uses order `900`. A UI layer at the
+conventional order `1000` stays above the lighting. Lower
+`resolutionScale` to reduce the light buffer's GPU cost at the expense of
+sharper gradient edges.
+
+The renderer follows the highest-priority enabled camera in each scene. With
+no camera, world coordinates map directly to the viewport.
+
+For tests or gameplay that needs only `levelAt()`, pass `renderer: null`. You
+still install `RendererPlugin`; the option only disables lighting's visual
+backend.
+
+## Register occluder geometry
+
+`LightOccluder` stores geometry for a lighting renderer without tying the
+component to Pixi:
+
+```typescript
+import { LightOccluder } from "@yagejs/lighting";
+
+wall.add(
+  new LightOccluder({
+    shape: { type: "box", width: 96, height: 24 },
+  }),
+);
+
+pillar.add(
+  new LightOccluder({
+    shape: { type: "circle", radius: 20 },
+  }),
+);
+
+rock.add(
+  new LightOccluder({
+    shape: {
+      type: "polygon",
+      vertices: [
+        { x: -20, y: 12 },
+        { x: 0, y: -18 },
+        { x: 24, y: 10 },
+      ],
+    },
+  }),
+);
+```
+
+The shape uses local pixels. Its centre and rotation follow the entity's world
+transform.
+
+:::caution[No built-in shadows]
+The built-in overlay does not cast shadows, and occluders do not change
+`levelAt()`. They are available to custom lighting renderers through
+`LightingWorld.occluders`.
+:::
+
+## Supply another renderer
+
+Set `renderer` to a factory when a game needs a different visual result:
+
+```typescript
+import type { LightingRendererFactory } from "@yagejs/lighting";
+
+const customLighting: LightingRendererFactory = ({
+  scene,
+  world,
+  renderer,
+}) => ({
+  render(frame) {
+    // Read world.sources and world.occluders.
+    // frame.camera is this scene's active, highest-priority camera.
+    // frame.width and frame.height are the virtual viewport size.
+  },
+  destroy() {
+    // Release resources owned by this scene.
+  },
+});
+
+engine.use(new LightingPlugin({ renderer: customLighting }));
+```
+
+YAGE calls the factory once for each entered scene and calls `destroy()` when
+that scene exits. Each source contains renderer-neutral light data, so a
+custom renderer can draw visibility polygons, material lighting, or another
+visual treatment without changing game entities.
