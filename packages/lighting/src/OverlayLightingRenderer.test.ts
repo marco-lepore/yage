@@ -1,6 +1,7 @@
 import { Container, Texture } from "pixi.js";
 import { createMockScene, Transform, Vec2 } from "@yagejs/core";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
+import type * as RendererModule from "@yagejs/renderer";
 import type {
   CameraComponent,
   DisplayContainer,
@@ -15,7 +16,7 @@ import { OverlayLightingRenderer } from "./OverlayLightingRenderer.js";
 import { LightingWorldKey } from "./types.js";
 
 vi.mock("@yagejs/renderer", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@yagejs/renderer")>();
+  const actual = await importOriginal<typeof RendererModule>();
   return {
     ...actual,
     radialGradient: () => ({

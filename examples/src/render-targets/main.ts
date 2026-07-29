@@ -214,9 +214,9 @@ class RenderTargetScene extends Scene {
   }
 
   private drawConsole(): void {
-    const console = this.spawn("console");
-    console.add(new Transform());
-    console.add(
+    const consoleEntity = this.spawn("console");
+    consoleEntity.add(new Transform());
+    consoleEntity.add(
       new GraphicsComponent({ layer: "world" }).draw((graphics) => {
         graphics.rect(0, 0, WIDTH, HEIGHT).fill(0x151b26);
 
