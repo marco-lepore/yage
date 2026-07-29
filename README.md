@@ -40,7 +40,7 @@ npm install @yagejs/core @yagejs/renderer
 Add more as you need them:
 
 ```bash
-npm install @yagejs/physics @yagejs/input @yagejs/audio @yagejs/debug
+npm install @yagejs/physics @yagejs/lighting @yagejs/input @yagejs/audio @yagejs/debug
 ```
 
 See the [installation guide](https://yage.dev/getting-started/installation)
@@ -52,6 +52,7 @@ for Vite configuration and bundler setup.
 | ----------------- | ------------------------------------------------ |
 | `@yagejs/core`      | ECS, scenes, game loop, animation, serialization |
 | `@yagejs/renderer`  | PixiJS rendering integration                     |
+| `@yagejs/lighting`  | Radial lights and light-level queries            |
 | `@yagejs/physics`   | Rapier2D physics integration                     |
 | `@yagejs/input`     | Keyboard and pointer input                       |
 | `@yagejs/audio`     | Audio playback                                   |

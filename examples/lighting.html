@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Lighting</title>
+    <link rel="stylesheet" href="/shared.css" />
+  </head>
+  <body>
+    <a class="back-link" href="/">&larr; All Examples</a>
+    <h1>Lighting</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <span>
+        Static warm and cool lights share the scene with an orbiting lamp.
+      </span>
+      <span>
+        The white probe moves through their falloff and reads
+        <code>LightingWorld.levelAt()</code>. The HUD uses the same light data
+        as the visual renderer.
+      </span>
+    </div>
+    <script type="module" src="/src/lighting/main.ts"></script>
+  </body>
+</html>

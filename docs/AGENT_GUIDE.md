@@ -57,6 +57,7 @@ When modifying packages, changes flow downstream. Build and test in dependency o
   ↓
   ├── @yagejs/renderer (→ core, pixi.js)
   │     ↓
+  │     ├── @yagejs/lighting (→ core, renderer, pixi.js)
   │     ├── @yagejs/particles (→ core, renderer)
   │     ├── @yagejs/tilemap (→ core, renderer; optional: physics)
   │     ├── @yagejs/ui (→ core, renderer)
@@ -148,6 +149,17 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 | `src/CameraBoundsComponent.ts`   | Bounds constraint component                  |
 | `src/DisplaySystem.ts`           | Render-phase Transform→PixiJS sync           |
 | `src/RenderLayer.ts`             | Named draw-order layers                      |
+
+### `@yagejs/lighting`
+
+| File                             | Purpose                                   |
+| -------------------------------- | ----------------------------------------- |
+| `src/LightingPlugin.ts`          | Plugin entry and per-scene setup          |
+| `src/LightingWorld.ts`           | Registered lights and `levelAt()` queries |
+| `src/LightSource.ts`             | Entity-bound radial light                 |
+| `src/LightOccluder.ts`           | Renderer-neutral occluder geometry        |
+| `src/LightingSystem.ts`          | Render-phase backend synchronization      |
+| `src/OverlayLightingRenderer.ts` | Built-in multiply-overlay renderer        |
 
 ### `@yagejs/physics`
 

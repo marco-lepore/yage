@@ -12,17 +12,14 @@
     <div id="game-container"></div>
     <div class="controls">
       <span>
-        <b>C</b> switch composite &middot; <b>R</b> cycle buffer resolution &middot;
-        <b>Space</b> pause the orbiting light
+        <b>R</b> cycle buffer resolution &middot; <b>Space</b> pause the radar
       </span>
       <span>
-        The lights are drawn into an offscreen buffer, then composited over the world.
-        <b>cut-out</b> erases soft holes in darkness — true colours, no tint.
-        <b>multiply</b> adds coloured lights into an ambient floor — tinted and
-        accumulating, but every surface takes the lamp's colour.
-        <b>cut-out&nbsp;+&nbsp;glow</b> uses the cut-out buffer plus a second additive
-        overlay, for true colours <em>and</em> tint at the cost of two passes.
-        The strip below uses <code>blendMode</code> directly, with no buffer.
+        A radar is drawn into an offscreen texture and reused by two screens.
+        Lowering the resolution changes its texel count without changing either
+        screen's layout. Pausing it shows how <code>renderIfNeeded()</code>
+        avoids redraws when the source is unchanged. The strip below uses
+        <code>blendMode</code> directly, with no buffer.
       </span>
     </div>
     <script type="module" src="/src/render-targets/main.ts"></script>

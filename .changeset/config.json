@@ -20,6 +20,7 @@
       "@yagejs/debug",
       "@yagejs/save",
       "@yagejs/effects",
+      "@yagejs/lighting",
       "create-yage"
     ]
   ],
