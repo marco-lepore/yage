@@ -1,5 +1,5 @@
 import type { RandomService } from "@yagejs/core";
-import type { TextureInput } from "@yagejs/renderer";
+import type { BlendMode, TextureInput } from "@yagejs/renderer";
 import type { ParticleShape, ResolvedShape, ShapeConfig } from "./shapes.js";
 
 /** A value or [min, max] range to randomize from. */
@@ -50,6 +50,13 @@ export interface EmitterOptions {
   rotationSpeed?: NumberRange;
   /** Tint color. Default: 0xffffff. */
   tint?: number;
+  /**
+   * How the whole particle container's pixels combine with what is drawn
+   * beneath it — `"add"` for fire, sparks, and magic. Default: `"normal"`.
+   * See {@link BlendMode} for the modes that need
+   * `import "pixi.js/advanced-blend-modes"`.
+   */
+  blendMode?: BlendMode;
   /** Gravity in px/s². Default: none. */
   gravity?: { x: number; y: number };
   /** Velocity damping per second (0-1). Default: 0. */
@@ -89,6 +96,8 @@ export type ParticleEmitterData = ParticleEmitterSource & {
   rotation: NumberRange;
   rotationSpeed: NumberRange;
   tint: number;
+  /** Omitted while the emitter never set a mode, which is the common case. */
+  blendMode?: BlendMode;
   damping: number;
   gravity?: { x: number; y: number };
   spawnOffset?: { x?: NumberRange; y?: NumberRange };

@@ -88,6 +88,7 @@ emitter.emit();  // start continuous emission
 | `rotation` | `NumberRange` | `0` | Initial rotation (radians) |
 | `rotationSpeed` | `NumberRange` | `0` | Rotation speed (rad/s) |
 | `tint` | `number` | `0xffffff` | Color tint |
+| `blendMode` | `BlendMode` | `"normal"` | How the particles combine with what is beneath |
 | `gravity` | `{ x, y }` | — | Per-particle gravity (px/s²) |
 | `damping` | `number` | `0` | Velocity damping (0–1) |
 | `spawnOffset` | `{ x?, y? }` | — | Random offset from emitter position |
@@ -104,6 +105,26 @@ alpha: { start: 1, end: [0, 0.3] }     // fade out with variation
 
 The three texture options are mutually exclusive: setting more than one is a
 type error. An emitter that sets none of them uses the `"pixel"` shape.
+
+### Blend Mode
+
+`blendMode` decides how the particles combine with what is already drawn
+beneath them. Fire, sparks, and magic usually want `"add"`, which brightens
+the background instead of covering it:
+
+```typescript
+const emitter = new ParticleEmitterComponent({
+  ...ParticlePresets.fire(),
+  blendMode: "add",
+});
+
+emitter.blendMode = "normal";  // also a live accessor
+```
+
+The mode applies to the emitter as a whole, so every one of its particles
+blends the same way. `"add"`, `"multiply"`, `"screen"` and the other GPU-native
+modes work with no setup; the photoshop-style ones need a side-effect import.
+See [Blend modes](/guides/rendering/effects/#blend-modes) for the full list.
 
 ## Built-in Shapes
 
@@ -181,6 +202,7 @@ emitter.burst(10, 400, 300); // burst at an explicit world position
 
 emitter.isEmitting;          // boolean
 emitter.activeCount;         // number of live particles
+emitter.blendMode = "add";   // read/write
 ```
 
 ## Presets
