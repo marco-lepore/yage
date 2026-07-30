@@ -21,4 +21,4 @@ export type {
 } from "./types.js";
 
 // Asset factories
-export { sound } from "./assets.js";
+export { sound, registerSound, unregisterSound } from "./assets.js";
