@@ -83,6 +83,28 @@ audio.pauseChannel("music");
 audio.resumeChannel("music");
 ```
 
+## Runtime sounds
+
+**`registerSound(alias, buffer)` / `unregisterSound(alias)`** — register a runtime-generated `AudioBuffer` under an alias so it resolves and plays exactly like a preloaded sound, through the same `AudioManager` channels, mute, and blur auto-pause. Audio analogue of the renderer's `registerTexture(key, texture)`.
+
+```ts
+import { registerSound, AudioManagerKey } from "@yagejs/audio";
+
+const buffer = synthesizeShot(); // any code that produces an AudioBuffer
+registerSound("shoot", buffer);
+
+const audio = this.use(AudioManagerKey);
+audio.play("shoot");
+```
+
+Semantics:
+
+- **Save contract.** Snapshots store only the alias. Re-register the buffer under the same alias before restoring (the same boot code that registered it on first run).
+- Registered aliases are engine-global and live until `unregisterSound(alias)`.
+- `unregisterSound` is a no-op for aliases it never registered. An `AudioBuffer` has no destroy step, so unlike `unregisterTexture` there is nothing to release beyond the alias itself.
+- Re-registering an alias replaces the entry.
+- Registering an alias already used by a loaded sound asset (or any entry the API didn't create) throws — shadowing a loaded asset would let that asset's unload destroy the registered sound.
+
 ## SoundComponent
 
 Entity-bound audio. Auto-stops on entity destroy.

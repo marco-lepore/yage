@@ -196,6 +196,45 @@ otherwise the new policy applies on the next blur event.
 Pausing scenes on tab blur is a scene-lifecycle concern, not an audio one —
 see [`SceneManager.autoPauseOnBlur`](/patterns/scene-management/#pause-on-tab-blur).
 
+## Runtime Sounds
+
+`registerSound(alias, buffer)` registers a runtime-generated `AudioBuffer`
+under an alias, so it resolves and plays exactly like a preloaded sound —
+through the same `AudioManager` channels, mute, and blur auto-pause. This is
+the audio counterpart to the renderer's `registerTexture(key, texture)`, and
+it's how a procedural-audio addon plugs a synthesized sound effect into the
+engine.
+
+```typescript
+import { registerSound, AudioManagerKey } from "@yagejs/audio";
+
+const buffer = synthesizeShot(); // any code that produces an AudioBuffer
+registerSound("shoot", buffer);
+
+const audio = this.use(AudioManagerKey);
+audio.play("shoot");
+```
+
+Registered aliases are engine-global and live until you call
+`unregisterSound(alias)`. Re-registering an alias replaces the entry.
+Registering an alias already used by a loaded sound asset throws, since
+letting a runtime buffer shadow a loaded asset would let that asset's unload
+destroy the registered sound.
+
+For save and load, snapshots store only the alias string — re-register the
+buffer under the same alias during boot, before restoring, the same way you
+registered it on first run.
+
+```typescript
+import { unregisterSound } from "@yagejs/audio";
+
+unregisterSound("shoot");
+```
+
+`unregisterSound` is a no-op for aliases it never registered. An
+`AudioBuffer` has no destroy step, so unlike `unregisterTexture` there's no
+GPU resource to release.
+
 ## SoundComponent
 
 `SoundComponent` binds a sound to an entity. The sound is automatically stopped
