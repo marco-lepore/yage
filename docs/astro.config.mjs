@@ -162,6 +162,7 @@ export default defineConfig({
             { label: "Inventory", slug: "addons/inventory" },
             { label: "Abilities", slug: "addons/abilities" },
             { label: "Steering", slug: "addons/steering" },
+            { label: "Synth", slug: "addons/synth" },
           ],
         },
         {

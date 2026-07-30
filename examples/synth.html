@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Synth Addon</title>
+    <link rel="stylesheet" href="/shared.css" />
+    <style>
+      #pads {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+        max-width: 800px;
+        margin: 16px auto 0;
+      }
+      .pad {
+        background: #171a26;
+        color: #cbd5f5;
+        border: 1px solid #2a2f42;
+        border-radius: 6px;
+        padding: 8px 14px;
+        font: inherit;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .pad:hover {
+        background: #1f2434;
+        border-color: #38bdf8;
+      }
+      .pad.on {
+        border-color: #22c55e;
+        color: #4ade80;
+      }
+    </style>
+  </head>
+  <body>
+    <a class="back-link" href="/">&larr; All Examples</a>
+    <h1>Synth Addon</h1>
+    <div id="game-container"></div>
+    <div id="pads"></div>
+    <div class="controls">
+      <span
+        >Click a pad to play it — no audio files are loaded, every sound is
+        synthesized at boot and registered with the audio engine under an
+        alias.</span
+      >
+      <span>
+        The canvas draws the samples the addon rendered for the last pad.
+        <strong>Shoot</strong> and <strong>Footstep (stone)</strong> register
+        four detuned variants each and play through
+        <code>playRandom</code>, so repeats aren't identical.
+        <strong>Room tone</strong>, <strong>Wind</strong>, and
+        <strong>Dialogue beeps</strong> toggle seamless loops on the music
+        channel.
+      </span>
+    </div>
+    <script type="module" src="/src/synth/main.ts"></script>
+  </body>
+</html>

@@ -39,6 +39,7 @@ Installable, opinionated gameplay patterns (`@yagejs-addons` scope), independent
 - [interaction](llms/addons/interaction.md): Proximity interaction — walk up, see a prompt, press E; headless
 - [quests](llms/addons/quests.md): Headless quest log — objectives and progression
 - [steering](llms/addons/steering.md): Movement AI — seek, flee, arrive, wander, pursue/evade, obstacle avoidance, flocking, path-following
+- [synth](llms/addons/synth.md): Procedural sound effects — patches, presets, and jingles rendered to playable aliases, no audio files
 - [virtual-controls](llms/addons/virtual-controls.md): Mobile touch overlay — virtual joystick(s) and on-screen buttons driving InputManager
 
 ## Optional

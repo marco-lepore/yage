@@ -1,0 +1,214 @@
+---
+title: Synth
+description: Procedural sound effects for YAGE — oscillators, noise, envelopes, and filters rendered to playable aliases, with presets and jingles
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+`@yagejs-addons/synth` gives a game sound effects without any audio files. A
+sound is a plain parameter object — an oscillator, a pitch glide, an envelope,
+maybe a filter. The addon renders it to samples, wraps them in an
+`AudioBuffer`, and registers it with `@yagejs/audio` under an alias, so it
+plays through the engine's channels, volumes, mute, and blur auto-pause
+exactly like a preloaded file.
+
+It is worth reaching for when you want a jam-ready shoot/hit/pickup set
+without sourcing audio, when a sound should be tweakable by editing a number,
+or when tests need to assert on what a sound actually does.
+
+## Install
+
+```bash
+npm install @yagejs-addons/synth
+npm install @yagejs/core @yagejs/audio
+```
+
+Both peers are required — the addon registers its buffers through
+`@yagejs/audio`. There is no `./presenters` subpath: nothing here draws.
+
+## Five-minute setup
+
+```ts
+import { AudioPlugin, AudioManagerKey } from "@yagejs/audio";
+import { SynthPlugin, synthPresets, synthVariantAliases } from "@yagejs-addons/synth";
+
+engine.use(new AudioPlugin());
+engine.use(
+  new SynthPlugin({
+    sounds: {
+      explosion: synthPresets.explosion(),
+      coin: synthPresets.coin(),
+      // Four takes, spread in pitch, so repeated shots don't sound identical.
+      shoot: { sound: synthPresets.shoot(), variants: 4 },
+    },
+  }),
+);
+```
+
+Playing them is the normal audio API — from a Component, Entity, or Scene:
+
+```ts
+const audio = this.use(AudioManagerKey);
+
+audio.play("explosion", { volume: 0.8 });
+audio.playRandom(synthVariantAliases("shoot", 4));
+```
+
+<Aside type="note">
+Sounds are rendered once, when the plugin installs. That needs no
+`AudioContext`, so it happens before the browser's first-gesture unlock and
+costs nothing at play time. `SynthPlugin` declares the audio plugin as a
+dependency, so installing it without `AudioPlugin` throws instead of failing
+silently.
+</Aside>
+
+## Presets
+
+Each preset is a function returning patch data, and takes overrides — so a
+different gun, a bigger explosion, or a wooden floor is one number away.
+
+```ts
+synthPresets.shoot({ frequency: 900 });                    // higher-pitched
+synthPresets.explosion({ frequency: 200, duration: 0.6 }); // bigger boom
+synthPresets.footstep({ surface: "wood" });                // stone | wood | grass
+synthPresets.victory({ volume: 0.3 });
+```
+
+The full set: `shoot`, `hit`, `explosion`, `hurt`, `pickup`, `coin`, `jump`,
+`land`, `dash`, `powerup`, `footstep`, `uiClick`, `uiBlip`, `alarm`,
+`victory`, `defeat`, `roomTone`, `wind`, `dialogueBeeps`. Their levels are
+tuned to sit next to each other; override `volume` to taste.
+
+Two of them are loops rather than one-shots. `wind` is an ambient bed with
+gust swells baked inside the loop. `dialogueBeeps` is speech chatter for
+text reveals — short blips around a base pitch with syllable-like rests:
+
+```ts
+new SynthPlugin({
+  sounds: { "voice/guard": synthPresets.dialogueBeeps({ frequency: 220, seed: 4 }) },
+});
+
+const talking = audio.play("voice/guard", { loop: true, channel: "voice" });
+audio.stop(talking); // when the line finishes revealing
+```
+
+The same `seed` always speaks the same phrase, so a character's voice is
+stable across plays; a different `frequency` and `seed` gives each character
+their own.
+
+## Writing your own sound
+
+A patch is one voice:
+
+```ts
+const zap = {
+  wave: "square",      // sine | square | sawtooth | triangle | noise
+  frequency: 1200,     // starting pitch
+  glideTo: 200,        // pitch at the end — the exponential fall
+  duration: 0.09,
+  attack: 0.004,       // fade-in; the rest of the duration is the release
+  curve: 4,            // release steepness
+  volume: 0.2,
+};
+```
+
+Add `noise: 0.4` to mix white noise into the tone, or a filter with an
+optional sweep:
+
+```ts
+const whoosh = {
+  wave: "noise",
+  duration: 0.22,
+  filter: { type: "bandpass", frequency: 500, sweepTo: 5200, q: 2 },
+};
+```
+
+An array of patches plays as one sound, so layers stack — each voice can start
+late:
+
+```ts
+const shotgun = [
+  { wave: "sawtooth", frequency: 300, glideTo: 40, duration: 0.25, volume: 0.3 },
+  { wave: "noise", duration: 0.3, volume: 0.3, filter: { type: "lowpass", frequency: 2000, sweepTo: 300 } },
+  { wave: "square", frequency: 90, duration: 0.1, delay: 0.28, volume: 0.1 }, // the pump
+];
+```
+
+And a jingle bakes a note sequence into a single buffer:
+
+```ts
+const levelUp = {
+  notes: [523, 659, 784, 1046], // Hz; 0 is a rest
+  noteDuration: 0.18,
+  noteSpacing: 0.12,            // shorter than the notes, so they ring into each other
+  voice: { wave: "triangle", volume: 0.26 },
+};
+```
+
+Any of the three shapes — a patch, an array of patches, a jingle — goes
+straight into `SynthPlugin`'s `sounds` config.
+
+## Sounds you can test
+
+`renderSynthPatch` turns a patch into a `Float32Array`. It is plain math: no
+WebAudio, no randomness that isn't seeded, no engine involved. The same patch
+always renders the same samples, so a sound can be checked in a unit test the
+way any other pure function is.
+
+```ts
+import { renderSynthPatch } from "@yagejs-addons/synth";
+
+const samples = renderSynthPatch({ frequency: 800, glideTo: 100, duration: 0.4 });
+expect(samples).toHaveLength(0.4 * 44100);
+```
+
+## Registering a sound outside the plugin config
+
+`synthBuffer` renders straight to an `AudioBuffer` for sounds a game builds at
+runtime — a boss whose hit sound tracks its remaining health, say:
+
+```ts
+import { registerSound, unregisterSound } from "@yagejs/audio";
+import { synthBuffer, synthPresets } from "@yagejs-addons/synth";
+
+registerSound("boss-hit", synthBuffer(synthPresets.hit({ frequency: 180 })));
+// later
+unregisterSound("boss-hit");
+```
+
+## Variation between plays
+
+A rendered buffer sounds identical every time it plays. Two ways to break that
+up:
+
+```ts
+// Several takes, picked at random per play.
+new SynthPlugin({
+  sounds: { shoot: { sound: synthPresets.shoot(), variants: 4, detune: 0.08 } },
+});
+audio.playRandom(synthVariantAliases("shoot", 4));
+
+// Or jitter the playback rate at the call site.
+audio.play("shoot", { speed: 0.95 + Math.random() * 0.1 });
+```
+
+A `variants: n` entry registers `alias.1` … `alias.n` — nothing under the bare
+alias — spread evenly across ±`detune` (default ±6%), each with its own noise.
+
+## Ambient loops
+
+`seamless: true` drops the envelope and crossfades the end of the buffer into
+its start, so it loops without a click:
+
+```ts
+new SynthPlugin({ sounds: { ambience: synthPresets.roomTone({ duration: 6 }) } });
+
+audio.play("ambience", { loop: true, channel: "music" });
+```
+
+## Save and load
+
+Nothing to persist. The plugin re-registers every sound from its config on
+each boot, so a snapshot only ever holds the alias string — the same contract
+as runtime textures. `plugin.aliases` lists what it registered, and
+`onDestroy` gives them back.
