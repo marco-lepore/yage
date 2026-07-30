@@ -7,7 +7,11 @@ import {
   type RandomService,
 } from "@yagejs/core";
 import { SceneRenderTreeKey, resolveTextureInput } from "@yagejs/renderer";
-import type { ParticleContainer, TextureResource } from "@yagejs/renderer";
+import type {
+  BlendMode,
+  ParticleContainer,
+  TextureResource,
+} from "@yagejs/renderer";
 import { ParticleContainer as PixiParticleContainer, Texture } from "pixi.js";
 import type { Particle } from "pixi.js";
 import { ParticlePool } from "./ParticlePool.js";
@@ -111,6 +115,9 @@ export class ParticleEmitterComponent extends Component {
         vertex: true,
       },
     });
+    if (this.config.blendMode !== undefined) {
+      this.container.blendMode = this.config.blendMode;
+    }
 
     this._pool = new ParticlePool(source.texture, this.config.maxParticles);
   }
@@ -172,6 +179,16 @@ export class ParticleEmitterComponent extends Component {
     return this._active.length;
   }
 
+  /** Set how the particles combine with what is drawn beneath them. */
+  set blendMode(mode: BlendMode) {
+    this.container.blendMode = mode;
+  }
+
+  /** Get the particles' blend mode. */
+  get blendMode(): BlendMode {
+    return this.container.blendMode;
+  }
+
   serialize(): ParticleEmitterData | null {
     const source = this.snapshotSource();
     if (!source) {
@@ -182,6 +199,11 @@ export class ParticleEmitterComponent extends Component {
       return null;
     }
     const raw = this._rawConfig;
+    // Read live rather than from the config: `blendMode` is the one visual
+    // field with a runtime setter. Pixi constructs the container at
+    // `"inherit"`, and a particle container left there draws normally, so
+    // `"inherit"` is the value worth omitting.
+    const blendMode = this.container.blendMode;
     return {
       ...source,
       maxParticles: this.config.maxParticles,
@@ -194,6 +216,7 @@ export class ParticleEmitterComponent extends Component {
       tint: this.config.tint,
       damping: this.config.damping,
       layer: this.config.layer,
+      ...(blendMode !== "inherit" && { blendMode }),
       ...(raw.scale != null && { scale: raw.scale }),
       ...(raw.alpha != null && { alpha: raw.alpha }),
       ...(raw.gravity && { gravity: raw.gravity }),
@@ -225,6 +248,7 @@ export class ParticleEmitterComponent extends Component {
       tint: data.tint,
       damping: data.damping,
       layer: data.layer,
+      ...(data.blendMode !== undefined && { blendMode: data.blendMode }),
       ...(data.scale != null && { scale: data.scale }),
       ...(data.alpha != null && { alpha: data.alpha }),
       ...(data.gravity && { gravity: data.gravity }),

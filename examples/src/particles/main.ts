@@ -85,9 +85,11 @@ const DEMO_CONFIGS: Record<
   DemoName,
   (tex: TextureResource) => EmitterConfig
 > = {
-  fire: () => ParticlePresets.fire(),
+  // fire and sparks emit light: additive blending brightens the background
+  // where their particles overlap instead of covering it.
+  fire: () => ({ ...ParticlePresets.fire(), blendMode: "add" }),
   smoke: () => ParticlePresets.smoke(),
-  sparks: () => ParticlePresets.sparks(),
+  sparks: () => ({ ...ParticlePresets.sparks(), blendMode: "add" }),
   rain: () => ParticlePresets.rain(),
 
   pixel: () => shapeDemo({ type: "pixel", size: 4 }, 0xffffff),

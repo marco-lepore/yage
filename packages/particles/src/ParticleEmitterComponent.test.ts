@@ -39,6 +39,8 @@ const { mocks } = vi.hoisted(() => {
     destroyed = false;
     texture: unknown = null;
     dynamicProperties: unknown = null;
+    // Pixi's own default — display objects start at "inherit", not "normal".
+    blendMode = "inherit";
 
     constructor(opts?: Record<string, unknown>) {
       if (opts) {
@@ -599,6 +601,24 @@ describe("ParticleEmitterComponent", () => {
     });
   });
 
+  describe("blend mode", () => {
+    it("leaves the container at Pixi's default when unset", () => {
+      expect(createEmitter().blendMode).toBe("inherit");
+    });
+
+    it("applies the configured mode to the container", () => {
+      const emitter = createEmitter({ blendMode: "add" });
+      expect(emitter.container.blendMode).toBe("add");
+    });
+
+    it("the setter writes through to the container", () => {
+      const emitter = createEmitter();
+      emitter.blendMode = "screen";
+      expect(emitter.container.blendMode).toBe("screen");
+      expect(emitter.blendMode).toBe("screen");
+    });
+  });
+
   describe("serialization", () => {
     it("serialize returns null with warning when using raw texture", () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -655,6 +675,34 @@ describe("ParticleEmitterComponent", () => {
       const data = original.serialize()!;
       const restored = ParticleEmitterComponent.fromSnapshot(data);
       expect(restored.serialize()).toEqual(data);
+    });
+
+    it("omits blendMode while the container blends inherited", () => {
+      const emitter = new ParticleEmitterComponent({
+        textureKey: "particle.png",
+        lifetime: 1,
+      });
+      expect(emitter.serialize()!.blendMode).toBeUndefined();
+    });
+
+    it("records an explicit normal, which differs from the unset default", () => {
+      const emitter = new ParticleEmitterComponent({
+        textureKey: "particle.png",
+        lifetime: 1,
+        blendMode: "normal",
+      });
+      expect(emitter.serialize()!.blendMode).toBe("normal");
+    });
+
+    it("records a blend mode set after construction and round-trips it", () => {
+      const emitter = new ParticleEmitterComponent({
+        textureKey: "spark.png",
+        lifetime: 1,
+      });
+      emitter.blendMode = "add";
+      const data = emitter.serialize()!;
+      expect(data.blendMode).toBe("add");
+      expect(ParticleEmitterComponent.fromSnapshot(data).blendMode).toBe("add");
     });
 
     it("serializes the built-in shape with its size filled in", () => {

@@ -28,6 +28,7 @@ entity.add(new ParticleEmitterComponent({
   rotation: 0,                 // radians
   rotationSpeed: 0,            // rad/s
   tint: 0xff6600,
+  blendMode: "add",            // whole-emitter, default "normal"
   gravity: { x: 0, y: 200 },  // px/s²
   damping: 0,                  // 0–1
   spawnOffset: { x: [-10, 10], y: 0 },
@@ -96,7 +97,15 @@ emitter.burst(50);           // spawn at the entity's world position
 emitter.burst(10, x, y);    // burst at an explicit world position
 emitter.isEmitting;          // boolean
 emitter.activeCount;         // number
+emitter.blendMode = "add";  // BlendMode, read/write
 ```
+
+**`blendMode`** is per emitter — every particle it spawns blends the same way,
+and the mode cannot vary particle by particle. Overlapping particles within one
+emitter still accumulate, so `"add"` is what makes fire, sparks, and magic
+brighten where they pile up. Same `BlendMode` values and same
+`import "pixi.js/advanced-blend-modes"` requirement as the renderer's visual
+components (see `renderer.md`).
 
 Particles are simulated in world space: continuous emission and a no-argument
 `burst` both spawn at the entity's `Transform.worldPosition`, so a child entity
