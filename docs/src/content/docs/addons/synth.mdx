@@ -71,13 +71,29 @@ different gun, a bigger explosion, or a wooden floor is one number away.
 synthPresets.shoot({ frequency: 900 });                    // higher-pitched
 synthPresets.explosion({ frequency: 200, duration: 0.6 }); // bigger boom
 synthPresets.footstep({ surface: "wood" });                // stone | wood | grass
-synthPresets.victory({ volume: 0.3 });
+synthPresets.victory({ noteDuration: 0.24 });              // slower fanfare
+synthPresets.shoot({ gain: 0.5 });                         // half as loud
 ```
+
+What you can override follows the shape of the sound, so a field the preset
+cannot honour is a compile error rather than a line that quietly does
+nothing:
+
+- **One voice or layered** (shoot, hit, explosion, footstep, wind, …) takes
+  patch fields — `frequency`, `duration`, `filter`, and the rest. On a layered
+  preset they land on the lead voice, so the layers keep their relationship.
+- **A note sequence** (pickup, coin, victory, defeat, dialogueBeeps) takes its
+  shared voice's fields plus `noteDuration` and `noteSpacing`. Pitch comes
+  from the notes, so `frequency`, `glideTo`, `delay`, and `seamless` are
+  rejected.
+- **`gain` works on all of them**: it multiplies every voice's volume, which
+  is what you want for making a whole layered sound quieter. `volume` sets a
+  single voice's peak instead.
 
 The full set: `shoot`, `hit`, `explosion`, `hurt`, `pickup`, `coin`, `jump`,
 `land`, `dash`, `powerup`, `footstep`, `uiClick`, `uiBlip`, `alarm`,
 `victory`, `defeat`, `roomTone`, `wind`, `dialogueBeeps`. Their levels are
-tuned to sit next to each other; override `volume` to taste.
+tuned to sit next to each other; scale them with `gain` to taste.
 
 Two of them are loops rather than one-shots. `wind` is an ambient bed with
 gust swells baked inside the loop. `dialogueBeeps` is speech chatter for
@@ -188,8 +204,9 @@ new SynthPlugin({
 });
 audio.playRandom(synthVariantAliases("shoot", 4));
 
-// Or jitter the playback rate at the call site.
-audio.play("shoot", { speed: 0.95 + Math.random() * 0.1 });
+// Or jitter the playback rate at the call site (variants register only the
+// suffixed aliases, so play one of those).
+audio.play("shoot.1", { speed: 0.95 + Math.random() * 0.1 });
 ```
 
 A `variants: n` entry registers `alias.1` … `alias.n` — nothing under the bare
@@ -198,7 +215,9 @@ alias — spread evenly across ±`detune` (default ±6%), each with its own nois
 ## Ambient loops
 
 `seamless: true` drops the envelope and crossfades the end of the buffer into
-its start, so it loops without a click:
+its start, so it loops without a click. The crossfade consumes up to 50 ms, so
+the buffer comes out slightly shorter than `duration` — don't schedule
+anything against the exact requested length:
 
 ```ts
 new SynthPlugin({ sounds: { ambience: synthPresets.roomTone({ duration: 6 }) } });

@@ -238,6 +238,18 @@ describe("renderSynthJingle", () => {
     expect(peak(samples.slice(0.1 * RATE, 0.2 * RATE))).toBe(0);
   });
 
+  it("rejects a bad noteDuration even when every note is a rest", () => {
+    expect(() =>
+      renderSynthJingle({ notes: [0], noteDuration: Number.NaN }, RATE),
+    ).toThrowError(/renderSynthJingle: noteDuration/);
+    expect(() =>
+      renderSynthJingle(
+        { notes: [{ frequency: 0, duration: Number.NaN }] },
+        RATE,
+      ),
+    ).toThrowError(/renderSynthJingle: notes\[0\]\.duration/);
+  });
+
   it("keeps a trailing rest's slot on the timeline", () => {
     const samples = renderSynthJingle(
       { notes: [440, 0], noteDuration: 0.1 },

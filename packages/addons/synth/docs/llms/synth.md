@@ -129,18 +129,30 @@ registerSound("boss-hit", synthBuffer(synthPresets.hit({ frequency: 180 })));
 
 ## Presets
 
-`synthPresets.<name>(overrides?)` returns patch data. Overrides apply to the
-lead voice of a stack; on a jingle, `duration` becomes the per-note length.
+`synthPresets.<name>(overrides?)` returns patch data. The override type
+follows the preset's shape, so a field a preset cannot honour is a compile
+error instead of a silent no-op:
 
 ```ts
-synthPresets.shoot({ frequency: 900 });          // higher-pitched gun
+// One-voice and layered presets — SynthPatchOverrides (Partial<SynthPatch> & { gain? }).
+// Patch fields land on the lead voice, keeping a stack's layers in relation.
+synthPresets.shoot({ frequency: 900 });                    // higher-pitched gun
 synthPresets.explosion({ duration: 0.6, frequency: 200 }); // bigger boom
-synthPresets.footstep({ surface: "wood" });      // "stone" | "wood" | "grass"
+synthPresets.footstep({ surface: "wood" });                // "stone" | "wood" | "grass"
+
+// Note-sequence presets (pickup, coin, victory, defeat, dialogueBeeps) —
+// SynthJingleOverrides (Partial<SynthVoice> & { gain?, noteDuration?, noteSpacing? }).
+// Pitch comes from the notes, so frequency/glideTo/delay/seamless/duration don't compile.
+synthPresets.victory({ noteDuration: 0.24, wave: "square" });
+
+// `gain` is on every preset: it multiplies EVERY voice's volume, where
+// `volume` sets one voice's peak. Use gain to quieten a whole layered sound.
+synthPresets.shoot({ gain: 0.5 });
 ```
 
 shoot, hit, explosion, hurt, pickup, coin, jump, land, dash, powerup,
 footstep, uiClick, uiBlip, alarm, victory, defeat, roomTone, wind,
-dialogueBeeps. Levels are tuned to sit together; override `volume` per game.
+dialogueBeeps. Levels are tuned to sit together; scale with `gain` per game.
 
 `dialogueBeeps` is loopable speech chatter — short blips around a base pitch
 with syllable-like rests. Start it with `loop: true` when a line begins to
@@ -162,11 +174,13 @@ A baked buffer sounds identical every play. Two ways to break that up:
 new SynthPlugin({ sounds: { shoot: { sound: synthPresets.shoot(), variants: 4, detune: 0.08 } } });
 audio.playRandom(synthVariantAliases("shoot", 4));
 
-// 2. Jitter the playback rate at the call site.
-audio.play("shoot", { speed: 0.95 + Math.random() * 0.1 });
+// 2. Jitter the playback rate at the call site (variants register only the
+//    suffixed aliases, so play one of those).
+audio.play("shoot.1", { speed: 0.95 + Math.random() * 0.1 });
 
-// Building the takes yourself: [{ alias: "shoot.1", sound }, …]
-synthVariants("shoot", synthPresets.shoot(), 4, 0.08);
+// Building the takes yourself — register each one:
+const takes = synthVariants("shoot", synthPresets.shoot(), 4, 0.08);
+for (const { alias, sound } of takes) registerSound(alias, synthBuffer(sound));
 ```
 
 `variants: n` registers `alias.1` … `alias.n` (nothing under the bare alias),

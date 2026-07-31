@@ -49,8 +49,13 @@ unlock. Playing is the normal `AudioManager` API — nothing new to learn.
 A preset returns plain data, so a different gun is a one-number edit:
 
 ```ts
-synthPresets.shoot({ frequency: 900, volume: 0.1 });
+synthPresets.shoot({ frequency: 900, gain: 0.5 });
 ```
+
+Overrides are typed by the preset's shape: patch fields for a one-voice or
+layered sound (landing on the lead voice), the shared voice plus
+`noteDuration`/`noteSpacing` for a note sequence like `victory`. `gain` scales
+every voice of any preset at once.
 
 Or write the patch yourself:
 
@@ -79,7 +84,7 @@ unit-testable.
   two-note pickups).
 - `synthPresets` — shoot, hit, explosion, hurt, pickup, coin, jump, land,
   dash, powerup, footstep (stone/wood/grass), uiClick, uiBlip, alarm, victory,
-  defeat, roomTone.
+  defeat, roomTone, wind, dialogueBeeps.
 - `synthVariants` / a `variants: n` config entry — several detuned takes of
   one sound, for `playRandom`.
 - `seamless: true` — renders a loop-clean buffer for ambient beds, played with

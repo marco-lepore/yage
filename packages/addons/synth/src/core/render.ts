@@ -12,8 +12,11 @@ export const SYNTH_SAMPLE_RATE = 44100;
 /** Longest tail crossfaded into the head of a `seamless` patch, in seconds. */
 const MAX_SEAMLESS_FADE = 0.05;
 
-/** Peak level a patch renders at when it doesn't set one. */
-const DEFAULT_VOLUME = 0.3;
+/**
+ * Peak level a patch renders at when it doesn't set one.
+ * @internal Shared with the preset gain control.
+ */
+export const DEFAULT_VOLUME = 0.3;
 
 /**
  * Render one voice to mono samples in [-1, 1].
@@ -37,7 +40,9 @@ export function renderSynthPatch(
   assertAtLeast("volume", volume, 0);
   const noiseMix = patch.noise ?? 0;
   assertAtLeast("noise", noiseMix, 0);
-  if (noiseMix > 1) throw rangeError("noise", noiseMix, "at most 1");
+  if (noiseMix > 1) {
+    throw rangeError("renderSynthPatch", "noise", noiseMix, "at most 1");
+  }
   const rawAttack = patch.attack ?? 0.005;
   assertAtLeast("attack", rawAttack, 0);
   const curve = patch.curve ?? 3;
@@ -134,8 +139,9 @@ export function renderSynthJingle(
   sampleRate: number = SYNTH_SAMPLE_RATE,
 ): Float32Array {
   const noteDuration = jingle.noteDuration ?? 0.16;
+  assertPositive("noteDuration", noteDuration, "renderSynthJingle");
   const spacing = jingle.noteSpacing ?? noteDuration;
-  assertAtLeast("noteSpacing", spacing, 0);
+  assertAtLeast("noteSpacing", spacing, 0, "renderSynthJingle");
   const voice = jingle.voice ?? {};
 
   // Every entry — rests included — claims its slot on the timeline, so a
@@ -146,6 +152,9 @@ export function renderSynthJingle(
     const note = typeof entry === "number" ? { frequency: entry } : entry;
     const offset = Math.round(index * spacing * sampleRate);
     const duration = note.duration ?? noteDuration;
+    // Rests skip renderSynthPatch, so a bad per-note duration would
+    // otherwise reach the timeline unchecked.
+    assertPositive(`notes[${index}].duration`, duration, "renderSynthJingle");
     timeline = Math.max(
       timeline,
       offset + Math.max(1, Math.round(duration * sampleRate)),
@@ -294,20 +303,32 @@ function clamp(sample: number): number {
   return sample < -1 ? -1 : sample > 1 ? 1 : sample;
 }
 
-function assertPositive(name: string, value: number): void {
+function assertPositive(
+  name: string,
+  value: number,
+  fn = "renderSynthPatch",
+): void {
   if (!Number.isFinite(value) || value <= 0) {
-    throw rangeError(name, value, "a finite number greater than 0");
+    throw rangeError(fn, name, value, "a finite number greater than 0");
   }
 }
 
-function assertAtLeast(name: string, value: number, min: number): void {
+function assertAtLeast(
+  name: string,
+  value: number,
+  min: number,
+  fn = "renderSynthPatch",
+): void {
   if (!Number.isFinite(value) || value < min) {
-    throw rangeError(name, value, `a finite number of at least ${min}`);
+    throw rangeError(fn, name, value, `a finite number of at least ${min}`);
   }
 }
 
-function rangeError(name: string, value: number, expected: string): Error {
-  return new Error(
-    `renderSynthPatch: ${name} must be ${expected} (got ${value}).`,
-  );
+function rangeError(
+  fn: string,
+  name: string,
+  value: number,
+  expected: string,
+): Error {
+  return new Error(`${fn}: ${name} must be ${expected} (got ${value}).`);
 }

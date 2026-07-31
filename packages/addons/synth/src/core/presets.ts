@@ -1,29 +1,63 @@
-import { createRandom } from "./render.js";
+import { createRandom, DEFAULT_VOLUME } from "./render.js";
 import type {
   SynthFilter,
   SynthJingle,
   SynthNote,
   SynthPatch,
-  SynthSound,
   SynthVoice,
 } from "./types.js";
+
+/**
+ * Level control every preset takes. `gain` multiplies the volume of each
+ * voice, so a layered preset gets quieter or louder as a whole; `volume`
+ * sets one voice's peak outright.
+ */
+export interface SynthGainOverride {
+  /** Multiplies every voice's volume. Default 1 — the preset's own levels. */
+  gain?: number;
+}
+
+/**
+ * What a single-voice or layered preset takes. Patch fields land on the
+ * voice — the lead voice, when the preset layers several, so the layers keep
+ * their relationship — and `gain` scales all of them.
+ */
+export type SynthPatchOverrides = Partial<SynthPatch> & SynthGainOverride;
+
+/**
+ * What a jingle preset takes. Pitch and timing come from the notes, so a
+ * jingle honours its shared voice's fields plus the note lengths; passing
+ * `frequency`, `glideTo`, `delay`, or `seamless` is a type error rather than
+ * a silently ignored field.
+ */
+export type SynthJingleOverrides = Partial<SynthVoice> &
+  SynthGainOverride & {
+    /** Seconds each note sounds. */
+    noteDuration?: number;
+    /** Seconds between note starts. */
+    noteSpacing?: number;
+  };
 
 /** Surfaces `synthPresets.footstep` knows how to sound like. */
 export type SynthFootstepSurface = "stone" | "wood" | "grass";
 
-export interface SynthFootstepOptions extends Partial<SynthPatch> {
+export interface SynthFootstepOptions extends SynthPatchOverrides {
   /** Default `"stone"`. */
   surface?: SynthFootstepSurface;
 }
 
-export interface SynthDialogueBeepsOptions extends Partial<SynthPatch> {
+export interface SynthDialogueBeepsOptions extends SynthJingleOverrides {
   /** Blips in one loop. Default 30. */
   count?: number;
+  /** Base pitch the blips wander around, in Hz. Default 330. */
+  frequency?: number;
   /**
    * Pitch spread as a ratio: each blip lands between `frequency / spread`
    * and `frequency * spread`. Default 1.15.
    */
   spread?: number;
+  /** Seeds the phrase: the same seed always speaks the same blips. Default 1. */
+  seed?: number;
 }
 
 /**
@@ -82,16 +116,22 @@ const FOOTSTEP_SURFACES: Record<
 /**
  * Ready-made sounds, one per common game cue. Each returns plain patch data
  * and takes overrides, so `synthPresets.shoot({ frequency: 900 })` is a
- * one-number edit away from a different gun. Overrides apply to the lead
- * voice; on a jingle, `duration` sets the per-note length.
+ * one-number edit away from a different gun.
+ *
+ * Overrides are typed by what the preset can honour: a one-voice or layered
+ * preset takes {@link SynthPatchOverrides} (patch fields, landing on the lead
+ * voice when there are several), a note-sequence preset takes
+ * {@link SynthJingleOverrides} (its shared voice, `noteDuration`, and
+ * `noteSpacing` — pitch comes from the notes). Every preset takes `gain`,
+ * which scales all of its voices at once.
  *
  * Levels are tuned so a preset at its default volume sits well against the
- * others; judge them by ear and override `volume` per game.
+ * others; judge them by ear and lower `gain` per game.
  */
 export const synthPresets = {
   /** Short pitched blip with a bright noise tick — a pea-shooter or laser. */
-  shoot: (overrides?: Partial<SynthPatch>) =>
-    tweak(
+  shoot: (overrides?: SynthPatchOverrides) =>
+    tweakStack(
       [
         {
           wave: "square",
@@ -108,13 +148,13 @@ export const synthPresets = {
           curve: 6,
           filter: { type: "highpass", frequency: 5000 },
         },
-      ] as const satisfies readonly SynthPatch[],
+      ] satisfies readonly SynthPatch[],
       overrides,
     ),
 
   /** Blunt impact — a bullet landing, a punch connecting. */
-  hit: (overrides?: Partial<SynthPatch>) =>
-    tweak(
+  hit: (overrides?: SynthPatchOverrides) =>
+    tweakPatch(
       {
         wave: "triangle",
         frequency: 300,
@@ -129,8 +169,8 @@ export const synthPresets = {
     ),
 
   /** Low boom with a noise body. Raise `duration` and drop the pitch for a bigger one. */
-  explosion: (overrides?: Partial<SynthPatch>) =>
-    tweak(
+  explosion: (overrides?: SynthPatchOverrides) =>
+    tweakPatch(
       {
         wave: "sawtooth",
         frequency: 420,
@@ -145,8 +185,8 @@ export const synthPresets = {
     ),
 
   /** Player damage: two detuned falling tones, the second a beat late. */
-  hurt: (overrides?: Partial<SynthPatch>) =>
-    tweak(
+  hurt: (overrides?: SynthPatchOverrides) =>
+    tweakStack(
       [
         {
           wave: "square",
@@ -165,13 +205,13 @@ export const synthPresets = {
           volume: 0.16,
           curve: 3,
         },
-      ] as const satisfies readonly SynthPatch[],
+      ] satisfies readonly SynthPatch[],
       overrides,
     ),
 
   /** Two rising sine notes — health, ammo, anything collected. */
-  pickup: (overrides?: Partial<SynthPatch>) =>
-    tweak(
+  pickup: (overrides?: SynthJingleOverrides) =>
+    tweakJingle(
       {
         notes: [660, 990],
         noteDuration: 0.1,
@@ -182,8 +222,8 @@ export const synthPresets = {
     ),
 
   /** Brighter, squarer pickup — the arcade coin. */
-  coin: (overrides?: Partial<SynthPatch>) =>
-    tweak(
+  coin: (overrides?: SynthJingleOverrides) =>
+    tweakJingle(
       {
         notes: [988, 1319],
         noteDuration: 0.09,
@@ -194,8 +234,8 @@ export const synthPresets = {
     ),
 
   /** Rising blip for leaving the ground. */
-  jump: (overrides?: Partial<SynthPatch>) =>
-    tweak(
+  jump: (overrides?: SynthPatchOverrides) =>
+    tweakPatch(
       {
         wave: "square",
         frequency: 300,
@@ -208,8 +248,8 @@ export const synthPresets = {
     ),
 
   /** Soft thud for touching down. */
-  land: (overrides?: Partial<SynthPatch>) =>
-    tweak(
+  land: (overrides?: SynthPatchOverrides) =>
+    tweakPatch(
       {
         wave: "triangle",
         frequency: 180,
@@ -224,8 +264,8 @@ export const synthPresets = {
     ),
 
   /** Noise sweeping upward — a dash, dodge roll, or whoosh. */
-  dash: (overrides?: Partial<SynthPatch>) =>
-    tweak(
+  dash: (overrides?: SynthPatchOverrides) =>
+    tweakPatch(
       {
         wave: "noise",
         duration: 0.22,
@@ -238,8 +278,8 @@ export const synthPresets = {
     ),
 
   /** Long rising tone for picking up a buff. */
-  powerup: (overrides?: Partial<SynthPatch>) =>
-    tweak(
+  powerup: (overrides?: SynthPatchOverrides) =>
+    tweakPatch(
       {
         wave: "square",
         frequency: 400,
@@ -263,13 +303,13 @@ export const synthPresets = {
       ...lead,
     } satisfies SynthPatch;
     return tail
-      ? tweak([step, tail] as const satisfies readonly SynthPatch[], overrides)
-      : tweak(step, overrides);
+      ? tweakStack([step, tail] satisfies readonly SynthPatch[], overrides)
+      : tweakPatch(step, overrides);
   },
 
   /** Button press. */
-  uiClick: (overrides?: Partial<SynthPatch>) =>
-    tweak(
+  uiClick: (overrides?: SynthPatchOverrides) =>
+    tweakPatch(
       {
         wave: "sine",
         frequency: 880,
@@ -282,8 +322,8 @@ export const synthPresets = {
     ),
 
   /** Selection move / text advance — shorter and thinner than `uiClick`. */
-  uiBlip: (overrides?: Partial<SynthPatch>) =>
-    tweak(
+  uiBlip: (overrides?: SynthPatchOverrides) =>
+    tweakPatch(
       {
         wave: "square",
         frequency: 1200,
@@ -295,8 +335,8 @@ export const synthPresets = {
     ),
 
   /** Two-note sting for danger — a detuned dyad under a high blip. */
-  alarm: (overrides?: Partial<SynthPatch>) =>
-    tweak(
+  alarm: (overrides?: SynthPatchOverrides) =>
+    tweakStack(
       [
         {
           wave: "sawtooth",
@@ -321,13 +361,13 @@ export const synthPresets = {
           volume: 0.07,
           curve: 6,
         },
-      ] as const satisfies readonly SynthPatch[],
+      ] satisfies readonly SynthPatch[],
       overrides,
     ),
 
   /** Ascending four-note sting — level cleared, quest complete. */
-  victory: (overrides?: Partial<SynthPatch>) =>
-    tweak(
+  victory: (overrides?: SynthJingleOverrides) =>
+    tweakJingle(
       {
         notes: [523, 659, 784, 1046],
         noteDuration: 0.18,
@@ -338,8 +378,8 @@ export const synthPresets = {
     ),
 
   /** Descending four-note sting — death, failure. */
-  defeat: (overrides?: Partial<SynthPatch>) =>
-    tweak(
+  defeat: (overrides?: SynthJingleOverrides) =>
+    tweakJingle(
       {
         notes: [330, 262, 196, 131],
         noteDuration: 0.24,
@@ -359,8 +399,8 @@ export const synthPresets = {
    * music channel. Three seconds of filtered noise; raise `duration` for a
    * less obvious cycle.
    */
-  roomTone: (overrides?: Partial<SynthPatch>) =>
-    tweak(
+  roomTone: (overrides?: SynthPatchOverrides) =>
+    tweakPatch(
       {
         wave: "noise",
         duration: 3,
@@ -378,8 +418,8 @@ export const synthPresets = {
    * `duration` below ~5.6 s the baked gusts outlive the bed and the loop
    * point stops being clean.
    */
-  wind: (overrides?: Partial<SynthPatch>) =>
-    tweak(
+  wind: (overrides?: SynthPatchOverrides) =>
+    tweakStack(
       [
         {
           wave: "noise",
@@ -410,7 +450,7 @@ export const synthPresets = {
           volume: 0.3,
           filter: { type: "bandpass", frequency: 620, sweepTo: 840, q: 0.8 },
         },
-      ] as const satisfies readonly SynthPatch[],
+      ] satisfies readonly SynthPatch[],
       overrides,
     ),
 
@@ -453,7 +493,7 @@ export const synthPresets = {
     // A rest one slot past the last blip pads the buffer to a whole slot, so
     // the wrap pause matches the gap between blips.
     notes.push({ frequency: 0, duration: 0.001 });
-    return tweak(
+    return tweakJingle(
       {
         notes,
         noteDuration: 0.065,
@@ -470,46 +510,48 @@ export const synthPresets = {
   },
 };
 
-/**
- * Merge overrides into a preset. A stack takes them on its lead voice, so the
- * layers keep their relationship; a jingle takes them on its shared voice,
- * with `duration` becoming the per-note length.
- */
-function tweak<T extends SynthSound>(
-  sound: T,
-  overrides?: Partial<SynthPatch>,
-): T {
-  if (!overrides) return sound;
-  if (Array.isArray(sound)) {
-    const [lead, ...rest] = sound as readonly SynthPatch[];
-    return [{ ...lead, ...overrides }, ...rest] as unknown as T;
-  }
-  if ("notes" in sound) {
-    const jingle: SynthJingle = {
-      ...sound,
-      voice: { ...sound.voice, ...toVoice(overrides) },
-    };
-    if (overrides.duration !== undefined) {
-      jingle.noteDuration = overrides.duration;
-    }
-    return jingle as T;
-  }
-  return { ...sound, ...overrides } as T;
+/** Merge overrides into a single-voice preset. */
+function tweakPatch(
+  patch: SynthPatch,
+  overrides?: SynthPatchOverrides,
+): SynthPatch {
+  const { gain, ...fields } = overrides ?? {};
+  return applyGain({ ...patch, ...fields }, gain);
 }
 
 /**
- * The overrides a jingle's shared voice can take. Pitch, length, and delay
- * come from the notes, so they're dropped here — `duration` is applied as the
- * per-note length by the caller.
+ * Merge overrides into a layered preset: patch fields shape the lead voice,
+ * so the layers keep their relationship, while `gain` scales every voice.
  */
-function toVoice(overrides: Partial<SynthPatch>): SynthVoice {
-  const voice: SynthVoice = {};
-  if (overrides.wave !== undefined) voice.wave = overrides.wave;
-  if (overrides.attack !== undefined) voice.attack = overrides.attack;
-  if (overrides.curve !== undefined) voice.curve = overrides.curve;
-  if (overrides.noise !== undefined) voice.noise = overrides.noise;
-  if (overrides.filter !== undefined) voice.filter = overrides.filter;
-  if (overrides.volume !== undefined) voice.volume = overrides.volume;
-  if (overrides.seed !== undefined) voice.seed = overrides.seed;
-  return voice;
+function tweakStack(
+  stack: readonly SynthPatch[],
+  overrides?: SynthPatchOverrides,
+): SynthPatch[] {
+  const { gain, ...fields } = overrides ?? {};
+  return stack.map((voice, index) =>
+    applyGain(index === 0 ? { ...voice, ...fields } : { ...voice }, gain),
+  );
+}
+
+/** Merge overrides into a jingle preset: note lengths, then the shared voice. */
+function tweakJingle(
+  jingle: SynthJingle,
+  overrides?: SynthJingleOverrides,
+): SynthJingle {
+  const { gain, noteDuration, noteSpacing, ...voice } = overrides ?? {};
+  const merged: SynthJingle = {
+    ...jingle,
+    voice: applyGain({ ...jingle.voice, ...voice }, gain),
+  };
+  if (noteDuration !== undefined) merged.noteDuration = noteDuration;
+  if (noteSpacing !== undefined) merged.noteSpacing = noteSpacing;
+  return merged;
+}
+
+function applyGain<T extends { volume?: number }>(
+  voice: T,
+  gain: number | undefined,
+): T {
+  if (gain === undefined) return voice;
+  return { ...voice, volume: (voice.volume ?? DEFAULT_VOLUME) * gain };
 }

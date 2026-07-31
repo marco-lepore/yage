@@ -36,14 +36,46 @@ describe("synthPresets", () => {
     expect(samples).toHaveLength(0.5 * SYNTH_SAMPLE_RATE);
   });
 
-  it("takes a duration override on a jingle as the per-note length", () => {
-    const samples = renderSynthSound(synthPresets.victory({ duration: 0.05 }));
+  it("takes noteDuration and noteSpacing on a jingle", () => {
+    const samples = renderSynthSound(
+      synthPresets.victory({ noteDuration: 0.05 }),
+    );
     // Four notes, still spaced by the preset's noteSpacing of 0.12s.
     expect(samples).toHaveLength((0.12 * 3 + 0.05) * SYNTH_SAMPLE_RATE);
+    const spaced = renderSynthSound(
+      synthPresets.victory({ noteDuration: 0.05, noteSpacing: 0.2 }),
+    );
+    expect(spaced).toHaveLength(Math.round((0.2 * 3 + 0.05) * SYNTH_SAMPLE_RATE));
+  });
+
+  it("scales every voice of a layered preset with gain, not just the lead", () => {
+    const stack = synthPresets.shoot({ gain: 0.5 });
+    const plain = synthPresets.shoot();
+    expect(stack[0]?.volume).toBeCloseTo((plain[0]?.volume ?? 0) * 0.5);
+    expect(stack[1]?.volume).toBeCloseTo((plain[1]?.volume ?? 0) * 0.5);
+  });
+
+  it("gain reaches a footstep's tail voice and a jingle's shared voice", () => {
+    const grass = synthPresets.footstep({ surface: "grass", gain: 0.5 });
+    const plainGrass = synthPresets.footstep({ surface: "grass" });
+    expect(grass).toHaveLength(2);
+    expect((grass as SynthPatch[])[1]?.volume).toBeCloseTo(
+      ((plainGrass as SynthPatch[])[1]?.volume ?? 0) * 0.5,
+    );
+    const jingle = synthPresets.victory({ gain: 0.5 });
+    expect(jingle.voice?.volume).toBeCloseTo(
+      (synthPresets.victory().voice?.volume ?? 0) * 0.5,
+    );
+  });
+
+  it("leaves the preset untouched when called again", () => {
+    // The helpers copy, so an override can't leak into the next call.
+    synthPresets.shoot({ frequency: 50, gain: 0.1 });
+    expect(synthPresets.shoot()[0]?.frequency).toBe(720);
   });
 
   it("applies overrides to a stack's lead voice only, so the layers keep their shape", () => {
-    const stack = synthPresets.shoot({ frequency: 300 }) as readonly SynthPatch[];
+    const stack = synthPresets.shoot({ frequency: 300 });
     expect(stack[0]?.frequency).toBe(300);
     expect(stack[1]?.wave).toBe("noise");
     expect(stack[1]?.volume).toBe(synthPresets.shoot()[1]?.volume);
