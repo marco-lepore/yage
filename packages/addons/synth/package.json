@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-addons/synth",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Procedural sound effects for YAGE — oscillators, noise, envelopes, and filters rendered to playable aliases, with presets for shoot, hit, explosion, pickup, and jingles",
   "keywords": [
     "yage",

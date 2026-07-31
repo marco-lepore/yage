@@ -17,7 +17,7 @@
   "dependencies": {
     "@yagejs-addons/abilities": "^0.1.0",
     "@yagejs-addons/steering": "^0.1.0",
-    "@yagejs-addons/synth": "^0.1.0",
+    "@yagejs-addons/synth": "^0.0.0",
     "@yagejs-addons/dialogue": "^0.3.0",
     "@yagejs-addons/virtual-controls": "^0.1.0",
     "@yagejs-addons/inventory": "^0.1.0",
