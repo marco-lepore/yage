@@ -72,6 +72,35 @@ Builds a grid from Tiled object-layer shapes instead of tile gids. A cell blocks
 
 Shape overlap is exact per cell, not bounding-box: a rotated rect uses its true OBB, a capsule its rounded core, and a polygon its true (possibly concave) outline — cells inside a concave notch stay walkable. A closed polyline (first vertex repeated at the end, matching what a Tiled Polygon-tool object extracts) is a filled, possibly concave region. An open polyline chain blocks only the cells its segments cross (a thin wall).
 
+## From physics colliders
+
+No adapter reads `@yagejs/physics` collider shapes directly. Build `isWalkable` yourself with `PhysicsWorld.queryShape`, one query per cell, at level-build time:
+
+```ts
+import { GridGraph } from "@yagejs/pathfinding";
+import { PhysicsWorldKey } from "@yagejs/physics";
+
+const cols = 40, rows = 30, cell = 32;
+const world = this.use(PhysicsWorldKey);
+const blocked = new Set<number>();
+
+const grid = new GridGraph({
+  cols, rows, tileWidth: cell, tileHeight: cell,
+  isWalkable: (col, row) => !blocked.has(row * cols + col),
+});
+
+for (let row = 0; row < rows; row++) {
+  for (let col = 0; col < cols; col++) {
+    const centre = grid.cellToWorld(col, row);
+    if (world.queryShape({ type: "box", width: cell, height: cell }, centre).length > 0) {
+      blocked.add(row * cols + col);
+    }
+  }
+}
+```
+
+40×30 = 1200 queries; run once at level build, not per frame. `blocked` is a snapshot — colliders that move or spawn later don't update it. After a layout change, call `blocked.clear()` and re-run the loop; the loop only adds cells, so without the clear a removed wall stays blocked.
+
 ## Not supported
 
 Path smoothing, async/time-sliced search, nearest-walkable goal snapping, endpoint snapping, per-object cost, agent-radius inflation, waypoint/navmesh graphs, flow fields.

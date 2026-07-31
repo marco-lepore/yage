@@ -102,8 +102,12 @@ export default defineConfig({
                 { label: "Graphics", slug: "guides/rendering/graphics" },
                 { label: "Text", slug: "guides/rendering/text" },
                 {
-                  label: "Camera & Layers",
+                  label: "Camera",
                   slug: "guides/rendering/camera",
+                },
+                {
+                  label: "Layers & Draw Order",
+                  slug: "guides/rendering/layers",
                 },
                 {
                   label: "Effects & Masks",
