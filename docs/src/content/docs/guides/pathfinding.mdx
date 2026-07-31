@@ -1,11 +1,13 @@
 ---
 title: "Pathfinding"
-description: "Grid A* pathfinding with a tilemap adapter"
+description: "Grid A* pathfinding — no tilemap required, with an optional tilemap adapter"
 ---
 
 The `@yagejs/pathfinding` package provides a grid graph with A* search.
-Coordinates in and out are world pixels — build a grid from raw wall data or
-from a `@yagejs/tilemap` map, then ask it for a path.
+Coordinates in and out are world pixels. `GridGraph` takes a plain
+`isWalkable(col, row)` predicate, so it works on a code-drawn level with
+no tile grid at all — fill the predicate from raw wall data, from a
+`@yagejs/physics` world, or from a `@yagejs/tilemap` map.
 
 ## GridGraph
 
@@ -94,6 +96,43 @@ walkable. A shape drawn with Tiled's Polygon tool is a filled region — its
 interior blocks, concave or not. A Polyline-tool shape is a thin wall:
 only the cells its segments cross block. Cost is 1 everywhere; there's no
 per-shape cost option.
+
+## From physics colliders
+
+A code-drawn level — sprites placed by hand, obstacles given
+`@yagejs/physics` colliders, no tile grid anywhere — has no tilemap to read
+walkability from. `GridGraph` doesn't need one: build the `isWalkable`
+predicate yourself with `PhysicsWorld.queryShape`, one query per cell, when
+the level loads:
+
+```typescript
+import { GridGraph } from "@yagejs/pathfinding";
+import { PhysicsWorldKey } from "@yagejs/physics";
+
+const cols = 40, rows = 30, cell = 32;
+const world = this.use(PhysicsWorldKey); // in a Scene's onEnter, or a Component
+const blocked = new Set<number>();
+
+const grid = new GridGraph({
+  cols, rows, tileWidth: cell, tileHeight: cell,
+  isWalkable: (col, row) => !blocked.has(row * cols + col),
+});
+
+for (let row = 0; row < rows; row++) {
+  for (let col = 0; col < cols; col++) {
+    const centre = grid.cellToWorld(col, row);
+    if (world.queryShape({ type: "box", width: cell, height: cell }, centre).length > 0) {
+      blocked.add(row * cols + col);
+    }
+  }
+}
+```
+
+For a 40×30 grid that's 1200 shape queries — run the loop once at level
+build, not per frame. The result is a snapshot: colliders that move or
+spawn later don't update `blocked` on their own. After a layout change you
+want reflected in paths, call `blocked.clear()` and re-run the loop — the
+loop only adds cells, so without the clear a removed wall stays blocked.
 
 ## Weighted terrain and diagonal movement
 

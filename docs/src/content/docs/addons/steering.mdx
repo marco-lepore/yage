@@ -253,7 +253,7 @@ for (const boid of boids) {
 ```ts
 import { SteeringAgent, followPath, contain, wander } from "@yagejs-addons/steering";
 import { defineEvent } from "@yagejs/core";
-import { findPath } from "@yagejs/pathfinding";
+// `grid` is a @yagejs/pathfinding GridGraph — see the pathfinding guide.
 
 // A patrol looping its route forever:
 guard.add(
@@ -265,7 +265,7 @@ guard.add(
 
 // A pathfinding result, walked once with an arrive-style stop at the end:
 const Arrived = defineEvent("enemy:arrived");
-const path = findPath(grid, start, goal);
+const path = grid.findPath(start, goal);
 if (path) {
   enemy.add(
     new SteeringAgent({

@@ -63,7 +63,8 @@ only changes the *default* sampling mode.
 - **[Sprites & Animation](/guides/rendering/sprites/)** — `SpriteComponent`, `AnimatedSpriteComponent` + `AnimationController`, asset factories for textures and spritesheets.
 - **[Graphics](/guides/rendering/graphics/)** — `GraphicsComponent` for procedural shapes, plus the `linearGradient` / `radialGradient` fill helpers.
 - **[Text](/guides/rendering/text/)** — `TextComponent` for free-positioned strings on a layer. (For laid-out text widgets — HUD cards, nameplates, dialog boxes — use [`UIText` + `UISurface`](/guides/ui/) instead.)
-- **[Camera & Layers](/guides/rendering/camera/)** — `CameraEntity` (follow, shake, zoom, bounds), camera bindings for parallax / minimaps / billboards, `ScreenFollow` for entity-anchored UI, render layers, and the `DisplaySystem`.
+- **[Camera](/guides/rendering/camera/)** — `CameraEntity` (follow, shake, zoom, bounds), camera bindings for parallax / minimaps / billboards, `ScreenFollow` for entity-anchored UI, and the `DisplaySystem`.
+- **[Layers & Draw Order](/guides/rendering/layers/)** — declaring render layers, depth sorting (Y-sort) so a top-down game paints entities in the right order, and `SortGroupComponent` for multi-part entities.
 
 ## How wrappers relate to PixiJS
 

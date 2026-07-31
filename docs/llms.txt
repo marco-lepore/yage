@@ -15,14 +15,14 @@
 ## Packages
 
 - [core](llms/packages/core.md): ECS, DI, game loop, scenes, events (zero runtime deps)
-- [renderer](llms/packages/renderer.md): PixiJS v8 rendering, sprites, camera, layers
+- [renderer](llms/packages/renderer.md): PixiJS v8 rendering, sprites, camera, layers, draw order and depth/Y-sort
 - [lighting](llms/packages/lighting.md): Radial lights, light-level queries, pluggable renderers
 - [input](llms/packages/input.md): Keyboard/mouse/gamepad input, action maps, rebinding
 - [physics](llms/packages/physics.md): Rapier2D physics, rigid bodies, colliders, raycasting
 - [audio](llms/packages/audio.md): Sound effects, music, channels, SoundComponent
 - [particles](llms/packages/particles.md): Particle emitters, presets, pooling
 - [tilemap](llms/packages/tilemap.md): Tiled map loading, collision extraction
-- [pathfinding](llms/packages/pathfinding.md): Grid A* pathfinding, tilemap adapter
+- [pathfinding](llms/packages/pathfinding.md): Grid A* pathfinding — works without a tilemap, with an optional tilemap adapter
 - [ui](llms/packages/ui.md): Yoga flexbox UI, panels, buttons, anchoring
 - [ui-react](llms/packages/ui-react.md): React reconciler, hooks, reactive stores
 - [save](llms/packages/save.md): Save/load, @serializable, snapshots
