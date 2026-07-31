@@ -140,10 +140,14 @@ synthPresets.shoot({ frequency: 900 });                    // higher-pitched gun
 synthPresets.explosion({ duration: 0.6, frequency: 200 }); // bigger boom
 synthPresets.footstep({ surface: "wood" });                // "stone" | "wood" | "grass"
 
-// Note-sequence presets (pickup, coin, victory, defeat, dialogueBeeps) —
-// SynthJingleOverrides (Partial<SynthVoice> & { gain?, noteDuration?, noteSpacing? }).
+// Note-sequence presets (pickup, coin, victory, defeat) — SynthJingleOverrides
+// (Partial<SynthVoice> & { gain?, noteDuration?, noteSpacing? }).
 // Pitch comes from the notes, so frequency/glideTo/delay/seamless/duration don't compile.
 synthPresets.victory({ noteDuration: 0.24, wave: "square" });
+
+// dialogueBeeps is the exception: it GENERATES its notes, so it adds
+// frequency (the base pitch), count, spread, and phraseSeed on top.
+synthPresets.dialogueBeeps({ frequency: 220, count: 12, phraseSeed: 4 });
 
 // `gain` is on every preset: it multiplies EVERY voice's volume, where
 // `volume` sets one voice's peak. Use gain to quieten a whole layered sound.
@@ -156,11 +160,12 @@ dialogueBeeps. Levels are tuned to sit together; scale with `gain` per game.
 
 `dialogueBeeps` is loopable speech chatter — short blips around a base pitch
 with syllable-like rests. Start it with `loop: true` when a line begins to
-reveal, stop it when the line completes. Same `seed` = same phrase; give each
-character its own `frequency`/`seed`:
+reveal, stop it when the line completes. Same `phraseSeed` = same phrase (the
+voice's own `seed` still means its noise seed); give each character its own
+`frequency`/`phraseSeed`:
 
 ```ts
-new SynthPlugin({ sounds: { "voice/guard": synthPresets.dialogueBeeps({ frequency: 220, seed: 4 }) } });
+new SynthPlugin({ sounds: { "voice/guard": synthPresets.dialogueBeeps({ frequency: 220, phraseSeed: 4 }) } });
 const talking = audio.play("voice/guard", { loop: true, channel: "voice" });
 audio.stop(talking); // when the line finishes revealing
 ```

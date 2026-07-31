@@ -82,10 +82,11 @@ nothing:
 - **One voice or layered** (shoot, hit, explosion, footstep, wind, …) takes
   patch fields — `frequency`, `duration`, `filter`, and the rest. On a layered
   preset they land on the lead voice, so the layers keep their relationship.
-- **A note sequence** (pickup, coin, victory, defeat, dialogueBeeps) takes its
-  shared voice's fields plus `noteDuration` and `noteSpacing`. Pitch comes
-  from the notes, so `frequency`, `glideTo`, `delay`, and `seamless` are
-  rejected.
+- **A note sequence** (pickup, coin, victory, defeat) takes its shared voice's
+  fields plus `noteDuration` and `noteSpacing`. Pitch comes from the notes, so
+  `frequency`, `glideTo`, `delay`, and `seamless` are rejected. `dialogueBeeps`
+  is the exception: it generates its notes, so it adds a base `frequency`
+  along with `count`, `spread`, and `phraseSeed`.
 - **`gain` works on all of them**: it multiplies every voice's volume, which
   is what you want for making a whole layered sound quieter. `volume` sets a
   single voice's peak instead.
@@ -101,16 +102,16 @@ text reveals — short blips around a base pitch with syllable-like rests:
 
 ```ts
 new SynthPlugin({
-  sounds: { "voice/guard": synthPresets.dialogueBeeps({ frequency: 220, seed: 4 }) },
+  sounds: { "voice/guard": synthPresets.dialogueBeeps({ frequency: 220, phraseSeed: 4 }) },
 });
 
 const talking = audio.play("voice/guard", { loop: true, channel: "voice" });
 audio.stop(talking); // when the line finishes revealing
 ```
 
-The same `seed` always speaks the same phrase, so a character's voice is
-stable across plays; a different `frequency` and `seed` gives each character
-their own.
+The same `phraseSeed` always speaks the same phrase, so a character's voice is
+stable across plays; a different `frequency` and `phraseSeed` gives each
+character their own.
 
 ## Writing your own sound
 

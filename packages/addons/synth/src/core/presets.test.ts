@@ -74,6 +74,42 @@ describe("synthPresets", () => {
     expect(synthPresets.shoot()[0]?.frequency).toBe(720);
   });
 
+  it("hands out footstep filters a caller can edit without changing later steps", () => {
+    // The surface table is a module constant, so its nested filters have to
+    // be copied out, not shared.
+    const grass = synthPresets.footstep({ surface: "grass" }) as SynthPatch[];
+    const leadFilter = grass[0]?.filter;
+    const tailFilter = grass[1]?.filter;
+    if (leadFilter) leadFilter.frequency = 99;
+    if (tailFilter) tailFilter.frequency = 99;
+    const next = synthPresets.footstep({ surface: "grass" }) as SynthPatch[];
+    expect(next[0]?.filter?.frequency).toBe(1200);
+    expect(next[1]?.filter?.frequency).toBe(2000);
+  });
+
+  it("rejects a gain that isn't a finite level", () => {
+    expect(() => synthPresets.hit({ gain: -1 })).toThrowError(/gain/);
+    // -0 volume slips past the renderer's own check, so gain is validated here.
+    expect(() => synthPresets.hit({ volume: 0, gain: -1 })).toThrowError(/gain/);
+    expect(() => synthPresets.victory({ gain: Number.NaN })).toThrowError(/gain/);
+  });
+
+  it("keeps the dialogue phrase seed separate from the voice's noise seed", () => {
+    const a = renderSynthSound(synthPresets.dialogueBeeps({ phraseSeed: 4 }));
+    const b = renderSynthSound(synthPresets.dialogueBeeps({ phraseSeed: 4 }));
+    const other = renderSynthSound(synthPresets.dialogueBeeps({ phraseSeed: 9 }));
+    expect(a).toEqual(b);
+    expect(other).not.toEqual(a);
+    // `seed` still means the voice's noise seed, and reaches it.
+    expect(synthPresets.dialogueBeeps({ seed: 7 }).voice?.seed).toBe(7);
+  });
+
+  it("rejects a dialogue base pitch that would render only rests", () => {
+    expect(() => synthPresets.dialogueBeeps({ frequency: 0 })).toThrowError(
+      /frequency/,
+    );
+  });
+
   it("applies overrides to a stack's lead voice only, so the layers keep their shape", () => {
     const stack = synthPresets.shoot({ frequency: 300 });
     expect(stack[0]?.frequency).toBe(300);
@@ -108,7 +144,7 @@ describe("synthPresets", () => {
   it("speaks the same dialogue-beeps phrase per seed and ends on the pad slot", () => {
     const a = renderSynthSound(synthPresets.dialogueBeeps());
     const b = renderSynthSound(synthPresets.dialogueBeeps());
-    const other = renderSynthSound(synthPresets.dialogueBeeps({ seed: 9 }));
+    const other = renderSynthSound(synthPresets.dialogueBeeps({ phraseSeed: 9 }));
     expect(a).toEqual(b);
     expect(other).not.toEqual(a);
     // The trailing silent note pads the loop, so the buffer ends at zero.

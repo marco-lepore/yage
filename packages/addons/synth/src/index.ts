@@ -21,7 +21,6 @@ export type {
   SynthDialogueBeepsOptions,
   SynthFootstepOptions,
   SynthFootstepSurface,
-  SynthGainOverride,
   SynthJingleOverrides,
   SynthPatchOverrides,
 } from "./core/presets.js";

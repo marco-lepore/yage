@@ -8,21 +8,17 @@ import type {
 } from "./types.js";
 
 /**
- * Level control every preset takes. `gain` multiplies the volume of each
- * voice, so a layered preset gets quieter or louder as a whole; `volume`
- * sets one voice's peak outright.
- */
-export interface SynthGainOverride {
-  /** Multiplies every voice's volume. Default 1 — the preset's own levels. */
-  gain?: number;
-}
-
-/**
  * What a single-voice or layered preset takes. Patch fields land on the
  * voice — the lead voice, when the preset layers several, so the layers keep
  * their relationship — and `gain` scales all of them.
  */
-export type SynthPatchOverrides = Partial<SynthPatch> & SynthGainOverride;
+export type SynthPatchOverrides = Partial<SynthPatch> & {
+  /**
+   * Multiplies every voice's volume, where `volume` sets one voice's peak.
+   * Default 1 — the preset's own levels.
+   */
+  gain?: number;
+};
 
 /**
  * What a jingle preset takes. Pitch and timing come from the notes, so a
@@ -30,13 +26,17 @@ export type SynthPatchOverrides = Partial<SynthPatch> & SynthGainOverride;
  * `frequency`, `glideTo`, `delay`, or `seamless` is a type error rather than
  * a silently ignored field.
  */
-export type SynthJingleOverrides = Partial<SynthVoice> &
-  SynthGainOverride & {
-    /** Seconds each note sounds. */
-    noteDuration?: number;
-    /** Seconds between note starts. */
-    noteSpacing?: number;
-  };
+export type SynthJingleOverrides = Partial<SynthVoice> & {
+  /**
+   * Multiplies the shared voice's volume, which every note is scaled from.
+   * Default 1 — the preset's own levels.
+   */
+  gain?: number;
+  /** Seconds each note sounds. */
+  noteDuration?: number;
+  /** Seconds between note starts. */
+  noteSpacing?: number;
+};
 
 /** Surfaces `synthPresets.footstep` knows how to sound like. */
 export type SynthFootstepSurface = "stone" | "wood" | "grass";
@@ -46,6 +46,11 @@ export interface SynthFootstepOptions extends SynthPatchOverrides {
   surface?: SynthFootstepSurface;
 }
 
+/**
+ * What `dialogueBeeps` takes. It generates its own notes, so unlike the other
+ * note-sequence presets it has a base `frequency` to wander around — and its
+ * own `phraseSeed`, kept distinct from the voice's `seed`.
+ */
 export interface SynthDialogueBeepsOptions extends SynthJingleOverrides {
   /** Blips in one loop. Default 30. */
   count?: number;
@@ -56,8 +61,8 @@ export interface SynthDialogueBeepsOptions extends SynthJingleOverrides {
    * and `frequency * spread`. Default 1.15.
    */
   spread?: number;
-  /** Seeds the phrase: the same seed always speaks the same blips. Default 1. */
-  seed?: number;
+  /** Picks the blips and rests: one seed always speaks one phrase. Default 1. */
+  phraseSeed?: number;
 }
 
 /**
@@ -295,15 +300,18 @@ export const synthPresets = {
   footstep: (options?: SynthFootstepOptions) => {
     const { surface = "stone", ...overrides } = options ?? {};
     const { lead, tail } = FOOTSTEP_SURFACES[surface];
-    const step = {
+    // The surface table is a module constant, and every other preset builds
+    // its data fresh per call — copy the nested filter too, so editing a
+    // returned step can't reshape every later one.
+    const step = copyPatch({
       wave: "noise",
       duration: 0.07,
       attack: 0.002,
       curve: 6,
       ...lead,
-    } satisfies SynthPatch;
+    });
     return tail
-      ? tweakStack([step, tail] satisfies readonly SynthPatch[], overrides)
+      ? tweakStack([step, copyPatch(tail)], overrides)
       : tweakPatch(step, overrides);
   },
 
@@ -466,7 +474,7 @@ export const synthPresets = {
       count = 30,
       spread = 1.15,
       frequency = 330,
-      seed = 1,
+      phraseSeed = 1,
       ...overrides
     } = options ?? {};
     if (!Number.isInteger(count) || count < 1) {
@@ -479,7 +487,14 @@ export const synthPresets = {
         `dialogueBeeps: spread must be a finite number greater than 0 (got ${spread}).`,
       );
     }
-    const random = createRandom(seed);
+    // A pitch of 0 or less would make every blip a rest, so the preset would
+    // render silence with nothing to explain it.
+    if (!Number.isFinite(frequency) || frequency <= 0) {
+      throw new Error(
+        `dialogueBeeps: frequency must be a finite number greater than 0 (got ${frequency}).`,
+      );
+    }
+    const random = createRandom(phraseSeed);
     const notes: (number | SynthNote)[] = [];
     for (let i = 0; i < count; i++) {
       // Roughly one blip in six rests, so the chatter phrases like
@@ -553,5 +568,19 @@ function applyGain<T extends { volume?: number }>(
   gain: number | undefined,
 ): T {
   if (gain === undefined) return voice;
+  // Checked here rather than at render: a negative gain over a zero volume
+  // is -0, which the renderer's own volume check reads as valid.
+  if (!Number.isFinite(gain) || gain < 0) {
+    throw new Error(
+      `synthPresets: gain must be a finite number of at least 0 (got ${gain}).`,
+    );
+  }
   return { ...voice, volume: (voice.volume ?? DEFAULT_VOLUME) * gain };
+}
+
+/** Copy a patch deeply enough that a caller editing it can't reach shared data. */
+function copyPatch(patch: SynthPatch): SynthPatch {
+  return patch.filter
+    ? { ...patch, filter: { ...patch.filter } }
+    : { ...patch };
 }
