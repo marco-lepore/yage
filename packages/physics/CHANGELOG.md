@@ -1,5 +1,36 @@
 # @yagejs/physics
 
+## 0.10.0
+
+### Minor Changes
+
+- [#214](https://github.com/marco-lepore/yage/pull/214) [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Entities can now be turned off and reused instead of destroyed and respawned: `entity.setActive(false)` puts an entity and its whole subtree to sleep, and components get `onEnable` / `onDisable` to release and reacquire live resources.
+  - `RigidBodyComponent` and `ColliderComponent` switch their Rapier body and collider out of the simulation on `onDisable` and back in on `onEnable`. The allocations are kept, which is what makes reuse cheaper than respawning.
+  - Disabling a body clears its linear and angular velocity and its queued forces and torques, so it cannot resume a motion from a previous life. Re-enabling snaps interpolation to the body's current pose.
+  - `PhysicsSystem` and `PhysicsInterpolationSystem` skip dormant entities. Collision and trigger handlers are not called for one, and `getOverlapping` does not report one. Both guards matter because disabling a collider leaves its queued events and its narrow-phase pairs in place until the next step.
+  - Known Rapier behavior: a collider disabled and re-enabled while it still overlaps something gets no fresh collision-start event.
+  - A rigid body or collider added to a dormant entity starts out of the simulation, so it neither drifts under gravity nor reports contacts until the entity is activated.
+
+- [#216](https://github.com/marco-lepore/yage/pull/216) [`4a5b3b6`](https://github.com/marco-lepore/yage/commit/4a5b3b639ddcbb285b6a4733b89d27bcee14c50c) Thanks [@marco-lepore](https://github.com/marco-lepore)! - The collision drain reads every pair before it dispatches any of them, so a collision queued for an entity's previous life is dropped instead of reaching whatever the pool handed out next. Both sides of a pair are captured with the life they were queued for, and each side is re-checked immediately before its own handler runs, because the first handler can retire the second side's receiver.
+  - Releasing an entity from inside `onCollision` or `onTrigger` is safe, including releasing the other side of the pair being handled.
+  - Events still queued for an entity a handler released are dropped for the rest of that drain.
+
+### Patch Changes
+
+- [#212](https://github.com/marco-lepore/yage/pull/212) [`34d45fd`](https://github.com/marco-lepore/yage/commit/34d45fd690d747b7d8dd36a5972ef20d21d574da) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A collision or trigger handler that throws is now attributed to the handler itself instead of silently disabling `PhysicsSystem` for the rest of the session.
+
+  Previously the throw propagated up through the system's update call, which permanently disabled physics for every entity with no console output. Now `ColliderComponent` catches the throw at the handler itself, reports it with a full stack trace naming the handler and entity, and rethrows: see the `@yagejs/core` changeset. The failure is recorded and readable via `engine.inspector.getErrors().callbackErrors`.
+
+- [#208](https://github.com/marco-lepore/yage/pull/208) [`6fc90a5`](https://github.com/marco-lepore/yage/commit/6fc90a5635395e18c6f466d36e2477f8264ddbe9) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Removing just a `ColliderComponent` (`entity.remove(ColliderComponent)`) now frees its Rapier collider.
+
+  Previously the collider stayed attached to its body even though the component was gone — raycasts, overlap queries, and collision events kept hitting it. `PhysicsWorld.removeCollider()` frees the Rapier collider and clears its `colliderMap` entry; `ColliderComponent.onDestroy()` calls it. Destroying the whole entity, or removing the sibling `RigidBodyComponent`, still tears down every attached collider as before.
+
+- [#208](https://github.com/marco-lepore/yage/pull/208) [`6fc90a5`](https://github.com/marco-lepore/yage/commit/6fc90a5635395e18c6f466d36e2477f8264ddbe9) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `RigidBodyComponent` gains allocation-free scalar velocity reads: `velocityX`, `velocityY`, `speed`, and `speedSquared`. Each reads a number straight from Rapier without allocating a `Vec2` — prefer these over `getVelocity()` on a per-frame read path. Reading both `velocityX` and `velocityY` calls into Rapier twice.
+
+- Updated dependencies [[`34d45fd`](https://github.com/marco-lepore/yage/commit/34d45fd690d747b7d8dd36a5972ef20d21d574da), [`f48983d`](https://github.com/marco-lepore/yage/commit/f48983dbb4e43c25b455ac3f96e7d8684266bbc3), [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be), [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be), [`f1048ab`](https://github.com/marco-lepore/yage/commit/f1048ab756feee84e593609521c3a58fcfc1c1a7), [`4a5b3b6`](https://github.com/marco-lepore/yage/commit/4a5b3b639ddcbb285b6a4733b89d27bcee14c50c), [`d459026`](https://github.com/marco-lepore/yage/commit/d4590265b9aa5297fb99d20b92bb5a2f19cac0c5), [`d459026`](https://github.com/marco-lepore/yage/commit/d4590265b9aa5297fb99d20b92bb5a2f19cac0c5)]:
+  - @yagejs/core@0.10.0
+  - @yagejs/debug@0.10.0
+
 ## 0.9.0
 
 ### Minor Changes

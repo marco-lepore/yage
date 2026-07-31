@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-addons/abilities",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Phase-based abilities and a concrete hit contract for YAGE — intents, cooldowns, combos, hitboxes, projectiles, health, guards, and reactions",
   "keywords": [
     "yage",
@@ -64,9 +64,9 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@yagejs/core": ">=0.9.0 <0.10.0",
-    "@yagejs/input": ">=0.9.0 <0.10.0",
-    "@yagejs/physics": ">=0.9.0 <0.10.0"
+    "@yagejs/core": ">=0.10.0 <0.11.0",
+    "@yagejs/input": ">=0.10.0 <0.11.0",
+    "@yagejs/physics": ">=0.10.0 <0.11.0"
   },
   "peerDependenciesMeta": {
     "@yagejs/input": {
@@ -75,8 +75,8 @@
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.18",
-    "@yagejs/core": ">=0.9.0",
-    "@yagejs/input": ">=0.9.0",
-    "@yagejs/physics": ">=0.9.0"
+    "@yagejs/core": ">=0.10.0",
+    "@yagejs/input": ">=0.10.0",
+    "@yagejs/physics": ">=0.10.0"
   }
 }

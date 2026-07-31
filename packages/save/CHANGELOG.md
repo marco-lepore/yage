@@ -1,5 +1,24 @@
 # @yagejs/save
 
+## 0.10.0
+
+### Minor Changes
+
+- [#214](https://github.com/marco-lepore/yage/pull/214) [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Entities can now be turned off and reused instead of destroyed and respawned: `entity.setActive(false)` puts an entity and its whole subtree to sleep, and components get `onEnable` / `onDisable` to release and reacquire live resources.
+  - `EntitySnapshotEntry` gains an optional `activeSelf` field, written only when an entity is dormant. Snapshots without it restore as active, so existing saves load unchanged.
+  - Restore holds every entity inert until the parent links are rebuilt, then settles activeness once per subtree. Each component's `onEnable` fires exactly once, on an entity whose hierarchy is already complete.
+
+- [#219](https://github.com/marco-lepore/yage/pull/219) [`f1048ab`](https://github.com/marco-lepore/yage/commit/f1048ab756feee84e593609521c3a58fcfc1c1a7) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `entity.handle()` gives a reference that expires with the entity's current life, so code holding on to an entity someone else retires can tell that it is gone.
+  - `SnapshotResolver.handle<E>(savedId)` resolves a save-time entity id to a handle on the restored entity, the counterpart of `resolver.entity(savedId)` for references held as handles. Serialize the target's id (`this.target?.current?.id ?? null` — an explicit `null` survives a JSON round trip, a missing key does not) and restore with `resolve.handle(data.targetId)`.
+  - It returns `undefined` when the id is `null` or not in the snapshot, which covers a reference empty at save time, a target destroyed before the save, and a pool member the snapshot left out.
+
+- [#216](https://github.com/marco-lepore/yage/pull/216) [`4a5b3b6`](https://github.com/marco-lepore/yage/commit/4a5b3b639ddcbb285b6a4733b89d27bcee14c50c) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Snapshots skip `EntityPool` members and everything parented under one. A pool restores empty and refills on demand, so a pooled entity in flight at save time is gone after a load rather than coming back as an entity no pool owns.
+
+### Patch Changes
+
+- Updated dependencies [[`34d45fd`](https://github.com/marco-lepore/yage/commit/34d45fd690d747b7d8dd36a5972ef20d21d574da), [`f48983d`](https://github.com/marco-lepore/yage/commit/f48983dbb4e43c25b455ac3f96e7d8684266bbc3), [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be), [`f1048ab`](https://github.com/marco-lepore/yage/commit/f1048ab756feee84e593609521c3a58fcfc1c1a7), [`4a5b3b6`](https://github.com/marco-lepore/yage/commit/4a5b3b639ddcbb285b6a4733b89d27bcee14c50c), [`d459026`](https://github.com/marco-lepore/yage/commit/d4590265b9aa5297fb99d20b92bb5a2f19cac0c5)]:
+  - @yagejs/core@0.10.0
+
 ## 0.9.0
 
 ### Minor Changes

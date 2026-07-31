@@ -1,5 +1,31 @@
 # @yagejs/renderer
 
+## 0.10.0
+
+### Minor Changes
+
+- [#213](https://github.com/marco-lepore/yage/pull/213) [`f48983d`](https://github.com/marco-lepore/yage/commit/f48983dbb4e43c25b455ac3f96e7d8684266bbc3) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add whole-block anchoring to `SplitTextComponent` and a common `EffectHandle.setIntensity()` method.
+
+  Development builds now also warn when the page loads multiple copies of `@yagejs/renderer`.
+
+- [#214](https://github.com/marco-lepore/yage/pull/214) [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Entities can now be turned off and reused instead of destroyed and respawned: `entity.setActive(false)` puts an entity and its whole subtree to sleep, and components get `onEnable` / `onDisable` to release and reacquire live resources.
+  - The five visual components hide their display object while the entity is dormant and show it again on reactivation.
+  - `visible` now stores what you set and reads it back unchanged; the Pixi flag is that value combined with the component being effectively enabled. Hiding a sprite by hand survives a deactivate/reactivate cycle, and a snapshot taken while the entity is dormant records your value rather than `false`.
+  - Setting `component.enabled = false` hides the display object instead of leaving it painted in place.
+
+- [#218](https://github.com/marco-lepore/yage/pull/218) [`81eafe0`](https://github.com/marco-lepore/yage/commit/81eafe04c3b362832e2dc873bea996f36f4601fd) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Offscreen render targets and a `blendMode` option on every visual component — the two pieces needed to composite objects against each other before they reach the screen.
+  - **`renderer.createRenderTarget(source, options)`** draws a container into a texture your game owns and redraws on a schedule you control: `invalidate()` marks it stale, `renderIfNeeded()` draws only when something changed, `render()` forces a draw. `resolutionScale` trades texels for cost, so a half-scale light or blur buffer is a one-line change. It is the repeatable counterpart of `createTexture`, which bakes a texture once. Content is drawn in the source container's own coordinate space — the camera and the responsive `fit` transform do not reach it, so a buffer that must follow the camera positions its own children through `camera.worldToScreen()`.
+  - **`blendMode`** on `SpriteComponent`, `AnimatedSpriteComponent`, `GraphicsComponent`, `TextComponent`, and `SplitTextComponent`, as both a constructor option and a live accessor. It is typed as `BlendMode` from `@yagejs/renderer`, so reaching the raw Pixi display object for the mode union is no longer necessary. Pixi constructs display objects at `"inherit"` rather than `"normal"`, and the two differ under a non-normal parent, so `serialize()` omits the field only when it is `"inherit"` and an explicit `"normal"` survives a round trip. The photoshop-style modes (`"darken"`, `"overlay"`, `"color-dodge"`, ...) need `import "pixi.js/advanced-blend-modes"` in the game's entry file; the GPU-native ones, `"erase"` included, need nothing.
+
+  `"erase"` composites against whatever framebuffer it is drawn into, so cutting a hole in one object rather than the whole scene means drawing both into a render target. Blend behaviour inside a render target is verified on the WebGL backend and unmeasured on WebGPU.
+
+### Patch Changes
+
+- [#204](https://github.com/marco-lepore/yage/pull/204) [`8400b55`](https://github.com/marco-lepore/yage/commit/8400b5519cb3401a0ad91ab1be511e3d885cc203) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Correct JSDoc code examples so editor tooltips and the generated API reference match the shipped API. `@yagejs/renderer`: camera `shake`/`zoomTo` example durations are in seconds, and `defaultTextStyle` no longer lists `resolution` (it is a `TextComponent` constructor option, not a style property). `@yagejs/ui-react`: the `SplitText` reveal examples use `Tween.custom` setters instead of `Tween.to`, which only accepts a plain `Record<string, number>`.
+
+- Updated dependencies [[`34d45fd`](https://github.com/marco-lepore/yage/commit/34d45fd690d747b7d8dd36a5972ef20d21d574da), [`f48983d`](https://github.com/marco-lepore/yage/commit/f48983dbb4e43c25b455ac3f96e7d8684266bbc3), [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be), [`f1048ab`](https://github.com/marco-lepore/yage/commit/f1048ab756feee84e593609521c3a58fcfc1c1a7), [`4a5b3b6`](https://github.com/marco-lepore/yage/commit/4a5b3b639ddcbb285b6a4733b89d27bcee14c50c), [`d459026`](https://github.com/marco-lepore/yage/commit/d4590265b9aa5297fb99d20b92bb5a2f19cac0c5)]:
+  - @yagejs/core@0.10.0
+
 ## 0.9.0
 
 ### Minor Changes

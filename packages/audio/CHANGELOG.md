@@ -1,5 +1,24 @@
 # @yagejs/audio
 
+## 0.10.0
+
+### Minor Changes
+
+- [#214](https://github.com/marco-lepore/yage/pull/214) [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Entities can now be turned off and reused instead of destroyed and respawned: `entity.setActive(false)` puts an entity and its whole subtree to sleep, and components get `onEnable` / `onDisable` to release and reacquire live resources.
+  - `SoundComponent` stops playback when the entity goes dormant. It does not restart on its own — call `play()` again if the sound should resume.
+  - `SoundComponent`'s `playOnAdd` starts the sound once the entity is active. Adding the component to a dormant entity leaves it silent until the entity is activated; later deactivate/reactivate cycles do not replay it.
+
+- [#223](https://github.com/marco-lepore/yage/pull/223) [`bfe6878`](https://github.com/marco-lepore/yage/commit/bfe687825124e8dce5f382b992021e08f6fc759f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `registerSound(alias, buffer)` and `unregisterSound(alias)` register a runtime-generated `AudioBuffer` under an alias, so it plays through the existing `AudioManager` channels, mute, and blur auto-pause exactly like a preloaded sound. This is the audio counterpart to `@yagejs/renderer`'s `registerTexture`, and lets code that synthesizes audio at runtime (procedural sound effects, generated jingles) register its output without going through a file asset.
+
+### Patch Changes
+
+- [#212](https://github.com/marco-lepore/yage/pull/212) [`34d45fd`](https://github.com/marco-lepore/yage/commit/34d45fd690d747b7d8dd36a5972ef20d21d574da) Thanks [@marco-lepore](https://github.com/marco-lepore)! - An `AudioManager.onUnlock` callback that throws is now reported instead of being discarded silently.
+
+  The callback is one-shot, so there's nothing to unsubscribe. It's logged with a full stack trace naming it and rethrown — see the `@yagejs/core` changeset — and recorded, readable via `engine.inspector.getErrors().callbackErrors`.
+
+- Updated dependencies [[`34d45fd`](https://github.com/marco-lepore/yage/commit/34d45fd690d747b7d8dd36a5972ef20d21d574da), [`f48983d`](https://github.com/marco-lepore/yage/commit/f48983dbb4e43c25b455ac3f96e7d8684266bbc3), [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be), [`f1048ab`](https://github.com/marco-lepore/yage/commit/f1048ab756feee84e593609521c3a58fcfc1c1a7), [`4a5b3b6`](https://github.com/marco-lepore/yage/commit/4a5b3b639ddcbb285b6a4733b89d27bcee14c50c), [`d459026`](https://github.com/marco-lepore/yage/commit/d4590265b9aa5297fb99d20b92bb5a2f19cac0c5)]:
+  - @yagejs/core@0.10.0
+
 ## 0.9.0
 
 ### Patch Changes

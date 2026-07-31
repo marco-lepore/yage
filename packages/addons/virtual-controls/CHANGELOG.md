@@ -1,5 +1,22 @@
 # @yagejs-addons/virtual-controls
 
+## 0.2.0
+
+### Minor Changes
+
+- [#217](https://github.com/marco-lepore/yage/pull/217) [`87f4923`](https://github.com/marco-lepore/yage/commit/87f4923ad71f3d6096907b54c3f16d806fe57a3f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - The touch overlay now follows entity activeness. Deactivating its host entity — or setting `controls.enabled = false` — hides the views and releases every engaged control, so a dormant HUD entity leaves no painted controls on screen and no stuck action holds.
+
+  `visible` stores what you set and reads it back unchanged; the views are on screen when the overlay is on and the component is running. A hand-set `setVisible(false)` survives a deactivate/reactivate cycle.
+
+- [#215](https://github.com/marco-lepore/yage/pull/215) [`ccd86c6`](https://github.com/marco-lepore/yage/commit/ccd86c660c3d0b3fe6795d8cceed6a9b4eb2723b) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add runtime visibility and enabled state for individual virtual buttons.
+
+### Patch Changes
+
+- Updated dependencies [[`34d45fd`](https://github.com/marco-lepore/yage/commit/34d45fd690d747b7d8dd36a5972ef20d21d574da), [`34d45fd`](https://github.com/marco-lepore/yage/commit/34d45fd690d747b7d8dd36a5972ef20d21d574da), [`f48983d`](https://github.com/marco-lepore/yage/commit/f48983dbb4e43c25b455ac3f96e7d8684266bbc3), [`f48983d`](https://github.com/marco-lepore/yage/commit/f48983dbb4e43c25b455ac3f96e7d8684266bbc3), [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be), [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be), [`f1048ab`](https://github.com/marco-lepore/yage/commit/f1048ab756feee84e593609521c3a58fcfc1c1a7), [`4a5b3b6`](https://github.com/marco-lepore/yage/commit/4a5b3b639ddcbb285b6a4733b89d27bcee14c50c), [`d459026`](https://github.com/marco-lepore/yage/commit/d4590265b9aa5297fb99d20b92bb5a2f19cac0c5), [`8400b55`](https://github.com/marco-lepore/yage/commit/8400b5519cb3401a0ad91ab1be511e3d885cc203), [`81eafe0`](https://github.com/marco-lepore/yage/commit/81eafe04c3b362832e2dc873bea996f36f4601fd)]:
+  - @yagejs/core@0.10.0
+  - @yagejs/input@0.10.0
+  - @yagejs/renderer@0.10.0
+
 ## 0.1.0
 
 ### Minor Changes

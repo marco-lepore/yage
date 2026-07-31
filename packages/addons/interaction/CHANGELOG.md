@@ -1,5 +1,22 @@
 # @yagejs-addons/interaction
 
+## 0.2.0
+
+### Minor Changes
+
+- [#217](https://github.com/marco-lepore/yage/pull/217) [`87f4923`](https://github.com/marco-lepore/yage/commit/87f4923ad71f3d6096907b54c3f16d806fe57a3f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Interaction now follows entity activeness, so an entity you turn off or hand back to a pool takes its interaction state with it.
+  - An `Interactable` registers while it is running and unregisters while it is not. A disabled component or a dormant entity is no longer a focus candidate for any interactor, and `interactablesIn()` does not return it. Its focus tie-break order is claimed once, so a target that goes dormant and comes back does not jump the queue.
+  - An `Interactor` empties its in-range snapshot (emitting the transitions) when its entity is deactivated, the same way it already did for `enabled = false`, and `interact()` does nothing while the entity is dormant.
+  - `Interactor` no longer installs its own `enabled` accessor: `Component.enabled` fires the enable hooks by itself, so the toggle keeps working through the engine's own lifecycle.
+
+  `Interactable.isEnabled()` is unchanged — it stays the game's own gate and says nothing about whether the entity is live.
+
+### Patch Changes
+
+- Updated dependencies [[`34d45fd`](https://github.com/marco-lepore/yage/commit/34d45fd690d747b7d8dd36a5972ef20d21d574da), [`34d45fd`](https://github.com/marco-lepore/yage/commit/34d45fd690d747b7d8dd36a5972ef20d21d574da), [`f48983d`](https://github.com/marco-lepore/yage/commit/f48983dbb4e43c25b455ac3f96e7d8684266bbc3), [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be), [`f1048ab`](https://github.com/marco-lepore/yage/commit/f1048ab756feee84e593609521c3a58fcfc1c1a7), [`4a5b3b6`](https://github.com/marco-lepore/yage/commit/4a5b3b639ddcbb285b6a4733b89d27bcee14c50c), [`d459026`](https://github.com/marco-lepore/yage/commit/d4590265b9aa5297fb99d20b92bb5a2f19cac0c5)]:
+  - @yagejs/core@0.10.0
+  - @yagejs/input@0.10.0
+
 ## 0.1.0
 
 ### Minor Changes
