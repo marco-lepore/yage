@@ -1,5 +1,52 @@
 # @yagejs/core
 
+## 0.10.0
+
+### Minor Changes
+
+- [#212](https://github.com/marco-lepore/yage/pull/212) [`34d45fd`](https://github.com/marco-lepore/yage/commit/34d45fd690d747b7d8dd36a5972ef20d21d574da) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Errors thrown inside code the engine calls on your behalf — event listeners, collision handlers, process callbacks, a system or component's own `update()`, scene lifecycle hooks — are now attributed to the culprit instead of surfacing from wherever the throw happened to reach: the engine reports it with its stack, then rethrows.
+  - `System`/`Component` update failures, and every developer callback the engine invokes (event handlers, collision/trigger handlers, input listeners, process callbacks, audio unlock callbacks), are recorded and logged through `Logger` with the original `Error`, then rethrown. Nothing is disabled, unsubscribed, muted, or cancelled.
+  - `GameLoop.tick()` is the one place that decides a failure is terminal: an error that escapes an entire frame unhandled stops the loop and rethrows, so it reaches your own `try`/`catch`, `window.onerror`, or an unhandled-rejection handler. An error your own code catches inside the frame — around `entity.emit(...)`, for instance — leaves the loop running.
+  - Scene lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`, plugin `beforeEnter`) are reported the same way, and a synchronous throw is rethrown — a half-built scene must not look like it mounted cleanly. An async hook's rejection can only be reported: the call has already returned by the time it settles.
+  - `Logger` prints every accepted entry through `console.*` by default in dev builds, so `logger.error` calls (including the ones above) are visible without configuring an `output` sink. The default drops out of a production build; passing your own `output` always overrides it. A throwing `output` sink is caught, logged once, and disabled for the rest of the session instead of escaping into whatever it was trying to report.
+  - `Inspector.getErrors()` returns a `callbackErrors` array — a bounded history (the 200 most recent failures) with each entry's kind and owning entity/scene/event where known.
+
+- [#214](https://github.com/marco-lepore/yage/pull/214) [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Entities can now be turned off and reused instead of destroyed and respawned: `entity.setActive(false)` puts an entity and its whole subtree to sleep, and components get `onEnable` / `onDisable` to release and reacquire live resources.
+  - `Entity` gains `activeSelf` (own bit), `isActive` (own bit and every ancestor's), and `setActive(active)`. Descendants follow their parent while keeping their own `activeSelf`.
+  - `Component` gains `onEnable()` / `onDisable()`, fired when `component.enabled && entity.isActive` changes, and `effectiveEnabled` to read that state. Order is `onAdd` → query join → `onEnable` on add, and `onDisable` → `onRemove` / `onDestroy` on teardown. A throwing hook is attributed to its component and rethrown, like a throwing `update()`.
+  - `Component.enabled` is an accessor rather than a plain field, so writing it fires the hooks. Deactivating an entity does not write per-component `enabled` flags — a component you disabled by hand stays disabled.
+  - Dormant entities leave every `QueryCache` query and are excluded from `scene.findEntity`, `scene.findEntitiesByTag`, `scene.findEntities`, and `filterEntities`. `scene.getEntities()` and `scene.findByKey` still return them.
+  - `ComponentUpdateSystem` and `ProcessSystem` skip dormant entities, so a dormant entity's components and processes pause rather than keep running. `QueryCache` gains `onEntityActivated` / `onEntityDeactivated`, and `EntityCallbacks` carries both.
+  - Both Inspector entity snapshot shapes gain an `active` field, component state reflection reports `enabled`, and camera lookup skips dormant entities. `getEntityByName`, `getEntityPosition`, `hasComponent`, and `getComponentData` resolve names through `scene.findEntity` and so read a dormant entity as absent — `getEntities()` is where its `active: false` entry shows up.
+
+- [#219](https://github.com/marco-lepore/yage/pull/219) [`f1048ab`](https://github.com/marco-lepore/yage/commit/f1048ab756feee84e593609521c3a58fcfc1c1a7) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `entity.handle()` gives a reference that expires with the entity's current life, so code holding on to an entity someone else retires can tell that it is gone. A pooled entity is reused, and a released member is alive with `isDestroyed` still `false`, so a plain stored reference silently follows the object into its next life — a turret keeps tracking what is now a different enemy.
+  - `entity.handle()` returns an `EntityHandle<T>`, read through `.current`: the entity while that life lasts, `undefined` afterwards. `EntityHandle` is a type; `handle()` is the only way to make one.
+  - `.current` means "the same life", not "active right now" — an entity switched off with `setActive(false)` still resolves.
+  - A life ends on `destroy()`, on scene teardown, on every path that returns a pool member (`release`, `releaseAll`, a `forceAcquire` reclaim), and on `dispose()`, which destroys the members. A member's descendants end their lives with it.
+  - `entity.generation` is the counter behind it: per entity, 0 to start, increased whenever a life ends. Compare it for equality — a destruction cascade can advance it more than once, so it does not count lives. It stays out of save and Inspector snapshots.
+  - `handle()` on a pool member the pool is not lending out returns a handle that never resolves, and warns in dev builds — the caller only has a stale reference at that point.
+  - Guidance: use a handle whenever pooled entities are involved; a plain reference is fine for entities that live as long as the scene, or when the code storing the reference also controls when the entity goes away.
+
+- [#216](https://github.com/marco-lepore/yage/pull/216) [`4a5b3b6`](https://github.com/marco-lepore/yage/commit/4a5b3b639ddcbb285b6a4733b89d27bcee14c50c) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `EntityPool` reuses a fixed group of entities instead of spawning and destroying one per shot. Members are built once and cycled by deactivation, so their physics bodies, display objects and component instances stay allocated between lives.
+  - `new EntityPool(scene, Bullet, options)` with `acquire` / `forceAcquire` / `release` / `releaseAll` / `dispose`, and `size` / `leased` / `free` counters. Options: `prewarm`, `maxSize`, `reclaimPriority`, and the entity's `setup` params when its `setup()` requires them.
+  - A pooled class declares `onAcquire(...)`, whose parameters become `acquire`'s arguments; `onRelease()` is optional. Both are hooks on `Entity`, and the pool's generic constraint rejects a class that declares no `onAcquire`.
+  - Elastic by default: the pool grows and `acquire` returns the entity. With `maxSize` a saturated `acquire` returns `undefined` — and the return type widens to match — while `forceAcquire` reclaims the lowest-`reclaimPriority` member in flight, default oldest-acquired.
+  - Pool members are built dormant, so they never join a query or fire an enable hook on the way in. Children a member's `setup()` spawns inherit that.
+  - `entity.isPooled` marks a member so the save layer can skip it, and pools register with their scene: scene exit disposes them, and a disposed pool throws on `acquire`.
+  - A pool owns its members' lifetimes. `entity.destroy()` on a member returns it to its pool rather than tearing it down, so a collision handler or update holding a plain `Entity` can retire it without a pool reference, and the same code works whether or not the entity is pooled. Destroying an entity that has a member below it detaches and returns that member. `isDestroyed` stays `false` for a released member, and only `dispose()` destroys members.
+  - `Scene` exports `SetupParamTuple`, the `setup()` parameter tuple the spawn and pool signatures are derived from.
+
+- [#207](https://github.com/marco-lepore/yage/pull/207) [`d459026`](https://github.com/marco-lepore/yage/commit/d4590265b9aa5297fb99d20b92bb5a2f19cac0c5) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Inspector improvements for verifying games headlessly: default component introspection, awaitable stepping, stall detection, and event-log control.
+  - Component snapshots now include a component's public fields and getters even when it defines no `serialize()`. `inspector.getComponentData()` and `inspector.snapshot()` show live state by default instead of `null`.
+  - Added `inspector.time.stepUntil(predicate, { maxFrames })` and `inspector.time.stepAsync(frames)` — awaitable stepping that lets async work such as scene transitions advance between frames while the clock is frozen. `stepUntil` throws if the predicate is not met within `maxFrames` (default 600).
+  - Added `inspector.time.isAdvancing(withinMs)` — reports whether real frames are ticking, a stall signal distinct from `isFrozen()`.
+  - Added `inspector.events.setEnabled(enabled)` and `inspector.events.isEnabled()` to turn Inspector event logging on or off at runtime; turning it off stops per-event allocation.
+  - `inspector.snapshotScene(nameOrId)` now accepts a scene's name, not just its internal id, and `inspector.getSceneStack()` entries include the scene id.
+
+### Patch Changes
+
+- [#213](https://github.com/marco-lepore/yage/pull/213) [`f48983d`](https://github.com/marco-lepore/yage/commit/f48983dbb4e43c25b455ac3f96e7d8684266bbc3) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Remove the duplicate `scene-` prefix from Inspector snapshot IDs for scenes with multiple UI roots.
+
 ## 0.9.0
 
 ### Minor Changes

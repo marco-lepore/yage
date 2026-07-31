@@ -1,5 +1,22 @@
 # @yagejs/debug
 
+## 0.10.0
+
+### Minor Changes
+
+- [#214](https://github.com/marco-lepore/yage/pull/214) [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Entities can now be turned off and reused instead of destroyed and respawned: `entity.setActive(false)` puts an entity and its whole subtree to sleep, and components get `onEnable` / `onDisable` to release and reacquire live resources.
+  - `findTopmostCamera` skips cameras on dormant entities, matching `DisplaySystem`, which reaches cameras through a query and so never sees one.
+  - The `getCameraStack` diagnostic reports each camera's effective enabled-ness — its own flag combined with an active entity — rather than the flag alone.
+
+- [#207](https://github.com/marco-lepore/yage/pull/207) [`d459026`](https://github.com/marco-lepore/yage/commit/d4590265b9aa5297fb99d20b92bb5a2f19cac0c5) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Inspector improvements for verifying games headlessly: default component introspection, awaitable stepping, stall detection, and event-log control.
+  - Added an `eventLog` option to `DebugPlugin` config (default `true`). Set `eventLog: false` to keep the debug overlay and stats while disabling per-event Inspector event logging.
+
+### Patch Changes
+
+- Updated dependencies [[`34d45fd`](https://github.com/marco-lepore/yage/commit/34d45fd690d747b7d8dd36a5972ef20d21d574da), [`f48983d`](https://github.com/marco-lepore/yage/commit/f48983dbb4e43c25b455ac3f96e7d8684266bbc3), [`f48983d`](https://github.com/marco-lepore/yage/commit/f48983dbb4e43c25b455ac3f96e7d8684266bbc3), [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be), [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be), [`f1048ab`](https://github.com/marco-lepore/yage/commit/f1048ab756feee84e593609521c3a58fcfc1c1a7), [`4a5b3b6`](https://github.com/marco-lepore/yage/commit/4a5b3b639ddcbb285b6a4733b89d27bcee14c50c), [`d459026`](https://github.com/marco-lepore/yage/commit/d4590265b9aa5297fb99d20b92bb5a2f19cac0c5), [`8400b55`](https://github.com/marco-lepore/yage/commit/8400b5519cb3401a0ad91ab1be511e3d885cc203), [`81eafe0`](https://github.com/marco-lepore/yage/commit/81eafe04c3b362832e2dc873bea996f36f4601fd)]:
+  - @yagejs/core@0.10.0
+  - @yagejs/renderer@0.10.0
+
 ## 0.9.0
 
 ### Minor Changes

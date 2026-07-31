@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-addons/virtual-controls",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Mobile touch overlay for YAGE — virtual joystick + on-screen action buttons that drive the action map, with swappable presenters",
   "keywords": [
     "yage",
@@ -63,9 +63,9 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@yagejs/core": ">=0.9.0 <0.10.0",
-    "@yagejs/input": ">=0.9.0 <0.10.0",
-    "@yagejs/renderer": ">=0.9.0 <0.10.0"
+    "@yagejs/core": ">=0.10.0 <0.11.0",
+    "@yagejs/input": ">=0.10.0 <0.11.0",
+    "@yagejs/renderer": ">=0.10.0 <0.11.0"
   },
   "peerDependenciesMeta": {
     "@yagejs/renderer": {
@@ -74,9 +74,9 @@
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.18",
-    "@yagejs/core": "^0.9.0",
-    "@yagejs/input": "^0.9.0",
-    "@yagejs/renderer": "^0.9.0",
+    "@yagejs/core": ">=0.10.0",
+    "@yagejs/input": ">=0.10.0",
+    "@yagejs/renderer": ">=0.10.0",
     "pixi.js": "^8.5.0"
   }
 }

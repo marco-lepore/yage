@@ -1,5 +1,53 @@
 # @yagejs/particles
 
+## 0.10.0
+
+### Minor Changes
+
+- [#214](https://github.com/marco-lepore/yage/pull/214) [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Entities can now be turned off and reused instead of destroyed and respawned: `entity.setActive(false)` puts an entity and its whole subtree to sleep, and components get `onEnable` / `onDisable` to release and reacquire live resources.
+  - `ParticleEmitterComponent` hides its particle container while the entity is dormant. Emission stops because the emitter leaves `ParticleSystem`'s query, and the pooled particles are kept, so the effect picks up mid-flight on reactivation. A container you hid yourself stays hidden when the entity comes back.
+
+- [#222](https://github.com/marco-lepore/yage/pull/222) [`5177383`](https://github.com/marco-lepore/yage/commit/5177383999bb10bb9d19deaa622005eef7f00b39) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `ParticleEmitterComponent` accepts a `blendMode` option, matching the renderer's visual components. Additive fire and sparks no longer need a reach into `emitter.container`:
+
+  ```ts
+  const emitter = new ParticleEmitterComponent({
+    ...ParticlePresets.fire(),
+    blendMode: "add",
+  });
+
+  emitter.blendMode = "normal"; // also a live accessor
+  ```
+
+  The mode applies to the emitter's container, so all of its particles blend the same way. It is saved and restored with the rest of the emitter config.
+
+- [#211](https://github.com/marco-lepore/yage/pull/211) [`f24a8c2`](https://github.com/marco-lepore/yage/commit/f24a8c2b57170e38940c86486e423c9f3d62dfe8) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Particles work without any texture asset. A new `shape` option on `EmitterConfig` picks one of six built-in white shapes, and `texture`/`textureKey` are no longer required.
+  - `new ParticleEmitterComponent({ lifetime: 1 })` renders 1×1 white particles. Set `tint` to color them and `scale` to size them.
+  - `shape?: ParticleShape | ShapeConfig` — `"pixel" | "circle" | "softCircle" | "diamond" | "softDiamond" | "line"`. The `soft*` variants fade from an opaque centre to a transparent edge, with `softDiamond` reading as a four-point sparkle.
+  - `ShapeConfig` gives the shape an explicit texture size: `{ type: "softCircle", size: 16 }` for a square, `{ type: "circle", size: [32, 16] }` for an ellipse, `{ type: "line", size: [4, 32] }` for a vertical streak. Default size is 64×64, `"line"` 64×8, `"pixel"` 1×1. No shape forces an aspect ratio. `size` is the generated texture's size in pixels, which at the default `scale: 1` is also the on-screen size — use a few fixed values and vary per-particle size with `scale`. A size must be a finite number above 0; anything else throws instead of producing an empty texture.
+  - `texture`, `textureKey` and `shape` are mutually exclusive: setting more than one is a type error. Passing several from plain JavaScript still resolves in that order.
+  - `shapeTexture(shape)` is exported for direct use. Each type and size pair is generated on first request and shared by every emitter asking for it — do not destroy the texture it returns. A 1×1 `"pixel"` is `Texture.WHITE` and generates nothing.
+  - Every shape is visible at every size, down to 1×1. `"pixel"` and `"line"` fill their texture edge to edge. The other four draw their outline inside the texture with a one-pixel antialiased edge, and fill their texture instead once they are too thin to hold one — at 3 pixels or less on either axis, that border would be the whole shape.
+  - Shape generation writes an RGBA buffer, so it runs in headless tests and needs no DOM, canvas, or renderer.
+  - A snapshot carries the emitter's asset key or its `shape: { type, size }`, never both, so shape emitters save and restore like texture ones. The key comes from whichever source actually rendered: an emitter built from a raw `Texture` object serializes as `null` with a warning even if a `textureKey` was passed alongside it.
+
+  Every `ParticlePresets` factory now takes its texture as an _optional_ argument and falls back to a built-in shape, so `ParticlePresets.fire()` is a complete effect with no art.
+  - `fire(textureOrKey?)`, `smoke(textureOrKey?)`, `sparks(textureOrKey?)`, `rain(textureOrKey?)`. Existing call sites that pass a texture are unaffected.
+  - Default shapes: `fire` a 32px `softCircle`, `smoke` a 40px one, `sparks` a 10×3 `line`, `rain` a 2×20 `line`.
+  - Each preset's absolute particle size moved into that shape's `size`, leaving its `scale` as lifetime animation and per-particle variation centred on 1. A caller-supplied texture is therefore animated at its natural size instead of scaled against an assumed one. Preset emission rates, speeds and lifetimes were retuned to match.
+  - Because a preset config already carries a texture source and the three sources are mutually exclusive, overriding the source by spreading (`{ ...ParticlePresets.fire(), texture: myTex }`) is a type error. Pass it as the argument instead. Spreading to override anything else still works.
+
+- [#211](https://github.com/marco-lepore/yage/pull/211) [`f24a8c2`](https://github.com/marco-lepore/yage/commit/f24a8c2b57170e38940c86486e423c9f3d62dfe8) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Emitters spawn particles centred on their entity's world position.
+  - `burst(count)` without coordinates spawns at the entity's `Transform.worldPosition` instead of the world origin. `burst` now takes either no position or both coordinates — `burst(count, x)` is a type error rather than an x with an implied y of 0.
+  - Continuous emission reads `Transform.worldPosition` rather than the local `position`, so an emitter parented to another entity — a muzzle flash on a gun, a thruster on a ship — emits where it is drawn.
+  - Particles are anchored at their middle, so one is drawn centred on its spawn point and `rotationSpeed` turns it about its own centre. This changes how existing emitters look: a particle used to hang down and to the right of the spawn point by half its size, and spin about its top-left corner. It applies to your own textures as well as to built-in shapes.
+  - `ParticleEmitterComponent` requires a `Transform` on the same entity, and warns once on the first `emit()` or `burst()` if there is none. `ParticleSystem` queries for both, so such an emitter never emits and never ages the particles a `burst` already spawned.
+
+### Patch Changes
+
+- Updated dependencies [[`34d45fd`](https://github.com/marco-lepore/yage/commit/34d45fd690d747b7d8dd36a5972ef20d21d574da), [`f48983d`](https://github.com/marco-lepore/yage/commit/f48983dbb4e43c25b455ac3f96e7d8684266bbc3), [`f48983d`](https://github.com/marco-lepore/yage/commit/f48983dbb4e43c25b455ac3f96e7d8684266bbc3), [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be), [`042755b`](https://github.com/marco-lepore/yage/commit/042755b5649a90e99c8840747349255fbb3f95be), [`f1048ab`](https://github.com/marco-lepore/yage/commit/f1048ab756feee84e593609521c3a58fcfc1c1a7), [`4a5b3b6`](https://github.com/marco-lepore/yage/commit/4a5b3b639ddcbb285b6a4733b89d27bcee14c50c), [`d459026`](https://github.com/marco-lepore/yage/commit/d4590265b9aa5297fb99d20b92bb5a2f19cac0c5), [`8400b55`](https://github.com/marco-lepore/yage/commit/8400b5519cb3401a0ad91ab1be511e3d885cc203), [`81eafe0`](https://github.com/marco-lepore/yage/commit/81eafe04c3b362832e2dc873bea996f36f4601fd)]:
+  - @yagejs/core@0.10.0
+  - @yagejs/renderer@0.10.0
+
 ## 0.9.0
 
 ### Minor Changes
