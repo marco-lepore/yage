@@ -1,0 +1,63 @@
+{
+  "name": "@yagejs-addons/synth",
+  "version": "0.1.0",
+  "description": "Procedural sound effects for YAGE — oscillators, noise, envelopes, and filters rendered to playable aliases, with presets for shoot, hit, explosion, pickup, and jingles",
+  "keywords": [
+    "yage",
+    "yage-addon",
+    "game-engine",
+    "2d",
+    "typescript",
+    "audio",
+    "synth",
+    "sfx",
+    "procedural"
+  ],
+  "license": "MIT",
+  "author": "Marco Lepore",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
+    "directory": "packages/addons/synth"
+  },
+  "homepage": "https://yage.dev",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@yagejs/audio": ">=0.9.0 <0.10.0",
+    "@yagejs/core": ">=0.9.0 <0.10.0"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.18",
+    "@yagejs/audio": ">=0.9.0",
+    "@yagejs/core": ">=0.9.0"
+  }
+}
