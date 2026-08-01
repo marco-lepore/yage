@@ -10,6 +10,7 @@ describe("parseArgs", () => {
     expect(parseArgs(["build"]).command).toBe("build");
     expect(parseArgs(["dev"]).command).toBe("dev");
     expect(parseArgs(["init"]).command).toBe("init");
+    expect(parseArgs(["test"]).command).toBe("test");
   });
 
   it("takes --force on init", () => {
@@ -41,6 +42,29 @@ describe("parseArgs", () => {
     expect(parseArgs(["build", "--out-dir=site"]).outDir).toBe("site");
   });
 
+  it("reads a test timeout in both forms", () => {
+    expect(parseArgs(["test", "--timeout", "5000"]).timeout).toBe(5000);
+    expect(parseArgs(["test", "--timeout=5000"]).timeout).toBe(5000);
+  });
+
+  it("rejects a timeout that is not one", () => {
+    expect(parseArgs(["test", "--timeout", "soon"]).error).toMatch(
+      /Invalid timeout/,
+    );
+    expect(parseArgs(["test", "--timeout", "0"]).error).toMatch(
+      /Invalid timeout/,
+    );
+    expect(parseArgs(["test", "--timeout"]).error).toMatch(/requires a value/);
+  });
+
+  it("reads the screenshot directory", () => {
+    expect(parseArgs(["test", "--screenshots", "shots"]).screenshots).toBe(
+      "shots",
+    );
+    expect(parseArgs(["test", "--screenshots=shots"]).screenshots).toBe("shots");
+    expect(parseArgs(["test"]).screenshots).toBeUndefined();
+  });
+
   it("takes --no-open", () => {
     expect(parseArgs(["--no-open"]).open).toBe(false);
     expect(parseArgs([]).open).toBeUndefined();
@@ -53,6 +77,13 @@ describe("parseArgs", () => {
     expect(parseArgs(["dev", "--force"]).error).toMatch(/not an option/);
     expect(parseArgs(["init", "--port", "6000"]).error).toMatch(/not an option/);
     expect(parseArgs(["init", "--scenarios", "a"]).error).toMatch(
+      /not an option/,
+    );
+    expect(parseArgs(["test", "--port", "6000"]).error).toMatch(/not an option/);
+    expect(parseArgs(["dev", "--timeout", "5000"]).error).toMatch(
+      /not an option/,
+    );
+    expect(parseArgs(["build", "--screenshots", "shots"]).error).toMatch(
       /not an option/,
     );
   });

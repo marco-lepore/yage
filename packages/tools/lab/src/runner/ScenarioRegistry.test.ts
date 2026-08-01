@@ -56,6 +56,24 @@ describe("buildRegistry", () => {
     expect(registry.problems).toEqual([]);
   });
 
+  it("records whether a scenario declares a drive", () => {
+    // On the entry rather than looked up on the definition, because a driver
+    // outside the page reads this list through a bridge that drops functions.
+    const registry = buildRegistry({
+      "/src/a.scenario.ts": scenario("A"),
+      "/src/b.scenario.ts": {
+        default: defineScenario({
+          title: "B",
+          setup: () => {},
+          drive: () => Promise.resolve(),
+        }),
+      },
+    });
+
+    expect(registry.find("src/a")?.hasDrive).toBe(false);
+    expect(registry.find("src/b")?.hasDrive).toBe(true);
+  });
+
   it("gives same-named files in different folders distinct ids", () => {
     const registry = buildRegistry(
       {

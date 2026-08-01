@@ -1,4 +1,4 @@
-export type LabCommand = "dev" | "build" | "init";
+export type LabCommand = "dev" | "build" | "init" | "test";
 
 export interface ParsedArgs {
   command: LabCommand;
@@ -7,6 +7,8 @@ export interface ParsedArgs {
   scenarios?: readonly string[];
   outDir?: string;
   force?: boolean;
+  timeout?: number;
+  screenshots?: string;
   help: boolean;
   version: boolean;
   /** Set when argv could not be parsed. */
@@ -15,6 +17,8 @@ export interface ParsedArgs {
 
 export const DEFAULT_PORT = 5210;
 export const DEFAULT_OUT_DIR = "dist-lab";
+/** How long one scenario may take before `test` gives up on it. */
+export const DEFAULT_TIMEOUT_MS = 30_000;
 
 /** Every flag, and the field it fills. */
 const FLAG_FIELDS = {
@@ -23,6 +27,8 @@ const FLAG_FIELDS = {
   "--scenarios": "scenarios",
   "--out-dir": "outDir",
   "--force": "force",
+  "--timeout": "timeout",
+  "--screenshots": "screenshots",
 } as const satisfies Record<string, keyof ParsedArgs>;
 
 type LabFlag = keyof typeof FLAG_FIELDS;
@@ -36,6 +42,7 @@ const COMMAND_FLAGS = {
   dev: ["--port", "--no-open", "--scenarios"],
   build: ["--out-dir", "--scenarios"],
   init: ["--force"],
+  test: ["--scenarios", "--timeout", "--screenshots"],
 } as const satisfies Record<LabCommand, readonly LabFlag[]>;
 
 const COMMANDS = Object.keys(COMMAND_FLAGS) as readonly LabCommand[];
@@ -122,6 +129,26 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       result.outDir = value;
       continue;
     }
+    if (arg === "--screenshots" || arg.startsWith("--screenshots=")) {
+      const value = takeValue("--screenshots");
+      if (value === undefined) {
+        return { ...result, error: "--screenshots requires a value" };
+      }
+      result.screenshots = value;
+      continue;
+    }
+    if (arg === "--timeout" || arg.startsWith("--timeout=")) {
+      const value = takeValue("--timeout");
+      if (value === undefined) {
+        return { ...result, error: "--timeout requires a value" };
+      }
+      const timeout = Number(value);
+      if (!Number.isInteger(timeout) || timeout < 1) {
+        return { ...result, error: `Invalid timeout: ${value}` };
+      }
+      result.timeout = timeout;
+      continue;
+    }
     if (arg.startsWith("-")) {
       return { ...result, error: `Unknown flag: ${arg}` };
     }
@@ -159,17 +186,22 @@ Usage:
                                 project's @yagejs/* dependencies
   yage-lab [dev] [options]      Start the scenario browser
   yage-lab build [options]      Build it as a static site
+  yage-lab test [options]       Run every scenario in a headless browser and
+                                exit non-zero if any of them failed
 
 Options:
-  -p, --port <n>          Dev server port (default ${DEFAULT_PORT})
-      --no-open           Don't open a browser window
-      --scenarios <list>  Comma-separated glob patterns, relative to the Vite
-                          root (default **/*.scenario.ts). Also settable as
-                          "yage-lab": { "scenarios": [...] } in package.json
-      --out-dir <dir>     Build output directory (default ${DEFAULT_OUT_DIR})
-      --force             Overwrite an existing lab/harness.ts
-  -h, --help              Show this help
-  -v, --version           Print version
+  -p, --port <n>            Dev server port (default ${DEFAULT_PORT})
+      --no-open             Don't open a browser window
+      --scenarios <list>    Comma-separated glob patterns, relative to the Vite
+                            root (default **/*.scenario.ts). Also settable as
+                            "yage-lab": { "scenarios": [...] } in package.json
+      --out-dir <dir>       Build output directory (default ${DEFAULT_OUT_DIR})
+      --force               Overwrite an existing lab/harness.ts
+      --timeout <ms>        How long one scenario may take (default ${DEFAULT_TIMEOUT_MS})
+      --screenshots <dir>   Write a PNG per scenario there, relative to the
+                            Vite root. Nothing is written without it
+  -h, --help                Show this help
+  -v, --version             Print version
 
 The lab extends the project's own vite.config.ts, and runs every scenario
 against the engine and plugins declared in lab/harness.ts.

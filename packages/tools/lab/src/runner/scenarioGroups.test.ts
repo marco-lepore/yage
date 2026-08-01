@@ -8,6 +8,7 @@ const entry = (title: string): ScenarioEntry => ({
   path: `/src/${title}.scenario.ts`,
   title,
   scenario: defineScenario({ title, setup: () => {} }),
+  hasDrive: false,
 });
 
 /** `[group, ...labels]` per group, so a case reads as the list the panel draws. */

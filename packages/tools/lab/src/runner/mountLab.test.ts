@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { control } from "../grammar/controls.js";
 import { defineHarness } from "../grammar/harness.js";
 import { defineScenario } from "../grammar/scenario.js";
-import { LAB_GLOBAL, mount } from "./mountLab.js";
+import { LAB_GLOBAL, mount, type LabApi } from "./mountLab.js";
 
 /**
  * The engine surface the runner touches. Real enough to boot against, and it
@@ -104,9 +104,14 @@ const SCENARIOS = {
 };
 
 /** `plugins` is what the project's own harness declares. */
-function boot(search: string, plugins: readonly string[] = ["renderer"]) {
+function boot(
+  search: string,
+  plugins: readonly string[] = ["renderer"],
+  startError?: Error,
+) {
   window.history.replaceState(null, "", `/lab${search}`);
   const { state, engine } = stubEngine();
+  if (startError) engine.start = () => Promise.reject(startError);
   const host = document.createElement("div");
   document.body.append(host);
   const harness = defineHarness({
@@ -217,6 +222,35 @@ describe("mount", () => {
     const { started } = boot("");
     expect((globalThis as Record<string, unknown>)[LAB_GLOBAL]).toBeDefined();
     await started;
+  });
+
+  it("settles `ready` once the first scenario is up", async () => {
+    // The API is published before the engine starts, so an out-of-page driver
+    // needs something else to wait on before it reaches for a scene.
+    const { state, started } = boot("?scenario=drop");
+    const api = (globalThis as Record<string, unknown>)[LAB_GLOBAL] as LabApi;
+    let settled = false;
+    void api.ready.then(() => {
+      settled = true;
+    });
+
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    await started;
+    await api.ready;
+    expect(state.mounted).toContain("drop");
+  });
+
+  it("rejects `ready` with whatever stopped the engine from starting", async () => {
+    // The API reaches the global before the engine starts, so a page whose
+    // boot threw still looks alive. `ready` is what carries the reason, and a
+    // caller waiting on it would otherwise wait forever.
+    const { started } = boot("", ["renderer"], new Error("no WebGL context"));
+    const api = (globalThis as Record<string, unknown>)[LAB_GLOBAL] as LabApi;
+
+    await expect(started).rejects.toThrow("no WebGL context");
+    await expect(api.ready).rejects.toThrow("no WebGL context");
   });
 });
 

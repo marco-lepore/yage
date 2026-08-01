@@ -4,12 +4,14 @@ import pc from "picocolors";
 import {
   DEFAULT_OUT_DIR,
   DEFAULT_PORT,
+  DEFAULT_TIMEOUT_MS,
   HELP_TEXT,
   parseArgs,
 } from "./cli/argv.js";
 import { runBuild } from "./cli/build.js";
 import { runDev } from "./cli/dev.js";
 import { runInit } from "./cli/init.js";
+import { runTest } from "./cli/test.js";
 
 async function main(): Promise<number> {
   const parsed = parseArgs(process.argv.slice(2));
@@ -36,6 +38,15 @@ async function main(): Promise<number> {
         cwd,
         outDir: parsed.outDir ?? DEFAULT_OUT_DIR,
         scenarios: parsed.scenarios,
+      });
+    } else if (parsed.command === "test") {
+      // The only command whose exit code says something: a scenario that
+      // failed is what makes it a gate.
+      return await runTest({
+        cwd,
+        scenarios: parsed.scenarios,
+        timeoutMs: parsed.timeout ?? DEFAULT_TIMEOUT_MS,
+        screenshots: parsed.screenshots,
       });
     } else {
       await runDev({

@@ -18,6 +18,7 @@ import {
 } from "../grammar/harness.js";
 import type { AnyScenario } from "../grammar/scenario.js";
 import { LabClock } from "./LabClock.js";
+import { LAB_GLOBAL } from "./labGlobal.js";
 import {
   CLOCK_ERROR_KIND,
   collectErrors,
@@ -41,8 +42,7 @@ import {
   type ScenarioEntry,
 } from "./ScenarioRegistry.js";
 
-/** The property `mount` writes its API to, for out-of-page drivers. */
-export const LAB_GLOBAL = "__yageLab__";
+export { LAB_GLOBAL };
 
 /** `Engine.use` rejects a second plugin under a name already registered. */
 const DEBUG_PLUGIN_NAME = "debug";
@@ -73,6 +73,13 @@ export interface LabApi {
   readonly problems: readonly RegistryProblem[];
   /** Play, pause, step and speed. Owns the frozen engine clock. */
   readonly clock: LabClock;
+  /**
+   * Resolves once the first scenario has been mounted, or has failed to mount.
+   * The API is published before the engine starts, so its presence alone does
+   * not mean there is anything to drive yet. Rejects with whatever stopped the
+   * engine from starting.
+   */
+  readonly ready: Promise<void>;
   current(): ScenarioEntry | undefined;
   controls(): Readonly<Record<string, ControlValue>>;
   scene(): Scene | undefined;
@@ -433,11 +440,24 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
     );
   }
 
+  // Settled at the end of this function. The executor runs synchronously, so
+  // both are assigned before anything can reach them.
+  let markReady!: () => void;
+  let failReady!: (error: unknown) => void;
+  const ready = new Promise<void>((resolve, reject) => {
+    markReady = resolve;
+    failReady = reject;
+  });
+  // A caller that only wants the panel never looks at `ready`, and an
+  // unobserved rejection would be reported as an unhandled one.
+  void ready.catch(() => undefined);
+
   const api: LabApi = {
     engine,
     scenarios: registry.scenarios,
     problems: registry.problems,
     clock,
+    ready,
     current: () => entry,
     controls: () => values,
     scene: () => scene,
@@ -451,36 +471,45 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
     console.warn(`[yage-lab] skipped ${problem.path}: ${problem.message}`);
   }
 
-  await engine.start();
-  started = true;
-  // Before the first scenario is built: `engine.start()` starts the game loop,
-  // and a clock nobody has frozen keeps simulating whatever is on the stack
-  // while the panel reports the frame count it has issued itself.
-  clock.freeze();
+  // Everything below can throw, and the caller that took the API off the
+  // global is waiting on `ready` rather than on this call. Without the reject
+  // it would wait for a boot that already failed.
+  try {
+    await engine.start();
+    started = true;
+    // Before the first scenario is built: `engine.start()` starts the game
+    // loop, and a clock nobody has frozen keeps simulating whatever is on the
+    // stack while the panel reports the frame count it has issued itself.
+    clock.freeze();
 
-  const url = readLabUrl(location.search);
-  const requested =
-    url.scenario === undefined ? undefined : registry.find(url.scenario);
-  const first = requested ?? registry.scenarios[0];
-  if (first) {
-    // The control values belong to the scenario the link named. Applying them
-    // to a substitute would set a same-named control to a foreign value.
-    await settle(show(first.id, requested ? url.controls : undefined));
+    const url = readLabUrl(location.search);
+    const requested =
+      url.scenario === undefined ? undefined : registry.find(url.scenario);
+    const first = requested ?? registry.scenarios[0];
+    if (first) {
+      // The control values belong to the scenario the link named. Applying them
+      // to a substitute would set a same-named control to a foreign value.
+      await settle(show(first.id, requested ? url.controls : undefined));
+    }
+    // A link outlives the file it names, and 250ms later this page rewrites the
+    // query string, so the id that missed is gone unless it is reported. Left to
+    // whatever the rebuild reported, which is the worse news of the two.
+    if (url.scenario !== undefined && !requested && rebuildError === null) {
+      rebuildError = {
+        kind: LINK_ERROR_KIND,
+        message: `No scenario with id "${url.scenario}". Showing ${first?.title ?? "nothing"} instead.`,
+      };
+    }
+
+    if (url.speed !== undefined) clock.setSpeed(url.speed);
+    if (url.paused !== true) clock.play();
+    refresh();
+    setInterval(refresh, POLL_MS);
+  } catch (error) {
+    failReady(error);
+    throw error;
   }
-  // A link outlives the file it names, and 250ms later this page rewrites the
-  // query string, so the id that missed is gone unless it is reported. Left to
-  // whatever the rebuild reported, which is the worse news of the two.
-  if (url.scenario !== undefined && !requested && rebuildError === null) {
-    rebuildError = {
-      kind: LINK_ERROR_KIND,
-      message: `No scenario with id "${url.scenario}". Showing ${first?.title ?? "nothing"} instead.`,
-    };
-  }
 
-  if (url.speed !== undefined) clock.setSpeed(url.speed);
-  if (url.paused !== true) clock.play();
-  refresh();
-  setInterval(refresh, POLL_MS);
-
+  markReady();
   return api;
 }

@@ -10,6 +10,12 @@ export interface ScenarioEntry {
   readonly path: string;
   readonly title: string;
   readonly scenario: AnyScenario;
+  /**
+   * Whether the scenario declares a `drive`. On the entry so that the panel's
+   * Run button and a driver listing the scenarios read one definition of it
+   * rather than each testing `scenario.drive` for itself.
+   */
+  readonly hasDrive: boolean;
 }
 
 export interface RegistryProblem {
@@ -98,7 +104,13 @@ export function buildRegistry(
       });
       continue;
     }
-    const entry: ScenarioEntry = { id, path, title: scenario.title, scenario };
+    const entry: ScenarioEntry = {
+      id,
+      path,
+      title: scenario.title,
+      scenario,
+      hasDrive: typeof scenario.drive === "function",
+    };
     byId.set(id, entry);
     scenarios.push(entry);
   }

@@ -16,6 +16,7 @@ const entry = (
   path: `/src/${id}.scenario.ts`,
   title,
   scenario: defineScenario({ title, setup: () => {}, ...extra }),
+  hasDrive: typeof extra?.drive === "function",
 });
 
 const drivenEntry = (

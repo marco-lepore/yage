@@ -236,7 +236,7 @@ export class LabPanel {
     this.titleEl.textContent = entry.title;
     this.describeEl.textContent = entry.scenario.describe ?? "";
     this.renderControls(entry.scenario.controls, values);
-    this.driveable = typeof entry.scenario.drive === "function";
+    this.driveable = entry.hasDrive;
     // The result belongs to the scenario that produced it.
     this.setRun(undefined);
   }

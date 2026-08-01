@@ -59,12 +59,19 @@
     "picocolors": "^1.1.1"
   },
   "peerDependencies": {
+    "@playwright/test": "^1.60.0",
     "@yagejs/core": ">=0.10.0 <0.11.0",
     "@yagejs/debug": ">=0.10.0 <0.11.0",
     "@yagejs/renderer": ">=0.10.0 <0.11.0",
     "vite": "^8.0.0"
   },
+  "peerDependenciesMeta": {
+    "@playwright/test": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/node": "^22.0.0",
     "@yagejs/core": ">=0.10.0",
     "@yagejs/debug": ">=0.10.0",
