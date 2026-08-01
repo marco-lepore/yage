@@ -1,5 +1,11 @@
-import type { DebugContributor, WorldDebugApi } from "@yagejs/debug/api";
+import type {
+  DebugContributor,
+  DebugGraphics,
+  WorldDebugApi,
+} from "@yagejs/debug/api";
 import type { PhysicsWorldManager } from "./PhysicsWorldManager.js";
+import { colliderRotation } from "./toRapierColliders.js";
+import type { ColliderConfig } from "./types.js";
 
 /** Rapier ShapeType enum values (mirrored to avoid pulling the wasm runtime). */
 const ShapeType = {
@@ -13,6 +19,7 @@ const COLOR_DYNAMIC = 0x00ff00;
 const COLOR_KINEMATIC = 0x4488ff;
 const COLOR_STATIC = 0x888888;
 const COLOR_SENSOR = 0xffff00;
+const COLOR_ONE_WAY = 0xff8800;
 
 /** Debug contributor that draws physics collider wireframes. */
 export class PhysicsDebugContributor implements DebugContributor {
@@ -35,7 +42,10 @@ export class PhysicsDebugContributor implements DebugContributor {
         const g = api.acquireGraphics();
         if (!g) return; // pool exhausted
 
-        const color = this.getColliderColor(collider);
+        const config = world._colliderComponents.get(handle)?.config;
+        const color = config?.oneWay
+          ? COLOR_ONE_WAY
+          : this.getColliderColor(collider);
 
         const pos = collider.translation();
         g.position.x = pos.x * ppm;
@@ -86,8 +96,49 @@ export class PhysicsDebugContributor implements DebugContributor {
             break;
           }
         }
+
+        if (config?.oneWay) {
+          this.drawOneWayArrow(g, config, strokeStyle);
+        }
       }
     }
+  }
+
+  /**
+   * Arrow from the collider center toward the solid side of a one-way
+   * platform. The graphics node already carries the collider's world
+   * rotation, so the body-local direction is rotated back by the collider's
+   * rotation relative to its body.
+   */
+  private drawOneWayArrow(
+    g: DebugGraphics,
+    config: ColliderConfig,
+    strokeStyle: { width: number; color: number; alpha?: number },
+  ): void {
+    const dir = config.oneWay?.direction ?? { x: 0, y: -1 };
+    const len = Math.hypot(dir.x, dir.y);
+    if (len === 0) return;
+
+    const rel = colliderRotation(config);
+    const cos = Math.cos(rel);
+    const sin = Math.sin(rel);
+    const dx = (dir.x * cos + dir.y * sin) / len;
+    const dy = (-dir.x * sin + dir.y * cos) / len;
+
+    const length = 20;
+    const tipX = dx * length;
+    const tipY = dy * length;
+    const headSize = 6;
+    // Perpendicular for the two arrowhead strokes.
+    const px = -dy;
+    const py = dx;
+    g.moveTo(0, 0);
+    g.lineTo(tipX, tipY);
+    g.moveTo(tipX, tipY);
+    g.lineTo(tipX + (px - dx) * headSize * 0.5, tipY + (py - dy) * headSize * 0.5);
+    g.moveTo(tipX, tipY);
+    g.lineTo(tipX + (-px - dx) * headSize * 0.5, tipY + (-py - dy) * headSize * 0.5)
+      .stroke(strokeStyle);
   }
 
   private getColliderColor(collider: {

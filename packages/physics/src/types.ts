@@ -89,6 +89,23 @@ export type ColliderShape =
    */
   | { type: "polyline"; vertices: Vec2Like[] };
 
+/** Configuration for a one-way platform collider. */
+export interface OneWayConfig {
+  /**
+   * Direction the solid side faces, in the platform body's local frame.
+   * Any non-zero vector; normalized internally. Default: `{ x: 0, y: -1 }` —
+   * the solid side faces up, so bodies land from above and pass through
+   * from below.
+   */
+  direction?: Vec2Like;
+  /**
+   * How deep (in pixels) a body may already overlap the solid face and
+   * still land on it. Below that, the body counts as inside the platform
+   * and passes through. Default: 4.
+   */
+  margin?: number;
+}
+
 /** Configuration for creating a collider. */
 export interface ColliderConfig {
   /** Shape of the collider. */
@@ -112,7 +129,66 @@ export interface ColliderConfig {
   layers?: number;
   /** Collision filter mask (which layers to interact with). */
   mask?: number;
+  /**
+   * Make this collider a one-way platform: solid for bodies arriving from
+   * the side `direction` faces, passable from every other side. Installs a
+   * built-in contact filter on the collider.
+   */
+  oneWay?: OneWayConfig;
 }
+
+/**
+ * A candidate contact pair, seen from one collider's side, before any
+ * contact exists. Passed to a `ContactFilter` — no contact normal or
+ * contact point is available at this stage, only positions and velocities.
+ *
+ * All values are from the start of the physics step being computed, before
+ * this step's movement is applied — for a body that crossed a surface
+ * mid-step, they tell you which side it came from.
+ *
+ * The same object instance is reused for every filter call; read what you
+ * need inside the filter and do not hold a reference to it.
+ */
+export interface ContactCandidate {
+  /** The other entity in the candidate pair. */
+  readonly other: Entity;
+  /** The other entity's collider component. */
+  readonly otherCollider: ColliderComponent;
+  /** Duration of the physics step being computed, in seconds. */
+  readonly dt: number;
+  /** Own collider's world X position in pixels. */
+  readonly selfX: number;
+  /** Own collider's world Y position in pixels. */
+  readonly selfY: number;
+  /** Own collider's world rotation in radians. */
+  readonly selfRotation: number;
+  /** Own body's X velocity in pixels/s. */
+  readonly selfVelocityX: number;
+  /** Own body's Y velocity in pixels/s. */
+  readonly selfVelocityY: number;
+  /** Other collider's world X position in pixels. */
+  readonly otherX: number;
+  /** Other collider's world Y position in pixels. */
+  readonly otherY: number;
+  /** Other collider's world rotation in radians. */
+  readonly otherRotation: number;
+  /** Other body's X velocity in pixels/s. */
+  readonly otherVelocityX: number;
+  /** Other body's Y velocity in pixels/s. */
+  readonly otherVelocityY: number;
+}
+
+/**
+ * Decides whether a candidate contact pair is solid for the current physics
+ * step. Return `true` to collide normally, `false` to let the two colliders
+ * pass through each other this step.
+ *
+ * Runs inside the physics step for every candidate pair involving the
+ * collider, every step — keep it cheap and do not create or destroy
+ * entities, bodies, or colliders from inside it. When both colliders in a
+ * pair have filters, the pair is solid only if both return `true`.
+ */
+export type ContactFilter = (contact: ContactCandidate) => boolean;
 
 /** Collision event data passed to collision handlers. */
 export interface CollisionEvent {

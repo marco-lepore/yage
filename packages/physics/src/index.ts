@@ -10,6 +10,9 @@ export type {
   ColliderShape,
   ColliderConfig,
   CollisionEvent,
+  ContactCandidate,
+  ContactFilter,
+  OneWayConfig,
   TriggerEvent,
   RaycastHit,
 } from "./types.js";

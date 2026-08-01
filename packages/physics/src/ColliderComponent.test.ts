@@ -30,6 +30,7 @@ const { mocks } = vi.hoisted(() => {
     _shape: unknown = undefined;
     _rotationWrtParent = 0;
     _parent: MockRigidBody | undefined;
+    _activeHooks = 0;
 
     isSensor() { return this._sensor; }
     setSensor(s: boolean) { this._sensor = s; this.setSensorSpy(s); }
@@ -38,6 +39,10 @@ const { mocks } = vi.hoisted(() => {
     parent() { return this._parent; }
     setEnabled(enabled: boolean) { this._enabled = enabled; }
     isEnabled() { return this._enabled; }
+    setActiveHooks(hooks: number) { this._activeHooks = hooks; }
+    activeHooks() { return this._activeHooks; }
+    translation() { return { x: 0, y: 0 }; }
+    rotation() { return 0; }
   }
 
   class MockRigidBody {
@@ -77,6 +82,7 @@ const { mocks } = vi.hoisted(() => {
 
   class MockColliderDesc {
     _sensor = false;
+    _activeHooks = 0;
     // Mirrors Rapier's `ColliderDesc.shape`, in meters.
     shape: Record<string, unknown> = { kind: "none" };
     private static of(shape: Record<string, unknown>) {
@@ -96,6 +102,7 @@ const { mocks } = vi.hoisted(() => {
     setCollisionGroups() { return this; }
     setActiveEvents() { return this; }
     setActiveCollisionTypes() { return this; }
+    setActiveHooks(hooks: number) { this._activeHooks = hooks; return this; }
   }
 
   class MockEventQueue {
@@ -108,12 +115,15 @@ const { mocks } = vi.hoisted(() => {
     timestep = 0;
     _bodies = new Map<number, MockRigidBody>();
     _colliders = new Map<number, MockCollider>();
+    lastStepHooks: unknown = undefined;
 
     constructor(gravity: { x: number; y: number }) {
       this.gravity = { ...gravity };
     }
 
-    step() {}
+    step(_queue?: unknown, hooks?: unknown) {
+      this.lastStepHooks = hooks;
+    }
 
     createRigidBody(): MockRigidBody {
       const body = new MockRigidBody();
@@ -126,6 +136,7 @@ const { mocks } = vi.hoisted(() => {
       collider._sensor = desc._sensor;
       collider._shape = desc.shape;
       collider._parent = parent;
+      collider._activeHooks = desc._activeHooks;
       parent._colliders.push(collider);
       this._colliders.set(collider.handle, collider);
       return collider;
@@ -171,10 +182,13 @@ vi.mock("@dimforge/rapier2d", () => ({
     EventQueue: mocks.MockEventQueue,
     ActiveEvents: { COLLISION_EVENTS: 1, CONTACT_FORCE_EVENTS: 2 },
     ActiveCollisionTypes: { ALL: 60943 },
+    ActiveHooks: { NONE: 0, FILTER_CONTACT_PAIRS: 1, FILTER_INTERSECTION_PAIRS: 2 },
+    SolverFlags: { EMPTY: 0, COMPUTE_IMPULSE: 1 },
   },
 }));
 
 import { Transform, ErrorBoundaryKey } from "@yagejs/core";
+import type { Scene } from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { ColliderComponent } from "./ColliderComponent.js";
 import { createPhysicsTestContext, spawnEntityInScene } from "./test-helpers.js";
@@ -809,6 +823,161 @@ describe("ColliderComponent", () => {
       expect(RigidBodyComponent.restorePriority).toBeLessThan(
         ColliderComponent.restorePriority,
       );
+    });
+  });
+
+  describe("contact filter wiring", () => {
+    function addOneWayCollider(scene: Scene) {
+      const entity = spawnEntityInScene(scene, "platform");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "static" }));
+      return entity.add(
+        new ColliderComponent({
+          shape: { type: "box", width: 96, height: 8 },
+          oneWay: { direction: { x: 0, y: -1 } },
+        }),
+      );
+    }
+
+    it("installs the one-way preset filter at construction", () => {
+      const col = new ColliderComponent({
+        shape: { type: "box", width: 96, height: 8 },
+        oneWay: {},
+      });
+      expect(col._contactFilter).not.toBeNull();
+    });
+
+    it("arms Rapier's contact-pair hook at collider creation", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const col = addOneWayCollider(scene);
+
+      const collider = physicsWorld.getCollider(
+        col._colliderHandle,
+      ) as unknown as { activeHooks(): number };
+      expect(collider.activeHooks()).toBe(1); // FILTER_CONTACT_PAIRS
+    });
+
+    it("flips the hook flag when a filter is set or cleared at runtime", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "wall");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "static" }));
+      const col = entity.add(
+        new ColliderComponent({ shape: { type: "box", width: 10, height: 10 } }),
+      );
+      const collider = physicsWorld.getCollider(
+        col._colliderHandle,
+      ) as unknown as { activeHooks(): number };
+
+      expect(collider.activeHooks()).toBe(0);
+      col.setContactFilter(() => true);
+      expect(collider.activeHooks()).toBe(1);
+      col.setContactFilter(null);
+      expect(collider.activeHooks()).toBe(0);
+    });
+
+    it("passes hooks to the step only while a filter is registered", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const world = (
+        physicsWorld as unknown as { world: { lastStepHooks: unknown } }
+      ).world;
+
+      physicsWorld.step(1 / 60);
+      expect(world.lastStepHooks).toBeUndefined();
+
+      const col = addOneWayCollider(scene);
+      physicsWorld.step(1 / 60);
+      expect(world.lastStepHooks).toBeDefined();
+
+      col.setContactFilter(null);
+      physicsWorld.step(1 / 60);
+      expect(world.lastStepHooks).toBeUndefined();
+    });
+
+    it("round-trips the oneWay config and reinstalls the preset on restore", async () => {
+      const { scene } = await createPhysicsTestContext();
+      const col = addOneWayCollider(scene);
+
+      const data = structuredClone(col.serialize());
+      expect(data.config.oneWay).toEqual({ direction: { x: 0, y: -1 } });
+
+      const restored = ColliderComponent.fromSnapshot(data);
+      expect(restored.config.oneWay).toEqual({ direction: { x: 0, y: -1 } });
+      expect(restored._contactFilter).not.toBeNull();
+    });
+
+    it("warns when oneWay is combined with sensor", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { scene } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "ghost-platform");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "static" }));
+      entity.add(
+        new ColliderComponent({
+          shape: { type: "box", width: 96, height: 8 },
+          sensor: true,
+          oneWay: {},
+        }),
+      );
+
+      const matching = warn.mock.calls.filter((args) =>
+        String(args[0]).includes("oneWay has no effect on a sensor"),
+      );
+      expect(matching.length).toBe(1);
+      warn.mockRestore();
+    });
+  });
+
+  describe("dropThrough", () => {
+    function addRider(scene: Scene) {
+      const entity = spawnEntityInScene(scene, "rider");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      return entity.add(
+        new ColliderComponent({ shape: { type: "box", width: 10, height: 10 } }),
+      );
+    }
+
+    it("opens a window measured in simulated time and expires it", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const col = addRider(scene);
+
+      col.dropThrough(0.1);
+      expect(col.isDroppingThrough).toBe(true);
+
+      for (let i = 0; i < 5; i++) physicsWorld.step(1 / 60);
+      expect(col.isDroppingThrough).toBe(true);
+      for (let i = 0; i < 2; i++) physicsWorld.step(1 / 60);
+      expect(col.isDroppingThrough).toBe(false);
+    });
+
+    it("supports being called before the component is added", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const col = new ColliderComponent({
+        shape: { type: "box", width: 10, height: 10 },
+      });
+      col.dropThrough(0.5);
+      expect(col.isDroppingThrough).toBe(false);
+
+      const entity = spawnEntityInScene(scene, "rider");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      entity.add(col);
+      expect(col.isDroppingThrough).toBe(true);
+
+      for (let i = 0; i < 31; i++) physicsWorld.step(1 / 60);
+      expect(col.isDroppingThrough).toBe(false);
+    });
+
+    it("clears the window when the entity goes dormant", async () => {
+      const { scene } = await createPhysicsTestContext();
+      const col = addRider(scene);
+
+      col.dropThrough(60);
+      expect(col.isDroppingThrough).toBe(true);
+      col.entity.setActive(false);
+      col.entity.setActive(true);
+      expect(col.isDroppingThrough).toBe(false);
     });
   });
 });
