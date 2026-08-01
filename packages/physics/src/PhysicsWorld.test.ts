@@ -52,6 +52,9 @@ const { mocks } = vi.hoisted(() => {
   class MockCollider {
     handle: number;
     _sensor = false;
+    _shape: unknown = undefined;
+    _rotationWrtParent = 0;
+    _parent: MockRigidBody | undefined;
 
     constructor() {
       this.handle = nextColliderHandle++;
@@ -63,7 +66,15 @@ const { mocks } = vi.hoisted(() => {
     setSensor(s: boolean) {
       this._sensor = s;
     }
-    setShape() {}
+    setShape(shape: unknown) {
+      this._shape = shape;
+    }
+    setRotationWrtParent(angle: number) {
+      this._rotationWrtParent = angle;
+    }
+    parent() {
+      return this._parent;
+    }
     setEnabled() {}
   }
 
@@ -133,6 +144,10 @@ const { mocks } = vi.hoisted(() => {
     setEnabled() {}
     resetForces() {}
     resetTorques() {}
+    _massRecomputes = 0;
+    recomputeMassPropertiesFromColliders() {
+      this._massRecomputes++;
+    }
   }
 
   class MockColliderDesc {
@@ -144,20 +159,30 @@ const { mocks } = vi.hoisted(() => {
     _collisionGroups = 0;
     _activeEvents = 0;
 
-    static cuboid() {
-      return new MockColliderDesc();
+    // Mirrors Rapier's `ColliderDesc.shape`, in meters. Recorded so tests can
+    // assert which shape reached Rapier, not just that one did.
+    shape: Record<string, unknown> = { kind: "none" };
+
+    private static of(shape: Record<string, unknown>) {
+      const desc = new MockColliderDesc();
+      desc.shape = shape;
+      return desc;
     }
-    static ball() {
-      return new MockColliderDesc();
+
+    static cuboid(hx: number, hy: number) {
+      return MockColliderDesc.of({ kind: "cuboid", hx, hy });
     }
-    static capsule() {
-      return new MockColliderDesc();
+    static ball(radius: number) {
+      return MockColliderDesc.of({ kind: "ball", radius });
     }
-    static convexHull(): MockColliderDesc | null {
-      return new MockColliderDesc();
+    static capsule(halfHeight: number, radius: number) {
+      return MockColliderDesc.of({ kind: "capsule", halfHeight, radius });
     }
-    static polyline() {
-      return new MockColliderDesc();
+    static convexHull(vertices: Float32Array): MockColliderDesc | null {
+      return MockColliderDesc.of({ kind: "convexHull", vertices });
+    }
+    static polyline(vertices: Float32Array) {
+      return MockColliderDesc.of({ kind: "polyline", vertices });
     }
 
     _rotation = 0;
@@ -284,9 +309,14 @@ const { mocks } = vi.hoisted(() => {
       parent: MockRigidBody,
     ): MockCollider {
       const collider = new MockCollider();
+      collider._parent = parent;
       parent._colliders.push(collider);
       this._colliders.set(collider.handle, collider);
       return collider;
+    }
+
+    castShape(): unknown {
+      return null;
     }
 
     getRigidBody(handle: number): MockRigidBody {
@@ -1214,6 +1244,237 @@ describe("PhysicsWorld", () => {
       expect(capturedPredicate).toBeDefined();
       expect(capturedPredicate!({ handle: casterCollider })).toBe(false);
       expect(capturedPredicate!({ handle: 9999 })).toBe(true);
+    });
+  });
+
+  describe("castShape", () => {
+    /**
+     * Rapier reports `witness1` in world space and `normal1` as the surface
+     * normal on the collider that was hit, with the time of impact in meters
+     * (the sweep velocity is a unit vector). Verified against real Rapier
+     * 0.19; the mock reproduces those spaces.
+     */
+    function setupCast(pw: PhysicsWorld) {
+      const entity = new Entity("target");
+      const bodyHandle = pw.createBody(entity, { type: "static" });
+      const comp = createMockColliderComponent();
+      const colHandle = pw.createCollider(
+        entity,
+        bodyHandle,
+        { shape: { type: "box", width: 10, height: 10 } },
+        comp,
+      );
+
+      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> })
+        .world;
+      const captured: unknown[][] = [];
+      world.castShape = ((...args: unknown[]) => {
+        captured.push(args);
+        return {
+          collider: { handle: colHandle },
+          time_of_impact: 3.6, // meters
+          witness1: { x: 4, y: 5.8 }, // world meters
+          normal1: { x: 0, y: -1 },
+        };
+      }) as unknown as typeof world.castShape;
+
+      return { entity, captured };
+    }
+
+    it("sweeps in meters and reports the hit in pixels", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const { entity, captured } = setupCast(pw);
+
+      const hit = pw.castShape(
+        { type: "box", width: 20, height: 20 },
+        new Vec2(200, 100),
+        new Vec2(0, 1),
+        400,
+      );
+
+      expect(captured).toHaveLength(1);
+      const [pos, , vel, , targetDistance, maxToi] = captured[0]!;
+      expect(pos).toEqual({ x: 4, y: 2 }); // 200px, 100px at 50px/m
+      expect(vel).toEqual({ x: 0, y: 1 });
+      expect(targetDistance).toBe(0);
+      expect(maxToi).toBeCloseTo(8); // 400px
+
+      expect(hit?.entity).toBe(entity);
+      expect(hit?.distance).toBeCloseTo(180); // 3.6m
+      expect(hit?.point.x).toBeCloseTo(200);
+      expect(hit?.point.y).toBeCloseTo(290);
+      // A world-space unit normal is not a pixel value; it passes through.
+      expect(hit?.normal.x).toBeCloseTo(0);
+      expect(hit?.normal.y).toBeCloseTo(-1);
+    });
+
+    it("normalizes the direction, so hit distance ignores its length", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const { captured } = setupCast(pw);
+      const shape = { type: "box", width: 20, height: 20 } as const;
+
+      const short = pw.castShape(shape, new Vec2(0, 0), new Vec2(3, 4), 400);
+      const long = pw.castShape(shape, new Vec2(0, 0), new Vec2(300, 400), 400);
+
+      expect(captured[0]![2]).toEqual({ x: 0.6, y: 0.8 });
+      expect(captured[1]![2]).toEqual({ x: 0.6, y: 0.8 });
+      expect(short?.distance).toBeCloseTo(180);
+      expect(long?.distance).toBeCloseTo(180);
+    });
+
+    it("throws on a zero-length direction", () => {
+      const pw = new PhysicsWorld();
+      expect(() =>
+        pw.castShape(
+          { type: "circle", radius: 5 },
+          new Vec2(0, 0),
+          new Vec2(0, 0),
+          100,
+        ),
+      ).toThrow("non-zero");
+    });
+
+    it("returns null when nothing is hit", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> })
+        .world;
+      world.castShape = (() => null) as unknown as typeof world.castShape;
+
+      expect(
+        pw.castShape(
+          { type: "circle", radius: 5 },
+          new Vec2(0, 0),
+          new Vec2(1, 0),
+          100,
+        ),
+      ).toBeNull();
+    });
+
+    it("adds the axis:\"x\" capsule turn on top of the requested rotation", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const { captured } = setupCast(pw);
+
+      pw.castShape(
+        { type: "capsule", halfHeight: 10, radius: 5, axis: "x" },
+        new Vec2(0, 0),
+        new Vec2(1, 0),
+        100,
+        { rotation: 0.25 },
+      );
+
+      expect(captured[0]![1]).toBeCloseTo(Math.PI / 2 + 0.25);
+    });
+
+    it("excludeEntity filters that entity's colliders via the predicate", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const mover = new Entity("mover");
+      const bodyHandle = pw.createBody(mover, { type: "dynamic" });
+      const comp = createMockColliderComponent();
+      const ownCollider = pw.createCollider(
+        mover,
+        bodyHandle,
+        { shape: { type: "circle", radius: 10 } },
+        comp,
+      );
+
+      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> })
+        .world;
+      let predicate: ((c: { handle: number }) => boolean) | undefined;
+      world.castShape = ((...args: unknown[]) => {
+        predicate = args[11] as (c: { handle: number }) => boolean;
+        return null;
+      }) as unknown as typeof world.castShape;
+
+      pw.castShape(
+        { type: "circle", radius: 10 },
+        new Vec2(0, 0),
+        new Vec2(1, 0),
+        100,
+        { excludeEntity: mover },
+      );
+
+      expect(predicate).toBeDefined();
+      expect(predicate!({ handle: ownCollider })).toBe(false);
+      expect(predicate!({ handle: 9999 })).toBe(true);
+    });
+  });
+
+  describe("setColliderShape", () => {
+    function setupCollider(pw: PhysicsWorld) {
+      const entity = new Entity("mover");
+      const bodyHandle = pw.createBody(entity, { type: "dynamic" });
+      const comp = createMockColliderComponent();
+      const handle = pw.createCollider(
+        entity,
+        bodyHandle,
+        { shape: { type: "box", width: 20, height: 40 } },
+        comp,
+      );
+      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> })
+        .world;
+      return { entity, handle, collider: world._colliders.get(handle)! };
+    }
+
+    it("swaps the shape on the live collider, keeping its handle", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const { handle, collider } = setupCollider(pw);
+
+      pw.setColliderShape(handle, {
+        shape: { type: "box", width: 20, height: 20 },
+      });
+
+      // 20x20 px at 50px/m -> half-extents of 0.2m.
+      expect(collider._shape).toEqual({ kind: "cuboid", hx: 0.2, hy: 0.2 });
+      expect(collider.handle).toBe(handle);
+    });
+
+    it("leaves the body's mass alone by default", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const { handle, collider } = setupCollider(pw);
+      const body = collider.parent()!;
+
+      pw.setColliderShape(handle, {
+        shape: { type: "box", width: 20, height: 20 },
+      });
+
+      expect(body._massRecomputes).toBe(0);
+    });
+
+    it("recomputes the body's mass properties when asked", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const { handle, collider } = setupCollider(pw);
+      const body = collider.parent()!;
+
+      pw.setColliderShape(
+        handle,
+        { shape: { type: "box", width: 20, height: 20 } },
+        { recomputeMass: true },
+      );
+
+      expect(body._massRecomputes).toBe(1);
+    });
+
+    it("applies the rotation the new shape needs", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const { handle, collider } = setupCollider(pw);
+
+      pw.setColliderShape(handle, {
+        shape: { type: "capsule", halfHeight: 10, radius: 5, axis: "x" },
+      });
+      expect(collider._rotationWrtParent).toBeCloseTo(Math.PI / 2);
+
+      // Swapping back to a shape with no base rotation clears it.
+      pw.setColliderShape(handle, {
+        shape: { type: "box", width: 20, height: 20 },
+      });
+      expect(collider._rotationWrtParent).toBeCloseTo(0);
+    });
+
+    it("no-ops on an unknown handle", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      expect(() =>
+        pw.setColliderShape(9999, { shape: { type: "circle", radius: 5 } }),
+      ).not.toThrow();
     });
   });
 

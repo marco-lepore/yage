@@ -31,7 +31,9 @@ const { mocks } = vi.hoisted(() => {
     lockRotations() {
       return this;
     }
-    setGravityScale() {
+    _gravityScale = 1;
+    setGravityScale(s: number) {
+      this._gravityScale = s;
       return this;
     }
     setCcdEnabled() {
@@ -110,6 +112,15 @@ const { mocks } = vi.hoisted(() => {
     }
     addTorque(t: number, _wake?: boolean) {
       this.addTorqueSpy(t, _wake);
+    }
+    _gravityScale = 1;
+    setGravityScaleSpy = vi.fn();
+    gravityScale() {
+      return this._gravityScale;
+    }
+    setGravityScale(s: number, _wake?: boolean) {
+      this._gravityScale = s;
+      this.setGravityScaleSpy(s, _wake);
     }
     numColliders() {
       return this._colliders.length;
@@ -199,8 +210,9 @@ const { mocks } = vi.hoisted(() => {
 
     step() {}
 
-    createRigidBody(): MockRigidBody {
+    createRigidBody(desc: MockRigidBodyDesc): MockRigidBody {
       const body = new MockRigidBody();
+      body._gravityScale = desc._gravityScale;
       this._bodies.set(body.handle, body);
       return body;
     }
@@ -465,6 +477,58 @@ describe("RigidBodyComponent", () => {
       body._angvel = 3.14;
 
       expect(rb.getAngularVelocity()).toBeCloseTo(3.14);
+    });
+  });
+
+  describe("setGravityScale / gravityScale", () => {
+    it("applies the scale to the live body", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      rb.setGravityScale(2.5);
+
+      expect(body.setGravityScaleSpy).toHaveBeenCalledWith(2.5, true);
+      expect(rb.gravityScale).toBe(2.5);
+    });
+
+    it("defaults to 1 when never set", async () => {
+      const { scene } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      expect(rb.gravityScale).toBe(1);
+    });
+
+    it("keeps config in sync so a save captures the live scale", async () => {
+      const { scene } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = entity.add(
+        new RigidBodyComponent({ type: "dynamic", gravityScale: 1 }),
+      );
+
+      rb.setGravityScale(0);
+
+      expect(rb.serialize().gravityScale).toBe(0);
+    });
+
+    it("buffers a pre-add scale in config and applies it at body creation", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+
+      const rb = new RigidBodyComponent({ type: "dynamic" });
+      expect(() => rb.setGravityScale(3)).not.toThrow();
+      expect(rb.gravityScale).toBe(3);
+
+      entity.add(rb);
+
+      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      expect(body._gravityScale).toBe(3);
     });
   });
 

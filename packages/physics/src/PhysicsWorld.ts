@@ -436,6 +436,37 @@ export class PhysicsWorld {
     this._layerInfo.delete(handle);
   }
 
+  /**
+   * Replace a live collider's shape, keeping its handle, body attachment,
+   * collision groups, and event subscriptions. `config` is the owning
+   * component's config, already carrying the new shape.
+   *
+   * The body keeps its mass unless `recomputeMass` asks for it back from
+   * density × the new shape.
+   */
+  setColliderShape(
+    handle: number,
+    config: ColliderConfig,
+    options?: { recomputeMass?: boolean },
+  ): void {
+    const collider = this.getCollider(handle);
+    if (!collider) return;
+
+    collider.setShape(this.buildColliderDesc(config.shape).shape);
+    // The capsule axis:"x" turn is part of the shape, so a swap can change
+    // the rotation a collider needs even when config.rotation did not move.
+    collider.setRotationWrtParent(colliderRotation(config));
+
+    if (options?.recomputeMass) {
+      collider.parent()?.recomputeMassPropertiesFromColliders();
+    }
+
+    const entity = this.colliderMap.get(handle);
+    if (entity) {
+      this._checkConvexHullVertexDrop(collider, config.shape, entity);
+    }
+  }
+
   /** Get a Rapier rigid body by handle. */
   getBody(handle: number): RAPIER.RigidBody | undefined {
     try {
@@ -506,6 +537,87 @@ export class PhysicsWorld {
       ),
       normal: new Vec2(result.normal.x, result.normal.y),
       distance: this.toPixels(result.timeOfImpact),
+    };
+  }
+
+  /**
+   * Sweep `shape` from `origin` along `direction` and return the first thing
+   * it would hit, or `null` if nothing is struck within `maxDistance`. All
+   * values in pixels.
+   *
+   * This is the swept counterpart to `queryShape`, which only reports what a
+   * shape overlaps where it already stands. Use it to test a move before
+   * committing to it: carrying a rider on a moving platform, spotting a
+   * closing platform before it traps the player, or checking clearance for a
+   * fast fall.
+   *
+   * `distance` is how far the shape travelled, `point` the world contact
+   * point, and `normal` the surface normal on the entity that was hit. A
+   * shape already overlapping something at `origin` reports that hit at
+   * `distance: 0`. The direction is normalized internally, so any non-zero
+   * vector works; a zero-length direction throws. `excludeEntity` skips every
+   * collider of that entity — pass the mover when the sweep starts inside its
+   * own collider.
+   */
+  castShape(
+    shape: ColliderShape,
+    origin: Vec2Like,
+    direction: Vec2Like,
+    maxDistance: number,
+    options?: {
+      rotation?: number;
+      filterGroups?: number;
+      excludeEntity?: Entity;
+    },
+  ): RaycastHit | null {
+    const length = Math.hypot(direction.x, direction.y);
+    if (length === 0) {
+      throw new Error("castShape direction must be a non-zero vector");
+    }
+
+    const desc = this.buildColliderDesc(shape);
+    // buildColliderDesc leaves the capsule axis:"x" 90° turn to the caller.
+    const axisRotation =
+      shape.type === "capsule" && shape.axis === "x" ? Math.PI / 2 : 0;
+    const exclude = options?.excludeEntity;
+
+    // With a unit direction as the sweep velocity, Rapier's time of impact is
+    // the distance travelled in meters.
+    const hit = this.world.castShape(
+      { x: this.toMeters(origin.x), y: this.toMeters(origin.y) },
+      (options?.rotation ?? 0) + axisRotation,
+      { x: direction.x / length, y: direction.y / length },
+      desc.shape,
+      0,
+      this.toMeters(maxDistance),
+      true,
+      undefined,
+      options?.filterGroups,
+      undefined,
+      undefined,
+      exclude
+        ? (collider) => this.colliderMap.get(collider.handle) !== exclude
+        : undefined,
+    );
+
+    if (!hit) return null;
+
+    const entity = this.colliderMap.get(hit.collider.handle);
+    if (!entity) return null;
+
+    return {
+      entity,
+      // Rapier's typings document witness1/normal1 as local to the swept
+      // shape. For this call they are not: checked against the real library,
+      // witness1 is the world-space contact point and normal1 the world-space
+      // surface normal on the collider that was hit. Don't "correct" these to
+      // witness2/normal2 on the strength of the vendor doc comment.
+      point: new Vec2(
+        this.toPixels(hit.witness1.x),
+        this.toPixels(hit.witness1.y),
+      ),
+      normal: new Vec2(hit.normal1.x, hit.normal1.y),
+      distance: this.toPixels(hit.time_of_impact),
     };
   }
 

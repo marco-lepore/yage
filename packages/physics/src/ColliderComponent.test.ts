@@ -27,9 +27,15 @@ const { mocks } = vi.hoisted(() => {
 
     _enabled = true;
 
+    _shape: unknown = undefined;
+    _rotationWrtParent = 0;
+    _parent: MockRigidBody | undefined;
+
     isSensor() { return this._sensor; }
     setSensor(s: boolean) { this._sensor = s; this.setSensorSpy(s); }
-    setShape() {}
+    setShape(shape: unknown) { this._shape = shape; }
+    setRotationWrtParent(angle: number) { this._rotationWrtParent = angle; }
+    parent() { return this._parent; }
     setEnabled(enabled: boolean) { this._enabled = enabled; }
     isEnabled() { return this._enabled; }
   }
@@ -65,14 +71,23 @@ const { mocks } = vi.hoisted(() => {
     setEnabled() {}
     resetForces() {}
     resetTorques() {}
+    _massRecomputes = 0;
+    recomputeMassPropertiesFromColliders() { this._massRecomputes++; }
   }
 
   class MockColliderDesc {
     _sensor = false;
-    static cuboid() { return new MockColliderDesc(); }
-    static ball() { return new MockColliderDesc(); }
-    static capsule() { return new MockColliderDesc(); }
-    static convexHull() { return new MockColliderDesc(); }
+    // Mirrors Rapier's `ColliderDesc.shape`, in meters.
+    shape: Record<string, unknown> = { kind: "none" };
+    private static of(shape: Record<string, unknown>) {
+      const desc = new MockColliderDesc();
+      desc.shape = shape;
+      return desc;
+    }
+    static cuboid(hx: number, hy: number) { return MockColliderDesc.of({ kind: "cuboid", hx, hy }); }
+    static ball(radius: number) { return MockColliderDesc.of({ kind: "ball", radius }); }
+    static capsule(halfHeight: number, radius: number) { return MockColliderDesc.of({ kind: "capsule", halfHeight, radius }); }
+    static convexHull() { return MockColliderDesc.of({ kind: "convexHull" }); }
     setTranslation() { return this; }
     setRestitution() { return this; }
     setFriction() { return this; }
@@ -109,6 +124,8 @@ const { mocks } = vi.hoisted(() => {
     createCollider(desc: MockColliderDesc, parent: MockRigidBody): MockCollider {
       const collider = new MockCollider();
       collider._sensor = desc._sensor;
+      collider._shape = desc.shape;
+      collider._parent = parent;
       parent._colliders.push(collider);
       this._colliders.set(collider.handle, collider);
       return collider;
@@ -540,6 +557,109 @@ describe("ColliderComponent", () => {
 
       const rapierCollider = physicsWorld.getCollider(col._colliderHandle) as unknown as InstanceType<typeof mocks.MockCollider>;
       expect(rapierCollider?.isSensor()).toBe(true);
+    });
+  });
+
+  describe("setShape", () => {
+    async function setup() {
+      const ctx = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(ctx.scene, "test");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const col = entity.add(
+        new ColliderComponent({
+          shape: { type: "box", width: 20, height: 40 },
+        }),
+      );
+      const rapierCollider = ctx.physicsWorld.getCollider(
+        col._colliderHandle,
+      ) as unknown as InstanceType<typeof mocks.MockCollider>;
+      return { ...ctx, entity, col, rapierCollider };
+    }
+
+    it("resizes the live collider without replacing it", async () => {
+      const { col, rapierCollider } = await setup();
+      const handleBefore = col._colliderHandle;
+
+      col.setShape({ type: "box", width: 20, height: 20 });
+
+      // 20x20 px at the default 50px/m -> 0.2m half-extents.
+      expect(rapierCollider._shape).toEqual({
+        kind: "cuboid",
+        hx: 0.2,
+        hy: 0.2,
+      });
+      expect(col._colliderHandle).toBe(handleBefore);
+    });
+
+    it("keeps collision subscriptions across the swap", async () => {
+      const { col, scene } = await setup();
+      const handler = vi.fn();
+      col.onCollision(handler);
+
+      col.setShape({ type: "box", width: 20, height: 20 });
+
+      const other = spawnEntityInScene(scene, "other");
+      col._dispatchCollision({
+        other,
+        otherCollider: col,
+        started: true,
+      });
+
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps config.shape in sync so saves capture the live size", async () => {
+      const { col } = await setup();
+
+      col.setShape({ type: "circle", radius: 8 });
+
+      expect(col.config.shape).toEqual({ type: "circle", radius: 8 });
+      expect(col.serialize().config.shape).toEqual({
+        type: "circle",
+        radius: 8,
+      });
+    });
+
+    it("keeps the body's mass, so a crouch does not change knockback", async () => {
+      const { col, rapierCollider } = await setup();
+      const body = rapierCollider.parent()!;
+
+      col.setShape({ type: "box", width: 20, height: 20 });
+
+      expect(body._massRecomputes).toBe(0);
+    });
+
+    it("recomputes mass from the new shape when asked", async () => {
+      const { col, rapierCollider } = await setup();
+      const body = rapierCollider.parent()!;
+
+      col.setShape(
+        { type: "box", width: 40, height: 80 },
+        { recomputeMass: true },
+      );
+
+      expect(body._massRecomputes).toBe(1);
+    });
+
+    it("buffers a pre-add swap in config and applies it at collider creation", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const col = new ColliderComponent({
+        shape: { type: "box", width: 20, height: 40 },
+      });
+      expect(() => col.setShape({ type: "circle", radius: 8 })).not.toThrow();
+      expect(col.config.shape).toEqual({ type: "circle", radius: 8 });
+
+      entity.add(col);
+
+      const rapierCollider = physicsWorld.getCollider(
+        col._colliderHandle,
+      ) as unknown as InstanceType<typeof mocks.MockCollider>;
+      expect(rapierCollider._shape).toEqual({ kind: "ball", radius: 0.16 });
     });
   });
 

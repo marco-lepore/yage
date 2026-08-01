@@ -65,6 +65,7 @@ Methods:
 - `applyTorque(t)` — rotational force
 - `setEnabledTranslations(enableX, enableY)` — lock axes at runtime
 - `lockRotations(locked)` — lock rotation at runtime
+- `setGravityScale(scale)` / `gravityScale` — per-body gravity multiplier at runtime. `1` is scene gravity, `0` removes it, higher falls faster. Use it for variable jump height and fast-fall, where one body must fall differently from the rest. Callable before `entity.add()`; the value applies at body creation.
 
 ## ColliderComponent
 
@@ -122,6 +123,43 @@ collider.getOverlapping({ tags: ["enemy"] });  // filtered
 collider.getOverlappingComponents(Health);     // Component[]
 ```
 
+Resizing:
+
+```ts
+collider.setShape({ type: "box", width: 20, height: 20 });   // crouch
+collider.setShape({ type: "box", width: 20, height: 40 });   // stand back up
+```
+
+`setShape(shape, options?)` replaces the shape on the live Rapier collider. The handle, body attachment, and every `onCollision`/`onTrigger` subscription survive. Callable before `entity.add()`; the shape applies at collider creation.
+
+The body keeps its mass. A collider is a collision proxy, not a measure of matter, so a crouching character takes the same `applyImpulse` knockback as a standing one. Pass `{ recomputeMass: true }` when the shape change means genuinely more or less matter and mass should come back from density × the new shape.
+
+```ts
+collider.setShape(small);                              // same mass
+collider.setShape(big, { recomputeMass: true });        // heavier
+```
+
+Shrinking never pushes anything out of the way, and growing can leave the collider overlapping geometry it clears at the smaller size. Check clearance before growing back.
+
+A collider is centred on its body's origin unless given an `offset`, so growing upward with the feet planted also moves the body up by half the gained height. Query the standing box where it will sit, not where the crouched one sits — querying at the crouched position reports the floor as a blocker whenever the character is grounded, so they can never stand.
+
+```ts
+const rise = (STAND_HEIGHT - CROUCH_HEIGHT) / 2;
+const standing = { type: "box", width: 20, height: STAND_HEIGHT } as const;
+const pos = transform.worldPosition;
+
+const blocked = world.queryShape(
+  standing,
+  { x: pos.x, y: pos.y - rise },
+  { excludeEntity: entity },
+).length > 0;
+
+if (!blocked) {
+  collider.setShape(standing);
+  rb.setPosition(pos.x, pos.y - rise);
+}
+```
+
 Removing just the collider (`entity.remove(ColliderComponent)`) frees the Rapier collider and its internal lookup entries while the sibling body stays alive. Removing the whole entity, or the `RigidBodyComponent`, also removes every attached collider.
 
 ## CollisionLayers
@@ -154,9 +192,24 @@ world.setGravity(0, -980);
 const hit = world.raycast(origin, direction, maxDistance, { filterGroups });
 // hit: { entity, point: Vec2, normal: Vec2, distance } | null
 
-// Overlap query
-world.queryOverlapping(colliderHandle); // Entity[]
+// Overlap queries — what a shape touches where it already stands
+world.queryShape(shape, position, { rotation, filterGroups, excludeEntity }); // Entity[]
+world.queryRadius(center, radius, { filterGroups, excludeEntity });           // Entity[]
+world.queryOverlapping(colliderHandle);                                      // Entity[]
+
+// Shape cast — sweep a shape along a direction and report the first hit.
+// Same result shape as raycast: `distance` is how far the shape travelled,
+// `point` the world contact point, `normal` the surface normal on the entity
+// hit. A shape already overlapping something at `origin` reports distance 0.
+// Direction is normalized internally; a zero-length direction throws.
+const swept = world.castShape(shape, origin, direction, maxDistance, {
+  rotation,
+  filterGroups,
+  excludeEntity,   // pass the mover when the sweep starts inside its own collider
+});
 ```
+
+Use `castShape` to test a move before committing to it: carrying a rider on a moving platform, spotting a closing platform before it traps the player, or checking clearance for a fast fall. `queryShape` only reports overlaps at a fixed position and misses anything the shape would pass through on the way.
 
 ## Serialization
 
