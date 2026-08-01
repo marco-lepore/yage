@@ -91,10 +91,13 @@ export async function runInit(opts: InitOptions): Promise<void> {
       `  ${pc.yellow("skipped")}    ${className} — install ${missing.join(" and ")}\n`,
     );
   }
+  // The lab supplies DebugPlugin itself, so the clock works either way. What a
+  // project's own dependency buys is a harness that can configure the plugin.
   if (!dependencies.has("@yagejs/debug")) {
     process.stdout.write(
-      `  ${pc.yellow("note")}       @yagejs/debug is not installed. Add it and declare ` +
-        `DebugPlugin to step the clock from a scenario.\n`,
+      `  ${pc.yellow("note")}       @yagejs/debug is not a dependency, so the harness ` +
+        `leaves DebugPlugin out and the lab adds a default one. Add the package to ` +
+        `configure it — a fixed RNG seed, for one.\n`,
     );
   }
   process.stdout.write(`\n  Write a *.scenario.ts file, then run yage-lab.\n\n`);

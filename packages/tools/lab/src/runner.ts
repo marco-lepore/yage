@@ -11,6 +11,8 @@ export {
   type MountOptions,
 } from "./runner/mountLab.js";
 
+export type { LabClock } from "./runner/LabClock.js";
+
 export type {
   RegistryProblem,
   ScenarioEntry,

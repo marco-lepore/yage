@@ -3,11 +3,18 @@ import type {
   ControlSchema,
   ControlValue,
 } from "../grammar/controls.js";
+import { CLOCK_SPEEDS, nearestSpeedIndex } from "./LabClock.js";
+import type { LabError } from "./labErrors.js";
+import { groupScenarios } from "./scenarioGroups.js";
 import type { RegistryProblem, ScenarioEntry } from "./ScenarioRegistry.js";
 
 export interface PanelCallbacks {
   onSelect(id: string): void;
   onControlChange(name: string, value: ControlValue): void;
+  /** Play if the clock is paused, pause if it is running. */
+  onPlayToggle(): void;
+  onStep(frames: number): void;
+  onSpeedChange(speed: number): void;
 }
 
 export interface PanelOptions {
@@ -18,6 +25,13 @@ export interface PanelOptions {
   callbacks: PanelCallbacks;
 }
 
+/** What the clock section shows. */
+export interface ClockView {
+  readonly running: boolean;
+  readonly speed: number;
+  readonly frame: number;
+}
+
 const STYLE_ID = "yage-lab-style";
 
 const CSS = `
@@ -25,6 +39,9 @@ const CSS = `
 .yage-lab__sidebar { flex: 0 0 240px; display: flex; flex-direction: column; gap: 20px; }
 .yage-lab__heading { margin: 0 0 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #94a3b8; }
 .yage-lab__list { display: flex; flex-direction: column; gap: 2px; }
+.yage-lab__group { display: flex; flex-direction: column; gap: 2px; }
+.yage-lab__group + .yage-lab__group { margin-top: 10px; }
+.yage-lab__group-name { margin: 0 0 2px; padding: 0 8px; font-size: 11px; letter-spacing: .04em; color: #64748b; }
 .yage-lab__item { appearance: none; border: 0; border-radius: 4px; background: transparent; color: #cbd5e1; font: inherit; text-align: left; padding: 5px 8px; cursor: pointer; }
 .yage-lab__item:hover { background: #1e293b; }
 .yage-lab__item[aria-current="true"] { background: #334155; color: #f8fafc; }
@@ -41,8 +58,16 @@ const CSS = `
 .yage-lab__title { margin: 0; font-size: 15px; color: #f8fafc; }
 .yage-lab__describe { margin: 0; color: #94a3b8; max-width: 60ch; }
 .yage-lab__canvas { background: #0f172a; border-radius: 6px; overflow: hidden; }
-.yage-lab__error { margin: 0; padding: 6px 10px; border-radius: 4px; background: #450a0a; color: #fecaca; max-width: 60ch; }
-.yage-lab__error:empty { display: none; }
+.yage-lab__clock { display: flex; align-items: center; gap: 8px; }
+.yage-lab__button { appearance: none; border: 1px solid #334155; border-radius: 4px; background: #1e293b; color: #e2e8f0; font: inherit; padding: 3px 10px; cursor: pointer; }
+.yage-lab__button:hover { background: #334155; }
+.yage-lab__play { min-width: 62px; }
+.yage-lab__clock input[type="range"] { width: 110px; }
+.yage-lab__readout { color: #94a3b8; font-variant-numeric: tabular-nums; }
+.yage-lab__errors { display: flex; flex-direction: column; gap: 6px; max-width: 70ch; }
+.yage-lab__error { margin: 0; padding: 6px 10px; border-radius: 4px; background: #450a0a; color: #fecaca; word-break: break-word; }
+.yage-lab__error-kind { color: #fca5a5; font-weight: 600; }
+.yage-lab__error-detail { color: #f5a5a5; font-size: 12px; }
 `;
 
 function injectStyle(doc: Document): void {
@@ -90,7 +115,10 @@ export class LabPanel {
   private readonly controlsBox: HTMLElement;
   private readonly titleEl: HTMLElement;
   private readonly describeEl: HTMLElement;
-  private readonly errorEl: HTMLElement;
+  private readonly errorsBox: HTMLElement;
+  private readonly playButton: HTMLButtonElement;
+  private readonly speedInput: HTMLInputElement;
+  private readonly readoutEl: HTMLElement;
   private readonly items = new Map<string, HTMLButtonElement>();
   private readonly widgets = new Map<string, (value: ControlValue) => void>();
   private readonly callbacks: PanelCallbacks;
@@ -117,12 +145,37 @@ export class LabPanel {
 
     this.titleEl = el("h1", "yage-lab__title");
     this.describeEl = el("p", "yage-lab__describe");
-    this.errorEl = el("p", "yage-lab__error");
-    this.errorEl.setAttribute("role", "alert");
+    this.errorsBox = el("section", "yage-lab__errors");
+    this.errorsBox.setAttribute("role", "alert");
     this.container = el("div", "yage-lab__canvas");
     this.container.style.width = `${opts.width}px`;
     this.container.style.height = `${opts.height}px`;
-    stage.append(this.titleEl, this.describeEl, this.errorEl, this.container);
+
+    this.playButton = this.button("pause", "yage-lab__play", () => {
+      this.callbacks.onPlayToggle();
+    });
+    this.speedInput = this.renderSpeed();
+    this.readoutEl = el("span", "yage-lab__readout");
+    const clockBar = el("div", "yage-lab__clock");
+    clockBar.append(
+      this.playButton,
+      this.button("+1", undefined, () => {
+        this.callbacks.onStep(1);
+      }),
+      this.button("+10", undefined, () => {
+        this.callbacks.onStep(10);
+      }),
+      this.speedInput,
+      this.readoutEl,
+    );
+
+    stage.append(
+      this.titleEl,
+      this.describeEl,
+      this.errorsBox,
+      this.container,
+      clockBar,
+    );
 
     this.root.append(sidebar, stage);
     host.append(this.root);
@@ -141,9 +194,29 @@ export class LabPanel {
     this.renderControls(entry.scenario.controls, values);
   }
 
-  /** Shows why the last rebuild failed, or clears it with `null`. */
-  showError(message: string | null): void {
-    this.errorEl.textContent = message ?? "";
+  /** Replaces the errors section. An empty list leaves nothing on screen. */
+  showErrors(errors: readonly LabError[]): void {
+    this.errorsBox.replaceChildren();
+    for (const error of errors) {
+      const box = el("div", "yage-lab__error");
+      box.append(
+        el("span", "yage-lab__error-kind", error.kind),
+        ` — ${error.message}`,
+      );
+      if (error.detail !== undefined) {
+        box.append(el("div", "yage-lab__error-detail", error.detail));
+      }
+      this.errorsBox.append(box);
+    }
+  }
+
+  /** Writes the clock's state into the play button, the slider and the readout. */
+  setClock(state: ClockView): void {
+    this.playButton.textContent = state.running ? "pause" : "play";
+    this.speedInput.value = String(nearestSpeedIndex(state.speed));
+    this.readoutEl.textContent = `${
+      state.running ? `${state.speed}x` : "paused"
+    } · frame ${state.frame}`;
   }
 
   /**
@@ -166,16 +239,55 @@ export class LabPanel {
   }
 
   private renderList(scenarios: readonly ScenarioEntry[]): void {
-    for (const entry of scenarios) {
-      const button = el("button", "yage-lab__item", entry.title);
-      button.type = "button";
-      button.title = entry.path;
-      button.addEventListener("click", () => {
-        this.callbacks.onSelect(entry.id);
-      });
-      this.items.set(entry.id, button);
-      this.list.append(button);
+    for (const group of groupScenarios(scenarios)) {
+      const box = el("div", "yage-lab__group");
+      if (group.name !== undefined) {
+        box.append(el("h3", "yage-lab__group-name", group.name));
+      }
+      for (const { entry, label } of group.entries) {
+        const item = el("button", "yage-lab__item", label);
+        item.type = "button";
+        item.title = entry.path;
+        item.addEventListener("click", () => {
+          this.callbacks.onSelect(entry.id);
+        });
+        this.items.set(entry.id, item);
+        box.append(item);
+      }
+      this.list.append(box);
     }
+  }
+
+  private button(
+    label: string,
+    className: string | undefined,
+    onClick: () => void,
+  ): HTMLButtonElement {
+    const node = el(
+      "button",
+      className === undefined
+        ? "yage-lab__button"
+        : `yage-lab__button ${className}`,
+      label,
+    );
+    node.type = "button";
+    node.addEventListener("click", onClick);
+    return node;
+  }
+
+  /** The slider indexes the offered speeds, so its steps are the speeds themselves. */
+  private renderSpeed(): HTMLInputElement {
+    const input = el("input");
+    input.type = "range";
+    input.min = "0";
+    input.max = String(CLOCK_SPEEDS.length - 1);
+    input.step = "1";
+    input.title = "Clock speed";
+    input.addEventListener("input", () => {
+      const speed = CLOCK_SPEEDS[Number(input.value)];
+      if (speed !== undefined) this.callbacks.onSpeedChange(speed);
+    });
+    return input;
   }
 
   private renderProblems(problems: readonly RegistryProblem[]): HTMLElement {

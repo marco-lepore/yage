@@ -165,11 +165,12 @@ describe("runInit", () => {
     );
   });
 
-  it("says so when the clock has no DebugPlugin behind it", async () => {
+  it("says the lab supplies DebugPlugin when the project has no @yagejs/debug", async () => {
     const cwd = writeProject({ "package.json": MINIMAL });
 
     await runInit({ cwd, force: false });
 
-    expect(written.join("")).toMatch(/@yagejs\/debug is not installed/);
+    expect(written.join("")).toMatch(/@yagejs\/debug is not a dependency/);
+    expect(written.join("")).toMatch(/the lab adds a default one/);
   });
 });

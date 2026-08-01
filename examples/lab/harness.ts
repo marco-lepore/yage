@@ -23,8 +23,8 @@ export default defineHarness({
       container,
     }),
     new PhysicsPlugin({ gravity: { x: 0, y: 980 } }),
-    // `Inspector.time` throws without it, so a harness that wants frame
-    // stepping has to declare it.
+    // The lab adds this plugin when a harness omits it. Declared here for the
+    // seed: a scenario using randomness replays the same way.
     new DebugPlugin({ deterministicSeed: 1 }),
   ],
 });

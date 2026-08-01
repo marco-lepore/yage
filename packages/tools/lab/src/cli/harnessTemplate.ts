@@ -87,7 +87,9 @@ const PLUGINS: readonly PluginEntry[] = [
   {
     pkg: "@yagejs/debug",
     className: "DebugPlugin",
-    note: "`Inspector.time` throws without it, so stepping the clock needs it.",
+    // The lab appends this plugin when a harness omits it, so the entry earns
+    // its place through the seed alone.
+    note: "Fixes every scene's RNG seed, so a scenario replays the same way.",
     call: "new DebugPlugin({ deterministicSeed: 1 })",
   },
 ];
