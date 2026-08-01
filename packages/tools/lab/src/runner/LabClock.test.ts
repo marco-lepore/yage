@@ -207,6 +207,21 @@ describe("LabClock", () => {
     expect(clock.speed).toBe(2);
   });
 
+  it("issues nothing of its own while whileStopped holds it", async () => {
+    const { state, clock } = makeClock();
+    clock.play();
+    let ranWhileHeld: number[] = [];
+    await clock.whileStopped(async () => {
+      clock.play();
+      await clock.step(10);
+      frame(100);
+      ranWhileHeld = [...state.stepped, ...state.steppedAsync];
+    });
+    // The work owns the clock, so neither play nor step may add a frame to it.
+    expect(ranWhileHeld).toEqual([]);
+    expect(clock.isRunning).toBe(true);
+  });
+
   it("leaves a paused clock paused after whileStopped", async () => {
     const { clock } = makeClock();
     await clock.whileStopped(() => Promise.resolve());

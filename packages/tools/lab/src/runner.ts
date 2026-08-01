@@ -13,6 +13,8 @@ export {
 
 export type { LabClock } from "./runner/LabClock.js";
 
+export type { DriveCapture, DriveResult } from "./runner/runDrive.js";
+
 export type {
   RegistryProblem,
   ScenarioEntry,

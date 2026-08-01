@@ -1,6 +1,7 @@
 import type { AssetHandle, Scene } from "@yagejs/core";
 import type { LayerDef } from "@yagejs/renderer";
 import type { ControlSchema, ControlValues } from "./controls.js";
+import type { DriveContext } from "./drive.js";
 
 interface ScenarioCommon<C extends ControlSchema> {
   /**
@@ -18,6 +19,14 @@ interface ScenarioCommon<C extends ControlSchema> {
    * the scenario looks up with `scene.findByKey(...)`.
    */
   onMounted?: ((scene: Scene, controls: ControlValues<C>) => void) | undefined;
+  /**
+   * Plays the scenario and asserts on the result. The panel's Run button
+   * rebuilds the scene, stops the clock and executes it, so a run is a fixed
+   * sequence of frames rather than something wall-clock timing decides.
+   *
+   * Every call in it that advances a frame is async and has to be awaited.
+   */
+  drive?: ((ctx: DriveContext<C>) => Promise<void>) | undefined;
 }
 
 /** Mounts a `Scene` the game already has. */
@@ -80,6 +89,9 @@ export function describeScenarioProblem(value: unknown): string | undefined {
   }
   if (!hasScene && !hasSetup) {
     return "declare either `scene` or `setup`.";
+  }
+  if (def.drive !== undefined && typeof def.drive !== "function") {
+    return "`drive` must be a function.";
   }
   return undefined;
 }

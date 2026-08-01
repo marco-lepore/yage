@@ -29,6 +29,11 @@ import {
 import { LabPanel } from "./LabPanel.js";
 import { controlsFromUrl, readLabUrl, writeLabUrl } from "./labUrl.js";
 import { RebuildQueue } from "./RebuildQueue.js";
+import {
+  type DriveResult,
+  type ErasedDriveContext,
+  runDrive,
+} from "./runDrive.js";
 import { ScenarioScene } from "./ScenarioScene.js";
 import {
   buildRegistry,
@@ -75,6 +80,12 @@ export interface LabApi {
   show(id: string): Promise<void>;
   /** Sets one control and rebuilds the scene. */
   setControl(name: string, value: ControlValue): Promise<void>;
+  /**
+   * Rebuilds the scene and runs the current scenario's `drive`, with the clock
+   * control stopped for the duration. An assertion that fails is a result, not
+   * a rejection; rejects when there is no scenario or it declares no `drive`.
+   */
+  run(): Promise<DriveResult>;
 }
 
 /**
@@ -86,6 +97,7 @@ interface ErasedScenario {
   scene?: (values: Record<string, ControlValue>) => Scene;
   setup?: (scene: Scene, values: Record<string, ControlValue>) => void;
   onMounted?: (scene: Scene, values: Record<string, ControlValue>) => void;
+  drive?: (ctx: ErasedDriveContext) => Promise<void>;
   layers?: readonly LayerDef[] | undefined;
   preload?: readonly AssetHandle<unknown>[] | undefined;
 }
@@ -160,6 +172,7 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
         clock.setSpeed(speed);
         refresh();
       },
+      onRun: () => void settleRun(run()),
     },
   });
 
@@ -185,6 +198,8 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
   let writtenClockState = "";
   /** Until the engine has started, a loop that is not running is just boot. */
   let started = false;
+  /** A run owns the clock and the scene until it finishes. */
+  let driving = false;
 
   const clock = new LabClock(engine.inspector.time, {
     onError: (error: unknown) => {
@@ -245,6 +260,22 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
     );
   }
 
+  /**
+   * The Run button is fire-and-forget too. `run` has already written a failure
+   * to the panel, so only the console is left to tell.
+   */
+  function settleRun(work: Promise<DriveResult>): Promise<void> {
+    return work.then(
+      () => {
+        refresh();
+      },
+      (error: unknown) => {
+        console.error("[yage-lab]", error);
+        refresh();
+      },
+    );
+  }
+
   /** Tracked apart from a rebuild's, so one failing does not clear the other. */
   function settleStep(work: Promise<void>): Promise<void> {
     return work.then(
@@ -283,6 +314,18 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
     erase(entry.scenario).onMounted?.(next, values);
   }
 
+  /**
+   * A run drives one scene with one set of values, so replacing either while
+   * it is in flight would make its assertions read something else. The panel
+   * disables the widgets that reach here; this is the same rule for a caller
+   * holding `LabApi`.
+   */
+  function requireIdle(): void {
+    if (driving) {
+      throw new Error("A run is in flight. Wait for it to finish.");
+    }
+  }
+
   // Both are `async` so a bad argument rejects rather than throwing into
   // whatever called them — for the panel, that is a DOM event handler.
   /**
@@ -293,6 +336,7 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
     id: string,
     overrides?: Readonly<Record<string, string>>,
   ): Promise<void> {
+    requireIdle();
     const found = registry.find(id);
     if (!found) throw new Error(`No scenario with id "${id}".`);
     entry = found;
@@ -306,6 +350,7 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
   }
 
   async function setControl(name: string, value: ControlValue): Promise<void> {
+    requireIdle();
     const def = entry?.scenario.controls?.[name];
     if (!def) {
       throw new Error(
@@ -314,8 +359,51 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
     }
     values = { ...values, [name]: coerceControlValue(def, value) };
     panel.syncValues(values);
+    // The last run described the scene these values just replaced.
+    panel.setRun(undefined);
     scheduleUrlWrite();
     await queue.schedule(rebuild);
+  }
+
+  /**
+   * A run and the clock control are two writers on one clock, so the clock is
+   * stopped for the duration and its play state restored afterwards. The
+   * rebuild comes first: a previous run left the scene wherever it drove it to.
+   */
+  async function run(): Promise<DriveResult> {
+    const current = entry;
+    if (!current) throw new Error("No scenario is mounted.");
+    const drive = erase(current.scenario).drive;
+    if (!drive)
+      throw new Error(`Scenario "${current.id}" declares no drive().`);
+    if (driving) throw new Error("A run is already in flight.");
+
+    driving = true;
+    panel.setRun({ state: "running" });
+    try {
+      const result = await clock.whileStopped(async () => {
+        await queue.schedule(rebuild);
+        if (!scene) throw new Error("No scene is mounted.");
+        return runDrive(engine, scene, values, drive);
+      });
+      panel.setRun(
+        result.ok
+          ? {
+              state: "pass",
+              framesUsed: result.framesUsed,
+              durationMs: result.durationMs,
+            }
+          : { state: "fail", message: result.error },
+      );
+      return result;
+    } catch (error) {
+      // `runDrive` reports a failed run rather than throwing, so this is the
+      // rebuild or the clock — but it is still the run that did not happen.
+      panel.setRun({ state: "fail", message: describeError(error) });
+      throw error;
+    } finally {
+      driving = false;
+    }
   }
 
   let urlTimer: ReturnType<typeof setTimeout> | undefined;
@@ -355,6 +443,7 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
     scene: () => scene,
     show: (id) => show(id),
     setControl,
+    run,
   };
   (globalThis as Record<string, unknown>)[LAB_GLOBAL] = api;
 

@@ -1,16 +1,29 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { defineScenario } from "../grammar/scenario.js";
+import { control, type ControlSchema } from "../grammar/controls.js";
+import { type AnyScenario, defineScenario } from "../grammar/scenario.js";
 import { CLOCK_SPEEDS } from "./LabClock.js";
 import { LabPanel, type PanelCallbacks } from "./LabPanel.js";
 import type { ScenarioEntry } from "./ScenarioRegistry.js";
 
-const entry = (id: string, title: string): ScenarioEntry => ({
+/** `drive` is what the Run button keys off; `controls` is what a run locks. */
+const entry = (
+  id: string,
+  title: string,
+  extra?: Partial<Pick<AnyScenario, "controls" | "drive">>,
+): ScenarioEntry => ({
   id,
   path: `/src/${id}.scenario.ts`,
   title,
-  scenario: defineScenario({ title, setup: () => {} }),
+  scenario: defineScenario({ title, setup: () => {}, ...extra }),
 });
+
+const drivenEntry = (
+  id: string,
+  title: string,
+  controls?: ControlSchema,
+): ScenarioEntry =>
+  entry(id, title, { controls, drive: () => Promise.resolve() });
 
 const callbacks = (): PanelCallbacks => ({
   onSelect: vi.fn(),
@@ -18,6 +31,7 @@ const callbacks = (): PanelCallbacks => ({
   onPlayToggle: vi.fn(),
   onStep: vi.fn(),
   onSpeedChange: vi.fn(),
+  onRun: vi.fn(),
 });
 
 function mountPanel(scenarios: readonly ScenarioEntry[] = []) {
@@ -120,6 +134,83 @@ describe("the clock section", () => {
     panel.setClock({ running: false, speed: 1, frame: 7 });
     expect(find(".yage-lab__play").textContent).toBe("play");
     expect(find(".yage-lab__readout").textContent).toBe("paused · frame 7");
+  });
+});
+
+describe("the run button", () => {
+  const runButton = (panel: { root: HTMLElement }): HTMLButtonElement => {
+    const node = panel.root.querySelector<HTMLButtonElement>(
+      ".yage-lab__run-button",
+    );
+    if (!node) throw new Error("no run button");
+    return node;
+  };
+
+  it("stays disabled for a scenario that declares no drive", () => {
+    const { panel } = mountPanel();
+    expect(runButton(panel).disabled).toBe(true);
+    panel.setCurrent(entry("spin", "Basics / Spin"), {});
+    expect(runButton(panel).disabled).toBe(true);
+    expect(runButton(panel).title).toContain("no drive()");
+  });
+
+  it("offers the run and asks for it", () => {
+    const { panel, calls } = mountPanel();
+    panel.setCurrent(drivenEntry("hit", "Combat / Hit"), {});
+    expect(runButton(panel).disabled).toBe(false);
+    runButton(panel).click();
+    expect(calls.onRun).toHaveBeenCalledOnce();
+  });
+
+  it("takes no second click while a run is in flight", () => {
+    const { panel } = mountPanel();
+    panel.setCurrent(drivenEntry("hit", "Combat / Hit"), {});
+    panel.setRun({ state: "running" });
+    expect(runButton(panel).disabled).toBe(true);
+  });
+
+  it("locks out everything that would steer the clock or swap the scene", () => {
+    // With a control, so the widget a rebuild hangs off is in the sample too.
+    const tunable = drivenEntry("hit", "Combat / Hit", {
+      count: control.int(3, { min: 1, max: 9 }),
+    });
+    const { panel } = mountPanel([tunable, entry("spin", "Basics / Spin")]);
+    panel.setCurrent(tunable, { count: 3 });
+    const fields = (): (HTMLButtonElement | HTMLInputElement)[] => [
+      ...panel.root.querySelectorAll<HTMLButtonElement | HTMLInputElement>(
+        ".yage-lab__clock button, .yage-lab__clock input, .yage-lab__item, .yage-lab__control input",
+      ),
+    ];
+
+    panel.setRun({ state: "running" });
+    expect(fields().length).toBeGreaterThan(5);
+    expect(fields().every((field) => field.disabled)).toBe(true);
+
+    panel.setRun({ state: "pass", framesUsed: 4, durationMs: 1 });
+    expect(fields().some((field) => field.disabled)).toBe(false);
+  });
+
+  it("reads back a pass and a failure's message", () => {
+    const { panel, find } = mountPanel();
+    panel.setCurrent(drivenEntry("hit", "Combat / Hit"), {});
+
+    panel.setRun({ state: "pass", framesUsed: 16, durationMs: 12.4 });
+    expect(find(".yage-lab__run").textContent).toBe("pass · 16 frames · 12 ms");
+    expect(find(".yage-lab__run").className).toContain("--pass");
+
+    panel.setRun({ state: "fail", message: "expected 1 to be 2" });
+    expect(find(".yage-lab__run").textContent).toBe(
+      "fail — expected 1 to be 2",
+    );
+    expect(find(".yage-lab__run").className).toContain("--fail");
+  });
+
+  it("drops the result when another scenario is shown", () => {
+    const { panel, find } = mountPanel();
+    panel.setCurrent(drivenEntry("hit", "Combat / Hit"), {});
+    panel.setRun({ state: "pass", framesUsed: 1, durationMs: 1 });
+    panel.setCurrent(entry("spin", "Basics / Spin"), {});
+    expect(find(".yage-lab__run").textContent).toBe("");
   });
 });
 

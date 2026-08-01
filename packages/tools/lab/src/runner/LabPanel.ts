@@ -15,6 +15,8 @@ export interface PanelCallbacks {
   onPlayToggle(): void;
   onStep(frames: number): void;
   onSpeedChange(speed: number): void;
+  /** Run the current scenario's `drive`. */
+  onRun(): void;
 }
 
 export interface PanelOptions {
@@ -31,6 +33,16 @@ export interface ClockView {
   readonly speed: number;
   readonly frame: number;
 }
+
+/** Where a driven run got to. */
+export type RunView =
+  | { readonly state: "running" }
+  | {
+      readonly state: "pass";
+      readonly framesUsed: number;
+      readonly durationMs: number;
+    }
+  | { readonly state: "fail"; readonly message: string };
 
 const STYLE_ID = "yage-lab-style";
 
@@ -58,10 +70,15 @@ const CSS = `
 .yage-lab__title { margin: 0; font-size: 15px; color: #f8fafc; }
 .yage-lab__describe { margin: 0; color: #94a3b8; max-width: 60ch; }
 .yage-lab__canvas { background: #0f172a; border-radius: 6px; overflow: hidden; }
-.yage-lab__clock { display: flex; align-items: center; gap: 8px; }
+.yage-lab__clock { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .yage-lab__button { appearance: none; border: 1px solid #334155; border-radius: 4px; background: #1e293b; color: #e2e8f0; font: inherit; padding: 3px 10px; cursor: pointer; }
 .yage-lab__button:hover { background: #334155; }
+.yage-lab__button:disabled { opacity: .4; cursor: not-allowed; background: #1e293b; }
 .yage-lab__play { min-width: 62px; }
+.yage-lab__run-button { margin-left: 8px; }
+.yage-lab__run { color: #94a3b8; max-width: 70ch; word-break: break-word; }
+.yage-lab__run--pass { color: #86efac; }
+.yage-lab__run--fail { color: #fca5a5; }
 .yage-lab__clock input[type="range"] { width: 110px; }
 .yage-lab__readout { color: #94a3b8; font-variant-numeric: tabular-nums; }
 .yage-lab__errors { display: flex; flex-direction: column; gap: 6px; max-width: 70ch; }
@@ -102,6 +119,19 @@ function decimalsOf(step: number): number {
   return dot === -1 ? 0 : Math.min(text.length - dot - 1, 6);
 }
 
+function describeRun(view: RunView): string {
+  switch (view.state) {
+    case "running":
+      return "running…";
+    case "pass":
+      return `pass · ${view.framesUsed} frame${
+        view.framesUsed === 1 ? "" : "s"
+      } · ${Math.round(view.durationMs)} ms`;
+    case "fail":
+      return `fail — ${view.message}`;
+  }
+}
+
 /**
  * The lab's own chrome: the scenario list, the control widgets, and the element
  * the game's renderer mounts into.
@@ -119,9 +149,15 @@ export class LabPanel {
   private readonly playButton: HTMLButtonElement;
   private readonly speedInput: HTMLInputElement;
   private readonly readoutEl: HTMLElement;
+  private readonly clockBar: HTMLElement;
+  private readonly runButton: HTMLButtonElement;
+  private readonly runEl: HTMLElement;
   private readonly items = new Map<string, HTMLButtonElement>();
   private readonly widgets = new Map<string, (value: ControlValue) => void>();
   private readonly callbacks: PanelCallbacks;
+  /** Whether the current scenario declares a `drive`. */
+  private driveable = false;
+  private runView: RunView | undefined;
 
   constructor(host: HTMLElement, opts: PanelOptions) {
     this.callbacks = opts.callbacks;
@@ -156,8 +192,13 @@ export class LabPanel {
     });
     this.speedInput = this.renderSpeed();
     this.readoutEl = el("span", "yage-lab__readout");
-    const clockBar = el("div", "yage-lab__clock");
-    clockBar.append(
+    this.runButton = this.button("run", "yage-lab__run-button", () => {
+      this.callbacks.onRun();
+    });
+    this.runEl = el("span", "yage-lab__run");
+    this.runEl.setAttribute("role", "status");
+    this.clockBar = el("div", "yage-lab__clock");
+    this.clockBar.append(
       this.playButton,
       this.button("+1", undefined, () => {
         this.callbacks.onStep(1);
@@ -167,6 +208,7 @@ export class LabPanel {
       }),
       this.speedInput,
       this.readoutEl,
+      this.runButton,
     );
 
     stage.append(
@@ -174,13 +216,15 @@ export class LabPanel {
       this.describeEl,
       this.errorsBox,
       this.container,
-      clockBar,
+      this.clockBar,
+      this.runEl,
     );
 
     this.root.append(sidebar, stage);
     host.append(this.root);
 
     this.renderList(opts.scenarios);
+    this.applyRun();
     if (opts.scenarios.length === 0) this.showEmpty();
   }
 
@@ -192,6 +236,40 @@ export class LabPanel {
     this.titleEl.textContent = entry.title;
     this.describeEl.textContent = entry.scenario.describe ?? "";
     this.renderControls(entry.scenario.controls, values);
+    this.driveable = typeof entry.scenario.drive === "function";
+    // The result belongs to the scenario that produced it.
+    this.setRun(undefined);
+  }
+
+  /** Shows where a run got to. `undefined` clears the line. */
+  setRun(view: RunView | undefined): void {
+    this.runView = view;
+    this.applyRun();
+  }
+
+  /**
+   * Writes the run's state into the button, the line, and everything a run has
+   * to be the only writer of — the clock bar, the controls and the scenario
+   * list all steer the clock or replace the scene under a run in flight.
+   */
+  private applyRun(): void {
+    const running = this.runView?.state === "running";
+    for (const box of [this.clockBar, this.controlsBox, this.list]) {
+      const fields = box.querySelectorAll<
+        HTMLButtonElement | HTMLInputElement | HTMLSelectElement
+      >("button, input, select");
+      for (const field of fields) field.disabled = running;
+    }
+    this.runButton.disabled = running || !this.driveable;
+    this.runButton.title = this.driveable
+      ? "Run this scenario's drive()"
+      : "This scenario declares no drive()";
+    this.runEl.className =
+      this.runView === undefined
+        ? "yage-lab__run"
+        : `yage-lab__run yage-lab__run--${this.runView.state}`;
+    this.runEl.textContent =
+      this.runView === undefined ? "" : describeRun(this.runView);
   }
 
   /** Replaces the errors section. An empty list leaves nothing on screen. */

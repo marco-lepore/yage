@@ -61,7 +61,11 @@ export class LabClock {
   private carry = 0;
   private last = 0;
   private running = false;
-  private stepping = false;
+  /**
+   * Set while a step is draining or a driven run is using the clock. Whoever
+   * holds it issues the only frames until it resolves.
+   */
+  private busy = false;
   private rate = 1;
 
   constructor(
@@ -106,9 +110,9 @@ export class LabClock {
     this.ensureFrozen();
   }
 
-  /** Does nothing while a `step` is draining, which owns the clock until it resolves. */
+  /** Does nothing while a step or a driven run owns the clock. */
   play(): void {
-    if (this.running || this.stepping) return;
+    if (this.running || this.busy) return;
     this.ensureFrozen();
     this.running = true;
     this.last = performance.now();
@@ -128,29 +132,34 @@ export class LabClock {
    * starts asynchronously lands after the result is read. It yields a real
    * macrotask between frames, which is why `play` waits for it: both writing
    * the clock at once would issue two sets of frames.
+   *
+   * Does nothing while something else owns the clock, for the same reason.
    */
   async step(frames = 1): Promise<void> {
+    if (this.busy) return;
     this.pause();
     this.ensureFrozen();
-    this.stepping = true;
+    this.busy = true;
     try {
       await this.time.stepAsync(frames);
     } finally {
-      this.stepping = false;
+      this.busy = false;
     }
   }
 
   /**
-   * Runs `work` with the clock stopped, then restores the play state it had.
-   * A driven run issues its own frames, so it and this clock would otherwise
-   * be two writers on one clock.
+   * Runs `work` with the clock stopped and held, then restores the play state
+   * it had. A driven run issues its own frames, so `play` and `step` stand
+   * down for the duration rather than issuing a second set.
    */
   async whileStopped<T>(work: () => Promise<T>): Promise<T> {
     const wasRunning = this.running;
     this.pause();
+    this.busy = true;
     try {
       return await work();
     } finally {
+      this.busy = false;
       if (wasRunning) this.play();
     }
   }

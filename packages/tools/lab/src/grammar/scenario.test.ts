@@ -34,9 +34,9 @@ describe("defineScenario", () => {
   });
 
   it("rejects a definition with neither scene nor setup", () => {
-    expect(() =>
-      defineScenario({ title: "Broken" } as never),
-    ).toThrow(/either `scene` or `setup`/);
+    expect(() => defineScenario({ title: "Broken" } as never)).toThrow(
+      /either `scene` or `setup`/,
+    );
   });
 
   it("rejects a definition with both", () => {
@@ -49,10 +49,34 @@ describe("defineScenario", () => {
     ).toThrow(/not both/);
   });
 
-  it("rejects a blank title", () => {
+  it("types the drive context's controls from the schema", () => {
+    const def = defineScenario({
+      title: "Combat / Slime takes a hit",
+      controls: { hp: control.int(100) },
+      setup: noopSetup,
+      drive(ctx) {
+        const hp: number = ctx.controls.hp;
+        ctx.expect(hp).toBeGreaterThan(0);
+        return Promise.resolve();
+      },
+    });
+    expect(def.drive).toBeTypeOf("function");
+  });
+
+  it("rejects a drive that is not a function", () => {
     expect(() =>
-      defineScenario({ title: "   ", setup: noopSetup }),
-    ).toThrow(/title/);
+      defineScenario({
+        title: "Broken",
+        setup: noopSetup,
+        drive: "later" as never,
+      }),
+    ).toThrow(/`drive` must be a function/);
+  });
+
+  it("rejects a blank title", () => {
+    expect(() => defineScenario({ title: "   ", setup: noopSetup })).toThrow(
+      /title/,
+    );
   });
 });
 

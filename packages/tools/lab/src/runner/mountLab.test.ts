@@ -79,12 +79,19 @@ function stubEngine() {
   return { state, engine: engine as unknown as Engine };
 }
 
+/** Frames the driven scenario's `drive` issues. */
+const DRIVE_FRAMES = 4;
+
 const SCENARIOS = {
   "/src/drop.scenario.ts": {
     default: defineScenario({
       title: "Physics / Ball drop",
       controls: { count: control.int(3, { min: 1, max: 12 }) },
       setup: () => {},
+      async drive({ controls, expect: assert, step }) {
+        await step(DRIVE_FRAMES);
+        assert(controls.count).toBeGreaterThan(0);
+      },
     }),
   },
   "/src/spin.scenario.ts": {
@@ -210,5 +217,89 @@ describe("mount", () => {
     const { started } = boot("");
     expect((globalThis as Record<string, unknown>)[LAB_GLOBAL]).toBeDefined();
     await started;
+  });
+});
+
+describe("run", () => {
+  const runLine = (): string =>
+    document.querySelector(".yage-lab__run")?.textContent ?? "";
+
+  it("rebuilds the scene, runs the drive and reports what it took", async () => {
+    const { state, started } = boot("?scenario=drop");
+    const api = await started;
+    const mountsBefore = state.mounted.length;
+
+    const result = await api.run();
+
+    expect(result.ok).toBe(true);
+    expect(result.framesUsed).toBe(DRIVE_FRAMES);
+    // A previous run leaves the scene wherever it drove it to.
+    expect(state.mounted.length).toBe(mountsBefore + 1);
+    expect(runLine()).toContain(`pass · ${DRIVE_FRAMES} frames`);
+  });
+
+  it("leaves the clock running afterwards when it was running before", async () => {
+    const { started } = boot("?scenario=drop");
+    const api = await started;
+    expect(api.clock.isRunning).toBe(true);
+    await api.run();
+    expect(api.clock.isRunning).toBe(true);
+  });
+
+  it("rejects for a scenario that declares no drive", async () => {
+    const { started } = boot("?scenario=spin");
+    const api = await started;
+    await expect(api.run()).rejects.toThrow(/declares no drive/);
+    expect(runLine()).toBe("");
+  });
+
+  it("drops a result the controls no longer describe", async () => {
+    const { started } = boot("?scenario=drop");
+    const api = await started;
+    await api.run();
+    expect(runLine()).not.toBe("");
+    await api.setControl("count", 5);
+    expect(runLine()).toBe("");
+  });
+
+  it("refuses to swap the scene or the values under a run in flight", async () => {
+    const { started } = boot("?scenario=drop");
+    const api = await started;
+
+    // All asked for in the turn the run starts in: the stub engine settles a
+    // run in a few microtasks, so anything awaited first would let it finish.
+    const running = api.run();
+    const second = api.run();
+    const tuned = api.setControl("count", 5);
+    const switched = api.show("spin");
+
+    await expect(second).rejects.toThrow(/already in flight/);
+    // A control change would rebuild the scene the drive is holding, and a
+    // scenario switch would land this run's result under another scenario.
+    await expect(tuned).rejects.toThrow(/run is in flight/);
+    await expect(switched).rejects.toThrow(/run is in flight/);
+
+    const result = await running;
+    expect(result.framesUsed).toBe(DRIVE_FRAMES);
+    expect(api.controls()).toEqual({ count: 3 });
+    await api.setControl("count", 5);
+    expect(api.controls()).toEqual({ count: 5 });
+  });
+
+  it("keeps the clock's own frames out of a run", async () => {
+    const { state, started } = boot("?scenario=drop");
+    const api = await started;
+    const before = state.frame;
+
+    const running = api.run();
+    api.clock.play();
+    await api.clock.step(10);
+
+    const result = await running;
+    expect(result.framesUsed).toBe(DRIVE_FRAMES);
+    // Counted on the engine rather than on the result: a frame the clock
+    // issues before the drive starts is invisible to `framesUsed`, and it
+    // still means two writers.
+    expect(state.frame - before).toBe(DRIVE_FRAMES);
   });
 });
