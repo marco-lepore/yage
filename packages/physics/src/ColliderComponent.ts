@@ -15,7 +15,12 @@ import type {
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { PhysicsWorldKey } from "./types.js";
-import type { ColliderConfig, CollisionEvent, TriggerEvent } from "./types.js";
+import type {
+  ColliderConfig,
+  ColliderShape,
+  CollisionEvent,
+  TriggerEvent,
+} from "./types.js";
 
 /** Serialized snapshot of a ColliderComponent. */
 export interface ColliderData {
@@ -165,6 +170,40 @@ export class ColliderComponent extends Component {
     if (collider) {
       collider.setSensor(sensor);
     }
+  }
+
+  /**
+   * Replace the collider's shape in place, in pixels like the rest of
+   * `ColliderConfig`. The Rapier collider, its body attachment, and every
+   * `onCollision`/`onTrigger` subscription survive the swap, so a crouch or
+   * slide can shrink the collider and restore it without removing and
+   * re-adding the component.
+   *
+   * The body keeps the mass it already had. A collider is a collision proxy,
+   * not a measure of how much matter is there, so a character that crouches
+   * takes the same knockback from `applyImpulse` as one standing up. Pass
+   * `recomputeMass: true` when the new shape means genuinely more or less
+   * matter, and the body's mass should come back from density × the new
+   * shape.
+   *
+   * Shrinking never pushes anything out of the way, and growing can leave the
+   * collider overlapping geometry it clears at the smaller size. Check
+   * clearance (`PhysicsWorld.queryShape` at the target size) before growing
+   * back.
+   *
+   * Callable before the component is added — the updated config is applied at
+   * collider creation. A pre-add call cannot recompute mass: the body takes
+   * its mass from the new shape at creation anyway.
+   */
+  setShape(shape: ColliderShape, options?: { recomputeMass?: boolean }): void {
+    // serialize() and the shape-dependent dev warnings read config.shape.
+    this.config.shape = shape;
+    if (this._colliderHandle === -1) return;
+    this.physicsWorld.setColliderShape(
+      this._colliderHandle,
+      this.config,
+      options,
+    );
   }
 
   /** Serialize the component into a plain data object. */

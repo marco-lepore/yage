@@ -313,6 +313,59 @@ const grounded = world.raycast(
 ) !== null;
 ```
 
+## Sweeping a Shape
+
+A raycast is infinitely thin, so it slips past anything narrower than the gap
+between rays. `castShape` sweeps a whole shape along a direction and reports
+the first thing it would hit:
+
+```typescript
+const hit = world.castShape(
+  { type: "box", width: 24, height: 40 },  // the shape to sweep
+  this.transform.worldPosition,            // where it starts, in pixels
+  { x: 0, y: 1 },                          // direction — any non-zero vector
+  120,                                     // how far to sweep, in pixels
+  { excludeEntity: this.entity },          // skip the mover's own colliders
+);
+
+if (hit) {
+  hit.entity;    // Entity that was hit
+  hit.distance;  // how far the shape travelled before contact, in pixels
+  hit.point;     // Vec2 — world contact point
+  hit.normal;    // Vec2 — surface normal on the entity that was hit
+}
+```
+
+The result has the same shape as a raycast hit. A shape that already overlaps
+something where it starts reports that hit at `distance: 0`.
+
+Use this to test a move before committing to it. A fast-falling player can land
+on the floor it would otherwise pass through in one frame:
+
+```typescript
+const travel = this.rb.velocityY * dt;
+if (travel > 0) {                              // only while falling
+  const pos = this.transform.worldPosition;
+  const ground = world.castShape(
+    this.footShape,
+    pos,
+    { x: 0, y: 1 },
+    travel,
+    { excludeEntity: this.entity },
+  );
+
+  if (ground) {
+    // setPosition on the body, not the Transform: physics writes the
+    // Transform back every step for dynamic bodies.
+    this.rb.setPosition(pos.x, pos.y + ground.distance);
+    this.rb.setVelocityY(0);
+  }
+}
+```
+
+`queryShape` answers a different question: what a shape touches where it already
+stands. It misses anything the shape would pass through on the way.
+
 ## Gravity Control
 
 Change gravity at runtime via the `PhysicsWorld`:
@@ -324,7 +377,34 @@ world.setGravity(0, -980);  // flip gravity upward
 world.setGravity(0, 0);     // zero gravity
 ```
 
-Per-body gravity scaling is set via `gravityScale` in `RigidBodyConfig`.
+A single body can fall differently from everything else, and can change how it
+falls at any time:
+
+```typescript
+rb.setGravityScale(0);     // floats — no gravity on this body
+rb.setGravityScale(2.5);   // falls two and a half times as fast
+rb.setGravityScale(1);     // back to scene gravity
+rb.gravityScale;           // read the current multiplier
+```
+
+This is how platformers get variable jump height and a fast-fall. Hold the jump
+button and the player rises under light gravity; release it, or press down, and
+a heavier multiplier pulls them back down — all without touching gravity for
+any other body:
+
+```typescript
+override update(): void {
+  const rising = this.rb.velocityY < 0;
+  const holdingJump = this.input.isPressed("jump");
+
+  if (rising && holdingJump) this.rb.setGravityScale(0.6);   // floaty ascent
+  else if (rising) this.rb.setGravityScale(2.0);             // cut the jump short
+  else this.rb.setGravityScale(1.6);                         // snappy fall
+}
+```
+
+`gravityScale` can also be set once in `RigidBodyConfig` when the body is
+created.
 
 ## Runtime Body Configuration
 
@@ -334,6 +414,60 @@ Lock or unlock axes at runtime:
 rb.setEnabledTranslations(true, false);  // lock Y axis
 rb.lockRotations(true);                   // lock rotation
 ```
+
+## Resizing a Collider
+
+`setShape` replaces a collider's shape in place. The Rapier collider, its
+attachment to the body, and every collision or trigger handler you registered
+all survive the swap:
+
+```typescript
+collider.setShape({ type: "box", width: 24, height: 24 });  // crouch
+collider.setShape({ type: "box", width: 24, height: 48 });  // stand
+```
+
+The body keeps the mass it already had. A collider describes where a body
+collides, not how much matter is in it, so a character who crouches takes the
+same knockback from `applyImpulse` as one standing upright. When the shape
+change does mean more or less matter — an object that grows, or one that loses
+a chunk — ask for the mass back from density and the new shape:
+
+```typescript
+collider.setShape({ type: "circle", radius: 48 }, { recomputeMass: true });
+```
+
+Shrinking is always safe. Growing is not: nothing is pushed out of the way, so
+a collider can end up overlapping a ceiling it did not touch while crouched.
+Check for clearance first.
+
+A collider is centred on its body's origin unless you give it an `offset`, so a
+character who grows upward while keeping their feet planted also has to move up
+by half the height they gained. Test the standing box where it will actually
+sit, not where the crouched one sits:
+
+```typescript
+const CROUCH_HEIGHT = 24;
+const STAND_HEIGHT = 48;
+const rise = (STAND_HEIGHT - CROUCH_HEIGHT) / 2;
+
+const standing = { type: "box", width: 24, height: STAND_HEIGHT } as const;
+const pos = this.transform.worldPosition;
+
+const blocked = world.queryShape(
+  standing,
+  { x: pos.x, y: pos.y - rise },
+  { excludeEntity: this.entity },
+).length > 0;
+
+if (!blocked) {
+  collider.setShape(standing);
+  this.rb.setPosition(pos.x, pos.y - rise);
+}
+```
+
+Testing the standing box at the crouched position instead would report the
+floor as a blocker every time the character is grounded, and they could never
+stand up.
 
 ## Continuous Collision Detection
 

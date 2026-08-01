@@ -263,6 +263,28 @@ export class RigidBodyComponent extends Component {
     return body.mass();
   }
 
+  /**
+   * Multiply gravity for this body: `1` is the scene's gravity, `0` removes
+   * it, larger values fall faster. This is the per-body control a platformer
+   * needs for variable jump height and fast-fall, without moving scene
+   * gravity for every other body.
+   *
+   * Callable before the component is added — the value is applied when the
+   * Rapier body is created.
+   */
+  setGravityScale(scale: number): void {
+    // serialize() reads config.gravityScale, so it must track the live body.
+    this.config.gravityScale = scale;
+    if (this._bodyHandle === -1) return;
+    this.physicsWorld.getBody(this._bodyHandle)?.setGravityScale(scale, true);
+  }
+
+  /** Gravity multiplier for this body. `1` unless set. */
+  get gravityScale(): number {
+    if (this._bodyHandle === -1) return this.config.gravityScale ?? 1;
+    return this.physicsWorld.getBody(this._bodyHandle)?.gravityScale() ?? 1;
+  }
+
   /** Set which translation axes are enabled at runtime. */
   setEnabledTranslations(enableX: boolean, enableY: boolean): void {
     const body = this.physicsWorld.getBody(this._bodyHandle);
