@@ -50,6 +50,41 @@ export async function loadProjectConfig(
 
 interface ProjectManifest {
   "yage-lab"?: { scenarios?: unknown };
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+}
+
+/** Reads the project's package.json, or `undefined` when it has none. */
+function readManifest(file: string): ProjectManifest | undefined {
+  if (!existsSync(file)) return undefined;
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as ProjectManifest;
+  } catch (error) {
+    throw new Error(
+      `Failed to read ${file}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+}
+
+/**
+ * Every `@yagejs/*` package the project declares, from any dependency field —
+ * a game that pulls the engine in as a peer or a dev dependency still runs
+ * against it. `undefined` when the project has no package.json.
+ */
+export function readEngineDependencies(
+  dir: string,
+): ReadonlySet<string> | undefined {
+  const file = path.join(dir, "package.json");
+  const manifest = readManifest(file);
+  if (!manifest) return undefined;
+  const names = [
+    ...Object.keys(manifest.dependencies ?? {}),
+    ...Object.keys(manifest.devDependencies ?? {}),
+    ...Object.keys(manifest.peerDependencies ?? {}),
+  ];
+  return new Set(names.filter((name) => name.startsWith("@yagejs/")));
 }
 
 /**
@@ -60,16 +95,8 @@ interface ProjectManifest {
  */
 export function readProjectScenarios(dir: string): readonly string[] | undefined {
   const file = path.join(dir, "package.json");
-  if (!existsSync(file)) return undefined;
-  let manifest: ProjectManifest;
-  try {
-    manifest = JSON.parse(readFileSync(file, "utf8")) as ProjectManifest;
-  } catch (error) {
-    throw new Error(
-      `Failed to read ${file}: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error },
-    );
-  }
+  const manifest = readManifest(file);
+  if (!manifest) return undefined;
   const declared = manifest["yage-lab"]?.scenarios;
   if (declared === undefined) return undefined;
   if (

@@ -9,6 +9,12 @@ describe("parseArgs", () => {
   it("takes the command", () => {
     expect(parseArgs(["build"]).command).toBe("build");
     expect(parseArgs(["dev"]).command).toBe("dev");
+    expect(parseArgs(["init"]).command).toBe("init");
+  });
+
+  it("takes --force on init", () => {
+    expect(parseArgs(["init", "--force"]).force).toBe(true);
+    expect(parseArgs(["init"]).force).toBeUndefined();
   });
 
   it("reads a port in both forms", () => {
@@ -44,6 +50,11 @@ describe("parseArgs", () => {
     expect(parseArgs(["build", "--port", "6000"]).error).toMatch(/not an option/);
     expect(parseArgs(["build", "--no-open"]).error).toMatch(/not an option/);
     expect(parseArgs(["dev", "--out-dir", "site"]).error).toMatch(/not an option/);
+    expect(parseArgs(["dev", "--force"]).error).toMatch(/not an option/);
+    expect(parseArgs(["init", "--port", "6000"]).error).toMatch(/not an option/);
+    expect(parseArgs(["init", "--scenarios", "a"]).error).toMatch(
+      /not an option/,
+    );
   });
 
   it("rejects what it does not know, so a typo does not run the defaults", () => {

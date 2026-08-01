@@ -9,6 +9,7 @@ import {
 } from "./cli/argv.js";
 import { runBuild } from "./cli/build.js";
 import { runDev } from "./cli/dev.js";
+import { runInit } from "./cli/init.js";
 
 async function main(): Promise<number> {
   const parsed = parseArgs(process.argv.slice(2));
@@ -28,7 +29,9 @@ async function main(): Promise<number> {
 
   const cwd = process.cwd();
   try {
-    if (parsed.command === "build") {
+    if (parsed.command === "init") {
+      await runInit({ cwd, force: parsed.force ?? false });
+    } else if (parsed.command === "build") {
       await runBuild({
         cwd,
         outDir: parsed.outDir ?? DEFAULT_OUT_DIR,

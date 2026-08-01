@@ -31,7 +31,7 @@ export const LAB_ENTRY_ID = "/@yage-lab/entry.js";
 export const LAB_BUILD_PAGE = ".yage-lab.html";
 
 /** Probed in order when the harness path is not given. */
-const HARNESS_CANDIDATES = [
+export const HARNESS_CANDIDATES = [
   "lab/harness.ts",
   "lab/harness.mts",
   "lab/harness.js",
@@ -77,9 +77,8 @@ function findHarness(root: string, declared: string | undefined): string {
     if (existsSync(file)) return toRootUrl(root, file);
   }
   throw new Error(
-    `No lab harness found. Create ${path.join(root, HARNESS_CANDIDATES[0])}, ` +
-      "exporting `export default defineHarness({ engine, plugins })` from " +
-      "@yagejs-tools/lab.",
+    `No lab harness found. Run \`yage-lab init\` to write ` +
+      `${path.join(root, HARNESS_CANDIDATES[0])}.`,
   );
 }
 
