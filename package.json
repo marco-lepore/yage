@@ -12,6 +12,7 @@
   "workspaces": [
     "packages/*",
     "packages/addons/*",
+    "packages/tools/*",
     "examples",
     "e2e",
     "docs"
