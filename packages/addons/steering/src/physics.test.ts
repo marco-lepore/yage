@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { createMockEntity, Transform, Vec2 } from "@yagejs/core";
-import type { PhysicsWorld, RaycastHit, RigidBodyComponent } from "@yagejs/physics";
+import type { BodyType, PhysicsWorld, RaycastHit } from "@yagejs/physics";
 
 // The value import of RigidBodyComponent drags in Rapier's WASM package,
 // which node/vitest can't resolve. Nothing here constructs a PhysicsWorld,
 // so an empty module suffices.
 vi.mock("@dimforge/rapier2d", () => ({ default: {} }));
+import { PhysicsWorldKey, RigidBodyComponent } from "@yagejs/physics";
 import type { ImpulseBody, VelocityBody } from "./SteeringAgent.js";
-import { avoidColliders, physicsNeighbors } from "./physics.js";
+import { PhysicsSteeringAgent, avoidColliders, physicsNeighbors } from "./physics.js";
+import { seek } from "./core/behaviors.js";
 import type { AgentState } from "./core/types.js";
 
 // Pins the structural contract: `body` accepts a RigidBodyComponent as-is.
@@ -122,6 +124,84 @@ describe("avoidColliders", () => {
     for (const call of raycast.mock.calls) {
       expect((call as unknown[])[3]).toEqual({ excludeEntity: entity });
     }
+  });
+});
+
+// A real RigidBodyComponent attaches against a stub world: every hook guards
+// on getBody() returning undefined, so two methods suffice.
+function physicsEntity(type: BodyType) {
+  const { entity, scene } = createMockEntity("steering-host");
+  scene._registerScoped(PhysicsWorldKey, {
+    createBody: () => 1,
+    getBody: () => undefined,
+  } as unknown as PhysicsWorld);
+  entity.add(new Transform({ position: Vec2.ZERO }));
+  entity.add(new RigidBodyComponent({ type }));
+  return { entity };
+}
+
+describe("PhysicsSteeringAgent", () => {
+  it("kinematic body: integrates the Transform in fixedUpdate, no body writes", () => {
+    const { entity } = physicsEntity("kinematic");
+    const setVelocity = vi.spyOn(entity.get(RigidBodyComponent), "setVelocity");
+    const agent = new PhysicsSteeringAgent({
+      maxSpeed: 60,
+      maxAcceleration: Infinity,
+      behaviors: [seek(new Vec2(1000, 0))],
+    });
+    entity.add(agent);
+    const transform = entity.get(Transform);
+
+    agent.update(1 / 60);
+    expect(transform.position.x).toBe(0); // steers in fixedUpdate, not update
+
+    agent.fixedUpdate(1 / 60);
+    expect(transform.position.x).toBeCloseTo(1, 5); // 60 px/s * 1/60 s
+    expect(setVelocity).not.toHaveBeenCalled();
+  });
+
+  it("kinematic body with an explicit tick keeps it", () => {
+    const { entity } = physicsEntity("kinematic");
+    const agent = new PhysicsSteeringAgent({
+      maxSpeed: 60,
+      maxAcceleration: Infinity,
+      behaviors: [seek(new Vec2(1000, 0))],
+      tick: "update",
+    });
+    entity.add(agent);
+
+    agent.update(1 / 60);
+    expect(entity.get(Transform).position.x).toBeCloseTo(1, 5);
+  });
+
+  it("kinematic body with an explicit drive throws at add", () => {
+    const { entity } = physicsEntity("kinematic");
+    expect(() =>
+      entity.add(new PhysicsSteeringAgent({ maxSpeed: 60, drive: "velocity" })),
+    ).toThrow(/kinematic/);
+  });
+
+  it("static body throws at add", () => {
+    const { entity } = physicsEntity("static");
+    expect(() => entity.add(new PhysicsSteeringAgent({ maxSpeed: 60 }))).toThrow(
+      /static/,
+    );
+  });
+
+  it("dynamic body keeps impulse drive against the body", () => {
+    const { entity } = physicsEntity("dynamic");
+    const applyImpulse = vi.spyOn(entity.get(RigidBodyComponent), "applyImpulse");
+    const agent = new PhysicsSteeringAgent({
+      maxSpeed: 60,
+      behaviors: [seek(new Vec2(1000, 0))],
+    });
+    entity.add(agent);
+    const transform = entity.get(Transform);
+
+    agent.update(1 / 60);
+
+    expect(applyImpulse).toHaveBeenCalled();
+    expect(transform.position.x).toBe(0); // no Transform integration
   });
 });
 

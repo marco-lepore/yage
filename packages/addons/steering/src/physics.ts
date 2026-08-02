@@ -25,16 +25,47 @@ export type PhysicsSteeringAgentOptions = Omit<SteeringAgentOptions, "body" | "a
 
 /**
  * `SteeringAgent` that drives the entity's own `RigidBodyComponent` — mount
- * it next to a body and collider, nothing to wire. Defaults to impulse
- * drive, so a dynamic body pushes and is pushed like any other: knockback
- * persists, contacts deflect it, and steering corrects at `maxAcceleration`
- * (default `4 × maxSpeed`). Pass `drive: "velocity"` for full-authority
- * movers (e.g. kinematic velocity-based bodies).
+ * it next to a body and collider, nothing to wire. On a dynamic body it
+ * defaults to impulse drive, so the agent pushes and is pushed like any
+ * other: knockback persists, contacts deflect it, and steering corrects at
+ * `maxAcceleration` (default `4 × maxSpeed`); pass `drive: "velocity"` to
+ * write the commanded velocity every frame instead (full authority). On a
+ * kinematic body it integrates the Transform in `fixedUpdate` — the pose
+ * the physics system syncs to the body each step — so the agent pushes
+ * dynamic bodies and is never pushed back; `drive` does not apply there
+ * (kinematic bodies ignore `setVelocity`/`applyImpulse`) and throws.
  */
 export class PhysicsSteeringAgent extends SteeringAgent {
+  private readonly explicitDrive: "velocity" | "impulse" | undefined;
+  private readonly explicitTick: "update" | "fixedUpdate" | undefined;
+
   constructor(options: PhysicsSteeringAgentOptions) {
     super({ ...options, drive: options.drive ?? "impulse" });
+    this.explicitDrive = options.drive;
+    this.explicitTick = options.tick;
     this.body = this.sibling(RigidBodyComponent);
+  }
+
+  onAdd(): void {
+    const rb = this.entity.get(RigidBodyComponent);
+    if (rb.type === "static") {
+      throw new Error(
+        "PhysicsSteeringAgent: a static body cannot move — use a dynamic or kinematic body",
+      );
+    }
+    if (rb.type === "kinematic") {
+      if (this.explicitDrive !== undefined) {
+        throw new Error(
+          "PhysicsSteeringAgent: kinematic bodies ignore setVelocity/applyImpulse, so `drive` does not apply — remove it; the agent integrates the Transform instead",
+        );
+      }
+      // Kinematic bodies follow the Transform (the physics system syncs it
+      // before each step), so the output is Transform integration — in
+      // fixedUpdate, so every write becomes exactly one step target.
+      this.body = undefined;
+      this.drive = "velocity";
+      if (this.explicitTick === undefined) this.tick = "fixedUpdate";
+    }
   }
 }
 
