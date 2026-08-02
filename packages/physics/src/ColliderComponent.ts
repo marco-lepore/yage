@@ -92,7 +92,9 @@ export class ColliderComponent extends Component {
    * one-way.
    */
   get _oneWayFilterActive(): boolean {
-    return this._contactFilter !== null && this._contactFilter === this._oneWayFilter;
+    return (
+      this._contactFilter !== null && this._contactFilter === this._oneWayFilter
+    );
   }
 
   onAdd(): void {

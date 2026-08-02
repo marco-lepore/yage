@@ -48,7 +48,8 @@ export class PhysicsDebugContributor implements DebugContributor {
         // `config.oneWay` installed — a custom filter set over the preset
         // changes the behavior, so it must not keep the one-way look.
         const oneWayActive =
-          component?._oneWayFilterActive === true && config?.oneWay !== undefined;
+          component?._oneWayFilterActive === true &&
+          config?.oneWay !== undefined;
         const color = oneWayActive
           ? COLOR_ONE_WAY
           : this.getColliderColor(collider);
@@ -141,10 +142,15 @@ export class PhysicsDebugContributor implements DebugContributor {
     g.moveTo(0, 0);
     g.lineTo(tipX, tipY);
     g.moveTo(tipX, tipY);
-    g.lineTo(tipX + (px - dx) * headSize * 0.5, tipY + (py - dy) * headSize * 0.5);
+    g.lineTo(
+      tipX + (px - dx) * headSize * 0.5,
+      tipY + (py - dy) * headSize * 0.5,
+    );
     g.moveTo(tipX, tipY);
-    g.lineTo(tipX + (-px - dx) * headSize * 0.5, tipY + (-py - dy) * headSize * 0.5)
-      .stroke(strokeStyle);
+    g.lineTo(
+      tipX + (-px - dx) * headSize * 0.5,
+      tipY + (-py - dy) * headSize * 0.5,
+    ).stroke(strokeStyle);
   }
 
   private getColliderColor(collider: {

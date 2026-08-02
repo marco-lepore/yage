@@ -609,7 +609,9 @@ export class PhysicsWorld {
    */
   _forgetColliderContacts(handle: number): void {
     for (const filteredHandle of this._contactFiltered) {
-      this._colliderComponents.get(filteredHandle)?._oneWayLanded?.delete(handle);
+      this._colliderComponents
+        .get(filteredHandle)
+        ?._oneWayLanded?.delete(handle);
     }
   }
 

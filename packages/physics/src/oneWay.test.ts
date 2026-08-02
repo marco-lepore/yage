@@ -108,16 +108,12 @@ describe("createOneWayFilter", () => {
   it("stays solid for a landed rider regardless of the position rule", () => {
     // Rider handle 7 has a live contact with the platform: even a position
     // well past the face (a deep first impact mid-resolution) stays solid.
-    const filter = createOneWayFilter(
-      fakeSelf(PLATFORM, new Set([7])),
-    );
+    const filter = createOneWayFilter(fakeSelf(PLATFORM, new Set([7])));
     expect(filter(fakeCandidate({ otherY: 0 }))).toBe(true);
   });
 
   it("drop-through overrides a landed contact", () => {
-    const filter = createOneWayFilter(
-      fakeSelf(PLATFORM, new Set([7])),
-    );
+    const filter = createOneWayFilter(fakeSelf(PLATFORM, new Set([7])));
     expect(filter(fakeCandidate({ otherY: -15, otherDropping: true }))).toBe(
       false,
     );
