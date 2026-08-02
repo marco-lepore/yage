@@ -177,13 +177,17 @@ describe("SystemScheduler", () => {
       expect(sys.received).toBe(ctx);
     });
 
-    it("a system registered by _start is not registered again", () => {
+    it("registration hooks go through the error boundary when set", () => {
       const scheduler = new SystemScheduler();
+      const wrapSystem = vi.fn((_system: System, fn: () => void) => fn());
+      scheduler.setErrorBoundary({ wrapSystem } as unknown as ErrorBoundary);
+      scheduler._start(ctx);
       const log: string[] = [];
       const sys = new LifecycleSystem(log, "a");
       scheduler.add(sys);
-      scheduler._start(ctx);
-      expect(log).toEqual(["+a"]);
+      scheduler.remove(sys);
+      expect(log).toEqual(["+a", "-a"]);
+      expect(wrapSystem).toHaveBeenCalledTimes(2);
     });
 
     it("remove calls onUnregister only for a registered system", () => {

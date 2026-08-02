@@ -35,8 +35,9 @@ export class SystemScheduler {
 
   /**
    * Unregister all registered systems (in reverse, for clean teardown) and
-   * detach the context. Called by Engine on destroy. Systems stay in their
-   * phase lists so a restarted engine registers them again.
+   * detach the context. Called by Engine on destroy. Owns only the
+   * registration lifecycle — phase-list membership stays with whoever added
+   * the system.
    * @internal
    */
   _destroy(): void {
@@ -44,7 +45,7 @@ export class SystemScheduler {
     for (let i = all.length - 1; i >= 0; i--) {
       const system = all[i]!;
       if (this.registered.delete(system)) {
-        system.onUnregister?.();
+        this.dispatch(system, () => system.onUnregister?.());
       }
     }
     this.context = null;
@@ -73,7 +74,7 @@ export class SystemScheduler {
     if (idx === -1) return;
     list.splice(idx, 1);
     if (this.registered.delete(system)) {
-      system.onUnregister?.();
+      this.dispatch(system, () => system.onUnregister?.());
     }
   }
 
@@ -83,11 +84,7 @@ export class SystemScheduler {
     if (!list) return;
     for (const system of list) {
       if (!system.enabled) continue;
-      if (this.errorBoundary) {
-        this.errorBoundary.wrapSystem(system, () => system.update(dt));
-      } else {
-        system.update(dt);
-      }
+      this.dispatch(system, () => system.update(dt));
     }
   }
 
@@ -106,9 +103,17 @@ export class SystemScheduler {
   }
 
   private register(system: System, context: EngineContext): void {
-    if (this.registered.has(system)) return;
     this.registered.add(system);
     system._setContext(context);
-    system.onRegister?.(context);
+    this.dispatch(system, () => system.onRegister?.(context));
+  }
+
+  /** Run a system-owned callback through the ErrorBoundary when one is set. */
+  private dispatch(system: System, fn: () => void): void {
+    if (this.errorBoundary) {
+      this.errorBoundary.wrapSystem(system, fn);
+    } else {
+      fn();
+    }
   }
 }
