@@ -1,5 +1,5 @@
 ---
-"@yagejs/physics": minor
+"@yagejs/physics": patch
 ---
 
 Dynamic bodies are drawn at an interpolated position, and their exact simulated pose is readable.
