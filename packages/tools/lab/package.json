@@ -1,7 +1,6 @@
 {
   "name": "@yagejs-tools/lab",
   "version": "0.0.0",
-  "private": true,
   "description": "Scenario browser for YAGE games — mount entities and scenes in a real engine and tune them with controls",
   "keywords": [
     "yage",
