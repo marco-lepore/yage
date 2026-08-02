@@ -9,7 +9,7 @@ export const WIDTH = 800;
 export const HEIGHT = 600;
 export const WORLD_W = 2400;
 export const WORLD_H = 800;
-export const TOTAL_COINS = 8;
+export const TOTAL_COINS = 9;
 export const SPAWN = new Vec2(100, 600);
 
 /** Screen-space render layer for the in-canvas HUD (coin counter + win banner). */

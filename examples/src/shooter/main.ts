@@ -43,8 +43,9 @@ async function main() {
       right: ["KeyD", "ArrowRight"],
       jump: ["Space"],
       shoot: ["KeyJ", "KeyK"],
+      down: ["KeyS", "ArrowDown"],
     },
-    preventDefaultKeys: ["Space"],
+    preventDefaultKeys: ["Space", "ArrowDown"],
   }));
   await installDebugFromUrl(engine);
 

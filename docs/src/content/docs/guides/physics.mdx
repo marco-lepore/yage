@@ -469,6 +469,102 @@ Testing the standing box at the crouched position instead would report the
 floor as a blocker every time the character is grounded, and they could never
 stand up.
 
+## One-Way Platforms
+
+A `oneWay` collider is solid from one side and passable from every other: the
+player lands on the platform from above, and jumps up through it from below.
+
+```typescript
+platform.add(new ColliderComponent({
+  shape: { type: "box", width: 96, height: 8 },
+  oneWay: {},
+}));
+```
+
+With no options, the solid face points up (`{ x: 0, y: -1 }`). Bodies falling
+onto the platform land; bodies coming from below, or from the side, pass
+through. A body that is already inside the platform is let out rather than
+snapped to the surface, so turning on the behavior mid-overlap never launches
+anything.
+
+The direction is in the platform body's local frame, so a rotated platform
+carries its solid face with it. `margin` is how deep (in pixels) a body may
+already overlap the face and still count as landing:
+
+```typescript
+oneWay: {
+  direction: { x: 0, y: -1 },  // default: solid face up
+  margin: 4,                   // default
+}
+```
+
+For the down-jump — the player presses down and falls through the platform they
+are standing on — give the rider's collider a drop-through window:
+
+```typescript
+player.get(ColliderComponent).dropThrough(0.2);  // seconds of simulated time
+```
+
+The window is per body: every one-way platform lets this body pass while it is
+open, and other bodies standing on the same platform stay supported. If the
+window expires while the body is still inside a platform, the body keeps
+falling until it is clear and lands on the next solid face it reaches from
+above. `isDroppingThrough` reports whether the window is open, which is handy
+for animation state.
+
+Two practical notes:
+
+- A very fast body can cross a thin platform entirely between two physics
+  steps and is never detected. That is ordinary tunneling — give the body
+  `ccd: true` (see Continuous Collision Detection below). The CCD sweep
+  respects one-way behavior, including drop-through.
+- `oneWay` is part of the collider config, so it survives save/load. It has no
+  effect on `sensor: true` colliders, since sensors never produce solid
+  contacts.
+
+## Contact Filters
+
+`oneWay` is built on a lower-level tool you can use directly: a contact
+filter, which decides for each candidate pair of colliders, every physics
+step, whether that pair is solid. Return `true` to collide normally, `false`
+to let the two bodies pass through each other for that step:
+
+```typescript
+// A wall that only blocks entities tagged "enemy".
+wall.get(ColliderComponent).setContactFilter((contact) =>
+  contact.other.tags.has("enemy"),
+);
+```
+
+The filter runs inside the physics step, before any contact exists, so there
+is no contact normal or contact point to read. Instead the `contact` object
+carries both sides' positions, rotations, and velocities as plain numbers,
+plus the other side's `Entity` and `ColliderComponent`. All values are from
+the start of the step — for a body that crossed a surface mid-step, they tell
+you which side it came from.
+
+A few rules to keep filters healthy:
+
+- The filter runs for every candidate pair involving the collider, every
+  step. Keep it cheap, and never create or destroy entities, bodies, or
+  colliders from inside it.
+- The `contact` object is reused across calls. Read what you need and return;
+  don't store it.
+- When both colliders in a pair have filters, the pair is solid only if both
+  return `true`.
+- A filter that throws is reported through the error boundary
+  (`Inspector.getErrors().callbackErrors`) and the pair stays solid — the
+  conservative default. The report fires once per installed filter, so a
+  persistently throwing filter can't flood the log; installing a new filter
+  arms it again.
+- Setting a filter on a collider configured with `oneWay` replaces the
+  built-in one-way filter. Filters are functions, so they are not saved:
+  after a load, `oneWay` colliders get their built-in filter back, and custom
+  filters must be registered again.
+- Filters apply to solid contact pairs only; sensor overlap is unaffected.
+
+Clear a filter with `setContactFilter(null)`.
+
 ## Continuous Collision Detection
 
 Enable CCD on fast-moving bodies to prevent tunneling through thin colliders:
