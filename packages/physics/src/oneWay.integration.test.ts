@@ -192,6 +192,26 @@ describe("one-way platform (real Rapier)", () => {
     expect(bodyY(physicsWorld, rider)).toBeGreaterThan(320);
   });
 
+  it("gives a one-timestep drop-through its full window", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext();
+    const platform = spawnPlatform(scene, 0, 300);
+    const rider = spawnRider(scene, "rider", 0, 100);
+    step(physicsWorld, 150);
+    expect(bodyY(physicsWorld, rider)).toBeCloseTo(280, 0);
+
+    // A window of exactly one step must suppress the contact for that
+    // step — observable as a contact end (and later restart) on the
+    // platform. The rider barely moves in 1/60s, so position alone can't
+    // show it.
+    const events: boolean[] = [];
+    platform.collider.onCollision((ev) => events.push(ev.started));
+
+    rider.collider.dropThrough(DT);
+    step(physicsWorld, 5);
+
+    expect(events).toContain(false);
+  });
+
   it("is solid again after the drop-through window expires", async () => {
     const { scene, physicsWorld } = await createPhysicsTestContext();
     spawnPlatform(scene, 0, 300);

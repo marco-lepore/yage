@@ -123,7 +123,6 @@ export class PhysicsWorld {
   /** Step the physics simulation. dt is in seconds. */
   step(dt: number): void {
     this.world.timestep = dt;
-    this._elapsed += dt;
     // Hooks are passed only while a contact filter exists: Rapier consults
     // them per candidate pair, and a world with no filters should step
     // exactly as before the feature.
@@ -132,6 +131,11 @@ export class PhysicsWorld {
       this._capturePreStepState();
     }
     this.world.step(this.eventQueue, useHooks ? this._hooks : undefined);
+    // Advanced after the step: to a contact filter running inside it,
+    // `elapsed` is the time at the start of the step — matching the
+    // pre-step position snapshot, and giving `dropThrough(seconds)` its
+    // full window (a one-timestep request covers exactly one step).
+    this._elapsed += dt;
   }
 
   /**
