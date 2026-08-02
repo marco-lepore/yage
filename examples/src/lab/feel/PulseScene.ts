@@ -1,6 +1,6 @@
 import { Component, Scene, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
-import { HEIGHT, WIDTH } from "../../lab/harness.js";
+import { HEIGHT, WIDTH } from "../../../lab/harness.js";
 
 /**
  * Scales its entity up and down. Neither field is a constructor parameter, so

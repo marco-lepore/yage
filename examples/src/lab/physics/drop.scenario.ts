@@ -2,14 +2,13 @@ import { Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
 import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 import { control, defineScenario } from "@yagejs-tools/lab";
-import { HEIGHT, WIDTH } from "../../lab/harness.js";
+import { HEIGHT, WIDTH } from "../../../lab/harness.js";
 
 const FLOOR_HEIGHT = 24;
 const FLOOR_Y = HEIGHT - 60;
 const FLOOR_TOP = FLOOR_Y - FLOOR_HEIGHT / 2;
 
 export default defineScenario({
-  title: "Physics / Ball drop",
   describe: "Rapier bodies falling onto a floor. Raise bounce and watch again.",
 
   controls: {

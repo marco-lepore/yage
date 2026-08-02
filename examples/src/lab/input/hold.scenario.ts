@@ -2,7 +2,7 @@ import { Component, Transform, Vec2 } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
 import { GraphicsComponent } from "@yagejs/renderer";
 import { control, defineScenario } from "@yagejs-tools/lab";
-import { HEIGHT, WIDTH } from "../../lab/harness.js";
+import { HEIGHT, WIDTH } from "../../../lab/harness.js";
 
 const SIZE = 48;
 const REST_Y = HEIGHT - 80;
@@ -42,7 +42,6 @@ class Hover extends Component {
 }
 
 export default defineScenario({
-  title: "Input / Hold to hover",
   describe:
     "Hold Space to lift the block. Run the drive to press it across exact frames.",
 
