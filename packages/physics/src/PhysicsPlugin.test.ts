@@ -121,12 +121,12 @@ describe("PhysicsPlugin", () => {
       plugin.registerSystems(scheduler);
 
       const fixedSystems = scheduler.getSystems(Phase.FixedUpdate);
-      const lateSystems = scheduler.getSystems(Phase.LateUpdate);
+      const updateSystems = scheduler.getSystems(Phase.Update);
 
       expect(fixedSystems.length).toBe(1);
-      expect(lateSystems.length).toBe(1);
+      expect(updateSystems.length).toBe(1);
       expect((fixedSystems[0] as { priority: number }).priority).toBe(0);
-      expect((lateSystems[0] as { priority: number }).priority).toBe(100);
+      expect((updateSystems[0] as { priority: number }).priority).toBe(-100);
     });
   });
 

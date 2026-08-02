@@ -98,8 +98,8 @@ class DisplaySyncSystem extends System {
 | ------------- | ------------------------------------------ |
 | `EarlyUpdate` | Input polling, pre-frame setup             |
 | `FixedUpdate` | Physics stepping, deterministic simulation |
-| `Update`      | General game logic, AI                     |
-| `LateUpdate`  | Camera follow, post-logic adjustments      |
+| `Update`      | General game logic, AI, camera follow      |
+| `LateUpdate`  | UI layout, post-logic adjustments          |
 | `Render`      | Display object sync, draw calls            |
 | `EndOfFrame`  | Cleanup, deferred operations               |
 

@@ -78,9 +78,6 @@ export class PhysicsSystem extends System {
       steps++;
     }
 
-    // Update per-scene interpolation alpha for smooth rendering
-    ctx.alphaRef.value = Math.max(0, Math.min(1, ctx.accumulator / dt));
-
     // Process collision events once after all steps.
     ctx.world.processCollisionEvents();
   }
@@ -107,11 +104,6 @@ export class PhysicsSystem extends System {
           y: world.toMeters(transform.worldPosition.y),
         });
         body.setNextKinematicRotation(transform.worldRotation);
-      }
-
-      // Clear teleport flag
-      if (rb._teleported) {
-        rb._teleported = false;
       }
     }
   }

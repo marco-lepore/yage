@@ -373,7 +373,7 @@ describe("Integration Tests", () => {
   });
 
   it("interpolation blends positions between prev and curr using per-scene alpha", async () => {
-    const { scene, manager, context } = await createPhysicsTestContext();
+    const { scene, manager, gameLoop, context } = await createPhysicsTestContext();
     const interpSystem = new PhysicsInterpolationSystem();
     interpSystem._setContext(context);
 
@@ -386,13 +386,13 @@ describe("Integration Tests", () => {
     rb._prevRotation = 0;
     rb._currRotation = Math.PI;
 
-    // alpha = 0 → prev position
+    // Nothing accumulated → alpha 0 → prev position
     interpSystem.update(0);
     expect(transform.position.x).toBeCloseTo(0);
     expect(transform.position.y).toBeCloseTo(0);
 
-    // Set alpha to 0.5 via the scene's physics context
-    manager.getContext(scene)!.alphaRef.value = 0.5;
+    // Half a fixed step of scene time waiting to be simulated → alpha 0.5
+    manager.getContext(scene)!.accumulator = gameLoop.fixedTimestep * 0.5;
 
     interpSystem.update(0);
     expect(transform.position.x).toBeCloseTo(50);
@@ -417,9 +417,9 @@ describe("Integration Tests", () => {
     plugin.registerSystems(scheduler);
 
     const fixedSystems = scheduler.getSystems(Phase.FixedUpdate);
-    const lateSystems = scheduler.getSystems(Phase.LateUpdate);
+    const updateSystems = scheduler.getSystems(Phase.Update);
     expect(fixedSystems.length).toBe(1);
-    expect(lateSystems.length).toBe(1);
+    expect(updateSystems.length).toBe(1);
 
     // Cleanup
     plugin.onDestroy();

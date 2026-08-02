@@ -533,17 +533,14 @@ describe("RigidBodyComponent", () => {
   });
 
   describe("setPosition", () => {
-    it("teleports body and sets _teleported flag", async () => {
+    it("teleports the body, collapsing prev and curr so no blend survives", async () => {
       const { scene } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
 
-      expect(rb._teleported).toBe(false);
-
       rb.setPosition(200, 300);
 
-      expect(rb._teleported).toBe(true);
       expect(rb._prevPosition.x).toBe(200);
       expect(rb._prevPosition.y).toBe(300);
       expect(rb._currPosition.x).toBe(200);
@@ -577,14 +574,6 @@ describe("RigidBodyComponent", () => {
       expect(rb._currPosition.equals(new Vec2(50, 75))).toBe(true);
     });
 
-    it("_teleported starts as false", async () => {
-      const { scene } = await createPhysicsTestContext();
-      const entity = spawnEntityInScene(scene, "test");
-      entity.add(new Transform());
-      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
-
-      expect(rb._teleported).toBe(false);
-    });
   });
   describe("activeness hooks", () => {
     it("leaves the body disabled when added to a dormant entity", async () => {

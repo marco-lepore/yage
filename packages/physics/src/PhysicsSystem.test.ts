@@ -276,22 +276,6 @@ describe("PhysicsSystem", () => {
       expect(transform.rotation).toBeCloseTo(1.0);
     });
 
-    it("clears teleport flag", async () => {
-      const { scene, context } = await createPhysicsTestContext();
-      const system = new PhysicsSystem();
-      system._setContext(context);
-
-      const entity = spawnEntityInScene(scene, "test");
-      entity.add(new Transform());
-      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
-
-      rb._teleported = true;
-
-      system.update(16.67);
-
-      expect(rb._teleported).toBe(false);
-    });
-
     it("processes collision events", async () => {
       const { scene, physicsWorld, context } = await createPhysicsTestContext();
       const system = new PhysicsSystem();

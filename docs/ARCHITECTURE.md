@@ -251,8 +251,8 @@ Plugins register systems into the game loop via `registerSystems()`:
 ```typescript
 class PhysicsPlugin implements Plugin {
   registerSystems(scheduler: SystemScheduler) {
-    scheduler.add(new PhysicsSystem(this.world));
-    scheduler.add(new PhysicsInterpolationSystem(this.world));
+    scheduler.add(new PhysicsSystem());
+    scheduler.add(new PhysicsInterpolationSystem());
   }
 }
 ```
@@ -268,8 +268,8 @@ class PhysicsSystem extends System {
 }
 
 class PhysicsInterpolationSystem extends System {
-  readonly phase = Phase.LateUpdate;
-  readonly priority = 100;  // After other LateUpdate systems
+  readonly phase = Phase.Update;
+  readonly priority = -100;  // Before game logic reads positions
 }
 ```
 
@@ -279,27 +279,28 @@ Within each phase, systems run in priority order (lower first). Systems from dif
 
 ```
 EarlyUpdate:
-  InputSystem (priority -100, from @yagejs/input)
+  InputPollSystem (priority -100, from @yagejs/input)
 
 FixedUpdate:
   PhysicsSystem (priority 0, from @yagejs/physics)
   UserGameplaySystem (priority 10, user code)
+  ComponentFixedUpdateSystem (priority 1000, from @yagejs/core)
 
 Update:
+  PhysicsInterpolationSystem (priority -100, from @yagejs/physics)
   ParticleSystem (priority 0, from @yagejs/particles)
+  ProcessSystem (priority 500, from @yagejs/core)
+  ComponentUpdateSystem (priority 1000, from @yagejs/core)
 
 LateUpdate:
-  CameraFollowSystem (priority 0, user code)
-  PhysicsInterpolationSystem (priority 100, from @yagejs/physics)
   UILayoutSystem (priority 200, from @yagejs/ui)
 
 Render:
   DisplaySystem (priority 0, from @yagejs/renderer)
-  DebugOverlaySystem (priority 1000, from @yagejs/debug)
+  DebugRenderSystem (priority 9999, from @yagejs/debug)
 
 EndOfFrame:
   InputClearSystem (priority 0, from @yagejs/input)
-  EntityCleanupSystem (priority 100, from @yagejs/core)
 ```
 
 ---

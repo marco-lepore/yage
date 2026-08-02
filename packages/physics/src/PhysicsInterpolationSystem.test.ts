@@ -20,6 +20,8 @@ const { mocks } = vi.hoisted(() => {
     handle: number;
     _translation = { x: 0, y: 0 };
     _rotation = 0;
+    _linvel = { x: 0, y: 0 };
+    _angvel = 0;
     _colliders: unknown[] = [];
     _bodyType: string;
 
@@ -30,12 +32,12 @@ const { mocks } = vi.hoisted(() => {
 
     translation() { return { ...this._translation }; }
     rotation() { return this._rotation; }
-    linvel() { return { x: 0, y: 0 }; }
-    angvel() { return 0; }
+    linvel() { return { ...this._linvel }; }
+    angvel() { return this._angvel; }
     setTranslation(t: { x: number; y: number }) { this._translation = { ...t }; }
     setRotation(r: number) { this._rotation = r; }
-    setLinvel() {}
-    setAngvel() {}
+    setLinvel(v: { x: number; y: number }) { this._linvel = { ...v }; }
+    setAngvel(v: number) { this._angvel = v; }
     addForce() {}
     applyImpulse() {}
     addTorque() {}
@@ -82,7 +84,18 @@ const { mocks } = vi.hoisted(() => {
       this.gravity = { ...gravity };
     }
 
-    step() {}
+    /** Integrates dynamic bodies at constant velocity, so a step moves them. */
+    step() {
+      for (const body of this._bodies.values()) {
+        if (!body.isDynamic()) continue;
+        body._translation = {
+          x: body._translation.x + body._linvel.x * this.timestep,
+          y: body._translation.y + body._linvel.y * this.timestep,
+        };
+        body._rotation += body._angvel * this.timestep;
+      }
+    }
+
     createRigidBody(desc: MockRigidBodyDesc): MockRigidBody {
       const body = new MockRigidBody(desc._type);
       this._bodies.set(body.handle, body);
@@ -113,10 +126,57 @@ vi.mock("@dimforge/rapier2d", () => ({
   },
 }));
 
-import { Transform, Vec2, Phase } from "@yagejs/core";
+import {
+  Component,
+  ComponentUpdateSystem,
+  Phase,
+  SceneTime,
+  SceneTimeKey,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
+import type {
+  EngineContext,
+  GameLoop,
+  System,
+  SystemScheduler,
+} from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { PhysicsInterpolationSystem } from "./PhysicsInterpolationSystem.js";
+import { PhysicsSystem } from "./PhysicsSystem.js";
 import { createPhysicsTestContext, createTestScene, spawnEntityInScene } from "./test-helpers.js";
+
+/**
+ * Register the physics systems and let the real GameLoop drive them, so the
+ * fixed-step cadence and the loop's leftover frame time are the ones under
+ * test rather than hand-set values.
+ */
+function runPhysicsUnderGameLoop(
+  context: EngineContext,
+  gameLoop: GameLoop,
+  scheduler: SystemScheduler,
+  extraSystems: System[] = [],
+): void {
+  for (const system of [new PhysicsSystem(), new PhysicsInterpolationSystem()]) {
+    system._setContext(context);
+    scheduler.add(system);
+  }
+  for (const system of extraSystems) {
+    system._setContext(context);
+    system.onRegister?.(context);
+    scheduler.add(system);
+  }
+
+  gameLoop.setCallbacks({
+    earlyUpdate: (dt) => scheduler.run(Phase.EarlyUpdate, dt),
+    fixedUpdate: (dt) => scheduler.run(Phase.FixedUpdate, dt),
+    update: (dt) => scheduler.run(Phase.Update, dt),
+    lateUpdate: (dt) => scheduler.run(Phase.LateUpdate, dt),
+    render: (dt) => scheduler.run(Phase.Render, dt),
+    endOfFrame: (dt) => scheduler.run(Phase.EndOfFrame, dt),
+  });
+  gameLoop.start();
+}
 
 describe("PhysicsInterpolationSystem", () => {
   beforeEach(() => {
@@ -124,14 +184,14 @@ describe("PhysicsInterpolationSystem", () => {
     mocks.resetHandles();
   });
 
-  it("has phase LateUpdate and priority 100", async () => {
+  it("declares the Update phase at priority -100", async () => {
     const system = new PhysicsInterpolationSystem();
-    expect(system.phase).toBe(Phase.LateUpdate);
-    expect(system.priority).toBe(100);
+    expect(system.phase).toBe(Phase.Update);
+    expect(system.priority).toBe(-100);
   });
 
-  it("at alpha=0, transform equals prev position", async () => {
-    const { scene, manager, context } = await createPhysicsTestContext();
+  it("with nothing accumulated, transform equals prev position", async () => {
+    const { scene, context } = await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -144,8 +204,6 @@ describe("PhysicsInterpolationSystem", () => {
     rb._prevRotation = 0;
     rb._currRotation = Math.PI;
 
-    // alpha = 0 initially
-    manager.getContext(scene)!.alphaRef.value = 0;
     system.update(0);
 
     expect(transform.position.x).toBeCloseTo(100);
@@ -153,8 +211,8 @@ describe("PhysicsInterpolationSystem", () => {
     expect(transform.rotation).toBeCloseTo(0);
   });
 
-  it("at alpha=0.5, transform is midpoint", async () => {
-    const { scene, manager, context } = await createPhysicsTestContext();
+  it("with half a fixed step accumulated, transform is the midpoint", async () => {
+    const { scene, manager, gameLoop, context } = await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -167,7 +225,7 @@ describe("PhysicsInterpolationSystem", () => {
     rb._prevRotation = 0;
     rb._currRotation = 2;
 
-    manager.getContext(scene)!.alphaRef.value = 0.5;
+    manager.getContext(scene)!.accumulator = gameLoop.fixedTimestep * 0.5;
 
     system.update(0);
 
@@ -176,8 +234,8 @@ describe("PhysicsInterpolationSystem", () => {
     expect(transform.rotation).toBeCloseTo(1);
   });
 
-  it("at alpha=1, transform equals curr position", async () => {
-    const { scene, manager, context } = await createPhysicsTestContext();
+  it("with a full fixed step accumulated, transform equals curr position", async () => {
+    const { scene, manager, gameLoop, context } = await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -190,7 +248,7 @@ describe("PhysicsInterpolationSystem", () => {
     rb._prevRotation = 0;
     rb._currRotation = 2;
 
-    manager.getContext(scene)!.alphaRef.value = 1;
+    manager.getContext(scene)!.accumulator = gameLoop.fixedTimestep;
 
     system.update(0);
 
@@ -199,8 +257,28 @@ describe("PhysicsInterpolationSystem", () => {
     expect(transform.rotation).toBeCloseTo(2, 0);
   });
 
+  it("clamps alpha to 1 when more than one step is waiting", async () => {
+    const { scene, manager, gameLoop, context } = await createPhysicsTestContext();
+    const system = new PhysicsInterpolationSystem();
+    system._setContext(context);
+
+    const entity = spawnEntityInScene(scene, "test");
+    const transform = entity.add(new Transform());
+    const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+    rb._prevPosition = new Vec2(0, 0);
+    rb._currPosition = new Vec2(100, 0);
+
+    manager.getContext(scene)!.accumulator = gameLoop.fixedTimestep * 4;
+
+    system.update(0);
+
+    expect(manager.getContext(scene)!.alphaRef.value).toBe(1);
+    expect(transform.position.x).toBeCloseTo(100);
+  });
+
   it("interpolates rotation", async () => {
-    const { scene, manager, context } = await createPhysicsTestContext();
+    const { scene, context } = await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -213,7 +291,6 @@ describe("PhysicsInterpolationSystem", () => {
     rb._prevPosition = Vec2.ZERO;
     rb._currPosition = Vec2.ZERO;
 
-    manager.getContext(scene)!.alphaRef.value = 0;
     system.update(0);
 
     expect(transform.rotation).toBeCloseTo(0);
@@ -258,45 +335,20 @@ describe("PhysicsInterpolationSystem", () => {
     expect(transform.position.y).toBe(75);
   });
 
-  it("reads alpha from per-scene context", async () => {
-    const { scene, manager, context } = await createPhysicsTestContext();
+  it("blends each scene by its own accumulator", async () => {
+    const { scene, manager, sceneManager, gameLoop, context } = await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
-    const entity = spawnEntityInScene(scene, "test");
-    const transform = entity.add(new Transform());
-    const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
-
-    rb._prevPosition = new Vec2(0, 0);
-    rb._currPosition = new Vec2(100, 0);
-
-    const ctx = manager.getContext(scene)!;
-
-    // At start, alpha = 0
-    expect(ctx.alphaRef.value).toBe(0);
-    system.update(0);
-    expect(transform.position.x).toBeCloseTo(0);
-
-    // Set alpha to 0.75 and re-run
-    ctx.alphaRef.value = 0.75;
-    system.update(0);
-    expect(transform.position.x).toBeCloseTo(75);
-  });
-
-  it("uses per-scene alpha independently", async () => {
-    const { scene, manager, sceneManager, context } = await createPhysicsTestContext();
-    const system = new PhysicsInterpolationSystem();
-    system._setContext(context);
-
-    // Scene 1: alpha=0.5
+    // Scene 1: half a step waiting
     const e1 = spawnEntityInScene(scene, "e1");
     const t1 = e1.add(new Transform());
     const rb1 = e1.add(new RigidBodyComponent({ type: "dynamic" }));
     rb1._prevPosition = new Vec2(0, 0);
     rb1._currPosition = new Vec2(100, 0);
-    manager.getContext(scene)!.alphaRef.value = 0.5;
+    manager.getContext(scene)!.accumulator = gameLoop.fixedTimestep * 0.5;
 
-    // Scene 2: alpha=1.0
+    // Scene 2: a full step waiting
     const scene2 = await createTestScene(sceneManager, "scene2", { pauseBelow: false });
     manager.getOrCreateWorld(scene2);
     const e2 = spawnEntityInScene(scene2, "e2");
@@ -304,11 +356,10 @@ describe("PhysicsInterpolationSystem", () => {
     const rb2 = e2.add(new RigidBodyComponent({ type: "dynamic" }));
     rb2._prevPosition = new Vec2(0, 0);
     rb2._currPosition = new Vec2(100, 0);
-    manager.getContext(scene2)!.alphaRef.value = 1.0;
+    manager.getContext(scene2)!.accumulator = gameLoop.fixedTimestep;
 
     system.update(0);
 
-    // Each scene uses its own alpha
     expect(t1.position.x).toBeCloseTo(50);
     expect(t2.position.x).toBeCloseTo(100);
   });
@@ -319,5 +370,257 @@ describe("PhysicsInterpolationSystem", () => {
     system._setContext(context);
 
     expect(() => system.update(0)).not.toThrow();
+  });
+
+  describe("alpha production", () => {
+    it("advances alpha by each frame's share of a fixed step and wraps on a step", async () => {
+      const { scene, manager, gameLoop, scheduler, context } = await createPhysicsTestContext();
+      runPhysicsUnderGameLoop(context, gameLoop, scheduler);
+
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const ctx = manager.getContext(scene)!;
+      const alphas: number[] = [];
+      // 10 ms frames against a 1/60 s step: 0.6 of a step per frame.
+      for (let i = 0; i < 5; i++) {
+        gameLoop.tick(10);
+        alphas.push(ctx.alphaRef.value);
+      }
+
+      expect(alphas[0]).toBeCloseTo(0.6, 3);
+      expect(alphas[1]).toBeCloseTo(0.2, 3);
+      expect(alphas[2]).toBeCloseTo(0.8, 3);
+      expect(alphas[3]).toBeCloseTo(0.4, 3);
+      // Frame 5 completes exactly three fixed steps in 50 ms.
+      expect(alphas[4]).toBeCloseTo(0.0, 3);
+    });
+
+    it("refreshes alpha on a frame that runs no fixed step", async () => {
+      const { scene, manager, gameLoop, scheduler, context } = await createPhysicsTestContext();
+      runPhysicsUnderGameLoop(context, gameLoop, scheduler);
+
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const ctx = manager.getContext(scene)!;
+      const alphas: number[] = [];
+      // Half-step frames: every other frame runs no fixed step at all, and
+      // still has to land on a fresh alpha.
+      for (let i = 0; i < 4; i++) {
+        gameLoop.tick(1000 / 120);
+        alphas.push(ctx.alphaRef.value);
+      }
+
+      expect(alphas[0]).toBeCloseTo(0.5, 3);
+      expect(alphas[1]).toBeCloseTo(0.0, 3);
+      expect(alphas[2]).toBeCloseTo(0.5, 3);
+      expect(alphas[3]).toBeCloseTo(0.0, 3);
+    });
+  });
+
+  describe("smoothness", () => {
+    it("advances the drawn position by the same distance every frame", async () => {
+      const { scene, gameLoop, scheduler, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      runPhysicsUnderGameLoop(context, gameLoop, scheduler);
+
+      const entity = spawnEntityInScene(scene, "mover");
+      const transform = entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      rb.setVelocity({ x: 300, y: 0 });
+
+      const drawn: number[] = [];
+      for (let i = 0; i < 20; i++) {
+        gameLoop.tick(10);
+        drawn.push(transform.worldPosition.x);
+      }
+
+      // 300 px/s over 10 ms frames = 3 px per frame, once the first fixed
+      // step has produced a segment to blend across.
+      const steady = drawn.slice(2);
+      for (let i = 1; i < steady.length; i++) {
+        const advance = steady[i]! - steady[i - 1]!;
+        expect(advance).toBeCloseTo(3, 6);
+      }
+    });
+  });
+
+  describe("scene time scale", () => {
+    it("holds alpha and the drawn pose still while the scene is frozen", async () => {
+      const { scene, manager, gameLoop, scheduler, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      const time = new SceneTime(scene);
+      scene.registerScoped(SceneTimeKey, time);
+      runPhysicsUnderGameLoop(context, gameLoop, scheduler);
+
+      const entity = spawnEntityInScene(scene, "mover");
+      const transform = entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      rb.setVelocity({ x: 300, y: 0 });
+
+      // 4 × 10 ms frames leave alpha mid-blend (0.4), so the assertions
+      // below also cover the freeze onset: dropping to a recomputed alpha
+      // on the first frozen frame would move the drawn pose backwards.
+      for (let i = 0; i < 4; i++) gameLoop.tick(10);
+
+      const frozenAlpha = manager.getContext(scene)!.alphaRef.value;
+      const frozenX = transform.worldPosition.x;
+      expect(frozenAlpha).toBeCloseTo(0.4, 3);
+
+      time.freezeFor(10);
+
+      for (let i = 0; i < 5; i++) {
+        gameLoop.tick(10);
+        expect(manager.getContext(scene)!.alphaRef.value).toBe(frozenAlpha);
+        expect(transform.worldPosition.x).toBe(frozenX);
+      }
+    });
+
+    it("advances the drawn pose at half speed under a half time scale", async () => {
+      const { scene, gameLoop, scheduler, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      scene.timeScale = 0.5;
+      runPhysicsUnderGameLoop(context, gameLoop, scheduler);
+
+      const entity = spawnEntityInScene(scene, "mover");
+      const transform = entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      rb.setVelocity({ x: 300, y: 0 });
+
+      const drawn: number[] = [];
+      for (let i = 0; i < 24; i++) {
+        gameLoop.tick(10);
+        drawn.push(transform.worldPosition.x);
+      }
+
+      // Half of the 3 px per frame the same body covers at full speed.
+      const steady = drawn.slice(4);
+      for (let i = 1; i < steady.length; i++) {
+        const advance = steady[i]! - steady[i - 1]!;
+        expect(advance).toBeCloseTo(1.5, 6);
+      }
+    });
+  });
+
+  describe("paused scenes", () => {
+    it("leaves a paused scene's alpha frozen while other scenes keep moving", async () => {
+      const { scene, manager, sceneManager, gameLoop, scheduler, context } = await createPhysicsTestContext();
+      runPhysicsUnderGameLoop(context, gameLoop, scheduler);
+
+      const e1 = spawnEntityInScene(scene, "e1");
+      e1.add(new Transform());
+      e1.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      gameLoop.tick(10);
+
+      // A scene pushed on top with pauseBelow pauses the one underneath.
+      const overlay = await createTestScene(sceneManager, "overlay");
+      const e2 = spawnEntityInScene(overlay, "e2");
+      e2.add(new Transform());
+      e2.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const pausedCtx = manager.getContext(scene)!;
+      const activeCtx = manager.getContext(overlay)!;
+
+      gameLoop.tick(10);
+      const pausedAlpha = pausedCtx.alphaRef.value;
+      const activeAlphas: number[] = [];
+
+      for (let i = 0; i < 4; i++) {
+        gameLoop.tick(10);
+        expect(pausedCtx.alphaRef.value).toBe(pausedAlpha);
+        activeAlphas.push(activeCtx.alphaRef.value);
+      }
+
+      expect(new Set(activeAlphas).size).toBeGreaterThan(1);
+    });
+  });
+
+  describe("ordering", () => {
+    it("gives component update() the position that is still there at render time", async () => {
+      const { scene, gameLoop, scheduler, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+
+      const observed: number[] = [];
+
+      class PositionProbe extends Component {
+        private readonly transform = this.sibling(Transform);
+        override update(): void {
+          observed.push(this.transform.worldPosition.x);
+        }
+      }
+
+      runPhysicsUnderGameLoop(context, gameLoop, scheduler, [
+        new ComponentUpdateSystem(),
+      ]);
+
+      const entity = spawnEntityInScene(scene, "mover");
+      const transform = entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      rb.setVelocity({ x: 300, y: 0 });
+      entity.add(new PositionProbe());
+
+      for (let i = 0; i < 6; i++) {
+        gameLoop.tick(10);
+        // Nothing after the Update phase moves the body, so what the
+        // component saw is what gets drawn.
+        expect(observed[observed.length - 1]).toBe(transform.worldPosition.x);
+      }
+
+      expect(observed.length).toBe(6);
+    });
+  });
+
+  describe("RigidBodyComponent pose getters", () => {
+    it("reports the exact simulated pose while the Transform holds the blend", async () => {
+      const { scene, gameLoop, scheduler, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      runPhysicsUnderGameLoop(context, gameLoop, scheduler);
+
+      const entity = spawnEntityInScene(scene, "mover");
+      const transform = entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      rb.setVelocity({ x: 300, y: 0 });
+
+      // Land on a frame whose alpha is neither 0 nor 1, so the blended
+      // Transform trails the stepped body.
+      for (let i = 0; i < 4; i++) gameLoop.tick(10);
+
+      expect(rb.position.x).toBeCloseTo(rb._currPosition.x, 6);
+      expect(rb.positionX).toBeCloseTo(rb._currPosition.x, 6);
+      expect(rb.positionY).toBeCloseTo(rb._currPosition.y, 6);
+      expect(rb.rotation).toBeCloseTo(rb._currRotation, 6);
+      expect(rb.positionX).toBeGreaterThan(transform.worldPosition.x);
+    });
+
+    it("reports the spawn Transform pose before the body has stepped", async () => {
+      const { scene } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+
+      const entity = spawnEntityInScene(scene, "spawned");
+      entity.add(new Transform({ position: new Vec2(120, 240), rotation: 0.5 }));
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      expect(rb.position.x).toBeCloseTo(120);
+      expect(rb.position.y).toBeCloseTo(240);
+      expect(rb.positionX).toBeCloseTo(120);
+      expect(rb.positionY).toBeCloseTo(240);
+      expect(rb.rotation).toBeCloseTo(0.5);
+    });
+
+    it("falls back to the Transform while no Rapier body exists", async () => {
+      const { scene } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+
+      const entity = spawnEntityInScene(scene, "handleless");
+      const transform = entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      rb._bodyHandle = -1;
+      transform.setPosition(300, 400);
+      transform.setRotation(1.25);
+
+      expect(rb.position.x).toBe(300);
+      expect(rb.position.y).toBe(400);
+      expect(rb.positionX).toBe(300);
+      expect(rb.positionY).toBe(400);
+      expect(rb.rotation).toBe(1.25);
+    });
   });
 });
