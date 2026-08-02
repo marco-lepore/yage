@@ -1,59 +1,56 @@
 import type { ScenarioEntry } from "./ScenarioRegistry.js";
 
 /** One scenario as the list shows it. */
-export interface GroupedScenario {
+export interface ScenarioLeaf {
+  readonly kind: "scenario";
   readonly entry: ScenarioEntry;
-  /** The title without its group prefix, or the whole title when ungrouped. */
   readonly label: string;
 }
 
+/** One level of nesting. Holds scenarios, deeper groups, or both. */
 export interface ScenarioGroup {
-  /** The shared prefix, or `undefined` for titles that carry none. */
-  readonly name: string | undefined;
-  readonly entries: readonly GroupedScenario[];
+  readonly kind: "group";
+  readonly name: string;
+  readonly children: readonly ScenarioNode[];
+}
+
+export type ScenarioNode = ScenarioGroup | ScenarioLeaf;
+
+interface MutableGroup {
+  readonly kind: "group";
+  readonly name: string;
+  readonly children: ScenarioNode[];
 }
 
 /**
- * Splits a title at its first `/`, following the `"Combat / Slime takes a hit"`
- * convention. Only the first separator counts, so `"Combat / Ranged / Bow"`
- * groups under `Combat` and keeps the rest as its label. A title with no
- * separator, an empty prefix, or an empty remainder is ungrouped.
- */
-function splitTitle(title: string): { group?: string; label: string } {
-  const at = title.indexOf("/");
-  if (at === -1) return { label: title.trim() };
-  const group = title.slice(0, at).trim();
-  const label = title.slice(at + 1).trim();
-  if (group === "" || label === "") return { label: title.trim() };
-  return { group, label };
-}
-
-/**
- * Buckets scenarios by the part of their title before the first `/`.
+ * Nests scenarios by the group path the registry gave each one.
  *
- * Ungrouped entries come first, then each group in the order it first appears,
- * which is title order because the registry sorts by title.
+ * A group appears where its first member does, and the entries arrive sorted
+ * by title, so the tree comes out in path order without a second sort.
  */
-export function groupScenarios(
+export function buildScenarioTree(
   entries: readonly ScenarioEntry[],
-): readonly ScenarioGroup[] {
-  const ungrouped: GroupedScenario[] = [];
-  const groups = new Map<string, GroupedScenario[]>();
+): readonly ScenarioNode[] {
+  const roots: ScenarioNode[] = [];
+  // Keyed by the full path so two groups of the same name under different
+  // parents stay apart.
+  const groups = new Map<string, MutableGroup>();
 
   for (const entry of entries) {
-    const { group, label } = splitTitle(entry.title);
-    const item: GroupedScenario = { entry, label };
-    if (group === undefined) {
-      ungrouped.push(item);
-      continue;
+    let siblings = roots;
+    let path = "";
+    for (const name of entry.groups) {
+      path = path === "" ? name : `${path}/${name}`;
+      let group = groups.get(path);
+      if (!group) {
+        group = { kind: "group", name, children: [] };
+        groups.set(path, group);
+        siblings.push(group);
+      }
+      siblings = group.children;
     }
-    const bucket = groups.get(group);
-    if (bucket) bucket.push(item);
-    else groups.set(group, [item]);
+    siblings.push({ kind: "scenario", entry, label: entry.label });
   }
 
-  const out: ScenarioGroup[] = [];
-  if (ungrouped.length > 0) out.push({ name: undefined, entries: ungrouped });
-  for (const [name, items] of groups) out.push({ name, entries: items });
-  return out;
+  return roots;
 }

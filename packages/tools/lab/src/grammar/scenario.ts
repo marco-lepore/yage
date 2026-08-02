@@ -5,10 +5,13 @@ import type { DriveContext } from "./drive.js";
 
 interface ScenarioCommon<C extends ControlSchema> {
   /**
-   * Shown in the scenario list. The part before the first `/` groups it, as in
-   * `"Combat / Slime takes a hit"`.
+   * Where the scenario sits in the list, as a `/`-separated path. Defaults to
+   * the file's own location, so `src/entities/slime.scenario.ts` lands under
+   * `entities` › `slime`. Set it to place a scenario somewhere else.
    */
-  title: string;
+  title?: string | undefined;
+  /** The list entry's own label. Defaults to the export name. */
+  name?: string | undefined;
   /** One or two sentences under the title, saying what to look at. */
   describe?: string | undefined;
   /** Tunable inputs, built with `control.number` / `int` / `boolean` / `select`. */
@@ -55,8 +58,17 @@ export type ScenarioDef<C extends ControlSchema = ControlSchema> =
 export type AnyScenario = ScenarioDef<ControlSchema>;
 
 /**
- * Declares one scenario. Export it as the default export of a `*.scenario.ts`
- * file.
+ * Marks what `defineScenario` returns.
+ *
+ * A `*.scenario.ts` file may export helpers its scenarios share, and the
+ * registry has to tell those apart from scenarios without guessing at their
+ * shape. `Symbol.for` so the mark survives a second copy of this package.
+ */
+const SCENARIO_MARK = Symbol.for("yage-lab.scenario");
+
+/**
+ * Declares one scenario. Export it from a `*.scenario.ts` file, either as the
+ * default export or as a named one — a file can hold several.
  *
  * A scenario either mounts an existing `Scene` or builds one with `setup`.
  * Declaring both, or neither, fails to compile.
@@ -66,21 +78,34 @@ export function defineScenario<const C extends ControlSchema>(
 ): ScenarioDef<C> {
   const problem = describeScenarioProblem(def);
   if (problem) throw new Error(`defineScenario(): ${problem}`);
+  Object.defineProperty(def, SCENARIO_MARK, {
+    value: true,
+    configurable: true,
+  });
   return def;
 }
 
-/**
- * Returns why `value` is not a usable scenario, or `undefined` if it is one.
- * The runner uses this to report a bad module instead of failing the page —
- * a scenario file is a game developer's own code and can be wrong.
- */
+/** Whether `value` came from {@link defineScenario}. */
+export function isScenario(value: unknown): boolean {
+  return typeof value === "object" && value !== null && SCENARIO_MARK in value;
+}
+
+/** Returns why `value` is not a usable scenario, or `undefined` if it is one. */
 export function describeScenarioProblem(value: unknown): string | undefined {
   if (typeof value !== "object" || value === null) {
     return "expected an object.";
   }
   const def = value as Partial<Record<keyof AnyScenario, unknown>>;
-  if (typeof def.title !== "string" || def.title.trim() === "") {
-    return "`title` must be a non-empty string.";
+  for (const field of ["title", "name"] as const) {
+    const declared = def[field];
+    if (declared === undefined) continue;
+    if (typeof declared !== "string" || declared.trim() === "") {
+      return `\`${field}\` must be a non-empty string.`;
+    }
+  }
+  // A title is a path, and the list needs a segment to name the entry by.
+  if (typeof def.title === "string" && !/[^/\s]/.test(def.title)) {
+    return "`title` must name at least one path segment.";
   }
   const hasScene = typeof def.scene === "function";
   const hasSetup = typeof def.setup === "function";

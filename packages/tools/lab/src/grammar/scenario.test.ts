@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Scene } from "@yagejs/core";
-import { defineScenario, describeScenarioProblem } from "./scenario.js";
+import {
+  defineScenario,
+  describeScenarioProblem,
+  isScenario,
+} from "./scenario.js";
 import { control } from "./controls.js";
 
 const noopSetup = (): void => {};
@@ -73,10 +77,37 @@ describe("defineScenario", () => {
     ).toThrow(/`drive` must be a function/);
   });
 
-  it("rejects a blank title", () => {
+  it("rejects a blank title or name", () => {
     expect(() => defineScenario({ title: "   ", setup: noopSetup })).toThrow(
       /title/,
     );
+    expect(() => defineScenario({ name: "", setup: noopSetup })).toThrow(
+      /name/,
+    );
+  });
+
+  it("rejects a title that is nothing but separators", () => {
+    // The list takes the last segment as the entry's label, and a title with
+    // no segment would leave it with nothing to show.
+    expect(() => defineScenario({ title: " / / ", setup: noopSetup })).toThrow(
+      /at least one path segment/,
+    );
+  });
+
+  it("accepts a scenario that names neither, and marks it", () => {
+    // Both are optional: a scenario with no title is placed by where its file
+    // sits, and one with no name is labelled by its export.
+    const def = defineScenario({ setup: noopSetup });
+
+    expect(def.title).toBeUndefined();
+    expect(isScenario(def)).toBe(true);
+  });
+
+  it("does not mark a plain object that happens to have the right shape", () => {
+    // The registry uses the mark to tell a scenario from a helper a scenario
+    // file exports beside it.
+    expect(isScenario({ title: "Ok", setup: noopSetup })).toBe(false);
+    expect(isScenario(null)).toBe(false);
   });
 });
 

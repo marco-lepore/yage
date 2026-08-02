@@ -6,6 +6,9 @@ const scenario = (title: string) => ({
   default: defineScenario({ title, setup: () => {} }),
 });
 
+/** For the cases that care about placement rather than about the definition. */
+const SCENARIO = defineScenario({ setup: () => {} });
+
 describe("scenarioIdFromPath", () => {
   it("keeps the directory, so same-named files stay distinct", () => {
     expect(scenarioIdFromPath("/src/player/jump.scenario.ts")).toBe(
@@ -107,23 +110,161 @@ describe("buildRegistry", () => {
     ]);
   });
 
-  it("reports a module with no default export", () => {
+  it("reports a named export that collides with a file one directory down", () => {
+    // `slime.scenario.ts` exporting `idle` and `slime/idle.scenario.ts` both
+    // want `enemies/slime/idle`, and the message has to say which is which.
+    const registry = buildRegistry(
+      {
+        "/src/lab/enemies/slime.scenario.ts": {
+          idle: defineScenario({ setup: () => {} }),
+        },
+        "/src/lab/enemies/slime/idle.scenario.ts": { default: SCENARIO },
+      },
+      { root: "/src/lab" },
+    );
+
+    expect(registry.scenarios.map((s) => s.path)).toEqual([
+      "/src/lab/enemies/slime.scenario.ts",
+    ]);
+    expect(registry.problems[0]?.message).toBe(
+      'id "enemies/slime/idle" is already used by /src/lab/enemies/slime.scenario.ts.',
+    );
+  });
+
+  it("says which export clashed when a named one loses the id", () => {
+    const registry = buildRegistry({
+      "/a.scenario.ts": { idle: defineScenario({ setup: () => {} }) },
+      "/a.scenario.tsx": { idle: defineScenario({ setup: () => {} }) },
+    });
+
+    expect(registry.problems[0]?.message).toBe(
+      'id "a/idle" (export `idle`) is already used by /a.scenario.ts.',
+    );
+  });
+
+  it("lets a scenario name itself under a title that placed it", () => {
+    // `title` is the path and `name` is the leaf, so together the title's last
+    // segment is the one the name replaces.
+    const registry = buildRegistry({
+      "/a.scenario.ts": {
+        king: defineScenario({
+          title: "Bosses / Slime King",
+          name: "King",
+          setup: () => {},
+        }),
+      },
+    });
+
+    expect(registry.scenarios[0]).toMatchObject({
+      groups: ["Bosses"],
+      label: "King",
+    });
+  });
+
+  it("reports a module that exports no scenario", () => {
     const registry = buildRegistry({ "/src/lab/a.scenario.ts": {} });
 
     expect(registry.scenarios).toEqual([]);
-    expect(registry.problems[0]?.message).toMatch(/no default export/);
+    expect(registry.problems[0]?.message).toMatch(/no scenarios/);
   });
 
-  it("reports a default export that is not a scenario", () => {
+  it("ignores an export that is not a scenario", () => {
+    // A scenario file holds the helpers its scenarios share, and those are
+    // exported so the file's own scenarios can be split across it later.
     const registry = buildRegistry({
-      "/src/lab/a.scenario.ts": { default: { title: "No builder" } },
-      "/src/lab/b.scenario.ts": scenario("Fine"),
+      "/src/lab/a.scenario.ts": {
+        ARENA_WIDTH: 640,
+        spawnSlime: () => {},
+        idle: defineScenario({ setup: () => {} }),
+      },
     });
 
-    expect(registry.scenarios.map((s) => s.title)).toEqual(["Fine"]);
-    expect(registry.problems[0]).toMatchObject({
-      path: "/src/lab/a.scenario.ts",
-      message: expect.stringContaining("`scene` or `setup`"),
+    expect(registry.scenarios.map((s) => s.id)).toEqual(["src/lab/a/idle"]);
+    expect(registry.problems).toEqual([]);
+  });
+
+  it("takes a scenario from every named export", () => {
+    const registry = buildRegistry(
+      {
+        "/src/lab/enemies/slime.scenario.ts": {
+          chase: defineScenario({ setup: () => {} }),
+          idle: defineScenario({ setup: () => {} }),
+        },
+      },
+      { root: "/src/lab" },
+    );
+
+    expect(registry.scenarios.map((s) => [s.id, s.groups, s.label])).toEqual([
+      ["enemies/slime/chase", ["enemies", "slime"], "chase"],
+      ["enemies/slime/idle", ["enemies", "slime"], "idle"],
+    ]);
+  });
+
+  it("keeps the file's own id for its unnamed scenario", () => {
+    // One scenario in a file needs no group of its own, so the file is the
+    // entry rather than a folder holding a single child.
+    const registry = buildRegistry(
+      { "/src/lab/enemies/slime.scenario.ts": { default: SCENARIO } },
+      { root: "/src/lab" },
+    );
+
+    expect(registry.scenarios[0]).toMatchObject({
+      id: "enemies/slime",
+      groups: ["enemies"],
+      label: "slime",
+      exportName: "default",
+    });
+  });
+
+  it("refuses a file that exports a default scenario and named ones", () => {
+    // The file would be a leaf and a group of the same name, side by side.
+    const registry = buildRegistry({
+      "/src/lab/a.scenario.ts": { default: SCENARIO, idle: SCENARIO },
+    });
+
+    expect(registry.scenarios).toEqual([]);
+    expect(registry.problems[0]?.message).toMatch(/use one or the other/);
+  });
+
+  it("names the scenario itself when it says so", () => {
+    const registry = buildRegistry(
+      {
+        "/src/lab/enemies/slime.scenario.ts": {
+          chase: defineScenario({
+            name: "Chasing the player",
+            setup: () => {},
+          }),
+        },
+      },
+      { root: "/src/lab" },
+    );
+
+    expect(registry.scenarios[0]).toMatchObject({
+      id: "enemies/slime/chase",
+      groups: ["enemies", "slime"],
+      label: "Chasing the player",
+    });
+  });
+
+  it("lets a title move a scenario without moving its id", () => {
+    // The id addresses the file, so `--scenarios` and a saved link keep
+    // working when a scenario is shown somewhere else in the list.
+    const registry = buildRegistry(
+      {
+        "/src/lab/enemies/slime.scenario.ts": {
+          king: defineScenario({
+            title: "Bosses / Slime King",
+            setup: () => {},
+          }),
+        },
+      },
+      { root: "/src/lab" },
+    );
+
+    expect(registry.scenarios[0]).toMatchObject({
+      id: "enemies/slime/king",
+      groups: ["Bosses"],
+      label: "Slime King",
     });
   });
 

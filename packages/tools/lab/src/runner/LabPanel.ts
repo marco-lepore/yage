@@ -5,7 +5,7 @@ import type {
 } from "../grammar/controls.js";
 import { CLOCK_SPEEDS, nearestSpeedIndex } from "./LabClock.js";
 import type { LabError } from "./labErrors.js";
-import { groupScenarios } from "./scenarioGroups.js";
+import { buildScenarioTree, type ScenarioNode } from "./scenarioGroups.js";
 import type { RegistryProblem, ScenarioEntry } from "./ScenarioRegistry.js";
 
 export interface PanelCallbacks {
@@ -53,11 +53,17 @@ const CSS = `
 .yage-lab__list { display: flex; flex-direction: column; gap: 2px; }
 .yage-lab__group { display: flex; flex-direction: column; gap: 2px; }
 .yage-lab__group + .yage-lab__group { margin-top: 10px; }
-.yage-lab__group-name { margin: 0 0 2px; padding: 0 8px; font-size: 11px; letter-spacing: .04em; color: #64748b; }
+.yage-lab__group--nested + .yage-lab__group--nested { margin-top: 4px; }
+.yage-lab__group-name { margin: 0 0 2px; font-size: 11px; letter-spacing: .04em; color: #64748b; }
 .yage-lab__item { appearance: none; border: 0; border-radius: 4px; background: transparent; color: #cbd5e1; font: inherit; text-align: left; padding: 5px 8px; cursor: pointer; }
 .yage-lab__item:hover { background: #1e293b; }
 .yage-lab__item[aria-current="true"] { background: #334155; color: #f8fafc; }
+.yage-lab__controls { border-top: 1px solid #1e293b; padding-top: 10px; margin-top: 2px; }
+/* Four rows before it scrolls, so a scenario with many controls cannot push
+   the canvas off the top of the window. */
+.yage-lab__control-list { max-height: 216px; overflow-y: auto; padding-right: 4px; }
 .yage-lab__control { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; }
+.yage-lab__control:last-child { margin-bottom: 0; }
 .yage-lab__control-label { display: flex; justify-content: space-between; gap: 8px; color: #94a3b8; }
 .yage-lab__control-value { color: #f8fafc; font-variant-numeric: tabular-nums; }
 .yage-lab__control input[type="range"] { width: 100%; }
@@ -143,6 +149,7 @@ export class LabPanel {
 
   private readonly list: HTMLElement;
   private readonly controlsBox: HTMLElement;
+  private readonly controlList: HTMLElement;
   private readonly titleEl: HTMLElement;
   private readonly describeEl: HTMLElement;
   private readonly errorsBox: HTMLElement;
@@ -172,9 +179,16 @@ export class LabPanel {
     this.list = el("nav", "yage-lab__list");
     listBox.append(this.list);
 
-    this.controlsBox = el("section");
+    // Belongs to the stage: the scenario list grows with the project too, and
+    // sharing one column means the longer of the two pushes the other away.
+    this.controlsBox = el("section", "yage-lab__controls");
+    // The heading sits outside the scroller so it stays put while the values
+    // under it move.
+    this.controlsBox.append(el("h2", "yage-lab__heading", "Controls"));
+    this.controlList = el("div", "yage-lab__control-list");
+    this.controlsBox.append(this.controlList);
 
-    sidebar.append(listBox, this.controlsBox);
+    sidebar.append(listBox);
     if (opts.problems.length > 0) {
       sidebar.append(this.renderProblems(opts.problems));
     }
@@ -218,6 +232,7 @@ export class LabPanel {
       this.container,
       this.clockBar,
       this.runEl,
+      this.controlsBox,
     );
 
     this.root.append(sidebar, stage);
@@ -312,27 +327,45 @@ export class LabPanel {
   private showEmpty(): void {
     this.titleEl.textContent = "No scenarios found";
     this.describeEl.textContent =
-      "Add a file named *.scenario.ts exporting a default defineScenario({...}).";
+      "Add a file named *.scenario.ts exporting what defineScenario({...}) returns.";
     this.list.append(el("p", "yage-lab__empty", "Nothing to show."));
   }
 
   private renderList(scenarios: readonly ScenarioEntry[]): void {
-    for (const group of groupScenarios(scenarios)) {
-      const box = el("div", "yage-lab__group");
-      if (group.name !== undefined) {
-        box.append(el("h3", "yage-lab__group-name", group.name));
+    this.renderNodes(buildScenarioTree(scenarios), this.list, 0);
+  }
+
+  /** Indent per level, so a deep tree still reads as a tree in a 240px column. */
+  private renderNodes(
+    nodes: readonly ScenarioNode[],
+    parent: HTMLElement,
+    depth: number,
+  ): void {
+    const indent = `${8 + depth * 10}px`;
+    for (const node of nodes) {
+      if (node.kind === "group") {
+        const box = el(
+          "div",
+          depth === 0
+            ? "yage-lab__group"
+            : "yage-lab__group yage-lab__group--nested",
+        );
+        const heading = el("h3", "yage-lab__group-name", node.name);
+        heading.style.paddingLeft = indent;
+        box.append(heading);
+        this.renderNodes(node.children, box, depth + 1);
+        parent.append(box);
+        continue;
       }
-      for (const { entry, label } of group.entries) {
-        const item = el("button", "yage-lab__item", label);
-        item.type = "button";
-        item.title = entry.path;
-        item.addEventListener("click", () => {
-          this.callbacks.onSelect(entry.id);
-        });
-        this.items.set(entry.id, item);
-        box.append(item);
-      }
-      this.list.append(box);
+      const item = el("button", "yage-lab__item", node.label);
+      item.type = "button";
+      item.title = `${node.entry.path} · ${node.entry.exportName}`;
+      item.style.paddingLeft = indent;
+      item.addEventListener("click", () => {
+        this.callbacks.onSelect(node.entry.id);
+      });
+      this.items.set(node.entry.id, item);
+      parent.append(item);
     }
   }
 
@@ -383,14 +416,14 @@ export class LabPanel {
     controls: ControlSchema | undefined,
     values: Record<string, ControlValue>,
   ): void {
-    this.controlsBox.replaceChildren();
+    this.controlList.replaceChildren();
     this.widgets.clear();
     const entries = Object.entries(controls ?? {});
-    if (entries.length === 0) return;
-
-    this.controlsBox.append(el("h2", "yage-lab__heading", "Controls"));
+    // A scenario with no controls should not leave an empty titled box under
+    // the scene.
+    this.controlsBox.hidden = entries.length === 0;
     for (const [name, def] of entries) {
-      this.controlsBox.append(this.renderControl(name, def, values[name]));
+      this.controlList.append(this.renderControl(name, def, values[name]));
     }
   }
 

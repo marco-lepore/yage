@@ -1,58 +1,111 @@
 import { describe, expect, it } from "vitest";
 import { defineScenario } from "../grammar/scenario.js";
-import type { ScenarioEntry } from "./ScenarioRegistry.js";
-import { groupScenarios } from "./scenarioGroups.js";
+import { buildRegistry, type ScenarioEntry } from "./ScenarioRegistry.js";
+import { buildScenarioTree, type ScenarioNode } from "./scenarioGroups.js";
 
-const entry = (title: string): ScenarioEntry => ({
-  id: title.toLowerCase().replace(/\W+/g, "-"),
-  path: `/src/${title}.scenario.ts`,
-  title,
-  scenario: defineScenario({ title, setup: () => {} }),
-  hasDrive: false,
-});
+/** The registry decides placement, so the tree is checked against real entries. */
+function entries(paths: Record<string, string[]>): readonly ScenarioEntry[] {
+  const modules: Record<string, unknown> = {};
+  for (const [path, exportNames] of Object.entries(paths)) {
+    modules[`/src/lab/${path}.scenario.ts`] = Object.fromEntries(
+      exportNames.map((name) => [name, defineScenario({ setup: () => {} })]),
+    );
+  }
+  return buildRegistry(modules, { root: "/src/lab" }).scenarios;
+}
 
-/** `[group, ...labels]` per group, so a case reads as the list the panel draws. */
-const shape = (titles: readonly string[]): string[][] =>
-  groupScenarios(titles.map(entry)).map((group) => [
-    group.name ?? "(none)",
-    ...group.entries.map((item) => item.label),
-  ]);
+/** Indented lines, so a case reads as the list the panel draws. */
+function draw(nodes: readonly ScenarioNode[], depth = 0): string[] {
+  return nodes.flatMap((node) =>
+    node.kind === "group"
+      ? [
+          `${"  ".repeat(depth)}${node.name}/`,
+          ...draw(node.children, depth + 1),
+        ]
+      : [`${"  ".repeat(depth)}${node.label}`],
+  );
+}
 
-describe("groupScenarios", () => {
-  it("buckets by the part before the first slash and drops it from the label", () => {
-    expect(
-      shape(["Combat / Slime takes a hit", "Combat / Parry", "Enemies / Bat"]),
-    ).toEqual([
-      ["Combat", "Slime takes a hit", "Parry"],
-      ["Enemies", "Bat"],
+describe("buildScenarioTree", () => {
+  it("nests a directory per level and puts the file's scenarios under it", () => {
+    const tree = buildScenarioTree(
+      entries({ "enemies/slime": ["chase", "idle"] }),
+    );
+
+    expect(draw(tree)).toEqual([
+      "enemies/",
+      "  slime/",
+      "    chase",
+      "    idle",
     ]);
   });
 
-  it("splits at the first slash only", () => {
-    expect(shape(["Combat / Ranged / Bow"])).toEqual([
-      ["Combat", "Ranged / Bow"],
+  it("shares a group between the files under it", () => {
+    const tree = buildScenarioTree(
+      entries({ "enemies/slime": ["idle"], "enemies/bat": ["swoop"] }),
+    );
+
+    expect(draw(tree)).toEqual([
+      "enemies/",
+      "  bat/",
+      "    swoop",
+      "  slime/",
+      "    idle",
     ]);
   });
 
-  it("leaves a title with no slash ungrouped and whole", () => {
-    expect(shape(["Sandbox"])).toEqual([["(none)", "Sandbox"]]);
-  });
+  it("keeps same-named groups under different parents apart", () => {
+    const tree = buildScenarioTree(
+      entries({ "enemies/ai/chase": ["a"], "player/ai/aim": ["b"] }),
+    );
 
-  it("puts ungrouped entries first, then groups in first-seen order", () => {
-    expect(shape(["Zeta / One", "Loose", "Alpha / Two"])).toEqual([
-      ["(none)", "Loose"],
-      ["Zeta", "One"],
-      ["Alpha", "Two"],
+    expect(draw(tree)).toEqual([
+      "enemies/",
+      "  ai/",
+      "    chase/",
+      "      a",
+      "player/",
+      "  ai/",
+      "    aim/",
+      "      b",
     ]);
   });
 
-  it("treats an empty half as no group at all", () => {
-    expect(shape(["/ Orphan", "Trailing /"])).toEqual([
-      ["(none)", "/ Orphan", "Trailing /"],
+  it("puts a file's only scenario beside the folders, not inside one", () => {
+    const tree = buildScenarioTree(
+      entries({ "enemies/slime": ["default"], "enemies/bat": ["swoop"] }),
+    );
+
+    expect(draw(tree)).toEqual(["enemies/", "  bat/", "    swoop", "  slime"]);
+  });
+
+  it("leaves a scenario at the top when nothing groups it", () => {
+    const tree = buildScenarioTree(entries({ sandbox: ["default"] }));
+
+    expect(draw(tree)).toEqual(["sandbox"]);
+  });
+
+  it("nests by an explicit title when a scenario carries one", () => {
+    const registry = buildRegistry(
+      {
+        "/src/lab/enemies/slime.scenario.ts": {
+          king: defineScenario({
+            title: "Bosses / Act 1 / Slime King",
+            setup: () => {},
+          }),
+        },
+      },
+      { root: "/src/lab" },
+    );
+
+    expect(draw(buildScenarioTree(registry.scenarios))).toEqual([
+      "Bosses/",
+      "  Act 1/",
+      "    Slime King",
     ]);
   });
 
   it("returns nothing for no scenarios", () => {
-    expect(groupScenarios([])).toEqual([]);
+    expect(buildScenarioTree([])).toEqual([]);
   });
 });

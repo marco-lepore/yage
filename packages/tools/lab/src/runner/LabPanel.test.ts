@@ -6,18 +6,28 @@ import { CLOCK_SPEEDS } from "./LabClock.js";
 import { LabPanel, type PanelCallbacks } from "./LabPanel.js";
 import type { ScenarioEntry } from "./ScenarioRegistry.js";
 
-/** `drive` is what the Run button keys off; `controls` is what a run locks. */
+/**
+ * `drive` is what the Run button keys off; `controls` is what a run locks.
+ * `title` is split the way the registry splits it, so a case reads as the
+ * nesting it produces.
+ */
 const entry = (
   id: string,
   title: string,
   extra?: Partial<Pick<AnyScenario, "controls" | "drive">>,
-): ScenarioEntry => ({
-  id,
-  path: `/src/${id}.scenario.ts`,
-  title,
-  scenario: defineScenario({ title, setup: () => {}, ...extra }),
-  hasDrive: typeof extra?.drive === "function",
-});
+): ScenarioEntry => {
+  const segments = title.split("/").map((part) => part.trim());
+  return {
+    id,
+    path: `/src/${id}.scenario.ts`,
+    exportName: "default",
+    groups: segments.slice(0, -1),
+    label: segments[segments.length - 1] as string,
+    title,
+    scenario: defineScenario({ title, setup: () => {}, ...extra }),
+    hasDrive: typeof extra?.drive === "function",
+  };
+};
 
 const drivenEntry = (
   id: string,
@@ -91,6 +101,45 @@ describe("the scenario list", () => {
     const { panel, find } = mountPanel(scenarios);
     panel.setCurrent(stacking, {});
     expect(find(`[aria-current="true"]`).textContent).toBe("Stacking");
+  });
+});
+
+describe("the controls section", () => {
+  const tunable = entry("drop", "Physics / Ball drop", {
+    controls: { count: control.int(3, { min: 1, max: 12 }) },
+  });
+
+  it("belongs to the stage, so the list cannot crowd it out", () => {
+    // Both the list and the controls grow with the project. In one column the
+    // longer of the two pushes the other out of view.
+    const { panel } = mountPanel([tunable]);
+    panel.setCurrent(tunable, { count: 3 });
+
+    const controls = panel.root.querySelector(".yage-lab__controls");
+    expect(controls?.closest(".yage-lab__stage")).not.toBeNull();
+    expect(controls?.closest(".yage-lab__sidebar")).toBeNull();
+  });
+
+  it("hides itself for a scenario that declares none", () => {
+    const { panel } = mountPanel([tunable]);
+    const controls = panel.root.querySelector<HTMLElement>(
+      ".yage-lab__controls",
+    );
+
+    panel.setCurrent(tunable, { count: 3 });
+    expect(controls?.hidden).toBe(false);
+
+    panel.setCurrent(entry("plain", "Sandbox"), {});
+    expect(controls?.hidden).toBe(true);
+  });
+
+  it("keeps its heading out of the part that scrolls", () => {
+    const { panel } = mountPanel([tunable]);
+    panel.setCurrent(tunable, { count: 3 });
+
+    const list = panel.root.querySelector(".yage-lab__control-list");
+    expect(list?.querySelector(".yage-lab__heading")).toBeNull();
+    expect(list?.querySelectorAll(".yage-lab__control")).toHaveLength(1);
   });
 });
 
