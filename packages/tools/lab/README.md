@@ -32,6 +32,7 @@ Then write scenarios as `*.scenario.ts` files, next to the code they exercise:
 // src/entities/ball.scenario.ts  →  listed under entities › ball
 import { Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 import { control, defineScenario } from "@yagejs-tools/lab";
 
 export default defineScenario({
@@ -49,6 +50,13 @@ export default defineScenario({
       ball.add(
         new GraphicsComponent().draw((g) => {
           g.circle(0, 0, 16).fill({ color: 0x38bdf8 });
+        }),
+      );
+      ball.add(new RigidBodyComponent({ type: "dynamic" }));
+      ball.add(
+        new ColliderComponent({
+          shape: { type: "circle", radius: 16 },
+          restitution: c.bounce,
         }),
       );
     }
@@ -97,6 +105,7 @@ on wall-clock timing:
 ```ts
 async drive({ scene, input, step, expect }) {
   const ball = scene.findByKey("ball-0");
+  if (!ball) throw new Error("the scenario spawned no ball-0");
   const transform = ball.get(Transform);
   const startY = transform.position.y;
 

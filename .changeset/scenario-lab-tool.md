@@ -19,7 +19,9 @@ export default defineScenario({
   setup(scene, c) { /* spawn the balls */ },
 
   async drive({ scene, step, expect }) {
-    const transform = scene.findByKey("ball-0").get(Transform);
+    const ball = scene.findByKey("ball-0");
+    if (!ball) throw new Error("no ball-0");
+    const transform = ball.get(Transform);
     const startY = transform.position.y;
     await step(120);
     expect(transform.position.y).toBeGreaterThan(startY);

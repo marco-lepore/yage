@@ -87,6 +87,7 @@ fails to compile.
 // src/entities/ball.scenario.ts  →  entities › ball
 import { Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 import { control, defineScenario } from "@yagejs-tools/lab";
 
 export default defineScenario({
@@ -105,6 +106,13 @@ export default defineScenario({
       ball.add(
         new GraphicsComponent().draw((g) => {
           g.circle(0, 0, 16).fill({ color: 0x38bdf8 });
+        }),
+      );
+      ball.add(new RigidBodyComponent({ type: "dynamic" }));
+      ball.add(
+        new ColliderComponent({
+          shape: { type: "circle", radius: 16 },
+          restitution: c.bounce,
         }),
       );
     }
@@ -205,7 +213,8 @@ every one of them in a headless browser.
 ```ts
 async drive({ scene, controls, step, until, expect, input, events, capture }) {
   const ball = scene.findByKey("ball-0");
-  const transform = ball!.get(Transform);
+  if (!ball) throw new Error("the scenario spawned no ball-0");
+  const transform = ball.get(Transform);
   const startY = transform.position.y;
 
   await step(120);                                  // two seconds of gravity
