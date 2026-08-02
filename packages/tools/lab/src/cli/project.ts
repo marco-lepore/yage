@@ -93,7 +93,9 @@ export function readEngineDependencies(
  * fallback would quietly browse a different set of files than the project asked
  * for.
  */
-export function readProjectScenarios(dir: string): readonly string[] | undefined {
+export function readProjectScenarios(
+  dir: string,
+): readonly string[] | undefined {
   const file = path.join(dir, "package.json");
   const manifest = readManifest(file);
   if (!manifest) return undefined;

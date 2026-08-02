@@ -85,7 +85,8 @@ export function buildRegistry(
     if (def === undefined) {
       problems.push({
         path,
-        message: "no default export — a scenario file must `export default defineScenario({...})`.",
+        message:
+          "no default export — a scenario file must `export default defineScenario({...})`.",
       });
       continue;
     }

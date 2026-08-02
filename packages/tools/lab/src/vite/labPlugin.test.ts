@@ -7,11 +7,7 @@ import {
   type ViteDevServer,
 } from "vite";
 import { createLabConfig } from "../cli/labConfig.js";
-import {
-  removeProjects,
-  STUB_HARNESS,
-  writeProject,
-} from "../test-helpers.js";
+import { removeProjects, STUB_HARNESS, writeProject } from "../test-helpers.js";
 import { LAB_ENTRY_ID } from "./labPlugin.js";
 
 const RUNNER = fileURLToPath(new URL("../runner.ts", import.meta.url));

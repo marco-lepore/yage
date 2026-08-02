@@ -23,8 +23,8 @@ export interface InitOptions {
 
 /** The harness the lookup would find, whatever its extension. */
 function findExisting(root: string): string | undefined {
-  return HARNESS_CANDIDATES.map((name) => path.join(root, name)).find(
-    (file) => existsSync(file),
+  return HARNESS_CANDIDATES.map((name) => path.join(root, name)).find((file) =>
+    existsSync(file),
   );
 }
 
@@ -100,5 +100,7 @@ export async function runInit(opts: InitOptions): Promise<void> {
         `configure it — a fixed RNG seed, for one.\n`,
     );
   }
-  process.stdout.write(`\n  Write a *.scenario.ts file, then run yage-lab.\n\n`);
+  process.stdout.write(
+    `\n  Write a *.scenario.ts file, then run yage-lab.\n\n`,
+  );
 }

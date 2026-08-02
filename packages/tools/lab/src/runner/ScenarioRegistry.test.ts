@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { buildRegistry, scenarioIdFromPath } from "./ScenarioRegistry.js";
 import { defineScenario } from "../grammar/scenario.js";
 
-const scenario = (title: string) =>
-  ({ default: defineScenario({ title, setup: () => {} }) });
+const scenario = (title: string) => ({
+  default: defineScenario({ title, setup: () => {} }),
+});
 
 describe("scenarioIdFromPath", () => {
   it("keeps the directory, so same-named files stay distinct", () => {

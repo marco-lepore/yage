@@ -160,21 +160,19 @@ export function yageLab(options: YageLabOptions = {}): Plugin {
           next();
           return;
         }
-        server
-          .transformIndexHtml(req.url ?? "/", html, req.originalUrl)
-          .then(
-            (page) => {
-              for (const [name, value] of Object.entries(headers)) {
-                if (value !== undefined) res.setHeader(name, value);
-              }
-              res.setHeader("Content-Type", "text/html");
-              res.setHeader("Cache-Control", "no-cache");
-              res.end(page);
-            },
-            (error: unknown) => {
-              next(error);
-            },
-          );
+        server.transformIndexHtml(req.url ?? "/", html, req.originalUrl).then(
+          (page) => {
+            for (const [name, value] of Object.entries(headers)) {
+              if (value !== undefined) res.setHeader(name, value);
+            }
+            res.setHeader("Content-Type", "text/html");
+            res.setHeader("Cache-Control", "no-cache");
+            res.end(page);
+          },
+          (error: unknown) => {
+            next(error);
+          },
+        );
       });
     },
   };

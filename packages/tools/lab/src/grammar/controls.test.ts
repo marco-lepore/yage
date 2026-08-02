@@ -76,7 +76,9 @@ describe("control.select", () => {
   });
 
   it("rejects a value that is not an option, and an empty list", () => {
-    expect(() => control.select("red", ["green", "purple"])).toThrow(/not one of/);
+    expect(() => control.select("red", ["green", "purple"])).toThrow(
+      /not one of/,
+    );
     expect(() => control.select("red", [])).toThrow(/empty/);
   });
 });

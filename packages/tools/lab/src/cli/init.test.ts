@@ -160,9 +160,7 @@ describe("runInit", () => {
 
     await runInit({ cwd, force: false });
 
-    expect(written.join("")).toMatch(
-      /UIReactPlugin — install @yagejs\/ui\b/,
-    );
+    expect(written.join("")).toMatch(/UIReactPlugin — install @yagejs\/ui\b/);
   });
 
   it("says the lab supplies DebugPlugin when the project has no @yagejs/debug", async () => {

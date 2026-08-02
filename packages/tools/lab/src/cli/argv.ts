@@ -101,7 +101,8 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     }
     if (arg === "--port" || arg === "-p" || arg.startsWith("--port=")) {
       const value = takeValue(arg.startsWith("--port=") ? "--port" : arg);
-      if (value === undefined) return { ...result, error: "--port requires a value" };
+      if (value === undefined)
+        return { ...result, error: "--port requires a value" };
       const port = Number(value);
       if (!Number.isInteger(port) || port < 1 || port > 65535) {
         return { ...result, error: `Invalid port: ${value}` };
@@ -116,7 +117,10 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       }
       const patterns = splitPatterns(value);
       if (patterns.length === 0) {
-        return { ...result, error: "--scenarios requires at least one pattern" };
+        return {
+          ...result,
+          error: "--scenarios requires at least one pattern",
+        };
       }
       result.scenarios = patterns;
       continue;
@@ -167,7 +171,8 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
 
   const allowed: readonly string[] = COMMAND_FLAGS[result.command];
   const offender = (Object.keys(FLAG_FIELDS) as LabFlag[]).find(
-    (flag) => result[FLAG_FIELDS[flag]] !== undefined && !allowed.includes(flag),
+    (flag) =>
+      result[FLAG_FIELDS[flag]] !== undefined && !allowed.includes(flag),
   );
   if (offender !== undefined) {
     return {

@@ -31,10 +31,11 @@ describe("parseArgs", () => {
   });
 
   it("splits a scenario list", () => {
-    expect(parseArgs(["--scenarios", "src/**/*.scenario.ts, ui/*.scenario.ts"]))
-      .toMatchObject({
-        scenarios: ["src/**/*.scenario.ts", "ui/*.scenario.ts"],
-      });
+    expect(
+      parseArgs(["--scenarios", "src/**/*.scenario.ts, ui/*.scenario.ts"]),
+    ).toMatchObject({
+      scenarios: ["src/**/*.scenario.ts", "ui/*.scenario.ts"],
+    });
   });
 
   it("reads the build output directory", () => {
@@ -61,7 +62,9 @@ describe("parseArgs", () => {
     expect(parseArgs(["test", "--screenshots", "shots"]).screenshots).toBe(
       "shots",
     );
-    expect(parseArgs(["test", "--screenshots=shots"]).screenshots).toBe("shots");
+    expect(parseArgs(["test", "--screenshots=shots"]).screenshots).toBe(
+      "shots",
+    );
     expect(parseArgs(["test"]).screenshots).toBeUndefined();
   });
 
@@ -71,15 +74,23 @@ describe("parseArgs", () => {
   });
 
   it("rejects a flag the command does not have", () => {
-    expect(parseArgs(["build", "--port", "6000"]).error).toMatch(/not an option/);
+    expect(parseArgs(["build", "--port", "6000"]).error).toMatch(
+      /not an option/,
+    );
     expect(parseArgs(["build", "--no-open"]).error).toMatch(/not an option/);
-    expect(parseArgs(["dev", "--out-dir", "site"]).error).toMatch(/not an option/);
+    expect(parseArgs(["dev", "--out-dir", "site"]).error).toMatch(
+      /not an option/,
+    );
     expect(parseArgs(["dev", "--force"]).error).toMatch(/not an option/);
-    expect(parseArgs(["init", "--port", "6000"]).error).toMatch(/not an option/);
+    expect(parseArgs(["init", "--port", "6000"]).error).toMatch(
+      /not an option/,
+    );
     expect(parseArgs(["init", "--scenarios", "a"]).error).toMatch(
       /not an option/,
     );
-    expect(parseArgs(["test", "--port", "6000"]).error).toMatch(/not an option/);
+    expect(parseArgs(["test", "--port", "6000"]).error).toMatch(
+      /not an option/,
+    );
     expect(parseArgs(["dev", "--timeout", "5000"]).error).toMatch(
       /not an option/,
     );

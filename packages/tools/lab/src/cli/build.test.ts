@@ -2,11 +2,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveConfig } from "vite";
-import {
-  removeProjects,
-  STUB_HARNESS,
-  writeProject,
-} from "../test-helpers.js";
+import { removeProjects, STUB_HARNESS, writeProject } from "../test-helpers.js";
 import { labBuildConfig, runBuild } from "./build.js";
 import { createLabConfig } from "./labConfig.js";
 
