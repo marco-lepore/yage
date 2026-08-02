@@ -1379,4 +1379,45 @@ describe("SceneManager", () => {
       });
     });
   });
+
+  describe("after destroy", () => {
+    it("ignores a push and says so, instead of leaving a dead scene behind", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { manager } = setup();
+      await manager.push(new GameScene("main"));
+      manager._destroy();
+
+      const late = new GameScene("late");
+      await manager.push(late);
+
+      expect(late.enterCalled).toBe(false);
+      expect(manager.all).toEqual([]);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("SceneManager.push() ignored"),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it("ignores pop, replace and popAll the same way", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { manager } = setup();
+      await manager.push(new GameScene("main"));
+      manager._destroy();
+
+      expect(await manager.pop()).toBeUndefined();
+      await manager.replace(new GameScene("replacement"));
+      await manager.popAll();
+
+      expect(manager.all).toEqual([]);
+      const warned = warnSpy.mock.calls.map((call) => String(call[0]));
+      for (const method of ["pop", "replace", "popAll"]) {
+        expect(
+          warned.some((message) =>
+            message.includes(`SceneManager.${method}() ignored`),
+          ),
+        ).toBe(true);
+      }
+      warnSpy.mockRestore();
+    });
+  });
 });

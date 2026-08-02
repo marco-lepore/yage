@@ -174,7 +174,7 @@ export class SceneManager {
    */
   async push(scene: Scene, opts?: SceneTransitionOptions): Promise<void> {
     this._warnIfMutating("push");
-    await this._enqueue(async () => {
+    await this._enqueue("push", async () => {
       const fromScene = this.active;
       await this._pushScene(scene);
 
@@ -190,7 +190,7 @@ export class SceneManager {
    * Safe to call reentrantly — see {@link push}. */
   async pop(opts?: SceneTransitionOptions): Promise<Scene | undefined> {
     this._warnIfMutating("pop");
-    return this._enqueue(async () => {
+    return this._enqueue("pop", async () => {
       if (this.stack.length === 0) return undefined;
 
       const fromScene = this.active;
@@ -226,7 +226,7 @@ export class SceneManager {
    */
   async replace(scene: Scene, opts?: SceneTransitionOptions): Promise<void> {
     this._warnIfMutating("replace");
-    await this._enqueue(async () => {
+    await this._enqueue("replace", async () => {
       const transition = resolveTransition(opts?.transition, scene);
 
       if (!transition) {
@@ -263,7 +263,7 @@ export class SceneManager {
    */
   async popAll(): Promise<void> {
     this._warnIfMutating("popAll");
-    await this._enqueue(async () => {
+    await this._enqueue("popAll", async () => {
       this._withMutationSync(() => {
         while (this.stack.length > 0) {
           const scene = this.stack.pop();
@@ -306,6 +306,9 @@ export class SceneManager {
    * Called by Engine.destroy(). Any queued async work short-circuits on
    * resume; in-flight transitions' pending promises are resolved via
    * _cleanupRun so they don't leak.
+   *
+   * One-way: the destroyed state is never cleared, matching the engine's
+   * single-use lifecycle. Later push/pop/replace/popAll calls are ignored.
    * @internal
    */
   _destroy(): void {
@@ -361,8 +364,21 @@ export class SceneManager {
 
   // ---- Private helpers ----
 
-  private _enqueue<T>(work: () => Promise<T>): Promise<T | undefined> {
-    if (this._destroyed) return Promise.resolve(undefined);
+  private _enqueue<T>(
+    method: string,
+    work: () => Promise<T>,
+  ): Promise<T | undefined> {
+    if (this._destroyed) {
+      // Fresh call on a destroyed manager: a caller bug, since the engine can
+      // never be started again. Work that was already queued short-circuits
+      // silently on the check below instead, where losing a call to a teardown
+      // that landed mid-flight is expected.
+      devWarn(
+        `SceneManager.${method}() ignored: the engine has been destroyed. ` +
+          "Scene changes have no effect after Engine.destroy().",
+      );
+      return Promise.resolve(undefined);
+    }
     const next = this._pendingChain.then(async () => {
       if (this._destroyed) return undefined;
       return work();

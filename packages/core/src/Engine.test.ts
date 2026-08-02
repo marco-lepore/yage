@@ -47,6 +47,18 @@ class CrashingComponent extends Component {
   }
 }
 
+class CountingSystem extends System {
+  readonly phase = Phase.Update;
+  updates = 0;
+  unregisters = 0;
+  update() {
+    this.updates++;
+  }
+  onUnregister() {
+    this.unregisters++;
+  }
+}
+
 beforeEach(() => {
   _resetEntityIdCounter();
 });
@@ -250,6 +262,87 @@ describe("Engine", () => {
       await engine.start();
       await engine.start(); // should not throw
       engine.destroy();
+    });
+  });
+
+  describe("single-use lifecycle", () => {
+    it("start() after destroy() throws and names the alternatives", async () => {
+      const engine = new Engine();
+      await engine.start();
+      engine.destroy();
+
+      await expect(engine.start()).rejects.toThrow(
+        "Engine.start() cannot be called after destroy()",
+      );
+      await expect(engine.start()).rejects.toThrow("scenes.replace");
+    });
+
+    it("start() throws even when destroy() ran without a prior start()", async () => {
+      const engine = new Engine();
+      engine.destroy();
+
+      await expect(engine.start()).rejects.toThrow(
+        "Engine.start() cannot be called after destroy()",
+      );
+      expect(engine.loop.isRunning).toBe(false);
+    });
+
+    it("the rejected restart re-runs nothing: no duplicate systems, no live loop", async () => {
+      const install = vi.fn();
+      const onStart = vi.fn();
+      const system = new CountingSystem();
+      const engine = new Engine();
+      engine.use({
+        name: "counting",
+        version: "1.0.0",
+        install,
+        registerSystems: (scheduler) => scheduler.add(system),
+        onStart,
+      });
+      await engine.start();
+      const systemCount = engine.inspector.getSystems().length;
+      engine.loop.tick(16);
+      expect(system.updates).toBe(1);
+      engine.destroy();
+
+      await expect(engine.start()).rejects.toThrow();
+
+      expect(install).toHaveBeenCalledOnce();
+      expect(onStart).toHaveBeenCalledOnce();
+      expect(engine.inspector.getSystems()).toHaveLength(systemCount);
+      expect(engine.loop.isRunning).toBe(false);
+      // A stopped loop ignores tick(), so the system stays at its pre-destroy count.
+      engine.loop.tick(16);
+      expect(system.updates).toBe(1);
+    });
+
+    it("destroy() is idempotent", async () => {
+      const onDestroy = vi.fn();
+      const system = new CountingSystem();
+      const engine = new Engine();
+      engine.use({
+        name: "counting",
+        version: "1.0.0",
+        registerSystems: (scheduler) => scheduler.add(system),
+        onDestroy,
+      });
+      await engine.start();
+
+      engine.destroy();
+      engine.destroy();
+
+      expect(onDestroy).toHaveBeenCalledOnce();
+      expect(system.unregisters).toBe(1);
+    });
+
+    it("use() after destroy() throws", async () => {
+      const engine = new Engine();
+      await engine.start();
+      engine.destroy();
+
+      expect(() => engine.use({ name: "late", version: "1.0.0" })).toThrow(
+        "Cannot register plugins on a destroyed engine.",
+      );
     });
   });
 

@@ -50,6 +50,10 @@ engine.destroy();
 
 `engine.use(plugin)` must be called before `start()`. Plugins are installed in topological dependency order.
 
+An engine instance is single-use. After `destroy()`, `start()` and `use()` throw, and further `destroy()` calls are ignored. Construct a new `Engine` to run again.
+
+To restart gameplay, keep the engine running and reset the scene stack: `scenes.replace(new GameScene())`, or `scenes.popAll()` followed by `scenes.push()`. Scene changes after `destroy()` are ignored.
+
 ## Plugin Interface
 
 ```ts

@@ -75,6 +75,7 @@ export class Engine {
   private readonly plugins: Map<string, Plugin> = new Map();
   private sortedPlugins: Plugin[] = [];
   private started = false;
+  private destroyed = false;
   private readonly debug: boolean;
 
   constructor(config?: EngineConfig) {
@@ -173,6 +174,9 @@ export class Engine {
 
   /** Register a plugin. Must be called before start(). */
   use(plugin: Plugin): this {
+    if (this.destroyed) {
+      throw new Error("Cannot register plugins on a destroyed engine.");
+    }
     if (this.started) {
       throw new Error("Cannot register plugins after engine has started.");
     }
@@ -183,8 +187,25 @@ export class Engine {
     return this;
   }
 
-  /** Start the engine. Installs plugins in topological order, starts the game loop. */
+  /**
+   * Start the engine. Installs plugins in topological order, starts the game
+   * loop. Calling it again while running is a no-op.
+   *
+   * An engine instance is single-use: `start()` throws once `destroy()` has
+   * run. Plugin `install()` registers services into a container that rejects
+   * duplicate keys, and `onDestroy()` releases resources the plugin cannot
+   * rebuild, so a second pass over the same instance cannot produce a working
+   * engine.
+   */
   async start(): Promise<void> {
+    if (this.destroyed) {
+      throw new Error(
+        "Engine.start() cannot be called after destroy() — an engine instance is " +
+          "single-use. Construct a new Engine to run again. To restart gameplay " +
+          "without tearing the engine down, reset the scene stack instead " +
+          "(scenes.replace(new GameScene()) or scenes.popAll() then scenes.push()).",
+      );
+    }
     if (this.started) return;
     this.started = true;
 
@@ -228,8 +249,18 @@ export class Engine {
     this.events.emit("engine:started", undefined);
   }
 
-  /** Stop the engine. Destroys all scenes, plugins, and the game loop. */
+  /**
+   * Stop the engine. Destroys all scenes, plugins, and the game loop. One-way:
+   * the instance cannot be started again. Repeat calls are a no-op, so a host
+   * that tears down defensively (hot reload, component unmount) can call it
+   * without tracking whether it already did.
+   */
   destroy(): void {
+    if (this.destroyed) return;
+    // Set before teardown runs: a plugin onDestroy or scene onExit that calls
+    // destroy() again re-enters here, and must not tear everything down twice.
+    this.destroyed = true;
+
     // Emit stop event
     this.events.emit("engine:stopped", undefined);
 
@@ -259,7 +290,6 @@ export class Engine {
 
     this.inspector.dispose();
     this.events.clear();
-    this.started = false;
   }
 
   private registerBuiltInSystems(): void {
