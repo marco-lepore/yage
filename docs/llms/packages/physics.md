@@ -63,7 +63,8 @@ Methods:
 - `position: Vec2` — read the simulated position (px), allocates a `Vec2`
 - `positionX` / `positionY` — scalar reads (px) that skip the `Vec2` allocation; reading both calls into Rapier twice
 - `rotation: number` — read the simulated rotation (radians)
-- `setPosition(x, y)` — teleport a dynamic body (skips interpolation). For kinematic bodies, use `transform.setPosition()` instead — the physics system syncs Transform → Rapier automatically each frame.
+- `setPosition(x, y)` — teleport any body type: no interpolation, the drawn pose jumps. Writing the `Transform` of a kinematic body instead moves it there smoothly over one step.
+- `setRotation(radians)` — teleport rotation; the rotation counterpart of `setPosition`
 - `setAngularVelocity(v)` / `getAngularVelocity()` — radians/s
 - `applyTorque(t)` — rotational force
 - `setEnabledTranslations(enableX, enableY)` — lock axes at runtime
@@ -72,12 +73,16 @@ Methods:
 
 ### Reading positions
 
-A dynamic body has two positions, and they differ within a frame:
+A dynamic or kinematic body has two positions, and they differ within a frame:
 
 - `entity.get(Transform).worldPosition` — the drawn pose. Blended between the last two fixed steps, so it moves smoothly at the display frame rate and is at most one fixed step behind the simulation. Use it for anything visual: camera follow, HUD markers, spawning effects at a body.
 - `rb.position` / `rb.positionX` / `rb.positionY` / `rb.rotation` — the exact simulated pose, as of the last completed fixed step. Use it when a number must match the simulation: distance thresholds, snapping a body to a grid, saving a checkpoint.
 
 Interpolation runs at the start of `Update`, so the `Transform` a component's `update(dt)` reads is the one that gets drawn that frame. Raycasts, collision events, and other physics queries always report exact poses — they run inside the simulation, not against the `Transform`.
+
+### Moving kinematic bodies
+
+Write the `Transform` (`setPosition`, `translate`) in `fixedUpdate`; the body reaches the written pose on the next physics step and is drawn interpolated, so the drawn gap to dynamic bodies riding it stays constant. A write from `update()` lands after that frame's interpolation pass: the frame shows the raw pose, then drawing re-blends from the last two steps, so a one-shot write visibly hops — prefer `fixedUpdate`. `rb.setPosition()` / `rb.setRotation()` teleport instead — no smoothing.
 
 ## ColliderComponent
 

@@ -46,6 +46,8 @@ const { mocks } = vi.hoisted(() => {
     _angvel = 0;
     _colliders: unknown[] = [];
     _bodyType: string;
+    _nextKinematicTranslation: { x: number; y: number } | null = null;
+    _nextKinematicRotation: number | null = null;
 
     constructor(bodyType = "dynamic") {
       this.handle = nextBodyHandle++;
@@ -79,8 +81,12 @@ const { mocks } = vi.hoisted(() => {
     addForce() {}
     applyImpulse() {}
     addTorque() {}
-    setNextKinematicTranslation() {}
-    setNextKinematicRotation() {}
+    setNextKinematicTranslation(t: { x: number; y: number }) {
+      this._nextKinematicTranslation = { ...t };
+    }
+    setNextKinematicRotation(r: number) {
+      this._nextKinematicRotation = r;
+    }
     isDynamic() {
       return this._bodyType === "dynamic";
     }
@@ -156,15 +162,27 @@ const { mocks } = vi.hoisted(() => {
       this.gravity = { ...gravity };
     }
 
-    /** Integrates dynamic bodies at constant velocity, so a step moves them. */
+    /**
+     * Integrates dynamic bodies at constant velocity and makes kinematic
+     * bodies adopt their queued next pose — Rapier's position-based
+     * kinematic behavior.
+     */
     step() {
       for (const body of this._bodies.values()) {
-        if (!body.isDynamic()) continue;
-        body._translation = {
-          x: body._translation.x + body._linvel.x * this.timestep,
-          y: body._translation.y + body._linvel.y * this.timestep,
-        };
-        body._rotation += body._angvel * this.timestep;
+        if (body.isDynamic()) {
+          body._translation = {
+            x: body._translation.x + body._linvel.x * this.timestep,
+            y: body._translation.y + body._linvel.y * this.timestep,
+          };
+          body._rotation += body._angvel * this.timestep;
+        } else if (body.isKinematic()) {
+          if (body._nextKinematicTranslation) {
+            body._translation = { ...body._nextKinematicTranslation };
+          }
+          if (body._nextKinematicRotation !== null) {
+            body._rotation = body._nextKinematicRotation;
+          }
+        }
       }
     }
 
@@ -217,6 +235,7 @@ vi.mock("@dimforge/rapier2d", () => ({
 
 import {
   Component,
+  ComponentFixedUpdateSystem,
   ComponentUpdateSystem,
   Phase,
   SceneTime,
@@ -395,7 +414,7 @@ describe("PhysicsInterpolationSystem", () => {
     expect(transform.rotation).toBeCloseTo(0);
   });
 
-  it("skips non-dynamic bodies", async () => {
+  it("skips static bodies", async () => {
     const { scene, context } = await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
@@ -415,8 +434,9 @@ describe("PhysicsInterpolationSystem", () => {
     expect(transform.position.y).toBe(50);
   });
 
-  it("skips kinematic bodies", async () => {
-    const { scene, context } = await createPhysicsTestContext();
+  it("interpolates kinematic bodies between prev and curr", async () => {
+    const { scene, manager, gameLoop, context } =
+      await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -427,11 +447,60 @@ describe("PhysicsInterpolationSystem", () => {
     rb._prevPosition = new Vec2(0, 0);
     rb._currPosition = new Vec2(200, 200);
 
+    manager.getContext(scene)!.accumulator = gameLoop.fixedTimestep * 0.5;
+
     system.update(0);
 
-    // Transform should NOT be interpolated for kinematic bodies
-    expect(transform.position.x).toBe(75);
-    expect(transform.position.y).toBe(75);
+    expect(transform.position.x).toBeCloseTo(100);
+    expect(transform.position.y).toBeCloseTo(100);
+  });
+
+  it("captures a game Transform write as the kinematic step target before lerping", async () => {
+    const { scene, context } = await createPhysicsTestContext();
+    const system = new PhysicsInterpolationSystem();
+    system._setContext(context);
+
+    const entity = spawnEntityInScene(scene, "kinematic");
+    const transform = entity.add(new Transform({ position: new Vec2(75, 75) }));
+    const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
+
+    transform.setPosition(300, 400);
+    transform.setRotation(1.5);
+
+    system.update(0);
+
+    expect(rb._kinematicTargetPosition.x).toBe(300);
+    expect(rb._kinematicTargetPosition.y).toBe(400);
+    expect(rb._kinematicTargetRotation).toBe(1.5);
+    // The Transform itself now holds the interpolated pose.
+    expect(transform.position.x).toBeCloseTo(75);
+    expect(transform.position.y).toBeCloseTo(75);
+  });
+
+  it("does not feed its own lerp output back into the kinematic target", async () => {
+    const { scene, manager, gameLoop, context } =
+      await createPhysicsTestContext();
+    const system = new PhysicsInterpolationSystem();
+    system._setContext(context);
+
+    const entity = spawnEntityInScene(scene, "kinematic");
+    entity.add(new Transform({ position: new Vec2(100, 0) }));
+    const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
+
+    // A step segment is in flight; the target is ahead of it.
+    rb._prevPosition = new Vec2(80, 0);
+    rb._currPosition = new Vec2(90, 0);
+    rb._kinematicTargetPosition = new Vec2(100, 0);
+
+    // Two frames with different alphas, no game write in between: the lerp
+    // writes a trailing pose into the Transform each time, and the target
+    // must not follow it backwards.
+    manager.getContext(scene)!.accumulator = gameLoop.fixedTimestep * 0.5;
+    system.update(0);
+    manager.getContext(scene)!.accumulator = gameLoop.fixedTimestep * 0.75;
+    system.update(0);
+
+    expect(rb._kinematicTargetPosition.x).toBe(100);
   });
 
   it("blends each scene by its own accumulator", async () => {
@@ -676,6 +745,278 @@ describe("PhysicsInterpolationSystem", () => {
       }
 
       expect(observed.length).toBe(6);
+    });
+  });
+
+  describe("kinematic bodies under the game loop", () => {
+    const SPEED = 60; // px/s → 1 px per 1/60 s fixed step
+
+    it("keeps the drawn platform–rider gap constant through direction reversals", async () => {
+      const { scene, gameLoop, scheduler, context } =
+        await createPhysicsTestContext({ pixelsPerMeter: 50 });
+
+      // Reverses both the authored platform and the rider's velocity on the
+      // same fixed step, like the issue's repro: platform and rider travel
+      // together, so their DRAWN gap must never wobble.
+      class PlatformMover extends Component {
+        private readonly transform = this.sibling(Transform);
+        dir = 1;
+        steps = 0;
+        riderRb!: RigidBodyComponent;
+        override fixedUpdate(dt: number): void {
+          if (++this.steps % 6 === 0) {
+            this.dir = -this.dir;
+            this.riderRb.setVelocity({ x: SPEED * this.dir, y: 0 });
+          }
+          this.transform.translate(SPEED * this.dir * dt, 0);
+        }
+      }
+
+      runPhysicsUnderGameLoop(context, gameLoop, scheduler, [
+        new ComponentFixedUpdateSystem(),
+      ]);
+
+      const platform = spawnEntityInScene(scene, "platform");
+      const platformTransform = platform.add(new Transform());
+      platform.add(new RigidBodyComponent({ type: "kinematic" }));
+      const mover = platform.add(new PlatformMover());
+
+      const rider = spawnEntityInScene(scene, "rider");
+      const riderTransform = rider.add(
+        new Transform({ position: new Vec2(0, -20) }),
+      );
+      const riderRb = rider.add(new RigidBodyComponent({ type: "dynamic" }));
+      riderRb.setVelocity({ x: SPEED, y: 0 });
+      mover.riderRb = riderRb;
+
+      const gaps: number[] = [];
+      for (let i = 0; i < 40; i++) {
+        gameLoop.tick(10);
+        gaps.push(
+          riderTransform.worldPosition.x - platformTransform.worldPosition.x,
+        );
+      }
+
+      // Skip the first frames while prev/curr and the target pipeline fill.
+      const steady = gaps.slice(6);
+      for (const gap of steady) {
+        expect(gap).toBeCloseTo(steady[0]!, 6);
+      }
+    });
+
+    it("moves the body at exactly the authored velocity — absolute-pose author", async () => {
+      const { scene, gameLoop, scheduler, context } =
+        await createPhysicsTestContext({ pixelsPerMeter: 50 });
+
+      class AbsoluteMover extends Component {
+        private readonly transform = this.sibling(Transform);
+        private readonly rb = this.sibling(RigidBodyComponent);
+        x = 0;
+        bodyX: number[] = [];
+        override fixedUpdate(dt: number): void {
+          this.bodyX.push(this.rb.positionX);
+          this.x += SPEED * dt;
+          this.transform.setPosition(this.x, 0);
+        }
+      }
+
+      runPhysicsUnderGameLoop(context, gameLoop, scheduler, [
+        new ComponentFixedUpdateSystem(),
+      ]);
+
+      const platform = spawnEntityInScene(scene, "platform");
+      platform.add(new Transform());
+      platform.add(new RigidBodyComponent({ type: "kinematic" }));
+      const mover = platform.add(new AbsoluteMover());
+
+      for (let i = 0; i < 40; i++) gameLoop.tick(10);
+
+      // Per-step body travel must match the authored velocity exactly — a
+      // lagged or blended target would pull the body off that speed.
+      const travel = mover.bodyX
+        .slice(3)
+        .map((x, i, a) => (i ? x - a[i - 1]! : 0));
+      for (const step of travel.slice(1)) {
+        expect(step).toBeCloseTo(SPEED / 60, 6);
+      }
+    });
+
+    it("moves the body at exactly the authored velocity — translate() author", async () => {
+      const { scene, gameLoop, scheduler, context } =
+        await createPhysicsTestContext({ pixelsPerMeter: 50 });
+
+      // Accumulating on the Transform only works because postStep restores
+      // the reached pose before fixedUpdate runs; otherwise the deltas would
+      // stack on the interpolated (trailing) pose and the platform would
+      // fall behind its authored velocity.
+      class DeltaMover extends Component {
+        private readonly transform = this.sibling(Transform);
+        private readonly rb = this.sibling(RigidBodyComponent);
+        bodyX: number[] = [];
+        override fixedUpdate(dt: number): void {
+          this.bodyX.push(this.rb.positionX);
+          this.transform.translate(SPEED * dt, 0);
+        }
+      }
+
+      runPhysicsUnderGameLoop(context, gameLoop, scheduler, [
+        new ComponentFixedUpdateSystem(),
+      ]);
+
+      const platform = spawnEntityInScene(scene, "platform");
+      platform.add(new Transform());
+      platform.add(new RigidBodyComponent({ type: "kinematic" }));
+      const mover = platform.add(new DeltaMover());
+
+      for (let i = 0; i < 40; i++) gameLoop.tick(10);
+
+      const travel = mover.bodyX
+        .slice(3)
+        .map((x, i, a) => (i ? x - a[i - 1]! : 0));
+      for (const step of travel.slice(1)) {
+        expect(step).toBeCloseTo(SPEED / 60, 6);
+      }
+    });
+
+    it("keeps the authored velocity on catch-up frames that run two steps", async () => {
+      const { scene, gameLoop, scheduler, context } =
+        await createPhysicsTestContext({ pixelsPerMeter: 50 });
+
+      // 34 ms ticks against a 1/60 s step: every frame runs two fixed steps
+      // with no interpolation pass between them. The pre-step capture must
+      // hand the second step the author's fresh write; a once-per-frame
+      // capture would alternate a no-op step with a doubled one.
+      class DeltaMover extends Component {
+        private readonly transform = this.sibling(Transform);
+        private readonly rb = this.sibling(RigidBodyComponent);
+        bodyX: number[] = [];
+        override fixedUpdate(dt: number): void {
+          this.bodyX.push(this.rb.positionX);
+          this.transform.translate(SPEED * dt, 0);
+        }
+      }
+
+      runPhysicsUnderGameLoop(context, gameLoop, scheduler, [
+        new ComponentFixedUpdateSystem(),
+      ]);
+
+      const platform = spawnEntityInScene(scene, "platform");
+      platform.add(new Transform());
+      platform.add(new RigidBodyComponent({ type: "kinematic" }));
+      const mover = platform.add(new DeltaMover());
+
+      for (let i = 0; i < 20; i++) gameLoop.tick(34);
+
+      const travel = mover.bodyX
+        .slice(3)
+        .map((x, i, a) => (i ? x - a[i - 1]! : 0));
+      for (const step of travel.slice(1)) {
+        expect(step).toBeCloseTo(SPEED / 60, 6);
+      }
+    });
+
+    it("captures update()-authored movement on the next frame", async () => {
+      const { scene, gameLoop, scheduler, context } =
+        await createPhysicsTestContext({ pixelsPerMeter: 50 });
+
+      class UpdateMover extends Component {
+        private readonly transform = this.sibling(Transform);
+        override update(): void {
+          this.transform.setPosition(240, 0);
+        }
+      }
+
+      runPhysicsUnderGameLoop(context, gameLoop, scheduler, [
+        new ComponentUpdateSystem(),
+      ]);
+
+      const platform = spawnEntityInScene(scene, "platform");
+      platform.add(new Transform());
+      const rb = platform.add(new RigidBodyComponent({ type: "kinematic" }));
+      platform.add(new UpdateMover());
+
+      // Frame 1: the write lands after interpolation ran — not yet captured.
+      gameLoop.tick(10);
+      expect(rb._kinematicTargetPosition.x).toBe(0);
+
+      // Frame 2: captured; the following steps drive the body there.
+      gameLoop.tick(10);
+      expect(rb._kinematicTargetPosition.x).toBe(240);
+
+      for (let i = 0; i < 4; i++) gameLoop.tick(10);
+      expect(rb.positionX).toBeCloseTo(240, 6);
+    });
+
+    it("rb.setPosition teleports without smoothing and without target pull-back", async () => {
+      const { scene, gameLoop, scheduler, context } =
+        await createPhysicsTestContext({ pixelsPerMeter: 50 });
+
+      class TeleportingMover extends Component {
+        private readonly transform = this.sibling(Transform);
+        private readonly rb = this.sibling(RigidBodyComponent);
+        steps = 0;
+        override fixedUpdate(dt: number): void {
+          this.steps++;
+          if (this.steps < 8) {
+            this.transform.translate(SPEED * dt, 0);
+          } else if (this.steps === 8) {
+            this.rb.setPosition(1000, 0);
+          }
+        }
+      }
+
+      runPhysicsUnderGameLoop(context, gameLoop, scheduler, [
+        new ComponentFixedUpdateSystem(),
+      ]);
+
+      const platform = spawnEntityInScene(scene, "platform");
+      const transform = platform.add(new Transform());
+      const rb = platform.add(new RigidBodyComponent({ type: "kinematic" }));
+      platform.add(new TeleportingMover());
+
+      const drawnX: number[] = [];
+      for (let i = 0; i < 30; i++) {
+        gameLoop.tick(10);
+        drawnX.push(transform.worldPosition.x);
+      }
+
+      // Every drawn pose after the teleport frame is exactly the
+      // destination: no blend from the old pose, and no step pulls the body
+      // back toward the stale pre-teleport target.
+      const teleportFrame = drawnX.findIndex((x) => x === 1000);
+      expect(teleportFrame).toBeGreaterThan(0);
+      for (const x of drawnX.slice(teleportFrame)) {
+        expect(x).toBe(1000);
+      }
+      expect(rb.positionX).toBe(1000);
+    });
+
+    it("transform.setPosition on a kinematic body is smoothed over one step", async () => {
+      const { scene, gameLoop, scheduler, context } =
+        await createPhysicsTestContext({ pixelsPerMeter: 50 });
+
+      runPhysicsUnderGameLoop(context, gameLoop, scheduler);
+
+      const platform = spawnEntityInScene(scene, "platform");
+      const transform = platform.add(new Transform());
+      const rb = platform.add(new RigidBodyComponent({ type: "kinematic" }));
+
+      // Run a few frames so prev/curr hold steady poses, then reposition
+      // via the Transform.
+      for (let i = 0; i < 5; i++) gameLoop.tick(10);
+      transform.setPosition(120, 0);
+
+      const drawnX: number[] = [];
+      for (let i = 0; i < 6; i++) {
+        gameLoop.tick(10);
+        drawnX.push(transform.worldPosition.x);
+      }
+
+      // The body reaches the target after one step, and at least one frame
+      // draws a blend strictly between the endpoints.
+      expect(rb.positionX).toBeCloseTo(120, 6);
+      expect(drawnX[drawnX.length - 1]).toBeCloseTo(120, 6);
+      expect(drawnX.some((x) => x > 0 && x < 120)).toBe(true);
     });
   });
 

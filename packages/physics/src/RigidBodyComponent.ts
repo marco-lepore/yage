@@ -4,6 +4,13 @@ import type { PhysicsWorld } from "./PhysicsWorld.js";
 import { PhysicsWorldKey } from "./types.js";
 import type { BodyType, RigidBodyConfig } from "./types.js";
 
+/**
+ * Tolerance for deciding whether the game wrote a Transform since physics
+ * last did. Well above the float noise a world↔local round-trip through a
+ * parent chain produces, well below any perceptible motion.
+ */
+const POSE_EPSILON = 1e-6;
+
 /** Serialized snapshot of a RigidBodyComponent. */
 export interface RigidBodyData {
   type: BodyType;
@@ -44,6 +51,17 @@ export class RigidBodyComponent extends Component {
   _currPosition: Vec2 = Vec2.ZERO;
   /** @internal Current authoritative rotation (post physics step). */
   _currRotation = 0;
+  /** @internal Position the next step drives a kinematic body toward. */
+  _kinematicTargetPosition: Vec2 = Vec2.ZERO;
+  /** @internal Rotation the next step drives a kinematic body toward. */
+  _kinematicTargetRotation = 0;
+  /**
+   * @internal Position physics last wrote to the Transform (kinematic only).
+   * A Transform that still holds it carries no game write to capture.
+   */
+  _lastWrittenPosition: Vec2 = Vec2.ZERO;
+  /** @internal Rotation physics last wrote to the Transform (kinematic only). */
+  _lastWrittenRotation = 0;
   private readonly config: RigidBodyConfig;
   private readonly transform = this.sibling(Transform);
   private physicsWorld!: PhysicsWorld;
@@ -77,6 +95,14 @@ export class RigidBodyComponent extends Component {
     this._currPosition = this.transform.worldPosition;
     this._prevRotation = this.transform.worldRotation;
     this._currRotation = this.transform.worldRotation;
+    this._kinematicTargetPosition = this.transform.worldPosition;
+    this._kinematicTargetRotation = this.transform.worldRotation;
+    // Seeding the last-written pose too makes the spawn Transform read as
+    // "no pending game write": a setPosition teleport issued before the
+    // first interpolation pass would otherwise lose its target to a capture
+    // of the stale spawn pose.
+    this._lastWrittenPosition = this.transform.worldPosition;
+    this._lastWrittenRotation = this.transform.worldRotation;
 
     // A component is never effectively enabled during `onAdd` — `onEnable`
     // runs right after, and only for an active entity. Rapier creates a body
@@ -111,6 +137,31 @@ export class RigidBodyComponent extends Component {
     if (!body) return;
     body.setEnabled(true);
     body.wakeUp();
+
+    // A Transform write made while a kinematic entity was dormant is the
+    // game repositioning it for reuse. Teleport the body there — gliding
+    // from where it slept would streak across the map, and the first drawn
+    // frame would show the stale sleep pose.
+    if (this.type === "kinematic") {
+      if (this._hasPendingTargetPosition()) {
+        const target = this.transform.worldPosition;
+        body.setTranslation(
+          {
+            x: this.physicsWorld.toMeters(target.x),
+            y: this.physicsWorld.toMeters(target.y),
+          },
+          true,
+        );
+        this._kinematicTargetPosition = target;
+        this._lastWrittenPosition = target;
+      }
+      if (this._hasPendingTargetRotation()) {
+        const target = this.transform.worldRotation;
+        body.setRotation(target, true);
+        this._kinematicTargetRotation = target;
+        this._lastWrittenRotation = target;
+      }
+    }
 
     const translation = body.translation();
     const pos = new Vec2(
@@ -301,9 +352,9 @@ export class RigidBodyComponent extends Component {
   }
 
   /**
-   * Body position in pixels — the exact simulated pose. A dynamic body's
-   * `Transform` holds the interpolated pose that gets drawn: smooth, and at
-   * most one fixed step behind this value.
+   * Body position in pixels — the exact simulated pose. A dynamic or
+   * kinematic body's `Transform` holds the interpolated pose that gets
+   * drawn: smooth, and at most one fixed step behind this value.
    *
    * Falls back to the entity's world position when no Rapier body exists
    * (e.g. after teardown has destroyed it).
@@ -340,9 +391,9 @@ export class RigidBodyComponent extends Component {
   }
 
   /**
-   * Body rotation in radians — the exact simulated pose. A dynamic body's
-   * `Transform` holds the interpolated rotation that gets drawn: smooth, and
-   * at most one fixed step behind this value.
+   * Body rotation in radians — the exact simulated pose. A dynamic or
+   * kinematic body's `Transform` holds the interpolated rotation that gets
+   * drawn: smooth, and at most one fixed step behind this value.
    *
    * Falls back to the entity's world rotation when no Rapier body exists.
    */
@@ -352,7 +403,11 @@ export class RigidBodyComponent extends Component {
     return body.rotation();
   }
 
-  /** Teleport to a position in pixels. Skips interpolation on next frame. */
+  /**
+   * Teleport to a position in pixels — no interpolation, no smoothing, for
+   * any body type. On a kinematic body, `transform.setPosition()` instead
+   * moves it there smoothly over one step.
+   */
   setPosition(x: number, y: number): void {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return;
@@ -366,6 +421,58 @@ export class RigidBodyComponent extends Component {
     const pos = new Vec2(x, y);
     this._prevPosition = pos;
     this._currPosition = pos;
+    // Without this, the step after a kinematic teleport would drive the body
+    // back toward the stale pre-teleport target.
+    this._kinematicTargetPosition = pos;
+  }
+
+  /**
+   * Teleport to a rotation in radians — no interpolation, no smoothing, for
+   * any body type. The rotation counterpart of `setPosition`.
+   */
+  setRotation(radians: number): void {
+    const body = this.physicsWorld.getBody(this._bodyHandle);
+    if (!body) return;
+    body.setRotation(radians, true);
+    this._prevRotation = radians;
+    this._currRotation = radians;
+    this._kinematicTargetRotation = radians;
+  }
+
+  /**
+   * @internal True when the Transform's world position no longer holds what
+   * physics last wrote — i.e. the game (or a moved parent) repositioned it,
+   * and the write is waiting to become the kinematic step target.
+   */
+  _hasPendingTargetPosition(): boolean {
+    const pos = this.transform.worldPosition;
+    return (
+      Math.abs(pos.x - this._lastWrittenPosition.x) > POSE_EPSILON ||
+      Math.abs(pos.y - this._lastWrittenPosition.y) > POSE_EPSILON
+    );
+  }
+
+  /** @internal Rotation counterpart of `_hasPendingTargetPosition`. */
+  _hasPendingTargetRotation(): boolean {
+    return (
+      Math.abs(this.transform.worldRotation - this._lastWrittenRotation) >
+      POSE_EPSILON
+    );
+  }
+
+  /**
+   * @internal Adopt any pose the game wrote to the Transform as the
+   * kinematic step target. Runs before each physics step and before the
+   * interpolation lerp overwrites the Transform, so targets stay fresh even
+   * on frames that run several steps.
+   */
+  _capturePendingTarget(): void {
+    if (this._hasPendingTargetPosition()) {
+      this._kinematicTargetPosition = this.transform.worldPosition;
+    }
+    if (this._hasPendingTargetRotation()) {
+      this._kinematicTargetRotation = this.transform.worldRotation;
+    }
   }
 
   /** Serialize the component into a plain data object. */
