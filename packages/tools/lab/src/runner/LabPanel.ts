@@ -307,6 +307,9 @@ export class LabPanel {
   setClock(state: ClockView): void {
     this.playButton.textContent = state.running ? "pause" : "play";
     this.speedInput.value = String(nearestSpeedIndex(state.speed));
+    // The slider's own value is an index into the offered speeds, which says
+    // nothing read aloud.
+    this.speedInput.setAttribute("aria-valuetext", `${state.speed}x`);
     this.readoutEl.textContent = `${
       state.running ? `${state.speed}x` : "paused"
     } · frame ${state.frame}`;
@@ -394,6 +397,7 @@ export class LabPanel {
     input.max = String(CLOCK_SPEEDS.length - 1);
     input.step = "1";
     input.title = "Clock speed";
+    input.setAttribute("aria-label", "Clock speed");
     input.addEventListener("input", () => {
       const speed = CLOCK_SPEEDS[Number(input.value)];
       if (speed !== undefined) this.callbacks.onSpeedChange(speed);
@@ -434,7 +438,8 @@ export class LabPanel {
   ): HTMLElement {
     const box = el("div", "yage-lab__control");
     const labelRow = el("label", "yage-lab__control-label");
-    labelRow.append(el("span", undefined, def.label ?? name));
+    const title = def.label ?? name;
+    labelRow.append(el("span", undefined, title));
     const readout = el("span", "yage-lab__control-value");
     labelRow.append(readout);
     box.append(labelRow);
@@ -471,6 +476,9 @@ export class LabPanel {
       select.addEventListener("change", () => {
         emit(select.value);
       });
+      // Named here rather than by the label element, which wraps only the
+      // title and the readout.
+      select.setAttribute("aria-label", title);
       box.append(select);
       this.widgets.set(name, apply);
     } else {
@@ -489,6 +497,7 @@ export class LabPanel {
         apply(Number(input.value));
         emit(Number(input.value));
       });
+      input.setAttribute("aria-label", title);
       box.append(input);
       this.widgets.set(name, apply);
     }

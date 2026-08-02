@@ -43,6 +43,16 @@ describe("parseArgs", () => {
     expect(parseArgs(["build", "--out-dir=site"]).outDir).toBe("site");
   });
 
+  it("rejects a path flag given nothing to use", () => {
+    // An empty value names the Vite root, which is the project itself.
+    expect(parseArgs(["build", "--out-dir="]).error).toMatch(
+      /requires a value/,
+    );
+    expect(parseArgs(["test", "--screenshots="]).error).toMatch(
+      /requires a value/,
+    );
+  });
+
   it("reads a test timeout in both forms", () => {
     expect(parseArgs(["test", "--timeout", "5000"]).timeout).toBe(5000);
     expect(parseArgs(["test", "--timeout=5000"]).timeout).toBe(5000);

@@ -146,6 +146,21 @@ describe("LabClock", () => {
     expect(state.stepped).toEqual([8]);
   });
 
+  it("drops the time the cap refused instead of owing it", () => {
+    // A capped burst that banked the remainder would spend it a full burst at
+    // a time on every frame afterwards, running faster than the chosen speed
+    // long after the stall ended.
+    const { state, clock } = makeClock();
+    clock.setSpeed(4);
+    clock.play();
+    frame(10_000);
+    state.stepped.length = 0;
+
+    frame(16);
+    // 16 ms at 4x is 64 ms of credit: three whole frames, not another burst.
+    expect(state.stepped).toEqual([3]);
+  });
+
   it("issues nothing more once paused", () => {
     const { state, clock } = makeClock();
     clock.play();

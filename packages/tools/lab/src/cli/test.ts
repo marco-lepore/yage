@@ -397,6 +397,9 @@ function writeCaptures(
   results: readonly ScenarioResult[],
 ): number {
   let written = 0;
+  // Sanitizing maps more than one id onto a name — `a/b` and `a-b` both give
+  // `a-b` — and the second write would replace the first scenario's PNG.
+  const taken = new Set<string>();
   for (const result of results) {
     if (result.captures.length === 0) continue;
     mkdirSync(dir, { recursive: true });
@@ -406,13 +409,21 @@ function writeCaptures(
       if (capture.label !== undefined) parts.push(capture.label);
       const base64 = capture.dataUrl.slice(capture.dataUrl.indexOf(",") + 1);
       writeFileSync(
-        path.join(dir, `${sanitize(parts.join("-"))}.png`),
+        path.join(dir, `${claimName(taken, sanitize(parts.join("-")))}.png`),
         Buffer.from(base64, "base64"),
       );
       written++;
     });
   }
   return written;
+}
+
+/** `name`, or the first `name-2`, `name-3`, … no other capture has taken. */
+function claimName(taken: Set<string>, name: string): string {
+  let candidate = name;
+  for (let n = 2; taken.has(candidate); n++) candidate = `${name}-${n}`;
+  taken.add(candidate);
+  return candidate;
 }
 
 export interface TestOptions {

@@ -63,11 +63,14 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   let sawCommand = false;
   let i = 0;
 
+  // `undefined` covers both a missing value and an empty one: `--out-dir=`
+  // would otherwise name the Vite root, and `--screenshots=` would write the
+  // PNGs into the project.
   const takeValue = (flag: string): string | undefined => {
     const arg = argv[i] as string;
     if (arg.startsWith(`${flag}=`)) {
       i++;
-      return arg.slice(flag.length + 1);
+      return arg.slice(flag.length + 1) || undefined;
     }
     const next = argv[i + 1];
     if (next === undefined || next.startsWith("-")) return undefined;

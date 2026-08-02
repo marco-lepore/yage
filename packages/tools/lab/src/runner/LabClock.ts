@@ -186,6 +186,10 @@ export class LabClock {
       this.carry -= STEP_MS;
       frames++;
     }
+    // Time the cap refused is dropped rather than owed. Keeping it would spend
+    // the backlog a full burst at a time on every frame after a stall, which
+    // runs the scene faster than the chosen speed long after the stall ended.
+    if (frames === MAX_BURST) this.carry = 0;
     if (frames === 0) return;
     try {
       this.time.step(frames);
