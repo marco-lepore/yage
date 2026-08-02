@@ -56,16 +56,28 @@ Methods:
 - `setVelocity(v: Vec2Like)` — set linear velocity (px/s). Preferred over impulse.
 - `setVelocityX(vx)` / `setVelocityY(vy)` — set single axis
 - `getVelocity(): Vec2` — read velocity (px/s), allocates a `Vec2`
-- `velocityX` / `velocityY` — allocation-free scalar reads (px/s); reading both calls into Rapier twice
-- `speed` / `speedSquared` — allocation-free velocity magnitude (px/s) / squared magnitude
+- `velocityX` / `velocityY` — scalar reads (px/s) that skip the `Vec2` allocation; reading both calls into Rapier twice
+- `speed` / `speedSquared` — velocity magnitude (px/s) / squared magnitude, no `Vec2` allocation
 - `applyImpulse(v: Vec2Like)` — instant momentum change
 - `applyForce(v: Vec2Like)` — continuous force
+- `position: Vec2` — read the simulated position (px), allocates a `Vec2`
+- `positionX` / `positionY` — scalar reads (px) that skip the `Vec2` allocation; reading both calls into Rapier twice
+- `rotation: number` — read the simulated rotation (radians)
 - `setPosition(x, y)` — teleport a dynamic body (skips interpolation). For kinematic bodies, use `transform.setPosition()` instead — the physics system syncs Transform → Rapier automatically each frame.
 - `setAngularVelocity(v)` / `getAngularVelocity()` — radians/s
 - `applyTorque(t)` — rotational force
 - `setEnabledTranslations(enableX, enableY)` — lock axes at runtime
 - `lockRotations(locked)` — lock rotation at runtime
 - `setGravityScale(scale)` / `gravityScale` — per-body gravity multiplier at runtime. `1` is scene gravity, `0` removes it, higher falls faster. Use it for variable jump height and fast-fall, where one body must fall differently from the rest. Callable before `entity.add()`; the value applies at body creation.
+
+### Reading positions
+
+A dynamic body has two positions, and they differ within a frame:
+
+- `entity.get(Transform).worldPosition` — the drawn pose. Blended between the last two fixed steps, so it moves smoothly at the display frame rate and is at most one fixed step behind the simulation. Use it for anything visual: camera follow, HUD markers, spawning effects at a body.
+- `rb.position` / `rb.positionX` / `rb.positionY` / `rb.rotation` — the exact simulated pose, as of the last completed fixed step. Use it when a number must match the simulation: distance thresholds, snapping a body to a grid, saving a checkpoint.
+
+Interpolation runs at the start of `Update`, so the `Transform` a component's `update(dt)` reads is the one that gets drawn that frame. Raycasts, collision events, and other physics queries always report exact poses — they run inside the simulation, not against the `Transform`.
 
 ## ColliderComponent
 

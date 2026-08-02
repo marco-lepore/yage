@@ -3,27 +3,63 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ---- Rapier mocks (hoisted) ----
 const { mocks } = vi.hoisted(() => {
   class MockRigidBodyDesc {
-    static dynamic() { return new MockRigidBodyDesc(); }
-    static fixed() { return new MockRigidBodyDesc(); }
-    static kinematicPositionBased() { return new MockRigidBodyDesc(); }
-    setLinearDamping() { return this; }
-    setAngularDamping() { return this; }
-    lockRotations() { return this; }
-    setGravityScale() { return this; }
-    setCcdEnabled() { return this; }
+    static dynamic() {
+      return new MockRigidBodyDesc();
+    }
+    static fixed() {
+      return new MockRigidBodyDesc();
+    }
+    static kinematicPositionBased() {
+      return new MockRigidBodyDesc();
+    }
+    setLinearDamping() {
+      return this;
+    }
+    setAngularDamping() {
+      return this;
+    }
+    lockRotations() {
+      return this;
+    }
+    setGravityScale() {
+      return this;
+    }
+    setCcdEnabled() {
+      return this;
+    }
   }
 
   class MockColliderDesc {
-    static cuboid() { return new MockColliderDesc(); }
-    static ball() { return new MockColliderDesc(); }
-    setTranslation() { return this; }
-    setRestitution() { return this; }
-    setFriction() { return this; }
-    setDensity() { return this; }
-    setSensor() { return this; }
-    setCollisionGroups() { return this; }
-    setActiveEvents() { return this; }
-    setActiveCollisionTypes() { return this; }
+    static cuboid() {
+      return new MockColliderDesc();
+    }
+    static ball() {
+      return new MockColliderDesc();
+    }
+    setTranslation() {
+      return this;
+    }
+    setRestitution() {
+      return this;
+    }
+    setFriction() {
+      return this;
+    }
+    setDensity() {
+      return this;
+    }
+    setSensor() {
+      return this;
+    }
+    setCollisionGroups() {
+      return this;
+    }
+    setActiveEvents() {
+      return this;
+    }
+    setActiveCollisionTypes() {
+      return this;
+    }
   }
 
   class MockEventQueue {
@@ -40,11 +76,19 @@ const { mocks } = vi.hoisted(() => {
     }
 
     step() {}
-    createRigidBody() { return { handle: 0, _colliders: [] }; }
-    createCollider() { return { handle: 0 }; }
-    getRigidBody() { return undefined; }
+    createRigidBody() {
+      return { handle: 0, _colliders: [] };
+    }
+    createCollider() {
+      return { handle: 0 };
+    }
+    getRigidBody() {
+      return undefined;
+    }
     removeRigidBody() {}
-    free() { this.freeSpy(); }
+    free() {
+      this.freeSpy();
+    }
   }
 
   return {
@@ -121,12 +165,12 @@ describe("PhysicsPlugin", () => {
       plugin.registerSystems(scheduler);
 
       const fixedSystems = scheduler.getSystems(Phase.FixedUpdate);
-      const lateSystems = scheduler.getSystems(Phase.LateUpdate);
+      const updateSystems = scheduler.getSystems(Phase.Update);
 
       expect(fixedSystems.length).toBe(1);
-      expect(lateSystems.length).toBe(1);
+      expect(updateSystems.length).toBe(1);
       expect((fixedSystems[0] as { priority: number }).priority).toBe(0);
-      expect((lateSystems[0] as { priority: number }).priority).toBe(100);
+      expect((updateSystems[0] as { priority: number }).priority).toBe(-100);
     });
   });
 

@@ -170,7 +170,7 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 | `src/RigidBodyComponent.ts`         | Body types, forces, velocities        |
 | `src/ColliderComponent.ts`          | Shapes, collision/trigger events      |
 | `src/PhysicsSystem.ts`              | FixedUpdate: step + sync + events     |
-| `src/PhysicsInterpolationSystem.ts` | LateUpdate: smooth rendering          |
+| `src/PhysicsInterpolationSystem.ts` | Update (early): blend poses for draw  |
 | `src/CollisionLayers.ts`            | Named layer bitmask management        |
 
 ### `@yagejs/input`

@@ -56,11 +56,7 @@ export class PhysicsSystem extends System {
     }
   }
 
-  private stepScene(
-    dt: number,
-    scene: Scene,
-    ctx: ScenePhysicsContext,
-  ): void {
+  private stepScene(dt: number, scene: Scene, ctx: ScenePhysicsContext): void {
     const timeScale =
       scene.tryResolveScoped(SceneTimeKey)?.effectiveScale ?? scene.timeScale;
     const maxSteps = Math.min(Math.ceil(timeScale) + 1, 8);
@@ -77,9 +73,6 @@ export class PhysicsSystem extends System {
       ctx.accumulator -= dt;
       steps++;
     }
-
-    // Update per-scene interpolation alpha for smooth rendering
-    ctx.alphaRef.value = Math.max(0, Math.min(1, ctx.accumulator / dt));
 
     // Process collision events once after all steps.
     ctx.world.processCollisionEvents();
@@ -107,11 +100,6 @@ export class PhysicsSystem extends System {
           y: world.toMeters(transform.worldPosition.y),
         });
         body.setNextKinematicRotation(transform.worldRotation);
-      }
-
-      // Clear teleport flag
-      if (rb._teleported) {
-        rb._teleported = false;
       }
     }
   }

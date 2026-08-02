@@ -1,6 +1,10 @@
 import type { ColliderComponent } from "./ColliderComponent.js";
 import { colliderRotation } from "./toRapierColliders.js";
-import type { ColliderShape, ContactCandidate, ContactFilter } from "./types.js";
+import type {
+  ColliderShape,
+  ContactCandidate,
+  ContactFilter,
+} from "./types.js";
 
 const DEFAULT_DIRECTION_X = 0;
 const DEFAULT_DIRECTION_Y = -1;

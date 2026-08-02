@@ -63,8 +63,8 @@ import { Phase } from "@yagejs/core";
 |---|---|---|
 | `Phase.EarlyUpdate` | 1 | Input polling, network message processing |
 | `Phase.FixedUpdate` | 2 | Physics stepping, deterministic gameplay |
-| `Phase.Update` | 3 | General game logic, component updates |
-| `Phase.LateUpdate` | 4 | Camera follow, constraint solving |
+| `Phase.Update` | 3 | Physics interpolation, general game logic, component updates |
+| `Phase.LateUpdate` | 4 | UI layout, constraint solving |
 | `Phase.Render` | 5 | Display sync, sprite rendering |
 | `Phase.EndOfFrame` | 6 | Entity cleanup, deferred destruction |
 

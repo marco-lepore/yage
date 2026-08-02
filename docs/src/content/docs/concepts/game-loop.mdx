@@ -15,8 +15,8 @@ EarlyUpdate → FixedUpdate → Update → LateUpdate → Render → EndOfFrame
 |---|---|
 | **EarlyUpdate** | Input polling, network message ingestion. Runs once per frame before anything else. |
 | **FixedUpdate** | Physics stepping and deterministic gameplay. May run 0--5 times per frame at a constant timestep. |
-| **Update** | General game logic. Component `update(dt)` calls happen here. Variable `dt`. |
-| **LateUpdate** | Camera follow, constraint solving, anything that must run after game logic. Variable `dt`. |
+| **Update** | Physics interpolation, then general game logic. Component `update(dt)` calls happen here. Variable `dt`. |
+| **LateUpdate** | UI layout, constraint solving, anything that must run after game logic. Variable `dt`. |
 | **Render** | Display sync — sprite transforms are flushed to the GPU, particles are drawn. |
 | **EndOfFrame** | Deferred entity destruction, component cleanup, event queue flush. |
 
@@ -83,7 +83,8 @@ A quick reference for where to put different kinds of logic:
 | Input polling | **EarlyUpdate** | Read fresh input before any logic runs |
 | Physics step | **FixedUpdate** | Deterministic simulation at a constant rate |
 | Game logic | **Update** | Component `update(dt)` calls, AI, timers |
-| Camera follow | **LateUpdate** | Runs after all positions are finalized |
+| Camera follow | **Update** | A component `update(dt)`, reading the positions that get drawn this frame |
+| UI layout | **LateUpdate** | Runs after game logic has settled every position |
 | Sprite sync | **Render** | Push final transforms to the GPU |
 | Entity cleanup | **EndOfFrame** | Safe to remove entities after all systems have run |
 

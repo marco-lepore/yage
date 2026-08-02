@@ -44,9 +44,6 @@ export class RigidBodyComponent extends Component {
   _currPosition: Vec2 = Vec2.ZERO;
   /** @internal Current authoritative rotation (post physics step). */
   _currRotation = 0;
-  /** @internal If true, skip interpolation on next frame (teleport). */
-  _teleported = false;
-
   private readonly config: RigidBodyConfig;
   private readonly transform = this.sibling(Transform);
   private physicsWorld!: PhysicsWorld;
@@ -196,10 +193,11 @@ export class RigidBodyComponent extends Component {
   }
 
   /**
-   * X component of linear velocity in pixels/s. Allocation-free — prefer
-   * this and `velocityY` over `getVelocity()` on a per-frame read path.
-   * Reading both components calls into Rapier twice; for both as numbers
-   * without the double call, `getVelocity()` is still the option.
+   * X component of linear velocity in pixels/s. Avoids the `Vec2`
+   * allocation of `getVelocity()` — prefer this and `velocityY` on a
+   * per-frame read path. Reading both components calls into Rapier twice;
+   * for both as numbers without the double call, `getVelocity()` is still
+   * the option.
    */
   get velocityX(): number {
     const body = this.physicsWorld.getBody(this._bodyHandle);
@@ -207,14 +205,17 @@ export class RigidBodyComponent extends Component {
     return this.physicsWorld.toPixels(body.linvel().x);
   }
 
-  /** Y component of linear velocity in pixels/s. Allocation-free. */
+  /**
+   * Y component of linear velocity in pixels/s. Avoids the `Vec2`
+   * allocation of `getVelocity()`.
+   */
   get velocityY(): number {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return 0;
     return this.physicsWorld.toPixels(body.linvel().y);
   }
 
-  /** Speed (velocity magnitude) in pixels/s. Allocation-free. */
+  /** Speed (velocity magnitude) in pixels/s. No `Vec2` allocation. */
   get speed(): number {
     return Math.sqrt(this.speedSquared);
   }
@@ -299,6 +300,58 @@ export class RigidBodyComponent extends Component {
     body.lockRotations(locked, true);
   }
 
+  /**
+   * Body position in pixels — the exact simulated pose. A dynamic body's
+   * `Transform` holds the interpolated pose that gets drawn: smooth, and at
+   * most one fixed step behind this value.
+   *
+   * Falls back to the entity's world position when no Rapier body exists
+   * (e.g. after teardown has destroyed it).
+   */
+  get position(): Vec2 {
+    const body = this.physicsWorld.getBody(this._bodyHandle);
+    if (!body) return this.transform.worldPosition;
+    const t = body.translation();
+    return new Vec2(
+      this.physicsWorld.toPixels(t.x),
+      this.physicsWorld.toPixels(t.y),
+    );
+  }
+
+  /**
+   * X component of the exact simulated position in pixels. Avoids the `Vec2`
+   * allocation of `position` — prefer this and `positionY` on a per-frame
+   * read path.
+   */
+  get positionX(): number {
+    const body = this.physicsWorld.getBody(this._bodyHandle);
+    if (!body) return this.transform.worldPosition.x;
+    return this.physicsWorld.toPixels(body.translation().x);
+  }
+
+  /**
+   * Y component of the exact simulated position in pixels. Avoids the `Vec2`
+   * allocation of `position`.
+   */
+  get positionY(): number {
+    const body = this.physicsWorld.getBody(this._bodyHandle);
+    if (!body) return this.transform.worldPosition.y;
+    return this.physicsWorld.toPixels(body.translation().y);
+  }
+
+  /**
+   * Body rotation in radians — the exact simulated pose. A dynamic body's
+   * `Transform` holds the interpolated rotation that gets drawn: smooth, and
+   * at most one fixed step behind this value.
+   *
+   * Falls back to the entity's world rotation when no Rapier body exists.
+   */
+  get rotation(): number {
+    const body = this.physicsWorld.getBody(this._bodyHandle);
+    if (!body) return this.transform.worldRotation;
+    return body.rotation();
+  }
+
   /** Teleport to a position in pixels. Skips interpolation on next frame. */
   setPosition(x: number, y: number): void {
     const body = this.physicsWorld.getBody(this._bodyHandle);
@@ -313,7 +366,6 @@ export class RigidBodyComponent extends Component {
     const pos = new Vec2(x, y);
     this._prevPosition = pos;
     this._currPosition = pos;
-    this._teleported = true;
   }
 
   /** Serialize the component into a plain data object. */
@@ -325,10 +377,14 @@ export class RigidBodyComponent extends Component {
       velocity: { x: vel.x, y: vel.y },
       angularVelocity: this.getAngularVelocity(),
     };
-    if (this.config.fixedRotation !== undefined) data.fixedRotation = this.config.fixedRotation;
-    if (this.config.linearDamping !== undefined) data.linearDamping = this.config.linearDamping;
-    if (this.config.angularDamping !== undefined) data.angularDamping = this.config.angularDamping;
-    if (this.config.gravityScale !== undefined) data.gravityScale = this.config.gravityScale;
+    if (this.config.fixedRotation !== undefined)
+      data.fixedRotation = this.config.fixedRotation;
+    if (this.config.linearDamping !== undefined)
+      data.linearDamping = this.config.linearDamping;
+    if (this.config.angularDamping !== undefined)
+      data.angularDamping = this.config.angularDamping;
+    if (this.config.gravityScale !== undefined)
+      data.gravityScale = this.config.gravityScale;
     if (this.config.ccd !== undefined) data.ccd = this.config.ccd;
     return data;
   }
@@ -339,10 +395,14 @@ export class RigidBodyComponent extends Component {
       type: data.type,
       syncRotation: data.syncRotation,
     };
-    if (data.fixedRotation !== undefined) config.fixedRotation = data.fixedRotation;
-    if (data.linearDamping !== undefined) config.linearDamping = data.linearDamping;
-    if (data.angularDamping !== undefined) config.angularDamping = data.angularDamping;
-    if (data.gravityScale !== undefined) config.gravityScale = data.gravityScale;
+    if (data.fixedRotation !== undefined)
+      config.fixedRotation = data.fixedRotation;
+    if (data.linearDamping !== undefined)
+      config.linearDamping = data.linearDamping;
+    if (data.angularDamping !== undefined)
+      config.angularDamping = data.angularDamping;
+    if (data.gravityScale !== undefined)
+      config.gravityScale = data.gravityScale;
     if (data.ccd !== undefined) config.ccd = data.ccd;
     return new RigidBodyComponent(config);
   }

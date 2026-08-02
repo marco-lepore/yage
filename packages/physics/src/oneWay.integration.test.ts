@@ -11,7 +11,8 @@ vi.mock("@dimforge/rapier2d", async () => {
   const mod = (await import("@dimforge/rapier2d-compat")) as {
     default?: { init(): Promise<unknown> };
   };
-  const RAPIER = mod.default ?? (mod as unknown as { init(): Promise<unknown> });
+  const RAPIER =
+    mod.default ?? (mod as unknown as { init(): Promise<unknown> });
   await RAPIER.init();
   return { default: RAPIER };
 });
@@ -21,7 +22,10 @@ import type { Entity, Scene } from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { ColliderComponent } from "./ColliderComponent.js";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
-import { createPhysicsTestContext, spawnEntityInScene } from "./test-helpers.js";
+import {
+  createPhysicsTestContext,
+  spawnEntityInScene,
+} from "./test-helpers.js";
 import type { ColliderConfig } from "./types.js";
 
 const DT = 1 / 60;

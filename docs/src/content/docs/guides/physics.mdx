@@ -281,6 +281,38 @@ Use `setPosition` to teleport a body without interpolation artifacts:
 rb.setPosition(400, 300); // pixels
 ```
 
+## Reading Positions
+
+Physics runs at a constant rate that rarely lines up with the display refresh
+rate, so a dynamic body has two positions and they differ within a frame.
+
+The entity's `Transform` holds the **drawn** pose. The engine blends it between
+the last two physics steps, so it moves smoothly at whatever rate the screen
+refreshes, and it trails the simulation by at most one physics step. Use it for
+anything visual — camera follow, a health bar pinned above a character, a dust
+puff spawned at a body:
+
+```typescript
+const drawn = entity.get(Transform).worldPosition; // smooth, what the player sees
+```
+
+The rigid body holds the **simulated** pose, as of the last completed physics
+step. Use it when a number has to match the simulation exactly — a distance
+threshold, snapping to a grid, writing a checkpoint:
+
+```typescript
+rb.position;    // Vec2, pixels
+rb.positionX;   // number, pixels — skips the Vec2 allocation
+rb.positionY;   // number, pixels
+rb.rotation;    // number, radians
+```
+
+The blend happens at the start of `Update`, before any component `update(dt)`
+runs, so the `Transform` your game logic reads is the one that gets drawn that
+frame. Raycasts, collision events, and other physics queries always report
+exact poses: they run inside the simulation rather than against the
+`Transform`.
+
 ## Raycasting
 
 Cast a ray to find the first entity hit:

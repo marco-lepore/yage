@@ -26,8 +26,8 @@ Six phases per frame, with a fixed-timestep accumulator for physics:
 ```
 1. EarlyUpdate    - input polling, pre-frame bookkeeping
 2. FixedUpdate    - physics, fixed-rate logic (may run 0..N times)
-3. Update         - main game logic, component.update(dt)
-4. LateUpdate     - camera follow, physics interpolation
+3. Update         - physics interpolation, then game logic: component.update(dt)
+4. LateUpdate     - UI layout
 5. Render         - Transform -> display object sync
 6. EndOfFrame     - deferred entity destruction flush
 ```

@@ -14,7 +14,7 @@ import { PhysicsDebugContributor } from "./PhysicsDebugContributor.js";
  * Creates a {@link PhysicsWorldManager} that owns per-scene Rapier worlds,
  * and registers two systems:
  * - PhysicsSystem (FixedUpdate, priority 0)
- * - PhysicsInterpolationSystem (LateUpdate, priority 100)
+ * - PhysicsInterpolationSystem (Update, priority -100)
  *
  * Per-scene worlds are created in a `beforeEnter` scene hook and destroyed
  * in `afterExit`. Components access the active scene's world via
