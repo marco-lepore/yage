@@ -7,14 +7,23 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "lab": "yage-lab dev",
+    "lab:test": "yage-lab test",
     "typecheck": "tsc --noEmit"
   },
+  "yage-lab": {
+    "scenarios": [
+      "src/lab/**/*.scenario.ts"
+    ]
+  },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@vitejs/plugin-react": "^6.0.1",
     "vite": "^8.0.0",
     "vite-plugin-wasm": "^3.6.0"
   },
   "dependencies": {
+    "@yagejs-tools/lab": "^0.0.0",
     "@yagejs-addons/abilities": "^0.2.0",
     "@yagejs-addons/steering": "^0.2.0",
     "@yagejs-addons/synth": "^0.1.0",

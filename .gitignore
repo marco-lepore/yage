@@ -4,6 +4,9 @@ node_modules
 # Build output
 dist
 
+# yage-lab's static site
+dist-lab
+
 # Turbo
 .turbo
 
