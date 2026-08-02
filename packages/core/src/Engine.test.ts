@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Engine } from "./Engine.js";
 import { Scene } from "./Scene.js";
 import { Component } from "./Component.js";
+import { System } from "./System.js";
+import { Phase } from "./types.js";
 import type { Plugin } from "./types.js";
 import { _resetEntityIdCounter } from "./Entity.js";
 import { defineEvent } from "./EventToken.js";
@@ -14,6 +16,7 @@ import {
   ErrorBoundaryKey,
   GameLoopKey,
   InspectorKey,
+  SystemSchedulerKey,
 } from "./EngineContext.js";
 
 class TestScene extends Scene {
@@ -198,6 +201,32 @@ describe("Engine", () => {
       await engine.start();
       engine.destroy();
       expect(order).toEqual(["c", "b", "a"]);
+    });
+  });
+
+  describe("runtime system registration", () => {
+    it("a system added after start() gets its context and onRegister", async () => {
+      const engine = new Engine();
+      await engine.start();
+
+      const events: string[] = [];
+      class LateSystem extends System {
+        readonly phase = Phase.Update;
+        override onRegister(): void {
+          // use() resolves through the context set on registration.
+          events.push(`registered:${this.use(EngineKey) === engine}`);
+        }
+        override onUnregister(): void {
+          events.push("unregistered");
+        }
+        update(): void {}
+      }
+
+      engine.context.resolve(SystemSchedulerKey).add(new LateSystem());
+      expect(events).toEqual(["registered:true"]);
+
+      engine.destroy();
+      expect(events).toEqual(["registered:true", "unregistered"]);
     });
   });
 
