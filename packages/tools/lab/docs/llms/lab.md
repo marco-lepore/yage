@@ -2,12 +2,13 @@
 
 Scenario browser for YAGE games (`@yagejs-tools` scope, independently
 versioned, NOT in the engine `fixed` group). Mount one entity, one scene or one
-mechanic in a real engine, tune it from a side panel, and run the same
+mechanic in a real engine, tune it with live controls, and run the same
 scenarios in a headless browser so a broken one fails the build.
 
-A scenario is a `*.scenario.ts` file. The lab finds them with a glob, boots one
-engine from the project's harness, and rebuilds the scene whenever a control
-changes.
+Scenarios live in `*.scenario.ts` files, next to the code they exercise. The
+lab finds them with a glob, boots one engine from the project's harness, and
+rebuilds the scene whenever a control changes. Directories become the list's
+grouping, so the sidebar mirrors the source tree without being configured.
 
 ## Install
 
@@ -77,18 +78,18 @@ it yourself only to pass options.
 
 ## A scenario
 
-Export one `defineScenario` as the default export of a `*.scenario.ts` file.
-A scenario either builds a situation with `setup` or mounts a `Scene` the game
-already has. Declaring both, or neither, fails to compile.
+Export what `defineScenario` returns from a `*.scenario.ts` file, as the
+default export or as a named one. A scenario either builds a situation with
+`setup` or mounts a `Scene` the game already has. Declaring both, or neither,
+fails to compile.
 
 ```ts
+// src/entities/ball.scenario.ts  →  entities › ball
 import { Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
 import { control, defineScenario } from "@yagejs-tools/lab";
 
 export default defineScenario({
-  // The part before the first `/` groups it in the list.
-  title: "Physics / Ball drop",
   describe: "Bodies falling onto a floor. Raise bounce and watch again.",
 
   controls: {
@@ -115,7 +116,8 @@ export default defineScenario({
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `title` | `string` | Required. `"Group / Name"` groups the list entry. |
+| `title` | `string` | Overrides where the list nests it, as a `/`-separated path. Defaults to the file's own location. |
+| `name` | `string` | The entry's own label. Defaults to the export name. |
 | `describe` | `string` | One or two sentences under the title. |
 | `controls` | `ControlSchema` | Built with `control.*`. |
 | `setup` | `(scene, controls) => void` | Builds a blank scene. Excludes `scene`. |
@@ -127,6 +129,37 @@ export default defineScenario({
 
 The `scene` form gets layers and preloads from the `Scene` itself, which is why
 those two fields exist on the `setup` form only.
+
+### Several scenarios in one file
+
+Named exports each become a scenario, and they nest under the file. Anything
+else the file exports is ignored, so a file holds the helpers its scenarios
+share:
+
+```ts
+// src/entities/slime.scenario.ts  →  entities › slime › { idle, Chasing the player }
+const hp = { hp: control.int(30, { min: 1, max: 200 }) };
+
+function arena(scene: Scene) { /* shared by both */ }
+
+export const idle = defineScenario({
+  controls: hp,
+  setup(scene, c) { arena(scene); spawnSlime(scene, c.hp); },
+});
+
+export const chase = defineScenario({
+  name: "Chasing the player",
+  controls: hp,
+  setup(scene, c) { /* ... */ },
+});
+```
+
+A file exports **either** a default scenario **or** named ones. Doing both is
+reported as a problem, because the file would appear as a leaf and as a group
+of the same name side by side.
+
+A module namespace lists its exports alphabetically, so scenarios inside a file
+cannot be shown in declaration order.
 
 ### Controls
 
@@ -151,8 +184,8 @@ constructor parameters.
 For a field on a component the scenario cannot pass in at construction:
 
 ```ts
+// src/feel/pulse.scenario.ts  →  feel › pulse
 export default defineScenario({
-  title: "Feel / Pulse tuning",
   scene: () => new PulseScene(),
   controls: { amplitude: control.number(0.4, { min: 0, max: 1, step: 0.05 }) },
   onMounted(scene, c) {
@@ -272,23 +305,48 @@ that could not be taken is a warning, not a failure.
 Every scenario runs with its declared control values. There is no flag for a
 different set.
 
-## Discovery and ids
+## Discovery, ids and nesting
 
-Default glob `**/*.scenario.ts`, relative to the Vite root, ignoring
-`node_modules` and `dist`. Set it once in package.json:
+Scenario files go next to the code they exercise. The default glob is
+`**/*.scenario.ts` under the Vite root, ignoring `node_modules` and `dist`, so
+colocation needs no configuration. Narrow it in package.json to keep ids short:
 
 ```json
-{ "yage-lab": { "scenarios": ["src/lab/**/*.scenario.ts"] } }
+{ "yage-lab": { "scenarios": ["src/**/*.scenario.ts"] } }
 ```
 
-An id is the module path with the pattern's shared directory prefix and the
-`.scenario.ts` suffix removed: `/src/lab/enemies/slime.scenario.ts` →
-`enemies/slime`. The whole path is kept, so two files both named
-`jump.scenario.ts` stay distinct. Ids address a scenario from outside the
-page — in a URL (`?scenario=enemies/slime`) and in `--scenarios`.
+An id is the module path with the patterns' shared directory prefix and the
+`.scenario.ts` suffix removed, plus the export name when the scenario is a
+named one:
 
-A module that is not a usable scenario is reported and skipped rather than
-taking the page down.
+| File and export | Id |
+| --- | --- |
+| `src/entities/slime.scenario.ts`, default | `entities/slime` |
+| `src/entities/slime.scenario.ts`, `idle` | `entities/slime/idle` |
+
+Leave the glob at its `**` default and the shared prefix is empty, so every id
+carries `src/`. The whole path is kept either way, so two files both named
+`jump.scenario.ts` stay distinct. Ids address a scenario from outside the
+page — in a URL (`?scenario=entities/slime/idle`) and in `--scenarios`.
+
+**The id is also where the list nests it.** Every `/` is a level, the last
+segment is the entry, and a file with several scenarios becomes the group
+holding them. A file with one keeps the file's own position rather than
+nesting a single child under itself.
+
+`title` overrides the position without moving the id, so a scenario stays
+addressable by its file after being shown somewhere else:
+
+```ts
+export const king = defineScenario({
+  title: "Bosses / Act 1 / Slime King",   // shown under Bosses › Act 1
+  setup(scene) { /* ... */ },             // still `entities/slime/king`
+});
+```
+
+A file that exports no scenario is reported and skipped rather than taking the
+page down. `defineScenario` is what marks one — a plain object of the right
+shape is treated as a helper and ignored.
 
 ## URL state
 
@@ -316,7 +374,7 @@ carrying it serves the lab rather than the game:
 import { yageLab } from "@yagejs-tools/lab/vite";
 
 export default defineConfig({
-  plugins: [yageLab({ scenarios: ["src/lab/**/*.scenario.ts"], harness: "lab/harness.ts", title: "Lab" })],
+  plugins: [yageLab({ scenarios: ["src/**/*.scenario.ts"], harness: "lab/harness.ts", title: "Lab" })],
 });
 ```
 
@@ -329,7 +387,7 @@ with. Useful from a browser console or an out-of-page driver:
 ```ts
 interface LabApi {
   readonly engine: Engine;
-  readonly scenarios: readonly ScenarioEntry[];   // { id, path, title, hasDrive }
+  readonly scenarios: readonly ScenarioEntry[];   // { id, path, exportName, groups, label, title, hasDrive }
   readonly problems: readonly RegistryProblem[];  // modules that were skipped
   readonly clock: LabClock;                       // play/pause/step/speed
   readonly ready: Promise<void>;                  // first mount done, or rejected with the boot error
@@ -368,3 +426,5 @@ its presence alone does not mean there is anything to drive.
   perceptual diff.
 - **One harness per project.** A game wanting a physics-free harness for UI
   scenarios has no way to ask for one.
+- **`--scenarios` selects files, not scenarios.** A pattern naming a file with
+  several scenarios runs all of them.

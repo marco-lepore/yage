@@ -4,15 +4,17 @@
 
 Add `@yagejs-tools/lab`, a scenario browser for YAGE games.
 
-A scenario is a `*.scenario.ts` file that either builds a situation with
-`setup` or mounts a `Scene` the game already has. The lab finds them with a
-glob, boots one engine from the project's `lab/harness.ts`, and rebuilds the
-scene whenever a control changes — so one entity, one scene or one mechanic can
-be looked at and tuned without running the whole game.
+Scenarios live in `*.scenario.ts` files next to the code they exercise, and
+either build a situation with `setup` or mount a `Scene` the game already has.
+The lab finds them, boots one engine from the project's `lab/harness.ts`, and
+rebuilds the scene whenever a control changes — so one entity, one scene or one
+mechanic can be looked at and tuned without running the whole game. Directories
+become the list's nesting, and a file can hold several scenarios that share its
+helpers.
 
 ```ts
+// src/entities/ball.scenario.ts  →  listed under entities › ball
 export default defineScenario({
-  title: "Physics / Ball drop",
   controls: { bounce: control.number(0.6, { min: 0, max: 0.95, step: 0.05 }) },
   setup(scene, c) { /* spawn the balls */ },
 

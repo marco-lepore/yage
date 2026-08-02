@@ -1,6 +1,6 @@
 ---
 title: Scenario Lab
-description: Mount one scene, entity or mechanic in a real engine, tune it from a side panel, and run every scenario headless as a test
+description: Mount one scene, entity or mechanic in a real engine, tune it with live controls, and run every scenario headless as a test
 ---
 
 import { Aside, Steps } from "@astrojs/starlight/components";
@@ -9,11 +9,11 @@ Reloading a whole game to look at one enemy is slow. The **scenario lab**
 (`@yagejs-tools/lab`) puts that enemy on screen by itself, in a real engine with
 your game's plugins, and gives you sliders for the numbers you want to feel out.
 
-A scenario is a `*.scenario.ts` file that builds a situation. The lab finds them
-with a glob, lists them in a side panel, and rebuilds the scene whenever you
-move a control. Add a `drive` function to a scenario and it becomes a test:
-`yage-lab test` plays every scenario in a headless browser and exits non-zero if
-one fails.
+Scenarios live in `*.scenario.ts` files, sitting next to the code they
+exercise. The lab finds them wherever they are, lists them in a browsable tree, and
+rebuilds the scene whenever you move a control. Add a `drive` function to a
+scenario and it becomes a test: `yage-lab test` plays every scenario in a
+headless browser and exits non-zero if one fails.
 
 ## Install
 
@@ -43,16 +43,15 @@ npm install -D @playwright/test && npx playwright install chromium
    npx yage-lab init
    ```
 
-2. **Write a scenario** anywhere under your Vite root, in a file ending
+2. **Write a scenario** beside the code it exercises, in a file ending
    `.scenario.ts`:
 
-   ```ts title="src/lab/shapes.scenario.ts"
+   ```ts title="src/entities/shapes.scenario.ts"
    import { Transform, Vec2 } from "@yagejs/core";
    import { GraphicsComponent } from "@yagejs/renderer";
    import { control, defineScenario } from "@yagejs-tools/lab";
 
    export default defineScenario({
-     title: "Basics / Spinning shapes",
      controls: {
        count: control.int(4, { min: 1, max: 16 }),
      },
@@ -78,8 +77,8 @@ npm install -D @playwright/test && npx playwright install chromium
 
 </Steps>
 
-You get a scenario list on the left, the canvas in the middle, and this
-scenario's controls beside it. Drag `count` and the scene rebuilds with the new
+You get a scenario list on the left, the canvas beside it, and this scenario's
+controls under the canvas. Drag `count` and the scene rebuilds with the new
 value.
 
 ## The harness
@@ -133,9 +132,8 @@ your game already has. Declaring both, or neither, fails to compile.
 
 `setup` runs against a blank scene, and again on every rebuild:
 
-```ts
+```ts title="src/entities/ball.scenario.ts"
 export default defineScenario({
-  title: "Physics / Ball drop",
   describe: "Bodies falling onto a floor. Raise bounce and watch again.",
   controls: {
     count: control.int(3, { min: 1, max: 12, label: "balls" }),
@@ -153,15 +151,14 @@ export default defineScenario({
 });
 ```
 
-The `title` is what the list shows. Everything before the first `/` groups it,
-so `"Physics / Ball drop"` and `"Physics / Ragdoll"` sit under one **Physics**
-heading. `describe` prints under the title as a sentence about what to look at.
+The list shows this under **entities** › **ball**, taken from where the file
+sits — see [Where scenarios come from](#where-scenarios-come-from). `describe`
+prints under the title as a sentence about what to look at.
 
 ### Mounting a scene you already have
 
-```ts
+```ts title="src/levels/cave.scenario.ts"
 export default defineScenario({
-  title: "Levels / Cave entrance",
   scene: (c) => new CaveScene({ torches: c.torches }),
   controls: { torches: control.int(3, { min: 0, max: 8 }) },
 });
@@ -169,6 +166,50 @@ export default defineScenario({
 
 This is the form that keeps a lab honest: the scenario shows the same scene the
 game ships, not a copy of it that can drift.
+
+### Several scenarios in one file
+
+A file can export as many scenarios as you like, as named exports. They nest
+under the file in the list, and — the reason to put them together — they share
+whatever else the file declares:
+
+```ts title="src/entities/slime.scenario.ts"
+const health = { hp: control.int(30, { min: 1, max: 200 }) };
+
+function arena(scene: Scene) {
+  // Floor, walls and lighting both scenarios need.
+}
+
+export const idle = defineScenario({
+  controls: health,
+  setup(scene, c) {
+    arena(scene);
+    spawnSlime(scene, { hp: c.hp });
+  },
+});
+
+export const chase = defineScenario({
+  name: "Chasing the player",
+  controls: health,
+  setup(scene, c) {
+    arena(scene);
+    spawnSlime(scene, { hp: c.hp, target: spawnPlayer(scene) });
+  },
+});
+```
+
+That lists as **entities** › **slime** › **idle** and **Chasing the player**.
+An export's name is its label unless the scenario sets `name`, and anything the
+file exports that is not a scenario — `health`, `arena` — is ignored.
+
+<Aside type="note">
+A file exports **either** one default scenario **or** several named ones. Doing
+both is reported as a problem, because the file would show up as an entry and
+as a group of the same name, side by side.
+
+Scenarios within a file are listed alphabetically. JavaScript sorts a module's
+exports, so their declaration order is not something the lab can see.
+</Aside>
 
 ### Controls
 
@@ -197,9 +238,8 @@ their numbers as parameters — which is worth doing anyway.
 Some values are fields on a component, set nowhere near a constructor. `onMounted`
 runs after the scene is on the stack, on every rebuild, and can reach them:
 
-```ts
+```ts title="src/feel/pulse.scenario.ts"
 export default defineScenario({
-  title: "Feel / Pulse tuning",
   scene: () => new PulseScene(),
   controls: {
     amplitude: control.number(0.4, { min: 0, max: 1, step: 0.05 }),
@@ -220,9 +260,8 @@ A `drive` function turns a scenario into something that plays itself and checks
 the result. The panel grows a **Run** button for it, and `yage-lab test` runs
 every one of them.
 
-```ts
+```ts title="src/entities/ball.scenario.ts"
 export default defineScenario({
-  title: "Physics / Ball drop",
   setup(scene, c) { /* ... */ },
 
   async drive({ scene, step, expect }) {
@@ -351,28 +390,74 @@ perceptual diff, not a byte check.
 
 ## Where scenarios come from
 
-By default the lab searches `**/*.scenario.ts` under your Vite root, skipping
-`node_modules` and `dist`. Narrow it once in `package.json` and every command
-picks it up:
+Put scenario files next to the code they exercise. The lab searches
+`**/*.scenario.ts` under your Vite root, skipping `node_modules` and `dist`, so
+colocation needs no setup. There is no lab folder to move things into.
+
+The one thing worth configuring is where ids are measured from. Ids drop the
+directory prefix your patterns share, so pinning the search to `src/` keeps
+them short:
 
 ```json title="package.json"
 {
   "yage-lab": {
-    "scenarios": ["src/lab/**/*.scenario.ts"]
+    "scenarios": ["src/**/*.scenario.ts"]
   }
 }
 ```
 
-Each scenario gets an id from its path, with the shared directory prefix and the
-`.scenario.ts` suffix removed — `src/lab/enemies/slime.scenario.ts` becomes
-`enemies/slime`. Ids are how a scenario is named from outside the page: in a
-link (`?scenario=enemies/slime`) and in `--scenarios`.
+With that, `src/entities/slime.scenario.ts` gets the id `entities/slime`. Left
+at the bare `**` default there is no shared prefix, so the same file would be
+`src/entities/slime` — it works, but the `src/` rides along on every link and
+filename.
 
-A file that does not export a usable scenario is listed as a problem in the
-panel and skipped, rather than taking the page down with it.
+### The id is the tree
+
+An id is the file's path plus, for a named export, its name. Every `/` in it is
+a level in the sidebar:
+
+| File and export | Id | Listed under |
+| --- | --- | --- |
+| `entities/slime.scenario.ts`, default | `entities/slime` | **entities** › slime |
+| `entities/slime.scenario.ts`, `idle` | `entities/slime/idle` | **entities** › **slime** › idle |
+| `ui/hud/bar.scenario.ts`, default | `ui/hud/bar` | **ui** › **hud** › bar |
+
+A file holding several scenarios becomes the group they sit in. A file holding
+one keeps the file's own place, rather than nesting a lone child under a group
+named after it.
+
+Ids are also how a scenario is named from outside the page — in a link
+(`?scenario=entities/slime/idle`) and in `--scenarios` — so they are worth
+keeping stable.
+
+### Putting a scenario somewhere else
+
+When a scenario belongs under a heading its file's location does not give it,
+`title` sets the path directly:
+
+```ts title="src/entities/slime.scenario.ts"
+export const king = defineScenario({
+  title: "Bosses / Act 1 / Slime King",
+  setup(scene) { /* ... */ },
+});
+```
+
+That lists under **Bosses** › **Act 1** › Slime King. The id stays
+`entities/slime/king`, so links and `--scenarios` keep pointing at the file.
+
+<Aside type="note">
+`defineScenario` is what marks an export as a scenario. A plain object with the
+right fields is treated as a helper and ignored, which is what lets a scenario
+file export the things its scenarios share. A file the lab finds no scenario in
+is listed as a problem in the panel and skipped, rather than taking the page
+down with it.
+</Aside>
 
 ## The panel
 
+- **Scenarios** — the tree, on the left, nested by the ids above.
+- **Controls** — under the canvas. Four are visible at once and the rest
+  scroll.
 - **Clock** — play, pause, step one frame or ten, and a speed slider from 0.05×
   to 4×. Speed changes how often a frame is issued, never the delta the frame
   reports, so a game's own slow-motion effects still look like themselves.
@@ -408,7 +493,7 @@ import { yageLab } from "@yagejs-tools/lab/vite";
 export default defineConfig({
   plugins: [
     yageLab({
-      scenarios: ["src/lab/**/*.scenario.ts"],
+      scenarios: ["src/**/*.scenario.ts"],
       harness: "lab/harness.ts",
       title: "My game — lab",
     }),
@@ -444,6 +529,8 @@ rejects with whatever stopped it.
   UI scenarios has no way to ask for one yet.
 - **A scenario runs with its declared control values under `yage-lab test`.**
   There is no flag for driving it at a different setting.
+- **`--scenarios` selects files, not scenarios.** A pattern that names a file
+  holding several scenarios runs all of them.
 - **Laying bodies out from a control needs care.** Twelve bodies that fit at one
   radius spawn intersecting at a larger one, and physics pushes them apart hard
   enough that the scenario stops showing what it was built to show. Cap the

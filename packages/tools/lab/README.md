@@ -1,7 +1,7 @@
 # @yagejs-tools/lab
 
 Scenario browser for [YAGE](https://yage.dev) games. Mount one entity, one
-scene or one mechanic in a real engine, tune it from a side panel, and run the
+scene or one mechanic in a real engine, tune it with live controls, and run the
 same scenarios in a headless browser so a broken one fails the build.
 
 `@yagejs-tools` scope, independently versioned — an engine release never forces
@@ -26,15 +26,15 @@ Write the harness once — the engine and plugins every scenario runs against.
 npx yage-lab init
 ```
 
-Then write scenarios as `*.scenario.ts` files anywhere under your Vite root:
+Then write scenarios as `*.scenario.ts` files, next to the code they exercise:
 
 ```ts
+// src/entities/ball.scenario.ts  →  listed under entities › ball
 import { Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent } from "@yagejs/renderer";
 import { control, defineScenario } from "@yagejs-tools/lab";
 
 export default defineScenario({
-  title: "Physics / Ball drop",
   describe: "Bodies falling onto a floor. Raise bounce and watch again.",
 
   controls: {
@@ -65,6 +65,16 @@ npx yage-lab
 A scenario either builds a situation with `setup`, as above, or mounts a
 `Scene` your game already has. Moving a control rebuilds the scene with the new
 value.
+
+Directories become the list's nesting, so the sidebar mirrors your source tree
+with nothing to configure. A file can export several named scenarios that share
+its helpers, and they nest under the file:
+
+```ts
+// src/entities/slime.scenario.ts  →  entities › slime › { idle, chase }
+export const idle = defineScenario({ setup(scene) { arena(scene); /* ... */ } });
+export const chase = defineScenario({ setup(scene) { arena(scene); /* ... */ } });
+```
 
 ## Commands
 
