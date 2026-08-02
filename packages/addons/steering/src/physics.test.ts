@@ -188,6 +188,14 @@ describe("PhysicsSteeringAgent", () => {
     );
   });
 
+  it("missing body sibling throws at add with an ordering hint", () => {
+    const { entity } = createMockEntity("no-body-host");
+    entity.add(new Transform({ position: Vec2.ZERO }));
+    expect(() => entity.add(new PhysicsSteeringAgent({ maxSpeed: 60 }))).toThrow(
+      /before the agent/,
+    );
+  });
+
   it("dynamic body keeps impulse drive against the body", () => {
     const { entity } = physicsEntity("dynamic");
     const applyImpulse = vi.spyOn(entity.get(RigidBodyComponent), "applyImpulse");

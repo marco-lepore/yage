@@ -41,7 +41,8 @@ when the output is Transform movement a kinematic body follows.
 
 Mount-and-go (auto-detects the `RigidBodyComponent` sibling; impulse drive by
 default, so the agent pushes crates, takes knockback, and gets deflected by
-contacts while steering corrects at `maxAcceleration`):
+contacts while steering corrects at `maxAcceleration`). Add the body before
+the agent — it reads the body's type when added:
 
 ```ts
 import { PhysicsSteeringAgent } from "@yagejs-addons/steering/physics";

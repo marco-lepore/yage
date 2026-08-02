@@ -34,6 +34,9 @@ export type PhysicsSteeringAgentOptions = Omit<SteeringAgentOptions, "body" | "a
  * the physics system syncs to the body each step — so the agent pushes
  * dynamic bodies and is never pushed back; `drive` does not apply there
  * (kinematic bodies ignore `setVelocity`/`applyImpulse`) and throws.
+ *
+ * Component ordering: `RigidBodyComponent` must be added before the agent —
+ * `onAdd` reads the body's type.
  */
 export class PhysicsSteeringAgent extends SteeringAgent {
   private readonly explicitDrive: "velocity" | "impulse" | undefined;
@@ -47,7 +50,12 @@ export class PhysicsSteeringAgent extends SteeringAgent {
   }
 
   onAdd(): void {
-    const rb = this.entity.get(RigidBodyComponent);
+    const rb = this.entity.tryGet(RigidBodyComponent);
+    if (!rb) {
+      throw new Error(
+        "PhysicsSteeringAgent: no RigidBodyComponent on the entity — add the body (and collider) before the agent",
+      );
+    }
     if (rb.type === "static") {
       throw new Error(
         "PhysicsSteeringAgent: a static body cannot move — use a dynamic or kinematic body",

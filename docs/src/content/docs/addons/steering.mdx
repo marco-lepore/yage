@@ -63,7 +63,8 @@ without a parent.
 
 `PhysicsSteeringAgent` (from the `/physics` entry) finds the entity's
 `RigidBodyComponent` itself — mount it next to a body and collider and it
-drives them:
+drives them. Add the body before the agent; the agent reads the body's
+type when it is added:
 
 ```ts
 import { arrive } from "@yagejs-addons/steering";
