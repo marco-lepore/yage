@@ -47,8 +47,10 @@ class PlayerController extends Component {
   }
 
   private grounded = false;
+  private onGround = false;
   private coyoteTimer = 0; // seconds remaining
   private jumpBufferTimer = 0; // seconds remaining
+  private dropPressed = false;
   private wasAirborne = false;
 
   private static readonly SPEED = 220;
@@ -75,7 +77,33 @@ class PlayerController extends Component {
     };
   }
 
-  update(dt: number): void {
+  update(): void {
+    if (isWon()) return;
+
+    // Input edges are per-frame; capture them here and let fixedUpdate
+    // consume them. A frame can run zero or two physics steps, so reading
+    // isJustPressed there would drop or double-count a press.
+    if (this.input.isJustPressed("jump")) {
+      this.jumpBufferTimer = PlayerController.JUMP_BUFFER_SECONDS;
+    }
+    if (this.input.isJustPressed("down")) {
+      this.dropPressed = true;
+    }
+
+    // -- Visual swap based on airborne state --
+    const airborne = !this.onGround;
+    if (airborne !== this.wasAirborne) {
+      if (!airborne) this.audio.play(LandSfx.path, { channel: "sfx" });
+      this.wasAirborne = airborne;
+      this.redrawPlayer(airborne);
+    }
+  }
+
+  // Movement runs on the physics cadence: velocities written here take
+  // effect on the very next step, so the carry stays in step with the
+  // platform's own fixedUpdate-authored motion instead of lagging a frame
+  // behind it.
+  fixedUpdate(dt: number): void {
     if (isWon()) return;
 
     const vel = this.rb.getVelocity();
@@ -99,9 +127,9 @@ class PlayerController extends Component {
     const passingThroughHit =
       this.collider.isDroppingThrough &&
       hit?.entity.tryGet(ColliderComponent)?.config.oneWay !== undefined;
-    const onGround = hit !== null && !passingThroughHit;
+    this.onGround = hit !== null && !passingThroughHit;
 
-    if (onGround) {
+    if (this.onGround) {
       this.grounded = true;
       this.coyoteTimer = PlayerController.COYOTE_SECONDS;
     } else {
@@ -111,32 +139,43 @@ class PlayerController extends Component {
       }
     }
 
-    // -- Platform carrying: inherit horizontal velocity from moving platform --
+    // -- Platform carrying: inherit velocity from the moving platform --
     let platformVelX = 0;
-    if (onGround && hit) {
+    let platformVelY = 0;
+    if (this.onGround && hit) {
       const mover = hit.entity.tryGet(MovingPlatform);
-      if (mover) platformVelX = mover.velocity.x;
+      if (mover) {
+        platformVelX = mover.velocity.x;
+        // Track a descending platform. Contact pushes the player up when the
+        // platform rises, but nothing pulls the player down when it turns
+        // downward — without this the player free-falls after it and hangs
+        // in the air at the top of the path.
+        platformVelY = Math.max(mover.velocity.y, 0);
+      }
     }
 
     // -- Drop through one-way platforms --
-    if (
-      this.input.isJustPressed("down") &&
-      onGround &&
-      hit?.entity.tryGet(ColliderComponent)?.config.oneWay
-    ) {
-      this.collider.dropThrough(0.25);
-      this.grounded = false;
-      this.coyoteTimer = 0;
+    if (this.dropPressed) {
+      this.dropPressed = false;
+      if (
+        this.onGround &&
+        hit?.entity.tryGet(ColliderComponent)?.config.oneWay
+      ) {
+        this.collider.dropThrough(0.25);
+        this.grounded = false;
+        this.coyoteTimer = 0;
+      }
     }
 
     // -- Horizontal movement --
     // Analog stick wins when present; otherwise fall back to digital actions
-    // (keyboard or D-pad) so all input devices feel snappy.
+    // (keyboard or D-pad) so all input devices feel snappy. These are state
+    // reads, not edges, so they're safe on the fixed cadence.
     const stickX = this.input.getStick("left").x;
     let dx = stickX !== 0 ? stickX : this.input.getAxis("left", "right");
 
     // -- Wall detection: don't push into walls while airborne --
-    if (dx !== 0 && !onGround) {
+    if (dx !== 0 && !this.onGround) {
       const wallDir = dx > 0 ? Vec2.RIGHT : Vec2.LEFT;
       const wallHit = this.physicsWorld.raycast(
         pos,
@@ -147,16 +186,14 @@ class PlayerController extends Component {
       if (wallHit) dx = 0;
     }
 
+    // A jump below overwrites the vertical velocity, so tracking the
+    // platform here never eats a jump.
     this.rb.setVelocity(
-      new Vec2(dx * PlayerController.SPEED + platformVelX, vel.y),
+      new Vec2(
+        dx * PlayerController.SPEED + platformVelX,
+        Math.max(vel.y, platformVelY),
+      ),
     );
-
-    // -- Jump buffering --
-    if (this.input.isJustPressed("jump")) {
-      this.jumpBufferTimer = PlayerController.JUMP_BUFFER_SECONDS;
-    } else {
-      this.jumpBufferTimer -= dt;
-    }
 
     // -- Jump execution --
     if (this.jumpBufferTimer > 0 && this.grounded) {
@@ -166,14 +203,7 @@ class PlayerController extends Component {
       this.jumpBufferTimer = 0;
       this.audio.play(JumpSfx.path, { channel: "sfx" });
     }
-
-    // -- Visual swap based on airborne state --
-    const airborne = !onGround;
-    if (airborne !== this.wasAirborne) {
-      if (!airborne) this.audio.play(LandSfx.path, { channel: "sfx" });
-      this.wasAirborne = airborne;
-      this.redrawPlayer(airborne);
-    }
+    this.jumpBufferTimer -= dt;
   }
 
   private redrawPlayer(airborne: boolean): void {
@@ -183,10 +213,7 @@ class PlayerController extends Component {
   }
 }
 
-function drawPlayerGraphics(
-  g: GraphicsContext,
-  airborne: boolean,
-): void {
+function drawPlayerGraphics(g: GraphicsContext, airborne: boolean): void {
   const bodyColor = airborne ? 0x38bdf8 : 0x22c55e;
   const outlineColor = airborne ? 0x0ea5e9 : 0x16a34a;
   // Body
