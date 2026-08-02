@@ -42,8 +42,14 @@ export class PhysicsDebugContributor implements DebugContributor {
         const g = api.acquireGraphics();
         if (!g) return; // pool exhausted
 
-        const config = world._colliderComponents.get(handle)?.config;
-        const color = config?.oneWay
+        const component = world._colliderComponents.get(handle);
+        const config = component?.config;
+        // One-way visuals only while the active filter is still the one
+        // `config.oneWay` installed — a custom filter set over the preset
+        // changes the behavior, so it must not keep the one-way look.
+        const oneWayActive =
+          component?._oneWayFilterActive === true && config?.oneWay !== undefined;
+        const color = oneWayActive
           ? COLOR_ONE_WAY
           : this.getColliderColor(collider);
 
@@ -97,7 +103,7 @@ export class PhysicsDebugContributor implements DebugContributor {
           }
         }
 
-        if (config?.oneWay) {
+        if (oneWayActive && config) {
           this.drawOneWayArrow(g, config, strokeStyle);
         }
       }

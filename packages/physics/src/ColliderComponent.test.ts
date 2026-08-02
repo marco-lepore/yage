@@ -906,6 +906,33 @@ describe("ColliderComponent", () => {
       expect(restored._contactFilter).not.toBeNull();
     });
 
+    it("reports a throwing filter once, re-armed by a new filter", async () => {
+      const { scene, context } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "wall");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "static" }));
+      const col = entity.add(
+        new ColliderComponent({ shape: { type: "box", width: 10, height: 10 } }),
+      );
+      const boundary = context.resolve(ErrorBoundaryKey);
+      const candidate = {} as Parameters<
+        typeof col._evaluateContactFilter
+      >[0];
+
+      col.setContactFilter(() => {
+        throw new Error("boom");
+      });
+      expect(col._evaluateContactFilter(candidate)).toBe(true);
+      expect(col._evaluateContactFilter(candidate)).toBe(true);
+      expect(boundary.getCallbackErrors().length).toBe(1);
+
+      col.setContactFilter(() => {
+        throw new Error("boom again");
+      });
+      expect(col._evaluateContactFilter(candidate)).toBe(true);
+      expect(boundary.getCallbackErrors().length).toBe(2);
+    });
+
     it("warns when oneWay is combined with sensor", async () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       const { scene } = await createPhysicsTestContext();

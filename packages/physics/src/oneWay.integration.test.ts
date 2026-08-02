@@ -282,11 +282,12 @@ describe("contact filter primitive (real Rapier)", () => {
 
     step(physicsWorld, 150);
 
-    // Conservative fallback: the rider landed anyway.
+    // Conservative fallback: the rider landed anyway. The failure is
+    // reported exactly once, not per pair per step.
     expect(bodyY(physicsWorld, rider)).toBeCloseTo(280, 0);
     const boundary = context.resolve(ErrorBoundaryKey);
     const recorded = boundary.getCallbackErrors();
-    expect(recorded.length).toBeGreaterThan(0);
+    expect(recorded.length).toBe(1);
     expect(recorded[0]?.kind).toBe("Contact filter");
   });
 });

@@ -204,7 +204,7 @@ collider.setContactFilter(null);   // remove
 - Runs inside the physics step for every candidate pair involving the collider, every step. Keep it cheap; don't create or destroy entities, bodies, or colliders from inside it. The `contact` object is reused across calls — read, don't store.
 - No contact normal or point exists yet. Positions/velocities are from the start of the step, so a body that crossed a surface mid-step still shows which side it came from.
 - When both colliders in a pair have filters, the pair is solid only if both return `true`.
-- A filter that throws is reported (`Inspector.getErrors().callbackErrors`) and the pair stays solid for that step.
+- A filter that throws is reported (`Inspector.getErrors().callbackErrors`) once per installed filter and the pair stays solid.
 - `setContactFilter` replaces the built-in filter a `oneWay` config installed. Filters are functions and are not serialized: `oneWay` reinstalls its filter on load; custom filters must be re-registered after a restore.
 - Contact pairs only — sensor/trigger pairs are unaffected.
 

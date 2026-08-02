@@ -553,8 +553,10 @@ A few rules to keep filters healthy:
 - When both colliders in a pair have filters, the pair is solid only if both
   return `true`.
 - A filter that throws is reported through the error boundary
-  (`Inspector.getErrors().callbackErrors`) and the pair stays solid for that
-  step — the conservative default.
+  (`Inspector.getErrors().callbackErrors`) and the pair stays solid — the
+  conservative default. The report fires once per installed filter, so a
+  persistently throwing filter can't flood the log; installing a new filter
+  arms it again.
 - Setting a filter on a collider configured with `oneWay` replaces the
   built-in one-way filter. Filters are functions, so they are not saved:
   after a load, `oneWay` colliders get their built-in filter back, and custom

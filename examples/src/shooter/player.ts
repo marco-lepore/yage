@@ -161,7 +161,14 @@ class PlayerController extends Component {
       PlayerController.GROUND_RAY_DIST,
       { filterGroups },
     );
-    const onGround = hit !== null;
+    // Raycasts don't consult contact filters, so during a drop-through the
+    // ray still reports the one-way platform being fallen through. It isn't
+    // supporting the player, so it must not restore grounded state (and
+    // with it the ability to jump mid-drop). Solid ground still counts.
+    const passingThroughHit =
+      this.collider.isDroppingThrough &&
+      hit?.entity.tryGet(ColliderComponent)?.config.oneWay !== undefined;
+    const onGround = hit !== null && !passingThroughHit;
 
     if (onGround) {
       this.grounded = true;

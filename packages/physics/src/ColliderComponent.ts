@@ -70,14 +70,29 @@ export class ColliderComponent extends Component {
   private _dropThroughUntil = -1;
   /** Drop-through seconds requested before the collider existed. */
   private _pendingDropThrough = 0;
+  /** True once the current filter's failure has been reported. */
+  private _reportedFilterError = false;
+  /** The filter `config.oneWay` installed, to tell it apart from a custom one. */
+  private _oneWayFilter: ContactFilter | null = null;
 
   constructor(config: ColliderConfig) {
     super();
     this.config = config;
     if (config.oneWay) {
       this._oneWayLanded = new Set();
-      this._contactFilter = createOneWayFilter(this);
+      this._oneWayFilter = createOneWayFilter(this);
+      this._contactFilter = this._oneWayFilter;
     }
+  }
+
+  /**
+   * @internal True while the collider's active filter is still the one
+   * `config.oneWay` installed — the debug overlay draws one-way visuals
+   * only then, so a custom filter set over the preset isn't shown as
+   * one-way.
+   */
+  get _oneWayFilterActive(): boolean {
+    return this._contactFilter !== null && this._contactFilter === this._oneWayFilter;
   }
 
   onAdd(): void {
@@ -262,8 +277,11 @@ export class ColliderComponent extends Component {
    *
    * The filter runs inside the physics step, so no contact normal exists
    * yet; the `ContactCandidate` exposes the two sides' positions and
-   * velocities instead. A filter that throws is reported through the error
-   * boundary and the pair stays solid for that step.
+   * velocities instead. The candidate is a single reused instance — read
+   * what you need inside the filter and copy it; a stored reference shows
+   * other pairs' values after the call returns. A filter that throws is
+   * reported through the error boundary once (per installed filter) and
+   * the pair stays solid.
    *
    * Filters are functions and are not serialized: after a save/load, a
    * collider configured with `oneWay` gets its built-in filter back, and a
@@ -271,6 +289,7 @@ export class ColliderComponent extends Component {
    */
   setContactFilter(filter: ContactFilter | null): void {
     this._contactFilter = filter;
+    this._reportedFilterError = false;
     if (this._colliderHandle === -1) return;
     this.physicsWorld._setContactFilterEnabled(
       this._colliderHandle,
@@ -315,6 +334,11 @@ export class ColliderComponent extends Component {
    * unwinding through WASM mid-step leaves the physics world in an
    * undefined state. The error is caught, reported through the boundary,
    * and the pair falls back to solid — the conservative default.
+   *
+   * Reported once per installed filter, not per throw: the filter runs for
+   * every candidate pair every step, and a persistently throwing one would
+   * otherwise log at frame rate and evict everything else from the error
+   * snapshot. `setContactFilter` re-arms the report.
    */
   _evaluateContactFilter(contact: ContactCandidate): boolean {
     const filter = this._contactFilter;
@@ -322,6 +346,8 @@ export class ColliderComponent extends Component {
     try {
       return filter(contact);
     } catch (err) {
+      if (this._reportedFilterError) return true;
+      this._reportedFilterError = true;
       const sceneName = this.entity?.tryScene?.name;
       this.errorBoundary?.reportLifecycleError(err, {
         kind: "Contact filter",
