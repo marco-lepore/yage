@@ -42,6 +42,12 @@ Installable, opinionated gameplay patterns (`@yagejs-addons` scope), independent
 - [synth](llms/addons/synth.md): Procedural sound effects — patches, presets, and jingles rendered to playable aliases, no audio files
 - [virtual-controls](llms/addons/virtual-controls.md): Mobile touch overlay — virtual joystick(s) and on-screen buttons driving InputManager
 
+## Tools
+
+Development tools for building YAGE games (`@yagejs-tools` scope, independently versioned). Each tool's doc is sourced from its co-located `packages/tools/<name>/docs/llms/`.
+
+- [lab](llms/tools/lab.md): Scenario browser — mount a scene or entity in a real engine, tune it with controls, and run every scenario headless
+
 ## Optional
 
 - Testing: `createMockEntity`, `createTestEngine`, `advanceFrames` from `@yagejs/core/test-utils`

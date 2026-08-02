@@ -1,0 +1,450 @@
+---
+title: Scenario Lab
+description: Mount one scene, entity or mechanic in a real engine, tune it from a side panel, and run every scenario headless as a test
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Reloading a whole game to look at one enemy is slow. The **scenario lab**
+(`@yagejs-tools/lab`) puts that enemy on screen by itself, in a real engine with
+your game's plugins, and gives you sliders for the numbers you want to feel out.
+
+A scenario is a `*.scenario.ts` file that builds a situation. The lab finds them
+with a glob, lists them in a side panel, and rebuilds the scene whenever you
+move a control. Add a `drive` function to a scenario and it becomes a test:
+`yage-lab test` plays every scenario in a headless browser and exits non-zero if
+one fails.
+
+## Install
+
+```bash
+npm install -D @yagejs-tools/lab
+```
+
+The lab is a development tool — nothing it exports reaches your game bundle. It
+uses your existing `@yagejs/core`, `@yagejs/renderer`, `@yagejs/debug` and Vite
+installs as peer dependencies.
+
+For `yage-lab test` you also need Playwright and a browser binary. Skip this if
+you only want the panel:
+
+```bash
+npm install -D @playwright/test && npx playwright install chromium
+```
+
+## Get started
+
+<Steps>
+
+1. **Write the harness.** `init` reads your `package.json` and prefills
+   `lab/harness.ts` with a plugin for every `@yagejs/*` package you depend on:
+
+   ```bash
+   npx yage-lab init
+   ```
+
+2. **Write a scenario** anywhere under your Vite root, in a file ending
+   `.scenario.ts`:
+
+   ```ts title="src/lab/shapes.scenario.ts"
+   import { Transform, Vec2 } from "@yagejs/core";
+   import { GraphicsComponent } from "@yagejs/renderer";
+   import { control, defineScenario } from "@yagejs-tools/lab";
+
+   export default defineScenario({
+     title: "Basics / Spinning shapes",
+     controls: {
+       count: control.int(4, { min: 1, max: 16 }),
+     },
+     setup(scene, c) {
+       for (let i = 0; i < c.count; i++) {
+         const shape = scene.spawn(`shape-${i}`);
+         shape.add(new Transform({ position: new Vec2(80 + i * 60, 200) }));
+         shape.add(
+           new GraphicsComponent().draw((g) => {
+             g.circle(0, 0, 24).fill({ color: 0x38bdf8 });
+           }),
+         );
+       }
+     },
+   });
+   ```
+
+3. **Open the lab.** It starts on port 5210 and opens a browser window:
+
+   ```bash
+   npx yage-lab
+   ```
+
+</Steps>
+
+You get a scenario list on the left, the canvas in the middle, and this
+scenario's controls beside it. Drag `count` and the scene rebuilds with the new
+value.
+
+## The harness
+
+Every scenario in a project shares one harness, so they all run against the same
+plugins your game uses. A scenario that declared its own plugin set would drift
+from the game and prove nothing about it.
+
+```ts title="lab/harness.ts"
+import { Engine } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
+import { PhysicsPlugin } from "@yagejs/physics";
+import { InputPlugin } from "@yagejs/input";
+import { defineHarness } from "@yagejs-tools/lab";
+
+export const WIDTH = 800;
+export const HEIGHT = 480;
+
+export default defineHarness({
+  width: WIDTH,
+  height: HEIGHT,
+  engine: () => new Engine({ debug: true }),
+  plugins: ({ container }) => [
+    new RendererPlugin({ width: WIDTH, height: HEIGHT, container }),
+    new PhysicsPlugin({ gravity: { x: 0, y: 980 } }),
+    // Copy the game's own action map in, so scenarios drive the same actions.
+    new InputPlugin({ actions: { jump: ["Space"] } }),
+  ],
+});
+```
+
+`width` and `height` size the canvas, and default to 800×480. `container` is the
+element the renderer mounts into, already sized for you.
+
+The file lives at `lab/harness.ts` under your Vite root. The path is a
+convention rather than a setting — there is no flag for it, and `.mts`, `.js`
+and `.mjs` work too.
+
+<Aside type="tip">
+The lab adds `DebugPlugin` itself when your harness leaves it out, because the
+clock controls need it. Declare it yourself to pass options — a
+`deterministicSeed` makes every scenario using randomness replay the same way.
+</Aside>
+
+## Writing scenarios
+
+A scenario either **builds** a situation from nothing or **mounts** a `Scene`
+your game already has. Declaring both, or neither, fails to compile.
+
+### Building a situation
+
+`setup` runs against a blank scene, and again on every rebuild:
+
+```ts
+export default defineScenario({
+  title: "Physics / Ball drop",
+  describe: "Bodies falling onto a floor. Raise bounce and watch again.",
+  controls: {
+    count: control.int(3, { min: 1, max: 12, label: "balls" }),
+    bounce: control.number(0.6, { min: 0, max: 0.95, step: 0.05 }),
+  },
+  setup(scene, c) {
+    for (let i = 0; i < c.count; i++) {
+      const ball = scene.spawn(`ball-${i}`, { key: `ball-${i}` });
+      // ...
+    }
+  },
+  // Only on this form — the scene form takes both from the Scene itself.
+  layers: [{ name: "background" }, { name: "entities" }],
+  preload: [textures.ball],
+});
+```
+
+The `title` is what the list shows. Everything before the first `/` groups it,
+so `"Physics / Ball drop"` and `"Physics / Ragdoll"` sit under one **Physics**
+heading. `describe` prints under the title as a sentence about what to look at.
+
+### Mounting a scene you already have
+
+```ts
+export default defineScenario({
+  title: "Levels / Cave entrance",
+  scene: (c) => new CaveScene({ torches: c.torches }),
+  controls: { torches: control.int(3, { min: 0, max: 8 }) },
+});
+```
+
+This is the form that keeps a lab honest: the scenario shows the same scene the
+game ships, not a copy of it that can drift.
+
+### Controls
+
+Controls are plain data. A scenario file that declares them pulls in no runtime
+engine code.
+
+```ts
+control.number(0.6, { min: 0, max: 1, step: 0.05, label: "bounce" })
+control.int(3, { min: 1, max: 12 })
+control.boolean(true, { label: "outline" })
+control.select("green", ["green", "sky", "amber"])
+```
+
+`number` renders a slider and steps by 0.01 unless told otherwise; `int` steps
+by whole numbers; `boolean` is a checkbox; `select` is a dropdown. `min` and
+`max` default to a range that contains the starting value. `select` infers
+literal types, so `setup` sees `"green" | "sky" | "amber"` rather than `string`,
+with no `as const` at the call site.
+
+Every control change rebuilds the scene from scratch, which means `setup` has to
+be re-runnable. In practice this pushes you toward entities and scenes that take
+their numbers as parameters — which is worth doing anyway.
+
+### Reaching values you cannot pass in
+
+Some values are fields on a component, set nowhere near a constructor. `onMounted`
+runs after the scene is on the stack, on every rebuild, and can reach them:
+
+```ts
+export default defineScenario({
+  title: "Feel / Pulse tuning",
+  scene: () => new PulseScene(),
+  controls: {
+    amplitude: control.number(0.4, { min: 0, max: 1, step: 0.05 }),
+    rate: control.number(3, { min: 0.5, max: 12, step: 0.5 }),
+  },
+  onMounted(scene, c) {
+    const pulse = scene.findByKey("disc")?.get(Pulse);
+    if (!pulse) return;
+    pulse.amplitude = c.amplitude;
+    pulse.rate = c.rate;
+  },
+});
+```
+
+## Driving a scenario
+
+A `drive` function turns a scenario into something that plays itself and checks
+the result. The panel grows a **Run** button for it, and `yage-lab test` runs
+every one of them.
+
+```ts
+export default defineScenario({
+  title: "Physics / Ball drop",
+  setup(scene, c) { /* ... */ },
+
+  async drive({ scene, step, expect }) {
+    const ball = scene.findByKey("ball-0");
+    if (!ball) throw new Error("the scenario spawned no ball-0");
+    const transform = ball.get(Transform);
+    const startY = transform.position.y;
+
+    // Two seconds of gravity, issued frame by frame.
+    await step(120);
+
+    expect(transform.position.y).toBeGreaterThan(startY);
+  },
+});
+```
+
+A run rebuilds the scene first, takes the clock over for its duration, and
+restores the play state afterwards. Frames come from the run itself, so a
+scenario that reports 120 frames used 120 frames — wall-clock speed and the
+panel's speed slider change nothing about the result.
+
+What the context gives you:
+
+| Member | What it does |
+| --- | --- |
+| `scene` | The scene being driven. `findByKey("ball-0")` reaches what the scenario spawned. |
+| `controls` | The control values the run started with. |
+| `step(frames?)` | Advances frames, one at a time. |
+| `until(predicate, { maxFrames })` | Steps until the predicate holds, resolving with the number of frames it took. Rejects after 600 frames by default. |
+| `expect(value)` | Jest-style assertions, from `@vitest/expect`. |
+| `input` | Synthetic keyboard, mouse, pointer, gamepad and action input. |
+| `events` | The engine's event log, including `waitFor`. |
+| `capture(label?)` | Screenshots the canvas into the run's result. |
+
+<Aside type="caution">
+**Every call that advances a frame is async and has to be awaited.** The engine's
+own `Inspector.time.step()` is synchronous and drains nothing, so a `drive` uses
+`step` from the context instead.
+
+The same applies to waiting for an event. The run is the only thing issuing
+frames, so `await events.waitFor(...)` on its own parks the run forever. Start
+the wait, issue the frames, then await it:
+
+```ts
+const hit = events.waitFor("enemy:hit", { withinFrames: 60 });
+await step(60);
+await hit;
+```
+</Aside>
+
+### Synthetic input
+
+`ctx.input` presses keys and buttons for you. Calls that advance frames are
+async; calls that only change state are not:
+
+```ts
+async drive({ input, step, scene, expect }) {
+  const probe = scene.findByKey("player")!.get(InputProbe);
+
+  // Hold a key across an exact number of frames.
+  await input.hold("Space", 3);
+
+  // Or drive the frames yourself to read a one-frame edge.
+  input.keyDown("Space");
+  await step(1);
+  expect(probe.jumpJustPressed).toBe(true);
+  await step(1);
+  expect(probe.jumpJustPressed).toBe(false);
+  input.keyUp("Space");
+
+  // Actions, when the harness declares InputPlugin.
+  await input.fireAction("jump", 2);
+}
+```
+
+The full set: `keyDown`, `keyUp`, `mouseMove`, `mouseDown`, `mouseUp`,
+`pointerMove`, `pointerDown`, `pointerUp`, `gamepadButton`, `gamepadAxis`,
+`pressAction`, `releaseAction` and `clearAll` are synchronous; `tap`, `hold` and
+`fireAction` advance frames and are async.
+
+## Running scenarios as a test
+
+```bash
+npx yage-lab test
+```
+
+The command starts the same dev server, opens headless chromium, visits every
+scenario, and prints a line each:
+
+```
+  PASS  drop                          drive    120f  240ms
+  PASS  shapes                        smoke     60f  41ms
+  FAIL  enemies/slime                 drive     12f  88ms
+        expected 1 to be 2 // Object.is equality
+
+  2/3 passed, 1 failed
+```
+
+A scenario with a `drive` is driven. A scenario without one is mounted and
+stepped 60 frames, so even a project that has written no drives gets a smoke
+test that catches a scene which throws on the way up.
+
+A scenario fails when its `drive` throws or an assertion fails, when the engine
+records a callback error — a `setup` that threw, a component `update` that threw
+— when the page outlives `--timeout`, or when the page reports an uncaught
+error. A scenario file the lab could not load fails the run too, and so does a
+`--scenarios` glob that matched nothing.
+
+Useful flags:
+
+| Flag | Effect |
+| --- | --- |
+| `--scenarios <globs>` | Comma-separated patterns, so a run covers one scenario or one folder. |
+| `--timeout <ms>` | How long one scenario may take. Default 30000. |
+| `--screenshots <dir>` | Write a PNG per scenario there, plus one per `capture(label)`. |
+
+<Aside type="note">
+Screenshots are written only when you ask for them. A screenshot the lab could
+not take is a warning under the scenario's line, not a failure — the scenario is
+what the command reports on.
+
+A screenshot is the size of what was drawn rather than the size of the canvas,
+and its bytes are not stable between runs. Comparing two of them needs a
+perceptual diff, not a byte check.
+</Aside>
+
+## Where scenarios come from
+
+By default the lab searches `**/*.scenario.ts` under your Vite root, skipping
+`node_modules` and `dist`. Narrow it once in `package.json` and every command
+picks it up:
+
+```json title="package.json"
+{
+  "yage-lab": {
+    "scenarios": ["src/lab/**/*.scenario.ts"]
+  }
+}
+```
+
+Each scenario gets an id from its path, with the shared directory prefix and the
+`.scenario.ts` suffix removed — `src/lab/enemies/slime.scenario.ts` becomes
+`enemies/slime`. Ids are how a scenario is named from outside the page: in a
+link (`?scenario=enemies/slime`) and in `--scenarios`.
+
+A file that does not export a usable scenario is listed as a problem in the
+panel and skipped, rather than taking the page down with it.
+
+## The panel
+
+- **Clock** — play, pause, step one frame or ten, and a speed slider from 0.05×
+  to 4×. Speed changes how often a frame is issued, never the delta the frame
+  reports, so a game's own slow-motion effects still look like themselves.
+- **Errors** — anything the engine's error boundary recorded, plus a scene that
+  failed to build. A game loop that stopped is called out separately: nothing
+  short of a page reload brings it back.
+- **The URL** — the scenario, its control values, the speed and the play state
+  all live in the query string. Editing a scenario file reloads the page, and
+  the URL is what puts you back where you were. It also makes a scenario at a
+  particular setting a link you can share.
+
+## Sharing a lab
+
+`yage-lab build` writes a static site — the panel, every scenario, and your
+game's assets — that any static host can serve:
+
+```bash
+npx yage-lab build --out-dir dist-lab
+```
+
+Useful for showing a mechanic to someone who does not have the repo checked out.
+
+## Running it from your own Vite config
+
+The CLI merges the lab into your `vite.config.ts` for you, so most projects
+never need this. If you want a config that serves the lab itself, add the
+plugin:
+
+```ts title="vite.lab.config.ts"
+import { defineConfig } from "vite";
+import { yageLab } from "@yagejs-tools/lab/vite";
+
+export default defineConfig({
+  plugins: [
+    yageLab({
+      scenarios: ["src/lab/**/*.scenario.ts"],
+      harness: "lab/harness.ts",
+      title: "My game — lab",
+    }),
+  ],
+});
+```
+
+The plugin answers the dev server's root URL with the lab page, so a config
+carrying it serves the lab rather than the game.
+
+## Driving the lab from code
+
+`mount` publishes its API on `globalThis.__yageLab__` before the first scenario
+is built, which makes the browser console a usable control surface:
+
+```js
+const lab = window.__yageLab__;
+await lab.ready;                        // the first scenario is up
+lab.scenarios.map((s) => s.id);         // every id on the page
+await lab.show("enemies/slime");
+await lab.setControl("count", 8);
+await lab.clock.step(30);
+const result = await lab.run();         // { ok, framesUsed, durationMs, captures }
+```
+
+Wait on `ready` rather than on the property existing: the API is published
+before the engine starts, so a page whose boot failed still has one. `ready`
+rejects with whatever stopped it.
+
+## Limits
+
+- **One harness per project.** A game that wants a physics-free harness for its
+  UI scenarios has no way to ask for one yet.
+- **A scenario runs with its declared control values under `yage-lab test`.**
+  There is no flag for driving it at a different setting.
+- **Laying bodies out from a control needs care.** Twelve bodies that fit at one
+  radius spawn intersecting at a larger one, and physics pushes them apart hard
+  enough that the scenario stops showing what it was built to show. Cap the
+  control at a value that still fits.
