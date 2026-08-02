@@ -327,7 +327,7 @@ This is also why kinematic movement belongs in `fixedUpdate`. There, the
 `Transform` holds the exact pose your last write reached, so per-tick deltas
 (`transform.translate(speed * dt, 0)`) accumulate cleanly. In `update()` the
 `Transform` holds the blended pose instead — write absolute positions there,
-or compute them from `rb.position`, and expect the body to pick the write up
+or compute them from `rb.position`, and expect the body to apply the write
 one frame later.
 
 ## Raycasting

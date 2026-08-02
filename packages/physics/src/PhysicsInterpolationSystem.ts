@@ -3,6 +3,7 @@ import {
   Phase,
   Transform,
   GameLoopKey,
+  MathUtils,
   SceneTimeKey,
 } from "@yagejs/core";
 import type { GameLoop } from "@yagejs/core";
@@ -79,8 +80,14 @@ export class PhysicsInterpolationSystem extends System {
         transform.worldPosition = position;
         if (kinematic) rb._lastWrittenPosition = position;
         if (rb.syncRotation) {
-          const rotation =
-            rb._prevRotation + (rb._currRotation - rb._prevRotation) * alpha;
+          // Shortest arc: Rapier reports rotations normalized to (-π, π], so
+          // a spinning body crossing the boundary would otherwise draw a
+          // full-turn sweep in the wrong direction for one step.
+          const rotation = MathUtils.lerpAngle(
+            rb._prevRotation,
+            rb._currRotation,
+            alpha,
+          );
           transform.worldRotation = rotation;
           if (kinematic) rb._lastWrittenRotation = rotation;
         }

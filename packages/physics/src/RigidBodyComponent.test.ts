@@ -606,6 +606,25 @@ describe("RigidBodyComponent", () => {
       expect(rb._kinematicTargetPosition.x).toBe(200);
       expect(rb._kinematicTargetPosition.y).toBe(300);
     });
+
+    it("drops a Transform write superseded by a kinematic setPosition", async () => {
+      const { scene } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      const transform = entity.add(
+        new Transform({ position: new Vec2(100, 200) }),
+      );
+      const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
+
+      // Authored move first, authoritative teleport second: the later call
+      // wins, so the earlier write must not resurface as a step target.
+      transform.setPosition(500, 500);
+      rb.setPosition(300, 50);
+
+      expect(rb._hasPendingTargetPosition()).toBe(false);
+      rb._capturePendingTarget();
+      expect(rb._kinematicTargetPosition.x).toBe(300);
+      expect(rb._kinematicTargetPosition.y).toBe(50);
+    });
   });
 
   describe("setRotation", () => {

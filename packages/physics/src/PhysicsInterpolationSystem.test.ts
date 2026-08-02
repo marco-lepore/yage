@@ -395,6 +395,30 @@ describe("PhysicsInterpolationSystem", () => {
     expect(transform.position.x).toBeCloseTo(100);
   });
 
+  it("interpolates rotation along the shortest arc across the ±π boundary", async () => {
+    const { scene, manager, gameLoop, context } =
+      await createPhysicsTestContext();
+    const system = new PhysicsInterpolationSystem();
+    system._setContext(context);
+
+    const entity = spawnEntityInScene(scene, "spinner");
+    const transform = entity.add(new Transform());
+    const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+    // A body spinning forward past π: Rapier reports the next pose wrapped
+    // to the negative side. A raw lerp would sweep backwards through 0.
+    rb._prevRotation = Math.PI - 0.1;
+    rb._currRotation = -Math.PI + 0.1;
+    rb._prevPosition = Vec2.ZERO;
+    rb._currPosition = Vec2.ZERO;
+
+    manager.getContext(scene)!.accumulator = gameLoop.fixedTimestep * 0.5;
+
+    system.update(0);
+
+    expect(Math.abs(transform.rotation)).toBeCloseTo(Math.PI, 6);
+  });
+
   it("interpolates rotation", async () => {
     const { scene, context } = await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();

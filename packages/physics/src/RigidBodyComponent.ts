@@ -1,4 +1,10 @@
-import { Component, Transform, Vec2, serializable } from "@yagejs/core";
+import {
+  Component,
+  MathUtils,
+  Transform,
+  Vec2,
+  serializable,
+} from "@yagejs/core";
 import type { Vec2Like } from "@yagejs/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import { PhysicsWorldKey } from "./types.js";
@@ -424,6 +430,11 @@ export class RigidBodyComponent extends Component {
     // Without this, the step after a kinematic teleport would drive the body
     // back toward the stale pre-teleport target.
     this._kinematicTargetPosition = pos;
+    // The teleport also supersedes any Transform write the capture has not
+    // consumed yet — marking the current pose as already written keeps that
+    // write from becoming the next step's target and pulling the body off
+    // the teleport destination.
+    this._lastWrittenPosition = this.transform.worldPosition;
   }
 
   /**
@@ -437,6 +448,8 @@ export class RigidBodyComponent extends Component {
     this._prevRotation = radians;
     this._currRotation = radians;
     this._kinematicTargetRotation = radians;
+    // Supersede any not-yet-captured Transform rotation, as in setPosition.
+    this._lastWrittenRotation = this.transform.worldRotation;
   }
 
   /**
@@ -452,11 +465,20 @@ export class RigidBodyComponent extends Component {
     );
   }
 
-  /** @internal Rotation counterpart of `_hasPendingTargetPosition`. */
+  /**
+   * @internal Rotation counterpart of `_hasPendingTargetPosition`. Compares
+   * along the shortest arc: a game that normalizes its own accumulated
+   * rotation writes a numerically different, visually identical angle, which
+   * is not a new target.
+   */
   _hasPendingTargetRotation(): boolean {
     return (
-      Math.abs(this.transform.worldRotation - this._lastWrittenRotation) >
-      POSE_EPSILON
+      Math.abs(
+        MathUtils.shortestAngleBetween(
+          this._lastWrittenRotation,
+          this.transform.worldRotation,
+        ),
+      ) > POSE_EPSILON
     );
   }
 
