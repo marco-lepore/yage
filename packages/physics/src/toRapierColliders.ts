@@ -79,7 +79,10 @@ function buildDesc(
         toMeters(shape.radius),
       );
     case "polygon": {
-      const verts = shape.vertices.flatMap((v) => [toMeters(v.x), toMeters(v.y)]);
+      const verts = shape.vertices.flatMap((v) => [
+        toMeters(v.x),
+        toMeters(v.y),
+      ]);
       const result = rapier.ColliderDesc.convexHull(new Float32Array(verts));
       if (!result) {
         throw new Error("Failed to create convex hull from vertices.");
@@ -87,7 +90,10 @@ function buildDesc(
       return result;
     }
     case "polyline": {
-      const verts = shape.vertices.flatMap((v) => [toMeters(v.x), toMeters(v.y)]);
+      const verts = shape.vertices.flatMap((v) => [
+        toMeters(v.x),
+        toMeters(v.y),
+      ]);
       return rapier.ColliderDesc.polyline(new Float32Array(verts));
     }
   }

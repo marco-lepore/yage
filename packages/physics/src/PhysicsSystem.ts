@@ -56,11 +56,7 @@ export class PhysicsSystem extends System {
     }
   }
 
-  private stepScene(
-    dt: number,
-    scene: Scene,
-    ctx: ScenePhysicsContext,
-  ): void {
+  private stepScene(dt: number, scene: Scene, ctx: ScenePhysicsContext): void {
     const timeScale =
       scene.tryResolveScoped(SceneTimeKey)?.effectiveScale ?? scene.timeScale;
     const maxSteps = Math.min(Math.ceil(timeScale) + 1, 8);

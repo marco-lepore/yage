@@ -221,21 +221,25 @@ export class PhysicsWorld {
   ): ContactData | undefined {
     let contact: ContactData | undefined;
     let handled = false;
-    this.world.narrowPhase.contactPair(handle1, handle2, (manifold, flipped) => {
-      if (handled) return;
-      handled = true;
-      if (manifold.numSolverContacts() === 0) return;
+    this.world.narrowPhase.contactPair(
+      handle1,
+      handle2,
+      (manifold, flipped) => {
+        if (handled) return;
+        handled = true;
+        if (manifold.numSolverContacts() === 0) return;
 
-      const n = manifold.normal();
-      const normal = flipped ? new Vec2(-n.x, -n.y) : new Vec2(n.x, n.y);
-      const p = manifold.solverContactPoint(0);
-      const point = new Vec2(this.toPixels(p.x), this.toPixels(p.y));
-      const penetrationDepth = Math.max(
-        0,
-        this.toPixels(-manifold.solverContactDist(0)),
-      );
-      contact = { normal, point, penetrationDepth };
-    });
+        const n = manifold.normal();
+        const normal = flipped ? new Vec2(-n.x, -n.y) : new Vec2(n.x, n.y);
+        const p = manifold.solverContactPoint(0);
+        const point = new Vec2(this.toPixels(p.x), this.toPixels(p.y));
+        const penetrationDepth = Math.max(
+          0,
+          this.toPixels(-manifold.solverContactDist(0)),
+        );
+        contact = { normal, point, penetrationDepth };
+      },
+    );
     return contact;
   }
 
@@ -275,7 +279,10 @@ export class PhysicsWorld {
       desc.setCcdEnabled(true);
     }
     if (config.lockTranslationX || config.lockTranslationY) {
-      desc.enabledTranslations(!config.lockTranslationX, !config.lockTranslationY);
+      desc.enabledTranslations(
+        !config.lockTranslationX,
+        !config.lockTranslationY,
+      );
     }
 
     const body = this.world.createRigidBody(desc);
@@ -531,10 +538,7 @@ export class PhysicsWorld {
     const hitPoint = ray.pointAt(result.timeOfImpact);
     return {
       entity,
-      point: new Vec2(
-        this.toPixels(hitPoint.x),
-        this.toPixels(hitPoint.y),
-      ),
+      point: new Vec2(this.toPixels(hitPoint.x), this.toPixels(hitPoint.y)),
       normal: new Vec2(result.normal.x, result.normal.y),
       distance: this.toPixels(result.timeOfImpact),
     };
@@ -642,7 +646,11 @@ export class PhysicsWorld {
   queryShape(
     shape: ColliderShape,
     position: Vec2Like,
-    options?: { rotation?: number; filterGroups?: number; excludeEntity?: Entity },
+    options?: {
+      rotation?: number;
+      filterGroups?: number;
+      excludeEntity?: Entity;
+    },
   ): Entity[] {
     const desc = this.buildColliderDesc(shape);
     const exclude = options?.excludeEntity;

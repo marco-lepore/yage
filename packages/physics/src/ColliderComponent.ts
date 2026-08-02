@@ -140,7 +140,9 @@ export class ColliderComponent extends Component {
   }
 
   /** Return all entities whose colliders currently overlap this one, optionally filtered. */
-  getOverlapping<T>(filter: EntityFilter & { trait: TraitToken<T> }): (Entity & T)[];
+  getOverlapping<T>(
+    filter: EntityFilter & { trait: TraitToken<T> },
+  ): (Entity & T)[];
   getOverlapping(filter?: EntityFilter): Entity[];
   getOverlapping(filter?: EntityFilter): Entity[] {
     const entities = this.physicsWorld.queryOverlapping(this._colliderHandle);
@@ -220,7 +222,11 @@ export class ColliderComponent extends Component {
    * @internal Called by PhysicsWorld during event dispatch.
    */
   _dispatchCollision(event: CollisionEvent): void {
-    this._dispatch(this.collisionHandlers, (h) => h(event), "Collision handler");
+    this._dispatch(
+      this.collisionHandlers,
+      (h) => h(event),
+      "Collision handler",
+    );
   }
 
   /**

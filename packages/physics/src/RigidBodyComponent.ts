@@ -377,10 +377,14 @@ export class RigidBodyComponent extends Component {
       velocity: { x: vel.x, y: vel.y },
       angularVelocity: this.getAngularVelocity(),
     };
-    if (this.config.fixedRotation !== undefined) data.fixedRotation = this.config.fixedRotation;
-    if (this.config.linearDamping !== undefined) data.linearDamping = this.config.linearDamping;
-    if (this.config.angularDamping !== undefined) data.angularDamping = this.config.angularDamping;
-    if (this.config.gravityScale !== undefined) data.gravityScale = this.config.gravityScale;
+    if (this.config.fixedRotation !== undefined)
+      data.fixedRotation = this.config.fixedRotation;
+    if (this.config.linearDamping !== undefined)
+      data.linearDamping = this.config.linearDamping;
+    if (this.config.angularDamping !== undefined)
+      data.angularDamping = this.config.angularDamping;
+    if (this.config.gravityScale !== undefined)
+      data.gravityScale = this.config.gravityScale;
     if (this.config.ccd !== undefined) data.ccd = this.config.ccd;
     return data;
   }
@@ -391,10 +395,14 @@ export class RigidBodyComponent extends Component {
       type: data.type,
       syncRotation: data.syncRotation,
     };
-    if (data.fixedRotation !== undefined) config.fixedRotation = data.fixedRotation;
-    if (data.linearDamping !== undefined) config.linearDamping = data.linearDamping;
-    if (data.angularDamping !== undefined) config.angularDamping = data.angularDamping;
-    if (data.gravityScale !== undefined) config.gravityScale = data.gravityScale;
+    if (data.fixedRotation !== undefined)
+      config.fixedRotation = data.fixedRotation;
+    if (data.linearDamping !== undefined)
+      config.linearDamping = data.linearDamping;
+    if (data.angularDamping !== undefined)
+      config.angularDamping = data.angularDamping;
+    if (data.gravityScale !== undefined)
+      config.gravityScale = data.gravityScale;
     if (data.ccd !== undefined) config.ccd = data.ccd;
     return new RigidBodyComponent(config);
   }

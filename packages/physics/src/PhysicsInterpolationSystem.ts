@@ -46,8 +46,7 @@ export class PhysicsInterpolationSystem extends System {
 
     for (const [scene, ctx] of this.manager.getAllContexts()) {
       const timeScale =
-        scene.tryResolveScoped(SceneTimeKey)?.effectiveScale ??
-        scene.timeScale;
+        scene.tryResolveScoped(SceneTimeKey)?.effectiveScale ?? scene.timeScale;
       if (!scene.isPaused && timeScale > 0) {
         ctx.alphaRef.value = Math.min(
           1,

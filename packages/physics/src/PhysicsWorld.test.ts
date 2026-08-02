@@ -248,10 +248,7 @@ const { mocks } = vi.hoisted(() => {
   }
 
   class MockNarrowPhase {
-    _pairs = new Map<
-      string,
-      { manifold: MockManifold; flipped: boolean }
-    >();
+    _pairs = new Map<string, { manifold: MockManifold; flipped: boolean }>();
 
     _setPair(h1: number, h2: number, manifold: MockManifold, flipped = false) {
       this._pairs.set(`${h1}:${h2}`, { manifold, flipped });
@@ -426,7 +423,10 @@ function createMockColliderComponent(
   const handlers: Array<(e: CollisionEvent) => void> = [];
   const triggerHandlers: Array<(e: TriggerEvent) => void> = [];
   return {
-    config: { shape: { type: "box", width: 10, height: 10 }, sensor: opts.sensor },
+    config: {
+      shape: { type: "box", width: 10, height: 10 },
+      sensor: opts.sensor,
+    },
     _colliderHandle: -1,
     _dispatchCollision(e: CollisionEvent) {
       for (const h of handlers) h(e);
@@ -582,9 +582,14 @@ describe("PhysicsWorld", () => {
       const entity = new Entity("test");
       const bodyHandle = pw.createBody(entity, { type: "dynamic" });
       const comp = createMockColliderComponent();
-      const colliderHandle = pw.createCollider(entity, bodyHandle, {
-        shape: { type: "box", width: 100, height: 50 },
-      }, comp);
+      const colliderHandle = pw.createCollider(
+        entity,
+        bodyHandle,
+        {
+          shape: { type: "box", width: 100, height: 50 },
+        },
+        comp,
+      );
       expect(typeof colliderHandle).toBe("number");
       expect(pw.colliderMap.get(colliderHandle)).toBe(entity);
     });
@@ -594,9 +599,14 @@ describe("PhysicsWorld", () => {
       const entity = new Entity("test");
       const bodyHandle = pw.createBody(entity, { type: "dynamic" });
       const comp = createMockColliderComponent();
-      const colliderHandle = pw.createCollider(entity, bodyHandle, {
-        shape: { type: "circle", radius: 25 },
-      }, comp);
+      const colliderHandle = pw.createCollider(
+        entity,
+        bodyHandle,
+        {
+          shape: { type: "circle", radius: 25 },
+        },
+        comp,
+      );
       expect(pw.colliderMap.has(colliderHandle)).toBe(true);
     });
 
@@ -605,9 +615,14 @@ describe("PhysicsWorld", () => {
       const entity = new Entity("test");
       const bodyHandle = pw.createBody(entity, { type: "dynamic" });
       const comp = createMockColliderComponent();
-      const colliderHandle = pw.createCollider(entity, bodyHandle, {
-        shape: { type: "capsule", halfHeight: 20, radius: 10 },
-      }, comp);
+      const colliderHandle = pw.createCollider(
+        entity,
+        bodyHandle,
+        {
+          shape: { type: "capsule", halfHeight: 20, radius: 10 },
+        },
+        comp,
+      );
       expect(pw.colliderMap.has(colliderHandle)).toBe(true);
     });
 
@@ -616,12 +631,17 @@ describe("PhysicsWorld", () => {
       const entity = new Entity("test");
       const bodyHandle = pw.createBody(entity, { type: "dynamic" });
       const comp = createMockColliderComponent();
-      const colliderHandle = pw.createCollider(entity, bodyHandle, {
-        shape: {
-          type: "polygon",
-          vertices: [new Vec2(0, 0), new Vec2(50, 0), new Vec2(25, 50)],
+      const colliderHandle = pw.createCollider(
+        entity,
+        bodyHandle,
+        {
+          shape: {
+            type: "polygon",
+            vertices: [new Vec2(0, 0), new Vec2(50, 0), new Vec2(25, 50)],
+          },
         },
-      }, comp);
+        comp,
+      );
       expect(pw.colliderMap.has(colliderHandle)).toBe(true);
     });
 
@@ -630,14 +650,19 @@ describe("PhysicsWorld", () => {
       const entity = new Entity("test");
       const bodyHandle = pw.createBody(entity, { type: "dynamic" });
       const comp = createMockColliderComponent();
-      const colliderHandle = pw.createCollider(entity, bodyHandle, {
-        shape: { type: "box", width: 10, height: 10 },
-        offset: { x: 5, y: 10 },
-        restitution: 0.8,
-        friction: 0.2,
-        density: 2.0,
-        sensor: true,
-      }, comp);
+      const colliderHandle = pw.createCollider(
+        entity,
+        bodyHandle,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+          offset: { x: 5, y: 10 },
+          restitution: 0.8,
+          friction: 0.2,
+          density: 2.0,
+          sensor: true,
+        },
+        comp,
+      );
       expect(pw.colliderMap.has(colliderHandle)).toBe(true);
     });
 
@@ -647,10 +672,15 @@ describe("PhysicsWorld", () => {
       const entity = new Entity("test");
       const bodyHandle = pw.createBody(entity, { type: "dynamic" });
       const comp = createMockColliderComponent();
-      pw.createCollider(entity, bodyHandle, {
-        shape: { type: "box", width: 10, height: 10 },
-        rotation: Math.PI / 4,
-      }, comp);
+      pw.createCollider(
+        entity,
+        bodyHandle,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+          rotation: Math.PI / 4,
+        },
+        comp,
+      );
       expect(spy).toHaveBeenCalledWith(Math.PI / 4);
       spy.mockRestore();
     });
@@ -661,10 +691,15 @@ describe("PhysicsWorld", () => {
       const entity = new Entity("test");
       const bodyHandle = pw.createBody(entity, { type: "dynamic" });
       const comp = createMockColliderComponent();
-      pw.createCollider(entity, bodyHandle, {
-        shape: { type: "capsule", halfHeight: 20, radius: 10, axis: "x" },
-        rotation: Math.PI / 6,
-      }, comp);
+      pw.createCollider(
+        entity,
+        bodyHandle,
+        {
+          shape: { type: "capsule", halfHeight: 20, radius: 10, axis: "x" },
+          rotation: Math.PI / 6,
+        },
+        comp,
+      );
       expect(spy).toHaveBeenCalledWith(Math.PI / 2 + Math.PI / 6);
       spy.mockRestore();
     });
@@ -674,11 +709,16 @@ describe("PhysicsWorld", () => {
       const entity = new Entity("test");
       const bodyHandle = pw.createBody(entity, { type: "dynamic" });
       const comp = createMockColliderComponent();
-      const colliderHandle = pw.createCollider(entity, bodyHandle, {
-        shape: { type: "box", width: 10, height: 10 },
-        layers: 0x0001,
-        mask: 0x0003,
-      }, comp);
+      const colliderHandle = pw.createCollider(
+        entity,
+        bodyHandle,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+          layers: 0x0001,
+          mask: 0x0003,
+        },
+        comp,
+      );
       expect(pw.colliderMap.has(colliderHandle)).toBe(true);
     });
   });
@@ -692,12 +732,22 @@ describe("PhysicsWorld", () => {
       const body2 = pw.createBody(entity2, { type: "dynamic" });
       const comp1 = createMockColliderComponent();
       const comp2 = createMockColliderComponent();
-      const col1 = pw.createCollider(entity1, body1, {
-        shape: { type: "box", width: 10, height: 10 },
-      }, comp1);
-      const col2 = pw.createCollider(entity2, body2, {
-        shape: { type: "box", width: 10, height: 10 },
-      }, comp2);
+      const col1 = pw.createCollider(
+        entity1,
+        body1,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+        },
+        comp1,
+      );
+      const col2 = pw.createCollider(
+        entity2,
+        body2,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+        },
+        comp2,
+      );
 
       const events1: CollisionEvent[] = [];
       const events2: CollisionEvent[] = [];
@@ -705,7 +755,11 @@ describe("PhysicsWorld", () => {
       comp2.onCollision((e) => events2.push(e));
 
       // Simulate a collision event by injecting into the mock event queue
-      const eq = (pw as unknown as { eventQueue: InstanceType<typeof mocks.MockEventQueue> }).eventQueue;
+      const eq = (
+        pw as unknown as {
+          eventQueue: InstanceType<typeof mocks.MockEventQueue>;
+        }
+      ).eventQueue;
       eq._events.push([col1, col2, true]);
 
       pw.processCollisionEvents();
@@ -729,20 +783,34 @@ describe("PhysicsWorld", () => {
       const body2 = pw.createBody(entity2, { type: "dynamic" });
       const comp1 = createMockColliderComponent({ sensor: true });
       const comp2 = createMockColliderComponent();
-      const col1 = pw.createCollider(entity1, body1, {
-        shape: { type: "box", width: 10, height: 10 },
-        sensor: true,
-      }, comp1);
-      const col2 = pw.createCollider(entity2, body2, {
-        shape: { type: "box", width: 10, height: 10 },
-      }, comp2);
+      const col1 = pw.createCollider(
+        entity1,
+        body1,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+          sensor: true,
+        },
+        comp1,
+      );
+      const col2 = pw.createCollider(
+        entity2,
+        body2,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+        },
+        comp2,
+      );
 
       const triggers: TriggerEvent[] = [];
       const collisions: CollisionEvent[] = [];
       comp1.onTrigger((e) => triggers.push(e));
       comp2.onCollision((e) => collisions.push(e));
 
-      const eq = (pw as unknown as { eventQueue: InstanceType<typeof mocks.MockEventQueue> }).eventQueue;
+      const eq = (
+        pw as unknown as {
+          eventQueue: InstanceType<typeof mocks.MockEventQueue>;
+        }
+      ).eventQueue;
       eq._events.push([col1, col2, true]);
 
       pw.processCollisionEvents();
@@ -765,18 +833,29 @@ describe("PhysicsWorld", () => {
       const body2 = pw.createBody(entity2, { type: "dynamic" });
       const comp1 = createMockColliderComponent();
       const comp2 = createMockColliderComponent();
-      const col1 = pw.createCollider(entity1, body1, {
-        shape: { type: "box", width: 10, height: 10 },
-      }, comp1);
-      const col2 = pw.createCollider(entity2, body2, {
-        shape: { type: "box", width: 10, height: 10 },
-      }, comp2);
-
-      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
-      const manifold = new mocks.MockManifold(
-        { x: 1, y: 0 },
-        [{ x: 2, y: 3, dist: -0.1 }],
+      const col1 = pw.createCollider(
+        entity1,
+        body1,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+        },
+        comp1,
       );
+      const col2 = pw.createCollider(
+        entity2,
+        body2,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+        },
+        comp2,
+      );
+
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
+      const manifold = new mocks.MockManifold({ x: 1, y: 0 }, [
+        { x: 2, y: 3, dist: -0.1 },
+      ]);
       world.narrowPhase._setPair(col1, col2, manifold, false);
 
       const events1: CollisionEvent[] = [];
@@ -784,7 +863,11 @@ describe("PhysicsWorld", () => {
       comp1.onCollision((e) => events1.push(e));
       comp2.onCollision((e) => events2.push(e));
 
-      const eq = (pw as unknown as { eventQueue: InstanceType<typeof mocks.MockEventQueue> }).eventQueue;
+      const eq = (
+        pw as unknown as {
+          eventQueue: InstanceType<typeof mocks.MockEventQueue>;
+        }
+      ).eventQueue;
       eq._events.push([col1, col2, true]);
       pw.processCollisionEvents();
 
@@ -809,18 +892,29 @@ describe("PhysicsWorld", () => {
       const body2 = pw.createBody(entity2, { type: "dynamic" });
       const comp1 = createMockColliderComponent();
       const comp2 = createMockColliderComponent();
-      const col1 = pw.createCollider(entity1, body1, {
-        shape: { type: "box", width: 10, height: 10 },
-      }, comp1);
-      const col2 = pw.createCollider(entity2, body2, {
-        shape: { type: "box", width: 10, height: 10 },
-      }, comp2);
-
-      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
-      const manifold = new mocks.MockManifold(
-        { x: 1, y: 0 },
-        [{ x: 0, y: 0, dist: 0 }],
+      const col1 = pw.createCollider(
+        entity1,
+        body1,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+        },
+        comp1,
       );
+      const col2 = pw.createCollider(
+        entity2,
+        body2,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+        },
+        comp2,
+      );
+
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
+      const manifold = new mocks.MockManifold({ x: 1, y: 0 }, [
+        { x: 0, y: 0, dist: 0 },
+      ]);
       world.narrowPhase._setPair(col1, col2, manifold, true);
 
       const events1: CollisionEvent[] = [];
@@ -828,7 +922,11 @@ describe("PhysicsWorld", () => {
       comp1.onCollision((e) => events1.push(e));
       comp2.onCollision((e) => events2.push(e));
 
-      const eq = (pw as unknown as { eventQueue: InstanceType<typeof mocks.MockEventQueue> }).eventQueue;
+      const eq = (
+        pw as unknown as {
+          eventQueue: InstanceType<typeof mocks.MockEventQueue>;
+        }
+      ).eventQueue;
       eq._events.push([col1, col2, true]);
       pw.processCollisionEvents();
 
@@ -848,25 +946,40 @@ describe("PhysicsWorld", () => {
       const body2 = pw.createBody(entity2, { type: "dynamic" });
       const comp1 = createMockColliderComponent();
       const comp2 = createMockColliderComponent();
-      const col1 = pw.createCollider(entity1, body1, {
-        shape: { type: "box", width: 10, height: 10 },
-      }, comp1);
-      const col2 = pw.createCollider(entity2, body2, {
-        shape: { type: "box", width: 10, height: 10 },
-      }, comp2);
-
-      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
-      const manifold = new mocks.MockManifold(
-        { x: 1, y: 0 },
-        [{ x: 0, y: 0, dist: 0.05 }],
+      const col1 = pw.createCollider(
+        entity1,
+        body1,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+        },
+        comp1,
       );
+      const col2 = pw.createCollider(
+        entity2,
+        body2,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+        },
+        comp2,
+      );
+
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
+      const manifold = new mocks.MockManifold({ x: 1, y: 0 }, [
+        { x: 0, y: 0, dist: 0.05 },
+      ]);
       world.narrowPhase._setPair(col1, col2, manifold, false);
 
       const events1: CollisionEvent[] = [];
       comp1.onCollision((e) => events1.push(e));
       comp2.onCollision(() => {});
 
-      const eq = (pw as unknown as { eventQueue: InstanceType<typeof mocks.MockEventQueue> }).eventQueue;
+      const eq = (
+        pw as unknown as {
+          eventQueue: InstanceType<typeof mocks.MockEventQueue>;
+        }
+      ).eventQueue;
       eq._events.push([col1, col2, true]);
       pw.processCollisionEvents();
 
@@ -881,18 +994,29 @@ describe("PhysicsWorld", () => {
       const body2 = pw.createBody(entity2, { type: "dynamic" });
       const comp1 = createMockColliderComponent();
       const comp2 = createMockColliderComponent();
-      const col1 = pw.createCollider(entity1, body1, {
-        shape: { type: "box", width: 10, height: 10 },
-      }, comp1);
-      const col2 = pw.createCollider(entity2, body2, {
-        shape: { type: "box", width: 10, height: 10 },
-      }, comp2);
-
-      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
-      const manifold = new mocks.MockManifold(
-        { x: 1, y: 0 },
-        [{ x: 0, y: 0, dist: -0.1 }],
+      const col1 = pw.createCollider(
+        entity1,
+        body1,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+        },
+        comp1,
       );
+      const col2 = pw.createCollider(
+        entity2,
+        body2,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+        },
+        comp2,
+      );
+
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
+      const manifold = new mocks.MockManifold({ x: 1, y: 0 }, [
+        { x: 0, y: 0, dist: -0.1 },
+      ]);
       world.narrowPhase._setPair(col1, col2, manifold, false);
       const contactPairSpy = vi.spyOn(world.narrowPhase, "contactPair");
 
@@ -900,7 +1024,11 @@ describe("PhysicsWorld", () => {
       comp1.onCollision((e) => events1.push(e));
       comp2.onCollision(() => {});
 
-      const eq = (pw as unknown as { eventQueue: InstanceType<typeof mocks.MockEventQueue> }).eventQueue;
+      const eq = (
+        pw as unknown as {
+          eventQueue: InstanceType<typeof mocks.MockEventQueue>;
+        }
+      ).eventQueue;
       eq._events.push([col1, col2, false]);
       pw.processCollisionEvents();
 
@@ -919,12 +1047,22 @@ describe("PhysicsWorld", () => {
       const body2 = pw.createBody(entity2, { type: "dynamic" });
       const comp1 = createMockColliderComponent();
       const comp2 = createMockColliderComponent();
-      const col1 = pw.createCollider(entity1, body1, {
-        shape: { type: "box", width: 10, height: 10 },
-      }, comp1);
-      const col2 = pw.createCollider(entity2, body2, {
-        shape: { type: "box", width: 10, height: 10 },
-      }, comp2);
+      const col1 = pw.createCollider(
+        entity1,
+        body1,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+        },
+        comp1,
+      );
+      const col2 = pw.createCollider(
+        entity2,
+        body2,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+        },
+        comp2,
+      );
       // No pair registered on narrowPhase: mirrors Rapier not producing a
       // manifold for the pair (e.g. a sensor side of a mixed pair).
 
@@ -932,7 +1070,11 @@ describe("PhysicsWorld", () => {
       comp1.onCollision((e) => events1.push(e));
       comp2.onCollision(() => {});
 
-      const eq = (pw as unknown as { eventQueue: InstanceType<typeof mocks.MockEventQueue> }).eventQueue;
+      const eq = (
+        pw as unknown as {
+          eventQueue: InstanceType<typeof mocks.MockEventQueue>;
+        }
+      ).eventQueue;
       eq._events.push([col1, col2, true]);
       pw.processCollisionEvents();
 
@@ -1174,13 +1316,22 @@ describe("PhysicsWorld", () => {
       const entity = new Entity("target");
       const bodyHandle = pw.createBody(entity, { type: "static" });
       const comp = createMockColliderComponent();
-      const colHandle = pw.createCollider(entity, bodyHandle, {
-        shape: { type: "box", width: 10, height: 10 },
-      }, comp);
+      const colHandle = pw.createCollider(
+        entity,
+        bodyHandle,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+        },
+        comp,
+      );
 
-      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
       const capturedRays: InstanceType<typeof mocks.MockRay>[] = [];
-      world.castRayAndGetNormal = ((ray: InstanceType<typeof mocks.MockRay>) => {
+      world.castRayAndGetNormal = ((
+        ray: InstanceType<typeof mocks.MockRay>,
+      ) => {
         capturedRays.push(ray);
         return {
           collider: { handle: colHandle },
@@ -1228,18 +1379,27 @@ describe("PhysicsWorld", () => {
       const caster = new Entity("caster");
       const bodyHandle = pw.createBody(caster, { type: "static" });
       const comp = createMockColliderComponent();
-      const casterCollider = pw.createCollider(caster, bodyHandle, {
-        shape: { type: "circle", radius: 10 },
-      }, comp);
+      const casterCollider = pw.createCollider(
+        caster,
+        bodyHandle,
+        {
+          shape: { type: "circle", radius: 10 },
+        },
+        comp,
+      );
 
-      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
       let capturedPredicate: ((c: { handle: number }) => boolean) | undefined;
       world.castRayAndGetNormal = ((...args: unknown[]) => {
         capturedPredicate = args[7] as (c: { handle: number }) => boolean;
         return null;
       }) as unknown as typeof world.castRayAndGetNormal;
 
-      pw.raycast(new Vec2(0, 0), new Vec2(1, 0), 100, { excludeEntity: caster });
+      pw.raycast(new Vec2(0, 0), new Vec2(1, 0), 100, {
+        excludeEntity: caster,
+      });
 
       expect(capturedPredicate).toBeDefined();
       expect(capturedPredicate!({ handle: casterCollider })).toBe(false);
@@ -1265,8 +1425,9 @@ describe("PhysicsWorld", () => {
         comp,
       );
 
-      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> })
-        .world;
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
       const captured: unknown[][] = [];
       world.castShape = ((...args: unknown[]) => {
         captured.push(args);
@@ -1336,8 +1497,9 @@ describe("PhysicsWorld", () => {
 
     it("returns null when nothing is hit", () => {
       const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
-      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> })
-        .world;
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
       world.castShape = (() => null) as unknown as typeof world.castShape;
 
       expect(
@@ -1350,7 +1512,7 @@ describe("PhysicsWorld", () => {
       ).toBeNull();
     });
 
-    it("adds the axis:\"x\" capsule turn on top of the requested rotation", () => {
+    it('adds the axis:"x" capsule turn on top of the requested rotation', () => {
       const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
       const { captured } = setupCast(pw);
 
@@ -1377,8 +1539,9 @@ describe("PhysicsWorld", () => {
         comp,
       );
 
-      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> })
-        .world;
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
       let predicate: ((c: { handle: number }) => boolean) | undefined;
       world.castShape = ((...args: unknown[]) => {
         predicate = args[11] as (c: { handle: number }) => boolean;
@@ -1410,8 +1573,9 @@ describe("PhysicsWorld", () => {
         { shape: { type: "box", width: 20, height: 40 } },
         comp,
       );
-      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> })
-        .world;
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
       return { entity, handle, collider: world._colliders.get(handle)! };
     }
 
@@ -1486,14 +1650,21 @@ describe("PhysicsWorld", () => {
         const entity = new Entity(name);
         const bodyHandle = pw.createBody(entity, { type: "static" });
         const comp = createMockColliderComponent();
-        const handle = pw.createCollider(entity, bodyHandle, {
-          shape: { type: "circle", radius: 10 },
-        }, comp);
+        const handle = pw.createCollider(
+          entity,
+          bodyHandle,
+          {
+            shape: { type: "circle", radius: 10 },
+          },
+          comp,
+        );
         entities.push(entity);
         colliderHandles.push(handle);
       }
 
-      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
       const captured: { pos: { x: number; y: number }; rot: number }[] = [];
       let hitHandles: number[] = [];
       world.intersectionsWithShape = ((
@@ -1523,7 +1694,10 @@ describe("PhysicsWorld", () => {
       const { entities, colliderHandles, setHits } = setupQuery(pw);
       setHits([colliderHandles[0]!, colliderHandles[1]!, colliderHandles[0]!]);
 
-      const result = pw.queryShape({ type: "circle", radius: 40 }, new Vec2(0, 0));
+      const result = pw.queryShape(
+        { type: "circle", radius: 40 },
+        new Vec2(0, 0),
+      );
 
       expect(result).toEqual([entities[0], entities[1]]);
     });
@@ -1561,9 +1735,14 @@ describe("PhysicsWorld", () => {
       const entity = new Entity("test");
       const bodyHandle = pw.createBody(entity, { type: "dynamic" });
       const comp = createMockColliderComponent();
-      const colHandle = pw.createCollider(entity, bodyHandle, {
-        shape: { type: "box", width: 10, height: 10 },
-      }, comp);
+      const colHandle = pw.createCollider(
+        entity,
+        bodyHandle,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+        },
+        comp,
+      );
 
       expect(pw.bodyMap.has(bodyHandle)).toBe(true);
       expect(pw.colliderMap.has(colHandle)).toBe(true);
@@ -1581,9 +1760,14 @@ describe("PhysicsWorld", () => {
       const entity = new Entity("test");
       const bodyHandle = pw.createBody(entity, { type: "dynamic" });
       const comp = createMockColliderComponent();
-      const colHandle = pw.createCollider(entity, bodyHandle, {
-        shape: { type: "box", width: 10, height: 10 },
-      }, comp);
+      const colHandle = pw.createCollider(
+        entity,
+        bodyHandle,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+        },
+        comp,
+      );
 
       expect(pw.colliderMap.has(colHandle)).toBe(true);
 
@@ -1615,7 +1799,9 @@ describe("PhysicsWorld", () => {
     it("sets timestep and calls world.step", () => {
       const pw = new PhysicsWorld();
       pw.step(1 / 60);
-      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
       expect(world._stepCalled).toBe(true);
       expect(world.timestep).toBeCloseTo(1 / 60);
     });
@@ -1625,7 +1811,9 @@ describe("PhysicsWorld", () => {
     it("converts gravity from pixels to meters", () => {
       const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
       pw.setGravity(0, 500);
-      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
       expect(world.gravity.y).toBeCloseTo(10); // 500/50 = 10
     });
   });
@@ -1636,9 +1824,14 @@ describe("PhysicsWorld", () => {
       const entity = new Entity("test");
       const bodyHandle = pw.createBody(entity, { type: "dynamic" });
       const comp = createMockColliderComponent();
-      pw.createCollider(entity, bodyHandle, {
-        shape: { type: "box", width: 10, height: 10 },
-      }, comp);
+      pw.createCollider(
+        entity,
+        bodyHandle,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+        },
+        comp,
+      );
 
       pw.destroy();
 
@@ -1657,16 +1850,26 @@ describe("PhysicsWorld", () => {
       const bodyB = pw.createBody(b, { type: "dynamic" });
       const compA = createMockColliderComponent();
       const compB = createMockColliderComponent();
-      pw.createCollider(a, bodyA, {
-        shape: { type: "box", width: 10, height: 10 },
-        layers: 0x0001,
-        mask: 0x0002,
-      }, compA);
-      pw.createCollider(b, bodyB, {
-        shape: { type: "box", width: 10, height: 10 },
-        layers: 0x0004,
-        mask: 0x0001,
-      }, compB);
+      pw.createCollider(
+        a,
+        bodyA,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+          layers: 0x0001,
+          mask: 0x0002,
+        },
+        compA,
+      );
+      pw.createCollider(
+        b,
+        bodyB,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+          layers: 0x0004,
+          mask: 0x0001,
+        },
+        compB,
+      );
 
       const matching = warn.mock.calls.filter((args) =>
         String(args[0]).includes("Asymmetric collision masks"),
@@ -1684,16 +1887,26 @@ describe("PhysicsWorld", () => {
       const bodyB = pw.createBody(b, { type: "dynamic" });
       const compA = createMockColliderComponent();
       const compB = createMockColliderComponent();
-      pw.createCollider(a, bodyA, {
-        shape: { type: "box", width: 10, height: 10 },
-        layers: 0x0001,
-        mask: 0x0002,
-      }, compA);
-      pw.createCollider(b, bodyB, {
-        shape: { type: "box", width: 10, height: 10 },
-        layers: 0x0002,
-        mask: 0x0001,
-      }, compB);
+      pw.createCollider(
+        a,
+        bodyA,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+          layers: 0x0001,
+          mask: 0x0002,
+        },
+        compA,
+      );
+      pw.createCollider(
+        b,
+        bodyB,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+          layers: 0x0002,
+          mask: 0x0001,
+        },
+        compB,
+      );
 
       const matching = warn.mock.calls.filter((args) =>
         String(args[0]).includes("Asymmetric collision masks"),
@@ -1708,20 +1921,30 @@ describe("PhysicsWorld", () => {
       const a = new Entity("a");
       const bodyA = pw.createBody(a, { type: "dynamic" });
       const compA = createMockColliderComponent();
-      pw.createCollider(a, bodyA, {
-        shape: { type: "box", width: 10, height: 10 },
-        layers: 0x0001,
-        mask: 0x0002,
-      }, compA);
+      pw.createCollider(
+        a,
+        bodyA,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+          layers: 0x0001,
+          mask: 0x0002,
+        },
+        compA,
+      );
       for (let i = 0; i < 3; i++) {
         const e = new Entity(`b${i}`);
         const body = pw.createBody(e, { type: "dynamic" });
         const comp = createMockColliderComponent();
-        pw.createCollider(e, body, {
-          shape: { type: "box", width: 10, height: 10 },
-          layers: 0x0004,
-          mask: 0x0001,
-        }, comp);
+        pw.createCollider(
+          e,
+          body,
+          {
+            shape: { type: "box", width: 10, height: 10 },
+            layers: 0x0004,
+            mask: 0x0001,
+          },
+          comp,
+        );
       }
 
       const matching = warn.mock.calls.filter((args) =>
@@ -1736,7 +1959,9 @@ describe("PhysicsWorld", () => {
     it("warns when the resulting hull has fewer vertices than the input", () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       const pw = new PhysicsWorld();
-      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
       const origCreate = world.createCollider.bind(world);
       world.createCollider = (desc, parent) => {
         const c = origCreate(desc, parent);
@@ -1748,18 +1973,23 @@ describe("PhysicsWorld", () => {
       const entity = new Entity("concave");
       const bodyHandle = pw.createBody(entity, { type: "dynamic" });
       const comp = createMockColliderComponent();
-      pw.createCollider(entity, bodyHandle, {
-        shape: {
-          type: "polygon",
-          vertices: [
-            new Vec2(0, 0),
-            new Vec2(1, 0),
-            new Vec2(1, 1),
-            new Vec2(0.5, 0.3),
-            new Vec2(0, 1),
-          ],
+      pw.createCollider(
+        entity,
+        bodyHandle,
+        {
+          shape: {
+            type: "polygon",
+            vertices: [
+              new Vec2(0, 0),
+              new Vec2(1, 0),
+              new Vec2(1, 1),
+              new Vec2(0.5, 0.3),
+              new Vec2(0, 1),
+            ],
+          },
         },
-      }, comp);
+        comp,
+      );
 
       const matching = warn.mock.calls.filter((args) =>
         String(args[0]).includes("reduced to 3 after convex hull"),
@@ -1771,7 +2001,9 @@ describe("PhysicsWorld", () => {
     it("does not warn when hull preserves all input vertices", () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       const pw = new PhysicsWorld();
-      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
       const origCreate = world.createCollider.bind(world);
       world.createCollider = (desc, parent) => {
         const c = origCreate(desc, parent);
@@ -1783,12 +2015,17 @@ describe("PhysicsWorld", () => {
       const entity = new Entity("convex");
       const bodyHandle = pw.createBody(entity, { type: "dynamic" });
       const comp = createMockColliderComponent();
-      pw.createCollider(entity, bodyHandle, {
-        shape: {
-          type: "polygon",
-          vertices: [new Vec2(0, 0), new Vec2(1, 0), new Vec2(0, 1)],
+      pw.createCollider(
+        entity,
+        bodyHandle,
+        {
+          shape: {
+            type: "polygon",
+            vertices: [new Vec2(0, 0), new Vec2(1, 0), new Vec2(0, 1)],
+          },
         },
-      }, comp);
+        comp,
+      );
 
       const matching = warn.mock.calls.filter((args) =>
         String(args[0]).includes("after convex hull"),

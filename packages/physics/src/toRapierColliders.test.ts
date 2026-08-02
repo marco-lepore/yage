@@ -165,7 +165,18 @@ describe("toRapierColliders", () => {
 
     expect(result).toHaveLength(1);
     expect(rapier.ColliderDesc.polyline).toHaveBeenCalledWith(
-      new Float32Array([0, 0, 64 / 50, 0, 64 / 50, 16 / 50, 16 / 50, 16 / 50, 16 / 50, 48 / 50]),
+      new Float32Array([
+        0,
+        0,
+        64 / 50,
+        0,
+        64 / 50,
+        16 / 50,
+        16 / 50,
+        16 / 50,
+        16 / 50,
+        48 / 50,
+      ]),
     );
     expect(rapier.ColliderDesc.convexHull).not.toHaveBeenCalled();
     expect(result[0]!.setTranslation).toHaveBeenCalledWith(10 / 50, 20 / 50);
@@ -173,7 +184,9 @@ describe("toRapierColliders", () => {
 
   it("throws on failed convex hull", () => {
     const rapier = mockRapier();
-    (rapier.ColliderDesc.convexHull as ReturnType<typeof vi.fn>).mockReturnValue(null);
+    (
+      rapier.ColliderDesc.convexHull as ReturnType<typeof vi.fn>
+    ).mockReturnValue(null);
 
     const configs: ColliderConfig[] = [
       {

@@ -273,7 +273,10 @@ vi.mock("@dimforge/rapier2d", () => ({
 
 import { Transform, Vec2 } from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
-import { createPhysicsTestContext, spawnEntityInScene } from "./test-helpers.js";
+import {
+  createPhysicsTestContext,
+  spawnEntityInScene,
+} from "./test-helpers.js";
 
 describe("RigidBodyComponent", () => {
   beforeEach(() => {
@@ -344,12 +347,16 @@ describe("RigidBodyComponent", () => {
 
   describe("applyForce", () => {
     it("converts force from pixels to meters and delegates to Rapier", async () => {
-      const { scene, physicsWorld } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      const { scene, physicsWorld } = await createPhysicsTestContext({
+        pixelsPerMeter: 50,
+      });
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
 
-      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
       rb.applyForce(new Vec2(100, 200));
 
       expect(body.addForceSpy).toHaveBeenCalledWith(
@@ -361,46 +368,52 @@ describe("RigidBodyComponent", () => {
 
   describe("applyImpulse", () => {
     it("converts impulse from pixels to meters and delegates to Rapier", async () => {
-      const { scene, physicsWorld } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      const { scene, physicsWorld } = await createPhysicsTestContext({
+        pixelsPerMeter: 50,
+      });
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
 
-      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
       rb.applyImpulse(new Vec2(50, 100));
 
-      expect(body.applyImpulseSpy).toHaveBeenCalledWith(
-        { x: 1, y: 2 },
-        true,
-      );
+      expect(body.applyImpulseSpy).toHaveBeenCalledWith({ x: 1, y: 2 }, true);
     });
   });
 
   describe("setVelocity", () => {
     it("converts velocity from pixels to meters", async () => {
-      const { scene, physicsWorld } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      const { scene, physicsWorld } = await createPhysicsTestContext({
+        pixelsPerMeter: 50,
+      });
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
 
-      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
       rb.setVelocity(new Vec2(150, 250));
 
-      expect(body.setLinvelSpy).toHaveBeenCalledWith(
-        { x: 3, y: 5 },
-        true,
-      );
+      expect(body.setLinvelSpy).toHaveBeenCalledWith({ x: 3, y: 5 }, true);
     });
   });
 
   describe("getVelocity", () => {
     it("converts velocity from meters back to pixels", async () => {
-      const { scene, physicsWorld } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      const { scene, physicsWorld } = await createPhysicsTestContext({
+        pixelsPerMeter: 50,
+      });
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
 
-      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
       body._linvel = { x: 3, y: 5 }; // meters
 
       const vel = rb.getVelocity();
@@ -411,12 +424,16 @@ describe("RigidBodyComponent", () => {
 
   describe("velocityX / velocityY / speed / speedSquared", () => {
     it("reads each scalar in pixels/s without allocating a Vec2", async () => {
-      const { scene, physicsWorld } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      const { scene, physicsWorld } = await createPhysicsTestContext({
+        pixelsPerMeter: 50,
+      });
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
 
-      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
       body._linvel = { x: 3, y: 4 }; // meters -> 150, 200 px/s
 
       expect(rb.velocityX).toBeCloseTo(150);
@@ -447,7 +464,9 @@ describe("RigidBodyComponent", () => {
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
 
-      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
       rb.applyTorque(5);
 
       expect(body.addTorqueSpy).toHaveBeenCalledWith(5, true);
@@ -461,7 +480,9 @@ describe("RigidBodyComponent", () => {
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
 
-      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
       rb.setAngularVelocity(2.5);
 
       expect(body.setAngvelSpy).toHaveBeenCalledWith(2.5, true);
@@ -473,7 +494,9 @@ describe("RigidBodyComponent", () => {
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
 
-      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
       body._angvel = 3.14;
 
       expect(rb.getAngularVelocity()).toBeCloseTo(3.14);
@@ -487,7 +510,9 @@ describe("RigidBodyComponent", () => {
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
 
-      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
       rb.setGravityScale(2.5);
 
       expect(body.setGravityScaleSpy).toHaveBeenCalledWith(2.5, true);
@@ -527,7 +552,9 @@ describe("RigidBodyComponent", () => {
 
       entity.add(rb);
 
-      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
       expect(body._gravityScale).toBe(3);
     });
   });
@@ -548,12 +575,16 @@ describe("RigidBodyComponent", () => {
     });
 
     it("converts position to meters for Rapier", async () => {
-      const { scene, physicsWorld } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      const { scene, physicsWorld } = await createPhysicsTestContext({
+        pixelsPerMeter: 50,
+      });
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
 
-      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
       rb.setPosition(200, 300);
 
       expect(body.setTranslationSpy).toHaveBeenCalledWith(
@@ -573,7 +604,6 @@ describe("RigidBodyComponent", () => {
       expect(rb._prevPosition.equals(new Vec2(50, 75))).toBe(true);
       expect(rb._currPosition.equals(new Vec2(50, 75))).toBe(true);
     });
-
   });
   describe("activeness hooks", () => {
     it("leaves the body disabled when added to a dormant entity", async () => {
@@ -659,5 +689,4 @@ describe("RigidBodyComponent", () => {
       expect(rb._currPosition.x).toBe(100);
     });
   });
-
 });

@@ -6,14 +6,36 @@ const { mocks } = vi.hoisted(() => {
 
   class MockRigidBodyDesc {
     _type = "dynamic";
-    static dynamic() { const d = new MockRigidBodyDesc(); d._type = "dynamic"; return d; }
-    static fixed() { const d = new MockRigidBodyDesc(); d._type = "fixed"; return d; }
-    static kinematicPositionBased() { const d = new MockRigidBodyDesc(); d._type = "kinematic"; return d; }
-    setLinearDamping() { return this; }
-    setAngularDamping() { return this; }
-    lockRotations() { return this; }
-    setGravityScale() { return this; }
-    setCcdEnabled() { return this; }
+    static dynamic() {
+      const d = new MockRigidBodyDesc();
+      d._type = "dynamic";
+      return d;
+    }
+    static fixed() {
+      const d = new MockRigidBodyDesc();
+      d._type = "fixed";
+      return d;
+    }
+    static kinematicPositionBased() {
+      const d = new MockRigidBodyDesc();
+      d._type = "kinematic";
+      return d;
+    }
+    setLinearDamping() {
+      return this;
+    }
+    setAngularDamping() {
+      return this;
+    }
+    lockRotations() {
+      return this;
+    }
+    setGravityScale() {
+      return this;
+    }
+    setCcdEnabled() {
+      return this;
+    }
   }
 
   class MockRigidBody {
@@ -30,24 +52,50 @@ const { mocks } = vi.hoisted(() => {
       this._bodyType = bodyType;
     }
 
-    translation() { return { ...this._translation }; }
-    rotation() { return this._rotation; }
-    linvel() { return { ...this._linvel }; }
-    angvel() { return this._angvel; }
-    setTranslation(t: { x: number; y: number }) { this._translation = { ...t }; }
-    setRotation(r: number) { this._rotation = r; }
-    setLinvel(v: { x: number; y: number }) { this._linvel = { ...v }; }
-    setAngvel(v: number) { this._angvel = v; }
+    translation() {
+      return { ...this._translation };
+    }
+    rotation() {
+      return this._rotation;
+    }
+    linvel() {
+      return { ...this._linvel };
+    }
+    angvel() {
+      return this._angvel;
+    }
+    setTranslation(t: { x: number; y: number }) {
+      this._translation = { ...t };
+    }
+    setRotation(r: number) {
+      this._rotation = r;
+    }
+    setLinvel(v: { x: number; y: number }) {
+      this._linvel = { ...v };
+    }
+    setAngvel(v: number) {
+      this._angvel = v;
+    }
     addForce() {}
     applyImpulse() {}
     addTorque() {}
     setNextKinematicTranslation() {}
     setNextKinematicRotation() {}
-    isDynamic() { return this._bodyType === "dynamic"; }
-    isFixed() { return this._bodyType === "fixed"; }
-    isKinematic() { return this._bodyType === "kinematic"; }
-    numColliders() { return this._colliders.length; }
-    collider(i: number) { return this._colliders[i]; }
+    isDynamic() {
+      return this._bodyType === "dynamic";
+    }
+    isFixed() {
+      return this._bodyType === "fixed";
+    }
+    isKinematic() {
+      return this._bodyType === "kinematic";
+    }
+    numColliders() {
+      return this._colliders.length;
+    }
+    collider(i: number) {
+      return this._colliders[i];
+    }
     sleep() {}
     wakeUp() {}
     setEnabled() {}
@@ -56,18 +104,42 @@ const { mocks } = vi.hoisted(() => {
   }
 
   class MockColliderDesc {
-    static cuboid() { return new MockColliderDesc(); }
-    static ball() { return new MockColliderDesc(); }
-    static capsule() { return new MockColliderDesc(); }
-    static convexHull() { return new MockColliderDesc(); }
-    setTranslation() { return this; }
-    setRestitution() { return this; }
-    setFriction() { return this; }
-    setDensity() { return this; }
-    setSensor() { return this; }
-    setCollisionGroups() { return this; }
-    setActiveEvents() { return this; }
-    setActiveCollisionTypes() { return this; }
+    static cuboid() {
+      return new MockColliderDesc();
+    }
+    static ball() {
+      return new MockColliderDesc();
+    }
+    static capsule() {
+      return new MockColliderDesc();
+    }
+    static convexHull() {
+      return new MockColliderDesc();
+    }
+    setTranslation() {
+      return this;
+    }
+    setRestitution() {
+      return this;
+    }
+    setFriction() {
+      return this;
+    }
+    setDensity() {
+      return this;
+    }
+    setSensor() {
+      return this;
+    }
+    setCollisionGroups() {
+      return this;
+    }
+    setActiveEvents() {
+      return this;
+    }
+    setActiveCollisionTypes() {
+      return this;
+    }
   }
 
   class MockEventQueue {
@@ -101,17 +173,34 @@ const { mocks } = vi.hoisted(() => {
       this._bodies.set(body.handle, body);
       return body;
     }
-    createCollider() { return { handle: 0 }; }
-    getRigidBody(handle: number) { return this._bodies.get(handle); }
-    getCollider() { return undefined; }
-    removeRigidBody(body: MockRigidBody) { this._bodies.delete(body.handle); }
+    createCollider() {
+      return { handle: 0 };
+    }
+    getRigidBody(handle: number) {
+      return this._bodies.get(handle);
+    }
+    getCollider() {
+      return undefined;
+    }
+    removeRigidBody(body: MockRigidBody) {
+      this._bodies.delete(body.handle);
+    }
     free() {}
   }
 
-  function resetHandles() { nextBodyHandle = 0; }
+  function resetHandles() {
+    nextBodyHandle = 0;
+  }
 
   return {
-    mocks: { MockWorld, MockRigidBody, MockRigidBodyDesc, MockColliderDesc, MockEventQueue, resetHandles },
+    mocks: {
+      MockWorld,
+      MockRigidBody,
+      MockRigidBodyDesc,
+      MockColliderDesc,
+      MockEventQueue,
+      resetHandles,
+    },
   };
 });
 
@@ -144,7 +233,11 @@ import type {
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { PhysicsInterpolationSystem } from "./PhysicsInterpolationSystem.js";
 import { PhysicsSystem } from "./PhysicsSystem.js";
-import { createPhysicsTestContext, createTestScene, spawnEntityInScene } from "./test-helpers.js";
+import {
+  createPhysicsTestContext,
+  createTestScene,
+  spawnEntityInScene,
+} from "./test-helpers.js";
 
 /**
  * Register the physics systems and let the real GameLoop drive them, so the
@@ -157,7 +250,10 @@ function runPhysicsUnderGameLoop(
   scheduler: SystemScheduler,
   extraSystems: System[] = [],
 ): void {
-  for (const system of [new PhysicsSystem(), new PhysicsInterpolationSystem()]) {
+  for (const system of [
+    new PhysicsSystem(),
+    new PhysicsInterpolationSystem(),
+  ]) {
     system._setContext(context);
     scheduler.add(system);
   }
@@ -212,7 +308,8 @@ describe("PhysicsInterpolationSystem", () => {
   });
 
   it("with half a fixed step accumulated, transform is the midpoint", async () => {
-    const { scene, manager, gameLoop, context } = await createPhysicsTestContext();
+    const { scene, manager, gameLoop, context } =
+      await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -235,7 +332,8 @@ describe("PhysicsInterpolationSystem", () => {
   });
 
   it("with a full fixed step accumulated, transform equals curr position", async () => {
-    const { scene, manager, gameLoop, context } = await createPhysicsTestContext();
+    const { scene, manager, gameLoop, context } =
+      await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -258,7 +356,8 @@ describe("PhysicsInterpolationSystem", () => {
   });
 
   it("clamps alpha to 1 when more than one step is waiting", async () => {
-    const { scene, manager, gameLoop, context } = await createPhysicsTestContext();
+    const { scene, manager, gameLoop, context } =
+      await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -336,7 +435,8 @@ describe("PhysicsInterpolationSystem", () => {
   });
 
   it("blends each scene by its own accumulator", async () => {
-    const { scene, manager, sceneManager, gameLoop, context } = await createPhysicsTestContext();
+    const { scene, manager, sceneManager, gameLoop, context } =
+      await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -349,7 +449,9 @@ describe("PhysicsInterpolationSystem", () => {
     manager.getContext(scene)!.accumulator = gameLoop.fixedTimestep * 0.5;
 
     // Scene 2: a full step waiting
-    const scene2 = await createTestScene(sceneManager, "scene2", { pauseBelow: false });
+    const scene2 = await createTestScene(sceneManager, "scene2", {
+      pauseBelow: false,
+    });
     manager.getOrCreateWorld(scene2);
     const e2 = spawnEntityInScene(scene2, "e2");
     const t2 = e2.add(new Transform());
@@ -374,7 +476,8 @@ describe("PhysicsInterpolationSystem", () => {
 
   describe("alpha production", () => {
     it("advances alpha by each frame's share of a fixed step and wraps on a step", async () => {
-      const { scene, manager, gameLoop, scheduler, context } = await createPhysicsTestContext();
+      const { scene, manager, gameLoop, scheduler, context } =
+        await createPhysicsTestContext();
       runPhysicsUnderGameLoop(context, gameLoop, scheduler);
 
       const entity = spawnEntityInScene(scene, "test");
@@ -398,7 +501,8 @@ describe("PhysicsInterpolationSystem", () => {
     });
 
     it("refreshes alpha on a frame that runs no fixed step", async () => {
-      const { scene, manager, gameLoop, scheduler, context } = await createPhysicsTestContext();
+      const { scene, manager, gameLoop, scheduler, context } =
+        await createPhysicsTestContext();
       runPhysicsUnderGameLoop(context, gameLoop, scheduler);
 
       const entity = spawnEntityInScene(scene, "test");
@@ -423,7 +527,8 @@ describe("PhysicsInterpolationSystem", () => {
 
   describe("smoothness", () => {
     it("advances the drawn position by the same distance every frame", async () => {
-      const { scene, gameLoop, scheduler, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      const { scene, gameLoop, scheduler, context } =
+        await createPhysicsTestContext({ pixelsPerMeter: 50 });
       runPhysicsUnderGameLoop(context, gameLoop, scheduler);
 
       const entity = spawnEntityInScene(scene, "mover");
@@ -449,7 +554,8 @@ describe("PhysicsInterpolationSystem", () => {
 
   describe("scene time scale", () => {
     it("holds alpha and the drawn pose still while the scene is frozen", async () => {
-      const { scene, manager, gameLoop, scheduler, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      const { scene, manager, gameLoop, scheduler, context } =
+        await createPhysicsTestContext({ pixelsPerMeter: 50 });
       const time = new SceneTime(scene);
       scene.registerScoped(SceneTimeKey, time);
       runPhysicsUnderGameLoop(context, gameLoop, scheduler);
@@ -478,7 +584,8 @@ describe("PhysicsInterpolationSystem", () => {
     });
 
     it("advances the drawn pose at half speed under a half time scale", async () => {
-      const { scene, gameLoop, scheduler, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      const { scene, gameLoop, scheduler, context } =
+        await createPhysicsTestContext({ pixelsPerMeter: 50 });
       scene.timeScale = 0.5;
       runPhysicsUnderGameLoop(context, gameLoop, scheduler);
 
@@ -504,7 +611,8 @@ describe("PhysicsInterpolationSystem", () => {
 
   describe("paused scenes", () => {
     it("leaves a paused scene's alpha frozen while other scenes keep moving", async () => {
-      const { scene, manager, sceneManager, gameLoop, scheduler, context } = await createPhysicsTestContext();
+      const { scene, manager, sceneManager, gameLoop, scheduler, context } =
+        await createPhysicsTestContext();
       runPhysicsUnderGameLoop(context, gameLoop, scheduler);
 
       const e1 = spawnEntityInScene(scene, "e1");
@@ -538,7 +646,8 @@ describe("PhysicsInterpolationSystem", () => {
 
   describe("ordering", () => {
     it("gives component update() the position that is still there at render time", async () => {
-      const { scene, gameLoop, scheduler, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      const { scene, gameLoop, scheduler, context } =
+        await createPhysicsTestContext({ pixelsPerMeter: 50 });
 
       const observed: number[] = [];
 
@@ -572,7 +681,8 @@ describe("PhysicsInterpolationSystem", () => {
 
   describe("RigidBodyComponent pose getters", () => {
     it("reports the exact simulated pose while the Transform holds the blend", async () => {
-      const { scene, gameLoop, scheduler, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      const { scene, gameLoop, scheduler, context } =
+        await createPhysicsTestContext({ pixelsPerMeter: 50 });
       runPhysicsUnderGameLoop(context, gameLoop, scheduler);
 
       const entity = spawnEntityInScene(scene, "mover");
@@ -595,7 +705,9 @@ describe("PhysicsInterpolationSystem", () => {
       const { scene } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
 
       const entity = spawnEntityInScene(scene, "spawned");
-      entity.add(new Transform({ position: new Vec2(120, 240), rotation: 0.5 }));
+      entity.add(
+        new Transform({ position: new Vec2(120, 240), rotation: 0.5 }),
+      );
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
 
       expect(rb.position.x).toBeCloseTo(120);

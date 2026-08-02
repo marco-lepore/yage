@@ -7,23 +7,51 @@ const { mocks } = vi.hoisted(() => {
 
   class MockRigidBodyDesc {
     _type = "dynamic";
-    static dynamic() { const d = new MockRigidBodyDesc(); d._type = "dynamic"; return d; }
-    static fixed() { const d = new MockRigidBodyDesc(); d._type = "fixed"; return d; }
-    static kinematicPositionBased() { const d = new MockRigidBodyDesc(); d._type = "kinematic"; return d; }
-    setLinearDamping() { return this; }
-    setAngularDamping() { return this; }
-    lockRotations() { return this; }
-    setGravityScale() { return this; }
-    setCcdEnabled() { return this; }
+    static dynamic() {
+      const d = new MockRigidBodyDesc();
+      d._type = "dynamic";
+      return d;
+    }
+    static fixed() {
+      const d = new MockRigidBodyDesc();
+      d._type = "fixed";
+      return d;
+    }
+    static kinematicPositionBased() {
+      const d = new MockRigidBodyDesc();
+      d._type = "kinematic";
+      return d;
+    }
+    setLinearDamping() {
+      return this;
+    }
+    setAngularDamping() {
+      return this;
+    }
+    lockRotations() {
+      return this;
+    }
+    setGravityScale() {
+      return this;
+    }
+    setCcdEnabled() {
+      return this;
+    }
   }
 
   class MockCollider {
     handle: number;
     _sensor = false;
     _activeCollisionTypes = 0;
-    constructor() { this.handle = nextColliderHandle++; }
-    isSensor() { return this._sensor; }
-    setSensor(s: boolean) { this._sensor = s; }
+    constructor() {
+      this.handle = nextColliderHandle++;
+    }
+    isSensor() {
+      return this._sensor;
+    }
+    setSensor(s: boolean) {
+      this._sensor = s;
+    }
     setShape() {}
     setEnabled() {}
   }
@@ -42,24 +70,54 @@ const { mocks } = vi.hoisted(() => {
       this._bodyType = bodyType;
     }
 
-    translation() { return { ...this._translation }; }
-    rotation() { return this._rotation; }
-    linvel() { return { ...this._linvel }; }
-    angvel() { return this._angvel; }
-    setTranslation(t: { x: number; y: number }) { this._translation = { ...t }; }
-    setRotation(r: number) { this._rotation = r; }
-    setLinvel(v: { x: number; y: number }) { this._linvel = { ...v }; }
-    setAngvel(v: number) { this._angvel = v; }
+    translation() {
+      return { ...this._translation };
+    }
+    rotation() {
+      return this._rotation;
+    }
+    linvel() {
+      return { ...this._linvel };
+    }
+    angvel() {
+      return this._angvel;
+    }
+    setTranslation(t: { x: number; y: number }) {
+      this._translation = { ...t };
+    }
+    setRotation(r: number) {
+      this._rotation = r;
+    }
+    setLinvel(v: { x: number; y: number }) {
+      this._linvel = { ...v };
+    }
+    setAngvel(v: number) {
+      this._angvel = v;
+    }
     addForce() {}
     applyImpulse() {}
     addTorque() {}
-    setNextKinematicTranslation(t: { x: number; y: number }) { this._translation = { ...t }; }
-    setNextKinematicRotation(r: number) { this._rotation = r; }
-    isDynamic() { return this._bodyType === "dynamic"; }
-    isFixed() { return this._bodyType === "fixed"; }
-    isKinematic() { return this._bodyType === "kinematic"; }
-    numColliders() { return this._colliders.length; }
-    collider(i: number) { return this._colliders[i]; }
+    setNextKinematicTranslation(t: { x: number; y: number }) {
+      this._translation = { ...t };
+    }
+    setNextKinematicRotation(r: number) {
+      this._rotation = r;
+    }
+    isDynamic() {
+      return this._bodyType === "dynamic";
+    }
+    isFixed() {
+      return this._bodyType === "fixed";
+    }
+    isKinematic() {
+      return this._bodyType === "kinematic";
+    }
+    numColliders() {
+      return this._colliders.length;
+    }
+    collider(i: number) {
+      return this._colliders[i];
+    }
     sleep() {}
     wakeUp() {}
     setEnabled() {}
@@ -70,18 +128,44 @@ const { mocks } = vi.hoisted(() => {
   class MockColliderDesc {
     _sensor = false;
     _activeCollisionTypes = 0;
-    static cuboid() { return new MockColliderDesc(); }
-    static ball() { return new MockColliderDesc(); }
-    static capsule() { return new MockColliderDesc(); }
-    static convexHull() { return new MockColliderDesc(); }
-    setTranslation() { return this; }
-    setRestitution() { return this; }
-    setFriction() { return this; }
-    setDensity() { return this; }
-    setSensor(s: boolean) { this._sensor = s; return this; }
-    setCollisionGroups() { return this; }
-    setActiveEvents() { return this; }
-    setActiveCollisionTypes(t: number) { this._activeCollisionTypes = t; return this; }
+    static cuboid() {
+      return new MockColliderDesc();
+    }
+    static ball() {
+      return new MockColliderDesc();
+    }
+    static capsule() {
+      return new MockColliderDesc();
+    }
+    static convexHull() {
+      return new MockColliderDesc();
+    }
+    setTranslation() {
+      return this;
+    }
+    setRestitution() {
+      return this;
+    }
+    setFriction() {
+      return this;
+    }
+    setDensity() {
+      return this;
+    }
+    setSensor(s: boolean) {
+      this._sensor = s;
+      return this;
+    }
+    setCollisionGroups() {
+      return this;
+    }
+    setActiveEvents() {
+      return this;
+    }
+    setActiveCollisionTypes(t: number) {
+      this._activeCollisionTypes = t;
+      return this;
+    }
   }
 
   type DrainCallback = (h1: number, h2: number, started: boolean) => void;
@@ -109,13 +193,18 @@ const { mocks } = vi.hoisted(() => {
       this.gravity = { ...gravity };
     }
 
-    step(eq: MockEventQueue) { this.stepSpy(eq); }
+    step(eq: MockEventQueue) {
+      this.stepSpy(eq);
+    }
     createRigidBody(desc: MockRigidBodyDesc): MockRigidBody {
       const body = new MockRigidBody(desc._type);
       this._bodies.set(body.handle, body);
       return body;
     }
-    createCollider(desc: MockColliderDesc, parent: MockRigidBody): MockCollider {
+    createCollider(
+      desc: MockColliderDesc,
+      parent: MockRigidBody,
+    ): MockCollider {
       const collider = new MockCollider();
       if (desc._sensor) collider._sensor = true;
       collider._activeCollisionTypes = desc._activeCollisionTypes;
@@ -123,8 +212,12 @@ const { mocks } = vi.hoisted(() => {
       this._colliders.set(collider.handle, collider);
       return collider;
     }
-    getRigidBody(handle: number) { return this._bodies.get(handle); }
-    getCollider(handle: number) { return this._colliders.get(handle); }
+    getRigidBody(handle: number) {
+      return this._bodies.get(handle);
+    }
+    getCollider(handle: number) {
+      return this._colliders.get(handle);
+    }
     removeRigidBody(body: MockRigidBody) {
       this._bodies.delete(body.handle);
       for (const c of body._colliders) this._colliders.delete(c.handle);
@@ -138,7 +231,15 @@ const { mocks } = vi.hoisted(() => {
   }
 
   return {
-    mocks: { MockWorld, MockRigidBody, MockRigidBodyDesc, MockCollider, MockColliderDesc, MockEventQueue, resetHandles },
+    mocks: {
+      MockWorld,
+      MockRigidBody,
+      MockRigidBodyDesc,
+      MockCollider,
+      MockColliderDesc,
+      MockEventQueue,
+      resetHandles,
+    },
   };
 });
 
@@ -177,7 +278,11 @@ import {
   CollisionLayers,
 } from "./index.js";
 import type { CollisionEvent, TriggerEvent } from "./index.js";
-import { createPhysicsTestContext, createTestScene, spawnEntityInScene } from "./test-helpers.js";
+import {
+  createPhysicsTestContext,
+  createTestScene,
+  spawnEntityInScene,
+} from "./test-helpers.js";
 
 describe("Integration Tests", () => {
   beforeEach(() => {
@@ -186,17 +291,25 @@ describe("Integration Tests", () => {
   });
 
   it("spawn entity with physics components → tick → Transform updated", async () => {
-    const { scene, physicsWorld, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+    const { scene, physicsWorld, context } = await createPhysicsTestContext({
+      pixelsPerMeter: 50,
+    });
     const system = new PhysicsSystem();
     system._setContext(context);
 
     const entity = spawnEntityInScene(scene, "ball");
-    const transform = entity.add(new Transform({ position: new Vec2(100, 100) }));
+    const transform = entity.add(
+      new Transform({ position: new Vec2(100, 100) }),
+    );
     const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
-    entity.add(new ColliderComponent({ shape: { type: "circle", radius: 25 } }));
+    entity.add(
+      new ColliderComponent({ shape: { type: "circle", radius: 25 } }),
+    );
 
     // Simulate physics moving the body
-    const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+    const body = physicsWorld.getBody(
+      rb._bodyHandle,
+    ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
     body._translation = { x: 2.2, y: 3.0 }; // meters → 110px, 150px
     body._rotation = 0.5;
 
@@ -215,18 +328,26 @@ describe("Integration Tests", () => {
     const e1 = spawnEntityInScene(scene, "e1");
     e1.add(new Transform());
     e1.add(new RigidBodyComponent({ type: "dynamic" }));
-    const col1 = e1.add(new ColliderComponent({ shape: { type: "box", width: 10, height: 10 } }));
+    const col1 = e1.add(
+      new ColliderComponent({ shape: { type: "box", width: 10, height: 10 } }),
+    );
 
     const e2 = spawnEntityInScene(scene, "e2");
     e2.add(new Transform());
     e2.add(new RigidBodyComponent({ type: "dynamic" }));
-    const col2 = e2.add(new ColliderComponent({ shape: { type: "box", width: 10, height: 10 } }));
+    const col2 = e2.add(
+      new ColliderComponent({ shape: { type: "box", width: 10, height: 10 } }),
+    );
 
     const events: CollisionEvent[] = [];
     col1.onCollision((e) => events.push(e));
 
     // Inject collision event
-    const eq = (physicsWorld as unknown as { eventQueue: InstanceType<typeof mocks.MockEventQueue> }).eventQueue;
+    const eq = (
+      physicsWorld as unknown as {
+        eventQueue: InstanceType<typeof mocks.MockEventQueue>;
+      }
+    ).eventQueue;
     eq._events.push([col1._colliderHandle, col2._colliderHandle, true]);
 
     system.update(16.67);
@@ -245,23 +366,35 @@ describe("Integration Tests", () => {
     const player = spawnEntityInScene(scene, "player");
     player.add(new Transform());
     player.add(new RigidBodyComponent({ type: "dynamic" }));
-    const playerCol = player.add(new ColliderComponent({
-      shape: { type: "box", width: 16, height: 16 },
-    }));
+    const playerCol = player.add(
+      new ColliderComponent({
+        shape: { type: "box", width: 16, height: 16 },
+      }),
+    );
 
     const trigger = spawnEntityInScene(scene, "trigger");
     trigger.add(new Transform());
     trigger.add(new RigidBodyComponent({ type: "static" }));
-    const triggerCol = trigger.add(new ColliderComponent({
-      shape: { type: "box", width: 32, height: 32 },
-      sensor: true,
-    }));
+    const triggerCol = trigger.add(
+      new ColliderComponent({
+        shape: { type: "box", width: 32, height: 32 },
+        sensor: true,
+      }),
+    );
 
     const triggers: TriggerEvent[] = [];
     triggerCol.onTrigger((e) => triggers.push(e));
 
-    const eq = (physicsWorld as unknown as { eventQueue: InstanceType<typeof mocks.MockEventQueue> }).eventQueue;
-    eq._events.push([triggerCol._colliderHandle, playerCol._colliderHandle, true]);
+    const eq = (
+      physicsWorld as unknown as {
+        eventQueue: InstanceType<typeof mocks.MockEventQueue>;
+      }
+    ).eventQueue;
+    eq._events.push([
+      triggerCol._colliderHandle,
+      playerCol._colliderHandle,
+      true,
+    ]);
 
     system.update(16.67);
 
@@ -282,30 +415,45 @@ describe("Integration Tests", () => {
     const player = spawnEntityInScene(scene, "player");
     player.add(new Transform());
     player.add(new RigidBodyComponent({ type: "kinematic" }));
-    const playerCol = player.add(new ColliderComponent({
-      shape: { type: "box", width: 16, height: 16 },
-    }));
+    const playerCol = player.add(
+      new ColliderComponent({
+        shape: { type: "box", width: 16, height: 16 },
+      }),
+    );
 
     const asteroid = spawnEntityInScene(scene, "asteroid");
     asteroid.add(new Transform());
     asteroid.add(new RigidBodyComponent({ type: "kinematic" }));
-    const asteroidCol = asteroid.add(new ColliderComponent({
-      shape: { type: "box", width: 32, height: 32 },
-      sensor: true,
-    }));
+    const asteroidCol = asteroid.add(
+      new ColliderComponent({
+        shape: { type: "box", width: 32, height: 32 },
+        sensor: true,
+      }),
+    );
 
     // All colliders must be created with ActiveCollisionTypes.ALL so the
     // kinematic-kinematic pair generates events.
-    const playerBodyHandle = (player.get(RigidBodyComponent))._bodyHandle;
-    const playerMockBody = physicsWorld.getBody(playerBodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
-    const playerMockCol = playerMockBody._colliders[0] as unknown as InstanceType<typeof mocks.MockCollider>;
+    const playerBodyHandle = player.get(RigidBodyComponent)._bodyHandle;
+    const playerMockBody = physicsWorld.getBody(
+      playerBodyHandle,
+    ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+    const playerMockCol = playerMockBody
+      ._colliders[0] as unknown as InstanceType<typeof mocks.MockCollider>;
     expect(playerMockCol._activeCollisionTypes).toBe(60943); // ActiveCollisionTypes.ALL
 
     const triggers: TriggerEvent[] = [];
     asteroidCol.onTrigger((e) => triggers.push(e));
 
-    const eq = (physicsWorld as unknown as { eventQueue: InstanceType<typeof mocks.MockEventQueue> }).eventQueue;
-    eq._events.push([asteroidCol._colliderHandle, playerCol._colliderHandle, true]);
+    const eq = (
+      physicsWorld as unknown as {
+        eventQueue: InstanceType<typeof mocks.MockEventQueue>;
+      }
+    ).eventQueue;
+    eq._events.push([
+      asteroidCol._colliderHandle,
+      playerCol._colliderHandle,
+      true,
+    ]);
 
     system.update(16.67);
 
@@ -316,15 +464,21 @@ describe("Integration Tests", () => {
   });
 
   it("kinematic body driven by Transform", async () => {
-    const { scene, physicsWorld, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+    const { scene, physicsWorld, context } = await createPhysicsTestContext({
+      pixelsPerMeter: 50,
+    });
     const system = new PhysicsSystem();
     system._setContext(context);
 
     const entity = spawnEntityInScene(scene, "platform");
-    const transform = entity.add(new Transform({ position: new Vec2(100, 100) }));
+    const transform = entity.add(
+      new Transform({ position: new Vec2(100, 100) }),
+    );
     const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
 
-    const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+    const body = physicsWorld.getBody(
+      rb._bodyHandle,
+    ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
     body._bodyType = "kinematic";
 
     // Move transform
@@ -342,7 +496,9 @@ describe("Integration Tests", () => {
     const entity = spawnEntityInScene(scene, "test");
     entity.add(new Transform());
     const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
-    entity.add(new ColliderComponent({ shape: { type: "box", width: 10, height: 10 } }));
+    entity.add(
+      new ColliderComponent({ shape: { type: "box", width: 10, height: 10 } }),
+    );
 
     const bodyHandle = rb._bodyHandle;
     expect(physicsWorld.bodyMap.has(bodyHandle)).toBe(true);
@@ -373,7 +529,8 @@ describe("Integration Tests", () => {
   });
 
   it("interpolation blends positions between prev and curr using per-scene alpha", async () => {
-    const { scene, manager, gameLoop, context } = await createPhysicsTestContext();
+    const { scene, manager, gameLoop, context } =
+      await createPhysicsTestContext();
     const interpSystem = new PhysicsInterpolationSystem();
     interpSystem._setContext(context);
 
@@ -407,7 +564,10 @@ describe("Integration Tests", () => {
     const boundary = new ErrorBoundary(logger);
     scheduler.setErrorBoundary(boundary);
 
-    const plugin = new PhysicsPlugin({ gravity: { x: 0, y: 500 }, pixelsPerMeter: 100 });
+    const plugin = new PhysicsPlugin({
+      gravity: { x: 0, y: 500 },
+      pixelsPerMeter: 100,
+    });
     plugin.install(context);
 
     expect(context.has(PhysicsWorldManagerKey)).toBe(true);
@@ -426,7 +586,9 @@ describe("Integration Tests", () => {
   });
 
   it("multiple entities with different body types coexist", async () => {
-    const { scene, physicsWorld, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+    const { scene, physicsWorld, context } = await createPhysicsTestContext({
+      pixelsPerMeter: 50,
+    });
     const system = new PhysicsSystem();
     system._setContext(context);
 
@@ -440,25 +602,37 @@ describe("Integration Tests", () => {
     const ground = spawnEntityInScene(scene, "ground");
     ground.add(new Transform({ position: new Vec2(400, 500) }));
     const groundRb = ground.add(new RigidBodyComponent({ type: "static" }));
-    ground.add(new ColliderComponent({ shape: { type: "box", width: 800, height: 20 } }));
+    ground.add(
+      new ColliderComponent({ shape: { type: "box", width: 800, height: 20 } }),
+    );
 
     // Kinematic platform
     const platform = spawnEntityInScene(scene, "platform");
-    const platTransform = platform.add(new Transform({ position: new Vec2(200, 300) }));
+    const platTransform = platform.add(
+      new Transform({ position: new Vec2(200, 300) }),
+    );
     const platRb = platform.add(new RigidBodyComponent({ type: "kinematic" }));
-    platform.add(new ColliderComponent({ shape: { type: "box", width: 100, height: 10 } }));
+    platform.add(
+      new ColliderComponent({ shape: { type: "box", width: 100, height: 10 } }),
+    );
 
     // Adjust body types in mock
-    const groundBody = physicsWorld.getBody(groundRb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+    const groundBody = physicsWorld.getBody(
+      groundRb._bodyHandle,
+    ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
     groundBody._bodyType = "fixed";
-    const platBody = physicsWorld.getBody(platRb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+    const platBody = physicsWorld.getBody(
+      platRb._bodyHandle,
+    ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
     platBody._bodyType = "kinematic";
 
     // Move platform transform
     platTransform.setPosition(250, 310);
 
     // Move ball in physics
-    const ballBody = physicsWorld.getBody(ballRb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+    const ballBody = physicsWorld.getBody(
+      ballRb._bodyHandle,
+    ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
     ballBody._translation = { x: 2.2, y: 2.4 }; // 110px, 120px
 
     system.update(16.67);
@@ -492,7 +666,8 @@ describe("Integration Tests", () => {
   });
 
   it("two scenes with physics coexist without interference", async () => {
-    const { scene, manager, sceneManager, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+    const { scene, manager, sceneManager, context } =
+      await createPhysicsTestContext({ pixelsPerMeter: 50 });
     const system = new PhysicsSystem();
     system._setContext(context);
 
@@ -502,7 +677,9 @@ describe("Integration Tests", () => {
     const rb1 = e1.add(new RigidBodyComponent({ type: "dynamic" }));
 
     // Scene 2: ball (separate physics world)
-    const scene2 = await createTestScene(sceneManager, "scene2", { pauseBelow: false });
+    const scene2 = await createTestScene(sceneManager, "scene2", {
+      pauseBelow: false,
+    });
     const e2 = spawnEntityInScene(scene2, "ball2");
     e2.add(new Transform({ position: new Vec2(200, 200) }));
     const rb2 = e2.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -513,10 +690,14 @@ describe("Integration Tests", () => {
     expect(world1).not.toBe(world2);
 
     // Move bodies in their respective worlds
-    const body1 = world1.getBody(rb1._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+    const body1 = world1.getBody(rb1._bodyHandle) as unknown as InstanceType<
+      typeof mocks.MockRigidBody
+    >;
     body1._translation = { x: 3, y: 3 }; // 150px, 150px
 
-    const body2 = world2.getBody(rb2._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+    const body2 = world2.getBody(rb2._bodyHandle) as unknown as InstanceType<
+      typeof mocks.MockRigidBody
+    >;
     body2._translation = { x: 5, y: 5 }; // 250px, 250px
 
     system.update(16.67);
@@ -526,7 +707,8 @@ describe("Integration Tests", () => {
   });
 
   it("pausing one scene freezes its world but other keeps running", async () => {
-    const { scene, manager, sceneManager, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+    const { scene, manager, sceneManager, context } =
+      await createPhysicsTestContext({ pixelsPerMeter: 50 });
     const system = new PhysicsSystem();
     system._setContext(context);
 
@@ -534,13 +716,23 @@ describe("Integration Tests", () => {
     e1.add(new Transform());
     e1.add(new RigidBodyComponent({ type: "dynamic" }));
 
-    const scene2 = await createTestScene(sceneManager, "scene2", { pauseBelow: false });
+    const scene2 = await createTestScene(sceneManager, "scene2", {
+      pauseBelow: false,
+    });
     const e2 = spawnEntityInScene(scene2, "ball2");
     e2.add(new Transform());
     e2.add(new RigidBodyComponent({ type: "dynamic" }));
 
-    const mock1 = (manager.getContext(scene)!.world as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
-    const mock2 = (manager.getContext(scene2)!.world as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+    const mock1 = (
+      manager.getContext(scene)!.world as unknown as {
+        world: InstanceType<typeof mocks.MockWorld>;
+      }
+    ).world;
+    const mock2 = (
+      manager.getContext(scene2)!.world as unknown as {
+        world: InstanceType<typeof mocks.MockWorld>;
+      }
+    ).world;
 
     // First tick — both step
     system.update(16.67);

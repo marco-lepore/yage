@@ -6,14 +6,30 @@ const { mocks } = vi.hoisted(() => {
   let nextColliderHandle = 0;
 
   class MockRigidBodyDesc {
-    static dynamic() { return new MockRigidBodyDesc(); }
-    static fixed() { return new MockRigidBodyDesc(); }
-    static kinematicPositionBased() { return new MockRigidBodyDesc(); }
-    setLinearDamping() { return this; }
-    setAngularDamping() { return this; }
-    lockRotations() { return this; }
-    setGravityScale() { return this; }
-    setCcdEnabled() { return this; }
+    static dynamic() {
+      return new MockRigidBodyDesc();
+    }
+    static fixed() {
+      return new MockRigidBodyDesc();
+    }
+    static kinematicPositionBased() {
+      return new MockRigidBodyDesc();
+    }
+    setLinearDamping() {
+      return this;
+    }
+    setAngularDamping() {
+      return this;
+    }
+    lockRotations() {
+      return this;
+    }
+    setGravityScale() {
+      return this;
+    }
+    setCcdEnabled() {
+      return this;
+    }
   }
 
   class MockCollider {
@@ -31,13 +47,28 @@ const { mocks } = vi.hoisted(() => {
     _rotationWrtParent = 0;
     _parent: MockRigidBody | undefined;
 
-    isSensor() { return this._sensor; }
-    setSensor(s: boolean) { this._sensor = s; this.setSensorSpy(s); }
-    setShape(shape: unknown) { this._shape = shape; }
-    setRotationWrtParent(angle: number) { this._rotationWrtParent = angle; }
-    parent() { return this._parent; }
-    setEnabled(enabled: boolean) { this._enabled = enabled; }
-    isEnabled() { return this._enabled; }
+    isSensor() {
+      return this._sensor;
+    }
+    setSensor(s: boolean) {
+      this._sensor = s;
+      this.setSensorSpy(s);
+    }
+    setShape(shape: unknown) {
+      this._shape = shape;
+    }
+    setRotationWrtParent(angle: number) {
+      this._rotationWrtParent = angle;
+    }
+    parent() {
+      return this._parent;
+    }
+    setEnabled(enabled: boolean) {
+      this._enabled = enabled;
+    }
+    isEnabled() {
+      return this._enabled;
+    }
   }
 
   class MockRigidBody {
@@ -50,29 +81,53 @@ const { mocks } = vi.hoisted(() => {
       this.handle = nextBodyHandle++;
     }
 
-    translation() { return { ...this._translation }; }
-    rotation() { return this._rotation; }
-    linvel() { return { x: 0, y: 0 }; }
-    angvel() { return 0; }
-    setTranslation(t: { x: number; y: number }) { this._translation = { ...t }; }
-    setRotation(r: number) { this._rotation = r; }
+    translation() {
+      return { ...this._translation };
+    }
+    rotation() {
+      return this._rotation;
+    }
+    linvel() {
+      return { x: 0, y: 0 };
+    }
+    angvel() {
+      return 0;
+    }
+    setTranslation(t: { x: number; y: number }) {
+      this._translation = { ...t };
+    }
+    setRotation(r: number) {
+      this._rotation = r;
+    }
     setLinvel() {}
     setAngvel() {}
     addForce() {}
     applyImpulse() {}
     addTorque() {}
-    numColliders() { return this._colliders.length; }
-    collider(i: number) { return this._colliders[i]; }
-    isDynamic() { return true; }
-    isFixed() { return false; }
-    isKinematic() { return false; }
+    numColliders() {
+      return this._colliders.length;
+    }
+    collider(i: number) {
+      return this._colliders[i];
+    }
+    isDynamic() {
+      return true;
+    }
+    isFixed() {
+      return false;
+    }
+    isKinematic() {
+      return false;
+    }
     sleep() {}
     wakeUp() {}
     setEnabled() {}
     resetForces() {}
     resetTorques() {}
     _massRecomputes = 0;
-    recomputeMassPropertiesFromColliders() { this._massRecomputes++; }
+    recomputeMassPropertiesFromColliders() {
+      this._massRecomputes++;
+    }
   }
 
   class MockColliderDesc {
@@ -84,18 +139,43 @@ const { mocks } = vi.hoisted(() => {
       desc.shape = shape;
       return desc;
     }
-    static cuboid(hx: number, hy: number) { return MockColliderDesc.of({ kind: "cuboid", hx, hy }); }
-    static ball(radius: number) { return MockColliderDesc.of({ kind: "ball", radius }); }
-    static capsule(halfHeight: number, radius: number) { return MockColliderDesc.of({ kind: "capsule", halfHeight, radius }); }
-    static convexHull() { return MockColliderDesc.of({ kind: "convexHull" }); }
-    setTranslation() { return this; }
-    setRestitution() { return this; }
-    setFriction() { return this; }
-    setDensity() { return this; }
-    setSensor(s: boolean) { this._sensor = s; return this; }
-    setCollisionGroups() { return this; }
-    setActiveEvents() { return this; }
-    setActiveCollisionTypes() { return this; }
+    static cuboid(hx: number, hy: number) {
+      return MockColliderDesc.of({ kind: "cuboid", hx, hy });
+    }
+    static ball(radius: number) {
+      return MockColliderDesc.of({ kind: "ball", radius });
+    }
+    static capsule(halfHeight: number, radius: number) {
+      return MockColliderDesc.of({ kind: "capsule", halfHeight, radius });
+    }
+    static convexHull() {
+      return MockColliderDesc.of({ kind: "convexHull" });
+    }
+    setTranslation() {
+      return this;
+    }
+    setRestitution() {
+      return this;
+    }
+    setFriction() {
+      return this;
+    }
+    setDensity() {
+      return this;
+    }
+    setSensor(s: boolean) {
+      this._sensor = s;
+      return this;
+    }
+    setCollisionGroups() {
+      return this;
+    }
+    setActiveEvents() {
+      return this;
+    }
+    setActiveCollisionTypes() {
+      return this;
+    }
   }
 
   class MockEventQueue {
@@ -121,7 +201,10 @@ const { mocks } = vi.hoisted(() => {
       return body;
     }
 
-    createCollider(desc: MockColliderDesc, parent: MockRigidBody): MockCollider {
+    createCollider(
+      desc: MockColliderDesc,
+      parent: MockRigidBody,
+    ): MockCollider {
       const collider = new MockCollider();
       collider._sensor = desc._sensor;
       collider._shape = desc.shape;
@@ -159,7 +242,15 @@ const { mocks } = vi.hoisted(() => {
   }
 
   return {
-    mocks: { MockWorld, MockRigidBody, MockRigidBodyDesc, MockCollider, MockColliderDesc, MockEventQueue, resetHandles },
+    mocks: {
+      MockWorld,
+      MockRigidBody,
+      MockRigidBodyDesc,
+      MockCollider,
+      MockColliderDesc,
+      MockEventQueue,
+      resetHandles,
+    },
   };
 });
 
@@ -177,7 +268,10 @@ vi.mock("@dimforge/rapier2d", () => ({
 import { Transform, ErrorBoundaryKey } from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { ColliderComponent } from "./ColliderComponent.js";
-import { createPhysicsTestContext, spawnEntityInScene } from "./test-helpers.js";
+import {
+  createPhysicsTestContext,
+  spawnEntityInScene,
+} from "./test-helpers.js";
 import type { CollisionEvent, TriggerEvent } from "./types.js";
 
 describe("ColliderComponent", () => {
@@ -329,7 +423,11 @@ describe("ColliderComponent", () => {
       col.onCollision(() => calls.push("after"));
 
       expect(() =>
-        col._dispatchCollision({ other: entity, otherCollider: col, started: true }),
+        col._dispatchCollision({
+          other: entity,
+          otherCollider: col,
+          started: true,
+        }),
       ).toThrow("boom");
 
       expect(calls).toEqual(["before"]);
@@ -427,7 +525,11 @@ describe("ColliderComponent", () => {
       col.onTrigger(handler);
 
       expect(() =>
-        col._dispatchTrigger({ other: entity, otherCollider: col, entered: true }),
+        col._dispatchTrigger({
+          other: entity,
+          otherCollider: col,
+          entered: true,
+        }),
       ).toThrow("door pad exploded");
 
       const boundary = context.tryResolve(ErrorBoundaryKey)!;
@@ -518,7 +620,9 @@ describe("ColliderComponent", () => {
 
       col.setSensor(true);
 
-      const rapierCollider = physicsWorld.getCollider(col._colliderHandle) as unknown as InstanceType<typeof mocks.MockCollider>;
+      const rapierCollider = physicsWorld.getCollider(
+        col._colliderHandle,
+      ) as unknown as InstanceType<typeof mocks.MockCollider>;
       expect(rapierCollider?.setSensorSpy).toHaveBeenCalledWith(true);
     });
 
@@ -555,7 +659,9 @@ describe("ColliderComponent", () => {
 
       entity.add(col);
 
-      const rapierCollider = physicsWorld.getCollider(col._colliderHandle) as unknown as InstanceType<typeof mocks.MockCollider>;
+      const rapierCollider = physicsWorld.getCollider(
+        col._colliderHandle,
+      ) as unknown as InstanceType<typeof mocks.MockCollider>;
       expect(rapierCollider?.isSensor()).toBe(true);
     });
   });
@@ -819,7 +925,9 @@ describe("dispatch iteration safety", () => {
     const e = scene.spawn("e");
     e.add(new Transform());
     e.add(new RigidBodyComponent({ type: "dynamic" }));
-    const col = e.add(new ColliderComponent({ shape: { type: "box", width: 10, height: 10 } }));
+    const col = e.add(
+      new ColliderComponent({ shape: { type: "box", width: 10, height: 10 } }),
+    );
 
     const seen: string[] = [];
     const unsub = col.onCollision(() => {
