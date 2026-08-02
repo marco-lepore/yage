@@ -1419,5 +1419,23 @@ describe("SceneManager", () => {
       }
       warnSpy.mockRestore();
     });
+
+    it("stays silent for work queued before the teardown landed", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { manager } = setup();
+      const scene = new GameScene("queued");
+
+      // The push is queued on the pending chain and only reaches its work
+      // callback after _destroy() runs — losing it is the expected outcome of
+      // a teardown landing mid-flight, not a caller mistake, so no warning.
+      const pending = manager.push(scene);
+      manager._destroy();
+      await pending;
+
+      expect(scene.enterCalled).toBe(false);
+      expect(manager.all).toEqual([]);
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
   });
 });
