@@ -74,7 +74,7 @@ Methods:
 
 A dynamic body has two positions, and they differ within a frame:
 
-- `entity.get(Transform).position` — the drawn pose. Blended between the last two fixed steps, so it moves smoothly at the display frame rate and is at most one fixed step behind the simulation. Use it for anything visual: camera follow, HUD markers, spawning effects at a body.
+- `entity.get(Transform).worldPosition` — the drawn pose. Blended between the last two fixed steps, so it moves smoothly at the display frame rate and is at most one fixed step behind the simulation. Use it for anything visual: camera follow, HUD markers, spawning effects at a body.
 - `rb.position` / `rb.positionX` / `rb.positionY` / `rb.rotation` — the exact simulated pose, as of the last completed fixed step. Use it when a number must match the simulation: distance thresholds, snapping a body to a grid, saving a checkpoint.
 
 Interpolation runs at the start of `Update`, so the `Transform` a component's `update(dt)` reads is the one that gets drawn that frame. Raycasts, collision events, and other physics queries always report exact poses — they run inside the simulation, not against the `Transform`.

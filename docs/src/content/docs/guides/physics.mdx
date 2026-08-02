@@ -293,7 +293,7 @@ anything visual — camera follow, a health bar pinned above a character, a dust
 puff spawned at a body:
 
 ```typescript
-const drawn = entity.get(Transform).position; // smooth, what the player sees
+const drawn = entity.get(Transform).worldPosition; // smooth, what the player sees
 ```
 
 The rigid body holds the **simulated** pose, as of the last completed physics
