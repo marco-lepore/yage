@@ -174,6 +174,52 @@ if (!blocked) {
 
 Removing just the collider (`entity.remove(ColliderComponent)`) frees the Rapier collider and its internal lookup entries while the sibling body stays alive. Removing the whole entity, or the `RigidBodyComponent`, also removes every attached collider.
 
+## One-Way Platforms
+
+```ts
+platform.add(new ColliderComponent({
+  shape: { type: "box", width: 96, height: 8 },
+  oneWay: {},                               // solid from above, passable from below
+  // oneWay: {
+  //   direction: { x: 0, y: -1 },          // solid-face direction, body-local; default up
+  //   margin: 4,                           // px of overlap that still lands; default 4
+  // }
+}));
+
+riderCollider.dropThrough(0.2);    // this body falls through one-way platforms for 0.2s
+riderCollider.isDroppingThrough;   // boolean, true while the window is open
+```
+
+- A body lands on the face `direction` points at, passes through from every other side, and a body already inside the platform keeps passing until clear — it is never snapped to the surface.
+- `dropThrough(seconds)` is per body: other bodies on the same platform stay supported. Seconds of simulated time (respects pause/timeScale). Wakes a sleeping body. Callable before `entity.add()`.
+- `direction` is in the platform body's local frame and rotates with the body.
+- A body that travels more than the platform-plus-body thickness in one step can cross the platform undetected; give it `ccd: true`. Rapier's CCD sweep honors one-way filtering, including drop-through.
+- `oneWay` round-trips through save/load. No effect on `sensor: true` colliders (dev warning).
+
+## Contact Filters
+
+Decide per pair, per step, whether two colliders collide. `oneWay` is built on this; use it directly for rules `oneWay` can't express:
+
+```ts
+collider.setContactFilter((contact) => {
+  contact.other;                                       // Entity on the other side
+  contact.otherCollider;                               // its ColliderComponent
+  contact.selfX; contact.selfY; contact.selfRotation;  // own collider, px / radians
+  contact.otherX; contact.otherY; contact.otherRotation;
+  contact.selfVelocityX; contact.otherVelocityY;       // body velocities, px/s
+  contact.dt;                                          // current step, seconds
+  return true;                                         // true = solid, false = pass through
+});
+collider.setContactFilter(null);   // remove
+```
+
+- Runs inside the physics step for every candidate pair involving the collider, every step. Keep it cheap; don't create or destroy entities, bodies, or colliders from inside it. The `contact` object is reused across calls — read, don't store.
+- No contact normal or point exists yet. Positions/velocities are from the start of the step, so a body that crossed a surface mid-step still shows which side it came from.
+- When both colliders in a pair have filters, the pair is solid only if both return `true`.
+- A filter that throws is reported (`Inspector.getErrors().callbackErrors`) once per installed filter and the pair stays solid.
+- `setContactFilter` replaces the built-in filter a `oneWay` config installed. Filters are functions and are not serialized: `oneWay` reinstalls its filter on load; custom filters must be re-registered after a restore.
+- Contact pairs only — sensor/trigger pairs are unaffected.
+
 ## CollisionLayers
 
 ```ts

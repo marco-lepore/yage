@@ -13,12 +13,15 @@ import type {
   ErrorBoundary,
 } from "@yagejs/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
+import { createOneWayFilter } from "./oneWay.js";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { PhysicsWorldKey } from "./types.js";
 import type {
   ColliderConfig,
   ColliderShape,
   CollisionEvent,
+  ContactCandidate,
+  ContactFilter,
   TriggerEvent,
 } from "./types.js";
 
@@ -43,16 +46,53 @@ export class ColliderComponent extends Component {
   /** @internal Rapier collider handle, set during onAdd. */
   _colliderHandle = -1;
 
+  /** @internal Active contact filter, read by PhysicsWorld's pair hook. */
+  _contactFilter: ContactFilter | null = null;
+
+  /**
+   * @internal Collider handles of riders whose contact with this one-way
+   * platform has started and not yet ended. While a rider is in here the
+   * platform stays solid for it regardless of the position rule — a deep
+   * first-impact penetration must not flip an established landing back to
+   * passable while the solver is still pushing the rider out. Maintained by
+   * PhysicsWorld from collision start/end events and collider removal;
+   * `null` unless the collider is configured `oneWay`.
+   */
+  _oneWayLanded: Set<number> | null = null;
+
   private readonly rb = this.sibling(RigidBodyComponent);
   private physicsWorld!: PhysicsWorld;
   private errorBoundary: ErrorBoundary | undefined;
   private collisionHandlers: Array<(e: CollisionEvent) => void> = [];
   private triggerHandlers: Array<(e: TriggerEvent) => void> = [];
   private _warnedSensorMismatch = false;
+  /** Simulated-time deadline (PhysicsWorld.elapsed) for drop-through. */
+  private _dropThroughUntil = -1;
+  /** Drop-through seconds requested before the collider existed. */
+  private _pendingDropThrough = 0;
+  /** True once the current filter's failure has been reported. */
+  private _reportedFilterError = false;
+  /** The filter `config.oneWay` installed, to tell it apart from a custom one. */
+  private _oneWayFilter: ContactFilter | null = null;
 
   constructor(config: ColliderConfig) {
     super();
     this.config = config;
+    if (config.oneWay) {
+      this._oneWayLanded = new Set();
+      this._oneWayFilter = createOneWayFilter(this);
+      this._contactFilter = this._oneWayFilter;
+    }
+  }
+
+  /**
+   * @internal True while the collider's active filter is still the one
+   * `config.oneWay` installed — the debug overlay draws one-way visuals
+   * only then, so a custom filter set over the preset isn't shown as
+   * one-way.
+   */
+  get _oneWayFilterActive(): boolean {
+    return this._contactFilter !== null && this._contactFilter === this._oneWayFilter;
   }
 
   onAdd(): void {
@@ -62,12 +102,25 @@ export class ColliderComponent extends Component {
     this.errorBoundary = this.context.tryResolve(ErrorBoundaryKey);
     this.physicsWorld = this.use(PhysicsWorldKey);
 
+    if (this.config.oneWay && this.config.sensor) {
+      devWarn(
+        `ColliderComponent at ${this.entity.name}: oneWay has no effect on a ` +
+          `sensor — contact filters only run for solid contact pairs.`,
+      );
+    }
+
     this._colliderHandle = this.physicsWorld.createCollider(
       this.entity,
       this.rb._bodyHandle,
       this.config,
       this,
     );
+
+    if (this._pendingDropThrough > 0) {
+      this._dropThroughUntil =
+        this.physicsWorld.elapsed + this._pendingDropThrough;
+      this._pendingDropThrough = 0;
+    }
 
     // A component is never effectively enabled during `onAdd` — `onEnable`
     // runs right after, and only for an active entity. Rapier creates a
@@ -84,6 +137,15 @@ export class ColliderComponent extends Component {
    */
   onDisable(): void {
     this.physicsWorld.getCollider(this._colliderHandle)?.setEnabled(false);
+    // A pooled entity keeps its components; a drop-through window from the
+    // previous life must not carry into the next one.
+    this._dropThroughUntil = -1;
+    this._pendingDropThrough = 0;
+    // Landing state must not survive a dormancy either — neither this
+    // platform's remembered riders nor any platform remembering this
+    // collider. Contacts end silently on disable, so clean up here.
+    this._oneWayLanded?.clear();
+    this.physicsWorld._forgetColliderContacts(this._colliderHandle);
   }
 
   onEnable(): void {
@@ -206,6 +268,96 @@ export class ColliderComponent extends Component {
       this.config,
       options,
     );
+  }
+
+  /**
+   * Set (or clear, with `null`) this collider's contact filter — a per-pair
+   * veto that decides each physics step whether a candidate contact with
+   * another collider is solid (`true`) or passes through (`false`). Replaces
+   * the built-in filter a `oneWay` config installed. Callable before the
+   * component is added — the filter is armed at collider creation.
+   *
+   * The filter runs inside the physics step, so no contact normal exists
+   * yet; the `ContactCandidate` exposes the two sides' positions and
+   * velocities instead. The candidate is a single reused instance — read
+   * what you need inside the filter and copy it; a stored reference shows
+   * other pairs' values after the call returns. A filter that throws is
+   * reported through the error boundary once (per installed filter) and
+   * the pair stays solid.
+   *
+   * Filters are functions and are not serialized: after a save/load, a
+   * collider configured with `oneWay` gets its built-in filter back, and a
+   * custom filter must be reinstalled by the game.
+   */
+  setContactFilter(filter: ContactFilter | null): void {
+    this._contactFilter = filter;
+    this._reportedFilterError = false;
+    if (this._colliderHandle === -1) return;
+    this.physicsWorld._setContactFilterEnabled(
+      this._colliderHandle,
+      filter !== null,
+    );
+  }
+
+  /**
+   * Let this body fall through one-way platforms for the next `seconds`
+   * seconds of simulated time — the standard down-jump. Only this body is
+   * affected; other bodies standing on the same platform stay supported.
+   * When the window expires mid-platform, the body keeps falling until it
+   * is clear and lands on the next solid side it reaches from above.
+   *
+   * Callable before the component is added; the window then starts when the
+   * collider is created.
+   */
+  dropThrough(seconds: number): void {
+    if (this._colliderHandle === -1) {
+      this._pendingDropThrough = seconds;
+      return;
+    }
+    this._dropThroughUntil = this.physicsWorld.elapsed + seconds;
+    // A body that has been resting long enough is asleep, and sleeping
+    // pairs are never re-filtered — wake it so the window can take effect.
+    this.physicsWorld.getBody(this.rb._bodyHandle)?.wakeUp();
+  }
+
+  /** True while a `dropThrough` window is active for this collider. */
+  get isDroppingThrough(): boolean {
+    return (
+      this._colliderHandle !== -1 &&
+      this.physicsWorld.elapsed < this._dropThroughUntil
+    );
+  }
+
+  /**
+   * @internal Run the contact filter for a candidate pair.
+   *
+   * Deliberate exception to the report-and-rethrow rule for developer
+   * callbacks: this is called from inside Rapier's WASM step, and a throw
+   * unwinding through WASM mid-step leaves the physics world in an
+   * undefined state. The error is caught, reported through the boundary,
+   * and the pair falls back to solid — the conservative default.
+   *
+   * Reported once per installed filter, not per throw: the filter runs for
+   * every candidate pair every step, and a persistently throwing one would
+   * otherwise log at frame rate and evict everything else from the error
+   * snapshot. `setContactFilter` re-arms the report.
+   */
+  _evaluateContactFilter(contact: ContactCandidate): boolean {
+    const filter = this._contactFilter;
+    if (!filter) return true;
+    try {
+      return filter(contact);
+    } catch (err) {
+      if (this._reportedFilterError) return true;
+      this._reportedFilterError = true;
+      const sceneName = this.entity?.tryScene?.name;
+      this.errorBoundary?.reportLifecycleError(err, {
+        kind: "Contact filter",
+        entity: this.entity?.name,
+        ...(sceneName !== undefined ? { scene: sceneName } : {}),
+      });
+      return true;
+    }
   }
 
   /** Serialize the component into a plain data object. */

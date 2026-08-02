@@ -35,6 +35,7 @@ export default defineConfig({
             "../packages/save",
             "../packages/debug",
             "../packages/effects",
+            "../packages/tools/lab",
           ],
           tsconfig: "./tsconfig.typedoc.json",
           typeDoc: {
@@ -168,6 +169,10 @@ export default defineConfig({
             { label: "Steering", slug: "addons/steering" },
             { label: "Synth", slug: "addons/synth" },
           ],
+        },
+        {
+          label: "Tooling",
+          items: [{ label: "Scenario Lab", slug: "tooling/scenario-lab" }],
         },
         {
           label: "Reference",

@@ -1,46 +1,47 @@
 #!/usr/bin/env node
 /**
- * Corrects the addon versions and engine peer ranges that `changeset version`
- * produces, so addons follow YAGE's pre-1.0 addon policy instead of changesets'
- * defaults. Intended to run right after `changeset version` in the
+ * Corrects the versions and engine peer ranges that `changeset version`
+ * produces for independently versioned packages, so they follow YAGE's pre-1.0
+ * policy instead of changesets' defaults. Covers `packages/addons/*` and
+ * `packages/tools/*`. Intended to run right after `changeset version` in the
  * `version-packages` script.
  *
- * Three corrections, all a consequence of the same changesets behavior: addons
- * declare engine packages as `peerDependencies` with a capped range
+ * Three corrections, all a consequence of the same changesets behavior: these
+ * packages declare engine packages as `peerDependencies` with a capped range
  * (e.g. `>=0.9.0 <0.10.0`), and when an engine minor pushes that peer out of
- * range changesets force-bumps the addon.
+ * range changesets force-bumps the dependent.
  *
  *   1. Version: changesets bumps an out-of-range peer-dependent by `major`.
  *      On a pre-1.0 package `semver.inc("0.3.0", "major")` is `1.0.0`, so every
- *      addon jumps to 1.0.0 regardless of its current 0.x version. In pre-1.0
- *      semver a breaking change is a *minor* bump, so we clamp that back to
- *      `0.(minor+1).0` — and rewrite the generated CHANGELOG headings (the
- *      addon's own, and the "Updated dependencies" lines in consumers) so no
- *      release note cites a version that will never be published.
+ *      one of them jumps to 1.0.0 regardless of its current 0.x version. In
+ *      pre-1.0 semver a breaking change is a *minor* bump, so we clamp that
+ *      back to `0.(minor+1).0` — and rewrite the generated CHANGELOG headings
+ *      (the package's own, and the "Updated dependencies" lines in consumers)
+ *      so no release note cites a version that will never be published.
  *      (See packages/addons/AGENTS.md — "never propose 1.0.0".)
  *
  *   2. Peer range: changesets rewrites the capped `>=0.9.0 <0.10.0` to an
- *      open-ended `>=0.10.0`, dropping the upper bound the addon relies on
+ *      open-ended `>=0.10.0`, dropping the upper bound the package relies on
  *      (each engine minor is breaking pre-1.0). We restore the cap, re-flooring
  *      to the engine's new version: `>=0.10.0 <0.11.0`.
  *
  *   3. Engine dev-dependency floors must stay open (`>=<engine>`) per policy so
  *      the current workspace and the next engine minor both resolve. We
- *      normalize them, in case an addon authored a capped or caret range that
+ *      normalize them, in case a package authored a capped or caret range that
  *      changesets carried forward.
  *
- * Only addons whose version actually changed this release are touched, so a
+ * Only packages whose version actually changed this release are touched, so a
  * no-op release stays a no-op.
  *
- * The "previous" version of each addon is read from a git ref (default `HEAD`,
- * which during `changeset version` is the pre-bump commit). Override with
- * ADDON_CLAMP_BASE_REF when running against an already-committed bump. The ref
+ * The "previous" version of each package is read from a git ref (default
+ * `HEAD`, which during `changeset version` is the pre-bump commit). Override
+ * with CLAMP_BASE_REF when running against an already-committed bump. The ref
  * must resolve — an unresolvable ref aborts the run rather than silently
- * skipping every addon (which would publish unclamped 1.0.0 versions).
+ * skipping every package (which would publish unclamped 1.0.0 versions).
  *
  * Usage:
- *   node scripts/clamp-addon-versions.mjs
- *   ADDON_CLAMP_BASE_REF=HEAD^ node scripts/clamp-addon-versions.mjs
+ *   node scripts/clamp-package-versions.mjs
+ *   CLAMP_BASE_REF=HEAD^ node scripts/clamp-package-versions.mjs
  *
  * Idempotent — running it twice produces no diff the second time.
  */
@@ -51,10 +52,12 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
-const baseRef = process.env.ADDON_CLAMP_BASE_REF || "HEAD";
+const baseRef = process.env.CLAMP_BASE_REF || "HEAD";
 
 const ENGINE_SCOPE = "@yagejs/";
 const DEP_SECTIONS = ["dependencies", "devDependencies", "peerDependencies"];
+/** Directories under packages/ whose packages are versioned independently. */
+const GROUPS = ["addons", "tools"];
 
 // name -> current workspace version, for every engine package under packages/*.
 const engineVersions = new Map();
@@ -68,19 +71,15 @@ for (const entry of readdirSync(join(repoRoot, "packages"))) {
 
 assertBaseRefResolves(baseRef);
 
-const addonsRoot = join(repoRoot, "packages", "addons");
-const clamped = new Map(); // addon name -> { generated, final }
+const clamped = new Map(); // package name -> { generated, final }
 
-for (const entry of readdirSync(addonsRoot)) {
-  const pkgPath = join(addonsRoot, entry, "package.json");
-  if (!existsSync(pkgPath)) continue;
-
-  const relPath = `packages/addons/${entry}/package.json`;
+for (const { dir, relPath } of independentPackages()) {
+  const pkgPath = join(dir, "package.json");
   const pkg = readJson(pkgPath);
   const generated = pkg.version; // what changeset version wrote
   const previous = versionAtRef(baseRef, relPath);
 
-  // Untouched this release (or brand-new addon) — leave it alone.
+  // Untouched this release (or brand-new package) — leave it alone.
   if (previous === null || generated === previous) continue;
 
   // 1. Clamp an unwanted pre-1.0 -> 1.x graduation back to a 0.x minor.
@@ -107,7 +106,7 @@ for (const entry of readdirSync(addonsRoot)) {
   }
 
   if (finalVersion !== generated) {
-    rewriteChangelogHeading(join(addonsRoot, entry), generated, finalVersion);
+    rewriteChangelogHeading(dir, generated, finalVersion);
   }
   pkg.version = finalVersion;
   writeJson(pkgPath, pkg);
@@ -120,9 +119,9 @@ for (const entry of readdirSync(addonsRoot)) {
   console.log(`  ${pkg.name}: ${note}`);
 }
 
-// Re-point every workspace dependent at the clamped addon versions — changesets
-// wrote e.g. "^1.0.0" into examples/e2e when it graduated the addons — and fix
-// the version each dependent's generated changelog cites.
+// Re-point every workspace dependent at the clamped versions — changesets
+// wrote e.g. "^1.0.0" into examples/e2e when it graduated them — and fix the
+// version each dependent's generated changelog cites.
 if (clamped.size > 0) {
   for (const pkgPath of workspacePackageJsons()) {
     const pkg = readJson(pkgPath);
@@ -144,7 +143,7 @@ if (clamped.size > 0) {
     }
     if (touched) {
       writeJson(pkgPath, pkg);
-      console.log(`  re-pinned addon deps in ${rel(pkgPath)}`);
+      console.log(`  re-pinned deps in ${rel(pkgPath)}`);
     }
     rewriteDependencyChangelog(dirname(pkgPath));
   }
@@ -152,8 +151,8 @@ if (clamped.size > 0) {
 
 console.log(
   clamped.size === 0
-    ? "No addon versions needed clamping."
-    : `Clamped ${clamped.size} addon(s) to the pre-1.0 policy.`,
+    ? "No versions needed clamping."
+    : `Clamped ${clamped.size} package(s) to the pre-1.0 policy.`,
 );
 
 // --- helpers ---------------------------------------------------------------
@@ -162,15 +161,15 @@ function major(version) {
   return Number(version.split(".")[0]);
 }
 
-// Next version an addon must exclude to stay pinned to one engine release line.
-// Pre-1.0 the breaking bump is the next minor; from 1.x it's the next major.
+// Next version a package must exclude to stay pinned to one engine release
+// line. Pre-1.0 the breaking bump is the next minor; from 1.x it's the major.
 function nextBreaking(version) {
   const [maj, min] = version.split(".").map(Number);
   return maj === 0 ? `0.${min + 1}.0` : `${maj + 1}.0.0`;
 }
 
-// A bad base ref must abort, not be mistaken for "every addon is new" — that
-// would skip clamping entirely and publish 1.0.0 addons with uncapped peers.
+// A bad base ref must abort, not be mistaken for "every package is new" — that
+// would skip clamping entirely and publish 1.0.0 versions with uncapped peers.
 function assertBaseRefResolves(ref) {
   try {
     execFileSync(
@@ -184,7 +183,7 @@ function assertBaseRefResolves(ref) {
   } catch {
     throw new Error(
       `Base ref "${ref}" does not resolve — aborting so a bad ref can't ` +
-        `silently skip clamping. Set ADDON_CLAMP_BASE_REF to a valid commit.`,
+        `silently skip clamping. Set CLAMP_BASE_REF to a valid commit.`,
     );
   }
 }
@@ -198,14 +197,14 @@ function versionAtRef(ref, relPath) {
       stdio: ["ignore", "pipe", "ignore"],
     });
   } catch {
-    return null; // file absent at this (already-validated) ref — a new addon
+    return null; // file absent at this (already-validated) ref — a new package
   }
   // Malformed JSON is a real problem — let it throw rather than skip clamping.
   return JSON.parse(raw).version ?? null;
 }
 
-function rewriteChangelogHeading(addonDir, fromVersion, toVersion) {
-  const changelogPath = join(addonDir, "CHANGELOG.md");
+function rewriteChangelogHeading(dir, fromVersion, toVersion) {
+  const changelogPath = join(dir, "CHANGELOG.md");
   if (!existsSync(changelogPath)) return;
   const src = readFileSync(changelogPath, "utf8");
   const heading = `## ${fromVersion}`;
@@ -213,10 +212,10 @@ function rewriteChangelogHeading(addonDir, fromVersion, toVersion) {
   writeFileSync(changelogPath, src.replace(heading, `## ${toVersion}`));
 }
 
-// Rewrite "Updated dependencies" lines that still cite a pre-clamp addon
-// version (e.g. "@yagejs-addons/dialogue@1.0.0" -> "@0.4.0"). The clamped-away
-// version only appears in the entry changesets just generated, so a targeted
-// string replace is safe.
+// Rewrite "Updated dependencies" lines that still cite a pre-clamp version
+// (e.g. "@yagejs-addons/dialogue@1.0.0" -> "@0.4.0"). The clamped-away version
+// only appears in the entry changesets just generated, so a targeted string
+// replace is safe.
 function rewriteDependencyChangelog(dir) {
   const changelogPath = join(dir, "CHANGELOG.md");
   if (!existsSync(changelogPath)) return;
@@ -236,9 +235,28 @@ function rewriteDependencyChangelog(dir) {
   }
 }
 
+/**
+ * The packages this script governs: everything under the groups that version
+ * independently. Returns `{ dir, relPath }`, where `relPath` is what `git show`
+ * needs to read the same file at the base ref.
+ */
+function independentPackages() {
+  const found = [];
+  for (const group of GROUPS) {
+    const groupRoot = join(repoRoot, "packages", group);
+    if (!existsSync(groupRoot)) continue;
+    for (const entry of readdirSync(groupRoot)) {
+      const dir = join(groupRoot, entry);
+      if (!existsSync(join(dir, "package.json"))) continue;
+      found.push({ dir, relPath: `packages/${group}/${entry}/package.json` });
+    }
+  }
+  return found;
+}
+
 function workspacePackageJsons() {
   const paths = [];
-  for (const dir of ["packages", "packages/addons"]) {
+  for (const dir of ["packages", ...GROUPS.map((g) => `packages/${g}`)]) {
     for (const entry of readdirSync(join(repoRoot, dir))) {
       const p = join(repoRoot, dir, entry, "package.json");
       if (existsSync(p)) paths.push(p);

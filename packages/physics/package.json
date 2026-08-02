@@ -60,8 +60,11 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@dimforge/rapier2d": "^0.19.0",
     "@yagejs/core": "^0.10.0",
-    "@yagejs/debug": "^0.10.0",
-    "@dimforge/rapier2d": "^0.19.0"
+    "@yagejs/debug": "^0.10.0"
+  },
+  "devDependencies": {
+    "@dimforge/rapier2d-compat": "^0.19.0"
   }
 }

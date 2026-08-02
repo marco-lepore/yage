@@ -39,6 +39,7 @@ class PlayerController extends Component {
   private readonly graphics = this.sibling(GraphicsComponent);
   private readonly transform = this.sibling(Transform);
   private readonly rb = this.sibling(RigidBodyComponent);
+  private readonly collider = this.sibling(ColliderComponent);
 
   constructor(camera: CameraEntity) {
     super();
@@ -91,7 +92,14 @@ class PlayerController extends Component {
       PlayerController.GROUND_RAY_DIST,
       { filterGroups },
     );
-    const onGround = hit !== null;
+    // Raycasts don't consult contact filters, so during a drop-through the
+    // ray still reports the one-way platform being fallen through. It isn't
+    // supporting the player, so it must not restore grounded state (and
+    // with it the ability to jump mid-drop). Solid ground still counts.
+    const passingThroughHit =
+      this.collider.isDroppingThrough &&
+      hit?.entity.tryGet(ColliderComponent)?.config.oneWay !== undefined;
+    const onGround = hit !== null && !passingThroughHit;
 
     if (onGround) {
       this.grounded = true;
@@ -105,9 +113,20 @@ class PlayerController extends Component {
 
     // -- Platform carrying: inherit horizontal velocity from moving platform --
     let platformVelX = 0;
-    if (hit) {
+    if (onGround && hit) {
       const mover = hit.entity.tryGet(MovingPlatform);
       if (mover) platformVelX = mover.velocity.x;
+    }
+
+    // -- Drop through one-way platforms --
+    if (
+      this.input.isJustPressed("down") &&
+      onGround &&
+      hit?.entity.tryGet(ColliderComponent)?.config.oneWay
+    ) {
+      this.collider.dropThrough(0.25);
+      this.grounded = false;
+      this.coyoteTimer = 0;
     }
 
     // -- Horizontal movement --

@@ -29,6 +29,7 @@ import { PlayerEntity } from "./player.js";
 import {
   PlatformEntity,
   MovingPlatformEntity,
+  OneWayPlatformEntity,
   CoinEntity,
   DeathZoneEntity,
   GoalEntity,
@@ -154,6 +155,12 @@ export class PlatformerScene extends Scene {
     this.spawn(CoinEntity, { x: 200, y: 680 });
     this.spawn(CoinEntity, { x: 400, y: 650 });
 
+    // One-way ledges above the start ground: jump up through them from
+    // below, press down (S / ArrowDown) to drop back through.
+    this.spawn(OneWayPlatformEntity, { x: 250, y: 620, w: 140 });
+    this.spawn(OneWayPlatformEntity, { x: 250, y: 540, w: 140 });
+    this.spawn(CoinEntity, { x: 250, y: 510 });
+
     // ============================================================
     // Section 2 (500–900): Gap with stepping stones + 2 coins
     // ============================================================
@@ -178,13 +185,15 @@ export class PlatformerScene extends Scene {
       period: 3,
     });
 
-    // Vertical mover
+    // Vertical mover — one-way, so it can be boarded from below as it
+    // rises and dropped through with down.
     this.spawn(MovingPlatformEntity, {
       start: new Vec2(1350, 650),
       end: new Vec2(1350, 500),
       w: 100,
       h: 20,
       period: 2.5,
+      oneWay: true,
     });
 
     this.spawn(CoinEntity, { x: 1200, y: 610 });

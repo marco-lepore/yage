@@ -12,6 +12,8 @@ import type {
   RaycastHit,
 } from "./types.js";
 import type { ColliderComponent } from "./ColliderComponent.js";
+import { MutableContactCandidate } from "./ContactCandidate.js";
+import type { PreStepColliderState } from "./ContactCandidate.js";
 
 const DEFAULT_PIXELS_PER_METER = 50;
 const DEFAULT_GRAVITY_X = 0;
@@ -76,6 +78,18 @@ export class PhysicsWorld {
     { layers: number; mask: number }
   >();
   private readonly _warnedAsymmetricPairs = new Set<string>();
+  private _elapsed = 0;
+  /** Handles of colliders with an active contact filter. */
+  private readonly _contactFiltered = new Set<number>();
+  /** Collider handle → parent body handle, for pre-step velocity capture. */
+  private readonly _colliderBody = new Map<number, number>();
+  /** Pre-step snapshot per collider; see PreStepColliderState. */
+  private readonly _preStepStates = new Map<number, PreStepColliderState>();
+  private readonly _candidate = new MutableContactCandidate();
+  private readonly _hooks: RAPIER.PhysicsHooks = {
+    filterContactPair: (c1, c2) => this._filterContactPair(c1, c2),
+    filterIntersectionPair: () => true,
+  };
 
   constructor(config?: PhysicsConfig) {
     this.pixelsPerMeter = config?.pixelsPerMeter ?? DEFAULT_PIXELS_PER_METER;
@@ -98,10 +112,117 @@ export class PhysicsWorld {
     return meters * this.pixelsPerMeter;
   }
 
+  /**
+   * Total simulated time in seconds — the sum of every step's dt. Tracks
+   * the simulation, not the wall clock, so it respects pause and timeScale.
+   */
+  get elapsed(): number {
+    return this._elapsed;
+  }
+
   /** Step the physics simulation. dt is in seconds. */
   step(dt: number): void {
     this.world.timestep = dt;
-    this.world.step(this.eventQueue);
+    // Hooks are passed only while a contact filter exists: Rapier consults
+    // them per candidate pair, and a world with no filters should step
+    // exactly as before the feature.
+    const useHooks = this._contactFiltered.size > 0;
+    if (useHooks) {
+      this._capturePreStepState();
+    }
+    this.world.step(this.eventQueue, useHooks ? this._hooks : undefined);
+    // Advanced after the step: to a contact filter running inside it,
+    // `elapsed` is the time at the start of the step — matching the
+    // pre-step position snapshot, and giving `dropThrough(seconds)` its
+    // full window (a one-timestep request covers exactly one step).
+    this._elapsed += dt;
+  }
+
+  /**
+   * Snapshot every collider's position/rotation and its body's velocity
+   * into plain objects. Contact filters run while the WASM world is
+   * mutably borrowed — a Rapier wrapper call from inside a filter throws
+   * an aliasing error — so this snapshot is the only state they can read.
+   * Entries are allocated with the collider and mutated in place here.
+   */
+  private _capturePreStepState(): void {
+    for (const [handle, state] of this._preStepStates) {
+      const collider = this.getCollider(handle);
+      if (!collider) continue;
+      const t = collider.translation();
+      state.x = this.toPixels(t.x);
+      state.y = this.toPixels(t.y);
+      state.rotation = collider.rotation();
+      const bodyHandle = this._colliderBody.get(handle);
+      const body =
+        bodyHandle !== undefined ? this.getBody(bodyHandle) : undefined;
+      if (body) {
+        const v = body.linvel();
+        state.vx = this.toPixels(v.x);
+        state.vy = this.toPixels(v.y);
+      } else {
+        state.vx = 0;
+        state.vy = 0;
+      }
+    }
+  }
+
+  /**
+   * Contact-pair hook: a pair is solid only if every registered contact
+   * filter on its two colliders says so. Runs inside the WASM step, so
+   * filter exceptions must not unwind through here — the component's
+   * `_evaluateContactFilter` catches, reports, and falls back to solid.
+   */
+  private _filterContactPair(
+    collider1: number,
+    collider2: number,
+  ): RAPIER.SolverFlags | null {
+    const solid =
+      this._filterSide(collider1, collider2) &&
+      this._filterSide(collider2, collider1);
+    return solid ? RAPIER.SolverFlags.COMPUTE_IMPULSE : null;
+  }
+
+  /** Evaluate one collider's filter against the other side of the pair. */
+  private _filterSide(selfHandle: number, otherHandle: number): boolean {
+    const selfComponent = this._colliderComponents.get(selfHandle);
+    if (!selfComponent?._contactFilter) return true;
+
+    const otherComponent = this._colliderComponents.get(otherHandle);
+    const otherEntity = this.colliderMap.get(otherHandle);
+    const selfState = this._preStepStates.get(selfHandle);
+    const otherState = this._preStepStates.get(otherHandle);
+    if (!otherComponent || !otherEntity || !selfState || !otherState) {
+      return true;
+    }
+
+    this._candidate._set(
+      selfState,
+      otherState,
+      otherEntity,
+      otherComponent,
+      this.world.timestep,
+    );
+    return selfComponent._evaluateContactFilter(this._candidate);
+  }
+
+  /**
+   * @internal Toggle contact filtering for a live collider — flips Rapier's
+   * hook flag and the set that decides whether `step` passes hooks at all.
+   */
+  _setContactFilterEnabled(handle: number, enabled: boolean): void {
+    const collider = this.getCollider(handle);
+    if (!collider) return;
+    collider.setActiveHooks(
+      enabled
+        ? RAPIER.ActiveHooks.FILTER_CONTACT_PAIRS
+        : RAPIER.ActiveHooks.NONE,
+    );
+    if (enabled) {
+      this._contactFiltered.add(handle);
+    } else {
+      this._contactFiltered.delete(handle);
+    }
   }
 
   /**
@@ -124,6 +245,18 @@ export class PhysicsWorld {
       const entity1 = this.colliderMap.get(handle1);
       const entity2 = this.colliderMap.get(handle2);
       if (!comp1 || !comp2 || !entity1 || !entity2) return;
+
+      // A one-way platform stays solid for a rider whose contact it holds,
+      // whatever the position rule says — the landed set is kept from these
+      // events so a deep first-impact penetration can't flip the pair back
+      // to passable while the solver is still pushing the rider out.
+      if (started) {
+        comp1._oneWayLanded?.add(handle2);
+        comp2._oneWayLanded?.add(handle1);
+      } else {
+        comp1._oneWayLanded?.delete(handle2);
+        comp2._oneWayLanded?.delete(handle1);
+      }
 
       const needsContact =
         started && (!comp1.config.sensor || !comp2.config.sensor);
@@ -339,7 +472,24 @@ export class PhysicsWorld {
     desc.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
     desc.setActiveCollisionTypes(RAPIER.ActiveCollisionTypes.ALL);
 
+    // A filter installed before the collider exists (the oneWay preset, or a
+    // pre-add setContactFilter) is armed at creation.
+    if (component._contactFilter) {
+      desc.setActiveHooks(RAPIER.ActiveHooks.FILTER_CONTACT_PAIRS);
+    }
+
     const collider = this.world.createCollider(desc, body);
+    if (component._contactFilter) {
+      this._contactFiltered.add(collider.handle);
+    }
+    this._colliderBody.set(collider.handle, bodyHandle);
+    this._preStepStates.set(collider.handle, {
+      x: 0,
+      y: 0,
+      rotation: 0,
+      vx: 0,
+      vy: 0,
+    });
     this.colliderMap.set(collider.handle, entity);
     this._colliderComponents.set(collider.handle, component);
     this._layerInfo.set(collider.handle, { layers: membership, mask: filter });
@@ -419,9 +569,13 @@ export class PhysicsWorld {
     const numColliders = body.numColliders();
     for (let i = 0; i < numColliders; i++) {
       const collider = body.collider(i);
+      this._forgetColliderContacts(collider.handle);
       this.colliderMap.delete(collider.handle);
       this._colliderComponents.delete(collider.handle);
       this._layerInfo.delete(collider.handle);
+      this._contactFiltered.delete(collider.handle);
+      this._colliderBody.delete(collider.handle);
+      this._preStepStates.delete(collider.handle);
     }
 
     this.world.removeRigidBody(body);
@@ -437,10 +591,26 @@ export class PhysicsWorld {
     const collider = this.world.getCollider(handle);
     if (!collider) return;
 
+    this._forgetColliderContacts(handle);
     this.world.removeCollider(collider, true);
     this.colliderMap.delete(handle);
     this._colliderComponents.delete(handle);
     this._layerInfo.delete(handle);
+    this._contactFiltered.delete(handle);
+    this._colliderBody.delete(handle);
+    this._preStepStates.delete(handle);
+  }
+
+  /**
+   * @internal Drop any landed-rider state naming this collider. Rapier
+   * reuses collider handles, so a handle leaving the simulation (removed
+   * or disabled) must not stay remembered as "landed" on a one-way
+   * platform — the next collider with the same handle would inherit it.
+   */
+  _forgetColliderContacts(handle: number): void {
+    for (const filteredHandle of this._contactFiltered) {
+      this._colliderComponents.get(filteredHandle)?._oneWayLanded?.delete(handle);
+    }
   }
 
   /**
@@ -789,6 +959,9 @@ export class PhysicsWorld {
     this._colliderComponents.clear();
     this._layerInfo.clear();
     this._warnedAsymmetricPairs.clear();
+    this._contactFiltered.clear();
+    this._colliderBody.clear();
+    this._preStepStates.clear();
   }
 
   // ---- Internal helpers ----
