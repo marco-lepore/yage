@@ -42,7 +42,10 @@ export class MovingPlatform extends Component {
     this.prevPos = new Vec2(startPos.x, startPos.y);
   }
 
-  update(dt: number): void {
+  // Kinematic movement belongs in fixedUpdate: the body reaches the written
+  // pose on the next physics step and the platform is drawn interpolated, in
+  // step with the player riding it.
+  fixedUpdate(dt: number): void {
     this.elapsed += dt;
     const t = triangleWave(this.elapsed / this.period);
     const pos = this.startPos.lerp(this.endPos, t);

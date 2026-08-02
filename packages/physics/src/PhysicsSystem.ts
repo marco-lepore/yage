@@ -78,7 +78,7 @@ export class PhysicsSystem extends System {
     ctx.world.processCollisionEvents();
   }
 
-  /** Pre-step: store prev state and sync kinematic bodies. */
+  /** Pre-step: store prev state and drive kinematic bodies to their target. */
   private preStep(scene: Scene, world: PhysicsWorld): void {
     for (const entity of scene.getEntities()) {
       if (entity.isDestroyed || !entity.isActive) continue;
@@ -92,19 +92,25 @@ export class PhysicsSystem extends System {
       rb._prevPosition = rb._currPosition;
       rb._prevRotation = rb._currRotation;
 
-      // Sync Transform → Rapier for kinematic bodies
+      // Kinematic bodies move toward the captured target, not toward the
+      // Transform itself — the Transform usually holds the interpolated
+      // (trailing) pose at this point in the frame. The capture here keeps
+      // the target fresh on catch-up frames that run several steps between
+      // interpolation passes; without it, later steps in the same frame
+      // would re-drive an already-reached target and the pending write
+      // would land as one doubled step.
       if (body.isKinematic()) {
-        const transform = entity.get(Transform);
+        rb._capturePendingTarget();
         body.setNextKinematicTranslation({
-          x: world.toMeters(transform.worldPosition.x),
-          y: world.toMeters(transform.worldPosition.y),
+          x: world.toMeters(rb._kinematicTargetPosition.x),
+          y: world.toMeters(rb._kinematicTargetPosition.y),
         });
-        body.setNextKinematicRotation(transform.worldRotation);
+        body.setNextKinematicRotation(rb._kinematicTargetRotation);
       }
     }
   }
 
-  /** Post-step: sync Rapier state back to transforms for dynamic bodies. */
+  /** Post-step: sync Rapier state back for dynamic and kinematic bodies. */
   private postStep(scene: Scene, world: PhysicsWorld): void {
     for (const entity of scene.getEntities()) {
       if (entity.isDestroyed || !entity.isActive) continue;
@@ -112,21 +118,41 @@ export class PhysicsSystem extends System {
       if (!rb || rb._bodyHandle === -1) continue;
 
       const body = world.getBody(rb._bodyHandle);
-      if (!body || !body.isDynamic()) continue;
+      if (!body) continue;
+      const isDynamic = body.isDynamic();
+      if (!isDynamic && !body.isKinematic()) continue;
 
       const translation = body.translation();
-      const rotation = body.rotation();
       rb._currPosition = new Vec2(
         world.toPixels(translation.x),
         world.toPixels(translation.y),
       );
-      rb._currRotation = rotation;
+      rb._currRotation = body.rotation();
 
-      // Update Transform — set world-space values
       const transform = entity.get(Transform);
-      transform.worldPosition = rb._currPosition;
-      if (rb.syncRotation) {
-        transform.worldRotation = rb._currRotation;
+      if (isDynamic) {
+        // Update Transform — set world-space values
+        transform.worldPosition = rb._currPosition;
+        if (rb.syncRotation) {
+          transform.worldRotation = rb._currRotation;
+        }
+      } else {
+        // Kinematic: the body reached its target this step. Put that pose
+        // back into the Transform so a fixedUpdate author that accumulates
+        // (`transform.translate(...)`) builds on its own last write rather
+        // than on the interpolated pose the last lerp left behind. A
+        // Transform the game has written since that lerp is a target the
+        // capture in PhysicsInterpolationSystem hasn't consumed yet — leave
+        // it alone. The last-written pose moves with the restore so the
+        // restored value doesn't itself read as a pending game write.
+        if (!rb._hasPendingTargetPosition()) {
+          transform.worldPosition = rb._currPosition;
+          rb._lastWrittenPosition = rb._currPosition;
+        }
+        if (rb.syncRotation && !rb._hasPendingTargetRotation()) {
+          transform.worldRotation = rb._currRotation;
+          rb._lastWrittenRotation = rb._currRotation;
+        }
       }
     }
   }

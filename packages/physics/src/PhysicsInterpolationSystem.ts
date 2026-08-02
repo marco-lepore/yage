@@ -3,6 +3,7 @@ import {
   Phase,
   Transform,
   GameLoopKey,
+  MathUtils,
   SceneTimeKey,
 } from "@yagejs/core";
 import type { GameLoop } from "@yagejs/core";
@@ -16,8 +17,14 @@ import type { PhysicsWorldManager } from "./PhysicsWorldManager.js";
  *
  * Runs in Update at priority -100 — ahead of particles (0), processes (500)
  * and component updates (1000) — so game logic reads the same pose that is
- * drawn this frame. Only dynamic bodies are interpolated; kinematic and static
- * bodies are user-controlled.
+ * drawn this frame. Dynamic and kinematic bodies are interpolated; static
+ * bodies are skipped.
+ *
+ * For kinematic bodies the Transform is also the input channel: before the
+ * lerp overwrites it, any pose the game wrote there is captured as the
+ * body's next step target. The capture compares against the pose physics
+ * last wrote, so on frames where nothing else touched the Transform the
+ * lerp's own (trailing) output is not fed back as a target.
  *
  * Alpha combines the scene's own sub-accumulator, holding scene time no step
  * has simulated yet, with the game loop's leftover frame time converted to
@@ -60,16 +67,29 @@ export class PhysicsInterpolationSystem extends System {
       for (const entity of scene.getEntities()) {
         if (entity.isDestroyed || !entity.isActive) continue;
         const rb = entity.tryGet(RigidBodyComponent);
-        if (!rb || rb._bodyHandle === -1 || rb.type !== "dynamic") continue;
+        if (!rb || rb._bodyHandle === -1 || rb.type === "static") continue;
 
         const transform = entity.get(Transform);
-        transform.worldPosition = rb._prevPosition.lerp(
-          rb._currPosition,
-          alpha,
-        );
+        const kinematic = rb.type === "kinematic";
+
+        if (kinematic) {
+          rb._capturePendingTarget();
+        }
+
+        const position = rb._prevPosition.lerp(rb._currPosition, alpha);
+        transform.worldPosition = position;
+        if (kinematic) rb._lastWrittenPosition = position;
         if (rb.syncRotation) {
-          transform.worldRotation =
-            rb._prevRotation + (rb._currRotation - rb._prevRotation) * alpha;
+          // Shortest arc: Rapier reports rotations normalized to (-π, π], so
+          // a spinning body crossing the boundary would otherwise draw a
+          // full-turn sweep in the wrong direction for one step.
+          const rotation = MathUtils.lerpAngle(
+            rb._prevRotation,
+            rb._currRotation,
+            alpha,
+          );
+          transform.worldRotation = rotation;
+          if (kinematic) rb._lastWrittenRotation = rotation;
         }
       }
     }

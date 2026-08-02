@@ -469,6 +469,8 @@ describe("Integration Tests", () => {
     });
     const system = new PhysicsSystem();
     system._setContext(context);
+    const interpSystem = new PhysicsInterpolationSystem();
+    interpSystem._setContext(context);
 
     const entity = spawnEntityInScene(scene, "platform");
     const transform = entity.add(
@@ -481,8 +483,9 @@ describe("Integration Tests", () => {
     ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
     body._bodyType = "kinematic";
 
-    // Move transform
+    // Move transform; the interpolation pass captures it as the step target.
     transform.setPosition(200, 300);
+    interpSystem.update(0);
 
     system.update(16.67);
 
@@ -591,6 +594,8 @@ describe("Integration Tests", () => {
     });
     const system = new PhysicsSystem();
     system._setContext(context);
+    const interpSystem = new PhysicsInterpolationSystem();
+    interpSystem._setContext(context);
 
     // Dynamic ball
     const ball = spawnEntityInScene(scene, "ball");
@@ -626,8 +631,9 @@ describe("Integration Tests", () => {
     ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
     platBody._bodyType = "kinematic";
 
-    // Move platform transform
+    // Move platform transform; the interpolation pass captures the target
     platTransform.setPosition(250, 310);
+    interpSystem.update(0);
 
     // Move ball in physics
     const ballBody = physicsWorld.getBody(

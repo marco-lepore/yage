@@ -249,7 +249,9 @@ class MovingSpike extends Component {
     return spike;
   }
 
-  update(dt: number) {
+  // Kinematic movement belongs in fixedUpdate: the body reaches the written
+  // pose on the next physics step and the spike is drawn interpolated.
+  fixedUpdate(dt: number) {
     if (this.period <= 0) return;
     this.elapsed += dt;
     const frac = (this.elapsed / this.period) % 1;

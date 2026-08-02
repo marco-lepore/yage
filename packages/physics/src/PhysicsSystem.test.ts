@@ -307,7 +307,7 @@ describe("PhysicsSystem", () => {
       expect(rb._currRotation).toBeCloseTo(0.5);
     });
 
-    it("syncs Transform → Rapier for kinematic bodies", async () => {
+    it("drives kinematic bodies from the captured target, not the Transform", async () => {
       const { scene, physicsWorld, context } = await createPhysicsTestContext({
         pixelsPerMeter: 50,
       });
@@ -325,7 +325,13 @@ describe("PhysicsSystem", () => {
       ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
       body._bodyType = "kinematic";
 
-      transform.setPosition(200, 300);
+      // The Transform holds the interpolated pose at step time (tracked by
+      // the last-written fields); only the captured target may drive the
+      // body.
+      transform.setPosition(999, 999);
+      rb._lastWrittenPosition = new Vec2(999, 999);
+      rb._kinematicTargetPosition = new Vec2(200, 300);
+      rb._kinematicTargetRotation = 0.5;
 
       system.update(16.67);
 
@@ -333,6 +339,65 @@ describe("PhysicsSystem", () => {
         x: 4, // 200/50
         y: 6, // 300/50
       });
+      expect(body.setNextKinematicRotationSpy).toHaveBeenCalledWith(0.5);
+    });
+
+    it("syncs kinematic curr from the body pose after the step", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext({
+        pixelsPerMeter: 50,
+      });
+      const system = new PhysicsSystem();
+      system._setContext(context);
+
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform({ position: new Vec2(100, 100) }));
+      const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
+
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      body._bodyType = "kinematic";
+
+      rb._kinematicTargetPosition = new Vec2(150, 200);
+
+      system.update(16.67);
+
+      // The mock adopts the queued pose immediately, so postStep reads it.
+      expect(rb._currPosition.x).toBeCloseTo(150);
+      expect(rb._currPosition.y).toBeCloseTo(200);
+    });
+
+    it("restores the reached pose into an untouched kinematic Transform, but not over a pending write", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext({
+        pixelsPerMeter: 50,
+      });
+      const system = new PhysicsSystem();
+      system._setContext(context);
+
+      const entity = spawnEntityInScene(scene, "test");
+      const transform = entity.add(
+        new Transform({ position: new Vec2(100, 100) }),
+      );
+      const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
+
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      body._bodyType = "kinematic";
+
+      // Untouched Transform (still holds what physics last wrote): the
+      // reached pose is restored so fixedUpdate authors accumulate on it.
+      rb._kinematicTargetPosition = new Vec2(150, 200);
+      system.update(16.67);
+      expect(transform.position.x).toBeCloseTo(150);
+      expect(transform.position.y).toBeCloseTo(200);
+
+      // A game write that interpolation hasn't captured yet must survive
+      // the step untouched.
+      transform.setPosition(400, 500);
+      system.update(16.67);
+      expect(transform.position.x).toBe(400);
+      expect(transform.position.y).toBe(500);
     });
 
     it("does not sync static bodies to Rapier", async () => {

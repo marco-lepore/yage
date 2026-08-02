@@ -592,6 +592,58 @@ describe("RigidBodyComponent", () => {
         true,
       );
     });
+
+    it("moves the kinematic step target with the teleport", async () => {
+      const { scene } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform({ position: new Vec2(50, 50) }));
+      const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
+
+      rb.setPosition(200, 300);
+
+      // Without this, the next step would drive the body back toward the
+      // stale pre-teleport target.
+      expect(rb._kinematicTargetPosition.x).toBe(200);
+      expect(rb._kinematicTargetPosition.y).toBe(300);
+    });
+
+    it("drops a Transform write superseded by a kinematic setPosition", async () => {
+      const { scene } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      const transform = entity.add(
+        new Transform({ position: new Vec2(100, 200) }),
+      );
+      const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
+
+      // Authored move first, authoritative teleport second: the later call
+      // wins, so the earlier write must not resurface as a step target.
+      transform.setPosition(500, 500);
+      rb.setPosition(300, 50);
+
+      expect(rb._hasPendingTargetPosition()).toBe(false);
+      rb._capturePendingTarget();
+      expect(rb._kinematicTargetPosition.x).toBe(300);
+      expect(rb._kinematicTargetPosition.y).toBe(50);
+    });
+  });
+
+  describe("setRotation", () => {
+    it("teleports the body rotation, collapsing prev and curr", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
+
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      rb.setRotation(1.25);
+
+      expect(body.setRotationSpy).toHaveBeenLastCalledWith(1.25, true);
+      expect(rb._prevRotation).toBe(1.25);
+      expect(rb._currRotation).toBe(1.25);
+      expect(rb._kinematicTargetRotation).toBe(1.25);
+    });
   });
 
   describe("interpolation state", () => {
@@ -603,6 +655,16 @@ describe("RigidBodyComponent", () => {
 
       expect(rb._prevPosition.equals(new Vec2(50, 75))).toBe(true);
       expect(rb._currPosition.equals(new Vec2(50, 75))).toBe(true);
+    });
+
+    it("seeds the kinematic step target from the spawn Transform", async () => {
+      const { scene } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform({ position: new Vec2(50, 75), rotation: 0.5 }));
+      const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
+
+      expect(rb._kinematicTargetPosition.equals(new Vec2(50, 75))).toBe(true);
+      expect(rb._kinematicTargetRotation).toBe(0.5);
     });
   });
   describe("activeness hooks", () => {
@@ -670,6 +732,52 @@ describe("RigidBodyComponent", () => {
       expect(rb._currPosition.x).toBe(700);
       expect(rb._currPosition.y).toBe(40);
       expect(rb._prevPosition.x).toBe(700);
+    });
+
+    it("reactivates a kinematic body at a Transform pose written while dormant", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext({
+        pixelsPerMeter: 50,
+      });
+      const entity = spawnEntityInScene(scene, "test");
+      const transform = entity.add(
+        new Transform({ position: new Vec2(100, 200) }),
+      );
+      const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
+
+      entity.setActive(false);
+      // Repositioning through the Transform is the documented way to move a
+      // kinematic body; on reactivation this must be a teleport, not a
+      // glide from where the body slept.
+      transform.setPosition(700, 40);
+      entity.setActive(true);
+
+      expect(rb._prevPosition.x).toBe(700);
+      expect(rb._prevPosition.y).toBe(40);
+      expect(rb._currPosition.x).toBe(700);
+      expect(rb._kinematicTargetPosition.x).toBe(700);
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      expect(body._translation.x).toBeCloseTo(14); // 700/50
+      expect(body._translation.y).toBeCloseTo(0.8); // 40/50
+    });
+
+    it("keeps a kinematic setPosition made while dormant", async () => {
+      const { scene } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform({ position: new Vec2(100, 200) }));
+      const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
+
+      entity.setActive(false);
+      rb.setPosition(300, 50);
+      entity.setActive(true);
+
+      // The stale Transform (still at the spawn pose) must not win over the
+      // teleport: the target keeps pointing at the setPosition destination.
+      expect(rb._prevPosition.x).toBe(300);
+      expect(rb._currPosition.x).toBe(300);
+      expect(rb._kinematicTargetPosition.x).toBe(300);
+      expect(rb._kinematicTargetPosition.y).toBe(50);
     });
 
     it("snaps interpolation to the body pose on reactivation", async () => {

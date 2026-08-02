@@ -44,10 +44,12 @@ entity.add(new RigidBodyComponent({
 - **`static`** — never moves. Use for walls, floors, and platforms.
 - **`kinematic`** — moved programmatically, not by forces. Use for moving
   platforms, elevators, and doors. **Move kinematic bodies by setting the
-  `Transform` position** (e.g. `transform.setPosition(x, y)`), not by
-  calling `rb.setPosition` — the physics system automatically syncs
-  Transform → Rapier each frame before stepping. `rb.setPosition` is a
-  teleport intended for dynamic bodies (e.g. respawning a player).
+  `Transform` position** (e.g. `transform.setPosition(x, y)` or
+  `transform.translate(dx, dy)`), preferably in `fixedUpdate` — the body
+  reaches the written pose on the next physics step and is drawn
+  interpolated, so the drawn gap to a dynamic body riding it stays
+  constant. `rb.setPosition` is the teleport for any body type: use it to
+  move a platform across the map with no in-between frames.
 
 ## Colliders
 
@@ -275,16 +277,24 @@ For predictable movement, prefer `setVelocity`.
 
 ## Teleporting
 
-Use `setPosition` to teleport a body without interpolation artifacts:
+Use `setPosition` to teleport a body of any type without interpolation
+artifacts — no in-between poses are ever drawn:
 
 ```typescript
-rb.setPosition(400, 300); // pixels
+rb.setPosition(400, 300);   // pixels
+rb.setRotation(Math.PI / 2); // radians
 ```
+
+On a kinematic body, `rb.setPosition` and `transform.setPosition` do
+different things: the first is an instant jump, the second a smooth move the
+body completes over one physics step. Pick by whether the player should see
+the travel.
 
 ## Reading Positions
 
 Physics runs at a constant rate that rarely lines up with the display refresh
-rate, so a dynamic body has two positions and they differ within a frame.
+rate, so a dynamic or kinematic body has two positions and they differ within
+a frame.
 
 The entity's `Transform` holds the **drawn** pose. The engine blends it between
 the last two physics steps, so it moves smoothly at whatever rate the screen
@@ -312,6 +322,13 @@ runs, so the `Transform` your game logic reads is the one that gets drawn that
 frame. Raycasts, collision events, and other physics queries always report
 exact poses: they run inside the simulation rather than against the
 `Transform`.
+
+This is also why kinematic movement belongs in `fixedUpdate`. There, the
+`Transform` holds the exact pose your last write reached, so per-tick deltas
+(`transform.translate(speed * dt, 0)`) accumulate cleanly. In `update()` the
+`Transform` holds the blended pose instead — write absolute positions there,
+or compute them from `rb.position`, and expect the body to apply the write
+one frame later.
 
 ## Raycasting
 
