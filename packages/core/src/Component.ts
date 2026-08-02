@@ -255,7 +255,13 @@ export abstract class Component {
     }
   }
 
-  /** Called when the component is added to an entity. */
+  /**
+   * Called when the component is added to an entity. Validate dependencies
+   * here — a service, a sibling component, a render layer — and throw when
+   * one is missing. The throw is attributed to this component, recorded in
+   * `Inspector.getErrors().callbackErrors`, and rethrown, so it reaches the
+   * caller of `entity.add()` unchanged.
+   */
   onAdd?(): void;
 
   /**

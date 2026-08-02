@@ -252,6 +252,27 @@ The order is `onAdd` → query join → `onEnable` when a component is added, an
 to a dormant entity gets `onAdd` but waits for `onEnable` until the entity is
 activated.
 
+`onAdd` is where a component checks that what it needs is there: a service, a
+sibling component, a render layer. Throwing is how it reports a failed check.
+
+```ts
+class Follower extends Component {
+  private target!: Transform;
+
+  onAdd() {
+    const player = this.scene.findByKey("player");
+    if (!player) throw new Error('Follower needs an entity keyed "player".');
+    this.target = player.get(Transform);
+  }
+}
+```
+
+The throw is attributed to the component and recorded in
+`Inspector.getErrors().callbackErrors`, the same treatment `onEnable` and
+`update` get, then rethrown so it reaches whoever called `entity.add()`. When
+the add happens in `setup()`, that caller is `scene.spawn`, which destroys the
+half-built entity and its children before rethrowing.
+
 `onEnable` sees whatever state the component held while it was dormant, so use
 it for live resources — a looping sound, a physics body, a display object —
 rather than for resetting game state.

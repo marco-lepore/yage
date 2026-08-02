@@ -88,6 +88,7 @@ class Turret extends Component {
 ```
 
 - Order on add: `onAdd()`, then query join, then `onEnable()`. Order on remove or destroy: `onDisable()`, then cleanups, then `onRemove()` / `onDestroy()`.
+- Validate dependencies by throwing from `onAdd()`. The throw is attributed to the component, recorded in `Inspector.getErrors().callbackErrors`, and rethrown to the caller of `entity.add()`. Called from `setup()`, that caller is `scene.spawn`, which destroys the half-built entity and its children before rethrowing.
 - `onEnable()` sees whatever state the component held while dormant. Put live resources there (sounds, bodies, display objects), not game-state resets.
 - Writing `component.enabled` fires the hooks too, so a component disabled by hand releases its resources the same way.
 - A throwing hook is attributed to its component and rethrown, like a throwing `update()`. A throw from `onDisable()` during scene teardown stops teardown at that entity.
