@@ -34,8 +34,9 @@ async function main() {
       left: ["KeyA", "ArrowLeft", "GamepadDPadLeft"],
       right: ["KeyD", "ArrowRight", "GamepadDPadRight"],
       jump: ["Space", "GamepadA"],
+      down: ["KeyS", "ArrowDown", "GamepadDPadDown"],
     },
-    preventDefaultKeys: ["Space"],
+    preventDefaultKeys: ["Space", "ArrowDown"],
   }));
   // Test fixtures opt into a fixed RNG seed and a paused-from-frame-zero
   // clock so playback snapshots are bit-identical across runs. Production

@@ -84,6 +84,35 @@ export class PlatformEntity extends Entity {
   }
 }
 
+/**
+ * One-way ledge: solid when landed on from above, passable from below and
+ * from the sides. Amber, matching the debug overlay's one-way color.
+ */
+export class OneWayPlatformEntity extends Entity {
+  setup(params: { x: number; y: number; w: number }): void {
+    const { x, y, w } = params;
+    const h = 12;
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
+      new GraphicsComponent({ layer: "world" }).draw((g) => {
+        g.rect(-w / 2, -h / 2, w, h).fill({ color: 0x92400e });
+        // Top surface highlight — the solid side
+        g.rect(-w / 2, -h / 2, w, 3).fill({ color: 0xf59e0b });
+      }),
+    );
+    this.add(new RigidBodyComponent({ type: "static" }));
+    this.add(
+      new ColliderComponent({
+        shape: { type: "box", width: w, height: h },
+        friction: 0,
+        layers: LAYER_PLATFORM,
+        mask: LAYER_PLAYER,
+        oneWay: {},
+      }),
+    );
+  }
+}
+
 export class MovingPlatformEntity extends Entity {
   setup(params: {
     start: Vec2;
@@ -91,14 +120,17 @@ export class MovingPlatformEntity extends Entity {
     w: number;
     h: number;
     period: number;
+    oneWay?: boolean;
   }): void {
-    const { start, end, w, h, period } = params;
+    const { start, end, w, h, period, oneWay } = params;
     this.add(new Transform({ position: new Vec2(start.x, start.y) }));
     this.add(
       new GraphicsComponent({ layer: "world" }).draw((g) => {
         g.rect(-w / 2, -h / 2, w, h).fill({ color: 0x7c3aed });
-        // Top surface highlight
-        g.rect(-w / 2, -h / 2, w, 3).fill({ color: 0xa78bfa });
+        // Top surface highlight — amber when the platform is one-way
+        g.rect(-w / 2, -h / 2, w, 3).fill({
+          color: oneWay ? 0xf59e0b : 0xa78bfa,
+        });
         // Movement arrows
         g.circle(0, 0, 3).fill({ color: 0xa78bfa, alpha: 0.5 });
       }),
@@ -110,6 +142,7 @@ export class MovingPlatformEntity extends Entity {
         friction: 0,
         layers: LAYER_PLATFORM,
         mask: LAYER_PLAYER,
+        ...(oneWay ? { oneWay: {} } : {}),
       }),
     );
     this.add(new MovingPlatform(start, end, period));

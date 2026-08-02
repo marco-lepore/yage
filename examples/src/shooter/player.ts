@@ -184,6 +184,17 @@ class PlayerController extends Component {
     }
     this.wasGrounded = onGround;
 
+    // -- Drop through one-way platforms --
+    if (
+      this.input.isJustPressed("down") &&
+      onGround &&
+      hit?.entity.tryGet(ColliderComponent)?.config.oneWay
+    ) {
+      this.collider.dropThrough(0.25);
+      this.grounded = false;
+      this.coyoteTimer = 0;
+    }
+
     // -- Horizontal movement --
     let dx = this.input.getAxis("left", "right");
 

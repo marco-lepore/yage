@@ -39,6 +39,7 @@ class PlayerController extends Component {
   private readonly graphics = this.sibling(GraphicsComponent);
   private readonly transform = this.sibling(Transform);
   private readonly rb = this.sibling(RigidBodyComponent);
+  private readonly collider = this.sibling(ColliderComponent);
 
   constructor(camera: CameraEntity) {
     super();
@@ -108,6 +109,17 @@ class PlayerController extends Component {
     if (hit) {
       const mover = hit.entity.tryGet(MovingPlatform);
       if (mover) platformVelX = mover.velocity.x;
+    }
+
+    // -- Drop through one-way platforms --
+    if (
+      this.input.isJustPressed("down") &&
+      onGround &&
+      hit?.entity.tryGet(ColliderComponent)?.config.oneWay
+    ) {
+      this.collider.dropThrough(0.25);
+      this.grounded = false;
+      this.coyoteTimer = 0;
     }
 
     // -- Horizontal movement --
