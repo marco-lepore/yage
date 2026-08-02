@@ -27,7 +27,7 @@
     "clean": "turbo run clean",
     "build:site": "turbo run build && node scripts/assemble-site.mjs",
     "changeset": "changeset",
-    "version-packages": "changeset version && node scripts/clamp-addon-versions.mjs && node scripts/sync-template-versions.mjs",
+    "version-packages": "changeset version && node scripts/clamp-package-versions.mjs && node scripts/sync-template-versions.mjs",
     "release": "turbo run build && changeset publish"
   },
   "devDependencies": {
