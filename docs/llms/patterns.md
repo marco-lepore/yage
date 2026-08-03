@@ -400,7 +400,7 @@ describe("Movement integration", () => {
   it("entity moves over multiple frames", async () => {
     const engine = await createTestEngine();
     const scene = new GameScene();
-    engine.scenes.push(scene);
+    await engine.scenes.push(scene); // async: preload, then onEnter
 
     const entity = scene.spawn("player");
     entity.add(new Transform());
@@ -509,7 +509,7 @@ describe("FooPlugin", () => {
 - Use `createTestEngine` + `advanceFrames` for integration tests involving the game loop.
 - Call `engine.destroy()` at the end of every integration test to clean up.
 - Processes use `_update(dt)`, `ProcessSlot` uses `_tick(dt)`, `Sequence` uses `_build()` — direct control, no game loop needed.
-- The ErrorBoundary catches all component/system errors — test that crashing components get `enabled = false`.
+- The ErrorBoundary records and logs a component/system throw, then rethrows it — nothing is disabled or muted. Assert on `inspector.getErrors().callbackErrors` and on the rethrow, not on `enabled`.
 - Use `vi.fn()` and `vi.spyOn()` from Vitest for mocking callbacks and service methods.
 
 ## Scene Management Patterns

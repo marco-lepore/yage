@@ -316,15 +316,15 @@ npx turbo test && npx turbo typecheck && npx turbo build && npx playwright test
 
 - **Unit tests**: Co-locate with source files (`Foo.ts` → `Foo.test.ts`)
 - **E2E tests**: Place specs in `e2e/specs/` and fixture apps in `e2e/fixtures/`
-- **Use test utilities**: Import `createMockScene`, `createMockEntity`, `advanceFrames` from `@yagejs/core/test-utils`
+- **Use test utilities**: Import `createTestEngine`, `createMockScene`, `createMockEntity`, `advanceFrames` from `@yagejs/core`
 - **E2E assertions**: Use Inspector API (`window.__yage__.inspector`) for state assertions, not screenshots
-- **Deterministic browser timing**: Prefer `window.__yage__.inspector.time.freeze()` + `step()` over `waitForTimeout()` when a fixture needs exact frame control
+- **Deterministic browser timing**: Prefer `window.__yage__.inspector.time.freeze()` + `step()` over `waitForTimeout()` when a fixture needs exact frame control. The fixture must install `DebugPlugin` — `inspector.time.*` throws without it
 
 ---
 
 ## 5. Using the Inspector API
 
-The Inspector is your primary debugging tool. Available when the engine is created with `debug: true`.
+The Inspector is your primary debugging tool. An engine created with `debug: true` exposes it on `window.__yage__` once `engine.start()` runs.
 
 ### In Browser Console
 

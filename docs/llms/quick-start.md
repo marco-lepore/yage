@@ -83,7 +83,7 @@ engine.scenes.push(new GameScene());
 
 ### Inspector (runtime queries)
 
-When the engine is constructed with `debug: true`, it installs an introspection API on `window.__yage__`. Useful in the browser console while iterating, and for AI agents that want to verify scene state without reading the canvas:
+An engine constructed with `debug: true` installs an introspection API on `window.__yage__` during `engine.start()`. Useful in the browser console while iterating, and for AI agents that want to verify scene state without reading the canvas:
 
 ```ts
 const engine = new Engine({ debug: true });
@@ -148,14 +148,14 @@ For agent-driven debugging: write a throwaway Playwright spec, boot the game, fr
 
 ### Unit tests (deterministic frame stepping)
 
-`@yagejs/core` ships headless test utilities. `createTestEngine()` spins up a fully-wired engine with no renderer/physics/input plugins by default — add whatever you need with `engine.use(...)`. `advanceFrames()` ticks the game loop N times so assertions run against deterministic state:
+`@yagejs/core` ships headless test utilities. `createTestEngine()` returns a started engine with no renderer/physics/input plugins; plugins must be registered before start, so a test that needs one builds the engine itself (`new Engine()` → `engine.use(...)` → `await engine.start()`). `advanceFrames()` ticks the game loop N times so assertions run against deterministic state:
 
 ```ts
 import { createTestEngine, advanceFrames, Transform, Vec2 } from "@yagejs/core";
 
 const engine = await createTestEngine();
 const scene = new GameScene();
-engine.scenes.push(scene);
+await engine.scenes.push(scene); // async: preload, then onEnter
 const player = scene.spawn(Player, { x: 0, y: 0 });
 
 advanceFrames(engine, 10);
