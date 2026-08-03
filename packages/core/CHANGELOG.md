@@ -1,5 +1,28 @@
 # @yagejs/core
 
+## 0.10.1
+
+### Patch Changes
+
+- [#239](https://github.com/marco-lepore/yage/pull/239) [`d3a730b`](https://github.com/marco-lepore/yage/commit/d3a730b1dfae45338a53ddcc1267ae3e4102a34a) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Give the engine a single-use lifecycle with defined terminal states.
+  - `Engine.start()` throws after `destroy()`. A second start used to run the whole startup sequence again on a torn-down instance, which could not produce a working engine: the scene manager ignored every later push, so the stack stayed empty; each plugin's `registerSystems()` added a second copy of its systems next to the stale ones; and any plugin that registers a service threw `Service "..." is already registered.` The message names the alternatives — construct a new `Engine`, or reset the scene stack with `scenes.replace()` or `scenes.popAll()`.
+  - A `start()` that rejects is terminal too. Plugins installed before the failure hold services the container will not accept twice, so a retry cannot succeed. It used to return as though the engine were running while the loop was stopped. A later `start()` now throws and names `destroy()` as the way to release what did install.
+  - `destroy()` during an in-flight `start()` cancels the rest of startup. Teardown followed by a resuming `install()` used to start the game loop over a destroyed scene manager and unregistered systems.
+  - `destroy()` treats scene teardown, system unregistration and plugin `onDestroy` as independent stages, so a throw in one still lets the others run, and rethrows the first error once teardown finishes. A failing scene `onExit` no longer leaves plugins holding their resources.
+  - `destroy()` ignores repeat calls, so a host tearing down defensively no longer runs plugin `onDestroy` and system `onUnregister` twice.
+  - `Engine.use()` throws on a destroyed engine.
+  - `SceneManager` push, pop, replace and popAll warn in development builds when called on a destroyed engine, instead of doing nothing silently. Work already queued when teardown lands still resolves quietly.
+
+- [#241](https://github.com/marco-lepore/yage/pull/241) [`ccc0d71`](https://github.com/marco-lepore/yage/commit/ccc0d71c7f1ae4197b56a5469f61ae4145045391) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Attribute a throw from `onAdd()` to the component that threw
+  - `Entity.add()` runs `onAdd()` through `ErrorBoundary`, so a component that reports a missing dependency is named in the log and recorded in `Inspector.getErrors().callbackErrors`. The error is rethrown unchanged, so where it ends up is the same as before. Previously `onAdd()` was the one component lifecycle hook with no boundary around it, and its failure was attributed to whatever outer call it escaped into — a `Scene onEnter hook` for a component added during scene setup, for instance.
+  - Missing plugin registrations surface this way: `RigidBodyComponent` without `PhysicsPlugin`, a `SpriteComponent` without a renderer, a UI component on an undeclared layer.
+
+- [#238](https://github.com/marco-lepore/yage/pull/238) [`50cc882`](https://github.com/marco-lepore/yage/commit/50cc8825c4365165a5ebfafbb6353c26660daa23) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `SystemScheduler` owns the system registration lifecycle, so a system added at runtime is registered the same way as one added at startup.
+  - `add()` on a started engine sets the system's engine context and calls `onRegister` immediately. A system added through `SystemSchedulerKey` after `engine.start()` previously ran without a context, so `use()` threw inside it and its `onRegister` never fired.
+  - `remove()` calls `onUnregister` for a registered system, matching the documented system lifecycle.
+  - `Engine.destroy()` unregisters systems through the scheduler; engine teardown followed by a plugin removing its own systems fires `onUnregister` once.
+  - `onRegister` and `onUnregister` dispatch through the `ErrorBoundary` like `update`, so a throw is attributed to the system, logged, and rethrown.
+
 ## 0.10.0
 
 ### Minor Changes

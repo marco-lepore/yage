@@ -1,5 +1,27 @@
 # @yagejs/examples
 
+## 0.0.10
+
+### Patch Changes
+
+- Updated dependencies [[`d3a730b`](https://github.com/marco-lepore/yage/commit/d3a730b1dfae45338a53ddcc1267ae3e4102a34a), [`c05570b`](https://github.com/marco-lepore/yage/commit/c05570b8773a9be7ca72016b6f20ad874d12faed), [`ccc0d71`](https://github.com/marco-lepore/yage/commit/ccc0d71c7f1ae4197b56a5469f61ae4145045391), [`ea50de3`](https://github.com/marco-lepore/yage/commit/ea50de3ec6455ceb2a949eba735c61d14462982a), [`e79ca38`](https://github.com/marco-lepore/yage/commit/e79ca381bcf0a693f00618fb0a8f8a6a78fab30e), [`9757679`](https://github.com/marco-lepore/yage/commit/97576799808c6f9cc40a42f85d37baf39e662708), [`ddf0702`](https://github.com/marco-lepore/yage/commit/ddf07024339af358091a580880c31a05a8b53d6a), [`50cc882`](https://github.com/marco-lepore/yage/commit/50cc8825c4365165a5ebfafbb6353c26660daa23), [`efb4a88`](https://github.com/marco-lepore/yage/commit/efb4a882997bb774aed0a7befd9847a1fccad168)]:
+  - @yagejs/core@0.10.1
+  - @yagejs/physics@0.10.1
+  - @yagejs-tools/lab@0.1.0
+  - @yagejs-addons/steering@0.2.1
+  - @yagejs/renderer@0.10.1
+  - @yagejs/input@0.10.1
+  - @yagejs/audio@0.10.1
+  - @yagejs/particles@0.10.1
+  - @yagejs/tilemap@0.10.1
+  - @yagejs/pathfinding@0.10.1
+  - @yagejs/ui@0.10.1
+  - @yagejs/ui-react@0.10.1
+  - @yagejs/debug@0.10.1
+  - @yagejs/save@0.10.1
+  - @yagejs/effects@0.10.1
+  - @yagejs/lighting@0.10.1
+
 ## 0.0.9
 
 ### Patch Changes

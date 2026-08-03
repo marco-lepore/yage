@@ -1,6 +1,6 @@
 {
   "name": "@yagejs/lighting",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Renderer-neutral 2D lights, light-level queries, and pluggable lighting renderers for YAGE",
   "keywords": [
     "yage",
@@ -47,8 +47,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yagejs/core": "^0.10.0",
-    "@yagejs/renderer": "^0.10.0",
+    "@yagejs/core": "^0.10.1",
+    "@yagejs/renderer": "^0.10.1",
     "pixi.js": "^8.5.0"
   },
   "devDependencies": {

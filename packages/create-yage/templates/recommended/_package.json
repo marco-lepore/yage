@@ -9,12 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@yagejs/audio": "^0.10.0",
-    "@yagejs/core": "^0.10.0",
-    "@yagejs/debug": "^0.10.0",
-    "@yagejs/input": "^0.10.0",
-    "@yagejs/physics": "^0.10.0",
-    "@yagejs/renderer": "^0.10.0"
+    "@yagejs/audio": "^0.10.1",
+    "@yagejs/core": "^0.10.1",
+    "@yagejs/debug": "^0.10.1",
+    "@yagejs/input": "^0.10.1",
+    "@yagejs/physics": "^0.10.1",
+    "@yagejs/renderer": "^0.10.1"
   },
   "devDependencies": {
     "typescript": "^5.9.0",
