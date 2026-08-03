@@ -202,11 +202,8 @@ export class Engine {
       plugin.registerSystems?.(this.scheduler);
     }
 
-    // Initialize systems
-    for (const sys of this.scheduler.getAllSystems()) {
-      sys._setContext(this.context);
-      sys.onRegister?.(this.context);
-    }
+    // Initialize systems; systems added after this point register in add()
+    this.scheduler._start(this.context);
 
     // Start the game loop
     this.loop.start();
@@ -243,10 +240,7 @@ export class Engine {
     this.scenes._destroy();
 
     // Unregister all systems (reverse order for clean teardown)
-    const allSystems = this.scheduler.getAllSystems();
-    for (let i = allSystems.length - 1; i >= 0; i--) {
-      allSystems[i]!.onUnregister?.();
-    }
+    this.scheduler._destroy();
 
     // Destroy plugins in reverse topological order (dependents first)
     for (let i = this.sortedPlugins.length - 1; i >= 0; i--) {

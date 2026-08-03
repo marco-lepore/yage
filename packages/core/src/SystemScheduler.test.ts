@@ -3,6 +3,30 @@ import { SystemScheduler } from "./SystemScheduler.js";
 import { System } from "./System.js";
 import { Phase } from "./types.js";
 import type { ErrorBoundary } from "./ErrorBoundary.js";
+import type { EngineContext } from "./EngineContext.js";
+
+class LifecycleSystem extends System {
+  readonly phase = Phase.Update;
+  received: EngineContext | null = null;
+
+  constructor(
+    private readonly log: string[],
+    private readonly name: string,
+  ) {
+    super();
+  }
+
+  override onRegister(context: EngineContext): void {
+    this.received = context;
+    this.log.push(`+${this.name}`);
+  }
+
+  override onUnregister(): void {
+    this.log.push(`-${this.name}`);
+  }
+
+  update(): void {}
+}
 
 class UpdateSystemA extends System {
   readonly phase = Phase.Update;
@@ -125,5 +149,87 @@ describe("SystemScheduler", () => {
   it("does nothing when running a phase with no systems", () => {
     const scheduler = new SystemScheduler();
     expect(() => scheduler.run(Phase.Update, 16)).not.toThrow();
+  });
+
+  describe("registration lifecycle", () => {
+    const ctx = {} as EngineContext;
+
+    it("_start registers every system added before it", () => {
+      const scheduler = new SystemScheduler();
+      const log: string[] = [];
+      const a = new LifecycleSystem(log, "a");
+      const b = new LifecycleSystem(log, "b");
+      scheduler.add(a);
+      scheduler.add(b);
+      expect(log).toEqual([]);
+      scheduler._start(ctx);
+      expect(log).toEqual(["+a", "+b"]);
+      expect(a.received).toBe(ctx);
+    });
+
+    it("add after _start registers the system immediately", () => {
+      const scheduler = new SystemScheduler();
+      scheduler._start(ctx);
+      const log: string[] = [];
+      const sys = new LifecycleSystem(log, "late");
+      scheduler.add(sys);
+      expect(log).toEqual(["+late"]);
+      expect(sys.received).toBe(ctx);
+    });
+
+    it("registration hooks go through the error boundary when set", () => {
+      const scheduler = new SystemScheduler();
+      const wrapSystem = vi.fn((_system: System, fn: () => void) => fn());
+      scheduler.setErrorBoundary({ wrapSystem } as unknown as ErrorBoundary);
+      scheduler._start(ctx);
+      const log: string[] = [];
+      const sys = new LifecycleSystem(log, "a");
+      scheduler.add(sys);
+      scheduler.remove(sys);
+      expect(log).toEqual(["+a", "-a"]);
+      expect(wrapSystem).toHaveBeenCalledTimes(2);
+    });
+
+    it("remove calls onUnregister only for a registered system", () => {
+      const scheduler = new SystemScheduler();
+      const log: string[] = [];
+      const sys = new LifecycleSystem(log, "a");
+      scheduler.add(sys);
+      scheduler.remove(sys);
+      expect(log).toEqual([]);
+
+      scheduler.add(sys);
+      scheduler._start(ctx);
+      scheduler.remove(sys);
+      expect(log).toEqual(["+a", "-a"]);
+    });
+
+    it("_destroy unregisters in reverse; a later remove does not repeat it", () => {
+      const scheduler = new SystemScheduler();
+      const log: string[] = [];
+      const a = new LifecycleSystem(log, "a");
+      const b = new LifecycleSystem(log, "b");
+      scheduler.add(a);
+      scheduler.add(b);
+      scheduler._start(ctx);
+      scheduler._destroy();
+      expect(log).toEqual(["+a", "+b", "-b", "-a"]);
+      // Plugin teardown may still remove its own systems after the engine
+      // unregistered everything (e.g. DebugPlugin.tearDownDebugInfra).
+      scheduler.remove(a);
+      expect(log).toEqual(["+a", "+b", "-b", "-a"]);
+      expect(scheduler.getSystems(Phase.Update)).toEqual([b]);
+    });
+
+    it("_start after _destroy registers the remaining systems again", () => {
+      const scheduler = new SystemScheduler();
+      const log: string[] = [];
+      const sys = new LifecycleSystem(log, "a");
+      scheduler.add(sys);
+      scheduler._start(ctx);
+      scheduler._destroy();
+      scheduler._start(ctx);
+      expect(log).toEqual(["+a", "-a", "+a"]);
+    });
   });
 });

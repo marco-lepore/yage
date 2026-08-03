@@ -24,7 +24,8 @@ export abstract class System {
   private _serviceCache: Map<string, unknown> | undefined;
 
   /**
-   * Set the engine context. Called by Engine during startup.
+   * Set the engine context. Called by SystemScheduler when the system is
+   * registered.
    * @internal
    */
   _setContext(context: EngineContext): void {
