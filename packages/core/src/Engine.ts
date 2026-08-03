@@ -74,8 +74,24 @@ export class Engine {
 
   private readonly plugins: Map<string, Plugin> = new Map();
   private sortedPlugins: Plugin[] = [];
-  private started = false;
+  /**
+   * Where the instance is in its one and only lifecycle. `"failed"` and
+   * `"destroyed"` are both terminal: plugins that installed before the engine
+   * stopped hold services the container will not accept a second time, so no
+   * later `start()` can produce a working engine from either state.
+   */
+  private lifecycle: "idle" | "running" | "failed" | "destroyed" = "idle";
   private readonly debug: boolean;
+
+  /**
+   * Read through a getter rather than comparing the field directly. `start()`
+   * assigns `"running"` before it awaits, and the compiler keeps that narrowing
+   * across the await, so an inline comparison against `"destroyed"` reads as
+   * impossible — while `destroy()` can in fact land during the await.
+   */
+  private get isDestroyed(): boolean {
+    return this.lifecycle === "destroyed";
+  }
 
   constructor(config?: EngineConfig) {
     this.debug = config?.debug ?? false;
@@ -173,7 +189,16 @@ export class Engine {
 
   /** Register a plugin. Must be called before start(). */
   use(plugin: Plugin): this {
-    if (this.started) {
+    if (this.lifecycle === "destroyed") {
+      throw new Error("Cannot register plugins on a destroyed engine.");
+    }
+    if (this.lifecycle === "failed") {
+      throw new Error(
+        "Cannot register plugins after start() failed on this instance. Call " +
+          "destroy() to release what did install, then construct a new Engine.",
+      );
+    }
+    if (this.lifecycle !== "idle") {
       throw new Error("Cannot register plugins after engine has started.");
     }
     if (this.plugins.has(plugin.name)) {
@@ -183,69 +208,141 @@ export class Engine {
     return this;
   }
 
-  /** Start the engine. Installs plugins in topological order, starts the game loop. */
+  /**
+   * Start the engine. Installs plugins in topological order, starts the game
+   * loop. Calling it again while running is a no-op.
+   *
+   * An engine instance is single-use, so `start()` throws once the instance
+   * has reached a terminal state — `destroy()` has run, or an earlier
+   * `start()` rejected. Plugin `install()` registers services into a container
+   * that rejects duplicate keys, and `onDestroy()` releases resources the
+   * plugin cannot rebuild, so a second pass over the same instance cannot
+   * produce a working engine.
+   *
+   * `destroy()` called while startup is still awaiting a plugin abandons the
+   * rest of the sequence: the loop never starts and no further hook runs.
+   */
   async start(): Promise<void> {
-    if (this.started) return;
-    this.started = true;
-
-    // Topological sort of plugins (cached for reverse teardown)
-    this.sortedPlugins = this.topologicalSort();
-    const sorted = this.sortedPlugins;
-
-    // Install each plugin
-    for (const plugin of sorted) {
-      await plugin.install?.(this.context);
+    if (this.lifecycle === "destroyed") {
+      throw new Error(
+        "Engine.start() cannot be called after destroy() — an engine instance is " +
+          "single-use. Construct a new Engine to run again. To restart gameplay " +
+          "without tearing the engine down, reset the scene stack instead " +
+          "(scenes.replace(new GameScene()) or scenes.popAll() then scenes.push()).",
+      );
     }
-
-    // Register systems from each plugin
-    for (const plugin of sorted) {
-      plugin.registerSystems?.(this.scheduler);
+    if (this.lifecycle === "failed") {
+      throw new Error(
+        "Engine.start() already failed on this instance and cannot be retried — " +
+          "plugins installed before the failure hold services that cannot be " +
+          "registered twice. Call destroy() to release them, then construct a " +
+          "new Engine.",
+      );
     }
+    if (this.lifecycle === "running") return;
+    this.lifecycle = "running";
 
-    // Initialize systems; systems added after this point register in add()
-    this.scheduler._start(this.context);
+    try {
+      // Topological sort of plugins (cached for reverse teardown)
+      this.sortedPlugins = this.topologicalSort();
+      const sorted = this.sortedPlugins;
 
-    // Start the game loop
-    this.loop.start();
+      // Install each plugin
+      for (const plugin of sorted) {
+        await plugin.install?.(this.context);
+        // A host can tear the engine down mid-startup (hot reload, a component
+        // unmounting). Teardown has already run by the time this resumes, so
+        // abandon the sequence rather than installing plugins nothing would
+        // release and starting a loop over torn-down state.
+        if (this.isDestroyed) return;
+      }
 
-    // Expose debug API in browser before plugin onStart hooks run so plugins
-    // can safely augment the debug surface.
-    if (this.debug && typeof globalThis !== "undefined") {
-      (globalThis as Record<string, unknown>)["__yage__"] = {
-        inspector: this.inspector,
-        logger: this.logger,
-      };
+      // Register systems from each plugin
+      for (const plugin of sorted) {
+        plugin.registerSystems?.(this.scheduler);
+      }
+
+      // Initialize systems; systems added after this point register in add()
+      this.scheduler._start(this.context);
+
+      // Covers a synchronous destroy() from registerSystems or onRegister,
+      // which reaches here without an await to be caught by.
+      if (this.isDestroyed) return;
+
+      // Start the game loop
+      this.loop.start();
+
+      // Expose debug API in browser before plugin onStart hooks run so plugins
+      // can safely augment the debug surface.
+      if (this.debug && typeof globalThis !== "undefined") {
+        (globalThis as Record<string, unknown>)["__yage__"] = {
+          inspector: this.inspector,
+          logger: this.logger,
+        };
+      }
+
+      // Notify plugins. Awaited so users can reliably call scenes.push()
+      // right after `await engine.start()` without racing plugin init
+      // (e.g. DebugPlugin mounts a detached debug scene in onStart).
+      for (const plugin of sorted) {
+        await plugin.onStart?.();
+        if (this.isDestroyed) return;
+      }
+
+      // Emit engine started event
+      this.events.emit("engine:started", undefined);
+    } catch (err: unknown) {
+      // Startup left plugins partly installed, holding services the container
+      // will not accept again. Mark the instance terminal so a retry says so
+      // instead of returning as though the engine were running.
+      if (this.lifecycle === "running") this.lifecycle = "failed";
+      throw err;
     }
-
-    // Notify plugins. Awaited so users can reliably call scenes.push()
-    // right after `await engine.start()` without racing plugin init
-    // (e.g. DebugPlugin mounts a detached debug scene in onStart).
-    for (const plugin of sorted) {
-      await plugin.onStart?.();
-    }
-
-    // Emit engine started event
-    this.events.emit("engine:started", undefined);
   }
 
-  /** Stop the engine. Destroys all scenes, plugins, and the game loop. */
+  /**
+   * Stop the engine. Destroys all scenes, plugins, and the game loop. One-way:
+   * the instance cannot be started again. Repeat calls are a no-op, so a host
+   * that tears down defensively (hot reload, component unmount) can call it
+   * without tracking whether it already did.
+   *
+   * Scene teardown, system unregistration and plugin `onDestroy` are
+   * independent stages: a throw in one still lets the others run, so a failing
+   * scene `onExit` cannot leave a plugin holding its GPU context. The first
+   * error is rethrown once teardown has finished, and the rest are reported
+   * through {@link Logger}.
+   */
   destroy(): void {
+    if (this.lifecycle === "destroyed") return;
+    // Set before teardown runs: a plugin onDestroy or scene onExit that calls
+    // destroy() again re-enters here, and must not tear everything down twice.
+    this.lifecycle = "destroyed";
+
+    const errors: unknown[] = [];
+    const step = (work: () => void): void => {
+      try {
+        work();
+      } catch (err: unknown) {
+        errors.push(err);
+      }
+    };
+
     // Emit stop event
-    this.events.emit("engine:stopped", undefined);
+    step(() => this.events.emit("engine:stopped", undefined));
 
     // Stop the loop
-    this.loop.stop();
+    step(() => this.loop.stop());
 
     // Tear down scenes synchronously; also short-circuits any queued async work.
-    this.scenes._destroy();
+    step(() => this.scenes._destroy());
 
     // Unregister all systems (reverse order for clean teardown)
-    this.scheduler._destroy();
+    step(() => this.scheduler._destroy());
 
     // Destroy plugins in reverse topological order (dependents first)
     for (let i = this.sortedPlugins.length - 1; i >= 0; i--) {
       const plugin = this.sortedPlugins[i];
-      if (plugin) plugin.onDestroy?.();
+      if (plugin) step(() => plugin.onDestroy?.());
     }
 
     // Clean up debug API
@@ -257,9 +354,17 @@ export class Engine {
       delete (globalThis as Record<string, unknown>)["__yage__"];
     }
 
-    this.inspector.dispose();
-    this.events.clear();
-    this.started = false;
+    step(() => this.inspector.dispose());
+    step(() => this.events.clear());
+
+    if (errors.length === 0) return;
+    for (const err of errors.slice(1)) {
+      this.logger.error(
+        "Engine",
+        `Teardown error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    throw errors[0];
   }
 
   private registerBuiltInSystems(): void {

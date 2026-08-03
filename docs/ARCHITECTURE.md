@@ -85,19 +85,31 @@ engine.use(new InputPlugin({ actions: { jump: ['Space'] } }));
 ### Destroy Phase (`engine.destroy()`)
 
 ```
-1. Stop the game loop
-2. For each plugin (in reverse dependency order):
+1. Emit engine:stopped
+2. Stop the game loop
+3. Tear down every scene on the stack
+4. Call system.onUnregister?() (reverse registration order)
+5. For each plugin (in reverse dependency order):
    a. Call plugin.onDestroy?()            -- Clean up
-3. Clear all services from EngineContext
+6. Dispose the inspector and clear the event bus
 ```
+
+The stages are independent: a throw in one still lets the others run, and the
+first error is rethrown once teardown has finished.
 
 ### Lifecycle Diagram
 
 ```
 engine.use(plugin)     →  stored (not installed)
 engine.start()         →  install() → registerSystems() → loop starts → onStart()
-engine.destroy()       →  loop stops → onDestroy() (reverse order) → context cleared
+engine.destroy()       →  loop stops → scenes torn down → onUnregister() → onDestroy() (reverse order)
 ```
+
+An engine instance runs once. `destroy()` is terminal, and so is a `start()`
+that rejects: both make later `start()` and `use()` calls throw. Services stay
+registered in `EngineContext` — plugins do not unregister them — which is why
+the same instance cannot be started a second time. Construct a new `Engine`
+instead.
 
 ---
 

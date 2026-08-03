@@ -48,6 +48,37 @@ engine.destroy();
 initialization order automatically. `engine.start()` is async because some
 plugins need to load external resources (e.g. the Rapier WASM binary).
 
+### An engine runs once
+
+`destroy()` is permanent. Afterwards `start()` and `use()` throw, and further
+`destroy()` calls do nothing, so a host that tears down defensively (hot
+reload, a component unmounting) can call it without tracking whether it already
+did. Create a new `Engine` when you need to run again: plugins release
+resources they cannot rebuild, so the same instance cannot be restarted.
+
+A `start()` that rejects is terminal in the same way. Plugins installed before
+the failure already hold their services, and the container refuses to register
+those twice, so a retry would fail on the duplicate rather than on the original
+problem. Call `destroy()` to release what did install, then build a new engine.
+
+Calling `destroy()` while `start()` is still awaiting a plugin cancels the rest
+of startup — the loop never starts and no further plugin hook runs.
+
+Restarting the *game* is a different operation, and the engine stays up for it.
+Reset the scene stack instead:
+
+```typescript
+// Restart the level
+await engine.scenes.replace(new GameScene());
+
+// Or drop the whole stack and start from the menu
+await engine.scenes.popAll();
+await engine.scenes.push(new MenuScene());
+```
+
+Scene changes requested after `destroy()` are ignored. In development builds
+the scene manager logs a warning naming the call it dropped.
+
 ## The Plugin Interface
 
 A plugin is a plain object that implements the `Plugin` interface:

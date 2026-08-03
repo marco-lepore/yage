@@ -50,6 +50,12 @@ engine.destroy();
 
 `engine.use(plugin)` must be called before `start()`. Plugins are installed in topological dependency order.
 
+An engine instance is single-use. `destroy()` and a rejected `start()` are both terminal: after either, `start()` and `use()` throw. `destroy()` stays available after a rejected `start()` — call it to release whatever did install — and further `destroy()` calls are ignored. Construct a new `Engine` to run again. `destroy()` during an in-flight `start()` cancels the rest of startup, so the loop never starts.
+
+Scene teardown, system unregistration and plugin `onDestroy` are independent stages of `destroy()`: a throw in one still lets the others run, and the first error is rethrown once teardown finishes.
+
+To restart gameplay, keep the engine running and reset the scene stack: `scenes.replace(new GameScene())`, or `scenes.popAll()` followed by `scenes.push()`. Scene changes after `destroy()` are ignored, with a dev-build warning naming the dropped call.
+
 ## Plugin Interface
 
 ```ts
