@@ -101,6 +101,7 @@ describe("GravitySystem", () => {
 
     const system = new GravitySystem({ gravity: 980 });
     system._setContext(context);
+    system.onRegister?.(context);
 
     const velocity = scene.spawn("ball").add(new VelocityComponent());
 
@@ -111,9 +112,10 @@ describe("GravitySystem", () => {
 });
 ```
 
-The engine calls `_setContext` when it registers a system. A test that
-constructs the system itself has to call it too, otherwise `this.use(...)` has
-no container to resolve services from.
+The engine calls `_setContext` and then `onRegister` when it registers a
+system. A test that constructs the system itself has to do both: without the
+context, `this.use(...)` has no container to resolve services from, and
+without `onRegister` a system that defines the hook never runs its setup.
 
 In a game, a system reaches the engine through a plugin's `registerSystems`,
 and registration has to happen before `engine.start()`:
@@ -196,18 +198,28 @@ The engine ticks an entity's processes every frame, so a test engine plus
 the third argument to control how much time elapses:
 
 ```typescript
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   createTestEngine,
   advanceFrames,
   Process,
   ProcessComponent,
 } from "@yagejs/core";
+import type { Engine } from "@yagejs/core";
 import { GameScene } from "../GameScene";
 
 describe("Process timing", () => {
+  let engine: Engine;
+
+  beforeEach(async () => {
+    engine = await createTestEngine();
+  });
+
+  afterEach(() => {
+    engine.destroy();
+  });
+
   it("fires the callback after the delay", async () => {
-    const engine = await createTestEngine();
     const scene = new GameScene();
     await engine.scenes.push(scene);
 
@@ -224,8 +236,6 @@ describe("Process timing", () => {
 
     advanceFrames(engine, 1, 60); // 0.11s total — past the 0.1s delay
     expect(fired).toBe(true);
-
-    engine.destroy();
   });
 });
 ```
@@ -398,6 +408,9 @@ minutes.
 - **Mutation is scoped to debug tooling.** The Inspector can freeze time,
   inject input, and step frames, but it is not a general-purpose world editor.
   Use normal engine APIs for structural scene changes.
+- **Time and input control need their plugins.** `debug: true` gets you the
+  queries; `inspector.time.*` throws without `DebugPlugin` installed, and
+  `inspector.input.*` throws without `InputPlugin`.
 - **`debug: true` only.** The Inspector is a development tool — production
   builds should construct `Engine` without `debug: true` to avoid exposing
   `window.__yage__`.
