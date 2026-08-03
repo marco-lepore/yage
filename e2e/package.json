@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@yagejs-addons/abilities": "^0.2.0",
-    "@yagejs-addons/steering": "^0.2.0",
+    "@yagejs-addons/steering": "^0.2.1",
     "@yagejs-addons/dialogue": "^0.4.0",
     "@yagejs-addons/inventory": "^0.2.0",
     "@yagejs-addons/interaction": "^0.2.0",

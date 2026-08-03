@@ -1,5 +1,13 @@
 # @yagejs/lighting
 
+## 0.10.1
+
+### Patch Changes
+
+- Updated dependencies [[`d3a730b`](https://github.com/marco-lepore/yage/commit/d3a730b1dfae45338a53ddcc1267ae3e4102a34a), [`ccc0d71`](https://github.com/marco-lepore/yage/commit/ccc0d71c7f1ae4197b56a5469f61ae4145045391), [`50cc882`](https://github.com/marco-lepore/yage/commit/50cc8825c4365165a5ebfafbb6353c26660daa23)]:
+  - @yagejs/core@0.10.1
+  - @yagejs/renderer@0.10.1
+
 ## 0.10.0
 
 ### Minor Changes

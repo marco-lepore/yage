@@ -1,5 +1,40 @@
 # @yagejs/physics
 
+## 0.10.1
+
+### Patch Changes
+
+- [#235](https://github.com/marco-lepore/yage/pull/235) [`c05570b`](https://github.com/marco-lepore/yage/commit/c05570b8773a9be7ca72016b6f20ad874d12faed) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Interpolate kinematic bodies between fixed steps, the same way dynamic bodies already are
+  - Kinematic bodies are now rendered from the same prev/curr blend as dynamic bodies. The drawn gap between a moving platform and a body riding it stays constant, including through direction reversals.
+  - The `Transform` of a kinematic body is the movement input: a pose written there (ideally in `fixedUpdate`) becomes the target the body reaches on the next physics step. Writes from `update()` are picked up one frame later.
+  - `rb.setPosition()` teleports any body type, kinematic included: no smoothing, no pull-back toward the previous target. On a kinematic body, `transform.setPosition()` is the smooth one-step move.
+  - New `rb.setRotation(radians)` — the rotation counterpart of `rb.setPosition()`.
+  - Rotation is drawn along the shortest arc, so a spinning body crossing the ±π boundary no longer draws a one-step reverse sweep.
+
+- [#231](https://github.com/marco-lepore/yage/pull/231) [`ea50de3`](https://github.com/marco-lepore/yage/commit/ea50de3ec6455ceb2a949eba735c61d14462982a) Thanks [@marco-lepore](https://github.com/marco-lepore)! - One-way platforms and per-pair contact filters.
+  - `ColliderConfig.oneWay` makes a collider solid from the side its `direction` faces (default `{ x: 0, y: -1 }`, up) and passable from every other side. `direction` is in the platform body's local frame; `margin` (default 4px) is how deep a body may already overlap the face and still land. A body already inside the platform is let out instead of snapped to the surface. Round-trips through save/load.
+  - `ColliderComponent.dropThrough(seconds)` lets one body fall through one-way platforms for a window of simulated time — other bodies on the same platform stay supported. `isDroppingThrough` reports the window state. Callable before the component is added.
+  - `ColliderComponent.setContactFilter(filter | null)` is the primitive underneath: a `ContactFilter` decides per candidate pair, per step, whether the pair is solid. The reused `ContactCandidate` argument carries both sides' start-of-step positions, rotations, and body velocities plus the other side's `Entity`/`ColliderComponent`; no contact normal exists at filter time. When both colliders have filters, the pair is solid only if both agree. A throwing filter is reported through the error boundary and the pair stays solid for that step.
+  - Rapier's physics hooks are passed to the step only while at least one filter is registered, so worlds without filters step exactly as before. Rapier's CCD honors the filtering, including drop-through; fast bodies should enable `ccd: true` as usual.
+  - `PhysicsWorld.elapsed` exposes total simulated time in seconds.
+  - The debug overlay draws one-way colliders in orange with an arrow toward the solid face.
+
+- [#228](https://github.com/marco-lepore/yage/pull/228) [`e79ca38`](https://github.com/marco-lepore/yage/commit/e79ca381bcf0a693f00618fb0a8f8a6a78fab30e) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Three additions for per-body motion control, all additive:
+  - `RigidBodyComponent.setGravityScale(scale)` and the `gravityScale` getter — change one body's gravity multiplier at runtime. `1` is scene gravity, `0` removes it, higher falls faster. Variable jump height and fast-fall need this per body, without moving scene gravity for everything else.
+  - `ColliderComponent.setShape(shape, options?)` — replace a collider's shape in place. The Rapier collider, its body attachment, and every `onCollision`/`onTrigger` subscription survive, so a crouch or slide can shrink the collider and restore it without removing and re-adding the component. The body keeps its mass, so a crouching character takes the same `applyImpulse` knockback as a standing one; pass `{ recomputeMass: true }` when the new shape means more or less matter. Growing does not push anything out of the way, so check clearance with `PhysicsWorld.queryShape` before restoring the larger size.
+  - `PhysicsWorld.castShape(shape, origin, direction, maxDistance, options?)` — sweep a shape along a direction and get the first hit, as the swept counterpart to `queryShape`. Returns the same `{ entity, point, normal, distance }` result as `raycast`, where `distance` is how far the shape travelled. A shape already overlapping something at `origin` reports `distance: 0`. Direction is normalized internally; a zero-length direction throws.
+
+  Both setters are callable before the component is added; the value applies when the Rapier body or collider is created.
+
+- [#233](https://github.com/marco-lepore/yage/pull/233) [`9757679`](https://github.com/marco-lepore/yage/commit/97576799808c6f9cc40a42f85d37baf39e662708) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Dynamic bodies are drawn at an interpolated position, and their exact simulated pose is readable.
+  - Render interpolation blends between the last two fixed steps. Physics runs at a constant rate that rarely lines up with the display refresh rate, and a dynamic body's `Transform` now carries that blend, so a body moving at constant velocity advances by the same distance every frame instead of stepping and pausing.
+  - The blend runs at the start of `Update`, before component `update(dt)`. Game logic reads the same position that gets drawn that frame — a camera following a body no longer alternates between two different poses. A paused scene holds its blend still, so pausing does not move anything on screen.
+  - `RigidBodyComponent` gains `position`, `positionX`, `positionY` and `rotation` — the exact simulated pose as of the last completed fixed step, for the cases where a number must match the simulation rather than the drawn position. `positionX` / `positionY` skip the `Vec2` allocation. Without a live Rapier body they fall back to the entity's `Transform`.
+
+- Updated dependencies [[`d3a730b`](https://github.com/marco-lepore/yage/commit/d3a730b1dfae45338a53ddcc1267ae3e4102a34a), [`ccc0d71`](https://github.com/marco-lepore/yage/commit/ccc0d71c7f1ae4197b56a5469f61ae4145045391), [`50cc882`](https://github.com/marco-lepore/yage/commit/50cc8825c4365165a5ebfafbb6353c26660daa23)]:
+  - @yagejs/core@0.10.1
+  - @yagejs/debug@0.10.1
+
 ## 0.10.0
 
 ### Minor Changes
