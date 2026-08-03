@@ -14,31 +14,35 @@ import {
   createMockScene,
   createMockEntity,
   advanceFrames,
-} from "@yagejs/core/test-utils";
+} from "@yagejs/core";
 ```
 
-| Utility | Purpose |
-|---|---|
-| `createTestEngine()` | Headless engine with no renderer or audio |
-| `createMockScene()` | Lightweight scene with a working ECS world |
-| `createMockEntity()` | Bare entity wired into a mock scene |
-| `advanceFrames(engine, n)` | Tick the engine forward by `n` frames |
+| Utility | Returns | Purpose |
+|---|---|---|
+| `createTestEngine(config?)` | `Promise<Engine>` | Headless engine, already started. No renderer, audio, or input plugins |
+| `createMockScene(name?)` | `{ scene, context }` | Scene with a working ECS world, no engine |
+| `createMockEntity(name?)` | `{ entity, scene, context }` | Entity spawned into a mock scene |
+| `advanceFrames(engine, n, dtMs?)` | `void` | Tick the game loop `n` times. `dtMs` defaults to `1000 / 60` |
+
+`createTestEngine` is async — it starts the engine for you, so `await` it and
+don't call `engine.start()` yourself. The mock helpers return an object: take
+the piece you need with destructuring (`const { entity } = createMockEntity()`).
 
 ## Unit Testing a Component
 
 Test a single component by attaching it to a mock entity and calling its
-lifecycle methods directly:
+methods directly. Lifecycle methods such as `update(dt)` are called the same
+way:
 
 ```typescript
 import { describe, it, expect } from "vitest";
-import { createMockEntity } from "@yagejs/core/test-utils";
+import { createMockEntity } from "@yagejs/core";
 import { HealthComponent } from "../HealthComponent";
 
 describe("HealthComponent", () => {
-  it("should clamp health to zero", () => {
-    const entity = createMockEntity();
-    const health = new HealthComponent({ max: 100 });
-    entity.add(health);
+  it("clamps health to zero", () => {
+    const { entity } = createMockEntity();
+    const health = entity.add(new HealthComponent({ max: 100 }));
 
     health.takeDamage(150);
 
@@ -48,118 +52,201 @@ describe("HealthComponent", () => {
 });
 ```
 
+`entity.add()` returns the component you passed in, so you can attach it and
+keep the reference in one line.
+
 ## Unit Testing a System
 
-Systems operate on a scene's entities. Use `createMockScene()` to build a
-minimal world with exactly the entities your system needs:
+A system has one tick method, `update(dt)`. The `phase` field decides when the
+engine calls it, and a test calls it directly. Systems read the active scene
+from the `SceneManager`, which a mock scene has no engine to provide. Register
+a stand-in that reports your scene as the active one:
 
 ```typescript
-import { createMockScene } from "@yagejs/core/test-utils";
-import { GravitySystem } from "../GravitySystem";
+import { describe, it, expect } from "vitest";
+import {
+  createMockScene,
+  Phase,
+  System,
+  SceneManagerKey,
+  type SceneManager,
+} from "@yagejs/core";
 import { VelocityComponent } from "../VelocityComponent";
 
+class GravitySystem extends System {
+  readonly phase = Phase.FixedUpdate;
+  private readonly gravity: number;
+
+  constructor(config: { gravity: number }) {
+    super();
+    this.gravity = config.gravity;
+  }
+
+  update(dt: number): void {
+    const scene = this.use(SceneManagerKey).active;
+    if (!scene) return;
+    for (const entity of scene.findEntities()) {
+      if (!entity.has(VelocityComponent)) continue;
+      entity.get(VelocityComponent).y += this.gravity * dt;
+    }
+  }
+}
+
 describe("GravitySystem", () => {
-  it("should apply gravity to entities with velocity", () => {
-    const scene = createMockScene();
+  it("accelerates entities with a velocity", () => {
+    const { scene, context } = createMockScene();
+    context.register(SceneManagerKey, {
+      active: scene,
+    } as unknown as SceneManager);
+
     const system = new GravitySystem({ gravity: 980 });
-    scene.addSystem(system);
+    system._setContext(context);
 
-    const entity = scene.spawnEmpty();
-    const velocity = new VelocityComponent();
-    entity.add(velocity);
+    const velocity = scene.spawn("ball").add(new VelocityComponent());
 
-    // Run one fixed update at 0.016s
-    system.fixedUpdate(0.016);
+    system.update(0.016); // one fixed step at 60fps
 
     expect(velocity.y).toBeCloseTo(980 * 0.016);
   });
 });
 ```
 
-## Integration Testing with a Full Engine
+The engine calls `_setContext` when it registers a system. A test that
+constructs the system itself has to call it too, otherwise `this.use(...)` has
+no container to resolve services from.
 
-For tests that need multiple systems working together, spin up a headless
-engine:
+In a game, a system reaches the engine through a plugin's `registerSystems`,
+and registration has to happen before `engine.start()`:
 
 ```typescript
-import { createTestEngine, advanceFrames } from "@yagejs/core/test-utils";
+const engine = new Engine();
+engine.use({
+  name: "gravity",
+  version: "1.0.0",
+  registerSystems: (scheduler) =>
+    scheduler.add(new GravitySystem({ gravity: 980 })),
+});
+await engine.start();
+```
+
+## Integration Testing with a Full Engine
+
+For tests that need multiple systems working together, run a headless engine.
+Construct your scene yourself and push it onto the engine's scene stack:
+
+```typescript
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { createTestEngine, advanceFrames, Transform } from "@yagejs/core";
+import type { Engine } from "@yagejs/core";
+import { GameScene } from "../GameScene";
+import { Player } from "../Player";
 
 describe("Player movement integration", () => {
-  let engine: TestEngine;
+  let engine: Engine;
 
-  beforeEach(() => {
-    engine = createTestEngine();
+  beforeEach(async () => {
+    engine = await createTestEngine();
   });
 
   afterEach(() => {
     engine.destroy();
   });
 
-  it("should move the player after 10 frames", async () => {
-    const scene = engine.createScene(GameScene);
-    engine.start(scene);
+  it("moves the player after 10 frames", async () => {
+    const scene = new GameScene();
+    await engine.scenes.push(scene);
 
-    const player = scene.findByType(Player)!;
-    const startX = player.transform.position.x;
+    const player = scene.findByKey<Player>("player")!;
+    const startX = player.get(Transform).position.x;
 
     advanceFrames(engine, 10);
 
-    expect(player.transform.position.x).not.toBe(startX);
+    expect(player.get(Transform).position.x).not.toBe(startX);
   });
 });
 ```
 
-`advanceFrames` is synchronous — it calls the engine's update loop the
-specified number of times with a fixed ~16ms delta (which the loop converts
-to ~0.0167s for `update(dt)`). No `setTimeout` or `requestAnimationFrame`
-involved.
+`scenes.push()` is async: it loads the scene's `preload` list, then runs
+`onEnter`, then plays a transition if one is configured. Await it before
+asserting on what the scene spawned.
+
+`findByKey` needs the entity to have been spawned with a key. For an entity
+class whose `setup()` takes no parameters, that's
+`this.spawn(Player, { key: "player" })`. When `setup(params)` does take
+parameters, pass both: `this.spawn(Player, params, { key: "player" })`.
+Without a key, look the entity up by name with `scene.findEntity("player")`,
+or by tag with `scene.findEntitiesByTag("player")`. `scene.spawn()` also
+returns the entity directly, so a test that spawns its own entities can just
+keep the reference.
+
+`createTestEngine` starts the engine, and plugins have to be registered before
+start. A test that needs a plugin builds the engine by hand instead:
+`new Engine()`, `engine.use(...)`, then `await engine.start()`.
+
+`advanceFrames` is synchronous — it calls the engine's game loop the specified
+number of times with a fixed ~16.7ms delta, which the loop converts to
+~0.0167s for `update(dt)`. Pass a third argument to change the per-frame
+delta: `advanceFrames(engine, 1, 100)` ticks one 100ms frame. No `setTimeout`
+or `requestAnimationFrame` involved.
 
 ## Testing Processes and Tweens
 
-Since processes run inside the game loop, you can test them by manually
-advancing time with `_update(dt)`:
+The engine ticks an entity's processes every frame, so a test engine plus
+`advanceFrames` runs them exactly as a game does. Set the per-frame delta with
+the third argument to control how much time elapses:
 
 ```typescript
-import { ProcessComponent, Process } from "@yagejs/core";
-import { createMockEntity } from "@yagejs/core/test-utils";
+import { describe, it, expect } from "vitest";
+import {
+  createTestEngine,
+  advanceFrames,
+  Process,
+  ProcessComponent,
+} from "@yagejs/core";
+import { GameScene } from "../GameScene";
 
 describe("Process timing", () => {
-  it("should fire callback after delay", () => {
-    const entity = createMockEntity();
-    const pc = new ProcessComponent();
-    entity.add(pc);
+  it("fires the callback after the delay", async () => {
+    const engine = await createTestEngine();
+    const scene = new GameScene();
+    await engine.scenes.push(scene);
 
+    const processes = scene.spawn("timer").add(new ProcessComponent());
     let fired = false;
-    pc.run(Process.delay(0.1, () => { fired = true; }));
+    processes.run(
+      Process.delay(0.1, () => {
+        fired = true;
+      }),
+    );
 
-    // Advance 0.05s — not enough
-    pc._update(0.05);
+    advanceFrames(engine, 1, 50); // 0.05s elapsed — not enough
     expect(fired).toBe(false);
 
-    // Advance another 0.06s — total 0.11s, past the 0.1s delay
-    pc._update(0.06);
+    advanceFrames(engine, 1, 60); // 0.11s total — past the 0.1s delay
     expect(fired).toBe(true);
+
+    engine.destroy();
   });
 });
 ```
 
-Tweens work the same way. Advance time and assert on the interpolated values:
+For the interpolation math alone, no engine is needed. `Process.delay` and the
+`Tween` factories return a `Process`, and `_update(dt)` advances it by `dt`
+seconds — the same call the engine makes each frame:
 
 ```typescript
 import { Tween, easeLinear } from "@yagejs/core";
 
-it("should tween alpha to zero", () => {
-  const obj = { alpha: 1 };
-  const pc = new ProcessComponent();
-  createMockEntity().add(pc);
+it("tweens alpha to zero", () => {
+  const target = { alpha: 1 };
+  const tween = Tween.to(target, "alpha", 0, 0.2, easeLinear);
 
-  pc.run(Tween.to(obj, "alpha", 0, 0.2, easeLinear));
+  tween._update(0.1); // halfway
+  expect(target.alpha).toBeCloseTo(0.5);
 
-  pc._update(0.1); // halfway
-  expect(obj.alpha).toBeCloseTo(0.5);
-
-  pc._update(0.1); // complete
-  expect(obj.alpha).toBeCloseTo(0);
+  tween._update(0.1); // complete
+  expect(target.alpha).toBeCloseTo(0);
+  expect(tween.completed).toBe(true);
 });
 ```
 
@@ -167,23 +254,23 @@ it("should tween alpha to zero", () => {
 
 ### Always Destroy the Engine
 
-Call `engine.destroy()` in `afterEach` to clean up PixiJS resources, event
-listeners, and internal state. Leaking engines across tests causes flaky
-failures.
+Call `engine.destroy()` in `afterEach`. It stops the game loop, tears down
+every scene and system, destroys the plugins, and clears the event bus.
+Leaking engines across tests causes flaky failures.
 
 ### Entity ID Reset
 
-Mock scenes automatically reset the entity ID counter, so IDs are predictable
-within each test. If you're using `createTestEngine`, call `engine.destroy()`
-between tests to get the same reset behavior.
+`createTestEngine`, `createMockScene`, and `createMockEntity` all reset the
+entity ID counter when they run, so IDs are predictable within each test. Two
+tests that build the same entities in the same order see the same IDs.
 
 ### Error Boundary Testing
 
 Test that components handle error conditions gracefully:
 
 ```typescript
-it("should not crash when destroying an already-destroyed entity", () => {
-  const entity = createMockEntity();
+it("does not crash when destroying an already-destroyed entity", () => {
+  const { entity } = createMockEntity();
   entity.destroy();
 
   expect(() => entity.destroy()).not.toThrow();
@@ -198,15 +285,16 @@ seed it or mock the random source so results are reproducible.
 ## Runtime Inspection
 
 The utilities above give you deterministic, headless verification — you tick
-the engine by exact frame counts and assert against the resulting state. Some
-investigations don't fit that shape, though: poking at a running dev build
-from the browser console, verifying that a full scene wires up correctly in
-the renderer, or letting an AI coding agent confirm the shape of a scene it
-just generated. For those, reach for the **Inspector**.
+the engine by exact frame counts and assert against the resulting state. Other
+checks need a live game: inspecting a running dev build from the browser
+console, confirming that a whole scene reaches the renderer with the entities
+and layers you expect, or letting an AI coding agent verify a scene it just
+generated. The **Inspector** covers those.
 
-The Inspector is a runtime introspection and control API that auto-attaches to
-`window.__yage__` whenever the engine is constructed with `debug: true`. It
-sees the same ECS state your tests see, but against a live running game.
+The Inspector is a runtime introspection and control API. Construct the engine
+with `debug: true` and it attaches itself to `window.__yage__` during
+`engine.start()`. It sees the same ECS state your tests see, but against a
+live running game.
 
 ```typescript
 const engine = new Engine({ debug: true });
@@ -241,13 +329,13 @@ const spriteState = window.__yage__.inspector.getComponentData(
 
 | Method | Purpose |
 |---|---|
-| `snapshot()` | Full engine snapshot — frame, scene stack, entity/system counts, errors |
+| `snapshot()` | Full engine snapshot — frame, scene stack, entity/system counts, errors, plus per-scene entity detail under `scenes`, camera, and input state |
 | `getSceneStack()` | All scenes with their pause state and entity counts |
 | `getEntities()` | Every entity in the active scene — `id`, `name`, `tags`, `components`, `position` |
-| `getEntityByName(name)` | First entity whose name matches |
+| `getEntityByName(name)` | First active entity with that name. Destroyed and deactivated entities are skipped |
 | `getEntityPosition(name)` | Shortcut: `Transform` position for a named entity |
-| `hasComponent(entity, class)` | Boolean: does the named entity have this component class? |
-| `getComponentData(entity, class)` | Plain-object snapshot of a component's state |
+| `hasComponent(name, componentName)` | Boolean: does the named entity have this component? Both arguments are strings |
+| `getComponentData(name, componentName)` | The component's `serialize()` result, or its reflected public state when it defines none. Typed `unknown`, and `null` for a component with nothing serializable |
 | `getSystems()` | Every registered system, with phase/priority/enabled flags |
 | `getErrors()` | Recorded failures from the error boundary (`callbackErrors`) — system, component, and callback throws, most recent last |
 
@@ -292,21 +380,21 @@ gameplay against YAGE. The two approaches are complementary, not redundant:
   correctness guarantees — ideal for unit-testing components or verifying
   that ten frames of simulation produce a specific outcome.
 - **The Inspector** gives a live readout of a running game — ideal for
-  verifying that a brand-new scene actually wires up its entities, cameras,
-  and layers the way the agent intended, without having to read the canvas.
+  checking that a brand-new scene really created its entities, cameras, and
+  layers the way the agent intended, without having to read the canvas.
 
 A typical workflow is: generate the code → run it in the dev server with
 `debug: true` → use the Inspector to confirm the expected entities exist and
 have the expected components → only then write a targeted test against the
-specific behaviour you care about. This tight loop catches the
+specific behaviour you care about. Checking the live scene first catches the
 "I misunderstood what `spawn()` needs" class of bugs in seconds instead of
 minutes.
 
 ### Known Limitations
 
 - **Names are not unique keys.** If two entities share a name,
-  `getEntityByName` returns the first match it encounters. For robust lookups
-  either use unique names or iterate `getEntities()` and filter by `id`.
+  `getEntityByName` returns the first active one it encounters. Either use
+  unique names, or iterate `getEntities()` and filter by `id`.
 - **Mutation is scoped to debug tooling.** The Inspector can freeze time,
   inject input, and step frames, but it is not a general-purpose world editor.
   Use normal engine APIs for structural scene changes.
