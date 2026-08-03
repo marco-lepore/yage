@@ -192,6 +192,12 @@ export class Engine {
     if (this.lifecycle === "destroyed") {
       throw new Error("Cannot register plugins on a destroyed engine.");
     }
+    if (this.lifecycle === "failed") {
+      throw new Error(
+        "Cannot register plugins after start() failed on this instance. Call " +
+          "destroy() to release what did install, then construct a new Engine.",
+      );
+    }
     if (this.lifecycle !== "idle") {
       throw new Error("Cannot register plugins after engine has started.");
     }

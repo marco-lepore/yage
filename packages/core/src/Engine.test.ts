@@ -409,7 +409,7 @@ describe("Engine", () => {
         "Engine.start() already failed on this instance",
       );
       expect(() => engine.use({ name: "late", version: "1.0.0" })).toThrow(
-        "Cannot register plugins after engine has started.",
+        "Cannot register plugins after start() failed on this instance.",
       );
       expect(engine.loop.isRunning).toBe(false);
 
@@ -446,6 +446,40 @@ describe("Engine", () => {
       expect(baseDestroy).toHaveBeenCalledOnce();
       expect(system.unregisters).toBe(1);
       expect(engine.loop.isRunning).toBe(false);
+    });
+
+    it("logs the teardown errors it does not rethrow", async () => {
+      const engine = new Engine();
+      engine
+        .use({
+          name: "base",
+          version: "1.0.0",
+          onDestroy: () => {
+            throw new Error("base teardown exploded");
+          },
+        })
+        .use({
+          name: "top",
+          version: "1.0.0",
+          dependencies: ["base"],
+          onDestroy: () => {
+            throw new Error("top teardown exploded");
+          },
+        });
+      await engine.start();
+      const logged = vi
+        .spyOn(engine.logger, "error")
+        .mockImplementation(() => {});
+
+      // Plugins tear down in reverse dependency order, so "top" throws first
+      // and is the error that reaches the caller.
+      expect(() => engine.destroy()).toThrow("top teardown exploded");
+
+      expect(logged).toHaveBeenCalledWith(
+        "Engine",
+        expect.stringContaining("base teardown exploded"),
+      );
+      logged.mockRestore();
     });
   });
 
