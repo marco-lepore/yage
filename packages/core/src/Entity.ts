@@ -442,7 +442,18 @@ export class Entity {
     }
     component.entity = this;
     this.components.set(cls, component);
-    component.onAdd?.();
+    // `onAdd` is where a component validates its dependencies, so this is a
+    // throw site the game hits often while it is being written. Attribute it
+    // to the component, the way `onEnable` and `update` are attributed.
+    const onAdd = component.onAdd;
+    if (onAdd) {
+      const boundary = this._scene?.context.tryResolve(ErrorBoundaryKey);
+      if (boundary) {
+        boundary.wrapComponent(component, () => onAdd.call(component));
+      } else {
+        onAdd.call(component);
+      }
+    }
     this.callbacks?.onComponentAdded(this, cls);
     component._refreshEnabled();
     return component;

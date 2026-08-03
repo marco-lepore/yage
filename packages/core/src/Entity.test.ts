@@ -3,7 +3,7 @@ import { Entity, _resetEntityIdCounter } from "./Entity.js";
 import { Component } from "./Component.js";
 import { createMockScene } from "./test-utils.js";
 import { defineBlueprint } from "./Blueprint.js";
-import { QueryCacheKey } from "./EngineContext.js";
+import { ErrorBoundaryKey, QueryCacheKey } from "./EngineContext.js";
 import type { QueryCache } from "./QueryCache.js";
 
 class PositionComponent extends Component {
@@ -37,6 +37,13 @@ class LifecycleComponent extends Component {
   }
   onDestroy() {
     this.destroyCalled = true;
+  }
+}
+
+/** Reports a missing dependency the way a real `onAdd` check does. */
+class FailingComponent extends Component {
+  onAdd() {
+    throw new Error("dependency missing");
   }
 }
 
@@ -174,6 +181,39 @@ describe("Entity", () => {
       e.remove(LifecycleComponent);
       expect(lc.removeCalled).toBe(true);
       expect(lc.destroyCalled).toBe(true);
+    });
+  });
+
+  describe("a throwing onAdd", () => {
+    it("reaches the caller of add unchanged", () => {
+      const { scene } = createMockScene();
+      const e = scene.spawn("player");
+      expect(() => e.add(new FailingComponent())).toThrow("dependency missing");
+    });
+
+    it("is attributed to the component and its entity", () => {
+      const { scene, context } = createMockScene();
+      const e = scene.spawn("player");
+      expect(() => e.add(new FailingComponent())).toThrow();
+
+      expect(context.resolve(ErrorBoundaryKey).getCallbackErrors()).toEqual([
+        {
+          kind: "Component FailingComponent",
+          entity: "player",
+          error: "dependency missing",
+        },
+      ]);
+    });
+
+    it("records nothing when onAdd succeeds", () => {
+      const { scene, context } = createMockScene();
+      scene.spawn("player").add(new PositionComponent());
+      expect(context.resolve(ErrorBoundaryKey).getCallbackErrors()).toEqual([]);
+    });
+
+    it("still reaches the caller with no scene to resolve a boundary from", () => {
+      const e = new Entity("detached");
+      expect(() => e.add(new FailingComponent())).toThrow("dependency missing");
     });
   });
 
