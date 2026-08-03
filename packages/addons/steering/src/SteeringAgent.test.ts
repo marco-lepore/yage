@@ -143,6 +143,35 @@ describe("SteeringAgent", () => {
     expect(agent.velocity).toEqual(Vec2.ZERO);
   });
 
+  it("tick defaults to update: fixedUpdate does nothing", () => {
+    const { entity, agent } = setup({
+      maxSpeed: 60,
+      behaviors: [seek(new Vec2(1000, 0))],
+    });
+    const transform = entity.get(Transform);
+
+    agent.fixedUpdate(1 / 60);
+
+    expect(transform.position.x).toBe(0);
+    expect(agent.velocity).toEqual(Vec2.ZERO);
+  });
+
+  it('tick: "fixedUpdate" steers in fixedUpdate and ignores update', () => {
+    const { entity, agent } = setup({
+      maxSpeed: 60,
+      maxAcceleration: Infinity,
+      behaviors: [seek(new Vec2(1000, 0))],
+      tick: "fixedUpdate",
+    });
+    const transform = entity.get(Transform);
+
+    agent.update(1 / 60);
+    expect(transform.position.x).toBe(0);
+
+    agent.fixedUpdate(1 / 60);
+    expect(transform.position.x).toBeCloseTo(1, 5); // 60 px/s * 1/60 s
+  });
+
   it("stop() pushes a zero through a custom apply", () => {
     const received: Vec2[] = [];
     const { agent } = setup({

@@ -59,6 +59,13 @@ export interface SteeringAgentOptions {
    */
   drive?: "velocity" | "impulse";
   /**
+   * Which hook steers. `"update"` (default) steers once per rendered frame.
+   * `"fixedUpdate"` steers once per fixed step — the right choice when the
+   * output is Transform movement a kinematic body follows, so every write
+   * becomes exactly one physics-step target.
+   */
+  tick?: "update" | "fixedUpdate";
+  /**
    * Custom output for agents without a body: receives the commanded velocity
    * each frame instead of the default kinematic Transform integration.
    * Mutually exclusive with `body`.
@@ -96,7 +103,10 @@ export class SteeringAgent extends Component {
   /** Late-bound by integration subclasses that resolve the body from a sibling. */
   protected body: VelocityBody | ImpulseBody | undefined;
 
-  private readonly drive: "velocity" | "impulse";
+  // Not readonly: integration subclasses reconfigure these in onAdd(), once
+  // the sibling body's type is known.
+  protected drive: "velocity" | "impulse";
+  protected tick: "update" | "fixedUpdate";
   private readonly applyFn: (velocity: Vec2, ctx: SteeringApplyContext) => void;
   private readonly transform = this.sibling(Transform);
   private _velocity: Vec2 = Vec2.ZERO;
@@ -110,6 +120,7 @@ export class SteeringAgent extends Component {
     this.steering = new Steering(options.behaviors ?? []);
     this.body = options.body;
     this.drive = options.drive ?? "velocity";
+    this.tick = options.tick ?? "update";
     if (options.body && options.apply) {
       throw new Error("SteeringAgent: pass `body` or `apply`, not both");
     }
@@ -149,6 +160,14 @@ export class SteeringAgent extends Component {
   }
 
   update(dt: number): void {
+    if (this.tick === "update") this.step(dt);
+  }
+
+  fixedUpdate(dt: number): void {
+    if (this.tick === "fixedUpdate") this.step(dt);
+  }
+
+  private step(dt: number): void {
     if (!this.enabled) return;
 
     const body = this.body;

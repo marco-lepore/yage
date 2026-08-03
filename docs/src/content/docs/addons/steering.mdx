@@ -63,7 +63,8 @@ without a parent.
 
 `PhysicsSteeringAgent` (from the `/physics` entry) finds the entity's
 `RigidBodyComponent` itself — mount it next to a body and collider and it
-drives them:
+drives them. Add the body before the agent; the agent reads the body's
+type when it is added:
 
 ```ts
 import { arrive } from "@yagejs-addons/steering";
@@ -90,9 +91,19 @@ and direction changes come out as curves rather than frame-to-frame flips. It
 defaults to `4 × maxSpeed` (top speed in 0.25 s); pass `Infinity` for an instant
 snap.
 
-Pass `drive: "velocity"` for full-authority movers — the commanded velocity
-is written with `setVelocity` every frame. Combined with a kinematic
-velocity-based body, the agent pushes everything and nothing pushes it back.
+Pass `drive: "velocity"` for full-authority movers: the agent writes the
+commanded velocity with `setVelocity` every frame, so an external impulse
+decays at `maxAcceleration` instead of composing with steering. Both
+drives need a `dynamic` body — YAGE `kinematic` bodies are position-based
+and ignore `setVelocity` and `applyImpulse`.
+
+On a kinematic body, `PhysicsSteeringAgent` switches output by itself: it
+integrates the `Transform` in `fixedUpdate`, and the physics system syncs
+that pose to the body each step (see
+[Rigid Bodies](/guides/physics/#rigid-bodies)). The agent then pushes
+dynamic bodies and is never pushed back. Passing `drive` alongside a
+kinematic body throws; so does mounting on a `static` body. Any agent can
+also opt into fixed-step steering directly with `tick: "fixedUpdate"`.
 
 <Aside type="caution">
 Components are keyed by exact class: read the agent back with

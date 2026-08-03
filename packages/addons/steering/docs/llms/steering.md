@@ -33,13 +33,16 @@ enemy.add(
 
 `SteeringAgent` is a `@yagejs/core` Component; `ComponentUpdateSystem` drives
 `update(dt)`. The default output integrates `transform.position` (local) —
-agents are assumed root-level (local == world).
+agents are assumed root-level (local == world). `tick: "fixedUpdate"` steers
+once per fixed step instead of once per frame (default `"update"`) — use it
+when the output is Transform movement a kinematic body follows.
 
 ## Physics bodies
 
 Mount-and-go (auto-detects the `RigidBodyComponent` sibling; impulse drive by
 default, so the agent pushes crates, takes knockback, and gets deflected by
-contacts while steering corrects at `maxAcceleration`):
+contacts while steering corrects at `maxAcceleration`). Add the body before
+the agent — it reads the body's type when added:
 
 ```ts
 import { PhysicsSteeringAgent } from "@yagejs-addons/steering/physics";
@@ -54,6 +57,12 @@ enemy.add(
   }),
 );
 ```
+
+On a kinematic body the agent switches automatically: kinematic bodies
+ignore `setVelocity`/`applyImpulse`, so it integrates the `Transform` in
+`fixedUpdate` instead (the physics system syncs the pose to the body each
+step) — the agent pushes dynamic bodies and is never pushed back. Passing
+`drive` with a kinematic body throws; a static body throws at add.
 
 Components are keyed by exact class: query it back with
 `entity.get(PhysicsSteeringAgent)`, not `entity.get(SteeringAgent)`.
@@ -78,10 +87,13 @@ enemy.add(
 
 Drive modes:
 
-- `"velocity"` (default) — writes the commanded velocity (`setVelocity`).
-  Full authority; external pushes decay at `maxAcceleration` (with a body the
-  ramp starts from the actual velocity, so knockback is worked off, not
-  overwritten). Fits kinematic velocity-based bodies (unstoppable movers).
+- `"velocity"` (default) — writes the commanded velocity (`setVelocity`)
+  every frame. Full authority; external pushes decay at `maxAcceleration`
+  (with a body the ramp starts from the actual velocity, so knockback is
+  worked off, not overwritten). Dynamic bodies only: YAGE `kinematic`
+  bodies are position-based and ignore `setVelocity`.
+  `PhysicsSteeringAgent` handles them by Transform integration; with the
+  base class, use no `body` plus `tick: "fixedUpdate"`.
 - `"impulse"` — per frame applies `clamp(desired − actual, maxAcceleration·dt)
   · getMass()` through `applyImpulse`, so external impulses compose with
   steering. Requires a body with `applyImpulse`/`getMass` (a dynamic
