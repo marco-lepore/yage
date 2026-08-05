@@ -240,6 +240,9 @@ describe("LocalizationPlugin.setLocale", () => {
     await plugin.setLocale("es");
 
     expect(plugin.locale).toBe("en");
+    // And publishes nothing: no resolved output changed, so waking every bound
+    // sink — re-splitting each split text among them — would be pure churn.
+    expect(plugin.revision()).toBe(0);
   });
 });
 

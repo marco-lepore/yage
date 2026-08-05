@@ -148,15 +148,18 @@ export class LocalizationPlugin implements Plugin, Localization {
    * warn.
    */
   async setLocale(next: string): Promise<void> {
-    const generation = ++this._generation;
-    this._switching = true;
     if (!this._adapter.setLocale) {
+      // Nothing can change, so publish nothing: bumping would make every bound
+      // sink re-resolve — and re-split, for a split text — for no new output.
       devWarn(
         `LocalizationPlugin.setLocale("${next}"): the adapter has no setLocale, so the locale is unchanged. Wire an adapter over your i18n library to switch languages.`,
       );
+      return;
     }
+    const generation = ++this._generation;
+    this._switching = true;
     try {
-      await this._adapter.setLocale?.(next);
+      await this._adapter.setLocale(next);
     } catch (error) {
       if (generation === this._generation) {
         this._switching = false;

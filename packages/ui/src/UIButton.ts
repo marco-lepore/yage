@@ -309,6 +309,9 @@ export class UIButton implements UIContainerElement {
       this._label.setText(s);
       return;
     }
+    // Nothing to show and no label to clear — promoting here would add an empty
+    // text element that still claims a line of layout.
+    if (s === "") return;
     // Promote: caller constructed without a string child, but now wants a
     // label — create one and add it as the first child. addElement wires it to
     // localization if the button is already attached.

@@ -226,10 +226,22 @@ export function useMessage(value: LocalizableText): string {
     [localization, isDynamic],
   );
   const getSnapshot = useCallback((): string => {
-    if (!isBinding(value)) return String(value);
+    if (!isBinding(value)) return renderLiteral(value);
     return localization ? localization.resolve(value) : resolveStatic(value);
   }, [localization, value]);
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/**
+ * Render a non-binding text child. JSX children are a trust boundary — the
+ * declared type is `string`, but an untyped call site sends numbers, and
+ * `false` / `null` / `undefined` are how JSX spells "render nothing"
+ * (`{ready && "Go!"}`). Everything else stringifies, so a number paints its
+ * digits instead of vanishing.
+ */
+function renderLiteral(value: unknown): string {
+  if (value === null || value === undefined || value === false) return "";
+  return String(value);
 }
 
 /**
