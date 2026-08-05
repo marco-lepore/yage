@@ -577,7 +577,7 @@ what renders.
 new InventoryController({
   ...createInventoryPanel(theme),
   inventory,
-  title: msg("bag.title", undefined, "Bag"), // the header takes a binding
+  title: msg("bag.title", "Bag"), // the header takes a binding
   keys: myKeyScheme,                         // optional: another key layout
 });
 ```

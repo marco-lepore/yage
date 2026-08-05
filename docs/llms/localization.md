@@ -84,7 +84,7 @@ defineItems({ potion: { name: "Potion", description: "Restores health." } });
 //   inventory.item.potion.description
 //   inventory.action.<actionId>.label
 host.add(new InventoryController({ ...createInventoryPanel(), inventory,
-  title: msg("bag.title", undefined, "Bag") }));   // title takes a binding
+  title: msg("bag.title", "Bag") }));   // title takes a binding
 ```
 
 - `defaultInventoryKeys` is the scheme above; pass `keys` on the controller to

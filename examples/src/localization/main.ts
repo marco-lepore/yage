@@ -194,7 +194,7 @@ class LocalizationScene extends Scene {
       new InventoryController<ItemId>({
         ...createInventoryPanel(),
         inventory,
-        title: msg("bag.title", undefined, "Bag"),
+        title: msg("bag.title", "Bag"),
         openOnAdd: true,
       }),
     );

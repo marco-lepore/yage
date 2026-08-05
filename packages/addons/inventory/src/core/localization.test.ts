@@ -164,7 +164,7 @@ describe("without a localization service", () => {
 
   it("renders a binding title as its default", () => {
     const { chrome, session } = setup({
-      session: { title: msg("bag.title", undefined, "Bag") },
+      session: { title: msg("bag.title", "Bag") },
     });
     session.open();
     expect(chrome.last?.title).toBe("Bag");
@@ -221,7 +221,7 @@ describe("with a localization service", () => {
 
   it("resolves a binding title, and treats a string title as a literal", () => {
     const localization = new MockLocalization(TABLES, "fr");
-    const bound = setup({ session: { localization, title: msg("bag.title", undefined, "Bag") } });
+    const bound = setup({ session: { localization, title: msg("bag.title", "Bag") } });
     bound.session.open();
     expect(bound.chrome.last?.title).toBe("Sac");
 
@@ -257,7 +257,7 @@ describe("relocalize", () => {
   it("re-presents every channel in the new locale", async () => {
     const localization = new MockLocalization(TABLES, "en");
     const { inventory, slots, detail, chrome, session } = setup({
-      session: { localization, title: msg("bag.title", undefined, "Bag") },
+      session: { localization, title: msg("bag.title", "Bag") },
     });
     inventory.add("potion");
     session.open();
