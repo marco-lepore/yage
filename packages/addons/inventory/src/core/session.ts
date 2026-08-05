@@ -14,7 +14,9 @@
  * +1 (a list) or +columns (a grid), or how scrolling windows the cells.
  */
 
+import { resolveStatic, type LocalizableText, type Localization } from "@yagejs/core";
 import { byCatalogOrder, type StackComparator } from "./comparators.js";
+import { defaultInventoryKeys, type InventoryKeys } from "./keys.js";
 import type { InventorySource } from "./InventorySource.js";
 import type {
   InstanceDataMap,
@@ -36,6 +38,16 @@ export interface SlotView<
   readonly slot: number;
   readonly stack: ItemStack<TId, TData> | null;
   readonly def: ItemDef<TId> | null;
+  /**
+   * The item's display name in the active locale — render this, not
+   * `def.name`, so a custom cell preset is localized like the built-in ones.
+   * With no localization plugin registered it IS `def.name`. Empty for an
+   * empty slot.
+   */
+  readonly name: string;
+  /** The item's description in the active locale. Empty when the item declares
+   *  none, and for an empty slot. */
+  readonly description: string;
 }
 
 /**
@@ -76,6 +88,8 @@ export interface DetailChannel<
 /** One row of the action menu, resolved and ready to label. */
 export interface PresentedAction {
   readonly id: string;
+  /** The menu label in the active locale — the action's authored `label` when
+   *  no localization plugin is registered. */
   readonly label: string;
 }
 
@@ -95,6 +109,7 @@ export interface ActionMenuChannel {
 
 /** Header info the chrome renders alongside the panel frame. */
 export interface InventoryChromeInfo {
+  /** The header title in the active locale, or `undefined` for no title. */
   readonly title: string | undefined;
   /** Occupied slots. */
   readonly used: number;
@@ -144,8 +159,19 @@ export interface InventorySessionOptions<
   TId extends string = string,
   TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
 > {
-  /** Header title the chrome shows. */
-  readonly title?: string | undefined;
+  /** Header title the chrome shows — a literal, or a `msg(...)` binding that
+   *  re-resolves on locale change. */
+  readonly title?: LocalizableText | undefined;
+  /**
+   * The engine localization service, when the game registered a
+   * `LocalizationPlugin`. Item names, descriptions, and action labels then
+   * resolve through it, keyed by {@link keys}. Omit it and every string renders
+   * as authored. {@link InventoryController} wires this itself.
+   */
+  readonly localization?: Localization | undefined;
+  /** Catalog-key scheme for item and action text. Default
+   *  {@link defaultInventoryKeys}. */
+  readonly keys?: InventoryKeys | undefined;
   /**
    * What `cancel` does at browse level (the action menu always closes first).
    * `true` (default): close the inventory — the standalone behavior. Set
@@ -181,7 +207,9 @@ export class InventorySession<
   private source: InventorySource<TId, TData>;
   private readonly channels: InventoryChannels<TId, TData>;
   private readonly opts: InventorySessionOptions<TId, TData>;
-  private title: string | undefined;
+  private readonly localization: Localization | undefined;
+  private readonly keys: InventoryKeys;
+  private title: LocalizableText | undefined;
 
   private opened = false;
   private hidden = false;
@@ -199,6 +227,8 @@ export class InventorySession<
     this.source = source;
     this.channels = channels;
     this.opts = opts;
+    this.localization = opts.localization;
+    this.keys = opts.keys ?? defaultInventoryKeys;
     this.title = opts.title;
     // Presenter-owned commit paths (pointer/DOM views activate rows directly).
     channels.slots.onSlotChosen = (slot) => this.confirmSlot(slot);
@@ -295,7 +325,7 @@ export class InventorySession<
    */
   setSource(
     source: InventorySource<TId, TData>,
-    opts: { readonly title?: string } = {},
+    opts: { readonly title?: LocalizableText } = {},
   ): void {
     this.unsubscribe?.();
     this.unsubscribe = undefined;
@@ -309,9 +339,27 @@ export class InventorySession<
     }
   }
 
-  setTitle(title: string | undefined): void {
+  setTitle(title: LocalizableText | undefined): void {
     this.title = title;
     if (this.opened && !this.paused) this.presentChrome();
+  }
+
+  /**
+   * Re-present every channel in the active locale, preserving the cursor, the
+   * open action menu, and its highlighted row. Called automatically when the
+   * localization revision bumps (locale switch or a lazy catalog load) — item
+   * names drive cell layout and menu-row widths, so the views have to rebuild
+   * rather than swap a string in place.
+   *
+   * Presentation only: no model mutation, no selection or open/closed change,
+   * and no `onSelectionChanged` / `onConfirm` callbacks.
+   */
+  relocalize(): void {
+    if (!this.opened || this.paused) return;
+    this.refresh();
+    // The menu holds its own resolved labels and row geometry; re-present it
+    // (keeping menuIndex) so a longer translation re-measures.
+    if (this.isMenuOpen()) this.presentMenu();
   }
 
   /** The source currently presented — the escape hatch to everything else. */
@@ -479,7 +527,10 @@ export class InventorySession<
     const menu = this.channels.actionMenu;
     if (!menu) return;
     menu.present(
-      this.menuActions.map((a) => ({ id: a.id, label: a.label })),
+      this.menuActions.map((a) => ({
+        id: a.id,
+        label: this.translate(this.keys.actionLabel(a.id), a.label),
+      })),
       this.selected,
     );
     menu.setVisible(this.opened && !this.hidden);
@@ -499,10 +550,31 @@ export class InventorySession<
 
   private presentChrome(): void {
     this.channels.chrome?.present({
-      title: this.title,
+      title: this.title === undefined ? undefined : this.resolveText(this.title),
       used: this.source.used,
       capacity: this.source.capacity,
     });
+  }
+
+  /**
+   * Resolve game-supplied text. A plain string is a literal and passes through
+   * — only a `msg(...)` binding is looked up. With no localization service a
+   * binding renders its `default` (else its id).
+   */
+  private resolveText(value: LocalizableText): string {
+    if (typeof value === "string") return value;
+    return this.localization?.resolve(value) ?? resolveStatic(value);
+  }
+
+  /**
+   * Resolve addon-owned text: `fallback` is the string authored on the item or
+   * action definition, `key` the catalog key derived from its id. With no
+   * localization service the authored literal is what renders.
+   */
+  private translate(key: string, fallback: string): string {
+    return (
+      this.localization?.resolve({ id: key, default: fallback }) ?? fallback
+    );
   }
 
   private slotViews(): SlotView<TId, TData>[] {
@@ -514,10 +586,17 @@ export class InventorySession<
 
   private viewOf(slot: number): SlotView<TId, TData> {
     const stack = this.stackAt(slot);
+    const def = stack ? this.source.catalog.get(stack.itemId) : null;
+    if (!def) return { slot, stack, def: null, name: "", description: "" };
     return {
       slot,
       stack,
-      def: stack ? this.source.catalog.get(stack.itemId) : null,
+      def,
+      name: this.translate(this.keys.itemName(def.id), def.name),
+      description:
+        def.description === undefined
+          ? ""
+          : this.translate(this.keys.itemDescription(def.id), def.description),
     };
   }
 

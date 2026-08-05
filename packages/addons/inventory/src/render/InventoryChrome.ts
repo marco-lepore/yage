@@ -106,12 +106,10 @@ export class InventoryChrome implements ChromePresenter {
   }
 
   present(info: InventoryChromeInfo): void {
-    if (this.title) this.title.text.text = info.title ?? "";
-    if (this.counter) {
-      // The counter only means something with a slot limit; unbounded
-      // inventories show none.
-      this.counter.text.text = info.capacity !== undefined ? `${info.used}/${info.capacity}` : "";
-    }
+    this.title?.setText(info.title ?? "");
+    // The counter only means something with a slot limit; unbounded
+    // inventories show none.
+    this.counter?.setText(info.capacity !== undefined ? `${info.used}/${info.capacity}` : "");
     this.redraw();
   }
 

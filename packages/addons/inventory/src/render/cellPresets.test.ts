@@ -32,9 +32,11 @@ function occupied(opts: { name?: string; icon?: string; color?: number; quantity
       ...(opts.icon !== undefined ? { icon: opts.icon } : {}),
       ...(opts.color !== undefined ? { color: opts.color } : {}),
     } as unknown as SlotView["def"],
+    name: opts.name ?? "Potion",
+    description: "",
   };
 }
-const empty: SlotView = { slot: 0, stack: null, def: null };
+const empty: SlotView = { slot: 0, stack: null, def: null, name: "", description: "" };
 
 const named = (scene: Scene, name: string) =>
   [...scene.getEntities()].filter((e) => !e.isDestroyed && e.name === name);

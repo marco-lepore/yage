@@ -55,6 +55,8 @@ function slotViews(count: number, emptyAt: readonly number[] = []): SlotView[] {
       slot: i,
       stack: filled ? ({ itemId: "x", quantity: 1 } as unknown as SlotView["stack"]) : null,
       def: filled ? ({ id: "x", name: "X" } as unknown as SlotView["def"]) : null,
+      name: filled ? "X" : "",
+      description: "",
     };
   });
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMockScene } from "@yagejs/core";
+import { createMockScene, LocalizationKey } from "@yagejs/core";
 import { InputManagerKey, type InputManager } from "@yagejs/input";
 import { defineItems } from "./core/catalog.js";
 import { filteredView } from "./core/filteredView.js";
@@ -620,5 +620,81 @@ describe("host-driven seam (embedded mode)", () => {
     controller.open();
     controller.sort();
     expect(inventory.slots[0]?.itemId).toBe("potion"); // catalog order
+  });
+});
+
+describe("localization", () => {
+  /** Minimal Localization service double: `bump` fires the revision listeners
+   *  the way a real plugin does on a locale switch. */
+  function mockLocalization() {
+    const listeners = new Set<() => void>();
+    return {
+      service: {
+        locale: "en",
+        revision: () => 0,
+        subscribe: (onChange: () => void) => {
+          listeners.add(onChange);
+          return () => listeners.delete(onChange);
+        },
+        resolve: (b: { id: string; default?: string }) => b.default ?? b.id,
+        setLocale: async () => {},
+      },
+      bump: () => {
+        for (const l of [...listeners]) l();
+      },
+      get listenerCount() {
+        return listeners.size;
+      },
+    };
+  }
+
+  it("re-presents the open panel when the locale revision bumps", () => {
+    const { scene, context } = createMockScene();
+    const local = mockLocalization();
+    context.register(LocalizationKey, local.service);
+    const { controller, slots, inventory } = makeController();
+    scene.spawn("inv").add(controller);
+    inventory.add("potion");
+    controller.open();
+    const before = slots.presented.length;
+
+    local.bump();
+    expect(slots.presented.length).toBeGreaterThan(before);
+  });
+
+  it("unsubscribes when the component is removed", () => {
+    const { scene, context } = createMockScene();
+    const local = mockLocalization();
+    context.register(LocalizationKey, local.service);
+    const { controller } = makeController();
+    const host = scene.spawn("inv");
+    host.add(controller);
+    expect(local.listenerCount).toBe(1);
+
+    host.remove(InventoryController);
+    expect(local.listenerCount).toBe(0);
+    // A bump after teardown must not reach the disposed session.
+    expect(() => local.bump()).not.toThrow();
+  });
+
+  it("subscribes once across a remove/re-add cycle", () => {
+    const { scene, context } = createMockScene();
+    const local = mockLocalization();
+    context.register(LocalizationKey, local.service);
+    const { controller } = makeController();
+    const host = scene.spawn("inv");
+    host.add(controller);
+    host.remove(InventoryController);
+    host.add(controller);
+    expect(local.listenerCount).toBe(1);
+  });
+
+  it("works with no localization plugin registered", () => {
+    const { scene } = createMockScene();
+    const { controller, slots, inventory } = makeController();
+    scene.spawn("inv").add(controller);
+    inventory.add("potion");
+    controller.open();
+    expect(slots.presented[slots.presented.length - 1]?.[0]?.name).toBe("Potion");
   });
 });

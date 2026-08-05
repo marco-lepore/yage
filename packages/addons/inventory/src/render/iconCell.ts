@@ -146,7 +146,7 @@ class IconCellPresenter implements CellPresenter {
           new TextComponent(
             makeTextOptions(
               this.cfg,
-              (view.def.name[0] ?? "?").toUpperCase(),
+              (view.name[0] ?? "?").toUpperCase(),
               Math.round(r.width * 0.4),
               this.cfg.tileLetterColor,
               this.cfg.layerContent,
