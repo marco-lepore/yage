@@ -575,6 +575,13 @@ export interface PixiSelectProps extends LayoutProps, ConsumeInputProps {
 
 /** Props for PixiRadioGroup. */
 export interface PixiRadioGroupProps extends LayoutProps, ConsumeInputProps {
+  /** The radio options. Each item's `text` may be a {@link LocalizedBinding}
+   *  that re-resolves on locale change.
+   *
+   *  Construction-only, like {@link PixiSelectProps.items}: the option set is
+   *  baked at construction and a later `update({ items })` is ignored — only
+   *  per-item localization refreshes labels in place. Recreate the component to
+   *  change which options exist or to edit an item's text. */
   items: PixiCheckboxProps[];
   type: "vertical" | "horizontal";
   elementsMargin: number;

@@ -79,6 +79,13 @@ class LocalizedSelect extends Select {
     return [...((this.scrollBox?.items as FancyButton[] | undefined) ?? [])];
   }
 
+  /** Tear down the dropdown list. `ScrollBox.destroy()` removes a document
+   *  `wheel` listener that a plain `Select.destroy()` leaves attached. */
+  destroyScrollBox(): void {
+    const box = this.scrollBox;
+    if (box && !box.destroyed) box.destroy({ children: true, context: true });
+  }
+
   /** Notified after every open/close with the resulting open state. */
   onOpenChange: ((open: boolean) => void) | undefined;
   private _portalHost: Container | null = null;
@@ -249,19 +256,20 @@ export class PixiSelect extends PixiUIBase<LocalizedSelect> {
   }
 
   override destroy(): void {
-    // Put the dropdown back inside the Select first (portal), so the recursive
-    // `view.destroy()` tears it down instead of leaking a container reparented
-    // to the stage.
+    // Put the dropdown back inside the Select first (portal), so it is torn
+    // down here instead of leaking a container reparented to the stage.
     this.view.restoreDropdown();
-    // @pixi/ui `ScrollBox.destroy()` detaches its List children without
-    // destroying them, so the option buttons survive the recursive
-    // `view.destroy({ children: true })`. Collect them first and destroy any
-    // the recursive pass missed — otherwise repeated mount/unmount cycles leak
-    // their Pixi objects and press signals.
+    // The dropdown is Select's own internal, so this wrapper owns its teardown
+    // (the base destroy deliberately spares children — they include views the
+    // game passed in). `ScrollBox.destroy()` detaches its List children without
+    // destroying them, so collect the option buttons first and destroy the
+    // survivors; otherwise repeated mount/unmount cycles leak their Pixi
+    // objects and press signals.
     const buttons = this.view.allItemButtons();
+    this.view.destroyScrollBox();
     super.destroy();
     for (const b of buttons) {
-      if (!b.destroyed) b.destroy({ children: true });
+      if (!b.destroyed) b.destroy({ children: true, context: true });
     }
   }
 }

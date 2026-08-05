@@ -113,10 +113,12 @@ implements UIElement {
     this.detachLocalization();
     this.disconnectAll();
     this.yogaNode.free();
-    // `{ children: true }` so composite widgets tear their internals down — e.g.
-    // Select's ScrollBox, whose own destroy() removes a document `wheel`
-    // listener that a bare `destroy()` would leak.
-    this.view.destroy({ children: true });
+    // No `{ children: true }`: view props (`bg`, `defaultView`, `closedBG`, …)
+    // are display objects the game constructed and may reuse across mounts, and
+    // @pixi/ui parents them under the widget — a recursive destroy would take
+    // them with it. A widget with internals that need their own teardown
+    // overrides this and reaches them by name.
+    this.view.destroy();
   }
 
   /** Override in subclass to disconnect all signals on destroy. */

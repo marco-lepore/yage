@@ -42,6 +42,11 @@ export class PixiInput extends PixiUIBase<LocalizedInput> {
 
     this._placeholderLocalizer = new LocalizedTextController((value) => {
       this.view.setPlaceholderText(value);
+      // The placeholder is an unmasked child, so a longer translation grows the
+      // view's local bounds. Without a re-measure, `applyLayout` writes the
+      // stale computed width and Pixi turns that into a scale, shrinking the
+      // whole input. Matches PixiCheckbox / PixiFancyButton / PixiRadioGroup.
+      this.invalidateMeasure();
     });
     this.localizers.push(this._placeholderLocalizer);
     if (props.placeholder !== undefined) {

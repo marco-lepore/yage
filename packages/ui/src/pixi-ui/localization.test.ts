@@ -22,16 +22,29 @@ vi.mock("@pixi/ui", () => {
   }
 
   class FancyButton {
-    text = "";
-    textView: { style: unknown } | undefined = { style: {} };
+    textView: { style: unknown } | undefined;
     enabled = true;
     onPress = new FakeSignal();
     width = 0;
     height = 0;
     visible = true;
     destroyed = false;
+    private _text = "";
     constructor(opts?: { text?: string }) {
       if (opts?.text !== undefined) this.text = opts.text;
+    }
+    /** Mirrors @pixi/ui: an empty string removes the text view entirely, and
+     *  the next non-empty value builds a fresh one carrying no style. */
+    get text(): string {
+      return this._text;
+    }
+    set text(value: string) {
+      this._text = value;
+      if (!value) {
+        this.textView = undefined;
+        return;
+      }
+      this.textView ??= { style: {} };
     }
     destroy(): void {
       this.destroyed = true;
@@ -69,7 +82,9 @@ vi.mock("@pixi/ui", () => {
   }
 
   class Select {
-    scrollBox: { items: FancyButton[] };
+    /** Mirrors @pixi/ui: `destroy()` tears the box down but detaches its List
+     *  children without destroying them, so the option buttons survive it. */
+    scrollBox: { items: FancyButton[]; destroyed: boolean; destroy(): void };
     openButton: FancyButton;
     closeButton: FancyButton;
     value = -1;
@@ -83,7 +98,13 @@ vi.mock("@pixi/ui", () => {
     }) {
       const labels = opts?.items?.items ?? [];
       const selected = opts?.selected ?? 0;
-      this.scrollBox = { items: labels.map((t) => new FancyButton({ text: t })) };
+      this.scrollBox = {
+        items: labels.map((t) => new FancyButton({ text: t })),
+        destroyed: false,
+        destroy(): void {
+          this.destroyed = true;
+        },
+      };
       this.openButton = new FancyButton({ text: labels[selected] ?? "" });
       this.closeButton = new FancyButton({ text: labels[selected] ?? "" });
       // Mirror @pixi/ui: each item button emits/labels its original string.
@@ -169,6 +190,9 @@ describe("pixi-ui localization", () => {
     loc = makeLocalization({
       en: { play: "Play", agree: "Agree", search: "Search…", red: "Red", blue: "Blue" },
       it: { play: "Gioca", agree: "Accetto", search: "Cerca…", red: "Rosso", blue: "Blu" },
+      // A locale whose entry is deliberately empty — @pixi/ui tears the text
+      // view down for it, so the next switch rebuilds one.
+      blank: { label: "" },
     });
   });
 
@@ -279,6 +303,54 @@ describe("pixi-ui localization", () => {
     // @pixi/ui ScrollBox.destroy() detaches its List children without
     // destroying them; the wrapper must finish the job.
     expect(buttons.every((b) => b.destroyed)).toBe(true);
+  });
+
+  it("PixiSelect.destroy() tears down the dropdown ScrollBox", () => {
+    // The base destroy spares children (they include views the game passed in
+    // and may reuse), so the wrapper owns Select's own internals. Leaving the
+    // ScrollBox alive would leak its document `wheel` listener.
+    const select = new PixiSelect({
+      closedBG: 0x000000,
+      openBG: 0x000000,
+      items: ["Red", "Blue"],
+    });
+    const box = (select as unknown as {
+      view: { scrollBox: { destroyed: boolean } };
+    }).view.scrollBox;
+
+    select.destroy();
+    expect(box.destroyed).toBe(true);
+  });
+
+  it("keeps a caller-supplied view alive after destroy", () => {
+    // `closedBG` / `openBG` and friends are display objects the game built and
+    // may reuse across mounts; @pixi/ui parents them under the widget, so a
+    // recursive destroy would take them with it.
+    const closedBG = { destroyed: false, destroy(): void { this.destroyed = true; } };
+    const button = new PixiFancyButton({
+      text: "Go",
+      defaultView: closedBG as never,
+    });
+
+    button.destroy();
+    expect(closedBG.destroyed).toBe(false);
+  });
+
+  it("re-applies the label style when an empty translation rebuilt the text view", async () => {
+    // @pixi/ui drops the text view on an empty string and builds a fresh,
+    // unstyled one for the next non-empty value.
+    const style = { fontSize: 22 };
+    const btn = new PixiFancyButton({
+      text: msg("label", undefined, "Label"),
+      textStyle: style,
+    });
+    btn.attachLocalization(loc);
+
+    await loc.setLocale("blank"); // catalog maps `label` to ""
+    await loc.setLocale("it");
+
+    const view = btn as unknown as { view: { textView?: { style: unknown } } };
+    expect(view.view.textView?.style).toEqual(style);
   });
 
   it("plain-string labels are inert across locale changes", async () => {

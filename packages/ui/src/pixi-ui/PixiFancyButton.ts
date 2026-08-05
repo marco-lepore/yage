@@ -20,6 +20,8 @@ export function refitButtonText(btn: FancyButton): void {
 export class PixiFancyButton extends PixiUIBase<FancyButton> {
   /** Retains the label binding (if any) and re-resolves it on locale change. */
   private readonly _textLocalizer: LocalizedTextController;
+  /** The label style, re-applied whenever @pixi/ui rebuilds the text view. */
+  private _textStyle: PixiFancyButtonProps["textStyle"];
 
   constructor(props: PixiFancyButtonProps) {
     const {
@@ -37,8 +39,13 @@ export class PixiFancyButton extends PixiUIBase<FancyButton> {
     } as unknown as ConstructorParameters<typeof FancyButton>[0]);
     super(view, props);
 
+    this._textStyle = textStyle;
     this._textLocalizer = new LocalizedTextController((value) => {
       this.view.text = value;
+      // @pixi/ui drops the whole text view on an empty string and builds a
+      // fresh, unstyled one for the next non-empty value — so re-apply the
+      // style every time rather than only at construction.
+      this.applyTextStyle();
       // Setting `.text` alone leaves the previous label's fit scale — re-fit so
       // a longer translation doesn't overflow.
       refitButtonText(this.view);
@@ -50,9 +57,7 @@ export class PixiFancyButton extends PixiUIBase<FancyButton> {
     if (text !== undefined) this._textLocalizer.seed(text);
 
     // FancyButton has no textStyle constructor option — apply after creation
-    if (textStyle && view.textView) {
-      view.textView.style = textStyle;
-    }
+    this.applyTextStyle();
     if (props.disabled) view.enabled = false;
     if (props.onClick) view.onPress.connect(props.onClick);
     this.prevProps = { ...props };
@@ -65,13 +70,21 @@ export class PixiFancyButton extends PixiUIBase<FancyButton> {
 
     // Present-but-undefined means "reset" per the reconciler contract — clear
     // the label and drop its binding rather than leaving stale text bound.
+    // Take the new style first so the text set below applies it to a rebuilt
+    // text view.
+    if (p.textStyle !== undefined) this._textStyle = p.textStyle;
     if ("text" in props) this._textLocalizer.set(p.text ?? "");
-    if (p.textStyle !== undefined && this.view.textView) {
-      this.view.textView.style = p.textStyle;
-    }
+    else if (p.textStyle !== undefined) this.applyTextStyle();
     if (p.disabled !== undefined) this.view.enabled = !p.disabled;
 
     this.updateBase(props);
+  }
+
+  /** Push the retained style onto the current text view, if there is one. */
+  private applyTextStyle(): void {
+    if (this._textStyle && this.view.textView) {
+      this.view.textView.style = this._textStyle;
+    }
   }
 
   protected disconnectAll(): void {
