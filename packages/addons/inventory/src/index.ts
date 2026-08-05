@@ -65,6 +65,9 @@ export {
   type SlotsChannel,
 } from "./core/session.js";
 
+// --- Localization keys ---
+export { defaultInventoryKeys, type InventoryKeys } from "./core/keys.js";
+
 // --- Presenter contracts (pixi-free adapter) ---
 export type {
   ActionMenuPresenter,

@@ -62,13 +62,13 @@ export class DetailView implements DetailPresenter {
     if (!this.name || !this.description) return;
     const stack = view?.stack;
     const def = view?.def;
-    if (!stack || !def) {
-      this.name.text.text = "";
-      this.description.text.text = "";
+    if (!stack || !def || !view) {
+      this.name.setText("");
+      this.description.setText("");
       return;
     }
-    this.name.text.text = stack.quantity > 1 ? `${def.name} ×${stack.quantity}` : def.name;
-    this.description.text.text = def.description ?? "";
+    this.name.setText(stack.quantity > 1 ? `${view.name} ×${stack.quantity}` : view.name);
+    this.description.setText(view.description);
   }
 
   setVisible(visible: boolean): void {

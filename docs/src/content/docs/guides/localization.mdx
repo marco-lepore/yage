@@ -186,6 +186,57 @@ of retyping, as does one on a paused session. Either way the line is not
 re-announced: `onRevealCompleted` and a history channel's `revealComplete` fire
 once per line, line commands do not re-run, and voice keeps playing.
 
+### Inventory
+
+Item names, descriptions, and action labels are localized without any flag.
+Each is looked up under a key derived from its id, and the string you authored
+in `defineItems` is the fallback — so adding a catalog is additive, and an
+untranslated build renders exactly what it did before.
+
+```ts
+const items = defineItems({
+  potion: { name: "Potion", description: "Restores health." },
+});
+```
+
+That item is looked up as `inventory.item.potion.name` and
+`inventory.item.potion.description`; an action with id `use` is
+`inventory.action.use.label`. Put those keys in your catalog and the panel
+translates. The header title takes a binding directly:
+
+```ts
+host.add(
+  new InventoryController({
+    ...createInventoryPanel(theme),
+    inventory,
+    title: msg("bag.title", "Bag"),
+  }),
+);
+```
+
+Pass `keys` to use a different scheme:
+
+```ts
+new InventoryController({
+  /* … */
+  keys: {
+    itemName: (id) => `items/${id}/name`,
+    itemDescription: (id) => `items/${id}/desc`,
+    actionLabel: (id) => `actions/${id}`,
+  },
+});
+```
+
+On a locale switch the whole panel re-presents, keeping the cursor and any open
+action menu. It rebuilds rather than swapping strings in place because item
+names determine cell widths and menu-row widths — a longer translation has to
+re-measure.
+
+If you write a custom cell preset, render `SlotView.name` and
+`SlotView.description` (the translated strings) rather than `def.name` — `def`
+holds the text as authored. Action rows get the translated text in
+`PresentedAction.label`.
+
 ## Switching locale
 
 Resolve the plugin and call `setLocale`:

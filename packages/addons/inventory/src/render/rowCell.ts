@@ -97,7 +97,7 @@ class RowCellPresenter implements CellPresenter {
         .setPosition(r.x + ROW_TEXT_INDENT, r.y + (r.height - this.cfg.textSize) / 2 - 1);
       const name = nameEntity.add(
         new TextComponent(
-          makeTextOptions(this.cfg, view.def.name, this.cfg.textSize, this.cfg.textColor, this.cfg.layerContent),
+          makeTextOptions(this.cfg, view.name, this.cfg.textSize, this.cfg.textColor, this.cfg.layerContent),
         ),
       );
       entities.push(nameEntity);

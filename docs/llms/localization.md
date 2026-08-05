@@ -71,6 +71,31 @@ teardown — no per-element wiring. `UIRoot` does the same for the elements a
 React tree mounts, and the built-in `<Text>` / `<Button>` / `<Checkbox>`
 components also resolve through `useMessage`.
 
+## Inventory (@yagejs-addons/inventory)
+
+Item names, descriptions, and action labels are looked up by a key derived from
+the id, with the authored string as the fallback. There is no flag to turn on:
+register a `LocalizationPlugin` and add the keys to your catalog.
+
+```ts
+defineItems({ potion: { name: "Potion", description: "Restores health." } });
+// looked up as:
+//   inventory.item.potion.name
+//   inventory.item.potion.description
+//   inventory.action.<actionId>.label
+host.add(new InventoryController({ ...createInventoryPanel(), inventory,
+  title: msg("bag.title", "Bag") }));   // title takes a binding
+```
+
+- `defaultInventoryKeys` is the scheme above; pass `keys` on the controller to
+  match a catalog organised differently.
+- `SlotView.name` / `SlotView.description` are the resolved strings — render
+  those in a custom cell preset, not `def.name` (the authored literal).
+  `PresentedAction.label` is likewise resolved.
+- A locale switch re-presents the whole panel (`session.relocalize()`, wired
+  automatically), preserving the cursor and an open action menu — item names
+  drive cell and menu-row widths, so the views rebuild rather than swap text.
+
 ## Switching locale
 
 ```ts

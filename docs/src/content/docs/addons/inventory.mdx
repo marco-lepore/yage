@@ -563,6 +563,31 @@ a content update. If the bag's capacity shrank since the snapshot, entries past
 the new capacity re-flow into the earliest free slots and are dropped only when
 no slot is left — so shrinking a bag never loses items that still fit.
 
+## Translating item text
+
+Item names, descriptions, and action labels resolve through the engine's
+localization plugin when the game registers one. Each is looked up under a key
+derived from its id — `inventory.item.potion.name`,
+`inventory.item.potion.description`, `inventory.action.use.label` — and the
+string authored in `defineItems` is the fallback. Nothing to enable: with no
+plugin registered, or with a key missing from the catalog, the authored text is
+what renders.
+
+```ts
+new InventoryController({
+  ...createInventoryPanel(theme),
+  inventory,
+  title: msg("bag.title", "Bag"), // the header takes a binding
+  keys: myKeyScheme,                         // optional: another key layout
+});
+```
+
+Switching locale re-presents the panel and keeps the cursor and any open action
+menu. A custom cell preset should render `SlotView.name` and
+`SlotView.description` — the translated strings — rather than reading `def`,
+which holds the text as authored. See the
+[localization guide](/guides/localization/) for the adapter and the switch.
+
 ## Try it
 
 The [inventory example](https://github.com/marco-lepore/yage/blob/main/examples/src/inventory-addon/main.ts)

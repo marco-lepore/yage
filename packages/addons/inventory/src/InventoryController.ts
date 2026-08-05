@@ -19,11 +19,19 @@
  * menu focus.
  */
 
-import { Component, LoggerKey, isDev, type Logger } from "@yagejs/core";
+import {
+  Component,
+  LocalizationKey,
+  LoggerKey,
+  isDev,
+  type LocalizableText,
+  type Logger,
+} from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
 import type { InventorySource } from "./core/InventorySource.js";
 import { InventorySession, type NavDirection } from "./core/session.js";
 import type { StackComparator } from "./core/comparators.js";
+import type { InventoryKeys } from "./core/keys.js";
 import type { InstanceDataMap, LooseDataMap } from "./core/types.js";
 import type { InventoryBundle } from "./adapter.js";
 import { inventoryControls, type InputBinding } from "./input/index.js";
@@ -50,8 +58,17 @@ export interface InventoryControllerOptions<
    *  items") or a {@link filteredView} of one. Swap it live with
    *  {@link InventoryController.setSource}. */
   readonly inventory: InventorySource<TId, TData>;
-  /** Header title the chrome shows. */
-  readonly title?: string | undefined;
+  /** Header title the chrome shows — a literal, or a `msg(...)` binding that
+   *  re-resolves on locale change. */
+  readonly title?: LocalizableText | undefined;
+  /**
+   * Catalog-key scheme for item names, descriptions, and action labels.
+   * Default `defaultInventoryKeys` (`inventory.item.<id>.name`, …). Item and
+   * action definitions keep their authored strings as the fallback, so a
+   * catalog is additive — with no `LocalizationPlugin` registered nothing
+   * changes.
+   */
+  readonly keys?: InventoryKeys | undefined;
   /**
    * What `cancel` does at browse level (the action menu always closes first).
    * `true` (default): close the inventory. Set `false` when a host menu owns
@@ -146,6 +163,10 @@ export class InventoryController<
     this.opts.detail?.mount(this.scene);
     this.opts.actionMenu?.mount(this.scene);
 
+    // Optional: `undefined` when the game registered no LocalizationPlugin, in
+    // which case every string renders as authored.
+    const localization = this.context.tryResolve(LocalizationKey);
+
     this.session = new InventorySession<TId, TData>(
       this.opts.inventory,
       {
@@ -156,6 +177,8 @@ export class InventoryController<
       },
       {
         title: this.opts.title,
+        localization,
+        keys: this.opts.keys,
         closeOnCancel: this.opts.closeOnCancel,
         sortComparator: this.opts.sortComparator,
         onOpened: () => this.entity.emit(InventoryOpenedEvent),
@@ -169,6 +192,16 @@ export class InventoryController<
     this.warnIfActionsUnmapped(warn);
     this.session.setPaused(true);
     this.session.setHidden(true);
+
+    // Follow the engine locale: every revision bump (locale switch, lazy
+    // catalog load) re-presents the panel in the new locale. Cleaned up with
+    // the component, so a removed controller stops listening and a re-added
+    // one doesn't subscribe twice.
+    if (localization) {
+      this.addCleanup(
+        localization.subscribe(() => this.session?.relocalize()),
+      );
+    }
   }
 
   onEnable(): void {
@@ -251,7 +284,7 @@ export class InventoryController<
    */
   setSource(
     source: InventorySource<TId, TData>,
-    opts: { readonly title?: string } = {},
+    opts: { readonly title?: LocalizableText } = {},
   ): void {
     const session = this.guard("setSource");
     if (!session) return;
@@ -259,7 +292,8 @@ export class InventoryController<
     if (this.effectiveEnabled) this.mirrorModel(source);
   }
 
-  setTitle(title: string | undefined): void {
+  /** Relabel the chrome header — a literal, or a `msg(...)` binding. */
+  setTitle(title: LocalizableText | undefined): void {
     this.session?.setTitle(title);
   }
 
