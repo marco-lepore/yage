@@ -70,6 +70,16 @@ inspector.snapshotScene("level2");             // one scene's snapshot, by name 
 inspector.time.isAdvancing();                  // true if a real frame ticked within the last 250ms
 ```
 
+A logged `payload` is plain data. Class instances in a payload are stored as a compact ref instead of a deep copy — `Entity` as `{ id, name }`, `Component` as `{ component: "Health" }`, `Scene` as `{ name }`, `Vec2` as `{ x, y }`, anything else as `{ _type: "ClassName" }`.
+
+A `component:added` payload:
+
+```json
+{ "entity": { "id": 4, "name": "player" }, "component": { "component": "Health" } }
+```
+
+Engine events carry live objects — `component:added` passes the `Component` itself — so the ref is what keeps a log entry from copying the whole object graph reachable from it. Read a component's fields from the entity snapshot, not from the log. Subscribers (`engine.events.on`, `entity.on`) receive the live object either way; only the log's copy is a ref.
+
 `snapshotScene(nameOrId)` tries the public `scene.name` first, then falls back to the inspector-assigned id from `snapshot().scenes[].id` / `getSceneStack()[].id`. If more than one active scene shares the name it throws rather than guessing — pass the id instead.
 
 `time.isAdvancing(withinMs = 250)` reports whether the game loop actually ticked within the last `withinMs` milliseconds, independent of `time.isFrozen()`. A frozen clock that isn't being stepped reads `isAdvancing() === false`, but a manual `time.step`/`stepUntil`/`stepAsync` fires a real tick, so `isAdvancing()` reads `true` for `withinMs` after one. A game that has stalled without being frozen — a hung `await`, a runaway synchronous loop — also reads `false`. `isFrozen()` alone can't tell those two cases apart; `isAdvancing()` exists for that.

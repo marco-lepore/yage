@@ -15,6 +15,7 @@ import { Logger, LogLevel } from "./Logger.js";
 import { QueryCache } from "./QueryCache.js";
 import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
+import { defineEvent } from "./EventToken.js";
 import {
   EngineContext,
   ServiceKey,
@@ -490,6 +491,66 @@ describe("Inspector", () => {
         payload: null,
       },
     ]);
+  });
+
+  it("logs a live engine object in a payload as a ref", async () => {
+    const { inspector, scenes } = setup();
+    inspector.setEventLogEnabled(true);
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    const entity = scene.spawn("player");
+    entity.add(new Health(80));
+
+    const log = inspector.events.getLog();
+    expect(log.find((entry) => entry.type === "entity:created")?.payload).toEqual(
+      { entity: { id: entity.id, name: "player" } },
+    );
+    expect(
+      log.find(
+        (entry) =>
+          entry.type === "component:added" &&
+          (entry.payload as { component: { component: string } }).component
+            .component === "Health",
+      )?.payload,
+    ).toEqual({
+      entity: { id: entity.id, name: "player" },
+      component: { component: "Health" },
+    });
+    // The entity ref is what keeps its scene and the scene's internals out.
+    expect(JSON.stringify(log)).not.toContain("_scene");
+  });
+
+  it("clones plain payload data and names any other class instance", async () => {
+    const { inspector, scenes } = setup();
+    inspector.setEventLogEnabled(true);
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    inspector.attachSceneEventObserver(scene);
+    const entity = scene.spawn("player");
+
+    class Loot {
+      constructor(readonly rarity: string) {}
+    }
+    const hit = defineEvent<Record<string, unknown>>("enemy:hit");
+    entity.emit(hit, {
+      at: new Vec2(12, -3),
+      damage: { amount: 7, crit: true, tags: ["fire"] },
+      drop: new Loot("rare"),
+      slots: new Map(),
+    });
+
+    expect(
+      inspector.events.getLog().find((entry) => entry.type === "enemy:hit"),
+    ).toMatchObject({
+      source: "entity",
+      targetId: String(entity.id),
+      payload: {
+        at: { x: 12, y: -3 },
+        damage: { amount: 7, crit: true, tags: ["fire"] },
+        drop: { _type: "Loot" },
+        slots: { _type: "Map" },
+      },
+    });
   });
 
   it("events.setEnabled/isEnabled mirror the internal toggle", () => {
