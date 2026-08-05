@@ -70,9 +70,10 @@ export class GameScene extends Scene {
 
     const player = this.spawn(Player, { x: SPAWN_X, y: SPAWN_Y });
 
-    this.spawn(CameraEntity, {
+    const camera = this.spawn(CameraEntity, {
       follow: player.get(Transform),
       smoothing: 0.12,
+      snap: true,
       bounds: { minX: 0, minY: 0, maxX: WORLD_WIDTH, maxY: WORLD_HEIGHT },
     });
 
@@ -83,6 +84,9 @@ export class GameScene extends Scene {
       rb.setVelocity(Vec2.ZERO);
       rb.setPosition(SPAWN_X, SPAWN_Y);
       p.get(Transform).setPosition(SPAWN_X, SPAWN_Y);
+      // Cut back to the spawn point. Without this the camera would ease all
+      // the way across the level at `smoothing`, showing the trip back.
+      camera.snapToTarget();
 
       for (const entity of this.findEntities({ trait: Hostile })) {
         if (entity instanceof Slime) {

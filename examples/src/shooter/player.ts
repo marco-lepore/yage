@@ -121,6 +121,7 @@ class PlayerController extends Component {
       smoothing: 0.12,
       offset: new Vec2(0, -60),
       deadzone: { halfWidth: 60, halfHeight: 40 },
+      snap: true, // open on the player rather than gliding in from (0, 0)
     });
     this.camera.bounds = {
       minX: 0,
