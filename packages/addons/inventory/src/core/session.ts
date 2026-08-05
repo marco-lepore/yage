@@ -346,10 +346,12 @@ export class InventorySession<
 
   /**
    * Re-present every channel in the active locale, preserving the cursor, the
-   * open action menu, and its highlighted row. Called automatically when the
-   * localization revision bumps (locale switch or a lazy catalog load) — item
-   * names drive cell layout and menu-row widths, so the views have to rebuild
-   * rather than swap a string in place.
+   * open action menu, and its highlighted row. Item names drive cell layout and
+   * menu-row widths, so the views rebuild rather than swap a string in place.
+   *
+   * {@link InventoryController} calls this on every localization revision bump
+   * (locale switch, lazy catalog load). Driving a session directly means
+   * calling it yourself after a language change.
    *
    * Presentation only: no model mutation, no selection or open/closed change,
    * and no `onSelectionChanged` / `onConfirm` callbacks.
