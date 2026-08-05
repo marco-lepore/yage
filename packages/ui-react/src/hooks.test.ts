@@ -569,7 +569,7 @@ describe("useMessage", () => {
   it("renders a binding's default with no engine provider", () => {
     let result: string | undefined;
     function Comp() {
-      result = useMessage(msg("k", { n: 3 }, "{n} coins"));
+      result = useMessage(msg("k", "{n} coins", { n: 3 }));
       return null;
     }
     act(() => root.render(createElement(Comp)));

@@ -531,7 +531,7 @@ class FakeAdapter implements LocalizationAdapter {
 
 describe("UIText localization", () => {
   it("renders a binding's default before attach", () => {
-    const t = new UIText({ children: msg("hud.score", undefined, "Score") });
+    const t = new UIText({ children: msg("hud.score", "Score") });
     expect(textObject(t).text).toBe("Score");
   });
 

@@ -80,13 +80,13 @@ describe("LocalizationPlugin.resolve — fallback ordering", () => {
   const { plugin } = installed(adapter);
 
   it("returns the catalog hit over the default", () => {
-    expect(plugin.resolve(msg("hud.score", undefined, "IGNORED"))).toBe(
+    expect(plugin.resolve(msg("hud.score", "IGNORED"))).toBe(
       "Score",
     );
   });
 
   it("returns the default on a miss", () => {
-    expect(plugin.resolve(msg("missing", undefined, "Default"))).toBe(
+    expect(plugin.resolve(msg("missing", "Default"))).toBe(
       "Default",
     );
   });
@@ -96,7 +96,7 @@ describe("LocalizationPlugin.resolve — fallback ordering", () => {
   });
 
   it("interpolates values into the resolved text", () => {
-    expect(plugin.resolve(msg("missing", { n: 2 }, "{n} left"))).toBe("2 left");
+    expect(plugin.resolve(msg("missing", "{n} left", { n: 2 }))).toBe("2 left");
   });
 });
 
@@ -105,7 +105,7 @@ describe("LocalizationPlugin.resolve — never throws", () => {
     const adapter = new MockAdapter();
     adapter.throwOnT = true;
     const { plugin } = installed(adapter);
-    expect(plugin.resolve(msg("x", undefined, "Safe"))).toBe("Safe");
+    expect(plugin.resolve(msg("x", "Safe"))).toBe("Safe");
   });
 
   it("renders the id when the adapter throws and there is no default", () => {
@@ -120,7 +120,7 @@ describe("LocalizationPlugin.resolve — never throws", () => {
     adapter.throwOnT = true;
     const { plugin } = installed(adapter);
     // The fallback must interpolate, matching the plugin-absent identity path.
-    expect(plugin.resolve(msg("coins", { n: 3 }, "{n} coins"))).toBe("3 coins");
+    expect(plugin.resolve(msg("coins", "{n} coins", { n: 3 }))).toBe("3 coins");
   });
 });
 
@@ -262,19 +262,19 @@ describe("resolveLocalized", () => {
   it("uses the registered plugin when present", () => {
     const adapter = new MockAdapter({ en: { greet: "Hi" } });
     const { context } = installed(adapter);
-    expect(resolveLocalized(context, msg("greet", undefined, "x"))).toBe("Hi");
+    expect(resolveLocalized(context, msg("greet", "x"))).toBe("Hi");
   });
 
   it("falls back to the identity adapter with no plugin — renders default", () => {
     const context = new EngineContext();
-    expect(resolveLocalized(context, msg("x", undefined, "Default"))).toBe(
+    expect(resolveLocalized(context, msg("x", "Default"))).toBe(
       "Default",
     );
   });
 
   it("interpolates the default with no plugin", () => {
     const context = new EngineContext();
-    expect(resolveLocalized(context, msg("x", { n: 3 }, "{n} coins"))).toBe(
+    expect(resolveLocalized(context, msg("x", "{n} coins", { n: 3 }))).toBe(
       "3 coins",
     );
   });
@@ -301,7 +301,7 @@ describe("LocalizationPlugin.setLocale failure", () => {
     await expect(plugin.setLocale("fr")).rejects.toThrow("post-load check");
     expect(plugin.locale).toBe("fr");
     expect(plugin.revision()).toBe(1);
-    expect(plugin.resolve(msg("greet", undefined, "Hello"))).toBe("Bonjour");
+    expect(plugin.resolve(msg("greet", "Hello"))).toBe("Bonjour");
   });
 
   it("publishes nothing when the adapter fails without changing anything", async () => {
@@ -328,8 +328,8 @@ describe("LocalizationPlugin.resolve failure reporting", () => {
     const plugin = new LocalizationPlugin({ adapter });
     plugin.install(context);
 
-    expect(plugin.resolve(msg("a", undefined, "A"))).toBe("A");
-    expect(plugin.resolve(msg("b", undefined, "B"))).toBe("B");
+    expect(plugin.resolve(msg("a", "A"))).toBe("A");
+    expect(plugin.resolve(msg("b", "B"))).toBe("B");
 
     expect(error).toHaveBeenCalledTimes(1);
     expect(error.mock.calls[0]?.[1]).toContain("adapter.t threw");

@@ -505,7 +505,7 @@ describe("SplitTextComponent", () => {
     }
 
     it("renders a binding's default with no plugin", () => {
-      const comp = new SplitTextComponent({ text: msg("k", undefined, "ab") });
+      const comp = new SplitTextComponent({ text: msg("k", "ab") });
       expect(comp.splitText.text).toBe("ab");
       expect(comp.chars).toHaveLength(2);
     });

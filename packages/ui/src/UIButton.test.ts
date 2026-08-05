@@ -200,7 +200,7 @@ function labelText(btn: UIButton): string {
 
 describe("UIButton localization", () => {
   it("propagates attach to the inner label and re-resolves on locale change", async () => {
-    const btn = new UIButton({ children: msg("play", undefined, "Play") });
+    const btn = new UIButton({ children: msg("play", "Play") });
     expect(labelText(btn)).toBe("Play");
     const loc = new LocalizationPlugin({
       adapter: new FakeLabelAdapter({

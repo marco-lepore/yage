@@ -10,7 +10,7 @@ describe("msg", () => {
   });
 
   it("carries values and default when provided", () => {
-    const binding = msg("hud.score", { n: 3 }, "Score: {n}");
+    const binding = msg("hud.score", "Score: {n}", { n: 3 });
     expect(binding).toEqual({
       id: "hud.score",
       values: { n: 3 },
@@ -19,14 +19,14 @@ describe("msg", () => {
   });
 
   it("keeps values without a default", () => {
-    const binding = msg("hud.score", { n: 3 });
+    const binding = msg("hud.score", undefined, { n: 3 });
     expect(binding).toEqual({ id: "hud.score", values: { n: 3 } });
     expect("default" in binding).toBe(false);
   });
 
   it("does not resolve — it only describes", () => {
     // No adapter is consulted; the returned object is plain data.
-    const binding = msg("x", { n: 1 }, "{n}");
+    const binding = msg("x", "{n}", { n: 1 });
     expect(typeof binding).toBe("object");
     expect(binding.default).toBe("{n}");
   });

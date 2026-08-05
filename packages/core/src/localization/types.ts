@@ -91,16 +91,21 @@ export interface Localization {
  * Build a {@link LocalizedBinding}. Does NOT resolve — resolution happens at
  * render time against the active adapter.
  *
+ * Argument order matches {@link LocalizationAdapter.t}: the authored fallback
+ * comes before the interpolation values, so the common "id plus authored text"
+ * call needs no placeholder.
+ *
  * @example
- * scoreText.setText(msg("hud.score", { n: 0 }, "Score: {n}"));
+ * title.setText(msg("hud.title", "Play"));
+ * scoreText.setText(msg("hud.score", "Score: {n}", { n: 0 }));
  */
 export function msg(
   id: string,
-  values?: Record<string, JsonValue>,
   defaultText?: string,
+  values?: Record<string, JsonValue>,
 ): LocalizedBinding {
   const binding: LocalizedBinding = { id };
-  if (values !== undefined) binding.values = values;
   if (defaultText !== undefined) binding.default = defaultText;
+  if (values !== undefined) binding.values = values;
   return binding;
 }

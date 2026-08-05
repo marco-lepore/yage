@@ -489,7 +489,7 @@ describe("TextComponent", () => {
 
     it("renders a binding's default when no plugin is registered", () => {
       const comp = new TextComponent({
-        text: msg("hud.score", undefined, "Score"),
+        text: msg("hud.score", "Score"),
       });
       expect(comp.text.text).toBe("Score");
     });
@@ -502,7 +502,7 @@ describe("TextComponent", () => {
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform());
       const comp = entity.add(
-        new TextComponent({ text: msg("greet", undefined, "fallback") }),
+        new TextComponent({ text: msg("greet", "fallback") }),
       );
       expect(comp.text.text).toBe("Hello");
     });

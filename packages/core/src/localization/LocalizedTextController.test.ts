@@ -33,7 +33,7 @@ describe("resolveStatic", () => {
   });
 
   it("renders a binding's default, interpolating tokens", () => {
-    expect(resolveStatic(msg("n", { n: 3 }, "{n} coins"))).toBe("3 coins");
+    expect(resolveStatic(msg("n", "{n} coins", { n: 3 }))).toBe("3 coins");
   });
 
   it("falls back to the id when there is no default", () => {
@@ -45,7 +45,7 @@ describe("LocalizedTextController", () => {
   it("seed retains a binding without applying", () => {
     const applied: string[] = [];
     const c = new LocalizedTextController((t) => applied.push(t));
-    c.seed(msg("greet", undefined, "Hi"));
+    c.seed(msg("greet", "Hi"));
     expect(applied).toEqual([]);
     expect(c.binding).toEqual({ id: "greet", default: "Hi" });
   });
@@ -53,7 +53,7 @@ describe("LocalizedTextController", () => {
   it("set applies and clears the binding for a plain string", () => {
     const applied: string[] = [];
     const c = new LocalizedTextController((t) => applied.push(t));
-    c.set(msg("greet", undefined, "Hi"));
+    c.set(msg("greet", "Hi"));
     expect(applied).toEqual(["Hi"]);
     c.set("plain");
     expect(applied).toEqual(["Hi", "plain"]);
@@ -103,7 +103,7 @@ describe("LocalizedTextController", () => {
   it("with no plugin, attach leaves the seeded static value intact", () => {
     const apply = vi.fn();
     const c = new LocalizedTextController(apply);
-    c.seed(msg("greet", undefined, "Hi"));
+    c.seed(msg("greet", "Hi"));
     c.attach(undefined);
     expect(apply).not.toHaveBeenCalled();
   });
@@ -111,7 +111,7 @@ describe("LocalizedTextController", () => {
   it("clones values on assign — mutating the caller's object can't leak in", () => {
     const c = new LocalizedTextController(() => {});
     const values = { n: 1 };
-    c.set(msg("coins", values, "{n} coins"));
+    c.set(msg("coins", "{n} coins", values));
     values.n = 2; // caller mutates after assigning
     expect(c.binding?.values).toEqual({ n: 1 });
   });
