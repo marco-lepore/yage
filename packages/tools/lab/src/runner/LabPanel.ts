@@ -47,21 +47,49 @@ export type RunView =
 const STYLE_ID = "yage-lab-style";
 
 const CSS = `
-.yage-lab { display: flex; align-items: flex-start; gap: 16px; font: 13px/1.5 system-ui, sans-serif; color: #e2e8f0; }
-.yage-lab__sidebar { flex: 0 0 240px; display: flex; flex-direction: column; gap: 20px; }
+/* Each column scrolls on its own, so a long scenario list cannot move the
+   canvas out of view. */
+.yage-lab { display: flex; align-items: stretch; gap: 16px; height: 100%; max-height: 100dvh; font: 13px/1.5 system-ui, sans-serif; color: #e2e8f0; }
+.yage-lab__sidebar { flex: 0 0 240px; display: flex; flex-direction: column; gap: 20px; min-height: 0; overflow-y: auto; padding-right: 4px; }
+/* As wide as the canvas where the window allows it, so the control widgets
+   match the scene they tune. In a window too narrow for all three columns the
+   stage is the one that gives way, and scrolls sideways over the canvas. */
+.yage-lab__stage { flex: 0 1 auto; display: flex; flex-direction: column; gap: 8px; min-height: 0; min-width: 0; overflow: auto; padding-right: 4px; }
+.yage-lab__aside { flex: 0 0 260px; min-height: 0; overflow-y: auto; padding-right: 4px; }
+/* A window too short for the column scrolls it, rather than shrinking the
+   canvas below the size the harness asked for. */
+.yage-lab__sidebar > *, .yage-lab__stage > * { flex: none; }
 .yage-lab__heading { margin: 0 0 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #94a3b8; }
+.yage-lab__head { display: flex; align-items: baseline; gap: 6px; }
+.yage-lab__head .yage-lab__heading { margin-right: auto; }
+.yage-lab__mini { appearance: none; border: 1px solid #334155; border-radius: 4px; background: #1e293b; color: #94a3b8; font-family: inherit; font-size: 11px; padding: 1px 6px; margin-bottom: 6px; cursor: pointer; }
+.yage-lab__mini:hover { background: #334155; color: #e2e8f0; }
+.yage-lab__filter { width: 100%; box-sizing: border-box; margin-bottom: 8px; background: #0f172a; border: 1px solid #1e293b; border-radius: 4px; color: #e2e8f0; font: inherit; padding: 4px 8px; }
+.yage-lab__filter::placeholder { color: #64748b; }
 .yage-lab__list { display: flex; flex-direction: column; gap: 2px; }
-.yage-lab__group { display: flex; flex-direction: column; gap: 2px; }
+/* A group is a block container, so its rows need the spacing the list's own
+   gap gives the entries outside one. */
+.yage-lab__group > * + * { margin-top: 2px; }
 .yage-lab__group + .yage-lab__group { margin-top: 10px; }
 .yage-lab__group--nested + .yage-lab__group--nested { margin-top: 4px; }
-.yage-lab__group-name { margin: 0 0 2px; font-size: 11px; letter-spacing: .04em; color: #64748b; }
-.yage-lab__item { appearance: none; border: 0; border-radius: 4px; background: transparent; color: #cbd5e1; font: inherit; text-align: left; padding: 5px 8px; cursor: pointer; }
+.yage-lab__group-name { margin: 0 0 2px; font-size: 11px; letter-spacing: .04em; color: #64748b; cursor: pointer; list-style: none; user-select: none; }
+.yage-lab__group-name::-webkit-details-marker { display: none; }
+.yage-lab__group-name::before { content: "▾ "; display: inline-block; width: 1em; }
+.yage-lab__group:not([open]) > .yage-lab__group-name::before { content: "▸ "; }
+.yage-lab__group-name:hover { color: #94a3b8; }
+.yage-lab__item { appearance: none; border: 0; border-radius: 4px; background: transparent; color: #cbd5e1; font: inherit; text-align: left; padding: 5px 8px; cursor: pointer; display: block; width: 100%; }
+/* The declared display above outranks the browser's own rule for [hidden],
+   which is what the filter hides a row with. */
+.yage-lab__item[hidden] { display: none; }
 .yage-lab__item:hover { background: #1e293b; }
 .yage-lab__item[aria-current="true"] { background: #334155; color: #f8fafc; }
 .yage-lab__controls { border-top: 1px solid #1e293b; padding-top: 10px; margin-top: 2px; }
 /* Four rows before it scrolls, so a scenario with many controls cannot push
-   the canvas off the top of the window. */
+   the canvas off the top of the window. Beside the stage the column scrolls
+   instead, and the list can run its full length. */
 .yage-lab__control-list { max-height: 216px; overflow-y: auto; padding-right: 4px; }
+.yage-lab__aside .yage-lab__controls { border-top: 0; padding-top: 0; margin-top: 0; }
+.yage-lab__aside .yage-lab__control-list { max-height: none; overflow-y: visible; }
 .yage-lab__control { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; }
 .yage-lab__control:last-child { margin-bottom: 0; }
 .yage-lab__control-label { display: flex; justify-content: space-between; gap: 8px; color: #94a3b8; }
@@ -72,10 +100,11 @@ const CSS = `
 .yage-lab__problems { color: #fca5a5; }
 .yage-lab__problem { margin-bottom: 6px; word-break: break-word; }
 .yage-lab__problem code { color: #fecaca; }
-.yage-lab__stage { display: flex; flex-direction: column; gap: 8px; }
 .yage-lab__title { margin: 0; font-size: 15px; color: #f8fafc; }
 .yage-lab__describe { margin: 0; color: #94a3b8; max-width: 60ch; }
 .yage-lab__canvas { background: #0f172a; border-radius: 6px; overflow: hidden; }
+.yage-lab__canvas:focus { outline: 2px solid #334155; outline-offset: 2px; }
+.yage-lab__canvas:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
 .yage-lab__clock { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .yage-lab__button { appearance: none; border: 1px solid #334155; border-radius: 4px; background: #1e293b; color: #e2e8f0; font: inherit; padding: 3px 10px; cursor: pointer; }
 .yage-lab__button:hover { background: #334155; }
@@ -125,6 +154,106 @@ function decimalsOf(step: number): number {
   return dot === -1 ? 0 : Math.min(text.length - dot - 1, 6);
 }
 
+/** Keys the browser scrolls the page with while the canvas holds focus. */
+const SCROLL_KEYS = new Set([
+  "Space",
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "PageUp",
+  "PageDown",
+  "Home",
+  "End",
+]);
+
+const PREFS_KEY = "yage-lab:panel";
+
+/** Layout choices, which belong to whoever is using the panel, not to a link. */
+interface PanelPrefs {
+  /** Controls beside the stage rather than under it. */
+  controlsRight: boolean;
+  /** Group paths folded away. */
+  collapsed: string[];
+}
+
+function defaultPrefs(): PanelPrefs {
+  return { controlsRight: false, collapsed: [] };
+}
+
+function readPrefs(): PanelPrefs {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (raw === null) return defaultPrefs();
+    const parsed = JSON.parse(raw) as Partial<PanelPrefs>;
+    return {
+      controlsRight: parsed.controlsRight === true,
+      collapsed: Array.isArray(parsed.collapsed)
+        ? parsed.collapsed.filter((path) => typeof path === "string")
+        : [],
+    };
+  } catch {
+    // Storage can be unavailable or hold something else entirely. Neither is
+    // worth failing a panel over.
+    return defaultPrefs();
+  }
+}
+
+function writePrefs(prefs: PanelPrefs): void {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    // Same: a lab that cannot remember the layout still works.
+  }
+}
+
+/** One rendered scenario row, kept so the filter can hide it without a re-render. */
+interface RenderedLeaf {
+  readonly kind: "scenario";
+  readonly element: HTMLElement;
+  /** Lowercased text the filter matches against. */
+  readonly search: string;
+}
+
+/** One rendered group fold, with the rows under it. */
+interface RenderedGroup {
+  readonly kind: "group";
+  readonly element: HTMLDetailsElement;
+  /** The path the collapsed set records. */
+  readonly path: string;
+  readonly children: readonly RenderedNode[];
+}
+
+type RenderedNode = RenderedGroup | RenderedLeaf;
+
+/**
+ * Hides every row with no match under it. A group matches through its
+ * scenarios, whose text already carries the group names as a title prefix.
+ *
+ * Returns whether anything under `nodes` survived.
+ */
+function filterNodes(
+  nodes: readonly RenderedNode[],
+  needle: string,
+  collapsed: ReadonlySet<string>,
+): boolean {
+  let anyVisible = false;
+  for (const node of nodes) {
+    let visible: boolean;
+    if (node.kind === "group") {
+      visible = filterNodes(node.children, needle, collapsed);
+      // A filtered list is useless behind a fold, so a search opens what it
+      // matched and clearing it puts the folds back as they were left.
+      node.element.open = needle === "" ? !collapsed.has(node.path) : visible;
+    } else {
+      visible = needle === "" || node.search.includes(needle);
+    }
+    node.element.hidden = !visible;
+    anyVisible ||= visible;
+  }
+  return anyVisible;
+}
+
 function describeRun(view: RunView): string {
   switch (view.state) {
     case "running":
@@ -148,8 +277,14 @@ export class LabPanel {
   readonly container: HTMLElement;
 
   private readonly list: HTMLElement;
+  private readonly filterInput: HTMLInputElement;
+  private readonly noMatchEl: HTMLElement;
+  private readonly stage: HTMLElement;
+  private readonly aside: HTMLElement;
   private readonly controlsBox: HTMLElement;
   private readonly controlList: HTMLElement;
+  private readonly copyButton: HTMLButtonElement;
+  private readonly layoutButton: HTMLButtonElement;
   private readonly titleEl: HTMLElement;
   private readonly describeEl: HTMLElement;
   private readonly errorsBox: HTMLElement;
@@ -162,31 +297,65 @@ export class LabPanel {
   private readonly items = new Map<string, HTMLButtonElement>();
   private readonly widgets = new Map<string, (value: ControlValue) => void>();
   private readonly callbacks: PanelCallbacks;
+  private nodes: readonly RenderedNode[] = [];
+  private prefs: PanelPrefs;
+  private collapsed: Set<string>;
+  /** What the copy button writes out. */
+  private values: Record<string, ControlValue> = {};
+  private copyTimer: ReturnType<typeof setTimeout> | undefined;
   /** Whether the current scenario declares a `drive`. */
   private driveable = false;
   private runView: RunView | undefined;
 
   constructor(host: HTMLElement, opts: PanelOptions) {
     this.callbacks = opts.callbacks;
+    this.prefs = readPrefs();
+    this.collapsed = new Set(this.prefs.collapsed);
     injectStyle(host.ownerDocument);
 
     this.root = el("div", "yage-lab");
     const sidebar = el("aside", "yage-lab__sidebar");
-    const stage = el("main", "yage-lab__stage");
+    this.stage = el("main", "yage-lab__stage");
+    this.aside = el("aside", "yage-lab__aside");
 
     const listBox = el("section");
     listBox.append(el("h2", "yage-lab__heading", "Scenarios"));
+    this.filterInput = this.renderFilter();
+    listBox.append(this.filterInput);
     this.list = el("nav", "yage-lab__list");
-    listBox.append(this.list);
+    this.noMatchEl = el("p", "yage-lab__empty", "No scenario matches.");
+    this.noMatchEl.hidden = true;
+    listBox.append(this.list, this.noMatchEl);
 
-    // Belongs to the stage: the scenario list grows with the project too, and
-    // sharing one column means the longer of the two pushes the other away.
+    // Under the stage by default: the scenario list grows with the project too,
+    // and sharing the sidebar means the longer of the two pushes the other away.
     this.controlsBox = el("section", "yage-lab__controls");
-    // The heading sits outside the scroller so it stays put while the values
-    // under it move.
-    this.controlsBox.append(el("h2", "yage-lab__heading", "Controls"));
+    // The heading sits outside the scroller so it and its buttons stay put
+    // while the values under them move.
+    this.copyButton = this.mini(
+      "copy JSON",
+      "Copy every control value as JSON",
+      () => {
+        void this.copyValues();
+      },
+    );
+    this.layoutButton = this.mini(
+      "→ right",
+      "Move the controls beside the stage",
+      () => {
+        this.setControlsRight(!this.prefs.controlsRight);
+      },
+    );
+    const head = el("div", "yage-lab__head");
+    head.append(
+      el("h2", "yage-lab__heading", "Controls"),
+      this.copyButton,
+      this.layoutButton,
+    );
     this.controlList = el("div", "yage-lab__control-list");
-    this.controlsBox.append(this.controlList);
+    this.controlsBox.append(head, this.controlList);
+    // Nothing to show until a scenario is set.
+    this.controlsBox.hidden = true;
 
     sidebar.append(listBox);
     if (opts.problems.length > 0) {
@@ -197,9 +366,7 @@ export class LabPanel {
     this.describeEl = el("p", "yage-lab__describe");
     this.errorsBox = el("section", "yage-lab__errors");
     this.errorsBox.setAttribute("role", "alert");
-    this.container = el("div", "yage-lab__canvas");
-    this.container.style.width = `${opts.width}px`;
-    this.container.style.height = `${opts.height}px`;
+    this.container = this.renderCanvas(opts.width, opts.height);
 
     this.playButton = this.button("pause", "yage-lab__play", () => {
       this.callbacks.onPlayToggle();
@@ -225,20 +392,20 @@ export class LabPanel {
       this.runButton,
     );
 
-    stage.append(
+    this.stage.append(
       this.titleEl,
       this.describeEl,
       this.errorsBox,
       this.container,
       this.clockBar,
       this.runEl,
-      this.controlsBox,
     );
 
-    this.root.append(sidebar, stage);
+    this.root.append(sidebar, this.stage, this.aside);
     host.append(this.root);
 
     this.renderList(opts.scenarios);
+    this.applyControlsPlacement();
     this.applyRun();
     if (opts.scenarios.length === 0) this.showEmpty();
   }
@@ -250,6 +417,7 @@ export class LabPanel {
     }
     this.titleEl.textContent = entry.title;
     this.describeEl.textContent = entry.scenario.describe ?? "";
+    this.values = values;
     this.renderControls(entry.scenario.controls, values);
     this.driveable = entry.hasDrive;
     // The result belongs to the scenario that produced it.
@@ -269,7 +437,9 @@ export class LabPanel {
    */
   private applyRun(): void {
     const running = this.runView?.state === "running";
-    for (const box of [this.clockBar, this.controlsBox, this.list]) {
+    // The control widgets, not the whole section: copying the values or moving
+    // the column changes nothing a run reads.
+    for (const box of [this.clockBar, this.controlList, this.list]) {
       const fields = box.querySelectorAll<
         HTMLButtonElement | HTMLInputElement | HTMLSelectElement
       >("button, input, select");
@@ -321,6 +491,7 @@ export class LabPanel {
    * clamped has to show as what was actually applied.
    */
   syncValues(values: Record<string, ControlValue>): void {
+    this.values = values;
     for (const [name, apply] of this.widgets) {
       const value = values[name];
       if (value !== undefined) apply(value);
@@ -331,11 +502,53 @@ export class LabPanel {
     this.titleEl.textContent = "No scenarios found";
     this.describeEl.textContent =
       "Add a file named *.scenario.ts exporting what defineScenario({...}) returns.";
+    this.filterInput.hidden = true;
     this.list.append(el("p", "yage-lab__empty", "Nothing to show."));
   }
 
+  /**
+   * The canvas takes focus so the keys a game reads stop scrolling the page.
+   * The engine's own listeners sit on `window` and still see the event —
+   * only the browser's default action is dropped.
+   */
+  private renderCanvas(width: number, height: number): HTMLElement {
+    const box = el("div", "yage-lab__canvas");
+    box.style.width = `${width}px`;
+    box.style.height = `${height}px`;
+    box.tabIndex = 0;
+    box.addEventListener("pointerdown", () => {
+      box.focus();
+    });
+    box.addEventListener("keydown", (event) => {
+      if (SCROLL_KEYS.has(event.code)) event.preventDefault();
+    });
+    return box;
+  }
+
+  private renderFilter(): HTMLInputElement {
+    const input = el("input", "yage-lab__filter");
+    input.type = "search";
+    input.placeholder = "Filter scenarios…";
+    input.setAttribute("aria-label", "Filter scenarios");
+    input.addEventListener("input", () => {
+      this.applyFilter();
+    });
+    return input;
+  }
+
+  private applyFilter(): void {
+    const needle = this.filterInput.value.trim().toLowerCase();
+    const anyVisible = filterNodes(this.nodes, needle, this.collapsed);
+    this.noMatchEl.hidden = anyVisible || this.items.size === 0;
+  }
+
   private renderList(scenarios: readonly ScenarioEntry[]): void {
-    this.renderNodes(buildScenarioTree(scenarios), this.list, 0);
+    this.nodes = this.renderNodes(
+      buildScenarioTree(scenarios),
+      this.list,
+      0,
+      "",
+    );
   }
 
   /** Indent per level, so a deep tree still reads as a tree in a 240px column. */
@@ -343,21 +556,42 @@ export class LabPanel {
     nodes: readonly ScenarioNode[],
     parent: HTMLElement,
     depth: number,
-  ): void {
+    path: string,
+  ): RenderedNode[] {
     const indent = `${8 + depth * 10}px`;
+    const rendered: RenderedNode[] = [];
     for (const node of nodes) {
       if (node.kind === "group") {
+        const groupPath = path === "" ? node.name : `${path}/${node.name}`;
         const box = el(
-          "div",
+          "details",
           depth === 0
             ? "yage-lab__group"
             : "yage-lab__group yage-lab__group--nested",
         );
-        const heading = el("h3", "yage-lab__group-name", node.name);
+        box.open = !this.collapsed.has(groupPath);
+        const heading = el("summary", "yage-lab__group-name", node.name);
         heading.style.paddingLeft = indent;
+        // The fold is driven here rather than by the browser's own toggle, so
+        // opening a group to reveal a match never overwrites what was recorded.
+        heading.addEventListener("click", (event) => {
+          event.preventDefault();
+          this.setGroupOpen(box, groupPath, !box.open);
+        });
         box.append(heading);
-        this.renderNodes(node.children, box, depth + 1);
+        const children = this.renderNodes(
+          node.children,
+          box,
+          depth + 1,
+          groupPath,
+        );
         parent.append(box);
+        rendered.push({
+          kind: "group",
+          element: box,
+          path: groupPath,
+          children,
+        });
         continue;
       }
       const item = el("button", "yage-lab__item", node.label);
@@ -369,7 +603,78 @@ export class LabPanel {
       });
       this.items.set(node.entry.id, item);
       parent.append(item);
+      rendered.push({
+        kind: "scenario",
+        element: item,
+        // The title carries the group names, so typing one still finds its
+        // scenarios. The path finds a scenario by the file it lives in.
+        search: `${node.entry.title} ${node.entry.path}`.toLowerCase(),
+      });
     }
+    return rendered;
+  }
+
+  private setGroupOpen(
+    box: HTMLDetailsElement,
+    path: string,
+    open: boolean,
+  ): void {
+    box.open = open;
+    if (open) this.collapsed.delete(path);
+    else this.collapsed.add(path);
+    this.savePrefs({ collapsed: [...this.collapsed] });
+  }
+
+  private mini(
+    label: string,
+    title: string,
+    onClick: () => void,
+  ): HTMLButtonElement {
+    const node = el("button", "yage-lab__mini", label);
+    node.type = "button";
+    node.title = title;
+    node.addEventListener("click", onClick);
+    return node;
+  }
+
+  /** Writes the current control values out for pasting into code or a prompt. */
+  private async copyValues(): Promise<void> {
+    const json = JSON.stringify(this.values, null, 2);
+    let label = "copied";
+    try {
+      await navigator.clipboard.writeText(json);
+    } catch (error) {
+      console.error("[yage-lab]", error);
+      // The values themselves, so a blocked clipboard still leaves them
+      // somewhere to copy from by hand.
+      console.log("[yage-lab] control values:", json);
+      label = "copy failed — see console";
+    }
+    clearTimeout(this.copyTimer);
+    this.copyButton.textContent = label;
+    this.copyTimer = setTimeout(() => {
+      this.copyButton.textContent = "copy JSON";
+    }, 1500);
+  }
+
+  private setControlsRight(right: boolean): void {
+    this.savePrefs({ controlsRight: right });
+    this.applyControlsPlacement();
+  }
+
+  private applyControlsPlacement(): void {
+    const right = this.prefs.controlsRight;
+    (right ? this.aside : this.stage).append(this.controlsBox);
+    this.aside.hidden = !right || this.controlsBox.hidden;
+    this.layoutButton.textContent = right ? "↓ below" : "→ right";
+    this.layoutButton.title = right
+      ? "Move the controls under the stage"
+      : "Move the controls beside the stage";
+  }
+
+  private savePrefs(patch: Partial<PanelPrefs>): void {
+    this.prefs = { ...this.prefs, ...patch };
+    writePrefs(this.prefs);
   }
 
   private button(
@@ -424,8 +729,9 @@ export class LabPanel {
     this.widgets.clear();
     const entries = Object.entries(controls ?? {});
     // A scenario with no controls should not leave an empty titled box under
-    // the scene.
+    // the scene, nor an empty column beside it.
     this.controlsBox.hidden = entries.length === 0;
+    this.applyControlsPlacement();
     for (const [name, def] of entries) {
       this.controlList.append(this.renderControl(name, def, values[name]));
     }
