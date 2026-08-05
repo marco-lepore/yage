@@ -593,7 +593,7 @@ console.log(engine.logger.formatRecentLogs(20));
 
 ### Localization
 
-`msg(id, values?, default?)` builds a serializable `LocalizedBinding`; `LocalizationPlugin` (service `LocalizationKey`) holds one game-supplied `LocalizationAdapter` and makes resolution reactive. Text sinks (`@yagejs/ui`, dialogue) re-render on `setLocale`. Exports: `msg`, `LocalizationPlugin`, `LocalizationKey`, `IdentityLocalizationAdapter`, `resolveLocalized`; types `LocalizedBinding`, `LocalizationAdapter`, `Localization`, `LocalizableText`. Full reference: `localization.md`.
+`msg(id, default?, values?)` builds a serializable `LocalizedBinding`; `LocalizationPlugin` (service `LocalizationKey`) holds one game-supplied `LocalizationAdapter` and makes resolution reactive. Text sinks (`@yagejs/ui`, dialogue) re-render on `setLocale`. Exports: `msg`, `LocalizationPlugin`, `LocalizationKey`, `IdentityLocalizationAdapter`, `resolveLocalized`; types `LocalizedBinding`, `LocalizationAdapter`, `Localization`, `LocalizableText`. Full reference: `localization.md`.
 
 ### Well-known DI Keys
 

@@ -17,14 +17,14 @@ that knows when to re-resolve.
 
 ## The binding: `msg`
 
-`msg(id, values?, default?)` builds a `LocalizedBinding` — a plain,
+`msg(id, default?, values?)` builds a `LocalizedBinding` — a plain,
 serializable `{ id, values?, default? }`. It does **not** resolve to a string;
 resolution happens at render time against the active adapter.
 
 ```ts
 import { msg } from "@yagejs/core";
 
-msg("hud.score", { n: 3 }, "Score: {n}");
+msg("hud.score", "Score: {n}", { n: 3 });
 // id = catalog key, values = interpolation args, default = fallback text
 ```
 
@@ -101,13 +101,13 @@ The `UISurface` / `UIPanel` builder methods and the element constructors take
 and releases it when it unmounts — you never wire an individual element.
 
 ```ts
-surface.text(msg("hud.title", undefined, "Play"));
-surface.button(msg("hud.start", undefined, "Start"), { onClick });
+surface.text(msg("hud.title", "Play"));
+surface.button(msg("hud.start", "Start"), { onClick });
 
 // Interpolation is reactive both ways: it re-resolves on a locale switch, and
 // you rebuild the binding to change the value.
-const score = surface.text(msg("hud.score", { n: 0 }, "Score: {n}"));
-score.setText(msg("hud.score", { n: 3 }, "Score: {n}"));
+const score = surface.text(msg("hud.score", "Score: {n}", { n: 0 }));
+score.setText(msg("hud.score", "Score: {n}", { n: 3 }));
 ```
 
 In React, pass a binding to `<Text>` or resolve one with the `useMessage` hook.
@@ -125,26 +125,26 @@ The `@yagejs/ui` wrappers around `@pixi/ui` accept bindings and re-resolve
 their labels in place, keeping open and scroll state:
 
 ```ts
-new PixiFancyButton({ text: msg("hud.ok", undefined, "OK") /* + views */ });
+new PixiFancyButton({ text: msg("hud.ok", "OK") /* + views */ });
 
 new PixiSelect({
   items: [
-    msg("lang.en", undefined, "English"),
-    msg("lang.fr", undefined, "French"),
+    msg("lang.en", "English"),
+    msg("lang.fr", "French"),
   ],
   onSelect: (index) => void loc.setLocale(index === 0 ? "en" : "fr"),
   // + closedBG / openBG views
 });
 
-new PixiCheckbox({ text: msg("opt.sfx", undefined, "Sound effects") });
+new PixiCheckbox({ text: msg("opt.sfx", "Sound effects") });
 
 // The placeholder localizes; `value` stays a plain string — it is user input.
-new PixiInput({ placeholder: msg("form.name", undefined, "Your name") });
+new PixiInput({ placeholder: msg("form.name", "Your name") });
 
 new PixiRadioGroup({
   items: [
-    { text: msg("diff.easy", undefined, "Easy") },
-    { text: msg("diff.hard", undefined, "Hard") },
+    { text: msg("diff.easy", "Easy") },
+    { text: msg("diff.hard", "Hard") },
   ],
   type: "vertical",
   elementsMargin: 4,

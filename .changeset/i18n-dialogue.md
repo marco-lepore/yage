@@ -1,5 +1,5 @@
 ---
-"@yagejs-addons/dialogue": minor
+"@yagejs-addons/dialogue": patch
 ---
 
 Bridge dialogue to the engine localization service, with live retranslation.

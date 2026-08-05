@@ -8,7 +8,7 @@ adapter.
 
 ## Pieces
 
-- `msg(id, values?, default?)` → `LocalizedBinding` — a plain, serializable
+- `msg(id, default?, values?)` → `LocalizedBinding` — a plain, serializable
   `{ id, values?, default? }`. Does NOT resolve; resolution happens at render
   time against the active adapter. Treat bindings as immutable: to change
   `values`, build a new binding.
@@ -48,17 +48,17 @@ change. The default is the fallback when the key is missing.
 
 ```ts
 // UI (@yagejs/ui) — builder API on a UISurface / UIPanel
-surface.text(msg("hud.title", undefined, "Play"));
-surface.button(msg("hud.start", undefined, "Start"), { onClick });
+surface.text(msg("hud.title", "Play"));
+surface.button(msg("hud.start", "Start"), { onClick });
 // interpolation — rebuild the binding to change the value
-scoreText.setText(msg("hud.score", { n: 3 }, "Score: {n}"));
+scoreText.setText(msg("hud.score", "Score: {n}", { n: 3 }));
 
 // @pixi/ui wrappers — labels re-resolve in place, open/scroll state kept
-new PixiFancyButton({ text: msg("hud.ok", undefined, "OK"), /* views */ });
-new PixiSelect({ items: [msg("lang.en", undefined, "English"), msg("lang.fr", undefined, "French")], /* views */ });
-new PixiCheckbox({ text: msg("opt.sfx", undefined, "Sound effects") });
-new PixiInput({ placeholder: msg("form.name", undefined, "Your name") }); // `value` stays literal — it is user input
-new PixiRadioGroup({ items: [{ text: msg("diff.easy", undefined, "Easy") }], /* … */ });
+new PixiFancyButton({ text: msg("hud.ok", "OK"), /* views */ });
+new PixiSelect({ items: [msg("lang.en", "English"), msg("lang.fr", "French")], /* views */ });
+new PixiCheckbox({ text: msg("opt.sfx", "Sound effects") });
+new PixiInput({ placeholder: msg("form.name", "Your name") }); // `value` stays literal — it is user input
+new PixiRadioGroup({ items: [{ text: msg("diff.easy", "Easy") }], /* … */ });
 
 // Dialogue (@yagejs-addons/dialogue) — i18n: true bridges to the plugin
 host.add(new DialogueController({ ...createBoxDialogue(), i18n: true }));

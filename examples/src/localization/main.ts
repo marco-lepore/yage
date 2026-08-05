@@ -4,7 +4,7 @@
  * YAGE owns the reactive binding, not the translation logic: you bring an i18n
  * backend (i18next / FormatJS / Fluent / `Intl` / a plain table) behind a thin
  * `LocalizationAdapter`, register a `LocalizationPlugin`, and author strings as
- * `msg(id, values?, default?)` bindings. On a locale switch every text sink —
+ * `msg(id, default?, values?)` bindings. On a locale switch every text sink —
  * UI text, buttons, @pixi/ui widgets — re-resolves on its own.
  *
  * This example wires a tiny in-memory table adapter (no external dep) so the
@@ -110,11 +110,11 @@ class LocalizationScene extends Scene {
       }),
     );
 
-    surface.text(msg("app.title", undefined, "Localization"), {
+    surface.text(msg("app.title", "Localization"), {
       fontSize: 30,
       fill: "#ffffff",
     });
-    surface.text(msg("app.subtitle", undefined, ""), {
+    surface.text(msg("app.subtitle", ""), {
       fontSize: 15,
       fill: "#9ca3af",
     });
@@ -122,18 +122,18 @@ class LocalizationScene extends Scene {
     // Interpolated, reactive: the counter re-resolves on locale change AND
     // whenever we rebuild the binding with a new `n`.
     const clicksText = surface.text(
-      msg("app.clicks", { n: clicks }, "Clicks: {n}"),
+      msg("app.clicks", "Clicks: {n}", { n: clicks }),
       { fontSize: 20, fill: "#f1f5f9" },
     );
 
-    surface.button(msg("app.clickBtn", undefined, "Click me"), {
+    surface.button(msg("app.clickBtn", "Click me"), {
       width: 220,
       height: 42,
       textStyle: { fontSize: 16, fill: "#0b1120" },
       background: { color: 0x38bdf8, radius: 8 },
       onClick: () => {
         clicks += 1;
-        clicksText.setText(msg("app.clicks", { n: clicks }, "Clicks: {n}"));
+        clicksText.setText(msg("app.clicks", "Clicks: {n}", { n: clicks }));
       },
     });
 
@@ -157,8 +157,8 @@ class LocalizationScene extends Scene {
       itemBG: 0x334155,
       itemHoverBG: 0x475569,
       items: [
-        msg("lang.en", undefined, "English"),
-        msg("lang.fr", undefined, "French"),
+        msg("lang.en", "English"),
+        msg("lang.fr", "French"),
       ],
       onSelect: (index) => {
         void this.localization.setLocale(LOCALES[index] ?? "en");

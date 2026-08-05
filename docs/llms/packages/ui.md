@@ -174,7 +174,7 @@ Use `installBitmapFont(...)` / `bitmapFont(...)` from `@yagejs/renderer` to obta
 
 ## Localization
 
-Every text sink accepts `LocalizableText` (`string | LocalizedBinding`). Pass a `msg(id, values?, default?)` binding from `@yagejs/core` and it re-resolves on locale change: `panel.text(msg("hud.title", undefined, "Play"))`, `panel.button(msg(...))`, `UIText`/`UISplitText` children, and the React `<Text>`. A `UISurface` binds its whole tree to the registered `LocalizationPlugin` in `onAdd` and releases it in `onDestroy` — no per-element wiring. The `@pixi/ui` wrappers (`PixiFancyButton` text, `PixiSelect`/`PixiRadioGroup` items) take bindings too and re-resolve labels in place; a `PixiSelect`'s item set is construction-only (a later `update({ items })` is ignored — recreate to change options). Full reference: `localization.md`.
+Every text sink accepts `LocalizableText` (`string | LocalizedBinding`). Pass a `msg(id, default?, values?)` binding from `@yagejs/core` and it re-resolves on locale change: `panel.text(msg("hud.title", "Play"))`, `panel.button(msg(...))`, `UIText`/`UISplitText` children, and the React `<Text>`. A `UISurface` binds its whole tree to the registered `LocalizationPlugin` in `onAdd` and releases it in `onDestroy` — no per-element wiring. The `@pixi/ui` wrappers (`PixiFancyButton` text, `PixiSelect`/`PixiRadioGroup` items) take bindings too and re-resolve labels in place; a `PixiSelect`'s item set is construction-only (a later `update({ items })` is ignored — recreate to change options). Full reference: `localization.md`.
 
 ## UISplitText — animated / per-glyph text
 
