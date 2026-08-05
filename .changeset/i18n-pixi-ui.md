@@ -1,5 +1,5 @@
 ---
-"@yagejs/ui": minor
+"@yagejs/ui": patch
 ---
 
 Localize the `@pixi/ui` widget wrappers.

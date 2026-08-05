@@ -197,7 +197,7 @@ describe("pixi-ui localization", () => {
   });
 
   it("PixiFancyButton re-resolves its label on locale change", async () => {
-    const btn = new PixiFancyButton({ text: msg("play", undefined, "Play") });
+    const btn = new PixiFancyButton({ text: msg("play", "Play") });
     // Statically resolved to the default before attach.
     expect((btn as unknown as { view: { text: string } }).view.text).toBe("Play");
 
@@ -217,7 +217,7 @@ describe("pixi-ui localization", () => {
     const cb = new PixiCheckbox({
       checkedView: undefined as never,
       uncheckedView: undefined as never,
-      text: msg("agree", undefined, "Agree"),
+      text: msg("agree", "Agree"),
     });
     cb.attachLocalization(loc);
     await loc.setLocale("it");
@@ -227,7 +227,7 @@ describe("pixi-ui localization", () => {
   it("PixiInput relocalizes the placeholder, never the value", async () => {
     const input = new PixiInput({
       bg: undefined as never,
-      placeholder: msg("search", undefined, "Search…"),
+      placeholder: msg("search", "Search…"),
       value: "typed text",
     });
     input.attachLocalization(loc);
@@ -244,8 +244,8 @@ describe("pixi-ui localization", () => {
       type: "vertical",
       elementsMargin: 4,
       items: [
-        { checkedView: undefined as never, uncheckedView: undefined as never, text: msg("red", undefined, "Red") },
-        { checkedView: undefined as never, uncheckedView: undefined as never, text: msg("blue", undefined, "Blue") },
+        { checkedView: undefined as never, uncheckedView: undefined as never, text: msg("red", "Red") },
+        { checkedView: undefined as never, uncheckedView: undefined as never, text: msg("blue", "Blue") },
       ],
     });
     group.attachLocalization(loc);
@@ -259,7 +259,7 @@ describe("pixi-ui localization", () => {
     const select = new PixiSelect({
       closedBG: undefined as never,
       openBG: undefined as never,
-      items: [msg("red", undefined, "Red"), msg("blue", undefined, "Blue")],
+      items: [msg("red", "Red"), msg("blue", "Blue")],
       selected: 1,
       onSelect,
     });
@@ -367,7 +367,7 @@ describe("pixi-ui localization", () => {
     // unstyled one for the next non-empty value.
     const style = { fontSize: 22 };
     const btn = new PixiFancyButton({
-      text: msg("label", undefined, "Label"),
+      text: msg("label", "Label"),
       textStyle: style,
     });
     btn.attachLocalization(loc);
@@ -387,7 +387,7 @@ describe("pixi-ui localization", () => {
   });
 
   it("update() with a present-but-undefined label clears text and drops the binding", async () => {
-    const btn = new PixiFancyButton({ text: msg("play", undefined, "Play") });
+    const btn = new PixiFancyButton({ text: msg("play", "Play") });
     btn.attachLocalization(loc);
     const view = (btn as unknown as { view: { text: string } }).view;
     expect(view.text).toBe("Play");
@@ -405,7 +405,7 @@ describe("pixi-ui localization", () => {
     const select = new PixiSelect({
       closedBG: undefined as never,
       openBG: undefined as never,
-      items: [msg("red", undefined, "Red"), msg("blue", undefined, "Blue")],
+      items: [msg("red", "Red"), msg("blue", "Blue")],
       selected: 0,
     });
     select.attachLocalization(loc);
@@ -425,7 +425,7 @@ describe("pixi-ui localization", () => {
     const select = new PixiSelect({
       closedBG: undefined as never,
       openBG: undefined as never,
-      items: [msg("red", undefined, "Red"), msg("blue", undefined, "Blue")],
+      items: [msg("red", "Red"), msg("blue", "Blue")],
       selected: 0,
       onSelect,
     });
