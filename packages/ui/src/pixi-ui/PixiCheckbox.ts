@@ -1,10 +1,14 @@
 import { CheckBox } from "@pixi/ui";
+import { LocalizedTextController, resolveStatic } from "@yagejs/core";
 import type { PixiCheckboxProps } from "../types.js";
 import { PixiUIBase } from "./PixiUIBase.js";
 import { resolvePixiView } from "./view-resolver.js";
 
 /** Yoga-aware wrapper around @pixi/ui CheckBox. */
 export class PixiCheckbox extends PixiUIBase<CheckBox> {
+  /** Retains the label binding (if any) and re-resolves it on locale change. */
+  private readonly _textLocalizer: LocalizedTextController;
+
   constructor(props: PixiCheckboxProps) {
     const view = new CheckBox({
       style: {
@@ -13,10 +17,19 @@ export class PixiCheckbox extends PixiUIBase<CheckBox> {
         text: props.textStyle,
         textOffset: props.textOffset,
       },
-      text: props.text,
+      text: props.text !== undefined ? resolveStatic(props.text) : undefined,
       checked: props.checked ?? false,
     } as ConstructorParameters<typeof CheckBox>[0]);
     super(view, props);
+
+    this._textLocalizer = new LocalizedTextController((value) => {
+      this.view.text = value;
+      // A relabelled checkbox changes its footprint (icon + label) — re-measure
+      // the Yoga leaf so siblings reflow.
+      this.invalidateMeasure();
+    });
+    this.localizers.push(this._textLocalizer);
+    if (props.text !== undefined) this._textLocalizer.seed(props.text);
 
     if (props.onChange) view.onCheck.connect(props.onChange);
     this.prevProps = { ...props };
@@ -34,7 +47,9 @@ export class PixiCheckbox extends PixiUIBase<CheckBox> {
     this.bridgeSignal(this.view.onCheck, "onChange", props);
 
     if (p.checked !== undefined) this.view.forceCheck(p.checked);
-    if (p.text !== undefined) this.view.text = p.text;
+    // Present-but-undefined means "reset" per the reconciler contract — clear
+    // the label and drop its binding rather than leaving stale text bound.
+    if ("text" in props) this._textLocalizer.set(p.text ?? "");
 
     this.updateBase(props);
   }

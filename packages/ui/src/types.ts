@@ -1,4 +1,8 @@
-import type { Localization, LocalizedBinding } from "@yagejs/core";
+import type {
+  LocalizableText,
+  Localization,
+  LocalizedBinding,
+} from "@yagejs/core";
 import type {
   ColorValue,
   DisplayContainer,
@@ -428,7 +432,9 @@ export interface PixiFancyButtonProps extends LayoutProps, ConsumeInputProps {
   hoverView?: PixiViewType;
   pressedView?: PixiViewType;
   disabledView?: PixiViewType;
-  text?: string;
+  /** Button label — a literal, or a {@link LocalizedBinding} (via `msg`) that
+   *  re-resolves on locale change. */
+  text?: LocalizableText;
   icon?: DisplayContainer;
   textStyle?: Partial<TextStyle>;
   padding?: number;
@@ -447,7 +453,9 @@ export interface PixiCheckboxProps extends LayoutProps, ConsumeInputProps {
   onChange?: (checked: boolean) => void;
   checkedView: PixiViewType;
   uncheckedView: PixiViewType;
-  text?: string;
+  /** Label text — a literal, or a {@link LocalizedBinding} (via `msg`) that
+   *  re-resolves on locale change. */
+  text?: LocalizableText;
   textStyle?: Partial<TextStyle>;
   textOffset?: { x?: number; y?: number };
 }
@@ -482,7 +490,10 @@ export interface PixiSliderProps extends LayoutProps, ConsumeInputProps {
 export interface PixiInputProps extends LayoutProps, ConsumeInputProps {
   bg: PixiViewType;
   textStyle?: Partial<TextStyle>;
-  placeholder?: string;
+  /** Placeholder shown while empty — a literal, or a {@link LocalizedBinding}
+   *  (via `msg`) that re-resolves on locale change. The typed `value` stays a
+   *  plain string: it is user input, never localized. */
+  placeholder?: LocalizableText;
   value?: string;
   maxLength?: number;
   secure?: boolean;
@@ -540,7 +551,16 @@ export interface UIScrollViewProps extends LayoutProps, ConsumeInputProps {
 export interface PixiSelectProps extends LayoutProps, ConsumeInputProps {
   closedBG: PixiViewType;
   openBG: PixiViewType;
-  items: string[];
+  /** Dropdown options — literals, or {@link LocalizedBinding}s (via `msg`) that
+   *  re-resolve on locale change (item text, the selected label, and each
+   *  item's emitted `onSelect` text all update; open/selected/scroll state is
+   *  preserved).
+   *
+   *  Construction-only: the set of options is baked at construction. A later
+   *  `update({ items })` (e.g. a React reconciler swapping the array) is
+   *  ignored — only per-item localization refreshes labels in place. To change
+   *  which options exist, recreate the component. */
+  items: LocalizableText[];
   selected?: number;
   textStyle?: Partial<TextStyle>;
   itemTextStyle?: Partial<TextStyle>;
@@ -555,6 +575,13 @@ export interface PixiSelectProps extends LayoutProps, ConsumeInputProps {
 
 /** Props for PixiRadioGroup. */
 export interface PixiRadioGroupProps extends LayoutProps, ConsumeInputProps {
+  /** The radio options. Each item's `text` may be a {@link LocalizedBinding}
+   *  that re-resolves on locale change.
+   *
+   *  Construction-only, like {@link PixiSelectProps.items}: the option set is
+   *  baked at construction and a later `update({ items })` is ignored — only
+   *  per-item localization refreshes labels in place. Recreate the component to
+   *  change which options exist or to edit an item's text. */
   items: PixiCheckboxProps[];
   type: "vertical" | "horizontal";
   elementsMargin: number;

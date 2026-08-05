@@ -1,15 +1,36 @@
 import { Input } from "@pixi/ui";
+import { LocalizedTextController, resolveStatic } from "@yagejs/core";
 import type { PixiInputProps } from "../types.js";
 import { PixiUIBase } from "./PixiUIBase.js";
 import { resolvePixiView } from "./view-resolver.js";
 
+/**
+ * @pixi/ui `Input` keeps its placeholder text node `protected` and exposes no
+ * public setter — the only public write is `value`, which is user input. This
+ * subclass reaches the placeholder to relocalize it in place, preserving focus
+ * and any in-progress editing (reconstructing the widget would drop the DOM
+ * input and editing state).
+ */
+class LocalizedInput extends Input {
+  setPlaceholderText(text: string): void {
+    if (this.placeholder) this.placeholder.text = text;
+  }
+}
+
 /** Yoga-aware wrapper around @pixi/ui Input. */
-export class PixiInput extends PixiUIBase<Input> {
+export class PixiInput extends PixiUIBase<LocalizedInput> {
+  /** Retains the placeholder binding (if any) and re-resolves it on locale
+   *  change. The typed `value` is user input and is never localized. */
+  private readonly _placeholderLocalizer: LocalizedTextController;
+
   constructor(props: PixiInputProps) {
-    const view = new Input({
+    const view = new LocalizedInput({
       bg: resolvePixiView(props.bg),
       textStyle: props.textStyle,
-      placeholder: props.placeholder,
+      placeholder:
+        props.placeholder !== undefined
+          ? resolveStatic(props.placeholder)
+          : undefined,
       value: props.value,
       maxLength: props.maxLength,
       secure: props.secure,
@@ -18,6 +39,19 @@ export class PixiInput extends PixiUIBase<Input> {
       nineSliceSprite: props.nineSliceSprite,
     } as ConstructorParameters<typeof Input>[0]);
     super(view, props);
+
+    this._placeholderLocalizer = new LocalizedTextController((value) => {
+      this.view.setPlaceholderText(value);
+      // The placeholder is an unmasked child, so a longer translation grows the
+      // view's local bounds. Without a re-measure, `applyLayout` writes the
+      // stale computed width and Pixi turns that into a scale, shrinking the
+      // whole input. Matches PixiCheckbox / PixiFancyButton / PixiRadioGroup.
+      this.invalidateMeasure();
+    });
+    this.localizers.push(this._placeholderLocalizer);
+    if (props.placeholder !== undefined) {
+      this._placeholderLocalizer.seed(props.placeholder);
+    }
 
     if (props.onChange) view.onChange.connect(props.onChange);
     if (props.onEnter) view.onEnter.connect(props.onEnter);
@@ -30,6 +64,11 @@ export class PixiInput extends PixiUIBase<Input> {
     this.bridgeSignal(this.view.onChange, "onChange", props);
     this.bridgeSignal(this.view.onEnter, "onEnter", props);
 
+    // Present-but-undefined means "reset" per the reconciler contract — clear
+    // the placeholder and drop its binding rather than leaving stale text bound.
+    if ("placeholder" in props) {
+      this._placeholderLocalizer.set(p.placeholder ?? "");
+    }
     if (p.value !== undefined) this.view.value = p.value;
     if (p.secure !== undefined) this.view.secure = p.secure;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

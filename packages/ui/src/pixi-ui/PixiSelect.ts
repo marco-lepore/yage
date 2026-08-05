@@ -1,13 +1,13 @@
-import { Select } from "@pixi/ui";
+import { FancyButton, Select } from "@pixi/ui";
 import { Container } from "pixi.js";
+import { LocalizedTextController, resolveStatic } from "@yagejs/core";
 import type { PixiSelectProps } from "../types.js";
 import { PixiUIBase } from "./PixiUIBase.js";
+import { refitButtonText } from "./PixiFancyButton.js";
 import { resolvePixiView } from "./view-resolver.js";
 
 // The dropdown is reparented directly under the stage (above the fit-scaled
-// world root that holds every scene layer), so any positive zIndex wins; the
-// large value plus `sortableChildren` is belt-and-suspenders if the stage ever
-// sorts its children.
+// world root that holds every scene layer), so any positive zIndex wins.
 const DROPDOWN_Z = 2_000_000;
 
 /** Walk to the top of the display tree (the renderer's stage). */
@@ -18,19 +18,74 @@ function topAncestor(node: Container): Container {
 }
 
 /**
- * `@pixi/ui` `Select` renders its dropdown list inline — a child of the Select
- * at the Select's own z-position — and open/close is just `view.visible`. So a
- * sibling drawn later (a label under the Select, a panel below it) paints over
- * the open list and intercepts its pointer events.
+ * @pixi/ui `Select` bakes each option's string into its dropdown button, its
+ * press handler, and the closed/selected label at construction, with no public
+ * setter for any of them. Worse, the strings are captured before the
+ * localization plugin is attached, so they are always the untranslated
+ * defaults. And it renders the dropdown list inline, at the Select's own
+ * z-position, so a sibling drawn later paints over the open list.
  *
- * This subclass lifts the dropdown container (`view`, which holds the open
- * background, close button, and the scrollable list) to the top of the render
- * tree while open, so it draws above all other UI like a web dropdown. The
- * reparent preserves the dropdown's on-screen position and scale via the world
- * transform, so it stays put and correctly sized regardless of the fit scale
- * between the UI layer and the stage.
+ * This subclass reaches the protected internals to (a) relocalize in place
+ * without rebuilding (which would drop open / scroll state), and (b) lift the
+ * open dropdown above all other UI:
+ *
+ * - `setItemLabel` swaps a dropdown button's visible text only — it never
+ *   touches the button's `onPress`, so `FancyButton`'s own press-state listener
+ *   and `Select`'s selection handler stay connected.
+ * - `setSelectedLabel` refreshes the closed/open button showing the current
+ *   choice.
+ * - `connectItemPress` adds a later-ordered `onPress` handler that runs *after*
+ *   `Select`'s own (which emits and sets the closed label with the stale
+ *   default), letting the wrapper overwrite both with the current translation.
+ * - `portalDropdown` / `restoreDropdown` reparent the dropdown container to the
+ *   top of the render tree while open (position and scale preserved via the
+ *   world transform), so it draws above sibling UI like a web dropdown.
  */
-class PortalSelect extends Select {
+class LocalizedSelect extends Select {
+  private itemButton(id: number): FancyButton | undefined {
+    return (this.scrollBox?.items as FancyButton[] | undefined)?.[id];
+  }
+
+  setItemLabel(id: number, text: string): void {
+    const button = this.itemButton(id);
+    if (button) {
+      button.text = text;
+      // `FancyButton.set text` skips the fit pass — re-fit so a longer
+      // translation doesn't overflow the dropdown button.
+      refitButtonText(button);
+    }
+  }
+
+  setSelectedLabel(text: string): void {
+    this.openButton.text = text;
+    this.closeButton.text = text;
+    refitButtonText(this.openButton);
+    refitButtonText(this.closeButton);
+  }
+
+  /** Runs after Select's own item handler (order 1 > default 0). */
+  connectItemPress(id: number, cb: () => void): void {
+    this.itemButton(id)?.onPress.connect(cb, 1);
+  }
+
+  disconnectItemPress(id: number, cb: () => void): void {
+    this.itemButton(id)?.onPress.disconnect(cb);
+  }
+
+  /** Every dropdown option button — for teardown: `ScrollBox.destroy()`
+   *  detaches its List children without destroying them, so the wrapper must
+   *  destroy the survivors itself. */
+  allItemButtons(): FancyButton[] {
+    return [...((this.scrollBox?.items as FancyButton[] | undefined) ?? [])];
+  }
+
+  /** Tear down the dropdown list. `ScrollBox.destroy()` removes a document
+   *  `wheel` listener that a plain `Select.destroy()` leaves attached. */
+  destroyScrollBox(): void {
+    const box = this.scrollBox;
+    if (box && !box.destroyed) box.destroy({ children: true, context: true });
+  }
+
   /** Notified after every open/close with the resulting open state. */
   onOpenChange: ((open: boolean) => void) | undefined;
   private _portalHost: Container | null = null;
@@ -93,9 +148,21 @@ class PortalSelect extends Select {
 }
 
 /** Yoga-aware wrapper around @pixi/ui Select (dropdown). */
-export class PixiSelect extends PixiUIBase<PortalSelect> {
+export class PixiSelect extends PixiUIBase<LocalizedSelect> {
+  /** Current resolved label per option — the single source of truth for the
+   *  selected label and the emitted `onSelect` text (Select baked stale
+   *  defaults into its own handlers). */
+  private readonly _texts: string[];
+  private _onSelect: ((index: number, text: string) => void) | undefined;
+  /** Item-press handlers connected onto the dropdown buttons, tracked so
+   *  teardown can disconnect them — the buttons outlive `view.destroy()` (it
+   *  doesn't destroy the child ScrollBox), so an undisconnected closure would
+   *  keep this wrapper alive. */
+  private readonly _itemPresses: { id: number; cb: () => void }[] = [];
+
   constructor(props: PixiSelectProps) {
-    const view = new PortalSelect({
+    const texts = props.items.map(resolveStatic);
+    const view = new LocalizedSelect({
       closedBG: resolvePixiView(props.closedBG),
       openBG: resolvePixiView(props.openBG),
       textStyle: props.textStyle,
@@ -103,7 +170,7 @@ export class PixiSelect extends PixiUIBase<PortalSelect> {
       scrollBoxOffset: props.scrollBoxOffset,
       visibleItems: props.visibleItems,
       items: {
-        items: props.items,
+        items: texts,
         backgroundColor: props.itemBG ?? 0x000000,
         width: props.itemWidth ?? 200,
         height: props.itemHeight ?? 40,
@@ -114,13 +181,40 @@ export class PixiSelect extends PixiUIBase<PortalSelect> {
     } as ConstructorParameters<typeof Select>[0]);
     super(view, props);
 
+    this._texts = texts;
+    this._onSelect = props.onSelect;
+
+    // `Select.value` starts at -1 and is only set on a click; align it with the
+    // initially-shown selection so relocalization refreshes the right label.
+    view.value = props.selected ?? 0;
+
+    props.items.forEach((item, i) => {
+      // After Select's handler emits + sets the stale label, correct both from
+      // `_texts` and hand the caller the current translation.
+      const press = (): void => {
+        const text = this._texts[i] ?? "";
+        view.setSelectedLabel(text);
+        this._onSelect?.(i, text);
+      };
+      this._itemPresses.push({ id: i, cb: press });
+      view.connectItemPress(i, press);
+      // Re-resolve this option's dropdown label on locale change (and the
+      // closed label when it is the current selection).
+      const localizer = new LocalizedTextController((value) => {
+        this._texts[i] = value;
+        this.view.setItemLabel(i, value);
+        if (this.view.value === i) this.view.setSelectedLabel(value);
+      });
+      this.localizers.push(localizer);
+      localizer.seed(item);
+    });
+
     // Lift the open dropdown above sibling UI; drop it back on close.
     view.onOpenChange = (open) => {
       if (open) view.portalDropdown();
       else view.restoreDropdown();
     };
 
-    if (props.onSelect) view.onSelect.connect(props.onSelect);
     this.prevProps = { ...props };
   }
 
@@ -133,24 +227,50 @@ export class PixiSelect extends PixiUIBase<PortalSelect> {
   update(props: Record<string, unknown>): void {
     const p = props as unknown as PixiSelectProps;
 
-    this.bridgeSignal(this.view.onSelect, "onSelect", props);
-
-    if (p.selected !== undefined) this.view.value = p.selected;
+    // `items` is construction-only: @pixi/ui bakes the options (buttons, press
+    // handlers) at build time, so a new `items` array here is NOT applied — the
+    // buttons, `_texts`, and per-item localizers stay bound to the constructor
+    // set (localization still refreshes their labels in place). Changing which
+    // options exist means recreating the component.
+    if ("onSelect" in props) this._onSelect = p.onSelect;
+    // Refresh the shown label too — `value` alone leaves the closed/open button
+    // on the previous selection's text until the next locale bump.
+    if ("selected" in props) {
+      const next = p.selected ?? 0;
+      this.view.value = next;
+      this.view.setSelectedLabel(this._texts[next] ?? "");
+    }
 
     this.updateBase(props);
   }
 
-  override destroy(): void {
-    // Put the dropdown back inside the Select first, so `view.destroy()` tears
-    // it down instead of leaking a container reparented to the stage.
-    this.view.restoreDropdown();
-    super.destroy();
+  protected disconnectAll(): void {
+    // Handlers live on the option buttons, which `destroy()` has already
+    // released by the time this runs; the loop still matters when a caller
+    // drives disconnect on its own.
+    for (const { id, cb } of this._itemPresses) {
+      this.view.disconnectItemPress(id, cb);
+    }
+    this._itemPresses.length = 0;
+    this._onSelect = undefined;
   }
 
-  protected disconnectAll(): void {
-    const cb = this.prevProps.onSelect as
-      | ((index: number, text: string) => void)
-      | undefined;
-    if (cb) this.view.onSelect.disconnect(cb);
+  override destroy(): void {
+    // Put the dropdown back inside the Select first (portal), so it is torn
+    // down here instead of leaking a container reparented to the stage.
+    this.view.restoreDropdown();
+    // Order matters. The option buttons must be reachable to disconnect their
+    // press handlers, and `ScrollBox.destroy()` empties `items` — so read them
+    // and disconnect BEFORE tearing the box down. `ScrollBox.destroy()` also
+    // detaches its List children without destroying them, hence the survivor
+    // pass at the end; otherwise repeated mount/unmount cycles leak their Pixi
+    // objects and press signals.
+    const buttons = this.view.allItemButtons();
+    this.disconnectAll();
+    this.view.destroyScrollBox();
+    super.destroy();
+    for (const b of buttons) {
+      if (!b.destroyed) b.destroy({ children: true, context: true });
+    }
   }
 }
