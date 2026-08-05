@@ -13,6 +13,8 @@
  *   • a `UIButton` whose label is a binding
  *   • a `PixiSelect` language picker whose dropdown labels are themselves
  *     localized (English → Anglais when you switch to French)
+ *   • an inventory panel whose item names, descriptions, and action labels
+ *     come from the same catalog, keyed by item and action id
  *
  * Dialogue localization works the same way — set `i18n: true` on a
  * `DialogueController` and each `#line:` key resolves through this same plugin.
@@ -22,6 +24,9 @@ import { Engine, Scene, LocalizationPlugin, msg } from "@yagejs/core";
 import type { LocalizationAdapter, JsonValue } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { UIPlugin, UISurface, PixiSelect, Anchor } from "@yagejs/ui";
+import { InputPlugin } from "@yagejs/input";
+import { defineItems, Inventory, InventoryController } from "@yagejs-addons/inventory";
+import { createInventoryPanel } from "@yagejs-addons/inventory/presenters";
 import { Graphics } from "pixi.js";
 import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 
@@ -45,10 +50,36 @@ const CATALOGS: Record<string, Record<string, string>> = {
     "app.clickBtn": "Cliquez-moi",
     "lang.en": "Anglais",
     "lang.fr": "Français",
+    // Inventory keys are derived from the item and action ids — the addon looks
+    // these up on its own, no per-string wiring.
+    "bag.title": "Sac",
+    "inventory.item.potion.name": "Potion de vie",
+    "inventory.item.potion.description": "Restaure 20 points de vie.",
+    "inventory.item.key.name": "Clé rouillée",
+    "inventory.item.key.description": "Ouvre quelque chose, quelque part.",
+    "inventory.action.use.label": "Utiliser",
+    "inventory.action.drop.label": "Jeter",
   },
 };
 
 const LOCALES = ["en", "fr"] as const;
+
+// Items carry the English text inline. It doubles as the fallback, so this
+// catalog renders untranslated with no localization plugin at all.
+const ITEMS = defineItems({
+  potion: {
+    name: "Health Potion",
+    description: "Restores 20 health.",
+    maxStack: 5,
+    color: 0xef4444,
+  },
+  key: {
+    name: "Rusty Key",
+    description: "Opens something, somewhere.",
+    color: 0xfbbf24,
+  },
+});
+type ItemId = "potion" | "key";
 
 // ---------------------------------------------------------------------------
 // The adapter YAGE calls. A real game delegates `t()` to its i18n library and
@@ -101,10 +132,14 @@ class LocalizationScene extends Scene {
     let clicks = 0;
     const surface = this.spawn("panel").add(
       new UISurface({
-        anchor: Anchor.Center,
+        // Left band, fixed width: a longer translation wraps instead of
+        // widening the panel into the inventory beside it.
+        anchor: Anchor.CenterLeft,
+        offset: { x: 24, y: 0 },
+        width: 320,
         direction: "column",
         gap: 14,
-        padding: 28,
+        padding: 24,
         alignItems: "center",
         background: { color: 0x1e293b, alpha: 0.92, radius: 10 },
       }),
@@ -140,6 +175,29 @@ class LocalizationScene extends Scene {
     // Language picker (@pixi/ui Select). The dropdown labels are localized, so
     // "English / French" become "Anglais / Français" once you switch to French.
     surface.addElement(this.languagePicker());
+
+    // Inventory: item names, descriptions, and action labels come from the same
+    // catalog, keyed by item/action id. The panel re-presents on a locale
+    // switch, keeping the cursor and any open action menu.
+    const inventory = new Inventory<ItemId>({
+      catalog: ITEMS,
+      capacity: 8,
+      actions: [
+        { id: "use", label: "Use", consumes: true },
+        { id: "drop", label: "Drop" },
+      ],
+    });
+    inventory.add("potion", 3);
+    inventory.add("key");
+
+    this.spawn("bag").add(
+      new InventoryController<ItemId>({
+        ...createInventoryPanel(),
+        inventory,
+        title: msg("bag.title", undefined, "Bag"),
+        openOnAdd: true,
+      }),
+    );
   }
 
   private languagePicker(): PixiSelect {
@@ -175,17 +233,30 @@ async function main(): Promise<void> {
 
   engine.use(
     new RendererPlugin({
-      width: 800,
+      width: 1000,
       height: 600,
-      virtualWidth: 800,
+      virtualWidth: 1000,
       virtualHeight: 600,
       backgroundColor: 0x0a0a0a,
-      container: setupGameContainer(800, 600),
+      container: setupGameContainer(1000, 600),
     }),
   );
   engine.use(
     new UIPlugin({
       defaultTextStyle: { fontFamily: "system-ui, sans-serif", fill: "#e5e7eb" },
+    }),
+  );
+  // The inventory panel drives its cursor and action menu from these actions.
+  engine.use(
+    new InputPlugin({
+      actions: {
+        interact: ["KeyE", "Enter"],
+        "move-up": ["ArrowUp", "KeyW"],
+        "move-down": ["ArrowDown", "KeyS"],
+        "move-left": ["ArrowLeft", "KeyA"],
+        "move-right": ["ArrowRight", "KeyD"],
+        cancel: ["Escape"],
+      },
     }),
   );
 
