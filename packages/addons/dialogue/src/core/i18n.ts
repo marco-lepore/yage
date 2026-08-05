@@ -33,11 +33,19 @@ const TOKEN = /\{(\w+)\}/g;
 
 /** Replace `{token}` with `params.token`; leaves unknown tokens untouched.
  *  Own-property check only — `{constructor}`/`{toString}` must not stringify
- *  inherited Object.prototype members. */
+ *  inherited Object.prototype members. `String()` is guarded so a value that
+ *  throws on conversion (`{ toString: null }`) leaves the token in place
+ *  rather than breaking the line — this adapter is the last resort and must
+ *  not throw. Matches `interpolate` in `@yagejs/core`. */
 export function interpolate(text: string, params: Readonly<Record<string, unknown>>): string {
-  return text.replace(TOKEN, (whole, name: string) =>
-    Object.hasOwn(params, name) ? String(params[name]) : whole,
-  );
+  return text.replace(TOKEN, (whole, name: string) => {
+    if (!Object.hasOwn(params, name)) return whole;
+    try {
+      return String(params[name]);
+    } catch {
+      return whole;
+    }
+  });
 }
 
 /** Distinct `{token}` names in `text` — used by load-time validation to check

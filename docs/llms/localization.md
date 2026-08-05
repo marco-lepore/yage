@@ -56,6 +56,9 @@ scoreText.setText(msg("hud.score", { n: 3 }, "Score: {n}"));
 // @pixi/ui wrappers — labels re-resolve in place, open/scroll state kept
 new PixiFancyButton({ text: msg("hud.ok", undefined, "OK"), /* views */ });
 new PixiSelect({ items: [msg("lang.en", undefined, "English"), msg("lang.fr", undefined, "French")], /* views */ });
+new PixiCheckbox({ text: msg("opt.sfx", undefined, "Sound effects") });
+new PixiInput({ placeholder: msg("form.name", undefined, "Your name") }); // `value` stays literal — it is user input
+new PixiRadioGroup({ items: [{ text: msg("diff.easy", undefined, "Easy") }], /* … */ });
 
 // Dialogue (@yagejs-addons/dialogue) — i18n: true bridges to the plugin
 host.add(new DialogueController({ ...createBoxDialogue(), i18n: true }));
@@ -102,3 +105,7 @@ already read appears complete.
   place. Recreate the component to change which options exist.
 - Interpolation is whatever the adapter implements. The identity adapter
   substitutes `{token}`; a library-backed adapter gets full ICU and plurals.
+- React `<SplitText autoSplit={false}>`: the React components resolve a binding
+  to a string before the element sees it, so a locale switch updates the text
+  without re-splitting. Call `resplit()` after the switch, or keep `autoSplit`
+  on. The imperative `UISplitText` / `SplitTextComponent` re-split themselves.

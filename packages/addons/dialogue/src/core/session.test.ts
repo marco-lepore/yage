@@ -2286,19 +2286,28 @@ describe("DialogueSession — retranslate", () => {
     expect(h.text.isRevealComplete()).toBe(true);
   });
 
-  it("does not retype into a paused session, which drives no clock", () => {
+  it("holds a retranslate requested while paused, and applies it on resume", async () => {
+    // A pause menu is the usual place to switch language. Presenting mid-pause
+    // would either blank a restarted typewriter (no clock runs) or drive the
+    // line's afterReveal commands and reveal hooks against a frozen game.
+    const onRevealCompleted = vi.fn();
     const i18n = switchableI18n({ it: { greet: "Ciao" } });
-    const h = makeHarness({ i18n });
+    const h = makeHarness({ i18n, onRevealCompleted });
     h.session.play(sayScript);
     h.session.setPaused(true);
+    const whilePaused = h.text.presented.length;
 
     i18n.locale = "it";
     h.session.retranslate();
+    expect(h.text.presented).toHaveLength(whilePaused);
+    expect(onRevealCompleted).not.toHaveBeenCalled();
 
-    // update() returns early while paused, so a restarted typewriter would
-    // leave the line blank until the game resumes — the usual place to switch
-    // language is a pause menu.
-    expect(h.text.isRevealComplete()).toBe(true);
+    h.session.setPaused(false);
+    await flush();
+    expect(h.text.presented.length).toBeGreaterThan(whilePaused);
+    expect(h.text.presented.at(-1)?.text.runs.map((r) => r.text).join("")).toBe(
+      "Ciao",
+    );
   });
 
   it("keeps a hidden conversation hidden across retranslate", () => {

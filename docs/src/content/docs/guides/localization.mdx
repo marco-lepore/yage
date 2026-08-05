@@ -112,6 +112,13 @@ score.setText(msg("hud.score", { n: 3 }, "Score: {n}"));
 
 In React, pass a binding to `<Text>` or resolve one with the `useMessage` hook.
 
+One exception to watch: `<SplitText autoSplit={false}>` batches its re-split, and
+the React components resolve a binding to a string before the element sees it —
+so a locale switch updates the text without re-splitting the glyphs. Call
+`resplit()` on the element after the switch, or leave `autoSplit` on (the
+default), where the imperative `UISplitText` and `SplitTextComponent` re-split
+themselves.
+
 ### @pixi/ui widgets
 
 The `@yagejs/ui` wrappers around `@pixi/ui` accept bindings and re-resolve
@@ -128,11 +135,29 @@ new PixiSelect({
   onSelect: (index) => void loc.setLocale(index === 0 ? "en" : "fr"),
   // + closedBG / openBG views
 });
+
+new PixiCheckbox({ text: msg("opt.sfx", undefined, "Sound effects") });
+
+// The placeholder localizes; `value` stays a plain string — it is user input.
+new PixiInput({ placeholder: msg("form.name", undefined, "Your name") });
+
+new PixiRadioGroup({
+  items: [
+    { text: msg("diff.easy", undefined, "Easy") },
+    { text: msg("diff.hard", undefined, "Hard") },
+  ],
+  type: "vertical",
+  elementsMargin: 4,
+});
 ```
 
-A `PixiSelect`'s option set is fixed at construction: a later `update({ items
-})` is ignored (localization still refreshes the existing labels). Recreate the
-component to change which options exist.
+`PixiSelect` and `PixiRadioGroup` fix their option set at construction: a later
+`update({ items })` is ignored (localization still refreshes the existing
+labels). Recreate the component to change which options exist.
+
+Widget teardown leaves the view props you passed in (`bg`, `defaultView`,
+`closedBG`, …) alone, so a view you build once and reuse across mounts survives
+being unmounted.
 
 ### Dialogue
 

@@ -1214,6 +1214,38 @@ non-overlapping rather than piling rows. A menu longer than the presenter's soft
 cap (`softMaxChoices`, default 8) logs an advisory through the engine logger — it
 still renders, but a shorter menu (or a sub-menu) usually reads better.
 
+## Translating dialogue
+
+Set `i18n: true` to resolve every line through the game's registered
+`LocalizationPlugin`. A line's `#line:` tag is the catalog key and the authored
+text is the fallback, so a script keeps working untranslated:
+
+```ts
+host.add(new DialogueController({ ...createBoxDialogue(theme), i18n: true }));
+```
+
+```
+# guard-demo
+:: start
+Guard: Halt! State your business.  #line:d.halt
+```
+
+A disabled choice's reason hangs off the option's own key, as
+`<key>.disabledReason`, so both strings translate without a second id.
+
+Switching locale retranslates the on-screen line and choices automatically. A
+line still typing restarts its typewriter on the new text and replays that
+line's inline `[marker/]` beats as it retypes — worth knowing if a marker fires
+a one-shot effect. A line the player has already read appears complete instead
+of retyping, as does one on a paused session. Either way the line is not
+re-announced: `onRevealCompleted` and a history channel's `revealComplete` fire
+once per line, line commands do not re-run, voice keeps playing, and a choice
+keeps its highlighted row.
+
+With your own `I18nAdapter` instead of the plugin bridge, call
+`controller.retranslate()` yourself after the language change. See the
+[localization guide](/guides/localization/) for the adapter and the switch.
+
 ## Experimental: radial choices
 
 A Mass-Effect-style choice wheel ships under `./presenters` as

@@ -377,6 +377,13 @@ export class DialogueSession {
    *  retranslate can drive the same line to completion a second time, and a
    *  history or analytics channel must not record the line twice for it. */
   private revealCompletedFired = false;
+  /** A locale change arrived while paused. Applied on resume — see
+   *  {@link DialogueSession.retranslate}. */
+  private retranslatePending = false;
+  /** True while a retranslate re-presents an already-read line straight to its
+   *  finished state, so the reveal beats that pass on the way are not fanned
+   *  out as if the line were playing. */
+  private silenceBeats = false;
   /** Latched by the first confirm() until the runner produces its next state
    *  (handleSay/handleChoice/handleEnd), so mashing confirm while the runner
    *  awaits the option's blocking commands can't emit duplicate onChoiceMade
@@ -642,6 +649,12 @@ export class DialogueSession {
       } catch (error) {
         this.opts.onError?.("dialogue: channel setPaused() failed", error);
       }
+    }
+    // A language switch that arrived during the pause applies now that the
+    // clock runs again.
+    if (!paused && this.retranslatePending) {
+      this.retranslatePending = false;
+      this.retranslate();
     }
   }
 
@@ -1076,32 +1089,42 @@ export class DialogueSession {
    * revision; a game with a custom adapter calls it after switching language).
    *
    * Semantics: a say line still typing restarts its typewriter on the
-   * retranslated text; one the player has already read (and one on a paused
-   * session, which drives no clock) appears complete instead. Observation is
-   * once per line either way — `onRevealCompleted` and the extras'
-   * `revealComplete` do not fire a second time, the afterReveal command latch
-   * is not reset so line commands never re-fire, and no `onLine` /
-   * `onChoiceShown` is re-emitted. Extras are not re-presented, so voice keeps
-   * playing. A choice keeps its highlighted row. Idle is a no-op.
+   * retranslated text; one the player has already read appears complete
+   * instead. Observation is once per line either way — `onRevealCompleted` and
+   * the extras' `revealComplete` do not fire a second time, the afterReveal
+   * command latch is not reset so line commands never re-fire, and no `onLine`
+   * / `onChoiceShown` is re-emitted. Extras are not re-presented, so voice
+   * keeps playing. A choice keeps its highlighted row. Idle is a no-op.
    *
    * A restarted typewriter does replay the line's inline `[marker/]` beats as
-   * it retypes — wire a marker to a one-shot effect accordingly.
+   * it retypes — wire a marker to a one-shot effect accordingly. Jumping an
+   * already-read line to its finished text fires none of them.
+   *
+   * While paused the request is held and applied on resume, so a language
+   * switch from a pause menu neither blanks the line nor runs its commands
+   * against a frozen clock.
    */
   retranslate(): void {
+    // A paused session drives no clock, so presenting now would either leave a
+    // restarted typewriter blank until the game resumes, or — completing it
+    // instead — run the line's afterReveal commands and reveal hooks while the
+    // game is frozen. Neither belongs in a pause. Hold the request and apply it
+    // on resume, alongside every other paused entry point.
+    if (this.paused) {
+      this.retranslatePending = true;
+      return;
+    }
     if (this.mode === "saying" && this.saying) {
       const step = this.saying;
       const speaker = this.currentSpeaker;
       const view = this.readView();
-      // A line the player has already read must not retype, and a paused
-      // session drives no clock (`update` returns early), so a restarted
-      // typewriter would leave the line blank until the game resumes.
+      // A line the player has already read must not retype.
       // `revealCompletedFired` (not just `isRevealComplete`) is the settled
       // test: with a blocking afterReveal command still in flight the line has
       // typed out but hasn't earned its caret, so it takes the restart path and
       // the continuation guard keeps deciding when completion lands.
       const showComplete =
-        this.paused ||
-        (this.revealCompletedFired && this.channels.text.isRevealComplete());
+        this.revealCompletedFired && this.channels.text.isRevealComplete();
       const resolved = this.i18n.t(step.key, step.text, view);
       const line: PresentedLine = {
         speaker: this.speakerView(speaker, view),
@@ -1128,8 +1151,19 @@ export class DialogueSession {
         speaker?.color,
       );
       this.channels.chrome?.present?.(line);
-      this.channels.text.present(line);
-      if (showComplete) this.channels.text.completeReveal();
+      if (showComplete) {
+        // Jump straight to the finished text. The presenter still walks the
+        // line's tokens to get there, so mute the beats for the trip.
+        this.silenceBeats = true;
+        try {
+          this.channels.text.present(line);
+          this.channels.text.completeReveal();
+        } finally {
+          this.silenceBeats = false;
+        }
+      } else {
+        this.channels.text.present(line);
+      }
       // Presenting may rebuild visible objects in a custom presenter — re-apply
       // the host-hidden lever so a hidden conversation stays hidden.
       this.applyVisibility();
@@ -1452,6 +1486,11 @@ export class DialogueSession {
    * itself — the Session name-matches nothing) and the host's `onRevealMarker`.
    */
   private handleRevealBeat(beat: RevealBeat): void {
+    // Re-presenting a line the player already read drains its tokens again to
+    // land on the finished text. Those beats are an artifact of the re-present,
+    // not the line playing, so they are dropped — otherwise every language
+    // switch re-fires a `[shake/]` the player already saw.
+    if (this.silenceBeats) return;
     for (const ch of this.extras) {
       try {
         ch.revealBeat?.(beat);
