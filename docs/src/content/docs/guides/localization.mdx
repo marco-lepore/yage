@@ -151,16 +151,23 @@ Guard: Halt! State your business.  #line:d.halt
 ```
 
 In `i18n: true` mode a locale switch retranslates the on-screen line and
-choices automatically (the reveal restarts). With a custom `I18nAdapter`
-instead of the plugin bridge, call `controller.retranslate()` yourself after
-the switch.
+choices automatically. With a custom `I18nAdapter` instead of the plugin
+bridge, call `controller.retranslate()` yourself after the switch.
+
+A line still typing restarts its typewriter on the new text, and replays that
+line's inline `[marker/]` beats as it retypes — worth knowing if a marker fires
+a one-shot effect. A line the player has already read appears complete instead
+of retyping, as does one on a paused session. Either way the line is not
+re-announced: `onRevealCompleted` and a history channel's `revealComplete` fire
+once per line, line commands do not re-run, and voice keeps playing.
 
 ## Switching locale
 
 Resolve the plugin and call `setLocale`:
 
 ```ts
-const loc = engine.plugins.get("localization"); // or context.use(LocalizationKey)
+// Hold the plugin you registered, or resolve the service from a context:
+const loc = scene.context.use(LocalizationKey);
 await loc.setLocale("fr");
 ```
 
@@ -168,18 +175,22 @@ The switch is atomic. It awaits `adapter.setLocale(next)` — which a
 library-backed adapter resolves only once the `fr` catalog is loaded and active
 — then bumps a single revision counter that every bound text sink listens on.
 So text never flips to a half-loaded locale. If two switches race, the last
-caller wins and the superseded one commits nothing; if the adapter rejects, the
-old locale is kept and the error propagates.
+caller wins and the superseded one commits nothing.
+
+If the adapter rejects, the requested locale is not adopted and the error
+propagates. Should the adapter have already swapped its catalog in before
+failing, that change is published rather than dropped, so `locale` never
+disagrees with what is on screen. An adapter with no `setLocale` — including
+the identity default — cannot switch at all: `locale` keeps reporting the
+adapter's own, and dev builds warn.
+
+Interpolation is whatever your adapter implements. The identity adapter does
+simple `{token}` substitution; a library-backed adapter gets full ICU and
+plurals.
 
 ## Try it
 
 The `examples/` app has a runnable `localization` example: a language picker
-that retranslates a title, subtitle, an interpolated counter, and the picker's
-own dropdown labels live — all behind the table adapter shown above.
-
-## Not in this version
-
-RTL layout, per-locale font switching, and key-extraction tooling are not yet
-built. Interpolation is whatever your adapter implements — the identity adapter
-does simple `{token}` substitution; a library-backed adapter gets full ICU or
-plurals.
+that retranslates a title, subtitle, an interpolated counter, the picker's own
+dropdown labels, and an inventory panel's item names, descriptions, and action
+labels — all behind the table adapter shown above.

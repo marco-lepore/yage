@@ -1,8 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import { Logger, LoggerKey, LogLevel, createMockScene } from "@yagejs/core";
+import {
+  LocalizationKey,
+  Logger,
+  LoggerKey,
+  LogLevel,
+  createMockScene,
+} from "@yagejs/core";
 import { InputManager, InputManagerKey } from "@yagejs/input";
 
 import { DialogueController } from "./DialogueController.js";
+import type { DialogueControllerOptions } from "./DialogueController.js";
 import { CompositeInputBinding, PointerInputBinding } from "./input/index.js";
 import {
   DialogueAutoAdvanceEvent,
@@ -22,6 +29,7 @@ import type {
   DialogueExtraChannel,
   DialogueScript,
   DialogueSession,
+  PresentedLine,
   MarkerToken,
   RevealBeat,
 } from "./core/index.js";
@@ -41,9 +49,13 @@ class StubChrome implements ChromePresenter {
 
 class StubText implements TextPresenter {
   visible = false;
+  /** The plain text of the most recent present — what the i18n bridge tests read. */
+  lastText: string | undefined;
   mount(): void {}
   dispose(): void {}
-  present(): void {}
+  present(line: PresentedLine): void {
+    this.lastText = line.text.runs.map((r) => r.text).join("");
+  }
   completeReveal(): void {}
   isRevealComplete(): boolean {
     return true;
@@ -159,6 +171,15 @@ const SCRIPT: DialogueScript = {
   id: "guard",
   start: "a",
   nodes: { a: { id: "a", steps: [{ kind: "say", text: "hi" }] } },
+};
+
+/** A keyed line, so an i18n catalog can resolve `greet` over the authored text. */
+const I18N_SCRIPT: DialogueScript = {
+  id: "greet",
+  start: "a",
+  nodes: {
+    a: { id: "a", steps: [{ kind: "say", key: "greet", text: "Hello" }] },
+  },
 };
 
 function makeController(input: InputBinding = noopBinding): DialogueController {
@@ -820,5 +841,153 @@ describe("DialogueController — default action names validated against the live
     addZeroConfig(scene);
 
     expect(warn.mock.calls.filter((c) => c[0] === "dialogue")).toHaveLength(0);
+  });
+});
+
+describe("DialogueController — engine i18n bridge", () => {
+  /** Minimal Localization double; `bump` fires the revision listeners the way
+   *  a real plugin does on a locale switch. */
+  function mockLocalization(table: Record<string, string> = {}) {
+    const listeners = new Set<() => void>();
+    return {
+      service: {
+        locale: "en",
+        revision: () => 0,
+        subscribe: (cb: () => void) => {
+          listeners.add(cb);
+          return () => listeners.delete(cb);
+        },
+        resolve: (b: { id: string; default?: string }) =>
+          table[b.id] ?? b.default ?? b.id,
+        setLocale: async () => {},
+      },
+      bump: () => {
+        for (const l of [...listeners]) l();
+      },
+      get listenerCount() {
+        return listeners.size;
+      },
+    };
+  }
+
+  function controllerWithI18n(
+    i18n: DialogueControllerOptions["i18n"],
+  ): DialogueController {
+    return new DialogueController({
+      chrome: new StubChrome(),
+      text: new StubText(),
+      choices: new StubChoices(),
+      input: noopBinding,
+      ...(i18n === undefined ? {} : { i18n }),
+    });
+  }
+
+  it("resolves lines through the registered plugin when i18n is true", () => {
+    const { scene, context } = createMockScene();
+    const local = mockLocalization({ greet: "Ciao" });
+    context.register(LocalizationKey, local.service);
+    const text = new StubText();
+    const controller = scene.spawn("dlg").add(
+      new DialogueController({
+        chrome: new StubChrome(),
+        text,
+        choices: new StubChoices(),
+        input: noopBinding,
+        i18n: true,
+      }),
+    );
+
+    controller.play(I18N_SCRIPT);
+    expect(text.lastText).toBe("Ciao");
+  });
+
+  it("falls back to the authored text when no plugin is registered", () => {
+    const { scene } = createMockScene();
+    const text = new StubText();
+    const controller = scene.spawn("dlg").add(
+      new DialogueController({
+        chrome: new StubChrome(),
+        text,
+        choices: new StubChoices(),
+        input: noopBinding,
+        i18n: true,
+      }),
+    );
+
+    controller.play(I18N_SCRIPT);
+    expect(text.lastText).toBe("Hello");
+  });
+
+  it("subscribes to the locale revision, and unsubscribes when removed", () => {
+    const { scene, context } = createMockScene();
+    const local = mockLocalization();
+    context.register(LocalizationKey, local.service);
+    const host = scene.spawn("dlg");
+    const controller = host.add(controllerWithI18n(true));
+
+    expect(local.listenerCount).toBe(1);
+    controller.play(I18N_SCRIPT);
+
+    host.remove(DialogueController);
+    expect(local.listenerCount).toBe(0);
+    // A bump after teardown must not reach the disposed session.
+    expect(() => local.bump()).not.toThrow();
+  });
+
+  it("does not subscribe twice across a remove/re-add cycle", () => {
+    const { scene, context } = createMockScene();
+    const local = mockLocalization();
+    context.register(LocalizationKey, local.service);
+    const host = scene.spawn("dlg");
+    const controller = host.add(controllerWithI18n(true));
+    host.remove(DialogueController);
+    host.add(controller);
+
+    expect(local.listenerCount).toBe(1);
+  });
+
+  it("retranslates the on-screen line when the revision bumps", () => {
+    const { scene, context } = createMockScene();
+    const table: Record<string, string> = { greet: "Hello" };
+    const local = mockLocalization(table);
+    context.register(LocalizationKey, local.service);
+    const text = new StubText();
+    scene.spawn("dlg").add(
+      new DialogueController({
+        chrome: new StubChrome(),
+        text,
+        choices: new StubChoices(),
+        input: noopBinding,
+        i18n: true,
+      }),
+    ).play(I18N_SCRIPT);
+    expect(text.lastText).toBe("Hello");
+
+    table["greet"] = "Ciao";
+    local.bump();
+    expect(text.lastText).toBe("Ciao");
+  });
+
+  it("leaves text literal when i18n is omitted, even with a plugin registered", () => {
+    const { scene, context } = createMockScene();
+    const local = mockLocalization({ greet: "Ciao" });
+    context.register(LocalizationKey, local.service);
+    const text = new StubText();
+    scene
+      .spawn("dlg")
+      .add(
+        new DialogueController({
+          chrome: new StubChrome(),
+          text,
+          choices: new StubChoices(),
+          input: noopBinding,
+        }),
+      )
+      .play(I18N_SCRIPT);
+
+    expect(text.lastText).toBe("Hello");
+    // Opting out means no subscription either, so a locale switch leaves an
+    // unlocalized conversation alone.
+    expect(local.listenerCount).toBe(0);
   });
 });

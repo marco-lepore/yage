@@ -525,10 +525,12 @@ export class DialogueController<
     const opt = this.opts.i18n;
     if (opt === true) {
       if (localization === undefined) {
-        this.logger?.warn(
-          "dialogue",
-          "i18n: true but no LocalizationPlugin is registered; dialogue falls back to literal text.",
-        );
+        if (isDev()) {
+          this.logger?.warn(
+            "dialogue",
+            "i18n: true but no LocalizationPlugin is registered; dialogue falls back to literal text.",
+          );
+        }
         return undefined;
       }
       return engineI18nAdapter(localization);

@@ -589,6 +589,54 @@ describe("DialogueSession — disabled choices", () => {
     },
   };
 
+  it("looks a keyed disabled reason up under `<key>.disabledReason`", () => {
+    // The option's own key addresses its label; the reason hangs off it, so a
+    // catalog can translate both without inventing a second id.
+    const catalog: Record<string, string> = {
+      force: "Sfonda la porta",
+      "force.disabledReason": "Serve più forza",
+    };
+    const i18n = {
+      locale: "it",
+      t: (key: string | undefined, fallback: string) =>
+        (key !== undefined ? catalog[key] : undefined) ?? fallback,
+    };
+    const h = makeHarness({ i18n });
+    h.session.play({
+      id: "d",
+      start: "a",
+      declare: { hasKey: false },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "choice",
+              text: "The door is barred.",
+              options: [
+                {
+                  key: "force",
+                  text: "Force the door",
+                  target: "L",
+                  condition: "hasKey",
+                  presentation: "disabled",
+                  disabledReason: "Requires more strength",
+                },
+                { text: "Walk away", target: "R" },
+              ],
+            },
+          ],
+        },
+        L: { id: "L", steps: [{ kind: "say", text: "forced" }] },
+        R: { id: "R", steps: [{ kind: "say", text: "left" }] },
+      },
+    });
+
+    const row = h.choices.presented.at(-1)!.choices;
+    expect(row[0]!.label).toBe("Sfonda la porta");
+    expect(row[0]!.disabledReason).toBe("Serve più forza");
+  });
+
   it("presents a disabled row with its i18n-resolved reason and highlights the first enabled", () => {
     const onChoiceShown = vi.fn();
     const h = makeHarness({ onChoiceShown });
@@ -2186,9 +2234,15 @@ describe("DialogueSession — retranslate", () => {
     const onRevealCompleted = vi.fn();
     const i18n = switchableI18n({ it: { greet: "Ciao" } });
     let listener: (() => void) | undefined;
+    const seen: string[] = [];
     const text: TextChannel = {
-      // Immediate reveal: completes synchronously from present().
-      present: () => listener?.(),
+      // Immediate reveal: completes synchronously from present(), so the
+      // session's current-line fields must already hold the retranslated line
+      // by the time present() is called.
+      present: (line) => {
+        seen.push(line.text.runs.map((r) => r.text).join(""));
+        listener?.();
+      },
       completeReveal: () => {},
       isRevealComplete: () => true,
       isRevealing: () => false,
@@ -2207,10 +2261,44 @@ describe("DialogueSession — retranslate", () => {
     await flush(); // settle the first line's completion ("Hello")
     i18n.locale = "it";
     session.retranslate();
-    // The synchronous completion must carry the retranslated text.
+
+    expect(seen.at(-1)).toBe("Ciao");
+    // The line already reported "typing finished" before the switch, so the
+    // hook does not fire a second time for it.
+    expect(onRevealCompleted).toHaveBeenCalledTimes(1);
     expect(onRevealCompleted).toHaveBeenLastCalledWith(
-      expect.objectContaining({ text: "Ciao" }),
+      expect.objectContaining({ text: "Hello" }),
     );
+  });
+
+  it("shows an already-read line complete instead of retyping it", async () => {
+    const i18n = switchableI18n({ it: { greet: "Ciao" } });
+    const h = makeHarness({ i18n });
+    h.session.play(sayScript);
+    h.text.finishReveal();
+    await flush(); // let the completion settle (caret shown, hooks fired)
+
+    i18n.locale = "it";
+    h.session.retranslate();
+
+    // Retyping a line the player has already read is the jarring case the
+    // switch must avoid.
+    expect(h.text.isRevealComplete()).toBe(true);
+  });
+
+  it("does not retype into a paused session, which drives no clock", () => {
+    const i18n = switchableI18n({ it: { greet: "Ciao" } });
+    const h = makeHarness({ i18n });
+    h.session.play(sayScript);
+    h.session.setPaused(true);
+
+    i18n.locale = "it";
+    h.session.retranslate();
+
+    // update() returns early while paused, so a restarted typewriter would
+    // leave the line blank until the game resumes — the usual place to switch
+    // language is a pause menu.
+    expect(h.text.isRevealComplete()).toBe(true);
   });
 
   it("keeps a hidden conversation hidden across retranslate", () => {

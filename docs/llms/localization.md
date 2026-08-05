@@ -63,14 +63,16 @@ host.add(new DialogueController({ ...createBoxDialogue(), i18n: true }));
 // `Guard: Halt!  #line:d.halt`
 ```
 
-`UISurface` binds its whole tree to the plugin in `onAdd` and releases it in
-`onDestroy` — no per-element wiring. React trees bind via `useMessage` /
-`<Text>` accepting a binding.
+`UISurface` binds its whole tree to the plugin in `onAdd` and releases it on
+teardown — no per-element wiring. `UIRoot` does the same for the elements a
+React tree mounts, and the built-in `<Text>` / `<Button>` / `<Checkbox>`
+components also resolve through `useMessage`.
 
 ## Switching locale
 
 ```ts
-const loc = engine.plugins.get("localization"); // or context.use(LocalizationKey)
+// Hold the plugin you registered, or resolve the service from a context:
+const loc = scene.context.use(LocalizationKey);
 await loc.setLocale("fr"); // awaits the adapter's catalog load, then bumps once
 loc.locale;        // "fr"
 loc.revision();    // monotonic; bumps whenever resolved output may have changed
@@ -80,17 +82,23 @@ loc.subscribe(() => { /* re-resolve */ }); // text sinks subscribe internally
 `setLocale` is atomic: it awaits `adapter.setLocale(next)` (which resolves only
 once `next` is loaded and active), then bumps the revision exactly once.
 Concurrent calls: last caller wins; a superseded call commits nothing. On
-adapter rejection the old locale is kept and the rejection propagates.
+adapter rejection the requested locale is not adopted and the rejection
+propagates — but a catalog the adapter already swapped in before failing is
+published, so `locale` never disagrees with the rendered strings. An adapter
+with no `setLocale` cannot switch: `locale` keeps reporting the adapter's own,
+and dev builds warn.
 
-Dialogue in `i18n: true` mode retranslates the on-screen line/choices
-automatically on a locale switch (the reveal restarts). With a custom
-`I18nAdapter`, call `controller.retranslate()` yourself after the switch.
+Dialogue in `i18n: true` mode retranslates the on-screen line and choices
+automatically on a locale switch. With a custom `I18nAdapter`, call
+`controller.retranslate()` yourself after the switch. A line still typing
+restarts its typewriter (and replays that line's inline `[marker/]` beats); one
+already read appears complete.
 
 ## Notes
 
 - `values` must be JSON-safe so bindings round-trip through save/load.
-- `PixiSelect` items are construction-only: a later `update({ items })` is
-  ignored; localization refreshes the existing labels in place. Recreate the
-  component to change which options exist.
-- RTL, font switching per locale, and key-extraction tooling are not in this
-  version.
+- `PixiSelect.items` and `PixiRadioGroup.items` are construction-only: a later
+  `update({ items })` is ignored; localization refreshes the existing labels in
+  place. Recreate the component to change which options exist.
+- Interpolation is whatever the adapter implements. The identity adapter
+  substitutes `{token}`; a library-backed adapter gets full ICU and plurals.

@@ -372,6 +372,11 @@ export class DialogueSession {
    *  (normally via handleRevealComplete; skip() fires them early when the line
    *  hasn't finished revealing). */
   private afterRevealFired = false;
+  /** True once the current line has reported "typing finished" — the
+   *  `onRevealCompleted` callback and the extras' `revealComplete` hook. A
+   *  retranslate can drive the same line to completion a second time, and a
+   *  history or analytics channel must not record the line twice for it. */
+  private revealCompletedFired = false;
   /** Latched by the first confirm() until the runner produces its next state
    *  (handleSay/handleChoice/handleEnd), so mashing confirm while the runner
    *  awaits the option's blocking commands can't emit duplicate onChoiceMade
@@ -728,6 +733,7 @@ export class DialogueSession {
     this.advancing = false;
     this.advanceFired = false;
     this.afterRevealFired = false;
+    this.revealCompletedFired = false;
     this.goIdle("idle");
   }
 
@@ -1069,18 +1075,33 @@ export class DialogueSession {
    * the locale-change hook (the controller wires it to the engine localization
    * revision; a game with a custom adapter calls it after switching language).
    *
-   * Semantics: the say-line typewriter restarts on the retranslated text (and
-   * reveal-completion hooks fire again when it finishes); the afterReveal
-   * command latch is NOT reset, so line commands never re-fire; no
-   * `onLine`/`onChoiceShown` observation is re-emitted; extras (voice /
-   * history) are not re-presented, so audio keeps playing; a choice keeps its
-   * highlighted row. Idle is a no-op.
+   * Semantics: a say line still typing restarts its typewriter on the
+   * retranslated text; one the player has already read (and one on a paused
+   * session, which drives no clock) appears complete instead. Observation is
+   * once per line either way — `onRevealCompleted` and the extras'
+   * `revealComplete` do not fire a second time, the afterReveal command latch
+   * is not reset so line commands never re-fire, and no `onLine` /
+   * `onChoiceShown` is re-emitted. Extras are not re-presented, so voice keeps
+   * playing. A choice keeps its highlighted row. Idle is a no-op.
+   *
+   * A restarted typewriter does replay the line's inline `[marker/]` beats as
+   * it retypes — wire a marker to a one-shot effect accordingly.
    */
   retranslate(): void {
     if (this.mode === "saying" && this.saying) {
       const step = this.saying;
       const speaker = this.currentSpeaker;
       const view = this.readView();
+      // A line the player has already read must not retype, and a paused
+      // session drives no clock (`update` returns early), so a restarted
+      // typewriter would leave the line blank until the game resumes.
+      // `revealCompletedFired` (not just `isRevealComplete`) is the settled
+      // test: with a blocking afterReveal command still in flight the line has
+      // typed out but hasn't earned its caret, so it takes the restart path and
+      // the continuation guard keeps deciding when completion lands.
+      const showComplete =
+        this.paused ||
+        (this.revealCompletedFired && this.channels.text.isRevealComplete());
       const resolved = this.i18n.t(step.key, step.text, view);
       const line: PresentedLine = {
         speaker: this.speakerView(speaker, view),
@@ -1108,6 +1129,7 @@ export class DialogueSession {
       );
       this.channels.chrome?.present?.(line);
       this.channels.text.present(line);
+      if (showComplete) this.channels.text.completeReveal();
       // Presenting may rebuild visible objects in a custom presenter — re-apply
       // the host-hidden lever so a hidden conversation stays hidden.
       this.applyVisibility();
@@ -1177,6 +1199,7 @@ export class DialogueSession {
     this.autoTimer = undefined;
     this.advanceFired = false;
     this.afterRevealFired = false;
+    this.revealCompletedFired = false;
     this.confirming = false;
     // Materialize the read view once for this line (an external getter fires
     // exactly once per present, shared by text + nameplate).
@@ -1390,19 +1413,29 @@ export class DialogueSession {
     // the commands single-fire.
     if (!this.channels.text.isRevealComplete()) return;
     this.channels.chrome?.setContinueVisible(true);
-    // The "typing finished" hook — after afterReveal commands settle, as the
-    // continue caret appears. Carries the line so a game needn't track it.
-    if (this.currentLine) this.opts.onRevealCompleted?.(this.currentLine);
-    // Fan reveal-completion out to extras (a history channel commits the line
-    // once it's fully shown). The PresentedLine, since the plain currentLine
-    // dropped the markup/meta.
-    const presented = this.currentPresented;
-    if (presented) {
-      for (const ch of this.extras) {
-        try {
-          ch.revealComplete?.(presented);
-        } catch (error) {
-          this.opts.onError?.("dialogue: channel revealComplete() failed", error);
+    // Observation, once per line. A retranslate can drive the same line to
+    // completion again; the caret above and the auto-advance below are state
+    // and are re-applied, but a history or analytics channel must not record
+    // the line a second time because the player switched language.
+    if (!this.revealCompletedFired) {
+      this.revealCompletedFired = true;
+      // The "typing finished" hook — after afterReveal commands settle, as the
+      // continue caret appears. Carries the line so a game needn't track it.
+      if (this.currentLine) this.opts.onRevealCompleted?.(this.currentLine);
+      // Fan reveal-completion out to extras (a history channel commits the line
+      // once it's fully shown). The PresentedLine, since the plain currentLine
+      // dropped the markup/meta.
+      const presented = this.currentPresented;
+      if (presented) {
+        for (const ch of this.extras) {
+          try {
+            ch.revealComplete?.(presented);
+          } catch (error) {
+            this.opts.onError?.(
+              "dialogue: channel revealComplete() failed",
+              error,
+            );
+          }
         }
       }
     }
