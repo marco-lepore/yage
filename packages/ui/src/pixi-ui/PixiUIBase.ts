@@ -24,6 +24,12 @@ implements UIElement {
    * Empty for widgets with no text.
    */
   protected readonly localizers: LocalizedTextController[] = [];
+  /**
+   * Display objects the game passed in as view props. @pixi/ui parents them
+   * under the widget, so `destroy` detaches them first — the game built them
+   * and may reuse them on the next mount.
+   */
+  private readonly _callerViews: readonly DisplayContainer[];
 
   get displayObject(): DisplayContainer {
     return this.view;
@@ -57,6 +63,8 @@ implements UIElement {
 
       return { width: mW, height: mH };
     });
+
+    this._callerViews = collectCallerViews(props);
 
     applyLayoutProps(this.yogaNode, props);
     if (props.visible === false) this.visible = false;
@@ -113,14 +121,51 @@ implements UIElement {
     this.detachLocalization();
     this.disconnectAll();
     this.yogaNode.free();
-    // No `{ children: true }`: view props (`bg`, `defaultView`, `closedBG`, …)
-    // are display objects the game constructed and may reuse across mounts, and
-    // @pixi/ui parents them under the widget — a recursive destroy would take
-    // them with it. A widget with internals that need their own teardown
-    // overrides this and reaches them by name.
-    this.view.destroy();
+    // Lift the game's own views out first — @pixi/ui parented them under the
+    // widget, and the game may mount them again.
+    for (const v of this._callerViews) {
+      if (!v.destroyed) v.removeFromParent();
+    }
+    // Everything left is @pixi/ui's own: the label `Text` objects it built from
+    // string props, a Select's open/close buttons, a RadioGroup's checkboxes.
+    // `context: true` also frees the `GraphicsContext` each internally created
+    // `Graphics` owns — Pixi skips that whenever options are passed at all.
+    this.view.destroy({ children: true, context: true });
   }
 
   /** Override in subclass to disconnect all signals on destroy. */
   protected abstract disconnectAll(): void;
+}
+
+/** A display object, as opposed to a texture, colour, or plain option value. */
+function isDisplayObject(value: unknown): value is DisplayContainer {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { removeFromParent?: unknown }).removeFromParent ===
+      "function"
+  );
+}
+
+/**
+ * The display objects among a widget's props — its view props under whatever
+ * names that widget uses (`bg`, `defaultView`, `closedBG`, `checkedView`, …),
+ * plus the per-item views of a group widget like `PixiRadioGroup`.
+ */
+function collectCallerViews(props: object): DisplayContainer[] {
+  const found: DisplayContainer[] = [];
+  const scan = (value: unknown): void => {
+    if (isDisplayObject(value)) found.push(value);
+  };
+  for (const value of Object.values(props)) {
+    scan(value);
+    if (!Array.isArray(value)) continue;
+    for (const item of value) {
+      scan(item);
+      if (typeof item === "object" && item !== null) {
+        for (const nested of Object.values(item)) scan(nested);
+      }
+    }
+  }
+  return found;
 }

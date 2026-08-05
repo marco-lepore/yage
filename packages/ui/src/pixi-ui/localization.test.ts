@@ -322,18 +322,44 @@ describe("pixi-ui localization", () => {
     expect(box.destroyed).toBe(true);
   });
 
+  /** A display object the game owns: it can be detached, and records it. */
+  const callerView = () => ({
+    destroyed: false,
+    detached: false,
+    removeFromParent(): void {
+      this.detached = true;
+    },
+    destroy(): void {
+      this.destroyed = true;
+    },
+  });
+
   it("keeps a caller-supplied view alive after destroy", () => {
-    // `closedBG` / `openBG` and friends are display objects the game built and
-    // may reuse across mounts; @pixi/ui parents them under the widget, so a
-    // recursive destroy would take them with it.
-    const closedBG = { destroyed: false, destroy(): void { this.destroyed = true; } };
+    // `closedBG` / `defaultView` and friends are display objects the game built
+    // and may reuse across mounts; @pixi/ui parents them under the widget, so
+    // they are lifted out before the widget's recursive destroy.
+    const view = callerView();
     const button = new PixiFancyButton({
       text: "Go",
-      defaultView: closedBG as never,
+      defaultView: view as never,
     });
 
     button.destroy();
-    expect(closedBG.destroyed).toBe(false);
+    expect(view.detached).toBe(true);
+    expect(view.destroyed).toBe(false);
+  });
+
+  it("spares a caller-supplied view nested in a group widget's items", () => {
+    const checked = callerView();
+    const group = new PixiRadioGroup({
+      items: [{ text: "One", checkedView: checked as never }],
+      type: "vertical",
+      elementsMargin: 4,
+    });
+
+    group.destroy();
+    expect(checked.detached).toBe(true);
+    expect(checked.destroyed).toBe(false);
   });
 
   it("re-applies the label style when an empty translation rebuilt the text view", async () => {

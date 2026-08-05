@@ -245,9 +245,9 @@ export class PixiSelect extends PixiUIBase<LocalizedSelect> {
   }
 
   protected disconnectAll(): void {
-    // The item buttons outlive `view.destroy()` (it leaves the child ScrollBox
-    // intact), so disconnect each handler explicitly rather than relying on the
-    // button teardown; then drop the callback.
+    // Handlers live on the option buttons, which `destroy()` has already
+    // released by the time this runs; the loop still matters when a caller
+    // drives disconnect on its own.
     for (const { id, cb } of this._itemPresses) {
       this.view.disconnectItemPress(id, cb);
     }
@@ -259,13 +259,14 @@ export class PixiSelect extends PixiUIBase<LocalizedSelect> {
     // Put the dropdown back inside the Select first (portal), so it is torn
     // down here instead of leaking a container reparented to the stage.
     this.view.restoreDropdown();
-    // The dropdown is Select's own internal, so this wrapper owns its teardown
-    // (the base destroy deliberately spares children — they include views the
-    // game passed in). `ScrollBox.destroy()` detaches its List children without
-    // destroying them, so collect the option buttons first and destroy the
-    // survivors; otherwise repeated mount/unmount cycles leak their Pixi
+    // Order matters. The option buttons must be reachable to disconnect their
+    // press handlers, and `ScrollBox.destroy()` empties `items` — so read them
+    // and disconnect BEFORE tearing the box down. `ScrollBox.destroy()` also
+    // detaches its List children without destroying them, hence the survivor
+    // pass at the end; otherwise repeated mount/unmount cycles leak their Pixi
     // objects and press signals.
     const buttons = this.view.allItemButtons();
+    this.disconnectAll();
     this.view.destroyScrollBox();
     super.destroy();
     for (const b of buttons) {
