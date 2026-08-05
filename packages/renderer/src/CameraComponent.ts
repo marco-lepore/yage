@@ -23,6 +23,11 @@ export interface CameraFollowOptions {
   offset?: Vec2Like;
   /** Deadzone rectangle (half-width, half-height). Camera won't move when target is inside. */
   deadzone?: { halfWidth: number; halfHeight: number };
+  /**
+   * Place the camera on the target as following starts, instead of easing in
+   * from wherever the camera currently is. Default: false.
+   */
+  snap?: boolean;
 }
 
 /** Options for camera shake. */
@@ -125,6 +130,11 @@ export class CameraComponent extends Component {
   /** Stop following any target. */
   unfollow(): void {
     this.entity.get(CameraFollow).stop();
+  }
+
+  /** Cut to the current follow target, skipping the smoothing ease. */
+  snapToTarget(): void {
+    this.entity.get(CameraFollow).snapToTarget();
   }
 
   /** Start a screen shake effect. */

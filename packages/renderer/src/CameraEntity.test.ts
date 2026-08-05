@@ -60,6 +60,7 @@ import { Transform, Vec2 } from "@yagejs/core";
 import { CameraEntity } from "./CameraEntity.js";
 import { CameraComponent } from "./CameraComponent.js";
 import { CameraBoundsComponent } from "./CameraBoundsComponent.js";
+import { CameraFollow } from "./CameraFollow.js";
 import { CameraShake } from "./CameraShake.js";
 import { createRendererTestContext } from "./test-helpers.js";
 import { RendererKey } from "./types.js";
@@ -180,6 +181,92 @@ describe("CameraEntity", () => {
     shake.update(90);
 
     expect(shake.offset.equals(Vec2.ZERO)).toBe(true);
+  });
+
+  describe("follow snap", () => {
+    it("starts on the target instead of easing in from the spawn position", () => {
+      const { scene } = createRendererTestContext();
+      const target = { position: new Vec2(1600, 900) };
+      const cam = scene.spawn(CameraEntity, {
+        follow: target,
+        smoothing: 0.1,
+        snap: true,
+      });
+
+      expect(cam.position.x).toBe(1600);
+      expect(cam.position.y).toBe(900);
+    });
+
+    it("applies the follow offset when snapping", () => {
+      const { scene } = createRendererTestContext();
+      const target = { position: new Vec2(1600, 900) };
+      const cam = scene.spawn(CameraEntity, {
+        follow: target,
+        smoothing: 0.1,
+        offset: { x: 0, y: -50 },
+        snap: true,
+      });
+
+      expect(cam.position.x).toBe(1600);
+      expect(cam.position.y).toBe(850);
+    });
+
+    it("eases in from the spawn position without snap", () => {
+      const { scene } = createRendererTestContext();
+      const target = { position: new Vec2(1000, 0) };
+      const cam = scene.spawn(CameraEntity, { follow: target, smoothing: 0.1 });
+
+      expect(cam.position.x).toBe(0);
+
+      // At the reference timestep the lerp factor is `smoothing` exactly.
+      cam.get(CameraFollow).update(1 / 60);
+      expect(cam.position.x).toBeCloseTo(100);
+    });
+
+    it("cuts to the target when snapToTarget() is called after a teleport", () => {
+      const { scene } = createRendererTestContext();
+      const target = { position: new Vec2(0, 0) };
+      const cam = scene.spawn(CameraEntity, { follow: target, smoothing: 0.1 });
+
+      target.position = new Vec2(400, 300);
+      cam.snapToTarget();
+
+      expect(cam.position.x).toBe(400);
+      expect(cam.position.y).toBe(300);
+    });
+
+    it("centres the target once, then the deadzone applies", () => {
+      const { scene } = createRendererTestContext();
+      const target = { position: new Vec2(1600, 900) };
+      const cam = scene.spawn(CameraEntity, {
+        follow: target,
+        smoothing: 0.1,
+        deadzone: { halfWidth: 50, halfHeight: 50 },
+        snap: true,
+      });
+
+      expect(cam.position.x).toBe(1600);
+
+      // Inside the deadzone: the camera holds still.
+      target.position = new Vec2(1630, 900);
+      cam.get(CameraFollow).update(1 / 60);
+      expect(cam.position.x).toBe(1600);
+
+      // Outside it: the camera resumes easing after the deadzone edge.
+      target.position = new Vec2(1700, 900);
+      cam.get(CameraFollow).update(1 / 60);
+      expect(cam.position.x).toBeCloseTo(1605);
+    });
+
+    it("leaves the camera alone when snapToTarget() runs without a target", () => {
+      const { scene } = createRendererTestContext();
+      const cam = scene.spawn(CameraEntity, { position: new Vec2(10, 20) });
+
+      cam.snapToTarget();
+
+      expect(cam.position.x).toBe(10);
+      expect(cam.position.y).toBe(20);
+    });
   });
 
   describe("fitTo", () => {

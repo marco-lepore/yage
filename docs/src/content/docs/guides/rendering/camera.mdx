@@ -85,12 +85,27 @@ const cam = this.spawn(CameraEntity, {
   smoothing: 0.1,
   offset: { x: 0, y: -50 },
   deadzone: { halfWidth: 50, halfHeight: 30 },
+  snap: true,
 });
 ```
 
-`smoothing` controls how quickly the camera catches up (0 = instant, 1 = never
+`smoothing` controls how quickly the camera catches up (1 = instant, 0 = never
 moves). The `deadzone` defines a rectangle in the center of the screen where
 the target can move without the camera responding.
+
+`snap: true` starts the camera on the target. Leave it out and a smoothed
+camera begins wherever it spawned — the world origin, unless `position` or
+`fitTo` places it elsewhere — so the scene opens with a visible glide toward
+the player. The offset applies to the snapped position, and any deadzone takes
+effect from the next frame.
+
+`snapToTarget()` does the same cut mid-game, for a room change or a respawn
+where the target jumps across the map:
+
+```typescript
+player.get(Transform).setPosition(1600, 900);
+cam.snapToTarget();
+```
 
 ### Zoom and Rotation
 
