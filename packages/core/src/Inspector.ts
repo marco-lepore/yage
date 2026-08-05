@@ -1,7 +1,8 @@
 import { Transform } from "./Transform.js";
-import type { Entity } from "./Entity.js";
+import { Entity } from "./Entity.js";
 import { Component } from "./Component.js";
-import type { Scene } from "./Scene.js";
+import { Scene } from "./Scene.js";
+import { Vec2 } from "./Vec2.js";
 import type { SceneManager } from "./SceneManager.js";
 import type { GameLoop } from "./GameLoop.js";
 import type { EventBus, EngineEvents } from "./EventBus.js";
@@ -261,6 +262,15 @@ export interface EventLogEntry {
   source: "bus" | "entity";
   type: string;
   targetId?: string;
+  /**
+   * The emitted payload, cloned down to plain data. Class instances are stored
+   * as a ref rather than a deep copy — an `Entity` as `{ id, name }`, a
+   * `Component` as `{ component: "Health" }`, a `Scene` as `{ name }`, a `Vec2`
+   * as `{ x, y }`, anything else as `{ _type: "ClassName" }` — so a payload
+   * carrying a live engine object logs what the event is about instead of the
+   * object graph reachable from it. Read a component's fields from the entity
+   * snapshot, not from the log.
+   */
   payload: unknown | null;
 }
 
@@ -1583,9 +1593,12 @@ function yieldMacrotask(): Promise<void> {
   });
 }
 
-function safeClone(value: unknown): unknown | undefined {
+function safeClone(
+  value: unknown,
+  replacer?: (key: string, value: unknown) => unknown,
+): unknown | undefined {
   try {
-    return JSON.parse(JSON.stringify(value)) as unknown;
+    return JSON.parse(JSON.stringify(value, replacer)) as unknown;
   } catch {
     return undefined;
   }
@@ -1619,8 +1632,31 @@ function tryInspectComponentFacet(
 
 function serializeEventPayload(payload: unknown): unknown | null {
   if (payload === undefined) return null;
-  const cloned = safeClone(payload);
+  const cloned = safeClone(payload, summarizeInstance);
   return cloned === undefined ? { _unserializable: true } : cloned;
+}
+
+/**
+ * `JSON.stringify` replacer that keeps a logged payload to the data the event
+ * is about. Engine events pass live objects — `component:added` is typed to
+ * carry the `Component` itself — and a deep copy of one also copies its entity
+ * backref, that entity's scene, and every engine internal reachable from
+ * there. Plain objects, arrays and primitives are cloned; any other class
+ * instance is stored as a compact ref, which is also what keeps such a payload
+ * free of cycles.
+ *
+ * Event subscribers receive the live object either way; the ref applies only
+ * to the log's stored copy. A class that defines `toJSON` keeps that result,
+ * since `JSON.stringify` applies it before the replacer runs.
+ */
+function summarizeInstance(_key: string, value: unknown): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if (isSerializableValue(value)) return value;
+  if (value instanceof Vec2) return { x: value.x, y: value.y };
+  if (value instanceof Component) return { component: value.constructor.name };
+  if (value instanceof Entity) return { id: value.id, name: value.name };
+  if (value instanceof Scene) return { name: value.name };
+  return { _type: value.constructor?.name ?? "Object" };
 }
 
 function stableStringify(value: unknown): string {

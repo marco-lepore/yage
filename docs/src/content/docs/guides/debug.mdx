@@ -419,6 +419,34 @@ window.__yage__.inspector.events.setEnabled(false);
 window.__yage__.inspector.events.isEnabled(); // false
 ```
 
+Each entry's `payload` is plain data. A class instance inside a payload is
+stored as a compact ref rather than a deep copy: an `Entity` as
+`{ id, name }`, a `Component` as `{ component: "Health" }`, a `Scene` as
+`{ name }`, a `Vec2` as `{ x, y }`, and anything else as
+`{ _type: "ClassName" }`.
+
+One entry, for a `component:added` bus event:
+
+```json
+{
+  "frame": 12,
+  "source": "bus",
+  "type": "component:added",
+  "payload": {
+    "entity": { "id": 4, "name": "player" },
+    "component": { "component": "Health" }
+  }
+}
+```
+
+Engine events pass live objects — `component:added` carries the `Component`
+itself — and a deep copy of one would pull in its entity, that entity's scene,
+and everything the scene holds. A ref carries only the fields that identify
+what the event was about. For a component's field values, read the entity
+snapshot; that is where component state lives. Event subscribers
+(`engine.events.on`, `entity.on`) always receive the live object — the ref
+applies only to the log's stored copy.
+
 `time.isAdvancing(withinMs = 250)` reports whether the game loop actually
 ticked within the last `withinMs` milliseconds, independent of
 `time.isFrozen()`. A frozen clock that isn't being stepped reads
