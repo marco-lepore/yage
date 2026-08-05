@@ -38,6 +38,7 @@ export class CameraFollow extends Component {
       ? new Vec2(options.offset.x, options.offset.y)
       : Vec2.ZERO;
     this.deadzone = options?.deadzone ?? null;
+    if (options?.snap) this.snapToTarget();
   }
 
   /** Stop following any target. */
@@ -46,14 +47,20 @@ export class CameraFollow extends Component {
     this.deadzone = null;
   }
 
-  update(dt: number): void {
-    if (!this.target) return;
+  /**
+   * Place the camera on its target right away, offset included. Skips both
+   * the smoothing ease and the deadzone, so the camera cuts rather than
+   * glides — use it after a teleport (room change, respawn). Any deadzone
+   * applies again from the next frame. Does nothing without a target.
+   */
+  snapToTarget(): void {
+    const targetPos = this.targetPosition();
+    if (targetPos) this.cam.position = targetPos;
+  }
 
-    const pos = this.target.position;
-    const targetPos = new Vec2(
-      pos.x + this.offset.x,
-      pos.y + this.offset.y,
-    );
+  update(dt: number): void {
+    const targetPos = this.targetPosition();
+    if (!targetPos) return;
 
     if (this.deadzone) {
       const dx = targetPos.x - this.cam.position.x;
@@ -143,6 +150,13 @@ export class CameraFollow extends Component {
       );
     }
     this.restoreTargetEntityId = null;
+  }
+
+  /** Current target position with the follow offset applied. */
+  private targetPosition(): Vec2 | null {
+    if (!this.target) return null;
+    const pos = this.target.position;
+    return new Vec2(pos.x + this.offset.x, pos.y + this.offset.y);
   }
 
   private extractTargetEntityId(target: { position: Vec2Like }): number | undefined {

@@ -522,11 +522,13 @@ const cam = this.spawn(CameraEntity, {
   smoothing: 0.1,
   offset: { x: 0, y: -50 },
   deadzone: { halfWidth: 20, halfHeight: 20 },
+  snap: true, // start on the target; without it the camera eases in from (0, 0)
 });
 
+cam.snapToTarget(); // cut to the target after a teleport (room change, respawn)
 cam.unfollow();
 
-cam.shake(10, 0.5, { decay: 0.02 }); // duration in seconds
+cam.shake(10, 0.5, { decay: 1 }); // duration in seconds; decay 1 fades to zero by the end, 0 (default) holds full strength
 cam.zoomTo(2.0, 1, easeOutQuad); // duration in seconds
 
 cam.bounds = { minX: 0, minY: 0, maxX: 2000, maxY: 1000 };
@@ -534,6 +536,12 @@ cam.bounds = { minX: 0, minY: 0, maxX: 2000, maxY: 1000 };
 const world = cam.screenToWorld(mouseX, mouseY);
 const screen = cam.worldToScreen(entity.x, entity.y);
 ```
+
+### Follow smoothing and `snap`
+
+`smoothing` is `1` by default (the camera reaches its target position every frame). Any value below `1` eases toward that position from the camera's current one, so a camera spawned at the default `(0, 0)` glides in from the world origin over the first frames of the scene.
+
+`snap: true` — on `CameraEntity` params and on `CameraFollowOptions` — places the camera on the target as following starts, offset included. `snapToTarget()` (on `CameraEntity`, `CameraComponent`, and `CameraFollow`) performs the same cut on demand. Both skip the deadzone once; it applies again from the next frame. `snapToTarget()` does nothing when no target is set.
 
 ### Coordinate Convention
 

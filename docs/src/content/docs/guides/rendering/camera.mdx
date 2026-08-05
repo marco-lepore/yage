@@ -85,12 +85,27 @@ const cam = this.spawn(CameraEntity, {
   smoothing: 0.1,
   offset: { x: 0, y: -50 },
   deadzone: { halfWidth: 50, halfHeight: 30 },
+  snap: true,
 });
 ```
 
-`smoothing` controls how quickly the camera catches up (0 = instant, 1 = never
+`smoothing` controls how quickly the camera catches up (1 = instant, 0 = never
 moves). The `deadzone` defines a rectangle in the center of the screen where
 the target can move without the camera responding.
+
+`snap: true` starts the camera on the target. Leave it out and a smoothed
+camera begins wherever it spawned — the world origin, unless `position` or
+`fitTo` places it elsewhere — so the scene opens with a visible glide toward
+the player. The offset applies to the snapped position, and any deadzone takes
+effect from the next frame.
+
+`snapToTarget()` does the same cut mid-game, for a room change or a respawn
+where the target jumps across the map:
+
+```typescript
+player.get(Transform).setPosition(1600, 900);
+cam.snapToTarget();
+```
 
 ### Zoom and Rotation
 
@@ -102,11 +117,13 @@ camera.rotation = Math.PI / 12; // tilt the camera
 ### Screen Shake
 
 ```typescript
-camera.shake(8, 0.4, { decay: true });
+camera.shake(8, 0.4, { decay: 1 });
 ```
 
-`intensity` is the maximum pixel displacement per frame. When `decay` is true,
-the shake fades out over the duration.
+`intensity` is the maximum pixel displacement per frame. `decay` sets how much
+the shake fades across its duration: `0` (the default) shakes at full strength
+until it ends, `1` fades linearly to zero over the duration, and values above
+`1` reach zero earlier — at `2` the camera stops moving halfway through.
 
 ### Coordinate Conversion
 

@@ -35,6 +35,13 @@ export interface CameraEntityParams {
   offset?: Vec2Like;
   /** Follow deadzone. */
   deadzone?: { halfWidth: number; halfHeight: number };
+  /**
+   * Start on the follow target instead of easing in from `position`. Without
+   * it a smoothed camera glides in from wherever it spawned — the world
+   * origin, unless `position` or `fitTo` places it elsewhere. Ignored when no
+   * `follow` target is given.
+   */
+  snap?: boolean;
   /** Camera bounds for position clamping. */
   bounds?: CameraBounds;
   /** Initial zoom level. Default: 1. */
@@ -113,6 +120,7 @@ export class CameraEntity extends Entity {
       if (params.smoothing !== undefined) followOpts.smoothing = params.smoothing;
       if (params.offset !== undefined) followOpts.offset = params.offset;
       if (params.deadzone !== undefined) followOpts.deadzone = params.deadzone;
+      if (params.snap !== undefined) followOpts.snap = params.snap;
       followComp.start(params.follow, followOpts);
     }
 
@@ -171,6 +179,10 @@ export class CameraEntity extends Entity {
 
   unfollow(): void {
     this.cam.unfollow();
+  }
+
+  snapToTarget(): void {
+    this.cam.snapToTarget();
   }
 
   shake(

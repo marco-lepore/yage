@@ -50,6 +50,7 @@ class PlayerController extends Component {
     this.camera.follow(this.transform, {
       smoothing: 0.12,
       deadzone: { halfWidth: 40, halfHeight: 30 },
+      snap: true, // open on the player rather than gliding in from (0, 0)
     });
     this.camera.bounds = {
       minX: 0,
