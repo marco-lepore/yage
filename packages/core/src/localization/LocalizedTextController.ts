@@ -33,9 +33,20 @@ export class LocalizedTextController {
     private readonly onRefresh: (text: string) => void = apply,
   ) {}
 
-  /** The retained binding, or `undefined` when the sink holds a plain string. */
+  /**
+   * A copy of the retained binding, or `undefined` when the sink holds a plain
+   * string. Copied because callers put it straight into a save snapshot, and a
+   * snapshot the game then edits must not reach back into the live sink —
+   * bindings are immutable.
+   */
   get binding(): LocalizedBinding | undefined {
-    return this._binding;
+    return this._binding ? structuredClone(this._binding) : undefined;
+  }
+
+  /** Whether a binding is retained — the cheap check for setters that dedupe
+   *  by string equality and must still release a binding. */
+  get hasBinding(): boolean {
+    return this._binding !== undefined;
   }
 
   /**

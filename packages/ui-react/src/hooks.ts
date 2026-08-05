@@ -18,6 +18,7 @@ import type {
   EncodedStore,
   Localization,
   LocalizableText,
+  LocalizedBinding,
 } from "@yagejs/core";
 import { LocalizationKey, QueryCacheKey, STATE_KIND, resolveStatic } from "@yagejs/core";
 import { shallowEqual } from "./shallowEqual.js";
@@ -214,19 +215,34 @@ export function useLocalization(): Localization | undefined {
  */
 export function useMessage(value: LocalizableText): string {
   const localization = useLocalization();
-  // A plain string never reacts to locale changes — skip the subscription so
-  // static labels don't register a listener (and re-run) on every locale swap.
-  const isDynamic = typeof value !== "string";
+  // Only a binding reacts to locale changes. A literal — a string, or a number
+  // JSX handed us from a call site TypeScript didn't check — skips the
+  // subscription, so static labels don't register a listener (and re-run) on
+  // every locale swap.
+  const isDynamic = isBinding(value);
   const subscribe = useCallback(
     (onChange: () => void) =>
       isDynamic && localization ? localization.subscribe(onChange) : () => {},
     [localization, isDynamic],
   );
   const getSnapshot = useCallback((): string => {
-    if (typeof value === "string") return value;
+    if (!isBinding(value)) return String(value);
     return localization ? localization.resolve(value) : resolveStatic(value);
   }, [localization, value]);
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/**
+ * True for a {@link LocalizedBinding} — a plain object carrying a string `id`.
+ * Anything else reaching a text prop is a literal to render as-is: JSX children
+ * are a trust boundary, and a number arrives here from an untyped call site.
+ */
+function isBinding(value: unknown): value is LocalizedBinding {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { id?: unknown }).id === "string"
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -179,7 +179,7 @@ export class UIText implements UIElement {
       if (
         typeof next !== "string" ||
         next !== this._source ||
-        this._localizer.binding !== undefined
+        this._localizer.hasBinding
       ) {
         this.setText(next);
       }

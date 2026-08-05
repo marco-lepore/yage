@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { EngineContext } from "../EngineContext.js";
+import { EngineContext, LoggerKey } from "../EngineContext.js";
+import type { Logger } from "../Logger.js";
 import { interpolate } from "./IdentityLocalizationAdapter.js";
 import {
   LocalizationKey,
@@ -225,8 +226,10 @@ describe("LocalizationPlugin.setLocale", () => {
     expect(plugin.revision()).toBe(0);
   });
 
-  it("works without adapter.setLocale support", async () => {
-    // Adapter exposing no setLocale — the plugin still switches + bumps.
+  it("reports the adapter's locale when the adapter cannot switch", async () => {
+    // An adapter with no setLocale is locale-static. The call resolves, but
+    // `locale` keeps reporting what `resolve()` actually reads against —
+    // announcing "es" while every string stays English is what this guards.
     const adapter: LocalizationAdapter = {
       locale: "en",
       t: (id, fallback) => fallback ?? id,
@@ -236,8 +239,7 @@ describe("LocalizationPlugin.setLocale", () => {
 
     await plugin.setLocale("es");
 
-    expect(plugin.locale).toBe("es");
-    expect(plugin.revision()).toBe(1);
+    expect(plugin.locale).toBe("en");
   });
 });
 
@@ -277,5 +279,56 @@ describe("resolveLocalized", () => {
   it("renders the id with no plugin and no default", () => {
     const context = new EngineContext();
     expect(resolveLocalized(context, msg("hud.score"))).toBe("hud.score");
+  });
+});
+
+describe("LocalizationPlugin.setLocale failure", () => {
+  it("publishes a catalog the adapter swapped in before rejecting", async () => {
+    // The adapter loads `fr` and announces it, then fails a later check. `t()`
+    // already returns French, so leaving the revision unbumped would freeze
+    // every bound sink on the old text while `resolve()` disagrees.
+    const adapter = new MockAdapter({ fr: { greet: "Bonjour" } });
+    adapter.setLocaleImpl = async (next) => {
+      adapter.locale = next;
+      adapter.emit();
+      throw new Error("post-load check failed");
+    };
+    const { plugin } = installed(adapter);
+
+    await expect(plugin.setLocale("fr")).rejects.toThrow("post-load check");
+    expect(plugin.locale).toBe("fr");
+    expect(plugin.revision()).toBe(1);
+    expect(plugin.resolve(msg("greet", undefined, "Hello"))).toBe("Bonjour");
+  });
+
+  it("publishes nothing when the adapter fails without changing anything", async () => {
+    const adapter = new MockAdapter();
+    adapter.setLocaleImpl = async () => {
+      throw new Error("catalog 404");
+    };
+    const { plugin } = installed(adapter);
+
+    await expect(plugin.setLocale("fr")).rejects.toThrow("catalog 404");
+    expect(plugin.locale).toBe("en");
+    // No bump: nothing changed, so making every sink re-resolve is waste.
+    expect(plugin.revision()).toBe(0);
+  });
+});
+
+describe("LocalizationPlugin.resolve failure reporting", () => {
+  it("logs the first adapter throw once, then stays quiet", () => {
+    const adapter = new MockAdapter();
+    adapter.throwOnT = true;
+    const error = vi.fn();
+    const context = new EngineContext();
+    context.register(LoggerKey, { error } as unknown as Logger);
+    const plugin = new LocalizationPlugin({ adapter });
+    plugin.install(context);
+
+    expect(plugin.resolve(msg("a", undefined, "A"))).toBe("A");
+    expect(plugin.resolve(msg("b", undefined, "B"))).toBe("B");
+
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(error.mock.calls[0]?.[1]).toContain("adapter.t threw");
   });
 });

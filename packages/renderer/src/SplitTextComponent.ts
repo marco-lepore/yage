@@ -205,12 +205,14 @@ export class SplitTextComponent extends VisualComponent {
       (value) => {
         this.splitText.text = value;
       },
-      // locale-refresh path: force a resplit even when autoSplit is off — a
-      // swapped glyph set must not leave stale segments — re-derive the pivot
-      // from the new bounds, then notify.
+      // locale-refresh path: the new glyph set must be live immediately, so
+      // split even when autoSplit is off (a swapped translation must not leave
+      // stale segments). Assigning `text` already splits when autoSplit is on,
+      // and a second split would strand that generation of line containers as
+      // undisposed children. Then re-derive the pivot and notify.
       (value) => {
         this.splitText.text = value;
-        this.splitText.split();
+        if (!(this._autoSplit ?? true)) this.splitText.split();
         this.applyBlockAnchor();
         this.emitSplit();
       },
@@ -229,17 +231,15 @@ export class SplitTextComponent extends VisualComponent {
   onAdd(): void {
     super.onAdd();
     this._localizer.attach(this.context.tryResolve(LocalizationKey));
-    // Release the locale subscription on removal, not just destruction — a
-    // removed-but-kept component would otherwise leak it (and double it on
-    // re-add). `onAdd` re-attaches.
+    // Paired with the attach above: cleanups run on teardown, so the locale
+    // subscription is released exactly once per `onAdd`.
     this.addCleanup(() => this._localizer.detach());
   }
 
   onDestroy(): void {
     super.onDestroy();
     // Drop split listeners so a retained component reference can't keep their
-    // captured closures alive (mirrors UISplitText.destroy()). Destruction, not
-    // removal: a removed-then-re-added component keeps its listeners.
+    // captured closures alive (mirrors UISplitText.destroy()).
     this._splitListeners.clear();
   }
 

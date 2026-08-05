@@ -51,20 +51,31 @@ function isExplicitSize(v: LayoutValue | undefined): boolean {
 }
 
 /**
- * A string label auto-wraps only when non-empty; a {@link LocalizedBinding}
- * always does. The binding is matched by shape (a plain object with a string
- * `id`) so a composed-element child — which the reconciler also surfaces on
- * `children` — is left to render as a flex child, not mistaken for a label.
+ * True for a value that addresses the button's own label: a string or a
+ * {@link LocalizedBinding}. The binding is matched by shape (a plain object
+ * with a string `id`) so a composed-element child — which the reconciler also
+ * surfaces on `children` — is left to render as a flex child, not mistaken for
+ * a label.
  */
-function hasLabelContent(
-  children: unknown,
-): children is string | LocalizedBinding {
-  if (typeof children === "string") return children.length > 0;
+function isLabelValue(children: unknown): children is string | LocalizedBinding {
+  if (typeof children === "string") return true;
   return (
     typeof children === "object" &&
     children !== null &&
     typeof (children as { id?: unknown }).id === "string"
   );
+}
+
+/**
+ * True when a label value has something to render, so construction can skip
+ * building an internal `UIText` for an empty string. A {@link LocalizedBinding}
+ * always qualifies — what it resolves to isn't known at construction.
+ */
+function hasLabelContent(
+  children: unknown,
+): children is string | LocalizedBinding {
+  if (typeof children === "string") return children.length > 0;
+  return isLabelValue(children);
 }
 
 /**
@@ -361,9 +372,10 @@ export class UIButton implements UIContainerElement {
     // (e.g. a `<UIText>` element) also arrives on `p.children` when the parent
     // rerenders; the reconciler already manages it as a flex child, so treating
     // it as a label here would spawn a stray internal label and read the React
-    // element as a binding. `hasLabelContent` filters those out, matching the
-    // constructor's gate.
-    if ("children" in p && hasLabelContent(p.children)) {
+    // element as a binding. `isLabelValue` filters those out. Unlike the
+    // constructor's gate it accepts `""`: clearing the label is a valid update,
+    // and it also releases any retained binding.
+    if ("children" in p && isLabelValue(p.children)) {
       this.setText(p.children);
     }
     // `"truncate" in p` (not `!== undefined`) so an explicit `{ truncate:

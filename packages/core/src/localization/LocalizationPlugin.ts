@@ -1,6 +1,8 @@
-import { ServiceKey } from "../EngineContext.js";
+import { LoggerKey, ServiceKey } from "../EngineContext.js";
 import type { EngineContext } from "../EngineContext.js";
+import type { Logger } from "../Logger.js";
 import type { Plugin } from "../types.js";
+import { devWarn } from "../internal/dev.js";
 import { createCounter, createValue } from "../state/index.js";
 import type { ReactiveCounter, ReactiveValue } from "../state/index.js";
 import { identityLocalizationAdapter } from "./IdentityLocalizationAdapter.js";
@@ -28,7 +30,7 @@ export interface LocalizationPluginOptions {
  */
 export class LocalizationPlugin implements Plugin, Localization {
   readonly name = "localization";
-  readonly version = "0.0.0";
+  readonly version = "0.1.0";
 
   private readonly _adapter: LocalizationAdapter;
   private readonly _locale: ReactiveValue<string>;
@@ -36,6 +38,9 @@ export class LocalizationPlugin implements Plugin, Localization {
 
   /** Unsubscribe from the adapter's `onChange`, set on install. */
   private _unsubscribe: (() => void) | undefined;
+
+  /** Resolved on install; absent in a bare test context. */
+  private _logger: Logger | undefined;
 
   /**
    * True while a driven `setLocale` awaits the adapter. Adapter `onChange`
@@ -50,6 +55,15 @@ export class LocalizationPlugin implements Plugin, Localization {
    */
   private _generation = 0;
 
+  /** An adapter `onChange` arrived while `_switching` suppressed it. The switch
+   *  publishes it — including when the switch fails, so a catalog the adapter
+   *  already swapped in isn't left unpublished. */
+  private _pendingChange = false;
+
+  /** A failing `adapter.t` is reported once; per-resolve logging would flood
+   *  the frame loop. */
+  private _reportedResolveFailure = false;
+
   constructor(options?: LocalizationPluginOptions) {
     this._adapter = options?.adapter ?? identityLocalizationAdapter;
     this._locale = createValue<string>({ default: this._adapter.locale });
@@ -58,9 +72,13 @@ export class LocalizationPlugin implements Plugin, Localization {
 
   install(context: EngineContext): void {
     context.register(LocalizationKey, this);
+    this._logger = context.tryResolve(LoggerKey);
     this._unsubscribe = this._adapter.subscribe(() => {
       // Coalesce onChange fired during a driven switch — the switch bumps once.
-      if (this._switching) return;
+      if (this._switching) {
+        this._pendingChange = true;
+        return;
+      }
       // The catalog changed outside a driven switch (e.g. the game drove the
       // i18n library directly). Track the adapter's locale so `locale` stays
       // honest, then re-resolve.
@@ -90,12 +108,22 @@ export class LocalizationPlugin implements Plugin, Localization {
    * Resolve a binding to a string. Wraps `adapter.t` so a throw renders the
    * binding's `default` (or its `id`) instead of breaking the render loop —
    * interpolating `{tokens}` on that fallback path too, matching the
-   * plugin-absent identity path.
+   * plugin-absent identity path. The first failure is logged so an adapter that
+   * throws for every key doesn't read as merely-untranslated text; later ones
+   * are silent because this runs per resolved string per frame.
    */
   resolve(binding: LocalizedBinding): string {
     try {
       return this._adapter.t(binding.id, binding.default, binding.values);
-    } catch {
+    } catch (error) {
+      if (!this._reportedResolveFailure) {
+        this._reportedResolveFailure = true;
+        this._logger?.error(
+          "localization",
+          `adapter.t threw for "${binding.id}" — rendering the fallback. Further resolve failures are not logged.`,
+          { error },
+        );
+      }
       return identityLocalizationAdapter.t(
         binding.id,
         binding.default,
@@ -110,26 +138,51 @@ export class LocalizationPlugin implements Plugin, Localization {
    * bumps the revision exactly ONCE.
    *
    * Concurrency: each call takes a generation token; a superseded call commits
-   * nothing (last caller wins). Failure: if the adapter rejects, the old
-   * locale is kept, nothing is published, and the rejection propagates.
+   * nothing (last caller wins). Failure: the requested locale is not adopted
+   * and the rejection propagates — but if the adapter already swapped its
+   * catalog and fired `onChange` before failing, that change is published, so
+   * `locale` and the rendered strings can't disagree.
+   *
+   * An adapter with no `setLocale` (the identity adapter) cannot switch: the
+   * call resolves, the reported locale stays the adapter's own, and dev builds
+   * warn.
    */
   async setLocale(next: string): Promise<void> {
     const generation = ++this._generation;
     this._switching = true;
+    if (!this._adapter.setLocale) {
+      devWarn(
+        `LocalizationPlugin.setLocale("${next}"): the adapter has no setLocale, so the locale is unchanged. Wire an adapter over your i18n library to switch languages.`,
+      );
+    }
     try {
       await this._adapter.setLocale?.(next);
     } catch (error) {
-      if (generation === this._generation) this._switching = false;
+      if (generation === this._generation) {
+        this._switching = false;
+        // Publish only what the adapter actually changed before failing. A
+        // clean failure changed nothing, so bumping would make every sink
+        // re-resolve for no reason.
+        if (this._pendingChange) this.publishAdapterState();
+      }
       throw error;
     }
-    // Superseded by a newer setLocale — commit nothing.
+    // Superseded by a newer setLocale — commit nothing; the winning call
+    // publishes, and it holds `_switching` until it does.
     if (generation !== this._generation) return;
     this._switching = false;
-    // Publish the adapter's active locale, not the requested one — a
-    // library-backed adapter may canonicalize or fall back (e.g. `en-US` → `en`
-    // when only `en` is loaded), and `resolve()` reads against that. A static
-    // adapter (no `setLocale`) can't switch, so keep reporting the request.
-    this._locale.set(this._adapter.setLocale ? this._adapter.locale : next);
+    this.publishAdapterState();
+  }
+
+  /**
+   * Re-read the adapter's own locale and bump once. Always the adapter's value,
+   * never the requested one — a library-backed adapter may canonicalize or fall
+   * back (`en-US` → `en` when only `en` is loaded), and `resolve()` reads
+   * against whatever the adapter actually holds.
+   */
+  private publishAdapterState(): void {
+    this._pendingChange = false;
+    this._locale.set(this._adapter.locale);
     this._revision.increment();
   }
 }

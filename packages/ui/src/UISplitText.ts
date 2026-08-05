@@ -146,12 +146,15 @@ export class UISplitText implements UIElement {
         this.yogaNode.markDirty();
         if (this._autoSplit) this.emitSplit();
       },
-      // locale-refresh path: force a resplit even when autoSplit is off, then
-      // notify so animations bound to the old glyphs rebind.
+      // locale-refresh path: the new glyph set must be live immediately, so
+      // split even when autoSplit is off. Assigning `text` already splits when
+      // autoSplit is on, and a second split would strand that generation of
+      // line containers as undisposed children. Then notify so animations bound
+      // to the old glyphs rebind.
       (value) => {
         this._source = value;
         this.splitText.text = value;
-        this.splitText.split();
+        if (!this._autoSplit) this.splitText.split();
         this.yogaNode.markDirty();
         this.emitSplit();
       },
@@ -302,7 +305,7 @@ export class UISplitText implements UIElement {
       if (
         typeof next !== "string" ||
         next !== this._source ||
-        this._localizer.binding !== undefined
+        this._localizer.hasBinding
       ) {
         this.setText(next);
       }

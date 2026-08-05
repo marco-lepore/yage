@@ -173,11 +173,9 @@ export class UISurface extends Component {
     // plugin is registered — bindings then render their default.
     this.root.attachLocalization(this.context.tryResolve(LocalizationKey));
 
-    // Detach on removal, not just destruction — `onDestroy` doesn't fire when
-    // the component is removed but the entity is kept, which would ghost the
-    // UI on the layer and leak the localization subscription (and double it on
-    // re-add). `onAdd` re-attaches. The root itself is destroyed only in
-    // `onDestroy` so a removed surface can be re-added.
+    // Cleanups run before `onDestroy` on both teardown paths, so releasing the
+    // subscription and the layer parent here keeps them paired with the `onAdd`
+    // that made them.
     this.addCleanup(() => {
       this.root.detachLocalization();
       this.root.container.removeFromParent();
