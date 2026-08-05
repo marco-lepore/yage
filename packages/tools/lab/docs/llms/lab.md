@@ -357,6 +357,28 @@ A file that exports no scenario is reported and skipped rather than taking the
 page down. `defineScenario` is what marks one — a plain object of the right
 shape is treated as a helper and ignored.
 
+## The panel
+
+Each column scrolls on its own and the page never does, so scrolling the
+scenario list leaves the canvas where it is.
+
+- **Scenarios**, left. The filter box matches a scenario's title, the group
+  names in it, and its file path. Clicking a group heading folds the group
+  away. A filter opens whatever groups hold a match, and clearing it restores
+  the folds.
+- **Controls**, under the canvas, or beside it through the `→ right` toggle.
+  `copy JSON` puts every current control value on the clipboard as one JSON
+  object, to paste into code or into a prompt.
+- **Clock**, under the canvas: play, pause, `+1`, `+10`, and a speed slider.
+- **Errors**, above the canvas.
+
+Clicking the canvas gives it keyboard focus. While it holds focus the browser
+does not scroll on space, the arrow keys, page up and down, or home and end.
+The game still receives every one of those keys.
+
+The folds and the controls column are stored in `localStorage` under
+`yage-lab:panel`.
+
 ## URL state
 
 `?scenario=<id>&c.<name>=<value>&speed=1&paused=1`. Editing a scenario file

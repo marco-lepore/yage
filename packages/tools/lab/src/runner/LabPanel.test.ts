@@ -69,6 +69,7 @@ const text = (root: Element, selector: string): string[] =>
 
 beforeEach(() => {
   document.body.replaceChildren();
+  localStorage.clear();
 });
 
 describe("the scenario list", () => {
@@ -101,6 +102,111 @@ describe("the scenario list", () => {
     const { panel, find } = mountPanel(scenarios);
     panel.setCurrent(stacking, {});
     expect(find(`[aria-current="true"]`).textContent).toBe("Stacking");
+  });
+});
+
+describe("the scenario filter", () => {
+  const scenarios = [
+    entry("loose", "Sandbox"),
+    entry("drop", "Physics / Ball drop"),
+    entry("stack", "Physics / Stacking"),
+  ];
+  const shown = (panel: { root: HTMLElement }): string[] =>
+    [...panel.root.querySelectorAll<HTMLElement>(".yage-lab__item")]
+      .filter((item) => !item.hidden)
+      .map((item) => item.textContent ?? "");
+
+  const type = (panel: { root: HTMLElement }, query: string): void => {
+    const input =
+      panel.root.querySelector<HTMLInputElement>(".yage-lab__filter");
+    if (!input) throw new Error("no filter");
+    input.value = query;
+    input.dispatchEvent(new Event("input"));
+  };
+
+  it("keeps only what matches, group name included", () => {
+    const { panel } = mountPanel(scenarios);
+    type(panel, "stack");
+    expect(shown(panel)).toEqual(["Stacking"]);
+    // The group name reaches its scenarios through the title prefix.
+    type(panel, "physics");
+    expect(shown(panel)).toEqual(["Ball drop", "Stacking"]);
+    type(panel, "");
+    expect(shown(panel)).toEqual(["Sandbox", "Ball drop", "Stacking"]);
+  });
+
+  it("hides a group with nothing left under it", () => {
+    const { panel } = mountPanel(scenarios);
+    type(panel, "sandbox");
+    const group = panel.root.querySelector<HTMLElement>(".yage-lab__group");
+    expect(group?.hidden).toBe(true);
+  });
+
+  it("takes a row off the screen, not just out of the tree", () => {
+    // The panel styles the rows itself, and a declared `display` outranks the
+    // browser's rule for `[hidden]` — hiding the property alone leaves the row
+    // on screen inside a group that survived the filter.
+    const { panel } = mountPanel(scenarios);
+    type(panel, "stacking");
+    const dropped = [
+      ...panel.root.querySelectorAll<HTMLElement>(".yage-lab__item"),
+    ].find((item) => item.textContent === "Ball drop");
+    expect(dropped?.hidden).toBe(true);
+    expect(getComputedStyle(dropped as HTMLElement).display).toBe("none");
+  });
+
+  it("says so when nothing matches", () => {
+    const { panel, find } = mountPanel(scenarios);
+    expect(find<HTMLElement>(".yage-lab__empty").hidden).toBe(true);
+    type(panel, "nothing here");
+    expect(find<HTMLElement>(".yage-lab__empty").hidden).toBe(false);
+  });
+});
+
+describe("the group folds", () => {
+  const scenarios = [
+    entry("drop", "Physics / Ball drop"),
+    entry("stack", "Physics / Stacking"),
+  ];
+  const group = (panel: { root: HTMLElement }): HTMLDetailsElement => {
+    const node =
+      panel.root.querySelector<HTMLDetailsElement>(".yage-lab__group");
+    if (!node) throw new Error("no group");
+    return node;
+  };
+
+  it("folds a group away and back on its heading", () => {
+    const { panel } = mountPanel(scenarios);
+    expect(group(panel).open).toBe(true);
+    group(panel).querySelector("summary")?.click();
+    expect(group(panel).open).toBe(false);
+    group(panel).querySelector("summary")?.click();
+    expect(group(panel).open).toBe(true);
+  });
+
+  it("opens the next panel on what was left open", () => {
+    const first = mountPanel(scenarios);
+    group(first.panel).querySelector("summary")?.click();
+
+    document.body.replaceChildren();
+    const second = mountPanel(scenarios);
+    expect(group(second.panel).open).toBe(false);
+  });
+
+  it("reveals a match while a filter is on and folds back after", () => {
+    const { panel } = mountPanel(scenarios);
+    group(panel).querySelector("summary")?.click();
+    const input =
+      panel.root.querySelector<HTMLInputElement>(".yage-lab__filter");
+    if (!input) throw new Error("no filter");
+
+    input.value = "stacking";
+    input.dispatchEvent(new Event("input"));
+    expect(group(panel).open).toBe(true);
+
+    input.value = "";
+    input.dispatchEvent(new Event("input"));
+    expect(group(panel).open).toBe(false);
   });
 });
 
@@ -140,6 +246,211 @@ describe("the controls section", () => {
     const list = panel.root.querySelector(".yage-lab__control-list");
     expect(list?.querySelector(".yage-lab__heading")).toBeNull();
     expect(list?.querySelectorAll(".yage-lab__control")).toHaveLength(1);
+  });
+});
+
+describe("the copy button", () => {
+  const tunable = entry("drop", "Physics / Ball drop", {
+    controls: {
+      count: control.int(3, { min: 1, max: 12 }),
+      bouncy: control.boolean(true),
+    },
+  });
+  const writeText = vi.fn<(text: string) => Promise<void>>();
+
+  beforeEach(() => {
+    writeText.mockReset();
+    writeText.mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+  });
+
+  const copyButton = (panel: { root: HTMLElement }): HTMLButtonElement => {
+    const node =
+      panel.root.querySelectorAll<HTMLButtonElement>(".yage-lab__mini")[0];
+    if (!node) throw new Error("no copy button");
+    return node;
+  };
+
+  it("writes out what the widgets are worth, not what they started at", async () => {
+    const { panel } = mountPanel([tunable]);
+    panel.setCurrent(tunable, { count: 3, bouncy: true });
+    panel.syncValues({ count: 7, bouncy: false });
+
+    copyButton(panel).click();
+    await vi.waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith(
+        JSON.stringify({ count: 7, bouncy: false }, null, 2),
+      );
+    });
+  });
+
+  it("stays usable while a run is in flight", () => {
+    const { panel } = mountPanel([tunable]);
+    panel.setCurrent(tunable, { count: 3, bouncy: true });
+    panel.setRun({ state: "running" });
+    expect(copyButton(panel).disabled).toBe(false);
+  });
+
+  it("says so and prints the values when the clipboard refuses", async () => {
+    writeText.mockRejectedValue(new Error("denied"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { panel } = mountPanel([tunable]);
+    panel.setCurrent(tunable, { count: 3, bouncy: true });
+
+    copyButton(panel).click();
+    await vi.waitFor(() => {
+      expect(copyButton(panel).textContent).toContain("copy failed");
+    });
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining("[yage-lab]"),
+      JSON.stringify({ count: 3, bouncy: true }, null, 2),
+    );
+    expect(error).toHaveBeenCalled();
+    log.mockRestore();
+    error.mockRestore();
+  });
+
+  it("goes back to offering the copy", async () => {
+    vi.useFakeTimers();
+    try {
+      const { panel } = mountPanel([tunable]);
+      panel.setCurrent(tunable, { count: 3, bouncy: true });
+      copyButton(panel).click();
+      await vi.waitFor(
+        () => {
+          expect(copyButton(panel).textContent).toBe("copied");
+        },
+        { interval: 0 },
+      );
+      vi.advanceTimersByTime(1500);
+      expect(copyButton(panel).textContent).toBe("copy JSON");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("the stored layout choices", () => {
+  const scenarios = [entry("drop", "Physics / Ball drop")];
+
+  it("starts from the defaults when storage holds something else", () => {
+    localStorage.setItem("yage-lab:panel", "not json at all");
+    const { panel } = mountPanel(scenarios);
+    const group =
+      panel.root.querySelector<HTMLDetailsElement>(".yage-lab__group");
+    expect(group?.open).toBe(true);
+    expect(
+      panel.root.querySelector(".yage-lab__aside .yage-lab__controls"),
+    ).toBeNull();
+  });
+
+  it("mounts even where storage cannot be read", () => {
+    const getItem = vi
+      .spyOn(Storage.prototype, "getItem")
+      .mockImplementation(() => {
+        throw new Error("blocked");
+      });
+    try {
+      expect(() => mountPanel(scenarios)).not.toThrow();
+    } finally {
+      getItem.mockRestore();
+    }
+  });
+});
+
+describe("the controls column toggle", () => {
+  const tunable = entry("drop", "Physics / Ball drop", {
+    controls: { count: control.int(3, { min: 1, max: 12 }) },
+  });
+  const layoutButton = (panel: { root: HTMLElement }): HTMLButtonElement => {
+    const node =
+      panel.root.querySelectorAll<HTMLButtonElement>(".yage-lab__mini")[1];
+    if (!node) throw new Error("no layout button");
+    return node;
+  };
+  const controlsBox = (panel: { root: HTMLElement }): HTMLElement => {
+    const node = panel.root.querySelector<HTMLElement>(".yage-lab__controls");
+    if (!node) throw new Error("no controls section");
+    return node;
+  };
+
+  it("moves the controls beside the stage and back", () => {
+    const { panel } = mountPanel([tunable]);
+    panel.setCurrent(tunable, { count: 3 });
+    expect(controlsBox(panel).closest(".yage-lab__stage")).not.toBeNull();
+
+    layoutButton(panel).click();
+    expect(controlsBox(panel).closest(".yage-lab__aside")).not.toBeNull();
+
+    layoutButton(panel).click();
+    expect(controlsBox(panel).closest(".yage-lab__stage")).not.toBeNull();
+  });
+
+  it("opens the next panel where the last one was left", () => {
+    const first = mountPanel([tunable]);
+    first.panel.setCurrent(tunable, { count: 3 });
+    layoutButton(first.panel).click();
+
+    document.body.replaceChildren();
+    const second = mountPanel([tunable]);
+    second.panel.setCurrent(tunable, { count: 3 });
+    expect(
+      controlsBox(second.panel).closest(".yage-lab__aside"),
+    ).not.toBeNull();
+  });
+
+  it("leaves no column for a scenario that declares no controls", () => {
+    const { panel } = mountPanel([tunable]);
+    panel.setCurrent(tunable, { count: 3 });
+    layoutButton(panel).click();
+    const aside = panel.root.querySelector<HTMLElement>(".yage-lab__aside");
+    expect(aside?.hidden).toBe(false);
+
+    panel.setCurrent(entry("plain", "Sandbox"), {});
+    expect(aside?.hidden).toBe(true);
+  });
+});
+
+describe("the canvas", () => {
+  it("takes focus and drops the key defaults that scroll", () => {
+    const { panel } = mountPanel();
+    expect(panel.container.tabIndex).toBe(0);
+
+    const press = (code: string): KeyboardEvent => {
+      const event = new KeyboardEvent("keydown", {
+        code,
+        bubbles: true,
+        cancelable: true,
+      });
+      panel.container.dispatchEvent(event);
+      return event;
+    };
+    expect(press("Space").defaultPrevented).toBe(true);
+    expect(press("ArrowDown").defaultPrevented).toBe(true);
+    // Anything the page does not scroll with is the game's business alone.
+    expect(press("KeyA").defaultPrevented).toBe(false);
+  });
+
+  it("still lets the key through to the engine's own listener", () => {
+    const { panel } = mountPanel();
+    const seen: string[] = [];
+    const listener = (event: Event): void => {
+      seen.push((event as KeyboardEvent).code);
+    };
+    window.addEventListener("keydown", listener);
+    panel.container.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        code: "Space",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    window.removeEventListener("keydown", listener);
+    expect(seen).toEqual(["Space"]);
   });
 });
 

@@ -455,9 +455,20 @@ down with it.
 
 ## The panel
 
-- **Scenarios** — the tree, on the left, nested by the ids above.
-- **Controls** — under the canvas. Four are visible at once and the rest
-  scroll.
+Each column scrolls on its own and the page never does, so a project with a
+hundred scenarios still leaves the canvas exactly where it was.
+
+- **Scenarios** — the tree, on the left, nested by the ids above. The filter
+  box above it matches a scenario's title, the group names in it, and its file
+  path. Clicking a group heading folds the group away; a filter opens whatever
+  groups hold a match, and clearing it restores the folds. Which groups you
+  left folded is remembered between reloads.
+- **Controls** — under the canvas, or in a column beside it once you press
+  **→ right**. Under the canvas four are visible at once and the rest scroll;
+  beside it the whole column scrolls, so a scenario with a dozen controls fits
+  next to the scene it tunes. **copy JSON** puts every current value on the
+  clipboard as one JSON object — paste it into the code you are tuning, or
+  into a prompt.
 - **Clock** — play, pause, step one frame or ten, and a speed slider from 0.05×
   to 4×. Speed changes how often a frame is issued, never the delta the frame
   reports, so a game's own slow-motion effects still look like themselves.
@@ -468,6 +479,13 @@ down with it.
   all live in the query string. Editing a scenario file reloads the page, and
   the URL is what puts you back where you were. It also makes a scenario at a
   particular setting a link you can share.
+
+### Keys go to the game
+
+Click the canvas and it takes keyboard focus. While it has focus the browser
+stops scrolling on space, the arrow keys, page up and down, and home and end —
+holding space to charge a jump does not move the page. The game receives those
+keys either way; only the browser's own scrolling is dropped.
 
 ## Sharing a lab
 

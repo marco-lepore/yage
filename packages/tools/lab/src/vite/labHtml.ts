@@ -23,7 +23,12 @@ export function renderLabHtml(opts: LabHtmlOptions): string {
     <title>${opts.title ?? "YAGE Lab"}</title>
     <style>
       :root { color-scheme: dark; }
-      body { margin: 0; padding: 16px; background: #020617; }
+      /* The page itself never scrolls: the panel's columns do, so the scenario
+         list cannot move the canvas. The host takes the space left over rather
+         than all of it, so a boot failure appended after it is on screen. */
+      html, body { height: 100%; }
+      body { margin: 0; padding: 16px; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; background: #020617; }
+      #${LAB_HOST_ID} { flex: 1 1 auto; min-height: 0; }
     </style>
   </head>
   <body>
