@@ -1,0 +1,221 @@
+---
+title: "Localization"
+description: "Reactive translated text — bring your own i18n library, YAGE handles the live re-render"
+---
+
+YAGE localizes text through a split of duties: **you bring the translation
+library, YAGE owns the reactive binding.** Author any user-facing string as a
+`msg(...)` binding, register a `LocalizationPlugin`, and every text sink — UI
+text, buttons, @pixi/ui widgets, dialogue lines — re-renders on its own when
+the locale changes.
+
+YAGE deliberately writes no resolver. Key lookup, plurals, ICU or token
+interpolation, and locale fallback all live behind a thin `LocalizationAdapter`
+that you implement over i18next, FormatJS, Fluent, `Intl`, or a plain table.
+What YAGE adds is the part a game engine is uniquely placed to own: the binding
+that knows when to re-resolve.
+
+## The binding: `msg`
+
+`msg(id, default?, values?)` builds a `LocalizedBinding` — a plain,
+serializable `{ id, values?, default? }`. It does **not** resolve to a string;
+resolution happens at render time against the active adapter.
+
+```ts
+import { msg } from "@yagejs/core";
+
+msg("hud.score", "Score: {n}", { n: 3 });
+// id = catalog key, values = interpolation args, default = fallback text
+```
+
+Bindings are immutable. To change an interpolation value, build a new binding
+and set it again — setters that dedupe by equality ignore in-place mutations.
+The `values` must be JSON-safe so a binding survives save/load unchanged.
+
+Anywhere a text API accepts `LocalizableText` (which is `string |
+LocalizedBinding`) you can pass either a plain string or a `msg(...)` binding.
+
+## The adapter
+
+The adapter is the boundary YAGE calls. A real game forwards `t()` to its i18n
+library and `setLocale()` to that library's catalog load. Here is a
+self-contained table adapter — the whole contract in one class:
+
+```ts
+import type { LocalizationAdapter, JsonValue } from "@yagejs/core";
+
+const CATALOGS: Record<string, Record<string, string>> = {
+  en: { "hud.score": "Score: {n}", "hud.start": "Start" },
+  fr: { "hud.score": "Score : {n}", "hud.start": "Commencer" },
+};
+
+class TableAdapter implements LocalizationAdapter {
+  private locale_ = "en";
+  private readonly listeners = new Set<() => void>();
+
+  get locale() {
+    return this.locale_;
+  }
+
+  t(id: string, fallback: string | undefined, values?: Record<string, JsonValue>) {
+    const template = CATALOGS[this.locale_]?.[id] ?? fallback ?? id;
+    if (!values) return template;
+    return template.replace(/\{(\w+)\}/g, (whole, key) =>
+      Object.hasOwn(values, key) ? String(values[key]) : whole,
+    );
+  }
+
+  subscribe(onChange: () => void) {
+    this.listeners.add(onChange);
+    return () => this.listeners.delete(onChange);
+  }
+
+  setLocale(next: string) {
+    this.locale_ = next;
+    this.listeners.forEach((l) => l());
+  }
+}
+```
+
+Register it with the plugin:
+
+```ts
+import { LocalizationPlugin } from "@yagejs/core";
+
+engine.use(new LocalizationPlugin({ adapter: new TableAdapter() }));
+```
+
+Without a plugin, bindings still resolve — through a built-in identity adapter
+that renders each binding's `default` (interpolating `{tokens}`) or, with no
+default, its `id`. A game authored with `msg(...)` runs untranslated with no
+i18n wiring at all, and gains translation the moment you register a plugin.
+
+## Localizing each surface
+
+Author the string as a binding; the surface re-resolves it on locale change.
+
+### UI text and buttons
+
+The `UISurface` / `UIPanel` builder methods and the element constructors take
+`LocalizableText`. A surface binds its whole tree to the plugin when it mounts
+and releases it when it unmounts — you never wire an individual element.
+
+```ts
+surface.text(msg("hud.title", "Play"));
+surface.button(msg("hud.start", "Start"), { onClick });
+
+// Interpolation is reactive both ways: it re-resolves on a locale switch, and
+// you rebuild the binding to change the value.
+const score = surface.text(msg("hud.score", "Score: {n}", { n: 0 }));
+score.setText(msg("hud.score", "Score: {n}", { n: 3 }));
+```
+
+In React, pass a binding to `<Text>` or resolve one with the `useMessage` hook.
+
+One exception to watch: `<SplitText autoSplit={false}>` batches its re-split, and
+the React components resolve a binding to a string before the element sees it —
+so a locale switch updates the text without re-splitting the glyphs. Call
+`resplit()` on the element after the switch, or leave `autoSplit` on (the
+default), where the imperative `UISplitText` and `SplitTextComponent` re-split
+themselves.
+
+### @pixi/ui widgets
+
+The `@yagejs/ui` wrappers around `@pixi/ui` accept bindings and re-resolve
+their labels in place, keeping open and scroll state:
+
+```ts
+new PixiFancyButton({ text: msg("hud.ok", "OK") /* + views */ });
+
+new PixiSelect({
+  items: [
+    msg("lang.en", "English"),
+    msg("lang.fr", "French"),
+  ],
+  onSelect: (index) => void loc.setLocale(index === 0 ? "en" : "fr"),
+  // + closedBG / openBG views
+});
+
+new PixiCheckbox({ text: msg("opt.sfx", "Sound effects") });
+
+// The placeholder localizes; `value` stays a plain string — it is user input.
+new PixiInput({ placeholder: msg("form.name", "Your name") });
+
+new PixiRadioGroup({
+  items: [
+    { text: msg("diff.easy", "Easy") },
+    { text: msg("diff.hard", "Hard") },
+  ],
+  type: "vertical",
+  elementsMargin: 4,
+});
+```
+
+`PixiSelect` and `PixiRadioGroup` fix their option set at construction: a later
+`update({ items })` is ignored (localization still refreshes the existing
+labels). Recreate the component to change which options exist.
+
+Widget teardown leaves the view props you passed in (`bg`, `defaultView`,
+`closedBG`, …) alone, so a view you build once and reuse across mounts survives
+being unmounted.
+
+### Dialogue
+
+Set `i18n: true` on a `DialogueController` to resolve each line through the same
+plugin. In the compact script format, `#line:<id>` tags a say line or choice
+with its catalog key; the authored text is the fallback.
+
+```ts
+host.add(new DialogueController({ ...createBoxDialogue(), i18n: true }));
+```
+
+```
+# guard-demo
+:: start
+Guard: Halt! State your business.  #line:d.halt
+```
+
+In `i18n: true` mode a locale switch retranslates the on-screen line and
+choices automatically. With a custom `I18nAdapter` instead of the plugin
+bridge, call `controller.retranslate()` yourself after the switch.
+
+A line still typing restarts its typewriter on the new text, and replays that
+line's inline `[marker/]` beats as it retypes — worth knowing if a marker fires
+a one-shot effect. A line the player has already read appears complete instead
+of retyping, as does one on a paused session. Either way the line is not
+re-announced: `onRevealCompleted` and a history channel's `revealComplete` fire
+once per line, line commands do not re-run, and voice keeps playing.
+
+## Switching locale
+
+Resolve the plugin and call `setLocale`:
+
+```ts
+// Hold the plugin you registered, or resolve the service from a context:
+const loc = scene.context.use(LocalizationKey);
+await loc.setLocale("fr");
+```
+
+The switch is atomic. It awaits `adapter.setLocale(next)` — which a
+library-backed adapter resolves only once the `fr` catalog is loaded and active
+— then bumps a single revision counter that every bound text sink listens on.
+So text never flips to a half-loaded locale. If two switches race, the last
+caller wins and the superseded one commits nothing.
+
+If the adapter rejects, the requested locale is not adopted and the error
+propagates. Should the adapter have already swapped its catalog in before
+failing, that change is published rather than dropped, so `locale` never
+disagrees with what is on screen. An adapter with no `setLocale` — including
+the identity default — cannot switch at all: `locale` keeps reporting the
+adapter's own, and dev builds warn.
+
+Interpolation is whatever your adapter implements. The identity adapter does
+simple `{token}` substitution; a library-backed adapter gets full ICU and
+plurals.
+
+## Try it
+
+The `examples/` app has a runnable `localization` example: a language picker
+that retranslates a title, subtitle, an interpolated counter, the picker's own
+dropdown labels, and an inventory panel's item names, descriptions, and action
+labels — all behind the table adapter shown above.

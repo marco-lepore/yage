@@ -372,6 +372,18 @@ export class DialogueSession {
    *  (normally via handleRevealComplete; skip() fires them early when the line
    *  hasn't finished revealing). */
   private afterRevealFired = false;
+  /** True once the current line has reported "typing finished" — the
+   *  `onRevealCompleted` callback and the extras' `revealComplete` hook. A
+   *  retranslate can drive the same line to completion a second time, and a
+   *  history or analytics channel must not record the line twice for it. */
+  private revealCompletedFired = false;
+  /** A locale change arrived while paused. Applied on resume — see
+   *  {@link DialogueSession.retranslate}. */
+  private retranslatePending = false;
+  /** True while a retranslate re-presents an already-read line straight to its
+   *  finished state, so the reveal beats that pass on the way are not fanned
+   *  out as if the line were playing. */
+  private silenceBeats = false;
   /** Latched by the first confirm() until the runner produces its next state
    *  (handleSay/handleChoice/handleEnd), so mashing confirm while the runner
    *  awaits the option's blocking commands can't emit duplicate onChoiceMade
@@ -401,6 +413,12 @@ export class DialogueSession {
   /** The full {@link PresentedLine} on screen — handed to an extra channel's
    *  `revealComplete` (the session discards the local `line` after present). */
   private currentPresented: PresentedLine | undefined;
+  /** Speaker of the on-screen line/choice — retained so {@link retranslate}
+   *  can re-resolve the nameplate (speaker names are i18n-resolved too). */
+  private currentSpeaker: LoadedSpeaker | undefined;
+  /** The {@link ChoiceStep} on screen while choosing — retained so
+   *  {@link retranslate} can re-resolve the prompt. */
+  private choosingStep: ChoiceStep | undefined;
 
   /** Host-registered extra channels (Voice / Shop / CameraEffects / History).
    *  The session fans its cross-cutting stream to these alongside the typed trio
@@ -632,6 +650,12 @@ export class DialogueSession {
         this.opts.onError?.("dialogue: channel setPaused() failed", error);
       }
     }
+    // A language switch that arrived during the pause applies now that the
+    // clock runs again.
+    if (!paused && this.retranslatePending) {
+      this.retranslatePending = false;
+      this.retranslate();
+    }
   }
 
   /** True while the conversation is frozen via {@link setPaused}. */
@@ -722,6 +746,7 @@ export class DialogueSession {
     this.advancing = false;
     this.advanceFired = false;
     this.afterRevealFired = false;
+    this.revealCompletedFired = false;
     this.goIdle("idle");
   }
 
@@ -1058,14 +1083,157 @@ export class DialogueSession {
     }
   }
 
+  /**
+   * Re-resolve the on-screen text through the i18n adapter and re-present it —
+   * the locale-change hook (the controller wires it to the engine localization
+   * revision; a game with a custom adapter calls it after switching language).
+   *
+   * Semantics: a say line still typing restarts its typewriter on the
+   * retranslated text; one the player has already read appears complete
+   * instead. Observation is once per line either way — `onRevealCompleted` and
+   * the extras' `revealComplete` do not fire a second time, the afterReveal
+   * command latch is not reset so line commands never re-fire, and no `onLine`
+   * / `onChoiceShown` is re-emitted. Extras are not re-presented, so voice
+   * keeps playing. A choice keeps its highlighted row. Idle is a no-op.
+   *
+   * A restarted typewriter does replay the line's inline `[marker/]` beats as
+   * it retypes — wire a marker to a one-shot effect accordingly. Jumping an
+   * already-read line to its finished text fires none of them.
+   *
+   * While paused the request is held and applied on resume, so a language
+   * switch from a pause menu neither blanks the line nor runs its commands
+   * against a frozen clock.
+   */
+  retranslate(): void {
+    // A paused session drives no clock, so presenting now would either leave a
+    // restarted typewriter blank until the game resumes, or — completing it
+    // instead — run the line's afterReveal commands and reveal hooks while the
+    // game is frozen. Neither belongs in a pause. Hold the request and apply it
+    // on resume, alongside every other paused entry point.
+    if (this.paused) {
+      this.retranslatePending = true;
+      return;
+    }
+    if (this.mode === "saying" && this.saying) {
+      const step = this.saying;
+      const speaker = this.currentSpeaker;
+      const view = this.readView();
+      // A line the player has already read must not retype.
+      // `revealCompletedFired` (not just `isRevealComplete`) is the settled
+      // test: with a blocking afterReveal command still in flight the line has
+      // typed out but hasn't earned its caret, so it takes the restart path and
+      // the continuation guard keeps deciding when completion lands.
+      const showComplete =
+        this.revealCompletedFired && this.channels.text.isRevealComplete();
+      const resolved = this.i18n.t(step.key, step.text, view);
+      const line: PresentedLine = {
+        speaker: this.speakerView(speaker, view),
+        text: parseMarkup(resolved),
+        speed: step.speed ?? 1,
+        view: step.view,
+        meta: step.meta,
+        voice: step.voice,
+      };
+      // Restarting the reveal: hide the caret and disarm auto-advance; the
+      // retranslated line's own reveal-completion re-arms both.
+      this.channels.chrome?.setContinueVisible(false);
+      this.autoTimer = undefined;
+      // Current-line fields BEFORE presenting: an immediate-reveal presenter
+      // fires the reveal listener synchronously from present(), and the
+      // completion hooks must carry the retranslated line, not the old one.
+      this.currentPresented = line;
+      this.currentLine = {
+        speaker: this.speakerName(speaker, view),
+        text: stripMarkup(resolved),
+      };
+      this.channels.chrome?.setNameplate(
+        this.speakerName(speaker, view),
+        speaker?.color,
+      );
+      this.channels.chrome?.present?.(line);
+      if (showComplete) {
+        // Jump straight to the finished text. The presenter still walks the
+        // line's tokens to get there, so mute the beats for the trip.
+        this.silenceBeats = true;
+        try {
+          this.channels.text.present(line);
+          this.channels.text.completeReveal();
+        } finally {
+          this.silenceBeats = false;
+        }
+      } else {
+        this.channels.text.present(line);
+      }
+      // Presenting may rebuild visible objects in a custom presenter — re-apply
+      // the host-hidden lever so a hidden conversation stays hidden.
+      this.applyVisibility();
+      return;
+    }
+    if (this.mode === "choosing" && this.choosingStep) {
+      const step = this.choosingStep;
+      const speaker = this.currentSpeaker;
+      const view = this.readView();
+      const line: PresentedLine = {
+        speaker: this.speakerView(speaker, view),
+        text: step.text
+          ? parseMarkup(this.i18n.t(step.key, step.text, view))
+          : EMPTY_PARSED,
+        speed: 1,
+        view: step.view,
+        meta: step.meta,
+      };
+      const ctx: ChoiceContext = {
+        view: step.view,
+        speaker: line.speaker,
+        prompt: line.text,
+        meta: step.meta,
+      };
+      // Reuse the layout decision recorded by handleChoice (ownsPrompt may be
+      // stateful — don't re-ask). A presenter-owned prompt reaches the
+      // presenter through ctx.prompt below.
+      if (this.choiceShowsChrome) {
+        this.channels.chrome?.setNameplate(
+          this.speakerName(speaker, view),
+          speaker?.color,
+        );
+        this.channels.chrome?.present?.(line);
+        if (this.choiceShowsBody) this.channels.text.present(line);
+      }
+      const presented: PresentedChoice[] = this.resolved.map((c) => ({
+        label: stripMarkup(this.i18n.t(c.option.key, c.option.text, view)),
+        meta: c.option.meta,
+        disabled: c.disabled,
+        disabledReason:
+          c.disabled && c.option.disabledReason !== undefined
+            ? stripMarkup(
+                this.i18n.t(
+                  c.option.key !== undefined
+                    ? `${c.option.key}.disabledReason`
+                    : undefined,
+                  c.option.disabledReason,
+                  view,
+                ),
+              )
+            : undefined,
+      }));
+      this.channels.choices.present(presented, ctx);
+      this.channels.choices.highlight(this.selected);
+      // Presenting may rebuild visible objects in a custom presenter — re-apply
+      // the host-hidden lever so a hidden conversation stays hidden.
+      this.applyVisibility();
+    }
+  }
+
   // ── runner handlers ─────────────────────────────────────────────────────
 
   private handleSay(step: SayStep, speaker: LoadedSpeaker | undefined): void {
     this.mode = "saying";
     this.saying = step;
+    this.currentSpeaker = speaker;
     this.autoTimer = undefined;
     this.advanceFired = false;
     this.afterRevealFired = false;
+    this.revealCompletedFired = false;
     this.confirming = false;
     // Materialize the read view once for this line (an external getter fires
     // exactly once per present, shared by text + nameplate).
@@ -1129,6 +1297,8 @@ export class DialogueSession {
   ): void {
     this.mode = "choosing";
     this.resolved = choices;
+    this.choosingStep = step;
+    this.currentSpeaker = speaker;
     // Start on the first ENABLED row. The runner skips a step with zero
     // selectable rows, so one always exists — assert it rather than silently
     // masking a regression (a -1 would seed the highlight on a disabled row).
@@ -1205,10 +1375,19 @@ export class DialogueSession {
       meta: c.option.meta,
       disabled: c.disabled,
       // i18n-resolve the reason (interpolating {tokens}) only for disabled rows
-      // that carry one; there's no separate i18n key for it.
+      // that carry one. Keyed off the choice line id (`<lineId>.disabledReason`)
+      // so it is addressable in the catalog independently of the label.
       disabledReason:
         c.disabled && c.option.disabledReason !== undefined
-          ? stripMarkup(this.i18n.t(undefined, c.option.disabledReason, view))
+          ? stripMarkup(
+              this.i18n.t(
+                c.option.key !== undefined
+                  ? `${c.option.key}.disabledReason`
+                  : undefined,
+                c.option.disabledReason,
+                view,
+              ),
+            )
           : undefined,
     }));
     this.channels.choices.present(presented, ctx);
@@ -1261,20 +1440,36 @@ export class DialogueSession {
     // Bail if stop()/play() swapped the conversation while we awaited, else we'd
     // show the continue caret on the new conversation's still-revealing line.
     if (gen !== this.generation || this.mode !== "saying") return;
+    // Also bail if the reveal restarted underneath the await (retranslate() or
+    // a new present) — completing it here would show the caret and fire the
+    // completion hooks while the text is still typing. The restarted reveal's
+    // own completion re-enters this handler; the afterRevealFired latch keeps
+    // the commands single-fire.
+    if (!this.channels.text.isRevealComplete()) return;
     this.channels.chrome?.setContinueVisible(true);
-    // The "typing finished" hook — after afterReveal commands settle, as the
-    // continue caret appears. Carries the line so a game needn't track it.
-    if (this.currentLine) this.opts.onRevealCompleted?.(this.currentLine);
-    // Fan reveal-completion out to extras (a history channel commits the line
-    // once it's fully shown). The PresentedLine, since the plain currentLine
-    // dropped the markup/meta.
-    const presented = this.currentPresented;
-    if (presented) {
-      for (const ch of this.extras) {
-        try {
-          ch.revealComplete?.(presented);
-        } catch (error) {
-          this.opts.onError?.("dialogue: channel revealComplete() failed", error);
+    // Observation, once per line. A retranslate can drive the same line to
+    // completion again; the caret above and the auto-advance below are state
+    // and are re-applied, but a history or analytics channel must not record
+    // the line a second time because the player switched language.
+    if (!this.revealCompletedFired) {
+      this.revealCompletedFired = true;
+      // The "typing finished" hook — after afterReveal commands settle, as the
+      // continue caret appears. Carries the line so a game needn't track it.
+      if (this.currentLine) this.opts.onRevealCompleted?.(this.currentLine);
+      // Fan reveal-completion out to extras (a history channel commits the line
+      // once it's fully shown). The PresentedLine, since the plain currentLine
+      // dropped the markup/meta.
+      const presented = this.currentPresented;
+      if (presented) {
+        for (const ch of this.extras) {
+          try {
+            ch.revealComplete?.(presented);
+          } catch (error) {
+            this.opts.onError?.(
+              "dialogue: channel revealComplete() failed",
+              error,
+            );
+          }
         }
       }
     }
@@ -1291,6 +1486,11 @@ export class DialogueSession {
    * itself — the Session name-matches nothing) and the host's `onRevealMarker`.
    */
   private handleRevealBeat(beat: RevealBeat): void {
+    // Re-presenting a line the player already read drains its tokens again to
+    // land on the finished text. Those beats are an artifact of the re-present,
+    // not the line playing, so they are dropped — otherwise every language
+    // switch re-fires a `[shake/]` the player already saw.
+    if (this.silenceBeats) return;
     for (const ch of this.extras) {
       try {
         ch.revealBeat?.(beat);

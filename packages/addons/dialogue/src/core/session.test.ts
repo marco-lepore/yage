@@ -589,6 +589,54 @@ describe("DialogueSession — disabled choices", () => {
     },
   };
 
+  it("looks a keyed disabled reason up under `<key>.disabledReason`", () => {
+    // The option's own key addresses its label; the reason hangs off it, so a
+    // catalog can translate both without inventing a second id.
+    const catalog: Record<string, string> = {
+      force: "Sfonda la porta",
+      "force.disabledReason": "Serve più forza",
+    };
+    const i18n = {
+      locale: "it",
+      t: (key: string | undefined, fallback: string) =>
+        (key !== undefined ? catalog[key] : undefined) ?? fallback,
+    };
+    const h = makeHarness({ i18n });
+    h.session.play({
+      id: "d",
+      start: "a",
+      declare: { hasKey: false },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "choice",
+              text: "The door is barred.",
+              options: [
+                {
+                  key: "force",
+                  text: "Force the door",
+                  target: "L",
+                  condition: "hasKey",
+                  presentation: "disabled",
+                  disabledReason: "Requires more strength",
+                },
+                { text: "Walk away", target: "R" },
+              ],
+            },
+          ],
+        },
+        L: { id: "L", steps: [{ kind: "say", text: "forced" }] },
+        R: { id: "R", steps: [{ kind: "say", text: "left" }] },
+      },
+    });
+
+    const row = h.choices.presented.at(-1)!.choices;
+    expect(row[0]!.label).toBe("Sfonda la porta");
+    expect(row[0]!.disabledReason).toBe("Serve più forza");
+  });
+
   it("presents a disabled row with its i18n-resolved reason and highlights the first enabled", () => {
     const onChoiceShown = vi.fn();
     const h = makeHarness({ onChoiceShown });
@@ -2057,5 +2105,226 @@ describe("DialogueSession — line-driven avatar", () => {
     h.session.play(script);
     h.session.stop();
     expect(h.avatar.presents.at(-1)).toBeUndefined(); // cleared its inset
+  });
+});
+
+describe("DialogueSession — retranslate", () => {
+  /** Adapter with a switchable locale over per-locale key tables. */
+  function switchableI18n(tables: Record<string, Record<string, string>>) {
+    const adapter = {
+      locale: "en",
+      t(
+        key: string | undefined,
+        fallback: string,
+        params?: Readonly<Record<string, unknown>>,
+      ): string {
+        void params;
+        return (key && tables[adapter.locale]?.[key]) || fallback;
+      },
+    };
+    return adapter;
+  }
+
+  const sayScript: DialogueScript = {
+    id: "rt-say",
+    start: "a",
+    nodes: {
+      a: { id: "a", steps: [{ kind: "say", key: "greet", text: "Hello" }] },
+    },
+  };
+
+  it("re-presents the current say line in the new locale without re-emitting onLine", () => {
+    const onLine = vi.fn();
+    const i18n = switchableI18n({ it: { greet: "Ciao" } });
+    const h = makeHarness({ onLine, i18n });
+    h.session.play(sayScript);
+    expect(h.text.lastText).toBe("Hello");
+    expect(onLine).toHaveBeenCalledTimes(1);
+
+    i18n.locale = "it";
+    h.session.retranslate();
+    expect(h.text.lastText).toBe("Ciao");
+    // Observation is not re-emitted; the reveal restarts (caret re-hidden).
+    expect(onLine).toHaveBeenCalledTimes(1);
+    expect(h.chrome.continueVisible.at(-1)).toBe(false);
+  });
+
+  it("re-presents choices in the new locale preserving the highlighted row", () => {
+    const onChoiceShown = vi.fn();
+    const i18n = switchableI18n({
+      it: { l: "Sinistra", r: "Destra", "r.disabledReason": "Serve la chiave" },
+    });
+    const h = makeHarness({ onChoiceShown, i18n });
+    h.session.play({
+      id: "rt-choice",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "choice",
+              options: [
+                { key: "l", text: "Left", target: "L" },
+                { key: "r", text: "Right", target: "L" },
+              ],
+            },
+          ],
+        },
+        L: { id: "L", steps: [{ kind: "say", text: "done" }] },
+      },
+    });
+    h.session.moveSelection(1);
+    expect(h.choices.lastLabels).toEqual(["Left", "Right"]);
+    expect(onChoiceShown).toHaveBeenCalledTimes(1);
+
+    i18n.locale = "it";
+    h.session.retranslate();
+    expect(h.choices.lastLabels).toEqual(["Sinistra", "Destra"]);
+    expect(h.choices.highlights.at(-1)).toBe(1); // selection preserved
+    expect(onChoiceShown).toHaveBeenCalledTimes(1); // not re-emitted
+  });
+
+  it("does not let a pending afterReveal continuation complete the restarted reveal", async () => {
+    let resolveCmd!: () => void;
+    const gate = new Promise<void>((r) => (resolveCmd = r));
+    const onRevealCompleted = vi.fn();
+    const i18n = switchableI18n({ it: { greet: "Ciao" } });
+    const h = makeHarness({ i18n, onRevealCompleted });
+    h.session.play(
+      {
+        id: "rt-block",
+        start: "a",
+        nodes: {
+          a: {
+            id: "a",
+            steps: [
+              {
+                kind: "say",
+                key: "greet",
+                text: "Hello",
+                commands: [{ type: "wait", at: "afterReveal", blocking: true }],
+              },
+            ],
+          },
+        },
+      },
+      { fallbackCommand: () => gate },
+    );
+    h.text.finishReveal(); // handleRevealComplete awaits the blocking command
+    await Promise.resolve();
+    i18n.locale = "it";
+    h.session.retranslate(); // restarts the reveal underneath the await
+    resolveCmd();
+    await gate;
+    await flush();
+    // The stale continuation must not show the caret or fire completion hooks
+    // while the retranslated line is still revealing.
+    expect(onRevealCompleted).not.toHaveBeenCalled();
+    expect(h.chrome.continueVisible).not.toContain(true);
+    h.text.finishReveal(); // the retranslated line's own completion
+    await flush();
+    expect(onRevealCompleted).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Ciao" }),
+    );
+    expect(h.chrome.continueVisible.at(-1)).toBe(true);
+  });
+
+  it("hands the retranslated line to a synchronous immediate-reveal presenter", async () => {
+    const onRevealCompleted = vi.fn();
+    const i18n = switchableI18n({ it: { greet: "Ciao" } });
+    let listener: (() => void) | undefined;
+    const seen: string[] = [];
+    const text: TextChannel = {
+      // Immediate reveal: completes synchronously from present(), so the
+      // session's current-line fields must already hold the retranslated line
+      // by the time present() is called.
+      present: (line) => {
+        seen.push(line.text.runs.map((r) => r.text).join(""));
+        listener?.();
+      },
+      completeReveal: () => {},
+      isRevealComplete: () => true,
+      isRevealing: () => false,
+      setSpeedMultiplier: () => {},
+      setVisible: () => {},
+      update: () => {},
+      clear: () => {},
+      setRevealListener: (l) => (listener = l),
+      setBeatListener: () => {},
+    };
+    const session = new DialogueSession(
+      { text, choices: new StubChoices() },
+      { i18n, onRevealCompleted },
+    );
+    session.play(sayScript);
+    await flush(); // settle the first line's completion ("Hello")
+    i18n.locale = "it";
+    session.retranslate();
+
+    expect(seen.at(-1)).toBe("Ciao");
+    // The line already reported "typing finished" before the switch, so the
+    // hook does not fire a second time for it.
+    expect(onRevealCompleted).toHaveBeenCalledTimes(1);
+    expect(onRevealCompleted).toHaveBeenLastCalledWith(
+      expect.objectContaining({ text: "Hello" }),
+    );
+  });
+
+  it("shows an already-read line complete instead of retyping it", async () => {
+    const i18n = switchableI18n({ it: { greet: "Ciao" } });
+    const h = makeHarness({ i18n });
+    h.session.play(sayScript);
+    h.text.finishReveal();
+    await flush(); // let the completion settle (caret shown, hooks fired)
+
+    i18n.locale = "it";
+    h.session.retranslate();
+
+    // Retyping a line the player has already read is the jarring case the
+    // switch must avoid.
+    expect(h.text.isRevealComplete()).toBe(true);
+  });
+
+  it("holds a retranslate requested while paused, and applies it on resume", async () => {
+    // A pause menu is the usual place to switch language. Presenting mid-pause
+    // would either blank a restarted typewriter (no clock runs) or drive the
+    // line's afterReveal commands and reveal hooks against a frozen game.
+    const onRevealCompleted = vi.fn();
+    const i18n = switchableI18n({ it: { greet: "Ciao" } });
+    const h = makeHarness({ i18n, onRevealCompleted });
+    h.session.play(sayScript);
+    h.session.setPaused(true);
+    const whilePaused = h.text.presented.length;
+
+    i18n.locale = "it";
+    h.session.retranslate();
+    expect(h.text.presented).toHaveLength(whilePaused);
+    expect(onRevealCompleted).not.toHaveBeenCalled();
+
+    h.session.setPaused(false);
+    await flush();
+    expect(h.text.presented.length).toBeGreaterThan(whilePaused);
+    expect(h.text.presented.at(-1)?.text.runs.map((r) => r.text).join("")).toBe(
+      "Ciao",
+    );
+  });
+
+  it("keeps a hidden conversation hidden across retranslate", () => {
+    const i18n = switchableI18n({ it: { greet: "Ciao" } });
+    const h = makeHarness({ i18n });
+    h.session.play(sayScript);
+    h.session.setHidden(true);
+    i18n.locale = "it";
+    h.session.retranslate();
+    expect(h.text.visible).toBe(false);
+    expect(h.chrome.visibles.at(-1)).toBe(false);
+  });
+
+  it("is a no-op while idle", () => {
+    const h = makeHarness();
+    h.session.retranslate();
+    expect(h.text.presented).toHaveLength(0);
+    expect(h.choices.presented).toHaveLength(0);
   });
 });

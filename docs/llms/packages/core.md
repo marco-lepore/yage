@@ -591,9 +591,13 @@ console.log(engine.logger.formatRecentLogs(20));
 
 `bufferSize` (default 500) caps the ring buffer. `categories` restricts which categories are accepted. `output` overrides the default `console.*` handler with a custom sink (e.g., to ship logs to a remote service).
 
+### Localization
+
+`msg(id, default?, values?)` builds a serializable `LocalizedBinding`; `LocalizationPlugin` (service `LocalizationKey`) holds one game-supplied `LocalizationAdapter` and makes resolution reactive. Text sinks (`@yagejs/ui`, dialogue) re-render on `setLocale`. Exports: `msg`, `LocalizationPlugin`, `LocalizationKey`, `IdentityLocalizationAdapter`, `resolveLocalized`; types `LocalizedBinding`, `LocalizationAdapter`, `Localization`, `LocalizableText`. Full reference: `localization.md`.
+
 ### Well-known DI Keys
 
-`EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`
+`EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`, `LocalizationKey`
 
 ## LoadingScene
 

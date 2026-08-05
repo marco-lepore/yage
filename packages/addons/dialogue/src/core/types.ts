@@ -236,8 +236,9 @@ export interface ChoiceOption {
    */
   readonly presentation?: "hidden" | "disabled";
   /** Short reason shown beside a `"disabled"` row where the layout allows (e.g.
-   *  "Requires the rusty key"). Resolved through the i18n adapter, so `{token}`s
-   *  interpolate; there is no separate i18n `key` for it. */
+   *  "Requires the rusty key"). Resolved through the i18n adapter (so `{token}`s
+   *  interpolate) under a `<lineId>.disabledReason` key, addressable independently
+   *  of the choice label. */
   readonly disabledReason?: string;
   readonly commands?: readonly Command[];
   /** Opaque per-choice hint bag (tone/icon/position for fancy choice UIs). */
