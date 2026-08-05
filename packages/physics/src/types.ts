@@ -216,6 +216,15 @@ export interface CollisionEvent {
    * available.
    */
   penetrationDepth?: number;
+  /**
+   * Total impulse the solver applied along the contact normal during the
+   * step, in the same units `applyImpulse` takes; friction is not included.
+   * Dividing by the body's `getMass()` gives the velocity change along the
+   * normal in px/s. Only on started, non-sensor collisions with a contact
+   * manifold available; may be 0 when the solver did not need to apply an
+   * impulse (e.g. a grazing contact).
+   */
+  contactImpulse?: number;
 }
 
 /** Trigger event data passed to trigger handlers. */

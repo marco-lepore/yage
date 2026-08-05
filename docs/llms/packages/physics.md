@@ -114,14 +114,19 @@ A `sensor: true` collider fires only `onTrigger`; a solid collider fires only `o
 collider.onTrigger((ev) => { ev.other; ev.entered; });       // sensor events
 collider.onCollision((ev) => {
   ev.other; ev.started;
-  // contactNormal/contactPoint/penetrationDepth: only on started, non-sensor
-  // collisions, and may be absent if no contact manifold is available.
+  // contactNormal/contactPoint/penetrationDepth/contactImpulse: only on
+  // started, non-sensor collisions, and may be absent if no contact manifold
+  // is available.
   ev.contactNormal;      // Vec2, unit, points from this entity toward `other`
   ev.contactPoint;       // Vec2, world pixels, a representative point (not an average)
   ev.penetrationDepth;   // number, world pixels, >= 0
+  ev.contactImpulse;     // number, total normal impulse (no friction), `applyImpulse` units;
+                         // divide by getMass() for the velocity change along the normal, px/s
 });
 // Both return unsubscribe function
 ```
+
+Score impacts with `contactImpulse` — velocity read inside the handler is measured after the solver resolved the contact, so hard hits read near zero.
 
 Knockback example:
 ```ts

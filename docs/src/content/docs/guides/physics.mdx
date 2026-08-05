@@ -194,11 +194,12 @@ collider.onCollision((event) => {
     console.log("contact normal:", event.contactNormal);
     console.log("contact point:", event.contactPoint);
     console.log("penetration depth:", event.penetrationDepth);
+    console.log("contact impulse:", event.contactImpulse);
   }
 });
 ```
 
-`contactNormal`, `contactPoint`, and `penetrationDepth` are set on started,
+`contactNormal`, `contactPoint`, `penetrationDepth`, and `contactImpulse` are set on started,
 non-sensor collisions:
 
 - `contactNormal` is a unit `Vec2` pointing from this entity toward the other
@@ -206,9 +207,14 @@ non-sensor collisions:
 - `contactPoint` is a representative contact point in world pixels. A resting
   box can have two contact points; this is the first one, not an average.
 - `penetrationDepth` is the overlap depth in world pixels, always `>= 0`.
+- `contactImpulse` is the total impulse along the contact normal in the same
+  units as `applyImpulse`; friction is not included. Divide it by the body's
+  `getMass()` to get the velocity change along the normal in px/s.
 
-All three can be `undefined` even on a started event, if Rapier has no
-contact manifold for the pair yet (for example a same-step start-and-stop).
+All four can be `undefined` even on a started event, if Rapier has no contact
+manifold for the pair yet (for example a same-step start-and-stop). The
+impulse can be `0` when the solver did not need to apply an impulse, such as
+for a grazing contact.
 Guard on `contactNormal` before using any of them:
 
 ```typescript
@@ -218,6 +224,25 @@ collider.onCollision((event) => {
   entity.get(RigidBodyComponent).setVelocity(knockback);
 });
 ```
+
+Use `contactImpulse` to score impacts — for example, deal damage when the
+impulse passes a threshold:
+
+```typescript
+collider.onCollision((event) => {
+  if (
+    event.started &&
+    event.contactImpulse !== undefined &&
+    event.contactImpulse > 100
+  ) {
+    dealDamage(10);
+  }
+});
+```
+
+Reading the body's velocity inside the handler does not work for this: it
+measures the velocity after the solver has resolved the contact, so the
+hardest hits read as the smallest numbers.
 
 Both handlers return an unsubscribe function.
 
