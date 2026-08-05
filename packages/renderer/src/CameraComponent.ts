@@ -32,7 +32,12 @@ export interface CameraFollowOptions {
 
 /** Options for camera shake. */
 export interface CameraShakeOptions {
-  /** Decay factor per frame (0..1). 0 = no decay, 1 = instant stop. Default: 0. */
+  /**
+   * How much the shake fades across its duration. `0` (the default) holds
+   * full intensity until the shake ends. `1` fades linearly to zero over the
+   * duration. Values above `1` reach zero earlier — at `2` the camera stops
+   * moving halfway through.
+   */
   decay?: number;
 }
 

@@ -528,7 +528,7 @@ const cam = this.spawn(CameraEntity, {
 cam.snapToTarget(); // cut to the target after a teleport (room change, respawn)
 cam.unfollow();
 
-cam.shake(10, 0.5, { decay: 0.02 }); // duration in seconds
+cam.shake(10, 0.5, { decay: 1 }); // duration in seconds; decay 1 fades to zero by the end, 0 (default) holds full strength
 cam.zoomTo(2.0, 1, easeOutQuad); // duration in seconds
 
 cam.bounds = { minX: 0, minY: 0, maxX: 2000, maxY: 1000 };
