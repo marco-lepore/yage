@@ -230,6 +230,7 @@ const { mocks } = vi.hoisted(() => {
     constructor(
       private _normal: { x: number; y: number },
       private _solverContacts: Array<{ x: number; y: number; dist: number }>,
+      private _impulses: number[] = [],
     ) {}
 
     normal() {
@@ -245,13 +246,25 @@ const { mocks } = vi.hoisted(() => {
     solverContactDist(i: number) {
       return this._solverContacts[i]!.dist;
     }
+    numContacts() {
+      return this._impulses.length;
+    }
+    contactImpulse(i: number) {
+      return this._impulses[i]!;
+    }
   }
 
   class MockNarrowPhase {
-    _pairs = new Map<string, { manifold: MockManifold; flipped: boolean }>();
+    _pairs = new Map<
+      string,
+      Array<{ manifold: MockManifold; flipped: boolean }>
+    >();
 
     _setPair(h1: number, h2: number, manifold: MockManifold, flipped = false) {
-      this._pairs.set(`${h1}:${h2}`, { manifold, flipped });
+      const key = `${h1}:${h2}`;
+      const entries = this._pairs.get(key) ?? [];
+      entries.push({ manifold, flipped });
+      this._pairs.set(key, entries);
     }
 
     contactPair(
@@ -259,8 +272,9 @@ const { mocks } = vi.hoisted(() => {
       h2: number,
       f: (manifold: MockManifold, flipped: boolean) => void,
     ) {
-      const entry = this._pairs.get(`${h1}:${h2}`);
-      if (entry) f(entry.manifold, entry.flipped);
+      for (const entry of this._pairs.get(`${h1}:${h2}`) ?? []) {
+        f(entry.manifold, entry.flipped);
+      }
     }
   }
 
@@ -724,6 +738,47 @@ describe("PhysicsWorld", () => {
   });
 
   describe("collision event dispatch", () => {
+    function createCollisionPair(pw: PhysicsWorld): {
+      comp1: ColliderComponent;
+      comp2: ColliderComponent;
+      collider1: number;
+      collider2: number;
+    } {
+      const entity1 = new Entity("e1");
+      const entity2 = new Entity("e2");
+      const body1 = pw.createBody(entity1, { type: "dynamic" });
+      const body2 = pw.createBody(entity2, { type: "dynamic" });
+      const comp1 = createMockColliderComponent({});
+      const comp2 = createMockColliderComponent({});
+      const collider1 = pw.createCollider(
+        entity1,
+        body1,
+        { shape: { type: "box", width: 10, height: 10 } },
+        comp1,
+      );
+      const collider2 = pw.createCollider(
+        entity2,
+        body2,
+        { shape: { type: "box", width: 10, height: 10 } },
+        comp2,
+      );
+      return { comp1, comp2, collider1, collider2 };
+    }
+
+    function queueCollision(
+      pw: PhysicsWorld,
+      collider1: number,
+      collider2: number,
+      started: boolean,
+    ): void {
+      const eq = (
+        pw as unknown as {
+          eventQueue: InstanceType<typeof mocks.MockEventQueue>;
+        }
+      ).eventQueue;
+      eq._events.push([collider1, collider2, started]);
+    }
+
     it("dispatches collision events to non-sensor colliders", () => {
       const pw = new PhysicsWorld();
       const entity1 = new Entity("e1");
@@ -884,6 +939,163 @@ describe("PhysicsWorld", () => {
       expect(ev2.penetrationDepth).toBeCloseTo(5);
     });
 
+    it("sets contactImpulse on started non-sensor collisions in pixels and shares it between both sides", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const { comp1, comp2, collider1, collider2 } = createCollisionPair(pw);
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
+      world.narrowPhase._setPair(
+        collider1,
+        collider2,
+        new mocks.MockManifold(
+          { x: 1, y: 0 },
+          [{ x: 0, y: 0, dist: -0.1 }],
+          [0.25],
+        ),
+      );
+
+      const events1: CollisionEvent[] = [];
+      const events2: CollisionEvent[] = [];
+      comp1.onCollision((e) => events1.push(e));
+      comp2.onCollision((e) => events2.push(e));
+      queueCollision(pw, collider1, collider2, true);
+      pw.processCollisionEvents();
+
+      expect((events1[0] as CollisionEvent).contactImpulse).toBeCloseTo(12.5);
+      expect((events2[0] as CollisionEvent).contactImpulse).toBeCloseTo(12.5);
+      // The vector is oriented like contactNormal: self toward other.
+      const v1 = (events1[0] as CollisionEvent).contactImpulseVector;
+      const v2 = (events2[0] as CollisionEvent).contactImpulseVector;
+      expect(v1?.x).toBeCloseTo(12.5);
+      expect(v1?.y).toBeCloseTo(0);
+      expect(v2?.x).toBeCloseTo(-12.5);
+      expect(v2?.y).toBeCloseTo(0);
+    });
+
+    it("sums contactImpulse across all manifold contact points", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const { comp1, collider1, collider2 } = createCollisionPair(pw);
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
+      world.narrowPhase._setPair(
+        collider1,
+        collider2,
+        new mocks.MockManifold(
+          { x: 1, y: 0 },
+          [{ x: 0, y: 0, dist: -0.1 }],
+          [0.2, 0.3],
+        ),
+      );
+
+      const events: CollisionEvent[] = [];
+      comp1.onCollision((e) => events.push(e));
+      queueCollision(pw, collider1, collider2, true);
+      pw.processCollisionEvents();
+
+      expect((events[0] as CollisionEvent).contactImpulse).toBeCloseTo(25);
+    });
+
+    it("leaves contactImpulse undefined on ended collisions", () => {
+      const pw = new PhysicsWorld();
+      const { comp1, collider1, collider2 } = createCollisionPair(pw);
+      const events: CollisionEvent[] = [];
+      comp1.onCollision((e) => events.push(e));
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
+      world.narrowPhase._setPair(
+        collider1,
+        collider2,
+        new mocks.MockManifold(
+          { x: 1, y: 0 },
+          [{ x: 0, y: 0, dist: -0.1 }],
+          [1],
+        ),
+      );
+      queueCollision(pw, collider1, collider2, false);
+      pw.processCollisionEvents();
+
+      expect((events[0] as CollisionEvent).contactImpulse).toBeUndefined();
+      expect(
+        (events[0] as CollisionEvent).contactImpulseVector,
+      ).toBeUndefined();
+    });
+
+    it("reports a zero contactImpulse for a grazing contact start", () => {
+      // A grazing start has contact points but the solver applied nothing:
+      // impulses are all 0, not absent.
+      const pw = new PhysicsWorld();
+      const { comp1, comp2, collider1, collider2 } = createCollisionPair(pw);
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
+      world.narrowPhase._setPair(
+        collider1,
+        collider2,
+        new mocks.MockManifold(
+          { x: 1, y: 0 },
+          [
+            { x: 0, y: 0, dist: 0 },
+            { x: 0, y: 0.2, dist: 0 },
+          ],
+          [0, 0],
+        ),
+      );
+
+      const events1: CollisionEvent[] = [];
+      const events2: CollisionEvent[] = [];
+      comp1.onCollision((e) => events1.push(e));
+      comp2.onCollision((e) => events2.push(e));
+      queueCollision(pw, collider1, collider2, true);
+      pw.processCollisionEvents();
+
+      expect((events1[0] as CollisionEvent).contactImpulse).toBe(0);
+      expect((events2[0] as CollisionEvent).contactImpulse).toBe(0);
+      expect((events1[0] as CollisionEvent).contactImpulseVector?.x).toBe(0);
+      expect((events1[0] as CollisionEvent).contactImpulseVector?.y).toBe(0);
+    });
+
+    it("accumulates contactImpulse across manifolds along their normals and takes geometry from the first with solver contacts", () => {
+      // Multiple manifolds per pair happen against polyline and compound
+      // colliders — one manifold per segment, each with its own normal.
+      // The reported impulse is the magnitude of the vector total.
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const { comp1, collider1, collider2 } = createCollisionPair(pw);
+      const world = (
+        pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+      ).world;
+      world.narrowPhase._setPair(
+        collider1,
+        collider2,
+        new mocks.MockManifold({ x: 0, y: 1 }, [], [0.1]),
+      );
+      world.narrowPhase._setPair(
+        collider1,
+        collider2,
+        new mocks.MockManifold(
+          { x: 1, y: 0 },
+          [{ x: 0, y: 0, dist: -0.1 }],
+          [0.2, 0.3],
+        ),
+      );
+
+      const events: CollisionEvent[] = [];
+      comp1.onCollision((e) => events.push(e));
+      queueCollision(pw, collider1, collider2, true);
+      pw.processCollisionEvents();
+
+      const ev = events[0] as CollisionEvent;
+      // 0.1 along {0,1} plus 0.5 along {1,0}, pixel-scaled.
+      expect(ev.contactImpulse).toBeCloseTo(50 * Math.hypot(0.5, 0.1));
+      expect(ev.contactImpulseVector?.x).toBeCloseTo(25);
+      expect(ev.contactImpulseVector?.y).toBeCloseTo(5);
+      expect(ev.contactNormal?.x).toBeCloseTo(1);
+      expect(ev.contactNormal?.y).toBeCloseTo(0);
+      expect(ev.penetrationDepth).toBeCloseTo(5);
+    });
+
     it("negates the manifold normal when Rapier reports flipped=true", () => {
       const pw = new PhysicsWorld();
       const entity1 = new Entity("e1");
@@ -1037,6 +1249,8 @@ describe("PhysicsWorld", () => {
       expect(ev1.contactNormal).toBeUndefined();
       expect(ev1.contactPoint).toBeUndefined();
       expect(ev1.penetrationDepth).toBeUndefined();
+      expect(ev1.contactImpulse).toBeUndefined();
+      expect(ev1.contactImpulseVector).toBeUndefined();
     });
 
     it("leaves contact fields undefined when no manifold is available (e.g. sensor pairs)", () => {
@@ -1082,6 +1296,8 @@ describe("PhysicsWorld", () => {
       expect(ev1.contactNormal).toBeUndefined();
       expect(ev1.contactPoint).toBeUndefined();
       expect(ev1.penetrationDepth).toBeUndefined();
+      expect(ev1.contactImpulse).toBeUndefined();
+      expect(ev1.contactImpulseVector).toBeUndefined();
     });
   });
 

@@ -258,6 +258,26 @@ export interface CollisionEvent {
    * available.
    */
   penetrationDepth?: number;
+  /**
+   * Magnitude of the total impulse the solver applied to resolve the
+   * contact during the step, in the same units `applyImpulse` takes;
+   * friction is not included. Dividing by a dynamic body's `getMass()`
+   * gives the speed change that body received from the contact, in px/s
+   * (a static or kinematic body receives the event too, but no velocity
+   * change). Only
+   * on started, non-sensor collisions with a contact manifold available;
+   * may be 0 when the solver did not need to apply an impulse (e.g. a
+   * grazing contact).
+   */
+  contactImpulse?: number;
+  /**
+   * The contact impulse as a vector, oriented from this entity toward the
+   * other like `contactNormal`; its length equals `contactImpulse`. The
+   * push on this body points the opposite way: for a dynamic body,
+   * `contactImpulseVector.scale(-1 / getMass())` is its velocity change in
+   * px/s. Present exactly when `contactImpulse` is.
+   */
+  contactImpulseVector?: Vec2;
 }
 
 /** Trigger event data passed to trigger handlers. */
