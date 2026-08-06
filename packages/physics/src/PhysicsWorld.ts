@@ -10,8 +10,11 @@ import type {
   ColliderShape,
   BodyType,
   RaycastHit,
+  JointConfig,
+  JointHandle,
 } from "./types.js";
 import type { ColliderComponent } from "./ColliderComponent.js";
+import type { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { MutableContactCandidate } from "./ContactCandidate.js";
 import type { PreStepColliderState } from "./ContactCandidate.js";
 
@@ -55,6 +58,28 @@ interface CollisionPair {
   readonly contact: ContactData | undefined;
 }
 
+interface JointRecord {
+  readonly rawHandle: number;
+  readonly bodyA: number;
+  readonly bodyB: number;
+  attached: boolean;
+}
+
+class PhysicsJointHandle implements JointHandle {
+  constructor(
+    private readonly world: PhysicsWorld,
+    private readonly record: JointRecord,
+  ) {}
+
+  get attached(): boolean {
+    return this.record.attached;
+  }
+
+  remove(): void {
+    this.world._removeJoint(this.record);
+  }
+}
+
 /**
  * Central Rapier2D wrapper. All public API values are in pixels.
  * Pixel-to-meter conversion is handled internally.
@@ -70,6 +95,8 @@ export class PhysicsWorld {
 
   /** @internal Map from collider handle to ColliderComponent. */
   readonly _colliderComponents = new Map<number, ColliderComponent>();
+  /** @internal Joint records indexed by each attached body handle. */
+  readonly _jointsByBody = new Map<number, Set<JointRecord>>();
 
   private readonly world: RAPIER.World;
   private readonly eventQueue: RAPIER.EventQueue;
@@ -423,6 +450,55 @@ export class PhysicsWorld {
     return body.handle;
   }
 
+  /** Connect two live rigid bodies with a spring or rope joint. All lengths and anchors are in pixels. */
+  addJoint(
+    bodyA: RigidBodyComponent,
+    bodyB: RigidBodyComponent,
+    config: JointConfig,
+  ): JointHandle {
+    const bodyAHandle = this._requireLiveBody(bodyA, "bodyA");
+    const bodyBHandle = this._requireLiveBody(bodyB, "bodyB");
+    if (bodyAHandle === bodyBHandle) {
+      throw new Error("Cannot add a joint between a body and itself.");
+    }
+
+    const rawBodyA = this.world.getRigidBody(bodyAHandle);
+    const rawBodyB = this.world.getRigidBody(bodyBHandle);
+    const anchorA = config.anchorA ?? { x: 0, y: 0 };
+    const anchorB = config.anchorB ?? { x: 0, y: 0 };
+    const rapierAnchorA = {
+      x: this.toMeters(anchorA.x),
+      y: this.toMeters(anchorA.y),
+    };
+    const rapierAnchorB = {
+      x: this.toMeters(anchorB.x),
+      y: this.toMeters(anchorB.y),
+    };
+    const data =
+      config.type === "spring"
+        ? RAPIER.JointData.spring(
+            this.toMeters(config.restLength),
+            config.stiffness,
+            config.damping,
+            rapierAnchorA,
+            rapierAnchorB,
+          )
+        : RAPIER.JointData.rope(
+            this.toMeters(config.length),
+            rapierAnchorA,
+            rapierAnchorB,
+          );
+    const joint = this.world.createImpulseJoint(data, rawBodyA, rawBodyB, true);
+    const record: JointRecord = {
+      rawHandle: joint.handle,
+      bodyA: bodyAHandle,
+      bodyB: bodyBHandle,
+      attached: true,
+    };
+    this._linkJoint(record);
+    return new PhysicsJointHandle(this, record);
+  }
+
   /** Create a collider attached to a body. Returns the Rapier collider handle. */
   createCollider(
     entity: Entity,
@@ -564,6 +640,16 @@ export class PhysicsWorld {
   removeBody(handle: number): void {
     const body = this.world.getRigidBody(handle);
     if (!body) return;
+
+    // Rapier frees attached joints as part of removing a body. Orphan their
+    // handles first so a later handle.remove() cannot free them a second time.
+    const joints = this._jointsByBody.get(handle);
+    if (joints) {
+      for (const record of [...joints]) {
+        record.attached = false;
+        this._unlinkJoint(record);
+      }
+    }
 
     // Clean up collider mappings
     const numColliders = body.numColliders();
@@ -954,6 +1040,10 @@ export class PhysicsWorld {
 
   /** Destroy the physics world and free resources. */
   destroy(): void {
+    for (const joints of this._jointsByBody.values()) {
+      for (const record of joints) record.attached = false;
+    }
+    this._jointsByBody.clear();
     this.eventQueue.free();
     this.world.free();
     this.bodyMap.clear();
@@ -967,6 +1057,66 @@ export class PhysicsWorld {
   }
 
   // ---- Internal helpers ----
+
+  private _requireLiveBody(
+    component: RigidBodyComponent,
+    label: "bodyA" | "bodyB",
+  ): number {
+    const handle = component._bodyHandle;
+    if (handle === -1 || this.bodyMap.get(handle) !== component.entity) {
+      throw new Error(
+        `${label} must be added to this physics world first; bodies from a different scene's physics world cannot be jointed here.`,
+      );
+    }
+    return handle;
+  }
+
+  private _linkJoint(record: JointRecord): void {
+    this._addJointToBody(record.bodyA, record);
+    this._addJointToBody(record.bodyB, record);
+  }
+
+  private _addJointToBody(handle: number, record: JointRecord): void {
+    let joints = this._jointsByBody.get(handle);
+    if (!joints) {
+      joints = new Set<JointRecord>();
+      this._jointsByBody.set(handle, joints);
+    }
+    joints.add(record);
+  }
+
+  private _unlinkJoint(record: JointRecord): void {
+    for (const handle of [record.bodyA, record.bodyB]) {
+      const joints = this._jointsByBody.get(handle);
+      if (!joints) continue;
+      joints.delete(record);
+      if (joints.size === 0) this._jointsByBody.delete(handle);
+    }
+  }
+
+  /** @internal Remove a live joint and unlink its record. */
+  _removeJoint(record: JointRecord): void {
+    if (!record.attached) return;
+    const joint = this.world.getImpulseJoint(record.rawHandle);
+    this.world.removeImpulseJoint(joint, true);
+    record.attached = false;
+    this._unlinkJoint(record);
+  }
+
+  /**
+   * @internal Detach every joint touching this body. Called when the body is
+   * disabled: a dormant entity may be reused as something else, and a joint
+   * is cross-life state the same way momentum and landed contacts are — the
+   * next life must not wake up tethered to the old partner. Unlike removal,
+   * disabling leaves the body in Rapier, so the joints are freed here.
+   */
+  _detachJointsForBody(handle: number): void {
+    const joints = this._jointsByBody.get(handle);
+    if (!joints) return;
+    for (const record of [...joints]) {
+      this._removeJoint(record);
+    }
+  }
 
   private buildColliderDesc(shape: ColliderShape): RAPIER.ColliderDesc {
     switch (shape.type) {

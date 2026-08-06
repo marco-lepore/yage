@@ -120,12 +120,13 @@ export class RigidBodyComponent extends Component {
   /**
    * Put the Rapier body to sleep without freeing it — the allocation is
    * exactly what a reused entity gets to keep. Momentum and queued
-   * forces/torques are cleared, so waking the body cannot resume a motion
-   * that started a life ago.
+   * forces/torques are cleared and joints are detached, so waking the body
+   * cannot resume a motion — or a tether — that started a life ago.
    */
   onDisable(): void {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return;
+    this.physicsWorld._detachJointsForBody(this._bodyHandle);
     body.setLinvel({ x: 0, y: 0 }, false);
     body.setAngvel(0, false);
     body.resetForces(false);

@@ -274,6 +274,37 @@ const swept = world.castShape(shape, origin, direction, maxDistance, {
 
 Use `castShape` to test a move before committing to it: carrying a rider on a moving platform, spotting a closing platform before it traps the player, or checking clearance for a fast fall. `queryShape` only reports overlaps at a fixed position and misses anything the shape would pass through on the way.
 
+## Joints
+
+Connect two rigid bodies in the same scene's physics world. Both bodies must
+already be added to that world:
+
+```ts
+const rope = world.addJoint(playerBody, anchorBody, {
+  type: "rope",
+  length: 120, // maximum distance, pixels
+  anchorA: { x: 0, y: 0 }, // local pixels, optional
+  anchorB: { x: 0, y: 0 }, // local pixels, optional
+});
+
+const spring = world.addJoint(playerBody, companionBody, {
+  type: "spring",
+  restLength: 80, // pixels
+  stiffness: 40,
+  damping: 4,
+});
+```
+
+`addJoint(bodyA, bodyB, config)` returns a `JointHandle`. `attached` is `true`
+while the joint is live. `remove()` detaches it; calling it again does nothing.
+Destroying or disabling either jointed entity (e.g. releasing it to a pool)
+detaches the joint automatically — re-enabling does not restore it. A rope to
+a static body is the usual pattern for a tether or swing. Lengths and anchors
+are in pixels. Spring `stiffness` and `damping` are mass-relative and passed
+to the solver unconverted; collider mass depends on `pixelsPerMeter` (density
+× area in meters), so retune them after changing the scale.
+
 ## Serialization
 
 Both `RigidBodyComponent` and `ColliderComponent` are `@serializable`. They implement `serialize()`, `fromSnapshot()`, and `afterRestore()` for save/load.
+Joints are not serialized; recreate them after restore, for example in `afterRestore`.

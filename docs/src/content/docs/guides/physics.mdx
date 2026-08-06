@@ -643,3 +643,39 @@ Each scene gets its own `PhysicsWorld`. The physics plugin creates the world
 in a `beforeEnter` hook and destroys it in `afterExit`. For cross-scene
 enumeration (save system, debug inspector) use the engine-scope
 `PhysicsWorldManagerKey` instead.
+
+## Joints
+
+Joints connect two rigid bodies in the same scene. Lengths and anchor points
+use pixels. A rope limits the distance between two bodies; a spring pulls them
+toward its `restLength` and also resists relative motion.
+
+```typescript
+const world = this.use(PhysicsWorldKey);
+
+const tether = world.addJoint(playerBody, anchorBody, {
+  type: "rope",
+  length: 140,
+});
+
+// A static anchor makes a simple swing. Release the rope when the player lets go.
+if (input.isJustPressed("release")) tether.remove();
+
+world.addJoint(playerBody, companionBody, {
+  type: "spring",
+  restLength: 80,
+  stiffness: 40,
+  damping: 4,
+});
+```
+
+`addJoint` returns a handle with an `attached` flag and a `remove()` method
+that is safe to call more than once. The handle detaches when either jointed
+entity is destroyed or disabled (for example, released to a pool); re-enabling
+the entity does not restore the joint. Lengths and anchors are always in
+pixels. `stiffness` and `damping` are mass-relative and passed to the solver
+unconverted — collider mass depends on `pixelsPerMeter`, so retune them after
+changing the scale.
+
+Joints are not saved: after a snapshot restore, recreate them (for example in
+`afterRestore`).
