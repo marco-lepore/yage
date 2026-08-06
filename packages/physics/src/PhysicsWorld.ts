@@ -38,6 +38,7 @@ interface ContactData {
   point: Vec2;
   penetrationDepth: number;
   impulse: number;
+  impulseVector: Vec2;
 }
 
 /** One side of a drained collision, pinned to the life it was queued for. */
@@ -338,6 +339,9 @@ export class PhysicsWorld {
             contactPoint: contact.point,
             penetrationDepth: contact.penetrationDepth,
             contactImpulse: contact.impulse,
+            contactImpulseVector: flipNormal
+              ? contact.impulseVector.scale(-1)
+              : contact.impulseVector,
           }
         : {}),
     });
@@ -346,12 +350,14 @@ export class PhysicsWorld {
   /**
    * Extract contact data for a started, non-sensor collision pair. Geometry
    * (normal, point, depth) comes from the first manifold with a solver
-   * contact; the impulse is summed across every manifold, because a pair
-   * against a polyline or compound collider solves one manifold per segment
-   * and the impact is their total. Returns undefined for sensor pairs (no
-   * manifold exists) or pairs with no solver contact yet (rare same-step
-   * start+stop). The returned normal points from handle1 toward handle2;
-   * callers negate it for the handle2-side event.
+   * contact. The impulse accumulates as a vector along each manifold's own
+   * normal — a pair against a polyline or compound collider solves one
+   * manifold per segment, and their normals can differ. The vector and its
+   * magnitude are both reported, so dividing by mass gives the speed change
+   * the solver applied. Returns undefined for sensor pairs (no manifold
+   * exists) or pairs with no solver contact yet (rare same-step
+   * start+stop). The returned normal and impulse vector point from handle1
+   * toward handle2; callers negate them for the handle2-side event.
    */
   private _extractContact(
     handle1: number,
@@ -360,18 +366,24 @@ export class PhysicsWorld {
     let geometry:
       | { normal: Vec2; point: Vec2; penetrationDepth: number }
       | undefined;
-    let impulse = 0;
+    let impulseX = 0;
+    let impulseY = 0;
     this.world.narrowPhase.contactPair(
       handle1,
       handle2,
       (manifold, flipped) => {
+        const n = manifold.normal();
+        const nx = flipped ? -n.x : n.x;
+        const ny = flipped ? -n.y : n.y;
+        let manifoldImpulse = 0;
         for (let i = 0; i < manifold.numContacts(); i++) {
-          impulse += manifold.contactImpulse(i);
+          manifoldImpulse += manifold.contactImpulse(i);
         }
+        impulseX += nx * manifoldImpulse;
+        impulseY += ny * manifoldImpulse;
         if (geometry || manifold.numSolverContacts() === 0) return;
 
-        const n = manifold.normal();
-        const normal = flipped ? new Vec2(-n.x, -n.y) : new Vec2(n.x, n.y);
+        const normal = new Vec2(nx, ny);
         const p = manifold.solverContactPoint(0);
         const point = new Vec2(this.toPixels(p.x), this.toPixels(p.y));
         const penetrationDepth = Math.max(
@@ -381,9 +393,12 @@ export class PhysicsWorld {
         geometry = { normal, point, penetrationDepth };
       },
     );
-    return geometry
-      ? { ...geometry, impulse: this.toPixels(impulse) }
-      : undefined;
+    if (!geometry) return undefined;
+    const impulseVector = new Vec2(
+      this.toPixels(impulseX),
+      this.toPixels(impulseY),
+    );
+    return { ...geometry, impulse: impulseVector.length(), impulseVector };
   }
 
   /** Set gravity in pixels/s². */

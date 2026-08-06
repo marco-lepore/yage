@@ -199,19 +199,26 @@ collider.onCollision((event) => {
 });
 ```
 
-`contactNormal`, `contactPoint`, `penetrationDepth`, and `contactImpulse` are set on started,
-non-sensor collisions:
+`contactNormal`, `contactPoint`, `penetrationDepth`, `contactImpulse`, and
+`contactImpulseVector` are set on started, non-sensor collisions:
 
 - `contactNormal` is a unit `Vec2` pointing from this entity toward the other
   entity.
 - `contactPoint` is a representative contact point in world pixels. A resting
   box can have two contact points; this is the first one, not an average.
 - `penetrationDepth` is the overlap depth in world pixels, always `>= 0`.
-- `contactImpulse` is the total impulse along the contact normal in the same
-  units as `applyImpulse`; friction is not included. Divide it by the body's
-  `getMass()` to get the velocity change along the normal in px/s.
+- `contactImpulse` is the magnitude of the total impulse the solver applied
+  to resolve the contact, in the same units as `applyImpulse`; friction is
+  not included. Divide it by a dynamic body's `getMass()` to get the speed
+  change that body received from the contact, in px/s. A static or kinematic
+  body receives the event too, but no velocity change.
+- `contactImpulseVector` is the same impulse as a `Vec2`, pointing from this
+  entity toward the other like `contactNormal`; its length equals
+  `contactImpulse`. The push on this body points the opposite way:
+  `contactImpulseVector.scale(-1 / getMass())` is a dynamic body's velocity
+  change in px/s.
 
-All four can be `undefined` even on a started event, if Rapier has no contact
+All five can be `undefined` even on a started event, if Rapier has no contact
 manifold for the pair yet (for example a same-step start-and-stop). The
 impulse can be `0` when the solver did not need to apply an impulse, such as
 for a grazing contact.

@@ -964,6 +964,13 @@ describe("PhysicsWorld", () => {
 
       expect((events1[0] as CollisionEvent).contactImpulse).toBeCloseTo(12.5);
       expect((events2[0] as CollisionEvent).contactImpulse).toBeCloseTo(12.5);
+      // The vector is oriented like contactNormal: self toward other.
+      const v1 = (events1[0] as CollisionEvent).contactImpulseVector;
+      const v2 = (events2[0] as CollisionEvent).contactImpulseVector;
+      expect(v1?.x).toBeCloseTo(12.5);
+      expect(v1?.y).toBeCloseTo(0);
+      expect(v2?.x).toBeCloseTo(-12.5);
+      expect(v2?.y).toBeCloseTo(0);
     });
 
     it("sums contactImpulse across all manifold contact points", () => {
@@ -1011,6 +1018,9 @@ describe("PhysicsWorld", () => {
       pw.processCollisionEvents();
 
       expect((events[0] as CollisionEvent).contactImpulse).toBeUndefined();
+      expect(
+        (events[0] as CollisionEvent).contactImpulseVector,
+      ).toBeUndefined();
     });
 
     it("reports a zero contactImpulse for a grazing contact start", () => {
@@ -1043,11 +1053,14 @@ describe("PhysicsWorld", () => {
 
       expect((events1[0] as CollisionEvent).contactImpulse).toBe(0);
       expect((events2[0] as CollisionEvent).contactImpulse).toBe(0);
+      expect((events1[0] as CollisionEvent).contactImpulseVector?.x).toBe(0);
+      expect((events1[0] as CollisionEvent).contactImpulseVector?.y).toBe(0);
     });
 
-    it("sums contactImpulse across manifolds and takes geometry from the first with solver contacts", () => {
+    it("accumulates contactImpulse across manifolds along their normals and takes geometry from the first with solver contacts", () => {
       // Multiple manifolds per pair happen against polyline and compound
-      // colliders — one manifold per segment.
+      // colliders — one manifold per segment, each with its own normal.
+      // The reported impulse is the magnitude of the vector total.
       const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
       const { comp1, collider1, collider2 } = createCollisionPair(pw);
       const world = (
@@ -1074,7 +1087,10 @@ describe("PhysicsWorld", () => {
       pw.processCollisionEvents();
 
       const ev = events[0] as CollisionEvent;
-      expect(ev.contactImpulse).toBeCloseTo(30);
+      // 0.1 along {0,1} plus 0.5 along {1,0}, pixel-scaled.
+      expect(ev.contactImpulse).toBeCloseTo(50 * Math.hypot(0.5, 0.1));
+      expect(ev.contactImpulseVector?.x).toBeCloseTo(25);
+      expect(ev.contactImpulseVector?.y).toBeCloseTo(5);
       expect(ev.contactNormal?.x).toBeCloseTo(1);
       expect(ev.contactNormal?.y).toBeCloseTo(0);
       expect(ev.penetrationDepth).toBeCloseTo(5);
@@ -1234,6 +1250,7 @@ describe("PhysicsWorld", () => {
       expect(ev1.contactPoint).toBeUndefined();
       expect(ev1.penetrationDepth).toBeUndefined();
       expect(ev1.contactImpulse).toBeUndefined();
+      expect(ev1.contactImpulseVector).toBeUndefined();
     });
 
     it("leaves contact fields undefined when no manifold is available (e.g. sensor pairs)", () => {
@@ -1280,6 +1297,7 @@ describe("PhysicsWorld", () => {
       expect(ev1.contactPoint).toBeUndefined();
       expect(ev1.penetrationDepth).toBeUndefined();
       expect(ev1.contactImpulse).toBeUndefined();
+      expect(ev1.contactImpulseVector).toBeUndefined();
     });
   });
 

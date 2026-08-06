@@ -80,6 +80,13 @@ describe("contactImpulse (real Rapier)", () => {
     expect(impulse).toBeDefined();
     expect(impulse!).toBeGreaterThan(expected * 0.85);
     expect(impulse!).toBeLessThan(expected * 1.3);
+
+    // The vector points from the box toward the ground it fell onto (+y),
+    // like contactNormal; the push on the box is its negation.
+    const vector = events[0]!.contactImpulseVector;
+    expect(vector).toBeDefined();
+    expect(vector!.y).toBeCloseTo(impulse!, 1);
+    expect(Math.abs(vector!.x)).toBeLessThan(impulse! * 0.01);
   });
 
   it("sums the impulse across every manifold of a polyline landing", async () => {
