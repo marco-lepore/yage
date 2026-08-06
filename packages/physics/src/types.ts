@@ -241,21 +241,24 @@ export interface CollisionEvent {
   /** True if the collision just started, false if it ended. */
   started: boolean;
   /**
-   * Unit vector pointing from this entity toward the other, in world space.
-   * Only on started, non-sensor collisions; may be absent if no contact
-   * manifold is available (e.g. same-step start+stop).
+   * Unit vector pointing from this entity toward the other, in world space,
+   * for the pair's deepest contact. Two colliders can touch along several
+   * surfaces at once, and this is the surface pushing hardest. Only on
+   * started, non-sensor collisions; may be absent if no contact manifold is
+   * available (e.g. same-step start+stop).
    */
   contactNormal?: Vec2;
   /**
-   * A representative contact point in world pixels (a resting box has two;
-   * this is the first, not an average). Only on started, non-sensor
+   * The world-pixel point of the pair's deepest contact, not an average. A
+   * resting box touches at several points at once; when they are equally
+   * deep, any one of them can be reported. Only on started, non-sensor
    * collisions; may be absent if no contact manifold is available.
    */
   contactPoint?: Vec2;
   /**
-   * Penetration depth in pixels, clamped to >= 0. Only on started,
-   * non-sensor collisions; may be absent if no contact manifold is
-   * available.
+   * Penetration depth of the pair's deepest contact in pixels, clamped to >=
+   * 0. Only on started, non-sensor collisions; may be absent if no contact
+   * manifold is available.
    */
   penetrationDepth?: number;
   /**

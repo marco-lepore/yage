@@ -203,10 +203,14 @@ collider.onCollision((event) => {
 `contactImpulseVector` are set on started, non-sensor collisions:
 
 - `contactNormal` is a unit `Vec2` pointing from this entity toward the other
-  entity.
-- `contactPoint` is a representative contact point in world pixels. A resting
-  box can have two contact points; this is the first one, not an average.
-- `penetrationDepth` is the overlap depth in world pixels, always `>= 0`.
+  entity. Two colliders can touch along several surfaces in the same step. A
+  box crossing a polyline corner touches both segments, and the normal
+  describes the deepest of those contacts, the surface pushing hardest.
+- `contactPoint` is the world-pixel point of that deepest contact, not an
+  average. A resting box touches at several points at once; when they are
+  equally deep, any one of them can be reported.
+- `penetrationDepth` is the overlap depth of that deepest contact in world
+  pixels, always `>= 0`.
 - `contactImpulse` is the magnitude of the total impulse the solver applied
   to resolve the contact, in the same units as `applyImpulse`; friction is
   not included. Divide it by a dynamic body's `getMass()` to get the speed
