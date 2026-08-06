@@ -55,11 +55,12 @@ export class AnimatedSpriteComponent extends VisualComponent {
     return this.animatedSprite;
   }
 
-  /** Play the animation. */
+  /** Resumes from the current frame; `fromStart: true` restarts at frame 0. */
   play(options?: {
     speed?: number;
     loop?: boolean;
     onComplete?: () => void;
+    fromStart?: boolean;
   }): void {
     if (options?.speed !== undefined) {
       this.animatedSprite.animationSpeed = options.speed;
@@ -70,12 +71,32 @@ export class AnimatedSpriteComponent extends VisualComponent {
     if (options?.onComplete) {
       this.animatedSprite.onComplete = options.onComplete;
     }
-    this.animatedSprite.play();
+    if (options?.fromStart) {
+      this.animatedSprite.gotoAndPlay(0);
+    } else {
+      this.animatedSprite.play();
+    }
   }
 
   /** Stop the animation. */
   stop(): void {
     this.animatedSprite.stop();
+  }
+
+  /** Stop playback and hold `index` as a static pose. */
+  gotoFrame(index: number): void {
+    const last = this.animatedSprite.textures.length - 1;
+    if (index < 0 || index > last) {
+      throw new Error(
+        `AnimatedSpriteComponent.gotoFrame: frame ${index} is out of range (0-${last})`,
+      );
+    }
+    this.animatedSprite.gotoAndStop(index);
+  }
+
+  /** Current frame index of the underlying AnimatedSprite. */
+  get frame(): number {
+    return this.animatedSprite.currentFrame;
   }
 
   /** Whether the animation is currently playing. */

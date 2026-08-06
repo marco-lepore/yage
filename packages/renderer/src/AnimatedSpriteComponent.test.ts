@@ -108,6 +108,12 @@ const { mocks } = vi.hoisted(() => {
       this.play();
     }
 
+    gotoAndStop(frame: number): void {
+      this.currentTime = frame;
+      this.setFrame(frame);
+      this.stop();
+    }
+
     update(ticker: { deltaTime: number }): void {
       if (!this.playing) return;
       this.lastDeltaTime = ticker.deltaTime;
@@ -316,6 +322,30 @@ describe("AnimatedSpriteComponent", () => {
     expect(comp.isPlaying).toBe(false);
   });
 
+  it("gotoFrame() holds the selected frame through engine updates", () => {
+    const { component, updateSystem } = setupPlayback();
+    component.play();
+
+    component.gotoFrame(2);
+
+    expect(component.frame).toBe(2);
+    expect(component.isPlaying).toBe(false);
+    updateSystem.update(1 / 60);
+    updateSystem.update(1 / 60);
+    expect(component.frame).toBe(2);
+  });
+
+  it("gotoFrame() rejects frames outside the source", () => {
+    const component = new AnimatedSpriteComponent({ source: SOURCE });
+
+    expect(() => component.gotoFrame(-1)).toThrow(
+      "AnimatedSpriteComponent.gotoFrame: frame -1 is out of range (0-1)",
+    );
+    expect(() => component.gotoFrame(2)).toThrow(
+      "AnimatedSpriteComponent.gotoFrame: frame 2 is out of range (0-1)",
+    );
+  });
+
   it("isPlaying reflects animation state", () => {
     const comp = new AnimatedSpriteComponent({ source: SOURCE });
     expect(comp.isPlaying).toBe(false);
@@ -404,17 +434,55 @@ describe("AnimatedSpriteComponent", () => {
 
     it("does not advance while stopped and resumes from the same frame", () => {
       const comp = new AnimatedSpriteComponent({ source: PLAYBACK_SOURCE });
-      const sprite = comp.animatedSprite as unknown as MockSprite;
       comp.play();
       comp.update(1 / 60);
       comp.stop();
 
       comp.update(1 / 60);
-      expect(sprite.currentFrame).toBe(1);
+      expect(comp.frame).toBe(1);
 
       comp.play();
+      expect(comp.frame).toBe(1);
       comp.update(1 / 60);
-      expect(sprite.currentFrame).toBe(2);
+      expect(comp.frame).toBe(2);
+    });
+
+    it("restarts a completed non-looping animation from frame 0", () => {
+      const { component, updateSystem } = setupPlayback();
+      component.play({ loop: false });
+
+      updateSystem.update(1 / 60);
+      expect(component.frame).toBe(1);
+      updateSystem.update(1 / 60);
+      expect(component.frame).toBe(2);
+      updateSystem.update(1 / 60);
+      expect(component.frame).toBe(3);
+      updateSystem.update(1 / 60);
+      expect(component.isPlaying).toBe(false);
+
+      component.play({ fromStart: true });
+      expect(component.frame).toBe(0);
+      updateSystem.update(1 / 60);
+      expect(component.frame).toBe(1);
+      updateSystem.update(1 / 60);
+      expect(component.frame).toBe(2);
+      updateSystem.update(1 / 60);
+      expect(component.frame).toBe(3);
+      updateSystem.update(1 / 60);
+      expect(component.isPlaying).toBe(false);
+    });
+
+    it("applies playback options when restarting from frame 0", () => {
+      const { component, updateSystem } = setupPlayback();
+      component.gotoFrame(3);
+
+      component.play({ fromStart: true, speed: 2, loop: false });
+
+      expect(component.frame).toBe(0);
+      expect(component.animatedSprite.animationSpeed).toBe(2);
+      expect(component.animatedSprite.loop).toBe(false);
+      updateSystem.update(1 / 60);
+      expect(component.frame).toBe(2);
     });
 
     it("keeps gotoAndPlay, onLoop, and onFrameChange behavior", () => {
