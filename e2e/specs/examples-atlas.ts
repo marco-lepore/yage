@@ -88,4 +88,16 @@ export const EXAMPLE_SCRIPTS: Record<string, ExampleScript> = {
       { tap: "KeyQ", frames: 10 },
     ],
   },
+
+  // The scene opens already roped and swinging. Let it swing, convert the
+  // live grapple to elastic with E, then re-grapple elsewhere with a click.
+  "physics-joints": {
+    warmup: 10,
+    actions: [
+      { step: 90 },
+      { tap: "KeyE", frames: 10 },
+      { click: [600, 180] },
+      { step: 120 },
+    ],
+  },
 };

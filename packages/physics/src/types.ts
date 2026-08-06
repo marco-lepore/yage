@@ -67,6 +67,48 @@ export interface RigidBodyConfig {
   syncRotation?: boolean;
 }
 
+/** Elastic connection between two bodies. Pulls together when stretched past
+ * restLength, pushes apart when compressed below it. */
+export interface SpringJointConfig {
+  type: "spring";
+  /** Distance the spring tries to hold, in pixels. */
+  restLength: number;
+  /**
+   * Spring strength, mass-relative: a body of mass m stretched by d pixels
+   * accelerates at stiffness * d / m px/s². Passed to the solver unconverted,
+   * and collider mass depends on pixelsPerMeter (density × area in meters) —
+   * retune after changing the scale.
+   */
+  stiffness: number;
+  /** Resists relative motion along the spring axis. Same mass-relative units as stiffness. */
+  damping: number;
+  /** Attachment point on body A in pixels, local to the body. Default: body origin. */
+  anchorA?: Vec2Like;
+  /** Attachment point on body B in pixels, local to the body. Default: body origin. */
+  anchorB?: Vec2Like;
+}
+
+/** Inextensible tether that keeps the anchor points within length. */
+export interface RopeJointConfig {
+  type: "rope";
+  /** Maximum distance between the anchor points, in pixels. */
+  length: number;
+  /** Attachment point on body A in pixels, local to the body. Default: body origin. */
+  anchorA?: Vec2Like;
+  /** Attachment point on body B in pixels, local to the body. Default: body origin. */
+  anchorB?: Vec2Like;
+}
+
+export type JointConfig = SpringJointConfig | RopeJointConfig;
+
+/** Live joint created by `PhysicsWorld.addJoint`. */
+export interface JointHandle {
+  /** True while the joint exists in the simulation. Becomes false after remove(), or when either jointed body is disabled or removed. */
+  readonly attached: boolean;
+  /** Detach and free the joint. Safe to call more than once. */
+  remove(): void;
+}
+
 /** Discriminated union for collider shapes. All dimensions in pixels. */
 export type ColliderShape =
   | { type: "box"; width: number; height: number }
