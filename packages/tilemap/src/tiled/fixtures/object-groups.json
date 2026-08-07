@@ -1,0 +1,78 @@
+{
+  "width": 1,
+  "height": 1,
+  "tilewidth": 16,
+  "tileheight": 16,
+  "orientation": "orthogonal",
+  "layers": [
+    {
+      "type": "objectgroup",
+      "id": 1,
+      "name": "entrances",
+      "objects": [
+        {
+          "id": 1,
+          "name": "north",
+          "class": "Spawn",
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "point": true
+        },
+        {
+          "id": 2,
+          "name": "Spawn",
+          "x": 1,
+          "y": 1,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "point": true
+        }
+      ],
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "type": "objectgroup",
+      "id": 2,
+      "name": "exits",
+      "objects": [
+        {
+          "id": 3,
+          "name": "south",
+          "class": "Spawn",
+          "x": 2,
+          "y": 2,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "point": true
+        },
+        {
+          "id": 4,
+          "name": "Spawn",
+          "x": 3,
+          "y": 3,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "point": true
+        }
+      ],
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "tilesets": []
+}

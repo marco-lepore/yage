@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mocks } = vi.hoisted(() => {
+const { mocks, animationState } = vi.hoisted(() => {
+  const animationState = { hasAnimatedTiles: false };
+
   class MockContainer {
     children: MockContainer[] = [];
     position = { x: 0, y: 0 };
@@ -8,12 +10,26 @@ const { mocks } = vi.hoisted(() => {
     rotation = 0;
     visible = true;
     alpha = 1;
+    tint = 0xffffff;
+    blendMode = "inherit";
+    filters: unknown[] | null = null;
     parent: MockContainer | null = null;
     sortableChildren = false;
     zIndex = 0;
     label = "";
     destroyed = false;
     eventMode = "passive";
+    tileAnimWrites = 0;
+    private _tileAnim: [number, number] = [0, 0];
+
+    get tileAnim(): [number, number] {
+      return this._tileAnim;
+    }
+
+    set tileAnim(value: [number, number]) {
+      this._tileAnim = value;
+      this.tileAnimWrites++;
+    }
 
     addChild(child: MockContainer): MockContainer {
       this.children.push(child);
@@ -49,11 +65,18 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
-  return { mocks: { MockContainer } };
+  class MockColorMatrixFilter {
+    matrix: number[] = [];
+
+    destroy(): void {}
+  }
+
+  return { mocks: { MockContainer, MockColorMatrixFilter }, animationState };
 });
 
 vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
+  ColorMatrixFilter: mocks.MockColorMatrixFilter,
   Assets: { get: vi.fn() },
   Texture: vi.fn(),
   Rectangle: vi.fn(),
@@ -64,6 +87,7 @@ vi.mock("@pixi/tilemap", () => ({
 }));
 
 vi.mock("./tiled/parseTiledMap.js", () => ({
+  _tilemapLayerHasAnimation: vi.fn(() => animationState.hasAnimatedTiles),
   createTilemapLayers: vi.fn(() => [new mocks.MockContainer()]),
   toTilemapData: vi.fn((map: Record<string, unknown>) => ({
     width: map.width,
@@ -72,6 +96,8 @@ vi.mock("./tiled/parseTiledMap.js", () => ({
     tileHeight: map.tileheight,
     tileLayers: [],
     objectLayers: [],
+    tilesets: [],
+    diagnostics: [],
   })),
 }));
 
@@ -179,6 +205,7 @@ const testMap: TiledMapData = {
 describe("TilemapRenderSystem", () => {
   beforeEach(() => {
     _resetEntityIdCounter();
+    animationState.hasAnimatedTiles = false;
   });
 
   it("has Render phase and priority -1", () => {
@@ -203,7 +230,7 @@ describe("TilemapRenderSystem", () => {
     );
     const comp = entity.add(new TilemapComponent({ map: testMap }));
 
-    system.update();
+    system.update(0);
 
     const container = comp.container as unknown as InstanceType<
       typeof mocks.MockContainer
@@ -223,15 +250,55 @@ describe("TilemapRenderSystem", () => {
 
     const entity = scene.spawn("tilemap");
     entity.add(new Transform({ position: new Vec2(50, 0) }));
+    animationState.hasAnimatedTiles = true;
     const comp = entity.add(new TilemapComponent({ map: testMap }));
 
     comp.enabled = false;
 
-    system.update();
+    system.update(0.5);
 
     const container = comp.container as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
     expect(container.position.x).toBe(0); // Not synced
+    expect(container.children[0]?.tileAnimWrites).toBe(0);
+  });
+
+  it("advances animations in milliseconds without requiring a Transform", () => {
+    const { ctx, scene } = createTestContext();
+    const system = new TilemapRenderSystem();
+    system._setContext(ctx);
+    system.onRegister(ctx);
+    animationState.hasAnimatedTiles = true;
+
+    const entity = scene.spawn("tilemap");
+    const comp = entity.add(new TilemapComponent({ map: testMap }));
+
+    system.update(0.25);
+    system.update(0.05);
+
+    const container = comp.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    expect(container.children[0]?.tileAnim).toEqual([300, 300]);
+    expect(container.children[0]?.tileAnimWrites).toBe(2);
+  });
+
+  it("does not write the animation counter for a map without animations", () => {
+    const { ctx, scene } = createTestContext();
+    const system = new TilemapRenderSystem();
+    system._setContext(ctx);
+    system.onRegister(ctx);
+
+    const entity = scene.spawn("tilemap");
+    const comp = entity.add(new TilemapComponent({ map: testMap }));
+
+    system.update(0.5);
+
+    const container = comp.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    expect(container.children[0]?.tileAnim).toEqual([0, 0]);
+    expect(container.children[0]?.tileAnimWrites).toBe(0);
   });
 });

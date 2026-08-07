@@ -11,12 +11,16 @@ function buildTilemap(overrides: Partial<TilemapData> = {}): TilemapData {
     height: 3,
     tileWidth: 10,
     tileHeight: 10,
+    tilesets: [],
+    diagnostics: [],
     tileLayers: [
       {
         name: "collision",
         width: 4,
         height: 3,
         visible: true,
+        offsetX: 0,
+        offsetY: 0,
         // prettier-ignore
         data: [
           0, 0, 0, 0,
@@ -51,6 +55,8 @@ describe("gridFromTilemap", () => {
           width: 4,
           height: 3,
           visible: true,
+          offsetX: 0,
+          offsetY: 0,
           // prettier-ignore
           data: [
             0, 0, 0, 0,
@@ -63,6 +69,8 @@ describe("gridFromTilemap", () => {
           width: 4,
           height: 3,
           visible: true,
+          offsetX: 0,
+          offsetY: 0,
           // prettier-ignore
           data: [
             0, 0, 0, 0,
@@ -147,6 +155,8 @@ function buildData(overrides: Partial<TilemapData> = {}): TilemapData {
     tileHeight: 10,
     tileLayers: [],
     objectLayers: [],
+    tilesets: [],
+    diagnostics: [],
     ...overrides,
   };
 }

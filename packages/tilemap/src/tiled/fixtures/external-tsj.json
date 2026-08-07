@@ -1,0 +1,9 @@
+{
+  "width": 1,
+  "height": 1,
+  "tilewidth": 16,
+  "tileheight": 16,
+  "orientation": "orthogonal",
+  "layers": [],
+  "tilesets": [{ "firstgid": 1, "source": "terrain.tsj" }]
+}

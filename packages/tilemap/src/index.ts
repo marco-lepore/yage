@@ -31,10 +31,14 @@ export {
 
 // Generic types
 export type {
+  TilemapDiagnostic,
+  TilemapDiagnosticCode,
   TilemapData,
   TileLayerData,
   ObjectLayerData,
+  TilesetInfo,
   MapObject,
+  MapObjectGroup,
   MapObjectProperty,
   HasProperties,
   TilemapColliderConfig,
@@ -47,15 +51,25 @@ export type {
 
 // Tiled-specific (re-exported for backward compatibility)
 export { tiledMapAssetExtension } from "./tiled/tiledMapLoader.js";
+export { validateTiledMap } from "./tiled/diagnostics.js";
+export { resolveTilesetData } from "./tiled/resolveTilesetData.js";
+export { readTileGid, tileIdFromGid } from "./tiled/gid.js";
+export type { TileGid } from "./tiled/gid.js";
 export {
   createTilemapLayers,
+  extractObjectGroups,
   extractObjects,
   toTilemapData,
 } from "./tiled/parseTiledMap.js";
+export type { TiledObjectGroup } from "./tiled/parseTiledMap.js";
 export type {
   TiledMapData,
+  TiledLayer,
   TileLayer,
+  TileChunk,
   ObjectGroup,
+  GroupLayer,
+  ImageLayer,
   TileObject,
   RectangleObject,
   PolygonObject,
@@ -66,4 +80,5 @@ export type {
   TilesetRef,
   TilesetData,
   TileData,
+  TileAnimationFrame,
 } from "./tiled/types.js";

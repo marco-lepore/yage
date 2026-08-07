@@ -2,20 +2,28 @@ import { System, Phase, Transform, QueryCacheKey } from "@yagejs/core";
 import type { EngineContext, QueryResult } from "@yagejs/core";
 import { TilemapComponent } from "./TilemapComponent.js";
 
-/** Syncs Transform to TilemapComponent display containers. */
+/** Syncs tilemap transforms and advances shader tile animations. */
 export class TilemapRenderSystem extends System {
   readonly phase = Phase.Render;
   readonly priority = -1; // Before DisplaySystem (0), so tilemaps render behind sprites
 
-  private query!: QueryResult;
+  private tilemapQuery!: QueryResult;
+  private transformQuery!: QueryResult;
 
   onRegister(context: EngineContext): void {
     const queryCache = context.resolve(QueryCacheKey);
-    this.query = queryCache.register([Transform, TilemapComponent]);
+    this.tilemapQuery = queryCache.register([TilemapComponent]);
+    this.transformQuery = queryCache.register([Transform, TilemapComponent]);
   }
 
-  update(): void {
-    for (const entity of this.query) {
+  update(dt: number): void {
+    for (const entity of this.tilemapQuery) {
+      const tilemap = entity.get(TilemapComponent);
+      if (!tilemap.enabled) continue;
+      tilemap._advanceTileAnimation(dt);
+    }
+
+    for (const entity of this.transformQuery) {
       const transform = entity.get(Transform);
       const tilemap = entity.get(TilemapComponent);
       if (!tilemap.enabled) continue;

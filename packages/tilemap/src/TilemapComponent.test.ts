@@ -8,6 +8,9 @@ const { mocks } = vi.hoisted(() => {
     rotation = 0;
     visible = true;
     alpha = 1;
+    tint = 0xffffff;
+    blendMode = "inherit";
+    filters: unknown[] | null = null;
     parent: MockContainer | null = null;
     sortableChildren = false;
     zIndex = 0;
@@ -49,13 +52,23 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
+  class MockColorMatrixFilter {
+    matrix: number[] = [];
+    destroyed = false;
+
+    destroy(): void {
+      this.destroyed = true;
+    }
+  }
+
   const mockAssetsGet = vi.fn();
 
-  return { mocks: { MockContainer, mockAssetsGet } };
+  return { mocks: { MockContainer, MockColorMatrixFilter, mockAssetsGet } };
 });
 
 vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
+  ColorMatrixFilter: mocks.MockColorMatrixFilter,
   Assets: { get: mocks.mockAssetsGet },
   Texture: vi.fn(),
   Rectangle: vi.fn(),
@@ -109,6 +122,7 @@ import type { SceneRenderTree } from "@yagejs/renderer";
 import { AssetHandle } from "@yagejs/core";
 import { TilemapComponent } from "./TilemapComponent.js";
 import { tiledObjectKey } from "./keys.js";
+import { loadFixture } from "./tiled/fixtures/loadFixture.js";
 import type { TiledMapData } from "./tiled/types.js";
 
 class TestScene extends Scene {
@@ -329,18 +343,23 @@ describe("TilemapComponent", () => {
     ).toHaveLength(2);
   });
 
-  it("onDestroy removes container from parent and destroys it", () => {
+  it("onDestroy removes the color filter and destroys the container", () => {
     const { scene } = createTestContext();
     const entity = scene.spawn("tilemap");
     entity.add(new Transform());
     const comp = entity.add(new TilemapComponent({ map: testMap }));
+    comp.tint = 0xff0000;
 
     const container = comp.container as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
+    const filter = container.filters?.[0] as InstanceType<
+      typeof mocks.MockColorMatrixFilter
+    >;
     expect(container.parent).not.toBeNull();
 
     comp.onDestroy?.();
+    expect(filter.destroyed).toBe(true);
     expect(container.parent).toBeNull();
     expect(container.destroyed).toBe(true);
   });
@@ -380,6 +399,53 @@ describe("TilemapComponent", () => {
     expect(comp.getTileAt(0, 0)).toBeNull();
   });
 
+  it("getTileAt strips Tiled's flip bits off the returned id", () => {
+    const { scene } = createTestContext();
+    const entity = scene.spawn("tilemap");
+    const flippedMap = loadFixture("flipped.json");
+    const comp = entity.add(new TilemapComponent({ map: flippedMap }));
+
+    // Eight tiles across, same tile id, one per flag combination — every one
+    // reads back as tile 1 so a comparison works whichever way it faces.
+    for (let col = 0; col < 8; col++) {
+      expect(comp.getTileAt(col * 16 + 8, 8)).toBe(1);
+    }
+  });
+
+  it("getTileAt accounts for each tile layer offset", () => {
+    const { scene } = createTestContext();
+    const entity = scene.spawn("tilemap");
+    entity.add(new Transform());
+    const comp = entity.add(
+      new TilemapComponent({
+        map: {
+          ...testMap,
+          width: 1,
+          height: 1,
+          layers: [
+            {
+              type: "tilelayer",
+              data: [7],
+              width: 1,
+              height: 1,
+              id: 1,
+              name: "offset ground",
+              opacity: 1,
+              visible: true,
+              x: 0,
+              y: 0,
+              offsetx: 16,
+              offsety: 8,
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(comp.getTileAt(16, 8)).toBe(7);
+    expect(comp.getTileAt(0, 0)).toBeNull();
+  });
+
   it("getCollisionShapes returns collision shapes", () => {
     const comp = new TilemapComponent({ map: testMap });
     const shapes = comp.getCollisionShapes();
@@ -391,6 +457,121 @@ describe("TilemapComponent", () => {
     const comp = new TilemapComponent({ map: testMap });
     const objects = comp.getObjects();
     expect(objects["wall"]).toBeDefined();
+  });
+
+  it("getObjectGroups preserves layer and class namespaces", () => {
+    const comp = new TilemapComponent({
+      map: loadFixture("object-groups.json"),
+    });
+    const groups = comp.getObjectGroups();
+
+    expect(
+      groups.map((group) => ({
+        layer: group.layer,
+        class: group.class,
+        ids: group.objects.map((object) => object.id),
+      })),
+    ).toEqual([
+      { layer: "entrances", class: "Spawn", ids: [1] },
+      { layer: "entrances", class: undefined, ids: [2] },
+      { layer: "exits", class: "Spawn", ids: [3] },
+      { layer: "exits", class: undefined, ids: [4] },
+    ]);
+    expect(comp.getObjectGroups("exits")).toHaveLength(2);
+  });
+
+  it("reads properties from map, layer, and tileset views", () => {
+    const comp = new TilemapComponent({ map: loadFixture("properties.json") });
+
+    expect(comp.getProperty<string>(comp.data, "biome")).toBe("forest");
+    expect(comp.getPropertyArray<string>(comp.data, "music")).toEqual([
+      "day",
+      "night",
+    ]);
+    expect(comp.getProperty<number>(comp.data.tileLayers[0]!, "parallax")).toBe(
+      0.5,
+    );
+    expect(
+      comp.getProperty<string>(comp.data.objectLayers[0]!, "purpose"),
+    ).toBe("spawns");
+    expect(comp.getProperty<string>(comp.data.tilesets[0]!, "material")).toBe(
+      "grass",
+    );
+  });
+
+  describe("visual options", () => {
+    it("exposes an effects host", () => {
+      const comp = new TilemapComponent({ map: testMap });
+      expect(comp.fx).toBeDefined();
+    });
+
+    it("adds one tint filter and removes it when tint returns to white", () => {
+      const comp = new TilemapComponent({ map: testMap });
+      comp.tint = 0xff0000;
+      expect(comp.container.filters).toHaveLength(1);
+      const filter = comp.container.filters?.[0] as unknown as InstanceType<
+        typeof mocks.MockColorMatrixFilter
+      >;
+      expect(filter.matrix[0]).toBe(1);
+      expect(filter.matrix[6]).toBe(0);
+      expect(filter.matrix[12]).toBe(0);
+
+      comp.tint = 0x00ff00;
+      expect(comp.container.filters).toHaveLength(1);
+
+      comp.tint = 0xffffff;
+      expect(comp.container.filters).toBeNull();
+      expect(filter.destroyed).toBe(true);
+    });
+
+    it("adds the color filter while alpha is below one", () => {
+      const comp = new TilemapComponent({ map: testMap });
+      comp.alpha = 0.5;
+      expect(comp.container.filters).toHaveLength(1);
+      const filter = comp.container.filters?.[0] as unknown as InstanceType<
+        typeof mocks.MockColorMatrixFilter
+      >;
+      expect(filter.matrix[18]).toBe(0.5);
+
+      comp.alpha = 1;
+      expect(comp.container.filters).toBeNull();
+    });
+
+    it("preserves separately added filters and tints ahead of them", () => {
+      const comp = new TilemapComponent({ map: testMap });
+      const external = { label: "external filter" };
+      comp.container.filters = [external as never];
+
+      comp.tint = 0x336699;
+      expect(comp.container.filters).toHaveLength(2);
+      expect(comp.container.filters?.[1]).toBe(external);
+
+      comp.tint = 0xffffff;
+      expect(comp.container.filters).toEqual([external]);
+    });
+  });
+
+  describe("diagnostics", () => {
+    it("warns once with every diagnostic for an unsupported map", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const map = loadFixture("infinite-chunked.json");
+
+      new TilemapComponent({ map });
+
+      expect(warnSpy).toHaveBeenCalledOnce();
+      expect(warnSpy.mock.calls[0]?.[0]).toContain("infinite-map");
+      expect(warnSpy.mock.calls[0]?.[0]).toContain("chunked-layer");
+      warnSpy.mockRestore();
+    });
+
+    it("does not warn for a clean map", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      new TilemapComponent({ map: loadFixture("clean.json") });
+
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
   });
 
   describe("serialization", () => {
@@ -432,6 +613,9 @@ describe("TilemapComponent", () => {
         layer: "bg",
       });
       expect(comp.serialize()).toEqual({
+        tint: 0xffffff,
+        alpha: 1,
+        visible: true,
         mapKey: "dungeon.json",
         layers: ["ground"],
         layer: "bg",
@@ -451,6 +635,29 @@ describe("TilemapComponent", () => {
       mocks.mockAssetsGet.mockReset();
     });
 
+    it("round-trips tint, alpha, and render layer", () => {
+      mocks.mockAssetsGet.mockReturnValue(testMap);
+      const original = new TilemapComponent({
+        mapKey: "dungeon.json",
+        layer: "background",
+        tint: 0x336699,
+        alpha: 0.4,
+      });
+
+      const data = original.serialize()!;
+      const restored = TilemapComponent.fromSnapshot(data);
+
+      expect(restored.tint).toBe(0x336699);
+      expect(restored.alpha).toBe(0.4);
+      expect(restored.layerName).toBe("background");
+      // The base class writes constructor options straight to the container,
+      // bypassing the overridden setters, so a restored tilemap only renders
+      // tinted if construction syncs the filter itself.
+      expect(restored.container.filters).toHaveLength(1);
+      expect(restored.serialize()).toEqual(data);
+      mocks.mockAssetsGet.mockReset();
+    });
+
     it("source-handle construction captures the asset path as mapKey", () => {
       mocks.mockAssetsGet.mockReturnValue(testMap);
       const handle = new AssetHandle<TiledMapData>(
@@ -460,6 +667,9 @@ describe("TilemapComponent", () => {
       const comp = new TilemapComponent({ source: handle });
       expect(comp.mapKey).toBe("/assets/dungeon.json");
       expect(comp.serialize()).toEqual({
+        tint: 0xffffff,
+        alpha: 1,
+        visible: true,
         mapKey: "/assets/dungeon.json",
         layer: "default",
       });

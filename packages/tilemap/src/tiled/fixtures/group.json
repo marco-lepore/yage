@@ -1,0 +1,29 @@
+{
+  "width": 1,
+  "height": 1,
+  "tilewidth": 16,
+  "tileheight": 16,
+  "orientation": "orthogonal",
+  "layers": [
+    {
+      "type": "group",
+      "id": 1,
+      "name": "editor organisation",
+      "layers": [
+        {
+          "type": "tilelayer",
+          "id": 2,
+          "name": "nested ground",
+          "data": [1],
+          "width": 1,
+          "height": 1,
+          "opacity": 1,
+          "visible": true,
+          "x": 0,
+          "y": 0
+        }
+      ]
+    }
+  ],
+  "tilesets": []
+}

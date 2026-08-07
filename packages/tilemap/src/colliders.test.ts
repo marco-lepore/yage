@@ -9,8 +9,16 @@ function makeMap(objects: MapObject[]): TilemapData {
     tileWidth: 16,
     tileHeight: 16,
     tileLayers: [],
+    tilesets: [],
+    diagnostics: [],
     objectLayers: [
-      { name: "collisions", objects, visible: true },
+      {
+        name: "collisions",
+        objects,
+        visible: true,
+        offsetX: 0,
+        offsetY: 0,
+      },
     ],
   };
 }
@@ -24,7 +32,14 @@ function makeMultiLayerMap(
     tileWidth: 16,
     tileHeight: 16,
     tileLayers: [],
-    objectLayers: layers.map((l) => ({ ...l, visible: true })),
+    tilesets: [],
+    diagnostics: [],
+    objectLayers: layers.map((l) => ({
+      ...l,
+      visible: true,
+      offsetX: 0,
+      offsetY: 0,
+    })),
   };
 }
 

@@ -35,6 +35,10 @@ const GID_MASK = 0x0fffffff;
  * walkability + cost pass over the grid once; the returned graph's
  * `isWalkable`/`cost` read the precomputed arrays instead of re-scanning the
  * layers on every `findPath` call.
+ *
+ * Cells come from the tile grid alone: a layer's `offsetX`/`offsetY` shifts
+ * where that layer draws, not which cell a tile occupies, and layers read
+ * together can carry different offsets. Set `origin` to move the whole grid.
  */
 export function gridFromTilemap(
   data: TilemapData,

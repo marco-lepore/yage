@@ -1,9 +1,22 @@
-import { Component, Transform, serializable } from "@yagejs/core";
+import { Transform, serializable } from "@yagejs/core";
 import type { AssetHandle } from "@yagejs/core";
-import { Assets, Container } from "pixi.js";
-import { SceneRenderTreeKey } from "@yagejs/renderer";
-import type { DisplayContainer } from "@yagejs/renderer";
-import { createTilemapLayers, toTilemapData } from "./tiled/parseTiledMap.js";
+import type { CompositeTilemap } from "@pixi/tilemap";
+import { Assets, ColorMatrixFilter, Container } from "pixi.js";
+import { VisualComponent, visualOptionsFromData } from "@yagejs/renderer";
+import type {
+  ColorValue,
+  DestroyOptions,
+  DisplayContainer,
+  Filter,
+  VisualComponentData,
+  VisualComponentOptions,
+} from "@yagejs/renderer";
+import {
+  _tilemapLayerHasAnimation,
+  createTilemapLayers,
+  toTilemapData,
+} from "./tiled/parseTiledMap.js";
+import { tileIdFromGid } from "./tiled/gid.js";
 import { extractCollisionShapes } from "./colliders.js";
 import { tiledObjectKey } from "./keys.js";
 import {
@@ -15,12 +28,14 @@ import {
 import type { TiledMapData } from "./tiled/types.js";
 import type {
   TilemapData,
+  HasProperties,
   MapObject,
+  MapObjectGroup,
   TilemapColliderConfig,
 } from "./types.js";
 
 /** Options for creating a TilemapComponent. */
-export interface TilemapComponentOptions {
+export interface TilemapComponentOptions extends VisualComponentOptions {
   /** Asset handle for the map. Preferred — captures both the parsed data and the asset path. */
   source?: AssetHandle<TiledMapData>;
   /** Parsed Tiled map data. Use only when you don't have an AssetHandle. Save/load and auto-keys require `mapKey` or `source`. */
@@ -29,8 +44,6 @@ export interface TilemapComponentOptions {
   mapKey?: string;
   /** Which tile layers to render. Omit to render all. */
   layers?: string[];
-  /** Render layer name. Default: "default". */
-  layer?: string;
   /**
    * Override prefix used when auto-keying entities spawned from Tiled objects.
    * Defaults to `mapKey`. Set this when multiple instances of the same map need
@@ -40,21 +53,18 @@ export interface TilemapComponentOptions {
 }
 
 /** Serializable snapshot of a TilemapComponent. */
-export interface TilemapComponentData {
+export interface TilemapComponentData extends VisualComponentData {
   mapKey: string;
   layers?: string[];
-  layer: string;
   keyPrefix?: string;
 }
 
 /** Component that renders a Tiled map using @pixi/tilemap. */
 @serializable
-export class TilemapComponent extends Component {
+export class TilemapComponent extends VisualComponent {
   static restorePriority = 50;
 
   readonly container: DisplayContainer;
-  /** Container visibility to restore on enable, so a hand-set hide survives. */
-  private _visibleWhenActive = true;
   readonly data: TilemapData;
   /** Asset path of this map, or `null` if constructed from a raw `TiledMapData` without one. */
   readonly mapKey: string | null;
@@ -62,13 +72,16 @@ export class TilemapComponent extends Component {
   readonly keyPrefix: string | null;
   private readonly _tiledMap: TiledMapData;
   private readonly layerNames: string[] | undefined;
-  private readonly renderLayerName: string;
   private readonly _explicitKeyPrefix: string | undefined;
+  private _tilemapLayers: CompositeTilemap[] = [];
+  private _hasAnimatedTiles = false;
+  private _animationTimeMs = 0;
+  private _colorFilter: ColorMatrixFilter | undefined;
   /** Lazy flat-list cache. The parsed map is treated as immutable post-construction; if that ever changes, callers must invalidate. */
   private _allObjectsCache: MapObject[] | undefined;
 
   constructor(options: TilemapComponentOptions) {
-    super();
+    super(options.layer);
 
     const sourceCount =
       (options.source ? 1 : 0) +
@@ -105,37 +118,69 @@ export class TilemapComponent extends Component {
 
     this.data = toTilemapData(this._tiledMap);
     this.layerNames = options.layers;
-    this.renderLayerName = options.layer ?? "default";
     this._explicitKeyPrefix = options.keyPrefix;
     this.keyPrefix = options.keyPrefix ?? this.mapKey;
     this.container = new Container();
+
+    if (this.data.diagnostics.length > 0) {
+      const mapLabel = this.mapKey ?? "<inline map>";
+      const details = this.data.diagnostics
+        .map(
+          (diagnostic) =>
+            `[${diagnostic.severity}] ${diagnostic.code}: ${diagnostic.message}`,
+        )
+        .join("\n");
+      console.warn(`TilemapComponent "${mapLabel}" diagnostics:\n${details}`);
+    }
+
+    this.applyVisualOptions(options);
+    this.syncColorFilter();
+  }
+
+  /** The underlying tilemap container. */
+  get renderObject(): DisplayContainer {
+    return this.container;
+  }
+
+  // The tilemap shader has no color uniform, so a filter applies tint and
+  // alpha to the rendered tilemap texture.
+  override set tint(color: ColorValue) {
+    this.container.tint = color;
+    this.syncColorFilter();
+  }
+
+  override get tint(): number {
+    return this.container.tint;
+  }
+
+  override set alpha(alpha: number) {
+    this.container.alpha = alpha;
+    this.syncColorFilter();
+  }
+
+  override get alpha(): number {
+    return this.container.alpha;
   }
 
   onAdd(): void {
-    const tilemapLayers = createTilemapLayers(this._tiledMap, this.layerNames);
-    for (const layer of tilemapLayers) {
+    this._tilemapLayers = createTilemapLayers(this._tiledMap, this.layerNames);
+    this._hasAnimatedTiles = this._tilemapLayers.some(
+      _tilemapLayerHasAnimation,
+    );
+    for (const layer of this._tilemapLayers) {
       this.container.addChild(layer);
     }
-
-    const renderLayer = this.use(SceneRenderTreeKey).get(this.renderLayerName);
-    renderLayer.container.addChild(this.container);
-    // A component is never effectively enabled during `onAdd` — `onEnable`
-    // runs right after, and only for an active entity.
-    this.container.visible = false;
+    super.onAdd();
   }
 
-  onDisable(): void {
-    this._visibleWhenActive = this.container.visible;
-    this.container.visible = false;
-  }
+  /** @internal */
+  _advanceTileAnimation(deltaSeconds: number): void {
+    if (!this._hasAnimatedTiles) return;
 
-  onEnable(): void {
-    this.container.visible = this._visibleWhenActive;
-  }
-
-  onDestroy(): void {
-    this.container.removeFromParent();
-    this.container.destroy({ children: true });
+    this._animationTimeMs += deltaSeconds * 1000;
+    for (const layer of this._tilemapLayers) {
+      layer.tileAnim = [this._animationTimeMs, this._animationTimeMs];
+    }
   }
 
   serialize(): TilemapComponentData | null {
@@ -147,8 +192,8 @@ export class TilemapComponent extends Component {
       return null;
     }
     return {
+      ...this.serializeVisual(),
       mapKey: this.mapKey,
-      layer: this.renderLayerName,
       ...(this.layerNames && { layers: this.layerNames }),
       ...(this._explicitKeyPrefix !== undefined && {
         keyPrefix: this._explicitKeyPrefix,
@@ -156,10 +201,15 @@ export class TilemapComponent extends Component {
     };
   }
 
+  /** Restore effects and masks after the tilemap is parented. */
+  afterRestore(data: TilemapComponentData): void {
+    this.restoreVisual(data);
+  }
+
   static fromSnapshot(data: TilemapComponentData): TilemapComponent {
     return new TilemapComponent({
+      ...visualOptionsFromData(data),
       mapKey: data.mapKey,
-      layer: data.layer,
       ...(data.layers && { layers: data.layers }),
       ...(data.keyPrefix !== undefined && { keyPrefix: data.keyPrefix }),
     });
@@ -186,8 +236,13 @@ export class TilemapComponent extends Component {
   }
 
   /**
-   * Returns the tile GID at a world position, accounting for entity Transform offset.
-   * Returns null if the position is outside the map or the tile is empty.
+   * Returns the tile id at a world position, accounting for the entity
+   * Transform and each layer's own draw offset. Returns null if the position
+   * is outside every layer or the tile is empty.
+   *
+   * Tiled's flip bits are stripped, so the id compares against a tileset's
+   * numbering whichever way the tile faces. Read them from the raw layer data
+   * with `readTileGid` when orientation matters.
    */
   getTileAt(
     worldX: number,
@@ -197,24 +252,26 @@ export class TilemapComponent extends Component {
     const transform = this.entity.tryGet(Transform);
     const offsetX = transform ? transform.position.x : 0;
     const offsetY = transform ? transform.position.y : 0;
-    const localX = worldX - offsetX;
-    const localY = worldY - offsetY;
-
-    const col = Math.floor(localX / this.data.tileWidth);
-    const row = Math.floor(localY / this.data.tileHeight);
-
-    if (col < 0 || col >= this.data.width) return null;
-    if (row < 0 || row >= this.data.height) return null;
-
     const layers = layerName
       ? this.data.tileLayers.filter((l) => l.name === layerName)
       : this.data.tileLayers;
 
-    // Return first non-zero GID found (from last layer to first for top-most)
+    // Return the first non-empty tile found, from the last layer to the first
+    // so the top-most one wins.
     for (let i = layers.length - 1; i >= 0; i--) {
       const layer = layers[i]!;
+      const localX = worldX - offsetX - layer.offsetX;
+      const localY = worldY - offsetY - layer.offsetY;
+      const col = Math.floor(localX / this.data.tileWidth);
+      const row = Math.floor(localY / this.data.tileHeight);
+
+      if (col < 0 || col >= layer.width) continue;
+      if (row < 0 || row >= layer.height) continue;
+
       const gid = layer.data[row * layer.width + col];
-      if (gid !== undefined && gid !== 0) return gid;
+      if (gid === undefined) continue;
+      const id = tileIdFromGid(gid);
+      if (id !== 0) return id;
     }
 
     return null;
@@ -225,7 +282,10 @@ export class TilemapComponent extends Component {
     return extractCollisionShapes(this.data, objectLayerName);
   }
 
-  /** Objects from object layers grouped by `class ?? name`. Use a layer name to scope. */
+  /**
+   * Objects grouped by `class ?? name`. Use {@link getObjectGroups} when the
+   * source layer must be preserved.
+   */
   getObjects(objectLayerName?: string): Record<string, MapObject[]> {
     const filtered = objectLayerName
       ? this.data.objectLayers.filter((l) => l.name === objectLayerName)
@@ -240,6 +300,35 @@ export class TilemapComponent extends Component {
           result[key] = [];
         }
         result[key].push(obj);
+      }
+    }
+
+    return result;
+  }
+
+  /** Objects grouped strictly by object layer and class. */
+  getObjectGroups(objectLayerName?: string): MapObjectGroup[] {
+    const layers = objectLayerName
+      ? this.data.objectLayers.filter((layer) => layer.name === objectLayerName)
+      : this.data.objectLayers;
+    const result: MapObjectGroup[] = [];
+
+    for (const layer of layers) {
+      const groups = new Map<string | undefined, MapObject[]>();
+      for (const object of layer.objects) {
+        const objects = groups.get(object.class);
+        if (objects) {
+          objects.push(object);
+        } else {
+          groups.set(object.class, [object]);
+        }
+      }
+      for (const [objectClass, objects] of groups) {
+        result.push({
+          layer: layer.name,
+          ...(objectClass !== undefined && { class: objectClass }),
+          objects,
+        });
       }
     }
 
@@ -315,13 +404,13 @@ export class TilemapComponent extends Component {
     return undefined;
   }
 
-  /** Read a typed custom property off any tilemap object. */
-  getProperty<T = unknown>(obj: MapObject, name: string): T | undefined {
+  /** Read a typed custom property from any tilemap data that has properties. */
+  getProperty<T = unknown>(obj: HasProperties, name: string): T | undefined {
     return getProperty<T>(obj, name);
   }
 
   /** Read an indexed property bag (`name[0]`, `name[1]`, ...) as an array. */
-  getPropertyArray<T = unknown>(obj: MapObject, name: string): T[] {
+  getPropertyArray<T = unknown>(obj: HasProperties, name: string): T[] {
     return getPropertyArray<T>(obj, name);
   }
 
@@ -329,12 +418,86 @@ export class TilemapComponent extends Component {
    * Resolve a Tiled object-reference property to the actual object.
    * Auto-collects across every layer so callers don't have to.
    */
-  resolveRef(obj: MapObject, propName: string): MapObject | undefined {
+  resolveRef(obj: HasProperties, propName: string): MapObject | undefined {
     return resolveObjectRef(obj, propName, this.getAllObjects());
   }
 
   /** Same as `resolveRef`, but for indexed object-reference arrays. */
-  resolveRefArray(obj: MapObject, propName: string): MapObject[] {
+  resolveRefArray(obj: HasProperties, propName: string): MapObject[] {
     return resolveObjectRefArray(obj, propName, this.getAllObjects());
+  }
+
+  protected destroyOptions(): DestroyOptions {
+    return { children: true };
+  }
+
+  override onDestroy(): void {
+    this.removeColorFilter();
+    super.onDestroy();
+  }
+
+  private currentFilters(): Filter[] {
+    const filters = this.container.filters as
+      | Filter
+      | readonly Filter[]
+      | null
+      | undefined;
+    if (filters == null) return [];
+    return Array.isArray(filters) ? [...filters] : [filters as Filter];
+  }
+
+  private syncColorFilter(): void {
+    const tint = this.container.tint;
+    const alpha = this.container.alpha;
+    if (tint === 0xffffff && alpha === 1) {
+      this.removeColorFilter();
+      return;
+    }
+
+    const filter = this._colorFilter ?? new ColorMatrixFilter();
+    this._colorFilter = filter;
+    const red = ((tint >> 16) & 0xff) / 255;
+    const green = ((tint >> 8) & 0xff) / 255;
+    const blue = (tint & 0xff) / 255;
+    filter.matrix = [
+      red,
+      0,
+      0,
+      0,
+      0,
+      0,
+      green,
+      0,
+      0,
+      0,
+      0,
+      0,
+      blue,
+      0,
+      0,
+      0,
+      0,
+      0,
+      alpha,
+      0,
+    ];
+
+    // First in the chain, so tint applies to the tilemap itself and every
+    // `.fx` effect then works on the tinted result. `EffectStack` rebuilds the
+    // array as [external, ...owned], which puts it first too — matching that
+    // keeps the order the same however the two are interleaved.
+    const filters = this.currentFilters();
+    if (!filters.includes(filter)) {
+      this.container.filters = [filter, ...filters];
+    }
+  }
+
+  private removeColorFilter(): void {
+    const filter = this._colorFilter;
+    if (!filter) return;
+    const filters = this.currentFilters().filter((entry) => entry !== filter);
+    this.container.filters = filters.length > 0 ? filters : null;
+    filter.destroy();
+    this._colorFilter = undefined;
   }
 }
