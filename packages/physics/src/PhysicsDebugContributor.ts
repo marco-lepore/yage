@@ -13,6 +13,7 @@ const ShapeType = {
   Cuboid: 1,
   Capsule: 2,
   ConvexPolygon: 9,
+  RoundCuboid: 10,
 } as const;
 
 const COLOR_DYNAMIC = 0x00ff00;
@@ -73,6 +74,16 @@ export class PhysicsDebugContributor implements DebugContributor {
             const hw = he.x * ppm;
             const hh = he.y * ppm;
             g.rect(-hw, -hh, hw * 2, hh * 2).stroke(strokeStyle);
+            break;
+          }
+          case ShapeType.RoundCuboid: {
+            // halfExtents() is the inner box; the border radius is added back
+            // on every side to recover the outer footprint.
+            const he = collider.halfExtents();
+            const radius = collider.roundRadius() * ppm;
+            const hw = he.x * ppm + radius;
+            const hh = he.y * ppm + radius;
+            g.roundRect(-hw, -hh, hw * 2, hh * 2, radius).stroke(strokeStyle);
             break;
           }
           case ShapeType.Capsule: {

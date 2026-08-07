@@ -16,6 +16,7 @@ function createMockGraphics(): DebugGraphics {
     visible: true,
     clear: vi.fn(() => g),
     rect: vi.fn(() => g),
+    roundRect: vi.fn(() => g),
     circle: vi.fn(() => g),
     moveTo: vi.fn(() => g),
     lineTo: vi.fn(() => g),

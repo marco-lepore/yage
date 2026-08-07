@@ -68,6 +68,7 @@ entity.add(new ColliderComponent({
   restitution: 0.5,   // bounciness (0–1)
   friction: 0.3,
   density: 1,          // affects mass for dynamic bodies
+  // contactSkin: 1,   // rest about 1px off contact surfaces
 }));
 
 // Circle
@@ -118,6 +119,42 @@ entity.add(new ColliderComponent({
 ```
 
 All dimensions are in pixels; rotation is in radians.
+
+Box corners can be rounded while keeping the same outer width and height:
+
+```typescript
+entity.add(new ColliderComponent({
+  shape: { type: "box", width: 64, height: 32, borderRadius: 4 },
+}));
+```
+
+The outer footprint stays 64×32 and a resting body keeps its height, because
+the corners are rounded inward. The radius must be smaller than half the
+shorter side; anything else throws when the collider is built. Shape casts and
+overlap queries use the rounded geometry too.
+
+Rounding does shrink the flat part of each face, to `width - 2 * borderRadius`.
+A body held up only by the last few pixels of a ledge slides off instead of
+standing on it.
+
+`contactSkin` is the other way to round off a contact. It holds the collider a
+set number of pixels away from whatever it touches:
+
+```typescript
+entity.add(new ColliderComponent({
+  shape: { type: "box", width: 12, height: 44 },
+  contactSkin: 1,
+}));
+```
+
+A resting body then sits 1px above the ground. When both colliders in a pair
+set a skin, the gap is the sum of the two. Skins apply to contacts only, not to
+shape casts or overlap queries.
+
+Both options fix the same problem: a box walking across a `polyline` terrain
+chain can catch on the junction between two segments and stop moving, because
+Rapier picks a contact normal that opposes the walk direction. Prefer
+`borderRadius` — it leaves the resting height alone.
 
 Removing a `ColliderComponent` on its own (`entity.remove(ColliderComponent)`)
 frees its Rapier collider while the sibling `RigidBodyComponent` and body stay

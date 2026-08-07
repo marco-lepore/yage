@@ -91,6 +91,7 @@ import { ColliderComponent } from "@yagejs/physics";
 
 entity.add(new ColliderComponent({
   shape: { type: "box", width: 64, height: 32 },
+  // shape: { type: "box", width: 64, height: 32, borderRadius: 4 },  // rounded corners, same outer footprint
   // shape: { type: "circle", radius: 16 },
   // shape: { type: "capsule", halfHeight: 20, radius: 10, axis: "y" },   // axis defaults to "y" (vertical); "x" rotates 90°
   // shape: { type: "polygon", vertices: [{x,y}, ...] },                  // closed convex; concave input is silently widened by Rapier (dev warning logged)
@@ -98,6 +99,7 @@ entity.add(new ColliderComponent({
   restitution: 0.5,
   friction: 0.3,
   density: 1,
+  // contactSkin: 1,    // holds the collider 1px off whatever it touches
   sensor: false,       // true = trigger (no physical response)
   offset: { x: 0, y: 0 },
   rotation: 0,         // radians, relative to the body, about the offset point (axis:"x" capsules: adds to the 90° axis rotation)
@@ -105,6 +107,26 @@ entity.add(new ColliderComponent({
   mask: LAYER_WALL,      // which layers to interact with
 }));
 ```
+
+`box.borderRadius` rounds the corners. The inner half-extents shrink by the
+radius, so the outer footprint stays the configured width and height and a
+resting body keeps its height. `0` and `undefined` create a plain box; a radius
+that is not smaller than half the shorter side throws. Rounded geometry is used
+by collision, `castShape`, and `queryShape`.
+
+Rounding shrinks the flat part of each face to `width - 2 * borderRadius`, so a
+body held up only by the last `borderRadius` pixels of a ledge slides off
+instead of standing on it.
+
+`contactSkin` holds the collider that many pixels off whatever it touches, so a
+resting body sits that far above the surface. When both colliders in a pair set
+a skin, the gap is the sum of the two. It affects contacts only, not shape
+queries.
+
+A driven box can catch on the junction between two segments of a `polyline` and
+stop moving, because Rapier picks a contact normal that opposes the walk
+direction. Either option prevents that. Prefer `borderRadius`, since
+`contactSkin` also raises the body off the ground.
 
 Events:
 

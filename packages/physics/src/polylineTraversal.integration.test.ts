@@ -16,7 +16,6 @@ vi.mock("@dimforge/rapier2d", async () => {
   return { default: RAPIER };
 });
 
-import RAPIER_COMPAT from "@dimforge/rapier2d-compat";
 import { Transform, Vec2 } from "@yagejs/core";
 import type { Entity, Scene } from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
@@ -99,10 +98,16 @@ interface Terrain {
   chain: Spawned;
 }
 
+const DEFAULT_WALKER_CONFIG: ColliderConfig = {
+  shape: { type: "box", width: 12, height: 44 },
+  friction: 0,
+};
+
 /** Floor box with its top at y=256, a ramp chain on it, and a 12×44 walker. */
 async function setupTerrain(
   chainVertices: Vec2[],
   playerX: number,
+  playerConfig: ColliderConfig = DEFAULT_WALKER_CONFIG,
 ): Promise<Terrain> {
   const { scene, physicsWorld } = await createPhysicsTestContext();
   spawnBody(scene, "floor", 512, 288, "static", {
@@ -117,16 +122,21 @@ async function setupTerrain(
     friction: 0,
   });
   // Resting on the floor puts the walker's center 22 above the floor top.
-  const player = spawnBody(scene, "walker", playerX, 234, "dynamic", {
-    shape: { type: "box", width: 12, height: 44 },
-    friction: 0,
-  });
+  const player = spawnBody(
+    scene,
+    "walker",
+    playerX,
+    234,
+    "dynamic",
+    playerConfig,
+  );
   return { physicsWorld, player, chain };
 }
 
 interface RunResult {
   outcome: "completed" | "pinned" | "other";
   finalX: number;
+  restY: number;
   minY: number;
   chainStarts: number;
 }
@@ -162,6 +172,15 @@ function drive(
     }
   }
 
+  if (completed) {
+    for (let i = 0; i < 30; i++) {
+      player.rb.setVelocityX(0);
+      physicsWorld.step(DT);
+      physicsWorld.processCollisionEvents();
+      minY = Math.min(minY, player.rb.positionY);
+    }
+  }
+
   const finalX = player.rb.positionX;
   // Pinned: the run ended with the walker still on the approach side of the
   // base vertex it entered at, foot corner within a few pixels of it.
@@ -173,6 +192,7 @@ function drive(
   return {
     outcome: completed ? "completed" : pinned ? "pinned" : "other",
     finalX,
+    restY: player.rb.positionY,
     minY,
     chainStarts,
   };
@@ -185,12 +205,15 @@ const PHASE_STEP = 0.04;
 async function scanPhases(
   chainVertices: Vec2[],
   direction: -1 | 1,
+  playerConfig: ColliderConfig = DEFAULT_WALKER_CONFIG,
 ): Promise<RunResult[]> {
   const results: RunResult[] = [];
   for (let i = 0; i < PHASES; i++) {
     const startX = direction < 0 ? 620 + i * PHASE_STEP : 404 - i * PHASE_STEP;
-    const terrain = await setupTerrain(chainVertices, startX);
-    const targetX = direction < 0 ? 470 : 554;
+    const terrain = await setupTerrain(chainVertices, startX, playerConfig);
+    // Past the far base vertex, so a completed run settles on flat floor and
+    // `restY` is a resting height rather than a mid-crossing sample.
+    const targetX = direction < 0 ? 430 : 594;
     results.push(drive(terrain, direction * WALK_SPEED, targetX));
   }
   return results;
@@ -304,62 +327,48 @@ describe("polyline terrain traversal (real Rapier)", () => {
   }, 30000);
 });
 
-describe("polyline terrain traversal, rounded walker (raw Rapier)", () => {
-  // The catch comes from the box's sharp foot corner swallowing a segment
-  // junction, so rounding the corners removes it. ColliderShape has no
-  // rounded box, so this drives Rapier directly.
-  const PPM = 50;
-  const m = (v: number) => v / PPM;
-  const px = (v: number) => v * PPM;
+describe("polyline terrain traversal, rounded walker", () => {
+  const ROUNDED_WALKER: ColliderConfig = {
+    shape: { type: "box", width: 12, height: 44, borderRadius: 2 },
+    friction: 0,
+  };
 
-  function rawCrossing(startX: number): { completed: boolean; restY: number } {
-    const R = RAPIER_COMPAT;
-    const world = new R.World({ x: 0, y: 980 / PPM });
-    const fixed = world.createRigidBody(R.RigidBodyDesc.fixed());
-    world.createCollider(
-      R.ColliderDesc.cuboid(m(512), m(32)).setTranslation(m(512), m(288)),
-      fixed,
-    );
-    const chain = RAMP_CLOSED.map((v) => ({
-      x: v.x + RAMP_ORIGIN.x,
-      y: v.y + RAMP_ORIGIN.y,
-    }));
-    const flat = new Float32Array(chain.length * 2);
-    chain.forEach((v, i) => {
-      flat[i * 2] = m(v.x);
-      flat[i * 2 + 1] = m(v.y);
-    });
-    world.createCollider(R.ColliderDesc.polyline(flat), fixed);
-    const body = world.createRigidBody(
-      R.RigidBodyDesc.dynamic()
-        .setTranslation(m(startX), m(234))
-        .lockRotations(),
-    );
-    // A 12×44 box with 2px-radius corners: same outer footprint, and the
-    // flat bottom face keeps the plain box's resting height.
-    world.createCollider(
-      R.ColliderDesc.roundCuboid(m(4), m(20), m(2)).setFriction(0),
-      body,
-    );
+  // Every arrangement the plain box pins on: both drive directions, and the
+  // reversed winding.
+  it.each([
+    ["driving left", RAMP_CLOSED, -1],
+    ["driving right", RAMP_CLOSED, 1],
+    ["reversed winding", [...RAMP_CLOSED].reverse(), -1],
+  ] as const)(
+    "crosses cleanly at every approach phase and keeps the plain resting height, %s",
+    async (_label, chain, direction) => {
+      const results = await scanPhases(chain, direction, ROUNDED_WALKER);
 
-    let completed = false;
-    for (let i = 0; i < 200; i++) {
-      const v = body.linvel();
-      body.setLinvel({ x: m(-WALK_SPEED), y: v.y }, true);
-      world.step();
-      if (px(body.translation().x) < 470) {
-        completed = true;
-        break;
+      expect(results).toHaveLength(PHASES);
+      expect(results.every((result) => result.outcome === "completed")).toBe(
+        true,
+      );
+      for (const result of results) {
+        expect(result.restY).toBeCloseTo(234.077, 1);
       }
-    }
-    return { completed, restY: px(body.translation().y) };
-  }
+    },
+    30000,
+  );
 
-  it("a round-cornered box crosses cleanly at every approach phase", async () => {
-    await RAPIER_COMPAT.init();
-    for (let i = 0; i < PHASES; i++) {
-      const { completed } = rawCrossing(620 + i * PHASE_STEP);
-      expect(completed).toBe(true);
+  it("uses contact skin to cross cleanly at the cost of resting height", async () => {
+    const results = await scanPhases(RAMP_CLOSED, -1, {
+      shape: { type: "box", width: 12, height: 44 },
+      friction: 0,
+      contactSkin: 1,
+    });
+
+    expect(results).toHaveLength(PHASES);
+    expect(results.every((result) => result.outcome === "completed")).toBe(
+      true,
+    );
+    // A 1px skin holds the walker 1px above the surface a plain box rests on.
+    for (const result of results) {
+      expect(result.restY).toBeCloseTo(233.078, 1);
     }
   }, 30000);
 });
