@@ -505,8 +505,10 @@ export class FitController {
         // fit-level convenience; a caller-installed `stage.mask` is the
         // explicit escape hatch and takes precedence. Removal is also
         // defensive — `removeLetterboxMask` only clears `stage.mask` when
-        // it still points at our Graphics.
-        if (this.stage.mask !== null) return;
+        // it still points at our Graphics. The comparison must be loose:
+        // pixi's `Container.mask` getter reads through an internal effect
+        // object, so an unmasked container reports `undefined`, not `null`.
+        if (this.stage.mask != null) return;
         this.letterboxMask = new Graphics();
         this.stage.addChild(this.letterboxMask);
         this.stage.mask = this.letterboxMask;
