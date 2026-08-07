@@ -247,6 +247,7 @@ Per-scene arbitration for competing time effects. The engine registers one insta
 | `scaleBy(factor, { for?, key?, excludeUpdates?, label? })` | Add a scale request. `factor` finite and > 0 (> 1 = speed-up; physics catch-up capped at ~8 sub-steps/frame). Returns `TimeEffectHandle { active, release() }` (idempotent) |
 | `freezeFor(duration, { key?, label? })` | ×0 request for `duration` real-time seconds; same handle shape; takes no exclusions (whole-scene by design) |
 | `effectiveScale` | `scene.timeScale × Π(channel winners)` — what physics and scene-pool processes run at |
+| `elapsed` | Simulation seconds elapsed under `effectiveScale`; held by stack pause, `timeScale = 0`, and freeze requests; starts at 0 on scene entry and is not saved |
 | `effectiveScaleForUpdates(entity)` | Same, but a channel whose winner excludes `entity` contributes 1; `entity.timeScale` is composed on top by the update pipeline |
 | `isFrozen` | `effectiveScale === 0` |
 | `activeLabels` | Display labels of active requests (`label` option, defaults to `key`) |

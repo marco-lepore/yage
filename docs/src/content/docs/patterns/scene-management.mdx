@@ -139,6 +139,11 @@ How requests combine:
 - The result is `scene.timeScale × (channel winners)`, readable as
   `time.effectiveScale` (with `time.isFrozen` for the ×0 case).
 
+`time.elapsed` reports the scene's elapsed simulation time in seconds. It
+advances under `time.effectiveScale`, so stack pause, `scene.timeScale = 0`, and
+freeze requests hold the value. The value starts at 0 each time the scene is
+entered and is not saved.
+
 Request durations (`for`, and the `freezeFor` duration) count real seconds:
 they are unaffected by the scaling itself, so a freeze reliably ends on time.
 A stack-paused scene holds its effects — opening a pause menu does not consume

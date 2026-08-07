@@ -16,6 +16,31 @@ export interface CameraLike {
  */
 export type RendererLike = RendererAdapter;
 
+/**
+ * A time source a buffered-press window can be measured on. `SceneTime`
+ * satisfies it, so a caller passes the scene's own clock:
+ * `input.consumeBufferedPress("jump", 0.12, { clock: this.use(SceneTimeKey) })`.
+ *
+ * The input plugin registers the `SceneTime` of every scene the engine enters,
+ * and those are the only clocks the query accepts: a press is stamped on each
+ * known clock as it happens, which a clock the manager has never seen cannot
+ * receive. Satisfying this shape does not on its own make an object usable.
+ */
+export interface InputClock {
+  /** Seconds elapsed on this clock. Monotonically non-decreasing. */
+  readonly elapsed: number;
+}
+
+/** Options for `InputManager.consumeBufferedPress`. */
+export interface BufferedPressOptions {
+  /**
+   * Clock the window is measured on — the `SceneTime` of a scene on the stack.
+   * Any other clock throws. Omit for the raw input clock (`getClockTime()`),
+   * which ignores pause and time scale.
+   */
+  clock?: InputClock;
+}
+
 /** Configuration for the InputPlugin. */
 export interface InputConfig {
   /** Target element for pointer events (default: canvas from renderer, or document). */

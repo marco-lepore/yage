@@ -3,9 +3,11 @@ import type { RendererAdapter, ErrorBoundary } from "@yagejs/core";
 import { applyRadialDeadzone } from "./deadzone.js";
 import type {
   ActionMapDefinition,
+  BufferedPressOptions,
   CameraLike,
   GamepadAxisKey,
   GamepadInfo,
+  InputClock,
   PointerEventInfo,
   PointerInfo,
   PointerType,
@@ -103,6 +105,8 @@ export class InputManager {
   private releaseDurationMs = new Map<string, number>();
   /** Last press timestamp (ms on the input clock) per action, for {@link consumeBufferedPress}. */
   private bufferedPressMs = new Map<string, number>();
+  /** Press timestamps in seconds for each registered clock. */
+  private bufferedPressClockStamps = new Map<InputClock, Map<string, number>>();
   /** Actions whose buffered press has been claimed via {@link consumeBufferedPress}; cleared by the next press. */
   private claimedBufferedPress = new Set<string>();
   /** Per-action hold duration (ms) at the end of the previous frame — the baseline for {@link isJustHeldFor}'s crossing test. */
@@ -341,13 +345,45 @@ export class InputManager {
    *
    * Lets a consumer act on a press up to `windowSeconds` late (e.g. jump
    * buffered just before landing) without the press re-triggering later.
+   *
+   * The window counts on the raw input clock ({@link getClockTime}), which
+   * ignores scene pause and time scale. Pass `options.clock` — the `SceneTime`
+   * of a scene on the stack — to count it on that scene's simulation time
+   * instead; any other clock throws. One press is claimed once whichever clock
+   * measured it.
+   *
+   * A disabled action returns false without claiming, so a discard-on-resume
+   * call has to run with the action enabled to drop a press buffered earlier.
    */
-  consumeBufferedPress(action: string, windowSeconds: number): boolean {
+  consumeBufferedPress(
+    action: string,
+    windowSeconds: number,
+    options?: BufferedPressOptions,
+  ): boolean {
+    const clock = options?.clock;
+    const clockStamps = clock
+      ? this.bufferedPressClockStamps.get(clock)
+      : undefined;
+    if (clock && !clockStamps) {
+      throw new Error(
+        "InputManager.consumeBufferedPress(): the given clock is not registered, " +
+          "so no press can be measured on it. The input plugin registers a scene's " +
+          "SceneTime while the scene is on the stack and drops it on exit — the " +
+          "usual causes are holding on to an exited scene's SceneTime, or a clock " +
+          "the engine never saw.",
+      );
+    }
     if (!this.isActionEnabled(action)) return false;
-    const pressed = this.bufferedPressMs.get(action);
+    const pressed = clockStamps
+      ? clockStamps.get(action)
+      : this.bufferedPressMs.get(action);
     if (pressed === undefined) return false;
     if (this.claimedBufferedPress.has(action)) return false;
-    if (this.elapsedMs - pressed > windowSeconds * 1000) return false;
+    if (clock) {
+      if (clock.elapsed - pressed > windowSeconds) return false;
+    } else if (this.elapsedMs - pressed > windowSeconds * 1000) {
+      return false;
+    }
     this.claimedBufferedPress.add(action);
     return true;
   }
@@ -355,7 +391,26 @@ export class InputManager {
   /** Record a press edge for buffered-press tracking; a new press clears any prior claim. */
   private recordActionPress(action: string): void {
     this.bufferedPressMs.set(action, this.elapsedMs);
+    for (const [clock, stamps] of this.bufferedPressClockStamps) {
+      stamps.set(action, clock.elapsed);
+    }
     this.claimedBufferedPress.delete(action);
+  }
+
+  /**
+   * Register a clock so press edges can capture its current reading.
+   * @internal
+   */
+  _registerClock(clock: InputClock): void {
+    this.bufferedPressClockStamps.set(clock, new Map());
+  }
+
+  /**
+   * Drop a clock and all press readings captured from it.
+   * @internal
+   */
+  _unregisterClock(clock: InputClock): void {
+    this.bufferedPressClockStamps.delete(clock);
   }
 
   /** Record the hold duration (ms) of a press ending this frame, keeping the longest across keys. */
@@ -1523,6 +1578,7 @@ export class InputManager {
     this.justReleasedActions.clear();
     this.releaseDurationMs.clear();
     this.bufferedPressMs.clear();
+    for (const stamps of this.bufferedPressClockStamps.values()) stamps.clear();
     this.claimedBufferedPress.clear();
     this.prevHoldMs.clear();
     this.pointers.clear();

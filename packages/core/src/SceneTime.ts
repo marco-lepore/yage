@@ -108,6 +108,7 @@ const INACTIVE_HANDLE: TimeEffectHandle = Object.freeze({
 export class SceneTime {
   private readonly scene: Scene;
   private readonly channels = new Map<string | symbol, TimeRequest[]>();
+  private elapsedSeconds = 0;
   /** Cached product of channel winners (excludes `scene.timeScale`). */
   private channelProduct = 1;
   /**
@@ -128,6 +129,16 @@ export class SceneTime {
    */
   get effectiveScale(): number {
     return this.scene.timeScale * this.channelProduct;
+  }
+
+  /**
+   * Simulation seconds elapsed in this scene: raw frame time scaled by
+   * {@link SceneTime.effectiveScale}, accrued only while the scene is active. A
+   * stack-paused scene, a `timeScale` of 0, and an active freeze all hold it.
+   * Starts at 0 each time the scene is entered and is not saved.
+   */
+  get elapsed(): number {
+    return this.elapsedSeconds;
   }
 
   /** True while {@link SceneTime.effectiveScale} is 0. */
@@ -251,31 +262,35 @@ export class SceneTime {
    * @internal
    */
   _tick(dt: number): void {
-    if (this.channels.size === 0) return;
-    let dirty = false;
-    for (const [channelKey, entries] of [...this.channels]) {
-      for (const entry of [...entries]) {
-        if (entry.exclude) {
-          for (const excluded of entry.exclude) {
-            if (excluded.isDestroyed) {
-              entry.exclude.delete(excluded);
+    if (this.channels.size > 0) {
+      let dirty = false;
+      for (const [channelKey, entries] of [...this.channels]) {
+        for (const entry of [...entries]) {
+          if (entry.exclude) {
+            for (const excluded of entry.exclude) {
+              if (excluded.isDestroyed) {
+                entry.exclude.delete(excluded);
+                dirty = true;
+              }
+            }
+          }
+          if (entry.remaining !== null) {
+            entry.remaining -= dt;
+            if (entry.remaining <= 0) {
+              entry.released = true;
+              const idx = entries.indexOf(entry);
+              if (idx !== -1) entries.splice(idx, 1);
               dirty = true;
             }
           }
         }
-        if (entry.remaining !== null) {
-          entry.remaining -= dt;
-          if (entry.remaining <= 0) {
-            entry.released = true;
-            const idx = entries.indexOf(entry);
-            if (idx !== -1) entries.splice(idx, 1);
-            dirty = true;
-          }
-        }
+        if (entries.length === 0) this.channels.delete(channelKey);
       }
-      if (entries.length === 0) this.channels.delete(channelKey);
+      if (dirty) this.recompute();
     }
-    if (dirty) this.recompute();
+
+    // Physics reads the post-aging scale later this frame, so elapsed uses it too.
+    this.elapsedSeconds += dt * this.effectiveScale;
   }
 
   /**

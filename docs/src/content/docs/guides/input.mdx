@@ -139,6 +139,59 @@ if (grounded && input.consumeBufferedPress("jump", 0.12)) {
 Consumption is scoped to this query — `isJustPressed` and action listeners
 still see every press.
 
+The two-argument form measures the window on the raw input clock, which runs on
+unscaled frame time and ignores scene pause and time scale. To measure a jump
+buffer in simulation seconds instead, pass the scene's `SceneTime` as the clock:
+
+```typescript
+import { SceneTimeKey } from "@yagejs/core";
+
+const clock = this.use(SceneTimeKey);
+
+if (grounded && input.consumeBufferedPress("jump", 0.12, { clock })) {
+  jump();
+}
+```
+
+The scene clock stops while the scene is stack-paused or frozen, and follows
+`scene.timeScale` together with any active `SceneTime` scale requests. Physics
+steps under that same effective scale, so the window and the physics step
+measure time the same way.
+
+Passing a clock the input plugin has not registered throws. That covers a
+`SceneTime` held from a scene that has since left the stack.
+
+:::caution[A buffered press outlives a pause]
+The scene clock stops while the scene is paused, so a window measured on it
+never expires there. A jump pressed just before the pause menu opens is still
+consumable when the scene resumes, whether the menu was up for one frame or for
+five minutes — the player gets a jump they asked for long ago.
+
+Presses made *during* the pause are buffered too, unless the action's group is
+disabled while the menu is up — an action that belongs to no group is always
+enabled, so by default it records a press.
+
+The engine holds the press rather than guessing how long is too long. To drop
+it, consume it on resume and ignore the result. One discard covers presses from
+before and during the pause, because the newest press replaces the stamp:
+
+```typescript
+import { SceneTimeKey } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
+
+class GameScene extends Scene {
+  onResume() {
+    const input = this.use(InputManagerKey);
+    // Re-enable before discarding: `consumeBufferedPress` returns false without
+    // claiming when the action is disabled, so the discard would do nothing and
+    // the stale jump would fire on the next gameplay frame.
+    input.enableGroup("movement");
+    input.consumeBufferedPress("jump", 0.12, { clock: this.use(SceneTimeKey) });
+  }
+}
+```
+:::
+
 ## Pointer (Mouse / Touch)
 
 ```typescript

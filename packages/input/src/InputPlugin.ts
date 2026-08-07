@@ -1,5 +1,10 @@
 import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
-import { RendererAdapterKey, ErrorBoundaryKey } from "@yagejs/core";
+import {
+  ErrorBoundaryKey,
+  RendererAdapterKey,
+  SceneHookRegistryKey,
+  SceneTimeKey,
+} from "@yagejs/core";
 import { DebugRegistryKey } from "@yagejs/debug/api";
 import { InputManager } from "./InputManager.js";
 import {
@@ -21,6 +26,7 @@ export class InputPlugin implements Plugin {
   private manager!: InputManager;
   private context!: EngineContext;
   private cleanupFns: Array<() => void> = [];
+  private unregisterSceneHooks: (() => void) | null = null;
 
   constructor(config?: InputConfig) {
     this.config = config ?? {};
@@ -229,6 +235,18 @@ export class InputPlugin implements Plugin {
       );
     }
 
+    const sceneHooks = context.resolve(SceneHookRegistryKey);
+    this.unregisterSceneHooks = sceneHooks.register({
+      beforeEnter: (scene) => {
+        const clock = scene.tryResolveScoped(SceneTimeKey);
+        if (clock) this.manager._registerClock(clock);
+      },
+      afterExit: (scene) => {
+        const clock = scene.tryResolveScoped(SceneTimeKey);
+        if (clock) this.manager._unregisterClock(clock);
+      },
+    });
+
     context.register(InputManagerKey, this.manager);
   }
 
@@ -243,6 +261,8 @@ export class InputPlugin implements Plugin {
   }
 
   onDestroy(): void {
+    this.unregisterSceneHooks?.();
+    this.unregisterSceneHooks = null;
     for (const cleanup of this.cleanupFns) {
       cleanup();
     }

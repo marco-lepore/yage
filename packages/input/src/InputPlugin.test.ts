@@ -2,9 +2,13 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import {
   EngineContext,
   RendererAdapterKey,
+  SceneHookRegistry,
+  SceneHookRegistryKey,
+  SceneTimeKey,
   ServiceKey,
   Vec2,
   SystemScheduler,
+  createMockScene,
 } from "@yagejs/core";
 
 // Local mock key — simulates a foreign (non-@yagejs/renderer) renderer
@@ -25,6 +29,7 @@ function createContext(options?: {
   canvas?: HTMLCanvasElement;
 }): EngineContext {
   const context = new EngineContext();
+  context.register(SceneHookRegistryKey, new SceneHookRegistry());
 
   if (options?.withRenderer) {
     const canvas = options.canvas ?? document.createElement("canvas");
@@ -133,6 +138,7 @@ describe("InputPlugin", () => {
     // pass through as canvas-relative CSS pixels unchanged. The adapter's
     // canvasToVirtual doubles them to prove the branch ran.
     const context = new EngineContext();
+    context.register(SceneHookRegistryKey, new SceneHookRegistry());
     context.register(RendererAdapterKey, {
       canvas,
       canvasToVirtual: (x, y) => ({ x: x * 2, y: y * 2 }),
@@ -221,6 +227,31 @@ describe("InputPlugin", () => {
 
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }));
     expect(manager.isPressed("jump")).toBe(false);
+  });
+
+  it("registers SceneTime on enter and unregisters it on exit", async () => {
+    const { scene, context } = createMockScene();
+    const hooks = new SceneHookRegistry();
+    context.register(SceneHookRegistryKey, hooks);
+    plugin = new InputPlugin({ actions: { jump: ["Space"] } });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+    const clock = scene.tryResolveScoped(SceneTimeKey);
+    if (!clock)
+      throw new Error("Expected createMockScene() to register SceneTime");
+
+    expect(() => manager.consumeBufferedPress("jump", 0.12, { clock })).toThrow(
+      /clock/,
+    );
+
+    await hooks.runBeforeEnter(scene);
+    manager.fireAction("jump");
+    expect(manager.consumeBufferedPress("jump", 0.12, { clock })).toBe(true);
+
+    hooks.runAfterExit(scene);
+    expect(() => manager.consumeBufferedPress("jump", 0.12, { clock })).toThrow(
+      /clock/,
+    );
   });
 
   it("applies preventDefaultKeys config", () => {
