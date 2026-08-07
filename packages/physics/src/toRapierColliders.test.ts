@@ -7,11 +7,13 @@ function mockRapier(): RapierModule {
   const makeDesc = (): RapierColliderDesc => ({
     setTranslation: vi.fn().mockReturnThis(),
     setRotation: vi.fn().mockReturnThis(),
+    setContactSkin: vi.fn().mockReturnThis(),
   });
 
   return {
     ColliderDesc: {
       cuboid: vi.fn(makeDesc),
+      roundCuboid: vi.fn(makeDesc),
       ball: vi.fn(makeDesc),
       capsule: vi.fn(makeDesc),
       convexHull: vi.fn(makeDesc),
@@ -49,6 +51,38 @@ describe("toRapierColliders", () => {
 
     expect(result).toHaveLength(1);
     expect(rapier.ColliderDesc.ball).toHaveBeenCalledWith(0.5); // 25/50
+  });
+
+  it("converts a rounded box using inner half-extents", () => {
+    const rapier = mockRapier();
+    const configs: ColliderConfig[] = [
+      {
+        shape: { type: "box", width: 12, height: 44, borderRadius: 2 },
+      },
+    ];
+
+    toRapierColliders(rapier, configs, PPM);
+
+    expect(rapier.ColliderDesc.roundCuboid).toHaveBeenCalledWith(
+      0.08,
+      0.4,
+      0.04,
+    );
+    expect(rapier.ColliderDesc.cuboid).not.toHaveBeenCalled();
+  });
+
+  it("converts contact skin to meters", () => {
+    const rapier = mockRapier();
+    const configs: ColliderConfig[] = [
+      {
+        shape: { type: "box", width: 10, height: 10 },
+        contactSkin: 2,
+      },
+    ];
+
+    const result = toRapierColliders(rapier, configs, PPM);
+
+    expect(result[0]!.setContactSkin).toHaveBeenCalledWith(0.04);
   });
 
   it("converts vertical capsule (no rotation by default)", () => {
@@ -200,6 +234,34 @@ describe("toRapierColliders", () => {
     expect(() => toRapierColliders(rapier, configs, PPM)).toThrow(
       "Failed to create convex hull",
     );
+  });
+
+  it("rejects invalid box border radii and accepts zero or undefined", () => {
+    const rapier = mockRapier();
+    const convert = (borderRadius?: number) =>
+      toRapierColliders(
+        rapier,
+        [
+          {
+            shape: {
+              type: "box",
+              width: 20,
+              height: 10,
+              ...(borderRadius === undefined ? {} : { borderRadius }),
+            },
+          },
+        ],
+        PPM,
+      );
+
+    expect(() => convert(5)).toThrow("Box border radius");
+    expect(() => convert(-1)).toThrow("Box border radius");
+    // A non-finite radius reaches roundCuboid and traps the wasm module,
+    // which leaves the whole world unusable — reject it here instead.
+    expect(() => convert(NaN)).toThrow("Box border radius");
+    expect(() => convert(Infinity)).toThrow("Box border radius");
+    expect(() => convert(0)).not.toThrow();
+    expect(() => convert()).not.toThrow();
   });
 
   it("does not call setTranslation when no offset", () => {

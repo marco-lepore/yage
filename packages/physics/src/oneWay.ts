@@ -18,10 +18,15 @@ const DEFAULT_MARGIN = 4;
  */
 function supportExtent(shape: ColliderShape, ux: number, uy: number): number {
   switch (shape.type) {
-    case "box":
+    case "box": {
+      const borderRadius = shape.borderRadius ?? 0;
+      // Rounded corners add a constant support distance in every direction.
       return (
-        (shape.width / 2) * Math.abs(ux) + (shape.height / 2) * Math.abs(uy)
+        (shape.width / 2 - borderRadius) * Math.abs(ux) +
+        (shape.height / 2 - borderRadius) * Math.abs(uy) +
+        borderRadius
       );
+    }
     case "circle":
       return shape.radius;
     case "capsule":

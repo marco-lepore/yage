@@ -155,6 +155,7 @@ const { mocks } = vi.hoisted(() => {
     _restitution = 0;
     _friction = 0.5;
     _density = 1;
+    _contactSkin = 0;
     _sensor = false;
     _collisionGroups = 0;
     _activeEvents = 0;
@@ -171,6 +172,9 @@ const { mocks } = vi.hoisted(() => {
 
     static cuboid(hx: number, hy: number) {
       return MockColliderDesc.of({ kind: "cuboid", hx, hy });
+    }
+    static roundCuboid(hx: number, hy: number, borderRadius: number) {
+      return MockColliderDesc.of({ kind: "roundCuboid", hx, hy, borderRadius });
     }
     static ball(radius: number) {
       return MockColliderDesc.of({ kind: "ball", radius });
@@ -205,6 +209,10 @@ const { mocks } = vi.hoisted(() => {
     }
     setDensity(d: number) {
       this._density = d;
+      return this;
+    }
+    setContactSkin(thickness: number) {
+      this._contactSkin = thickness;
       return this;
     }
     setSensor(s: boolean) {
@@ -608,6 +616,25 @@ describe("PhysicsWorld", () => {
       expect(pw.colliderMap.get(colliderHandle)).toBe(entity);
     });
 
+    it("creates a rounded box with the same outer footprint", () => {
+      const spy = vi.spyOn(mocks.MockColliderDesc, "roundCuboid");
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const entity = new Entity("test");
+      const bodyHandle = pw.createBody(entity, { type: "dynamic" });
+
+      pw.createCollider(
+        entity,
+        bodyHandle,
+        {
+          shape: { type: "box", width: 12, height: 44, borderRadius: 2 },
+        },
+        createMockColliderComponent(),
+      );
+
+      expect(spy).toHaveBeenCalledWith(0.08, 0.4, 0.04);
+      spy.mockRestore();
+    });
+
     it("creates a circle collider", () => {
       const pw = new PhysicsWorld();
       const entity = new Entity("test");
@@ -673,11 +700,58 @@ describe("PhysicsWorld", () => {
           restitution: 0.8,
           friction: 0.2,
           density: 2.0,
+          contactSkin: 1,
           sensor: true,
         },
         comp,
       );
       expect(pw.colliderMap.has(colliderHandle)).toBe(true);
+    });
+
+    it("converts contact skin to meters", () => {
+      const spy = vi.spyOn(mocks.MockColliderDesc.prototype, "setContactSkin");
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const entity = new Entity("test");
+      const bodyHandle = pw.createBody(entity, { type: "dynamic" });
+
+      pw.createCollider(
+        entity,
+        bodyHandle,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+          contactSkin: 2,
+        },
+        createMockColliderComponent(),
+      );
+
+      expect(spy).toHaveBeenCalledWith(0.04);
+      spy.mockRestore();
+    });
+
+    it("rejects invalid box border radii and accepts zero or undefined", () => {
+      const pw = new PhysicsWorld();
+      const entity = new Entity("test");
+      const bodyHandle = pw.createBody(entity, { type: "dynamic" });
+      const create = (borderRadius?: number) =>
+        pw.createCollider(
+          entity,
+          bodyHandle,
+          {
+            shape: {
+              type: "box",
+              width: 20,
+              height: 10,
+              ...(borderRadius === undefined ? {} : { borderRadius }),
+            },
+          },
+          createMockColliderComponent(),
+        );
+
+      expect(() => create(5)).toThrow("Box border radius");
+      expect(() => create(-1)).toThrow("Box border radius");
+      expect(() => create(NaN)).toThrow("Box border radius");
+      expect(() => create(0)).not.toThrow();
+      expect(() => create()).not.toThrow();
     });
 
     it("applies config rotation to the collider desc", () => {
@@ -1742,6 +1816,25 @@ describe("PhysicsWorld", () => {
       expect(long?.distance).toBeCloseTo(180);
     });
 
+    it("passes rounded box geometry to shape casts", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const { captured } = setupCast(pw);
+
+      pw.castShape(
+        { type: "box", width: 12, height: 44, borderRadius: 2 },
+        new Vec2(0, 0),
+        new Vec2(1, 0),
+        100,
+      );
+
+      expect(captured[0]![3]).toEqual({
+        kind: "roundCuboid",
+        hx: 0.08,
+        hy: 0.4,
+        borderRadius: 0.04,
+      });
+    });
+
     it("throws on a zero-length direction", () => {
       const pw = new PhysicsWorld();
       expect(() =>
@@ -1924,15 +2017,19 @@ describe("PhysicsWorld", () => {
       const world = (
         pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
       ).world;
-      const captured: { pos: { x: number; y: number }; rot: number }[] = [];
+      const captured: {
+        pos: { x: number; y: number };
+        rot: number;
+        shape: unknown;
+      }[] = [];
       let hitHandles: number[] = [];
       world.intersectionsWithShape = ((
         pos: { x: number; y: number },
         rot: number,
-        _shape: unknown,
+        shape: unknown,
         callback: (c: { handle: number }) => boolean,
       ) => {
-        captured.push({ pos, rot });
+        captured.push({ pos, rot, shape });
         for (const handle of hitHandles) {
           if (!callback({ handle })) break;
         }
@@ -1985,6 +2082,24 @@ describe("PhysicsWorld", () => {
       expect(captured[0]!.pos.x).toBeCloseTo(2); // 100px / 50ppm
       expect(captured[0]!.pos.y).toBeCloseTo(1);
       expect(captured[0]!.rot).toBeCloseTo(Math.PI / 4);
+    });
+
+    it("passes rounded box geometry to overlap queries", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const { captured, setHits } = setupQuery(pw);
+      setHits([]);
+
+      pw.queryShape(
+        { type: "box", width: 12, height: 44, borderRadius: 2 },
+        new Vec2(0, 0),
+      );
+
+      expect(captured[0]!.shape).toEqual({
+        kind: "roundCuboid",
+        hx: 0.08,
+        hy: 0.4,
+        borderRadius: 0.04,
+      });
     });
   });
 

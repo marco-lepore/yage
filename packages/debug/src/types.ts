@@ -10,6 +10,13 @@ export interface DebugGraphics {
   visible: boolean;
   clear(): DebugGraphics;
   rect(x: number, y: number, width: number, height: number): DebugGraphics;
+  roundRect(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radius: number,
+  ): DebugGraphics;
   circle(x: number, y: number, radius: number): DebugGraphics;
   moveTo(x: number, y: number): DebugGraphics;
   lineTo(x: number, y: number): DebugGraphics;

@@ -111,7 +111,24 @@ export interface JointHandle {
 
 /** Discriminated union for collider shapes. All dimensions in pixels. */
 export type ColliderShape =
-  | { type: "box"; width: number; height: number }
+  | {
+      type: "box";
+      width: number;
+      height: number;
+      /**
+       * Rounds the corners by this many pixels. The inner half-extents shrink
+       * by the radius, so the outer footprint stays `width` × `height` and a
+       * resting body keeps its height.
+       *
+       * The flat part of each face shrinks to `width - 2 * borderRadius`, so
+       * a body supported only by the last `borderRadius` pixels of a ledge
+       * slides off it.
+       *
+       * Must be smaller than half the shorter side; anything else throws when
+       * the collider is built. Applies to shape casts and overlap queries too.
+       */
+      borderRadius?: number;
+    }
   | { type: "circle"; radius: number }
   | {
       type: "capsule";
@@ -165,6 +182,14 @@ export interface ColliderConfig {
   friction?: number;
   /** Density (affects mass for dynamic bodies). */
   density?: number;
+  /**
+   * Keeps this collider this many pixels away from anything it touches, so a
+   * resting body sits that far above the surface. Two colliders that both set
+   * a skin are held apart by the sum of the two.
+   *
+   * Contacts only — shape casts and overlap queries ignore it.
+   */
+  contactSkin?: number;
   /** If true, this is a sensor (triggers events but no physical response). */
   sensor?: boolean;
   /** Collision layer membership bitmask. */

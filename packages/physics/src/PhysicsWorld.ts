@@ -2,7 +2,10 @@ import RAPIER from "@dimforge/rapier2d";
 import { devWarn, Vec2 } from "@yagejs/core";
 import type { Entity, Vec2Like } from "@yagejs/core";
 import { CollisionLayers } from "./CollisionLayers.js";
-import { colliderRotation } from "./toRapierColliders.js";
+import {
+  colliderRotation,
+  getBoxColliderGeometry,
+} from "./toRapierColliders.js";
 import type {
   PhysicsConfig,
   RigidBodyConfig,
@@ -576,6 +579,9 @@ export class PhysicsWorld {
     }
     if (config.density !== undefined) {
       desc.setDensity(config.density);
+    }
+    if (config.contactSkin !== undefined) {
+      desc.setContactSkin(this.toMeters(config.contactSkin));
     }
     if (config.sensor) {
       desc.setSensor(true);
@@ -1169,11 +1175,20 @@ export class PhysicsWorld {
 
   private buildColliderDesc(shape: ColliderShape): RAPIER.ColliderDesc {
     switch (shape.type) {
-      case "box":
-        return RAPIER.ColliderDesc.cuboid(
-          this.toMeters(shape.width / 2),
-          this.toMeters(shape.height / 2),
+      case "box": {
+        const geometry = getBoxColliderGeometry(shape);
+        if (geometry.borderRadius === 0) {
+          return RAPIER.ColliderDesc.cuboid(
+            this.toMeters(geometry.halfWidth),
+            this.toMeters(geometry.halfHeight),
+          );
+        }
+        return RAPIER.ColliderDesc.roundCuboid(
+          this.toMeters(geometry.halfWidth),
+          this.toMeters(geometry.halfHeight),
+          this.toMeters(geometry.borderRadius),
         );
+      }
       case "circle":
         return RAPIER.ColliderDesc.ball(this.toMeters(shape.radius));
       case "capsule":

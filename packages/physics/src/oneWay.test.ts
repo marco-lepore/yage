@@ -192,6 +192,39 @@ describe("createOneWayFilter", () => {
     expect(filter(fakeCandidate({ ...polygon, otherY: -18 }))).toBe(false);
   });
 
+  it("uses the rounded box support distance off axis", () => {
+    const diagonal = 1 / Math.sqrt(2);
+    const filter = createOneWayFilter(
+      fakeSelf({
+        shape: { type: "box", width: 100, height: 10 },
+        oneWay: { direction: { x: 1, y: -1 }, margin: 0 },
+      }),
+    );
+    const rounded = {
+      type: "box",
+      width: 12,
+      height: 44,
+      borderRadius: 2,
+    } as const;
+    const platformExtent = (50 + 5) * diagonal;
+    const roundedExtent = (4 + 20) * diagonal + 2;
+    const threshold = platformExtent + roundedExtent;
+    const at = (separation: number) =>
+      filter(
+        fakeCandidate({
+          otherShape: rounded,
+          otherX: separation * diagonal,
+          otherY: -separation * diagonal,
+        }),
+      );
+
+    // Straddling the threshold pins the extent to the corner radius: the
+    // sharp-box projection overshoots it and dropping the radius term
+    // undershoots, and each misses one of these two.
+    expect(at(threshold + 0.4)).toBe(true);
+    expect(at(threshold - 0.4)).toBe(false);
+  });
+
   it("stays solid when the oneWay config was removed", () => {
     const config: ColliderConfig = {
       shape: { type: "box", width: 100, height: 10 },

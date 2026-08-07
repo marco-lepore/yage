@@ -15,6 +15,9 @@ const WIDTH = 800;
 const HEIGHT = 600;
 const WALL = 20;
 
+/** Shapes Space cycles through at random, one per collider type. */
+const SHAPE_KINDS = ["circle", "box", "roundedBox", "triangle"] as const;
+
 // ---------------------------------------------------------------------------
 // InputController — handles spawning shapes, impulse, gravity flip
 // ---------------------------------------------------------------------------
@@ -34,9 +37,7 @@ class InputController extends Component {
     // Space — drop a random shape
     if (this.input.isJustPressed("spawn")) {
       this.shapeCount++;
-      const roll = Math.random();
-      const kind: "circle" | "box" | "triangle" =
-        roll < 0.34 ? "circle" : roll < 0.67 ? "box" : "triangle";
+      const kind = SHAPE_KINDS[Math.floor(Math.random() * SHAPE_KINDS.length)]!;
       const x = 100 + Math.random() * (WIDTH - 200);
       const restitution = 0.1 + Math.random() * 0.8;
       const color = randomColor();
@@ -81,6 +82,42 @@ class InputController extends Component {
         e.add(
           new ColliderComponent({
             shape: { type: "box", width: hw * 2, height: hh * 2 },
+            restitution,
+            friction: 0.3,
+            density: 1,
+          }),
+        );
+      } else if (kind === "roundedBox") {
+        // Same box collider with rounded corners. The radius shrinks the
+        // inner half-extents, so the outer footprint still measures
+        // hw * 2 by hh * 2 and the shape rests at the same height as a
+        // plain box. Rounded corners also stop a body catching on the
+        // junction between two segments of a polyline terrain chain.
+        const hw = 10 + Math.random() * 20;
+        const hh = 10 + Math.random() * 20;
+        // Has to stay under half the shorter side, or the collider throws.
+        const radius = Math.min(hw, hh) * 0.5;
+        e.add(
+          new GraphicsComponent().draw((g) => {
+            g.roundRect(-hw, -hh, hw * 2, hh * 2, radius).fill({
+              color,
+              alpha: 0.85,
+            });
+            g.roundRect(-hw, -hh, hw * 2, hh * 2, radius).stroke({
+              color: bouncy ? 0xffffff : 0x666666,
+              width: bouncy ? 2 : 1,
+            });
+          }),
+        );
+        e.add(new RigidBodyComponent({ type: "dynamic", ccd: true }));
+        e.add(
+          new ColliderComponent({
+            shape: {
+              type: "box",
+              width: hw * 2,
+              height: hh * 2,
+              borderRadius: radius,
+            },
             restitution,
             friction: 0.3,
             density: 1,
