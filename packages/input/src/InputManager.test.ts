@@ -283,6 +283,98 @@ describe("InputManager", () => {
       input.fireActionDown("jump");
       expect(input.consumeBufferedPress("jump", 0.12)).toBe(true);
     });
+
+    it("keeps the simulation-time window open while the scene clock is paused", () => {
+      const clock = { elapsed: 0 };
+      input._registerClock(clock);
+      input._onKeyDown("Space");
+
+      input._advanceTime(500);
+
+      expect(input.consumeBufferedPress("jump", 0.12)).toBe(false);
+      expect(input.consumeBufferedPress("jump", 0.12, { clock })).toBe(true);
+    });
+
+    it("expires the window on simulation time", () => {
+      const clock = { elapsed: 0 };
+      input._registerClock(clock);
+      input._onKeyDown("Space");
+
+      clock.elapsed = 0.13;
+
+      expect(input.consumeBufferedPress("jump", 0.12, { clock })).toBe(false);
+    });
+
+    it("keeps the window open when simulation time runs at half speed", () => {
+      const clock = { elapsed: 0 };
+      input._registerClock(clock);
+      input._onKeyDown("Space");
+
+      input._advanceTime(200);
+      clock.elapsed = 0.1;
+
+      expect(input.consumeBufferedPress("jump", 0.12)).toBe(false);
+      expect(input.consumeBufferedPress("jump", 0.12, { clock })).toBe(true);
+    });
+
+    it("shares the claim across clocks and re-arms both on a new press", () => {
+      const clock = { elapsed: 0 };
+      input._registerClock(clock);
+      input._onKeyDown("Space");
+
+      expect(input.consumeBufferedPress("jump", 0.12, { clock })).toBe(true);
+      expect(input.consumeBufferedPress("jump", 0.12)).toBe(false);
+
+      input._onKeyUp("Space");
+      input._onKeyDown("Space");
+      expect(input.consumeBufferedPress("jump", 0.12)).toBe(true);
+      expect(input.consumeBufferedPress("jump", 0.12, { clock })).toBe(false);
+
+      input._onKeyUp("Space");
+      input._onKeyDown("Space");
+      expect(input.consumeBufferedPress("jump", 0.12, { clock })).toBe(true);
+    });
+
+    it("throws for an unregistered clock", () => {
+      const clock = { elapsed: 0 };
+
+      expect(() => input.consumeBufferedPress("jump", 0.12, { clock })).toThrow(
+        /clock/,
+      );
+    });
+
+    it("records no press for an action whose group is disabled", () => {
+      // Lets a pause menu keep its own input out of the gameplay buffer.
+      input.setGroups({ gameplay: ["jump"] });
+      input.disableGroup("gameplay");
+      input._onKeyDown("Space");
+      input.enableGroup("gameplay");
+
+      expect(input.consumeBufferedPress("jump", 0.12)).toBe(false);
+    });
+
+    it("clearAll() drops clock stamps but keeps the clock registered", () => {
+      const clock = { elapsed: 0 };
+      input._registerClock(clock);
+      input._onKeyDown("Space");
+
+      input.clearAll();
+
+      expect(input.consumeBufferedPress("jump", 0.12, { clock })).toBe(false);
+      input._onKeyDown("Space");
+      expect(input.consumeBufferedPress("jump", 0.12, { clock })).toBe(true);
+    });
+
+    it("drops a clock's stamps when the clock is unregistered", () => {
+      const clock = { elapsed: 0 };
+      input._registerClock(clock);
+      input._onKeyDown("Space");
+
+      input._unregisterClock(clock);
+      input._registerClock(clock);
+
+      expect(input.consumeBufferedPress("jump", 0.12, { clock })).toBe(false);
+    });
   });
 
   // -- getAxis --

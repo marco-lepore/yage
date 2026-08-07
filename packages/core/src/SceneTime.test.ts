@@ -100,6 +100,44 @@ describe("SceneTime", () => {
     });
   });
 
+  describe("elapsed", () => {
+    it("accrues under a plain scene.timeScale", () => {
+      const { scene, time } = createSceneTime();
+      scene.timeScale = 0.5;
+
+      time._tick(0.4);
+
+      expect(time.elapsed).toBeCloseTo(0.2);
+    });
+
+    it("accrues under an active scaleBy request", () => {
+      const { time } = createSceneTime();
+      time.scaleBy(0.25);
+
+      time._tick(0.4);
+
+      expect(time.elapsed).toBeCloseTo(0.1);
+    });
+
+    it("stays at 0 during an active freezeFor request", () => {
+      const { time } = createSceneTime();
+      time.freezeFor(1);
+
+      time._tick(0.4);
+
+      expect(time.elapsed).toBe(0);
+    });
+
+    it("uses the scale recomputed after request timers age", () => {
+      const { time } = createSceneTime();
+      time.scaleBy(0.25, { for: 0.1 });
+
+      time._tick(0.1);
+
+      expect(time.elapsed).toBeCloseTo(0.1);
+    });
+  });
+
   describe("show-through and timers", () => {
     it("reveals the older still-active request when the newer expires", () => {
       // 0.25 for 1s; 0.4 for 0.5s starting at t=0.25 (binary-exact durations).

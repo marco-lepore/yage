@@ -5,6 +5,8 @@ export { getKeyDisplayName } from "./keyDisplayNames.js";
 export { InputManagerKey } from "./types.js";
 export type {
   InputConfig,
+  InputClock,
+  BufferedPressOptions,
   ActionMapDefinition,
   InputConflictPolicy,
   RebindOptions,

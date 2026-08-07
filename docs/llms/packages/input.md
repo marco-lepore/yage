@@ -29,6 +29,7 @@ Registers `InputManagerKey` in `EngineContext`.
 ## InputManager Queries
 
 ```ts
+import { SceneTimeKey } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
 
 const input = context.resolve(InputManagerKey);
@@ -56,11 +57,41 @@ input.getReleaseDuration("fire"); // seconds held, valid only on the release fra
 
 // Buffered press — consuming query; true once per press within the window
 input.consumeBufferedPress("jump", 0.12); // pressed within last 0.12s and unclaimed → claim + true
+input.consumeBufferedPress("jump", 0.12, {
+  clock: scene.tryResolveScoped(SceneTimeKey),
+}); // measure on that scene's simulation time (from a Component: this.use(SceneTimeKey))
 
 // Axis/vector
 input.getAxis("left", "right"); // -1, 0, or 1
 input.getVector("left", "right", "up", "down"); // Vec2 (not normalized)
 ```
+
+The two-argument form uses the raw input clock, which ignores scene pause and
+time scaling. Pass a scene's `SceneTime` to measure the window in that scene's
+simulation seconds instead. The scene clock stops while the scene is
+stack-paused or frozen and follows the scene's effective time scale, which is
+the same scale physics steps under.
+
+`consumeBufferedPress` throws when given a clock the plugin has not registered,
+which includes an exited scene's `SceneTime`.
+
+**Gotcha — a buffered press outlives a pause.** The scene clock stops while the
+scene is paused, so a window measured on it never expires there: a jump pressed
+just before the pause menu opens still fires on resume, however long the menu
+was up. The engine holds the press rather than guessing how long is too long.
+Discard it in the scene's `onResume` by consuming it and ignoring the result:
+
+```ts
+onResume() {
+  this.use(InputManagerKey).consumeBufferedPress("jump", 0.12, {
+    clock: this.use(SceneTimeKey),
+  });
+}
+```
+
+Presses made *during* the pause need no handling — an action whose group is
+disabled records no press at all, so `disableGroup` while the menu is up keeps
+menu input out of the buffer.
 
 ## Pointer
 
