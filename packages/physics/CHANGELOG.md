@@ -1,5 +1,30 @@
 # @yagejs/physics
 
+## 0.10.2
+
+### Patch Changes
+
+- [#251](https://github.com/marco-lepore/yage/pull/251) [`57c25b3`](https://github.com/marco-lepore/yage/commit/57c25b36735b71f7032fb6f1f577b434fb459df1) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add `PhysicsWorld.addJoint`, connecting two rigid bodies with a spring or rope joint. The returned handle reports `attached` and detaches the joint via `remove()`, which is safe to call more than once. Joints detach automatically when a jointed entity is disabled or destroyed.
+
+- [#250](https://github.com/marco-lepore/yage/pull/250) [`97e550e`](https://github.com/marco-lepore/yage/commit/97e550e72e3d9c224f762a67c0a91b97d4471ad8) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Collision events include optional `contactImpulse` and `contactImpulseVector` values in pixel-based impulse units, so games can score impacts and derive push direction without reading the body's post-solve velocity.
+
+- [#252](https://github.com/marco-lepore/yage/pull/252) [`b13da93`](https://github.com/marco-lepore/yage/commit/b13da93e799bfd906c28991cea5549895c341d52) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Collision events describe the deepest contact of the pair, so `contactNormal` reports the surface actually resisting the body.
+
+  A collider pair can produce several contact manifolds in one step: one per segment against a polyline chain, and more than one for a box resting on a corner. Rapier's manifold order depends on the approach direction, and `contactNormal`, `contactPoint`, and `penetrationDepth` were read from whichever manifold came first. A box walking onto the same tilemap ramp received the slope face normal from one side. From the other it received the normal of the chain's closing edge, which is coplanar with the floor and describes the ramp as level ground. Code that classifies ground by normal worked in one direction only.
+
+  Those three fields now come from the solver contact with the greatest overlap across every manifold of the pair. Reported values change only where the deepest contact was not in the manifold Rapier happened to report first. That needs a pair touching more than one surface at the same time, which is routine on polyline terrain and compound colliders. `penetrationDepth` is that deepest contact's overlap, still clamped to `>= 0`. `contactImpulse` and `contactImpulseVector` are unchanged: they still sum every manifold's impulse along its own normal.
+
+- [#255](https://github.com/marco-lepore/yage/pull/255) [`2785ce9`](https://github.com/marco-lepore/yage/commit/2785ce964623feeb8478301fdb350a1806ee41b4) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Rounded box colliders and contact skins, so a walking body stops catching on terrain polyline junctions.
+
+  A box driven across a `polyline` terrain chain can stop moving at the junction between two segments. Rapier builds polyline contacts one segment at a time, and where a foot corner meets a vertex it picks a contact normal that opposes the walk direction. The contact regenerates every step, so the body never gets past the vertex.
+  - The box `ColliderShape` accepts `borderRadius`, which rounds the corners. The inner half-extents shrink by the radius, so the outer footprint and a resting body's height stay the same. The flat part of each face shrinks to `width - 2 * borderRadius`, so a body held up only by the last few pixels of a ledge slides off it. Shape casts and overlap queries use the rounded geometry. A radius that is not a finite number below half the shorter side throws when the collider is built.
+  - `ColliderConfig` accepts `contactSkin`, which holds a collider that many pixels away from whatever it touches. A resting body then sits that far above the ground, so prefer `borderRadius` when resting height matters. When both colliders in a pair set a skin, the gap is the sum of the two. Skins apply to contacts, not to queries.
+  - The debug overlay draws rounded box colliders at their outer footprint, with the corner radius visible.
+
+- Updated dependencies [[`ef27ea3`](https://github.com/marco-lepore/yage/commit/ef27ea3d1ff31faea4fa77fd6538bd8cadabe606), [`7f0b764`](https://github.com/marco-lepore/yage/commit/7f0b76494d72bd94866436ee46a5669c08d60372), [`2785ce9`](https://github.com/marco-lepore/yage/commit/2785ce964623feeb8478301fdb350a1806ee41b4)]:
+  - @yagejs/core@0.10.2
+  - @yagejs/debug@0.10.2
+
 ## 0.10.1
 
 ### Patch Changes

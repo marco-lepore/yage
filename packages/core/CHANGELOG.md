@@ -1,5 +1,18 @@
 # @yagejs/core
 
+## 0.10.2
+
+### Patch Changes
+
+- [#256](https://github.com/marco-lepore/yage/pull/256) [`ef27ea3`](https://github.com/marco-lepore/yage/commit/ef27ea3d1ff31faea4fa77fd6538bd8cadabe606) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A buffered-press window can count on a scene's simulation time as well as on the raw input clock.
+  - `SceneTime.elapsed` reports the scene's simulation seconds: raw frame time scaled by `effectiveScale`, accrued only while the scene is active. A stack-paused scene, a `timeScale` of 0, and an active freeze all hold it. It starts at 0 each time the scene is entered and is not saved.
+
+- [#246](https://github.com/marco-lepore/yage/pull/246) [`7f0b764`](https://github.com/marco-lepore/yage/commit/7f0b76494d72bd94866436ee46a5669c08d60372) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Store a compact ref for a class instance in an Inspector event-log payload.
+  - `Entity` logs as `{ id, name }`, `Component` as `{ component: "Health" }`, `Scene` as `{ name }`, `Vec2` as `{ x, y }`, any other class instance as `{ _type: "ClassName" }`. Plain objects, arrays and primitives are cloned as before.
+  - Engine events carry live objects — `component:added` passes the `Component` itself — so an entry used to include the component's private fields, its entity backref, that entity's scene and the scene's internals. On an 11-entity scene the logged payloads drop from 18 KB to 1.2 KB.
+  - A payload holding a live engine object no longer degrades to `{ _unserializable: true }` on a cycle, and a `Map` or `Set` logs as `{ _type: "Map" }` rather than `{}`.
+  - Event subscribers are unaffected; only the log's stored copy is a ref. Component field values stay available in the entity snapshot.
+
 ## 0.10.1
 
 ### Patch Changes

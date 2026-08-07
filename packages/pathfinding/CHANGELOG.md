@@ -1,5 +1,12 @@
 # @yagejs/pathfinding
 
+## 0.10.2
+
+### Patch Changes
+
+- Updated dependencies [[`ef27ea3`](https://github.com/marco-lepore/yage/commit/ef27ea3d1ff31faea4fa77fd6538bd8cadabe606), [`7f0b764`](https://github.com/marco-lepore/yage/commit/7f0b76494d72bd94866436ee46a5669c08d60372)]:
+  - @yagejs/core@0.10.2
+
 ## 0.10.1
 
 ### Patch Changes

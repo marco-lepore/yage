@@ -1,6 +1,6 @@
 {
   "name": "@yagejs/save",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "description": "Save and load game state for YAGE",
   "keywords": [
     "yage",
@@ -48,6 +48,6 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yagejs/core": "^0.10.1"
+    "@yagejs/core": "^0.10.2"
   }
 }
