@@ -8,10 +8,14 @@ const graphicsDestroySpy = vi.fn();
 vi.mock("pixi.js", () => {
   class MockGraphics {
     children: unknown[] = [];
+    /** Rects drawn since the last `clear()`, as `[x, y, width, height]`. */
+    rects: number[][] = [];
     clear(): this {
+      this.rects = [];
       return this;
     }
-    rect(): this {
+    rect(x: number, y: number, width: number, height: number): this {
+      this.rects.push([x, y, width, height]);
       return this;
     }
     fill(): this {
@@ -24,8 +28,12 @@ vi.mock("pixi.js", () => {
   return { Graphics: MockGraphics };
 });
 
+import { Graphics } from "pixi.js";
 import { FitController } from "./Fit.js";
 import type { Application, Container } from "pixi.js";
+
+/** The mocked `Graphics` above, as seen through `stage.mask`. */
+type MaskGraphics = { rects: number[][] };
 
 // ---------------------------------------------------------------------------
 // Lightweight mocks — same style as test-helpers.ts, scoped to this file.
@@ -52,7 +60,19 @@ class MockContainer {
   // Container has many more responsibilities; we capture only what
   // FitController touches.
   children: unknown[] = [];
-  mask: unknown = null;
+  // Pixi v8 exposes `mask` as an accessor pair over an internal effect
+  // object: the getter returns `this._maskEffect?.mask`, so an unmasked
+  // container reads back `undefined`, and assigning `null` tears the effect
+  // down rather than storing `null`. Model both, so this suite sees the same
+  // values FitController sees in a real game — a plain `mask = null` field
+  // hides guards that only test against `null`.
+  private _mask: unknown = undefined;
+  get mask(): unknown {
+    return this._mask;
+  }
+  set mask(value: unknown) {
+    this._mask = value ?? undefined;
+  }
   addChild(child: unknown): void {
     this.children.push(child);
   }
@@ -202,23 +222,38 @@ describe("FitController", () => {
 
     it("installs a stage mask that clips world content to the virtual rect", () => {
       const { fit, app } = makeFit("letterbox", 400, 300, 1000, 600);
+      // 1000×600 over 400×300 leaves 100px pillarbox bars either side, so
+      // there is something to clip.
       fit.start();
 
       // Mask is applied to stage and is a child of stage so it inherits the
       // same transform — drawn at virtual-local (0,0,vW,vH) it lands on the
       // virtual rect after the stage scale/offset is applied.
-      expect(app.stage.mask).not.toBeNull();
+      expect(app.stage.mask).toBeInstanceOf(Graphics);
       expect(app.stage.children).toContain(app.stage.mask);
+      expect((app.stage.mask as MaskGraphics).rects).toEqual([[0, 0, 400, 300]]);
+    });
+
+    it("installs the mask even though an unmasked container reports `undefined`", () => {
+      const { fit, app } = makeFit("letterbox", 400, 300, 1000, 600);
+      // Pixi reports no mask as `undefined`, not `null`. A guard written as
+      // `stage.mask !== null` reads that as "already masked" and skips the
+      // install, leaving the bars unclipped in every default letterbox game.
+      expect(app.stage.mask).toBeUndefined();
+
+      fit.start();
+
+      expect(app.stage.mask).toBeInstanceOf(Graphics);
     });
 
     it("removes the mask on stop() and disposes the Graphics", () => {
       const { fit, app } = makeFit("letterbox", 400, 300, 1000, 600);
       graphicsDestroySpy.mockClear();
       fit.start();
-      expect(app.stage.mask).not.toBeNull();
+      expect(app.stage.mask).toBeInstanceOf(Graphics);
 
       fit.stop();
-      expect(app.stage.mask).toBeNull();
+      expect(app.stage.mask).toBeUndefined();
       expect(app.stage.children).toHaveLength(0);
       // Releasing the underlying Graphics resource is part of the contract:
       // re-installing fit must not leak a `GraphicsContext` per cycle.
@@ -291,7 +326,7 @@ describe("FitController", () => {
     it("does not install a stage mask — the game is expected to draw into bars", () => {
       const { fit, app } = makeFit("expand", 400, 300, 1000, 600);
       fit.start();
-      expect(app.stage.mask).toBeNull();
+      expect(app.stage.mask).toBeUndefined();
       expect(app.stage.children).toHaveLength(0);
     });
 
@@ -858,20 +893,20 @@ describe("FitController", () => {
     it("removes the letterbox mask when switching to expand", () => {
       const { fit, app } = makeFit("letterbox", 400, 300, 1000, 600);
       fit.start();
-      expect(app.stage.mask).not.toBeNull();
+      expect(app.stage.mask).toBeInstanceOf(Graphics);
 
       fit.reconfigure("expand", fit.currentTarget);
-      expect(app.stage.mask).toBeNull();
+      expect(app.stage.mask).toBeUndefined();
       expect(app.stage.children).toHaveLength(0);
     });
 
     it("installs the letterbox mask when switching from expand to letterbox", () => {
       const { fit, app } = makeFit("expand", 400, 300, 1000, 600);
       fit.start();
-      expect(app.stage.mask).toBeNull();
+      expect(app.stage.mask).toBeUndefined();
 
       fit.reconfigure("letterbox", fit.currentTarget);
-      expect(app.stage.mask).not.toBeNull();
+      expect(app.stage.mask).toBeInstanceOf(Graphics);
       expect(app.stage.children).toContain(app.stage.mask);
     });
   });
