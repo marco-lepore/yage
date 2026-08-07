@@ -1,5 +1,42 @@
 # @yagejs-tools/lab
 
+## 0.1.1
+
+### Patch Changes
+
+- [#242](https://github.com/marco-lepore/yage/pull/242) [`b842574`](https://github.com/marco-lepore/yage/commit/b842574da58dacbb367adcf5ed27a061e73a381d) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Panel changes for tuning a scenario without losing your place.
+  - The sidebar, the stage and the controls column each scroll on their own and
+    the page never scrolls, so a long scenario list no longer moves the canvas.
+  - A filter box above the scenario list matches a scenario's title, the group
+    names in it, and its file path.
+  - Group headings fold. A filter opens whatever groups hold a match and
+    clearing it restores the folds.
+  - `copy JSON` on the Controls heading puts every current control value on the
+    clipboard as one JSON object.
+  - `→ right` moves the controls into a column beside the stage, where the whole
+    list is visible instead of four rows at a time.
+  - The canvas takes keyboard focus when clicked. While it has focus the browser
+    does not scroll on space, the arrow keys, page up and down, or home and end;
+    the game still receives those keys.
+
+- [#254](https://github.com/marco-lepore/yage/pull/254) [`2e161fd`](https://github.com/marco-lepore/yage/commit/2e161fdeb90ce45ec179e7c242e44b1301ad2abc) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Four fixes to what a scenario run reports and how it plays.
+  - A failed assertion prints the values it compared in full. A message carrying a
+    joined list or a serialized object reaches the `yage-lab test` report whole
+    instead of stopping at 40 characters.
+  - `step(frames, { dtMs })` and `until(predicate, { maxFrames, dtMs })` set the
+    milliseconds one frame simulates, for that call only. A drive can exercise a
+    frame rate that does not divide into the fixed 1/60s step, which is what it
+    takes to catch a reader sampling the simulated pose rather than the
+    interpolated one.
+  - The panel's **real time** checkbox, beside **Run**, plays a driven run at one
+    engine frame per browser animation frame, so a long drive shows its motion
+    rather than its end state. `yage-lab test` runs every drive unpaced.
+  - `--screenshot-view camera` captures the camera's virtual viewport at the
+    game's virtual resolution, so a PNG's size does not follow the scene's drawn
+    extents. The default `content` view keeps those extents and warns when the
+    image it would produce exceeds the GPU texture limit. Past that limit a
+    capture comes back blank while every scenario still reports passing.
+
 ## 0.1.0
 
 ### Minor Changes

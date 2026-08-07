@@ -1,5 +1,17 @@
 # @yagejs/input
 
+## 0.10.2
+
+### Patch Changes
+
+- [#256](https://github.com/marco-lepore/yage/pull/256) [`ef27ea3`](https://github.com/marco-lepore/yage/commit/ef27ea3d1ff31faea4fa77fd6538bd8cadabe606) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A buffered-press window can count on a scene's simulation time as well as on the raw input clock.
+  - `InputManager.consumeBufferedPress(action, windowSeconds, { clock })` measures the window on the given clock. `SceneTime` satisfies the new `InputClock` shape, so pass the one resolved from `SceneTimeKey`: `input.consumeBufferedPress("jump", 0.12, { clock: this.use(SceneTimeKey) })`. Omitting the option keeps the raw input clock, which ignores scene pause and time scale.
+  - The input plugin registers the `SceneTime` of every scene the engine enters, so a jump buffer measured on it holds through a pause menu and follows the scene's effective time scale with no game-side countdown.
+
+- Updated dependencies [[`ef27ea3`](https://github.com/marco-lepore/yage/commit/ef27ea3d1ff31faea4fa77fd6538bd8cadabe606), [`7f0b764`](https://github.com/marco-lepore/yage/commit/7f0b76494d72bd94866436ee46a5669c08d60372), [`2785ce9`](https://github.com/marco-lepore/yage/commit/2785ce964623feeb8478301fdb350a1806ee41b4)]:
+  - @yagejs/core@0.10.2
+  - @yagejs/debug@0.10.2
+
 ## 0.10.1
 
 ### Patch Changes

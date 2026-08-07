@@ -1,5 +1,34 @@
 # @yagejs/renderer
 
+## 0.10.2
+
+### Patch Changes
+
+- [#253](https://github.com/marco-lepore/yage/pull/253) [`97ace87`](https://github.com/marco-lepore/yage/commit/97ace87237bc63accd0b0ffb840e03c51a2bb5b6) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Give `AnimatedSpriteComponent` direct frame control.
+  - `gotoFrame(index)` stops playback and holds the chosen frame, so a sheet can supply static poses that are not animations of their own. It throws when `index` falls outside the source's frames.
+  - `frame` reads the current frame index.
+  - `play({ fromStart: true })` starts at frame 0 instead of resuming. A completed non-looping animation replays in full rather than showing only its last frame. A bare `play()` still resumes from the current frame.
+
+- [#244](https://github.com/marco-lepore/yage/pull/244) [`e30b114`](https://github.com/marco-lepore/yage/commit/e30b114d416a211144463540fc6577e6abc6c1e9) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A followed camera can start on its target instead of gliding in from the world origin.
+  - `snap: true` on `CameraEntity` params and on `CameraFollowOptions` places the camera on the follow target as following starts, offset included. Any `smoothing` below `1` eases from the camera's current position, so a camera that spawns without an explicit `position` opens the scene with a visible glide from `(0, 0)` to the player.
+  - `snapToTarget()` on `CameraEntity`, `CameraComponent`, and `CameraFollow` does the same cut on demand — for a room change or a respawn, where easing across the map is the wrong look. It does nothing when no target is set.
+  - Both skip the deadzone for that one move, centring the target. The deadzone applies again from the next frame, and camera bounds clamp on the next frame as they do for any other camera move.
+
+- [#244](https://github.com/marco-lepore/yage/pull/244) [`e30b114`](https://github.com/marco-lepore/yage/commit/e30b114d416a211144463540fc6577e6abc6c1e9) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `CameraShakeOptions.decay` is documented against the curve it actually produces.
+  - `decay` scales how far the shake fades across its duration, measured against elapsed progress rather than per frame. `0` (the default) holds full intensity until the shake ends, `1` fades linearly to zero over the duration, and values above `1` reach zero earlier — at `2` the camera stops moving halfway through.
+  - The reference entry described a `0..1` factor applied per frame in which `1` stopped the shake instantly. That matched neither the range nor the curve, so anything written against it is worth rechecking: `decay: 1` is a fade over the full duration, not an immediate stop.
+
+- [#258](https://github.com/marco-lepore/yage/pull/258) [`b29d234`](https://github.com/marco-lepore/yage/commit/b29d2342218cc899a3d286f964bb7876f81ae49d) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Letterbox fit clips rendering to the virtual rect, so the bars stay blank.
+  - Under `fit: { mode: "letterbox" }`, the default, content drawn outside the virtual rect no longer appears in the letterbox or pillarbox bars. Any game whose world extends past its virtual size showed that content in the bars whenever the host's aspect ratio did not match. A side-scroller wider than the viewport is the common case.
+  - `expand`, `cover`, and `stretch` are unaffected. `expand` still lets the game draw into the bars deliberately, and the other two already cover the canvas.
+  - A mask assigned to the fit container before fit starts still takes precedence, and stays in place when fit stops.
+
+- [#259](https://github.com/marco-lepore/yage/pull/259) [`7002ce8`](https://github.com/marco-lepore/yage/commit/7002ce8d35e7a10c384496fcef166884fed5e0b4) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Carry through the parts of a Tiled map the package used to drop, and report the forms it cannot render.
+  - Export `VisualComponent`, `visualOptionsFromData`, and the `VisualComponentOptions` / `VisualComponentData` / `VisualInteractiveOptions` types. The base behind the five built-in visual components is now public, so a component in another package can join it and pick up the render-layer field, effects host, mask lifecycle, and the shared visible/tint/alpha/blend-mode vocabulary. `@yagejs/tilemap`'s `TilemapComponent` is the first such consumer.
+
+- Updated dependencies [[`ef27ea3`](https://github.com/marco-lepore/yage/commit/ef27ea3d1ff31faea4fa77fd6538bd8cadabe606), [`7f0b764`](https://github.com/marco-lepore/yage/commit/7f0b76494d72bd94866436ee46a5669c08d60372)]:
+  - @yagejs/core@0.10.2
+
 ## 0.10.1
 
 ### Patch Changes

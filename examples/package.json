@@ -23,7 +23,7 @@
     "vite-plugin-wasm": "^3.6.0"
   },
   "dependencies": {
-    "@yagejs-tools/lab": "^0.1.0",
+    "@yagejs-tools/lab": "^0.1.1",
     "@yagejs-addons/abilities": "^0.2.0",
     "@yagejs-addons/steering": "^0.2.1",
     "@yagejs-addons/synth": "^0.1.0",

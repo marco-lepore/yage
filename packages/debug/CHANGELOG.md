@@ -1,5 +1,17 @@
 # @yagejs/debug
 
+## 0.10.2
+
+### Patch Changes
+
+- [#255](https://github.com/marco-lepore/yage/pull/255) [`2785ce9`](https://github.com/marco-lepore/yage/commit/2785ce964623feeb8478301fdb350a1806ee41b4) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Rounded box colliders and contact skins, so a walking body stops catching on terrain polyline junctions.
+  - `DebugGraphics` gains `roundRect(x, y, width, height, radius)`, matching the PixiJS method of the same name, so a contributor can outline a rounded shape in one call. The physics overlay uses it to draw rounded box colliders.
+  - A hand-written `DebugGraphics` stub, such as one in a custom contributor's tests, needs a `roundRect` entry to satisfy the interface.
+
+- Updated dependencies [[`97ace87`](https://github.com/marco-lepore/yage/commit/97ace87237bc63accd0b0ffb840e03c51a2bb5b6), [`ef27ea3`](https://github.com/marco-lepore/yage/commit/ef27ea3d1ff31faea4fa77fd6538bd8cadabe606), [`e30b114`](https://github.com/marco-lepore/yage/commit/e30b114d416a211144463540fc6577e6abc6c1e9), [`e30b114`](https://github.com/marco-lepore/yage/commit/e30b114d416a211144463540fc6577e6abc6c1e9), [`7f0b764`](https://github.com/marco-lepore/yage/commit/7f0b76494d72bd94866436ee46a5669c08d60372), [`b29d234`](https://github.com/marco-lepore/yage/commit/b29d2342218cc899a3d286f964bb7876f81ae49d), [`7002ce8`](https://github.com/marco-lepore/yage/commit/7002ce8d35e7a10c384496fcef166884fed5e0b4)]:
+  - @yagejs/renderer@0.10.2
+  - @yagejs/core@0.10.2
+
 ## 0.10.1
 
 ### Patch Changes

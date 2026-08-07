@@ -9,8 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@yagejs/core": "^0.10.1",
-    "@yagejs/renderer": "^0.10.1"
+    "@yagejs/core": "^0.10.2",
+    "@yagejs/renderer": "^0.10.2"
   },
   "devDependencies": {
     "typescript": "^5.9.0",
