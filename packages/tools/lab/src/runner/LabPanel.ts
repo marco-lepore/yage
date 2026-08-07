@@ -7,6 +7,7 @@ import { CLOCK_SPEEDS, nearestSpeedIndex } from "./LabClock.js";
 import type { LabError } from "./labErrors.js";
 import { buildScenarioTree, type ScenarioNode } from "./scenarioGroups.js";
 import type { RegistryProblem, ScenarioEntry } from "./ScenarioRegistry.js";
+import type { RunPace } from "./runDrive.js";
 
 export interface PanelCallbacks {
   onSelect(id: string): void;
@@ -16,7 +17,7 @@ export interface PanelCallbacks {
   onStep(frames: number): void;
   onSpeedChange(speed: number): void;
   /** Run the current scenario's `drive`. */
-  onRun(): void;
+  onRun(pace: RunPace): void;
 }
 
 export interface PanelOptions {
@@ -111,6 +112,7 @@ const CSS = `
 .yage-lab__button:disabled { opacity: .4; cursor: not-allowed; background: #1e293b; }
 .yage-lab__play { min-width: 62px; }
 .yage-lab__run-button { margin-left: 8px; }
+.yage-lab__real-time { display: flex; align-items: center; gap: 4px; color: #94a3b8; cursor: pointer; }
 .yage-lab__run { color: #94a3b8; max-width: 70ch; word-break: break-word; }
 .yage-lab__run--pass { color: #86efac; }
 .yage-lab__run--fail { color: #fca5a5; }
@@ -293,6 +295,7 @@ export class LabPanel {
   private readonly readoutEl: HTMLElement;
   private readonly clockBar: HTMLElement;
   private readonly runButton: HTMLButtonElement;
+  private readonly realTimeInput: HTMLInputElement;
   private readonly runEl: HTMLElement;
   private readonly items = new Map<string, HTMLButtonElement>();
   private readonly widgets = new Map<string, (value: ControlValue) => void>();
@@ -374,8 +377,12 @@ export class LabPanel {
     this.speedInput = this.renderSpeed();
     this.readoutEl = el("span", "yage-lab__readout");
     this.runButton = this.button("run", "yage-lab__run-button", () => {
-      this.callbacks.onRun();
+      this.callbacks.onRun(this.realTimeInput.checked ? "frame" : "immediate");
     });
+    const realTime = el("label", "yage-lab__real-time");
+    this.realTimeInput = el("input");
+    this.realTimeInput.type = "checkbox";
+    realTime.append(this.realTimeInput, "real time");
     this.runEl = el("span", "yage-lab__run");
     this.runEl.setAttribute("role", "status");
     this.clockBar = el("div", "yage-lab__clock");
@@ -390,6 +397,7 @@ export class LabPanel {
       this.speedInput,
       this.readoutEl,
       this.runButton,
+      realTime,
     );
 
     this.stage.append(

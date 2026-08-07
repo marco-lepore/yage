@@ -520,7 +520,18 @@ describe("the run button", () => {
     panel.setCurrent(drivenEntry("hit", "Combat / Hit"), {});
     expect(runButton(panel).disabled).toBe(false);
     runButton(panel).click();
-    expect(calls.onRun).toHaveBeenCalledOnce();
+    expect(calls.onRun).toHaveBeenCalledWith("immediate");
+  });
+
+  it("asks for real-time playback when the checkbox is selected", () => {
+    const { panel, calls, find } = mountPanel();
+    panel.setCurrent(drivenEntry("hit", "Combat / Hit"), {});
+    const realTime = find<HTMLInputElement>(".yage-lab__real-time input");
+    realTime.checked = true;
+
+    runButton(panel).click();
+
+    expect(calls.onRun).toHaveBeenCalledWith("frame");
   });
 
   it("takes no second click while a run is in flight", () => {
@@ -544,6 +555,10 @@ describe("the run button", () => {
     ];
 
     panel.setRun({ state: "running" });
+    expect(
+      panel.root.querySelector<HTMLInputElement>(".yage-lab__real-time input")
+        ?.disabled,
+    ).toBe(true);
     expect(fields().length).toBeGreaterThan(5);
     expect(fields().every((field) => field.disabled)).toBe(true);
 

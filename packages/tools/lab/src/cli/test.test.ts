@@ -1,5 +1,6 @@
 import type { Browser } from "@playwright/test";
 import { afterEach, describe, expect, it } from "vitest";
+import type { CaptureView } from "../runner/labCapture.js";
 import { LAB_GLOBAL } from "../runner/labGlobal.js";
 import { driveScenarios, type ScenarioResult } from "./test.js";
 
@@ -22,6 +23,7 @@ interface StubScenario {
     framesUsed: number;
     durationMs: number;
     captures: { label?: string; dataUrl: string }[];
+    warnings: string[];
   }>;
   /** What `run()` rejects with, the way a rebuild that threw makes it. */
   runRejects?: string;
@@ -40,10 +42,13 @@ interface StubOptions {
   bootError?: string;
   /** Fails the screenshot, the way a harness with no renderer does. */
   captureFails?: boolean;
+  captureWarnings?: string[];
 }
 
 function stubLab(opts: StubOptions) {
   const stepped: string[] = [];
+  const runViews: (CaptureView | undefined)[] = [];
+  const captureViews: CaptureView[] = [];
   let current: StubScenario | undefined;
 
   const ready = (): Promise<void> => {
@@ -73,7 +78,8 @@ function stubLab(opts: StubOptions) {
         return Promise.resolve();
       },
     },
-    run: () => {
+    run: (runOpts?: { captureView?: CaptureView }) => {
+      runViews.push(runOpts?.captureView);
       if (current?.hangs === true) return new Promise(() => {});
       if (current?.runRejects !== undefined) {
         return Promise.reject(new Error(current.runRejects));
@@ -85,19 +91,23 @@ function stubLab(opts: StubOptions) {
           framesUsed: 10,
           durationMs: 5,
           captures: [],
+          warnings: [],
         })
       );
+    },
+    capture: (view: CaptureView = "content") => {
+      captureViews.push(view);
+      return opts.captureFails === true
+        ? Promise.reject(new Error("no renderer"))
+        : Promise.resolve({
+            dataUrl: "data:image/png;base64,AAA",
+            warnings: opts.captureWarnings ?? [],
+          });
     },
     engine: {
       inspector: {
         time: { getFrame: () => (current === undefined ? 0 : 42) },
         getErrors: () => ({ callbackErrors: current?.errors ?? [] }),
-        capture: {
-          dataURL: () =>
-            opts.captureFails === true
-              ? Promise.reject(new Error("no renderer"))
-              : Promise.resolve("data:image/png;base64,AAA"),
-        },
       },
     },
   };
@@ -118,7 +128,12 @@ function stubLab(opts: StubOptions) {
   };
 
   const browser = { newPage: () => Promise.resolve(page) };
-  return { browser: browser as unknown as Browser, stepped };
+  return {
+    browser: browser as unknown as Browser,
+    captureViews,
+    runViews,
+    stepped,
+  };
 }
 
 function run(
@@ -179,6 +194,7 @@ describe("driveScenarios", () => {
               framesUsed: 3,
               durationMs: 1,
               captures: [],
+              warnings: [],
             }),
         },
       ],
@@ -293,6 +309,7 @@ describe("driveScenarios", () => {
               framesUsed: 1,
               durationMs: 1,
               captures: [],
+              warnings: [],
             }),
           errors: [{ kind: "Component Health", error: "unrelated" }],
         },
@@ -320,6 +337,7 @@ describe("driveScenarios", () => {
               captures: [
                 { label: "mid", dataUrl: "data:image/png;base64,BBB" },
               ],
+              warnings: [],
             }),
         },
       ],
@@ -365,6 +383,42 @@ describe("driveScenarios", () => {
     expect(result?.ok).toBe(true);
     expect(result?.failures).toEqual([]);
     expect(result?.warnings).toEqual(["Screenshot failed: no renderer"]);
+  });
+
+  it("reports a capture size warning without failing the run", async () => {
+    const warning =
+      "Content screenshot size 6000×5000 exceeds the GPU texture limit of 4096 pixels per side, which captures blank.";
+    const { browser } = stubLab({
+      scenarios: [{ id: "drop", title: "T" }],
+      captureWarnings: [warning],
+    });
+
+    const [result] = await driveScenarios({
+      browser,
+      baseUrl: "http://localhost:5210/",
+      timeoutMs: 1_000,
+      capture: true,
+    });
+
+    expect(result?.ok).toBe(true);
+    expect(result?.warnings).toEqual([warning]);
+  });
+
+  it("uses one screenshot view for the drive and final capture", async () => {
+    const { browser, captureViews, runViews } = stubLab({
+      scenarios: [{ id: "drop", title: "T", hasDrive: true }],
+    });
+
+    await driveScenarios({
+      browser,
+      baseUrl: "http://localhost:5210/",
+      timeoutMs: 1_000,
+      capture: true,
+      screenshotView: "camera",
+    });
+
+    expect(runViews).toEqual(["camera"]);
+    expect(captureViews).toEqual(["camera"]);
   });
 
   it("says the lab never started rather than blaming a scenario", async () => {

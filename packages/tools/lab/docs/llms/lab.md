@@ -30,7 +30,8 @@ without it; only `test` needs it and a chromium binary.
 yage-lab init [--force]                          # write lab/harness.ts
 yage-lab [dev] [--port 5210] [--no-open]         # the scenario browser
 yage-lab build [--out-dir dist-lab]              # a static site
-yage-lab test [--timeout 30000] [--screenshots <dir>]  # headless, exits non-zero
+yage-lab test [--timeout 30000] [--screenshots <dir>] \
+  [--screenshot-view <content|camera>]                  # headless, exits non-zero
 ```
 
 Every command also takes `--scenarios <comma-separated globs>`.
@@ -229,8 +230,8 @@ async drive({ scene, controls, step, until, expect, input, events, capture }) {
 | --- | --- | --- |
 | `scene` | `Scene` | `findByKey(...)` reaches what the scenario spawned. |
 | `controls` | `ControlValues<C>` | The values the run started with. |
-| `step` | `(frames?) => Promise<void>` | Advances frames, one at a time. |
-| `until` | `(predicate, { maxFrames? }) => Promise<number>` | Steps until true, resolving with the frames it took. Rejects after 600 frames by default. |
+| `step` | `(frames?, { dtMs? }) => Promise<void>` | Advances frames, one at a time. `dtMs` sets the simulated milliseconds per frame for this call. |
+| `until` | `(predicate, { maxFrames?, dtMs? }) => Promise<number>` | Steps until true, resolving with the frames it took. Rejects after 600 frames by default. |
 | `expect` | `ExpectStatic` | `@vitest/expect`, Jest-style. |
 | `events` | `Inspector["events"]` | The engine's event log. |
 | `input` | `DriveInput` | Synthetic input, below. |
@@ -239,6 +240,14 @@ async drive({ scene, controls, step, until, expect, input, events, capture }) {
 **Every call that advances a frame is async and has to be awaited.**
 `Inspector.time.step()` is synchronous and drains nothing — use `step` from the
 context.
+
+`dtMs` defaults to the clock's fixed step. The override applies only to that
+`step` or `until` call:
+
+```ts
+await step(90, { dtMs: 1000 / 90 });
+await until(() => probe.settled, { maxFrames: 180, dtMs: 1000 / 90 });
+```
 
 **`events.waitFor` has to be started before the frames that satisfy it.** The
 run is the only thing issuing frames, so awaiting it first parks the run with
@@ -306,10 +315,21 @@ Each scenario gets its own page, so an error recorded while the scene was
 mounting still belongs to it, and a stopped game loop cannot cascade into the
 scenarios after it.
 
+Assertion failures print the full compared values. Long strings and serialized
+objects are not shortened.
+
 `--screenshots <dir>` writes one PNG per scenario under the Vite root, plus one
 per `capture(label)` a drive asked for, named `<id>[-<index>][-<label>].png`.
 Without the flag nothing is written and no screenshot is taken. A screenshot
 that could not be taken is a warning, not a failure.
+
+`--screenshot-view content` is the default. It captures the stage's drawn
+content at the renderer's resolution. The lab warns when the predicted image
+exceeds the GPU texture limit. `--screenshot-view camera` captures the camera's
+virtual viewport at resolution 1, so the PNG dimensions equal the game's
+virtual resolution. It captures the declared virtual rect, which is what the
+canvas shows under `letterbox` and `stretch`; `expand` shows more than that
+rect on screen and `cover` shows less, and the PNG covers the rect either way.
 
 Every scenario runs with its declared control values. There is no flag for a
 different set.
@@ -369,7 +389,10 @@ scenario list leaves the canvas where it is.
 - **Controls**, under the canvas, or beside it through the `→ right` toggle.
   `copy JSON` puts every current control value on the clipboard as one JSON
   object, to paste into code or into a prompt.
-- **Clock**, under the canvas: play, pause, `+1`, `+10`, and a speed slider.
+- **Clock**, under the canvas: play, pause, `+1`, `+10`, a speed slider, and the
+  Run button. Select **real time** beside Run to show one driven engine frame
+  per browser animation frame. A background tab pauses this run until the tab
+  is focused again. `yage-lab test` always runs without animation-frame pacing.
 - **Errors**, above the canvas.
 
 Clicking the canvas gives it keyboard focus. While it holds focus the browser
@@ -427,18 +450,24 @@ interface LabApi {
   scene(): Scene | undefined;
   show(id: string): Promise<void>;
   setControl(name: string, value: ControlValue): Promise<void>;
-  run(): Promise<DriveResult>;                    // { ok, framesUsed, durationMs, captures, error? }
+  run(opts?: { pace?: "immediate" | "frame"; captureView?: "content" | "camera" }): Promise<DriveResult>;
+  capture(view?: "content" | "camera"): Promise<LabCaptureResult>;
 }
 ```
 
 `ready` is what to wait on — the API is published before the engine starts, so
 its presence alone does not mean there is anything to drive.
 
+`run()` defaults to immediate playback and content captures. `DriveResult`
+includes `warnings` beside `captures`. `capture()` returns the PNG data URL and
+capture warnings for an out-of-page driver.
+
 ## Gotchas
 
 - **The clock is frozen.** `mount` freezes the engine clock at boot and issues
-  every frame itself, at a fixed delta of 1/60s. Speed changes how often a frame
-  is issued, never the delta the frame reports.
+  every frame itself. The default delta is 1/60s. A drive can set `dtMs` for one
+  `step` or `until` call. Speed changes how often the panel clock issues a
+  frame, never the delta the frame reports.
 - **A run and the clock control are two writers on one clock.** A run stops the
   clock for its duration and restores the play state afterwards. Switching
   scenario or changing a control during a run is rejected.
@@ -449,9 +478,9 @@ its presence alone does not mean there is anything to drive.
 - **A scenario laying bodies out from a control has to keep them clear of each
   other.** Physics pushes intersecting bodies apart hard enough that the
   scenario stops showing what it was built to show.
-- **A screenshot is the size of what was drawn**, not the size of the canvas —
-  it is the stage, cropped to its bounds. An empty scene produces an 88-byte
-  PNG.
+- **A content screenshot is the size of what was drawn**, not the size of the
+  canvas. It is the stage cropped to its bounds. Use the camera view for the
+  game's virtual resolution.
 - **Screenshot bytes are not stable between runs.** Two runs at the same frame
   count with a fixed seed differ by tens of bytes. Any comparison needs a
   perceptual diff.

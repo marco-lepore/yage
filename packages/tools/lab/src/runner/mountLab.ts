@@ -18,6 +18,11 @@ import {
 } from "../grammar/harness.js";
 import type { AnyScenario } from "../grammar/scenario.js";
 import { LabClock } from "./LabClock.js";
+import {
+  captureLab,
+  type CaptureView,
+  type LabCaptureResult,
+} from "./labCapture.js";
 import { LAB_GLOBAL } from "./labGlobal.js";
 import {
   CLOCK_ERROR_KIND,
@@ -33,6 +38,7 @@ import { RebuildQueue } from "./RebuildQueue.js";
 import {
   type DriveResult,
   type ErasedDriveContext,
+  type RunPace,
   runDrive,
 } from "./runDrive.js";
 import { ScenarioScene } from "./ScenarioScene.js";
@@ -92,7 +98,12 @@ export interface LabApi {
    * control stopped for the duration. An assertion that fails is a result, not
    * a rejection; rejects when there is no scenario or it declares no `drive`.
    */
-  run(): Promise<DriveResult>;
+  run(opts?: {
+    pace?: RunPace;
+    captureView?: CaptureView;
+  }): Promise<DriveResult>;
+  /** Captures the current scene for an out-of-page driver. */
+  capture(view?: CaptureView): Promise<LabCaptureResult>;
 }
 
 /**
@@ -179,7 +190,7 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
         clock.setSpeed(speed);
         refresh();
       },
-      onRun: () => void settleRun(run()),
+      onRun: (pace) => void settleRun(run({ pace })),
     },
   });
 
@@ -377,7 +388,10 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
    * stopped for the duration and its play state restored afterwards. The
    * rebuild comes first: a previous run left the scene wherever it drove it to.
    */
-  async function run(): Promise<DriveResult> {
+  async function run(opts?: {
+    pace?: RunPace;
+    captureView?: CaptureView;
+  }): Promise<DriveResult> {
     const current = entry;
     if (!current) throw new Error("No scenario is mounted.");
     const drive = erase(current.scenario).drive;
@@ -391,7 +405,7 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
       const result = await clock.whileStopped(async () => {
         await queue.schedule(rebuild);
         if (!scene) throw new Error("No scene is mounted.");
-        return runDrive(engine, scene, values, drive);
+        return runDrive(engine, scene, values, drive, opts);
       });
       panel.setRun(
         result.ok
@@ -464,6 +478,7 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
     show: (id) => show(id),
     setControl,
     run,
+    capture: (view) => captureLab(engine, view),
   };
   (globalThis as Record<string, unknown>)[LAB_GLOBAL] = api;
 

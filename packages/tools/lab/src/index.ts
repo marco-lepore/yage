@@ -22,7 +22,12 @@ export {
   type ScenarioDef,
 } from "./grammar/scenario.js";
 
-export type { DriveContext, DriveInput } from "./grammar/drive.js";
+export type {
+  DriveContext,
+  DriveInput,
+  DriveStepOptions,
+  DriveUntilOptions,
+} from "./grammar/drive.js";
 
 export {
   defineHarness,

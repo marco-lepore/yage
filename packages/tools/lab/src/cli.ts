@@ -47,6 +47,7 @@ async function main(): Promise<number> {
         scenarios: parsed.scenarios,
         timeoutMs: parsed.timeout ?? DEFAULT_TIMEOUT_MS,
         screenshots: parsed.screenshots,
+        screenshotView: parsed.screenshotView,
       });
     } else {
       await runDev({

@@ -1,5 +1,5 @@
 import type { Engine, Scene, ServiceKey } from "@yagejs/core";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { type DriveResult, runDrive } from "./runDrive.js";
 
 /**
@@ -14,8 +14,19 @@ const failure = (result: DriveResult): string | undefined =>
  * The engine surface a run touches, recording what it was asked for in order.
  * `actions` is what an `InputPlugin` would have registered.
  */
-function stubEngine(opts: { actions?: boolean } = {}) {
+function stubEngine(
+  opts: {
+    actions?: boolean;
+    stageBounds?: { width: number; height: number };
+    textureLimit?: number;
+  } = {},
+) {
   const calls: string[] = [];
+  const renderer = stubRenderer(opts);
+  const stepAsyncCalls: (
+    | readonly [frames: number]
+    | readonly [frames: number, opts: { dtMs?: number }]
+  )[] = [];
   let frame = 0;
 
   const step = (frames: number): void => {
@@ -27,22 +38,12 @@ function stubEngine(opts: { actions?: boolean } = {}) {
 
   const time = {
     getFrame: () => frame,
-    stepAsync: (frames = 1) => {
+    stepAsync: (frames = 1, stepOpts?: { dtMs?: number }) => {
+      stepAsyncCalls.push(
+        stepOpts === undefined ? [frames] : [frames, stepOpts],
+      );
       step(frames);
       return Promise.resolve();
-    },
-    stepUntil: async (
-      predicate: () => boolean,
-      options?: { maxFrames?: number },
-    ) => {
-      if (predicate()) return 0;
-      const maxFrames = options?.maxFrames ?? 600;
-      for (let count = 1; count <= maxFrames; count++) {
-        step(1);
-        await Promise.resolve();
-        if (predicate()) return count;
-      }
-      throw new Error("predicate still false");
     },
   };
 
@@ -76,20 +77,79 @@ function stubEngine(opts: { actions?: boolean } = {}) {
       },
     },
     context: {
-      tryResolve: (key: ServiceKey<unknown>) =>
-        opts.actions === true && key.id === "inputManager"
-          ? {
-              fireActionDown: record("actionDown"),
-              fireActionUp: record("actionUp"),
-            }
-          : undefined,
+      tryResolve: (key: ServiceKey<unknown>) => {
+        if (key.id === "inputManager") {
+          return opts.actions === true
+            ? {
+                fireActionDown: record("actionDown"),
+                fireActionUp: record("actionUp"),
+              }
+            : undefined;
+        }
+        return key.id === "renderer" ? renderer : undefined;
+      },
     },
   };
 
-  return { calls, engine: engine as unknown as Engine };
+  return { calls, engine: engine as unknown as Engine, stepAsyncCalls };
+}
+
+/**
+ * Enough of `RendererPlugin` for a capture. `stageBounds` past `textureLimit`
+ * is what makes a content capture warn.
+ */
+function stubRenderer(opts: {
+  stageBounds?: { width: number; height: number };
+  textureLimit?: number;
+}) {
+  const worldRoot = {
+    renderGroup: null as object | null,
+    disableRenderGroup(): void {
+      this.renderGroup = null;
+    },
+  };
+  return {
+    worldRoot,
+    virtualSize: { width: 320, height: 180 },
+    application: {
+      stage: {
+        getLocalBounds: () => opts.stageBounds ?? { width: 100, height: 100 },
+      },
+      renderer: {
+        resolution: 1,
+        screen: {
+          clone: () => ({ x: 0, y: 0, width: 0, height: 0 }),
+        },
+        gl: {
+          MAX_TEXTURE_SIZE: 0x0d33,
+          getParameter: () => opts.textureLimit ?? 4_096,
+        },
+        extract: {
+          canvas: () => {
+            worldRoot.renderGroup ??= {};
+            return { toDataURL: () => "data:image/png;base64,camera" };
+          },
+        },
+      },
+    },
+  };
 }
 
 const SCENE = { name: "drop" } as unknown as Scene;
+
+function stubAnimationFrames() {
+  let requestId = 0;
+  const waits = vi.fn((callback: FrameRequestCallback): number => {
+    callback(0);
+    return ++requestId;
+  });
+  vi.stubGlobal("requestAnimationFrame", waits);
+  return waits;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("runDrive", () => {
   it("passes the scene and the control values through", async () => {
@@ -116,6 +176,135 @@ describe("runDrive", () => {
     });
     expect(failure(result)).toBeUndefined();
     expect(result.framesUsed).toBe(8);
+  });
+
+  it("forwards per-call frame deltas and omits absent options", async () => {
+    const { engine, stepAsyncCalls } = stubEngine();
+
+    await runDrive(engine, SCENE, {}, async (ctx) => {
+      await ctx.step(3, { dtMs: 20 });
+      await ctx.step(3);
+      let checks = 0;
+      const took = await ctx.until(() => ++checks >= 3, {
+        maxFrames: 5,
+        dtMs: 25,
+      });
+      ctx.expect(took).toBe(2);
+    });
+
+    expect(stepAsyncCalls).toEqual([
+      [3, { dtMs: 20 }],
+      [3],
+      [1, { dtMs: 25 }],
+      [1, { dtMs: 25 }],
+    ]);
+  });
+
+  it("paces step, until and held input once per frame", async () => {
+    const waits = stubAnimationFrames();
+    const { engine } = stubEngine();
+
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      async (ctx) => {
+        await ctx.step(2);
+        ctx.expect(waits).toHaveBeenCalledTimes(2);
+
+        let checks = 0;
+        await ctx.until(() => ++checks >= 3);
+        ctx.expect(waits).toHaveBeenCalledTimes(4);
+
+        await ctx.input.hold("Space", 3);
+        ctx.expect(waits).toHaveBeenCalledTimes(7);
+      },
+      { pace: "frame" },
+    );
+
+    expect(failure(result)).toBeUndefined();
+  });
+
+  it("does not wait for animation frames at immediate pace", async () => {
+    const waits = stubAnimationFrames();
+    const { engine } = stubEngine();
+
+    await runDrive(engine, SCENE, {}, async (ctx) => {
+      await ctx.step(2);
+      let checks = 0;
+      await ctx.until(() => ++checks >= 3);
+      await ctx.input.hold("Space", 2);
+    });
+
+    expect(waits).not.toHaveBeenCalled();
+  });
+
+  it("until resolves with the same frame count at both paces", async () => {
+    stubAnimationFrames();
+    const counts: number[] = [];
+
+    for (const pace of ["immediate", "frame"] as const) {
+      const { engine } = stubEngine();
+      let checks = 0;
+      const result = await runDrive(
+        engine,
+        SCENE,
+        {},
+        async (ctx) => {
+          counts.push(await ctx.until(() => ++checks >= 4));
+        },
+        { pace },
+      );
+      expect(failure(result)).toBeUndefined();
+    }
+
+    expect(counts).toEqual([3, 3]);
+  });
+
+  it("captures through the view the run was given", async () => {
+    const { engine } = stubEngine();
+
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      async (ctx) => {
+        await ctx.capture("shot");
+      },
+      { captureView: "camera" },
+    );
+
+    expect(result.captures).toEqual([
+      { label: "shot", dataUrl: "data:image/png;base64,camera" },
+    ]);
+  });
+
+  it("carries a capture warning out once however many captures raised it", async () => {
+    const { engine } = stubEngine({
+      stageBounds: { width: 9_000, height: 9_000 },
+      textureLimit: 4_096,
+    });
+
+    const result = await runDrive(engine, SCENE, {}, async (ctx) => {
+      await ctx.capture("first");
+      await ctx.capture("second");
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain("9000×9000");
+    expect(result.captures).toHaveLength(2);
+  });
+
+  it("until reports its limit when the predicate stays false", async () => {
+    const { engine } = stubEngine();
+    const result = await runDrive(engine, SCENE, {}, (ctx) =>
+      ctx.until(() => false, { maxFrames: 2 }).then(() => undefined),
+    );
+
+    expect(failure(result)).toBe(
+      "drive.until(): predicate still false after 2 frames.",
+    );
   });
 
   it("reports a failed assertion as a result rather than a rejection", async () => {
