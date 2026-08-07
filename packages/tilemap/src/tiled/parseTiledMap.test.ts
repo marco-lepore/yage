@@ -237,7 +237,7 @@ describe("createTilemapLayers", () => {
     ]);
   });
 
-  it("renders flipped and rotated tiles instead of failing to find a tileset", () => {
+  it("renders each of Tiled's eight flip combinations", () => {
     const map = loadFixture("flipped.json");
     const fakeTexture = { label: "tile" };
     mockAssets._cache.set("tile.png", fakeTexture);

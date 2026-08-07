@@ -180,7 +180,7 @@ export function validateTiledMap(map: TiledMapData): TilemapDiagnostic[] {
       if (unsupportedAnimations.length > 0) {
         diagnostics.push({
           code: "unsupported-tile-animation",
-          message: `Tileset "${resolved.name}" has animations the renderer cannot play. ${unsupportedAnimations.join(" ")} Unsupported tiles render their first frame.`,
+          message: `Tileset "${resolved.name}" has animations the renderer cannot play. ${unsupportedAnimations.join(" ")} Those tiles render unanimated, as the tile the map places.`,
           severity: "warning",
           tileset: resolved.name,
         });

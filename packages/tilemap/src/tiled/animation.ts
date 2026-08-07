@@ -128,16 +128,15 @@ export function readTileAnimation(
       y: margin + row * (tileHeight + spacing),
     };
   });
-  const first = positions[0];
-  const second = positions[1];
-  if (!first || !second) return null;
+  // Two frames minimum, checked above, so every index below is populated.
+  const first = positions[0]!;
+  const second = positions[1]!;
 
   const strideX = second.x - first.x;
   const strideY = second.y - first.y;
   for (let index = 2; index < positions.length; index++) {
-    const previous = positions[index - 1];
-    const current = positions[index];
-    if (!previous || !current) continue;
+    const previous = positions[index - 1]!;
+    const current = positions[index]!;
     const currentStrideX = current.x - previous.x;
     const currentStrideY = current.y - previous.y;
     if (currentStrideX !== strideX || currentStrideY !== strideY) {

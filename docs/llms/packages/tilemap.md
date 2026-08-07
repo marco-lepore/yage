@@ -129,6 +129,8 @@ tilemap.getTileAt(worldX, worldY, "ground"); // tile id | null
 
 Each layer is read through its own draw offset, and Tiled's flip bits are stripped, so the id compares against a tileset's numbering whichever way the tile faces.
 
+A tileset's `tileoffset` is not reversed: it moves where a tile's image is drawn, not which cell the tile occupies, and one layer can mix tilesets that offset differently. A tile from an offset tileset answers at its cell.
+
 Raw layer data (`tilemap.data.tileLayers[i].data`) keeps Tiled's GIDs with those bits intact. Split one with `readTileGid`:
 
 ```ts
@@ -152,7 +154,7 @@ An animation plays when all of the following hold. Tiled's animation editor prod
 - Every frame has the same duration.
 - The frames sit a constant pixel distance apart in the tileset image — consecutive along a row, or down a column. Any constant step works, including a diagonal one.
 
-Anything else renders its first frame and reports an `unsupported-tile-animation` warning naming the tile and the reason: differing durations, an irregular frame layout, or a collection-of-images tileset.
+Anything else renders unanimated, as the tile the map places, and reports an `unsupported-tile-animation` warning naming the tile and the reason: differing durations, an irregular frame layout, or a collection-of-images tileset.
 
 The animation phase is not saved. A tilemap restored from a snapshot starts its cycle from zero.
 

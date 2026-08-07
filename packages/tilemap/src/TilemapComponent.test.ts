@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mocks } = vi.hoisted(() => {
+const { mocks, animationState } = vi.hoisted(() => {
   class MockContainer {
     children: MockContainer[] = [];
     position = { x: 0, y: 0 };
@@ -8,6 +8,15 @@ const { mocks } = vi.hoisted(() => {
     rotation = 0;
     visible = true;
     alpha = 1;
+    tileAnimWrites = 0;
+    #tileAnim: [number, number] = [0, 0];
+    get tileAnim(): [number, number] {
+      return this.#tileAnim;
+    }
+    set tileAnim(value: [number, number]) {
+      this.#tileAnim = value;
+      this.tileAnimWrites++;
+    }
     tint = 0xffffff;
     blendMode = "inherit";
     filters: unknown[] | null = null;
@@ -63,7 +72,12 @@ const { mocks } = vi.hoisted(() => {
 
   const mockAssetsGet = vi.fn();
 
-  return { mocks: { MockContainer, MockColorMatrixFilter, mockAssetsGet } };
+  const animationState = { hasAnimatedTiles: false };
+
+  return {
+    mocks: { MockContainer, MockColorMatrixFilter, mockAssetsGet },
+    animationState,
+  };
 });
 
 vi.mock("pixi.js", () => ({
@@ -86,6 +100,7 @@ vi.mock("./tiled/parseTiledMap.js", async () => {
   >("./tiled/parseTiledMap.js");
   return {
     ...actual,
+    _tilemapLayerHasAnimation: vi.fn(() => animationState.hasAnimatedTiles),
     createTilemapLayers: vi.fn(() => [
       new mocks.MockContainer(),
       new mocks.MockContainer(),
@@ -317,6 +332,7 @@ const testMap: TiledMapData = {
 describe("TilemapComponent", () => {
   beforeEach(() => {
     _resetEntityIdCounter();
+    animationState.hasAnimatedTiles = false;
   });
 
   it("exposes map dimension getters", () => {
@@ -812,6 +828,61 @@ describe("TilemapComponent", () => {
       expect(comp.getProperty<number>(spawn, "count")).toBe(3);
       const ctrl = comp.findObject(13)!;
       expect(comp.getPropertyArray<number>(ctrl, "spawns")).toEqual([11, 12]);
+    });
+  });
+
+  describe("tile animation clock", () => {
+    // `ComponentUpdateSystem` is what supplies scene- and entity-scaled time
+    // and skips paused scenes; the component's job is to accumulate whatever
+    // delta it is handed.
+    it("accumulates the delta in milliseconds onto every layer", () => {
+      const { scene } = createTestContext();
+      animationState.hasAnimatedTiles = true;
+      const entity = scene.spawn("tilemap");
+      const comp = entity.add(new TilemapComponent({ map: testMap }));
+
+      comp.update(0.25);
+      comp.update(0.05);
+
+      const layers = (
+        comp.container as unknown as InstanceType<typeof mocks.MockContainer>
+      ).children;
+      expect(layers).toHaveLength(2);
+      for (const layer of layers) {
+        expect(layer.tileAnim).toEqual([300, 300]);
+        expect(layer.tileAnimWrites).toBe(2);
+      }
+    });
+
+    it("leaves the counter alone for a map with no animated tiles", () => {
+      const { scene } = createTestContext();
+      const entity = scene.spawn("tilemap");
+      const comp = entity.add(new TilemapComponent({ map: testMap }));
+
+      comp.update(0.5);
+
+      const layers = (
+        comp.container as unknown as InstanceType<typeof mocks.MockContainer>
+      ).children;
+      for (const layer of layers) {
+        expect(layer.tileAnim).toEqual([0, 0]);
+        expect(layer.tileAnimWrites).toBe(0);
+      }
+    });
+
+    it("animates without a Transform on the entity", () => {
+      const { scene } = createTestContext();
+      animationState.hasAnimatedTiles = true;
+      const entity = scene.spawn("tilemap");
+      const comp = entity.add(new TilemapComponent({ map: testMap }));
+      expect(entity.tryGet(Transform)).toBeUndefined();
+
+      comp.update(0.1);
+
+      const layers = (
+        comp.container as unknown as InstanceType<typeof mocks.MockContainer>
+      ).children;
+      expect(layers[0]?.tileAnim).toEqual([100, 100]);
     });
   });
 });

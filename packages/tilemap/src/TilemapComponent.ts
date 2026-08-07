@@ -173,8 +173,12 @@ export class TilemapComponent extends VisualComponent {
     super.onAdd();
   }
 
-  /** @internal */
-  _advanceTileAnimation(deltaSeconds: number): void {
+  /**
+   * Advance the tile-animation clock. `ComponentUpdateSystem` supplies time
+   * already scaled by the scene and the entity, and skips paused scenes, so a
+   * paused game freezes its tilemaps and `timeScale` slows them.
+   */
+  update(deltaSeconds: number): void {
     if (!this._hasAnimatedTiles) return;
 
     this._animationTimeMs += deltaSeconds * 1000;
@@ -239,6 +243,12 @@ export class TilemapComponent extends VisualComponent {
    * Returns the tile id at a world position, accounting for the entity
    * Transform and each layer's own draw offset. Returns null if the position
    * is outside every layer or the tile is empty.
+   *
+   * A tileset's `tileoffset` is not reversed here: it moves where a tile's
+   * image is drawn, not which cell the tile occupies, and one layer can mix
+   * tilesets that offset differently. So a tile from an offset tileset
+   * answers at its cell, which is where its collision and neighbours are,
+   * rather than under the part of the image that overhangs.
    *
    * Tiled's flip bits are stripped, so the id compares against a tileset's
    * numbering whichever way the tile faces. Read them from the raw layer data

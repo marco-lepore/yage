@@ -219,8 +219,10 @@ function resolveTileTexture(
   }
 
   if (data.tiles?.length) {
-    // Collection-of-images tileset: look up texture by filename from cache
-    const tileData = data.tiles[localId];
+    // Collection-of-images tileset: look up texture by filename from cache.
+    // Match on `id` — deleting an image in Tiled leaves the remaining ids
+    // alone, so the array is not always dense or ordered.
+    const tileData = data.tiles.find((entry) => entry.id === localId);
     if (!tileData?.image) return null;
     const filenameMatch = tileData.image.match(/[^/]*$/);
     const filename = filenameMatch?.[0];

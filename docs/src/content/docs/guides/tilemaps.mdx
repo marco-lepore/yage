@@ -392,6 +392,10 @@ const id = tilemap.getTileAt(worldX, worldY, "ground");
 Each layer is read through its own draw offset, so the id you get back is the
 tile you see at that position.
 
+A tileset's `tileoffset` is the exception. It moves where a tile's image is
+drawn without moving the cell the tile occupies. A tile from an offset tileset
+answers at its cell, which is where its collision and its neighbours are.
+
 ### Flipped and rotated tiles
 
 Tiled lets you flip a tile horizontally, flip it vertically, or reflect it
@@ -435,9 +439,10 @@ you all three by default:
 - The frames sit a constant distance apart in the tileset image — next to each
   other along a row, or down a column.
 
-An animation outside that shape renders its first frame and reports an
-`unsupported-tile-animation` warning saying which tile and why: durations that
-differ, frames scattered around the image, or a collection-of-images tileset.
+An animation outside that shape renders unanimated — as the tile the map
+places — and reports an `unsupported-tile-animation` warning saying which tile
+and why: durations that differ, frames scattered around the image, or a
+collection-of-images tileset.
 Splitting a two-second pause into ten identical 200ms frames is usually enough
 to bring an animation back into the supported shape.
 

@@ -26,7 +26,6 @@ export function resolveTilesetData(ref: TilesetRef): TilesetData | null {
   // per-tile objectgroup), which a game reading the raw tileset may want.
   const tileset = { ...ref } as Partial<TilesetRef>;
   delete tileset.firstgid;
-  delete tileset.source;
   delete tileset.data;
   return tileset as TilesetData;
 }
