@@ -104,6 +104,27 @@ playback. Put an animation in a separate active overlay scene when it must keep
 playing while gameplay is frozen.
 
 **Escape hatch:** `.animatedSprite` is the underlying pixi `AnimatedSprite`.
+Frame selection and restart control are available directly on the component —
+see below. Use `.animatedSprite` for other pixi features.
+
+### Hold a frame or restart playback
+
+Select and hold any frame when a sprite sheet contains poses that are not
+separate animations. For example, a movement sheet can also provide frames
+for falling, gripping a wall, or crouching:
+
+```typescript
+const sprite = entity.get(AnimatedSpriteComponent);
+
+sprite.gotoFrame(5); // stop and hold the crouching pose
+sprite.frame; // 5
+sprite.play({ speed: 0.12, loop: false, fromStart: true });
+```
+
+`gotoFrame(index)` stops playback and holds the chosen frame through later
+engine updates. A bare `play()` resumes from the current frame after `stop()`.
+Pass `fromStart: true` to start at frame 0, which is what replaying a completed
+non-looping animation needs.
 
 ### Typing the controller
 

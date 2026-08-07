@@ -366,7 +366,14 @@ new AnimatedSpriteComponent({
 });
 
 player.play({ speed: 0.15, loop: true });
+player.gotoFrame(3); // stop and hold a pose
+player.play({ speed: 0.2, loop: false, fromStart: true }); // one-shot from frame 0
 ```
+
+Use `gotoFrame(index)` to stop playback and hold one frame; read the selected
+index through `frame`. A bare `play()` resumes from the current frame. Pass
+`fromStart: true` to restart at frame 0, including replaying a completed
+non-looping animation.
 
 Playback runs in engine-scaled component time. `scene.timeScale` and
 `entity.timeScale` compose with Pixi's `animationSpeed`; a paused scene,
