@@ -46,6 +46,16 @@ export interface DriveInput {
   fireAction(name: string, frames?: number): Promise<void>;
 }
 
+export interface DriveStepOptions {
+  /** Milliseconds one frame simulates. Defaults to the clock's fixed step. */
+  dtMs?: number;
+}
+
+export interface DriveUntilOptions extends DriveStepOptions {
+  /** Most frames to advance before rejecting. Defaults to 600. */
+  maxFrames?: number;
+}
+
 export interface DriveContext<C extends ControlSchema = ControlSchema> {
   /** The scene the run drives. `findByKey` reaches what the scenario spawned. */
   scene: Scene;
@@ -65,15 +75,12 @@ export interface DriveContext<C extends ControlSchema = ControlSchema> {
    */
   events: Inspector["events"];
   /** Advances `frames` frames, one at a time. */
-  step(frames?: number): Promise<void>;
+  step(frames?: number, opts?: DriveStepOptions): Promise<void>;
   /**
    * Advances a frame at a time until `predicate` holds, and resolves with the
    * number it took. Rejects after `maxFrames` (600 by default).
    */
-  until(
-    predicate: () => boolean,
-    opts?: { maxFrames?: number },
-  ): Promise<number>;
+  until(predicate: () => boolean, opts?: DriveUntilOptions): Promise<number>;
   /** Jest-style assertions: `expect(hp).toBeLessThan(before)`. */
   expect: ExpectStatic;
   /**

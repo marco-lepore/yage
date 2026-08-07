@@ -19,6 +19,8 @@ import {
 chai.use(JestExtend);
 chai.use(JestChaiExpect);
 chai.use(JestAsymmetricMatchers);
+// Assertion failures include the whole compared value at any length.
+chai.config.truncateThreshold = 0;
 
 // The asymmetric matchers (`expect.any`, `expect.objectContaining`, ...) are
 // static members on chai's own `expect`, so a bare wrapper function would not

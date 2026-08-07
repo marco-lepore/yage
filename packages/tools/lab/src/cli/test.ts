@@ -4,6 +4,7 @@ import type { Browser, BrowserType, Page } from "@playwright/test";
 import pc from "picocolors";
 import { createServer, mergeConfig, type InlineConfig } from "vite";
 import { LAB_GLOBAL } from "../runner/labGlobal.js";
+import type { CaptureView } from "../runner/labCapture.js";
 import type { LabApi } from "../runner/mountLab.js";
 import type { DriveCapture } from "../runner/runDrive.js";
 import { createLabConfig } from "./labConfig.js";
@@ -101,9 +102,13 @@ async function waitForLab(page: Page, timeoutMs: number): Promise<void> {
  * A scenario with a `drive` is driven; one without is mounted and stepped,
  * which is enough to catch a scene that throws while it builds or runs.
  */
-async function exercise(page: Page, capture: boolean): Promise<PageOutcome> {
+async function exercise(
+  page: Page,
+  capture: boolean,
+  screenshotView: CaptureView = "content",
+): Promise<PageOutcome> {
   return page.evaluate(
-    async ({ key, smokeFrames, wantCapture }) => {
+    async ({ key, smokeFrames, wantCapture, captureView }) => {
       const api = (globalThis as unknown as Record<string, LabApi | undefined>)[
         key
       ];
@@ -127,9 +132,10 @@ async function exercise(page: Page, capture: boolean): Promise<PageOutcome> {
         failures.push("No scenario is mounted.");
       } else if (entry.hasDrive) {
         try {
-          const result = await api.run();
+          const result = await api.run({ captureView });
           framesUsed = result.framesUsed;
           durationMs = result.durationMs;
+          warnings.push(...result.warnings);
           // Only when they get written: each one crosses the bridge out of the
           // page as a base64 PNG.
           if (wantCapture) captures = [...result.captures];
@@ -169,10 +175,11 @@ async function exercise(page: Page, capture: boolean): Promise<PageOutcome> {
 
       if (wantCapture) {
         try {
-          captures = [
-            ...captures,
-            { dataUrl: await inspector.capture.dataURL() },
-          ];
+          const captured = await api.capture(captureView);
+          for (const warning of captured.warnings) {
+            if (!warnings.includes(warning)) warnings.push(warning);
+          }
+          captures = [...captures, { dataUrl: captured.dataUrl }];
         } catch (error) {
           // The scenario is what this command reports on. A screenshot is an
           // artifact of the run, so failing to take one is not a failed run.
@@ -189,7 +196,12 @@ async function exercise(page: Page, capture: boolean): Promise<PageOutcome> {
         captures,
       };
     },
-    { key: LAB_GLOBAL, smokeFrames: SMOKE_FRAMES, wantCapture: capture },
+    {
+      key: LAB_GLOBAL,
+      smokeFrames: SMOKE_FRAMES,
+      wantCapture: capture,
+      captureView: screenshotView,
+    },
   );
 }
 
@@ -201,6 +213,8 @@ export interface DriveScenariosOptions {
   timeoutMs: number;
   /** Screenshot each scenario. Only worth the readback when they get written. */
   capture: boolean;
+  /** Which part of the rendered scene each screenshot covers. */
+  screenshotView?: CaptureView | undefined;
   /** Called as each scenario finishes, so a long run reports as it goes. */
   onResult?: ((result: ScenarioResult) => void) | undefined;
 }
@@ -294,7 +308,7 @@ async function testScenario(
     const work = (async () => {
       await page.goto(url, { timeout: opts.timeoutMs });
       await waitForLab(page, opts.timeoutMs);
-      return exercise(page, opts.capture);
+      return exercise(page, opts.capture, opts.screenshotView);
     })();
 
     const outcome = await withTimeout(work, opts.timeoutMs);
@@ -433,6 +447,8 @@ export interface TestOptions {
   timeoutMs: number;
   /** Where PNGs go, relative to the Vite root. Nothing is written without it. */
   screenshots?: string | undefined;
+  /** Which part of the rendered scene each screenshot covers. */
+  screenshotView?: CaptureView | undefined;
 }
 
 /**
@@ -483,6 +499,7 @@ export async function runTest(opts: TestOptions): Promise<number> {
         baseUrl,
         timeoutMs: opts.timeoutMs,
         capture: opts.screenshots !== undefined,
+        screenshotView: opts.screenshotView,
         onResult: (result) =>
           process.stdout.write(describeScenarioResult(result)),
       });

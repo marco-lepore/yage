@@ -283,14 +283,25 @@ restores the play state afterwards. Frames come from the run itself, so a
 scenario that reports 120 frames used 120 frames — wall-clock speed and the
 panel's speed slider change nothing about the result.
 
+`step` and `until` can set the simulated milliseconds for each frame in one
+call. The setting does not affect later calls:
+
+```ts
+await step(90, { dtMs: 1000 / 90 });
+await until(() => probe.settled, {
+  maxFrames: 180,
+  dtMs: 1000 / 90,
+});
+```
+
 What the context gives you:
 
 | Member | What it does |
 | --- | --- |
 | `scene` | The scene being driven. `findByKey("ball-0")` reaches what the scenario spawned. |
 | `controls` | The control values the run started with. |
-| `step(frames?)` | Advances frames, one at a time. |
-| `until(predicate, { maxFrames })` | Steps until the predicate holds, resolving with the number of frames it took. Rejects after 600 frames by default. |
+| `step(frames?, { dtMs? })` | Advances frames, one at a time. `dtMs` defaults to the clock's fixed step. |
+| `until(predicate, { maxFrames?, dtMs? })` | Steps until the predicate holds, resolving with the number of frames it took. Rejects after 600 frames by default. |
 | `expect(value)` | Jest-style assertions, from `@vitest/expect`. |
 | `input` | Synthetic keyboard, mouse, pointer, gamepad and action input. |
 | `events` | The engine's event log, including `waitFor`. |
@@ -311,6 +322,13 @@ await step(60);
 await hit;
 ```
 </Aside>
+
+A run finishes as fast as the browser can issue frames, so a 300-frame drive
+shows you its end state and none of the motion. Select **real time** beside the
+panel's **Run** button to watch it play: one driven engine frame per browser
+animation frame. Browsers pause animation frames in a background tab, so a run
+in real time waits until the tab is focused again. `yage-lab test` never paces
+a run.
 
 ### Synthetic input
 
@@ -370,6 +388,9 @@ records a callback error — a `setup` that threw, a component `update` that thr
 error. A scenario file the lab could not load fails the run too, and so does a
 `--scenarios` glob that matched nothing.
 
+An assertion failure prints the full values it compared. Long strings and
+serialized objects are not shortened.
+
 Useful flags:
 
 | Flag | Effect |
@@ -377,15 +398,21 @@ Useful flags:
 | `--scenarios <globs>` | Comma-separated patterns, so a run covers one scenario or one folder. |
 | `--timeout <ms>` | How long one scenario may take. Default 30000. |
 | `--screenshots <dir>` | Write a PNG per scenario there, plus one per `capture(label)`. |
+| `--screenshot-view <content\|camera>` | Choose drawn content or the camera's virtual viewport. Default `content`. Requires `--screenshots`. |
 
 <Aside type="note">
 Screenshots are written only when you ask for them. A screenshot the lab could
 not take is a warning under the scenario's line, not a failure — the scenario is
 what the command reports on.
 
-A screenshot is the size of what was drawn rather than the size of the canvas,
-and its bytes are not stable between runs. Comparing two of them needs a
-perceptual diff, not a byte check.
+A content screenshot is the size of what was drawn rather than the size of the
+canvas. The lab warns when the predicted width or height exceeds the GPU texture
+limit. Use `--screenshot-view camera` to capture the camera's virtual viewport
+at the game's virtual resolution. The camera view uses resolution 1, so its PNG
+size does not depend on the display.
+
+Screenshot bytes are not stable between runs. Comparing two screenshots needs
+a perceptual diff, not a byte check.
 </Aside>
 
 ## Where scenarios come from
@@ -471,7 +498,9 @@ hundred scenarios still leaves the canvas exactly where it was.
   into a prompt.
 - **Clock** — play, pause, step one frame or ten, and a speed slider from 0.05×
   to 4×. Speed changes how often a frame is issued, never the delta the frame
-  reports, so a game's own slow-motion effects still look like themselves.
+  reports, so a game's own slow-motion effects still look like themselves. The
+  **real time** checkbox beside **Run** plays a driven run at one engine frame
+  per browser animation frame.
 - **Errors** — anything the engine's error boundary recorded, plus a scene that
   failed to build. A game loop that stopped is called out separately: nothing
   short of a page reload brings it back.
@@ -534,8 +563,13 @@ lab.scenarios.map((s) => s.id);         // every id on the page
 await lab.show("enemies/slime");
 await lab.setControl("count", 8);
 await lab.clock.step(30);
-const result = await lab.run();         // { ok, framesUsed, durationMs, captures }
+const result = await lab.run({ pace: "frame" });
+const shot = await lab.capture("camera");
 ```
+
+`lab.run()` defaults to immediate playback and content captures. Pass
+`captureView: "camera"` when a drive's `capture(label)` calls need the virtual
+viewport. `DriveResult` includes `warnings` beside `captures`.
 
 Wait on `ready` rather than on the property existing: the API is published
 before the engine starts, so a page whose boot failed still has one. `ready`

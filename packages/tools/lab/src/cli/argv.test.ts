@@ -78,6 +78,40 @@ describe("parseArgs", () => {
     expect(parseArgs(["test"]).screenshots).toBeUndefined();
   });
 
+  it("reads both screenshot views", () => {
+    expect(
+      parseArgs([
+        "test",
+        "--screenshots",
+        "shots",
+        "--screenshot-view",
+        "content",
+      ]).screenshotView,
+    ).toBe("content");
+    expect(
+      parseArgs(["test", "--screenshots=shots", "--screenshot-view=camera"])
+        .screenshotView,
+    ).toBe("camera");
+  });
+
+  it("rejects an unknown screenshot view", () => {
+    expect(
+      parseArgs([
+        "test",
+        "--screenshots",
+        "shots",
+        "--screenshot-view",
+        "canvas",
+      ]).error,
+    ).toMatch(/Invalid screenshot view/);
+  });
+
+  it("rejects a screenshot view when screenshots are disabled", () => {
+    expect(parseArgs(["test", "--screenshot-view", "camera"]).error).toMatch(
+      /requires --screenshots/,
+    );
+  });
+
   it("takes --no-open", () => {
     expect(parseArgs(["--no-open"]).open).toBe(false);
     expect(parseArgs([]).open).toBeUndefined();

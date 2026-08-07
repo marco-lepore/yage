@@ -1,3 +1,5 @@
+import type { CaptureView } from "../runner/labCapture.js";
+
 export type LabCommand = "dev" | "build" | "init" | "test";
 
 export interface ParsedArgs {
@@ -9,6 +11,7 @@ export interface ParsedArgs {
   force?: boolean;
   timeout?: number;
   screenshots?: string;
+  screenshotView?: CaptureView;
   help: boolean;
   version: boolean;
   /** Set when argv could not be parsed. */
@@ -29,6 +32,7 @@ const FLAG_FIELDS = {
   "--force": "force",
   "--timeout": "timeout",
   "--screenshots": "screenshots",
+  "--screenshot-view": "screenshotView",
 } as const satisfies Record<string, keyof ParsedArgs>;
 
 type LabFlag = keyof typeof FLAG_FIELDS;
@@ -42,7 +46,7 @@ const COMMAND_FLAGS = {
   dev: ["--port", "--no-open", "--scenarios"],
   build: ["--out-dir", "--scenarios"],
   init: ["--force"],
-  test: ["--scenarios", "--timeout", "--screenshots"],
+  test: ["--scenarios", "--timeout", "--screenshots", "--screenshot-view"],
 } as const satisfies Record<LabCommand, readonly LabFlag[]>;
 
 const COMMANDS = Object.keys(COMMAND_FLAGS) as readonly LabCommand[];
@@ -144,6 +148,20 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       result.screenshots = value;
       continue;
     }
+    if (arg === "--screenshot-view" || arg.startsWith("--screenshot-view=")) {
+      const value = takeValue("--screenshot-view");
+      if (value === undefined) {
+        return { ...result, error: "--screenshot-view requires a value" };
+      }
+      if (value !== "content" && value !== "camera") {
+        return {
+          ...result,
+          error: `Invalid screenshot view: ${value}. Expected content or camera.`,
+        };
+      }
+      result.screenshotView = value;
+      continue;
+    }
     if (arg === "--timeout" || arg.startsWith("--timeout=")) {
       const value = takeValue("--timeout");
       if (value === undefined) {
@@ -184,6 +202,13 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     };
   }
 
+  if (result.screenshotView !== undefined && result.screenshots === undefined) {
+    return {
+      ...result,
+      error: "--screenshot-view requires --screenshots",
+    };
+  }
+
   return result;
 }
 
@@ -208,6 +233,8 @@ Options:
       --timeout <ms>        How long one scenario may take (default ${DEFAULT_TIMEOUT_MS})
       --screenshots <dir>   Write a PNG per scenario there, relative to the
                             Vite root. Nothing is written without it
+      --screenshot-view <content|camera>
+                            Capture drawn content (default) or the camera view
   -h, --help                Show this help
   -v, --version             Print version
 
