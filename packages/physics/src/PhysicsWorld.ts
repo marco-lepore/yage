@@ -376,23 +376,35 @@ export class PhysicsWorld {
 
   /**
    * Extract contact data for a started, non-sensor collision pair. Geometry
-   * (normal, point, depth) comes from the first manifold with a solver
-   * contact. The impulse accumulates as a vector along each manifold's own
-   * normal — a pair against a polyline or compound collider solves one
-   * manifold per segment, and their normals can differ. The vector and its
-   * magnitude are both reported, so dividing by mass gives the speed change
-   * the solver applied. Returns undefined for sensor pairs (no manifold
-   * exists) or pairs with no solver contact yet (rare same-step
-   * start+stop). The returned normal and impulse vector point from handle1
-   * toward handle2; callers negate them for the handle2-side event.
+   * (normal, point, depth) comes from the solver contact with the most
+   * negative solver contact distance across every manifold in the pair.
+   * Rapier orders a pair's manifolds by approach direction, so taking the
+   * first would report an arbitrary one of the surfaces touched. The deepest
+   * is the surface pushing hardest either way. Equally deep contacts stay in
+   * the order Rapier gave them, since they describe the same push. The depth
+   * is that contact's overlap in pixels, clamped to >= 0.
+   *
+   * The impulse accumulates as a vector along each manifold's own normal — a
+   * pair against a polyline or compound collider solves one manifold per
+   * segment, and their normals can differ. The vector and its magnitude are
+   * both reported, so dividing by mass gives the speed change the solver
+   * applied.
+   *
+   * Returns undefined for sensor pairs (no manifold exists) or pairs with no
+   * solver contact yet (rare same-step start+stop). The returned normal and
+   * impulse vector point from handle1 toward handle2; callers negate them for
+   * the handle2-side event.
    */
   private _extractContact(
     handle1: number,
     handle2: number,
   ): ContactData | undefined {
-    let geometry:
-      | { normal: Vec2; point: Vec2; penetrationDepth: number }
-      | undefined;
+    let hasGeometry = false;
+    let bestNormalX = 0;
+    let bestNormalY = 0;
+    let bestPointX = 0;
+    let bestPointY = 0;
+    let bestSolverContactDist = 0;
     let impulseX = 0;
     let impulseY = 0;
     this.world.narrowPhase.contactPair(
@@ -408,24 +420,36 @@ export class PhysicsWorld {
         }
         impulseX += nx * manifoldImpulse;
         impulseY += ny * manifoldImpulse;
-        if (geometry || manifold.numSolverContacts() === 0) return;
-
-        const normal = new Vec2(nx, ny);
-        const p = manifold.solverContactPoint(0);
-        const point = new Vec2(this.toPixels(p.x), this.toPixels(p.y));
-        const penetrationDepth = Math.max(
-          0,
-          this.toPixels(-manifold.solverContactDist(0)),
-        );
-        geometry = { normal, point, penetrationDepth };
+        for (let i = 0; i < manifold.numSolverContacts(); i++) {
+          const solverContactDist = manifold.solverContactDist(i);
+          if (hasGeometry && solverContactDist >= bestSolverContactDist) {
+            continue;
+          }
+          const p = manifold.solverContactPoint(i);
+          hasGeometry = true;
+          bestNormalX = nx;
+          bestNormalY = ny;
+          bestPointX = this.toPixels(p.x);
+          bestPointY = this.toPixels(p.y);
+          bestSolverContactDist = solverContactDist;
+        }
       },
     );
-    if (!geometry) return undefined;
+    if (!hasGeometry) return undefined;
+    const normal = new Vec2(bestNormalX, bestNormalY);
+    const point = new Vec2(bestPointX, bestPointY);
+    const penetrationDepth = Math.max(0, this.toPixels(-bestSolverContactDist));
     const impulseVector = new Vec2(
       this.toPixels(impulseX),
       this.toPixels(impulseY),
     );
-    return { ...geometry, impulse: impulseVector.length(), impulseVector };
+    return {
+      normal,
+      point,
+      penetrationDepth,
+      impulse: impulseVector.length(),
+      impulseVector,
+    };
   }
 
   /** Set gravity in pixels/s². */

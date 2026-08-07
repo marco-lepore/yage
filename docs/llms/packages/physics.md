@@ -116,10 +116,13 @@ collider.onCollision((ev) => {
   ev.other; ev.started;
   // contactNormal/contactPoint/penetrationDepth/contactImpulse(Vector): only
   // on started, non-sensor collisions, and may be absent if no contact
-  // manifold is available.
+  // manifold is available. A pair can touch along several surfaces at once
+  // (a box crossing a polyline corner); the geometry below describes the
+  // deepest of those contacts.
   ev.contactNormal;      // Vec2, unit, points from this entity toward `other`
-  ev.contactPoint;       // Vec2, world pixels, a representative point (not an average)
-  ev.penetrationDepth;   // number, world pixels, >= 0
+  ev.contactPoint;       // Vec2, world pixels, the deepest contact's point (not an
+                         // average); equally deep points are interchangeable
+  ev.penetrationDepth;   // number, world pixels, that contact's overlap, >= 0
   ev.contactImpulse;     // number, magnitude of the solver's contact impulse (no friction),
                          // `applyImpulse` units; divide by a dynamic body's getMass() for
                          // the speed change that body received, px/s

@@ -1057,7 +1057,7 @@ describe("PhysicsWorld", () => {
       expect((events1[0] as CollisionEvent).contactImpulseVector?.y).toBe(0);
     });
 
-    it("accumulates contactImpulse across manifolds along their normals and takes geometry from the first with solver contacts", () => {
+    it("accumulates contactImpulse across manifolds along their normals and skips manifolds with no solver contact", () => {
       // Multiple manifolds per pair happen against polyline and compound
       // colliders — one manifold per segment, each with its own normal.
       // The reported impulse is the magnitude of the vector total.
@@ -1095,6 +1095,49 @@ describe("PhysicsWorld", () => {
       expect(ev.contactNormal?.y).toBeCloseTo(0);
       expect(ev.penetrationDepth).toBeCloseTo(5);
     });
+
+    it.each([
+      ["shallow manifold first", false],
+      ["deep manifold first", true],
+    ])(
+      "takes geometry from the deepest solver contact (%s)",
+      (_label, deepFirst) => {
+        // Rapier emits a pair's manifolds in an order that follows the
+        // approach direction, so the same terrain can present the shallower
+        // surface first or second. A box on a polyline corner touches two
+        // segments at once, and only the deeper contact describes the
+        // surface resisting it.
+        const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+        const { comp1, collider1, collider2 } = createCollisionPair(pw);
+        const world = (
+          pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }
+        ).world;
+        const shallow = new mocks.MockManifold({ x: 0, y: 1 }, [
+          { x: 1, y: 1, dist: -0.02 },
+        ]);
+        // The deep contact sits at index 1, so reading index 0 of the
+        // winning manifold would pick the shallower of its two contacts.
+        const deep = new mocks.MockManifold({ x: 1, y: 0 }, [
+          { x: 2, y: 2, dist: -0.01 },
+          { x: 3, y: 3, dist: -0.2 },
+        ]);
+        for (const manifold of deepFirst ? [deep, shallow] : [shallow, deep]) {
+          world.narrowPhase._setPair(collider1, collider2, manifold);
+        }
+
+        const events: CollisionEvent[] = [];
+        comp1.onCollision((e) => events.push(e));
+        queueCollision(pw, collider1, collider2, true);
+        pw.processCollisionEvents();
+
+        const ev = events[0] as CollisionEvent;
+        expect(ev.contactNormal?.x).toBeCloseTo(1);
+        expect(ev.contactNormal?.y).toBeCloseTo(0);
+        expect(ev.contactPoint?.x).toBeCloseTo(150);
+        expect(ev.contactPoint?.y).toBeCloseTo(150);
+        expect(ev.penetrationDepth).toBeCloseTo(10);
+      },
+    );
 
     it("negates the manifold normal when Rapier reports flipped=true", () => {
       const pw = new PhysicsWorld();
