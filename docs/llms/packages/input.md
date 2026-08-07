@@ -57,9 +57,6 @@ input.getReleaseDuration("fire"); // seconds held, valid only on the release fra
 
 // Buffered press — consuming query; true once per press within the window
 input.consumeBufferedPress("jump", 0.12); // pressed within last 0.12s and unclaimed → claim + true
-input.consumeBufferedPress("jump", 0.12, {
-  clock: scene.tryResolveScoped(SceneTimeKey),
-}); // measure on that scene's simulation time (from a Component: this.use(SceneTimeKey))
 
 // Axis/vector
 input.getAxis("left", "right"); // -1, 0, or 1
@@ -72,26 +69,36 @@ simulation seconds instead. The scene clock stops while the scene is
 stack-paused or frozen and follows the scene's effective time scale, which is
 the same scale physics steps under.
 
-`consumeBufferedPress` throws when given a clock the plugin has not registered,
-which includes an exited scene's `SceneTime`.
+```ts
+// Inside a Component or Scene subclass — `use` returns a non-optional clock.
+// `scene.tryResolveScoped(SceneTimeKey)` returns `SceneTime | undefined`, which
+// the `clock` option does not accept under exactOptionalPropertyTypes.
+const clock = this.use(SceneTimeKey);
+input.consumeBufferedPress("jump", 0.12, { clock });
+```
+
+The input plugin registers the `SceneTime` of every scene the engine enters, and
+those are the only clocks accepted. Any other value — a hand-rolled `{ elapsed }`
+object, or an exited scene's `SceneTime` — throws.
 
 **Gotcha — a buffered press outlives a pause.** The scene clock stops while the
 scene is paused, so a window measured on it never expires there: a jump pressed
 just before the pause menu opens still fires on resume, however long the menu
-was up. The engine holds the press rather than guessing how long is too long.
-Discard it in the scene's `onResume` by consuming it and ignoring the result:
+was up. Presses made *during* the pause are buffered too, unless the action's
+group is disabled while the menu is up — an action in no group is always
+enabled. The engine holds the press rather than guessing how long is too long.
+Discard it in the scene's `onResume` by consuming it and ignoring the result.
+One discard covers both cases, since the newest press replaces the stamp:
 
 ```ts
 onResume() {
-  this.use(InputManagerKey).consumeBufferedPress("jump", 0.12, {
-    clock: this.use(SceneTimeKey),
-  });
+  const input = this.use(InputManagerKey);
+  // Re-enable first: consumeBufferedPress returns false without claiming when
+  // the action is disabled, so the discard would silently do nothing.
+  input.enableGroup("movement");
+  input.consumeBufferedPress("jump", 0.12, { clock: this.use(SceneTimeKey) });
 }
 ```
-
-Presses made *during* the pause need no handling — an action whose group is
-disabled records no press at all, so `disableGroup` while the menu is up keeps
-menu input out of the buffer.
 
 ## Pointer
 

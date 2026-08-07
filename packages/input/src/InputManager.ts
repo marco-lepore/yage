@@ -347,9 +347,13 @@ export class InputManager {
    * buffered just before landing) without the press re-triggering later.
    *
    * The window counts on the raw input clock ({@link getClockTime}), which
-   * ignores scene pause and time scale. Pass `options.clock` — a scene's
-   * `SceneTime` — to count it on that scene's simulation time instead. One
-   * press is claimed once whichever clock measured it.
+   * ignores scene pause and time scale. Pass `options.clock` — the `SceneTime`
+   * of a scene on the stack — to count it on that scene's simulation time
+   * instead; any other clock throws. One press is claimed once whichever clock
+   * measured it.
+   *
+   * A disabled action returns false without claiming, so a discard-on-resume
+   * call has to run with the action enabled to drop a press buffered earlier.
    */
   consumeBufferedPress(
     action: string,

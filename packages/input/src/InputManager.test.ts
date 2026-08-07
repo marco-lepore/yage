@@ -353,6 +353,19 @@ describe("InputManager", () => {
       expect(input.consumeBufferedPress("jump", 0.12)).toBe(false);
     });
 
+    it("does not claim a press while the action is disabled", () => {
+      // A discard-on-resume call must run with the action enabled, or the
+      // press survives to fire on the next gameplay frame.
+      input._onKeyDown("Space");
+      input.setGroups({ gameplay: ["jump"] });
+      input.disableGroup("gameplay");
+
+      expect(input.consumeBufferedPress("jump", 0.12)).toBe(false);
+
+      input.enableGroup("gameplay");
+      expect(input.consumeBufferedPress("jump", 0.12)).toBe(true);
+    });
+
     it("clearAll() drops clock stamps but keeps the clock registered", () => {
       const clock = { elapsed: 0 };
       input._registerClock(clock);
