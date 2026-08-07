@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const { mocks } = vi.hoisted(() => {
+
   class MockContainer {
     children: MockContainer[] = [];
     position = { x: 0, y: 0 };
@@ -8,6 +9,9 @@ const { mocks } = vi.hoisted(() => {
     rotation = 0;
     visible = true;
     alpha = 1;
+    tint = 0xffffff;
+    blendMode = "inherit";
+    filters: unknown[] | null = null;
     parent: MockContainer | null = null;
     sortableChildren = false;
     zIndex = 0;
@@ -49,11 +53,18 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
-  return { mocks: { MockContainer } };
+  class MockColorMatrixFilter {
+    matrix: number[] = [];
+
+    destroy(): void {}
+  }
+
+  return { mocks: { MockContainer, MockColorMatrixFilter } };
 });
 
 vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
+  ColorMatrixFilter: mocks.MockColorMatrixFilter,
   Assets: { get: vi.fn() },
   Texture: vi.fn(),
   Rectangle: vi.fn(),
@@ -64,6 +75,7 @@ vi.mock("@pixi/tilemap", () => ({
 }));
 
 vi.mock("./tiled/parseTiledMap.js", () => ({
+  _tilemapLayerHasAnimation: vi.fn(() => false),
   createTilemapLayers: vi.fn(() => [new mocks.MockContainer()]),
   toTilemapData: vi.fn((map: Record<string, unknown>) => ({
     width: map.width,
@@ -72,6 +84,8 @@ vi.mock("./tiled/parseTiledMap.js", () => ({
     tileHeight: map.tileheight,
     tileLayers: [],
     objectLayers: [],
+    tilesets: [],
+    diagnostics: [],
   })),
 }));
 

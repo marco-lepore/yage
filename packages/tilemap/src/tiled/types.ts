@@ -5,8 +5,9 @@ export interface TiledMapData {
   height: number;
   tilewidth: number;
   tileheight: number;
-  layers: (TileLayer | ObjectGroup)[];
+  layers: TiledLayer[];
   tilesets: TilesetRef[];
+  properties?: TileObjectProperty[];
   orientation?: string;
   renderorder?: string;
   infinite?: boolean;
@@ -17,15 +18,33 @@ export interface TiledMapData {
   version?: string | number;
 }
 
+export type TiledLayer = TileLayer | ObjectGroup | GroupLayer | ImageLayer;
+
 export interface TileLayer {
   type: "tilelayer";
-  data: number[];
+  data?: number[] | string;
   width: number;
   height: number;
   id: number;
   name: string;
   opacity: number;
   visible: boolean;
+  x: number;
+  y: number;
+  offsetx?: number;
+  offsety?: number;
+  encoding?: string;
+  compression?: string;
+  chunks?: TileChunk[];
+  parallaxx?: number;
+  parallaxy?: number;
+  properties?: TileObjectProperty[];
+}
+
+export interface TileChunk {
+  data: number[] | string;
+  width: number;
+  height: number;
   x: number;
   y: number;
 }
@@ -39,7 +58,40 @@ export interface ObjectGroup {
   visible: boolean;
   x: number;
   y: number;
+  offsetx?: number;
+  offsety?: number;
   draworder?: string;
+  properties?: TileObjectProperty[];
+}
+
+export interface GroupLayer {
+  type: "group";
+  id: number;
+  name: string;
+  layers: TiledLayer[];
+  opacity?: number;
+  visible?: boolean;
+  x?: number;
+  y?: number;
+  offsetx?: number;
+  offsety?: number;
+  parallaxx?: number;
+  parallaxy?: number;
+}
+
+export interface ImageLayer {
+  type: "imagelayer";
+  id: number;
+  name: string;
+  image?: string;
+  opacity?: number;
+  visible?: boolean;
+  x?: number;
+  y?: number;
+  offsetx?: number;
+  offsety?: number;
+  parallaxx?: number;
+  parallaxy?: number;
 }
 
 export interface RectangleObject {
@@ -170,10 +222,11 @@ export interface TileObjectProperty {
   value: unknown;
 }
 
-export interface TilesetRef {
+export interface TilesetRef extends Partial<TilesetData> {
   firstgid: number;
+  /** External tileset JSON path. Absent for an embedded tileset. */
   source?: string;
-  /** Resolved tileset data — populated by the loader. */
+  /** Resolved tileset data — the loader fills this for both forms. */
   data?: TilesetData;
 }
 
@@ -185,6 +238,8 @@ export interface TilesetData {
   columns: number;
   margin?: number;
   spacing?: number;
+  properties?: TileObjectProperty[];
+  tileoffset?: { x: number; y: number };
   /** Single-image tileset: path to the spritesheet image. */
   image?: string;
   imagewidth?: number;
@@ -201,4 +256,10 @@ export interface TileData {
   image?: string;
   imagewidth?: number;
   imageheight?: number;
+  animation?: TileAnimationFrame[];
+}
+
+export interface TileAnimationFrame {
+  tileid: number;
+  duration: number;
 }

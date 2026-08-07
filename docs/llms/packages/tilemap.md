@@ -4,7 +4,7 @@ Depends on `@yagejs/core`, `@yagejs/renderer`. Tiled map loader and renderer.
 
 ## Capabilities & Limits
 
-Supported: orthogonal Tiled JSON (tilesets must be exported as JSON, not TSX), multiple tile layers, object layers + custom properties, object-reference resolution, collision-shape extraction from rectangle / ellipse / polygon / polyline objects (raw `rect` / `circle` / `polygon` / `polyline` / `capsule` shapes), `toPhysicsColliders()` adapter to Rapier collider configs, tileset-image and collection-of-images tilesets.
+Supported: orthogonal Tiled JSON (tilesets must be exported as JSON, not TSX), multiple tile layers, object layers, custom properties on the map / layers / tilesets / objects, object-reference resolution, collision-shape extraction from rectangle / ellipse / polygon / polyline objects (raw `rect` / `circle` / `polygon` / `polyline` / `capsule` shapes), `toPhysicsColliders()` adapter to Rapier collider configs, tileset-image and collection-of-images tilesets, embedded and external tilesets, flipped and rotated tiles, animated tiles (see below), layer `offsetx`/`offsety` and tileset `tileoffset`, per-layer `visible` and `opacity`.
 
 Tilesets MUST be exported as JSON (`.tsj` / `.json`). Tiled's default XML `.tsx` format is not supported — in Tiled, *Edit Tileset → File → Export As → JSON*.
 
@@ -28,7 +28,9 @@ When you stage a Tiled tileset into `public/assets/maps/`, rewrite `image` to a 
 
 …and put `spr_tileset.png` next to the JSON. Same rule for embedded tilesets inside a map JSON — the `image` field is resolved relative to the *map* file's directory.
 
-Not supported: animated tiles, infinite/chunked maps, isometric/hex/staggered orientations, dynamic tile editing at runtime, built-in parallax layers (use a regular render layer with a scrolling sprite).
+Not supported: infinite/chunked maps, base64-encoded layer data, isometric/hex/staggered orientations, group layers and image layers, dynamic tile editing at runtime, built-in parallax layers (use a regular render layer with a scrolling sprite).
+
+`validateTiledMap()` reports every one of these in a map — see [Unsupported Forms](#unsupported-forms).
 
 Workflow: parse Tiled JSON → `tilemap.getCollisionShapes("walls")` returns raw top-left-origin shapes → `toPhysicsColliders(shapes)` converts to center-origin Rapier configs → spawn a static body with one `ColliderComponent` per config.
 
@@ -73,27 +75,47 @@ Properties:
 - `data: TilemapData` — parsed map structure (see Map Data below)
 - `mapKey: string | null` — asset path, or `null` if constructed from raw `map:` data
 - `keyPrefix: string | null` — prefix used for `objectKey` / `forEachObject`
+- `container: DisplayContainer` — the Pixi container holding the rendered layers
+
+`TilemapComponent` extends the renderer's `VisualComponent`, so it takes the same visual options as `SpriteComponent` and carries the same vocabulary:
+
+```ts
+const tilemap = new TilemapComponent({
+  source: MapData,
+  layer: "map",
+  tint: 0x6688cc,   // whole-map colour multiply
+  alpha: 0.8,
+});
+
+tilemap.tint = 0xffffff;              // clear the tint
+tilemap.blendMode = "add";
+tilemap.visible = false;
+tilemap.fx.addEffect(bloom({ strength: 2 }));   // component-scope effects
+tilemap.setMask(spriteMask(maskSprite));
+```
+
+`tint` and `alpha` are applied by a colour filter on the container, because the tile shader has no colour uniform. They cost nothing while tint is white and alpha is 1.
 
 ## Serialization
 
 `TilemapComponent` is `@serializable`, but the live parsed `TiledMapData` object is not — it contains PixiJS textures. Pass `source` (an asset handle) or `mapKey` (an asset path) instead of `map` if you want save/load to restore the tilemap after a reload:
 
 ```ts
-interface TilemapComponentOptions {
+interface TilemapComponentOptions extends VisualComponentOptions {
   source?: AssetHandle<TiledMapData>;  // preferred — handle from tiledMap()
   map?: TiledMapData;                  // raw parsed data — not serializable
   mapKey?: string;                     // asset path — serializable, resolved via Assets.get
   layers?: string[];                   // which tile layers to render (omit for all)
-  layer?: string;                      // render layer name (default "default")
   keyPrefix?: string;                  // override for auto-keys (default = mapKey)
+  // from VisualComponentOptions: layer, visible, tint, alpha, blendMode, interactive
 }
 
 // Serialized shape stored in snapshots:
-interface TilemapComponentData {
+interface TilemapComponentData extends VisualComponentData {
   mapKey: string;               // required — saved snapshots always reference an asset
   layers?: string[];
-  layer: string;
   keyPrefix?: string;           // only present when overridden
+  // from VisualComponentData: layer, tint, alpha, visible, blendMode, effects, mask
 }
 ```
 
@@ -102,8 +124,39 @@ At least one of `source`, `map`, or `mapKey` must be supplied. If you construct 
 ## Tile Queries
 
 ```ts
-tilemap.getTileAt(worldX, worldY, "ground"); // tile GID | null
+tilemap.getTileAt(worldX, worldY, "ground"); // tile id | null
 ```
+
+Each layer is read through its own draw offset, and Tiled's flip bits are stripped, so the id compares against a tileset's numbering whichever way the tile faces.
+
+A tileset's `tileoffset` is not reversed: it moves where a tile's image is drawn, not which cell the tile occupies, and one layer can mix tilesets that offset differently. A tile from an offset tileset answers at its cell.
+
+Raw layer data (`tilemap.data.tileLayers[i].data`) keeps Tiled's GIDs with those bits intact. Split one with `readTileGid`:
+
+```ts
+import { readTileGid, tileIdFromGid } from "@yagejs/tilemap";
+
+const gid = layer.data[row * layer.width + col]!;
+readTileGid(gid);
+// { id, flippedHorizontally, flippedVertically, flippedDiagonally }
+tileIdFromGid(gid); // just the id
+```
+
+A flipped or rotated tile renders the way Tiled shows it. The diagonal flip is a reflection across the tile's main diagonal, and combined with the horizontal and vertical flips it covers all eight orientations of a square.
+
+## Animated Tiles
+
+An animation authored in Tiled plays with no setup — no component option, no per-frame game code. The clock comes from the scene, so a paused scene freezes its tilemaps and `timeScale` slows them.
+
+An animation plays when all of the following hold. Tiled's animation editor produces this shape by default:
+
+- The tileset is a single image, not a collection of separate images.
+- Every frame has the same duration.
+- The frames sit a constant pixel distance apart in the tileset image — consecutive along a row, or down a column. Any constant step works, including a diagonal one.
+
+Anything else renders unanimated, as the tile the map places, and reports an `unsupported-tile-animation` warning naming the tile and the reason: differing durations, an irregular frame layout, or a collection-of-images tileset.
+
+The animation phase is not saved. A tilemap restored from a snapshot starts its cycle from zero.
 
 ## Map Data
 
@@ -115,8 +168,11 @@ interface TilemapData {
   height: number;          // tiles tall
   tileWidth: number;       // pixel width of one tile
   tileHeight: number;
+  properties?: MapObjectProperty[];   // the map's own custom properties
   tileLayers: TileLayerData[];
   objectLayers: ObjectLayerData[];
+  tilesets: TilesetInfo[];
+  diagnostics: TilemapDiagnostic[];   // see Unsupported Forms
 }
 
 interface TileLayerData {
@@ -125,16 +181,54 @@ interface TileLayerData {
   width: number;
   height: number;
   visible: boolean;
+  offsetX: number;         // Tiled layer draw offset, in pixels
+  offsetY: number;
+  properties?: MapObjectProperty[];
 }
 
 interface ObjectLayerData {
   name: string;
-  objects: MapObject[];
+  objects: MapObject[];    // coordinates already include offsetX/offsetY
   visible: boolean;
+  offsetX: number;
+  offsetY: number;
+  properties?: MapObjectProperty[];
+}
+
+interface TilesetInfo {
+  firstGid: number;
+  name?: string;           // present once the tileset data is resolved
+  properties?: MapObjectProperty[];
 }
 ```
 
 `MapObject` carries `id`, `name`, optional `class`, `x`/`y`/`width`/`height`/`rotation`, optional `point` / `ellipse` / `capsule` flags, an optional `polygon`, an optional `polyline`, and an optional `properties: MapObjectProperty[]` array of Tiled custom properties.
+
+## Unsupported Forms
+
+`validateTiledMap(map)` takes raw Tiled JSON and returns what this package cannot render. The same list is on `tilemap.data.diagnostics`, and `TilemapComponent` logs it as one `console.warn` when a map has any.
+
+```ts
+import { validateTiledMap } from "@yagejs/tilemap";
+
+for (const d of validateTiledMap(rawTiledJson)) {
+  console.log(d.severity, d.code, d.message, d.layer, d.tileset);
+}
+```
+
+```ts
+interface TilemapDiagnostic {
+  code: TilemapDiagnosticCode;
+  message: string;
+  severity: "error" | "warning";  // error: content is dropped or renders wrong
+  layer?: string;                 // set when the diagnostic is about a layer
+  tileset?: string;
+}
+```
+
+Codes: `unsupported-orientation`, `infinite-map`, `chunked-layer`, `encoded-layer-data`, `group-layer`, `image-layer`, `tsx-tileset`, `unresolved-tileset` (errors); `layer-parallax`, `unsupported-tile-animation` (warnings).
+
+A group layer and everything nested inside it is dropped — the diagnostic names the children so you can see what is missing. An external tileset that has not loaded yet is not a diagnostic; it resolves during preload.
 
 ## Object Layers
 
@@ -146,6 +240,11 @@ const objects = tilemap.getObjects("spawns");
 // No-arg variant — every object across every layer, grouped by class ?? name
 const grouped = tilemap.getObjects();
 // Record<string, MapObject[]>
+
+// Layer-aware: one entry per (layer, class), so two layers holding the same
+// class stay separate and a classless object is never keyed by its name
+const groups = tilemap.getObjectGroups();
+// MapObjectGroup[]: { layer: string; class?: string; objects: MapObject[] }
 
 // Flat list across every object layer
 const all = tilemap.getAllObjects();
@@ -204,6 +303,14 @@ resolveObjectRefArray(obj, "spawns", allObjs);        // spawns[0], spawns[1], .
 ```
 
 The component-method variants of `resolveRef` / `resolveRefArray` walk every object layer for you; use the standalone helpers only when you've already collected the pool yourself.
+
+All four take anything carrying a `properties` array, so the map, a layer and a tileset read the same way as an object:
+
+```ts
+tilemap.getProperty<string>(tilemap.data, "biome");
+tilemap.getProperty<number>(tilemap.data.tileLayers[0], "damage");
+tilemap.getProperty<string>(tilemap.data.tilesets[0], "material");
+```
 
 ## Collision Extraction
 

@@ -1,0 +1,44 @@
+{
+  "width": 1,
+  "height": 1,
+  "tilewidth": 16,
+  "tileheight": 16,
+  "orientation": "orthogonal",
+  "layers": [
+    {
+      "type": "tilelayer",
+      "id": 1,
+      "name": "waterfall",
+      "data": [1],
+      "width": 1,
+      "height": 1,
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "tilesets": [
+    {
+      "firstgid": 1,
+      "name": "vertical animation",
+      "tilewidth": 16,
+      "tileheight": 16,
+      "tilecount": 6,
+      "columns": 2,
+      "image": "vertical.png",
+      "imagewidth": 32,
+      "imageheight": 48,
+      "tiles": [
+        {
+          "id": 0,
+          "animation": [
+            { "tileid": 0, "duration": 120 },
+            { "tileid": 2, "duration": 120 },
+            { "tileid": 4, "duration": 120 }
+          ]
+        }
+      ]
+    }
+  ]
+}

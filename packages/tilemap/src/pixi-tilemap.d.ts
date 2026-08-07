@@ -2,6 +2,7 @@ declare module "@pixi/tilemap" {
   import { Container, Texture, TextureSource } from "pixi.js";
 
   export class CompositeTilemap extends Container {
+    tileAnim: [number, number];
     tileset(textures: TextureSource[]): this;
     tile(
       tileTexture: Texture | TextureSource | string | number,

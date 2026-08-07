@@ -16,16 +16,26 @@ Worth knowing up front so you don't reach for something that isn't there.
 | Orthogonal Tiled JSON maps                         | Supported   |
 | Multiple tile layers per map                       | Supported   |
 | Object layers (spawns, triggers, collision shapes) | Supported   |
-| Custom properties on objects                       | Supported   |
+| Custom properties on the map, layers, tilesets and objects | Supported |
 | Object-reference resolution (Tiled object refs)    | Supported   |
 | Collision-shape extraction (rect / ellipse / capsule / polygon / polyline) | Supported   |
 | `toPhysicsColliders()` adapter for Rapier          | Supported   |
 | Tileset-image and collection-of-images tilesets    | Supported   |
-| Animated tiles                                     | Not yet     |
+| Embedded and external tilesets                     | Supported   |
+| Flipped and rotated tiles                          | Supported   |
+| Layer draw offsets and tileset `tileoffset`        | Supported   |
+| Per-layer visibility and opacity                   | Supported   |
+| Animated tiles                                     | Supported for evenly-spaced, equal-duration frames |
 | Infinite / chunked maps                            | Not yet     |
+| Base64-encoded layer data                          | Not yet — export layer data as CSV |
+| Group layers and image layers                      | Not yet     |
 | Isometric / hexagonal / staggered orientations     | Not planned |
 | Dynamic tile editing at runtime                    | Not yet     |
 | Parallax / background scroll layers                | Not built-in (use a regular sprite layer) |
+
+Nothing in the "Not yet" rows fails silently. `validateTiledMap()` reports
+each one against a map's raw JSON, and `TilemapComponent` logs whatever it
+finds when the map loads — see [Checking a Map](#checking-a-map).
 
 For a worked example of loading a Tiled map and extracting collision
 shapes, see the
@@ -161,6 +171,71 @@ tilemap.tileWidth;    // single tile width
 tilemap.tileHeight;   // single tile height
 ```
 
+### Tinting, fading and effects
+
+`TilemapComponent` is a visual component like `SpriteComponent`, so it accepts
+the same visual options and exposes the same vocabulary — tint, alpha, blend
+mode, visibility, masks, and a component-scope effects host:
+
+```typescript
+map.add(new TilemapComponent({
+  source: MapData,
+  layer: "map",
+  tint: 0x5566aa,     // wash the whole map cold
+  alpha: 0.85,
+}));
+
+const tilemap = map.get(TilemapComponent);
+tilemap.tint = 0xffffff;                        // back to untinted
+tilemap.fx.addEffect(bloom({ strength: 1.5 }));  // effects on the map alone
+```
+
+Tint and alpha reach the tiles through a colour filter on the map's container,
+because the tile renderer has no colour input of its own. A map at full white
+and full opacity has no filter attached, so an untinted map costs nothing.
+
+## Checking a Map
+
+A Tiled map can use features this package does not render. Rather than
+dropping them quietly, the loader collects them:
+
+```typescript
+const tilemap = map.get(TilemapComponent);
+
+for (const d of tilemap.data.diagnostics) {
+  console.log(`${d.severity}: ${d.message}`);
+}
+// error: Group layer "decor" is not rendered. Its dropped children are: vines, banners.
+// warning: Layer "clouds" sets parallax, which the renderer does not apply.
+```
+
+`TilemapComponent` already logs the same list as a single warning when it
+loads a map with anything in it, so a broken map announces itself in the
+console without you writing this loop.
+
+To check a map before building anything from it — in a content pipeline, an
+asset test, or a level editor — run the validator over the raw JSON:
+
+```typescript
+import { validateTiledMap } from "@yagejs/tilemap";
+
+const problems = validateTiledMap(rawTiledJson)
+  .filter((d) => d.severity === "error");
+
+if (problems.length > 0) {
+  throw new Error(problems.map((d) => d.message).join("\n"));
+}
+```
+
+A diagnostic is an `error` when authored content is dropped or will render
+wrong, and a `warning` when a setting is simply not applied. Each one carries
+a `code` you can match on (`group-layer`, `infinite-map`,
+`unsupported-orientation`, `unsupported-tile-animation`, and so on), plus the `layer` or
+`tileset` name it came from.
+
+An external tileset that has not been loaded yet is not reported — it resolves
+during preload.
+
 ## Serialization
 
 `TilemapComponent` is `@serializable`, but the live parsed map it wraps is
@@ -173,7 +248,7 @@ where you already have the parsed map, and a `mapKey` asset path that can
 be re-resolved from the `AssetManager` after a reload.
 
 ```typescript
-interface TilemapComponentOptions {
+interface TilemapComponentOptions extends VisualComponentOptions {
   /** Asset handle — preferred. Captures both data and path in one place. */
   source?: AssetHandle<TiledMapData>;
   /** Parsed Tiled map data — not serializable, no auto-keys. */
@@ -182,10 +257,10 @@ interface TilemapComponentOptions {
   mapKey?: string;
   /** Which tile layers to render. Omit to render all. */
   layers?: string[];
-  /** Render layer name. Default: "default". */
-  layer?: string;
   /** Override prefix for object auto-keys. Defaults to mapKey. */
   keyPrefix?: string;
+  // Plus the shared visual options: layer, visible, tint, alpha,
+  // blendMode, interactive.
 }
 ```
 
@@ -212,10 +287,10 @@ map.add(new TilemapComponent({
 }));
 ```
 
-The snapshot shape itself (`TilemapComponentData`) is just
-`{ mapKey, layers?, layer, keyPrefix? }` — the serialized entity stores
-only the asset key, layer selection, and any explicit keyPrefix override,
-and reconstructs the live map on load.
+The snapshot (`TilemapComponentData`) stores the asset key, the layer
+selection, any explicit keyPrefix override, and the shared visual fields every
+visual component saves — render layer, tint, alpha, visibility, blend mode,
+effects and mask. The live map is reconstructed from the asset key on load.
 
 ## Map Data Structure
 
@@ -242,8 +317,11 @@ interface TilemapData {
   height: number;          // tiles tall
   tileWidth: number;       // pixel width of one tile
   tileHeight: number;
+  properties?: MapObjectProperty[];   // the map's own custom properties
   tileLayers: TileLayerData[];
   objectLayers: ObjectLayerData[];
+  tilesets: TilesetInfo[];
+  diagnostics: TilemapDiagnostic[];
 }
 
 interface TileLayerData {
@@ -252,13 +330,34 @@ interface TileLayerData {
   width: number;
   height: number;
   visible: boolean;
+  offsetX: number;         // the layer's Tiled draw offset, in pixels
+  offsetY: number;
+  properties?: MapObjectProperty[];
 }
 
 interface ObjectLayerData {
   name: string;
-  objects: MapObject[];
+  objects: MapObject[];    // coordinates already include offsetX/offsetY
   visible: boolean;
+  offsetX: number;
+  offsetY: number;
+  properties?: MapObjectProperty[];
 }
+
+interface TilesetInfo {
+  firstGid: number;
+  name?: string;
+  properties?: MapObjectProperty[];
+}
+```
+
+Custom properties are available at every level Tiled offers them, so a map can
+carry its own identity — a biome, a music track, a level index — without a
+marker object standing in for it:
+
+```typescript
+const biome = tilemap.getProperty<string>(tilemap.data, "biome");
+const track = tilemap.getProperty<string>(tilemap.data, "music");
 ```
 
 `TileLayerData.data` is a single flat array in row-major order. To read the
@@ -286,9 +385,69 @@ in detail below.
 Look up tile data at a world position:
 
 ```typescript
-const gid = tilemap.getTileAt(worldX, worldY, "ground");
-// Returns the tile GID or null if empty
+const id = tilemap.getTileAt(worldX, worldY, "ground");
+// Returns the tile id, or null if the position is empty
 ```
+
+Each layer is read through its own draw offset, so the id you get back is the
+tile you see at that position.
+
+A tileset's `tileoffset` is the exception. It moves where a tile's image is
+drawn without moving the cell the tile occupies. A tile from an offset tileset
+answers at its cell, which is where its collision and its neighbours are.
+
+### Flipped and rotated tiles
+
+Tiled lets you flip a tile horizontally, flip it vertically, or reflect it
+across its diagonal, in any combination — eight orientations in all. They
+render the way the editor shows them, so a tileset needs only one copy of a
+wall corner or an arrow.
+
+Tiled packs that orientation into the high bits of the tile's GID. `getTileAt`
+strips them, so a comparison works whichever way a tile faces:
+
+```typescript
+if (tilemap.getTileAt(x, y, "walls") === WALL_CORNER) { /* … */ }
+```
+
+Raw layer data keeps the bits, because the orientation is sometimes the point
+— a one-way conveyor tile, say, whose direction comes from how it was placed:
+
+```typescript
+import { readTileGid } from "@yagejs/tilemap";
+
+const layer = tilemap.data.tileLayers.find((l) => l.name === "machinery")!;
+const { id, flippedHorizontally } = readTileGid(layer.data[row * layer.width + col]!);
+
+if (id === CONVEYOR) {
+  direction = flippedHorizontally ? -1 : 1;
+}
+```
+
+### Animated tiles
+
+Water, torches, and machinery animated in Tiled play on their own. There is no
+component option to set and no per-frame game code — author the animation in
+the tileset and it runs. The clock comes from the scene, so a paused scene
+freezes its tilemaps and a slowed `timeScale` slows them with it.
+
+An animation plays when three things hold, and Tiled's animation editor gives
+you all three by default:
+
+- The tileset is a single image, not a collection of separate images.
+- Every frame lasts the same time.
+- The frames sit a constant distance apart in the tileset image — next to each
+  other along a row, or down a column.
+
+An animation outside that shape renders unanimated — as the tile the map
+places — and reports an `unsupported-tile-animation` warning saying which tile
+and why: durations that differ, frames scattered around the image, or a
+collection-of-images tileset.
+Splitting a two-second pause into ten identical 200ms frames is usually enough
+to bring an animation back into the supported shape.
+
+The animation phase is not part of a save. A tilemap restored from a snapshot
+starts its cycle from the beginning.
 
 ## Object Layers
 
@@ -324,6 +483,24 @@ interface MapObject {
   properties?: MapObjectProperty[];
 }
 ```
+
+`getObjects()` merges every layer when you don't name one, and it keys a
+classless object by its name — fine for a lookup, wrong when two layers hold
+the same class or when a class and an object share a spelling. Use
+`getObjectGroups()` when the layer matters:
+
+```typescript
+for (const group of tilemap.getObjectGroups()) {
+  console.log(group.layer, group.class, group.objects.length);
+}
+// "spawns"   "EnemySpawn"  4
+// "spawns"   undefined     1     ← objects authored without a class
+// "patrol"   "EnemySpawn"  2     ← same class, different layer, kept apart
+```
+
+Each entry is `{ layer, class?, objects }`, grouped by layer and class.
+Objects with no class collect into that layer's single `class: undefined`
+entry.
 
 ## Object Lookups
 
@@ -376,9 +553,10 @@ etc., across save/load.
 
 ## Custom Properties
 
-Read custom Tiled properties from objects. The component-method variants
-are typed and discoverable; the standalone helpers exist for cases where
-you've already collected an object pool yourself.
+Read custom Tiled properties from an object, a layer, a tileset, or the map
+itself — all four helpers take anything carrying a `properties` array. The
+component-method variants are typed and discoverable; the standalone helpers
+exist for cases where you've already collected an object pool yourself.
 
 ```typescript
 // On the component (preferred)
@@ -386,6 +564,11 @@ tilemap.getProperty<number>(obj, "speed");
 tilemap.getPropertyArray<number>(obj, "point");
 tilemap.resolveRef(obj, "target");          // walks every layer
 tilemap.resolveRefArray(obj, "spawns");
+
+// The same helpers on the map, a layer, or a tileset
+tilemap.getProperty<string>(tilemap.data, "biome");
+tilemap.getProperty<number>(tilemap.data.tileLayers[0], "damage");
+tilemap.getProperty<string>(tilemap.data.tilesets[0], "material");
 
 // Standalone (caller supplies the pool)
 import { getProperty, getPropertyArray, resolveObjectRef, resolveObjectRefArray } from "@yagejs/tilemap";

@@ -1,0 +1,44 @@
+{
+  "width": 1,
+  "height": 1,
+  "tilewidth": 16,
+  "tileheight": 16,
+  "orientation": "orthogonal",
+  "layers": [
+    {
+      "type": "tilelayer",
+      "id": 1,
+      "name": "notes",
+      "data": [1],
+      "width": 1,
+      "height": 1,
+      "opacity": 1,
+      "visible": false,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "type": "tilelayer",
+      "id": 2,
+      "name": "fog",
+      "data": [1],
+      "width": 1,
+      "height": 1,
+      "opacity": 0.5,
+      "visible": true,
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "tilesets": [
+    {
+      "firstgid": 1,
+      "name": "terrain",
+      "tilewidth": 16,
+      "tileheight": 16,
+      "tilecount": 1,
+      "columns": 1,
+      "tiles": [{ "id": 0, "image": "tile.png" }]
+    }
+  ]
+}

@@ -54,6 +54,12 @@ export type {
 } from "./internal/renderFacet.js";
 
 // Components
+export { VisualComponent, visualOptionsFromData } from "./VisualComponent.js";
+export type {
+  VisualComponentData,
+  VisualComponentOptions,
+  VisualInteractiveOptions,
+} from "./VisualComponent.js";
 export { SpriteComponent } from "./SpriteComponent.js";
 export type { SpriteComponentOptions, SpriteData } from "./SpriteComponent.js";
 export { GraphicsComponent } from "./GraphicsComponent.js";

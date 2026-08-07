@@ -7,15 +7,15 @@ export class TilemapRenderSystem extends System {
   readonly phase = Phase.Render;
   readonly priority = -1; // Before DisplaySystem (0), so tilemaps render behind sprites
 
-  private query!: QueryResult;
+  private transformQuery!: QueryResult;
 
   onRegister(context: EngineContext): void {
     const queryCache = context.resolve(QueryCacheKey);
-    this.query = queryCache.register([Transform, TilemapComponent]);
+    this.transformQuery = queryCache.register([Transform, TilemapComponent]);
   }
 
   update(): void {
-    for (const entity of this.query) {
+    for (const entity of this.transformQuery) {
       const transform = entity.get(Transform);
       const tilemap = entity.get(TilemapComponent);
       if (!tilemap.enabled) continue;

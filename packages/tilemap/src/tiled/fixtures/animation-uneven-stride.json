@@ -1,0 +1,44 @@
+{
+  "width": 1,
+  "height": 1,
+  "tilewidth": 16,
+  "tileheight": 16,
+  "orientation": "orthogonal",
+  "layers": [
+    {
+      "type": "tilelayer",
+      "id": 1,
+      "name": "water",
+      "data": [1],
+      "width": 1,
+      "height": 1,
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "tilesets": [
+    {
+      "firstgid": 1,
+      "name": "uneven stride",
+      "tilewidth": 16,
+      "tileheight": 16,
+      "tilecount": 4,
+      "columns": 4,
+      "image": "uneven.png",
+      "imagewidth": 64,
+      "imageheight": 16,
+      "tiles": [
+        {
+          "id": 0,
+          "animation": [
+            { "tileid": 0, "duration": 100 },
+            { "tileid": 1, "duration": 100 },
+            { "tileid": 3, "duration": 100 }
+          ]
+        }
+      ]
+    }
+  ]
+}

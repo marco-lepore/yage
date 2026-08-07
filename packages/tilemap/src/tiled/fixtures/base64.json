@@ -1,0 +1,23 @@
+{
+  "width": 1,
+  "height": 1,
+  "tilewidth": 16,
+  "tileheight": 16,
+  "orientation": "orthogonal",
+  "layers": [
+    {
+      "type": "tilelayer",
+      "id": 1,
+      "name": "encoded",
+      "data": "AQAAAA==",
+      "encoding": "base64",
+      "width": 1,
+      "height": 1,
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "tilesets": []
+}

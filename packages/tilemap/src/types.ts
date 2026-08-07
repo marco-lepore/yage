@@ -1,12 +1,42 @@
 // ─── Generic Tilemap Types (format-agnostic) ────────────────────────
 
+export type TilemapDiagnosticCode =
+  | "unsupported-orientation"
+  | "infinite-map"
+  | "chunked-layer"
+  | "encoded-layer-data"
+  | "group-layer"
+  | "image-layer"
+  | "tsx-tileset"
+  | "unresolved-tileset"
+  | "layer-parallax"
+  | "unsupported-tile-animation";
+
+export interface TilemapDiagnostic {
+  code: TilemapDiagnosticCode;
+  /** Sentence naming what was found and what it costs. */
+  message: string;
+  /**
+   * `"error"`: authored content is dropped or will render wrong.
+   * `"warning"`: an authored setting the renderer ignores.
+   */
+  severity: "error" | "warning";
+  /** Layer name, when the diagnostic is about a layer. */
+  layer?: string;
+  /** Tileset name or `source`, when the diagnostic is about a tileset. */
+  tileset?: string;
+}
+
 export interface TilemapData {
   width: number;
   height: number;
   tileWidth: number;
   tileHeight: number;
+  properties?: MapObjectProperty[];
   tileLayers: TileLayerData[];
   objectLayers: ObjectLayerData[];
+  tilesets: TilesetInfo[];
+  diagnostics: TilemapDiagnostic[];
 }
 
 export interface TileLayerData {
@@ -15,12 +45,37 @@ export interface TileLayerData {
   width: number;
   height: number;
   visible: boolean;
+  offsetX: number;
+  offsetY: number;
+  properties?: MapObjectProperty[];
 }
 
 export interface ObjectLayerData {
   name: string;
+  /** Object coordinates already include this layer offset. */
   objects: MapObject[];
   visible: boolean;
+  offsetX: number;
+  offsetY: number;
+  properties?: MapObjectProperty[];
+}
+
+/** A tileset referenced by the map, in the format-agnostic view. */
+export interface TilesetInfo {
+  /** First global tile ID this tileset owns. */
+  firstGid: number;
+  /** Tileset name, when the tileset data is available. */
+  name?: string;
+  properties?: MapObjectProperty[];
+}
+
+/** Objects of one class on one object layer. */
+export interface MapObjectGroup {
+  /** Object-layer name the objects came from. */
+  layer: string;
+  /** Tiled class, or `undefined` for objects authored without one. */
+  class?: string;
+  objects: MapObject[];
 }
 
 export interface MapObject {

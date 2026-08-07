@@ -9,6 +9,7 @@ import {
 import type { LoaderParser, ResolvedAsset, Loader } from "pixi.js";
 import type { TiledMapData, TilesetData, TilesetRef } from "./types.js";
 import { subtextureCacheKey } from "./cacheKey.js";
+import { resolveTilesetData } from "./resolveTilesetData.js";
 
 /**
  * PixiJS loader extension that detects Tiled map JSON files and resolves
@@ -54,6 +55,8 @@ const tiledMapLoaderParser: LoaderParser<TiledMapData> = {
     }
 
     for (const tilesetRef of asset.tilesets as TilesetRef[]) {
+      let tileset: TilesetData | null;
+
       if (tilesetRef.source) {
         // External tileset JSON — load it
         const tilesetPath = basePath + tilesetRef.source;
@@ -61,13 +64,19 @@ const tiledMapLoaderParser: LoaderParser<TiledMapData> = {
           src: tilesetPath,
         })) as TilesetData;
         tilesetRef.data = tilesetData;
+        tileset = tilesetData;
+      } else {
+        tileset = resolveTilesetData(tilesetRef);
+        if (tileset) tilesetRef.data = tileset;
       }
 
-      const tileset = tilesetRef.data;
       if (!tileset) continue;
 
-      // Single-image tileset: load the image and create sub-textures
-      if (tileset.image && !tileset.tiles?.length) {
+      // Single-image tileset: load the image and create sub-textures. A
+      // single-image tileset also carries `tiles[]` once any tile has an
+      // animation, class, custom property or collision shape, so `image` is
+      // what tells the two forms apart.
+      if (tileset.image) {
         const imagePath = basePath + tileset.image;
         const baseTexture = await Assets.load<Texture>(imagePath);
         const cols = tileset.columns;
