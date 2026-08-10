@@ -346,6 +346,8 @@ Decision matrix:
 
 Tag processes with `pc.run(p, { tags: ["vfx"] })` then cancel groups with `pc.cancel("vfx")`. Processes and slots auto-cancel on entity destroy via `ProcessComponent.onDestroy()`.
 
+Clocks (`ProcessClock = "frame" | "fixed"`): entity processes and slots tick on rendered-frame time by default (`ProcessSystem`, `Phase.Update`, priority 500). `pc.run(p, { clock: "fixed" })` / `pc.slot({ clock: "fixed", ... })` tick on the fixed timestep instead (`ProcessFixedUpdateSystem`, `Phase.FixedUpdate`, priority 500 — after physics, before component `fixedUpdate`). Use `"fixed"` for gameplay timing that must match a fixed-step simulation (attack windows, cooldowns); keep visuals on `"frame"`. Both clocks share pause gating and global/scene/entity time scaling. A slot's clock is fixed at creation — `start()`/`restart()` overrides exclude it. `ProcessSystem.add`/`addForScene` pools are frame-only.
+
 `pc.removeSlot(slot): boolean` cancels and unregisters one owned `ProcessSlot`.
 It returns `false` for a foreign or already-removed slot. Use it when a
 component permanently discards a dynamically-created slot; `slot.cancel()`

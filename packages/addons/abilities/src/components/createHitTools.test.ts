@@ -233,7 +233,7 @@ describe("createHitTools", () => {
     );
 
     target.get(Abilities).send("ward");
-    process._tick(0.01);
+    process._tick(0.01, undefined, "fixed");
     const result = arcane
       .delivery({
         source: attacker,

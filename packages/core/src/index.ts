@@ -154,7 +154,7 @@ export type {
 export { resolveTransition } from "./SceneTransition.js";
 
 export { Process } from "./Process.js";
-export type { ProcessOptions } from "./Process.js";
+export type { ProcessOptions, ProcessClock } from "./Process.js";
 export {
   easeLinear,
   easeInQuad,
@@ -183,7 +183,7 @@ export type { ProcessSlotConfig } from "./ProcessSlot.js";
 
 export { TimerEntity } from "./TimerEntity.js";
 
-export { ProcessSystem } from "./ProcessSystem.js";
+export { ProcessSystem, ProcessFixedUpdateSystem } from "./ProcessSystem.js";
 
 export {
   makeEntityScopedQueue,

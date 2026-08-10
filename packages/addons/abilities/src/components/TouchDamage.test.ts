@@ -128,10 +128,10 @@ describe("TouchDamage", () => {
     const target = spawnTarget(scene);
 
     captured.triggerHandlers.get(collider)?.({ other: target, entered: true }); // t=0
-    touch.update(0.5);
+    touch.fixedUpdate(0.5);
     expect(target.received).toHaveLength(1); // before the interval
 
-    touch.update(0.5); // t=1.0 — interval elapsed
+    touch.fixedUpdate(0.5); // t=1.0 — interval elapsed
     expect(target.received).toHaveLength(2);
   });
 
@@ -141,7 +141,7 @@ describe("TouchDamage", () => {
 
     captured.triggerHandlers.get(collider)?.({ other: target, entered: true });
     captured.triggerHandlers.get(collider)?.({ other: target, entered: false });
-    touch.update(2); // well past the interval
+    touch.fixedUpdate(2); // well past the interval
 
     expect(target.received).toHaveLength(1);
   });
@@ -153,7 +153,7 @@ describe("TouchDamage", () => {
     captured.triggerHandlers.get(collider)?.({ other: target, entered: true });
     target.destroy();
 
-    expect(() => touch.update(2)).not.toThrow();
+    expect(() => touch.fixedUpdate(2)).not.toThrow();
     expect(target.received).toHaveLength(1); // no re-hit after destroy
   });
 
@@ -257,7 +257,7 @@ describe("TouchDamage", () => {
     captured.triggerHandlers.get(collider)?.({ other: target, entered: true }); // t=0
     expect(dealt).toEqual(["hit"]);
 
-    touch.update(1); // interval elapsed — re-hit
+    touch.fixedUpdate(1); // interval elapsed — re-hit
     expect(dealt).toEqual(["hit", "hit"]);
   });
 });

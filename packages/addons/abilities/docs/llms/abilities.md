@@ -239,7 +239,7 @@ target resolver.
 
 ```ts
 class Abilities extends Component {
-  constructor(defs: readonly AbilityDef[]);
+  constructor(defs: readonly AbilityDef[], options?: AbilitiesOptions);
   addDefinitions(defs: readonly AbilityDef[]): void;
   replaceDefinitions(defs: readonly AbilityDef[]): void;
 
@@ -265,7 +265,24 @@ type PlayRejection = "cooldown" | "busy" | "noMatch";
 type PlayResult =
   | { readonly ok: true; readonly activation: AbilityActivation }
   | { readonly ok: false; readonly reason: PlayRejection };
+
+interface AbilitiesOptions {
+  // "fixed" (default): timelines, linger, and cooldowns advance on the
+  // fixed timestep, matching physics timing. "frame": rendered-frame time,
+  // for purely presentation-driven timelines. Other processes on the
+  // sibling ProcessComponent keep the clocks they were scheduled with
+  // (KeyframeAnimator playback stays frame-smooth). Input is sampled per
+  // rendered frame; an intent sent this frame starts a timeline that
+  // advances on the fixed step. `abilities.clock` is readable — custom
+  // steps pass it to `pc.run(p, { clock })` for their own gameplay timers.
+  clock?: "frame" | "fixed";
+}
 ```
+
+The other addon timers always count fixed-step time regardless of this
+option: `HitReceiver` i-frames, `Stagger`, `TouchDamage` intervals,
+`Projectile` lifetime, and hitbox `follow` tracking (the components run in
+`fixedUpdate`).
 
 Intent resolution: active phase `on` -> linger -> cross-definition entry.
 Unknown intents throw. `data` becomes `activation.payload` on entry or

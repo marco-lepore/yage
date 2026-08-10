@@ -39,7 +39,7 @@ describe("anim step", () => {
 
     abilities.send("swing");
     expect(animator.isPlaying("swing")).toBe(false); // fires on tick, not on play()
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     expect(animator.isPlaying("swing")).toBe(true);
   });
 
@@ -56,6 +56,6 @@ describe("anim step", () => {
     );
 
     abilities.send("swing");
-    expect(() => pc._tick(0.01)).toThrow(/"anim".*"swing"/);
+    expect(() => pc._tick(0.01, undefined, "fixed")).toThrow(/"anim".*"swing"/);
   });
 });

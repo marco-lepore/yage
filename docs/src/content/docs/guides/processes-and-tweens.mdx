@@ -110,6 +110,45 @@ pc.run(Process.delay(0.5, () => {
 }));
 ```
 
+## Choosing a Clock
+
+Every process and slot on a `ProcessComponent` advances on one of two clocks:
+
+- `"frame"` (the default) — rendered-frame time. Right for visuals: tweens,
+  fades, shakes.
+- `"fixed"` — the engine's fixed timestep, the same clock physics steps on.
+  Right for gameplay timing that must match a fixed-step simulation: attack
+  windows, cooldowns, timers that gate physics-driven movement.
+
+Pick the clock when you schedule the work:
+
+```typescript
+// A dash window that stays in step with physics:
+pc.run(Process.delay(0.25, () => endDash()), { clock: "fixed" });
+
+// A cooldown on the fixed clock:
+const cooldown = pc.slot({ duration: 0.3, clock: "fixed" });
+```
+
+Why it matters: frame time and fixed time drift apart whenever a frame is
+dropped, a single frame runs two fixed steps, or the display refreshes faster
+than the fixed rate. A gameplay window on the frame clock then opens and
+closes at slightly different simulation times each run. Keeping gameplay
+timers on `"fixed"` and visuals on `"frame"` — even on the same entity —
+removes that drift without making animations choppy.
+
+Both clocks share the same pause and time-scale behavior: scene pause stops
+them, and global, scene, and per-entity time scales apply to both. Fixed-clock
+processes advance after the physics step and before component
+`fixedUpdate(dt)` calls. The slot's clock is set at creation;
+`start()`/`restart()` overrides cannot change it. Engine-level pools
+(`ProcessSystem.add` / `addForScene`) always run on frame time.
+
+Gameplay subsystems pick the fixed clock for you: the abilities addon
+schedules its timelines and cooldowns on `"fixed"` by default. The `"frame"`
+default here applies to what you schedule directly — tweens, fades, and other
+presentation work.
+
 ## Tweens
 
 Tweens smoothly interpolate a value over time. They run as processes, so they

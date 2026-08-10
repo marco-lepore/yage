@@ -194,12 +194,12 @@ describe("HitReceiver — i-frames", () => {
     expect(receiver.iframesRemaining).toBe(0.5);
 
     expect(receiver.receive(makeHit(attacker))).toBe("ignored");
-    receiver.update(0.3);
+    receiver.fixedUpdate(0.3);
     expect(receiver.receive(makeHit(attacker))).toBe("ignored");
     expect(steps).toBe(1);
     expect(received).toHaveLength(1);
 
-    receiver.update(0.2);
+    receiver.fixedUpdate(0.2);
     expect(receiver.iframesRemaining).toBe(0);
     expect(receiver.receive(makeHit(attacker))).toBe("hit");
     expect(steps).toBe(2);
@@ -280,7 +280,7 @@ describe("HitReceiver — isInvulnerable", () => {
 
     receiver.receive(makeHit(attacker));
     expect(receiver.isInvulnerable).toBe(true);
-    receiver.update(0.5);
+    receiver.fixedUpdate(0.5);
     expect(receiver.isInvulnerable).toBe(false);
   });
 
@@ -291,7 +291,7 @@ describe("HitReceiver — isInvulnerable", () => {
     receiver.receive(makeHit(attacker)); // arms i-frames
     const key = {};
     receiver.openInvulnerability(key);
-    receiver.update(0.5); // i-frames elapse; the manual window is still open
+    receiver.fixedUpdate(0.5); // i-frames elapse; the manual window is still open
     expect(receiver.isInvulnerable).toBe(true);
     receiver.closeInvulnerability(key);
     expect(receiver.isInvulnerable).toBe(false);

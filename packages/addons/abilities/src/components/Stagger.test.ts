@@ -42,9 +42,9 @@ describe("Stagger", () => {
   it("ramps velocity linearly to zero across the stun window", () => {
     const { stagger } = setup();
     stagger.begin({ direction: new Vec2(1, 0), knockback: 100, stun: 0.5 });
-    stagger.update(0.25);
-    stagger.update(0.25);
-    stagger.update(0.25); // past the window — no further writes
+    stagger.fixedUpdate(0.25);
+    stagger.fixedUpdate(0.25);
+    stagger.fixedUpdate(0.25); // past the window — no further writes
     expect(captured.velocities).toEqual([
       { x: 100, y: 0 },
       { x: 50, y: 0 },
@@ -56,9 +56,9 @@ describe("Stagger", () => {
   it("a repeat begin replaces vector and timer (last hit wins)", () => {
     const { stagger } = setup();
     stagger.begin({ direction: new Vec2(1, 0), knockback: 100, stun: 0.4 });
-    stagger.update(0.2);
+    stagger.fixedUpdate(0.2);
     stagger.begin({ direction: new Vec2(0, 1), knockback: 60, stun: 0.4 });
-    stagger.update(0.2);
+    stagger.fixedUpdate(0.2);
     expect(captured.velocities).toEqual([
       { x: 100, y: 0 },
       { x: 50, y: 0 },
@@ -83,7 +83,7 @@ describe("Stagger", () => {
   it("end zeroes velocity and clears active early", () => {
     const { stagger } = setup();
     stagger.begin({ direction: new Vec2(1, 0), knockback: 100, stun: 0.5 });
-    stagger.update(0.1);
+    stagger.fixedUpdate(0.1);
     stagger.end();
     expect(stagger.active).toBe(false);
     expect(captured.velocities).toEqual([
@@ -91,14 +91,14 @@ describe("Stagger", () => {
       { x: 80, y: 0 },
       { x: 0, y: 0 },
     ]);
-    stagger.update(0.1); // ended — no further writes
+    stagger.fixedUpdate(0.1); // ended — no further writes
     expect(captured.velocities).toHaveLength(3);
   });
 
   it("zeroes active knockback while disabled and restores the same ramp on enable", () => {
     const { stagger } = setup();
     stagger.begin({ direction: new Vec2(1, 0), knockback: 100, stun: 0.5 });
-    stagger.update(0.1);
+    stagger.fixedUpdate(0.1);
 
     stagger.enabled = false;
     expect(captured.velocities.at(-1)).toEqual({ x: 0, y: 0 });

@@ -249,6 +249,115 @@ describe("ProcessComponent", () => {
     expect(slot.completed).toBe(false);
   });
 
+  describe("fixed clock", () => {
+    it("a fixed-clock process only advances on fixed ticks", () => {
+      const pc = makeComponent();
+      const spy = vi.fn();
+      pc.run(new Process({ update: spy }), { clock: "fixed" });
+
+      pc._tick(0.1); // frame tick
+      expect(spy).not.toHaveBeenCalled();
+
+      pc._tick(0.02, undefined, "fixed");
+      expect(spy).toHaveBeenCalledWith(0.02, 0.02);
+    });
+
+    it("a frame-clock process is untouched by fixed ticks", () => {
+      const pc = makeComponent();
+      const spy = vi.fn();
+      pc.run(new Process({ update: spy }));
+
+      pc._tick(0.02, undefined, "fixed");
+      expect(spy).not.toHaveBeenCalled();
+
+      pc._tick(0.1);
+      expect(spy).toHaveBeenCalledWith(0.1, 0.1);
+    });
+
+    it("a completed fixed-clock process is removed on its own tick", () => {
+      const pc = makeComponent();
+      pc.run(new Process({ update: () => true }), { clock: "fixed" });
+      expect(pc.count).toBe(1);
+      pc._tick(0.1); // frame tick doesn't touch it
+      expect(pc.count).toBe(1);
+      pc._tick(0.02, undefined, "fixed");
+      expect(pc.count).toBe(0);
+    });
+
+    it("a fixed-clock slot only advances on fixed ticks", () => {
+      const pc = makeComponent();
+      const slot = pc.slot({ duration: 0.04, clock: "fixed" });
+      slot.start();
+
+      pc._tick(0.1);
+      expect(slot.elapsed).toBe(0);
+
+      pc._tick(0.02, undefined, "fixed");
+      expect(slot.elapsed).toBe(0.02);
+      pc._tick(0.02, undefined, "fixed");
+      expect(slot.completed).toBe(true);
+    });
+
+    it("removeSlot() unregisters a fixed-clock slot", () => {
+      const pc = makeComponent();
+      const slot = pc.slot({ duration: 1, clock: "fixed" });
+      slot.start();
+      expect(pc.removeSlot(slot)).toBe(true);
+      expect(slot.completed).toBe(true);
+      pc._tick(0.02, undefined, "fixed");
+      expect(slot.elapsed).toBe(0);
+    });
+
+    it("cancel() covers both clocks", () => {
+      const pc = makeComponent();
+      const frame = new Process({ update: () => {} });
+      const fixed = new Process({ update: () => {} });
+      pc.run(frame);
+      pc.run(fixed, { clock: "fixed" });
+      const slot = pc.slot({ duration: 1, clock: "fixed" });
+      slot.start();
+
+      pc.cancel();
+      expect(frame.completed).toBe(true);
+      expect(fixed.completed).toBe(true);
+      expect(slot.completed).toBe(true);
+      expect(pc.count).toBe(0);
+    });
+
+    it("cancel(tag) reaches fixed-clock processes", () => {
+      const pc = makeComponent();
+      const tagged = new Process({ update: () => {} });
+      const other = new Process({ update: () => {} });
+      pc.run(tagged, { clock: "fixed", tags: ["gameplay"] });
+      pc.run(other, { clock: "fixed" });
+
+      pc.cancel("gameplay");
+      expect(tagged.completed).toBe(true);
+      expect(other.completed).toBe(false);
+    });
+
+    it("count sums both clocks", () => {
+      const pc = makeComponent();
+      pc.run(new Process({ update: () => {} }));
+      pc.run(new Process({ update: () => {} }), { clock: "fixed" });
+      pc.slot({ duration: 1, clock: "fixed" }).start();
+      expect(pc.count).toBe(3);
+    });
+
+    it("re-running a live process with a different clock keeps its original clock", () => {
+      const pc = makeComponent();
+      const spy = vi.fn();
+      const p = new Process({ update: spy });
+      pc.run(p);
+      pc.run(p, { clock: "fixed" });
+      expect(pc.count).toBe(1);
+      pc._tick(0.02, undefined, "fixed");
+      expect(spy).not.toHaveBeenCalled();
+      pc._tick(0.1);
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("error boundary", () => {
     function makeWiredComponent() {
       const { entity, context } = createMockEntity("player");

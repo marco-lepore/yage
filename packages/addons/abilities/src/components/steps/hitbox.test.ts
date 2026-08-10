@@ -123,7 +123,7 @@ describe("hitbox step", () => {
     );
 
     entity.get(Abilities).send("swing");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
 
     expect(findHitbox(scene).get(Transform).rotation).toBeCloseTo(Math.PI / 2);
   });
@@ -148,7 +148,7 @@ describe("hitbox step", () => {
     );
 
     abilities.send("swing");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     const spawned = findHitbox(scene);
     expect(spawned.isActive).toBe(true);
 
@@ -185,7 +185,7 @@ describe("hitbox step", () => {
     );
 
     entity.get(Abilities).send("swing");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
 
     expect(findHitbox(scene).get(Transform).rotation).toBeCloseTo(-Math.PI / 2);
   });
@@ -212,7 +212,7 @@ describe("hitbox step", () => {
     );
 
     entity.get(Abilities).send("swing");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     dir = { x: 0, y: 1 }; // later state change must not move the already-spawned hitbox
 
     expect(resolver).toHaveBeenCalledTimes(1);
@@ -238,7 +238,7 @@ describe("hitbox step", () => {
     );
 
     entity.get(Abilities).send("swing");
-    expect(() => pc._tick(0.01)).toThrow(/Facing|aim/);
+    expect(() => pc._tick(0.01, undefined, "fixed")).toThrow(/Facing|aim/);
   });
 
   it("throws when an explicit aim resolves to a zero vector", () => {
@@ -261,7 +261,7 @@ describe("hitbox step", () => {
     );
 
     entity.get(Abilities).send("swing");
-    expect(() => pc._tick(0.01)).toThrow(/zero vector/);
+    expect(() => pc._tick(0.01, undefined, "fixed")).toThrow(/zero vector/);
   });
 
   it("inherits team from the caster's HitReceiver when the step omits team", () => {
@@ -285,7 +285,7 @@ describe("hitbox step", () => {
     );
 
     entity.get(Abilities).send("swing");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
 
     const target = scene.spawn(Target);
     target.add(new Transform({ position: new Vec2(10, 0) }));
@@ -316,7 +316,7 @@ describe("hitbox step", () => {
     );
 
     entity.get(Abilities).send("swing");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
 
     const target = scene.spawn(Target);
     target.add(new Transform({ position: new Vec2(10, 0) }));
@@ -346,7 +346,7 @@ describe("hitbox step", () => {
     );
 
     entity.get(Abilities).send("swing");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     damage = 99; // later state change must not affect the already-resolved hit
 
     const target = scene.spawn(Target);
@@ -378,7 +378,7 @@ describe("hitbox step", () => {
     );
 
     entity.get(Abilities).send("swing");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
 
     const collider = findHitbox(scene).get(ColliderComponent);
     expect(collider.config.layers).toBe(1);
@@ -405,11 +405,11 @@ describe("hitbox step", () => {
     );
 
     entity.get(Abilities).send("swing");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     const spawned = findHitbox(scene);
     expect(spawned.isDestroyed).toBe(false);
 
-    pc._tick(0.19);
+    pc._tick(0.19, undefined, "fixed");
     expect(spawned.isDestroyed).toBe(true);
   });
 
@@ -433,7 +433,7 @@ describe("hitbox step", () => {
     );
 
     abilities.send("swing");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     const spawned = findHitbox(scene);
 
     abilities.cancel();
@@ -461,20 +461,20 @@ describe("hitbox step", () => {
     );
 
     abilities.send("aura");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     const spawned = findHitbox(scene);
     const target = scene.spawn(Target);
     target.add(new Transform({ position: new Vec2(10, 0) }));
     fireHitboxTrigger(spawned, target);
     expect(target.received).toHaveLength(1);
 
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(target.received).toHaveLength(2);
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(target.received).toHaveLength(3);
 
     abilities.cancel();
-    pc._tick(0.3);
+    pc._tick(0.3, undefined, "fixed");
     expect(target.received).toHaveLength(3);
   });
 
@@ -499,18 +499,18 @@ describe("hitbox step", () => {
     );
 
     entity.get(Abilities).send("aura");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     const spawned = findHitbox(scene);
     const target = scene.spawn(Target);
     target.add(new Transform({ position: new Vec2(10, 0) }));
     fireHitboxTrigger(spawned, target);
     leaveHitboxTrigger(spawned, target);
 
-    pc._tick(0.19);
+    pc._tick(0.19, undefined, "fixed");
     expect(target.received).toHaveLength(1);
     fireHitboxTrigger(spawned, target);
     expect(target.received).toHaveLength(2);
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(target.received).toHaveLength(3);
   });
 
@@ -534,7 +534,7 @@ describe("hitbox step", () => {
     );
 
     entity.get(Abilities).send("swing");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     const spawned = findHitbox(scene);
     const target = scene.spawn(Target);
     target.add(new Transform({ position: new Vec2(10, 0) }));
@@ -571,16 +571,16 @@ describe("hitbox step", () => {
     );
 
     abilities.send("combo");
-    pc._tick(0.01); // both enter
+    pc._tick(0.01, undefined, "fixed"); // both enter
     const [short, long] = findHitboxes(scene);
     expect(short).toBeDefined();
     expect(long).toBeDefined();
 
-    pc._tick(0.15); // short exits at 0.1, long (to 0.3) still open
+    pc._tick(0.15, undefined, "fixed"); // short exits at 0.1, long (to 0.3) still open
     expect(short!.isDestroyed).toBe(true);
     expect(long!.isDestroyed).toBe(false);
 
-    pc._tick(0.2); // long exits at 0.3
+    pc._tick(0.2, undefined, "fixed"); // long exits at 0.3
     expect(long!.isDestroyed).toBe(true);
   });
 
@@ -606,7 +606,7 @@ describe("hitbox step", () => {
     entity.on(HitDealt, (payload) => dealt.push(payload.result));
 
     abilities.send("swing");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     const target = scene.spawn(Target);
     target.add(new Transform({ position: new Vec2(10, 0) }));
     fireHitboxTrigger(findHitbox(scene), target);
@@ -616,7 +616,7 @@ describe("hitbox step", () => {
     abilities.cancel();
     dealt.length = 0;
     abilities.send("swing");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     abilities.cancel(); // never contacts a target
 
     expect(dealt).toEqual([]);
@@ -654,7 +654,7 @@ describe("hitbox step", () => {
     caster.on(HitDealt, ({ result }) => dealt.push(result));
 
     spawned.get(Abilities).send("child-hit");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     const target = scene.spawn(Target);
     target.add(new Transform({ position: new Vec2(10, 0) }));
     fireHitboxTrigger(findHitbox(scene), target);
@@ -699,7 +699,7 @@ describe("hitbox step", () => {
     );
 
     spawned.get(Abilities).send("child-hit");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     const target = scene.spawn(Target);
     target.add(new Transform({ position: new Vec2(10, 0) }));
     fireHitboxTrigger(findHitbox(scene), target);
@@ -728,11 +728,11 @@ describe("hitbox step", () => {
     );
 
     entity.get(Abilities).send("swing");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     const spawned = findHitbox(scene);
 
     entity.get(Transform).setPosition(40, -10);
-    spawned.get(HitboxFollow).update();
+    spawned.get(HitboxFollow).fixedUpdate();
 
     expect(spawned.get(Transform).position).toEqual(new Vec2(40, -10));
   });
@@ -757,7 +757,7 @@ describe("hitbox step", () => {
     );
 
     entity.get(Abilities).send("swing");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
 
     expect(findHitbox(scene).tryGet(HitboxFollow)).toBeUndefined();
   });
@@ -783,7 +783,7 @@ describe("hitbox step", () => {
     );
 
     abilities.send("swing");
-    expect(() => pc._tick(0.01)).toThrow(
+    expect(() => pc._tick(0.01, undefined, "fixed")).toThrow(
       /step "hitbox" requires a Transform component/,
     );
   });

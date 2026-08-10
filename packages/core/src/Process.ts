@@ -20,6 +20,22 @@ export function tickProcessGuarded(
   boundary.wrapCallback(run, info);
 }
 
+/**
+ * Which engine clock advances a process owned by a `ProcessComponent`.
+ *
+ * - `"frame"` — rendered-frame time, via `ProcessSystem` at `Phase.Update`.
+ *   Right for visuals: tweens, fades, shakes.
+ * - `"fixed"` — the fixed timestep, via `ProcessFixedUpdateSystem` at
+ *   `Phase.FixedUpdate`. Right for gameplay timing that must stay in step
+ *   with a fixed-step simulation: ability windows, cooldowns, timers that
+ *   gate physics-driven mechanics.
+ *
+ * The clock is chosen where the process is scheduled
+ * (`ProcessComponent.run`/`slot`), not on the process itself, so the same
+ * `Process`/`Tween`/`Sequence` types work on either clock.
+ */
+export type ProcessClock = "frame" | "fixed";
+
 /** Options for creating a Process. */
 export interface ProcessOptions {
   /** Called each frame with dt (seconds) and elapsed (seconds). Return true to complete early. */

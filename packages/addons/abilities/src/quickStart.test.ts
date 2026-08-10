@@ -78,7 +78,7 @@ describe("documented quick start", () => {
     const fighter = scene.spawn(Fighter);
 
     fighter.get(Abilities).send("slash");
-    fighter.get(ProcessComponent)._tick(0.08);
+    fighter.get(ProcessComponent)._tick(0.08, undefined, "fixed");
 
     const spawned = scene
       .findEntities()

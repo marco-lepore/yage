@@ -80,7 +80,7 @@ export class Stagger extends Component {
     this.applyVelocity();
   }
 
-  update(dt: number): void {
+  fixedUpdate(dt: number): void {
     if (!this.effectiveEnabled || !this.windowEnabled || this.remaining <= 0) {
       return;
     }

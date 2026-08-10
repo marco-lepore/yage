@@ -20,12 +20,12 @@ export interface HitboxConfig {
   delivery: HitDelivery;
   /** Physics-level pruning; unset = member-of-all (receiver-side filter only). */
   groups?: DeliveryColliderGroups;
-  /** Re-anchors the body's position to this entity every frame, keeping the
-   *  spawn-time rotation and local `offset` fixed. Stops updating once the
-   *  caster is destroyed — the hitbox keeps its last position. Required
+  /** Re-anchors the body's position to this entity every fixed step, keeping
+   *  the spawn-time rotation and local `offset` fixed. Stops updating once
+   *  the caster is destroyed — the hitbox keeps its last position. Required
    *  when `follow` is true. */
   caster?: Entity;
-  /** Track `caster`'s position every frame instead of a fire-time snapshot. Default false. */
+  /** Track `caster`'s position every fixed step instead of a fire-time snapshot. Default false. */
   follow?: boolean;
 }
 
@@ -86,7 +86,7 @@ export class Hitbox extends Entity {
 
   /** Re-anchors the body position and the delivery's knockback origin to
    *  `pos`, leaving rotation and the collider's local offset untouched —
-   *  used by `HitboxFollow` to track a moving caster each frame. */
+   *  used by `HitboxFollow` to track a moving caster each fixed step. */
   moveTo(pos: Vec2): void {
     this.from = pos;
     this.get(Transform).setPosition(pos.x, pos.y);
@@ -118,7 +118,7 @@ export class HitboxFollow extends Component {
     super();
   }
 
-  update(): void {
+  fixedUpdate(): void {
     if (this.caster.isDestroyed) return;
     const transform = this.caster.tryGet(Transform);
     if (!transform) return;

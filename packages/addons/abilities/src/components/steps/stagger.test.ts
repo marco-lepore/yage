@@ -66,11 +66,11 @@ describe("staggerMotion (via force)", () => {
     abilities.force(
       staggerReaction({ direction: new Vec2(0, 1), knockback: 100, stun: 0.2 }),
     );
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     expect(stagger.active).toBe(true);
     expect(captured.velocities).toEqual([{ x: 0, y: 100 }]);
 
-    pc._tick(0.2); // reaches the window's `to` — exit fires
+    pc._tick(0.2, undefined, "fixed"); // reaches the window's `to` — exit fires
     expect(stagger.active).toBe(false);
     expect(captured.velocities).toEqual([
       { x: 0, y: 100 },
@@ -86,7 +86,7 @@ describe("staggerMotion (via force)", () => {
     abilities.force(
       staggerReaction({ direction: new Vec2(1, 0), knockback: 10, stun: 0.1 }),
     );
-    expect(() => pc._tick(0.01)).toThrow(/requires a Stagger component/);
+    expect(() => pc._tick(0.01, undefined, "fixed")).toThrow(/requires a Stagger component/);
   });
 
   it("disables stagger output while abilities are disabled", () => {
@@ -96,10 +96,10 @@ describe("staggerMotion (via force)", () => {
     abilities.force(
       staggerReaction({ direction: new Vec2(1, 0), knockback: 100, stun: 0.2 }),
     );
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     abilities.enabled = false;
 
-    stagger.update(0.2);
+    stagger.fixedUpdate(0.2);
 
     expect(stagger.active).toBe(true);
     expect(captured.velocities.at(-1)).toEqual({ x: 0, y: 0 });
@@ -120,7 +120,7 @@ describe("scenario: a recovery skill breaks out of an active stagger", () => {
     abilities.force(
       staggerReaction({ direction: new Vec2(1, 0), knockback: 100, stun: 1 }),
     );
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(abilities.activeId()).toBe("stagger");
     expect(stagger.active).toBe(true);
 
@@ -155,7 +155,7 @@ describe("scenario: a potion plays in its own lane during a main-lane stagger", 
     abilities.force(
       staggerReaction({ direction: new Vec2(1, 0), knockback: 100, stun: 0.5 }),
     );
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(abilities.isActive("main")).toBe(true);
 
     expect(abilities.send("potion")).toEqual({
@@ -164,7 +164,7 @@ describe("scenario: a potion plays in its own lane during a main-lane stagger", 
     });
     expect(abilities.isActive("item")).toBe(true);
 
-    pc._tick(0.05);
+    pc._tick(0.05, undefined, "fixed");
     expect(log).toEqual(["drink:heal"]);
     expect(abilities.isActive("item")).toBe(true); // duration 0.2 — still running
     expect(abilities.isActive("main")).toBe(true); // separate lane, untouched

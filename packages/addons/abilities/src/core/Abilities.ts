@@ -6,7 +6,7 @@ import {
   SceneTimeKey,
   defineEvent,
 } from "@yagejs/core";
-import type { Entity, ProcessSlot } from "@yagejs/core";
+import type { Entity, ProcessClock, ProcessSlot } from "@yagejs/core";
 import type {
   AbilityActivation,
   AbilityCanSendOptions,
@@ -279,6 +279,23 @@ class ActivationHandle implements AbilityActivation {
   }
 }
 
+/** Options for the `Abilities` component. */
+export interface AbilitiesOptions {
+  /**
+   * The clock that advances this component's phase timelines, linger
+   * windows, and cooldowns (see `ProcessClock` in `@yagejs/core`).
+   *
+   * The default `"fixed"` advances them on the fixed timestep — ability
+   * timing is game logic, and this keeps windows, `after` schedules, and
+   * cooldowns in step with a fixed-step simulation instead of drifting with
+   * the frame rate. Pass `"frame"` for rendered-frame timing, e.g. purely
+   * presentation-driven timelines with no simulation coupling. Sibling
+   * processes on the same `ProcessComponent` (the game's own tweens,
+   * `KeyframeAnimator` playback) keep their own clocks either way.
+   */
+  clock?: ProcessClock;
+}
+
 /**
  * Runs one entity's abilities: named phase machines activated by intent via
  * `send`, or forced by def object (reactions — bypassing cooldown) via
@@ -331,6 +348,10 @@ class ActivationHandle implements AbilityActivation {
  * re-activates itself. Emits `AbilityStarted`/`AbilityEnded` per run and
  * `AbilityPhaseChanged` per within-run transition; `active(lane)` returns the
  * current run's `AbilityActivation` handle.
+ *
+ * Timelines, linger, and cooldowns advance on the fixed timestep by
+ * default; pass `{ clock: "frame" }` for rendered-frame timing (see
+ * `AbilitiesOptions`).
  */
 export class Abilities extends Component {
   private readonly pc = this.sibling(ProcessComponent);
@@ -373,8 +394,16 @@ export class Abilities extends Component {
   /** The track whose event/completion hook is currently on the stack — `foldTime` only trusts `hookRemainder` for transitions on that same track. */
   private hookTrack: PhaseTrack | null = null;
 
-  constructor(defs: readonly AbilityDef[]) {
+  /**
+   * The clock this component's processes are scheduled on — see
+   * `AbilitiesOptions.clock`. Custom steps that start their own gameplay
+   * timers can pass it along: `pc.run(p, { clock: ctx.abilities.clock })`.
+   */
+  readonly clock: ProcessClock;
+
+  constructor(defs: readonly AbilityDef[], options?: AbilitiesOptions) {
     super();
+    this.clock = options?.clock ?? "fixed";
     this.installDefinitionSet(this.buildDefinitionSet(defs));
   }
 
@@ -884,7 +913,7 @@ export class Abilities extends Component {
     activation.phaseName = phaseName;
     activation.compiledPhase = phase;
     activation.track = track;
-    this.pc.run(track.process);
+    this.pc.run(track.process, { clock: this.clock });
   }
 
   /**
@@ -1106,7 +1135,7 @@ export class Abilities extends Component {
       }),
     };
     this.lastEnded.set(lane, memory);
-    this.pc.run(memory.process);
+    this.pc.run(memory.process, { clock: this.clock });
   }
 
   private clearLinger(lane: string): void {
@@ -1262,7 +1291,10 @@ export class Abilities extends Component {
     if (duration <= 0) return;
     let cooldown = this.cooldowns.get(def.id);
     if (!cooldown) {
-      cooldown = { slot: this.pc.slot({ duration }), duration };
+      cooldown = {
+        slot: this.pc.slot({ duration, clock: this.clock }),
+        duration,
+      };
       this.cooldowns.set(def.id, cooldown);
     } else {
       cooldown.duration = duration;

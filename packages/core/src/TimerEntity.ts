@@ -2,7 +2,7 @@ import { Entity } from "./Entity.js";
 import { ProcessComponent } from "./ProcessComponent.js";
 import { ProcessSlot } from "./ProcessSlot.js";
 import type { ProcessSlotConfig } from "./ProcessSlot.js";
-import type { Process } from "./Process.js";
+import type { Process, ProcessClock } from "./Process.js";
 
 /**
  * A pre-built entity that exposes the ProcessComponent API directly.
@@ -21,7 +21,10 @@ export class TimerEntity extends Entity {
     this.pc = this.add(new ProcessComponent());
   }
 
-  run(process: Process, options?: { tags?: string[] }): Process {
+  run(
+    process: Process,
+    options?: { tags?: string[]; clock?: ProcessClock },
+  ): Process {
     return this.pc.run(process, options);
   }
 

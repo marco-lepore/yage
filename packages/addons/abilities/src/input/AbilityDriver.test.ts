@@ -196,7 +196,7 @@ describe("AbilityDriver", () => {
     driver.update();
     expect(abilities.activeId()).toBe("blocker");
 
-    processes._tick(0.2);
+    processes._tick(0.2, undefined, "fixed");
     advanceInput(0.2);
     driver.update();
     expect(abilities.activeId()).toBe("dash");
@@ -456,7 +456,7 @@ describe("AbilityDriver", () => {
     driver.update();
     advanceInput(0.5);
     driver.update();
-    processes._tick(0.2);
+    processes._tick(0.2, undefined, "fixed");
     advanceInput(0.3);
     input.fireActionUp("attack");
     driver.update();
@@ -603,7 +603,7 @@ describe("AbilityDriver", () => {
     driver.update();
     advanceInput(0.1);
     driver.update();
-    processes._tick(0.1);
+    processes._tick(0.1, undefined, "fixed");
     expect(abilities.active()?.phase).toBe("kick");
 
     abilities.cancel();
@@ -649,7 +649,7 @@ describe("AbilityDriver", () => {
     driver.update();
     advanceInput(0.1);
     driver.update();
-    processes._tick(0.2);
+    processes._tick(0.2, undefined, "fixed");
     expect(abilities.activeId()).toBe(null);
 
     input.fireActionUp("attack");
@@ -706,7 +706,7 @@ describe("AbilityDriver", () => {
     driver.update();
     advanceInput(0.1);
     driver.update();
-    processes._tick(0.1);
+    processes._tick(0.1, undefined, "fixed");
     driver.update();
 
     expect(abilities.activeId()).toBe(null);

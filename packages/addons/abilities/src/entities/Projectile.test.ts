@@ -217,7 +217,7 @@ describe("Projectile", () => {
     const { scene } = createMockScene();
     const { projectile } = spawnProjectile(scene, { lifetime: 0.5 });
 
-    projectile.get(ProcessComponent)._tick(0.5);
+    projectile.get(ProcessComponent)._tick(0.5, undefined, "fixed");
 
     expect(projectile.isDestroyed).toBe(true);
   });
