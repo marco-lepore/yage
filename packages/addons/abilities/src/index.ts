@@ -4,6 +4,7 @@ export {
   AbilityPhaseChanged,
   AbilityStarted,
 } from "./core/Abilities.js";
+export type { AbilitiesOptions } from "./core/Abilities.js";
 export { defineStep } from "./core/defineStep.js";
 export {
   AbilitySpawned,

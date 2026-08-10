@@ -322,7 +322,7 @@ Negative scale on a child still composes — a child with `setScale(-1, 1)` unde
 
 | Export | Purpose |
 |---|---|
-| `Process` | Frame-updated action; `Process.delay(seconds, cb)`; `.elapsed` — seconds ticked so far, scaled by the caller's timeScale |
+| `Process` | Ticked action, advanced by whichever clock it is scheduled on; `Process.delay(seconds, cb)`; `.elapsed` — seconds ticked so far, scaled by the caller's timeScale |
 | `ProcessComponent` | Entity component managing processes and slots |
 | `ProcessSlot` | Reusable restartable handle (cooldowns, effects) |
 | `Tween` | Static factory: `to`, `custom`, `vec2`, `stagger` |
@@ -345,6 +345,8 @@ Decision matrix:
 | Fire discrete events at specific times | `KeyframeAnimator` keyframe `event` |
 
 Tag processes with `pc.run(p, { tags: ["vfx"] })` then cancel groups with `pc.cancel("vfx")`. Processes and slots auto-cancel on entity destroy via `ProcessComponent.onDestroy()`.
+
+Clocks (`ProcessClock = "frame" | "fixed"`): entity processes and slots tick on rendered-frame time by default (`ProcessSystem`, `Phase.Update`, priority 500). `pc.run(p, { clock: "fixed" })` / `pc.slot({ clock: "fixed", ... })` tick on the fixed timestep instead (`ProcessFixedUpdateSystem`, `Phase.FixedUpdate`, priority 500 — after physics, before component `fixedUpdate`). Use `"fixed"` for gameplay timing that must match a fixed-step simulation (attack windows, cooldowns); keep visuals on `"frame"`. Both clocks share pause gating and global/scene/entity time scaling. A slot's clock is fixed at creation — `start()`/`restart()` overrides exclude it. `ProcessSystem.add`/`addForScene` pools are frame-only.
 
 `pc.removeSlot(slot): boolean` cancels and unregisters one owned `ProcessSlot`.
 It returns `false` for a foreign or already-removed slot. Use it when a

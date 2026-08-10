@@ -46,9 +46,9 @@ describe("invulnerable step", () => {
 
     expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("hit");
     abilities.send("dodge");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("ignored");
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("hit");
   });
 
@@ -62,7 +62,7 @@ describe("invulnerable step", () => {
     );
 
     abilities.send("dodge");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("ignored");
     abilities.cancel();
     expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("hit");
@@ -78,7 +78,7 @@ describe("invulnerable step", () => {
     );
 
     abilities.send("dodge");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("ignored");
 
     abilities.enabled = false;
@@ -104,9 +104,9 @@ describe("invulnerable step", () => {
     );
 
     abilities.send("dodge");
-    pc._tick(0.6); // first window closed, second still open
+    pc._tick(0.6, undefined, "fixed"); // first window closed, second still open
     expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("ignored");
-    pc._tick(0.5); // past t=1 — both closed
+    pc._tick(0.5, undefined, "fixed"); // past t=1 — both closed
     expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("hit");
   });
 
@@ -126,7 +126,7 @@ describe("invulnerable step", () => {
 
     abilities.send("a");
     abilities.send("b");
-    pc._tick(0.1); // both enter
+    pc._tick(0.1, undefined, "fixed"); // both enter
     expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("ignored");
 
     abilities.cancel("main"); // closes only lane "a"'s window
@@ -146,7 +146,7 @@ describe("invulnerable step", () => {
     );
 
     abilities.send("dodge");
-    expect(() => pc._tick(0.2)).toThrow(
+    expect(() => pc._tick(0.2, undefined, "fixed")).toThrow(
       /step "invulnerable" requires a HitReceiver component/,
     );
   });

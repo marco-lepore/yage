@@ -188,7 +188,7 @@ describe("Hitbox", () => {
       });
 
       casterTransform.setPosition(50, 20);
-      hitbox.get(HitboxFollow).update();
+      hitbox.get(HitboxFollow).fixedUpdate();
 
       const transform = hitbox.get(Transform);
       expect(transform.position).toEqual(new Vec2(50, 20));
@@ -207,10 +207,10 @@ describe("Hitbox", () => {
       const { hitbox } = spawnHitbox(scene, { follow: true, caster });
 
       casterTransform.setPosition(10, 0);
-      hitbox.get(HitboxFollow).update();
+      hitbox.get(HitboxFollow).fixedUpdate();
       caster.destroy();
       casterTransform.setPosition(999, 999);
-      hitbox.get(HitboxFollow).update();
+      hitbox.get(HitboxFollow).fixedUpdate();
 
       expect(hitbox.get(Transform).position).toEqual(new Vec2(10, 0));
     });

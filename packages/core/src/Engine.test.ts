@@ -7,6 +7,8 @@ import { Phase } from "./types.js";
 import type { Plugin } from "./types.js";
 import { _resetEntityIdCounter } from "./Entity.js";
 import { defineEvent } from "./EventToken.js";
+import { Process } from "./Process.js";
+import { ProcessComponent } from "./ProcessComponent.js";
 import {
   EngineKey,
   EventBusKey,
@@ -509,6 +511,34 @@ describe("Engine", () => {
 
       engine.loop.tick(16); // 16ms → 0.016s, exactly one fixed step
       expect(comp.calls).toContain(0.016);
+      engine.destroy();
+    });
+
+    it("advances fixed-clock processes per fixed step and frame-clock processes per frame", async () => {
+      const engine = new Engine({ fixedTimestep: 0.016 });
+      await engine.start();
+      const scene = new TestScene();
+      await engine.scenes.push(scene);
+      const entity = scene.spawn("player");
+      const pc = entity.add(new ProcessComponent());
+      const fixedDts: number[] = [];
+      const frameDts: number[] = [];
+      pc.run(new Process({ update: (dt) => void fixedDts.push(dt) }), {
+        clock: "fixed",
+      });
+      pc.run(new Process({ update: (dt) => void frameDts.push(dt) }));
+
+      engine.loop.tick(8); // 8ms: no fixed step yet, one frame
+      expect(fixedDts).toEqual([]);
+      expect(frameDts).toEqual([0.008]);
+
+      engine.loop.tick(8); // accumulator reaches 16ms: exactly one fixed step
+      expect(fixedDts).toEqual([0.016]);
+      expect(frameDts).toEqual([0.008, 0.008]);
+
+      engine.loop.tick(32); // two fixed steps in one frame
+      expect(fixedDts).toEqual([0.016, 0.016, 0.016]);
+      expect(frameDts).toEqual([0.008, 0.008, 0.032]);
       engine.destroy();
     });
 

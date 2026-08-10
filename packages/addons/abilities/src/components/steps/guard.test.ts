@@ -50,9 +50,9 @@ describe("guard step", () => {
 
     expect(receiver.receive(makeHit(attacker))).toBe("hit"); // before the window
     abilities.send("block");
-    pc._tick(0.1); // enter fires
+    pc._tick(0.1, undefined, "fixed"); // enter fires
     expect(receiver.receive(makeHit(attacker))).toBe("blocked");
-    pc._tick(0.2); // exit fires
+    pc._tick(0.2, undefined, "fixed"); // exit fires
     expect(receiver.receive(makeHit(attacker))).toBe("hit"); // after the window
   });
 
@@ -76,7 +76,7 @@ describe("guard step", () => {
     );
 
     abilities.send("block");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(receiver.receive(makeHit(attacker))).toBe("blocked");
     abilities.cancel();
     expect(receiver.receive(makeHit(attacker))).toBe("hit");
@@ -102,7 +102,7 @@ describe("guard step", () => {
     );
 
     abilities.send("block");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(receiver.receive(makeHit(attacker))).toBe("blocked");
 
     abilities.enabled = false;
@@ -132,7 +132,7 @@ describe("guard step", () => {
     );
 
     abilities.send("block");
-    expect(() => pc._tick(0.2)).toThrow(
+    expect(() => pc._tick(0.2, undefined, "fixed")).toThrow(
       /step "guard" requires a HitReceiver component/,
     );
   });
@@ -147,7 +147,7 @@ describe("parry wrapper", () => {
     );
 
     abilities.send("p");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(receiver.receive(makeHit(attacker))).toBe("parried");
   });
 
@@ -169,9 +169,9 @@ describe("parry wrapper", () => {
     );
 
     abilities.send("p");
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     expect(receiver.receive(makeHit(attacker))).toBe("parried");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(receiver.receive(makeHit(attacker))).toBe("hit");
   });
 
@@ -215,7 +215,7 @@ describe("block wrapper", () => {
     );
 
     abilities.send("b");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     const hit = makeStandardHit(attacker);
     expect(receiver.receive(hit)).toBe("hit");
     // stunScale defaults to 0 — a blocked hit never stuns unless opted in.
@@ -230,7 +230,7 @@ describe("block wrapper", () => {
     );
 
     abilities.send("b");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     const hit = makeStandardHit(attacker);
     expect(receiver.receive(hit)).toBe("hit");
     expect(hit.data).toEqual({ damage: 0, knockback: 0, stun: 0 });

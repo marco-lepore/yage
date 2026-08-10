@@ -12,8 +12,10 @@ import { SceneHookRegistryKey } from "./SceneHooks.js";
 import { SceneTimeKey } from "./SceneTime.js";
 
 /**
- * Built-in system that ticks all ProcessComponents on entities in non-paused
- * scenes, plus a scene-level set of global processes.
+ * Built-in system that ticks the `"frame"`-clock processes of all
+ * ProcessComponents on entities in non-paused scenes, plus the engine-global
+ * and scene-bound process pools. `"fixed"`-clock processes are advanced by
+ * `ProcessFixedUpdateSystem` instead.
  *
  * Runs at Phase.Update with priority 500, ensuring tweened values are fresh
  * before ComponentUpdateSystem (priority 1000) reads them.
@@ -156,7 +158,7 @@ export class ProcessSystem extends System {
           globalScaledDt *
           (time?.effectiveScaleForUpdates(entity) ?? scene.timeScale) *
           entity.timeScale;
-        pc._tick(entityDt, scene.name);
+        pc._tick(entityDt, scene.name, "frame");
       }
     }
   }
@@ -173,5 +175,52 @@ export class ProcessSystem extends System {
       () => p._update(dt),
       scene !== undefined ? { kind: "Process callback", scene } : { kind: "Process callback" },
     );
+  }
+}
+
+/**
+ * Companion to `ProcessSystem` for the fixed clock: advances every entity
+ * `ProcessComponent`'s `"fixed"`-clock processes once per fixed step.
+ *
+ * Runs at Phase.FixedUpdate with priority 500 — after the physics step
+ * (priority 0), before ComponentFixedUpdateSystem (priority 1000) — so
+ * fixed-clock values are fresh when component `fixedUpdate(dt)` reads them,
+ * mirroring ProcessSystem's position in the update phase.
+ *
+ * The dt composition matches ProcessSystem's frame pass — the owning
+ * ProcessSystem's global `timeScale`, the scene's effective scale, and the
+ * entity's `timeScale` — with the fixed timestep as the base dt. The
+ * engine-global and scene-bound pools have no fixed variant; they stay on
+ * the frame clock.
+ */
+export class ProcessFixedUpdateSystem extends System {
+  override readonly phase = Phase.FixedUpdate;
+  override readonly priority = 500;
+
+  private sceneManager!: SceneManager;
+
+  constructor(private readonly owner: ProcessSystem) {
+    super();
+  }
+
+  override onRegister(context: EngineContext): void {
+    this.sceneManager = context.resolve(SceneManagerKey);
+  }
+
+  update(dt: number): void {
+    const globalScaledDt = dt * this.owner.timeScale;
+    for (const scene of this.sceneManager.activeScenes) {
+      const time = scene.tryResolveScoped(SceneTimeKey);
+      for (const entity of scene.getEntities()) {
+        if (entity.isDestroyed || !entity.isActive) continue;
+        const pc = entity.tryGet(ProcessComponent);
+        if (!pc) continue;
+        const entityDt =
+          globalScaledDt *
+          (time?.effectiveScaleForUpdates(entity) ?? scene.timeScale) *
+          entity.timeScale;
+        pc._tick(entityDt, scene.name, "fixed");
+      }
+    }
   }
 }

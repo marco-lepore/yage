@@ -93,7 +93,7 @@ describe("spawn step", () => {
 
     const result = entity.get(Abilities).send("orb");
     if (!result.ok) throw new Error("expected send to succeed");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
 
     const context = findOrb(scene.findEntities()).abilitySpawnContext;
     expect(context?.caster).toBe(entity);
@@ -134,7 +134,7 @@ describe("spawn step", () => {
     entity.get(Transform).setPosition(99, 99);
     position = new Vec2(50, 60);
     entity.get(Abilities).send("orb");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
 
     expect(resolvePosition).toHaveBeenCalledOnce();
     expect(findOrb(scene.findEntities()).abilitySpawnContext?.position).toEqual(
@@ -163,7 +163,7 @@ describe("spawn step", () => {
     );
 
     entity.get(Abilities).send("orb");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
 
     expect(findOrb(scene.findEntities()).abilitySpawnContext?.position).toEqual(
       new Vec2(50, 60),
@@ -190,7 +190,7 @@ describe("spawn step", () => {
     );
 
     entity.get(Abilities).send("orb");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
 
     const position = findOrb(scene.findEntities()).abilitySpawnContext
       ?.position;
@@ -228,7 +228,7 @@ describe("spawn step", () => {
     );
 
     entity.get(Abilities).send("telegraph");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
 
     expect(
       findOrb(scene.findEntities()).abilitySpawnContext?.delivery,
@@ -256,7 +256,7 @@ describe("spawn step", () => {
     entity.on(HitDealt, ({ result }) => dealt.push(result));
 
     entity.get(Abilities).send("orb");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     const orb = findOrb(scene.findEntities());
     const target = scene.spawn(Target);
     target.add(new Transform({ position: new Vec2(20, 20) }));
@@ -302,7 +302,7 @@ describe("spawn step", () => {
     );
 
     entity.get(Abilities).send("invalid");
-    expect(() => pc._tick(0.01)).toThrow(/step "spawn".*AbilitySpawned trait/);
+    expect(() => pc._tick(0.01, undefined, "fixed")).toThrow(/step "spawn".*AbilitySpawned trait/);
     expect(InvalidSpawn.latest).toBeUndefined();
   });
 
@@ -340,7 +340,7 @@ describe("spawn step", () => {
     );
 
     entity.get(Abilities).send("broken");
-    expect(() => pc._tick(0.01)).toThrow("broken attack");
+    expect(() => pc._tick(0.01, undefined, "fixed")).toThrow("broken attack");
     expect(BrokenSpawn.latest?.isDestroyed).toBe(true);
     expect(
       scene
@@ -393,7 +393,7 @@ describe("spawn step", () => {
     );
 
     entity.get(Abilities).send("parent");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
 
     const parent = scene
       .findEntities()
@@ -418,7 +418,7 @@ describe("spawn step", () => {
       ]),
     );
     entity.get(Abilities).send("orb");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     const orb = findOrb(scene.findEntities());
 
     const orbPc = orb.add(new ProcessComponent());
@@ -438,7 +438,7 @@ describe("spawn step", () => {
       ]),
     );
     orb.get(Abilities).send("child");
-    orbPc._tick(0.01);
+    orbPc._tick(0.01, undefined, "fixed");
 
     const children = scene
       .findEntities()

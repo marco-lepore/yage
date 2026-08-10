@@ -27,7 +27,7 @@ import {
   ComponentUpdateSystem,
   ComponentFixedUpdateSystem,
 } from "./ComponentUpdateSystem.js";
-import { ProcessSystem } from "./ProcessSystem.js";
+import { ProcessSystem, ProcessFixedUpdateSystem } from "./ProcessSystem.js";
 import { Phase } from "./types.js";
 import type { Plugin } from "./types.js";
 import { SceneHookRegistry, SceneHookRegistryKey } from "./SceneHooks.js";
@@ -374,6 +374,7 @@ export class Engine {
     this.scheduler.add(fixedUpdate);
     this.scheduler.add(update);
     this.scheduler.add(processSystem);
+    this.scheduler.add(new ProcessFixedUpdateSystem(processSystem));
     this.context.register(ProcessSystemKey, processSystem);
   }
 

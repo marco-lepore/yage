@@ -133,10 +133,10 @@ describe("reactionStep with a sibling Abilities", () => {
     expect(abilities.isActive()).toBe(true);
     expect(abilities.activeId()).toBe("stagger");
 
-    pc._tick(0.01); // fires the reaction's enter hook
+    pc._tick(0.01, undefined, "fixed"); // fires the reaction's enter hook
     expect(captured.velocities).toEqual([{ x: 0, y: 100 }]);
 
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     expect(abilities.isActive()).toBe(false);
   });
 
@@ -157,7 +157,7 @@ describe("reactionStep with a sibling Abilities", () => {
       ok: true,
       activation: expect.any(Object),
     });
-    pc._tick(0.01); // opens the swing's window
+    pc._tick(0.01, undefined, "fixed"); // opens the swing's window
 
     reactionStep(makeHit(attacker, { knockback: 100, stun: 0.2 }), receiver);
     expect(exits).toEqual([true]);

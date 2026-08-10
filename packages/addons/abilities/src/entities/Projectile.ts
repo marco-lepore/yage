@@ -67,7 +67,11 @@ export class Projectile extends Entity {
     body.setVelocity(dir.scale(config.speed));
 
     const pc = this.add(new ProcessComponent());
-    pc.run(Process.delay(config.lifetime, () => this.destroy()));
+    // Lifetime is game logic gating a physics body: fixed clock, so range
+    // (speed × lifetime) holds when frame time and simulation time diverge.
+    pc.run(Process.delay(config.lifetime, () => this.destroy()), {
+      clock: "fixed",
+    });
 
     let consumed = false;
     collider.onTrigger((ev) => {

@@ -21,9 +21,9 @@ describe("slowmo step", () => {
 
     expect(time.effectiveScale).toBe(1);
     abilities.send("bt");
-    pc._tick(0.1); // enter
+    pc._tick(0.1, undefined, "fixed"); // enter
     expect(time.effectiveScale).toBe(0.25);
-    pc._tick(0.25); // past to=0.3 → exit
+    pc._tick(0.25, undefined, "fixed"); // past to=0.3 → exit
     expect(time.effectiveScale).toBe(1);
   });
 
@@ -36,7 +36,7 @@ describe("slowmo step", () => {
     );
 
     abilities.send("bt");
-    pc._tick(0.01); // enter
+    pc._tick(0.01, undefined, "fixed"); // enter
     expect(time.effectiveScale).toBe(0.25); // world (and physics) slowed
     expect(time.effectiveScaleForUpdates(entity)).toBe(1); // owner unaffected
   });
@@ -55,7 +55,7 @@ describe("slowmo step", () => {
     );
 
     abilities.send("bt");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     expect(time.effectiveScaleForUpdates(entity)).toBe(0.5);
   });
 
@@ -68,7 +68,7 @@ describe("slowmo step", () => {
     );
 
     abilities.send("bt");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     expect(time.effectiveScale).toBe(0.3);
     abilities.cancel();
     expect(time.effectiveScale).toBe(1);
@@ -83,7 +83,7 @@ describe("slowmo step", () => {
     );
 
     abilities.send("bt");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(time.effectiveScale).toBe(0.3);
 
     abilities.enabled = false;
@@ -107,7 +107,7 @@ describe("slowmo step", () => {
       ]),
     );
     completedAbilities.send("bt");
-    completed.pc._tick(0.01);
+    completed.pc._tick(0.01, undefined, "fixed");
     expect(completedAbilities.isActive()).toBe(false);
     expect(completed.time.effectiveScale).toBe(0.25);
     completed.time._tick(0.5);
@@ -124,7 +124,7 @@ describe("slowmo step", () => {
       ]),
     );
     cancelledAbilities.send("bt");
-    cancelled.pc._tick(0.01);
+    cancelled.pc._tick(0.01, undefined, "fixed");
     cancelledAbilities.cancel();
     expect(cancelled.time.effectiveScale).toBe(0.4);
     cancelled.time._tick(0.5);
@@ -151,7 +151,7 @@ describe("slowmo step", () => {
     );
 
     abilities.send("bt");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     expect(time.activeLabels).toEqual(["bullet-time"]);
   });
 
@@ -164,6 +164,6 @@ describe("slowmo step", () => {
     );
 
     abilities.send("stop");
-    expect(() => pc._tick(0.01)).toThrow(/factor must be finite and > 0/);
+    expect(() => pc._tick(0.01, undefined, "fixed")).toThrow(/factor must be finite and > 0/);
   });
 });

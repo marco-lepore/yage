@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { ProcessSystem } from "./ProcessSystem.js";
+import { ProcessSystem, ProcessFixedUpdateSystem } from "./ProcessSystem.js";
 import { ProcessComponent } from "./ProcessComponent.js";
 import { Process } from "./Process.js";
 import { Entity, _resetEntityIdCounter } from "./Entity.js";
@@ -415,5 +415,101 @@ describe("ProcessSystem", () => {
         scene: "TestScene",
       });
     });
+  });
+});
+
+describe("ProcessFixedUpdateSystem", () => {
+  function setup() {
+    _resetEntityIdCounter();
+    const sceneManager = new MockSceneManager();
+    const ctx = new EngineContext();
+    ctx.register(SceneManagerKey, sceneManager as never);
+
+    const owner = new ProcessSystem();
+    owner._setContext(ctx);
+    owner.onRegister?.(ctx);
+
+    const sys = new ProcessFixedUpdateSystem(owner);
+    sys._setContext(ctx);
+    sys.onRegister?.(ctx);
+
+    return { sys, owner, sceneManager };
+  }
+
+  it("has Phase.FixedUpdate and priority 500", () => {
+    const sys = new ProcessFixedUpdateSystem(new ProcessSystem());
+    expect(sys.phase).toBe(Phase.FixedUpdate);
+    expect(sys.priority).toBe(500);
+  });
+
+  it("ticks fixed-clock processes and leaves frame-clock ones alone", () => {
+    const { sys, sceneManager } = setup();
+    const scene = new MockScene();
+    sceneManager.activeScene = scene;
+    const entity = scene.spawn("test");
+    const pc = new ProcessComponent();
+    entity.add(pc);
+    const fixedSpy = vi.fn();
+    const frameSpy = vi.fn();
+    pc.run(new Process({ update: fixedSpy }), { clock: "fixed" });
+    pc.run(new Process({ update: frameSpy }));
+
+    sys.update(0.02);
+    expect(fixedSpy).toHaveBeenCalledWith(0.02, 0.02);
+    expect(frameSpy).not.toHaveBeenCalled();
+  });
+
+  it("the frame pass does not advance fixed-clock processes", () => {
+    const { sys, owner, sceneManager } = setup();
+    const scene = new MockScene();
+    sceneManager.activeScene = scene;
+    const entity = scene.spawn("test");
+    const pc = new ProcessComponent();
+    entity.add(pc);
+    const fixedSpy = vi.fn();
+    pc.run(new Process({ update: fixedSpy }), { clock: "fixed" });
+
+    owner.update(0.1);
+    expect(fixedSpy).not.toHaveBeenCalled();
+    sys.update(0.02);
+    expect(fixedSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("composes the owner's global timeScale with scene and entity scales", () => {
+    const { sys, owner, sceneManager } = setup();
+    const scene = new MockScene();
+    scene.timeScale = 0.5;
+    sceneManager.activeScene = scene;
+    const entity = scene.spawn("test");
+    entity.timeScale = 2;
+    const pc = new ProcessComponent();
+    entity.add(pc);
+    const spy = vi.fn();
+    pc.run(new Process({ update: spy }), { clock: "fixed" });
+
+    owner.timeScale = 0.5;
+    sys.update(0.02);
+    // 0.02 * 0.5 (global) * 0.5 (scene) * 2 (entity)
+    expect(spy).toHaveBeenCalledWith(0.01, 0.01);
+  });
+
+  it("skips destroyed entities", () => {
+    const { sys, sceneManager } = setup();
+    const scene = new MockScene();
+    sceneManager.activeScene = scene;
+    const entity = scene.spawn("test");
+    const pc = new ProcessComponent();
+    entity.add(pc);
+    const spy = vi.fn();
+    pc.run(new Process({ update: spy }), { clock: "fixed" });
+    entity.destroy();
+    sys.update(0.02);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when no active scene", () => {
+    const { sys, sceneManager } = setup();
+    sceneManager.activeScene = undefined;
+    expect(() => sys.update(0.02)).not.toThrow();
   });
 });

@@ -222,6 +222,32 @@ hitboxes and scene-level slow motion. The sibling components keep their own
 `enabled` values. Enabling `Abilities` restores the same activation, clocks,
 and open-window effects.
 
+## The clock
+
+Ability timing is game logic, so it advances on the engine's fixed timestep
+by default: phase timelines and their windows, `after` schedules, linger
+reach, and cooldowns all count fixed-step seconds, in step with physics
+rather than the display's frame rate. The other addon timers do the same —
+`HitReceiver` i-frames, `Stagger`, `TouchDamage` intervals, `Projectile`
+lifetime, and hitbox `follow` tracking run in `fixedUpdate`.
+
+Presentation stays smooth regardless: an `anim` step triggers a
+`KeyframeAnimator` whose playback runs on rendered-frame time, and any tween
+a step starts keeps the frame clock unless scheduled otherwise. Input is
+sampled once per rendered frame, so an intent sent this frame starts a
+timeline that then advances on the fixed step.
+
+For a purely presentation-driven timeline with no simulation coupling, opt
+into rendered-frame timing:
+
+```ts
+entity.add(new Abilities(defs, { clock: "frame" }));
+```
+
+The component's clock is readable as `abilities.clock` — a custom step that
+starts its own gameplay timer can match it with
+`pc.run(p, { clock: ctx.abilities.clock })`.
+
 ## Map input actions to intents
 
 `AbilityDriverComponent` handles input edges, tap/hold classification, retry

@@ -226,7 +226,7 @@ export class HitReceiver<TData = StandardHitData> extends Component {
     return result;
   }
 
-  update(dt: number): void {
+  fixedUpdate(dt: number): void {
     if (this._iframesRemaining > 0) {
       this._iframesRemaining = Math.max(0, this._iframesRemaining - dt);
     }

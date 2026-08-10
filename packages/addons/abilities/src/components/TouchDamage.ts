@@ -74,7 +74,7 @@ export class TouchDamage extends Component {
     this.onDisable();
   }
 
-  update(dt: number): void {
+  fixedUpdate(dt: number): void {
     this.elapsed += dt;
     for (const [other, t] of this.last) {
       if (other.isDestroyed) {

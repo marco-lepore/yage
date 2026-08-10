@@ -67,13 +67,13 @@ describe("Abilities — timeline playback (single-phase sugar)", () => {
       },
     ]);
     abilities.send("test");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(log).toEqual([]);
-    pc._tick(0.1); // elapsed 0.2
+    pc._tick(0.1, undefined, "fixed"); // elapsed 0.2
     expect(log).toEqual(["fire:a"]);
-    pc._tick(0.19);
+    pc._tick(0.19, undefined, "fixed");
     expect(log).toEqual(["fire:a"]);
-    pc._tick(0.01); // elapsed 0.4
+    pc._tick(0.01, undefined, "fixed"); // elapsed 0.4
     expect(log).toEqual(["fire:a", "fire:b"]);
   });
 
@@ -82,9 +82,9 @@ describe("Abilities — timeline playback (single-phase sugar)", () => {
       { id: "test", timeline: [zone({ from: 0.1, to: 0.3, id: "z" })] },
     ]);
     abilities.send("test");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(log).toEqual(["enter:z"]);
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     expect(log).toEqual(["enter:z", "exit:z:false"]);
   });
 
@@ -100,11 +100,11 @@ describe("Abilities — timeline playback (single-phase sugar)", () => {
       },
     ]);
     abilities.send("test");
-    pc._tick(0.29);
+    pc._tick(0.29, undefined, "fixed");
     expect(log).toEqual(["enter:z"]);
-    pc._tick(0.01); // hits 0.3 exactly
+    pc._tick(0.01, undefined, "fixed"); // hits 0.3 exactly
     expect(log).toEqual(["enter:z", "exit:z:false", "fire:b"]);
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     expect(log).toEqual(["enter:z", "exit:z:false", "fire:b", "fire:end"]);
   });
 
@@ -116,7 +116,7 @@ describe("Abilities — timeline playback (single-phase sugar)", () => {
       },
     ]);
     abilities.send("test");
-    pc._tick(0.5);
+    pc._tick(0.5, undefined, "fixed");
     // enter@0.1, tick@0.2/0.3/0.4, exit@0.5 — 0.5 itself is excluded (half-open).
     expect(log).toEqual([
       "enter:z",
@@ -138,9 +138,9 @@ describe("Abilities — timeline playback (single-phase sugar)", () => {
       },
     ]);
     abilities.send("test");
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     abilities.cancel();
-    pc._tick(1);
+    pc._tick(1, undefined, "fixed");
     expect(log).toEqual(["enter:z", "exit:z:true"]);
     expect(abilities.isActive()).toBe(false);
   });
@@ -156,7 +156,7 @@ describe("Abilities — timeline playback (single-phase sugar)", () => {
       },
     ]);
     abilities.send("test");
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     expect(log).toEqual(["enter:outer", "enter:inner"]);
     abilities.cancel();
     expect(log).toEqual([
@@ -190,7 +190,7 @@ describe("Abilities — timeline playback (single-phase sugar)", () => {
     );
 
     abilities.send("test");
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     expect(animator.isPlaying("swing")).toBe(true);
     expect(log).toEqual(["enter:z"]);
   });
@@ -208,7 +208,7 @@ describe("Abilities — timeline playback (single-phase sugar)", () => {
       { id: "test", timeline: [zone({ from: 0, to: 1, id: "z" })] },
     ]);
     abilities.send("test");
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     expect(log).toEqual(["enter:z"]);
     entity.destroy();
     scene._flushDestroyQueue();
@@ -228,7 +228,7 @@ describe("Abilities — component dormancy", () => {
     ]);
 
     abilities.send("test");
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     const before = abilities.elapsed();
     expect(log).toEqual(["enter:z"]);
 
@@ -240,12 +240,12 @@ describe("Abilities — component dormancy", () => {
       ok: false,
       reason: "busy",
     });
-    pc._tick(1);
+    pc._tick(1, undefined, "fixed");
     expect(abilities.elapsed()).toBe(before);
 
     abilities.enabled = true;
     expect(log).toEqual(["enter:z", "onDisable:z", "onEnable:z"]);
-    pc._tick(0.6);
+    pc._tick(0.6, undefined, "fixed");
     expect(log).toEqual([
       "enter:z",
       "onDisable:z",
@@ -264,10 +264,10 @@ describe("Abilities — component dormancy", () => {
     ]);
 
     abilities.send("test");
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     entity.setActive(false);
     expect(log.at(-1)).toBe("onDisable:z");
-    pc._tick(1);
+    pc._tick(1, undefined, "fixed");
     expect(abilities.elapsed()).toBeCloseTo(0.2);
 
     entity.setActive(true);
@@ -285,7 +285,7 @@ describe("Abilities — component dormancy", () => {
       { id: "test", duration: 1, timeline: [broken({ from: 0, to: 1 })] },
     ]);
     abilities.send("test");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
 
     expect(() => {
       abilities.enabled = false;
@@ -310,7 +310,7 @@ describe("Abilities — component dormancy", () => {
       { id: "test", duration: 1, timeline: [broken({ from: 0, to: 1 })] },
     ]);
     abilities.send("test");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     abilities.enabled = false;
 
     expect(() => {
@@ -333,7 +333,7 @@ describe("Abilities — activation gating", () => {
     ]);
     expect(abilities.send("test")).toEqual(okResult);
     expect(abilities.send("test")).toEqual({ ok: false, reason: "busy" });
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     expect(abilities.isActive()).toBe(false);
   });
 
@@ -342,10 +342,10 @@ describe("Abilities — activation gating", () => {
       { id: "test", cooldown: 0.3, timeline: [beep({ at: 0.2, id: "a" })] },
     ]);
     expect(abilities.send("test")).toEqual(okResult);
-    pc._tick(0.2); // ability completes; cooldown (started at send time) at 0.2/0.3
+    pc._tick(0.2, undefined, "fixed"); // ability completes; cooldown (started at send time) at 0.2/0.3
     expect(abilities.isActive()).toBe(false);
     expect(abilities.send("test")).toEqual({ ok: false, reason: "cooldown" });
-    pc._tick(0.1); // cooldown reaches 0.3
+    pc._tick(0.1, undefined, "fixed"); // cooldown reaches 0.3
     expect(abilities.send("test")).toEqual(okResult);
   });
 
@@ -366,9 +366,9 @@ describe("Abilities — activation gating", () => {
     ]);
     expect(abilities.elapsed()).toBeNull();
     abilities.send("test");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(abilities.elapsed()).toBeCloseTo(0.1);
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(abilities.elapsed()).toBeNull();
   });
 
@@ -379,10 +379,10 @@ describe("Abilities — activation gating", () => {
     expect(abilities.cooldownRemaining("test")).toBe(0);
     expect(abilities.cooldownRatio("test")).toBe(1);
     abilities.send("test");
-    pc._tick(0.25);
+    pc._tick(0.25, undefined, "fixed");
     expect(abilities.cooldownRemaining("test")).toBeCloseTo(0.15);
     expect(abilities.cooldownRatio("test")).toBeCloseTo(0.625);
-    pc._tick(0.15);
+    pc._tick(0.15, undefined, "fixed");
     expect(abilities.cooldownRemaining("test")).toBe(0);
     expect(abilities.cooldownRatio("test")).toBe(1);
   });
@@ -399,14 +399,14 @@ describe("Abilities — activation gating", () => {
 
     abilities.send("test");
     expect(abilities.cooldownRemaining("test")).toBeCloseTo(0.4);
-    pc._tick(0.4); // ability completes at 0.1, cooldown (0.4) elapses now
+    pc._tick(0.4, undefined, "fixed"); // ability completes at 0.1, cooldown (0.4) elapses now
     expect(abilities.cooldownRemaining("test")).toBe(0);
 
     // A haste pickup shortens the next cooldown; the snapshot is taken at send.
     haste = 1;
     expect(abilities.send("test")).toEqual(okResult);
     expect(abilities.cooldownRemaining("test")).toBeCloseTo(0.2);
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     expect(abilities.cooldownRemaining("test")).toBe(0);
     expect(abilities.send("test")).toEqual(okResult);
   });
@@ -440,7 +440,7 @@ describe("Abilities — definition replacement", () => {
     ]);
     const result = abilities.send("old");
     if (!result.ok) throw new Error("expected send to succeed");
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     const remaining = abilities.cooldownRemaining("old");
 
     expect(() =>
@@ -462,7 +462,7 @@ describe("Abilities — definition replacement", () => {
     ]);
     const result = abilities.send("old");
     if (!result.ok) throw new Error("expected send to succeed");
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     const ended: string[] = [];
     entity.on(AbilityEnded, ({ activation, cancelled }) => {
       ended.push(`${activation.def.id}:${cancelled}`);
@@ -493,7 +493,7 @@ describe("Abilities — definition replacement", () => {
     };
     const { pc, abilities } = setup([def]);
     abilities.send("attack");
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     expect(abilities.canSend("attack")).toBe(true);
     expect(abilities.cooldownRemaining("attack")).toBeCloseTo(4.8);
     const removeSlot = vi.spyOn(pc, "removeSlot");
@@ -543,7 +543,7 @@ describe("Abilities — definition replacement", () => {
       },
     ]);
     abilities.send("attack");
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     expect(pc.count).toBe(2);
     const removeSlot = vi.spyOn(pc, "removeSlot");
 
@@ -562,7 +562,7 @@ describe("Abilities — definition replacement", () => {
       },
     ]);
     abilities.send("attack");
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     const reactivation: PlayResult[] = [];
     entity.on(AbilityEnded, () => {
       reactivation.push(abilities.send("attack"));
@@ -600,7 +600,7 @@ describe("Abilities — additive definitions", () => {
     abilities.send("attack");
     const channelResult = abilities.send("channel");
     if (!channelResult.ok) throw new Error("expected channel to start");
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     const cooldown = abilities.cooldownRemaining("attack");
 
     expect(() =>
@@ -911,7 +911,7 @@ describe("Abilities — construction validation", () => {
       },
     ]);
     abilities.send("test");
-    pc._tick(0.5);
+    pc._tick(0.5, undefined, "fixed");
     expect(abilities.isActive()).toBe(false); // completed exactly at the last step end
     expect(log).toEqual(["enter:z", "fire:a", "exit:z:false"]);
   });
@@ -934,7 +934,7 @@ describe("Abilities — activation rule (lanes + priority)", () => {
       { id: "b", priority: 10, timeline: [beep({ at: 0, id: "b" })] },
     ]);
     abilities.send("a");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(log).toEqual(["enter:z"]);
     expect(abilities.send("b")).toEqual(okResult);
     expect(log).toEqual(["enter:z", "exit:z:true"]);
@@ -949,11 +949,11 @@ describe("Abilities — activation rule (lanes + priority)", () => {
       timeline: [zone({ from: 0, to: 1, id: "z" })],
     };
     abilities.force(reactionDef);
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(log).toEqual(["enter:z"]);
     expect(abilities.force(reactionDef)).toEqual(okResult);
     expect(log).toEqual(["enter:z", "exit:z:true"]); // restart hasn't ticked yet
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     expect(log).toEqual(["enter:z", "exit:z:true", "enter:z"]);
   });
 
@@ -993,7 +993,7 @@ describe("Abilities — activation rule (lanes + priority)", () => {
     };
     const { pc, abilities } = setup([aDef]);
     abilities.send("a");
-    pc._tick(0.1); // completes; cooldown now running
+    pc._tick(0.1, undefined, "fixed"); // completes; cooldown now running
     expect(abilities.send("a")).toEqual({ ok: false, reason: "cooldown" });
     expect(abilities.force(aDef)).toEqual(okResult); // same def, but force ignores cooldown
   });
@@ -1024,13 +1024,13 @@ describe("Abilities — per-phase priority", () => {
   it("a forced reaction interrupts the low-priority charge phase but not the kick phase of the same def", () => {
     const { pc, abilities } = setup([charge()]);
     abilities.send("charge");
-    pc._tick(0.2); // charging (phase priority = def default 0)
+    pc._tick(0.2, undefined, "fixed"); // charging (phase priority = def default 0)
     expect(abilities.force(stagger())).toEqual(okResult);
     expect(abilities.activeId()).toBe("stagger");
 
-    pc._tick(0.5); // stagger completes
+    pc._tick(0.5, undefined, "fixed"); // stagger completes
     abilities.send("charge");
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     abilities.release("charge"); // → kick, phase priority 110
     expect(abilities.active()?.phase).toBe("kick");
     expect(abilities.force(stagger())).toEqual({ ok: false, reason: "busy" });
@@ -1040,9 +1040,9 @@ describe("Abilities — per-phase priority", () => {
   it("the effective priority is the current phase's, read fresh after each transition", () => {
     const { pc, abilities } = setup([charge()]);
     abilities.send("charge");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     abilities.release("charge");
-    pc._tick(0.7); // kick completes → idle
+    pc._tick(0.7, undefined, "fixed"); // kick completes → idle
     expect(abilities.isActive()).toBe(false);
     expect(abilities.force(stagger())).toEqual(okResult); // idle lane admits anything
   });
@@ -1064,7 +1064,7 @@ describe("Abilities — lanes", () => {
     ]);
     expect(abilities.send("a")).toEqual(okResult);
     expect(abilities.send("b")).toEqual(okResult);
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(log).toEqual(expect.arrayContaining(["enter:a", "enter:b"]));
     expect(abilities.isActive("main")).toBe(true);
     expect(abilities.isActive("side")).toBe(true);
@@ -1077,7 +1077,7 @@ describe("Abilities — lanes", () => {
     ]);
     abilities.send("a");
     abilities.send("b");
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     expect(abilities.activeId("main")).toBe("a");
     expect(abilities.activeId("side")).toBe("b");
     expect(abilities.elapsed("main")).toBeCloseTo(0.2);
@@ -1094,7 +1094,7 @@ describe("Abilities — lanes", () => {
       { id: "burst", priority: 200, timeline: [beep({ at: 0.1, id: "b" })] },
     ]);
     abilities.send("jab");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     // Polite default: a retried/buffered press must not preempt the jab...
     expect(abilities.canSend("burst")).toBe(false);
     // ...but the full dry-run answers what a direct send would do:
@@ -1120,14 +1120,14 @@ describe("Abilities — lanes", () => {
       },
     ]);
     abilities.send("charge");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     // Windup phase (priority 0): 100 would win the lane.
     expect(abilities.canSend("stomp", { interrupts: true })).toBe(true);
     abilities.release("charge"); // → kick, phase priority 110
     expect(abilities.canSend("stomp", { interrupts: true })).toBe(false);
-    pc._tick(0.6); // kick completes → idle
+    pc._tick(0.6, undefined, "fixed"); // kick completes → idle
     abilities.send("stomp"); // arms the 5s cooldown
-    pc._tick(0.2); // stomp completes; cooldown still running
+    pc._tick(0.2, undefined, "fixed"); // stomp completes; cooldown still running
     expect(abilities.canSend("stomp", { interrupts: true })).toBe(false);
   });
 
@@ -1182,7 +1182,7 @@ describe("Abilities — combo (guarded on: transitions)", () => {
 
     const result = abilities.send("attack");
     if (!result.ok) throw new Error("expected send to succeed");
-    pc._tick(0.3); // inside [0.25, 0.6]
+    pc._tick(0.3, undefined, "fixed"); // inside [0.25, 0.6]
     expect(abilities.canSend("attack")).toBe(true);
     expect(abilities.send("attack")).toEqual({
       ok: true,
@@ -1210,14 +1210,14 @@ describe("Abilities — combo (guarded on: transitions)", () => {
     ]);
 
     abilities.send("combo");
-    pc._tick(0.29);
+    pc._tick(0.29, undefined, "fixed");
     expect(abilities.canSend("next")).toBe(false);
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     expect(abilities.isActive()).toBe(false);
     expect(abilities.canSend("next")).toBe(true);
-    pc._tick(0.19);
+    pc._tick(0.19, undefined, "fixed");
     expect(abilities.canSend("next")).toBe(true);
-    pc._tick(0.02);
+    pc._tick(0.02, undefined, "fixed");
     expect(abilities.canSend("next")).toBe(false);
   });
 
@@ -1264,7 +1264,7 @@ describe("Abilities — combo (guarded on: transitions)", () => {
   it('a declared intent with a failing guard refuses "noMatch", does not fall through, and canSend is false', () => {
     const { pc, abilities } = setup([combo()]);
     abilities.send("attack");
-    pc._tick(0.1); // before the window opens at 0.25
+    pc._tick(0.1, undefined, "fixed"); // before the window opens at 0.25
     expect(abilities.canSend("attack")).toBe(false);
     expect(abilities.send("attack")).toEqual({ ok: false, reason: "noMatch" });
     expect(abilities.active()?.phase).toBe("jab"); // no restart, no fallthrough
@@ -1276,7 +1276,7 @@ describe("Abilities — combo (guarded on: transitions)", () => {
       { id: "dash", timeline: [beep({ at: 0.1, id: "d" })] },
     ]);
     abilities.send("attack");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(abilities.send("dash")).toEqual({ ok: false, reason: "busy" });
     expect(abilities.activeId()).toBe("attack");
   });
@@ -1294,7 +1294,7 @@ describe("Abilities — combo (guarded on: transitions)", () => {
     entity.on(AbilityEnded, ({ cancelled }) => ended.push(cancelled));
     abilities.send("attack");
     const attack = abilities.active()!;
-    pc._tick(0.3);
+    pc._tick(0.3, undefined, "fixed");
     expect(abilities.canSend("dash")).toBe(true);
     expect(abilities.send("dash")).toEqual(okResult);
     expect(abilities.activeId()).toBe("dash");
@@ -1316,11 +1316,11 @@ describe("Abilities — combo (guarded on: transitions)", () => {
       },
     ]);
     abilities.send("a");
-    pc._tick(0.4);
+    pc._tick(0.4, undefined, "fixed");
     expect(log).toEqual(["enter:one"]);
     abilities.send("go");
     expect(log).toEqual(["enter:one", "exit:one:false"]);
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     expect(log).toEqual(["enter:one", "exit:one:false", "enter:two"]);
   });
 });
@@ -1346,9 +1346,9 @@ describe("Abilities — linger", () => {
 
     const first = abilities.send("attack");
     if (!first.ok) throw new Error("expected send to succeed");
-    pc._tick(0.3); // jab completes; guard reaches to 0.6 → 0.3s of linger
+    pc._tick(0.3, undefined, "fixed"); // jab completes; guard reaches to 0.6 → 0.3s of linger
     expect(abilities.isActive()).toBe(false);
-    pc._tick(0.1); // linger position 0.4 ∈ [0.25, 0.6]
+    pc._tick(0.1, undefined, "fixed"); // linger position 0.4 ∈ [0.25, 0.6]
     expect(abilities.canSend("attack")).toBe(true);
     const second = abilities.send("attack");
     if (!second.ok) throw new Error("expected linger send to succeed");
@@ -1360,7 +1360,7 @@ describe("Abilities — linger", () => {
   it("a linger continuation neither checks nor re-arms the cooldown", () => {
     const { pc, abilities } = setup([lingering()]);
     abilities.send("attack"); // arms the 5s cooldown
-    pc._tick(0.4); // completes; cooldown at 0.4/5
+    pc._tick(0.4, undefined, "fixed"); // completes; cooldown at 0.4/5
     expect(abilities.cooldownRemaining("attack")).toBeCloseTo(4.6);
     const result = abilities.send("attack"); // cooldown running, linger admits anyway
     expect(result).toEqual(okResult);
@@ -1371,8 +1371,8 @@ describe("Abilities — linger", () => {
   it("the linger memory lapses once the reach ends, and a fresh entry pays cooldown again", () => {
     const { pc, abilities } = setup([lingering()]);
     abilities.send("attack");
-    pc._tick(0.3); // completes at jab duration 0.3; reach = 0.6 - 0.3 = 0.3
-    pc._tick(0.35); // position 0.65 > until 0.6 — memory self-completed
+    pc._tick(0.3, undefined, "fixed"); // completes at jab duration 0.3; reach = 0.6 - 0.3 = 0.3
+    pc._tick(0.35, undefined, "fixed"); // position 0.65 > until 0.6 — memory self-completed
     expect(abilities.canSend("attack")).toBe(false);
     expect(abilities.send("attack")).toEqual({ ok: false, reason: "cooldown" });
   });
@@ -1392,8 +1392,8 @@ describe("Abilities — linger", () => {
       },
     ]);
     abilities.send("attack");
-    pc._tick(0.25); // completes exactly at the jab's end; reach = 0.5
-    pc._tick(0.5); // linger position = 0.25 + 0.5 = exactly `until`
+    pc._tick(0.25, undefined, "fixed"); // completes exactly at the jab's end; reach = 0.5
+    pc._tick(0.5, undefined, "fixed"); // linger position = 0.25 + 0.5 = exactly `until`
     expect(abilities.canSend("attack")).toBe(true);
     const result = abilities.send("attack");
     if (!result.ok) throw new Error("expected send to succeed");
@@ -1406,9 +1406,9 @@ describe("Abilities — linger", () => {
       { id: "other", timeline: [zone({ from: 0, to: 0.2, id: "o" })] },
     ]);
     abilities.send("attack");
-    pc._tick(0.3);
+    pc._tick(0.3, undefined, "fixed");
     abilities.send("other"); // fresh start resets flow state
-    pc._tick(0.05);
+    pc._tick(0.05, undefined, "fixed");
     // A live memory would admit despite the running cooldown (linger skips
     // it); the "cooldown" refusal proves resolution fell through to entry.
     expect(abilities.send("attack")).toEqual({ ok: false, reason: "cooldown" });
@@ -1419,9 +1419,9 @@ describe("Abilities — linger", () => {
   it("a cancelled run arms no linger memory", () => {
     const { pc, abilities } = setup([lingering()]);
     abilities.send("attack");
-    pc._tick(0.28); // inside the guard's from, but the run is cut short
+    pc._tick(0.28, undefined, "fixed"); // inside the guard's from, but the run is cut short
     abilities.cancel();
-    pc._tick(0.05);
+    pc._tick(0.05, undefined, "fixed");
     expect(abilities.canSend("attack")).toBe(false); // no memory; entry blocked by cooldown
   });
 });
@@ -1437,9 +1437,9 @@ describe("Abilities — hold phases + release", () => {
   it("runs open-ended until release, exits close as flow, and release returns true", () => {
     const { pc, abilities, log } = setup([guardDef()]);
     abilities.send("guard");
-    pc._tick(0.05);
+    pc._tick(0.05, undefined, "fixed");
     expect(log).toEqual(["enter:g"]);
-    pc._tick(5); // would end any finite ability; a hold stays active
+    pc._tick(5, undefined, "fixed"); // would end any finite ability; a hold stays active
     expect(abilities.isActive()).toBe(true);
     expect(abilities.active()?.phaseDuration).toBe(Infinity);
 
@@ -1455,7 +1455,7 @@ describe("Abilities — hold phases + release", () => {
     entity.on(AbilityEnded, ({ cancelled }) => ended.push(cancelled));
     abilities.send("guard");
     const activation = abilities.active()!;
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     abilities.release("guard");
     expect(ended).toEqual([false]);
     expect(activation.state).toBe("completed");
@@ -1468,7 +1468,7 @@ describe("Abilities — hold phases + release", () => {
     ]);
     expect(abilities.release("guard")).toBe(false); // idle
     abilities.send("swing");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(abilities.release("swing")).toBe(false); // no hold phase
     expect(abilities.isActive()).toBe(true);
     expect(abilities.activeId()).toBe("swing");
@@ -1490,7 +1490,7 @@ describe("Abilities — hold phases + release", () => {
     );
     abilities.send("charge");
     const activation = abilities.active()!;
-    pc._tick(0.4);
+    pc._tick(0.4, undefined, "fixed");
     expect(abilities.release("charge")).toBe(true);
     expect(abilities.active()).toBe(activation);
     expect(activation.phase).toBe("kick");
@@ -1500,7 +1500,7 @@ describe("Abilities — hold phases + release", () => {
   it("cancel on a hold closes it with cancelled=true", () => {
     const { pc, abilities, log } = setup([guardDef()]);
     abilities.send("guard");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     abilities.cancel();
     expect(log).toEqual(["enter:g", "exit:g:true"]);
     expect(abilities.active()).toBeNull();
@@ -1519,14 +1519,14 @@ describe("Abilities — hold phases + release", () => {
       },
     ]);
     abilities.send("charge");
-    pc._tick(0.1); // enter + tick@0.1
-    pc._tick(0.1); // tick@0.2
-    pc._tick(0.1); // tick@0.3
-    pc._tick(0.05); // 0.35 — no tick
+    pc._tick(0.1, undefined, "fixed"); // enter + tick@0.1
+    pc._tick(0.1, undefined, "fixed"); // tick@0.2
+    pc._tick(0.1, undefined, "fixed"); // tick@0.3
+    pc._tick(0.05, undefined, "fixed"); // 0.35 — no tick
     expect(log).toEqual(["enter:c", "tick:c", "tick:c", "tick:c"]);
     abilities.release("charge");
     expect(log).toContain("exit:c:false");
-    pc._tick(0.2); // released — no further ticks
+    pc._tick(0.2, undefined, "fixed"); // released — no further ticks
     expect(log.filter((e) => e === "tick:c")).toHaveLength(3);
   });
 
@@ -1543,7 +1543,7 @@ describe("Abilities — hold phases + release", () => {
       },
     ]);
     abilities.send("charge");
-    pc._tick(0.5); // one frame swallows the whole hold
+    pc._tick(0.5, undefined, "fixed"); // one frame swallows the whole hold
     // Catch-up like a compiled window: ticks at 0.1/0.2/0.3/0.4, none on the
     // 0.5 boundary itself (half-open), then the hold.max close.
     expect(log).toEqual([
@@ -1569,9 +1569,9 @@ describe("Abilities — hold phases + release", () => {
       },
     ]);
     abilities.send("charge");
-    pc._tick(0.1); // window opened at 0.05; first tick is due at 0.12, not "0.1 seconds after enter"
+    pc._tick(0.1, undefined, "fixed"); // window opened at 0.05; first tick is due at 0.12, not "0.1 seconds after enter"
     expect(log).toEqual(["enter:c"]);
-    pc._tick(0.02); // position 0.12
+    pc._tick(0.02, undefined, "fixed"); // position 0.12
     expect(log).toEqual(["enter:c", "tick:c"]);
   });
 
@@ -1586,7 +1586,7 @@ describe("Abilities — hold phases + release", () => {
       },
     ]);
     abilities.send("charge");
-    pc._tick(0.6); // past max
+    pc._tick(0.6, undefined, "fixed"); // past max
     expect(abilities.active()?.phase).toBe("kick");
     expect(abilities.release("charge")).toBe(false); // the hold already completed
   });
@@ -1608,13 +1608,13 @@ describe("Abilities — hold phases + release", () => {
     });
     const { pc, abilities } = setup([megaman()]);
     abilities.send("buster");
-    pc._tick(0.3); // still charge1
+    pc._tick(0.3, undefined, "fixed"); // still charge1
     expect(abilities.release("buster")).toBe(true);
     expect(abilities.active()?.phase).toBe("shot1"); // early release → tier 1
-    pc._tick(0.3); // shot1 completes
+    pc._tick(0.3, undefined, "fixed"); // shot1 completes
 
     abilities.send("buster");
-    pc._tick(0.8); // after fires at 0.7 → charge2, binding carried
+    pc._tick(0.8, undefined, "fixed"); // after fires at 0.7 → charge2, binding carried
     expect(abilities.active()?.phase).toBe("charge2");
     expect(abilities.release("buster")).toBe(true); // the carried binding completes tier 2
     expect(abilities.active()?.phase).toBe("shot2");
@@ -1640,7 +1640,7 @@ describe("Abilities — hold phases + release", () => {
     abilities.send("buster");
     // Ability updates run before input updates. This tick crosses the timer
     // threshold before input reports the release.
-    pc._tick(0.75);
+    pc._tick(0.75, undefined, "fixed");
     expect(abilities.active()?.phase).toBe("charge2");
     expect(abilities.release("buster")).toBe(true);
     expect(abilities.active()?.phase).toBe("shot2");
@@ -1678,10 +1678,10 @@ describe("Abilities — hold phases + release", () => {
       },
     ]);
     abilities.send("a");
-    pc._tick(0.1); // enter fires → its hook transitions → the window closes as flow
+    pc._tick(0.1, undefined, "fixed"); // enter fires → its hook transitions → the window closes as flow
     expect(abilities.active()?.phase).toBe("two");
     expect(entries).toEqual(["enter:h", "exit:h:false"]);
-    pc._tick(0.3); // no ticks may survive into phase two
+    pc._tick(0.3, undefined, "fixed"); // no ticks may survive into phase two
     expect(entries).toEqual(["enter:h", "exit:h:false"]);
   });
 
@@ -1689,7 +1689,7 @@ describe("Abilities — hold phases + release", () => {
     const def = guardDef();
     const { pc, abilities } = setup([]);
     abilities.force(def);
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(abilities.release("guard")).toBe(false);
     expect(abilities.isActive()).toBe(true);
   });
@@ -1712,14 +1712,14 @@ describe("Abilities — entry doors + payload", () => {
     if (!result.ok) throw new Error("expected send to succeed");
     expect(result.activation.phase).toBe("kick");
     expect(result.activation.payload).toBe(1.4);
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(abilities.activeId()).toBe("charge");
   });
 
   it("an entry door pays the def's cooldown like any entry", () => {
     const { pc, abilities } = setup([{ ...chargeWithDoor(), cooldown: 5 }]);
     abilities.send("attack-release");
-    pc._tick(0.6); // kick completes at 0.5; the 5s cooldown still runs
+    pc._tick(0.6, undefined, "fixed"); // kick completes at 0.5; the 5s cooldown still runs
     expect(abilities.send("attack-release")).toEqual({
       ok: false,
       reason: "cooldown",
@@ -1742,13 +1742,13 @@ describe("Abilities — entry doors + payload", () => {
     ]);
     abilities.send("combo");
     const activation = abilities.active()!;
-    pc._tick(0.3);
+    pc._tick(0.3, undefined, "fixed");
     abilities.send("again"); // re-enter jab
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     expect(activation.elapsedIn("jab")).toBeCloseTo(0.5); // 0.3 + 0.2 across visits
     expect(activation.elapsedIn("cross")).toBe(0); // unvisited
     abilities.send("go");
-    pc._tick(0.4);
+    pc._tick(0.4, undefined, "fixed");
     expect(activation.elapsedIn("cross")).toBeCloseTo(0.4);
     expect(activation.elapsedIn("jab")).toBeCloseTo(0.5); // frozen once left
     expect(activation.elapsed).toBeCloseTo(0.9);
@@ -1767,10 +1767,10 @@ describe("Abilities — entry doors + payload", () => {
     ]);
     const result = abilities.send("a", { data: "entry-data" });
     if (!result.ok) throw new Error("expected send to succeed");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     abilities.send("go");
     expect(result.activation.payload).toBe("entry-data"); // no data → untouched
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     abilities.send("jump", { data: 42 });
     expect(result.activation.payload).toBe(42);
   });
@@ -1789,9 +1789,9 @@ describe('Abilities — windows ending at "end"', () => {
       },
     ]);
     abilities.send("swing");
-    pc._tick(0.3);
+    pc._tick(0.3, undefined, "fixed");
     expect(log).toEqual(["enter:g", "fire:mid"]);
-    pc._tick(0.2); // 0.5 — the boundary
+    pc._tick(0.2, undefined, "fixed"); // 0.5 — the boundary
     expect(log).toEqual(["enter:g", "fire:mid", "exit:g:false"]);
     expect(abilities.isActive()).toBe(false);
   });
@@ -1805,13 +1805,13 @@ describe('Abilities — windows ending at "end"', () => {
     });
     const first = setup([guardDef()]);
     first.abilities.send("guard");
-    first.pc._tick(2);
+    first.pc._tick(2, undefined, "fixed");
     first.abilities.release("guard");
     expect(first.log).toEqual(["enter:g", "exit:g:false"]);
 
     const second = setup([guardDef()]);
     second.abilities.send("guard");
-    second.pc._tick(2);
+    second.pc._tick(2, undefined, "fixed");
     second.abilities.cancel();
     expect(second.log).toEqual(["enter:g", "exit:g:true"]);
   });
@@ -1830,7 +1830,7 @@ describe('Abilities — windows ending at "end"', () => {
       { id: "big", priority: 10, timeline: [beep({ at: 0.1, id: "b" })] },
     ]);
     abilities.send("guard");
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     abilities.send("big");
     expect(log).toEqual(["enter:g", "exit:g:true"]);
   });
@@ -1852,7 +1852,7 @@ describe('Abilities — windows ending at "end"', () => {
 
     expect(result.activation.isHolding).toBe(true);
     expect(result.activation.isStepActive("zone")).toBe(false);
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(result.activation.isStepActive("zone")).toBe(true);
 
     abilities.cancel();
@@ -1900,9 +1900,9 @@ describe("Abilities — cancel windows", () => {
     );
     abilities.send("swing");
     const swing = abilities.active()!;
-    pc._tick(0.1); // elapsed 0.1 — before the window
+    pc._tick(0.1, undefined, "fixed"); // elapsed 0.1 — before the window
     expect(abilities.send("dash")).toEqual({ ok: false, reason: "busy" });
-    pc._tick(0.15); // elapsed 0.25 — inside [0.2, end]
+    pc._tick(0.15, undefined, "fixed"); // elapsed 0.25 — inside [0.2, end]
     expect(abilities.send("dash")).toEqual(okResult);
     expect(abilities.activeId()).toBe("dash");
     expect(swing.state).toBe("cancelled");
@@ -1915,7 +1915,7 @@ describe("Abilities — cancel windows", () => {
       { id: "dash", timeline: [beep({ at: 0, id: "d" })] },
     ]);
     abilities.send("swing");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     abilities.send("dash");
     expect(log).toEqual(["enter:s", "exit:s:true"]);
   });
@@ -1927,7 +1927,7 @@ describe("Abilities — cancel windows", () => {
       { id: "roll", timeline: [beep({ at: 0, id: "r" })] },
     ]);
     abilities.send("swing");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(abilities.send("roll")).toEqual({ ok: false, reason: "busy" });
     expect(abilities.send("dash")).toEqual(okResult);
   });
@@ -1948,7 +1948,7 @@ describe("Abilities — cancel windows", () => {
       },
     ]);
     abilities.send("swing");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
 
     expect(abilities.canSend("spell")).toBe(false);
     expect(abilities.send("spell")).toEqual({ ok: false, reason: "busy" });
@@ -1967,7 +1967,7 @@ describe("Abilities — cancel windows", () => {
       },
     ]);
     abilities.send("swing");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(abilities.send("evade")).toEqual(okResult); // alias resolves to "dash"
     expect(abilities.activeId()).toBe("dash");
   });
@@ -1983,7 +1983,7 @@ describe("Abilities — cancel windows", () => {
       },
     ]);
     abilities.send("swing");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(abilities.canSend("evade")).toBe(true);
     expect(abilities.send("evade")).toEqual(okResult);
     expect(abilities.activeId()).toBe("dash");
@@ -1993,7 +1993,7 @@ describe("Abilities — cancel windows", () => {
     const { pc, abilities } = setup([swingWithCancel([{ from: 0, to: 0.4 }])]);
     abilities.send("swing");
     const first = abilities.active()!;
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(abilities.send("swing")).toEqual(okResult);
     expect(first.state).toBe("cancelled");
     expect(abilities.active()).not.toBe(first);
@@ -2006,7 +2006,7 @@ describe("Abilities — cancel windows", () => {
       { id: "dash", timeline: [beep({ at: 0, id: "d" })] },
     ]);
     abilities.send("swing");
-    pc._tick(0.3); // elapsed 0.3 — past to=0.2
+    pc._tick(0.3, undefined, "fixed"); // elapsed 0.3 — past to=0.2
     expect(abilities.send("dash")).toEqual({ ok: false, reason: "busy" });
   });
 
@@ -2022,7 +2022,7 @@ describe("Abilities — cancel windows", () => {
     };
     abilities.send("swing");
     const swing = abilities.active()!;
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(abilities.force(dash)).toEqual(okResult);
     expect(swing.state).toBe("cancelled");
     expect(abilities.activeId()).toBe("dash");
@@ -2041,10 +2041,10 @@ describe("Abilities — cancel windows", () => {
       { id: "dash", timeline: [beep({ at: 0, id: "d" })] },
     ]);
     abilities.send("combo");
-    pc._tick(0.25); // jab-local 0.25 ≥ 0.2 → admissible
+    pc._tick(0.25, undefined, "fixed"); // jab-local 0.25 ≥ 0.2 → admissible
     abilities.send("go"); // → cross; its local clock restarts
     expect(abilities.send("dash")).toEqual({ ok: false, reason: "busy" }); // cross-local 0 < 0.2
-    pc._tick(0.25);
+    pc._tick(0.25, undefined, "fixed");
     expect(abilities.send("dash")).toEqual(okResult); // cross-local 0.25 ≥ 0.2
   });
 });
@@ -2079,7 +2079,7 @@ describe("Abilities — mid-tick interruption + phase-token guards", () => {
       },
     ]);
     abilities.send("a");
-    pc._tick(0.2); // one tick spans both the interrupt at 0.1 and the late point at 0.15
+    pc._tick(0.2, undefined, "fixed"); // one tick spans both the interrupt at 0.1 and the late point at 0.15
     expect(entries.slice(0, 3)).toEqual([
       "enter:z",
       "interrupt",
@@ -2119,7 +2119,7 @@ describe("Abilities — mid-tick interruption + phase-token guards", () => {
       },
     ]);
     abilities.send("a");
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     expect(entries).toEqual(["enter:z", "advance", "exit:z:false", "fire:two"]);
     expect(entries).not.toContain("fire:late");
     expect(abilities.active()?.phase).toBe("two");
@@ -2136,13 +2136,13 @@ describe("Abilities — mid-tick interruption + phase-token guards", () => {
       },
     ]);
     abilities.send("a");
-    pc._tick(0.3); // one completes at 0.2; two gets the 0.1 remainder only
+    pc._tick(0.3, undefined, "fixed"); // one completes at 0.2; two gets the 0.1 remainder only
     expect(abilities.active()?.phase).toBe("two");
     expect(abilities.active()?.phaseElapsed).toBeCloseTo(0.1);
     expect(log).toEqual([]); // 0.15 not reached — the full 0.3 was NOT re-applied
-    pc._tick(0.04);
+    pc._tick(0.04, undefined, "fixed");
     expect(log).toEqual([]); // 0.14
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
     expect(log).toEqual(["fire:b"]); // exactly at 0.15 on two's own clock
   });
 
@@ -2158,7 +2158,7 @@ describe("Abilities — mid-tick interruption + phase-token guards", () => {
     ]);
     abilities.send("a");
     const activation = abilities.active()!;
-    pc._tick(0.2); // after fires at 0.1; the remaining 0.1 belongs to two
+    pc._tick(0.2, undefined, "fixed"); // after fires at 0.1; the remaining 0.1 belongs to two
     expect(activation.phase).toBe("two");
     expect(activation.elapsedIn("one")).toBeCloseTo(0.1);
     expect(activation.elapsedIn("two")).toBeCloseTo(0.1);
@@ -2190,14 +2190,14 @@ describe("Abilities — mid-tick interruption + phase-token guards", () => {
 
     abilities.send("a");
     const activation = abilities.active()!;
-    pc._tick(0.1); // open the window so cancel runs the hijacking exit hook
+    pc._tick(0.1, undefined, "fixed"); // open the window so cancel runs the hijacking exit hook
     abilities.cancel();
 
     expect(activation.state).toBe("cancelled"); // the end wins over the nested transition
     expect(abilities.active()).toBeNull();
     // Zero-time phase entry then the end — delivered as history, in order.
     expect(events).toEqual(["phase:one->two", "ended:true"]);
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(log).not.toContain("fire:two"); // two's track was voided, not orphaned
     expect(pc.count).toBe(0); // nothing left ticking in the ProcessComponent
   });
@@ -2222,7 +2222,7 @@ describe("Abilities — mid-tick interruption + phase-token guards", () => {
       },
     ]);
     abilities.send("a");
-    pc._tick(0.55); // 0.2 + 0.2 + 0.15 — lands mid-three, past its 0.1 beep
+    pc._tick(0.55, undefined, "fixed"); // 0.2 + 0.2 + 0.15 — lands mid-three, past its 0.1 beep
     expect(log).toEqual(["fire:1", "fire:2", "fire:3"]);
     expect(abilities.active()?.phase).toBe("three");
     expect(abilities.active()?.phaseElapsed).toBeCloseTo(0.15);
@@ -2256,12 +2256,12 @@ describe("Abilities — transition re-entrancy (generation counter)", () => {
     );
 
     abilities.send("a");
-    pc._tick(0.1); // open the window so the transition has an exit hook to run
+    pc._tick(0.1, undefined, "fixed"); // open the window so the transition has an exit hook to run
     abilities.send("go"); // closing one's windows fires hijack → send("swerve")
 
     expect(abilities.active()?.phase).toBe("three"); // the nested transition won
     expect(phases).toEqual(["one->three"]); // one->two never emitted
-    pc._tick(0.06);
+    pc._tick(0.06, undefined, "fixed");
     expect(log).toContain("fire:three"); // three's track runs — no orphan
     expect(log).not.toContain("fire:two"); // two's track never started
   });
@@ -2296,14 +2296,14 @@ describe("Abilities — transition re-entrancy (generation counter)", () => {
     );
 
     abilities.send("a");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     events.length = 0;
     abilities.send("go"); // exit hook forces c (priority 50 > 0) → a is gone; outer transition aborts
 
     expect(events).toEqual(["ended:a", "started:c"]); // no phase event for the aborted transition
     expect(abilities.activeId()).toBe("c");
     events.length = 0;
-    pc._tick(0.01); // c completes on its own — installed for real, not orphaned
+    pc._tick(0.01, undefined, "fixed"); // c completes on its own — installed for real, not orphaned
     expect(events).toEqual(["ended:c"]);
   });
 
@@ -2329,7 +2329,7 @@ describe("Abilities — transition re-entrancy (generation counter)", () => {
     );
 
     abilities.send("a");
-    pc._tick(0.1); // open a's window, so cancelling it below runs the exit hook
+    pc._tick(0.1, undefined, "fixed"); // open a's window, so cancelling it below runs the exit hook
     events.length = 0;
     const result = abilities.send("b");
     if (!result.ok) throw new Error("expected send to succeed");
@@ -2362,7 +2362,7 @@ describe("Abilities — transition re-entrancy (generation counter)", () => {
     );
 
     abilities.send("a");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     events.length = 0;
     const result = abilities.send("b"); // b (priority 10) loses to c (priority 50), not a
 
@@ -2371,7 +2371,7 @@ describe("Abilities — transition re-entrancy (generation counter)", () => {
     expect(abilities.activeId()).toBe("c");
 
     events.length = 0;
-    pc._tick(0.01); // c keeps running, untouched by the refusal, and completes on its own
+    pc._tick(0.01, undefined, "fixed"); // c keeps running, untouched by the refusal, and completes on its own
     expect(events).toEqual(["ended:c"]);
     expect(abilities.active()).toBeNull();
   });
@@ -2398,13 +2398,13 @@ describe("Abilities — lifecycle events + activation handle", () => {
 
     const result = abilities.send("test");
     if (!result.ok) throw new Error("expected send to succeed");
-    pc._tick(0.05);
+    pc._tick(0.05, undefined, "fixed");
 
     expect(ctxActivation).toBe(result.activation);
     expect(started[0]).toBe(result.activation);
     expect(abilities.active()).toBe(result.activation);
 
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     expect(ended[0]).toBe(result.activation);
     expect(abilities.active()).toBeNull();
   });
@@ -2428,7 +2428,7 @@ describe("Abilities — lifecycle events + activation handle", () => {
       { id: "test", timeline: [zone({ from: 0, to: 0.5, id: "z" })] },
     ]);
     abilities.send("test");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     expect(abilities.active()?.phaseDuration).toBeCloseTo(0.5);
     expect(abilities.active()?.phaseElapsed).toBeCloseTo(0.1);
   });
@@ -2439,7 +2439,7 @@ describe("Abilities — lifecycle events + activation handle", () => {
     ]);
     abilities.send("test");
     const activation = abilities.active()!;
-    pc._tick(1); // massively overshoots the ~0.1s duration in one tick
+    pc._tick(1, undefined, "fixed"); // massively overshoots the ~0.1s duration in one tick
     expect(activation.elapsed).toBeCloseTo(0.1);
     expect(activation.state).toBe("completed");
   });
@@ -2450,11 +2450,11 @@ describe("Abilities — lifecycle events + activation handle", () => {
     ]);
     abilities.send("test");
     const activation = abilities.active()!;
-    pc._tick(0.3);
+    pc._tick(0.3, undefined, "fixed");
     abilities.cancel();
     expect(activation.state).toBe("cancelled");
     expect(activation.elapsed).toBeCloseTo(0.3);
-    pc._tick(0.5); // nothing left running — must not move the frozen value
+    pc._tick(0.5, undefined, "fixed"); // nothing left running — must not move the frozen value
     expect(activation.elapsed).toBeCloseTo(0.3);
   });
 
@@ -2464,7 +2464,7 @@ describe("Abilities — lifecycle events + activation handle", () => {
     ]);
     abilities.send("test");
     const activation = abilities.active()!;
-    pc._tick(0.2);
+    pc._tick(0.2, undefined, "fixed");
     const ended: AbilityActivation[] = [];
     entity.on(AbilityEnded, ({ activation: a }) => ended.push(a));
 
@@ -2488,7 +2488,7 @@ describe("Abilities — lifecycle events + activation handle", () => {
     });
 
     abilities.send("test");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
 
     expect(events).toEqual(["started", "ended:false"]);
     expect(stateDuringEnded).toBe("completed");
@@ -2507,7 +2507,7 @@ describe("Abilities — lifecycle events + activation handle", () => {
     });
 
     abilities.send("test");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     abilities.cancel();
 
     expect(events).toEqual(["started", "ended:true"]);
@@ -2604,7 +2604,7 @@ describe("Abilities — lifecycle events + activation handle", () => {
       observed = activation.phase;
     });
     abilities.send("a");
-    pc._tick(0.1);
+    pc._tick(0.1, undefined, "fixed");
     abilities.send("go");
     expect(observed).toBe("two");
   });
@@ -2633,7 +2633,7 @@ describe("Abilities — lifecycle events + activation handle", () => {
     );
 
     abilities.send("test");
-    pc._tick(0.1); // let the window's `enter` fire, so cancel() has something open to close
+    pc._tick(0.1, undefined, "fixed"); // let the window's `enter` fire, so cancel() has something open to close
     seen.length = 0;
     abilities.cancel();
 
@@ -2646,7 +2646,7 @@ describe("Abilities — lifecycle events + activation handle", () => {
     // orphaned, not double-finished by the outer finishLane frame).
     const replacement = abilities.active()!;
     seen.length = 0;
-    pc._tick(0.01);
+    pc._tick(0.01, undefined, "fixed");
 
     expect(seen).toEqual(["ended:c"]);
     expect(replacement.state).toBe("completed");
@@ -2673,7 +2673,7 @@ describe("Abilities — cancelAll re-reads lanes", () => {
     ]);
 
     abilities.send("a");
-    pc._tick(0.1); // open a's window
+    pc._tick(0.1, undefined, "fixed"); // open a's window
     const a = abilities.active()!;
 
     entity.destroy();
@@ -2685,5 +2685,96 @@ describe("Abilities — cancelAll re-reads lanes", () => {
     expect(cActivation).toBeDefined();
     expect(cActivation!.state).toBe("cancelled"); // picked up by cancelAll's own re-read, not orphaned
     expect(abilities.active()).toBeNull();
+  });
+});
+
+describe("Abilities — clock", () => {
+  it("the timeline ignores frame ticks and advances on fixed ticks by default", () => {
+    const { pc, abilities, log } = setup([
+      {
+        id: "test",
+        timeline: [beep({ at: 0.2, id: "a" }), beep({ at: 0.4, id: "b" })],
+      },
+    ]);
+    abilities.send("test");
+    pc._tick(1); // frame clock: a whole second changes nothing
+    expect(log).toEqual([]);
+    pc._tick(0.2, undefined, "fixed");
+    expect(log).toEqual(["fire:a"]);
+    pc._tick(0.2, undefined, "fixed");
+    expect(log).toEqual(["fire:a", "fire:b"]);
+  });
+
+  it("a phase entered mid-run keeps advancing on the fixed clock", () => {
+    const { pc, abilities, log } = setup([
+      {
+        id: "combo",
+        start: "windup",
+        phases: {
+          windup: { timeline: [], duration: 0.25, next: "strike" },
+          strike: { duration: 0.5, timeline: [beep({ at: 0.25, id: "hit" })] },
+        },
+      },
+    ]);
+    abilities.send("combo");
+    // One fixed tick crosses the phase boundary and lands 0.25 into "strike".
+    pc._tick(0.5, undefined, "fixed");
+    expect(log).toEqual(["fire:hit"]);
+    // The second phase's track must live on the fixed clock too: frame time
+    // must not complete it.
+    pc._tick(1);
+    expect(abilities.active()).not.toBeNull();
+    pc._tick(0.25, undefined, "fixed");
+    expect(abilities.active()).toBeNull();
+  });
+
+  it("cooldown counts on the fixed clock only", () => {
+    const { pc, abilities } = setup([
+      { id: "test", cooldown: 0.3, timeline: [beep({ at: 0.1, id: "a" })] },
+    ]);
+    abilities.send("test");
+    pc._tick(0.2, undefined, "fixed"); // run completes; cooldown at 0.2/0.3
+    pc._tick(5); // frame time must not tick the cooldown down
+    expect(abilities.send("test")).toEqual({ ok: false, reason: "cooldown" });
+    pc._tick(0.1, undefined, "fixed"); // cooldown reaches 0.3
+    expect(abilities.send("test")).toMatchObject({ ok: true });
+  });
+
+  it("linger memory ages on the fixed clock only", () => {
+    const { pc, abilities } = setup([
+      {
+        id: "attack",
+        cooldown: 5, // blocks fresh entry, so canSend reflects linger alone
+        phases: {
+          jab: {
+            timeline: [],
+            duration: 0.3,
+            on: { attack: { to: "cross", from: 0.25, until: 0.6 } },
+          },
+          cross: { timeline: [], duration: 0.4 },
+        },
+      },
+    ]);
+    abilities.send("attack");
+    pc._tick(0.3, undefined, "fixed"); // jab completes; reach = 0.6 - 0.3
+    pc._tick(10); // frame time must not age the linger out
+    expect(abilities.canSend("attack")).toBe(true);
+    pc._tick(0.35, undefined, "fixed"); // fixed time lapses it: 0.65 > 0.6
+    expect(abilities.canSend("attack")).toBe(false);
+  });
+
+  it("clock: 'frame' opts the timeline into rendered-frame ticking", () => {
+    const { entity } = createMockEntity("abilities-host");
+    const pc = entity.add(new ProcessComponent());
+    const abilities = entity.add(
+      new Abilities([{ id: "test", timeline: [beep({ at: 0.1, id: "a" })] }], {
+        clock: "frame",
+      }),
+    );
+    abilities.send("test");
+    pc._tick(0.2, undefined, "fixed");
+    expect(log({ abilities })).toEqual([]);
+    pc._tick(0.2);
+    expect(log({ abilities })).toEqual(["fire:a"]);
   });
 });

@@ -1,5 +1,14 @@
+import type { ProcessClock } from "./Process.js";
+
 /** Configuration for a ProcessSlot. */
 export interface ProcessSlotConfig {
+  /**
+   * Which clock ticks the slot: `"frame"` (default) or `"fixed"`. Read once
+   * when the slot is created via `ProcessComponent.slot()`; `start()`/
+   * `restart()` overrides cannot change it. A standalone `ProcessSlot` has
+   * no clock — whoever calls `_tick` decides.
+   */
+  clock?: ProcessClock;
   /** Auto-complete after this duration in seconds. */
   duration?: number;
   /** Called each frame with dt (seconds) and elapsed (seconds). Return true to complete early. */
@@ -58,7 +67,7 @@ export class ProcessSlot {
   }
 
   /** Start the slot. No-op if already running (use restart() to force). */
-  start(overrides?: Partial<ProcessSlotConfig>): this {
+  start(overrides?: Partial<Omit<ProcessSlotConfig, "clock">>): this {
     if (!this._completed) return this;
     this._elapsed = 0;
     this._completed = false;
@@ -73,7 +82,7 @@ export class ProcessSlot {
   }
 
   /** Cancel if running, then start fresh. Always restarts. */
-  restart(overrides?: Partial<ProcessSlotConfig>): this {
+  restart(overrides?: Partial<Omit<ProcessSlotConfig, "clock">>): this {
     if (!this._completed) {
       this.config.cleanup?.();
       this._completed = true;
