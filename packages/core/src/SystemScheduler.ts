@@ -1,7 +1,7 @@
 import type { System } from "./System.js";
 import type { ErrorBoundary } from "./ErrorBoundary.js";
 import type { EngineContext } from "./EngineContext.js";
-import type { Phase } from "./types.js";
+import { Phase } from "./types.js";
 
 /**
  * Manages ordered execution of systems within each phase, and owns the
@@ -14,6 +14,28 @@ export class SystemScheduler {
   private errorBoundary: ErrorBoundary | null = null;
   private context: EngineContext | null = null;
   private registered = new Set<System>();
+  private _currentPhase: Phase | null = null;
+  private _fixedStepIndex = 0;
+
+  /**
+   * Phase whose systems are executing right now, or `null` outside any
+   * phase. Lets code reachable from several phases (input queries, shared
+   * helpers) resolve behavior against its calling context instead of
+   * assuming one.
+   */
+  get currentPhase(): Phase | null {
+    return this._currentPhase;
+  }
+
+  /**
+   * Monotonic count of fixed steps started. During `Phase.FixedUpdate` it
+   * identifies the running step — a frame can run several steps, or none —
+   * and between steps it holds the last started step's number. 0 before
+   * the first step.
+   */
+  get fixedStepIndex(): number {
+    return this._fixedStepIndex;
+  }
 
   /** Set the error boundary for wrapping system execution. */
   setErrorBoundary(boundary: ErrorBoundary): void {
@@ -80,11 +102,20 @@ export class SystemScheduler {
 
   /** Run all enabled systems in a given phase. Wraps each in ErrorBoundary if available. */
   run(phase: Phase, dt: number): void {
+    // A fixed step with no fixed systems is still a step — the index must
+    // track the loop's real step count, not just observed work.
+    if (phase === Phase.FixedUpdate) this._fixedStepIndex++;
     const list = this.phases.get(phase);
     if (!list) return;
-    for (const system of list) {
-      if (!system.enabled) continue;
-      this.dispatch(system, () => system.update(dt));
+    const previousPhase = this._currentPhase;
+    this._currentPhase = phase;
+    try {
+      for (const system of list) {
+        if (!system.enabled) continue;
+        this.dispatch(system, () => system.update(dt));
+      }
+    } finally {
+      this._currentPhase = previousPhase;
     }
   }
 

@@ -735,6 +735,20 @@ type EasingFunction = (t: number) => number;
 type ComponentClass<C> = new (...args: never[]) => C;
 ```
 
+### Execution context
+
+The scheduler (resolve via `SystemSchedulerKey`) reports where the current
+call is executing. Code reachable from several phases branches on these
+instead of assuming a phase — `@yagejs/input` uses them to scope edge queries
+to the caller's frame or fixed step:
+
+```ts
+scheduler.currentPhase;   // Phase | null — phase running right now; null outside any phase
+scheduler.fixedStepIndex; // number — monotonic count of fixed steps started; identifies
+                          // the running step during Phase.FixedUpdate (a frame can run
+                          // several steps, or none), holds the last step's number between steps
+```
+
 ## Error Handling
 
 `ErrorBoundary` wraps system, component, and callback execution so a throw is

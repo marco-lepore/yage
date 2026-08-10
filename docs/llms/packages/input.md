@@ -38,22 +38,22 @@ const input = context.resolve(InputManagerKey);
 input.getClockTime();
 
 // Pressed state
-input.isPressed("jump"); // held this frame
-input.isJustPressed("fire"); // pressed this frame (edge)
-input.isJustReleased("jump"); // released this frame (edge)
+input.isPressed("jump"); // currently held
+input.isJustPressed("fire"); // press edge in the caller's window (see below)
+input.isJustReleased("jump"); // release edge in the caller's window
 
 // Hold duration (seconds)
 input.getHoldDuration("fire"); // seconds held, 0 if not held
 input.isHeldFor("fire", 0.5); // held >= 0.5s
 
 // Tap vs hold — call-site thresholds in seconds, no per-action config
-input.isJustHeldFor("fire", 0.5); // hold-start edge: true the frame hold crosses 0.5s
-input.isJustTapped("fire", 0.2); // release frame, held <= 0.2s (a tap)
-input.isJustReleasedAfter("fire", 0.5); // release frame, held >= 0.5s
-input.getReleaseDuration("fire"); // seconds held, valid only on the release frame
-// "Release frame" = the frame the action's last held input releases — a bound
-// key, mouse button, gamepad button, or synthetic press. A chord's partial
-// release reports 0 / false.
+input.isJustHeldFor("fire", 0.5); // hold-start edge: true in the window hold crosses 0.5s
+input.isJustTapped("fire", 0.2); // release window, held <= 0.2s (a tap)
+input.isJustReleasedAfter("fire", 0.5); // release window, held >= 0.5s
+input.getReleaseDuration("fire"); // seconds held, valid only in the release window
+// "Release window" = the window in which the action's last held input
+// releases — a bound key, mouse button, gamepad button, or synthetic press.
+// A chord's partial release reports 0 / false.
 
 // Buffered press — consuming query; true once per press within the window
 input.consumeBufferedPress("jump", 0.12); // pressed within last 0.12s and unclaimed → claim + true
@@ -63,11 +63,25 @@ input.getAxis("left", "right"); // -1, 0, or 1
 input.getVector("left", "right", "up", "down"); // Vec2 (not normalized)
 ```
 
-The two-argument form uses the raw input clock, which ignores scene pause and
-time scaling. Pass a scene's `SceneTime` to measure the window in that scene's
-simulation seconds instead. The scene clock stops while the scene is
-stack-paused or frozen and follows the scene's effective time scale, which is
-the same scale physics steps under.
+**Edge-query windows.** The six edge queries (`isJustPressed`, `isJustReleased`,
+`isJustHeldFor`, `isJustTapped`, `isJustReleasedAfter`, `getReleaseDuration`)
+resolve against the caller's execution context. Called from frame code
+(`update`, listeners, any non-fixed system) the window is the current rendered
+frame. Called from fixed-step code (`fixedUpdate`, a `Phase.FixedUpdate`
+system) it is the current fixed step: the edges that arrived since the previous
+step began. Each context sees an edge exactly once at any display/step rate
+ratio. When several steps run in one frame only the first sees it, and an edge
+in a frame that runs no step is held for the next step.
+
+**Clocks.** Hold durations and every tap/hold threshold (`getHoldDuration`,
+`isHeldFor`, `isJustHeldFor`, `isJustTapped`, `isJustReleasedAfter`,
+`getReleaseDuration`) measure on the raw input clock (`getClockTime()`), which
+ignores scene pause and time scale. A hold keeps accruing through a pause or
+`freezeFor`. `consumeBufferedPress` is the one query that can measure on a
+different clock: its two-argument form uses the raw input clock, and passing a
+scene's `SceneTime` measures the window in that scene's simulation seconds
+instead. The scene clock stops while the scene is stack-paused or frozen and
+follows the scene's effective time scale, the same scale physics steps under.
 
 ```ts
 // Inside a Component or Scene subclass — `use` returns a non-optional clock.

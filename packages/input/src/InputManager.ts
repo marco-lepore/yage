@@ -1,4 +1,4 @@
-import { Vec2 } from "@yagejs/core";
+import { Phase, Vec2 } from "@yagejs/core";
 import type { RendererAdapter, ErrorBoundary } from "@yagejs/core";
 import { applyRadialDeadzone } from "./deadzone.js";
 import type {
@@ -13,6 +13,7 @@ import type {
   PointerType,
   RebindOptions,
   RebindResult,
+  SchedulerLike,
 } from "./types.js";
 
 /** Action-map codes for the three primary mouse buttons, indexed by button. */
@@ -109,8 +110,38 @@ export class InputManager {
   private bufferedPressClockStamps = new Map<InputClock, Map<string, number>>();
   /** Actions whose buffered press has been claimed via {@link consumeBufferedPress}; cleared by the next press. */
   private claimedBufferedPress = new Set<string>();
-  /** Per-action hold duration (ms) at the end of the previous frame — the baseline for {@link isJustHeldFor}'s crossing test. */
+  /** Per-action hold duration (ms) at the end of the previous frame — the frame-window baseline for {@link isJustHeldFor}'s crossing test. */
   private prevHoldMs = new Map<string, number>();
+  /**
+   * Fixed-step edge windows. Each map records, per key code or action name,
+   * the scheduler's fixed-step count at the moment the edge arrived. An edge
+   * tagged `s` belongs to the window of step `s + 1` — the first fixed step
+   * to start after it — so a query made during `Phase.FixedUpdate` matches
+   * entries tagged exactly one below the running step's index. Entries
+   * survive {@link _clearFrameState} (a frame can run zero steps) and are
+   * pruned once their step has passed.
+   */
+  private stepPressTags = new Map<string, number>();
+  /** Release edges per key code, tagged like {@link stepPressTags}. */
+  private stepReleaseTags = new Map<string, number>();
+  /** Synthetic action pulses ({@link fireAction}), tagged like {@link stepPressTags}. */
+  private stepPulseTags = new Map<string, number>();
+  /** Synthetic action releases ({@link fireActionUp}), tagged like {@link stepPressTags}. */
+  private stepSyntheticReleaseTags = new Map<string, number>();
+  /** Hold duration (ms) of a release edge per action, tagged like {@link stepPressTags}. */
+  private stepReleaseDurations = new Map<string, { ms: number; tag: number }>();
+  /** Per-action holds at the previous step-window rotation — the fixed-step baseline for {@link isJustHeldFor}. */
+  private stepPrevHoldMs = new Map<string, number>();
+  /** Per-action holds sampled at the latest rotation; becomes the next window's baseline. */
+  private stepHoldSnapshot = new Map<string, number>();
+  /** Step index of the latest hold-baseline rotation. */
+  private stepHoldRotatedAt = -1;
+  /**
+   * Scheduler for calling-context resolution, wired by {@link _setScheduler}.
+   * When null (standalone manager, no plugin), every query resolves against
+   * the frame window.
+   */
+  private scheduler: SchedulerLike | null = null;
   private actionMap = new Map<string, string[]>();
   private defaultBindings = new Map<string, string[]>();
   private groups = new Map<string, Set<string>>();
@@ -206,25 +237,52 @@ export class InputManager {
     );
   }
 
-  /** Whether any key mapped to this action was pressed this frame. */
+  /**
+   * Whether a press edge for the action landed in the caller's query window.
+   *
+   * The window matches the calling context. From frame-phase code (`update`,
+   * listeners, any non-fixed system) it is the current rendered frame. From
+   * fixed-step code (`fixedUpdate`, `Phase.FixedUpdate` systems) it is the
+   * current fixed step: the edges that arrived since the previous step began.
+   * Each context sees a press exactly once — when several fixed steps run in
+   * one frame only the first sees it, and a press in a frame that runs no
+   * fixed step is held for the next step.
+   */
   isJustPressed(action: string): boolean {
     if (!this.isActionEnabled(action)) return false;
+    const window = this.currentStepWindow();
+    if (window === null) {
+      return (
+        this.pulsedSyntheticActions.has(action) ||
+        this.anyKeyInSet(action, this.justPressedKeys)
+      );
+    }
     return (
-      this.pulsedSyntheticActions.has(action) ||
-      this.anyKeyInSet(action, this.justPressedKeys)
+      this.stepPulseTags.get(action) === window ||
+      this.anyKeyTagged(action, this.stepPressTags, window)
     );
   }
 
-  /** Whether any key mapped to this action was released this frame. */
+  /**
+   * Whether a release edge for the action landed in the caller's query
+   * window — the current frame or the current fixed step, matching the
+   * calling context like {@link isJustPressed}.
+   */
   isJustReleased(action: string): boolean {
     if (!this.isActionEnabled(action)) return false;
+    const window = this.currentStepWindow();
+    if (window === null) {
+      return (
+        this.justReleasedActions.has(action) ||
+        this.anyKeyInSet(action, this.justReleasedKeys)
+      );
+    }
     return (
-      this.justReleasedActions.has(action) ||
-      this.anyKeyInSet(action, this.justReleasedKeys)
+      this.stepSyntheticReleaseTags.get(action) === window ||
+      this.anyKeyTagged(action, this.stepReleaseTags, window)
     );
   }
 
-  /** Returns true if any key bound to the action exists in the given set. */
   /** Whether any binding (key or synthetic) still holds the action, ignoring group enablement. */
   private isActionStillHeld(action: string): boolean {
     return (
@@ -240,6 +298,83 @@ export class InputManager {
       if (set.has(key)) return true;
     }
     return false;
+  }
+
+  /** Whether any key bound to the action carries the given step-window tag. */
+  private anyKeyTagged(
+    action: string,
+    tags: Map<string, number>,
+    window: number,
+  ): boolean {
+    const keys = this.actionMap.get(action);
+    if (!keys) return false;
+    for (const key of keys) {
+      if (tags.get(key) === window) return true;
+    }
+    return false;
+  }
+
+  /** Tag for an edge arriving now: the number of fixed steps started so far. */
+  private stepTag(): number {
+    return this.scheduler?.fixedStepIndex ?? 0;
+  }
+
+  /**
+   * The step-window tag the current caller resolves against, or null when
+   * the caller is not inside `Phase.FixedUpdate` (frame-window semantics).
+   * During step `k` the visible window holds edges tagged `k - 1` — those
+   * that arrived after the previous step began.
+   */
+  private currentStepWindow(): number | null {
+    const scheduler = this.scheduler;
+    if (!scheduler || scheduler.currentPhase !== Phase.FixedUpdate) return null;
+    return scheduler.fixedStepIndex - 1;
+  }
+
+  /**
+   * Rotate the fixed-step hold baseline: on the first fixed-step hold query
+   * of a new step, the holds sampled at the previous rotation become this
+   * window's baseline, and current holds are re-sampled for the next one.
+   * Query-driven, so a caller polling {@link isJustHeldFor} every step gets
+   * an exact step-over-step crossing test.
+   */
+  private rotateStepHolds(step: number): void {
+    if (this.stepHoldRotatedAt === step) return;
+    const isFirstRotation = this.stepHoldRotatedAt === -1;
+    this.stepHoldRotatedAt = step;
+    const recycled = this.stepPrevHoldMs;
+    this.stepPrevHoldMs = this.stepHoldSnapshot;
+    recycled.clear();
+    for (const action of this.actionMap.keys()) {
+      const holdMs = this.rawHoldDurationMs(action);
+      if (holdMs > 0) recycled.set(action, holdMs);
+    }
+    this.stepHoldSnapshot = recycled;
+    // The first rotation has no earlier sample to serve as a baseline. Seed
+    // it with the current holds so an ongoing hold does not read as a fresh
+    // crossing — matching the frame baseline, which is maintained every
+    // frame whether or not anyone polls.
+    if (isFirstRotation) {
+      for (const [action, holdMs] of recycled) {
+        this.stepPrevHoldMs.set(action, holdMs);
+      }
+    }
+  }
+
+  /**
+   * Drop the fixed-step hold baseline for every action bound to `code`
+   * whose hold has fully ended. A full release ends the hold's identity:
+   * the next press's threshold crossing must be measured from zero, not
+   * against the previous press's sample. Raw (enablement-ignoring),
+   * matching how the baselines are sampled.
+   */
+  private clearEndedStepHoldBaselines(code: string): void {
+    for (const [action, keys] of this.actionMap) {
+      if (keys.includes(code) && this.rawHoldDurationMs(action) === 0) {
+        this.stepPrevHoldMs.delete(action);
+        this.stepHoldSnapshot.delete(action);
+      }
+    }
   }
 
   /** Hold duration (ms) across all keys/synthetic sources mapped to the action, 0 if not held. */
@@ -287,37 +422,55 @@ export class InputManager {
   }
 
   /**
-   * Hold-start edge: true only on the frame the action's hold crosses
-   * `seconds`. Threshold-crossing math over the hold clock, so any call-site
-   * threshold works with no per-action config. Drives "released before T = a
-   * tap, crossed T = hold-start" input feel. A tap (released before the
-   * threshold) never fires it — the hold resets to 0 on the release frame.
+   * Hold-start edge: true only in the query window where the action's hold
+   * crosses `seconds` — the current frame or the current fixed step,
+   * matching the calling context like {@link isJustPressed}. Threshold-
+   * crossing math over the hold clock, so any call-site threshold works
+   * with no per-action config. Drives "released before T = a tap, crossed
+   * T = hold-start" input feel. A tap (released before the threshold) never
+   * fires it — the hold resets to 0 in the release window.
    */
   isJustHeldFor(action: string, seconds: number): boolean {
     if (!this.isActionEnabled(action)) return false;
     const holdMs = this.holdDurationMs(action);
     if (holdMs <= 0) return false;
     const thresholdMs = seconds * 1000;
-    return (
-      holdMs >= thresholdMs &&
-      (this.prevHoldMs.get(action) ?? 0) < thresholdMs
-    );
+    const window = this.currentStepWindow();
+    let baselineMs: number;
+    if (window === null) {
+      baselineMs = this.prevHoldMs.get(action) ?? 0;
+    } else {
+      this.rotateStepHolds(window + 1);
+      baselineMs = this.stepPrevHoldMs.get(action) ?? 0;
+    }
+    return holdMs >= thresholdMs && baselineMs < thresholdMs;
   }
 
   /**
-   * Seconds the action was held, valid only on the frame the action is fully
-   * released — the last pressed binding (key or synthetic) lets go; a chord's
-   * partial release reports 0. Captured at the release edge, so it survives
-   * {@link getHoldDuration} resetting to 0 that same frame — no
+   * Seconds the action was held, valid only in the query window where the
+   * action is fully released — the last pressed binding (key or synthetic)
+   * lets go; a chord's partial release reports 0. The window is the current
+   * frame or the current fixed step, matching the calling context like
+   * {@link isJustPressed}. Captured at the release edge, so it survives
+   * {@link getHoldDuration} resetting to 0 in that same window — no
    * sample-before-release dance needed.
    */
   getReleaseDuration(action: string): number {
     if (!this.isActionEnabled(action)) return 0;
     if (this.isActionStillHeld(action)) return 0;
-    return (this.releaseDurationMs.get(action) ?? 0) / 1000;
+    const window = this.currentStepWindow();
+    if (window === null) {
+      return (this.releaseDurationMs.get(action) ?? 0) / 1000;
+    }
+    const entry = this.stepReleaseDurations.get(action);
+    return entry && entry.tag === window ? entry.ms / 1000 : 0;
   }
 
-  /** True on the frame the action is fully released, if it was held for at most `maxSeconds` (a tap). */
+  /**
+   * True in the query window where the action is fully released — frame or
+   * fixed step, matching the calling context like {@link isJustPressed} —
+   * if it was held for at most `maxSeconds` (a tap).
+   */
   isJustTapped(action: string, maxSeconds: number): boolean {
     return (
       this.isJustReleased(action) &&
@@ -326,7 +479,11 @@ export class InputManager {
     );
   }
 
-  /** True on the frame the action is fully released, if it was held for at least `minSeconds`. */
+  /**
+   * True in the query window where the action is fully released — frame or
+   * fixed step, matching the calling context like {@link isJustPressed} —
+   * if it was held for at least `minSeconds`.
+   */
   isJustReleasedAfter(action: string, minSeconds: number): boolean {
     return (
       this.isJustReleased(action) &&
@@ -413,10 +570,17 @@ export class InputManager {
     this.bufferedPressClockStamps.delete(clock);
   }
 
-  /** Record the hold duration (ms) of a press ending this frame, keeping the longest across keys. */
+  /** Record the hold duration (ms) of a press ending now, keeping the longest across keys per window. */
   private recordActionRelease(action: string, durationMs: number): void {
     const prev = this.releaseDurationMs.get(action) ?? 0;
     this.releaseDurationMs.set(action, Math.max(prev, durationMs));
+    const tag = this.stepTag();
+    const stepEntry = this.stepReleaseDurations.get(action);
+    if (stepEntry && stepEntry.tag === tag) {
+      stepEntry.ms = Math.max(stepEntry.ms, durationMs);
+    } else {
+      this.stepReleaseDurations.set(action, { ms: durationMs, tag });
+    }
   }
 
   // -- Axis helpers --
@@ -1484,6 +1648,7 @@ export class InputManager {
       throw new Error(`InputManager.fireAction(): unknown action "${name}".`);
     }
     this.pulsedSyntheticActions.add(name);
+    this.stepPulseTags.set(name, this.stepTag());
     // Preserve a held action's start so a stray pulse can't rewind its hold.
     if (!this.heldSyntheticActions.has(name)) {
       this.syntheticActionStarts.set(name, this.elapsedMs);
@@ -1514,6 +1679,10 @@ export class InputManager {
     if (this.heldSyntheticActions.has(name)) return;
     this.heldSyntheticActions.add(name);
     this.pulsedSyntheticActions.add(name);
+    this.stepPulseTags.set(name, this.stepTag());
+    // Frame-window semantics: a release-then-press in one frame reads as
+    // pressed. The step tag stays — a pending step window spans frames and
+    // must show every edge that landed in it, like the physical-key path.
     this.justReleasedActions.delete(name);
     this.syntheticActionStarts.set(name, this.elapsedMs);
     // Match the physical path: a disabled action's state is already suppressed
@@ -1537,9 +1706,16 @@ export class InputManager {
     const start = this.syntheticActionStarts.get(name);
     const durationMs = start !== undefined ? this.elapsedMs - start : 0;
     this.heldSyntheticActions.delete(name);
+    // Frame-window semantics: a press-then-release in one frame reads as
+    // released. The step tag stays — see the matching note in fireActionDown.
     this.pulsedSyntheticActions.delete(name);
     this.syntheticActionStarts.delete(name);
     this.justReleasedActions.add(name);
+    this.stepSyntheticReleaseTags.set(name, this.stepTag());
+    if (this.rawHoldDurationMs(name) === 0) {
+      this.stepPrevHoldMs.delete(name);
+      this.stepHoldSnapshot.delete(name);
+    }
     // Match the physical path: a disabled action's release listeners must not
     // fire, mirroring how its press was suppressed.
     if (this.isActionEnabled(name)) {
@@ -1581,6 +1757,14 @@ export class InputManager {
     for (const stamps of this.bufferedPressClockStamps.values()) stamps.clear();
     this.claimedBufferedPress.clear();
     this.prevHoldMs.clear();
+    this.stepPressTags.clear();
+    this.stepReleaseTags.clear();
+    this.stepPulseTags.clear();
+    this.stepSyntheticReleaseTags.clear();
+    this.stepReleaseDurations.clear();
+    this.stepPrevHoldMs.clear();
+    this.stepHoldSnapshot.clear();
+    this.stepHoldRotatedAt = -1;
     this.pointers.clear();
     this.primaryPointerId = null;
     this.mouseButtonAggregate.clear();
@@ -1697,6 +1881,16 @@ export class InputManager {
    */
   _setErrorBoundary(boundary: ErrorBoundary | undefined): void {
     this.errorBoundary = boundary;
+  }
+
+  /**
+   * @internal Wire the scheduler so edge queries can resolve the caller's
+   * execution context (phase and fixed step). Called by
+   * `InputPlugin.registerSystems`. When never wired (standalone manager),
+   * every query resolves against the frame window.
+   */
+  _setScheduler(scheduler: SchedulerLike): void {
+    this.scheduler = scheduler;
   }
 
   /** @internal */
@@ -1886,6 +2080,7 @@ export class InputManager {
       return;
     }
     this.justPressedKeys.add(code);
+    this.stepPressTags.set(code, this.stepTag());
     this.notifyKeyListeners(this.keyDownListeners, this.keyDownListenersAny, code);
     for (const action of this.actionsForCode(code)) {
       this.notifyActionListeners(this.actionListeners, action);
@@ -1909,6 +2104,7 @@ export class InputManager {
     if (!this.pressedKeys.has(code)) {
       this.pressedKeys.add(code);
       this.justPressedKeys.add(code);
+      this.stepPressTags.set(code, this.stepTag());
       this.holdStart.set(code, this.elapsedMs);
       this.notifyKeyListeners(this.keyDownListeners, this.keyDownListenersAny, code);
       for (const action of this.actionsForCode(code)) {
@@ -1928,7 +2124,9 @@ export class InputManager {
       const durationMs = start !== undefined ? this.elapsedMs - start : 0;
       this.pressedKeys.delete(code);
       this.justReleasedKeys.add(code);
+      this.stepReleaseTags.set(code, this.stepTag());
       this.holdStart.delete(code);
+      this.clearEndedStepHoldBaselines(code);
       this.notifyKeyListeners(this.keyUpListeners, this.keyUpListenersAny, code);
       for (const action of this.actionsForCode(code)) {
         this.notifyActionListeners(this.actionReleasedListeners, action);
@@ -2169,6 +2367,25 @@ export class InputManager {
       const holdMs = this.rawHoldDurationMs(action);
       if (holdMs > 0) this.prevHoldMs.set(action, holdMs);
       else this.prevHoldMs.delete(action);
+    }
+    // Fixed-step windows outlive the frame — a frame can run zero steps —
+    // so only entries whose step has already started are dropped. This is
+    // housekeeping: a stale tag can never match a future window, because
+    // the step index is monotonic.
+    const currentTag = this.stepTag();
+    this.pruneStepTags(this.stepPressTags, currentTag);
+    this.pruneStepTags(this.stepReleaseTags, currentTag);
+    this.pruneStepTags(this.stepPulseTags, currentTag);
+    this.pruneStepTags(this.stepSyntheticReleaseTags, currentTag);
+    for (const [action, entry] of this.stepReleaseDurations) {
+      if (entry.tag < currentTag) this.stepReleaseDurations.delete(action);
+    }
+  }
+
+  /** Drop step-window entries whose step has already started. */
+  private pruneStepTags(tags: Map<string, number>, beforeTag: number): void {
+    for (const [key, tag] of tags) {
+      if (tag < beforeTag) tags.delete(key);
     }
   }
 

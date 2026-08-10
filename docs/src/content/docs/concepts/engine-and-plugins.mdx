@@ -114,6 +114,19 @@ const myPlugin: Plugin = {
 Every field except `name` is optional. A minimal plugin can be just
 `{ name: "hello" }`.
 
+The scheduler also reports where the current call is executing, for plugin
+code that can be reached from more than one phase:
+
+```typescript
+scheduler.currentPhase;   // the Phase running right now, or null outside any phase
+scheduler.fixedStepIndex; // monotonic count of fixed steps started — a frame can
+                          // run several fixed steps, or none
+```
+
+`@yagejs/input` reads these to scope its edge queries to the caller's frame or
+fixed step; any plugin whose behavior depends on its execution context can
+branch on them the same way.
+
 ## Plugin Lifecycle Order
 
 When `engine.start()` is called the engine processes plugins in this sequence:

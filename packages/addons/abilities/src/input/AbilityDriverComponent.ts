@@ -11,11 +11,11 @@ import type { AbilityDriverOptions } from "./AbilityDriver.js";
  * `InputManager`, updates the plain driver each frame, and disposes input
  * listeners and buffered interactions when removed.
  *
- * Input is always sampled once per rendered frame — input edges exist for
- * exactly one frame, so polling on the fixed step would miss or double-see
- * them. With the sibling `Abilities` on the `"fixed"` clock (the default),
- * an intent sent this frame starts a timeline that then advances on the
- * fixed step.
+ * Input is sampled once per rendered frame — the frame is where new input
+ * arrives, so per-frame polling forwards an intent on the frame its edge
+ * lands, independent of how many fixed steps that frame runs. With the
+ * sibling `Abilities` on the `"fixed"` clock (the default), an intent sent
+ * this frame starts a timeline that then advances on the fixed step.
  */
 export class AbilityDriverComponent<
   TAction extends string = string,
