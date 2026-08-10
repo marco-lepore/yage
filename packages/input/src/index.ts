@@ -13,6 +13,7 @@ export type {
   RebindResult,
   CameraLike,
   RendererLike,
+  SchedulerLike,
   GamepadInfo,
   GamepadAxisKey,
   PointerInfo,

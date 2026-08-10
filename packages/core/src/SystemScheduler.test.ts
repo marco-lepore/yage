@@ -151,6 +151,71 @@ describe("SystemScheduler", () => {
     expect(() => scheduler.run(Phase.Update, 16)).not.toThrow();
   });
 
+  describe("execution context", () => {
+    class PhaseProbe extends System {
+      readonly phase: Phase;
+      seenPhases: Array<Phase | null> = [];
+      seenSteps: number[] = [];
+      constructor(
+        phase: Phase,
+        private readonly scheduler: SystemScheduler,
+      ) {
+        super();
+        this.phase = phase;
+      }
+      update(): void {
+        this.seenPhases.push(this.scheduler.currentPhase);
+        this.seenSteps.push(this.scheduler.fixedStepIndex);
+      }
+    }
+
+    it("currentPhase reports the running phase inside a system and null outside", () => {
+      const scheduler = new SystemScheduler();
+      const probe = new PhaseProbe(Phase.Update, scheduler);
+      scheduler.add(probe);
+      expect(scheduler.currentPhase).toBeNull();
+      scheduler.run(Phase.Update, 16);
+      expect(probe.seenPhases).toEqual([Phase.Update]);
+      expect(scheduler.currentPhase).toBeNull();
+    });
+
+    it("currentPhase is restored when a system throws", () => {
+      const scheduler = new SystemScheduler();
+      class ThrowingSystem extends System {
+        readonly phase = Phase.Update;
+        update(): void {
+          throw new Error("boom");
+        }
+      }
+      scheduler.add(new ThrowingSystem());
+      expect(() => scheduler.run(Phase.Update, 16)).toThrow("boom");
+      expect(scheduler.currentPhase).toBeNull();
+    });
+
+    it("fixedStepIndex counts every fixed-phase run, even with no fixed systems", () => {
+      const scheduler = new SystemScheduler();
+      expect(scheduler.fixedStepIndex).toBe(0);
+      scheduler.run(Phase.FixedUpdate, 16);
+      expect(scheduler.fixedStepIndex).toBe(1);
+      scheduler.run(Phase.Update, 16);
+      scheduler.run(Phase.EndOfFrame, 16);
+      expect(scheduler.fixedStepIndex).toBe(1);
+      scheduler.run(Phase.FixedUpdate, 16);
+      scheduler.run(Phase.FixedUpdate, 16);
+      expect(scheduler.fixedStepIndex).toBe(3);
+    });
+
+    it("a fixed system sees the index of the step it runs in", () => {
+      const scheduler = new SystemScheduler();
+      const probe = new PhaseProbe(Phase.FixedUpdate, scheduler);
+      scheduler.add(probe);
+      scheduler.run(Phase.FixedUpdate, 16);
+      scheduler.run(Phase.FixedUpdate, 16);
+      expect(probe.seenPhases).toEqual([Phase.FixedUpdate, Phase.FixedUpdate]);
+      expect(probe.seenSteps).toEqual([1, 2]);
+    });
+  });
+
   describe("registration lifecycle", () => {
     const ctx = {} as EngineContext;
 

@@ -251,6 +251,9 @@ export class InputPlugin implements Plugin {
   }
 
   registerSystems(scheduler: SystemScheduler): void {
+    // The manager reads the scheduler's currentPhase / fixedStepIndex to
+    // resolve edge queries against the caller's execution context.
+    this.manager._setScheduler(scheduler);
     scheduler.add(new InputPollSystem());
     scheduler.add(new InputClearSystem());
   }

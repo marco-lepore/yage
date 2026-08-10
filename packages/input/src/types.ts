@@ -1,5 +1,5 @@
 import { ServiceKey } from "@yagejs/core";
-import type { RendererAdapter, Vec2 } from "@yagejs/core";
+import type { Phase, RendererAdapter, Vec2 } from "@yagejs/core";
 import type { InputManager } from "./InputManager.js";
 
 /** Service key for the InputManager. */
@@ -15,6 +15,18 @@ export interface CameraLike {
  * coordinate mapping. Alias of the cross-package `RendererAdapter` contract.
  */
 export type RendererLike = RendererAdapter;
+
+/**
+ * The slice of core's `SystemScheduler` the InputManager reads to resolve a
+ * query's execution context: which phase is running, and which fixed step.
+ * Structural so tests can substitute a stub.
+ */
+export interface SchedulerLike {
+  /** Phase whose systems are executing right now, or `null` outside any phase. */
+  readonly currentPhase: Phase | null;
+  /** Monotonic count of fixed steps started; identifies the running step during `Phase.FixedUpdate`. */
+  readonly fixedStepIndex: number;
+}
 
 /**
  * A time source a buffered-press window can be measured on. `SceneTime`
