@@ -87,9 +87,11 @@ entity.transform.translate(dir.x * speed * dt, dir.y * speed * dt);
 ### Hold Duration
 
 Check how long an action has been continuously held. Durations are in
-**seconds** (matching engine time everywhere else) and measure on the raw input
-clock (`getClockTime()`): scene pause and time scaling do not affect them, so a
-hold keeps accruing while the scene is paused or frozen.
+**seconds** (matching engine time everywhere else) and count on the raw input
+clock (`getClockTime()`) unless you say otherwise: scene pause and time scaling
+do not affect that clock, so by default a hold keeps accruing while the scene is
+paused or frozen. To measure a hold in simulation seconds instead, see
+[Counting on Scene Time](#counting-on-scene-time).
 
 ```typescript
 const seconds = input.getHoldDuration("attack");
@@ -133,6 +135,66 @@ const held = input.getReleaseDuration("attack"); // seconds
 window the action is released — no need to sample `getHoldDuration` before the
 release lands.
 
+### Counting on Scene Time
+
+Every duration query takes an optional clock: the six above plus
+`consumeBufferedPress`. Omit it and the duration counts on the raw input clock,
+which runs on unscaled frame time. Pass a scene's `SceneTime` and it counts on
+that scene's simulation seconds instead — the clock stops while the scene is
+stack-paused or frozen, and follows `scene.timeScale` together with any active
+`SceneTime` scale requests. Physics steps under that same effective scale, so a
+charge meter and the world it charges in run at one rate.
+
+The clock is scene-wide. An entity left out of a scale request through
+`excludeUpdates`, or carrying its own `entity.timeScale`, updates at a rate the
+scene clock does not follow — a charge on that entity still counts at the
+scene's rate. Measure those holds from the `dt` the entity's own update
+receives. The raw clock does not match that entity either: it runs on real time,
+so it ignores `scene.timeScale` and the stack pause that stops the entity along
+with its scene.
+
+```typescript
+import { SceneTimeKey } from "@yagejs/core";
+
+// Inside a Component or Scene subclass.
+const clock = this.use(SceneTimeKey);
+
+// The charge stops while the pause menu is up and halves under slow motion.
+if (input.isJustHeldFor("attack", 0.5, { clock })) {
+  beginCharge();
+}
+
+const charged = input.getReleaseDuration("attack", { clock });
+```
+
+The clock does not change which window an edge falls in. That still follows your
+calling context, frame or fixed step, as described under
+[Press State](#press-state) — the clock only decides how the duration is
+measured. One consequence: a scene clock advances once per frame, so a hold
+measured on it does not change between the fixed steps of a single frame, and a
+`fixedUpdate` reader sees the crossing in the first step of the frame it lands
+in.
+
+Each clock keeps its own readings, so one press can be a tap on the scene clock
+and a long press on the raw one. `isJustHeldFor` carries a separate threshold
+baseline per clock and fires exactly once on each. A hold that was already
+running when the scene started counts from zero on that scene's clock, and its
+release reports only the seconds measured there — a long press begun before the
+scene was entered can read as a tap on that clock. A release that landed before
+the scene started reports no length at all: both `isJustTapped` and
+`isJustReleasedAfter` stay false for it.
+
+:::caution[A frozen clock measures no hold]
+A frozen scene still runs its components, but its clock does not advance. A
+press that starts and ends inside a `freezeFor` hitstop therefore measures 0
+seconds on the scene clock, which `isJustTapped` reads as a tap and
+`isJustReleasedAfter` never accepts. Read a charge release on the raw clock if
+it has to work during a freeze.
+:::
+
+Passing a clock the input plugin has not registered throws. That covers a
+`SceneTime` held from a scene that has since left the stack.
+
 ### Buffered Press
 
 Act on a press up to a window late — the classic "buffer the jump just before
@@ -151,9 +213,10 @@ if (grounded && input.consumeBufferedPress("jump", 0.12)) {
 Consumption is scoped to this query — `isJustPressed` and action listeners
 still see every press.
 
-The two-argument form measures the window on the raw input clock, which runs on
-unscaled frame time and ignores scene pause and time scale. To measure a jump
-buffer in simulation seconds instead, pass the scene's `SceneTime` as the clock:
+The two-argument form measures the window on the raw input clock. To measure a
+jump buffer in simulation seconds instead, pass the scene's `SceneTime` as the
+clock, as described under
+[Counting on Scene Time](#counting-on-scene-time):
 
 ```typescript
 import { SceneTimeKey } from "@yagejs/core";
@@ -164,14 +227,6 @@ if (grounded && input.consumeBufferedPress("jump", 0.12, { clock })) {
   jump();
 }
 ```
-
-The scene clock stops while the scene is stack-paused or frozen, and follows
-`scene.timeScale` together with any active `SceneTime` scale requests. Physics
-steps under that same effective scale, so the window and the physics step
-measure time the same way.
-
-Passing a clock the input plugin has not registered throws. That covers a
-`SceneTime` held from a scene that has since left the stack.
 
 :::caution[A buffered press outlives a pause]
 The scene clock stops while the scene is paused, so a window measured on it

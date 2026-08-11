@@ -55,6 +55,9 @@ input.getReleaseDuration("fire"); // seconds held, valid only in the release win
 // releases — a bound key, mouse button, gamepad button, or synthetic press.
 // A chord's partial release reports 0 / false.
 
+// Every duration query takes an optional clock (see below)
+input.getHoldDuration("fire", { clock }); // seconds of that scene's simulation time
+
 // Buffered press — consuming query; true once per press within the window
 input.consumeBufferedPress("jump", 0.12); // pressed within last 0.12s and unclaimed → claim + true
 
@@ -73,23 +76,53 @@ step began. Each context sees an edge exactly once at any display/step rate
 ratio. When several steps run in one frame only the first sees it, and an edge
 in a frame that runs no step is held for the next step.
 
-**Clocks.** Hold durations and every tap/hold threshold (`getHoldDuration`,
+The window and the clock (below) are separate choices: the clock decides how a
+duration is measured, the calling context decides which window an edge falls in,
+and both apply to `isJustHeldFor`, `getReleaseDuration`, `isJustTapped` and
+`isJustReleasedAfter`. A scene clock advances once per frame, so a duration
+measured on it does not change between the steps of one frame — a fixed-step
+reader sees a crossing in the first step of the frame it lands in.
+
+**Clocks.** Every duration query — the hold-duration family (`getHoldDuration`,
 `isHeldFor`, `isJustHeldFor`, `isJustTapped`, `isJustReleasedAfter`,
-`getReleaseDuration`) measure on the raw input clock (`getClockTime()`), which
-ignores scene pause and time scale. A hold keeps accruing through a pause or
-`freezeFor`. `consumeBufferedPress` is the one query that can measure on a
-different clock: its two-argument form uses the raw input clock, and passing a
-scene's `SceneTime` measures the window in that scene's simulation seconds
+`getReleaseDuration`) and the `consumeBufferedPress` window — counts on the raw
+input clock (`getClockTime()`) by default, which ignores scene pause and time
+scale: a charge keeps charging through a pause menu or a `freezeFor`. Pass a
+scene's `SceneTime` as `clock` to count on that scene's simulation seconds
 instead. The scene clock stops while the scene is stack-paused or frozen and
-follows the scene's effective time scale, the same scale physics steps under.
+follows the scene's effective time scale, the same scale physics steps under. It
+is scene-wide: an entity excluded from a scale request via `excludeUpdates`, or
+with its own `entity.timeScale`, updates at a rate the scene clock does not
+follow. Measure that entity's holds from the `dt` its own update receives — the
+raw clock is no substitute, since it runs on real time and so ignores
+`scene.timeScale` and stack pause too.
 
 ```ts
 // Inside a Component or Scene subclass — `use` returns a non-optional clock.
 // `scene.tryResolveScoped(SceneTimeKey)` returns `SceneTime | undefined`, which
 // the `clock` option does not accept under exactOptionalPropertyTypes.
 const clock = this.use(SceneTimeKey);
+input.getHoldDuration("charge", { clock }); // simulation seconds charged
+input.isJustHeldFor("charge", 0.5, { clock }); // crossing measured on the scene
+input.isJustTapped("charge", 0.2, { clock }); // a tap in simulation seconds
 input.consumeBufferedPress("jump", 0.12, { clock });
 ```
+
+Each clock keeps its own readings, so the same press can be a tap on the scene
+clock and a long press on the raw one. `isJustHeldFor` carries a separate
+crossing baseline per clock and fires once on each. A hold that began before a
+clock was registered starts from zero on that clock rather than reading as not
+held, and its release reports only the part measured since — a long press begun
+before the scene was entered can read as a tap on that scene's clock. A press
+made before registration is not buffered on it at all, and a release that landed
+before it carries no length there — `isJustTapped` and `isJustReleasedAfter` are
+false rather than treating the missing length as 0.
+
+**Gotcha — a frozen clock measures no hold.** A frozen scene still runs its
+components, but its clock does not advance, so a press that starts and ends
+inside a `freezeFor` hitstop measures 0 seconds on it: `isJustTapped` reads a
+tap and `isJustReleasedAfter` never fires. Read charge releases on the raw clock
+if they must work during a freeze.
 
 The input plugin registers the `SceneTime` of every scene the engine enters, and
 those are the only clocks accepted. Any other value — a hand-rolled `{ elapsed }`

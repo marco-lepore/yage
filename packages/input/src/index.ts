@@ -7,6 +7,7 @@ export type {
   InputConfig,
   InputClock,
   BufferedPressOptions,
+  HoldDurationOptions,
   ActionMapDefinition,
   InputConflictPolicy,
   RebindOptions,
