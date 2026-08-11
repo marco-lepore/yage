@@ -504,8 +504,51 @@ describe("SceneTime engine integration", () => {
     advanceFrames(engine, 1, 16);
     expect(time.fixedElapsed - beforeCatchUp).toBeCloseTo(0.032);
 
+    // This scene ran from the first tick at a constant scale, so the gap is
+    // the accumulator remainder: non-negative and under one step.
     advanceFrames(engine, 3, 16);
-    expect(time.elapsed - time.fixedElapsed).toBeLessThan(0.016);
+    const gap = time.elapsed - time.fixedElapsed;
+    expect(gap).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThan(0.016);
+    engine.destroy();
+  });
+
+  it("leads elapsed in a scene entered mid-run", async () => {
+    const engine = await createTestEngine({ fixedTimestep: 0.016 });
+    await engine.scenes.push(new GameScene());
+    engine.loop.tick(15); // under one step: 15ms stays in the accumulator
+
+    // The accumulator is engine-wide, so the scene starts counting against
+    // time that was never its own frame time.
+    const scene = new GameScene();
+    await engine.scenes.push(scene);
+    const time = scene.tryResolveScoped(SceneTimeKey)!;
+
+    engine.loop.tick(20); // 15 + 20 = two steps against one 20ms frame
+    expect(time.elapsed).toBeCloseTo(0.02);
+    expect(time.fixedElapsed).toBeCloseTo(0.032);
+    engine.destroy();
+  });
+
+  it("leads elapsed when the scale changes before the pending steps run", async () => {
+    const engine = await createTestEngine({ fixedTimestep: 0.016 });
+    const scene = new GameScene();
+    await engine.scenes.push(scene);
+    const time = scene.tryResolveScoped(SceneTimeKey)!;
+
+    const slow = time.scaleBy(0.25, { key: "slowmo" });
+    engine.loop.tick(200); // clamps at 5 steps, 0.12s left in the accumulator
+    expect(time.elapsed).toBeCloseTo(0.05);
+    expect(time.fixedElapsed).toBeCloseTo(0.02);
+
+    // The seconds still in the accumulator convert at the scale in force when
+    // their step runs, not the 0.25 of the frame they arrived in.
+    slow.release();
+    engine.loop.tick(16);
+    expect(time.fixedElapsed - time.elapsed).toBeCloseTo(0.034);
+
+    advanceFrames(engine, 60, 16);
+    expect(time.fixedElapsed - time.elapsed).toBeGreaterThan(0.034);
     engine.destroy();
   });
 

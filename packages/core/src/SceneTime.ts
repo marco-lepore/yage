@@ -156,11 +156,15 @@ export class SceneTime {
    * a `timeScale` of 0, and an active freeze. Starts at 0 each time the scene
    * is entered and is not saved.
    *
-   * Only time the loop has already converted into fixed steps is counted, so
-   * this reading trails `elapsed` by whatever is still in the loop's
-   * accumulator — under one fixed step most frames, more right after a frame
-   * that hit `maxFixedStepsPerFrame`, since the steps that frame could not run
-   * are spread over the following frames.
+   * This reading and `elapsed` advance on different cadences, so at any moment
+   * they can differ by one or more fixed steps in either direction. The loop's
+   * fixed-step accumulator is engine-wide: a scene entered mid-run starts
+   * counting against the time already in it. A frame that hits
+   * `maxFixedStepsPerFrame` leaves its unrun steps for the following frames.
+   * Time waiting in the accumulator is converted at the scale in force when its
+   * step runs, not at the scale of the frame it arrived in. Stamp and compare
+   * against the same reading — subtracting one from the other does not give a
+   * meaningful lag.
    *
    * The increment uses the whole-scene {@link SceneTime.effectiveScale}, so it
    * does not follow `entity.timeScale` or an `excludeUpdates` exclusion. An

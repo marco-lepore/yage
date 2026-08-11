@@ -158,17 +158,27 @@ const stillOpen = time.fixedElapsed - this.windowOpenedAt < 0.25;
 ```
 
 For a duration you schedule rather than compare — a cooldown, an invincibility
-window — `pc.slot({ duration, clock: "fixed" })` runs on the same timestep and
-reports its own completion. See
+window — the entity's `ProcessComponent` can run it on the same timestep and
+report its own completion, with `slot({ duration, clock: "fixed" })`. See
 [Processes and tweens](/guides/processes-and-tweens/).
 
 Both readings hold under stack pause, `scene.timeScale = 0`, and freeze
-requests, and both start at 0 on scene entry and are not saved. `fixedElapsed`
-counts only the time the loop has already converted into fixed steps, so it
-trails `elapsed` by whatever is still in the accumulator: under one fixed step
-most frames, and more right after a frame long enough to hit the loop's
-fixed-step cap, because the steps that frame could not run are spread over the
-following frames.
+requests, and both start at 0 on scene entry and are not saved. They advance on
+different cadences, so at any moment they can differ by one or more fixed steps
+in either direction:
+
+- The loop's fixed-step accumulator is engine-wide. A scene entered mid-run
+  starts counting against the time already in it, so its `fixedElapsed` can run
+  ahead of its `elapsed` from the first frame.
+- A frame long enough to hit the loop's fixed-step cap leaves its unrun steps
+  for the following frames, so `fixedElapsed` falls behind and then advances
+  several steps at once.
+- Time waiting in the accumulator is converted at the scale in force when its
+  step runs, not at the scale of the frame it arrived in. Releasing a slow
+  motion request after a long frame leaves `fixedElapsed` permanently ahead.
+
+Stamp and compare against the same reading. Subtracting `fixedElapsed` from
+`elapsed` does not give a meaningful lag.
 
 `fixedElapsed` advances under the whole-scene `time.effectiveScale`, so it does
 not follow `entity.timeScale` or an `excludeUpdates` exclusion. The player in
