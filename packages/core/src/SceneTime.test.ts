@@ -485,6 +485,30 @@ describe("SceneTime engine integration", () => {
     engine.destroy();
   });
 
+  it("falls behind on a clamped frame and catches up over the next ones", async () => {
+    const engine = await createTestEngine({
+      fixedTimestep: 0.016,
+      maxFixedStepsPerFrame: 2,
+    });
+    const scene = new GameScene();
+    await engine.scenes.push(scene);
+    const time = scene.tryResolveScoped(SceneTimeKey)!;
+
+    engine.loop.tick(100); // 100ms of frame time, capped at two steps
+    expect(time.fixedElapsed).toBeCloseTo(0.032);
+    expect(time.elapsed - time.fixedElapsed).toBeGreaterThan(0.016);
+
+    // The unspent time stays in the loop's accumulator, so a following 16ms
+    // frame still runs two steps: the reading advances faster than the frame.
+    const beforeCatchUp = time.fixedElapsed;
+    advanceFrames(engine, 1, 16);
+    expect(time.fixedElapsed - beforeCatchUp).toBeCloseTo(0.032);
+
+    advanceFrames(engine, 3, 16);
+    expect(time.elapsed - time.fixedElapsed).toBeLessThan(0.016);
+    engine.destroy();
+  });
+
   it("reports effectiveTimeScale and frozen through the Inspector", async () => {
     const engine = await createTestEngine();
     const scene = new GameScene();

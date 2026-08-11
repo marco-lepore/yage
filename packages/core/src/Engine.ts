@@ -168,11 +168,9 @@ export class Engine {
         this.scheduler.run(Phase.EarlyUpdate, dt);
       },
       fixedUpdate: (dt) => {
-        // Accrue fixed-clock scene time before the phase runs, so a system
-        // reading it inside a step counts that step, and physics — stepping
-        // under the same effective scale at priority 0 — advances the world by
-        // the amount just accrued.
-        for (const scene of [...this.scenes.activeScenes]) {
+        // Accrue fixed-timestep scene time before the phase runs, so a system
+        // reading it inside a step counts that step.
+        for (const scene of this.scenes.activeScenes) {
           scene.tryResolveScoped(SceneTimeKey)?._tickFixed(dt);
         }
         this.scheduler.run(Phase.FixedUpdate, dt);
