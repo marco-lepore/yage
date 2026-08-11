@@ -102,9 +102,9 @@ raw clock is no substitute, since it runs on real time and so ignores
 // `scene.tryResolveScoped(SceneTimeKey)` returns `SceneTime | undefined`, which
 // the `clock` option does not accept under exactOptionalPropertyTypes.
 const clock = this.use(SceneTimeKey);
-input.getHoldDuration("charge", { clock }); // seconds charged while playing
+input.getHoldDuration("charge", { clock }); // simulation seconds charged
 input.isJustHeldFor("charge", 0.5, { clock }); // crossing measured on the scene
-input.isJustTapped("charge", 0.2, { clock }); // a tap in playing time
+input.isJustTapped("charge", 0.2, { clock }); // a tap in simulation seconds
 input.consumeBufferedPress("jump", 0.12, { clock });
 ```
 

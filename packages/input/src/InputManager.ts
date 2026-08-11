@@ -574,7 +574,8 @@ export class InputManager {
    * The length counts on the raw input clock unless `options.clock` names a
    * registered scene clock, like {@link getHoldDuration}. Each clock captures
    * its own length at the release, so a hold spanning a pause reports the
-   * playing time on the scene clock and the wall-clock time on the raw one. A
+   * scene's simulation seconds on the scene clock, and the whole span
+   * including the pause on the raw one. A
    * hold that began before a clock was registered reports only the part
    * measured since, matching how it counted while held.
    */

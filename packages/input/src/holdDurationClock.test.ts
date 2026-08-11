@@ -145,8 +145,9 @@ describe("hold durations on a scene clock", () => {
 
     expect(input.getReleaseDuration("charge", { clock })).toBe(0.25);
     expect(input.getReleaseDuration("charge")).toBe(1);
-    // A press that lasts a second of wall time but a quarter of playing time
-    // is a tap on the scene clock and a long press on the raw one.
+    // A press that lasts a second on the raw input clock but a quarter of a
+    // second of simulation time is a tap on the scene clock and a long press
+    // on the raw one.
     expect(input.isJustTapped("charge", 0.3, { clock })).toBe(true);
     expect(input.isJustTapped("charge", 0.3)).toBe(false);
     expect(input.isJustReleasedAfter("charge", 0.5, { clock })).toBe(false);
