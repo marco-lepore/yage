@@ -406,6 +406,30 @@ describe("extractCollisionShapes", () => {
     expect((shape as { rotation?: number }).rotation).toBeCloseTo(Math.PI / 2);
   });
 
+  it("gives a tile object the same rect as any rectangle", () => {
+    // A MapObject's x/y is its top-left corner whichever corner Tiled anchored
+    // it on, so a gid needs no special case here.
+    const tile: MapObject = {
+      id: 30,
+      name: "crate",
+      x: 32,
+      y: 32,
+      width: 16,
+      height: 32,
+      rotation: 0,
+      visible: true,
+      gid: 5,
+    };
+
+    expect(extractCollisionShapes(makeMap([tile]))[0]).toEqual({
+      type: "rect",
+      x: 32,
+      y: 32,
+      width: 16,
+      height: 32,
+    });
+  });
+
   it("omits the rotation field when rotation is 0", () => {
     const rect: MapObject = {
       id: 21,

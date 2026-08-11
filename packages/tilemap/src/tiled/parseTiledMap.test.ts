@@ -90,7 +90,9 @@ import {
   extractObjects,
   toTilemapData,
 } from "./parseTiledMap.js";
+import { extractCollisionShapes } from "../colliders.js";
 import { getProperty, getPropertyArray } from "../properties.js";
+import { readTileGid } from "./gid.js";
 import { loadFixture } from "./fixtures/loadFixture.js";
 import type { TiledMapData, TileLayer, ObjectGroup } from "./types.js";
 
@@ -410,6 +412,30 @@ describe("createTilemapLayers", () => {
     expect(calls.map(({ x, y }) => ({ x, y }))).toEqual([
       { x: 5, y: 1 },
       { x: 21, y: 1 },
+    ]);
+  });
+
+  it("sits a tile on the bottom edge of its cell whatever its image size", () => {
+    const map = loadFixture("oversized-tiles.json");
+    mockAssets._cache.set("tall.png:0", { label: "wall" });
+    mockAssets._cache.set("stump.png", { label: "stump" });
+    mockAssets._cache.set("pine.png", { label: "pine" });
+    mockAssets._cache.set("coin.png", { label: "coin" });
+
+    const [layer] = createTilemapLayers(map);
+    const calls = (
+      layer as unknown as InstanceType<typeof mockCompositeTilemap>
+    ).calls;
+
+    // On a 16px grid: the 48px-tall wall overhangs two cells upward, the 16px
+    // stump fills its cell, the 64px pine overhangs three, and the 8px coin
+    // sits in the lower half of its own. The pine is also 32px wide and still
+    // starts at its cell's left edge.
+    expect(calls.map(({ x, y }) => ({ x, y }))).toEqual([
+      { x: 0, y: -32 },
+      { x: 16, y: 0 },
+      { x: 32, y: -48 },
+      { x: 48, y: 8 },
     ]);
   });
 
@@ -758,6 +784,59 @@ describe("toTilemapData", () => {
     expect(toTilemapData(loadFixture("embedded.json")).tilesets).toEqual([
       { firstGid: 1, name: "embedded terrain" },
     ]);
+  });
+
+  it("keeps a tile object's gid and moves its position to the top-left corner", () => {
+    const objects = toTilemapData(loadFixture("tile-objects.json"))
+      .objectLayers[0]!.objects;
+
+    // Bottom-left anchor: y climbs by the object's height.
+    expect(objects[0]).toMatchObject({ x: 96, y: 112, gid: 1, class: "Chest" });
+    // The gid keeps its flip bits, and the tileset lookup masks them off.
+    expect(objects[1]).toMatchObject({ x: 32, y: 48, gid: 2147483649 });
+    // The owning tileset anchors top-left, so there is nothing to move.
+    expect(objects[2]).toMatchObject({ x: 16, y: 16, gid: 3 });
+    // A quarter turn about the anchor swings the corner to the right of it.
+    expect(objects[3]?.x).toBeCloseTo(16);
+    expect(objects[3]?.y).toBeCloseTo(0);
+    // An object without a gid is untouched.
+    expect(objects[4]).toMatchObject({ x: 10, y: 20 });
+    expect(objects[4]).not.toHaveProperty("gid");
+  });
+
+  it("splits a tile object's gid with readTileGid", () => {
+    const objects = toTilemapData(loadFixture("tile-objects.json"))
+      .objectLayers[0]!.objects;
+
+    expect(readTileGid(objects[1]!.gid!)).toEqual({
+      id: 1,
+      flippedHorizontally: true,
+      flippedVertically: false,
+      flippedDiagonally: false,
+    });
+  });
+
+  it("carries a tile object's custom properties through", () => {
+    const objects = toTilemapData(loadFixture("tile-objects.json"))
+      .objectLayers[0]!.objects;
+
+    expect(objects[0]?.properties).toEqual([
+      { name: "contents", type: "string", value: "gold" },
+    ]);
+  });
+
+  it("places a tile object's collider where Tiled draws it", () => {
+    const shapes = extractCollisionShapes(
+      toTilemapData(loadFixture("tile-objects.json")),
+    );
+
+    expect(shapes[0]).toEqual({
+      type: "rect",
+      x: 96,
+      y: 112,
+      width: 16,
+      height: 16,
+    });
   });
 
   it("applies object layer offsets and records both layer offsets", () => {

@@ -4,7 +4,7 @@ Depends on `@yagejs/core`, `@yagejs/renderer`. Tiled map loader and renderer.
 
 ## Capabilities & Limits
 
-Supported: orthogonal Tiled JSON (tilesets must be exported as JSON, not TSX), multiple tile layers, object layers, custom properties on the map / layers / tilesets / objects, object-reference resolution, collision-shape extraction from rectangle / ellipse / polygon / polyline objects (raw `rect` / `circle` / `polygon` / `polyline` / `capsule` shapes), `toPhysicsColliders()` adapter to Rapier collider configs, tileset-image and collection-of-images tilesets, embedded and external tilesets, flipped and rotated tiles, animated tiles (see below), layer `offsetx`/`offsety` and tileset `tileoffset`, per-layer `visible` and `opacity`.
+Supported: orthogonal Tiled JSON (tilesets must be exported as JSON, not TSX), multiple tile layers, object layers, custom properties on the map / layers / tilesets / objects, object-reference resolution, collision-shape extraction from rectangle / ellipse / polygon / polyline / tile objects (raw `rect` / `circle` / `polygon` / `polyline` / `capsule` shapes), `toPhysicsColliders()` adapter to Rapier collider configs, tileset-image and collection-of-images tilesets, embedded and external tilesets, flipped and rotated tiles, tile images that do not match the map grid (anchored bottom-left), tile objects (`gid`, position, size and properties, the position normalised to the top-left corner through the tileset's `objectalignment`), animated tiles (see below), layer `offsetx`/`offsety` and tileset `tileoffset`, per-layer `visible` and `opacity`.
 
 Tilesets MUST be exported as JSON (`.tsj` / `.json`). Tiled's default XML `.tsx` format is not supported — in Tiled, *Edit Tileset → File → Export As → JSON*.
 
@@ -28,9 +28,9 @@ When you stage a Tiled tileset into `public/assets/maps/`, rewrite `image` to a 
 
 …and put `spr_tileset.png` next to the JSON. Same rule for embedded tilesets inside a map JSON — the `image` field is resolved relative to the *map* file's directory.
 
-Not supported: infinite/chunked maps, base64-encoded layer data, isometric/hex/staggered orientations, group layers and image layers, dynamic tile editing at runtime, built-in parallax layers (use a regular render layer with a scrolling sprite).
+Not supported: infinite/chunked maps, base64-encoded layer data, isometric/hex/staggered orientations, group layers and image layers, dynamic tile editing at runtime, built-in parallax layers (use a regular render layer with a scrolling sprite), drawing a tile object's image (its `gid` and box are parsed — you spawn the sprite), a tileset's `tilerendersize` / `fillmode` (a tile always draws at its image's own size), collision shapes authored on a tile inside the tileset.
 
-`validateTiledMap()` reports every one of these in a map — see [Unsupported Forms](#unsupported-forms).
+`validateTiledMap()` reports the forms that carry a diagnostic code — see [Unsupported Forms](#unsupported-forms). Three limits have no code, because the map itself parses fine: runtime tile editing, per-tile collision shapes, and a tileset's `tilerendersize` / `fillmode`.
 
 Workflow: parse Tiled JSON → `tilemap.getCollisionShapes("walls")` returns raw top-left-origin shapes → `toPhysicsColliders(shapes)` converts to center-origin Rapier configs → spawn a static body with one `ColliderComponent` per config.
 
@@ -131,6 +131,8 @@ Each layer is read through its own draw offset, and Tiled's flip bits are stripp
 
 A tileset's `tileoffset` is not reversed: it moves where a tile's image is drawn, not which cell the tile occupies, and one layer can mix tilesets that offset differently. A tile from an offset tileset answers at its cell.
 
+Every tile image is anchored to the bottom-left of its cell, the way Tiled draws it, whatever its size: one taller than the grid overhangs upward and a wider one to the right, and one smaller than the grid sits on the cell's bottom edge. The tile still occupies the one cell, so `getTileAt` answers there and not under the overhang. In a collection-of-images tileset each tile is measured on its own, so tall and short props can share a tileset. A tile draws at its image's own size — a tileset that asks Tiled to scale its tiles to the grid (`tilerendersize: "grid"`) is not read.
+
 Raw layer data (`tilemap.data.tileLayers[i].data`) keeps Tiled's GIDs with those bits intact. Split one with `readTileGid`:
 
 ```ts
@@ -202,7 +204,7 @@ interface TilesetInfo {
 }
 ```
 
-`MapObject` carries `id`, `name`, optional `class`, `x`/`y`/`width`/`height`/`rotation`, optional `point` / `ellipse` / `capsule` flags, an optional `polygon`, an optional `polyline`, and an optional `properties: MapObjectProperty[]` array of Tiled custom properties.
+`MapObject` carries `id`, `name`, optional `class`, `x`/`y`/`width`/`height`/`rotation`, an optional `gid` (see [Tile Objects](#tile-objects)), optional `point` / `ellipse` / `capsule` flags, an optional `polygon`, an optional `polyline`, and an optional `properties: MapObjectProperty[]` array of Tiled custom properties.
 
 ## Unsupported Forms
 
@@ -226,7 +228,7 @@ interface TilemapDiagnostic {
 }
 ```
 
-Codes: `unsupported-orientation`, `infinite-map`, `chunked-layer`, `encoded-layer-data`, `group-layer`, `image-layer`, `tsx-tileset`, `unresolved-tileset` (errors); `layer-parallax`, `unsupported-tile-animation` (warnings).
+Codes: `unsupported-orientation`, `infinite-map`, `chunked-layer`, `encoded-layer-data`, `group-layer`, `image-layer`, `tsx-tileset`, `unresolved-tileset`, `tile-object` (errors); `layer-parallax`, `unsupported-tile-animation` (warnings).
 
 A group layer and everything nested inside it is dropped — the diagnostic names the children so you can see what is missing. An external tileset that has not loaded yet is not a diagnostic; it resolves during preload.
 
@@ -253,8 +255,40 @@ const all = tilemap.getAllObjects();
 tilemap.findObject(42);            // by Tiled id
 tilemap.findObjectByName("Player"); // first match across all layers
 
-// MapObject: { id, name, class?, x, y, width, height, rotation, visible, point?, polygon?, polyline?, properties? }
+// MapObject: { id, name, class?, x, y, width, height, rotation, visible, gid?, point?, polygon?, polyline?, properties? }
 ```
+
+## Tile Objects
+
+An object that draws a tile carries `gid`, the global tile ID of the tile it shows. The image itself is not drawn — object layers are data, so you spawn the sprite. `validateTiledMap` reports a `tile-object` error per object layer, naming the objects whose images are not drawn.
+
+Its `x`/`y` is the top-left corner, like every other object type. Tiled stores a tile object on its bottom-left corner instead (or wherever the owning tileset's `objectalignment` says), and the conversion normalises that away, so `getObjects`, `findObject`, `getCollisionShapes`, `toPhysicsColliders` and your spawn code all read one convention.
+
+```ts
+import { readTileGid } from "@yagejs/tilemap";
+
+for (const obj of tilemap.getAllObjects()) {
+  if (obj.gid === undefined) continue;              // not a tile object
+  const { id, flippedHorizontally } = readTileGid(obj.gid);
+  scene.spawn(PropEntity, { tileId: id, x: obj.x, y: obj.y, flippedHorizontally });
+}
+```
+
+`rotation` is degrees about that same `x`/`y`, matching a rectangle object. Put both on the entity's `Transform` with the sprite anchored top-left, and it lands where Tiled draws it at any angle:
+
+```ts
+import { MathUtils, Transform } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
+// in the spawned entity's setup(), given the tile object it came from
+this.add(new Transform({
+  position: { x: obj.x, y: obj.y },
+  rotation: MathUtils.degToRad(obj.rotation), // Tiled stores degrees
+}));
+this.add(new SpriteComponent({ texture, anchor: { x: 0, y: 0 } }));
+```
+
+Collision shapes authored on the tile itself, inside the tileset, are not read — the rect `getCollisionShapes()` emits is the tile's whole box.
 
 ## Spawning Entities from Tiled Objects (auto-keys)
 
@@ -326,6 +360,7 @@ const shapes = tilemap.getCollisionShapes("walls");
 
 Mapping from Tiled object → emitted shape:
 - Rectangle → `rect`.
+- Tile object (has a `gid`) → `rect` over the tile's whole box, exactly like a rectangle; per-tile shapes authored in the tileset are not read.
 - Ellipse (w === h) → `circle`.
 - Ellipse (w !== h) → `polygon` sampling the ellipse outline (24 vertices; Rapier has no ellipse primitive, and the sampled ring is convex so the physics-side convex hull matches it exactly).
 - Capsule → `capsule` with `halfHeight = (max(w,h) - min(w,h)) / 2`, `radius = min(w,h) / 2`, `axis = "y"` if taller than wide else `"x"`.

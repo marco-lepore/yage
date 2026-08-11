@@ -105,6 +105,14 @@ export interface RectangleObject {
   height: number;
   rotation: number;
   visible: boolean;
+  /**
+   * Global tile ID, present only on an object that draws a tile. This is raw
+   * Tiled data, so `x`/`y` is the anchor corner the tileset's
+   * `objectalignment` names — bottom-left by default. `MapObject` carries the
+   * same object with its position normalised to the top-left corner. The flip
+   * bits are kept — split them out with `readTileGid`.
+   */
+  gid?: number;
   point?: undefined | false;
   polygon?: undefined;
   polyline?: undefined;
@@ -124,6 +132,7 @@ export interface PolygonObject {
   height: number;
   rotation: number;
   visible: boolean;
+  gid?: undefined;
   point?: undefined | false;
   polygon: { x: number; y: number }[];
   polyline?: undefined;
@@ -146,6 +155,7 @@ export interface PolylineObject {
   point?: undefined | false;
   polygon?: undefined;
   polyline: { x: number; y: number }[];
+  gid?: undefined;
   ellipse?: undefined | false;
   capsule?: undefined | false;
   properties?: TileObjectProperty[];
@@ -162,6 +172,7 @@ export interface PointObject {
   height: number;
   rotation: number;
   visible: boolean;
+  gid?: undefined;
   point: true;
   polygon?: undefined;
   polyline?: undefined;
@@ -181,6 +192,7 @@ export interface EllipseObject {
   height: number;
   rotation: number;
   visible: boolean;
+  gid?: undefined;
   ellipse: true;
   point?: undefined | false;
   polygon?: undefined;
@@ -200,6 +212,7 @@ export interface CapsuleObject {
   height: number;
   rotation: number;
   visible: boolean;
+  gid?: undefined;
   capsule: true;
   point?: undefined | false;
   polygon?: undefined;
@@ -240,6 +253,13 @@ export interface TilesetData {
   spacing?: number;
   properties?: TileObjectProperty[];
   tileoffset?: { x: number; y: number };
+  /**
+   * Corner or edge of a tile object that its stored `x`/`y` sits on:
+   * `"topleft"`, `"top"`, `"topright"`, `"left"`, `"center"`, `"right"`,
+   * `"bottom"`, `"bottomright"` or `"bottomleft"`. Absent, `"unspecified"` and
+   * any unrecognised value take the orthogonal default, bottom-left.
+   */
+  objectalignment?: string;
   /** Single-image tileset: path to the spritesheet image. */
   image?: string;
   imagewidth?: number;

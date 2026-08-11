@@ -89,6 +89,23 @@ describe("validateTiledMap", () => {
     expect(validateTiledMap(loadFixture("external-tsj.json"))).toEqual([]);
   });
 
+  it("reports the tile objects on a layer as one error", () => {
+    const entry = diagnostic("tile-object", "tile-objects.json");
+
+    expect(entry?.severity).toBe("error");
+    expect(entry?.layer).toBe("props");
+    for (const name of ["chest", "flipped", "lamp", "turned"]) {
+      expect(entry?.message).toContain(name);
+    }
+    expect(entry?.message).not.toContain("trigger");
+    expect(validateTiledMap(loadFixture("tile-objects.json"))).toHaveLength(1);
+  });
+
+  it("reports nothing for object layers and tile sizes it handles", () => {
+    expect(validateTiledMap(loadFixture("object-groups.json"))).toEqual([]);
+    expect(validateTiledMap(loadFixture("oversized-tiles.json"))).toEqual([]);
+  });
+
   it("does not throw when map fields contain malformed values", () => {
     const malformed = {
       orientation: { unexpected: true },

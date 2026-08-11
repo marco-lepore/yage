@@ -1,0 +1,102 @@
+{
+  "width": 8,
+  "height": 8,
+  "tilewidth": 16,
+  "tileheight": 16,
+  "orientation": "orthogonal",
+  "layers": [
+    {
+      "type": "objectgroup",
+      "id": 1,
+      "name": "props",
+      "objects": [
+        {
+          "id": 1,
+          "name": "chest",
+          "class": "Chest",
+          "gid": 1,
+          "x": 96,
+          "y": 128,
+          "width": 16,
+          "height": 16,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            { "name": "contents", "type": "string", "value": "gold" }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "flipped",
+          "gid": 2147483649,
+          "x": 32,
+          "y": 64,
+          "width": 16,
+          "height": 16,
+          "rotation": 0,
+          "visible": true
+        },
+        {
+          "id": 3,
+          "name": "lamp",
+          "gid": 3,
+          "x": 16,
+          "y": 16,
+          "width": 16,
+          "height": 16,
+          "rotation": 0,
+          "visible": true
+        },
+        {
+          "id": 4,
+          "name": "turned",
+          "gid": 1,
+          "x": 0,
+          "y": 0,
+          "width": 16,
+          "height": 16,
+          "rotation": 90,
+          "visible": true
+        },
+        {
+          "id": 5,
+          "name": "trigger",
+          "x": 10,
+          "y": 20,
+          "width": 8,
+          "height": 8,
+          "rotation": 0,
+          "visible": true
+        }
+      ],
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "tilesets": [
+    {
+      "firstgid": 1,
+      "name": "props",
+      "tilewidth": 16,
+      "tileheight": 16,
+      "tilecount": 2,
+      "columns": 0,
+      "tiles": [
+        { "id": 0, "image": "chest.png" },
+        { "id": 1, "image": "sign.png" }
+      ]
+    },
+    {
+      "firstgid": 3,
+      "name": "lamps",
+      "tilewidth": 16,
+      "tileheight": 16,
+      "tilecount": 1,
+      "columns": 0,
+      "objectalignment": "topleft",
+      "tiles": [{ "id": 0, "image": "lamp.png" }]
+    }
+  ]
+}

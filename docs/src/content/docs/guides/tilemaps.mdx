@@ -23,6 +23,11 @@ Worth knowing up front so you don't reach for something that isn't there.
 | Tileset-image and collection-of-images tilesets    | Supported   |
 | Embedded and external tilesets                     | Supported   |
 | Flipped and rotated tiles                          | Supported   |
+| Tile images that don't match the map grid          | Supported — anchored bottom-left, as Tiled draws them |
+| Tile objects (an object that draws a tile)         | Data only — `gid`, position, size and properties are parsed; the image is not drawn |
+| Tileset `objectalignment` override                 | Supported — a tile object's position is normalised to its top-left corner |
+| Tileset `tilerendersize` / `fillmode`              | Not read — a tile draws at its image's own size |
+| Collision shapes authored on a tile in the tileset | Not read    |
 | Layer draw offsets and tileset `tileoffset`        | Supported   |
 | Per-layer visibility and opacity                   | Supported   |
 | Animated tiles                                     | Supported for evenly-spaced, equal-duration frames |
@@ -33,9 +38,12 @@ Worth knowing up front so you don't reach for something that isn't there.
 | Dynamic tile editing at runtime                    | Not yet     |
 | Parallax / background scroll layers                | Not built-in (use a regular sprite layer) |
 
-Nothing in the "Not yet" rows fails silently. `validateTiledMap()` reports
-each one against a map's raw JSON, and `TilemapComponent` logs whatever it
-finds when the map loads — see [Checking a Map](#checking-a-map).
+A map that uses an unsupported map, layer or tileset setting does not fail
+silently: `validateTiledMap()` reports it against the raw JSON, and
+`TilemapComponent` logs what it finds when the map loads — see
+[Checking a Map](#checking-a-map). Three limits have no diagnostic, because the
+map itself parses fine: runtime tile editing, per-tile collision shapes, and a
+tileset's `tilerendersize` / `fillmode`.
 
 For a worked example of loading a Tiled map and extracting collision
 shapes, see the
@@ -231,7 +239,11 @@ A diagnostic is an `error` when authored content is dropped or will render
 wrong, and a `warning` when a setting is simply not applied. Each one carries
 a `code` you can match on (`group-layer`, `infinite-map`,
 `unsupported-orientation`, `unsupported-tile-animation`, and so on), plus the `layer` or
-`tileset` name it came from.
+`tileset` name it came from. A gate filtered to errors lets every warning
+through, so match on the codes your game cannot live with. `tile-object` is
+an error — it names the tile objects on a layer whose images the map does not
+draw — so a game that spawns its own sprites from them will want to let that
+one through.
 
 An external tileset that has not been loaded yet is not reported — it resolves
 during preload.
@@ -375,10 +387,10 @@ for (const gid of walls.data) {
 ```
 
 `MapObject` (the element type in `objectLayers[i].objects`) carries `id`,
-`name`, optional `class`, position and size, rotation, an optional `point`
-flag, an optional `polygon`, an optional `polyline`, and an optional
-`properties: MapObjectProperty[]` array of Tiled custom properties — covered
-in detail below.
+`name`, optional `class`, position and size, rotation, an optional `gid` for
+objects that draw a tile, an optional `point` flag, an optional `polygon`, an
+optional `polyline`, and an optional `properties: MapObjectProperty[]` array of
+Tiled custom properties — covered in detail below.
 
 ## Tile Queries
 
@@ -395,6 +407,25 @@ tile you see at that position.
 A tileset's `tileoffset` is the exception. It moves where a tile's image is
 drawn without moving the cell the tile occupies. A tile from an offset tileset
 answers at its cell, which is where its collision and its neighbours are.
+
+### Tiles that don't match the grid
+
+A tileset's tiles need not be the size of the map's grid — a three-cell-tall
+pillar on a 16px map, or an 8px coin. Tiled anchors every tile image to the
+bottom-left of the cell it was painted in, so a taller image overhangs upward
+and a wider one to the right, and a smaller one sits on the cell's bottom edge.
+The tile still belongs to that one cell. Tiles render where Tiled draws them.
+
+In a collection-of-images tileset each tile is measured on its own, which lets
+one tileset mix a 16px stump with a 64px pine and place both correctly.
+
+A tile draws at its image's own size. A tileset can ask Tiled to scale its
+tiles to the grid instead (`tilerendersize: "grid"`); that setting is not read,
+so those tiles keep their own size here and land where the rule above puts
+them.
+
+Because the cell is unchanged, `getTileAt` answers at the cell a tile was
+painted in, not under the part of the image that overhangs its neighbours.
 
 ### Flipped and rotated tiles
 
@@ -477,6 +508,7 @@ interface MapObject {
   height: number;
   rotation: number;
   visible: boolean;
+  gid?: number;            // set only on an object that draws a tile
   point?: boolean;
   polygon?: { x: number; y: number }[];
   polyline?: { x: number; y: number }[];
@@ -501,6 +533,66 @@ for (const group of tilemap.getObjectGroups()) {
 Each entry is `{ layer, class?, objects }`, grouped by layer and class.
 Objects with no class collect into that layer's single `class: undefined`
 entry.
+
+### Tile objects
+
+Dragging a tile out of the tileset onto an object layer makes a **tile
+object**: an object that shows a tile. It has a `gid`, the global ID of that
+tile, alongside everything a normal object has — a class, a name, custom
+properties, a size you can stretch. The image is not drawn for you. An object
+layer is data, so a tile object is a placement you read and turn into an
+entity.
+
+Its `x` and `y` are the top-left corner of the tile it draws, the same as
+every other object type. Tiled itself stores a tile object on a different
+corner — the bottom-left one, matching how tiles land in tile layers, or
+whichever corner the tileset's `objectalignment` names — and the parser moves
+the position for you. A spawn reads it directly:
+
+```typescript
+import { readTileGid } from "@yagejs/tilemap";
+
+for (const obj of tilemap.getObjects("props")["Tree"] ?? []) {
+  if (obj.gid === undefined) continue;   // authored as a plain rectangle
+
+  const { id, flippedHorizontally } = readTileGid(obj.gid);
+  this.spawn(TreeEntity, {
+    tileId: id,
+    x: obj.x,
+    y: obj.y,
+    flippedHorizontally,
+  });
+}
+```
+
+`obj.rotation` turns the tile about that same corner, in degrees. Put the
+position and the rotation on the entity's `Transform` and anchor the sprite
+top-left, and it lands where Tiled shows it at any angle. Position and
+rotation belong on the Transform — the renderer copies them onto the sprite
+every frame, so a `rotation` set on the sprite is overwritten.
+
+```typescript
+import { MathUtils, Transform } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
+// inside the spawned entity's setup(), for the tile object it came from
+this.add(new Transform({
+  position: { x: obj.x, y: obj.y },
+  rotation: MathUtils.degToRad(obj.rotation),  // Tiled stores degrees
+}));
+this.add(new SpriteComponent({ texture, anchor: { x: 0, y: 0 } }));
+```
+
+[Collision extraction](#collision-extraction) reads the same corner, so its
+rect and the sprite agree.
+
+The `gid` keeps Tiled's flip bits, exactly like the GIDs in raw layer data, so
+`readTileGid` splits it the same way.
+
+Because the image is not drawn for you, `validateTiledMap()` reports a
+`tile-object` error for each object layer that holds tile objects, naming
+them. Collision shapes authored on the tile inside the tileset are not read
+either, so collision extraction treats a tile object as its full box.
 
 ## Object Lookups
 
@@ -585,6 +677,7 @@ Tiled objects map to physics-agnostic `TilemapColliderConfig` variants:
 | Tiled object                  | Emitted shape                                                                                        |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Rectangle                     | `{ type: "rect", x, y, width, height, rotation? }`                                                   |
+| Tile object (carries a `gid`) | `{ type: "rect", x, y, width, height, rotation? }` covering the tile's whole box, exactly like a rectangle; shapes authored on the tile in the tileset are not read |
 | Ellipse (`width === height`)  | `{ type: "circle", x, y, width, height, radius }`                                                    |
 | Ellipse (`width !== height`)  | `{ type: "polygon", x, y, vertices }` — 24 vertices sampled on the ellipse outline (Rapier has no ellipse primitive; the ring is convex, so the physics-side convex hull matches it exactly) |
 | Capsule                       | `{ type: "capsule", x, y, width, height, halfHeight, radius, axis, rotation? }` (oriented along the longer axis)|

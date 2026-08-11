@@ -13,6 +13,9 @@ import type {
  * Extract physics-agnostic collision shapes from object layers.
  *
  * - Rectangle objects -> RectColliderConfig
+ * - Tile objects (a `gid` is set) -> RectColliderConfig over the tile's box,
+ *   like any rectangle: a MapObject's x/y is its top-left corner whatever the
+ *   corner Tiled anchored it on
  * - Ellipse objects (width === height) -> CircleColliderConfig
  * - Ellipse objects (width !== height) -> PolygonColliderConfig sampling the
  *   ellipse outline (Rapier has no ellipse primitive; the ring is convex, so
@@ -159,7 +162,7 @@ function objectToColliderConfig(obj: MapObject): TilemapColliderConfig | null {
     return config;
   }
 
-  // Rectangle object
+  // Rectangle object, and the tile object built on the same box.
   const config: RectColliderConfig = {
     type: "rect",
     x: obj.x,

@@ -49,6 +49,14 @@ export function toTilemapData(map: TiledMapData): TilemapData {
   const tileLayers: TileLayerData[] = [];
   const objectLayers: ObjectLayerData[] = [];
 
+  // Resolve each tileset once. An embedded tileset that never went through the
+  // loader is rebuilt on every call, so resolving per object would copy it
+  // once per tile object.
+  const tilesetMatches: TilesetMatch[] = map.tilesets.map((ref) => ({
+    ref,
+    data: resolveTilesetData(ref),
+  }));
+
   for (const layer of map.layers) {
     if (layer.type === "tilelayer") {
       const offsetX = layer.offsetx ?? 0;
@@ -71,7 +79,7 @@ export function toTilemapData(map: TiledMapData): TilemapData {
       objectLayers.push({
         name: layer.name,
         objects: layer.objects.map((object) =>
-          tiledObjectToMapObject(object, offsetX, offsetY),
+          tiledObjectToMapObject(object, offsetX, offsetY, tilesetMatches),
         ),
         visible: layer.visible,
         offsetX,
@@ -83,16 +91,13 @@ export function toTilemapData(map: TiledMapData): TilemapData {
     }
   }
 
-  const tilesets = map.tilesets.map((ref) => {
-    const data = resolveTilesetData(ref);
-    return {
-      firstGid: ref.firstgid,
-      ...(data !== null && { name: data.name }),
-      ...(data?.properties !== undefined && {
-        properties: copyProperties(data.properties),
-      }),
-    };
-  });
+  const tilesets = tilesetMatches.map(({ ref, data }) => ({
+    firstGid: ref.firstgid,
+    ...(data !== null && { name: data.name }),
+    ...(data?.properties !== undefined && {
+      properties: copyProperties(data.properties),
+    }),
+  }));
 
   return {
     width: map.width,
@@ -109,16 +114,78 @@ export function toTilemapData(map: TiledMapData): TilemapData {
   };
 }
 
+/**
+ * Fraction of a tile object's width and height lying left of and above the
+ * point Tiled stores it at. An orthogonal map anchors bottom-left unless the
+ * owning tileset names another corner, and an unknown value takes the same
+ * default.
+ */
+function objectAnchor(alignment: string | undefined): { x: number; y: number } {
+  switch (alignment) {
+    case "topleft":
+      return { x: 0, y: 0 };
+    case "top":
+      return { x: 0.5, y: 0 };
+    case "topright":
+      return { x: 1, y: 0 };
+    case "left":
+      return { x: 0, y: 0.5 };
+    case "center":
+      return { x: 0.5, y: 0.5 };
+    case "right":
+      return { x: 1, y: 0.5 };
+    case "bottom":
+      return { x: 0.5, y: 1 };
+    case "bottomright":
+      return { x: 1, y: 1 };
+    default:
+      return { x: 0, y: 1 };
+  }
+}
+
+/**
+ * Distance from the point Tiled stores a tile object at to the corner that is
+ * top-left in the tile's own unrotated frame. Tiled turns a tile object about
+ * its anchor, so the offset turns with it.
+ */
+function tileObjectAnchorOffset(
+  obj: TileObject,
+  alignment: string | undefined,
+): { x: number; y: number } {
+  const anchor = objectAnchor(alignment);
+  const dx = -anchor.x * obj.width;
+  const dy = -anchor.y * obj.height;
+  if (!obj.rotation) return { x: dx, y: dy };
+  // Tiled stores rotation in degrees.
+  const radians = (obj.rotation * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+}
+
 function tiledObjectToMapObject(
   obj: TileObject,
-  offsetX = 0,
-  offsetY = 0,
+  offsetX: number,
+  offsetY: number,
+  tilesets: TilesetMatch[],
 ): MapObject {
+  // A tile object is stored on its anchor corner, bottom-left by default,
+  // where every other object type is stored top-left. Normalise it here so
+  // colliders, pathfinding and spawn code all read one convention.
+  const anchorShift =
+    obj.gid !== undefined
+      ? tileObjectAnchorOffset(
+          obj,
+          // Mask the flip bits first: `findTileset` compares against firstgid.
+          findTileset(tilesets, tileIdFromGid(obj.gid))?.data?.objectalignment,
+        )
+      : { x: 0, y: 0 };
+
   const result: MapObject = {
     id: obj.id,
     name: obj.name,
-    x: obj.x + offsetX,
-    y: obj.y + offsetY,
+    x: obj.x + offsetX + anchorShift.x,
+    y: obj.y + offsetY + anchorShift.y,
     width: obj.width,
     height: obj.height,
     rotation: obj.rotation,
@@ -127,6 +194,7 @@ function tiledObjectToMapObject(
 
   const cls = obj.class ?? obj.type;
   if (cls) result.class = cls;
+  if (obj.gid !== undefined) result.gid = obj.gid;
   if (obj.point === true) result.point = true;
   if (obj.polygon) result.polygon = obj.polygon;
   if (obj.polyline) result.polyline = obj.polyline;
@@ -234,6 +302,19 @@ function resolveTileTexture(
   return null;
 }
 
+/**
+ * Height in pixels of the image drawn for a tile. A collection-of-images
+ * tileset sizes every tile on its own, and its `tileheight` records only the
+ * tallest of them, so the per-tile height is the one that places the image.
+ */
+function drawnTileHeight(data: TilesetData, localId: number): number {
+  if (!data.image) {
+    const tileData = data.tiles?.find((entry) => entry.id === localId);
+    if (tileData?.imageheight !== undefined) return tileData.imageheight;
+  }
+  return data.tileheight;
+}
+
 function tilesetLabel(tileset: TilesetMatch): string {
   return (
     tileset.data?.name ??
@@ -333,12 +414,22 @@ export function createTilemapLayers(
       const y = Math.floor(index / width);
       const tileOffset = tileset.data?.tileoffset;
       const rotate = tileRotationFromGid(rawGid);
+      // Tiled anchors a tile to the bottom-left of its cell, so an image
+      // taller than the map's grid overhangs the cell upward. Width needs no
+      // correction: drawing from the left edge already overhangs to the right.
+      const overhang = tileset.data
+        ? drawnTileHeight(tileset.data, textureGid - tileset.ref.firstgid) -
+          map.tileheight
+        : 0;
       // The tilemap shader reads a per-tile alpha attribute and ignores the
       // container's, so layer opacity has to be baked into each tile.
       tilemap.tile(
         texture,
         x * map.tilewidth + (layer.offsetx ?? 0) + (tileOffset?.x ?? 0),
-        y * map.tileheight + (layer.offsety ?? 0) + (tileOffset?.y ?? 0),
+        y * map.tileheight -
+          overhang +
+          (layer.offsety ?? 0) +
+          (tileOffset?.y ?? 0),
         {
           alpha: layer.opacity,
           rotate,

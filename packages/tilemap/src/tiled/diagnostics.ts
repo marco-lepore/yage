@@ -71,6 +71,29 @@ function validateLayer(layer: unknown, diagnostics: TilemapDiagnostic[]): void {
     return;
   }
 
+  if (type === "objectgroup") {
+    const tileObjects: string[] = [];
+    if (Array.isArray(layer.objects)) {
+      for (const object of layer.objects) {
+        if (!isRecord(object) || typeof object.gid !== "number") continue;
+        // Tiled writes an empty name for an unnamed object.
+        const named = typeof object.name === "string" && object.name !== "";
+        tileObjects.push(
+          named ? String(object.name) : `object ${String(object.id)}`,
+        );
+      }
+    }
+    if (tileObjects.length > 0) {
+      diagnostics.push({
+        code: "tile-object",
+        message: `Object layer "${name}" places tiles as objects, whose images are not drawn: ${tileObjects.join(", ")}. Their position, size, gid and custom properties are on the object layer.`,
+        severity: "error",
+        layer: name,
+      });
+    }
+    return;
+  }
+
   if (type === "group") {
     const children = descendantNames(layer);
     const childText =
