@@ -83,7 +83,10 @@ input clock (`getClockTime()`) by default, which ignores scene pause and time
 scale: a charge keeps charging through a pause menu or a `freezeFor`. Pass a
 scene's `SceneTime` as `clock` to count on that scene's simulation seconds
 instead. The scene clock stops while the scene is stack-paused or frozen and
-follows the scene's effective time scale, the same scale physics steps under.
+follows the scene's effective time scale, the same scale physics steps under. It
+is scene-wide: an entity excluded from a scale request via `excludeUpdates`, or
+with its own `entity.timeScale`, updates at a rate the scene clock does not
+follow, so measure its holds on the raw clock or on the `dt` it receives.
 
 ```ts
 // Inside a Component or Scene subclass — `use` returns a non-optional clock.
@@ -100,7 +103,15 @@ Each clock keeps its own readings, so the same press can be a tap on the scene
 clock and a long press on the raw one. `isJustHeldFor` carries a separate
 crossing baseline per clock and fires once on each. A hold that began before a
 clock was registered starts from zero on that clock rather than reading as not
-held; a press made before registration is not buffered on it at all.
+held; a press made before registration is not buffered on it at all, and a
+release that landed before it carries no length there — `isJustTapped` and
+`isJustReleasedAfter` are false rather than treating the missing length as 0.
+
+**Gotcha — a frozen clock measures no hold.** A frozen scene still runs its
+components, but its clock does not advance, so a press that starts and ends
+inside a `freezeFor` hitstop measures 0 seconds on it: `isJustTapped` reads a
+tap and `isJustReleasedAfter` never fires. Read charge releases on the raw clock
+if they must work during a freeze.
 
 The input plugin registers the `SceneTime` of every scene the engine enters, and
 those are the only clocks accepted. Any other value — a hand-rolled `{ elapsed }`

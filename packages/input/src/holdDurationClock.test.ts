@@ -176,23 +176,68 @@ describe("hold durations on a scene clock", () => {
     expect(() => input.getHoldDuration("charge", { clock })).toThrow(/clock/);
   });
 
-  it("throws for an unregistered clock on every duration query", () => {
+  it("throws for an unregistered clock on every duration query, naming that query", () => {
     const input = new InputManager();
     input.setActionMap({ charge: ["Space"] });
     const clock = { elapsed: 0 };
 
-    expect(() => input.getHoldDuration("charge", { clock })).toThrow(/clock/);
-    expect(() => input.isHeldFor("charge", 0.1, { clock })).toThrow(/clock/);
+    // Each query names itself, so the message points at the call the developer
+    // wrote rather than at whichever helper it delegates to.
+    expect(() => input.getHoldDuration("charge", { clock })).toThrow(
+      /getHoldDuration\(\)/,
+    );
+    expect(() => input.isHeldFor("charge", 0.1, { clock })).toThrow(
+      /isHeldFor\(\)/,
+    );
     expect(() => input.isJustHeldFor("charge", 0.1, { clock })).toThrow(
-      /clock/,
+      /isJustHeldFor\(\)/,
     );
     expect(() => input.getReleaseDuration("charge", { clock })).toThrow(
-      /clock/,
+      /getReleaseDuration\(\)/,
     );
-    expect(() => input.isJustTapped("charge", 0.1, { clock })).toThrow(/clock/);
+    expect(() => input.isJustTapped("charge", 0.1, { clock })).toThrow(
+      /isJustTapped\(\)/,
+    );
     expect(() => input.isJustReleasedAfter("charge", 0.1, { clock })).toThrow(
-      /clock/,
+      /isJustReleasedAfter\(\)/,
     );
+  });
+
+  it("reports nothing for a release the clock never measured", () => {
+    const input = new InputManager();
+    input.setActionMap({ charge: ["Space"] });
+    input._onKeyDown("Space");
+    input._advanceTime(2000);
+    input._onKeyUp("Space");
+
+    // The scene arrives after the release edge, so its clock holds no length
+    // for it. A two-second hold must not read as an instant tap there.
+    const clock = { elapsed: 0 };
+    input._registerClock(clock);
+
+    expect(input.isJustReleased("charge")).toBe(true);
+    expect(input.getReleaseDuration("charge")).toBe(2);
+    expect(input.getReleaseDuration("charge", { clock })).toBe(0);
+    expect(input.isJustTapped("charge", 0.1, { clock })).toBe(false);
+    expect(input.isJustReleasedAfter("charge", 0.3, { clock })).toBe(false);
+  });
+
+  it("reports nothing for a release that landed while the action was disabled", () => {
+    const input = new InputManager();
+    input.setActionMap({ charge: ["Space"] });
+    input.setGroups({ combat: ["charge"] });
+    input._onKeyDown("Space");
+    input._advanceTime(2000);
+
+    input.disableGroup("combat");
+    input._onKeyUp("Space");
+    input.enableGroup("combat");
+
+    // No clock measured this release, so re-enabling the group must not turn a
+    // two-second hold into a tap.
+    expect(input.isJustReleased("charge")).toBe(true);
+    expect(input.getReleaseDuration("charge")).toBe(0);
+    expect(input.isJustTapped("charge", 0.1)).toBe(false);
   });
 
   it("keeps a synthetic hold on scene time", () => {

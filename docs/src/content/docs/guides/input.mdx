@@ -143,7 +143,13 @@ which runs on unscaled frame time. Pass a scene's `SceneTime` and it counts on
 that scene's simulation seconds instead — the clock stops while the scene is
 stack-paused or frozen, and follows `scene.timeScale` together with any active
 `SceneTime` scale requests. Physics steps under that same effective scale, so a
-charge meter and the world it charges in measure time the same way.
+charge meter and the world it charges in run at one rate.
+
+The clock is scene-wide. An entity left out of a scale request through
+`excludeUpdates`, or carrying its own `entity.timeScale`, updates at a rate the
+scene clock does not follow — a charge on that entity still counts at the
+scene's rate. Measure those holds on the raw clock, or from the `dt` the
+entity's own update receives.
 
 ```typescript
 import { SceneTimeKey } from "@yagejs/core";
@@ -162,7 +168,17 @@ const charged = input.getReleaseDuration("attack", { clock });
 Each clock keeps its own readings, so one press can be a tap on the scene clock
 and a long press on the raw one. `isJustHeldFor` carries a separate threshold
 baseline per clock and fires exactly once on each. A hold that was already
-running when the scene started counts from zero on that scene's clock.
+running when the scene started counts from zero on that scene's clock, and a
+release that landed before the scene started reports no length at all — both
+`isJustTapped` and `isJustReleasedAfter` stay false for it.
+
+:::caution[A frozen clock measures no hold]
+A frozen scene still runs its components, but its clock does not advance. A
+press that starts and ends inside a `freezeFor` hitstop therefore measures 0
+seconds on the scene clock, which `isJustTapped` reads as a tap and
+`isJustReleasedAfter` never accepts. Read a charge release on the raw clock if
+it has to work during a freeze.
+:::
 
 Passing a clock the input plugin has not registered throws. That covers a
 `SceneTime` held from a scene that has since left the stack.

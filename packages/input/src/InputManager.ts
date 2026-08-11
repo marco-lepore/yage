@@ -489,6 +489,11 @@ export class InputManager {
    */
   getHoldDuration(action: string, options?: HoldDurationOptions): number {
     const state = this.resolveState("getHoldDuration", options?.clock);
+    return this.holdDurationOn(action, state);
+  }
+
+  /** Seconds held on `state`'s clock; 0 for a disabled action, as everywhere else. */
+  private holdDurationOn(action: string, state: ClockState): number {
     if (!this.isActionEnabled(action)) return 0;
     return this.rawHoldOn(action, state) / state.perSecond;
   }
@@ -513,7 +518,10 @@ export class InputManager {
     minSeconds: number,
     options?: HoldDurationOptions,
   ): boolean {
-    return this.getHoldDuration(action, options) >= minSeconds;
+    // Resolved here rather than delegating to getHoldDuration so an unusable
+    // clock names the method the caller actually wrote.
+    const state = this.resolveState("isHeldFor", options?.clock);
+    return this.holdDurationOn(action, state) >= minSeconds;
   }
 
   /**
@@ -567,19 +575,28 @@ export class InputManager {
    */
   getReleaseDuration(action: string, options?: HoldDurationOptions): number {
     const state = this.resolveState("getReleaseDuration", options?.clock);
-    return this.releaseDurationOn(action, state);
+    return this.releaseDurationOn(action, state) ?? 0;
   }
 
-  /** Seconds captured at the action's release edge, measured on `state`'s clock. */
-  private releaseDurationOn(action: string, state: ClockState): number {
-    if (!this.isActionEnabled(action)) return 0;
-    if (this.isActionStillHeld(action)) return 0;
+  /**
+   * Seconds captured at the action's release edge, measured on `state`'s clock,
+   * or `null` when this clock holds no length for the release in the query
+   * window. Absent is not zero: the release can predate the clock's
+   * registration, or have landed while the action's group was disabled, and a
+   * hold whose length this clock never measured must not read as an instant
+   * tap.
+   */
+  private releaseDurationOn(action: string, state: ClockState): number | null {
+    if (!this.isActionEnabled(action)) return null;
+    if (this.isActionStillHeld(action)) return null;
     const window = this.currentStepWindow();
     if (window === null) {
-      return (state.releaseDuration.get(action) ?? 0) / state.perSecond;
+      const duration = state.releaseDuration.get(action);
+      return duration === undefined ? null : duration / state.perSecond;
     }
     const entry = state.stepReleaseDuration.get(action);
-    return entry && entry.tag === window ? entry.duration / state.perSecond : 0;
+    if (!entry || entry.tag !== window) return null;
+    return entry.duration / state.perSecond;
   }
 
   /**
@@ -588,6 +605,10 @@ export class InputManager {
    * if it was held for at most `maxSeconds`. Counts on the raw input clock
    * unless `options.clock` names a registered scene clock, like
    * {@link getHoldDuration}.
+   *
+   * False when the clock holds no length for the release — one that predates
+   * the clock's registration, or landed while the action's group was disabled.
+   * An unmeasured hold is not a tap.
    */
   isJustTapped(
     action: string,
@@ -597,11 +618,9 @@ export class InputManager {
     // Resolved up front so an unusable clock throws on every call, not only on
     // the one that happens to land in a release window.
     const state = this.resolveState("isJustTapped", options?.clock);
-    return (
-      this.isJustReleased(action) &&
-      !this.isActionStillHeld(action) &&
-      this.releaseDurationOn(action, state) <= maxSeconds
-    );
+    if (!this.isJustReleased(action)) return false;
+    const held = this.releaseDurationOn(action, state);
+    return held !== null && held <= maxSeconds;
   }
 
   /**
@@ -610,6 +629,9 @@ export class InputManager {
    * if it was held for at least `minSeconds`. Counts on the raw input clock
    * unless `options.clock` names a registered scene clock, like
    * {@link getHoldDuration}.
+   *
+   * False when the clock holds no length for the release, as in
+   * {@link isJustTapped}.
    */
   isJustReleasedAfter(
     action: string,
@@ -618,11 +640,9 @@ export class InputManager {
   ): boolean {
     // Resolved up front for the same reason as in {@link isJustTapped}.
     const state = this.resolveState("isJustReleasedAfter", options?.clock);
-    return (
-      this.isJustReleased(action) &&
-      !this.isActionStillHeld(action) &&
-      this.releaseDurationOn(action, state) >= minSeconds
-    );
+    if (!this.isJustReleased(action)) return false;
+    const held = this.releaseDurationOn(action, state);
+    return held !== null && held >= minSeconds;
   }
 
   /**
@@ -655,7 +675,9 @@ export class InputManager {
     const pressed = state.pressStamp.get(action);
     if (pressed === undefined) return false;
     if (this.claimedBufferedPress.has(action)) return false;
-    if ((this.stateNow(state) - pressed) / state.perSecond > windowSeconds) {
+    // Compared in the state's own unit — dividing the age instead would shift
+    // the raw clock's boundary answer against the shipped millisecond form.
+    if (this.stateNow(state) - pressed > windowSeconds * state.perSecond) {
       return false;
     }
     this.claimedBufferedPress.add(action);
