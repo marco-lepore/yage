@@ -488,6 +488,8 @@ describe("KeyframeAnimator", () => {
       const { entity, pc } = setup();
       const exitFade = vi.fn();
       const exitTimeline = vi.fn();
+      let fade = 0;
+      let timeline = 0;
       const anim = entity.add(
         new KeyframeAnimator({
           fade: {
@@ -495,14 +497,19 @@ describe("KeyframeAnimator", () => {
               { time: 0, data: 0 },
               { time: 100, data: 10 },
             ],
-            setter: () => {},
+            setter: (v) => {
+              fade = v as number;
+            },
             onExit: exitFade,
           },
           timeline: {
             keyframes: [
               { time: 0, data: 0 },
-              { time: 100, data: 1 },
+              { time: 100, data: 10 },
             ],
+            setter: (v) => {
+              timeline = v as number;
+            },
             clock: "fixed",
             onExit: exitTimeline,
           },
@@ -511,6 +518,16 @@ describe("KeyframeAnimator", () => {
 
       anim.play("fade");
       anim.play("timeline");
+
+      // Each animation only moves on its own clock, so the pair really is
+      // split across the two pools before stopAll() has to reach both.
+      pc._tick(20);
+      expect(fade).toBeCloseTo(2);
+      expect(timeline).toBe(0);
+      pc._tick(30, undefined, "fixed");
+      expect(fade).toBeCloseTo(2);
+      expect(timeline).toBeCloseTo(3);
+
       anim.stopAll();
 
       expect(anim.isPlaying("fade")).toBe(false);
@@ -518,12 +535,19 @@ describe("KeyframeAnimator", () => {
       expect(exitFade).toHaveBeenCalledWith(false);
       expect(exitTimeline).toHaveBeenCalledWith(false);
       expect(pc.count).toBe(0);
+
+      pc._tick(20);
+      pc._tick(30, undefined, "fixed");
+      expect(fade).toBeCloseTo(2);
+      expect(timeline).toBeCloseTo(3);
     });
 
     it("onDestroy() cancels a mixed frame/fixed pair", () => {
       const { entity, pc } = setup();
       const exitFade = vi.fn();
       const exitTimeline = vi.fn();
+      let fade = 0;
+      let timeline = 0;
       const anim = entity.add(
         new KeyframeAnimator({
           fade: {
@@ -531,14 +555,19 @@ describe("KeyframeAnimator", () => {
               { time: 0, data: 0 },
               { time: 100, data: 10 },
             ],
-            setter: () => {},
+            setter: (v) => {
+              fade = v as number;
+            },
             onExit: exitFade,
           },
           timeline: {
             keyframes: [
               { time: 0, data: 0 },
-              { time: 100, data: 1 },
+              { time: 100, data: 10 },
             ],
+            setter: (v) => {
+              timeline = v as number;
+            },
             clock: "fixed",
             onExit: exitTimeline,
           },
@@ -547,11 +576,23 @@ describe("KeyframeAnimator", () => {
 
       anim.play("fade");
       anim.play("timeline");
+
+      pc._tick(20);
+      expect(fade).toBeCloseTo(2);
+      expect(timeline).toBe(0);
+      pc._tick(30, undefined, "fixed");
+      expect(timeline).toBeCloseTo(3);
+
       anim.onDestroy();
 
       expect(exitFade).toHaveBeenCalledWith(false);
       expect(exitTimeline).toHaveBeenCalledWith(false);
       expect(pc.count).toBe(0);
+
+      pc._tick(20);
+      pc._tick(30, undefined, "fixed");
+      expect(fade).toBeCloseTo(2);
+      expect(timeline).toBeCloseTo(3);
     });
 
     it("play() restarts a fixed-clock animation on its own clock", () => {

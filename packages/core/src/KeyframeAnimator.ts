@@ -11,8 +11,9 @@ import { serializable } from "./Serializable.js";
 export interface KeyframeAnimationDef<T extends Interpolatable = Interpolatable> {
   keyframes: Keyframe<T>[];
   /**
-   * Receives the interpolated value each frame. Optional — when omitted the
-   * animator only fires keyframe `event` callbacks (pure-timeline use case).
+   * Receives the interpolated value on every tick of the animation's clock —
+   * each rendered frame by default. Optional — when omitted the animator only
+   * fires keyframe `event` callbacks (pure-timeline use case).
    *
    * Declared as a method signature (rather than a `(value: T) => void`
    * property) so the parameter type is bivariant — this is what lets a
@@ -25,7 +26,8 @@ export interface KeyframeAnimationDef<T extends Interpolatable = Interpolatable>
    * default `"frame"`.
    *
    * `"frame"` is rendered-frame time, right for setter-driven visuals.
-   * `"fixed"` is the fixed timestep, right for a setter-less timeline whose
+   * `"fixed"` is the fixed timestep, right for timing that must stay in step
+   * with a fixed-step simulation — typically a setter-less timeline whose
    * keyframe `event` callbacks drive gameplay. The choice is per animation, so
    * one animator can hold a frame-clock walk cycle and a fixed-clock event
    * timeline.

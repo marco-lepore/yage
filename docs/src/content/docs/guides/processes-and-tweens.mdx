@@ -309,7 +309,7 @@ isn't expressible as a single `easeInOut` — reach for `KeyframeAnimator`.
 `KeyframeAnimator` is a component that hosts multiple named keyframe tracks
 and runs any number of them concurrently. Each track is a list of `(time,
 value)` control points, and the animator interpolates between them on every
-frame, pushing the result to a setter function you supply.
+tick of the track's clock, pushing the result to a setter function you supply.
 
 ```typescript
 import {
@@ -445,19 +445,20 @@ new KeyframeAnimator({
     // No clock — the default "frame" keeps the visual smooth.
     keyframes: [
       { time: 0,   data: 1 },
-      { time: 0.2, data: 0 },
+      { time: 0.1, data: 1.3 },
+      { time: 0.2, data: 1 },
     ],
     setter: (v) => entity.get(Transform).setScale(v as number, v as number),
   },
 });
 ```
 
-Why it matters: on the frame clock, the hitbox at `time: 0.18` is first seen by
-a different fixed step on every run, because frame time and fixed time drift
-apart. When a slow frame hits the `maxFixedStepsPerFrame` cap, the simulation
-advances less than the real time that passed, while a frame-clock timeline
-keeps running at full speed. On `"fixed"` the beats stay in step with the world
-they drive.
+Why it matters: on the frame clock, the hitbox at `time: 0.18` spawns at a
+different point in the fixed-step sequence on every run, because rendered-frame
+time and fixed time drift apart. When a slow frame hits the
+`maxFixedStepsPerFrame` cap, the simulation advances fewer steps than the
+rendered-frame time that passed, while a frame-clock timeline keeps running at
+full speed. On `"fixed"` the beats stay in step with the world they drive.
 
 Setter-driven visuals stay on `"frame"`. A setter on the fixed clock is written
 only on fixed steps, so a rendered frame that runs no fixed step shows the
