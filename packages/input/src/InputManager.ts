@@ -7,6 +7,7 @@ import type {
   CameraLike,
   GamepadAxisKey,
   GamepadInfo,
+  HoldDurationOptions,
   InputClock,
   PointerEventInfo,
   PointerInfo,
@@ -88,30 +89,74 @@ const STANDARD_AXIS_KEYS: readonly GamepadAxisKey[] = [
   "rightY",
 ];
 
+/**
+ * Press, hold, and release bookkeeping measured on one time source. The raw
+ * input clock gets one of these, and so does every clock registered through
+ * {@link InputManager._registerClock}, so a query can answer on whichever clock
+ * the caller names.
+ *
+ * Times are stored in the source's own unit — milliseconds for the input clock,
+ * seconds for a scene clock — and {@link ClockState.perSecond} converts a
+ * difference to seconds.
+ */
+interface ClockState {
+  /** The registered clock this state measures, or `null` for the raw input clock. */
+  readonly source: InputClock | null;
+  /** Units per second of `source`: 1000 for the millisecond input clock, 1 for a scene clock. */
+  readonly perSecond: number;
+  /** Hold start per key code, for the hold-duration queries. */
+  holdStart: Map<string, number>;
+  /** Hold start per action for synthetic presses ({@link InputManager.fireAction} and friends). */
+  syntheticStart: Map<string, number>;
+  /** Hold length of the press that ended this frame, keyed by action. Valid only in the release frame. */
+  releaseDuration: Map<string, number>;
+  /** Hold length of a release edge per action, tagged with the fixed-step window it belongs to. */
+  stepReleaseDuration: Map<string, { duration: number; tag: number }>;
+  /** Per-action hold at the end of the previous frame — the frame baseline for {@link InputManager.isJustHeldFor}. */
+  prevHold: Map<string, number>;
+  /** Per-action hold at the previous step-window rotation — the fixed-step baseline. */
+  stepPrevHold: Map<string, number>;
+  /** Per-action hold sampled at the latest rotation; becomes the next window's baseline. */
+  stepHoldSnapshot: Map<string, number>;
+  /** Last press time per action, for {@link InputManager.consumeBufferedPress}. */
+  pressStamp: Map<string, number>;
+}
+
+function createClockState(
+  source: InputClock | null,
+  perSecond: number,
+): ClockState {
+  return {
+    source,
+    perSecond,
+    holdStart: new Map(),
+    syntheticStart: new Map(),
+    releaseDuration: new Map(),
+    stepReleaseDuration: new Map(),
+    prevHold: new Map(),
+    stepPrevHold: new Map(),
+    stepHoldSnapshot: new Map(),
+    pressStamp: new Map(),
+  };
+}
+
 /** Central input state manager. Resolved via DI with InputManagerKey. */
 export class InputManager {
   private pressedKeys = new Set<string>();
   private justPressedKeys = new Set<string>();
   private justReleasedKeys = new Set<string>();
-  private holdStart = new Map<string, number>();
+  /** Press, hold, and release bookkeeping on the raw input clock, in milliseconds. */
+  private readonly rawState = createClockState(null, 1000);
+  /** The same bookkeeping per registered clock, in that clock's seconds. */
+  private readonly clockStates = new Map<InputClock, ClockState>();
   /** One-frame synthetic action pulses from {@link fireAction}, cleared each frame. */
   private pulsedSyntheticActions = new Set<string>();
   /** Sustained synthetic actions from {@link fireActionDown}, held until {@link fireActionUp}. */
   private heldSyntheticActions = new Set<string>();
-  /** Per-action synthetic hold start times (ms), for both pulse and held entries. */
-  private syntheticActionStarts = new Map<string, number>();
   /** Synthetic action release edges, true for one frame after {@link fireActionUp}. */
   private justReleasedActions = new Set<string>();
-  /** Hold duration (ms) of the press that ended this frame, keyed by action. Valid only on the release frame. */
-  private releaseDurationMs = new Map<string, number>();
-  /** Last press timestamp (ms on the input clock) per action, for {@link consumeBufferedPress}. */
-  private bufferedPressMs = new Map<string, number>();
-  /** Press timestamps in seconds for each registered clock. */
-  private bufferedPressClockStamps = new Map<InputClock, Map<string, number>>();
   /** Actions whose buffered press has been claimed via {@link consumeBufferedPress}; cleared by the next press. */
   private claimedBufferedPress = new Set<string>();
-  /** Per-action hold duration (ms) at the end of the previous frame — the frame-window baseline for {@link isJustHeldFor}'s crossing test. */
-  private prevHoldMs = new Map<string, number>();
   /**
    * Fixed-step edge windows. Each map records, per key code or action name,
    * the scheduler's fixed-step count at the moment the edge arrived. An edge
@@ -128,13 +173,7 @@ export class InputManager {
   private stepPulseTags = new Map<string, number>();
   /** Synthetic action releases ({@link fireActionUp}), tagged like {@link stepPressTags}. */
   private stepSyntheticReleaseTags = new Map<string, number>();
-  /** Hold duration (ms) of a release edge per action, tagged like {@link stepPressTags}. */
-  private stepReleaseDurations = new Map<string, { ms: number; tag: number }>();
-  /** Per-action holds at the previous step-window rotation — the fixed-step baseline for {@link isJustHeldFor}. */
-  private stepPrevHoldMs = new Map<string, number>();
-  /** Per-action holds sampled at the latest rotation; becomes the next window's baseline. */
-  private stepHoldSnapshot = new Map<string, number>();
-  /** Step index of the latest hold-baseline rotation. */
+  /** Step index of the latest hold-baseline rotation, shared by every clock. */
   private stepHoldRotatedAt = -1;
   /**
    * Scheduler for calling-context resolution, wired by {@link _setScheduler}.
@@ -319,6 +358,40 @@ export class InputManager {
     return this.scheduler?.fixedStepIndex ?? 0;
   }
 
+  /** The raw input clock's state, then every registered clock's. */
+  private *allStates(): IterableIterator<ClockState> {
+    yield this.rawState;
+    yield* this.clockStates.values();
+  }
+
+  /** Current reading of a state's time source, in that source's own unit. */
+  private stateNow(state: ClockState): number {
+    return state.source ? state.source.elapsed : this.elapsedMs;
+  }
+
+  /**
+   * The state a query measures on. `undefined` selects the raw input clock;
+   * anything else must be a clock the plugin registered, since a clock the
+   * manager never saw carries no stamps to measure against.
+   */
+  private resolveState(
+    method: string,
+    clock: InputClock | undefined,
+  ): ClockState {
+    if (!clock) return this.rawState;
+    const state = this.clockStates.get(clock);
+    if (!state) {
+      throw new Error(
+        `InputManager.${method}(): the given clock is not registered, so ` +
+          "nothing can be measured on it. The input plugin registers a scene's " +
+          "SceneTime while the scene is on the stack and drops it on exit — the " +
+          "usual causes are holding on to an exited scene's SceneTime, or a clock " +
+          "the engine never saw.",
+      );
+    }
+    return state;
+  }
+
   /**
    * The step-window tag the current caller resolves against, or null when
    * the caller is not inside `Phase.FixedUpdate` (frame-window semantics).
@@ -332,31 +405,33 @@ export class InputManager {
   }
 
   /**
-   * Rotate the fixed-step hold baseline: on the first fixed-step hold query
-   * of a new step, the holds sampled at the previous rotation become this
-   * window's baseline, and current holds are re-sampled for the next one.
-   * Query-driven, so a caller polling {@link isJustHeldFor} every step gets
-   * an exact step-over-step crossing test.
+   * Rotate the fixed-step hold baseline on every clock: on the first
+   * fixed-step hold query of a new step, the holds sampled at the previous
+   * rotation become this window's baseline, and current holds are re-sampled
+   * for the next one. Query-driven, so a caller polling {@link isJustHeldFor}
+   * every step gets an exact step-over-step crossing test.
    */
   private rotateStepHolds(step: number): void {
     if (this.stepHoldRotatedAt === step) return;
     const isFirstRotation = this.stepHoldRotatedAt === -1;
     this.stepHoldRotatedAt = step;
-    const recycled = this.stepPrevHoldMs;
-    this.stepPrevHoldMs = this.stepHoldSnapshot;
-    recycled.clear();
-    for (const action of this.actionMap.keys()) {
-      const holdMs = this.rawHoldDurationMs(action);
-      if (holdMs > 0) recycled.set(action, holdMs);
-    }
-    this.stepHoldSnapshot = recycled;
-    // The first rotation has no earlier sample to serve as a baseline. Seed
-    // it with the current holds so an ongoing hold does not read as a fresh
-    // crossing — matching the frame baseline, which is maintained every
-    // frame whether or not anyone polls.
-    if (isFirstRotation) {
-      for (const [action, holdMs] of recycled) {
-        this.stepPrevHoldMs.set(action, holdMs);
+    for (const state of this.allStates()) {
+      const recycled = state.stepPrevHold;
+      state.stepPrevHold = state.stepHoldSnapshot;
+      recycled.clear();
+      for (const action of this.actionMap.keys()) {
+        const hold = this.rawHoldOn(action, state);
+        if (hold > 0) recycled.set(action, hold);
+      }
+      state.stepHoldSnapshot = recycled;
+      // The first rotation has no earlier sample to serve as a baseline. Seed
+      // it with the current holds so an ongoing hold does not read as a fresh
+      // crossing — matching the frame baseline, which is maintained every
+      // frame whether or not anyone polls.
+      if (isFirstRotation) {
+        for (const [action, hold] of recycled) {
+          state.stepPrevHold.set(action, hold);
+        }
       }
     }
   }
@@ -370,40 +445,52 @@ export class InputManager {
    */
   private clearEndedStepHoldBaselines(code: string): void {
     for (const [action, keys] of this.actionMap) {
-      if (keys.includes(code) && this.rawHoldDurationMs(action) === 0) {
-        this.stepPrevHoldMs.delete(action);
-        this.stepHoldSnapshot.delete(action);
+      if (!keys.includes(code)) continue;
+      for (const state of this.allStates()) {
+        if (this.rawHoldOn(action, state) === 0) {
+          state.stepPrevHold.delete(action);
+          state.stepHoldSnapshot.delete(action);
+        }
       }
     }
   }
 
-  /** Hold duration (ms) across all keys/synthetic sources mapped to the action, 0 if not held. */
-  private holdDurationMs(action: string): number {
-    if (!this.isActionEnabled(action)) return 0;
-    return this.rawHoldDurationMs(action);
-  }
-
-  /** {@link holdDurationMs} without the group-enablement guard, for the end-of-frame hold snapshot. */
-  private rawHoldDurationMs(action: string): number {
+  /**
+   * Hold duration across all keys and synthetic sources mapped to the action,
+   * in `state`'s own unit; 0 if not held. Ignores group enablement, matching
+   * how the hold baselines are sampled.
+   */
+  private rawHoldOn(action: string, state: ClockState): number {
     const keys = this.actionMap.get(action);
     if (!keys && !this.isSyntheticPressed(action)) return 0;
+    const now = this.stateNow(state);
     let maxDuration = 0;
     for (const key of keys ?? []) {
-      const start = this.holdStart.get(key);
+      const start = state.holdStart.get(key);
       if (start !== undefined) {
-        maxDuration = Math.max(maxDuration, this.elapsedMs - start);
+        maxDuration = Math.max(maxDuration, now - start);
       }
     }
-    const syntheticStart = this.syntheticActionStarts.get(action);
+    const syntheticStart = state.syntheticStart.get(action);
     if (syntheticStart !== undefined) {
-      maxDuration = Math.max(maxDuration, this.elapsedMs - syntheticStart);
+      maxDuration = Math.max(maxDuration, now - syntheticStart);
     }
     return maxDuration;
   }
 
-  /** Seconds the action has been held. Returns 0 if not held. */
-  getHoldDuration(action: string): number {
-    return this.holdDurationMs(action) / 1000;
+  /**
+   * Seconds the action has been held. Returns 0 if not held.
+   *
+   * The duration counts on the raw input clock ({@link getClockTime}), which
+   * ignores scene pause and time scale — a charge keeps charging through a
+   * pause menu. Pass `options.clock` — the `SceneTime` of a scene on the stack
+   * — to count it on that scene's simulation time instead, so the hold stops
+   * with the scene and follows its time scale; any other clock throws.
+   */
+  getHoldDuration(action: string, options?: HoldDurationOptions): number {
+    const state = this.resolveState("getHoldDuration", options?.clock);
+    if (!this.isActionEnabled(action)) return 0;
+    return this.rawHoldOn(action, state) / state.perSecond;
   }
 
   /**
@@ -416,9 +503,17 @@ export class InputManager {
     return this.elapsedMs / 1000;
   }
 
-  /** Whether the action has been held for at least `minSeconds`. */
-  isHeldFor(action: string, minSeconds: number): boolean {
-    return this.getHoldDuration(action) >= minSeconds;
+  /**
+   * Whether the action has been held for at least `minSeconds`. Counts on the
+   * raw input clock unless `options.clock` names a registered scene clock,
+   * like {@link getHoldDuration}.
+   */
+  isHeldFor(
+    action: string,
+    minSeconds: number,
+    options?: HoldDurationOptions,
+  ): boolean {
+    return this.getHoldDuration(action, options) >= minSeconds;
   }
 
   /**
@@ -429,21 +524,31 @@ export class InputManager {
    * with no per-action config. Drives "released before T = a tap, crossed
    * T = hold-start" input feel. A tap (released before the threshold) never
    * fires it — the hold resets to 0 in the release window.
+   *
+   * The hold counts on the raw input clock unless `options.clock` names a
+   * registered scene clock, like {@link getHoldDuration}. Each clock carries
+   * its own crossing baseline, so a threshold reached on scene time fires
+   * exactly once there whatever the raw clock has done meanwhile.
    */
-  isJustHeldFor(action: string, seconds: number): boolean {
+  isJustHeldFor(
+    action: string,
+    seconds: number,
+    options?: HoldDurationOptions,
+  ): boolean {
+    const state = this.resolveState("isJustHeldFor", options?.clock);
     if (!this.isActionEnabled(action)) return false;
-    const holdMs = this.holdDurationMs(action);
-    if (holdMs <= 0) return false;
-    const thresholdMs = seconds * 1000;
+    const hold = this.rawHoldOn(action, state);
+    if (hold <= 0) return false;
+    const threshold = seconds * state.perSecond;
     const window = this.currentStepWindow();
-    let baselineMs: number;
+    let baseline: number;
     if (window === null) {
-      baselineMs = this.prevHoldMs.get(action) ?? 0;
+      baseline = state.prevHold.get(action) ?? 0;
     } else {
       this.rotateStepHolds(window + 1);
-      baselineMs = this.stepPrevHoldMs.get(action) ?? 0;
+      baseline = state.stepPrevHold.get(action) ?? 0;
     }
-    return holdMs >= thresholdMs && baselineMs < thresholdMs;
+    return hold >= threshold && baseline < threshold;
   }
 
   /**
@@ -454,41 +559,69 @@ export class InputManager {
    * {@link isJustPressed}. Captured at the release edge, so it survives
    * {@link getHoldDuration} resetting to 0 in that same window — no
    * sample-before-release dance needed.
+   *
+   * The length counts on the raw input clock unless `options.clock` names a
+   * registered scene clock, like {@link getHoldDuration}. Each clock captures
+   * its own length at the release, so a hold spanning a pause reports the
+   * playing time on the scene clock and the wall-clock time on the raw one.
    */
-  getReleaseDuration(action: string): number {
+  getReleaseDuration(action: string, options?: HoldDurationOptions): number {
+    const state = this.resolveState("getReleaseDuration", options?.clock);
+    return this.releaseDurationOn(action, state);
+  }
+
+  /** Seconds captured at the action's release edge, measured on `state`'s clock. */
+  private releaseDurationOn(action: string, state: ClockState): number {
     if (!this.isActionEnabled(action)) return 0;
     if (this.isActionStillHeld(action)) return 0;
     const window = this.currentStepWindow();
     if (window === null) {
-      return (this.releaseDurationMs.get(action) ?? 0) / 1000;
+      return (state.releaseDuration.get(action) ?? 0) / state.perSecond;
     }
-    const entry = this.stepReleaseDurations.get(action);
-    return entry && entry.tag === window ? entry.ms / 1000 : 0;
+    const entry = state.stepReleaseDuration.get(action);
+    return entry && entry.tag === window ? entry.duration / state.perSecond : 0;
   }
 
   /**
    * True in the query window where the action is fully released — frame or
    * fixed step, matching the calling context like {@link isJustPressed} —
-   * if it was held for at most `maxSeconds` (a tap).
+   * if it was held for at most `maxSeconds`. Counts on the raw input clock
+   * unless `options.clock` names a registered scene clock, like
+   * {@link getHoldDuration}.
    */
-  isJustTapped(action: string, maxSeconds: number): boolean {
+  isJustTapped(
+    action: string,
+    maxSeconds: number,
+    options?: HoldDurationOptions,
+  ): boolean {
+    // Resolved up front so an unusable clock throws on every call, not only on
+    // the one that happens to land in a release window.
+    const state = this.resolveState("isJustTapped", options?.clock);
     return (
       this.isJustReleased(action) &&
       !this.isActionStillHeld(action) &&
-      this.getReleaseDuration(action) <= maxSeconds
+      this.releaseDurationOn(action, state) <= maxSeconds
     );
   }
 
   /**
    * True in the query window where the action is fully released — frame or
    * fixed step, matching the calling context like {@link isJustPressed} —
-   * if it was held for at least `minSeconds`.
+   * if it was held for at least `minSeconds`. Counts on the raw input clock
+   * unless `options.clock` names a registered scene clock, like
+   * {@link getHoldDuration}.
    */
-  isJustReleasedAfter(action: string, minSeconds: number): boolean {
+  isJustReleasedAfter(
+    action: string,
+    minSeconds: number,
+    options?: HoldDurationOptions,
+  ): boolean {
+    // Resolved up front for the same reason as in {@link isJustTapped}.
+    const state = this.resolveState("isJustReleasedAfter", options?.clock);
     return (
       this.isJustReleased(action) &&
       !this.isActionStillHeld(action) &&
-      this.getReleaseDuration(action) >= minSeconds
+      this.releaseDurationOn(action, state) >= minSeconds
     );
   }
 
@@ -517,28 +650,12 @@ export class InputManager {
     windowSeconds: number,
     options?: BufferedPressOptions,
   ): boolean {
-    const clock = options?.clock;
-    const clockStamps = clock
-      ? this.bufferedPressClockStamps.get(clock)
-      : undefined;
-    if (clock && !clockStamps) {
-      throw new Error(
-        "InputManager.consumeBufferedPress(): the given clock is not registered, " +
-          "so no press can be measured on it. The input plugin registers a scene's " +
-          "SceneTime while the scene is on the stack and drops it on exit — the " +
-          "usual causes are holding on to an exited scene's SceneTime, or a clock " +
-          "the engine never saw.",
-      );
-    }
+    const state = this.resolveState("consumeBufferedPress", options?.clock);
     if (!this.isActionEnabled(action)) return false;
-    const pressed = clockStamps
-      ? clockStamps.get(action)
-      : this.bufferedPressMs.get(action);
+    const pressed = state.pressStamp.get(action);
     if (pressed === undefined) return false;
     if (this.claimedBufferedPress.has(action)) return false;
-    if (clock) {
-      if (clock.elapsed - pressed > windowSeconds) return false;
-    } else if (this.elapsedMs - pressed > windowSeconds * 1000) {
+    if ((this.stateNow(state) - pressed) / state.perSecond > windowSeconds) {
       return false;
     }
     this.claimedBufferedPress.add(action);
@@ -547,40 +664,90 @@ export class InputManager {
 
   /** Record a press edge for buffered-press tracking; a new press clears any prior claim. */
   private recordActionPress(action: string): void {
-    this.bufferedPressMs.set(action, this.elapsedMs);
-    for (const [clock, stamps] of this.bufferedPressClockStamps) {
-      stamps.set(action, clock.elapsed);
+    for (const state of this.allStates()) {
+      state.pressStamp.set(action, this.stateNow(state));
     }
     this.claimedBufferedPress.delete(action);
   }
 
   /**
-   * Register a clock so press edges can capture its current reading.
+   * Register a clock so press edges and hold starts capture its current
+   * reading. Input already held is stamped at registration, so an ongoing hold
+   * starts from zero on the new clock instead of reading as not held. A press
+   * made before registration is not backfilled — it happened outside this
+   * clock's timeline.
    * @internal
    */
   _registerClock(clock: InputClock): void {
-    this.bufferedPressClockStamps.set(clock, new Map());
+    const state = createClockState(clock, 1);
+    const now = clock.elapsed;
+    for (const code of this.rawState.holdStart.keys()) {
+      state.holdStart.set(code, now);
+    }
+    for (const action of this.rawState.syntheticStart.keys()) {
+      state.syntheticStart.set(action, now);
+    }
+    this.clockStates.set(clock, state);
   }
 
   /**
-   * Drop a clock and all press readings captured from it.
+   * Drop a clock and everything measured on it.
    * @internal
    */
   _unregisterClock(clock: InputClock): void {
-    this.bufferedPressClockStamps.delete(clock);
+    this.clockStates.delete(clock);
   }
 
-  /** Record the hold duration (ms) of a press ending now, keeping the longest across keys per window. */
-  private recordActionRelease(action: string, durationMs: number): void {
-    const prev = this.releaseDurationMs.get(action) ?? 0;
-    this.releaseDurationMs.set(action, Math.max(prev, durationMs));
+  /**
+   * Record the hold length of a press ending now, per clock, keeping the
+   * longest across keys per window.
+   */
+  private recordActionRelease(
+    action: string,
+    durations: ReadonlyMap<ClockState, number>,
+  ): void {
     const tag = this.stepTag();
-    const stepEntry = this.stepReleaseDurations.get(action);
-    if (stepEntry && stepEntry.tag === tag) {
-      stepEntry.ms = Math.max(stepEntry.ms, durationMs);
-    } else {
-      this.stepReleaseDurations.set(action, { ms: durationMs, tag });
+    for (const [state, duration] of durations) {
+      const prev = state.releaseDuration.get(action) ?? 0;
+      state.releaseDuration.set(action, Math.max(prev, duration));
+      const stepEntry = state.stepReleaseDuration.get(action);
+      if (stepEntry && stepEntry.tag === tag) {
+        stepEntry.duration = Math.max(stepEntry.duration, duration);
+      } else {
+        state.stepReleaseDuration.set(action, { duration, tag });
+      }
     }
+  }
+
+  /**
+   * Close a key's hold on every clock, returning how long it ran on each in
+   * that clock's own unit.
+   */
+  private endKeyHold(code: string): ReadonlyMap<ClockState, number> {
+    const durations = new Map<ClockState, number>();
+    for (const state of this.allStates()) {
+      const start = state.holdStart.get(code);
+      durations.set(
+        state,
+        start !== undefined ? this.stateNow(state) - start : 0,
+      );
+      state.holdStart.delete(code);
+    }
+    return durations;
+  }
+
+  /** {@link endKeyHold} for a synthetic action press. */
+  private endSyntheticHold(action: string): ReadonlyMap<ClockState, number> {
+    const durations = new Map<ClockState, number>();
+    for (const state of this.allStates()) {
+      const start = state.syntheticStart.get(action);
+      durations.set(
+        state,
+        start !== undefined ? this.stateNow(state) - start : 0,
+      );
+      state.syntheticStart.delete(action);
+    }
+    return durations;
   }
 
   // -- Axis helpers --
@@ -1651,7 +1818,9 @@ export class InputManager {
     this.stepPulseTags.set(name, this.stepTag());
     // Preserve a held action's start so a stray pulse can't rewind its hold.
     if (!this.heldSyntheticActions.has(name)) {
-      this.syntheticActionStarts.set(name, this.elapsedMs);
+      for (const state of this.allStates()) {
+        state.syntheticStart.set(name, this.stateNow(state));
+      }
     }
     // Match the physical path: a disabled action's state is already suppressed
     // at query time, so its listeners must not fire either.
@@ -1684,7 +1853,9 @@ export class InputManager {
     // pressed. The step tag stays — a pending step window spans frames and
     // must show every edge that landed in it, like the physical-key path.
     this.justReleasedActions.delete(name);
-    this.syntheticActionStarts.set(name, this.elapsedMs);
+    for (const state of this.allStates()) {
+      state.syntheticStart.set(name, this.stateNow(state));
+    }
     // Match the physical path: a disabled action's state is already suppressed
     // at query time, so its press listeners must not fire either.
     if (this.isActionEnabled(name)) {
@@ -1703,24 +1874,24 @@ export class InputManager {
       throw new Error(`InputManager.fireActionUp(): unknown action "${name}".`);
     }
     if (!this.heldSyntheticActions.has(name)) return;
-    const start = this.syntheticActionStarts.get(name);
-    const durationMs = start !== undefined ? this.elapsedMs - start : 0;
+    const durations = this.endSyntheticHold(name);
     this.heldSyntheticActions.delete(name);
     // Frame-window semantics: a press-then-release in one frame reads as
     // released. The step tag stays — see the matching note in fireActionDown.
     this.pulsedSyntheticActions.delete(name);
-    this.syntheticActionStarts.delete(name);
     this.justReleasedActions.add(name);
     this.stepSyntheticReleaseTags.set(name, this.stepTag());
-    if (this.rawHoldDurationMs(name) === 0) {
-      this.stepPrevHoldMs.delete(name);
-      this.stepHoldSnapshot.delete(name);
+    for (const state of this.allStates()) {
+      if (this.rawHoldOn(name, state) === 0) {
+        state.stepPrevHold.delete(name);
+        state.stepHoldSnapshot.delete(name);
+      }
     }
     // Match the physical path: a disabled action's release listeners must not
     // fire, mirroring how its press was suppressed.
     if (this.isActionEnabled(name)) {
       this.notifyActionListeners(this.actionReleasedListeners, name);
-      this.recordActionRelease(name, durationMs);
+      this.recordActionRelease(name, durations);
     }
   }
 
@@ -1747,23 +1918,24 @@ export class InputManager {
     // pulses for downstream listeners.
     this.justPressedKeys.clear();
     this.justReleasedKeys.clear();
-    this.holdStart.clear();
     this.pulsedSyntheticActions.clear();
     this.heldSyntheticActions.clear();
-    this.syntheticActionStarts.clear();
     this.justReleasedActions.clear();
-    this.releaseDurationMs.clear();
-    this.bufferedPressMs.clear();
-    for (const stamps of this.bufferedPressClockStamps.values()) stamps.clear();
     this.claimedBufferedPress.clear();
-    this.prevHoldMs.clear();
+    for (const state of this.allStates()) {
+      state.holdStart.clear();
+      state.syntheticStart.clear();
+      state.releaseDuration.clear();
+      state.stepReleaseDuration.clear();
+      state.prevHold.clear();
+      state.stepPrevHold.clear();
+      state.stepHoldSnapshot.clear();
+      state.pressStamp.clear();
+    }
     this.stepPressTags.clear();
     this.stepReleaseTags.clear();
     this.stepPulseTags.clear();
     this.stepSyntheticReleaseTags.clear();
-    this.stepReleaseDurations.clear();
-    this.stepPrevHoldMs.clear();
-    this.stepHoldSnapshot.clear();
     this.stepHoldRotatedAt = -1;
     this.pointers.clear();
     this.primaryPointerId = null;
@@ -2105,7 +2277,9 @@ export class InputManager {
       this.pressedKeys.add(code);
       this.justPressedKeys.add(code);
       this.stepPressTags.set(code, this.stepTag());
-      this.holdStart.set(code, this.elapsedMs);
+      for (const state of this.allStates()) {
+        state.holdStart.set(code, this.stateNow(state));
+      }
       this.notifyKeyListeners(this.keyDownListeners, this.keyDownListenersAny, code);
       for (const action of this.actionsForCode(code)) {
         this.notifyActionListeners(this.actionListeners, action);
@@ -2120,17 +2294,15 @@ export class InputManager {
    */
   _applyKeyUp(code: string): void {
     if (this.pressedKeys.has(code)) {
-      const start = this.holdStart.get(code);
-      const durationMs = start !== undefined ? this.elapsedMs - start : 0;
+      const durations = this.endKeyHold(code);
       this.pressedKeys.delete(code);
       this.justReleasedKeys.add(code);
       this.stepReleaseTags.set(code, this.stepTag());
-      this.holdStart.delete(code);
       this.clearEndedStepHoldBaselines(code);
       this.notifyKeyListeners(this.keyUpListeners, this.keyUpListenersAny, code);
       for (const action of this.actionsForCode(code)) {
         this.notifyActionListeners(this.actionReleasedListeners, action);
-        this.recordActionRelease(action, durationMs);
+        this.recordActionRelease(action, durations);
       }
     }
   }
@@ -2348,38 +2520,40 @@ export class InputManager {
     this.justPressedKeys.clear();
     this.justReleasedKeys.clear();
     this.justReleasedActions.clear();
-    // Release durations are release-frame-only, matching isJustReleased.
-    this.releaseDurationMs.clear();
     // One-frame pulses clear; sustained holds from fireActionDown persist.
+    const endedPulses: string[] = [];
     for (const action of this.pulsedSyntheticActions) {
-      if (!this.heldSyntheticActions.has(action)) {
-        this.syntheticActionStarts.delete(action);
-      }
+      if (!this.heldSyntheticActions.has(action)) endedPulses.push(action);
     }
     this.pulsedSyntheticActions.clear();
     this.consumedWheelThisFrame = false;
-    // Snapshot each action's hold for isJustHeldFor: the max across bindings
-    // can DROP when the longest-held one releases, so "last frame's hold"
-    // cannot be derived from dt — that would re-fire the crossing edge.
-    // Raw (enablement-ignoring) so a hold spanning a disabled group keeps its
-    // baseline: re-enabling mid-hold must not report a second crossing.
-    for (const action of this.actionMap.keys()) {
-      const holdMs = this.rawHoldDurationMs(action);
-      if (holdMs > 0) this.prevHoldMs.set(action, holdMs);
-      else this.prevHoldMs.delete(action);
-    }
     // Fixed-step windows outlive the frame — a frame can run zero steps —
     // so only entries whose step has already started are dropped. This is
     // housekeeping: a stale tag can never match a future window, because
     // the step index is monotonic.
     const currentTag = this.stepTag();
+    for (const state of this.allStates()) {
+      // Release durations are release-frame-only, matching isJustReleased.
+      state.releaseDuration.clear();
+      for (const action of endedPulses) state.syntheticStart.delete(action);
+      // Snapshot each action's hold for isJustHeldFor: the max across bindings
+      // can DROP when the longest-held one releases, so "last frame's hold"
+      // cannot be derived from dt — that would re-fire the crossing edge.
+      // Raw (enablement-ignoring) so a hold spanning a disabled group keeps its
+      // baseline: re-enabling mid-hold must not report a second crossing.
+      for (const action of this.actionMap.keys()) {
+        const hold = this.rawHoldOn(action, state);
+        if (hold > 0) state.prevHold.set(action, hold);
+        else state.prevHold.delete(action);
+      }
+      for (const [action, entry] of state.stepReleaseDuration) {
+        if (entry.tag < currentTag) state.stepReleaseDuration.delete(action);
+      }
+    }
     this.pruneStepTags(this.stepPressTags, currentTag);
     this.pruneStepTags(this.stepReleaseTags, currentTag);
     this.pruneStepTags(this.stepPulseTags, currentTag);
     this.pruneStepTags(this.stepSyntheticReleaseTags, currentTag);
-    for (const [action, entry] of this.stepReleaseDurations) {
-      if (entry.tag < currentTag) this.stepReleaseDurations.delete(action);
-    }
   }
 
   /** Drop step-window entries whose step has already started. */
