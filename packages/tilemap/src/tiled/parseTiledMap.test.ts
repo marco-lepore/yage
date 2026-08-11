@@ -413,11 +413,12 @@ describe("createTilemapLayers", () => {
     ]);
   });
 
-  it("anchors a tile taller than the grid to the bottom of its cell", () => {
+  it("sits a tile on the bottom edge of its cell whatever its image size", () => {
     const map = loadFixture("oversized-tiles.json");
     mockAssets._cache.set("tall.png:0", { label: "wall" });
     mockAssets._cache.set("stump.png", { label: "stump" });
     mockAssets._cache.set("pine.png", { label: "pine" });
+    mockAssets._cache.set("coin.png", { label: "coin" });
 
     const [layer] = createTilemapLayers(map);
     const calls = (
@@ -425,12 +426,14 @@ describe("createTilemapLayers", () => {
     ).calls;
 
     // On a 16px grid: the 48px-tall wall overhangs two cells upward, the 16px
-    // stump fills its cell, and the 64px pine overhangs three. The pine is
-    // also 32px wide and still starts at its cell's left edge.
+    // stump fills its cell, the 64px pine overhangs three, and the 8px coin
+    // sits in the lower half of its own. The pine is also 32px wide and still
+    // starts at its cell's left edge.
     expect(calls.map(({ x, y }) => ({ x, y }))).toEqual([
       { x: 0, y: -32 },
       { x: 16, y: 0 },
       { x: 32, y: -48 },
+      { x: 48, y: 8 },
     ]);
   });
 

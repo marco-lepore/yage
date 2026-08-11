@@ -10,6 +10,7 @@ export type TilemapDiagnosticCode =
   | "tsx-tileset"
   | "unresolved-tileset"
   | "layer-parallax"
+  | "tileset-object-alignment"
   | "unsupported-tile-animation";
 
 export interface TilemapDiagnostic {

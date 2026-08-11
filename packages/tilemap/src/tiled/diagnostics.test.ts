@@ -89,6 +89,34 @@ describe("validateTiledMap", () => {
     expect(validateTiledMap(loadFixture("external-tsj.json"))).toEqual([]);
   });
 
+  it("warns when a tileset anchors its tile objects away from bottom-left", () => {
+    const mapWith = (objectalignment: string) =>
+      ({
+        layers: [],
+        tilesets: [
+          {
+            firstgid: 1,
+            name: "props",
+            tilewidth: 16,
+            tileheight: 16,
+            tilecount: 1,
+            columns: 1,
+            objectalignment,
+          },
+        ],
+      }) as unknown as TiledMapData;
+
+    expect(validateTiledMap(mapWith("topleft"))).toEqual([
+      expect.objectContaining({
+        code: "tileset-object-alignment",
+        severity: "warning",
+        tileset: "props",
+      }),
+    ]);
+    expect(validateTiledMap(mapWith("bottomleft"))).toEqual([]);
+    expect(validateTiledMap(mapWith("unspecified"))).toEqual([]);
+  });
+
   it("does not throw when map fields contain malformed values", () => {
     const malformed = {
       orientation: { unexpected: true },

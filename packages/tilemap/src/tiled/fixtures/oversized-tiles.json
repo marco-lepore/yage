@@ -1,5 +1,5 @@
 {
-  "width": 3,
+  "width": 4,
   "height": 1,
   "tilewidth": 16,
   "tileheight": 16,
@@ -9,8 +9,8 @@
       "type": "tilelayer",
       "id": 1,
       "name": "scenery",
-      "data": [1, 2, 3],
-      "width": 3,
+      "data": [1, 2, 3, 4],
+      "width": 4,
       "height": 1,
       "opacity": 1,
       "visible": true,
@@ -35,11 +35,12 @@
       "name": "props",
       "tilewidth": 32,
       "tileheight": 64,
-      "tilecount": 2,
+      "tilecount": 3,
       "columns": 0,
       "tiles": [
         { "id": 0, "image": "stump.png", "imagewidth": 16, "imageheight": 16 },
-        { "id": 1, "image": "pine.png", "imagewidth": 32, "imageheight": 64 }
+        { "id": 1, "image": "pine.png", "imagewidth": 32, "imageheight": 64 },
+        { "id": 2, "image": "coin.png", "imagewidth": 8, "imageheight": 8 }
       ]
     }
   ]

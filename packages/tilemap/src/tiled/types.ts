@@ -252,6 +252,12 @@ export interface TilesetData {
   spacing?: number;
   properties?: TileObjectProperty[];
   tileoffset?: { x: number; y: number };
+  /**
+   * Corner of a tile object this tileset's tiles are anchored on. Tile objects
+   * are placed at the orthogonal default, `"bottomleft"`; any other value is
+   * reported by `validateTiledMap`.
+   */
+  objectalignment?: string;
   /** Single-image tileset: path to the spritesheet image. */
   image?: string;
   imagewidth?: number;

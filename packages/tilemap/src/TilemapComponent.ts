@@ -248,7 +248,10 @@ export class TilemapComponent extends VisualComponent {
    * image is drawn, not which cell the tile occupies, and one layer can mix
    * tilesets that offset differently. So a tile from an offset tileset
    * answers at its cell, which is where its collision and neighbours are,
-   * rather than under the part of the image that overhangs.
+   * rather than under the part of the image that overhangs. A tile image
+   * that does not match the grid is the same case: it sits on its cell's
+   * bottom edge, and the cells its image reaches into answer with whatever
+   * they hold themselves.
    *
    * Tiled's flip bits are stripped, so the id compares against a tileset's
    * numbering whichever way the tile faces. Read them from the raw layer data
