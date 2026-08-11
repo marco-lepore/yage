@@ -175,7 +175,7 @@ export function validateTiledMap(map: TiledMapData): TilemapDiagnostic[] {
       ) {
         diagnostics.push({
           code: "tileset-object-alignment",
-          message: `Tileset "${resolved.name}" anchors its tile objects on "${alignment}", which is not read. Its tile objects are placed and given colliders as if anchored bottom-left.`,
+          message: `Tileset "${resolved.name}" anchors its tile objects on "${alignment}", which is not read. Any tile object drawn from it is placed and given colliders as if anchored bottom-left.`,
           severity: "warning",
           tileset: resolved.name,
         });

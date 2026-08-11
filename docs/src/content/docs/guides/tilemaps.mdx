@@ -26,6 +26,7 @@ Worth knowing up front so you don't reach for something that isn't there.
 | Tile images that don't match the map grid          | Supported — anchored bottom-left, as Tiled draws them |
 | Tile objects (an object that draws a tile)         | Data only — `gid`, position, size and properties are parsed; the image is not drawn |
 | Tileset `objectalignment` override                 | Not read — tile objects stay bottom-left, and `validateTiledMap()` warns |
+| Tileset `tilerendersize` / `fillmode`              | Not read — a tile draws at its image's own size |
 | Collision shapes authored on a tile in the tileset | Not read    |
 | Layer draw offsets and tileset `tileoffset`        | Supported   |
 | Per-layer visibility and opacity                   | Supported   |
@@ -37,9 +38,12 @@ Worth knowing up front so you don't reach for something that isn't there.
 | Dynamic tile editing at runtime                    | Not yet     |
 | Parallax / background scroll layers                | Not built-in (use a regular sprite layer) |
 
-Nothing in the "Not yet" rows fails silently. `validateTiledMap()` reports
-each one against a map's raw JSON, and `TilemapComponent` logs whatever it
-finds when the map loads — see [Checking a Map](#checking-a-map).
+A map that uses an unsupported map, layer or tileset setting does not fail
+silently: `validateTiledMap()` reports it against the raw JSON, and
+`TilemapComponent` logs what it finds when the map loads — see
+[Checking a Map](#checking-a-map). Four limits have no diagnostic, because the
+map itself parses fine: runtime tile editing, a tile object's undrawn image,
+per-tile collision shapes and `tilerendersize`.
 
 For a worked example of loading a Tiled map and extracting collision
 shapes, see the
@@ -235,7 +239,10 @@ A diagnostic is an `error` when authored content is dropped or will render
 wrong, and a `warning` when a setting is simply not applied. Each one carries
 a `code` you can match on (`group-layer`, `infinite-map`,
 `unsupported-orientation`, `unsupported-tile-animation`, and so on), plus the `layer` or
-`tileset` name it came from.
+`tileset` name it came from. A gate filtered to errors lets every warning
+through, so match on the codes your game cannot live with:
+`tileset-object-alignment` is a warning, and it means the map's tile objects
+sit somewhere other than where Tiled draws them.
 
 An external tileset that has not been loaded yet is not reported — it resolves
 during preload.
@@ -411,6 +418,11 @@ The tile still belongs to that one cell. Tiles render where Tiled draws them.
 In a collection-of-images tileset each tile is measured on its own, which lets
 one tileset mix a 16px stump with a 64px pine and place both correctly.
 
+A tile draws at its image's own size. A tileset can ask Tiled to scale its
+tiles to the grid instead (`tilerendersize: "grid"`); that setting is not read,
+so those tiles keep their own size here and land where the rule above puts
+them.
+
 Because the cell is unchanged, `getTileAt` answers at the cell a tile was
 painted in, not under the part of the image that overhangs its neighbours.
 
@@ -555,10 +567,26 @@ for (const obj of tilemap.getObjects("props")["Tree"] ?? []) {
 Tiled turns a tile object about that same bottom-left corner, so once
 `obj.rotation` is non-zero the drawn box swings away from `obj.y - obj.height`
 and the subtraction no longer finds it. Put the sprite on the corner itself
-instead — anchor `{ x: 0, y: 1 }`, position `obj.x, obj.y`, rotation
-`obj.rotation` converted to radians — and it lands where Tiled shows it at any
-angle. [Collision extraction](#collision-extraction) does the equivalent
-internally, so its rect and the sprite agree.
+instead: anchor it bottom-left, and give the entity's `Transform` the object's
+own position and rotation. Position and rotation belong on the Transform —
+the renderer copies them onto the sprite every frame, so a `rotation` set on
+the sprite is overwritten.
+
+```typescript
+import { MathUtils, Transform } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
+// inside the spawned entity's setup(), for the tile object it came from
+this.add(new Transform({
+  position: { x: obj.x, y: obj.y },            // the bottom-left corner itself
+  rotation: MathUtils.degToRad(obj.rotation),  // Tiled stores degrees
+}));
+this.add(new SpriteComponent({ texture, anchor: { x: 0, y: 1 } }));
+```
+
+That lands where Tiled shows it at any angle.
+[Collision extraction](#collision-extraction) does the equivalent internally,
+so its rect and the sprite agree.
 
 The `gid` keeps Tiled's flip bits, exactly like the GIDs in raw layer data, so
 `readTileGid` splits it the same way.

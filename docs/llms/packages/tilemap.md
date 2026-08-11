@@ -28,9 +28,9 @@ When you stage a Tiled tileset into `public/assets/maps/`, rewrite `image` to a 
 
 …and put `spr_tileset.png` next to the JSON. Same rule for embedded tilesets inside a map JSON — the `image` field is resolved relative to the *map* file's directory.
 
-Not supported: infinite/chunked maps, base64-encoded layer data, isometric/hex/staggered orientations, group layers and image layers, dynamic tile editing at runtime, built-in parallax layers (use a regular render layer with a scrolling sprite), drawing a tile object's image (its `gid` and box are parsed — you spawn the sprite), a tileset's `objectalignment` override, collision shapes authored on a tile inside the tileset.
+Not supported: infinite/chunked maps, base64-encoded layer data, isometric/hex/staggered orientations, group layers and image layers, dynamic tile editing at runtime, built-in parallax layers (use a regular render layer with a scrolling sprite), drawing a tile object's image (its `gid` and box are parsed — you spawn the sprite), a tileset's `objectalignment` override, a tileset's `tilerendersize` / `fillmode` (a tile always draws at its image's own size), collision shapes authored on a tile inside the tileset.
 
-`validateTiledMap()` reports every one of these in a map — see [Unsupported Forms](#unsupported-forms).
+`validateTiledMap()` reports the forms that carry a diagnostic code — see [Unsupported Forms](#unsupported-forms). Four limits have no code, because the map itself parses fine: runtime tile editing, a tile object's undrawn image, per-tile collision shapes and `tilerendersize`.
 
 Workflow: parse Tiled JSON → `tilemap.getCollisionShapes("walls")` returns raw top-left-origin shapes → `toPhysicsColliders(shapes)` converts to center-origin Rapier configs → spawn a static body with one `ColliderComponent` per config.
 
@@ -131,7 +131,7 @@ Each layer is read through its own draw offset, and Tiled's flip bits are stripp
 
 A tileset's `tileoffset` is not reversed: it moves where a tile's image is drawn, not which cell the tile occupies, and one layer can mix tilesets that offset differently. A tile from an offset tileset answers at its cell.
 
-Every tile image is anchored to the bottom-left of its cell, the way Tiled draws it, whatever its size: one taller than the grid overhangs upward and a wider one to the right, and one smaller than the grid sits on the cell's bottom edge. The tile still occupies the one cell, so `getTileAt` answers there and not under the overhang. In a collection-of-images tileset each tile is measured on its own, so tall and short props can share a tileset.
+Every tile image is anchored to the bottom-left of its cell, the way Tiled draws it, whatever its size: one taller than the grid overhangs upward and a wider one to the right, and one smaller than the grid sits on the cell's bottom edge. The tile still occupies the one cell, so `getTileAt` answers there and not under the overhang. In a collection-of-images tileset each tile is measured on its own, so tall and short props can share a tileset. A tile draws at its image's own size — a tileset that asks Tiled to scale its tiles to the grid (`tilerendersize: "grid"`) is not read.
 
 Raw layer data (`tilemap.data.tileLayers[i].data`) keeps Tiled's GIDs with those bits intact. Split one with `readTileGid`:
 
@@ -273,7 +273,19 @@ for (const obj of tilemap.getAllObjects()) {
 }
 ```
 
-That subtraction is the unrotated case. Tiled turns a tile object about the same bottom-left corner, so for `obj.rotation !== 0` the drawn box swings away from `obj.x, obj.y - obj.height`. Reproduce it without trigonometry by giving the sprite a bottom-left anchor and placing it on the corner itself: `anchor: { x: 0, y: 1 }`, position `obj.x, obj.y`, rotation `obj.rotation` in radians.
+That subtraction is the unrotated case. Tiled turns a tile object about the same bottom-left corner, so for `obj.rotation !== 0` the drawn box swings away from `obj.x, obj.y - obj.height`. Reproduce it without trigonometry by anchoring the sprite on that corner and putting the object's own placement on the entity's `Transform` — position and rotation live there, and `DisplaySystem` overwrites a sprite's own `rotation` from the Transform every frame:
+
+```ts
+import { MathUtils, Transform } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
+// in the spawned entity's setup(), given the tile object it came from
+this.add(new Transform({
+  position: { x: obj.x, y: obj.y },          // the bottom-left corner itself
+  rotation: MathUtils.degToRad(obj.rotation), // Tiled stores degrees
+}));
+this.add(new SpriteComponent({ texture, anchor: { x: 0, y: 1 } }));
+```
 
 `getCollisionShapes()` accounts for the anchor already: a tile object emits a `rect` covering the tile's drawn box, measured up from the bottom-left corner (and swung about that corner when the object is rotated).
 
