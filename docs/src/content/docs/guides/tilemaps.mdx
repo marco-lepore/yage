@@ -42,8 +42,8 @@ A map that uses an unsupported map, layer or tileset setting does not fail
 silently: `validateTiledMap()` reports it against the raw JSON, and
 `TilemapComponent` logs what it finds when the map loads — see
 [Checking a Map](#checking-a-map). Three limits have no diagnostic, because the
-map itself parses fine: runtime tile editing, per-tile collision shapes and
-`tilerendersize`.
+map itself parses fine: runtime tile editing, per-tile collision shapes, and a
+tileset's `tilerendersize` / `fillmode`.
 
 For a worked example of loading a Tiled map and extracting collision
 shapes, see the

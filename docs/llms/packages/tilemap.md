@@ -30,7 +30,7 @@ When you stage a Tiled tileset into `public/assets/maps/`, rewrite `image` to a 
 
 Not supported: infinite/chunked maps, base64-encoded layer data, isometric/hex/staggered orientations, group layers and image layers, dynamic tile editing at runtime, built-in parallax layers (use a regular render layer with a scrolling sprite), drawing a tile object's image (its `gid` and box are parsed — you spawn the sprite), a tileset's `tilerendersize` / `fillmode` (a tile always draws at its image's own size), collision shapes authored on a tile inside the tileset.
 
-`validateTiledMap()` reports the forms that carry a diagnostic code — see [Unsupported Forms](#unsupported-forms). Three limits have no code, because the map itself parses fine: runtime tile editing, per-tile collision shapes and `tilerendersize`.
+`validateTiledMap()` reports the forms that carry a diagnostic code — see [Unsupported Forms](#unsupported-forms). Three limits have no code, because the map itself parses fine: runtime tile editing, per-tile collision shapes, and a tileset's `tilerendersize` / `fillmode`.
 
 Workflow: parse Tiled JSON → `tilemap.getCollisionShapes("walls")` returns raw top-left-origin shapes → `toPhysicsColliders(shapes)` converts to center-origin Rapier configs → spawn a static body with one `ColliderComponent` per config.
 
@@ -260,7 +260,7 @@ tilemap.findObjectByName("Player"); // first match across all layers
 
 ## Tile Objects
 
-An object that draws a tile carries `gid`, the global tile ID of the tile it shows. The image itself is not drawn — object layers are data, so you spawn the sprite. `validateTiledMap` reports a `tile-object` error per object layer, naming the objects whose images are missing.
+An object that draws a tile carries `gid`, the global tile ID of the tile it shows. The image itself is not drawn — object layers are data, so you spawn the sprite. `validateTiledMap` reports a `tile-object` error per object layer, naming the objects whose images are not drawn.
 
 Its `x`/`y` is the top-left corner, like every other object type. Tiled stores a tile object on its bottom-left corner instead (or wherever the owning tileset's `objectalignment` says), and the conversion normalises that away, so `getObjects`, `findObject`, `getCollisionShapes`, `toPhysicsColliders` and your spawn code all read one convention.
 
