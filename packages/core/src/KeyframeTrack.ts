@@ -21,9 +21,11 @@ export interface KeyframeTrackOptions<T extends Interpolatable> {
   /** At least 2 keyframes, sorted by time. */
   keyframes: Keyframe<T>[];
   /**
-   * Called each frame with the interpolated value. Optional — omit to run
-   * the track purely for its keyframe `event` callbacks (a "timeline" of
-   * side-effects with no per-frame value).
+   * Called with the interpolated value on every tick of the clock the track
+   * is scheduled on. The tick that wraps a looping track back to time 0 skips
+   * the setter, so the previous value holds for one tick. Optional — omit to
+   * run the track purely for its keyframe `event` callbacks (a "timeline" of
+   * side-effects with no per-tick value).
    */
   setter?: (value: T) => void;
   /** Total duration in seconds. Defaults to the last keyframe's time. */

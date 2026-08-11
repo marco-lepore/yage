@@ -271,7 +271,8 @@ interface AbilitiesOptions {
   // fixed timestep, matching physics timing. "frame": rendered-frame time,
   // for purely presentation-driven timelines. Other processes on the
   // sibling ProcessComponent keep the clocks they were scheduled with
-  // (KeyframeAnimator playback stays frame-smooth). Input is sampled per
+  // (KeyframeAnimator playback stays on rendered-frame time unless the
+  // animation's def sets `clock: "fixed"`). Input is sampled per
   // rendered frame; an intent sent this frame starts a timeline that
   // advances on the fixed step. `abilities.clock` is readable — custom
   // steps pass it to `pc.run(p, { clock })` for their own gameplay timers.
