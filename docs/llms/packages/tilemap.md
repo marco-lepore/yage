@@ -4,7 +4,7 @@ Depends on `@yagejs/core`, `@yagejs/renderer`. Tiled map loader and renderer.
 
 ## Capabilities & Limits
 
-Supported: orthogonal Tiled JSON (tilesets must be exported as JSON, not TSX), multiple tile layers, object layers, custom properties on the map / layers / tilesets / objects, object-reference resolution, collision-shape extraction from rectangle / ellipse / polygon / polyline / tile objects (raw `rect` / `circle` / `polygon` / `polyline` / `capsule` shapes), `toPhysicsColliders()` adapter to Rapier collider configs, tileset-image and collection-of-images tilesets, embedded and external tilesets, flipped and rotated tiles, tile images that do not match the map grid (anchored bottom-left), animated tiles (see below), layer `offsetx`/`offsety` and tileset `tileoffset`, per-layer `visible` and `opacity`.
+Supported: orthogonal Tiled JSON (tilesets must be exported as JSON, not TSX), multiple tile layers, object layers, custom properties on the map / layers / tilesets / objects, object-reference resolution, collision-shape extraction from rectangle / ellipse / polygon / polyline / tile objects (raw `rect` / `circle` / `polygon` / `polyline` / `capsule` shapes), `toPhysicsColliders()` adapter to Rapier collider configs, tileset-image and collection-of-images tilesets, embedded and external tilesets, flipped and rotated tiles, tile images that do not match the map grid (anchored bottom-left), tile objects (`gid`, position, size and properties, the position normalised to the top-left corner through the tileset's `objectalignment`), animated tiles (see below), layer `offsetx`/`offsety` and tileset `tileoffset`, per-layer `visible` and `opacity`.
 
 Tilesets MUST be exported as JSON (`.tsj` / `.json`). Tiled's default XML `.tsx` format is not supported — in Tiled, *Edit Tileset → File → Export As → JSON*.
 
@@ -28,9 +28,9 @@ When you stage a Tiled tileset into `public/assets/maps/`, rewrite `image` to a 
 
 …and put `spr_tileset.png` next to the JSON. Same rule for embedded tilesets inside a map JSON — the `image` field is resolved relative to the *map* file's directory.
 
-Not supported: infinite/chunked maps, base64-encoded layer data, isometric/hex/staggered orientations, group layers and image layers, dynamic tile editing at runtime, built-in parallax layers (use a regular render layer with a scrolling sprite), drawing a tile object's image (its `gid` and box are parsed — you spawn the sprite), a tileset's `objectalignment` override, a tileset's `tilerendersize` / `fillmode` (a tile always draws at its image's own size), collision shapes authored on a tile inside the tileset.
+Not supported: infinite/chunked maps, base64-encoded layer data, isometric/hex/staggered orientations, group layers and image layers, dynamic tile editing at runtime, built-in parallax layers (use a regular render layer with a scrolling sprite), drawing a tile object's image (its `gid` and box are parsed — you spawn the sprite), a tileset's `tilerendersize` / `fillmode` (a tile always draws at its image's own size), collision shapes authored on a tile inside the tileset.
 
-`validateTiledMap()` reports the forms that carry a diagnostic code — see [Unsupported Forms](#unsupported-forms). Four limits have no code, because the map itself parses fine: runtime tile editing, a tile object's undrawn image, per-tile collision shapes and `tilerendersize`.
+`validateTiledMap()` reports the forms that carry a diagnostic code — see [Unsupported Forms](#unsupported-forms). Three limits have no code, because the map itself parses fine: runtime tile editing, per-tile collision shapes and `tilerendersize`.
 
 Workflow: parse Tiled JSON → `tilemap.getCollisionShapes("walls")` returns raw top-left-origin shapes → `toPhysicsColliders(shapes)` converts to center-origin Rapier configs → spawn a static body with one `ColliderComponent` per config.
 
@@ -228,7 +228,7 @@ interface TilemapDiagnostic {
 }
 ```
 
-Codes: `unsupported-orientation`, `infinite-map`, `chunked-layer`, `encoded-layer-data`, `group-layer`, `image-layer`, `tsx-tileset`, `unresolved-tileset` (errors); `layer-parallax`, `tileset-object-alignment`, `unsupported-tile-animation` (warnings).
+Codes: `unsupported-orientation`, `infinite-map`, `chunked-layer`, `encoded-layer-data`, `group-layer`, `image-layer`, `tsx-tileset`, `unresolved-tileset`, `tile-object` (errors); `layer-parallax`, `unsupported-tile-animation` (warnings).
 
 A group layer and everything nested inside it is dropped — the diagnostic names the children so you can see what is missing. An external tileset that has not loaded yet is not a diagnostic; it resolves during preload.
 
@@ -260,7 +260,9 @@ tilemap.findObjectByName("Player"); // first match across all layers
 
 ## Tile Objects
 
-An object that draws a tile carries `gid`, the global tile ID of the tile it shows. The image itself is not drawn — object layers are data, so you spawn the sprite. Tiled anchors that object at its **bottom-left** corner, so its `y` is the bottom edge — every other object type measures `y` from its top.
+An object that draws a tile carries `gid`, the global tile ID of the tile it shows. The image itself is not drawn — object layers are data, so you spawn the sprite. `validateTiledMap` reports a `tile-object` error per object layer, naming the objects whose images are missing.
+
+Its `x`/`y` is the top-left corner, like every other object type. Tiled stores a tile object on its bottom-left corner instead (or wherever the owning tileset's `objectalignment` says), and the conversion normalises that away, so `getObjects`, `findObject`, `getCollisionShapes`, `toPhysicsColliders` and your spawn code all read one convention.
 
 ```ts
 import { readTileGid } from "@yagejs/tilemap";
@@ -268,12 +270,11 @@ import { readTileGid } from "@yagejs/tilemap";
 for (const obj of tilemap.getAllObjects()) {
   if (obj.gid === undefined) continue;              // not a tile object
   const { id, flippedHorizontally } = readTileGid(obj.gid);
-  const topLeftY = obj.y - obj.height;              // where the image starts
-  scene.spawn(PropEntity, { tileId: id, x: obj.x, y: topLeftY, flippedHorizontally });
+  scene.spawn(PropEntity, { tileId: id, x: obj.x, y: obj.y, flippedHorizontally });
 }
 ```
 
-That subtraction is the unrotated case. Tiled turns a tile object about the same bottom-left corner, so for `obj.rotation !== 0` the drawn box swings away from `obj.x, obj.y - obj.height`. Reproduce it without trigonometry by anchoring the sprite on that corner and putting the object's own placement on the entity's `Transform` — position and rotation live there, and `DisplaySystem` overwrites a sprite's own `rotation` from the Transform every frame:
+`rotation` is degrees about that same `x`/`y`, matching a rectangle object. Put both on the entity's `Transform` with the sprite anchored top-left, and it lands where Tiled draws it at any angle:
 
 ```ts
 import { MathUtils, Transform } from "@yagejs/core";
@@ -281,15 +282,13 @@ import { SpriteComponent } from "@yagejs/renderer";
 
 // in the spawned entity's setup(), given the tile object it came from
 this.add(new Transform({
-  position: { x: obj.x, y: obj.y },          // the bottom-left corner itself
+  position: { x: obj.x, y: obj.y },
   rotation: MathUtils.degToRad(obj.rotation), // Tiled stores degrees
 }));
-this.add(new SpriteComponent({ texture, anchor: { x: 0, y: 1 } }));
+this.add(new SpriteComponent({ texture, anchor: { x: 0, y: 0 } }));
 ```
 
-`getCollisionShapes()` accounts for the anchor already: a tile object emits a `rect` covering the tile's drawn box, measured up from the bottom-left corner (and swung about that corner when the object is rotated).
-
-Two limits. Collision shapes authored on the tile itself, inside the tileset, are not read — the emitted rect is the tile's whole box. And a tileset's `objectalignment` is not read either, so a map that overrides it still has its tile objects placed bottom-left; `validateTiledMap` reports that as a `tileset-object-alignment` warning.
+Collision shapes authored on the tile itself, inside the tileset, are not read — the rect `getCollisionShapes()` emits is the tile's whole box.
 
 ## Spawning Entities from Tiled Objects (auto-keys)
 
@@ -361,7 +360,7 @@ const shapes = tilemap.getCollisionShapes("walls");
 
 Mapping from Tiled object → emitted shape:
 - Rectangle → `rect`.
-- Tile object (has a `gid`) → `rect` over the tile's drawn box, measured up from the bottom-left corner Tiled anchors it at.
+- Tile object (has a `gid`) → `rect` over the tile's whole box, exactly like a rectangle; per-tile shapes authored in the tileset are not read.
 - Ellipse (w === h) → `circle`.
 - Ellipse (w !== h) → `polygon` sampling the ellipse outline (24 vertices; Rapier has no ellipse primitive, and the sampled ring is convex so the physics-side convex hull matches it exactly).
 - Capsule → `capsule` with `halfHeight = (max(w,h) - min(w,h)) / 2`, `radius = min(w,h) / 2`, `axis = "y"` if taller than wide else `"x"`.

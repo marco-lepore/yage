@@ -89,32 +89,21 @@ describe("validateTiledMap", () => {
     expect(validateTiledMap(loadFixture("external-tsj.json"))).toEqual([]);
   });
 
-  it("warns when a tileset anchors its tile objects away from bottom-left", () => {
-    const mapWith = (objectalignment: string) =>
-      ({
-        layers: [],
-        tilesets: [
-          {
-            firstgid: 1,
-            name: "props",
-            tilewidth: 16,
-            tileheight: 16,
-            tilecount: 1,
-            columns: 1,
-            objectalignment,
-          },
-        ],
-      }) as unknown as TiledMapData;
+  it("reports the tile objects on a layer as one error", () => {
+    const entry = diagnostic("tile-object", "tile-objects.json");
 
-    expect(validateTiledMap(mapWith("topleft"))).toEqual([
-      expect.objectContaining({
-        code: "tileset-object-alignment",
-        severity: "warning",
-        tileset: "props",
-      }),
-    ]);
-    expect(validateTiledMap(mapWith("bottomleft"))).toEqual([]);
-    expect(validateTiledMap(mapWith("unspecified"))).toEqual([]);
+    expect(entry?.severity).toBe("error");
+    expect(entry?.layer).toBe("props");
+    for (const name of ["chest", "flipped", "lamp", "turned"]) {
+      expect(entry?.message).toContain(name);
+    }
+    expect(entry?.message).not.toContain("trigger");
+    expect(validateTiledMap(loadFixture("tile-objects.json"))).toHaveLength(1);
+  });
+
+  it("reports nothing for object layers and tile sizes it handles", () => {
+    expect(validateTiledMap(loadFixture("object-groups.json"))).toEqual([]);
+    expect(validateTiledMap(loadFixture("oversized-tiles.json"))).toEqual([]);
   });
 
   it("does not throw when map fields contain malformed values", () => {

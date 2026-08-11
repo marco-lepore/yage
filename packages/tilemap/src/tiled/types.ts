@@ -106,10 +106,11 @@ export interface RectangleObject {
   rotation: number;
   visible: boolean;
   /**
-   * Global tile ID, present only on an object that draws a tile. Tiled anchors
-   * such an object at its bottom-left corner, so `y` is its bottom edge while
-   * every other object measures `y` from its top. The flip bits are kept —
-   * split them out with `readTileGid`.
+   * Global tile ID, present only on an object that draws a tile. This is raw
+   * Tiled data, so `x`/`y` is the anchor corner the tileset's
+   * `objectalignment` names — bottom-left by default. `MapObject` carries the
+   * same object with its position normalised to the top-left corner. The flip
+   * bits are kept — split them out with `readTileGid`.
    */
   gid?: number;
   point?: undefined | false;
@@ -253,9 +254,10 @@ export interface TilesetData {
   properties?: TileObjectProperty[];
   tileoffset?: { x: number; y: number };
   /**
-   * Corner of a tile object this tileset's tiles are anchored on. Tile objects
-   * are placed at the orthogonal default, `"bottomleft"`; any other value is
-   * reported by `validateTiledMap`.
+   * Corner or edge of a tile object that its stored `x`/`y` sits on:
+   * `"topleft"`, `"top"`, `"topright"`, `"left"`, `"center"`, `"right"`,
+   * `"bottom"`, `"bottomright"` or `"bottomleft"`. Absent, `"unspecified"` and
+   * any unrecognised value take the orthogonal default, bottom-left.
    */
   objectalignment?: string;
   /** Single-image tileset: path to the spritesheet image. */

@@ -90,7 +90,9 @@ import {
   extractObjects,
   toTilemapData,
 } from "./parseTiledMap.js";
+import { extractCollisionShapes } from "../colliders.js";
 import { getProperty, getPropertyArray } from "../properties.js";
+import { readTileGid } from "./gid.js";
 import { loadFixture } from "./fixtures/loadFixture.js";
 import type { TiledMapData, TileLayer, ObjectGroup } from "./types.js";
 
@@ -784,13 +786,57 @@ describe("toTilemapData", () => {
     ]);
   });
 
-  it("carries a tile object's gid, leaving other objects without one", () => {
-    const result = toTilemapData(loadFixture("tile-objects.json"));
-    const [crate, marker] = result.objectLayers[0]!.objects;
+  it("keeps a tile object's gid and moves its position to the top-left corner", () => {
+    const objects = toTilemapData(loadFixture("tile-objects.json"))
+      .objectLayers[0]!.objects;
 
-    // The crate's y is its bottom edge, which is what Tiled wrote.
-    expect(crate).toMatchObject({ gid: 5, x: 32, y: 64, height: 32 });
-    expect(marker).not.toHaveProperty("gid");
+    // Bottom-left anchor: y climbs by the object's height.
+    expect(objects[0]).toMatchObject({ x: 96, y: 112, gid: 1, class: "Chest" });
+    // The gid keeps its flip bits, and the tileset lookup masks them off.
+    expect(objects[1]).toMatchObject({ x: 32, y: 48, gid: 2147483649 });
+    // The owning tileset anchors top-left, so there is nothing to move.
+    expect(objects[2]).toMatchObject({ x: 16, y: 16, gid: 3 });
+    // A quarter turn about the anchor swings the corner to the right of it.
+    expect(objects[3]?.x).toBeCloseTo(16);
+    expect(objects[3]?.y).toBeCloseTo(0);
+    // An object without a gid is untouched.
+    expect(objects[4]).toMatchObject({ x: 10, y: 20 });
+    expect(objects[4]).not.toHaveProperty("gid");
+  });
+
+  it("splits a tile object's gid with readTileGid", () => {
+    const objects = toTilemapData(loadFixture("tile-objects.json"))
+      .objectLayers[0]!.objects;
+
+    expect(readTileGid(objects[1]!.gid!)).toEqual({
+      id: 1,
+      flippedHorizontally: true,
+      flippedVertically: false,
+      flippedDiagonally: false,
+    });
+  });
+
+  it("carries a tile object's custom properties through", () => {
+    const objects = toTilemapData(loadFixture("tile-objects.json"))
+      .objectLayers[0]!.objects;
+
+    expect(objects[0]?.properties).toEqual([
+      { name: "contents", type: "string", value: "gold" },
+    ]);
+  });
+
+  it("places a tile object's collider where Tiled draws it", () => {
+    const shapes = extractCollisionShapes(
+      toTilemapData(loadFixture("tile-objects.json")),
+    );
+
+    expect(shapes[0]).toEqual({
+      type: "rect",
+      x: 96,
+      y: 112,
+      width: 16,
+      height: 16,
+    });
   });
 
   it("applies object layer offsets and records both layer offsets", () => {

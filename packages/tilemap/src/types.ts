@@ -9,8 +9,8 @@ export type TilemapDiagnosticCode =
   | "image-layer"
   | "tsx-tileset"
   | "unresolved-tileset"
+  | "tile-object"
   | "layer-parallax"
-  | "tileset-object-alignment"
   | "unsupported-tile-animation";
 
 export interface TilemapDiagnostic {
@@ -90,10 +90,10 @@ export interface MapObject {
   rotation: number;
   visible: boolean;
   /**
-   * Global tile ID, present only on an object that draws a tile. Such an
-   * object is anchored at its bottom-left corner, so `y` is its bottom edge
-   * while every other object measures `y` from its top. The flip bits are
-   * kept — split them out with `readTileGid`.
+   * Global tile ID, present only on an object that draws a tile. Tiled anchors
+   * such an object on a corner of the tile — bottom-left by default — and `x`/
+   * `y` here is normalised to its top-left corner, the same as every other
+   * object type. The flip bits are kept — split them out with `readTileGid`.
    */
   gid?: number;
   point?: boolean;

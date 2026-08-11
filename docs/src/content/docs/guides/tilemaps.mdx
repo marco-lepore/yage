@@ -25,7 +25,7 @@ Worth knowing up front so you don't reach for something that isn't there.
 | Flipped and rotated tiles                          | Supported   |
 | Tile images that don't match the map grid          | Supported — anchored bottom-left, as Tiled draws them |
 | Tile objects (an object that draws a tile)         | Data only — `gid`, position, size and properties are parsed; the image is not drawn |
-| Tileset `objectalignment` override                 | Not read — tile objects stay bottom-left, and `validateTiledMap()` warns |
+| Tileset `objectalignment` override                 | Supported — a tile object's position is normalised to its top-left corner |
 | Tileset `tilerendersize` / `fillmode`              | Not read — a tile draws at its image's own size |
 | Collision shapes authored on a tile in the tileset | Not read    |
 | Layer draw offsets and tileset `tileoffset`        | Supported   |
@@ -41,9 +41,9 @@ Worth knowing up front so you don't reach for something that isn't there.
 A map that uses an unsupported map, layer or tileset setting does not fail
 silently: `validateTiledMap()` reports it against the raw JSON, and
 `TilemapComponent` logs what it finds when the map loads — see
-[Checking a Map](#checking-a-map). Four limits have no diagnostic, because the
-map itself parses fine: runtime tile editing, a tile object's undrawn image,
-per-tile collision shapes and `tilerendersize`.
+[Checking a Map](#checking-a-map). Three limits have no diagnostic, because the
+map itself parses fine: runtime tile editing, per-tile collision shapes and
+`tilerendersize`.
 
 For a worked example of loading a Tiled map and extracting collision
 shapes, see the
@@ -240,9 +240,10 @@ wrong, and a `warning` when a setting is simply not applied. Each one carries
 a `code` you can match on (`group-layer`, `infinite-map`,
 `unsupported-orientation`, `unsupported-tile-animation`, and so on), plus the `layer` or
 `tileset` name it came from. A gate filtered to errors lets every warning
-through, so match on the codes your game cannot live with:
-`tileset-object-alignment` is a warning, and it means the map's tile objects
-sit somewhere other than where Tiled draws them.
+through, so match on the codes your game cannot live with. `tile-object` is
+an error — it names the tile objects on a layer whose images the map does not
+draw — so a game that spawns its own sprites from them will want to let that
+one through.
 
 An external tileset that has not been loaded yet is not reported — it resolves
 during preload.
@@ -542,11 +543,11 @@ properties, a size you can stretch. The image is not drawn for you. An object
 layer is data, so a tile object is a placement you read and turn into an
 entity.
 
-Its position is measured differently from every other object's. Tiled anchors
-a tile object at its **bottom-left** corner, matching how tiles land in tile
-layers, so `obj.y` is the object's bottom edge, while every other object type
-measures `y` from its top. For an unrotated object, subtract the height to get
-the corner a sprite starts from:
+Its `x` and `y` are the top-left corner of the tile it draws, the same as
+every other object type. Tiled itself stores a tile object on a different
+corner — the bottom-left one, matching how tiles land in tile layers, or
+whichever corner the tileset's `objectalignment` names — and the parser moves
+the position for you. A spawn reads it directly:
 
 ```typescript
 import { readTileGid } from "@yagejs/tilemap";
@@ -558,19 +559,17 @@ for (const obj of tilemap.getObjects("props")["Tree"] ?? []) {
   this.spawn(TreeEntity, {
     tileId: id,
     x: obj.x,
-    y: obj.y - obj.height,               // top-left of the drawn tile
+    y: obj.y,
     flippedHorizontally,
   });
 }
 ```
 
-Tiled turns a tile object about that same bottom-left corner, so once
-`obj.rotation` is non-zero the drawn box swings away from `obj.y - obj.height`
-and the subtraction no longer finds it. Put the sprite on the corner itself
-instead: anchor it bottom-left, and give the entity's `Transform` the object's
-own position and rotation. Position and rotation belong on the Transform —
-the renderer copies them onto the sprite every frame, so a `rotation` set on
-the sprite is overwritten.
+`obj.rotation` turns the tile about that same corner, in degrees. Put the
+position and the rotation on the entity's `Transform` and anchor the sprite
+top-left, and it lands where Tiled shows it at any angle. Position and
+rotation belong on the Transform — the renderer copies them onto the sprite
+every frame, so a `rotation` set on the sprite is overwritten.
 
 ```typescript
 import { MathUtils, Transform } from "@yagejs/core";
@@ -578,25 +577,22 @@ import { SpriteComponent } from "@yagejs/renderer";
 
 // inside the spawned entity's setup(), for the tile object it came from
 this.add(new Transform({
-  position: { x: obj.x, y: obj.y },            // the bottom-left corner itself
+  position: { x: obj.x, y: obj.y },
   rotation: MathUtils.degToRad(obj.rotation),  // Tiled stores degrees
 }));
-this.add(new SpriteComponent({ texture, anchor: { x: 0, y: 1 } }));
+this.add(new SpriteComponent({ texture, anchor: { x: 0, y: 0 } }));
 ```
 
-That lands where Tiled shows it at any angle.
-[Collision extraction](#collision-extraction) does the equivalent internally,
-so its rect and the sprite agree.
+[Collision extraction](#collision-extraction) reads the same corner, so its
+rect and the sprite agree.
 
 The `gid` keeps Tiled's flip bits, exactly like the GIDs in raw layer data, so
 `readTileGid` splits it the same way.
 
-Two things are not read. Collision shapes authored on the tile inside the
-tileset are ignored, so collision extraction treats a tile object as its full
-box. A tileset's `objectalignment` override is ignored too — tile objects stay
-bottom-left, which is what Tiled does for orthogonal maps unless you change it
-— and `validateTiledMap()` reports a `tileset-object-alignment` warning for a
-tileset that sets it.
+Because the image is not drawn for you, `validateTiledMap()` reports a
+`tile-object` error for each object layer that holds tile objects, naming
+them. Collision shapes authored on the tile inside the tileset are not read
+either, so collision extraction treats a tile object as its full box.
 
 ## Object Lookups
 
@@ -681,7 +677,7 @@ Tiled objects map to physics-agnostic `TilemapColliderConfig` variants:
 | Tiled object                  | Emitted shape                                                                                        |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Rectangle                     | `{ type: "rect", x, y, width, height, rotation? }`                                                   |
-| Tile object (carries a `gid`) | `{ type: "rect", x, y, width, height, rotation? }` covering the tile's drawn box, measured up from the bottom-left corner Tiled anchors it at |
+| Tile object (carries a `gid`) | `{ type: "rect", x, y, width, height, rotation? }` covering the tile's whole box, exactly like a rectangle; shapes authored on the tile in the tileset are not read |
 | Ellipse (`width === height`)  | `{ type: "circle", x, y, width, height, radius }`                                                    |
 | Ellipse (`width !== height`)  | `{ type: "polygon", x, y, vertices }` — 24 vertices sampled on the ellipse outline (Rapier has no ellipse primitive; the ring is convex, so the physics-side convex hull matches it exactly) |
 | Capsule                       | `{ type: "capsule", x, y, width, height, halfHeight, radius, axis, rotation? }` (oriented along the longer axis)|
