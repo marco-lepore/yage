@@ -149,6 +149,11 @@ schedules its timelines and cooldowns on `"fixed"` by default. The `"frame"`
 default here applies to what you schedule directly — tweens, fades, and other
 presentation work.
 
+A `KeyframeAnimator` animation carries the choice on its own definition, since
+the animator schedules the track for you: `clock: "fixed"` on one animation def
+puts that track on the fixed clock and leaves the animator's other animations
+where they are.
+
 ## Tweens
 
 Tweens smoothly interpolate a value over time. They run as processes, so they
@@ -393,7 +398,8 @@ Each `KeyframeAnimationDef` accepts the same options you'd expect:
 | Option | Purpose |
 |---|---|
 | `keyframes` | The array of `{ time, data, easing?, event? }` control points |
-| `setter` | Optional — function called every frame with the interpolated value. Omit for pure-timeline tracks that only fire `event` callbacks |
+| `setter` | Optional — function called with the interpolated value on every tick of the track's clock. Omit for pure-timeline tracks that only fire `event` callbacks |
+| `clock` | Clock that advances playback — `"frame"` (the default) or `"fixed"` |
 | `loop` | Restart at time 0 when the track finishes (default `false`) |
 | `speed` | Multiplier on track time (default `1`) |
 | `duration` | Override the auto-computed track length |
@@ -420,6 +426,43 @@ new KeyframeAnimator({
   },
 });
 ```
+
+When a timeline's events drive gameplay rather than presentation — spawning a
+hitbox, opening a parry window, applying damage — put that animation on the
+fixed clock:
+
+```typescript
+new KeyframeAnimator({
+  combo: {
+    clock: "fixed",
+    keyframes: [
+      { time: 0,    data: 0, event: () => spawnHitbox("jab") },
+      { time: 0.18, data: 0, event: () => spawnHitbox("cross") },
+      { time: 0.4,  data: 0, event: () => endCombo() },
+    ],
+  },
+  flash: {
+    // No clock — the default "frame" keeps the visual smooth.
+    keyframes: [
+      { time: 0,   data: 1 },
+      { time: 0.2, data: 0 },
+    ],
+    setter: (v) => entity.get(Transform).setScale(v as number, v as number),
+  },
+});
+```
+
+Why it matters: on the frame clock, the hitbox at `time: 0.18` is first seen by
+a different fixed step on every run, because frame time and fixed time drift
+apart. When a slow frame hits the `maxFixedStepsPerFrame` cap, the simulation
+advances less than the real time that passed, while a frame-clock timeline
+keeps running at full speed. On `"fixed"` the beats stay in step with the world
+they drive.
+
+Setter-driven visuals stay on `"frame"`. A setter on the fixed clock is written
+only on fixed steps, so a rendered frame that runs no fixed step shows the
+previous value. The clock is chosen per animation, so both can live on one
+animator as above.
 
 ### Lower-Level Primitives
 

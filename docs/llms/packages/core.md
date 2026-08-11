@@ -346,7 +346,7 @@ Decision matrix:
 
 Tag processes with `pc.run(p, { tags: ["vfx"] })` then cancel groups with `pc.cancel("vfx")`. Processes and slots auto-cancel on entity destroy via `ProcessComponent.onDestroy()`.
 
-Clocks (`ProcessClock = "frame" | "fixed"`): entity processes and slots tick on rendered-frame time by default (`ProcessSystem`, `Phase.Update`, priority 500). `pc.run(p, { clock: "fixed" })` / `pc.slot({ clock: "fixed", ... })` tick on the fixed timestep instead (`ProcessFixedUpdateSystem`, `Phase.FixedUpdate`, priority 500 — after physics, before component `fixedUpdate`). Use `"fixed"` for gameplay timing that must match a fixed-step simulation (attack windows, cooldowns); keep visuals on `"frame"`. Both clocks share pause gating and global/scene/entity time scaling. A slot's clock is fixed at creation — `start()`/`restart()` overrides exclude it. `ProcessSystem.add`/`addForScene` pools are frame-only.
+Clocks (`ProcessClock = "frame" | "fixed"`): entity processes and slots tick on rendered-frame time by default (`ProcessSystem`, `Phase.Update`, priority 500). `pc.run(p, { clock: "fixed" })` / `pc.slot({ clock: "fixed", ... })` tick on the fixed timestep instead (`ProcessFixedUpdateSystem`, `Phase.FixedUpdate`, priority 500 — after physics, before component `fixedUpdate`). Use `"fixed"` for gameplay timing that must match a fixed-step simulation (attack windows, cooldowns); keep visuals on `"frame"`. Both clocks share pause gating and global/scene/entity time scaling. A slot's clock is fixed at creation — `start()`/`restart()` overrides exclude it. `ProcessSystem.add`/`addForScene` pools are frame-only. `KeyframeAnimationDef.clock` (default `"frame"`) picks the clock for one `KeyframeAnimator` animation — the animator schedules the track itself, so the choice lives on the def.
 
 `pc.removeSlot(slot): boolean` cancels and unregisters one owned `ProcessSlot`.
 It returns `false` for a foreign or already-removed slot. Use it when a
@@ -361,7 +361,7 @@ Keyframe-based property animation on top of `ProcessComponent`. Runs multiple na
 |---|---|
 | `KeyframeAnimator<T>` | Component hosting named keyframe animations (`play`, `stop`, `stopAll`, `isPlaying`) |
 | `Keyframe<T>` | `{ time, data, easing?, event? }` — single control point |
-| `KeyframeAnimationDef<T>` | `{ keyframes, setter?, loop?, speed?, duration?, easing?, onEnter?, onExit? }` |
+| `KeyframeAnimationDef<T>` | `{ keyframes, setter?, clock?, loop?, speed?, duration?, easing?, onEnter?, onExit? }` |
 | `createKeyframeTrack<T>(options)` | Factory that returns a `Process` driving a single track |
 | `interpolate<T>(from, to, t, easing?)` | Blend two `Interpolatable` values |
 | `Interpolatable` | `number \| Vec2Like` — registered interpolation types |
@@ -404,6 +404,14 @@ new KeyframeAnimator({
   },
 });
 ```
+
+Playback advances on `def.clock` (`ProcessClock`, default `"frame"`).
+`clock: "fixed"` schedules the track on the fixed timestep through
+`ProcessFixedUpdateSystem`, so a setter-less timeline's `event` callbacks fire
+at the same simulation time every run — use it when those callbacks drive
+gameplay. The choice is per animation, so one animator can hold a frame-clock
+visual and a fixed-clock timeline. A setter on `"fixed"` is written on fixed
+steps, so a rendered frame that runs no fixed step shows the previous value.
 
 `KeyframeAnimationDef.setter` is declared with method syntax so it's
 contravariance-friendly: a `Record<string, KeyframeAnimationDef<number>>`

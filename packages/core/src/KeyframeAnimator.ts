@@ -2,7 +2,7 @@ import { Component } from "./Component.js";
 import { ProcessComponent } from "./ProcessComponent.js";
 import { createKeyframeTrack } from "./KeyframeTrack.js";
 import type { Keyframe, KeyframeTrackOptions } from "./KeyframeTrack.js";
-import type { Process } from "./Process.js";
+import type { Process, ProcessClock } from "./Process.js";
 import type { Interpolatable } from "./interpolate.js";
 import type { EasingFunction } from "./types.js";
 import { serializable } from "./Serializable.js";
@@ -20,6 +20,20 @@ export interface KeyframeAnimationDef<T extends Interpolatable = Interpolatable>
    * `KeyframeAnimator` constructor without per-key casts.
    */
   setter?(value: T): void;
+  /**
+   * Clock that advances this animation's playback (see `ProcessClock`),
+   * default `"frame"`.
+   *
+   * `"frame"` is rendered-frame time, right for setter-driven visuals.
+   * `"fixed"` is the fixed timestep, right for a setter-less timeline whose
+   * keyframe `event` callbacks drive gameplay. The choice is per animation, so
+   * one animator can hold a frame-clock walk cycle and a fixed-clock event
+   * timeline.
+   *
+   * A setter on `"fixed"` is written on fixed steps, so a rendered frame that
+   * runs no fixed step shows the previous value.
+   */
+  clock?: ProcessClock;
   loop?: boolean;
   speed?: number;
   duration?: number;
@@ -74,7 +88,7 @@ export class KeyframeAnimator<T extends string = string> extends Component {
     const process = createKeyframeTrack(opts);
 
     this.active.set(name, process);
-    this.pc.run(process);
+    this.pc.run(process, { clock: def.clock ?? "frame" });
   }
 
   /** Stop a named animation. */
