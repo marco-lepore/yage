@@ -127,6 +127,7 @@ function tiledObjectToMapObject(
 
   const cls = obj.class ?? obj.type;
   if (cls) result.class = cls;
+  if (obj.gid !== undefined) result.gid = obj.gid;
   if (obj.point === true) result.point = true;
   if (obj.polygon) result.polygon = obj.polygon;
   if (obj.polyline) result.polyline = obj.polyline;
@@ -234,6 +235,19 @@ function resolveTileTexture(
   return null;
 }
 
+/**
+ * Height in pixels of the image drawn for a tile. A collection-of-images
+ * tileset sizes every tile on its own, and its `tileheight` records only the
+ * tallest of them, so the per-tile height is the one that places the image.
+ */
+function drawnTileHeight(data: TilesetData, localId: number): number {
+  if (!data.image) {
+    const tileData = data.tiles?.find((entry) => entry.id === localId);
+    if (tileData?.imageheight !== undefined) return tileData.imageheight;
+  }
+  return data.tileheight;
+}
+
 function tilesetLabel(tileset: TilesetMatch): string {
   return (
     tileset.data?.name ??
@@ -333,12 +347,22 @@ export function createTilemapLayers(
       const y = Math.floor(index / width);
       const tileOffset = tileset.data?.tileoffset;
       const rotate = tileRotationFromGid(rawGid);
+      // Tiled anchors a tile to the bottom-left of its cell, so an image
+      // taller than the map's grid overhangs the cell upward. Width needs no
+      // correction: drawing from the left edge already overhangs to the right.
+      const overhang = tileset.data
+        ? drawnTileHeight(tileset.data, textureGid - tileset.ref.firstgid) -
+          map.tileheight
+        : 0;
       // The tilemap shader reads a per-tile alpha attribute and ignores the
       // container's, so layer opacity has to be baked into each tile.
       tilemap.tile(
         texture,
         x * map.tilewidth + (layer.offsetx ?? 0) + (tileOffset?.x ?? 0),
-        y * map.tileheight + (layer.offsety ?? 0) + (tileOffset?.y ?? 0),
+        y * map.tileheight -
+          overhang +
+          (layer.offsety ?? 0) +
+          (tileOffset?.y ?? 0),
         {
           alpha: layer.opacity,
           rotate,

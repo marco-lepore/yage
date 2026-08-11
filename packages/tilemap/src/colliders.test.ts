@@ -406,6 +406,49 @@ describe("extractCollisionShapes", () => {
     expect((shape as { rotation?: number }).rotation).toBeCloseTo(Math.PI / 2);
   });
 
+  it("measures a tile object's rect up from its bottom-left anchor", () => {
+    const tile: MapObject = {
+      id: 30,
+      name: "crate",
+      x: 32,
+      y: 64,
+      width: 16,
+      height: 32,
+      rotation: 0,
+      visible: true,
+      gid: 5,
+    };
+
+    expect(extractCollisionShapes(makeMap([tile]))[0]).toEqual({
+      type: "rect",
+      x: 32,
+      y: 32,
+      width: 16,
+      height: 32,
+    });
+  });
+
+  it("swings a rotated tile object's anchor round to the rect pivot", () => {
+    const tile: MapObject = {
+      id: 31,
+      name: "crate",
+      x: 32,
+      y: 64,
+      width: 16,
+      height: 32,
+      rotation: 90,
+      visible: true,
+      gid: 5,
+    };
+
+    // Tiled turns a tile object about the bottom-left corner it stands on. A
+    // quarter turn puts the box's top-left corner 32px to the right of it.
+    const shape = extractCollisionShapes(makeMap([tile]))[0]!;
+    expect(shape.x).toBeCloseTo(64);
+    expect(shape.y).toBeCloseTo(64);
+    expect((shape as { rotation?: number }).rotation).toBeCloseTo(Math.PI / 2);
+  });
+
   it("omits the rotation field when rotation is 0", () => {
     const rect: MapObject = {
       id: 21,

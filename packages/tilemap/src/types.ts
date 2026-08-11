@@ -88,6 +88,13 @@ export interface MapObject {
   height: number;
   rotation: number;
   visible: boolean;
+  /**
+   * Global tile ID, present only on an object that draws a tile. Such an
+   * object is anchored at its bottom-left corner, so `y` is its bottom edge
+   * while every other object measures `y` from its top. The flip bits are
+   * kept — split them out with `readTileGid`.
+   */
+  gid?: number;
   point?: boolean;
   polygon?: { x: number; y: number }[];
   polyline?: { x: number; y: number }[];

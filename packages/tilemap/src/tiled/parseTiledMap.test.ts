@@ -413,6 +413,27 @@ describe("createTilemapLayers", () => {
     ]);
   });
 
+  it("anchors a tile taller than the grid to the bottom of its cell", () => {
+    const map = loadFixture("oversized-tiles.json");
+    mockAssets._cache.set("tall.png:0", { label: "wall" });
+    mockAssets._cache.set("stump.png", { label: "stump" });
+    mockAssets._cache.set("pine.png", { label: "pine" });
+
+    const [layer] = createTilemapLayers(map);
+    const calls = (
+      layer as unknown as InstanceType<typeof mockCompositeTilemap>
+    ).calls;
+
+    // On a 16px grid: the 48px-tall wall overhangs two cells upward, the 16px
+    // stump fills its cell, and the 64px pine overhangs three. The pine is
+    // also 32px wide and still starts at its cell's left edge.
+    expect(calls.map(({ x, y }) => ({ x, y }))).toEqual([
+      { x: 0, y: -32 },
+      { x: 16, y: 0 },
+      { x: 32, y: -48 },
+    ]);
+  });
+
   it("names an unresolved embedded tileset by firstgid", () => {
     const map: TiledMapData = {
       width: 1,
@@ -758,6 +779,15 @@ describe("toTilemapData", () => {
     expect(toTilemapData(loadFixture("embedded.json")).tilesets).toEqual([
       { firstGid: 1, name: "embedded terrain" },
     ]);
+  });
+
+  it("carries a tile object's gid, leaving other objects without one", () => {
+    const result = toTilemapData(loadFixture("tile-objects.json"));
+    const [crate, marker] = result.objectLayers[0]!.objects;
+
+    // The crate's y is its bottom edge, which is what Tiled wrote.
+    expect(crate).toMatchObject({ gid: 5, x: 32, y: 64, height: 32 });
+    expect(marker).not.toHaveProperty("gid");
   });
 
   it("applies object layer offsets and records both layer offsets", () => {

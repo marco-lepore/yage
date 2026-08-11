@@ -13,6 +13,8 @@ import type {
  * Extract physics-agnostic collision shapes from object layers.
  *
  * - Rectangle objects -> RectColliderConfig
+ * - Tile objects (a `gid` is set) -> RectColliderConfig covering the tile's
+ *   drawn box, measured up from the bottom-left corner Tiled anchors them at
  * - Ellipse objects (width === height) -> CircleColliderConfig
  * - Ellipse objects (width !== height) -> PolygonColliderConfig sampling the
  *   ellipse outline (Rapier has no ellipse primitive; the ring is convex, so
@@ -159,7 +161,7 @@ function objectToColliderConfig(obj: MapObject): TilemapColliderConfig | null {
     return config;
   }
 
-  // Rectangle object
+  // Rectangle object, and the tile object built on the same box.
   const config: RectColliderConfig = {
     type: "rect",
     x: obj.x,
@@ -167,6 +169,14 @@ function objectToColliderConfig(obj: MapObject): TilemapColliderConfig | null {
     width: obj.width,
     height: obj.height,
   };
+  if (obj.gid !== undefined) {
+    // A tile object's position is its bottom-left corner, and Tiled rotates it
+    // about that corner. A rect config measures from its top-left instead, so
+    // move the position by the object's height rotated through the same angle.
+    const toTopLeft = rotatePoint(0, -obj.height, rotation);
+    config.x = obj.x + toTopLeft.x;
+    config.y = obj.y + toTopLeft.y;
+  }
   if (rotation !== 0) {
     config.rotation = rotation;
   }

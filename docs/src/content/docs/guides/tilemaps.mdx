@@ -23,6 +23,10 @@ Worth knowing up front so you don't reach for something that isn't there.
 | Tileset-image and collection-of-images tilesets    | Supported   |
 | Embedded and external tilesets                     | Supported   |
 | Flipped and rotated tiles                          | Supported   |
+| Tiles larger than the map grid                     | Supported — anchored bottom-left, as Tiled draws them |
+| Tile objects (an object that draws a tile)         | Supported   |
+| Tileset `objectalignment` override                 | Not read — tile objects are always bottom-left |
+| Collision shapes authored on a tile in the tileset | Not read    |
 | Layer draw offsets and tileset `tileoffset`        | Supported   |
 | Per-layer visibility and opacity                   | Supported   |
 | Animated tiles                                     | Supported for evenly-spaced, equal-duration frames |
@@ -375,10 +379,10 @@ for (const gid of walls.data) {
 ```
 
 `MapObject` (the element type in `objectLayers[i].objects`) carries `id`,
-`name`, optional `class`, position and size, rotation, an optional `point`
-flag, an optional `polygon`, an optional `polyline`, and an optional
-`properties: MapObjectProperty[]` array of Tiled custom properties — covered
-in detail below.
+`name`, optional `class`, position and size, rotation, an optional `gid` for
+objects that draw a tile, an optional `point` flag, an optional `polygon`, an
+optional `polyline`, and an optional `properties: MapObjectProperty[]` array of
+Tiled custom properties — covered in detail below.
 
 ## Tile Queries
 
@@ -395,6 +399,20 @@ tile you see at that position.
 A tileset's `tileoffset` is the exception. It moves where a tile's image is
 drawn without moving the cell the tile occupies. A tile from an offset tileset
 answers at its cell, which is where its collision and its neighbours are.
+
+### Tiles bigger than the grid
+
+A tileset can hold tiles larger than the map's grid — a three-cell-tall pillar
+on a 16px map, say. Tiled anchors such a tile to the bottom-left of the cell it
+was painted in, so a taller tile overhangs upward and a wider one to the right,
+and the tile still belongs to that one cell. Rendering follows the editor, so
+what you paint is what you see.
+
+In a collection-of-images tileset each tile is measured on its own, which lets
+one tileset mix a 16px stump with a 64px pine and place both correctly.
+
+Because the cell is unchanged, `getTileAt` answers at the cell a tile was
+painted in, not under the part of the image that overhangs its neighbours.
 
 ### Flipped and rotated tiles
 
@@ -477,12 +495,51 @@ interface MapObject {
   height: number;
   rotation: number;
   visible: boolean;
+  gid?: number;            // set only on an object that draws a tile
   point?: boolean;
   polygon?: { x: number; y: number }[];
   polyline?: { x: number; y: number }[];
   properties?: MapObjectProperty[];
 }
 ```
+
+### Tile objects
+
+Dragging a tile out of the tileset onto an object layer makes a **tile
+object** — an object that carries a picture. It arrives with a `gid`, the
+global ID of the tile it shows, and everything else a normal object has:
+a class, a name, custom properties, a size you can stretch.
+
+The catch is where it sits. Tiled anchors a tile object at its **bottom-left**
+corner, matching how tiles land in tile layers, so `obj.y` is the object's
+bottom edge. Every other object type measures `y` from its top. Subtract the
+height to get the corner a sprite starts from:
+
+```typescript
+import { readTileGid } from "@yagejs/tilemap";
+
+for (const obj of tilemap.getObjects("props")["Tree"] ?? []) {
+  if (obj.gid === undefined) continue;   // authored as a plain rectangle
+
+  const { id, flippedHorizontally } = readTileGid(obj.gid);
+  this.spawn(TreeEntity, {
+    tileId: id,
+    x: obj.x,
+    y: obj.y - obj.height,               // top-left of the drawn tile
+    flippedHorizontally,
+  });
+}
+```
+
+The `gid` keeps Tiled's flip bits, exactly like the GIDs in raw layer data, so
+`readTileGid` splits it the same way.
+
+Two things a tile object does *not* bring with it. Collision shapes authored on
+the tile inside the tileset are not read, so
+[collision extraction](#collision-extraction) treats a tile object as its full
+box. And a tileset's `objectalignment` override is not read either — tile
+objects are always placed bottom-left, which is what Tiled itself does for
+orthogonal maps unless you change it.
 
 `getObjects()` merges every layer when you don't name one, and it keys a
 classless object by its name — fine for a lookup, wrong when two layers hold
@@ -585,6 +642,7 @@ Tiled objects map to physics-agnostic `TilemapColliderConfig` variants:
 | Tiled object                  | Emitted shape                                                                                        |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Rectangle                     | `{ type: "rect", x, y, width, height, rotation? }`                                                   |
+| Tile object (carries a `gid`) | `{ type: "rect", x, y, width, height, rotation? }` covering the tile's drawn box, measured up from the bottom-left corner Tiled anchors it at |
 | Ellipse (`width === height`)  | `{ type: "circle", x, y, width, height, radius }`                                                    |
 | Ellipse (`width !== height`)  | `{ type: "polygon", x, y, vertices }` — 24 vertices sampled on the ellipse outline (Rapier has no ellipse primitive; the ring is convex, so the physics-side convex hull matches it exactly) |
 | Capsule                       | `{ type: "capsule", x, y, width, height, halfHeight, radius, axis, rotation? }` (oriented along the longer axis)|

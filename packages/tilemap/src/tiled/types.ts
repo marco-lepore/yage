@@ -105,6 +105,13 @@ export interface RectangleObject {
   height: number;
   rotation: number;
   visible: boolean;
+  /**
+   * Global tile ID, present only on an object that draws a tile. Tiled anchors
+   * such an object at its bottom-left corner, so `y` is its bottom edge while
+   * every other object measures `y` from its top. The flip bits are kept —
+   * split them out with `readTileGid`.
+   */
+  gid?: number;
   point?: undefined | false;
   polygon?: undefined;
   polyline?: undefined;
@@ -124,6 +131,7 @@ export interface PolygonObject {
   height: number;
   rotation: number;
   visible: boolean;
+  gid?: undefined;
   point?: undefined | false;
   polygon: { x: number; y: number }[];
   polyline?: undefined;
@@ -146,6 +154,7 @@ export interface PolylineObject {
   point?: undefined | false;
   polygon?: undefined;
   polyline: { x: number; y: number }[];
+  gid?: undefined;
   ellipse?: undefined | false;
   capsule?: undefined | false;
   properties?: TileObjectProperty[];
@@ -162,6 +171,7 @@ export interface PointObject {
   height: number;
   rotation: number;
   visible: boolean;
+  gid?: undefined;
   point: true;
   polygon?: undefined;
   polyline?: undefined;
@@ -181,6 +191,7 @@ export interface EllipseObject {
   height: number;
   rotation: number;
   visible: boolean;
+  gid?: undefined;
   ellipse: true;
   point?: undefined | false;
   polygon?: undefined;
@@ -200,6 +211,7 @@ export interface CapsuleObject {
   height: number;
   rotation: number;
   visible: boolean;
+  gid?: undefined;
   capsule: true;
   point?: undefined | false;
   polygon?: undefined;

@@ -4,7 +4,7 @@ Depends on `@yagejs/core`, `@yagejs/renderer`. Tiled map loader and renderer.
 
 ## Capabilities & Limits
 
-Supported: orthogonal Tiled JSON (tilesets must be exported as JSON, not TSX), multiple tile layers, object layers, custom properties on the map / layers / tilesets / objects, object-reference resolution, collision-shape extraction from rectangle / ellipse / polygon / polyline objects (raw `rect` / `circle` / `polygon` / `polyline` / `capsule` shapes), `toPhysicsColliders()` adapter to Rapier collider configs, tileset-image and collection-of-images tilesets, embedded and external tilesets, flipped and rotated tiles, animated tiles (see below), layer `offsetx`/`offsety` and tileset `tileoffset`, per-layer `visible` and `opacity`.
+Supported: orthogonal Tiled JSON (tilesets must be exported as JSON, not TSX), multiple tile layers, object layers, custom properties on the map / layers / tilesets / objects, object-reference resolution, collision-shape extraction from rectangle / ellipse / polygon / polyline / tile objects (raw `rect` / `circle` / `polygon` / `polyline` / `capsule` shapes), `toPhysicsColliders()` adapter to Rapier collider configs, tileset-image and collection-of-images tilesets, embedded and external tilesets, flipped and rotated tiles, tiles larger than the map grid, animated tiles (see below), layer `offsetx`/`offsety` and tileset `tileoffset`, per-layer `visible` and `opacity`.
 
 Tilesets MUST be exported as JSON (`.tsj` / `.json`). Tiled's default XML `.tsx` format is not supported — in Tiled, *Edit Tileset → File → Export As → JSON*.
 
@@ -131,6 +131,8 @@ Each layer is read through its own draw offset, and Tiled's flip bits are stripp
 
 A tileset's `tileoffset` is not reversed: it moves where a tile's image is drawn, not which cell the tile occupies, and one layer can mix tilesets that offset differently. A tile from an offset tileset answers at its cell.
 
+A tile image larger than the map's grid is anchored to the bottom-left of its cell, the way Tiled draws it: a taller tile overhangs upward, a wider one to the right. It still occupies the one cell, so `getTileAt` answers there and not under the overhang. In a collection-of-images tileset each tile is measured on its own, so tall and short props can share a tileset.
+
 Raw layer data (`tilemap.data.tileLayers[i].data`) keeps Tiled's GIDs with those bits intact. Split one with `readTileGid`:
 
 ```ts
@@ -202,7 +204,7 @@ interface TilesetInfo {
 }
 ```
 
-`MapObject` carries `id`, `name`, optional `class`, `x`/`y`/`width`/`height`/`rotation`, optional `point` / `ellipse` / `capsule` flags, an optional `polygon`, an optional `polyline`, and an optional `properties: MapObjectProperty[]` array of Tiled custom properties.
+`MapObject` carries `id`, `name`, optional `class`, `x`/`y`/`width`/`height`/`rotation`, an optional `gid` (see [Tile Objects](#tile-objects)), optional `point` / `ellipse` / `capsule` flags, an optional `polygon`, an optional `polyline`, and an optional `properties: MapObjectProperty[]` array of Tiled custom properties.
 
 ## Unsupported Forms
 
@@ -253,8 +255,27 @@ const all = tilemap.getAllObjects();
 tilemap.findObject(42);            // by Tiled id
 tilemap.findObjectByName("Player"); // first match across all layers
 
-// MapObject: { id, name, class?, x, y, width, height, rotation, visible, point?, polygon?, polyline?, properties? }
+// MapObject: { id, name, class?, x, y, width, height, rotation, visible, gid?, point?, polygon?, polyline?, properties? }
 ```
+
+## Tile Objects
+
+An object that draws a tile carries `gid`, the global tile ID of the tile it shows. Tiled anchors that object at its **bottom-left** corner, so its `y` is the bottom edge — every other object type measures `y` from its top.
+
+```ts
+import { readTileGid } from "@yagejs/tilemap";
+
+for (const obj of tilemap.getAllObjects()) {
+  if (obj.gid === undefined) continue;              // not a tile object
+  const { id, flippedHorizontally } = readTileGid(obj.gid);
+  const topLeftY = obj.y - obj.height;              // where the image starts
+  scene.spawn(PropEntity, { tileId: id, x: obj.x, y: topLeftY, flippedHorizontally });
+}
+```
+
+`getCollisionShapes()` accounts for the anchor already: a tile object emits a `rect` covering the tile's drawn box, measured up from the bottom-left corner (and swung about that corner when the object is rotated).
+
+Two limits. Collision shapes authored on the tile itself, inside the tileset, are not read — the emitted rect is the tile's whole box. And a tileset's `objectalignment` is not read either, so a map that overrides it still has its tile objects placed bottom-left.
 
 ## Spawning Entities from Tiled Objects (auto-keys)
 
@@ -326,6 +347,7 @@ const shapes = tilemap.getCollisionShapes("walls");
 
 Mapping from Tiled object → emitted shape:
 - Rectangle → `rect`.
+- Tile object (has a `gid`) → `rect` over the tile's drawn box, measured up from the bottom-left corner Tiled anchors it at.
 - Ellipse (w === h) → `circle`.
 - Ellipse (w !== h) → `polygon` sampling the ellipse outline (24 vertices; Rapier has no ellipse primitive, and the sampled ring is convex so the physics-side convex hull matches it exactly).
 - Capsule → `capsule` with `halfHeight = (max(w,h) - min(w,h)) / 2`, `radius = min(w,h) / 2`, `axis = "y"` if taller than wide else `"x"`.
