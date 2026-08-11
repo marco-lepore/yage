@@ -12,8 +12,10 @@ export interface KeyframeAnimationDef<T extends Interpolatable = Interpolatable>
   keyframes: Keyframe<T>[];
   /**
    * Receives the interpolated value on every tick of the animation's clock —
-   * each rendered frame by default. Optional — when omitted the animator only
-   * fires keyframe `event` callbacks (pure-timeline use case).
+   * each rendered frame by default. The tick that wraps a looping animation
+   * back to time 0 skips the setter, so the previous value holds for one tick.
+   * Optional — when omitted the animator only fires keyframe `event` callbacks
+   * (pure-timeline use case).
    *
    * Declared as a method signature (rather than a `(value: T) => void`
    * property) so the parameter type is bivariant — this is what lets a

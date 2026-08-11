@@ -234,8 +234,9 @@ lifetime, and hitbox `follow` tracking run in `fixedUpdate`.
 Presentation stays smooth regardless: an `anim` step triggers a
 `KeyframeAnimator` whose playback runs on rendered-frame time by default, and
 any tween a step starts keeps the frame clock unless scheduled otherwise. An
-animation def can pick the fixed clock with `clock: "fixed"`, for a timeline
-whose keyframe events drive gameplay. Input is sampled once per rendered
+animation def can pick the fixed clock with `clock: "fixed"` for timing that
+must stay in step with the fixed step, most often a timeline whose keyframe
+events drive gameplay. Input is sampled once per rendered
 frame, so an intent sent this frame starts a timeline that then advances on
 the fixed step.
 

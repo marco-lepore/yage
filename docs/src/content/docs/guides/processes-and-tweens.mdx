@@ -456,9 +456,9 @@ new KeyframeAnimator({
 Why it matters: on the frame clock, the hitbox at `time: 0.18` spawns at a
 different point in the fixed-step sequence on every run, because rendered-frame
 time and fixed time drift apart. When a slow frame hits the
-`maxFixedStepsPerFrame` cap, the simulation advances fewer steps than the
-rendered-frame time that passed, while a frame-clock timeline keeps running at
-full speed. On `"fixed"` the beats stay in step with the world they drive.
+`maxFixedStepsPerFrame` cap, the fixed loop leaves part of that frame's elapsed
+time unsimulated, while a frame-clock timeline still advances by the whole
+frame delta. On `"fixed"` the beats stay in step with the world they drive.
 
 Setter-driven visuals stay on `"frame"`. A setter on the fixed clock is written
 only on fixed steps, so a rendered frame that runs no fixed step shows the

@@ -407,9 +407,10 @@ new KeyframeAnimator({
 
 Playback advances on `def.clock` (`ProcessClock`, default `"frame"`).
 `clock: "fixed"` schedules the track on the fixed timestep through
-`ProcessFixedUpdateSystem`, so a setter-less timeline's `event` callbacks fire
-at the same simulation time every run — use it when those callbacks drive
-gameplay. The choice is per animation, so one animator can hold a frame-clock
+`ProcessFixedUpdateSystem`. Use it for timing that must stay in step with a
+fixed-step simulation — most often a setter-less timeline whose `event`
+callbacks drive gameplay, so its beats land at the same simulation time every
+run. The choice is per animation, so one animator can hold a frame-clock
 visual and a fixed-clock timeline. A setter on `"fixed"` is written on fixed
 steps, so a rendered frame that runs no fixed step shows the previous value.
 
