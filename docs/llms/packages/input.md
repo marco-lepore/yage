@@ -76,6 +76,13 @@ step began. Each context sees an edge exactly once at any display/step rate
 ratio. When several steps run in one frame only the first sees it, and an edge
 in a frame that runs no step is held for the next step.
 
+The window and the clock (below) are separate choices: the clock decides how a
+duration is measured, the calling context decides which window an edge falls in,
+and both apply to `isJustHeldFor`, `getReleaseDuration`, `isJustTapped` and
+`isJustReleasedAfter`. A scene clock advances once per frame, so a duration
+measured on it does not change between the steps of one frame — a fixed-step
+reader sees a crossing in the first step of the frame it lands in.
+
 **Clocks.** Every duration query — the hold-duration family (`getHoldDuration`,
 `isHeldFor`, `isJustHeldFor`, `isJustTapped`, `isJustReleasedAfter`,
 `getReleaseDuration`) and the `consumeBufferedPress` window — counts on the raw

@@ -339,7 +339,7 @@ describe("InputManager", () => {
       const clock = { elapsed: 0 };
 
       expect(() => input.consumeBufferedPress("jump", 0.12, { clock })).toThrow(
-        /clock/,
+        /consumeBufferedPress\(\): the given clock is not registered, so no press can be measured on it\./,
       );
     });
 

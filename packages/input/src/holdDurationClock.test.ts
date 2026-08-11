@@ -182,9 +182,10 @@ describe("hold durations on a scene clock", () => {
     const clock = { elapsed: 0 };
 
     // Each query names itself, so the message points at the call the developer
-    // wrote rather than at whichever helper it delegates to.
+    // wrote rather than at whichever helper it delegates to, and says a hold is
+    // what could not be measured.
     expect(() => input.getHoldDuration("charge", { clock })).toThrow(
-      /getHoldDuration\(\)/,
+      /getHoldDuration\(\): the given clock is not registered, so no hold can be measured on it\./,
     );
     expect(() => input.isHeldFor("charge", 0.1, { clock })).toThrow(
       /isHeldFor\(\)/,

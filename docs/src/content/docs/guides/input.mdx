@@ -167,6 +167,14 @@ if (input.isJustHeldFor("attack", 0.5, { clock })) {
 const charged = input.getReleaseDuration("attack", { clock });
 ```
 
+The clock does not change which window an edge falls in. That still follows your
+calling context, frame or fixed step, as described under
+[Press State](#press-state) — the clock only decides how the duration is
+measured. One consequence: a scene clock advances once per frame, so a hold
+measured on it does not change between the fixed steps of a single frame, and a
+`fixedUpdate` reader sees the crossing in the first step of the frame it lands
+in.
+
 Each clock keeps its own readings, so one press can be a tap on the scene clock
 and a long press on the raw one. `isJustHeldFor` carries a separate threshold
 baseline per clock and fires exactly once on each. A hold that was already

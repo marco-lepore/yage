@@ -372,18 +372,21 @@ export class InputManager {
   /**
    * The state a query measures on. `undefined` selects the raw input clock;
    * anything else must be a clock the plugin registered, since a clock the
-   * manager never saw carries no stamps to measure against.
+   * manager never saw carries no stamps to measure against. `subject` names
+   * what the calling query measures, so the failure reads in that query's own
+   * terms.
    */
   private resolveState(
     method: string,
+    subject: "press" | "hold",
     clock: InputClock | undefined,
   ): ClockState {
     if (!clock) return this.rawState;
     const state = this.clockStates.get(clock);
     if (!state) {
       throw new Error(
-        `InputManager.${method}(): the given clock is not registered, so ` +
-          "nothing can be measured on it. The input plugin registers a scene's " +
+        `InputManager.${method}(): the given clock is not registered, ` +
+          `so no ${subject} can be measured on it. The input plugin registers a scene's ` +
           "SceneTime while the scene is on the stack and drops it on exit — the " +
           "usual causes are holding on to an exited scene's SceneTime, or a clock " +
           "the engine never saw.",
@@ -488,7 +491,7 @@ export class InputManager {
    * with the scene and follows its time scale; any other clock throws.
    */
   getHoldDuration(action: string, options?: HoldDurationOptions): number {
-    const state = this.resolveState("getHoldDuration", options?.clock);
+    const state = this.resolveState("getHoldDuration", "hold", options?.clock);
     return this.holdDurationOn(action, state);
   }
 
@@ -520,7 +523,7 @@ export class InputManager {
   ): boolean {
     // Resolved here rather than delegating to getHoldDuration so an unusable
     // clock names the method the caller actually wrote.
-    const state = this.resolveState("isHeldFor", options?.clock);
+    const state = this.resolveState("isHeldFor", "hold", options?.clock);
     return this.holdDurationOn(action, state) >= minSeconds;
   }
 
@@ -543,7 +546,7 @@ export class InputManager {
     seconds: number,
     options?: HoldDurationOptions,
   ): boolean {
-    const state = this.resolveState("isJustHeldFor", options?.clock);
+    const state = this.resolveState("isJustHeldFor", "hold", options?.clock);
     if (!this.isActionEnabled(action)) return false;
     const hold = this.rawHoldOn(action, state);
     if (hold <= 0) return false;
@@ -576,7 +579,11 @@ export class InputManager {
    * measured since, matching how it counted while held.
    */
   getReleaseDuration(action: string, options?: HoldDurationOptions): number {
-    const state = this.resolveState("getReleaseDuration", options?.clock);
+    const state = this.resolveState(
+      "getReleaseDuration",
+      "hold",
+      options?.clock,
+    );
     return this.releaseDurationOn(action, state) ?? 0;
   }
 
@@ -619,7 +626,7 @@ export class InputManager {
   ): boolean {
     // Resolved up front so an unusable clock throws on every call, not only on
     // the one that happens to land in a release window.
-    const state = this.resolveState("isJustTapped", options?.clock);
+    const state = this.resolveState("isJustTapped", "hold", options?.clock);
     if (!this.isJustReleased(action)) return false;
     const held = this.releaseDurationOn(action, state);
     return held !== null && held <= maxSeconds;
@@ -641,7 +648,11 @@ export class InputManager {
     options?: HoldDurationOptions,
   ): boolean {
     // Resolved up front for the same reason as in {@link isJustTapped}.
-    const state = this.resolveState("isJustReleasedAfter", options?.clock);
+    const state = this.resolveState(
+      "isJustReleasedAfter",
+      "hold",
+      options?.clock,
+    );
     if (!this.isJustReleased(action)) return false;
     const held = this.releaseDurationOn(action, state);
     return held !== null && held >= minSeconds;
@@ -672,7 +683,11 @@ export class InputManager {
     windowSeconds: number,
     options?: BufferedPressOptions,
   ): boolean {
-    const state = this.resolveState("consumeBufferedPress", options?.clock);
+    const state = this.resolveState(
+      "consumeBufferedPress",
+      "press",
+      options?.clock,
+    );
     if (!this.isActionEnabled(action)) return false;
     const pressed = state.pressStamp.get(action);
     if (pressed === undefined) return false;
