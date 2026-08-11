@@ -109,6 +109,7 @@ export class SceneTime {
   private readonly scene: Scene;
   private readonly channels = new Map<string | symbol, TimeRequest[]>();
   private elapsedSeconds = 0;
+  private fixedElapsedSeconds = 0;
   /** Cached product of channel winners (excludes `scene.timeScale`). */
   private channelProduct = 1;
   /**
@@ -133,12 +134,45 @@ export class SceneTime {
 
   /**
    * Simulation seconds elapsed in this scene: raw frame time scaled by
-   * {@link SceneTime.effectiveScale}, accrued only while the scene is active. A
-   * stack-paused scene, a `timeScale` of 0, and an active freeze all hold it.
-   * Starts at 0 each time the scene is entered and is not saved.
+   * {@link SceneTime.effectiveScale}, accrued once per rendered frame and only
+   * while the scene is active. A stack-paused scene, a `timeScale` of 0, and an
+   * active freeze all hold it. Starts at 0 each time the scene is entered and
+   * is not saved. {@link SceneTime.fixedElapsed} is the fixed-timestep reading.
    */
   get elapsed(): number {
     return this.elapsedSeconds;
+  }
+
+  /**
+   * Simulation seconds elapsed in this scene on the fixed timestep: one
+   * `fixedTimestep ×` {@link SceneTime.effectiveScale} increment per fixed step
+   * the loop runs, accrued only while the scene is active.
+   *
+   * Stamp a gameplay time from fixed-step code against this reading and compare
+   * it there. {@link SceneTime.elapsed} moves with the rendered frame, so the
+   * same window spans a different number of simulation steps run to run.
+   *
+   * Holds under the same conditions as {@link SceneTime.elapsed}: stack pause,
+   * a `timeScale` of 0, and an active freeze. Starts at 0 each time the scene
+   * is entered and is not saved.
+   *
+   * This reading and `elapsed` advance on different cadences, so at any moment
+   * they can differ by one or more fixed steps in either direction. The loop's
+   * fixed-step accumulator is engine-wide: a scene entered mid-run starts
+   * counting against the time already in it. A frame that hits
+   * `maxFixedStepsPerFrame` leaves its unrun steps for the following frames.
+   * Time waiting in the accumulator is converted at the scale in force when its
+   * step runs, not at the scale of the frame it arrived in. Stamp and compare
+   * against the same reading — subtracting one from the other does not give a
+   * meaningful lag.
+   *
+   * The increment uses the whole-scene {@link SceneTime.effectiveScale}, so it
+   * does not follow `entity.timeScale` or an `excludeUpdates` exclusion. An
+   * entity running at its own rate should time itself against its
+   * `ProcessComponent`, which composes both.
+   */
+  get fixedElapsed(): number {
+    return this.fixedElapsedSeconds;
   }
 
   /** True while {@link SceneTime.effectiveScale} is 0. */
@@ -291,6 +325,16 @@ export class SceneTime {
 
     // Physics reads the post-aging scale later this frame, so elapsed uses it too.
     this.elapsedSeconds += dt * this.effectiveScale;
+  }
+
+  /**
+   * Accrue one fixed step of simulation time. Called by the engine once per
+   * fixed step for each active scene. Request timers age once per frame in
+   * `_tick`, never here.
+   * @internal
+   */
+  _tickFixed(fixedDt: number): void {
+    this.fixedElapsedSeconds += fixedDt * this.effectiveScale;
   }
 
   /**

@@ -571,6 +571,8 @@ time.scaleBy(0.25, { key: "slowmo", excludeUpdates: [player] });
 time.effectiveScale; // what physics and scene-pool processes run at
 time.isFrozen; // effectiveScale === 0
 time.effectiveScaleForUpdates(entity); // exclusion-aware, pre-entity.timeScale
+time.elapsed; // simulation seconds on the rendered frame
+time.fixedElapsed; // simulation seconds on the fixed timestep — stamp/compare from fixedUpdate
 
 // Durations age on raw frame time but hold while the scene is stack-paused
 // (a pause menu does not consume a hitstop). Requests release on scene exit

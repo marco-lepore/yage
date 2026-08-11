@@ -159,15 +159,21 @@ export class Engine {
         // Age SceneTime request timers on raw frame time before any
         // transition or system code runs — a request created later in the
         // frame is first aged next frame, so it never loses its creation
-        // frame's dt. The activeScenes snapshot keeps scene-stack mutations
-        // out of this pass.
-        for (const scene of [...this.scenes.activeScenes]) {
+        // frame's dt.
+        for (const scene of this.scenes.activeScenes) {
           scene.tryResolveScoped(SceneTimeKey)?._tick(dt);
         }
         this.scenes._tickTransition(dt);
         this.scheduler.run(Phase.EarlyUpdate, dt);
       },
-      fixedUpdate: (dt) => this.scheduler.run(Phase.FixedUpdate, dt),
+      fixedUpdate: (dt) => {
+        // Accrue fixed-timestep scene time before the phase runs, so a system
+        // reading it inside a step counts that step.
+        for (const scene of this.scenes.activeScenes) {
+          scene.tryResolveScoped(SceneTimeKey)?._tickFixed(dt);
+        }
+        this.scheduler.run(Phase.FixedUpdate, dt);
+      },
       update: (dt) => this.scheduler.run(Phase.Update, dt),
       lateUpdate: (dt) => this.scheduler.run(Phase.LateUpdate, dt),
       render: (dt) => this.scheduler.run(Phase.Render, dt),
