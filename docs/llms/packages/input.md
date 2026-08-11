@@ -86,7 +86,9 @@ instead. The scene clock stops while the scene is stack-paused or frozen and
 follows the scene's effective time scale, the same scale physics steps under. It
 is scene-wide: an entity excluded from a scale request via `excludeUpdates`, or
 with its own `entity.timeScale`, updates at a rate the scene clock does not
-follow, so measure its holds on the raw clock or on the `dt` it receives.
+follow. Measure that entity's holds from the `dt` its own update receives — the
+raw clock is no substitute, since it runs on real time and so ignores
+`scene.timeScale` and stack pause too.
 
 ```ts
 // Inside a Component or Scene subclass — `use` returns a non-optional clock.
@@ -103,9 +105,11 @@ Each clock keeps its own readings, so the same press can be a tap on the scene
 clock and a long press on the raw one. `isJustHeldFor` carries a separate
 crossing baseline per clock and fires once on each. A hold that began before a
 clock was registered starts from zero on that clock rather than reading as not
-held; a press made before registration is not buffered on it at all, and a
-release that landed before it carries no length there — `isJustTapped` and
-`isJustReleasedAfter` are false rather than treating the missing length as 0.
+held, and its release reports only the part measured since — a long press begun
+before the scene was entered can read as a tap on that scene's clock. A press
+made before registration is not buffered on it at all, and a release that landed
+before it carries no length there — `isJustTapped` and `isJustReleasedAfter` are
+false rather than treating the missing length as 0.
 
 **Gotcha — a frozen clock measures no hold.** A frozen scene still runs its
 components, but its clock does not advance, so a press that starts and ends

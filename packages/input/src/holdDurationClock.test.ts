@@ -220,6 +220,9 @@ describe("hold durations on a scene clock", () => {
     expect(input.getReleaseDuration("charge", { clock })).toBe(0);
     expect(input.isJustTapped("charge", 0.1, { clock })).toBe(false);
     expect(input.isJustReleasedAfter("charge", 0.3, { clock })).toBe(false);
+    // A zero threshold separates "no length here" from "held for no time": a
+    // missing length counted as 0 seconds would clear it.
+    expect(input.isJustReleasedAfter("charge", 0, { clock })).toBe(false);
   });
 
   it("reports nothing for a release that landed while the action was disabled", () => {
@@ -233,11 +236,12 @@ describe("hold durations on a scene clock", () => {
     input._onKeyUp("Space");
     input.enableGroup("combat");
 
-    // No clock measured this release, so re-enabling the group must not turn a
-    // two-second hold into a tap.
+    // The key's release edge stays visible, but no clock recorded a length for
+    // it, so re-enabling the group must not turn a two-second hold into a tap.
     expect(input.isJustReleased("charge")).toBe(true);
     expect(input.getReleaseDuration("charge")).toBe(0);
     expect(input.isJustTapped("charge", 0.1)).toBe(false);
+    expect(input.isJustReleasedAfter("charge", 0)).toBe(false);
   });
 
   it("keeps a synthetic hold on scene time", () => {

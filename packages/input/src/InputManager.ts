@@ -571,7 +571,9 @@ export class InputManager {
    * The length counts on the raw input clock unless `options.clock` names a
    * registered scene clock, like {@link getHoldDuration}. Each clock captures
    * its own length at the release, so a hold spanning a pause reports the
-   * playing time on the scene clock and the wall-clock time on the raw one.
+   * playing time on the scene clock and the wall-clock time on the raw one. A
+   * hold that began before a clock was registered reports only the part
+   * measured since, matching how it counted while held.
    */
   getReleaseDuration(action: string, options?: HoldDurationOptions): number {
     const state = this.resolveState("getReleaseDuration", options?.clock);

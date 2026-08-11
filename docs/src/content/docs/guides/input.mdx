@@ -148,8 +148,10 @@ charge meter and the world it charges in run at one rate.
 The clock is scene-wide. An entity left out of a scale request through
 `excludeUpdates`, or carrying its own `entity.timeScale`, updates at a rate the
 scene clock does not follow — a charge on that entity still counts at the
-scene's rate. Measure those holds on the raw clock, or from the `dt` the
-entity's own update receives.
+scene's rate. Measure those holds from the `dt` the entity's own update
+receives. The raw clock does not match that entity either: it runs on real time,
+so it ignores `scene.timeScale` and the stack pause that stops the entity along
+with its scene.
 
 ```typescript
 import { SceneTimeKey } from "@yagejs/core";
@@ -168,9 +170,11 @@ const charged = input.getReleaseDuration("attack", { clock });
 Each clock keeps its own readings, so one press can be a tap on the scene clock
 and a long press on the raw one. `isJustHeldFor` carries a separate threshold
 baseline per clock and fires exactly once on each. A hold that was already
-running when the scene started counts from zero on that scene's clock, and a
-release that landed before the scene started reports no length at all — both
-`isJustTapped` and `isJustReleasedAfter` stay false for it.
+running when the scene started counts from zero on that scene's clock, and its
+release reports only the seconds measured there — a long press begun before the
+scene was entered can read as a tap on that clock. A release that landed before
+the scene started reports no length at all: both `isJustTapped` and
+`isJustReleasedAfter` stay false for it.
 
 :::caution[A frozen clock measures no hold]
 A frozen scene still runs its components, but its clock does not advance. A
