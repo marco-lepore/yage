@@ -5,8 +5,10 @@ import { Component } from "./Component.js";
 import { ProcessComponent } from "./ProcessComponent.js";
 import { Process } from "./Process.js";
 import { ProcessSystem } from "./ProcessSystem.js";
-import { SceneManagerKey } from "./EngineContext.js";
+import { SceneManagerKey, SystemSchedulerKey } from "./EngineContext.js";
 import type { SceneManager } from "./SceneManager.js";
+import { System } from "./System.js";
+import { Phase } from "./types.js";
 import {
   createMockScene,
   createTestEngine,
@@ -25,6 +27,20 @@ class UpdatingComponent extends Component {
   calls: number[] = [];
   update(dt: number) {
     this.calls.push(dt);
+  }
+}
+
+/** Samples `fixedElapsed` once per fixed step, in physics' priority slot. */
+class FixedElapsedReader extends System {
+  readonly phase = Phase.FixedUpdate;
+  readings: number[] = [];
+
+  constructor(private readonly time: SceneTime) {
+    super();
+  }
+
+  update(): void {
+    this.readings.push(this.time.fixedElapsed);
   }
 }
 
@@ -135,6 +151,51 @@ describe("SceneTime", () => {
       time._tick(0.1);
 
       expect(time.elapsed).toBeCloseTo(0.1);
+    });
+  });
+
+  describe("fixedElapsed", () => {
+    it("accrues one scaled step per call", () => {
+      const { scene, time } = createSceneTime();
+      scene.timeScale = 0.5;
+
+      time._tickFixed(0.02);
+      time._tickFixed(0.02);
+
+      expect(time.fixedElapsed).toBeCloseTo(0.02);
+    });
+
+    it("is independent of the frame accrual", () => {
+      const { time } = createSceneTime();
+
+      time._tick(0.4);
+      expect(time.fixedElapsed).toBe(0);
+      expect(time.elapsed).toBeCloseTo(0.4);
+
+      time._tickFixed(0.016);
+      expect(time.elapsed).toBeCloseTo(0.4);
+      expect(time.fixedElapsed).toBeCloseTo(0.016);
+    });
+
+    it("stays at 0 during an active freezeFor request", () => {
+      const { time } = createSceneTime();
+      time.freezeFor(1);
+
+      time._tickFixed(0.016);
+
+      expect(time.fixedElapsed).toBe(0);
+    });
+
+    it("does not age request timers", () => {
+      const { time } = createSceneTime();
+      time.scaleBy(0.5, { for: 0.05 });
+
+      for (let i = 0; i < 5; i++) time._tickFixed(0.016);
+
+      // Only _tick ages a request, so 0.08s of fixed steps leave the 0.05s
+      // request in force.
+      expect(time.effectiveScale).toBe(0.5);
+      expect(time.fixedElapsed).toBeCloseTo(0.04);
     });
   });
 
@@ -350,6 +411,77 @@ describe("SceneTime engine integration", () => {
     advanceFrames(engine, 1, 100); // aged 0.1 → still frozen
     advanceFrames(engine, 1, 100); // expires
     expect(comp.calls).toEqual([0, 0.1]);
+    engine.destroy();
+  });
+
+  it("accrues fixedElapsed once per fixed step, not once per frame", async () => {
+    // 16ms fixed step so tick(8/16/32) gives exact zero/one/two-step frames.
+    const engine = await createTestEngine({ fixedTimestep: 0.016 });
+    const scene = new GameScene();
+    await engine.scenes.push(scene);
+    const time = scene.tryResolveScoped(SceneTimeKey)!;
+
+    engine.loop.tick(8); // accumulator below the step: no step runs
+    expect(time.fixedElapsed).toBe(0);
+    expect(time.elapsed).toBeCloseTo(0.008);
+
+    engine.loop.tick(8); // accumulator reaches 16ms: exactly one step
+    expect(time.fixedElapsed).toBeCloseTo(0.016);
+
+    engine.loop.tick(32); // two steps
+    expect(time.fixedElapsed).toBeCloseTo(0.048);
+    expect(time.elapsed).toBeCloseTo(0.048);
+    engine.destroy();
+  });
+
+  it("reports the step a fixed-phase system is inside", async () => {
+    const engine = await createTestEngine({ fixedTimestep: 0.016 });
+    const scene = new GameScene();
+    await engine.scenes.push(scene);
+    const time = scene.tryResolveScoped(SceneTimeKey)!;
+    const reader = new FixedElapsedReader(time);
+    engine.context.resolve(SystemSchedulerKey).add(reader);
+
+    engine.loop.tick(32); // two fixed steps
+
+    // The accrual runs before the phase, so a reader at priority 0 — physics'
+    // slot — sees the step it is inside already counted.
+    expect(reader.readings).toHaveLength(2);
+    expect(reader.readings[0]).toBeCloseTo(0.016);
+    expect(reader.readings[1]).toBeCloseTo(0.032);
+    engine.destroy();
+  });
+
+  it("holds fixedElapsed while the scene is stack-paused", async () => {
+    const engine = await createTestEngine({ fixedTimestep: 0.016 });
+    const scene = new GameScene();
+    await engine.scenes.push(scene);
+    const time = scene.tryResolveScoped(SceneTimeKey)!;
+
+    advanceFrames(engine, 2, 16); // one step per frame
+    const beforePause = time.fixedElapsed;
+    expect(beforePause).toBeCloseTo(0.032);
+
+    await engine.scenes.push(new OverlayScene()); // pauseBelow: game holds
+    advanceFrames(engine, 5, 100);
+    expect(time.fixedElapsed).toBe(beforePause);
+
+    await engine.scenes.pop();
+    advanceFrames(engine, 1, 16);
+    expect(time.fixedElapsed).toBeGreaterThan(beforePause);
+    engine.destroy();
+  });
+
+  it("scales fixedElapsed with an active request end to end", async () => {
+    const engine = await createTestEngine({ fixedTimestep: 0.016 });
+    const scene = new GameScene();
+    await engine.scenes.push(scene);
+    const time = scene.tryResolveScoped(SceneTimeKey)!;
+    time.scaleBy(0.5, { key: "slowmo" });
+
+    engine.loop.tick(16); // exactly one fixed step
+
+    expect(time.fixedElapsed).toBeCloseTo(0.008);
     engine.destroy();
   });
 

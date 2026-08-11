@@ -140,9 +140,27 @@ How requests combine:
   `time.effectiveScale` (with `time.isFrozen` for the ×0 case).
 
 `time.elapsed` reports the scene's elapsed simulation time in seconds. It
-advances under `time.effectiveScale`, so stack pause, `scene.timeScale = 0`, and
-freeze requests hold the value. The value starts at 0 each time the scene is
-entered and is not saved.
+advances once per rendered frame under `time.effectiveScale`, so stack pause,
+`scene.timeScale = 0`, and freeze requests hold the value. The value starts at 0
+each time the scene is entered and is not saved.
+
+`time.fixedElapsed` counts the same simulation seconds but advances one fixed
+step at a time. It is the reading to stamp and compare against when the timing
+has to match a fixed-step simulation — an ability window, a cooldown, a timer
+that gates a physics-driven mechanic:
+
+```typescript
+// in fixedUpdate, when the window opens
+this.windowOpenedAt = time.fixedElapsed;
+
+// ...and later, also in fixedUpdate
+const stillOpen = time.fixedElapsed - this.windowOpenedAt < 0.25;
+```
+
+Both readings hold under stack pause, `scene.timeScale = 0`, and freeze
+requests, and both start at 0 on scene entry and are not saved. On a frame long
+enough to hit the loop's fixed-step cap, only the steps that ran are counted, so
+`fixedElapsed` falls behind `elapsed`.
 
 Request durations (`for`, and the `freezeFor` duration) count real seconds:
 they are unaffected by the scaling itself, so a freeze reliably ends on time.

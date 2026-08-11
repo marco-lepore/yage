@@ -167,7 +167,16 @@ export class Engine {
         this.scenes._tickTransition(dt);
         this.scheduler.run(Phase.EarlyUpdate, dt);
       },
-      fixedUpdate: (dt) => this.scheduler.run(Phase.FixedUpdate, dt),
+      fixedUpdate: (dt) => {
+        // Accrue fixed-clock scene time before the phase runs, so a system
+        // reading it inside a step counts that step, and physics — stepping
+        // under the same effective scale at priority 0 — advances the world by
+        // the amount just accrued.
+        for (const scene of [...this.scenes.activeScenes]) {
+          scene.tryResolveScoped(SceneTimeKey)?._tickFixed(dt);
+        }
+        this.scheduler.run(Phase.FixedUpdate, dt);
+      },
       update: (dt) => this.scheduler.run(Phase.Update, dt),
       lateUpdate: (dt) => this.scheduler.run(Phase.LateUpdate, dt),
       render: (dt) => this.scheduler.run(Phase.Render, dt),
