@@ -229,6 +229,32 @@ describe("ProcessSystem", () => {
       expect(p.completed).toBe(true);
     });
 
+    it("keeps work a drained callback scheduled after cancelling the pool", () => {
+      const { sys, sceneManager } = setup();
+      const scene = new MockScene();
+      sceneManager.activeScene = scene;
+      const nextSpy = vi.fn();
+      const next = new Process({ update: nextSpy });
+      let restarted = false;
+      sys.addForScene(
+        scene as never,
+        new Process({
+          update: () => {
+            if (restarted) return;
+            restarted = true;
+            // Empties the pool and drops the map entry, then puts a fresh Set
+            // in its place. The drain must not delete that new entry.
+            sys.cancelForScene(scene as never);
+            sys.addForScene(scene as never, next);
+          },
+        }),
+      );
+
+      sys.update(16);
+      sys.update(16);
+      expect(nextSpy).toHaveBeenCalledWith(16, 16);
+    });
+
     it("scene-scoped pool is independent of engine-global pool", () => {
       const { sys, sceneManager } = setup();
       const scene = new MockScene();

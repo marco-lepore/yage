@@ -215,7 +215,10 @@ export class ProcessSystem extends System {
       this._tickProcess(p, dt, scene.name);
       if (p.completed) pool.delete(p);
     }
-    if (pool.size === 0) pools.delete(scene);
+    // A process callback can cancel the scene's pool and schedule new work,
+    // which puts a fresh Set in the map. Drop the entry only while it still
+    // holds the Set that was drained, or the new work is orphaned.
+    if (pool.size === 0 && pools.get(scene) === pool) pools.delete(scene);
   }
 
   /** Drops the map entry when the pool empties, so a dead Scene key is released. */
