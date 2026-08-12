@@ -114,9 +114,11 @@ once per fixed step. Steering output is simulation input, and physics runs on
 the same clock.
 
 `PhysicsSystem` steps the world in `Phase.FixedUpdate` at priority 0 and
-writes the end-of-step pose of every dynamic and kinematic body to
-`Transform`; `ComponentFixedUpdateSystem` runs in the same phase at priority
-1000, so an agent reads simulated poses. The previous/current blend
+writes each dynamic body's end-of-step pose to `Transform`;
+`ComponentFixedUpdateSystem` runs in the same phase at priority 1000, so an
+agent reads simulated poses. A kinematic body gets the same write, skipped
+when the game has moved that `Transform` since the last step — the pose the
+game wrote is the body's next step target. The previous/current blend
 `PhysicsInterpolationSystem` writes in `Phase.Update` at priority -100 is the
 pose the frame draws, which the simulation never occupied. Which pose the
 agent reads affects `arrive` radii, `followPath`'s `waypointRadius`, the
@@ -187,6 +189,10 @@ drive: `velocity = moveTowards(current, desired, maxAcceleration·dt)`,
 written to the body or `apply`; impulse drive:
 `applyImpulse(clamp(desired − current, maxAcceleration·dt) · getMass())` →
 `faceHeading` && speed > 1 px/s: `transform.setRotation(velocity.angle())`.
+On a dynamic body the simulated rotation owns the `Transform`, and
+`PhysicsInterpolationSystem` overwrites the heading before the frame draws.
+Pass `syncRotation: false` on the `RigidBodyComponent` to give the agent
+rotation.
 
 Live surface: `agent.steering` (mutate live), `agent.velocity` (commanded /
 expected-after-impulse, getter — the body's `getVelocity()` is ground truth),

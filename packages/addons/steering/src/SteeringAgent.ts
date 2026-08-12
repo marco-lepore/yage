@@ -64,7 +64,11 @@ export interface SteeringAgentOptions {
    * integration. Mutually exclusive with `body`.
    */
   apply?: (velocity: Vec2, ctx: SteeringApplyContext) => void;
-  /** Rotate the Transform to face the travel direction. Default false. */
+  /**
+   * Rotate the Transform to face the travel direction. Default false. On a
+   * dynamic `RigidBodyComponent` the simulated rotation owns the Transform,
+   * so the body needs `syncRotation: false` for the heading to hold.
+   */
   faceHeading?: boolean;
   /** Ticks while true; pause without removing the component. Default true. */
   enabled?: boolean;

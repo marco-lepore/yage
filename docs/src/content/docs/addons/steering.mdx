@@ -132,6 +132,11 @@ With a `body`, behaviors and the acceleration ramp read the body's *actual*
 velocity each step — a wall pin, a contact, a knockback all feed back into
 steering instead of the model computing over them.
 
+`faceHeading` writes the Transform rotation. On a dynamic body the simulated
+rotation owns that field, and the physics interpolation overwrites the
+heading before the frame draws. Pass `syncRotation: false` on the
+`RigidBodyComponent` to give the agent rotation.
+
 ## The clock
 
 The agent steers once per fixed step, not once per drawn frame. Steering
@@ -140,17 +145,19 @@ input: physics steps on the fixed clock, and so does the gameplay code that
 reads the result.
 
 Which pose the behaviors measure follows from when the agent runs. The
-physics system writes the end-of-step pose of every dynamic and kinematic
-body into its `Transform` during the fixed step, before component
-`fixedUpdate` runs. The interpolation system writes a blend of the previous
-and current poses during the update phase, for the frame to draw; that
-blended pose sits between two steps. An agent that seeks or avoids physics
-bodies therefore measures against simulated positions — which is what
-`arrive` radii, `followPath`'s `waypointRadius`, the `separation` and
-`cohesion` ranges, and the origin of the `avoidColliders` raycast all depend
-on. Under a scene time scale below 1 the physics system steps less often than
-the fixed clock ticks, and on a tick with no step the `Transform` still holds
-the blend the last frame drew.
+physics system writes each dynamic body's end-of-step pose into its
+`Transform` during the fixed step, before component `fixedUpdate` runs. A
+kinematic body gets the same write, skipped when the game has moved that
+`Transform` since the last step, because the pose the game wrote is the
+body's next step target. The interpolation system writes a blend of the
+previous and current poses during the update phase, for the frame to draw;
+that blended pose sits between two steps. An agent that seeks or avoids
+physics bodies therefore measures against simulated positions — which is what
+`arrive` radii, `followPath`'s `waypointRadius`, the `separation`,
+`alignment` and `cohesion` ranges, and the origin of the `avoidColliders`
+raycast all depend on. Under a scene time scale below 1 the physics system
+steps less often than the fixed clock ticks, and on a tick with no step the
+`Transform` still holds the blend the last frame drew.
 
 A bodyless agent's drawn position changes once per fixed step, 1/60 s by
 default. Nothing in the engine interpolates a `Transform` that no rigid body

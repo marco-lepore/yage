@@ -81,9 +81,9 @@ export interface ArriveOptions extends SteeringOptions {
   slowRadius?: number;
   /** Distance at which the agent is considered settled (desired = ZERO). Default 4. */
   arriveRadius?: number;
-  /** Fires once, in the `compute` call where distance first drops below `arriveRadius`. */
+  /** Fires once, on the first evaluation with distance below `arriveRadius`. */
   onArrive?: () => void;
-  /** Fires once, in the `compute` call where distance climbs back above `arriveRadius`. */
+  /** Fires once, on the first evaluation with distance back above `arriveRadius`. */
   onDepart?: () => void;
 }
 
