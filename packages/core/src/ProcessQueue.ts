@@ -1,5 +1,5 @@
 import type { Entity } from "./Entity.js";
-import type { Process } from "./Process.js";
+import type { Process, ProcessClock } from "./Process.js";
 import { ProcessComponent } from "./ProcessComponent.js";
 import type { ProcessSystem } from "./ProcessSystem.js";
 import type { Scene } from "./Scene.js";
@@ -55,14 +55,28 @@ function makeQueue(route: (p: Process) => void): ScopedProcessQueue {
  * one if the entity doesn't already have it. `cancelAll()` only cancels the
  * processes this queue enqueued, so sharing the underlying ProcessComponent
  * with user code stays safe.
+ *
+ * `options.clock` picks the clock for every process the queue enqueues
+ * (default `"frame"`, rendered-frame time; see `ProcessClock`). `"fixed"`
+ * schedules them on the fixed timestep through `ProcessFixedUpdateSystem`.
+ * The clock is read when the queue is created, so `run(p)` takes none. A
+ * process already scheduled on that `ProcessComponent` keeps the clock it was
+ * scheduled with.
+ *
+ * One queue carries one clock. Work on the other clock needs a second queue,
+ * with its own `cancelAll()`.
  */
-export function makeEntityScopedQueue(entity: Entity): ScopedProcessQueue {
+export function makeEntityScopedQueue(
+  entity: Entity,
+  options?: { clock?: ProcessClock },
+): ScopedProcessQueue {
+  const clock: ProcessClock = options?.clock ?? "frame";
   return makeQueue((p) => {
     let pc = entity.tryGet(ProcessComponent);
     if (!pc) {
       pc = entity.add(new ProcessComponent());
     }
-    pc.run(p);
+    pc.run(p, { clock });
   });
 }
 

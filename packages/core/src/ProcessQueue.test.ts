@@ -78,6 +78,94 @@ describe("makeEntityScopedQueue", () => {
     expect(bCancel).toHaveBeenCalledOnce();
     expect(cCancel).toHaveBeenCalledOnce();
   });
+
+  describe("clock", () => {
+    it("defaults to the frame clock", () => {
+      const { entity } = createMockEntity();
+      const queue = makeEntityScopedQueue(entity);
+      const spy = vi.fn();
+      queue.run(new Process({ update: spy }));
+      const pc = entity.get(ProcessComponent);
+
+      pc._tick(0.02, undefined, "fixed");
+      expect(spy).not.toHaveBeenCalled();
+
+      pc._tick(0.1);
+      expect(spy).toHaveBeenCalledWith(0.1, 0.1);
+    });
+
+    it("a fixed queue advances its processes on fixed steps only", () => {
+      const { entity } = createMockEntity();
+      const queue = makeEntityScopedQueue(entity, { clock: "fixed" });
+      const spy = vi.fn();
+      queue.run(new Process({ update: spy }));
+      const pc = entity.get(ProcessComponent);
+
+      pc._tick(0.1);
+      expect(spy).not.toHaveBeenCalled();
+
+      pc._tick(0.02, undefined, "fixed");
+      expect(spy).toHaveBeenCalledWith(0.02, 0.02);
+    });
+
+    it("cancelAll on a fixed queue leaves unrelated processes on both clocks", () => {
+      const { entity } = createMockEntity();
+      const queue = makeEntityScopedQueue(entity, { clock: "fixed" });
+      const ours = new Process({ duration: 100 });
+      queue.run(ours);
+
+      // Processes going through the SAME ProcessComponent but not the queue.
+      const pc = entity.get(ProcessComponent);
+      const frameSpy = vi.fn();
+      const fixedSpy = vi.fn();
+      const theirFrame = new Process({ update: frameSpy });
+      const theirFixed = new Process({ update: fixedSpy });
+      pc.run(theirFrame);
+      pc.run(theirFixed, { clock: "fixed" });
+
+      const ourCancel = vi.spyOn(ours, "cancel");
+      const frameCancel = vi.spyOn(theirFrame, "cancel");
+      const fixedCancel = vi.spyOn(theirFixed, "cancel");
+
+      queue.cancelAll();
+      expect(ourCancel).toHaveBeenCalledOnce();
+      expect(frameCancel).not.toHaveBeenCalled();
+      expect(fixedCancel).not.toHaveBeenCalled();
+
+      // Both unrelated processes still advance on their own clock.
+      pc._tick(0.1);
+      pc._tick(0.02, undefined, "fixed");
+      expect(frameSpy).toHaveBeenCalledWith(0.1, 0.1);
+      expect(fixedSpy).toHaveBeenCalledWith(0.02, 0.02);
+    });
+
+    it("two queues on one entity hold separate clocks and cancel separately", () => {
+      const { entity } = createMockEntity();
+      const frameQueue = makeEntityScopedQueue(entity);
+      const fixedQueue = makeEntityScopedQueue(entity, { clock: "fixed" });
+      const frameSpy = vi.fn();
+      const fixedSpy = vi.fn();
+      const frameProcess = frameQueue.run(new Process({ update: frameSpy }));
+      const fixedProcess = fixedQueue.run(new Process({ update: fixedSpy }));
+      const pc = entity.get(ProcessComponent);
+
+      frameQueue.cancelAll();
+      expect(frameProcess.completed).toBe(true);
+      expect(fixedProcess.completed).toBe(false);
+
+      pc._tick(0.1);
+      pc._tick(0.02, undefined, "fixed");
+      expect(fixedSpy).toHaveBeenCalledWith(0.02, 0.02);
+      expect(frameSpy).not.toHaveBeenCalled();
+    });
+
+    it("leaves the tags of the processes it enqueues alone", () => {
+      const { entity } = createMockEntity();
+      const queue = makeEntityScopedQueue(entity, { clock: "fixed" });
+      const p = queue.run(new Process({ duration: 100, tags: ["mine"] }));
+      expect(p.tags).toEqual(["mine"]);
+    });
+  });
 });
 
 describe("makeGlobalScopedQueue", () => {

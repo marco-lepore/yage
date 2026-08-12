@@ -154,6 +154,26 @@ the animator schedules the track for you: `clock: "fixed"` on one animation def
 puts that track on the fixed clock and leaves the animator's other animations
 where they are.
 
+### Scoped Queues
+
+An entity-scoped process queue carries the clock for everything it enqueues.
+It routes through the entity's `ProcessComponent` and cancels only what it put
+there:
+
+```typescript
+import { makeEntityScopedQueue, Process } from "@yagejs/core";
+
+const gameplay = makeEntityScopedQueue(entity, { clock: "fixed" });
+gameplay.run(Process.delay(0.25, () => endDash()));
+
+// Tear down everything this queue started:
+gameplay.cancelAll();
+```
+
+The clock is read when the queue is created, so `run(p)` takes none. One
+queue carries one clock. Frame-clock visuals on the same entity belong in a
+second queue, and that queue has its own `cancelAll()`.
+
 ## Tweens
 
 Tweens smoothly interpolate a value over time. They run as processes, so they
