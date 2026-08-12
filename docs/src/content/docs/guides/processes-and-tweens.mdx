@@ -179,12 +179,26 @@ spawner, or a boss enrage at 60 seconds belongs to the scene rather than to
 any one entity. A timer scheduled on an entity's `ProcessComponent` ends when
 that entity is destroyed.
 
-```typescript
-import { Process, ProcessSystemKey, makeSceneScopedQueue } from "@yagejs/core";
+A scene resolves the `ProcessSystem` through its engine context, which is
+bound by the time `onEnter()` runs:
 
-const processSystem = scene.context.resolve(ProcessSystemKey);
-const waves = makeSceneScopedQueue(processSystem, scene, { clock: "fixed" });
-waves.run(Process.delay(30, () => spawnWave(2), ["waves"]));
+```typescript
+import {
+  Process,
+  ProcessSystemKey,
+  Scene,
+  makeSceneScopedQueue,
+} from "@yagejs/core";
+
+class Arena extends Scene {
+  readonly name = "arena";
+
+  onEnter(): void {
+    const processSystem = this.context.resolve(ProcessSystemKey);
+    const waves = makeSceneScopedQueue(processSystem, this, { clock: "fixed" });
+    waves.run(Process.delay(30, () => spawnWave(2), ["waves"]));
+  }
+}
 ```
 
 A scene queue pauses with its scene and follows the scene's time scale on
