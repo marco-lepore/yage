@@ -59,7 +59,9 @@ function makeQueue(route: (p: Process) => void): ScopedProcessQueue {
  * `options.clock` picks the clock for every process the queue enqueues
  * (default `"frame"`, rendered-frame time; see `ProcessClock`). `"fixed"`
  * schedules them on the fixed timestep through `ProcessFixedUpdateSystem`.
- * The clock is read when the queue is created, so `run(p)` takes none.
+ * The clock is read when the queue is created, so `run(p)` takes none. A
+ * process already scheduled on that `ProcessComponent` keeps the clock it was
+ * scheduled with.
  *
  * One queue carries one clock. Work on the other clock needs a second queue,
  * with its own `cancelAll()`.
