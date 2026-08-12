@@ -31,11 +31,10 @@ enemy.add(
 );
 ```
 
-`SteeringAgent` is a `@yagejs/core` Component; `ComponentUpdateSystem` drives
-`update(dt)`. The default output integrates `transform.position` (local) —
-agents are assumed root-level (local == world). `tick: "fixedUpdate"` steers
-once per fixed step instead of once per frame (default `"update"`) — use it
-when the output is Transform movement a kinematic body follows.
+`SteeringAgent` is a `@yagejs/core` Component; `ComponentFixedUpdateSystem`
+drives `fixedUpdate(dt)`, so the agent steers once per fixed step (default
+1/60 s). The default output integrates `transform.position` (local) — agents
+are assumed root-level (local == world).
 
 ## Physics bodies
 
@@ -52,20 +51,54 @@ enemy.add(new ColliderComponent({ shape: { type: "circle", radius: 10 }, density
 enemy.add(
   new PhysicsSteeringAgent({
     maxSpeed: 130,
-    maxAcceleration: 500, // default 4x maxSpeed; the per-frame impulse is the capped correction
+    maxAcceleration: 500, // default 4x maxSpeed; the per-step impulse is the capped correction
     behaviors: [arrive(() => target, { slowRadius: 140 })],
   }),
 );
 ```
 
 On a kinematic body the agent switches automatically: kinematic bodies
-ignore `setVelocity`/`applyImpulse`, so it integrates the `Transform` in
-`fixedUpdate` instead (the physics system syncs the pose to the body each
-step) — the agent pushes dynamic bodies and is never pushed back. Passing
-`drive` with a kinematic body throws; a static body throws at add.
+ignore `setVelocity`/`applyImpulse`, so it writes the `Transform` instead —
+the physics system takes that pose as the next step's target — and the agent
+pushes dynamic bodies and is never pushed back. Passing `drive` with a
+kinematic body throws; a static body throws at add.
 
 Components are keyed by exact class: query it back with
 `entity.get(PhysicsSteeringAgent)`, not `entity.get(SteeringAgent)`.
+
+## Clock
+
+`ComponentFixedUpdateSystem` drives `fixedUpdate(dt)`, so the agent steers
+once per fixed step. Steering output is simulation input, and physics runs on
+the same clock.
+
+`PhysicsSystem` writes each body's end-of-step pose to `Transform` in
+`Phase.FixedUpdate` at priority 0; `ComponentFixedUpdateSystem` runs in the
+same phase at priority 1000, so an agent reads simulated poses. The
+previous/current blend `PhysicsInterpolationSystem` writes in `Phase.Update`
+at priority -100 is the pose the frame draws, which the simulation never
+occupied. The gates that depend on which one the agent gets: `arrive` radii,
+`followPath`'s `waypointRadius`, the `separation`/`alignment`/`cohesion`
+ranges, and the origin of the `avoidColliders` raycast.
+
+Nothing in the engine interpolates a `Transform` that no rigid body drives,
+so a bodyless agent's drawn position changes once per fixed step; above 60 Hz
+it changes less often than the screen redraws. One way to draw on the frame
+clock is to take the commanded velocity from `apply` and integrate it
+yourself:
+
+```ts
+let commanded = Vec2.ZERO;
+enemy.add(
+  new SteeringAgent({
+    maxSpeed: 120,
+    behaviors: [seek(() => target)],
+    apply: (velocity) => { commanded = velocity; },
+  }),
+);
+// in a component's own update(dt):
+enemy.get(Transform).translate(commanded.x * dt, commanded.y * dt);
+```
 
 Explicit `body` on the root class — structural, no physics import; also fits
 custom movers implementing the two methods:
@@ -88,13 +121,13 @@ enemy.add(
 Drive modes:
 
 - `"velocity"` (default) — writes the commanded velocity (`setVelocity`)
-  every frame. Full authority; external pushes decay at `maxAcceleration`
+  every step. Full authority; external pushes decay at `maxAcceleration`
   (with a body the ramp starts from the actual velocity, so knockback is
   worked off, not overwritten). Dynamic bodies only: YAGE `kinematic`
   bodies are position-based and ignore `setVelocity`.
   `PhysicsSteeringAgent` handles them by Transform integration; with the
-  base class, use no `body` plus `tick: "fixedUpdate"`.
-- `"impulse"` — per frame applies `clamp(desired − actual, maxAcceleration·dt)
+  base class, use no `body` — the default output integrates the Transform.
+- `"impulse"` — per step applies `clamp(desired − actual, maxAcceleration·dt)
   · getMass()` through `applyImpulse`, so external impulses compose with
   steering. Requires a body with `applyImpulse`/`getMass` (a dynamic
   `RigidBodyComponent`). Two-way physics: push and be pushed.
@@ -114,7 +147,7 @@ commanded velocity.
 `remove(b): this`, `clear(): this`,
 `compute(agent: AgentState, dt: number): Vec2` — arbitrates by `priority`
 tier (highest first; the first tier whose weighted sum is non-zero wins,
-clamped to `agent.maxSpeed`; lower tiers are not evaluated that frame).
+clamped to `agent.maxSpeed`; lower tiers are not evaluated in that call).
 Within a tier, contributions sum scaled by `weight`. All behaviors on the
 default priority 0 = plain weighted sum. Zero behaviors, or all ZERO, →
 ZERO.
@@ -140,7 +173,7 @@ interface SteeringAgentOptions {
 interface SteeringApplyContext { readonly entity: Entity; readonly dt: number; readonly transform: Transform; }
 ```
 
-Per-frame (`update(dt)`): skip if `!enabled` → `current` = body's
+Per step (`fixedUpdate(dt)`): skip if `!enabled` → `current` = body's
 `getVelocity()` if a body is set, else last commanded → `desired =
 steering.compute({ position, velocity: current, maxSpeed }, dt)` → velocity
 drive: `velocity = moveTowards(current, desired, maxAcceleration·dt)`,
@@ -192,7 +225,7 @@ returns a non-zero steer.
 `/physics` entry additions (value-import physics; optional peer):
 
 - `avoidColliders(world: PhysicsWorld | (agent) => PhysicsWorld, opts?)` — `{ lookAhead = 100, whiskerAngle = π/6, whiskerLength = 0.7·lookAhead }` (+ weight/priority). Raycasts the real world along the heading (center ray + two whiskers; `whiskerLength: 0` disables); steers away from the closest hit along the hit normal's lateral component (perpendicular tie-break on a dead-center wall hit). Excludes the agent's own collider via `AgentState.entity`. ZERO when stationary or clear. Pair with `priority: 1`.
-- `physicsNeighbors(world, opts?)` — `{ radius = 80, filterGroups? }`. A `NeighborsSource` over `PhysicsWorld.queryRadius` around the agent: entities with a collider in range become Kinematics (no body = stationary), agent excluded. Note: each flock rule resolves the source per frame — three rules = three queries.
+- `physicsNeighbors(world, opts?)` — `{ radius = 80, filterGroups? }`. A `NeighborsSource` over `PhysicsWorld.queryRadius` around the agent: entities with a collider in range become Kinematics (no body = stationary), agent excluded. Note: each flock rule resolves the source per step — three rules = three queries.
 
 ## Headless / manual drive
 

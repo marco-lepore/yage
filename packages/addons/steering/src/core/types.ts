@@ -60,10 +60,10 @@ export interface SteeringOptions {
   /** Contribution weight within the behavior's priority tier. Defaults to 1. */
   weight?: number;
   /**
-   * Arbitration tier. Tiers are consulted highest-first each frame; the
-   * first tier whose weighted sum is non-zero wins outright and lower tiers
-   * are not evaluated. Defaults to 0 (everything in one tier = plain
-   * weighted sum). Raise it on a behavior that must override the blend when
+   * Arbitration tier. Tiers are consulted highest-first in each `compute`
+   * call; the first tier whose weighted sum is non-zero wins outright and
+   * lower tiers are not evaluated. Defaults to 0 (everything in one tier =
+   * plain weighted sum). Raise it on a behavior that must override the blend when
    * it returns a non-zero steer — e.g. `avoidObstacles(rocks, { priority: 1 })`.
    */
   priority?: number;
