@@ -3,7 +3,7 @@ import { Phase } from "./types.js";
 import type { EngineContext } from "./EngineContext.js";
 import type { Scene } from "./Scene.js";
 import type { SceneManager } from "./SceneManager.js";
-import type { Process } from "./Process.js";
+import type { Process, ProcessClock } from "./Process.js";
 import { tickProcessGuarded } from "./Process.js";
 import { ProcessComponent } from "./ProcessComponent.js";
 import { SceneManagerKey, ErrorBoundaryKey } from "./EngineContext.js";
@@ -11,11 +11,24 @@ import type { ErrorBoundary } from "./ErrorBoundary.js";
 import { SceneHookRegistryKey } from "./SceneHooks.js";
 import { SceneTimeKey } from "./SceneTime.js";
 
+/** Cancel and remove every process in `pool`, or only those carrying `tag`. */
+function cancelMatching(pool: Set<Process>, tag: string | undefined): void {
+  for (const p of pool) {
+    if (tag === undefined || p.tags.includes(tag)) {
+      p.cancel();
+      pool.delete(p);
+    }
+  }
+}
+
 /**
  * Built-in system that ticks the `"frame"`-clock processes of all
- * ProcessComponents on entities in non-paused scenes, plus the engine-global
- * and scene-bound process pools. `"fixed"`-clock processes are advanced by
- * `ProcessFixedUpdateSystem` instead.
+ * ProcessComponents on entities in non-paused scenes, plus the frame-clock
+ * entries of the engine-global and scene-bound process pools.
+ *
+ * `ProcessSystem` holds all four engine-level pools — engine-global and
+ * scene-bound, one of each per clock. `ProcessFixedUpdateSystem` advances the
+ * two fixed-clock pools and every `"fixed"`-clock entity process.
  *
  * Runs at Phase.Update with priority 500, ensuring tweened values are fresh
  * before ComponentUpdateSystem (priority 1000) reads them.
@@ -31,6 +44,8 @@ export class ProcessSystem extends System {
   private errorBoundary: ErrorBoundary | undefined;
   private globalProcesses = new Set<Process>();
   private scenePools = new Map<Scene, Set<Process>>();
+  private fixedGlobalProcesses = new Set<Process>();
+  private fixedScenePools = new Map<Scene, Set<Process>>();
   private _unregisterSceneHook: (() => void) | null = null;
 
   override onRegister(context: EngineContext): void {
@@ -52,16 +67,20 @@ export class ProcessSystem extends System {
     this._unregisterSceneHook?.();
     this._unregisterSceneHook = null;
     // Drain pools so cancelled processes don't keep Scene refs alive.
-    for (const p of this.globalProcesses) {
-      if (!p.completed) p.cancel();
-    }
-    this.globalProcesses.clear();
-    for (const pool of this.scenePools.values()) {
+    for (const pool of [this.globalProcesses, this.fixedGlobalProcesses]) {
       for (const p of pool) {
         if (!p.completed) p.cancel();
       }
+      pool.clear();
     }
-    this.scenePools.clear();
+    for (const pools of [this.scenePools, this.fixedScenePools]) {
+      for (const pool of pools.values()) {
+        for (const p of pool) {
+          if (!p.completed) p.cancel();
+        }
+      }
+      pools.clear();
+    }
   }
 
   /**
@@ -69,9 +88,17 @@ export class ProcessSystem extends System {
    * NOT gated by per-scene pause or scaled by per-scene timeScale. Use this
    * for cross-scene effects (e.g. screen-scope filter fades on `app.stage`)
    * or processes that have no owning scene.
+   *
+   * `options.clock` picks the clock that advances the process (default
+   * `"frame"`, rendered-frame time; see `ProcessClock`). `"fixed"` advances it
+   * on the fixed timestep through `ProcessFixedUpdateSystem`.
    */
-  add(process: Process): Process {
-    this.globalProcesses.add(process);
+  add(process: Process, options?: { clock?: ProcessClock }): Process {
+    const pool =
+      options?.clock === "fixed"
+        ? this.fixedGlobalProcesses
+        : this.globalProcesses;
+    pool.add(process);
     return process;
   }
 
@@ -80,50 +107,45 @@ export class ProcessSystem extends System {
    * the scene is active (not paused) and scaled by the scene's `timeScale`,
    * exactly like an entity-owned `ProcessComponent`. Use this for layer or
    * scene-scope effect fades that should pause with the scene.
+   *
+   * `options.clock` picks the clock that advances the process (default
+   * `"frame"`, rendered-frame time; see `ProcessClock`). `"fixed"` advances it
+   * on the fixed timestep through `ProcessFixedUpdateSystem`. The pool pauses
+   * with its scene and follows the scene's scale on either clock.
    */
-  addForScene(scene: Scene, process: Process): Process {
-    let pool = this.scenePools.get(scene);
+  addForScene(
+    scene: Scene,
+    process: Process,
+    options?: { clock?: ProcessClock },
+  ): Process {
+    const pools =
+      options?.clock === "fixed" ? this.fixedScenePools : this.scenePools;
+    let pool = pools.get(scene);
     if (!pool) {
       pool = new Set();
-      this.scenePools.set(scene, pool);
+      pools.set(scene, pool);
     }
     pool.add(process);
     return process;
   }
 
-  /** Cancel engine-global processes, optionally by tag. */
+  /** Cancel engine-global processes on both clocks, optionally by tag. */
   cancel(tag?: string): void {
-    for (const p of this.globalProcesses) {
-      if (tag === undefined || p.tags.includes(tag)) {
-        p.cancel();
-        this.globalProcesses.delete(p);
-      }
-    }
+    cancelMatching(this.globalProcesses, tag);
+    cancelMatching(this.fixedGlobalProcesses, tag);
   }
 
-  /** Cancel every scene-bound process for `scene`, optionally by tag. */
+  /** Cancel every scene-bound process for `scene` on both clocks, optionally by tag. */
   cancelForScene(scene: Scene, tag?: string): void {
-    const pool = this.scenePools.get(scene);
-    if (!pool) return;
-    for (const p of pool) {
-      if (tag === undefined || p.tags.includes(tag)) {
-        p.cancel();
-        pool.delete(p);
-      }
-    }
-    if (pool.size === 0) this.scenePools.delete(scene);
+    this._cancelScenePool(this.scenePools, scene, tag);
+    this._cancelScenePool(this.fixedScenePools, scene, tag);
   }
 
   update(dt: number): void {
     const globalScaledDt = dt * this.timeScale;
 
     // Engine-global processes — global timeScale only, not scene-bound.
-    for (const p of this.globalProcesses) {
-      this._tickProcess(p, globalScaledDt);
-      if (p.completed) {
-        this.globalProcesses.delete(p);
-      }
-    }
+    this._drainGlobalPool(this.globalProcesses, globalScaledDt);
 
     // Per-scene work: entity ProcessComponents AND scene-scoped processes.
     // Both share the same activeScenes gating + per-scene timeScale, so a
@@ -139,14 +161,7 @@ export class ProcessSystem extends System {
       const effectiveDt =
         globalScaledDt * (time?.effectiveScale ?? scene.timeScale);
 
-      const pool = this.scenePools.get(scene);
-      if (pool) {
-        for (const p of pool) {
-          this._tickProcess(p, effectiveDt, scene.name);
-          if (p.completed) pool.delete(p);
-        }
-        if (pool.size === 0) this.scenePools.delete(scene);
-      }
+      this._drainScenePool(this.scenePools, scene, effectiveDt);
 
       for (const entity of scene.getEntities()) {
         if (entity.isDestroyed || !entity.isActive) continue;
@@ -161,6 +176,58 @@ export class ProcessSystem extends System {
         pc._tick(entityDt, scene.name, "frame");
       }
     }
+  }
+
+  /**
+   * Advance the engine-global fixed-clock pool by one fixed step. `dt` arrives
+   * already scaled.
+   * @internal Called by `ProcessFixedUpdateSystem`.
+   */
+  _tickFixedGlobal(dt: number): void {
+    this._drainGlobalPool(this.fixedGlobalProcesses, dt);
+  }
+
+  /**
+   * Advance one scene's fixed-clock pool by one fixed step. `dt` arrives
+   * already scaled.
+   * @internal Called by `ProcessFixedUpdateSystem`.
+   */
+  _tickFixedScene(scene: Scene, dt: number): void {
+    this._drainScenePool(this.fixedScenePools, scene, dt);
+  }
+
+  private _drainGlobalPool(pool: Set<Process>, dt: number): void {
+    for (const p of pool) {
+      this._tickProcess(p, dt);
+      if (p.completed) pool.delete(p);
+    }
+  }
+
+  /** Drops the map entry when the pool empties, so a dead Scene key is released. */
+  private _drainScenePool(
+    pools: Map<Scene, Set<Process>>,
+    scene: Scene,
+    dt: number,
+  ): void {
+    const pool = pools.get(scene);
+    if (!pool) return;
+    for (const p of pool) {
+      this._tickProcess(p, dt, scene.name);
+      if (p.completed) pool.delete(p);
+    }
+    if (pool.size === 0) pools.delete(scene);
+  }
+
+  /** Drops the map entry when the pool empties, so a dead Scene key is released. */
+  private _cancelScenePool(
+    pools: Map<Scene, Set<Process>>,
+    scene: Scene,
+    tag: string | undefined,
+  ): void {
+    const pool = pools.get(scene);
+    if (!pool) return;
+    cancelMatching(pool, tag);
+    if (pool.size === 0) pools.delete(scene);
   }
 
   /**
@@ -189,9 +256,12 @@ export class ProcessSystem extends System {
  *
  * The dt composition matches ProcessSystem's frame pass — the owning
  * ProcessSystem's global `timeScale`, the scene's effective scale, and the
- * entity's `timeScale` — with the fixed timestep as the base dt. The
- * engine-global and scene-bound pools have no fixed variant; they stay on
- * the frame clock.
+ * entity's `timeScale` — with the fixed timestep as the base dt.
+ *
+ * The system also drains the engine-global and scene-bound fixed pools held
+ * by the owning `ProcessSystem`: the scene pool inside the active-scene loop
+ * under the scene's effective scale, the global pool once per fixed step
+ * outside it.
  */
 export class ProcessFixedUpdateSystem extends System {
   override readonly phase = Phase.FixedUpdate;
@@ -209,8 +279,19 @@ export class ProcessFixedUpdateSystem extends System {
 
   update(dt: number): void {
     const globalScaledDt = dt * this.owner.timeScale;
+
+    // Engine-global processes are not gated by per-scene pause, so they drain
+    // once per fixed step rather than once for each active scene.
+    this.owner._tickFixedGlobal(globalScaledDt);
+
     for (const scene of this.sceneManager.activeScenes) {
       const time = scene.tryResolveScoped(SceneTimeKey);
+      // The scene pool has no owning entity, so it runs at the full effective
+      // scale — no per-entity exclusion, matching the frame pass.
+      this.owner._tickFixedScene(
+        scene,
+        globalScaledDt * (time?.effectiveScale ?? scene.timeScale),
+      );
       for (const entity of scene.getEntities()) {
         if (entity.isDestroyed || !entity.isActive) continue;
         const pc = entity.tryGet(ProcessComponent);

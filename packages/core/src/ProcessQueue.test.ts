@@ -175,7 +175,26 @@ describe("makeGlobalScopedQueue", () => {
     const queue = makeGlobalScopedQueue(ps);
     const p = new Process({ duration: 100 });
     queue.run(p);
-    expect(add).toHaveBeenCalledWith(p);
+    expect(add).toHaveBeenCalledWith(p, { clock: "frame" });
+  });
+
+  it("forwards the fixed clock to ProcessSystem.add", () => {
+    const ps = new ProcessSystem();
+    const add = vi.spyOn(ps, "add");
+    const queue = makeGlobalScopedQueue(ps, { clock: "fixed" });
+    const p = new Process({ duration: 100 });
+    queue.run(p);
+    expect(add).toHaveBeenCalledWith(p, { clock: "fixed" });
+  });
+
+  it("resolves the clock once at factory time", () => {
+    const ps = new ProcessSystem();
+    const add = vi.spyOn(ps, "add");
+    // An options object with no `clock` key must still forward a complete
+    // one, not the caller's object with an absent property.
+    const queue = makeGlobalScopedQueue(ps, {});
+    queue.run(new Process({ duration: 100 }));
+    expect(add.mock.calls[0]?.[1]).toStrictEqual({ clock: "frame" });
   });
 
   it("cancelAll cancels only processes this queue enqueued", () => {
@@ -228,7 +247,17 @@ describe("makeSceneScopedQueue", () => {
     const queue = makeSceneScopedQueue(ps, scene);
     const p = new Process({ duration: 100 });
     queue.run(p);
-    expect(addForScene).toHaveBeenCalledWith(scene, p);
+    expect(addForScene).toHaveBeenCalledWith(scene, p, { clock: "frame" });
+  });
+
+  it("forwards the fixed clock to ProcessSystem.addForScene", () => {
+    const { scene } = createMockScene();
+    const ps = new ProcessSystem();
+    const addForScene = vi.spyOn(ps, "addForScene");
+    const queue = makeSceneScopedQueue(ps, scene, { clock: "fixed" });
+    const p = new Process({ duration: 100 });
+    queue.run(p);
+    expect(addForScene).toHaveBeenCalledWith(scene, p, { clock: "fixed" });
   });
 
   it("cancelAll cancels only processes this queue enqueued", () => {
@@ -236,6 +265,22 @@ describe("makeSceneScopedQueue", () => {
     const ps = new ProcessSystem();
     const queueA = makeSceneScopedQueue(ps, scene);
     const queueB = makeSceneScopedQueue(ps, scene);
+    const a = new Process({ duration: 100 });
+    const b = new Process({ duration: 100 });
+    queueA.run(a);
+    queueB.run(b);
+    const aCancel = vi.spyOn(a, "cancel");
+    const bCancel = vi.spyOn(b, "cancel");
+    queueA.cancelAll();
+    expect(aCancel).toHaveBeenCalledOnce();
+    expect(bCancel).not.toHaveBeenCalled();
+  });
+
+  it("cancelAll on a fixed-clock queue cancels only its own processes", () => {
+    const { scene } = createMockScene();
+    const ps = new ProcessSystem();
+    const queueA = makeSceneScopedQueue(ps, scene, { clock: "fixed" });
+    const queueB = makeSceneScopedQueue(ps, scene, { clock: "fixed" });
     const a = new Process({ duration: 100 });
     const b = new Process({ duration: 100 });
     queueA.run(a);

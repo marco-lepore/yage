@@ -141,8 +141,7 @@ Both clocks share the same pause and time-scale behavior: scene pause stops
 them, and global, scene, and per-entity time scales apply to both. Fixed-clock
 processes advance after the physics step and before component
 `fixedUpdate(dt)` calls. The slot's clock is set at creation;
-`start()`/`restart()` overrides cannot change it. Engine-level pools
-(`ProcessSystem.add` / `addForScene`) always run on frame time.
+`start()`/`restart()` overrides cannot change it.
 
 Gameplay subsystems pick the fixed clock for you: the abilities addon
 schedules its timelines and cooldowns on `"fixed"` by default. The `"frame"`
@@ -173,6 +172,25 @@ gameplay.cancelAll();
 The clock is read when the queue is created, so `run(p)` takes none. One
 queue carries one clock. Frame-clock visuals on the same entity belong in a
 second queue, and that queue has its own `cancelAll()`.
+
+The scene and global queues take the same option. A round timer, a wave
+spawner, or a boss enrage at 60 seconds belongs to the scene rather than to
+any one entity; hanging it on an entity's `ProcessComponent` ends the timer
+when that entity is destroyed.
+
+```typescript
+import { Process, makeSceneScopedQueue } from "@yagejs/core";
+
+const waves = makeSceneScopedQueue(processSystem, scene, { clock: "fixed" });
+waves.run(Process.delay(30, () => spawnWave(2)));
+```
+
+A scene queue pauses with its scene and follows the scene's time scale on
+both clocks. `makeGlobalScopedQueue(processSystem, { clock: "fixed" })` runs
+under the global time scale alone, with no scene pause gating.
+`waves.cancelAll()` cancels what that queue enqueued;
+`processSystem.cancelForScene(scene, "waves")` cancels by tag across both
+clocks.
 
 ## Tweens
 

@@ -85,12 +85,22 @@ export function makeEntityScopedQueue(
  * `ProcessSystem.addForScene`, so processes pause with the scene and are
  * scaled by its `timeScale` — matching the behaviour of entity-owned
  * `ProcessComponent` processes.
+ *
+ * `options.clock` picks the clock for every process the queue enqueues
+ * (default `"frame"`, rendered-frame time; see `ProcessClock`). `"fixed"`
+ * schedules them on the fixed timestep through `ProcessFixedUpdateSystem`.
+ * The clock is read when the queue is created, so `run(p)` takes none.
+ *
+ * One queue carries one clock. Work on the other clock needs a second queue,
+ * with its own `cancelAll()`.
  */
 export function makeSceneScopedQueue(
   processSystem: ProcessSystem,
   scene: Scene,
+  options?: { clock?: ProcessClock },
 ): ScopedProcessQueue {
-  return makeQueue((p) => processSystem.addForScene(scene, p));
+  const clock: ProcessClock = options?.clock ?? "frame";
+  return makeQueue((p) => processSystem.addForScene(scene, p, { clock }));
 }
 
 /**
@@ -98,9 +108,19 @@ export function makeSceneScopedQueue(
  * under the global timeScale only, NOT gated by per-scene pause or scaled
  * by per-scene timeScale. Right for cross-scene work that should keep
  * playing during scene transitions and across paused scenes.
+ *
+ * `options.clock` picks the clock for every process the queue enqueues
+ * (default `"frame"`, rendered-frame time; see `ProcessClock`). `"fixed"`
+ * schedules them on the fixed timestep through `ProcessFixedUpdateSystem`.
+ * The clock is read when the queue is created, so `run(p)` takes none.
+ *
+ * One queue carries one clock. Work on the other clock needs a second queue,
+ * with its own `cancelAll()`.
  */
 export function makeGlobalScopedQueue(
   processSystem: ProcessSystem,
+  options?: { clock?: ProcessClock },
 ): ScopedProcessQueue {
-  return makeQueue((p) => processSystem.add(p));
+  const clock: ProcessClock = options?.clock ?? "frame";
+  return makeQueue((p) => processSystem.add(p, { clock }));
 }
