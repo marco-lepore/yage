@@ -102,7 +102,7 @@ describe("Steering.compute", () => {
     expect(result.y).toBeCloseTo(300);
   });
 
-  it("lower tiers are not evaluated on frames a higher tier wins", () => {
+  it("lower tiers are not evaluated when a higher tier wins", () => {
     let lowerEvaluated = 0;
     const lower: SteeringBehavior = {
       weight: 1,

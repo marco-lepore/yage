@@ -54,7 +54,7 @@ import { PhysicsSteeringAgent } from "@yagejs-addons/steering/physics";
 enemy.add(
   new PhysicsSteeringAgent({
     maxSpeed: 130,
-    maxAcceleration: 500, // default 4x maxSpeed; the per-frame impulse is the capped correction
+    maxAcceleration: 500, // default 4x maxSpeed; the per-step impulse is the capped correction
     behaviors: [arrive(() => waypoint, { slowRadius: 140 })],
   }),
 );

@@ -37,7 +37,7 @@ export interface SteeringAgentOptions {
   behaviors?: SteeringBehavior[];
   /**
    * Acceleration cap in px/s² — the low-pass that keeps steering smooth
-   * when the blend changes direction between frames, and what lets
+   * when the blend changes direction between steps, and what lets
    * knockback and contact impulses persist instead of being cancelled in
    * one write. Default `4 × maxSpeed` (top speed in 0.25 s). Pass
    * `Infinity` for an instant velocity snap.
@@ -45,7 +45,7 @@ export interface SteeringAgentOptions {
   maxAcceleration?: number;
   /**
    * The body this agent drives. Behaviors and the acceleration ramp read the
-   * body's actual velocity each frame, so collisions, knockback, and being
+   * body's actual velocity each step, so collisions, knockback, and being
    * pushed off course steer back correctly instead of being computed over.
    * Without a body, the agent integrates the Transform kinematically.
    */
@@ -59,19 +59,16 @@ export interface SteeringAgentOptions {
    */
   drive?: "velocity" | "impulse";
   /**
-   * Which hook steers. `"update"` (default) steers once per rendered frame.
-   * `"fixedUpdate"` steers once per fixed step — the right choice when the
-   * output is Transform movement a kinematic body follows, so every write
-   * becomes exactly one physics-step target.
-   */
-  tick?: "update" | "fixedUpdate";
-  /**
    * Custom output for agents without a body: receives the commanded velocity
-   * each frame instead of the default kinematic Transform integration.
-   * Mutually exclusive with `body`.
+   * on each fixed step instead of the default kinematic Transform
+   * integration. Mutually exclusive with `body`.
    */
   apply?: (velocity: Vec2, ctx: SteeringApplyContext) => void;
-  /** Rotate the Transform to face the travel direction. Default false. */
+  /**
+   * Rotate the Transform to face the travel direction. Default false. On a
+   * dynamic `RigidBodyComponent` the simulated rotation owns the Transform,
+   * so the body needs `syncRotation: false` for the heading to hold.
+   */
   faceHeading?: boolean;
   /** Ticks while true; pause without removing the component. Default true. */
   enabled?: boolean;
@@ -85,7 +82,8 @@ function defaultKinematicApply(velocity: Vec2, ctx: SteeringApplyContext): void 
 const FACE_HEADING_MIN_SPEED_SQ = 1;
 
 /**
- * L2a Component hosting a `Steering` model, driven by `ComponentUpdateSystem`.
+ * L2a Component hosting a `Steering` model. `ComponentFixedUpdateSystem`
+ * drives `fixedUpdate(dt)`, so the agent steers once per fixed step.
  *
  * Assumes the entity is root-level: the default kinematic apply integrates
  * `transform.position` (local), so local == world only without a parent.
@@ -95,7 +93,7 @@ export class SteeringAgent extends Component {
   maxSpeed: number;
   /** Acceleration cap in px/s². `Infinity` snaps the velocity to the desired value. */
   maxAcceleration: number;
-  /** Rotate the Transform to face the travel direction each frame. */
+  /** Rotate the Transform to face the travel direction each step. */
   faceHeading: boolean;
   /** The hosted blend model — mutate live (`add`/`remove`/`clear`) to retune behavior. */
   readonly steering: Steering;
@@ -103,10 +101,9 @@ export class SteeringAgent extends Component {
   /** Late-bound by integration subclasses that resolve the body from a sibling. */
   protected body: VelocityBody | ImpulseBody | undefined;
 
-  // Not readonly: integration subclasses reconfigure these in onAdd(), once
+  // Not readonly: integration subclasses reconfigure drive in onAdd(), once
   // the sibling body's type is known.
   protected drive: "velocity" | "impulse";
-  protected tick: "update" | "fixedUpdate";
   private readonly applyFn: (velocity: Vec2, ctx: SteeringApplyContext) => void;
   private readonly transform = this.sibling(Transform);
   private _velocity: Vec2 = Vec2.ZERO;
@@ -120,7 +117,6 @@ export class SteeringAgent extends Component {
     this.steering = new Steering(options.behaviors ?? []);
     this.body = options.body;
     this.drive = options.drive ?? "velocity";
-    this.tick = options.tick ?? "update";
     if (options.body && options.apply) {
       throw new Error("SteeringAgent: pass `body` or `apply`, not both");
     }
@@ -129,7 +125,7 @@ export class SteeringAgent extends Component {
 
   /**
    * The velocity steering is producing — commanded (velocity drive) or
-   * expected after this frame's impulse (impulse drive). Read for debug
+   * expected after this step's impulse (impulse drive). Read for debug
    * drawing; with a body, the body's `getVelocity()` is the ground truth.
    */
   get velocity(): Vec2 {
@@ -159,12 +155,8 @@ export class SteeringAgent extends Component {
     (body as VelocityBody).setVelocity(Vec2.ZERO);
   }
 
-  update(dt: number): void {
-    if (this.tick === "update") this.step(dt);
-  }
-
   fixedUpdate(dt: number): void {
-    if (this.tick === "fixedUpdate") this.step(dt);
+    this.step(dt);
   }
 
   private step(dt: number): void {

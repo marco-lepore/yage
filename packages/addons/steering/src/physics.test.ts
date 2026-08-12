@@ -141,7 +141,7 @@ function physicsEntity(type: BodyType) {
 }
 
 describe("PhysicsSteeringAgent", () => {
-  it("kinematic body: integrates the Transform in fixedUpdate, no body writes", () => {
+  it("kinematic body: integrates the Transform, no body writes", () => {
     const { entity } = physicsEntity("kinematic");
     const setVelocity = vi.spyOn(entity.get(RigidBodyComponent), "setVelocity");
     const agent = new PhysicsSteeringAgent({
@@ -152,26 +152,9 @@ describe("PhysicsSteeringAgent", () => {
     entity.add(agent);
     const transform = entity.get(Transform);
 
-    agent.update(1 / 60);
-    expect(transform.position.x).toBe(0); // steers in fixedUpdate, not update
-
     agent.fixedUpdate(1 / 60);
     expect(transform.position.x).toBeCloseTo(1, 5); // 60 px/s * 1/60 s
     expect(setVelocity).not.toHaveBeenCalled();
-  });
-
-  it("kinematic body with an explicit tick keeps it", () => {
-    const { entity } = physicsEntity("kinematic");
-    const agent = new PhysicsSteeringAgent({
-      maxSpeed: 60,
-      maxAcceleration: Infinity,
-      behaviors: [seek(new Vec2(1000, 0))],
-      tick: "update",
-    });
-    entity.add(agent);
-
-    agent.update(1 / 60);
-    expect(entity.get(Transform).position.x).toBeCloseTo(1, 5);
   });
 
   it("kinematic body with an explicit drive throws at add", () => {
@@ -206,7 +189,7 @@ describe("PhysicsSteeringAgent", () => {
     entity.add(agent);
     const transform = entity.get(Transform);
 
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
 
     expect(applyImpulse).toHaveBeenCalled();
     expect(transform.position.x).toBe(0); // no Transform integration

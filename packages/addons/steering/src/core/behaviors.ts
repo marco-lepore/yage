@@ -55,8 +55,8 @@ export function flee(target: PointTarget, opts: FleeOptions = {}): SteeringBehav
 
 /**
  * Seek `target`, ramping speed down linearly inside `slowRadius` and
- * settling to ZERO inside `arriveRadius`. `onArrive`/`onDepart` fire once on
- * the frame the agent crosses `arriveRadius`.
+ * settling to ZERO inside `arriveRadius`. `onArrive`/`onDepart` fire once, on
+ * the first evaluation with the distance below or back above `arriveRadius`.
  */
 export function arrive(target: PointTarget, opts: ArriveOptions = {}): SteeringBehavior {
   const slowRadius = opts.slowRadius ?? 120;

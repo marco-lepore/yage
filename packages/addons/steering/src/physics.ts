@@ -18,7 +18,7 @@ import type {
   SteeringOptions,
 } from "./core/types.js";
 
-/** A world to query, or a provider resolved per frame from the agent. */
+/** A world to query, or a provider resolved in each `compute` call from the agent. */
 export type WorldSource = PhysicsWorld | ((agent: AgentState) => PhysicsWorld);
 
 export type PhysicsSteeringAgentOptions = Omit<SteeringAgentOptions, "body" | "apply">;
@@ -29,9 +29,9 @@ export type PhysicsSteeringAgentOptions = Omit<SteeringAgentOptions, "body" | "a
  * defaults to impulse drive, so the agent pushes and is pushed like any
  * other: knockback persists, contacts deflect it, and steering corrects at
  * `maxAcceleration` (default `4 × maxSpeed`); pass `drive: "velocity"` to
- * write the commanded velocity every frame instead (full authority). On a
- * kinematic body it integrates the Transform in `fixedUpdate` — the pose
- * the physics system syncs to the body each step — so the agent pushes
+ * write the commanded velocity every step instead (full authority). On a
+ * kinematic body it writes the `Transform` instead of the body — the physics
+ * system takes that pose as the next step's target — so the agent pushes
  * dynamic bodies and is never pushed back; `drive` does not apply there
  * (kinematic bodies ignore `setVelocity`/`applyImpulse`) and throws.
  *
@@ -40,12 +40,10 @@ export type PhysicsSteeringAgentOptions = Omit<SteeringAgentOptions, "body" | "a
  */
 export class PhysicsSteeringAgent extends SteeringAgent {
   private readonly explicitDrive: "velocity" | "impulse" | undefined;
-  private readonly explicitTick: "update" | "fixedUpdate" | undefined;
 
   constructor(options: PhysicsSteeringAgentOptions) {
     super({ ...options, drive: options.drive ?? "impulse" });
     this.explicitDrive = options.drive;
-    this.explicitTick = options.tick;
     this.body = this.sibling(RigidBodyComponent);
   }
 
@@ -67,12 +65,11 @@ export class PhysicsSteeringAgent extends SteeringAgent {
           "PhysicsSteeringAgent: kinematic bodies ignore setVelocity/applyImpulse, so `drive` does not apply — remove it; the agent integrates the Transform instead",
         );
       }
-      // Kinematic bodies follow the Transform (the physics system syncs it
-      // before each step), so the output is Transform integration — in
-      // fixedUpdate, so every write becomes exactly one step target.
+      // Kinematic bodies follow the Transform (the physics system captures it
+      // as the next step target), so the output is Transform integration, not
+      // a body write.
       this.body = undefined;
       this.drive = "velocity";
-      if (this.explicitTick === undefined) this.tick = "fixedUpdate";
     }
   }
 }
@@ -151,7 +148,8 @@ export interface PhysicsNeighborsOptions {
  * position + body velocity; entities without a body count as stationary).
  * The agent itself is excluded via `AgentState.entity`. Feed it to
  * `separation`/`alignment`/`cohesion` — note each behavior resolves its
- * source per frame, so three flock rules mean three queries per agent.
+ * source in every `compute` call, so three flock rules mean three queries
+ * per agent.
  */
 export function physicsNeighbors(
   world: WorldSource,

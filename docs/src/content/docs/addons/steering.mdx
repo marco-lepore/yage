@@ -7,8 +7,8 @@ import { Aside } from "@astrojs/starlight/components";
 
 `@yagejs-addons/steering` is movement-level AI: the logic that turns "chase
 the player", "keep your distance", or "flock with your neighbors" into a
-velocity every frame. The root entry is pure `@yagejs/core` — no pixi, no
-physics, no input. Physics integration lives behind
+velocity on every simulation step. The root entry is pure `@yagejs/core` —
+no pixi, no physics, no input. Physics integration lives behind
 `@yagejs-addons/steering/physics`, which adds a mount-and-go agent for
 `RigidBodyComponent` entities.
 
@@ -53,8 +53,9 @@ enemy.add(
 );
 ```
 
-`SteeringAgent` is a `@yagejs/core` Component: `ComponentUpdateSystem` drives
-its `update(dt)` automatically once it's added to an entity. It assumes the
+`SteeringAgent` is a `@yagejs/core` Component: `ComponentFixedUpdateSystem`
+drives its `fixedUpdate(dt)` automatically once it's added to an entity, so
+the agent steers once per fixed step. It assumes the
 entity is root-level — the default output writes `transform.position`
 (local), so local and world coordinates need to match, which only holds
 without a parent.
@@ -87,23 +88,22 @@ instead of overriding it. A dynamic agent shoves lighter bodies out of its way,
 gets deflected when something hits it, and a knockback impulse sends it flying —
 then steering pulls it back on course at `maxAcceleration`. That cap does two
 things: external impulses persist instead of being cancelled on the next tick,
-and direction changes come out as curves rather than frame-to-frame flips. It
+and direction changes come out as curves rather than step-to-step flips. It
 defaults to `4 × maxSpeed` (top speed in 0.25 s); pass `Infinity` for an instant
 snap.
 
 Pass `drive: "velocity"` for full-authority movers: the agent writes the
-commanded velocity with `setVelocity` every frame, so an external impulse
+commanded velocity with `setVelocity` every step, so an external impulse
 decays at `maxAcceleration` instead of composing with steering. Both
 drives need a `dynamic` body — YAGE `kinematic` bodies are position-based
 and ignore `setVelocity` and `applyImpulse`.
 
 On a kinematic body, `PhysicsSteeringAgent` switches output by itself: it
-integrates the `Transform` in `fixedUpdate`, and the physics system syncs
-that pose to the body each step (see
+writes the `Transform` instead of the body, and the physics system takes
+that pose as the body's next step target (see
 [Rigid Bodies](/guides/physics/#rigid-bodies)). The agent then pushes
 dynamic bodies and is never pushed back. Passing `drive` alongside a
-kinematic body throws; so does mounting on a `static` body. Any agent can
-also opt into fixed-step steering directly with `tick: "fixedUpdate"`.
+kinematic body throws; so does mounting on a `static` body.
 
 <Aside type="caution">
 Components are keyed by exact class: read the agent back with
@@ -129,16 +129,69 @@ enemy.add(
 ```
 
 With a `body`, behaviors and the acceleration ramp read the body's *actual*
-velocity each frame — a wall pin, a contact, a knockback all feed back into
+velocity each step — a wall pin, a contact, a knockback all feed back into
 steering instead of the model computing over them.
+
+`faceHeading` writes the Transform rotation. On a dynamic body the simulated
+rotation owns that field, and the physics interpolation overwrites the
+heading before the frame draws. Pass `syncRotation: false` on the
+`RigidBodyComponent` to give the agent rotation.
+
+## The clock
+
+The agent steers once per fixed step, not once per drawn frame. Steering
+turns world state into a desired velocity, and that velocity is simulation
+input: physics steps on the fixed clock, and so does the gameplay code that
+reads the result.
+
+Which pose the behaviors measure follows from when the agent runs. The
+physics system writes each dynamic body's end-of-step pose into its
+`Transform` during the fixed step, before component `fixedUpdate` runs. A
+kinematic body gets the same write, skipped when the game has moved that
+`Transform` since the last step, because the pose the game wrote is the
+body's next step target. The interpolation system writes a blend of the
+previous and current poses during the update phase, for the frame to draw;
+that blended pose sits between two steps. An agent that seeks or avoids
+physics bodies therefore measures against simulated positions — which is what
+`arrive` radii, `followPath`'s `waypointRadius`, the `separation`,
+`alignment` and `cohesion` ranges, and the origin of the `avoidColliders`
+raycast all depend on. Under a scene time scale below 1 the physics system
+steps less often than the fixed clock ticks, and on a tick with no step the
+`Transform` still holds the blend the last frame drew.
+
+A bodyless agent's drawn position changes once per fixed step, 1/60 s by
+default. Nothing in the engine interpolates a `Transform` that no rigid body
+drives, so on a display faster than 60 Hz the agent's sprite moves less often
+than the screen redraws. One way to draw that motion on the frame clock is to
+take the commanded velocity from `apply` and integrate it in a component's
+own `update`:
+
+```ts
+let commanded = Vec2.ZERO;
+
+enemy.add(
+  new SteeringAgent({
+    maxSpeed: 120,
+    behaviors: [seek(() => player.get(Transform).position)],
+    apply: (velocity) => { commanded = velocity; },
+  }),
+);
+
+// In a component's own update(dt), on the frame clock:
+enemy.get(Transform).translate(commanded.x * dt, commanded.y * dt);
+```
+
+`agent.enabled = false` stops the `apply` callback, so `commanded` keeps its
+last value and the integration above keeps moving the entity. `agent.stop()`
+pushes a zero through `apply`.
 
 ## Blending behaviors
 
 Two options govern how behaviors combine. `weight` (default 1) sets how strongly
 a behavior contributes within a tier: contributions are summed, each scaled by
 its weight, then clamped to `maxSpeed`. `priority` (default 0) sets which tier
-wins: tiers are checked highest-first each frame, and the first whose weighted
-sum is non-zero wins outright — lower tiers aren't evaluated that frame.
+wins: tiers are checked highest-first each step, and the first whose weighted
+sum is non-zero wins outright — lower tiers aren't evaluated that step.
 
 Weights shade a blend:
 
@@ -168,7 +221,7 @@ behaviors: [
 ```
 
 With everything on the default priority 0 the model is a plain weighted
-sum. A higher tier that returns ZERO (nothing to avoid) passes the frame
+sum. A higher tier that returns ZERO (nothing to avoid) passes the step
 down, so seek runs normally. An overridden stateful behavior (a path
 follower, a wander) pauses rather than advancing blind.
 

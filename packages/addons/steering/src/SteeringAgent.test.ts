@@ -13,7 +13,7 @@ function setup(options: ConstructorParameters<typeof SteeringAgent>[0]) {
 }
 
 describe("SteeringAgent", () => {
-  it("default kinematic apply walks the Transform toward a seek target over frames", () => {
+  it("default kinematic apply walks the Transform toward a seek target over steps", () => {
     const { entity, agent } = setup({
       maxSpeed: 60,
       behaviors: [seek(new Vec2(1000, 0))],
@@ -22,7 +22,7 @@ describe("SteeringAgent", () => {
 
     const positions: number[] = [transform.position.x];
     for (let i = 0; i < 5; i++) {
-      agent.update(1 / 60);
+      agent.fixedUpdate(1 / 60);
       positions.push(transform.position.x);
     }
 
@@ -31,16 +31,16 @@ describe("SteeringAgent", () => {
     }
   });
 
-  it("maxAcceleration caps the per-frame velocity delta", () => {
+  it("maxAcceleration caps the per-step velocity delta", () => {
     const { agent } = setup({
       maxSpeed: 100,
-      maxAcceleration: 60, // px/s^2, dt = 1/60s -> max delta 1 px/s per frame
+      maxAcceleration: 60, // px/s^2, dt = 1/60s -> max delta 1 px/s per step
       behaviors: [seek(new Vec2(1000, 0))],
     });
 
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
     expect(agent.velocity.x).toBeCloseTo(1, 5);
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
     expect(agent.velocity.x).toBeCloseTo(2, 5);
   });
 
@@ -50,7 +50,7 @@ describe("SteeringAgent", () => {
       behaviors: [seek(new Vec2(1000, 0))],
     });
     expect(agent.maxAcceleration).toBe(400);
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
     expect(agent.velocity.x).toBeCloseTo(400 / 60, 5); // ramping, not snapped
   });
 
@@ -60,7 +60,7 @@ describe("SteeringAgent", () => {
       maxAcceleration: Infinity,
       behaviors: [seek(new Vec2(1000, 0))],
     });
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
     expect(agent.velocity.x).toBeCloseTo(100, 5);
   });
 
@@ -71,7 +71,7 @@ describe("SteeringAgent", () => {
       faceHeading: true,
       behaviors: [seek(new Vec2(0, 1000))],
     });
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
     const transform = entity.get(Transform);
     expect(transform.rotation).toBeCloseTo(Math.PI / 2, 5);
   });
@@ -88,14 +88,14 @@ describe("SteeringAgent", () => {
     const before = transform.position.x;
 
     const agentComponent = entity.get(SteeringAgent);
-    agentComponent.update(1 / 60);
+    agentComponent.fixedUpdate(1 / 60);
 
     expect(received).toHaveLength(1);
     expect(received[0]!.x).toBeCloseTo(50);
     expect(transform.position.x).toBe(before); // no default integration ran
   });
 
-  it("enabled = false halts ticking", () => {
+  it("enabled = false halts steering", () => {
     const { entity, agent } = setup({
       maxSpeed: 50,
       behaviors: [seek(new Vec2(1000, 0))],
@@ -104,7 +104,7 @@ describe("SteeringAgent", () => {
     const transform = entity.get(Transform);
     const before = transform.position.x;
 
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
 
     expect(transform.position.x).toBe(before);
     expect(agent.velocity).toEqual(Vec2.ZERO);
@@ -117,17 +117,17 @@ describe("SteeringAgent", () => {
       behaviors: [seek(new Vec2(1000, 0))],
     });
     expect(agent.velocity).toEqual(Vec2.ZERO);
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
     expect(agent.velocity.x).toBeCloseTo(40);
   });
 
   it("agent.steering.add(...) changes behavior live", () => {
     const { agent } = setup({ maxSpeed: 40, maxAcceleration: Infinity, behaviors: [] });
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
     expect(agent.velocity).toEqual(Vec2.ZERO);
 
     agent.steering.add(seek(new Vec2(1000, 0)));
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
     expect(agent.velocity.x).toBeCloseTo(40);
   });
 
@@ -136,37 +136,23 @@ describe("SteeringAgent", () => {
       maxSpeed: 40,
       behaviors: [seek(new Vec2(1000, 0))],
     });
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
     expect(agent.velocity.x).toBeGreaterThan(0);
 
     agent.stop();
     expect(agent.velocity).toEqual(Vec2.ZERO);
   });
 
-  it("tick defaults to update: fixedUpdate does nothing", () => {
-    const { entity, agent } = setup({
-      maxSpeed: 60,
-      behaviors: [seek(new Vec2(1000, 0))],
-    });
-    const transform = entity.get(Transform);
-
-    agent.fixedUpdate(1 / 60);
-
-    expect(transform.position.x).toBe(0);
-    expect(agent.velocity).toEqual(Vec2.ZERO);
-  });
-
-  it('tick: "fixedUpdate" steers in fixedUpdate and ignores update', () => {
+  it("steers in fixedUpdate", () => {
     const { entity, agent } = setup({
       maxSpeed: 60,
       maxAcceleration: Infinity,
       behaviors: [seek(new Vec2(1000, 0))],
-      tick: "fixedUpdate",
     });
     const transform = entity.get(Transform);
 
-    agent.update(1 / 60);
-    expect(transform.position.x).toBe(0);
+    // No update hook, so the Update pass skips the component entirely.
+    expect((agent as { update?: unknown }).update).toBeUndefined();
 
     agent.fixedUpdate(1 / 60);
     expect(transform.position.x).toBeCloseTo(1, 5); // 60 px/s * 1/60 s
@@ -179,7 +165,7 @@ describe("SteeringAgent", () => {
       behaviors: [seek(new Vec2(1000, 0))],
       apply: (v) => received.push(v),
     });
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
     agent.stop();
     expect(received.at(-1)).toEqual(Vec2.ZERO);
   });
@@ -231,16 +217,16 @@ describe("SteeringAgent with a body", () => {
     const body = fakeVelocityBody();
     const { agent } = setup({
       maxSpeed: 100,
-      maxAcceleration: 60, // dt 1/60 -> 1 px/s step per frame
+      maxAcceleration: 60, // dt 1/60 -> 1 px/s per step
       behaviors: [seek(new Vec2(1000, 0))],
       body,
     });
 
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
     expect(body.setCalls.at(-1)!.x).toBeCloseTo(1, 5);
 
     body.interfere({ x: -50, y: 0 }); // wall pin / knockback
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
     expect(body.setCalls.at(-1)!.x).toBeCloseTo(-49, 5); // ramps from -50, not from 1
   });
 
@@ -263,7 +249,7 @@ describe("SteeringAgent with a body", () => {
     });
 
     body.interfere({ x: 7, y: 0 });
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
     expect(seen.at(-1)!.x).toBe(7);
   });
 
@@ -278,7 +264,7 @@ describe("SteeringAgent with a body", () => {
     const transform = entity.get(Transform);
     const before = transform.position.x;
 
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
 
     expect(body.setCalls.at(-1)!.x).toBeCloseTo(50, 5);
     expect(transform.position.x).toBe(before);
@@ -288,14 +274,14 @@ describe("SteeringAgent with a body", () => {
     const body = fakeImpulseBody(2);
     const { agent } = setup({
       maxSpeed: 100,
-      maxAcceleration: 60, // dv cap 1 px/s per frame
+      maxAcceleration: 60, // dv cap 1 px/s per step
       drive: "impulse",
       behaviors: [seek(new Vec2(1000, 0))],
       body,
     });
 
-    agent.update(1 / 60);
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
+    agent.fixedUpdate(1 / 60);
 
     expect(body.impulses).toHaveLength(2);
     expect(body.impulses[0]!.x).toBeCloseTo(2, 5); // dv 1 * mass 2
@@ -314,9 +300,9 @@ describe("SteeringAgent with a body", () => {
     });
 
     body.interfere(new Vec2(0, -200)); // knockback upward
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
 
-    // One frame corrects by at most 1 px/s toward the desired velocity.
+    // One step corrects by at most 1 px/s toward the desired velocity.
     const v = body.getVelocity();
     expect(Math.hypot(v.x - 0, v.y - -200)).toBeLessThanOrEqual(1 + 1e-6);
   });
@@ -335,7 +321,7 @@ describe("SteeringAgent with a body", () => {
       behaviors: [seek(new Vec2(1000, 0))],
       body,
     });
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
     agent.stop();
     expect(body.setCalls.at(-1)).toEqual(Vec2.ZERO);
   });
@@ -366,11 +352,11 @@ describe("SteeringAgent with a body", () => {
     const transform = entity.get(Transform);
     transform.setRotation(0.7);
 
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
     expect(transform.rotation).toBe(0.7); // |v| ~0.7 px/s -> below the threshold
 
     agent.setBehaviors([seek(new Vec2(0, 1000))]);
-    agent.update(1 / 60);
+    agent.fixedUpdate(1 / 60);
     expect(transform.rotation).toBeCloseTo(Math.PI / 2, 3);
   });
 });
