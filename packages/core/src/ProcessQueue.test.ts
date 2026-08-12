@@ -116,8 +116,10 @@ describe("makeEntityScopedQueue", () => {
 
       // Processes going through the SAME ProcessComponent but not the queue.
       const pc = entity.get(ProcessComponent);
-      const theirFrame = new Process({ duration: 100 });
-      const theirFixed = new Process({ duration: 100 });
+      const frameSpy = vi.fn();
+      const fixedSpy = vi.fn();
+      const theirFrame = new Process({ update: frameSpy });
+      const theirFixed = new Process({ update: fixedSpy });
       pc.run(theirFrame);
       pc.run(theirFixed, { clock: "fixed" });
 
@@ -129,6 +131,12 @@ describe("makeEntityScopedQueue", () => {
       expect(ourCancel).toHaveBeenCalledOnce();
       expect(frameCancel).not.toHaveBeenCalled();
       expect(fixedCancel).not.toHaveBeenCalled();
+
+      // Both unrelated processes still advance on their own clock.
+      pc._tick(0.1);
+      pc._tick(0.02, undefined, "fixed");
+      expect(frameSpy).toHaveBeenCalledWith(0.1, 0.1);
+      expect(fixedSpy).toHaveBeenCalledWith(0.02, 0.02);
     });
 
     it("two queues on one entity hold separate clocks and cancel separately", () => {
@@ -145,6 +153,7 @@ describe("makeEntityScopedQueue", () => {
       expect(frameProcess.completed).toBe(true);
       expect(fixedProcess.completed).toBe(false);
 
+      pc._tick(0.1);
       pc._tick(0.02, undefined, "fixed");
       expect(fixedSpy).toHaveBeenCalledWith(0.02, 0.02);
       expect(frameSpy).not.toHaveBeenCalled();
