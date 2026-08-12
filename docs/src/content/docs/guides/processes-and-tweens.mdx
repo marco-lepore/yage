@@ -156,9 +156,9 @@ where they are.
 
 ### Scoped Queues
 
-A scoped process queue carries the clock for everything it enqueues. The
-entity queue routes through the entity's `ProcessComponent` and cancels only
-what it put there:
+An entity-scoped process queue carries the clock for everything it enqueues.
+It routes through the entity's `ProcessComponent` and cancels only what it put
+there:
 
 ```typescript
 import { makeEntityScopedQueue, Process } from "@yagejs/core";

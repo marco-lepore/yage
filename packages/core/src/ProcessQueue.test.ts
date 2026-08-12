@@ -149,6 +149,13 @@ describe("makeEntityScopedQueue", () => {
       expect(fixedSpy).toHaveBeenCalledWith(0.02, 0.02);
       expect(frameSpy).not.toHaveBeenCalled();
     });
+
+    it("leaves the tags of the processes it enqueues alone", () => {
+      const { entity } = createMockEntity();
+      const queue = makeEntityScopedQueue(entity, { clock: "fixed" });
+      const p = queue.run(new Process({ duration: 100, tags: ["mine"] }));
+      expect(p.tags).toEqual(["mine"]);
+    });
   });
 });
 
