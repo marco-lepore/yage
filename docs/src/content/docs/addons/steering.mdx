@@ -139,15 +139,18 @@ turns world state into a desired velocity, and that velocity is simulation
 input: physics steps on the fixed clock, and so does the gameplay code that
 reads the result.
 
-The step also decides which pose the behaviors measure. The physics system
-writes each body's end-of-step pose into its `Transform` during the fixed
-step, before component `fixedUpdate` runs. The interpolation system writes a
-blend of the previous and current poses during the update phase, for the
-frame to draw; that blended pose sits between two steps. An agent that seeks
-or avoids physics bodies therefore measures against simulated positions —
-which is what `arrive` radii, `followPath`'s `waypointRadius`, the
-`separation` and `cohesion` ranges, and the origin of the `avoidColliders`
-raycast all depend on.
+Which pose the behaviors measure follows from when the agent runs. The
+physics system writes the end-of-step pose of every dynamic and kinematic
+body into its `Transform` during the fixed step, before component
+`fixedUpdate` runs. The interpolation system writes a blend of the previous
+and current poses during the update phase, for the frame to draw; that
+blended pose sits between two steps. An agent that seeks or avoids physics
+bodies therefore measures against simulated positions — which is what
+`arrive` radii, `followPath`'s `waypointRadius`, the `separation` and
+`cohesion` ranges, and the origin of the `avoidColliders` raycast all depend
+on. Under a scene time scale below 1 the physics system steps less often than
+the fixed clock ticks, and on a tick with no step the `Transform` still holds
+the blend the last frame drew.
 
 A bodyless agent's drawn position changes once per fixed step, 1/60 s by
 default. Nothing in the engine interpolates a `Transform` that no rigid body
@@ -170,6 +173,10 @@ enemy.add(
 // In a component's own update(dt), on the frame clock:
 enemy.get(Transform).translate(commanded.x * dt, commanded.y * dt);
 ```
+
+`agent.enabled = false` stops the `apply` callback, so `commanded` keeps its
+last value and the integration above keeps moving the entity. `agent.stop()`
+pushes a zero through `apply`.
 
 ## Blending behaviors
 

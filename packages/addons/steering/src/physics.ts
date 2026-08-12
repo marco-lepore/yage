@@ -18,7 +18,7 @@ import type {
   SteeringOptions,
 } from "./core/types.js";
 
-/** A world to query, or a provider resolved per step from the agent. */
+/** A world to query, or a provider resolved in each `compute` call from the agent. */
 export type WorldSource = PhysicsWorld | ((agent: AgentState) => PhysicsWorld);
 
 export type PhysicsSteeringAgentOptions = Omit<SteeringAgentOptions, "body" | "apply">;
@@ -148,7 +148,8 @@ export interface PhysicsNeighborsOptions {
  * position + body velocity; entities without a body count as stationary).
  * The agent itself is excluded via `AgentState.entity`. Feed it to
  * `separation`/`alignment`/`cohesion` — note each behavior resolves its
- * source per step, so three flock rules mean three queries per agent.
+ * source in every `compute` call, so three flock rules mean three queries
+ * per agent.
  */
 export function physicsNeighbors(
   world: WorldSource,

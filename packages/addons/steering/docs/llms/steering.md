@@ -66,40 +66,6 @@ kinematic body throws; a static body throws at add.
 Components are keyed by exact class: query it back with
 `entity.get(PhysicsSteeringAgent)`, not `entity.get(SteeringAgent)`.
 
-## Clock
-
-`ComponentFixedUpdateSystem` drives `fixedUpdate(dt)`, so the agent steers
-once per fixed step. Steering output is simulation input, and physics runs on
-the same clock.
-
-`PhysicsSystem` writes each body's end-of-step pose to `Transform` in
-`Phase.FixedUpdate` at priority 0; `ComponentFixedUpdateSystem` runs in the
-same phase at priority 1000, so an agent reads simulated poses. The
-previous/current blend `PhysicsInterpolationSystem` writes in `Phase.Update`
-at priority -100 is the pose the frame draws, which the simulation never
-occupied. The gates that depend on which one the agent gets: `arrive` radii,
-`followPath`'s `waypointRadius`, the `separation`/`alignment`/`cohesion`
-ranges, and the origin of the `avoidColliders` raycast.
-
-Nothing in the engine interpolates a `Transform` that no rigid body drives,
-so a bodyless agent's drawn position changes once per fixed step; above 60 Hz
-it changes less often than the screen redraws. One way to draw on the frame
-clock is to take the commanded velocity from `apply` and integrate it
-yourself:
-
-```ts
-let commanded = Vec2.ZERO;
-enemy.add(
-  new SteeringAgent({
-    maxSpeed: 120,
-    behaviors: [seek(() => target)],
-    apply: (velocity) => { commanded = velocity; },
-  }),
-);
-// in a component's own update(dt):
-enemy.get(Transform).translate(commanded.x * dt, commanded.y * dt);
-```
-
 Explicit `body` on the root class — structural, no physics import; also fits
 custom movers implementing the two methods:
 
@@ -140,6 +106,47 @@ interface ImpulseBody { applyImpulse(i: Vec2Like): void; getVelocity(): Vec2Like
 With a `body`, behaviors and the ramp read `getVelocity()` — collisions and
 knockback feed back into steering. Without one, the model runs on its own
 commanded velocity.
+
+## Clock
+
+`ComponentFixedUpdateSystem` drives `fixedUpdate(dt)`, so the agent steers
+once per fixed step. Steering output is simulation input, and physics runs on
+the same clock.
+
+`PhysicsSystem` steps the world in `Phase.FixedUpdate` at priority 0 and
+writes the end-of-step pose of every dynamic and kinematic body to
+`Transform`; `ComponentFixedUpdateSystem` runs in the same phase at priority
+1000, so an agent reads simulated poses. The previous/current blend
+`PhysicsInterpolationSystem` writes in `Phase.Update` at priority -100 is the
+pose the frame draws, which the simulation never occupied. Which pose the
+agent reads affects `arrive` radii, `followPath`'s `waypointRadius`, the
+`separation`/`alignment`/`cohesion` ranges, and the origin of the
+`avoidColliders` raycast. Under a scene time scale below 1 the physics system
+steps less often than the fixed clock ticks, and on a tick with no step the
+`Transform` still holds the blend the last frame drew.
+
+Nothing in the engine interpolates a `Transform` that no rigid body drives,
+so a bodyless agent's drawn position changes once per fixed step; above 60 Hz
+it changes less often than the screen redraws. One way to draw on the frame
+clock is to take the commanded velocity from `apply` and integrate it
+yourself:
+
+```ts
+let commanded = Vec2.ZERO;
+enemy.add(
+  new SteeringAgent({
+    maxSpeed: 120,
+    behaviors: [seek(() => target)],
+    apply: (velocity) => { commanded = velocity; },
+  }),
+);
+// in a component's own update(dt):
+enemy.get(Transform).translate(commanded.x * dt, commanded.y * dt);
+```
+
+`enabled = false` stops the `apply` callback, so `commanded` keeps its last
+value and the integration above keeps moving the entity. `agent.stop()`
+pushes a zero through `apply`.
 
 ## `Steering` (headless model, L1)
 
@@ -225,7 +232,7 @@ returns a non-zero steer.
 `/physics` entry additions (value-import physics; optional peer):
 
 - `avoidColliders(world: PhysicsWorld | (agent) => PhysicsWorld, opts?)` — `{ lookAhead = 100, whiskerAngle = π/6, whiskerLength = 0.7·lookAhead }` (+ weight/priority). Raycasts the real world along the heading (center ray + two whiskers; `whiskerLength: 0` disables); steers away from the closest hit along the hit normal's lateral component (perpendicular tie-break on a dead-center wall hit). Excludes the agent's own collider via `AgentState.entity`. ZERO when stationary or clear. Pair with `priority: 1`.
-- `physicsNeighbors(world, opts?)` — `{ radius = 80, filterGroups? }`. A `NeighborsSource` over `PhysicsWorld.queryRadius` around the agent: entities with a collider in range become Kinematics (no body = stationary), agent excluded. Note: each flock rule resolves the source per step — three rules = three queries.
+- `physicsNeighbors(world, opts?)` — `{ radius = 80, filterGroups? }`. A `NeighborsSource` over `PhysicsWorld.queryRadius` around the agent: entities with a collider in range become Kinematics (no body = stationary), agent excluded. Note: each flock rule resolves the source in every `compute` call — three rules = three queries.
 
 ## Headless / manual drive
 

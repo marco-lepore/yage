@@ -33,7 +33,7 @@ export class Steering {
    * Arbitrate by priority tier, blend by weight within the tier: tiers are
    * consulted highest-first, and the first one whose weighted sum is
    * non-zero wins, clamped to `agent.maxSpeed`. Behaviors in lower tiers
-   * are not evaluated on frames a higher tier wins (an overridden
+   * are not evaluated when a higher tier wins (an overridden
    * path-follower pauses instead of advancing blind). With every behavior
    * on the default priority 0 this is a plain weighted sum. Zero behaviors,
    * or all returning ZERO, yields ZERO.
