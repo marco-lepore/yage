@@ -240,7 +240,9 @@ export class ProcessSystem extends System {
     tickProcessGuarded(
       this.errorBoundary,
       () => p._update(dt),
-      scene !== undefined ? { kind: "Process callback", scene } : { kind: "Process callback" },
+      scene !== undefined
+        ? { kind: "Process callback", scene }
+        : { kind: "Process callback" },
     );
   }
 }

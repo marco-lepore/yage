@@ -703,9 +703,15 @@ describe("ProcessFixedUpdateSystem", () => {
       expect(maps.scenePools.size).toBe(0);
     });
 
-    it("onUnregister cancels processes in all four pools", () => {
+    it("onUnregister cancels processes in all four pools and empties them", () => {
       const { owner } = setup();
       const scene = new MockScene();
+      const pools = owner as unknown as {
+        globalProcesses: Set<unknown>;
+        fixedGlobalProcesses: Set<unknown>;
+        scenePools: Map<unknown, unknown>;
+        fixedScenePools: Map<unknown, unknown>;
+      };
       const frameGlobal = new Process({ update: () => {} });
       const fixedGlobal = new Process({ update: () => {} });
       const frameScene = new Process({ update: () => {} });
@@ -720,6 +726,11 @@ describe("ProcessFixedUpdateSystem", () => {
       expect(fixedGlobal.completed).toBe(true);
       expect(frameScene.completed).toBe(true);
       expect(fixedScene.completed).toBe(true);
+      // Emptying the pools is what releases the Scene keys and the processes.
+      expect(pools.globalProcesses.size).toBe(0);
+      expect(pools.fixedGlobalProcesses.size).toBe(0);
+      expect(pools.scenePools.size).toBe(0);
+      expect(pools.fixedScenePools.size).toBe(0);
     });
   });
 

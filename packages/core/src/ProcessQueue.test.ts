@@ -276,19 +276,24 @@ describe("makeSceneScopedQueue", () => {
     expect(bCancel).not.toHaveBeenCalled();
   });
 
-  it("cancelAll on a fixed-clock queue cancels only its own processes", () => {
+  it("two queues on one scene hold separate clocks and cancel separately", () => {
     const { scene } = createMockScene();
     const ps = new ProcessSystem();
-    const queueA = makeSceneScopedQueue(ps, scene, { clock: "fixed" });
-    const queueB = makeSceneScopedQueue(ps, scene, { clock: "fixed" });
-    const a = new Process({ duration: 100 });
-    const b = new Process({ duration: 100 });
-    queueA.run(a);
-    queueB.run(b);
-    const aCancel = vi.spyOn(a, "cancel");
-    const bCancel = vi.spyOn(b, "cancel");
-    queueA.cancelAll();
-    expect(aCancel).toHaveBeenCalledOnce();
-    expect(bCancel).not.toHaveBeenCalled();
+    const addForScene = vi.spyOn(ps, "addForScene");
+    const frameQueue = makeSceneScopedQueue(ps, scene);
+    const fixedQueue = makeSceneScopedQueue(ps, scene, { clock: "fixed" });
+    const frameProcess = frameQueue.run(new Process({ duration: 100 }));
+    const fixedProcess = fixedQueue.run(new Process({ duration: 100 }));
+
+    expect(addForScene).toHaveBeenNthCalledWith(1, scene, frameProcess, {
+      clock: "frame",
+    });
+    expect(addForScene).toHaveBeenNthCalledWith(2, scene, fixedProcess, {
+      clock: "fixed",
+    });
+
+    frameQueue.cancelAll();
+    expect(frameProcess.completed).toBe(true);
+    expect(fixedProcess.completed).toBe(false);
   });
 });

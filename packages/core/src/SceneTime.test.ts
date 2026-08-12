@@ -4,7 +4,7 @@ import { Scene } from "./Scene.js";
 import { Component } from "./Component.js";
 import { ProcessComponent } from "./ProcessComponent.js";
 import { Process } from "./Process.js";
-import { ProcessSystem } from "./ProcessSystem.js";
+import { ProcessSystem, ProcessFixedUpdateSystem } from "./ProcessSystem.js";
 import { SceneManagerKey, SystemSchedulerKey } from "./EngineContext.js";
 import type { SceneManager } from "./SceneManager.js";
 import { System } from "./System.js";
@@ -593,5 +593,39 @@ describe("SceneTime engine integration", () => {
     // entity's ProcessComponent runs unscaled.
     expect(poolDts).toEqual([0.05]);
     expect(entityDts).toEqual([0.1]);
+  });
+
+  it("scales the ProcessSystem fixed scene pool at the full effective scale", () => {
+    const { scene, context } = createMockScene();
+    const sceneManager = {
+      activeScenes: [scene],
+    } as unknown as SceneManager;
+    context.register(SceneManagerKey, sceneManager);
+    const system = new ProcessSystem();
+    system.onRegister(context);
+    const fixedSystem = new ProcessFixedUpdateSystem(system);
+    fixedSystem.onRegister(context);
+
+    const time = scene.tryResolveScoped(SceneTimeKey)!;
+    const entity = scene.spawn("e");
+    const pc = entity.add(new ProcessComponent());
+    const poolDts: number[] = [];
+    const entityDts: number[] = [];
+    system.addForScene(
+      scene,
+      new Process({ update: (dt) => void poolDts.push(dt) }),
+      { clock: "fixed" },
+    );
+    pc.run(new Process({ update: (dt) => void entityDts.push(dt) }), {
+      clock: "fixed",
+    });
+
+    time.scaleBy(0.5, { key: "slowmo", excludeUpdates: [entity] });
+    fixedSystem.update(0.02);
+
+    // The fixed pass reads the same two scales as the frame pass: the pool
+    // takes the scene's effective scale, the excluded entity runs unscaled.
+    expect(poolDts).toEqual([0.01]);
+    expect(entityDts).toEqual([0.02]);
   });
 });
