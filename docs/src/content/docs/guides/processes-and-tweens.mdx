@@ -4,8 +4,9 @@ description: "Timers, tweens, sequences, and coroutine-like workflows"
 ---
 
 YAGE's process system (from `@yagejs/core`) gives you timers, tweens, and
-sequenced workflows that run inside the game loop. Everything is tied to
-entities, so processes are automatically cleaned up when an entity is destroyed.
+sequenced workflows that run inside the game loop. A process tied to an entity
+is cancelled automatically when that entity is destroyed. Scene-scoped and
+engine-global processes follow their scene or the engine instead.
 
 ## Picking the Right Tool
 
@@ -137,10 +138,10 @@ closes at slightly different simulation times each run. Keeping gameplay
 timers on `"fixed"` and visuals on `"frame"` — even on the same entity —
 removes that drift without making animations choppy.
 
-Both clocks share the same pause and time-scale behavior: scene pause stops
-them, and global, scene, and per-entity time scales apply to both. Fixed-clock
-processes advance after the physics step and before component
-`fixedUpdate(dt)` calls. The slot's clock is set at creation;
+Both clocks share the same pause and time-scale behavior for entity processes:
+scene pause stops them, and global, scene, and per-entity time scales apply to
+both. Fixed-clock processes advance after the physics step and before
+component `fixedUpdate(dt)` calls. The slot's clock is set at creation;
 `start()`/`restart()` overrides cannot change it.
 
 Gameplay subsystems pick the fixed clock for you: the abilities addon
@@ -175,22 +176,24 @@ second queue, and that queue has its own `cancelAll()`.
 
 The scene and global queues take the same option. A round timer, a wave
 spawner, or a boss enrage at 60 seconds belongs to the scene rather than to
-any one entity; hanging it on an entity's `ProcessComponent` ends the timer
-when that entity is destroyed.
+any one entity. A timer scheduled on an entity's `ProcessComponent` ends when
+that entity is destroyed.
 
 ```typescript
-import { Process, makeSceneScopedQueue } from "@yagejs/core";
+import { Process, ProcessSystemKey, makeSceneScopedQueue } from "@yagejs/core";
 
+const processSystem = scene.context.resolve(ProcessSystemKey);
 const waves = makeSceneScopedQueue(processSystem, scene, { clock: "fixed" });
-waves.run(Process.delay(30, () => spawnWave(2)));
+waves.run(Process.delay(30, () => spawnWave(2), ["waves"]));
 ```
 
 A scene queue pauses with its scene and follows the scene's time scale on
 both clocks. `makeGlobalScopedQueue(processSystem, { clock: "fixed" })` runs
 under the global time scale alone, with no scene pause gating.
-`waves.cancelAll()` cancels what that queue enqueued;
-`processSystem.cancelForScene(scene, "waves")` cancels by tag across both
-clocks.
+`waves.cancelAll()` cancels what that queue enqueued.
+`processSystem.cancelForScene(scene, "waves")` cancels every process carrying
+the `"waves"` tag in that scene, on both clocks. The tag lives on the process,
+so the snippet passes it as `Process.delay`'s third argument.
 
 ## Tweens
 

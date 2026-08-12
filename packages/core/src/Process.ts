@@ -21,7 +21,7 @@ export function tickProcessGuarded(
 }
 
 /**
- * Which engine clock advances a process owned by a `ProcessComponent`.
+ * Which engine clock advances a process.
  *
  * - `"frame"` — rendered-frame time, via `ProcessSystem` at `Phase.Update`.
  *   Right for visuals: tweens, fades, shakes.
@@ -30,9 +30,10 @@ export function tickProcessGuarded(
  *   with a fixed-step simulation: ability windows, cooldowns, timers that
  *   gate physics-driven mechanics.
  *
- * The clock is chosen where the process is scheduled
- * (`ProcessComponent.run`/`slot`), not on the process itself, so the same
- * `Process`/`Tween`/`Sequence` types work on either clock.
+ * The clock is chosen where the process is scheduled, not on the process
+ * itself, so the same `Process`/`Tween`/`Sequence` types work on either clock.
+ * The scheduling sites are `ProcessComponent.run`/`slot`,
+ * `ProcessSystem.add`/`addForScene`, and the scoped queue factories.
  */
 export type ProcessClock = "frame" | "fixed";
 

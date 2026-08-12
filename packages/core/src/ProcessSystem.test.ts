@@ -626,6 +626,27 @@ describe("ProcessFixedUpdateSystem", () => {
       expect(sceneTick).not.toHaveBeenCalled();
     });
 
+    it("a drained scene pool drops its map entry, releasing the Scene key", () => {
+      const { sys, owner, sceneManager } = setup();
+      const scene = new MockScene();
+      sceneManager.activeScene = scene;
+      const maps = owner as unknown as {
+        scenePools: Map<unknown, unknown>;
+        fixedScenePools: Map<unknown, unknown>;
+      };
+      owner.addForScene(scene as never, new Process({ update: () => true }), {
+        clock: "fixed",
+      });
+      owner.addForScene(scene as never, new Process({ update: () => true }));
+      expect(maps.fixedScenePools.size).toBe(1);
+      expect(maps.scenePools.size).toBe(1);
+
+      sys.update(0.02);
+      owner.update(0.02);
+      expect(maps.fixedScenePools.size).toBe(0);
+      expect(maps.scenePools.size).toBe(0);
+    });
+
     it("cancel(tag) reaches fixed-clock global processes", () => {
       const { owner } = setup();
       const taggedFixed = new Process({ update: () => {}, tags: ["fade"] });
@@ -661,6 +682,10 @@ describe("ProcessFixedUpdateSystem", () => {
       const { sys, owner, sceneManager } = setup();
       const scene = new MockScene();
       sceneManager.activeScene = scene;
+      const maps = owner as unknown as {
+        scenePools: Map<unknown, unknown>;
+        fixedScenePools: Map<unknown, unknown>;
+      };
       const fixedSpy = vi.fn();
       const frameSpy = vi.fn();
       owner.addForScene(scene as never, new Process({ update: fixedSpy }), {
@@ -673,6 +698,9 @@ describe("ProcessFixedUpdateSystem", () => {
       owner.update(0.1);
       expect(fixedSpy).not.toHaveBeenCalled();
       expect(frameSpy).not.toHaveBeenCalled();
+      // The emptied map entries go too, so the Scene key is not held.
+      expect(maps.fixedScenePools.size).toBe(0);
+      expect(maps.scenePools.size).toBe(0);
     });
 
     it("onUnregister cancels processes in all four pools", () => {
@@ -769,9 +797,15 @@ describe("ProcessFixedUpdateSystem", () => {
       clock: "fixed",
     });
 
-    // 16.67ms frames run one fixed step each, so 0.1s of fixed time needs
-    // six steps; twelve frames clears it with room for accumulator drift.
-    advanceFrames(engine, 12);
+    // One 1s frame runs the loop's five-step cap: 5 x 1/60 = 0.083s of fixed
+    // time, short of the 0.1s delay. The frame pass would have advanced the
+    // whole second in one go, so a frame-pool process would already have
+    // fired here. That is what separates the two clocks.
+    advanceFrames(engine, 1, 1000);
+    expect(fired).not.toHaveBeenCalled();
+
+    // Five more fixed steps take the total past 0.1s.
+    advanceFrames(engine, 1, 1000);
     expect(fired).toHaveBeenCalledOnce();
     engine.destroy();
   });
