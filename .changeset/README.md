@@ -12,3 +12,9 @@ describing the change.
 
 When ready to release, run `npm run version-packages` to consume all changesets and bump versions.
 Then `npm run release` to publish to npm.
+
+`version-packages` ends with `npm install --package-lock-only`, so the bumped workspace versions
+reach `package-lock.json` in the same commit. npm resolves the `@yagejs/*` entries from the
+workspace rather than the registry, so the refresh works while those versions are still
+unpublished. Keep the install last: the scripts before it can still change versions that the
+lockfile records.
