@@ -67,6 +67,32 @@ Deduplicate `@yagejs/renderer` and `pixi.js`. Addons should declare both as
 peer dependencies so they reuse the game's copies.
 :::
 
+## Upgrading
+
+The `@yagejs/*` packages are released as a set. Every release publishes all of
+them at the same version, and each one requires the others at that same minor.
+Upgrade them in one step:
+
+```bash
+npm install @yagejs/core@latest @yagejs/renderer@latest @yagejs/input@latest
+```
+
+Moving one package to a new minor on its own can leave two versions of a shared
+package installed. A game that upgrades `@yagejs/save` while `@yagejs/renderer`
+stays behind ends up with two copies of `@yagejs/core`. Each copy has its own
+service container and its own class identities, so an entity or service made
+through one is not usable through the other — the same kind of failure as the
+duplicate renderer above.
+
+npm reports a version conflict for some of these mismatches and resolves others
+into a second nested copy without reporting anything, so an install that
+completes is not evidence the versions line up. When npm does report a
+conflict, upgrade the whole set rather than reaching for `--force` or
+`--legacy-peer-deps`, which install the combination the conflict was about.
+
+Addons under `@yagejs-addons/*` version independently. Each declares the engine
+minor it supports, so upgrade the addon in the same step as the engine.
+
 ## Prerequisites
 
 - **Node.js** 18 or later

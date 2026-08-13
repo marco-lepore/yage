@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 /**
  * Corrects the versions and engine peer ranges that `changeset version`
- * produces for independently versioned packages, so they follow YAGE's pre-1.0
- * policy instead of changesets' defaults. Covers `packages/addons/*` and
- * `packages/tools/*`. Intended to run right after `changeset version` in the
+ * produces, so they follow YAGE's pre-1.0 policy instead of changesets'
+ * defaults. Intended to run right after `changeset version` in the
  * `version-packages` script.
  *
- * Three corrections, all a consequence of the same changesets behavior: these
- * packages declare engine packages as `peerDependencies` with a capped range
- * (e.g. `>=0.9.0 <0.10.0`), and when an engine minor pushes that peer out of
- * range changesets force-bumps the dependent.
+ * Corrections 1 to 3 cover the independently versioned packages under
+ * `packages/addons/*` and `packages/tools/*`, and are a consequence of one
+ * changesets behavior: these packages declare engine packages as
+ * `peerDependencies` with a capped range (e.g. `>=0.9.0 <0.10.0`), and when an
+ * engine minor pushes that peer out of range changesets force-bumps the
+ * dependent. Correction 4 covers the engine packages themselves.
  *
  *   1. Version: changesets bumps an out-of-range peer-dependent by `major`.
  *      On a pre-1.0 package `semver.inc("0.3.0", "major")` is `1.0.0`, so every
@@ -30,8 +31,16 @@
  *      normalize them, in case a package authored a capped or caret range that
  *      changesets carried forward.
  *
- * Only packages whose version actually changed this release are touched, so a
- * no-op release stays a no-op.
+ *   4. Engine-on-engine peer ranges under `packages/*` get the same treatment
+ *      as the addons — floored at the engine's version, capped below the next
+ *      minor. Changesets leaves a peer range that the new version already
+ *      satisfies, so a hand-written window stays open across minors and lets
+ *      npm resolve two engine minors into one install.
+ *
+ * For corrections 1 to 3 only packages whose version actually changed this
+ * release are touched, so a no-op release stays a no-op. Correction 4 compares
+ * against the range already written and skips a manifest that needs no change,
+ * so it is a no-op on the same terms.
  *
  * The "previous" version of each package is read from a git ref (default
  * `HEAD`, which during `changeset version` is the pre-bump commit). Override
@@ -59,17 +68,53 @@ const DEP_SECTIONS = ["dependencies", "devDependencies", "peerDependencies"];
 /** Directories under packages/ whose packages are versioned independently. */
 const GROUPS = ["addons", "tools"];
 
-// name -> current workspace version, for every engine package under packages/*.
+// Every engine package under packages/*, by name: current workspace version,
+// and the manifest to write back to.
 const engineVersions = new Map();
+const enginePackagePaths = new Map();
 for (const entry of readdirSync(join(repoRoot, "packages"))) {
   const pkgPath = join(repoRoot, "packages", entry, "package.json");
   if (!existsSync(pkgPath)) continue;
   const pkg = readJson(pkgPath);
-  if (pkg.name?.startsWith(ENGINE_SCOPE))
+  if (pkg.name?.startsWith(ENGINE_SCOPE)) {
     engineVersions.set(pkg.name, pkg.version);
+    enginePackagePaths.set(pkg.name, pkgPath);
+  }
 }
 
 assertBaseRefResolves(baseRef);
+
+// Cap every engine-on-engine peer range to the release's minor line.
+//
+// Engine packages are in the `fixed` group, so changesets gives them all one
+// version and rewrites their caret dependency ranges to match. It leaves a
+// peer range alone when the new version already satisfies it, so a range like
+// `>=0.3.0 <1.0.0` stays open across every minor. npm then accepts a game that
+// installs two engine minors side by side and resolves a second copy of a
+// shared package under one of them, with no warning — separate service
+// containers and class identities, so an entity made through one is not usable
+// through the other.
+//
+// Membership is read off disk rather than listed: a peer is an engine peer
+// when `engineVersions` has it, so a new package or a new peer edge is covered
+// with no bookkeeping, and a third-party peer such as pixi.js is skipped.
+for (const [name, pkgPath] of enginePackagePaths) {
+  const pkg = readJson(pkgPath);
+  const peers = pkg.peerDependencies ?? {};
+  let touched = false;
+  for (const peerName of Object.keys(peers)) {
+    const engineVersion = engineVersions.get(peerName);
+    if (!engineVersion) continue; // non-engine peer — leave it
+    const desired = `>=${engineVersion} <${nextBreaking(engineVersion)}`;
+    if (peers[peerName] === desired) continue;
+    peers[peerName] = desired;
+    touched = true;
+  }
+  if (touched) {
+    writeJson(pkgPath, pkg);
+    console.log(`  ${name}: engine peers capped`);
+  }
+}
 
 const clamped = new Map(); // package name -> { generated, final }
 
