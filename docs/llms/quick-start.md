@@ -24,6 +24,18 @@ npm install @yagejs/physics @yagejs/input @yagejs/audio @yagejs/debug
 
 Gameplay addons (dialogue, inventory, quests, and more) ship under the separate `@yagejs-addons/*` scope. Their docs are co-located at `packages/addons/<name>/docs/llms/`; the full list is in `llms.txt`.
 
+## Versioning
+
+The `@yagejs/*` packages are released as a set: one version across all of them, each requiring the others at that same minor. Upgrade them together, naming every `@yagejs/*` package in your `package.json` — the command below is an example, not the full set, and a package left out is a package not upgraded.
+
+```bash
+npm install @yagejs/core@latest @yagejs/renderer@latest @yagejs/input@latest
+```
+
+Upgrading one package to a new minor alone can install two copies of a shared package — e.g. a newer `@yagejs/save` beside an older `@yagejs/renderer` yields two `@yagejs/core` instances with separate service containers and class identities. npm reports some of these as a version conflict and nests others silently, so a completed install is not proof the versions match. Fix a reported conflict by upgrading the set, not with `--force` or `--legacy-peer-deps`.
+
+`@yagejs-addons/*` packages version independently and each declares the engine minor it supports.
+
 ## Minimal Example
 
 ```ts
