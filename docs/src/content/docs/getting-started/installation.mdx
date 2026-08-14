@@ -71,11 +71,14 @@ peer dependencies so they reuse the game's copies.
 
 The `@yagejs/*` packages are released as a set. Every release publishes all of
 them at the same version, and each one requires the others at that same minor.
-Upgrade them in one step:
+Upgrade them in one step, naming every `@yagejs/*` package your `package.json`
+lists — the three below are an example, not the full set:
 
 ```bash
 npm install @yagejs/core@latest @yagejs/renderer@latest @yagejs/input@latest
 ```
+
+Leaving one out is the same as not upgrading it.
 
 Moving one package to a new minor on its own can leave two versions of a shared
 package installed. A game that upgrades `@yagejs/save` while `@yagejs/renderer`

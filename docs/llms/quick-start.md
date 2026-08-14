@@ -26,7 +26,7 @@ Gameplay addons (dialogue, inventory, quests, and more) ship under the separate 
 
 ## Versioning
 
-The `@yagejs/*` packages are released as a set: one version across all of them, each requiring the others at that same minor. Upgrade them together.
+The `@yagejs/*` packages are released as a set: one version across all of them, each requiring the others at that same minor. Upgrade them together, naming every `@yagejs/*` package in your `package.json` — the command below is an example, not the full set, and a package left out is a package not upgraded.
 
 ```bash
 npm install @yagejs/core@latest @yagejs/renderer@latest @yagejs/input@latest
