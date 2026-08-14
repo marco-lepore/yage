@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-addons/steering",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Steering (movement AI) for YAGE — seek, flee, arrive, wander, pursue/evade, obstacle avoidance, and flocking, blended into a desired velocity",
   "keywords": [
     "yage",
@@ -63,8 +63,8 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@yagejs/core": ">=0.10.1 <0.11.0",
-    "@yagejs/physics": ">=0.10.1 <0.11.0"
+    "@yagejs/core": ">=0.10.3 <0.11.0",
+    "@yagejs/physics": ">=0.10.3 <0.11.0"
   },
   "peerDependenciesMeta": {
     "@yagejs/physics": {
@@ -73,7 +73,7 @@
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.18",
-    "@yagejs/core": ">=0.10.1",
-    "@yagejs/physics": ">=0.10.1"
+    "@yagejs/core": ">=0.10.3",
+    "@yagejs/physics": ">=0.10.3"
   }
 }

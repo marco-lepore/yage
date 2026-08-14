@@ -1,6 +1,6 @@
 {
   "name": "@yagejs/pathfinding",
-  "version": "0.10.2",
+  "version": "0.10.3",
   "description": "Grid A* pathfinding for YAGE",
   "keywords": [
     "yage",
@@ -59,10 +59,10 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yagejs/core": "^0.10.2"
+    "@yagejs/core": "^0.10.3"
   },
   "peerDependencies": {
-    "@yagejs/tilemap": ">=0.10.2 <0.11.0"
+    "@yagejs/tilemap": ">=0.10.3 <0.11.0"
   },
   "peerDependenciesMeta": {
     "@yagejs/tilemap": {
@@ -70,6 +70,6 @@
     }
   },
   "devDependencies": {
-    "@yagejs/tilemap": "^0.10.2"
+    "@yagejs/tilemap": "^0.10.3"
   }
 }

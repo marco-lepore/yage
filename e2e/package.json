@@ -1,7 +1,7 @@
 {
   "name": "@yagejs/e2e",
   "private": true,
-  "version": "0.0.9",
+  "version": "0.0.10",
   "type": "module",
   "scripts": {
     "dev": "vite --config fixtures/vite.config.ts",
@@ -16,18 +16,18 @@
     "vite-plugin-wasm": "^3.6.0"
   },
   "dependencies": {
-    "@yagejs-addons/abilities": "^0.2.0",
-    "@yagejs-addons/steering": "^0.2.1",
+    "@yagejs-addons/abilities": "^0.3.0",
+    "@yagejs-addons/steering": "^0.3.0",
     "@yagejs-addons/dialogue": "^0.4.0",
     "@yagejs-addons/inventory": "^0.2.0",
     "@yagejs-addons/interaction": "^0.2.0",
-    "@yagejs/core": "^0.10.0",
-    "@yagejs/debug": "^0.10.0",
-    "@yagejs/input": "^0.10.0",
-    "@yagejs/pathfinding": "^0.10.0",
-    "@yagejs/physics": "^0.10.0",
-    "@yagejs/renderer": "^0.10.0",
-    "@yagejs/save": "^0.10.0",
-    "@yagejs/ui": "^0.10.0"
+    "@yagejs/core": "^0.10.3",
+    "@yagejs/debug": "^0.10.3",
+    "@yagejs/input": "^0.10.3",
+    "@yagejs/pathfinding": "^0.10.3",
+    "@yagejs/physics": "^0.10.3",
+    "@yagejs/renderer": "^0.10.3",
+    "@yagejs/save": "^0.10.3",
+    "@yagejs/ui": "^0.10.3"
   }
 }

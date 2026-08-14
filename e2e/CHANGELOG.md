@@ -1,5 +1,21 @@
 # @yagejs/e2e
 
+## 0.0.10
+
+### Patch Changes
+
+- Updated dependencies [[`3cb9d19`](https://github.com/marco-lepore/yage/commit/3cb9d190e4720816c7ba83a1e6fafd4b05d2684e), [`3cb9d19`](https://github.com/marco-lepore/yage/commit/3cb9d190e4720816c7ba83a1e6fafd4b05d2684e), [`3cb9d19`](https://github.com/marco-lepore/yage/commit/3cb9d190e4720816c7ba83a1e6fafd4b05d2684e), [`6dc493e`](https://github.com/marco-lepore/yage/commit/6dc493e32c8a20e928621490c1308f99324e7208), [`6dc493e`](https://github.com/marco-lepore/yage/commit/6dc493e32c8a20e928621490c1308f99324e7208), [`d337ce3`](https://github.com/marco-lepore/yage/commit/d337ce3a0a8eddce46117d7ff17eabbb6f2d03b3), [`e5010d4`](https://github.com/marco-lepore/yage/commit/e5010d44487a2b15136603d71eb41fa6a01d86d8), [`44b5904`](https://github.com/marco-lepore/yage/commit/44b5904d988750c19cf6edf37eda34639f95c644), [`f106e5d`](https://github.com/marco-lepore/yage/commit/f106e5d3bcc0f8a6a8aa449fee9a0f9c187b4d35), [`6eaad69`](https://github.com/marco-lepore/yage/commit/6eaad6992b0923ec194e3d5e5c3f1eb812afbee8), [`6eaad69`](https://github.com/marco-lepore/yage/commit/6eaad6992b0923ec194e3d5e5c3f1eb812afbee8), [`83c9993`](https://github.com/marco-lepore/yage/commit/83c999385c645f158dc3ef7a8cdd995fd9f2b37c), [`31d6435`](https://github.com/marco-lepore/yage/commit/31d6435fd4260363988603fdc2e292478247e314)]:
+  - @yagejs-addons/abilities@0.3.0
+  - @yagejs/core@0.10.3
+  - @yagejs/input@0.10.3
+  - @yagejs/pathfinding@0.10.3
+  - @yagejs/renderer@0.10.3
+  - @yagejs-addons/steering@0.3.0
+  - @yagejs/physics@0.10.3
+  - @yagejs/ui@0.10.3
+  - @yagejs/debug@0.10.3
+  - @yagejs/save@0.10.3
+
 ## 0.0.9
 
 ### Patch Changes

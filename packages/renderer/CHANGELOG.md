@@ -1,5 +1,17 @@
 # @yagejs/renderer
 
+## 0.10.3
+
+### Patch Changes
+
+- [#283](https://github.com/marco-lepore/yage/pull/283) [`6dc493e`](https://github.com/marco-lepore/yage/commit/6dc493e32c8a20e928621490c1308f99324e7208) Thanks [@marco-lepore](https://github.com/marco-lepore)! - An engine peer range names the one engine minor the package was built and tested against.
+  - The optional `@yagejs/save` peer range is `>=0.10.2 <0.11.0`. It admitted every save from 0.3.0 up to 1.0.0 before, which npm read as a promise that any of them would work. `RendererPlugin` and `RendererSnapshotContributor` are typed against `SnapshotContributor`, which a save below 0.4.0 does not export, and the rest of that window was never built or run.
+  - A game holding renderer and save on different minors now gets a version conflict from npm at install time. The previous range let that install succeed silently and resolve two copies of `@yagejs/core`, one under each package, each with its own service container and class identities.
+  - The peer stays optional, so a game that installs no save package is unaffected.
+
+- Updated dependencies [[`3cb9d19`](https://github.com/marco-lepore/yage/commit/3cb9d190e4720816c7ba83a1e6fafd4b05d2684e), [`d337ce3`](https://github.com/marco-lepore/yage/commit/d337ce3a0a8eddce46117d7ff17eabbb6f2d03b3), [`f106e5d`](https://github.com/marco-lepore/yage/commit/f106e5d3bcc0f8a6a8aa449fee9a0f9c187b4d35), [`6eaad69`](https://github.com/marco-lepore/yage/commit/6eaad6992b0923ec194e3d5e5c3f1eb812afbee8), [`83c9993`](https://github.com/marco-lepore/yage/commit/83c999385c645f158dc3ef7a8cdd995fd9f2b37c), [`31d6435`](https://github.com/marco-lepore/yage/commit/31d6435fd4260363988603fdc2e292478247e314)]:
+  - @yagejs/core@0.10.3
+
 ## 0.10.2
 
 ### Patch Changes
