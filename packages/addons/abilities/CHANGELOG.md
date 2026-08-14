@@ -1,5 +1,20 @@
 # @yagejs-addons/abilities
 
+## 0.3.0
+
+### Minor Changes
+
+- [#263](https://github.com/marco-lepore/yage/pull/263) [`6eaad69`](https://github.com/marco-lepore/yage/commit/6eaad6992b0923ec194e3d5e5c3f1eb812afbee8) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Ability timing is game logic, so it advances on the fixed timestep by default.
+  - **Breaking:** `Abilities` phase timelines, linger windows, and cooldowns advance on the fixed timestep. They counted rendered-frame time before, which made ability windows drift with the frame rate on displays faster or slower than the fixed step. Pass `new Abilities(defs, { clock: "frame" })` for a purely presentation-driven timeline with no simulation coupling; `abilities.clock` is readable so custom steps can schedule matching timers via `pc.run(p, { clock })`.
+  - **Breaking:** the addon's other gameplay timers moved with it: `HitReceiver` i-frames, `Stagger`, `TouchDamage` intervals, and hitbox `follow` tracking run in `fixedUpdate`, and `Projectile` lifetime counts fixed-step seconds — so projectile range (speed × lifetime) holds when frame time and simulation time diverge.
+  - Presentation is unaffected: `anim`-triggered `KeyframeAnimator` playback keeps rendered-frame time, and so does any tween a step starts unless the step schedules it on another clock explicitly. `AbilityDriverComponent` still samples input once per rendered frame.
+  - The `@yagejs/core` peer range floor rises to the first version whose `ProcessComponent` accepts the `clock` option, so an older core cannot silently ignore it.
+
+### Patch Changes
+
+- [#265](https://github.com/marco-lepore/yage/pull/265) [`3cb9d19`](https://github.com/marco-lepore/yage/commit/3cb9d190e4720816c7ba83a1e6fafd4b05d2684e) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Input edge queries resolve against the caller's execution context — frame code reads frame windows, fixed-step code reads per-step windows.
+  - Documentation only: `AbilityDriverComponent`'s note on per-frame input sampling states the current rationale (an intent is forwarded on the frame its edge lands, independent of the frame's fixed-step count) instead of the outdated claim that fixed-step polling would miss or double-see edges.
+
 ## 0.2.0
 
 ### Minor Changes

@@ -1,5 +1,23 @@
 # @yagejs/input
 
+## 0.10.3
+
+### Patch Changes
+
+- [#265](https://github.com/marco-lepore/yage/pull/265) [`3cb9d19`](https://github.com/marco-lepore/yage/commit/3cb9d190e4720816c7ba83a1e6fafd4b05d2684e) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Input edge queries resolve against the caller's execution context — frame code reads frame windows, fixed-step code reads per-step windows.
+  - Read from `fixedUpdate` or a `Phase.FixedUpdate` system, the six edge queries (`isJustPressed`, `isJustReleased`, `isJustHeldFor`, `isJustTapped`, `isJustReleasedAfter`, `getReleaseDuration`) resolve against the current fixed step: the first step of a frame sees the pending edges, later steps in the same frame see none, and an edge landing in a frame that runs no step is held for the next step. Previously the queries were frame-scoped regardless of caller, so fixed-step readers saw the same edge on every step of a multi-step frame and lost edges on frames that ran none.
+  - Frame-phase callers are unchanged.
+
+- [#273](https://github.com/marco-lepore/yage/pull/273) [`44b5904`](https://github.com/marco-lepore/yage/commit/44b5904d988750c19cf6edf37eda34639f95c644) Thanks [@marco-lepore](https://github.com/marco-lepore)! - The hold-duration queries can count on a scene's simulation time instead of the raw input clock.
+  - `getHoldDuration`, `isHeldFor`, `isJustHeldFor`, `isJustTapped`, `isJustReleasedAfter`, and `getReleaseDuration` take an optional `{ clock }` — the `SceneTime` of a scene on the stack, the same clock `consumeBufferedPress` already accepts. The duration then stops while the scene is stack-paused or frozen and follows the scene's effective time scale, so a charge meter and the physics it charges in measure time the same way. Omit the option and the query counts on the raw input clock as before, so no existing call site changes.
+  - Each clock keeps its own readings: one press can be a tap on the scene clock and a long press on the raw one, and `isJustHeldFor` carries a separate threshold baseline per clock and fires once on each. A hold already running when a scene is entered counts from zero on that scene's clock, and its release reports only the part measured there.
+  - Passing a clock the plugin never registered throws from every query in the family, including `isJustTapped` and `isJustReleasedAfter` outside a release window. The message names the query the caller wrote.
+  - `isJustTapped` and `isJustReleasedAfter` are false when the clock holds no length for the release, instead of treating the missing length as 0 seconds. This corrects a long press being reported as a tap after it was released while its group was disabled, or before the scene whose clock is being read was entered. `getReleaseDuration` still answers 0 in that case.
+
+- Updated dependencies [[`3cb9d19`](https://github.com/marco-lepore/yage/commit/3cb9d190e4720816c7ba83a1e6fafd4b05d2684e), [`d337ce3`](https://github.com/marco-lepore/yage/commit/d337ce3a0a8eddce46117d7ff17eabbb6f2d03b3), [`f106e5d`](https://github.com/marco-lepore/yage/commit/f106e5d3bcc0f8a6a8aa449fee9a0f9c187b4d35), [`6eaad69`](https://github.com/marco-lepore/yage/commit/6eaad6992b0923ec194e3d5e5c3f1eb812afbee8), [`83c9993`](https://github.com/marco-lepore/yage/commit/83c999385c645f158dc3ef7a8cdd995fd9f2b37c), [`31d6435`](https://github.com/marco-lepore/yage/commit/31d6435fd4260363988603fdc2e292478247e314)]:
+  - @yagejs/core@0.10.3
+  - @yagejs/debug@0.10.3
+
 ## 0.10.2
 
 ### Patch Changes

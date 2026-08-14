@@ -1,5 +1,38 @@
 # @yagejs/core
 
+## 0.10.3
+
+### Patch Changes
+
+- [#265](https://github.com/marco-lepore/yage/pull/265) [`3cb9d19`](https://github.com/marco-lepore/yage/commit/3cb9d190e4720816c7ba83a1e6fafd4b05d2684e) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Input edge queries resolve against the caller's execution context — frame code reads frame windows, fixed-step code reads per-step windows.
+  - `SystemScheduler` exposes `currentPhase` (the phase whose systems are executing, or `null` outside any phase) and `fixedStepIndex` (monotonic count of fixed steps started), so code reachable from several phases can resolve behavior against its calling context instead of assuming one.
+
+- [#279](https://github.com/marco-lepore/yage/pull/279) [`d337ce3`](https://github.com/marco-lepore/yage/commit/d337ce3a0a8eddce46117d7ff17eabbb6f2d03b3) Thanks [@marco-lepore](https://github.com/marco-lepore)! - An entity-scoped process queue picks the clock that advances the work it enqueues.
+  - `makeEntityScopedQueue(entity, { clock: "fixed" })` schedules every process the queue enqueues on the fixed timestep, through `ProcessFixedUpdateSystem`. The default `"frame"` keeps them on rendered-frame time, so a queue created without options is unaffected.
+  - The clock is read when the queue is created, so `ScopedProcessQueue.run(p)` takes none. One queue carries one clock, and processes on the other clock need a second queue with its own `cancelAll()`.
+
+- [#274](https://github.com/marco-lepore/yage/pull/274) [`f106e5d`](https://github.com/marco-lepore/yage/commit/f106e5d3bcc0f8a6a8aa449fee9a0f9c187b4d35) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A keyframe animation picks the clock that advances its playback.
+  - `KeyframeAnimationDef.clock` takes `"frame"` (the default, rendered-frame time) or `"fixed"` (the fixed timestep, through `ProcessFixedUpdateSystem`). Omitting it keeps playback on rendered-frame time, so existing animations are unaffected.
+  - The choice is per animation, so one `KeyframeAnimator` can hold a frame-clock visual and a fixed-clock event timeline.
+  - `"fixed"` is for timing that must stay in step with a fixed-step simulation, typically a setter-less timeline whose keyframe `event` callbacks drive gameplay: their beats then land at the same simulation time every run. A setter on `"fixed"` is written only on fixed steps, so a rendered frame that runs none shows the previous value.
+
+- [#263](https://github.com/marco-lepore/yage/pull/263) [`6eaad69`](https://github.com/marco-lepore/yage/commit/6eaad6992b0923ec194e3d5e5c3f1eb812afbee8) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Entity processes can run on the fixed timestep as well as on rendered-frame time.
+  - `ProcessComponent.run(process, { clock: "fixed" })` and `pc.slot({ clock: "fixed", ... })` schedule the process or slot on the fixed timestep. The default `"frame"` ticks on rendered-frame time. The new `ProcessClock` type (`"frame" | "fixed"`) is exported.
+  - The new `ProcessFixedUpdateSystem`, registered by the engine at `Phase.FixedUpdate` priority 500, advances fixed-clock processes once per fixed step — after the physics step, before component `fixedUpdate(dt)` calls. Pause gating and global/scene/entity time scaling match the frame pass.
+  - A slot's clock is set when the slot is created; `start()`/`restart()` overrides cannot change it.
+
+- [#280](https://github.com/marco-lepore/yage/pull/280) [`83c9993`](https://github.com/marco-lepore/yage/commit/83c999385c645f158dc3ef7a8cdd995fd9f2b37c) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Scene-scoped and engine-global processes can run on the fixed timestep.
+  - `ProcessSystem.add(process, { clock: "fixed" })` and `ProcessSystem.addForScene(scene, process, { clock: "fixed" })` schedule a process on the fixed timestep. The default `"frame"` keeps it on rendered-frame time, so every existing call is unchanged. `makeSceneScopedQueue` and `makeGlobalScopedQueue` take the same option and forward it.
+  - `ProcessFixedUpdateSystem` drains both fixed pools. A scene pool advances inside the active-scene pass under the scene's effective scale, so it pauses and slows with its scene. The engine-global pool advances once per fixed step under the global time scale alone, matching the frame pass, where it is not gated by per-scene pause.
+  - Use the fixed clock for scene-level gameplay timing that belongs to no entity: a round timer, a wave spawner, an enrage window. On the frame clock those drift against the simulation they gate, and diverge from it under a stall or a catch-up burst.
+  - `ProcessSystem.cancel(tag?)`, `cancelForScene(scene, tag?)`, the scene-exit hook, and system teardown all cover both clocks.
+  - **Fix:** a scene-bound process that calls `cancelForScene` and then schedules new scene-bound work keeps that work. The drain used to discard the pool the callback had just created, so the new process never advanced and no cancel could reach it.
+
+- [#275](https://github.com/marco-lepore/yage/pull/275) [`31d6435`](https://github.com/marco-lepore/yage/commit/31d6435fd4260363988603fdc2e292478247e314) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Scene time offers a fixed-timestep elapsed reading alongside the rendered-frame one.
+  - `SceneTime.fixedElapsed` reports simulation seconds accrued one fixed step at a time (`fixedTimestep × effectiveScale`), composed exactly like `SceneTime.elapsed` and held by the same stack pause, `timeScale = 0`, and freeze requests. Stamp and compare gameplay times against it from fixed-step code, where `elapsed` moves with the rendered frame and makes the same window span a different number of simulation steps run to run.
+  - The engine accrues it once per fixed step for each active scene before the `FixedUpdate` phase runs, so a fixed-step reader sees the step it is inside. It advances on a different cadence from `elapsed`, and the two can differ by one or more fixed steps in either direction: the fixed-step accumulator is engine-wide, a frame that hits `maxFixedStepsPerFrame` leaves its unrun steps for later frames, and time waiting in the accumulator converts at the scale in force when its step runs. Stamp and compare against the same reading.
+  - The increment uses the whole-scene `effectiveScale`, so it does not follow `entity.timeScale` or an `excludeUpdates` exclusion. Time an entity that runs at its own rate against its `ProcessComponent` instead.
+
 ## 0.10.2
 
 ### Patch Changes
