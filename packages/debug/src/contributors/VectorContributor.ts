@@ -1,4 +1,5 @@
 import { Transform } from "@yagejs/core";
+import type { ErrorBoundary, Vec2Like } from "@yagejs/core";
 import type {
   DebugContributor,
   DebugGraphics,
@@ -18,7 +19,10 @@ export class VectorContributor implements DebugContributor {
   readonly name = "vectors";
   readonly flags = ["arrows"] as const;
 
-  constructor(private readonly store: VectorDrawStore) {}
+  constructor(
+    private readonly store: VectorDrawStore,
+    private readonly boundary: ErrorBoundary,
+  ) {}
 
   drawWorld(api: WorldDebugApi): void {
     if (this.store.size === 0 || !api.isFlagEnabled("arrows")) return;
@@ -30,10 +34,11 @@ export class VectorContributor implements DebugContributor {
 
     for (const entry of this.store) {
       const entity = entry.entity;
-      if (entity.isDestroyed) {
-        // The bus event normally gets here first; this covers a registry
-        // driven without one (tests, a host that skips the plugin wiring).
-        this.store.dropEntity(entity.id);
+      // A registration belongs to one life of one entity. Destruction and an
+      // EntityPool release both end a life; `generation` covers either, and
+      // the destroyed check covers the window before a destroy is flushed.
+      if (entity.isDestroyed || entity.generation !== entry.generation) {
+        this.store.remove(entity.id, entry);
         continue;
       }
       // A dormant entity keeps its registration — it draws again when it
@@ -43,11 +48,18 @@ export class VectorContributor implements DebugContributor {
       const transform = entity.tryGet(Transform);
       if (!transform) continue;
 
-      const v = entry.vector();
+      const v = this.readVector(entry);
       if (!v) continue;
 
       const length = Math.hypot(v.x, v.y);
       if (length === 0 || length < entry.minLength) continue;
+
+      // Measure the drawn arrow before taking a pool slot, so a scale that
+      // collapses it to nothing doesn't spend one on an invisible arrow.
+      const tipX = v.x * entry.scale;
+      const tipY = v.y * entry.scale;
+      const drawnLength = Math.hypot(tipX, tipY);
+      if (drawnLength === 0) continue;
 
       const g = api.acquireGraphics();
       if (!g) return; // pool exhausted — skip the remaining arrows this frame
@@ -58,8 +70,24 @@ export class VectorContributor implements DebugContributor {
       g.position.x = origin.x + entry.originX;
       g.position.y = origin.y + entry.originY;
 
-      drawArrow(g, v.x * entry.scale, v.y * entry.scale, entry, zoom);
+      drawArrow(g, tipX, tipY, drawnLength, entry, zoom);
     }
+  }
+
+  /**
+   * The provider is game code the engine calls on its own, so a throw is
+   * attributed to it rather than to whichever system was on the stack.
+   * `wrapCallback` records and logs, then rethrows — nothing is muted.
+   */
+  private readVector(entry: VectorEntry): Vec2Like | null | undefined {
+    let v: Vec2Like | null | undefined;
+    this.boundary.wrapCallback(
+      () => {
+        v = entry.vector();
+      },
+      { kind: "drawVector provider", entity: entry.entity.name },
+    );
+    return v;
   }
 }
 
@@ -68,12 +96,10 @@ function drawArrow(
   g: DebugGraphics,
   tipX: number,
   tipY: number,
+  length: number,
   entry: VectorEntry,
   zoom: number,
 ): void {
-  const length = Math.hypot(tipX, tipY);
-  if (length === 0) return;
-
   const dirX = tipX / length;
   const dirY = tipY / length;
   const style = { color: entry.color, alpha: entry.alpha };

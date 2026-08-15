@@ -101,8 +101,9 @@ export interface DebugRegistry {
    * velocity, aim direction, knockback, steering output.
    *
    * ```ts
-   * const debug = this.use(DebugRegistryKey);
-   * this.stopArrow = debug.drawVector(this.entity, () => agent.velocity, {
+   * // tryResolve, not use(): use() throws without DebugPlugin installed.
+   * const debug = this.context.tryResolve(DebugRegistryKey);
+   * this.stopArrow = debug?.drawVector(this.entity, () => agent.velocity, {
    *   scale: 0.35,
    *   color: 0x4ade80,
    *   minLength: 1,
@@ -116,8 +117,9 @@ export interface DebugRegistry {
    * `drawVector` call in a hot path costs nothing while debug is off.
    *
    * Returns a disposer that stops the drawing. Calling it twice is harmless.
-   * The registration is also dropped when `entity` is destroyed, so a provider
-   * closure never outlives the entity it draws for.
+   * The registration is also dropped when the entity's life ends — destroyed,
+   * or a pool member whose lease ended — so a provider closure never outlives
+   * the entity it draws for, and a per-lease registration never accumulates.
    */
   drawVector(
     entity: Entity,

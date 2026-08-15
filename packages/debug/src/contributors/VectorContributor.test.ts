@@ -1,6 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
-import { createMockScene, Transform, Vec2 } from "@yagejs/core";
-import type { Entity } from "@yagejs/core";
+import {
+  createMockScene,
+  Entity,
+  EntityPool,
+  ErrorBoundary,
+  Logger,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
 import { DebugRegistryImpl } from "../DebugRegistryImpl.js";
 import type { DebugGraphics, WorldDebugApi } from "../types.js";
 import { VectorContributor } from "./VectorContributor.js";
@@ -45,16 +52,19 @@ function setUp(): {
   registry: DebugRegistryImpl;
   contributor: VectorContributor;
   entity: Entity;
+  boundary: ErrorBoundary;
   destroyEntity: () => void;
 } {
   const { scene } = createMockScene();
   const registry = new DebugRegistryImpl();
+  const boundary = new ErrorBoundary(new Logger());
   const entity = scene.spawn("agent");
   entity.add(new Transform({ position: { x: 100, y: 50 } }));
   return {
     registry,
-    contributor: new VectorContributor(registry.vectors),
+    contributor: new VectorContributor(registry.vectors, boundary),
     entity,
+    boundary,
     destroyEntity: () => {
       entity.destroy();
       scene._flushDestroyQueue();
@@ -158,6 +168,45 @@ describe("VectorContributor", () => {
     expect(acquired).toHaveLength(1);
   });
 
+  it("measures the minimum length before scale, in the vector's own units", () => {
+    const { registry, contributor, entity } = setUp();
+    // Drawn length is 0.4px — well under the cutoff — but the vector itself is
+    // 4 units long, which is what minLength is documented to measure.
+    registry.drawVector(entity, () => new Vec2(4, 0), {
+      scale: 0.1,
+      minLength: 1,
+    });
+
+    const { api, acquired } = createApi();
+    contributor.drawWorld(api);
+
+    expect(acquired).toHaveLength(1);
+  });
+
+  it("draws a head-only arrow, with no shaft, when the head fills it", () => {
+    const { registry, contributor, entity } = setUp();
+    // 4px long against a default 8px head: the head clamps to the arrow.
+    registry.drawVector(entity, () => new Vec2(4, 0));
+
+    const { api, acquired } = createApi();
+    contributor.drawWorld(api);
+
+    const g = acquired[0]!;
+    expect(g.stroke).not.toHaveBeenCalled();
+    expect(g.fill).toHaveBeenCalled();
+    expect(g.moveTo).toHaveBeenCalledWith(4, 0);
+  });
+
+  it("spends no pool slot on an arrow a zero scale collapses", () => {
+    const { registry, contributor, entity } = setUp();
+    registry.drawVector(entity, () => new Vec2(100, 0), { scale: 0 });
+
+    const { api, acquired } = createApi();
+    contributor.drawWorld(api);
+
+    expect(acquired).toHaveLength(0);
+  });
+
   it("draws nothing for a zero vector or a provider that returns null", () => {
     const { registry, contributor, entity } = setUp();
     registry.drawVector(entity, () => Vec2.ZERO);
@@ -202,6 +251,82 @@ describe("VectorContributor", () => {
     expect(acquired).toHaveLength(1);
     expect(provider).toHaveBeenCalledTimes(1);
     expect(registry.vectors.size).toBe(0);
+  });
+
+  it("drops the registration when a pooled entity's lease ends", () => {
+    // A pool release is not a destruction: no `entity:destroyed` fires and the
+    // member is only parked dormant, so `generation` is what marks the life
+    // over. Without that check the next lease inherits this arrow.
+    const { scene } = createMockScene();
+    const registry = new DebugRegistryImpl();
+    const contributor = new VectorContributor(
+      registry.vectors,
+      new ErrorBoundary(new Logger()),
+    );
+
+    class Spark extends Entity {
+      override setup(): void {
+        this.add(new Transform());
+      }
+      onAcquire(): void {}
+    }
+    const pool = new EntityPool(scene, Spark, { prewarm: 1 });
+    const member = pool.acquire();
+
+    const provider = vi.fn(() => new Vec2(10, 0));
+    registry.drawVector(member, provider);
+
+    const { api, acquired } = createApi();
+    contributor.drawWorld(api);
+    expect(acquired).toHaveLength(1);
+
+    pool.release(member);
+    const revived = pool.acquire();
+    expect(revived).toBe(member); // same instance, new life
+
+    contributor.drawWorld(api);
+    expect(acquired).toHaveLength(1);
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(registry.vectors.size).toBe(0);
+  });
+
+  it("retires a previous lease's arrows when a pooled entity re-registers", () => {
+    // The overlay may never draw, so registration is the only cleanup point
+    // that is guaranteed to run — otherwise per-lease arrows pile up unseen.
+    const { scene } = createMockScene();
+    const registry = new DebugRegistryImpl();
+
+    class Spark extends Entity {
+      override setup(): void {
+        this.add(new Transform());
+      }
+      onAcquire(): void {}
+    }
+    const pool = new EntityPool(scene, Spark, { prewarm: 1 });
+
+    for (let i = 0; i < 5; i++) {
+      const member = pool.acquire();
+      registry.drawVector(member, () => new Vec2(10, 0));
+      pool.release(member);
+    }
+
+    expect(registry.vectors.size).toBe(1);
+  });
+
+  it("attributes a throwing provider to the provider, not the caller", () => {
+    const { registry, contributor, entity, boundary } = setUp();
+    registry.drawVector(entity, () => {
+      throw new Error("provider blew up");
+    });
+
+    const { api } = createApi();
+    expect(() => contributor.drawWorld(api)).toThrow("provider blew up");
+
+    const recorded = boundary.getCallbackErrors();
+    expect(recorded[0]).toMatchObject({
+      kind: "drawVector provider",
+      entity: "agent",
+    });
   });
 
   it("skips a dormant entity without dropping its registration", () => {

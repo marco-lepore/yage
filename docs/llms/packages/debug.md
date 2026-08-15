@@ -253,14 +253,17 @@ callback, the overlay calls it each frame.
 import { DebugRegistryKey } from "@yagejs/debug/api";
 
 class AgentVisual extends Component {
-  private stopArrow: (() => void) | null = null;
+  private stopArrow?: () => void;
 
   onAdd(): void {
-    this.stopArrow = this.use(DebugRegistryKey).drawVector(
-      this.entity,
-      () => this.agent.velocity,      // return null to skip a frame
-      { scale: 0.35, color: 0x4ade80, minLength: 1 },
-    );
+    // tryResolve, not use(): use() throws when DebugPlugin isn't installed.
+    this.stopArrow = this.context
+      .tryResolve(DebugRegistryKey)
+      ?.drawVector(
+        this.entity,
+        () => this.agent.velocity,      // return null to skip a frame
+        { scale: 0.35, color: 0x4ade80, minLength: 1 },
+      );
   }
 
   onDestroy(): void {
@@ -290,14 +293,19 @@ drawVector(
 - `minLength` is measured before `scale`, in the vector's own units. A
   zero-length vector never draws — it has no direction.
 - Arrow length is world-space (scales with camera zoom); `width` and `headSize`
-  are divided by the zoom, so they keep a constant on-screen size.
+  are divided by the zoom, so they keep a constant on-screen size. `headSize` is
+  clamped to the arrow's length — a very short arrow is all head, no shaft.
 - The arrow starts at the entity's **world** position, so a child entity's
   arrow follows its parent.
 - The callback runs only while the overlay is on and the `vectors` contributor's
   `arrows` flag is enabled — a `drawVector` call costs nothing with debug off.
   Toggle with `registry.setFlag("vectors", "arrows", false)`.
-- The registration is dropped when the entity is destroyed. A dormant entity
-  (`setActive(false)`) keeps it and stops drawing until it is active again.
+- Resolve the registry with `tryResolve`, not `use`, in code that must run
+  without `DebugPlugin` — `use` throws on an unregistered service.
+- The registration is dropped when the entity's life ends: destroyed, or a pool
+  member whose lease ended. Registering per lease in `onAcquire` does not
+  accumulate. A dormant entity (`setActive(false)`) keeps it and stops drawing
+  until it is active again.
 - Arrows draw from the shared `Graphics` pool (`maxGraphics`, default 256).
   Arrows past the pool limit are skipped for that frame.
 

@@ -1,4 +1,5 @@
 import {
+  ErrorBoundaryKey,
   EventBusKey,
   GameLoopKey,
   InspectorKey,
@@ -242,7 +243,12 @@ export class DebugPlugin implements Plugin {
     this.registry.register(new FpsContributor());
     this.registry.register(new EntityCountContributor(inspector));
     this.registry.register(new SystemTimingContributor(this.systemTimings));
-    this.registry.register(new VectorContributor(this.registry.vectors));
+    this.registry.register(
+      new VectorContributor(
+        this.registry.vectors,
+        this.context.resolve(ErrorBoundaryKey),
+      ),
+    );
 
     // Manual clock for deterministic stepping. The host drives `app.ticker`
     // directly so a manual `step()` fires every ticker subscriber

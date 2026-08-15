@@ -94,9 +94,12 @@ vi.mock("pixi.js", () => ({
 
 import {
   EngineContext,
+  ErrorBoundary,
+  ErrorBoundaryKey,
   EventBus,
   EventBusKey,
   GameLoopKey,
+  Logger,
   InspectorKey,
   SceneHookRegistry,
   SceneHookRegistryKey,
@@ -273,6 +276,7 @@ function createContext() {
   });
 
   context.register(SystemSchedulerKey, scheduler);
+  context.register(ErrorBoundaryKey, new ErrorBoundary(new Logger()));
   context.register(EventBusKey, bus as never);
   context.register(SceneHookRegistryKey, hookRegistry);
   context.register(SceneManagerKey, sceneManager);

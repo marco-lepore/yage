@@ -58,14 +58,18 @@ from the entity's world position for as long as the registration lives.
 import { DebugRegistryKey } from "@yagejs/debug/api";
 
 class AgentVisual extends Component {
-  private stopArrow: (() => void) | null = null;
+  private stopArrow?: () => void;
 
   onAdd(): void {
-    this.stopArrow = this.use(DebugRegistryKey).drawVector(
-      this.entity,
-      () => this.agent.velocity,
-      { scale: 0.35, color: 0x4ade80, minLength: 1 },
-    );
+    // tryResolve rather than use(): a build that ships without DebugPlugin
+    // has no registry to resolve, and use() throws on a missing service.
+    this.stopArrow = this.context
+      .tryResolve(DebugRegistryKey)
+      ?.drawVector(this.entity, () => this.agent.velocity, {
+        scale: 0.35,
+        color: 0x4ade80,
+        minLength: 1,
+      });
   }
 
   onDestroy(): void {
@@ -74,10 +78,13 @@ class AgentVisual extends Component {
 }
 ```
 
+Use `this.use(DebugRegistryKey)` instead when the plugin is always installed —
+in an example or a dev-only build — and keep `tryResolve` for game code that
+has to survive without it.
+
 The callback runs once per frame while the overlay is on, and not at all while
-it is off — so a `drawVector` call in a hot path costs nothing in a build that
-never shows the overlay. Return `null` from it to skip a frame (for example
-while the agent is disabled).
+it is off, so leaving a `drawVector` call in a hot path is free. Return `null`
+from it to skip a frame (for example while the agent is disabled).
 
 ### Options
 
@@ -99,7 +106,9 @@ either way, since it has no direction to point in.
 The arrow's *length* is in world pixels, so it grows and shrinks with camera
 zoom like everything else in the scene. `width` and `headSize` are divided by
 the camera zoom, so the shaft and head keep the same apparent size no matter
-how far you are zoomed in.
+how far you are zoomed in. `headSize` is also clamped to the arrow's own
+length, so a very short arrow becomes all head and no shaft rather than growing
+a head that points back past its own start.
 
 `origin` shifts the arrow's start away from the entity's world position — a
 muzzle, a hand, a point above the head. It is a world-space offset and is not
@@ -109,10 +118,13 @@ position, so a child entity's arrow follows its parent correctly.
 ### Lifetime
 
 `drawVector` returns a disposer that stops the drawing; calling it twice is
-harmless. The registration is also dropped when the entity is destroyed, so a
-callback closing over an entity never keeps it alive or draws for something
-that is gone. A dormant entity (`setActive(false)`) keeps its registration and
-stops drawing until it is active again.
+harmless. The registration is also dropped when the entity's life ends —
+whether it was destroyed or was a pool member whose lease ended — so a callback
+closing over an entity never keeps it alive or draws for something that is
+gone. A pooled entity that registers per lease (in `onAcquire`) does not
+accumulate arrows across lives. A dormant entity (`setActive(false)`) is
+different: it keeps its registration and stops drawing until it is active
+again.
 
 Arrows draw under the `vectors` contributor's `arrows` flag, so they can be
 switched off on their own while the rest of the overlay stays up:
