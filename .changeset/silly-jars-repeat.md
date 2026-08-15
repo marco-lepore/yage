@@ -1,5 +1,5 @@
 ---
-"@yagejs/debug": minor
+"@yagejs/debug": patch
 ---
 
 Add `drawVector` — a per-entity arrow for a vector read fresh every frame
@@ -16,3 +16,6 @@ destroyed, so a provider closure never outlives the entity it draws for. The
 provider is read only while the overlay is on and the new `vectors`
 contributor's `arrows` flag is enabled, so a `drawVector` call in a hot path
 costs nothing with debug off.
+
+A hand-written `DebugRegistry` stub, such as one standing in for the registry in
+a plugin's tests, needs a `drawVector` entry to satisfy the interface.
