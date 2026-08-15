@@ -569,6 +569,7 @@ describe("InputPlugin", () => {
       register: mockRegister,
       isEnabled: () => true,
       isFlagEnabled: () => true,
+      drawVector: () => () => {},
     });
     plugin = new InputPlugin({ actions: { jump: ["Space"] } });
     plugin.install(context);

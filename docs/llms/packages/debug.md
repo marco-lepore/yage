@@ -241,6 +241,65 @@ Known limitations:
 - FPS counter
 - Entity count
 - System timing breakdown
+- Vector arrows registered with `drawVector`
+
+## Vector Arrows
+
+An arrow on an entity for a vector read fresh every frame — velocity, aim
+direction, knockback, steering output. No retained vector state: you register a
+callback, the overlay calls it each frame.
+
+```ts
+import { DebugRegistryKey } from "@yagejs/debug/api";
+
+class AgentVisual extends Component {
+  private stopArrow: (() => void) | null = null;
+
+  onAdd(): void {
+    this.stopArrow = this.use(DebugRegistryKey).drawVector(
+      this.entity,
+      () => this.agent.velocity,      // return null to skip a frame
+      { scale: 0.35, color: 0x4ade80, minLength: 1 },
+    );
+  }
+
+  onDestroy(): void {
+    this.stopArrow?.();
+  }
+}
+```
+
+```ts
+drawVector(
+  entity: Entity,
+  vector: () => Vec2Like | null | undefined,
+  options?: DebugVectorOptions,
+): () => void;                       // disposer, idempotent
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `scale` | `1` | Pixels of arrow per unit of the vector |
+| `color` | `0xffffff` | Arrow color |
+| `alpha` | `0.9` | Arrow opacity |
+| `origin` | `{ x: 0, y: 0 }` | World-space offset from the entity's position (not rotated by the entity) |
+| `minLength` | `0` | Draw nothing below this length |
+| `width` | `2` | Shaft thickness, in screen pixels |
+| `headSize` | `8` | Arrowhead length, in screen pixels |
+
+- `minLength` is measured before `scale`, in the vector's own units. A
+  zero-length vector never draws — it has no direction.
+- Arrow length is world-space (scales with camera zoom); `width` and `headSize`
+  are divided by the zoom, so they keep a constant on-screen size.
+- The arrow starts at the entity's **world** position, so a child entity's
+  arrow follows its parent.
+- The callback runs only while the overlay is on and the `vectors` contributor's
+  `arrows` flag is enabled — a `drawVector` call costs nothing with debug off.
+  Toggle with `registry.setFlag("vectors", "arrows", false)`.
+- The registration is dropped when the entity is destroyed. A dormant entity
+  (`setActive(false)`) keeps it and stops drawing until it is active again.
+- Arrows draw from the shared `Graphics` pool (`maxGraphics`, default 256).
+  Arrows past the pool limit are skipped for that frame.
 
 ## Custom Contributors
 

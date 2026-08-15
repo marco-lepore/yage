@@ -1,8 +1,17 @@
-import type { DebugContributor, DebugRegistry } from "./types.js";
+import type { Entity } from "@yagejs/core";
+import type {
+  DebugContributor,
+  DebugRegistry,
+  DebugVectorOptions,
+  DebugVectorProvider,
+} from "./types.js";
+import { VectorDrawStore } from "./VectorDrawStore.js";
 
 /** Concrete implementation of the DebugRegistry interface. */
 export class DebugRegistryImpl implements DebugRegistry {
   readonly contributors = new Map<string, DebugContributor>();
+  /** Backs `drawVector`; read by the built-in `vectors` contributor. */
+  readonly vectors = new VectorDrawStore();
   enabled = false;
   private flags = new Map<string, boolean>();
 
@@ -12,6 +21,14 @@ export class DebugRegistryImpl implements DebugRegistry {
     // Flags default to true on read (`?? true`), so registration must not
     // write them — contributors register after install applies the user's
     // DebugConfig.flags overrides, and a write here would clobber them.
+  }
+
+  drawVector(
+    entity: Entity,
+    vector: DebugVectorProvider,
+    options?: DebugVectorOptions,
+  ): () => void {
+    return this.vectors.add(entity, vector, options);
   }
 
   isEnabled(): boolean {

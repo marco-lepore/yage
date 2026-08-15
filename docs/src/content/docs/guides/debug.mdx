@@ -45,6 +45,86 @@ When the debug overlay is active, the plugin automatically shows:
 - **FPS counter** — frames per second in the HUD
 - **Entity count** — total entities in the current scene
 - **System timing** — per-system execution time breakdown
+- **Vector arrows** — any per-entity vector you registered with `drawVector`
+
+## Vector Arrows
+
+`drawVector` draws an arrow on an entity for a vector you read fresh every
+frame — velocity, aim direction, knockback, a steering output. You supply the
+entity and a callback that returns the vector; the overlay draws the arrow
+from the entity's world position for as long as the registration lives.
+
+```typescript
+import { DebugRegistryKey } from "@yagejs/debug/api";
+
+class AgentVisual extends Component {
+  private stopArrow: (() => void) | null = null;
+
+  onAdd(): void {
+    this.stopArrow = this.use(DebugRegistryKey).drawVector(
+      this.entity,
+      () => this.agent.velocity,
+      { scale: 0.35, color: 0x4ade80, minLength: 1 },
+    );
+  }
+
+  onDestroy(): void {
+    this.stopArrow?.();
+  }
+}
+```
+
+The callback runs once per frame while the overlay is on, and not at all while
+it is off — so a `drawVector` call in a hot path costs nothing in a build that
+never shows the overlay. Return `null` from it to skip a frame (for example
+while the agent is disabled).
+
+### Options
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `scale` | `number` | `1` | Pixels of arrow per unit of the vector |
+| `color` | `number` | `0xffffff` | Arrow color |
+| `alpha` | `number` | `0.9` | Arrow opacity |
+| `origin` | `Vec2Like` | `{ x: 0, y: 0 }` | World-space offset from the entity's position |
+| `minLength` | `number` | `0` | Draw nothing below this length |
+| `width` | `number` | `2` | Shaft thickness, in screen pixels |
+| `headSize` | `number` | `8` | Arrowhead length, in screen pixels |
+
+`minLength` is measured on the value the callback returns, before `scale` is
+applied — so the cutoff is in the vector's own units, and `minLength: 1` on a
+velocity means "don't draw below 1 px/s". A zero-length vector never draws
+either way, since it has no direction to point in.
+
+The arrow's *length* is in world pixels, so it grows and shrinks with camera
+zoom like everything else in the scene. `width` and `headSize` are divided by
+the camera zoom, so the shaft and head keep the same apparent size no matter
+how far you are zoomed in.
+
+`origin` shifts the arrow's start away from the entity's world position — a
+muzzle, a hand, a point above the head. It is a world-space offset and is not
+rotated by the entity. The start point comes from the entity's *world*
+position, so a child entity's arrow follows its parent correctly.
+
+### Lifetime
+
+`drawVector` returns a disposer that stops the drawing; calling it twice is
+harmless. The registration is also dropped when the entity is destroyed, so a
+callback closing over an entity never keeps it alive or draws for something
+that is gone. A dormant entity (`setActive(false)`) keeps its registration and
+stops drawing until it is active again.
+
+Arrows draw under the `vectors` contributor's `arrows` flag, so they can be
+switched off on their own while the rest of the overlay stays up:
+
+```typescript
+registry.setFlag("vectors", "arrows", false);
+```
+
+Arrows share the overlay's `Graphics` pool (`maxGraphics`, default 256) with
+collider outlines and every other world-space view. If the pool runs out in a
+frame, the remaining arrows are skipped that frame — raise `maxGraphics` if
+that happens.
 
 ## Custom Debug Contributors
 

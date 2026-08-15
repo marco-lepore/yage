@@ -9,6 +9,7 @@ import {
 } from "@yagejs/physics";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
+import { DebugRegistryKey } from "@yagejs/debug/api";
 import {
   alignment,
   arrive,
@@ -54,14 +55,15 @@ class PlayerController extends Component {
 }
 
 // ---------------------------------------------------------------------------
-// AgentVisual — redraws a circle + a velocity arrow every frame, reading
-// the agent's velocity directly (the addon's own debug-drawing hook). Takes
-// the agent by reference: components are keyed by exact class, so a sibling
-// lookup on SteeringAgent would miss a PhysicsSteeringAgent. Disabled
-// agents draw dimmed.
+// AgentVisual — the agent's body: a circle, dimmed while the agent is off.
+// The velocity arrow is debug output, so it goes to the debug overlay through
+// `drawVector` instead of being redrawn here. Takes the agent by reference:
+// components are keyed by exact class, so a sibling lookup on SteeringAgent
+// would miss a PhysicsSteeringAgent.
 // ---------------------------------------------------------------------------
 class AgentVisual extends Component {
   private readonly gfx = this.sibling(GraphicsComponent);
+  private stopArrow: (() => void) | null = null;
 
   constructor(
     private readonly agent: SteeringAgent,
@@ -71,18 +73,26 @@ class AgentVisual extends Component {
     super();
   }
 
+  onAdd(): void {
+    // Returning null while the agent is off leaves the arrow undrawn for
+    // that frame — the provider decides, frame by frame.
+    this.stopArrow = this.use(DebugRegistryKey).drawVector(
+      this.entity,
+      () => (this.agent.enabled ? this.agent.velocity : null),
+      { scale: ARROW_SCALE, alpha: 0.85, minLength: 1 },
+    );
+  }
+
+  onDestroy(): void {
+    this.stopArrow?.();
+    this.stopArrow = null;
+  }
+
   update(): void {
-    const v = this.agent.velocity;
     const alpha = this.agent.enabled ? 0.9 : 0.3;
     this.gfx.draw((g) => {
       g.clear();
       g.circle(0, 0, this.radius).fill({ color: this.color, alpha });
-      if (this.agent.enabled && v.lengthSq() > 1) {
-        const tip = v.scale(ARROW_SCALE);
-        g.moveTo(0, 0)
-          .lineTo(tip.x, tip.y)
-          .stroke({ color: 0xffffff, width: 2, alpha: 0.85 });
-      }
     });
   }
 }
@@ -384,7 +394,9 @@ async function main() {
       },
     }),
   );
-  engine.use(new DebugPlugin());
+  // Started enabled so the velocity arrows are visible on load; backtick
+  // toggles the whole overlay, arrows included.
+  engine.use(new DebugPlugin({ startEnabled: true }));
 
   await engine.start();
   await engine.scenes.push(new SteeringScene());

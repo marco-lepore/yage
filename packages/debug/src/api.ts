@@ -6,4 +6,6 @@ export type {
   StatsApi,
   DebugContributor,
   DebugRegistry,
+  DebugVectorProvider,
+  DebugVectorOptions,
 } from "./types.js";
