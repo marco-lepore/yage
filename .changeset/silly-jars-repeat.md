@@ -22,3 +22,10 @@ installed.
 
 A hand-written `DebugRegistry` stub, such as one standing in for the registry in
 a plugin's tests, needs a `drawVector` entry to satisfy the interface.
+
+The package root now also re-exports the contributor-facing surface —
+`DebugRegistryKey`, `DebugRegistry`, `DebugContributor`, `DebugGraphics`,
+`WorldDebugApi`, `HudDebugApi`, `StatsApi` and the two vector types — matching
+how `@yagejs/renderer`, `@yagejs/physics` and `@yagejs/input` mirror their own
+`./api` entries. `@yagejs/debug/api` is unchanged and stays the import to reach
+for in game code, since it carries the same surface without pulling in pixi.js.
