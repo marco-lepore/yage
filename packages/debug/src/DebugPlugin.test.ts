@@ -94,9 +94,12 @@ vi.mock("pixi.js", () => ({
 
 import {
   EngineContext,
+  ErrorBoundary,
+  ErrorBoundaryKey,
   EventBus,
   EventBusKey,
   GameLoopKey,
+  Logger,
   InspectorKey,
   SceneHookRegistry,
   SceneHookRegistryKey,
@@ -104,8 +107,9 @@ import {
   SceneManagerKey,
   SystemScheduler,
   SystemSchedulerKey,
+  Transform,
 } from "@yagejs/core";
-import type { Scene } from "@yagejs/core";
+import { Scene } from "@yagejs/core";
 import {
   RendererKey,
   SceneRenderTreeKey,
@@ -116,6 +120,12 @@ import type {
   SceneRenderTreeProvider,
 } from "@yagejs/renderer";
 import { DebugPlugin } from "./DebugPlugin.js";
+import type { DebugRegistryImpl } from "./DebugRegistryImpl.js";
+import { DebugRegistryKey } from "./types.js";
+
+class VectorScene extends Scene {
+  readonly name = "vectors";
+}
 
 type TickerListener = () => void;
 
@@ -266,6 +276,7 @@ function createContext() {
   });
 
   context.register(SystemSchedulerKey, scheduler);
+  context.register(ErrorBoundaryKey, new ErrorBoundary(new Logger()));
   context.register(EventBusKey, bus as never);
   context.register(SceneHookRegistryKey, hookRegistry);
   context.register(SceneManagerKey, sceneManager);
@@ -485,6 +496,62 @@ describe("DebugPlugin", () => {
     plugin.onDestroy();
 
     expect(inspector.getExtension("debug")).toBeUndefined();
+  });
+
+  it("never reads a drawVector provider while the overlay is off", async () => {
+    const { context, scheduler } = createContext();
+    const plugin = new DebugPlugin();
+
+    plugin.install(context);
+    plugin.registerSystems(scheduler);
+    await plugin.onStart();
+
+    const registry = context.resolve(DebugRegistryKey) as DebugRegistryImpl;
+    const scene = new VectorScene();
+    scene._setContext(context);
+    const entity = scene.spawn("agent");
+    entity.add(new Transform());
+    const provider = vi.fn(() => ({ x: 10, y: 0 }));
+    registry.drawVector(entity, provider);
+
+    const renderSystem = scheduler
+      .getAllSystems()
+      .find((system) => system.constructor.name === "DebugRenderSystem")!;
+
+    renderSystem.update(0.016);
+    expect(provider).not.toHaveBeenCalled();
+
+    registry.enabled = true;
+    renderSystem.update(0.016);
+    expect(provider).toHaveBeenCalledTimes(1);
+
+    plugin.onDestroy();
+  });
+
+  it("drops drawVector registrations when the entity is destroyed", async () => {
+    const { context, scheduler } = createContext();
+    const plugin = new DebugPlugin();
+
+    plugin.install(context);
+    plugin.registerSystems(scheduler);
+    await plugin.onStart();
+
+    const registry = context.resolve(DebugRegistryKey) as DebugRegistryImpl;
+    const scene = new VectorScene();
+    scene._setContext(context);
+    const entity = scene.spawn("agent");
+    entity.add(new Transform());
+    registry.drawVector(entity, () => ({ x: 10, y: 0 }));
+    expect(registry.vectors.size).toBe(1);
+
+    entity.destroy();
+    scene._flushDestroyQueue();
+
+    // The overlay never drew a frame — the bus event is what drops it, so a
+    // shipped build with debug off doesn't accumulate dead registrations.
+    expect(registry.vectors.size).toBe(0);
+
+    plugin.onDestroy();
   });
 
   it("toggles HUD visibility through the debug extension and re-renders", async () => {

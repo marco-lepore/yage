@@ -1,4 +1,5 @@
 import {
+  ErrorBoundaryKey,
   EventBusKey,
   GameLoopKey,
   InspectorKey,
@@ -31,6 +32,7 @@ import { DebugRenderSystem } from "./DebugRenderSystem.js";
 import { FpsContributor } from "./contributors/FpsContributor.js";
 import { EntityCountContributor } from "./contributors/EntityCountContributor.js";
 import { SystemTimingContributor } from "./contributors/SystemTimingContributor.js";
+import { VectorContributor } from "./contributors/VectorContributor.js";
 
 /** Configuration for the DebugPlugin. */
 export interface DebugConfig {
@@ -182,6 +184,16 @@ export class DebugPlugin implements Plugin {
 
     this.stats = new StatsStore();
 
+    // Drop a destroyed entity's `drawVector` registrations here rather than
+    // while drawing: the overlay may never draw a frame, and a provider
+    // closure holding a dead entity would keep it alive for the session.
+    const bus = context.resolve(EventBusKey) as EventBus<EngineEvents>;
+    this.eventUnsubs.push(
+      bus.on("entity:destroyed", ({ entity }) => {
+        this.registry.vectors.dropEntity(entity.id);
+      }),
+    );
+
     context.register(DebugRegistryKey, this.registry);
   }
 
@@ -231,6 +243,12 @@ export class DebugPlugin implements Plugin {
     this.registry.register(new FpsContributor());
     this.registry.register(new EntityCountContributor(inspector));
     this.registry.register(new SystemTimingContributor(this.systemTimings));
+    this.registry.register(
+      new VectorContributor(
+        this.registry.vectors,
+        this.context.resolve(ErrorBoundaryKey),
+      ),
+    );
 
     // Manual clock for deterministic stepping. The host drives `app.ticker`
     // directly so a manual `step()` fires every ticker subscriber
@@ -310,6 +328,7 @@ export class DebugPlugin implements Plugin {
       contributor.dispose?.();
     }
     this.registry.contributors.clear();
+    this.registry.vectors.clear();
 
     this.tearDownDebugInfra();
     this.teardownDebugScene();
