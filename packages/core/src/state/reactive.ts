@@ -62,6 +62,25 @@ export interface ReactiveCounter
   clamp(value: number, min: number, max: number): void;
 }
 
+/** Keys of `T` declared optional (`field?: V`). */
+type OptionalKeyOf<T> = {
+  [K in keyof T]-?: object extends Pick<T, K> ? K : never;
+}[keyof T];
+
+/**
+ * The keys {@link ReactiveRecord.delete} accepts: the keys of an index
+ * signature (`Record<string, V>`) plus any key declared optional.
+ *
+ * A required key is excluded on purpose. `get()` returns `Readonly<T>`, so
+ * `get().hp` is typed `number` on a `{ hp: number }` record — removing it would
+ * leave that read typed but missing at runtime. Deleting from an open-ended bag
+ * keeps the contract intact, so that is where `delete` applies.
+ */
+export type DeletableRecordKey<T> =
+  | (string extends keyof T ? string : never)
+  | (number extends keyof T ? number : never)
+  | OptionalKeyOf<T>;
+
 /**
  * Object-shaped store with shallow merge on `set`. `TEncoded` is the
  * codec-encoded form (defaults to `T` for identity codecs); with a custom
@@ -74,6 +93,18 @@ export interface ReactiveRecord<T extends object, TEncoded = T>
   readonly [STATE_KIND]: "record";
   get(): Readonly<T>;
   set(partial: Partial<T>): void;
+  /**
+   * Remove a key entirely, so `key in get()` becomes false — `set` can only
+   * overwrite a key, never drop it. Deleting an absent key is a no-op and
+   * fires no change notification.
+   *
+   * Declared as a property, not a method, on purpose: method syntax is checked
+   * bivariantly, which would let a fixed-shape record pass as an open-ended one
+   * wherever a `ReactiveRecord<Record<string, V>>` is expected — and a `delete`
+   * through that alias would drop a required key. A property is contravariant
+   * under `strictFunctionTypes`, so the assignment is rejected instead.
+   */
+  delete: (key: DeletableRecordKey<T>) => void;
 }
 
 /** Key → value map. */

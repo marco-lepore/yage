@@ -8,7 +8,7 @@ import {
   createCounter,
   createList,
 } from "./factories.js";
-import { STATE_KIND } from "./reactive.js";
+import { STATE_KIND, type ReactiveRecord } from "./reactive.js";
 import { dateCodec } from "./codecs.js";
 
 // ---------------------------------------------------------------------------
@@ -93,6 +93,70 @@ describe("createRecord", () => {
 
   it("carries the 'record' STATE_KIND brand", () => {
     expect(make()[STATE_KIND]).toBe("record");
+  });
+
+  it("delete() removes a key from an open-ended record and notifies", () => {
+    const flags = createRecord<Record<string, string | number | boolean>>({
+      default: () => ({ greeted: true, gold: 5 }),
+    });
+    const listener = vi.fn();
+    flags.subscribe(listener);
+
+    flags.delete("greeted");
+    expect("greeted" in flags.get()).toBe(false);
+    expect(flags.get()).toEqual({ gold: 5 });
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("delete() of an absent key is a no-op and does not notify", () => {
+    const flags = createRecord<Record<string, number>>({
+      default: () => ({ gold: 5 }),
+    });
+    const listener = vi.fn();
+    flags.subscribe(listener);
+    const before = flags.get();
+
+    flags.delete("nope");
+    expect(flags.get()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("delete() removes an optional key on a fixed-shape record", () => {
+    interface Loadout {
+      weapon: string;
+      charm?: string;
+    }
+    const s = createRecord<Loadout>({
+      default: () => ({ weapon: "sword", charm: "luck" }),
+    });
+    s.delete("charm");
+    expect(s.get()).toEqual({ weapon: "sword" });
+    // A required key is a compile error — removing it would leave `get().weapon`
+    // typed `string` but missing at runtime.
+    // @ts-expect-error required keys are not deletable
+    expect(() => s.delete("weapon")).not.toThrow();
+  });
+
+  it("a fixed-shape record is not assignable to an open-ended one", () => {
+    const stats = createRecord<{ hp: number; name: string }>({
+      default: () => ({ hp: 10, name: "Mira" }),
+    });
+    // `delete` is declared as a property, not a method, so it is checked
+    // contravariantly. Without that, this assignment would compile and a
+    // `delete` through the alias would drop a key `T` declares as required.
+    // @ts-expect-error a fixed-shape record leaf is not an open-ended bag
+    const bag: ReactiveRecord<Record<string, string | number>> = stats;
+    expect(bag.get()).toEqual({ hp: 10, name: "Mira" });
+  });
+
+  it("delete() drops the key from serialize() and survives reset", () => {
+    const flags = createRecord<Record<string, string | number | boolean>>({
+      default: () => ({ greeted: true }),
+    });
+    flags.delete("greeted");
+    expect(flags.serialize()).toEqual({});
+    flags.reset();
+    expect(flags.get()).toEqual({ greeted: true });
   });
 });
 
