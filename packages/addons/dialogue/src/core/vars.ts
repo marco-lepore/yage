@@ -15,11 +15,17 @@
  *     `Record<string, string | number | boolean>` you already own, with no
  *     null guard to write by hand: a `set(name, null)` from the runtime
  *     deletes the key so the record stays typed non-null.
+ *   • {@link createStoreStorage} — a storage over a `@yagejs/core` reactive
+ *     store leaf, so dialogue variables live in the game store: they ride the
+ *     store's save/load and every dialogue write notifies the store's
+ *     subscribers.
  *
  * The interface lives in `types.ts`; this file is the concrete kit. Seed-if-
  * absent + persistence are policy of the *caller* (`session.play`), not the
  * storage — these just hold values.
  */
+
+import { STATE_KIND, type ReactiveMap, type ReactiveRecord } from "@yagejs/core";
 
 import type { VariableStorage, VarMap, VarValue } from "./types.js";
 
@@ -104,11 +110,11 @@ export function cells(defs: Readonly<Record<string, Cell>>): VariableStorage {
 }
 
 /**
- * A {@link VariableStorage} over a plain mutable record you already own — the
+ * A {@link VariableStorage} over a plain mutable record the host owns — the
  * zero-guard bridge for the common "back the dialogue namespace with a
- * non-null `Record<string, string | number | boolean>`" case (a reactive game
- * store's record leaf, a save-game blob, …). `get` returns the value or
- * `undefined`; `has` is own-property only; `entries` yields the own entries.
+ * non-null `Record<string, string | number | boolean>`" case (a plain state
+ * object, a save-game blob, …). `get` returns the value or `undefined`; `has`
+ * is own-property only; `entries` yields the own entries.
  *
  * The runtime can call `set(name, null)` — from a literal `null` in a `set`
  * directive and from reading an absent variable (`undefined` is coerced to
@@ -117,6 +123,13 @@ export function cells(defs: Readonly<Record<string, Cell>>): VariableStorage {
  * the host's own reads never see a `null` member. Any other value writes
  * through directly. The record is mutated in place — pass the same object the
  * host reads from to keep them in sync.
+ *
+ * Do **not** pass the snapshot of a reactive store leaf
+ * (`createRecordStorage(store.flags.get())`). A leaf replaces its snapshot
+ * object on every `set`, `hydrate`, and `reset`, so this storage would keep
+ * writing to the object the leaf has already discarded — and an in-place
+ * mutation never notifies the leaf's subscribers. Use
+ * {@link createStoreStorage} for a store leaf.
  */
 export function createRecordStorage(
   record: Record<string, string | number | boolean>,
@@ -137,6 +150,79 @@ export function createRecordStorage(
     },
     *entries() {
       for (const [name, value] of Object.entries(record)) yield [name, value] as const;
+    },
+  };
+}
+
+/**
+ * A `@yagejs/core` reactive store leaf that can hold a dialogue namespace: a
+ * record leaf keyed by variable name, or a map leaf from name to value.
+ */
+export type VariableLeaf =
+  | ReactiveRecord<Record<string, VarValue>>
+  | ReactiveMap<string, VarValue>;
+
+/**
+ * A {@link VariableStorage} backed by a reactive store leaf — the bridge that
+ * puts dialogue variables **in the game store**. They then ride the store's
+ * `serialize`/`hydrate` (so they survive save/load), and a dialogue write that
+ * changes a value notifies the leaf's subscribers, so `useStore`,
+ * `autoPersist`, and the compound store all see it.
+ *
+ * ```ts
+ * const game = createStore((s) => ({
+ *   flags: s.record<Record<string, VarValue>>({ default: () => ({}) }),
+ * }));
+ * const storage = createStoreStorage(game.flags);
+ * ```
+ *
+ * Pass the **leaf**, never `leaf.get()` — this reads through `leaf.get()` on
+ * every access, so a `hydrate`, a `reset`, or a host-side `set` between two
+ * dialogue writes is picked up rather than lost.
+ *
+ * Both leaf kinds are accepted, and `set(name, null)` **unsets** the name on
+ * either (a record leaf drops the key, a map leaf deletes the entry) — `null`
+ * means unset in this interface, and `has()` drives seed-if-absent, so a
+ * retained `null` would wrongly block a default from seeding.
+ *
+ * The leaf must be open-ended (`Record<string, VarValue>` / a
+ * `ReactiveMap<string, VarValue>`): dialogue names are open-ended, and a
+ * `set(name, null)` on a fixed-shape record leaf would remove a key the leaf's
+ * own type declares as always present. A fixed-shape record leaf is a compile
+ * error here rather than a runtime surprise.
+ */
+export function createStoreStorage(leaf: VariableLeaf): VariableStorage {
+  if (leaf[STATE_KIND] === "map") {
+    return {
+      get(name) {
+        return leaf.get(name);
+      },
+      set(name, value) {
+        if (value === null) leaf.delete(name);
+        else leaf.set(name, value);
+      },
+      has(name) {
+        return leaf.has(name);
+      },
+      entries() {
+        return leaf.entries();
+      },
+    };
+  }
+  return {
+    get(name) {
+      const snapshot = leaf.get();
+      return Object.hasOwn(snapshot, name) ? snapshot[name] : undefined;
+    },
+    set(name, value) {
+      if (value === null) leaf.delete(name);
+      else leaf.set({ [name]: value });
+    },
+    has(name) {
+      return Object.hasOwn(leaf.get(), name);
+    },
+    *entries() {
+      for (const [name, value] of Object.entries(leaf.get())) yield [name, value] as const;
     },
   };
 }

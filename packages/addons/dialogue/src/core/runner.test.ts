@@ -1,8 +1,9 @@
+import { createRecord } from "@yagejs/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createScope, evalCondition } from "./expr.js";
 import { DialogueRunner, type ResolvedChoice, type RunnerHandlers } from "./runner.js";
-import { MemoryVariableStorage, cells, compose } from "./vars.js";
+import { MemoryVariableStorage, cells, compose, createStoreStorage } from "./vars.js";
 import type {
   ChoiceStep,
   Command,
@@ -14,6 +15,7 @@ import type {
   SayStep,
   VariableStorage,
   VarMap,
+  VarValue,
 } from "./types.js";
 
 /**
@@ -451,6 +453,47 @@ describe("DialogueRunner — storage + functions", () => {
     ).resolves.toBeUndefined();
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatch(/read-only/);
+  });
+
+  it("keeps writing through a store leaf across a reset, and notifies it (#170)", async () => {
+    const flags = createRecord<Record<string, VarValue>>({
+      default: () => ({ metMira: false }),
+    });
+    const notified = vi.fn();
+    flags.subscribe(notified);
+
+    const script: DialogueScript = {
+      id: "store-vars",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "command", commands: [{ type: "set", var: "metMira", value: true }] },
+          ],
+        },
+      },
+    };
+    const play = async (): Promise<void> => {
+      const runner = makeRunner(script, makeRecorder().handlers, {
+        storage: createStoreStorage(flags),
+      });
+      runner.start();
+      await flush();
+    };
+
+    await play();
+    expect(flags.get().metMira).toBe(true);
+    expect(notified).toHaveBeenCalledTimes(1);
+
+    // A save-load / new-game swaps the leaf's internal object. A storage that
+    // captured the old snapshot would keep writing to the orphan from here on.
+    flags.reset();
+    expect(flags.get().metMira).toBe(false);
+
+    await play();
+    expect(flags.get().metMira).toBe(true);
+    expect(notified).toHaveBeenCalledTimes(3); // write, reset, write
   });
 });
 

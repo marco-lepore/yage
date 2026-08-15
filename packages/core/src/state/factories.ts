@@ -157,6 +157,13 @@ export function createRecord<T extends object, TEncoded = T>(
       snapshot = { ...snapshot, ...partial };
       notify();
     },
+    delete: (key) => {
+      if (!Object.hasOwn(snapshot, key as PropertyKey)) return;
+      const next: T = { ...snapshot };
+      Reflect.deleteProperty(next, key as PropertyKey);
+      snapshot = next;
+      notify();
+    },
     subscribe: (fn) => {
       listeners.add(fn);
       return () => {

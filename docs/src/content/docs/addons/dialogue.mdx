@@ -179,9 +179,9 @@ content-only.
   );
   ```
 
-- To back the namespace with a plain record you already own — a reactive store's
-  record leaf, a save blob — use `createRecordStorage`. It mutates the record in
-  place, so the host reads the same object:
+- To back the namespace with a plain record you already own — a state object, a
+  save blob — use `createRecordStorage`. It mutates the record in place, so the
+  host reads the same object:
 
   ```ts
   import { createRecordStorage } from "@yagejs-addons/dialogue";
@@ -190,15 +190,51 @@ content-only.
   const storage = createRecordStorage(game.dialogueVars);
   ```
 
+#### Keeping variables in the game store
+
+`createStoreStorage` puts the dialogue namespace inside a
+[reactive store](/guides/save-and-load/) leaf. The variables then ride
+the store's save/load, and a dialogue write that changes a value notifies the
+leaf — so a `useStore` HUD, `autoPersist`, and the compound store all react to a
+`set` in a script the same way they react to any other game write:
+
+```ts
+import { createStore } from "@yagejs/core";
+import { createStoreStorage, type VarValue } from "@yagejs-addons/dialogue";
+
+const game = createStore((s) => ({
+  flags: s.record<Record<string, VarValue>>({ default: () => ({}) }),
+}));
+
+const storage = createStoreStorage(game.flags);
+```
+
+Pass the **leaf**, not `game.flags.get()`. A leaf hands out a fresh snapshot
+object and replaces its own on every `set`, `hydrate`, and `reset`, so a storage
+holding one of those snapshots would keep writing to an object the leaf has
+already discarded — the writes vanish, and nothing subscribed to the store ever
+hears about them. `createStoreStorage` holds the leaf and reads through
+`game.flags.get()` on every access, so a save-load or a host-side write between
+two dialogue writes is picked up rather than lost. That is also why
+`createRecordStorage` is for a plain object you own, not for a store leaf.
+
+A map leaf (`s.map<string, VarValue>()`) works the same way. The leaf has to be
+open-ended either way — dialogue names are open-ended, and unsetting a variable
+on a fixed-shape record leaf would remove a key its own type declares as
+present. Passing one is a compile error.
+
 #### When the runtime writes `null`
 
 `VariableStorage.set` can receive `null`: a literal `null` in a `set` directive
 (`set x = null`), and reading an absent variable (`set a = undeclared` coerces
-the missing read to `null`). By convention `null` means **unset**.
-`createRecordStorage` honors that — a `null` write deletes the key, so the backing
+the missing read to `null`). `null` means **unset**. The storages that bridge to
+game state honor that — `createRecordStorage` deletes the key so the backing
 record stays typed `Record<string, string | number | boolean>` with no `null`
-member. `MemoryVariableStorage` keeps the literal `null`. A hand-written storage
-over a non-null record should drop or delete on `null` the same way.
+member, and `createStoreStorage` drops the name from the leaf so a `declare`
+default can seed it again on the next `play()`. `MemoryVariableStorage` keeps the
+literal `null`: it is the scratch store for dialogue-locals, where a nulled name
+is still a name the script declared. A hand-written storage over game state
+should drop or delete on `null` the same way.
 
 `{gold}` (and any condition on `gold`) resolves **when the line is presented**, so
 an earlier command's effect shows up on a later line. Already-shown lines never

@@ -236,6 +236,7 @@ export type {
   ReactiveValue,
   ReactiveCounter,
   ReactiveRecord,
+  DeletableRecordKey,
   ReactiveMap,
   ReactiveSet,
   ReactiveList,

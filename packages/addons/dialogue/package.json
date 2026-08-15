@@ -75,9 +75,9 @@
     "yaml": "^2.8.3"
   },
   "peerDependencies": {
-    "@yagejs/core": ">=0.10.0 <0.11.0",
-    "@yagejs/input": ">=0.10.0 <0.11.0",
-    "@yagejs/renderer": ">=0.10.0 <0.11.0"
+    "@yagejs/core": ">=0.10.4 <0.11.0",
+    "@yagejs/input": ">=0.10.4 <0.11.0",
+    "@yagejs/renderer": ">=0.10.4 <0.11.0"
   },
   "peerDependenciesMeta": {
     "@yagejs/renderer": {

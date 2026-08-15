@@ -66,7 +66,7 @@ Leaf builder methods on the compound: `s.value<T>({ default, codec? })`, `s.coun
 
 Shape APIs (every leaf also exposes `subscribe(fn)`, `serialize()`, `hydrate(raw)`, `reset()`):
 
-- `createRecord<T>` / `s.record`: `get(): Readonly<T>`, `set(partial: Partial<T>)`.
+- `createRecord<T>` / `s.record`: `get(): Readonly<T>`, `set(partial: Partial<T>)`, `delete(key)` (removes the key; index-signature and optional keys only — a required key is a compile error).
 - `createValue<T>` / `s.value`: `get(): T`, `set(v: T)`.
 - `createCounter` / `s.counter`: `value()`, `set(n)`, `increment(by?)`, `decrement(by?)`, `clamp(value, min, max)`.
 - `createMap<K, V>` / `s.map`: `get(k)`, `set(k, v)`, `delete(k)`, `has(k)`, `entries()`, `size()`, `clear()`.

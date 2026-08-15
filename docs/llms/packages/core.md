@@ -658,6 +658,14 @@ interface ReactiveCounter           extends Reactive, Serializable<number>,     
 }
 interface ReactiveRecord<T extends object> extends Reactive, Serializable<T>, Resettable {
   get(): Readonly<T>; set(partial: Partial<T>): void;
+  // Removes the key entirely (`set` can only overwrite). Absent key = no-op, no
+  // notify. Accepts index-signature keys (`Record<string, V>`) and optional keys;
+  // on a fixed-shape record a required key is a compile error, since `get()` is
+  // typed `Readonly<T>`. (A type mixing an index signature with declared keys is
+  // an open bag — every string key is deletable.) Declared as a property, not a
+  // method, so it is contravariant: a fixed-shape record is not assignable to an
+  // open-ended `ReactiveRecord<Record<string, V>>`.
+  delete: (key: DeletableRecordKey<T>) => void;
 }
 interface ReactiveMap<K, V>         extends Reactive, Serializable<Array<[K,V]>>, Resettable {
   get(k: K): V | undefined; set(k: K, v: V): void; delete(k: K): void;
