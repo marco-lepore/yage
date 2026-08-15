@@ -137,10 +137,13 @@ export interface VariableStorage {
    *
    * `value` can be `null` — the runtime writes it from a literal `null` in a
    * `set` directive (`set x = null`) and from reading an absent variable (a
-   * `set a = undeclared` coerces the missing read to `null`). By convention
-   * `null` means **unset**, so a storage backed by a non-null record may
-   * delete the name rather than store `null` (see {@link createRecordStorage});
-   * a Map-backed store keeps the literal `null`.
+   * `set a = undeclared` coerces the missing read to `null`). `null` means
+   * **unset**: the storages that bridge to game state
+   * ({@link createRecordStorage}, {@link createStoreStorage}) drop the name
+   * instead of storing `null`, so `has()` reports it absent and a seeded
+   * default can take over. {@link MemoryVariableStorage} keeps the literal
+   * `null` — it is the dialogue-local scratch store, where an explicitly
+   * nulled name is still a name the script declared.
    */
   set(name: string, value: VarValue): void;
   /** Whether the storage currently holds `name` (drives seed-if-absent). */

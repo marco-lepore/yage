@@ -125,10 +125,35 @@ future save cursor.) `play(script)` is **content-only**.
   (writes to an unknown name land in the **last** storage — put a writable store
   last).
 - `createRecordStorage(record: Record<string, string | number | boolean>)` —
-  `VariableStorage` over a plain non-null record you own (a reactive store leaf, a
-  save blob). `get`/`has`/`entries` are own-property only; the record is mutated in
+  `VariableStorage` over a plain non-null record you own (a state object, a save
+  blob). `get`/`has`/`entries` are own-property only; the record is mutated in
   place. A `set(name, null)` from the runtime **deletes** the key (null = unset) so
-  the record stays typed non-null; any other value writes through.
+  the record stays typed non-null; any other value writes through. Do NOT pass a
+  store leaf's snapshot (`createRecordStorage(game.flags.get())`) — a leaf swaps
+  that object on every `set`/`hydrate`/`reset`, so writes land on the discarded
+  one; use `createStoreStorage` instead.
+- `createStoreStorage(leaf: ReactiveRecord<Record<string, VarValue>> |
+  ReactiveMap<string, VarValue>)` — `VariableStorage` over a `@yagejs/core`
+  reactive store leaf, so dialogue variables live in the game store: they ride the
+  store's `serialize`/`hydrate` (survive save/load) and a dialogue write that
+  changes a value notifies the leaf, so `useStore`, `autoPersist`, and the compound
+  store see it. Pass the **leaf**, not `leaf.get()` — reads go through `leaf.get()`
+  on every access, so a hydrate/reset/host write between two dialogue writes is
+  picked up. `set(name, null)` unsets the name on both leaf kinds (a record leaf
+  drops the key, a map leaf deletes the entry) — `has()` drives seed-if-absent, so a
+  retained `null` would block a default. The leaf must be open-ended: a `null` write
+  on a fixed-shape record leaf would remove a key its own type declares as present,
+  so passing one is a compile error.
+
+  ```ts
+  import { createStore } from "@yagejs/core";
+  import { createStoreStorage, type VarValue } from "@yagejs-addons/dialogue";
+
+  const game = createStore((s) => ({
+    flags: s.record<Record<string, VarValue>>({ default: () => ({}) }),
+  }));
+  const storage = createStoreStorage(game.flags);
+  ```
 
 Conditions, `{token}` interpolation, and choice gates read the storage at
 **line-present time** (an earlier command's effect shows on a later line);
