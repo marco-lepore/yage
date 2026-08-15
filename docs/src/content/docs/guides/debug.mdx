@@ -121,10 +121,14 @@ position, so a child entity's arrow follows its parent correctly.
 harmless. The registration is also dropped when the entity's life ends —
 whether it was destroyed or was a pool member whose lease ended — so a callback
 closing over an entity never keeps it alive or draws for something that is
-gone. A pooled entity that registers per lease (in `onAcquire`) does not
-accumulate arrows across lives. A dormant entity (`setActive(false)`) is
-different: it keeps its registration and stops drawing until it is active
-again.
+gone. A dormant entity (`setActive(false)`) is different: it keeps its
+registration and stops drawing until it is active again.
+
+A pooled entity that registers per lease in `onAcquire` should call the
+disposer in `onRelease`, alongside its other per-lease cleanup. Arrows never
+accumulate across lives either way — a new lease retires the previous lease's —
+but without the `onRelease` call the last lease's registration is held until
+the member is leased again or the pool is disposed.
 
 Arrows draw under the `vectors` contributor's `arrows` flag, so they can be
 switched off on their own while the rest of the overlay stays up:

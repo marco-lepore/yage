@@ -303,9 +303,11 @@ drawVector(
 - Resolve the registry with `tryResolve`, not `use`, in code that must run
   without `DebugPlugin` — `use` throws on an unregistered service.
 - The registration is dropped when the entity's life ends: destroyed, or a pool
-  member whose lease ended. Registering per lease in `onAcquire` does not
-  accumulate. A dormant entity (`setActive(false)`) keeps it and stops drawing
-  until it is active again.
+  member whose lease ended. A dormant entity (`setActive(false)`) keeps it and
+  stops drawing until it is active again.
+- Registering per lease in `onAcquire` never accumulates (a new lease retires
+  the previous one's), but pair it with the disposer in `onRelease` — otherwise
+  the last lease's registration is held until the next lease or pool disposal.
 - Arrows draw from the shared `Graphics` pool (`maxGraphics`, default 256).
   Arrows past the pool limit are skipped for that frame.
 
