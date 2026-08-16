@@ -188,6 +188,7 @@ interface EntitySnapshotEntry {
 interface ComponentSnapshot {
   type: string;
   data: unknown;
+  updatePriority?: number; // only when it differs from the class default
 }
 ```
 

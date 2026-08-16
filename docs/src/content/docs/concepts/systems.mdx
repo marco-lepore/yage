@@ -14,7 +14,9 @@ In YAGE the split is clear:
   game developers.
 
 The built-in `ComponentUpdateSystem` bridges the two: it iterates every active
-component each frame and calls `update(dt)` / `fixedUpdate(dt)`.
+component each frame and calls `update(dt)` / `fixedUpdate(dt)`. Within an
+entity, components run in ascending `updatePriority` (add order by default) —
+see [Update Order](/concepts/entities-and-components/#update-order).
 
 ## Defining a System
 

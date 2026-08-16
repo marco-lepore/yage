@@ -10,7 +10,13 @@ import { SceneTimeKey } from "./SceneTime.js";
  * Built-in system that bridges the OOP and ECS worlds.
  *
  * Iterates all entities in non-paused scenes and calls component
- * `update(dt)` or `fixedUpdate(dt)` methods on enabled components.
+ * `update(dt)` or `fixedUpdate(dt)` methods on enabled components, in each
+ * entity's update order (ascending `Component.updatePriority`, ties in add
+ * order). Only components that are `effectiveEnabled` are called. That skips
+ * a component a sibling removed earlier in the same pass (it is torn down,
+ * but the cached sorted array still contains it) and the remaining siblings
+ * of an entity a component deactivated mid-pass (their `onDisable` has
+ * fired).
  *
  * This system runs at two phases:
  * - Phase.FixedUpdate for fixedUpdate(dt)
@@ -49,8 +55,8 @@ export class ComponentFixedUpdateSystem extends BaseComponentUpdateSystem {
           dt *
           (time?.effectiveScaleForUpdates(entity) ?? scene.timeScale) *
           entity.timeScale;
-        for (const component of entity.getAll()) {
-          if (!component.enabled || !component.fixedUpdate) continue;
+        for (const component of entity._componentsInUpdateOrder()) {
+          if (!component.effectiveEnabled || !component.fixedUpdate) continue;
           const fixedUpdate = component.fixedUpdate;
           this.errorBoundary.wrapComponent(component, () =>
             fixedUpdate.call(component, entityDt),
@@ -75,8 +81,8 @@ export class ComponentUpdateSystem extends BaseComponentUpdateSystem {
           dt *
           (time?.effectiveScaleForUpdates(entity) ?? scene.timeScale) *
           entity.timeScale;
-        for (const component of entity.getAll()) {
-          if (!component.enabled || !component.update) continue;
+        for (const component of entity._componentsInUpdateOrder()) {
+          if (!component.effectiveEnabled || !component.update) continue;
           const update = component.update;
           this.errorBoundary.wrapComponent(component, () =>
             update.call(component, entityDt),

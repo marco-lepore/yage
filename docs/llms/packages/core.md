@@ -97,6 +97,22 @@ Engine implementations: a dormant rigid body and collider leave the simulation b
 
 Gotcha: a collider disabled and re-enabled while it still overlaps something gets no new collision-start. A reused entity dropped onto an existing contact receives no `onCollision` for it.
 
+### Component update order
+
+Within one entity, `update()` / `fixedUpdate()` run in ascending `updatePriority`; ties run in add order. Undeclared = 0, so add order is the order until a component declares a value. A negative value runs before undeclared siblings, a positive one after them. Sibling order only: entities still update in scene add order.
+
+```ts
+class BoundsClamp extends Component {
+  static updatePriority = 10;              // class default: after the follow that moved the camera
+}
+this.add(new Mover());
+this.add(new Brain()).updatePriority = -1; // per instance: decides before Mover moves
+```
+
+- `component.updatePriority` is writable at any time, before or after `add()`; the instance value overrides the class's `static updatePriority`, which subclasses inherit.
+- Save/load keeps a per-instance value that differs from the class default.
+- `entity.getAll()` stays in add order.
+
 ### EntityPool
 
 A group of entities cycled by deactivation rather than spawn and destroy. A member is built once and reused, so its Rapier body, Pixi display object and component instances stay allocated between lives.

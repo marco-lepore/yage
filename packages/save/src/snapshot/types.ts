@@ -80,4 +80,10 @@ export interface ComponentSnapshot {
   type: string;
   /** Data from component.serialize(). */
   data: unknown;
+  /**
+   * Per-instance `updatePriority` at save time. Omitted when it equals the
+   * class's `static updatePriority` (or 0), which the restored instance
+   * takes on by itself.
+   */
+  updatePriority?: number;
 }

@@ -288,6 +288,42 @@ One Rapier behavior to know: a collider disabled and re-enabled while it still
 overlaps something gets no fresh collision-start event. An entity you reactivate
 directly on top of an existing contact will not receive `onCollision` for it.
 
+### Update Order
+
+Within one entity, components run `update()` and `fixedUpdate()` in the order
+they were added. When that is not the order you need — a component added late
+that must run first, or two components from different packages — set
+`updatePriority`. Lower runs first; equal priorities keep add order; the default
+is `0`, so a negative value runs before siblings that keep the default and a
+positive value runs after them.
+
+```typescript
+class Player extends Entity {
+  setup() {
+    this.add(new Mover());
+    this.add(new Brain()).updatePriority = -1; // decides before Mover moves
+  }
+}
+```
+
+A component that always belongs after (or before) a sibling can declare the
+default for every instance with a static:
+
+```typescript
+class BoundsClamp extends Component {
+  static updatePriority = 10; // after the follow that moved the camera
+
+  update() {
+    // clamp this.sibling(CameraComponent).position
+  }
+}
+```
+
+An instance's own `updatePriority` overrides the class default and can be
+written at any time, before or after `add()`. This orders siblings only:
+entities still update in the order they were added to the scene. Save/load
+keeps a per-instance value that differs from the class default.
+
 ### Cached Service Resolution
 
 Use `this.use(key)` inside a component to resolve a service from the DI
@@ -327,13 +363,10 @@ class Enemy extends Component {
 
 ### Error Boundary
 
-If `update()` or `fixedUpdate()` throws an exception, the engine does **not**
-crash. Instead:
-
-1. The error is logged.
-2. `component.enabled` is set to `false` — the component stops receiving
-   updates.
-3. The rest of the game continues running.
-
-This keeps a single broken component from taking down the entire game during
-development.
+A throw from `update()`, `fixedUpdate()`, or a lifecycle hook is attributed to
+the component: the engine records it in `Inspector.getErrors().callbackErrors`
+with the component and entity name, logs it, and rethrows it. Nothing is
+disabled or muted. The throw escapes the frame, so the game loop stops and the
+error reaches the host — your own `try`/`catch`, `window.onerror`, or the
+browser console — with the culprit already named. Tests and tooling read the
+recorded errors through the Inspector.

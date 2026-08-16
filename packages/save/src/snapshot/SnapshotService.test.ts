@@ -1065,6 +1065,55 @@ describe("SnapshotService", () => {
       expect(addLog).toEqual(["OrderDefaultB", "OrderDefaultA"]);
     });
 
+    it("round-trips a per-instance updatePriority and omits the class default", async () => {
+      @serializable
+      class ClassDefault extends Component {
+        static updatePriority = 10;
+        serialize() {
+          return {};
+        }
+        static fromSnapshot(): ClassDefault {
+          return new ClassDefault();
+        }
+      }
+      @serializable
+      class PriorityEntity extends Entity {
+        setup() {
+          this.add(new OrderDefaultA()).updatePriority = -3;
+          this.add(new OrderDefaultB());
+          this.add(new ClassDefault());
+        }
+      }
+      const { service, sceneManager, storage } = createTestContext();
+      const scene = new OrderScene();
+      await sceneManager.push(scene);
+      scene.spawn(PriorityEntity);
+      service.saveSnapshot("slot1");
+
+      const raw = JSON.parse(
+        storage.load("yage:snapshot:slot1")!,
+      ) as GameSnapshot;
+      const entry = raw.scenes[0]!.entities.find(
+        (e) => e.type === "PriorityEntity",
+      )!;
+      const byType = Object.fromEntries(
+        entry.components.map((c) => [c.type, c.updatePriority]),
+      );
+      expect(byType).toEqual({
+        OrderDefaultA: -3,
+        OrderDefaultB: undefined,
+        ClassDefault: undefined,
+      });
+
+      await service.loadSnapshot("slot1");
+      const restored = [...sceneManager.active!.getEntities()].find(
+        (e) => e instanceof PriorityEntity,
+      ) as PriorityEntity;
+      expect(restored.get(OrderDefaultA).updatePriority).toBe(-3);
+      expect(restored.get(OrderDefaultB).updatePriority).toBe(0);
+      expect(restored.get(ClassDefault).updatePriority).toBe(10);
+    });
+
     it("lets onAdd() read a lower-priority sibling", async () => {
       const { service, sceneManager } = createTestContext();
       // Serialized with the consumer FIRST — only the priority sort makes
