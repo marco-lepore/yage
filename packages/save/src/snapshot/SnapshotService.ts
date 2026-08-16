@@ -417,7 +417,15 @@ export class SnapshotService<TSlots extends UntypedSlots = UntypedSlots> {
       if (data == null) continue;
       const compType =
         getSerializableType(component) ?? component.constructor.name;
-      components.push({ type: compType, data });
+      const snapshot: ComponentSnapshot = { type: compType, data };
+      // Persist a per-instance update priority; absence means the class
+      // default, which the restored instance already has.
+      const classDefault =
+        (component.constructor as typeof Component).updatePriority ?? 0;
+      if (component.updatePriority !== classDefault) {
+        snapshot.updatePriority = component.updatePriority;
+      }
+      components.push(snapshot);
     }
 
     const userData = entity.serialize?.();
@@ -492,6 +500,9 @@ export class SnapshotService<TSlots extends UntypedSlots = UntypedSlots> {
       }
 
       const component = CompClass.fromSnapshot(snap.data);
+      if (snap.updatePriority !== undefined) {
+        component.updatePriority = snap.updatePriority;
+      }
       entity.add(component);
       restored.push({ component, data: snap.data });
     }

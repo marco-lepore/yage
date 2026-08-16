@@ -80,6 +80,14 @@ export class Entity {
   timeScale = 1;
 
   private components = new Map<ComponentClass, Component>();
+  /**
+   * Components sorted for the update pass, ascending `updatePriority` with
+   * ties in add order. Built lazily, and only once a component leaves the
+   * default priority; until then the map's own add order is the update order
+   * and the update pass iterates the map directly.
+   */
+  private _updateOrder: Component[] | null = null;
+  private _hasUpdatePriorities = false;
   private _destroyed = false;
   private _generation = 0;
   private _pooled = false;
@@ -442,6 +450,7 @@ export class Entity {
     }
     component.entity = this;
     this.components.set(cls, component);
+    this._invalidateUpdateOrder(component);
     // `onAdd` is where a component validates its dependencies, so this is a
     // throw site the game hits often while it is being written. Attribute it
     // to the component, the way `onEnable` and `update` are attributed.
@@ -489,6 +498,7 @@ export class Entity {
     comp.onRemove?.();
     comp.onDestroy?.();
     this.components.delete(cls);
+    this._updateOrder = null;
     this.callbacks?.onComponentRemoved(this, cls);
   }
 
@@ -536,9 +546,40 @@ export class Entity {
     this._scene?._observeEntityEvent(token.name, data, this);
   }
 
-  /** Get all components as an iterable. */
+  /** Get all components as an iterable, in add order. */
   getAll(): Iterable<Component> {
     return this.components.values();
+  }
+
+  /**
+   * Internal: components in the order `ComponentUpdateSystem` calls them —
+   * ascending `updatePriority`, ties in add order. Identical to `getAll()`
+   * until a component declares a priority. The sorted array is replaced, not
+   * mutated, when a component is added or removed, so a pass already
+   * iterating it finishes over the old order; a component added mid-pass
+   * first runs next frame. The map iterator on the default path is live, so
+   * there a component added mid-pass can run in the same pass.
+   * @internal
+   */
+  _componentsInUpdateOrder(): Iterable<Component> {
+    if (!this._hasUpdatePriorities) return this.components.values();
+    return (this._updateOrder ??= [...this.components.values()].sort(
+      (a, b) => a.updatePriority - b.updatePriority,
+    ));
+  }
+
+  /**
+   * Internal: a component was added or its `updatePriority` was written.
+   * Switches the entity onto the sorted update path once any component
+   * leaves the default priority, and drops the cached order so the next
+   * update pass rebuilds it.
+   * @internal
+   */
+  _invalidateUpdateOrder(component: Component): void {
+    if (this._hasUpdatePriorities || component.updatePriority !== 0) {
+      this._hasUpdatePriorities = true;
+      this._updateOrder = null;
+    }
   }
 
   /**
@@ -712,6 +753,7 @@ export class Entity {
       this.callbacks?.onComponentRemoved(this, cls);
     }
     this.components.clear();
+    this._updateOrder = null;
     this._eventHandlers?.clear();
 
     // Detach from the scene last, so component onDestroy hooks above can

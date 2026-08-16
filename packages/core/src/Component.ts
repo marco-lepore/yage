@@ -24,6 +24,7 @@ export abstract class Component {
   private _enabled = true;
   /** Whether `onEnable` has fired without a matching `onDisable` yet. */
   private _effectivelyEnabled = false;
+  private _updatePriority?: number;
   private _serviceCache: Map<string, unknown> | undefined;
   private _cleanups?: Array<() => void>;
 
@@ -54,6 +55,36 @@ export abstract class Component {
    */
   get effectiveEnabled(): boolean {
     return this._effectivelyEnabled;
+  }
+
+  /**
+   * Where this component runs among its siblings. `ComponentUpdateSystem`
+   * calls `update` / `fixedUpdate` on an entity's components in ascending
+   * priority; equal priorities run in add order. Undeclared = 0, so a
+   * negative value runs before siblings that keep the default and a positive
+   * value runs after them. Writable at any time, before or after `add()`.
+   * Defaults to the class's `static updatePriority`.
+   *
+   * ```ts
+   * class Player extends Entity {
+   *   setup() {
+   *     this.add(new Mover());
+   *     this.add(new Brain()).updatePriority = -1; // decides before Mover moves
+   *   }
+   * }
+   * ```
+   */
+  get updatePriority(): number {
+    return (
+      this._updatePriority ??
+      (this.constructor as typeof Component).updatePriority ??
+      0
+    );
+  }
+
+  set updatePriority(value: number) {
+    this._updatePriority = value;
+    (this.entity as Entity | undefined)?._invalidateUpdateOrder(this);
   }
 
   /**
@@ -312,6 +343,22 @@ export abstract class Component {
    * their own.
    */
   declare static restorePriority?: number;
+
+  /**
+   * Class-level default for {@link updatePriority}: every instance runs at
+   * this priority unless its own `updatePriority` is written. Undeclared = 0.
+   * Subclasses inherit their base class's value unless they declare their
+   * own. Declare it on a component whose behavior depends on running after
+   * (or before) a sibling, so the entity that adds it does not have to
+   * control the add order.
+   *
+   * ```ts
+   * class BoundsClamp extends Component {
+   *   static updatePriority = 10; // after the follow that moves the camera
+   * }
+   * ```
+   */
+  declare static updatePriority?: number;
 
   /** Return a JSON-serializable snapshot of this component's state. Used by the save system. */
   serialize?(): unknown;

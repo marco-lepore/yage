@@ -1461,13 +1461,15 @@ export class Inspector {
    * `serialize()` just to expose them.
    */
   private serializeComponentOwnProperties(comp: Component): unknown {
-    // Both live on Component.prototype as accessors, so neither loop below
+    // These live on Component.prototype as accessors, so neither loop below
     // reaches them. `enabled` alone is ambiguous once entities can be dormant:
     // `effectiveEnabled` is what says whether the component is running.
+    // `updatePriority` appears only when it moves the component off add order.
     const result: Record<string, unknown> = {
       enabled: comp.enabled,
       effectiveEnabled: comp.effectiveEnabled,
     };
+    if (comp.updatePriority !== 0) result.updatePriority = comp.updatePriority;
     for (const key of Object.getOwnPropertyNames(comp)) {
       if (key === "entity") continue;
       // Skip private-by-convention fields. Components hold pixi/rapier handles
