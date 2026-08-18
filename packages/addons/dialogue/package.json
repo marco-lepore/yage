@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-addons/dialogue",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Dialogue runner, branching, and swappable presenters for YAGE — the first YAGE addon",
   "keywords": [
     "yage",
@@ -86,9 +86,9 @@
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.18",
-    "@yagejs/core": ">=0.10.0",
-    "@yagejs/input": ">=0.10.0",
-    "@yagejs/renderer": ">=0.10.0",
+    "@yagejs/core": ">=0.10.4",
+    "@yagejs/input": ">=0.10.4",
+    "@yagejs/renderer": ">=0.10.4",
     "pixi.js": "^8.5.0"
   }
 }

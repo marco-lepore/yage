@@ -1,5 +1,20 @@
 # @yagejs/e2e
 
+## 0.0.11
+
+### Patch Changes
+
+- Updated dependencies [[`7a0d56e`](https://github.com/marco-lepore/yage/commit/7a0d56e3540e246673353b7b6facfeebedb2a51f), [`753050b`](https://github.com/marco-lepore/yage/commit/753050b08270af8a73f694e27ca886613c1b57fa), [`493d960`](https://github.com/marco-lepore/yage/commit/493d9609ccfa8b630e24f80600cc88d4907b5763), [`383b8e7`](https://github.com/marco-lepore/yage/commit/383b8e710d6eb3c673e52b5a1386478dfafa2bea), [`753050b`](https://github.com/marco-lepore/yage/commit/753050b08270af8a73f694e27ca886613c1b57fa)]:
+  - @yagejs/core@0.10.4
+  - @yagejs/save@0.10.4
+  - @yagejs-addons/dialogue@0.5.0
+  - @yagejs/debug@0.10.4
+  - @yagejs/renderer@0.10.4
+  - @yagejs/physics@0.10.4
+  - @yagejs/input@0.10.4
+  - @yagejs/pathfinding@0.10.4
+  - @yagejs/ui@0.10.4
+
 ## 0.0.10
 
 ### Patch Changes

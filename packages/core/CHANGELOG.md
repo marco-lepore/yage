@@ -1,5 +1,22 @@
 # @yagejs/core
 
+## 0.10.4
+
+### Patch Changes
+
+- [#287](https://github.com/marco-lepore/yage/pull/287) [`7a0d56e`](https://github.com/marco-lepore/yage/commit/7a0d56e3540e246673353b7b6facfeebedb2a51f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Components on one entity can declare the order their `update()` / `fixedUpdate()` run in.
+  - `Component.updatePriority` (instance, writable at any time) and `static updatePriority` (class default, inherited by subclasses). `ComponentUpdateSystem` calls an entity's components in ascending priority; equal priorities keep add order. Undeclared = 0, so add order is the order until a component sets a value; a negative value runs before undeclared siblings, a positive one after them.
+  - Zero cost when unused: an entity iterates its component map as before until one of its components leaves priority 0, then keeps a sorted array that is rebuilt only when a component is added, removed, or has its priority written. One difference between the two paths: a component that a sibling adds during an update pass can run in that same pass on the map path, and first runs next frame on the sorted path.
+  - `ComponentUpdateSystem` calls only components that are `effectiveEnabled`. Two mid-pass cases change as a result: a component that a sibling removed earlier in the pass is not called after its teardown, and when a component deactivates its own entity (`setActive(false)`), the siblings still to run in that pass are skipped — their `onDisable` has already fired.
+  - The Inspector's reflected component state includes `updatePriority` when it is not 0.
+  - Snapshots persist a per-instance `updatePriority` that differs from the class default (`ComponentSnapshot.updatePriority`) and re-apply it on load.
+
+- [#284](https://github.com/marco-lepore/yage/pull/284) [`753050b`](https://github.com/marco-lepore/yage/commit/753050b08270af8a73f694e27ca886613c1b57fa) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add `delete(key)` to the reactive record leaf, so a key can be removed rather than only overwritten. `createRecord({ ... }).delete("greeted")` drops the key from `get()` and from `serialize()`, and notifies subscribers; deleting an absent key is a no-op that fires nothing.
+
+  The key parameter accepts index-signature keys (`Record<string, T>`) and optional keys. On a fixed-shape record a required key is rejected at compile time — `get()` returns `Readonly<T>`, so removing a required key would leave the read typed but missing at runtime. `delete` is declared as a property rather than a method so it is checked contravariantly: a fixed-shape record is likewise not assignable to an open-ended `ReactiveRecord<Record<string, V>>`, which would otherwise let a `delete` through the alias drop a required key anyway.
+
+  Additive for anyone using the `createRecord` / `s.record` factories. Code that structurally implements `ReactiveRecord<T>` by hand — rather than obtaining one from a factory — needs to add the new member.
+
 ## 0.10.3
 
 ### Patch Changes

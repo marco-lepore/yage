@@ -1,6 +1,6 @@
 {
   "name": "@yagejs/effects",
-  "version": "0.10.3",
+  "version": "0.10.4",
   "description": "Built-in visual-effect presets for YAGE — bloom, outline, drop shadow, CRT, vignette, and more",
   "keywords": [
     "yage",
@@ -51,7 +51,7 @@
     "pixi-filters": "^6.1.5"
   },
   "peerDependencies": {
-    "@yagejs/renderer": ">=0.10.3 <0.11.0",
+    "@yagejs/renderer": ">=0.10.4 <0.11.0",
     "pixi.js": "^8.5.0"
   }
 }
