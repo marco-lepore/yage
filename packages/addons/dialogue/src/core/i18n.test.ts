@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { IdentityI18n, interpolate } from "./i18n.js";
+import { IdentityI18n, interpolateDialogueText } from "./i18n.js";
 
-describe("interpolate", () => {
+describe("interpolateDialogueText", () => {
   it("replaces known tokens and leaves unknown ones untouched", () => {
-    expect(interpolate("hi {name}, {nope}", { name: "Mara" })).toBe(
+    expect(interpolateDialogueText("hi {name}, {nope}", { name: "Mara" })).toBe(
       "hi Mara, {nope}",
     );
   });
@@ -12,14 +12,16 @@ describe("interpolate", () => {
   it("does not walk the prototype chain for token names", () => {
     // `{constructor}`/`{toString}` are inherited Object.prototype members, not
     // params — they must stay untouched like any other unknown token.
-    expect(interpolate("{constructor}", {})).toBe("{constructor}");
-    expect(interpolate("{toString} {valueOf} {hasOwnProperty}", {})).toBe(
-      "{toString} {valueOf} {hasOwnProperty}",
-    );
+    expect(interpolateDialogueText("{constructor}", {})).toBe("{constructor}");
+    expect(
+      interpolateDialogueText("{toString} {valueOf} {hasOwnProperty}", {}),
+    ).toBe("{toString} {valueOf} {hasOwnProperty}");
   });
 
   it("an own param shadowing a prototype name still interpolates", () => {
-    expect(interpolate("{constructor}", { constructor: "X" })).toBe("X");
+    expect(interpolateDialogueText("{constructor}", { constructor: "X" })).toBe(
+      "X",
+    );
   });
 });
 

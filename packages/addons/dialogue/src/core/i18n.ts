@@ -13,7 +13,11 @@ export interface I18nAdapter {
    * one; `fallback` is the authored literal text. `params` feed interpolation.
    * Implementations should return localised markup-bearing text.
    */
-  t(key: string | undefined, fallback: string, params?: Readonly<Record<string, unknown>>): string;
+  t(
+    key: string | undefined,
+    fallback: string,
+    params?: Readonly<Record<string, unknown>>,
+  ): string;
 }
 
 /**
@@ -23,8 +27,12 @@ export interface I18nAdapter {
 export class IdentityI18n implements I18nAdapter {
   constructor(readonly locale: string = "en") {}
 
-  t(_key: string | undefined, fallback: string, params?: Readonly<Record<string, unknown>>): string {
-    return params ? interpolate(fallback, params) : fallback;
+  t(
+    _key: string | undefined,
+    fallback: string,
+    params?: Readonly<Record<string, unknown>>,
+  ): string {
+    return params ? interpolateDialogueText(fallback, params) : fallback;
   }
 }
 
@@ -34,7 +42,10 @@ const TOKEN = /\{(\w+)\}/g;
 /** Replace `{token}` with `params.token`; leaves unknown tokens untouched.
  *  Own-property check only — `{constructor}`/`{toString}` must not stringify
  *  inherited Object.prototype members. */
-export function interpolate(text: string, params: Readonly<Record<string, unknown>>): string {
+export function interpolateDialogueText(
+  text: string,
+  params: Readonly<Record<string, unknown>>,
+): string {
   return text.replace(TOKEN, (whole, name: string) =>
     Object.hasOwn(params, name) ? String(params[name]) : whole,
   );
