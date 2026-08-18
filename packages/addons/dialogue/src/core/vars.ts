@@ -77,7 +77,7 @@ export type Cell =
  * (`set gold = gold - 50`).
  */
 export function cells(defs: Readonly<Record<string, Cell>>): VariableStorage {
-  // Own-property checks only (like i18n's `interpolate`): a bare `name in defs`
+  // Own-property checks only (like i18n's `interpolateDialogueText`): a bare `name in defs`
   // walks the prototype chain, so `has("toString")` / `has("constructor")` would
   // report true and read an inherited Object.prototype member as a cell.
   const read = (name: string): VarValue => {
