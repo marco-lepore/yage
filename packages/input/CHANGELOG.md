@@ -1,5 +1,13 @@
 # @yagejs/input
 
+## 0.10.4
+
+### Patch Changes
+
+- Updated dependencies [[`7a0d56e`](https://github.com/marco-lepore/yage/commit/7a0d56e3540e246673353b7b6facfeebedb2a51f), [`753050b`](https://github.com/marco-lepore/yage/commit/753050b08270af8a73f694e27ca886613c1b57fa), [`383b8e7`](https://github.com/marco-lepore/yage/commit/383b8e710d6eb3c673e52b5a1386478dfafa2bea)]:
+  - @yagejs/core@0.10.4
+  - @yagejs/debug@0.10.4
+
 ## 0.10.3
 
 ### Patch Changes

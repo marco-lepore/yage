@@ -1,6 +1,6 @@
 {
   "name": "create-yage",
-  "version": "0.10.3",
+  "version": "0.10.4",
   "description": "Scaffold a new YAGE 2D game engine project",
   "keywords": [
     "yage",

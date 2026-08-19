@@ -1,5 +1,41 @@
 # @yagejs/debug
 
+## 0.10.4
+
+### Patch Changes
+
+- [#285](https://github.com/marco-lepore/yage/pull/285) [`383b8e7`](https://github.com/marco-lepore/yage/commit/383b8e710d6eb3c673e52b5a1386478dfafa2bea) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add `drawVector` — a per-entity arrow for a vector read fresh every frame
+
+  `DebugRegistry.drawVector(entity, () => vector, options?)` draws an arrow on an
+  entity for a velocity, aim direction, knockback, or steering output, replacing
+  the hand-rolled `GraphicsComponent` that clears and redraws a line every update.
+  Options cover `scale`, `color`, `alpha`, `origin`, `minLength`, `width` and
+  `headSize`; shaft width and head size divide by the camera zoom so they keep a
+  constant on-screen size, while the arrow's length stays in world pixels.
+
+  The call returns a disposer, and a registration is dropped when the entity's
+  life ends — destroyed, or a pool member whose lease ended — so a provider
+  closure never outlives the entity it draws for and a per-lease registration
+  never accumulates. The provider is read only while the overlay is on and the
+  new `vectors` contributor's `arrows` flag is enabled, so a `drawVector` call in
+  a hot path costs nothing with debug off. Resolve the registry with
+  `tryResolve` rather than `use` in code that has to run without `DebugPlugin`
+  installed.
+
+  A hand-written `DebugRegistry` stub, such as one standing in for the registry in
+  a plugin's tests, needs a `drawVector` entry to satisfy the interface.
+
+  The package root now also re-exports the contributor-facing surface —
+  `DebugRegistryKey`, `DebugRegistry`, `DebugContributor`, `DebugGraphics`,
+  `WorldDebugApi`, `HudDebugApi`, `StatsApi` and the two vector types — matching
+  how `@yagejs/renderer`, `@yagejs/physics` and `@yagejs/input` mirror their own
+  `./api` entries. `@yagejs/debug/api` is unchanged and stays the import to reach
+  for in game code, since it carries the same surface without pulling in pixi.js.
+
+- Updated dependencies [[`7a0d56e`](https://github.com/marco-lepore/yage/commit/7a0d56e3540e246673353b7b6facfeebedb2a51f), [`753050b`](https://github.com/marco-lepore/yage/commit/753050b08270af8a73f694e27ca886613c1b57fa)]:
+  - @yagejs/core@0.10.4
+  - @yagejs/renderer@0.10.4
+
 ## 0.10.3
 
 ### Patch Changes

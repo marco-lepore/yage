@@ -1,5 +1,17 @@
 # @yagejs-addons/dialogue
 
+## 0.5.0
+
+### Minor Changes
+
+- [#288](https://github.com/marco-lepore/yage/pull/288) [`493d960`](https://github.com/marco-lepore/yage/commit/493d9609ccfa8b630e24f80600cc88d4907b5763) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Rename the public `interpolate` helper to `interpolateDialogueText` to avoid a name collision with `@yagejs/core`.
+
+- [#284](https://github.com/marco-lepore/yage/pull/284) [`753050b`](https://github.com/marco-lepore/yage/commit/753050b08270af8a73f694e27ca886613c1b57fa) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add `createStoreStorage(leaf)` — a `VariableStorage` backed by a `@yagejs/core` reactive store leaf, so dialogue variables can live in the game store. It accepts an open-ended record leaf or map leaf, reads through `leaf.get()` on every access, and writes through `leaf.set()` / `leaf.delete()`, so the variables survive `hydrate`/`reset` and a dialogue write that changes a value notifies the leaf's subscribers (`useStore`, `autoPersist`, the compound store's serialization). `set(name, null)` unsets the name on both leaf kinds; a fixed-shape record leaf, where that would drop a required key, is a compile error.
+
+  `createRecordStorage` is unchanged and still recommended for a plain host-owned record, but its docs no longer suggest passing a store leaf's snapshot object: a leaf replaces that object on every `set`, `hydrate`, and `reset`, so the storage would keep writing to a discarded object and silently lose every write.
+
+  Engine peer ranges move to `>=0.10.4 <0.11.0` — the record-leaf path needs `ReactiveRecord.delete`, which ships in `@yagejs/core` 0.10.4.
+
 ## 0.4.0
 
 ### Minor Changes
