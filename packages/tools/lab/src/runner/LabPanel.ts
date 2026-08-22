@@ -309,6 +309,8 @@ export class LabPanel {
   /** Whether the current scenario declares a `drive`. */
   private driveable = false;
   private runView: RunView | undefined;
+  /** Whether an ad-hoc `LabApi.drive()` holds the run lock. */
+  private busy = false;
 
   constructor(host: HTMLElement, opts: PanelOptions) {
     this.callbacks = opts.callbacks;
@@ -439,12 +441,23 @@ export class LabPanel {
   }
 
   /**
+   * Disables what a driven call must be the only writer of, for the
+   * duration of an ad-hoc `LabApi.drive()` — the same widgets a running
+   * scenario `drive` disables. Does not mean the scenario's own `drive()`
+   * ran.
+   */
+  setBusy(busy: boolean): void {
+    this.busy = busy;
+    this.applyRun();
+  }
+
+  /**
    * Writes the run's state into the button, the line, and everything a run has
    * to be the only writer of — the clock bar, the controls and the scenario
    * list all steer the clock or replace the scene under a run in flight.
    */
   private applyRun(): void {
-    const running = this.runView?.state === "running";
+    const running = this.busy || this.runView?.state === "running";
     // The control widgets, not the whole section: copying the values or moving
     // the column changes nothing a run reads.
     for (const box of [this.clockBar, this.controlList, this.list]) {
