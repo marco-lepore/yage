@@ -596,6 +596,48 @@ describe("drive", () => {
     expect(text).not.toContain("Drive");
   });
 
+  it("refuses to drive when a queued rebuild failed, leaving the scene behind the panel", async () => {
+    let shouldFail = false;
+    const modules = {
+      "/src/glitch.scenario.ts": {
+        default: defineScenario({
+          controls: { size: control.int(1, { min: 1, max: 9 }) },
+          setup: () => {
+            if (shouldFail) throw new Error("setup boom");
+          },
+        }),
+      },
+    };
+    const { started } = boot(
+      "?scenario=glitch",
+      ["renderer"],
+      undefined,
+      modules,
+    );
+    const api = await started;
+    const mounted = api.scene();
+
+    // The boot mount ran with `shouldFail` still false, so only the rebuild
+    // this control change asks for fails. Fire-and-forget, like the panel's
+    // own control widget, so nobody sees the rejection.
+    shouldFail = true;
+    void api.setControl("size", 4).catch(() => undefined);
+    for (let turn = 0; turn < 10; turn++) await Promise.resolve();
+
+    // The scene is still the one built from the old value, so a drive here
+    // would report on a state the panel never reached.
+    expect(api.scene()).toBe(mounted);
+    await expect(api.drive(() => undefined)).rejects.toThrow(
+      /was not built from the current scenario and control values/,
+    );
+
+    // Asking for the rebuild explicitly is the way through, and it fails
+    // loudly rather than silently driving the wrong scene.
+    await expect(
+      api.drive(() => undefined, { rebuild: true }),
+    ).rejects.toThrow("setup boom");
+  });
+
   it("runs against the scene a rebuild already queued lands on, not the outgoing one", async () => {
     const { state, started } = boot("?scenario=drop");
     const api = await started;

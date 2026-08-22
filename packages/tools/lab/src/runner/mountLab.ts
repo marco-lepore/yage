@@ -113,7 +113,9 @@ export interface LabApi {
    * (including a failed `expect`) resolves with `ok: false` rather than
    * rejecting. Rejects when no scenario is mounted, when a run or drive is
    * already in flight, when `opts.rebuild` is `true` and the rebuild itself
-   * throws, or when no scene is mounted at all (the boot rebuild failed).
+   * throws, when no scene is mounted at all (the boot rebuild failed), and
+   * when the mounted scene does not match the current scenario and values
+   * because a rebuild already queued for them threw.
    */
   drive<T = void>(
     fn: (ctx: ErasedDriveContext) => Promise<T> | T,
@@ -224,6 +226,13 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
   let entry: ScenarioEntry | undefined;
   let values: Record<string, ControlValue> = {};
   let scene: Scene | undefined;
+  /**
+   * The entry and values `scene` was built from. A rebuild that throws leaves
+   * these behind while `entry`/`values` have already moved on, which is how a
+   * drive tells a scene that matches the panel from one that does not.
+   */
+  let builtEntry: ScenarioEntry | undefined;
+  let builtValues: Record<string, ControlValue> | undefined;
   /** The three the lab raises itself. A rebuild clears all of them; a step clears its own. */
   let rebuildError: LabError | null = null;
   let stepError: LabError | null = null;
@@ -356,6 +365,8 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
     if (engine.scenes.active) await engine.scenes.replace(next);
     else await engine.scenes.push(next);
     scene = next;
+    builtEntry = entry;
+    builtValues = values;
     erase(entry.scenario).onMounted?.(next, values);
   }
 
@@ -521,7 +532,18 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
         // their call) may have one queued or running already. Reading `scene`
         // before it lands would hand this drive a scene the queue is about to
         // replace.
-        () => queue.idle;
+        async (): Promise<void> => {
+          await queue.idle;
+          // `idle` resolves whether that rebuild succeeded or threw. One that
+          // threw leaves the outgoing scene mounted under the incoming
+          // scenario's values, and a drive against that pair would report a
+          // pass for a state the panel never reached.
+          if (scene && (builtEntry !== entry || builtValues !== values)) {
+            throw new Error(
+              "The mounted scene was not built from the current scenario and control values — the rebuild that would have matched them failed. Fix the scenario, or pass { rebuild: true }.",
+            );
+          }
+        };
 
     try {
       const result = await driveScene(prepare, fn, opts);

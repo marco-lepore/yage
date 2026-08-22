@@ -491,9 +491,16 @@ whatever scene is mounted and `ctx.controls` is the current control values. A
 throw inside `fn`, including a failed `expect`, resolves with `ok: false`
 rather than rejecting the promise. The promise itself rejects when no
 scenario is mounted, when a run or drive is already in flight, when
-`{ rebuild: true }`'s rebuild throws, or when no scene is mounted at all (the
-boot rebuild failed). While a `drive()` is in flight, `show`, `setControl`,
-`run`, and a second `drive()` all reject.
+`{ rebuild: true }`'s rebuild throws, when no scene is mounted at all (the
+boot rebuild failed), and when a rebuild queued by an earlier `show` or
+`setControl` threw — the scene then belongs to the previous scenario or the
+previous control values, so driving it would report on a state the panel
+never reached. While a `drive()` is in flight, `show`, `setControl`, `run`,
+and a second `drive()` all reject.
+
+A drive that asks for no rebuild waits for one already in flight before it
+reads the scene, so a scenario click or a slider drag that has not landed yet
+cannot swap the scene mid-drive.
 
 ## Gotchas
 
