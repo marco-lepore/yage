@@ -164,6 +164,16 @@ describe("runDrive", () => {
     expect(result.framesUsed).toBe(1);
   });
 
+  it("carries the callback's return value on the ok branch", async () => {
+    const { engine } = stubEngine();
+    const result = await runDrive(engine, SCENE, {}, async (ctx) => {
+      await ctx.step();
+      return { hp: 7 };
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toEqual({ hp: 7 });
+  });
+
   it("counts every frame the run issued, however it asked for them", async () => {
     const { engine } = stubEngine();
     let ticks = 0;

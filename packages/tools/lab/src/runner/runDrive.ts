@@ -35,9 +35,13 @@ interface DriveOutcome {
   readonly warnings: readonly string[];
 }
 
-/** A failed run always says why, so `error` comes with `ok: false` and only there. */
-export type DriveResult =
-  | (DriveOutcome & { readonly ok: true })
+/**
+ * A failed run always says why, so `error` comes with `ok: false` and only
+ * there. `value` is what the driven callback returned — `void` for a
+ * scenario's own `drive`, whatever an ad-hoc `LabApi.drive` callback returns.
+ */
+export type DriveResult<T = void> =
+  | (DriveOutcome & { readonly ok: true; readonly value: T })
   | (DriveOutcome & {
       readonly ok: false;
       /** The assertion message, or whatever else the run threw. */
@@ -245,22 +249,23 @@ export function createDriveContext(
  * The caller owns the clock: the run issues its own frames, so it has to
  * happen with the clock control stopped and the clock already frozen.
  */
-export async function runDrive(
+export async function runDrive<T = void>(
   engine: Engine,
   scene: Scene,
   controls: Record<string, ControlValue>,
-  drive: (ctx: ErasedDriveContext) => Promise<void>,
+  drive: (ctx: ErasedDriveContext) => Promise<T> | T,
   opts: RunDriveOptions = {},
-): Promise<DriveResult> {
+): Promise<DriveResult<T>> {
   const time = engine.inspector.time;
   const captures: DriveCapture[] = [];
   const warnings: string[] = [];
   const startFrame = time.getFrame();
   const startedAt = performance.now();
   let error: string | undefined;
+  let value: T | undefined;
 
   try {
-    await drive(
+    value = await drive(
       createDriveContext(engine, scene, controls, captures, {
         pace: opts.pace,
         captureView: opts.captureView,
@@ -278,6 +283,6 @@ export async function runDrive(
     warnings,
   };
   return error === undefined
-    ? { ...outcome, ok: true }
+    ? { ...outcome, ok: true, value: value as T }
     : { ...outcome, ok: false, error };
 }

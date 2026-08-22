@@ -19,6 +19,12 @@ function stubEngine() {
     mounted: [] as string[],
     errors: [] as CallbackErrorRecord[],
     loopRunning: false,
+    /**
+     * Held by a test that needs a scene mount still in flight. A browser
+     * `scenes.replace` awaits the scenario's preload, so the window between
+     * asking for a rebuild and the scene landing is real there.
+     */
+    mountGate: undefined as Promise<void> | undefined,
   };
   let active: Scene | null = null;
 
@@ -41,12 +47,19 @@ function stubEngine() {
   };
 
   const mountScene = (scene: Scene): Promise<void> => {
-    active = scene;
-    state.mounted.push(scene.name);
-    // The engine runs `onEnter` as it stacks the scene, which is what makes a
-    // scenario's `setup` run.
-    (scene as { onEnter?: () => void }).onEnter?.();
-    return Promise.resolve();
+    const land = (): void => {
+      active = scene;
+      state.mounted.push(scene.name);
+      // The engine runs `onEnter` as it stacks the scene, which is what makes
+      // a scenario's `setup` run.
+      (scene as { onEnter?: () => void }).onEnter?.();
+    };
+    const gate = state.mountGate;
+    if (!gate) {
+      land();
+      return Promise.resolve();
+    }
+    return gate.then(land);
   };
 
   const engine = {
@@ -73,6 +86,14 @@ function stubEngine() {
     inspector: {
       time,
       getErrors: () => ({ callbackErrors: [...state.errors] }),
+      capture: {
+        dataURL: () => Promise.resolve("data:image/png;base64,mock"),
+      },
+    },
+    // No plugin ever registers anything, so a camera-view capture's
+    // `RendererKey` lookup always misses — the stub has no renderer to give it.
+    context: {
+      tryResolve: () => undefined,
     },
   };
 
@@ -108,6 +129,7 @@ function boot(
   search: string,
   plugins: readonly string[] = ["renderer"],
   startError?: Error,
+  modules: Record<string, unknown> = SCENARIOS,
 ) {
   window.history.replaceState(null, "", `/lab${search}`);
   const { state, engine } = stubEngine();
@@ -118,7 +140,7 @@ function boot(
     engine: () => engine,
     plugins: () => plugins.map((name) => ({ name }) as Plugin),
   });
-  const started = mount({ harness, modules: SCENARIOS, root: "/src", host });
+  const started = mount({ harness, modules, root: "/src", host });
   return { state, host, started };
 }
 
@@ -127,6 +149,13 @@ const errorText = (): string[] =>
     (node) => node.textContent ?? "",
   );
 
+const runLine = (): string =>
+  document.querySelector(".yage-lab__run")?.textContent ?? "";
+
+/** Whether the panel disables a scenario-list entry, one of the widgets a run or drive must be the only writer of. */
+const scenarioItemDisabled = (): boolean | undefined =>
+  document.querySelector<HTMLButtonElement>(".yage-lab__item")?.disabled;
+
 beforeEach(() => {
   vi.useFakeTimers();
   document.body.replaceChildren();
@@ -134,6 +163,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   (globalThis as Record<string, unknown>)[LAB_GLOBAL] = undefined;
 });
 
@@ -255,9 +285,6 @@ describe("mount", () => {
 });
 
 describe("run", () => {
-  const runLine = (): string =>
-    document.querySelector(".yage-lab__run")?.textContent ?? "";
-
   it("rebuilds the scene, runs the drive and reports what it took", async () => {
     const { state, started } = boot("?scenario=drop");
     const api = await started;
@@ -310,8 +337,8 @@ describe("run", () => {
     await expect(second).rejects.toThrow(/already in flight/);
     // A control change would rebuild the scene the drive is holding, and a
     // scenario switch would land this run's result under another scenario.
-    await expect(tuned).rejects.toThrow(/run is in flight/);
-    await expect(switched).rejects.toThrow(/run is in flight/);
+    await expect(tuned).rejects.toThrow(/run or drive is in flight/);
+    await expect(switched).rejects.toThrow(/run or drive is in flight/);
 
     const result = await running;
     expect(result.framesUsed).toBe(DRIVE_FRAMES);
@@ -335,5 +362,301 @@ describe("run", () => {
     // issues before the drive starts is invisible to `framesUsed`, and it
     // still means two writers.
     expect(state.frame - before).toBe(DRIVE_FRAMES);
+  });
+});
+
+describe("drive", () => {
+  it("throws when no scenario is mounted", async () => {
+    const { started } = boot("", ["renderer"], undefined, {});
+    const api = await started;
+    expect(api.current()).toBeUndefined();
+    await expect(api.drive(() => undefined)).rejects.toThrow(
+      "No scenario is mounted.",
+    );
+  });
+
+  it("runs against the scene as it stands, without rebuilding", async () => {
+    const { state, started } = boot("?scenario=drop");
+    const api = await started;
+    const mountsBefore = state.mounted.length;
+
+    let seenFirst = -1;
+    await api.drive((ctx) => {
+      const scene = ctx.scene as Scene & { hits?: number };
+      scene.hits = (scene.hits ?? 0) + 1;
+      seenFirst = scene.hits;
+    });
+    let seenSecond = -1;
+    await api.drive((ctx) => {
+      seenSecond = (ctx.scene as Scene & { hits?: number }).hits ?? 0;
+    });
+
+    expect(seenFirst).toBe(1);
+    // Still 1 on the second call: nothing rebuilt the scene in between.
+    expect(seenSecond).toBe(1);
+    expect(state.mounted.length).toBe(mountsBefore);
+  });
+
+  it("rebuilds first when asked", async () => {
+    const { state, started } = boot("?scenario=drop");
+    const api = await started;
+    const mountsBefore = state.mounted.length;
+
+    let sceneSeen: Scene | undefined;
+    await api.drive(
+      (ctx) => {
+        sceneSeen = ctx.scene;
+      },
+      { rebuild: true },
+    );
+
+    expect(state.mounted.length).toBe(mountsBefore + 1);
+    expect(sceneSeen).toBe(api.scene());
+  });
+
+  it("does not need the scenario to declare its own drive", async () => {
+    const { started } = boot("?scenario=spin");
+    const api = await started;
+    const result = await api.drive(() => "ok");
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toBe("ok");
+  });
+
+  it("resolves with the callback's return value, and counts its frames", async () => {
+    const { started } = boot("?scenario=drop");
+    const api = await started;
+    const result = await api.drive(async (ctx) => {
+      await ctx.step(3);
+      return { hp: 7 };
+    });
+    expect(result.ok).toBe(true);
+    expect(result.framesUsed).toBe(3);
+    expect(result.durationMs).toBeGreaterThanOrEqual(0);
+    if (result.ok) expect(result.value).toEqual({ hp: 7 });
+  });
+
+  it("collects a capture into the result", async () => {
+    const { started } = boot("?scenario=drop");
+    const api = await started;
+    const result = await api.drive(async (ctx) => {
+      await ctx.capture("mid-drive");
+    });
+    expect(result.captures).toEqual([
+      { label: "mid-drive", dataUrl: "data:image/png;base64,mock" },
+    ]);
+  });
+
+  it("resolves ok:false with the message for a callback throw, rather than rejecting", async () => {
+    const { started } = boot("?scenario=drop");
+    const api = await started;
+    const result = await api.drive(() => {
+      throw new Error("boom");
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("boom");
+  });
+
+  it("surfaces a failed drive in the panel's errors, without touching the run state", async () => {
+    const { started } = boot("?scenario=drop");
+    const api = await started;
+    await api.drive(() => {
+      throw new Error("boom");
+    });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(errorText().join()).toContain("boom");
+    expect(runLine()).toBe("");
+  });
+
+  it("restores the clock's play state after success and after a callback throw", async () => {
+    const { started } = boot("?scenario=drop");
+    const api = await started;
+    expect(api.clock.isRunning).toBe(true);
+
+    await api.drive(async (ctx) => {
+      await ctx.step();
+    });
+    expect(api.clock.isRunning).toBe(true);
+
+    await api.drive(() => {
+      throw new Error("boom");
+    });
+    expect(api.clock.isRunning).toBe(true);
+  });
+
+  it("refuses to swap the scene, start a run, or start a second drive while one is in flight", async () => {
+    const { started } = boot("?scenario=drop");
+    const api = await started;
+
+    // All asked for in the turn the drive starts in: the stub engine settles
+    // a drive in a few microtasks, so anything awaited first would let it
+    // finish.
+    const driving = api.drive(async (ctx) => {
+      await ctx.step(DRIVE_FRAMES);
+      return "done";
+    });
+    const second = api.drive(() => undefined);
+    const ran = api.run();
+    const tuned = api.setControl("count", 5);
+    const switched = api.show("spin");
+
+    await expect(second).rejects.toThrow(/run or drive is in flight/);
+    await expect(ran).rejects.toThrow(/already in flight/);
+    await expect(tuned).rejects.toThrow(/run or drive is in flight/);
+    await expect(switched).rejects.toThrow(/run or drive is in flight/);
+
+    const result = await driving;
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toBe("done");
+  });
+
+  it("disables the panel's widgets during an ad-hoc drive and re-enables them after", async () => {
+    const { started } = boot("?scenario=drop");
+    const api = await started;
+    expect(scenarioItemDisabled()).toBe(false);
+
+    let sawDisabled = false;
+    await api.drive(async (ctx) => {
+      sawDisabled = scenarioItemDisabled() === true;
+      await ctx.step();
+    });
+
+    expect(sawDisabled).toBe(true);
+    expect(scenarioItemDisabled()).toBe(false);
+  });
+
+  it("leaves the clock paused afterwards when it was paused before", async () => {
+    const { started } = boot("?scenario=drop&paused=1");
+    const api = await started;
+    expect(api.clock.isRunning).toBe(false);
+
+    await api.drive(async (ctx) => {
+      await ctx.step();
+    });
+    expect(api.clock.isRunning).toBe(false);
+  });
+
+  it("clears a driveError once a later drive succeeds", async () => {
+    const { started } = boot("?scenario=drop");
+    const api = await started;
+    await api.drive(() => {
+      throw new Error("boom");
+    });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(errorText().join()).toContain("boom");
+
+    await api.drive(() => "ok");
+    await vi.advanceTimersByTimeAsync(200);
+    expect(errorText()).toEqual([]);
+  });
+
+  it("clears a driveError once a rebuild runs, however it was asked for", async () => {
+    const { started } = boot("?scenario=drop");
+    const api = await started;
+    await api.drive(() => {
+      throw new Error("boom");
+    });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(errorText().join()).toContain("boom");
+
+    await api.setControl("count", 5);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(errorText()).toEqual([]);
+  });
+
+  it("labels a failing opt-in rebuild as Rebuild, not Drive, and rejects", async () => {
+    let shouldFail = false;
+    const modules = {
+      "/src/glitch.scenario.ts": {
+        default: defineScenario({
+          setup: () => {
+            if (shouldFail) throw new Error("setup boom");
+          },
+        }),
+      },
+    };
+    const { started } = boot(
+      "?scenario=glitch",
+      ["renderer"],
+      undefined,
+      modules,
+    );
+    const api = await started;
+
+    // The boot mount ran with `shouldFail` still false, so this is the only
+    // rebuild that fails.
+    shouldFail = true;
+    await expect(
+      api.drive(() => undefined, { rebuild: true }),
+    ).rejects.toThrow("setup boom");
+
+    await vi.advanceTimersByTimeAsync(200);
+    const text = errorText().join();
+    expect(text).toContain("Rebuild");
+    expect(text).toContain("setup boom");
+    expect(text).not.toContain("Drive");
+  });
+
+  it("runs against the scene a rebuild already queued lands on, not the outgoing one", async () => {
+    const { state, started } = boot("?scenario=drop");
+    const api = await started;
+    const outgoing = api.scene();
+
+    // Hold the next mount so the rebuild is still in flight when the drive
+    // starts, which is what a browser preload does.
+    let release!: () => void;
+    state.mountGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    // Fire-and-forget, like the panel's own scenario click.
+    void api.show("spin");
+    let sceneSeen: Scene | undefined;
+    const driven = api.drive((ctx) => {
+      sceneSeen = ctx.scene;
+    });
+
+    // Give a drive that did not wait every chance to read the outgoing scene.
+    for (let turn = 0; turn < 10; turn++) await Promise.resolve();
+    expect(sceneSeen).toBeUndefined();
+
+    release();
+    await driven;
+
+    expect(api.current()?.id).toBe("spin");
+    expect(sceneSeen).not.toBe(outgoing);
+    expect(sceneSeen).toBe(api.scene());
+  });
+
+  it("passes pace and captureView from opts through to the run", async () => {
+    const waits = vi.fn((callback: FrameRequestCallback): number => {
+      callback(0);
+      return 1;
+    });
+    vi.stubGlobal("requestAnimationFrame", waits);
+
+    // Paused: `LabClock`'s own play loop schedules through the same global,
+    // and this stub would recurse into it if the clock were running.
+    const { started } = boot("?scenario=drop&paused=1");
+    const api = await started;
+
+    const paced = await api.drive(
+      async (ctx) => {
+        await ctx.step(2);
+      },
+      { pace: "frame" },
+    );
+    expect(paced.ok).toBe(true);
+    expect(waits).toHaveBeenCalledTimes(2);
+
+    // The stub engine has no RendererPlugin, so a camera-view capture —
+    // reachable only if `captureView` made it through to `runDrive` — fails
+    // distinctly from the default content view, which the stub supports.
+    const captured = await api.drive(
+      async (ctx) => {
+        await ctx.capture();
+      },
+      { captureView: "camera" },
+    );
+    expect(captured.ok).toBe(false);
   });
 });
