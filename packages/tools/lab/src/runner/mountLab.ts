@@ -358,16 +358,21 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
     rebuildError = null;
     stepError = null;
     driveError = null;
-    const next = buildScene(entry, values);
+    // Read once, before the mount is awaited. A fire-and-forget `setControl`
+    // can land during that await and move `entry`/`values` on to what the
+    // next rebuild will use, and everything below describes this one.
+    const builtWith = entry;
+    const builtFrom = values;
+    const next = buildScene(builtWith, builtFrom);
     // Asked of the engine rather than tracked here: `push` preloads before it
     // stacks the scene, so a scenario whose assets fail to load leaves nothing
     // on the stack and the next attempt still has to push.
     if (engine.scenes.active) await engine.scenes.replace(next);
     else await engine.scenes.push(next);
     scene = next;
-    builtEntry = entry;
-    builtValues = values;
-    erase(entry.scenario).onMounted?.(next, values);
+    builtEntry = builtWith;
+    builtValues = builtFrom;
+    erase(builtWith.scenario).onMounted?.(next, builtFrom);
   }
 
   /**

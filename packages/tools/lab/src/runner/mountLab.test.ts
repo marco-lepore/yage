@@ -638,6 +638,56 @@ describe("drive", () => {
     ).rejects.toThrow("setup boom");
   });
 
+  it("marks the scene with the values it was built from, not ones set during the mount", async () => {
+    // Counted rather than flagged: which rebuild fails then does not depend on
+    // when the test flips a boolean relative to the queue draining.
+    let setups = 0;
+    const modules = {
+      "/src/glitch.scenario.ts": {
+        default: defineScenario({
+          controls: { size: control.int(1, { min: 1, max: 9 }) },
+          setup: () => {
+            setups++;
+            // 1 is the boot mount, 2 is the size-2 rebuild, 3 is size-3.
+            if (setups === 3) throw new Error("setup boom");
+          },
+        }),
+      },
+    };
+    const { state, started } = boot(
+      "?scenario=glitch",
+      ["renderer"],
+      undefined,
+      modules,
+    );
+    const api = await started;
+
+    // Hold the mount the way a browser preload does, so a control change can
+    // land while the scene this rebuild is placing is still in flight.
+    let release!: () => void;
+    state.mountGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    void api.setControl("size", 2).catch(() => undefined);
+    for (let turn = 0; turn < 5; turn++) await Promise.resolve();
+
+    // Moves `values` on while the size-2 scene is mid-mount, and queues the
+    // rebuild that would place a size-3 scene.
+    void api.setControl("size", 3).catch(() => undefined);
+
+    release();
+    for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+
+    // The size-3 rebuild threw, so what is mounted was built from size 2
+    // while the panel reads 3. A drive here would report on neither.
+    expect(setups).toBe(3);
+    expect(api.controls()["size"]).toBe(3);
+    await expect(api.drive(() => undefined)).rejects.toThrow(
+      /was not built from the current scenario and control values/,
+    );
+  });
+
   it("runs against the scene a rebuild already queued lands on, not the outgoing one", async () => {
     const { state, started } = boot("?scenario=drop");
     const api = await started;
