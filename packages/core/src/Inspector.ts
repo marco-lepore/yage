@@ -846,7 +846,6 @@ export class Inspector {
     } catch (thrown) {
       error = thrown instanceof Error ? thrown.message : String(thrown);
     } finally {
-      this.driving = false;
       try {
         // A key left down would carry into whatever plays next. Released
         // while still frozen, so the game never sees a held key advance.
@@ -858,6 +857,10 @@ export class Inspector {
         // from an inner `finally` keeps that throw from leaving the page
         // frozen with nothing advancing.
         if (!wasFrozen) controller.thaw();
+        // Cleared last: a key-up listener that starts its own drive would
+        // otherwise pass the guard and run against a clock this one is about
+        // to thaw underneath it.
+        this.driving = false;
       }
     }
 

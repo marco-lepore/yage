@@ -432,6 +432,9 @@ test("can the player jump onto the ledge?", async ({ page }) => {
   await page.goto("/platformer.html");
   await page.waitForFunction(() => window.__yage__ !== undefined);
   await page.evaluate(() => window.__yage__.ready);
+  await page.waitForFunction(
+    () => window.__yage__.inspector.getSceneStack().length > 0,
+  );
 
   const result = await page.evaluate(async () => {
     const i = window.__yage__.inspector;

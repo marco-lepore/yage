@@ -1033,6 +1033,33 @@ describe("Inspector", () => {
       ).resolves.toMatchObject({ ok: true, value: "after" });
     });
 
+    it("holds the guard until the clock is restored, so a key-up listener cannot nest a drive", async () => {
+      const { inspector, ctx } = setup();
+      const log: string[] = [];
+      const controller = driveController(log);
+      inspector.attachTimeController(controller);
+      const input = fakeInput(log);
+      let nested: unknown;
+      // A game key-up listener that reaches for the Inspector during the
+      // release the drive itself issues.
+      input.clearAll = () => {
+        log.push("clearAll");
+        try {
+          void inspector.drive(() => undefined);
+        } catch (error) {
+          nested = error;
+        }
+      };
+      ctx.register(InputManagerRuntimeKey, input);
+
+      await inspector.drive(({ input: driveInput }) => {
+        driveInput.keyDown("KeyD");
+      });
+
+      expect((nested as Error).message).toContain("already in flight");
+      expect(controller.isFrozen).toBe(false);
+    });
+
     it("passes dtMs through step and until to the clock", async () => {
       const { inspector } = setup();
       const dts: Array<number | undefined> = [];
