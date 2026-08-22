@@ -795,6 +795,331 @@ describe("Inspector", () => {
       expect(onStep).not.toHaveBeenCalled();
     });
   });
+
+  describe("drive", () => {
+    const InputManagerRuntimeKey = new ServiceKey<FakeInput>("inputManager");
+
+    interface FakeInput {
+      fireKeyDown(code: string): void;
+      fireKeyUp(code: string): void;
+      firePointerMove(x: number, y: number): void;
+      firePointerDown(button?: 0 | 1 | 2): void;
+      firePointerUp(button?: 0 | 1 | 2): void;
+      fireGamepadButton(code: string, pressed: boolean): void;
+      fireGamepadAxis(side: string, value: number): void;
+      fireAction(name: string): void;
+      clearAll(): void;
+      snapshotState(): unknown;
+    }
+
+    /** Records what a drive did, in order, so ordering can be asserted. */
+    function fakeInput(log: string[]): FakeInput {
+      return {
+        fireKeyDown: (code) => log.push(`down:${code}`),
+        fireKeyUp: (code) => log.push(`up:${code}`),
+        firePointerMove: () => log.push("pointerMove"),
+        firePointerDown: () => log.push("pointerDown"),
+        firePointerUp: () => log.push("pointerUp"),
+        fireGamepadButton: () => log.push("padButton"),
+        fireGamepadAxis: () => log.push("padAxis"),
+        fireAction: (name) => log.push(`action:${name}`),
+        clearAll: () => log.push("clearAll"),
+        snapshotState: () => ({}),
+      };
+    }
+
+    /** A clock whose frozen state actually moves, so restore can be asserted. */
+    function driveController(
+      log: string[],
+      onStep?: (count: number, dtMs?: number) => void,
+    ) {
+      let frame = 0;
+      const controller = {
+        isFrozen: false,
+        freeze() {
+          controller.isFrozen = true;
+          log.push("freeze");
+        },
+        thaw() {
+          controller.isFrozen = false;
+          log.push("thaw");
+        },
+        stepFrames(count: number, dtMs?: number) {
+          frame += count;
+          log.push("step");
+          onStep?.(count, dtMs);
+        },
+        setDelta() {},
+        getFrame: () => frame,
+      };
+      return controller;
+    }
+
+    it("freezes a running clock for the drive and thaws it afterwards", async () => {
+      const { inspector } = setup();
+      const log: string[] = [];
+      const controller = driveController(log);
+      inspector.attachTimeController(controller);
+
+      const result = await inspector.drive(async ({ step }) => {
+        expect(controller.isFrozen).toBe(true);
+        await step(2);
+        return "done";
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toBe("done");
+      expect(result.framesUsed).toBe(2);
+      expect(controller.isFrozen).toBe(false);
+      expect(log).toEqual(["freeze", "step", "step", "thaw"]);
+    });
+
+    it("leaves an already-frozen clock frozen", async () => {
+      const { inspector } = setup();
+      const log: string[] = [];
+      const controller = driveController(log);
+      controller.isFrozen = true;
+      inspector.attachTimeController(controller);
+
+      await inspector.drive(async ({ step }) => {
+        await step(1);
+      });
+
+      expect(controller.isFrozen).toBe(true);
+      expect(log).toEqual(["step"]);
+    });
+
+    it("releases synthetic input after the drive, even when the callback threw", async () => {
+      const { inspector, ctx } = setup();
+      const log: string[] = [];
+      const controller = driveController(log);
+      inspector.attachTimeController(controller);
+      ctx.register(InputManagerRuntimeKey, fakeInput(log));
+
+      const result = await inspector.drive(({ input }) => {
+        input.keyDown("KeyD");
+        throw new Error("probe gave up");
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toBe("probe gave up");
+      expect(log).toEqual(["freeze", "down:KeyD", "clearAll", "thaw"]);
+      expect(controller.isFrozen).toBe(false);
+    });
+
+    it("holds a key across frames and releases it after the frames are issued", async () => {
+      const { inspector, ctx } = setup();
+      const log: string[] = [];
+      let settledMidStep = false;
+      const controller = driveController(log, () => {
+        // A scene transition resolves in a microtask rather than inside
+        // stepFrames; the drive's frames yield a macrotask, so it settles
+        // before the key is released.
+        void Promise.resolve().then(() => {
+          settledMidStep = true;
+          log.push("microtask");
+        });
+      });
+      inspector.attachTimeController(controller);
+      ctx.register(InputManagerRuntimeKey, fakeInput(log));
+
+      await inspector.drive(async ({ input }) => {
+        await input.hold("Space", 2);
+      });
+
+      expect(settledMidStep).toBe(true);
+      expect(log).toEqual([
+        "freeze",
+        "down:Space",
+        "step",
+        "microtask",
+        "step",
+        "microtask",
+        "up:Space",
+        "clearAll",
+        "thaw",
+      ]);
+    });
+
+    it("fires an action once per frame", async () => {
+      const { inspector, ctx } = setup();
+      const log: string[] = [];
+      inspector.attachTimeController(driveController(log));
+      ctx.register(InputManagerRuntimeKey, fakeInput(log));
+
+      await inspector.drive(async ({ input }) => {
+        await input.fireAction("jump", 2);
+      });
+
+      expect(log.filter((entry) => entry === "action:jump")).toHaveLength(2);
+    });
+
+    it("reports the frames until() took, and its exhaustion as a failed drive", async () => {
+      const { inspector } = setup();
+      const log: string[] = [];
+      let stepped = 0;
+      inspector.attachTimeController(
+        driveController(log, () => {
+          stepped++;
+        }),
+      );
+
+      const reached = await inspector.drive(({ until }) =>
+        until(() => stepped >= 3, { maxFrames: 10 }),
+      );
+      expect(reached.ok).toBe(true);
+      if (reached.ok) expect(reached.value).toBe(3);
+
+      const exhausted = await inspector.drive(async ({ until }) => {
+        await until(() => false, { maxFrames: 3 });
+      });
+      expect(exhausted.ok).toBe(false);
+      if (!exhausted.ok) {
+        expect(exhausted.error).toContain("still false after 3 frames");
+      }
+    });
+
+    it("throws from the call itself when DebugPlugin is not active", () => {
+      const { inspector } = setup();
+
+      expect(() => inspector.drive(() => undefined)).toThrow(
+        "Inspector.time requires DebugPlugin to be active.",
+      );
+    });
+
+    it("keeps the clock restored when releasing input throws", async () => {
+      const { inspector, ctx } = setup();
+      const log: string[] = [];
+      const controller = driveController(log);
+      inspector.attachTimeController(controller);
+      const input = fakeInput(log);
+      // A game key-up listener that throws reaches clearAll through the
+      // engine's error boundary, which reports and rethrows.
+      input.clearAll = () => {
+        log.push("clearAll");
+        throw new Error("key-up listener failed");
+      };
+      ctx.register(InputManagerRuntimeKey, input);
+
+      await expect(
+        inspector.drive(({ input: driveInput }) => {
+          driveInput.keyDown("KeyD");
+        }),
+      ).rejects.toThrow("key-up listener failed");
+
+      expect(controller.isFrozen).toBe(false);
+      expect(log).toEqual(["freeze", "down:KeyD", "clearAll", "thaw"]);
+    });
+
+    it("refuses a second drive while one is in flight", async () => {
+      const { inspector } = setup();
+      inspector.attachTimeController(driveController([]));
+
+      let inner: unknown;
+      const outer = await inspector.drive(async ({ step }) => {
+        try {
+          await inspector.drive(() => undefined);
+        } catch (error) {
+          inner = error;
+        }
+        await step(1);
+      });
+
+      expect(outer.ok).toBe(true);
+      expect((inner as Error).message).toContain("already in flight");
+      // The guard clears, so the next drive runs.
+      await expect(
+        inspector.drive(() => "after"),
+      ).resolves.toMatchObject({ ok: true, value: "after" });
+    });
+
+    it("holds the guard until the clock is restored, so a key-up listener cannot nest a drive", async () => {
+      const { inspector, ctx } = setup();
+      const log: string[] = [];
+      const controller = driveController(log);
+      inspector.attachTimeController(controller);
+      const input = fakeInput(log);
+      let nested: unknown;
+      // A game key-up listener that reaches for the Inspector during the
+      // release the drive itself issues.
+      input.clearAll = () => {
+        log.push("clearAll");
+        try {
+          void inspector.drive(() => undefined);
+        } catch (error) {
+          nested = error;
+        }
+      };
+      ctx.register(InputManagerRuntimeKey, input);
+
+      await inspector.drive(({ input: driveInput }) => {
+        driveInput.keyDown("KeyD");
+      });
+
+      expect((nested as Error).message).toContain("already in flight");
+      expect(controller.isFrozen).toBe(false);
+    });
+
+    it("passes dtMs through step and until to the clock", async () => {
+      const { inspector } = setup();
+      const dts: Array<number | undefined> = [];
+      let frames = 0;
+      inspector.attachTimeController(
+        driveController([], (_count, dtMs) => {
+          frames++;
+          dts.push(dtMs);
+        }),
+      );
+
+      await inspector.drive(async ({ step, until }) => {
+        await step(2, { dtMs: 32 });
+        await until(() => frames >= 3, { dtMs: 8 });
+      });
+
+      expect(dts).toEqual([32, 32, 8]);
+    });
+
+    it("reports frames and duration on a failed drive too", async () => {
+      const { inspector } = setup();
+      inspector.attachTimeController(driveController([]));
+
+      const result = await inspector.drive(async ({ step }) => {
+        await step(4);
+        throw new Error("gave up late");
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.framesUsed).toBe(4);
+      expect(result.durationMs).toBeGreaterThanOrEqual(0);
+      expect(result.captures).toEqual([]);
+    });
+
+    it("hands the callback the inspector's own event log", async () => {
+      const { inspector } = setup();
+      inspector.attachTimeController(driveController([]));
+
+      const result = await inspector.drive(({ events }) => events === inspector.events);
+
+      expect(result).toMatchObject({ ok: true, value: true });
+    });
+
+    it("collects captures the drive asked for", async () => {
+      const { inspector } = setup();
+      inspector.attachTimeController(driveController([]));
+      const dataUrl = "data:image/png;base64,AAAA";
+      vi.spyOn(inspector.capture, "dataURL").mockResolvedValue(dataUrl);
+
+      const result = await inspector.drive(async ({ capture }) => {
+        await capture("before");
+        await capture();
+      });
+
+      expect(result.captures).toEqual([
+        { label: "before", dataUrl },
+        { label: undefined, dataUrl },
+      ]);
+    });
+  });
 });
 
 // A fake graphical component + a registered contributor that reads it. Mirrors
