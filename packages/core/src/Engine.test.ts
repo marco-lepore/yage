@@ -671,6 +671,102 @@ describe("Engine", () => {
       expect(yageGlobal?.["clock"]).toEqual({ ready: true });
       engine.destroy();
     });
+
+    it("publishes __yage__ before startup work, and resolves ready after onStart", async () => {
+      const seen: string[] = [];
+      const engine = new Engine({ debug: true });
+      engine.use({
+        name: "records-order",
+        version: "1.0.0",
+        install: () => {
+          seen.push(
+            "__yage__" in globalThis ? "install:published" : "install:absent",
+          );
+        },
+        onStart: () => {
+          seen.push("onStart");
+        },
+      });
+
+      const ready = yageGlobalReady();
+      // Recorded from the then-handler, so the assertion below pins the order
+      // rather than just the fact that it settled.
+      void ready.then(() => {
+        seen.push("ready");
+      });
+
+      await engine.start();
+      await ready;
+
+      expect(seen).toEqual(["install:published", "onStart", "ready"]);
+      engine.destroy();
+    });
+
+    it("rejects ready with the boot error, leaving the global in place", async () => {
+      const boom = new Error("plugin install failed");
+      const engine = new Engine({ debug: true });
+      engine.use({
+        name: "fails",
+        version: "1.0.0",
+        install: () => {
+          throw boom;
+        },
+      });
+
+      const ready = yageGlobalReady();
+      await expect(engine.start()).rejects.toThrow("plugin install failed");
+      await expect(ready).rejects.toThrow("plugin install failed");
+      expect("__yage__" in globalThis).toBe(true);
+      engine.destroy();
+    });
+
+    it("rejects ready when destroy lands before start finished", async () => {
+      const engine = new Engine({ debug: true });
+      // Read while the global is still published — destroy() removes it.
+      let ready: Promise<void> | undefined;
+      engine.use({
+        name: "destroys-midway",
+        version: "1.0.0",
+        install: () => {
+          ready = (
+            (globalThis as Record<string, unknown>)["__yage__"] as {
+              ready: Promise<void>;
+            }
+          ).ready;
+          engine.destroy();
+        },
+      });
+
+      await engine.start();
+
+      await expect(ready).rejects.toThrow(
+        "Engine.destroy() ran before start() finished.",
+      );
+    });
+
+    it("does not raise an unhandled rejection when nobody awaits ready", async () => {
+      const onUnhandled = vi.fn();
+      process.on("unhandledRejection", onUnhandled);
+      try {
+        const engine = new Engine({ debug: true });
+        engine.use({
+          name: "fails-unwatched",
+          version: "1.0.0",
+          install: () => {
+            throw new Error("nobody is listening");
+          },
+        });
+
+        await expect(engine.start()).rejects.toThrow("nobody is listening");
+        engine.destroy();
+        // Unhandled rejections are reported a macrotask after the fact.
+        await new Promise((resolve) => setTimeout(resolve, 10));
+
+        expect(onUnhandled).not.toHaveBeenCalled();
+      } finally {
+        process.off("unhandledRejection", onUnhandled);
+      }
+    });
   });
 
   describe("inspector integration", () => {
@@ -689,3 +785,24 @@ describe("Engine", () => {
     });
   });
 });
+
+/**
+ * Reads `ready` off the published debug global. Taken as a promise before the
+ * assertion that needs it, because `destroy()` removes the global.
+ */
+function yageGlobalReady(): Promise<void> {
+  const read = (): Promise<void> | undefined =>
+    (
+      (globalThis as Record<string, unknown>)["__yage__"] as
+        | { ready?: Promise<void> }
+        | undefined
+    )?.ready;
+  const existing = read();
+  if (existing) return existing;
+  // start() publishes the global; this defers the read until it has.
+  return Promise.resolve().then(() => {
+    const ready = read();
+    if (!ready) throw new Error("__yage__.ready was never published");
+    return ready;
+  });
+}

@@ -336,10 +336,82 @@ await window.__yage__.inspector.time.stepAsync(45);
 await window.__yage__.inspector.time.stepAsync(10, { dtMs: 32 }); // custom per-frame dt
 ```
 
-The clock still has to be frozen first, same as `time.step`. Reach for
-`stepUntil`/`stepAsync` whenever the sequence crosses a scene transition or an
-async runner; keep using `time.step(N)` for everything else, since it is the
-simpler call.
+The clock has to be frozen first, same as `time.step` — `inspector.drive()`
+below does that for you. Reach for `stepUntil`/`stepAsync` whenever the
+sequence crosses a scene transition or an async runner; keep using
+`time.step(N)` for everything else, since it is the simpler call.
+
+### Waiting for the engine, and driving it in one call
+
+An engine built with `debug: true` publishes `window.__yage__` as `start()`
+begins. The object carries `inspector`, `logger` and `ready`; `DebugPlugin`
+adds `clock` when its `onStart` hook runs.
+
+`ready` settles when `start()` finishes — plugins installed, loop running,
+`onStart` hooks done. It is what a script waits on after loading or reloading
+the page, instead of sleeping and hoping:
+
+```typescript
+await page.waitForFunction(() => window.__yage__ !== undefined);
+await page.evaluate(() => window.__yage__.ready);
+```
+
+The global appears before startup work, so finding it says nothing about how
+far boot got, and a failed boot rejects `ready` with the error that stopped it
+rather than leaving the script to time out.
+
+The host pushes the first scene after `await engine.start()`, so `ready` does
+not cover that. Wait for a scene separately, and poll for it rather than
+stepping — the clock is running at that point unless `DebugPlugin` was given
+`startFrozen`, and `step`/`stepUntil` throw on a clock that is not frozen:
+
+```typescript
+await page.waitForFunction(
+  () => window.__yage__.inspector.getSceneStack().length > 0,
+);
+```
+
+`inspector.drive(fn)` then runs a whole probe in one call. It freezes the
+clock, hands the callback awaitable play verbs, restores the clock to the
+state it was in and releases synthetic input afterwards:
+
+```typescript
+const run = await window.__yage__.inspector.drive(async ({ input, until, step }) => {
+  const i = window.__yage__.inspector;
+  input.keyDown("KeyD");
+  const frames = await until(() => i.getEntityPosition("player").x > 950, {
+    maxFrames: 240,
+  });
+  input.clearAll();
+  await step(10);
+  return { frames };
+});
+
+if (!run.ok) throw new Error(run.error);
+run.value.frames;   // frames the walk took
+run.framesUsed;     // frames the whole drive issued
+```
+
+The context carries `step`, `until`, `input`, `events` and `capture`. Every
+frame-advancing call is awaitable and drains async work between frames —
+including `input.tap`, `input.hold` and `input.fireAction`, whose
+`inspector.input` counterparts are synchronous and do not. A throw inside the
+callback, an assertion included, comes back as `{ ok: false, error }` rather
+than escaping, and the clock is restored either way.
+
+Work out frame budgets from the game's own numbers instead of guessing at
+them: a 900px gap crossed at 300px/s takes 3 seconds, so 180 frames at 1/60.
+Drive it with `until(pred, { maxFrames: 240 })` and let the predicate decide
+when the sequence moves on.
+
+The scenario lab builds the same verbs for a scenario's `drive`, adding
+`scene`, `controls` and `expect`, so a probe worth keeping moves into a
+scenario file with little edited. Three things change on the way: a scenario's
+`drive` returns `void`, so assert with `expect` inside the callback rather
+than returning a measurement; `fireAction` pulses the action once per frame
+here and holds it down for the whole span there, which a hold-to-charge move
+can tell apart; and `pressAction`/`releaseAction` exist only on the lab's
+context.
 
 ### Throwaway Inspector specs
 
@@ -358,16 +430,20 @@ import { test, expect } from "@playwright/test";
 
 test("can the player jump onto the ledge?", async ({ page }) => {
   await page.goto("/platformer.html");
-  await page.waitForFunction(() => window.__yage__?.inspector);
+  await page.waitForFunction(() => window.__yage__ !== undefined);
+  await page.evaluate(() => window.__yage__.ready);
 
   const result = await page.evaluate(async () => {
     const i = window.__yage__.inspector;
-    i.setSeed(42);            // pin RNG for reproducible runs
-    i.time.freeze();           // stop auto-advance
-    await i.input.hold("ArrowRight", 30);
-    await i.input.fireAction("jump", 1);
-    i.time.step(45);           // advance 45 fixed-timestep frames
-    return i.snapshotJSON();
+    i.setSeed(42);                 // pin RNG for reproducible runs
+    const run = await i.drive(async ({ input, step }) => {
+      await input.hold("ArrowRight", 30);
+      await input.fireAction("jump", 1);
+      await step(45);              // advance 45 fixed-timestep frames
+      return i.snapshotJSON();
+    });
+    if (!run.ok) throw new Error(run.error);
+    return run.value;
   });
 
   // Optional: capture a frame for visual inspection.
@@ -389,8 +465,9 @@ The two spec styles serve very different purposes:
 | Brittleness to balance changes | Stable by design | Brittle on purpose — that's why they're throwaway |
 | Example | `e2e/specs/inspector-determinism.spec.ts` | "did my jump-arc change still let the player reach the ledge?" |
 
-Always advance via `inspector.time.step(N)` (loops one fixed-timestep frame at
-a time) over `clock.step(bigDt)` (collapses the interval into one fat frame).
+Always advance one frame at a time — through the drive context's `step`/`until`
+or `inspector.time.step(N)` — rather than `clock.step(bigDt)`, which collapses
+the interval into one fat frame.
 `Component.update`, tweens, and AI logic only see one update at the full
 `bigDt` under the latter, which diverges from real gameplay even though
 physics still substeps correctly.

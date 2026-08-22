@@ -84,6 +84,16 @@ export class Engine {
   private readonly debug: boolean;
 
   /**
+   * Settles when {@link start} finishes, and is what an out-of-page driver
+   * awaits through `globalThis.__yage__.ready`. A boot failure rejects it, so
+   * a driver that only polled for the global would otherwise wait for a start
+   * that already gave up.
+   */
+  private readonly readyPromise: Promise<void>;
+  private markReady!: () => void;
+  private failReady!: (error: unknown) => void;
+
+  /**
    * Read through a getter rather than comparing the field directly. `start()`
    * assigns `"running"` before it awaits, and the compiler keeps that narrowing
    * across the await, so an inline comparison against `"destroyed"` reads as
@@ -95,6 +105,14 @@ export class Engine {
 
   constructor(config?: EngineConfig) {
     this.debug = config?.debug ?? false;
+
+    this.readyPromise = new Promise<void>((resolve, reject) => {
+      this.markReady = resolve;
+      this.failReady = reject;
+    });
+    // A host that never awaits `ready` still gets a handled rejection, so a
+    // boot failure is reported once through start()'s throw rather than twice.
+    void this.readyPromise.catch(() => undefined);
 
     // Create core services
     this.context = new EngineContext();
@@ -249,6 +267,17 @@ export class Engine {
     this.lifecycle = "running";
 
     try {
+      // Published before any startup work so a driver finds the surface even
+      // when boot fails partway; `ready` is what says whether it got there.
+      // Plugins augment this object from their onStart hooks.
+      if (this.debug && typeof globalThis !== "undefined") {
+        (globalThis as Record<string, unknown>)["__yage__"] = {
+          inspector: this.inspector,
+          logger: this.logger,
+          ready: this.readyPromise,
+        };
+      }
+
       // Topological sort of plugins (cached for reverse teardown)
       this.sortedPlugins = this.topologicalSort();
       const sorted = this.sortedPlugins;
@@ -278,15 +307,6 @@ export class Engine {
       // Start the game loop
       this.loop.start();
 
-      // Expose debug API in browser before plugin onStart hooks run so plugins
-      // can safely augment the debug surface.
-      if (this.debug && typeof globalThis !== "undefined") {
-        (globalThis as Record<string, unknown>)["__yage__"] = {
-          inspector: this.inspector,
-          logger: this.logger,
-        };
-      }
-
       // Notify plugins. Awaited so users can reliably call scenes.push()
       // right after `await engine.start()` without racing plugin init
       // (e.g. DebugPlugin mounts a detached debug scene in onStart).
@@ -297,11 +317,17 @@ export class Engine {
 
       // Emit engine started event
       this.events.emit("engine:started", undefined);
+
+      // Everything a driver needs is up: plugins installed, loop running,
+      // onStart hooks done. Scene mounting is the host's next call, not this
+      // one, so a driver waiting for a scene polls the scene stack after this.
+      this.markReady();
     } catch (err: unknown) {
       // Startup left plugins partly installed, holding services the container
       // will not accept again. Mark the instance terminal so a retry says so
       // instead of returning as though the engine were running.
       if (this.lifecycle === "running") this.lifecycle = "failed";
+      this.failReady(err);
       throw err;
     }
   }
@@ -350,6 +376,11 @@ export class Engine {
       const plugin = this.sortedPlugins[i];
       if (plugin) step(() => plugin.onDestroy?.());
     }
+
+    // A teardown mid-startup abandons the rest of start(), so nothing else
+    // would ever settle `ready` and a driver awaiting it would hang. Already
+    // settled after a completed start, where a promise ignores this.
+    this.failReady(new Error("Engine.destroy() ran before start() finished."));
 
     // Clean up debug API
     if (

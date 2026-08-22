@@ -19,7 +19,28 @@ engine.use(new DebugPlugin({
 }));
 ```
 
-`deterministicSeed` is opt-in. Leave it unset for normal debug builds; set it from test fixtures so each `Inspector.setSeed(...)` call has a known starting state. Inspector frame stepping is synchronous by default:
+`deterministicSeed` is opt-in. Leave it unset for normal debug builds; set it from test fixtures so each `Inspector.setSeed(...)` call has a known starting state.
+
+### The debug global
+
+An engine built with `debug: true` publishes `window.__yage__` as `start()` begins, carrying `inspector`, `logger` and `ready`. `DebugPlugin` adds `clock` from its `onStart` hook.
+
+```ts
+await window.__yage__.ready;   // start() finished: plugins installed, loop running, onStart done
+```
+
+`ready` is what an out-of-page driver waits on after a page load or reload. The global appears before startup work, so its presence alone does not mean the engine got anywhere; a boot failure rejects `ready` with the error that stopped it, instead of leaving a poller to time out.
+
+The host pushes the first scene after `await engine.start()`, so `ready` does not cover it. Wait for a scene separately. The clock is running at this point unless `DebugPlugin` was given `startFrozen`, so poll rather than step — `stepUntil` and `step` throw on a clock that is not frozen:
+
+```ts
+await window.__yage__.ready;
+await page.waitForFunction(
+  () => window.__yage__.inspector.getSceneStack().length > 0,
+);
+```
+
+Inspector frame stepping is synchronous by default:
 
 ```ts
 window.__yage__.inspector.time.freeze();
@@ -49,7 +70,7 @@ await inspector.time.stepAsync(45);
 await inspector.time.stepAsync(10, { dtMs: 32 });   // custom per-frame dt
 ```
 
-`stepUntil` checks the predicate before stepping, resolving `0` immediately if it is already true, then again after each frame. It resolves with the number of frames it took. The clock must still be frozen first, same as `time.step`. Prefer `stepUntil`/`stepAsync` over `time.step(N)` whenever the sequence crosses a scene transition, an async dialogue or cutscene runner, or anything else that resolves off the synchronous call stack.
+`stepUntil` checks the predicate before stepping, resolving `0` immediately if it is already true, then again after each frame. It resolves with the number of frames it took. The clock must be frozen first, same as `time.step` — `inspector.drive()` below does that for you. Prefer `stepUntil`/`stepAsync` over `time.step(N)` whenever the sequence crosses a scene transition, an async dialogue or cutscene runner, or anything else that resolves off the synchronous call stack.
 
 ## Inspector test surface
 
@@ -58,8 +79,8 @@ await inspector.time.stepAsync(10, { dtMs: 32 });   // custom per-frame dt
 ```ts
 inspector.setSeed(seed);                       // reseed every scene RNG
 inspector.input.hold("ArrowRight", 30);        // press, step N frames, release (sync)
-inspector.input.tap("Space", 1);
-inspector.input.fireAction("jump", 1);
+inspector.input.tap("Space", 1);                // sync; steps through time.step()
+inspector.input.fireAction("jump", 1);          // sync; one-frame pulse per frame
 inspector.events.getLog();                     // EventLogEntry[] (bus + entity events)
 inspector.events.setCapacity(1_000);           // ring buffer size (default 500)
 inspector.events.setEnabled(false);            // stop recording (zero per-event allocation)
@@ -83,6 +104,36 @@ Engine events carry live objects — `component:added` passes the `Component` it
 `snapshotScene(nameOrId)` tries the public `scene.name` first, then falls back to the inspector-assigned id from `snapshot().scenes[].id` / `getSceneStack()[].id`. If more than one active scene shares the name it throws rather than guessing — pass the id instead.
 
 `time.isAdvancing(withinMs = 250)` reports whether the game loop actually ticked within the last `withinMs` milliseconds, independent of `time.isFrozen()`. A frozen clock that isn't being stepped reads `isAdvancing() === false`, but a manual `time.step`/`stepUntil`/`stepAsync` fires a real tick, so `isAdvancing()` reads `true` for `withinMs` after one. A game that has stalled without being frozen — a hung `await`, a runaway synchronous loop — also reads `false`. `isFrozen()` alone can't tell those two cases apart; `isAdvancing()` exists for that.
+
+### `inspector.drive(fn)` — one probe, frozen and cleaned up
+
+`drive` runs a callback against the running game with the clock held still, hands it awaitable play verbs, and reports what happened as one object. It freezes the clock for the duration and returns it to the state it found it in, and releases every synthetic input afterwards, so no key stays held.
+
+```ts
+const run = await window.__yage__.inspector.drive(async ({ input, until, step }) => {
+  const i = window.__yage__.inspector;
+  input.keyDown("KeyD");
+  const frames = await until(() => i.getEntityPosition("player").x > 950, {
+    maxFrames: 240,
+  });
+  input.clearAll();
+  await step(10);
+  return { frames, x: i.getEntityPosition("player").x };
+});
+// { ok: true, value: { frames, x }, framesUsed, durationMs, captures }
+```
+
+The context carries `step(frames?, { dtMs? })`, `until(predicate, { maxFrames?, dtMs? })`, `input`, `events` and `capture(label?)`. Every frame-advancing call is awaitable and drains async work between frames, including `input.tap`, `input.hold` and `input.fireAction` — which the sync `inspector.input` versions do not.
+
+Nothing the callback throws escapes: a throw, including a failed assertion, comes back as `{ ok: false, error }`, and the clock is restored either way. A missing `DebugPlugin` throws from the `drive()` call itself.
+
+Derive frame budgets from the game's own numbers rather than guessing: a 900px gap at 300px/s is 3 seconds, so 180 frames at 1/60 — drive it with `until(pred, { maxFrames: 240 })` and let the predicate decide when to move on.
+
+`@yagejs-tools/lab` builds the same verbs for a scenario's `drive`, adding `scene`, `controls` and `expect`, so a probe worth keeping moves into a scenario file with little edited. Three things do change on the way:
+
+- A scenario's `drive` returns `void`. Assert inside the callback with `expect` instead of returning a measurement.
+- `fireAction` differs: this one pulses the action once per frame, while the lab holds it down for the whole span. A hold-to-charge move behaves differently under each.
+- `pressAction`/`releaseAction` exist only on the lab's context — core's input contract has no sustained-action calls.
 
 ### Component state reflection
 
@@ -194,16 +245,20 @@ import { test, expect } from "@playwright/test";
 
 test("can the player jump onto the ledge?", async ({ page }) => {
   await page.goto("/platformer.html");
-  await page.waitForFunction(() => window.__yage__?.inspector);
+  await page.waitForFunction(() => window.__yage__ !== undefined);
+  await page.evaluate(() => window.__yage__.ready);
 
   const result = await page.evaluate(async () => {
     const i = window.__yage__.inspector;
     i.setSeed(42);
-    i.time.freeze();
-    await i.input.hold("ArrowRight", 30);
-    await i.input.fireAction("jump", 1);
-    i.time.step(45);
-    return i.snapshotJSON();
+    const run = await i.drive(async ({ input, step }) => {
+      await input.hold("ArrowRight", 30);
+      await input.fireAction("jump", 1);
+      await step(45);
+      return i.snapshotJSON();
+    });
+    if (!run.ok) throw new Error(run.error);
+    return run.value;
   });
 
   // Optionally also: await page.screenshot({ path: "/tmp/probe.png" });
@@ -222,11 +277,11 @@ constants make these specs brittle — when the player accelerates 5% faster, ev
 spec with `step(45)` breaks. Keep the spec for the duration of one debugging
 session, then delete it.
 
-Always advance via `inspector.time.step(N)` — it loops one fixed-timestep
-frame at a time (see the `clock.step(bigDt)` guidance above). `step(bigDt)`
-collapses the whole interval into one large frame, so `Component.update`,
-tweens, and AI logic only see one update at the full `bigDt` and diverge from
-real gameplay.
+Advance one frame at a time, through the drive context's `step`/`until` or
+`inspector.time.step(N)` (see the `clock.step(bigDt)` guidance above).
+`clock.step(bigDt)` collapses the whole interval into one large frame, so
+`Component.update`, tweens, and AI logic only see one update at the full
+`bigDt` and diverge from real gameplay.
 
 Known limitations:
 

@@ -38,22 +38,23 @@ export async function gotoFixture(page: Page, path: string): Promise<void> {
 }
 
 export async function waitForInspector(page: Page): Promise<void> {
-  await page.waitForFunction(() => window.__yage__?.inspector !== undefined);
+  // The global appears as start() begins, so its presence alone says nothing
+  // about how far boot got. `ready` settles when start() finished, and a boot
+  // failure rejects it — reported here instead of timing out.
+  await page.waitForFunction(() => window.__yage__ !== undefined);
+  await page.evaluate(() => window.__yage__?.ready);
 }
 
 export async function waitForClock(page: Page): Promise<void> {
-  // `inspector.time` exists the instant the Inspector is exposed, but freeze()
-  // throws until DebugPlugin attaches its clock during onStart — a window wide
-  // enough to race under parallel workers. Poll until freeze() stops throwing.
-  await page.waitForFunction(() => {
-    const time = window.__yage__?.inspector?.time;
-    if (!time) return false;
-    try {
-      if (!time.isFrozen()) time.freeze();
-      return true;
-    } catch {
-      return false;
+  // DebugPlugin attaches the clock in its onStart hook, which `ready` covers,
+  // so freeze() is safe by the time this returns.
+  await waitForInspector(page);
+  await page.evaluate(() => {
+    const inspector = window.__yage__?.inspector;
+    if (!inspector) {
+      throw new Error("__yage__.inspector is not available.");
     }
+    if (!inspector.time.isFrozen()) inspector.time.freeze();
   });
 }
 

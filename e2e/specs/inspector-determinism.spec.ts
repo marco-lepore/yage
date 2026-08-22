@@ -29,9 +29,9 @@ test.describe("Inspector determinism", () => {
         inspector.setSeed(42);
         inspector.input.clearAll();
 
-        await inspector.input.hold("ArrowRight", 30);
-        await inspector.input.fireAction("jump", 1);
-        await inspector.time.step(60);
+        inspector.input.hold("ArrowRight", 30);
+        inspector.input.fireAction("jump", 1);
+        inspector.time.step(60);
 
         return inspector.snapshotJSON();
       });
