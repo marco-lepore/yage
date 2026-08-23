@@ -27,6 +27,7 @@ import { LAB_GLOBAL } from "./labGlobal.js";
 import {
   CLOCK_ERROR_KIND,
   collectErrors,
+  DRIVE_ERROR_KIND,
   LINK_ERROR_KIND,
   LOOP_STOPPED_ERROR,
   REBUILD_ERROR_KIND,
@@ -102,6 +103,24 @@ export interface LabApi {
     pace?: RunPace;
     captureView?: CaptureView;
   }): Promise<DriveResult>;
+  /**
+   * Runs `fn` with the same context a scenario's `drive` receives, against
+   * the scene as it currently stands — a value a previous `drive` or `run`
+   * left mutated is still mutated. Unlike `run()`, this does not rebuild the
+   * scene first unless `opts.rebuild` is `true`, and the scenario does not
+   * need to declare its own `drive`. The clock control is stopped for the
+   * duration and its play state restored afterwards. A throw inside `fn`
+   * (including a failed `expect`) resolves with `ok: false` rather than
+   * rejecting. Rejects when no scenario is mounted, when a run or drive is
+   * already in flight, when `opts.rebuild` is `true` and the rebuild itself
+   * throws, when no scene is mounted at all (the boot rebuild failed), and
+   * when the mounted scene does not match the current scenario and values
+   * because a rebuild already queued for them threw.
+   */
+  drive<T = void>(
+    fn: (ctx: ErasedDriveContext) => Promise<T> | T,
+    opts?: { rebuild?: boolean; pace?: RunPace; captureView?: CaptureView },
+  ): Promise<DriveResult<T>>;
   /** Captures the current scene for an out-of-page driver. */
   capture(view?: CaptureView): Promise<LabCaptureResult>;
 }
@@ -207,16 +226,29 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
   let entry: ScenarioEntry | undefined;
   let values: Record<string, ControlValue> = {};
   let scene: Scene | undefined;
-  /** The two the lab raises itself. A rebuild clears both; a step clears its own. */
+  /**
+   * The entry and values `scene` was built from. A rebuild that throws leaves
+   * these behind while `entry`/`values` have already moved on, which is how a
+   * drive tells a scene that matches the panel from one that does not.
+   */
+  let builtEntry: ScenarioEntry | undefined;
+  let builtValues: Record<string, ControlValue> | undefined;
+  /** The three the lab raises itself. A rebuild clears all of them; a step clears its own. */
   let rebuildError: LabError | null = null;
   let stepError: LabError | null = null;
+  /**
+   * An ad-hoc `drive()` failure. Distinct from `run()`'s, which the panel
+   * shows next to the Run button instead: an ad-hoc drive does not
+   * necessarily run the scenario's own declared `drive`.
+   */
+  let driveError: LabError | null = null;
   /** The last error the engine had recorded when the mounted scene was built. */
   let errorMark: CallbackErrorRecord | null = null;
   let shown: readonly LabError[] = [];
   let writtenClockState = "";
   /** Until the engine has started, a loop that is not running is just boot. */
   let started = false;
-  /** A run owns the clock and the scene until it finishes. */
+  /** A run or an ad-hoc drive owns the clock and the scene until it finishes. */
   let driving = false;
 
   const clock = new LabClock(engine.inspector.time, {
@@ -246,9 +278,12 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
     }
     const stopped = started && !engine.loop.isRunning;
     const errors = collectErrors(
-      [rebuildError, stepError, stopped ? LOOP_STOPPED_ERROR : null].filter(
-        (error) => error !== null,
-      ),
+      [
+        rebuildError,
+        stepError,
+        driveError,
+        stopped ? LOOP_STOPPED_ERROR : null,
+      ].filter((error) => error !== null),
       engine.inspector.getErrors().callbackErrors,
       errorMark,
     );
@@ -322,25 +357,33 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
     // `LabApi` clears them too. `settle` still records a rebuild that fails.
     rebuildError = null;
     stepError = null;
-    const next = buildScene(entry, values);
+    driveError = null;
+    // Read once, before the mount is awaited. A fire-and-forget `setControl`
+    // can land during that await and move `entry`/`values` on to what the
+    // next rebuild will use, and everything below describes this one.
+    const builtWith = entry;
+    const builtFrom = values;
+    const next = buildScene(builtWith, builtFrom);
     // Asked of the engine rather than tracked here: `push` preloads before it
     // stacks the scene, so a scenario whose assets fail to load leaves nothing
     // on the stack and the next attempt still has to push.
     if (engine.scenes.active) await engine.scenes.replace(next);
     else await engine.scenes.push(next);
     scene = next;
-    erase(entry.scenario).onMounted?.(next, values);
+    builtEntry = builtWith;
+    builtValues = builtFrom;
+    erase(builtWith.scenario).onMounted?.(next, builtFrom);
   }
 
   /**
-   * A run drives one scene with one set of values, so replacing either while
-   * it is in flight would make its assertions read something else. The panel
-   * disables the widgets that reach here; this is the same rule for a caller
-   * holding `LabApi`.
+   * A run or a drive holds one scene with one set of values, so replacing
+   * either while it is in flight would make its assertions read something
+   * else. The panel disables the widgets that reach here for either one;
+   * this is the same rule for a caller holding `LabApi` directly.
    */
   function requireIdle(): void {
     if (driving) {
-      throw new Error("A run is in flight. Wait for it to finish.");
+      throw new Error("A run or drive is in flight. Wait for it to finish.");
     }
   }
 
@@ -384,6 +427,31 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
   }
 
   /**
+   * What `run()` and `drive()` share: freezes the clock so a driven call is
+   * the only thing issuing frames, holds `driving` (and the panel's busy
+   * flag) so the other calls above reject for the duration, runs `prepare`
+   * before `fn`, and always restores the clock's play state on the way out.
+   */
+  async function driveScene<T>(
+    prepare: () => Promise<void>,
+    fn: (ctx: ErasedDriveContext) => Promise<T> | T,
+    opts?: { pace?: RunPace; captureView?: CaptureView },
+  ): Promise<DriveResult<T>> {
+    driving = true;
+    panel.setBusy(true);
+    try {
+      return await clock.whileStopped(async () => {
+        await prepare();
+        if (!scene) throw new Error("No scene is mounted.");
+        return runDrive(engine, scene, values, fn, opts);
+      });
+    } finally {
+      driving = false;
+      panel.setBusy(false);
+    }
+  }
+
+  /**
    * A run and the clock control are two writers on one clock, so the clock is
    * stopped for the duration and its play state restored afterwards. The
    * rebuild comes first: a previous run left the scene wherever it drove it to.
@@ -394,19 +462,18 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
   }): Promise<DriveResult> {
     const current = entry;
     if (!current) throw new Error("No scenario is mounted.");
-    const drive = erase(current.scenario).drive;
-    if (!drive)
+    const scenarioDrive = erase(current.scenario).drive;
+    if (!scenarioDrive)
       throw new Error(`Scenario "${current.id}" declares no drive().`);
-    if (driving) throw new Error("A run is already in flight.");
+    if (driving) throw new Error("A run or drive is already in flight.");
 
-    driving = true;
     panel.setRun({ state: "running" });
     try {
-      const result = await clock.whileStopped(async () => {
-        await queue.schedule(rebuild);
-        if (!scene) throw new Error("No scene is mounted.");
-        return runDrive(engine, scene, values, drive, opts);
-      });
+      const result = await driveScene(
+        () => queue.schedule(rebuild),
+        scenarioDrive,
+        opts,
+      );
       panel.setRun(
         result.ok
           ? {
@@ -422,8 +489,80 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
       // rebuild or the clock — but it is still the run that did not happen.
       panel.setRun({ state: "fail", message: describeError(error) });
       throw error;
-    } finally {
-      driving = false;
+    }
+  }
+
+  /**
+   * Runs `fn` against the scene as it currently stands. Unlike `run()`, no
+   * rebuild happens first unless `opts.rebuild` says so — an ad-hoc drive
+   * exercises the scene where a previous drive or manual play left it,
+   * rather than starting over. The scenario does not need its own `drive`.
+   *
+   * A failure inside `fn` is reported through the panel's errors area rather
+   * than `setRun`, which stays reserved for the scenario's own declared
+   * `drive` — an ad-hoc drive did not necessarily run it, and writing there
+   * would read as a scenario run that did not happen.
+   */
+  async function drive<T = void>(
+    fn: (ctx: ErasedDriveContext) => Promise<T> | T,
+    opts?: { rebuild?: boolean; pace?: RunPace; captureView?: CaptureView },
+  ): Promise<DriveResult<T>> {
+    if (!entry) throw new Error("No scenario is mounted.");
+    requireIdle();
+
+    if (opts?.rebuild) {
+      // The last run described the scene this rebuild is about to replace.
+      panel.setRun(undefined);
+    }
+
+    // Set inside `prepare` below when the opt-in rebuild itself throws, so
+    // the catch further down does not also relabel that failure as a drive
+    // failure.
+    let rebuildFailed = false;
+    const prepare = opts?.rebuild
+      ? async (): Promise<void> => {
+          try {
+            await queue.schedule(rebuild);
+          } catch (error) {
+            rebuildFailed = true;
+            rebuildError = {
+              kind: REBUILD_ERROR_KIND,
+              message: describeError(error),
+            };
+            throw error;
+          }
+        }
+      : // No rebuild was asked for, but a fire-and-forget `show`/`setControl`
+        // (the panel's own scenario clicks and control widgets never await
+        // their call) may have one queued or running already. Reading `scene`
+        // before it lands would hand this drive a scene the queue is about to
+        // replace.
+        async (): Promise<void> => {
+          await queue.idle;
+          // `idle` resolves whether that rebuild succeeded or threw. One that
+          // threw leaves the outgoing scene mounted under the incoming
+          // scenario's values, and a drive against that pair would report a
+          // pass for a state the panel never reached.
+          if (scene && (builtEntry !== entry || builtValues !== values)) {
+            throw new Error(
+              "The mounted scene was not built from the current scenario and control values — the rebuild that would have matched them failed. Fix the scenario, or pass { rebuild: true }.",
+            );
+          }
+        };
+
+    try {
+      const result = await driveScene(prepare, fn, opts);
+      driveError = result.ok
+        ? null
+        : { kind: DRIVE_ERROR_KIND, message: result.error };
+      refresh();
+      return result;
+    } catch (error) {
+      if (!rebuildFailed) {
+        driveError = { kind: DRIVE_ERROR_KIND, message: describeError(error) };
+      }
+      refresh();
+      throw error;
     }
   }
 
@@ -478,6 +617,7 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
     show: (id) => show(id),
     setControl,
     run,
+    drive,
     capture: (view) => captureLab(engine, view),
   };
   (globalThis as Record<string, unknown>)[LAB_GLOBAL] = api;

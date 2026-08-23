@@ -18,6 +18,9 @@ export const CLOCK_ERROR_KIND = "Clock";
 /** The query string asked for something the registry does not have. */
 export const LINK_ERROR_KIND = "Link";
 
+/** An ad-hoc `LabApi.drive()` call failed. */
+export const DRIVE_ERROR_KIND = "Drive";
+
 /**
  * Shown while the engine's game loop is stopped, which is what it does when a
  * throw escapes a whole frame. It detaches its ticker on the way out, so no

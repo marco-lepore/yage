@@ -35,7 +35,7 @@ const RendererRuntimeKey = new ServiceKey<RendererLike>("renderer");
  * Inspector contract gets compile-time literal checking without taking a
  * runtime dependency on the input package.
  */
-type InspectorGamepadAxisKey =
+export type InspectorGamepadAxisKey =
   | "leftX"
   | "leftY"
   | "rightX"
@@ -48,7 +48,7 @@ type InspectorGamepadAxisKey =
  * to drive a non-primary, touch, or pen pointer in deterministic tests. All
  * fields are optional and default to a primary mouse pointer with `id: 1`.
  */
-interface InspectorPointerOpts {
+export interface InspectorPointerOpts {
   id?: number;
   type?: "mouse" | "pen" | "touch";
   isPrimary?: boolean;
@@ -371,6 +371,84 @@ export interface InspectorTimeController {
   setDelta(ms: number): void;
   getFrame(): number;
 }
+
+/** Per-frame delta override for one `step` or `until` call. */
+export interface InspectorDriveStepOptions {
+  /** Simulated milliseconds per frame for this call. Defaults to the clock's. */
+  dtMs?: number;
+}
+
+export interface InspectorDriveUntilOptions extends InspectorDriveStepOptions {
+  /** Frames to try before giving up. Defaults to 600, i.e. 10s at 60fps. */
+  maxFrames?: number;
+}
+
+/**
+ * Synthetic input for a drive. The setters write input state and return; the
+ * three that hold a key across frames issue those frames and are awaited.
+ */
+export interface InspectorDriveInput {
+  keyDown(code: string): void;
+  keyUp(code: string): void;
+  mouseMove(x: number, y: number): void;
+  mouseDown(button?: 0 | 1 | 2): void;
+  mouseUp(button?: 0 | 1 | 2): void;
+  pointerMove(x: number, y: number, opts?: InspectorPointerOpts): void;
+  pointerDown(button?: 0 | 1 | 2, opts?: InspectorPointerOpts): void;
+  pointerUp(button?: 0 | 1 | 2, opts?: { id?: number }): void;
+  gamepadButton(code: string, pressed: boolean): void;
+  gamepadAxis(side: InspectorGamepadAxisKey, value: number): void;
+  /** Releases every synthetic key, pointer and pad input at once. */
+  clearAll(): void;
+  /** Holds `code` for one frame unless told otherwise, then releases it. */
+  tap(code: string, frames?: number): Promise<void>;
+  hold(code: string, frames: number): Promise<void>;
+  /**
+   * Fires `name` once per frame for `frames` frames. Each frame is a fresh
+   * one-frame pulse, so `isJustPressed` reads true on every one of them.
+   */
+  fireAction(name: string, frames?: number): Promise<void>;
+}
+
+/** The verbs {@link Inspector.drive} hands its callback. */
+export interface InspectorDriveContext {
+  /** Advances `frames` frames, one at a time. */
+  step(frames?: number, opts?: InspectorDriveStepOptions): Promise<void>;
+  /**
+   * Steps until `predicate` holds, resolving with the frames it took. Checks
+   * before the first frame, and throws once `maxFrames` is spent.
+   */
+  until(
+    predicate: () => boolean,
+    opts?: InspectorDriveUntilOptions,
+  ): Promise<number>;
+  readonly input: InspectorDriveInput;
+  readonly events: Inspector["events"];
+  /** Screenshots into the result, resolving with a PNG data URL. */
+  capture(label?: string): Promise<string>;
+}
+
+/** One screenshot a drive asked for. */
+export interface InspectorDriveCapture {
+  readonly label?: string | undefined;
+  /** A `data:image/png;base64,...` URL. */
+  readonly dataUrl: string;
+}
+
+export interface InspectorDriveOutcome {
+  /** Frames the drive issued. */
+  readonly framesUsed: number;
+  readonly durationMs: number;
+  readonly captures: readonly InspectorDriveCapture[];
+}
+
+/**
+ * A failed drive always says why, so `error` comes with `ok: false` and only
+ * there; the callback's return value comes with `ok: true` and only there.
+ */
+export type InspectorDriveResult<T = void> =
+  | (InspectorDriveOutcome & { readonly ok: true; readonly value: T })
+  | (InspectorDriveOutcome & { readonly ok: false; readonly error: string });
 
 interface LoggedEvent {
   entry: EventLogEntry;
@@ -710,6 +788,179 @@ export class Inspector {
 
   constructor(engine: EngineRef) {
     this.engine = engine;
+  }
+
+  /**
+   * Run `fn` against the running game with the clock held still and every
+   * frame-advancing verb awaitable, then report what happened. The clock is
+   * frozen for the duration and returned to the state it was in, and every
+   * synthetic input is released afterwards, so a drive leaves no key held.
+   *
+   * Nothing thrown by `fn` escapes: a throw is the result's `error`. Missing
+   * `DebugPlugin` throws from the call itself, before anything runs.
+   *
+   * ```ts
+   * const run = await inspector.drive(async ({ input, until }) => {
+   *   input.keyDown("KeyD");
+   *   const frames = await until(() => inspector.getEntityPosition("player").x > 950);
+   *   return { frames };
+   * });
+   * ```
+   *
+   * The same callback body works as a `@yagejs-tools/lab` scenario `drive`,
+   * which adds `scene`, `controls` and `expect` on top of these verbs.
+   */
+  drive<T = void>(
+    fn: (ctx: InspectorDriveContext) => Promise<T> | T,
+  ): Promise<InspectorDriveResult<T>> {
+    // Resolved here rather than inside the async body so a game without
+    // DebugPlugin fails at the call instead of in a promise nobody awaited.
+    const controller = this.requireTimeController();
+    if (this.driving) {
+      throw new Error(
+        "Inspector.drive() is already in flight. Await the running drive before starting another.",
+      );
+    }
+    return this.executeDrive(controller, fn);
+  }
+
+  /** Guards against a second drive starting while one holds the clock. */
+  private driving = false;
+
+  private async executeDrive<T>(
+    controller: InspectorTimeController,
+    fn: (ctx: InspectorDriveContext) => Promise<T> | T,
+  ): Promise<InspectorDriveResult<T>> {
+    const wasFrozen = controller.isFrozen;
+    if (!wasFrozen) controller.freeze();
+    this.driving = true;
+
+    const captures: InspectorDriveCapture[] = [];
+    const startFrame = this.time.getFrame();
+    const startedAt = performance.now();
+    let error: string | undefined;
+    let value!: T;
+
+    try {
+      value = await fn(this.createDriveContext(captures));
+    } catch (thrown) {
+      error = thrown instanceof Error ? thrown.message : String(thrown);
+    } finally {
+      try {
+        // A key left down would carry into whatever plays next. Released
+        // while still frozen, so the game never sees a held key advance.
+        // Resolved leniently: no InputPlugin means nothing to release.
+        this.engine.context.tryResolve(InputManagerRuntimeKey)?.clearAll();
+      } finally {
+        // Releasing a key notifies the game's own listeners, and one that
+        // throws reaches here through the error boundary. Restoring the clock
+        // from an inner `finally` keeps that throw from leaving the page
+        // frozen with nothing advancing.
+        if (!wasFrozen) controller.thaw();
+        // Cleared last: a key-up listener that starts its own drive would
+        // otherwise pass the guard and run against a clock this one is about
+        // to thaw underneath it.
+        this.driving = false;
+      }
+    }
+
+    const outcome: InspectorDriveOutcome = {
+      framesUsed: this.time.getFrame() - startFrame,
+      durationMs: performance.now() - startedAt,
+      captures,
+    };
+    return error === undefined
+      ? { ...outcome, ok: true, value }
+      : { ...outcome, ok: false, error };
+  }
+
+  /**
+   * The verbs a drive runs on. Frame-advancing calls go through
+   * `time.stepAsync`, which yields a real macrotask between frames, so a
+   * sequence crossing a scene transition or any other promise chain advances
+   * instead of stalling on work parked in the microtask queue.
+   */
+  private createDriveContext(
+    captures: InspectorDriveCapture[],
+  ): InspectorDriveContext {
+    const step = (
+      frames = 1,
+      opts?: InspectorDriveStepOptions,
+    ): Promise<void> => this.time.stepAsync(frames, opts);
+
+    const hold = async (code: string, frames: number): Promise<void> => {
+      this.assertNonNegativeInteger(frames, "Inspector.drive input.hold(frames)");
+      const input = this.requireInputManager();
+      input.fireKeyDown(code);
+      try {
+        await step(frames);
+      } finally {
+        input.fireKeyUp(code);
+      }
+    };
+
+    const input: InspectorDriveInput = {
+      keyDown: (code) => {
+        this.input.keyDown(code);
+      },
+      keyUp: (code) => {
+        this.input.keyUp(code);
+      },
+      mouseMove: (x, y) => {
+        this.input.mouseMove(x, y);
+      },
+      mouseDown: (button) => {
+        this.input.mouseDown(button);
+      },
+      mouseUp: (button) => {
+        this.input.mouseUp(button);
+      },
+      pointerMove: (x, y, opts) => {
+        this.input.pointerMove(x, y, opts);
+      },
+      pointerDown: (button, opts) => {
+        this.input.pointerDown(button, opts);
+      },
+      pointerUp: (button, opts) => {
+        this.input.pointerUp(button, opts);
+      },
+      gamepadButton: (code, pressed) => {
+        this.input.gamepadButton(code, pressed);
+      },
+      gamepadAxis: (side, value) => {
+        this.input.gamepadAxis(side, value);
+      },
+      clearAll: () => {
+        this.input.clearAll();
+      },
+      tap: (code, frames = 1) => hold(code, frames),
+      hold,
+      fireAction: async (name, frames = 1) => {
+        this.assertNonNegativeInteger(
+          frames,
+          "Inspector.drive input.fireAction(frames)",
+        );
+        const manager = this.requireInputManager();
+        for (let i = 0; i < frames; i++) {
+          manager.fireAction(name);
+          await step(1);
+        }
+      },
+    };
+
+    return {
+      step,
+      until: (predicate, opts) => this.time.stepUntil(predicate, opts),
+      input,
+      events: this.events,
+      capture: async (label) => {
+        // A data URL rather than `capture.png()`'s bytes: it reads out of the
+        // page as a string and goes straight into an `<img>`.
+        const dataUrl = await this.capture.dataURL();
+        captures.push({ label, dataUrl });
+        return dataUrl;
+      },
+    };
   }
 
   /** Register a namespaced extension API for plugin-specific debug helpers. */

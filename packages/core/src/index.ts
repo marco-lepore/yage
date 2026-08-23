@@ -121,6 +121,15 @@ export type {
   PointerSnapshot,
   EngineSnapshot,
   InspectorTimeController,
+  InspectorPointerOpts,
+  InspectorGamepadAxisKey,
+  InspectorDriveContext,
+  InspectorDriveInput,
+  InspectorDriveStepOptions,
+  InspectorDriveUntilOptions,
+  InspectorDriveCapture,
+  InspectorDriveOutcome,
+  InspectorDriveResult,
 } from "./Inspector.js";
 
 export { Scene } from "./Scene.js";

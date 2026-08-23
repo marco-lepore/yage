@@ -451,6 +451,7 @@ interface LabApi {
   show(id: string): Promise<void>;
   setControl(name: string, value: ControlValue): Promise<void>;
   run(opts?: { pace?: "immediate" | "frame"; captureView?: "content" | "camera" }): Promise<DriveResult>;
+  drive<T = void>(fn: (ctx: DriveContext) => Promise<T> | T, opts?: { rebuild?: boolean; pace?: "immediate" | "frame"; captureView?: "content" | "camera" }): Promise<DriveResult<T>>;
   capture(view?: "content" | "camera"): Promise<LabCaptureResult>;
 }
 ```
@@ -461,6 +462,45 @@ its presence alone does not mean there is anything to drive.
 `run()` defaults to immediate playback and content captures. `DriveResult`
 includes `warnings` beside `captures`. `capture()` returns the PNG data URL and
 capture warnings for an out-of-page driver.
+
+### Ad-hoc drives from the console
+
+`drive(fn, opts?)` runs `fn` with the same `DriveContext` a scenario's own
+`drive` receives — `step`, `until`, `input`, `events`, `expect`, `capture` —
+against the currently mounted scene. Call it from the browser console to
+explore a scenario, to try things out before writing a `drive`, or to
+continue from wherever `run()` or a previous `drive()` left the scene:
+
+```js
+const r = await __yageLab__.drive(async ({ input, until, scene }) => {
+  const body = scene.findByKey("player")?.get(RigidBodyComponent);
+  if (!body) throw new Error("no player in this scene");
+  input.keyDown("KeyD");
+  const frames = await until(() => body.positionX > 950, { maxFrames: 240 });
+  input.clearAll();
+  return { frames, x: body.positionX };
+});
+// r: { ok: true, value: { frames, x }, framesUsed, durationMs, captures, warnings }
+```
+
+Unlike `run()`, `drive()` does **not** rebuild the scene first — it drives the
+scene as it stands, mutations from an earlier drive included. Pass
+`{ rebuild: true }` to rebuild before it runs, the way `run()` does. The
+current scenario does not need its own declared `drive`; `ctx.scene` is
+whatever scene is mounted and `ctx.controls` is the current control values. A
+throw inside `fn`, including a failed `expect`, resolves with `ok: false`
+rather than rejecting the promise. The promise itself rejects when no
+scenario is mounted, when a run or drive is already in flight, when
+`{ rebuild: true }`'s rebuild throws, when no scene is mounted at all (the
+boot rebuild failed), and when a rebuild queued by an earlier `show` or
+`setControl` threw — the scene then belongs to the previous scenario or the
+previous control values, so driving it would report on a state the panel
+never reached. While a `drive()` is in flight, `show`, `setControl`, `run`,
+and a second `drive()` all reject.
+
+A drive that asks for no rebuild waits for one already in flight before it
+reads the scene, so a scenario click or a slider drag that has not landed yet
+cannot swap the scene mid-drive.
 
 ## Gotchas
 
