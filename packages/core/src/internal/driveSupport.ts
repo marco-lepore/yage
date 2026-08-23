@@ -14,6 +14,18 @@ export function driveFramesUsed(getFrame: () => number, startFrame: number): num
 /** The default frames an ad-hoc drive may spend before it gives up. */
 export const DEFAULT_DRIVE_MAX_FRAMES = 10_000;
 
+/**
+ * Rejects a budget that would leave a drive unbounded without asking. The
+ * guards skip a non-finite budget so `Infinity` can disable them on purpose,
+ * which `NaN` would otherwise do silently.
+ */
+export function assertDriveMaxFrames(maxFrames: number, call: string): void {
+  if (maxFrames === Number.POSITIVE_INFINITY) return;
+  if (!Number.isInteger(maxFrames) || maxFrames < 0) {
+    throw new Error(`${call}: maxFrames must be a non-negative integer or Infinity.`);
+  }
+}
+
 interface DriveHoldInput {
   keyDown(code: string): void;
   keyUp(code: string): void;

@@ -227,6 +227,7 @@ export { isDev, devWarn } from "./internal/dev.js";
 
 /** @internal - exposed for sibling @yagejs packages, not for public consumption. */
 export {
+  assertDriveMaxFrames,
   DEFAULT_DRIVE_MAX_FRAMES,
   driveFramesUsed,
   driveWhileHolding,

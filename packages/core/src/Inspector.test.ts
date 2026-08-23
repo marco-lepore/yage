@@ -1212,6 +1212,21 @@ describe("Inspector", () => {
       expect(keysAfterThrow).toEqual(["KeyA"]);
     });
 
+    it("rejects a maxFrames that is not a non-negative integer or Infinity", async () => {
+      const { inspector } = setup();
+      inspector.attachTimeController(driveController([]));
+
+      for (const bad of [Number.NaN, -1, 1.5]) {
+        expect(() => inspector.drive(async () => {}, { maxFrames: bad })).toThrow(
+          "maxFrames must be a non-negative integer or Infinity",
+        );
+      }
+      // Infinity disables the budget on purpose, so it has to be accepted.
+      await expect(
+        inspector.drive(async () => {}, { maxFrames: Number.POSITIVE_INFINITY }),
+      ).resolves.toMatchObject({ ok: true });
+    });
+
     it("ends a run that exceeds its frame budget with timedOut: true and framesUsed equal to the budget", async () => {
       const { inspector } = setup();
       inspector.attachTimeController(driveController([]));

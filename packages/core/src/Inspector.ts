@@ -23,6 +23,7 @@ import {
 } from "./Random.js";
 import { SceneTimeKey } from "./SceneTime.js";
 import {
+  assertDriveMaxFrames,
   DEFAULT_DRIVE_MAX_FRAMES,
   driveFramesUsed,
   driveWhileHolding,
@@ -878,6 +879,9 @@ export class Inspector {
       throw new Error(
         "Inspector.drive() is already in flight. Await the running drive before starting another.",
       );
+    }
+    if (opts?.maxFrames !== undefined) {
+      assertDriveMaxFrames(opts.maxFrames, "Inspector.drive()");
     }
     return this.executeDrive(controller, fn, opts);
   }

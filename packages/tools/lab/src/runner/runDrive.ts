@@ -1,4 +1,5 @@
 import {
+  assertDriveMaxFrames,
   type DriveState,
   driveFramesUsed,
   driveWhileHolding,
@@ -307,6 +308,9 @@ export async function runDrive<T = void>(
   drive: (ctx: ErasedDriveContext) => Promise<T> | T,
   opts: RunDriveOptions = {},
 ): Promise<DriveResult<T>> {
+  if (opts.maxFrames !== undefined) {
+    assertDriveMaxFrames(opts.maxFrames, "drive()");
+  }
   const time = engine.inspector.time;
   const captures: DriveCapture[] = [];
   const warnings: string[] = [];

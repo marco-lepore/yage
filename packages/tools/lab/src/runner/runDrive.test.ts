@@ -482,6 +482,25 @@ describe("runDrive", () => {
   });
 });
 
+describe("the frame budget's maxFrames option", () => {
+  it("rejects a value that is not a non-negative integer or Infinity", async () => {
+    const { engine } = stubEngine();
+    for (const bad of [Number.NaN, -1, 1.5]) {
+      await expect(
+        runDrive(engine, SCENE, {}, async () => {}, { maxFrames: bad }),
+      ).rejects.toThrow("maxFrames must be a non-negative integer or Infinity");
+    }
+  });
+
+  it("accepts Infinity, which disables the budget on purpose", async () => {
+    const { engine } = stubEngine();
+    const result = await runDrive(engine, SCENE, {}, async () => {}, {
+      maxFrames: Number.POSITIVE_INFINITY,
+    });
+    expect(result.ok).toBe(true);
+  });
+});
+
 describe("input.whileHolding", () => {
   it("nests: the inner release leaves the outer key held", async () => {
     const { engine } = stubEngine();

@@ -7,7 +7,9 @@ Add a frame budget and scoped key holds to `inspector.drive`
 `drive(fn, { maxFrames })` bounds a whole run. Once the budget is spent, the
 frame-advancing calls stop the callback and the result comes back as
 `{ ok: false, timedOut: true }` instead of running until a tool call gives up.
-It defaults to 10,000 frames; pass `Infinity` to disable it.
+It defaults to 10,000 frames; pass `Infinity` to disable it. Any other value
+has to be a non-negative integer — a budget the guard could not act on is
+rejected at the call rather than leaving the run unbounded.
 
 Every result now carries `state` — the keys and actions held when the run
 ended, plus the scene stack — read before the drive releases its synthetic

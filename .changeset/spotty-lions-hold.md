@@ -6,7 +6,9 @@ Add a frame budget and scoped key holds to the lab drive context
 
 `__yageLab__.drive(fn, { maxFrames })` bounds an ad-hoc run: once the budget is
 spent the callback is stopped and the result is `{ ok: false, timedOut: true }`.
-It defaults to 10,000 frames and takes `Infinity` to disable it. A scenario's
+It defaults to 10,000 frames and takes `Infinity` to disable it; any other
+value has to be a non-negative integer, and one the guard could not act on is
+rejected at the call rather than leaving the run unbounded. A scenario's
 own `drive` is unbounded, as before.
 
 Every drive result carries `state` — the keys and actions held when the run
