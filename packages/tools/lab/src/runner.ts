@@ -15,6 +15,9 @@ export type { LabClock } from "./runner/LabClock.js";
 
 export type { DriveCapture, DriveResult, RunPace } from "./runner/runDrive.js";
 
+/** Re-exported so `DriveResult.state` can be named without importing core. */
+export type { DriveState } from "@yagejs/core";
+
 export type { CaptureView, LabCaptureResult } from "./runner/labCapture.js";
 
 export type {

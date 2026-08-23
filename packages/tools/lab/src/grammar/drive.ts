@@ -38,6 +38,14 @@ export interface DriveInput {
   /** Holds an action down until {@link releaseAction}. Needs `InputPlugin`. */
   pressAction(name: string): void;
   releaseAction(name: string): void;
+  /**
+   * Holds `codes` for the duration of `fn`, then restores what was held
+   * before — including when `fn` throws. A code already down on entry is left
+   * alone at both ends, so nested holds compose by lexical scope: an inner
+   * call that repeats one of the outer call's codes does not drop it, and
+   * neither does a code a plain `keyDown` is holding.
+   */
+  whileHolding(codes: readonly string[], fn: () => Promise<void>): Promise<void>;
   /** {@link hold} for a single frame unless `frames` says otherwise. */
   tap(code: string, frames?: number): Promise<void>;
   /** Holds `code` down for `frames` frames, then releases it. */
@@ -61,6 +69,8 @@ export interface DriveContext<C extends ControlSchema = ControlSchema> {
   scene: Scene;
   /** What the controls were set to when the run started. */
   controls: ControlValues<C>;
+  /** Frames this run has spent so far, counting frames issued any way. */
+  readonly framesUsed: number;
   input: DriveInput;
   /**
    * The engine's event log. The run is the only thing issuing frames, so

@@ -1,4 +1,11 @@
-import { type Engine, type Scene, ServiceKey } from "@yagejs/core";
+import {
+  type DriveState,
+  driveFramesUsed,
+  driveWhileHolding,
+  type Engine,
+  type Scene,
+  ServiceKey,
+} from "@yagejs/core";
 import type { ControlValue } from "../grammar/controls.js";
 import type {
   DriveContext,
@@ -10,6 +17,18 @@ import { captureLab, type CaptureView } from "./labCapture.js";
 import { expect } from "./labExpect.js";
 
 export type RunPace = "immediate" | "frame";
+
+/**
+ * Thrown internally by a drive's frame-budget guard once `maxFrames` is
+ * spent. `runDrive` catches its own marker to report `timedOut: true` rather
+ * than surfacing it as the callback's own failure.
+ */
+class DriveBudgetExceededError extends Error {
+  constructor(maxFrames: number) {
+    super(`Drive exceeded its frame budget of ${maxFrames} frames.`);
+    this.name = "DriveBudgetExceededError";
+  }
+}
 
 /**
  * The context as the runner builds it. `DriveContext<C>` types `controls`
@@ -33,12 +52,14 @@ interface DriveOutcome {
   readonly durationMs: number;
   readonly captures: readonly DriveCapture[];
   readonly warnings: readonly string[];
+  readonly state: DriveState;
 }
 
 /**
- * A failed run always says why, so `error` comes with `ok: false` and only
- * there. `value` is what the driven callback returned — `void` for a
- * scenario's own `drive`, whatever an ad-hoc `LabApi.drive` callback returns.
+ * A failed run always says why, so `error` (and `timedOut`) come with
+ * `ok: false` and only there. `value` is what the driven callback returned —
+ * `void` for a scenario's own `drive`, whatever an ad-hoc `LabApi.drive`
+ * callback returns.
  */
 export type DriveResult<T = void> =
   | (DriveOutcome & { readonly ok: true; readonly value: T })
@@ -46,6 +67,8 @@ export type DriveResult<T = void> =
       readonly ok: false;
       /** The assertion message, or whatever else the run threw. */
       readonly error: string;
+      /** True when the failure is the `maxFrames` budget running out. */
+      readonly timedOut: boolean;
     });
 
 /**
@@ -66,11 +89,20 @@ interface DriveContextOptions {
   readonly pace?: RunPace | undefined;
   readonly captureView?: CaptureView | undefined;
   readonly warnings?: string[] | undefined;
+  readonly startFrame?: number | undefined;
+  readonly checkBudget?: (() => void) | undefined;
 }
 
 interface RunDriveOptions {
   readonly pace?: RunPace;
   readonly captureView?: CaptureView;
+  /**
+   * Frames the whole run may spend before it ends with `ok: false` and
+   * `timedOut: true`. No budget when omitted — a scenario's own `drive`
+   * runs under `run()`, which never sets this. `LabApi.drive()` supplies its
+   * own default.
+   */
+  readonly maxFrames?: number;
 }
 
 function requireActions(engine: Engine, call: string): InputManagerLike {
@@ -95,6 +127,8 @@ export function createDriveContext(
   const { events, input: raw, time } = engine.inspector;
   const pace = opts.pace ?? "immediate";
   const warnings = opts.warnings ?? [];
+  const startFrame = opts.startFrame ?? time.getFrame();
+  const checkBudget = opts.checkBudget ?? ((): void => undefined);
 
   const waitForAnimationFrame = (): Promise<void> =>
     new Promise((resolve) => {
@@ -103,10 +137,15 @@ export function createDriveContext(
       requestAnimationFrame(() => resolve());
     });
 
+  // The one funnel every frame-issuing call goes through, so the budget
+  // guard runs before each of them whatever the pace or the verb.
   const stepAsync = (
     frames: number,
     stepOpts?: DriveStepOptions,
-  ): Promise<void> => time.stepAsync(frames, stepOpts);
+  ): Promise<void> => {
+    checkBudget();
+    return time.stepAsync(frames, stepOpts);
+  };
 
   const advance = async (
     frames: number,
@@ -166,13 +205,16 @@ export function createDriveContext(
     }
   };
 
+  const keyDown = (code: string): void => {
+    raw.keyDown(code);
+  };
+  const keyUp = (code: string): void => {
+    raw.keyUp(code);
+  };
+
   const input: DriveInput = {
-    keyDown: (code) => {
-      raw.keyDown(code);
-    },
-    keyUp: (code) => {
-      raw.keyUp(code);
-    },
+    keyDown,
+    keyUp,
     mouseMove: (x, y) => {
       raw.mouseMove(x, y);
     },
@@ -206,6 +248,12 @@ export function createDriveContext(
     releaseAction: (name) => {
       requireActions(engine, "releaseAction").fireActionUp(name);
     },
+    whileHolding: (codes, fn) =>
+      driveWhileHolding(
+        { keyDown, keyUp, heldKeys: () => engine.inspector.getInputState().keys },
+        codes,
+        fn,
+      ),
 
     tap: (code, frames = 1) => hold(code, frames),
     hold,
@@ -226,6 +274,9 @@ export function createDriveContext(
   return {
     scene,
     controls,
+    get framesUsed() {
+      return driveFramesUsed(() => time.getFrame(), startFrame);
+    },
     input,
     events,
     expect,
@@ -261,7 +312,18 @@ export async function runDrive<T = void>(
   const warnings: string[] = [];
   const startFrame = time.getFrame();
   const startedAt = performance.now();
+  const maxFrames = opts.maxFrames;
+  const checkBudget = (): void => {
+    if (
+      maxFrames !== undefined &&
+      Number.isFinite(maxFrames) &&
+      time.getFrame() - startFrame >= maxFrames
+    ) {
+      throw new DriveBudgetExceededError(maxFrames);
+    }
+  };
   let error: string | undefined;
+  let timedOut = false;
   let value: T | undefined;
 
   try {
@@ -270,19 +332,30 @@ export async function runDrive<T = void>(
         pace: opts.pace,
         captureView: opts.captureView,
         warnings,
+        startFrame,
+        checkBudget,
       }),
     );
   } catch (thrown) {
     error = thrown instanceof Error ? thrown.message : String(thrown);
+    timedOut = thrown instanceof DriveBudgetExceededError;
   }
+
+  const inputState = engine.inspector.getInputState();
+  const state: DriveState = {
+    keys: inputState.keys,
+    actions: inputState.actions,
+    scenes: engine.inspector.getSceneStack(),
+  };
 
   const outcome: DriveOutcome = {
     framesUsed: time.getFrame() - startFrame,
     durationMs: performance.now() - startedAt,
     captures,
     warnings,
+    state,
   };
   return error === undefined
     ? { ...outcome, ok: true, value: value as T }
-    : { ...outcome, ok: false, error };
+    : { ...outcome, ok: false, error, timedOut };
 }

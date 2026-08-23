@@ -1,8 +1,9 @@
-import type {
-  AssetHandle,
-  CallbackErrorRecord,
-  Engine,
-  Scene,
+import {
+  type AssetHandle,
+  type CallbackErrorRecord,
+  DEFAULT_DRIVE_MAX_FRAMES,
+  type Engine,
+  type Scene,
 } from "@yagejs/core";
 import { DebugPlugin } from "@yagejs/debug";
 import type { LayerDef } from "@yagejs/renderer";
@@ -63,6 +64,7 @@ const POLL_MS = 100;
  */
 const URL_WRITE_MS = 250;
 
+
 export interface MountOptions {
   harness: HarnessDef;
   /** The module map from `import.meta.glob("<pattern>", { eager: true })`. */
@@ -119,7 +121,16 @@ export interface LabApi {
    */
   drive<T = void>(
     fn: (ctx: ErasedDriveContext) => Promise<T> | T,
-    opts?: { rebuild?: boolean; pace?: RunPace; captureView?: CaptureView },
+    opts?: {
+      rebuild?: boolean;
+      pace?: RunPace;
+      captureView?: CaptureView;
+      /**
+       * Frames the run may spend before it ends with `ok: false` and
+       * `timedOut: true`. Defaults to 10,000. Pass `Infinity` to disable.
+       */
+      maxFrames?: number;
+    },
   ): Promise<DriveResult<T>>;
   /** Captures the current scene for an out-of-page driver. */
   capture(view?: CaptureView): Promise<LabCaptureResult>;
@@ -435,7 +446,7 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
   async function driveScene<T>(
     prepare: () => Promise<void>,
     fn: (ctx: ErasedDriveContext) => Promise<T> | T,
-    opts?: { pace?: RunPace; captureView?: CaptureView },
+    opts?: { pace?: RunPace; captureView?: CaptureView; maxFrames?: number },
   ): Promise<DriveResult<T>> {
     driving = true;
     panel.setBusy(true);
@@ -505,10 +516,16 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
    */
   async function drive<T = void>(
     fn: (ctx: ErasedDriveContext) => Promise<T> | T,
-    opts?: { rebuild?: boolean; pace?: RunPace; captureView?: CaptureView },
+    opts?: {
+      rebuild?: boolean;
+      pace?: RunPace;
+      captureView?: CaptureView;
+      maxFrames?: number;
+    },
   ): Promise<DriveResult<T>> {
     if (!entry) throw new Error("No scenario is mounted.");
     requireIdle();
+    const maxFrames = opts?.maxFrames ?? DEFAULT_DRIVE_MAX_FRAMES;
 
     if (opts?.rebuild) {
       // The last run described the scene this rebuild is about to replace.
@@ -551,7 +568,7 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
         };
 
     try {
-      const result = await driveScene(prepare, fn, opts);
+      const result = await driveScene(prepare, fn, { ...opts, maxFrames });
       driveError = result.ok
         ? null
         : { kind: DRIVE_ERROR_KIND, message: result.error };

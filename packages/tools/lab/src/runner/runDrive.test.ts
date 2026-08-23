@@ -55,13 +55,24 @@ function stubEngine(
 
   const events = { getLog: () => [] };
 
+  // Tracks what a drive left held, so `getInputState()` can report it —
+  // exercised by the `state` tests below.
+  const heldKeys = new Set<string>();
+  const heldActions = new Set<string>();
+
   const engine = {
     inspector: {
       time,
       events,
       input: {
-        keyDown: record("keyDown"),
-        keyUp: record("keyUp"),
+        keyDown: (code: string) => {
+          heldKeys.add(code);
+          record("keyDown")(code);
+        },
+        keyUp: (code: string) => {
+          heldKeys.delete(code);
+          record("keyUp")(code);
+        },
         mouseMove: record("mouseMove"),
         mouseDown: record("mouseDown"),
         mouseUp: record("mouseUp"),
@@ -70,19 +81,37 @@ function stubEngine(
         pointerUp: record("pointerUp"),
         gamepadButton: record("gamepadButton"),
         gamepadAxis: record("gamepadAxis"),
-        clearAll: record("clearAll"),
+        clearAll: () => {
+          heldKeys.clear();
+          heldActions.clear();
+          record("clearAll")();
+        },
       },
       capture: {
         dataURL: () => Promise.resolve(`data:image/png;base64,frame-${frame}`),
       },
+      getInputState: () => ({
+        keys: [...heldKeys],
+        actions: [...heldActions],
+        mouse: { x: 0, y: 0, buttons: [], down: false },
+        pointers: [],
+        gamepad: { buttons: [], axes: [] },
+      }),
+      getSceneStack: () => [],
     },
     context: {
       tryResolve: (key: ServiceKey<unknown>) => {
         if (key.id === "inputManager") {
           return opts.actions === true
             ? {
-                fireActionDown: record("actionDown"),
-                fireActionUp: record("actionUp"),
+                fireActionDown: (name: string) => {
+                  heldActions.add(name);
+                  record("actionDown")(name);
+                },
+                fireActionUp: (name: string) => {
+                  heldActions.delete(name);
+                  record("actionUp")(name);
+                },
               }
             : undefined;
         }
@@ -368,6 +397,135 @@ describe("runDrive", () => {
       { label: "before", dataUrl: "data:image/png;base64,frame-0" },
       { label: undefined, dataUrl: "data:image/png;base64,frame-2" },
     ]);
+  });
+
+  it("reports framesUsed live, counting frames issued directly through inspector.time too", async () => {
+    const { engine } = stubEngine();
+    const seen: number[] = [];
+    await runDrive(engine, SCENE, {}, async (ctx) => {
+      await ctx.step(2);
+      seen.push(ctx.framesUsed);
+      await engine.inspector.time.stepAsync(3);
+      seen.push(ctx.framesUsed);
+    });
+    expect(seen).toEqual([2, 5]);
+  });
+
+  it("captures the keys and scene stack held when the run ended", async () => {
+    const { engine } = stubEngine();
+    const result = await runDrive(engine, SCENE, {}, (ctx) => {
+      ctx.input.keyDown("KeyD");
+      return Promise.resolve();
+    });
+    expect(result.state.keys).toEqual(["KeyD"]);
+    expect(result.state.scenes).toEqual(engine.inspector.getSceneStack());
+  });
+
+  it("applies no frame budget when maxFrames is omitted", async () => {
+    const { engine } = stubEngine();
+    const result = await runDrive(engine, SCENE, {}, async (ctx) => {
+      await ctx.step(50_000);
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("never times out when maxFrames is Infinity", async () => {
+    const { engine } = stubEngine();
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      async (ctx) => {
+        await ctx.step(50_000);
+      },
+      { maxFrames: Infinity },
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("ends a run that exceeds its frame budget with timedOut: true and framesUsed equal to the budget", async () => {
+    const { engine } = stubEngine();
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      async (ctx) => {
+        for (;;) {
+          await ctx.step(1);
+        }
+      },
+      { maxFrames: 5 },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.timedOut).toBe(true);
+      expect(result.framesUsed).toBe(5);
+    }
+  });
+
+  it("reports timedOut: false when the callback throws for its own reason", async () => {
+    const { engine } = stubEngine();
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      () => {
+        throw new Error("no slime in the scene");
+      },
+      { maxFrames: 5 },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.timedOut).toBe(false);
+      expect(result.error).toBe("no slime in the scene");
+    }
+  });
+});
+
+describe("input.whileHolding", () => {
+  it("nests: the inner release leaves the outer key held", async () => {
+    const { engine } = stubEngine();
+    let midRunKeys: string[] | undefined;
+    await runDrive(engine, SCENE, {}, async (ctx) => {
+      await ctx.input.whileHolding(["KeyA"], async () => {
+        await ctx.input.whileHolding(["KeyB"], async () => {});
+        midRunKeys = [...engine.inspector.getInputState().keys];
+      });
+    });
+    expect(midRunKeys).toEqual(["KeyA"]);
+  });
+
+  it("leaves a code the caller already holds down when it returns", async () => {
+    const { engine } = stubEngine();
+    let insideKeys: string[] | undefined;
+    let afterInnerKeys: string[] | undefined;
+    await runDrive(engine, SCENE, {}, async (ctx) => {
+      await ctx.input.whileHolding(["KeyD"], async () => {
+        await ctx.input.whileHolding(["KeyD", "Space"], async () => {
+          insideKeys = [...engine.inspector.getInputState().keys].sort();
+        });
+        afterInnerKeys = [...engine.inspector.getInputState().keys];
+      });
+    });
+    expect(insideKeys).toEqual(["KeyD", "Space"]);
+    // The inner call repeated "KeyD", so it is the outer call's to release.
+    expect(afterInnerKeys).toEqual(["KeyD"]);
+  });
+
+  it("releases exactly its own codes when fn throws, leaving other held keys alone", async () => {
+    const { engine } = stubEngine();
+    let keysAfterThrow: string[] | undefined;
+    const result = await runDrive(engine, SCENE, {}, async (ctx) => {
+      ctx.input.keyDown("KeyA");
+      await expect(
+        ctx.input.whileHolding(["KeyB"], async () => {
+          throw new Error("maneuver failed");
+        }),
+      ).rejects.toThrow("maneuver failed");
+      keysAfterThrow = [...engine.inspector.getInputState().keys];
+    });
+    expect(result.ok).toBe(true);
+    expect(keysAfterThrow).toEqual(["KeyA"]);
   });
 });
 

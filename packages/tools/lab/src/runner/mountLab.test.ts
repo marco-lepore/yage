@@ -86,6 +86,14 @@ function stubEngine() {
     inspector: {
       time,
       getErrors: () => ({ callbackErrors: [...state.errors] }),
+      getInputState: () => ({
+        keys: [],
+        actions: [],
+        mouse: { x: 0, y: 0, buttons: [], down: false },
+        pointers: [],
+        gamepad: { buttons: [], axes: [] },
+      }),
+      getSceneStack: () => [],
       capture: {
         dataURL: () => Promise.resolve("data:image/png;base64,mock"),
       },
@@ -750,5 +758,70 @@ describe("drive", () => {
       { captureView: "camera" },
     );
     expect(captured.ok).toBe(false);
+  });
+
+  it("applies the default frame budget when maxFrames is omitted", async () => {
+    const { started } = boot("?scenario=drop&paused=1");
+    const api = await started;
+
+    const result = await api.drive(async (ctx) => {
+      // A single jump straight to the default, rather than 10,000 real
+      // `step(1)` calls.
+      await ctx.step(10_000);
+      await ctx.step(1);
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.timedOut).toBe(true);
+  });
+
+  it("passes an explicit maxFrames through to the run", async () => {
+    const { started } = boot("?scenario=drop&paused=1");
+    const api = await started;
+
+    const result = await api.drive(
+      async (ctx) => {
+        for (;;) {
+          await ctx.step(1);
+        }
+      },
+      { maxFrames: 3 },
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.timedOut).toBe(true);
+      expect(result.framesUsed).toBe(3);
+    }
+  });
+});
+
+describe("run() and the frame budget", () => {
+  it("applies no frame budget to a scenario's own drive", async () => {
+    const modules = {
+      "/src/marathon.scenario.ts": {
+        default: defineScenario({
+          title: "Marathon",
+          controls: {},
+          setup: () => {},
+          async drive({ step }) {
+            // Well past the ad-hoc default budget — `run()` must not cap it.
+            await step(20_000);
+          },
+        }),
+      },
+    };
+    const { started } = boot(
+      "?scenario=marathon",
+      ["renderer"],
+      undefined,
+      modules,
+    );
+    const api = await started;
+
+    const result = await api.run();
+
+    expect(result.ok).toBe(true);
+    expect(result.framesUsed).toBe(20_000);
   });
 });

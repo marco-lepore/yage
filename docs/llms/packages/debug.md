@@ -103,37 +103,62 @@ Engine events carry live objects — `component:added` passes the `Component` it
 
 `snapshotScene(nameOrId)` tries the public `scene.name` first, then falls back to the inspector-assigned id from `snapshot().scenes[].id` / `getSceneStack()[].id`. If more than one active scene shares the name it throws rather than guessing — pass the id instead.
 
+`getInputState()` returns the input snapshot on its own — `{ keys, actions, mouse, pointers, gamepad }`, the same object `snapshot().input` carries. Use it to read what is held without paying for a full `snapshot()`, which walks every scene and entity. With no `InputPlugin` active it returns the empty shape rather than throwing.
+
 `time.isAdvancing(withinMs = 250)` reports whether the game loop actually ticked within the last `withinMs` milliseconds, independent of `time.isFrozen()`. A frozen clock that isn't being stepped reads `isAdvancing() === false`, but a manual `time.step`/`stepUntil`/`stepAsync` fires a real tick, so `isAdvancing()` reads `true` for `withinMs` after one. A game that has stalled without being frozen — a hung `await`, a runaway synchronous loop — also reads `false`. `isFrozen()` alone can't tell those two cases apart; `isAdvancing()` exists for that.
 
-### `inspector.drive(fn)` — one probe, frozen and cleaned up
+### `inspector.drive(fn, opts?)` — one probe, frozen and cleaned up
 
 `drive` runs a callback against the running game with the clock held still, hands it awaitable play verbs, and reports what happened as one object. It freezes the clock for the duration and returns it to the state it found it in, and releases every synthetic input afterwards, so no key stays held.
 
 ```ts
-const run = await window.__yage__.inspector.drive(async ({ input, until, step }) => {
+const run = await window.__yage__.inspector.drive(async (ctx) => {
   const i = window.__yage__.inspector;
-  input.keyDown("KeyD");
-  const frames = await until(() => i.getEntityPosition("player").x > 950, {
+  ctx.input.keyDown("KeyD");
+  const frames = await ctx.until(() => i.getEntityPosition("player").x > 950, {
     maxFrames: 240,
   });
-  input.clearAll();
-  await step(10);
-  return { frames, x: i.getEntityPosition("player").x };
+  ctx.input.clearAll();
+  await ctx.step(10);
+  return { frames, spent: ctx.framesUsed, x: i.getEntityPosition("player").x };
 });
-// { ok: true, value: { frames, x }, framesUsed, durationMs, captures }
+// { ok: true, value: { frames, spent, x }, framesUsed, durationMs, captures, state }
 ```
 
-The context carries `step(frames?, { dtMs? })`, `until(predicate, { maxFrames?, dtMs? })`, `input`, `events` and `capture(label?)`. Every frame-advancing call is awaitable and drains async work between frames, including `input.tap`, `input.hold` and `input.fireAction` — which the sync `inspector.input` versions do not.
+The context carries `step(frames?, { dtMs? })`, `until(predicate, { maxFrames?, dtMs? })`, `input`, `events`, `capture(label?)` and a live `framesUsed` — frames the drive has spent so far, counting frames issued through `ctx.step`/`ctx.until` as well as a direct `inspector.time.step()` call inside the callback. Read it off the context (`ctx.framesUsed`) rather than destructuring it — it is a getter, so a destructured copy freezes at the value it had when the run started. Every frame-advancing call is awaitable and drains async work between frames, including `input.tap`, `input.hold` and `input.fireAction` — which the sync `inspector.input` versions do not.
 
-Nothing the callback throws escapes: a throw, including a failed assertion, comes back as `{ ok: false, error }`, and the clock is restored either way. A missing `DebugPlugin` throws from the `drive()` call itself.
+Nothing the callback throws escapes: a throw, including a failed assertion, comes back as `{ ok: false, error, timedOut }`, and the clock is restored either way. A missing `DebugPlugin` throws from the `drive()` call itself.
 
-Derive frame budgets from the game's own numbers rather than guessing: a 900px gap at 300px/s is 3 seconds, so 180 frames at 1/60 — drive it with `until(pred, { maxFrames: 240 })` and let the predicate decide when to move on.
+Every result carries a `state` readout — `{ keys, actions, scenes }` — captured at the moment the run ended, before its cleanup releases synthetic input. Read it to see what the callback left held, rather than re-deriving it from a snapshot taken afterward.
 
-`@yagejs-tools/lab` builds the same verbs for a scenario's `drive`, adding `scene`, `controls` and `expect`, so a probe worth keeping moves into a scenario file with little edited. Three things do change on the way:
+Pass `opts.maxFrames` to bound the run: the budget is checked before each frame-advancing call, and once it is spent the drive ends with `ok: false`, `error`, and `timedOut: true`. A single call asking for more frames than the budget still runs them all, so `framesUsed` can end above `maxFrames` — the budget stops a loop, it does not truncate one call. Omit it and a default of 10,000 frames applies; pass `Infinity` to disable the cap entirely. Derive a tighter budget from the game's own numbers rather than guessing: a 900px gap at 300px/s is 3 seconds, so 180 frames at 1/60 — drive it with `until(pred, { maxFrames: 240 })` and let the predicate decide when to move on, or pass `{ maxFrames: 240 }` to `drive()` itself as a backstop for the whole run.
+
+### `input.whileHolding(codes, fn)` — a scoped hold for a maneuver
+
+`whileHolding` holds `codes` for the duration of `fn`, then restores what was held before — including when `fn` throws. A code already down on entry is left alone at both ends, so nested calls compose by lexical scope even when their code sets overlap, and a key a plain `input.keyDown` is holding survives too. It never calls `input.clearAll()`, which would drop the caller's keys along with its own.
+
+```ts
+await ctx.input.whileHolding(["KeyD"], async () => {
+  while (ctx.framesUsed < 900 && !atExit()) {
+    if (gapAhead()) {
+      await ctx.input.whileHolding(["Space"], () => ctx.step(6));
+      continue;
+    }
+    await ctx.step(1);
+  }
+});
+// "KeyD" releases here; the nested jump released "Space" on its own way out
+// without touching "KeyD".
+```
+
+This is the building block for a policy loop that reads state and picks an input every frame — an `if`/`else` chain with `continue` for priority, an ordinary async function for a maneuver with phases, and `whileHolding` for "keep holding this while a nested maneuver runs." `input.keyDown`/`keyUp` still work for a hold with no natural scope.
+
+`@yagejs-tools/lab` builds the same verbs for a scenario's `drive`, adding `scene`, `controls` and `expect`, so a probe worth keeping moves into a scenario file with little edited. Four things do change on the way:
 
 - A scenario's `drive` returns `void`. Assert inside the callback with `expect` instead of returning a measurement.
 - `fireAction` differs: this one pulses the action once per frame, while the lab holds it down for the whole span. A hold-to-charge move behaves differently under each.
 - `pressAction`/`releaseAction` exist only on the lab's context — core's input contract has no sustained-action calls.
+- A scenario's own `drive`, run through `yage-lab test` or the lab panel's Run button, gets no frame budget — the test runner (or the panel) owns that timeout instead. The budget applies only to an ad-hoc `LabApi.drive()` call.
 
 ### Component state reflection
 
