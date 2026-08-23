@@ -1,13 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { getSceneStack, gotoFixture, stepFrames } from "./helpers";
-
-async function waitForTestApi(page: Page): Promise<void> {
-  await page.waitForFunction(
-    () =>
-      (window as Window & { __sceneTransitionTest__?: unknown })
-        .__sceneTransitionTest__ !== undefined,
-  );
-}
+import { getSceneStack, gotoFixture, stepFrames } from "./helpers.js";
 
 interface SceneTransitionTestApi {
   pushWithTransition(
@@ -26,7 +18,13 @@ interface SceneTransitionTestApi {
   clearAll(): void;
 }
 
-type Win = Window & { __sceneTransitionTest__: SceneTransitionTestApi };
+type Win = Window & { __sceneTransitionTest__?: SceneTransitionTestApi };
+
+async function waitForTestApi(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => (window as Win).__sceneTransitionTest__ !== undefined,
+  );
+}
 
 /**
  * Synchronous API call — returns whatever the method returns (primitives or
@@ -41,7 +39,7 @@ function call<K extends keyof SceneTransitionTestApi>(
 ): Promise<Awaited<ReturnType<SceneTransitionTestApi[K]>> | undefined> {
   return page.evaluate(
     ({ k, a }) => {
-      const api = (window as Win).__sceneTransitionTest__;
+      const api = (window as Win).__sceneTransitionTest__!;
       const fn = api[k as keyof SceneTransitionTestApi] as (
         ...args: unknown[]
       ) => unknown;
@@ -121,7 +119,7 @@ test.describe("Scene transitions", () => {
 
     // Fire two pushes without awaiting between them.
     await page.evaluate(() => {
-      const api = (window as Win).__sceneTransitionTest__;
+      const api = (window as Win).__sceneTransitionTest__!;
       void api.pushWithTransition("fade", 0.1);
       void api.pushWithTransition("fade", 0.1);
     });
@@ -131,11 +129,13 @@ test.describe("Scene transitions", () => {
     // second.
     await stepFrames(page, 10, 16);
     await page.waitForFunction(
-      () => (window as Win).__sceneTransitionTest__.getStackNames().length >= 2,
+      () =>
+        (window as Win).__sceneTransitionTest__!.getStackNames().length >= 2,
     );
     await stepFrames(page, 30, 16);
     await page.waitForFunction(
-      () => (window as Win).__sceneTransitionTest__.getStackNames().length === 3,
+      () =>
+        (window as Win).__sceneTransitionTest__!.getStackNames().length === 3,
     );
 
     const stack = await getSceneStack(page);
@@ -159,7 +159,7 @@ test.describe("Scene transitions", () => {
 
     // Start a transition, queue another, then enqueue popAll.
     await page.evaluate(() => {
-      const api = (window as Win).__sceneTransitionTest__;
+      const api = (window as Win).__sceneTransitionTest__!;
       void api.pushWithTransition("fade", 0.2);
       void api.pushWithTransition("fade", 0.1);
     });
@@ -184,7 +184,7 @@ test.describe("Scene transitions", () => {
 
     expect(await getSceneStack(page)).toHaveLength(0);
 
-    const events = await call(page, "getTransitionEvents");
+    const events = (await call(page, "getTransitionEvents"))!;
     const started = events.filter((e) => e.type === "started");
     const ended = events.filter((e) => e.type === "ended");
     // Both pushes completed their transitions before popAll ran.

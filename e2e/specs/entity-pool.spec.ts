@@ -5,7 +5,7 @@ import {
   gotoFixture,
   stepFrames,
   waitForClock,
-} from "./helpers";
+} from "./helpers.js";
 
 interface EmitterData {
   acquired: number;

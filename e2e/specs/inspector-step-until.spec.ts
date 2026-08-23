@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { getSceneStack, gotoFixture } from "./helpers";
+import { getSceneStack, gotoFixture } from "./helpers.js";
 
 // A frozen scene push resolves on the microtask queue: `SceneManager.push`
 // defers its work through `_pendingChain.then(...)`, so the transition can't
@@ -17,13 +17,11 @@ interface SceneApi {
   getIsTransitioning(): boolean;
 }
 
-type Win = Window & { __sceneTransitionTest__: SceneApi };
+type Win = Window & { __sceneTransitionTest__?: SceneApi };
 
 async function waitForSceneApi(page: Page): Promise<void> {
   await page.waitForFunction(
-    () =>
-      (window as Window & { __sceneTransitionTest__?: SceneApi })
-        .__sceneTransitionTest__ !== undefined,
+    () => (window as Win).__sceneTransitionTest__ !== undefined,
   );
 }
 
@@ -39,7 +37,7 @@ test.describe("Inspector async stepping (stepUntil / stepAsync)", () => {
     // because stepUntil yields between frames, so push()'s deferred transition
     // starts and finishes without breaking the loop across Playwright round-trips.
     const frames = await page.evaluate(async () => {
-      const api = (window as Win).__sceneTransitionTest__;
+      const api = (window as Win).__sceneTransitionTest__!;
       const inspector = window.__yage__!.inspector;
       void api.pushWithTransition("fade", 0.1);
       return inspector.time.stepUntil(
@@ -66,7 +64,7 @@ test.describe("Inspector async stepping (stepUntil / stepAsync)", () => {
     // loop, so push()'s queued microtask never runs within the evaluate — the
     // scene is not added and the transition never begins.
     const result = await page.evaluate(() => {
-      const api = (window as Win).__sceneTransitionTest__;
+      const api = (window as Win).__sceneTransitionTest__!;
       const inspector = window.__yage__!.inspector;
       void api.pushWithTransition("fade", 0.1);
       inspector.time.step(60);
@@ -87,7 +85,7 @@ test.describe("Inspector async stepping (stepUntil / stepAsync)", () => {
     await waitForSceneApi(page);
 
     await page.evaluate(async () => {
-      const api = (window as Win).__sceneTransitionTest__;
+      const api = (window as Win).__sceneTransitionTest__!;
       const inspector = window.__yage__!.inspector;
       void api.pushWithTransition("fade", 0.1);
       await inspector.time.stepAsync(30, { dtMs: 16 });
@@ -97,7 +95,7 @@ test.describe("Inspector async stepping (stepUntil / stepAsync)", () => {
     expect(stack).toHaveLength(2);
     expect(
       await page.evaluate(
-        () => (window as Win).__sceneTransitionTest__.getIsTransitioning(),
+        () => (window as Win).__sceneTransitionTest__!.getIsTransitioning(),
       ),
     ).toBe(false);
   });

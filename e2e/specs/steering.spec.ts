@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { gotoFixture, getEntityPosition, stepFrames, waitForClock } from "./helpers";
+import { gotoFixture, getEntityPosition, stepFrames, waitForClock } from "./helpers.js";
 
 /**
  * The fixture (`e2e/fixtures/src/steering.ts`) exposes fixed targets and

@@ -8,7 +8,7 @@ import {
   EXAMPLE_SCRIPTS,
   type AtlasAction,
   type ExampleScript,
-} from "./examples-atlas";
+} from "./examples-atlas.js";
 
 // Auto-discover every shipped example so new ones are covered without editing
 // this file — mirrors how examples/vite.config.ts enumerates HTML inputs.

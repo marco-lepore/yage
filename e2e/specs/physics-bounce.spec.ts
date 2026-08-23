@@ -6,7 +6,7 @@ import {
   gotoFixture,
   stepFrames,
   waitForClock,
-} from "./helpers";
+} from "./helpers.js";
 
 interface BounceCounterData {
   count: number;

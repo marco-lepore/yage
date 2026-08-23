@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { getSceneStack, gotoFixture, waitForSceneStackLength } from "./helpers";
+import {
+  getSceneStack,
+  gotoFixture,
+  waitForSceneStackLength,
+} from "./helpers.js";
 
 type LoadingTestHooks = {
   resolveAsset(path: string): boolean;
@@ -26,7 +30,7 @@ function hook<K extends keyof LoadingTestHooks>(
       return h[key](...args);
     },
     { key, args } as { key: K; args: unknown[] },
-  );
+  ) as Promise<ReturnType<LoadingTestHooks[K]>>;
 }
 
 // Poll until the given asset has registered with the loader, then settle it.

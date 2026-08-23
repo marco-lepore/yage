@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { gotoFixture } from "./helpers";
+import { gotoFixture } from "./helpers.js";
 
 // Helper: find an entity by class name in the active scene
 function findEntity(page: Page, className: string) {
@@ -16,7 +16,7 @@ function findEntity(page: Page, className: string) {
 // Helper: wait until the active scene has at least N entities
 function waitForEntities(page: Page, count: number) {
   return page.waitForFunction(
-    (n) => window.__yage__?.inspector.getEntities().length >= n,
+    (n) => (window.__yage__?.inspector.getEntities().length ?? 0) >= n,
     count,
   );
 }

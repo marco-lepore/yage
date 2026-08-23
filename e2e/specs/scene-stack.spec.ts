@@ -5,7 +5,15 @@ import {
   gotoFixture,
   waitForSceneStackLength,
   waitForTopScene,
-} from "./helpers";
+} from "./helpers.js";
+
+interface SceneStackTestApi {
+  pushOverlay(): Promise<void>;
+  popTop(): Promise<void>;
+  replaceWithReplacement(): Promise<void>;
+}
+
+type Win = Window & { __sceneStackTest__?: SceneStackTestApi };
 
 test.describe("Scene stack fixture", () => {
   test("pushes, pops, and replaces scenes deterministically", async ({ page }) => {
@@ -23,9 +31,7 @@ test.describe("Scene stack fixture", () => {
     expect(await getEntityByName(page, "base-marker")).toBeDefined();
 
     await page.evaluate(async () => {
-      await (window as Window & {
-        __sceneStackTest__: { pushOverlay(): Promise<void> };
-      }).__sceneStackTest__.pushOverlay();
+      await (window as Win).__sceneStackTest__!.pushOverlay();
     });
 
     await waitForTopScene(page, "overlay-scene");
@@ -42,11 +48,7 @@ test.describe("Scene stack fixture", () => {
     expect(await getEntityByName(page, "overlay-marker")).toBeDefined();
 
     await page.evaluate(async () => {
-      await (
-        window as Window & {
-          __sceneStackTest__: { popTop(): Promise<void> };
-        }
-      ).__sceneStackTest__.popTop();
+      await (window as Win).__sceneStackTest__!.popTop();
     });
 
     await waitForTopScene(page, "base-scene");
@@ -60,11 +62,7 @@ test.describe("Scene stack fixture", () => {
     expect(await getEntityByName(page, "base-marker")).toBeDefined();
 
     await page.evaluate(async () => {
-      await (
-        window as Window & {
-          __sceneStackTest__: { replaceWithReplacement(): Promise<void> };
-        }
-      ).__sceneStackTest__.replaceWithReplacement();
+      await (window as Win).__sceneStackTest__!.replaceWithReplacement();
     });
 
     await waitForTopScene(page, "replacement-scene");

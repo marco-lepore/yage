@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { getComponentData, gotoFixture, stepFrames, waitForClock } from "./helpers";
+import { getComponentData, gotoFixture, stepFrames, waitForClock } from "./helpers.js";
 
 interface ProbeData {
   hp: number;

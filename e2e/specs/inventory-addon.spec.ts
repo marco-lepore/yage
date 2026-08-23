@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { gotoFixture, stepFrames, waitForClock } from "./helpers";
+import { gotoFixture, stepFrames, waitForClock } from "./helpers.js";
 
 /**
  * The fixture (`examples/src/inventory-addon.ts`) exposes its two models,

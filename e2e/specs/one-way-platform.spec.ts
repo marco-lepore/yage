@@ -5,7 +5,7 @@ import {
   gotoFixture,
   stepFrames,
   waitForClock,
-} from "./helpers";
+} from "./helpers.js";
 
 /**
  * Exercises the contact-filter hook in the browser's ESM Rapier build.

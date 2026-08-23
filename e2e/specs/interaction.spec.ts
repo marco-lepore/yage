@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { gotoFixture, waitForClock } from "./helpers";
+import { gotoFixture, waitForClock } from "./helpers.js";
 
 /**
  * The fixture (`e2e/fixtures/src/interaction.ts`) exposes the interactor,

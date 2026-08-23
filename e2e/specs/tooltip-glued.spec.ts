@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { gotoFixture, stepFrames, waitForClock } from "./helpers";
+import { gotoFixture, stepFrames, waitForClock } from "./helpers.js";
 
 interface Box {
   x: number;
