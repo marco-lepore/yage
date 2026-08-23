@@ -1,4 +1,5 @@
 import {
+  assertDriveMaxFrames,
   type AssetHandle,
   type CallbackErrorRecord,
   DEFAULT_DRIVE_MAX_FRAMES,
@@ -525,6 +526,11 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
   ): Promise<DriveResult<T>> {
     if (!entry) throw new Error("No scenario is mounted.");
     requireIdle();
+    // Checked before the rebuild below and before the panel is touched: a
+    // budget this call will refuse should leave the mounted scene alone.
+    if (opts?.maxFrames !== undefined) {
+      assertDriveMaxFrames(opts.maxFrames, "drive()");
+    }
     const maxFrames = opts?.maxFrames ?? DEFAULT_DRIVE_MAX_FRAMES;
 
     if (opts?.rebuild) {

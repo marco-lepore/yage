@@ -422,6 +422,18 @@ describe("drive", () => {
     expect(sceneSeen).toBe(api.scene());
   });
 
+  it("refuses an invalid maxFrames without rebuilding the mounted scene", async () => {
+    const { state, started } = boot("?scenario=drop");
+    const api = await started;
+    const mountsBefore = state.mounted.length;
+
+    await expect(
+      api.drive(() => undefined, { rebuild: true, maxFrames: Number.NaN }),
+    ).rejects.toThrow("maxFrames must be a non-negative integer or Infinity");
+
+    expect(state.mounted.length).toBe(mountsBefore);
+  });
+
   it("does not need the scenario to declare its own drive", async () => {
     const { started } = boot("?scenario=spin");
     const api = await started;
