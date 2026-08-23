@@ -1,0 +1,180 @@
+---
+title: Feel
+description: Compose transform, camera, time, renderer, sound, and particle feedback into one named trigger
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+`@yagejs-addons/feel` groups the small responses around an action and plays
+them from one call. A hit can squash the target, flash its sprite, shake the
+camera, freeze the scene for 50 ms, play a sound, and burst particles without
+putting six unrelated timers in combat code.
+
+```ts
+import {
+  Feel,
+  feelHitStop,
+  feelParallel,
+  feelSquash,
+} from "@yagejs-addons/feel";
+import { feelCameraShake, feelHitFlash } from "@yagejs-addons/feel/renderer";
+import { feelSound } from "@yagejs-addons/feel/audio";
+import { feelParticleBurst } from "@yagejs-addons/feel/particles";
+
+enemy.add(
+  new Feel({
+    hit: feelParallel(
+      feelSquash({ target: enemyVisualTransform, amount: 0.2 }),
+      feelHitStop({ duration: 0.05 }),
+      feelCameraShake({ camera, intensity: 5 }),
+      feelHitFlash(enemySprite.fx, { color: 0xffffff }),
+      feelSound({ alias: "impact", speed: [0.95, 1.05] }),
+      feelParticleBurst({ emitter: sparks, count: [8, 12] }),
+    ),
+  }),
+);
+
+enemy.get(Feel).play("hit");
+```
+
+## Install
+
+```bash
+npm install @yagejs-addons/feel @yagejs/core
+
+# Add only the optional peers your cues use:
+npm install @yagejs/renderer @yagejs/effects
+npm install @yagejs/audio
+npm install @yagejs/particles
+```
+
+The root import contains the `Feel` component, composition helpers, transform
+effects, time effects, animation, and callbacks. Renderer, audio, and particle
+adapters use separate entry points, so the root import does not load PixiJS or
+optional plugins.
+
+## Build one response from small effects
+
+`feelParallel` starts every child together. `feelSequence` waits for each
+child to finish. `feelDelay` offsets one child, and `feelRepeat` repeats a
+child with an optional gap.
+
+```ts
+const pickup = feelSequence(
+  feelParallel(
+    feelScalePunch({ scale: 1.3 }),
+    feelSound({ alias: "pickup" }),
+  ),
+  feelDelay(0.04, feelParticleBurst({ emitter: glitter, count: 10 })),
+);
+```
+
+Every named cue can control retriggers:
+
+```ts
+const feel = entity.add(
+  new Feel({
+    hit: {
+      effect: pickup,
+      overlap: "restart", // "restart" (default), "ignore", or "allow"
+      chance: 0.9,
+      cooldown: 0.05,
+      intensity: [0.9, 1.1],
+    },
+  }),
+);
+
+feel.play("hit", { intensity: 1.5 }); // per-play override
+feel.stop("hit");
+```
+
+`play()` returns `null` while the component is dormant or when chance,
+cooldown, or `overlap: "ignore"` rejects the trigger. Otherwise it returns a
+handle with `active`, `finished`, and `stop()`. Disabling or destroying `Feel`
+stops all active cues.
+
+## Transform effects and physics
+
+The root entry includes position and rotation punches, recoil, bounce, scale
+punch, squash/stretch, position shake, and rotation shake. Transform effects
+are relative to the live value. Position and rotation contributions add;
+scale contributions multiply. Several cues can affect one transform while
+ordinary movement continues underneath.
+
+<Aside type="caution">
+Shake, squash, and scale punch are presentation. If the entity has a rigid
+body, target a child entity that holds the sprite. Applying a position punch
+to the rigid body's transform can move its collision shape or become a
+kinematic target. Use the physics impulse or velocity API for mechanical
+knockback.
+</Aside>
+
+```text
+player (Transform + RigidBody + Collider + Feel)
+└── playerVisual (Transform + Sprite)
+```
+
+```ts
+feelSquash({ target: playerVisual.get(Transform), axis: "y", amount: 0.25 });
+feelRecoil({
+  target: weaponVisual.get(Transform),
+  direction: aimDirection,
+  distance: 8,
+});
+```
+
+## Camera and renderer feedback
+
+The `/renderer` entry adds camera shake and zoom pulses, opacity pulses,
+blinking, hit flash, and shockwave. `feelEffect` accepts any YAGE effect
+factory, so the addon also supports current and future `@yagejs/effects`
+presets without one wrapper per filter.
+
+```ts
+import { bloom, chromaticAberration } from "@yagejs/effects";
+import { feelEffect } from "@yagejs-addons/feel/renderer";
+
+const critical = feelParallel(
+  feelEffect(worldLayer.fx, bloom({ bloomScale: 1.5 }), { duration: 0.2 }),
+  feelEffect(worldLayer.fx, chromaticAberration({ separation: 6 }), {
+    duration: 0.12,
+  }),
+);
+```
+
+Each generic pulse attaches the effect, moves its primary intensity from zero
+to the cue-scaled peak and back, then removes it. Choose the renderer scope as
+you would without the addon: component for one sprite, layer for the world
+without the HUD, scene for the whole scene, or screen across scenes.
+
+## Time, sound, particles, and animation
+
+`feelHitStop` calls `SceneTime.freezeFor`. `feelSlowMotion` calls
+`SceneTime.scaleBy` and excludes the `Feel` entity from slow motion by default,
+so its cue timing can continue at normal speed. Set `includeOwner: true` when
+the owner should slow too.
+
+Time requests expire on `SceneTime`'s raw clock. Stopping a cue after a time
+request starts does not undo that request.
+
+`feelSound` plays a preloaded alias, with optional speed randomization.
+`feelParticleBurst` bursts an existing emitter. `feelParticleEmit` runs
+continuous emission for a window and keeps overlapping windows from stopping
+each other early. `feelAnimation` starts a `KeyframeAnimator` animation.
+
+## Custom effects and events
+
+Use `feelCall` for an instant game callback. Use `defineFeelEffect` when the
+effect has a duration:
+
+```ts
+const counterPulse = defineFeelEffect(0.2, (context) => ({
+  start: () => counter.show(),
+  update: (progress) => counter.setScale(1 + Math.sin(progress * Math.PI) * 0.2),
+  finish: () => counter.hide(),
+}));
+```
+
+The host entity emits `FeelStartedEvent`, `FeelCompletedEvent`, and
+`FeelStoppedEvent`. Cues and active playbacks are transient and are not part
+of save snapshots.
