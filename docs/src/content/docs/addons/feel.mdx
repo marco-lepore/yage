@@ -1,6 +1,6 @@
 ---
 title: Feel
-description: Compose transform, camera, time, renderer, sound, and particle feedback into one named trigger
+description: Compose visual, camera, time, renderer, sound, and particle feedback into one named trigger
 ---
 
 import { Aside } from "@astrojs/starlight/components";
@@ -15,16 +15,20 @@ import {
   Feel,
   feelHitStop,
   feelParallel,
-  feelSquash,
 } from "@yagejs-addons/feel";
-import { feelCameraShake, feelHitFlash } from "@yagejs-addons/feel/renderer";
+import {
+  feelCameraShake,
+  feelHitFlash,
+  feelScalePunch,
+  feelSquash,
+} from "@yagejs-addons/feel/renderer";
 import { feelSound } from "@yagejs-addons/feel/audio";
 import { feelParticleBurst } from "@yagejs-addons/feel/particles";
 
 enemy.add(
   new Feel({
     hit: feelParallel(
-      feelSquash({ target: enemyVisualTransform, amount: 0.2 }),
+      feelSquash({ target: enemySprite, amount: 0.2 }),
       feelHitStop({ duration: 0.05 }),
       feelCameraShake({ camera, intensity: 5 }),
       feelHitFlash(enemySprite.fx, { color: 0xffffff }),
@@ -48,10 +52,10 @@ npm install @yagejs/audio
 npm install @yagejs/particles
 ```
 
-The root import contains the `Feel` component, composition helpers, transform
-effects, time effects, animation, and callbacks. Renderer, audio, and particle
-adapters use separate entry points, so the root import does not load PixiJS or
-optional plugins.
+The root import contains the `Feel` component, composition helpers, time
+effects, animation, and callbacks. Visual motion, camera, filter, audio, and
+particle adapters use separate entry points, so the root import does not load
+PixiJS or optional plugins.
 
 ## Build one response from small effects
 
@@ -62,7 +66,7 @@ child with an optional gap.
 ```ts
 const pickup = feelSequence(
   feelParallel(
-    feelScalePunch({ scale: 1.3 }),
+    feelScalePunch({ target: pickupSprite, scale: 1.3 }),
     feelSound({ alias: "pickup" }),
   ),
   feelDelay(0.04, feelParticleBurst({ emitter: glitter, count: 10 })),
@@ -93,35 +97,35 @@ cooldown, or `overlap: "ignore"` rejects the trigger. Otherwise it returns a
 handle with `active`, `finished`, and `stop()`. Disabling or destroying `Feel`
 stops all active cues.
 
-## Transform effects and physics
+## Visual motion and physics
 
-The root entry includes position and rotation punches, recoil, bounce, scale
-punch, squash/stretch, position shake, and rotation shake. Transform effects
-are relative to the live value. Position and rotation contributions add;
-scale contributions multiply. Several cues can affect one transform while
-ordinary movement continues underneath.
+The `/renderer` entry includes position and rotation punches, recoil, bounce,
+scale punch, squash/stretch, position shake, and rotation shake. Each effect
+targets a `VisualComponent`, such as `SpriteComponent`. Position and rotation
+contributions add; scale contributions multiply. Several cues can affect one
+visual while its entity keeps moving normally.
 
 <Aside type="caution">
-Shake, squash, and scale punch are presentation. If the entity has a rigid
-body, target a child entity that holds the sprite. Applying a position punch
-to the rigid body's transform can move its collision shape or become a
-kinematic target. Use the physics impulse or velocity API for mechanical
-knockback.
+Visual modifiers do not write to `Transform`. A rigid body, collider, camera
+follow target, and depth-sort key keep their authoritative values while the
+sprite shakes or squashes. Use the physics impulse or velocity API when recoil
+must affect gameplay.
 </Aside>
 
-```text
-player (Transform + RigidBody + Collider + Feel)
-└── playerVisual (Transform + Sprite)
-```
-
 ```ts
-feelSquash({ target: playerVisual.get(Transform), axis: "y", amount: 0.25 });
+feelSquash({ target: playerSprite, axis: "y", amount: 0.25 });
 feelRecoil({
-  target: weaponVisual.get(Transform),
+  target: weaponSprite,
   direction: aimDirection,
   distance: 8,
 });
 ```
+
+The renderer recomputes the displayed transform from the current base
+`Transform` plus all active visual modifiers every frame. Each playback owns
+one removable modifier. Cancellation removes that modifier without reversing
+arithmetic or restoring a stale snapshot, so overlapping effects cannot leave
+drift.
 
 ## Camera and renderer feedback
 
@@ -158,9 +162,10 @@ Time requests expire on `SceneTime`'s raw clock. Stopping a cue after a time
 request starts does not undo that request.
 
 `feelSound` plays a preloaded alias, with optional speed randomization.
-`feelParticleBurst` bursts an existing emitter. `feelParticleEmit` runs
-continuous emission for a window and keeps overlapping windows from stopping
-each other early. `feelAnimation` starts a `KeyframeAnimator` animation.
+`feelParticleBurst` bursts an existing emitter. `feelParticleEmit` owns a
+temporary emission request. Manual emission and overlapping requests remain
+active when one cue finishes. `feelAnimation` starts a `KeyframeAnimator`
+animation.
 
 ## Custom effects and events
 

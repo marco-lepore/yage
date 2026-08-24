@@ -217,7 +217,29 @@ All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitT
 }
 ```
 
-`comp.visible` / `comp.tint` / `comp.alpha` / `comp.blendMode` read/write the live object; `interactive` is option-only (set once at construction, persisted through save/load).
+`comp.tint` and `comp.blendMode` read/write the live object. `comp.visible` and
+`comp.alpha` read/write the game's base values; active modifiers affect only
+the computed render values. `interactive` is option-only (set once at
+construction, persisted through save/load).
+
+Every visual component also exposes `comp.modifiers: VisualModifierHost`:
+
+```ts
+const motion = comp.modifiers.addTransform({ position, rotation, scale });
+motion.setPosition(nextOffset);
+motion.setRotation(nextRadians);
+motion.setScale(nextFactor);
+motion.remove();
+
+const opacity = comp.modifiers.addOpacity(0.5); // multiplicative
+const visibility = comp.modifiers.addVisibility(false); // logical AND
+```
+
+Transform position/rotation modifiers add; scale and opacity multiply.
+`DisplaySystem` combines them with the current world `Transform` every render
+without changing `Transform`. Depth sorting sees the base position. Handles
+remove only their own contribution, are idempotent, and become inactive when
+the component is destroyed. Modifiers are transient and are not serialized.
 
 **`blendMode`.** `"normal"`, `"add"`, `"multiply"`, `"screen"`, `"erase"`, `"min"`, `"max"`, `"none"` and the `-npm` variants are GPU-native and need nothing extra. The photoshop-style rest (`"darken"`, `"lighten"`, `"overlay"`, `"color-dodge"`, `"soft-light"`, ...) are filter-backed and need one side-effect import in the game's entry file — without it Pixi logs a warning and draws normally:
 
@@ -538,11 +560,23 @@ cam.unfollow();
 cam.shake(10, 0.5, { decay: 1 }); // duration in seconds; decay 1 fades to zero by the end, 0 (default) holds full strength
 cam.zoomTo(2.0, 1, easeOutQuad); // duration in seconds
 
+const modifier = cam.modifiers.add({
+  position: { x: 4, y: 0 }, // additive
+  rotation: 0.02, // additive
+  zoom: 1.05, // multiplicative
+});
+modifier.remove();
+
 cam.bounds = { minX: 0, minY: 0, maxX: 2000, maxY: 1000 };
 
 const world = cam.screenToWorld(mouseX, mouseY);
 const screen = cam.worldToScreen(entity.x, entity.y);
 ```
+
+`effectivePosition`, `effectiveRotation`, and `effectiveZoom` combine the
+camera's base values with every active `CameraModifierHandle`. Layer rendering
+and coordinate conversion use these effective values. Removing a handle does
+not restore a snapshot or affect other modifiers. Modifiers are transient.
 
 ### Follow smoothing and `snap`
 

@@ -7,7 +7,7 @@ Optional entries: `/renderer`, `/audio`, `/particles`.
 const feel = entity.add(
   new Feel({
     hit: feelParallel(
-      feelSquash({ target: visualTransform, amount: 0.2 }),
+      feelSquash({ target: sprite, amount: 0.2 }),
       feelHitStop({ duration: 0.05 }),
     ),
   }),
@@ -60,28 +60,23 @@ the scene `random`, `resolve(ServiceKey)`, and guarded `invoke(label, fn)`.
 
 ## Root effects
 
-- `feelPositionPunch({ offset, target?, duration?, peakAt?, ... })`
-- `feelRecoil({ direction, distance?, target?, duration? })`
-- `feelBounce({ distance?, target?, duration? })`
-- `feelRotationPunch({ radians, target?, duration?, peakAt?, ... })`
-- `feelRotationShake({ radians?, frequency?, decay?, target?, duration? })`
-- `feelScalePunch({ scale?, target?, duration?, peakAt?, ... })`
-- `feelSquash({ axis?, amount?, target?, duration?, peakAt?, ... })`
-- `feelTransformShake({ amplitude?, frequency?, decay?, target?, duration? })`
 - `feelHitStop({ duration?, key?, label? })`
 - `feelSlowMotion({ scale?, duration?, includeOwner?, key?, label? })`
 - `feelAnimation(name, target?)`
 - `feelCall(callback, label?)`
 
-Transform targets default to the host entity's `Transform`. Position and
-rotation effects are additive; scale effects are multiplicative. For a physics
-entity, target a child visual entity's `Transform`. Use physics APIs for
-mechanical knockback.
-
 ## `/renderer`
 
 ```ts
-feelCameraShake({ camera, intensity?, duration?, decay? });
+feelPositionPunch({ target, offset, duration?, peakAt?, ... });
+feelRecoil({ target, direction, distance?, duration? });
+feelBounce({ target, distance?, duration? });
+feelRotationPunch({ target, radians, duration?, peakAt?, ... });
+feelRotationShake({ target, radians?, frequency?, decay?, duration? });
+feelScalePunch({ target, scale?, duration?, peakAt?, ... });
+feelSquash({ target, axis?, amount?, duration?, peakAt?, ... });
+feelTransformShake({ target, amplitude?, frequency?, decay?, duration? });
+feelCameraShake({ camera, intensity?, duration?, frequency?, decay? });
 feelCameraZoom({ camera, scale?, duration?, peakAt?, ... });
 feelEffect(host: EffectsHost, factory: EffectFactory, options?);
 feelHitFlash(host: EffectsHost, options?: HitFlashOptions);
@@ -89,6 +84,17 @@ feelShockwave(host: EffectsHost, options?: ShockwaveOptions & { center? });
 feelOpacity({ target, alpha?, duration?, peakAt? });
 feelBlink({ target, duration?, interval? });
 ```
+
+Visual motion targets a `VisualComponent`. Each playback owns a renderer
+modifier: position and rotation add, while scale and opacity multiply.
+Visibility modifiers combine with logical AND. The renderer recomputes the
+final value from the current base state and all active modifiers every frame.
+Removing a playback removes only its modifier. Gameplay `Transform` and
+physics state are not changed.
+
+Camera shake and zoom use the camera's modifier host. Camera position and
+rotation modifiers add; zoom modifiers multiply. Coordinate conversion and
+rendered camera layers use the effective values.
 
 `feelEffect` attaches the supplied effect factory, pulses primary intensity
 from 0 to the cue-scaled peak and back, then removes it.
@@ -112,8 +118,8 @@ feelParticleBurst({ emitter, count: number | [min, max], position? });
 feelParticleEmit({ emitter, duration? });
 ```
 
-Overlapping `feelParticleEmit` windows share the emitter. The final window
-stops the emitter only when the emitter was idle before the first window.
+Each `feelParticleEmit` playback owns a `ParticleEmissionHandle`. Releasing
+one handle does not stop manual emission or another active request.
 
 ## Time behavior
 

@@ -1,11 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  ErrorBoundaryKey,
-  SceneTimeKey,
-  Transform,
-  Vec2,
-  createMockEntity,
-} from "@yagejs/core";
+import { ErrorBoundaryKey, SceneTimeKey, createMockEntity } from "@yagejs/core";
 import { Feel } from "./Feel.js";
 import {
   FeelCompletedEvent,
@@ -19,7 +13,6 @@ import {
   feelSequence,
 } from "./core/node.js";
 import { feelHitStop, feelSlowMotion } from "./effects/core.js";
-import { feelPositionPunch, feelScalePunch } from "./effects/transform.js";
 
 describe("Feel", () => {
   it("runs parallel and sequential effects on their scheduled times", () => {
@@ -135,46 +128,6 @@ describe("Feel", () => {
     expect(started).toHaveBeenCalledTimes(2);
     expect(completed).toHaveBeenCalledTimes(1);
     expect(stopped).toHaveBeenCalledTimes(1);
-  });
-
-  it("mixes overlapping transform effects and keeps live movement", () => {
-    const { entity } = createMockEntity();
-    const transform = entity.add(new Transform());
-    const feel = entity.add(
-      new Feel({
-        move: {
-          effect: feelPositionPunch({
-            target: transform,
-            offset: new Vec2(10, 0),
-            duration: 1,
-            peakAt: 1,
-          }),
-          overlap: "allow",
-        },
-        scale: feelScalePunch({
-          target: transform,
-          scale: 2,
-          duration: 1,
-          peakAt: 1,
-        }),
-      }),
-    );
-
-    feel.play("move");
-    feel.play("move");
-    feel.play("scale");
-    feel.update(0.5);
-    expect(transform.position.x).toBe(15);
-    expect(transform.scale.x).toBe(1.75);
-
-    transform.translate(5, 0);
-    feel.update(0.49);
-    expect(transform.position.x).toBeCloseTo(25, 2);
-    expect(transform.scale.x).toBeCloseTo(2, 2);
-
-    feel.update(0.01);
-    expect(transform.position.x).toBe(5);
-    expect(transform.scale.x).toBe(1);
   });
 
   it("uses SceneTime for hit stop and slow motion", () => {

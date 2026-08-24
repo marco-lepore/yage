@@ -153,13 +153,9 @@ export class TilemapComponent extends VisualComponent {
     return this.container.tint;
   }
 
-  override set alpha(alpha: number) {
+  protected override applyEffectiveAlpha(alpha: number): void {
     this.container.alpha = alpha;
     this.syncColorFilter();
-  }
-
-  override get alpha(): number {
-    return this.container.alpha;
   }
 
   onAdd(): void {
@@ -257,11 +253,7 @@ export class TilemapComponent extends VisualComponent {
    * numbering whichever way the tile faces. Read them from the raw layer data
    * with `readTileGid` when orientation matters.
    */
-  getTileAt(
-    worldX: number,
-    worldY: number,
-    layerName?: string,
-  ): number | null {
+  getTileAt(worldX: number, worldY: number, layerName?: string): number | null {
     const transform = this.entity.tryGet(Transform);
     const offsetX = transform ? transform.position.x : 0;
     const offsetY = transform ? transform.position.y : 0;

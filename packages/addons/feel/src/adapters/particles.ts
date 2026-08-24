@@ -1,5 +1,6 @@
 import type { Vec2Like } from "@yagejs/core";
 import { ParticleEmitterComponent } from "@yagejs/particles";
+import type { ParticleEmissionHandle } from "@yagejs/particles";
 import { defineFeelEffect } from "../core/node.js";
 import type { FeelEffectContext, FeelNode } from "../core/types.js";
 
@@ -41,41 +42,16 @@ export interface FeelParticleEmitOptions {
   duration?: number;
 }
 
-interface EmitterUseState {
-  users: number;
-  wasEmitting: boolean;
-}
-
-const emitterUsers = new WeakMap<ParticleEmitterComponent, EmitterUseState>();
-
-/** Enable an existing emitter for a timed window. Overlapping windows share it. */
+/** Request emission from an existing emitter for a timed window. */
 export function feelParticleEmit(options: FeelParticleEmitOptions): FeelNode {
   return defineFeelEffect(options.duration ?? 0.25, (context) => {
     const emitter = resolveEmitter(options.emitter, context);
-    let active = false;
+    let request: ParticleEmissionHandle | undefined;
     return {
       start: () => {
-        active = true;
-        const state = emitterUsers.get(emitter);
-        if (state) {
-          state.users++;
-        } else {
-          const wasEmitting = emitter.isEmitting;
-          emitterUsers.set(emitter, { users: 1, wasEmitting });
-          if (!wasEmitting) emitter.emit();
-        }
+        request = emitter.requestEmission();
       },
-      finish: () => {
-        if (!active) return;
-        active = false;
-        const state = emitterUsers.get(emitter);
-        if (!state) return;
-        state.users--;
-        if (state.users <= 0) {
-          emitterUsers.delete(emitter);
-          if (!state.wasEmitting) emitter.stop();
-        }
-      },
+      finish: () => request?.release(),
     };
   });
 }

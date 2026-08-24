@@ -3,6 +3,7 @@ export { ParticlesPlugin } from "./ParticlesPlugin.js";
 
 // Component
 export { ParticleEmitterComponent } from "./ParticleEmitterComponent.js";
+export type { ParticleEmissionHandle } from "./ParticleEmitterComponent.js";
 
 // System
 export { ParticleSystem } from "./ParticleSystem.js";

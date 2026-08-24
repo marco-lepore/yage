@@ -289,6 +289,55 @@ describe("ParticleEmitterComponent", () => {
       emitter.stop();
       expect(emitter.isEmitting).toBe(false);
     });
+
+    it("keeps overlapping emission requests independent", () => {
+      const emitter = createEmitter();
+      const first = emitter.requestEmission();
+      const second = emitter.requestEmission();
+
+      first.release();
+      expect(first.active).toBe(false);
+      expect(second.active).toBe(true);
+      expect(emitter.isEmitting).toBe(true);
+
+      second.release();
+      expect(emitter.isEmitting).toBe(false);
+    });
+
+    it("does not let a request release stop manual emission", () => {
+      const emitter = createEmitter();
+      const request = emitter.requestEmission();
+
+      emitter.emit();
+      request.release();
+
+      expect(emitter.isEmitting).toBe(true);
+      emitter.stop();
+      expect(emitter.isEmitting).toBe(false);
+    });
+
+    it("does not let stop cancel active requests", () => {
+      const emitter = createEmitter();
+      emitter.emit();
+      const request = emitter.requestEmission();
+
+      emitter.stop();
+
+      expect(emitter.isEmitting).toBe(true);
+      request.release();
+      expect(emitter.isEmitting).toBe(false);
+    });
+
+    it("invalidates requests when the emitter is destroyed", () => {
+      const emitter = createEmitter();
+      const request = emitter.requestEmission();
+
+      emitter.onDestroy();
+
+      expect(request.active).toBe(false);
+      expect(emitter.isEmitting).toBe(false);
+      expect(() => emitter.requestEmission()).toThrow(/destruction/);
+    });
   });
 
   describe("burst", () => {

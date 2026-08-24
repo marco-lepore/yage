@@ -77,7 +77,10 @@ export type {
   SplitTextRenderFacet,
   SplitTextRenderFacetExtras,
 } from "./SplitTextComponent.js";
-export { SortGroupComponent, resolveRenderParent } from "./SortGroupComponent.js";
+export {
+  SortGroupComponent,
+  resolveRenderParent,
+} from "./SortGroupComponent.js";
 export type {
   SortGroupComponentOptions,
   SortGroupData,
@@ -144,6 +147,11 @@ export { CameraBoundsComponent } from "./CameraBoundsComponent.js";
 export type { CameraBoundsComponentData } from "./CameraBoundsComponent.js";
 export { CameraZoom } from "./CameraZoom.js";
 export type { CameraZoomData } from "./CameraZoom.js";
+export { CameraModifierHost } from "./CameraModifiers.js";
+export type {
+  CameraModifierHandle,
+  CameraModifierOptions,
+} from "./CameraModifiers.js";
 export { ScreenFollow } from "./ScreenFollow.js";
 export type {
   ScreenFollowOptions,
@@ -153,6 +161,13 @@ export type {
 
 // Display
 export { DisplaySystem } from "./DisplaySystem.js";
+export { VisualModifierHost } from "./VisualModifiers.js";
+export type {
+  VisualOpacityModifierHandle,
+  VisualTransformModifierHandle,
+  VisualTransformModifierOptions,
+  VisualVisibilityModifierHandle,
+} from "./VisualModifiers.js";
 export { RenderLayer, RenderLayerManager } from "./RenderLayer.js";
 export type { CreateLayerOptions } from "./RenderLayer.js";
 

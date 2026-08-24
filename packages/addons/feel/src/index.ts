@@ -33,22 +33,3 @@ export type {
   FeelHitStopOptions,
   FeelSlowMotionOptions,
 } from "./effects/core.js";
-export {
-  feelBounce,
-  feelPositionPunch,
-  feelRecoil,
-  feelRotationPunch,
-  feelRotationShake,
-  feelScalePunch,
-  feelSquash,
-  feelTransformShake,
-} from "./effects/transform.js";
-export type {
-  FeelPositionPunchOptions,
-  FeelRotationPunchOptions,
-  FeelRotationShakeOptions,
-  FeelScalePunchOptions,
-  FeelSquashOptions,
-  FeelTransformShakeOptions,
-  FeelTransformTarget,
-} from "./effects/transform.js";

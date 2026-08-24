@@ -6,6 +6,7 @@ import { CameraFollow } from "./CameraFollow.js";
 import { CameraShake } from "./CameraShake.js";
 import { CameraZoom } from "./CameraZoom.js";
 import { CameraBoundsComponent } from "./CameraBoundsComponent.js";
+import { CameraModifierHost } from "./CameraModifiers.js";
 
 /** Bounding rectangle for camera clamping. */
 export interface CameraBounds {
@@ -98,6 +99,8 @@ export class CameraComponent extends Component {
   position: Vec2;
   zoom: number;
   rotation: number;
+  /** Transient position, rotation, and zoom contributions. */
+  readonly modifiers = new CameraModifierHost();
 
   readonly bindings: CameraBinding[] | null;
   readonly priority: number;
@@ -121,10 +124,19 @@ export class CameraComponent extends Component {
     return this.use(RendererKey).virtualSize.height;
   }
 
-  /** Effective position including shake offset. */
+  /** Effective position including every active camera modifier. */
   get effectivePosition(): Vec2 {
-    const shake = this.entity.tryGet(CameraShake);
-    return this.position.add(shake?.offset ?? Vec2.ZERO);
+    return this.position.add(this.modifiers.positionOffset);
+  }
+
+  /** Effective rotation including every active camera modifier. */
+  get effectiveRotation(): number {
+    return this.rotation + this.modifiers.rotationOffset;
+  }
+
+  /** Effective zoom including every active camera modifier. */
+  get effectiveZoom(): number {
+    return this.zoom * this.modifiers.zoomFactor;
   }
 
   /** Start following a target. */
@@ -168,21 +180,25 @@ export class CameraComponent extends Component {
   /** Convert screen coordinates to world coordinates. */
   screenToWorld(screenX: number, screenY: number): Vec2 {
     const pos = this.effectivePosition;
+    const zoom = this.effectiveZoom;
+    const rotation = this.effectiveRotation;
     const offset = new Vec2(
       screenX - this.viewportWidth / 2,
       screenY - this.viewportHeight / 2,
     )
-      .scale(1 / this.zoom)
-      .rotate(this.rotation);
+      .scale(1 / zoom)
+      .rotate(rotation);
     return pos.add(offset);
   }
 
   /** Convert world coordinates to screen coordinates. */
   worldToScreen(worldX: number, worldY: number): Vec2 {
     const pos = this.effectivePosition;
+    const zoom = this.effectiveZoom;
+    const rotation = this.effectiveRotation;
     const offset = new Vec2(worldX - pos.x, worldY - pos.y)
-      .rotate(-this.rotation)
-      .scale(this.zoom);
+      .rotate(-rotation)
+      .scale(zoom);
     return new Vec2(
       offset.x + this.viewportWidth / 2,
       offset.y + this.viewportHeight / 2,
@@ -219,6 +235,10 @@ export class CameraComponent extends Component {
     };
     if (this.cameraName !== undefined) data.name = this.cameraName;
     return data;
+  }
+
+  onDestroy(): void {
+    this.modifiers._destroy();
   }
 
   static fromSnapshot(data: CameraComponentData): CameraComponent {

@@ -8,8 +8,12 @@ import { GraphicsComponent } from "./GraphicsComponent.js";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 import { TextComponent } from "./TextComponent.js";
 import { SplitTextComponent } from "./SplitTextComponent.js";
-import { SortGroupComponent, sortGroupForContainer } from "./SortGroupComponent.js";
+import {
+  SortGroupComponent,
+  sortGroupForContainer,
+} from "./SortGroupComponent.js";
 import type { Container } from "pixi.js";
+import type { VisualComponent } from "./VisualComponent.js";
 
 /**
  * Syncs Transform components to PixiJS display objects and applies
@@ -82,15 +86,53 @@ export class DisplaySystem extends System {
       this.syncDisplayObject(transform, splitText.splitText);
     }
 
-    // 2. Apply per-layer depth keys. Runs AFTER transform sync so
+    // 2. Apply per-layer depth keys. Runs AFTER authoritative transform sync so
     //    position-based depth keys see the frame's current values.
     //    Order vs. camera transforms doesn't matter — we're writing
     //    `zIndex`, which Pixi's render-time `sortChildren()` consumes;
     //    the camera transform on the layer container is independent.
     this.applyLayerSort();
 
-    // 3. Apply camera transforms to layers
+    // 3. Apply render-only modifiers after sorting. Transient shake and punch
+    //    offsets do not change an entity's stable depth key.
+    this.applyVisualModifiers();
+
+    // 4. Apply camera transforms to layers
     this.applyCameraTransforms();
+  }
+
+  private applyVisualModifiers(): void {
+    for (const entity of this.spriteQuery) {
+      const visual = entity.get(SpriteComponent);
+      if (visual.enabled) this.applyModifiers(visual);
+    }
+    for (const entity of this.graphicsQuery) {
+      const visual = entity.get(GraphicsComponent);
+      if (visual.enabled) this.applyModifiers(visual);
+    }
+    for (const entity of this.animatedSpriteQuery) {
+      const visual = entity.get(AnimatedSpriteComponent);
+      if (visual.enabled) this.applyModifiers(visual);
+    }
+    for (const entity of this.textQuery) {
+      const visual = entity.get(TextComponent);
+      if (visual.enabled) this.applyModifiers(visual);
+    }
+    for (const entity of this.splitTextQuery) {
+      const visual = entity.get(SplitTextComponent);
+      if (visual.enabled) this.applyModifiers(visual);
+    }
+  }
+
+  private applyModifiers(visual: VisualComponent): void {
+    const modifiers = visual.modifiers;
+    if (!modifiers.hasTransformModifiers) return;
+    const displayObject = visual.renderObject as Container;
+    displayObject.position.x += modifiers.positionOffset.x;
+    displayObject.position.y += modifiers.positionOffset.y;
+    displayObject.rotation += modifiers.rotationOffset;
+    displayObject.scale.x *= modifiers.scaleFactor.x;
+    displayObject.scale.y *= modifiers.scaleFactor.y;
   }
 
   /**
@@ -200,8 +242,8 @@ export class DisplaySystem extends System {
           // Blend each axis from identity toward full camera effect. When
           // all three ratios are 1 (the default), this reduces to the
           // classic camera transform exactly.
-          const effScale = 1 + (cam.zoom - 1) * scaleRatio;
-          const effRot = cam.rotation * rotateRatio;
+          const effScale = 1 + (cam.effectiveZoom - 1) * scaleRatio;
+          const effRot = cam.effectiveRotation * rotateRatio;
           const translated = pos
             .scale(effScale * translateRatio)
             .rotate(-effRot);

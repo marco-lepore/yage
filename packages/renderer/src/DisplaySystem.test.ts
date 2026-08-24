@@ -220,6 +220,46 @@ describe("DisplaySystem", () => {
     expect(sprite.scale.y).toBe(3);
   });
 
+  it("combines visual modifiers with the current transform every frame", () => {
+    const { scene } = setup();
+    const entity = spawnEntityInScene(scene);
+    const transform = entity.add(
+      new Transform({
+        position: new Vec2(10, 20),
+        rotation: 0.25,
+        scale: new Vec2(2, 3),
+      }),
+    );
+    const visual = entity.add(new SpriteComponent({ texture: {} as never }));
+    const modifier = visual.modifiers.addTransform({
+      position: { x: 4, y: -2 },
+      rotation: 0.5,
+      scale: { x: 3, y: 0.5 },
+    });
+
+    system.update();
+    const sprite = visual.sprite as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    expect(sprite.position).toMatchObject({ x: 14, y: 18 });
+    expect(sprite.rotation).toBe(0.75);
+    expect(sprite.scale).toMatchObject({ x: 6, y: 1.5 });
+
+    transform.position = new Vec2(100, 200);
+    transform.rotation = 1;
+    transform.scale = new Vec2(4, 5);
+    system.update();
+    expect(sprite.position).toMatchObject({ x: 104, y: 198 });
+    expect(sprite.rotation).toBe(1.5);
+    expect(sprite.scale).toMatchObject({ x: 12, y: 2.5 });
+
+    modifier.remove();
+    system.update();
+    expect(sprite.position).toMatchObject({ x: 100, y: 200 });
+    expect(sprite.rotation).toBe(1);
+    expect(sprite.scale).toMatchObject({ x: 4, y: 5 });
+  });
+
   it("syncs Transform to graphics display object", () => {
     const { scene } = setup();
     const entity = spawnEntityInScene(scene);
@@ -240,7 +280,9 @@ describe("DisplaySystem", () => {
     const entity = spawnEntityInScene(scene);
     entity.add(new Transform({ position: new Vec2(30, 40) }));
     const animComp = entity.add(
-      new AnimatedSpriteComponent({ source: { sheet: "x.png", frameWidth: 1 } }),
+      new AnimatedSpriteComponent({
+        source: { sheet: "x.png", frameWidth: 1 },
+      }),
     );
 
     system.update();
@@ -305,6 +347,32 @@ describe("DisplaySystem", () => {
     expect(layerC.position.y).toBe(200);
     expect(layerC.scale.x).toBe(2);
     expect(layerC.scale.y).toBe(2);
+  });
+
+  it("combines camera modifiers with current camera values", () => {
+    const { scene, tree } = setup();
+    const camEntity = spawnEntityInScene(scene, "camera");
+    const camera = camEntity.add(
+      new CameraComponent({ position: new Vec2(100, 50), zoom: 2 }),
+    );
+    const modifier = camera.modifiers.add({
+      position: { x: 20, y: 0 },
+      rotation: 0.5,
+      zoom: 1.5,
+    });
+
+    system.update();
+    const layer = tree.defaultLayer.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    expect(layer.scale.x).toBe(3);
+    expect(layer.rotation).toBe(-0.5);
+
+    camera.zoom = 4;
+    modifier.remove();
+    system.update();
+    expect(layer.scale.x).toBe(4);
+    expect(layer.rotation).toBeCloseTo(0);
   });
 
   it("applies camera rotation (inverted) to layer containers", () => {

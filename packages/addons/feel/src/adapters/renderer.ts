@@ -9,49 +9,62 @@ import type {
 import type {
   CameraComponent,
   CameraEntity,
-  CameraShakeOptions,
+  CameraModifierHandle,
   EffectFactory,
   EffectHandle,
   EffectsHost,
   VisualComponent,
+  VisualOpacityModifierHandle,
+  VisualVisibilityModifierHandle,
 } from "@yagejs/renderer";
 import { defineFeelEffect } from "../core/node.js";
 import type { FeelEffectContext, FeelNode } from "../core/types.js";
 import { feelPunchAmount } from "../internal/envelope.js";
-import {
-  addBooleanContribution,
-  type BooleanContributionHandle,
-} from "../internal/booleanMixer.js";
-import {
-  addNumberContribution,
-  type NumberContributionHandle,
-} from "../internal/numberMixer.js";
 
 type FeelCamera = CameraEntity | CameraComponent;
 type FeelCameraTarget =
   | FeelCamera
   | ((context: FeelEffectContext) => FeelCamera);
 
-export interface FeelCameraShakeOptions extends CameraShakeOptions {
+export interface FeelCameraShakeOptions {
   camera: FeelCameraTarget;
   /** Shake amplitude in pixels. Default: 6. */
   intensity?: number;
   /** Duration in seconds. Default: 0.18. */
   duration?: number;
+  /** Oscillations per second. Default: 28. */
+  frequency?: number;
+  /** Exponent applied to the fade to zero. Default: 1. */
+  decay?: number;
 }
 
-/** Start YAGE's additive camera shake. */
+/** Shake a camera through an independently removable modifier. */
 export function feelCameraShake(options: FeelCameraShakeOptions): FeelNode {
-  return defineFeelEffect(0, (context) => ({
-    start: () => {
-      const camera = resolveCamera(options.camera, context);
-      camera.shake(
-        (options.intensity ?? 6) * context.intensity,
-        options.duration ?? 0.18,
-        options.decay !== undefined ? { decay: options.decay } : undefined,
-      );
-    },
-  }));
+  const duration = options.duration ?? 0.18;
+  const frequency = options.frequency ?? 28;
+  const decay = options.decay ?? 1;
+  return defineFeelEffect(duration, (context) => {
+    const camera = resolveCamera(options.camera, context);
+    const phaseX = context.random.range(0, Math.PI * 2);
+    const phaseY = context.random.range(0, Math.PI * 2);
+    let modifier: CameraModifierHandle | undefined;
+    return {
+      start: () => {
+        modifier = camera.modifiers.add();
+      },
+      update: (progress) => {
+        const elapsed = progress * duration;
+        const envelope = Math.pow(Math.max(0, 1 - progress), decay);
+        const amplitude =
+          (options.intensity ?? 6) * envelope * context.intensity;
+        modifier?.setPosition({
+          x: Math.sin(elapsed * frequency * Math.PI * 2 + phaseX) * amplitude,
+          y: Math.sin(elapsed * frequency * Math.PI * 2 + phaseY) * amplitude,
+        });
+      },
+      finish: () => modifier?.remove(),
+    };
+  });
 }
 
 export interface FeelCameraZoomOptions {
@@ -69,18 +82,10 @@ export function feelCameraZoom(options: FeelCameraZoomOptions): FeelNode {
   const duration = options.duration ?? 0.2;
   return defineFeelEffect(duration, (context) => {
     const camera = resolveCamera(options.camera, context);
-    let contribution: NumberContributionHandle | undefined;
+    let modifier: CameraModifierHandle | undefined;
     return {
       start: () => {
-        contribution = addNumberContribution(
-          camera,
-          "camera.zoom",
-          "multiply",
-          () => camera.zoom,
-          (value) => {
-            camera.zoom = value;
-          },
-        );
+        modifier = camera.modifiers.add();
       },
       update: (progress) => {
         const amount = feelPunchAmount(
@@ -89,11 +94,14 @@ export function feelCameraZoom(options: FeelCameraZoomOptions): FeelNode {
           options.attackEasing,
           options.releaseEasing,
         );
-        contribution?.set(
-          1 + ((options.scale ?? 1.08) - 1) * amount * context.intensity,
+        modifier?.setZoom(
+          Math.max(
+            0.0001,
+            1 + ((options.scale ?? 1.08) - 1) * amount * context.intensity,
+          ),
         );
       },
-      finish: () => contribution?.remove(),
+      finish: () => modifier?.remove(),
     };
   });
 }
@@ -204,29 +212,21 @@ export function feelOpacity(options: FeelOpacityOptions): FeelNode {
   const duration = options.duration ?? 0.18;
   return defineFeelEffect(duration, (context) => {
     const target = resolveVisual(options.target, context);
-    let contribution: NumberContributionHandle | undefined;
+    let modifier: VisualOpacityModifierHandle | undefined;
     return {
       start: () => {
-        contribution = addNumberContribution(
-          target,
-          "visual.alpha",
-          "multiply",
-          () => target.alpha,
-          (value) => {
-            target.alpha = value;
-          },
-        );
+        modifier = target.modifiers.addOpacity();
       },
       update: (progress) => {
         const amount = feelPunchAmount(progress, options.peakAt);
-        contribution?.set(
+        modifier?.setFactor(
           Math.max(
             0,
             1 + ((options.alpha ?? 0.25) - 1) * amount * context.intensity,
           ),
         );
       },
-      finish: () => contribution?.remove(),
+      finish: () => modifier?.remove(),
     };
   });
 }
@@ -248,24 +248,17 @@ export function feelBlink(options: FeelBlinkOptions): FeelNode {
   }
   return defineFeelEffect(duration, (context) => {
     const target = resolveVisual(options.target, context);
-    let contribution: BooleanContributionHandle | undefined;
+    let modifier: VisualVisibilityModifierHandle | undefined;
     return {
       start: () => {
-        contribution = addBooleanContribution(
-          target,
-          "visual.visible",
-          () => target.visible,
-          (value) => {
-            target.visible = value;
-          },
-        );
+        modifier = target.modifiers.addVisibility();
       },
       update: (progress) => {
-        contribution?.set(
+        modifier?.setVisible(
           Math.floor((progress * duration) / interval) % 2 !== 0,
         );
       },
-      finish: () => contribution?.remove(),
+      finish: () => modifier?.remove(),
     };
   });
 }

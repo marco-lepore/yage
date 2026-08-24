@@ -10,6 +10,7 @@ import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import { resolveRenderParent } from "./SortGroupComponent.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
+import { VisualModifierHost } from "./VisualModifiers.js";
 import { attachMask, reattachMaskFromSnapshot } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
@@ -128,6 +129,11 @@ export abstract class VisualComponent extends Component {
    * recovers the handle for the first matching effect after save/load.
    */
   readonly fx: EffectsHost;
+  /**
+   * Render-only transform, opacity, and visibility contributions. Modifiers
+   * combine with the component's live base values and are never serialized.
+   */
+  readonly modifiers: VisualModifierHost;
   private _mask: MaskHandle | undefined;
   private _interactive: VisualInteractiveOptions | undefined;
   /**
@@ -137,6 +143,8 @@ export abstract class VisualComponent extends Component {
    * the entity is dormant still records the game's value.
    */
   private _userVisible = true;
+  /** The alpha requested by the game, before transient opacity modifiers. */
+  private _userAlpha = 1;
 
   constructor(layer: string | undefined) {
     super();
@@ -146,6 +154,7 @@ export abstract class VisualComponent extends Component {
       "component",
       () => makeEntityScopedQueue(this.entity),
     );
+    this.modifiers = new VisualModifierHost(() => this.applyAppearance());
   }
 
   /**
@@ -156,7 +165,7 @@ export abstract class VisualComponent extends Component {
   protected applyVisualOptions(options: VisualComponentOptions): void {
     if (options.visible !== undefined) this.visible = options.visible;
     if (options.tint !== undefined) this.renderObject.tint = options.tint;
-    if (options.alpha !== undefined) this.renderObject.alpha = options.alpha;
+    if (options.alpha !== undefined) this.alpha = options.alpha;
     if (options.blendMode !== undefined) {
       this.renderObject.blendMode = options.blendMode;
     }
@@ -181,12 +190,13 @@ export abstract class VisualComponent extends Component {
 
   /** Set the container's alpha (opacity). */
   set alpha(alpha: number) {
-    this.renderObject.alpha = alpha;
+    this._userAlpha = alpha;
+    this.applyAppearance();
   }
 
-  /** Get the container's alpha (opacity). */
+  /** Get the requested alpha before transient opacity modifiers. */
   get alpha(): number {
-    return this.renderObject.alpha;
+    return this._userAlpha;
   }
 
   /** Set how the container combines with what is drawn beneath it. */
@@ -205,7 +215,7 @@ export abstract class VisualComponent extends Component {
    */
   set visible(value: boolean) {
     this._userVisible = value;
-    this.renderObject.visible = value && this.effectiveEnabled;
+    this.applyAppearance();
   }
 
   /** Get the requested visibility, whatever the entity's activeness. */
@@ -222,7 +232,7 @@ export abstract class VisualComponent extends Component {
     const data: VisualComponentData = {
       layer: this.layerName,
       tint: this.renderObject.tint,
-      alpha: this.renderObject.alpha,
+      alpha: this._userAlpha,
       visible: this._userVisible,
     };
     // Pixi constructs every display object at `"inherit"`, not `"normal"` —
@@ -304,7 +314,7 @@ export abstract class VisualComponent extends Component {
   }
 
   onEnable(): void {
-    this.renderObject.visible = this._userVisible;
+    this.applyAppearance();
   }
 
   onDisable(): void {
@@ -313,6 +323,7 @@ export abstract class VisualComponent extends Component {
 
   onDestroy(): void {
     unmarkPointerConsumeContainer(this.renderObject);
+    this.modifiers._destroy();
     this.fx.destroy();
     this._mask?.remove();
     this.renderObject.removeFromParent();
@@ -327,5 +338,16 @@ export abstract class VisualComponent extends Component {
    */
   protected destroyOptions(): DestroyOptions | undefined {
     return undefined;
+  }
+
+  /** Apply the final alpha after transient modifiers. */
+  protected applyEffectiveAlpha(alpha: number): void {
+    this.renderObject.alpha = alpha;
+  }
+
+  private applyAppearance(): void {
+    this.applyEffectiveAlpha(this._userAlpha * this.modifiers.opacityFactor);
+    this.renderObject.visible =
+      this._userVisible && this.effectiveEnabled && this.modifiers.visible;
   }
 }

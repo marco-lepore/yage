@@ -1,20 +1,20 @@
 import {
-  Transform,
   Vec2,
   easeOutQuad,
   type EasingFunction,
   type Vec2Like,
 } from "@yagejs/core";
+import type {
+  VisualComponent,
+  VisualTransformModifierHandle,
+} from "@yagejs/renderer";
 import { defineFeelEffect } from "../core/node.js";
 import type { FeelEffectContext, FeelNode } from "../core/types.js";
-import {
-  addMotionContribution,
-  type MotionContributionHandle,
-} from "../internal/motionMixer.js";
+import { feelPunchAmount } from "../internal/envelope.js";
 
-export type FeelTransformTarget =
-  | Transform
-  | ((context: FeelEffectContext) => Transform);
+export type FeelVisualTarget =
+  | VisualComponent
+  | ((context: FeelEffectContext) => VisualComponent);
 
 interface PunchTimingOptions {
   /** Total duration in seconds. Default: 0.18. */
@@ -27,25 +27,25 @@ interface PunchTimingOptions {
   releaseEasing?: EasingFunction;
 }
 
-interface TransformEffectOptions extends PunchTimingOptions {
-  /** Target transform. Default: the `Feel` entity's `Transform`. */
-  target?: FeelTransformTarget;
+interface VisualTransformEffectOptions extends PunchTimingOptions {
+  /** Visual component whose rendered transform receives the contribution. */
+  target: FeelVisualTarget;
 }
 
-export interface FeelPositionPunchOptions extends TransformEffectOptions {
+export interface FeelPositionPunchOptions extends VisualTransformEffectOptions {
   offset: Vec2Like;
 }
 
-export interface FeelRotationPunchOptions extends TransformEffectOptions {
+export interface FeelRotationPunchOptions extends VisualTransformEffectOptions {
   radians: number;
 }
 
-export interface FeelScalePunchOptions extends TransformEffectOptions {
+export interface FeelScalePunchOptions extends VisualTransformEffectOptions {
   /** Peak scale factor. A number scales both axes. Default: 1.2. */
   scale?: number | Vec2Like;
 }
 
-export interface FeelSquashOptions extends TransformEffectOptions {
+export interface FeelSquashOptions extends VisualTransformEffectOptions {
   /** Axis that stretches while the other axis contracts. Default: `"y"`. */
   axis?: "x" | "y";
   /** Peak stretch above 1. Default: 0.25. */
@@ -53,8 +53,7 @@ export interface FeelSquashOptions extends TransformEffectOptions {
 }
 
 export interface FeelTransformShakeOptions {
-  /** Target transform. Default: the `Feel` entity's `Transform`. */
-  target?: FeelTransformTarget;
+  target: FeelVisualTarget;
   /** Position amplitude in pixels. A number applies to both axes. Default: 4. */
   amplitude?: number | Vec2Like;
   /** Oscillations per second. Default: 28. */
@@ -66,17 +65,20 @@ export interface FeelTransformShakeOptions {
 }
 
 export interface FeelRotationShakeOptions {
-  target?: FeelTransformTarget;
+  target: FeelVisualTarget;
   /** Rotation amplitude in radians. Default: 0.08. */
   radians?: number;
+  /** Oscillations per second. Default: 24. */
   frequency?: number;
+  /** Total duration in seconds. Default: 0.16. */
   duration?: number;
+  /** Exponent applied to the fade to zero. Default: 1. */
   decay?: number;
 }
 
-/** Move away from the live position and return without replacing gameplay movement. */
+/** Move a visual away from its live position and return. */
 export function feelPositionPunch(options: FeelPositionPunchOptions): FeelNode {
-  return motionPunch(options, (handle, amount, intensity) => {
+  return visualPunch(options, (handle, amount, intensity) => {
     handle.setPosition(
       new Vec2(
         options.offset.x * amount * intensity,
@@ -86,21 +88,21 @@ export function feelPositionPunch(options: FeelPositionPunchOptions): FeelNode {
   });
 }
 
-/** Rotate away from the live angle and return. */
+/** Rotate a visual away from its live angle and return. */
 export function feelRotationPunch(options: FeelRotationPunchOptions): FeelNode {
-  return motionPunch(options, (handle, amount, intensity) => {
+  return visualPunch(options, (handle, amount, intensity) => {
     handle.setRotation(options.radians * amount * intensity);
   });
 }
 
-/** Scale away from the live scale and return. */
-export function feelScalePunch(options: FeelScalePunchOptions = {}): FeelNode {
+/** Scale a visual away from its live scale and return. */
+export function feelScalePunch(options: FeelScalePunchOptions): FeelNode {
   const configured = options.scale ?? 1.2;
   const peak =
     typeof configured === "number"
       ? new Vec2(configured, configured)
       : new Vec2(configured.x, configured.y);
-  return motionPunch(options, (handle, amount, intensity) => {
+  return visualPunch(options, (handle, amount, intensity) => {
     handle.setScale(
       new Vec2(
         1 + (peak.x - 1) * amount * intensity,
@@ -110,11 +112,11 @@ export function feelScalePunch(options: FeelScalePunchOptions = {}): FeelNode {
   });
 }
 
-/** Stretch one axis while contracting the other, then return. */
-export function feelSquash(options: FeelSquashOptions = {}): FeelNode {
+/** Stretch one visual axis while contracting the other, then return. */
+export function feelSquash(options: FeelSquashOptions): FeelNode {
   const axis = options.axis ?? "y";
   const amount = options.amount ?? 0.25;
-  return motionPunch(options, (handle, progress, intensity) => {
+  return visualPunch(options, (handle, progress, intensity) => {
     const stretch = Math.max(0.01, 1 + amount * progress * intensity);
     const squash = 1 / stretch;
     handle.setScale(
@@ -123,9 +125,9 @@ export function feelSquash(options: FeelSquashOptions = {}): FeelNode {
   });
 }
 
-/** Shake a transform around its live position with deterministic phases. */
+/** Shake a visual around its live rendered position with deterministic phases. */
 export function feelTransformShake(
-  options: FeelTransformShakeOptions = {},
+  options: FeelTransformShakeOptions,
 ): FeelNode {
   const duration = options.duration ?? 0.16;
   const frequency = options.frequency ?? 28;
@@ -136,13 +138,13 @@ export function feelTransformShake(
       ? new Vec2(configured, configured)
       : new Vec2(configured.x, configured.y);
   return defineFeelEffect(duration, (context) => {
-    const target = resolveTarget(options.target, context);
+    const target = resolveVisual(options.target, context);
     const phaseX = context.random.range(0, Math.PI * 2);
     const phaseY = context.random.range(0, Math.PI * 2);
-    let handle: MotionContributionHandle | undefined;
+    let handle: VisualTransformModifierHandle | undefined;
     return {
       start: () => {
-        handle = addMotionContribution(target);
+        handle = target.modifiers.addTransform();
       },
       update: (progress) => {
         const elapsed = progress * duration;
@@ -165,21 +167,19 @@ export function feelTransformShake(
   });
 }
 
-/** Wiggle a transform around its live rotation. */
-export function feelRotationShake(
-  options: FeelRotationShakeOptions = {},
-): FeelNode {
+/** Wiggle a visual around its live rendered rotation. */
+export function feelRotationShake(options: FeelRotationShakeOptions): FeelNode {
   const duration = options.duration ?? 0.16;
   const frequency = options.frequency ?? 24;
   const decay = options.decay ?? 1;
   const radians = options.radians ?? 0.08;
   return defineFeelEffect(duration, (context) => {
-    const target = resolveTarget(options.target, context);
+    const target = resolveVisual(options.target, context);
     const phase = context.random.range(0, Math.PI * 2);
-    let handle: MotionContributionHandle | undefined;
+    let handle: VisualTransformModifierHandle | undefined;
     return {
       start: () => {
-        handle = addMotionContribution(target);
+        handle = target.modifiers.addTransform();
       },
       update: (progress) => {
         const elapsed = progress * duration;
@@ -196,91 +196,71 @@ export function feelRotationShake(
   });
 }
 
-/** Convenience recoil: a position punch opposite `direction`. */
+/** Position punch opposite `direction`. */
 export function feelRecoil(options: {
   direction: Vec2Like;
   distance?: number;
-  target?: FeelTransformTarget;
+  target: FeelVisualTarget;
   duration?: number;
 }): FeelNode {
   const direction = new Vec2(
     options.direction.x,
     options.direction.y,
   ).normalize();
-  const distance = options.distance ?? 8;
   return feelPositionPunch({
-    offset: direction.scale(-distance),
-    ...(options.target !== undefined ? { target: options.target } : {}),
+    target: options.target,
+    offset: direction.scale(-(options.distance ?? 8)),
     ...(options.duration !== undefined ? { duration: options.duration } : {}),
   });
 }
 
-/** Convenience bounce: a vertical position punch. */
-export function feelBounce(
-  options: {
-    distance?: number;
-    target?: FeelTransformTarget;
-    duration?: number;
-  } = {},
-): FeelNode {
+/** Vertical position punch. */
+export function feelBounce(options: {
+  distance?: number;
+  target: FeelVisualTarget;
+  duration?: number;
+}): FeelNode {
   return feelPositionPunch({
+    target: options.target,
     offset: new Vec2(0, -(options.distance ?? 8)),
-    ...(options.target !== undefined ? { target: options.target } : {}),
     ...(options.duration !== undefined ? { duration: options.duration } : {}),
   });
 }
 
-function motionPunch(
-  options: TransformEffectOptions,
+function visualPunch(
+  options: VisualTransformEffectOptions,
   apply: (
-    handle: MotionContributionHandle,
+    handle: VisualTransformModifierHandle,
     amount: number,
     intensity: number,
   ) => void,
 ): FeelNode {
   const duration = options.duration ?? 0.18;
-  const peakAt = options.peakAt ?? 0.25;
-  if (!Number.isFinite(peakAt) || peakAt < 0 || peakAt > 1) {
-    throw new Error(`Feel transform punch: peakAt must be between 0 and 1.`);
-  }
   const attack = options.attackEasing ?? easeOutQuad;
   const release = options.releaseEasing ?? easeOutQuad;
   return defineFeelEffect(duration, (context) => {
-    const target = resolveTarget(options.target, context);
-    let handle: MotionContributionHandle | undefined;
+    const target = resolveVisual(options.target, context);
+    let handle: VisualTransformModifierHandle | undefined;
     return {
       start: () => {
-        handle = addMotionContribution(target);
+        handle = target.modifiers.addTransform();
       },
       update: (progress) => {
-        if (handle)
-          apply(
-            handle,
-            punchAmount(progress, peakAt, attack, release),
-            context.intensity,
-          );
+        if (!handle) return;
+        apply(
+          handle,
+          feelPunchAmount(progress, options.peakAt, attack, release),
+          context.intensity,
+        );
       },
       finish: () => handle?.remove(),
     };
   });
 }
 
-function punchAmount(
-  progress: number,
-  peakAt: number,
-  attack: EasingFunction,
-  release: EasingFunction,
-): number {
-  if (peakAt <= 0) return 1 - release(progress);
-  if (peakAt >= 1) return attack(progress);
-  if (progress <= peakAt) return attack(progress / peakAt);
-  return 1 - release((progress - peakAt) / (1 - peakAt));
-}
-
-function resolveTarget(
-  target: FeelTransformTarget | undefined,
+function resolveVisual(
+  target: FeelVisualTarget,
   context: FeelEffectContext,
-): Transform {
-  if (!target) return context.entity.get(Transform);
+): VisualComponent {
   return typeof target === "function" ? target(context) : target;
 }

@@ -196,7 +196,9 @@ shape and its size go into the snapshot.
 
 ```typescript
 emitter.emit();              // start continuous emission
-emitter.stop();              // stop emitting (existing particles continue)
+emitter.stop();              // stop emission started by emit()
+const request = emitter.requestEmission(); // independent temporary request
+request.release();           // release only this request
 emitter.burst(50);           // spawn 50 at the entity's world position
 emitter.burst(10, 400, 300); // burst at an explicit world position
 
@@ -204,6 +206,12 @@ emitter.isEmitting;          // boolean
 emitter.activeCount;         // number of live particles
 emitter.blendMode = "add";   // read/write
 ```
+
+`emit()` and `stop()` control the emitter's manual state. Temporary systems
+can call `requestEmission()` instead. Emission continues while manual state or
+at least one request is active. Releasing one request cannot stop another
+request or a later `emit()` call. Existing particles always continue to their
+end of life.
 
 ## Presets
 

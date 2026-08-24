@@ -15,3 +15,22 @@ export type {
   FeelOpacityOptions,
   FeelShockwaveOptions,
 } from "./adapters/renderer.js";
+export {
+  feelBounce,
+  feelPositionPunch,
+  feelRecoil,
+  feelRotationPunch,
+  feelRotationShake,
+  feelScalePunch,
+  feelSquash,
+  feelTransformShake,
+} from "./adapters/visual.js";
+export type {
+  FeelPositionPunchOptions,
+  FeelRotationPunchOptions,
+  FeelRotationShakeOptions,
+  FeelScalePunchOptions,
+  FeelSquashOptions,
+  FeelTransformShakeOptions,
+  FeelVisualTarget,
+} from "./adapters/visual.js";

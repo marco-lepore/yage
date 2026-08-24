@@ -4,19 +4,18 @@ Compose the small responses that make an action readable and satisfying, then
 play them from one named trigger.
 
 ```ts
+import { Feel, feelHitStop, feelParallel } from "@yagejs-addons/feel";
 import {
-  Feel,
-  feelHitStop,
-  feelParallel,
+  feelCameraShake,
+  feelHitFlash,
   feelScalePunch,
   feelSquash,
-} from "@yagejs-addons/feel";
-import { feelCameraShake, feelHitFlash } from "@yagejs-addons/feel/renderer";
+} from "@yagejs-addons/feel/renderer";
 
 enemy.add(
   new Feel({
     hit: feelParallel(
-      feelSquash({ target: enemyVisualTransform, amount: 0.2 }),
+      feelSquash({ target: enemySprite, amount: 0.2 }),
       feelHitStop({ duration: 0.05 }),
       feelCameraShake({ camera, intensity: 5 }),
       feelHitFlash(enemySprite.fx, { color: 0xffffff }),
@@ -55,7 +54,7 @@ Each cue also accepts trigger policy:
 const feel = entity.add(
   new Feel({
     hit: {
-      effect: feelScalePunch({ scale: 1.15 }),
+      effect: feelScalePunch({ target: playerSprite, scale: 1.15 }),
       overlap: "restart", // "restart" (default), "ignore", or "allow"
       chance: 0.9,
       cooldown: 0.05,
@@ -75,39 +74,26 @@ or destroying `Feel` stops every active cue and restores active effects.
 
 The root entry supplies:
 
-- `feelPositionPunch`, `feelRecoil`, and `feelBounce`
-- `feelRotationPunch` and `feelRotationShake`
-- `feelScalePunch` and `feelSquash`
-- `feelTransformShake`
 - `feelHitStop` and `feelSlowMotion`
 - `feelAnimation` and `feelCall`
-
-Position and rotation contributions add together. Scale contributions
-multiply. The mixer reads the live transform between updates, so ordinary
-movement can continue while a cue is playing.
-
-### Physics bodies
-
-Shake, squash, and scale punch are visual feedback. Put the sprite on a child
-entity and target that child's `Transform` when the parent has a rigid body:
-
-```text
-player (Transform + RigidBody + Collider + Feel)
-└── playerVisual (Transform + Sprite)
-```
-
-Changing the rigid body's transform can turn a visual shake into collision
-motion. Mechanical recoil and knockback belong in combat code and should call
-the physics body's impulse or velocity API.
 
 ## Renderer effects
 
 Import these from `@yagejs-addons/feel/renderer`:
 
+- `feelPositionPunch`, `feelRecoil`, and `feelBounce`
+- `feelRotationPunch` and `feelRotationShake`
+- `feelScalePunch`, `feelSquash`, and `feelTransformShake`
 - `feelCameraShake` and `feelCameraZoom`
 - `feelHitFlash` and `feelShockwave`
 - `feelOpacity` and `feelBlink`
 - `feelEffect`, which pulses any `EffectHandle` from zero to its peak and back
+
+Motion effects target a `VisualComponent`, such as `SpriteComponent`. They
+add render-only position and rotation offsets and multiply render-only scale.
+The entity's `Transform`, rigid body, collider, and depth-sort position remain
+unchanged. Overlapping effects own separate modifiers and remove only their
+own values.
 
 ```ts
 import { bloom } from "@yagejs/effects";

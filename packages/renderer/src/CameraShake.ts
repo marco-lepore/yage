@@ -1,5 +1,7 @@
 import { Component, Vec2, serializable } from "@yagejs/core";
 import type { CameraShakeOptions } from "./CameraComponent.js";
+import { CameraComponent } from "./CameraComponent.js";
+import type { CameraModifierHandle } from "./CameraModifiers.js";
 
 export interface CameraShakeData {
   intensity: number;
@@ -10,9 +12,8 @@ export interface CameraShakeData {
 }
 
 /**
- * Camera shake behavior. Produces a `shakeOffset` that
- * `CameraComponent.effectivePosition` reads each frame.
- * Does NOT modify `CameraComponent.position` directly.
+ * Camera shake behavior. Writes one removable contribution to
+ * `CameraComponent.modifiers` and leaves the base position unchanged.
  */
 @serializable
 export class CameraShake extends Component {
@@ -21,8 +22,13 @@ export class CameraShake extends Component {
   private elapsed = 0;
   private decay = 0;
 
-  /** Current shake offset (read by CameraComponent.effectivePosition). */
-  offset: Vec2 = Vec2.ZERO;
+  private _offset: Vec2 = Vec2.ZERO;
+  private modifier: CameraModifierHandle | undefined;
+
+  /** Current shake offset contributed through `CameraComponent.modifiers`. */
+  get offset(): Vec2 {
+    return this._offset;
+  }
 
   /** Start a screen shake effect. */
   start(
@@ -30,16 +36,19 @@ export class CameraShake extends Component {
     duration: number,
     options?: CameraShakeOptions,
   ): void {
+    this.stop();
     this.intensity = intensity;
     this.duration = duration;
     this.elapsed = 0;
     this.decay = options?.decay ?? 0;
-    this.offset = Vec2.ZERO;
+    if (duration > 0 && intensity !== 0) this.ensureModifier();
   }
 
   /** Cancel the current shake immediately. */
   stop(): void {
-    this.offset = Vec2.ZERO;
+    this.setOffset(Vec2.ZERO);
+    this.modifier?.remove();
+    this.modifier = undefined;
     this.duration = 0;
     this.intensity = 0;
     this.elapsed = 0;
@@ -66,9 +75,11 @@ export class CameraShake extends Component {
 
     // `elapsed` is in seconds; the multiplier sets the oscillation frequency.
     const phase = this.elapsed * 100;
-    this.offset = new Vec2(
-      Math.sin(phase * 7.3) * currentIntensity,
-      Math.cos(phase * 13.7) * currentIntensity,
+    this.setOffset(
+      new Vec2(
+        Math.sin(phase * 7.3) * currentIntensity,
+        Math.cos(phase * 13.7) * currentIntensity,
+      ),
     );
   }
 
@@ -78,7 +89,7 @@ export class CameraShake extends Component {
       duration: this.duration,
       elapsed: this.elapsed,
       decay: this.decay,
-      offset: { x: this.offset.x, y: this.offset.y },
+      offset: { x: this._offset.x, y: this._offset.y },
     };
   }
 
@@ -88,7 +99,29 @@ export class CameraShake extends Component {
     shake.duration = data.duration;
     shake.elapsed = data.elapsed;
     shake.decay = data.decay;
-    shake.offset = new Vec2(data.offset.x, data.offset.y);
+    shake._offset = new Vec2(data.offset.x, data.offset.y);
     return shake;
+  }
+
+  onAdd(): void {
+    if (this.duration > this.elapsed && this.intensity !== 0) {
+      this.ensureModifier();
+    }
+  }
+
+  onDestroy(): void {
+    this.modifier?.remove();
+    this.modifier = undefined;
+  }
+
+  private setOffset(offset: Vec2): void {
+    this._offset = offset;
+    this.modifier?.setPosition(offset);
+  }
+
+  private ensureModifier(): void {
+    this.modifier ??= this.sibling(CameraComponent).modifiers.add({
+      position: this._offset,
+    });
   }
 }
