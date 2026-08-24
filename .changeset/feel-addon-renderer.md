@@ -10,3 +10,5 @@ particle effects.
 - Add camera modifiers for position, rotation, and zoom, and expose effective
   camera values to rendering and coordinate conversion.
 - Make built-in camera shake contribute through the camera modifier host.
+- Let effect attachments opt out of save snapshots for owner-managed runtime
+  pulses.

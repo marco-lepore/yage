@@ -83,10 +83,12 @@ Import these from `@yagejs-addons/feel/renderer`:
 
 - `feelPositionPunch`, `feelRecoil`, and `feelBounce`
 - `feelRotationPunch` and `feelRotationShake`
-- `feelScalePunch`, `feelSquash`, and `feelTransformShake`
-- `feelCameraShake` and `feelCameraZoom`
+- `feelScalePunch`, `feelScaleShake`, `feelSquash`, and `feelTransformShake`
+- `feelCameraShake`, `feelCameraRotation`, and `feelCameraZoom`
 - `feelHitFlash` and `feelShockwave`
+- `feelOutline`, `feelGlow`, and `feelColorize`
 - `feelOpacity` and `feelBlink`
+- `feelFloatingText`, `feelDamageNumber`, and `feelImpactRing`
 - `feelEffect`, which pulses any `EffectHandle` from zero to its peak and back
 
 Motion effects target a `VisualComponent`, such as `SpriteComponent`. They
@@ -104,6 +106,38 @@ const bloomPulse = feelEffect(worldLayer.fx, bloom({ bloomScale: 1.5 }), {
   peakAt: 0.2,
 });
 ```
+
+## Highlights and combat callouts
+
+Outline, glow, and colorize effects pulse a filter on one visual. Floating
+text, damage numbers, and impact rings spawn independent world-space visuals,
+so retriggers can overlap without sharing state. Feel-owned filter pulses are
+omitted from save snapshots.
+
+```ts
+const criticalHit = feelParallel(
+  feelOutline({
+    target: enemySprite,
+    color: 0xffd54a,
+    thickness: 3,
+    duration: 0.25,
+  }),
+  feelGlow({ target: enemySprite, color: 0xff8800, duration: 0.3 }),
+  feelDamageNumber({
+    value: () => lastDamage,
+    critical: () => lastHitWasCritical,
+    prefix: "-",
+    layer: "effects",
+  }),
+  feelImpactRing({ color: 0xffd54a, layer: "effects" }),
+);
+```
+
+`feelFloatingText` and `feelDamageNumber` use the cue entity's world
+`Transform` by default. Pass `position` to spawn elsewhere. Each playback
+creates one temporary entity and destroys it when the effect completes or is
+cancelled. Active callouts are omitted from save snapshots. Use a custom pool
+instead when a game displays very large numbers of callouts every frame.
 
 ## Audio and particles
 

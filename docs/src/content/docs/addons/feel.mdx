@@ -100,10 +100,10 @@ stops all active cues.
 ## Visual motion and physics
 
 The `/renderer` entry includes position and rotation punches, recoil, bounce,
-scale punch, squash/stretch, position shake, and rotation shake. Each effect
-targets a `VisualComponent`, such as `SpriteComponent`. Position and rotation
-contributions add; scale contributions multiply. Several cues can affect one
-visual while its entity keeps moving normally.
+scale punch, squash/stretch, position shake, rotation shake, and scale shake.
+Each effect targets a `VisualComponent`, such as `SpriteComponent`. Position
+and rotation contributions add; scale contributions multiply. Several cues
+can affect one visual while its entity keeps moving normally.
 
 <Aside type="caution">
 Visual modifiers do not write to `Transform`. A rigid body, collider, camera
@@ -129,10 +129,10 @@ drift.
 
 ## Camera and renderer feedback
 
-The `/renderer` entry adds camera shake and zoom pulses, opacity pulses,
-blinking, hit flash, and shockwave. `feelEffect` accepts any YAGE effect
-factory, so the addon also supports current and future `@yagejs/effects`
-presets without one wrapper per filter.
+The `/renderer` entry adds camera shake, rotation, and zoom pulses, opacity
+pulses, blinking, hit flash, and shockwave. `feelEffect` accepts any YAGE
+effect factory, so the addon also supports current and future
+`@yagejs/effects` presets without one wrapper per filter.
 
 ```ts
 import { bloom, chromaticAberration } from "@yagejs/effects";
@@ -150,6 +150,68 @@ Each generic pulse attaches the effect, moves its primary intensity from zero
 to the cue-scaled peak and back, then removes it. Choose the renderer scope as
 you would without the addon: component for one sprite, layer for the world
 without the HUD, scene for the whole scene, or screen across scenes.
+
+### Animated highlights
+
+`feelOutline`, `feelGlow`, and `feelColorize` provide named pulses for three
+common target highlights. Each effect resolves its target when the cue starts,
+owns one filter handle, and removes only that handle when it finishes. Feel
+marks the handle as temporary, so a snapshot taken during the pulse does not
+restore it without its owning playback.
+
+```ts
+const selected = feelParallel(
+  feelOutline({
+    target: enemySprite,
+    color: 0xffd54a,
+    thickness: 3,
+    duration: 0.3,
+  }),
+  feelGlow({
+    target: enemySprite,
+    color: 0xff8800,
+    outerStrength: 5,
+    duration: 0.3,
+  }),
+);
+```
+
+### Damage numbers, floating text, and impact rings
+
+The renderer entry can also create short-lived world-space callouts:
+
+```ts
+const criticalHit = feelParallel(
+  feelDamageNumber({
+    value: () => lastDamage,
+    critical: () => lastHitWasCritical,
+    prefix: "-",
+    layer: "effects",
+  }),
+  feelImpactRing({
+    color: 0xffd54a,
+    spikes: 8,
+    layer: "effects",
+  }),
+);
+
+const pickup = feelFloatingText({
+  text: "Health restored",
+  style: { fill: 0x66ff99 },
+  travel: { x: 0, y: -40 },
+});
+```
+
+`feelFloatingText` and `feelDamageNumber` default to the cue entity's current
+world `Transform`. Pass `position` or a position function to spawn elsewhere.
+Text, critical-hit state, and damage values can also be functions, evaluated
+for each playback.
+
+Each playback creates its own temporary entity. Completion and cancellation
+destroy that entity, so several callouts can overlap without sharing a base
+position, alpha, or scale. Active callouts are omitted from save snapshots.
+This path suits ordinary combat and pickup feedback. A game that displays very
+large numbers of callouts every frame should use a custom pool instead.
 
 ## Time, sound, particles, and animation
 

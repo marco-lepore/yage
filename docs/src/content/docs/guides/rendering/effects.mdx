@@ -486,6 +486,19 @@ Effects + masks built from `defineEffect` / `defineMask` factories survive
 - **Unsavable entries** (`rawFilter`, `spriteMask`, `graphicsMask`) skip
   the snapshot with a one-shot warning.
 
+Pass `{ save: false }` as the second argument to `addEffect` for a temporary
+effect that has its own runtime owner:
+
+```ts
+const pulse = sprite.fx.addEffect(outline({ color: 0xffffff }), {
+  save: false,
+});
+```
+
+The effect remains active until its handle removes it, but snapshots omit it
+without a warning. This prevents a saved frame from turning a short pulse into
+a permanent restored effect.
+
 `@yagejs/save` is an optional peer dep — without it, component-scope
 effects still serialize, but the layer/scene/screen contributor doesn't
 register.

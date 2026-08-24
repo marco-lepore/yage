@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createMockEntity } from "@yagejs/core";
+import { ErrorBoundaryKey, createMockEntity } from "@yagejs/core";
 import { VisualModifierHost, type VisualComponent } from "@yagejs/renderer";
 import { Feel } from "../Feel.js";
-import { feelPositionPunch, feelScalePunch } from "./visual.js";
+import { feelPositionPunch, feelScalePunch, feelScaleShake } from "./visual.js";
 
 function visualTarget(): VisualComponent {
   return { modifiers: new VisualModifierHost() } as unknown as VisualComponent;
@@ -61,5 +61,49 @@ describe("Feel visual modifiers", () => {
     expect(playback?.active).toBe(false);
     expect(target.modifiers.scaleFactor.x).toBe(1);
     expect(target.modifiers.size).toBe(0);
+  });
+
+  it("owns scale shake as a removable multiplicative contribution", () => {
+    const { entity } = createMockEntity();
+    const target = visualTarget();
+    const feel = entity.add(
+      new Feel({
+        shake: feelScaleShake({
+          target,
+          amplitude: 0.2,
+          frequency: 1,
+          decay: 0,
+          duration: 1,
+        }),
+      }),
+    );
+
+    const playback = feel.play("shake");
+    feel.update(0.25);
+    expect(target.modifiers.size).toBe(1);
+    expect(target.modifiers.scaleFactor.x).not.toBe(1);
+
+    playback?.stop();
+    expect(target.modifiers.size).toBe(0);
+    expect(target.modifiers.scaleFactor.x).toBe(1);
+  });
+
+  it("attributes visual target functions as developer callbacks", () => {
+    const { entity, context } = createMockEntity();
+    const boundary = context.resolve(ErrorBoundaryKey);
+    const feel = entity.add(
+      new Feel({
+        shake: feelScaleShake({
+          target: () => {
+            throw new Error("missing visual");
+          },
+        }),
+      }),
+    );
+
+    expect(() => feel.play("shake")).toThrow("missing visual");
+    expect(boundary.getCallbackErrors()[0]?.kind).toBe(
+      "Feel callback (visual target source)",
+    );
   });
 });

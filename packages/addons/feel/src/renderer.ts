@@ -1,18 +1,26 @@
 export {
   feelBlink,
   feelCameraShake,
+  feelCameraRotation,
   feelCameraZoom,
+  feelColorize,
   feelEffect,
+  feelGlow,
   feelHitFlash,
   feelOpacity,
+  feelOutline,
   feelShockwave,
 } from "./adapters/renderer.js";
 export type {
   FeelBlinkOptions,
   FeelCameraShakeOptions,
+  FeelCameraRotationOptions,
   FeelCameraZoomOptions,
+  FeelColorizeOptions,
   FeelEffectOptions,
+  FeelGlowOptions,
   FeelOpacityOptions,
+  FeelOutlineOptions,
   FeelShockwaveOptions,
 } from "./adapters/renderer.js";
 export {
@@ -22,6 +30,7 @@ export {
   feelRotationPunch,
   feelRotationShake,
   feelScalePunch,
+  feelScaleShake,
   feelSquash,
   feelTransformShake,
 } from "./adapters/visual.js";
@@ -30,7 +39,18 @@ export type {
   FeelRotationPunchOptions,
   FeelRotationShakeOptions,
   FeelScalePunchOptions,
+  FeelScaleShakeOptions,
   FeelSquashOptions,
   FeelTransformShakeOptions,
   FeelVisualTarget,
 } from "./adapters/visual.js";
+export {
+  feelDamageNumber,
+  feelFloatingText,
+  feelImpactRing,
+} from "./adapters/transient.js";
+export type {
+  FeelDamageNumberOptions,
+  FeelFloatingTextOptions,
+  FeelImpactRingOptions,
+} from "./adapters/transient.js";

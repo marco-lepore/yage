@@ -218,6 +218,7 @@ export type {
 export type { EffectHandle } from "./effects/EffectHandle.js";
 export type {
   Effect,
+  EffectAttachmentOptions,
   EffectFactory,
   EffectScope,
   EffectTarget,

@@ -9,5 +9,9 @@ particle effects.
   intensity, chance, cooldowns, and retrigger policies.
 - Keep the root entry core-only and provide optional renderer, audio, and
   particle adapters.
+- Add animated outline, glow, and colorize pulses plus floating text, damage
+  numbers, and procedural impact rings.
+- Add scale shake and camera rotation pulses through the existing modifier
+  owners.
 - Own visual, camera, filter, sound, and particle feedback through removable
   handles, so cancellation removes only the current playback's contribution.

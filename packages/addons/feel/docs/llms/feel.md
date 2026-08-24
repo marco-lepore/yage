@@ -74,15 +74,23 @@ feelBounce({ target, distance?, duration? });
 feelRotationPunch({ target, radians, duration?, peakAt?, ... });
 feelRotationShake({ target, radians?, frequency?, decay?, duration? });
 feelScalePunch({ target, scale?, duration?, peakAt?, ... });
+feelScaleShake({ target, amplitude?, frequency?, decay?, duration? });
 feelSquash({ target, axis?, amount?, duration?, peakAt?, ... });
 feelTransformShake({ target, amplitude?, frequency?, decay?, duration? });
 feelCameraShake({ camera, intensity?, duration?, frequency?, decay? });
+feelCameraRotation({ camera, radians?, duration?, peakAt?, ... });
 feelCameraZoom({ camera, scale?, duration?, peakAt?, ... });
 feelEffect(host: EffectsHost, factory: EffectFactory, options?);
 feelHitFlash(host: EffectsHost, options?: HitFlashOptions);
 feelShockwave(host: EffectsHost, options?: ShockwaveOptions & { center? });
+feelOutline({ target, thickness?, color?, alpha?, quality?, knockout?, duration?, peakAt?, ... });
+feelGlow({ target, color?, distance?, outerStrength?, innerStrength?, alpha?, quality?, knockout?, duration?, peakAt?, ... });
+feelColorize({ target, color, strength?, duration?, peakAt?, ... });
 feelOpacity({ target, alpha?, duration?, peakAt? });
 feelBlink({ target, duration?, interval? });
+feelFloatingText({ text, position?, style?, offset?, travel?, spread?, sway?, layer?, duration?, fadeAt?, startScale?, peakScale?, peakAt?, settleAt? });
+feelDamageNumber({ value, critical?, prefix?, suffix?, format?, position?, color?, criticalColor?, fontSize?, criticalSize?, outlineColor?, outlineWidth?, style?, criticalStyle?, rise?, spread?, sway?, layer?, duration?, fadeAt? });
+feelImpactRing({ position?, radius?, expand?, thickness?, color?, spikes?, spikeLength?, layer?, duration?, startScale? });
 ```
 
 Visual motion targets a `VisualComponent`. Each playback owns a renderer
@@ -98,6 +106,20 @@ rendered camera layers use the effective values.
 
 `feelEffect` attaches the supplied effect factory, pulses primary intensity
 from 0 to the cue-scaled peak and back, then removes it.
+
+`feelOutline`, `feelGlow`, and `feelColorize` are target-resolving convenience
+effects over the same handle lifecycle. Feel attaches all filter pulses with
+`save: false`, so snapshots do not restore a temporary filter without its
+playback. Floating text, damage numbers, and impact rings resolve their world
+position once when playback starts. Position defaults to the cue entity's
+`Transform.worldPosition`.
+
+Each floating text, damage number, or impact ring playback spawns a separate
+transient entity. The entity is destroyed on completion or cancellation, so
+overlapping callouts do not restore or mutate one another. Text uses a centered
+`TextComponent`; impact rings use `GraphicsComponent`. Active callouts are not
+saved. Pass `layer` to choose their render layer. Use a custom pool for
+callout-heavy games.
 
 ## `/audio`
 

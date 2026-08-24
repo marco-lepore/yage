@@ -900,8 +900,9 @@ const restored = sprite.fx.findEffect(hitFlash);  // EffectHandle | null
 
 | Export | Signature | Description |
 |---|---|---|
-| `.fx` (on every scope) | `EffectsHost` | Per-scope holder. `addEffect(factory)`, `findEffect(definition)`, `serialize()`, `restore(snap)`, `destroy()`, `size`. The underlying `EffectStack` is built lazily on first attach. |
+| `.fx` (on every scope) | `EffectsHost` | Per-scope holder. `addEffect(factory, { save?: boolean })`, `findEffect(definition)`, `serialize()`, `restore(snap)`, `destroy()`, `size`. Set `save: false` for an owner-managed temporary effect; snapshots omit it without warning. The underlying `EffectStack` is built lazily on first attach. |
 | `EffectsHost` | class | Constructor: `(getContainer: () => Container, scope: EffectScope, makeQueue: (() => ScopedProcessQueue) \| undefined)`. Auto-built on each scope's host object — components, layers, scenes, the renderer. |
+| `EffectAttachmentOptions` | interface | `{ save?: boolean }`. `save` defaults to `true`; set it to `false` for an effect whose runtime owner removes it. |
 | `EffectHandle` | interface | `remove()` / `setEnabled(on)` / `enabled` / `setIntensity(value)` / `fadeIn(duration): Process` / `fadeOut(duration): Process` / `run(p: Process): Process`. `setIntensity` clamps to 0–1 and controls the effect's primary intensity. `run` schedules a `Process` scoped to the effect's lifetime — pauses with the owning scene, time-scales with it, auto-cancels when the effect is removed. |
 | `Effect.onActivate?(base)` | optional factory hook | Runs once after `buildExtras` has merged its keys onto the handle. Use to self-schedule per-effect tickers via `base.run(...)` so callers don't have to call `step(dt)` themselves (e.g. CRT noise animator). `buildExtras` itself stays pure — no side effects there. |
 | `defineEffect` | `<H, O>({ name, factory: (opts: O) => Effect<H> }) => (opts: O) => EffectFactory<H>` | Register a preset under a stable string name. The returned callable produces save-aware factories — built effects are tagged with `{ name, options }` for snapshot round-trip. |

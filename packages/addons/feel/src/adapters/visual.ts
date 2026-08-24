@@ -10,7 +10,7 @@ import type {
 } from "@yagejs/renderer";
 import { defineFeelEffect } from "../core/node.js";
 import type { FeelEffectContext, FeelNode } from "../core/types.js";
-import { feelPunchAmount } from "../internal/envelope.js";
+import { feelPunchAmount, validateFeelPeakAt } from "../internal/envelope.js";
 
 export type FeelVisualTarget =
   | VisualComponent
@@ -73,6 +73,18 @@ export interface FeelRotationShakeOptions {
   /** Total duration in seconds. Default: 0.16. */
   duration?: number;
   /** Exponent applied to the fade to zero. Default: 1. */
+  decay?: number;
+}
+
+export interface FeelScaleShakeOptions {
+  target: FeelVisualTarget;
+  /** Scale amplitude around `1`. A number applies to both axes. Default: `0.08`. */
+  amplitude?: number | Vec2Like;
+  /** Oscillations per second. Default: `24`. */
+  frequency?: number;
+  /** Total duration in seconds. Default: `0.16`. */
+  duration?: number;
+  /** Exponent applied to the fade to zero. Default: `1`. */
   decay?: number;
 }
 
@@ -196,6 +208,54 @@ export function feelRotationShake(options: FeelRotationShakeOptions): FeelNode {
   });
 }
 
+/** Shake a visual's rendered scale around its live base scale. */
+export function feelScaleShake(options: FeelScaleShakeOptions): FeelNode {
+  const duration = options.duration ?? 0.16;
+  const frequency = options.frequency ?? 24;
+  const decay = options.decay ?? 1;
+  const configured = options.amplitude ?? 0.08;
+  const amplitude =
+    typeof configured === "number"
+      ? new Vec2(configured, configured)
+      : new Vec2(configured.x, configured.y);
+  return defineFeelEffect(duration, (context) => {
+    const target = resolveVisual(options.target, context);
+    const phaseX = context.random.range(0, Math.PI * 2);
+    const phaseY = context.random.range(0, Math.PI * 2);
+    let handle: VisualTransformModifierHandle | undefined;
+    return {
+      start: () => {
+        handle = target.modifiers.addTransform();
+      },
+      update: (progress) => {
+        const elapsed = progress * duration;
+        const envelope = Math.pow(Math.max(0, 1 - progress), decay);
+        handle?.setScale(
+          new Vec2(
+            Math.max(
+              0.0001,
+              1 +
+                Math.sin(elapsed * frequency * Math.PI * 2 + phaseX) *
+                  amplitude.x *
+                  envelope *
+                  context.intensity,
+            ),
+            Math.max(
+              0.0001,
+              1 +
+                Math.sin(elapsed * frequency * Math.PI * 2 + phaseY) *
+                  amplitude.y *
+                  envelope *
+                  context.intensity,
+            ),
+          ),
+        );
+      },
+      finish: () => handle?.remove(),
+    };
+  });
+}
+
 /** Position punch opposite `direction`. */
 export function feelRecoil(options: {
   direction: Vec2Like;
@@ -236,6 +296,7 @@ function visualPunch(
   ) => void,
 ): FeelNode {
   const duration = options.duration ?? 0.18;
+  validateFeelPeakAt(options.peakAt);
   const attack = options.attackEasing ?? easeOutQuad;
   const release = options.releaseEasing ?? easeOutQuad;
   return defineFeelEffect(duration, (context) => {
@@ -262,5 +323,10 @@ function resolveVisual(
   target: FeelVisualTarget,
   context: FeelEffectContext,
 ): VisualComponent {
-  return typeof target === "function" ? target(context) : target;
+  if (typeof target !== "function") return target;
+  let visual: VisualComponent | undefined;
+  context.invoke("visual target source", () => {
+    visual = target(context);
+  });
+  return visual as VisualComponent;
 }
