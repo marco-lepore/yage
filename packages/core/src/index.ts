@@ -128,8 +128,10 @@ export type {
   InspectorDriveStepOptions,
   InspectorDriveUntilOptions,
   InspectorDriveCapture,
+  InspectorDriveOptions,
   InspectorDriveOutcome,
   InspectorDriveResult,
+  DriveState,
 } from "./Inspector.js";
 
 export { Scene } from "./Scene.js";
@@ -222,6 +224,14 @@ export {
 
 /** @internal - exposed for sibling @yagejs packages, not for public consumption. */
 export { isDev, devWarn } from "./internal/dev.js";
+
+/** @internal - exposed for sibling @yagejs packages, not for public consumption. */
+export {
+  assertDriveMaxFrames,
+  DEFAULT_DRIVE_MAX_FRAMES,
+  driveFramesUsed,
+  driveWhileHolding,
+} from "./internal/driveSupport.js";
 
 export {
   STATE_KIND,

@@ -812,19 +812,39 @@ describe("Inspector", () => {
       snapshotState(): unknown;
     }
 
-    /** Records what a drive did, in order, so ordering can be asserted. */
+    /**
+     * Records what a drive did, in order, so ordering can be asserted, and
+     * tracks held keys so `snapshotState().keys` reports them for real —
+     * what the `state`/`whileHolding` tests below read.
+     */
     function fakeInput(log: string[]): FakeInput {
+      const heldKeys = new Set<string>();
       return {
-        fireKeyDown: (code) => log.push(`down:${code}`),
-        fireKeyUp: (code) => log.push(`up:${code}`),
+        fireKeyDown: (code) => {
+          heldKeys.add(code);
+          log.push(`down:${code}`);
+        },
+        fireKeyUp: (code) => {
+          heldKeys.delete(code);
+          log.push(`up:${code}`);
+        },
         firePointerMove: () => log.push("pointerMove"),
         firePointerDown: () => log.push("pointerDown"),
         firePointerUp: () => log.push("pointerUp"),
         fireGamepadButton: () => log.push("padButton"),
         fireGamepadAxis: () => log.push("padAxis"),
         fireAction: (name) => log.push(`action:${name}`),
-        clearAll: () => log.push("clearAll"),
-        snapshotState: () => ({}),
+        clearAll: () => {
+          heldKeys.clear();
+          log.push("clearAll");
+        },
+        snapshotState: () => ({
+          keys: [...heldKeys],
+          actions: [],
+          mouse: { x: 0, y: 0, buttons: [], down: false },
+          pointers: [],
+          gamepad: { buttons: [], axes: [] },
+        }),
       };
     }
 
@@ -1118,6 +1138,186 @@ describe("Inspector", () => {
         { label: "before", dataUrl },
         { label: undefined, dataUrl },
       ]);
+    });
+
+    it("reports framesUsed live, counting frames issued through inspector.time.step directly too", async () => {
+      const { inspector } = setup();
+      inspector.attachTimeController(driveController([]));
+
+      const seen: number[] = [];
+      await inspector.drive(async (ctx) => {
+        await ctx.step(2);
+        seen.push(ctx.framesUsed);
+        inspector.time.step(3);
+        seen.push(ctx.framesUsed);
+      });
+
+      expect(seen).toEqual([2, 5]);
+    });
+
+    it("whileHolding nests: the inner release leaves the outer key held", async () => {
+      const { inspector, ctx } = setup();
+      inspector.attachTimeController(driveController([]));
+      ctx.register(InputManagerRuntimeKey, fakeInput([]));
+
+      let midRunKeys: string[] | undefined;
+      await inspector.drive(async ({ input }) => {
+        await input.whileHolding(["KeyA"], async () => {
+          await input.whileHolding(["KeyB"], async () => {});
+          midRunKeys = [...inspector.getInputState().keys];
+        });
+      });
+
+      expect(midRunKeys).toEqual(["KeyA"]);
+    });
+
+    it("whileHolding leaves a code the caller already holds down when it returns", async () => {
+      const { inspector, ctx } = setup();
+      inspector.attachTimeController(driveController([]));
+      ctx.register(InputManagerRuntimeKey, fakeInput([]));
+
+      let insideKeys: string[] | undefined;
+      let afterInnerKeys: string[] | undefined;
+      await inspector.drive(async ({ input }) => {
+        await input.whileHolding(["KeyD"], async () => {
+          await input.whileHolding(["KeyD", "Space"], async () => {
+            insideKeys = [...inspector.getInputState().keys].sort();
+          });
+          afterInnerKeys = [...inspector.getInputState().keys];
+        });
+      });
+
+      expect(insideKeys).toEqual(["KeyD", "Space"]);
+      // The inner call repeated "KeyD", so it is the outer call's to release.
+      expect(afterInnerKeys).toEqual(["KeyD"]);
+    });
+
+    it("whileHolding releases exactly its own codes when fn throws, leaving other held keys alone", async () => {
+      const { inspector, ctx } = setup();
+      inspector.attachTimeController(driveController([]));
+      ctx.register(InputManagerRuntimeKey, fakeInput([]));
+
+      let keysAfterThrow: string[] | undefined;
+      const result = await inspector.drive(async ({ input }) => {
+        input.keyDown("KeyA");
+        await expect(
+          input.whileHolding(["KeyB"], async () => {
+            throw new Error("maneuver failed");
+          }),
+        ).rejects.toThrow("maneuver failed");
+        keysAfterThrow = [...inspector.getInputState().keys];
+      });
+
+      expect(result.ok).toBe(true);
+      expect(keysAfterThrow).toEqual(["KeyA"]);
+    });
+
+    it("rejects a maxFrames that is not a non-negative integer or Infinity", async () => {
+      const { inspector } = setup();
+      inspector.attachTimeController(driveController([]));
+
+      for (const bad of [Number.NaN, -1, 1.5]) {
+        expect(() => inspector.drive(async () => {}, { maxFrames: bad })).toThrow(
+          "maxFrames must be a non-negative integer or Infinity",
+        );
+      }
+      // Infinity disables the budget on purpose, so it has to be accepted.
+      await expect(
+        inspector.drive(async () => {}, { maxFrames: Number.POSITIVE_INFINITY }),
+      ).resolves.toMatchObject({ ok: true });
+    });
+
+    it("ends a run that exceeds its frame budget with timedOut: true and framesUsed equal to the budget", async () => {
+      const { inspector } = setup();
+      inspector.attachTimeController(driveController([]));
+
+      const result = await inspector.drive(
+        async ({ step }) => {
+          for (;;) {
+            await step(1);
+          }
+        },
+        { maxFrames: 5 },
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.timedOut).toBe(true);
+        expect(result.framesUsed).toBe(5);
+      }
+    });
+
+    it("reports timedOut: false when the callback throws for its own reason", async () => {
+      const { inspector } = setup();
+      inspector.attachTimeController(driveController([]));
+
+      const result = await inspector.drive(
+        async () => {
+          throw new Error("probe gave up");
+        },
+        { maxFrames: 5 },
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.timedOut).toBe(false);
+        expect(result.error).toBe("probe gave up");
+      }
+    });
+
+    it("applies the default 10,000-frame budget when maxFrames is omitted", async () => {
+      const { inspector } = setup();
+      inspector.attachTimeController(driveController([]));
+
+      const result = await inspector.drive(async ({ step }) => {
+        // A single synchronous jump, so the test does not issue 10,000 real
+        // macrotask-yielding frames to reach the default.
+        inspector.time.step(10_000);
+        await step(1);
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.timedOut).toBe(true);
+    });
+
+    it("never times out when maxFrames is Infinity", async () => {
+      const { inspector } = setup();
+      inspector.attachTimeController(driveController([]));
+
+      const result = await inspector.drive(
+        async ({ step }) => {
+          inspector.time.step(50_000);
+          await step(1);
+        },
+        { maxFrames: Infinity },
+      );
+
+      expect(result.ok).toBe(true);
+    });
+
+    it("captures state.keys before cleanup releases them", async () => {
+      const { inspector, ctx } = setup();
+      const log: string[] = [];
+      inspector.attachTimeController(driveController(log));
+      ctx.register(InputManagerRuntimeKey, fakeInput(log));
+
+      const result = await inspector.drive(({ input }) => {
+        input.keyDown("KeyD");
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.state.keys).toEqual(["KeyD"]);
+      // Cleanup still ran, releasing it after the read.
+      expect(log).toContain("clearAll");
+    });
+
+    it("reports the scene stack on state.scenes", async () => {
+      const { inspector } = setup();
+      inspector.attachTimeController(driveController([]));
+
+      const result = await inspector.drive(() => undefined);
+
+      expect(result.state.scenes).toEqual(inspector.getSceneStack());
     });
   });
 });

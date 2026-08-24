@@ -230,6 +230,7 @@ async drive({ scene, controls, step, until, expect, input, events, capture }) {
 | --- | --- | --- |
 | `scene` | `Scene` | `findByKey(...)` reaches what the scenario spawned. |
 | `controls` | `ControlValues<C>` | The values the run started with. |
+| `framesUsed` | `number` | Frames the run has spent so far. Counts frames issued through `step`/`until` and through `Inspector.time.step()` called directly. |
 | `step` | `(frames?, { dtMs? }) => Promise<void>` | Advances frames, one at a time. `dtMs` sets the simulated milliseconds per frame for this call. |
 | `until` | `(predicate, { maxFrames?, dtMs? }) => Promise<number>` | Steps until true, resolving with the frames it took. Rejects after 600 frames by default. |
 | `expect` | `ExpectStatic` | `@vitest/expect`, Jest-style. |
@@ -275,7 +276,30 @@ input.clearAll();                                     // releases everything
 await input.tap(code, frames?);        // hold for 1 frame unless told otherwise
 await input.hold(code, frames);
 await input.fireAction(name, frames?); // needs InputPlugin
+await ctx.input.whileHolding(codes, fn); // holds codes for fn, then restores
 ```
+
+`whileHolding` holds `codes` for the duration of `fn`, then restores what was
+held before — including when `fn` throws. A code already down on entry is left
+alone at both ends, so nested calls compose by lexical scope even when their
+code sets overlap, and a key a plain `keyDown` is holding survives too:
+
+```ts
+await ctx.input.whileHolding(["KeyD"], async () => {
+  while (ctx.framesUsed < 900 && !atExit()) {
+    if (gapAhead()) {
+      await ctx.input.whileHolding(["Space"], () => ctx.step(6));
+      continue;
+    }
+    await ctx.step(1);
+  }
+});
+// "KeyD" releases here; the nested jump released "Space" on its own way out.
+```
+
+Read `framesUsed` off the context (`ctx.framesUsed`) rather than destructuring
+it. It is a getter, so a destructured copy freezes at the value it had when the
+run started.
 
 Reading a one-frame edge such as `isJustPressed` means issuing the frames
 yourself:
@@ -451,7 +475,7 @@ interface LabApi {
   show(id: string): Promise<void>;
   setControl(name: string, value: ControlValue): Promise<void>;
   run(opts?: { pace?: "immediate" | "frame"; captureView?: "content" | "camera" }): Promise<DriveResult>;
-  drive<T = void>(fn: (ctx: DriveContext) => Promise<T> | T, opts?: { rebuild?: boolean; pace?: "immediate" | "frame"; captureView?: "content" | "camera" }): Promise<DriveResult<T>>;
+  drive<T = void>(fn: (ctx: DriveContext) => Promise<T> | T, opts?: { rebuild?: boolean; pace?: "immediate" | "frame"; captureView?: "content" | "camera"; maxFrames?: number }): Promise<DriveResult<T>>;
   capture(view?: "content" | "camera"): Promise<LabCaptureResult>;
 }
 ```
@@ -480,8 +504,19 @@ const r = await __yageLab__.drive(async ({ input, until, scene }) => {
   input.clearAll();
   return { frames, x: body.positionX };
 });
-// r: { ok: true, value: { frames, x }, framesUsed, durationMs, captures, warnings }
+// r: { ok: true, value: { frames, x }, framesUsed, durationMs, captures, warnings, state }
 ```
+
+`state` — `{ keys, actions, scenes }` — reports what the run ended with,
+including keys still held. `opts.maxFrames` bounds the run: the budget is
+checked before each frame-advancing call, and once it is spent the run resolves
+with `ok: false`, `error`, and `timedOut: true`. A single call asking for more
+frames than the budget still runs them all, so `framesUsed` can end above
+`maxFrames` — the budget stops a loop, it does not truncate one call. Omit it
+and a default of 10,000 frames applies; pass `Infinity` to disable it. This budget
+applies only to an ad-hoc `drive()` — a scenario's own `drive`, run through
+`run()` or `yage-lab test`, gets none; the test runner (or the panel) owns
+that timeout instead.
 
 Unlike `run()`, `drive()` does **not** rebuild the scene first — it drives the
 scene as it stands, mutations from an earlier drive included. Pass

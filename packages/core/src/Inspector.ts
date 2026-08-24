@@ -22,6 +22,24 @@ import {
   type RandomService,
 } from "./Random.js";
 import { SceneTimeKey } from "./SceneTime.js";
+import {
+  assertDriveMaxFrames,
+  DEFAULT_DRIVE_MAX_FRAMES,
+  driveFramesUsed,
+  driveWhileHolding,
+} from "./internal/driveSupport.js";
+
+/**
+ * Thrown internally by a drive's frame-budget guard once `maxFrames` is
+ * spent. `executeDrive` catches its own marker to report `timedOut: true`
+ * rather than surfacing it as the callback's own failure.
+ */
+class DriveBudgetExceededError extends Error {
+  constructor(maxFrames: number) {
+    super(`Drive exceeded its frame budget of ${maxFrames} frames.`);
+    this.name = "DriveBudgetExceededError";
+  }
+}
 
 // Duplicate service keys locally to avoid runtime deps on optional packages.
 const InputManagerRuntimeKey = new ServiceKey<InputManagerLike>("inputManager");
@@ -400,6 +418,14 @@ export interface InspectorDriveInput {
   gamepadAxis(side: InspectorGamepadAxisKey, value: number): void;
   /** Releases every synthetic key, pointer and pad input at once. */
   clearAll(): void;
+  /**
+   * Holds `codes` for the duration of `fn`, then restores what was held
+   * before — including when `fn` throws. A code already down on entry is left
+   * alone at both ends, so nested holds compose by lexical scope: an inner
+   * call that repeats one of the outer call's codes does not drop it, and
+   * neither does a code a plain `keyDown` is holding.
+   */
+  whileHolding(codes: readonly string[], fn: () => Promise<void>): Promise<void>;
   /** Holds `code` for one frame unless told otherwise, then releases it. */
   tap(code: string, frames?: number): Promise<void>;
   hold(code: string, frames: number): Promise<void>;
@@ -412,6 +438,8 @@ export interface InspectorDriveInput {
 
 /** The verbs {@link Inspector.drive} hands its callback. */
 export interface InspectorDriveContext {
+  /** Frames this drive has spent so far, counting frames issued any way. */
+  readonly framesUsed: number;
   /** Advances `frames` frames, one at a time. */
   step(frames?: number, opts?: InspectorDriveStepOptions): Promise<void>;
   /**
@@ -428,6 +456,29 @@ export interface InspectorDriveContext {
   capture(label?: string): Promise<string>;
 }
 
+/** Options for {@link Inspector.drive}. */
+export interface InspectorDriveOptions {
+  /**
+   * Frames the whole run may spend before it ends with `ok: false` and
+   * `timedOut: true`. Defaults to 10,000. Pass `Infinity` to disable the
+   * budget.
+   */
+  maxFrames?: number;
+}
+
+/**
+ * Engine state read at the moment a drive ended, captured before the drive's
+ * cleanup releases synthetic input — so a key the callback left held still
+ * shows up here.
+ */
+export interface DriveState {
+  /** Keys held when the run ended. */
+  readonly keys: readonly string[];
+  readonly actions: readonly string[];
+  /** The scene stack, from {@link Inspector.getSceneStack}. */
+  readonly scenes: readonly SceneSnapshot[];
+}
+
 /** One screenshot a drive asked for. */
 export interface InspectorDriveCapture {
   readonly label?: string | undefined;
@@ -440,15 +491,22 @@ export interface InspectorDriveOutcome {
   readonly framesUsed: number;
   readonly durationMs: number;
   readonly captures: readonly InspectorDriveCapture[];
+  readonly state: DriveState;
 }
 
 /**
- * A failed drive always says why, so `error` comes with `ok: false` and only
- * there; the callback's return value comes with `ok: true` and only there.
+ * A failed drive always says why, so `error` (and `timedOut`) come with
+ * `ok: false` and only there; the callback's return value comes with
+ * `ok: true` and only there.
  */
 export type InspectorDriveResult<T = void> =
   | (InspectorDriveOutcome & { readonly ok: true; readonly value: T })
-  | (InspectorDriveOutcome & { readonly ok: false; readonly error: string });
+  | (InspectorDriveOutcome & {
+      readonly ok: false;
+      readonly error: string;
+      /** True when the failure is the `maxFrames` budget running out. */
+      readonly timedOut: boolean;
+    });
 
 interface LoggedEvent {
   entry: EventLogEntry;
@@ -812,6 +870,7 @@ export class Inspector {
    */
   drive<T = void>(
     fn: (ctx: InspectorDriveContext) => Promise<T> | T,
+    opts?: InspectorDriveOptions,
   ): Promise<InspectorDriveResult<T>> {
     // Resolved here rather than inside the async body so a game without
     // DebugPlugin fails at the call instead of in a promise nobody awaited.
@@ -821,7 +880,10 @@ export class Inspector {
         "Inspector.drive() is already in flight. Await the running drive before starting another.",
       );
     }
-    return this.executeDrive(controller, fn);
+    if (opts?.maxFrames !== undefined) {
+      assertDriveMaxFrames(opts.maxFrames, "Inspector.drive()");
+    }
+    return this.executeDrive(controller, fn, opts);
   }
 
   /** Guards against a second drive starting while one holds the clock. */
@@ -830,6 +892,7 @@ export class Inspector {
   private async executeDrive<T>(
     controller: InspectorTimeController,
     fn: (ctx: InspectorDriveContext) => Promise<T> | T,
+    opts?: InspectorDriveOptions,
   ): Promise<InspectorDriveResult<T>> {
     const wasFrozen = controller.isFrozen;
     if (!wasFrozen) controller.freeze();
@@ -838,15 +901,30 @@ export class Inspector {
     const captures: InspectorDriveCapture[] = [];
     const startFrame = this.time.getFrame();
     const startedAt = performance.now();
+    const maxFrames = opts?.maxFrames ?? DEFAULT_DRIVE_MAX_FRAMES;
+    const checkBudget = (): void => {
+      if (
+        Number.isFinite(maxFrames) &&
+        this.time.getFrame() - startFrame >= maxFrames
+      ) {
+        throw new DriveBudgetExceededError(maxFrames);
+      }
+    };
     let error: string | undefined;
+    let timedOut = false;
     let value!: T;
+    let state!: DriveState;
 
     try {
-      value = await fn(this.createDriveContext(captures));
+      value = await fn(this.createDriveContext(captures, startFrame, checkBudget));
     } catch (thrown) {
       error = thrown instanceof Error ? thrown.message : String(thrown);
+      timedOut = thrown instanceof DriveBudgetExceededError;
     } finally {
       try {
+        // Read before cleanup below releases everything it describes — a
+        // key the callback left held must show up here, not report empty.
+        state = this.captureDriveState();
         // A key left down would carry into whatever plays next. Released
         // while still frozen, so the game never sees a held key advance.
         // Resolved leniently: no InputPlugin means nothing to release.
@@ -868,10 +946,21 @@ export class Inspector {
       framesUsed: this.time.getFrame() - startFrame,
       durationMs: performance.now() - startedAt,
       captures,
+      state,
     };
     return error === undefined
       ? { ...outcome, ok: true, value }
-      : { ...outcome, ok: false, error };
+      : { ...outcome, ok: false, error, timedOut };
+  }
+
+  /** State read at the moment a drive ends, before its cleanup runs. */
+  private captureDriveState(): DriveState {
+    const input = this.getInputState();
+    return {
+      keys: input.keys,
+      actions: input.actions,
+      scenes: this.getSceneStack(),
+    };
   }
 
   /**
@@ -882,11 +971,26 @@ export class Inspector {
    */
   private createDriveContext(
     captures: InspectorDriveCapture[],
+    startFrame: number,
+    checkBudget: () => void,
   ): InspectorDriveContext {
+    const time = this.time;
+
     const step = (
       frames = 1,
       opts?: InspectorDriveStepOptions,
-    ): Promise<void> => this.time.stepAsync(frames, opts);
+    ): Promise<void> => {
+      checkBudget();
+      return time.stepAsync(frames, opts);
+    };
+
+    const until = (
+      predicate: () => boolean,
+      opts?: InspectorDriveUntilOptions,
+    ): Promise<number> => {
+      checkBudget();
+      return time.stepUntil(predicate, opts);
+    };
 
     const hold = async (code: string, frames: number): Promise<void> => {
       this.assertNonNegativeInteger(frames, "Inspector.drive input.hold(frames)");
@@ -899,13 +1003,16 @@ export class Inspector {
       }
     };
 
+    const keyDown = (code: string): void => {
+      this.input.keyDown(code);
+    };
+    const keyUp = (code: string): void => {
+      this.input.keyUp(code);
+    };
+
     const input: InspectorDriveInput = {
-      keyDown: (code) => {
-        this.input.keyDown(code);
-      },
-      keyUp: (code) => {
-        this.input.keyUp(code);
-      },
+      keyDown,
+      keyUp,
       mouseMove: (x, y) => {
         this.input.mouseMove(x, y);
       },
@@ -933,6 +1040,12 @@ export class Inspector {
       clearAll: () => {
         this.input.clearAll();
       },
+      whileHolding: (codes, fn) =>
+        driveWhileHolding(
+          { keyDown, keyUp, heldKeys: () => this.getInputState().keys },
+          codes,
+          fn,
+        ),
       tap: (code, frames = 1) => hold(code, frames),
       hold,
       fireAction: async (name, frames = 1) => {
@@ -949,8 +1062,11 @@ export class Inspector {
     };
 
     return {
+      get framesUsed() {
+        return driveFramesUsed(() => time.getFrame(), startFrame);
+      },
       step,
-      until: (predicate, opts) => this.time.stepUntil(predicate, opts),
+      until,
       input,
       events: this.events,
       capture: async (label) => {
@@ -1110,6 +1226,11 @@ export class Inspector {
       }
     }
     return result;
+  }
+
+  /** Get current input state (keys, pointers, gamepad). */
+  getInputState(): InputStateSnapshot {
+    return this.buildInputSnapshot();
   }
 
   /** Get scene stack info. */
