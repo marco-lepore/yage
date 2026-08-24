@@ -7,7 +7,7 @@ import {
   stepFrames,
   waitForClock,
   waitForSceneStackLength,
-} from "./helpers";
+} from "./helpers.js";
 
 test.describe("Inspector scene sanity", () => {
   test("inspector sees initial scene and delayed push", async ({ page }) => {

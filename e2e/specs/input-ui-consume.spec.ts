@@ -4,7 +4,7 @@ import {
   gotoFixture,
   stepFrames,
   waitForClock,
-} from "./helpers";
+} from "./helpers.js";
 
 interface ConsumeProbeData {
   fireDowns: number;

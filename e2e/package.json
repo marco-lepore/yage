@@ -7,6 +7,7 @@
     "dev": "vite --config fixtures/vite.config.ts",
     "build": "vite build --config fixtures/vite.config.ts",
     "preview": "vite preview --config fixtures/vite.config.ts",
+    "typecheck": "tsc -p specs/tsconfig.json",
     "e2e": "playwright test -c ../playwright.config.ts"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { gotoFixture, waitForClock, stepFrames, getEntityPosition } from "./helpers";
+import { gotoFixture, waitForClock, stepFrames, getEntityPosition } from "./helpers.js";
 
 /**
  * The fixture (`e2e/fixtures/src/pathfinding.ts`) builds a fixed 6x4 grid

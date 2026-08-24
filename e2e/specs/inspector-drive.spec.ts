@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { gotoFixture, waitForClock } from "./helpers";
+import { gotoFixture, waitForClock } from "./helpers.js";
 
 interface InputProbeData {
   jumpPressed: boolean;
@@ -15,13 +15,11 @@ interface SceneApi {
   getIsTransitioning(): boolean;
 }
 
-type Win = Window & { __sceneTransitionTest__: SceneApi };
+type Win = Window & { __sceneTransitionTest__?: SceneApi };
 
 async function waitForSceneApi(page: Page): Promise<void> {
   await page.waitForFunction(
-    () =>
-      (window as Window & { __sceneTransitionTest__?: SceneApi })
-        .__sceneTransitionTest__ !== undefined,
+    () => (window as Win).__sceneTransitionTest__ !== undefined,
   );
 }
 
@@ -72,7 +70,7 @@ test.describe("Inspector.drive", () => {
 
     const result = await page.evaluate(async () => {
       const inspector = window.__yage__!.inspector;
-      const api = (window as Win).__sceneTransitionTest__;
+      const api = (window as Win).__sceneTransitionTest__!;
       // Start from a running clock, so the restore this asserts is a real one.
       inspector.time.thaw();
       const frozenBefore = inspector.time.isFrozen();
