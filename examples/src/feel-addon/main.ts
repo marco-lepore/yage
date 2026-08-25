@@ -448,7 +448,7 @@ class EssentialsScene extends FeelGalleryScene {
             count: 5,
             interval: 0.065,
             lifetime: 0.28,
-            tint: 0x1e3a8a,
+            tint: 0xa855f7,
             alpha: 0.62,
             endScale: 0.92,
           }),
