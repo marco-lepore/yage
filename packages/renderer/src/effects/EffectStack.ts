@@ -1,7 +1,12 @@
 import { Tween } from "@yagejs/core";
 import type { Process, ScopedProcessQueue } from "@yagejs/core";
 import type { DisplayContainer as Container, Filter } from "../public-types.js";
-import type { Effect, EffectFactory, EffectScope } from "./Effect.js";
+import type {
+  Effect,
+  EffectAttachmentOptions,
+  EffectFactory,
+  EffectScope,
+} from "./Effect.js";
 import type { EffectHandle } from "./EffectHandle.js";
 import {
   EFFECT_META,
@@ -58,6 +63,7 @@ export interface EffectStackEntry {
 export class EffectStack {
   private readonly entries = new Set<Effect>();
   private readonly handles = new Map<Effect, EffectHandle>();
+  private readonly unsavedEffects = new Set<Effect>();
   private readonly ownedFilters = new Set<Filter>();
   private readonly effectProcesses = new Map<Effect, Set<Process>>();
   private destroyed = false;
@@ -70,7 +76,10 @@ export class EffectStack {
   ) {}
 
   /** Build and attach an effect, returning its handle. */
-  add<H extends EffectHandle>(factory: EffectFactory<H>): H {
+  add<H extends EffectHandle>(
+    factory: EffectFactory<H>,
+    options: EffectAttachmentOptions = {},
+  ): H {
     if (this.destroyed) {
       throw new Error(
         `EffectStack: cannot add effect to a destroyed ${this.scope}-scope stack.`,
@@ -83,6 +92,7 @@ export class EffectStack {
     // which is the right pairing.)
     effect.onAttach?.({ displayObject: this.displayObject, scope: this.scope });
     this.entries.add(effect);
+    if (options.save === false) this.unsavedEffects.add(effect);
     this.syncFilters();
 
     // Per-effect process tracking — fades, hitFlash trigger ramps, CRT
@@ -190,8 +200,9 @@ export class EffectStack {
   }
 
   /**
-   * Capture the steady-state of every effect in the stack. Effects built
-   * from `defineEffect`-registered factories are included; entries without
+   * Capture the steady-state of saved effects in the stack. Attachments with
+   * `save: false` are skipped silently. Other effects built from
+   * `defineEffect`-registered factories are included; entries without
    * registry metadata (e.g. `rawFilter`, hand-built `Effect`s) are skipped
    * with a one-shot warning. In-flight `fadeIn` / `fadeOut` tweens are NOT
    * preserved — only the values `getIntensity()` reads at call time.
@@ -199,6 +210,7 @@ export class EffectStack {
   serialize(): EffectStackSnapshot {
     const out: EffectStackEntry[] = [];
     for (const effect of this.entries) {
+      if (this.unsavedEffects.has(effect)) continue;
       const meta = getEffectMeta(effect);
       if (!meta) {
         if (!this.warnedUnsavable) {
@@ -280,6 +292,7 @@ export class EffectStack {
     }
     this.entries.clear();
     this.handles.clear();
+    this.unsavedEffects.clear();
     // `effectProcesses` is the per-effect index used by `removeEffect` to
     // find and cancel a single effect's processes. On destroy we cancel
     // EVERY process at once via `this.queue.cancelAll()` below, so clearing
@@ -302,6 +315,7 @@ export class EffectStack {
     if (!this.entries.has(effect)) return;
     this.entries.delete(effect);
     this.handles.delete(effect);
+    this.unsavedEffects.delete(effect);
     effect.onDetach?.();
 
     // Cancel any in-flight fades scoped to this effect. Without this, the

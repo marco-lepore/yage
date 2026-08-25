@@ -42,6 +42,18 @@ interface ParticleState {
   alphaEnd: number;
 }
 
+interface EmissionRequestEntry {
+  active: boolean;
+}
+
+/** Temporary continuous-emission request. */
+export interface ParticleEmissionHandle {
+  /** Whether this request is still active. */
+  readonly active: boolean;
+  /** Remove only this request. Safe to call more than once. */
+  release(): void;
+}
+
 /**
  * Component that owns a PixiJS ParticleContainer and drives particle emission.
  * Requires a `Transform` on the same entity: the system that ticks emitters
@@ -80,7 +92,9 @@ export class ParticleEmitterComponent extends Component {
   /** The built-in shape in use, or null when a texture/key supplied the look. */
   private readonly _shape: ResolvedShape | null;
 
-  private _isEmitting = false;
+  private _manualEmission = false;
+  private readonly _emissionRequests = new Set<EmissionRequestEntry>();
+  private _destroyed = false;
   private _random = this.service(RandomKey);
   private _warnedNoTransform = false;
 
@@ -125,13 +139,42 @@ export class ParticleEmitterComponent extends Component {
   /** Start continuous emission at `config.rate` particles/sec. */
   emit(): void {
     this._warnIfNoTransform();
-    this._isEmitting = true;
+    this._manualEmission = true;
   }
 
-  /** Stop continuous emission. Existing particles continue to their end of life. */
+  /**
+   * Stop emission started by {@link emit}. Active emission requests remain in
+   * effect. Existing particles continue to their end of life.
+   */
   stop(): void {
-    this._isEmitting = false;
-    this._accumulator = 0;
+    this._manualEmission = false;
+    if (!this.isEmitting) this._accumulator = 0;
+  }
+
+  /**
+   * Keep continuous emission active until the returned handle is released.
+   * Several callers can hold requests without stopping one another.
+   */
+  requestEmission(): ParticleEmissionHandle {
+    if (this._destroyed) {
+      throw new Error(
+        "ParticleEmitterComponent: cannot request emission after destruction.",
+      );
+    }
+    this._warnIfNoTransform();
+    const entry: EmissionRequestEntry = { active: true };
+    this._emissionRequests.add(entry);
+    return {
+      get active() {
+        return entry.active;
+      },
+      release: () => {
+        if (!entry.active) return;
+        entry.active = false;
+        this._emissionRequests.delete(entry);
+        if (!this.isEmitting) this._accumulator = 0;
+      },
+    };
   }
 
   /**
@@ -171,7 +214,7 @@ export class ParticleEmitterComponent extends Component {
 
   /** Whether continuous emission is active. */
   get isEmitting(): boolean {
-    return this._isEmitting;
+    return this._manualEmission || this._emissionRequests.size > 0;
   }
 
   /** Number of currently alive particles. */
@@ -279,6 +322,10 @@ export class ParticleEmitterComponent extends Component {
   }
 
   onDestroy(): void {
+    this._destroyed = true;
+    for (const request of this._emissionRequests) request.active = false;
+    this._emissionRequests.clear();
+    this._manualEmission = false;
     this.container.removeFromParent();
     // No destroy options: the particle texture may be a built-in shape or
     // `Texture.WHITE`, both shared by every other emitter using them.
@@ -293,7 +340,7 @@ export class ParticleEmitterComponent extends Component {
     const cfg = this.config;
 
     // 1. Accumulate continuous emission
-    if (this._isEmitting) {
+    if (this.isEmitting) {
       this._accumulator += cfg.rate * dt;
       while (this._accumulator >= 1) {
         this._accumulator -= 1;

@@ -674,6 +674,23 @@ describe("TilemapComponent", () => {
       mocks.mockAssetsGet.mockReset();
     });
 
+    it("keeps base alpha separate from a temporary opacity modifier", () => {
+      mocks.mockAssetsGet.mockReturnValue(testMap);
+      const comp = new TilemapComponent({
+        mapKey: "dungeon.json",
+        alpha: 0.4,
+      });
+      const modifier = comp.modifiers.addOpacity(0.5);
+
+      expect(comp.alpha).toBe(0.4);
+      expect(comp.container.alpha).toBe(0.2);
+      expect(comp.serialize()?.alpha).toBe(0.4);
+
+      modifier.remove();
+      expect(comp.container.alpha).toBe(0.4);
+      mocks.mockAssetsGet.mockReset();
+    });
+
     it("source-handle construction captures the asset path as mapKey", () => {
       mocks.mockAssetsGet.mockReturnValue(testMap);
       const handle = new AssetHandle<TiledMapData>(
@@ -744,9 +761,7 @@ describe("TilemapComponent", () => {
       mocks.mockAssetsGet.mockReturnValue(testMap);
       const comp = new TilemapComponent({ mapKey: "/assets/dungeon.json" });
       const player = comp.findObject(10)!;
-      expect(comp.objectKey(player)).toBe(
-        "/assets/dungeon.json#object:10",
-      );
+      expect(comp.objectKey(player)).toBe("/assets/dungeon.json#object:10");
       mocks.mockAssetsGet.mockReset();
     });
 

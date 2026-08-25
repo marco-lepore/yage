@@ -52,6 +52,37 @@ from `@yagejs/effects` instead.
 when you need a pixi feature `SpriteComponent` doesn't surface — full pixi
 API is available. See the [pixi Sprite docs](https://pixijs.com/8.x/guides/components/scene-objects/sprite).
 
+### Temporary visual modifiers
+
+Every visual component has a `modifiers` host for temporary feedback that
+must not change gameplay state:
+
+```typescript
+const punch = sprite.modifiers.addTransform({
+  position: { x: 6, y: 0 },
+  rotation: 0.05,
+  scale: 1.1,
+});
+const dim = sprite.modifiers.addOpacity(0.5);
+const hidden = sprite.modifiers.addVisibility(false);
+
+punch.setPosition({ x: 2, y: 0 });
+punch.remove();
+dim.remove();
+hidden.remove();
+```
+
+Position and rotation contributions add. Scale and opacity contributions
+multiply. Every visibility contribution must permit drawing. Each handle
+removes only its own contribution and is safe to remove more than once.
+The component's `alpha` and `visible` properties remain the game's base values
+while modifiers affect the computed render values.
+
+The renderer combines the entity's current world `Transform` with active
+visual transform modifiers every frame. It does not write the result back to
+`Transform`, so physics, camera following, and depth sorting keep the base
+position. Modifiers are transient and are not saved.
+
 ## Animated Sprites
 
 For frame-based sprite animations, use `AnimatedSpriteComponent` together with

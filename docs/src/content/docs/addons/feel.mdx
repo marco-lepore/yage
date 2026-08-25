@@ -1,0 +1,337 @@
+---
+title: Feel
+description: Compose visual, camera, time, renderer, sound, and particle feedback into one named trigger
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+`@yagejs-addons/feel` groups the small responses around an action and plays
+them from one call. A hit can squash the target, flash its sprite, shake the
+camera, freeze the scene for 50 ms, play a sound, and burst particles without
+putting six unrelated timers in combat code.
+
+The [Feel addon example](https://examples.yage.dev/feel-addon.html) groups the
+effects across two scenes. It covers impacts, trails, afterimages, highlights,
+punches, visibility, cue composition, slow motion, animation, callbacks,
+shockwaves, camera modifiers, and a custom effect. Press `N` or `P` to move
+between scenes with a slide transition.
+
+```ts
+import {
+  Feel,
+  feelHitStop,
+  feelParallel,
+} from "@yagejs-addons/feel";
+import {
+  feelCameraShake,
+  feelHitFlash,
+  feelScalePunch,
+  feelSquash,
+} from "@yagejs-addons/feel/renderer";
+import { feelSound } from "@yagejs-addons/feel/audio";
+import { feelParticleBurst } from "@yagejs-addons/feel/particles";
+
+enemy.add(
+  new Feel({
+    hit: feelParallel(
+      feelSquash({ target: enemySprite, amount: 0.2 }),
+      feelHitStop({ duration: 0.05 }),
+      feelCameraShake({ camera, intensity: 5 }),
+      feelHitFlash(enemySprite.fx, { color: 0xffffff }),
+      feelSound({ alias: "impact", speed: [0.95, 1.05] }),
+      feelParticleBurst({ emitter: sparks, count: [8, 12] }),
+    ),
+  }),
+);
+
+enemy.get(Feel).play("hit");
+```
+
+## Install
+
+```bash
+npm install @yagejs-addons/feel @yagejs/core
+
+# Add only the optional peers your cues use:
+npm install @yagejs/renderer @yagejs/effects
+npm install @yagejs/audio
+npm install @yagejs/particles
+```
+
+The root import contains the `Feel` component, composition helpers, time
+effects, animation, and callbacks. Visual motion, camera, filter, audio, and
+particle adapters use separate entry points, so the root import does not load
+PixiJS or optional plugins.
+
+## Build one response from small effects
+
+`feelParallel` starts every child together. `feelSequence` waits for each
+child to finish. `feelDelay` offsets one child, and `feelRepeat` repeats a
+child with an optional gap.
+
+```ts
+const pickup = feelSequence(
+  feelParallel(
+    feelScalePunch({ target: pickupSprite, scale: 1.3 }),
+    feelSound({ alias: "pickup" }),
+  ),
+  feelDelay(0.04, feelParticleBurst({ emitter: glitter, count: 10 })),
+);
+```
+
+Every named cue can control retriggers:
+
+```ts
+const feel = entity.add(
+  new Feel({
+    hit: {
+      effect: pickup,
+      overlap: "restart", // "restart" (default), "ignore", or "allow"
+      chance: 0.9,
+      cooldown: 0.05,
+      intensity: [0.9, 1.1],
+    },
+  }),
+);
+
+feel.play("hit", { intensity: 1.5 }); // per-play override
+feel.stop("hit");
+```
+
+`play()` returns `null` while the component is dormant or when chance,
+cooldown, or `overlap: "ignore"` rejects the trigger. Otherwise it returns a
+handle with `active`, `finished`, and `stop()`. Disabling or destroying `Feel`
+stops all active cues.
+
+## Visual motion and physics
+
+The `/renderer` entry includes position and rotation punches, recoil, bounce,
+scale punch, squash/stretch, position shake, rotation shake, and scale shake.
+Each effect targets a `VisualComponent`, such as `SpriteComponent`. Position
+and rotation contributions add; scale contributions multiply. Several cues
+can affect one visual while its entity keeps moving normally.
+
+<Aside type="caution">
+Visual modifiers do not write to `Transform`. A rigid body, collider, camera
+follow target, and depth-sort key keep their authoritative values while the
+sprite shakes or squashes. Use the physics impulse or velocity API when recoil
+must affect gameplay.
+</Aside>
+
+```ts
+feelSquash({ target: playerSprite, axis: "y", amount: 0.25 });
+feelRecoil({
+  target: weaponSprite,
+  direction: aimDirection,
+  distance: 8,
+});
+```
+
+The renderer recomputes the displayed transform from the current base
+`Transform` plus all active visual modifiers every frame. Each playback owns
+one removable modifier. Cancellation removes that modifier without reversing
+arithmetic or restoring a stale snapshot, so overlapping effects cannot leave
+drift.
+
+## Camera and renderer feedback
+
+The `/renderer` entry adds camera shake, rotation, and zoom pulses, opacity
+pulses, blinking, hit flash, and shockwave. `feelEffect` accepts any YAGE
+effect factory, so the addon also supports current and future
+`@yagejs/effects` presets without one wrapper per filter.
+
+```ts
+import { bloom, chromaticAberration } from "@yagejs/effects";
+import { feelEffect } from "@yagejs-addons/feel/renderer";
+
+const critical = feelParallel(
+  feelEffect(worldLayer.fx, bloom({ bloomScale: 1.5 }), { duration: 0.2 }),
+  feelEffect(worldLayer.fx, chromaticAberration({ separation: 6 }), {
+    duration: 0.12,
+  }),
+);
+```
+
+Each generic pulse attaches the effect, moves its primary intensity from zero
+to the cue-scaled peak and back, then removes it. Choose the renderer scope as
+you would without the addon: component for one sprite, layer for the world
+without the HUD, scene for the whole scene, or screen across scenes.
+
+### Animated highlights
+
+`feelOutline`, `feelGlow`, and `feelColorize` provide named pulses for three
+common target highlights. Each effect resolves its target when the cue starts,
+owns one filter handle, and removes only that handle when it finishes. Feel
+marks the handle as temporary, so a snapshot taken during the pulse does not
+restore it without its owning playback.
+
+```ts
+const selected = feelParallel(
+  feelOutline({
+    target: enemySprite,
+    color: 0xffd54a,
+    thickness: 3,
+    duration: 0.3,
+  }),
+  feelGlow({
+    target: enemySprite,
+    color: 0xff8800,
+    outerStrength: 5,
+    duration: 0.3,
+  }),
+);
+```
+
+### Damage numbers, floating text, and impact rings
+
+The renderer entry can also create short-lived world-space callouts:
+
+```ts
+const criticalHit = feelParallel(
+  feelDamageNumber({
+    value: () => lastDamage,
+    critical: () => lastHitWasCritical,
+    prefix: "-",
+    layer: "effects",
+  }),
+  feelImpactRing({
+    color: 0xffd54a,
+    spikes: 8,
+    layer: "effects",
+  }),
+);
+
+const pickup = feelFloatingText({
+  text: "Health restored",
+  style: { fill: 0x66ff99 },
+  travel: { x: 0, y: -40 },
+});
+```
+
+`feelFloatingText` and `feelDamageNumber` default to the cue entity's current
+world `Transform`. Pass `position` or a position function to spawn elsewhere.
+Text, critical-hit state, and damage values can also be functions, evaluated
+for each playback.
+
+Each playback creates its own temporary entity. Completion and cancellation
+destroy that entity, so several callouts can overlap without sharing a base
+position, alpha, or scale. Active callouts are omitted from save snapshots.
+This path suits ordinary combat and pickup feedback. A game that displays very
+large numbers of callouts every frame should use a custom pool instead.
+
+### Flight lines, motion trails, and afterimages
+
+`feelFlightLines` draws a short field of directional streaks. The field moves
+opposite the supplied direction while it fades. `feelMotionTrail` samples a
+live world position and draws a line through the recent samples.
+`feelAfterimage` leaves tinted copies of a sprite's current frame behind its
+rendered pose.
+
+```ts
+const dash = feelParallel(
+  feelFlightLines({
+    direction: velocity,
+    count: 10,
+    length: [20, 48],
+    duration: 0.25,
+  }),
+  feelMotionTrail({
+    position: () => player.get(Transform).worldPosition,
+    duration: 0.3,
+    lifetime: 0.18,
+    color: 0x66ddff,
+  }),
+  feelAfterimage({
+    target: playerSprite,
+    count: 5,
+    interval: 0.05,
+    lifetime: 0.25,
+    tint: 0x1e3a8a,
+  }),
+);
+```
+
+The motion trail collects samples for `duration`, then remains alive for one
+`lifetime` so the final segments fade. Afterimages accept `SpriteComponent`
+and `AnimatedSpriteComponent`; each copy captures the current animation frame,
+anchor, and effective rendered transform. All three effects own temporary
+entities. Completion and cancellation destroy those entities without changing
+the source `Transform`.
+
+## Time, sound, particles, and animation
+
+`feelHitStop` calls `SceneTime.freezeFor`. `feelSlowMotion` calls
+`SceneTime.scaleBy` and excludes the `Feel` entity from slow motion by default,
+so its cue timing can continue at normal speed. Set `includeOwner: true` when
+the owner should slow too.
+
+Time requests expire on `SceneTime`'s raw clock. Stopping a cue after a time
+request starts does not undo that request.
+
+`feelSound` plays a preloaded alias, with optional speed randomization.
+`feelParticleBurst` bursts an existing emitter. `feelParticleEmit` owns a
+temporary emission request. Manual emission and overlapping requests remain
+active when one cue finishes. `feelAnimation` starts a `KeyframeAnimator`
+animation.
+
+## Save and load
+
+Feel feedback does not become saved game state. Cue definitions, cooldown
+clocks, active playbacks, renderer and camera modifiers, temporary filters,
+time requests, particle-emission requests, live particles, and transient visual
+entities are omitted from snapshots. The `Feel` component is also omitted
+because its cue map contains code and live component references. Re-add it from
+the host entity's `afterRestore()` method:
+
+```ts
+@serializable
+class Enemy extends Entity {
+  setup() {
+    this.installFeel();
+  }
+
+  afterRestore() {
+    this.installFeel();
+  }
+
+  private installFeel() {
+    const sprite = this.get(SpriteComponent);
+    this.add(new Feel({ hit: feelSquash({ target: sprite }) }));
+  }
+}
+```
+
+The restored component starts with no cue in progress. Saved base transform,
+camera, and visual values remain unchanged by built-in Feel effects.
+
+<Aside type="caution">
+`feelCall`, `defineFeelEffect`, and `feelAnimation` can run user-supplied code.
+If that code writes to serializable game state, YAGE saves the resulting value.
+For custom visual movement, write to a renderer modifier handle and release the
+handle in `finish`.
+</Aside>
+
+## Custom effects and events
+
+Use `feelCall` for an instant game callback. `defineFeelEffect` creates a
+game-specific timed effect:
+
+```ts
+const customSquash = defineFeelEffect(0.2, (context) => {
+  let modifier: VisualTransformModifierHandle | undefined;
+  return {
+    start: () => (modifier = sprite.modifiers.addTransform()),
+    update: (progress) => modifier?.setScale(1 + Math.sin(progress * Math.PI) * 0.2 * context.intensity),
+    finish: () => modifier?.remove(),
+  };
+});
+```
+
+The returned `FeelNode` composes with every built-in node. A custom effect can
+also resolve scene services through `context.resolve`. Developer callbacks can
+use `context.invoke` when they need their own error-attribution label. Custom
+effects should acquire removable handles in `start` and release them in
+`finish`, which runs on completion and cancellation.
+
+The host entity emits `FeelStartedEvent`, `FeelCompletedEvent`, and
+`FeelStoppedEvent`.

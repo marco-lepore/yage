@@ -229,6 +229,48 @@ describe("TilemapRenderSystem", () => {
     expect(container.scale.y).toBe(3);
   });
 
+  it("combines visual modifiers without changing Transform", () => {
+    const { ctx, scene } = createTestContext();
+    const system = new TilemapRenderSystem();
+    system._setContext(ctx);
+    system.onRegister!(ctx);
+
+    const entity = scene.spawn("tilemap");
+    const transform = entity.add(
+      new Transform({
+        position: new Vec2(50, 100),
+        rotation: 0.5,
+        scale: new Vec2(2, 3),
+      }),
+    );
+    const comp = entity.add(new TilemapComponent({ map: testMap }));
+    const modifier = comp.modifiers.addTransform({
+      position: new Vec2(4, -6),
+      rotation: 0.25,
+      scale: new Vec2(0.5, 2),
+    });
+
+    system.update();
+
+    const container = comp.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    expect(container.position.x).toBe(54);
+    expect(container.position.y).toBe(94);
+    expect(container.rotation).toBe(0.75);
+    expect(container.scale.x).toBe(1);
+    expect(container.scale.y).toBe(6);
+    expect(transform.position).toEqual(new Vec2(50, 100));
+
+    modifier.remove();
+    system.update();
+    expect(container.position.x).toBe(50);
+    expect(container.position.y).toBe(100);
+    expect(container.rotation).toBe(0.5);
+    expect(container.scale.x).toBe(2);
+    expect(container.scale.y).toBe(3);
+  });
+
   it("skips disabled components", () => {
     const { ctx, scene } = createTestContext();
     const system = new TilemapRenderSystem();

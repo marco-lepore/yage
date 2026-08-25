@@ -1,0 +1,112 @@
+{
+  "name": "@yagejs-addons/feel",
+  "version": "0.1.0",
+  "description": "Composable game-feel cues for YAGE: visual motion, time, camera, audio, particles, and renderer effects",
+  "keywords": [
+    "yage",
+    "yage-addon",
+    "game-engine",
+    "2d",
+    "typescript",
+    "game-feel",
+    "juice",
+    "feedback"
+  ],
+  "license": "MIT",
+  "author": "Marco Lepore",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
+    "directory": "packages/addons/feel"
+  },
+  "homepage": "https://yage.dev",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./renderer": {
+      "import": {
+        "types": "./dist/renderer.d.ts",
+        "default": "./dist/renderer.js"
+      },
+      "require": {
+        "types": "./dist/renderer.d.cts",
+        "default": "./dist/renderer.cjs"
+      }
+    },
+    "./audio": {
+      "import": {
+        "types": "./dist/audio.d.ts",
+        "default": "./dist/audio.js"
+      },
+      "require": {
+        "types": "./dist/audio.d.cts",
+        "default": "./dist/audio.cjs"
+      }
+    },
+    "./particles": {
+      "import": {
+        "types": "./dist/particles.d.ts",
+        "default": "./dist/particles.js"
+      },
+      "require": {
+        "types": "./dist/particles.d.cts",
+        "default": "./dist/particles.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@yagejs/audio": ">=0.10.0 <0.11.0",
+    "@yagejs/core": ">=0.10.0 <0.11.0",
+    "@yagejs/effects": ">=0.10.0 <0.11.0",
+    "@yagejs/particles": ">=0.10.0 <0.11.0",
+    "@yagejs/renderer": ">=0.10.0 <0.11.0"
+  },
+  "peerDependenciesMeta": {
+    "@yagejs/audio": {
+      "optional": true
+    },
+    "@yagejs/effects": {
+      "optional": true
+    },
+    "@yagejs/particles": {
+      "optional": true
+    },
+    "@yagejs/renderer": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.18",
+    "@yagejs/audio": ">=0.10.0",
+    "@yagejs/core": ">=0.10.0",
+    "@yagejs/effects": ">=0.10.0",
+    "@yagejs/particles": ">=0.10.0",
+    "@yagejs/renderer": ">=0.10.0"
+  }
+}

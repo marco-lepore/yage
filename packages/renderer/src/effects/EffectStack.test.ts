@@ -76,9 +76,11 @@ function makeMockHost(): ScopedProcessQueue & {
   } as ScopedProcessQueue & { runs: Process[]; cancelled: number };
 }
 
-function makeEffect(
-  filterLabel = "f",
-): { factory: EffectFactory; effect: Effect; setIntensity: ReturnType<typeof vi.fn> } {
+function makeEffect(filterLabel = "f"): {
+  factory: EffectFactory;
+  effect: Effect;
+  setIntensity: ReturnType<typeof vi.fn>;
+} {
   const filter = new mocks.MockFilter(filterLabel);
   let intensity = 0.5;
   const setIntensity = vi.fn((v: number) => {
@@ -307,7 +309,11 @@ describe("EffectStack", () => {
     // Triggering another sync (e.g. adding another effect) brings ours back.
     const b = makeEffect("b");
     stack.add(b.factory);
-    expect(target.filters).toEqual([userFilter, a.effect.filter, b.effect.filter]);
+    expect(target.filters).toEqual([
+      userFilter,
+      a.effect.filter,
+      b.effect.filter,
+    ]);
   });
 
   it("destroy preserves external filters and strips owned ones", () => {
@@ -517,6 +523,26 @@ describe("EffectStack serialize/restoreFrom", () => {
     });
   });
 
+  it("omits registered effects attached with save disabled", async () => {
+    const { defineEffect } = await import("./defineEffect.js");
+    const transient = defineEffect<EffectHandle, Record<string, never>>({
+      name: "test:transient",
+      factory: () => ({
+        filter: new mocks.MockFilter("transient") as never,
+        getIntensity: () => 1,
+        setIntensity: () => {},
+      }),
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    stack.add(transient({}), { save: false });
+
+    expect(stack.size).toBe(1);
+    expect(stack.serialize().entries).toHaveLength(0);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   it("skips effects without registry metadata with a warning", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const a = makeEffect("untagged");
@@ -528,9 +554,8 @@ describe("EffectStack serialize/restoreFrom", () => {
   });
 
   it("restoreFrom rebuilds entries via the registered factory", async () => {
-    const { defineEffect, _resetEffectRegistry } = await import(
-      "./defineEffect.js"
-    );
+    const { defineEffect, _resetEffectRegistry } =
+      await import("./defineEffect.js");
     _resetEffectRegistry();
     interface BarOptions {
       bar: number;
@@ -568,7 +593,14 @@ describe("EffectStack serialize/restoreFrom", () => {
   it("restoreFrom warns and skips entries with unknown names", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     stack.restoreFrom({
-      entries: [{ name: "test:never-registered", options: {}, intensity: 1, enabled: true }],
+      entries: [
+        {
+          name: "test:never-registered",
+          options: {},
+          intensity: 1,
+          enabled: true,
+        },
+      ],
     });
     expect(stack.size).toBe(0);
     expect(warnSpy).toHaveBeenCalled();

@@ -2,7 +2,11 @@ import type { ScopedProcessQueue } from "@yagejs/core";
 import type { DisplayContainer as Container } from "../public-types.js";
 import { EffectStack } from "./EffectStack.js";
 import type { EffectStackSnapshot } from "./EffectStack.js";
-import type { EffectFactory, EffectScope } from "./Effect.js";
+import type {
+  EffectAttachmentOptions,
+  EffectFactory,
+  EffectScope,
+} from "./Effect.js";
 import type { EffectDefinition } from "./defineEffect.js";
 import type { EffectHandle } from "./EffectHandle.js";
 
@@ -32,10 +36,14 @@ export class EffectsHost {
 
   /**
    * Attach a visual effect. Returns a typed handle for fading, removal,
-   * intensity, and any per-effect extras the factory exposes.
+   * intensity, and any per-effect extras the factory exposes. Pass
+   * `{ save: false }` when another runtime owner controls its lifetime.
    */
-  addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H {
-    return this._ensureStack().add(factory);
+  addEffect<H extends EffectHandle>(
+    factory: EffectFactory<H>,
+    options: EffectAttachmentOptions = {},
+  ): H {
+    return this._ensureStack().add(factory, options);
   }
 
   /**

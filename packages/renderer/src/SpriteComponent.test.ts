@@ -109,7 +109,14 @@ const { mocks } = vi.hoisted(() => {
   }
 
   return {
-    mocks: { MockContainer, MockSprite, MockTexture, MockPoint, cacheMap, cache },
+    mocks: {
+      MockContainer,
+      MockSprite,
+      MockTexture,
+      MockPoint,
+      cacheMap,
+      cache,
+    },
   };
 });
 
@@ -232,6 +239,44 @@ describe("SpriteComponent", () => {
     expect(comp.alpha).toBe(0.3);
   });
 
+  it("keeps base alpha separate from overlapping opacity modifiers", () => {
+    const comp = new SpriteComponent({ texture: {} as never, alpha: 0.8 });
+    const first = comp.modifiers.addOpacity(0.5);
+    const second = comp.modifiers.addOpacity(0.25);
+
+    expect(comp.alpha).toBe(0.8);
+    expect(comp.sprite.alpha).toBeCloseTo(0.1);
+
+    comp.alpha = 0.4;
+    expect(comp.sprite.alpha).toBeCloseTo(0.05);
+
+    first.remove();
+    expect(comp.sprite.alpha).toBeCloseTo(0.1);
+    second.remove();
+    expect(comp.sprite.alpha).toBe(0.4);
+  });
+
+  it("keeps base visibility separate from visibility modifiers", () => {
+    const { scene } = createRendererTestContext();
+    const entity = spawnEntityInScene(scene);
+    entity.add(new Transform());
+    const comp = entity.add(new SpriteComponent({ texture: {} as never }));
+    const first = comp.modifiers.addVisibility(false);
+    const second = comp.modifiers.addVisibility(true);
+
+    expect(comp.visible).toBe(true);
+    expect(comp.sprite.visible).toBe(false);
+
+    comp.visible = false;
+    first.remove();
+    second.remove();
+    expect(comp.visible).toBe(false);
+    expect(comp.sprite.visible).toBe(false);
+
+    comp.visible = true;
+    expect(comp.sprite.visible).toBe(true);
+  });
+
   it("onDestroy removes sprite from parent and destroys it", () => {
     const { scene } = createRendererTestContext();
     const entity = spawnEntityInScene(scene);
@@ -262,6 +307,23 @@ describe("SpriteComponent", () => {
       expect(data.layer).toBe("default");
       expect(data.anchor).toEqual({ x: 0.5, y: 0.5 });
       expect(data.tint).toBe(0xff0000);
+    });
+
+    it("serializes base appearance instead of transient modifiers", () => {
+      registerFakeTexture("hero.png");
+      const comp = new SpriteComponent({
+        texture: "hero.png",
+        alpha: 0.8,
+        visible: true,
+      });
+      comp.modifiers.addOpacity(0.25);
+      comp.modifiers.addVisibility(false);
+
+      const data = comp.serialize();
+      expect(comp.sprite.alpha).toBeCloseTo(0.2);
+      expect(comp.sprite.visible).toBe(false);
+      expect(data.alpha).toBe(0.8);
+      expect(data.visible).toBe(true);
     });
 
     it("setTexture(key) updates the serialized key", () => {
@@ -297,9 +359,9 @@ describe("SpriteComponent", () => {
         layer: "default",
         textureKey: "never-registered.png",
       };
-      expect(() =>
-        SpriteComponent.fromSnapshot(data as never),
-      ).toThrowError(/never-registered\.png/);
+      expect(() => SpriteComponent.fromSnapshot(data as never)).toThrowError(
+        /never-registered\.png/,
+      );
     });
   });
 

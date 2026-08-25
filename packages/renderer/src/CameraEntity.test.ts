@@ -130,6 +130,56 @@ describe("CameraEntity", () => {
     expect(world.y).toBeCloseTo(150);
   });
 
+  it("uses live base values plus independently removable modifiers", () => {
+    const { scene } = createRendererTestContext();
+    const cam = scene.spawn(CameraEntity, {
+      position: new Vec2(10, 20),
+      zoom: 2,
+    });
+    cam.rotation = 0.25;
+    const first = cam.modifiers.add({
+      position: { x: 5, y: 3 },
+      zoom: 2,
+      rotation: 0.5,
+    });
+    const second = cam.modifiers.add({ position: { x: -2, y: 1 }, zoom: 3 });
+
+    expect(cam.effectivePosition).toEqual(new Vec2(13, 24));
+    expect(cam.effectiveZoom).toBe(12);
+    expect(cam.effectiveRotation).toBe(0.75);
+
+    cam.position = new Vec2(100, 200);
+    cam.zoom = 4;
+    cam.rotation = 1;
+    first.remove();
+    expect(cam.effectivePosition).toEqual(new Vec2(98, 201));
+    expect(cam.effectiveZoom).toBe(12);
+    expect(cam.effectiveRotation).toBe(1);
+
+    second.remove();
+    expect(cam.effectivePosition).toEqual(new Vec2(100, 200));
+    expect(cam.effectiveZoom).toBe(4);
+    expect(cam.effectiveRotation).toBe(1);
+  });
+
+  it("uses effective camera values for coordinate conversion", () => {
+    const { scene } = createRendererTestContext();
+    const cam = scene.spawn(CameraEntity);
+    const modifier = cam.modifiers.add({
+      position: { x: 100, y: 50 },
+      zoom: 2,
+      rotation: Math.PI / 2,
+    });
+
+    const screen = cam.worldToScreen(100, 100);
+    const world = cam.screenToWorld(screen.x, screen.y);
+    expect(world.x).toBeCloseTo(100);
+    expect(world.y).toBeCloseTo(100);
+
+    modifier.remove();
+    expect(cam.worldToScreen(0, 0)).toEqual(new Vec2(400, 300));
+  });
+
   it("uses the current renderer viewport size for conversions", () => {
     const ctx = createRendererTestContext();
     const cam = ctx.scene.spawn(CameraEntity);
@@ -162,14 +212,22 @@ describe("CameraEntity", () => {
     const shake = cam.get(CameraShake);
 
     shake.start(10, 100, { decay: 0.5 });
+    expect(cam.modifiers.size).toBe(1);
     shake.update(16);
     expect(shake.offset.equals(Vec2.ZERO)).toBe(false);
 
     shake.stop();
     expect(shake.offset.equals(Vec2.ZERO)).toBe(true);
+    expect(cam.modifiers.size).toBe(0);
 
     shake.update(16);
     expect(shake.offset.equals(Vec2.ZERO)).toBe(true);
+  });
+
+  it("restores camera state before active shake behavior", () => {
+    expect(CameraComponent.restorePriority).toBeLessThan(
+      CameraShake.restorePriority,
+    );
   });
 
   it("clamps decayed shake intensity at zero", () => {

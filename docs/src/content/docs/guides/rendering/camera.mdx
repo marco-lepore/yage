@@ -125,6 +125,29 @@ the shake fades across its duration: `0` (the default) shakes at full strength
 until it ends, `1` fades linearly to zero over the duration, and values above
 `1` reach zero earlier — at `2` the camera stops moving halfway through.
 
+### Temporary camera modifiers
+
+Use `camera.modifiers` when several temporary camera effects need independent
+ownership:
+
+```typescript
+const impact = camera.modifiers.add({
+  position: { x: 4, y: 0 },
+  rotation: 0.02,
+  zoom: 1.05,
+});
+
+impact.setPosition({ x: -2, y: 1 });
+impact.remove();
+```
+
+Position and rotation contributions add. Zoom contributions multiply. The
+camera keeps its base `position`, `rotation`, and `zoom`; rendered layers and
+coordinate conversion use `effectivePosition`, `effectiveRotation`, and
+`effectiveZoom`. Each handle removes only its own contribution. Modifiers are
+transient and are not saved. Built-in `camera.shake()` also contributes through
+this host, so it composes with other modifiers.
+
 ### Coordinate Conversion
 
 Convert between screen (pixel) space and world space:

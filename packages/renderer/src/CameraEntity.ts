@@ -13,6 +13,7 @@ import { CameraShake } from "./CameraShake.js";
 import { CameraBoundsComponent } from "./CameraBoundsComponent.js";
 import { CameraZoom } from "./CameraZoom.js";
 import { RendererKey } from "./types.js";
+import type { CameraModifierHost } from "./CameraModifiers.js";
 
 export type { CameraBinding } from "./CameraComponent.js";
 
@@ -117,7 +118,8 @@ export class CameraEntity extends Entity {
 
     if (params.follow) {
       const followOpts: CameraFollowOptions = {};
-      if (params.smoothing !== undefined) followOpts.smoothing = params.smoothing;
+      if (params.smoothing !== undefined)
+        followOpts.smoothing = params.smoothing;
       if (params.offset !== undefined) followOpts.offset = params.offset;
       if (params.deadzone !== undefined) followOpts.deadzone = params.deadzone;
       if (params.snap !== undefined) followOpts.snap = params.snap;
@@ -167,6 +169,18 @@ export class CameraEntity extends Entity {
 
   get effectivePosition(): Vec2 {
     return this.cam.effectivePosition;
+  }
+
+  get effectiveRotation(): number {
+    return this.cam.effectiveRotation;
+  }
+
+  get effectiveZoom(): number {
+    return this.cam.effectiveZoom;
+  }
+
+  get modifiers(): CameraModifierHost {
+    return this.cam.modifiers;
   }
 
   // ---------------------------------------------------------------------------

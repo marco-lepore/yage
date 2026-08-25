@@ -217,7 +217,29 @@ All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitT
 }
 ```
 
-`comp.visible` / `comp.tint` / `comp.alpha` / `comp.blendMode` read/write the live object; `interactive` is option-only (set once at construction, persisted through save/load).
+`comp.tint` and `comp.blendMode` read/write the live object. `comp.visible` and
+`comp.alpha` read/write the game's base values; active modifiers affect only
+the computed render values. `interactive` is option-only (set once at
+construction, persisted through save/load).
+
+Every visual component also exposes `comp.modifiers: VisualModifierHost`:
+
+```ts
+const motion = comp.modifiers.addTransform({ position, rotation, scale });
+motion.setPosition(nextOffset);
+motion.setRotation(nextRadians);
+motion.setScale(nextFactor);
+motion.remove();
+
+const opacity = comp.modifiers.addOpacity(0.5); // multiplicative
+const visibility = comp.modifiers.addVisibility(false); // logical AND
+```
+
+Transform position/rotation modifiers add; scale and opacity multiply.
+`DisplaySystem` combines them with the current world `Transform` every render
+without changing `Transform`. Depth sorting sees the base position. Handles
+remove only their own contribution, are idempotent, and become inactive when
+the component is destroyed. Modifiers are transient and are not serialized.
 
 **`blendMode`.** `"normal"`, `"add"`, `"multiply"`, `"screen"`, `"erase"`, `"min"`, `"max"`, `"none"` and the `-npm` variants are GPU-native and need nothing extra. The photoshop-style rest (`"darken"`, `"lighten"`, `"overlay"`, `"color-dodge"`, `"soft-light"`, ...) are filter-backed and need one side-effect import in the game's entry file — without it Pixi logs a warning and draws normally:
 
@@ -538,11 +560,23 @@ cam.unfollow();
 cam.shake(10, 0.5, { decay: 1 }); // duration in seconds; decay 1 fades to zero by the end, 0 (default) holds full strength
 cam.zoomTo(2.0, 1, easeOutQuad); // duration in seconds
 
+const modifier = cam.modifiers.add({
+  position: { x: 4, y: 0 }, // additive
+  rotation: 0.02, // additive
+  zoom: 1.05, // multiplicative
+});
+modifier.remove();
+
 cam.bounds = { minX: 0, minY: 0, maxX: 2000, maxY: 1000 };
 
 const world = cam.screenToWorld(mouseX, mouseY);
 const screen = cam.worldToScreen(entity.x, entity.y);
 ```
+
+`effectivePosition`, `effectiveRotation`, and `effectiveZoom` combine the
+camera's base values with every active `CameraModifierHandle`. Layer rendering
+and coordinate conversion use these effective values. Removing a handle does
+not restore a snapshot or affect other modifiers. Modifiers are transient.
 
 ### Follow smoothing and `snap`
 
@@ -866,8 +900,9 @@ const restored = sprite.fx.findEffect(hitFlash);  // EffectHandle | null
 
 | Export | Signature | Description |
 |---|---|---|
-| `.fx` (on every scope) | `EffectsHost` | Per-scope holder. `addEffect(factory)`, `findEffect(definition)`, `serialize()`, `restore(snap)`, `destroy()`, `size`. The underlying `EffectStack` is built lazily on first attach. |
+| `.fx` (on every scope) | `EffectsHost` | Per-scope holder. `addEffect(factory, { save?: boolean })`, `findEffect(definition)`, `serialize()`, `restore(snap)`, `destroy()`, `size`. Set `save: false` for an owner-managed temporary effect; snapshots omit it without warning. The underlying `EffectStack` is built lazily on first attach. |
 | `EffectsHost` | class | Constructor: `(getContainer: () => Container, scope: EffectScope, makeQueue: (() => ScopedProcessQueue) \| undefined)`. Auto-built on each scope's host object — components, layers, scenes, the renderer. |
+| `EffectAttachmentOptions` | interface | `{ save?: boolean }`. `save` defaults to `true`; set it to `false` for an effect whose runtime owner removes it. |
 | `EffectHandle` | interface | `remove()` / `setEnabled(on)` / `enabled` / `setIntensity(value)` / `fadeIn(duration): Process` / `fadeOut(duration): Process` / `run(p: Process): Process`. `setIntensity` clamps to 0–1 and controls the effect's primary intensity. `run` schedules a `Process` scoped to the effect's lifetime — pauses with the owning scene, time-scales with it, auto-cancels when the effect is removed. |
 | `Effect.onActivate?(base)` | optional factory hook | Runs once after `buildExtras` has merged its keys onto the handle. Use to self-schedule per-effect tickers via `base.run(...)` so callers don't have to call `step(dt)` themselves (e.g. CRT noise animator). `buildExtras` itself stays pure — no side effects there. |
 | `defineEffect` | `<H, O>({ name, factory: (opts: O) => Effect<H> }) => (opts: O) => EffectFactory<H>` | Register a preset under a stable string name. The returned callable produces save-aware factories — built effects are tagged with `{ name, options }` for snapshot round-trip. |

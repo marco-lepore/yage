@@ -90,15 +90,24 @@ Emitters using a shape serialize (`shape: { type, size }` instead of
 `textureKey`), size included.
 
 Control:
+
 ```ts
-emitter.emit();              // start continuous
-emitter.stop();              // stop spawning (existing particles continue)
-emitter.burst(50);           // spawn at the entity's world position
-emitter.burst(10, x, y);    // burst at an explicit world position
-emitter.isEmitting;          // boolean
-emitter.activeCount;         // number
-emitter.blendMode = "add";  // BlendMode, read/write
+emitter.emit(); // start continuous
+emitter.stop(); // stop only emission started by emit()
+const request = emitter.requestEmission(); // ParticleEmissionHandle
+request.release(); // release only this request; idempotent
+emitter.burst(50); // spawn at the entity's world position
+emitter.burst(10, x, y); // burst at an explicit world position
+emitter.isEmitting; // boolean
+emitter.activeCount; // number
+emitter.blendMode = "add"; // BlendMode, read/write
 ```
+
+Manual emission and temporary requests compose. `isEmitting` stays true while
+`emit()` is active or at least one `ParticleEmissionHandle` is active.
+`stop()` does not cancel requests, and releasing a request does not cancel
+manual emission or other requests. Requests are transient and invalidated
+when the emitter is destroyed.
 
 **`blendMode`** is per emitter — every particle it spawns blends the same way,
 and the mode cannot vary particle by particle. Overlapping particles within one
