@@ -746,8 +746,8 @@ class MoreEffectsScene extends FeelGalleryScene {
         spin: {
           keyframes: [
             { time: 0, data: 0 },
-            { time: 350, data: Math.PI },
-            { time: 700, data: Math.PI * 2 },
+            { time: 0.35, data: Math.PI },
+            { time: 0.7, data: Math.PI * 2 },
           ],
           setter: (rotation) => transform.setRotation(rotation as number),
         },
@@ -764,8 +764,9 @@ class MoreEffectsScene extends FeelGalleryScene {
     let calls = 0;
     return entity.add(
       new Feel({
-        show: feelParallel(
+        show: feelSequence(
           feelAnimation("spin", animator),
+          feelDelay(0.7),
           feelCall(() => {
             calls++;
             callbackText.setText(`CALLBACKS: ${calls}`);
