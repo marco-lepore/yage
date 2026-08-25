@@ -13,7 +13,7 @@ particle effects.
   numbers, and procedural impact rings.
 - Add scale shake and camera rotation pulses through the existing modifier
   owners.
-- Add directional flight lines and sampled motion trails as temporary
-  world-space visuals.
+- Add directional flight lines, sampled motion trails, and fading sprite
+  afterimages as temporary world-space visuals.
 - Own visual, camera, filter, sound, and particle feedback through removable
   handles, so cancellation removes only the current playback's contribution.

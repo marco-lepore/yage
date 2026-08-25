@@ -59,3 +59,9 @@ export type {
   FeelFlightLinesOptions,
   FeelMotionTrailOptions,
 } from "./adapters/trails.js";
+export { feelAfterimage } from "./adapters/afterimage.js";
+export type {
+  FeelAfterimageOptions,
+  FeelAfterimageTarget,
+  FeelAfterimageVisual,
+} from "./adapters/afterimage.js";

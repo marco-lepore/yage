@@ -11,8 +11,8 @@ camera, freeze the scene for 50 ms, play a sound, and burst particles without
 putting six unrelated timers in combat code.
 
 The [Feel addon example](https://examples.yage.dev/feel-addon.html) shows
-impact feedback, flight lines, a motion trail, animated highlights, camera
-modifiers, and a custom effect.
+impact feedback, flight lines, a curved motion trail, sprite afterimages,
+animated highlights, camera modifiers, and a custom effect.
 
 ```ts
 import {
@@ -217,11 +217,13 @@ position, alpha, or scale. Active callouts are omitted from save snapshots.
 This path suits ordinary combat and pickup feedback. A game that displays very
 large numbers of callouts every frame should use a custom pool instead.
 
-### Flight lines and motion trails
+### Flight lines, motion trails, and afterimages
 
 `feelFlightLines` draws a short field of directional streaks. The field moves
 opposite the supplied direction while it fades. `feelMotionTrail` samples a
 live world position and draws a line through the recent samples.
+`feelAfterimage` leaves tinted copies of a sprite's current frame behind its
+rendered pose.
 
 ```ts
 const dash = feelParallel(
@@ -237,13 +239,22 @@ const dash = feelParallel(
     lifetime: 0.18,
     color: 0x66ddff,
   }),
+  feelAfterimage({
+    target: playerSprite,
+    count: 5,
+    interval: 0.05,
+    lifetime: 0.25,
+    tint: 0x1e3a8a,
+  }),
 );
 ```
 
 The motion trail collects samples for `duration`, then remains alive for one
-`lifetime` so the final segments fade. Both effects own temporary entities.
-Completion and cancellation destroy those entities without changing the
-sampled `Transform`.
+`lifetime` so the final segments fade. Afterimages accept `SpriteComponent`
+and `AnimatedSpriteComponent`; each copy captures the current animation frame,
+anchor, and effective rendered transform. All three effects own temporary
+entities. Completion and cancellation destroy those entities without changing
+the source `Transform`.
 
 ## Time, sound, particles, and animation
 

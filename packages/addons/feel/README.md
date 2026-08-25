@@ -4,8 +4,8 @@ Compose the small responses that make an action readable and satisfying, then
 play them from one named trigger.
 
 The [playable example](../../../examples/feel-addon.html) shows impact feedback,
-flight lines, a motion trail, animated highlights, camera modifiers, and a
-custom effect.
+flight lines, a curved motion trail, sprite afterimages, animated highlights,
+camera modifiers, and a custom effect.
 
 ```ts
 import { Feel, feelHitStop, feelParallel } from "@yagejs-addons/feel";
@@ -93,7 +93,7 @@ Import these from `@yagejs-addons/feel/renderer`:
 - `feelOutline`, `feelGlow`, and `feelColorize`
 - `feelOpacity` and `feelBlink`
 - `feelFloatingText`, `feelDamageNumber`, and `feelImpactRing`
-- `feelFlightLines` and `feelMotionTrail`
+- `feelFlightLines`, `feelMotionTrail`, and `feelAfterimage`
 - `feelEffect`, which pulses any `EffectHandle` from zero to its peak and back
 
 Motion effects target a `VisualComponent`, such as `SpriteComponent`. They
@@ -138,11 +138,13 @@ const criticalHit = feelParallel(
 );
 ```
 
-## Flight lines and motion trails
+## Flight lines, motion trails, and afterimages
 
 `feelFlightLines` creates a short directional streak field. `feelMotionTrail`
 samples a live world position and draws a fading line through recent samples.
-Both effects own temporary entities and leave gameplay transforms unchanged.
+`feelAfterimage` leaves tinted copies of a sprite's current frame behind its
+rendered pose. All three effects own temporary entities and leave gameplay
+transforms unchanged.
 
 ```ts
 const dash = feelParallel(
@@ -152,8 +154,19 @@ const dash = feelParallel(
     duration: 0.3,
     lifetime: 0.18,
   }),
+  feelAfterimage({
+    target: playerSprite,
+    count: 5,
+    interval: 0.05,
+    tint: 0x1e3a8a,
+  }),
 );
 ```
+
+Afterimages accept `SpriteComponent` and `AnimatedSpriteComponent`. Each copy
+captures the current animation frame, anchor, effective rendered transform,
+and opacity. Copies fade independently and are removed on completion or
+cancellation.
 
 `feelFloatingText` and `feelDamageNumber` use the cue entity's world
 `Transform` by default. Pass `position` to spawn elsewhere. Each playback

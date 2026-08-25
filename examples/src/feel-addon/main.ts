@@ -1,6 +1,7 @@
 /**
- * Feel addon showcase. Four cues cover impact feedback, motion trails,
- * renderer effects, camera modifiers, transient callouts, and a custom effect.
+ * Feel addon showcase. Four cues cover impact feedback, curved motion trails,
+ * sprite afterimages, renderer effects, camera modifiers, transient callouts,
+ * and a custom effect.
  */
 
 import {
@@ -14,8 +15,13 @@ import {
 import {
   CameraEntity,
   GraphicsComponent,
+  RendererKey,
   RendererPlugin,
+  SpriteComponent,
   TextComponent,
+  registerTexture,
+  unregisterTexture,
+  type TextureResource,
   type VisualTransformModifierHandle,
 } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
@@ -33,6 +39,7 @@ import {
   feelCameraZoom,
   feelColorize,
   feelDamageNumber,
+  feelAfterimage,
   feelFlightLines,
   feelGlow,
   feelHitFlash,
@@ -55,7 +62,9 @@ const WIDTH = 900;
 const HEIGHT = 560;
 const DASH_START = new Vec2(120, 425);
 const DASH_DURATION = 0.48;
-const DASH_SPEED = 1_350;
+const DASH_DISTANCE = 660;
+const DASH_ARC_HEIGHT = 62;
+const DASH_TEXTURE = "feel-addon:dash-runner";
 
 interface ShowcaseParts {
   impactFeel: Feel;
@@ -73,7 +82,7 @@ class ShowcaseController extends Component {
   private autoplay = true;
   private autoplayElapsed = 1.1;
   private autoplayIndex = 0;
-  private dashRemaining = 0;
+  private dashElapsed = DASH_DURATION;
   private lastCue = "waiting";
 
   constructor(private readonly parts: ShowcaseParts) {
@@ -92,10 +101,9 @@ class ShowcaseController extends Component {
       this.renderStatus();
     }
 
-    if (this.dashRemaining > 0) {
-      const step = Math.min(dt, this.dashRemaining);
-      this.dashTransform.translate(DASH_SPEED * step, 0);
-      this.dashRemaining -= step;
+    if (this.dashElapsed < DASH_DURATION) {
+      this.dashElapsed = Math.min(DASH_DURATION, this.dashElapsed + dt);
+      this.setDashPose(this.dashElapsed / DASH_DURATION);
     }
 
     if (!this.autoplay) return;
@@ -114,10 +122,10 @@ class ShowcaseController extends Component {
       this.lastCue = "impact";
     } else if (index === 1) {
       this.parts.dashFeel.stop("dash");
-      this.dashTransform.setPosition(DASH_START.x, DASH_START.y);
-      this.dashRemaining = DASH_DURATION;
+      this.dashElapsed = 0;
+      this.setDashPose(0);
       this.parts.dashFeel.play("dash");
-      this.lastCue = "dash trail";
+      this.lastCue = "curved dash + afterimages";
     } else if (index === 2) {
       this.parts.highlightFeel.play("highlight");
       this.lastCue = "highlight";
@@ -133,10 +141,22 @@ class ShowcaseController extends Component {
       `Autoplay: ${this.autoplay ? "on" : "off"}  ·  Last cue: ${this.lastCue}`,
     );
   }
+
+  private setDashPose(progress: number): void {
+    const angle = progress * Math.PI;
+    this.dashTransform.setPosition(
+      DASH_START.x + DASH_DISTANCE * progress,
+      DASH_START.y - Math.sin(angle) * DASH_ARC_HEIGHT,
+    );
+    this.dashTransform.setRotation(
+      Math.atan2(-Math.cos(angle) * Math.PI * DASH_ARC_HEIGHT, DASH_DISTANCE),
+    );
+  }
 }
 
 class FeelShowcaseScene extends Scene {
   readonly name = "feel-addon";
+  private dashTexture: TextureResource | undefined;
 
   onEnter(): void {
     const camera = this.spawn(CameraEntity, {
@@ -171,6 +191,12 @@ class FeelShowcaseScene extends Scene {
         setImpactValues: impact.setValues,
       }),
     );
+  }
+
+  onExit(): void {
+    unregisterTexture(DASH_TEXTURE);
+    this.dashTexture?.destroy();
+    this.dashTexture = undefined;
   }
 
   private spawnImpactDemo(camera: CameraEntity): {
@@ -223,20 +249,28 @@ class FeelShowcaseScene extends Scene {
   }
 
   private spawnDashDemo(): { entity: Entity; feel: Feel } {
-    this.spawnLabel(450, 342, "2  FLIGHT LINES + MOTION TRAIL");
+    this.spawnLabel(450, 342, "2  CURVED TRAIL + AFTERIMAGES");
     const entity = this.spawn("dash-runner");
-    entity.add(new Transform({ position: DASH_START }));
+    const transform = entity.add(new Transform({ position: DASH_START }));
+    this.dashTexture = this.context.resolve(RendererKey).createTexture((g) => {
+      g.poly([60, 18, 10, 0, 22, 18, 10, 36]).fill({ color: 0x38bdf8 });
+      g.circle(32, 18, 7).fill({ color: 0xe0f2fe });
+    });
+    registerTexture(DASH_TEXTURE, this.dashTexture);
     const visual = entity.add(
-      new GraphicsComponent().draw((g) => {
-        g.poly([30, 0, -20, -18, -8, 0, -20, 18]).fill({ color: 0x38bdf8 });
-        g.circle(2, 0, 6).fill({ color: 0xe0f2fe });
+      new SpriteComponent({
+        texture: DASH_TEXTURE,
+        anchor: { x: 0.5, y: 0.5 },
       }),
     );
     const feel = entity.add(
       new Feel({
         dash: feelParallel(
           feelFlightLines({
-            direction: { x: 1, y: 0 },
+            direction: () => ({
+              x: Math.cos(transform.rotation),
+              y: Math.sin(transform.rotation),
+            }),
             count: 14,
             length: [24, 62],
             spread: 110,
@@ -252,6 +286,15 @@ class FeelShowcaseScene extends Scene {
             minDistance: 6,
             color: 0x38bdf8,
             alpha: 0.78,
+          }),
+          feelAfterimage({
+            target: visual,
+            count: 5,
+            interval: 0.065,
+            lifetime: 0.28,
+            tint: 0x1e3a8a,
+            alpha: 0.62,
+            endScale: 0.92,
           }),
           feelSquash({
             target: visual,

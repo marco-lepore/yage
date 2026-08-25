@@ -93,6 +93,7 @@ feelDamageNumber({ value, critical?, prefix?, suffix?, format?, position?, color
 feelImpactRing({ position?, radius?, expand?, thickness?, color?, spikes?, spikeLength?, layer?, duration?, startScale? });
 feelFlightLines({ position?, direction?, count?, length?, width?, spread?, depth?, travel?, color?, alpha?, layer?, duration? });
 feelMotionTrail({ position?, duration?, lifetime?, sampleInterval?, minDistance?, maxPoints?, width?, taper?, color?, alpha?, layer? });
+feelAfterimage({ target, count?, interval?, lifetime?, tint?, alpha?, endScale?, layer?, blendMode? });
 ```
 
 Visual motion targets a `VisualComponent`. Each playback owns a renderer
@@ -128,6 +129,13 @@ callout-heavy games.
 then keeps the temporary line alive for `lifetime` seconds so its last segments
 fade. Completion and cancellation destroy the temporary entity. Neither effect
 writes to the sampled `Transform`.
+
+`feelAfterimage` accepts a `SpriteComponent`, `AnimatedSpriteComponent`, or a
+function that returns one. It samples the current animation frame and effective
+rendered pose, then leaves `count` tinted sprite copies at `interval` seconds.
+Each copy fades for `lifetime` seconds and can scale toward `endScale` before
+being destroyed. Completion and cancellation remove all remaining copies. The
+source component and its `Transform` are not changed.
 
 Game-specific effects use `defineFeelEffect(duration, create)`. `create`
 returns optional `start`, `update(progress, dt)`, and `finish(cancelled)` hooks.
