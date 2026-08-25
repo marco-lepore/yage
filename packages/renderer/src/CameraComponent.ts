@@ -96,6 +96,8 @@ export const CAMERA_REFERENCE_DT = 1 / 60;
  */
 @serializable
 export class CameraComponent extends Component {
+  static restorePriority = 30;
+
   position: Vec2;
   zoom: number;
   rotation: number;

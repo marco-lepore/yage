@@ -136,6 +136,26 @@ describe("Feel renderer modifiers", () => {
     expect(host.addEffect).not.toHaveBeenCalled();
   });
 
+  it("attributes a supplied effect factory as a developer callback", () => {
+    const { entity, context } = createMockEntity();
+    const boundary = context.resolve(ErrorBoundaryKey);
+    const host = {
+      addEffect: (factory: () => unknown) => factory(),
+    } as unknown as EffectsHost;
+    const feel = entity.add(
+      new Feel({
+        broken: feelEffect(host, () => {
+          throw new Error("broken effect factory");
+        }),
+      }),
+    );
+
+    expect(() => feel.play("broken")).toThrow("broken effect factory");
+    expect(boundary.getCallbackErrors()[0]?.kind).toBe(
+      "Feel callback (effect factory)",
+    );
+  });
+
   it("attributes camera target functions as developer callbacks", () => {
     const { entity, context } = createMockEntity();
     const boundary = context.resolve(ErrorBoundaryKey);

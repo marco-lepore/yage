@@ -172,7 +172,9 @@ export function feelEffect<H extends EffectHandle>(
     let handle: H | undefined;
     return {
       start: () => {
-        handle = host.addEffect(factory, { save: false });
+        context.invoke("effect factory", () => {
+          handle = host.addEffect(factory, { save: false });
+        });
         handle?.setIntensity(0);
       },
       update: (progress) => {

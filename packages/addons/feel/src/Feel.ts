@@ -18,6 +18,7 @@ import type {
   FeelEffectContext,
   FeelEffectInstance,
   FeelNode,
+  FeelOverlap,
   FeelPlaybackHandle,
   FeelPlayOptions,
   FeelRange,
@@ -26,7 +27,7 @@ import type {
 
 interface ResolvedCue {
   effect: FeelNode;
-  overlap: "restart" | "ignore" | "allow";
+  overlap: FeelOverlap;
   chance: number;
   cooldown: number;
   intensity: FeelRange;

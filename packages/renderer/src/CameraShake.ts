@@ -17,6 +17,8 @@ export interface CameraShakeData {
  */
 @serializable
 export class CameraShake extends Component {
+  static restorePriority = 40;
+
   private intensity = 0;
   private duration = 0;
   private elapsed = 0;

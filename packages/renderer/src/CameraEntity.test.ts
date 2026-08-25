@@ -224,6 +224,12 @@ describe("CameraEntity", () => {
     expect(shake.offset.equals(Vec2.ZERO)).toBe(true);
   });
 
+  it("restores camera state before active shake behavior", () => {
+    expect(CameraComponent.restorePriority).toBeLessThan(
+      CameraShake.restorePriority,
+    );
+  });
+
   it("clamps decayed shake intensity at zero", () => {
     const { scene } = createRendererTestContext();
     const cam = scene.spawn(CameraEntity);
