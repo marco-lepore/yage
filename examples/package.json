@@ -28,6 +28,7 @@
     "@yagejs-addons/steering": "^0.3.0",
     "@yagejs-addons/synth": "^0.1.0",
     "@yagejs-addons/dialogue": "^0.5.0",
+    "@yagejs-addons/feel": "^0.1.0",
     "@yagejs-addons/virtual-controls": "^0.2.0",
     "@yagejs-addons/inventory": "^0.2.0",
     "@yagejs-addons/interaction": "^0.2.0",
