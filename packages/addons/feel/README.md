@@ -89,6 +89,7 @@ Import these from `@yagejs-addons/feel/renderer`:
 - `feelOutline`, `feelGlow`, and `feelColorize`
 - `feelOpacity` and `feelBlink`
 - `feelFloatingText`, `feelDamageNumber`, and `feelImpactRing`
+- `feelFlightLines` and `feelMotionTrail`
 - `feelEffect`, which pulses any `EffectHandle` from zero to its peak and back
 
 Motion effects target a `VisualComponent`, such as `SpriteComponent`. They
@@ -130,6 +131,23 @@ const criticalHit = feelParallel(
     layer: "effects",
   }),
   feelImpactRing({ color: 0xffd54a, layer: "effects" }),
+);
+```
+
+## Flight lines and motion trails
+
+`feelFlightLines` creates a short directional streak field. `feelMotionTrail`
+samples a live world position and draws a fading line through recent samples.
+Both effects own temporary entities and leave gameplay transforms unchanged.
+
+```ts
+const dash = feelParallel(
+  feelFlightLines({ direction: velocity, duration: 0.25 }),
+  feelMotionTrail({
+    position: () => player.get(Transform).worldPosition,
+    duration: 0.3,
+    lifetime: 0.18,
+  }),
 );
 ```
 

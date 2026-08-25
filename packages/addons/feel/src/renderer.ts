@@ -54,3 +54,8 @@ export type {
   FeelFloatingTextOptions,
   FeelImpactRingOptions,
 } from "./adapters/transient.js";
+export { feelFlightLines, feelMotionTrail } from "./adapters/trails.js";
+export type {
+  FeelFlightLinesOptions,
+  FeelMotionTrailOptions,
+} from "./adapters/trails.js";

@@ -91,6 +91,8 @@ feelBlink({ target, duration?, interval? });
 feelFloatingText({ text, position?, style?, offset?, travel?, spread?, sway?, layer?, duration?, fadeAt?, startScale?, peakScale?, peakAt?, settleAt? });
 feelDamageNumber({ value, critical?, prefix?, suffix?, format?, position?, color?, criticalColor?, fontSize?, criticalSize?, outlineColor?, outlineWidth?, style?, criticalStyle?, rise?, spread?, sway?, layer?, duration?, fadeAt? });
 feelImpactRing({ position?, radius?, expand?, thickness?, color?, spikes?, spikeLength?, layer?, duration?, startScale? });
+feelFlightLines({ position?, direction?, count?, length?, width?, spread?, depth?, travel?, color?, alpha?, layer?, duration? });
+feelMotionTrail({ position?, duration?, lifetime?, sampleInterval?, minDistance?, maxPoints?, width?, taper?, color?, alpha?, layer? });
 ```
 
 Visual motion targets a `VisualComponent`. Each playback owns a renderer
@@ -120,6 +122,17 @@ overlapping callouts do not restore or mutate one another. Text uses a centered
 `TextComponent`; impact rings use `GraphicsComponent`. Active callouts are not
 saved. Pass `layer` to choose their render layer. Use a custom pool for
 callout-heavy games.
+
+`feelFlightLines` owns a temporary directional streak field.
+`feelMotionTrail` samples its live `position` source for `duration` seconds,
+then keeps the temporary line alive for `lifetime` seconds so its last segments
+fade. Completion and cancellation destroy the temporary entity. Neither effect
+writes to the sampled `Transform`.
+
+Game-specific effects use `defineFeelEffect(duration, create)`. `create`
+returns optional `start`, `update(progress, dt)`, and `finish(cancelled)` hooks.
+Acquire owner handles in `start` and release them in `finish`. Developer
+callbacks can use `context.invoke(label, callback)` for error attribution.
 
 ## `/audio`
 

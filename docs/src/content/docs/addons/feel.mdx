@@ -213,6 +213,34 @@ position, alpha, or scale. Active callouts are omitted from save snapshots.
 This path suits ordinary combat and pickup feedback. A game that displays very
 large numbers of callouts every frame should use a custom pool instead.
 
+### Flight lines and motion trails
+
+`feelFlightLines` draws a short field of directional streaks. The field moves
+opposite the supplied direction while it fades. `feelMotionTrail` samples a
+live world position and draws a line through the recent samples.
+
+```ts
+const dash = feelParallel(
+  feelFlightLines({
+    direction: velocity,
+    count: 10,
+    length: [20, 48],
+    duration: 0.25,
+  }),
+  feelMotionTrail({
+    position: () => player.get(Transform).worldPosition,
+    duration: 0.3,
+    lifetime: 0.18,
+    color: 0x66ddff,
+  }),
+);
+```
+
+The motion trail collects samples for `duration`, then remains alive for one
+`lifetime` so the final segments fade. Both effects own temporary entities.
+Completion and cancellation destroy those entities without changing the
+sampled `Transform`.
+
 ## Time, sound, particles, and animation
 
 `feelHitStop` calls `SceneTime.freezeFor`. `feelSlowMotion` calls
@@ -231,16 +259,25 @@ animation.
 
 ## Custom effects and events
 
-Use `feelCall` for an instant game callback. Use `defineFeelEffect` when the
-effect has a duration:
+Use `feelCall` for an instant game callback. `defineFeelEffect` creates a
+game-specific timed effect:
 
 ```ts
-const counterPulse = defineFeelEffect(0.2, (context) => ({
-  start: () => counter.show(),
-  update: (progress) => counter.setScale(1 + Math.sin(progress * Math.PI) * 0.2),
-  finish: () => counter.hide(),
-}));
+const customSquash = defineFeelEffect(0.2, (context) => {
+  let modifier: VisualTransformModifierHandle | undefined;
+  return {
+    start: () => (modifier = sprite.modifiers.addTransform()),
+    update: (progress) => modifier?.setScale(1 + Math.sin(progress * Math.PI) * 0.2 * context.intensity),
+    finish: () => modifier?.remove(),
+  };
+});
 ```
+
+The returned `FeelNode` composes with every built-in node. A custom effect can
+also resolve scene services through `context.resolve`. Developer callbacks can
+use `context.invoke` when they need their own error-attribution label. Custom
+effects should acquire removable handles in `start` and release them in
+`finish`, which runs on completion and cancellation.
 
 The host entity emits `FeelStartedEvent`, `FeelCompletedEvent`, and
 `FeelStoppedEvent`. Cues and active playbacks are transient and are not part
