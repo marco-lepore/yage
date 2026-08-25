@@ -2,6 +2,6 @@
 "@yagejs/examples": patch
 ---
 
-Add a playable Feel addon showcase with impact feedback, flight lines, a curved
-motion trail, sprite afterimages, animated renderer effects, camera modifiers,
-and a custom cue.
+Add a two-scene Feel addon gallery with slide navigation. The gallery covers
+impact feedback, trails, afterimages, renderer effects, cue composition, time,
+animation, callbacks, camera modifiers, and a custom cue.

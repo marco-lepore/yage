@@ -3,9 +3,11 @@
 Compose the small responses that make an action readable and satisfying, then
 play them from one named trigger.
 
-The [playable example](../../../examples/feel-addon.html) shows impact feedback,
-flight lines, a curved motion trail, sprite afterimages, animated highlights,
-camera modifiers, and a custom effect.
+The [playable example](../../../examples/feel-addon.html) groups the effects
+across two scenes. It covers impacts, trails, afterimages, highlights, punches,
+visibility, cue composition, slow motion, animation, callbacks, shockwaves,
+camera modifiers, and a custom effect. Press `N` or `P` to move between scenes
+with a slide transition.
 
 ```ts
 import { Feel, feelHitStop, feelParallel } from "@yagejs-addons/feel";

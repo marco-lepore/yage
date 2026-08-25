@@ -1,13 +1,15 @@
 /**
- * Feel addon showcase. Four cues cover impact feedback, curved motion trails,
- * sprite afterimages, renderer effects, camera modifiers, transient callouts,
- * and a custom effect.
+ * Feel addon showcase. Two scenes group related cues into readable pages and
+ * use the scene transition API for page navigation.
  */
 
 import {
   Component,
   Engine,
+  KeyframeAnimator,
+  ProcessComponent,
   Scene,
+  SceneManagerKey,
   Transform,
   Vec2,
   type Entity,
@@ -17,9 +19,11 @@ import {
   GraphicsComponent,
   RendererKey,
   RendererPlugin,
+  SceneRenderTreeKey,
   SpriteComponent,
   TextComponent,
   registerTexture,
+  slidePush,
   unregisterTexture,
   type TextureResource,
   type VisualTransformModifierHandle,
@@ -28,28 +32,40 @@ import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import {
   Feel,
   defineFeelEffect,
+  feelAnimation,
+  feelCall,
+  feelDelay,
   feelHitStop,
   feelParallel,
+  feelRepeat,
+  feelSequence,
+  feelSlowMotion,
   type FeelNode,
 } from "@yagejs-addons/feel";
 import {
+  feelAfterimage,
+  feelBlink,
   feelBounce,
   feelCameraRotation,
   feelCameraShake,
   feelCameraZoom,
   feelColorize,
   feelDamageNumber,
-  feelAfterimage,
   feelFlightLines,
   feelGlow,
   feelHitFlash,
   feelImpactRing,
   feelMotionTrail,
+  feelOpacity,
   feelOutline,
+  feelPositionPunch,
+  feelRecoil,
+  feelRotationPunch,
   feelRotationShake,
   feelScalePunch,
   feelScaleShake,
   feelSquash,
+  feelShockwave,
   feelTransformShake,
   feelFloatingText,
 } from "@yagejs-addons/feel/renderer";
@@ -65,110 +81,220 @@ const DASH_DURATION = 0.48;
 const DASH_DISTANCE = 660;
 const DASH_ARC_HEIGHT = 62;
 const DASH_TEXTURE = "feel-addon:dash-runner";
+const PAGE_COUNT = 2;
+const galleryState = { autoplay: true };
 
-interface ShowcaseParts {
-  impactFeel: Feel;
-  dashFeel: Feel;
-  highlightFeel: Feel;
-  customFeel: Feel;
-  dashEntity: Entity;
-  status: TextComponent;
-  setImpactValues(): void;
+interface ShowcaseCue {
+  label: string;
+  play(): void;
+  update?(dt: number): void;
 }
 
 class ShowcaseController extends Component {
   private readonly input = this.service(InputManagerKey);
-  private readonly dashTransform: Transform;
-  private autoplay = true;
+  private autoplay = galleryState.autoplay;
   private autoplayElapsed = 1.1;
   private autoplayIndex = 0;
-  private dashElapsed = DASH_DURATION;
   private lastCue = "waiting";
 
-  constructor(private readonly parts: ShowcaseParts) {
+  constructor(
+    private readonly page: number,
+    private readonly status: TextComponent,
+    private readonly cues: readonly ShowcaseCue[],
+  ) {
     super();
-    this.dashTransform = parts.dashEntity.get(Transform);
   }
 
   update(dt: number): void {
-    if (this.input.isJustPressed("impact")) this.trigger(0, false);
-    if (this.input.isJustPressed("dash")) this.trigger(1, false);
-    if (this.input.isJustPressed("highlight")) this.trigger(2, false);
-    if (this.input.isJustPressed("custom")) this.trigger(3, false);
+    for (let index = 0; index < this.cues.length; index++) {
+      if (this.input.isJustPressed(`cue${index + 1}`)) {
+        this.trigger(index, false);
+      }
+    }
     if (this.input.isJustPressed("autoplay")) {
       this.autoplay = !this.autoplay;
+      galleryState.autoplay = this.autoplay;
       this.autoplayElapsed = 0;
       this.renderStatus();
     }
 
-    if (this.dashElapsed < DASH_DURATION) {
-      this.dashElapsed = Math.min(DASH_DURATION, this.dashElapsed + dt);
-      this.setDashPose(this.dashElapsed / DASH_DURATION);
-    }
+    for (const cue of this.cues) cue.update?.(dt);
 
     if (!this.autoplay) return;
     this.autoplayElapsed += dt;
     if (this.autoplayElapsed < 1.7) return;
     this.autoplayElapsed = 0;
     this.trigger(this.autoplayIndex, true);
-    this.autoplayIndex = (this.autoplayIndex + 1) % 4;
+    this.autoplayIndex = (this.autoplayIndex + 1) % this.cues.length;
   }
 
   private trigger(index: number, fromAutoplay: boolean): void {
     if (!fromAutoplay) this.autoplayElapsed = 0;
-    if (index === 0) {
-      this.parts.setImpactValues();
-      this.parts.impactFeel.play("impact");
-      this.lastCue = "impact";
-    } else if (index === 1) {
-      this.parts.dashFeel.stop("dash");
-      this.dashElapsed = 0;
-      this.setDashPose(0);
-      this.parts.dashFeel.play("dash");
-      this.lastCue = "curved dash + afterimages";
-    } else if (index === 2) {
-      this.parts.highlightFeel.play("highlight");
-      this.lastCue = "highlight";
-    } else {
-      this.parts.customFeel.play("custom");
-      this.lastCue = "custom effect";
-    }
+    const cue = this.cues[index];
+    if (!cue) return;
+    cue.play();
+    this.lastCue = cue.label;
     this.renderStatus();
   }
 
   private renderStatus(): void {
-    this.parts.status.setText(
-      `Autoplay: ${this.autoplay ? "on" : "off"}  ·  Last cue: ${this.lastCue}`,
-    );
-  }
-
-  private setDashPose(progress: number): void {
-    const angle = progress * Math.PI;
-    this.dashTransform.setPosition(
-      DASH_START.x + DASH_DISTANCE * progress,
-      DASH_START.y - Math.sin(angle) * DASH_ARC_HEIGHT,
-    );
-    this.dashTransform.setRotation(
-      Math.atan2(-Math.cos(angle) * Math.PI * DASH_ARC_HEIGHT, DASH_DISTANCE),
+    this.status.setText(
+      `Page ${this.page + 1}/${PAGE_COUNT}  ·  Autoplay: ${this.autoplay ? "on" : "off"}  ·  Last cue: ${this.lastCue}`,
     );
   }
 }
 
-class FeelShowcaseScene extends Scene {
-  readonly name = "feel-addon";
+class GalleryNavigation extends Component {
+  private readonly input = this.service(InputManagerKey);
+  private readonly scenes = this.service(SceneManagerKey);
+  private armed = false;
+  private navigating = false;
+
+  constructor(private readonly page: number) {
+    super();
+  }
+
+  update(): void {
+    if (!this.armed) {
+      this.armed = true;
+      return;
+    }
+    if (this.navigating || this.scenes.isTransitioning) return;
+    const direction = this.input.isJustPressed("nextPage")
+      ? 1
+      : this.input.isJustPressed("previousPage")
+        ? -1
+        : 0;
+    if (direction === 0) return;
+
+    this.navigating = true;
+    const nextPage = (this.page + direction + PAGE_COUNT) % PAGE_COUNT;
+    void this.scenes.replace(createShowcaseScene(nextPage), {
+      transition: slidePush({
+        duration: 0.45,
+        direction: direction > 0 ? "left" : "right",
+        reverseOnPop: false,
+      }),
+    });
+  }
+}
+
+interface PanelRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+const ESSENTIAL_PANELS: readonly PanelRect[] = [
+  { x: 40, y: 100, width: 250, height: 190 },
+  { x: 325, y: 100, width: 250, height: 190 },
+  { x: 610, y: 100, width: 250, height: 190 },
+  { x: 40, y: 320, width: 820, height: 190 },
+];
+
+const MORE_PANELS: readonly PanelRect[] = [
+  { x: 40, y: 100, width: 250, height: 190 },
+  { x: 325, y: 100, width: 250, height: 190 },
+  { x: 610, y: 100, width: 250, height: 190 },
+  { x: 40, y: 320, width: 250, height: 190 },
+  { x: 325, y: 320, width: 250, height: 190 },
+  { x: 610, y: 320, width: 250, height: 190 },
+];
+
+abstract class FeelGalleryScene extends Scene {
+  protected installController(
+    page: number,
+    status: TextComponent,
+    cues: readonly ShowcaseCue[],
+  ): void {
+    const controller = this.spawn("showcase-controller");
+    controller.add(new Transform());
+    controller.add(new ShowcaseController(page, status, cues));
+    controller.add(new GalleryNavigation(page));
+  }
+
+  protected drawBackdrop(panels: readonly PanelRect[]): void {
+    const backdrop = this.spawn("backdrop");
+    backdrop.add(new Transform());
+    backdrop.add(
+      new GraphicsComponent().draw((g) => {
+        g.rect(0, 0, WIDTH, HEIGHT).fill({ color: 0x0f172a });
+        for (let x = 0; x <= WIDTH; x += 40) {
+          g.moveTo(x, 0)
+            .lineTo(x, HEIGHT)
+            .stroke({ color: 0x1e293b, width: 1 });
+        }
+        for (let y = 0; y <= HEIGHT; y += 40) {
+          g.moveTo(0, y).lineTo(WIDTH, y).stroke({ color: 0x1e293b, width: 1 });
+        }
+        for (const panel of panels) {
+          g.roundRect(panel.x, panel.y, panel.width, panel.height, 12).fill({
+            color: 0x111827,
+            alpha: 0.88,
+          });
+          g.roundRect(panel.x, panel.y, panel.width, panel.height, 12).stroke({
+            color: 0x334155,
+            width: 2,
+          });
+        }
+      }),
+    );
+    this.spawnText(
+      "title",
+      WIDTH / 2,
+      28,
+      "COMPOSABLE GAME FEEL",
+      22,
+      0xf8fafc,
+    );
+  }
+
+  protected spawnLabel(x: number, y: number, text: string): void {
+    this.spawnText(`label:${text}`, x, y, text, 14, 0x94a3b8);
+  }
+
+  protected spawnText(
+    name: string,
+    x: number,
+    y: number,
+    text: string,
+    fontSize: number,
+    fill: number,
+  ): TextComponent {
+    const entity = this.spawn(name);
+    entity.add(new Transform({ position: new Vec2(x, y) }));
+    return entity.add(
+      new TextComponent({
+        text,
+        style: {
+          fontFamily: "system-ui, sans-serif",
+          fontSize,
+          fontWeight: "bold",
+          fill,
+          letterSpacing: 1,
+        },
+        anchor: { x: 0.5, y: 0.5 },
+      }),
+    );
+  }
+}
+
+class EssentialsScene extends FeelGalleryScene {
+  readonly name = "feel-addon-essentials";
   private dashTexture: TextureResource | undefined;
 
   onEnter(): void {
     const camera = this.spawn(CameraEntity, {
       position: new Vec2(WIDTH / 2, HEIGHT / 2),
     });
-    this.drawBackdrop();
+    this.drawBackdrop(ESSENTIAL_PANELS);
 
     const status = this.spawnText(
       "status",
       WIDTH / 2,
       62,
-      "Autoplay: on  ·  Last cue: waiting",
+      `Page 1/2  ·  Autoplay: ${galleryState.autoplay ? "on" : "off"}  ·  Last cue: waiting`,
       15,
       0x94a3b8,
     );
@@ -178,19 +304,49 @@ class FeelShowcaseScene extends Scene {
     const highlight = this.spawnHighlightDemo();
     const custom = this.spawnCustomDemo();
 
-    const controller = this.spawn("showcase-controller");
-    controller.add(new Transform());
-    controller.add(
-      new ShowcaseController({
-        impactFeel: impact.feel,
-        dashFeel: dash.feel,
-        highlightFeel: highlight.feel,
-        customFeel: custom.feel,
-        dashEntity: dash.entity,
-        status,
-        setImpactValues: impact.setValues,
-      }),
-    );
+    const dashTransform = dash.entity.get(Transform);
+    let dashElapsed = DASH_DURATION;
+    const setDashPose = (progress: number): void => {
+      const angle = progress * Math.PI;
+      dashTransform.setPosition(
+        DASH_START.x + DASH_DISTANCE * progress,
+        DASH_START.y - Math.sin(angle) * DASH_ARC_HEIGHT,
+      );
+      dashTransform.setRotation(
+        Math.atan2(-Math.cos(angle) * Math.PI * DASH_ARC_HEIGHT, DASH_DISTANCE),
+      );
+    };
+    this.installController(0, status, [
+      {
+        label: "impact",
+        play: () => {
+          impact.setValues();
+          impact.feel.play("impact");
+        },
+      },
+      {
+        label: "curved dash + afterimages",
+        play: () => {
+          dash.feel.stop("dash");
+          dashElapsed = 0;
+          setDashPose(0);
+          dash.feel.play("dash");
+        },
+        update: (dt) => {
+          if (dashElapsed >= DASH_DURATION) return;
+          dashElapsed = Math.min(DASH_DURATION, dashElapsed + dt);
+          setDashPose(dashElapsed / DASH_DURATION);
+        },
+      },
+      {
+        label: "highlight",
+        play: () => void highlight.feel.play("highlight"),
+      },
+      {
+        label: "custom effect",
+        play: () => void custom.feel.play("custom"),
+      },
+    ]);
   }
 
   onExit(): void {
@@ -374,79 +530,289 @@ class FeelShowcaseScene extends Scene {
     );
     return { feel };
   }
+}
 
-  private drawBackdrop(): void {
-    const backdrop = this.spawn("backdrop");
-    backdrop.add(new Transform());
-    backdrop.add(
-      new GraphicsComponent().draw((g) => {
-        g.rect(0, 0, WIDTH, HEIGHT).fill({ color: 0x0f172a });
-        for (let x = 0; x <= WIDTH; x += 40) {
-          g.moveTo(x, 0)
-            .lineTo(x, HEIGHT)
-            .stroke({ color: 0x1e293b, width: 1 });
-        }
-        for (let y = 0; y <= HEIGHT; y += 40) {
-          g.moveTo(0, y).lineTo(WIDTH, y).stroke({ color: 0x1e293b, width: 1 });
-        }
-        for (const x of [40, 325, 610]) {
-          g.roundRect(x, 100, 250, 190, 12).fill({
-            color: 0x111827,
-            alpha: 0.88,
-          });
-          g.roundRect(x, 100, 250, 190, 12).stroke({
-            color: 0x334155,
-            width: 2,
-          });
-        }
-        g.roundRect(40, 320, 820, 190, 12).fill({
-          color: 0x111827,
-          alpha: 0.88,
-        });
-        g.roundRect(40, 320, 820, 190, 12).stroke({
-          color: 0x334155,
-          width: 2,
-        });
-      }),
+class PingPongMotion extends Component {
+  private elapsed = 0;
+
+  constructor(
+    private readonly transform: Transform,
+    private readonly centerX: number,
+    private readonly amplitude: number,
+  ) {
+    super();
+  }
+
+  update(dt: number): void {
+    this.elapsed += dt;
+    this.transform.setPosition(
+      this.centerX + Math.sin(this.elapsed * 4) * this.amplitude,
+      435,
     );
-    this.spawnText(
-      "title",
+  }
+}
+
+class MoreEffectsScene extends FeelGalleryScene {
+  readonly name = "feel-addon-more-effects";
+
+  onEnter(): void {
+    this.spawn(CameraEntity, {
+      position: new Vec2(WIDTH / 2, HEIGHT / 2),
+    });
+    this.drawBackdrop(MORE_PANELS);
+    const status = this.spawnText(
+      "status",
       WIDTH / 2,
-      28,
-      "COMPOSABLE GAME FEEL",
-      22,
-      0xf8fafc,
+      62,
+      `Page 2/2  ·  Autoplay: ${galleryState.autoplay ? "on" : "off"}  ·  Last cue: waiting`,
+      15,
+      0x94a3b8,
     );
+
+    const punches = this.spawnPunchDemo();
+    const visibility = this.spawnVisibilityDemo();
+    const composition = this.spawnCompositionDemo();
+    const slowMotion = this.spawnSlowMotionDemo();
+    const animation = this.spawnAnimationDemo();
+    const shockwave = this.spawnShockwaveDemo();
+
+    this.installController(1, status, [
+      { label: "punch + recoil", play: () => void punches.play("show") },
+      { label: "fade + blink", play: () => void visibility.play("show") },
+      {
+        label: "sequence + repeat",
+        play: () => void composition.play("show"),
+      },
+      { label: "slow motion", play: () => void slowMotion.play("show") },
+      {
+        label: "animation + callback",
+        play: () => void animation.play("show"),
+      },
+      { label: "scene shockwave", play: () => void shockwave.play("show") },
+    ]);
   }
 
-  private spawnLabel(x: number, y: number, text: string): void {
-    this.spawnText(`label:${text}`, x, y, text, 14, 0x94a3b8);
-  }
-
-  private spawnText(
-    name: string,
-    x: number,
-    y: number,
-    text: string,
-    fontSize: number,
-    fill: number,
-  ): TextComponent {
-    const entity = this.spawn(name);
-    entity.add(new Transform({ position: new Vec2(x, y) }));
+  private spawnPunchDemo(): Feel {
+    this.spawnLabel(165, 126, "1  PUNCH + RECOIL");
+    const entity = this.spawn("punch-target");
+    entity.add(new Transform({ position: new Vec2(165, 215) }));
+    const visual = entity.add(
+      new GraphicsComponent().draw((g) => {
+        g.roundRect(-42, -34, 84, 68, 12).fill({ color: 0xf97316 });
+        g.poly([10, -15, 34, 0, 10, 15]).fill({ color: 0xffedd5 });
+      }),
+    );
     return entity.add(
-      new TextComponent({
-        text,
-        style: {
-          fontFamily: "system-ui, sans-serif",
-          fontSize,
-          fontWeight: "bold",
-          fill,
-          letterSpacing: 1,
-        },
-        anchor: { x: 0.5, y: 0.5 },
+      new Feel({
+        show: feelSequence(
+          feelRecoil({
+            target: visual,
+            direction: { x: 1, y: 0 },
+            distance: 34,
+            duration: 0.3,
+          }),
+          feelParallel(
+            feelPositionPunch({
+              target: visual,
+              offset: { x: 18, y: -24 },
+              duration: 0.42,
+            }),
+            feelRotationPunch({
+              target: visual,
+              radians: 0.55,
+              duration: 0.42,
+            }),
+            feelScalePunch({ target: visual, scale: 1.3, duration: 0.42 }),
+          ),
+        ),
       }),
     );
   }
+
+  private spawnVisibilityDemo(): Feel {
+    this.spawnLabel(450, 126, "2  FADE + BLINK");
+    const entity = this.spawn("visibility-target");
+    entity.add(new Transform({ position: new Vec2(450, 215) }));
+    const visual = entity.add(
+      new GraphicsComponent().draw((g) => {
+        g.ellipse(0, 0, 54, 34).fill({ color: 0x22d3ee });
+        g.circle(0, 0, 17).fill({ color: 0x164e63 });
+        g.circle(0, 0, 7).fill({ color: 0xecfeff });
+      }),
+    );
+    return entity.add(
+      new Feel({
+        show: feelSequence(
+          feelOpacity({ target: visual, alpha: 0.08, duration: 0.55 }),
+          feelBlink({ target: visual, duration: 0.48, interval: 0.06 }),
+          feelHitFlash(visual.fx, { color: 0xffffff, duration: 0.16 }),
+        ),
+      }),
+    );
+  }
+
+  private spawnCompositionDemo(): Feel {
+    this.spawnLabel(735, 126, "3  SEQUENCE + REPEAT");
+    const entity = this.spawn("composition-target");
+    entity.add(new Transform({ position: new Vec2(735, 215) }));
+    const visual = entity.add(
+      new GraphicsComponent().draw((g) => {
+        const colors = [0xf472b6, 0xc084fc, 0x818cf8];
+        for (let index = 0; index < 3; index++) {
+          g.circle((index - 1) * 30, 0, 13).fill({
+            color: colors[index] ?? 0xffffff,
+          });
+        }
+      }),
+    );
+    return entity.add(
+      new Feel({
+        show: feelSequence(
+          feelScalePunch({ target: visual, scale: 1.35, duration: 0.3 }),
+          feelDelay(0.12),
+          feelRepeat(
+            feelBounce({ target: visual, distance: 22, duration: 0.2 }),
+            3,
+            0.04,
+          ),
+          feelFloatingText({
+            text: "DONE",
+            style: { fill: 0xf0abfc },
+            duration: 0.6,
+            travel: { x: 0, y: -28 },
+          }),
+        ),
+      }),
+    );
+  }
+
+  private spawnSlowMotionDemo(): Feel {
+    this.spawnLabel(165, 346, "4  SLOW MOTION");
+    const track = this.spawn("slow-motion-track");
+    track.add(new Transform({ position: new Vec2(165, 435) }));
+    track.add(
+      new GraphicsComponent().draw((g) => {
+        g.moveTo(-88, 0).lineTo(88, 0).stroke({ color: 0x475569, width: 3 });
+        g.circle(-88, 0, 4).fill({ color: 0x64748b });
+        g.circle(88, 0, 4).fill({ color: 0x64748b });
+      }),
+    );
+
+    const mover = this.spawn("slow-motion-mover");
+    const moverTransform = mover.add(
+      new Transform({ position: new Vec2(165, 435) }),
+    );
+    mover.add(
+      new GraphicsComponent().draw((g) => {
+        g.circle(0, 0, 18).fill({ color: 0x4ade80 });
+        g.circle(0, 0, 7).fill({ color: 0xf0fdf4 });
+      }),
+    );
+    mover.add(new PingPongMotion(moverTransform, 165, 78));
+
+    const trigger = this.spawn("slow-motion-trigger");
+    trigger.add(new Transform({ position: new Vec2(165, 470) }));
+    return trigger.add(
+      new Feel({
+        show: feelParallel(
+          feelSlowMotion({ scale: 0.12, duration: 0.9 }),
+          feelFloatingText({
+            text: "0.12× TIME",
+            style: { fill: 0x86efac },
+            duration: 0.75,
+            travel: { x: 0, y: -26 },
+          }),
+        ),
+      }),
+    );
+  }
+
+  private spawnAnimationDemo(): Feel {
+    this.spawnLabel(450, 346, "5  ANIMATION + CALLBACK");
+    const entity = this.spawn("animation-target");
+    const transform = entity.add(
+      new Transform({ position: new Vec2(450, 425) }),
+    );
+    entity.add(
+      new GraphicsComponent().draw((g) => {
+        g.poly([0, -38, 22, 24, -34, -14, 34, -14, -22, 24]).fill({
+          color: 0xfacc15,
+        });
+      }),
+    );
+    entity.add(new ProcessComponent());
+    const animator = entity.add(
+      new KeyframeAnimator<"spin">({
+        spin: {
+          keyframes: [
+            { time: 0, data: 0 },
+            { time: 350, data: Math.PI },
+            { time: 700, data: Math.PI * 2 },
+          ],
+          setter: (rotation) => transform.setRotation(rotation as number),
+        },
+      }),
+    );
+    const callbackText = this.spawnText(
+      "callback-count",
+      450,
+      480,
+      "CALLBACKS: 0",
+      12,
+      0xfde68a,
+    );
+    let calls = 0;
+    return entity.add(
+      new Feel({
+        show: feelParallel(
+          feelAnimation("spin", animator),
+          feelCall(() => {
+            calls++;
+            callbackText.setText(`CALLBACKS: ${calls}`);
+          }, "showcase callback"),
+        ),
+      }),
+    );
+  }
+
+  private spawnShockwaveDemo(): Feel {
+    this.spawnLabel(735, 346, "6  SCENE SHOCKWAVE");
+    const entity = this.spawn("shockwave-target");
+    entity.add(new Transform({ position: new Vec2(735, 435) }));
+    const visual = entity.add(
+      new GraphicsComponent().draw((g) => {
+        g.circle(0, 0, 42).fill({ color: 0xe11d48 });
+        g.circle(0, 0, 24).stroke({ color: 0xfda4af, width: 6 });
+        g.circle(0, 0, 8).fill({ color: 0xfff1f2 });
+      }),
+    );
+    const sceneEffects = this.use(SceneRenderTreeKey).fx;
+    return entity.add(
+      new Feel({
+        show: feelParallel(
+          feelShockwave(sceneEffects, {
+            center: { x: 735, y: 435 },
+            amplitude: 22,
+            wavelength: 100,
+            radius: 190,
+            duration: 0.85,
+          }),
+          feelImpactRing({
+            radius: 24,
+            expand: 58,
+            color: 0xfb7185,
+            duration: 0.55,
+          }),
+          feelScalePunch({ target: visual, scale: 1.35, duration: 0.42 }),
+          feelHitFlash(visual.fx, { color: 0xffffff, duration: 0.16 }),
+        ),
+      }),
+    );
+  }
+}
+
+function createShowcaseScene(page: number): FeelGalleryScene {
+  return page === 0 ? new EssentialsScene() : new MoreEffectsScene();
 }
 
 function orbitAndPulse(target: GraphicsComponent): FeelNode {
@@ -485,17 +851,21 @@ async function main(): Promise<void> {
   engine.use(
     new InputPlugin({
       actions: {
-        impact: ["Digit1"],
-        dash: ["Digit2"],
-        highlight: ["Digit3"],
-        custom: ["Digit4"],
+        cue1: ["Digit1"],
+        cue2: ["Digit2"],
+        cue3: ["Digit3"],
+        cue4: ["Digit4"],
+        cue5: ["Digit5"],
+        cue6: ["Digit6"],
         autoplay: ["KeyA"],
+        nextPage: ["KeyN", "ArrowRight"],
+        previousPage: ["KeyP", "ArrowLeft"],
       },
     }),
   );
   await installDebugFromUrl(engine);
   await engine.start();
-  await engine.scenes.push(new FeelShowcaseScene());
+  await engine.scenes.push(createShowcaseScene(0));
 }
 
 main().catch(console.error);
