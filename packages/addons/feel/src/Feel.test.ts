@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { ErrorBoundaryKey, SceneTimeKey, createMockEntity } from "@yagejs/core";
+import {
+  ErrorBoundaryKey,
+  SceneTimeKey,
+  createMockEntity,
+  isSerializable,
+} from "@yagejs/core";
 import { Feel } from "./Feel.js";
 import {
   FeelCompletedEvent,
@@ -15,6 +20,17 @@ import {
 import { feelHitStop, feelSlowMotion } from "./effects/core.js";
 
 describe("Feel", () => {
+  it("keeps cue definitions and live playback outside save serialization", () => {
+    const { entity } = createMockEntity();
+    const feel = entity.add(new Feel({ held: feelDelay(1) }));
+
+    feel.play("held");
+
+    expect(feel.isPlaying()).toBe(true);
+    expect(isSerializable(feel)).toBe(false);
+    expect(feel.serialize).toBeUndefined();
+  });
+
   it("runs parallel and sequential effects on their scheduled times", () => {
     const { entity } = createMockEntity();
     const calls: string[] = [];

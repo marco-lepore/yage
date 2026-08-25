@@ -171,4 +171,16 @@ raw scene time and compose through the supplied channel key. The requests
 expire independently after they start; stopping the cue does not release an
 already-issued time request.
 
-Cues and in-flight playback are transient and are not saved.
+Cue definitions, cooldown clocks, and in-flight playback are not saved. `Feel`
+itself is omitted because its cue map contains code and live component
+references. A serializable host entity must re-add the component in
+`afterRestore()`; the new component starts with no cue in progress.
+
+Renderer and camera modifiers, Feel-owned filter attachments, `SceneTime`
+requests, particle-emission requests, live particles, and transient visual
+entities are also omitted.
+
+`feelCall`, custom effects, and `feelAnimation` can write through user-supplied
+callbacks. Serializable base state changed by those callbacks is saved. Use
+renderer modifier handles when custom visual motion must stay outside
+snapshots.

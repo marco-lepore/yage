@@ -79,8 +79,10 @@ interface LivePlayback {
 /**
  * Plays named, composable game-feel cues on one entity.
  *
- * Cues are transient and code-authored. Disabling or destroying this
- * component stops every live cue and restores its active effects.
+ * Cues and live playback are transient and are not serialized. A serializable
+ * host entity must re-add this component from `afterRestore()`. Disabling or
+ * destroying this component stops every live cue and restores its active
+ * effects.
  */
 export class Feel extends Component {
   static updatePriority = 100;

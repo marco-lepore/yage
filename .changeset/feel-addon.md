@@ -17,3 +17,5 @@ particle effects.
   afterimages as temporary world-space visuals.
 - Own visual, camera, filter, sound, and particle feedback through removable
   handles, so cancellation removes only the current playback's contribution.
+- Keep the code-authored component, cue playback, and built-in temporary
+  feedback out of save snapshots.
