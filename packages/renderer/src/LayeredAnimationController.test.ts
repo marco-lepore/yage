@@ -252,6 +252,45 @@ describe("LayeredAnimationController", () => {
     expect(layered.locked).toBe(false);
   });
 
+  it("rejects automatic timing when the first controller cannot produce a duration", () => {
+    for (const speed of [0, -1]) {
+      const { scene } = createRendererTestContext();
+      const first = makeLayer(scene, 5);
+      const second = makeLayer(scene, 10);
+      first.speed = speed;
+      const host = spawnEntityInScene(scene);
+      const layered = host.add(
+        new LayeredAnimationController<Anim>({
+          controllers: [first, second],
+        }),
+      );
+
+      expect(() => layered.playOneShot("attack")).toThrow(
+        /positive effective speed/,
+      );
+      expect(layered.locked).toBe(false);
+      expect(first.locked).toBe(false);
+      expect(second.locked).toBe(false);
+    }
+  });
+
+  it("allows a non-positive first-controller speed with an explicit duration", () => {
+    const { scene } = createRendererTestContext();
+    const first = makeLayer(scene, 5);
+    const second = makeLayer(scene, 10);
+    first.speed = -1;
+    const host = spawnEntityInScene(scene);
+    const layered = host.add(
+      new LayeredAnimationController<Anim>({ controllers: [first, second] }),
+    );
+
+    layered.playOneShot("attack", { duration: 1 });
+
+    expect(layered.locked).toBe(true);
+    expect(first.locked).toBe(true);
+    expect(second.locked).toBe(true);
+  });
+
   it("onComplete fires exactly once when the master lock expires", () => {
     const { scene } = createRendererTestContext();
     const a = makeLayer(scene, 5);

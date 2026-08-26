@@ -307,6 +307,22 @@ describe("AnimationController", () => {
     expect(ctrl.calcDuration("shoot")).toBeCloseTo(expected);
   });
 
+  it("calcDuration() rejects invalid automatic timing", () => {
+    const { ctrl } = setup();
+    ctrl.speed = 0;
+    expect(() => ctrl.calcDuration("shoot")).toThrow(
+      /positive effective speed/,
+    );
+
+    const animations = testAnims();
+    animations.shoot = {
+      ...animations.shoot,
+      speed: Number.MIN_VALUE,
+    };
+    const { ctrl: tooSlow } = setup(animations);
+    expect(() => tooSlow.calcDuration("shoot")).toThrow(/finite duration/);
+  });
+
   it("inFrameRange() checks current frame", () => {
     const { ctrl, sprite } = setup();
     sprite.currentFrame = 5;

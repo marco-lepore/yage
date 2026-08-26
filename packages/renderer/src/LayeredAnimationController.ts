@@ -87,8 +87,9 @@ export class LayeredAnimationController<
    *
    * If `options.duration` is omitted, the duration is computed once from the
    * first controller via {@link AnimationController.calcDuration} and stored
-   * on this wrapper as the single source of truth. Children are given an
-   * `Infinity` per-controller duration so their own lock timers never expire
+   * on this wrapper as the single source of truth. That controller's effective
+   * speed must be positive and produce a finite duration. Children are given
+   * an `Infinity` per-controller duration so their own lock timers never expire
    * independently — clearing them happens through this wrapper's
    * {@link unlock} when the master timer fires. This avoids a race where a
    * child's `update()` could tick out a frame before the wrapper's (e.g. if

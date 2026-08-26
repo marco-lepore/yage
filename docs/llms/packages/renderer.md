@@ -441,7 +441,7 @@ class HeroController extends Component {
 }
 ```
 
-`playOneShot(name, options?)` — `options.duration` (engine-scaled seconds) overrides the auto-computed lock duration; the fallback uses `(frames * (1 / 60)) / (AnimationDef.speed * controller.speed)` and requires that effective speed to be positive and finite. The lock timer and sprite playback receive the same scene and entity time scaling. Pass an explicit `duration` when synchronising lock release across multiple controllers or when the effective speed is not positive (see `LayeredAnimationController` below).
+`playOneShot(name, options?)` — `options.duration` (engine-scaled seconds) overrides the auto-computed lock duration; the fallback uses `(frames * (1 / 60)) / (AnimationDef.speed * controller.speed)`. The effective speed must be positive and the calculated duration must be finite. The lock timer and sprite playback receive the same scene and entity time scaling. Pass an explicit `duration` when synchronising lock release across multiple controllers or when automatic timing cannot produce a valid duration (see `LayeredAnimationController` below).
 
 Writing `controller.speed` updates the animation currently playing. An automatically timed one-shot preserves its playback progress and recomputes the remaining lock time. An explicit one-shot `duration` remains unchanged.
 
@@ -476,7 +476,7 @@ layered.playOneShot("attack", { onComplete: () => layered.play("idle") });
 ```
 
 - `play(name)` forwards to every child.
-- `playOneShot(name, opts)` computes one shared duration (from the first controller, or `opts.duration` if given) and passes `Number.POSITIVE_INFINITY` to each child so child timers can never expire independently — the wrapper owns the master timer and cascades `unlock()` when it fires. `onComplete` runs exactly once.
+- `playOneShot(name, opts)` computes one shared duration from the first controller and requires its automatic timing to produce a positive finite duration. `opts.duration` bypasses that calculation. The wrapper passes `Number.POSITIVE_INFINITY` to each child so child timers can never expire independently — the wrapper owns the master timer and cascades `unlock()` when it fires. `onComplete` runs exactly once.
 - Not save/load-aware (`serialize()` returns `null`) — rebuild via the same `setup()` path on restore.
 
 ### Layered characters: one-shot lock drift (the underlying problem)

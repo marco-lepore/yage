@@ -198,9 +198,9 @@ Annotate the field once; the cast is required because the type parameter is
 type-only and `sibling()` can only narrow by the runtime class.
 
 When `playOneShot()` calculates its own lock duration, the product of the
-animation definition's `speed` and `controller.speed` must be positive and
-finite. Pass an explicit `duration` when you intentionally pause or reverse
-the animation.
+animation definition's `speed` and `controller.speed` must be positive, and
+the calculation must produce a finite duration. Pass an explicit `duration`
+when you intentionally pause or reverse the animation.
 
 ### Layered characters (head + body + outfit)
 
@@ -247,6 +247,11 @@ hero.get(LayeredAnimationController).playOneShot("attack", {
   onComplete: () => hero.get(LayeredAnimationController).play("idle"),
 });
 ```
+
+Automatic timing uses the first controller in `controllers`, so that
+controller must meet the same positive-speed and finite-duration rule. Pass an
+explicit `duration` to the layered call when the lead animation is paused or
+reversed.
 
 The wrapper computes a single lock duration (from the first controller, or an
 explicit `duration` option), passes `Number.POSITIVE_INFINITY` to each child
