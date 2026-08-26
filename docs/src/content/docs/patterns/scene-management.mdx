@@ -125,6 +125,13 @@ time.scaleBy(2, { for: 5, key: "haste" });
 
 // Slow everything except the player.
 time.scaleBy(0.25, { key: "slowmo", excludeUpdates: [player] });
+
+// Freeze physics and the scene, but keep a presentation host updating.
+time.freezeFor(0.08, { excludeUpdates: [feedbackHost] });
+
+// Temporary time effects for one entity's updates only.
+time.scaleEntityBy(enemy, 0.25, { for: 0.4, key: "stagger" });
+time.freezeEntityFor(enemy, 0.08, { key: "stagger" });
 ```
 
 How requests combine:
@@ -136,8 +143,10 @@ How requests combine:
   `key` gets its own private channel.
 - Across channels the winning factors multiply. A freeze is a ×0 factor, so it
   wins over any slow or speed-up in another channel.
-- The result is `scene.timeScale × (channel winners)`, readable as
-  `time.effectiveScale` (with `time.isFrozen` for the ×0 case).
+- Scene requests produce `scene.timeScale × (channel winners)`, readable as
+  `time.effectiveScale` (with `time.isFrozen` for the ×0 case). Entity requests
+  multiply into `time.effectiveScaleForUpdates(entity)` without changing the
+  scene-wide value.
 
 `time.elapsed` reports the scene's elapsed simulation time in seconds. It
 advances once per rendered frame under `time.effectiveScale`, so stack pause,
@@ -194,17 +203,19 @@ a running hitstop. All requests are released when the scene exits, and they are
 not saved; re-issue them after loading a snapshot.
 
 :::caution[Exclusions don't cover physics]
-`excludeUpdates` keeps an entity's component updates, `ProcessComponent`, and
-particle emitters at full speed, but its rigid body still integrates at the
-slowed world speed — one shared Rapier world per scene has no per-body time.
-Components that write physics (a movement controller applying forces) push
-them at the excluded rate into a slowed world.
+`excludeUpdates`, `scaleEntityBy`, and `freezeEntityFor` affect component
+updates, `ProcessComponent`, and particle emitters. They do not provide
+per-body time. A scene freeze still freezes every rigid body, while an
+entity-scoped request leaves the target's rigid body running at scene speed.
+Components that write physics can therefore run at a different rate from the
+shared world.
 :::
 
 ### Per-Entity Time Scale
 
-Individual entities also carry a `timeScale` multiplier that composes on top of
-the scene's:
+Individual entities carry a persistent `timeScale` multiplier that composes on
+top of the scene's. Use the `SceneTime` entity request methods above for
+temporary effects that need independent cleanup.
 
 ```typescript
 entity.timeScale = 0;    // freeze this one entity (scene keeps running)

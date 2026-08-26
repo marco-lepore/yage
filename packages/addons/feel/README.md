@@ -5,9 +5,9 @@ play them from one named trigger.
 
 The [playable example](../../../examples/feel-addon.html) groups the effects
 across two scenes. It covers impacts, trails, afterimages, highlights, punches,
-visibility, cue composition, slow motion, animation, callbacks, shockwaves,
-camera modifiers, and a custom effect. Press `N` or `P` to move between scenes
-with a slide transition.
+visibility, cue composition, scene and target time effects, animation,
+callbacks, shockwaves, camera modifiers, and a custom effect. Press `N` or `P`
+to move between scenes with a slide transition.
 
 ```ts
 import { Feel, feelHitStop, feelParallel } from "@yagejs-addons/feel";
@@ -80,8 +80,8 @@ or destroying `Feel` stops every active cue and restores active effects.
 
 The root entry supplies:
 
-- `feelHitStop` and `feelSlowMotion`
-- `feelAnimation` and `feelCall`
+- `feelHitStop`, `feelSlowMotion`, and `feelTargetFreeze`
+- `feelKeyframeAnimation` and `feelCall`
 
 ## Save and load
 
@@ -95,15 +95,17 @@ particle-emission requests, live particles, and transient visual entities are
 also omitted. The saved base transform, camera, and visual properties remain
 unchanged by these effects.
 
-`feelCall`, `defineFeelEffect`, and `feelAnimation` can run user-supplied code.
-If that code writes to serializable game state, YAGE saves the resulting game
-state normally. Use renderer modifier handles for custom visual motion when the
-animation must stay outside snapshots.
+`feelCall`, `defineFeelEffect`, `feelKeyframeAnimation`, and
+`feelSpriteAnimation` can run user-supplied code. If that code writes to
+serializable game state, YAGE saves the resulting game state normally. Use
+renderer modifier handles for custom visual motion when the animation must stay
+outside snapshots.
 
 ## Renderer effects
 
 Import these from `@yagejs-addons/feel/renderer`:
 
+- `feelSpriteAnimation`
 - `feelPositionPunch`, `feelRecoil`, and `feelBounce`
 - `feelRotationPunch` and `feelRotationShake`
 - `feelScalePunch`, `feelScaleShake`, `feelSquash`, and `feelTransformShake`

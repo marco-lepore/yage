@@ -122,7 +122,15 @@ Switch animations at runtime:
 const anim = entity.get(AnimationController);
 anim.play("run");
 anim.playOneShot("jump", { onComplete: () => anim.play("idle") });
+anim.speed = 0.5; // updates the animation already playing
 ```
+
+Changing `AnimationController.speed` updates the current sprite immediately.
+An automatically timed one-shot keeps the same playback progress and adjusts
+its remaining lock time. Its speed must stay positive because the controller
+derives the lock duration from that speed. A one-shot with an explicit
+`duration` keeps that duration and can use `0` to pause or a negative value to
+play in reverse.
 
 `AnimatedSpriteComponent` also takes the same `visible` / `tint` / `alpha` /
 `blendMode` / `interactive` options as `SpriteComponent` above.

@@ -339,6 +339,72 @@ describe("AnimationController", () => {
     expect(sprite.animationSpeed).toBe(0.2 * 2);
   });
 
+  it("updates the currently playing animation when speed changes", () => {
+    const { ctrl, sprite } = setup();
+    ctrl.play("walk");
+
+    ctrl.speed = 2;
+
+    expect(sprite.animationSpeed).toBe(0.2 * 2);
+  });
+
+  it("keeps an automatic one-shot lock aligned after a speed change", () => {
+    const { ctrl } = setup();
+    const initialDuration = ctrl.calcDuration("shoot");
+    ctrl.playOneShot("shoot");
+    ctrl.update(initialDuration * 0.4);
+
+    ctrl.speed = 2;
+    const fasterDuration = ctrl.calcDuration("shoot");
+    ctrl.update(fasterDuration * 0.59);
+    expect(ctrl.locked).toBe(true);
+    ctrl.update(fasterDuration * 0.02);
+    expect(ctrl.locked).toBe(false);
+  });
+
+  it("does not rewrite an explicit one-shot lock duration", () => {
+    const { ctrl } = setup();
+    ctrl.playOneShot("shoot", { duration: 1 });
+    ctrl.update(0.4);
+
+    ctrl.speed = 2;
+    ctrl.update(0.59);
+    expect(ctrl.locked).toBe(true);
+    ctrl.update(0.02);
+    expect(ctrl.locked).toBe(false);
+  });
+
+  it("preserves pause and reverse speeds for regular animations", () => {
+    const { ctrl, sprite } = setup();
+    ctrl.play("walk");
+
+    ctrl.speed = 0;
+    expect(sprite.animationSpeed).toBe(0);
+    ctrl.speed = -1;
+    expect(sprite.animationSpeed).toBe(-0.2);
+  });
+
+  it("requires positive speed only for automatically timed one-shots", () => {
+    const { ctrl } = setup();
+
+    ctrl.speed = 0;
+    expect(() => ctrl.playOneShot("shoot")).toThrow(/positive speed/);
+    ctrl.playOneShot("shoot", { duration: 1 });
+    ctrl.speed = -1;
+    expect(ctrl.speed).toBe(-1);
+
+    ctrl.forcePlay("idle");
+    ctrl.speed = 1;
+    ctrl.playOneShot("shoot");
+    expect(() => (ctrl.speed = 0)).toThrow(/automatically timed one-shot/);
+  });
+
+  it("rejects non-finite speed multipliers", () => {
+    const { ctrl } = setup();
+
+    expect(() => (ctrl.speed = Number.NaN)).toThrow(/finite/);
+  });
+
   it("update() is a no-op when not locked", () => {
     const { ctrl } = setup();
     // Should not throw or change state

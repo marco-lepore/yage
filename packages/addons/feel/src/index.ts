@@ -24,12 +24,17 @@ export type {
   FeelRange,
 } from "./core/types.js";
 export {
-  feelAnimation,
   feelCall,
   feelHitStop,
+  feelKeyframeAnimation,
   feelSlowMotion,
+  feelTargetFreeze,
 } from "./effects/core.js";
 export type {
+  FeelEntityTarget,
   FeelHitStopOptions,
+  FeelSceneSlowMotionOptions,
   FeelSlowMotionOptions,
+  FeelTargetFreezeOptions,
+  FeelTargetSlowMotionOptions,
 } from "./effects/core.js";

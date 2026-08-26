@@ -12,9 +12,9 @@ putting six unrelated timers in combat code.
 
 The [Feel addon example](https://examples.yage.dev/feel-addon.html) groups the
 effects across two scenes. It covers impacts, trails, afterimages, highlights,
-punches, visibility, cue composition, slow motion, animation, callbacks,
-shockwaves, camera modifiers, and a custom effect. Press `N` or `P` to move
-between scenes with a slide transition.
+punches, visibility, cue composition, scene and target time effects, animation,
+callbacks, shockwaves, camera modifiers, and a custom effect. Press `N` or `P`
+to move between scenes with a slide transition.
 
 ```ts
 import {
@@ -59,9 +59,9 @@ npm install @yagejs/particles
 ```
 
 The root import contains the `Feel` component, composition helpers, time
-effects, animation, and callbacks. Visual motion, camera, filter, audio, and
-particle adapters use separate entry points, so the root import does not load
-PixiJS or optional plugins.
+effects, keyframe animation, and callbacks. Visual motion, sprite animation,
+camera, filter, audio, and particle adapters use separate entry points, so the
+root import does not load PixiJS or optional plugins.
 
 ## Build one response from small effects
 
@@ -260,10 +260,27 @@ the source `Transform`.
 
 ## Time, sound, particles, and animation
 
-`feelHitStop` calls `SceneTime.freezeFor`. `feelSlowMotion` calls
-`SceneTime.scaleBy` and excludes the `Feel` entity from slow motion by default,
-so its cue timing can continue at normal speed. Set `includeOwner: true` when
-the owner should slow too.
+`feelHitStop` freezes the scene. Its owner freezes by default, including any
+squash or shake that the same `Feel` component is advancing. Set
+`includeOwner: false` to let that entity's components, processes, and particle
+emitters continue during hitstop. The scene's shared physics world remains
+frozen.
+
+Without a target, `feelSlowMotion` scales the scene and excludes the `Feel`
+owner by default. Set `includeOwner: true` when the owner should slow too. Pass
+`target` to slow only one entity, or use `feelTargetFreeze` as the descriptive
+zero-scale form:
+
+```ts
+const stagger = feelParallel(
+  feelSlowMotion({ target: enemy, scale: 0.25, duration: 0.2 }),
+  feelTargetFreeze({ target: enemy, duration: 0.05 }),
+);
+```
+
+Target time effects stop component updates, processes, sprite animation, and
+particle emitters. They do not stop a rigid body because physics uses one
+shared scene timestep.
 
 Time requests expire on `SceneTime`'s raw clock. Stopping a cue after a time
 request starts does not undo that request.
@@ -271,8 +288,21 @@ request starts does not undo that request.
 `feelSound` plays a preloaded alias, with optional speed randomization.
 `feelParticleBurst` bursts an existing emitter. `feelParticleEmit` owns a
 temporary emission request. Manual emission and overlapping requests remain
-active when one cue finishes. `feelAnimation` starts a `KeyframeAnimator`
-animation.
+active when one cue finishes.
+
+`feelKeyframeAnimation` starts a core `KeyframeAnimator` timeline. Import
+`feelSpriteAnimation` from `/renderer` for named `AnimationController`
+playback:
+
+```ts
+const stagger = feelSpriteAnimation("stagger", {
+  target: enemyAnimations,
+  mode: "oneShot",
+});
+```
+
+Both animation helpers start playback and complete their Feel node
+immediately. Stopping the cue later does not stop the animation.
 
 ## Save and load
 
@@ -305,10 +335,11 @@ The restored component starts with no cue in progress. Saved base transform,
 camera, and visual values remain unchanged by built-in Feel effects.
 
 <Aside type="caution">
-`feelCall`, `defineFeelEffect`, and `feelAnimation` can run user-supplied code.
-If that code writes to serializable game state, YAGE saves the resulting value.
-For custom visual movement, write to a renderer modifier handle and release the
-handle in `finish`.
+`feelCall`, `defineFeelEffect`, `feelKeyframeAnimation`, and
+`feelSpriteAnimation` can run user-supplied code. If that code writes to
+serializable game state, YAGE saves the resulting value. For custom visual
+movement, write to a renderer modifier handle and release the handle in
+`finish`.
 </Aside>
 
 ## Custom effects and events

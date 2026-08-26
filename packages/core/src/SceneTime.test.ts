@@ -252,12 +252,14 @@ describe("SceneTime", () => {
     });
 
     it("_releaseAll releases everything", () => {
-      const { time } = createSceneTime();
+      const { scene, time } = createSceneTime();
       const a = time.scaleBy(0.5, { key: "a" });
       const b = time.freezeFor(1, { key: "b" });
+      const c = time.freezeEntityFor(scene.spawn("target"), 1);
       time._releaseAll();
       expect(a.active).toBe(false);
       expect(b.active).toBe(false);
+      expect(c.active).toBe(false);
       expect(time.effectiveScale).toBe(1);
     });
   });
@@ -320,15 +322,116 @@ describe("SceneTime", () => {
       time._tick(0.016);
       expect(time.effectiveScaleForUpdates(entity)).toBe(0.25);
     });
+
+    it("lets excluded entity updates continue during a scene freeze", () => {
+      const { scene, time } = createSceneTime();
+      const excluded = scene.spawn("excluded");
+      const other = scene.spawn("other");
+
+      time.freezeFor(1, { excludeUpdates: [excluded] });
+
+      expect(time.effectiveScale).toBe(0);
+      expect(time.effectiveScaleForUpdates(excluded)).toBe(1);
+      expect(time.effectiveScaleForUpdates(other)).toBe(0);
+    });
+  });
+
+  describe("entity requests", () => {
+    it("scales only the target and composes target channels", () => {
+      const { scene, time } = createSceneTime();
+      const target = scene.spawn("target");
+      const other = scene.spawn("other");
+
+      time.scaleEntityBy(target, 0.5, { key: "slow" });
+      time.scaleEntityBy(target, 0.5, { key: "status" });
+
+      expect(time.effectiveScale).toBe(1);
+      expect(time.effectiveScaleForUpdates(target)).toBe(0.25);
+      expect(time.effectiveScaleForUpdates(other)).toBe(1);
+    });
+
+    it("uses latest-request-wins channels per target", () => {
+      const { scene, time } = createSceneTime();
+      const target = scene.spawn("target");
+      const older = time.scaleEntityBy(target, 0.25, { key: "slow" });
+      const newer = time.scaleEntityBy(target, 0.5, { key: "slow" });
+
+      expect(time.effectiveScaleForUpdates(target)).toBe(0.5);
+      newer.release();
+      expect(time.effectiveScaleForUpdates(target)).toBe(0.25);
+      older.release();
+      expect(time.effectiveScaleForUpdates(target)).toBe(1);
+    });
+
+    it("freezes one target without freezing the scene", () => {
+      const { scene, time } = createSceneTime();
+      const target = scene.spawn("target");
+      const other = scene.spawn("other");
+
+      time.freezeEntityFor(target, 1);
+
+      expect(time.isFrozen).toBe(false);
+      expect(time.effectiveScaleForUpdates(target)).toBe(0);
+      expect(time.effectiveScaleForUpdates(other)).toBe(1);
+    });
+
+    it("ages target requests on raw time", () => {
+      const { scene, time } = createSceneTime();
+      const target = scene.spawn("target");
+      const handle = time.freezeEntityFor(target, 0.1);
+
+      time._tick(0.1);
+
+      expect(handle.active).toBe(false);
+      expect(time.effectiveScaleForUpdates(target)).toBe(1);
+    });
+
+    it("releases requests when the target is destroyed", () => {
+      const { scene, time } = createSceneTime();
+      const target = scene.spawn("target");
+      const handle = time.scaleEntityBy(target, 0.5);
+
+      target.destroy();
+      scene._flushDestroyQueue();
+      time._tick(0.016);
+
+      expect(handle.active).toBe(false);
+    });
+
+    it("rejects targets from another scene", () => {
+      const { time } = createSceneTime();
+      const { scene: otherScene } = createSceneTime();
+      const target = otherScene.spawn("target");
+
+      expect(() => time.scaleEntityBy(target, 0.5)).toThrow(/owning scene/);
+      expect(() => time.freezeEntityFor(target, 0.1)).toThrow(/owning scene/);
+    });
+
+    it("validates factors and durations", () => {
+      const { scene, time } = createSceneTime();
+      const target = scene.spawn("target");
+
+      expect(() => time.scaleEntityBy(target, 0)).toThrow(/finite and > 0/);
+      expect(() => time.scaleEntityBy(target, 0.5, { for: -1 })).toThrow(
+        /finite duration/,
+      );
+      expect(() => time.freezeEntityFor(target, -1)).toThrow(/finite duration/);
+    });
   });
 
   describe("labels", () => {
     it("defaults labels to the key, then 'anonymous'", () => {
-      const { time } = createSceneTime();
+      const { scene, time } = createSceneTime();
       time.scaleBy(0.5, { key: "slowmo" });
       time.freezeFor(1, { label: "hitstop" });
       time.scaleBy(0.5);
-      expect(time.activeLabels).toEqual(["slowmo", "hitstop", "anonymous"]);
+      time.freezeEntityFor(scene.spawn("target"), 1, { label: "stagger" });
+      expect(time.activeLabels).toEqual([
+        "slowmo",
+        "hitstop",
+        "anonymous",
+        "stagger",
+      ]);
     });
   });
 });
@@ -366,6 +469,26 @@ describe("SceneTime engine integration", () => {
     advanceFrames(engine, 1, 100); // aged 0.1 → still frozen this frame
     advanceFrames(engine, 1, 100); // expires at the frame's timer pass
     expect(comp.calls).toEqual([0, 0.1]);
+    engine.destroy();
+  });
+
+  it("freezes one entity's updates and expires without that entity ticking", async () => {
+    const engine = await createTestEngine();
+    const scene = new GameScene();
+    await engine.scenes.push(scene);
+    const frozenComp = new UpdatingComponent();
+    const runningComp = new UpdatingComponent();
+    const frozen = scene.spawn("frozen");
+    frozen.add(frozenComp);
+    scene.spawn("running").add(runningComp);
+
+    const time = scene.tryResolveScoped(SceneTimeKey)!;
+    time.freezeEntityFor(frozen, 0.15);
+    advanceFrames(engine, 1, 100);
+    advanceFrames(engine, 1, 100);
+
+    expect(frozenComp.calls).toEqual([0, 0.1]);
+    expect(runningComp.calls).toEqual([0.1, 0.1]);
     engine.destroy();
   });
 

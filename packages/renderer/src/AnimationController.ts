@@ -80,6 +80,7 @@ export class AnimationController<
   private _locked = false;
   private _lockTimer = 0;
   private _lockDuration = 0;
+  private _lockUsesAnimationDuration = false;
   private _onComplete: (() => void) | undefined;
   private _speed = 1;
 
@@ -122,7 +123,29 @@ export class AnimationController<
   }
 
   set speed(value: number) {
+    if (!Number.isFinite(value)) {
+      throw new Error(
+        `AnimationController.speed must be finite, got ${value}.`,
+      );
+    }
+    if (this._locked && this._lockUsesAnimationDuration && value <= 0) {
+      throw new Error(
+        "AnimationController.speed must stay greater than 0 during an automatically timed one-shot. " +
+          "Pass an explicit duration to playOneShot() to pause or reverse it.",
+      );
+    }
+    const lockProgress =
+      this._locked && this._lockUsesAnimationDuration && this._lockDuration > 0
+        ? Math.min(this._lockTimer / this._lockDuration, 1)
+        : 0;
     this._speed = value;
+    if (!this._current) return;
+    this._sprite.animatedSprite.animationSpeed =
+      this._anims[this._current].speed * value;
+    if (this._locked && this._lockUsesAnimationDuration) {
+      this._lockDuration = this.calcDuration(this._current);
+      this._lockTimer = this._lockDuration * lockProgress;
+    }
   }
 
   /** Play a named animation. No-op if already current or locked. */
@@ -143,11 +166,17 @@ export class AnimationController<
     options?: { duration?: number; onComplete?: () => void },
   ): void {
     if (this._locked && this._current === name) return;
+    if (options?.duration === undefined && this._speed <= 0) {
+      throw new Error(
+        "AnimationController.playOneShot requires a positive speed when duration is omitted.",
+      );
+    }
     this._apply(name);
     this._sprite.animatedSprite.loop = false;
     this._locked = true;
     this._lockTimer = 0;
     this._lockDuration = options?.duration ?? this.calcDuration(name);
+    this._lockUsesAnimationDuration = options?.duration === undefined;
     this._onComplete = options?.onComplete;
   }
 
@@ -162,6 +191,7 @@ export class AnimationController<
     this._locked = false;
     this._lockTimer = 0;
     this._lockDuration = 0;
+    this._lockUsesAnimationDuration = false;
     this._onComplete = undefined;
   }
 

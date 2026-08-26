@@ -441,7 +441,9 @@ class HeroController extends Component {
 }
 ```
 
-`playOneShot(name, options?)` — `options.duration` (engine-scaled seconds) overrides the auto-computed lock duration; the fallback uses `(frames * (1 / 60)) / speed`. The lock timer and sprite playback receive the same scene and entity time scaling. Pass an explicit `duration` when synchronising lock release across multiple controllers (see `LayeredAnimationController` below).
+`playOneShot(name, options?)` — `options.duration` (engine-scaled seconds) overrides the auto-computed lock duration; the fallback uses `(frames * (1 / 60)) / speed` and requires a positive speed. The lock timer and sprite playback receive the same scene and entity time scaling. Pass an explicit `duration` when synchronising lock release across multiple controllers or when using `speed <= 0` (see `LayeredAnimationController` below).
+
+Writing `controller.speed` updates the animation currently playing. An automatically timed one-shot preserves its playback progress and recomputes the remaining lock time. An explicit one-shot `duration` remains unchanged.
 
 ### LayeredAnimationController
 

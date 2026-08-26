@@ -1,3 +1,9 @@
+export { feelSpriteAnimation } from "./adapters/animation.js";
+export type {
+  FeelSpriteAnimationMode,
+  FeelSpriteAnimationOptions,
+  FeelSpriteAnimationTarget,
+} from "./adapters/animation.js";
 export {
   feelBlink,
   feelCameraShake,

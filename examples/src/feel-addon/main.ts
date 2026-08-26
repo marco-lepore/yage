@@ -32,14 +32,15 @@ import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import {
   Feel,
   defineFeelEffect,
-  feelAnimation,
   feelCall,
   feelDelay,
   feelHitStop,
+  feelKeyframeAnimation,
   feelParallel,
   feelRepeat,
   feelSequence,
   feelSlowMotion,
+  feelTargetFreeze,
   type FeelNode,
 } from "@yagejs-addons/feel";
 import {
@@ -539,6 +540,7 @@ class PingPongMotion extends Component {
     private readonly transform: Transform,
     private readonly centerX: number,
     private readonly amplitude: number,
+    private readonly centerY = 435,
   ) {
     super();
   }
@@ -547,7 +549,7 @@ class PingPongMotion extends Component {
     this.elapsed += dt;
     this.transform.setPosition(
       this.centerX + Math.sin(this.elapsed * 4) * this.amplitude,
-      435,
+      this.centerY,
     );
   }
 }
@@ -583,7 +585,7 @@ class MoreEffectsScene extends FeelGalleryScene {
         label: "sequence + repeat",
         play: () => void composition.play("show"),
       },
-      { label: "slow motion", play: () => void slowMotion.play("show") },
+      { label: "target time", play: () => void slowMotion.play("show") },
       {
         label: "animation + callback",
         play: () => void animation.play("show"),
@@ -687,20 +689,22 @@ class MoreEffectsScene extends FeelGalleryScene {
   }
 
   private spawnSlowMotionDemo(): Feel {
-    this.spawnLabel(165, 346, "4  SLOW MOTION");
+    this.spawnLabel(165, 346, "4  TARGET TIME");
     const track = this.spawn("slow-motion-track");
     track.add(new Transform({ position: new Vec2(165, 435) }));
     track.add(
       new GraphicsComponent().draw((g) => {
-        g.moveTo(-88, 0).lineTo(88, 0).stroke({ color: 0x475569, width: 3 });
-        g.circle(-88, 0, 4).fill({ color: 0x64748b });
-        g.circle(88, 0, 4).fill({ color: 0x64748b });
+        for (const y of [-18, 18]) {
+          g.moveTo(-88, y).lineTo(88, y).stroke({ color: 0x475569, width: 3 });
+          g.circle(-88, y, 4).fill({ color: 0x64748b });
+          g.circle(88, y, 4).fill({ color: 0x64748b });
+        }
       }),
     );
 
     const mover = this.spawn("slow-motion-mover");
     const moverTransform = mover.add(
-      new Transform({ position: new Vec2(165, 435) }),
+      new Transform({ position: new Vec2(165, 417) }),
     );
     mover.add(
       new GraphicsComponent().draw((g) => {
@@ -708,18 +712,36 @@ class MoreEffectsScene extends FeelGalleryScene {
         g.circle(0, 0, 7).fill({ color: 0xf0fdf4 });
       }),
     );
-    mover.add(new PingPongMotion(moverTransform, 165, 78));
+    mover.add(new PingPongMotion(moverTransform, 165, 78, 417));
+
+    const reference = this.spawn("normal-time-mover");
+    const referenceTransform = reference.add(
+      new Transform({ position: new Vec2(165, 453) }),
+    );
+    reference.add(
+      new GraphicsComponent().draw((g) => {
+        g.circle(0, 0, 12).fill({ color: 0x38bdf8 });
+        g.circle(0, 0, 4).fill({ color: 0xe0f2fe });
+      }),
+    );
+    reference.add(new PingPongMotion(referenceTransform, 165, 78, 453));
 
     const trigger = this.spawn("slow-motion-trigger");
     trigger.add(new Transform({ position: new Vec2(165, 470) }));
     return trigger.add(
       new Feel({
         show: feelParallel(
-          feelSlowMotion({ scale: 0.12, duration: 0.9 }),
+          feelSequence(
+            feelSlowMotion({ target: mover, scale: 0.12, duration: 0.6 }),
+            feelDelay(
+              0.65,
+              feelTargetFreeze({ target: mover, duration: 0.25 }),
+            ),
+          ),
           feelFloatingText({
-            text: "0.12× TIME",
+            text: "GREEN: 0.12× → FREEZE",
             style: { fill: 0x86efac },
-            duration: 0.75,
+            duration: 0.9,
             travel: { x: 0, y: -26 },
           }),
         ),
@@ -765,7 +787,7 @@ class MoreEffectsScene extends FeelGalleryScene {
     return entity.add(
       new Feel({
         show: feelSequence(
-          feelAnimation("spin", animator),
+          feelKeyframeAnimation("spin", animator),
           feelDelay(0.7),
           feelCall(() => {
             calls++;
