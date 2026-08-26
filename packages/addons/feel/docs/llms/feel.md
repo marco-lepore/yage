@@ -72,11 +72,14 @@ the scene `random`, `resolve(ServiceKey)`, and guarded `invoke(label, fn)`.
 ```ts
 feelSpriteAnimation(name, { target?, mode?: "play" | "force" | "oneShot", duration?, onComplete? });
 feelPositionPunch({ target, offset, duration?, peakAt?, ... });
+feelPositionSpring({ target, offset, duration?, oscillations?, decay? });
 feelRecoil({ target, direction, distance?, duration? });
 feelBounce({ target, distance?, duration? });
 feelRotationPunch({ target, radians, duration?, peakAt?, ... });
+feelRotationSpring({ target, radians, duration?, oscillations?, decay? });
 feelRotationShake({ target, radians?, frequency?, decay?, duration? });
 feelScalePunch({ target, scale?, duration?, peakAt?, ... });
+feelScaleSpring({ target, scale?, duration?, oscillations?, decay? });
 feelScaleShake({ target, amplitude?, frequency?, decay?, duration? });
 feelSquash({ target, axis?, amount?, duration?, peakAt?, ... });
 feelTransformShake({ target, amplitude?, frequency?, decay?, duration? });
@@ -105,6 +108,11 @@ Visibility modifiers combine with logical AND. The renderer recomputes the
 final value from the current base state and all active modifiers every frame.
 Removing a playback removes only its modifier. Gameplay `Transform` and
 physics state are not changed.
+
+Spring cues start at the supplied position, rotation, or scale displacement and
+oscillate around neutral until removal. Defaults: `duration: 0.5`,
+`oscillations: 2.5`, `decay: 2`. `oscillations` and `decay` must be finite and
+greater than zero.
 
 Camera shake and zoom use the camera's modifier host. Camera position and
 rotation modifiers add; zoom modifiers multiply. Coordinate conversion and

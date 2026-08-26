@@ -59,12 +59,13 @@ import {
   feelMotionTrail,
   feelOpacity,
   feelOutline,
-  feelPositionPunch,
+  feelPositionSpring,
   feelRecoil,
-  feelRotationPunch,
   feelRotationShake,
+  feelRotationSpring,
   feelScalePunch,
   feelScaleShake,
+  feelScaleSpring,
   feelSquash,
   feelShockwave,
   feelTransformShake,
@@ -579,7 +580,7 @@ class MoreEffectsScene extends FeelGalleryScene {
     const shockwave = this.spawnShockwaveDemo();
 
     this.installController(1, status, [
-      { label: "punch + recoil", play: () => void punches.play("show") },
+      { label: "recoil + springs", play: () => void punches.play("show") },
       { label: "fade + blink", play: () => void visibility.play("show") },
       {
         label: "sequence + repeat",
@@ -595,7 +596,7 @@ class MoreEffectsScene extends FeelGalleryScene {
   }
 
   private spawnPunchDemo(): Feel {
-    this.spawnLabel(165, 126, "1  PUNCH + RECOIL");
+    this.spawnLabel(165, 126, "1  RECOIL + SPRINGS");
     const entity = this.spawn("punch-target");
     entity.add(new Transform({ position: new Vec2(165, 215) }));
     const visual = entity.add(
@@ -614,17 +615,27 @@ class MoreEffectsScene extends FeelGalleryScene {
             duration: 0.3,
           }),
           feelParallel(
-            feelPositionPunch({
+            feelPositionSpring({
               target: visual,
               offset: { x: 18, y: -24 },
-              duration: 0.42,
+              duration: 0.72,
+              oscillations: 2.5,
+              decay: 2,
             }),
-            feelRotationPunch({
+            feelRotationSpring({
               target: visual,
               radians: 0.55,
-              duration: 0.42,
+              duration: 0.72,
+              oscillations: 2.5,
+              decay: 2,
             }),
-            feelScalePunch({ target: visual, scale: 1.3, duration: 0.42 }),
+            feelScaleSpring({
+              target: visual,
+              scale: 1.3,
+              duration: 0.72,
+              oscillations: 2.5,
+              decay: 2,
+            }),
           ),
         ),
       }),

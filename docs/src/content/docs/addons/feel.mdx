@@ -12,7 +12,7 @@ putting six unrelated timers in combat code.
 
 The [Feel addon example](https://examples.yage.dev/feel-addon.html) groups the
 effects across two scenes. It covers impacts, trails, afterimages, highlights,
-punches, visibility, cue composition, scene and target time effects, animation,
+springs, visibility, cue composition, scene and target time effects, animation,
 callbacks, shockwaves, camera modifiers, and a custom effect. Press `N` or `P`
 to move between scenes with a slide transition.
 
@@ -105,11 +105,11 @@ stops all active cues.
 
 ## Visual motion and physics
 
-The `/renderer` entry includes position and rotation punches, recoil, bounce,
-scale punch, squash/stretch, position shake, rotation shake, and scale shake.
-Each effect targets a `VisualComponent`, such as `SpriteComponent`. Position
-and rotation contributions add; scale contributions multiply. Several cues
-can affect one visual while its entity keeps moving normally.
+The `/renderer` entry includes position, rotation, and scale springs alongside
+punches, recoil, bounce, squash/stretch, and shakes. Each effect targets a
+`VisualComponent`, such as `SpriteComponent`. Position and rotation
+contributions add; scale contributions multiply. Several cues can affect one
+visual while its entity keeps moving normally.
 
 <Aside type="caution">
 Visual modifiers do not write to `Transform`. A rigid body, collider, camera
@@ -125,7 +125,19 @@ feelRecoil({
   direction: aimDirection,
   distance: 8,
 });
+
+const springHit = feelParallel(
+  feelPositionSpring({ target: playerSprite, offset: { x: -12, y: 0 } }),
+  feelRotationSpring({ target: playerSprite, radians: 0.15 }),
+  feelScaleSpring({ target: playerSprite, scale: 1.25 }),
+);
 ```
+
+A spring starts at the supplied visual displacement and oscillates around the
+live base value until it settles. `duration` controls the settling time,
+`oscillations` controls the number of rebounds, and `decay` controls how
+quickly each rebound weakens. The defaults are 0.5 seconds, 2.5 oscillations,
+and a decay of 2.
 
 The renderer recomputes the displayed transform from the current base
 `Transform` plus all active visual modifiers every frame. Each playback owns

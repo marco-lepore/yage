@@ -32,6 +32,20 @@ interface VisualTransformEffectOptions extends PunchTimingOptions {
   target: FeelVisualTarget;
 }
 
+interface SpringTimingOptions {
+  /** Total settling time in seconds. Default: 0.5. */
+  duration?: number;
+  /** Number of oscillations before settling. Default: 2.5. */
+  oscillations?: number;
+  /** Exponent applied to the decay toward rest. Default: 2. */
+  decay?: number;
+}
+
+interface VisualSpringEffectOptions extends SpringTimingOptions {
+  /** Visual component whose rendered transform receives the contribution. */
+  target: FeelVisualTarget;
+}
+
 export interface FeelPositionPunchOptions extends VisualTransformEffectOptions {
   offset: Vec2Like;
 }
@@ -42,6 +56,21 @@ export interface FeelRotationPunchOptions extends VisualTransformEffectOptions {
 
 export interface FeelScalePunchOptions extends VisualTransformEffectOptions {
   /** Peak scale factor. A number scales both axes. Default: 1.2. */
+  scale?: number | Vec2Like;
+}
+
+export interface FeelPositionSpringOptions extends VisualSpringEffectOptions {
+  /** Initial rendered position offset in pixels. */
+  offset: Vec2Like;
+}
+
+export interface FeelRotationSpringOptions extends VisualSpringEffectOptions {
+  /** Initial rendered rotation offset in radians. */
+  radians: number;
+}
+
+export interface FeelScaleSpringOptions extends VisualSpringEffectOptions {
+  /** Initial scale factor. A number scales both axes. Default: 1.2. */
   scale?: number | Vec2Like;
 }
 
@@ -122,6 +151,58 @@ export function feelScalePunch(options: FeelScalePunchOptions): FeelNode {
       ),
     );
   });
+}
+
+/** Displace a visual's rendered position and spring back to its live position. */
+export function feelPositionSpring(
+  options: FeelPositionSpringOptions,
+): FeelNode {
+  return visualSpring(
+    "feelPositionSpring",
+    options,
+    (handle, amount, intensity) => {
+      handle.setPosition(
+        new Vec2(
+          options.offset.x * amount * intensity,
+          options.offset.y * amount * intensity,
+        ),
+      );
+    },
+  );
+}
+
+/** Displace a visual's rendered rotation and spring back to its live angle. */
+export function feelRotationSpring(
+  options: FeelRotationSpringOptions,
+): FeelNode {
+  return visualSpring(
+    "feelRotationSpring",
+    options,
+    (handle, amount, intensity) => {
+      handle.setRotation(options.radians * amount * intensity);
+    },
+  );
+}
+
+/** Displace a visual's rendered scale and spring back to its live scale. */
+export function feelScaleSpring(options: FeelScaleSpringOptions): FeelNode {
+  const configured = options.scale ?? 1.2;
+  const initial =
+    typeof configured === "number"
+      ? new Vec2(configured, configured)
+      : new Vec2(configured.x, configured.y);
+  return visualSpring(
+    "feelScaleSpring",
+    options,
+    (handle, amount, intensity) => {
+      handle.setScale(
+        new Vec2(
+          Math.max(0.0001, 1 + (initial.x - 1) * amount * intensity),
+          Math.max(0.0001, 1 + (initial.y - 1) * amount * intensity),
+        ),
+      );
+    },
+  );
 }
 
 /** Stretch one visual axis while contracting the other, then return. */
@@ -317,6 +398,50 @@ function visualPunch(
       finish: () => handle?.remove(),
     };
   });
+}
+
+function visualSpring(
+  label: string,
+  options: VisualSpringEffectOptions,
+  apply: (
+    handle: VisualTransformModifierHandle,
+    amount: number,
+    intensity: number,
+  ) => void,
+): FeelNode {
+  const duration = options.duration ?? 0.5;
+  const oscillations = options.oscillations ?? 2.5;
+  const decay = options.decay ?? 2;
+  validatePositiveSpringOption(label, "oscillations", oscillations);
+  validatePositiveSpringOption(label, "decay", decay);
+  return defineFeelEffect(duration, (context) => {
+    const target = resolveVisual(options.target, context);
+    let handle: VisualTransformModifierHandle | undefined;
+    return {
+      start: () => {
+        handle = target.modifiers.addTransform();
+      },
+      update: (progress) => {
+        if (!handle) return;
+        const envelope = Math.pow(Math.max(0, 1 - progress), decay);
+        const oscillation = Math.cos(progress * oscillations * Math.PI * 2);
+        apply(handle, oscillation * envelope, context.intensity);
+      },
+      finish: () => handle?.remove(),
+    };
+  });
+}
+
+function validatePositiveSpringOption(
+  label: string,
+  option: string,
+  value: number,
+): void {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(
+      `${label}: ${option} must be a finite number > 0, got ${value}.`,
+    );
+  }
 }
 
 function resolveVisual(
