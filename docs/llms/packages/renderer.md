@@ -472,18 +472,21 @@ class Hero extends Entity {
 
 const layered = hero.get(LayeredAnimationController);
 layered.play("idle");
+layered.speed = 1.5; // applies to every child
 layered.playOneShot("attack", { onComplete: () => layered.play("idle") });
 ```
 
 - `play(name)` forwards to every child.
-- `playOneShot(name, opts)` computes one shared duration from the first controller and requires its automatic timing to produce a positive finite duration. `opts.duration` bypasses that calculation. The wrapper passes `Number.POSITIVE_INFINITY` to each child so child timers can never expire independently — the wrapper owns the master timer and cascades `unlock()` when it fires. `onComplete` runs exactly once.
+- `speed` reads the first controller's runtime multiplier and writes a new value to every child. While the wrapper is attached, writing `speed` on any participating controller also updates the group. During an automatically timed one-shot, the lead timer retimes at its current progress.
+- `playOneShot(name, opts)` uses the first controller's lock timer and requires its automatic timing to produce a positive finite duration. `opts.duration` keeps that timer fixed. Every other child receives `Number.POSITIVE_INFINITY` and stays locked until the lead timer releases the group. `onComplete` runs exactly once.
 - Not save/load-aware (`serialize()` returns `null`) — rebuild via the same `setup()` path on restore.
 
 ### Layered characters: one-shot lock drift (the underlying problem)
 
 `LayeredAnimationController` is the recommended fix. If you'd rather not introduce a wrapper component — for prototypes, or when each layer already has a custom controller — the same fix can be written as a short helper function. The underlying issue: `AnimationController.playOneShot` computes its lock duration from `frames.length / speed` (in whole-frame increments). When layers have different frame counts or speeds (a 12-frame outfit at `speed: 0.2` and a 10-frame body at `speed: 0.18` round differently), the locks expire on different frames and one sprite snaps back to idle while the others are still mid-swing — a single layer flickering at the end of every attack animation.
 
-Precompute the duration on the first controller and broadcast it via `options.duration`:
+Use the first controller's automatic timer and keep the other controllers
+locked until it completes:
 
 ```ts
 function playOneShotLayered(
@@ -491,17 +494,22 @@ function playOneShotLayered(
   name: string,
   onComplete?: () => void,
 ): void {
-  const duration = controllers[0]!.calcDuration(name);
-  controllers[0]!.playOneShot(name, { duration, onComplete });
+  const leader = controllers[0]!;
+  leader.playOneShot(name, {
+    onComplete: () => {
+      for (let i = 1; i < controllers.length; i++) controllers[i]!.unlock();
+      onComplete?.();
+    },
+  });
   for (let i = 1; i < controllers.length; i++) {
-    controllers[i]!.playOneShot(name, { duration });
+    controllers[i]!.playOneShot(name, { duration: Number.POSITIVE_INFINITY });
   }
 }
 
 playOneShotLayered([bodyAnim, headAnim, outfitAnim], "attack");
 ```
 
-`calcDuration(name)` is public on `AnimationController` — `LayeredAnimationController` calls it internally for exactly this reason.
+`calcDuration(name)` is public on `AnimationController` and rejects speeds that cannot produce a valid automatic duration.
 
 ## Gradient fills
 

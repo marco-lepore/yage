@@ -3,6 +3,7 @@ import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 import type { Texture } from "pixi.js";
 import { resolveFrames } from "./spritesheet.js";
 import type { FrameSource } from "./spritesheet.js";
+import { routeAnimationSpeedChange } from "./internal/animationSpeedGroup.js";
 
 /** Definition for a single named animation. */
 export interface AnimationDef {
@@ -117,12 +118,16 @@ export class AnimationController<
     return this._sprite.animatedSprite.currentFrame;
   }
 
-  /** Runtime speed multiplier (default 1). */
+  /**
+   * Runtime speed multiplier (default 1). A controller owned by a
+   * {@link LayeredAnimationController} shares this value with every layer.
+   */
   get speed(): number {
     return this._speed;
   }
 
   set speed(value: number) {
+    if (routeAnimationSpeedChange(this, value)) return;
     if (!Number.isFinite(value)) {
       throw new Error(
         `AnimationController.speed must be finite, got ${value}.`,

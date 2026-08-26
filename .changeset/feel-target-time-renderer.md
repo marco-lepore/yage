@@ -4,4 +4,4 @@
 
 Expand timing and animation support for feedback cues.
 
-- Apply `AnimationController.speed` changes to the active sprite and keep single and layered automatically timed one-shot locks aligned when the combined definition and controller speed produces a positive finite duration.
+- Apply live speed changes to active sprites and automatically timed one-shot locks. Layered controllers share the first controller's retimed lock and provide one speed multiplier for every layer.
