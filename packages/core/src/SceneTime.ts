@@ -11,7 +11,8 @@ export interface TimeEffectHandle {
   /**
    * True while the request holds an entry — including while a newer request
    * in the same channel masks it. Turns false on `release()` or, for timed
-   * requests, when the duration expires.
+   * requests, when the duration expires. An entity-scoped request also turns
+   * false when its target's current life ends, including on pool release.
    */
   readonly active: boolean;
   /**
@@ -86,9 +87,20 @@ interface TimeRequest {
   factor: number;
   /** Real-time seconds left, or `null` for until-released requests. */
   remaining: number | null;
-  exclude: Set<Entity> | null;
+  /** Excluded entities and the life generation captured by the request. */
+  exclude: Map<Entity, number> | null;
   label: string;
   released: boolean;
+}
+
+interface EntityChannelState {
+  generation: number;
+  channels: Map<string | symbol, TimeRequest[]>;
+}
+
+interface EntityProduct {
+  generation: number;
+  value: number;
 }
 
 const INACTIVE_HANDLE: TimeEffectHandle = Object.freeze({
@@ -130,10 +142,7 @@ const INACTIVE_HANDLE: TimeEffectHandle = Object.freeze({
 export class SceneTime {
   private readonly scene: Scene;
   private readonly channels = new Map<string | symbol, TimeRequest[]>();
-  private readonly entityChannels = new Map<
-    Entity,
-    Map<string | symbol, TimeRequest[]>
-  >();
+  private readonly entityChannels = new Map<Entity, EntityChannelState>();
   private elapsedSeconds = 0;
   private fixedElapsedSeconds = 0;
   /** Cached product of channel winners (excludes `scene.timeScale`). */
@@ -143,9 +152,9 @@ export class SceneTime {
    * winner (excludes `scene.timeScale`). `null` while nothing is excluded —
    * the unexcluded fast path.
    */
-  private exclusionProducts: Map<Entity, number> | null = null;
+  private exclusionProducts: Map<Entity, EntityProduct> | null = null;
   /** Cached products of entity-scoped channel winners. */
-  private entityProducts: Map<Entity, number> | null = null;
+  private entityProducts: Map<Entity, EntityProduct> | null = null;
 
   constructor(scene: Scene) {
     this.scene = scene;
@@ -214,8 +223,10 @@ export class SceneTime {
     for (const entries of this.channels.values()) {
       for (const entry of entries) labels.push(entry.label);
     }
-    for (const channels of this.entityChannels.values()) {
-      for (const entries of channels.values()) {
+    for (const [entity, state] of this.entityChannels) {
+      if (entity.generation !== state.generation || entity.isDestroyed)
+        continue;
+      for (const entries of state.channels.values()) {
         for (const entry of entries) labels.push(entry.label);
       }
     }
@@ -230,8 +241,17 @@ export class SceneTime {
    * pipeline composes it last.
    */
   effectiveScaleForUpdates(entity: Entity): number {
-    const adjusted = this.exclusionProducts?.get(entity);
-    const entityProduct = this.entityProducts?.get(entity) ?? 1;
+    const generation = entity.generation;
+    const cachedAdjustment = this.exclusionProducts?.get(entity);
+    const adjusted =
+      cachedAdjustment?.generation === generation
+        ? cachedAdjustment.value
+        : undefined;
+    const cachedEntityProduct = this.entityProducts?.get(entity);
+    const entityProduct =
+      cachedEntityProduct?.generation === generation
+        ? cachedEntityProduct.value
+        : 1;
     return (
       this.scene.timeScale * (adjusted ?? this.channelProduct) * entityProduct
     );
@@ -256,7 +276,7 @@ export class SceneTime {
       );
     }
     const exclude = options?.excludeUpdates?.length
-      ? new Set(options.excludeUpdates)
+      ? this.captureEntityGenerations(options.excludeUpdates)
       : null;
     return this.addRequest(this.channels, factor, duration, exclude, options);
   }
@@ -277,7 +297,7 @@ export class SceneTime {
       );
     }
     const exclude = options?.excludeUpdates?.length
-      ? new Set(options.excludeUpdates)
+      ? this.captureEntityGenerations(options.excludeUpdates)
       : null;
     return this.addRequest(this.channels, 0, duration, exclude, options);
   }
@@ -302,8 +322,15 @@ export class SceneTime {
     const duration = options?.for ?? null;
     this.assertDuration(duration, "SceneTime.scaleEntityBy", '"for"');
     if (duration === 0) return INACTIVE_HANDLE;
-    const channels = this.getEntityChannels(entity);
-    return this.addRequest(channels, factor, duration, null, options);
+    const state = this.getEntityChannels(entity);
+    return this.addRequest(
+      state.channels,
+      factor,
+      duration,
+      null,
+      options,
+      () => entity.generation === state.generation && !entity.isDestroyed,
+    );
   }
 
   /**
@@ -319,16 +346,24 @@ export class SceneTime {
     this.assertEntity(entity, "freezeEntityFor");
     this.assertDuration(duration, "SceneTime.freezeEntityFor", "duration");
     if (duration === 0) return INACTIVE_HANDLE;
-    const channels = this.getEntityChannels(entity);
-    return this.addRequest(channels, 0, duration, null, options);
+    const state = this.getEntityChannels(entity);
+    return this.addRequest(
+      state.channels,
+      0,
+      duration,
+      null,
+      options,
+      () => entity.generation === state.generation && !entity.isDestroyed,
+    );
   }
 
   private addRequest(
     channels: Map<string | symbol, TimeRequest[]>,
     factor: number,
     duration: number | null,
-    exclude: Set<Entity> | null,
+    exclude: Map<Entity, number> | null,
     options?: { key?: string; label?: string },
+    isCurrent: () => boolean = () => true,
   ): TimeEffectHandle {
     if (duration === 0) return INACTIVE_HANDLE;
     const entry: TimeRequest = {
@@ -349,7 +384,7 @@ export class SceneTime {
     this.recompute();
     return {
       get active(): boolean {
-        return !entry.released;
+        return !entry.released && isCurrent();
       },
       release: () => this.removeRequest(channels, channelKey, entry),
     };
@@ -376,20 +411,20 @@ export class SceneTime {
    * Age request timers by raw frame time. Called by the engine at the start
    * of `earlyUpdate` for each active scene, so a request created later in the
    * frame is not aged until the next frame. Masked entries keep aging. Also
-   * prunes destroyed entities from exclusion sets.
+   * prunes destroyed entities and ended pooled lives from exclusions.
    * @internal
    */
   _tick(dt: number): void {
     let dirty = this.tickChannels(this.channels, dt, true);
-    for (const [entity, channels] of [...this.entityChannels]) {
-      if (entity.isDestroyed) {
-        this.releaseChannels(channels);
+    for (const [entity, state] of [...this.entityChannels]) {
+      if (entity.isDestroyed || entity.generation !== state.generation) {
+        this.releaseChannels(state.channels);
         this.entityChannels.delete(entity);
         dirty = true;
         continue;
       }
-      if (this.tickChannels(channels, dt, false)) dirty = true;
-      if (channels.size === 0) this.entityChannels.delete(entity);
+      if (this.tickChannels(state.channels, dt, false)) dirty = true;
+      if (state.channels.size === 0) this.entityChannels.delete(entity);
     }
     if (dirty) this.recompute();
 
@@ -413,8 +448,8 @@ export class SceneTime {
    */
   _releaseAll(): void {
     this.releaseChannels(this.channels);
-    for (const channels of this.entityChannels.values()) {
-      this.releaseChannels(channels);
+    for (const state of this.entityChannels.values()) {
+      this.releaseChannels(state.channels);
     }
     this.channels.clear();
     this.entityChannels.clear();
@@ -432,51 +467,60 @@ export class SceneTime {
     }
     this.channelProduct = product;
 
-    let excluded: Set<Entity> | null = null;
+    let excluded: Map<Entity, number> | null = null;
     for (const winner of winners) {
       if (!winner.exclude) continue;
-      for (const entity of winner.exclude) {
-        if (entity.isDestroyed) continue;
-        excluded ??= new Set();
-        excluded.add(entity);
+      for (const [entity, generation] of winner.exclude) {
+        if (entity.isDestroyed || entity.generation !== generation) continue;
+        excluded ??= new Map();
+        excluded.set(entity, generation);
       }
     }
     if (!excluded) {
       this.exclusionProducts = null;
     } else {
-      const products = new Map<Entity, number>();
-      for (const entity of excluded) {
+      const products = new Map<Entity, EntityProduct>();
+      for (const [entity, generation] of excluded) {
         let entityProduct = 1;
         for (const winner of winners) {
-          if (!winner.exclude?.has(entity)) entityProduct *= winner.factor;
+          if (winner.exclude?.get(entity) !== generation) {
+            entityProduct *= winner.factor;
+          }
         }
-        products.set(entity, entityProduct);
+        products.set(entity, { generation, value: entityProduct });
       }
       this.exclusionProducts = products;
     }
 
-    const entityProducts = new Map<Entity, number>();
-    for (const [entity, channels] of this.entityChannels) {
-      if (entity.isDestroyed) continue;
+    const entityProducts = new Map<Entity, EntityProduct>();
+    for (const [entity, state] of this.entityChannels) {
+      if (entity.isDestroyed || entity.generation !== state.generation)
+        continue;
       let entityProduct = 1;
-      for (const entries of channels.values()) {
+      for (const entries of state.channels.values()) {
         const winner = entries[entries.length - 1];
         if (winner) entityProduct *= winner.factor;
       }
-      entityProducts.set(entity, entityProduct);
+      entityProducts.set(entity, {
+        generation: state.generation,
+        value: entityProduct,
+      });
     }
     this.entityProducts = entityProducts.size > 0 ? entityProducts : null;
   }
 
-  private getEntityChannels(
-    entity: Entity,
-  ): Map<string | symbol, TimeRequest[]> {
-    let channels = this.entityChannels.get(entity);
-    if (!channels) {
-      channels = new Map();
-      this.entityChannels.set(entity, channels);
+  private getEntityChannels(entity: Entity): EntityChannelState {
+    let state = this.entityChannels.get(entity);
+    if (state && state.generation !== entity.generation) {
+      this.releaseChannels(state.channels);
+      this.entityChannels.delete(entity);
+      state = undefined;
     }
-    return channels;
+    if (!state) {
+      state = { generation: entity.generation, channels: new Map() };
+      this.entityChannels.set(entity, state);
+    }
+    return state;
   }
 
   private assertEntity(entity: Entity, method: string): void {
@@ -491,8 +535,8 @@ export class SceneTime {
     channels: Map<string | symbol, TimeRequest[]>,
   ): void {
     if (channels.size > 0 || channels === this.channels) return;
-    for (const [entity, entityChannels] of this.entityChannels) {
-      if (entityChannels === channels) {
+    for (const [entity, state] of this.entityChannels) {
+      if (state.channels === channels) {
         this.entityChannels.delete(entity);
         return;
       }
@@ -520,8 +564,8 @@ export class SceneTime {
     for (const [channelKey, entries] of [...channels]) {
       for (const entry of [...entries]) {
         if (pruneExclusions && entry.exclude) {
-          for (const excluded of entry.exclude) {
-            if (excluded.isDestroyed) {
+          for (const [excluded, generation] of entry.exclude) {
+            if (excluded.isDestroyed || excluded.generation !== generation) {
               entry.exclude.delete(excluded);
               dirty = true;
             }
@@ -546,6 +590,12 @@ export class SceneTime {
     for (const entries of channels.values()) {
       for (const entry of entries) entry.released = true;
     }
+  }
+
+  private captureEntityGenerations(
+    entities: readonly Entity[],
+  ): Map<Entity, number> {
+    return new Map(entities.map((entity) => [entity, entity.generation]));
   }
 }
 

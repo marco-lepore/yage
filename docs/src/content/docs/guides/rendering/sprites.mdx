@@ -197,6 +197,11 @@ class HeroController extends Component {
 Annotate the field once; the cast is required because the type parameter is
 type-only and `sibling()` can only narrow by the runtime class.
 
+When `playOneShot()` calculates its own lock duration, the product of the
+animation definition's `speed` and `controller.speed` must be positive and
+finite. Pass an explicit `duration` when you intentionally pause or reverse
+the animation.
+
 ### Layered characters (head + body + outfit)
 
 When a character is built from multiple sprite layers — head + body +

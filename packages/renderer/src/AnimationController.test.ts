@@ -384,11 +384,13 @@ describe("AnimationController", () => {
     expect(sprite.animationSpeed).toBe(-0.2);
   });
 
-  it("requires positive speed only for automatically timed one-shots", () => {
+  it("requires positive effective speed only for automatically timed one-shots", () => {
     const { ctrl } = setup();
 
     ctrl.speed = 0;
-    expect(() => ctrl.playOneShot("shoot")).toThrow(/positive speed/);
+    expect(() => ctrl.playOneShot("shoot")).toThrow(
+      /positive effective speed/,
+    );
     ctrl.playOneShot("shoot", { duration: 1 });
     ctrl.speed = -1;
     expect(ctrl.speed).toBe(-1);
@@ -397,6 +399,42 @@ describe("AnimationController", () => {
     ctrl.speed = 1;
     ctrl.playOneShot("shoot");
     expect(() => (ctrl.speed = 0)).toThrow(/automatically timed one-shot/);
+  });
+
+  it("rejects non-positive definition speed for automatic one-shots", () => {
+    for (const speed of [0, -0.4]) {
+      const animations = testAnims();
+      animations.shoot = { ...animations.shoot, speed };
+      const { ctrl } = setup(animations);
+
+      expect(() => ctrl.playOneShot("shoot")).toThrow(
+        /positive effective speed/,
+      );
+      expect(ctrl.locked).toBe(false);
+    }
+  });
+
+  it("accepts a positive effective speed from two negative multipliers", () => {
+    const animations = testAnims();
+    animations.shoot = { ...animations.shoot, speed: -0.4 };
+    const { ctrl } = setup(animations);
+    ctrl.speed = -1;
+
+    ctrl.playOneShot("shoot");
+
+    expect(ctrl.locked).toBe(true);
+    expect(ctrl.calcDuration("shoot")).toBeGreaterThan(0);
+    expect(() => (ctrl.speed = 1)).toThrow(/effective speed/);
+  });
+
+  it("allows non-positive effective speed with an explicit duration", () => {
+    const animations = testAnims();
+    animations.shoot = { ...animations.shoot, speed: 0 };
+    const { ctrl } = setup(animations);
+
+    ctrl.playOneShot("shoot", { duration: 1 });
+
+    expect(ctrl.locked).toBe(true);
   });
 
   it("rejects non-finite speed multipliers", () => {

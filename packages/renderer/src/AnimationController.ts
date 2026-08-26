@@ -128,11 +128,14 @@ export class AnimationController<
         `AnimationController.speed must be finite, got ${value}.`,
       );
     }
-    if (this._locked && this._lockUsesAnimationDuration && value <= 0) {
-      throw new Error(
-        "AnimationController.speed must stay greater than 0 during an automatically timed one-shot. " +
-          "Pass an explicit duration to playOneShot() to pause or reverse it.",
-      );
+    if (this._locked && this._lockUsesAnimationDuration && this._current) {
+      const effectiveSpeed = this._anims[this._current].speed * value;
+      if (!Number.isFinite(effectiveSpeed) || effectiveSpeed <= 0) {
+        throw new Error(
+          "AnimationController.speed must keep the effective speed greater than 0 during an automatically timed one-shot. " +
+            "Pass an explicit duration to playOneShot() to pause or reverse it.",
+        );
+      }
     }
     const lockProgress =
       this._locked && this._lockUsesAnimationDuration && this._lockDuration > 0
@@ -166,10 +169,13 @@ export class AnimationController<
     options?: { duration?: number; onComplete?: () => void },
   ): void {
     if (this._locked && this._current === name) return;
-    if (options?.duration === undefined && this._speed <= 0) {
-      throw new Error(
-        "AnimationController.playOneShot requires a positive speed when duration is omitted.",
-      );
+    if (options?.duration === undefined) {
+      const effectiveSpeed = this._anims[name].speed * this._speed;
+      if (!Number.isFinite(effectiveSpeed) || effectiveSpeed <= 0) {
+        throw new Error(
+          "AnimationController.playOneShot requires a positive effective speed when duration is omitted.",
+        );
+      }
     }
     this._apply(name);
     this._sprite.animatedSprite.loop = false;

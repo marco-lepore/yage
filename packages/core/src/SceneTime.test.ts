@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { SceneTime, SceneTimeKey } from "./SceneTime.js";
 import { Scene } from "./Scene.js";
+import { Entity } from "./Entity.js";
+import { EntityPool } from "./EntityPool.js";
 import { Component } from "./Component.js";
 import { ProcessComponent } from "./ProcessComponent.js";
 import { Process } from "./Process.js";
@@ -28,6 +30,10 @@ class UpdatingComponent extends Component {
   update(dt: number) {
     this.calls.push(dt);
   }
+}
+
+class PooledTimeTarget extends Entity {
+  onAcquire(): void {}
 }
 
 /** Samples `fixedElapsed` once per fixed step, in physics' priority slot. */
@@ -396,6 +402,41 @@ describe("SceneTime", () => {
       time._tick(0.016);
 
       expect(handle.active).toBe(false);
+    });
+
+    it("does not carry requests or exclusions into a pooled entity's next life", () => {
+      const { scene, time } = createSceneTime();
+      const pool = new EntityPool(scene, PooledTimeTarget, { maxSize: 1 });
+      const target = pool.forceAcquire();
+      const targetHandle = time.scaleEntityBy(target, 0.5, {
+        label: "old-life",
+      });
+      time.scaleBy(0.25, {
+        key: "slow",
+        excludeUpdates: [target],
+      });
+
+      expect(time.effectiveScaleForUpdates(target)).toBe(0.5);
+      pool.release(target);
+
+      expect(targetHandle.active).toBe(false);
+      expect(time.activeLabels).not.toContain("old-life");
+      const reused = pool.forceAcquire();
+      expect(reused).toBe(target);
+      expect(time.effectiveScaleForUpdates(reused)).toBe(0.25);
+    });
+
+    it("ends a target request when forceAcquire reclaims its pooled life", () => {
+      const { scene, time } = createSceneTime();
+      const pool = new EntityPool(scene, PooledTimeTarget, { maxSize: 1 });
+      const target = pool.forceAcquire();
+      const handle = time.freezeEntityFor(target, 1);
+
+      const reused = pool.forceAcquire();
+
+      expect(reused).toBe(target);
+      expect(handle.active).toBe(false);
+      expect(time.effectiveScaleForUpdates(reused)).toBe(1);
     });
 
     it("rejects targets from another scene", () => {

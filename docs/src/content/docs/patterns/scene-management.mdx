@@ -202,6 +202,10 @@ A stack-paused scene holds its effects — opening a pause menu does not consume
 a running hitstop. All requests are released when the scene exits, and they are
 not saved; re-issue them after loading a snapshot.
 
+Entity-scoped requests and `excludeUpdates` entries apply only to the entity's
+current life. Releasing a pooled entity ends that association, so the next
+acquisition does not inherit the previous life's slow, freeze, or exclusion.
+
 :::caution[Exclusions don't cover physics]
 `excludeUpdates`, `scaleEntityBy`, and `freezeEntityFor` affect component
 updates, `ProcessComponent`, and particle emitters. They do not provide
