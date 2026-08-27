@@ -1,6 +1,7 @@
 import type { Scene } from "./Scene.js";
 import { ServiceKey } from "./EngineContext.js";
 import type { ErrorBoundary } from "./ErrorBoundary.js";
+import { isThenable } from "./internal/thenable.js";
 
 /**
  * Plugin hooks invoked by the SceneManager at scene lifecycle points.
@@ -72,16 +73,22 @@ export class SceneHookRegistry {
    * Run all `afterExit` hooks. A throwing hook is reported through the error
    * boundary — recorded in `Inspector.getErrors().callbackErrors` and logged —
    * and not rethrown, so one failing plugin doesn't block teardown of the rest.
+   * `afterExit` is typed void-returning but an `async` one compiles against
+   * that signature; its rejection is reported the same way, after the
+   * remaining hooks have already run.
    */
   runAfterExit(scene: Scene): void {
     for (const h of this.hooks) {
+      const info = { kind: "Scene afterExit hook", scene: scene.name };
       try {
-        h.afterExit?.(scene);
+        const result = h.afterExit?.(scene) as unknown;
+        if (isThenable(result)) {
+          result.then(undefined, (err: unknown) =>
+            this.errorBoundary?.reportLifecycleError(err, info),
+          );
+        }
       } catch (err) {
-        this.errorBoundary?.reportLifecycleError(err, {
-          kind: "Scene afterExit hook",
-          scene: scene.name,
-        });
+        this.errorBoundary?.reportLifecycleError(err, info);
       }
     }
   }
