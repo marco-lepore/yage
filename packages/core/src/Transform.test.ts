@@ -399,6 +399,14 @@ describe("Transform dirty-flag propagation", () => {
       expect(warn).toHaveBeenCalledOnce();
     });
 
+    it("warns once per transform, not on every assignment", () => {
+      const { child } = parented();
+      child.worldPosition = new Vec2(140, 60);
+      child.worldPosition = new Vec2(150, 70);
+      child.worldPosition = new Vec2(160, 80);
+      expect(warn).toHaveBeenCalledOnce();
+    });
+
     it("does not produce NaN when the target is the parent's origin", () => {
       const { child } = parented();
       child.worldPosition = new Vec2(100, 60);

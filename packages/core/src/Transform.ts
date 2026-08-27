@@ -23,6 +23,10 @@ export class Transform extends Component {
   private _worldPosition: Vec2;
   private _worldRotation: number;
   private _worldScale: Vec2;
+  // Once per instance: physics and camera-follow systems assign
+  // `worldPosition` every frame, so a warning without this guard repeats on
+  // every write while an ancestor's scale stays zero.
+  private _warnedZeroScaleAxis = false;
   // Start dirty so the first `worldPosition` (or rotation/scale) read recomputes
   // against the parent chain, whatever it is. If we cached local-as-world up
   // front and `addChild` runs AFTER the read (rare but legal — e.g. a debug
@@ -100,7 +104,8 @@ export class Transform extends Component {
     } else {
       const delta = v.sub(pt.worldPosition).rotate(-pt.worldRotation);
       const ps = pt.worldScale;
-      if (ps.x === 0 || ps.y === 0) {
+      if ((ps.x === 0 || ps.y === 0) && !this._warnedZeroScaleAxis) {
+        this._warnedZeroScaleAxis = true;
         const axes = [ps.x === 0 ? "x" : "", ps.y === 0 ? "y" : ""]
           .filter(Boolean)
           .join(", ");
