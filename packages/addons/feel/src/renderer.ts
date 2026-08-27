@@ -1,3 +1,9 @@
+export { feelSpriteAnimation } from "./adapters/animation.js";
+export type {
+  FeelSpriteAnimationMode,
+  FeelSpriteAnimationOptions,
+  FeelSpriteAnimationTarget,
+} from "./adapters/animation.js";
 export {
   feelBlink,
   feelCameraShake,
@@ -26,20 +32,26 @@ export type {
 export {
   feelBounce,
   feelPositionPunch,
+  feelPositionSpring,
   feelRecoil,
   feelRotationPunch,
   feelRotationShake,
+  feelRotationSpring,
   feelScalePunch,
   feelScaleShake,
+  feelScaleSpring,
   feelSquash,
   feelTransformShake,
 } from "./adapters/visual.js";
 export type {
   FeelPositionPunchOptions,
+  FeelPositionSpringOptions,
   FeelRotationPunchOptions,
   FeelRotationShakeOptions,
+  FeelRotationSpringOptions,
   FeelScalePunchOptions,
   FeelScaleShakeOptions,
+  FeelScaleSpringOptions,
   FeelSquashOptions,
   FeelTransformShakeOptions,
   FeelVisualTarget,

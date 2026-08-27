@@ -60,20 +60,26 @@ the scene `random`, `resolve(ServiceKey)`, and guarded `invoke(label, fn)`.
 
 ## Root effects
 
-- `feelHitStop({ duration?, key?, label? })`
-- `feelSlowMotion({ scale?, duration?, includeOwner?, key?, label? })`
-- `feelAnimation(name, target?)`
+- `feelHitStop({ duration?, includeOwner?, excludeUpdates?, key?, label? })` — owner freezes by default; `includeOwner: false` keeps its updates running
+- `feelSlowMotion({ scale?, duration?, includeOwner?, key?, label? })` — scene request; owner excluded by default
+- `feelSlowMotion({ target, scale?, duration?, key?, label? })` — target-only update request
+- `feelTargetFreeze({ target, duration?, key?, label? })` — target-only ×0 update request
+- `feelKeyframeAnimation(name, target?)`
 - `feelCall(callback, label?)`
 
 ## `/renderer`
 
 ```ts
+feelSpriteAnimation(name, { target?, mode?: "play" | "force" | "oneShot", duration?, onComplete? });
 feelPositionPunch({ target, offset, duration?, peakAt?, ... });
+feelPositionSpring({ target, offset, duration?, oscillations?, decay? });
 feelRecoil({ target, direction, distance?, duration? });
 feelBounce({ target, distance?, duration? });
 feelRotationPunch({ target, radians, duration?, peakAt?, ... });
+feelRotationSpring({ target, radians, duration?, oscillations?, decay? });
 feelRotationShake({ target, radians?, frequency?, decay?, duration? });
 feelScalePunch({ target, scale?, duration?, peakAt?, ... });
+feelScaleSpring({ target, scale?, duration?, oscillations?, decay? });
 feelScaleShake({ target, amplitude?, frequency?, decay?, duration? });
 feelSquash({ target, axis?, amount?, duration?, peakAt?, ... });
 feelTransformShake({ target, amplitude?, frequency?, decay?, duration? });
@@ -102,6 +108,11 @@ Visibility modifiers combine with logical AND. The renderer recomputes the
 final value from the current base state and all active modifiers every frame.
 Removing a playback removes only its modifier. Gameplay `Transform` and
 physics state are not changed.
+
+Spring cues start at the supplied position, rotation, or scale displacement and
+oscillate around neutral until removal. Defaults: `duration: 0.5`,
+`oscillations: 2.5`, `decay: 2`. `oscillations` and `decay` must be finite and
+greater than zero.
 
 Camera shake and zoom use the camera's modifier host. Camera position and
 rotation modifiers add; zoom modifiers multiply. Coordinate conversion and
@@ -166,10 +177,12 @@ one handle does not stop manual emission or another active request.
 
 ## Time behavior
 
-Hit stop and slow motion issue timed `SceneTime` requests. Their timers use
-raw scene time and compose through the supplied channel key. The requests
-expire independently after they start; stopping the cue does not release an
-already-issued time request.
+Hit stop and slow motion issue timed `SceneTime` requests. Their timers use raw
+scene time and compose through the supplied channel key. Target requests affect
+component updates, processes, animations, and particle emitters but not
+physics. Hitstop exclusions keep selected entity updates running while scene
+physics remains frozen. Requests expire independently after they start;
+stopping the cue does not release an already-issued time request.
 
 Cue definitions, cooldown clocks, and in-flight playback are not saved. `Feel`
 itself is omitted because its cue map contains code and live component
@@ -180,7 +193,7 @@ Renderer and camera modifiers, Feel-owned filter attachments, `SceneTime`
 requests, particle-emission requests, live particles, and transient visual
 entities are also omitted.
 
-`feelCall`, custom effects, and `feelAnimation` can write through user-supplied
-callbacks. Serializable base state changed by those callbacks is saved. Use
-renderer modifier handles when custom visual motion must stay outside
-snapshots.
+`feelCall`, custom effects, `feelKeyframeAnimation`, and
+`feelSpriteAnimation` can write through user-supplied callbacks. Serializable
+base state changed by those callbacks is saved. Use renderer modifier handles
+when custom visual motion must stay outside snapshots.

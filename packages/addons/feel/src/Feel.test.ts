@@ -17,7 +17,12 @@ import {
   feelParallel,
   feelSequence,
 } from "./core/node.js";
-import { feelHitStop, feelSlowMotion } from "./effects/core.js";
+import {
+  feelHitStop,
+  feelKeyframeAnimation,
+  feelSlowMotion,
+  feelTargetFreeze,
+} from "./effects/core.js";
 
 describe("Feel", () => {
   it("keeps cue definitions and live playback outside save serialization", () => {
@@ -158,6 +163,7 @@ describe("Feel", () => {
 
     feel.play("freeze");
     expect(time?.isFrozen).toBe(true);
+    expect(time?.effectiveScaleForUpdates(entity)).toBe(0);
     time?._tick(0.05);
     expect(time?.isFrozen).toBe(false);
 
@@ -166,6 +172,50 @@ describe("Feel", () => {
     expect(time?.effectiveScaleForUpdates(entity)).toBe(1);
     time?._tick(0.2);
     expect(time?.effectiveScale).toBe(1);
+  });
+
+  it("can keep its owner updating during scene hit stop", () => {
+    const { entity, scene } = createMockEntity();
+    const time = scene.tryResolveScoped(SceneTimeKey);
+    if (!time) throw new Error("SceneTime is unavailable");
+    const feel = entity.add(
+      new Feel({ freeze: feelHitStop({ includeOwner: false }) }),
+    );
+
+    feel.play("freeze");
+
+    expect(time.effectiveScale).toBe(0);
+    expect(time.effectiveScaleForUpdates(entity)).toBe(1);
+  });
+
+  it("scales or freezes only an explicit target", () => {
+    const { entity, scene } = createMockEntity();
+    const target = scene.spawn("target");
+    const other = scene.spawn("other");
+    const time = scene.tryResolveScoped(SceneTimeKey);
+    if (!time) throw new Error("SceneTime is unavailable");
+    const feel = entity.add(
+      new Feel({
+        slowTarget: feelSlowMotion({
+          target,
+          scale: 0.25,
+          duration: 0.2,
+        }),
+        freezeTarget: feelTargetFreeze({ target, duration: 0.05 }),
+      }),
+    );
+
+    feel.play("slowTarget");
+    expect(time.effectiveScale).toBe(1);
+    expect(time.effectiveScaleForUpdates(target)).toBe(0.25);
+    expect(time.effectiveScaleForUpdates(other)).toBe(1);
+    time._tick(0.2);
+
+    feel.play("freezeTarget");
+    expect(time.effectiveScaleForUpdates(target)).toBe(0);
+    expect(time.effectiveScaleForUpdates(other)).toBe(1);
+    time._tick(0.05);
+    expect(time.effectiveScaleForUpdates(target)).toBe(1);
   });
 
   it("stops all effects when disabled", () => {
@@ -298,6 +348,23 @@ describe("Feel", () => {
     expect(boundary.getCallbackErrors()).toHaveLength(1);
     expect(boundary.getCallbackErrors()[0]?.kind).toBe(
       "Feel callback (custom pulse)",
+    );
+  });
+
+  it("attributes keyframe animation targets to the callback error boundary", () => {
+    const { entity, context } = createMockEntity();
+    const boundary = context.resolve(ErrorBoundaryKey);
+    const feel = entity.add(
+      new Feel({
+        broken: feelKeyframeAnimation("pose", () => {
+          throw new Error("missing animator");
+        }),
+      }),
+    );
+
+    expect(() => feel.play("broken")).toThrow("missing animator");
+    expect(boundary.getCallbackErrors()[0]?.kind).toBe(
+      "Feel callback (keyframe animation target)",
     );
   });
 });

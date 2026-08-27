@@ -1,5 +1,9 @@
 import { Component, serializable } from "@yagejs/core";
 import { AnimationController } from "./AnimationController.js";
+import {
+  registerAnimationSpeedOwner,
+  withoutAnimationSpeedOwner,
+} from "./internal/animationSpeedGroup.js";
 
 /** Options for {@link LayeredAnimationController}. */
 export interface LayeredAnimationControllerOptions<T extends string> {
@@ -20,12 +24,10 @@ export interface LayeredAnimationControllerOptions<T extends string> {
  * `play("walk")` or `playOneShot("attack")` in unison.
  *
  * - `play(name)` is forwarded to every child controller.
- * - `playOneShot(name, opts)` computes a single shared duration from the
- *   first child (or `opts.duration`) and passes it to every child as
- *   `options.duration` — so all layers unlock on the same frame regardless
- *   of per-layer frame counts.
- * - The wrapper owns the master lock timer and fires the user's
- *   `onComplete` exactly once.
+ * - `speed` writes the same runtime multiplier to every child.
+ * - `playOneShot(name, opts)` uses the first child as the shared timer and
+ *   keeps every other child locked until that timer completes.
+ * - The wrapper fires the user's `onComplete` exactly once.
  *
  * ```ts
  * class Hero extends Entity {
@@ -45,20 +47,21 @@ export class LayeredAnimationController<
   T extends string = string,
 > extends Component {
   private readonly _controllers: AnimationController<T>[];
+  private readonly _leader: AnimationController<T>;
   private _current: T | "" = "";
   private _locked = false;
-  private _lockTimer = 0;
-  private _lockDuration = 0;
   private _onComplete: (() => void) | undefined;
 
   constructor(options: LayeredAnimationControllerOptions<T>) {
     super();
-    if (options.controllers.length === 0) {
+    const [leader] = options.controllers;
+    if (!leader) {
       throw new Error(
         "LayeredAnimationController requires at least one controller.",
       );
     }
-    this._controllers = options.controllers;
+    this._controllers = [...options.controllers];
+    this._leader = leader;
   }
 
   /** Sibling controllers being driven. */
@@ -76,6 +79,31 @@ export class LayeredAnimationController<
     return this._locked;
   }
 
+  /**
+   * Shared runtime speed multiplier, read from the first controller and
+   * applied to every controller. Writes to any participating controller's
+   * `speed` property route through this group while the wrapper is attached.
+   */
+  get speed(): number {
+    return this._leader.speed;
+  }
+
+  set speed(value: number) {
+    for (const controller of this._controllers) {
+      withoutAnimationSpeedOwner(controller, () => {
+        controller.speed = value;
+      });
+    }
+  }
+
+  onAdd(): void {
+    this.addCleanup(
+      registerAnimationSpeedOwner(this._controllers, (value) => {
+        this.speed = value;
+      }),
+    );
+  }
+
   /** Play a named animation on every layer. No-op if already current or locked. */
   play(name: T): void {
     if (this._current === name || this._locked) return;
@@ -85,31 +113,31 @@ export class LayeredAnimationController<
 
   /** Play a one-shot on every layer with a shared lock duration.
    *
-   * If `options.duration` is omitted, the duration is computed once from the
-   * first controller via {@link AnimationController.calcDuration} and stored
-   * on this wrapper as the single source of truth. Children are given an
-   * `Infinity` per-controller duration so their own lock timers never expire
-   * independently — clearing them happens through this wrapper's
-   * {@link unlock} when the master timer fires. This avoids a race where a
-   * child's `update()` could tick out a frame before the wrapper's (e.g. if
-   * components are ordered differently in the scheduler, or accumulated
-   * float drift makes one timer cross the threshold a frame earlier). */
+   * The first controller owns the shared timer. Its normal automatic timing
+   * keeps the lock aligned when its speed changes. Other controllers receive
+   * an infinite lock duration and are released with the wrapper. Pass an
+   * explicit duration to keep the shared timer independent of playback speed. */
   playOneShot(
     name: T,
     options?: { duration?: number; onComplete?: () => void },
   ): void {
     if (this._locked && this._current === name) return;
-    const duration =
-      options?.duration ?? this._controllers[0]!.calcDuration(name);
+    const leader = this._leader;
+    if (options?.duration === undefined) leader.calcDuration(name);
+    for (const controller of this._controllers) controller.unlock();
+
     this._current = name;
     this._locked = true;
-    this._lockTimer = 0;
-    this._lockDuration = duration;
     this._onComplete = options?.onComplete;
-    // Children lock indefinitely (Infinity > finite for all finite _lockTimer
-    // values), so only the master timer expires. `unlock()` clears them.
-    for (const c of this._controllers) {
-      c.playOneShot(name, { duration: Number.POSITIVE_INFINITY });
+
+    leader.playOneShot(name, {
+      ...(options?.duration !== undefined && { duration: options.duration }),
+      onComplete: () => this.completeOneShot(),
+    });
+    for (const controller of this._controllers.slice(1)) {
+      controller.playOneShot(name, {
+        duration: Number.POSITIVE_INFINITY,
+      });
     }
   }
 
@@ -123,21 +151,15 @@ export class LayeredAnimationController<
   /** Manually release the one-shot lock on this wrapper and every child. */
   unlock(): void {
     this._locked = false;
-    this._lockTimer = 0;
-    this._lockDuration = 0;
     this._onComplete = undefined;
     for (const c of this._controllers) c.unlock();
   }
 
-  /** Tick the shared one-shot lock timer. */
-  update(dt: number): void {
+  private completeOneShot(): void {
     if (!this._locked) return;
-    this._lockTimer += dt;
-    if (this._lockTimer >= this._lockDuration) {
-      const cb = this._onComplete;
-      this.unlock();
-      cb?.();
-    }
+    const cb = this._onComplete;
+    this.unlock();
+    cb?.();
   }
 
   // The wrapper holds references to sibling controllers, which are not

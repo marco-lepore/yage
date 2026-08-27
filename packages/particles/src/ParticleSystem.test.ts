@@ -199,4 +199,29 @@ describe("ParticleSystem", () => {
     expect(excludedSpy).toHaveBeenCalledWith(0.1, 0, 0);
     expect(otherSpy).toHaveBeenCalledWith(0.1 * 0.5 * 2, 0, 0);
   });
+
+  it("applies target-scoped SceneTime requests", () => {
+    const ctx = setup();
+    const time = new SceneTime(ctx.scene);
+    ctx.scene.registerScoped(SceneTimeKey, time);
+
+    const target = spawnEntityInScene(ctx.scene, "target");
+    target.add(new Transform());
+    const targetEmitter = target.add(
+      new ParticleEmitterComponent({ texture: tex, lifetime: 1 }),
+    );
+    const other = spawnEntityInScene(ctx.scene, "other");
+    other.add(new Transform());
+    const otherEmitter = other.add(
+      new ParticleEmitterComponent({ texture: tex, lifetime: 1 }),
+    );
+    time.scaleEntityBy(target, 0.25);
+
+    const targetSpy = vi.spyOn(targetEmitter, "_update");
+    const otherSpy = vi.spyOn(otherEmitter, "_update");
+    system.update(0.1);
+
+    expect(targetSpy).toHaveBeenCalledWith(0.025, 0, 0);
+    expect(otherSpy).toHaveBeenCalledWith(0.1, 0, 0);
+  });
 });

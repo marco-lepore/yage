@@ -4,10 +4,10 @@ Compose the small responses that make an action readable and satisfying, then
 play them from one named trigger.
 
 The [playable example](../../../examples/feel-addon.html) groups the effects
-across two scenes. It covers impacts, trails, afterimages, highlights, punches,
-visibility, cue composition, slow motion, animation, callbacks, shockwaves,
-camera modifiers, and a custom effect. Press `N` or `P` to move between scenes
-with a slide transition.
+across two scenes. It covers impacts, trails, afterimages, highlights, springs,
+visibility, cue composition, scene and target time effects, animation,
+callbacks, shockwaves, camera modifiers, and a custom effect. Press `N` or `P`
+to move between scenes with a slide transition.
 
 ```ts
 import { Feel, feelHitStop, feelParallel } from "@yagejs-addons/feel";
@@ -80,8 +80,8 @@ or destroying `Feel` stops every active cue and restores active effects.
 
 The root entry supplies:
 
-- `feelHitStop` and `feelSlowMotion`
-- `feelAnimation` and `feelCall`
+- `feelHitStop`, `feelSlowMotion`, and `feelTargetFreeze`
+- `feelKeyframeAnimation` and `feelCall`
 
 ## Save and load
 
@@ -95,18 +95,21 @@ particle-emission requests, live particles, and transient visual entities are
 also omitted. The saved base transform, camera, and visual properties remain
 unchanged by these effects.
 
-`feelCall`, `defineFeelEffect`, and `feelAnimation` can run user-supplied code.
-If that code writes to serializable game state, YAGE saves the resulting game
-state normally. Use renderer modifier handles for custom visual motion when the
-animation must stay outside snapshots.
+`feelCall`, `defineFeelEffect`, `feelKeyframeAnimation`, and
+`feelSpriteAnimation` can run user-supplied code. If that code writes to
+serializable game state, YAGE saves the resulting game state normally. Use
+renderer modifier handles for custom visual motion when the animation must stay
+outside snapshots.
 
 ## Renderer effects
 
 Import these from `@yagejs-addons/feel/renderer`:
 
-- `feelPositionPunch`, `feelRecoil`, and `feelBounce`
-- `feelRotationPunch` and `feelRotationShake`
-- `feelScalePunch`, `feelScaleShake`, `feelSquash`, and `feelTransformShake`
+- `feelSpriteAnimation`
+- `feelPositionPunch`, `feelPositionSpring`, `feelRecoil`, and `feelBounce`
+- `feelRotationPunch`, `feelRotationSpring`, and `feelRotationShake`
+- `feelScalePunch`, `feelScaleSpring`, `feelScaleShake`, `feelSquash`, and
+  `feelTransformShake`
 - `feelCameraShake`, `feelCameraRotation`, and `feelCameraZoom`
 - `feelHitFlash` and `feelShockwave`
 - `feelOutline`, `feelGlow`, and `feelColorize`
@@ -120,6 +123,18 @@ add render-only position and rotation offsets and multiply render-only scale.
 The entity's `Transform`, rigid body, collider, and depth-sort position remain
 unchanged. Overlapping effects own separate modifiers and remove only their
 own values.
+
+```ts
+const springHit = feelParallel(
+  feelPositionSpring({ target: enemySprite, offset: { x: -12, y: 0 } }),
+  feelRotationSpring({ target: enemySprite, radians: 0.15 }),
+  feelScaleSpring({ target: enemySprite, scale: 1.25 }),
+);
+```
+
+Spring cues begin at the requested visual displacement and oscillate back to
+the live base value. `duration` sets the settling time, `oscillations` sets the
+number of rebounds, and `decay` controls how quickly the rebounds weaken.
 
 ```ts
 import { bloom } from "@yagejs/effects";

@@ -3,15 +3,16 @@ import type { Scene } from "./Scene.js";
 import { ServiceKey } from "./EngineContext.js";
 
 /**
- * Handle returned by {@link SceneTime.scaleBy} and {@link SceneTime.freezeFor}.
- * Each call owns exactly one request entry; the handle releases that entry and
- * nothing else.
+ * Handle returned by a {@link SceneTime} scale or freeze request. Each call
+ * owns exactly one request entry; the handle releases that entry and nothing
+ * else.
  */
 export interface TimeEffectHandle {
   /**
    * True while the request holds an entry — including while a newer request
    * in the same channel masks it. Turns false on `release()` or, for timed
-   * requests, when the duration expires.
+   * requests, when the duration expires. An entity-scoped request also turns
+   * false when its target's current life ends, including on pool release.
    */
   readonly active: boolean;
   /**
@@ -57,6 +58,26 @@ export interface SceneTimeScaleOptions {
 export interface SceneTimeFreezeOptions {
   /** Channel name — same semantics as {@link SceneTimeScaleOptions.key}. */
   key?: string;
+  /**
+   * Entities whose updates continue while this request freezes the scene.
+   * Physics remains frozen because the scene has one shared physics world.
+   * The exclusion covers the same consumers as
+   * {@link SceneTimeScaleOptions.excludeUpdates}.
+   */
+  excludeUpdates?: readonly Entity[];
+  /** Display-only name for debugging. Defaults to `key`. */
+  label?: string;
+}
+
+/** Options for one entity-scoped time request. */
+export interface EntityTimeScaleOptions {
+  /**
+   * Real-time duration in seconds after which the request auto-releases.
+   * Omit for a request that lasts until {@link TimeEffectHandle.release}.
+   */
+  for?: number;
+  /** Channel name with the same latest-request-wins behavior as scene requests. */
+  key?: string;
   /** Display-only name for debugging. Defaults to `key`. */
   label?: string;
 }
@@ -66,9 +87,20 @@ interface TimeRequest {
   factor: number;
   /** Real-time seconds left, or `null` for until-released requests. */
   remaining: number | null;
-  exclude: Set<Entity> | null;
+  /** Excluded entities and the life generation captured by the request. */
+  exclude: Map<Entity, number> | null;
   label: string;
   released: boolean;
+}
+
+interface EntityChannelState {
+  generation: number;
+  channels: Map<string | symbol, TimeRequest[]>;
+}
+
+interface EntityProduct {
+  generation: number;
+  value: number;
 }
 
 const INACTIVE_HANDLE: TimeEffectHandle = Object.freeze({
@@ -77,9 +109,9 @@ const INACTIVE_HANDLE: TimeEffectHandle = Object.freeze({
 });
 
 /**
- * Per-scene time-effect arbitration: hitstop, slow motion / bullet time,
+ * Scene-wide and entity-scoped time-effect arbitration: hitstop, slow motion,
  * freeze frames, and speed-ups that would corrupt each other if every caller
- * wrote `scene.timeScale` directly (the "restore to what?" bug).
+ * wrote base time-scale properties directly.
  *
  * Resolved via the scene-scoped {@link SceneTimeKey}; the engine registers one
  * instance per scene.
@@ -97,7 +129,9 @@ const INACTIVE_HANDLE: TimeEffectHandle = Object.freeze({
  * is a ×0 factor, so it dominates arithmetically. `scene.timeScale` stays the
  * game's persistent speed knob — this service reads it as an input and never
  * writes it:
- * `effectiveScale = scene.timeScale × Π(channel winners)`.
+ * `effectiveScale = scene.timeScale × Π(scene channel winners)`. Entity
+ * requests multiply into {@link SceneTime.effectiveScaleForUpdates} after the
+ * scene result and never affect physics.
  *
  * Request timers age on raw frame time, before any systems run, and only
  * while the scene is active — a stack-paused scene holds its effects (note:
@@ -108,6 +142,7 @@ const INACTIVE_HANDLE: TimeEffectHandle = Object.freeze({
 export class SceneTime {
   private readonly scene: Scene;
   private readonly channels = new Map<string | symbol, TimeRequest[]>();
+  private readonly entityChannels = new Map<Entity, EntityChannelState>();
   private elapsedSeconds = 0;
   private fixedElapsedSeconds = 0;
   /** Cached product of channel winners (excludes `scene.timeScale`). */
@@ -117,7 +152,9 @@ export class SceneTime {
    * winner (excludes `scene.timeScale`). `null` while nothing is excluded —
    * the unexcluded fast path.
    */
-  private exclusionProducts: Map<Entity, number> | null = null;
+  private exclusionProducts: Map<Entity, EntityProduct> | null = null;
+  /** Cached products of entity-scoped channel winners. */
+  private entityProducts: Map<Entity, EntityProduct> | null = null;
 
   constructor(scene: Scene) {
     this.scene = scene;
@@ -180,24 +217,44 @@ export class SceneTime {
     return this.effectiveScale === 0;
   }
 
-  /** Display labels of all active requests, in creation order per channel. */
+  /** Display labels of all active scene and entity requests. */
   get activeLabels(): readonly string[] {
     const labels: string[] = [];
     for (const entries of this.channels.values()) {
       for (const entry of entries) labels.push(entry.label);
+    }
+    for (const [entity, state] of this.entityChannels) {
+      if (entity.generation !== state.generation || entity.isDestroyed)
+        continue;
+      for (const entries of state.channels.values()) {
+        for (const entry of entries) labels.push(entry.label);
+      }
     }
     return labels;
   }
 
   /**
    * The scale `entity`'s component updates, `ProcessComponent`, and particle
-   * emitters run at: like {@link SceneTime.effectiveScale}, but a channel
-   * whose winner excludes the entity contributes 1. `entity.timeScale` is not
-   * included — the update pipeline composes it on top.
+   * emitters run at: like {@link SceneTime.effectiveScale}, but a scene channel
+   * whose winner excludes the entity contributes 1, and entity-scoped channel
+   * winners multiply on top. `entity.timeScale` is not included — the update
+   * pipeline composes it last.
    */
   effectiveScaleForUpdates(entity: Entity): number {
-    const adjusted = this.exclusionProducts?.get(entity);
-    return this.scene.timeScale * (adjusted ?? this.channelProduct);
+    const generation = entity.generation;
+    const cachedAdjustment = this.exclusionProducts?.get(entity);
+    const adjusted =
+      cachedAdjustment?.generation === generation
+        ? cachedAdjustment.value
+        : undefined;
+    const cachedEntityProduct = this.entityProducts?.get(entity);
+    const entityProduct =
+      cachedEntityProduct?.generation === generation
+        ? cachedEntityProduct.value
+        : 1;
+    return (
+      this.scene.timeScale * (adjusted ?? this.channelProduct) * entityProduct
+    );
   }
 
   /**
@@ -219,16 +276,16 @@ export class SceneTime {
       );
     }
     const exclude = options?.excludeUpdates?.length
-      ? new Set(options.excludeUpdates)
+      ? this.captureEntityGenerations(options.excludeUpdates)
       : null;
-    return this.addRequest(factor, duration, exclude, options);
+    return this.addRequest(this.channels, factor, duration, exclude, options);
   }
 
   /**
    * Freeze the scene (a ×0 factor) for `duration` real-time seconds. Returns
    * the same handle shape as `scaleBy` for an early release. Freezes are
-   * whole-scene by design — a shared physics world has no per-entity time, so
-   * freeze requests take no `excludeUpdates`.
+   * scene-wide for physics. `excludeUpdates` can keep selected entities'
+   * components, processes, and particle emitters running during the freeze.
    */
   freezeFor(
     duration: number,
@@ -239,14 +296,74 @@ export class SceneTime {
         `SceneTime.freezeFor: duration must be a finite number >= 0 in seconds, got ${duration}.`,
       );
     }
-    return this.addRequest(0, duration, null, options);
+    const exclude = options?.excludeUpdates?.length
+      ? this.captureEntityGenerations(options.excludeUpdates)
+      : null;
+    return this.addRequest(this.channels, 0, duration, exclude, options);
+  }
+
+  /**
+   * Scale one entity's component updates, `ProcessComponent`, and particle
+   * emitters without changing the scene or the entity's rigid body. The
+   * request composes with scene requests and the entity's base `timeScale`.
+   */
+  scaleEntityBy(
+    entity: Entity,
+    factor: number,
+    options?: EntityTimeScaleOptions,
+  ): TimeEffectHandle {
+    this.assertEntity(entity, "scaleEntityBy");
+    if (!Number.isFinite(factor) || factor <= 0) {
+      throw new Error(
+        `SceneTime.scaleEntityBy: factor must be finite and > 0, got ${factor}. ` +
+          `Use freezeEntityFor() to freeze an entity's updates.`,
+      );
+    }
+    const duration = options?.for ?? null;
+    this.assertDuration(duration, "SceneTime.scaleEntityBy", '"for"');
+    if (duration === 0) return INACTIVE_HANDLE;
+    const state = this.getEntityChannels(entity);
+    return this.addRequest(
+      state.channels,
+      factor,
+      duration,
+      null,
+      options,
+      () => entity.generation === state.generation && !entity.isDestroyed,
+    );
+  }
+
+  /**
+   * Freeze one entity's component updates, `ProcessComponent`, and particle
+   * emitters for a real-time duration. The entity's rigid body keeps
+   * simulating with the scene's shared physics world.
+   */
+  freezeEntityFor(
+    entity: Entity,
+    duration: number,
+    options?: Omit<EntityTimeScaleOptions, "for">,
+  ): TimeEffectHandle {
+    this.assertEntity(entity, "freezeEntityFor");
+    this.assertDuration(duration, "SceneTime.freezeEntityFor", "duration");
+    if (duration === 0) return INACTIVE_HANDLE;
+    const state = this.getEntityChannels(entity);
+    return this.addRequest(
+      state.channels,
+      0,
+      duration,
+      null,
+      options,
+      () => entity.generation === state.generation && !entity.isDestroyed,
+    );
   }
 
   private addRequest(
+    channels: Map<string | symbol, TimeRequest[]>,
     factor: number,
     duration: number | null,
-    exclude: Set<Entity> | null,
+    exclude: Map<Entity, number> | null,
     options?: { key?: string; label?: string },
+    isCurrent: () => boolean = () => true,
   ): TimeEffectHandle {
     if (duration === 0) return INACTIVE_HANDLE;
     const entry: TimeRequest = {
@@ -258,33 +375,35 @@ export class SceneTime {
     };
     const channelKey: string | symbol =
       options?.key ?? Symbol("sceneTime.anonymous");
-    let entries = this.channels.get(channelKey);
+    let entries = channels.get(channelKey);
     if (!entries) {
       entries = [];
-      this.channels.set(channelKey, entries);
+      channels.set(channelKey, entries);
     }
     entries.push(entry);
     this.recompute();
     return {
       get active(): boolean {
-        return !entry.released;
+        return !entry.released && isCurrent();
       },
-      release: () => this.removeRequest(channelKey, entry),
+      release: () => this.removeRequest(channels, channelKey, entry),
     };
   }
 
   private removeRequest(
+    channels: Map<string | symbol, TimeRequest[]>,
     channelKey: string | symbol,
     entry: TimeRequest,
   ): void {
     if (entry.released) return;
     entry.released = true;
-    const entries = this.channels.get(channelKey);
+    const entries = channels.get(channelKey);
     if (entries) {
       const idx = entries.indexOf(entry);
       if (idx !== -1) entries.splice(idx, 1);
-      if (entries.length === 0) this.channels.delete(channelKey);
+      if (entries.length === 0) channels.delete(channelKey);
     }
+    this.removeEmptyEntityChannels(channels);
     this.recompute();
   }
 
@@ -292,36 +411,22 @@ export class SceneTime {
    * Age request timers by raw frame time. Called by the engine at the start
    * of `earlyUpdate` for each active scene, so a request created later in the
    * frame is not aged until the next frame. Masked entries keep aging. Also
-   * prunes destroyed entities from exclusion sets.
+   * prunes destroyed entities and ended pooled lives from exclusions.
    * @internal
    */
   _tick(dt: number): void {
-    if (this.channels.size > 0) {
-      let dirty = false;
-      for (const [channelKey, entries] of [...this.channels]) {
-        for (const entry of [...entries]) {
-          if (entry.exclude) {
-            for (const excluded of entry.exclude) {
-              if (excluded.isDestroyed) {
-                entry.exclude.delete(excluded);
-                dirty = true;
-              }
-            }
-          }
-          if (entry.remaining !== null) {
-            entry.remaining -= dt;
-            if (entry.remaining <= 0) {
-              entry.released = true;
-              const idx = entries.indexOf(entry);
-              if (idx !== -1) entries.splice(idx, 1);
-              dirty = true;
-            }
-          }
-        }
-        if (entries.length === 0) this.channels.delete(channelKey);
+    let dirty = this.tickChannels(this.channels, dt, true);
+    for (const [entity, state] of [...this.entityChannels]) {
+      if (entity.isDestroyed || entity.generation !== state.generation) {
+        this.releaseChannels(state.channels);
+        this.entityChannels.delete(entity);
+        dirty = true;
+        continue;
       }
-      if (dirty) this.recompute();
+      if (this.tickChannels(state.channels, dt, false)) dirty = true;
+      if (state.channels.size === 0) this.entityChannels.delete(entity);
     }
+    if (dirty) this.recompute();
 
     // Physics reads the post-aging scale later this frame, so elapsed uses it too.
     this.elapsedSeconds += dt * this.effectiveScale;
@@ -342,10 +447,12 @@ export class SceneTime {
    * @internal
    */
   _releaseAll(): void {
-    for (const entries of this.channels.values()) {
-      for (const entry of entries) entry.released = true;
+    this.releaseChannels(this.channels);
+    for (const state of this.entityChannels.values()) {
+      this.releaseChannels(state.channels);
     }
     this.channels.clear();
+    this.entityChannels.clear();
     this.recompute();
   }
 
@@ -360,28 +467,135 @@ export class SceneTime {
     }
     this.channelProduct = product;
 
-    let excluded: Set<Entity> | null = null;
+    let excluded: Map<Entity, number> | null = null;
     for (const winner of winners) {
       if (!winner.exclude) continue;
-      for (const entity of winner.exclude) {
-        if (entity.isDestroyed) continue;
-        excluded ??= new Set();
-        excluded.add(entity);
+      for (const [entity, generation] of winner.exclude) {
+        if (entity.isDestroyed || entity.generation !== generation) continue;
+        excluded ??= new Map();
+        excluded.set(entity, generation);
       }
     }
     if (!excluded) {
       this.exclusionProducts = null;
-      return;
-    }
-    const products = new Map<Entity, number>();
-    for (const entity of excluded) {
-      let entityProduct = 1;
-      for (const winner of winners) {
-        if (!winner.exclude?.has(entity)) entityProduct *= winner.factor;
+    } else {
+      const products = new Map<Entity, EntityProduct>();
+      for (const [entity, generation] of excluded) {
+        let entityProduct = 1;
+        for (const winner of winners) {
+          if (winner.exclude?.get(entity) !== generation) {
+            entityProduct *= winner.factor;
+          }
+        }
+        products.set(entity, { generation, value: entityProduct });
       }
-      products.set(entity, entityProduct);
+      this.exclusionProducts = products;
     }
-    this.exclusionProducts = products;
+
+    const entityProducts = new Map<Entity, EntityProduct>();
+    for (const [entity, state] of this.entityChannels) {
+      if (entity.isDestroyed || entity.generation !== state.generation)
+        continue;
+      let entityProduct = 1;
+      for (const entries of state.channels.values()) {
+        const winner = entries[entries.length - 1];
+        if (winner) entityProduct *= winner.factor;
+      }
+      entityProducts.set(entity, {
+        generation: state.generation,
+        value: entityProduct,
+      });
+    }
+    this.entityProducts = entityProducts.size > 0 ? entityProducts : null;
+  }
+
+  private getEntityChannels(entity: Entity): EntityChannelState {
+    let state = this.entityChannels.get(entity);
+    if (state && state.generation !== entity.generation) {
+      this.releaseChannels(state.channels);
+      this.entityChannels.delete(entity);
+      state = undefined;
+    }
+    if (!state) {
+      state = { generation: entity.generation, channels: new Map() };
+      this.entityChannels.set(entity, state);
+    }
+    return state;
+  }
+
+  private assertEntity(entity: Entity, method: string): void {
+    if (entity.isDestroyed || entity.tryScene !== this.scene) {
+      throw new Error(
+        `SceneTime.${method}: entity must belong to the owning scene.`,
+      );
+    }
+  }
+
+  private removeEmptyEntityChannels(
+    channels: Map<string | symbol, TimeRequest[]>,
+  ): void {
+    if (channels.size > 0 || channels === this.channels) return;
+    for (const [entity, state] of this.entityChannels) {
+      if (state.channels === channels) {
+        this.entityChannels.delete(entity);
+        return;
+      }
+    }
+  }
+
+  private assertDuration(
+    duration: number | null,
+    method: string,
+    label: string,
+  ): void {
+    if (duration !== null && (!Number.isFinite(duration) || duration < 0)) {
+      throw new Error(
+        `${method}: ${label} must be a finite duration >= 0 in seconds, got ${duration}.`,
+      );
+    }
+  }
+
+  private tickChannels(
+    channels: Map<string | symbol, TimeRequest[]>,
+    dt: number,
+    pruneExclusions: boolean,
+  ): boolean {
+    let dirty = false;
+    for (const [channelKey, entries] of [...channels]) {
+      for (const entry of [...entries]) {
+        if (pruneExclusions && entry.exclude) {
+          for (const [excluded, generation] of entry.exclude) {
+            if (excluded.isDestroyed || excluded.generation !== generation) {
+              entry.exclude.delete(excluded);
+              dirty = true;
+            }
+          }
+        }
+        if (entry.remaining !== null) {
+          entry.remaining -= dt;
+          if (entry.remaining <= 0) {
+            entry.released = true;
+            const index = entries.indexOf(entry);
+            if (index !== -1) entries.splice(index, 1);
+            dirty = true;
+          }
+        }
+      }
+      if (entries.length === 0) channels.delete(channelKey);
+    }
+    return dirty;
+  }
+
+  private releaseChannels(channels: Map<string | symbol, TimeRequest[]>): void {
+    for (const entries of channels.values()) {
+      for (const entry of entries) entry.released = true;
+    }
+  }
+
+  private captureEntityGenerations(
+    entities: readonly Entity[],
+  ): Map<Entity, number> {
+    return new Map(entities.map((entity) => [entity, entity.generation]));
   }
 }
 

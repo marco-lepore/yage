@@ -148,6 +148,7 @@ export type { PoolableEntity, EntityPoolOptions } from "./EntityPool.js";
 export { SceneTime, SceneTimeKey } from "./SceneTime.js";
 export type {
   TimeEffectHandle,
+  EntityTimeScaleOptions,
   SceneTimeScaleOptions,
   SceneTimeFreezeOptions,
 } from "./SceneTime.js";

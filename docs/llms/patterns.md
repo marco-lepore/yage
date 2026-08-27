@@ -564,13 +564,20 @@ time.scaleBy(2, { for: 5, key: "haste" }); // speed-up, auto-releases after 5s
 // emitters keep full speed. Their physics bodies do NOT (shared world).
 time.scaleBy(0.25, { key: "slowmo", excludeUpdates: [player] });
 
+// Freeze scene physics while a presentation host keeps updating.
+time.freezeFor(0.08, { excludeUpdates: [feedbackHost] });
+
+// Target-only requests affect updates, processes, and particles, not physics.
+time.scaleEntityBy(enemy, 0.25, { for: 0.4, key: "stagger" });
+time.freezeEntityFor(enemy, 0.08, { key: "stagger" });
+
 // Composition: each `key` is a channel. Within a channel the latest active
 // request wins; older still-active ones apply again when it ends. Across
 // channels, winners multiply. Freeze is a x0 factor. scene.timeScale is
 // input-only: effectiveScale = scene.timeScale x channel winners.
 time.effectiveScale; // what physics and scene-pool processes run at
 time.isFrozen; // effectiveScale === 0
-time.effectiveScaleForUpdates(entity); // exclusion-aware, pre-entity.timeScale
+time.effectiveScaleForUpdates(entity); // exclusions + target requests, pre-entity.timeScale
 time.elapsed; // simulation seconds on the rendered frame
 time.fixedElapsed; // simulation seconds on the fixed timestep — stamp/compare from fixedUpdate
 

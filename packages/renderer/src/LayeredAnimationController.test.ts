@@ -187,11 +187,9 @@ describe("LayeredAnimationController", () => {
     expect(short.locked).toBe(true);
     expect(long.locked).toBe(true);
 
-    // Tick just past the shorter controller's "natural" lock — both layers
-    // should still be locked because they share the master timer.
+    // The lead controller owns the shared timer.
     short.update!(0.1);
     long.update!(0.1);
-    layered.update(0.1);
     expect(layered.locked).toBe(true);
     expect(short.locked).toBe(true);
     expect(long.locked).toBe(true);
@@ -199,19 +197,12 @@ describe("LayeredAnimationController", () => {
     // Tick past the shared duration — all unlock together.
     const dt = sharedDuration - 0.1 + 0.001;
     short.update!(dt);
-    long.update!(dt);
-    layered.update(dt);
     expect(layered.locked).toBe(false);
     expect(short.locked).toBe(false);
     expect(long.locked).toBe(false);
   });
 
-  it("children never auto-expire on their own ticks — only the master timer or unlock() releases them", () => {
-    // The wrapper passes Number.POSITIVE_INFINITY as the per-child lock
-    // duration so child controllers can never tick out independently. This
-    // guarantees the master timer is the single source of truth even if
-    // children and the wrapper land in different ticker groups or accumulate
-    // a one-frame float drift.
+  it("non-lead children stay locked until the lead timer completes", () => {
     const { scene } = createRendererTestContext();
     const a = makeLayer(scene, 5);
     const b = makeLayer(scene, 5);
@@ -221,16 +212,14 @@ describe("LayeredAnimationController", () => {
     );
 
     layered.playOneShot("attack", { duration: 100 });
-    // Tick the children far past what would naturally expire their own locks
-    // (5 frames * (1/60) / 0.4 ≈ 0.208 s) without touching the master.
-    a.update!(10_000);
+    // A non-lead controller has an infinite lock duration.
     b.update!(10_000);
     expect(a.locked).toBe(true);
     expect(b.locked).toBe(true);
     expect(layered.locked).toBe(true);
 
-    // Only when the wrapper's timer expires do the children release.
-    layered.update(101);
+    // The lead controller releases the whole group.
+    a.update!(101);
     expect(layered.locked).toBe(false);
     expect(a.locked).toBe(false);
     expect(b.locked).toBe(false);
@@ -246,10 +235,130 @@ describe("LayeredAnimationController", () => {
     );
 
     layered.playOneShot("attack", { duration: 50 });
-    layered.update(25);
+    a.update!(25);
     expect(layered.locked).toBe(true);
-    layered.update(26);
+    a.update!(26);
     expect(layered.locked).toBe(false);
+  });
+
+  it("rejects automatic timing when the first controller cannot produce a duration", () => {
+    for (const speed of [0, -1]) {
+      const { scene } = createRendererTestContext();
+      const first = makeLayer(scene, 5);
+      const second = makeLayer(scene, 10);
+      first.speed = speed;
+      const host = spawnEntityInScene(scene);
+      const layered = host.add(
+        new LayeredAnimationController<Anim>({
+          controllers: [first, second],
+        }),
+      );
+
+      expect(() => layered.playOneShot("attack")).toThrow(
+        /positive effective speed/,
+      );
+      expect(layered.locked).toBe(false);
+      expect(first.locked).toBe(false);
+      expect(second.locked).toBe(false);
+    }
+  });
+
+  it("allows a non-positive first-controller speed with an explicit duration", () => {
+    const { scene } = createRendererTestContext();
+    const first = makeLayer(scene, 5);
+    const second = makeLayer(scene, 10);
+    first.speed = -1;
+    const host = spawnEntityInScene(scene);
+    const layered = host.add(
+      new LayeredAnimationController<Anim>({ controllers: [first, second] }),
+    );
+
+    layered.playOneShot("attack", { duration: 1 });
+
+    expect(layered.locked).toBe(true);
+    expect(first.locked).toBe(true);
+    expect(second.locked).toBe(true);
+  });
+
+  it("retimes automatic completion when the lead speed changes", () => {
+    for (const speed of [0.5, 2]) {
+      const { scene } = createRendererTestContext();
+      const first = makeLayer(scene, 5);
+      const second = makeLayer(scene, 5);
+      const host = spawnEntityInScene(scene);
+      const layered = host.add(
+        new LayeredAnimationController<Anim>({
+          controllers: [first, second],
+        }),
+      );
+      const initialDuration = first.calcDuration("attack");
+
+      layered.playOneShot("attack");
+      first.update!(initialDuration * 0.4);
+      first.speed = speed;
+      const updatedDuration = first.calcDuration("attack");
+
+      expect(second.speed).toBe(speed);
+      first.update!(updatedDuration * 0.59);
+      expect(layered.locked).toBe(true);
+      first.update!(updatedDuration * 0.02);
+      expect(layered.locked).toBe(false);
+      expect(second.locked).toBe(false);
+    }
+  });
+
+  it("writes layered speed to every controller", () => {
+    const { scene } = createRendererTestContext();
+    const first = makeLayer(scene, 5);
+    const second = makeLayer(scene, 10);
+    const host = spawnEntityInScene(scene);
+    const layered = host.add(
+      new LayeredAnimationController<Anim>({ controllers: [first, second] }),
+    );
+
+    layered.speed = 1.5;
+
+    expect(layered.speed).toBe(1.5);
+    expect(first.speed).toBe(1.5);
+    expect(second.speed).toBe(1.5);
+
+    second.speed = 0.75;
+    expect(layered.speed).toBe(0.75);
+    expect(first.speed).toBe(0.75);
+    expect(second.speed).toBe(0.75);
+  });
+
+  it("rejects an invalid speed change from any layer without changing the group", () => {
+    const { scene } = createRendererTestContext();
+    const first = makeLayer(scene, 5);
+    const second = makeLayer(scene, 10);
+    const host = spawnEntityInScene(scene);
+    const layered = host.add(
+      new LayeredAnimationController<Anim>({ controllers: [first, second] }),
+    );
+    layered.playOneShot("attack");
+
+    expect(() => (second.speed = 0)).toThrow(/positive effective speed/);
+    expect(layered.speed).toBe(1);
+    expect(first.speed).toBe(1);
+    expect(second.speed).toBe(1);
+    expect(layered.locked).toBe(true);
+  });
+
+  it("releases shared speed ownership when removed", () => {
+    const { scene } = createRendererTestContext();
+    const first = makeLayer(scene, 5);
+    const second = makeLayer(scene, 10);
+    const host = spawnEntityInScene(scene);
+    host.add(
+      new LayeredAnimationController<Anim>({ controllers: [first, second] }),
+    );
+
+    host.remove(LayeredAnimationController);
+    second.speed = 2;
+
+    expect(first.speed).toBe(1);
+    expect(second.speed).toBe(2);
   });
 
   it("onComplete fires exactly once when the master lock expires", () => {
@@ -263,9 +372,9 @@ describe("LayeredAnimationController", () => {
     const cb = vi.fn();
 
     layered.playOneShot("attack", { duration: 100, onComplete: cb });
-    layered.update(50);
+    a.update!(50);
     expect(cb).not.toHaveBeenCalled();
-    layered.update(51);
+    a.update!(51);
     expect(cb).toHaveBeenCalledOnce();
   });
 
@@ -281,9 +390,9 @@ describe("LayeredAnimationController", () => {
     const cb2 = vi.fn();
 
     layered.playOneShot("attack", { duration: 200, onComplete: cb1 });
-    layered.update(50);
+    a.update!(50);
     layered.playOneShot("attack", { duration: 200, onComplete: cb2 });
-    layered.update(151);
+    a.update!(151);
     expect(cb1).toHaveBeenCalledOnce();
     expect(cb2).not.toHaveBeenCalled();
   });

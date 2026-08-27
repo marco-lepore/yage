@@ -122,7 +122,15 @@ Switch animations at runtime:
 const anim = entity.get(AnimationController);
 anim.play("run");
 anim.playOneShot("jump", { onComplete: () => anim.play("idle") });
+anim.speed = 0.5; // updates the animation already playing
 ```
+
+Changing `AnimationController.speed` updates the current sprite immediately.
+An automatically timed one-shot keeps the same playback progress and adjusts
+its remaining lock time. Its speed must stay positive because the controller
+derives the lock duration from that speed. A one-shot with an explicit
+`duration` keeps that duration and can use `0` to pause or a negative value to
+play in reverse.
 
 `AnimatedSpriteComponent` also takes the same `visible` / `tint` / `alpha` /
 `blendMode` / `interactive` options as `SpriteComponent` above.
@@ -189,6 +197,11 @@ class HeroController extends Component {
 Annotate the field once; the cast is required because the type parameter is
 type-only and `sibling()` can only narrow by the runtime class.
 
+When `playOneShot()` calculates its own lock duration, the product of the
+animation definition's `speed` and `controller.speed` must be positive, and
+the calculation must produce a finite duration. Pass an explicit `duration`
+when you intentionally pause or reverse the animation.
+
 ### Layered characters (head + body + outfit)
 
 When a character is built from multiple sprite layers — head + body +
@@ -202,8 +215,8 @@ mid-swing. The visual giveaway is a single layer flickering at the
 tail of every attack animation.
 
 The recommended fix is `LayeredAnimationController`, which wraps the
-per-layer controllers, computes the duration once on a lead controller,
-and cascades lock release via a single master timer:
+per-layer controllers and uses the first controller's lock timer to release
+the whole group:
 
 ```typescript
 import {
@@ -229,24 +242,31 @@ class Hero extends Entity {
   }
 }
 
-// Call once, both layers stay in sync:
-hero.get(LayeredAnimationController).playOneShot("attack", {
-  onComplete: () => hero.get(LayeredAnimationController).play("idle"),
+const layered = hero.get(LayeredAnimationController);
+layered.speed = 1.5; // applies to every layer
+layered.playOneShot("attack", {
+  onComplete: () => layered.play("idle"),
 });
 ```
 
-The wrapper computes a single lock duration (from the first controller, or an
-explicit `duration` option), passes `Number.POSITIVE_INFINITY` to each child
-so child timers can never expire independently, and fires `onComplete`
-exactly once when the master timer expires. All layers unlock together
-regardless of per-layer frame counts.
+Automatic timing uses the first controller in `controllers`, so that
+controller must meet the same positive-speed and finite-duration rule. Pass an
+explicit `duration` to the layered call when the lead animation is paused or
+reversed.
+
+The first controller owns the shared timer. Its automatic lock follows runtime
+speed changes at the current playback progress. The wrapper passes
+`Number.POSITIVE_INFINITY` to every other controller and releases them when the
+first controller completes. Set `layered.speed` to apply the same runtime
+multiplier to every layer. While the wrapper is attached, setting `speed` on
+any participating controller also updates the group. All layers unlock
+together, and `onComplete` runs once.
 
 #### Manual workaround (when you don't want a wrapper)
 
 For prototypes — or when each layer already has its own custom controller
-managing more than just animation — the same insight can live as a one-line
-helper. Precompute the duration on a "lead" controller and broadcast via
-`options.duration`:
+managing more than just animation — a helper can use one controller's
+automatic timer and keep the other controllers locked until it completes:
 
 ```typescript
 import { AnimationController } from "@yagejs/renderer";
@@ -256,10 +276,15 @@ function playOneShotLayered(
   name: string,
   onComplete?: () => void,
 ) {
-  const duration = controllers[0]!.calcDuration(name);
-  controllers[0]!.playOneShot(name, { duration, onComplete });
+  const leader = controllers[0]!;
+  leader.playOneShot(name, {
+    onComplete: () => {
+      for (let i = 1; i < controllers.length; i++) controllers[i]!.unlock();
+      onComplete?.();
+    },
+  });
   for (let i = 1; i < controllers.length; i++) {
-    controllers[i]!.playOneShot(name, { duration });
+    controllers[i]!.playOneShot(name, { duration: Number.POSITIVE_INFINITY });
   }
 }
 
@@ -268,10 +293,8 @@ playOneShotLayered([bodyAnim, headAnim, outfitAnim], "attack", () => {
 });
 ```
 
-`AnimationController.calcDuration(name)` is the same calculation
-`playOneShot` does internally — calling it once and broadcasting the result
-is the cheapest way to keep layered characters in lockstep without bringing
-in `LayeredAnimationController`.
+`AnimationController.calcDuration(name)` exposes the same validated calculation
+that automatic one-shots use.
 
 ## Asset Factories
 

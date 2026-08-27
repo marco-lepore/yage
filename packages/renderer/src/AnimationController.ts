@@ -3,6 +3,7 @@ import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 import type { Texture } from "pixi.js";
 import { resolveFrames } from "./spritesheet.js";
 import type { FrameSource } from "./spritesheet.js";
+import { routeAnimationSpeedChange } from "./internal/animationSpeedGroup.js";
 
 /** Definition for a single named animation. */
 export interface AnimationDef {
@@ -80,6 +81,7 @@ export class AnimationController<
   private _locked = false;
   private _lockTimer = 0;
   private _lockDuration = 0;
+  private _lockUsesAnimationDuration = false;
   private _onComplete: (() => void) | undefined;
   private _speed = 1;
 
@@ -116,13 +118,37 @@ export class AnimationController<
     return this._sprite.animatedSprite.currentFrame;
   }
 
-  /** Runtime speed multiplier (default 1). */
+  /**
+   * Runtime speed multiplier (default 1). A controller owned by a
+   * {@link LayeredAnimationController} shares this value with every layer.
+   */
   get speed(): number {
     return this._speed;
   }
 
   set speed(value: number) {
+    if (routeAnimationSpeedChange(this, value)) return;
+    if (!Number.isFinite(value)) {
+      throw new Error(
+        `AnimationController.speed must be finite, got ${value}.`,
+      );
+    }
+    const nextLockDuration =
+      this._locked && this._lockUsesAnimationDuration && this._current
+        ? this.calcDurationAtSpeed(this._current, value)
+        : null;
+    const lockProgress =
+      this._locked && this._lockUsesAnimationDuration && this._lockDuration > 0
+        ? Math.min(this._lockTimer / this._lockDuration, 1)
+        : 0;
     this._speed = value;
+    if (!this._current) return;
+    this._sprite.animatedSprite.animationSpeed =
+      this._anims[this._current].speed * value;
+    if (nextLockDuration !== null) {
+      this._lockDuration = nextLockDuration;
+      this._lockTimer = this._lockDuration * lockProgress;
+    }
   }
 
   /** Play a named animation. No-op if already current or locked. */
@@ -143,11 +169,13 @@ export class AnimationController<
     options?: { duration?: number; onComplete?: () => void },
   ): void {
     if (this._locked && this._current === name) return;
+    const duration = options?.duration ?? this.calcDuration(name);
     this._apply(name);
     this._sprite.animatedSprite.loop = false;
     this._locked = true;
     this._lockTimer = 0;
-    this._lockDuration = options?.duration ?? this.calcDuration(name);
+    this._lockDuration = duration;
+    this._lockUsesAnimationDuration = options?.duration === undefined;
     this._onComplete = options?.onComplete;
   }
 
@@ -162,6 +190,7 @@ export class AnimationController<
     this._locked = false;
     this._lockTimer = 0;
     this._lockDuration = 0;
+    this._lockUsesAnimationDuration = false;
     this._onComplete = undefined;
   }
 
@@ -171,10 +200,29 @@ export class AnimationController<
    * Frame-rate independent: PixiJS normalises `deltaTime` via
    * `Ticker.targetFPMS` (0.06), so the formula holds at any actual fps. The
    * controller timer and animated sprite both receive engine-scaled time.
+   * Throws unless the effective speed is positive and produces a finite
+   * duration. Use an explicit one-shot duration for paused or reverse playback.
    */
   calcDuration(name: T): number {
+    return this.calcDurationAtSpeed(name, this._speed);
+  }
+
+  private calcDurationAtSpeed(name: T, controllerSpeed: number): number {
     const def = this._anims[name];
-    return (def.frames.length * (1 / 60)) / (def.speed * this._speed);
+    const effectiveSpeed = def.speed * controllerSpeed;
+    const duration = (def.frames.length * (1 / 60)) / effectiveSpeed;
+    if (
+      !Number.isFinite(effectiveSpeed) ||
+      effectiveSpeed <= 0 ||
+      !Number.isFinite(duration) ||
+      duration <= 0
+    ) {
+      throw new Error(
+        "An automatically timed one-shot requires a positive effective speed that produces a finite duration. " +
+          "Pass an explicit duration to playOneShot() to pause or reverse it.",
+      );
+    }
+    return duration;
   }
 
   /** Check whether the current frame is within [start, end] inclusive. */
