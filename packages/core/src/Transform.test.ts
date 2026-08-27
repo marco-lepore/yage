@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Entity, _resetEntityIdCounter } from "./Entity.js";
 import { Transform } from "./Transform.js";
 import { Vec2 } from "./Vec2.js";
@@ -365,6 +365,83 @@ describe("Transform dirty-flag propagation", () => {
     child.get(Transform).worldPosition = new Vec2(0, 10);
     expect(child.get(Transform).position.x).toBeCloseTo(5, 5);
     expect(child.get(Transform).position.y).toBeCloseTo(0, 5);
+  });
+
+  describe("worldPosition setter with a zero parent scale axis", () => {
+    let warn: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warn.mockRestore();
+    });
+
+    function parented() {
+      const parent = new Entity("parent");
+      parent.add(
+        new Transform({ position: { x: 100, y: 50 }, scale: { x: 0, y: 1 } }),
+      );
+      const child = new Entity("child");
+      child.add(new Transform({ position: { x: 20, y: 10 } }));
+      parent.addChild("arm", child);
+      return { parent, child: child.get(Transform) };
+    }
+
+    it("keeps the local value on the flattened axis and applies the other", () => {
+      const { child } = parented();
+      child.worldPosition = new Vec2(140, 60);
+      expect(child.position.x).toBe(20);
+      expect(child.position.y).toBe(10);
+      expect(child.worldPosition.x).toBe(100);
+      expect(child.worldPosition.y).toBe(60);
+      expect(warn).toHaveBeenCalledOnce();
+    });
+
+    it("warns once per transform, not on every assignment", () => {
+      const { child } = parented();
+      child.worldPosition = new Vec2(140, 60);
+      child.worldPosition = new Vec2(150, 70);
+      child.worldPosition = new Vec2(160, 80);
+      expect(warn).toHaveBeenCalledOnce();
+    });
+
+    it("does not produce NaN when the target is the parent's origin", () => {
+      const { child } = parented();
+      child.worldPosition = new Vec2(100, 60);
+      expect(child.position.x).toBe(20);
+      expect(child.position.y).toBe(10);
+      expect(Number.isFinite(child.worldPosition.x)).toBe(true);
+      expect(child.worldPosition.x).toBe(100);
+      expect(child.worldPosition.y).toBe(60);
+    });
+
+    it("leaves the child at a finite, correct pose after the parent scale is restored", () => {
+      const { parent, child } = parented();
+      child.worldPosition = new Vec2(140, 60);
+      parent.get(Transform).setScale(1, 1);
+      expect(child.position.x).toBe(20);
+      expect(child.worldPosition.x).toBe(120);
+      expect(child.worldPosition.y).toBe(60);
+    });
+
+    it("both axes zero: assignment is a no-op on local position", () => {
+      const parent = new Entity("parent");
+      parent.add(
+        new Transform({ position: { x: 100, y: 50 }, scale: { x: 0, y: 0 } }),
+      );
+      const child = new Entity("child");
+      child.add(new Transform({ position: { x: 20, y: 10 } }));
+      parent.addChild("arm", child);
+      const ct = child.get(Transform);
+
+      ct.worldPosition = new Vec2(140, 60);
+      expect(ct.position.x).toBe(20);
+      expect(ct.position.y).toBe(10);
+      expect(ct.worldPosition.x).toBe(100);
+      expect(ct.worldPosition.y).toBe(50);
+    });
   });
 
   it("transform without entity: world equals local", () => {
