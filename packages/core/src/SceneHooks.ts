@@ -1,6 +1,5 @@
 import type { Scene } from "./Scene.js";
-import { ServiceKey, LoggerKey } from "./EngineContext.js";
-import type { Logger } from "./Logger.js";
+import { ServiceKey } from "./EngineContext.js";
 import type { ErrorBoundary } from "./ErrorBoundary.js";
 
 /**
@@ -69,26 +68,20 @@ export class SceneHookRegistry {
     }
   }
 
+  /**
+   * Run all `afterExit` hooks. A throwing hook is reported through the error
+   * boundary — recorded in `Inspector.getErrors().callbackErrors` and logged —
+   * and not rethrown, so one failing plugin doesn't block teardown of the rest.
+   */
   runAfterExit(scene: Scene): void {
     for (const h of this.hooks) {
       try {
         h.afterExit?.(scene);
       } catch (err) {
-        // Swallow so one failing plugin doesn't block teardown of the rest.
-        const logger = scene.context.tryResolve(LoggerKey) as
-          | Logger
-          | undefined;
-        if (logger) {
-          logger.error("core", "Scene afterExit hook threw", {
-            scene: scene.name,
-            error: err,
-          });
-        } else {
-          console.error(
-            `[yage] Scene afterExit hook threw for scene "${scene.name}":`,
-            err,
-          );
-        }
+        this.errorBoundary?.reportLifecycleError(err, {
+          kind: "Scene afterExit hook",
+          scene: scene.name,
+        });
       }
     }
   }

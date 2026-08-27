@@ -58,6 +58,25 @@ describe("ErrorBoundary", () => {
       ).toThrow();
       expect(boundary.getCallbackErrors()[0]?.error).toBe("string error");
     });
+
+    it("catches a rejected thenable from an async update, re-raising it as a new unhandled rejection", async () => {
+      const { boundary } = createBoundary();
+      const sys = new TestSystem();
+      const rejection = new Promise<unknown>((resolve) => {
+        process.once("unhandledRejection", resolve);
+      });
+      // Cast mirrors the real mistake: `update` is typed void-returning, but
+      // an `async update()` compiles against it without a diagnostic.
+      boundary.wrapSystem(sys, (async () => {
+        throw new Error("async system boom");
+      }) as unknown as () => void);
+      const reason = await rejection;
+      expect((reason as Error).message).toBe("async system boom");
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "System TestSystem",
+        error: "async system boom",
+      });
+    });
   });
 
   describe("wrapComponent", () => {
@@ -114,6 +133,25 @@ describe("ErrorBoundary", () => {
         }),
       ).toThrow();
       expect(boundary.getCallbackErrors()[0]?.error).toBe("string component error");
+    });
+
+    it("catches a rejected thenable from an async update, re-raising it as a new unhandled rejection", async () => {
+      const { boundary } = createBoundary();
+      const comp = new TestComponent();
+      comp.entity = { name: "player" } as never;
+      const rejection = new Promise<unknown>((resolve) => {
+        process.once("unhandledRejection", resolve);
+      });
+      boundary.wrapComponent(comp, (async () => {
+        throw new Error("async component boom");
+      }) as unknown as () => void);
+      const reason = await rejection;
+      expect((reason as Error).message).toBe("async component boom");
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Component TestComponent",
+        entity: "player",
+        error: "async component boom",
+      });
     });
   });
 

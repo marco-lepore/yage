@@ -47,24 +47,42 @@ export class ErrorBoundary {
     this.logger = logger;
   }
 
-  /** Wrap a system update call. Attributes a throw to the system, logs it, and rethrows. */
+  /**
+   * Wrap a system update call. Attributes a throw to the system, logs it, and
+   * rethrows. `update`/`fixedUpdate` are typed void-returning but an `async`
+   * one compiles against that signature, so a rejected thenable is reported
+   * the same way — rethrown from inside its `.then` rejection handler, which
+   * appears as a new unhandled rejection since the original call stack has
+   * already returned.
+   */
   wrapSystem(system: System, fn: () => void): void {
     try {
-      fn();
+      const result = fn() as unknown;
+      if (isThenable(result)) {
+        result.then(undefined, (err: unknown) =>
+          this._raise(err, { kind: `System ${system.constructor.name}` }),
+        );
+      }
     } catch (err) {
       this._raise(err, { kind: `System ${system.constructor.name}` });
     }
   }
 
-  /** Wrap a component lifecycle or update call. Attributes a throw to the component, logs it, and rethrows. */
+  /**
+   * Wrap a component lifecycle or update call. Attributes a throw to the
+   * component, logs it, and rethrows. An `async` update or hook is reported
+   * the same way as in {@link wrapSystem}.
+   */
   wrapComponent(component: Component, fn: () => void): void {
     try {
-      fn();
+      const result = fn() as unknown;
+      if (isThenable(result)) {
+        result.then(undefined, (err: unknown) =>
+          this._raise(err, this._componentInfo(component)),
+        );
+      }
     } catch (err) {
-      this._raise(err, {
-        kind: `Component ${component.constructor.name}`,
-        entity: component.entity?.name ?? "unknown",
-      });
+      this._raise(err, this._componentInfo(component));
     }
   }
 
@@ -116,6 +134,14 @@ export class ErrorBoundary {
    */
   reportLifecycleError(err: unknown, info: CallbackErrorInfo): void {
     this._report(err, info);
+  }
+
+  /** Identity of a component for a report. Built on the failure path only. */
+  private _componentInfo(component: Component): CallbackErrorInfo {
+    return {
+      kind: `Component ${component.constructor.name}`,
+      entity: component.entity?.name ?? "unknown",
+    };
   }
 
   /** Record, log, and rethrow — the shared path for wrapSystem/wrapComponent/wrapCallback. */
