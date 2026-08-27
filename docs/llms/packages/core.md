@@ -801,7 +801,10 @@ and rethrows.
 - `wrapSystem(system, fn)` / `wrapComponent(component, fn)` — used internally
   by `SystemScheduler` and `ComponentUpdateSystem`. On throw, records the
   system/component's identity (and owning entity for a component), logs it
-  through `Logger`, and rethrows.
+  through `Logger`, and rethrows. `update`/`fixedUpdate` are typed
+  void-returning but an `async` one compiles against that signature, so a
+  rejected thenable is reported the same way — re-raised as a new unhandled
+  rejection, since the original call stack has already returned.
 - `wrapCallback(fn, info)` wraps a developer-supplied callback the engine
   invokes on its own — collision/trigger handlers, entity/scene event
   handlers, the global `EventBus`, input listeners (key/action/gamepad/
@@ -830,6 +833,13 @@ and rethrows.
   error that escapes an entire frame unhandled stops the loop and rethrows,
   so it reaches the host. A caller's own `try`/`catch` around a dispatching
   call (`entity.emit(...)`, `bus.emit(...)`, ...) leaves the loop running.
+- A throw inside an engine-owned sequence — scene teardown, an entity destroy
+  cascade, a pool disposal, an event fan-out — stops the remaining steps, and
+  whatever they would have released stays allocated. The engine reports the
+  failure; it does not finish the operation or undo the part that ran. Two
+  places run every step anyway: `Engine.destroy()` (the host is quitting) and
+  the plugin `afterExit` hooks, where one plugin's failure is reported and the
+  other plugins still tear their scene state down.
 - Writing a new dispatch site that calls developer-supplied code should route
   it through `wrapCallback`/`wrapLifecycleHook` rather than calling the
   callback directly — see the "Attribute developer-supplied callbacks" rule

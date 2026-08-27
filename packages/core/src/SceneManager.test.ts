@@ -1277,6 +1277,79 @@ describe("SceneManager", () => {
       });
     });
 
+    it("a throwing afterExit hook is reported and the remaining hooks still run", async () => {
+      const ctx = new EngineContext();
+      ctx.register(QueryCacheKey, new QueryCache());
+      ctx.register(EventBusKey, new EventBus<EngineEvents>());
+      const logger = new Logger({ level: LogLevel.Debug });
+      const boundary = new ErrorBoundary(logger);
+      ctx.register(ErrorBoundaryKey, boundary);
+      const hooks = new SceneHookRegistry();
+      hooks._setErrorBoundary(boundary);
+      ctx.register(SceneHookRegistryKey, hooks);
+      const later = vi.fn();
+      hooks.register({
+        afterExit: () => {
+          throw new Error("plugin teardown failed");
+        },
+      });
+      hooks.register({ afterExit: later });
+      const manager = new SceneManager();
+      ctx.register(SceneManagerKey, manager);
+      manager._setContext(ctx);
+      await manager.push(new GameScene("leaving"));
+
+      const popped = await manager.pop();
+
+      expect(popped?.name).toBe("leaving");
+      expect(later).toHaveBeenCalledOnce();
+      const errors = boundary.getCallbackErrors();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({
+        kind: "Scene afterExit hook",
+        scene: "leaving",
+        error: "plugin teardown failed",
+      });
+    });
+
+    it("a rejecting async afterExit hook is reported and the remaining hooks still run", async () => {
+      const ctx = new EngineContext();
+      ctx.register(QueryCacheKey, new QueryCache());
+      ctx.register(EventBusKey, new EventBus<EngineEvents>());
+      const logger = new Logger({ level: LogLevel.Debug });
+      const boundary = new ErrorBoundary(logger);
+      ctx.register(ErrorBoundaryKey, boundary);
+      const hooks = new SceneHookRegistry();
+      hooks._setErrorBoundary(boundary);
+      ctx.register(SceneHookRegistryKey, hooks);
+      const later = vi.fn();
+      hooks.register({
+        // Typed void-returning; an async hook still assigns to it.
+        afterExit: async () => {
+          throw new Error("async plugin teardown failed");
+        },
+      });
+      hooks.register({ afterExit: later });
+      const manager = new SceneManager();
+      ctx.register(SceneManagerKey, manager);
+      manager._setContext(ctx);
+      await manager.push(new GameScene("leaving"));
+
+      const popped = await manager.pop();
+      expect(popped?.name).toBe("leaving");
+      expect(later).toHaveBeenCalledOnce();
+      // The rejection settles after pop() returns; flush microtasks.
+      await Promise.resolve();
+
+      const errors = boundary.getCallbackErrors();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({
+        kind: "Scene afterExit hook",
+        scene: "leaving",
+        error: "async plugin teardown failed",
+      });
+    });
+
     it("a throwing onPause is reported when blur auto-pauses the active scene", async () => {
       const { manager, boundary } = setupWithBoundary();
       class BrokenPause extends GameScene {

@@ -74,6 +74,32 @@ Enforced by tooling — match these conventions exactly:
   rethrows so it reaches the host. A new dispatch site still needs the wrap —
   it's what attributes the throw to the actual callback instead of whatever
   caller happened to be on the stack when it escaped.
+- **A throwing hook is terminal: report it, don't repair around it** — when
+  developer-supplied code throws inside an engine-owned sequence (scene
+  teardown, an entity destroy cascade, a pool disposal, an event fan-out), the
+  later steps do not run and the resources they would have released stay
+  allocated. That is the model, not a defect to fix. A session with a throwing
+  hook is over, so the engine's whole duty is to attribute the failure, record
+  it on `Inspector.getErrors().callbackErrors`, and let it propagate — the
+  developer can then fix it, and a shipped game can show or collect a bug
+  report. Do not add a collector that runs every remaining step and rethrows
+  the first error, and do not wrap a teardown step in `try`/`finally` to push
+  it through. Two shipped places finish the sequence anyway, and neither is a
+  pattern to copy: `Engine.destroy()` runs every stage and rethrows the first
+  error because the host is quitting, and the plugin `afterExit` hooks continue
+  past a failing plugin by documented contract, reporting without rethrowing. Two
+  kinds of fix are always in scope. **Attribution**: wrap a raw dispatch site
+  so the throw names the callback that threw. **Reporting channel**: a catch
+  that swallows or writes to `console.error` reports through the boundary
+  instead. Use `wrapCallback` where the throw should keep propagating, and
+  `reportLifecycleError` where a documented contract says the operation
+  continues (`SceneHookRegistry.runAfterExit`, for instance).
+- **Turn predictable failures into authored errors at the entry** — where a
+  failure is knowable when the operation is called (an unknown sound alias, a
+  missing asset key, an out-of-range argument), validate at the entry and throw
+  an authored error naming the offending input before anything mutates, instead
+  of letting the call fail halfway with a message from a dependency's
+  internals. This is edge validation, not mid-operation recovery.
 
 ## Testing
 
