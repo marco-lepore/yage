@@ -311,6 +311,8 @@ gives you and express `smoothTime` in seconds. `maxSpeed` is in units per second
 
 `Transform.worldScale` composes through the parent chain (`parent.worldScale * local.scale`), the same way `worldPosition` and `worldRotation` do. `DisplaySystem` reads `worldScale` each Render phase, so flipping a parent flips every descendant sprite automatically — useful for multi-layer characters (head + body + outfit) where every layer must flip together.
 
+Gotcha: while a parent's world scale is 0 on an axis (common mid scale-tween), assigning `worldPosition` cannot move the child along that axis. The setter keeps the child's local value on that axis unchanged and emits a dev-mode warning. The child stays at the parent's origin on that axis until the scale is non-zero again.
+
 ```ts
 import { Entity, Transform } from "@yagejs/core";
 import { SpriteComponent } from "@yagejs/renderer";

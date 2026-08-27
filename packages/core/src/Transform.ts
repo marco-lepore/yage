@@ -1,4 +1,5 @@
 import { Component } from "./Component.js";
+import { devWarn } from "./internal/dev.js";
 import { serializable } from "./Serializable.js";
 import { Vec2 } from "./Vec2.js";
 import type { Vec2Like } from "./Vec2.js";
@@ -86,7 +87,12 @@ export class Transform extends Component {
     return this._worldPosition;
   }
 
-  /** Set position in world space. Back-computes the local position from the parent chain. */
+  /**
+   * Set position in world space. Back-computes the local position from the
+   * parent chain. On an axis where the parent's world scale is 0 no local
+   * value can reach the requested world value, so the local value on that
+   * axis is kept unchanged (and a dev-mode warning is emitted).
+   */
   set worldPosition(v: Vec2) {
     const pt = this.entity?.parent?.tryGet(Transform);
     if (!pt) {
@@ -94,7 +100,20 @@ export class Transform extends Component {
     } else {
       const delta = v.sub(pt.worldPosition).rotate(-pt.worldRotation);
       const ps = pt.worldScale;
-      this._position = new Vec2(delta.x / ps.x, delta.y / ps.y);
+      if (ps.x === 0 || ps.y === 0) {
+        const axes = [ps.x === 0 ? "x" : "", ps.y === 0 ? "y" : ""]
+          .filter(Boolean)
+          .join(", ");
+        devWarn(
+          `worldPosition on "${this.entity?.name ?? "?"}": the parent's world scale ` +
+            `is 0 on ${axes} — the assignment cannot be honoured on that axis, so ` +
+            `the local value there is kept unchanged.`,
+        );
+      }
+      this._position = new Vec2(
+        ps.x === 0 ? this._position.x : delta.x / ps.x,
+        ps.y === 0 ? this._position.y : delta.y / ps.y,
+      );
     }
     this._markDirty();
   }
