@@ -110,6 +110,26 @@ describe("ProcessComponent", () => {
     expect(update).toHaveBeenCalledWith(16, 16);
   });
 
+  it("cancel() catches work a slot cleanup schedules", () => {
+    const pc = makeComponent();
+    const onComplete = vi.fn();
+    // A slot cleanup runs during cancel() and can schedule again. If the
+    // one-off sets were drained before slots were cancelled, this would
+    // survive the cancel and fire on the next tick.
+    const slot = pc.slot({
+      duration: 100,
+      cleanup: () => {
+        pc.run(Process.delay(1, onComplete));
+      },
+    });
+    slot.start();
+
+    pc.cancel();
+    pc._tick(2);
+
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
   it("slot() count includes active slots", () => {
     const pc = makeComponent();
     const slot = pc.slot({ duration: 100 });

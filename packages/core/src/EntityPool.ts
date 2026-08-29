@@ -475,19 +475,21 @@ export class EntityPool<
    * which hands its victim straight back instead of filing it.
    */
   private finishRelease(member: T): void {
-    // A pool member's own lifetime is not its parent's — a lease that picked
-    // up a parent mid-flight (a caller attached it somewhere) must not carry
-    // that parent into the next lease. Detached after `onRelease` has run,
-    // so the hook can still read `entity.parent`.
-    member._detachFromParent();
     member.setActive(false);
-    // Release cancels scheduled actions, keeps inert state: position,
+    // Both of these run after every release hook — `onRelease` above and the
+    // `onDisable` that `setActive` just fired. Either can attach a parent or
+    // schedule work, and either would otherwise cross into the next lease.
+    // Running them last also lets both hooks still read `entity.parent`.
+    //
+    // A pool member's own lifetime is not its parent's: a lease that picked
+    // up a parent mid-flight (a caller attached it somewhere) must not carry
+    // that parent into the next lease.
+    member._detachFromParent();
+    // Release cancels scheduled actions and keeps inert state: position,
     // health, animation frame and timeScale are data the next `onAcquire`
     // overwrites, but a pending `Process.delay` is an action that fires
     // unprompted on the pool's own clock — left alone, it would retire a
-    // fresh lease mid-flight. Cancelled last because `onRelease` and the
-    // `onDisable` that `setActive` just fired can both schedule, and either
-    // would otherwise tick against the next lease.
+    // fresh lease mid-flight.
     member.tryGet(ProcessComponent)?.cancel();
   }
 

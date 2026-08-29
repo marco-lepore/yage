@@ -85,6 +85,23 @@ class SchedulesOnDisable extends Component {
   }
 }
 
+/** Re-parents its entity from `onDisable`, which release fires during stow. */
+class ReparentsOnDisable extends Component {
+  target?: Entity;
+  override onDisable(): void {
+    if (this.target) this.target.addChild("grabbed", this.entity);
+  }
+}
+
+/** A member whose `onDisable` attaches it somewhere else. */
+class Grabbable extends Entity {
+  hook!: ReparentsOnDisable;
+  override setup(): void {
+    this.hook = this.add(new ReparentsOnDisable());
+  }
+  onAcquire(): void {}
+}
+
 /** A member carrying a component that schedules from `onDisable`. */
 class DisableScheduler extends Entity {
   pc!: ProcessComponent;
@@ -309,6 +326,23 @@ describe("EntityPool", () => {
       expect(reacquired).toBe(member);
       member.pc._tick(2);
       expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it("detaches a parent an onDisable hook attaches during release", () => {
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Grabbable, { prewarm: 1 });
+      const member = pool.acquire();
+      const grabber = scene.spawn("grabber");
+      member.hook.target = grabber;
+
+      // onDisable fires inside release and re-parents the member. Detaching
+      // before the hooks would leave that parent attached for the next lease.
+      pool.release(member);
+
+      expect(member.parent).toBeNull();
+      const reacquired = pool.acquire();
+      const other = scene.spawn("other");
+      expect(() => other.addChild("m", reacquired)).not.toThrow();
     });
 
     it("cancels work an onDisable hook schedules during release", () => {

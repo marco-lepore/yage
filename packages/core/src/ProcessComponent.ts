@@ -88,21 +88,25 @@ export class ProcessComponent extends Component {
 
   /** Cancel all processes and slots on both clocks, or only those matching a tag. */
   cancel(tag?: string): void {
-    // Cancel one-off processes
+    // Slots first: cancelling one runs its `cleanup`, which is game code and
+    // can schedule again. Draining the one-off sets afterwards catches
+    // anything a cleanup queued; a slot it queued is picked up by the live
+    // iteration below. The reverse order would let a cleanup's work outlive
+    // the cancel. `Process.cancel` only settles a promise, so the one-off
+    // pass runs no game code and needs nothing after it.
+    for (const pool of [this.slots, this.fixedSlots]) {
+      for (const s of pool) {
+        if (tag === undefined || s.tags.includes(tag)) {
+          s.cancel();
+        }
+      }
+    }
+
     for (const pool of [this.processes, this.fixedProcesses]) {
       for (const p of pool) {
         if (tag === undefined || p.tags.includes(tag)) {
           p.cancel();
           pool.delete(p);
-        }
-      }
-    }
-
-    // Cancel slots
-    for (const pool of [this.slots, this.fixedSlots]) {
-      for (const s of pool) {
-        if (tag === undefined || s.tags.includes(tag)) {
-          s.cancel();
         }
       }
     }
