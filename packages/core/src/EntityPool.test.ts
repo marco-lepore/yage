@@ -64,6 +64,38 @@ class Ticking extends Entity {
   onAcquire(): void {}
 }
 
+/** A member whose `onRelease` schedules, to cover cancelling after the hooks. */
+class SchedulesOnRelease extends Entity {
+  pc!: ProcessComponent;
+  work?: () => void;
+  override setup(): void {
+    this.pc = this.add(new ProcessComponent());
+  }
+  onAcquire(): void {}
+  onRelease(): void {
+    if (this.work) this.pc.run(Process.delay(1, this.work));
+  }
+}
+
+/** Schedules from `onDisable`, which release fires after `onRelease`. */
+class SchedulesOnDisable extends Component {
+  work?: () => void;
+  override onDisable(): void {
+    if (this.work) this.entity.get(ProcessComponent).run(Process.delay(1, this.work));
+  }
+}
+
+/** A member carrying a component that schedules from `onDisable`. */
+class DisableScheduler extends Entity {
+  pc!: ProcessComponent;
+  hook!: SchedulesOnDisable;
+  override setup(): void {
+    this.pc = this.add(new ProcessComponent());
+    this.hook = this.add(new SchedulesOnDisable());
+  }
+  onAcquire(): void {}
+}
+
 describe("EntityPool", () => {
   let warn: ReturnType<typeof vi.spyOn>;
 
@@ -260,6 +292,37 @@ describe("EntityPool", () => {
       expect(onComplete).not.toHaveBeenCalled();
     });
 
+    it("cancels work an onRelease hook schedules, so it cannot cross leases", () => {
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, SchedulesOnRelease, { prewarm: 1 });
+      const member = pool.acquire();
+      const onComplete = vi.fn();
+      member.work = onComplete;
+
+      // onRelease runs after the lease ends, so a cancel placed before it
+      // would leave this scheduled for the next life.
+      pool.release(member);
+      member.pc._tick(2);
+      expect(onComplete).not.toHaveBeenCalled();
+
+      const reacquired = pool.acquire();
+      expect(reacquired).toBe(member);
+      member.pc._tick(2);
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it("cancels work an onDisable hook schedules during release", () => {
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, DisableScheduler, { prewarm: 1 });
+      const member = pool.acquire();
+      const onComplete = vi.fn();
+      member.hook.work = onComplete;
+
+      pool.release(member);
+      member.pc._tick(2);
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
     it("keeps a dormant member out of queries and lookups", () => {
       const { scene, context } = createMockScene();
       const queries = context.resolve(QueryCacheKey) as QueryCache;
@@ -426,6 +489,34 @@ describe("EntityPool", () => {
       expect(pool.forceAcquire()).toBe(only);
       expect(only.isDestroyed).toBe(false);
       expect(pool.leased).toBe(1);
+    });
+
+    it("forceAcquire detaches a reclaimed member from a parent it picked up", () => {
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Spark, { maxSize: 1 });
+      const spark = pool.acquire(1)!;
+      const carrier = scene.spawn("carrier");
+      carrier.addChild("spark", spark);
+
+      const reclaimed = pool.forceAcquire(2);
+
+      expect(reclaimed).toBe(spark);
+      expect(reclaimed.parent).toBeNull();
+      expect(carrier.tryGetChild("spark")).toBeUndefined();
+    });
+
+    it("forceAcquire cancels a reclaimed member's scheduled process", () => {
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Ticking, { maxSize: 1 });
+      const member = pool.acquire()!;
+      const onComplete = vi.fn();
+      member.pc.run(Process.delay(1, onComplete));
+
+      const reclaimed = pool.forceAcquire();
+
+      expect(reclaimed).toBe(member);
+      member.pc._tick(2);
+      expect(onComplete).not.toHaveBeenCalled();
     });
 
     it("forceAcquire on an elastic pool just grows", () => {

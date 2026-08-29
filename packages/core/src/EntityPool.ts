@@ -466,26 +466,37 @@ export class EntityPool<
    */
   private endLease(member: T): void {
     member._endLife();
-    // Release cancels scheduled actions, keeps inert state: position,
-    // health, animation frame and timeScale are data the next `onAcquire`
-    // overwrites, but a pending `Process.delay` is an action that fires
-    // unprompted on the pool's own clock — left alone, it would retire a
-    // fresh lease mid-flight.
-    member.tryGet(ProcessComponent)?.cancel();
     this.setStatus(member, "releasing");
   }
 
-  /** Put a member to sleep and back into the pool's keeping. */
-  private stow(member: T): void {
+  /**
+   * Close out the old life once the release hooks have run: detach, sleep,
+   * and cancel anything still scheduled. Shared by `stow` and by `reclaim`,
+   * which hands its victim straight back instead of filing it.
+   */
+  private finishRelease(member: T): void {
     // A pool member's own lifetime is not its parent's — a lease that picked
     // up a parent mid-flight (a caller attached it somewhere) must not carry
     // that parent into the next lease. Detached after `onRelease` has run,
     // so the hook can still read `entity.parent`.
     member._detachFromParent();
+    member.setActive(false);
+    // Release cancels scheduled actions, keeps inert state: position,
+    // health, animation frame and timeScale are data the next `onAcquire`
+    // overwrites, but a pending `Process.delay` is an action that fires
+    // unprompted on the pool's own clock — left alone, it would retire a
+    // fresh lease mid-flight. Cancelled last because `onRelease` and the
+    // `onDisable` that `setActive` just fired can both schedule, and either
+    // would otherwise tick against the next lease.
+    member.tryGet(ProcessComponent)?.cancel();
+  }
+
+  /** Put a member to sleep and back into the pool's keeping. */
+  private stow(member: T): void {
     try {
-      // Asleep before it is filed, so an `onDisable` that acquires cannot be
-      // handed the very member being released, half disabled.
-      member.setActive(false);
+      // Closed out before it is filed, so an `onDisable` that acquires cannot
+      // be handed the very member being released, half disabled.
+      this.finishRelease(member);
     } finally {
       // Filed even if a hook threw: the member is out of its lease either
       // way, and losing track of it would cost a capped pool the slot.
@@ -516,8 +527,10 @@ export class EntityPool<
       try {
         this.callRelease(victim);
         // The old life ends here, so components disable and a rigid body
-        // drops its velocity before the next `onAcquire` poses it.
-        victim.setActive(false);
+        // drops its velocity before the next `onAcquire` poses it. Same
+        // close-out as the ordinary release path: a reclaimed member must not
+        // carry a stale parent or a scheduled process into the next lease.
+        this.finishRelease(victim);
       } catch (error) {
         // The caller never receives the member. File it rather than leave it
         // stuck part-way through its release — on a capped pool that would

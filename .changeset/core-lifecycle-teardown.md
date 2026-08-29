@@ -9,7 +9,7 @@ Entity destroy, pool release, and component teardown converge on one model inste
 - Added `Component.destroy()`: ends the component's own life the same as `entity.remove(SomeClass)`, without having to name its own class from inside itself, which broke under subclassing.
 - Removed `Component.onRemove` — `onDestroy` is the one teardown hook. `onRemove` always fired alongside `onDestroy` and no component could tell the two apart.
 - Removed `Scene.destroyEntity` — a one-line alias for `entity.destroy()`.
-- Fixed: a pool member that picked up a parent while leased (via `addChild`) now gets detached before it goes back into the pool, so the next lease never inherits a stale parent.
+- Fixed: a pool member that picked up a parent while leased (via `addChild`) now gets detached when its lease ends, so the next lease never inherits a stale parent — on an ordinary `release()` and on a `forceAcquire()` that reclaims it.
 - Fixed: `_applyActive` no longer propagates a stale activeness value to children when an `onEnable`/`onDisable` hook changes activeness again during propagation.
 - Fixed: a `setup()` that throws during `scene.spawn()` is no longer rolled back. The half-built entity, and anything it already spawned, stays in the scene for inspection — matching how a throwing `onAdd` is already handled.
 - Fixed: pool disposal during scene teardown now runs after every entity is marked destroyed, not before, so a developer `onRelease` hook no longer observes a scene where some entities are marked and others are not.
