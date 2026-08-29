@@ -1,4 +1,10 @@
-import { serializable } from "@yagejs/core";
+import {
+  LocalizationKey,
+  LocalizedTextController,
+  resolveStatic,
+  serializable,
+} from "@yagejs/core";
+import type { LocalizableText } from "@yagejs/core";
 import { BitmapText, Text } from "pixi.js";
 import { buildTextOptions } from "./internal/textConstruction.js";
 import type {
@@ -15,8 +21,13 @@ import {
 
 /** Options for creating a TextComponent. */
 export interface TextComponentOptions extends VisualComponentOptions {
-  /** The text string to render. */
-  text: string;
+  /**
+   * The text to render — a literal, or a {@link LocalizedBinding} (via `msg`)
+   * that re-resolves when the locale changes. A binding is retained: the
+   * component subscribes to the localization plugin on add and re-renders on
+   * every revision bump.
+   */
+  text: LocalizableText;
   /** Text style — forwards to PixiJS TextStyleOptions (CSS-like font properties). */
   style?: TextStyle;
   /**
@@ -41,7 +52,9 @@ export interface TextComponentOptions extends VisualComponentOptions {
 
 /** Serialisable snapshot of a TextComponent. */
 export interface TextData extends VisualComponentData {
-  text: string;
+  /** The source text — the binding descriptor when bound, else the literal.
+   *  Restored under the current locale (saved `values` are snapshotted). */
+  text: LocalizableText;
   style?: TextStyle;
   bitmap?: boolean;
   resolution?: number;
@@ -60,11 +73,15 @@ export class TextComponent extends VisualComponent {
   // the pixi instance doesn't faithfully read them back.
   private _bitmap?: boolean;
   private _resolution?: number;
+  // Retains a LocalizedBinding (if the text is one), re-resolves on locale
+  // change. A plain string leaves it inert.
+  private readonly _localizer: LocalizedTextController;
 
   constructor(options: TextComponentOptions) {
     super(options.layer);
+    const initialText = resolveStatic(options.text);
     const { options: textOptions, bitmap } = buildTextOptions(
-      options.text,
+      initialText,
       options.style,
       options.bitmap,
       options.resolution,
@@ -72,6 +89,10 @@ export class TextComponent extends VisualComponent {
     this.text = bitmap
       ? new BitmapText(textOptions)
       : new Text(textOptions);
+    this._localizer = new LocalizedTextController((value) => {
+      this.text.text = value;
+    });
+    this._localizer.seed(options.text);
     // Shallow-clone so external mutation of the caller's options object
     // doesn't drift our cached snapshot away from the live pixi state.
     if (options.style) this._styleOptions = { ...options.style };
@@ -91,9 +112,18 @@ export class TextComponent extends VisualComponent {
     return this.text;
   }
 
-  /** Replace the displayed string. */
-  setText(value: string): void {
-    this.text.text = value;
+  onAdd(): void {
+    super.onAdd();
+    this._localizer.attach(this.context.tryResolve(LocalizationKey));
+    this.addCleanup(() => this._localizer.detach());
+  }
+
+  /**
+   * Replace the displayed text — a literal, or a {@link LocalizedBinding} that
+   * re-resolves on locale change. Passing a string clears any retained binding.
+   */
+  setText(value: LocalizableText): void {
+    this._localizer.set(value);
   }
 
   /**
@@ -130,7 +160,9 @@ export class TextComponent extends VisualComponent {
   serialize(): TextData {
     const data: TextData = {
       ...this.serializeVisual(),
-      text: this.text.text,
+      // Store the SOURCE descriptor when bound (so a restore re-resolves under
+      // the then-current locale), else the resolved literal.
+      text: this._localizer.binding ?? this.text.text,
       anchor: { x: this.text.anchor.x, y: this.text.anchor.y },
     };
     if (this._styleOptions) data.style = { ...this._styleOptions };

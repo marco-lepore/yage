@@ -1,3 +1,5 @@
+import { LocalizedTextController, resolveStatic } from "@yagejs/core";
+import type { Localization } from "@yagejs/core";
 import { Container, Graphics, Text } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, MeasureMode } from "yoga-layout";
@@ -30,6 +32,9 @@ export class UICheckbox implements UIElement {
   private checkColor: number;
   private onChange: ((checked: boolean) => void) | undefined;
   private _destroyed = false;
+  // Retains a LocalizedBinding for the label (if it is one); re-resolves on
+  // locale change. Inert when the label is a plain string or absent.
+  private readonly _localizer: LocalizedTextController;
 
   constructor(props: UICheckboxProps) {
     this.yogaNode = createYogaNode();
@@ -54,9 +59,22 @@ export class UICheckbox implements UIElement {
     this.container.addChild(this.checkmark);
     this.drawCheckmark();
 
+    // Re-resolve the label text into the raw Pixi Text on locale change,
+    // re-centering it against the box and re-measuring the Yoga node.
+    this._localizer = new LocalizedTextController((value) => {
+      if (!this.label) return;
+      this.label.text = value;
+      this.label.position.set(
+        this._size + LABEL_GAP,
+        (this._size - this.label.height) / 2,
+      );
+      this.yogaNode.markDirty();
+    });
+
     // Optional label
-    if (props.label) {
-      this.createLabel(props.label, props.labelStyle);
+    if (props.label !== undefined) {
+      this.createLabel(resolveStatic(props.label), props.labelStyle);
+      this._localizer.seed(props.label);
     }
 
     // Measure function for intrinsic sizing
@@ -114,6 +132,16 @@ export class UICheckbox implements UIElement {
     this.container.alpha = v ? 0.5 : 1;
   }
 
+  /** Bind to the scene's localization service (propagated by the owning panel). */
+  attachLocalization(localization: Localization | undefined): void {
+    this._localizer.attach(localization);
+  }
+
+  /** Release the localization subscription. */
+  detachLocalization(): void {
+    this._localizer.detach();
+  }
+
   update(p: Partial<UICheckboxProps>): void {
     if ("checked" in p) {
       const checked = p.checked ?? false;
@@ -151,16 +179,16 @@ export class UICheckbox implements UIElement {
     // undefined).
     if ("label" in p) {
       if (p.label !== undefined) {
-        if (this.label) {
-          this.label.text = p.label;
-        } else {
-          this.createLabel(p.label, p.labelStyle);
-        }
+        if (!this.label) this.createLabel(resolveStatic(p.label), p.labelStyle);
+        // Retains a binding and re-resolves now; the apply re-centers + marks
+        // the Yoga node dirty.
+        this._localizer.set(p.label);
       } else if (this.label) {
+        this._localizer.set(""); // drop any retained binding
         this.label.destroy();
         this.label = undefined;
+        this.yogaNode.markDirty();
       }
-      this.yogaNode.markDirty();
     }
 
     if ("labelStyle" in p && this.label) {
@@ -179,6 +207,7 @@ export class UICheckbox implements UIElement {
   destroy(): void {
     if (this._destroyed) return;
     this._destroyed = true;
+    this._localizer.detach();
     clearConsumeInput(this.container);
     this.yogaNode.free();
     this.box.destroy();

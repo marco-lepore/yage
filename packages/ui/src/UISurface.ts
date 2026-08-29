@@ -1,4 +1,5 @@
-import { Component, Transform, serializable } from "@yagejs/core";
+import { Component, LocalizationKey, Transform, serializable } from "@yagejs/core";
+import type { LocalizableText } from "@yagejs/core";
 import type { TextStyle } from "@yagejs/renderer";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 import type { DisplayContainer } from "@yagejs/renderer";
@@ -70,13 +71,13 @@ export class UISurface extends Component {
     this.root.update(handlers);
   }
 
-  /** Add a text element. */
-  text(content: string, style?: Partial<TextStyle>): UIText {
+  /** Add a text element — a literal or a {@link LocalizedBinding} (via `msg`). */
+  text(content: LocalizableText, style?: Partial<TextStyle>): UIText {
     return this.root.text(content, style);
   }
 
-  /** Add a button element. */
-  button(label: string, opts: Omit<UIButtonProps, "children">): UIButton {
+  /** Add a button element — label may be a literal or a {@link LocalizedBinding}. */
+  button(label: LocalizableText, opts: Omit<UIButtonProps, "children">): UIButton {
     return this.root.button(label, opts);
   }
 
@@ -166,10 +167,22 @@ export class UISurface extends Component {
     // runs right after, and only for an active entity. Start hidden so a tree
     // mounted on a dormant entity doesn't show before it should.
     this.root.visible = false;
+
+    // Bind the whole tree to the scene's localization service (if any) so
+    // LocalizedBinding text re-resolves on locale change. `undefined` when no
+    // plugin is registered — bindings then render their default.
+    this.root.attachLocalization(this.context.tryResolve(LocalizationKey));
+
+    // Cleanups run before `onDestroy` on both teardown paths, so releasing the
+    // subscription and the layer parent here keeps them paired with the `onAdd`
+    // that made them.
+    this.addCleanup(() => {
+      this.root.detachLocalization();
+      this.root.container.removeFromParent();
+    });
   }
 
   onDestroy(): void {
-    this.root.container.removeFromParent();
     this.root.destroy();
   }
 

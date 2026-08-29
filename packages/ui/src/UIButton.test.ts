@@ -169,9 +169,62 @@ import { setYoga } from "./yoga-helpers.js";
 import { UIButton } from "./UIButton.js";
 import { UIText } from "./UIText.js";
 import { UIPanel } from "./UIPanel.js";
+import { LocalizationPlugin, msg } from "@yagejs/core";
+import type { LocalizationAdapter } from "@yagejs/core";
 
 beforeAll(() => {
   setYoga(Yoga);
+});
+
+class FakeLabelAdapter implements LocalizationAdapter {
+  locale = "en";
+  private readonly listeners = new Set<() => void>();
+  constructor(private readonly table: Record<string, Record<string, string>>) {}
+  t(id: string, fallback: string | undefined): string {
+    return this.table[this.locale]?.[id] ?? fallback ?? id;
+  }
+  subscribe(cb: () => void): () => void {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  }
+  setLocale(next: string): void {
+    this.locale = next;
+    for (const l of this.listeners) l();
+  }
+}
+
+function labelText(btn: UIButton): string {
+  const label = btn.children[0] as UIText;
+  return (label.displayObject as unknown as { text: string }).text;
+}
+
+describe("UIButton localization", () => {
+  it("propagates attach to the inner label and re-resolves on locale change", async () => {
+    const btn = new UIButton({ children: msg("play", "Play") });
+    expect(labelText(btn)).toBe("Play");
+    const loc = new LocalizationPlugin({
+      adapter: new FakeLabelAdapter({
+        en: { play: "Play" },
+        fr: { play: "Jouer" },
+      }),
+    });
+    btn.attachLocalization(loc);
+    expect(labelText(btn)).toBe("Play");
+    await loc.setLocale("fr");
+    expect(labelText(btn)).toBe("Jouer");
+  });
+
+  it("wires a label promoted after attach", async () => {
+    const btn = new UIButton({});
+    const loc = new LocalizationPlugin({
+      adapter: new FakeLabelAdapter({ en: { k: "One" }, fr: { k: "Un" } }),
+    });
+    btn.attachLocalization(loc);
+    btn.setText(msg("k"));
+    expect(labelText(btn)).toBe("One");
+    await loc.setLocale("fr");
+    expect(labelText(btn)).toBe("Un");
+  });
 });
 
 describe("UIButton", () => {

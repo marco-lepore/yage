@@ -1,4 +1,5 @@
-import { devWarn } from "@yagejs/core";
+import { LocalizedTextController, devWarn, resolveStatic } from "@yagejs/core";
+import type { Localization, LocalizedBinding } from "@yagejs/core";
 import { buildTextOptions, resolveTextStyle } from "@yagejs/renderer";
 import type { DisplayContainer, TextStyle } from "@yagejs/renderer";
 import { getUIDefaultTextStyle } from "./text-defaults.js";
@@ -31,11 +32,14 @@ export class UIText implements UIElement {
   private readonly _resolution: number | undefined;
   private readonly pointerEvents: PointerEvents;
   private _destroyed = false;
+  // Retains a LocalizedBinding (if `children` is one), re-resolves on locale
+  // change. A plain string leaves it inert.
+  private readonly _localizer: LocalizedTextController;
 
   constructor(props: UITextProps) {
     this.yogaNode = createYogaNode();
 
-    this._source = props.children ?? "";
+    this._source = resolveStatic(props.children ?? "");
     this._truncate = props.truncate;
     if (props.style) this._styleOptions = { ...props.style };
     this._bitmap = props.bitmap;
@@ -59,6 +63,13 @@ export class UIText implements UIElement {
     this.displayObject = this.text;
     applyConsumeInput(this.text, props.consumeInput);
     this.pointerEvents = new PointerEvents(this.text, props);
+
+    this._localizer = new LocalizedTextController((value) => {
+      this._source = value;
+      this.text.text = value;
+      this.yogaNode.markDirty();
+    });
+    this._localizer.seed(props.children ?? "");
 
     this.yogaNode.setMeasureFunc((width, widthMode) => {
       // `clip` / `ellipsis` are single-line, so wordWrap stays off and the
@@ -105,10 +116,22 @@ export class UIText implements UIElement {
     });
   }
 
-  setText(s?: string): void {
-    this._source = s ?? "";
-    this.text.text = this._source;
-    this.yogaNode.markDirty();
+  /**
+   * Replace the label text — a literal, or a {@link LocalizedBinding} that
+   * re-resolves on locale change. Passing a string clears any retained binding.
+   */
+  setText(s?: string | LocalizedBinding): void {
+    this._localizer.set(s ?? "");
+  }
+
+  /** Bind to the scene's localization service (propagated by the owning panel). */
+  attachLocalization(localization: Localization | undefined): void {
+    this._localizer.attach(localization);
+  }
+
+  /** Release the localization subscription. */
+  detachLocalization(): void {
+    this._localizer.detach();
   }
 
   /**
@@ -148,7 +171,18 @@ export class UIText implements UIElement {
   update(p: Partial<UITextProps>): void {
     if ("children" in p) {
       const next = p.children ?? "";
-      if (next !== this._source) this.setText(next);
+      // A binding can't be cheaply deduped by string equality — always retain
+      // it. A plain string keeps the guard so a no-op re-render doesn't
+      // remeasure — except while a binding is retained: a string equal to the
+      // binding's resolved value must still clear the binding, or the stale
+      // binding re-localizes on the next locale change.
+      if (
+        typeof next !== "string" ||
+        next !== this._source ||
+        this._localizer.hasBinding
+      ) {
+        this.setText(next);
+      }
     }
     if ("style" in p) {
       this.setStyle(p.style ?? {});
@@ -198,6 +232,7 @@ export class UIText implements UIElement {
   destroy(): void {
     if (this._destroyed) return;
     this._destroyed = true;
+    this._localizer.detach();
     clearConsumeInput(this.text);
     this.yogaNode.free();
     this.text.destroy();

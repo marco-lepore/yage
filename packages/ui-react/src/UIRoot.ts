@@ -1,10 +1,12 @@
 import {
   Component,
+  LocalizationKey,
   Transform,
   markPointerConsumeContainer,
   unmarkPointerConsumeContainer,
   serializable,
 } from "@yagejs/core";
+import type { Localization } from "@yagejs/core";
 import type { ReactElement } from "react";
 import { createElement } from "react";
 import { Container } from "pixi.js";
@@ -15,7 +17,7 @@ import {
   UI_DEFAULT_LAYER,
   UI_DEFAULT_LAYER_ORDER,
 } from "@yagejs/ui";
-import type { UIPositioning } from "@yagejs/ui";
+import type { UIElement, UIPositioning } from "@yagejs/ui";
 import {
   createRoot,
   addOnCommit,
@@ -83,6 +85,11 @@ export class UIRoot extends Component {
   private readonly _positioning: UIPositioning;
   private readonly _snapshot: UIRootOptions;
   private _onCommit: (() => void) | null = null;
+  /** Resolved on add; `undefined` with no LocalizationPlugin registered. */
+  private _localization: Localization | undefined;
+  /** Root elements currently bound to localization, so a commit attaches only
+   *  what is new and detaches only what left. */
+  private readonly _localized = new Set<UIElement>();
 
   constructor(opts?: UIRootOptions) {
     super();
@@ -140,9 +147,41 @@ export class UIRoot extends Component {
     // with or without a `UIRoot`.
     this._floating = this.use(FloatingOverlayKey);
 
-    // When React commits, re-run layout and anchor
-    this._onCommit = () => this._layoutAndAnchor();
+    // `undefined` when the game registered no LocalizationPlugin; bindings then
+    // render their default.
+    this._localization = this.context.tryResolve(LocalizationKey);
+
+    // When React commits, re-run layout and anchor, and bind any newly mounted
+    // root to localization.
+    this._onCommit = () => {
+      this._syncLocalization();
+      this._layoutAndAnchor();
+    };
     addOnCommit(this._onCommit);
+  }
+
+  /**
+   * Bind each root element the reconciler mounted to the localization service,
+   * and release the ones it removed. A `UIPanel` root fans the service down to
+   * its children on its own, so this only tracks the roots.
+   *
+   * Diffed rather than re-attached every commit: attaching re-resolves a
+   * retained binding, which for a split text rebuilds its glyphs and would
+   * restart per-character animations on every React render.
+   */
+  private _syncLocalization(): void {
+    const current = new Set<UIElement>(getRootInstances(this._container) ?? []);
+    for (const element of this._localized) {
+      if (!current.has(element)) {
+        element.detachLocalization?.();
+        this._localized.delete(element);
+      }
+    }
+    for (const element of current) {
+      if (this._localized.has(element)) continue;
+      element.attachLocalization?.(this._localization);
+      this._localized.add(element);
+    }
   }
 
   /** Wrap a tree in the engine/scene context providers. */
@@ -259,6 +298,9 @@ export class UIRoot extends Component {
 
   onDestroy(): void {
     if (this._onCommit) removeOnCommit(this._onCommit);
+    for (const element of this._localized) element.detachLocalization?.();
+    this._localized.clear();
+    this._localization = undefined;
     unmarkPointerConsumeContainer(this._container);
     this.root?.unmount();
     this.root = null;

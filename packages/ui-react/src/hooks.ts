@@ -16,8 +16,11 @@ import type {
   ReactiveStore,
   StoreLeaves,
   EncodedStore,
+  Localization,
+  LocalizableText,
+  LocalizedBinding,
 } from "@yagejs/core";
-import { QueryCacheKey, STATE_KIND } from "@yagejs/core";
+import { LocalizationKey, QueryCacheKey, STATE_KIND, resolveStatic } from "@yagejs/core";
 import { shallowEqual } from "./shallowEqual.js";
 
 // ---------------------------------------------------------------------------
@@ -179,6 +182,79 @@ function defaultSnapshotReader(
         )}).`,
       );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Localization
+// ---------------------------------------------------------------------------
+
+/**
+ * The scene's localization service, or `undefined` when no
+ * {@link LocalizationPlugin} is registered. Use {@link useMessage} to resolve a
+ * binding; reach for this directly to call `setLocale` or read `locale`.
+ */
+export function useLocalization(): Localization | undefined {
+  // Read the context nullably (not via useEngine, which throws): a bare
+  // reconciler tree with no UIRoot has no engine, and a binding then resolves
+  // statically to its default rather than crashing.
+  const ctx = useContext(EngineCtx);
+  return useMemo(
+    () => ctx?.tryResolve(LocalizationKey),
+    [ctx],
+  );
+}
+
+/**
+ * Resolve a {@link LocalizableText} to a string, re-rendering the component on
+ * every locale change (or lazy catalog load). A plain string passes through;
+ * a binding resolves against the registered adapter, or renders its default
+ * when no plugin is registered.
+ *
+ * Bindings are immutable — pass a new binding to change `values`. The hook
+ * re-formats on every parent render, so an inline `msg(...)` is fine.
+ */
+export function useMessage(value: LocalizableText): string {
+  const localization = useLocalization();
+  // Only a binding reacts to locale changes. A literal — a string, or a number
+  // JSX handed us from a call site TypeScript didn't check — skips the
+  // subscription, so static labels don't register a listener (and re-run) on
+  // every locale swap.
+  const isDynamic = isBinding(value);
+  const subscribe = useCallback(
+    (onChange: () => void) =>
+      isDynamic && localization ? localization.subscribe(onChange) : () => {},
+    [localization, isDynamic],
+  );
+  const getSnapshot = useCallback((): string => {
+    if (!isBinding(value)) return renderLiteral(value);
+    return localization ? localization.resolve(value) : resolveStatic(value);
+  }, [localization, value]);
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/**
+ * Render a non-binding text child. JSX children are a trust boundary — the
+ * declared type is `string`, but an untyped call site sends numbers, and
+ * `false` / `null` / `undefined` are how JSX spells "render nothing"
+ * (`{ready && "Go!"}`). Everything else stringifies, so a number paints its
+ * digits instead of vanishing.
+ */
+function renderLiteral(value: unknown): string {
+  if (value === null || value === undefined || value === false) return "";
+  return String(value);
+}
+
+/**
+ * True for a {@link LocalizedBinding} — a plain object carrying a string `id`.
+ * Anything else reaching a text prop is a literal to render as-is: JSX children
+ * are a trust boundary, and a number arrives here from an untyped call site.
+ */
+function isBinding(value: unknown): value is LocalizedBinding {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { id?: unknown }).id === "string"
+  );
 }
 
 // ---------------------------------------------------------------------------

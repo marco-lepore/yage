@@ -136,6 +136,8 @@ import { setDefaultTextStyle } from "@yagejs/renderer";
 import { setYoga } from "./yoga-helpers.js";
 import { setUIDefaultTextStyle } from "./text-defaults.js";
 import { UIText } from "./UIText.js";
+import { LocalizationPlugin, msg } from "@yagejs/core";
+import type { LocalizationAdapter } from "@yagejs/core";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -507,5 +509,69 @@ describe("UIText bitmap-in-style warning", () => {
     expect(warn).not.toHaveBeenCalledWith(
       expect.stringContaining("`bitmap` was found inside `style`"),
     );
+  });
+});
+
+class FakeAdapter implements LocalizationAdapter {
+  locale = "en";
+  private readonly listeners = new Set<() => void>();
+  constructor(private readonly table: Record<string, Record<string, string>>) {}
+  t(id: string, fallback: string | undefined): string {
+    return this.table[this.locale]?.[id] ?? fallback ?? id;
+  }
+  subscribe(cb: () => void): () => void {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  }
+  setLocale(next: string): void {
+    this.locale = next;
+    for (const l of this.listeners) l();
+  }
+}
+
+describe("UIText localization", () => {
+  it("renders a binding's default before attach", () => {
+    const t = new UIText({ children: msg("hud.score", "Score") });
+    expect(textObject(t).text).toBe("Score");
+  });
+
+  it("re-resolves on attach and on locale change", async () => {
+    const t = new UIText({ children: msg("greet") });
+    const loc = new LocalizationPlugin({
+      adapter: new FakeAdapter({
+        en: { greet: "Hello" },
+        fr: { greet: "Bonjour" },
+      }),
+    });
+    t.attachLocalization(loc);
+    expect(textObject(t).text).toBe("Hello");
+    await loc.setLocale("fr");
+    expect(textObject(t).text).toBe("Bonjour");
+  });
+
+  it("stops re-resolving after detach", async () => {
+    const t = new UIText({ children: msg("greet") });
+    const loc = new LocalizationPlugin({
+      adapter: new FakeAdapter({
+        en: { greet: "Hello" },
+        fr: { greet: "Bonjour" },
+      }),
+    });
+    t.attachLocalization(loc);
+    t.detachLocalization();
+    await loc.setLocale("fr");
+    expect(textObject(t).text).toBe("Hello");
+  });
+
+  it("setText(binding) retains and resolves; a string clears it", () => {
+    const t = new UIText({ children: "plain" });
+    const loc = new LocalizationPlugin({
+      adapter: new FakeAdapter({ en: { a: "Apple" } }),
+    });
+    t.attachLocalization(loc);
+    t.setText(msg("a"));
+    expect(textObject(t).text).toBe("Apple");
+    t.setText("literal");
+    expect(textObject(t).text).toBe("literal");
   });
 });

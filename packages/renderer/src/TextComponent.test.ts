@@ -111,7 +111,8 @@ vi.mock("pixi.js", () => ({
   Point: mocks.MockPoint,
 }));
 
-import { Transform } from "@yagejs/core";
+import { LocalizationPlugin, Transform, msg } from "@yagejs/core";
+import type { LocalizationAdapter } from "@yagejs/core";
 import { TextComponent } from "./TextComponent.js";
 import { setDefaultTextStyle } from "./internal/textConstruction.js";
 import {
@@ -464,6 +465,112 @@ describe("TextComponent", () => {
     const data = new TextComponent({ text: "x" }).serialize();
     expect(data.bitmap).toBeUndefined();
     expect(data.resolution).toBeUndefined();
+  });
+
+  describe("localization", () => {
+    class FakeAdapter implements LocalizationAdapter {
+      locale = "en";
+      private readonly listeners = new Set<() => void>();
+      constructor(
+        private readonly table: Record<string, Record<string, string>>,
+      ) {}
+      t(id: string, fallback: string | undefined): string {
+        return this.table[this.locale]?.[id] ?? fallback ?? id;
+      }
+      subscribe(cb: () => void): () => void {
+        this.listeners.add(cb);
+        return () => this.listeners.delete(cb);
+      }
+      setLocale(next: string): void {
+        this.locale = next;
+        for (const l of this.listeners) l();
+      }
+    }
+
+    it("renders a binding's default when no plugin is registered", () => {
+      const comp = new TextComponent({
+        text: msg("hud.score", "Score"),
+      });
+      expect(comp.text.text).toBe("Score");
+    });
+
+    it("resolves a binding against the plugin on add", () => {
+      const { context, scene } = createRendererTestContext();
+      new LocalizationPlugin({
+        adapter: new FakeAdapter({ en: { greet: "Hello" } }),
+      }).install(context);
+      const entity = spawnEntityInScene(scene);
+      entity.add(new Transform());
+      const comp = entity.add(
+        new TextComponent({ text: msg("greet", "fallback") }),
+      );
+      expect(comp.text.text).toBe("Hello");
+    });
+
+    it("re-resolves on a locale switch", async () => {
+      const { context, scene } = createRendererTestContext();
+      const plugin = new LocalizationPlugin({
+        adapter: new FakeAdapter({
+          en: { greet: "Hello" },
+          fr: { greet: "Bonjour" },
+        }),
+      });
+      plugin.install(context);
+      const entity = spawnEntityInScene(scene);
+      entity.add(new Transform());
+      const comp = entity.add(new TextComponent({ text: msg("greet") }));
+      expect(comp.text.text).toBe("Hello");
+
+      await plugin.setLocale("fr");
+      expect(comp.text.text).toBe("Bonjour");
+    });
+
+    it("stops re-resolving after the component is removed", async () => {
+      const { context, scene } = createRendererTestContext();
+      const plugin = new LocalizationPlugin({
+        adapter: new FakeAdapter({
+          en: { greet: "Hello" },
+          fr: { greet: "Bonjour" },
+        }),
+      });
+      plugin.install(context);
+      const entity = spawnEntityInScene(scene);
+      entity.add(new Transform());
+      const comp = entity.add(new TextComponent({ text: msg("greet") }));
+      comp.onDestroy?.();
+      comp._runCleanups();
+
+      await plugin.setLocale("fr");
+      expect(comp.text.text).toBe("Hello");
+    });
+
+    it("serialize stores the binding descriptor, not the resolved string", () => {
+      const { context, scene } = createRendererTestContext();
+      new LocalizationPlugin({
+        adapter: new FakeAdapter({ en: { greet: "Hello" } }),
+      }).install(context);
+      const entity = spawnEntityInScene(scene);
+      entity.add(new Transform());
+      const comp = entity.add(new TextComponent({ text: msg("greet") }));
+      expect(comp.text.text).toBe("Hello");
+      expect(comp.serialize().text).toEqual({ id: "greet" });
+    });
+
+    it("setText(binding) retains and resolves the new binding", () => {
+      const { context, scene } = createRendererTestContext();
+      new LocalizationPlugin({
+        adapter: new FakeAdapter({ en: { a: "Apple", b: "Banana" } }),
+      }).install(context);
+      const entity = spawnEntityInScene(scene);
+      entity.add(new Transform());
+      const comp = entity.add(new TextComponent({ text: msg("a") }));
+      expect(comp.text.text).toBe("Apple");
+      comp.setText(msg("b"));
+      expect(comp.text.text).toBe("Banana");
+      comp.setText("plain");
+      expect(comp.text.text).toBe("plain");
+      expect(comp.serialize().text).toBe("plain");
+    });
   });
 
   describe("inspectRender", () => {

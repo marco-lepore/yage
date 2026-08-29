@@ -56,6 +56,9 @@ export { BackgroundRenderer } from "./background-renderer.js";
 // exported for custom element implementations and tests)
 export { PointerEvents } from "./pointer-events.js";
 
+// Localization propagation helper (for custom container elements)
+export { ContainerLocalization } from "./localization-lifecycle.js";
+
 // Plugin
 export { UIPlugin } from "./UIPlugin.js";
 

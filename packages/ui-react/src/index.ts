@@ -21,7 +21,15 @@ export type {
 } from "./components.js";
 
 // Hooks
-export { useEngine, useScene, useStore, useQuery, useSceneSelector } from "./hooks.js";
+export {
+  useEngine,
+  useScene,
+  useStore,
+  useQuery,
+  useSceneSelector,
+  useLocalization,
+  useMessage,
+} from "./hooks.js";
 export { useSplitText } from "./use-split-text.js";
 export type { SplitTextControls, SplitRunHandle } from "./use-split-text.js";
 

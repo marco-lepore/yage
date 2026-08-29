@@ -1,3 +1,5 @@
+import { LocalizedTextController, resolveStatic } from "@yagejs/core";
+import type { Localization, LocalizedBinding } from "@yagejs/core";
 import { buildTextOptions } from "@yagejs/renderer";
 import type {
   DisplayBitmapText,
@@ -93,10 +95,13 @@ export class UISplitText implements UIElement {
   private readonly pointerEvents: PointerEvents;
   private readonly _splitListeners = new Set<SplitListener>();
   private _destroyed = false;
+  // Retains a LocalizedBinding (if `children` is one); a locale refresh forces
+  // a resplit + emits onSplit even when autoSplit is off.
+  private readonly _localizer: LocalizedTextController;
 
   constructor(props: UISplitTextProps) {
     this.yogaNode = createYogaNode();
-    this._source = props.children ?? "";
+    this._source = resolveStatic(props.children ?? "");
     this._bitmap = props.bitmap;
     this._autoSplit = props.autoSplit ?? true;
     this._appliedStyle = props.style;
@@ -132,6 +137,29 @@ export class UISplitText implements UIElement {
     this.displayObject = this.splitText;
     applyConsumeInput(this.splitText, props.consumeInput);
     this.pointerEvents = new PointerEvents(this.splitText, props);
+
+    this._localizer = new LocalizedTextController(
+      // set() path: honor autoSplit and emit only when a split actually ran.
+      (value) => {
+        this._source = value;
+        this.splitText.text = value;
+        this.yogaNode.markDirty();
+        if (this._autoSplit) this.emitSplit();
+      },
+      // locale-refresh path: the new glyph set must be live immediately, so
+      // split even when autoSplit is off. Assigning `text` already splits when
+      // autoSplit is on, and a second split would strand that generation of
+      // line containers as undisposed children. Then notify so animations bound
+      // to the old glyphs rebind.
+      (value) => {
+        this._source = value;
+        this.splitText.text = value;
+        if (!this._autoSplit) this.splitText.split();
+        this.yogaNode.markDirty();
+        this.emitSplit();
+      },
+    );
+    this._localizer.seed(props.children ?? "");
 
     // Measure the text's NATURAL size via Pixi's metrics, not the live
     // container bounds — per-glyph animation moves/scales the chars, and we
@@ -192,14 +220,26 @@ export class UISplitText implements UIElement {
     for (const listener of [...this._splitListeners]) listener(segments);
   }
 
-  setText(s?: string): void {
-    this._source = s ?? "";
-    this.splitText.text = this._source;
-    this.yogaNode.markDirty();
+  /**
+   * Replace the displayed text — a literal, or a {@link LocalizedBinding} that
+   * re-resolves on locale change. Re-splits when `autoSplit` is on; passing a
+   * string clears any retained binding.
+   */
+  setText(s?: string | LocalizedBinding): void {
     // With autoSplit off, Pixi cleared the segments without rebuilding — the
     // real split is deferred to resplit(), which emits then. Emitting now would
-    // hand listeners empty arrays.
-    if (this._autoSplit) this.emitSplit();
+    // hand listeners empty arrays. (The controller's set() path honors this.)
+    this._localizer.set(s ?? "");
+  }
+
+  /** Bind to the scene's localization service (propagated by the owning panel). */
+  attachLocalization(localization: Localization | undefined): void {
+    this._localizer.attach(localization);
+  }
+
+  /** Release the localization subscription. */
+  detachLocalization(): void {
+    this._localizer.detach();
   }
 
   setStyle(style: Partial<TextStyle>): void {
@@ -257,7 +297,18 @@ export class UISplitText implements UIElement {
   update(p: Partial<UISplitTextProps>): void {
     if ("children" in p) {
       const next = p.children ?? "";
-      if (next !== this._source) this.setText(next);
+      // A binding can't be cheaply deduped by string equality — always retain
+      // it; a plain string keeps the guard so a no-op re-render doesn't
+      // resplit — except while a binding is retained: a string equal to the
+      // binding's resolved value must still clear the binding, or the stale
+      // binding re-localizes on the next locale change.
+      if (
+        typeof next !== "string" ||
+        next !== this._source ||
+        this._localizer.hasBinding
+      ) {
+        this.setText(next);
+      }
     }
     // Re-style (and thus re-split) only on an actual content change. The React
     // reconciler runs update() on every commit with a fresh style object, so
@@ -285,6 +336,7 @@ export class UISplitText implements UIElement {
   destroy(): void {
     if (this._destroyed) return;
     this._destroyed = true;
+    this._localizer.detach();
     this._splitListeners.clear();
     clearConsumeInput(this.splitText);
     this.yogaNode.free();

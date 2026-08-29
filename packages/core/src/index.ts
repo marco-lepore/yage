@@ -248,6 +248,25 @@ export {
   mapCodec,
   dateCodec,
 } from "./state/index.js";
+export {
+  msg,
+  IdentityLocalizationAdapter,
+  identityLocalizationAdapter,
+  LocalizationKey,
+  LocalizationPlugin,
+  resolveLocalized,
+  LocalizedTextController,
+  resolveStatic,
+} from "./localization/index.js";
+export type {
+  JsonValue,
+  LocalizedBinding,
+  LocalizationAdapter,
+  Localization,
+  LocalizationPluginOptions,
+  LocalizableText,
+} from "./localization/index.js";
+
 export type {
   Codec,
   Reactive,
