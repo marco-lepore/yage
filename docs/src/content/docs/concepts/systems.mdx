@@ -68,7 +68,7 @@ import { Phase } from "@yagejs/core";
 | `Phase.Update` | 3 | Physics interpolation, general game logic, component updates |
 | `Phase.LateUpdate` | 4 | UI layout, constraint solving |
 | `Phase.Render` | 5 | Display sync, sprite rendering |
-| `Phase.EndOfFrame` | 6 | Entity cleanup, deferred destruction |
+| `Phase.EndOfFrame` | 6 | Entity cleanup, deferred teardown (`onDestroy`, detach from scene) |
 
 ## Priority
 

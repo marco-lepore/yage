@@ -1,6 +1,7 @@
 import type { Entity } from "./Entity.js";
 import type { Scene, SetupParams, SetupParamTuple } from "./Scene.js";
 import { ErrorBoundaryKey } from "./EngineContext.js";
+import { ProcessComponent } from "./ProcessComponent.js";
 import { devWarn } from "./internal/dev.js";
 
 /**
@@ -98,9 +99,11 @@ export type AcquireResult<
  * `maxSize` is set. `forceAcquire` always returns a member, reclaiming the
  * lowest-priority live one when a capped pool is saturated.
  *
- * Reuse resets nothing by itself. `onAcquire` is where a member returns to a
- * known state — position, health, animation frame — because everything it
- * held while dormant is still there.
+ * Release cancels scheduled actions, keeps inert state: it cancels the
+ * member's `ProcessComponent` (a pending `Process.delay` would otherwise fire
+ * unprompted on a later lease), but position, health, animation frame and
+ * everything else held while dormant is still there on the next `acquire` —
+ * `onAcquire` is where a member returns to a known state.
  */
 export class EntityPool<
   T extends PoolableEntity,
@@ -463,11 +466,22 @@ export class EntityPool<
    */
   private endLease(member: T): void {
     member._endLife();
+    // Release cancels scheduled actions, keeps inert state: position,
+    // health, animation frame and timeScale are data the next `onAcquire`
+    // overwrites, but a pending `Process.delay` is an action that fires
+    // unprompted on the pool's own clock — left alone, it would retire a
+    // fresh lease mid-flight.
+    member.tryGet(ProcessComponent)?.cancel();
     this.setStatus(member, "releasing");
   }
 
   /** Put a member to sleep and back into the pool's keeping. */
   private stow(member: T): void {
+    // A pool member's own lifetime is not its parent's — a lease that picked
+    // up a parent mid-flight (a caller attached it somewhere) must not carry
+    // that parent into the next lease. Detached after `onRelease` has run,
+    // so the hook can still read `entity.parent`.
+    member._detachFromParent();
     try {
       // Asleep before it is filed, so an `onDisable` that acquires cannot be
       // handed the very member being released, half disabled.

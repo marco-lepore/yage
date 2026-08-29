@@ -38,10 +38,6 @@ class CleanupTracker extends Component {
     this.addCleanup(() => this.cleanupOrder.push("cleanup2"));
   }
 
-  onRemove() {
-    this.cleanupOrder.push("onRemove");
-  }
-
   onDestroy() {
     this.cleanupOrder.push("onDestroy");
   }
@@ -155,26 +151,16 @@ describe("Component.addCleanup", () => {
 
     entity.remove(CleanupTracker);
 
-    expect(comp.cleanupOrder).toEqual([
-      "cleanup1",
-      "cleanup2",
-      "onRemove",
-      "onDestroy",
-    ]);
+    expect(comp.cleanupOrder).toEqual(["cleanup1", "cleanup2", "onDestroy"]);
   });
 
-  it("runs cleanups before onRemove/onDestroy on entity destroy", () => {
+  it("runs cleanups before onDestroy on entity destroy", () => {
     const { entity } = createMockEntity();
     const comp = entity.add(new CleanupTracker());
 
     entity._performDestroy();
 
-    expect(comp.cleanupOrder).toEqual([
-      "cleanup1",
-      "cleanup2",
-      "onRemove",
-      "onDestroy",
-    ]);
+    expect(comp.cleanupOrder).toEqual(["cleanup1", "cleanup2", "onDestroy"]);
   });
 
   it("cleanups are idempotent (_runCleanups clears the list)", () => {

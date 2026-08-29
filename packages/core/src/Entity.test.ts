@@ -26,14 +26,10 @@ class VelocityComponent extends Component {
 
 class LifecycleComponent extends Component {
   addCalled = false;
-  removeCalled = false;
   destroyCalled = false;
 
   onAdd() {
     this.addCalled = true;
-  }
-  onRemove() {
-    this.removeCalled = true;
   }
   onDestroy() {
     this.destroyCalled = true;
@@ -115,6 +111,30 @@ describe("Entity", () => {
       );
     });
 
+    it("throws when re-attaching a component removed from its entity", () => {
+      const e = new Entity("test");
+      const pos = new PositionComponent();
+      e.add(pos);
+      e.remove(PositionComponent);
+
+      expect(() => e.add(pos)).toThrow(
+        /already removed or destroyed once and cannot be re-attached/,
+      );
+    });
+
+    it("throws when re-attaching a component whose entity was destroyed", () => {
+      const { scene } = createMockScene();
+      const e = scene.spawn("test");
+      const pos = e.add(new PositionComponent());
+      e.destroy();
+      scene._flushDestroyQueue();
+
+      const fresh = scene.spawn("fresh");
+      expect(() => fresh.add(pos)).toThrow(
+        /already removed or destroyed once and cannot be re-attached/,
+      );
+    });
+
     it("get throws for missing component", () => {
       const e = new Entity("test");
       expect(() => e.get(PositionComponent)).toThrow(
@@ -174,12 +194,11 @@ describe("Entity", () => {
       expect(lc.addCalled).toBe(true);
     });
 
-    it("calls onRemove and onDestroy when component is removed", () => {
+    it("calls onDestroy when component is removed", () => {
       const e = new Entity("test");
       const lc = new LifecycleComponent();
       e.add(lc);
       e.remove(LifecycleComponent);
-      expect(lc.removeCalled).toBe(true);
       expect(lc.destroyCalled).toBe(true);
     });
   });
@@ -229,7 +248,6 @@ describe("Entity", () => {
       const lc = new LifecycleComponent();
       e.add(lc);
       e._performDestroy();
-      expect(lc.removeCalled).toBe(true);
       expect(lc.destroyCalled).toBe(true);
     });
 
@@ -547,6 +565,51 @@ describe("Entity activeness", () => {
     expect(leaf.isActive).toBe(true);
   });
 
+  it("does not propagate a stale activation to children after an onEnable deactivates the entity", () => {
+    const { scene } = createMockScene();
+    const parent = scene.spawn("parent");
+    const child = parent.spawnChild("child");
+    let armed = false;
+    class ReentrantComponent extends Component {
+      onEnable() {
+        if (armed) this.entity.setActive(false);
+      }
+    }
+    parent.add(new ReentrantComponent());
+    parent.setActive(false);
+
+    armed = true;
+    parent.setActive(true);
+
+    // The onEnable hook re-deactivated `parent` mid-propagation. Its own
+    // reentrant call already pushed `false` to `child` — the outer call must
+    // not overwrite that with the stale `true` it started with.
+    expect(parent.isActive).toBe(false);
+    expect(child.isActive).toBe(false);
+  });
+
+  it("does not propagate a stale deactivation to children after an onDisable reactivates the entity", () => {
+    const { scene } = createMockScene();
+    const parent = scene.spawn("parent");
+    const child = parent.spawnChild("child");
+    let armed = false;
+    class ReentrantComponent extends Component {
+      onDisable() {
+        if (armed) this.entity.setActive(true);
+      }
+    }
+    parent.add(new ReentrantComponent());
+
+    armed = true;
+    parent.setActive(false);
+
+    // The onDisable hook reactivated `parent` mid-propagation. Its own
+    // reentrant call already pushed `true` to `child` — the outer call must
+    // not overwrite that with the stale `false` it started with.
+    expect(parent.isActive).toBe(true);
+    expect(child.isActive).toBe(true);
+  });
+
   it("re-parenting under a dormant parent puts the subtree to sleep", () => {
     const { scene } = createMockScene();
     const dormant = scene.spawn("dormant");
@@ -640,18 +703,18 @@ describe("Entity activeness", () => {
     expect(comp.log).toEqual(["disable", "enable"]);
   });
 
-  it("fires onDisable before onRemove when a component is removed", () => {
+  it("fires onDisable before onDestroy when a component is removed", () => {
     const { scene } = createMockScene();
     const e = scene.spawn("e");
     class OrderedComponent extends HookComponent {
-      override onRemove() {
-        this.log.push("remove");
+      override onDestroy() {
+        this.log.push("destroy");
       }
     }
     const comp = e.add(new OrderedComponent());
     comp.log.length = 0;
     e.remove(OrderedComponent);
-    expect(comp.log).toEqual(["disable", "remove"]);
+    expect(comp.log).toEqual(["disable", "destroy"]);
   });
 
   it("fires onDisable before onDestroy when the entity is destroyed", () => {
@@ -667,6 +730,25 @@ describe("Entity activeness", () => {
     e.destroy();
     scene._flushDestroyQueue();
     expect(comp.log).toEqual(["disable", "destroy"]);
+  });
+
+  it("destroy() deactivates the entity immediately, before the destroy queue flushes", () => {
+    const { scene, context } = createMockScene();
+    const queries = context.resolve(QueryCacheKey) as QueryCache;
+    const query = queries.register([HookComponent]);
+    const e = scene.spawn("e");
+    const comp = e.add(new HookComponent());
+    comp.log.length = 0;
+    expect(query.size).toBe(1);
+
+    e.destroy();
+
+    expect(e.isActive).toBe(false);
+    expect(comp.log).toEqual(["disable"]);
+    expect(query.size).toBe(0);
+    // Not flushed yet: still in the scene and not yet destroyed-for-real.
+    expect(scene.getEntities().has(e)).toBe(true);
+    expect(e.isDestroyed).toBe(true);
   });
 
   it("skips onDisable at teardown for an already-dormant entity", () => {

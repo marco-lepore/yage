@@ -543,7 +543,7 @@ const spotlight = radialGradient({
 });
 ```
 
-`GradientFill` owns a GPU texture; call `.destroy()` in `onRemove()` when the owning component tears down. Components can safely build gradients in field initializers — just destroy them in `onRemove()`.
+`GradientFill` owns a GPU texture; call `.destroy()` in `onDestroy()` when the owning component tears down. Components can safely build gradients in field initializers — just destroy them in `onDestroy()`.
 
 **Re-export:** `GradientFill` IS pixi `FillGradient`. The factories convert yage's numeric stops to pixi color stops and forward the rest as-is. See [pixi FillGradient docs](https://pixijs.download/release/docs/scene.FillGradient.html).
 

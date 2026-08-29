@@ -21,7 +21,7 @@ export function filterEntities(
 ): Entity[] {
   const result: Entity[] = [];
   for (const entity of entities) {
-    if (entity.isDestroyed || !entity.isActive) continue;
+    if (!entity.isActive) continue;
     if (filter.name !== undefined && entity.name !== filter.name) continue;
     if (filter.tags) {
       let allMatch = true;

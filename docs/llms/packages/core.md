@@ -53,6 +53,7 @@ class Entity {
 
 - `entity.scene` throws with a clear error when the entity is detached (not yet spawned, or already destroyed — both the end-of-frame flush and scene teardown clear it). Prefer it in user code — throwing beats letting a `null` propagate silently. Use `entity.tryScene` only in defensive paths (e.g. systems iterating query results during teardown) where detachment is expected.
 - `entity.isDestroyed` is true after `destroy()` and for entities torn down with their scene on exit. Teardown also emits `entity:destroyed` once per entity, so listeners tracking entity lifetimes are notified of every destruction, including destruction caused by scene exit.
+- `destroy()` deactivates immediately: `isActive` reads `false`, the entity leaves every query, and component `onDisable` fires in the same call. The rest of teardown — `onDestroy`, detaching from the scene — waits for the end-of-frame flush, so `isDestroyed` and component removal still happen later.
 - `entity.spawnChild(name, Class, params?)` combines `scene.spawn(...)` + `this.addChild(name, ...)`. Child is auto-added to the parent's scene. Use for sub-entities owned by a parent (enemy body + health bar, player + weapon, etc.).
 
 ### Activeness
@@ -74,6 +75,7 @@ bullet.setActive(true);                    // back in play, nothing reallocated
 - Adding a component to a dormant entity runs `onAdd()` but not `onEnable()`, and the entity joins no queries until it is activated.
 - A dormant entity's components and its `ProcessComponent` stop being ticked, so tweens and coroutines pause where they are and resume on reactivation.
 - Reuse resets nothing: `entity.timeScale`, animation position, process progress, entity event listeners and addon state all survive. Register listeners in `setup()`, and reset game state yourself when you bring an entity back.
+- `destroy()` also runs through this same activeness state (`isActive` reads `false` right away, `activeSelf` is untouched), so any code that checks `isActive` to decide whether an entity is "in play" sees a destroyed entity the same way it sees a dormant one.
 
 ### Component enable/disable hooks
 
@@ -87,7 +89,8 @@ class Turret extends Component {
 }
 ```
 
-- Order on add: `onAdd()`, then query join, then `onEnable()`. Order on remove or destroy: `onDisable()`, then cleanups, then `onRemove()` / `onDestroy()`.
+- Order on add: `onAdd()`, then query join, then `onEnable()`. Order on remove or destroy: `onDisable()`, then cleanups, then `onDestroy()`.
+- `component.destroy()` ends its own life — the same as `entity.remove(SomeClass)`, without having to name its own class from inside itself, which breaks under subclassing.
 - Validate dependencies by throwing from `onAdd()`. The throw is attributed to the component, recorded in `Inspector.getErrors().callbackErrors`, and rethrown to the caller of `entity.add()`. Called from `setup()`, that caller is `scene.spawn`, which destroys the half-built entity and its children before rethrowing.
 - `onEnable()` sees whatever state the component held while dormant. Put live resources there (sounds, bodies, display objects), not game-state resets.
 - Writing `component.enabled` fires the hooks too, so a component disabled by hand releases its resources the same way.
@@ -163,10 +166,11 @@ interface EntityPoolOptions<T, TMax> {
 - `onAcquire` is required on a pooled class — an inherited one counts. It must be synchronous and non-overloaded, since `acquire`'s signature is derived from it. Declare an empty `onAcquire() {}` when there is nothing to reset.
 - Prewarm builds members and runs `setup()`, never `onAcquire`.
 - The member is active, in its queries, and past `onEnable` before `onAcquire` runs. Acquire during Update and it renders the same frame; acquire in Render or EndOfFrame and it first draws on the next one.
-- Nothing else resets: position, health, animation frame, `timeScale`, processes, and entity listeners all survive a cycle. Reset them in `onAcquire`, and register listeners in `setup()` or drop them in `onRelease`.
+- Release cancels scheduled actions, keeps inert state. It cancels the member's `ProcessComponent` (a pending `Process.delay` would otherwise fire unprompted on a later lease), but position, health, animation frame, `timeScale`, and entity listeners all survive a cycle. Reset them in `onAcquire`, and register listeners in `setup()` or drop them in `onRelease`.
 - Bookkeeping completes before the hooks run. A throwing `onAcquire` leaves the member leased and active; a throwing `onRelease` still parks it. Both throws are attributed to the entity and propagate.
 - Releasing an entity the pool has not leased — a double release, another pool's member — is a reported no-op. `setActive` called from outside does not change who holds the lease.
 - Pools belong to their scene and are disposed on exit; `acquire` on a disposed pool throws. Build them in `onEnter()`, where scene services exist.
+- A member that picked up a parent while leased (attached via `addChild`) is detached before it goes back into the pool, after `onRelease` has run — so `onRelease` can still read `entity.parent`, but the next lease never inherits a stale one.
 - The pool owns its members' lifetimes. `entity.destroy()` on a member releases it back to the pool instead of tearing it down, so retire sites holding a plain `Entity` (collision handlers, `update`, event listeners) need no pool reference and the same code works pooled or not. `isDestroyed` stays `false` for such a member; destroying an entity with a member below it detaches and returns that member. Only `dispose()` destroys members.
 - Save snapshots skip members and everything parented under one. A pool restores empty and refills, so entities in flight at save time are gone on load.
 - A released member is alive and `isDestroyed` is `false`, so a stored reference to one silently follows the entity into its next life. Store `entity.handle()` instead when something else owns the release.
@@ -369,7 +373,7 @@ Decision matrix:
 | Multi-point or non-monotonic animation curves | `KeyframeAnimator` |
 | Fire discrete events at specific times | `KeyframeAnimator` keyframe `event` |
 
-Tag processes with `pc.run(p, { tags: ["vfx"] })` then cancel groups with `pc.cancel("vfx")`. Processes and slots auto-cancel on entity destroy via `ProcessComponent.onDestroy()`.
+Tag processes with `pc.run(p, { tags: ["vfx"] })` then cancel groups with `pc.cancel("vfx")`. Processes and slots auto-cancel on entity destroy via `ProcessComponent.onDestroy()`, and on `EntityPool` release too — a pending `Process.delay` scheduled before release would otherwise fire on the next lease.
 
 Clocks (`ProcessClock = "frame" | "fixed"`): entity processes and slots tick on rendered-frame time by default (`ProcessSystem`, `Phase.Update`, priority 500). `pc.run(p, { clock: "fixed" })` / `pc.slot({ clock: "fixed", ... })` tick on the fixed timestep instead (`ProcessFixedUpdateSystem`, `Phase.FixedUpdate`, priority 500 — after physics, before component `fixedUpdate`). Use `"fixed"` for gameplay timing that must match a fixed-step simulation (attack windows, cooldowns); keep visuals on `"frame"`. Both clocks share pause gating and global/scene/entity time scaling. A slot's clock is fixed at creation — `start()`/`restart()` overrides exclude it. `makeEntityScopedQueue(entity, { clock: "fixed" })` puts every process that queue enqueues on the fixed timestep; the default is `"frame"`. The clock is read when the queue is created, so `ScopedProcessQueue.run(p)` takes none, and a second clock needs a second queue with its own `cancelAll()`. Enqueueing a `Process` already scheduled on that entity's `ProcessComponent` keeps the clock it was scheduled with. `ProcessSystem.add(p, { clock })` and `ProcessSystem.addForScene(scene, p, { clock })` take the same option (default `"frame"`), and so do `makeGlobalScopedQueue(processSystem, { clock })` and `makeSceneScopedQueue(processSystem, scene, { clock })` — use them for timing that belongs to a scene or to the engine rather than to one entity, such as a round timer or a wave spawner that outlives any entity that would otherwise host it. A scene pool on either clock is gated by scene pause and scaled by the scene's effective scale. A global pool on either clock runs under `ProcessSystem.timeScale` alone and drains once per pass rather than once per active scene: the frame pool once per rendered frame, the fixed pool once per fixed step. `ProcessSystem.cancel(tag?)` and `cancelForScene(scene, tag?)` cover both clocks. `KeyframeAnimationDef.clock` (default `"frame"`) picks the clock for one `KeyframeAnimator` animation — the animator schedules the track itself, so the choice lives on the def.
 

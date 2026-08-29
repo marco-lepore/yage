@@ -6,6 +6,8 @@ import type { EntityHandle } from "./EntityHandle.js";
 import { QueryCacheKey } from "./EngineContext.js";
 import type { QueryCache } from "./QueryCache.js";
 import { createMockScene } from "./test-utils.js";
+import { ProcessComponent } from "./ProcessComponent.js";
+import { Process } from "./Process.js";
 
 class Marker extends Component {
   log: string[] = [];
@@ -49,6 +51,15 @@ class Tinted extends Entity {
   color = 0;
   override setup(params: { color: number }): void {
     this.color = params.color;
+  }
+  onAcquire(): void {}
+}
+
+/** A member that holds a `ProcessComponent`, to cover release cancelling it. */
+class Ticking extends Entity {
+  pc!: ProcessComponent;
+  override setup(): void {
+    this.pc = this.add(new ProcessComponent());
   }
   onAcquire(): void {}
 }
@@ -138,7 +149,7 @@ describe("EntityPool", () => {
       expect(pool.acquire().color).toBe(0x30);
     });
 
-    it("leaves nothing behind when a prewarm fails", () => {
+    it("disposes the members it did build when a prewarm fails, and leaves the failed one for inspection", () => {
       class Fragile extends Entity {
         static builds = 0;
         override setup(): void {
@@ -152,10 +163,13 @@ describe("EntityPool", () => {
         "setup failed",
       );
 
-      // The constructor threw, so nobody holds the pool. Neither the member
-      // it did build nor the pool's registration may outlive the call.
+      // The constructor threw, so nobody holds the pool and the member it
+      // did successfully build is disposed with it. The member whose
+      // setup() threw is not rolled back — a throwing developer hook is not
+      // repaired around, so it stays in the scene for inspection, the same
+      // as a throwing scene.spawn() call outside a pool.
       scene._flushDestroyQueue();
-      expect(scene.getEntities().size).toBe(0);
+      expect(scene.getEntities().size).toBe(1);
     });
 
     it("rejects an unusable capacity", () => {
@@ -225,6 +239,25 @@ describe("EntityPool", () => {
       expect(spark.marker.log).toEqual(["disable"]);
       expect(pool.leased).toBe(0);
       expect(pool.free).toBe(1);
+    });
+
+    it("cancels a scheduled process on release, so it does not fire against a later lease", () => {
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Ticking, { prewarm: 1 });
+      const member = pool.acquire();
+      const onComplete = vi.fn();
+      member.pc.run(Process.delay(1, onComplete));
+
+      pool.release(member);
+      // Ticking the now-dormant member's process would fire onComplete if
+      // release had left it scheduled.
+      member.pc._tick(2);
+      expect(onComplete).not.toHaveBeenCalled();
+
+      const reacquired = pool.acquire();
+      expect(reacquired).toBe(member);
+      member.pc._tick(2);
+      expect(onComplete).not.toHaveBeenCalled();
     });
 
     it("keeps a dormant member out of queries and lookups", () => {
@@ -300,6 +333,27 @@ describe("EntityPool", () => {
       expect(spark.isDestroyed).toBe(false);
       expect(spark.parent).toBeNull();
       expect(pool.free).toBe(1);
+    });
+
+    it("detaches a member from a foreign parent on a plain release", () => {
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Spark, { prewarm: 1 });
+      const spark = pool.acquire(1);
+      const carrier = scene.spawn("carrier");
+      carrier.addChild("spark", spark);
+
+      pool.release(spark);
+
+      expect(spark.parent).toBeNull();
+      expect(carrier.tryGetChild("spark")).toBeUndefined();
+
+      // The next lease must not inherit the stale parent — addChild throws
+      // if the child still thinks it has one.
+      const reacquired = pool.acquire(2);
+      expect(reacquired).toBe(spark);
+      const otherCarrier = scene.spawn("otherCarrier");
+      expect(() => otherCarrier.addChild("spark", reacquired)).not.toThrow();
+      expect(reacquired.parent).toBe(otherCarrier);
     });
   });
 

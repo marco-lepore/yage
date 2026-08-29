@@ -18,7 +18,7 @@ EarlyUpdate → FixedUpdate → Update → LateUpdate → Render → EndOfFrame
 | **Update** | Physics interpolation, then general game logic. Component `update(dt)` calls happen here. Variable `dt`. |
 | **LateUpdate** | UI layout, constraint solving, anything that must run after game logic. Variable `dt`. |
 | **Render** | Display sync — sprite transforms are flushed to the GPU, particles are drawn. |
-| **EndOfFrame** | Deferred entity destruction, component cleanup, event queue flush. |
+| **EndOfFrame** | Deferred entity teardown (`onDestroy`, detach from scene), event queue flush. An entity's `isActive` already read `false` earlier, at the `destroy()` call itself. |
 
 ## Fixed Timestep Accumulator
 

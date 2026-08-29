@@ -456,11 +456,18 @@ export abstract class Scene {
       if (options?.key !== undefined) this._registerKey(entity, options.key);
       this.entities.add(entity);
       this.bus?.emit("entity:created", { entity });
-      try {
-        entity.setup?.(params);
-      } catch (error) {
-        this._discardFailedSpawn(entity);
-        throw error;
+      const setup = entity.setup;
+      if (setup) {
+        const boundary = this.context.tryResolve(ErrorBoundaryKey);
+        if (boundary) {
+          boundary.wrapCallback(() => setup.call(entity, params), {
+            kind: "Entity setup() hook",
+            entity: entity.name,
+            scene: this.name,
+          });
+        } else {
+          setup.call(entity, params);
+        }
       }
       return entity;
     }
@@ -583,11 +590,6 @@ export abstract class Scene {
     }
   }
 
-  /** Mark an entity for destruction. Deferred to endOfFrame flush. */
-  destroyEntity(entity: Entity): void {
-    entity.destroy();
-  }
-
   /**
    * Add an entity to the destroy queue. Called by Entity.destroy().
    * @internal
@@ -608,7 +610,7 @@ export abstract class Scene {
   /** Find an active entity by name (first match). */
   findEntity(name: string): Entity | undefined {
     for (const e of this.entities) {
-      if (e.name === name && !e.isDestroyed && e.isActive) return e;
+      if (e.name === name && e.isActive) return e;
     }
     return undefined;
   }
@@ -617,7 +619,7 @@ export abstract class Scene {
   findEntitiesByTag(tag: string): Entity[] {
     const result: Entity[] = [];
     for (const e of this.entities) {
-      if (e.tags.has(tag) && !e.isDestroyed && e.isActive) result.push(e);
+      if (e.tags.has(tag) && e.isActive) result.push(e);
     }
     return result;
   }
@@ -629,7 +631,7 @@ export abstract class Scene {
     if (!filter) {
       const result: Entity[] = [];
       for (const e of this.entities) {
-        if (!e.isDestroyed && e.isActive) result.push(e);
+        if (e.isActive) result.push(e);
       }
       return result;
     }
@@ -858,27 +860,6 @@ export abstract class Scene {
     this.destroyQueue.length = 0;
   }
 
-  /** Remove a class-spawned entity and its descendants when setup fails. */
-  private _discardFailedSpawn(entity: Entity): void {
-    const subtree: Entity[] = [];
-    const collectChildrenFirst = (member: Entity): void => {
-      for (const child of member.children.values()) {
-        collectChildrenFirst(child);
-      }
-      subtree.push(member);
-    };
-    collectChildrenFirst(entity);
-
-    entity.destroy();
-    const discarded = new Set(subtree);
-    this.destroyQueue = this.destroyQueue.filter(
-      (pending) => !discarded.has(pending),
-    );
-    for (const member of subtree) {
-      this._finalizeEntityDestroy(member);
-    }
-  }
-
   private _finalizeEntityDestroy(entity: Entity): void {
     entity._performDestroy();
     this.queryCache?.onEntityDestroyed(entity);
@@ -904,20 +885,34 @@ export abstract class Scene {
    * @internal
    */
   _destroyAllEntities(): void {
-    // Pools go first: their members are about to be destroyed with the rest
-    // of the scene, and a pool that outlived it would hand out dead entities.
+    // Mark and deactivate everything first, so a component's onDestroy never
+    // observes a half-alive sibling: by the time any teardown runs, every
+    // entity in the scene already reads isDestroyed === true and isActive
+    // === false, the same as an ordinary destroy(). Disposing pools below
+    // runs developer `onRelease` hooks, so this has to happen before that —
+    // `_markDestroyed` and `_deactivateForDestroy` run no developer code and
+    // cannot throw.
+    for (const entity of this.entities) {
+      entity._markDestroyed();
+      entity._deactivateForDestroy();
+    }
+
+    // Pools next: their members are about to be destroyed with the rest of
+    // the scene, and a pool that outlived it would hand out dead entities.
     if (this._pools) {
       for (const pool of [...this._pools]) pool.dispose();
       this._pools.clear();
     }
 
-    // Mark everything first, so a component's onDestroy never observes a
-    // half-alive sibling: by the time any teardown runs, every entity in
-    // the scene already reads isDestroyed === true.
+    // A live Set visits an entity added during this loop — a component
+    // `onDestroy` that spawns (a death effect, say) adds one after the
+    // marking pass above already ran. Mark and deactivate it here too before
+    // tearing it down.
     for (const entity of this.entities) {
-      entity._markDestroyed();
-    }
-    for (const entity of this.entities) {
+      if (!entity.isDestroyed) {
+        entity._markDestroyed();
+        entity._deactivateForDestroy();
+      }
       entity._performDestroy();
       this.queryCache?.onEntityDestroyed(entity);
       this.bus?.emit("entity:destroyed", { entity });

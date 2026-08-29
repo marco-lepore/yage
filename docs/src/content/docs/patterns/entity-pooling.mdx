@@ -133,10 +133,13 @@ many are ready. They are the numbers to put on a debug overlay when tuning
 ## What reuse does not reset
 
 <Aside type="caution">
-**A recycled entity remembers everything.** Position, velocity, health,
-animation frame, `entity.timeScale`, process progress and entity event
-listeners all survive a release. `onAcquire` is the only thing that resets
-them, so anything the next life depends on has to be written there.
+**Release cancels scheduled actions, keeps inert state.** Position, velocity,
+health, animation frame, `entity.timeScale` and entity event listeners all
+survive a release — `onAcquire` is the only thing that resets them, so
+anything the next life depends on has to be written there. A scheduled
+process is different: a pending `Process.delay` or tween is an action that
+fires unprompted on the pool's own clock, so release cancels the member's
+`ProcessComponent` for you.
 </Aside>
 
 Two consequences worth planning for:
@@ -210,6 +213,10 @@ or EndOfFrame and it first draws on the next one.
 While a member sits in the pool it is dormant: hidden, out of the simulation,
 out of every query, and absent from `scene.findEntity` and
 `scene.findEntitiesByTag`. It still appears in `scene.getEntities()`.
+
+A member you attached to something with `addChild` while it was leased is
+detached before it goes back to the pool, so the next lease never inherits a
+stale parent.
 
 ## Lifetime and saves
 

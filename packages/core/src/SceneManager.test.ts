@@ -276,7 +276,7 @@ describe("SceneManager", () => {
       const scene = new GameScene("main");
       await manager.push(scene);
       const e = scene.spawn("doomed");
-      scene.destroyEntity(e);
+      e.destroy();
       expect(scene.getEntities().size).toBe(1);
       manager._flushDestroyQueues();
       expect(scene.getEntities().size).toBe(0);

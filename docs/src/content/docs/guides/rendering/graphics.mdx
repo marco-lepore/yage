@@ -74,7 +74,7 @@ to. Pass `space: "global"` to treat them as absolute pixels instead.
 radial effects (rim lighting, directional glows).
 
 Gradients own a GPU texture — call `.destroy()` in a component's
-`onRemove()` when you're done with them.
+`onDestroy()` when you're done with them.
 
 **Re-export:** `GradientFill` IS pixi `FillGradient`. The factories convert
 yage's numeric stops to pixi color stops and forward the rest as-is. See

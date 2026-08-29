@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { Component } from "./Component.js";
+import { Entity } from "./Entity.js";
 import { EngineContext, LoggerKey, ServiceKey } from "./EngineContext.js";
 import { Logger } from "./Logger.js";
 
@@ -43,7 +44,6 @@ describe("Component", () => {
   it("lifecycle hooks are optional", () => {
     const c = new TestComponent();
     expect(c.onAdd).toBeUndefined();
-    expect(c.onRemove).toBeUndefined();
     expect(c.onDestroy).toBeUndefined();
     expect(c.update).toBeUndefined();
     expect(c.fixedUpdate).toBeUndefined();
@@ -52,14 +52,10 @@ describe("Component", () => {
   it("subclass can define lifecycle hooks", () => {
     class LifecycleComponent extends Component {
       added = false;
-      removed = false;
       destroyed = false;
 
       onAdd() {
         this.added = true;
-      }
-      onRemove() {
-        this.removed = true;
       }
       onDestroy() {
         this.destroyed = true;
@@ -68,10 +64,8 @@ describe("Component", () => {
 
     const c = new LifecycleComponent();
     c.onAdd?.();
-    c.onRemove?.();
     c.onDestroy?.();
     expect(c.added).toBe(true);
-    expect(c.removed).toBe(true);
     expect(c.destroyed).toBe(true);
   });
 
@@ -93,6 +87,37 @@ describe("Component", () => {
     c.fixedUpdate(8);
     expect(c.lastDt).toBe(16);
     expect(c.lastFixedDt).toBe(8);
+  });
+
+  describe("destroy()", () => {
+    it("removes the component from its entity and fires onDestroy", () => {
+      class DestroyableComponent extends Component {
+        destroyed = false;
+        onDestroy() {
+          this.destroyed = true;
+        }
+      }
+      const entity = new Entity("test");
+      const c = entity.add(new DestroyableComponent());
+
+      c.destroy();
+
+      expect(entity.has(DestroyableComponent)).toBe(false);
+      expect(c.destroyed).toBe(true);
+    });
+
+    it("is a safe no-op on a component never attached to an entity", () => {
+      class DestroyableComponent extends Component {
+        destroyed = false;
+        onDestroy() {
+          this.destroyed = true;
+        }
+      }
+      const c = new DestroyableComponent();
+
+      expect(() => c.destroy()).not.toThrow();
+      expect(c.destroyed).toBe(false);
+    });
   });
 
   describe("use()", () => {
