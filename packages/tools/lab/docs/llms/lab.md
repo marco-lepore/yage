@@ -282,7 +282,10 @@ await ctx.input.whileHolding(codes, fn); // holds codes for fn, then restores
 `whileHolding` holds `codes` for the duration of `fn`, then restores what was
 held before — including when `fn` throws. A code already down on entry is left
 alone at both ends, so nested calls compose by lexical scope even when their
-code sets overlap, and a key a plain `keyDown` is holding survives too:
+code sets overlap, and a key a plain `keyDown` is holding survives too. It
+resolves with whatever `fn` returned, so a hold can wrap a verb that reports
+something — `whileHolding(codes, () => until(pred))` gives back the frames it
+took:
 
 ```ts
 await ctx.input.whileHolding(["KeyD"], async () => {

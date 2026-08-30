@@ -107,6 +107,26 @@ Engine events carry live objects — `component:added` passes the `Component` it
 
 `time.isAdvancing(withinMs = 250)` reports whether the game loop actually ticked within the last `withinMs` milliseconds, independent of `time.isFrozen()`. A frozen clock that isn't being stepped reads `isAdvancing() === false`, but a manual `time.step`/`stepUntil`/`stepAsync` fires a real tick, so `isAdvancing()` reads `true` for `withinMs` after one. A game that has stalled without being frozen — a hung `await`, a runaway synchronous loop — also reads `false`. `isFrozen()` alone can't tell those two cases apart; `isAdvancing()` exists for that.
 
+### Screenshots (`inspector.capture`)
+
+`capture` renders the current stage to a PNG, so a frozen clock gives the exact
+frame that was stepped to. It requires `RendererPlugin` and throws without it.
+
+```ts
+await inspector.capture.dataURL();     // "data:image/png;base64,..."
+await inspector.capture.pngBase64();   // the base64 payload alone
+await inspector.capture.png();         // Uint8Array of PNG bytes
+```
+
+`dataURL()` is the one to return from a `page.evaluate` — bytes do not survive
+the trip out of the page. `png()` decodes the same image for a caller that
+writes a file. Inside a drive, `ctx.capture(label?)` takes the same image and
+files it in the result's `captures` as `{ label, dataUrl }`.
+
+The HUD's FPS and timing readouts differ between runs. Hide them with
+`getExtension<DebugDiagnostics>("debug")?.setHudVisible(false)` before a capture
+that gets compared.
+
 ### `inspector.drive(fn, opts?)` — one probe, frozen and cleaned up
 
 `drive` runs a callback against the running game with the clock held still, hands it awaitable play verbs, and reports what happened as one object. It freezes the clock for the duration and returns it to the state it found it in, and releases every synthetic input afterwards, so no key stays held.
@@ -135,7 +155,7 @@ Pass `opts.maxFrames` to bound the run: the budget is checked before each frame-
 
 ### `input.whileHolding(codes, fn)` — a scoped hold for a maneuver
 
-`whileHolding` holds `codes` for the duration of `fn`, then restores what was held before — including when `fn` throws. A code already down on entry is left alone at both ends, so nested calls compose by lexical scope even when their code sets overlap, and a key a plain `input.keyDown` is holding survives too. It never calls `input.clearAll()`, which would drop the caller's keys along with its own.
+`whileHolding` holds `codes` for the duration of `fn`, then restores what was held before — including when `fn` throws. A code already down on entry is left alone at both ends, so nested calls compose by lexical scope even when their code sets overlap, and a key a plain `input.keyDown` is holding survives too. It never calls `input.clearAll()`, which would drop the caller's keys along with its own. It resolves with whatever `fn` returned, so a hold can wrap a verb that reports something — `whileHolding(codes, () => until(pred))` gives back the frames it took.
 
 ```ts
 await ctx.input.whileHolding(["KeyD"], async () => {
@@ -152,6 +172,10 @@ await ctx.input.whileHolding(["KeyD"], async () => {
 ```
 
 This is the building block for a policy loop that reads state and picks an input every frame — an `if`/`else` chain with `continue` for priority, an ordinary async function for a maneuver with phases, and `whileHolding` for "keep holding this while a nested maneuver runs." `input.keyDown`/`keyUp` still work for a hold with no natural scope.
+
+Which mechanism suits a given question — a drive on the game page, a lab
+scenario, or the Inspector verbs on their own — plus frame budgets and the
+traps of driving a live page, is in `llms/play-sessions.md`.
 
 `@yagejs-tools/lab` builds the same verbs for a scenario's `drive`, adding `scene`, `controls` and `expect`, so a probe worth keeping moves into a scenario file with little edited. Four things do change on the way:
 

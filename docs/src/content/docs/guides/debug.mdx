@@ -404,14 +404,20 @@ them: a 900px gap crossed at 300px/s takes 3 seconds, so 180 frames at 1/60.
 Drive it with `until(pred, { maxFrames: 240 })` and let the predicate decide
 when the sequence moves on.
 
+Picking between a drive on the game page, a lab scenario and the Inspector
+verbs on their own — plus frame budgets, rule-driven runs and the traps of
+driving a live page — is covered in
+[Driving a Running Game](/guides/play-sessions/).
+
 The scenario lab builds the same verbs for a scenario's `drive`, adding
 `scene`, `controls` and `expect`, so a probe worth keeping moves into a
-scenario file with little edited. Three things change on the way: a scenario's
+scenario file with little edited. Four things change on the way: a scenario's
 `drive` returns `void`, so assert with `expect` inside the callback rather
 than returning a measurement; `fireAction` pulses the action once per frame
 here and holds it down for the whole span there, which a hold-to-charge move
-can tell apart; and `pressAction`/`releaseAction` exist only on the lab's
-context.
+can tell apart; `pressAction`/`releaseAction` exist only on the lab's context;
+and a scenario's own `drive` runs with no frame budget, since `yage-lab test`
+and the panel's Run button own that timeout.
 
 ### Throwaway Inspector specs
 
@@ -571,6 +577,30 @@ These are truths, not bugs to fix — keep them in mind when interpreting probe 
 - **Audio**: no introspection surface, and WebAudio doesn't pause in step mode. Probes can't tell you whether a sound effect played at the right frame.
 - **Wall-clock leaks**: `setTimeout`, `Date.now()`, and raw `performance.now()` reads bypass the frame clock. No callers in core YAGE today, but custom plugins might.
 - **`step(bigDt)` ≠ `stepFrames(N)`** for variable-update logic. Always prefer the latter in probes.
+
+### Screenshots
+
+`inspector.capture` renders the current stage, so a frozen clock gives back the
+exact frame you stepped to. It needs `RendererPlugin` and throws without it.
+
+```typescript
+await inspector.capture.dataURL(); // "data:image/png;base64,..."
+await inspector.capture.pngBase64(); // the base64 payload alone
+await inspector.capture.png(); // Uint8Array of PNG bytes
+```
+
+Inside a drive, `ctx.capture(label?)` takes the same image and records it in
+the run's `captures` as `{ label, dataUrl }`, so one call returns both the
+measurements and the frames behind them.
+
+The HUD's FPS and timing readouts differ between runs. Hide it before taking an
+image you intend to compare:
+
+```typescript
+import type { DebugDiagnostics } from "@yagejs/debug";
+
+inspector.getExtension<DebugDiagnostics>("debug")?.setHudVisible(false);
+```
 
 ### Scene lookup, the event log, and stall detection
 

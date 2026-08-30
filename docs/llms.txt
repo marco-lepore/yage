@@ -7,10 +7,12 @@
 - [Core Concepts](llms/core-concepts.md): Architecture, lifecycle, ECS, scenes, events, DI, processes, serialization
 - [Quick Start](llms/quick-start.md): Installation, engine setup, scene class, first project
 - [Patterns](llms/patterns.md): Component, entity, process, and testing patterns; common gotchas
+- [Play Sessions](llms/play-sessions.md): Driving a running game — picking a mechanism, rule-driven runs, frame budgets, traps
 - [Performance](llms/performance.md): Allocation-aware APIs, hot-loop tips, debug-mode cost, pooling
 - [Assets](llms/assets.md): Asset handles, scene preload, manifests, cache lifetime, base path
 - [Loading Scene](llms/loading-scene.md): Loading-scene orchestration, progress events, error handling
 - [Scene Transitions](llms/scene-transitions.md): Built-in transitions and the SceneTransition contract
+- [Troubleshooting](llms/troubleshooting.md): Dev-mode `[yage]` warnings and what each one means
 
 ## Packages
 
@@ -33,6 +35,7 @@
 
 Installable, opinionated gameplay patterns (`@yagejs-addons` scope), independently versioned. Each addon's doc is sourced from its co-located `packages/addons/<name>/docs/llms/`.
 
+- [Addons Overview](llms/addons.md): Scope, versioning, peer dependencies, and how an addon layers on the engine
 - [dialogue](llms/addons/dialogue.md): Branching runner, typewriter box & bubbles, markup, themeable presenters
 - [inventory](llms/addons/inventory.md): Slot inventory — stacking, item actions, sorting, one slot view with swappable cell presets
 - [abilities](llms/addons/abilities.md): Phase-based abilities, input intent mapping, and a concrete hit contract
