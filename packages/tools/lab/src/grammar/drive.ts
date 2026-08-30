@@ -40,12 +40,13 @@ export interface DriveInput {
   releaseAction(name: string): void;
   /**
    * Holds `codes` for the duration of `fn`, then restores what was held
-   * before — including when `fn` throws. A code already down on entry is left
-   * alone at both ends, so nested holds compose by lexical scope: an inner
-   * call that repeats one of the outer call's codes does not drop it, and
-   * neither does a code a plain `keyDown` is holding.
+   * before — including when `fn` throws — and resolves with whatever `fn`
+   * returned. A code already down on entry is left alone at both ends, so
+   * nested holds compose by lexical scope: an inner call that repeats one of
+   * the outer call's codes does not drop it, and neither does a code a plain
+   * `keyDown` is holding.
    */
-  whileHolding(codes: readonly string[], fn: () => Promise<void>): Promise<void>;
+  whileHolding<T>(codes: readonly string[], fn: () => Promise<T>): Promise<T>;
   /** {@link hold} for a single frame unless `frames` says otherwise. */
   tap(code: string, frames?: number): Promise<void>;
   /** Holds `code` down for `frames` frames, then releases it. */

@@ -514,6 +514,14 @@ describe("input.whileHolding", () => {
     expect(midRunKeys).toEqual(["KeyA"]);
   });
 
+  it("resolves with what its callback returned", async () => {
+    const { engine } = stubEngine();
+    const result = await runDrive(engine, SCENE, {}, async (ctx) =>
+      ctx.input.whileHolding(["KeyD"], () => ctx.until(() => true)),
+    );
+    expect(result).toMatchObject({ ok: true, value: 0 });
+  });
+
   it("leaves a code the caller already holds down when it returns", async () => {
     const { engine } = stubEngine();
     let insideKeys: string[] | undefined;

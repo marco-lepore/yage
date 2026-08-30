@@ -35,20 +35,21 @@ interface DriveHoldInput {
 
 /**
  * Holds `codes` for the duration of `fn`, then restores what was held before
- * — including when `fn` throws. A code already down on entry is left alone on
- * both ends, so nesting composes: an inner call that repeats one of the outer
- * call's codes does not drop it when it returns.
+ * — including when `fn` throws — and resolves with whatever `fn` returned. A
+ * code already down on entry is left alone on both ends, so nesting composes:
+ * an inner call that repeats one of the outer call's codes does not drop it
+ * when it returns.
  */
-export async function driveWhileHolding(
+export async function driveWhileHolding<T>(
   input: DriveHoldInput,
   codes: readonly string[],
-  fn: () => Promise<void>,
-): Promise<void> {
+  fn: () => Promise<T>,
+): Promise<T> {
   const alreadyHeld = new Set(input.heldKeys());
   const pressed = [...new Set(codes)].filter((code) => !alreadyHeld.has(code));
   for (const code of pressed) input.keyDown(code);
   try {
-    await fn();
+    return await fn();
   } finally {
     for (const code of pressed) input.keyUp(code);
   }
