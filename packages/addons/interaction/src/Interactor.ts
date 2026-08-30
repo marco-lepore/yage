@@ -97,9 +97,11 @@ export class Interactor extends Component {
    * rather than freezing whatever happened to be in range.
    *
    * `entity.remove(Interactor)` leaves the entity alive, so the transitions
-   * emitted here reach listeners normally. `entity.destroy()` marks the entity
-   * destroyed before the deferred teardown that runs this hook, so
-   * `Entity.emit` silently drops them — as with any post-destroy emit.
+   * emitted here reach listeners normally. `entity.destroy()` on this entity
+   * marks it before running this hook, so `Entity.emit` silently drops them —
+   * as with any post-destroy emit. Destroying an ancestor deactivates this
+   * entity before the cascade marks it, so there the transitions are
+   * delivered.
    */
   onDisable(): void {
     this.setInRange([]);

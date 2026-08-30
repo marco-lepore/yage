@@ -217,7 +217,7 @@ class ParticlesScene extends Scene {
     this.currentDemo = demo;
 
     // Destroy old emitter and create new one
-    this.destroyEntity(this.emitterEntity);
+    this.emitterEntity.destroy();
     this.emitterEntity = this.spawnEmitter(demo);
 
     // Update demo bar indicators

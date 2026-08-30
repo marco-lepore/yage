@@ -74,7 +74,7 @@ function stopToCss(stop: GradientStop): { offset: number; color: string } {
  *
  * Returns a `GradientFill` (pixi `FillGradient` under the hood). Call
  * `.destroy()` when you're done with it to release the backing texture —
- * components typically do this in `onRemove()`.
+ * components typically do this in `onDestroy()`.
  */
 export function linearGradient(options: LinearGradientOptions): GradientFill {
   const axis = options.axis ?? "vertical";

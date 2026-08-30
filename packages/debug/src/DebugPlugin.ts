@@ -553,7 +553,7 @@ export function findTopmostCamera(
     for (const entity of scene.getEntities()) {
       // Matches DisplaySystem, which reaches cameras through a query and so
       // never sees a dormant one.
-      if (entity.isDestroyed || !entity.isActive) continue;
+      if (!entity.isActive) continue;
       const cam = entity.tryGet(CameraComponent);
       if (
         cam &&

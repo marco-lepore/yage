@@ -244,7 +244,7 @@ class FogOverlay extends Component {
     }
   }
 
-  onRemove(): void {
+  onDestroy(): void {
     this.gradTopInner.destroy();
     this.gradBottomInner.destroy();
     this.gradLeftInner.destroy();

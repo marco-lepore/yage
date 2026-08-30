@@ -27,6 +27,7 @@ export abstract class Component {
   private _updatePriority?: number;
   private _serviceCache: Map<string, unknown> | undefined;
   private _cleanups?: Array<() => void>;
+  private _tornDown = false;
 
   /**
    * Whether this component runs. Disabled components are skipped by
@@ -243,7 +244,7 @@ export abstract class Component {
 
   /**
    * Run and clear all registered cleanups.
-   * Called by Entity.remove() and Entity._performDestroy() before onRemove/onDestroy.
+   * Called by Entity.remove() and Entity._performDestroy() before onDestroy.
    * @internal
    */
   _runCleanups(): void {
@@ -253,6 +254,36 @@ export abstract class Component {
       }
       this._cleanups.length = 0;
     }
+  }
+
+  /**
+   * End this component's life on its own — the same as
+   * `entity.remove(SomeClass)`, without having to name its own class from
+   * inside itself, which breaks under subclassing.
+   */
+  destroy(): void {
+    (this.entity as Entity | undefined)?.remove(
+      this.constructor as ComponentClass,
+    );
+  }
+
+  /**
+   * Internal: true once this component has been removed or its entity
+   * destroyed. Components are terminal — `Entity.add` uses this to reject
+   * re-attaching an instance whose cleanups and `onDestroy` already ran.
+   * @internal
+   */
+  _isTornDown(): boolean {
+    return this._tornDown;
+  }
+
+  /**
+   * Internal: mark this component torn down. Called by `Entity.remove()` and
+   * `Entity._performDestroy()` after `onDestroy` runs.
+   * @internal
+   */
+  _markTornDown(): void {
+    this._tornDown = true;
   }
 
   /**
@@ -313,9 +344,6 @@ export abstract class Component {
    * `onEnable` cannot rebuild.
    */
   onDisable?(): void;
-
-  /** Called when the component is removed from an entity. */
-  onRemove?(): void;
 
   /** Called when the component is destroyed (entity destroyed or component removed). */
   onDestroy?(): void;

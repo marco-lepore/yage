@@ -29,7 +29,7 @@ Six phases per frame, with a fixed-timestep accumulator for physics:
 3. Update         - physics interpolation, then game logic: component.update(dt)
 4. LateUpdate     - UI layout
 5. Render         - Transform -> display object sync
-6. EndOfFrame     - deferred entity destruction flush
+6. EndOfFrame     - deferred entity destruction flush (onDestroy, detach from scene)
 ```
 
 Fixed timestep default: `1/60` s. Max steps per frame: 5 (prevents spiral of death).
@@ -85,7 +85,6 @@ class MyComponent extends Component {
   onAdd() {}          // added to entity
   update(dt) {}       // every frame (variable dt in seconds)
   fixedUpdate(dt) {}  // every fixed step (fixed dt in seconds)
-  onRemove() {}       // removed from entity
   onDestroy() {}      // entity destroyed or component removed
 }
 ```
@@ -110,7 +109,9 @@ e.add(new Transform({ position: new Vec2(10, 20) }));
 const t = e.get(Transform);       // throws if missing
 const t2 = e.tryGet(Transform);   // undefined if missing
 e.has(Transform);                  // boolean
-e.remove(Transform);               // remove + call onRemove/onDestroy
+e.remove(Transform);               // remove + call onDestroy
+// From inside a component, `this.destroy()` does the same thing without
+// having to name its own class — useful under subclassing.
 
 // Tags
 const e = new Entity("enemy", ["hostile", "npc"]);
@@ -128,7 +129,9 @@ e.timeScale = 0.5; // components get dt * sceneEffectiveScale * entity.timeScale
 // particle emitters. NOT physics (shared Rapier world steps under the scene's
 // effective scale only).
 
-// Destruction (deferred to EndOfFrame)
+// Destruction — deactivates immediately (isActive false, onDisable fires,
+// leaves every query); onDestroy and detach from the scene wait for the
+// EndOfFrame flush.
 e.destroy();
 ```
 

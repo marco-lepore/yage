@@ -186,7 +186,7 @@ describe("DialogueController — play() lifecycle guards", () => {
     controller.play(SCRIPT);
     expect(controller.isActive()).toBe(true);
 
-    host.remove(DialogueController); // runs onRemove + onDestroy
+    host.remove(DialogueController); // runs onDestroy
 
     controller.play(SCRIPT); // a stale ref (e.g. an interact closure)
     expect(controller.isActive()).toBe(false);

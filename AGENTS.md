@@ -100,6 +100,30 @@ Enforced by tooling — match these conventions exactly:
   an authored error naming the offending input before anything mutates, instead
   of letting the call fail halfway with a message from a dependency's
   internals. This is edge validation, not mid-operation recovery.
+- **A non-finite number (`NaN`, `Infinity`) is never stored into engine state
+  unguarded — the response depends on where the number enters.** `NaN` fails
+  every comparison, so a guard like `value <= 0` lets it through, and once it
+  reaches position, velocity, a cooldown, or particle state, nothing recovers
+  it. Three cases:
+  - Two already-legal inputs combine into a non-finite result — for example a
+    documented `Infinity` option multiplied by a `dt` of `0` from a
+    time-scale freeze. Define the result at that point instead of throwing. A
+    throw here would fire on ordinary, documented usage. When the defined
+    result drops what the caller asked for, emit a one-shot `devWarn` naming
+    what could not be honoured. When the result is exact — `dt = 0` meaning
+    nothing changes — stay silent. `devWarn` is internal to `@yagejs/core`,
+    so only core sites can warn this way. A package without it stays silent
+    on this edge; that is fine as long as its own result is exact rather than
+    lossy.
+  - A single game-supplied number is about to be written into simulation
+    state — through a setter, constructor config, or a value returned from a
+    game-authored callback. Throw a plain `Error` at that write site before
+    the value is stored, naming the offending input and the constraint it
+    violates. The message follows the style already shipped for scene-time
+    and entity-pool validation: `Context.method: constraint, got ${x}`.
+  - A non-finite input only changes what a read-only query returns and is
+    never stored anywhere. Leave it unguarded and document that the result is
+    undefined for non-finite input. Don't add a branch for it.
 
 ## Testing
 

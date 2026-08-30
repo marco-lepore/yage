@@ -102,25 +102,31 @@ Negative scale composes through nested entities too — a child at
 `worldScale = (1, 1)` (the mirrors cancel out). Positive non-unit scale
 behaves the same way: a parent at `2x` zooms its whole subtree.
 
-### Deferred Destruction
+### Destroying an Entity
 
-Destroying an entity does not happen immediately. Instead the entity is marked
-for removal and actually cleaned up during the **EndOfFrame** phase:
+`entity.destroy()` deactivates the entity immediately: `isActive` reads
+`false`, it leaves every query, and its components' `onDisable` fires right
+away — the same as `setActive(false)`. The rest of teardown is deferred to
+the **EndOfFrame** phase, where each component's `onDestroy` runs and the
+entity detaches from the scene:
 
 ```typescript
-scene.destroyEntity(bullet);
+bullet.destroy();
 
-// bullet still exists this frame — components can run final logic
-// actual removal happens at EndOfFrame
+bullet.isActive;     // false — gone from queries and findEntity right away
+bullet.isDestroyed;  // true
+// component onDestroy and detaching from the scene happen at EndOfFrame
 ```
 
-This prevents iterator invalidation and lets other systems react to the
-destruction during the same frame.
+Deferring the second half prevents iterator invalidation — a system mid-pass
+over a query result is not left holding a torn-down entity — while still
+letting other code react to the destruction within the same frame, since the
+entity is already out of every query.
 
 Entities also die when their scene leaves the stack (`pop`, `replace`, or
-engine shutdown). Scene teardown applies the same contract as the
-end-of-frame flush: every entity is marked destroyed (`isDestroyed`
-becomes `true` before any component `onDestroy` runs), components are torn
+engine shutdown). Scene teardown applies the same contract: every entity is
+marked destroyed and deactivated (`isDestroyed` reads `true` and `isActive`
+reads `false` before any component `onDestroy` runs), components are torn
 down, and the engine bus emits `entity:destroyed` once per entity. After
 destruction — on either path — `entity.scene` throws and `entity.tryScene`
 returns `null`; use `tryScene` when a cached reference may outlive its
@@ -192,7 +198,7 @@ class Health extends Component {
 
   update(dt: number) {
     if (this.current <= 0) {
-      scene.destroyEntity(this.entity);
+      this.entity.destroy();
     }
   }
 }
@@ -221,13 +227,10 @@ class PlayerController extends Component {
     // Put live resources to sleep here.
   }
 
-  onRemove() {
-    // Called when the component is removed from the entity.
-  }
-
   onDestroy() {
-    // Called when the owning entity is destroyed.
-    // Use for final cleanup (unsubscribe events, release resources).
+    // Called when the component is removed, or the owning entity is
+    // destroyed. Use for final cleanup (unsubscribe events, release
+    // resources).
   }
 
   update(dt: number) {
@@ -248,9 +251,12 @@ like deactivating the entity does, and `component.effectiveEnabled` reads the
 current state.
 
 The order is `onAdd` → query join → `onEnable` when a component is added, and
-`onDisable` → `onRemove` / `onDestroy` when it is torn down. A component added
-to a dormant entity gets `onAdd` but waits for `onEnable` until the entity is
-activated.
+`onDisable` → `onDestroy` when it is torn down. A component added to a dormant
+entity gets `onAdd` but waits for `onEnable` until the entity is activated.
+
+A component can end its own life with `this.destroy()` — the same as calling
+`entity.remove(SomeClass)` from outside, without having to name its own class
+from inside itself, which breaks under subclassing.
 
 `onAdd` is where a component checks that what it needs is there: a service, a
 sibling component, a render layer. Throwing is how it reports a failed check.

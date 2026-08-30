@@ -75,7 +75,7 @@ class GrappleController extends Component {
     this.grappleAt(new Vec2(INITIAL_ANCHOR.x, INITIAL_ANCHOR.y));
   }
 
-  override onRemove(): void {
+  override onDestroy(): void {
     this.offPointerDown?.();
     this.offPointerDown = undefined;
     this.grapple?.remove();

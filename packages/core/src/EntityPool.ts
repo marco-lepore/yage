@@ -1,7 +1,8 @@
 import type { Entity } from "./Entity.js";
 import type { Scene, SetupParams, SetupParamTuple } from "./Scene.js";
 import { ErrorBoundaryKey } from "./EngineContext.js";
-import { devWarn } from "./internal/dev.js";
+import { ProcessComponent } from "./ProcessComponent.js";
+import { devWarn, isDev } from "./internal/dev.js";
 
 /**
  * An entity class a pool can hand out: it declares its own `onAcquire`.
@@ -98,9 +99,11 @@ export type AcquireResult<
  * `maxSize` is set. `forceAcquire` always returns a member, reclaiming the
  * lowest-priority live one when a capped pool is saturated.
  *
- * Reuse resets nothing by itself. `onAcquire` is where a member returns to a
- * known state — position, health, animation frame — because everything it
- * held while dormant is still there.
+ * Release cancels scheduled actions, keeps inert state: it cancels the
+ * member's `ProcessComponent` (a pending `Process.delay` would otherwise fire
+ * unprompted on a later lease), but position, health, animation frame and
+ * everything else held while dormant is still there on the next `acquire` —
+ * `onAcquire` is where a member returns to a known state.
  */
 export class EntityPool<
   T extends PoolableEntity,
@@ -117,6 +120,13 @@ export class EntityPool<
    * field inside it, so a member is always in exactly one state — it cannot
    * be filed twice or lost between two collections.
    */
+  /**
+   * One report per invariant per pool. The offending hook belongs to the
+   * member class, so every member breaks it the same way — a pool releasing
+   * hundreds a frame would otherwise bury the console in one bug.
+   */
+  private reported = { parent: false, active: false, scheduled: false };
+
   private readonly state = new Map<T, MemberState>();
   /**
    * Members believed free, newest first. A hint, not the truth: an entry
@@ -466,12 +476,72 @@ export class EntityPool<
     this.setStatus(member, "releasing");
   }
 
+  /**
+   * Close out the old life once the release hooks have run: detach, sleep,
+   * and cancel anything still scheduled. Shared by `stow` and by `reclaim`,
+   * which hands its victim straight back instead of filing it.
+   */
+  private finishRelease(member: T): void {
+    member.setActive(false);
+    // Both of these run after every release hook — `onRelease` above and the
+    // `onDisable` that `setActive` just fired. Either can attach a parent or
+    // schedule work, and either would otherwise cross into the next lease.
+    // Running them last also lets both hooks still read `entity.parent`.
+    //
+    // A pool member's own lifetime is not its parent's: a lease that picked
+    // up a parent mid-flight (a caller attached it somewhere) must not carry
+    // that parent into the next lease.
+    member._detachFromParent();
+    // Release cancels scheduled actions and keeps inert state: position,
+    // health, animation frame and timeScale are data the next `onAcquire`
+    // overwrites, but a pending `Process.delay` is an action that fires
+    // unprompted on the pool's own clock — left alone, it would retire a
+    // fresh lease mid-flight.
+    const processes = member.tryGet(ProcessComponent);
+    processes?.cancel();
+
+    // The steps above are ordered so a release hook cannot undo them. What
+    // they cannot cover is game code running inside `cancel()` itself: a
+    // `ProcessSlot` cleanup fires there, after the detach and the sleep.
+    // Report what it broke rather than cleaning up again — re-running the
+    // close-out has no fixed point against arbitrary re-entry, and a member
+    // handed out in this state fails far from the hook that caused it.
+    // Guarded as a block so `count` is never walked in a production build.
+    if (isDev()) {
+      if (member.parent && !this.reported.parent) {
+        this.reported.parent = true;
+        devWarn(
+          `EntityPool<${this.Class.name}>: a process-slot cleanup attached ` +
+            `"${member.name}" to "${member.parent.name}" while it was being released. ` +
+            `The next lease would inherit that parent.`,
+        );
+      }
+      if (member.isActive && !this.reported.active) {
+        this.reported.active = true;
+        devWarn(
+          `EntityPool<${this.Class.name}>: a release hook reactivated "${member.name}" ` +
+            `while it was being released. A parked member has to stay dormant — an ` +
+            `active one stays in queries, keeps updating, and skips onEnable when it ` +
+            `is acquired again.`,
+        );
+      }
+      if (processes && processes.count > 0 && !this.reported.scheduled) {
+        this.reported.scheduled = true;
+        devWarn(
+          `EntityPool<${this.Class.name}>: a process-slot cleanup left work scheduled ` +
+            `on "${member.name}" while it was being released. That work cannot run ` +
+            `while the member is parked, and would tick against the next lease.`,
+        );
+      }
+    }
+  }
+
   /** Put a member to sleep and back into the pool's keeping. */
   private stow(member: T): void {
     try {
-      // Asleep before it is filed, so an `onDisable` that acquires cannot be
-      // handed the very member being released, half disabled.
-      member.setActive(false);
+      // Closed out before it is filed, so an `onDisable` that acquires cannot
+      // be handed the very member being released, half disabled.
+      this.finishRelease(member);
     } finally {
       // Filed even if a hook threw: the member is out of its lease either
       // way, and losing track of it would cost a capped pool the slot.
@@ -502,8 +572,10 @@ export class EntityPool<
       try {
         this.callRelease(victim);
         // The old life ends here, so components disable and a rigid body
-        // drops its velocity before the next `onAcquire` poses it.
-        victim.setActive(false);
+        // drops its velocity before the next `onAcquire` poses it. Same
+        // close-out as the ordinary release path: a reclaimed member must not
+        // carry a stale parent or a scheduled process into the next lease.
+        this.finishRelease(victim);
       } catch (error) {
         // The caller never receives the member. File it rather than leave it
         // stuck part-way through its release — on a capped pool that would

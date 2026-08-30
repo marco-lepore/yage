@@ -15,6 +15,7 @@ import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
 import { Entity, _resetEntityIdCounter } from "./Entity.js";
 import { defineBlueprint } from "./Blueprint.js";
+import { EntityPool } from "./EntityPool.js";
 
 class TestScene extends Scene {
   readonly name = "test";
@@ -38,11 +39,7 @@ class TestScene extends Scene {
 }
 
 class TestComponent extends Component {
-  removeCalled = false;
   destroyCalled = false;
-  onRemove() {
-    this.removeCalled = true;
-  }
   onDestroy() {
     this.destroyCalled = true;
   }
@@ -82,10 +79,12 @@ describe("Scene", () => {
     expect(handler).toHaveBeenCalledOnce();
   });
 
-  it("removes a failed class entity and its descendants immediately", () => {
+  it("leaves a failed class entity and its already-built state in the scene", () => {
+    // Matches Entity.add's onAdd precedent: a throw during a developer hook
+    // is not rolled back. The half-built entity (and anything its setup()
+    // already spawned) stays in the scene for the developer to inspect.
     class NestedChild extends Entity {
       static latest: NestedChild | undefined;
-      static grandchild: Entity | undefined;
 
       constructor() {
         super();
@@ -94,11 +93,6 @@ describe("Scene", () => {
 
       override setup(): void {
         this.add(new TestComponent());
-        const grandchild = this.spawnChild("grandchild", {
-          key: "failed-grandchild",
-        });
-        grandchild.add(new TestComponent());
-        NestedChild.grandchild = grandchild;
       }
     }
 
@@ -112,7 +106,7 @@ describe("Scene", () => {
 
       override setup(params: { message: string }): void {
         this.add(new TestComponent());
-        this.spawnChild("child", NestedChild, { key: "failed-child" });
+        this.spawnChild("child", NestedChild, { key: "child" });
         throw new Error(params.message);
       }
     }
@@ -123,8 +117,6 @@ describe("Scene", () => {
     const scene = new TestScene();
     scene._setContext(ctx);
     const unrelated = scene.spawn("unrelated");
-    unrelated.add(new TestComponent());
-    unrelated.destroy();
 
     expect(() =>
       scene.spawn(
@@ -136,31 +128,17 @@ describe("Scene", () => {
 
     const failed = BrokenSetup.latest;
     const child = NestedChild.latest;
-    const grandchild = NestedChild.grandchild;
-    if (!failed || !child || !grandchild) {
+    if (!failed || !child) {
       throw new Error("Expected the failed spawn subtree to be created.");
     }
-    expect(failed.isDestroyed).toBe(true);
-    expect(child.isDestroyed).toBe(true);
-    expect(grandchild.isDestroyed).toBe(true);
-    expect(failed.tryGet(TestComponent)).toBeUndefined();
-    expect(child.tryGet(TestComponent)).toBeUndefined();
-    expect(grandchild.tryGet(TestComponent)).toBeUndefined();
-    expect([...scene.getEntities()]).toEqual([unrelated]);
-    expect(scene.findByKey("broken")).toBeUndefined();
-    expect(scene.findByKey("failed-child")).toBeUndefined();
-    expect(scene.findByKey("failed-grandchild")).toBeUndefined();
-    expect(destroyed).toEqual([grandchild.id, child.id, failed.id]);
-    expect(unrelated.tryGet(TestComponent)).toBeDefined();
-
-    scene._flushDestroyQueue();
-    expect(unrelated.tryGet(TestComponent)).toBeUndefined();
-    expect(destroyed).toEqual([
-      grandchild.id,
-      child.id,
-      failed.id,
-      unrelated.id,
-    ]);
+    expect(failed.isDestroyed).toBe(false);
+    expect(child.isDestroyed).toBe(false);
+    expect(failed.tryGet(TestComponent)).toBeDefined();
+    expect(child.tryGet(TestComponent)).toBeDefined();
+    expect([...scene.getEntities()]).toEqual([unrelated, failed, child]);
+    expect(scene.findByKey("broken")).toBe(failed);
+    expect(scene.findByKey("child")).toBe(child);
+    expect(destroyed).toEqual([]);
   });
 
   it("findEntity by name", () => {
@@ -203,7 +181,7 @@ describe("Scene", () => {
     expect(scene.findEntitiesByTag("enemy")).toEqual([]);
   });
 
-  it("destroyEntity marks entity and flushes on _flushDestroyQueue", () => {
+  it("destroy() marks entity and flushes on _flushDestroyQueue", () => {
     const { ctx, bus } = createContext();
     const handler = vi.fn();
     bus.on("entity:destroyed", handler);
@@ -212,13 +190,12 @@ describe("Scene", () => {
     const e = scene.spawn("doomed");
     const comp = new TestComponent();
     e.add(comp);
-    scene.destroyEntity(e);
+    e.destroy();
     expect(e.isDestroyed).toBe(true);
     // Entity still in scene until flush
     expect(scene.getEntities().size).toBe(1);
     scene._flushDestroyQueue();
     expect(scene.getEntities().size).toBe(0);
-    expect(comp.removeCalled).toBe(true);
     expect(comp.destroyCalled).toBe(true);
     expect(handler).toHaveBeenCalledOnce();
   });
@@ -246,7 +223,7 @@ describe("Scene", () => {
     const e2 = scene.spawn("test2");
     scene._destroyAllEntities();
     expect(scene.getEntities().size).toBe(0);
-    expect(comp.removeCalled).toBe(true);
+    expect(comp.destroyCalled).toBe(true);
     expect(e1.isDestroyed).toBe(true);
     expect(e2.isDestroyed).toBe(true);
     expect(e1.tryScene).toBeNull();
@@ -300,6 +277,65 @@ describe("Scene", () => {
     scene._destroyAllEntities();
     expect(handler).toHaveBeenCalledOnce();
     expect(handler).toHaveBeenCalledWith({ entity: e });
+  });
+
+  it("_destroyAllEntities marks and tears down an entity spawned from onDestroy during teardown", () => {
+    const { ctx } = createContext();
+    const scene = new TestScene();
+    scene._setContext(ctx);
+    const e1 = scene.spawn("a");
+    let spawned: Entity | undefined;
+    let spawnedComp: TestComponent | undefined;
+    class SpawningComponent extends Component {
+      onDestroy() {
+        // A death-effect-style spawn triggered by teardown itself, after the
+        // marking pass over the original entity set already ran.
+        spawned = this.entity.scene.spawn("spawned-during-teardown");
+        spawnedComp = spawned.add(new TestComponent());
+      }
+    }
+    e1.add(new SpawningComponent());
+
+    scene._destroyAllEntities();
+
+    expect(spawned).toBeDefined();
+    // Marked, not just gutted: its own components were torn down too.
+    // `_performDestroy` clears the component map, so the flag is read off a
+    // captured reference rather than `tryGet` after the fact.
+    expect(spawned!.isDestroyed).toBe(true);
+    expect(spawnedComp!.destroyCalled).toBe(true);
+  });
+
+  it("_destroyAllEntities marks and deactivates every entity before disposing any pool", () => {
+    const { ctx } = createContext();
+    const scene = new TestScene();
+    scene._setContext(ctx);
+    const bystander = scene.spawn("bystander");
+
+    class PoolMember extends Entity {
+      onAcquire(): void {}
+    }
+    const pool = new EntityPool(scene, PoolMember);
+    pool.acquire();
+
+    let observedAtDisposeTime:
+      | { bystanderDestroyed: boolean; bystanderActive: boolean }
+      | undefined;
+    const originalDispose = pool.dispose.bind(pool);
+    vi.spyOn(pool, "dispose").mockImplementation(() => {
+      observedAtDisposeTime = {
+        bystanderDestroyed: bystander.isDestroyed,
+        bystanderActive: bystander.isActive,
+      };
+      originalDispose();
+    });
+
+    scene._destroyAllEntities();
+
+    expect(observedAtDisposeTime).toEqual({
+      bystanderDestroyed: true,
+      bystanderActive: false,
+    });
   });
 
   it("notifies QueryCache on component add/remove", () => {
@@ -375,14 +411,14 @@ describe("Scene", () => {
     expect(scene.context).toBe(ctx);
   });
 
-  it("destroyEntity ignores already-destroyed entities", () => {
+  it("destroy() ignores already-destroyed entities", () => {
     const { ctx } = createContext();
     const scene = new TestScene();
     scene._setContext(ctx);
     const e = scene.spawn("test");
-    scene.destroyEntity(e);
+    e.destroy();
     // Call again — should not add duplicate to queue
-    scene.destroyEntity(e);
+    e.destroy();
     scene._flushDestroyQueue();
     expect(scene.getEntities().size).toBe(0);
   });

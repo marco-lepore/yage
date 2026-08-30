@@ -448,6 +448,12 @@ export class Entity {
         `Entity "${this.name}" already has component ${cls.name}.`,
       );
     }
+    if (component._isTornDown()) {
+      throw new Error(
+        `Component ${cls.name} was already removed or destroyed once and cannot be re-attached. ` +
+          `Components are terminal — create a new instance instead.`,
+      );
+    }
     component.entity = this;
     this.components.set(cls, component);
     this._invalidateUpdateOrder(component);
@@ -495,8 +501,8 @@ export class Entity {
     if (!comp) return;
     comp._applyEnabled(false);
     comp._runCleanups();
-    comp.onRemove?.();
     comp.onDestroy?.();
+    comp._markTornDown();
     this.components.delete(cls);
     this._updateOrder = null;
     this.callbacks?.onComponentRemoved(this, cls);
@@ -583,8 +589,10 @@ export class Entity {
   }
 
   /**
-   * Retire the entity. For an ordinary entity that means deferred
-   * destruction, with the real cleanup at end of frame.
+   * Retire the entity. Leaves its queries immediately — `isActive` reads
+   * `false` and component `onDisable` fires right away — with the rest of
+   * teardown (`onDestroy`, detach from scene) deferred to the end-of-frame
+   * flush.
    *
    * A pool member is retired by going back to its pool instead — its pool
    * owns its lifetime and destroys it only when the pool itself is disposed.
@@ -608,7 +616,14 @@ export class Entity {
    */
   _destroyOwned(): void {
     if (this._destroyed) return;
+    // Mark before deactivating, so this entity's own onDisable sees
+    // isDestroyed === true and an emit from it is dropped. Descendants are
+    // deactivated by the same `_applyActive(false)` call but are marked later,
+    // in the cascade below, so their onDisable emits are delivered.
     this._markDestroyed();
+    // `_applyActive(false)` and not `setActive(false)` — the latter would
+    // clobber the user-facing `activeSelf` flag and lie about it.
+    this._applyActive(false);
 
     // Every descendant's life ends up front, before the cascade runs any
     // game code: a pooled child's `onRelease` must not see a handle to a
@@ -626,11 +641,14 @@ export class Entity {
     // destroyed and never actually be torn down.
     try {
       if (this._children) {
-        for (const [name, child] of [...this._children]) {
+        for (const child of [...this._children.values()]) {
           if (child._pool) {
-            // A member hung under this entity outlives it. Detach it and hand
-            // it back rather than destroy something the pool owns.
-            this.removeChild(name);
+            // A member hung under this entity outlives it. Detach it and
+            // hand it back rather than destroy something the pool owns. The
+            // `_applyActive(false)` above already deactivated it, so a
+            // `removeChild`-style resync here (parentless -> active again)
+            // would wrongly reactivate it right before the pool parks it.
+            child._detachFromParent();
             child._pool._releaseMember(child);
           } else {
             child._destroyOwned();
@@ -693,9 +711,25 @@ export class Entity {
       this.callbacks?.onEntityDeactivated(this);
     }
 
+    // A hook just above may have called `setActive` on this same entity —
+    // a reentrant call already propagated the current value to every child.
+    if (this._activeInHierarchy !== next) return;
+
     if (this._children) {
       for (const child of this._children.values()) child._applyActive(next);
     }
+  }
+
+  /**
+   * Internal: deactivate immediately without touching `activeSelf`,
+   * mirroring what `destroy()` does per-entity. Used by `Scene` when it
+   * tears down every entity at once — idempotent, and safe to call in any
+   * order across a flat entity set: an entity already reached through a
+   * parent's cascade is a no-op here.
+   * @internal
+   */
+  _deactivateForDestroy(): void {
+    this._applyActive(false);
   }
 
   /**
@@ -726,12 +760,16 @@ export class Entity {
   }
 
   /**
-   * Internal: perform actual destruction — remove all components and clear state.
-   * Called by Scene during endOfFrame flush.
+   * Internal: detach from whatever parent this entity has, without touching
+   * children or activeness. Shared by `_performDestroy`, the pooled-child
+   * branch of `_destroyOwned`'s cascade, and `EntityPool.stow`, which parks a
+   * released member that picked up a parent mid-lease. Unlike `removeChild`,
+   * this does not resync activeness — callers that need `activeSelf`
+   * honoured against no parent still call `setActive`/`_resyncActive`
+   * themselves.
    * @internal
    */
-  _performDestroy(): void {
-    // Detach from parent
+  _detachFromParent(): void {
     if (this._parent?._children) {
       for (const [name, child] of this._parent._children) {
         if (child === this) {
@@ -741,6 +779,16 @@ export class Entity {
       }
     }
     this._parent = null;
+    this.tryGet(Transform)?._markDirty();
+  }
+
+  /**
+   * Internal: perform actual destruction — remove all components and clear state.
+   * Called by Scene during endOfFrame flush.
+   * @internal
+   */
+  _performDestroy(): void {
+    this._detachFromParent();
 
     // Clear own children references (they are destroyed separately via cascade)
     this._children?.clear();
@@ -748,8 +796,8 @@ export class Entity {
     for (const [cls, comp] of this.components) {
       comp._applyEnabled(false);
       comp._runCleanups();
-      comp.onRemove?.();
       comp.onDestroy?.();
+      comp._markTornDown();
       this.callbacks?.onComponentRemoved(this, cls);
     }
     this.components.clear();

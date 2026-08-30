@@ -590,7 +590,7 @@ describe("Engine", () => {
       const scene = new TestScene();
       await engine.scenes.push(scene);
       const entity = scene.spawn("doomed");
-      scene.destroyEntity(entity);
+      entity.destroy();
 
       // Entity is still in scene before tick
       expect(scene.getEntities().size).toBe(1);

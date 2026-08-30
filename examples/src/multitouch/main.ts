@@ -91,7 +91,7 @@ class MultitouchVisualizer extends Component {
     );
   }
 
-  override onRemove(): void {
+  override onDestroy(): void {
     for (const off of this.disposers) off();
     this.disposers.length = 0;
     for (const handle of this.pendingRemovals) clearTimeout(handle);

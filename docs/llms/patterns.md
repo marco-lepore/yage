@@ -673,7 +673,7 @@ const grounded = hit !== null; // add coyote timer for better feel
 
 **setup() vs constructor**: Entity constructors run before the entity is attached to the scene. Always use `setup()` for adding components and resolving services.
 
-**Deferred destruction**: `entity.destroy()` marks for destruction. Actual cleanup happens in EndOfFrame phase. Don't assume immediate removal.
+**Deferred destruction**: `entity.destroy()` deactivates immediately — `isActive` reads `false`, the entity leaves every query, `onDisable` fires right away. `onDestroy` and detaching from the scene wait for the EndOfFrame flush, so don't assume the entity or its components are gone until then.
 
 **Fixed vs variable dt**: `update(dt)` receives variable frame delta. `fixedUpdate(dt)` receives the fixed timestep. Use `fixedUpdate` for physics-sensitive logic.
 

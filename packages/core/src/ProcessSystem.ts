@@ -164,7 +164,7 @@ export class ProcessSystem extends System {
       this._drainScenePool(this.scenePools, scene, effectiveDt);
 
       for (const entity of scene.getEntities()) {
-        if (entity.isDestroyed || !entity.isActive) continue;
+        if (!entity.isActive) continue;
         const pc = entity.tryGet(ProcessComponent);
         if (!pc) continue;
         // Entity ProcessComponents compose the per-entity timeScale on top of
@@ -298,7 +298,7 @@ export class ProcessFixedUpdateSystem extends System {
         globalScaledDt * (time?.effectiveScale ?? scene.timeScale),
       );
       for (const entity of scene.getEntities()) {
-        if (entity.isDestroyed || !entity.isActive) continue;
+        if (!entity.isActive) continue;
         const pc = entity.tryGet(ProcessComponent);
         if (!pc) continue;
         const entityDt =

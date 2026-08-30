@@ -94,7 +94,7 @@ class CoinDisplay extends Component {
     this.unsub = game.progression.subscribe(apply);
   }
 
-  onRemove(): void {
+  onDestroy(): void {
     this.unsub?.();
     this.unsub = null;
   }

@@ -419,8 +419,8 @@ export class MyComponent extends Component {
     // Called when added to an entity
   }
 
-  onRemove() {
-    // Called when removed from an entity
+  onDestroy() {
+    // Called when removed from an entity, or the entity is destroyed
   }
 }
 ```

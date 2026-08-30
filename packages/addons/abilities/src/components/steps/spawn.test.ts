@@ -306,7 +306,7 @@ describe("spawn step", () => {
     expect(InvalidSpawn.latest).toBeUndefined();
   });
 
-  it("removes the spawned entity when its setup throws", () => {
+  it("leaves the spawned entity in the scene when its setup throws", () => {
     @trait(AbilitySpawned)
     class BrokenSpawn extends Entity {
       static latest: BrokenSpawn | undefined;
@@ -341,12 +341,14 @@ describe("spawn step", () => {
 
     entity.get(Abilities).send("broken");
     expect(() => pc._tick(0.01, undefined, "fixed")).toThrow("broken attack");
-    expect(BrokenSpawn.latest?.isDestroyed).toBe(true);
+    // A throwing setup() is not rolled back — the half-built entity stays in
+    // the scene for the developer to inspect, same as any other scene.spawn().
+    expect(BrokenSpawn.latest?.isDestroyed).toBe(false);
     expect(
       scene
         .findEntities()
         .some((candidate) => candidate instanceof BrokenSpawn),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("lets a spawned attack pass its original caster to a child attack", () => {

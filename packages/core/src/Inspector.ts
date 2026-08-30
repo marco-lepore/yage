@@ -1715,7 +1715,7 @@ export class Inspector {
       for (const entity of scene.getEntities()) {
         // Matches DisplaySystem, which reaches cameras through a query and so
         // never sees a dormant one.
-        if (entity.isDestroyed || !entity.isActive) continue;
+        if (!entity.isActive) continue;
         for (const component of entity.getAll()) {
           if (component.constructor.name !== "CameraComponent") continue;
           const camera = component as unknown as CameraComponentLike;
