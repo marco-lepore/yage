@@ -10,6 +10,7 @@ Entity destroy, pool release, and component teardown converge on one model inste
 - Removed `Component.onRemove` — `onDestroy` is the one teardown hook. `onRemove` always fired alongside `onDestroy` and no component could tell the two apart.
 - Removed `Scene.destroyEntity` — a one-line alias for `entity.destroy()`.
 - Fixed: a pool member that picked up a parent while leased (via `addChild`) now gets detached when its lease ends, so the next lease never inherits a stale parent — on an ordinary `release()` and on a `forceAcquire()` that reclaims it.
+- `EntityPool` warns in dev when a release hook leaves a member unfit for its next lease — re-parented, still active, or with work still scheduled. A `ProcessSlot` cleanup runs inside the cancel, after the member has been detached and put to sleep, so it can undo the close-out; the pool reports that rather than cleaning up a second time.
 - Fixed: `ProcessComponent.cancel()` cancels slots before draining one-off processes. A slot's `cleanup` is game code that can schedule again, and in the old order anything it queued survived the cancel.
 - Fixed: `_applyActive` no longer propagates a stale activeness value to children when an `onEnable`/`onDisable` hook changes activeness again during propagation.
 - Fixed: a `setup()` that throws during `scene.spawn()` is no longer rolled back. The half-built entity, and anything it already spawned, stays in the scene for inspection — matching how a throwing `onAdd` is already handled.

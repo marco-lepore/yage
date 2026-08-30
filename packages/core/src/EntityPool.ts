@@ -2,7 +2,7 @@ import type { Entity } from "./Entity.js";
 import type { Scene, SetupParams, SetupParamTuple } from "./Scene.js";
 import { ErrorBoundaryKey } from "./EngineContext.js";
 import { ProcessComponent } from "./ProcessComponent.js";
-import { devWarn } from "./internal/dev.js";
+import { devWarn, isDev } from "./internal/dev.js";
 
 /**
  * An entity class a pool can hand out: it declares its own `onAcquire`.
@@ -490,7 +490,40 @@ export class EntityPool<
     // overwrites, but a pending `Process.delay` is an action that fires
     // unprompted on the pool's own clock — left alone, it would retire a
     // fresh lease mid-flight.
-    member.tryGet(ProcessComponent)?.cancel();
+    const processes = member.tryGet(ProcessComponent);
+    processes?.cancel();
+
+    // The steps above are ordered so a release hook cannot undo them. What
+    // they cannot cover is game code running inside `cancel()` itself: a
+    // `ProcessSlot` cleanup fires there, after the detach and the sleep.
+    // Report what it broke rather than cleaning up again — re-running the
+    // close-out has no fixed point against arbitrary re-entry, and a member
+    // handed out in this state fails far from the hook that caused it.
+    // Guarded as a block so `count` is never walked in a production build.
+    if (isDev()) {
+      if (member.parent) {
+        devWarn(
+          `EntityPool<${this.Class.name}>: a process-slot cleanup attached ` +
+            `"${member.name}" to "${member.parent.name}" while it was being released. ` +
+            `The next lease would inherit that parent.`,
+        );
+      }
+      if (member.isActive) {
+        devWarn(
+          `EntityPool<${this.Class.name}>: a release hook reactivated "${member.name}" ` +
+            `while it was being released. A parked member has to stay dormant — an ` +
+            `active one stays in queries, keeps updating, and skips onEnable when it ` +
+            `is acquired again.`,
+        );
+      }
+      if (processes && processes.count > 0) {
+        devWarn(
+          `EntityPool<${this.Class.name}>: a process-slot cleanup left work scheduled ` +
+            `on "${member.name}" while it was being released. That work cannot run ` +
+            `while the member is parked, and would tick against the next lease.`,
+        );
+      }
+    }
   }
 
   /** Put a member to sleep and back into the pool's keeping. */

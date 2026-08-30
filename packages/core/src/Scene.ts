@@ -888,10 +888,12 @@ export abstract class Scene {
     // Mark and deactivate everything first, so a component's onDestroy never
     // observes a half-alive sibling: by the time any teardown runs, every
     // entity in the scene already reads isDestroyed === true and isActive
-    // === false, the same as an ordinary destroy(). Disposing pools below
-    // runs developer `onRelease` hooks, so this has to happen before that —
-    // `_markDestroyed` and `_deactivateForDestroy` run no developer code and
-    // cannot throw.
+    // === false, the same as an ordinary destroy(). Marking first also
+    // settles what pool disposal below does: it finds its members already
+    // destroyed, so it tears them down instead of running their release
+    // hooks. `_deactivateForDestroy` fires component `onDisable`, which is
+    // game code and can throw — that ends the teardown, per the engine's
+    // report-rather-than-repair model.
     for (const entity of this.entities) {
       entity._markDestroyed();
       entity._deactivateForDestroy();

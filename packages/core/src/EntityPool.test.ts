@@ -93,6 +93,47 @@ class ReparentsOnDisable extends Component {
   }
 }
 
+/** Re-dirties its own state from a slot cleanup, which runs inside `cancel()`. */
+class DirtyCleanup extends Entity {
+  pc!: ProcessComponent;
+  grabber?: Entity;
+  scheduleAgain = false;
+  override setup(): void {
+    this.pc = this.add(new ProcessComponent());
+  }
+  onAcquire(): void {
+    this.pc
+      .slot({
+        clock: "fixed",
+        duration: 100,
+        cleanup: () => {
+          if (this.grabber) this.grabber.addChild("grabbed", this);
+          // A frame-clock slot started from a fixed-clock cleanup: `cancel`
+          // has already passed the frame set, so this outlives it.
+          if (this.scheduleAgain) this.pc.slot({ duration: 100 }).start();
+        },
+      })
+      .start();
+  }
+}
+
+/** Reactivates itself from `onDisable`, which release fires during stow. */
+class ReactivatesOnDisable extends Component {
+  armed = false;
+  override onDisable(): void {
+    if (this.armed) this.entity.setActive(true);
+  }
+}
+
+/** A member that fights being put to sleep. */
+class Stubborn extends Entity {
+  hook!: ReactivatesOnDisable;
+  override setup(): void {
+    this.hook = this.add(new ReactivatesOnDisable());
+  }
+  onAcquire(): void {}
+}
+
 /** A member whose `onDisable` attaches it somewhere else. */
 class Grabbable extends Entity {
   hook!: ReparentsOnDisable;
@@ -326,6 +367,43 @@ describe("EntityPool", () => {
       expect(reacquired).toBe(member);
       member.pc._tick(2);
       expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it("warns when a slot cleanup re-parents the member during release", () => {
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, DirtyCleanup, { prewarm: 1 });
+      const member = pool.acquire();
+      member.grabber = scene.spawn("grabber");
+
+      pool.release(member);
+
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("attached \"DirtyCleanup\" to \"grabber\""),
+      );
+    });
+
+    it("warns when a slot cleanup leaves work scheduled during release", () => {
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, DirtyCleanup, { prewarm: 1 });
+      const member = pool.acquire();
+      member.scheduleAgain = true;
+
+      pool.release(member);
+
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("left work scheduled"),
+      );
+    });
+
+    it("warns when a release hook reactivates the member", () => {
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, Stubborn, { prewarm: 1 });
+      const member = pool.acquire();
+      member.hook.armed = true;
+
+      pool.release(member);
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("reactivated"));
     });
 
     it("detaches a parent an onDisable hook attaches during release", () => {
