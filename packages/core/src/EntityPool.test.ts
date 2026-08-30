@@ -410,7 +410,7 @@ describe("EntityPool", () => {
       // to the class, not the instance.
       for (const m of members) pool.release(m);
 
-      const reparent = warn.mock.calls.filter((c) =>
+      const reparent = warn.mock.calls.filter((c: unknown[]) =>
         String(c[0]).includes("while it was being released"),
       );
       expect(reparent).toHaveLength(1);
