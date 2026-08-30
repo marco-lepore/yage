@@ -395,6 +395,27 @@ describe("EntityPool", () => {
       );
     });
 
+    it("reports each broken invariant once, however many members break it", () => {
+      const { scene } = createMockScene();
+      const pool = new EntityPool(scene, DirtyCleanup, { prewarm: 5 });
+      // One grabber each: the point is many members breaking the invariant,
+      // not a name collision between them.
+      const members = [1, 2, 3, 4, 5].map((i) => {
+        const m = pool.acquire();
+        m.grabber = scene.spawn(`grabber${i}`);
+        return m;
+      });
+
+      // Every member's cleanup breaks the same invariant — the hook belongs
+      // to the class, not the instance.
+      for (const m of members) pool.release(m);
+
+      const reparent = warn.mock.calls.filter((c) =>
+        String(c[0]).includes("while it was being released"),
+      );
+      expect(reparent).toHaveLength(1);
+    });
+
     it("warns when a release hook reactivates the member", () => {
       const { scene } = createMockScene();
       const pool = new EntityPool(scene, Stubborn, { prewarm: 1 });

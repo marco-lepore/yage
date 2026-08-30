@@ -120,6 +120,13 @@ export class EntityPool<
    * field inside it, so a member is always in exactly one state — it cannot
    * be filed twice or lost between two collections.
    */
+  /**
+   * One report per invariant per pool. The offending hook belongs to the
+   * member class, so every member breaks it the same way — a pool releasing
+   * hundreds a frame would otherwise bury the console in one bug.
+   */
+  private reported = { parent: false, active: false, scheduled: false };
+
   private readonly state = new Map<T, MemberState>();
   /**
    * Members believed free, newest first. A hint, not the truth: an entry
@@ -501,14 +508,16 @@ export class EntityPool<
     // handed out in this state fails far from the hook that caused it.
     // Guarded as a block so `count` is never walked in a production build.
     if (isDev()) {
-      if (member.parent) {
+      if (member.parent && !this.reported.parent) {
+        this.reported.parent = true;
         devWarn(
           `EntityPool<${this.Class.name}>: a process-slot cleanup attached ` +
             `"${member.name}" to "${member.parent.name}" while it was being released. ` +
             `The next lease would inherit that parent.`,
         );
       }
-      if (member.isActive) {
+      if (member.isActive && !this.reported.active) {
+        this.reported.active = true;
         devWarn(
           `EntityPool<${this.Class.name}>: a release hook reactivated "${member.name}" ` +
             `while it was being released. A parked member has to stay dormant — an ` +
@@ -516,7 +525,8 @@ export class EntityPool<
             `is acquired again.`,
         );
       }
-      if (processes && processes.count > 0) {
+      if (processes && processes.count > 0 && !this.reported.scheduled) {
+        this.reported.scheduled = true;
         devWarn(
           `EntityPool<${this.Class.name}>: a process-slot cleanup left work scheduled ` +
             `on "${member.name}" while it was being released. That work cannot run ` +
