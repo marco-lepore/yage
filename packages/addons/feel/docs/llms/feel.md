@@ -162,13 +162,25 @@ callbacks can use `context.invoke(label, callback)` for error attribution.
 ## `/recipes`
 
 ```ts
+impact({ target, position?, color?, duration?, scale?, shake?, ringRadius?, ringExpand? });
+damageImpact({ target, value, position?, critical?, impact?, number? });
+dashBurst({ target, direction, position?, duration?, stretch?, blur?, lines? });
+spawnPop({ target, duration?, startScale?, offset?, oscillations?, decay?, glow? });
 voidCollapse({ host, center?, radius?, strength?, darkness?, swirl?, zoomStrength?, duration?, peakAt?, ... });
 ```
 
 A recipe is a ready-made composition that returns an ordinary `FeelNode`. It
 does not create another `Feel` component or use a separate player.
-`voidCollapse` combines the `implosion` and inward `zoomBlur` renderer effects.
-It does not add particles, camera movement, sound, a following burst, entity
+
+- `impact`: hit flash, scale punch, visual shake, and an impact ring.
+- `damageImpact`: `impact` plus a floating damage number. The nested `impact`
+  and `number` objects configure those two parts.
+- `dashBurst`: axis stretch, axis blur, and directional flight lines. The
+  dominant direction component selects the axis.
+- `spawnPop`: scale and position springs plus a short glow.
+- `voidCollapse`: `implosion` plus inward `zoomBlur`.
+
+Recipes do not add sound, camera movement, time changes, particles, entity
 destruction, or other gameplay consequences.
 
 ## `/audio`

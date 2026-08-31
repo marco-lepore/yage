@@ -11,11 +11,11 @@ camera, freeze the scene for 50 ms, play a sound, and burst particles without
 putting six unrelated timers in combat code.
 
 The [Feel addon example](https://examples.yage.dev/feel-addon.html) groups the
-effects across three scenes. It covers impacts, trails, afterimages,
+effects across four scenes. It covers impacts, trails, afterimages,
 highlights, springs, visibility, cue composition, scene and target time
 effects, animation, callbacks, shockwaves, camera modifiers, glitch, blur,
-implosion, a recipe, and a custom effect. Press `N` or `P` to move between
-scenes with a slide transition.
+implosion, practical recipes, and a custom effect. Press `N` or `P` to move
+between scenes with a slide transition.
 
 ```ts
 import {
@@ -193,19 +193,29 @@ The `/recipes` entry contains ready-made compositions. Recipe names omit the
 `feel` prefix so imports remain visibly different from basic effect nodes:
 
 ```ts
-import { voidCollapse } from "@yagejs-addons/feel/recipes";
+import { damageImpact, dashBurst } from "@yagejs-addons/feel/recipes";
 
 const feel = entity.add(
   new Feel({
-    vanish: voidCollapse({ host: worldLayer.fx, center: position }),
+    hurt: damageImpact({ target: enemySprite, value: () => lastDamage }),
+    dash: dashBurst({ target: playerSprite, direction: { x: 1, y: 0 } }),
   }),
 );
 ```
 
 A recipe returns a normal `FeelNode` and uses the existing `Feel` component.
-`voidCollapse` combines implosion and inward zoom blur. It does not add a
-burst, particles, camera movement, sound, entity destruction, or other
-gameplay consequences.
+
+| Recipe | What it combines |
+| --- | --- |
+| `impact` | Hit flash, scale punch, visual shake, and an impact ring |
+| `damageImpact` | `impact` plus a floating damage number |
+| `dashBurst` | Axis stretch, axis blur, and directional flight lines |
+| `spawnPop` | Scale and position springs plus a short glow |
+| `voidCollapse` | Inward distortion and inward zoom blur |
+
+Recipes do not add sound, camera movement, time changes, entity destruction,
+or other gameplay consequences. Nested `impact`, `number`, `blur`, `lines`,
+and `glow` objects expose the options of each recipe's basic parts.
 
 ### Animated highlights
 

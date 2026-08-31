@@ -1,5 +1,5 @@
 /**
- * Feel addon showcase. Three scenes group related cues into readable pages and
+ * Feel addon showcase. Four scenes group related cues into readable pages and
  * use the scene transition API for page navigation.
  */
 
@@ -74,7 +74,13 @@ import {
   feelTransformShake,
   feelFloatingText,
 } from "@yagejs-addons/feel/renderer";
-import { voidCollapse } from "@yagejs-addons/feel/recipes";
+import {
+  damageImpact,
+  dashBurst,
+  impact,
+  spawnPop,
+  voidCollapse,
+} from "@yagejs-addons/feel/recipes";
 import {
   installDebugFromUrl,
   setupGameContainer,
@@ -87,7 +93,7 @@ const DASH_DURATION = 0.48;
 const DASH_DISTANCE = 660;
 const DASH_ARC_HEIGHT = 62;
 const DASH_TEXTURE = "feel-addon:dash-runner";
-const PAGE_COUNT = 3;
+const PAGE_COUNT = 4;
 const galleryState = { autoplay: true };
 
 interface ShowcaseCue {
@@ -1007,10 +1013,150 @@ class AdvancedEffectsScene extends FeelGalleryScene {
   }
 }
 
+class PracticalRecipesScene extends FeelGalleryScene {
+  readonly name = "feel-addon-practical-recipes";
+
+  onEnter(): void {
+    this.spawn(CameraEntity, {
+      position: new Vec2(WIDTH / 2, HEIGHT / 2),
+    });
+    this.drawBackdrop(ESSENTIAL_PANELS);
+    const status = this.spawnText(
+      "status",
+      WIDTH / 2,
+      62,
+      `Page 4/${PAGE_COUNT}  ·  Autoplay: ${galleryState.autoplay ? "on" : "off"}  ·  Last cue: waiting`,
+      15,
+      0x94a3b8,
+    );
+
+    const hit = this.spawnImpactRecipe();
+    const damage = this.spawnDamageImpactRecipe();
+    const dash = this.spawnDashBurstRecipe();
+    const pop = this.spawnPopRecipe();
+
+    this.installController(3, status, [
+      { label: "impact recipe", play: () => void hit.play("show") },
+      {
+        label: "damage impact recipe",
+        play: () => void damage.play("show"),
+      },
+      { label: "dash burst recipe", play: () => void dash.play("show") },
+      { label: "spawn pop recipe", play: () => void pop.play("show") },
+    ]);
+  }
+
+  private spawnImpactRecipe(): Feel {
+    this.spawnLabel(165, 126, "1  RECIPE: IMPACT");
+    const entity = this.spawn("impact-recipe-target");
+    entity.add(new Transform({ position: new Vec2(165, 215) }));
+    const visual = entity.add(
+      new GraphicsComponent().draw((g) => {
+        g.circle(0, 0, 47).fill({ color: 0x7f1d1d });
+        g.circle(0, 0, 31).fill({ color: 0xdc2626 });
+        g.poly([0, -24, 8, -8, 26, 0, 8, 8, 0, 25, -8, 8, -26, 0, -8, -8]).fill(
+          { color: 0xfef2f2 },
+        );
+      }),
+    );
+    return entity.add(
+      new Feel({
+        show: impact({
+          target: visual,
+          color: 0xfca5a5,
+          scale: 1.22,
+          shake: 5,
+        }),
+      }),
+    );
+  }
+
+  private spawnDamageImpactRecipe(): Feel {
+    this.spawnLabel(450, 126, "2  RECIPE: DAMAGE IMPACT");
+    const entity = this.spawn("damage-impact-recipe-target");
+    entity.add(new Transform({ position: new Vec2(450, 215) }));
+    const visual = entity.add(
+      new GraphicsComponent().draw((g) => {
+        g.roundRect(-47, -42, 94, 84, 18).fill({ color: 0x1e3a8a });
+        g.circle(-18, -6, 8).fill({ color: 0xbfdbfe });
+        g.circle(18, -6, 8).fill({ color: 0xbfdbfe });
+        g.moveTo(-21, 20)
+          .quadraticCurveTo(0, 8, 21, 20)
+          .stroke({ color: 0x93c5fd, width: 5 });
+      }),
+    );
+    return entity.add(
+      new Feel({
+        show: damageImpact({
+          target: visual,
+          value: 42,
+          critical: true,
+          impact: { color: 0xfbbf24, shake: 6 },
+          number: { suffix: "!", criticalColor: 0xfde047 },
+        }),
+      }),
+    );
+  }
+
+  private spawnDashBurstRecipe(): Feel {
+    this.spawnLabel(735, 126, "3  RECIPE: DASH BURST");
+    const entity = this.spawn("dash-burst-recipe-target");
+    entity.add(new Transform({ position: new Vec2(735, 215) }));
+    const visual = entity.add(
+      new GraphicsComponent().draw((g) => {
+        g.poly([-44, -28, 18, -28, 48, 0, 18, 28, -44, 28, -19, 0]).fill({
+          color: 0x0891b2,
+        });
+        g.poly([-20, -14, 12, -14, 29, 0, 12, 14, -20, 14, -7, 0]).fill({
+          color: 0xecfeff,
+        });
+      }),
+    );
+    return entity.add(
+      new Feel({
+        show: dashBurst({
+          target: visual,
+          direction: { x: 1, y: 0 },
+          stretch: 0.38,
+          blur: { strength: 18 },
+          lines: { color: 0x67e8f9, count: 10, length: [22, 52] },
+        }),
+      }),
+    );
+  }
+
+  private spawnPopRecipe(): Feel {
+    this.spawnLabel(450, 342, "4  RECIPE: SPAWN POP");
+    const entity = this.spawn("spawn-pop-recipe-target");
+    entity.add(new Transform({ position: new Vec2(450, 425) }));
+    const visual = entity.add(
+      new GraphicsComponent().draw((g) => {
+        g.circle(0, 0, 53).fill({ color: 0x713f12 });
+        g.circle(0, 0, 43).fill({ color: 0xf59e0b });
+        g.poly([
+          0, -28, 8, -9, 29, -9, 12, 4, 18, 27, 0, 14, -18, 27, -12, 4, -29, -9,
+          -8, -9,
+        ]).fill({ color: 0xfef3c7 });
+      }),
+    );
+    return entity.add(
+      new Feel({
+        show: spawnPop({
+          target: visual,
+          startScale: 0.35,
+          offset: { x: 0, y: 18 },
+          glow: { color: 0xfde047, outerStrength: 4 },
+        }),
+      }),
+    );
+  }
+}
+
 function createShowcaseScene(page: number): FeelGalleryScene {
   if (page === 0) return new EssentialsScene();
   if (page === 1) return new MoreEffectsScene();
-  return new AdvancedEffectsScene();
+  if (page === 2) return new AdvancedEffectsScene();
+  return new PracticalRecipesScene();
 }
 
 function orbitAndPulse(target: GraphicsComponent): FeelNode {

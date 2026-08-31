@@ -4,11 +4,11 @@ Compose the small responses that make an action readable and satisfying, then
 play them from one named trigger.
 
 The [playable example](../../../examples/feel-addon.html) groups the effects
-across three scenes. It covers impacts, trails, afterimages, highlights,
+across four scenes. It covers impacts, trails, afterimages, highlights,
 springs, visibility, cue composition, scene and target time effects, animation,
-callbacks, shockwaves, camera modifiers, glitch, blur, implosion, a recipe, and
-a custom effect. Press `N` or `P` to move between scenes with a slide
-transition.
+callbacks, shockwaves, camera modifiers, glitch, blur, implosion, practical
+recipes, and a custom effect. Press `N` or `P` to move between scenes with a
+slide transition.
 
 ```ts
 import { Feel, feelHitStop, feelParallel } from "@yagejs-addons/feel";
@@ -160,18 +160,27 @@ recipe returns a normal `FeelNode` for the existing `Feel` component. The
 separate import distinguishes recipes from basic `feelX` nodes.
 
 ```ts
-import { voidCollapse } from "@yagejs-addons/feel/recipes";
+import { damageImpact, dashBurst } from "@yagejs-addons/feel/recipes";
 
 const feel = entity.add(
   new Feel({
-    vanish: voidCollapse({ host: worldLayer.fx, center: position }),
+    hurt: damageImpact({ target: enemySprite, value: () => lastDamage }),
+    dash: dashBurst({ target: playerSprite, direction: { x: 1, y: 0 } }),
   }),
 );
 ```
 
-`voidCollapse` combines an inward distortion with inward zoom blur. It does
-not add a burst, particles, camera movement, sound, entity destruction, or
-other gameplay consequences.
+| Recipe         | Composition                                              |
+| -------------- | -------------------------------------------------------- |
+| `impact`       | Hit flash, scale punch, visual shake, and an impact ring |
+| `damageImpact` | `impact` plus a floating damage number                   |
+| `dashBurst`    | Axis stretch, axis blur, and directional flight lines    |
+| `spawnPop`     | Scale and position springs plus a short glow             |
+| `voidCollapse` | Inward distortion and inward zoom blur                   |
+
+Recipes do not add sound, camera movement, time changes, entity destruction,
+or other gameplay consequences. Nested `impact`, `number`, `blur`, `lines`,
+and `glow` objects expose the options of each recipe's basic parts.
 
 ## Highlights and combat callouts
 
