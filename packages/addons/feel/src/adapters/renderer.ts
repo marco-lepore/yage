@@ -1,6 +1,7 @@
-import type { EasingFunction } from "@yagejs/core";
+import { easeInQuad, easeOutQuad, type EasingFunction } from "@yagejs/core";
 import {
   colorize,
+  dissolve,
   glitch,
   glow,
   hitFlash,
@@ -9,6 +10,8 @@ import {
 } from "@yagejs/effects";
 import type {
   ColorizeOptions,
+  DissolveHandle,
+  DissolveOptions,
   GlitchHandle,
   GlitchOptions,
   GlowOptions,
@@ -177,6 +180,70 @@ export interface FeelGlitchOptions extends GlitchOptions, FeelEffectOptions {
   host: FeelEffectsHostTarget;
   /** Pattern changes per second. Default: 24. */
   refreshRate?: number;
+  /** Normalized time when the held glitch begins to release. Default: `0.72`. */
+  releaseAt?: number;
+}
+
+export interface FeelDissolveOptions extends DissolveOptions {
+  target: FeelVisualTarget;
+  /** Time to move from intact to transparent. Default: `0.6`. */
+  duration?: number;
+  /** Progress easing. Default: `easeInQuad`. */
+  easing?: EasingFunction;
+}
+
+/** Advance a dissolve from intact to transparent, then remove its filter. */
+export function feelDissolve(options: FeelDissolveOptions): FeelNode {
+  const duration = options.duration ?? 0.6;
+  if (!Number.isFinite(duration) || duration <= 0) {
+    throw new Error(`feelDissolve: duration must be a finite number > 0.`);
+  }
+  const { target, easing } = options;
+  const effectOptions: DissolveOptions = {
+    ...(options.edgeColor === undefined
+      ? {}
+      : { edgeColor: options.edgeColor }),
+    ...(options.edgeWidth === undefined
+      ? {}
+      : { edgeWidth: options.edgeWidth }),
+    ...(options.noiseScale === undefined
+      ? {}
+      : { noiseScale: options.noiseScale }),
+    ...(options.softness === undefined ? {} : { softness: options.softness }),
+    ...(options.seed === undefined ? {} : { seed: options.seed }),
+  };
+  return defineFeelEffect(duration, (context) => {
+    const visual = resolveVisual(target, context);
+    let handle: DissolveHandle | undefined;
+    return {
+      start: () => {
+        context.invoke("effect factory", () => {
+          handle = visual.fx.addEffect(dissolve(effectOptions), {
+            save: false,
+          });
+        });
+        handle?.setIntensity(0);
+      },
+      update: (progress) => {
+        let eased = easeInQuad(progress);
+        if (easing) {
+          context.invoke("dissolve easing", () => {
+            const value = easing(progress);
+            if (!Number.isFinite(value)) {
+              throw new Error(
+                `feelDissolve: easing must return a finite number, got ${value}.`,
+              );
+            }
+            eased = value;
+          });
+        }
+        handle?.setIntensity(
+          Math.min(1, Math.max(0, eased) * context.intensity),
+        );
+      },
+      finish: () => handle?.remove(),
+    };
+  });
 }
 
 /** Pulse a glitch and refresh its bands from the cue's seeded random source. */
@@ -186,8 +253,18 @@ export function feelGlitch(options: FeelGlitchOptions): FeelNode {
   if (!Number.isFinite(refreshRate) || refreshRate <= 0) {
     throw new Error(`feelGlitch: refreshRate must be a finite number > 0.`);
   }
-  validateFeelPeakAt(options.peakAt);
-  const { host, peakAt, attackEasing, releaseEasing } = options;
+  const peakAt = options.peakAt ?? 0.08;
+  const releaseAt = options.releaseAt ?? Math.max(0.72, peakAt);
+  validateFeelPeakAt(peakAt);
+  if (!Number.isFinite(releaseAt) || releaseAt < 0 || releaseAt > 1) {
+    throw new Error(`feelGlitch: releaseAt must be between 0 and 1.`);
+  }
+  if (releaseAt < peakAt) {
+    throw new Error(
+      `feelGlitch: releaseAt must be greater than or equal to peakAt.`,
+    );
+  }
+  const { host, attackEasing, releaseEasing } = options;
   const effectOptions: GlitchOptions = {
     ...(options.slices === undefined ? {} : { slices: options.slices }),
     ...(options.offset === undefined ? {} : { offset: options.offset }),
@@ -230,13 +307,30 @@ export function feelGlitch(options: FeelGlitchOptions): FeelNode {
           refresh();
         }
         handle?.setIntensity(
-          feelPunchAmount(progress, peakAt, attackEasing, releaseEasing) *
-            context.intensity,
+          glitchPresenceAmount(
+            progress,
+            peakAt,
+            releaseAt,
+            attackEasing,
+            releaseEasing,
+          ) * context.intensity,
         );
       },
       finish: () => handle?.remove(),
     };
   });
+}
+
+function glitchPresenceAmount(
+  progress: number,
+  peakAt: number,
+  releaseAt: number,
+  attack: EasingFunction = easeOutQuad,
+  release: EasingFunction = easeInQuad,
+): number {
+  if (peakAt > 0 && progress < peakAt) return attack(progress / peakAt);
+  if (progress <= releaseAt || releaseAt >= 1) return 1;
+  return 1 - release((progress - releaseAt) / (1 - releaseAt));
 }
 
 /** Attach any YAGE effect, pulse its primary intensity, then remove it. */

@@ -1,11 +1,20 @@
-import type { EasingFunction, Vec2Like } from "@yagejs/core";
-import { axisBlur, implosion, zoomBlur } from "@yagejs/effects";
-import type { AxisBlurOptions } from "@yagejs/effects";
+import { easeOutQuad, type EasingFunction, type Vec2Like } from "@yagejs/core";
+import { axisBlur, colorize, implosion, zoomBlur } from "@yagejs/effects";
+import type { AxisBlurOptions, ColorizeOptions } from "@yagejs/effects";
 import type { EffectsHost, VisualComponent } from "@yagejs/renderer";
-import { feelParallel } from "./core/node.js";
-import type { FeelNode } from "./core/types.js";
-import { feelEffect, feelGlow, feelHitFlash } from "./adapters/renderer.js";
-import type { FeelGlowOptions } from "./adapters/renderer.js";
+import { feelDelay, feelParallel, feelSequence } from "./core/node.js";
+import type { FeelEffectContext, FeelNode } from "./core/types.js";
+import { feelCall } from "./effects/core.js";
+import {
+  feelDissolve,
+  feelEffect,
+  feelGlow,
+  feelHitFlash,
+} from "./adapters/renderer.js";
+import type {
+  FeelDissolveOptions,
+  FeelGlowOptions,
+} from "./adapters/renderer.js";
 import {
   feelPositionSpring,
   feelScalePunch,
@@ -204,8 +213,109 @@ export function spawnPop(options: SpawnPopOptions): FeelNode {
   );
 }
 
+export interface EnemyDeathOptions {
+  /** Visual that flashes and dissolves. */
+  target: VisualComponent;
+  /** Called after the temporary visual effects clean up. Destroy or pool the enemy here. */
+  onComplete: (context: FeelEffectContext) => void;
+  /** World position for the impact ring. Defaults to the cue entity. */
+  position?: FeelImpactRingOptions["position"];
+  /** Shared edge, glow, and impact-ring color. Default: `0x67e8f9`. */
+  color?: number;
+  /** Initial impact duration in seconds. Default: `0.22`. */
+  impactDuration?: number;
+  /** Dissolve duration in seconds. Default: `0.6`. */
+  dissolveDuration?: number;
+  /** Peak scale during the initial impact. Default: `1.12`. */
+  scale?: number;
+  /** Initial visual shake amplitude in pixels. Default: `3`. */
+  shake?: number;
+  /** Dissolve options. The recipe supplies the target and duration. */
+  dissolve?: Omit<FeelDissolveOptions, "target" | "duration">;
+  /** Glow options. The recipe supplies the target and duration. */
+  glow?: Omit<FeelGlowOptions, "target" | "duration">;
+  /** Impact-ring options, or `false` to omit the ring. */
+  ring?: Omit<FeelImpactRingOptions, "position" | "duration"> | false;
+}
+
+/** Flash on impact, burn away through a bright edge, then run cleanup. */
+export function enemyDeath(options: EnemyDeathOptions): FeelNode {
+  const impactDuration = positiveDuration(
+    "enemyDeath",
+    options.impactDuration ?? 0.22,
+  );
+  const dissolveDuration = positiveDuration(
+    "enemyDeath",
+    options.dissolveDuration ?? 0.6,
+  );
+  const color = options.color ?? 0x67e8f9;
+  const ring =
+    options.ring === false
+      ? []
+      : [
+          feelImpactRing({
+            color,
+            radius: 28,
+            expand: 1.8,
+            thickness: 3,
+            spikes: 10,
+            spikeLength: 10,
+            ...options.ring,
+            ...(options.position === undefined
+              ? {}
+              : { position: options.position }),
+            duration: impactDuration,
+          }),
+        ];
+
+  return feelSequence(
+    feelParallel(
+      feelHitFlash(options.target.fx, {
+        color: 0xffffff,
+        duration: Math.min(impactDuration, 0.14),
+      }),
+      feelScalePunch({
+        target: options.target,
+        scale: options.scale ?? 1.12,
+        duration: impactDuration,
+        peakAt: 0.3,
+      }),
+      feelTransformShake({
+        target: options.target,
+        amplitude: options.shake ?? 3,
+        duration: impactDuration,
+        frequency: 30,
+        decay: 1.8,
+      }),
+      ...ring,
+    ),
+    feelParallel(
+      feelDissolve({
+        edgeColor: color,
+        edgeWidth: 0.1,
+        noiseScale: 10,
+        softness: 0.025,
+        ...options.dissolve,
+        target: options.target,
+        duration: dissolveDuration,
+      }),
+      feelGlow({
+        color,
+        distance: 12,
+        outerStrength: 4,
+        innerStrength: 1,
+        peakAt: 0.18,
+        ...options.glow,
+        target: options.target,
+        duration: dissolveDuration,
+      }),
+    ),
+    feelCall(options.onComplete, "enemy death completion"),
+  );
+}
+
 export interface VoidCollapseOptions {
-  /** Effect host for both renderer passes. */
+  /** Effect host for the renderer passes. */
   host: EffectsHost;
   /** Center in the effect host's local coordinates. Omit for the host center. */
   center?: { x: number; y: number };
@@ -217,53 +327,157 @@ export interface VoidCollapseOptions {
   darkness?: number;
   /** Rotation applied near the center, in radians. Default: 0.35. */
   swirl?: number;
-  /** Inward zoom-blur strength. Default: -0.14. */
+  /** Grow the implosion radius outward from its center. Default: `true`. */
+  expandFromCenter?: boolean;
+  /** Inward zoom-blur strength. Default: -0.28. */
   zoomStrength?: number;
-  /** Total pulse duration. Default: 0.6. */
+  /** Delay before the implosion joins the blur, in seconds. Default: `0.06`. */
+  implosionDelay?: number;
+  /** Time spent at maximum collapse, included in `duration`. Default: `0.16`. */
+  holdDuration?: number;
+  /** Color treatment at maximum collapse, or `false` to omit it. Default: `0x6366f1`. */
+  color?: ColorizeOptions["color"] | false;
+  /** Strength of the color treatment from 0 to 1. Default: `0.65`. */
+  colorStrength?: number;
+  /** Total cue duration. Default: `0.85`. */
   duration?: number;
-  /** Normalized time of maximum collapse. Default: 0.65. */
+  /** Normalized time when the cue first reaches maximum collapse. Default: `0.5`. */
   peakAt?: number;
   attackEasing?: EasingFunction;
   releaseEasing?: EasingFunction;
 }
 
 /**
- * Ready-made inward distortion and zoom-blur cue. The recipe does not add a
- * burst, particles, camera movement, sound, or gameplay consequences.
+ * Draw the host inward through staged blur, implosion, and optional color.
+ * The recipe does not add a burst, particles, camera movement, sound, or
+ * gameplay consequences.
  */
 export function voidCollapse(options: VoidCollapseOptions): FeelNode {
-  const timing = {
-    duration: options.duration ?? 0.6,
-    peakAt: options.peakAt ?? 0.65,
-    ...(options.attackEasing === undefined
-      ? {}
-      : { attackEasing: options.attackEasing }),
-    ...(options.releaseEasing === undefined
-      ? {}
-      : { releaseEasing: options.releaseEasing }),
-  };
+  const duration = positiveDuration("voidCollapse", options.duration ?? 0.85);
+  const peakAt = unitInterval("voidCollapse: peakAt", options.peakAt ?? 0.5);
+  const peakTime = duration * peakAt;
+  const implosionDelay = nonNegativeDuration(
+    "voidCollapse: implosionDelay",
+    options.implosionDelay ?? 0.06,
+  );
+  const holdDuration = nonNegativeDuration(
+    "voidCollapse: holdDuration",
+    options.holdDuration ?? 0.16,
+  );
+  if (implosionDelay >= duration || implosionDelay > peakTime) {
+    throw new Error(
+      "voidCollapse: implosionDelay must be less than duration and no later than the peak.",
+    );
+  }
+  if (peakTime + holdDuration > duration) {
+    throw new Error(
+      "voidCollapse: holdDuration must fit between the peak and the end of the cue.",
+    );
+  }
+
+  const sharedTiming = heldPulseTiming({
+    duration,
+    peakTime,
+    holdDuration,
+    attackEasing: options.attackEasing,
+    releaseEasing: options.releaseEasing,
+  });
+  const implosionDuration = duration - implosionDelay;
+  const implosionTiming = heldPulseTiming({
+    duration: implosionDuration,
+    peakTime: peakTime - implosionDelay,
+    holdDuration,
+    attackEasing: options.attackEasing,
+    releaseEasing: options.releaseEasing,
+  });
+  const color = options.color ?? 0x6366f1;
+
   return feelParallel(
-    feelEffect(
-      options.host,
-      implosion({
-        ...(options.center === undefined ? {} : { center: options.center }),
-        radius: options.radius ?? 180,
-        strength: options.strength ?? 0.8,
-        darkness: options.darkness ?? 0.9,
-        swirl: options.swirl ?? 0.35,
-      }),
-      timing,
-    ),
     feelEffect(
       options.host,
       zoomBlur({
         ...(options.center === undefined ? {} : { center: options.center }),
         radius: options.radius ?? 180,
-        strength: options.zoomStrength ?? -0.14,
+        strength: options.zoomStrength ?? -0.28,
+        expandFromCenter: options.expandFromCenter ?? true,
       }),
-      timing,
+      sharedTiming,
     ),
+    feelDelay(
+      implosionDelay,
+      feelEffect(
+        options.host,
+        implosion({
+          ...(options.center === undefined ? {} : { center: options.center }),
+          radius: options.radius ?? 180,
+          strength: options.strength ?? 0.8,
+          darkness: options.darkness ?? 0.9,
+          swirl: options.swirl ?? 0.35,
+          expandFromCenter: options.expandFromCenter ?? true,
+        }),
+        implosionTiming,
+      ),
+    ),
+    ...(color === false
+      ? []
+      : [
+          feelEffect(
+            options.host,
+            colorize({ color, strength: options.colorStrength ?? 0.65 }),
+            sharedTiming,
+          ),
+        ]),
   );
+}
+
+interface HeldPulseTimingOptions {
+  duration: number;
+  peakTime: number;
+  holdDuration: number;
+  attackEasing: EasingFunction | undefined;
+  releaseEasing: EasingFunction | undefined;
+}
+
+function heldPulseTiming(options: HeldPulseTimingOptions): {
+  duration: number;
+  peakAt: number;
+  attackEasing?: EasingFunction;
+  releaseEasing: EasingFunction;
+} {
+  const releaseWindow = options.duration - options.peakTime;
+  const holdShare =
+    releaseWindow === 0 ? 1 : options.holdDuration / releaseWindow;
+  const release = options.releaseEasing ?? easeOutQuad;
+  const releaseEasing: EasingFunction =
+    holdShare >= 1
+      ? () => 0
+      : (progress) => {
+          if (progress <= holdShare) return 0;
+          return release((progress - holdShare) / (1 - holdShare));
+        };
+
+  return {
+    duration: options.duration,
+    peakAt: options.peakTime / options.duration,
+    ...(options.attackEasing === undefined
+      ? {}
+      : { attackEasing: options.attackEasing }),
+    releaseEasing,
+  };
+}
+
+function nonNegativeDuration(label: string, value: number): number {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} must be a finite number >= 0.`);
+  }
+  return value;
+}
+
+function unitInterval(label: string, value: number): number {
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    throw new Error(`${label} must be between 0 and 1.`);
+  }
+  return value;
 }
 
 function positiveDuration(label: string, value: number): number {

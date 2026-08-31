@@ -22,6 +22,7 @@ import {
   zoomBlur,
   axisBlur,
   implosion,
+  dissolve,
 } from "./index.js";
 
 // Smoke tests live here. End-to-end attach + serialize round-trip is
@@ -55,11 +56,12 @@ describe("@yagejs/effects presets", () => {
       zoomBlur,
       axisBlur,
       implosion,
+      dissolve,
     ]) {
       expect(preset.name).toMatch(/^yage:/);
       names.add(preset.name);
     }
-    expect(names.size).toBe(22);
+    expect(names.size).toBe(23);
   });
 
   it("calling a preset with options returns a callable factory", () => {
@@ -78,5 +80,6 @@ describe("@yagejs/effects presets", () => {
     expect(typeof zoomBlur({ strength: 0.15 })).toBe("function");
     expect(typeof axisBlur({ axis: "vertical" })).toBe("function");
     expect(typeof implosion({ radius: 160 })).toBe("function");
+    expect(typeof dissolve({ edgeColor: 0x67e8f9 })).toBe("function");
   });
 });

@@ -16,6 +16,8 @@ export interface ImplosionOptions {
   darkness?: number;
   /** Rotation applied near the center, in radians. Default: 0.35. */
   swirl?: number;
+  /** Grow the affected radius from the center as intensity rises. Default: false. */
+  expandFromCenter?: boolean;
 }
 
 const VERTEX_GL = /* glsl */ `
@@ -49,13 +51,22 @@ uniform float uRadius;
 uniform float uStrength;
 uniform float uDarkness;
 uniform float uSwirl;
+uniform float uIntensity;
+uniform float uExpandFromCenter;
 
 void main(void) {
   vec2 pixel = vTextureCoord / uInputSize.zw;
   vec2 delta = pixel - uCenter;
   float distanceFromCenter = length(delta);
   float normalizedDistance = distanceFromCenter / max(uRadius, 1.0);
-  float falloff = 1.0 - smoothstep(0.0, 1.0, normalizedDistance);
+  float radiusProgress = pow(clamp(uIntensity, 0.0, 1.0), 1.35);
+  float movingFront = 1.0 - smoothstep(
+    radiusProgress,
+    radiusProgress + 0.18,
+    normalizedDistance
+  );
+  float frontMask = mix(1.0, movingFront, uExpandFromCenter);
+  float falloff = (1.0 - smoothstep(0.0, 1.0, normalizedDistance)) * frontMask;
 
   float angle = uSwirl * falloff;
   float c = cos(angle);
@@ -66,7 +77,7 @@ void main(void) {
   vec2 sampleUv = clamp(samplePixel * uInputSize.zw, uInputClamp.xy, uInputClamp.zw);
   vec4 color = texture(uTexture, sampleUv);
 
-  float core = 1.0 - smoothstep(0.0, 0.32, normalizedDistance);
+  float core = (1.0 - smoothstep(0.0, 0.32, normalizedDistance)) * frontMask;
   float shade = 1.0 - uDarkness * (0.3 * falloff + 0.7 * core);
   finalColor = vec4(color.rgb * shade, color.a);
 }
@@ -88,6 +99,8 @@ struct ImplosionUniforms {
   uStrength: f32,
   uDarkness: f32,
   uSwirl: f32,
+  uIntensity: f32,
+  uExpandFromCenter: f32,
 };
 
 @group(0) @binding(0) var<uniform> gfu: GlobalFilterUniforms;
@@ -122,7 +135,14 @@ fn mainFragment(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
   let delta = pixel - implosionUniforms.uCenter;
   let distanceFromCenter = length(delta);
   let normalizedDistance = distanceFromCenter / max(implosionUniforms.uRadius, 1.0);
-  let falloff = 1.0 - smoothstep(0.0, 1.0, normalizedDistance);
+  let radiusProgress = pow(clamp(implosionUniforms.uIntensity, 0.0, 1.0), 1.35);
+  let movingFront = 1.0 - smoothstep(
+    radiusProgress,
+    radiusProgress + 0.18,
+    normalizedDistance
+  );
+  let frontMask = mix(1.0, movingFront, implosionUniforms.uExpandFromCenter);
+  let falloff = (1.0 - smoothstep(0.0, 1.0, normalizedDistance)) * frontMask;
 
   let angle = implosionUniforms.uSwirl * falloff;
   let c = cos(angle);
@@ -133,7 +153,7 @@ fn mainFragment(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
   let sampleUv = clamp(samplePixel * gfu.uInputSize.zw, gfu.uInputClamp.xy, gfu.uInputClamp.zw);
   let color = textureSample(uTexture, uSampler, sampleUv);
 
-  let core = 1.0 - smoothstep(0.0, 0.32, normalizedDistance);
+  let core = (1.0 - smoothstep(0.0, 0.32, normalizedDistance)) * frontMask;
   let shade = 1.0 - implosionUniforms.uDarkness * (0.3 * falloff + 0.7 * core);
   return vec4<f32>(color.rgb * shade, color.a);
 }
@@ -146,6 +166,7 @@ class ImplosionFilter extends Filter {
   baseStrength: number;
   baseDarkness: number;
   baseSwirl: number;
+  expandFromCenter: boolean;
   yageTarget: Container | undefined;
   private readonly centerOut = new Float32Array(2);
 
@@ -171,6 +192,11 @@ class ImplosionFilter extends Filter {
           uStrength: { value: strength, type: "f32" },
           uDarkness: { value: darkness, type: "f32" },
           uSwirl: { value: swirl, type: "f32" },
+          uIntensity: { value: 1, type: "f32" },
+          uExpandFromCenter: {
+            value: options.expandFromCenter === true ? 1 : 0,
+            type: "f32",
+          },
         },
       },
     });
@@ -179,6 +205,7 @@ class ImplosionFilter extends Filter {
     this.baseStrength = strength;
     this.baseDarkness = darkness;
     this.baseSwirl = swirl;
+    this.expandFromCenter = options.expandFromCenter ?? false;
   }
 
   private uniforms(): {
@@ -187,6 +214,8 @@ class ImplosionFilter extends Filter {
     uStrength: number;
     uDarkness: number;
     uSwirl: number;
+    uIntensity: number;
+    uExpandFromCenter: number;
   } {
     return this.resources.implosionUniforms.uniforms as {
       uCenter: Float32Array;
@@ -194,6 +223,8 @@ class ImplosionFilter extends Filter {
       uStrength: number;
       uDarkness: number;
       uSwirl: number;
+      uIntensity: number;
+      uExpandFromCenter: number;
     };
   }
 
@@ -202,6 +233,8 @@ class ImplosionFilter extends Filter {
     uniforms.uStrength = this.baseStrength * this.intensity;
     uniforms.uDarkness = this.baseDarkness * this.intensity;
     uniforms.uSwirl = this.baseSwirl * this.intensity;
+    uniforms.uIntensity = this.intensity;
+    uniforms.uExpandFromCenter = this.expandFromCenter ? 1 : 0;
   }
 
   override apply(
@@ -282,6 +315,10 @@ export const implosion = defineEffect<ImplosionHandle, ImplosionOptions>({
         },
         setSwirl: (value: number) => {
           filter.baseSwirl = value;
+          filter.applyIntensity();
+        },
+        setExpandFromCenter: (value: boolean) => {
+          filter.expandFromCenter = value;
           filter.applyIntensity();
         },
       }),

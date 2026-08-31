@@ -64,6 +64,9 @@ export type { AxisBlurOptions, BlurAxis } from "./axisBlur.js";
 export { implosion } from "./implosion.js";
 export type { ImplosionOptions } from "./implosion.js";
 
+export { dissolve } from "./dissolve.js";
+export type { DissolveOptions } from "./dissolve.js";
+
 export type {
   HitFlashHandle,
   BloomHandle,
@@ -88,4 +91,5 @@ export type {
   ZoomBlurHandle,
   AxisBlurHandle,
   ImplosionHandle,
+  DissolveHandle,
 } from "./handles.js";

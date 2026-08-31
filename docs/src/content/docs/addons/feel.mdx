@@ -14,8 +14,8 @@ The [Feel addon example](https://examples.yage.dev/feel-addon.html) groups the
 effects across four scenes. It covers impacts, trails, afterimages,
 highlights, springs, visibility, cue composition, scene and target time
 effects, animation, callbacks, shockwaves, camera modifiers, glitch, blur,
-implosion, practical recipes, and a custom effect. Press `N` or `P` to move
-between scenes with a slide transition.
+implosion, dissolve, practical recipes, and a custom effect. Press `N` or `P`
+to move between scenes with a slide transition.
 
 ```ts
 import {
@@ -172,7 +172,8 @@ without the HUD, scene for the whole scene, or screen across scenes.
 
 Use a dedicated Feel wrapper when cue playback needs more than that intensity
 pulse. `feelGlitch` refreshes the filter's bands from the scene's seeded random
-source during playback:
+source during playback. Its default presence reaches full strength at
+`peakAt: 0.08`, stays there until `releaseAt: 0.72`, then releases:
 
 ```ts
 const damaged = feelGlitch({
@@ -187,18 +188,30 @@ const damaged = feelGlitch({
 Static zoom blur, axis blur, and implosion pulses use `feelEffect` directly.
 The renderer effects remain available for persistent use without Feel.
 
+`feelDissolve` is also a dedicated wrapper because it advances from intact to
+transparent instead of pulsing back to zero. Cancellation removes its filter
+and reveals the source visual again.
+
 ### Ready-made recipes
 
 The `/recipes` entry contains ready-made compositions. Recipe names omit the
 `feel` prefix so imports remain visibly different from basic effect nodes:
 
 ```ts
-import { damageImpact, dashBurst } from "@yagejs-addons/feel/recipes";
+import {
+  damageImpact,
+  dashBurst,
+  enemyDeath,
+} from "@yagejs-addons/feel/recipes";
 
 const feel = entity.add(
   new Feel({
     hurt: damageImpact({ target: enemySprite, value: () => lastDamage }),
     dash: dashBurst({ target: playerSprite, direction: { x: 1, y: 0 } }),
+    die: enemyDeath({
+      target: enemySprite,
+      onComplete: ({ entity }) => entity.destroy(),
+    }),
   }),
 );
 ```
@@ -211,11 +224,14 @@ A recipe returns a normal `FeelNode` and uses the existing `Feel` component.
 | `damageImpact` | `impact` plus a floating damage number |
 | `dashBurst` | Axis stretch, axis blur, and directional flight lines |
 | `spawnPop` | Scale and position springs plus a short glow |
-| `voidCollapse` | Inward distortion and inward zoom blur |
+| `enemyDeath` | Impact flash, ring, scale punch, shake, glow, and edged dissolve |
+| `voidCollapse` | Inward blur, center-expanding implosion, peak hold, and color shift |
 
-Recipes do not add sound, camera movement, time changes, entity destruction,
-or other gameplay consequences. Nested `impact`, `number`, `blur`, `lines`,
-and `glow` objects expose the options of each recipe's basic parts.
+Recipes do not add sound, camera movement, or time changes. `enemyDeath`
+requires an `onComplete` callback because the addon cannot decide whether a
+game should destroy, pool, hide, or replace an enemy. The callback runs after
+the temporary handles are removed. It does not run if playback is cancelled.
+Nested option objects expose the recipe's basic parts.
 
 ### Animated highlights
 

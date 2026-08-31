@@ -40,15 +40,20 @@ Each preset returns the same `EffectHandle` shape (`remove`, `setEnabled`, `enab
 | `wave`                | `{ amplitude?, wavelength?, speed? }`                                                                                      | custom WebGL+WGSL                      | configured `amplitude`                             |
 | `colorize`            | `{ color, strength? }`                                                                                                     | custom WebGL+WGSL                      | `strength` (cross-fades back to source)            |
 | `glitch`              | `{ slices?, offset?, direction?, fillMode?, average?, minSize?, sampleSize?, red?, green?, blue?, seed? }`                 | `pixi-filters` `GlitchFilter`          | band displacement and RGB offsets                  |
-| `zoomBlur`            | `{ strength?, center?, innerRadius?, radius?, maxKernelSize? }`                                                            | `pixi-filters` `ZoomBlurFilter`        | signed blur strength                               |
+| `zoomBlur`            | `{ strength?, center?, innerRadius?, radius?, expandFromCenter?, maxKernelSize? }`                                         | `pixi-filters` `ZoomBlurFilter`        | signed blur strength                               |
 | `axisBlur`            | `{ strength?, axis?, perpendicularStrength?, quality?, kernelSize?, repeatEdgePixels? }`                                   | built-in `BlurFilter`                  | main and perpendicular strengths                   |
-| `implosion`           | `{ center?, radius?, strength?, darkness?, swirl? }`                                                                       | custom WebGL+WGSL                      | inward pull, darkness, and swirl                   |
+| `implosion`           | `{ center?, radius?, strength?, darkness?, swirl?, expandFromCenter? }`                                                    | custom WebGL+WGSL                      | inward pull, darkness, and swirl                   |
+| `dissolve`            | `{ edgeColor?, edgeWidth?, noiseScale?, softness?, seed? }`                                                                | custom WebGL+WGSL                      | dissolve progress from intact to transparent       |
 
 All `duration` options and `fadeIn`/`fadeOut` arguments are in seconds (`hitFlash` default 0.12, `shockwave` default 1).
 
 Color-grade presets: `"neutral"` (identity), `"sepia"`, `"grayscale"`, `"negative"`, `"night"`, `"warm"` (orange tint + brightness boost), `"cool"` (blue tint).
 
 `motionBlur.kernelSize` must be odd and ≥ 5. Invalid values are coerced up to the nearest valid kernel and a one-shot `console.warn` fires naming the requested + final value. `bulgePinch.strength` is signed: negative pinches, positive bulges. A fade scales the magnitude while preserving the sign, so a pinch fades flat → pinch, not flat → bulge → pinch. `bulgePinch.center` is normalized 0..1 screen coords (`{ x: 0.5, y: 0.5 }` is the host's middle). `zoomBlur.strength` is also signed: positive values streak outward and negative values pull inward. `axisBlur` is symmetric around each source pixel; use `motionBlur` for a directional trailing smear.
+
+`zoomBlur.expandFromCenter` grows a finite `radius` outward with intensity. A
+negative, unlimited radius cannot expand. `implosion.expandFromCenter` applies
+the same center-first progression to its pull, darkness, and swirl.
 
 The public handle controls an effect's strength three ways. `setIntensity(value)` sets the primary intensity immediately and clamps the value to 0–1. `fadeIn(seconds)` and `fadeOut(seconds)` tween that same value and return a `Process`. The per-preset `set*` setters that change a preset's "full" value (`bloom.setBloomScale`, `glow.setOuterStrength`, `outline.setThickness`, `dropShadow.setAlpha`, `vignette.setStrength`, `chromaticAberration.setSeparation`, `pixelate.setSize`, `glow.setInnerStrength`, `godRay.setGain`, `motionBlur.setVelocity`, `bulgePinch.setStrength`, `halftone.setAmount`, `wave.setAmplitude`, `colorize.setStrength`) rebase that ceiling while preserving the current intensity ratio. For example, `bloom.setIntensity(0.5)` displays half of the configured bloom scale, while `bloom.setBloomScale(2)` changes what full strength means. For a custom timed animation, pass a tween to `run`; the process is scoped to the effect and stops on `.remove()`.
 
@@ -68,13 +73,15 @@ Scene scope and screen scope also post-process the UI. `@yagejs/ui` mounts its s
 
 Pixel-valued options on older presets and `axisBlur` are in **input-texture pixels** — i.e. the rasterized region's pixel size, post fit + camera transforms. With responsive `fit`, that means a `bloom.blur: 8` is 8/900 = 0.89% of canvas width on a desktop-native viewport but 8/382 = 2.10% on a mobile-sized one. Effects visibly "scale up" on smaller canvases. This is a known cross-package issue, not specific to any one preset.
 
-Five presets ship with built-in resolution-stability:
+Six presets ship with built-in resolution-stability:
 
 - `bulgePinch.center` is normalized 0..1 (resolution-independent by construction).
 - `shockwave` accepts container-local coords for `trigger(x, y)` AND for every dimensional option, and converts each frame against the filter target's live `worldTransform`. **This is experimental** — don't depend on `shockwave`'s exact unit behavior across versions.
 - `glitch` interprets band displacement and RGB offsets in host-local pixels.
 - `zoomBlur` interprets its center and radii in host-local pixels.
 - `implosion` interprets its center and radius in host-local pixels.
+  `expandFromCenter: true` grows the affected radius outward as intensity rises.
+- `dissolve` interprets its noise scale in host-local pixels.
 
 If you need resolution-stable visual output today on the other presets, scale your option values by `renderer.canvasSize.width / renderer.virtualSize.width` at the call site.
 
@@ -185,7 +192,16 @@ const hole = layer.fx.addEffect(
 );
 hole.setDarkness(1);
 hole.setSwirl(0.6);
+
+const vanish = sprite.fx.addEffect(
+  dissolve({ edgeColor: 0x67e8f9, noiseScale: 10 }),
+);
+vanish.setIntensity(0.5); // half of the noise field is transparent
+vanish.setSeed(7);
 ```
+
+`dissolve` requires `edgeWidth` from 0.001 to 0.5, `noiseScale` of at
+least 1, `softness` from 0.001 to 0.25, and a finite `seed`.
 
 ## Fade behavior
 
@@ -211,4 +227,4 @@ pc.run(Tween.custom(...));   // entity-scoped, NOT bound to any one effect
 
 ## Save/load
 
-All twenty-two presets register a stable `yage:<name>` string with `defineEffect`, so any `EffectStack` they're added to round-trips through `SaveService.saveSnapshot` / `loadSnapshot` — the snapshot records the preset's name + options + steady-state intensity + enabled flag, and on load the preset's factory is re-invoked to rebuild the filter. In-flight fades and one-shot ramps (`hitFlash.trigger()`, `shockwave.trigger()`) are not preserved.
+All twenty-three presets register a stable `yage:<name>` string with `defineEffect`, so any `EffectStack` they're added to round-trips through `SaveService.saveSnapshot` / `loadSnapshot` — the snapshot records the preset's name + options + steady-state intensity + enabled flag, and on load the preset's factory is re-invoked to rebuild the filter. In-flight fades and one-shot ramps (`hitFlash.trigger()`, `shockwave.trigger()`) are not preserved.

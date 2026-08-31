@@ -89,7 +89,7 @@ tears down each scope's `EffectStack` for you.
 
 ## Hero presets
 
-Twenty-two presets ship in `@yagejs/effects`, all save-aware and all using
+Twenty-three presets ship in `@yagejs/effects`, all save-aware and all using
 the same handle protocol:
 
 ```ts
@@ -101,7 +101,7 @@ import {
   godRay, shockwave, motionBlur, oldFilm, bulgePinch,
   halftone, wave,
   colorize,
-  glitch, zoomBlur, axisBlur, implosion,
+  glitch, zoomBlur, axisBlur, implosion, dissolve,
 } from "@yagejs/effects";
 ```
 
@@ -129,6 +129,7 @@ import {
 | `zoomBlur` | Radial speed blur, including inward pull | signed blur strength |
 | `axisBlur` | Symmetric horizontal or vertical Gaussian blur | main and perpendicular strengths |
 | `implosion` | Inward pull with center darkening and swirl | pull, darkness, and swirl |
+| `dissolve` | Noise-driven removal with a colored edge | dissolve progress from intact to transparent |
 
 The handle controls an effect's strength at runtime. `setIntensity(value)`
 sets the primary intensity immediately and clamps it to 0–1.
@@ -146,10 +147,9 @@ from a scheduled tween —
 — which is scoped to the effect and auto-cancels on `remove()`.
 
 Most presets wrap either a built-in `ColorMatrixFilter` or a `pixi-filters`
-filter and expose typed extras specific to it. Four — `halftone`, `wave`,
-`colorize`, and `implosion` — ship as custom WebGL + WGSL shader pairs with no
-`pixi-filters` dep, which makes them the smallest reference implementations
-to copy when authoring an effect from scratch.
+filter and expose typed extras specific to it. Five — `halftone`, `wave`,
+`colorize`, `implosion`, and `dissolve` — ship as custom WebGL + WGSL shader
+pairs with no `pixi-filters` dependency.
 
 ### Replace-style recolour (`colorize`)
 
@@ -208,14 +208,30 @@ const digital = sprite.fx.addEffect(glitch({ slices: 8, offset: 24 }));
 digital.refresh(42);
 
 // zoomBlur is signed. Negative strength pulls the image inward.
-layer.fx.addEffect(zoomBlur({ center: playerPosition, strength: -0.14 }));
+layer.fx.addEffect(
+  zoomBlur({
+    center: playerPosition,
+    strength: -0.14,
+    radius: 180,
+    expandFromCenter: true,
+  }),
+);
 
 // axisBlur is symmetric; motionBlur remains the trailing directional blur.
 sprite.fx.addEffect(axisBlur({ axis: "horizontal", strength: 12 }));
 
 // implosion is one focused visual. Add particles or camera movement separately.
 layer.fx.addEffect(implosion({ center: playerPosition, radius: 180 }));
+
+// dissolve intensity is progress: 0 is intact and 1 is transparent.
+const vanish = sprite.fx.addEffect(
+  dissolve({ edgeColor: 0x67e8f9, noiseScale: 10 }),
+);
+vanish.setIntensity(0.5);
 ```
+
+`dissolve` requires `edgeWidth` from 0.001 to 0.5, `noiseScale` of at
+least 1, `softness` from 0.001 to 0.25, and a finite `seed`.
 
 ### Pick the right scope for each preset
 
@@ -250,7 +266,7 @@ that means a `bloom.blur: 8` is 8/900 = 0.89% of canvas width on a
 desktop-native viewport but 8/382 = 2.10% on a mobile viewport. Effects
 visibly "scale up" on smaller canvases.
 
-Five presets use stable host coordinates:
+Six presets use stable host coordinates:
 
 - `bulgePinch.center` is normalized 0..1.
 - `shockwave` accepts container-local coords for `trigger(x, y)` AND for
@@ -260,7 +276,12 @@ Five presets use stable host coordinates:
   depend on `shockwave`'s exact unit story across versions.
 - `glitch` interprets band displacement and RGB offsets in host-local pixels.
 - `zoomBlur` interprets its center and radii in host-local pixels.
+  Set `expandFromCenter: true` to grow a finite outer radius with intensity.
+  A negative, unlimited radius cannot expand.
 - `implosion` interprets its center and radius in host-local pixels.
+  Set `expandFromCenter: true` to grow the affected radius outward as
+  intensity rises.
+- `dissolve` interprets its noise scale in host-local pixels.
 
 For resolution-stable output today on the other presets, scale your
 option values by `renderer.canvasSize.width / renderer.virtualSize.width`

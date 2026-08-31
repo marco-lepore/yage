@@ -53,6 +53,7 @@ import {
   feelCameraZoom,
   feelColorize,
   feelDamageNumber,
+  feelDissolve,
   feelEffect,
   feelFlightLines,
   feelGlow,
@@ -77,6 +78,7 @@ import {
 import {
   damageImpact,
   dashBurst,
+  enemyDeath,
   impact,
   spawnPop,
   voidCollapse,
@@ -214,7 +216,13 @@ const MORE_PANELS: readonly PanelRect[] = [
   { x: 610, y: 320, width: 250, height: 190 },
 ];
 
-const ADVANCED_PANELS = ESSENTIAL_PANELS;
+const COMPACT_RECIPE_PANELS: readonly PanelRect[] = [
+  { x: 40, y: 100, width: 250, height: 190 },
+  { x: 325, y: 100, width: 250, height: 190 },
+  { x: 610, y: 100, width: 250, height: 190 },
+  { x: 40, y: 320, width: 392, height: 190 },
+  { x: 468, y: 320, width: 392, height: 190 },
+];
 
 abstract class FeelGalleryScene extends Scene {
   protected installController(
@@ -864,7 +872,7 @@ class AdvancedEffectsScene extends FeelGalleryScene {
     this.spawn(CameraEntity, {
       position: new Vec2(WIDTH / 2, HEIGHT / 2),
     });
-    this.drawBackdrop(ADVANCED_PANELS);
+    this.drawBackdrop(COMPACT_RECIPE_PANELS);
     const status = this.spawnText(
       "status",
       WIDTH / 2,
@@ -878,6 +886,7 @@ class AdvancedEffectsScene extends FeelGalleryScene {
     const speedBlur = this.spawnSpeedBlurDemo();
     const implosionPulse = this.spawnImplosionDemo();
     const recipe = this.spawnRecipeDemo();
+    const dissolveOut = this.spawnDissolveDemo();
 
     this.installController(2, status, [
       { label: "seeded glitch", play: () => void glitch.play("show") },
@@ -889,6 +898,10 @@ class AdvancedEffectsScene extends FeelGalleryScene {
       {
         label: "void collapse recipe",
         play: () => void recipe.play("show"),
+      },
+      {
+        label: "dissolve primitive",
+        play: () => void dissolveOut.play("show"),
       },
     ]);
   }
@@ -967,7 +980,8 @@ class AdvancedEffectsScene extends FeelGalleryScene {
         g.circle(0, 0, 64).fill({ color: 0x312e81 });
         for (let index = 0; index < 8; index++) {
           const angle = (index / 8) * Math.PI * 2;
-          g.circle(Math.cos(angle) * 42, Math.sin(angle) * 42, 8).fill({
+          const orbit = index % 2 === 0 ? 28 : 46;
+          g.circle(Math.cos(angle) * orbit, Math.sin(angle) * orbit, 8).fill({
             color: index % 2 === 0 ? 0xc4b5fd : 0x67e8f9,
           });
         }
@@ -978,7 +992,13 @@ class AdvancedEffectsScene extends FeelGalleryScene {
       new Feel({
         show: feelEffect(
           visual.fx,
-          implosion({ radius: 68, strength: 1, darkness: 0.92, swirl: 0.7 }),
+          implosion({
+            radius: 68,
+            strength: 1,
+            darkness: 0.92,
+            swirl: 0.7,
+            expandFromCenter: true,
+          }),
           { duration: 0.7, peakAt: 0.65 },
         ),
       }),
@@ -986,27 +1006,68 @@ class AdvancedEffectsScene extends FeelGalleryScene {
   }
 
   private spawnRecipeDemo(): Feel {
-    this.spawnLabel(450, 342, "4  RECIPE: VOID COLLAPSE");
+    this.spawnLabel(236, 342, "4  RECIPE: VOID COLLAPSE");
     const entity = this.spawn("void-collapse-target");
-    entity.add(new Transform({ position: new Vec2(450, 425) }));
+    entity.add(new Transform({ position: new Vec2(236, 425) }));
     const visual = entity.add(
       new GraphicsComponent().draw((g) => {
-        g.circle(0, 0, 68).fill({ color: 0x172554 });
-        g.circle(0, 0, 55).stroke({ color: 0x818cf8, width: 8 });
-        g.circle(0, 0, 37).stroke({ color: 0x22d3ee, width: 6 });
-        g.circle(0, 0, 18).fill({ color: 0xe0e7ff });
+        for (let index = 0; index < 14; index++) {
+          const angle = (index / 14) * Math.PI * 2;
+          const orbitX = Math.cos(angle) * (92 + (index % 3) * 14);
+          const orbitY = Math.sin(angle) * (48 + (index % 2) * 12);
+          g.circle(orbitX, orbitY, 3 + (index % 3)).fill({
+            color: index % 2 === 0 ? 0x67e8f9 : 0xc4b5fd,
+          });
+        }
+        g.circle(0, 0, 56).fill({ color: 0x172554 });
+        g.circle(0, 0, 46).stroke({ color: 0x818cf8, width: 7 });
+        g.circle(0, 0, 30).stroke({ color: 0x22d3ee, width: 5 });
+        g.circle(0, 0, 14).fill({ color: 0xe0e7ff });
       }),
     );
     return entity.add(
       new Feel({
         show: voidCollapse({
           host: visual.fx,
-          radius: 72,
+          radius: 132,
           strength: 1,
           darkness: 1,
-          swirl: 0.8,
-          zoomStrength: -0.28,
-          duration: 0.85,
+          swirl: 0.72,
+          zoomStrength: -0.5,
+          implosionDelay: 0.08,
+          holdDuration: 0.22,
+          color: 0x7c3aed,
+          colorStrength: 0.72,
+          duration: 1.05,
+          peakAt: 0.48,
+        }),
+      }),
+    );
+  }
+
+  private spawnDissolveDemo(): Feel {
+    this.spawnLabel(664, 342, "5  DISSOLVE OUT");
+    const entity = this.spawn("dissolve-target");
+    entity.add(new Transform({ position: new Vec2(664, 425) }));
+    const visual = entity.add(
+      new GraphicsComponent().draw((g) => {
+        g.roundRect(-57, -53, 114, 106, 22).fill({ color: 0x4c1d95 });
+        g.circle(-20, -7, 10).fill({ color: 0xe0e7ff });
+        g.circle(20, -7, 10).fill({ color: 0xe0e7ff });
+        g.moveTo(-25, 23)
+          .quadraticCurveTo(0, 34, 25, 23)
+          .stroke({ color: 0xc4b5fd, width: 6 });
+      }),
+    );
+    return entity.add(
+      new Feel({
+        show: feelDissolve({
+          target: visual,
+          duration: 0.75,
+          edgeColor: 0x22d3ee,
+          edgeWidth: 0.12,
+          noiseScale: 9,
+          seed: 7,
         }),
       }),
     );
@@ -1020,7 +1081,7 @@ class PracticalRecipesScene extends FeelGalleryScene {
     this.spawn(CameraEntity, {
       position: new Vec2(WIDTH / 2, HEIGHT / 2),
     });
-    this.drawBackdrop(ESSENTIAL_PANELS);
+    this.drawBackdrop(COMPACT_RECIPE_PANELS);
     const status = this.spawnText(
       "status",
       WIDTH / 2,
@@ -1034,6 +1095,7 @@ class PracticalRecipesScene extends FeelGalleryScene {
     const damage = this.spawnDamageImpactRecipe();
     const dash = this.spawnDashBurstRecipe();
     const pop = this.spawnPopRecipe();
+    const death = this.spawnEnemyDeathRecipe();
 
     this.installController(3, status, [
       { label: "impact recipe", play: () => void hit.play("show") },
@@ -1043,6 +1105,7 @@ class PracticalRecipesScene extends FeelGalleryScene {
       },
       { label: "dash burst recipe", play: () => void dash.play("show") },
       { label: "spawn pop recipe", play: () => void pop.play("show") },
+      death,
     ]);
   }
 
@@ -1126,9 +1189,9 @@ class PracticalRecipesScene extends FeelGalleryScene {
   }
 
   private spawnPopRecipe(): Feel {
-    this.spawnLabel(450, 342, "4  RECIPE: SPAWN POP");
+    this.spawnLabel(236, 342, "4  RECIPE: SPAWN POP");
     const entity = this.spawn("spawn-pop-recipe-target");
-    entity.add(new Transform({ position: new Vec2(450, 425) }));
+    entity.add(new Transform({ position: new Vec2(236, 425) }));
     const visual = entity.add(
       new GraphicsComponent().draw((g) => {
         g.circle(0, 0, 53).fill({ color: 0x713f12 });
@@ -1149,6 +1212,49 @@ class PracticalRecipesScene extends FeelGalleryScene {
         }),
       }),
     );
+  }
+
+  private spawnEnemyDeathRecipe(): ShowcaseCue {
+    this.spawnLabel(664, 342, "5  RECIPE: ENEMY DEATH");
+    let generation = 0;
+    let current = this.createDeathTarget(generation);
+    return {
+      label: "enemy death recipe",
+      play: () => {
+        current.destroy();
+        generation += 1;
+        current = this.createDeathTarget(generation);
+        current.get(Feel).play("show");
+      },
+    };
+  }
+
+  private createDeathTarget(generation: number): Entity {
+    const entity = this.spawn(`enemy-death-recipe-target:${generation}`);
+    entity.add(new Transform({ position: new Vec2(664, 425) }));
+    const visual = entity.add(
+      new GraphicsComponent().draw((g) => {
+        g.roundRect(-50, -50, 100, 100, 20).fill({ color: 0x581c87 });
+        g.roundRect(-39, -39, 78, 78, 15).fill({ color: 0x9333ea });
+        g.circle(-16, -7, 8).fill({ color: 0xf5d0fe });
+        g.circle(16, -7, 8).fill({ color: 0xf5d0fe });
+        g.moveTo(-21, 22)
+          .quadraticCurveTo(0, 8, 21, 22)
+          .stroke({ color: 0xe9d5ff, width: 5 });
+      }),
+    );
+    entity.add(
+      new Feel({
+        show: enemyDeath({
+          target: visual,
+          color: 0x22d3ee,
+          dissolve: { noiseScale: 8, edgeWidth: 0.13, seed: generation },
+          glow: { outerStrength: 5, distance: 14 },
+          onComplete: (context) => context.entity.destroy(),
+        }),
+      }),
+    );
+    return entity;
   }
 }
 

@@ -87,7 +87,8 @@ feelCameraShake({ camera, intensity?, duration?, frequency?, decay? });
 feelCameraRotation({ camera, radians?, duration?, peakAt?, ... });
 feelCameraZoom({ camera, scale?, duration?, peakAt?, ... });
 feelEffect(host: EffectsHost, factory: EffectFactory, options?);
-feelGlitch({ host, refreshRate?, slices?, offset?, direction?, red?, green?, blue?, duration?, peakAt?, ... });
+feelGlitch({ host, refreshRate?, slices?, offset?, direction?, red?, green?, blue?, duration?, peakAt?, releaseAt?, ... });
+feelDissolve({ target, duration?, easing?, edgeColor?, edgeWidth?, noiseScale?, softness?, seed? });
 feelHitFlash(host: EffectsHost, options?: HitFlashOptions);
 feelShockwave(host: EffectsHost, options?: ShockwaveOptions & { center? });
 feelOutline({ target, thickness?, color?, alpha?, quality?, knockout?, duration?, peakAt?, ... });
@@ -123,9 +124,14 @@ rendered camera layers use the effective values.
 from 0 to the cue-scaled peak and back, then removes it.
 
 `feelGlitch` adds behavior beyond a generic pulse. It replaces the glitch band
-pattern at `refreshRate` from the scene's seeded random source, while the pulse
-controls displacement and RGB separation. Static bloom, pixelate, vignette,
-zoom blur, axis blur, and implosion pulses use `feelEffect` directly.
+pattern at `refreshRate` from the scene's seeded random source. Its default
+presence reaches full strength at `peakAt: 0.08`, stays there until
+`releaseAt: 0.72`, then releases. Static bloom, pixelate, vignette, zoom blur,
+axis blur, and implosion pulses use `feelEffect` directly.
+
+`feelDissolve` advances the `dissolve` preset from intact to transparent. It
+uses `easeInQuad` by default and removes the temporary filter on completion or
+cancellation. Cancellation reveals the source visual again.
 
 `feelOutline`, `feelGlow`, and `feelColorize` are target-resolving convenience
 effects over the same handle lifecycle. Feel attaches all filter pulses with
@@ -166,7 +172,8 @@ impact({ target, position?, color?, duration?, scale?, shake?, ringRadius?, ring
 damageImpact({ target, value, position?, critical?, impact?, number? });
 dashBurst({ target, direction, position?, duration?, stretch?, blur?, lines? });
 spawnPop({ target, duration?, startScale?, offset?, oscillations?, decay?, glow? });
-voidCollapse({ host, center?, radius?, strength?, darkness?, swirl?, zoomStrength?, duration?, peakAt?, ... });
+enemyDeath({ target, onComplete, position?, color?, impactDuration?, dissolveDuration?, scale?, shake?, dissolve?, glow?, ring? });
+voidCollapse({ host, center?, radius?, strength?, darkness?, swirl?, expandFromCenter?, zoomStrength?, implosionDelay?, holdDuration?, color?, colorStrength?, duration?, peakAt?, ... });
 ```
 
 A recipe is a ready-made composition that returns an ordinary `FeelNode`. It
@@ -178,10 +185,17 @@ does not create another `Feel` component or use a separate player.
 - `dashBurst`: axis stretch, axis blur, and directional flight lines. The
   dominant direction component selects the axis.
 - `spawnPop`: scale and position springs plus a short glow.
-- `voidCollapse`: `implosion` plus inward `zoomBlur`.
+- `enemyDeath`: impact flash, ring, scale punch, shake, glow, and edged
+  dissolve. `onComplete` runs after the temporary handles are removed and does
+  not run when playback is cancelled. The caller decides whether to destroy,
+  pool, hide, or replace the enemy.
+- `voidCollapse`: inward `zoomBlur`, a slightly delayed `implosion`, a held
+  peak, and an optional `colorize` pass. The implosion radius grows from its
+  center by default. Set `expandFromCenter: false` for whole-radius pull, or
+  `color: false` to omit color.
 
-Recipes do not add sound, camera movement, time changes, particles, entity
-destruction, or other gameplay consequences.
+Recipes do not add sound, camera movement, time changes, or particles. No
+recipe destroys an entity by itself.
 
 ## `/audio`
 

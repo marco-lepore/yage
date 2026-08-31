@@ -14,6 +14,8 @@ export interface ZoomBlurOptions {
   innerRadius?: number;
   /** Outer radius in host-local pixels. Negative means unlimited. Default: -1. */
   radius?: number;
+  /** Grow a finite outer radius from the center as intensity rises. Default: false. */
+  expandFromCenter?: boolean;
   /** Maximum shader sample count. Default: 32. */
   maxKernelSize?: number;
 }
@@ -24,6 +26,7 @@ class YageZoomBlurFilter extends ZoomBlurFilter {
   centerLocal: { x: number; y: number } | undefined;
   innerRadiusLocal: number;
   radiusLocal: number;
+  expandFromCenter: boolean;
   yageTarget: Container | undefined;
   private readonly centerOut = { x: 0, y: 0 };
 
@@ -40,6 +43,7 @@ class YageZoomBlurFilter extends ZoomBlurFilter {
     this.centerLocal = options.center ? { ...options.center } : undefined;
     this.innerRadiusLocal = options.innerRadius ?? 0;
     this.radiusLocal = options.radius ?? -1;
+    this.expandFromCenter = options.expandFromCenter ?? false;
   }
 
   override apply(
@@ -73,7 +77,19 @@ class YageZoomBlurFilter extends ZoomBlurFilter {
     this.center = this.centerOut;
     this.strength = this.baseStrength * this.intensity;
     this.innerRadius = this.innerRadiusLocal * sizeScale;
-    this.radius = this.radiusLocal < 0 ? -1 : this.radiusLocal * sizeScale;
+    const radiusProgress = Math.pow(
+      Math.min(1, Math.max(0, this.intensity)),
+      1.35,
+    );
+    this.radius =
+      this.radiusLocal < 0
+        ? -1
+        : Math.max(
+            1,
+            this.radiusLocal *
+              sizeScale *
+              (this.expandFromCenter ? radiusProgress : 1),
+          );
     super.apply(filterManager, input, output, clearMode);
   }
 }
@@ -110,6 +126,9 @@ export const zoomBlur = defineEffect<ZoomBlurHandle, ZoomBlurOptions>({
         setRadii: (innerRadius: number, radius: number) => {
           filter.innerRadiusLocal = innerRadius;
           filter.radiusLocal = radius;
+        },
+        setExpandFromCenter: (value: boolean) => {
+          filter.expandFromCenter = value;
         },
       }),
     };
