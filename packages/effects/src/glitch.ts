@@ -9,6 +9,12 @@ import type {
   Texture,
 } from "pixi.js";
 import type { GlitchHandle } from "./handles.js";
+import {
+  validateFinite,
+  validateInteger,
+  validateMinimum,
+  validatePoint,
+} from "./validate.js";
 
 export type GlitchFillMode =
   | "transparent"
@@ -61,13 +67,6 @@ function randomFromSeed(seed: number): () => number {
   };
 }
 
-function validateSlices(value: number): number {
-  if (!Number.isFinite(value) || !Number.isInteger(value) || value < 1) {
-    throw new Error(`glitch: slices must be a finite integer >= 1.`);
-  }
-  return value;
-}
-
 class YageGlitchFilter extends GlitchFilter {
   intensity = 1;
   baseOffsetLocal: number;
@@ -78,25 +77,39 @@ class YageGlitchFilter extends GlitchFilter {
   private patternSeed: number;
 
   constructor(options: GlitchOptions) {
-    const slices = validateSlices(options.slices ?? 8);
-    const red = options.red ?? { x: 4, y: 0 };
-    const green = options.green ?? { x: 0, y: 0 };
-    const blue = options.blue ?? { x: -4, y: 0 };
-    const seed = options.seed ?? 0;
+    const slices = validateInteger("glitch", "slices", options.slices ?? 8, 1);
+    const red = validatePoint("glitch", "red", options.red ?? { x: 4, y: 0 });
+    const green = validatePoint(
+      "glitch",
+      "green",
+      options.green ?? { x: 0, y: 0 },
+    );
+    const blue = validatePoint(
+      "glitch",
+      "blue",
+      options.blue ?? { x: -4, y: 0 },
+    );
+    const seed = validateFinite("glitch", "seed", options.seed ?? 0);
+    const offset = validateFinite("glitch", "offset", options.offset ?? 24);
     super({
       slices,
-      offset: options.offset ?? 24,
-      direction: options.direction ?? 0,
+      offset,
+      direction: validateFinite("glitch", "direction", options.direction ?? 0),
       fillMode: FILL_MODES[options.fillMode ?? "original"],
       average: options.average ?? false,
-      minSize: options.minSize ?? 8,
-      sampleSize: options.sampleSize ?? 512,
+      minSize: validateMinimum("glitch", "minSize", options.minSize ?? 8, 0),
+      sampleSize: validateInteger(
+        "glitch",
+        "sampleSize",
+        options.sampleSize ?? 512,
+        1,
+      ),
       red,
       green,
       blue,
       seed: (seed >>> 0) / 0x1_0000_0000,
     });
-    this.baseOffsetLocal = options.offset ?? 24;
+    this.baseOffsetLocal = offset;
     this.baseRedLocal = { ...red };
     this.baseGreenLocal = { ...green };
     this.baseBlueLocal = { ...blue };
@@ -106,7 +119,7 @@ class YageGlitchFilter extends GlitchFilter {
   }
 
   refreshSeeded(seed = (this.patternSeed + 1) >>> 0): void {
-    this.patternSeed = seed >>> 0;
+    this.patternSeed = validateFinite("glitch", "seed", seed) >>> 0;
     const random = randomFromSeed(this.patternSeed);
     const count = this.slices;
     const minFraction = Math.min(this.minSize / this.sampleSize, 0.9 / count);
@@ -171,7 +184,7 @@ export const glitch = defineEffect<GlitchHandle, GlitchOptions>({
       filter,
       getIntensity: () => filter.intensity,
       setIntensity: (value) => {
-        filter.intensity = value;
+        filter.intensity = validateFinite("glitch", "intensity", value);
         filter.applyIntensity(1, 1);
       },
       onAttach: ({ displayObject }) => {
@@ -183,13 +196,15 @@ export const glitch = defineEffect<GlitchHandle, GlitchOptions>({
       buildExtras: () => ({
         refresh: (seed?: number) => filter.refreshSeeded(seed),
         setOffset: (value: number) => {
-          filter.baseOffsetLocal = value;
+          filter.baseOffsetLocal = validateFinite("glitch", "offset", value);
           filter.applyIntensity(1, 1);
         },
         setColorOffsets: (red, green, blue) => {
-          filter.baseRedLocal = { ...red };
-          filter.baseGreenLocal = { ...green };
-          filter.baseBlueLocal = { ...blue };
+          filter.baseRedLocal = { ...validatePoint("glitch", "red", red) };
+          filter.baseGreenLocal = {
+            ...validatePoint("glitch", "green", green),
+          };
+          filter.baseBlueLocal = { ...validatePoint("glitch", "blue", blue) };
           filter.applyIntensity(1, 1);
         },
       }),

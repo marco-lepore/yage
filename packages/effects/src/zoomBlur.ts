@@ -3,6 +3,12 @@ import type { Effect } from "@yagejs/renderer";
 import { ZoomBlurFilter } from "pixi-filters";
 import type { Container, FilterSystem, RenderSurface, Texture } from "pixi.js";
 import type { ZoomBlurHandle } from "./handles.js";
+import {
+  validateFinite,
+  validateInteger,
+  validateMinimum,
+  validatePoint,
+} from "./validate.js";
 
 /** Options for the {@link zoomBlur} preset. */
 export interface ZoomBlurOptions {
@@ -31,18 +37,36 @@ class YageZoomBlurFilter extends ZoomBlurFilter {
   private readonly centerOut = { x: 0, y: 0 };
 
   constructor(options: ZoomBlurOptions) {
-    const strength = options.strength ?? 0.12;
+    const strength = validateFinite(
+      "zoomBlur",
+      "strength",
+      options.strength ?? 0.12,
+    );
+    const innerRadius = validateMinimum(
+      "zoomBlur",
+      "innerRadius",
+      options.innerRadius ?? 0,
+      0,
+    );
+    const radius = validateFinite("zoomBlur", "radius", options.radius ?? -1);
     super({
       strength,
       center: { x: 0, y: 0 },
-      innerRadius: options.innerRadius ?? 0,
-      radius: options.radius ?? -1,
-      maxKernelSize: options.maxKernelSize ?? 32,
+      innerRadius,
+      radius,
+      maxKernelSize: validateInteger(
+        "zoomBlur",
+        "maxKernelSize",
+        options.maxKernelSize ?? 32,
+        1,
+      ),
     });
     this.baseStrength = strength;
-    this.centerLocal = options.center ? { ...options.center } : undefined;
-    this.innerRadiusLocal = options.innerRadius ?? 0;
-    this.radiusLocal = options.radius ?? -1;
+    this.centerLocal = options.center
+      ? { ...validatePoint("zoomBlur", "center", options.center) }
+      : undefined;
+    this.innerRadiusLocal = innerRadius;
+    this.radiusLocal = radius;
     this.expandFromCenter = options.expandFromCenter ?? false;
   }
 
@@ -103,8 +127,8 @@ export const zoomBlur = defineEffect<ZoomBlurHandle, ZoomBlurOptions>({
       filter,
       getIntensity: () => filter.intensity,
       setIntensity: (value) => {
-        filter.intensity = value;
-        filter.strength = filter.baseStrength * value;
+        filter.intensity = validateFinite("zoomBlur", "intensity", value);
+        filter.strength = filter.baseStrength * filter.intensity;
       },
       onAttach: ({ displayObject }) => {
         filter.yageTarget = displayObject;
@@ -114,18 +138,23 @@ export const zoomBlur = defineEffect<ZoomBlurHandle, ZoomBlurOptions>({
       },
       buildExtras: () => ({
         setStrength: (value: number) => {
-          filter.baseStrength = value;
-          filter.strength = value * filter.intensity;
+          filter.baseStrength = validateFinite("zoomBlur", "strength", value);
+          filter.strength = filter.baseStrength * filter.intensity;
         },
         setCenter: (x: number, y: number) => {
-          filter.centerLocal = { x, y };
+          filter.centerLocal = validatePoint("zoomBlur", "center", { x, y });
         },
         useHostCenter: () => {
           filter.centerLocal = undefined;
         },
         setRadii: (innerRadius: number, radius: number) => {
-          filter.innerRadiusLocal = innerRadius;
-          filter.radiusLocal = radius;
+          filter.innerRadiusLocal = validateMinimum(
+            "zoomBlur",
+            "innerRadius",
+            innerRadius,
+            0,
+          );
+          filter.radiusLocal = validateFinite("zoomBlur", "radius", radius);
         },
         setExpandFromCenter: (value: boolean) => {
           filter.expandFromCenter = value;

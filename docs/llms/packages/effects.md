@@ -55,6 +55,17 @@ Color-grade presets: `"neutral"` (identity), `"sepia"`, `"grayscale"`, `"negativ
 negative, unlimited radius cannot expand. `implosion.expandFromCenter` applies
 the same center-first progression to its pull, darkness, and swirl.
 
+`glitch`, `zoomBlur`, `axisBlur`, `implosion`, and `dissolve` reject a
+non-finite or out-of-range number at the call that supplies it — options,
+`setIntensity`, and the per-preset setters alike — and throw naming the input
+and the constraint (`implosion: radius must be >= 1, got 0.`). A `NaN` written
+into a filter uniform renders undefined output with nothing pointing back at
+its source, so these throw instead of clamping. Range-bound inputs:
+`implosion.radius` ≥ 1, `implosion.darkness` 0–1, `zoomBlur.innerRadius` ≥ 0,
+`glitch.slices` and `glitch.sampleSize` integers ≥ 1, `axisBlur.quality` an
+integer ≥ 1, `dissolve.edgeWidth` 0.001–0.5, `dissolve.noiseScale` ≥ 1,
+`dissolve.softness` 0.001–0.25.
+
 The public handle controls an effect's strength three ways. `setIntensity(value)` sets the primary intensity immediately and clamps the value to 0–1. `fadeIn(seconds)` and `fadeOut(seconds)` tween that same value and return a `Process`. The per-preset `set*` setters that change a preset's "full" value (`bloom.setBloomScale`, `glow.setOuterStrength`, `outline.setThickness`, `dropShadow.setAlpha`, `vignette.setStrength`, `chromaticAberration.setSeparation`, `pixelate.setSize`, `glow.setInnerStrength`, `godRay.setGain`, `motionBlur.setVelocity`, `bulgePinch.setStrength`, `halftone.setAmount`, `wave.setAmplitude`, `colorize.setStrength`) rebase that ceiling while preserving the current intensity ratio. For example, `bloom.setIntensity(0.5)` displays half of the configured bloom scale, while `bloom.setBloomScale(2)` changes what full strength means. For a custom timed animation, pass a tween to `run`; the process is scoped to the effect and stops on `.remove()`.
 
 ## Scope rationale

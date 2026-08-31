@@ -300,10 +300,14 @@ export function feelGlitch(options: FeelGlitchOptions): FeelNode {
         refresh(options.seed);
       },
       update: (progress, dt) => {
+        // Drain every whole interval the frame covered. Refreshing once and
+        // dropping the remainder would undershoot `refreshRate` on long
+        // frames and make the same elapsed time consume a different number
+        // of seeded values depending on frame cadence.
         refreshElapsed += dt;
         const interval = 1 / refreshRate;
-        if (refreshElapsed >= interval) {
-          refreshElapsed %= interval;
+        while (refreshElapsed >= interval) {
+          refreshElapsed -= interval;
           refresh();
         }
         handle?.setIntensity(

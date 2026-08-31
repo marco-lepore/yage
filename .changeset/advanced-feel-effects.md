@@ -11,3 +11,8 @@ Add advanced visual feedback primitives for Feel cues and direct renderer use.
 - Add a focused implosion shader with inward pull, darkening, swirl, and an
   optional radius that expands from the center with intensity.
 - Add a noise-driven dissolve shader with a configurable bright edge.
+- Reject non-finite and out-of-range numbers at the call that supplies them,
+  across every option, `setIntensity`, and setter on the five new presets. The
+  error names the input and the constraint. `implosion` previously clamped
+  `radius` and `darkness` silently and now throws instead, which also stops a
+  `NaN` from slipping past the clamp into a filter uniform.

@@ -213,6 +213,32 @@ describe("Feel renderer modifiers", () => {
     expect(handle.remove).toHaveBeenCalledOnce();
   });
 
+  it("refreshes glitch for every interval a long frame covered", () => {
+    const { entity } = createMockEntity();
+    const handle = {
+      setIntensity: vi.fn(),
+      refresh: vi.fn(),
+      remove: vi.fn(),
+    };
+    const host = {
+      addEffect: vi.fn(() => handle),
+    } as unknown as EffectsHost;
+    const feel = entity.add(
+      new Feel({
+        glitch: feelGlitch({ host, duration: 1, refreshRate: 20, seed: 3 }),
+      }),
+    );
+
+    feel.play("glitch");
+    expect(handle.refresh).toHaveBeenCalledOnce();
+
+    // 0.5s at 20 refreshes per second covers ten intervals. Refreshing once
+    // and discarding the remainder would undershoot `refreshRate` and leave
+    // the seeded random source at a different point.
+    feel.update(0.5);
+    expect(handle.refresh.mock.calls.length - 1).toBe(10);
+  });
+
   it("brings glitch in quickly, holds it, then releases it", () => {
     const { entity } = createMockEntity();
     const handle = {

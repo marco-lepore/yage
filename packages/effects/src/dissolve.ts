@@ -3,6 +3,7 @@ import type { ColorValue, Effect } from "@yagejs/renderer";
 import { Color, Filter, GlProgram, GpuProgram } from "pixi.js";
 import type { Container, FilterSystem, RenderSurface, Texture } from "pixi.js";
 import type { DissolveHandle } from "./handles.js";
+import { validateFinite, validateMinimum, validateRange } from "./validate.js";
 
 /** Options for the {@link dissolve} preset. */
 export interface DissolveOptions {
@@ -195,23 +196,26 @@ class DissolveFilter extends Filter {
 
   constructor(options: DissolveOptions) {
     const edgeWidth = validateRange(
+      "dissolve",
       "edgeWidth",
       options.edgeWidth ?? 0.08,
       0.001,
       0.5,
     );
     const noiseScale = validateMinimum(
+      "dissolve",
       "noiseScale",
       options.noiseScale ?? 12,
       1,
     );
     const softness = validateRange(
+      "dissolve",
       "softness",
       options.softness ?? 0.025,
       0.001,
       0.25,
     );
-    const seed = validateFinite("seed", options.seed ?? 0);
+    const seed = validateFinite("dissolve", "seed", options.seed ?? 0);
     super({
       glProgram: GlProgram.from({
         vertex: VERTEX_GL,
@@ -271,7 +275,11 @@ class DissolveFilter extends Filter {
   }
 
   set progress(value: number) {
-    this.uniforms().uProgress = clamp(validateFinite("intensity", value), 0, 1);
+    this.uniforms().uProgress = clamp(
+      validateFinite("dissolve", "intensity", value),
+      0,
+      1,
+    );
   }
 
   setEdgeColor(color: ColorValue): void {
@@ -283,20 +291,32 @@ class DissolveFilter extends Filter {
   }
 
   setEdgeWidth(value: number): void {
-    this.uniforms().uEdgeWidth = validateRange("edgeWidth", value, 0.001, 0.5);
+    this.uniforms().uEdgeWidth = validateRange(
+      "dissolve",
+      "edgeWidth",
+      value,
+      0.001,
+      0.5,
+    );
   }
 
   setNoiseScale(value: number): void {
-    this.noiseScaleLocal = validateMinimum("noiseScale", value, 1);
+    this.noiseScaleLocal = validateMinimum("dissolve", "noiseScale", value, 1);
     this.updateNoiseScale();
   }
 
   setSoftness(value: number): void {
-    this.uniforms().uSoftness = validateRange("softness", value, 0.001, 0.25);
+    this.uniforms().uSoftness = validateRange(
+      "dissolve",
+      "softness",
+      value,
+      0.001,
+      0.25,
+    );
   }
 
   setSeed(value: number): void {
-    this.uniforms().uSeed = validateFinite("seed", value);
+    this.uniforms().uSeed = validateFinite("dissolve", "seed", value);
   }
 
   attach(target: Container): void {
@@ -362,34 +382,4 @@ export const dissolve = defineEffect<DissolveHandle, DissolveOptions>({
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-function validateFinite(label: string, value: number): number {
-  if (!Number.isFinite(value)) {
-    throw new Error(`dissolve: ${label} must be finite, got ${value}.`);
-  }
-  return value;
-}
-
-function validateMinimum(label: string, value: number, min: number): number {
-  validateFinite(label, value);
-  if (value < min) {
-    throw new Error(`dissolve: ${label} must be >= ${min}, got ${value}.`);
-  }
-  return value;
-}
-
-function validateRange(
-  label: string,
-  value: number,
-  min: number,
-  max: number,
-): number {
-  validateFinite(label, value);
-  if (value < min || value > max) {
-    throw new Error(
-      `dissolve: ${label} must be between ${min} and ${max}, got ${value}.`,
-    );
-  }
-  return value;
 }

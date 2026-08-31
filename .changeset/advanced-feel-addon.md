@@ -13,3 +13,7 @@ Add advanced visual cue helpers to the Feel addon.
   optional color shift.
 - Keep sequence-boundary callbacks behind the cleanup of preceding effects
   when decimal durations differ by floating-point rounding.
+- Refresh `feelGlitch` once for every interval a frame covered. A frame longer
+  than one interval previously refreshed a single time and discarded the rest,
+  undershooting `refreshRate` and leaving the seeded random source at a
+  different point depending on frame cadence.

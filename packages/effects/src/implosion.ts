@@ -3,6 +3,12 @@ import type { Effect } from "@yagejs/renderer";
 import { Filter, GlProgram, GpuProgram } from "pixi.js";
 import type { Container, FilterSystem, RenderSurface, Texture } from "pixi.js";
 import type { ImplosionHandle } from "./handles.js";
+import {
+  validateFinite,
+  validateMinimum,
+  validatePoint,
+  validateRange,
+} from "./validate.js";
 
 /** Options for the {@link implosion} preset. */
 export interface ImplosionOptions {
@@ -171,10 +177,25 @@ class ImplosionFilter extends Filter {
   private readonly centerOut = new Float32Array(2);
 
   constructor(options: ImplosionOptions) {
-    const radius = Math.max(1, options.radius ?? 180);
-    const strength = options.strength ?? 0.8;
-    const darkness = Math.min(1, Math.max(0, options.darkness ?? 0.9));
-    const swirl = options.swirl ?? 0.35;
+    const radius = validateMinimum(
+      "implosion",
+      "radius",
+      options.radius ?? 180,
+      1,
+    );
+    const strength = validateFinite(
+      "implosion",
+      "strength",
+      options.strength ?? 0.8,
+    );
+    const darkness = validateRange(
+      "implosion",
+      "darkness",
+      options.darkness ?? 0.9,
+      0,
+      1,
+    );
+    const swirl = validateFinite("implosion", "swirl", options.swirl ?? 0.35);
     super({
       glProgram: GlProgram.from({
         vertex: VERTEX_GL,
@@ -200,7 +221,9 @@ class ImplosionFilter extends Filter {
         },
       },
     });
-    this.centerLocal = options.center ? { ...options.center } : undefined;
+    this.centerLocal = options.center
+      ? { ...validatePoint("implosion", "center", options.center) }
+      : undefined;
     this.radiusLocal = radius;
     this.baseStrength = strength;
     this.baseDarkness = darkness;
@@ -286,7 +309,7 @@ export const implosion = defineEffect<ImplosionHandle, ImplosionOptions>({
       filter,
       getIntensity: () => filter.intensity,
       setIntensity: (value) => {
-        filter.intensity = value;
+        filter.intensity = validateFinite("implosion", "intensity", value);
         filter.applyIntensity();
       },
       onAttach: ({ displayObject }) => {
@@ -297,24 +320,30 @@ export const implosion = defineEffect<ImplosionHandle, ImplosionOptions>({
       },
       buildExtras: () => ({
         setCenter: (x: number, y: number) => {
-          filter.centerLocal = { x, y };
+          filter.centerLocal = validatePoint("implosion", "center", { x, y });
         },
         useHostCenter: () => {
           filter.centerLocal = undefined;
         },
         setRadius: (value: number) => {
-          filter.radiusLocal = Math.max(1, value);
+          filter.radiusLocal = validateMinimum("implosion", "radius", value, 1);
         },
         setStrength: (value: number) => {
-          filter.baseStrength = value;
+          filter.baseStrength = validateFinite("implosion", "strength", value);
           filter.applyIntensity();
         },
         setDarkness: (value: number) => {
-          filter.baseDarkness = Math.min(1, Math.max(0, value));
+          filter.baseDarkness = validateRange(
+            "implosion",
+            "darkness",
+            value,
+            0,
+            1,
+          );
           filter.applyIntensity();
         },
         setSwirl: (value: number) => {
-          filter.baseSwirl = value;
+          filter.baseSwirl = validateFinite("implosion", "swirl", value);
           filter.applyIntensity();
         },
         setExpandFromCenter: (value: boolean) => {

@@ -141,7 +141,7 @@ import { zoomBlur } from "./zoomBlur.js";
 describe("advanced effects", () => {
   it("rejects fractional glitch slice counts", () => {
     expect(() => glitch({ slices: 2.5 })()).toThrow(
-      "glitch: slices must be a finite integer >= 1.",
+      "glitch: slices must be an integer >= 1, got 2.5.",
     );
   });
 
@@ -370,5 +370,100 @@ describe("advanced effects", () => {
     expect(() => handle.setNoiseScale(0)).toThrow(/noiseScale/);
     expect(() => handle.setSoftness(Number.NaN)).toThrow(/softness/);
     expect(() => handle.setSeed(Number.POSITIVE_INFINITY)).toThrow(/seed/);
+  });
+
+  it("rejects invalid glitch options and runtime values", () => {
+    expect(() => glitch({ offset: Number.NaN })()).toThrow(/offset/);
+    expect(() => glitch({ direction: Number.POSITIVE_INFINITY })()).toThrow(
+      /direction/,
+    );
+    expect(() => glitch({ sampleSize: 0 })()).toThrow(/sampleSize/);
+    expect(() => glitch({ seed: Number.NaN })()).toThrow(/seed/);
+    expect(() => glitch({ red: { x: Number.NaN, y: 0 } })()).toThrow(/red\.x/);
+
+    const effect = glitch({})();
+    const handle = effect.buildExtras?.(null as never);
+    if (!handle?.setOffset) {
+      throw new Error("Expected a glitch handle.");
+    }
+    expect(() => effect.setIntensity(Number.NaN)).toThrow(/intensity/);
+    expect(() => handle.setOffset(Number.POSITIVE_INFINITY)).toThrow(/offset/);
+    expect(() =>
+      handle.setColorOffsets(
+        { x: 0, y: Number.NaN },
+        { x: 0, y: 0 },
+        {
+          x: 0,
+          y: 0,
+        },
+      ),
+    ).toThrow(/red\.y/);
+    expect(() => handle.refresh(Number.NaN)).toThrow(/seed/);
+  });
+
+  it("rejects invalid zoom blur options and runtime values", () => {
+    expect(() => zoomBlur({ strength: Number.NaN })()).toThrow(/strength/);
+    expect(() => zoomBlur({ innerRadius: -1 })()).toThrow(/innerRadius/);
+    expect(() => zoomBlur({ radius: Number.POSITIVE_INFINITY })()).toThrow(
+      /radius/,
+    );
+    expect(() => zoomBlur({ maxKernelSize: 0 })()).toThrow(/maxKernelSize/);
+    expect(() => zoomBlur({ center: { x: 0, y: Number.NaN } })()).toThrow(
+      /center\.y/,
+    );
+
+    const effect = zoomBlur({})();
+    const handle = effect.buildExtras?.(null as never);
+    if (!handle?.setRadii) {
+      throw new Error("Expected a zoom blur handle.");
+    }
+    expect(() => effect.setIntensity(Number.NaN)).toThrow(/intensity/);
+    expect(() => handle.setStrength(Number.NaN)).toThrow(/strength/);
+    expect(() => handle.setCenter(Number.NaN, 0)).toThrow(/center\.x/);
+    expect(() => handle.setRadii(-1, 10)).toThrow(/innerRadius/);
+    expect(() => handle.setRadii(0, Number.NaN)).toThrow(/radius/);
+  });
+
+  it("rejects invalid axis blur options and runtime values", () => {
+    expect(() => axisBlur({ strength: Number.NaN })()).toThrow(/strength/);
+    expect(() =>
+      axisBlur({ perpendicularStrength: Number.POSITIVE_INFINITY })(),
+    ).toThrow(/perpendicularStrength/);
+    expect(() => axisBlur({ quality: 1.5 })()).toThrow(/quality/);
+
+    const effect = axisBlur({})();
+    const handle = effect.buildExtras?.(null as never);
+    if (!handle?.setStrength) {
+      throw new Error("Expected an axis blur handle.");
+    }
+    expect(() => effect.setIntensity(Number.NaN)).toThrow(/intensity/);
+    expect(() => handle.setStrength(Number.NaN)).toThrow(/strength/);
+    expect(() => handle.setPerpendicularStrength(Number.NaN)).toThrow(
+      /perpendicularStrength/,
+    );
+  });
+
+  it("rejects invalid implosion options and runtime values", () => {
+    expect(() => implosion({ radius: 0 })()).toThrow(/radius/);
+    expect(() => implosion({ strength: Number.NaN })()).toThrow(/strength/);
+    expect(() => implosion({ darkness: 1.5 })()).toThrow(/darkness/);
+    expect(() => implosion({ swirl: Number.POSITIVE_INFINITY })()).toThrow(
+      /swirl/,
+    );
+    expect(() => implosion({ center: { x: Number.NaN, y: 0 } })()).toThrow(
+      /center\.x/,
+    );
+
+    const effect = implosion({})();
+    const handle = effect.buildExtras?.(null as never);
+    if (!handle?.setRadius) {
+      throw new Error("Expected an implosion handle.");
+    }
+    expect(() => effect.setIntensity(Number.NaN)).toThrow(/intensity/);
+    expect(() => handle.setRadius(0)).toThrow(/radius/);
+    expect(() => handle.setStrength(Number.NaN)).toThrow(/strength/);
+    expect(() => handle.setDarkness(-0.1)).toThrow(/darkness/);
+    expect(() => handle.setSwirl(Number.NaN)).toThrow(/swirl/);
+    expect(() => handle.setCenter(0, Number.NaN)).toThrow(/center\.y/);
   });
 });

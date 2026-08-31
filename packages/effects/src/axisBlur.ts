@@ -2,6 +2,7 @@ import { defineEffect } from "@yagejs/renderer";
 import type { Effect } from "@yagejs/renderer";
 import { BlurFilter } from "pixi.js";
 import type { AxisBlurHandle } from "./handles.js";
+import { validateFinite, validateInteger } from "./validate.js";
 
 export type BlurAxis = "horizontal" | "vertical";
 
@@ -38,13 +39,21 @@ export const axisBlur = defineEffect<AxisBlurHandle, AxisBlurOptions>({
   factory: (options) => {
     let intensity = 1;
     let axis = options.axis ?? "horizontal";
-    let strength = options.strength ?? 12;
-    let perpendicular = options.perpendicularStrength ?? 0;
+    let strength = validateFinite(
+      "axisBlur",
+      "strength",
+      options.strength ?? 12,
+    );
+    let perpendicular = validateFinite(
+      "axisBlur",
+      "perpendicularStrength",
+      options.perpendicularStrength ?? 0,
+    );
     const initial = strengths(axis, strength, perpendicular, intensity);
     const filter = new BlurFilter({
       strengthX: initial.x,
       strengthY: initial.y,
-      quality: options.quality ?? 2,
+      quality: validateInteger("axisBlur", "quality", options.quality ?? 2, 1),
       kernelSize: options.kernelSize ?? 5,
     });
     filter.repeatEdgePixels = options.repeatEdgePixels ?? false;
@@ -58,16 +67,20 @@ export const axisBlur = defineEffect<AxisBlurHandle, AxisBlurOptions>({
       filter,
       getIntensity: () => intensity,
       setIntensity: (value) => {
-        intensity = value;
+        intensity = validateFinite("axisBlur", "intensity", value);
         apply();
       },
       buildExtras: () => ({
         setStrength: (value: number) => {
-          strength = value;
+          strength = validateFinite("axisBlur", "strength", value);
           apply();
         },
         setPerpendicularStrength: (value: number) => {
-          perpendicular = value;
+          perpendicular = validateFinite(
+            "axisBlur",
+            "perpendicularStrength",
+            value,
+          );
           apply();
         },
         setAxis: (value: BlurAxis) => {

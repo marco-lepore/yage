@@ -230,8 +230,25 @@ const vanish = sprite.fx.addEffect(
 vanish.setIntensity(0.5);
 ```
 
-`dissolve` requires `edgeWidth` from 0.001 to 0.5, `noiseScale` of at
-least 1, `softness` from 0.001 to 0.25, and a finite `seed`.
+These five presets check the numbers you give them. Pass a `NaN`, an
+`Infinity`, or a value outside a documented range — as an option, to
+`setIntensity`, or to any of the setters — and the call throws right there,
+naming the input and the constraint:
+
+```
+implosion: radius must be >= 1, got 0.
+```
+
+The alternative is worse than an error. A `NaN` reaching a shader uniform
+produces a blank or garbled sprite on a later frame, with nothing left to
+point at the line that caused it.
+
+The ranges: `implosion` needs a `radius` of at least 1 and `darkness` from 0
+to 1; `zoomBlur` needs an `innerRadius` of at least 0; `glitch` needs whole
+`slices` and `sampleSize` of at least 1; `axisBlur` needs a whole `quality`
+of at least 1; `dissolve` needs `edgeWidth` from 0.001 to 0.5, `noiseScale`
+of at least 1, and `softness` from 0.001 to 0.25. Every other number these
+presets accept just has to be finite.
 
 ### Pick the right scope for each preset
 
