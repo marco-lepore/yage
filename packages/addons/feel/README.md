@@ -4,10 +4,11 @@ Compose the small responses that make an action readable and satisfying, then
 play them from one named trigger.
 
 The [playable example](../../../examples/feel-addon.html) groups the effects
-across two scenes. It covers impacts, trails, afterimages, highlights, springs,
-visibility, cue composition, scene and target time effects, animation,
-callbacks, shockwaves, camera modifiers, and a custom effect. Press `N` or `P`
-to move between scenes with a slide transition.
+across three scenes. It covers impacts, trails, afterimages, highlights,
+springs, visibility, cue composition, scene and target time effects, animation,
+callbacks, shockwaves, camera modifiers, glitch, blur, implosion, a recipe, and
+a custom effect. Press `N` or `P` to move between scenes with a slide
+transition.
 
 ```ts
 import { Feel, feelHitStop, feelParallel } from "@yagejs-addons/feel";
@@ -43,8 +44,8 @@ npm install @yagejs/audio
 npm install @yagejs/particles
 ```
 
-The root entry imports only `@yagejs/core`. Renderer, audio, and particle
-adapters have separate entry points.
+The root entry imports only `@yagejs/core`. Renderer, audio, particles, and
+recipes have separate entry points.
 
 ## Compose cues
 
@@ -112,6 +113,7 @@ Import these from `@yagejs-addons/feel/renderer`:
   `feelTransformShake`
 - `feelCameraShake`, `feelCameraRotation`, and `feelCameraZoom`
 - `feelHitFlash` and `feelShockwave`
+- `feelGlitch`, which refreshes its bands from the cue's seeded random source
 - `feelOutline`, `feelGlow`, and `feelColorize`
 - `feelOpacity` and `feelBlink`
 - `feelFloatingText`, `feelDamageNumber`, and `feelImpactRing`
@@ -145,6 +147,31 @@ const bloomPulse = feelEffect(worldLayer.fx, bloom({ bloomScale: 1.5 }), {
   peakAt: 0.2,
 });
 ```
+
+Use `feelEffect` for a renderer effect that only needs a temporary intensity
+pulse. `feelGlitch` has a dedicated wrapper because it changes its slice
+pattern during playback. The renderer package supplies `glitch`, `zoomBlur`,
+`axisBlur`, and `implosion`; static pulses of the last three use `feelEffect`.
+
+## Recipes
+
+Recipes are ready-made compositions under `@yagejs-addons/feel/recipes`. Each
+recipe returns a normal `FeelNode` for the existing `Feel` component. The
+separate import distinguishes recipes from basic `feelX` nodes.
+
+```ts
+import { voidCollapse } from "@yagejs-addons/feel/recipes";
+
+const feel = entity.add(
+  new Feel({
+    vanish: voidCollapse({ host: worldLayer.fx, center: position }),
+  }),
+);
+```
+
+`voidCollapse` combines an inward distortion with inward zoom blur. It does
+not add a burst, particles, camera movement, sound, entity destruction, or
+other gameplay consequences.
 
 ## Highlights and combat callouts
 

@@ -33,6 +33,43 @@ export interface ColorizeHandle extends EffectHandle {
   setStrength(value: number): void;
 }
 
+/** Handle returned by {@link glitch}. */
+export interface GlitchHandle extends EffectHandle {
+  /** Replace the slice pattern using an optional deterministic seed. */
+  refresh(seed?: number): void;
+  setOffset(value: number): void;
+  setColorOffsets(
+    red: { x: number; y: number },
+    green: { x: number; y: number },
+    blue: { x: number; y: number },
+  ): void;
+}
+
+/** Handle returned by {@link zoomBlur}. */
+export interface ZoomBlurHandle extends EffectHandle {
+  setStrength(value: number): void;
+  setCenter(x: number, y: number): void;
+  useHostCenter(): void;
+  setRadii(innerRadius: number, radius: number): void;
+}
+
+/** Handle returned by {@link axisBlur}. */
+export interface AxisBlurHandle extends EffectHandle {
+  setStrength(value: number): void;
+  setPerpendicularStrength(value: number): void;
+  setAxis(axis: "horizontal" | "vertical"): void;
+}
+
+/** Handle returned by {@link implosion}. */
+export interface ImplosionHandle extends EffectHandle {
+  setCenter(x: number, y: number): void;
+  useHostCenter(): void;
+  setRadius(value: number): void;
+  setStrength(value: number): void;
+  setDarkness(value: number): void;
+  setSwirl(value: number): void;
+}
+
 /** Handle returned by `dropShadow`. */
 export interface DropShadowHandle extends EffectHandle {
   setOffset(x: number, y: number): void;

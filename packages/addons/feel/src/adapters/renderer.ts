@@ -1,7 +1,16 @@
 import type { EasingFunction } from "@yagejs/core";
-import { colorize, glow, hitFlash, outline, shockwave } from "@yagejs/effects";
+import {
+  colorize,
+  glitch,
+  glow,
+  hitFlash,
+  outline,
+  shockwave,
+} from "@yagejs/effects";
 import type {
   ColorizeOptions,
+  GlitchHandle,
+  GlitchOptions,
   GlowOptions,
   HitFlashHandle,
   HitFlashOptions,
@@ -29,6 +38,10 @@ type FeelCamera = CameraEntity | CameraComponent;
 type FeelCameraTarget =
   | FeelCamera
   | ((context: FeelEffectContext) => FeelCamera);
+
+export type FeelEffectsHostTarget =
+  | EffectsHost
+  | ((context: FeelEffectContext) => EffectsHost);
 
 export interface FeelCameraShakeOptions {
   camera: FeelCameraTarget;
@@ -158,6 +171,72 @@ export interface FeelEffectOptions {
   peakAt?: number;
   attackEasing?: EasingFunction;
   releaseEasing?: EasingFunction;
+}
+
+export interface FeelGlitchOptions extends GlitchOptions, FeelEffectOptions {
+  host: FeelEffectsHostTarget;
+  /** Pattern changes per second. Default: 24. */
+  refreshRate?: number;
+}
+
+/** Pulse a glitch and refresh its bands from the cue's seeded random source. */
+export function feelGlitch(options: FeelGlitchOptions): FeelNode {
+  const duration = options.duration ?? 0.25;
+  const refreshRate = options.refreshRate ?? 24;
+  if (!Number.isFinite(refreshRate) || refreshRate <= 0) {
+    throw new Error(`feelGlitch: refreshRate must be a finite number > 0.`);
+  }
+  validateFeelPeakAt(options.peakAt);
+  const { host, peakAt, attackEasing, releaseEasing } = options;
+  const effectOptions: GlitchOptions = {
+    ...(options.slices === undefined ? {} : { slices: options.slices }),
+    ...(options.offset === undefined ? {} : { offset: options.offset }),
+    ...(options.direction === undefined
+      ? {}
+      : { direction: options.direction }),
+    ...(options.fillMode === undefined ? {} : { fillMode: options.fillMode }),
+    ...(options.average === undefined ? {} : { average: options.average }),
+    ...(options.minSize === undefined ? {} : { minSize: options.minSize }),
+    ...(options.sampleSize === undefined
+      ? {}
+      : { sampleSize: options.sampleSize }),
+    ...(options.red === undefined ? {} : { red: options.red }),
+    ...(options.green === undefined ? {} : { green: options.green }),
+    ...(options.blue === undefined ? {} : { blue: options.blue }),
+    ...(options.seed === undefined ? {} : { seed: options.seed }),
+  };
+  return defineFeelEffect(duration, (context) => {
+    const resolvedHost = resolveCallback(host, context, "effect host source");
+    let handle: GlitchHandle | undefined;
+    let refreshElapsed = 0;
+    const refresh = (seed?: number): void => {
+      handle?.refresh(seed ?? context.random.int(0, 0xffffffff));
+    };
+    return {
+      start: () => {
+        context.invoke("effect factory", () => {
+          handle = resolvedHost.addEffect(glitch(effectOptions), {
+            save: false,
+          });
+        });
+        handle?.setIntensity(0);
+        refresh(options.seed);
+      },
+      update: (progress, dt) => {
+        refreshElapsed += dt;
+        const interval = 1 / refreshRate;
+        if (refreshElapsed >= interval) {
+          refreshElapsed %= interval;
+          refresh();
+        }
+        handle?.setIntensity(
+          feelPunchAmount(progress, peakAt, attackEasing, releaseEasing) *
+            context.intensity,
+        );
+      },
+      finish: () => handle?.remove(),
+    };
+  });
 }
 
 /** Attach any YAGE effect, pulse its primary intensity, then remove it. */

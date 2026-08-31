@@ -89,7 +89,7 @@ tears down each scope's `EffectStack` for you.
 
 ## Hero presets
 
-Eighteen presets ship in `@yagejs/effects`, all save-aware and all using
+Twenty-two presets ship in `@yagejs/effects`, all save-aware and all using
 the same handle protocol:
 
 ```ts
@@ -100,8 +100,8 @@ import {
   // Added in 0.5.x
   godRay, shockwave, motionBlur, oldFilm, bulgePinch,
   halftone, wave,
-  // Added in 0.6.x
   colorize,
+  glitch, zoomBlur, axisBlur, implosion,
 } from "@yagejs/effects";
 ```
 
@@ -125,6 +125,10 @@ import {
 | `halftone` | Comic-print dot grid via custom WebGL+WGSL shader pair | `amount` (cross-fades back to source) |
 | `wave` | Sinusoidal x-displacement via custom shader; scene-time animator | configured `amplitude` |
 | `colorize` | Luminance-to-colour recolour via custom WebGL+WGSL shader pair — the replace-style alternative to `sprite.tint`'s multiply | `strength` (cross-fades back to source) |
+| `glitch` | Deterministic horizontal slices with RGB separation | band displacement and RGB offsets |
+| `zoomBlur` | Radial speed blur, including inward pull | signed blur strength |
+| `axisBlur` | Symmetric horizontal or vertical Gaussian blur | main and perpendicular strengths |
+| `implosion` | Inward pull with center darkening and swirl | pull, darkness, and swirl |
 
 The handle controls an effect's strength at runtime. `setIntensity(value)`
 sets the primary intensity immediately and clamps it to 0–1.
@@ -142,8 +146,8 @@ from a scheduled tween —
 — which is scoped to the effect and auto-cancels on `remove()`.
 
 Most presets wrap either a built-in `ColorMatrixFilter` or a `pixi-filters`
-filter and expose typed extras specific to it. Three — `halftone`, `wave`,
-and `colorize` — ship as custom WebGL + WGSL shader pairs with no
+filter and expose typed extras specific to it. Four — `halftone`, `wave`,
+`colorize`, and `implosion` — ship as custom WebGL + WGSL shader pairs with no
 `pixi-filters` dep, which makes them the smallest reference implementations
 to copy when authoring an effect from scratch.
 
@@ -198,11 +202,24 @@ mb.setVelocity(50, 12);
 const bp = scene.fx.addEffect(bulgePinch({ strength: 1, radius: 200 }));
 bp.setStrength(-0.8);   // flips bulge → pinch; intensity ratio preserved
 bp.setCenter(0.5, 0.5);
+
+// glitch keeps one deterministic pattern until refresh() is called.
+const digital = sprite.fx.addEffect(glitch({ slices: 8, offset: 24 }));
+digital.refresh(42);
+
+// zoomBlur is signed. Negative strength pulls the image inward.
+layer.fx.addEffect(zoomBlur({ center: playerPosition, strength: -0.14 }));
+
+// axisBlur is symmetric; motionBlur remains the trailing directional blur.
+sprite.fx.addEffect(axisBlur({ axis: "horizontal", strength: 12 }));
+
+// implosion is one focused visual. Add particles or camera movement separately.
+layer.fx.addEffect(implosion({ center: playerPosition, radius: 180 }));
 ```
 
 ### Pick the right scope for each preset
 
-Three of the new presets read best at scene scope (or higher) rather than
+Four presets read best at scene scope (or higher) rather than
 on a single component:
 
 - **`godRay`** — its alpha-aware fragment shader treats fully transparent
@@ -218,19 +235,22 @@ on a single component:
   shockwave on a small sprite reads as a tiny "bump" rather than a
   ring. Scene scope makes `trigger(heroX, heroY)` line up with the
   entity's transform.
+- **`implosion`** — inward displacement samples beyond the output pixel. A
+  small component host clips the warped image at its own bounds, while a layer
+  or scene gives the distortion room around its center.
 
 `examples/src/effects-showcase/main.ts` wires each of these at the recommended
 scope — copy that as the worked-out reference.
 
 :::caution[Pixel-valued options scale with canvas size]
-Pixel-valued options on every preset *except* `shockwave` and
-`bulgePinch.center` are in **input-texture pixels** — the rasterized
+Pixel-valued options on older presets and `axisBlur` are in
+**input-texture pixels** — the rasterized
 region's pixel size, post fit + camera transforms. With responsive `fit`,
 that means a `bloom.blur: 8` is 8/900 = 0.89% of canvas width on a
 desktop-native viewport but 8/382 = 2.10% on a mobile viewport. Effects
 visibly "scale up" on smaller canvases.
 
-Two presets ship with built-in resolution-stability today:
+Five presets use stable host coordinates:
 
 - `bulgePinch.center` is normalized 0..1.
 - `shockwave` accepts container-local coords for `trigger(x, y)` AND for
@@ -238,6 +258,9 @@ Two presets ship with built-in resolution-stability today:
   target's live `worldTransform`. **This wrapper pattern is
   experimental** — the API may shift as the broader fix lands. Don't
   depend on `shockwave`'s exact unit story across versions.
+- `glitch` interprets band displacement and RGB offsets in host-local pixels.
+- `zoomBlur` interprets its center and radii in host-local pixels.
+- `implosion` interprets its center and radius in host-local pixels.
 
 For resolution-stable output today on the other presets, scale your
 option values by `renderer.canvasSize.width / renderer.virtualSize.width`

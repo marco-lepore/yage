@@ -18,6 +18,10 @@ import {
   halftone,
   wave,
   colorize,
+  glitch,
+  zoomBlur,
+  axisBlur,
+  implosion,
 } from "./index.js";
 
 // Smoke tests live here. End-to-end attach + serialize round-trip is
@@ -47,11 +51,15 @@ describe("@yagejs/effects presets", () => {
       halftone,
       wave,
       colorize,
+      glitch,
+      zoomBlur,
+      axisBlur,
+      implosion,
     ]) {
       expect(preset.name).toMatch(/^yage:/);
       names.add(preset.name);
     }
-    expect(names.size).toBe(18);
+    expect(names.size).toBe(22);
   });
 
   it("calling a preset with options returns a callable factory", () => {
@@ -66,5 +74,9 @@ describe("@yagejs/effects presets", () => {
     expect(typeof halftone({ size: 6 })).toBe("function");
     expect(typeof wave({ amplitude: 6 })).toBe("function");
     expect(typeof colorize({ color: 0xf2c14e })).toBe("function");
+    expect(typeof glitch({ slices: 6 })).toBe("function");
+    expect(typeof zoomBlur({ strength: 0.15 })).toBe("function");
+    expect(typeof axisBlur({ axis: "vertical" })).toBe("function");
+    expect(typeof implosion({ radius: 160 })).toBe("function");
   });
 });

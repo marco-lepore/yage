@@ -1,7 +1,7 @@
 # @yagejs-addons/feel
 
 Named, composable game-feel cues. Root entry uses `@yagejs/core` only.
-Optional entries: `/renderer`, `/audio`, `/particles`.
+Optional entries: `/renderer`, `/audio`, `/particles`, `/recipes`.
 
 ```ts
 const feel = entity.add(
@@ -87,6 +87,7 @@ feelCameraShake({ camera, intensity?, duration?, frequency?, decay? });
 feelCameraRotation({ camera, radians?, duration?, peakAt?, ... });
 feelCameraZoom({ camera, scale?, duration?, peakAt?, ... });
 feelEffect(host: EffectsHost, factory: EffectFactory, options?);
+feelGlitch({ host, refreshRate?, slices?, offset?, direction?, red?, green?, blue?, duration?, peakAt?, ... });
 feelHitFlash(host: EffectsHost, options?: HitFlashOptions);
 feelShockwave(host: EffectsHost, options?: ShockwaveOptions & { center? });
 feelOutline({ target, thickness?, color?, alpha?, quality?, knockout?, duration?, peakAt?, ... });
@@ -121,6 +122,11 @@ rendered camera layers use the effective values.
 `feelEffect` attaches the supplied effect factory, pulses primary intensity
 from 0 to the cue-scaled peak and back, then removes it.
 
+`feelGlitch` adds behavior beyond a generic pulse. It replaces the glitch band
+pattern at `refreshRate` from the scene's seeded random source, while the pulse
+controls displacement and RGB separation. Static bloom, pixelate, vignette,
+zoom blur, axis blur, and implosion pulses use `feelEffect` directly.
+
 `feelOutline`, `feelGlow`, and `feelColorize` are target-resolving convenience
 effects over the same handle lifecycle. Feel attaches all filter pulses with
 `save: false`, so snapshots do not restore a temporary filter without its
@@ -152,6 +158,18 @@ Game-specific effects use `defineFeelEffect(duration, create)`. `create`
 returns optional `start`, `update(progress, dt)`, and `finish(cancelled)` hooks.
 Acquire owner handles in `start` and release them in `finish`. Developer
 callbacks can use `context.invoke(label, callback)` for error attribution.
+
+## `/recipes`
+
+```ts
+voidCollapse({ host, center?, radius?, strength?, darkness?, swirl?, zoomStrength?, duration?, peakAt?, ... });
+```
+
+A recipe is a ready-made composition that returns an ordinary `FeelNode`. It
+does not create another `Feel` component or use a separate player.
+`voidCollapse` combines the `implosion` and inward `zoomBlur` renderer effects.
+It does not add particles, camera movement, sound, a following burst, entity
+destruction, or other gameplay consequences.
 
 ## `/audio`
 

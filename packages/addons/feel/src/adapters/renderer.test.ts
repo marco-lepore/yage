@@ -16,6 +16,7 @@ import {
   feelCameraZoom,
   feelColorize,
   feelEffect,
+  feelGlitch,
   feelGlow,
   feelOpacity,
   feelOutline,
@@ -173,5 +174,47 @@ describe("Feel renderer modifiers", () => {
     expect(boundary.getCallbackErrors()[0]?.kind).toBe(
       "Feel callback (camera target source)",
     );
+  });
+
+  it("refreshes glitch patterns during playback and removes its handle", () => {
+    const { entity } = createMockEntity();
+    const handle = {
+      setIntensity: vi.fn(),
+      refresh: vi.fn(),
+      remove: vi.fn(),
+    };
+    const host = {
+      addEffect: vi.fn(() => handle),
+    } as unknown as EffectsHost;
+    const feel = entity.add(
+      new Feel({
+        glitch: feelGlitch({
+          host,
+          duration: 1,
+          peakAt: 0.25,
+          refreshRate: 10,
+          seed: 17,
+        }),
+      }),
+    );
+
+    const playback = feel.play("glitch");
+    expect(host.addEffect).toHaveBeenCalledWith(expect.any(Function), {
+      save: false,
+    });
+    expect(handle.refresh).toHaveBeenCalledOnce();
+    expect(handle.refresh).toHaveBeenCalledWith(17);
+    expect(handle.setIntensity).toHaveBeenCalledWith(0);
+
+    feel.update(0.1);
+    expect(handle.refresh).toHaveBeenCalledTimes(2);
+    playback?.stop();
+    expect(handle.remove).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a non-positive glitch refresh rate before playback", () => {
+    const host = { addEffect: vi.fn() } as unknown as EffectsHost;
+    expect(() => feelGlitch({ host, refreshRate: 0 })).toThrow(/refreshRate/);
+    expect(host.addEffect).not.toHaveBeenCalled();
   });
 });

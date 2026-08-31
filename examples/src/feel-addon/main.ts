@@ -1,5 +1,5 @@
 /**
- * Feel addon showcase. Two scenes group related cues into readable pages and
+ * Feel addon showcase. Three scenes group related cues into readable pages and
  * use the scene transition API for page navigation.
  */
 
@@ -29,6 +29,7 @@ import {
   type VisualTransformModifierHandle,
 } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
+import { axisBlur, implosion, zoomBlur } from "@yagejs/effects";
 import {
   Feel,
   defineFeelEffect,
@@ -52,8 +53,10 @@ import {
   feelCameraZoom,
   feelColorize,
   feelDamageNumber,
+  feelEffect,
   feelFlightLines,
   feelGlow,
+  feelGlitch,
   feelHitFlash,
   feelImpactRing,
   feelMotionTrail,
@@ -71,6 +74,7 @@ import {
   feelTransformShake,
   feelFloatingText,
 } from "@yagejs-addons/feel/renderer";
+import { voidCollapse } from "@yagejs-addons/feel/recipes";
 import {
   installDebugFromUrl,
   setupGameContainer,
@@ -83,7 +87,7 @@ const DASH_DURATION = 0.48;
 const DASH_DISTANCE = 660;
 const DASH_ARC_HEIGHT = 62;
 const DASH_TEXTURE = "feel-addon:dash-runner";
-const PAGE_COUNT = 2;
+const PAGE_COUNT = 3;
 const galleryState = { autoplay: true };
 
 interface ShowcaseCue {
@@ -204,6 +208,8 @@ const MORE_PANELS: readonly PanelRect[] = [
   { x: 610, y: 320, width: 250, height: 190 },
 ];
 
+const ADVANCED_PANELS = ESSENTIAL_PANELS;
+
 abstract class FeelGalleryScene extends Scene {
   protected installController(
     page: number,
@@ -296,7 +302,7 @@ class EssentialsScene extends FeelGalleryScene {
       "status",
       WIDTH / 2,
       62,
-      `Page 1/2  ·  Autoplay: ${galleryState.autoplay ? "on" : "off"}  ·  Last cue: waiting`,
+      `Page 1/${PAGE_COUNT}  ·  Autoplay: ${galleryState.autoplay ? "on" : "off"}  ·  Last cue: waiting`,
       15,
       0x94a3b8,
     );
@@ -567,7 +573,7 @@ class MoreEffectsScene extends FeelGalleryScene {
       "status",
       WIDTH / 2,
       62,
-      `Page 2/2  ·  Autoplay: ${galleryState.autoplay ? "on" : "off"}  ·  Last cue: waiting`,
+      `Page 2/${PAGE_COUNT}  ·  Autoplay: ${galleryState.autoplay ? "on" : "off"}  ·  Last cue: waiting`,
       15,
       0x94a3b8,
     );
@@ -845,8 +851,166 @@ class MoreEffectsScene extends FeelGalleryScene {
   }
 }
 
+class AdvancedEffectsScene extends FeelGalleryScene {
+  readonly name = "feel-addon-advanced-effects";
+
+  onEnter(): void {
+    this.spawn(CameraEntity, {
+      position: new Vec2(WIDTH / 2, HEIGHT / 2),
+    });
+    this.drawBackdrop(ADVANCED_PANELS);
+    const status = this.spawnText(
+      "status",
+      WIDTH / 2,
+      62,
+      `Page 3/${PAGE_COUNT}  ·  Autoplay: ${galleryState.autoplay ? "on" : "off"}  ·  Last cue: waiting`,
+      15,
+      0x94a3b8,
+    );
+
+    const glitch = this.spawnGlitchDemo();
+    const speedBlur = this.spawnSpeedBlurDemo();
+    const implosionPulse = this.spawnImplosionDemo();
+    const recipe = this.spawnRecipeDemo();
+
+    this.installController(2, status, [
+      { label: "seeded glitch", play: () => void glitch.play("show") },
+      { label: "zoom + axis blur", play: () => void speedBlur.play("show") },
+      {
+        label: "implosion primitive",
+        play: () => void implosionPulse.play("show"),
+      },
+      {
+        label: "void collapse recipe",
+        play: () => void recipe.play("show"),
+      },
+    ]);
+  }
+
+  private spawnGlitchDemo(): Feel {
+    this.spawnLabel(165, 126, "1  GLITCH");
+    const entity = this.spawn("glitch-target");
+    entity.add(new Transform({ position: new Vec2(165, 215) }));
+    const visual = entity.add(
+      new GraphicsComponent().draw((g) => {
+        g.roundRect(-62, -45, 124, 90, 8).fill({ color: 0x111827 });
+        for (let index = 0; index < 5; index++) {
+          g.rect(-50, -32 + index * 16, 100, 8).fill({
+            color: index % 2 === 0 ? 0x22d3ee : 0xf472b6,
+          });
+        }
+        g.circle(0, 0, 13).fill({ color: 0xf8fafc });
+      }),
+    );
+    return entity.add(
+      new Feel({
+        show: feelGlitch({
+          host: visual.fx,
+          duration: 0.65,
+          slices: 9,
+          offset: 28,
+          red: { x: 7, y: 0 },
+          blue: { x: -7, y: 0 },
+          refreshRate: 18,
+        }),
+      }),
+    );
+  }
+
+  private spawnSpeedBlurDemo(): Feel {
+    this.spawnLabel(450, 126, "2  ZOOM + AXIS BLUR");
+    const entity = this.spawn("speed-blur-target");
+    entity.add(new Transform({ position: new Vec2(450, 215) }));
+    const visual = entity.add(
+      new GraphicsComponent().draw((g) => {
+        for (let ring = 3; ring >= 1; ring--) {
+          g.circle(0, 0, ring * 18).stroke({
+            color: ring % 2 === 0 ? 0x60a5fa : 0xe0f2fe,
+            width: 7,
+          });
+        }
+        g.poly([0, -32, 28, 26, 0, 14, -28, 26]).fill({
+          color: 0xf8fafc,
+        });
+      }),
+    );
+    return entity.add(
+      new Feel({
+        show: feelParallel(
+          feelEffect(
+            visual.fx,
+            zoomBlur({ strength: 0.32, innerRadius: 8, radius: 90 }),
+            { duration: 0.55 },
+          ),
+          feelEffect(
+            visual.fx,
+            axisBlur({ axis: "horizontal", strength: 16, quality: 2 }),
+            { duration: 0.55, peakAt: 0.35 },
+          ),
+        ),
+      }),
+    );
+  }
+
+  private spawnImplosionDemo(): Feel {
+    this.spawnLabel(735, 126, "3  IMPLOSION PRIMITIVE");
+    const entity = this.spawn("implosion-target");
+    entity.add(new Transform({ position: new Vec2(735, 215) }));
+    const visual = entity.add(
+      new GraphicsComponent().draw((g) => {
+        g.circle(0, 0, 64).fill({ color: 0x312e81 });
+        for (let index = 0; index < 8; index++) {
+          const angle = (index / 8) * Math.PI * 2;
+          g.circle(Math.cos(angle) * 42, Math.sin(angle) * 42, 8).fill({
+            color: index % 2 === 0 ? 0xc4b5fd : 0x67e8f9,
+          });
+        }
+        g.circle(0, 0, 12).fill({ color: 0xf8fafc });
+      }),
+    );
+    return entity.add(
+      new Feel({
+        show: feelEffect(
+          visual.fx,
+          implosion({ radius: 68, strength: 1, darkness: 0.92, swirl: 0.7 }),
+          { duration: 0.7, peakAt: 0.65 },
+        ),
+      }),
+    );
+  }
+
+  private spawnRecipeDemo(): Feel {
+    this.spawnLabel(450, 342, "4  RECIPE: VOID COLLAPSE");
+    const entity = this.spawn("void-collapse-target");
+    entity.add(new Transform({ position: new Vec2(450, 425) }));
+    const visual = entity.add(
+      new GraphicsComponent().draw((g) => {
+        g.circle(0, 0, 68).fill({ color: 0x172554 });
+        g.circle(0, 0, 55).stroke({ color: 0x818cf8, width: 8 });
+        g.circle(0, 0, 37).stroke({ color: 0x22d3ee, width: 6 });
+        g.circle(0, 0, 18).fill({ color: 0xe0e7ff });
+      }),
+    );
+    return entity.add(
+      new Feel({
+        show: voidCollapse({
+          host: visual.fx,
+          radius: 72,
+          strength: 1,
+          darkness: 1,
+          swirl: 0.8,
+          zoomStrength: -0.28,
+          duration: 0.85,
+        }),
+      }),
+    );
+  }
+}
+
 function createShowcaseScene(page: number): FeelGalleryScene {
-  return page === 0 ? new EssentialsScene() : new MoreEffectsScene();
+  if (page === 0) return new EssentialsScene();
+  if (page === 1) return new MoreEffectsScene();
+  return new AdvancedEffectsScene();
 }
 
 function orbitAndPulse(target: GraphicsComponent): FeelNode {

@@ -1,0 +1,118 @@
+import { defineEffect } from "@yagejs/renderer";
+import type { Effect } from "@yagejs/renderer";
+import { ZoomBlurFilter } from "pixi-filters";
+import type { Container, FilterSystem, RenderSurface, Texture } from "pixi.js";
+import type { ZoomBlurHandle } from "./handles.js";
+
+/** Options for the {@link zoomBlur} preset. */
+export interface ZoomBlurOptions {
+  /** Blur strength. Positive values streak outward; negative values pull inward. Default: 0.12. */
+  strength?: number;
+  /** Center in the effect host's local coordinates. Omit for the host center. */
+  center?: { x: number; y: number };
+  /** Unblurred inner radius in host-local pixels. Default: 0. */
+  innerRadius?: number;
+  /** Outer radius in host-local pixels. Negative means unlimited. Default: -1. */
+  radius?: number;
+  /** Maximum shader sample count. Default: 32. */
+  maxKernelSize?: number;
+}
+
+class YageZoomBlurFilter extends ZoomBlurFilter {
+  intensity = 1;
+  baseStrength: number;
+  centerLocal: { x: number; y: number } | undefined;
+  innerRadiusLocal: number;
+  radiusLocal: number;
+  yageTarget: Container | undefined;
+  private readonly centerOut = { x: 0, y: 0 };
+
+  constructor(options: ZoomBlurOptions) {
+    const strength = options.strength ?? 0.12;
+    super({
+      strength,
+      center: { x: 0, y: 0 },
+      innerRadius: options.innerRadius ?? 0,
+      radius: options.radius ?? -1,
+      maxKernelSize: options.maxKernelSize ?? 32,
+    });
+    this.baseStrength = strength;
+    this.centerLocal = options.center ? { ...options.center } : undefined;
+    this.innerRadiusLocal = options.innerRadius ?? 0;
+    this.radiusLocal = options.radius ?? -1;
+  }
+
+  override apply(
+    filterManager: FilterSystem,
+    input: Texture,
+    output: RenderSurface,
+    clearMode: boolean,
+  ): void {
+    const target = this.yageTarget;
+    const transform = target?.worldTransform;
+    const scaleX = transform ? Math.hypot(transform.a, transform.b) : 1;
+    const scaleY = transform ? Math.hypot(transform.c, transform.d) : 1;
+    const sizeScale = (scaleX + scaleY) * 0.5;
+    const center = this.centerLocal;
+    if (target && transform && center) {
+      const worldX =
+        transform.a * center.x + transform.c * center.y + transform.tx;
+      const worldY =
+        transform.b * center.x + transform.d * center.y + transform.ty;
+      const bounds = (
+        filterManager as unknown as {
+          _activeFilterData?: { bounds?: { minX: number; minY: number } };
+        }
+      )._activeFilterData?.bounds;
+      this.centerOut.x = worldX - (bounds?.minX ?? 0);
+      this.centerOut.y = worldY - (bounds?.minY ?? 0);
+    } else {
+      this.centerOut.x = input.frame.width * 0.5;
+      this.centerOut.y = input.frame.height * 0.5;
+    }
+    this.center = this.centerOut;
+    this.strength = this.baseStrength * this.intensity;
+    this.innerRadius = this.innerRadiusLocal * sizeScale;
+    this.radius = this.radiusLocal < 0 ? -1 : this.radiusLocal * sizeScale;
+    super.apply(filterManager, input, output, clearMode);
+  }
+}
+
+/** Radial speed blur centered on a host-local point. */
+export const zoomBlur = defineEffect<ZoomBlurHandle, ZoomBlurOptions>({
+  name: "yage:zoomBlur",
+  factory: (options) => {
+    const filter = new YageZoomBlurFilter(options);
+    const effect: Effect<ZoomBlurHandle> = {
+      filter,
+      getIntensity: () => filter.intensity,
+      setIntensity: (value) => {
+        filter.intensity = value;
+        filter.strength = filter.baseStrength * value;
+      },
+      onAttach: ({ displayObject }) => {
+        filter.yageTarget = displayObject;
+      },
+      onDetach: () => {
+        filter.yageTarget = undefined;
+      },
+      buildExtras: () => ({
+        setStrength: (value: number) => {
+          filter.baseStrength = value;
+          filter.strength = value * filter.intensity;
+        },
+        setCenter: (x: number, y: number) => {
+          filter.centerLocal = { x, y };
+        },
+        useHostCenter: () => {
+          filter.centerLocal = undefined;
+        },
+        setRadii: (innerRadius: number, radius: number) => {
+          filter.innerRadiusLocal = innerRadius;
+          filter.radiusLocal = radius;
+        },
+      }),
+    };
+    return effect;
+  },
+});
