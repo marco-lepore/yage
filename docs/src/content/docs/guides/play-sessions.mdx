@@ -174,10 +174,14 @@ counts as a gap is specific to the game, and components that already answer
 that need no extra probe code.
 
 The example is a lab scenario, where `ctx.scene` reaches the entities the
-scenario spawned. The same loop runs in an `inspector.drive` on the game page,
-where there is no `scene` — read state through `inspector.getEntityPosition`,
-`inspector.getComponentData`, or an extension the game registers with
-`inspector.addExtension`.
+scenario spawned. The same loop shape runs in an `inspector.drive` on the game
+page, with two differences. There is no `scene`, so state comes from
+`inspector.getEntityPosition`, `inspector.getComponentData`, or an extension the
+game registers with `inspector.addExtension`. And the context is a different
+type: annotate a helper written for the game page with `InspectorDriveContext`
+from `@yagejs/core`, since the lab's `DriveContext` also requires `scene`,
+`controls` and `expect`. A helper meant for both takes only what it uses:
+`{ step, until, input }`.
 
 A run stopped by its budget unwinds the callback, so its return value is lost.
 Assign anything you want to see either way to a variable in the enclosing

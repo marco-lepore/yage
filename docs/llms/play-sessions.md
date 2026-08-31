@@ -311,14 +311,28 @@ build drops:
 
 ```ts
 // src/dev/probe.ts — imported only under a build flag the release drops.
-import { InspectorKey } from "@yagejs/core";
+import { type Engine, InspectorKey } from "@yagejs/core";
 
-engine.context.resolve(InspectorKey).addExtension("probe", {
-  roomGraph: () => world.rooms.map((r) => ({ id: r.id, exits: r.exits })),
-  grantKey: () => player.get(Inventory).grant("brass-key"),
-  setRunSpeed: (v: number) => { player.get(Movement).runSpeed = v; },
-});
+export function registerProbe(engine: Engine, world: World, player: Entity) {
+  engine.context.resolve(InspectorKey).addExtension("probe", {
+    roomGraph: () => world.rooms.map((r) => ({ id: r.id, exits: r.exits })),
+    grantKey: () => player.get(Inventory).grant("brass-key"),
+    setRunSpeed: (v: number) => {
+      player.get(Movement).runSpeed = v;
+    },
+  });
+}
 ```
+
+```ts
+// src/main.ts — call it once the world exists.
+if (import.meta.env.DEV) {
+  const { registerProbe } = await import("./dev/probe.js");
+  registerProbe(engine, world, player);
+}
+```
+
+Read it back from a drive or the console:
 
 ```ts
 const probe = window.__yage__.inspector.getExtension<{
