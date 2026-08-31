@@ -52,6 +52,21 @@ export type { WaveOptions } from "./wave.js";
 export { colorize } from "./colorize.js";
 export type { ColorizeOptions } from "./colorize.js";
 
+export { glitch } from "./glitch.js";
+export type { GlitchFillMode, GlitchOptions } from "./glitch.js";
+
+export { zoomBlur } from "./zoomBlur.js";
+export type { ZoomBlurOptions } from "./zoomBlur.js";
+
+export { axisBlur } from "./axisBlur.js";
+export type { AxisBlurOptions, BlurAxis } from "./axisBlur.js";
+
+export { implosion } from "./implosion.js";
+export type { ImplosionOptions } from "./implosion.js";
+
+export { dissolve } from "./dissolve.js";
+export type { DissolveOptions } from "./dissolve.js";
+
 export type {
   HitFlashHandle,
   BloomHandle,
@@ -72,4 +87,9 @@ export type {
   HalftoneHandle,
   WaveHandle,
   ColorizeHandle,
+  GlitchHandle,
+  ZoomBlurHandle,
+  AxisBlurHandle,
+  ImplosionHandle,
+  DissolveHandle,
 } from "./handles.js";

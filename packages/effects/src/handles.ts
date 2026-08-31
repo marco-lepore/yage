@@ -1,4 +1,4 @@
-import type { EffectHandle } from "@yagejs/renderer";
+import type { ColorValue, EffectHandle } from "@yagejs/renderer";
 
 /**
  * Handle returned by `hitFlash`. `trigger()` arms a one-shot ramp that
@@ -31,6 +31,54 @@ export interface ColorizeHandle extends EffectHandle {
   setColor(color: number | string): void;
   /** Rebase the recolour ceiling; preserves the current intensity ratio. */
   setStrength(value: number): void;
+}
+
+/** Handle returned by {@link glitch}. */
+export interface GlitchHandle extends EffectHandle {
+  /** Replace the slice pattern using an optional deterministic seed. */
+  refresh(seed?: number): void;
+  setOffset(value: number): void;
+  setColorOffsets(
+    red: { x: number; y: number },
+    green: { x: number; y: number },
+    blue: { x: number; y: number },
+  ): void;
+}
+
+/** Handle returned by {@link zoomBlur}. */
+export interface ZoomBlurHandle extends EffectHandle {
+  setStrength(value: number): void;
+  setCenter(x: number, y: number): void;
+  useHostCenter(): void;
+  setRadii(innerRadius: number, radius: number): void;
+  setExpandFromCenter(value: boolean): void;
+}
+
+/** Handle returned by {@link axisBlur}. */
+export interface AxisBlurHandle extends EffectHandle {
+  setStrength(value: number): void;
+  setPerpendicularStrength(value: number): void;
+  setAxis(axis: "horizontal" | "vertical"): void;
+}
+
+/** Handle returned by {@link implosion}. */
+export interface ImplosionHandle extends EffectHandle {
+  setCenter(x: number, y: number): void;
+  useHostCenter(): void;
+  setRadius(value: number): void;
+  setStrength(value: number): void;
+  setDarkness(value: number): void;
+  setSwirl(value: number): void;
+  setExpandFromCenter(value: boolean): void;
+}
+
+/** Handle returned by {@link dissolve}. */
+export interface DissolveHandle extends EffectHandle {
+  setEdgeColor(value: ColorValue): void;
+  setEdgeWidth(value: number): void;
+  setNoiseScale(value: number): void;
+  setSoftness(value: number): void;
+  setSeed(value: number): void;
 }
 
 /** Handle returned by `dropShadow`. */

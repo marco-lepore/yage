@@ -76,6 +76,8 @@ interface LivePlayback {
   cancelling: boolean;
 }
 
+const TIME_EPSILON = 1e-9;
+
 /**
  * Plays named, composable game-feel cues on one entity.
  *
@@ -295,7 +297,10 @@ export class Feel extends Component {
         0,
         Math.min(playback.elapsed, end) - Math.max(previous, entry.at),
       );
-      const progress = Math.min((playback.elapsed - entry.at) / duration, 1);
+      const progress =
+        playback.elapsed + TIME_EPSILON >= end
+          ? 1
+          : Math.max(0, (playback.elapsed - entry.at) / duration);
       const instance = entry.instance;
       const update = instance?.update;
       if (update) {

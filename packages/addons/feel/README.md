@@ -4,10 +4,11 @@ Compose the small responses that make an action readable and satisfying, then
 play them from one named trigger.
 
 The [playable example](../../../examples/feel-addon.html) groups the effects
-across two scenes. It covers impacts, trails, afterimages, highlights, springs,
-visibility, cue composition, scene and target time effects, animation,
-callbacks, shockwaves, camera modifiers, and a custom effect. Press `N` or `P`
-to move between scenes with a slide transition.
+across four scenes. It covers impacts, trails, afterimages, highlights,
+springs, visibility, cue composition, scene and target time effects, animation,
+callbacks, shockwaves, camera modifiers, glitch, blur, implosion, dissolve,
+practical recipes, and a custom effect. Press `N` or `P` to move between scenes
+with a slide transition.
 
 ```ts
 import { Feel, feelHitStop, feelParallel } from "@yagejs-addons/feel";
@@ -43,8 +44,8 @@ npm install @yagejs/audio
 npm install @yagejs/particles
 ```
 
-The root entry imports only `@yagejs/core`. Renderer, audio, and particle
-adapters have separate entry points.
+The root entry imports only `@yagejs/core`. Renderer, audio, particles, and
+recipes have separate entry points.
 
 ## Compose cues
 
@@ -112,6 +113,9 @@ Import these from `@yagejs-addons/feel/renderer`:
   `feelTransformShake`
 - `feelCameraShake`, `feelCameraRotation`, and `feelCameraZoom`
 - `feelHitFlash` and `feelShockwave`
+- `feelGlitch`, which appears quickly, holds, and refreshes its bands from the
+  cue's seeded random source
+- `feelDissolve`, which advances one visual from intact to transparent
 - `feelOutline`, `feelGlow`, and `feelColorize`
 - `feelOpacity` and `feelBlink`
 - `feelFloatingText`, `feelDamageNumber`, and `feelImpactRing`
@@ -145,6 +149,51 @@ const bloomPulse = feelEffect(worldLayer.fx, bloom({ bloomScale: 1.5 }), {
   peakAt: 0.2,
 });
 ```
+
+Use `feelEffect` for a renderer effect that only needs a temporary intensity
+pulse. `feelGlitch` changes its slice pattern during playback. `feelDissolve`
+moves in one direction instead of returning to zero. The renderer package also
+supplies `zoomBlur`, `axisBlur`, and `implosion`; static pulses use
+`feelEffect`.
+
+## Recipes
+
+Recipes are ready-made compositions under `@yagejs-addons/feel/recipes`. Each
+recipe returns a normal `FeelNode` for the existing `Feel` component. The
+separate import distinguishes recipes from basic `feelX` nodes.
+
+```ts
+import {
+  damageImpact,
+  dashBurst,
+  enemyDeath,
+} from "@yagejs-addons/feel/recipes";
+
+const feel = entity.add(
+  new Feel({
+    hurt: damageImpact({ target: enemySprite, value: () => lastDamage }),
+    dash: dashBurst({ target: playerSprite, direction: { x: 1, y: 0 } }),
+    die: enemyDeath({
+      target: enemySprite,
+      onComplete: ({ entity }) => entity.destroy(),
+    }),
+  }),
+);
+```
+
+| Recipe         | Composition                                                         |
+| -------------- | ------------------------------------------------------------------- |
+| `impact`       | Hit flash, scale punch, visual shake, and an impact ring            |
+| `damageImpact` | `impact` plus a floating damage number                              |
+| `dashBurst`    | Axis stretch, axis blur, and directional flight lines               |
+| `spawnPop`     | Scale and position springs plus a short glow                        |
+| `enemyDeath`   | Impact flash, ring, shake, glow, and edged dissolve                 |
+| `voidCollapse` | Inward blur, center-expanding implosion, peak hold, and color shift |
+
+Recipes do not add sound, camera movement, or time changes. `enemyDeath`
+requires `onComplete`, runs it after the temporary visual handles are removed,
+and does not destroy the entity itself. Stopping the cue before completion does
+not run the callback. Nested option objects expose each recipe's basic parts.
 
 ## Highlights and combat callouts
 

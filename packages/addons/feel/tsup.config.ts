@@ -8,6 +8,7 @@ export default defineConfig({
     "src/renderer.ts",
     "src/audio.ts",
     "src/particles.ts",
+    "src/recipes.ts",
   ],
   format: ["esm", "cjs"],
   dts: !isWatch,
