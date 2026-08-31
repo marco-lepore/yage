@@ -4,6 +4,8 @@ import type { KeyframeAnimationDef } from "./KeyframeAnimator.js";
 import { ProcessComponent } from "./ProcessComponent.js";
 import { Process } from "./Process.js";
 import { Entity } from "./Entity.js";
+import { createMockEntity } from "./test-utils.js";
+import { ErrorBoundaryKey } from "./EngineContext.js";
 
 function setup() {
   const entity = new Entity("test");
@@ -662,6 +664,57 @@ describe("KeyframeAnimator", () => {
 
       pc._tick(50, undefined, "fixed");
       expect(value).toBeCloseTo(5);
+    });
+  });
+
+  describe("error boundary", () => {
+    function wired(defs: Record<string, KeyframeAnimationDef>) {
+      const { entity, context } = createMockEntity("player");
+      entity.add(new ProcessComponent());
+      const anim = entity.add(new KeyframeAnimator(defs));
+      return { anim, boundary: context.tryResolve(ErrorBoundaryKey)! };
+    }
+
+    const keyframes = [
+      { time: 0, data: 0 },
+      { time: 100, data: 10 },
+    ];
+
+    it("attributes a throwing onEnter", () => {
+      const { anim, boundary } = wired({
+        bob: {
+          keyframes,
+          onEnter: () => {
+            throw new Error("boom");
+          },
+        },
+      });
+
+      expect(() => anim.play("bob")).toThrow("boom");
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Animation onEnter",
+        entity: "player",
+        error: "boom",
+      });
+    });
+
+    it("attributes a throwing onExit", () => {
+      const { anim, boundary } = wired({
+        bob: {
+          keyframes,
+          onExit: () => {
+            throw new Error("boom");
+          },
+        },
+      });
+
+      anim.play("bob");
+      expect(() => anim.stop("bob")).toThrow("boom");
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Animation onExit",
+        error: "boom",
+      });
     });
   });
 });

@@ -1,5 +1,11 @@
 import { Process, easeLinear } from "./Process.js";
+import {
+  assertDuration,
+  durationReached,
+  loopRemainder,
+} from "./internal/duration.js";
 import { interpolate } from "./interpolate.js";
+import { MathUtils } from "./MathUtils.js";
 import type { ProcessOptions } from "./Process.js";
 import type { Interpolatable } from "./interpolate.js";
 import type { EasingFunction } from "./types.js";
@@ -18,7 +24,10 @@ export interface Keyframe<T extends Interpolatable> {
 
 /** Options for creating a keyframe track. */
 export interface KeyframeTrackOptions<T extends Interpolatable> {
-  /** At least 2 keyframes, sorted by time. */
+  /**
+   * At least 2 keyframes, sorted by time. A track interpolates between
+   * control points, so fewer than 2 is rejected.
+   */
   keyframes: Keyframe<T>[];
   /**
    * Called with the interpolated value on every tick of the clock the track
@@ -28,11 +37,14 @@ export interface KeyframeTrackOptions<T extends Interpolatable> {
    * side-effects with no per-tick value).
    */
   setter?: (value: T) => void;
-  /** Total duration in seconds. Defaults to the last keyframe's time. */
+  /**
+   * Total duration in seconds, finite and > 0. Defaults to the last
+   * keyframe's time.
+   */
   duration?: number;
   /** Whether to loop the track. */
   loop?: boolean;
-  /** Playback speed multiplier (default 1). */
+  /** Playback speed multiplier (default 1). Finite and > 0. */
   speed?: number;
   /** Default easing between keyframes (default easeLinear). */
   easing?: EasingFunction;
@@ -55,10 +67,18 @@ export function createKeyframeTrack<T extends Interpolatable>(
     onComplete,
   } = options;
 
-  const duration = options.duration ?? keyframes[keyframes.length - 1]!.time;
-  if (duration <= 0) {
-    throw new Error("createKeyframeTrack: duration must be > 0");
+  if (keyframes.length < 2) {
+    throw new Error(
+      `createKeyframeTrack: keyframes must hold at least 2 entries to interpolate between, got ${keyframes.length}.`,
+    );
   }
+  if (!Number.isFinite(speed) || speed <= 0) {
+    throw new Error(
+      `createKeyframeTrack: speed must be a finite number > 0, got ${speed}.`,
+    );
+  }
+  const duration = options.duration ?? keyframes[keyframes.length - 1]!.time;
+  assertDuration("createKeyframeTrack", duration);
   const loop = options.loop ?? false;
 
   let internalElapsed = 0;
@@ -69,7 +89,7 @@ export function createKeyframeTrack<T extends Interpolatable>(
       internalElapsed += dt * speed;
 
       // Handle completion / looping
-      if (internalElapsed >= duration) {
+      if (durationReached(internalElapsed, duration)) {
         if (loop) {
           // Complete the pass — fire any events that haven't fired this cycle
           for (let i = 0; i < keyframes.length; i++) {
@@ -77,7 +97,7 @@ export function createKeyframeTrack<T extends Interpolatable>(
               keyframes[i]!.event!();
             }
           }
-          internalElapsed = internalElapsed % duration;
+          internalElapsed = loopRemainder(internalElapsed, duration);
           firedEvents.clear();
           return;
         } else {
@@ -117,9 +137,12 @@ export function createKeyframeTrack<T extends Interpolatable>(
       const kfA = keyframes[segIdx]!;
       const kfB = keyframes[segIdx + 1]!;
       const segDuration = kfB.time - kfA.time;
+      // `inverseLerp` clamps at both ends, so a track whose first keyframe
+      // sits past time 0 holds that keyframe's value through the lead-in
+      // rather than extrapolating backwards from it.
       const segT =
         segDuration > 0
-          ? Math.min((internalElapsed - kfA.time) / segDuration, 1)
+          ? MathUtils.inverseLerp(kfA.time, kfB.time, internalElapsed)
           : 1;
       const segEasing = kfA.easing ?? defaultEasing;
 

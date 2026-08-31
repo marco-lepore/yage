@@ -239,6 +239,50 @@ describe("Sequence", () => {
     expect(b).toBe(3);
   });
 
+  it("runs a built sequence again on every reuse as a step", () => {
+    let count = 0;
+    const inner = new Sequence().call(() => count++)._build();
+    const outer = new Sequence().then(inner).repeat(3)._build();
+
+    outer._update(0); // iteration 1
+    outer._update(0); // iteration 2
+    outer._update(0); // iteration 3
+    expect(count).toBe(3);
+    expect(outer.completed).toBe(true);
+  });
+
+  it("cancelling the wrapper cancels the step process the caller holds", async () => {
+    const inner = new Process({ duration: 100, update: () => {} });
+    const seq = new Sequence().then(inner)._build();
+
+    seq._update(50);
+    expect(inner.completed).toBe(false);
+    const settled = inner.toPromise();
+
+    seq.cancel();
+    expect(seq.completed).toBe(true);
+    expect(inner.completed).toBe(true);
+    await settled;
+  });
+
+  it("cancelling the wrapper cancels every process of a parallel step", () => {
+    const a = new Process({ duration: 100, update: () => {} });
+    const b = new Process({ duration: 100, update: () => {} });
+    const seq = new Sequence().parallel(a, b)._build();
+
+    seq._update(50);
+    seq.cancel();
+    expect(a.completed).toBe(true);
+    expect(b.completed).toBe(true);
+  });
+
+  it("wait() rejects a delay that is not finite and positive", () => {
+    expect(() => new Sequence().wait(0)).toThrow(
+      "Sequence.wait: duration must be a finite number > 0 in seconds, got 0.",
+    );
+    expect(() => new Sequence().wait(NaN)).toThrow("got NaN");
+  });
+
   it("complex chain works", () => {
     const order: string[] = [];
     const proc = new Sequence()

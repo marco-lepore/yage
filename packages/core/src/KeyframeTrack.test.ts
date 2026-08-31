@@ -218,6 +218,72 @@ describe("createKeyframeTrack", () => {
         ],
         setter: () => {},
       }),
-    ).toThrow("duration must be > 0");
+    ).toThrow("createKeyframeTrack: duration must be a finite number > 0");
+  });
+
+  it("throws on a non-finite duration", () => {
+    expect(() =>
+      createKeyframeTrack({
+        keyframes: [
+          { time: 0, data: 0 },
+          { time: 1, data: 10 },
+        ],
+        duration: NaN,
+      }),
+    ).toThrow("got NaN");
+  });
+
+  it("throws on fewer than 2 keyframes", () => {
+    expect(() =>
+      createKeyframeTrack({ keyframes: [{ time: 1, data: 5 }] }),
+    ).toThrow("at least 2 entries");
+    expect(() => createKeyframeTrack({ keyframes: [] })).toThrow(
+      "at least 2 entries",
+    );
+  });
+
+  it("throws on a speed that is not finite and positive", () => {
+    const keyframes = [
+      { time: 0, data: 0 },
+      { time: 1, data: 10 },
+    ];
+    expect(() => createKeyframeTrack({ keyframes, speed: 0 })).toThrow(
+      "speed must be a finite number > 0",
+    );
+    expect(() => createKeyframeTrack({ keyframes, speed: -1 })).toThrow(
+      "got -1",
+    );
+    expect(() => createKeyframeTrack({ keyframes, speed: NaN })).toThrow(
+      "got NaN",
+    );
+  });
+
+  it("holds the first keyframe's value through a lead-in", () => {
+    const values: number[] = [];
+    const proc = createKeyframeTrack({
+      keyframes: [
+        { time: 0.2, data: 0 },
+        { time: 0.4, data: 100 },
+      ],
+      setter: (v) => { values.push(v); },
+    });
+    for (let i = 0; i < 6; i++) proc._update(1 / 60);
+    // Every tick inside the lead-in sits at the first keyframe, never below it.
+    expect(values.slice(0, 6).every((v) => v === 0)).toBe(true);
+  });
+
+  it("completes on the tick that reaches a duration built from exact steps", () => {
+    const proc = createKeyframeTrack({
+      keyframes: [
+        { time: 0, data: 0 },
+        { time: 0.1, data: 1 },
+      ],
+    });
+    let ticks = 0;
+    while (!proc.completed && ticks < 20) {
+      proc._update(1 / 60);
+      ticks++;
+    }
+    expect(ticks).toBe(6);
   });
 });

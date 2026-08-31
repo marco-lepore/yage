@@ -1,14 +1,21 @@
 import { Component } from "./Component.js";
 import { ProcessComponent } from "./ProcessComponent.js";
 import { createKeyframeTrack } from "./KeyframeTrack.js";
+import { tickProcessGuarded } from "./Process.js";
+import { ErrorBoundaryKey } from "./EngineContext.js";
 import type { Keyframe, KeyframeTrackOptions } from "./KeyframeTrack.js";
 import type { Process, ProcessClock } from "./Process.js";
+import type { ErrorBoundary } from "./ErrorBoundary.js";
 import type { Interpolatable } from "./interpolate.js";
 import type { EasingFunction } from "./types.js";
 import { serializable } from "./Serializable.js";
 
 /** Definition for a named keyframe animation. */
 export interface KeyframeAnimationDef<T extends Interpolatable = Interpolatable> {
+  /**
+   * At least 2 keyframes, sorted by time. A track interpolates between
+   * control points, so `play()` throws on fewer than 2.
+   */
   keyframes: Keyframe<T>[];
   /**
    * Receives the interpolated value on every tick of the animation's clock —
@@ -39,7 +46,9 @@ export interface KeyframeAnimationDef<T extends Interpolatable = Interpolatable>
    */
   clock?: ProcessClock;
   loop?: boolean;
+  /** Playback speed multiplier (default 1). Finite and > 0. */
   speed?: number;
+  /** Track length in seconds, finite and > 0. Defaults to the last keyframe's time. */
   duration?: number;
   easing?: EasingFunction;
   onEnter?: () => void;
@@ -58,6 +67,7 @@ export class KeyframeAnimator<T extends string = string> extends Component {
   private readonly defs: Record<string, KeyframeAnimationDef>;
   private readonly active = new Map<string, Process>();
   private readonly pc = this.sibling(ProcessComponent);
+  private errorBoundary: ErrorBoundary | undefined;
 
   constructor(animations: Record<T, KeyframeAnimationDef>) {
     super();
@@ -74,13 +84,14 @@ export class KeyframeAnimator<T extends string = string> extends Component {
       this.stopInternal(name, false);
     }
 
-    def.onEnter?.();
+    if (def.onEnter) this.runGuarded(def.onEnter, "Animation onEnter");
 
     const opts: KeyframeTrackOptions<Interpolatable> = {
       keyframes: def.keyframes,
       onComplete: () => {
         this.active.delete(name);
-        def.onExit?.(true);
+        const onExit = def.onExit;
+        if (onExit) this.runGuarded(() => onExit(true), "Animation onExit");
       },
     };
     if (def.setter) opts.setter = def.setter;
@@ -125,6 +136,22 @@ export class KeyframeAnimator<T extends string = string> extends Component {
     if (!process) return;
     process.cancel();
     this.active.delete(name);
-    this.defs[name]?.onExit?.(complete);
+    const onExit = this.defs[name]?.onExit;
+    if (onExit) this.runGuarded(() => onExit(complete), "Animation onExit");
+  }
+
+  /**
+   * `onEnter`/`onExit` are invoked from `play()`/`stop()` rather than from a
+   * process tick, so they need their own route to the error boundary to be
+   * attributed to this animator instead of to the caller.
+   */
+  private runGuarded(fn: () => void, kind: string): void {
+    const scene = this.entity?.tryScene;
+    this.errorBoundary ??= scene?.context?.tryResolve(ErrorBoundaryKey);
+    tickProcessGuarded(this.errorBoundary, fn, {
+      kind,
+      ...(this.entity?.name !== undefined ? { entity: this.entity.name } : {}),
+      ...(scene ? { scene: scene.name } : {}),
+    });
   }
 }
