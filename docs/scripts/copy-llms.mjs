@@ -73,7 +73,12 @@ for (const { group, docs } of groupDocs) {
 
 // Generate llms-full.txt by concatenating all docs (core → packages → groups).
 const parts = [];
-for (const file of ["core-concepts.md", "quick-start.md", "patterns.md"]) {
+for (const file of [
+  "core-concepts.md",
+  "quick-start.md",
+  "patterns.md",
+  "play-sessions.md",
+]) {
   parts.push(readFileSync(join(src, file), "utf8"));
 }
 for (const file of readdirSync(join(src, "packages")).sort()) {

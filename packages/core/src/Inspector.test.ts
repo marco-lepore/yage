@@ -1171,6 +1171,20 @@ describe("Inspector", () => {
       expect(midRunKeys).toEqual(["KeyA"]);
     });
 
+    it("whileHolding resolves with what its callback returned", async () => {
+      const { inspector, ctx } = setup();
+      inspector.attachTimeController(driveController([]));
+      ctx.register(InputManagerRuntimeKey, fakeInput([]));
+
+      const run = await inspector.drive(async ({ input, until }) =>
+        // The callback returns a value, so the hold has to pass it through
+        // rather than force a `Promise<void>` wrapper at every call site.
+        input.whileHolding(["KeyD"], () => until(() => true)),
+      );
+
+      expect(run).toMatchObject({ ok: true, value: 0 });
+    });
+
     it("whileHolding leaves a code the caller already holds down when it returns", async () => {
       const { inspector, ctx } = setup();
       inspector.attachTimeController(driveController([]));

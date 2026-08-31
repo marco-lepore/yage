@@ -137,6 +137,10 @@ export default defineConfig({
             { label: "Assets", slug: "guides/assets" },
             { label: "Loading Scene", slug: "guides/loading-scene" },
             { label: "Debug Tools", slug: "guides/debug" },
+            {
+              label: "Driving a Running Game",
+              slug: "guides/play-sessions",
+            },
           ],
         },
         {
