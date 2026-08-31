@@ -424,7 +424,7 @@ anim.play("bob");
 
 `KeyframeAnimator` requires `ProcessComponent` on the same entity. Each keyframe's `time` is in seconds along the track.
 
-A track needs at least 2 keyframes, sorted by time, to interpolate between; `duration` (default: the last keyframe's time) and `speed` must be finite and > 0. `createKeyframeTrack` throws on anything else, and so does `KeyframeAnimator.play` for the def it is given. A first keyframe past time 0 is allowed: the track holds that keyframe's value through the lead-in.
+A track needs at least 2 keyframes to interpolate between, each with a finite `time` and sorted ascending (equal times are allowed); `duration` (default: the last keyframe's time) and `speed` must be finite and > 0. `createKeyframeTrack` throws on anything else, and so does `KeyframeAnimator.play` for the def it is given. A first keyframe past time 0 is allowed: the track holds that keyframe's value through the lead-in.
 
 `setter` is **optional** — omit it for "pure timeline" animations that only
 fire keyframe `event` callbacks (cutscenes, audio cues, gameplay beats):

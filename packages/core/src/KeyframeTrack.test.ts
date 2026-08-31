@@ -258,6 +258,48 @@ describe("createKeyframeTrack", () => {
     );
   });
 
+  it("throws on a non-finite keyframe time", () => {
+    expect(() =>
+      createKeyframeTrack({
+        keyframes: [
+          { time: 0, data: 0 },
+          { time: NaN, data: 10 },
+        ],
+        duration: 1,
+      }),
+    ).toThrow("keyframe 1 must have a finite time in seconds, got NaN");
+  });
+
+  it("throws when keyframes are not sorted by time", () => {
+    expect(() =>
+      createKeyframeTrack({
+        keyframes: [
+          { time: 0, data: 0 },
+          { time: 0.8, data: 10 },
+          { time: 0.3, data: 20 },
+        ],
+        duration: 1,
+      }),
+    ).toThrow("keyframes must be sorted by time, but keyframe 2 is at 0.3 after 0.8");
+  });
+
+  it("accepts two keyframes at the same time", () => {
+    // A coincident pair is a step change, not an authoring mistake.
+    const values: number[] = [];
+    const proc = createKeyframeTrack({
+      keyframes: [
+        { time: 0, data: 0 },
+        { time: 0.5, data: 10 },
+        { time: 0.5, data: 100 },
+        { time: 1, data: 200 },
+      ],
+      setter: (v) => values.push(v as number),
+    });
+    for (let i = 0; i < 4; i++) proc._update(0.2);
+    expect(values.length).toBe(4);
+    expect(values.every((v) => Number.isFinite(v))).toBe(true);
+  });
+
   it("holds the first keyframe's value through a lead-in", () => {
     const values: number[] = [];
     const proc = createKeyframeTrack({

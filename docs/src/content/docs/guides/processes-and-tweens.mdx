@@ -452,9 +452,9 @@ neither a single `Tween` nor an easing function could express on its own.
 runs as a process under the hood. Each keyframe's `time` is in seconds
 along the track.
 
-A track needs at least two keyframes, sorted by time, and a `duration` and
-`speed` that are finite and greater than zero — anything else throws when the
-animation starts. The first keyframe does not have to sit at time 0; a track
+A track needs at least two keyframes whose times are finite and sorted
+ascending, and a `duration` and `speed` that are finite and greater than
+zero — anything else throws when the animation starts. The first keyframe does not have to sit at time 0; a track
 that starts at 0.2 s holds that keyframe's value through the lead-in.
 
 ### Multiple Tracks

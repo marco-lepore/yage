@@ -77,6 +77,23 @@ export function createKeyframeTrack<T extends Interpolatable>(
       `createKeyframeTrack: speed must be a finite number > 0, got ${speed}.`,
     );
   }
+  // The segment scan and the event comparisons both read `time` as an ordered
+  // axis. A non-finite or out-of-order entry picks the wrong segment and skips
+  // events instead of failing, so both are rejected here.
+  for (let i = 0; i < keyframes.length; i++) {
+    const time = keyframes[i]!.time;
+    if (!Number.isFinite(time)) {
+      throw new Error(
+        `createKeyframeTrack: keyframe ${i} must have a finite time in seconds, got ${time}.`,
+      );
+    }
+    const previous = keyframes[i - 1]?.time;
+    if (previous !== undefined && time < previous) {
+      throw new Error(
+        `createKeyframeTrack: keyframes must be sorted by time, but keyframe ${i} is at ${time} after ${previous}.`,
+      );
+    }
+  }
   const duration = options.duration ?? keyframes[keyframes.length - 1]!.time;
   assertDuration("createKeyframeTrack", duration);
   const loop = options.loop ?? false;
