@@ -74,7 +74,9 @@ When modifying packages, changes flow downstream. Build and test in dependency o
   │
   ├── @yagejs/pathfinding (→ core; optional: tilemap)
   │
-  └── @yagejs/save (→ core)
+  ├── @yagejs/save (→ core)
+  │
+  └── @yagejs/level (→ core) — level documents; `/document` entry has no engine dependency
 ```
 
 ### Modification Order

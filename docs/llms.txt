@@ -27,6 +27,7 @@
 - [pathfinding](llms/packages/pathfinding.md): Grid A* pathfinding — works without a tilemap, with an optional tilemap adapter
 - [ui](llms/packages/ui.md): Yoga flexbox UI, panels, buttons, anchoring
 - [ui-react](llms/packages/ui-react.md): React reconciler, hooks, reactive stores
+- [level](llms/packages/level.md): Authored level files — placeable entity declarations, parameter schemas, strict loading into a scene
 - [save](llms/packages/save.md): Controlled save/load, slots, adapters, migrations
 - [debug](llms/packages/debug.md): Debug overlay, custom contributors, stats
 - [effects](llms/packages/effects.md): Visual-effect presets — bloom, outline, CRT, vignette, color grade, etc.
@@ -49,6 +50,7 @@ Installable, opinionated gameplay patterns (`@yagejs-addons` scope), independent
 
 Development tools for building YAGE games (`@yagejs-tools` scope, independently versioned). Each tool's doc is sourced from its co-located `packages/tools/<name>/docs/llms/`.
 
+- [editor](llms/tools/editor.md): Level editor — open a `*.yage-level.json` file, build it up in a real engine, and save it back
 - [lab](llms/tools/lab.md): Scenario browser — mount a scene or entity in a real engine, tune it with controls, and run every scenario headless
 
 ## Optional

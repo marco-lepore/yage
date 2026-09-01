@@ -1,0 +1,828 @@
+---
+title: Level Editor
+description: Open a level file, move its entities in a real engine, and save it back
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Placing entities by editing numbers in a JSON file, reloading, and looking, is
+slow. The **level editor** (`@yagejs-tools/editor`) draws that file as a real
+engine scene — your entity classes, your plugins, your textures — and lets you
+build it by hand.
+
+What it writes is a `*.yage-level.json` file your game loads through
+[`@yagejs/level`](/guides/levels/). The editor is a development tool; nothing
+it exports reaches your game bundle.
+
+<Aside type="caution" title="What it does today">
+  The editor opens any level your globs match and lets you place, move, rotate,
+  scale, delete, reparent, reorder, copy, rename, type a transform, set a scene
+  key, choose a sprite from your project's files, move the view, snap to a
+  grid, and undo.
+  [What it does not do](#what-it-does-not-do) has the rest.
+</Aside>
+
+## Install
+
+```bash
+npm install -D @yagejs-tools/editor
+```
+
+`@yagejs/level`, `@yagejs/core`, `@yagejs/renderer`, and Vite are peer
+dependencies you already have.
+
+## Get started
+
+<Steps>
+
+1. **Declare what can be placed.** Every entity the editor can put in a level
+   declares itself, and the project lists them once. This is the same
+   declaration a game uses to load the file — see
+   [Levels](/guides/levels/) for the full shape:
+
+   ```typescript title="src/levelProject.ts"
+   import { defineLevelProject } from "@yagejs/level";
+   import { Crate } from "./Crate.js";
+
+   export default defineLevelProject({ entities: [Crate] });
+   ```
+
+2. **Write `editor/config.ts`:**
+
+   ```typescript title="editor/config.ts"
+   import { defineEditorConfig } from "@yagejs-tools/editor";
+
+   export default defineEditorConfig({
+     modules: {
+       project: "../src/levelProject.ts",
+       harness: "../lab/harness.ts",
+     },
+     levels: ["src/levels/*.yage-level.json"],
+     assets: ["public/sprites/**/*.png"],
+     gamePage: "/game.html",
+   });
+   ```
+
+   `assets` is optional and lists what the asset picker offers. The editor
+   cannot tell which files a given parameter would accept, so these globs are
+   the whole filter: what they match is what the list shows. Leave them out and
+   asset paths are typed by hand.
+
+   The globs match a file where it sits on disk, and the picker offers the path
+   the browser fetches — which is the path a level stores. Vite serves the
+   contents of `publicDir` at the server root, so the glob above lists
+   `sprites/hero.png`, one segment shorter than the glob that matched it.
+
+3. **Point it at a harness.** The harness builds the engine the editor's
+   viewport runs — the same shape the
+   [scenario lab](/tooling/scenario-lab/) uses, so a project with a
+   `lab/harness.ts` points both tools at it:
+
+   ```typescript title="lab/harness.ts"
+   import { Engine } from "@yagejs/core";
+   import { RendererPlugin } from "@yagejs/renderer";
+
+   export default {
+     engine: () => new Engine({ debug: true }),
+     plugins: ({ container }: { container: HTMLElement }) => [
+       new RendererPlugin({ width: 960, height: 600, container }),
+     ],
+   };
+   ```
+
+4. **Start it:**
+
+   ```bash
+   npx yage-editor
+   ```
+
+</Steps>
+
+The editor opens on `http://127.0.0.1:5211`. Pass `--port` to move it,
+`--no-open` to keep it from opening a browser, and `--config` to name a config
+file other than `editor/config.ts`.
+
+## What you get
+
+The viewport is your engine, drawing the level. Every placement is created for
+real — its constructor, `setup()`, and each component's `onAdd()` run — and
+then held inactive, so nothing updates, moves, or reacts while you edit. What
+you see is the level's authored state, not a simulation of it.
+
+Click a placement to select it and drag to move it. The header's first control
+chooses the level: it lists every level your `levels` globs matched, and
+picking one opens it. The badge beside it says whether that level has unsaved
+work, and **Save** writes the file.
+
+Three bars run across the top: the level and the file actions, then the tools
+and the grid, then the name and the pose of whatever you have selected. The
+**hierarchy** is the column on the left, the **inspector** is the column on the
+right, and **Actors** — everything you can place — is a strip under the
+viewport that starts closed and opens when you click its header. Opening it
+takes height from the viewport rather than covering it, so nothing you were
+working on ends up behind it. Nothing here can be dragged wider or narrower.
+
+A placement the editor cannot build — a type the project no longer declares, a
+parameter that does not match its schema — is left out and listed at the
+bottom of the window. The rest of the level still draws, so one broken entity
+does not cost you the view of everything else.
+
+### Moving the view
+
+Drag from empty space to pan. To pan from anywhere, including from on top of a
+placement, hold <kbd>Space</kbd> and drag, or drag with the middle button. Space
+is the one to reach for on a trackpad, which has no middle button. Scroll to
+zoom around the pointer: the world point under the cursor stays under it, so you
+magnify what you are looking at rather than the middle of the window.
+
+The pointer says what a press will do: an open hand over empty space and while
+Space is held, a closed hand while you are panning, and the move cursor over a
+placement.
+
+Space works wherever you last clicked, except while a text field has focus — a
+field keeps every keystroke for itself. A button clicked with the pointer hands
+the keyboard back as soon as it runs, so panning works straight after you press
+Undo or pick a tool. A button you reached with <kbd>Tab</kbd> keeps its focus,
+and Space presses it. Starting a pan on top of a placement you are already
+dragging does nothing; finish the drag first.
+
+<kbd>F</kbd> frames what is selected — the camera moves onto it and zooms so it
+fits. <kbd>Shift</kbd>-<kbd>F</kbd> puts the view back at the world origin at
+zoom 1. Selecting a placement in the hierarchy and pressing <kbd>F</kbd> is the
+way to reach something you have lost track of — unless the placement draws
+nothing, which gives <kbd>F</kbd> no rectangle to frame and leaves the view
+where it is.
+
+The view is yours, not the level's. It never enters the file, never marks
+anything unsaved, and never appears in the undo history. Your browser
+remembers it per level, so reopening the editor puts you back where you were
+working.
+
+### Knowing where you are
+
+Under the level the viewport draws three things to measure against.
+
+A **grid** of the step in the toolbar, which starts at 32 world units, with a
+heavier line every four or five. Zoom out far enough that those lines would
+crowd together and the grid draws a whole multiple of the step instead — one,
+two, or five times a power of ten of it — so the lines stay readable and every
+line you can see is still somewhere a drag can land.
+
+The **world axes**, crossing at `(0, 0)`, red for x and green for y — the
+convention the transform gizmos follow, in darker shades so a reference line
+never reads as a handle. This is the one fixed landmark a
+level has, and the fastest way to tell whether a placement is where you meant
+to put it or a thousand units away.
+
+The **default viewport**: a rectangle the size of your renderer's `width` and
+`height`, centred on the origin. It is what the game shows before anything
+moves its camera, which makes it the frame to lay a starting area out against.
+If your renderer uses `fit: "cover"`, the player sees a little less than this
+rectangle on one axis, and how much less depends on the size of their window.
+
+**Guides** in the toolbar switches all three, and so does <kbd>G</kbd>. The
+choice is part of the remembered view, so it survives a reload, and
+<kbd>Shift</kbd>-<kbd>F</kbd> moves the camera without touching it.
+
+### Things you cannot see
+
+A placement whose only components are a light, a particle emitter or a UI
+surface draws nothing. The renderer has nothing to show for it, so without help
+there would be no outline, nothing to click, and nothing saying it is there at
+all.
+
+The editor draws a small square for each such component, in a row just above
+the placement's origin. The squares stay the same size however far you zoom,
+because what they tell you is that something is there rather than how big it
+is. Lights, occluders, emitters and UI surfaces each get their own picture, and
+anything else — including your own components — gets a generic one. Rest the
+pointer on a square and it names the component.
+
+Clicking a square selects the placement it belongs to, which is how you pick up
+something with no picture: click the mark, then move, turn or scale it like
+anything else. The marks sit above whatever the level draws, so a mark stays
+clickable over a full background.
+
+Marks appear only on a placement with nothing to see. A crate with a torch on
+it has a sprite, so it gets no row — the sprite is already something to look at
+and to click. What a mark cannot tell you is _where_ the component will appear:
+a health bar anchored above its enemy still shows its mark at the enemy's
+origin.
+
+### Landing on the grid
+
+**Snap** in the toolbar, on <kbd>S</kbd>, decides whether a drag lands on that
+grid. It starts switched on, and the **Step** field beside it sets how wide the
+grid is — one number for the lines you see and the places you can land. It
+takes 1 to 10000 world units; anything else stays in the box with the reason
+beside it. <kbd>↑</kbd> and <kbd>↓</kbd>, and dragging the word **Step**,
+double and halve it: 16, 32, 64, 128, which is how art is sized. Each press
+redraws the grid at once, and any other number is still yours to type.
+
+Snapping is about where a placement ends up, not how far it moves. Drag a
+placement sitting at 14 on a grid of 10 and it lands on 10 or 20, not on 17:
+the point is to get things onto the grid, and a drag that only moved in
+ten-unit steps would keep an off-grid placement off it forever.
+
+Scaling lands too: the side of the box you are dragging goes to the nearest
+grid line. A placement whose origin sits on the grid in the middle of its
+picture then ends up a whole number of cells across. The factor itself is left
+alone — a step in the factor means nothing for a sprite that is not square.
+
+Three things the landing cannot do. A turned placement's side lands as near the
+grid line as its own angle allows, because a level transform holds no shear.
+A side dragged to within half a cell of the point it scales about has no grid
+line left to land on: the nearest one runs through that point, and a placement
+with a side there has nothing left of it. The side follows your pointer there
+instead, which is also how you shrink a placement narrower than one cell. And
+with several placements selected and **Each** as the pivot, what lands is the
+side of the box drawn around the selection rather than any one placement's
+edge.
+
+Snapping has nothing to do with angles. Fixed 15° turns come from holding
+<kbd>Shift</kbd>, described below.
+
+Drag several placements at once and the last one you selected is the one that
+lands on the grid. The rest move exactly as far as it did, so the arrangement
+you built keeps its spacing.
+
+Hold <kbd>Alt</kbd> while dragging to put something between the lines. It
+applies for as long as you hold it, so you can take it up and drop it part-way
+through a drag, and it does not touch <kbd>Shift</kbd>'s 15° turns. New
+placements, pastes, and duplicates land on the grid too.
+
+Snap and Guides are separate switches. Snapping with the guides off means
+landing on a grid you cannot see, which is occasionally what you want and
+usually not.
+
+### Moving, turning, and resizing
+
+Everything selected gets an outline, so you can see what you are about to
+change without looking at the hierarchy. A placement that draws nothing gets a
+small cross where it sits instead, since there is no picture to outline.
+
+Everything you have parented under the selection is outlined too, in a thinner
+faded line. Those are the placements a drag will take with it, and a child can
+be drawn a long way from its parent — the quiet outline is what tells you
+before you move it rather than after.
+
+Select exactly one placement and a gizmo appears on it. Pick a tool from the
+toolbar or with its key — the toolbar shows which is live, and the two stay in
+step:
+
+| Key          | Tool      | What it changes             |
+| ------------ | --------- | --------------------------- |
+| <kbd>Q</kbd> | Select    | Nothing — it chooses        |
+| <kbd>W</kbd> | Move      | Position                    |
+| <kbd>E</kbd> | Rotate    | Rotation                    |
+| <kbd>R</kbd> | Scale     | Scale                       |
+| <kbd>T</kbd> | Transform | All three, on one box       |
+
+Move and Scale draw two arms along the placement's own axes — drag an arm to
+constrain the change to that one axis. Move's square sits at the centre and
+drags freely; Scale's sits out on the diagonal and scales both axes together.
+Rotate draws a ring: drag anywhere on it and the placement turns with your
+pointer, as far round as you like. With one placement selected, Rotate and
+Scale work about its own origin, so neither moves it.
+
+Hold <kbd>Shift</kbd> to fix what a gesture gives you: Move's square stays on
+one axis, and a turn goes in 15° steps. The 15° is the angle itself and not the
+amount you turned by, so a placement standing at 7° reaches 15° rather than
+22°. Scale's arms take no modifier — an arm is already held to one axis, and
+the square already drives both.
+
+A box handle sets where the side it holds lands, so a placement follows your
+pointer whatever size it is: drag a handle down onto the origin and the scale
+is zero, and carry on past and the placement mirrors and grows the other way.
+The handle you grabbed keeps following your pointer while the box turns inside
+out around it, so when you let go the grip under your cursor is the one
+opposite. A handle whose side already sits on the origin is not drawn at all —
+a scale turns about the origin, and nothing moves a side sitting on it. A
+sprite your game passed no `anchor` for draws out from its origin, so it offers
+its right, bottom, and bottom-right handles alone.
+
+Scale's arms have no side under them, so they measure against their own length:
+one arm's length doubles a placement at 1 or larger, and adds a whole 1 to
+anything smaller. That is what brings a placement back from zero, and it is why
+an arm can pass through zero into a mirror too.
+
+A placement that draws nothing has no rectangle to hang handles on, so under
+Transform it gets the same three transforms arranged round its origin: a disc
+at the centre moves it, the two arms and the diagonal square scale it, and the
+band just outside the circle turns it. Move, Rotate, and Scale each show their
+own arms for it, the way they do for anything else.
+
+Hold <kbd>Shift</kbd> on a box handle and both axes take one ratio. A placement
+at a scale of zero has no proportions of its own to keep, so the ones it takes
+are its artwork's: drag the corner out to where the picture's own corner would
+be at full size and you get a scale of 1 on both axes.
+
+A child of a placement scaled to zero is the one case where a drag changes the
+numbers and nothing on screen moves. The parent draws every scale the child
+could hold at the same point, so there is nothing for the viewport to show. The
+handles are still there, still measured against the child's own artwork, and
+the control bar's **Scale X** and **Scale Y** tick as you drag. On the
+**Center** pivot they do not: scaling about the anchor leaves an axis whose
+parent scale is zero exactly where it is.
+
+Scaling several placements at once is the exception. They share one factor,
+which is what keeps their spacing and their sizes in step with each other. An
+axis sitting at exactly zero cannot be multiplied anywhere, so a drag that
+grows the selection adds to that one instead and it comes back with the rest. A
+drag that shrinks the selection leaves it where it is.
+
+A box handle over several placements measures against the rectangle you can
+see, drawn at 48 pixels across at the smallest. Two placements a world unit
+apart, or a row of placements all at zero, are dragged at the rate your pointer
+moves rather than jumping a long way per pixel.
+
+The gizmo stays the same size on screen however far you zoom in or out, and
+however large the viewport draws your game's canvas. The pointer says which
+handle you are on before you press: a resize arrow pointing the way that handle
+grows the placement, and a curved arrow over the rotate ring. The resize arrow
+follows the placement, so a turned sprite's corner points along the diagonal it
+has now.
+
+You do not have to be exact. A press takes the handle it is nearest to, and it
+counts from the handle you can see rather than from a point inside it: about
+twelve pixels out from an arm's line, and about seventeen from the dot on its
+end. Miss everything by a small margin and the selection stays put — the press
+pans the view, and the gizmo is still there to try again.
+
+Dragging the placement itself still moves it, whichever mode is showing. Each
+gesture becomes one entry in the history, so one undo takes back a whole turn
+rather than the frames it passed through.
+
+### Transforming several at once
+
+Select several and you get one gizmo over them all. It acts on the outermost of
+what you picked: a child of something else you selected already travels with its
+parent, and moving it again would move it twice. Whatever you do is still one
+entry in the history.
+
+Two toolbar toggles decide what the gizmo works about and which way it points.
+Both start where a single placement has always been, so nothing you already know
+changes until you move them.
+
+**Pivot** is what rotate and scale turn around.
+
+| Button     | What turns around what                                                     |
+| ---------- | -------------------------------------------------------------------------- |
+| **Active** | The last placement you clicked. It stays put and everything else swings round it |
+| **Center** | The middle of what you selected. They turn together, like one object        |
+| **Each**   | Every placement about its own origin, so a row of signs all face a new way without leaving their posts |
+
+**Axes** is which directions a move follows: **Local** is the last placement
+you clicked, **World** is the level's. It belongs to Move, and the toolbar
+disables it under every other tool.
+
+Turning has no axis to choose — a 2D rotation goes round, and there is one
+ring. Scaling has one it cannot escape: `scale.x` and `scale.y` are measured
+along the placement's own axes, so growing a turned placement along the level's
+axes would leave a slanted shape, and a level file stores a position, an angle,
+and a scale — never a slant. So the scale arms follow the placement whatever
+the toggle says, rather than pointing somewhere it will not grow.
+
+Five placements at five angles have no shared direction of their own, so a
+selection's gizmo is upright.
+
+Once the pivot is not a placement's own origin, turning and scaling **move**
+that placement — that is what orbiting a point means. With one placement
+selected and the toggles where they start, nothing moves it but a move.
+
+Select more than one and you get a rectangle around all of them: a light one
+under Move, Rotate, and Scale, and the Transform gizmo's own box — handles and
+all — under Transform. That is what **Center** is the centre of. **Each** draws no pivot at all —
+there isn't one — and puts a dot on every placement instead, since each turns
+where it stands. While you drag, the gizmo stays where it was when you pressed:
+a box around turning things breathes, and a pivot that wandered would not be a
+pivot.
+
+Scaling several spreads them apart from the pivot and grows each one by the same
+amount. Grow them evenly and the result is exact. Grow one axis more than the
+other while the placements sit at different angles and it cannot be: squashing a
+turned rectangle along someone else's axes leaves a shape a level file has no
+way to write down, so each placement grows along its own axes instead and the
+arrangement spreads along yours.
+
+### Choosing several things
+
+<kbd>Q</kbd> is the Select tool, and it is where you go to pick things rather
+than change them. It draws no handles, and it changes exactly one gesture: a
+drag from empty space draws a rectangle instead of moving the view. Everything
+the rectangle **fully covers** joins the selection. Something it only clips
+does not, so you can drag across a crowded area and take the one row you meant
+rather than the scenery behind it. Dragging a placement still moves it, so you
+do not have to leave Select to nudge something.
+
+Hold <kbd>Ctrl</kbd> or <kbd>Cmd</kbd> to add rather than replace — while
+dragging a rectangle, and when clicking a single placement, where it also
+takes something back out. It is the same modifier the hierarchy rows use. A
+modified click never starts a drag, so adding to a selection cannot shift what
+you just picked.
+
+Panning is unchanged under every tool: hold <kbd>Space</kbd> and drag, or drag
+with the middle button. Under the four gizmo tools a drag from empty space
+still pans.
+
+Dragging a hierarchy row that is part of the selection moves the whole
+selection. Members that sit inside another selected placement stay where they
+are relative to it, because they travel with it. Everything that moves keeps
+where it is drawn, and the whole drag is one entry in the history.
+
+### Copying
+
+<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>-<kbd>C</kbd>, <kbd>V</kbd>, and <kbd>D</kbd> copy,
+paste, and duplicate. Each takes whole subtrees — copy a parent and everything
+under it comes too — and each is one entry in the history.
+
+Copies are new placements, with new ids. Links inside what you copied follow
+the copies, so a duplicated group keeps its own shape. A link out of it is
+where paste and duplicate differ: **duplicate** keeps a parent that is still
+there, so duplicating a child gives you a sibling of it, while **paste** always
+detaches and puts the copy where the original looked. If a copy would take a
+developer key that is already in use, it gets the next number — a key becomes
+the entity's key in the scene, and two entities cannot share one.
+
+The clipboard holds the placements themselves rather than pointing at them, so
+it still works after you delete the originals, and you can copy in one level
+and paste into another. It lasts as long as the tab. Duplicating never touches
+it.
+
+Paste lands at the middle of the view; duplicate lands next to what it copied.
+Either way, a copy steps down and to the right if something is already sitting
+there, which is also what stops ten clicks in the Actors strip from stacking
+ten placements on one spot.
+
+### One box for all three
+
+<kbd>T</kbd> swaps the arms for the placement's own box, the way a drawing tool
+shows a selection. Where you press decides what you get:
+
+- **inside the box** moves it,
+- **a handle** on a corner or a side scales it — a corner takes both axes, a
+  side takes one,
+- **just outside the box** turns it.
+
+<kbd>Shift</kbd> holds a move to one axis and steps a turn by 15°, as it does on
+the arms, and on a handle it keeps the placement's proportions: both axes take
+one factor, a side handle included. You can take it up and drop it part-way
+through a drag.
+
+With one placement selected the box is that placement's own rectangle, so a
+turned sprite gets a turned box rather than an upright one drawn around it.
+Select several and you get an upright box measured from every selected
+placement's corners. The dot in the middle is the
+point turns and scales work about — the placement's origin, which is not always
+the middle of the picture. A placement too small to put handles on gets a box
+drawn a little larger than itself so they stay apart, and one that draws
+nothing keeps the arms, since there is no box to be had.
+
+The pointer tells you which of the three you are about to get: a move inside
+the box, a resize arrow on a handle, and a curved arrow in the band outside.
+Nothing is drawn around the band — the pointer is the only marker it has, and
+you cross it on the way to the box, so you meet it without going looking.
+
+### Building a level
+
+The **Actors** strip under the viewport lists everything you can place: the
+classes your project declared first, then one group per package you depend on
+that contributed any, under the package's name. Clicking one creates it at the
+middle of your view and selects it, ready to drag.
+
+The strip starts closed, because you pick what to place at the start of a piece
+of work and spend the rest of it in the viewport. Its header opens and closes
+it, by click or from the keyboard, and a reload closes it again. Open, the
+entries wrap into rows under their group headings, and a kit too large for the
+strip scrolls down — never sideways, because a sideways scroll on a trackpad or
+a touchscreen is the browser's back gesture.
+
+Each entry shows the art it will be placed with: the default path of the first
+parameter declared with an asset descriptor whose `kind` is `"texture"`, loaded
+straight from your project the way the running level loads it. A type that
+declares no texture, and one whose default names a file that is not there, get
+an empty frame instead.
+
+A sprite sheet shows one frame rather than the whole strip when an atlas sits
+beside it — `player.json` next to `player.png`, the file any packer writes —
+and the entry shows that atlas's first frame. The editor only looks for an
+atlas it can see, so the `assets` globs in your editor config need to match
+the `.json` as well as the image; a sheet with no atlas is fitted whole. The
+editor never guesses a frame from an image's proportions: a wide platform and
+a strip of square frames look the same from the outside, and a platform cropped
+to its left quarter is worse than a strip drawn small.
+
+A new placement is written with every parameter its declaration declares, each
+at the default you gave `param.asset(…)`. Those defaults are resolved once,
+when you place it. Changing a default later moves nothing in the levels you
+already built.
+
+**Delete** — the button, or the <kbd>Delete</kbd> or <kbd>Backspace</kbd> key
+while the viewport has focus — removes what is selected, and everything you
+parented under it. That subtree goes as a unit, because a level file cannot
+hold a placement whose parent is missing.
+
+### The hierarchy
+
+The **hierarchy** on the left lists the placements in your level as a tree:
+parents above their children, siblings in the order the file holds them. Each
+row shows the placement's name, or its type when it has no name, and its id.
+Click a row to select it; <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>-click adds or
+removes one from the selection.
+
+Drag a row to move it. Drop it just above or below another row to put it
+before or after that row, under the same parent. Drop it onto a row to make
+that row its parent. Drop it on the area under the tree to make it top-level.
+
+Each of the four looks different while you hold the row over it, so you can see
+where it will land before you let go. Above and below draw a line at the depth
+the placement will end up at; onto outlines the whole row; the area under the
+tree fills in.
+
+A move keeps the placement where it is on screen: its stored transform is
+recomputed for the new parent, so reparenting never shifts anything in the
+world. One drop is one edit and one undo step. You cannot drop a row onto
+itself or onto anything under it.
+
+### The control bar
+
+Select exactly one placement and the bar under the toolbar fills in with its
+**Name** and its five transform numbers. Those six are what you reach for while
+you work the viewport, and there are always exactly six of them, which is why
+they are on a bar rather than in a panel. Everything about a placement that
+varies in size — its parameters, its key — is in the inspector on the right.
+
+Every field in both works the same way. Type, then press <kbd>Enter</kbd> or
+click elsewhere to commit; <kbd>Escape</kbd> puts back what the level holds. A
+field you leave unchanged writes nothing, so you can tab through them all
+without touching the file. One field is one edit and one undo step — changing
+both X and Y is two steps. If a field cannot use what you typed, your text
+stays in the box, with the reason beside it on the bar and under it in the
+inspector.
+
+#### Name
+
+A label, for you and the hierarchy. It need not be unique, and nothing in your
+game reads it. An unnamed placement shows its type greyed out — the same thing
+the hierarchy row shows — and clearing the box takes the name back off.
+
+#### Transform
+
+Five numbers: **X**, **Y**, **Rotation**, **Scale X**, **Scale Y**. They are
+the placement's own local transform, so a placement
+with a parent shows numbers relative to that parent and the bar says
+`relative to <parent>`. Drag the placement in the viewport and the five numbers
+follow it, so what they read part-way through a drag is what letting go writes.
+
+Rotation is in degrees, whichever way you set it. A typed number is exact: it
+is never rounded onto the grid, however **Snap** and **Step** are set — a drag
+snaps because a pointer cannot be precise, and a number you typed already is.
+A scale of zero is a number like any other: it is where a placement that pops
+in under an animation starts, and marking it inactive instead takes it out of
+the scene, where nothing can tween it up.
+
+There are three ways to change one of the five, and no arrow buttons. Type it.
+Press <kbd>↑</kbd> or <kbd>↓</kbd> with the box focused. Or drag the word
+beside the box — the cursor turns into <kbd>↔</kbd> over it — which leaves your
+caret and your text selection where they were.
+
+One press moves the number by:
+
+| Field                     | On its own | With <kbd>Shift</kbd>    | With <kbd>Alt</kbd> |
+| ------------------------- | ---------- | ------------------------ | ------------------- |
+| **X**, **Y**              | 1          | one grid cell (**Step**) | 0.1                 |
+| **Rotation**              | 1°         | 15°                      | 0.1°                |
+| **Scale X**, **Scale Y**  | 0.1        | halved or doubled        | 0.01                |
+
+<kbd>Shift</kbd> gives you the unit the number is measured in rather than ten
+of the ordinary step: one cell and 15° are quantities the editor draws and
+lands on, and ten pixels is not. Both modifiers change the size of the step and
+nothing else — a stepped number is as exact as a typed one, and never lands on
+the grid. A rotate drag is the other way round: there <kbd>Shift</kbd> puts the
+angle itself on a multiple of 15°, so from 7° a drag reaches 15° while
+<kbd>Shift</kbd>+<kbd>↑</kbd> in the box reaches 22°.
+
+A scale is the exception, because a scale is a multiplier: its
+<kbd>Shift</kbd> halves and doubles rather than adding, so 1 goes to 0.5 or to
+2, and a mirrored placement keeps its sign. Halving and doubling never reach
+zero and never leave it, so type a zero or step to it with the ordinary 0.1.
+
+Dragging the label takes one step every four pixels of travel, and reads
+<kbd>Shift</kbd> and <kbd>Alt</kbd> as you move rather than as you press, so
+you can go coarse or fine part-way through a drag.
+
+Each press moves the placement in the viewport straight away, and writes
+nothing yet. The whole run of presses becomes one edit — one undo step — when
+you press <kbd>Enter</kbd>, click away, or do anything that has to write first:
+save, run, undo, redo, or opening another level. <kbd>Escape</kbd> puts the
+level's number back.
+
+### The inspector
+
+The **inspector** on the right shows the rest of what the selected placement
+holds, top to bottom: its type and id, one control per parameter its
+declaration declares, anything wrong with the placement, and an **In your
+game** section holding its **Key**.
+
+#### Parameters
+
+The one parameter kind that ships is `param.asset()`, shown as a text field
+holding the project-relative path. **Reset** next to a field writes the default
+you gave `param.asset(…)`.
+
+**▾** beside the field opens your project's own files, the ones your `assets`
+globs match. Typing narrows the list — it matches anywhere in the path, so
+`crate` finds `sprites/props/crate.png` — and Enter or a click on a row writes
+that path as one edit you can undo in one step. The arrow keys move through the
+rows. Escape closes the list and keeps what you typed; press it again to put
+the stored path back. The list is read the moment you open it, so a sprite you
+just dropped into the project is there without a reload. You can still type a
+whole path the list does not hold, which is how you name a file you have not
+made yet.
+
+The field does not check the path; the preview does, when it rebuilds, and
+the placement is left out of the picture either way. A path that is not a
+path — empty, absolute, or escaping the project — is reported beside that
+field, and **Reset** puts the default back. A well-formed path to a file that
+is not there fails when the preview loads it, and that failure is listed under
+the fields, since it is the file that is missing, not the value that is wrong.
+The document stays editable and saveable in both cases, so you can fix the
+path or move on.
+
+A placement whose declaration moved under it — a schema version with no
+migration, or a parameter the declaration no longer has — is reported under
+the fields, with a **Reset all parameters** button. That is the way out when
+you changed a schema during a spike and do not want to write a migration for
+values you are happy to lose. It asks first: every parameter goes back to its
+default and the placement is marked as authored against the current version,
+in one edit, and undo is the only way back.
+
+#### Key
+
+**Key** is the name your game looks the entity up by, and the section shows the
+whole scene key it produces: `<namespace>/<key>`, where the namespace is what
+you pass `instantiateLevel`. A placement with no key derives one from its id.
+
+It sits last, on its own, because it is the one value here that leaves the
+editor. Change it and every `scene.findByKey(…)` written against the old one
+stops finding anything, and nothing warns you — the editor cannot read your
+game's source. If you would rather not depend on it, `instance.get(placementId)`
+on what `instantiateLevel` returns takes the id shown under the type instead,
+and no key change reaches it. Clearing the box takes the key off and puts the
+scene key back to the placement id.
+
+Two placements cannot end up with the same scene key: the level would not load.
+Type one another placement already uses and the editor says which placement
+holds it and sends nothing.
+
+The active flag and extensions have no controls, and the parent is changed by
+dragging in the hierarchy.
+
+The fields above are edits to the level, so each is one undo step. The
+toolbar's **Step** is a setting for your view: it never enters the history and
+never makes the level dirty.
+
+### Undo lives on the server
+
+**Undo** and **Redo** — the buttons, or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>-<kbd>Z</kbd>
+and <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>-<kbd>Shift</kbd>-<kbd>Z</kbd> — step through
+the level's history, up to 100 edits back.
+The history sits next to the draft in the `yage-editor` process, so reloading
+the page keeps both your unsaved work and the way you got there. Restarting the
+editor empties it.
+
+Each undo produces a new revision holding the earlier document rather than
+rewinding to the earlier revision, so a **Run** link you already opened keeps
+showing what it was opened with.
+
+## Your unsaved work lives on the server
+
+The editor's draft is held by the `yage-editor` process, not by the browser
+tab, so reloading the page does not lose it. Keep one tab open per level: a
+second tab reads the same draft when it opens and then goes out of date, since
+neither is told what the other edits.
+
+**Save** promotes one exact revision of that draft to disk. The request carries
+no document — the server writes the draft it already holds — so what lands in
+the file is what the server accepted, never a document the page assembled.
+
+There is one draft per level, so switching levels costs you nothing. Switch
+away and back and the level is where you left it, still marked unsaved, with
+its undo history intact. Your camera, grid step and snap setting come back with
+it. What you had selected does not. Anything you copied stays on the clipboard,
+so you can paste it into the level you switched to. Nothing reaches disk until
+you press **Save**, and restarting `yage-editor` is what loses a draft.
+
+## What it does not do
+
+The editor is young, and these are the things you will look for and not find.
+
+**Snapping to anything but the grid.** Nothing snaps to another placement's
+edge or centre. The grid catches a move and the side a box handle drags; the
+**Scale** tool's arms measure against their own drawn length, which is a
+screen distance, so a drag on one lands on nothing. The step is remembered per
+level in your browser; there is no project-wide default.
+
+**Anything but the asset parameter.** `param.asset()` is the only parameter
+kind with a control. The active flag and extensions are not editable either,
+and the hierarchy is how you change a parent.
+
+**Listing every file.** The picker walks the Vite root, so a file under a
+`publicDir` you moved outside the root is not offered, and neither is anything
+behind a symlink — type those paths by hand. Globs matching more than 5000
+files get the first 5000, and the list says so.
+
+**Translating the path Run puts in the URL.** Run names the level by its path
+inside your project, which is where the file sits on disk and not always the
+address your site serves it at. For a level outside `publicDir` the two are the
+same. For a level under it they are not: the dev server still serves the disk
+path, with a Vite warning about the public directory, and `vite build` copies
+the contents of `publicDir` to the output root, so the same level is served one
+segment higher there. Run hands over the disk path either way, so a game page
+that fetches whatever the parameter holds is the place to translate it.
+
+**Renaming across your game.** Changing a placement's key changes what the
+level writes and nothing else. Every lookup in your code that used the old key
+keeps using it and stops finding anything. The one lookup a key change cannot
+break is `instance.get(placementId)` on the `LevelInstance` `instantiateLevel`
+returns: it is keyed on the placement id, which never changes.
+
+**Levels you add while it is running.** The list is read once, when the page
+loads, so a level file you create afterwards needs a reload before you can pick
+it. The editor cannot create, rename, duplicate, or delete a level file
+either.
+
+**Noticing the file changing underneath it.** Edit the level in your editor,
+or open it in a second browser tab, and the page you are looking at will not
+find out. Reload it.
+
+## Playing and running a level
+
+Two controls, and they answer different questions.
+
+### Play
+
+**Play** runs the level as it stands, unsaved changes and all. It opens a page
+the editor serves, boots the same engine and plugins your `harness.ts` gives
+the viewport, and starts the level for real — components update, physics steps,
+everything the editor's viewport deliberately keeps still.
+
+You write no code for this. It works before you have configured a game page,
+and on a project that has never heard of the editor.
+
+What Play cannot show you is your own start-up: the scene your game pushes, the
+systems it adds, the menu or save state that decides when a level is entered.
+Your harness gives an engine and its plugins, and that is all Play has. When
+you want to know that the real game loads your level, that is Run.
+
+### Run
+
+Set `gamePage` to a page of your own and the editor shows a **Run** control.
+Run **saves first** — the game reads the file, so the file has to be what you
+are looking at — then opens your page with the level named in the URL:
+
+```
+game.html?level=levels%2Fforest.yage-level.json
+```
+
+While you have unsaved work the button reads **Save and Run**, so it never
+writes without saying so. Use Play for the loop where you do not want to write
+anything.
+
+That parameter is the entire contract. No token, no revision, no editor route:
+your game reads a level file, which is what it does anyway.
+
+```typescript title="src/main.ts"
+import { loadLevelDocument } from "@yagejs/level";
+
+const url =
+  new URLSearchParams(location.search).get("level") ??
+  "/levels/forest.yage-level.json";
+const document = await loadLevelDocument(url);
+```
+
+`loadLevelDocument` fetches the file, checks that what came back is a level,
+and throws a message naming the URL when it is not. It never reads a cached
+copy, so a reload always shows what you just saved.
+
+If your game only ever has one level you can drop the parameter and pass your
+own path. With several, you need it: one page cannot know which level Run
+meant. The value is the level's path inside your project, and it resolves
+against your page — so it lands under your Vite `base` along with everything
+else.
+
+One thing that will not work: importing the level instead of fetching it.
+
+```typescript
+// Inlined when Vite builds the page, so it will not follow the editor.
+import level from "./forest.yage-level.json";
+```
+
+Vite replaces that import at transform time, before the editor has anything to
+say. Fetch the level if you want to run it from the editor.
+
+Your game page needs a URL of its own. The editor answers `/`, `/index.html`,
+`/play` and `/play.html`, so a `gamePage` naming one of those — or one that
+resolves onto it — is refused when the server starts, rather than quietly
+shadowing your page. Write the path the way your own source does; if your Vite
+config sets a `base`, the editor resolves it under that.

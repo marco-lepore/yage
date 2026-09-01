@@ -1,0 +1,269 @@
+---
+title: "Levels"
+description: "Author entity placements in a level file and load them into a scene"
+---
+
+A level file says which entities a scene starts with: their types, their setup
+parameters, their hierarchy, their active state, and where they sit. It holds
+no scene code and no runtime state, so a scene that loads one is still an
+ordinary scene — it just does not hand-write the twenty `spawn()` calls that
+put the level on screen.
+
+`@yagejs/level` is the package that reads those files. It works on its own; the
+[level editor](/tooling/level-editor/) writes the same format.
+
+```bash
+npm install @yagejs/level
+```
+
+## Declare what can be placed
+
+An entity class becomes placeable by declaring itself:
+
+```typescript
+import { Entity, Transform } from "@yagejs/core";
+import {
+  defineLevelAsset,
+  defineLevelEntity,
+  defineParams,
+  param,
+  type ParamsOf,
+} from "@yagejs/level";
+import { SpriteComponent, texture } from "@yagejs/renderer";
+
+const textureAsset = defineLevelAsset({ kind: "texture", create: texture });
+
+const CrateParams = defineParams({
+  sprite: param.asset(textureAsset, "sprites/crate.png"),
+});
+
+export class Crate extends Entity {
+  static readonly level = defineLevelEntity({
+    id: "game.crate",
+    version: 1,
+    params: CrateParams,
+  });
+
+  setup(params: ParamsOf<typeof CrateParams>): void {
+    this.add(new Transform());
+    this.add(new SpriteComponent({ texture: params.sprite }));
+  }
+}
+```
+
+`id` is what a level file stores, so renaming the class later does not break a
+saved level. `version` is the parameter schema's version: a level records the
+version its parameters were written against, and `migrations` carries them
+forward when the schema changes.
+
+A parameter is a typed field with a default. `param.asset` is the asset kind —
+the level stores a project-relative path and `setup()` receives the loaded
+handle. `defineLevelAsset` is what says how a path becomes a handle, and its
+`create` function comes from the package that owns the asset: `texture` from
+`@yagejs/renderer`.
+
+Then list the classes once:
+
+```typescript title="src/levelProject.ts"
+import { defineLevelProject } from "@yagejs/level";
+import { Crate } from "./Crate.js";
+import { Torch } from "./Torch.js";
+
+export default defineLevelProject({ entities: [Crate, Torch] });
+```
+
+## Load one into a scene
+
+```typescript
+import { Scene } from "@yagejs/core";
+import {
+  buildLevelCatalog,
+  instantiateLevel,
+  levelAssets,
+  prepareLevel,
+  readLevel,
+  type LevelInstance,
+} from "@yagejs/level";
+import raw from "./levels/forest.yage-level.json";
+import levelProject from "./levelProject.js";
+
+const built = buildLevelCatalog(levelProject);
+if (!built.ok) throw new Error(built.errors[0].message);
+
+const read = readLevel(raw);
+if (!read.ok) throw new Error(read.errors[0].message);
+
+const forest = prepareLevel(read.document, built.catalog);
+
+export class ForestScene extends Scene {
+  readonly name = "forest";
+  readonly preload = levelAssets(forest);
+  private level?: LevelInstance;
+
+  onEnter(): void {
+    this.level = instantiateLevel(this, forest, { namespace: "forest" });
+  }
+
+  onExit(): void {
+    for (const handle of this.preload) this.assets.unload(handle);
+  }
+}
+```
+
+Four steps, and only the last one touches a scene:
+
+1. **`readLevel`** parses the file. It accepts the text or an already-parsed
+   object, and returns every structural problem rather than throwing on the
+   first.
+2. **`prepareLevel`** checks the document against the catalog, migrates
+   parameters to the versions the declarations are at now, and works out which
+   assets the level needs. It reports and never throws.
+3. **`levelAssets`** hands those assets to `preload`, so they are loaded before
+   `onEnter` runs.
+4. **`instantiateLevel`** creates the entities.
+
+Steps 1 to 3 are pure and run once, at module scope. Repeating them per scene
+instance would repeat the parse and the validation for no benefit.
+
+## Loading is all or nothing
+
+`instantiateLevel` is the one function here that throws, and it refuses more
+than it accepts:
+
+- A prepared level carrying any diagnostic is refused outright — a level with
+  one unknown entity type does not load nineteen twentieths of itself.
+- A failure while building throws `LevelLoadError` and leaves the scene exactly
+  as it was: every entity is reserved first, and a failure rolls the whole
+  batch back before it publishes.
+- A failure while activating disposes the instance that had already been
+  committed.
+
+`LevelLoadError` names the document, the placement, the entity type, and the
+parameter path where each applies.
+
+Every entity exists before any `setup()` runs, which is what lets a setup
+parameter refer to a placement further down the file and lets `setup()` read
+its authored parent.
+
+## Placing the same level twice
+
+```typescript
+instantiateLevel(this, room, { namespace: "room-west" });
+instantiateLevel(this, room, {
+  namespace: "room-east",
+  transform: { position: { x: 1920, y: 0 } },
+});
+```
+
+`namespace` prefixes the scene key every placement gets, so two copies of one
+document coexist without colliding. `transform` composes into each top-level
+placement — no root entity is created for it, and moving it afterwards means
+moving the entities.
+
+The returned `LevelInstance` is how you reach what was loaded:
+
+```typescript
+const boss = this.level.get("01J8Z...");
+this.level.entities; // parent before child
+this.level.dispose(); // destroys this instance's entities and nothing else
+```
+
+## Fetching a level instead of importing it
+
+`readLevel` takes a parsed body, so a level fetched at runtime goes through the
+same parser and loader:
+
+```typescript
+const response = await fetch("/levels/forest.yage-level.json");
+const read = readLevel(await response.json());
+```
+
+## Checking a level without loading it
+
+```typescript
+import { validateLevel } from "@yagejs/level";
+
+const problems = validateLevel(document, catalog);
+```
+
+This is `prepareLevel` asked for its diagnostics alone: unknown types,
+parameters that do not match a declaration, a version no migration reaches. A
+tool that revalidates after every edit uses it; a game prepares once and loads
+the result.
+
+Each diagnostic has a stable `code`: `"unknown-type"`, `"migration-failed"`,
+`"parameter-invalid"`, or `"asset-derivation-failed"`. A tool uses the code
+and parameter path when it offers a corrective action. The message is for the
+developer to read. Every diagnostic blocks loading, so there is no warning
+severity.
+
+## Writing a placement from a tool
+
+If you are building something that authors levels — the
+[level editor](/tooling/level-editor/) is one — `defaultParams` gives you the
+parameter object a new placement starts with:
+
+```typescript
+import { defaultParams } from "@yagejs/level";
+
+const entry = catalog.get("game.crate");
+const params = entry.declaration.params
+  ? defaultParams(entry.declaration.params)
+  : {};
+```
+
+Write that result into the placement. Resolving the defaults at creation is
+what keeps the promise in the gotcha below: the level file holds the values it
+was authored with, so changing a default afterwards leaves it alone.
+
+An authoring tool can also ask which controls the schema needs:
+
+```typescript
+import { describeParams } from "@yagejs/level";
+
+const fields = entry.declaration.params
+  ? describeParams(entry.declaration.params)
+  : [];
+```
+
+Each result contains a field name, its kind, the kind of asset it names, and
+its default:
+
+```ts
+// [{
+//   name: "sprite",
+//   kind: "asset",
+//   assetKind: "texture",
+//   defaultValue: "sprites/crate.png",
+// }]
+```
+
+The list is immutable and follows declaration order. `kind` says which control
+the field needs, and `"asset"` is the only one there is, so a tool can switch
+on it and present the value as a project-relative path. `assetKind` is the
+`kind` you gave `defineLevelAsset`, so a tool can tell a texture from a sound —
+the editor's Actors panel uses it to show a type's default art. Parameter kinds
+come from `param`; a hand-built kind object is rejected when the catalog is
+built.
+
+## Reading level files outside the engine
+
+```typescript
+import { formatLevel, readLevel } from "@yagejs/level/document";
+```
+
+The `/document` subpath is the parser and the canonical writer with no
+dependency on `@yagejs/core`, so a Node script can read and rewrite level files
+without evaluating engine code. `formatLevel` produces one canonical text per
+document, so a file written by two different tools compares byte for byte.
+
+## Gotchas
+
+- **A missing parameter is an error, not a default.** Defaults are written when
+  a placement is created, so changing a default later cannot silently change a
+  level that already exists.
+- **Pass `levelAssets()` straight to `preload`.** It deduplicates by loader
+  type and path, which is what `AssetManager` counts references by; building
+  your own list can retain an asset twice and release it once.
+- **A placement's name is not the entity's name.** `Entity.name` is the class
+  name; use `instance.get(placementId)` to find one.

@@ -126,6 +126,7 @@ export default defineConfig({
             { label: "Audio", slug: "guides/audio" },
             { label: "Particles", slug: "guides/particles" },
             { label: "Tilemaps", slug: "guides/tilemaps" },
+            { label: "Levels", slug: "guides/levels" },
             { label: "Pathfinding", slug: "guides/pathfinding" },
             { label: "UI", slug: "guides/ui" },
             { label: "UI (React)", slug: "guides/ui-react" },
@@ -173,7 +174,10 @@ export default defineConfig({
         },
         {
           label: "Tooling",
-          items: [{ label: "Scenario Lab", slug: "tooling/scenario-lab" }],
+          items: [
+            { label: "Scenario Lab", slug: "tooling/scenario-lab" },
+            { label: "Level Editor", slug: "tooling/level-editor" },
+          ],
         },
         {
           label: "Reference",

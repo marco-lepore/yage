@@ -136,7 +136,9 @@ export type {
   SetupParams,
   SetupParamTuple,
   ClassSpawnArgs,
+  SetupArgs,
 } from "./Scene.js";
+export type { SpawnBatch } from "./SpawnBatch.js";
 
 export { EntityPool } from "./EntityPool.js";
 export type { PoolableEntity, EntityPoolOptions } from "./EntityPool.js";

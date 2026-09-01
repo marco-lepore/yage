@@ -6,6 +6,7 @@ import type { Logger } from "./Logger.js";
 import type { Scene } from "./Scene.js";
 import type { ComponentClass } from "./types.js";
 import { LoggerKey, ErrorBoundaryKey, EventBusKey } from "./EngineContext.js";
+import { isolate } from "./internal/isolate.js";
 
 /**
  * Prototype of the lazy `service()` / `sibling()` proxy targets. Anything but
@@ -271,13 +272,15 @@ export abstract class Component {
    * Called by Entity.remove() and Entity._performDestroy() before onDestroy.
    * @internal
    */
-  _runCleanups(): void {
-    if (this._cleanups) {
-      for (const fn of this._cleanups) {
-        fn();
-      }
-      this._cleanups.length = 0;
-    }
+  _runCleanups(onError?: (error: unknown) => void): void {
+    if (!this._cleanups) return;
+    // A spawn batch rolling back isolates each cleanup: the rest of this
+    // component's teardown must still run.
+    const run = isolate(onError);
+    // A cleanup registered while cleanups run is visited too — the array
+    // iterator reads the live array.
+    for (const fn of this._cleanups) run(fn);
+    this._cleanups.length = 0;
   }
 
   /**

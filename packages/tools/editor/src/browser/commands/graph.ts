@@ -1,0 +1,161 @@
+import type { LevelDocument, LevelPlacement } from "@yagejs/level/document";
+
+/**
+ * The questions the editor asks about how placements are related.
+ *
+ * A level document is a flat list where each placement names its parent, so
+ * every structural question — what is under this, is this inside that, which
+ * of these is outermost — is a walk. They live together because the answers
+ * have to agree: a reparent that refuses a drop uses the ancestor test, and
+ * the delete that follows uses the descendant closure, and the two disagreeing
+ * loses a subtree.
+ *
+ * A parent the document does not hold, and a chain that loops, are both
+ * treated as the point the walk stopped at. The document layer refuses each
+ * before a document reaches the store, so neither is a state to recover from.
+ */
+
+/**
+ * Every placement by id, which every walk below starts from.
+ *
+ * The index is built once per document and held against it. A document is
+ * replaced rather than edited — the store projects a new one from the
+ * committed draft and the pending commands — so an index built for one stays
+ * true for as long as anything can reach it. Without this the inspector builds
+ * a fresh one per dragged placement, on every render of a drag.
+ */
+export function placementById(
+  document: LevelDocument,
+): ReadonlyMap<string, LevelPlacement> {
+  const held = indexes.get(document);
+  if (held) return held;
+  const byId = new Map(
+    document.entities.map((placement) => [placement.id, placement]),
+  );
+  indexes.set(document, byId);
+  return byId;
+}
+
+const indexes = new WeakMap<
+  LevelDocument,
+  ReadonlyMap<string, LevelPlacement>
+>();
+
+/** Whether `id` is `candidate` or anywhere above it in the parent chain. */
+export function isAncestorOrSelf(
+  document: LevelDocument,
+  id: string,
+  candidate: string | undefined,
+): boolean {
+  const byId = placementById(document);
+  const seen = new Set<string>();
+  let current = candidate;
+  while (current !== undefined && !seen.has(current)) {
+    if (current === id) return true;
+    seen.add(current);
+    current = byId.get(current)?.parent;
+  }
+  return false;
+}
+
+/**
+ * The named placements plus everything authored under them, in document order.
+ *
+ * Document order matters wherever the result is turned back into placements:
+ * `remove-placements` inverts to an `add-placements` carrying each removed
+ * placement's original index, and restoring them in that order is what puts
+ * them back where they were.
+ */
+export function withDescendants(
+  placements: readonly LevelPlacement[],
+  ids: readonly string[],
+): readonly string[] {
+  const inside = new Set(
+    ids.filter((id) => placements.some((placement) => placement.id === id)),
+  );
+  // Placements are not ordered parent-first, so one pass can miss a child
+  // listed above its parent. Each pass that adds nothing is the last one.
+  let growing = true;
+  while (growing) {
+    growing = false;
+    for (const placement of placements) {
+      if (placement.parent === undefined) continue;
+      if (inside.has(placement.id) || !inside.has(placement.parent)) continue;
+      inside.add(placement.id);
+      growing = true;
+    }
+  }
+  return placements
+    .filter((placement) => inside.has(placement.id))
+    .map((placement) => placement.id);
+}
+
+/**
+ * The outermost of the named placements, in document order.
+ *
+ * One whose ancestor is also named is left out: an operation over a selection
+ * acts on each root once, and a member that travels with its parent must not
+ * also be acted on itself. Moving both would apply the parent's move twice to
+ * the child, and cloning both would produce the child twice.
+ */
+export function selectionRoots(
+  document: LevelDocument,
+  ids: Iterable<string>,
+): readonly string[] {
+  const named = new Set(ids);
+  const byId = placementById(document);
+  return document.entities
+    .filter((placement) => named.has(placement.id))
+    .filter((placement) => !hasNamedAncestor(byId, named, placement))
+    .map((placement) => placement.id);
+}
+
+function hasNamedAncestor(
+  byId: ReadonlyMap<string, LevelPlacement>,
+  named: ReadonlySet<string>,
+  placement: LevelPlacement,
+): boolean {
+  const seen = new Set<string>([placement.id]);
+  let current = placement.parent;
+  while (current !== undefined && !seen.has(current)) {
+    if (named.has(current)) return true;
+    seen.add(current);
+    current = byId.get(current)?.parent;
+  }
+  return false;
+}
+
+/** One placement and the placements authored under it. */
+export interface PlacementNode {
+  readonly placement: LevelPlacement;
+  readonly children: readonly PlacementNode[];
+}
+
+/**
+ * The document as a tree, roots in document order and each placement's
+ * children in theirs.
+ *
+ * A placement whose parent is not in the document does not appear: the
+ * document layer refuses one, and dropping it here is what keeps the tree a
+ * tree rather than growing a second set of roots nobody asked for.
+ */
+export function placementTree(
+  document: LevelDocument,
+): readonly PlacementNode[] {
+  const childrenOf = new Map<string, LevelPlacement[]>();
+  const roots: LevelPlacement[] = [];
+  for (const placement of document.entities) {
+    if (placement.parent === undefined) {
+      roots.push(placement);
+      continue;
+    }
+    const siblings = childrenOf.get(placement.parent) ?? [];
+    siblings.push(placement);
+    childrenOf.set(placement.parent, siblings);
+  }
+  const node = (placement: LevelPlacement): PlacementNode => ({
+    placement,
+    children: (childrenOf.get(placement.id) ?? []).map(node),
+  });
+  return roots.map(node);
+}

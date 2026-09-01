@@ -1,0 +1,52 @@
+{
+  "format": "yage-level",
+  "version": 1,
+  "id": "forest",
+  "metadata": {},
+  "entities": [
+    {
+      "id": "01J0000000000000000000ROOT",
+      "type": "game.crate",
+      "typeVersion": 1,
+      "name": "Root",
+      "active": true,
+      "transform": {
+        "position": { "x": -200, "y": -150 },
+        "rotation": 0,
+        "scale": { "x": 1, "y": 1 }
+      },
+      "params": { "sprite": "assets/player_idle.png" },
+      "extensions": {}
+    },
+    {
+      "id": "01J000000000000000000CHILD",
+      "type": "game.crate",
+      "typeVersion": 1,
+      "name": "Child",
+      "parent": "01J0000000000000000000ROOT",
+      "active": true,
+      "transform": {
+        "position": { "x": 100, "y": 150 },
+        "rotation": 0,
+        "scale": { "x": 1, "y": 1 }
+      },
+      "params": { "sprite": "assets/skeleton_idle.png" },
+      "extensions": {}
+    },
+    {
+      "id": "01J000000000000000000LATER",
+      "type": "game.crate",
+      "typeVersion": 1,
+      "name": "Later",
+      "active": true,
+      "transform": {
+        "position": { "x": 250, "y": 150 },
+        "rotation": 0,
+        "scale": { "x": 1, "y": 1 }
+      },
+      "params": { "sprite": "assets/player_jump.png" },
+      "extensions": {}
+    }
+  ],
+  "extensions": {}
+}

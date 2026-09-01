@@ -14,7 +14,7 @@ export default defineConfig({
     // Hand-written deterministic fixtures (e2e/fixtures), served on :5200.
     {
       name: "fixtures",
-      testIgnore: "**/examples.spec.ts",
+      testIgnore: ["**/examples.spec.ts", "**/level-editor.spec.ts"],
       use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:5200" },
     },
     // The shipped examples (examples/*.html), served on :5199 and driven
@@ -23,6 +23,14 @@ export default defineConfig({
       name: "examples",
       testMatch: "**/examples.spec.ts",
       use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:5199" },
+    },
+    // The level editor over e2e/editor-project, served on :5201 by
+    // `yage-editor` itself: the editor page, its play page, and the project's
+    // own game page all come from that one server.
+    {
+      name: "editor",
+      testMatch: "**/level-editor.spec.ts",
+      use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:5201" },
     },
   ],
   webServer: [
@@ -39,6 +47,16 @@ export default defineConfig({
       reuseExistingServer: !process.env["CI"],
       // Enables the example-page E2E harness injection (examples/e2e/harness.ts).
       env: { YAGE_E2E: "1" },
+    },
+    {
+      command:
+        "node ../../node_modules/@yagejs-tools/editor/dist/cli.js " +
+        "--port 5201 --no-open",
+      cwd: `${__dirname}/e2e/editor-project`,
+      url: "http://127.0.0.1:5201/",
+      // Never reused: this server holds the unsaved draft, so a server left
+      // over from an earlier run would start the path from that run's edits.
+      reuseExistingServer: false,
     },
   ],
 });

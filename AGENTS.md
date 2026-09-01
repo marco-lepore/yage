@@ -6,6 +6,15 @@ Universal guidelines for AI coding agents working on the YAGE codebase.
 
 YAGE is a 2D game engine built as a Turborepo monorepo.
 
+## Task-specific Workflows
+
+- **YAGE level editor:** Before planning, implementing, reviewing, or
+  continuing level-editor work, read
+  [`docs/AGENT_LEVEL_EDITOR_WORKFLOW.md`](docs/AGENT_LEVEL_EDITOR_WORKFLOW.md).
+  That workflow defines how to locate and claim the local execution queue,
+  which documents are authoritative, and which gates must pass before the next
+  slice begins.
+
 | Package               | Description                                             |
 | --------------------- | ------------------------------------------------------- |
 | `@yagejs/core`        | ECS, DI, game loop, scenes, events (zero runtime deps)  |
@@ -21,6 +30,7 @@ YAGE is a 2D game engine built as a Turborepo monorepo.
 | `@yagejs/ui-react`    | React reconciler over the UI layer                      |
 | `@yagejs/debug`       | Debug overlay, stats, world/HUD drawing                 |
 | `@yagejs/save`        | Controlled state documents, migrations, and named slots |
+| `@yagejs/level`       | Level documents: read, validate, prepare, load          |
 
 ## Design Philosophy
 
