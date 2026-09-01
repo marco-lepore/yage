@@ -68,6 +68,15 @@ export class TextComponent extends VisualComponent {
     return this.text;
   }
 
+  /**
+   * The string currently displayed. {@link text} is the Pixi display object,
+   * so this is the way to read the rendered string back — including from the
+   * Inspector, which reflects public getters but skips the display object.
+   */
+  get content(): string {
+    return this.text.text;
+  }
+
   /** Replace the displayed string. */
   setText(value: string): void {
     this.text.text = value;

@@ -180,6 +180,13 @@ describe("TextComponent", () => {
     expect(comp.text.text).toBe("new");
   });
 
+  it("content reads the displayed string back, tracking setText", () => {
+    const comp = new TextComponent({ text: "old" });
+    expect(comp.content).toBe("old");
+    comp.setText("new");
+    expect(comp.content).toBe("new");
+  });
+
   it("setStyle replaces the underlying Text style", () => {
     const comp = new TextComponent({ text: "x", style: { fontSize: 10 } });
     comp.setStyle({ fontSize: 20 });

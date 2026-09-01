@@ -342,6 +342,8 @@ new TextComponent({
 
 `bitmap` (boolean) and `resolution` are construction options. Yoga/layout behaviour is unchanged.
 
+**`setText` writes, `content` reads.** `setText(value)` replaces the displayed string; `content` reads it back. (`.text` is the pixi display object, not the string.) `content` is also what the Inspector reports for a `TextComponent`, so an e2e assertion on rendered copy reads `getComponentData(entity, "TextComponent").content`.
+
 **`setStyle` replaces, `mergeStyle` patches.** `setStyle(style)` assigns a fresh style — properties you omit fall back to the defaults. `mergeStyle(style)` merges over the properties already set, so an imperative recolour (`mergeStyle({ fill })`) keeps the current font, size, weight, etc. The React reconciler uses `setStyle` (declarative: the full style is passed every render).
 
 **`resolution` gotcha (Pixi v8).** `resolution` is a `Text` _constructor_ option, NOT a `TextStyle` property. Setting `TextStyle.defaultTextStyle.resolution` does nothing. Pass it explicitly to get crisp canvas text without a prototype patch — or use `bitmap` for pixel-perfect rendering:

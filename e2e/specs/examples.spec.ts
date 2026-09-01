@@ -187,9 +187,9 @@ test.describe("Examples", () => {
         window.__yage__!.inspector.getComponentData(
           "hotbar-dash-time",
           "TextComponent",
-        ) as { text: string },
+        ) as { content: string },
     );
-    expect(activeDash.text).not.toBe("0.0");
+    expect(activeDash.content).not.toBe("0.0");
 
     const tapLoadout = async (): Promise<void> => {
       await page.evaluate(async () => {
@@ -207,8 +207,8 @@ test.describe("Examples", () => {
             window.__yage__!.inspector.getComponentData(
               "hud",
               "TextComponent",
-            ) as { text: string }
-          ).text,
+            ) as { content: string }
+          ).content,
       );
 
     await tapLoadout();
@@ -219,9 +219,9 @@ test.describe("Examples", () => {
         window.__yage__!.inspector.getComponentData(
           "hotbar-dash-time",
           "TextComponent",
-        ) as { text: string },
+        ) as { content: string },
     );
-    expect(resetDash.text).toBe("0.0");
+    expect(resetDash.content).toBe("0.0");
 
     const endedDash = await page.evaluate(() =>
       window
@@ -272,9 +272,9 @@ test.describe("Examples", () => {
       await inspector.time.step(2);
       const heldDashCooldown = (
         inspector.getComponentData("hotbar-dash-time", "TextComponent") as {
-          text: string;
+          content: string;
         }
-      ).text;
+      ).content;
 
       inspector.input.keyDown("ShiftLeft");
       await inspector.time.step(1);
@@ -282,9 +282,9 @@ test.describe("Examples", () => {
       await inspector.time.step(2);
       const tappedDashCooldown = (
         inspector.getComponentData("hotbar-dash-time", "TextComponent") as {
-          text: string;
+          content: string;
         }
-      ).text;
+      ).content;
 
       return {
         distance: runEnd.x - start.x,
