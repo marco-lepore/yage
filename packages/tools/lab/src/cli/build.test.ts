@@ -78,8 +78,7 @@ describe("labBuildConfig", () => {
   });
 
   it("keeps the project's other build options", async () => {
-    // @yagejs/save restores classes by name, so a mangled class name in the
-    // built lab would break exactly the scenarios that exercise save/load.
+    // The generated config must preserve unrelated project build options.
     const cwd = writeProject({
       "package.json": "{}",
       "lab/harness.ts": STUB_HARNESS,

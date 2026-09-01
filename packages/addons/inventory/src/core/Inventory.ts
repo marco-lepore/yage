@@ -27,7 +27,11 @@
 
 import { Emitter } from "./emitter.js";
 import type { ItemCatalog } from "./catalog.js";
-import { byCatalogOrder, type SortEntry, type StackComparator } from "./comparators.js";
+import {
+  byCatalogOrder,
+  type SortEntry,
+  type StackComparator,
+} from "./comparators.js";
 import type { InventorySource } from "./InventorySource.js";
 import type {
   ActionResult,
@@ -83,9 +87,9 @@ export interface InventoryOptions<
 }
 
 export class Inventory<
-    TId extends string = string,
-    TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
-  >
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+>
   implements InventoryReader<TId, TData>, InventorySource<TId, TData>
 {
   readonly catalog: ItemCatalog<TId, TData>;
@@ -103,7 +107,10 @@ export class Inventory<
   private readonly _slots: (ItemStack<TId> | null)[];
 
   constructor(opts: InventoryOptions<TId, TData>) {
-    if (opts.capacity !== undefined && (!Number.isInteger(opts.capacity) || opts.capacity < 1)) {
+    if (
+      opts.capacity !== undefined &&
+      (!Number.isInteger(opts.capacity) || opts.capacity < 1)
+    ) {
       throw new Error(`capacity must be an integer ≥ 1 (got ${opts.capacity})`);
     }
     this.catalog = opts.catalog;
@@ -115,7 +122,10 @@ export class Inventory<
     this.actions = opts.actions ?? [];
     // Bounded inventories keep a fixed-length array (empty = null) so slot
     // indices are stable grid cells; unbounded ones grow/shrink.
-    this._slots = opts.capacity !== undefined ? new Array<ItemStack<TId> | null>(opts.capacity).fill(null) : [];
+    this._slots =
+      opts.capacity !== undefined
+        ? new Array<ItemStack<TId> | null>(opts.capacity).fill(null)
+        : [];
   }
 
   // ---------------------------------------------------------------- reading
@@ -161,21 +171,31 @@ export class Inventory<
    * `has("key", (d) => d.opens === "boss-lair")` asks about a specific instance.
    */
   has<K extends TId>(itemId: K, where?: StackPredicate<K, TData>): boolean;
-  has<K extends TId>(itemId: K, quantity: number, where?: StackPredicate<K, TData>): boolean;
+  has<K extends TId>(
+    itemId: K,
+    quantity: number,
+    where?: StackPredicate<K, TData>,
+  ): boolean;
   has<K extends TId>(
     itemId: K,
     quantityOrWhere?: number | StackPredicate<K, TData>,
     where?: StackPredicate<K, TData>,
   ): boolean {
     const quantity = typeof quantityOrWhere === "number" ? quantityOrWhere : 1;
-    const pred = typeof quantityOrWhere === "function" ? quantityOrWhere : where;
+    const pred =
+      typeof quantityOrWhere === "function" ? quantityOrWhere : where;
     return (pred ? this.count(itemId, pred) : this.count(itemId)) >= quantity;
   }
 
   /** Whether `stack` satisfies an optional data predicate. No predicate → any
    *  stack; predicate → only data-bearing stacks whose `data` matches. */
-  private matches(stack: ItemStack<TId>, where: StackPredicate<TId> | undefined): boolean {
-    return where === undefined ? true : stack.data !== undefined && where(stack.data, stack);
+  private matches(
+    stack: ItemStack<TId>,
+    where: StackPredicate<TId> | undefined,
+  ): boolean {
+    return where === undefined
+      ? true
+      : stack.data !== undefined && where(stack.data, stack);
   }
 
   /** Index of the first stack of `itemId`, or `undefined`. */
@@ -196,7 +216,10 @@ export class Inventory<
   /** First stack of `itemId` matching the optional predicate, paired with its
    *  slot — the located handle {@link remove} / {@link transfer} accept. The
    *  ref is a positional snapshot, valid until the next mutation. */
-  find<K extends TId>(itemId: K, where?: StackPredicate<K, TData>): LocatedStack<K, TData> | undefined {
+  find<K extends TId>(
+    itemId: K,
+    where?: StackPredicate<K, TData>,
+  ): LocatedStack<K, TData> | undefined {
     const pred = where as StackPredicate<TId> | undefined;
     for (let i = 0; i < this._slots.length; i++) {
       const s = this._slots[i];
@@ -208,11 +231,15 @@ export class Inventory<
   }
 
   /** Every stack of `itemId` matching the optional predicate, in slot order. */
-  findAll<K extends TId>(itemId: K, where?: StackPredicate<K, TData>): LocatedStack<K, TData>[] {
+  findAll<K extends TId>(
+    itemId: K,
+    where?: StackPredicate<K, TData>,
+  ): LocatedStack<K, TData>[] {
     const pred = where as StackPredicate<TId> | undefined;
     const out: LocatedStack<TId>[] = [];
     this._slots.forEach((s, slot) => {
-      if (s && s.itemId === itemId && this.matches(s, pred)) out.push({ slot, stack: s });
+      if (s && s.itemId === itemId && this.matches(s, pred))
+        out.push({ slot, stack: s });
     });
     return out as unknown as LocatedStack<K, TData>[];
   }
@@ -260,7 +287,8 @@ export class Inventory<
         constraintId = c.id;
       }
     }
-    if (allowed === 0) return this.reject(itemId, quantity, "constraint", constraintId);
+    if (allowed === 0)
+      return this.reject(itemId, quantity, "constraint", constraintId);
 
     const maxStack = def.maxStack ?? this.defaultMaxStack;
     const placed =
@@ -271,7 +299,9 @@ export class Inventory<
 
     const rejected = quantity - placed.added;
     const rejectMeta =
-      reason === "constraint" && constraintId !== undefined ? { constraintId } : {};
+      reason === "constraint" && constraintId !== undefined
+        ? { constraintId }
+        : {};
     if (placed.added > 0) {
       this.emitter.emit("itemAdded", {
         itemId,
@@ -309,7 +339,8 @@ export class Inventory<
     if (!data) {
       for (let i = 0; i < this._slots.length && remaining > 0; i++) {
         const s = this._slots[i];
-        if (!s || s.itemId !== itemId || s.data || s.quantity >= maxStack) continue;
+        if (!s || s.itemId !== itemId || s.data || s.quantity >= maxStack)
+          continue;
         const take = Math.min(remaining, maxStack - s.quantity);
         this._slots[i] = { itemId, quantity: s.quantity + take };
         remaining -= take;
@@ -325,7 +356,11 @@ export class Inventory<
       const take = Math.min(remaining, maxStack);
       // Clone per stack: chunking one data-bearing add across slots must not
       // alias one payload object into every sibling (mutating one would leak).
-      this._slots[slot] = { itemId, quantity: take, ...(data ? { data: { ...data } } : {}) };
+      this._slots[slot] = {
+        itemId,
+        quantity: take,
+        ...(data ? { data: { ...data } } : {}),
+      };
       remaining -= take;
       slots.push(slot);
     }
@@ -347,7 +382,8 @@ export class Inventory<
     const space = maxStack - held;
     if (space <= 0) return { added: 0, slots: [], reason: "stack-cap" };
     const take = Math.min(amount, space);
-    const reason: RejectReason | undefined = take < amount ? "stack-cap" : undefined;
+    const reason: RejectReason | undefined =
+      take < amount ? "stack-cap" : undefined;
 
     const existing = this.firstSlot(itemId);
     if (existing !== undefined) {
@@ -361,7 +397,11 @@ export class Inventory<
     }
     const slot = this.openSlot();
     if (slot === undefined) return { added: 0, slots: [], reason: "capacity" };
-    this._slots[slot] = { itemId, quantity: take, ...(data ? { data: { ...data } } : {}) };
+    this._slots[slot] = {
+      itemId,
+      quantity: take,
+      ...(data ? { data: { ...data } } : {}),
+    };
     return { added: take, slots: [slot], ...(reason ? { reason } : {}) };
   }
 
@@ -396,7 +436,11 @@ export class Inventory<
    * exactly the stack a {@link find} returned (a stale ref is a safe no-op).
    */
   remove(ref: LocatedStack<TId, TData>): RemoveResult<TId, TData>;
-  remove<K extends TId>(itemId: K, quantity?: number, where?: StackPredicate<K, TData>): RemoveResult<K, TData>;
+  remove<K extends TId>(
+    itemId: K,
+    quantity?: number,
+    where?: StackPredicate<K, TData>,
+  ): RemoveResult<K, TData>;
   remove(
     target: TId | LocatedStack<TId, TData>,
     quantity = 1,
@@ -414,8 +458,13 @@ export class Inventory<
         const s = this._slots[i];
         if (!s || s.itemId !== itemId || !eligible(s)) continue;
         const take = Math.min(remaining, s.quantity);
-        this._slots[i] = take === s.quantity ? null : { ...s, quantity: s.quantity - take };
-        stacks.push({ itemId, quantity: take, ...(s.data ? { data: s.data } : {}) });
+        this._slots[i] =
+          take === s.quantity ? null : { ...s, quantity: s.quantity - take };
+        stacks.push({
+          itemId,
+          quantity: take,
+          ...(s.data ? { data: s.data } : {}),
+        });
         remaining -= take;
         touched.push(i);
       }
@@ -446,7 +495,9 @@ export class Inventory<
 
   private removeRef(ref: LocatedStack<TId>): RemoveResult<TId, TData> {
     const slot = this.resolveRef(ref);
-    return slot === undefined ? { removed: 0, stacks: [] } : this.removeAt(slot);
+    return slot === undefined
+      ? { removed: 0, stacks: [] }
+      : this.removeAt(slot);
   }
 
   /** Remove `quantity` units (default: the whole stack) from one slot. */
@@ -455,12 +506,19 @@ export class Inventory<
     if (!s) return { removed: 0, stacks: [] };
     if (quantity !== undefined) assertPositiveInt(quantity, "quantity");
     const take = Math.min(quantity ?? s.quantity, s.quantity);
-    this._slots[slot] = take === s.quantity ? null : { ...s, quantity: s.quantity - take };
+    this._slots[slot] =
+      take === s.quantity ? null : { ...s, quantity: s.quantity - take };
     this.emitter.emit("itemRemoved", { itemId: s.itemId, quantity: take });
     this.emitChanged(this.maybeCompact([slot]));
     return {
       removed: take,
-      stacks: [{ itemId: s.itemId, quantity: take, ...(s.data ? { data: s.data } : {}) }],
+      stacks: [
+        {
+          itemId: s.itemId,
+          quantity: take,
+          ...(s.data ? { data: s.data } : {}),
+        },
+      ],
     } as unknown as RemoveResult<TId, TData>;
   }
 
@@ -506,7 +564,8 @@ export class Inventory<
     if (!src) return { ok: false, reason: "empty" };
     if (from === to) return { ok: false, reason: "same-slot" };
     if (to < 0) return { ok: false, reason: "out-of-range" };
-    if (this.capacity !== undefined && to >= this.capacity) return { ok: false, reason: "out-of-range" };
+    if (this.capacity !== undefined && to >= this.capacity)
+      return { ok: false, reason: "out-of-range" };
     this.growTo(to);
     const dst = this._slots[to];
 
@@ -524,7 +583,10 @@ export class Inventory<
       const take = Math.min(maxStack - dst.quantity, src.quantity);
       if (take > 0) {
         this._slots[to] = { ...dst, quantity: dst.quantity + take };
-        this._slots[from] = take === src.quantity ? null : { ...src, quantity: src.quantity - take };
+        this._slots[from] =
+          take === src.quantity
+            ? null
+            : { ...src, quantity: src.quantity - take };
         this.emitChanged([from, to]);
         return { ok: true, effect: "merged" };
       }
@@ -554,9 +616,11 @@ export class Inventory<
     if (target === undefined) return { ok: false, reason: "capacity" };
     if (target < 0) return { ok: false, reason: "out-of-range" };
     if (target === from) return { ok: false, reason: "same-slot" };
-    if (this.capacity !== undefined && target >= this.capacity) return { ok: false, reason: "out-of-range" };
+    if (this.capacity !== undefined && target >= this.capacity)
+      return { ok: false, reason: "out-of-range" };
     this.growTo(target);
-    if (this._slots[target] !== null && this._slots[target] !== undefined) return { ok: false, reason: "occupied" };
+    if (this._slots[target] !== null && this._slots[target] !== undefined)
+      return { ok: false, reason: "occupied" };
 
     this._slots[from] = { ...src, quantity: src.quantity - quantity };
     this._slots[target] = { ...src, quantity };
@@ -630,7 +694,10 @@ export class Inventory<
    *  chunks (first-appearance order preserved; data stacks pass through). */
   private consolidate(entries: SortEntry<TId>[]): SortEntry<TId>[] {
     const out: SortEntry<TId>[] = [];
-    const totals = new Map<TId, { def: SortEntry<TId>["def"]; order: number; total: number }>();
+    const totals = new Map<
+      TId,
+      { def: SortEntry<TId>["def"]; order: number; total: number }
+    >();
     for (const e of entries) {
       if (e.stack.data || (e.def.stacking ?? "multi") === "single") {
         out.push(e);
@@ -638,14 +705,23 @@ export class Inventory<
       }
       const agg = totals.get(e.stack.itemId);
       if (agg) agg.total += e.stack.quantity;
-      else totals.set(e.stack.itemId, { def: e.def, order: e.order, total: e.stack.quantity });
+      else
+        totals.set(e.stack.itemId, {
+          def: e.def,
+          order: e.order,
+          total: e.stack.quantity,
+        });
     }
     for (const [itemId, agg] of totals) {
       const maxStack = agg.def.maxStack ?? this.defaultMaxStack;
       let left = agg.total;
       while (left > 0) {
         const q = Math.min(left, maxStack);
-        out.push({ stack: { itemId, quantity: q }, def: agg.def, order: agg.order });
+        out.push({
+          stack: { itemId, quantity: q },
+          def: agg.def,
+          order: agg.order,
+        });
         left -= q;
       }
     }
@@ -663,7 +739,10 @@ export class Inventory<
    * `transfer(target, ref)` overload moves exactly the stack a {@link find}
    * returned.
    */
-  transfer(target: Inventory<TId, TData>, ref: LocatedStack<TId, TData>): TransferResult;
+  transfer(
+    target: Inventory<TId, TData>,
+    ref: LocatedStack<TId, TData>,
+  ): TransferResult;
   transfer<K extends TId>(
     target: Inventory<TId, TData>,
     itemId: K,
@@ -676,10 +755,13 @@ export class Inventory<
     quantity = 1,
     where?: StackPredicate<TId, TData>,
   ): TransferResult {
-    if (target === (this as Inventory<TId, TData>)) return { transferred: 0, rejected: 0 };
+    if (target === (this as Inventory<TId, TData>))
+      return { transferred: 0, rejected: 0 };
     if (typeof itemIdOrRef !== "string") {
       const slot = this.resolveRef(itemIdOrRef);
-      return slot === undefined ? { transferred: 0, rejected: 0 } : this.transferSlot(target, slot);
+      return slot === undefined
+        ? { transferred: 0, rejected: 0 }
+        : this.transferSlot(target, slot);
     }
     assertPositiveInt(quantity, "quantity");
     const itemId = itemIdOrRef;
@@ -689,10 +771,17 @@ export class Inventory<
     // Move stack-by-stack, re-resolving each pass: our own removeAt may
     // autoCompact and shift indices, so a cached list would go stale.
     while (remaining > 0) {
-      const next = this.nextTransferable(itemId, where as StackPredicate<TId> | undefined);
+      const next = this.nextTransferable(
+        itemId,
+        where as StackPredicate<TId> | undefined,
+      );
       if (!next) break;
       const ask = Math.min(remaining, next.stack.quantity);
-      const res = target.add(itemId, ask, next.stack.data ? { data: next.stack.data as TData[TId] } : {});
+      const res = target.add(
+        itemId,
+        ask,
+        next.stack.data ? { data: next.stack.data as TData[TId] } : {},
+      );
       if (res.reason) reason = res.reason;
       if (res.added <= 0) break; // target refuses this item — nothing more fits
       this.removeAt(next.slot, res.added);
@@ -701,7 +790,11 @@ export class Inventory<
       if (res.added < ask) break; // target filled mid-stack
     }
     const rejected = quantity - transferred;
-    return { transferred, rejected, ...(reason && rejected > 0 ? { reason } : {}) };
+    return {
+      transferred,
+      rejected,
+      ...(reason && rejected > 0 ? { reason } : {}),
+    };
   }
 
   /** Next source stack to pull for a `transfer`: anonymous first, then
@@ -722,12 +815,21 @@ export class Inventory<
   }
 
   /** Move (part of) one specific stack — data payload included — into `target`. */
-  transferSlot(target: Inventory<TId, TData>, slot: number, quantity?: number): TransferResult {
+  transferSlot(
+    target: Inventory<TId, TData>,
+    slot: number,
+    quantity?: number,
+  ): TransferResult {
     const s = this._slots[slot];
-    if (!s || target === (this as Inventory<TId, TData>)) return { transferred: 0, rejected: 0 };
+    if (!s || target === (this as Inventory<TId, TData>))
+      return { transferred: 0, rejected: 0 };
     if (quantity !== undefined) assertPositiveInt(quantity, "quantity");
     const ask = Math.min(quantity ?? s.quantity, s.quantity);
-    const res = target.add(s.itemId, ask, s.data ? { data: s.data as TData[TId] } : {});
+    const res = target.add(
+      s.itemId,
+      ask,
+      s.data ? { data: s.data as TData[TId] } : {},
+    );
     if (res.added > 0) this.removeAt(slot, res.added);
     return {
       transferred: res.added,
@@ -752,7 +854,9 @@ export class Inventory<
       inventory: this,
     };
     return this.actions.filter(
-      (a) => (def.actions ? def.actions.includes(a.id) : true) && (a.available?.(ctx) ?? true),
+      (a) =>
+        (def.actions ? def.actions.includes(a.id) : true) &&
+        (a.available?.(ctx) ?? true),
     );
   }
 
@@ -779,14 +883,20 @@ export class Inventory<
     return { ok: true };
   }
 
-  // ------------------------------------------------------------- snapshot
+  // ---------------------------------------------------------- durable state
 
-  /** JSON-able copy of the whole state — pair with {@link restore} for save
-   *  systems (e.g. a `@yagejs/save` `SnapshotContributor`). */
+  /** JSON-compatible copy of the whole state. Pair with {@link restore} in a
+   *  game-owned save adapter. */
   snapshot(): InventorySnapshot {
     return {
       slots: this._slots.map((s) =>
-        s ? { itemId: s.itemId, quantity: s.quantity, ...(s.data ? { data: { ...s.data } } : {}) } : null,
+        s
+          ? {
+              itemId: s.itemId,
+              quantity: s.quantity,
+              ...(s.data ? { data: { ...s.data } } : {}),
+            }
+          : null,
       ),
     };
   }
@@ -802,10 +912,14 @@ export class Inventory<
    * verbatim — `maxStack`/`accepts`/constraints are NOT re-applied (same trust
    * level as {@link setSlot}), so an oversized in-range stack survives as-is.
    */
-  restore(snapshot: InventorySnapshot): { readonly dropped: readonly ItemStackSnapshot[] } {
+  restore(snapshot: InventorySnapshot): {
+    readonly dropped: readonly ItemStackSnapshot[];
+  } {
     const dropped: ItemStackSnapshot[] = [];
     const contentValid = (entry: ItemStackSnapshot): boolean =>
-      this.catalog.has(entry.itemId) && Number.isInteger(entry.quantity) && entry.quantity >= 1;
+      this.catalog.has(entry.itemId) &&
+      Number.isInteger(entry.quantity) &&
+      entry.quantity >= 1;
     const copy = (entry: ItemStackSnapshot): ItemStack<TId> => ({
       itemId: entry.itemId as TId,
       quantity: entry.quantity,
@@ -848,7 +962,10 @@ export class Inventory<
       this._slots.length = 0;
       this._slots.push(...next);
       // Trailing empties carry no state in an unbounded inventory.
-      while (this._slots.length > 0 && this._slots[this._slots.length - 1] === null) {
+      while (
+        this._slots.length > 0 &&
+        this._slots[this._slots.length - 1] === null
+      ) {
         this._slots.pop();
       }
     }
@@ -873,12 +990,15 @@ export class Inventory<
    *  can pre-exist below the lowest removed index (move/split never compact),
    *  so the shift reaches slots the removal never touched. */
   private maybeCompact(touched: number[]): number[] {
-    if (!this.autoCompact || !touched.some((i) => this._slots[i] === null)) return touched;
+    if (!this.autoCompact || !touched.some((i) => this._slots[i] === null))
+      return touched;
     return [...touched, ...this.repackAndDiff()];
   }
 
   private emitChanged(slots: readonly number[]): void {
-    this.emitter.emit("changed", { slots: [...new Set(slots)].sort((a, b) => a - b) });
+    this.emitter.emit("changed", {
+      slots: [...new Set(slots)].sort((a, b) => a - b),
+    });
   }
 }
 

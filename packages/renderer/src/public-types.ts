@@ -37,10 +37,8 @@ export type RendererAsset<T = unknown> = AssetHandle<T>;
 export type TextureInput = string | TextureResource | TextureHandle;
 
 /**
- * Serializable texture reference — an asset key or typed handle. The form
- * serialized components accept: snapshots store the key, so the texture must
- * be resolvable by key on restore (a preloaded asset path or a
- * `registerTexture` entry).
+ * An asset-backed texture reference. The key or handle must resolve to a
+ * preloaded asset or a `registerTexture` entry.
  */
 export type TextureRef = string | TextureHandle;
 

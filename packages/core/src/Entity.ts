@@ -2,7 +2,6 @@ import type { Component } from "./Component.js";
 import type { ComponentClass } from "./types.js";
 import type { EventToken } from "./EventToken.js";
 import type { Blueprint } from "./Blueprint.js";
-import type { SnapshotResolver } from "./Serializable.js";
 import type { Scene, SpawnOptions, ClassSpawnArgs } from "./Scene.js";
 import { TRAITS_KEY, entityClassHasTrait, type TraitToken } from "./Trait.js";
 import { Transform } from "./Transform.js";
@@ -141,11 +140,7 @@ export class Entity {
     return this._destroyed;
   }
 
-  /**
-   * True while an {@link EntityPool} owns this entity. Pool members are left
-   * out of save snapshots: a pool restores empty and refills, so whatever was
-   * in flight when the game was saved is gone on load.
-   */
+  /** True while an {@link EntityPool} owns this entity. */
   get isPooled(): boolean {
     return this._pooled;
   }
@@ -662,9 +657,7 @@ export class Entity {
 
   /**
    * Internal: recompute effective activeness against the current parent and
-   * propagate to descendants. Called after `setActive`, after a re-parent,
-   * and once per restored root when a snapshot finishes rebuilding the
-   * hierarchy.
+   * propagate to descendants. Called after `setActive` and after a re-parent.
    * @internal
    */
   _resyncActive(): void {
@@ -673,9 +666,8 @@ export class Entity {
 
   /**
    * Internal: write `activeSelf` and park the entity as dormant without
-   * firing hooks or touching queries. Used by snapshot restore, which must
-   * hold every restored entity inert until the parent links are back — the
-   * single `_resyncActive` per root afterwards fires each hook exactly once.
+   * firing hooks or touching queries. Pools and dormant-parent child spawns
+   * use this to avoid transient query membership and enable hooks.
    * @internal
    */
   _setActiveSuppressed(activeSelf: boolean): void {
@@ -839,12 +831,6 @@ export class Entity {
    * target reference, clearing a listener registered outside `setup()`.
    */
   onRelease?(): void;
-
-  /** Return a JSON-serializable snapshot of this entity's custom state. Used by the save system. */
-  serialize?(): unknown;
-
-  /** Called after components are restored during save/load. Rebuild non-serializable state here. */
-  afterRestore?(data: unknown, resolve: SnapshotResolver): void;
 
   /** Check if this entity's class implements a given trait. Acts as a type guard. */
   hasTrait<T>(token: TraitToken<T>): this is this & T {

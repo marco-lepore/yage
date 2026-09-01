@@ -1,12 +1,9 @@
-import { Component, serializable } from "@yagejs/core";
+import { Component } from "@yagejs/core";
 import type { SoundHandle } from "./SoundHandle.js";
-import { AudioManagerKey, type SoundComponentOptions, type SoundData } from "./types.js";
+import { AudioManagerKey, type SoundComponentOptions } from "./types.js";
 
 /** Entity-bound audio component that delegates playback to AudioManager. */
-@serializable
 export class SoundComponent extends Component {
-  static restorePriority = 50;
-
   private readonly _alias: string;
   private readonly _channel: string;
   private readonly _loop: boolean;
@@ -64,20 +61,6 @@ export class SoundComponent extends Component {
 
   get handle(): SoundHandle | null {
     return this._handle;
-  }
-
-  serialize(): SoundData {
-    return {
-      alias: this._alias,
-      channel: this._channel,
-      loop: this._loop,
-      volume: this._volume,
-      playOnAdd: this._playOnAdd,
-    };
-  }
-
-  static fromSnapshot(data: SoundData): SoundComponent {
-    return new SoundComponent(data);
   }
 
   /**

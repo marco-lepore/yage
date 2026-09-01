@@ -239,11 +239,21 @@ export interface InventoryReader<
    *  held. A {@link StackPredicate} (in place of, or after, `quantity`) restricts
    *  the tally to matching data stacks. */
   has<K extends TId>(itemId: K, where?: StackPredicate<K, TData>): boolean;
-  has<K extends TId>(itemId: K, quantity: number, where?: StackPredicate<K, TData>): boolean;
+  has<K extends TId>(
+    itemId: K,
+    quantity: number,
+    where?: StackPredicate<K, TData>,
+  ): boolean;
   /** First stack of `itemId` matching the optional predicate, with its slot. */
-  find<K extends TId>(itemId: K, where?: StackPredicate<K, TData>): LocatedStack<K, TData> | undefined;
+  find<K extends TId>(
+    itemId: K,
+    where?: StackPredicate<K, TData>,
+  ): LocatedStack<K, TData> | undefined;
   /** Every stack of `itemId` matching the optional predicate, in slot order. */
-  findAll<K extends TId>(itemId: K, where?: StackPredicate<K, TData>): readonly LocatedStack<K, TData>[];
+  findAll<K extends TId>(
+    itemId: K,
+    where?: StackPredicate<K, TData>,
+  ): readonly LocatedStack<K, TData>[];
 }
 
 /**
@@ -273,7 +283,10 @@ export interface InventoryConstraint<
   readonly id?: string;
   /** Max additional units of `def` the inventory may accept (≥ 0; `Infinity`
    *  for "no limit from this constraint"). */
-  maxAcceptable(def: ItemDef<TId>, inventory: InventoryReader<TId, TData>): number;
+  maxAcceptable(
+    def: ItemDef<TId>,
+    inventory: InventoryReader<TId, TData>,
+  ): number;
 }
 
 /** Context handed to {@link ItemActionDef.available}. */
@@ -324,8 +337,8 @@ export interface ItemStackSnapshot {
   readonly data?: Readonly<Record<string, unknown>>;
 }
 
-/** Full JSON-able state of an inventory — feed it to a save system (e.g. a
- *  `@yagejs/save` `SnapshotContributor`) and back through {@link Inventory.restore}. */
+/** Full JSON-compatible state of an inventory. Include it in the game's chosen
+ *  save state and pass it back through {@link Inventory.restore}. */
 export interface InventorySnapshot {
   readonly slots: ReadonlyArray<ItemStackSnapshot | null>;
 }

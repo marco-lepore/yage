@@ -213,100 +213,14 @@ describe("TextComponent", () => {
     entity.add(new Transform());
     const comp = entity.add(new TextComponent({ text: "x" }));
 
-    const txt = comp.text as unknown as InstanceType<typeof mocks.MockContainer>;
+    const txt = comp.text as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
     expect(txt.parent).not.toBeNull();
 
     comp.onDestroy?.();
     expect(txt.parent).toBeNull();
     expect(txt.destroyed).toBe(true);
-  });
-
-  it("serialize/fromSnapshot round-trips text, layer, tint, alpha, anchor, visible", () => {
-    const comp = new TextComponent({
-      text: "hello",
-      layer: "hud",
-      tint: 0x123456,
-      alpha: 0.7,
-      anchor: { x: 0.5, y: 0.5 },
-      visible: false,
-      style: { fontSize: 16 },
-    });
-
-    const data = comp.serialize();
-    expect(data).toMatchObject({
-      text: "hello",
-      layer: "hud",
-      tint: 0x123456,
-      alpha: 0.7,
-      anchor: { x: 0.5, y: 0.5 },
-      visible: false,
-    });
-
-    const restored = TextComponent.fromSnapshot(data);
-    expect(restored.text.text).toBe("hello");
-    expect(restored.layerName).toBe("hud");
-    expect(restored.text.tint).toBe(0x123456);
-    expect(restored.text.alpha).toBe(0.7);
-    expect(restored.text.anchor.set).toHaveBeenCalledWith(0.5, 0.5);
-    expect(restored.text.visible).toBe(false);
-  });
-
-  it("serialize emits the original style options as a POJO that survives JSON round-trip", () => {
-    // Pixi's live Text.style is a class instance with getters, not a POJO.
-    // We must serialize the raw options we were given, so a JSON.stringify
-    // pass (as the save system does) preserves the style intact.
-    const comp = new TextComponent({
-      text: "x",
-      style: { fontSize: 16, fill: 0xff0000, fontFamily: "monospace" },
-    });
-    const data = comp.serialize();
-    const jsonRoundTripped = JSON.parse(JSON.stringify(data)) as {
-      style?: { fontSize?: number; fill?: number; fontFamily?: string };
-    };
-    expect(jsonRoundTripped.style).toEqual({
-      fontSize: 16,
-      fill: 0xff0000,
-      fontFamily: "monospace",
-    });
-  });
-
-  it("setStyle updates the options snapshot used by serialize", () => {
-    const comp = new TextComponent({
-      text: "x",
-      style: { fontSize: 10 },
-    });
-    comp.setStyle({ fontSize: 22, fill: 0x00ff00 });
-    const data = comp.serialize();
-    expect(data.style).toEqual({ fontSize: 22, fill: 0x00ff00 });
-  });
-
-  it("omits style from the snapshot when none was provided", () => {
-    const comp = new TextComponent({ text: "x" });
-    const data = comp.serialize();
-    expect(data.style).toBeUndefined();
-  });
-
-  it("decouples the cached style from the caller's options object", () => {
-    const style: { fontSize: number; fill?: number } = { fontSize: 14 };
-    const comp = new TextComponent({ text: "x", style });
-
-    // Caller mutates their original options object after construction.
-    style.fontSize = 99;
-    style.fill = 0xff0000;
-
-    const data = comp.serialize();
-    expect(data.style).toEqual({ fontSize: 14 });
-  });
-
-  it("returns a fresh style object on each serialize() call", () => {
-    const comp = new TextComponent({
-      text: "x",
-      style: { fontSize: 14 },
-    });
-    const a = comp.serialize();
-    const b = comp.serialize();
-    expect(a.style).not.toBe(b.style);
-    expect(a.style).toEqual(b.style);
   });
 
   it("applies the engine default text style as a base, per-text style wins", () => {
@@ -348,10 +262,8 @@ describe("TextComponent", () => {
   });
 
   it("setStyle on a bitmap text honours fontWeight via the variant registry", async () => {
-    const {
-      registerBitmapFontVariant,
-      clearBitmapFontVariants,
-    } = await import("./internal/bitmapFontVariants.js");
+    const { registerBitmapFontVariant, clearBitmapFontVariants } =
+      await import("./internal/bitmapFontVariants.js");
     clearBitmapFontVariants();
     try {
       registerBitmapFontVariant("Body", {}, "Body");
@@ -416,9 +328,9 @@ describe("TextComponent", () => {
 
   it("forwards resolution to a canvas Text constructor", () => {
     const comp = new TextComponent({ text: "x", resolution: 3 });
-    expect(
-      (comp.text as unknown as { resolution?: number }).resolution,
-    ).toBe(3);
+    expect((comp.text as unknown as { resolution?: number }).resolution).toBe(
+      3,
+    );
   });
 
   it("does NOT forward resolution to a BitmapText (font-managed in v8)", () => {
@@ -431,39 +343,6 @@ describe("TextComponent", () => {
     expect(
       (comp.text as unknown as { resolution?: number }).resolution,
     ).toBeUndefined();
-  });
-
-  it("serialize/fromSnapshot round-trips bitmap and resolution", () => {
-    const comp = new TextComponent({
-      text: "hi",
-      bitmap: true,
-      style: { fontFamily: "PressStart", fontSize: 8 },
-      resolution: 2,
-    });
-    const data = comp.serialize();
-    expect(data.bitmap).toBe(true);
-    expect(data.resolution).toBe(2);
-
-    const restored = TextComponent.fromSnapshot(data);
-    expect(restored.text).toBeInstanceOf(mocks.MockBitmapText);
-    expect(restored.text.style).toMatchObject({
-      fontFamily: "PressStart",
-      fontSize: 8,
-    });
-  });
-
-  it("decouples the cached style snapshot from the caller's object", () => {
-    const style: { fill: number; fontFamily?: string } = { fill: 0xffffff };
-    const comp = new TextComponent({ text: "x", style });
-    style.fill = 0x000000;
-    style.fontFamily = "B";
-    expect(comp.serialize().style).toEqual({ fill: 0xffffff });
-  });
-
-  it("omits bitmap and resolution from the snapshot when not provided", () => {
-    const data = new TextComponent({ text: "x" }).serialize();
-    expect(data.bitmap).toBeUndefined();
-    expect(data.resolution).toBeUndefined();
   });
 
   describe("inspectRender", () => {

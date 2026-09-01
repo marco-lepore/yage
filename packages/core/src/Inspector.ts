@@ -176,8 +176,7 @@ export interface ComponentStateSnapshot {
    * Namespaced, derived facets contributed by registered
    * {@link InspectorFacetContributor}s — e.g. the renderer publishes a `render`
    * facet (world-space bounds + visibility). Present only when at least one
-   * contributor produced a facet for this component. Always computed live, never
-   * from `serialize()`.
+   * contributor produced a facet for this component. Always computed live.
    */
   facets?: InspectorFacets;
 }
@@ -195,14 +194,13 @@ export interface InspectorFacets {
 
 /**
  * A plugin-registered contributor that augments component (and optionally
- * entity) snapshots with a namespaced facet derived from live, non-serialized
+ * entity) snapshots with a namespaced facet derived from live runtime
  * state — the seam that lets the renderer publish rendered geometry without
  * core taking a dependency on, or knowing anything about, the renderer.
  *
  * Register via {@link Inspector.registerFacetContributor}. Mirrors the
- * contributor pattern used elsewhere in the engine (`DebugContributor`,
- * save's `SnapshotContributor`): the owning plugin pushes capability in, rather
- * than core reaching out to grab it.
+ * contributor pattern used elsewhere in the engine (`DebugContributor`): the
+ * owning plugin pushes capability in rather than core reaching out to grab it.
  */
 export interface InspectorFacetContributor {
   /** Stable key the facet is attached under (e.g. `"render"`). */
@@ -648,10 +646,7 @@ export class Inspector {
      * so the same async draining as {@link stepUntil} applies — for call sites
      * that already know how many frames they need.
      */
-    stepAsync: async (
-      frames = 1,
-      opts?: { dtMs?: number },
-    ): Promise<void> => {
+    stepAsync: async (frames = 1, opts?: { dtMs?: number }): Promise<void> => {
       this.assertNonNegativeInteger(frames, "Inspector.time.stepAsync(frames)");
       if (opts?.dtMs !== undefined) {
         this.assertPositiveDelta(opts.dtMs, "Inspector.time.stepAsync(dtMs)");
@@ -686,11 +681,7 @@ export class Inspector {
      * with `id` / `type: "touch"` to drive a specific finger; defaults match
      * the primary mouse pointer (same as `mouseMove`).
      */
-    pointerMove: (
-      x: number,
-      y: number,
-      opts?: InspectorPointerOpts,
-    ): void => {
+    pointerMove: (x: number, y: number, opts?: InspectorPointerOpts): void => {
       this.requireInputManager().firePointerMove(x, y, opts);
     },
     /**
@@ -698,25 +689,16 @@ export class Inspector {
      * this drives a multi-touch contact, exercising `getPointers()`,
      * per-pointer event hooks, and the any-pointer aggregate for `MouseLeft`.
      */
-    pointerDown: (
-      button: 0 | 1 | 2 = 0,
-      opts?: InspectorPointerOpts,
-    ): void => {
+    pointerDown: (button: 0 | 1 | 2 = 0, opts?: InspectorPointerOpts): void => {
       this.requireInputManager().firePointerDown(button, opts);
     },
-    pointerUp: (
-      button: 0 | 1 | 2 = 0,
-      opts?: { id?: number },
-    ): void => {
+    pointerUp: (button: 0 | 1 | 2 = 0, opts?: { id?: number }): void => {
       this.requireInputManager().firePointerUp(button, opts);
     },
     gamepadButton: (code: string, pressed: boolean): void => {
       this.requireInputManager().fireGamepadButton(code, pressed);
     },
-    gamepadAxis: (
-      side: InspectorGamepadAxisKey,
-      value: number,
-    ): void => {
+    gamepadAxis: (side: InspectorGamepadAxisKey, value: number): void => {
       this.requireInputManager().fireGamepadAxis(side, value);
     },
     tap: (code: string, frames = 1): void => {
@@ -994,7 +976,10 @@ export class Inspector {
     };
 
     const hold = async (code: string, frames: number): Promise<void> => {
-      this.assertNonNegativeInteger(frames, "Inspector.drive input.hold(frames)");
+      this.assertNonNegativeInteger(
+        frames,
+        "Inspector.drive input.hold(frames)",
+      );
       const input = this.requireInputManager();
       input.fireKeyDown(code);
       try {
@@ -1082,10 +1067,7 @@ export class Inspector {
 
   /** Register a namespaced extension API for plugin-specific debug helpers. */
   addExtension<T extends object>(namespace: string, api: T): T {
-    this.assertNonEmptyString(
-      namespace,
-      "Inspector.addExtension(namespace)",
-    );
+    this.assertNonEmptyString(namespace, "Inspector.addExtension(namespace)");
     if (!api || typeof api !== "object") {
       throw new Error("Inspector.addExtension(api) requires an object.");
     }
@@ -1100,10 +1082,7 @@ export class Inspector {
 
   /** Look up a previously registered extension API by namespace. */
   getExtension<T extends object>(namespace: string): T | undefined {
-    this.assertNonEmptyString(
-      namespace,
-      "Inspector.getExtension(namespace)",
-    );
+    this.assertNonEmptyString(namespace, "Inspector.getExtension(namespace)");
     return this.extensions.get(namespace) as T | undefined;
   }
 
@@ -1120,8 +1099,7 @@ export class Inspector {
    * Register an {@link InspectorFacetContributor} so a plugin can augment
    * component/entity snapshots with a namespaced facet (e.g. the renderer's
    * `render` geometry). Returns an unregister function; call it on plugin
-   * teardown. Re-registering a namespace replaces the prior contributor
-   * (mirrors save's `registerSnapshotExtra`).
+   * teardown. Re-registering a namespace replaces the prior contributor.
    */
   registerFacetContributor(contributor: InspectorFacetContributor): () => void {
     this.assertNonEmptyString(
@@ -1209,7 +1187,7 @@ export class Inspector {
     return this.findComponentByName(entityName, componentClass) !== undefined;
   }
 
-  /** Get component data (serializable subset) by class name string. */
+  /** Get inspectable component data by class name string. */
   getComponentData(entityName: string, componentClass: string): unknown {
     const comp = this.findComponentByName(entityName, componentClass);
     if (!comp) return undefined;
@@ -1266,7 +1244,9 @@ export class Inspector {
   /** Create a new scene-scoped RNG instance using the current inspector seed policy. */
   createSceneRandom(): RandomService {
     const seed =
-      this.sceneSeedOverride ?? this.defaultSceneSeed ?? createDefaultRandomSeed();
+      this.sceneSeedOverride ??
+      this.defaultSceneSeed ??
+      createDefaultRandomSeed();
     return createRandomService(seed);
   }
 
@@ -1283,7 +1263,10 @@ export class Inspector {
   setDefaultSceneSeed(seed: number | undefined): void {
     this.defaultSceneSeed =
       seed === undefined ? undefined : normalizeSeed(seed);
-    if (this.sceneSeedOverride !== undefined || this.defaultSceneSeed === undefined) {
+    if (
+      this.sceneSeedOverride !== undefined ||
+      this.defaultSceneSeed === undefined
+    ) {
       return;
     }
     for (const scene of this.engine.scenes.all) {
@@ -1291,10 +1274,10 @@ export class Inspector {
     }
   }
 
-  private resolveInternalRandom(scene: Scene): InternalRandomService | undefined {
-    return scene._resolveScoped(RandomKey) as
-      | InternalRandomService
-      | undefined;
+  private resolveInternalRandom(
+    scene: Scene,
+  ): InternalRandomService | undefined {
+    return scene._resolveScoped(RandomKey) as InternalRandomService | undefined;
   }
 
   /** @internal DebugPlugin attaches the frozen-time controller through this hook. */
@@ -1372,9 +1355,7 @@ export class Inspector {
 
   private requireTimeController(): InspectorTimeController {
     if (!this.timeController) {
-      throw new Error(
-        "Inspector.time requires DebugPlugin to be active.",
-      );
+      throw new Error("Inspector.time requires DebugPlugin to be active.");
     }
     return this.timeController;
   }
@@ -1382,9 +1363,7 @@ export class Inspector {
   private requireInputManager(): InputManagerLike {
     const input = this.engine.context.tryResolve(InputManagerRuntimeKey);
     if (!input) {
-      throw new Error(
-        "Inspector.input requires InputPlugin to be active.",
-      );
+      throw new Error("Inspector.input requires InputPlugin to be active.");
     }
     return input;
   }
@@ -1413,8 +1392,7 @@ export class Inspector {
     } else {
       // Ring full: overwrite the oldest slot in O(1) and advance the head.
       this.eventLog[this.eventLogHead] = logged;
-      this.eventLogHead =
-        (this.eventLogHead + 1) % this.eventCapacity;
+      this.eventLogHead = (this.eventLogHead + 1) % this.eventCapacity;
     }
     this.flushMatchingWaiter(entry);
   }
@@ -1424,10 +1402,7 @@ export class Inspector {
     if (this.eventWaiters.size === 0) return;
     const frame = this.time.getFrame();
     for (const waiter of [...this.eventWaiters]) {
-      if (
-        waiter.deadlineFrame !== undefined &&
-        frame > waiter.deadlineFrame
-      ) {
+      if (waiter.deadlineFrame !== undefined && frame > waiter.deadlineFrame) {
         this.eventWaiters.delete(waiter);
         waiter.reject(
           new Error(
@@ -1503,11 +1478,10 @@ export class Inspector {
       seed: random?.getSeed() ?? 0,
       entities: this.getSceneEntities(scene),
       ui: this.buildUISnapshot(scene),
-      physics:
-        physicsManager?.getContext(scene)?.world.snapshot() ?? {
-          bodies: [],
-          contacts: [],
-        },
+      physics: physicsManager?.getContext(scene)?.world.snapshot() ?? {
+        bodies: [],
+        contacts: [],
+      },
       events: this.getSceneEvents(scene),
     };
   }
@@ -1589,19 +1563,13 @@ export class Inspector {
   }
 
   /**
-   * A component's `serialize()` result if it defines one, else its reflected
-   * public state (own properties + getters — see
-   * {@link serializeComponentOwnProperties}) so a component reports something
-   * useful in a snapshot without opting in. The reflected object is routed
-   * through `safeClone` for cycle-safety: `isSerializableValue` only checks
-   * that a value's *own* shape is a plain object/array, not that everything
-   * nested inside it is acyclic.
+   * Reflect a component's public state from own properties and getters. The
+   * result is routed through `safeClone` for cycle-safety:
+   * `isSerializableValue` only checks a value's own shape, not whether every
+   * nested value is acyclic.
    */
   private reflectComponentState(component: Component): unknown {
-    if (typeof component.serialize === "function") {
-      return trySerialize(component) ?? null;
-    }
-    return safeClone(this.serializeComponentOwnProperties(component)) ?? null;
+    return safeClone(this.collectComponentState(component)) ?? null;
   }
 
   /**
@@ -1664,10 +1632,7 @@ export class Inspector {
     };
   }
 
-  private buildUINodeSnapshot(
-    node: UIElementLike,
-    id: string,
-  ): UINodeSnapshot {
+  private buildUINodeSnapshot(node: UIElementLike, id: string): UINodeSnapshot {
     const layout = node.yogaNode?.getComputedLayout();
     const children = (node.children ?? []).map((child, index) =>
       this.buildUINodeSnapshot(child, `${id}/${index}`),
@@ -1828,12 +1793,10 @@ export class Inspector {
 
   /**
    * Reflect a component's own enumerable fields plus its public prototype
-   * getters — the zero-config fallback when a component defines no
-   * `serialize()`. Getters make derived read-only state (`get isOnCooldown()`,
-   * `get health()`) visible without the component author writing a
-   * `serialize()` just to expose them.
+   * getters. Getters make derived read-only state (`get isOnCooldown()`,
+   * `get health()`) visible without extra diagnostic code.
    */
-  private serializeComponentOwnProperties(comp: Component): unknown {
+  private collectComponentState(comp: Component): unknown {
     // These live on Component.prototype as accessors, so neither loop below
     // reaches them. `enabled` alone is ambiguous once entities can be dormant:
     // `effectiveEnabled` is what says whether the component is running.
@@ -1979,17 +1942,9 @@ function safeClone(
   }
 }
 
-function trySerialize(component: Component): unknown | undefined {
-  try {
-    return safeClone(component.serialize?.());
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * Invoke a contributor's `inspectComponent` hook, tolerating one that throws
- * (mid-teardown, no parent yet, etc.) — mirroring {@link trySerialize}.
+ * (mid-teardown, no parent yet, etc.).
  * Normalises a `null`/`undefined` result to `undefined` so the caller can omit
  * the namespace entirely.
  */
@@ -2067,14 +2022,18 @@ function decodeBase64(base64: string): Uint8Array {
     return bytes;
   }
 
-  const bufferCtor = (globalThis as {
-    Buffer?: {
-      from(value: string, encoding: "base64"): Uint8Array;
-    };
-  }).Buffer;
+  const bufferCtor = (
+    globalThis as {
+      Buffer?: {
+        from(value: string, encoding: "base64"): Uint8Array;
+      };
+    }
+  ).Buffer;
   if (bufferCtor) {
     return bufferCtor.from(base64, "base64");
   }
 
-  throw new Error("Inspector.capture.png() is not supported in this environment.");
+  throw new Error(
+    "Inspector.capture.png() is not supported in this environment.",
+  );
 }

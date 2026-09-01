@@ -655,7 +655,7 @@ describe("ColliderComponent", () => {
       expect(rapierCollider?.setSensorSpy).toHaveBeenCalledWith(true);
     });
 
-    it("keeps config.sensor in sync so event routing and saves see the toggle", async () => {
+    it("keeps config.sensor in sync with the live collider", async () => {
       const { scene } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
@@ -668,7 +668,6 @@ describe("ColliderComponent", () => {
 
       col.setSensor(true);
       expect(col.config.sensor).toBe(true);
-      expect(col.serialize().config.sensor).toBe(true);
 
       col.setSensor(false);
       expect(col.config.sensor).toBe(false);
@@ -744,16 +743,12 @@ describe("ColliderComponent", () => {
       expect(handler).toHaveBeenCalledTimes(1);
     });
 
-    it("keeps config.shape in sync so saves capture the live size", async () => {
+    it("keeps config.shape in sync with the live collider", async () => {
       const { col } = await setup();
 
       col.setShape({ type: "circle", radius: 8 });
 
       expect(col.config.shape).toEqual({ type: "circle", radius: 8 });
-      expect(col.serialize().config.shape).toEqual({
-        type: "circle",
-        radius: 8,
-      });
     });
 
     it("keeps the body's mass, so a crouch does not change knockback", async () => {
@@ -936,17 +931,6 @@ describe("ColliderComponent", () => {
     });
   });
 
-  describe("restore ordering", () => {
-    it("declares priorities matching the Transform → RigidBody → Collider onAdd() chain", () => {
-      expect(Transform.restorePriority).toBeLessThan(
-        RigidBodyComponent.restorePriority,
-      );
-      expect(RigidBodyComponent.restorePriority).toBeLessThan(
-        ColliderComponent.restorePriority,
-      );
-    });
-  });
-
   describe("contact filter wiring", () => {
     function addOneWayCollider(scene: Scene) {
       const entity = spawnEntityInScene(scene, "platform");
@@ -1015,18 +999,6 @@ describe("ColliderComponent", () => {
       col.setContactFilter(null);
       physicsWorld.step(1 / 60);
       expect(world.lastStepHooks).toBeUndefined();
-    });
-
-    it("round-trips the oneWay config and reinstalls the preset on restore", async () => {
-      const { scene } = await createPhysicsTestContext();
-      const col = addOneWayCollider(scene);
-
-      const data = structuredClone(col.serialize());
-      expect(data.config.oneWay).toEqual({ direction: { x: 0, y: -1 } });
-
-      const restored = ColliderComponent.fromSnapshot(data);
-      expect(restored.config.oneWay).toEqual({ direction: { x: 0, y: -1 } });
-      expect(restored._contactFilter).not.toBeNull();
     });
 
     it("reports a throwing filter once, re-armed by a new filter", async () => {

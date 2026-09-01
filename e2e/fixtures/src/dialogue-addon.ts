@@ -161,7 +161,10 @@ const HUB_SCRIPT: DialogueScript = {
         },
       ],
     },
-    out: { id: "out", steps: [{ kind: "say", text: "Through it." }, { kind: "end" }] },
+    out: {
+      id: "out",
+      steps: [{ kind: "say", text: "Through it." }, { kind: "end" }],
+    },
   },
 };
 
@@ -175,9 +178,24 @@ const POSITION_SCRIPT: DialogueScript = {
     p: {
       id: "p",
       steps: [
-        { kind: "say", speaker: "narrator", text: "At the bottom.", meta: { position: "bottom" } },
-        { kind: "say", speaker: "narrator", text: "At the top now.", meta: { position: "top" } },
-        { kind: "say", speaker: "narrator", text: "In the centre.", meta: { position: "center" } },
+        {
+          kind: "say",
+          speaker: "narrator",
+          text: "At the bottom.",
+          meta: { position: "bottom" },
+        },
+        {
+          kind: "say",
+          speaker: "narrator",
+          text: "At the top now.",
+          meta: { position: "top" },
+        },
+        {
+          kind: "say",
+          speaker: "narrator",
+          text: "In the centre.",
+          meta: { position: "center" },
+        },
         { kind: "end" },
       ],
     },
@@ -195,7 +213,11 @@ const AVATAR_SCRIPT: DialogueScript = {
     av: {
       id: "av",
       steps: [
-        { kind: "say", speaker: "narrator", text: "No portrait yet, full width." },
+        {
+          kind: "say",
+          speaker: "narrator",
+          text: "No portrait yet, full width.",
+        },
         {
           kind: "say",
           speaker: "narrator",
@@ -236,9 +258,23 @@ const TEXTURED_SCRIPT: DialogueScript = {
     t: {
       id: "t",
       steps: [
-        { kind: "say", speaker: "narrator", text: "Parchment frame here.", meta: { chrome: "parchment" } },
-        { kind: "say", speaker: "narrator", text: "No frame at all.", meta: { chrome: "none" } },
-        { kind: "say", speaker: "narrator", text: "Back to the default frame." },
+        {
+          kind: "say",
+          speaker: "narrator",
+          text: "Parchment frame here.",
+          meta: { chrome: "parchment" },
+        },
+        {
+          kind: "say",
+          speaker: "narrator",
+          text: "No frame at all.",
+          meta: { chrome: "none" },
+        },
+        {
+          kind: "say",
+          speaker: "narrator",
+          text: "Back to the default frame.",
+        },
         { kind: "end" },
       ],
     },
@@ -310,61 +346,42 @@ class DialogueProbe extends Component {
     this.choosing = false;
   }
 
-  serialize(): {
-    lastLine: string;
-    lineCount: number;
-    lastChoice: string;
-    choiceCount: number;
-    choosing: boolean;
-    ended: boolean;
-    shownOptions: readonly string[];
-    selectionIndex: number;
-    markerName: string;
-    markerCount: number;
-    tickCount: number;
-    boxVisible: boolean;
-    bubbleVisible: boolean;
-    texturedVisible: boolean;
-    bubbleTextured: boolean;
-    nameY: number;
-    textX: number;
-    avatarPresent: boolean;
-  } {
-    return {
-      lastLine: this.lastLine,
-      lineCount: this.lineCount,
-      lastChoice: this.lastChoice,
-      choiceCount: this.choiceCount,
-      choosing: this.choosing,
-      ended: this.ended,
-      shownOptions: this.shownOptions,
-      selectionIndex: this.selectionIndex,
-      markerName: this.markerName,
-      markerCount: this.markerCount,
-      tickCount: this.tickCount,
-      // Nameplate Y tracks the box frame top — moves with meta.position.
-      nameY: this.entityY("dlg-name"),
-      // Body-text X tracks the (possibly avatar-inset) text region (reflow).
-      textX: this.entityX("dlg-line"),
-      // The in-box avatar spawns its sprite only when a meta.portrait line shows.
-      avatarPresent: this.scene.findEntity("dlg-inbox-avatar") !== undefined,
-      // Live chrome visibility (read straight off the renderer) so the spec can
-      // lock the regression: after a hide/restore on a bubble line, the bubble must come
-      // back and the box frame must stay hidden.
-      boxVisible: this.frameVisible("dlg-frame"),
-      bubbleVisible: this.frameVisible("dlg-bubble"),
-      // The nine-slice host shows only while a textured `meta.chrome` style is
-      // the active box frame — so the spec can watch the style swap.
-      texturedVisible: this.frameVisible("dlg-frame-tex"),
-      // A textured bubble parents its nine-slice into the bubble's own Graphics
-      // (the tail stays drawn) — so a child means the bubble body is textured.
-      bubbleTextured: (this.frameChildren("dlg-bubble")) > 0,
-    };
+  /** Nameplate Y tracks the box frame top and moves with meta.position. */
+  get nameY(): number {
+    return this.entityY("dlg-name");
+  }
+
+  /** Body-text X tracks the active text region after avatar reflow. */
+  get textX(): number {
+    return this.entityX("dlg-line");
+  }
+
+  get avatarPresent(): boolean {
+    return this.scene.findEntity("dlg-inbox-avatar") !== undefined;
+  }
+
+  get boxVisible(): boolean {
+    return this.frameVisible("dlg-frame");
+  }
+
+  get bubbleVisible(): boolean {
+    return this.frameVisible("dlg-bubble");
+  }
+
+  get texturedVisible(): boolean {
+    return this.frameVisible("dlg-frame-tex");
+  }
+
+  get bubbleTextured(): boolean {
+    return this.frameChildren("dlg-bubble") > 0;
   }
 
   /** Whether the named chrome entity's Graphics is currently visible. */
   private frameVisible(name: string): boolean {
-    return this.scene.findEntity(name)?.tryGet(GraphicsComponent)?.graphics.visible ?? false;
+    return (
+      this.scene.findEntity(name)?.tryGet(GraphicsComponent)?.graphics
+        .visible ?? false
+    );
   }
 
   /** The named entity's Transform Y (−1 when absent). */
@@ -380,7 +397,10 @@ class DialogueProbe extends Component {
   /** Child count of the named chrome entity's Graphics (a nine-slice sprite is
    *  parented here when the bubble body is textured). */
   private frameChildren(name: string): number {
-    return this.scene.findEntity(name)?.tryGet(GraphicsComponent)?.graphics.children.length ?? 0;
+    return (
+      this.scene.findEntity(name)?.tryGet(GraphicsComponent)?.graphics.children
+        .length ?? 0
+    );
   }
 }
 
@@ -431,7 +451,9 @@ class DialogueScene extends Scene {
         }
       : {
           ...defaultDialogueTheme(),
-          textured: { parchment: { frame: { texture: makeFrameTexture(), insets } } },
+          textured: {
+            parchment: { frame: { texture: makeFrameTexture(), insets } },
+          },
         };
     const bundle = createMixedDialogue(theme, {
       worldLayer: "bubble-world",
@@ -439,7 +461,10 @@ class DialogueScene extends Scene {
       // inert unless a line carries meta.portrait.
       avatar: {
         box: (layout) =>
-          new InBoxAvatarPresenter(layout, { layer: DIALOGUE_LAYER_AVATAR, width: 80 }),
+          new InBoxAvatarPresenter(layout, {
+            layer: DIALOGUE_LAYER_AVATAR,
+            width: 80,
+          }),
       },
     });
 
@@ -453,7 +478,9 @@ class DialogueScene extends Scene {
 
     host.on(DialogueLineEvent, (e) => probe.onLine(e.text));
     host.on(DialogueChoiceShownEvent, (e) => probe.onChoiceShown(e.options));
-    host.on(DialogueSelectionChangedEvent, (e) => probe.onSelectionChanged(e.index));
+    host.on(DialogueSelectionChangedEvent, (e) =>
+      probe.onSelectionChanged(e.index),
+    );
     host.on(DialogueChoiceMadeEvent, (e) => probe.onChoiceMade(e.text));
     host.on(DialogueRevealMarkerEvent, (e) => probe.onMarker(e.marker.name));
     host.on(DialogueEndedEvent, () => probe.onEnded());
@@ -467,7 +494,9 @@ class DialogueScene extends Scene {
       controller;
     // Extra scripts the spec can `play()` to exercise overflow + textured chrome
     // without disturbing the default conversation the other specs drive.
-    (window as unknown as { __scripts__: Record<string, DialogueScript> }).__scripts__ = {
+    (
+      window as unknown as { __scripts__: Record<string, DialogueScript> }
+    ).__scripts__ = {
       hub: HUB_SCRIPT,
       textured: TEXTURED_SCRIPT,
       position: POSITION_SCRIPT,

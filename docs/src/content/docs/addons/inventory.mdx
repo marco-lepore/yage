@@ -424,8 +424,8 @@ const bundle = createInventoryPanel({
 
 Insets are the fixed corner sizes in source-texture pixels; the edges and
 center stretch to the frame. Textures are `TextureInput` (an asset key or a
-resolved `Texture`), so the theme stays serializable. Omit the field — or a
-single key — to keep the drawn Graphics frame.
+resolved `Texture`). Use asset keys when the theme itself must remain plain
+data. Omit the field — or a single key — to keep the drawn Graphics frame.
 
 Beyond the theme dials, three **render-delegate presets** on the factory
 options own the drawing while the view keeps placement and hit-testing — so a
@@ -547,14 +547,20 @@ model's change events while something is watching it.
 
 ## Saving
 
-`snapshot()` / `restore()` round-trip the whole state as plain JSON, so wiring
-the save system is three lines with `@yagejs/save`:
+`snapshot()` / `restore()` round-trip the whole state as plain JSON. Include
+the inventory data in the game's explicit save root:
 
 ```ts
-snapshotService.registerSnapshotExtra("inventory", {
-  serialize: () => inventory.snapshot(),
-  restore: (data) => inventory.restore(data as InventorySnapshot),
-});
+import type { Serializable } from "@yagejs/core";
+import type { InventorySnapshot } from "@yagejs-addons/inventory";
+
+const gameState: Serializable<{ inventory: InventorySnapshot }> = {
+  serialize: () => ({ inventory: inventory.snapshot() }),
+  hydrate: ({ inventory: data }) => inventory.restore(data),
+};
+
+await save.persist("game", gameState);
+await save.restore("game", gameState);
 ```
 
 `restore` drops entries the current catalog doesn't declare or with invalid

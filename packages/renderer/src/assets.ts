@@ -466,10 +466,10 @@ const registeredTextures = new Map<string, TextureResource>();
  *
  * Registered keys are engine-global and live until {@link unregisterTexture} —
  * registration is a boot-scoped act, outside the asset manager's ref counts
- * and unloads. Snapshots store only the key, so for save/load the game
- * re-registers its runtime textures under the same keys before restoring (the
- * same boot code that registered them on first run); resolving a missing key
- * throws, naming the key.
+ * and unloads. A game-owned save root can store the key, but the game must
+ * re-register runtime textures under the same keys during boot before it
+ * reconstructs scenes and components. Resolving a missing key throws and
+ * names the key.
  *
  * Re-registering a key this API still owns replaces the cache entry;
  * components constructed before the replacement keep the old texture instance

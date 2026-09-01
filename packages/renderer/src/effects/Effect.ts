@@ -78,9 +78,3 @@ export interface Effect<H extends EffectHandle = EffectHandle> {
  */
 export type EffectFactory<H extends EffectHandle = EffectHandle> =
   () => Effect<H>;
-
-/** Options that control how an effect attachment participates in engine state. */
-export interface EffectAttachmentOptions {
-  /** Include the effect in save snapshots. Default: `true`. */
-  save?: boolean;
-}

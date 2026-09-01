@@ -10,7 +10,7 @@
  *
  * Every shape carries a `[STATE_KIND]` brand. The brand is a real exported
  * symbol — leaf factories set it at construction time, and `useStore`
- * dispatches on it for snapshot extraction. No more duck-typing on overlapping
+ * dispatches on it for value extraction. No more duck-typing on overlapping
  * method names.
  */
 
@@ -40,9 +40,7 @@ export const STATE_KIND: unique symbol = Symbol.for("yagejs.state.kind");
  * `migrate` callback returning the new encoded form sees the same shape.
  */
 export interface ReactiveValue<T, TEncoded = T>
-  extends Reactive,
-    Serializable<{ value: TEncoded }>,
-    Resettable {
+  extends Reactive, Serializable<{ value: TEncoded }>, Resettable {
   readonly [STATE_KIND]: "value";
   get(): T;
   set(value: T): void;
@@ -50,9 +48,7 @@ export interface ReactiveValue<T, TEncoded = T>
 
 /** Integer counter with arithmetic helpers. */
 export interface ReactiveCounter
-  extends Reactive,
-    Serializable<number>,
-    Resettable {
+  extends Reactive, Serializable<number>, Resettable {
   readonly [STATE_KIND]: "counter";
   value(): number;
   set(n: number): void;
@@ -87,9 +83,7 @@ export type DeletableRecordKey<T> =
  * codec, `serialize()` returns `TEncoded` and `hydrate` receives the same.
  */
 export interface ReactiveRecord<T extends object, TEncoded = T>
-  extends Reactive,
-    Serializable<TEncoded>,
-    Resettable {
+  extends Reactive, Serializable<TEncoded>, Resettable {
   readonly [STATE_KIND]: "record";
   get(): Readonly<T>;
   set(partial: Partial<T>): void;
@@ -109,9 +103,7 @@ export interface ReactiveRecord<T extends object, TEncoded = T>
 
 /** Key → value map. */
 export interface ReactiveMap<K, V>
-  extends Reactive,
-    Serializable<Array<[K, V]>>,
-    Resettable {
+  extends Reactive, Serializable<Array<[K, V]>>, Resettable {
   readonly [STATE_KIND]: "map";
   get(key: K): V | undefined;
   set(key: K, value: V): void;
@@ -124,9 +116,7 @@ export interface ReactiveMap<K, V>
 
 /** Set of keys. */
 export interface ReactiveSet<K>
-  extends Reactive,
-    Serializable<K[]>,
-    Resettable {
+  extends Reactive, Serializable<K[]>, Resettable {
   readonly [STATE_KIND]: "set";
   add(key: K): void;
   delete(key: K): void;
@@ -163,9 +153,7 @@ export type ListKey = string | number;
  * every key resolves to exactly one item.
  */
 export interface ReactiveList<T>
-  extends Reactive,
-    Serializable<ListEncoded<T>>,
-    Resettable {
+  extends Reactive, Serializable<ListEncoded<T>>, Resettable {
   readonly [STATE_KIND]: "list";
   /** Insert and return the assigned id. */
   add(item: T): number;

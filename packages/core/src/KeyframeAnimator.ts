@@ -8,10 +8,11 @@ import type { Process, ProcessClock } from "./Process.js";
 import type { ErrorBoundary } from "./ErrorBoundary.js";
 import type { Interpolatable } from "./interpolate.js";
 import type { EasingFunction } from "./types.js";
-import { serializable } from "./Serializable.js";
 
 /** Definition for a named keyframe animation. */
-export interface KeyframeAnimationDef<T extends Interpolatable = Interpolatable> {
+export interface KeyframeAnimationDef<
+  T extends Interpolatable = Interpolatable,
+> {
   /**
    * At least 2 keyframes, sorted by time. A track interpolates between
    * control points, so `play()` throws on fewer than 2.
@@ -62,7 +63,6 @@ export interface KeyframeAnimationDef<T extends Interpolatable = Interpolatable>
  * Each animation runs as a Process on the sibling ProcessComponent.
  * Requires a sibling ProcessComponent on the same entity.
  */
-@serializable
 export class KeyframeAnimator<T extends string = string> extends Component {
   private readonly defs: Record<string, KeyframeAnimationDef>;
   private readonly active = new Map<string, Process>();
@@ -125,10 +125,6 @@ export class KeyframeAnimator<T extends string = string> extends Component {
 
   override onDestroy(): void {
     this.stopAll();
-  }
-
-  serialize(): null {
-    return null;
   }
 
   private stopInternal(name: string, complete: boolean): void {

@@ -9,7 +9,6 @@ import type { AssetHandle } from "./AssetHandle.js";
 import type { AssetManager } from "./AssetManager.js";
 import type { ServiceKey } from "./EngineContext.js";
 import type { Logger } from "./Logger.js";
-import type { SnapshotResolver } from "./Serializable.js";
 import type { SceneTransition } from "./SceneTransition.js";
 import { filterEntities } from "./EntityFilter.js";
 import type { EntityFilter } from "./EntityFilter.js";
@@ -226,7 +225,10 @@ export abstract class Scene {
     fn: () => void,
   ): void {
     if (boundary) {
-      boundary.wrapLifecycleHook(fn, { kind: `Scene ${phase} hook`, scene: this.name });
+      boundary.wrapLifecycleHook(fn, {
+        kind: `Scene ${phase} hook`,
+        scene: this.name,
+      });
     } else {
       fn();
     }
@@ -599,9 +601,8 @@ export abstract class Scene {
   }
 
   /**
-   * Every entity in the scene, dormant ones included — this is the set save
-   * and teardown walk. The lookups below and the query cache return active
-   * entities only.
+   * Every entity in the scene, dormant ones included. Teardown walks this
+   * set; the lookups below and the query cache return active entities only.
    */
   getEntities(): ReadonlySet<Entity> {
     return this.entities;
@@ -625,7 +626,9 @@ export abstract class Scene {
   }
 
   /** Find active entities matching a filter. Trait filter narrows the return type. */
-  findEntities<T>(filter: EntityFilter & { trait: TraitToken<T> }): (Entity & T)[];
+  findEntities<T>(
+    filter: EntityFilter & { trait: TraitToken<T> },
+  ): (Entity & T)[];
   findEntities(filter?: EntityFilter): Entity[];
   findEntities(filter?: EntityFilter): Entity[] {
     if (!filter) {
@@ -733,8 +736,7 @@ export abstract class Scene {
   /**
    * Called when the scene becomes effectively paused (`isPaused` flips to
    * true), whatever the source: a `pauseBelow` scene pushed on top, a manual
-   * `paused = true`, the manager's blur auto-pause, or a snapshot restoring
-   * the scene paused.
+   * `paused = true`, or the manager's blur auto-pause.
    */
   onPause?(): void;
 
@@ -744,12 +746,6 @@ export abstract class Scene {
    * returns after a blur auto-pause.
    */
   onResume?(): void;
-
-  /** Return a JSON-serializable snapshot of this scene's custom state. Used by the save system. */
-  serialize?(): unknown;
-
-  /** Called after entities are restored during save/load. Rebuild non-serializable state here. */
-  afterRestore?(data: unknown, resolve: SnapshotResolver): void;
 
   // ---- Internal methods ----
 

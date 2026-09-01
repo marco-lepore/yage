@@ -3,10 +3,7 @@ export { TilemapPlugin } from "./TilemapPlugin.js";
 
 // Component
 export { TilemapComponent } from "./TilemapComponent.js";
-export type {
-  TilemapComponentOptions,
-  TilemapComponentData,
-} from "./TilemapComponent.js";
+export type { TilemapComponentOptions } from "./TilemapComponent.js";
 
 // System
 export { TilemapRenderSystem } from "./TilemapRenderSystem.js";

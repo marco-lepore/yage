@@ -1,21 +1,10 @@
 import { Component } from "./Component.js";
 import { devWarn } from "./internal/dev.js";
-import { serializable } from "./Serializable.js";
 import { Vec2 } from "./Vec2.js";
 import type { Vec2Like } from "./Vec2.js";
 
-/** Serialized transform state. */
-export interface TransformData {
-  position: { x: number; y: number };
-  rotation: number;
-  scale: { x: number; y: number };
-}
-
 /** Mutable transform component for entity positioning. */
-@serializable
 export class Transform extends Component {
-  static restorePriority = 0;
-
   // Private backing fields
   private _position: Vec2;
   private _rotation: number;
@@ -205,23 +194,5 @@ export class Transform extends Component {
     this._worldPosition = pt.worldPosition.add(rotatedLocal);
     this._worldRotation = pt.worldRotation + this._rotation;
     this._worldScale = pt.worldScale.multiply(this._scale);
-  }
-
-  // ---- Save/load support ----
-
-  serialize(): TransformData {
-    return {
-      position: { x: this._position.x, y: this._position.y },
-      rotation: this._rotation,
-      scale: { x: this._scale.x, y: this._scale.y },
-    };
-  }
-
-  static fromSnapshot(data: TransformData): Transform {
-    return new Transform({
-      position: { x: data.position.x, y: data.position.y },
-      rotation: data.rotation,
-      scale: { x: data.scale.x, y: data.scale.y },
-    });
   }
 }

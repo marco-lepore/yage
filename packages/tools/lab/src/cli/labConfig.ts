@@ -31,9 +31,9 @@ export interface LabConfig {
  * plugin.
  *
  * Extending rather than replacing is what makes a scenario behave like the
- * game. A game's config is where `vite-plugin-wasm` (physics), legacy decorator
- * support (`@serializable`) and `keepNames` (save/load) live, and a lab running
- * on a fresh config would break all three in ways that only show up at runtime.
+ * game. A game's config is where `vite-plugin-wasm` (physics), decorator
+ * transforms, and project aliases live. A fresh config can break all three in
+ * ways that only show up at runtime.
  */
 export async function createLabConfig(
   opts: LabConfigOptions,

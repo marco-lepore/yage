@@ -1,4 +1,4 @@
-import { Component, Transform, devWarn, serializable } from "@yagejs/core";
+import { Component, Transform, devWarn } from "@yagejs/core";
 import type { Entity } from "@yagejs/core";
 import { Container } from "pixi.js";
 import type { LayerSortFn } from "./LayerDef.js";
@@ -127,11 +127,6 @@ export interface SortGroupComponentOptions {
   innerSort?: LayerSortFn;
 }
 
-/** Serialisable snapshot of a {@link SortGroupComponent}. */
-export interface SortGroupData {
-  layer: string;
-}
-
 /**
  * Renders an entity's subtree of visuals as a single depth unit.
  *
@@ -162,11 +157,10 @@ export interface SortGroupData {
  * ```
  *
  * Add the component **before** the visuals it should capture (it also re-homes
- * any already-present subtree visuals when added late, and after save/load).
+ * any already-present subtree visuals when added late).
  * A `SortGroupComponent` on a descendant entity starts its own independent
  * unit rather than nesting inside the ancestor's.
  */
-@serializable
 export class SortGroupComponent extends Component {
   /** The group's Pixi container. Kept at identity; holds the member visuals. */
   readonly container: DisplayContainer;
@@ -196,11 +190,6 @@ export class SortGroupComponent extends Component {
     // another entity's group. Transform parenting (ECS) and sort grouping
     // stay independent.
     tree.get(this.layer).container.addChild(this.container);
-    this.regroup();
-  }
-
-  /** Re-home the subtree once parent/child links exist (save/load restore). */
-  afterRestore(): void {
     this.regroup();
   }
 
@@ -279,13 +268,5 @@ export class SortGroupComponent extends Component {
   private tryLayerContainer(): DisplayContainer | undefined {
     if (!this.entity.tryScene) return undefined;
     return this.use(SceneRenderTreeKey).tryGet(this.layer)?.container;
-  }
-
-  serialize(): SortGroupData {
-    return { layer: this.layer };
-  }
-
-  static fromSnapshot(data: SortGroupData): SortGroupComponent {
-    return new SortGroupComponent({ layer: data.layer });
   }
 }

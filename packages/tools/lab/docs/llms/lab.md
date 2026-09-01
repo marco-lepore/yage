@@ -37,8 +37,8 @@ yage-lab test [--timeout 30000] [--screenshots <dir>] \
 Every command also takes `--scenarios <comma-separated globs>`.
 
 All four load the project's own `vite.config.ts` and merge the lab into it, so
-scenarios run under the same plugins and transforms the game uses — wasm for
-Rapier, the legacy decorator transform for `@serializable`, path aliases.
+scenarios run under the same plugins and transforms the game uses, including
+Wasm for Rapier, TypeScript decorators, and path aliases.
 
 `init` prefills the harness from the `@yagejs/*` packages the project declares
 and writes nothing else. `@yagejs/core` and `@yagejs/renderer` must be
@@ -60,8 +60,8 @@ export const WIDTH = 800;
 export const HEIGHT = 480;
 
 export default defineHarness({
-  width: WIDTH,          // canvas width, default 800
-  height: HEIGHT,        // canvas height, default 480
+  width: WIDTH, // canvas width, default 800
+  height: HEIGHT, // canvas height, default 480
   engine: () => new Engine({ debug: true }),
   plugins: ({ container }) => [
     new RendererPlugin({ width: WIDTH, height: HEIGHT, container }),
@@ -123,18 +123,18 @@ export default defineScenario({
 
 `ScenarioDef` fields:
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `title` | `string` | Overrides where the list nests it, as a `/`-separated path. Defaults to the file's own location. |
-| `name` | `string` | The entry's own label. Defaults to the export name. |
-| `describe` | `string` | One or two sentences under the title. |
-| `controls` | `ControlSchema` | Built with `control.*`. |
-| `setup` | `(scene, controls) => void` | Builds a blank scene. Excludes `scene`. |
-| `scene` | `(controls) => Scene` | Mounts an existing scene. Excludes `setup`. |
-| `layers` | `readonly LayerDef[]` | `setup` form only. |
-| `preload` | `readonly AssetHandle[]` | `setup` form only. |
-| `onMounted` | `(scene, controls) => void` | After the scene is on the stack, every rebuild. |
-| `drive` | `(ctx) => Promise<void>` | A driven run. See below. |
+| Field       | Type                        | Notes                                                                                            |
+| ----------- | --------------------------- | ------------------------------------------------------------------------------------------------ |
+| `title`     | `string`                    | Overrides where the list nests it, as a `/`-separated path. Defaults to the file's own location. |
+| `name`      | `string`                    | The entry's own label. Defaults to the export name.                                              |
+| `describe`  | `string`                    | One or two sentences under the title.                                                            |
+| `controls`  | `ControlSchema`             | Built with `control.*`.                                                                          |
+| `setup`     | `(scene, controls) => void` | Builds a blank scene. Excludes `scene`.                                                          |
+| `scene`     | `(controls) => Scene`       | Mounts an existing scene. Excludes `setup`.                                                      |
+| `layers`    | `readonly LayerDef[]`       | `setup` form only.                                                                               |
+| `preload`   | `readonly AssetHandle[]`    | `setup` form only.                                                                               |
+| `onMounted` | `(scene, controls) => void` | After the scene is on the stack, every rebuild.                                                  |
+| `drive`     | `(ctx) => Promise<void>`    | A driven run. See below.                                                                         |
 
 The `scene` form gets layers and preloads from the `Scene` itself, which is why
 those two fields exist on the `setup` form only.
@@ -149,17 +149,24 @@ share:
 // src/entities/slime.scenario.ts  →  entities › slime › { idle, Chasing the player }
 const hp = { hp: control.int(30, { min: 1, max: 200 }) };
 
-function arena(scene: Scene) { /* shared by both */ }
+function arena(scene: Scene) {
+  /* shared by both */
+}
 
 export const idle = defineScenario({
   controls: hp,
-  setup(scene, c) { arena(scene); spawnSlime(scene, c.hp); },
+  setup(scene, c) {
+    arena(scene);
+    spawnSlime(scene, c.hp);
+  },
 });
 
 export const chase = defineScenario({
   name: "Chasing the player",
   controls: hp,
-  setup(scene, c) { /* ... */ },
+  setup(scene, c) {
+    /* ... */
+  },
 });
 ```
 
@@ -175,10 +182,10 @@ cannot be shown in declaration order.
 Plain data — a scenario file declaring controls imports no runtime engine code.
 
 ```ts
-control.number(0.6, { min: 0, max: 1, step: 0.05, label: "bounce" }) // slider, step defaults to 0.01
-control.int(3, { min: 1, max: 12 })                                  // whole numbers
-control.boolean(true, { label: "outline" })                          // checkbox
-control.select("green", ["green", "sky", "amber"])                   // dropdown
+control.number(0.6, { min: 0, max: 1, step: 0.05, label: "bounce" }); // slider, step defaults to 0.01
+control.int(3, { min: 1, max: 12 }); // whole numbers
+control.boolean(true, { label: "outline" }); // checkbox
+control.select("green", ["green", "sky", "amber"]); // dropdown
 ```
 
 `min`/`max` default to a range containing the value. `select` infers literal
@@ -226,17 +233,17 @@ async drive({ scene, controls, step, until, expect, input, events, capture }) {
 
 `DriveContext`:
 
-| Member | Signature | Notes |
-| --- | --- | --- |
-| `scene` | `Scene` | `findByKey(...)` reaches what the scenario spawned. |
-| `controls` | `ControlValues<C>` | The values the run started with. |
-| `framesUsed` | `number` | Frames the run has spent so far. Counts frames issued through `step`/`until` and through `Inspector.time.step()` called directly. |
-| `step` | `(frames?, { dtMs? }) => Promise<void>` | Advances frames, one at a time. `dtMs` sets the simulated milliseconds per frame for this call. |
-| `until` | `(predicate, { maxFrames?, dtMs? }) => Promise<number>` | Steps until true, resolving with the frames it took. Rejects after 600 frames by default. |
-| `expect` | `ExpectStatic` | `@vitest/expect`, Jest-style. |
-| `events` | `Inspector["events"]` | The engine's event log. |
-| `input` | `DriveInput` | Synthetic input, below. |
-| `capture` | `(label?) => Promise<string>` | Screenshots into the run's result, resolves with a PNG data URL. |
+| Member       | Signature                                               | Notes                                                                                                                             |
+| ------------ | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `scene`      | `Scene`                                                 | `findByKey(...)` reaches what the scenario spawned.                                                                               |
+| `controls`   | `ControlValues<C>`                                      | The values the run started with.                                                                                                  |
+| `framesUsed` | `number`                                                | Frames the run has spent so far. Counts frames issued through `step`/`until` and through `Inspector.time.step()` called directly. |
+| `step`       | `(frames?, { dtMs? }) => Promise<void>`                 | Advances frames, one at a time. `dtMs` sets the simulated milliseconds per frame for this call.                                   |
+| `until`      | `(predicate, { maxFrames?, dtMs? }) => Promise<number>` | Steps until true, resolving with the frames it took. Rejects after 600 frames by default.                                         |
+| `expect`     | `ExpectStatic`                                          | `@vitest/expect`, Jest-style.                                                                                                     |
+| `events`     | `Inspector["events"]`                                   | The engine's event log.                                                                                                           |
+| `input`      | `DriveInput`                                            | Synthetic input, below.                                                                                                           |
+| `capture`    | `(label?) => Promise<string>`                           | Screenshots into the run's result, resolves with a PNG data URL.                                                                  |
 
 **Every call that advances a frame is async and has to be awaited.**
 `Inspector.time.step()` is synchronous and drains nothing — use `step` from the
@@ -375,10 +382,10 @@ An id is the module path with the patterns' shared directory prefix and the
 `.scenario.ts` suffix removed, plus the export name when the scenario is a
 named one:
 
-| File and export | Id |
-| --- | --- |
-| `src/entities/slime.scenario.ts`, default | `entities/slime` |
-| `src/entities/slime.scenario.ts`, `idle` | `entities/slime/idle` |
+| File and export                           | Id                    |
+| ----------------------------------------- | --------------------- |
+| `src/entities/slime.scenario.ts`, default | `entities/slime`      |
+| `src/entities/slime.scenario.ts`, `idle`  | `entities/slime/idle` |
 
 Leave the glob at its `**` default and the shared prefix is empty, so every id
 carries `src/`. The whole path is kept either way, so two files both named
@@ -395,8 +402,10 @@ addressable by its file after being shown somewhere else:
 
 ```ts
 export const king = defineScenario({
-  title: "Bosses / Act 1 / Slime King",   // shown under Bosses › Act 1
-  setup(scene) { /* ... */ },             // still `entities/slime/king`
+  title: "Bosses / Act 1 / Slime King", // shown under Bosses › Act 1
+  setup(scene) {
+    /* ... */
+  }, // still `entities/slime/king`
 });
 ```
 
@@ -438,11 +447,11 @@ accepts is dropped silently. A scenario id that no file matches is reported.
 
 ## Entry points
 
-| Import | Contents |
-| --- | --- |
-| `@yagejs-tools/lab` | The grammar: `defineScenario`, `defineHarness`, `control`, and the types. Type-only where the engine is concerned — no runtime engine code, no pixi. |
-| `@yagejs-tools/lab/runner` | `mount`, `LabApi`, `LabClock`, `DriveResult`. The browser shell. Imported by a page that hosts the lab, never by a scenario file. |
-| `@yagejs-tools/lab/vite` | `yageLab(options)`, the Vite plugin the CLI uses. |
+| Import                     | Contents                                                                                                                                             |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@yagejs-tools/lab`        | The grammar: `defineScenario`, `defineHarness`, `control`, and the types. Type-only where the engine is concerned — no runtime engine code, no pixi. |
+| `@yagejs-tools/lab/runner` | `mount`, `LabApi`, `LabClock`, `DriveResult`. The browser shell. Imported by a page that hosts the lab, never by a scenario file.                    |
+| `@yagejs-tools/lab/vite`   | `yageLab(options)`, the Vite plugin the CLI uses.                                                                                                    |
 
 A scenario file imports the first only.
 
@@ -455,7 +464,13 @@ carrying it serves the lab rather than the game:
 import { yageLab } from "@yagejs-tools/lab/vite";
 
 export default defineConfig({
-  plugins: [yageLab({ scenarios: ["src/**/*.scenario.ts"], harness: "lab/harness.ts", title: "Lab" })],
+  plugins: [
+    yageLab({
+      scenarios: ["src/**/*.scenario.ts"],
+      harness: "lab/harness.ts",
+      title: "Lab",
+    }),
+  ],
 });
 ```
 
@@ -468,17 +483,28 @@ with. Useful from a browser console or an out-of-page driver:
 ```ts
 interface LabApi {
   readonly engine: Engine;
-  readonly scenarios: readonly ScenarioEntry[];   // { id, path, exportName, groups, label, title, hasDrive }
-  readonly problems: readonly RegistryProblem[];  // modules that were skipped
-  readonly clock: LabClock;                       // play/pause/step/speed
-  readonly ready: Promise<void>;                  // first mount done, or rejected with the boot error
+  readonly scenarios: readonly ScenarioEntry[]; // { id, path, exportName, groups, label, title, hasDrive }
+  readonly problems: readonly RegistryProblem[]; // modules that were skipped
+  readonly clock: LabClock; // play/pause/step/speed
+  readonly ready: Promise<void>; // first mount done, or rejected with the boot error
   current(): ScenarioEntry | undefined;
   controls(): Readonly<Record<string, ControlValue>>;
   scene(): Scene | undefined;
   show(id: string): Promise<void>;
   setControl(name: string, value: ControlValue): Promise<void>;
-  run(opts?: { pace?: "immediate" | "frame"; captureView?: "content" | "camera" }): Promise<DriveResult>;
-  drive<T = void>(fn: (ctx: DriveContext) => Promise<T> | T, opts?: { rebuild?: boolean; pace?: "immediate" | "frame"; captureView?: "content" | "camera"; maxFrames?: number }): Promise<DriveResult<T>>;
+  run(opts?: {
+    pace?: "immediate" | "frame";
+    captureView?: "content" | "camera";
+  }): Promise<DriveResult>;
+  drive<T = void>(
+    fn: (ctx: DriveContext) => Promise<T> | T,
+    opts?: {
+      rebuild?: boolean;
+      pace?: "immediate" | "frame";
+      captureView?: "content" | "camera";
+      maxFrames?: number;
+    },
+  ): Promise<DriveResult<T>>;
   capture(view?: "content" | "camera"): Promise<LabCaptureResult>;
 }
 ```

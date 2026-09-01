@@ -160,7 +160,9 @@ describe("Inspector", () => {
 
     expect(() =>
       inspector.addExtension("inventory", { grantItem: () => {} }),
-    ).toThrow('Inspector.addExtension(): namespace "inventory" is already registered.');
+    ).toThrow(
+      'Inspector.addExtension(): namespace "inventory" is already registered.',
+    );
   });
 
   it("getEntityByName finds entity", async () => {
@@ -374,7 +376,10 @@ describe("Inspector", () => {
     const errors = inspector.getErrors();
     expect(errors.callbackErrors).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ kind: "System TestSystem", error: "sys-fail" }),
+        expect.objectContaining({
+          kind: "System TestSystem",
+          error: "sys-fail",
+        }),
         expect.objectContaining({
           kind: "Component Health",
           entity: "enemy",
@@ -502,9 +507,9 @@ describe("Inspector", () => {
     entity.add(new Health(80));
 
     const log = inspector.events.getLog();
-    expect(log.find((entry) => entry.type === "entity:created")?.payload).toEqual(
-      { entity: { id: entity.id, name: "player" } },
-    );
+    expect(
+      log.find((entry) => entry.type === "entity:created")?.payload,
+    ).toEqual({ entity: { id: entity.id, name: "player" } });
     expect(
       log.find(
         (entry) =>
@@ -629,7 +634,7 @@ describe("Inspector", () => {
       }
     }
 
-    it("reflects a public getter when the component has no serialize()", async () => {
+    it("reflects a public getter", async () => {
       const { inspector, scenes } = setup();
       const scene = new TestScene("game");
       await scenes.push(scene);
@@ -651,7 +656,7 @@ describe("Inspector", () => {
       expect(snapState["isReady"]).toBe(true);
     });
 
-    it("snapshot no longer reports state: null by default for a component without serialize()", async () => {
+    it("reflects public component fields by default", async () => {
       const { inspector, scenes } = setup();
       const scene = new TestScene("game");
       await scenes.push(scene);
@@ -733,14 +738,17 @@ describe("Inspector", () => {
       let frame = 0;
       let transitionSettled = false;
       inspector.attachTimeController(
-        fakeController((count) => {
-          frame += count;
-          // Mirrors a SceneManager transition that resolves in a microtask
-          // rather than synchronously within stepFrames().
-          Promise.resolve().then(() => {
-            transitionSettled = true;
-          });
-        }, () => frame),
+        fakeController(
+          (count) => {
+            frame += count;
+            // Mirrors a SceneManager transition that resolves in a microtask
+            // rather than synchronously within stepFrames().
+            Promise.resolve().then(() => {
+              transitionSettled = true;
+            });
+          },
+          () => frame,
+        ),
       );
 
       const frames = await inspector.time.stepUntil(() => transitionSettled);
@@ -751,7 +759,12 @@ describe("Inspector", () => {
 
     it("throws once maxFrames is reached without the predicate becoming true", async () => {
       const { inspector } = setup();
-      inspector.attachTimeController(fakeController(() => {}, () => 0));
+      inspector.attachTimeController(
+        fakeController(
+          () => {},
+          () => 0,
+        ),
+      );
 
       await expect(
         inspector.time.stepUntil(() => false, { maxFrames: 3 }),
@@ -765,10 +778,13 @@ describe("Inspector", () => {
       const dts: Array<number | undefined> = [];
       let frame = 0;
       inspector.attachTimeController(
-        fakeController((count, dtMs) => {
-          frame += count;
-          dts.push(dtMs);
-        }, () => frame),
+        fakeController(
+          (count, dtMs) => {
+            frame += count;
+            dts.push(dtMs);
+          },
+          () => frame,
+        ),
       );
 
       await inspector.time.stepAsync(2, { dtMs: 32 });
@@ -1048,9 +1064,10 @@ describe("Inspector", () => {
       expect(outer.ok).toBe(true);
       expect((inner as Error).message).toContain("already in flight");
       // The guard clears, so the next drive runs.
-      await expect(
-        inspector.drive(() => "after"),
-      ).resolves.toMatchObject({ ok: true, value: "after" });
+      await expect(inspector.drive(() => "after")).resolves.toMatchObject({
+        ok: true,
+        value: "after",
+      });
     });
 
     it("holds the guard until the clock is restored, so a key-up listener cannot nest a drive", async () => {
@@ -1118,7 +1135,9 @@ describe("Inspector", () => {
       const { inspector } = setup();
       inspector.attachTimeController(driveController([]));
 
-      const result = await inspector.drive(({ events }) => events === inspector.events);
+      const result = await inspector.drive(
+        ({ events }) => events === inspector.events,
+      );
 
       expect(result).toMatchObject({ ok: true, value: true });
     });
@@ -1340,6 +1359,8 @@ describe("Inspector", () => {
 // how the renderer publishes its facet: core knows nothing about "render"; the
 // contributor owns the namespace and the duck-typing. No Pixi / renderer dep.
 class FakeRenderComponent extends Component {
+  readonly kind = "fake";
+
   constructor(
     readonly facet: {
       bounds: { x: number; y: number; width: number; height: number } | null;
@@ -1352,17 +1373,13 @@ class FakeRenderComponent extends Component {
   inspectRender() {
     return this.facet;
   }
-  serialize() {
-    return { kind: "fake" };
-  }
 }
 
 class ThrowingRenderComponent extends Component {
+  readonly kind = "throws";
+
   inspectRender(): never {
     throw new Error("display object not parented");
-  }
-  serialize() {
-    return { kind: "throws" };
   }
 }
 
@@ -1399,9 +1416,9 @@ describe("Inspector facet contributors", () => {
       }),
     );
 
-    const entity = inspector.snapshot().scenes[0]?.entities.find(
-      (candidate) => candidate.id === String(e.id),
-    );
+    const entity = inspector
+      .snapshot()
+      .scenes[0]?.entities.find((candidate) => candidate.id === String(e.id));
     expect(entity?.facets?.["render"]).toEqual({
       bounds: { x: 90, y: 40, width: 20, height: 20 },
       visible: true,
@@ -1495,8 +1512,8 @@ describe("Inspector facet contributors", () => {
     const comp = entity?.components.find(
       (c) => c.type === "ThrowingRenderComponent",
     );
-    // serialize() state is still captured; only the facet is omitted.
-    expect(comp?.state).toEqual({ kind: "throws" });
+    // Reflected component state is still captured; only the facet is omitted.
+    expect(comp?.state).toMatchObject({ kind: "throws" });
     expect(comp?.facets).toBeUndefined();
   });
 
@@ -1557,8 +1574,6 @@ describe("Inspector facet contributors", () => {
 
     unregister();
 
-    expect(
-      inspector.snapshot().scenes[0]?.entities[0]?.facets,
-    ).toBeUndefined();
+    expect(inspector.snapshot().scenes[0]?.entities[0]?.facets).toBeUndefined();
   });
 });

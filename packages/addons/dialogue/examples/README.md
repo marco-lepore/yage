@@ -26,14 +26,14 @@ See `examples/src/dialogue-addon.ts` (a thin wrapper that calls this example's
 
 ## What it demonstrates
 
-| Feature              | Where in the script / scene                                  |
-| -------------------- | ------------------------------------------------------------ |
-| Box dialogue         | narrator lines (default `view`)                              |
-| Bubble dialogue      | the `guide` line with `view: "bubble"` over a `DialogueActor` |
-| Branching choice     | the `choice` step with `target` jumps + a `goto`            |
-| `[wave]` / `[shake]` | per-glyph animated effects on narrator lines                |
-| Zero assets          | `defaultDialogueTheme()` (Graphics chrome + canvas SplitText/Text)  |
+| Feature              | Where in the script / scene                                        |
+| -------------------- | ------------------------------------------------------------------ |
+| Box dialogue         | narrator lines (default `view`)                                    |
+| Bubble dialogue      | the `guide` line with `view: "bubble"` over a `DialogueActor`      |
+| Branching choice     | the `choice` step with `target` jumps + a `goto`                   |
+| `[wave]` / `[shake]` | per-glyph animated effects on narrator lines                       |
+| Zero assets          | `defaultDialogueTheme()` (Graphics chrome + canvas SplitText/Text) |
 
-The scene also adds a `DialogueProbe` component whose `serialize()` exposes the
-last line / choice / term and an `ended` flag, which the Playwright e2e
-(`e2e/specs/dialogue-addon.spec.ts`) reads through the Inspector API.
+The scene also adds a `DialogueProbe` component with public diagnostic fields
+for the last line, choice, term, and completion state. The Playwright e2e
+(`e2e/specs/dialogue-addon.spec.ts`) reads them through the Inspector API.

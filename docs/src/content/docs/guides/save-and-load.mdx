@@ -3,16 +3,10 @@ title: "Save & Load"
 description: "Typed reactive stores, save slots, and persistent game state"
 ---
 
-YAGE has two persistence paths:
-
-1. **Stores + a Save instance** (this guide). Typed reactive singletons for
-   settings, save slots, world facts, and progression. The default for almost
-   everything.
-2. **Snapshot quicksave**. Full-scene serialization via `@serializable`, used
-   when you specifically want to "pause and resume the simulator." See the
-   [Snapshot Quicksave guide](/guides/snapshot-quicksave/) for that path.
-
-Most games only need stores. Reach for snapshots when stores aren't enough.
+YAGE saves explicit state roots. Use the built-in typed stores for settings,
+save slots, world facts, and progression, or implement
+`Serializable<TEncoded>` for a custom domain model. The save package does not
+traverse scenes, entities, components, renderer resources, or callbacks.
 
 ## Why stores
 
@@ -409,10 +403,14 @@ all subscribers synchronously on every change, and any UI bindings re-render.
 what ECS state and `useQuery` / `useSceneSelector` are for. If you find
 yourself debouncing every `set`, you're using the wrong primitive.
 
-## When stores aren't enough
+## Custom state roots
 
-If your game genuinely needs to capture and resume the entire simulator state
-(every entity, component, active process, scene stack) — for example a true
-quicksave during physics simulation — see the
-[Snapshot Quicksave guide](/guides/snapshot-quicksave/) for the
-`@serializable` path.
+When a domain model does not fit a built-in store, implement
+`Serializable<TEncoded>` directly. `serialize()` must return the complete
+durable representation, and `hydrate()` must replace the model with that
+representation. Pass the object to the same `persist`, `restore`, `saveSlot`,
+and `loadSlot` methods shown above.
+
+Live engine objects are not state roots. Save stable game facts such as entity
+kind, position, health, inventory, quest progress, and scene identity, then let
+normal scene setup reconstruct the corresponding runtime objects after load.

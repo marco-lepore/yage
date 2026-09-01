@@ -1,12 +1,7 @@
 import type { ScopedProcessQueue } from "@yagejs/core";
 import type { DisplayContainer as Container } from "../public-types.js";
 import { EffectStack } from "./EffectStack.js";
-import type { EffectStackSnapshot } from "./EffectStack.js";
-import type {
-  EffectAttachmentOptions,
-  EffectFactory,
-  EffectScope,
-} from "./Effect.js";
+import type { EffectFactory, EffectScope } from "./Effect.js";
 import type { EffectDefinition } from "./defineEffect.js";
 import type { EffectHandle } from "./EffectHandle.js";
 
@@ -16,8 +11,8 @@ import type { EffectHandle } from "./EffectHandle.js";
  * the user-facing API for adding / finding / fading effects is identical
  * regardless of where the effect lives.
  *
- * The underlying `EffectStack` is built lazily on first `addEffect` (or
- * `restore`) so sites that never use effects pay zero cost.
+ * The underlying `EffectStack` is built lazily on first `addEffect` so sites
+ * that never use effects pay zero cost.
  *
  * `getContainer` is a thunk because some sites (component scope) wire the
  * host at construction time but the underlying display object may itself be
@@ -36,21 +31,15 @@ export class EffectsHost {
 
   /**
    * Attach a visual effect. Returns a typed handle for fading, removal,
-   * intensity, and any per-effect extras the factory exposes. Pass
-   * `{ save: false }` when another runtime owner controls its lifetime.
+   * intensity, and any per-effect extras the factory exposes.
    */
-  addEffect<H extends EffectHandle>(
-    factory: EffectFactory<H>,
-    options: EffectAttachmentOptions = {},
-  ): H {
-    return this._ensureStack().add(factory, options);
+  addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H {
+    return this._ensureStack().add(factory);
   }
 
   /**
    * Recover the handle for the first effect attached here whose underlying
-   * definition is `definition`. Returns `null` if no match exists. Useful
-   * after `save/load` to re-acquire a handle whose caller-side reference
-   * went stale during restoration.
+   * definition is `definition`. Returns `null` if no match exists.
    */
   findEffect<H extends EffectHandle, O>(
     definition: EffectDefinition<H, O>,
@@ -61,18 +50,6 @@ export class EffectsHost {
   /** Number of attached effects on this host. */
   get size(): number {
     return this._stack?.size ?? 0;
-  }
-
-  /** @internal — used by the renderer's snapshot contributor. */
-  serialize(): EffectStackSnapshot | undefined {
-    if (!this._stack || this._stack.size === 0) return undefined;
-    const snap = this._stack.serialize();
-    return snap.entries.length > 0 ? snap : undefined;
-  }
-
-  /** @internal — used by the renderer's snapshot contributor. */
-  restore(snap: EffectStackSnapshot): void {
-    this._ensureStack().restoreFrom(snap);
   }
 
   /**

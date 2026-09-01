@@ -45,8 +45,7 @@ const sparkle = entity.add(new ParticleEmitterComponent({
 sparkle.burst(20);
 ```
 
-For an image asset, pass `texture` (or `textureKey`, which also survives
-save/load):
+For an image asset, pass `texture` or its string form, `textureKey`:
 
 ```typescript
 import { texture } from "@yagejs/renderer";
@@ -76,7 +75,7 @@ emitter.emit();  // start continuous emission
 | Property | Type | Default | Description |
 |---|---|---|---|
 | `texture` | `TextureInput` | — | Particle texture |
-| `textureKey` | `string` | — | Asset key (serializable alternative to `texture`) |
+| `textureKey` | `string` | — | Asset key alternative to `texture` |
 | `shape` | `ParticleShape \| ShapeConfig` | `"pixel"` | Built-in shape, optionally sized |
 | `maxParticles` | `number` | `100` | Maximum live particles |
 | `rate` | `number` | `10` | Emission rate (particles/sec) |
@@ -189,8 +188,8 @@ texture with a one-pixel antialiased edge, and fill their texture instead once
 they get too thin to hold one — at 3 pixels or less on either axis, a 1-pixel
 border would be the whole shape.
 
-An emitter using a shape saves and restores like one using `textureKey` — the
-shape and its size go into the snapshot.
+Generated shapes are cached by type and size, so emitters using the same shape
+configuration share one texture.
 
 ## Runtime Control
 

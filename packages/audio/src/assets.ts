@@ -16,10 +16,9 @@ const registeredSounds = new Map<string, Sound>();
  * analogue of the renderer's `registerTexture(key, texture)`.
  *
  * Registered aliases are engine-global, outside the asset manager's ref
- * counts and unloads, and live until {@link unregisterSound}. Snapshots
- * store only the alias, so for save/load the game
- * re-registers its runtime sounds under the same aliases before restoring
- * (the same boot code that registered them on first run).
+ * counts and unloads, and live until {@link unregisterSound}. A game that
+ * stores an alias in its own save data must re-register its runtime sound
+ * before reconstructing playback.
  *
  * Re-registering an alias this API still owns replaces the entry. An alias
  * already used by a loaded sound asset (or one that overwrote a stale

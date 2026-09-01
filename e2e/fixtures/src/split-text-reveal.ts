@@ -12,8 +12,8 @@ const container = setupContainer(WIDTH, HEIGHT);
 
 /**
  * Typewriter reveal: hides every glyph up front, then makes one more glyph
- * visible per frame by toggling `chars[i].visible`. The string stays the
- * full "Hello world" in `serialize()`; only the live display objects change.
+ * visible per frame by toggling `chars[i].visible`. The component's string
+ * stays the full "Hello world"; only the live display objects change.
  * The E2E reads the actual revealed glyphs via the Inspector render facet
  * (`snapshotScene().entities[].facets.render.glyphs` / `.visibleText`).
  */
@@ -41,9 +41,7 @@ class RevealScene extends Scene {
 
   onEnter(): void {
     const entity = this.spawn("reveal-label");
-    entity.add(
-      new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2) }),
-    );
+    entity.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2) }));
     const text = entity.add(
       new SplitTextComponent({
         text: REVEAL,

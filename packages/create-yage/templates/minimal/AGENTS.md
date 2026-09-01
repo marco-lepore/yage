@@ -51,12 +51,11 @@ keep `main.ts` short.
 - Spawn entities with `scene.spawn(EntityClass, params)` — YAGE calls `setup(params)` automatically
 - Resolve services with `this.service(Key)` or `this.use(Key)` inside components
 
-## If you add `@yagejs/save` later
+## Save state
 
-The Vite config already has `oxc.decorator.legacy: true` so `@serializable`
-decorators on your own classes will work immediately. You'll also want to
-add `build.rollupOptions.output.keepNames: true` at that point so the save
-system can match classes by name after minification.
+Use `@yagejs/save` with an explicit `Serializable<TEncoded>` state root. Save
+files contain only the state you choose; YAGE does not serialize the live ECS
+world automatically.
 
 ## Full YAGE documentation
 

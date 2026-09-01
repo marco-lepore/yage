@@ -8,12 +8,11 @@ import { computeRenderFacet } from "./internal/renderFacet.js";
 import type { RenderFacetSnapshot } from "./internal/renderFacet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import { resolveRenderParent } from "./SortGroupComponent.js";
-import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { VisualModifierHost } from "./VisualModifiers.js";
-import { attachMask, reattachMaskFromSnapshot } from "./masks/attachMask.js";
+import { attachMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
-import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
+import type { MaskHandle } from "./masks/MaskHandle.js";
 import type {
   BlendMode,
   ColorValue,
@@ -67,41 +66,6 @@ export interface VisualComponentOptions {
   interactive?: VisualInteractiveOptions;
 }
 
-/** Snapshot fields shared by all five visual components. */
-export interface VisualComponentData {
-  layer: string;
-  tint?: ColorValue;
-  alpha?: number;
-  visible?: boolean;
-  /** Omitted while the object blends normally, which is the common case. */
-  blendMode?: BlendMode;
-  /**
-   * See {@link VisualComponentOptions.interactive} — persisted so restored
-   * scenes keep `eventMode` and the `consumeOnInteraction` mark on the
-   * rebuilt container.
-   */
-  interactive?: VisualInteractiveOptions;
-  effects?: EffectStackSnapshot;
-  mask?: MaskSnapshot;
-}
-
-/**
- * Copy the shared visual fields out of a snapshot into the options object a
- * subclass's `fromSnapshot` hands to its constructor. Each subclass then adds
- * only its own fields (texture key, text, anchor, ...) on top.
- */
-export function visualOptionsFromData(
-  data: VisualComponentData,
-): VisualComponentOptions {
-  const options: VisualComponentOptions = { layer: data.layer };
-  if (data.tint !== undefined) options.tint = data.tint;
-  if (data.alpha !== undefined) options.alpha = data.alpha;
-  if (data.visible !== undefined) options.visible = data.visible;
-  if (data.blendMode !== undefined) options.blendMode = data.blendMode;
-  if (data.interactive) options.interactive = { ...data.interactive };
-  return options;
-}
-
 /**
  * Shared base for the renderer's five visual components (Sprite,
  * AnimatedSprite, Graphics, Text, SplitText). Carries the render-layer field,
@@ -116,9 +80,6 @@ export function visualOptionsFromData(
  * constructor since `renderObject` isn't assigned yet at that point.
  */
 export abstract class VisualComponent extends Component {
-  // Inherited by every visual subclass.
-  static restorePriority = 30;
-
   /** The underlying Pixi display object. */
   abstract readonly renderObject: DisplayContainer;
   readonly layerName: string;
@@ -126,7 +87,7 @@ export abstract class VisualComponent extends Component {
    * Component-scope effects host. `.fx.addEffect(...)` attaches a filter to
    * this component's render object; the effect is torn down automatically
    * when the entity or component is destroyed. `.fx.findEffect(definition)`
-   * recovers the handle for the first matching effect after save/load.
+   * recovers the handle for the first matching effect.
    */
   readonly fx: EffectsHost;
   /**
@@ -135,12 +96,10 @@ export abstract class VisualComponent extends Component {
    */
   readonly modifiers: VisualModifierHost;
   private _mask: MaskHandle | undefined;
-  private _interactive: VisualInteractiveOptions | undefined;
   /**
    * The visibility the game asked for. The Pixi flag is this AND the
    * component being effectively enabled, so hiding a sprite by hand survives
-   * a `setActive(false)` / `setActive(true)` cycle and a snapshot taken while
-   * the entity is dormant still records the game's value.
+   * a `setActive(false)` / `setActive(true)` cycle.
    */
   private _userVisible = true;
   /** The alpha requested by the game, before transient opacity modifiers. */
@@ -170,7 +129,6 @@ export abstract class VisualComponent extends Component {
       this.renderObject.blendMode = options.blendMode;
     }
     if (options.interactive) {
-      this._interactive = { ...options.interactive };
       this.renderObject.eventMode = options.interactive.eventMode ?? "static";
       if (options.interactive.consumeOnInteraction) {
         markPointerConsumeContainer(this.renderObject);
@@ -224,48 +182,6 @@ export abstract class VisualComponent extends Component {
   }
 
   /**
-   * Serialise the shared layer/visible/tint/alpha/blendMode/interactive/
-   * effects/mask fields. Subclasses spread this into their own `Data` object
-   * alongside their own-specific fields (texture key, text, anchor, ...).
-   */
-  protected serializeVisual(): VisualComponentData {
-    const data: VisualComponentData = {
-      layer: this.layerName,
-      tint: this.renderObject.tint,
-      alpha: this._userAlpha,
-      visible: this._userVisible,
-    };
-    // Pixi constructs every display object at `"inherit"`, not `"normal"` —
-    // so `"inherit"` is the value worth omitting. Recording an explicit
-    // `"normal"` matters: under a non-normal parent the two differ.
-    const blendMode = this.renderObject.blendMode;
-    if (blendMode !== "inherit") data.blendMode = blendMode;
-    if (this._interactive) data.interactive = { ...this._interactive };
-    const effects = this.fx.serialize();
-    if (effects) data.effects = effects;
-    const mask = this._mask?.serialize();
-    if (mask) data.mask = mask;
-    return data;
-  }
-
-  /**
-   * Restore effects and mask from a snapshot's shared fields. Call from the
-   * subclass's `afterRestore`, after the render object is parented.
-   */
-  protected restoreVisual(
-    data: Pick<VisualComponentData, "effects" | "mask">,
-  ): void {
-    if (data.effects) this.fx.restore(data.effects);
-    if (data.mask) {
-      this._mask = reattachMaskFromSnapshot(
-        this._mask,
-        this.renderObject,
-        data.mask,
-      );
-    }
-  }
-
-  /**
    * Attach a mask to this component's render object, replacing any existing
    * mask. Returns a handle for inverse toggling, redraw (graphicsMask), or
    * removal. The mask is torn down automatically when the component is
@@ -283,10 +199,7 @@ export abstract class VisualComponent extends Component {
     this._mask = undefined;
   }
 
-  /**
-   * The currently attached mask handle, if any. Useful after save/load to
-   * recover a handle whose caller-side reference went stale.
-   */
+  /** The currently attached mask handle, if any. */
   get mask(): MaskHandle | undefined {
     return this._mask;
   }
@@ -294,8 +207,8 @@ export abstract class VisualComponent extends Component {
   /**
    * Derived render facet for the Inspector — world-space `bounds` and the
    * component's own (local, non-inherited) `visible` flag, computed on
-   * demand from the live render object. Not part of `serialize()`; see
-   * {@link computeRenderFacet} for the bounds coordinate space.
+   * demand from the live render object. See {@link computeRenderFacet} for
+   * the bounds coordinate space.
    */
   inspectRender(): RenderFacetSnapshot {
     return computeRenderFacet(this.renderObject);

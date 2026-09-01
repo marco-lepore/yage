@@ -162,12 +162,11 @@ class LevelScene extends Scene {
 }
 ```
 
-`source` takes the same `AssetHandle` you passed to `preload`. Internally
-the component captures both the parsed map data and the asset path, so the
-same constructor argument enables save/load **and** the
-[Tiled-derived auto-keys](#spawning-entities-from-tiled-objects-auto-keys)
-covered below. If you don't have a handle in scope, you can still pass
-`mapKey` as a plain string.
+`source` takes the same `AssetHandle` you passed to `preload`. The component
+uses both the parsed map data and the asset path, so the same argument also
+enables the [Tiled-derived auto-keys](#spawning-entities-from-tiled-objects-auto-keys)
+covered below. If you don't have a handle in scope, pass `mapKey` as a plain
+string.
 
 Query map dimensions from the component:
 
@@ -248,22 +247,18 @@ one through.
 An external tileset that has not been loaded yet is not reported — it resolves
 during preload.
 
-## Serialization
+## Choosing the map input
 
-`TilemapComponent` is `@serializable`, but the live parsed map it wraps is
-not — the parsed `TiledMapData` carries PixiJS textures, which don't survive
-`JSON.stringify`. The constructor therefore accepts three alternative
-inputs: a `source: AssetHandle<TiledMapData>` (preferred — captures both the
-parsed data and the asset path in one argument, which doubles as the prefix
-for object auto-keys), an in-memory `map` object for the fast-path case
-where you already have the parsed map, and a `mapKey` asset path that can
-be re-resolved from the `AssetManager` after a reload.
+The constructor accepts three inputs: a `source: AssetHandle<TiledMapData>`
+(preferred, because it carries both the parsed data and the asset path), an
+in-memory `map` object when you already have parsed data, or a `mapKey` asset
+path that the component resolves through the `AssetManager`.
 
 ```typescript
 interface TilemapComponentOptions extends VisualComponentOptions {
   /** Asset handle — preferred. Captures both data and path in one place. */
   source?: AssetHandle<TiledMapData>;
-  /** Parsed Tiled map data — not serializable, no auto-keys. */
+  /** Parsed Tiled map data. Requires keyPrefix for auto-keys. */
   map?: TiledMapData;
   /** Asset path string — equivalent to `source` when you don't have the handle. */
   mapKey?: string;
@@ -276,33 +271,25 @@ interface TilemapComponentOptions extends VisualComponentOptions {
 }
 ```
 
-For any game that uses the save/load system, **pass `source` (or `mapKey`)
-rather than `map`**. When a `TilemapComponent` constructed with an inline
-`map` gets serialized, `serialize()` emits a warning and the snapshot cannot
-round-trip through `afterRestore()`. The asset-path form lets the save
-system store just the reference and re-look-up the texture-backed map on
-restore:
+Use `source` when the map is part of scene preload. Use `mapKey` when only the
+asset path is in scope. Use `map` for generated or already parsed data; add a
+`keyPrefix` if Tiled object ids need stable game-wide keys:
 
 ```typescript
-// Recommended: save/load friendly + auto-keys for Tiled objects
+// Preferred for preloaded assets; enables auto-keys for Tiled objects.
 map.add(new TilemapComponent({
   source: MapData,
   layers: ["ground", "walls"],
   layer: "map",
 }));
 
-// One-shot prototypes only — will NOT survive a save/load cycle and
-// auto-keys are unavailable.
+// Generated or already parsed data. Add keyPrefix to enable auto-keys.
 map.add(new TilemapComponent({
   map: parsedTiledJson,
+  keyPrefix: "generated-level-1",
   layer: "map",
 }));
 ```
-
-The snapshot (`TilemapComponentData`) stores the asset key, the layer
-selection, any explicit keyPrefix override, and the shared visual fields every
-visual component saves — render layer, tint, alpha, visibility, blend mode,
-effects and mask. The live map is reconstructed from the asset key on load.
 
 ## Map Data Structure
 
@@ -477,8 +464,8 @@ collection-of-images tileset.
 Splitting a two-second pause into ten identical 200ms frames is usually enough
 to bring an animation back into the supported shape.
 
-The animation phase is not part of a save. A tilemap restored from a snapshot
-starts its cycle from the beginning.
+The animation clock is runtime state. Reconstructing the scene starts the cycle
+from the beginning.
 
 ## Object Layers
 

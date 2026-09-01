@@ -131,7 +131,7 @@ object, or an exited scene's `SceneTime` — throws.
 **Gotcha — a buffered press outlives a pause.** The scene clock stops while the
 scene is paused, so a window measured on it never expires there: a jump pressed
 just before the pause menu opens still fires on resume, however long the menu
-was up. Presses made *during* the pause are buffered too, unless the action's
+was up. Presses made _during_ the pause are buffered too, unless the action's
 group is disabled while the menu is up — an action in no group is always
 enabled. The engine holds the press rather than guessing how long is too long.
 Discard it in the scene's `onResume` by consuming it and ignoring the result.
@@ -164,19 +164,25 @@ The singular getters above always report the **primary** pointer (the one the br
 ```ts
 import type { PointerInfo } from "@yagejs/input";
 
-input.getPointers();      // readonly PointerInfo[] — one per active mouse / pen / finger
-input.getPointer(id);     // PointerInfo | undefined — direct lookup by pointerId
+input.getPointers(); // readonly PointerInfo[] — one per active mouse / pen / finger
+input.getPointer(id); // PointerInfo | undefined — direct lookup by pointerId
 
 // Per-pointer events. Each returns a disposer.
-const off = input.onPointerDown((p: PointerInfo) => {/* ... */});
-input.onPointerUp((p) => {/* fires for pointer release AND pointercancel */});
-input.onPointerMove((p) => {/* ... */});
+const off = input.onPointerDown((p: PointerInfo) => {
+  /* ... */
+});
+input.onPointerUp((p) => {
+  /* fires for pointer release AND pointercancel */
+});
+input.onPointerMove((p) => {
+  /* ... */
+});
 off();
 ```
 
 `PointerInfo` carries `{ id, screenPos: Vec2, type: "mouse" | "pen" | "touch", isPrimary: boolean, buttons: ReadonlySet<number>, isDown: boolean, button: number }`. Treat as an immutable snapshot — don't retain across frames.
 
-`button` is the edge that triggered the event: `0`/`1`/`2` for the pressed/released button in an `onPointerDown`/`onPointerUp` listener, `-1` for `onPointerMove`, `pointercancel`-driven up notifications, and `getPointers()`/`getPointer()` snapshots. **In a down/up listener, filter by `p.button`, not `p.buttons`** — listeners fire synchronously *before* the press/release edge is drained into `buttons`, so `buttons` does not yet reflect this event (gating on `p.buttons.has(0)` in `onPointerDown` is a permanent no-op).
+`button` is the edge that triggered the event: `0`/`1`/`2` for the pressed/released button in an `onPointerDown`/`onPointerUp` listener, `-1` for `onPointerMove`, `pointercancel`-driven up notifications, and `getPointers()`/`getPointer()` snapshots. **In a down/up listener, filter by `p.button`, not `p.buttons`** — listeners fire synchronously _before_ the press/release edge is drained into `buttons`, so `buttons` does not yet reflect this event (gating on `p.buttons.has(0)` in `onPointerDown` is a permanent no-op).
 
 Touch / pen pointers are removed from `getPointers()` once their last button releases (or on `pointercancel`). Mouse pointers persist across click cycles. The `MouseLeft/Middle/Right` action codes are aggregate "any pointer holds this button" — two simultaneous taps holding button 0 emit one down edge, one up edge.
 
@@ -187,7 +193,13 @@ Register `RendererPlugin` **before** `InputPlugin`. `InputPlugin` auto-resolves 
 ```ts
 import { InputPlugin } from "@yagejs/input";
 
-engine.use(new InputPlugin({ actions: { /* … */ } }));
+engine.use(
+  new InputPlugin({
+    actions: {
+      /* … */
+    },
+  }),
+);
 ```
 
 If input installs before a renderer registers, the resolve silently returns `undefined` and input falls back to raw canvas-relative CSS pixels — correct only when canvas CSS size equals virtual size. Order matters; make sure `RendererPlugin` is used first.
@@ -198,7 +210,14 @@ Override `rendererKey` only when you ship a custom renderer registered under a d
 import { InputPlugin } from "@yagejs/input";
 import { MyCustomRendererKey } from "./my-renderer.js";
 
-engine.use(new InputPlugin({ rendererKey: MyCustomRendererKey, actions: { /* … */ } }));
+engine.use(
+  new InputPlugin({
+    rendererKey: MyCustomRendererKey,
+    actions: {
+      /* … */
+    },
+  }),
+);
 ```
 
 ### Camera setup for world coordinates
@@ -232,13 +251,23 @@ import { InputManagerKey } from "@yagejs/input";
 const input = context.resolve(InputManagerKey);
 
 // Keys: code-specific or `"*"` for any-key.
-const offSpace = input.onKeyDown("Space", (code) => {/* fired once per press */});
-input.onKeyUp("Space", (code) => {/* once per release */});
-input.onKeyDown("*", (code) => {/* fired for every key, useful for rebinding UIs */});
+const offSpace = input.onKeyDown("Space", (code) => {
+  /* fired once per press */
+});
+input.onKeyUp("Space", (code) => {
+  /* once per release */
+});
+input.onKeyDown("*", (code) => {
+  /* fired for every key, useful for rebinding UIs */
+});
 
 // Actions: name-based, fires for every binding (keyboard + gamepad + mouse).
-input.onAction("fire", (name) => {/* rising edge */});
-input.onActionReleased("fire", (name) => {/* falling edge */});
+input.onAction("fire", (name) => {
+  /* rising edge */
+});
+input.onActionReleased("fire", (name) => {
+  /* falling edge */
+});
 
 // All return disposers; call to detach.
 offSpace();
@@ -256,8 +285,8 @@ new InputPlugin({
     zoomIn: ["WheelUp", "Equal"],
     zoomOut: ["WheelDown", "Minus"],
   },
-  wheelInvertY: false,         // default; flip if your game wants positive dy = up
-  preventDefaultWheel: false,  // default; opt-in to swallow page scroll
+  wheelInvertY: false, // default; flip if your game wants positive dy = up
+  preventDefaultWheel: false, // default; opt-in to swallow page scroll
 });
 
 // In a component
@@ -269,7 +298,7 @@ input.consumeWheel(); // suppress WheelUp/Down/Left/Right action edges this fram
 
 ## Frame deferral
 
-DOM-originated keyboard, pointer, and wheel events buffer onto an internal queue and apply at `Phase.EarlyUpdate` via `InputPollSystem`. Action queries (`isJustPressed`, `isJustReleased`) see the edge on the frame *after* the browser dispatch — single-frame latency, invisible to gameplay reading state at frame start.
+DOM-originated keyboard, pointer, and wheel events buffer onto an internal queue and apply at `Phase.EarlyUpdate` via `InputPollSystem`. Action queries (`isJustPressed`, `isJustReleased`) see the edge on the frame _after_ the browser dispatch — single-frame latency, invisible to gameplay reading state at frame start.
 
 ```
 F0:  browser dispatches `pointerdown`
@@ -289,9 +318,9 @@ Synthetic injection bypasses the queue and applies state synchronously — tests
 Primitives for handler code that wants to claim an event so it doesn't propagate to the action map. Listener notifications still fire (they're explicit user opt-ins); only the gameplay action edges (`MouseLeft`/`Middle`/`Right`, `WheelUp/Down/Left/Right`) are suppressed.
 
 ```ts
-input.consumePointer(id);          // claim a pointer for the rest of its event cycle
-input.isPointerConsumed(id);       // boolean
-input.consumeWheel();              // suppress wheel action edges for this frame
+input.consumePointer(id); // claim a pointer for the rest of its event cycle
+input.isPointerConsumed(id); // boolean
+input.consumeWheel(); // suppress wheel action edges for this frame
 ```
 
 `consumePointer` lifetime is per-pointer-event-cycle: cleared when the pointer's last button releases (drained `pointerUp`) or on `pointercancel`. So a tap-and-drag pattern works naturally — claim on `pointerdown`, the matching `pointerup` is also gated, and a fresh down later starts unmarked.
@@ -306,7 +335,7 @@ overlayEl.addEventListener("pointerdown", (e) => {
     new PointerEvent("pointerdown", {
       pointerId: e.pointerId,
       pointerType: e.pointerType, // else a forwarded touch/pen reads as mouse
-      isPrimary: e.isPrimary,     // drives primary-pointer reads
+      isPrimary: e.isPrimary, // drives primary-pointer reads
       clientX: e.clientX,
       clientY: e.clientY,
       button: 0,
@@ -330,19 +359,22 @@ Per-component escape hatch via `consumeInput?: boolean` (default `true`):
 // React
 <Panel consumeInput={false}>
   {/* This panel is transparent to the action map; clicks pass through. */}
-</Panel>
+</Panel>;
 
 // Imperative
-new UIPanel({ consumeInput: false, /* … */ });
+new UIPanel({ consumeInput: false /* … */ });
 ```
 
 For custom Pixi containers that should also auto-consume, mark them yourself:
 
 ```ts
-import { markPointerConsumeContainer, unmarkPointerConsumeContainer } from "@yagejs/core";
+import {
+  markPointerConsumeContainer,
+  unmarkPointerConsumeContainer,
+} from "@yagejs/core";
 
 const container = new Container();
-markPointerConsumeContainer(container);  // also forces eventMode="static"
+markPointerConsumeContainer(container); // also forces eventMode="static"
 // later
 unmarkPointerConsumeContainer(container);
 ```
@@ -360,7 +392,8 @@ new SpriteComponent({
 });
 ```
 
-`consumeOnInteraction: true` adds the sprite to the consume registry. The setting persists across save/load via `SpriteData.interactive`.
+`consumeOnInteraction: true` adds the sprite to the consume registry for the
+component's lifetime.
 
 ## Runtime Rebinding
 
@@ -449,9 +482,9 @@ via `getTrigger`.
 ### Analog API
 
 ```ts
-const leftStick = input.getStick("left");      // Vec2 — radial deadzone, magnitude clamped to 1.0
-const rightStick = input.getStick("right");    // Vec2
-const leftTrigger = input.getTrigger("left");  // number, 0..1
+const leftStick = input.getStick("left"); // Vec2 — radial deadzone, magnitude clamped to 1.0
+const rightStick = input.getStick("right"); // Vec2
+const leftTrigger = input.getTrigger("left"); // number, 0..1
 const rightTrigger = input.getTrigger("right");
 
 // Explicit per-pad lookup (couch-co-op style)
@@ -469,9 +502,9 @@ deadzone). The active pad's own activity keeps it from being reassigned, so
 two players each pressing buttons doesn't bounce active back and forth.
 
 ```ts
-input.getActivePad();              // GamepadInfo | null
-input.setActivePad(0);             // manual switch (must be connected)
-input.setActivePad(null);          // clear; analog falls back to synthetic state
+input.getActivePad(); // GamepadInfo | null
+input.setActivePad(0); // manual switch (must be connected)
+input.setActivePad(null); // clear; analog falls back to synthetic state
 
 const dispose = input.onActivePadChanged((info) => {
   // Replays current state on subscribe; fires on every transition.
@@ -509,8 +542,8 @@ new InputPlugin({
 ### Synthetic injection (testing + virtual controls)
 
 ```ts
-input.fireGamepadButton("GamepadA", true);   // routes through real path
-input.fireGamepadAxis("leftX", 0.7);         // stored under synthetic pad
+input.fireGamepadButton("GamepadA", true); // routes through real path
+input.fireGamepadAxis("leftX", 0.7); // stored under synthetic pad
 
 // Pointer injection accepts an optional opts arg for multi-pointer / touch tests.
 input.firePointerMove(120, 80);
@@ -531,17 +564,17 @@ sources use it to shape their own values with the same response.
 Drive actions directly by name — no keymap knowledge — for synthetic devices (touch buttons, virtual controls) and tests. Symmetric to the physical-key path (`fireKeyDown`/`fireKeyUp`) but keyed by action. All three throw on an unknown action name.
 
 ```ts
-input.fireAction("attack");          // one-frame pulse: isJustPressed true for 1 frame
+input.fireAction("attack"); // one-frame pulse: isJustPressed true for 1 frame
 
-input.fireActionDown("attack");      // sustained: isPressed stays true across frames,
-                                     //   getHoldDuration accrues, onAction fires once
-input.fireActionUp("attack");        // real release: isJustReleased edge + onActionReleased
+input.fireActionDown("attack"); // sustained: isPressed stays true across frames,
+//   getHoldDuration accrues, onAction fires once
+input.fireActionUp("attack"); // real release: isJustReleased edge + onActionReleased
 
 input.setActionHeld("attack", held); // mirror a pointer's held boolean onto down/up
 
-input.hasAction("attack");           // is the name in the action map? Validate
-                                     //   config-sourced names up front instead of
-                                     //   catching the throw mid-gesture
+input.hasAction("attack"); // is the name in the action map? Validate
+//   config-sourced names up front instead of
+//   catching the throw mid-gesture
 ```
 
 `fireActionDown` is idempotent (a repeat does not reset the hold start or re-fire the edge). Hold/charge example: `setActionHeld("attack", pointerDown)` each frame, then on `isJustReleased("attack")` fire with `getReleaseDuration("attack")` (seconds held, valid on the release frame regardless of mirror order).

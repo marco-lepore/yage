@@ -6,9 +6,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   oxc: {
-    // Vitest 4 pulls Vite 8, which uses oxc for transforms. oxc only
-    // implements the legacy (stage-2) TS decorator transform — without this
-    // flag, `@serializable` in test files crashes the parser.
+    // Vitest 4 uses oxc for transforms. YAGE decorators such as @trait use
+    // TypeScript's legacy decorator transform.
     decorator: {
       legacy: true,
     },

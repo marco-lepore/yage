@@ -1,18 +1,9 @@
 import { Tween } from "@yagejs/core";
 import type { Process, ScopedProcessQueue } from "@yagejs/core";
 import type { DisplayContainer as Container, Filter } from "../public-types.js";
-import type {
-  Effect,
-  EffectAttachmentOptions,
-  EffectFactory,
-  EffectScope,
-} from "./Effect.js";
+import type { Effect, EffectFactory, EffectScope } from "./Effect.js";
 import type { EffectHandle } from "./EffectHandle.js";
-import {
-  EFFECT_META,
-  getEffectMeta,
-  getRegisteredEffect,
-} from "./defineEffect.js";
+import { getEffectMeta } from "./defineEffect.js";
 
 function effectFilters(effect: Effect): Filter[] {
   return Array.isArray(effect.filter) ? effect.filter : [effect.filter];
@@ -26,23 +17,6 @@ function readCurrentFilters(displayObject: Container): Filter[] {
     | undefined;
   if (current == null) return [];
   return Array.isArray(current) ? [...current] : [current as Filter];
-}
-
-/** Serialized snapshot of an `EffectStack`. */
-export interface EffectStackSnapshot {
-  entries: EffectStackEntry[];
-}
-
-/** One entry inside an {@link EffectStackSnapshot}. */
-export interface EffectStackEntry {
-  /** Registered effect definition name (`yage:hitFlash`, etc). */
-  name: string;
-  /** Snapshot of the options passed to the definition at attach time. */
-  options: unknown;
-  /** Primary intensity at save time. */
-  intensity: number;
-  /** Whether the effect's filter(s) were enabled. */
-  enabled: boolean;
 }
 
 /**
@@ -63,11 +37,9 @@ export interface EffectStackEntry {
 export class EffectStack {
   private readonly entries = new Set<Effect>();
   private readonly handles = new Map<Effect, EffectHandle>();
-  private readonly unsavedEffects = new Set<Effect>();
   private readonly ownedFilters = new Set<Filter>();
   private readonly effectProcesses = new Map<Effect, Set<Process>>();
   private destroyed = false;
-  private warnedUnsavable = false;
 
   constructor(
     private readonly displayObject: Container,
@@ -76,10 +48,7 @@ export class EffectStack {
   ) {}
 
   /** Build and attach an effect, returning its handle. */
-  add<H extends EffectHandle>(
-    factory: EffectFactory<H>,
-    options: EffectAttachmentOptions = {},
-  ): H {
+  add<H extends EffectHandle>(factory: EffectFactory<H>): H {
     if (this.destroyed) {
       throw new Error(
         `EffectStack: cannot add effect to a destroyed ${this.scope}-scope stack.`,
@@ -87,12 +56,11 @@ export class EffectStack {
     }
     const effect = factory() as Effect<H>;
     // Run onAttach BEFORE registering the effect with the stack so a thrown
-    // onAttach can't leave an orphan entry that `serialize()` / `destroy()`
+    // onAttach can't leave an orphan entry that `destroy()`
     // would later see. (`onDetach` won't fire for a never-attached effect,
     // which is the right pairing.)
     effect.onAttach?.({ displayObject: this.displayObject, scope: this.scope });
     this.entries.add(effect);
-    if (options.save === false) this.unsavedEffects.add(effect);
     this.syncFilters();
 
     // Per-effect process tracking — fades, hitFlash trigger ramps, CRT
@@ -181,9 +149,7 @@ export class EffectStack {
 
   /**
    * Find the handle for the first effect in the stack built from a
-   * `defineEffect`-registered definition with the given `name`. Useful
-   * after `restoreFrom` to recover a handle to a saved effect (e.g. a
-   * `hitFlash` whose `trigger()` button needs to keep working).
+   * `defineEffect` definition with the given `name`.
    *
    * Returns `undefined` if no matching entry exists. If the stack holds
    * multiple entries with the same definition name, the first one
@@ -199,90 +165,6 @@ export class EffectStack {
     return undefined;
   }
 
-  /**
-   * Capture the steady-state of saved effects in the stack. Attachments with
-   * `save: false` are skipped silently. Other effects built from
-   * `defineEffect`-registered factories are included; entries without
-   * registry metadata (e.g. `rawFilter`, hand-built `Effect`s) are skipped
-   * with a one-shot warning. In-flight `fadeIn` / `fadeOut` tweens are NOT
-   * preserved — only the values `getIntensity()` reads at call time.
-   */
-  serialize(): EffectStackSnapshot {
-    const out: EffectStackEntry[] = [];
-    for (const effect of this.entries) {
-      if (this.unsavedEffects.has(effect)) continue;
-      const meta = getEffectMeta(effect);
-      if (!meta) {
-        if (!this.warnedUnsavable) {
-          this.warnedUnsavable = true;
-          console.warn(
-            `EffectStack.serialize: ${this.scope}-scope stack contains an ` +
-              `effect not built via defineEffect (rawFilter or custom) — ` +
-              `it will be skipped on save.`,
-          );
-        }
-        continue;
-      }
-      const handle = this.handles.get(effect);
-      out.push({
-        name: meta.definitionName,
-        options: meta.options,
-        intensity: effect.getIntensity(),
-        enabled: handle?.enabled ?? true,
-      });
-    }
-    return { entries: out };
-  }
-
-  /**
-   * Replace the stack's contents with effects rebuilt from `snapshot`.
-   * Cancels in-flight fades on existing entries and detaches them, then
-   * re-adds each entry via its registered definition. Unknown definition
-   * names are skipped with a warning.
-   */
-  restoreFrom(snapshot: EffectStackSnapshot): void {
-    if (this.destroyed) {
-      throw new Error(
-        `EffectStack: cannot restore into a destroyed ${this.scope}-scope stack.`,
-      );
-    }
-    for (const effect of [...this.entries]) {
-      this.removeEffect(effect);
-    }
-    for (const entry of snapshot.entries) {
-      const def = getRegisteredEffect(entry.name);
-      if (!def) {
-        console.warn(
-          `EffectStack.restoreFrom: no effect definition registered for ` +
-            `"${entry.name}" — entry skipped.`,
-        );
-        continue;
-      }
-      // Clone options so external mutation of the snapshot can't poison the
-      // live filter or its meta — mirrors the attach-time clone in
-      // `defineEffect`. Done once outside the factory closure so the same
-      // isolated clone is shared by `def.factory` and the EFFECT_META tag.
-      const optionsClone = structuredClone(entry.options);
-      // Build the effect inside a closure so we can capture it for setIntensity
-      // afterward and re-tag it (subsequent saves must round-trip).
-      let built: Effect | undefined;
-      const factory: EffectFactory = () => {
-        const effect = def.factory(optionsClone);
-        Object.defineProperty(effect, EFFECT_META, {
-          value: { definitionName: entry.name, options: optionsClone },
-          enumerable: false,
-          writable: false,
-          configurable: false,
-        });
-        built = effect;
-        return effect;
-      };
-      const handle = this.add(factory);
-      built?.setIntensity(entry.intensity);
-      handle.setEnabled(entry.enabled);
-    }
-  }
-
   /** Tear down every attached effect and cancel any in-flight tweens. */
   destroy(): void {
     if (this.destroyed) return;
@@ -292,7 +174,6 @@ export class EffectStack {
     }
     this.entries.clear();
     this.handles.clear();
-    this.unsavedEffects.clear();
     // `effectProcesses` is the per-effect index used by `removeEffect` to
     // find and cancel a single effect's processes. On destroy we cancel
     // EVERY process at once via `this.queue.cancelAll()` below, so clearing
@@ -315,7 +196,6 @@ export class EffectStack {
     if (!this.entries.has(effect)) return;
     this.entries.delete(effect);
     this.handles.delete(effect);
-    this.unsavedEffects.delete(effect);
     effect.onDetach?.();
 
     // Cancel any in-flight fades scoped to this effect. Without this, the

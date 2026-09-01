@@ -747,7 +747,7 @@ Root entry, built-in components and steps:
   `damageStep`, `reactionStep`, `defaultHitSteps`, `hitbox`, `guard`, `parry`,
   `block`, `invulnerable`, `slowmo`, `anim`, `staggerMotion`,
   `staggerReaction`, `REACTION_PRIORITY`, `TouchDamage`.
-- Types: `HealthSnapshot`, `HitboxParams`, `HitboxStepArgs`,
+- Types: `HitboxParams`, `HitboxStepArgs`,
   `GuardStepArgs`, `SlowmoParams`, `SlowmoWindowArgs`, `TimedSlowmoArgs`,
   `TouchDamageOptions`.
 
@@ -761,22 +761,12 @@ Optional `/input` entry:
 
 ## Save boundary
 
-`Health` is `@serializable({ type: "@yagejs-addons/abilities/Health" })` and
-round-trips:
-
-```ts
-interface HealthSnapshot {
-  hp: number;
-  max: number;
-}
-```
-
-Restore constructs `Health` without emitting health events. No other runtime
-state is saved: cooldowns, activations/phases/lanes, payloads, linger, forced
-reactions, driver edges/buffers/holds, receiver i-frames, guards,
-invulnerability, stagger, facing, and scene-time requests are transient. A
-game rebuilds definitions/input and resumes from a safe gameplay state after
-snapshot load. There is no `SnapshotContributor` or `@yagejs/save` dependency.
+The addon does not contribute state to `@yagejs/save` automatically. A game
+that treats health as durable should include `{ hp, max }` in its explicit save
+model and construct `Health` from those values. Cooldowns, active phases,
+driver edges, i-frames, guards, stagger, and other live combat state remain
+runtime concerns unless the game deliberately models them as durable domain
+state.
 
 ## Death/corpse recipe
 
@@ -801,6 +791,6 @@ undefined or the two teams differ.
 No built-in presenters/damage numbers/health bars, generic stats/buffs,
 resources, AI decisions, motion-ownership helper, input-driver reload,
 tag-filtered loadout edits, hierarchical/stateful tags, bulk process removal,
-or transient-combat snapshot restoration. The in-repo
+or automatic combat-state persistence. The in-repo
 `examples/abilities-addon.html` shows the intended composition, including
 complete combo/power loadout replacement.

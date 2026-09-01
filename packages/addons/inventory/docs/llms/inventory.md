@@ -29,8 +29,15 @@ optional peer (only the `./presenters` subpath needs it). No runtime deps.
   `INVENTORY_LAYERS`.
 
 ```ts
-import { defineItems, Inventory, InventoryController } from "@yagejs-addons/inventory";
-import { createInventoryPanel, INVENTORY_LAYERS } from "@yagejs-addons/inventory/presenters";
+import {
+  defineItems,
+  Inventory,
+  InventoryController,
+} from "@yagejs-addons/inventory";
+import {
+  createInventoryPanel,
+  INVENTORY_LAYERS,
+} from "@yagejs-addons/inventory/presenters";
 ```
 
 Both addons (dialogue + inventory) export the input-binding classes
@@ -50,9 +57,16 @@ layers.
 ```ts
 import { Scene } from "@yagejs/core";
 import {
-  defineItems, Inventory, InventoryController, inventoryControls, InventoryActionEvent,
+  defineItems,
+  Inventory,
+  InventoryController,
+  inventoryControls,
+  InventoryActionEvent,
 } from "@yagejs-addons/inventory";
-import { createInventoryPanel, INVENTORY_LAYERS } from "@yagejs-addons/inventory/presenters";
+import {
+  createInventoryPanel,
+  INVENTORY_LAYERS,
+} from "@yagejs-addons/inventory/presenters";
 
 const catalog = defineItems({
   potion: { name: "Potion", maxStack: 5, description: "Heals 25 HP." },
@@ -61,7 +75,10 @@ const catalog = defineItems({
 const inventory = new Inventory({
   catalog,
   capacity: 15,
-  actions: [{ id: "use", label: "Use", consumes: true }, { id: "drop", label: "Drop" }],
+  actions: [
+    { id: "use", label: "Use", consumes: true },
+    { id: "drop", label: "Drop" },
+  ],
 });
 
 class MyScene extends Scene {
@@ -90,8 +107,9 @@ construct `inventoryControls(bundle, { actions })` yourself only to rename them.
 never goes through the UI:
 
 ```ts
-inventory.add("potion", 3);              // pickup — full/partial/rejected result
-if (keyItems.has("goldKey")) {           // door check, UI closed
+inventory.add("potion", 3); // pickup — full/partial/rejected result
+if (keyItems.has("goldKey")) {
+  // door check, UI closed
   keyItems.remove("goldKey", 1);
   openDoor();
 }
@@ -122,16 +140,19 @@ argument) infers both the id union AND the data map:
 import { defineItems, instanceData, Inventory } from "@yagejs-addons/inventory";
 
 const catalog = defineItems({
-  potion: { name: "Potion", maxStack: 5 },                                   // no instance → data is `never`
-  herb:   { name: "Herb", instance: instanceData<{ quality: number }>() },
-  sword:  { name: "Iron Sword", instance: instanceData<{ durability: number }>() },
+  potion: { name: "Potion", maxStack: 5 }, // no instance → data is `never`
+  herb: { name: "Herb", instance: instanceData<{ quality: number }>() },
+  sword: {
+    name: "Iron Sword",
+    instance: instanceData<{ durability: number }>(),
+  },
 });
 
-const inv = new Inventory({ catalog });          // infers ids + typed data map
-inv.add("herb", 1, { data: { quality: 90 } });   // data checked against the item
-inv.count("herb", (d) => d.quality > 80);         // `d` typed — no cast
-inv.find("herb", (d) => d.durability);            // ✗ compile error: no such field
-inv.add("potion", 1, { data: { quality: 1 } });   // ✗ compile error: potion carries no data
+const inv = new Inventory({ catalog }); // infers ids + typed data map
+inv.add("herb", 1, { data: { quality: 90 } }); // data checked against the item
+inv.count("herb", (d) => d.quality > 80); // `d` typed — no cast
+inv.find("herb", (d) => d.durability); // ✗ compile error: no such field
+inv.add("potion", 1, { data: { quality: 1 } }); // ✗ compile error: potion carries no data
 ```
 
 `data`/predicate narrow by the item id passed to `add`/`count`/`has`/`find`/
@@ -145,13 +166,13 @@ code is unaffected. Metadata `data` (on the def) stays opaque; only the per-stac
 
 ```ts
 new Inventory({
-  catalog,                 // required
-  capacity: 15,            // slot count; omit = unbounded (grows)
-  autoCompact: true,       // close gaps on REMOVALS (list-style); default false
-  defaultMaxStack: 1,      // per-stack default when a def has no maxStack
-  accepts: (def) => def.category === "key",   // section filter → rejected "filtered"
-  constraints: [weightLimit],                 // InventoryConstraint[] (see below)
-  actions: [use, drop],                       // ItemActionDef[] (see below)
+  catalog, // required
+  capacity: 15, // slot count; omit = unbounded (grows)
+  autoCompact: true, // close gaps on REMOVALS (list-style); default false
+  defaultMaxStack: 1, // per-stack default when a def has no maxStack
+  accepts: (def) => def.category === "key", // section filter → rejected "filtered"
+  constraints: [weightLimit], // InventoryConstraint[] (see below)
+  actions: [use, drop], // ItemActionDef[] (see below)
 });
 ```
 
@@ -247,9 +268,9 @@ result).
 interface ItemActionDef {
   id: string;
   label: string;
-  available?(ctx: { slot, stack, def, inventory }): boolean; // per-stack gate
-  consumes?: boolean;  // model removes 1 AFTER the action event (don't also remove in the handler)
-  closes?: boolean;    // UI hint: close the panel after invoking
+  available?(ctx: { slot; stack; def; inventory }): boolean; // per-stack gate
+  consumes?: boolean; // model removes 1 AFTER the action event (don't also remove in the handler)
+  closes?: boolean; // UI hint: close the panel after invoking
 }
 ```
 
@@ -285,19 +306,21 @@ end to end.
 ## InventoryController (the Component host)
 
 ```ts
-host.add(new InventoryController({
-  ...bundle,                    // slots (required) + chrome/detail/actionMenu (optional)
-  inventory,
-  title: "Backpack",
-  closeOnCancel: true,          // default; false = embedded (host owns the escape route)
-  sortComparator: byCategory,   // default byCatalogOrder
-  // omit `input` = full default (keyboard/gamepad + pointer, hit-testing
-  // wired to THIS bundle); null = NO device input (host drives); or pass
-  // inventoryControls(bundle, { actions }) to rename the action names.
-  openOnAdd: false,
-  onConfirm: (e) => {},         // browse-level confirm (picker flows)
-  onCancel: () => {},           // browse-level cancel (embedded host returns to its menu)
-}));
+host.add(
+  new InventoryController({
+    ...bundle, // slots (required) + chrome/detail/actionMenu (optional)
+    inventory,
+    title: "Backpack",
+    closeOnCancel: true, // default; false = embedded (host owns the escape route)
+    sortComparator: byCategory, // default byCatalogOrder
+    // omit `input` = full default (keyboard/gamepad + pointer, hit-testing
+    // wired to THIS bundle); null = NO device input (host drives); or pass
+    // inventoryControls(bundle, { actions }) to rename the action names.
+    openOnAdd: false,
+    onConfirm: (e) => {}, // browse-level confirm (picker flows)
+    onCancel: () => {}, // browse-level cancel (embedded host returns to its menu)
+  }),
+);
 ```
 
 API: `open() / close() / toggle() / isOpen() / isMenuOpen()` ·
@@ -380,12 +403,18 @@ present key replaces that surface's drawn Graphics frame with a stretched
 texture (`{ texture, insets: { left, top, right, bottom } }`, insets in
 source-texture px); the panel keeps its divider lines, the menu keeps its bar +
 labels. Omit the field (or a key) for the Graphics default. Textures are
-`TextureInput` (asset key or `Texture`), so the theme stays serializable:
+`TextureInput` (asset key or `Texture`). Use asset keys when the theme itself
+must remain plain data:
 
 ```ts
 createInventoryPanel({
   ...defaultInventoryTheme(),
-  textured: { panel: { texture: "ui/panel.png", insets: { left: 12, top: 12, right: 12, bottom: 12 } } },
+  textured: {
+    panel: {
+      texture: "ui/panel.png",
+      insets: { left: 12, top: 12, right: 12, bottom: 12 },
+    },
+  },
 });
 ```
 
@@ -402,8 +431,14 @@ replacing the whole view (`SlotsPresenter`, `ActionMenuPresenter`).
 Spread-and-tweak the default theme:
 
 ```ts
-import { createInventoryPanel, defaultInventoryTheme } from "@yagejs-addons/inventory/presenters";
-const bundle = createInventoryPanel({ ...defaultInventoryTheme(), highlightColor: 0xff5555 });
+import {
+  createInventoryPanel,
+  defaultInventoryTheme,
+} from "@yagejs-addons/inventory/presenters";
+const bundle = createInventoryPanel({
+  ...defaultInventoryTheme(),
+  highlightColor: 0xff5555,
+});
 ```
 
 ## Embedded in an existing menu (no separate API)
@@ -412,15 +447,18 @@ Standalone vs embedded is configuration:
 
 ```ts
 const bundle = createInventoryPanel(theme, {
-  chrome: false,                        // the host menu draws its own frame
-  bounds: { x: 320, y: 96, width: 344, height: 300 },  // sit inside the host layout
+  chrome: false, // the host menu draws its own frame
+  bounds: { x: 320, y: 96, width: 344, height: 300 }, // sit inside the host layout
 });
-const ctrl = host.add(new InventoryController({
-  ...bundle, inventory,
-  input: null,                          // the host menu owns the devices
-  closeOnCancel: false,                 // Esc returns to the host's tab bar
-  onCancel: () => menu.focusTabs(),
-}));
+const ctrl = host.add(
+  new InventoryController({
+    ...bundle,
+    inventory,
+    input: null, // the host menu owns the devices
+    closeOnCancel: false, // Esc returns to the host's tab bar
+    onCancel: () => menu.focusTabs(),
+  }),
+);
 // The host's focus handling drives the panel:
 menu.onTabFocus("items", () => ctrl.open());
 menu.onKey("down", () => ctrl.move("down"));
@@ -450,11 +488,14 @@ tabbed menu showing one category at a time. Unlike a second `Inventory` with
 is the same mutation, because it's one shared model.
 
 ```ts
-const usable = filteredView(backpack, (stack, def) => def.actions?.includes("use") ?? false);
+const usable = filteredView(
+  backpack,
+  (stack, def) => def.actions?.includes("use") ?? false,
+);
 host.add(new InventoryController({ ...bundle, inventory: usable })); // or ctrl.setSource(usable)
-usable.invokeAction("use", 0);        // presented index 0 -> whatever model slot it maps to
-usable.modelSlot(0);                  // the escape hatch back to the real slot
-usable.source;                        // the underlying Inventory
+usable.invokeAction("use", 0); // presented index 0 -> whatever model slot it maps to
+usable.modelSlot(0); // the escape hatch back to the real slot
+usable.source; // the underlying Inventory
 ```
 
 Both `Inventory` and `filteredView`'s return value implement `InventorySource`
@@ -477,14 +518,17 @@ listener is attached, so pre-built, currently-inactive tab views cost nothing.
 
 ## Save seam
 
-`snapshot()` / `restore()` round-trip the whole state as JSON. Wire it to
-`@yagejs/save` as a snapshot extra (no dependency needed):
+`snapshot()` / `restore()` round-trip the whole state as JSON. Include the
+inventory data in the game's explicit save root:
 
 ```ts
-snapshotService.registerSnapshotExtra("inventory", {
-  serialize: () => inventory.snapshot(),
-  restore: (data) => inventory.restore(data as InventorySnapshot),
-});
+const gameState: Serializable<{ inventory: InventorySnapshot }> = {
+  serialize: () => ({ inventory: inventory.snapshot() }),
+  hydrate: ({ inventory: data }) => inventory.restore(data),
+};
+
+await save.persist("game", gameState);
+await save.restore("game", gameState);
 ```
 
 `restore` drops entries the catalog no longer declares or with bad quantities

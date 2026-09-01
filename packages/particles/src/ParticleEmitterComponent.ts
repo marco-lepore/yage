@@ -1,9 +1,7 @@
 import {
-  AssetHandle,
   Component,
   RandomKey,
   Transform,
-  serializable,
   type RandomService,
 } from "@yagejs/core";
 import { SceneRenderTreeKey, resolveTextureInput } from "@yagejs/renderer";
@@ -16,16 +14,12 @@ import { ParticleContainer as PixiParticleContainer, Texture } from "pixi.js";
 import type { Particle } from "pixi.js";
 import { ParticlePool } from "./ParticlePool.js";
 import { normalizeShape, shapeTexture } from "./shapes.js";
-import type { ResolvedShape } from "./shapes.js";
 import { isLerped, resolveRange } from "./types.js";
 import type {
   EmitterConfig,
   EmitterOptions,
   Lerped,
   NumberRange,
-  ParticleEmitterData,
-  ParticleEmitterSource,
-  TextureSource,
 } from "./types.js";
 
 /** Internal tracking state for a single active particle. */
@@ -60,10 +54,7 @@ export interface ParticleEmissionHandle {
  * queries for both, so an emitter without one never emits and never ages the
  * particles a `burst` already spawned.
  */
-@serializable
 export class ParticleEmitterComponent extends Component {
-  static restorePriority = 50;
-
   readonly container: ParticleContainer;
   /** Container visibility to restore on enable, so a hand-set hide survives. */
   private _visibleWhenActive = true;
@@ -87,11 +78,6 @@ export class ParticleEmitterComponent extends Component {
     >
   > &
     EmitterOptions;
-  private readonly _rawConfig: EmitterConfig;
-  private readonly _textureKey: string | null;
-  /** The built-in shape in use, or null when a texture/key supplied the look. */
-  private readonly _shape: ResolvedShape | null;
-
   private _manualEmission = false;
   private readonly _emissionRequests = new Set<EmissionRequestEntry>();
   private _destroyed = false;
@@ -101,10 +87,7 @@ export class ParticleEmitterComponent extends Component {
   constructor(config: EmitterConfig) {
     super();
 
-    this._rawConfig = config;
-    const source = resolveSource(config);
-    this._textureKey = source.textureKey;
-    this._shape = source.shape;
+    const texture = resolveSource(config);
 
     const options: EmitterOptions = config;
     this.config = {
@@ -121,7 +104,7 @@ export class ParticleEmitterComponent extends Component {
     };
 
     this.container = new PixiParticleContainer({
-      texture: source.texture,
+      texture,
       dynamicProperties: {
         position: true,
         rotation: true,
@@ -133,7 +116,7 @@ export class ParticleEmitterComponent extends Component {
       this.container.blendMode = this.config.blendMode;
     }
 
-    this._pool = new ParticlePool(source.texture, this.config.maxParticles);
+    this._pool = new ParticlePool(texture, this.config.maxParticles);
   }
 
   /** Start continuous emission at `config.rate` particles/sec. */
@@ -230,73 +213,6 @@ export class ParticleEmitterComponent extends Component {
   /** Get the particles' blend mode. */
   get blendMode(): BlendMode {
     return this.container.blendMode;
-  }
-
-  serialize(): ParticleEmitterData | null {
-    const source = this.snapshotSource();
-    if (!source) {
-      console.warn(
-        `ParticleEmitterComponent on "${this.entity?.name}": created with a Texture object. ` +
-          `Use a string path, texture handle, { textureKey }, or a built-in { shape } for save/load support.`,
-      );
-      return null;
-    }
-    const raw = this._rawConfig;
-    // Read live rather than from the config: `blendMode` is the one visual
-    // field with a runtime setter. Pixi constructs the container at
-    // `"inherit"`, and a particle container left there draws normally, so
-    // `"inherit"` is the value worth omitting.
-    const blendMode = this.container.blendMode;
-    return {
-      ...source,
-      maxParticles: this.config.maxParticles,
-      rate: this.config.rate,
-      lifetime: raw.lifetime,
-      speed: raw.speed ?? 0,
-      angle: raw.angle ?? 0,
-      rotation: raw.rotation ?? 0,
-      rotationSpeed: raw.rotationSpeed ?? 0,
-      tint: this.config.tint,
-      damping: this.config.damping,
-      layer: this.config.layer,
-      ...(blendMode !== "inherit" && { blendMode }),
-      ...(raw.scale != null && { scale: raw.scale }),
-      ...(raw.alpha != null && { alpha: raw.alpha }),
-      ...(raw.gravity && { gravity: raw.gravity }),
-      ...(raw.spawnOffset && { spawnOffset: raw.spawnOffset }),
-    };
-  }
-
-  /** The snapshot's texture source, or null when a raw texture rendered. */
-  private snapshotSource(): ParticleEmitterSource | null {
-    if (this._textureKey !== null) return { textureKey: this._textureKey };
-    if (this._shape !== null) return { shape: this._shape };
-    return null;
-  }
-
-  static fromSnapshot(data: ParticleEmitterData): ParticleEmitterComponent {
-    const source: TextureSource =
-      data.textureKey !== undefined
-        ? { textureKey: data.textureKey }
-        : { shape: data.shape ?? "pixel" };
-    return new ParticleEmitterComponent({
-      ...source,
-      maxParticles: data.maxParticles,
-      rate: data.rate,
-      lifetime: data.lifetime,
-      speed: data.speed,
-      angle: data.angle,
-      rotation: data.rotation,
-      rotationSpeed: data.rotationSpeed,
-      tint: data.tint,
-      damping: data.damping,
-      layer: data.layer,
-      ...(data.blendMode !== undefined && { blendMode: data.blendMode }),
-      ...(data.scale != null && { scale: data.scale }),
-      ...(data.alpha != null && { alpha: data.alpha }),
-      ...(data.gravity && { gravity: data.gravity }),
-      ...(data.spawnOffset && { spawnOffset: data.spawnOffset }),
-    });
   }
 
   onAdd(): void {
@@ -469,34 +385,16 @@ export class ParticleEmitterComponent extends Component {
  * Pick the emitter's texture. The three sources are mutually exclusive in the
  * type, so the order below only matters for callers coming from plain JS:
  * `texture` wins, then `textureKey`, then `shape`, then the `"pixel"` default.
- * The returned key/shape describe the source that won, so `serialize()` can
- * never write a key for art that did not render.
  */
-function resolveSource(config: EmitterConfig): {
-  texture: TextureResource;
-  textureKey: string | null;
-  shape: ResolvedShape | null;
-} {
+function resolveSource(config: EmitterConfig): TextureResource {
   if (config.texture !== undefined) {
-    const texture = config.texture;
-    const key =
-      typeof texture === "string"
-        ? texture
-        : texture instanceof AssetHandle
-          ? texture.path
-          : null;
-    return {
-      texture: resolveTextureInput(texture),
-      textureKey: key,
-      shape: null,
-    };
+    return resolveTextureInput(config.texture);
   }
   if (config.textureKey !== undefined) {
-    const key = config.textureKey;
-    return { texture: Texture.from(key), textureKey: key, shape: null };
+    return Texture.from(config.textureKey);
   }
   const shape = normalizeShape(config.shape ?? "pixel");
-  return { texture: shapeTexture(shape), textureKey: null, shape };
+  return shapeTexture(shape);
 }
 
 function resolveLerped(

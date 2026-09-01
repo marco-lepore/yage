@@ -123,31 +123,4 @@ describe("EffectsHost", () => {
     expect(host.size).toBe(0);
     expect(target.filters).toBeNull();
   });
-
-  it("serialize returns undefined when no effects are attached", () => {
-    const host = new EffectsHost(
-      () => new mocks.MockContainer() as never,
-      "component",
-      () => makeMockQueue(),
-    );
-    expect(host.serialize()).toBeUndefined();
-  });
-
-  it("keeps save-disabled effects active but omits them from snapshots", () => {
-    const target = new mocks.MockContainer();
-    const host = new EffectsHost(
-      () => target as never,
-      "component",
-      () => makeMockQueue(),
-    );
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    host.addEffect(makeEffect("temporary"), { save: false });
-
-    expect(host.size).toBe(1);
-    expect(host.serialize()).toBeUndefined();
-    expect(target.filters).toHaveLength(1);
-    expect(warnSpy).not.toHaveBeenCalled();
-    warnSpy.mockRestore();
-  });
 });

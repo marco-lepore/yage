@@ -34,11 +34,3 @@ export interface SoundComponentOptions {
   loop?: boolean;
   volume?: number;
 }
-
-export interface SoundData {
-  alias: string;
-  channel: string;
-  loop: boolean;
-  volume: number;
-  playOnAdd: boolean;
-}

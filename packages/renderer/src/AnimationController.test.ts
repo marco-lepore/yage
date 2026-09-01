@@ -88,7 +88,10 @@ vi.mock("pixi.js", () => {
     source = { scaleMode: "nearest" };
     width: number;
     height: number;
-    constructor(opts?: { source?: unknown; frame?: { width: number; height: number } }) {
+    constructor(opts?: {
+      source?: unknown;
+      frame?: { width: number; height: number };
+    }) {
       this.width = opts?.frame?.width ?? 96;
       this.height = opts?.frame?.height ?? 48;
     }
@@ -101,7 +104,12 @@ vi.mock("pixi.js", () => {
     }
   }
   class MockRectangle {
-    constructor(public x: number, public y: number, public width: number, public height: number) {}
+    constructor(
+      public x: number,
+      public y: number,
+      public width: number,
+      public height: number,
+    ) {}
   }
   return {
     Container: mocks.MockContainer,
@@ -465,62 +473,5 @@ describe("AnimationController", () => {
     ctrl.update!(16);
     expect(ctrl.locked).toBe(false);
     expect(ctrl.current).toBe("idle");
-  });
-
-  describe("serialization", () => {
-    it("serialize returns data for every def", () => {
-      const { scene } = createRendererTestContext();
-      const entity = spawnEntityInScene(scene);
-      entity.add(new Transform());
-      entity.add(new AnimatedSpriteComponent({ source: { sheet: "idle.png", frameWidth: 48 } }));
-      const ctrl = entity.add(
-        new AnimationController({
-          idle: { source: { sheet: "idle.png", frameWidth: 48 }, speed: 0.15 },
-          walk: { source: { sheet: "walk.png", frameWidth: 48 }, speed: 0.2, loop: true },
-        }),
-      );
-
-      const data = ctrl.serialize();
-      expect(data.current).toBe("idle");
-      expect(data.speed).toBe(1);
-      expect(data.animations["idle"]!.source).toEqual({ sheet: "idle.png", frameWidth: 48 });
-      expect(data.animations["walk"]!.source).toEqual({ sheet: "walk.png", frameWidth: 48 });
-      expect(data.animations["walk"]!.loop).toBe(true);
-    });
-
-    it("fromSnapshot round-trips current animation and speed", () => {
-      const { scene } = createRendererTestContext();
-      const entity = spawnEntityInScene(scene);
-      entity.add(new Transform());
-      entity.add(new AnimatedSpriteComponent({ source: { sheet: "idle.png", frameWidth: 48 } }));
-      const ctrl = entity.add(
-        new AnimationController({
-          idle: { source: { sheet: "idle.png", frameWidth: 48 }, speed: 0.15 },
-          walk: { source: { sheet: "walk.png", frameWidth: 48 }, speed: 0.2 },
-        }),
-      );
-      ctrl.play("walk");
-      ctrl.speed = 1.5;
-
-      const data = ctrl.serialize();
-      expect(data.current).toBe("walk");
-      expect(data.speed).toBe(1.5);
-
-      // Restore in a new entity
-      const entity2 = spawnEntityInScene(scene);
-      entity2.add(new Transform());
-      entity2.add(new AnimatedSpriteComponent({ source: { sheet: "idle.png", frameWidth: 48 } }));
-      const restored = entity2.add(AnimationController.fromSnapshot(data));
-      expect(restored.current).toBe("walk");
-      expect(restored.speed).toBe(1.5);
-    });
-  });
-
-  describe("restore ordering", () => {
-    it("restores the sprite before the controller whose onAdd() drives it", () => {
-      expect(AnimatedSpriteComponent.restorePriority).toBeLessThan(
-        AnimationController.restorePriority,
-      );
-    });
   });
 });

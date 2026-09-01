@@ -89,8 +89,8 @@ tears down each scope's `EffectStack` for you.
 
 ## Hero presets
 
-Twenty-three presets ship in `@yagejs/effects`, all save-aware and all using
-the same handle protocol:
+Twenty-three presets ship in `@yagejs/effects`, all using the same handle
+protocol:
 
 ```ts
 import {
@@ -327,9 +327,8 @@ handle.fadeIn(0.2);
 ```
 
 Without the `intensity` accessor, `fadeIn` / `fadeOut` no-op and warn once.
-`rawFilter` entries are NOT serializable — the user-supplied `Filter` has
-no string identity to record in a snapshot. Use `defineEffect` for any
-effect you want save/load support on.
+The renderer treats both raw filters and named effects as runtime resources.
+Use `defineEffect` when you want a reusable named factory with typed options.
 
 ## Custom presets via `defineEffect`
 
@@ -385,9 +384,9 @@ Two gotchas inside a `graphicsMask` closure:
    Reference the live source (`panel.width`, `this.layout.width`, a getter)
    inside the closure so each call picks up the current value.
 
-Three factories ship today: `rectMask` (savable), `spriteMask` (caller owns
-the sprite — not savable), `graphicsMask` (custom drawn — closure can't be
-saved). For savable custom shapes, register one with `defineMask`.
+Three factories ship today: `rectMask`, `spriteMask`, and `graphicsMask`.
+`spriteMask` uses a caller-owned sprite, while `graphicsMask` redraws through
+your callback. Use `defineMask` for a reusable named factory.
 
 ## Blend modes
 
@@ -427,9 +426,6 @@ not just the shape you meant to cut. To cut a hole in one thing, draw both
 into an [offscreen render target](#offscreen-render-targets) so the erase
 only reaches that buffer.
 :::
-
-`serialize()` records `blendMode` only when it is something other than
-`"normal"`, and `fromSnapshot` restores it.
 
 ## Offscreen render targets
 
@@ -533,33 +529,7 @@ moves or resizes what you draw. Two consequences:
 
 ## Save / load
 
-Effects + masks built from `defineEffect` / `defineMask` factories survive
-`SnapshotService.saveSnapshot` round-trips automatically:
-
-- **Component scope** — captured inside each visual component's
-  `serialize()` and restored in `afterRestore`.
-- **Layer / Scene / Screen scope** — the renderer registers a snapshot
-  contributor with `SnapshotService` (key `"renderer"`) at engine start, so
-  `RendererPlugin` and `SnapshotPlugin` can be registered in any order.
-- **In-flight fades are not preserved** — only steady-state intensity +
-  enabled. Trigger any fade-in animations from your scene's `onEnter` or
-  `afterRestore` if you want them to play again on load.
-- **Unsavable entries** (`rawFilter`, `spriteMask`, `graphicsMask`) skip
-  the snapshot with a one-shot warning.
-
-Pass `{ save: false }` as the second argument to `addEffect` for a temporary
-effect that has its own runtime owner:
-
-```ts
-const pulse = sprite.fx.addEffect(outline({ color: 0xffffff }), {
-  save: false,
-});
-```
-
-The effect remains active until its handle removes it, but snapshots omit it
-without a warning. This prevents a saved frame from turning a short pulse into
-a permanent restored effect.
-
-`@yagejs/save` is an optional peer dep — without it, component-scope
-effects still serialize, but the layer/scene/screen contributor doesn't
-register.
+Effects, masks, display objects, and in-flight fades are runtime resources.
+They are not included in `@yagejs/save` state roots. Save the durable game fact
+that selects an effect or mask, then recreate the visual during normal scene or
+component setup after loading that state.

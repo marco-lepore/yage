@@ -221,9 +221,9 @@ Registering an alias already used by a loaded sound asset throws, since
 letting a runtime buffer shadow a loaded asset would let that asset's unload
 destroy the registered sound.
 
-For save and load, snapshots store only the alias string — re-register the
-buffer under the same alias during boot, before restoring, the same way you
-registered it on first run.
+If a save root stores the alias, re-register the buffer under the same alias
+during boot before loading that root. The `AudioBuffer` itself is runtime state
+and does not belong in a controlled save payload.
 
 ```typescript
 import { unregisterSound } from "@yagejs/audio";

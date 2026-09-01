@@ -1,12 +1,5 @@
-import {
-  Component,
-  Entity,
-  Transform,
-  Vec2,
-  serializable,
-} from "@yagejs/core";
+import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
 import type { Vec2Like } from "@yagejs/core";
-import type { SnapshotResolver } from "@yagejs/core";
 import type { CameraEntity } from "./CameraEntity.js";
 
 /**
@@ -15,10 +8,7 @@ import type { CameraEntity } from "./CameraEntity.js";
  * called every frame and may compute any world coord (e.g. the midpoint
  * of two entities, a position along an animated path).
  */
-export type ScreenFollowTarget =
-  | Entity
-  | Vec2Like
-  | (() => Vec2Like);
+export type ScreenFollowTarget = Entity | Vec2Like | (() => Vec2Like);
 
 /** Options for `ScreenFollow`. */
 export interface ScreenFollowOptions {
@@ -53,15 +43,6 @@ export interface ScreenFollowOptions {
   trackRotation?: boolean;
 }
 
-export interface ScreenFollowData {
-  target:
-    | { kind: "entity"; entityId: number }
-    | { kind: "point"; position: { x: number; y: number } };
-  cameraEntityId: number;
-  offset: { x: number; y: number };
-  trackRotation: boolean;
-}
-
 /**
  * Each frame, projects a world source through a camera and writes the
  * resulting screen coord to this entity's `Transform.worldPosition`.
@@ -93,14 +74,11 @@ export interface ScreenFollowData {
  * }
  * ```
  */
-@serializable
 export class ScreenFollow extends Component {
   private _target: ScreenFollowTarget | null;
   private _camera: CameraEntity | null;
   private _offset: Vec2;
   private _trackRotation: boolean;
-  private _restoreTargetEntityId: number | null = null;
-  private _restoreCameraEntityId: number | null = null;
 
   constructor(opts?: ScreenFollowOptions) {
     super();
@@ -144,69 +122,5 @@ export class ScreenFollow extends Component {
       return t ? t.worldPosition : undefined;
     }
     return target;
-  }
-
-  serialize(): ScreenFollowData | null {
-    if (!this._camera) return null;
-    if (this._target === null) return null;
-    if (typeof this._target === "function") return null;
-
-    const data: ScreenFollowData = {
-      target:
-        this._target instanceof Entity
-          ? { kind: "entity", entityId: this._target.id }
-          : {
-              kind: "point",
-              position: { x: this._target.x, y: this._target.y },
-            },
-      cameraEntityId: this._camera.id,
-      offset: { x: this._offset.x, y: this._offset.y },
-      trackRotation: this._trackRotation,
-    };
-    return data;
-  }
-
-  static fromSnapshot(data: ScreenFollowData): ScreenFollow {
-    const follow = new ScreenFollow();
-    follow._offset = new Vec2(data.offset.x, data.offset.y);
-    follow._trackRotation = data.trackRotation;
-    if (data.target.kind === "point") {
-      follow._target = new Vec2(data.target.position.x, data.target.position.y);
-    } else {
-      follow._restoreTargetEntityId = data.target.entityId;
-    }
-    follow._restoreCameraEntityId = data.cameraEntityId;
-    return follow;
-  }
-
-  afterRestore(_data: unknown, resolve: SnapshotResolver): void {
-    if (this._restoreTargetEntityId !== null) {
-      const target = resolve.entity(this._restoreTargetEntityId);
-      if (target) {
-        this._target = target;
-      } else {
-        // Leave _target null so update() short-circuits — without this, a
-        // ScreenFollow whose target failed to resolve would track world
-        // origin (the previous Vec2.ZERO default).
-        this._target = null;
-        console.warn(
-          `ScreenFollow.afterRestore: cannot resolve target entity ${this._restoreTargetEntityId}; follow target lost.`,
-        );
-      }
-      this._restoreTargetEntityId = null;
-    }
-
-    if (this._restoreCameraEntityId !== null) {
-      const camera = resolve.entity(this._restoreCameraEntityId);
-      if (camera) {
-        this._camera = camera as CameraEntity;
-      } else {
-        this._camera = null;
-        console.warn(
-          `ScreenFollow.afterRestore: cannot resolve camera entity ${this._restoreCameraEntityId}; ScreenFollow will be inert.`,
-        );
-      }
-      this._restoreCameraEntityId = null;
-    }
   }
 }

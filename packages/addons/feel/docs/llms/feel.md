@@ -134,11 +134,9 @@ uses `easeInQuad` by default and removes the temporary filter on completion or
 cancellation. Cancellation reveals the source visual again.
 
 `feelOutline`, `feelGlow`, and `feelColorize` are target-resolving convenience
-effects over the same handle lifecycle. Feel attaches all filter pulses with
-`save: false`, so snapshots do not restore a temporary filter without its
-playback. Floating text, damage numbers, and impact rings resolve their world
-position once when playback starts. Position defaults to the cue entity's
-`Transform.worldPosition`.
+effects over the same handle lifecycle. Floating text, damage numbers, and
+impact rings resolve their world position once when playback starts. Position
+defaults to the cue entity's `Transform.worldPosition`.
 
 Each floating text, damage number, or impact ring playback spawns a separate
 transient entity. The entity is destroyed on completion or cancellation, so
@@ -228,16 +226,15 @@ physics. Hitstop exclusions keep selected entity updates running while scene
 physics remains frozen. Requests expire independently after they start;
 stopping the cue does not release an already-issued time request.
 
-Cue definitions, cooldown clocks, and in-flight playback are not saved. `Feel`
-itself is omitted because its cue map contains code and live component
-references. A serializable host entity must re-add the component in
-`afterRestore()`; the new component starts with no cue in progress.
+Cue definitions, cooldown clocks, and in-flight playback are runtime-only.
+Normal entity setup constructs `Feel` when the game builds a scene, with no cue
+in progress.
 
 Renderer and camera modifiers, Feel-owned filter attachments, `SceneTime`
 requests, particle-emission requests, live particles, and transient visual
 entities are also omitted.
 
 `feelCall`, custom effects, `feelKeyframeAnimation`, and
-`feelSpriteAnimation` can write through user-supplied callbacks. Serializable
-base state changed by those callbacks is saved. Use renderer modifier handles
-when custom visual motion must stay outside snapshots.
+`feelSpriteAnimation` can write through user-supplied callbacks. Changes to an
+explicit game-owned state root can be saved. Use renderer modifier handles for
+custom visual motion that should remain a runtime effect.

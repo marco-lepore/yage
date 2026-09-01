@@ -199,8 +199,8 @@ own rate against its own `ProcessComponent`, which composes both factors.
 Request durations (`for`, and the `freezeFor` duration) count real seconds:
 they are unaffected by the scaling itself, so a freeze reliably ends on time.
 A stack-paused scene holds its effects — opening a pause menu does not consume
-a running hitstop. All requests are released when the scene exits, and they are
-not saved; re-issue them after loading a snapshot.
+a running hitstop. All requests are released when the scene exits. Re-issue
+them if the game rebuilds a scene from saved domain state.
 
 Entity-scoped requests and `excludeUpdates` entries apply only to the entity's
 current life. Releasing a pooled entity ends that association, so the next
@@ -242,7 +242,9 @@ individually slowed or sped up. Scale the whole scene with `scene.timeScale`, or
 use a kinematic body / manual velocity scaling for per-body time control.
 :::
 
-`entity.timeScale` is captured by the save system and restored on load.
+Include `entity.timeScale` in the game's explicit save root only when it is
+durable gameplay state. Temporary speed effects belong in `SceneTime` and are
+recreated by game logic.
 
 ## HUD Across Pause
 

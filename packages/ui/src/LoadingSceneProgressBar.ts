@@ -1,10 +1,4 @@
-import {
-  Component,
-  Entity,
-  EventBusKey,
-  LoadingScene,
-  serializable,
-} from "@yagejs/core";
+import { Component, Entity, EventBusKey, LoadingScene } from "@yagejs/core";
 import { RendererKey } from "@yagejs/renderer";
 import { UISurface } from "./UISurface.js";
 import { UIProgressBar } from "./UIProgressBar.js";
@@ -59,11 +53,6 @@ export interface LoadingSceneProgressBarOptions {
  * `UIProgressBar`. For spinners, animated text, or other custom visuals,
  * write your own component that subscribes to the same event.
  */
-/**
- * Not `@serializable`: the loading bar is a transient UI for a transient
- * scene. Mid-load save/restore is not a supported flow — by the time the
- * snapshot is loaded, the destination scene should be active.
- */
 export class LoadingSceneProgressBar extends Entity {
   setup(opts: LoadingSceneProgressBarOptions = {}): void {
     const scene = this.scene;
@@ -79,9 +68,8 @@ export class LoadingSceneProgressBar extends Entity {
     // beneath the bar in the UI layer.
     let backdropEntity: Entity | undefined;
     if (opts.backdrop) {
-      const { width: vw, height: vh } = scene.context
-        .resolve(RendererKey)
-        .virtualSize;
+      const { width: vw, height: vh } =
+        scene.context.resolve(RendererKey).virtualSize;
       backdropEntity = scene.spawn("__loading-backdrop__");
       backdropEntity.add(
         new UISurface({
@@ -119,11 +107,7 @@ export class LoadingSceneProgressBar extends Entity {
 /**
  * Internal — syncs a UIProgressBar's value to the current LoadingScene's
  * progress by subscribing to `scene:loading:progress` on the event bus.
- *
- * `serialize()` returns null because the component holds a runtime closure
- * (event-bus unsubscribe) that can't round-trip through a snapshot.
  */
-@serializable
 class LoadingProgressSync extends Component {
   private unsub?: () => void;
 
@@ -147,9 +131,5 @@ class LoadingProgressSync extends Component {
   override onDestroy(): void {
     this.unsub?.();
     this.backdrop?.destroy();
-  }
-
-  serialize(): null {
-    return null;
   }
 }

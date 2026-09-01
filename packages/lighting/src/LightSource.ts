@@ -1,4 +1,4 @@
-import { Component, Transform, serializable } from "@yagejs/core";
+import { Component, Transform } from "@yagejs/core";
 import type { Vec2 } from "@yagejs/core";
 import type { LightingWorld } from "./LightingWorld.js";
 import { LightingWorldKey } from "./types.js";
@@ -16,24 +16,13 @@ export interface LightSourceOptions {
   enabled?: boolean;
 }
 
-/** Serialized light-source state. */
-export interface LightSourceData {
-  radius: number;
-  intensity: number;
-  color: number;
-  enabled: boolean;
-}
-
 /**
  * A radial light centred on its entity's `Transform.worldPosition`.
  *
  * The radius and `levelAt()` contribution use world pixels. Transform scale
  * does not resize the light; set {@link radius} when the gameplay radius changes.
  */
-@serializable
 export class LightSource extends Component {
-  static restorePriority = 10;
-
   private readonly transform = this.sibling(Transform);
   private world: LightingWorld | undefined;
   private _radius: number;
@@ -102,18 +91,5 @@ export class LightSource extends Component {
   onDestroy(): void {
     this.world?.unregisterSource(this);
     this.world = undefined;
-  }
-
-  serialize(): LightSourceData {
-    return {
-      radius: this._radius,
-      intensity: this._intensity,
-      color: this._color,
-      enabled: this.enabled,
-    };
-  }
-
-  static fromSnapshot(data: LightSourceData): LightSource {
-    return new LightSource(data);
   }
 }

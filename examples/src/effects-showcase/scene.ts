@@ -1,10 +1,4 @@
-import {
-  Scene,
-  SceneManagerKey,
-  Transform,
-  Vec2,
-  serializable,
-} from "@yagejs/core";
+import { Scene, Transform, Vec2 } from "@yagejs/core";
 import {
   GraphicsComponent,
   RendererKey,
@@ -14,7 +8,6 @@ import {
   rectMask,
 } from "@yagejs/renderer";
 import type { EffectHandle, MaskHandle } from "@yagejs/renderer";
-import { SnapshotServiceKey } from "@yagejs/save";
 import {
   UISurface,
   UIButton,
@@ -66,7 +59,6 @@ import {
 import { Toast, bindToast, showToast } from "./toast.js";
 import { bindSidebar } from "./sidebar-scroll.js";
 
-@serializable
 export class ShowcaseScene extends Scene {
   readonly name = "effects-showcase";
   readonly layers = layers;
@@ -87,69 +79,7 @@ export class ShowcaseScene extends Scene {
     this.buildPanel();
   }
 
-  afterRestore(): void {
-    for (const e of this.getEntities()) {
-      if (e instanceof HeroEntity) this.hero = e;
-      else if (e instanceof BlockEntity) this.block = e;
-      else if (e instanceof GemEntity) this.gem = e;
-    }
-
-    this.effectHandles.clear();
-    this.toggleButtons.clear();
-    this.spawnToast();
-    this.buildPanel();
-    // Layer/scene/screen-scope effects are restored by the renderer's
-    // snapshot contributor AFTER scene.afterRestore returns. doLoad calls
-    // syncPanelToRestoredEffects() once the load promise resolves so the
-    // sync runs against the fully-restored render trees.
-  }
-
-  /** After load, the renderer has rebuilt every saved effect at every
-   * scope, but our toggle map is empty. Walk each scope for the presets we
-   * expose buttons for, recover their handles, and re-paint the
-   * corresponding toggle button as "on". */
-  syncPanelToRestoredEffects(): void {
-    const tree = this.context.resolve(SceneRenderTreeProviderKey).getTree(this);
-    if (!tree) return;
-    const renderer = this.context.resolve(RendererKey);
-    const world = tree.tryGet("world");
-
-    const sync = (key: string, handle: EffectHandle | null): void => {
-      if (!handle) return;
-      this.effectHandles.set(key, handle);
-      const btn = this.toggleButtons.get(key);
-      if (btn) paintButton(btn, true);
-    };
-
-    const blockGfx = this.block?.tryGet(GraphicsComponent);
-    const gemGfx = this.gem?.tryGet(GraphicsComponent);
-
-    sync("outline", blockGfx?.fx.findEffect(outline) ?? null);
-    sync("dropShadow", blockGfx?.fx.findEffect(dropShadow) ?? null);
-    sync("glow", gemGfx?.fx.findEffect(glow) ?? null);
-    sync("bloom", world?.fx.findEffect(bloom) ?? null);
-    sync("pixelate", world?.fx.findEffect(pixelate) ?? null);
-    sync("motionBlur", world?.fx.findEffect(motionBlur) ?? null);
-    sync("halftone", world?.fx.findEffect(halftone) ?? null);
-    sync("wave", world?.fx.findEffect(wave) ?? null);
-    sync("oldFilm", world?.fx.findEffect(oldFilm) ?? null);
-    sync("crt", tree.fx.findEffect(crt));
-    sync("colorGrade", tree.fx.findEffect(colorGrade));
-    sync("ca", tree.fx.findEffect(chromaticAberration));
-    // godRay, bulgePinch, shockwave live at scene scope: they overlay the
-    // whole composited scene rather than a single layer. godRay's shader
-    // forces alpha=1, so on a partly-transparent layer it would mask the
-    // background to black; bulgePinch's distortion radius extends beyond
-    // any single sprite's bbox; shockwave's ring needs the full scene to
-    // expand into.
-    sync("godRay", tree.fx.findEffect(godRay));
-    sync("bulgePinch", tree.fx.findEffect(bulgePinch));
-    sync("shockwave", tree.fx.findEffect(shockwave));
-    sync("vignette", renderer.fx.findEffect(vignette));
-  }
-
-  // Spawn the in-canvas toast and bind it. Called on both onEnter and
-  // afterRestore (a load rebuilds the scene) so `showToast` keeps a live target.
+  // Spawn the in-canvas toast and bind it to the live scene.
   private spawnToast(): void {
     const toastEntity = this.spawn("toast");
     toastEntity.add(
@@ -174,10 +104,8 @@ export class ShowcaseScene extends Scene {
     if (!tree) throw new Error("scene render tree not yet attached");
     const renderer = this.context.resolve(RendererKey);
 
-    // The sidebar entity carries the root UISurface. We rebuild it on every
-    // call (initial + afterRestore) — entities and their UI are scene-owned
-    // so they're already recreated by the snapshot pipeline; we just need
-    // to repopulate the toggle handle map.
+    // The sidebar entity carries the root UISurface. The scene owns the
+    // entity and its UI, while this method repopulates the toggle handle map.
     const sidebarEntity = this.spawn("effects-sidebar");
     const sidebar = sidebarEntity.add(
       new UISurface({
@@ -501,53 +429,6 @@ export class ShowcaseScene extends Scene {
           paintButton(maskBlock, true);
         },
       });
-    }
-
-    // ---- Save / Load ----
-    const saveSection = section("Save / Load (S / L)");
-    mkAction(saveSection, "Save", () => this.doSave());
-    mkAction(saveSection, "Load", () => void this.doLoad());
-  }
-
-  doSave(): void {
-    // Wrap the whole save in try/catch so a failure surfaces as a visible
-    // "Save failed" toast + console error rather than silently swallowing
-    // the success toast. Without this, any throw inside `buildSnapshot` or
-    // `JSON.stringify` (a serialize() that errors, a localStorage quota
-    // hit, etc.) leaves the user thinking they saved when they didn't —
-    // a subsequent Load then logs "No save" with no breadcrumb.
-    try {
-      const save = this.context.resolve(SnapshotServiceKey);
-      save.saveSnapshot("showcase");
-      showToast("Saved");
-    } catch (err) {
-      console.error("Save failed:", err);
-      showToast("Save failed");
-    }
-  }
-
-  async doLoad(): Promise<void> {
-    const save = this.context.resolve(SnapshotServiceKey);
-    // Capture the SceneManager BEFORE the await — `loadSnapshot` calls
-    // `popAll()` then pushes a fresh ShowcaseScene from the snapshot, so
-    // `this` is a destroyed shell by the time the promise resolves and
-    // `this.context` may no longer route. We need the new active scene to
-    // sync the freshly-built panel against the just-restored effects.
-    const sceneManager = this.context.resolve(SceneManagerKey);
-    if (!save.hasSnapshot("showcase")) {
-      showToast("No save");
-      return;
-    }
-    try {
-      await save.loadSnapshot("showcase");
-      const active = sceneManager.active;
-      if (active instanceof ShowcaseScene) {
-        active.syncPanelToRestoredEffects();
-      }
-      showToast("Loaded");
-    } catch (err) {
-      console.error("Load failed:", err);
-      showToast("Load failed");
     }
   }
 }

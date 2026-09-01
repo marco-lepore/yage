@@ -160,7 +160,6 @@ import {
   spawnEntityInScene,
 } from "./test-helpers.js";
 import { ParticleEmitterComponent } from "./ParticleEmitterComponent.js";
-import { shapeTexture } from "./shapes.js";
 
 const tex = { label: "test" } as never;
 
@@ -665,128 +664,6 @@ describe("ParticleEmitterComponent", () => {
       emitter.blendMode = "screen";
       expect(emitter.container.blendMode).toBe("screen");
       expect(emitter.blendMode).toBe("screen");
-    });
-  });
-
-  describe("serialization", () => {
-    it("serialize returns null with warning when using raw texture", () => {
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const emitter = createEmitter();
-      expect(emitter.serialize()).toBeNull();
-      expect(warnSpy).toHaveBeenCalledOnce();
-      warnSpy.mockRestore();
-    });
-
-    it("serialize returns null when a raw texture outranks a stray key", () => {
-      // Only reachable from plain JS. The raw texture is what renders, so the
-      // key describes art the restored emitter would not have drawn.
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const emitter = new ParticleEmitterComponent({
-        texture: tex,
-        textureKey: "other.png",
-        lifetime: 1,
-      } as unknown as EmitterConfig);
-      expect(emitter.serialize()).toBeNull();
-      expect(warnSpy).toHaveBeenCalledOnce();
-    });
-
-    it("serialize returns full config when using textureKey", () => {
-      const emitter = new ParticleEmitterComponent({
-        textureKey: "particle.png",
-        lifetime: [0.4, 0.8],
-        speed: [80, 160],
-        rate: 40,
-        tint: 0xff6600,
-      });
-      const data = emitter.serialize()!;
-      expect(data).not.toBeNull();
-      expect(data.textureKey).toBe("particle.png");
-      expect(data.lifetime).toEqual([0.4, 0.8]);
-      expect(data.speed).toEqual([80, 160]);
-      expect(data.rate).toBe(40);
-      expect(data.tint).toBe(0xff6600);
-    });
-
-    it("fromSnapshot round-trips config", () => {
-      const original = new ParticleEmitterComponent({
-        textureKey: "spark.png",
-        lifetime: 1,
-        speed: [50, 100],
-        angle: [-1, 1],
-        scale: { start: [0.5, 1.0], end: 0.1 },
-        alpha: { start: 1, end: 0 },
-        gravity: { x: 0, y: 300 },
-        tint: 0xffcc00,
-        damping: 0.2,
-        rate: 30,
-        maxParticles: 150,
-      });
-      const data = original.serialize()!;
-      const restored = ParticleEmitterComponent.fromSnapshot(data);
-      expect(restored.serialize()).toEqual(data);
-    });
-
-    it("omits blendMode while the container blends inherited", () => {
-      const emitter = new ParticleEmitterComponent({
-        textureKey: "particle.png",
-        lifetime: 1,
-      });
-      expect(emitter.serialize()!.blendMode).toBeUndefined();
-    });
-
-    it("records an explicit normal, which differs from the unset default", () => {
-      const emitter = new ParticleEmitterComponent({
-        textureKey: "particle.png",
-        lifetime: 1,
-        blendMode: "normal",
-      });
-      expect(emitter.serialize()!.blendMode).toBe("normal");
-    });
-
-    it("records a blend mode set after construction and round-trips it", () => {
-      const emitter = new ParticleEmitterComponent({
-        textureKey: "spark.png",
-        lifetime: 1,
-      });
-      emitter.blendMode = "add";
-      const data = emitter.serialize()!;
-      expect(data.blendMode).toBe("add");
-      expect(ParticleEmitterComponent.fromSnapshot(data).blendMode).toBe("add");
-    });
-
-    it("serializes the built-in shape with its size filled in", () => {
-      const emitter = new ParticleEmitterComponent({
-        shape: "softCircle",
-        lifetime: 1,
-      });
-      const data = emitter.serialize()!;
-      expect(data.shape).toEqual({ type: "softCircle", size: [64, 64] });
-      expect(data.textureKey).toBeUndefined();
-      expect(ParticleEmitterComponent.fromSnapshot(data).serialize()).toEqual(
-        data,
-      );
-    });
-
-    it("round-trips an explicit shape size", () => {
-      const emitter = new ParticleEmitterComponent({
-        shape: { type: "circle", size: [32, 16] },
-        lifetime: 1,
-      });
-      const data = emitter.serialize()!;
-      expect(data.shape).toEqual({ type: "circle", size: [32, 16] });
-      const restored = ParticleEmitterComponent.fromSnapshot(data);
-      expect(restored.serialize()).toEqual(data);
-      expect(restored.container.texture).toBe(
-        shapeTexture({ type: "circle", size: [32, 16] }),
-      );
-    });
-
-    it("serializes the default shape for a config with no texture at all", () => {
-      const emitter = new ParticleEmitterComponent({ lifetime: 1 });
-      expect(emitter.serialize()!.shape).toEqual({
-        type: "pixel",
-        size: [1, 1],
-      });
     });
   });
 });

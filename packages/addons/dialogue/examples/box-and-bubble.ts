@@ -151,20 +151,6 @@ class DialogueProbe extends Component {
   onEnded(): void {
     this.ended = true;
   }
-
-  serialize(): {
-    lastLine: string;
-    lineCount: number;
-    lastChoice: string;
-    ended: boolean;
-  } {
-    return {
-      lastLine: this.lastLine,
-      lineCount: this.lineCount,
-      lastChoice: this.lastChoice,
-      ended: this.ended,
-    };
-  }
 }
 
 class DialogueScene extends Scene {

@@ -1,4 +1,4 @@
-import { Component, Transform, serializable } from "@yagejs/core";
+import { Component, Transform } from "@yagejs/core";
 import type { Vec2 } from "@yagejs/core";
 import type { LightingWorld } from "./LightingWorld.js";
 import { LightingWorldKey } from "./types.js";
@@ -13,22 +13,13 @@ export interface LightOccluderOptions {
   enabled?: boolean;
 }
 
-/** Serialized light-occluder state. */
-export interface LightOccluderData {
-  shape: LightOccluderShape;
-  enabled: boolean;
-}
-
 /**
  * Renderer-neutral shadow geometry centred on its entity's `Transform`.
  *
  * The built-in overlay renderer does not cast shadows. Custom renderers
  * can read registered occluders from `LightingWorld.occluders`.
  */
-@serializable
 export class LightOccluder extends Component {
-  static restorePriority = 10;
-
   private readonly transform = this.sibling(Transform);
   private world: LightingWorld | undefined;
   readonly shape: LightOccluderShape;
@@ -62,14 +53,6 @@ export class LightOccluder extends Component {
   onDestroy(): void {
     this.world?.unregisterOccluder(this);
     this.world = undefined;
-  }
-
-  serialize(): LightOccluderData {
-    return { shape: cloneShape(this.shape), enabled: this.enabled };
-  }
-
-  static fromSnapshot(data: LightOccluderData): LightOccluder {
-    return new LightOccluder(data);
   }
 }
 

@@ -46,8 +46,8 @@ class ScoreDisplay extends Component {
 }
 ```
 
-This pattern is simple, type-safe, and works well with the save system — just
-add `serialize()`/`fromSnapshot()` methods if the state needs to persist.
+This pattern is simple and type-safe. If the service needs to persist, include
+its durable fields in an explicit `Serializable<TEncoded>` save root.
 
 ## Reactive Stores (for React UI)
 
@@ -184,7 +184,9 @@ class GameStateService {
 }
 ```
 
-Call `hydrate()` in the scene's `afterRestore()` hook with the saved data.
+Expose this service through a game-owned `Serializable<TEncoded>` adapter, or
+make the service itself implement that interface. Restore the state before
+constructing the scene that consumes it.
 
 ## Anti-Patterns
 

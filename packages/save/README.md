@@ -1,7 +1,7 @@
 # @yagejs/save
 
-Persistence for the [YAGE](https://yage.dev) 2D game engine — typed reactive
-stores plus a snapshot path for full-scene quicksave.
+Controlled persistence for the [YAGE](https://yage.dev) 2D game engine. Save
+typed reactive stores or any explicit `Serializable<TEncoded>` state root.
 
 ## Install
 
@@ -9,19 +9,20 @@ stores plus a snapshot path for full-scene quicksave.
 npm install @yagejs/save
 ```
 
-## Stores + Save instance (primary path)
+## Stores + Save instance
 
-Most save data is *intentional* — settings, save slots, world facts,
+Most save data is _intentional_ — settings, save slots, world facts,
 progression. Define typed stores at module scope, construct one `Save`
 instance, register it via the plugin.
 
 ```ts
 import { Engine, createStore, createRecord, createSet } from "@yagejs/core";
-import {
-  createSave, SavePlugin, localStorageAdapter,
-} from "@yagejs/save";
+import { createSave, SavePlugin, localStorageAdapter } from "@yagejs/save";
 
-interface RunData { chapter: number; position: { x: number; y: number } }
+interface RunData {
+  chapter: number;
+  position: { x: number; y: number };
+}
 
 // Compound store — bundles many typed leaves into one save document.
 const game = createStore((s) => ({
@@ -67,30 +68,17 @@ class CheckpointOnRest extends Component {
 Save slots with typed metadata:
 
 ```ts
-interface RunMeta { location: string; playtime: number }
+interface RunMeta {
+  location: string;
+  playtime: number;
+}
 await save.saveSlot<unknown, RunMeta>("saves", "manual-1", game, {
-  metadata: { /* … */ },
+  metadata: {
+    /* … */
+  },
 });
 const slots = await save.listSlots<RunMeta>("saves");
 await save.loadSlot("saves", "manual-1", game);
-```
-
-## Snapshot path (advanced)
-
-Full-scene serialization via `@serializable` decorators. Use for quicksave
-that captures every entity, component, and active process.
-
-```ts
-import { serializable } from "@yagejs/core";
-import { SnapshotPlugin, SnapshotServiceKey } from "@yagejs/save";
-
-@serializable
-class Player extends Entity { /* ... */ }
-
-engine.use(new SnapshotPlugin());
-const snap = engine.context.resolve(SnapshotServiceKey);
-snap.saveSnapshot("slot-1");
-await snap.loadSnapshot("slot-1");
 ```
 
 ## What's in the box
@@ -104,8 +92,6 @@ await snap.loadSnapshot("slot-1");
 - **Adapters** — `localStorageAdapter`, `memoryAdapter`. Implement
   `SaveAdapter` for IndexedDB, files, cloud, etc.
 - **Codecs** — `jsonCodec`, `setCodec`, `mapCodec`, `dateCodec`.
-- **Snapshot system** — `SnapshotPlugin`, `SnapshotService`, `@serializable`
-  decorator (in `@yagejs/core`), snapshot contributors.
 
 ## Docs
 

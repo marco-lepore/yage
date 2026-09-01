@@ -3,7 +3,6 @@ import type { Entity } from "./Entity.js";
 import type { EventToken } from "./EventToken.js";
 import type { Logger } from "./Logger.js";
 import type { Scene } from "./Scene.js";
-import type { SnapshotResolver } from "./Serializable.js";
 import type { ComponentClass } from "./types.js";
 import { LoggerKey, ErrorBoundaryKey } from "./EngineContext.js";
 
@@ -361,18 +360,6 @@ export abstract class Component {
   fixedUpdate?(dt: number): void;
 
   /**
-   * Snapshot restore order. On load, an entity's components are re-added in
-   * ascending priority, so a component whose `onAdd()` reads a sibling can
-   * rely on lower-priority siblings being present and initialized.
-   * Undeclared = 100. Engine components reserve 0-99; game and addon
-   * components declare a value only when a sibling `onAdd()` dependency
-   * requires it. Equal priorities restore in save-time add order.
-   * Subclasses inherit their base class's priority unless they declare
-   * their own.
-   */
-  declare static restorePriority?: number;
-
-  /**
    * Class-level default for {@link updatePriority}: every instance runs at
    * this priority unless its own `updatePriority` is written. Undeclared = 0.
    * Subclasses inherit their base class's value unless they declare their
@@ -387,10 +374,4 @@ export abstract class Component {
    * ```
    */
   declare static updatePriority?: number;
-
-  /** Return a JSON-serializable snapshot of this component's state. Used by the save system. */
-  serialize?(): unknown;
-
-  /** Called after onAdd() during save/load restoration. Apply state that depends on onAdd() having run. */
-  afterRestore?(data: unknown, resolve: SnapshotResolver): void;
 }

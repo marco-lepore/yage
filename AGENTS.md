@@ -6,21 +6,21 @@ Universal guidelines for AI coding agents working on the YAGE codebase.
 
 YAGE is a 2D game engine built as a Turborepo monorepo.
 
-| Package           | Description                                            |
-| ----------------- | ------------------------------------------------------ |
-| `@yagejs/core`      | ECS, DI, game loop, scenes, events (zero runtime deps) |
-| `@yagejs/renderer`  | PixiJS v8 rendering, sprites, camera                   |
-| `@yagejs/lighting`  | Radial lights, light-level queries, render backends    |
-| `@yagejs/physics`   | Rapier2D physics (pixel↔meter conversion is internal)  |
-| `@yagejs/input`     | Keyboard/mouse/gamepad input + action maps             |
-| `@yagejs/audio`     | Channel-based audio via @pixi/sound                    |
-| `@yagejs/particles` | Particle emitters with pooling and presets             |
-| `@yagejs/tilemap`   | Tiled map loading and rendering                        |
-| `@yagejs/pathfinding` | Grid A* pathfinding, tilemap adapter                 |
-| `@yagejs/ui`        | Yoga flexbox-based UI components                       |
-| `@yagejs/ui-react`  | React reconciler over the UI layer                     |
-| `@yagejs/debug`     | Debug overlay, stats, world/HUD drawing                |
-| `@yagejs/save`      | Save/load system with slot-based snapshots             |
+| Package               | Description                                             |
+| --------------------- | ------------------------------------------------------- |
+| `@yagejs/core`        | ECS, DI, game loop, scenes, events (zero runtime deps)  |
+| `@yagejs/renderer`    | PixiJS v8 rendering, sprites, camera                    |
+| `@yagejs/lighting`    | Radial lights, light-level queries, render backends     |
+| `@yagejs/physics`     | Rapier2D physics (pixel↔meter conversion is internal)   |
+| `@yagejs/input`       | Keyboard/mouse/gamepad input + action maps              |
+| `@yagejs/audio`       | Channel-based audio via @pixi/sound                     |
+| `@yagejs/particles`   | Particle emitters with pooling and presets              |
+| `@yagejs/tilemap`     | Tiled map loading and rendering                         |
+| `@yagejs/pathfinding` | Grid A\* pathfinding, tilemap adapter                   |
+| `@yagejs/ui`          | Yoga flexbox-based UI components                        |
+| `@yagejs/ui-react`    | React reconciler over the UI layer                      |
+| `@yagejs/debug`       | Debug overlay, stats, world/HUD drawing                 |
+| `@yagejs/save`        | Controlled state documents, migrations, and named slots |
 
 ## Design Philosophy
 
@@ -55,7 +55,7 @@ Enforced by tooling — match these conventions exactly:
 - **Plain objects for config** — plugin configs, action maps, collider shapes. No `Map`, no classes for config.
 - **Entity subclasses with `setup()` for entity types** — preferred pattern for game entities. `defineBlueprint()` still works for simple parametric factories but is deprecated.
 - **Entity events for game logic** — `defineEvent()` / `entity.on()` / `entity.emit()` for entity-scoped events. `EventBus` for global engine events.
-- **`@serializable` for save/load** — decorate Component/Entity/Scene subclasses. Implement `serialize()` + `static fromSnapshot()` for auto-restore. Components with non-serializable state (Textures, Graphics) use `FrameSource` or `textureKey` string alternatives; when raw objects are used, `serialize()` returns `null` and the entity handles reconstruction in `afterRestore()`.
+- **Controlled save state** — persist only explicit state roots through `@yagejs/save`. A state root implements `Serializable<TEncoded>` or comes from a core state factory. Runtime ECS objects, renderer resources, callbacks, and plugin internals are not traversed automatically. Addons expose complete domain `snapshot()` / `restore()` APIs so the game can include them in a chosen state root.
 - **Attribute developer-supplied callbacks** — engine code that invokes a
   callback the game registered (event handlers, collision handlers, input
   listeners, process callbacks) runs it through `ErrorBoundary.wrapCallback`,
@@ -139,7 +139,7 @@ YAGE maintains two parallel documentation surfaces. When you ship a new public A
 - **LLM docs** — `docs/llms/` (source). Terse, signature-forward reference material optimised for context windows. **Never edit `docs/public/llms/` directly** — it's regenerated from `docs/llms/` by `docs/scripts/copy-llms.mjs` on every docs build and edits to the generated copy are silently overwritten.
 - **Human docs (yage.dev)** — `docs/src/content/docs/` Astro + Starlight `.mdx` files. More narrative; can embed images, diagrams, and inline playable examples.
 
-The two do NOT need 1:1 parity — human docs can be longer and more visual, LLM docs can skip prose that doesn't help an agent. But *something* should land in each surface when a feature becomes user-visible. A missing LLM entry makes agents write broken code against a feature that exists; a missing human entry makes humans fail to discover one.
+The two do NOT need 1:1 parity — human docs can be longer and more visual, LLM docs can skip prose that doesn't help an agent. But _something_ should land in each surface when a feature becomes user-visible. A missing LLM entry makes agents write broken code against a feature that exists; a missing human entry makes humans fail to discover one.
 
 Rebuild both after changes:
 
@@ -173,7 +173,7 @@ npx playwright test     # E2E tests (requires build first)
 
 ## Addons
 
-`packages/addons/*` (npm scope `@yagejs-addons`) is the layer between engine plugins and the game: installable, opinionated implementations of common gameplay patterns (dialogue, inventory, combat). Addons are **independently versioned** (kept out of the engine's `fixed` changeset group) and declare engine packages as **peer dependencies**. Before adding or changing anything under `packages/addons/`, read `packages/addons/AGENTS.md` — the addon authoring guide (layer model L0–L3, capability channels, rules-in/consequences-out, the seven rules, naming/packaging, export split, save via `SnapshotContributor`).
+`packages/addons/*` (npm scope `@yagejs-addons`) is the layer between engine plugins and the game: installable, opinionated implementations of common gameplay patterns (dialogue, inventory, combat). Addons are **independently versioned** (kept out of the engine's `fixed` changeset group) and declare engine packages as **peer dependencies**. Before adding or changing anything under `packages/addons/`, read `packages/addons/AGENTS.md` — the addon authoring guide (layer model L0–L3, capability channels, rules-in/consequences-out, the seven rules, naming/packaging, export split, controlled save state).
 
 ## Reference
 

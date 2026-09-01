@@ -78,16 +78,12 @@ sound effect (`jump.wav`), both Kenney.nl CC0. See `public/assets/CREDITS.md`.
 Replace them with your own assets — just keep the paths in sync with
 whatever your scene preload declares.
 
-## If you add `@yagejs/save` later
+## Save state
 
-The Vite config already has both the bits `@yagejs/save` needs:
-
-- `oxc.decorator.legacy: true` so `@serializable` decorators on your own
-  classes work without a config change.
-- `build.rollupOptions.output.keepNames: true` so the save system can match
-  classes by name after minification.
-
-Drop in `@yagejs/save`, decorate your classes, and you're set.
+Use `@yagejs/save` with an explicit `Serializable<TEncoded>` state root. Save
+files contain only the state you choose; YAGE does not serialize the live ECS
+world automatically. The Vite config preserves names for readable diagnostics,
+not for save-file identity.
 
 ## Full YAGE documentation
 

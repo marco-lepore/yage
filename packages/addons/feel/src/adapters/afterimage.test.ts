@@ -1,10 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  Transform,
-  Vec2,
-  createMockEntity,
-  isSerializable,
-} from "@yagejs/core";
+import { Transform, Vec2, createMockEntity } from "@yagejs/core";
 import {
   GraphicsComponent,
   RenderLayerManager,
@@ -79,7 +74,6 @@ describe("feelAfterimage", () => {
     const playback = feel.play("dash");
     let copies = scene.findEntities({ name: "feel:afterimage" });
     expect(copies).toHaveLength(1);
-    expect(copies[0] && isSerializable(copies[0])).toBe(false);
     expect(copies[0]?.get(Transform).position).toEqual(new Vec2(105, 77));
     expect(copies[0]?.get(Transform).rotation).toBeCloseTo(0.1);
     expect(copies[0]?.get(Transform).scale).toEqual(new Vec2(1.2, 1.2));

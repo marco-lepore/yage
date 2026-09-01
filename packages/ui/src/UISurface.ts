@@ -1,4 +1,4 @@
-import { Component, Transform, serializable } from "@yagejs/core";
+import { Component, Transform } from "@yagejs/core";
 import type { TextStyle } from "@yagejs/renderer";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 import type { DisplayContainer } from "@yagejs/renderer";
@@ -23,7 +23,6 @@ import type { Anchor } from "./types.js";
  * builder methods (`.text()`, `.button()`, `.panel()`) for constructing it.
  * Layout is driven by UILayoutSystem each frame.
  */
-@serializable
 export class UISurface extends Component {
   /**
    * Root element of the mounted UI tree — a `UIPanel` created with this
@@ -36,7 +35,6 @@ export class UISurface extends Component {
   /** @internal */ readonly _offset: { x: number; y: number };
   /** @internal */ readonly _layer: string | undefined;
   /** @internal */ readonly _positioning: "anchor" | "transform";
-  private readonly _snapshot: UISurfaceOptions;
   /** The visibility the game asked for; the tree also needs the entity active. */
   private _userVisible: boolean;
 
@@ -48,7 +46,6 @@ export class UISurface extends Component {
     this._offset = opts?.offset ?? { x: 0, y: 0 };
     this._layer = opts?.layer;
     this._positioning = opts?.positioning ?? "anchor";
-    this._snapshot = cloneUISurfaceOptions(opts);
   }
 
   /** The PixiJS Container of the root panel. */
@@ -172,39 +169,4 @@ export class UISurface extends Component {
     this.root.container.removeFromParent();
     this.root.destroy();
   }
-
-  serialize(): UISurfaceOptions {
-    return cloneUISurfaceOptions(this._snapshot);
-  }
-
-  static fromSnapshot(data: UISurfaceOptions): UISurface {
-    return new UISurface(cloneUISurfaceOptions(data));
-  }
-}
-
-function cloneUISurfaceOptions(opts?: UISurfaceOptions): UISurfaceOptions {
-  if (!opts) return {};
-  const clone: UISurfaceOptions = { ...opts };
-  if (opts.offset) clone.offset = { ...opts.offset };
-  if (opts.padding !== undefined) {
-    clone.padding =
-      typeof opts.padding === "number" ? opts.padding : { ...opts.padding };
-  }
-  if (opts.margin !== undefined) {
-    clone.margin =
-      typeof opts.margin === "number" ? opts.margin : { ...opts.margin };
-  }
-  if (opts.background) {
-    const bg = { ...opts.background };
-    // TextureBackground.nineSlice / tileScale can be objects; deep-copy them
-    // so mutations to the clone don't leak back into the original options.
-    if ("nineSlice" in bg && bg.nineSlice && typeof bg.nineSlice === "object") {
-      bg.nineSlice = { ...bg.nineSlice };
-    }
-    if ("tileScale" in bg && bg.tileScale && typeof bg.tileScale === "object") {
-      bg.tileScale = { ...bg.tileScale };
-    }
-    clone.background = bg;
-  }
-  return clone;
 }

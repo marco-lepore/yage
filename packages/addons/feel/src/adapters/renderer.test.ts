@@ -114,7 +114,7 @@ describe("Feel renderer modifiers", () => {
 
     expect(target.fx.addEffect).toHaveBeenCalledTimes(3);
     for (const call of vi.mocked(target.fx.addEffect).mock.calls) {
-      expect(call[1]).toEqual({ save: false });
+      expect(call).toHaveLength(1);
     }
     for (const handle of handles) {
       expect(handle.setIntensity).toHaveBeenCalledWith(0);
@@ -200,9 +200,7 @@ describe("Feel renderer modifiers", () => {
     );
 
     const playback = feel.play("glitch");
-    expect(host.addEffect).toHaveBeenCalledWith(expect.any(Function), {
-      save: false,
-    });
+    expect(host.addEffect).toHaveBeenCalledWith(expect.any(Function));
     expect(handle.refresh).toHaveBeenCalledOnce();
     expect(handle.refresh).toHaveBeenCalledWith(17);
     expect(handle.setIntensity).toHaveBeenCalledWith(0);

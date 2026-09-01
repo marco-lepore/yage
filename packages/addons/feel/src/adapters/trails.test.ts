@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  Transform,
-  Vec2,
-  createMockEntity,
-  isSerializable,
-} from "@yagejs/core";
+import { Transform, Vec2, createMockEntity } from "@yagejs/core";
 import {
   GraphicsComponent,
   RenderLayerManager,
@@ -59,7 +54,6 @@ describe("Feel flight lines and trails", () => {
     const spawned = scene.findEntity("feel:flight-lines");
     const transform = spawned?.get(Transform);
     const graphics = spawned?.get(GraphicsComponent);
-    expect(spawned && isSerializable(spawned)).toBe(false);
     expect(transform?.position).toEqual(new Vec2(100, 80));
     expect(graphics?.graphics.context.instructions.length).toBeGreaterThan(0);
 

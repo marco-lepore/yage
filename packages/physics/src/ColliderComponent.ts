@@ -2,7 +2,6 @@ import {
   Component,
   devWarn,
   filterEntities,
-  serializable,
   ErrorBoundaryKey,
 } from "@yagejs/core";
 import type {
@@ -25,21 +24,12 @@ import type {
   TriggerEvent,
 } from "./types.js";
 
-/** Serialized snapshot of a ColliderComponent. */
-export interface ColliderData {
-  config: ColliderConfig;
-}
-
 /**
  * Wraps a Rapier collider. Attach after RigidBodyComponent.
  *
  * Component ordering: Transform → RigidBodyComponent → ColliderComponent.
  */
-@serializable
 export class ColliderComponent extends Component {
-  // onAdd() attaches to the sibling RigidBodyComponent's body handle.
-  static restorePriority = 20;
-
   /** Collider configuration (shape, sensor, etc.). */
   readonly config: ColliderConfig;
 
@@ -226,8 +216,8 @@ export class ColliderComponent extends Component {
   /** Set whether this collider is a sensor. Callable before the component
    * is added — the updated config is applied at collider creation. */
   setSensor(sensor: boolean): void {
-    // Event routing, the sensor-mismatch warning, and serialize() all read
-    // config.sensor, so it must track the live collider.
+    // Event routing and the sensor-mismatch warning read config.sensor, so it
+    // must track the live collider.
     this.config.sensor = sensor;
     // Before onAdd there is no physics world or collider yet; the config
     // write above is all that's needed.
@@ -262,7 +252,7 @@ export class ColliderComponent extends Component {
    * its mass from the new shape at creation anyway.
    */
   setShape(shape: ColliderShape, options?: { recomputeMass?: boolean }): void {
-    // serialize() and the shape-dependent dev warnings read config.shape.
+    // Shape-dependent diagnostics read config.shape.
     this.config.shape = shape;
     if (this._colliderHandle === -1) return;
     this.physicsWorld.setColliderShape(
@@ -287,9 +277,8 @@ export class ColliderComponent extends Component {
    * reported through the error boundary once (per installed filter) and
    * the pair stays solid.
    *
-   * Filters are functions and are not serialized: after a save/load, a
-   * collider configured with `oneWay` gets its built-in filter back, and a
-   * custom filter must be reinstalled by the game.
+   * The component does not own a custom filter's lifetime. Reinstall it when
+   * game code reconstructs the collider.
    */
   setContactFilter(filter: ContactFilter | null): void {
     this._contactFilter = filter;
@@ -362,16 +351,6 @@ export class ColliderComponent extends Component {
     }
   }
 
-  /** Serialize the component into a plain data object. */
-  serialize(): ColliderData {
-    return { config: this.config };
-  }
-
-  /** Create a ColliderComponent from a serialized snapshot. */
-  static fromSnapshot(data: ColliderData): ColliderComponent {
-    return new ColliderComponent(data.config);
-  }
-
   /**
    * @internal Called by PhysicsWorld during event dispatch.
    */
@@ -400,7 +379,7 @@ export class ColliderComponent extends Component {
     // still have queued events naming it. A dormant entity must not see them.
     if (this.entity?.isActive === false) return;
     const sceneName = this.entity?.tryScene?.name;
-    // Snapshot: `onCollision`/`onTrigger` hand back an unsubscribe that
+    // Copy the handlers: `onCollision`/`onTrigger` hand back an unsubscribe that
     // splices this array, so a handler removing itself mid-dispatch would
     // otherwise shift the next one past the iterator.
     for (const handler of [...live]) {

@@ -185,8 +185,8 @@ A theme is a plain data object (no behavior), serializable, authored inline or s
   player-controllers). Usually L0/L2a/L3, light on L1.
 - **Single system** — one cohesive installed system (dialogue, combat). Usually
   L1 + L2a-or-L2b (+ L3). _Dialogue's shape:_ L1 headless core + **L2a
-  Component** (host owns focus/pause) + **L3 capability channels** + **save via
-  a `SnapshotContributor`**.
+  Component** (host owns focus/pause) + **L3 capability channels** + an
+  explicit domain `snapshot()` / `restore()` pair for durable state.
 - **Pure library** — headless logic only (stats-formula). L1 only.
 
 Single _tiny_ mechanics (e.g. bullet-time) are usually **recipes/examples** (a
@@ -252,7 +252,8 @@ reuse, to avoid sprawl.
 - **Copy tooling from `packages/particles/`**: `tsconfig.json` (extends
   `../../../tsconfig.base.json` — note the extra `../` for the nested addon
   path), `tsup.config.ts`, `vitest.config.ts` (keep the oxc legacy-decorator
-  flag for future `@serializable`; add `@vitest/coverage-v8` as a devDep).
+  flag for YAGE decorators such as `@trait`; add `@vitest/coverage-v8` as a
+  devDep).
 
 ## Controller `input` contract
 
@@ -288,35 +289,29 @@ packages/addons/<domain>/             # @yagejs-addons/<domain>
   tsconfig.json / tsup.config.ts / vitest.config.ts   # copy from packages/particles/
 ```
 
-## Save / restore for stateful addons → `SnapshotContributor`
+## Save / restore for stateful addons
 
-A stateful single-system addon owns runtime state that lives **outside** the
-entity/component graph (a runner cursor, branching vars, "once" flags). Round-trip
-it through a `SnapshotContributor` (`packages/save/src/snapshot/types.ts`): the
-headless model exposes `snapshot()` / `restore()` over its **entire** state, and
-the L2 layer registers a contributor so the game's save system persists it
-without knowing internals.
+A stateful addon exposes `snapshot()` / `restore()` over its **entire durable
+domain state**. The game decides which addon state belongs in a save and adapts
+it into its explicit `Serializable<TEncoded>` root. The addon does not register
+itself with `@yagejs/save`, traverse the entity graph, or own a save slot.
 
 **Capture the whole cursor, not just the obvious bits.** For dialogue that means
 `{ nodeId, stepIndex, vars, chosenOnce }` — omitting `chosenOnce` silently
 resurrects spent "once"-choices after a load. Restoring mid-line re-presents the
 current line.
 
-An addon `@serializable` Component whose `onAdd()` depends on a sibling declares
-`static restorePriority` above the sibling's (undeclared = 100; the engine
-reserves 0-99) so the sibling is re-added first on snapshot restore.
-
-For the dialogue addon this is **deferred to v1.1**: do not build snapshot/restore
-now, but keep the runner cursor reachable through read-only getters (`getVars`
-exists; `getNodeId`/`getStepIndex`/`getChosenOnce`) so the contributor is purely
-additive later — no breaking change. `@yagejs/save` is **not** a dependency now.
+For dialogue, keep the entire runner cursor reachable through read-only getters:
+`getVars()`, `getNodeId()`, `getStepIndex()`, and `getChosenOnce()`. A domain
+snapshot API can then capture the cursor without coupling dialogue to
+`@yagejs/save`.
 
 ## Reference files
 
 - `packages/core/src/types.ts` — `Plugin` contract.
 - `packages/particles/` — tooling to copy; `src/presets.ts` (preset pattern).
 - `packages/renderer/package.json` — two-key `exports` template.
-- `packages/save/src/snapshot/types.ts` — `SnapshotContributor`.
+- `packages/core/src/state/reactive.ts` — `Serializable<TEncoded>`.
 - `packages/input/src/InputPlugin.ts`, `packages/audio/src/AudioPlugin.ts` —
   L2b Plugin references.
 - `packages/addons/dialogue/` — the first addon; worked single-system example.
@@ -350,9 +345,9 @@ Renderer API name drift to watch: the brief named `bakeBitmapFont` / `BitmapFont
 
 Texture-driven re-theming (`TexturedChrome` / `TexturedBubble`) uses `@yagejs/renderer`'s `createNineSlice` primitive — **not** a direct `pixi.js` import. **Lesson (general):** when a presenter needs a pixi display primitive the renderer doesn't expose, ADD it to `@yagejs/renderer` (it owns the pixi abstraction) rather than importing `pixi.js` inside the addon. Reaching past renderer to pixi works mechanically (pixi is a transitive dep) but bypasses the engine's abstraction and saddles the addon with a second `pixi.js` peer + version surface to keep in lockstep. `createNineSlice` (+ `NineSliceOptions`, and a re-exported `NineSliceSprite` type) was added to renderer for exactly this — so the addon declares **no** `pixi.js` peer at all. Do NOT pull `@yagejs/ui` for nine-slice either — verify `grep -rc "@yagejs/ui" packages/addons/dialogue` returns 0. These textured variants are opt-in: reachable only via the `./presenters` barrel + the optional `theme.textured` field; no default bundle or factory references them.
 
-### v1.1 save seam (kept reachable without building snapshot/restore)
+### Dialogue save state
 
-Save/load is deferred to v1.1 — do NOT build snapshot/restore. But keep the runner cursor reachable so a `SnapshotContributor` (type at `packages/save/src/snapshot/types.ts`) can be added later WITHOUT a breaking change. `runner.ts` exposes read-only `getVars()`, `getNodeId()`, `getStepIndex()`, `getChosenOnce()` under a commented "v1.1 save seam" block. This is documented in code comments and the authoring doc.
+Keep the runner cursor reachable so a complete domain snapshot API can be added without changing the runner again. `runner.ts` exposes read-only `getVars()`, `getNodeId()`, `getStepIndex()`, and `getChosenOnce()`.
 
 ### Glossary terms were CUT from the first release (2026-06-11)
 

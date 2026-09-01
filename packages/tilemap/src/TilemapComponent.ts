@@ -1,14 +1,13 @@
-import { Transform, serializable } from "@yagejs/core";
+import { Transform } from "@yagejs/core";
 import type { AssetHandle } from "@yagejs/core";
 import type { CompositeTilemap } from "@pixi/tilemap";
 import { Assets, ColorMatrixFilter, Container } from "pixi.js";
-import { VisualComponent, visualOptionsFromData } from "@yagejs/renderer";
+import { VisualComponent } from "@yagejs/renderer";
 import type {
   ColorValue,
   DestroyOptions,
   DisplayContainer,
   Filter,
-  VisualComponentData,
   VisualComponentOptions,
 } from "@yagejs/renderer";
 import {
@@ -38,9 +37,9 @@ import type {
 export interface TilemapComponentOptions extends VisualComponentOptions {
   /** Asset handle for the map. Preferred — captures both the parsed data and the asset path. */
   source?: AssetHandle<TiledMapData>;
-  /** Parsed Tiled map data. Use only when you don't have an AssetHandle. Save/load and auto-keys require `mapKey` or `source`. */
+  /** Parsed Tiled map data. Use only when you don't have an AssetHandle. Auto-keys require `mapKey` or `source`. */
   map?: TiledMapData;
-  /** Asset path to the Tiled JSON. Resolved via `Assets.get`. Save/load uses this. */
+  /** Asset path to the Tiled JSON. Resolved via `Assets.get`. */
   mapKey?: string;
   /** Which tile layers to render. Omit to render all. */
   layers?: string[];
@@ -52,18 +51,8 @@ export interface TilemapComponentOptions extends VisualComponentOptions {
   keyPrefix?: string;
 }
 
-/** Serializable snapshot of a TilemapComponent. */
-export interface TilemapComponentData extends VisualComponentData {
-  mapKey: string;
-  layers?: string[];
-  keyPrefix?: string;
-}
-
 /** Component that renders a Tiled map using @pixi/tilemap. */
-@serializable
 export class TilemapComponent extends VisualComponent {
-  static restorePriority = 50;
-
   readonly container: DisplayContainer;
   readonly data: TilemapData;
   /** Asset path of this map, or `null` if constructed from a raw `TiledMapData` without one. */
@@ -72,7 +61,6 @@ export class TilemapComponent extends VisualComponent {
   readonly keyPrefix: string | null;
   private readonly _tiledMap: TiledMapData;
   private readonly layerNames: string[] | undefined;
-  private readonly _explicitKeyPrefix: string | undefined;
   private _tilemapLayers: CompositeTilemap[] = [];
   private _hasAnimatedTiles = false;
   private _animationTimeMs = 0;
@@ -118,7 +106,6 @@ export class TilemapComponent extends VisualComponent {
 
     this.data = toTilemapData(this._tiledMap);
     this.layerNames = options.layers;
-    this._explicitKeyPrefix = options.keyPrefix;
     this.keyPrefix = options.keyPrefix ?? this.mapKey;
     this.container = new Container();
 
@@ -181,38 +168,6 @@ export class TilemapComponent extends VisualComponent {
     for (const layer of this._tilemapLayers) {
       layer.tileAnim = [this._animationTimeMs, this._animationTimeMs];
     }
-  }
-
-  serialize(): TilemapComponentData | null {
-    if (!this.mapKey) {
-      console.warn(
-        `TilemapComponent on "${this.entity?.name}": created with a TiledMapData object. ` +
-          `Use { source } or { mapKey } for save/load support.`,
-      );
-      return null;
-    }
-    return {
-      ...this.serializeVisual(),
-      mapKey: this.mapKey,
-      ...(this.layerNames && { layers: this.layerNames }),
-      ...(this._explicitKeyPrefix !== undefined && {
-        keyPrefix: this._explicitKeyPrefix,
-      }),
-    };
-  }
-
-  /** Restore effects and masks after the tilemap is parented. */
-  afterRestore(data: TilemapComponentData): void {
-    this.restoreVisual(data);
-  }
-
-  static fromSnapshot(data: TilemapComponentData): TilemapComponent {
-    return new TilemapComponent({
-      ...visualOptionsFromData(data),
-      mapKey: data.mapKey,
-      ...(data.layers && { layers: data.layers }),
-      ...(data.keyPrefix !== undefined && { keyPrefix: data.keyPrefix }),
-    });
   }
 
   /** Map width in pixels. */

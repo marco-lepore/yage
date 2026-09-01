@@ -13,7 +13,13 @@
  * `{ type: "give-item", id: "key" }` into an actual effect.
  */
 
-import { createScope, evaluate, holds, isExpr, type EvalScope } from "./expr.js";
+import {
+  createScope,
+  evaluate,
+  holds,
+  isExpr,
+  type EvalScope,
+} from "./expr.js";
 import { materialize } from "./vars.js";
 import type {
   ChoiceOption,
@@ -78,7 +84,12 @@ export interface RunnerHandlers {
   onEnd(): void;
 }
 
-type RunnerState = "idle" | "saying" | "choosing" | "awaiting-command" | "ended";
+type RunnerState =
+  | "idle"
+  | "saying"
+  | "choosing"
+  | "awaiting-command"
+  | "ended";
 
 export class DialogueRunner {
   /** `option.once` keys already picked — per-conversation **cursor** state, NOT
@@ -96,7 +107,9 @@ export class DialogueRunner {
    *  functions, wrapped once as the condition/`set`-value eval scope. */
   private readonly storage: VariableStorage;
   private readonly scope: EvalScope;
-  private readonly onError: ((message: string, error: unknown) => void) | undefined;
+  private readonly onError:
+    | ((message: string, error: unknown) => void)
+    | undefined;
 
   constructor(
     private readonly script: LoadedScript,
@@ -110,19 +123,17 @@ export class DialogueRunner {
     this.onError = env.onError;
   }
 
-  /** Snapshot of the storage's variables — the `handle.getVars()` /
-   *  future save-cursor view. */
+  /** JSON-compatible copy of the dialogue variables. */
   getVars(): Readonly<VarMap> {
     return materialize(this.storage);
   }
 
-  // ── save seam (read-only cursor getters) ──────────────────────────────────
+  // ── read-only cursor state ─────────────────────────────────────────────────
   // The runner's durable cursor is (nodeId, stepIndex, chosenOnce) + getVars().
-  // These getters exist so a future `SnapshotContributor` can capture/restore a
-  // conversation WITHOUT a breaking API change. Snapshot/restore itself is
-  // deliberately NOT built yet — keep these read-only.
+  // These getters let a domain save adapter capture a conversation without
+  // coupling dialogue to a storage package. Keep them read-only.
 
-  /** Current node id (durable cursor; save seam). */
+  /** Current node id in the dialogue cursor. */
   getNodeId(): string {
     return this.nodeId;
   }
@@ -175,7 +186,10 @@ export class DialogueRunner {
    * Delegates to {@link executeBatch}; the runner's wait-state is untouched (the
    * Session gates its own input).
    */
-  runCommands(commands: readonly Command[] | undefined, mode?: RunMode): Promise<void> {
+  runCommands(
+    commands: readonly Command[] | undefined,
+    mode?: RunMode,
+  ): Promise<void> {
     return this.executeBatch(commands, mode);
   }
 
@@ -299,7 +313,8 @@ export class DialogueRunner {
       // "disabled" reason must be added to both, or a row could show as enabled
       // yet refuse to commit.
       if (this.test(option.condition)) out.push({ index, option });
-      else if (option.presentation === "disabled") out.push({ index, option, disabled: true });
+      else if (option.presentation === "disabled")
+        out.push({ index, option, disabled: true });
     });
     return out;
   }
@@ -307,7 +322,11 @@ export class DialogueRunner {
   /** Whether option `index` can actually be picked — the gate `choose()` uses.
    *  A spent `once` option or a failing condition refuses (a `"disabled"` row is
    *  shown but still unpickable, so this stays the single selection authority). */
-  private choiceEnabled(step: ChoiceStep, index: number, option: ChoiceOption): boolean {
+  private choiceEnabled(
+    step: ChoiceStep,
+    index: number,
+    option: ChoiceOption,
+  ): boolean {
     return !this.isSpent(step, index) && this.test(option.condition);
   }
 
@@ -317,7 +336,9 @@ export class DialogueRunner {
    *  `step.options[index]`, so `(step, index)` is the only input. */
   private isSpent(step: ChoiceStep, index: number): boolean {
     const option = step.options[index];
-    return option?.once === true && this.chosenOnce.has(this.onceKey(step, index));
+    return (
+      option?.once === true && this.chosenOnce.has(this.onceKey(step, index))
+    );
   }
 
   private onceKey(step: ChoiceStep, index: number): string {
@@ -332,7 +353,9 @@ export class DialogueRunner {
    * caller transitions out of the state afterwards. The work itself goes through
    * the wait-state-free {@link executeBatch}.
    */
-  private async fireBatch(commands: readonly Command[] | undefined): Promise<void> {
+  private async fireBatch(
+    commands: readonly Command[] | undefined,
+  ): Promise<void> {
     if (!commands || commands.length === 0) return;
     if (commands.some((c) => c.blocking)) this.state = "awaiting-command";
     await this.executeBatch(commands);
@@ -357,7 +380,9 @@ export class DialogueRunner {
         // the async run()/choose() chain and wedge the conversation (same
         // contract as a throwing command handler below).
         const value = cmd.value;
-        const next = isExpr(value) ? evaluate(value, this.scope) : (value as VarValue);
+        const next = isExpr(value)
+          ? evaluate(value, this.scope)
+          : (value as VarValue);
         try {
           this.storage.set(cmd.var, next);
         } catch (e) {
@@ -407,6 +432,8 @@ export class DialogueRunner {
 
 function isPromise(v: unknown): v is Promise<unknown> {
   return (
-    typeof v === "object" && v !== null && typeof (v as { then?: unknown }).then === "function"
+    typeof v === "object" &&
+    v !== null &&
+    typeof (v as { then?: unknown }).then === "function"
   );
 }

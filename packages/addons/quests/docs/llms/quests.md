@@ -25,14 +25,14 @@ import { defineQuests, QuestLog } from "@yagejs-addons/quests";
 
 const quests = defineQuests({
   gatherHerbs: {
-    title: "Gather Herbs",       // required, non-empty
-    summary: "...",              // optional
+    title: "Gather Herbs", // required, non-empty
+    summary: "...", // optional
     objectives: {
-      herb: { title: "...", count: 5 },   // count omitted -> default 1
+      herb: { title: "...", count: 5 }, // count omitted -> default 1
       turnIn: { title: "..." },
     },
-    autoComplete: false,           // optional; default true
-    requires: [],                 // optional; quest ids that must be `completed` first
+    autoComplete: false, // optional; default true
+    requires: [], // optional; quest ids that must be `completed` first
   },
   thinThePack: {
     title: "Thin the Pack",
@@ -134,8 +134,8 @@ current catalog no longer declares, drops objective ids no longer declared
 within a restored quest, clamps surviving counts to the current target, and
 emits one `changed` per restored (and known) quest. Not-started quests
 re-derive `locked`/`available` from `requires`. `@yagejs/save` is not a
-dependency — wire `snapshot`/`restore` to a `SnapshotContributor` /
-`registerSnapshotExtra` in the game.
+dependency. Include this domain snapshot in the game's explicit save state and
+call `restore` after loading it.
 
 ## QuestController (optional L2a)
 

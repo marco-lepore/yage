@@ -1,6 +1,6 @@
 ---
 title: Quests
-description: Headless quest log with objectives, prerequisite chains, auto-complete rollup, and save round-trips for YAGE
+description: Headless quest log with objectives, prerequisite chains, auto-complete rollup, and explicit save support for YAGE
 ---
 
 import { Aside } from "@astrojs/starlight/components";
@@ -212,14 +212,20 @@ the controller is dormant are not replayed when it enables.
 
 ## Save
 
-`snapshot()` / `restore()` round-trip the whole log as plain JSON. Wire it to
-`@yagejs/save` as a snapshot extra (no dependency needed):
+`snapshot()` / `restore()` round-trip the whole log as plain JSON. Include the
+quest data in the game's explicit save root:
 
 ```ts
-snapshotService.registerSnapshotExtra("quests", {
-  serialize: () => log.snapshot(),
-  restore: (data) => log.restore(data),
-});
+import type { Serializable } from "@yagejs/core";
+import type { QuestSnapshot } from "@yagejs-addons/quests";
+
+const gameState: Serializable<{ quests: QuestSnapshot }> = {
+  serialize: () => ({ quests: log.snapshot() }),
+  hydrate: ({ quests }) => log.restore(quests),
+};
+
+await save.persist("game", gameState);
+await save.restore("game", gameState);
 ```
 
 `restore` drops quest ids the current catalog no longer declares and objective

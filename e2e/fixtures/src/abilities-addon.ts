@@ -20,7 +20,11 @@ import {
   trait,
 } from "@yagejs/core";
 import { GraphicsComponent, RendererPlugin } from "@yagejs/renderer";
-import { ColliderComponent, PhysicsPlugin, RigidBodyComponent } from "@yagejs/physics";
+import {
+  ColliderComponent,
+  PhysicsPlugin,
+  RigidBodyComponent,
+} from "@yagejs/physics";
 import { DebugPlugin } from "@yagejs/debug";
 import {
   Abilities,
@@ -65,7 +69,9 @@ const container = setupContainer(WIDTH, HEIGHT);
 const dashMove = defineStep<{ speed: number }>("dashMove", {
   enter(params, ctx) {
     const facing = ctx.entity.get(Facing);
-    ctx.entity.get(RigidBodyComponent).setVelocity(facing.unit.scale(params.speed));
+    ctx.entity
+      .get(RigidBodyComponent)
+      .setVelocity(facing.unit.scale(params.speed));
   },
   exit(_params, ctx) {
     ctx.entity.get(RigidBodyComponent).setVelocity(Vec2.ZERO);
@@ -108,7 +114,10 @@ function statsOf(entity: Entity): Stats | undefined {
 function byAtk(base: StandardHitData): HitSpec {
   return (ctx) => {
     const atk = statsOf(ctx.entity)?.atk ?? BASE_ATK;
-    return { ...base, damage: Math.round((base.damage ?? 0) * (atk / BASE_ATK)) };
+    return {
+      ...base,
+      damage: Math.round((base.damage ?? 0) * (atk / BASE_ATK)),
+    };
   };
 }
 
@@ -116,7 +125,10 @@ function hasten(base: number): Scalar {
   return (ctx) => base / (statsOf(ctx.entity)?.atkSpeed ?? 1);
 }
 
-const defenseStage: HitStage<StandardHitData, HitReceiver> = (hit, receiver) => {
+const defenseStage: HitStage<StandardHitData, HitReceiver> = (
+  hit,
+  receiver,
+) => {
   const def = statsOf(receiver.entity)?.def ?? 0;
   if (def > 0 && hit.data.damage !== undefined) {
     hit.data.damage = Math.max(0, hit.data.damage - def);
@@ -204,7 +216,9 @@ const SHOOT: AbilityDef = {
       aim: (ctx) => {
         const from = ctx.entity.get(Transform).worldPosition;
         const player = ctx.entity.scene.findEntity("PlayerEntity");
-        return player ? player.get(Transform).worldPosition.sub(from) : Vec2.RIGHT;
+        return player
+          ? player.get(Transform).worldPosition.sub(from)
+          : Vec2.RIGHT;
       },
       hit: { damage: 10, knockback: 130, stun: 0.3 },
     }),
@@ -215,26 +229,11 @@ const SHOOT: AbilityDef = {
 // Probe — Inspector-readable combat state, one instance per entity.
 // ---------------------------------------------------------------------------
 
-interface ProbeData {
-  hp: number;
-  maxHp: number;
-  dead: boolean;
-  damagedCount: number;
-  healedCount: number;
-  guardedCount: number;
-  lastGuardOutcome: string;
-  mainActive: string | null;
-  itemActive: string | null;
-  staggered: boolean;
-  x: number;
-  y: number;
-}
-
 class CombatProbe extends Component {
-  private damagedCount = 0;
-  private healedCount = 0;
-  private guardedCount = 0;
-  private lastGuardOutcome = "";
+  damagedCount = 0;
+  healedCount = 0;
+  guardedCount = 0;
+  lastGuardOutcome = "";
   private readonly health = this.sibling(Health);
   private readonly abilities = this.sibling(Abilities);
   private readonly stagger = this.sibling(Stagger);
@@ -253,21 +252,36 @@ class CombatProbe extends Component {
     });
   }
 
-  serialize(): ProbeData {
-    return {
-      hp: this.health.hp,
-      maxHp: this.health.max,
-      dead: this.health.isDead,
-      damagedCount: this.damagedCount,
-      healedCount: this.healedCount,
-      guardedCount: this.guardedCount,
-      lastGuardOutcome: this.lastGuardOutcome,
-      mainActive: this.abilities.activeId("main"),
-      itemActive: this.abilities.activeId("item"),
-      staggered: this.stagger.active,
-      x: this.transform.position.x,
-      y: this.transform.position.y,
-    };
+  get hp(): number {
+    return this.health.hp;
+  }
+
+  get maxHp(): number {
+    return this.health.max;
+  }
+
+  get dead(): boolean {
+    return this.health.isDead;
+  }
+
+  get mainActive(): string | null {
+    return this.abilities.activeId("main");
+  }
+
+  get itemActive(): string | null {
+    return this.abilities.activeId("item");
+  }
+
+  get staggered(): boolean {
+    return this.stagger.active;
+  }
+
+  get x(): number {
+    return this.transform.position.x;
+  }
+
+  get y(): number {
+    return this.transform.position.y;
   }
 }
 
@@ -284,7 +298,11 @@ class PlayerEntity extends Entity {
   setup(): void {
     this.tags.add("player");
     this.add(new Transform({ position: new Vec2(80, 150) }));
-    this.add(new GraphicsComponent().draw((g) => g.circle(0, 0, 14).fill({ color: 0x22c55e })));
+    this.add(
+      new GraphicsComponent().draw((g) =>
+        g.circle(0, 0, 14).fill({ color: 0x22c55e }),
+      ),
+    );
     this.add(new RigidBodyComponent({ type: "dynamic", fixedRotation: true }));
     this.add(new ColliderComponent({ shape: { type: "circle", radius: 14 } }));
     this.add(new ProcessComponent());
@@ -292,7 +310,9 @@ class PlayerEntity extends Entity {
     this.add(new Stats(BASE_ATK, 0, 100));
     this.add(new Health({ max: 100 }));
     this.add(new Stagger());
-    this.add(new HitReceiver({ team: "player", iframes: 0, steps: combatantHitSteps }));
+    this.add(
+      new HitReceiver({ team: "player", iframes: 0, steps: combatantHitSteps }),
+    );
     this.add(new Abilities([SLASH, DASH, GUARD, POTION]));
     this.add(new CombatProbe());
   }
@@ -307,16 +327,25 @@ class EnemyEntity extends Entity {
   setup(): void {
     this.tags.add("enemy");
     this.add(new Transform({ position: new Vec2(320, 150) }));
-    this.add(new GraphicsComponent().draw((g) => g.circle(0, 0, 14).fill({ color: 0xe11d48 })));
+    this.add(
+      new GraphicsComponent().draw((g) =>
+        g.circle(0, 0, 14).fill({ color: 0xe11d48 }),
+      ),
+    );
     this.add(new RigidBodyComponent({ type: "dynamic", fixedRotation: true }));
     this.add(new ColliderComponent({ shape: { type: "circle", radius: 14 } }));
     this.add(new ProcessComponent());
     this.add(new Stats(BASE_ATK, 0, 50));
     this.add(new Health({ max: 50 }));
     this.add(new Stagger());
-    this.add(new HitReceiver({ team: "enemy", iframes: 0, steps: combatantHitSteps }));
     this.add(
-      new TouchDamage({ hit: { damage: 6, knockback: 140, stun: 0.25 }, interval: 0.8 }),
+      new HitReceiver({ team: "enemy", iframes: 0, steps: combatantHitSteps }),
+    );
+    this.add(
+      new TouchDamage({
+        hit: { damage: 6, knockback: 140, stun: 0.25 },
+        interval: 0.8,
+      }),
     );
     this.add(new Abilities([SHOOT]));
     this.add(new CombatProbe());
@@ -348,7 +377,9 @@ interface AbilitiesHostHandle {
 }
 
 function entityFor(scene: Scene, who: Who): Entity {
-  const entity = scene.findEntity(who === "player" ? "PlayerEntity" : "EnemyEntity");
+  const entity = scene.findEntity(
+    who === "player" ? "PlayerEntity" : "EnemyEntity",
+  );
   if (!entity) throw new Error(`abilities fixture: entity "${who}" not found.`);
   return entity;
 }
@@ -394,7 +425,8 @@ async function main(): Promise<void> {
       return entityFor(scene, who).get(Abilities).cooldownRemaining(id);
     },
   };
-  (window as unknown as { __abilities__: AbilitiesHostHandle }).__abilities__ = handle;
+  (window as unknown as { __abilities__: AbilitiesHostHandle }).__abilities__ =
+    handle;
 }
 
 main().catch(console.error);

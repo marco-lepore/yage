@@ -1,14 +1,6 @@
 import type { DisplayContainer as Container } from "../public-types.js";
-import type { MaskHandle, MaskSnapshot } from "./MaskHandle.js";
+import type { MaskHandle } from "./MaskHandle.js";
 import type { MaskFactory } from "./MaskFactory.js";
-import {
-  MASK_META,
-  getMaskMeta,
-  getRegisteredMask,
-} from "./defineMask.js";
-import type { MaskMeta } from "./defineMask.js";
-
-let warnedUnsavable = false;
 
 /**
  * Apply a mask to any pixi `Container`. Returns a {@link MaskHandle} that
@@ -29,7 +21,6 @@ export function attachMask(
   const mask = factory();
   let inverse = mask.inverse;
   let removed = false;
-  const meta = getMaskMeta(mask);
 
   if (mask.attachToTarget) {
     target.addChild(mask.node);
@@ -70,91 +61,5 @@ export function attachMask(
       if (removed) return;
       mask.redraw?.();
     },
-    serialize(): MaskSnapshot | null {
-      if (removed) return null;
-      if (!meta) {
-        if (!warnedUnsavable) {
-          warnedUnsavable = true;
-          console.warn(
-            "MaskHandle.serialize: mask was not built via defineMask " +
-              "(spriteMask / graphicsMask / custom factory) — cannot be " +
-              "saved. Snapshot will skip this mask.",
-          );
-        }
-        return null;
-      }
-      return {
-        name: meta.definitionName,
-        options: meta.options,
-        inverse,
-      };
-    },
   };
-}
-
-/**
- * Re-attach a mask to a target from a saved snapshot. Looks up the registered
- * `MaskDefinition` by name, calls it with the saved options, applies inverse
- * state. Returns the new handle, or `null` if the definition is no longer
- * registered (with a one-shot warning).
- *
- * @internal — called by visual components during `afterRestore` and by the
- * renderer snapshot contributor for layer/scene-scope masks.
- */
-export function restoreMask(
-  target: Container,
-  snapshot: MaskSnapshot,
-): MaskHandle | null {
-  const def = getRegisteredMask(snapshot.name);
-  if (!def) {
-    console.warn(
-      `restoreMask: no mask definition registered for "${snapshot.name}" — ` +
-        `mask will not be restored.`,
-    );
-    return null;
-  }
-  const handle = attachMask(target, () => {
-    const mask = def.factory(snapshot.options);
-    // Re-tag so a subsequent save round-trip preserves the mask.
-    const meta: MaskMeta = {
-      definitionName: snapshot.name,
-      options: snapshot.options,
-    };
-    Object.defineProperty(mask, MASK_META, {
-      value: meta,
-      enumerable: false,
-      writable: false,
-      configurable: false,
-    });
-    return mask;
-  });
-  // Snapshot is authoritative — reapply unconditionally so masks whose
-  // factory defaults to `inverse: true` correctly restore an explicit `false`.
-  if (handle.inverse !== snapshot.inverse) handle.setInverse(snapshot.inverse);
-  return handle;
-}
-
-/** @internal — test reset. */
-export function _resetMaskAttachWarning(): void {
-  warnedUnsavable = false;
-}
-
-/**
- * Shared restore-ordering step for every mask-owning site (visual
- * components, `RenderLayer`, `SceneRenderTree`): drop the current handle,
- * then re-attach from the snapshot. Clearing before restore means a snapshot
- * that no longer resolves (`restoreMask` warns and returns `null` — its
- * definition was never registered) leaves the site's mask field genuinely
- * empty instead of holding a torn-down handle for `serialize`/`clearMask` to
- * operate on.
- *
- * @internal
- */
-export function reattachMaskFromSnapshot(
-  current: MaskHandle | undefined,
-  target: Container,
-  snapshot: MaskSnapshot,
-): MaskHandle | undefined {
-  current?.remove();
-  return restoreMask(target, snapshot) ?? undefined;
 }

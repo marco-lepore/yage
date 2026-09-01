@@ -7,13 +7,15 @@ Depends on `@yagejs/core`, `@pixi/sound`. Channel-based audio playback.
 ```ts
 import { AudioPlugin } from "@yagejs/audio";
 
-engine.use(new AudioPlugin({
-  channels: {
-    sfx: { volume: 1 },
-    music: { volume: 0.7 },
-  },
-  autoMuteOnBlur: true, // default: true — pause AudioContext on window blur
-}));
+engine.use(
+  new AudioPlugin({
+    channels: {
+      sfx: { volume: 1 },
+      music: { volume: 0.7 },
+    },
+    autoMuteOnBlur: true, // default: true — pause AudioContext on window blur
+  }),
+);
 ```
 
 ## Unlock & Tab Mute
@@ -23,11 +25,13 @@ Browsers suspend the `AudioContext` until the user interacts with the page. `@pi
 ```ts
 const audio = this.use(AudioManagerKey);
 
-audio.isUnlocked();              // boolean — AudioContext.state === "running"
-audio.onUnlock(() => audio.play("music/title", { channel: "music", loop: true }));
-audio.offUnlock(cb);             // remove a pending listener (disposer from onUnlock also works)
+audio.isUnlocked(); // boolean — AudioContext.state === "running"
+audio.onUnlock(() =>
+  audio.play("music/title", { channel: "music", loop: true }),
+);
+audio.offUnlock(cb); // remove a pending listener (disposer from onUnlock also works)
 
-audio.autoMuteOnBlur = true;     // default true — toggles @pixi/sound's WebAudioContext.autoPause (suspends context on window blur)
+audio.autoMuteOnBlur = true; // default true — toggles @pixi/sound's WebAudioContext.autoPause (suspends context on window blur)
 ```
 
 - `onUnlock(cb)` fires synchronously if already unlocked; otherwise once on the first gesture that resumes the context. Returns a disposer.
@@ -51,16 +55,21 @@ import { AudioManagerKey } from "@yagejs/audio";
 const audio = this.use(AudioManagerKey);
 
 // Play
-const handle = audio.play(CoinSfx.path, { channel: "sfx", volume: 1, loop: false, speed: 1 });
-audio.playOnce(alias, opts);            // skips playback if already playing
-audio.playRandom([a, b, c], opts);      // random pick
+const handle = audio.play(CoinSfx.path, {
+  channel: "sfx",
+  volume: 1,
+  loop: false,
+  speed: 1,
+});
+audio.playOnce(alias, opts); // skips playback if already playing
+audio.playRandom([a, b, c], opts); // random pick
 
 // SoundHandle
-handle.playing;   // boolean
-handle.volume;    // get/set
-handle.speed;     // get/set
-handle.paused;    // get/set
-handle.muted;     // get/set
+handle.playing; // boolean
+handle.volume; // get/set
+handle.speed; // get/set
+handle.paused; // get/set
+handle.muted; // get/set
 handle.stop();
 
 // Stop
@@ -99,7 +108,9 @@ audio.play("shoot");
 
 Semantics:
 
-- **Save contract.** Snapshots store only the alias. Re-register the buffer under the same alias before restoring (the same boot code that registered it on first run).
+- Runtime buffers are not persisted by YAGE. If game-owned save data contains
+  an alias, re-register the buffer under that alias before reconstructing
+  playback.
 - Registered aliases are engine-global and live until `unregisterSound(alias)`.
 - `unregisterSound` is a no-op for aliases it never registered. An `AudioBuffer` has no destroy step, so unlike `unregisterTexture` there is nothing to release beyond the alias itself.
 - Re-registering an alias replaces the entry.
@@ -112,17 +123,19 @@ Entity-bound audio. Auto-stops on entity destroy.
 ```ts
 import { SoundComponent } from "@yagejs/audio";
 
-entity.add(new SoundComponent({
-  alias: CoinSfx.path,
-  channel: "sfx",
-  playOnAdd: true,
-  loop: false,
-  volume: 1,
-}));
+entity.add(
+  new SoundComponent({
+    alias: CoinSfx.path,
+    channel: "sfx",
+    playOnAdd: true,
+    loop: false,
+    volume: 1,
+  }),
+);
 
 // Control
 const sc = entity.get(SoundComponent);
-sc.play();    // returns SoundHandle
+sc.play(); // returns SoundHandle
 sc.stop();
-sc.handle;    // SoundHandle | null
+sc.handle; // SoundHandle | null
 ```

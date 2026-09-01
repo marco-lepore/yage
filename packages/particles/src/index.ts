@@ -31,6 +31,4 @@ export type {
   EmitterConfig,
   EmitterOptions,
   TextureSource,
-  ParticleEmitterData,
-  ParticleEmitterSource,
 } from "./types.js";

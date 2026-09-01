@@ -9,11 +9,10 @@ import type {
 } from "./SceneRenderTree.js";
 import { RenderLayerManager, layerDefToOptions } from "./RenderLayer.js";
 import type { EffectQueueFactory, RenderLayer } from "./RenderLayer.js";
-import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
-import { attachMask, reattachMaskFromSnapshot } from "./masks/attachMask.js";
+import { attachMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
-import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
+import type { MaskHandle } from "./masks/MaskHandle.js";
 import type { DisplayContainer } from "./public-types.js";
 
 interface SceneEntry {
@@ -21,8 +20,6 @@ interface SceneEntry {
   manager: RenderLayerManager;
   tree: SceneRenderTreeImpl;
 }
-
-
 
 class SceneRenderTreeImpl implements SceneRenderTree {
   readonly fx: EffectsHost;
@@ -73,16 +70,6 @@ class SceneRenderTreeImpl implements SceneRenderTree {
   _destroyMask(): void {
     this._mask?.remove();
     this._mask = undefined;
-  }
-
-  /** @internal — used by the renderer's snapshot contributor. */
-  _serializeMask(): MaskSnapshot | undefined {
-    return this._mask?.serialize() ?? undefined;
-  }
-
-  /** @internal — used by the renderer's snapshot contributor. */
-  _restoreMask(snap: MaskSnapshot): void {
-    this._mask = reattachMaskFromSnapshot(this._mask, this.root, snap);
   }
 }
 
@@ -234,107 +221,6 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
       this.destroyForScene(scene);
     }
   }
-
-  /**
-   * Capture the layer/scene-scope effect + mask state across every live
-   * scene. Each entry records its scene's `name` so restore matches by
-   * name (insensitive to push order or extra scenes pushed at runtime).
-   * @internal
-   */
-  serializeAll(): SceneTreesSnapshot {
-    const out: SceneTreeSnapshot[] = [];
-    for (const [scene, entry] of this.entries) {
-      const tree = entry.tree;
-      const treeSnap = tree.fx.serialize();
-      const sceneMask = tree._serializeMask();
-      const layers: Record<string, EffectStackSnapshot> = {};
-      const layerMasks: Record<string, MaskSnapshot> = {};
-      let hasLayers = false;
-      let hasLayerMasks = false;
-      for (const layer of tree.getAll()) {
-        const layerSnap = layer.fx.serialize();
-        if (layerSnap) {
-          layers[layer.name] = layerSnap;
-          hasLayers = true;
-        }
-        const maskSnap = layer._serializeMask();
-        if (maskSnap) {
-          layerMasks[layer.name] = maskSnap;
-          hasLayerMasks = true;
-        }
-      }
-      out.push({
-        scene: scene.name,
-        ...(treeSnap ? { tree: treeSnap } : {}),
-        ...(hasLayers ? { layers } : {}),
-        ...(sceneMask ? { mask: sceneMask } : {}),
-        ...(hasLayerMasks ? { layerMasks } : {}),
-      });
-    }
-    return out;
-  }
-
-  /**
-   * Apply a `serializeAll()` snapshot onto the live trees. Matches each
-   * entry to a live tree by `Scene.name` in stack order, so two snapshot
-   * entries with the same name map to two same-named live trees in the
-   * order they were pushed (snapshots are also serialized in stack order).
-   * Entries with no matching scene live are skipped with a warning.
-   * @internal
-   */
-  restoreAll(snap: SceneTreesSnapshot): void {
-    // Group live trees by scene name, preserving insertion (push) order
-    // within each group. `Scene.name` is documented as debug-only / not
-    // unique, so we cannot rely on first-write-wins.
-    const treesByName = new Map<string, SceneRenderTreeImpl[]>();
-    for (const [scene, entry] of this.entries) {
-      const list = treesByName.get(scene.name);
-      if (list) list.push(entry.tree);
-      else treesByName.set(scene.name, [entry.tree]);
-    }
-    const consumed = new Map<string, number>();
-    for (const entry of snap) {
-      const list = treesByName.get(entry.scene);
-      const idx = consumed.get(entry.scene) ?? 0;
-      const tree = list?.[idx];
-      consumed.set(entry.scene, idx + 1);
-      if (!tree) {
-        console.warn(
-          `SceneRenderTreeProvider.restoreAll: no live scene named ` +
-            `"${entry.scene}" — its effects + mask state will be skipped.`,
-        );
-        continue;
-      }
-      if (entry.tree) tree.fx.restore(entry.tree);
-      if (entry.mask) tree._restoreMask(entry.mask);
-      if (entry.layers) {
-        for (const [layerName, layerSnap] of Object.entries(entry.layers)) {
-          const layer = tree.tryGet(layerName);
-          if (!layer) {
-            console.warn(
-              `SceneRenderTreeProvider.restoreAll: layer "${layerName}" ` +
-                `not found on live tree "${entry.scene}" — skipping its effects.`,
-            );
-            continue;
-          }
-          layer.fx.restore(layerSnap);
-        }
-      }
-      if (entry.layerMasks) {
-        for (const [layerName, maskSnap] of Object.entries(entry.layerMasks)) {
-          const layer = tree.tryGet(layerName);
-          if (!layer) {
-            console.warn(
-              `SceneRenderTreeProvider.restoreAll: layer "${layerName}" ` +
-                `not found on live tree "${entry.scene}" — skipping its mask.`,
-            );
-            continue;
-          }
-          layer._restoreMask(maskSnap);
-        }
-      }
-    }
-  }
 }
 
 // String-duplicated from @yagejs/ui's `UI_DEFAULT_LAYER` ("ui") to avoid a
@@ -353,17 +239,4 @@ function warnUiLayerShadow(def: LayerDef): void {
       `space: 'screen' replaces the auto-screen-space layer with a ` +
       `world-space one. Add \`space: 'screen'\` or rename the layer.`,
   );
-}
-
-/** @internal — emitted by `SceneRenderTreeProviderImpl.serializeAll`. */
-export type SceneTreesSnapshot = SceneTreeSnapshot[];
-
-/** @internal — one element of {@link SceneTreesSnapshot}. */
-export interface SceneTreeSnapshot {
-  /** `Scene.name` at save time — used to match the entry on restore. */
-  scene: string;
-  tree?: EffectStackSnapshot;
-  layers?: Record<string, EffectStackSnapshot>;
-  mask?: MaskSnapshot;
-  layerMasks?: Record<string, MaskSnapshot>;
 }
