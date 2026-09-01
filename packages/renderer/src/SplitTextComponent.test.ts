@@ -205,6 +205,13 @@ describe("SplitTextComponent", () => {
     expect(comp.chars).toHaveLength(4);
   });
 
+  it("content reads the displayed string back, tracking setText", () => {
+    const comp = new SplitTextComponent({ text: "ab" });
+    expect(comp.content).toBe("ab");
+    comp.setText("abcd");
+    expect(comp.content).toBe("abcd");
+  });
+
   it("setStyle replaces the style (font lives in style.fontFamily)", () => {
     const comp = new SplitTextComponent({
       text: "hi",

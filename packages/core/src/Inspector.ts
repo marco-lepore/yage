@@ -899,7 +899,9 @@ export class Inspector {
     let state!: DriveState;
 
     try {
-      value = await fn(this.createDriveContext(captures, startFrame, checkBudget));
+      value = await fn(
+        this.createDriveContext(captures, startFrame, checkBudget),
+      );
     } catch (thrown) {
       error = thrown instanceof Error ? thrown.message : String(thrown);
       timedOut = thrown instanceof DriveBudgetExceededError;
@@ -1563,13 +1565,26 @@ export class Inspector {
   }
 
   /**
-   * Reflect a component's public state from own properties and getters. The
-   * result is routed through `safeClone` for cycle-safety:
-   * `isSerializableValue` only checks a value's own shape, not whether every
-   * nested value is acyclic.
+   * Reflect a component's public state from own properties and getters. Each
+   * field is cloned on its own so one uncloneable value drops just that key:
+   * `isSerializableValue` only checks a value's own shape, not whether
+   * everything nested inside it is acyclic, and an array of foreign objects
+   * (pixi display objects with `parent` back-references, say) passes that
+   * check but throws on `JSON.stringify`. Cloning the whole object at once
+   * would blank every other field along with it.
    */
   private reflectComponentState(component: Component): unknown {
-    return safeClone(this.collectComponentState(component)) ?? null;
+    const state = this.collectComponentState(component);
+    if (state === null || typeof state !== "object") {
+      return safeClone(state) ?? null;
+    }
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(state)) {
+      const cloned = safeClone(value);
+      if (cloned === undefined && value !== undefined) continue;
+      result[key] = cloned;
+    }
+    return result;
   }
 
   /**

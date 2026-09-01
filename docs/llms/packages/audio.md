@@ -138,4 +138,10 @@ const sc = entity.get(SoundComponent);
 sc.play(); // returns SoundHandle
 sc.stop();
 sc.handle; // SoundHandle | null
+
+// Read the config back (also what the Inspector reports for the component)
+sc.alias;
+sc.channel;
+sc.loop;
+sc.volume;
 ```

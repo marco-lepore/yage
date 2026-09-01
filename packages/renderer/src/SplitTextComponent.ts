@@ -157,6 +157,16 @@ export class SplitTextComponent extends VisualComponent {
     this.applyBlockAnchor();
   }
 
+  /**
+   * The string currently displayed. {@link splitText} is the Pixi display
+   * object, so this is the way to read the rendered string back — including
+   * from the Inspector, which reflects public getters but skips display
+   * objects.
+   */
+  get content(): string {
+    return this.splitText.text;
+  }
+
   /** Replace the text style (re-splits when `autoSplit` is on). */
   setStyle(style: TextStyle): void {
     const { options } = buildTextOptions(

@@ -681,6 +681,42 @@ describe("Inspector", () => {
       ) as Record<string, unknown>;
       expect(data["boom"]).toBeUndefined();
     });
+
+    it("drops only the uncloneable field when a getter returns a cyclic array", async () => {
+      // Mirrors a renderer component exposing an array of pixi display
+      // objects: the array passes the own-shape check, but the `parent`
+      // back-references make it throw on JSON.stringify.
+      class Node {
+        parent: Node | null = null;
+        children: Node[] = [];
+        attach(child: Node): Node {
+          child.parent = this;
+          this.children.push(child);
+          return child;
+        }
+      }
+      class CyclicGetter extends Component {
+        label = "still-here";
+        private _root = new Node();
+        get glyphs(): Node[] {
+          return [this._root.attach(new Node())];
+        }
+      }
+
+      const { inspector, scenes } = setup();
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+      scene.spawn("split").add(new CyclicGetter());
+
+      const data = inspector.getComponentData(
+        "split",
+        "CyclicGetter",
+      ) as Record<string, unknown>;
+      expect(data).not.toBeNull();
+      expect(data["glyphs"]).toBeUndefined();
+      expect(data["label"]).toBe("still-here");
+      expect(data["enabled"]).toBe(true);
+    });
   });
 
   describe("time.isAdvancing", () => {
@@ -1250,13 +1286,15 @@ describe("Inspector", () => {
       inspector.attachTimeController(driveController([]));
 
       for (const bad of [Number.NaN, -1, 1.5]) {
-        expect(() => inspector.drive(async () => {}, { maxFrames: bad })).toThrow(
-          "maxFrames must be a non-negative integer or Infinity",
-        );
+        expect(() =>
+          inspector.drive(async () => {}, { maxFrames: bad }),
+        ).toThrow("maxFrames must be a non-negative integer or Infinity");
       }
       // Infinity disables the budget on purpose, so it has to be accepted.
       await expect(
-        inspector.drive(async () => {}, { maxFrames: Number.POSITIVE_INFINITY }),
+        inspector.drive(async () => {}, {
+          maxFrames: Number.POSITIVE_INFINITY,
+        }),
       ).resolves.toMatchObject({ ok: true });
     });
 

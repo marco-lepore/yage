@@ -63,6 +63,26 @@ export class SoundComponent extends Component {
     return this._handle;
   }
 
+  /** The registered asset alias this component plays. */
+  get alias(): string {
+    return this._alias;
+  }
+
+  /** The mixer channel playback is routed to. */
+  get channel(): string {
+    return this._channel;
+  }
+
+  /** Whether playback repeats. */
+  get loop(): boolean {
+    return this._loop;
+  }
+
+  /** Playback volume (0–1), before channel and master gain. */
+  get volume(): number {
+    return this._volume;
+  }
+
   /**
    * Stop playback. A dormant entity goes quiet; it does not resume on its
    * own when reactivated, so call `play()` again if the sound should restart.
