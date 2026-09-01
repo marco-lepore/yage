@@ -125,6 +125,7 @@ import {
   Scene,
   Transform,
   Vec2,
+  Inspector,
   _resetEntityIdCounter,
 } from "@yagejs/core";
 import type { EngineEvents } from "@yagejs/core";
@@ -341,6 +342,28 @@ describe("TilemapComponent", () => {
     expect(comp.heightPx).toBe(128);
     expect(comp.tileWidth).toBe(16);
     expect(comp.tileHeight).toBe(16);
+  });
+
+  it("keeps the parsed map out of Inspector component state", () => {
+    const { ctx, scene } = createTestContext();
+    const entity = scene.spawn("tilemap");
+    entity.add(new Transform());
+    entity.add(new TilemapComponent({ map: testMap }));
+    // The Inspector reads only `scenes.all` / `scenes.active` for this.
+    const inspector = new Inspector({
+      context: ctx,
+      scenes: { all: [scene], active: scene } as never,
+      loop: new GameLoop(),
+    });
+
+    const state = inspector.getComponentData(
+      "tilemap",
+      "TilemapComponent",
+    ) as Record<string, unknown>;
+
+    expect("data" in state).toBe(false);
+    expect(state["widthPx"]).toBe(160);
+    expect(state["mapKey"]).toBeNull();
   });
 
   it("onAdd creates container with tilemap layers and adds to render layer", () => {

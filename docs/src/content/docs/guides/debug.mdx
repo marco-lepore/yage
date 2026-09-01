@@ -504,8 +504,23 @@ window.__yage__.inspector.getComponentData("turret", "Cooldown");
 
 Fields and getters starting with `_` are excluded, along with functions and
 non-plain-object values. A Pixi/Rapier handle or other class instance would
-otherwise leak a meaningless object identity. A getter that throws is skipped
-rather than failing the whole snapshot.
+otherwise leak a meaningless object identity. `Vec2` is the exception and reads
+as `{ x, y }`. A field declared with `this.sibling()` or `this.service()` is
+skipped too. Engine objects nested inside a field become the same compact refs
+the event log stores: an entity reads as `{ id, name }`, a component as
+`{ component }`, a scene as `{ name }`, and any other class instance as
+`{ _type }`. A getter that throws is skipped rather than failing the whole
+snapshot.
+
+A component keeps bulk data out of its reflected state with a static list.
+Lists merge down the class chain, so a subclass adds to its base class's
+exclusions:
+
+```typescript
+class TilemapComponent extends VisualComponent {
+  static inspectExclude = ["data"]; // one id per tile per layer
+}
+```
 
 ### Reading rendered geometry and visibility
 

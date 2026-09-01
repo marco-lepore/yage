@@ -75,7 +75,7 @@ Properties:
 
 - `widthPx` / `heightPx` — total map size in pixels
 - `tileWidth` / `tileHeight` — single tile dimensions
-- `data: TilemapData` — parsed map structure (see Map Data below)
+- `data: TilemapData` — parsed map structure (see Map Data below). Left out of Inspector component state, since it holds one id per tile per layer
 - `mapKey: string | null` — asset path, or `null` if constructed from raw `map:` data
 - `keyPrefix: string | null` — prefix used for `objectKey` / `forEachObject`
 - `container: DisplayContainer` — the Pixi container holding the rendered layers

@@ -682,10 +682,11 @@ describe("Inspector", () => {
       expect(data["boom"]).toBeUndefined();
     });
 
-    it("drops only the uncloneable field when a getter returns a cyclic array", async () => {
+    it("summarizes class instances inside an array instead of dropping the field", async () => {
       // Mirrors a renderer component exposing an array of pixi display
-      // objects: the array passes the own-shape check, but the `parent`
-      // back-references make it throw on JSON.stringify.
+      // objects: their `parent` back-references would make a deep copy
+      // cyclic, so each instance is stored as the compact ref the event log
+      // uses.
       class Node {
         parent: Node | null = null;
         children: Node[] = [];
@@ -695,7 +696,7 @@ describe("Inspector", () => {
           return child;
         }
       }
-      class CyclicGetter extends Component {
+      class GlyphHolder extends Component {
         label = "still-here";
         private _root = new Node();
         get glyphs(): Node[] {
@@ -706,16 +707,138 @@ describe("Inspector", () => {
       const { inspector, scenes } = setup();
       const scene = new TestScene("game");
       await scenes.push(scene);
-      scene.spawn("split").add(new CyclicGetter());
+      scene.spawn("split").add(new GlyphHolder());
 
-      const data = inspector.getComponentData(
-        "split",
-        "CyclicGetter",
-      ) as Record<string, unknown>;
-      expect(data).not.toBeNull();
-      expect(data["glyphs"]).toBeUndefined();
+      const data = inspector.getComponentData("split", "GlyphHolder") as Record<
+        string,
+        unknown
+      >;
+      expect(data["glyphs"]).toEqual([{ _type: "Node" }]);
       expect(data["label"]).toBe("still-here");
       expect(data["enabled"]).toBe(true);
+    });
+
+    it("drops only the field whose plain-object graph is cyclic", async () => {
+      class Ring extends Component {
+        label = "still-here";
+        loop: Record<string, unknown> = {};
+        constructor() {
+          super();
+          this.loop["self"] = this.loop;
+        }
+      }
+
+      const { inspector, scenes } = setup();
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+      scene.spawn("ring").add(new Ring());
+
+      const data = inspector.getComponentData("ring", "Ring") as Record<
+        string,
+        unknown
+      >;
+      expect("loop" in data).toBe(false);
+      expect(data["label"]).toBe("still-here");
+    });
+
+    it("reflects Vec2 fields and getters as { x, y } and leaves undefined out", async () => {
+      class Mover extends Component {
+        velocity = new Vec2(3, 4);
+        maybe: string | undefined = undefined;
+        get heading(): Vec2 {
+          return Vec2.RIGHT;
+        }
+      }
+
+      const { inspector, scenes } = setup();
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+      scene.spawn("ship").add(new Mover());
+
+      const data = inspector.getComponentData("ship", "Mover") as Record<
+        string,
+        unknown
+      >;
+      expect(data["velocity"]).toEqual({ x: 3, y: 4 });
+      expect(data["heading"]).toEqual({ x: 1, y: 0 });
+      expect("maybe" in data).toBe(false);
+    });
+
+    it("summarizes engine objects nested inside a plain-object field", async () => {
+      class Tracker extends Component {
+        target: { entity: unknown; slot: number } | null = null;
+      }
+
+      const { inspector, scenes } = setup();
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+      const enemy = scene.spawn("enemy");
+      const tracker = scene.spawn("turret").add(new Tracker());
+      tracker.target = { entity: enemy, slot: 2 };
+
+      const data = inspector.getComponentData("turret", "Tracker") as Record<
+        string,
+        unknown
+      >;
+      // Same compact ref the event log stores, instead of a deep copy of the
+      // entity and everything reachable from it.
+      expect(data["target"]).toEqual({
+        entity: { id: enemy.id, name: "enemy" },
+        slot: 2,
+      });
+    });
+
+    it("skips keys listed in static inspectExclude, merged down the class chain", async () => {
+      class Bulk extends Component {
+        static inspectExclude = ["grid"];
+        grid = [1, 2, 3];
+        label = "bulk";
+      }
+      class BulkChild extends Bulk {
+        static inspectExclude = ["extra"];
+        extra = "hidden";
+        get derived(): string {
+          return "shown";
+        }
+      }
+
+      const { inspector, scenes } = setup();
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+      scene.spawn("map").add(new BulkChild());
+
+      const data = inspector.getComponentData("map", "BulkChild") as Record<
+        string,
+        unknown
+      >;
+      expect("grid" in data).toBe(false);
+      expect("extra" in data).toBe(false);
+      expect(data["label"]).toBe("bulk");
+      expect(data["derived"]).toBe("shown");
+    });
+
+    it("skips fields declared with sibling() or service()", async () => {
+      class Other extends Component {}
+      class WithLazyRefs extends Component {
+        readonly other = this.sibling(Other);
+        readonly bus = this.service(EventBusKey);
+        label = "lazy";
+      }
+
+      const { inspector, scenes } = setup();
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+      const e = scene.spawn("host");
+      e.add(new Other());
+      e.add(new WithLazyRefs());
+
+      const data = inspector.getComponentData("host", "WithLazyRefs") as Record<
+        string,
+        unknown
+      >;
+      expect("other" in data).toBe(false);
+      expect("bus" in data).toBe(false);
+      expect(data["label"]).toBe("lazy");
     });
   });
 

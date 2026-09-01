@@ -7,6 +7,13 @@ import type { ComponentClass } from "./types.js";
 import { LoggerKey, ErrorBoundaryKey } from "./EngineContext.js";
 
 /**
+ * Prototype of the lazy `service()` / `sibling()` proxy targets. Anything but
+ * `Object.prototype`, so the Inspector's plain-object check skips such a field
+ * instead of resolving the service or sibling while reflecting.
+ */
+const lazyRefPrototype: object = {};
+
+/**
  * Base class for all components.
  *
  * Components are the primary authoring model. Game developers write behavior
@@ -171,7 +178,7 @@ export abstract class Component {
    */
   protected service<T extends object>(key: ServiceKey<T>): T {
     let resolved: T | undefined;
-    return new Proxy({} as object, {
+    return new Proxy(Object.create(lazyRefPrototype) as object, {
       get: (_target, prop) => {
         resolved ??= this.use(key);
         const value = (resolved as Record<string | symbol, unknown>)[prop];
@@ -196,7 +203,7 @@ export abstract class Component {
    */
   protected sibling<C extends Component>(cls: ComponentClass<C>): C {
     let resolved: C | undefined;
-    return new Proxy({} as object, {
+    return new Proxy(Object.create(lazyRefPrototype) as object, {
       get: (_target, prop) => {
         resolved ??= this.entity.get(cls);
         const value = (resolved as Record<string | symbol, unknown>)[prop];
@@ -374,4 +381,18 @@ export abstract class Component {
    * ```
    */
   declare static updatePriority?: number;
+
+  /**
+   * Own fields and getters the Inspector leaves out of this component's
+   * reflected state. Use it for bulk data that is not worth a diagnostic
+   * copy — a parsed tilemap, a large lookup table. Lists merge down the
+   * class chain, so a subclass adds to its base class's exclusions.
+   *
+   * ```ts
+   * class TilemapComponent extends VisualComponent {
+   *   static inspectExclude = ["data"];
+   * }
+   * ```
+   */
+  declare static inspectExclude?: readonly string[];
 }

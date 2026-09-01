@@ -90,6 +90,7 @@ inspector.events.isEnabled(); // current on/off state
 await inspector.events.waitFor("scene:pushed", { withinFrames: 30 });
 inspector.snapshotJSON(); // stable, sorted JSON for diffing
 inspector.snapshotScene("level2"); // one scene's snapshot, by name or by id
+inspector.getEntityCount(); // live entities across the scene stack, no snapshot built
 inspector.time.isAdvancing(); // true if a real frame ticked within the last 250ms
 ```
 
@@ -195,9 +196,22 @@ traps of driving a live page, is in `llms/play-sessions.md`.
 fields plus its public getters (`get isReady()`, `get health()`, and similar).
 Fields and getters starting with `_` are excluded. Functions and non-plain-object
 values are excluded too, because Pixi/Rapier handles and other class instances
-would leak meaningless object identities. A getter that throws is skipped
-rather than failing the whole diagnostic snapshot. Inspector snapshots are not
-save data.
+would leak meaningless object identities; `Vec2` is the exception and reads as
+`{ x, y }`. A field declared with `this.sibling()` or `this.service()` is
+skipped as well. Engine objects nested inside a field become compact refs, the
+same ones the event log stores: an entity reads as `{ id, name }`, a component
+as `{ component }`, a scene as `{ name }`, and any other class instance as
+`{ _type }`. A getter that throws is skipped rather than failing the whole
+diagnostic snapshot. Inspector snapshots are not save data.
+
+A component keeps bulk data out of its reflected state with a static list;
+lists merge down the class chain:
+
+```ts
+class TilemapComponent extends VisualComponent {
+  static inspectExclude = ["data"]; // one id per tile per layer
+}
+```
 
 ### Render facet — rendered geometry / visibility
 

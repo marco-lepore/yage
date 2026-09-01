@@ -53,6 +53,10 @@ export interface TilemapComponentOptions extends VisualComponentOptions {
 
 /** Component that renders a Tiled map using @pixi/tilemap. */
 export class TilemapComponent extends VisualComponent {
+  // The parsed map holds one id per tile per layer: too much for a diagnostic
+  // copy on every Inspector snapshot.
+  static inspectExclude = ["data"];
+
   readonly container: DisplayContainer;
   readonly data: TilemapData;
   /** Asset path of this map, or `null` if constructed from a raw `TiledMapData` without one. */

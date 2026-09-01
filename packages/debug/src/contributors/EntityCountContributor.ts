@@ -8,7 +8,7 @@ export class EntityCountContributor implements DebugContributor {
   constructor(private readonly inspector: Inspector) {}
 
   drawHud(api: HudDebugApi): void {
-    const count = this.inspector.snapshot().entityCount;
+    const count = this.inspector.getEntityCount();
     api.addLine(`Entities: ${count}`);
   }
 }

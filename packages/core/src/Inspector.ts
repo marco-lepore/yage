@@ -195,8 +195,8 @@ export interface InspectorFacets {
 /**
  * A plugin-registered contributor that augments component (and optionally
  * entity) snapshots with a namespaced facet derived from live runtime
- * state — the seam that lets the renderer publish rendered geometry without
- * core taking a dependency on, or knowing anything about, the renderer.
+ * state. This is how the renderer publishes rendered geometry without core
+ * taking a dependency on, or knowing anything about, the renderer.
  *
  * Register via {@link Inspector.registerFacetContributor}. Mirrors the
  * contributor pattern used elsewhere in the engine (`DebugContributor`): the
@@ -1125,7 +1125,7 @@ export class Inspector {
       version: 1,
       frame: this.time.getFrame(),
       sceneStack: this.getSceneStack(),
-      entityCount: this.countEntities(),
+      entityCount: this.getEntityCount(),
       systemCount: this.getSystems().length,
       errors: this.getErrors(),
       scenes,
@@ -1566,22 +1566,22 @@ export class Inspector {
 
   /**
    * Reflect a component's public state from own properties and getters. Each
-   * field is cloned on its own so one uncloneable value drops just that key:
-   * `isSerializableValue` only checks a value's own shape, not whether
-   * everything nested inside it is acyclic, and an array of foreign objects
-   * (pixi display objects with `parent` back-references, say) passes that
-   * check but throws on `JSON.stringify`. Cloning the whole object at once
-   * would blank every other field along with it.
+   * field is cloned on its own. Engine and foreign objects nested inside a
+   * field are stored as the compact refs the event log uses (see
+   * {@link summarizeInstance}): an array of pixi display objects reads as
+   * `[{ _type: "Sprite" }]` instead of dragging `parent` back-references in,
+   * and a plain-object field holding an entity reads as `{ id, name }`. A
+   * field that still cannot be cloned (a cycle through plain objects) drops
+   * on its own instead of blanking every other field with it. A field whose
+   * value is `undefined` is left out, as a JSON round trip would leave it out.
    */
-  private reflectComponentState(component: Component): unknown {
-    const state = this.collectComponentState(component);
-    if (state === null || typeof state !== "object") {
-      return safeClone(state) ?? null;
-    }
+  private reflectComponentState(component: Component): Record<string, unknown> {
     const result: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(state)) {
-      const cloned = safeClone(value);
-      if (cloned === undefined && value !== undefined) continue;
+    for (const [key, value] of Object.entries(
+      this.collectComponentState(component),
+    )) {
+      const cloned = safeClone(value, summarizeInstance);
+      if (cloned === undefined) continue;
       result[key] = cloned;
     }
     return result;
@@ -1809,9 +1809,10 @@ export class Inspector {
   /**
    * Reflect a component's own enumerable fields plus its public prototype
    * getters. Getters make derived read-only state (`get isOnCooldown()`,
-   * `get health()`) visible without extra diagnostic code.
+   * `get health()`) visible without extra diagnostic code. Keys named in the
+   * class's `static inspectExclude` are left out.
    */
-  private collectComponentState(comp: Component): unknown {
+  private collectComponentState(comp: Component): Record<string, unknown> {
     // These live on Component.prototype as accessors, so neither loop below
     // reaches them. `enabled` alone is ambiguous once entities can be dormant:
     // `effectiveEnabled` is what says whether the component is running.
@@ -1821,8 +1822,9 @@ export class Inspector {
       effectiveEnabled: comp.effectiveEnabled,
     };
     if (comp.updatePriority !== 0) result.updatePriority = comp.updatePriority;
+    const excluded = this.collectExcludedKeys(comp);
     for (const key of Object.getOwnPropertyNames(comp)) {
-      if (key === "entity") continue;
+      if (key === "entity" || excluded.has(key)) continue;
       // Skip private-by-convention fields. Components hold pixi/rapier handles
       // (e.g. _body) on underscore-prefixed slots; exposing them in
       // snapshots would either crash JSON.stringify on cycles or leak
@@ -1840,7 +1842,7 @@ export class Inspector {
       result[key] = value;
     }
     for (const key of this.collectGetterNames(comp)) {
-      if (key in result) continue;
+      if (key in result || excluded.has(key)) continue;
       let value: unknown;
       try {
         value = (comp as unknown as Record<string, unknown>)[key];
@@ -1876,7 +1878,26 @@ export class Inspector {
     return [...names];
   }
 
-  private countEntities(): number {
+  /**
+   * Keys named in `static inspectExclude` on the component's class or any
+   * base class, merged so a subclass adds to its base's list.
+   */
+  private collectExcludedKeys(comp: Component): Set<string> {
+    const excluded = new Set<string>();
+    let ctor: unknown = comp.constructor;
+    while (typeof ctor === "function" && ctor !== Component) {
+      if (Object.hasOwn(ctor, "inspectExclude")) {
+        for (const key of (ctor as typeof Component).inspectExclude ?? []) {
+          excluded.add(key);
+        }
+      }
+      ctor = Object.getPrototypeOf(ctor);
+    }
+    return excluded;
+  }
+
+  /** Live entities across every scene on the stack, dormant ones included. */
+  getEntityCount(): number {
     let count = 0;
     for (const scene of this.engine.scenes.all) {
       for (const entity of scene.getEntities()) {
@@ -1921,6 +1942,8 @@ function isSerializableValue(value: unknown): boolean {
   if (t === "function") return false;
   if (t !== "object") return true;
   if (Array.isArray(value)) return true;
+  // The engine's own value type reads as `{ x, y }`, so it counts as data.
+  if (value instanceof Vec2) return true;
   // Plain objects pass; class instances (Pixi, Rapier, Yoga, etc.) don't.
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;
@@ -1982,13 +2005,13 @@ function serializeEventPayload(payload: unknown): unknown | null {
 }
 
 /**
- * `JSON.stringify` replacer that keeps a logged payload to the data the event
- * is about. Engine events pass live objects — `component:added` is typed to
- * carry the `Component` itself — and a deep copy of one also copies its entity
- * backref, that entity's scene, and every engine internal reachable from
- * there. Plain objects, arrays and primitives are cloned; any other class
- * instance is stored as a compact ref, which is also what keeps such a payload
- * free of cycles.
+ * `JSON.stringify` replacer that keeps a logged payload, or a reflected
+ * component field, to the data it is about. Engine events pass live objects —
+ * `component:added` is typed to carry the `Component` itself — and a deep copy
+ * of one also copies its entity backref, that entity's scene, and every engine
+ * internal reachable from there. Plain objects, arrays and primitives are
+ * cloned; any other class instance is stored as a compact ref, which is also
+ * what keeps such a payload free of cycles.
  *
  * Event subscribers receive the live object either way; the ref applies only
  * to the log's stored copy. A class that defines `toJSON` keeps that result,
@@ -1997,7 +2020,6 @@ function serializeEventPayload(payload: unknown): unknown | null {
 function summarizeInstance(_key: string, value: unknown): unknown {
   if (value === null || typeof value !== "object") return value;
   if (isSerializableValue(value)) return value;
-  if (value instanceof Vec2) return { x: value.x, y: value.y };
   if (value instanceof Component) return { component: value.constructor.name };
   if (value instanceof Entity) return { id: value.id, name: value.name };
   if (value instanceof Scene) return { name: value.name };

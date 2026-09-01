@@ -306,6 +306,9 @@ console.log(`${data.width} x ${data.height} tiles`);
 console.log(`${data.tileLayers.length} tile layers`);
 ```
 
+The Inspector leaves `data` out of the component's reflected state, since it
+holds one id per tile per layer.
+
 The `TilemapData` shape is deliberately decoupled from the Tiled JSON
 format — you can build your own parser for a different editor and reuse the
 same downstream consumers.
