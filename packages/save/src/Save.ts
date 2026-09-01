@@ -76,7 +76,9 @@ export class StoreVersionTooNewError extends Error {
 export class CorruptPayloadError extends Error {
   readonly storeId: string;
   constructor(storeId: string, detail: string) {
-    super(`Save: payload for "${storeId}" is not a valid version envelope (${detail}).`);
+    super(
+      `Save: payload for "${storeId}" is not a valid version envelope (${detail}).`,
+    );
     this.name = "CorruptPayloadError";
     this.storeId = storeId;
   }
@@ -169,21 +171,32 @@ function manifestKey(id: string): string {
   return `${encodeURIComponent(id)}${SEP}${MANIFEST_TAG}`;
 }
 
+/**
+ * Slot maps are keyed by user-chosen names, so they get a null prototype: on
+ * a plain `{}`, assigning `slots["__proto__"] = entry` would hit the inherited
+ * setter instead of creating an own property (the slot saves but never
+ * lists), and `"toString" in slots` would be true for a slot that was never
+ * saved.
+ */
+function emptySlots(): Record<string, ManifestEntry> {
+  return Object.create(null) as Record<string, ManifestEntry>;
+}
+
 async function readManifest(
   adapter: SaveAdapter,
   id: string,
 ): Promise<SlotManifest> {
   const raw = await adapter.read(manifestKey(id));
-  if (raw == null) return { version: 1, slots: {} };
+  if (raw == null) return { version: 1, slots: emptySlots() };
   try {
     const parsed = JSON.parse(raw) as Partial<SlotManifest>;
     if (parsed && typeof parsed === "object" && parsed.slots) {
-      return { version: 1, slots: parsed.slots };
+      return { version: 1, slots: Object.assign(emptySlots(), parsed.slots) };
     }
   } catch {
     // Fall through to empty manifest — the next save rewrites it.
   }
-  return { version: 1, slots: {} };
+  return { version: 1, slots: emptySlots() };
 }
 
 async function writeManifest(
@@ -363,7 +376,7 @@ export class Save {
       if (!(slot in manifest.slots)) return;
       // Build a fresh slots map without the deleted entry — avoids dynamic
       // delete on a record (lint: no-dynamic-delete).
-      const next: Record<string, ManifestEntry> = {};
+      const next = emptySlots();
       for (const [name, entry] of Object.entries(manifest.slots)) {
         if (name !== slot) next[name] = entry;
       }
@@ -430,10 +443,7 @@ export class Save {
         try {
           await this.persist(id, thing, opts);
         } catch (err) {
-          console.error(
-            `autoPersist: failed to persist store "${id}":`,
-            err,
-          );
+          console.error(`autoPersist: failed to persist store "${id}":`, err);
         }
       }
       inFlight = false;
