@@ -1,7 +1,7 @@
 import type { Mask, MaskFactory } from "./MaskFactory.js";
 
 /**
- * Registered mask definition. Mirrors {@link EffectDefinition}. The callable
+ * Named mask definition. Mirrors {@link EffectDefinition}. The callable
  * shape `(options) => MaskFactory` is what users invoke (`rectMask({ ... })`).
  */
 export interface MaskDefinition<O> {

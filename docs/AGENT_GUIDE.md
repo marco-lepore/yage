@@ -854,7 +854,7 @@ Quick summary of the key architectural decisions:
 | Internal coordinate conversion                          | `PhysicsWorld` handles pixels ↔ meters; users never see Rapier units                                                                           |
 | Error attribution (`ErrorBoundary`)                     | A throw is attributed to the system/component/callback that threw, logged, and inspectable, before it stops the loop                           |
 | Inspector + Logger as core features                     | Testing and debugging are first-class; `window.__yage__` enables Playwright assertions                                                         |
-| Explicit save roots (`Serializable<TEncoded>`)          | Save files contain selected durable game facts; runtime ECS and plugin objects are rebuilt instead of traversed                                |
+| Explicit save roots (`Serializable<TEncoded>`)          | Save files hold selected durable game facts; scene setup rebuilds runtime ECS and plugin objects after load                                    |
 | String keys for texture-dependent components            | `FrameSource` (animation), `textureKey` (particles), and sprite texture keys integrate with asset loading without coupling to PixiJS objects   |
 
 ---

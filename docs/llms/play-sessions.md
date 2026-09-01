@@ -262,7 +262,7 @@ measurement worth returning.
 
 ```ts
 inspector.getEntityPosition("player");           // { x, y } | undefined
-inspector.getComponentData("player", "Health");  // serialize(), or reflected fields
+inspector.getComponentData("player", "Health");  // reflected fields and getters
 inspector.getSceneStack();                       // scene snapshots, bottom to top
 inspector.getInputState();                       // { keys, actions, mouse, pointers, gamepad }
 inspector.snapshotJSON();                        // whole world, sorted, for diffing
@@ -270,10 +270,10 @@ inspector.events.getLog();                       // bus + entity events
 await ctx.events.waitFor("enemy:hit", { withinFrames: 60 });
 ```
 
-`getComponentData` reads a component's `serialize()` when it defines one, and
-otherwise reflects its enumerable fields and public getters, so a component
-with no save support is still readable. `getInputState()` is the cheap way to
-check what is held — `snapshotJSON()` walks every scene and entity.
+`getComponentData` reflects a component's enumerable fields and public
+getters, so any component is readable without diagnostic code of its own.
+`getInputState()` is the cheap way to check what is held — `snapshotJSON()`
+walks every scene and entity.
 
 `events.waitFor` has to be started before the frames that satisfy it, because
 the run is the only thing issuing frames:

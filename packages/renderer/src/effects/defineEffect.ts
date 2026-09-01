@@ -16,7 +16,7 @@ export interface EffectMeta {
 }
 
 /**
- * Registered effect definition. The callable shape `(options) => EffectFactory`
+ * Named effect definition. The callable shape `(options) => EffectFactory`
  * is what users invoke at call sites (`bloom({ threshold: 0.8 })`); the
  * `name` property lets callers find an attached effect later.
  */
@@ -32,7 +32,6 @@ export interface EffectDefinition<H extends EffectHandle, O> {
  *
  * Names are conventionally prefixed (`yage:hitFlash`, `yage:bloom`, …); the
  * `@yagejs/effects` package uses `yage:` for its hero presets.
- *
  */
 export function defineEffect<H extends EffectHandle, O>(spec: {
   name: string;

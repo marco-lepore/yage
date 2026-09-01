@@ -344,9 +344,9 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     });
 
     // 12. Publish the render facet (rendered geometry + visibility) into the
-    //     Inspector through the generic facet-contributor seam, so
-    //     `@yagejs/core` stays agnostic of any rendering concept. The Inspector
-    //     is always registered by the Engine, so this can wire up during
+    //     Inspector through `registerFacetContributor`, so `@yagejs/core`
+    //     stays agnostic of any rendering concept. The Engine always
+    //     registers the Inspector, so the contributor can register during
     //     install.
     const inspector = context.tryResolve(InspectorKey);
     if (inspector) {
