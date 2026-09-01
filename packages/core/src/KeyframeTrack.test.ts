@@ -218,6 +218,114 @@ describe("createKeyframeTrack", () => {
         ],
         setter: () => {},
       }),
-    ).toThrow("duration must be > 0");
+    ).toThrow("createKeyframeTrack: duration must be a finite number > 0");
+  });
+
+  it("throws on a non-finite duration", () => {
+    expect(() =>
+      createKeyframeTrack({
+        keyframes: [
+          { time: 0, data: 0 },
+          { time: 1, data: 10 },
+        ],
+        duration: NaN,
+      }),
+    ).toThrow("got NaN");
+  });
+
+  it("throws on fewer than 2 keyframes", () => {
+    expect(() =>
+      createKeyframeTrack({ keyframes: [{ time: 1, data: 5 }] }),
+    ).toThrow("at least 2 entries");
+    expect(() => createKeyframeTrack({ keyframes: [] })).toThrow(
+      "at least 2 entries",
+    );
+  });
+
+  it("throws on a speed that is not finite and positive", () => {
+    const keyframes = [
+      { time: 0, data: 0 },
+      { time: 1, data: 10 },
+    ];
+    expect(() => createKeyframeTrack({ keyframes, speed: 0 })).toThrow(
+      "speed must be a finite number > 0",
+    );
+    expect(() => createKeyframeTrack({ keyframes, speed: -1 })).toThrow(
+      "got -1",
+    );
+    expect(() => createKeyframeTrack({ keyframes, speed: NaN })).toThrow(
+      "got NaN",
+    );
+  });
+
+  it("throws on a non-finite keyframe time", () => {
+    expect(() =>
+      createKeyframeTrack({
+        keyframes: [
+          { time: 0, data: 0 },
+          { time: NaN, data: 10 },
+        ],
+        duration: 1,
+      }),
+    ).toThrow("keyframe 1 must have a finite time in seconds, got NaN");
+  });
+
+  it("throws when keyframes are not sorted by time", () => {
+    expect(() =>
+      createKeyframeTrack({
+        keyframes: [
+          { time: 0, data: 0 },
+          { time: 0.8, data: 10 },
+          { time: 0.3, data: 20 },
+        ],
+        duration: 1,
+      }),
+    ).toThrow("keyframes must be sorted by time, but keyframe 2 is at 0.3 after 0.8");
+  });
+
+  it("accepts two keyframes at the same time", () => {
+    // A coincident pair is a step change, not an authoring mistake.
+    const values: number[] = [];
+    const proc = createKeyframeTrack({
+      keyframes: [
+        { time: 0, data: 0 },
+        { time: 0.5, data: 10 },
+        { time: 0.5, data: 100 },
+        { time: 1, data: 200 },
+      ],
+      setter: (v) => values.push(v as number),
+    });
+    for (let i = 0; i < 4; i++) proc._update(0.2);
+    expect(values.length).toBe(4);
+    expect(values.every((v) => Number.isFinite(v))).toBe(true);
+  });
+
+  it("holds the first keyframe's value through a lead-in", () => {
+    const values: number[] = [];
+    const proc = createKeyframeTrack({
+      keyframes: [
+        { time: 0.2, data: 0 },
+        { time: 0.4, data: 100 },
+      ],
+      setter: (v) => { values.push(v); },
+    });
+    for (let i = 0; i < 6; i++) proc._update(1 / 60);
+    // Every tick inside the lead-in sits at the first keyframe, never below it.
+    expect(values.slice(0, 6).every((v) => v === 0)).toBe(true);
+  });
+
+  it("completes on the tick that reaches a duration built from exact steps", () => {
+    const proc = createKeyframeTrack({
+      keyframes: [
+        { time: 0, data: 0 },
+        { time: 0.1, data: 1 },
+      ],
+    });
+    let ticks = 0;
+    while (!proc.completed && ticks < 20) {
+      proc._update(1 / 60);
+      ticks++;
+    }
+    expect(ticks).toBe(6);
   });
 });

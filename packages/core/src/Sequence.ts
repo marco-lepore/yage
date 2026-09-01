@@ -1,4 +1,5 @@
 import { Process } from "./Process.js";
+import { assertDuration } from "./internal/duration.js";
 
 type StepFactory = () => Process;
 
@@ -25,8 +26,9 @@ export class Sequence {
     return this;
   }
 
-  /** Add a delay in seconds. */
+  /** Add a delay in seconds. Must be finite and > 0. */
   wait(seconds: number): this {
+    assertDuration("Sequence.wait", seconds);
     this.steps.push({
       type: "single",
       factories: [
@@ -127,6 +129,28 @@ export class Sequence {
         }
 
         return false;
+      },
+      // The step cursor lives in this closure, where `Process._reset()`
+      // cannot reach it. Clearing it here is what lets a built sequence run
+      // again — as a step of another sequence, or on a repeat iteration.
+      onReset: () => {
+        // A reset ends the current pass, so the step processes it started go
+        // with it — otherwise they are abandoned mid-run, unfinished forever.
+        for (const proc of active) {
+          proc.cancel();
+        }
+        stepIndex = 0;
+        active = [];
+        iteration = 1;
+      },
+      // Only the wrapper is registered with a ProcessComponent. Cancelling it
+      // reaches the step processes it started, including a named instance the
+      // game passed to `then()`/`parallel()` and still holds.
+      onCancel: () => {
+        for (const proc of active) {
+          proc.cancel();
+        }
+        active = [];
       },
     });
   }

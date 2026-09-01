@@ -107,6 +107,88 @@ describe("ProcessSlot", () => {
     expect(slot.completed).toBe(true);
   });
 
+  it("start(overrides) does not affect the next bare start()", () => {
+    const slot = new ProcessSlot({ duration: 100, tags: ["cooldown"] });
+    slot.start({ duration: 20, tags: ["rush"] });
+    expect(slot.tags).toEqual(["rush"]);
+    slot._tick(20);
+    expect(slot.completed).toBe(true);
+    expect(slot.tags).toEqual(["cooldown"]);
+
+    slot.start();
+    slot._tick(20);
+    expect(slot.completed).toBe(false);
+    expect(slot.tags).toEqual(["cooldown"]);
+    slot._tick(80);
+    expect(slot.completed).toBe(true);
+  });
+
+  it("start(overrides) on a running slot is discarded with the start", () => {
+    const slot = new ProcessSlot({ duration: 100 });
+    slot.start();
+    slot._tick(50);
+    slot.start({ duration: 1000 });
+    slot._tick(50);
+    expect(slot.completed).toBe(true);
+  });
+
+  it("rejects a duration that is not finite and positive", () => {
+    expect(() => new ProcessSlot({ duration: 0 })).toThrow(
+      "ProcessSlot: duration must be a finite number > 0 in seconds, got 0.",
+    );
+    expect(() => new ProcessSlot({ duration: NaN })).toThrow("got NaN");
+    const slot = new ProcessSlot({ duration: 1 });
+    expect(() => slot.start({ duration: -2 })).toThrow(
+      "ProcessSlot.start: duration must be a finite number > 0 in seconds, got -2.",
+    );
+  });
+
+  it("completes on the tick that reaches a duration made of exact steps", () => {
+    const slot = new ProcessSlot({ duration: 0.25 });
+    slot.start();
+    let ticks = 0;
+    while (!slot.completed && ticks < 20) {
+      slot._tick(1 / 60);
+      ticks++;
+    }
+    expect(ticks).toBe(15);
+    expect(slot.ratio).toBe(1);
+  });
+
+  it("a cleanup that restarts its own slot does not recurse", () => {
+    let restarts = 0;
+    const slot: ProcessSlot = new ProcessSlot({
+      duration: 100,
+      cleanup: () => {
+        if (restarts < 3) {
+          restarts++;
+          slot.restart();
+        }
+      },
+    });
+    slot.start();
+    slot.cancel();
+    expect(restarts).toBe(1);
+    expect(slot.completed).toBe(false);
+    expect(slot.elapsed).toBe(0);
+  });
+
+  it("a throwing cleanup still leaves the slot cancelled", () => {
+    const update = vi.fn();
+    const slot = new ProcessSlot({
+      duration: 100,
+      update,
+      cleanup: () => {
+        throw new Error("boom");
+      },
+    });
+    slot.start();
+    expect(() => slot.cancel()).toThrow("boom");
+    expect(slot.completed).toBe(true);
+    slot._tick(10);
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it("pause/resume works", () => {
     const slot = new ProcessSlot({ duration: 100 });
     slot.start();

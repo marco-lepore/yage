@@ -1,3 +1,9 @@
+import {
+  assertDuration,
+  durationProgress,
+  durationReached,
+  loopRemainder,
+} from "./internal/duration.js";
 import type { ProcessClock } from "./Process.js";
 
 /** Configuration for a ProcessSlot. */
@@ -9,7 +15,7 @@ export interface ProcessSlotConfig {
    * no clock — whoever calls `_tick` decides.
    */
   clock?: ProcessClock;
-  /** Auto-complete after this duration in seconds. */
+  /** Auto-complete after this duration in seconds. Must be finite and > 0. */
   duration?: number;
   /** Called each frame with dt (seconds) and elapsed (seconds). Return true to complete early. */
   // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
@@ -32,16 +38,30 @@ export interface ProcessSlotConfig {
  */
 export class ProcessSlot {
   private config: ProcessSlotConfig;
+  /**
+   * Config in force for the current run: the stored config, or a copy of it
+   * merged with the overrides `start()` was given. Every `start()` reassigns
+   * it, so overrides never reach a later run.
+   */
+  private runConfig: ProcessSlotConfig;
   private _elapsed = 0;
   private _completed = true;
   private _paused = false;
-
-  /** Tags for filtering/grouping. */
-  readonly tags: readonly string[];
+  /**
+   * Runs slot callbacks the engine invokes outside a tick — `cleanup` from
+   * `cancel()` and `restart()` — through the owning component's error
+   * boundary, so a throw is attributed to the slot rather than to whichever
+   * game code called `cancel()`.
+   * @internal — set by `ProcessComponent.slot()`
+   */
+  _guardCallback: ((run: () => void) => void) | undefined;
 
   constructor(config: ProcessSlotConfig = {}) {
+    if (config.duration !== undefined) {
+      assertDuration("ProcessSlot", config.duration);
+    }
     this.config = config;
-    this.tags = config.tags ?? [];
+    this.runConfig = config;
   }
 
   /** Whether the slot has completed (starts true). */
@@ -59,44 +79,57 @@ export class ProcessSlot {
     return this._elapsed;
   }
 
-  /** Progress ratio 0..1 (elapsed / duration). 0 if no duration set. */
-  get ratio(): number {
-    const d = this.config.duration;
-    if (d === undefined || d <= 0) return 0;
-    return Math.min(this._elapsed / d, 1);
+  /**
+   * Tags for filtering/grouping — the running slot's tags, which `start()`
+   * overrides can replace for one run, and the configured tags once it has
+   * completed.
+   */
+  get tags(): readonly string[] {
+    const config = this._completed ? this.config : this.runConfig;
+    return config.tags ?? [];
   }
 
-  /** Start the slot. No-op if already running (use restart() to force). */
+  /** Progress ratio 0..1 (elapsed / duration). 0 if no duration set. */
+  get ratio(): number {
+    const d = this.runConfig.duration;
+    if (d === undefined) return 0;
+    return durationProgress(this._elapsed, d);
+  }
+
+  /**
+   * Start the slot. No-op if already running (use restart() to force), which
+   * also means overrides passed to a running slot are discarded.
+   *
+   * Overrides apply to this run only: the next bare `start()` uses the config
+   * the slot was created with.
+   */
   start(overrides?: Partial<Omit<ProcessSlotConfig, "clock">>): this {
     if (!this._completed) return this;
+    if (overrides?.duration !== undefined) {
+      assertDuration("ProcessSlot.start", overrides.duration);
+    }
     this._elapsed = 0;
     this._completed = false;
     this._paused = false;
-    if (overrides) {
-      this.config = { ...this.config, ...overrides };
-      if (overrides.tags) {
-        (this as { tags: readonly string[] }).tags = overrides.tags;
-      }
-    }
+    this.runConfig = overrides ? { ...this.config, ...overrides } : this.config;
     return this;
   }
 
   /** Cancel if running, then start fresh. Always restarts. */
   restart(overrides?: Partial<Omit<ProcessSlotConfig, "clock">>): this {
-    if (!this._completed) {
-      this.config.cleanup?.();
-      this._completed = true;
-    }
-    // Force start by ensuring completed is true
-    this._completed = true;
+    this.cancel();
     return this.start(overrides);
   }
 
   /** Cancel the slot. Calls cleanup if running. */
   cancel(): void {
     if (this._completed) return;
-    this.config.cleanup?.();
+    // Flag first: a `cleanup` that cancels or restarts its own slot then sees
+    // a completed slot instead of recursing, and a throwing one leaves the
+    // slot cancelled rather than still ticking.
     this._completed = true;
+    const cleanup = this.runConfig.cleanup;
+    if (cleanup) this._runOutsideTick(cleanup);
   }
 
   /** Pause the slot. */
@@ -109,9 +142,16 @@ export class ProcessSlot {
     this._paused = false;
   }
 
-  /** Set/override the onComplete callback. Chainable. */
+  /**
+   * Set/override the onComplete callback. Chainable. Applies to the current
+   * run as well as to later ones.
+   */
   onComplete(fn: () => void): this {
+    const runUsesStoredConfig = this.runConfig === this.config;
     this.config = { ...this.config, onComplete: fn };
+    this.runConfig = runUsesStoredConfig
+      ? this.config
+      : { ...this.runConfig, onComplete: fn };
     return this;
   }
 
@@ -129,14 +169,14 @@ export class ProcessSlot {
     this._elapsed += dt;
 
     // Run per-frame update
-    const result = this.config.update?.(dt, this._elapsed);
+    const result = this.runConfig.update?.(dt, this._elapsed);
     if (this._completed) return result;
 
     // Check duration-based completion
-    const duration = this.config.duration;
-    if (duration !== undefined && this._elapsed >= duration) {
-      if (this.config.loop && result !== true) {
-        this._elapsed = this._elapsed % duration;
+    const duration = this.runConfig.duration;
+    if (duration !== undefined && durationReached(this._elapsed, duration)) {
+      if (this.runConfig.loop && result !== true) {
+        this._elapsed = loopRemainder(this._elapsed, duration);
         return result;
       }
       this._complete();
@@ -145,7 +185,7 @@ export class ProcessSlot {
 
     // Check callback-based completion
     if (result === true) {
-      if (this.config.loop) {
+      if (this.runConfig.loop) {
         this._elapsed = 0;
         return result;
       }
@@ -157,9 +197,17 @@ export class ProcessSlot {
   private _complete(): void {
     this._completed = true;
     try {
-      this.config.onComplete?.();
+      this.runConfig.onComplete?.();
     } finally {
-      this.config.cleanup?.();
+      this.runConfig.cleanup?.();
     }
+  }
+
+  private _runOutsideTick(fn: () => void): void {
+    if (this._guardCallback) {
+      this._guardCallback(fn);
+      return;
+    }
+    fn();
   }
 }

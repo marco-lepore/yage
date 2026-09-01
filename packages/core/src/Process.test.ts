@@ -218,6 +218,106 @@ describe("Process", () => {
     expect(proc.elapsed).toBe(120);
   });
 
+  it("rejects a duration that is not finite and positive", () => {
+    expect(() => new Process({ duration: 0 })).toThrow(
+      "Process: duration must be a finite number > 0 in seconds, got 0.",
+    );
+    expect(() => new Process({ duration: -1 })).toThrow("got -1");
+    expect(() => new Process({ duration: NaN })).toThrow("got NaN");
+    expect(() => new Process({ duration: Infinity })).toThrow("got Infinity");
+    expect(() => Process.delay(0)).toThrow("got 0");
+  });
+
+  it("completes on the tick that reaches a duration made of exact steps", () => {
+    // Adding 1/60 six times sums to just under 0.1 in binary float; the
+    // window still closes on the sixth step.
+    const step = 1 / 60;
+    for (const [duration, steps] of [
+      [0.1, 6],
+      [0.2, 12],
+      [0.25, 15],
+      [0.5, 30],
+      [2, 120],
+    ] as const) {
+      const proc = new Process({ duration });
+      let ticks = 0;
+      while (!proc.completed && ticks < steps + 5) {
+        proc._update(step);
+        ticks++;
+      }
+      expect([duration, ticks]).toEqual([duration, steps]);
+    }
+  });
+
+  it("loops on a clean period when the duration is made of exact steps", () => {
+    const seen: number[] = [];
+    const proc = new Process({
+      duration: 0.1,
+      loop: true,
+      update: (_dt, elapsed) => {
+        seen.push(elapsed);
+      },
+    });
+    for (let i = 0; i < 12; i++) proc._update(1 / 60);
+    // Six ticks per pass: the sixth closes it, the seventh starts the next one
+    // at one step in rather than at a nearly full period.
+    expect(seen[5]).toBeCloseTo(0.1, 9);
+    expect(seen[6]).toBeCloseTo(1 / 60, 9);
+    expect(seen[11]).toBeCloseTo(0.1, 9);
+  });
+
+  it("does not fire onComplete when the update callback cancelled the process", () => {
+    const onComplete = vi.fn();
+    const proc: Process = new Process({
+      duration: 100,
+      update: () => {
+        proc.cancel();
+      },
+      onComplete,
+    });
+    proc._update(100);
+    expect(proc.completed).toBe(true);
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("onCancel fires on cancel only, and only once", () => {
+    const onCancel = vi.fn();
+    const completed = new Process({ duration: 100, onCancel });
+    completed._update(100);
+    expect(onCancel).not.toHaveBeenCalled();
+
+    const proc = new Process({ update: () => {}, onCancel });
+    proc.cancel();
+    proc.cancel();
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it("onReset fires on _reset()", () => {
+    const onReset = vi.fn();
+    const proc = new Process({ update: () => {}, onReset });
+    proc._reset();
+    expect(onReset).toHaveBeenCalledOnce();
+  });
+
+  it("settles a pending toPromise() on reset", async () => {
+    const proc = new Process({ update: () => {} });
+    const promise = proc.toPromise();
+    proc._reset();
+    await promise;
+  });
+
+  it("settles a pending toPromise() even when onComplete throws", async () => {
+    const proc = new Process({
+      update: () => true,
+      onComplete: () => {
+        throw new Error("boom");
+      },
+    });
+    const promise = proc.toPromise();
+    expect(() => proc._update(16)).toThrow("boom");
+    await promise;
+  });
+
   it("stores tags", () => {
     const proc = new Process({
       update: () => {},

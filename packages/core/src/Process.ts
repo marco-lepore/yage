@@ -1,12 +1,18 @@
+import {
+  assertDuration,
+  durationReached,
+  loopRemainder,
+} from "./internal/duration.js";
 import type { EasingFunction } from "./types.js";
 import type { ErrorBoundary, CallbackErrorInfo } from "./ErrorBoundary.js";
 
 /**
- * Ticks one process or slot through the error boundary — a throw, synchronous
- * or from a rejected thenable returned by an `async` update/completion
+ * Runs one process, slot, or animation callback through the error boundary —
+ * a throw, synchronous or from a rejected thenable returned by an `async`
  * callback, is attributed and rethrown. Shared by `ProcessSystem` (pool
- * processes) and `ProcessComponent` (entity-owned processes and slots) so
- * there is one guarded code path regardless of where the process lives.
+ * processes), `ProcessComponent` (entity-owned processes and slots, plus the
+ * `cleanup` a slot runs outside any tick) and `KeyframeAnimator`, so there is
+ * one guarded code path regardless of where the callback lives.
  */
 export function tickProcessGuarded(
   boundary: ErrorBoundary | undefined,
@@ -44,7 +50,20 @@ export interface ProcessOptions {
   update?: (dt: number, elapsed: number) => boolean | void;
   /** Called when the process completes. */
   onComplete?: () => void;
-  /** Auto-complete after this duration in seconds. */
+  /**
+   * Called when `cancel()` stops the process before it completed. A process
+   * that owns other processes cancels them here, so cancelling the owner
+   * reaches everything it started.
+   */
+  onCancel?: () => void;
+  /**
+   * Called when the process is reset for a re-run — what a `Sequence` does to
+   * a step instance on each loop or repeat iteration. Elapsed time and
+   * completion are reset for you; clear any state the process keeps of its
+   * own here.
+   */
+  onReset?: () => void;
+  /** Auto-complete after this duration in seconds. Finite and > 0. */
   duration?: number;
   /** Loop the process. */
   loop?: boolean;
@@ -60,6 +79,8 @@ export class Process {
   // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
   private readonly updateFn: (dt: number, elapsed: number) => boolean | void;
   private readonly onCompleteFn: (() => void) | undefined;
+  private readonly onCancelFn: (() => void) | undefined;
+  private readonly onResetFn: (() => void) | undefined;
   private readonly duration: number | undefined;
   private readonly loop: boolean;
   /** Tags for filtering/grouping. */
@@ -71,7 +92,7 @@ export class Process {
   private _cancelled = false;
   private resolvePromise?: () => void;
 
-  /** Create a timer that fires `onComplete` after `duration` seconds. */
+  /** Create a timer that fires `onComplete` after `duration` seconds, finite and > 0. */
   static delay(duration: number, onComplete?: () => void, tags?: string[]): Process {
     const opts: ProcessOptions = { duration };
     if (onComplete !== undefined) opts.onComplete = onComplete;
@@ -80,8 +101,13 @@ export class Process {
   }
 
   constructor(options: ProcessOptions) {
+    if (options.duration !== undefined) {
+      assertDuration("Process", options.duration);
+    }
     this.updateFn = options.update ?? (() => {});
     this.onCompleteFn = options.onComplete;
+    this.onCancelFn = options.onCancel;
+    this.onResetFn = options.onReset;
     this.duration = options.duration;
     this.loop = options.loop ?? false;
     this.tags = options.tags ?? [];
@@ -123,14 +149,22 @@ export class Process {
     this._paused = false;
   }
 
-  /** Cancel the process. */
+  /** Cancel the process. No-op once it has completed. */
   cancel(): void {
+    if (this._completed) return;
     this._cancelled = true;
     this._completed = true;
-    this.resolvePromise?.();
+    try {
+      this.onCancelFn?.();
+    } finally {
+      this.resolvePromise?.();
+    }
   }
 
-  /** Returns a promise that resolves when the process completes or is cancelled. */
+  /**
+   * Returns a promise that resolves when the current run ends: completion,
+   * cancellation, or a reset for a re-run.
+   */
   toPromise(): Promise<void> {
     if (this._completed) return Promise.resolve();
     return new Promise<void>((resolve) => {
@@ -153,10 +187,15 @@ export class Process {
     this._elapsed += dt;
 
     // Check duration-based completion
-    if (this.duration !== undefined && this._elapsed >= this.duration) {
+    if (
+      this.duration !== undefined &&
+      durationReached(this._elapsed, this.duration)
+    ) {
       const result = this.updateFn(dt, this._elapsed);
+      // The update callback may have cancelled the process itself.
+      if (this._completed) return result;
       if (this.loop && result !== true) {
-        this._elapsed = this._elapsed % this.duration;
+        this._elapsed = loopRemainder(this._elapsed, this.duration);
         return result;
       }
       this.complete();
@@ -165,6 +204,8 @@ export class Process {
 
     // Check callback-based completion
     const result = this.updateFn(dt, this._elapsed);
+    // The update callback may have cancelled the process itself.
+    if (this._completed) return result;
     if (result === true) {
       if (this.loop) {
         this._elapsed = 0;
@@ -184,13 +225,19 @@ export class Process {
     this._completed = false;
     this._paused = false;
     this._cancelled = false;
+    // A reset ends the current run, which is what `toPromise()` waits for.
+    this.resolvePromise?.();
     delete this.resolvePromise;
+    this.onResetFn?.();
   }
 
   private complete(): void {
     this._completed = true;
-    this.onCompleteFn?.();
-    this.resolvePromise?.();
+    try {
+      this.onCompleteFn?.();
+    } finally {
+      this.resolvePromise?.();
+    }
   }
 }
 

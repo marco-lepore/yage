@@ -28,6 +28,31 @@ describe("Tween", () => {
       proc._update(100);
       expect(obj["y"]).toBeCloseTo(50);
     });
+
+    it("lands exactly on the target when the duration is made of exact steps", () => {
+      const obj: Record<string, number> = { x: 0 };
+      const proc = Tween.to(obj, "x", 100, 0.5);
+      let ticks = 0;
+      while (!proc.completed && ticks < 40) {
+        proc._update(1 / 60);
+        ticks++;
+      }
+      expect(ticks).toBe(30);
+      expect(obj["x"]).toBe(100);
+    });
+
+    it("rejects a bad duration or a non-finite endpoint", () => {
+      const obj: Record<string, number> = { x: 0 };
+      expect(() => Tween.to(obj, "x", 100, 0)).toThrow(
+        "Tween.to: duration must be a finite number > 0 in seconds, got 0.",
+      );
+      expect(() => Tween.to(obj, "x", NaN, 1)).toThrow(
+        'Tween.to: "x" must tween between finite values',
+      );
+      expect(() => Tween.to({ x: Infinity }, "x", 1, 1)).toThrow(
+        "finite values",
+      );
+    });
   });
 
   describe("custom()", () => {
@@ -39,6 +64,16 @@ describe("Tween", () => {
       proc._update(50);
       expect(values[values.length - 1]).toBeCloseTo(10);
       expect(proc.completed).toBe(true);
+    });
+
+    it("rejects a bad duration or non-finite endpoints", () => {
+      const setter = () => {};
+      expect(() => Tween.custom(setter, 0, 1, NaN)).toThrow(
+        "Tween.custom: duration must be a finite number > 0 in seconds, got NaN.",
+      );
+      expect(() => Tween.custom(setter, 0, Infinity, 1)).toThrow(
+        "Tween.custom: from and to must be finite",
+      );
     });
 
     it("supports easing", () => {
@@ -75,6 +110,16 @@ describe("Tween", () => {
       expect(result.x).toBeCloseTo(100);
       expect(result.y).toBeCloseTo(200);
       expect(proc.completed).toBe(true);
+    });
+
+    it("rejects a bad duration or non-finite endpoints", () => {
+      const setter = () => {};
+      expect(() => Tween.vec2(setter, Vec2.ZERO, Vec2.ZERO, -1)).toThrow(
+        "Tween.vec2: duration must be a finite number > 0 in seconds, got -1.",
+      );
+      expect(() => Tween.vec2(setter, Vec2.ZERO, { x: 0, y: NaN }, 1)).toThrow(
+        "Tween.vec2: from and to must be finite",
+      );
     });
 
     it("supports easing", () => {
@@ -135,6 +180,23 @@ describe("Tween", () => {
       for (let i = 0; i < 4; i++) procs.forEach((p) => p._update(50));
       expect(objs[0]!.a).toBeCloseTo(1);
       expect(objs[1]!.a).toBeGreaterThan(0);
+    });
+
+    it("accepts a zero step, starting every item at once", () => {
+      const objs = [{ a: 0 }, { a: 0 }];
+      const procs = Tween.stagger(objs, (o) => Tween.to(o, "a", 1, 100), 0);
+
+      procs.forEach((p) => p._update(50));
+      expect(objs[0]!.a).toBeGreaterThan(0);
+      expect(objs[1]!.a).toBeGreaterThan(0);
+    });
+
+    it.each([-1, NaN, Infinity])("throws on a stepSeconds of %p", (step) => {
+      expect(() =>
+        Tween.stagger([1], () => new Process({ update: () => true }), step),
+      ).toThrow(
+        `Tween.stagger: stepSeconds must be a finite number >= 0 in seconds, got ${step}.`,
+      );
     });
   });
 });

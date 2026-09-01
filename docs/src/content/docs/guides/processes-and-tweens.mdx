@@ -78,6 +78,20 @@ to reset a timer that may still be running:
 cooldown.restart();
 ```
 
+Both take one-off overrides that apply to that run only. The slot keeps the
+config it was created with for every later start:
+
+```typescript
+const dash = pc.slot({ duration: 0.4 });
+
+dash.start({ duration: 0.15 }); // this dash is short
+// ...after it completes:
+dash.start();                   // back to 0.4
+```
+
+`start()` on a slot that is still running does nothing, overrides included —
+use `restart(overrides)` to end the current run and start a new one.
+
 Slots can also run callbacks on completion:
 
 ```typescript
@@ -110,6 +124,30 @@ pc.run(Process.delay(0.5, () => {
   entity.destroy();
 }));
 ```
+
+## Durations
+
+Every duration is in seconds and must be finite and greater than zero.
+`Process`, `Process.delay`, `Sequence.wait`, `Tween.to`/`custom`/`vec2`, and
+a slot's `duration` all throw on `0`, a negative number, `NaN`, or `Infinity`,
+naming the value they were given. Tween endpoints must be finite too, so a `NaN` in a position
+value fails at the call instead of being written into the property.
+
+`Tween.stagger` is the one exception on zero: its `stepSeconds` must be finite
+and zero or greater, and passing `0` starts every item at once.
+
+A duration completes on the tick that reaches it. Elapsed time is accumulated
+by adding each frame's delta, so a duration built from whole steps — 0.25 s of
+1/60 s steps — sums a fraction short of its target; the window still closes on
+step 15 rather than running one step long:
+
+```typescript
+// On the fixed clock at 60 Hz: fires on step 15.
+pc.run(Process.delay(0.25, () => endAttackWindow()), { clock: "fixed" });
+```
+
+`elapsed` still reports the time that actually accumulated, overshoot included,
+and a looping process carries only the overshoot into its next pass.
 
 ## Choosing a Clock
 
@@ -294,6 +332,14 @@ complete.
 **not** schedule it — pass it to `pc.run(...)` for the sequence to
 actually tick.
 
+Cancelling a sequence cancels whatever step it is running. A tween instance
+you built, passed to `.then()` or `.parallel()`, and still hold is cancelled
+with the sequence, so it reads `completed === true` rather than staying
+unfinished.
+
+A built sequence is reusable: pass one as a step of another sequence, or repeat
+it, and it starts from its first step each time.
+
 ### Looping
 
 ```typescript
@@ -405,6 +451,11 @@ neither a single `Tween` nor an easing function could express on its own.
 `KeyframeAnimator` requires `ProcessComponent` on the same entity because it
 runs as a process under the hood. Each keyframe's `time` is in seconds
 along the track.
+
+A track needs at least two keyframes whose times are finite and sorted
+ascending, and a `duration` and `speed` that are finite and greater than
+zero — anything else throws when the animation starts. The first keyframe does not have to sit at time 0; a track
+that starts at 0.2 s holds that keyframe's value through the lead-in.
 
 ### Multiple Tracks
 
@@ -738,8 +789,8 @@ Two patterns to remember:
   changes. `pc.cancel("vfx")` on death; `pc.cancel("flash")` before starting
   a new flash.
 - **Processes auto-cancel on entity destroy.** You don't need cleanup logic
-  for the common case — `entity.destroy()` cancels everything bound to it.
-  Same for slots.
+  for the common case — `entity.destroy()` cancels everything bound to it,
+  down to the tweens a sequence started. Same for slots.
 
 If you find yourself writing a manual `_running` boolean alongside a
 process, you probably want a `pc.slot()` instead — it tracks completion

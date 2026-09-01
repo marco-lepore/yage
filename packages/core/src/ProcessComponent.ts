@@ -38,7 +38,8 @@ export class ProcessComponent extends Component {
    */
   private _resolveBoundary(): void {
     if (this.errorBoundary) return;
-    this.errorBoundary = this.entity.tryScene?.context?.tryResolve(ErrorBoundaryKey);
+    this.errorBoundary =
+      this.entity?.tryScene?.context?.tryResolve(ErrorBoundaryKey);
   }
 
   /**
@@ -72,6 +73,20 @@ export class ProcessComponent extends Component {
   /** Create a reusable, restartable process slot. `config.clock` picks the clock (default `"frame"`). */
   slot(config?: ProcessSlotConfig): ProcessSlot {
     const s = new ProcessSlot(config);
+    // A `cleanup` run from `cancel()`/`restart()` fires outside any tick, so
+    // the slot needs its own route to the boundary to be attributed at all.
+    s._guardCallback = (run) => {
+      this._resolveBoundary();
+      tickProcessGuarded(
+        this.errorBoundary,
+        run,
+        this._info(
+          "Process slot cleanup",
+          this.entity?.name,
+          this.entity?.tryScene?.name,
+        ),
+      );
+    };
     const pool = config?.clock === "fixed" ? this.fixedSlots : this.slots;
     pool.add(s);
     return s;

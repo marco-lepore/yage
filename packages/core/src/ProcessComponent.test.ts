@@ -474,6 +474,25 @@ describe("ProcessComponent", () => {
       });
     });
 
+    it("attributes a cleanup that throws outside a tick to the slot", () => {
+      const { pc, entity, boundary } = makeWiredComponent();
+      const slot = pc.slot({
+        duration: 100,
+        cleanup: () => {
+          throw new Error("boom");
+        },
+      });
+      slot.start();
+
+      expect(() => slot.cancel()).toThrow("boom");
+      expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Process slot cleanup",
+        entity: entity.name,
+        error: "boom",
+      });
+    });
+
     it("falls back to an unguarded tick when no boundary is registered", () => {
       const pc = makeComponent(); // detached entity, never added to a scene
       const process = new Process({
