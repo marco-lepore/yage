@@ -9,8 +9,8 @@ import { PhysicsPlugin } from "@yagejs/physics";
 
 engine.use(
   new PhysicsPlugin({
-    gravity: { x: 0, y: 980 }, // px/s², default (0, 980)
-    pixelsPerMeter: 50, // default 50
+    gravity: { x: 0, y: 980 }, // px/s², default (0, 980); both finite
+    pixelsPerMeter: 50, // default 50; finite and > 0
   }),
 );
 ```
@@ -46,9 +46,9 @@ entity.add(
   new RigidBodyComponent({
     type: "dynamic", // "dynamic" | "static" | "kinematic"
     fixedRotation: true,
-    gravityScale: 0, // 0 = no gravity
-    linearDamping: 5,
-    angularDamping: 1,
+    gravityScale: 0, // 0 = no gravity; finite (negative floats the body up)
+    linearDamping: 5, // finite and >= 0
+    angularDamping: 1, // finite and >= 0
     ccd: true, // continuous collision detection
     lockTranslationX: false,
     syncRotation: true, // sync rotation to Transform (default true)
@@ -102,10 +102,10 @@ entity.add(
     // shape: { type: "capsule", halfHeight: 20, radius: 10, axis: "y" },   // axis defaults to "y" (vertical); "x" rotates 90°
     // shape: { type: "polygon", vertices: [{x,y}, ...] },                  // closed convex; concave input is silently widened by Rapier (dev warning logged)
     // shape: { type: "polyline", vertices: [{x,y}, ...] },                 // chain of segments; supports non-convex; static-only (no inertia)
-    restitution: 0.5,
-    friction: 0.3,
-    density: 1,
-    // contactSkin: 1,    // holds the collider 1px off whatever it touches
+    restitution: 0.5, // finite and >= 0
+    friction: 0.3, // finite and >= 0
+    density: 1, // finite and >= 0; default 1
+    // contactSkin: 1,    // holds the collider 1px off whatever it touches; finite and >= 0
     sensor: false, // true = trigger (no physical response)
     offset: { x: 0, y: 0 },
     rotation: 0, // radians, relative to the body, about the offset point (axis:"x" capsules: adds to the 90° axis rotation)
@@ -119,7 +119,10 @@ entity.add(
 radius, so the outer footprint stays the configured width and height and a
 resting body keeps its height. `0` and `undefined` create a plain box; a radius
 that is not smaller than half the shorter side throws. Rounded geometry is used
-by collision, `castShape`, and `queryShape`.
+by collision, `castShape`, and `queryShape`. Mass is the rounded footprint's
+area at the configured `density`, so rounding changes it only by the four
+corner pieces; angular inertia is the inner rectangle's, scaled by the same
+area ratio (an approximation).
 
 Rounding shrinks the flat part of each face to `width - 2 * borderRadius`, so a
 body held up only by the last `borderRadius` pixels of a ledge slides off
@@ -138,6 +141,8 @@ direction. Either option prevents that. Prefer `borderRadius`, since
 Events:
 
 A `sensor: true` collider fires only `onTrigger`; a solid collider fires only `onCollision`. Register the wrong one and it never fires — dev builds log a warning when you add the handler.
+
+Events are collected after every physics step and delivered after that step, so a scene running above `timeScale` 1 receives every transition, in order, each with its own step's contact data. Handlers run with Transforms synced to the step that produced the contact, and a handler's `setVelocity` or `destroy` takes effect before the next step of the same tick.
 
 ```ts
 collider.onTrigger((ev) => {
@@ -205,6 +210,15 @@ collider.setShape(big, { recomputeMass: true }); // heavier
 
 Shrinking never pushes anything out of the way, and growing can leave the collider overlapping geometry it clears at the smaller size. Check clearance before growing back.
 
+Switching kinds:
+
+```ts
+collider.setSensor(true); // solid → sensor: falls through what it rested on
+collider.setSensor(false); // sensor → solid: pushed out to rest
+```
+
+`setSensor(bool)` recreates the Rapier collider with the new flag. Every pair it is in ends with a `stop`/`exit` at the next step and re-forms as the new kind. `getMass()`, the contact filter, and every subscription are unchanged; the collider handle changes. A call that does not change the flag does nothing. Dev builds warn when the flip leaves handlers of the silenced kind registered (`onCollision` on a sensor, `onTrigger` on a solid). Callable before `entity.add()`; the flag applies at collider creation.
+
 A collider is centred on its body's origin unless given an `offset`, so growing upward with the feet planted also moves the body up by half the gained height. Query the standing box where it will sit, not where the crouched one sits — querying at the crouched position reports the floor as a blocker whenever the character is grounded, so they can never stand.
 
 ```ts
@@ -235,8 +249,8 @@ platform.add(
     shape: { type: "box", width: 96, height: 8 },
     oneWay: {}, // solid from above, passable from below
     // oneWay: {
-    //   direction: { x: 0, y: -1 },          // solid-face direction, body-local; default up
-    //   margin: 4,                           // px of overlap that still lands; default 4
+    //   direction: { x: 0, y: -1 },          // solid-face direction, body-local; default up; non-zero, both finite
+    //   margin: 4,                           // px of overlap that still lands; default 4; finite
     // }
   }),
 );
@@ -274,8 +288,9 @@ collider.setContactFilter(null); // remove
 ```
 
 - Runs inside the physics step for every candidate pair involving the collider, every step. Keep it cheap; don't create or destroy entities, bodies, or colliders from inside it. The `contact` object is reused across calls — read, don't store.
+- While any collider in the world has a filter (a `oneWay` platform counts), every step reads every collider's pose and velocity before stepping: about 0.8 ms per step at 2000 colliders.
 - No contact normal or point exists yet. Positions/velocities are from the start of the step, so a body that crossed a surface mid-step still shows which side it came from.
-- When both colliders in a pair have filters, the pair is solid only if both return `true`.
+- When both colliders in a pair have filters, both run for every candidate pair; the pair is solid only if both return `true`.
 - A filter that throws is reported (`Inspector.getErrors().callbackErrors`) once per installed filter and the pair stays solid.
 - `setContactFilter` replaces the built-in filter a `oneWay` config installed. Register custom filters during normal component setup whenever the scene is constructed.
 - Contact pairs only — sensor/trigger pairs are unaffected.
@@ -332,7 +347,7 @@ Use `castShape` to test a move before committing to it: carrying a rider on a mo
 ## Joints
 
 Connect two rigid bodies in the same scene's physics world. Both bodies must
-already be added to that world:
+already be added to that world, and both entities must be active:
 
 ```ts
 const rope = world.addJoint(playerBody, anchorBody, {
@@ -353,11 +368,14 @@ const spring = world.addJoint(playerBody, companionBody, {
 `addJoint(bodyA, bodyB, config)` returns a `JointHandle`. `attached` is `true`
 while the joint is live. `remove()` detaches it; calling it again does nothing.
 Destroying or disabling either jointed entity (e.g. releasing it to a pool)
-detaches the joint automatically — re-enabling does not restore it. A rope to
-a static body is the usual pattern for a tether or swing. Lengths and anchors
-are in pixels. Spring `stiffness` and `damping` are mass-relative and passed
-to the solver unconverted; collider mass depends on `pixelsPerMeter` (density
-× area in meters), so retune them after changing the scale.
+detaches the joint automatically — re-enabling does not restore it, and
+`addJoint` throws for an inactive entity (add the joint in `onAcquire`, where
+the entity is already active). A rope to a static body is the usual pattern
+for a tether or swing. Lengths and anchors are in pixels; every number must be
+finite, and `length`, `restLength`, `stiffness` and `damping` at least 0.
+Spring `stiffness` and `damping` are mass-relative and passed to the solver
+unconverted; collider mass depends on `pixelsPerMeter` (density × area in
+meters), so retune them after changing the scale.
 
 ## Save state
 

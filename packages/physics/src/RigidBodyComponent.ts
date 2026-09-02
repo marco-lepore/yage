@@ -3,6 +3,7 @@ import type { Vec2Like } from "@yagejs/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import { PhysicsWorldKey } from "./types.js";
 import type { BodyType, RigidBodyConfig } from "./types.js";
+import { assertFiniteNumber } from "./validate.js";
 
 /**
  * Tolerance for deciding whether the game wrote a Transform since physics
@@ -51,6 +52,11 @@ export class RigidBodyComponent extends Component {
 
   constructor(config: RigidBodyConfig) {
     super();
+    const context = "RigidBodyComponent";
+    assertFiniteNumber(context, "linearDamping", config.linearDamping, 0);
+    assertFiniteNumber(context, "angularDamping", config.angularDamping, 0);
+    // Negative gravity scale is a legal "float up".
+    assertFiniteNumber(context, "gravityScale", config.gravityScale);
     this.config = config;
     this.type = config.type;
     this.syncRotation = config.syncRotation ?? true;

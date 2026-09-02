@@ -23,6 +23,7 @@ import type {
   ContactFilter,
   TriggerEvent,
 } from "./types.js";
+import { assertFiniteNumber } from "./validate.js";
 
 /**
  * Wraps a Rapier collider. Attach after RigidBodyComponent.
@@ -67,6 +68,24 @@ export class ColliderComponent extends Component {
 
   constructor(config: ColliderConfig) {
     super();
+    const context = "ColliderComponent";
+    assertFiniteNumber(context, "restitution", config.restitution, 0);
+    assertFiniteNumber(context, "friction", config.friction, 0);
+    assertFiniteNumber(context, "density", config.density, 0);
+    assertFiniteNumber(context, "contactSkin", config.contactSkin, 0);
+    if (config.oneWay) {
+      assertFiniteNumber(context, "oneWay.margin", config.oneWay.margin);
+      const direction = config.oneWay.direction;
+      if (direction) {
+        assertFiniteNumber(context, "oneWay.direction.x", direction.x);
+        assertFiniteNumber(context, "oneWay.direction.y", direction.y);
+        if (direction.x === 0 && direction.y === 0) {
+          throw new Error(
+            `${context}: oneWay.direction must be a non-zero vector, got {x: 0, y: 0}.`,
+          );
+        }
+      }
+    }
     this.config = config;
     if (config.oneWay) {
       this._oneWayLanded = new Set();
@@ -141,7 +160,14 @@ export class ColliderComponent extends Component {
   }
 
   onEnable(): void {
-    this.physicsWorld.getCollider(this._colliderHandle)?.setEnabled(true);
+    const collider = this.physicsWorld.getCollider(this._colliderHandle);
+    if (!collider) return;
+    collider.setEnabled(true);
+    // Rapier's mass re-sum skips a disabled collider, so a re-sum run while
+    // this one was disabled (`setSensor`, `setShape` with `recomputeMass`)
+    // sums to 0, and Rapier sums again only at the next step. Summing here
+    // keeps `getMass()` correct before that step.
+    collider.parent()?.recomputeMassPropertiesFromColliders();
   }
 
   onDestroy(): void {
@@ -193,6 +219,27 @@ export class ColliderComponent extends Component {
     }
   }
 
+  /**
+   * After a `setSensor` flip, name the handlers of the kind the new flag
+   * silences. A dead handler is a legal state (a collider whose handlers
+   * should go quiet on death is one intended use), so this warns rather
+   * than throws, once per flip.
+   */
+  private _warnSilencedHandlers(sensor: boolean): void {
+    this._warnedSensorMismatch = false;
+    const silenced = sensor ? this.collisionHandlers : this.triggerHandlers;
+    if (silenced.length === 0) return;
+    const name = this.entity?.name ?? "<unbound>";
+    const count = silenced.length;
+    devWarn(
+      sensor
+        ? `ColliderComponent at ${name}: now a sensor; its ${count} onCollision ` +
+            `handler(s) will not fire. Use onTrigger, or unsubscribe them.`
+        : `ColliderComponent at ${name}: now solid; its ${count} onTrigger ` +
+            `handler(s) will not fire. Use onCollision, or unsubscribe them.`,
+    );
+  }
+
   /** Return all entities whose colliders currently overlap this one, optionally filtered. */
   getOverlapping<T>(
     filter: EntityFilter & { trait: TraitToken<T> },
@@ -213,19 +260,37 @@ export class ColliderComponent extends Component {
     return result;
   }
 
-  /** Set whether this collider is a sensor. Callable before the component
-   * is added — the updated config is applied at collider creation. */
+  /**
+   * Make this collider a sensor, or solid again. Callable before the
+   * component is added — the updated config is applied at collider creation.
+   *
+   * On a live collider the Rapier collider is recreated with the new flag:
+   * every pair it is currently in ends with a `stop` (or `exit`) at the next
+   * step and re-forms as the new kind, so a solid box flipped to a sensor
+   * falls through what it was resting on. The body's `getMass()` is
+   * unchanged, the contact filter and every subscription survive, and the
+   * collider handle changes. A call that does not change the flag does
+   * nothing. Dev builds warn when the flip leaves handlers of the silenced
+   * kind (`onCollision` on a sensor, `onTrigger` on a solid) registered.
+   */
   setSensor(sensor: boolean): void {
     // Event routing and the sensor-mismatch warning read config.sensor, so it
     // must track the live collider.
-    this.config.sensor = sensor;
-    // Before onAdd there is no physics world or collider yet; the config
-    // write above is all that's needed.
-    if (this._colliderHandle === -1) return;
-    const collider = this.physicsWorld.getCollider(this._colliderHandle);
-    if (collider) {
-      collider.setSensor(sensor);
+    if (this._colliderHandle === -1) {
+      this.config.sensor = sensor;
+      return;
     }
+    if (sensor === (this.config.sensor === true)) return;
+    this.config.sensor = sensor;
+    this._colliderHandle = this.physicsWorld._replaceCollider(
+      this._colliderHandle,
+      this.entity,
+      this.rb._bodyHandle,
+      this.config,
+      this,
+      this.effectiveEnabled,
+    );
+    this._warnSilencedHandlers(sensor);
   }
 
   /**
@@ -375,8 +440,9 @@ export class ColliderComponent extends Component {
     invoke: (handler: H) => void,
     kind: string,
   ): void {
-    // Events are drained after the step, so a collider disabled mid-frame can
-    // still have queued events naming it. A dormant entity must not see them.
+    // Events are drained after each step, so a collider disabled between the
+    // step and the delivery can still have queued events naming it. A
+    // dormant entity must not see them.
     if (this.entity?.isActive === false) return;
     const sceneName = this.entity?.tryScene?.name;
     // Copy the handlers: `onCollision`/`onTrigger` hand back an unsubscribe that

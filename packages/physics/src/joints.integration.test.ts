@@ -15,8 +15,8 @@ vi.mock("@dimforge/rapier2d", async () => {
   return { default: RAPIER };
 });
 
-import { Transform, Vec2 } from "@yagejs/core";
-import type { Entity, Scene } from "@yagejs/core";
+import { Entity, EntityPool, Transform, Vec2 } from "@yagejs/core";
+import type { Scene } from "@yagejs/core";
 import { ColliderComponent } from "./ColliderComponent.js";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
@@ -253,5 +253,57 @@ describe("spring and rope joints (real Rapier)", () => {
 
     expect(physicsWorld._jointsByBody.has(firstHandle)).toBe(false);
     expect(physicsWorld._jointsByBody.has(secondHandle)).toBe(false);
+  });
+
+  it("rejects a body whose entity is inactive", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext({
+      gravity: { x: 0, y: 0 },
+    });
+    const anchor = spawnBody(scene, "anchor", 0, 0, "static");
+    const ball = spawnBody(scene, "ball", 60, 0, "dynamic");
+    ball.entity.setActive(false);
+
+    expect(() =>
+      physicsWorld.addJoint(anchor.rb, ball.rb, { type: "rope", length: 60 }),
+    ).toThrow(
+      "PhysicsWorld.addJoint: bodyB must be active; add the joint after the entity is enabled.",
+    );
+    expect(physicsWorld._jointsByBody.size).toBe(0);
+  });
+
+  it("accepts a joint made inside a pooled entity's onAcquire", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext({
+      gravity: { x: 0, y: 0 },
+    });
+    const anchor = spawnBody(scene, "anchor", 0, 0, "static");
+
+    class Tethered extends Entity {
+      rb!: RigidBodyComponent;
+      constructor() {
+        super("tethered");
+      }
+      override setup(): void {
+        this.add(new Transform({ position: new Vec2(60, 0) }));
+        this.rb = this.add(
+          new RigidBodyComponent({ type: "dynamic", fixedRotation: true }),
+        );
+        this.add(
+          new ColliderComponent({ shape: { type: "circle", radius: 5 } }),
+        );
+      }
+      onAcquire(): void {
+        physicsWorld.addJoint(anchor.rb, this.rb, {
+          type: "rope",
+          length: 60,
+        });
+      }
+    }
+    const pool = new EntityPool(scene, Tethered, { prewarm: 1 });
+
+    const member = pool.acquire();
+    member.rb.setVelocity({ x: 200, y: 0 });
+    step(physicsWorld, 60);
+
+    expect(distance(anchor.rb, member.rb)).toBeCloseTo(60, 0);
   });
 });

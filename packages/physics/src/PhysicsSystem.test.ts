@@ -539,6 +539,39 @@ describe("PhysicsSystem", () => {
       expect(world.stepSpy).toHaveBeenCalled();
     });
 
+    it("delivers collision events after every step of a multi-step tick", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext();
+      const system = new PhysicsSystem();
+      system._setContext(context);
+      scene.timeScale = 2;
+
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const log: string[] = [];
+      const world = (
+        physicsWorld as unknown as {
+          world: InstanceType<typeof mocks.MockWorld>;
+        }
+      ).world;
+      world.stepSpy.mockImplementation(() => log.push("step"));
+      vi.spyOn(physicsWorld, "processCollisionEvents").mockImplementation(
+        () => {
+          log.push("processCollisionEvents");
+        },
+      );
+
+      system.update(1 / 60);
+
+      expect(log).toEqual([
+        "step",
+        "processCollisionEvents",
+        "step",
+        "processCollisionEvents",
+      ]);
+    });
+
     it("steps two scenes with different timeScales independently", async () => {
       const { scene, manager, sceneManager, context } =
         await createPhysicsTestContext();

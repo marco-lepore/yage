@@ -284,6 +284,31 @@ describe("RigidBodyComponent", () => {
     mocks.resetHandles();
   });
 
+  describe("constructor", () => {
+    it("rejects negative damping and non-finite gravityScale", () => {
+      expect(
+        () => new RigidBodyComponent({ type: "dynamic", linearDamping: -4 }),
+      ).toThrow(
+        "RigidBodyComponent: linearDamping must be finite and >= 0, got -4.",
+      );
+      expect(
+        () => new RigidBodyComponent({ type: "dynamic", angularDamping: NaN }),
+      ).toThrow(
+        "RigidBodyComponent: angularDamping must be finite and >= 0, got NaN.",
+      );
+      expect(
+        () =>
+          new RigidBodyComponent({ type: "dynamic", gravityScale: Infinity }),
+      ).toThrow(
+        "RigidBodyComponent: gravityScale must be finite, got Infinity.",
+      );
+      // A negative gravity scale floats the body up; it is legal.
+      expect(
+        () => new RigidBodyComponent({ type: "dynamic", gravityScale: -1 }),
+      ).not.toThrow();
+    });
+  });
+
   describe("onAdd", () => {
     it("creates a body and syncs Transform position", async () => {
       const { scene, physicsWorld } = await createPhysicsTestContext();

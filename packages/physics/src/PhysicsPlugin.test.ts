@@ -138,6 +138,15 @@ describe("PhysicsPlugin", () => {
     expect(plugin.version).toBe("3.0.0");
   });
 
+  it("rejects a pixelsPerMeter of 0 and non-finite gravity at construction", () => {
+    expect(() => new PhysicsPlugin({ pixelsPerMeter: 0 })).toThrow(
+      "PhysicsPlugin: pixelsPerMeter must be finite and > 0, got 0.",
+    );
+    expect(() => new PhysicsPlugin({ gravity: { x: NaN, y: 0 } })).toThrow(
+      "PhysicsPlugin: gravity.x must be finite, got NaN.",
+    );
+  });
+
   describe("install", () => {
     it("registers PhysicsWorldManagerKey in context", async () => {
       const context = makeContext();

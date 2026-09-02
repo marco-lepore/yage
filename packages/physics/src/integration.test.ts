@@ -43,8 +43,12 @@ const { mocks } = vi.hoisted(() => {
     handle: number;
     _sensor = false;
     _activeCollisionTypes = 0;
+    _parent: MockRigidBody | undefined;
     constructor() {
       this.handle = nextColliderHandle++;
+    }
+    parent() {
+      return this._parent;
     }
     isSensor() {
       return this._sensor;
@@ -123,6 +127,7 @@ const { mocks } = vi.hoisted(() => {
     setEnabled() {}
     resetForces() {}
     resetTorques() {}
+    recomputeMassPropertiesFromColliders() {}
   }
 
   class MockColliderDesc {
@@ -208,6 +213,7 @@ const { mocks } = vi.hoisted(() => {
       const collider = new MockCollider();
       if (desc._sensor) collider._sensor = true;
       collider._activeCollisionTypes = desc._activeCollisionTypes;
+      collider._parent = parent;
       parent._colliders.push(collider);
       this._colliders.set(collider.handle, collider);
       return collider;

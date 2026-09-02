@@ -76,6 +76,17 @@ const { mocks } = vi.hoisted(() => {
       return this._parent;
     }
     setEnabled() {}
+    _density = 1;
+    _mass = 0;
+    setDensity(d: number) {
+      this._density = d;
+    }
+    mass() {
+      return this._mass;
+    }
+    setMass(m: number) {
+      this._mass = m;
+    }
   }
 
   class MockRigidBody {
@@ -436,6 +447,7 @@ vi.mock("@dimforge/rapier2d", () => ({
 import { Vec2, Entity, EntityPool, createMockScene } from "@yagejs/core";
 import { PhysicsWorld } from "./PhysicsWorld.js";
 import type { ColliderComponent } from "./ColliderComponent.js";
+import type { RigidBodyComponent } from "./RigidBodyComponent.js";
 import type { CollisionEvent, TriggerEvent } from "./types.js";
 
 // Helper to create a mock ColliderComponent for event dispatch testing
@@ -492,6 +504,56 @@ describe("PhysicsWorld", () => {
         pixelsPerMeter: 100,
       });
       expect(pw.pixelsPerMeter).toBe(100);
+    });
+
+    it("rejects a pixelsPerMeter that is not finite and above 0", () => {
+      expect(() => new PhysicsWorld({ pixelsPerMeter: 0 })).toThrow(
+        "PhysicsWorld: pixelsPerMeter must be finite and > 0, got 0.",
+      );
+      expect(() => new PhysicsWorld({ pixelsPerMeter: -50 })).toThrow(
+        "PhysicsWorld: pixelsPerMeter must be finite and > 0, got -50.",
+      );
+    });
+
+    it("rejects non-finite gravity", () => {
+      expect(() => new PhysicsWorld({ gravity: { x: 0, y: NaN } })).toThrow(
+        "PhysicsWorld: gravity.y must be finite, got NaN.",
+      );
+    });
+  });
+
+  describe("addJoint", () => {
+    // The config is checked before the bodies, so no body is needed here.
+    const unused = {} as RigidBodyComponent;
+
+    it("rejects a negative spring damping", () => {
+      const pw = new PhysicsWorld();
+      expect(() =>
+        pw.addJoint(unused, unused, {
+          type: "spring",
+          restLength: 80,
+          stiffness: 40,
+          damping: -4,
+        }),
+      ).toThrow(
+        "PhysicsWorld.addJoint: damping must be finite and >= 0, got -4.",
+      );
+    });
+
+    it("rejects a non-finite rope length and anchor", () => {
+      const pw = new PhysicsWorld();
+      expect(() =>
+        pw.addJoint(unused, unused, { type: "rope", length: Infinity }),
+      ).toThrow(
+        "PhysicsWorld.addJoint: length must be finite and >= 0, got Infinity.",
+      );
+      expect(() =>
+        pw.addJoint(unused, unused, {
+          type: "rope",
+          length: 10,
+          anchorB: { x: NaN, y: 0 },
+        }),
+      ).toThrow("PhysicsWorld.addJoint: anchorB.x must be finite, got NaN.");
     });
   });
 
@@ -838,6 +900,30 @@ describe("PhysicsWorld", () => {
       );
       return { comp1, comp2, collider1, collider2 };
     }
+
+    it("delivers the events of every step since the last processCollisionEvents, in order", () => {
+      const pw = new PhysicsWorld();
+      const { comp1, collider1, collider2 } = createCollisionPair(pw);
+      const events: CollisionEvent[] = [];
+      comp1.onCollision((e) => events.push(e));
+      const eq = (
+        pw as unknown as {
+          eventQueue: InstanceType<typeof mocks.MockEventQueue>;
+        }
+      ).eventQueue;
+
+      eq._events.push([collider1, collider2, true]);
+      pw.step(1 / 60);
+      eq._events.push([collider1, collider2, false]);
+      pw.step(1 / 60);
+      expect(events).toHaveLength(0);
+
+      pw.processCollisionEvents();
+
+      expect(events.map((e) => e.started)).toEqual([true, false]);
+      pw.processCollisionEvents();
+      expect(events).toHaveLength(2);
+    });
 
     function queueCollision(
       pw: PhysicsWorld,

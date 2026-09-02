@@ -20,6 +20,7 @@ import type { ColliderComponent } from "./ColliderComponent.js";
 import type { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { MutableContactCandidate } from "./ContactCandidate.js";
 import type { PreStepColliderState } from "./ContactCandidate.js";
+import { assertFiniteNumber, assertPixelsPerMeter } from "./validate.js";
 
 const DEFAULT_PIXELS_PER_METER = 50;
 const DEFAULT_GRAVITY_X = 0;
@@ -122,8 +123,19 @@ export class PhysicsWorld {
     filterContactPair: (c1, c2) => this._filterContactPair(c1, c2),
     filterIntersectionPair: () => true,
   };
+  /** Pairs collected by `step()` and not yet delivered. */
+  private _pendingPairs: CollisionPair[] = [];
+  /**
+   * Sides of colliders `_replaceCollider` removed since the last step, so
+   * the `stop` Rapier queues for their pairs at that step still resolves
+   * to the component that owned them.
+   */
+  private readonly _retiredColliders = new Map<number, CollisionSide>();
 
   constructor(config?: PhysicsConfig) {
+    assertPixelsPerMeter("PhysicsWorld", config?.pixelsPerMeter);
+    assertFiniteNumber("PhysicsWorld", "gravity.x", config?.gravity?.x);
+    assertFiniteNumber("PhysicsWorld", "gravity.y", config?.gravity?.y);
     this.pixelsPerMeter = config?.pixelsPerMeter ?? DEFAULT_PIXELS_PER_METER;
     const gx = config?.gravity?.x ?? DEFAULT_GRAVITY_X;
     const gy = config?.gravity?.y ?? DEFAULT_GRAVITY_Y;
@@ -131,6 +143,9 @@ export class PhysicsWorld {
       x: this.toMeters(gx),
       y: this.toMeters(gy),
     });
+    // Auto-drain would discard events left from an earlier step; every
+    // step drains its own events right after it, so auto-drain never has
+    // anything to discard.
     this.eventQueue = new RAPIER.EventQueue(true);
   }
 
@@ -152,7 +167,12 @@ export class PhysicsWorld {
     return this._elapsed;
   }
 
-  /** Step the physics simulation. dt is in seconds. */
+  /**
+   * Step the physics simulation by `dt` seconds and queue the step's
+   * collision events, each captured with that step's contact data.
+   * `processCollisionEvents()` delivers them; a caller that steps directly
+   * must call it, or the queued pairs accumulate.
+   */
   step(dt: number): void {
     this.world.timestep = dt;
     // Hooks are passed only while a contact filter exists: Rapier consults
@@ -168,6 +188,10 @@ export class PhysicsWorld {
     // pre-step position snapshot, and giving `dropThrough(seconds)` its
     // full window (a one-timestep request covers exactly one step).
     this._elapsed += dt;
+    this._collectCollisionEvents();
+    // A removed collider's pairs end at the step after the removal, so
+    // that step's drain is the last one that can name it.
+    this._retiredColliders.clear();
   }
 
   /**
@@ -201,18 +225,20 @@ export class PhysicsWorld {
 
   /**
    * Contact-pair hook: a pair is solid only if every registered contact
-   * filter on its two colliders says so. Runs inside the WASM step, so
-   * filter exceptions must not unwind through here — the component's
-   * `_evaluateContactFilter` catches, reports, and falls back to solid.
+   * filter on its two colliders says so. Both filters run even when the
+   * first vetoes — which side Rapier passes first is its handle order, and
+   * a filter keeping per-step bookkeeping must see every pair. Runs inside
+   * the WASM step, so filter exceptions must not unwind through here — the
+   * component's `_evaluateContactFilter` catches, reports, and falls back
+   * to solid.
    */
   private _filterContactPair(
     collider1: number,
     collider2: number,
   ): RAPIER.SolverFlags | null {
-    const solid =
-      this._filterSide(collider1, collider2) &&
-      this._filterSide(collider2, collider1);
-    return solid ? RAPIER.SolverFlags.COMPUTE_IMPULSE : null;
+    const solid1 = this._filterSide(collider1, collider2);
+    const solid2 = this._filterSide(collider2, collider1);
+    return solid1 && solid2 ? RAPIER.SolverFlags.COMPUTE_IMPULSE : null;
   }
 
   /** Evaluate one collider's filter against the other side of the pair. */
@@ -258,9 +284,11 @@ export class PhysicsWorld {
   }
 
   /**
-   * Drain collision events and dispatch them to their `ColliderComponent`s.
+   * Deliver the collision events `step()` queued, plus anything still in
+   * Rapier's queue, to their `ColliderComponent`s. Every step's events are
+   * delivered, in order, each with the contact data of its own step.
    *
-   * Draining and dispatching are separate passes. A handler can retire an
+   * Collecting and dispatching are separate passes. A handler can retire an
    * entity, and a pooled one goes straight back out of its pool as something
    * else, so both sides of every pair are captured with the life they were
    * queued for before any handler runs. Each side is re-checked immediately
@@ -270,13 +298,32 @@ export class PhysicsWorld {
    * state.
    */
   processCollisionEvents(): void {
-    const pairs: CollisionPair[] = [];
+    // After a step Rapier's queue is already empty. This collect keeps a
+    // queue filled without a step deliverable, as the mock-based tests do.
+    this._collectCollisionEvents();
+    const pairs = this._pendingPairs;
+    this._pendingPairs = [];
+
+    for (const pair of pairs) {
+      // The normal points from the first collider toward the second, so the
+      // second side gets it negated.
+      this._dispatchSide(pair, pair.first, pair.second, false);
+      this._dispatchSide(pair, pair.second, pair.first, true);
+    }
+  }
+
+  /**
+   * Drain Rapier's queue into the pending buffer, extracting contact data
+   * while the narrow phase still holds this step's manifolds and no handler
+   * has touched the world.
+   */
+  private _collectCollisionEvents(): void {
     this.eventQueue.drainCollisionEvents((handle1, handle2, started) => {
-      const comp1 = this._colliderComponents.get(handle1);
-      const comp2 = this._colliderComponents.get(handle2);
-      const entity1 = this.colliderMap.get(handle1);
-      const entity2 = this.colliderMap.get(handle2);
-      if (!comp1 || !comp2 || !entity1 || !entity2) return;
+      const first = this._resolveSide(handle1);
+      const second = this._resolveSide(handle2);
+      if (!first || !second) return;
+      const comp1 = first.collider;
+      const comp2 = second.collider;
 
       // A one-way platform stays solid for a rider whose contact it holds,
       // whatever the position rule says — the landed set is kept from these
@@ -292,47 +339,43 @@ export class PhysicsWorld {
 
       const needsContact =
         started && (!comp1.config.sensor || !comp2.config.sensor);
-      // Extracted here, while Rapier's narrow phase still holds the manifold
-      // for this step and no handler has touched the world.
       const contact = needsContact
         ? this._extractContact(handle1, handle2)
         : undefined;
 
-      pairs.push({
-        first: {
-          handle: handle1,
-          entity: entity1,
-          collider: comp1,
-          life: entity1.generation,
-        },
-        second: {
-          handle: handle2,
-          entity: entity2,
-          collider: comp2,
-          life: entity2.generation,
-        },
-        started,
-        contact,
-      });
+      this._pendingPairs.push({ first, second, started, contact });
     });
-
-    for (const pair of pairs) {
-      // The normal points from the first collider toward the second, so the
-      // second side gets it negated.
-      this._dispatchSide(pair, pair.first, pair.second, false);
-      this._dispatchSide(pair, pair.second, pair.first, true);
-    }
   }
 
   /**
-   * Is this side still what the event was queued for — the collider still
-   * registered here, the entity still living that life? A handler earlier in
-   * the dispatch can remove a collider or retire an entity; events still
-   * queued against the old state are dropped rather than delivered.
+   * The side a queued handle names: a registered collider, or one
+   * `_replaceCollider` retired since the last step, whose closing `stop`
+   * still belongs to the component now living under a new handle.
+   */
+  private _resolveSide(handle: number): CollisionSide | undefined {
+    const collider = this._colliderComponents.get(handle);
+    const entity = this.colliderMap.get(handle);
+    if (collider && entity) {
+      return { handle, entity, collider, life: entity.generation };
+    }
+    return this._retiredColliders.get(handle);
+  }
+
+  /**
+   * Is this side still what the event was queued for — the component still
+   * registered here, the entity still living that life? A handler earlier
+   * in the dispatch can remove a collider or retire an entity; events still
+   * queued against the old state are dropped rather than delivered. A
+   * component whose collider was replaced is still registered, under the
+   * handle it holds now.
    */
   private _sideStillLive(side: CollisionSide): boolean {
+    const registered =
+      this._colliderComponents.get(side.handle) === side.collider ||
+      this._colliderComponents.get(side.collider._colliderHandle) ===
+        side.collider;
     return (
-      this._colliderComponents.get(side.handle) === side.collider &&
+      registered &&
       !side.entity.isDestroyed &&
       side.entity.generation === side.life
     );
@@ -502,12 +545,17 @@ export class PhysicsWorld {
     return body.handle;
   }
 
-  /** Connect two live rigid bodies with a spring or rope joint. All lengths and anchors are in pixels. */
+  /**
+   * Connect two live, active rigid bodies with a spring or rope joint. All
+   * lengths and anchors are in pixels; every number must be finite, and
+   * lengths, stiffness and damping at least 0.
+   */
   addJoint(
     bodyA: RigidBodyComponent,
     bodyB: RigidBodyComponent,
     config: JointConfig,
   ): JointHandle {
+    this._validateJointConfig(config);
     const bodyAHandle = this._requireLiveBody(bodyA, "bodyA");
     const bodyBHandle = this._requireLiveBody(bodyB, "bodyB");
     if (bodyAHandle === bodyBHandle) {
@@ -577,9 +625,7 @@ export class PhysicsWorld {
     if (config.friction !== undefined) {
       desc.setFriction(config.friction);
     }
-    if (config.density !== undefined) {
-      desc.setDensity(config.density);
-    }
+    desc.setDensity(this._effectiveDensity(config));
     if (config.contactSkin !== undefined) {
       desc.setContactSkin(this.toMeters(config.contactSkin));
     }
@@ -743,6 +789,55 @@ export class PhysicsWorld {
   }
 
   /**
+   * @internal Replace a live collider with one built from `config`, keeping
+   * the body's mass and the collider's enabled state, and return the new
+   * handle. Rapier applies a sensor-flag change only to pairs formed after
+   * it — an awake body's existing pairs keep their old kind — so a flip has
+   * to be a new collider. Its current pairs end with a `stop` at the next
+   * step, which `_resolveSide` still routes to `component` through the
+   * retired handle, and re-form in the new kind.
+   *
+   * The handle changes, so nothing outside this class may cache one; the
+   * component's `_colliderHandle` is the only place it lives.
+   */
+  _replaceCollider(
+    handle: number,
+    entity: Entity,
+    bodyHandle: number,
+    config: ColliderConfig,
+    component: ColliderComponent,
+    enabled: boolean,
+  ): number {
+    const mass = this.world.getCollider(handle).mass();
+    this._retiredColliders.set(handle, {
+      handle,
+      entity,
+      collider: component,
+      life: entity.generation,
+    });
+    this.removeCollider(handle);
+    const newHandle = this.createCollider(
+      entity,
+      bodyHandle,
+      config,
+      component,
+    );
+    const created = this.world.getCollider(newHandle);
+    // Explicit mass keeps `getMass()` unchanged across the flip, including
+    // a mass a `setShape` without `recomputeMass` kept. The next
+    // `setShape({ recomputeMass: true })` sets density again, which puts
+    // the collider back on density × shape. Rapier applies the removal, the
+    // creation and the explicit mass to the body at the next step; the
+    // re-sum makes an immediate `getMass()` read correct. Rapier's re-sum
+    // skips a disabled collider, so for a dormant entity the body reads 0
+    // until `ColliderComponent.onEnable` sums it again.
+    created.setMass(mass);
+    created.setEnabled(enabled);
+    this.world.getRigidBody(bodyHandle).recomputeMassPropertiesFromColliders();
+    return newHandle;
+  }
+
+  /**
    * @internal Drop any landed-rider state naming this collider. Rapier
    * reuses collider handles, so a handle leaving the simulation (removed
    * or disabled) must not stay remembered as "landed" on a one-way
@@ -772,12 +867,22 @@ export class PhysicsWorld {
     const collider = this.getCollider(handle);
     if (!collider) return;
 
+    if (!options?.recomputeMass) {
+      // Pin the mass the collider has now. A body that has not stepped yet,
+      // or is asleep, otherwise gets its mass recomputed from density × the
+      // new shape at the next step.
+      collider.setMass(collider.mass());
+    }
     collider.setShape(this.buildColliderDesc(config.shape).shape);
     // The capsule axis:"x" turn is part of the shape, so a swap can change
     // the rotation a collider needs even when config.rotation did not move.
     collider.setRotationWrtParent(colliderRotation(config));
 
     if (options?.recomputeMass) {
+      // The density carries the rounded-box factor for the shape being
+      // weighed, so it is set again for the new shape; this also takes a
+      // collider off a pinned mass.
+      collider.setDensity(this._effectiveDensity(config));
       collider.parent()?.recomputeMassPropertiesFromColliders();
     }
 
@@ -1109,9 +1214,39 @@ export class PhysicsWorld {
     this._contactFiltered.clear();
     this._colliderBody.clear();
     this._preStepStates.clear();
+    this._pendingPairs = [];
+    this._retiredColliders.clear();
   }
 
   // ---- Internal helpers ----
+
+  /**
+   * Density that gives a collider the mass its footprint covers. Rapier
+   * weighs a rounded box by its inner rectangle alone, ignoring the
+   * radius, so a rounded box's density is scaled up by the ratio of the
+   * two areas. Angular inertia is the inner rectangle's, scaled by the same
+   * factor — an approximation of the round-rectangle inertia.
+   */
+  private _effectiveDensity(config: ColliderConfig): number {
+    const density = config.density ?? 1;
+    if (config.shape.type !== "box") return density;
+    return density * getBoxColliderGeometry(config.shape).areaScale;
+  }
+
+  private _validateJointConfig(config: JointConfig): void {
+    const context = "PhysicsWorld.addJoint";
+    if (config.type === "spring") {
+      assertFiniteNumber(context, "restLength", config.restLength, 0);
+      assertFiniteNumber(context, "stiffness", config.stiffness, 0);
+      assertFiniteNumber(context, "damping", config.damping, 0);
+    } else {
+      assertFiniteNumber(context, "length", config.length, 0);
+    }
+    assertFiniteNumber(context, "anchorA.x", config.anchorA?.x);
+    assertFiniteNumber(context, "anchorA.y", config.anchorA?.y);
+    assertFiniteNumber(context, "anchorB.x", config.anchorB?.x);
+    assertFiniteNumber(context, "anchorB.y", config.anchorB?.y);
+  }
 
   private _requireLiveBody(
     component: RigidBodyComponent,
@@ -1121,6 +1256,13 @@ export class PhysicsWorld {
     if (handle === -1 || this.bodyMap.get(handle) !== component.entity) {
       throw new Error(
         `${label} must be added to this physics world first; bodies from a different scene's physics world cannot be jointed here.`,
+      );
+    }
+    // Disabling a body detaches its joints; a joint added while the body is
+    // already dormant would skip that and wake up tethered in the next life.
+    if (!component.entity.isActive) {
+      throw new Error(
+        `PhysicsWorld.addJoint: ${label} must be active; add the joint after the entity is enabled.`,
       );
     }
     return handle;

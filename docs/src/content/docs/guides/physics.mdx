@@ -13,8 +13,8 @@ to think about meters. All positions, velocities, and forces are in pixels.
 import { PhysicsPlugin } from "@yagejs/physics";
 
 engine.use(new PhysicsPlugin({
-  gravity: { x: 0, y: 980 },   // pixels/s², default: (0, 980)
-  pixelsPerMeter: 50,           // conversion factor, default: 50
+  gravity: { x: 0, y: 980 },   // pixels/s², default: (0, 980); both finite
+  pixelsPerMeter: 50,           // conversion factor, default: 50; finite and > 0
 }));
 ```
 
@@ -28,9 +28,9 @@ import { RigidBodyComponent } from "@yagejs/physics";
 entity.add(new RigidBodyComponent({
   type: "dynamic",          // "dynamic" | "static" | "kinematic"
   fixedRotation: true,      // prevent rotation
-  gravityScale: 0,          // ignore gravity (0 = zero-g, 1 = normal)
-  linearDamping: 5,         // velocity drag
-  angularDamping: 1,        // rotation drag
+  gravityScale: 0,          // ignore gravity (0 = zero-g, 1 = normal); finite
+  linearDamping: 5,         // velocity drag; finite and >= 0
+  angularDamping: 1,        // rotation drag; finite and >= 0
   ccd: true,                // continuous collision detection for fast objects
   lockTranslationX: false,  // lock horizontal movement
   syncRotation: true,       // sync physics rotation back to Transform
@@ -65,10 +65,10 @@ import { ColliderComponent } from "@yagejs/physics";
 // Box
 entity.add(new ColliderComponent({
   shape: { type: "box", width: 64, height: 32 },
-  restitution: 0.5,   // bounciness (0–1)
-  friction: 0.3,
-  density: 1,          // affects mass for dynamic bodies
-  // contactSkin: 1,   // rest about 1px off contact surfaces
+  restitution: 0.5,   // bounciness; finite and >= 0
+  friction: 0.3,      // finite and >= 0
+  density: 1,          // affects mass for dynamic bodies; finite and >= 0
+  // contactSkin: 1,   // rest about 1px off contact surfaces; finite and >= 0
 }));
 
 // Circle
@@ -131,7 +131,10 @@ entity.add(new ColliderComponent({
 The outer footprint stays 64×32 and a resting body keeps its height, because
 the corners are rounded inward. The radius must be smaller than half the
 shorter side; anything else throws when the collider is built. Shape casts and
-overlap queries use the rounded geometry too.
+overlap queries use the rounded geometry too. The body's mass is the rounded
+footprint's area at the configured `density`, so rounding takes off only the
+four corner pieces. Angular inertia is the inner rectangle's, scaled by the
+same area ratio, which is an approximation.
 
 Rounding does shrink the flat part of each face, to `width - 2 * borderRadius`.
 A body held up only by the last few pixels of a ledge slides off instead of
@@ -202,6 +205,12 @@ A `sensor: true` collider fires only `onTrigger`; a solid collider fires only
 `onCollision`. Register the wrong handler and nothing fires — dev builds log a
 warning when you add it.
 
+Events are collected after every physics step and delivered after that step.
+A scene running above `timeScale` 1 steps more than once per tick and receives
+every transition, in order, each with its own step's contact data. Handlers
+see Transforms synced to the step that produced the contact, and a handler's
+`setVelocity` or `destroy` takes effect before the next step of the same tick.
+
 ```typescript
 const collider = new ColliderComponent({
   shape: { type: "circle", radius: 10 },
@@ -221,6 +230,22 @@ collider.onTrigger((event) => {
   // event.otherCollider — the other entity's ColliderComponent
 });
 ```
+
+A collider can change kind while it is live. `setSensor(true)` turns a solid
+collider into a sensor, `setSensor(false)` turns it back:
+
+```typescript
+enemy.get(ColliderComponent).setSensor(true); // dead: stop blocking bullets
+```
+
+The collider is recreated with the new flag. Every pair it is in ends with a
+`stop` (or `exit`) at the next step and re-forms as the new kind, so a solid
+box flipped to a sensor falls through what it was resting on, and a sensor
+flipped to solid while overlapping something is pushed out to rest. The body's
+mass, the contact filter, and every registered handler are unchanged. A call
+that does not change the flag does nothing. Dev builds warn when the flip
+leaves handlers of the silenced kind registered: `onCollision` on a sensor,
+`onTrigger` on a solid.
 
 For non-sensor colliders, use `onCollision` instead:
 
@@ -610,8 +635,10 @@ snapped to the surface, so turning on the behavior mid-overlap never launches
 anything.
 
 The direction is in the platform body's local frame, so a rotated platform
-carries its solid face with it. `margin` is how deep (in pixels) a body may
-already overlap the face and still count as landing:
+carries its solid face with it. Any non-zero vector with finite components
+works; a zero vector throws when the collider is constructed. `margin` is how
+deep (in pixels) a body may already overlap the face and still count as
+landing; it must be finite:
 
 ```typescript
 oneWay: {
@@ -669,10 +696,13 @@ A few rules to keep filters healthy:
 - The filter runs for every candidate pair involving the collider, every
   step. Keep it cheap, and never create or destroy entities, bodies, or
   colliders from inside it.
+- While any collider in the world has a filter (a `oneWay` platform counts),
+  every step reads every collider's pose and velocity before stepping. That
+  costs about 0.8 ms per step with 2000 colliders in the world.
 - The `contact` object is reused across calls. Read what you need and return;
   don't store it.
-- When both colliders in a pair have filters, the pair is solid only if both
-  return `true`.
+- When both colliders in a pair have filters, both run for every candidate
+  pair, and the pair is solid only if both return `true`.
 - A filter that throws is reported through the error boundary
   (`Inspector.getErrors().callbackErrors`) and the pair stays solid — the
   conservative default. The report fires once per installed filter, so a
@@ -742,10 +772,13 @@ world.addJoint(playerBody, companionBody, {
 `addJoint` returns a handle with an `attached` flag and a `remove()` method
 that is safe to call more than once. The handle detaches when either jointed
 entity is destroyed or disabled (for example, released to a pool); re-enabling
-the entity does not restore the joint. Lengths and anchors are always in
-pixels. `stiffness` and `damping` are mass-relative and passed to the solver
-unconverted — collider mass depends on `pixelsPerMeter`, so retune them after
-changing the scale.
+the entity does not restore the joint, and `addJoint` throws when either
+entity is inactive. For a pooled entity, add the joint in `onAcquire`, where
+the entity is already active. Lengths and anchors are always in pixels. Every
+number must be finite, and `length`, `restLength`, `stiffness` and `damping`
+at least 0. `stiffness` and `damping` are mass-relative and passed to the
+solver unconverted — collider mass depends on `pixelsPerMeter`, so retune
+them after changing the scale.
 
 Joints are runtime objects. If a connection is durable game state, save the
 stable ids and joint configuration in the game's state root, then recreate the

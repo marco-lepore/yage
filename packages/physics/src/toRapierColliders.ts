@@ -29,9 +29,18 @@ interface BoxColliderGeometry {
   halfWidth: number;
   halfHeight: number;
   borderRadius: number;
+  /**
+   * Area of the rounded footprint over the area of the inner rectangle
+   * Rapier weighs (`1` for a plain box). Multiplying the density by it
+   * gives the rounded box the mass its footprint covers.
+   */
+  areaScale: number;
 }
 
-/** @internal Return the inner extents used to preserve a box's outer footprint. */
+/**
+ * @internal Return the inner extents used to preserve a box's outer
+ * footprint, and the density factor that keeps its mass on the footprint.
+ */
 export function getBoxColliderGeometry(
   shape: Extract<ColliderShape, { type: "box" }>,
 ): BoxColliderGeometry {
@@ -48,11 +57,15 @@ export function getBoxColliderGeometry(
       "Box border radius must be a finite number from 0 up to (not including) half the shorter side.",
     );
   }
-  return {
-    halfWidth: shape.width / 2 - borderRadius,
-    halfHeight: shape.height / 2 - borderRadius,
-    borderRadius,
-  };
+  const halfWidth = shape.width / 2 - borderRadius;
+  const halfHeight = shape.height / 2 - borderRadius;
+  // The rounded footprint is the full rectangle minus the four corner
+  // pieces a circle of the radius leaves uncovered.
+  const footprintArea =
+    shape.width * shape.height - (4 - Math.PI) * borderRadius * borderRadius;
+  const areaScale =
+    borderRadius === 0 ? 1 : footprintArea / (4 * halfWidth * halfHeight);
+  return { halfWidth, halfHeight, borderRadius, areaScale };
 }
 
 /**
