@@ -32,6 +32,17 @@ Read this before writing any code:
 - **Learn from existing code, but stay critical** — the codebase is WIP. Study existing patterns before writing new code, but don't blindly copy if you see something that could be better. Flag concerns.
 - **Refactors mean rethinking, not reshuffling** — when moving to a different architecture or public API, don't preserve old access patterns for backward compatibility unless explicitly asked. The path of least resistance (minimal diff, keep old call sites working) often smuggles the old design into the new one. Question whether every existing abstraction still belongs. When in doubt, ask rather than defaulting to compatibility shims.
 - **Right tool for the job** — the engine offers multiple approaches (e.g., Scene subclass vs `defineInlineScene`). Choose based on the actual use case. A complex game scene belongs in a class; a quick prototype can use an inline setup.
+- **Extend the shared mechanism instead of running a second one beside it.**
+  Bespoke or duplicated code often exists because a shared abstraction cannot
+  express what a caller needs. Fix the abstraction; do not add a parallel
+  registry, index or cache next to it. The diagnostic: if a proposed fix has to
+  re-derive an invariant the existing mechanism already maintains — membership,
+  activation state, teardown timing — it is rebuilding that mechanism, and
+  every edge where the two disagree becomes a defect. Count the sites before
+  choosing: one workaround is a local fix, the same limitation in three places
+  is the mechanism asking to change. Correctness decides and scope does not —
+  take the fix that removes the cause, across as many packages as it needs, and
+  describe the behaviour change in the changeset.
 
 ## Coding Style
 
@@ -56,74 +67,15 @@ Enforced by tooling — match these conventions exactly:
 - **Entity subclasses with `setup()` for entity types** — preferred pattern for game entities. `defineBlueprint()` still works for simple parametric factories but is deprecated.
 - **Entity events for game logic** — `defineEvent()` / `entity.on()` / `entity.emit()` for entity-scoped events. `EventBus` for global engine events.
 - **Controlled save state** — persist only explicit state roots through `@yagejs/save`. A state root implements `Serializable<TEncoded>` or comes from a core state factory. Runtime ECS objects, renderer resources, callbacks, and plugin internals are not traversed automatically. Addons expose complete domain `snapshot()` / `restore()` APIs so the game can include them in a chosen state root.
-- **Attribute developer-supplied callbacks** — engine code that invokes a
-  callback the game registered (event handlers, collision handlers, input
-  listeners, process callbacks) runs it through `ErrorBoundary.wrapCallback`,
-  and a `System`/`Component`'s own update call goes through
-  `wrapSystem`/`wrapComponent`. All three record the culprit (readable via
-  `Inspector.getErrors().callbackErrors`), log it through `Logger`, and
-  rethrow — nothing is disabled, unsubscribed, muted, or cancelled. Scene
-  lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`, `beforeEnter`)
-  use `ErrorBoundary.wrapLifecycleHook` instead: a synchronous throw is
-  reported and rethrown the same way, but a rejected async hook can only be
-  reported — the call has already returned by the time the rejection settles,
-  so there's no stack left to rethrow into. `Logger`'s own `output` sink
-  guards itself the same way, since it can't route through the boundary it's
-  reporting into. `GameLoop.tick()` is the one place that decides a failure is
-  terminal: an error that escapes an entire frame unhandled stops the loop and
-  rethrows so it reaches the host. A new dispatch site still needs the wrap —
-  it's what attributes the throw to the actual callback instead of whatever
-  caller happened to be on the stack when it escaped.
-- **A throwing hook is terminal: report it, don't repair around it** — when
-  developer-supplied code throws inside an engine-owned sequence (scene
-  teardown, an entity destroy cascade, a pool disposal, an event fan-out), the
-  later steps do not run and the resources they would have released stay
-  allocated. That is the model, not a defect to fix. A session with a throwing
-  hook is over, so the engine's whole duty is to attribute the failure, record
-  it on `Inspector.getErrors().callbackErrors`, and let it propagate — the
-  developer can then fix it, and a shipped game can show or collect a bug
-  report. Do not add a collector that runs every remaining step and rethrows
-  the first error, and do not wrap a teardown step in `try`/`finally` to push
-  it through. Two shipped places finish the sequence anyway, and neither is a
-  pattern to copy: `Engine.destroy()` runs every stage and rethrows the first
-  error because the host is quitting, and the plugin `afterExit` hooks continue
-  past a failing plugin by documented contract, reporting without rethrowing. Two
-  kinds of fix are always in scope. **Attribution**: wrap a raw dispatch site
-  so the throw names the callback that threw. **Reporting channel**: a catch
-  that swallows or writes to `console.error` reports through the boundary
-  instead. Use `wrapCallback` where the throw should keep propagating, and
-  `reportLifecycleError` where a documented contract says the operation
-  continues (`SceneHookRegistry.runAfterExit`, for instance).
+- **Attribute developer-supplied callbacks** — every dispatch of game-registered code (event handlers, collision handlers, input listeners, process callbacks) runs through `ErrorBoundary.wrapCallback`; a `System`/`Component` update goes through `wrapSystem`/`wrapComponent`; scene lifecycle hooks through `wrapLifecycleHook`. The wrap records the culprit on `Inspector.getErrors().callbackErrors`, logs it, and rethrows; nothing is disabled or unsubscribed. A new dispatch site still needs the wrap. Full model (async hooks, `GameLoop.tick()` as the terminal point): the Error-Handling Model section of `docs/AGENT_GUIDE.md`.
+- **A throwing hook is terminal: report it, don't repair around it** — when developer code throws inside an engine-owned sequence (scene teardown, destroy cascade, pool disposal, event fan-out), the later steps do not run, and that is the model. Never add a collector that runs the remaining steps or a `try`/`finally` that pushes a teardown through. The two fixes always in scope are attribution (`wrapCallback`) and the reporting channel (`reportLifecycleError` where a documented contract says the operation continues). Details and the two shipped exceptions: the Error-Handling Model section of `docs/AGENT_GUIDE.md`.
 - **Turn predictable failures into authored errors at the entry** — where a
   failure is knowable when the operation is called (an unknown sound alias, a
   missing asset key, an out-of-range argument), validate at the entry and throw
   an authored error naming the offending input before anything mutates, instead
   of letting the call fail halfway with a message from a dependency's
   internals. This is edge validation, not mid-operation recovery.
-- **A non-finite number (`NaN`, `Infinity`) is never stored into engine state
-  unguarded — the response depends on where the number enters.** `NaN` fails
-  every comparison, so a guard like `value <= 0` lets it through, and once it
-  reaches position, velocity, a cooldown, or particle state, nothing recovers
-  it. Three cases:
-  - Two already-legal inputs combine into a non-finite result — for example a
-    documented `Infinity` option multiplied by a `dt` of `0` from a
-    time-scale freeze. Define the result at that point instead of throwing. A
-    throw here would fire on ordinary, documented usage. When the defined
-    result drops what the caller asked for, emit a one-shot `devWarn` naming
-    what could not be honoured. When the result is exact — `dt = 0` meaning
-    nothing changes — stay silent. `devWarn` is internal to `@yagejs/core`,
-    so only core sites can warn this way. A package without it stays silent
-    on this edge; that is fine as long as its own result is exact rather than
-    lossy.
-  - A single game-supplied number is about to be written into simulation
-    state — through a setter, constructor config, or a value returned from a
-    game-authored callback. Throw a plain `Error` at that write site before
-    the value is stored, naming the offending input and the constraint it
-    violates. The message follows the style already shipped for scene-time
-    and entity-pool validation: `Context.method: constraint, got ${x}`.
-  - A non-finite input only changes what a read-only query returns and is
-    never stored anywhere. Leave it unguarded and document that the result is
-    undefined for non-finite input. Don't add a branch for it.
+- **A non-finite number (`NaN`, `Infinity`) is never stored into engine state unguarded** — a game-supplied number written into simulation state (setter, config, callback return) throws at the write site with `Context.method: constraint, got ${x}`; two legal inputs that combine into a non-finite result (a documented `Infinity` times a `dt` of `0`) get a defined result, plus a one-shot `devWarn` in core when that result is lossy; a read-only query stays unguarded and documents that the result is undefined. The three cases in full: the Error-Handling Model section of `docs/AGENT_GUIDE.md`.
 
 ## Testing
 

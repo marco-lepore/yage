@@ -857,9 +857,41 @@ Quick summary of the key architectural decisions:
 | Explicit save roots (`Serializable<TEncoded>`)          | Save files hold selected durable game facts; scene setup rebuilds runtime ECS and plugin objects after load                                    |
 | String keys for texture-dependent components            | `FrameSource` (animation), `textureKey` (particles), and sprite texture keys integrate with asset loading without coupling to PixiJS objects   |
 
+## 10. Error-Handling Model
+
+Three rules govern how engine code treats a failure in developer-supplied code. `AGENTS.md` states each as one bullet; this section is the full model.
+
+### Attribute developer-supplied callbacks
+
+Engine code that invokes a callback the game registered (event handlers, collision handlers, input listeners, process callbacks) runs it through `ErrorBoundary.wrapCallback`, and a `System`/`Component`'s own update call goes through `wrapSystem`/`wrapComponent`. All three record the culprit (readable via `Inspector.getErrors().callbackErrors`), log it through `Logger`, and rethrow. Nothing is disabled, unsubscribed, muted, or cancelled.
+
+Scene lifecycle hooks (`onEnter`, `onExit`, `onPause`, `onResume`, `beforeEnter`) use `ErrorBoundary.wrapLifecycleHook` instead: a synchronous throw is reported and rethrown the same way, but a rejected async hook can only be reported. The call has already returned by the time the rejection settles, so there is no stack left to rethrow into. `Logger`'s own `output` sink guards itself the same way, since it cannot route through the boundary it is reporting into.
+
+`GameLoop.tick()` is the one place that decides a failure is terminal: an error that escapes an entire frame unhandled stops the loop and rethrows so it reaches the host.
+
+A new dispatch site still needs the wrap. The wrap is what attributes the throw to the actual callback instead of whatever caller happened to be on the stack when it escaped.
+
+### A throwing hook is terminal: report it, don't repair around it
+
+When developer-supplied code throws inside an engine-owned sequence (scene teardown, an entity destroy cascade, a pool disposal, an event fan-out), the later steps do not run and the resources they would have released stay allocated. That is the model, not a defect to fix. A session with a throwing hook is over, so the engine's whole duty is to attribute the failure, record it on `Inspector.getErrors().callbackErrors`, and let it propagate. The developer can then fix it, and a shipped game can show or collect a bug report.
+
+Do not add a collector that runs every remaining step and rethrows the first error, and do not wrap a teardown step in `try`/`finally` to push it through. Two shipped places finish the sequence anyway, and neither is a pattern to copy: `Engine.destroy()` runs every stage and rethrows the first error because the host is quitting, and the plugin `afterExit` hooks continue past a failing plugin by documented contract, reporting without rethrowing.
+
+Two kinds of fix are always in scope:
+
+- **Attribution**: wrap a raw dispatch site so the throw names the callback that threw. Use `wrapCallback` where the throw should keep propagating.
+- **Reporting channel**: a catch that swallows or writes to `console.error` reports through the boundary instead. Use `reportLifecycleError` where a documented contract says the operation continues (`SceneHookRegistry.runAfterExit`, for instance).
+
+### Non-finite numbers never reach engine state unguarded
+
+`NaN` fails every comparison, so a guard like `value <= 0` lets it through, and once it reaches position, velocity, a cooldown, or particle state, nothing recovers it. The response depends on where the number enters. Three cases:
+
+- **Two already-legal inputs combine into a non-finite result.** Example: a documented `Infinity` option multiplied by a `dt` of `0` from a time-scale freeze. Define the result at that point instead of throwing; a throw here would fire on ordinary, documented usage. When the defined result drops what the caller asked for, emit a one-shot `devWarn` naming what could not be honoured. When the result is exact (`dt = 0` meaning nothing changes), stay silent. `devWarn` is internal to `@yagejs/core`, so only core sites can warn this way. A package without it stays silent on this edge; that is fine as long as its own result is exact rather than lossy.
+- **A single game-supplied number is about to be written into simulation state**, through a setter, constructor config, or a value returned from a game-authored callback. Throw a plain `Error` at that write site before the value is stored, naming the offending input and the constraint it violates. The message follows the style already shipped for scene-time and entity-pool validation: `Context.method: constraint, got ${x}`.
+- **A non-finite input only changes what a read-only query returns** and is never stored anywhere. Leave it unguarded and document that the result is undefined for non-finite input. Don't add a branch for it.
+
 ---
 
 ## References
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md) -- Plugin system specification
-- [RECIPES_PLAN.md](./RECIPES_PLAN.md) -- Recipe roadmap for reusable gameplay modules

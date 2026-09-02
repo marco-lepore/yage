@@ -23,7 +23,7 @@ export interface Plugin {
    * The engine installs plugins in topological order based on dependencies.
    * Optional -- omit or return empty array if no dependencies.
    */
-  readonly dependencies?: string[];
+  readonly dependencies?: readonly string[];
 
   /**
    * Called during engine.start() to set up the plugin.
@@ -41,10 +41,12 @@ export interface Plugin {
   registerSystems?(scheduler: SystemScheduler): void;
 
   /**
-   * Called after all plugins are installed and the game loop starts.
+   * Called after all plugins are installed and the game loop has started.
+   * May be async: the engine awaits it before calling the next plugin's
+   * onStart() and before emitting engine:started.
    * Optional -- use for post-initialization logic.
    */
-  onStart?(): void;
+  onStart?(): void | Promise<void>;
 
   /**
    * Called when the engine is destroyed.
@@ -75,12 +77,18 @@ engine.use(new InputPlugin({ actions: { jump: ['Space'] } }));
 ```
 1. Sort plugins topologically by dependencies
 2. For each plugin (in dependency order):
-   a. Call plugin.install(context)        -- Register services
-   b. Call plugin.registerSystems?()      -- Add systems to scheduler
-3. Start the game loop
-4. For each plugin (in dependency order):
-   a. Call plugin.onStart?()              -- Post-init logic
+   a. Call plugin.install(context)        -- Register services (awaited)
+3. For each plugin (in dependency order):
+   a. Call plugin.registerSystems?()      -- Add systems to scheduler
+4. Initialize registered systems          -- system.onRegister?(context)
+5. Start the game loop
+6. For each plugin (in dependency order):
+   a. Call plugin.onStart?()              -- Post-init logic (awaited)
+7. Emit engine:started
 ```
+
+`engine.start()` resolves after step 7, so a scene pushed right after
+`await engine.start()` sees every plugin's `onStart()` work.
 
 ### Destroy Phase (`engine.destroy()`)
 
@@ -101,7 +109,7 @@ first error is rethrown once teardown has finished.
 
 ```
 engine.use(plugin)     →  stored (not installed)
-engine.start()         →  install() → registerSystems() → loop starts → onStart()
+engine.start()         →  install() → registerSystems() → onRegister() → loop starts → onStart() → engine:started
 engine.destroy()       →  loop stops → scenes torn down → onUnregister() → onDestroy() (reverse order)
 ```
 
@@ -145,7 +153,7 @@ Dependencies:
   physics: []
   particles: [renderer]
   ui: [renderer]
-  ui-react: [renderer, ui]
+  ui-react: [ui]
   debug: [renderer]
 
 Sorted: [renderer, input, physics, particles, ui, ui-react, debug]
@@ -156,11 +164,11 @@ Sorted: [renderer, input, physics, particles, ui, ui-react, debug]
 
 | Error | When | Message |
 |---|---|---|
-| Missing dependency | Plugin A depends on B, but B was not registered | `Plugin "particles" depends on "renderer", which is not registered. Call engine.use(new RendererPlugin(...)) before engine.start().` |
-| Circular dependency | A depends on B, B depends on A | `Circular dependency detected: particles → renderer → particles` |
+| Missing dependency | Plugin A depends on B, but B was not registered | `Plugin "particles" depends on "renderer", which is not registered.` |
+| Circular dependency | A depends on B, B depends on A | `Circular dependency detected among plugins.` |
 | Duplicate name | Two plugins with the same name | `Plugin "renderer" is already registered.` |
 
-All errors are thrown during `engine.start()`, before any plugin is installed.
+The dependency errors are thrown by `engine.start()` before any plugin is installed. A duplicate name is rejected by `engine.use()` itself.
 
 ---
 
@@ -181,7 +189,7 @@ export const RendererKey = new ServiceKey<RendererPlugin>('renderer');
 
 // Inside RendererPlugin.install():
 class RendererPlugin implements Plugin {
-  install(context: EngineContext) {
+  async install(context: EngineContext) {
     const app = new Application();
     await app.init(this.config);
 
@@ -194,8 +202,8 @@ import { CameraEntity } from "@yagejs/renderer";
 
 // In a scene's onEnter():
 const cam = this.spawn(CameraEntity, { follow: player.get(Transform) });
-cam.shake(6, 300);    // convenience methods delegate to CameraComponent
-cam.zoomTo(1.5, 500); // no need for cam.get(CameraComponent)
+cam.shake(6, 0.3);    // durations in seconds; convenience methods delegate to CameraComponent
+cam.zoomTo(1.5, 0.5); // no need for cam.get(CameraComponent)
 ```
 
 ### Well-Known Service Keys
@@ -215,12 +223,17 @@ These keys are registered by `@yagejs/core` itself (not by plugins):
 | `SystemSchedulerKey` | `SystemScheduler` | Engine constructor |
 | `ProcessSystemKey` | `ProcessSystem` | Engine constructor |
 | `AssetManagerKey` | `AssetManager` | Engine constructor |
+| `SceneHookRegistryKey` | `SceneHookRegistry` | Engine constructor |
+| `SceneTimeKey` | `SceneTime` (scene-scoped) | Engine's own `beforeEnter` scene hook |
+| `RandomKey` | `RandomService` (scene-scoped) | Engine's own `beforeEnter` scene hook |
+
+`RendererAdapterKey` (`RendererAdapter`) is also defined in `@yagejs/core`: the pointer-input adapter of the current renderer. `@yagejs/renderer` registers itself under it, and `@yagejs/input` resolves it for canvas targeting and coordinate mapping without depending on the renderer package.
 
 Keys registered by official plugins:
 
 | Key | Type | Registered by |
 |---|---|---|
-| `RendererKey` | `Renderer` | `@yagejs/renderer` |
+| `RendererKey` | `RendererPlugin` | `@yagejs/renderer` |
 | `SceneRenderTreeProviderKey` | `SceneRenderTreeProvider` | `@yagejs/renderer` |
 | `SceneRenderTreeKey` | `SceneRenderTree` (scene-scoped) | `@yagejs/renderer` |
 | `PhysicsWorldManagerKey` | `PhysicsWorldManager` | `@yagejs/physics` |
@@ -228,31 +241,51 @@ Keys registered by official plugins:
 | `InputManagerKey` | `InputManager` | `@yagejs/input` |
 | `AudioManagerKey` | `AudioManager` | `@yagejs/audio` |
 | `DebugRegistryKey` | `DebugRegistry` | `@yagejs/debug` |
+| `LightingWorldManagerKey` | `LightingWorldManager` | `@yagejs/lighting` |
+| `LightingWorldKey` | `LightingWorld` (scene-scoped) | `@yagejs/lighting` |
+| `FloatingOverlayKey` | `FloatingOverlay` (scene-scoped) | `@yagejs/ui` |
+| `UIReactPluginKey` | `UIReactPlugin` | `@yagejs/ui-react` |
+| `SaveServiceKey` | `Save` | `@yagejs/save` |
 
-Keys marked **(scene-scoped)** are per-scene — `Component.use()` resolves the
-correct scene's instance automatically. Internally, plugins register them via
-scene lifecycle hooks (`packages/core/src/SceneHooks.ts`).
+Keys marked **(scene-scoped)** are declared with `new ServiceKey(id, { scope: "scene" })` and hold one instance per scene. `Component.use()` resolves the active scene's instance automatically. A plugin provides them from scene lifecycle hooks, registered through `SceneHookRegistryKey`:
+
+```typescript
+// Inside PhysicsPlugin.install():
+const hooks = context.resolve(SceneHookRegistryKey);
+this.unregisterHooks = hooks.register({
+  beforeEnter: (scene) => {
+    scene.registerScoped(PhysicsWorldKey, this.manager.getOrCreateWorld(scene));
+  },
+  afterExit: (scene) => {
+    this.manager.destroyWorld(scene);
+  },
+});
+```
+
+Scoped registrations are cleared automatically when the scene exits. Resolving a scene-scoped key that no hook registered throws from `Scene.use()`; resolving it before `onEnter()` is the usual cause.
 
 ### Optional Dependencies
 
-Some plugins have optional integrations. For example, `@yagejs/tilemap` can extract collision shapes for `@yagejs/physics`, but physics is not required:
+A plugin that works with or without another plugin's service resolves it with `context.tryResolve()`, which returns `undefined` instead of throwing:
 
 ```typescript
-class TilemapPlugin implements Plugin {
-  readonly name = 'tilemap';
+class MinimapPlugin implements Plugin {
+  readonly name = 'minimap';
   readonly dependencies = ['renderer'];  // Hard dependency: renderer required
 
   install(context: EngineContext) {
-    // Optional physics integration
+    // Optional physics integration: draw collider outlines when physics is present
     const physicsManager = context.tryResolve(PhysicsWorldManagerKey);
     if (physicsManager) {
-      // Register collision shapes from tilemap object layers
+      // ...
     }
   }
 }
 ```
 
-Use `context.tryResolve()` for optional dependencies and `context.resolve()` for required ones.
+Use `context.tryResolve()` for optional dependencies and `context.resolve()` for required ones. A dependency that is optional at runtime must not appear in `dependencies`, or `engine.start()` rejects when it is absent.
+
+An optional integration does not always need a service at all. `@yagejs/tilemap` ships `toPhysicsColliders()`, a plain function that converts a map's collision layer into `@yagejs/physics` collider configs; it imports only types from physics, so a game that never calls it never loads physics.
 
 ---
 
@@ -296,6 +329,7 @@ EarlyUpdate:
 FixedUpdate:
   PhysicsSystem (priority 0, from @yagejs/physics)
   UserGameplaySystem (priority 10, user code)
+  ProcessFixedUpdateSystem (priority 500, from @yagejs/core)
   ComponentFixedUpdateSystem (priority 1000, from @yagejs/core)
 
 Update:
@@ -306,13 +340,17 @@ Update:
 
 LateUpdate:
   UILayoutSystem (priority 200, from @yagejs/ui)
+  UIRootLayoutSystem (priority 200, from @yagejs/ui-react)
+  FloatingOverlaySystem (priority 201, from @yagejs/ui)
 
 Render:
+  TilemapRenderSystem (priority -1, from @yagejs/tilemap)
   DisplaySystem (priority 0, from @yagejs/renderer)
+  LightingSystem (priority 100, from @yagejs/lighting)
   DebugRenderSystem (priority 9999, from @yagejs/debug)
 
 EndOfFrame:
-  InputClearSystem (priority 0, from @yagejs/input)
+  InputClearSystem (priority 9000, from @yagejs/input)
 ```
 
 ---
@@ -395,8 +433,16 @@ class DebugPlugin implements Plugin {
 | `scene:pushed` | `{ scene: Scene }` | After `sceneManager.push()` |
 | `scene:popped` | `{ scene: Scene }` | After `sceneManager.pop()` |
 | `scene:replaced` | `{ oldScene: Scene; newScene: Scene }` | After `sceneManager.replace()` |
-| `engine:started` | `void` | After `engine.start()` completes |
-| `engine:stopped` | `void` | During `engine.destroy()` |
+| `scene:transition:started` | `{ kind; fromScene?; toScene? }` | A scene transition begins |
+| `scene:transition:ended` | `{ kind; fromScene?; toScene? }` | A scene transition finishes |
+| `scene:loading:progress` | `{ scene: Scene; ratio: number }` | A loading scene reports progress |
+| `scene:loading:done` | `{ scene: Scene }` | A loading scene finishes |
+| `engine:started` | `undefined` | After every plugin's `onStart()` has completed |
+| `engine:stopped` | `undefined` | First step of `engine.destroy()` |
+| `screen:fullscreen` | `{ active: boolean }` | Canvas host enters or leaves fullscreen (from `@yagejs/renderer`) |
+| `screen:orientation` | `{ type: OrientationType }` | Device orientation changes (from `@yagejs/renderer`) |
+
+Entity payloads carry the live `Entity`. Scene payloads are `SceneRef` views, except the loading events, which carry the full `Scene`.
 
 ---
 
@@ -422,17 +468,19 @@ export interface ScoreEvents {
 
 #### Step 2: Implement the Service
 
+The engine's `EventBus<EngineEvents>` is typed to the engine's own events, so a plugin with events of its own owns a bus for them:
+
 ```typescript
 // packages/score/src/ScoreManager.ts
 import { EventBus } from '@yagejs/core';
+import type { ScoreEvents } from './types';
 
 export class ScoreManager {
+  readonly events = new EventBus<ScoreEvents>();
   private _score: number = 0;
   private milestones: number[];
-  private events: EventBus;
 
-  constructor(events: EventBus, milestones: number[] = [100, 500, 1000]) {
-    this.events = events;
+  constructor(milestones: number[] = [100, 500, 1000]) {
     this.milestones = milestones;
   }
 
@@ -461,8 +509,9 @@ export class ScoreManager {
   }
 
   reset(): void {
+    const delta = -this._score;
     this._score = 0;
-    this.events.emit('score:changed', { score: 0, delta: -this._score });
+    this.events.emit('score:changed', { score: 0, delta });
   }
 }
 ```
@@ -471,7 +520,7 @@ export class ScoreManager {
 
 ```typescript
 // packages/score/src/ScorePlugin.ts
-import { Plugin, EngineContext, EventBusKey } from '@yagejs/core';
+import type { Plugin, EngineContext } from '@yagejs/core';
 import { ScoreManager } from './ScoreManager';
 import { ScoreManagerKey } from './types';
 
@@ -492,8 +541,7 @@ export class ScorePlugin implements Plugin {
   }
 
   install(context: EngineContext): void {
-    const events = context.resolve(EventBusKey);
-    this.manager = new ScoreManager(events, this.config.milestones);
+    this.manager = new ScoreManager(this.config.milestones);
     context.register(ScoreManagerKey, this.manager);
   }
 
@@ -527,6 +575,9 @@ class GameScene extends Scene {
 
   onEnter() {
     const score = this.context.resolve(ScoreManagerKey);
+    score.events.on('score:milestone', ({ milestone }) => {
+      console.log(`Reached ${milestone}`);
+    });
     score.add(50);
     console.log(score.score); // 50
   }
@@ -539,7 +590,9 @@ If the plugin needs per-frame logic, add a system:
 
 ```typescript
 // ScoreDisplaySystem.ts
-import { System, Phase, EngineContext } from '@yagejs/core';
+import { System, Phase } from '@yagejs/core';
+import type { EngineContext } from '@yagejs/core';
+import type { ScoreManager } from './ScoreManager';
 import { ScoreManagerKey } from './types';
 
 export class ScoreDisplaySystem extends System {
@@ -580,24 +633,22 @@ registerSystems(scheduler: SystemScheduler) {
 
 - **Access another plugin's internals**: Only public service keys are accessible. Private state stays private.
 - **Override another plugin's services**: `EngineContext.register()` throws on duplicate keys. A plugin cannot replace another plugin's service.
-- **Remove another plugin's systems**: Plugins can only add and remove their own systems.
-- **Block the game loop**: All system `update()` calls are wrapped by `ErrorBoundary`. A throwing system is disabled, not allowed to crash the loop.
+- **Remove another plugin's systems**: `SystemScheduler.remove()` accepts any system, but a plugin removes only the systems it added. Nothing enforces this; it is the contract.
+- **Escape the error boundary**: every system `update()` runs through `ErrorBoundary.wrapSystem`, so a throw is attributed to the system that threw before it propagates.
 
-### Failure Isolation
+### Failure Model
 
-If a plugin's system throws:
+A throw is reported, not repaired around. If a plugin's system throws:
 
-1. `ErrorBoundary` catches the error
-2. The system is disabled (`system.enabled = false`)
-3. The error is logged with full context
-4. The game loop continues running other systems
-5. The Inspector reports the disabled system via `getErrors()`
+1. `ErrorBoundary` records the culprit system (readable via `Inspector.getErrors().callbackErrors`) and logs it through `Logger`.
+2. The error is rethrown. Nothing is disabled, unsubscribed, or muted; `system.enabled` is a flag the game sets, never the boundary.
+3. If nothing inside the frame catches it, `GameLoop.tick()` stops the loop and rethrows so the error reaches the host (`window.onerror`, an unhandled-rejection handler, or the caller's own `try`/`catch`).
 
-If a plugin's `install()` throws:
+If a plugin's `install()` or `onStart()` throws:
 
-1. `engine.start()` throws with a descriptive error
-2. No other plugins are installed
-3. The engine does not start
+1. `engine.start()` rejects with that error.
+2. Plugins installed earlier in the order stay installed; their services stay registered.
+3. The instance is terminal: a later `start()` or `use()` throws. Call `engine.destroy()` to release what did install, then construct a new `Engine`.
 
 ---
 
@@ -623,25 +674,24 @@ For settings that can change during gameplay, expose methods on the service:
 ```typescript
 const audio = context.resolve(AudioManagerKey);
 audio.setChannelVolume('music', 0.5);
-audio.setMasterMuted(true);
+audio.muteAll();
 ```
 
 ### Event-Driven Configuration
 
-For plugins that react to external changes:
+For plugins that react to engine events:
 
 ```typescript
 const events = context.resolve(EventBusKey);
-events.on('settings:changed', ({ key, value }) => {
-  if (key === 'musicVolume') {
-    audio.setChannelVolume('music', value);
-  }
+events.on('screen:fullscreen', ({ active }) => {
+  if (!active) audio.muteAll();
 });
 ```
+
+`EventBus<EngineEvents>` only accepts the events in `EngineEvents`. A plugin's own events go on a bus it owns, as `ScoreManager` does above.
 
 ---
 
 ## References
 
 - [AGENT_GUIDE.md](./AGENT_GUIDE.md) -- How to add/modify plugins as a coding agent
-- [RECIPES_PLAN.md](./RECIPES_PLAN.md) -- Boundary between base plugins and recipes
