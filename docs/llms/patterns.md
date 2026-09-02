@@ -38,6 +38,9 @@ class DamageReceiver extends Component {
     this.listenScene(SpawnEvent, (data, entity) => {
       /* ... */
     });
+    this.listenBus("entity:destroyed", ({ entity }) => {
+      /* ... */
+    });
   }
 }
 ```

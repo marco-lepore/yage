@@ -8,11 +8,13 @@ beforeEach(() => {
   _resetEntityIdCounter();
 });
 
+const Ping = defineEvent("ping");
+const Hit = defineEvent<{ damage: number }>("hit");
+
 describe("Entity events", () => {
   describe("on / emit", () => {
     it("calls handler with data", () => {
       const { entity } = createMockEntity();
-      const Hit = defineEvent<{ damage: number }>("hit");
       const handler = vi.fn();
 
       entity.on(Hit, handler);
@@ -23,7 +25,6 @@ describe("Entity events", () => {
 
     it("supports void events (no data)", () => {
       const { entity } = createMockEntity();
-      const Ping = defineEvent("ping");
       const handler = vi.fn();
 
       entity.on(Ping, handler);
@@ -34,7 +35,6 @@ describe("Entity events", () => {
 
     it("calls multiple handlers", () => {
       const { entity } = createMockEntity();
-      const Ping = defineEvent("ping");
       const h1 = vi.fn();
       const h2 = vi.fn();
 
@@ -62,7 +62,6 @@ describe("Entity events", () => {
   describe("unsubscribe", () => {
     it("returns an unsubscribe function", () => {
       const { entity } = createMockEntity();
-      const Ping = defineEvent("ping");
       const handler = vi.fn();
 
       const unsub = entity.on(Ping, handler);
@@ -74,7 +73,6 @@ describe("Entity events", () => {
 
     it("safe to unsubscribe during emit (snapshot iteration)", () => {
       const { entity } = createMockEntity();
-      const Ping = defineEvent("ping");
       const calls: string[] = [];
 
       const unsub1 = entity.on(Ping, () => {
@@ -100,7 +98,6 @@ describe("Entity events", () => {
   describe("throwing handlers", () => {
     it("a throwing handler stops later handlers in the same emit and rethrows", () => {
       const { entity, context } = createMockEntity();
-      const Ping = defineEvent("ping");
       const calls: string[] = [];
 
       entity.on(Ping, () => calls.push("before"));
@@ -125,7 +122,6 @@ describe("Entity events", () => {
     it("records the owning scene's name alongside the entity", () => {
       const { scene } = createMockScene("Level1");
       const entity = scene.spawn("player");
-      const Ping = defineEvent("ping");
 
       entity.on(Ping, () => {
         throw new Error("boom");
@@ -144,7 +140,6 @@ describe("Entity events", () => {
   describe("destroyed entity", () => {
     it("emit is a no-op on destroyed entity", () => {
       const { entity } = createMockEntity();
-      const Ping = defineEvent("ping");
       const handler = vi.fn();
 
       entity.on(Ping, handler);
@@ -159,7 +154,6 @@ describe("Entity events", () => {
     it("entity events bubble to the scene", () => {
       const { scene } = createMockScene();
       const entity = scene.spawn("test");
-      const Hit = defineEvent<{ damage: number }>("hit");
       const handler = vi.fn();
 
       scene.on(Hit, handler);
@@ -172,7 +166,6 @@ describe("Entity events", () => {
       const { scene } = createMockScene();
       const e1 = scene.spawn("e1");
       const e2 = scene.spawn("e2");
-      const Ping = defineEvent("ping");
       const entities: unknown[] = [];
 
       scene.on(Ping, (_data, entity) => {
@@ -188,7 +181,6 @@ describe("Entity events", () => {
     it("entity handlers fire before scene handlers", () => {
       const { scene } = createMockScene();
       const entity = scene.spawn("test");
-      const Ping = defineEvent("ping");
       const order: string[] = [];
 
       scene.on(Ping, () => order.push("scene"));
@@ -202,7 +194,6 @@ describe("Entity events", () => {
     it("scene.on returns an unsubscribe function", () => {
       const { scene } = createMockScene();
       const entity = scene.spawn("test");
-      const Ping = defineEvent("ping");
       const handler = vi.fn();
 
       const unsub = scene.on(Ping, handler);
@@ -215,7 +206,6 @@ describe("Entity events", () => {
     it("void events bubble correctly", () => {
       const { scene } = createMockScene();
       const entity = scene.spawn("test");
-      const Ping = defineEvent("ping");
       const handler = vi.fn();
 
       scene.on(Ping, handler);
@@ -228,7 +218,6 @@ describe("Entity events", () => {
   describe("scene.emit", () => {
     it("dispatches scene-emitted events to scene.on handlers", () => {
       const { scene } = createMockScene();
-      const Hit = defineEvent<{ damage: number }>("hit");
       const handler = vi.fn();
 
       scene.on(Hit, handler);
@@ -239,7 +228,6 @@ describe("Entity events", () => {
 
     it("supports void events", () => {
       const { scene } = createMockScene();
-      const Ping = defineEvent("ping");
       const handler = vi.fn();
 
       scene.on(Ping, handler);
@@ -251,7 +239,6 @@ describe("Entity events", () => {
     it("does not deliver scene-emitted events to entity.on listeners", () => {
       const { scene } = createMockScene();
       const entity = scene.spawn("test");
-      const Ping = defineEvent("ping");
       const entityHandler = vi.fn();
       const sceneHandler = vi.fn();
 
@@ -265,7 +252,6 @@ describe("Entity events", () => {
 
     it("a throwing scene handler stops later handlers in the same emit and rethrows", () => {
       const { scene } = createMockScene();
-      const Ping = defineEvent("ping");
       const calls: string[] = [];
 
       scene.on(Ping, () => calls.push("before"));
@@ -281,7 +267,6 @@ describe("Entity events", () => {
     it("a throwing handler for a bubbled entity event stops later handlers and rethrows", () => {
       const { scene } = createMockScene();
       const entity = scene.spawn("test");
-      const Ping = defineEvent("ping");
       const calls: string[] = [];
 
       scene.on(Ping, () => calls.push("before"));
@@ -295,10 +280,69 @@ describe("Entity events", () => {
     });
   });
 
+  describe("token event observer", () => {
+    it("sees entity emits with the source and scene emits with undefined", () => {
+      const { scene } = createMockScene();
+      const entity = scene.spawn("e");
+      const seen: Array<[string, unknown, string]> = [];
+      scene._setTokenEventObserver((name, data, source) => {
+        seen.push([name, data, source?.name ?? "<scene>"]);
+      });
+
+      scene.emit(Hit, { damage: 1 });
+      entity.emit(Hit, { damage: 2 });
+
+      expect(seen).toEqual([
+        ["hit", { damage: 1 }, "<scene>"],
+        ["hit", { damage: 2 }, "e"],
+      ]);
+    });
+
+    it("runs after the handlers of the emit", () => {
+      const { scene } = createMockScene();
+      const entity = scene.spawn("e");
+      const order: string[] = [];
+      scene.on(Ping, () => order.push("handler"));
+      scene._setTokenEventObserver(() => order.push("observer"));
+
+      entity.emit(Ping);
+      scene.emit(Ping);
+
+      expect(order).toEqual(["handler", "observer", "handler", "observer"]);
+    });
+
+    it("a throwing observer is recorded as a scene event observer and rethrown", () => {
+      const { scene } = createMockScene("Level1");
+      const entity = scene.spawn("e");
+      scene._setTokenEventObserver(() => {
+        throw new Error("observer boom");
+      });
+
+      expect(() => scene.emit(Ping)).toThrow("observer boom");
+      expect(() => entity.emit(Ping)).toThrow("observer boom");
+
+      const errors = scene.context
+        .resolve(ErrorBoundaryKey)
+        .getCallbackErrors();
+      expect(errors).toHaveLength(2);
+      expect(errors[0]).toMatchObject({
+        kind: "Scene event observer",
+        scene: "Level1",
+        event: "ping",
+      });
+      expect(errors[0]).not.toHaveProperty("entity");
+      expect(errors[1]).toMatchObject({
+        kind: "Scene event observer",
+        scene: "Level1",
+        entity: "e",
+        event: "ping",
+      });
+    });
+  });
+
   describe("event handlers cleared on destroy", () => {
     it("_performDestroy clears event handlers", () => {
       const { entity } = createMockEntity();
-      const Ping = defineEvent("ping");
       const handler = vi.fn();
 
       entity.on(Ping, handler);
@@ -312,7 +356,6 @@ describe("Entity events", () => {
     it("_destroyAllEntities clears scene event handlers", () => {
       const { scene } = createMockScene();
       scene.spawn("test");
-      const Ping = defineEvent("ping");
       const handler = vi.fn();
 
       scene.on(Ping, handler);

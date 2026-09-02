@@ -16,6 +16,8 @@ Pick `recommended` for a playable platformer seed (physics, input, animations, e
 npm install @yagejs/core @yagejs/renderer
 ```
 
+The packages must go through a bundler that supports TypeScript and ESM. Vite is recommended. Loading them in a browser without a bundler is not supported.
+
 Add more packages as needed:
 
 ```bash
@@ -116,7 +118,7 @@ window.__yage__.inspector.input.keyDown("ArrowRight");      // synthetic input
 window.__yage__.inspector.input.hold("ArrowRight", 30);     // press, run N frames, release
 window.__yage__.inspector.snapshotJSON();                   // stable JSON snapshot
 window.__yage__.inspector.setSeed(42);                      // pin every scene RNG (for replays)
-window.__yage__.inspector.events.getLog();                  // recorded engine + entity events
+window.__yage__.inspector.events.getLog();                  // recorded bus, entity and scene events
 await window.__yage__.inspector.events.waitFor("scene:pushed", { withinFrames: 30 });
 ```
 

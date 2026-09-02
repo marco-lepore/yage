@@ -95,7 +95,7 @@ class MyComponent extends Component {
 | `this.use(key)`       | Inside `onAdd()` or later                            | Immediately (cached)               |
 | `this.sibling(Class)` | Field declarations (`private rb = this.sibling(RB)`) | Lazy proxy — first property access |
 
-`this.listen(entity, token, handler)` auto-unsubscribes on removal. `this.scene` and `this.context` are accessors.
+`this.listen(entity, token, handler)`, `this.listenScene(token, handler)` and `this.listenBus(event, handler)` auto-unsubscribe on removal. `this.scene` and `this.context` are accessors.
 
 ## Entity Operations
 
@@ -232,7 +232,7 @@ bus.once("engine:started", () => {
 });
 ```
 
-Built-in events: `entity:created`, `entity:destroyed`, `component:added`, `component:removed`, `scene:pushed`, `scene:popped`, `scene:replaced`, `engine:started`, `engine:stopped`.
+Built-in events: `entity:created`, `entity:destroyed`, `component:added`, `component:removed`, `scene:pushed`, `scene:popped`, `scene:replaced`, `scene:transition:started`, `scene:transition:ended`, `scene:loading:progress`, `scene:loading:done`, `engine:started`, `engine:stopped`, `screen:fullscreen`, `screen:orientation`. Payloads: the `EngineEvents` table in `packages/core.md`. From a component, `this.listenBus(event, handler)` subscribes with auto-cleanup.
 
 ## Dependency Injection
 

@@ -75,15 +75,17 @@ import { Phase } from "@yagejs/core";
 Within a phase, systems are sorted by **priority** — lower numbers run first:
 
 ```typescript
-class PhysicsSystem extends System {
+class WindSystem extends System {
   readonly phase = Phase.FixedUpdate;
-  readonly priority = 100; // runs before ComponentUpdateSystem (1000)
+  // after PhysicsSystem (0), before ComponentFixedUpdateSystem (1000)
+  readonly priority = 100;
 }
 ```
 
-The built-in `ComponentUpdateSystem` uses priority `1000`, so any system with a
-lower number in the same phase will execute before component `update()` /
-`fixedUpdate()` calls.
+The built-in component passes use priority `1000`, so any system with a lower
+number in the same phase runs before component `update()` / `fixedUpdate()`
+calls. The full order of the shipped systems, and the priority bands to place
+a new one in, are in [What Runs When](/concepts/game-loop/#what-runs-when).
 
 ## QueryCache
 

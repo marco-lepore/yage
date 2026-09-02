@@ -275,7 +275,10 @@ export class Entity {
     return this._children ?? EMPTY_CHILDREN;
   }
 
-  /** Add a named child entity. Auto-adds to parent's scene if not already in one. */
+  /**
+   * Add a named child entity. Auto-adds to parent's scene if not already in
+   * one; a child that belongs to a different scene is rejected.
+   */
   addChild(name: string, child: Entity): void {
     if (child === this) {
       throw new Error(`Entity "${this.name}" cannot be a child of itself.`);
@@ -291,6 +294,14 @@ export class Entity {
     if (child._parent) {
       throw new Error(
         `Entity "${child.name}" already has a parent ("${child._parent.name}"). Remove it first.`,
+      );
+    }
+    // A child's events bubble to its own scene and that scene's teardown
+    // destroys it, so a parent in another scene would never receive its
+    // events and would not tear it down.
+    if (this._scene && child._scene && child._scene !== this._scene) {
+      throw new Error(
+        `Entity "${child.name}" belongs to scene "${child._scene.name}" and cannot be a child of "${this.name}" in scene "${this._scene.name}". Spawn it in this scene (entity.spawnChild) instead.`,
       );
     }
     this._children ??= new Map();
@@ -544,7 +555,7 @@ export class Entity {
     }
 
     this._scene?._onEntityEvent(token.name, data, this);
-    this._scene?._observeEntityEvent(token.name, data, this);
+    this._scene?._observeTokenEvent(token.name, data, this);
   }
 
   /** Get all components as an iterable, in add order. */

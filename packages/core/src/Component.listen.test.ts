@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { Component } from "./Component.js";
 import { _resetEntityIdCounter } from "./Entity.js";
 import { defineEvent } from "./EventToken.js";
+import { EventBusKey } from "./EngineContext.js";
 import { createMockScene, createMockEntity } from "./test-utils.js";
 
 beforeEach(() => {
@@ -139,6 +140,41 @@ describe("Component.listenScene", () => {
     entity._setScene(null, null);
 
     expect(() => entity.add(new BadComponent())).toThrow(
+      "Cannot access scene: entity is not attached to a scene.",
+    );
+  });
+});
+
+describe("Component.listenBus", () => {
+  class BusListener extends Component {
+    received: string[] = [];
+
+    onAdd() {
+      this.listenBus("scene:pushed", ({ scene }) => {
+        this.received.push(scene.name);
+      });
+    }
+  }
+
+  it("receives engine events until the component is removed", () => {
+    const { scene, context } = createMockScene();
+    const bus = context.resolve(EventBusKey);
+    const entity = scene.spawn("listener");
+    const comp = entity.add(new BusListener());
+
+    bus.emit("scene:pushed", { scene: { name: "a" } });
+    expect(comp.received).toEqual(["a"]);
+
+    entity.remove(BusListener);
+    bus.emit("scene:pushed", { scene: { name: "b" } });
+    expect(comp.received).toEqual(["a"]);
+  });
+
+  it("throws if entity is not in a scene", () => {
+    const { entity } = createMockEntity();
+    entity._setScene(null, null);
+
+    expect(() => entity.add(new BusListener())).toThrow(
       "Cannot access scene: entity is not attached to a scene.",
     );
   });

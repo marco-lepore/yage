@@ -266,7 +266,7 @@ inspector.getComponentData("player", "Health");  // reflected fields and getters
 inspector.getSceneStack();                       // scene snapshots, bottom to top
 inspector.getInputState();                       // { keys, actions, mouse, pointers, gamepad }
 inspector.snapshotJSON();                        // whole world, sorted, for diffing
-inspector.events.getLog();                       // bus + entity events
+inspector.events.getLog();                       // bus, entity and scene events
 await ctx.events.waitFor("enemy:hit", { withinFrames: 60 });
 ```
 

@@ -5,10 +5,11 @@ import { Component } from "./Component.js";
 import { System } from "./System.js";
 import { Phase } from "./types.js";
 import type { Plugin } from "./types.js";
-import { _resetEntityIdCounter } from "./Entity.js";
+import { Entity, _resetEntityIdCounter } from "./Entity.js";
 import { defineEvent } from "./EventToken.js";
 import { Process } from "./Process.js";
 import { ProcessComponent } from "./ProcessComponent.js";
+import { EntityPool } from "./EntityPool.js";
 import {
   EngineKey,
   EventBusKey,
@@ -766,6 +767,231 @@ describe("Engine", () => {
       } finally {
         process.off("unhandledRejection", onUnhandled);
       }
+    });
+  });
+
+  describe("destroy() from inside a frame", () => {
+    class PhaseProbe extends System {
+      readonly phase: Phase;
+      override readonly priority: number;
+      runs = 0;
+      constructor(
+        phase: Phase,
+        priority: number,
+        private readonly onUpdate?: () => void,
+      ) {
+        super();
+        this.phase = phase;
+        this.priority = priority;
+      }
+      update(): void {
+        this.runs++;
+        this.onUpdate?.();
+      }
+    }
+
+    it("finishes the running phase and skips the phases after it", async () => {
+      const engine = new Engine();
+      await engine.start();
+      const scheduler = engine.context.resolve(SystemSchedulerKey);
+      const destroyer = new PhaseProbe(Phase.Update, 2000, () =>
+        engine.destroy(),
+      );
+      const samePhase = new PhaseProbe(Phase.Update, 3000);
+      const late = new PhaseProbe(Phase.LateUpdate, 0);
+      const render = new PhaseProbe(Phase.Render, 0);
+      const end = new PhaseProbe(Phase.EndOfFrame, 0);
+      for (const s of [destroyer, samePhase, late, render, end])
+        scheduler.add(s);
+
+      engine.loop.tick(16);
+
+      expect(destroyer.runs).toBe(1);
+      expect(samePhase.runs).toBe(1);
+      expect(late.runs).toBe(0);
+      expect(render.runs).toBe(0);
+      expect(end.runs).toBe(0);
+    });
+  });
+
+  describe("plugin teardown scope", () => {
+    it("destroy() mid-install tears down only the plugins whose install() was called", async () => {
+      let release!: () => void;
+      const installing = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const aDestroy = vi.fn();
+      const bInstall = vi.fn();
+      const bDestroy = vi.fn(() => {
+        throw new Error("b was never installed");
+      });
+      const engine = new Engine();
+      engine
+        .use({
+          name: "a",
+          version: "1.0.0",
+          install: () => installing,
+          onDestroy: aDestroy,
+        })
+        .use({
+          name: "b",
+          version: "1.0.0",
+          dependencies: ["a"],
+          install: bInstall,
+          onDestroy: bDestroy,
+        });
+
+      const startPromise = engine.start();
+      expect(() => engine.destroy()).not.toThrow();
+      release();
+      await startPromise;
+
+      expect(aDestroy).toHaveBeenCalledOnce();
+      expect(bInstall).not.toHaveBeenCalled();
+      expect(bDestroy).not.toHaveBeenCalled();
+    });
+
+    it("destroy() before start() calls no onDestroy", () => {
+      const onDestroy = vi.fn();
+      const engine = new Engine();
+      engine.use({ name: "a", version: "1.0.0", onDestroy });
+      engine.destroy();
+      expect(onDestroy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("scheduling order inside a fixed step", () => {
+    it("a fixed-clock process scheduled from a component fixedUpdate first advances on the next step", async () => {
+      const engine = new Engine({ fixedTimestep: 0.016 });
+      await engine.start();
+      const scene = new TestScene();
+      await engine.scenes.push(scene);
+      const entity = scene.spawn("host");
+      const pc = entity.add(new ProcessComponent());
+      let ticks = 0;
+      class Scheduler extends Component {
+        scheduled = false;
+        fixedUpdate(): void {
+          if (this.scheduled) return;
+          this.scheduled = true;
+          pc.run(new Process({ update: () => void ticks++ }), {
+            clock: "fixed",
+          });
+        }
+      }
+      entity.add(new Scheduler());
+
+      engine.loop.tick(16);
+      expect(ticks).toBe(0);
+      engine.loop.tick(16);
+      expect(ticks).toBe(1);
+      engine.destroy();
+    });
+
+    it("the same process scheduled from a FixedUpdate system at priority 400 advances in that step", async () => {
+      const engine = new Engine({ fixedTimestep: 0.016 });
+      await engine.start();
+      const scene = new TestScene();
+      await engine.scenes.push(scene);
+      const entity = scene.spawn("host");
+      const pc = entity.add(new ProcessComponent());
+      let ticks = 0;
+      class EarlyScheduler extends System {
+        readonly phase = Phase.FixedUpdate;
+        override readonly priority = 400;
+        scheduled = false;
+        update(): void {
+          if (this.scheduled) return;
+          this.scheduled = true;
+          pc.run(new Process({ update: () => void ticks++ }), {
+            clock: "fixed",
+          });
+        }
+      }
+      engine.context.resolve(SystemSchedulerKey).add(new EarlyScheduler());
+
+      engine.loop.tick(16);
+      expect(ticks).toBe(1);
+      engine.loop.tick(16);
+      expect(ticks).toBe(2);
+      engine.destroy();
+    });
+  });
+
+  describe("pool acquire during a component pass", () => {
+    class Counter extends Component {
+      updates = 0;
+      update(): void {
+        this.updates++;
+      }
+    }
+    class Pellet extends Entity {
+      counter!: Counter;
+      override setup(): void {
+        this.counter = this.add(new Counter());
+      }
+      onAcquire(): void {}
+    }
+    class PoolScene extends Scene {
+      readonly name = "pool";
+      pool!: EntityPool<Pellet>;
+      onEnter(): void {
+        this.pool = new EntityPool(this, Pellet, { prewarm: 1 });
+      }
+    }
+    class Shooter extends Component {
+      acquired: Pellet[] = [];
+      spawned: Counter | null = null;
+      fire = false;
+      constructor(private readonly poolScene: PoolScene) {
+        super();
+      }
+      update(): void {
+        if (!this.fire) return;
+        this.fire = false;
+        this.acquired.push(this.poolScene.pool.acquire());
+        this.acquired.push(this.poolScene.pool.acquire());
+        this.spawned = this.poolScene.spawn("plain").add(new Counter());
+      }
+    }
+
+    it("a prewarmed member and a grown member both update in the acquiring pass", async () => {
+      const engine = new Engine();
+      await engine.start();
+      const scene = new PoolScene();
+      await engine.scenes.push(scene);
+      const shooter = scene.spawn("shooter").add(new Shooter(scene));
+
+      shooter.fire = true;
+      engine.loop.tick(16);
+
+      expect(shooter.acquired.map((p) => p.counter.updates)).toEqual([1, 1]);
+      expect(shooter.spawned?.updates).toBe(1);
+      engine.destroy();
+    });
+
+    it("re-acquired members update in the acquiring pass whatever their original position", async () => {
+      const engine = new Engine();
+      await engine.start();
+      const scene = new PoolScene();
+      await engine.scenes.push(scene);
+      const shooter = scene.spawn("shooter").add(new Shooter(scene));
+
+      shooter.fire = true;
+      engine.loop.tick(16);
+      for (const pellet of shooter.acquired) {
+        scene.pool.release(pellet);
+        pellet.counter.updates = 0;
+      }
+      shooter.acquired = [];
+      engine.loop.tick(16);
+      engine.loop.tick(16);
+
+      shooter.fire = true;
+      engine.loop.tick(16);
+
+      expect(shooter.acquired.map((p) => p.counter.updates)).toEqual([1, 1]);
+      engine.destroy();
     });
   });
 

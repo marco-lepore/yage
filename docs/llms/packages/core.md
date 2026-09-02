@@ -55,6 +55,7 @@ class Entity {
 - `entity.isDestroyed` is true after `destroy()` and for entities torn down with their scene on exit. Teardown also emits `entity:destroyed` once per entity, so listeners tracking entity lifetimes are notified of every destruction, including destruction caused by scene exit.
 - `destroy()` deactivates immediately: `isActive` reads `false`, the entity leaves every query, and component `onDisable` fires in the same call. The rest of teardown — `onDestroy`, detaching from the scene — waits for the end-of-frame flush, so `isDestroyed` and component removal still happen later.
 - `entity.spawnChild(name, Class, params?)` combines `scene.spawn(...)` + `this.addChild(name, ...)`. Child is auto-added to the parent's scene. Use for sub-entities owned by a parent (enemy body + health bar, player + weapon, etc.).
+- `entity.addChild(name, child)` adopts an existing entity. A scene-less child joins the parent's scene; a child that belongs to a different scene is rejected with an error, because its events bubble to its own scene and that scene's teardown destroys it.
 
 ### Activeness
 
@@ -76,6 +77,25 @@ bullet.setActive(true); // back in play, nothing reallocated
 - A dormant entity's components and its `ProcessComponent` stop being ticked, so tweens and coroutines pause where they are and resume on reactivation.
 - Reuse resets nothing: `entity.timeScale`, animation position, process progress, entity event listeners and addon state all survive. Register listeners in `setup()`, and reset game state yourself when you bring an entity back.
 - `destroy()` also runs through this same activeness state (`isActive` reads `false` right away, `activeSelf` is untouched), so any code that checks `isActive` to decide whether an entity is "in play" sees a destroyed entity the same way it sees a dormant one.
+
+### Component subscriptions
+
+Subscriptions made through these helpers are released when the component is removed or its entity is destroyed, before `onDestroy`:
+
+```ts
+class Turret extends Component {
+  onAdd() {
+    this.listen(this.entity, DamagedEvent, ({ amount }) => {}); // any entity's token events
+    this.listenScene(WaveStartEvent, (data, entity) => {}); // scene.emit + every entity's bubbled emit
+    this.listenBus("entity:destroyed", ({ entity }) => {}); // the engine EventBus
+    this.addCleanup(() => model.off(handler)); // anything else
+  }
+}
+```
+
+- `listen(entity, token, handler)` takes any entity, not only the component's own.
+- `listenScene` and `listenBus` throw when the entity is not in a scene; call them from `onAdd()` or later.
+- `addCleanup(fn)` registers any other release. Cleanups run in registration order.
 
 ### Component enable/disable hooks
 
@@ -179,7 +199,7 @@ interface EntityPoolOptions<T, TMax> {
 - `forceAcquire` always returns a member. On a saturated capped pool it reclaims the lowest `reclaimPriority` (default: acquired longest ago), running `onRelease` then `onAcquire` in the same call.
 - `onAcquire` is required on a pooled class — an inherited one counts. It must be synchronous and non-overloaded, since `acquire`'s signature is derived from it. Declare an empty `onAcquire() {}` when there is nothing to reset.
 - Prewarm builds members and runs `setup()`, never `onAcquire`.
-- The member is active, in its queries, and past `onEnable` before `onAcquire` runs. Acquire during Update and it renders the same frame; acquire in Render or EndOfFrame and it first draws on the next one.
+- The member is active, in its queries, and past `onEnable` before `onAcquire` runs. Acquire from a component `update`/`fixedUpdate` and the member's components run in that same pass, after the acquirer's. Acquire during Update and it renders the same frame; acquire in Render or EndOfFrame and it first draws on the next one.
 - Release cancels scheduled actions, keeps inert state. It cancels the member's `ProcessComponent` (a pending `Process.delay` would otherwise fire unprompted on a later lease), but position, health, animation frame, `timeScale`, and entity listeners all survive a cycle. Reset them in `onAcquire`, and register listeners in `setup()` or drop them in `onRelease`.
 - Bookkeeping completes before the hooks run. A throwing `onAcquire` leaves the member leased and active; a throwing `onRelease` still parks it. Both throws are attributed to the entity and propagate.
 - Releasing an entity the pool has not leased — a double release, another pool's member — is a reported no-op. `setActive` called from outside does not change who holds the lease.
@@ -226,9 +246,13 @@ interface EntityHandle<out T extends Entity = Entity> {
 
 | Export                 | Purpose                                       |
 | ---------------------- | --------------------------------------------- |
-| `EventBus<E>`          | Typed pub/sub (`on`, `once`, `emit`, `clear`) |
-| `EventToken<T>`        | Typed token for entity events                 |
-| `defineEvent<T>(name)` | Create an event token                         |
+| `EventBus<E>`          | Typed pub/sub (`on`, `once`, `emit`, `clear`, `tap`)      |
+| `EventToken<T>`        | Typed token for entity and scene events                   |
+| `defineEvent<T>(name)` | Create an event token; the name must be a non-empty string |
+
+- `bus.on` returns an unsubscribe bound to that registration: the same function registered twice fires twice, and each unsubscribe removes its own entry, once.
+- `bus.tap(observer)` receives every emit before its handlers run, inside the same error boundary as a handler: a throwing observer is recorded, rethrown, and stops that emit's handlers. Tooling only (the Inspector event log uses it).
+- Entity and scene events dispatch by the token's name, not by the token object: two `defineEvent` calls with one name are one channel, and their payload types are not checked against each other. Prefix names with the owning module (`"inventory:item-added"`). In dev builds the second definition of a name logs a warning.
 
 `EngineEvents` (the typed map used by `EventBusKey`):
 
@@ -245,6 +269,8 @@ interface EntityHandle<out T extends Entity = Entity> {
 | `engine:started` / `engine:stopped`                   | `undefined`                                                                                                                                                       |
 | `screen:fullscreen`                                   | `{ active: boolean }` — emitted by `RendererPlugin` on `fullscreenchange` / `webkitfullscreenchange`                                                              |
 | `screen:orientation`                                  | `{ type: OrientationType }` — emitted by `RendererPlugin` on `screen.orientation.change` (or `orientationchange` fallback)                                        |
+
+`entity` in the `entity:*` and `component:*` payloads is the live `Entity` (`entity.tags`, `entity.get(...)` work in the handler). The `scene` fields are `{ name }`, except `scene:loading:*`, which carry the `Scene`.
 
 ### Scene Events
 
@@ -271,6 +297,8 @@ someEntity.emit(DamagedEvent, { amount: 10 }); // handler runs with entity = som
 ```
 
 `Scene.on` returns an unsubscribe function. The handler param is `(data, entity?)` regardless of which side emitted — game code should check `entity` to decide whether to read source state.
+
+Scene-level subscriptions are released when the scene exits, together with its entities, so subscribe in `onEnter` (or from a component through `listenScene`). A scene instance pushed again starts with none.
 
 `Scene.registerScoped<T>(key: ServiceKey<T>, value: T)` (public) attaches a scene-scoped service resolvable via `Component.use(key)`, and via `Scene.use(key)` / `Scene.service(key)` from the scene itself. Both are scope-aware: scene scope first, then engine. Plugins call it from `beforeEnter`; game code can call it from `onEnter` for scene-local state. Every key registered this way is auto-unregistered on scene exit (after `onExit` and plugin `afterExit` hooks), so scenes don't leak services into one another. `Scene.tryResolveScoped<T>(key)` (public) reads a scene-scoped service without engine-scope fallback, returning `undefined` when absent. Use it in systems that iterate scenes. `_registerScoped` / `_resolveScoped` are kept internal aliases — prefer the public names in new code.
 
@@ -858,6 +886,39 @@ scheduler.fixedStepIndex; // number — monotonic count of fixed steps started; 
 // several steps, or none), holds the last step's number between steps
 ```
 
+### Frame order
+
+Every shipped system, in the order one frame runs them. Engine steps are in
+italics; systems read `Name (priority, package)`. Equal priorities run in add
+order, which for plugin systems is plugin install order (`UILayoutSystem`
+before `UIRootLayoutSystem` because `ui-react` depends on `ui`).
+
+- `EarlyUpdate`: *`logger.setFrame`, `SceneTime` frame tick per active scene, transition tick* → `InputPollSystem (-100, input)`
+- `FixedUpdate`, 0 to `maxFixedStepsPerFrame` times: *`SceneTime` fixed tick per active scene* → `PhysicsSystem (0, physics)` → `ProcessFixedUpdateSystem (500, core)` → `ComponentFixedUpdateSystem (1000, core)`
+- `Update`: `PhysicsInterpolationSystem (-100, physics)` → `ParticleSystem (0, particles)` → `ProcessSystem (500, core)` → `ComponentUpdateSystem (1000, core)`
+- `LateUpdate`: `UILayoutSystem (200, ui)` → `UIRootLayoutSystem (200, ui-react)` → `FloatingOverlaySystem (201, ui)`
+- `Render`: `TilemapRenderSystem (-1, tilemap)` → `DisplaySystem (0, renderer)` → `LightingSystem (100, lighting)` → `DebugRenderSystem (9999, debug)`
+- `EndOfFrame`: `InputClearSystem (9000, input)` → *destroy-queue flush*
+
+Priority bands, for placing a new system:
+
+| Band | Runs | Shipped systems |
+|---|---|---|
+| below 0 | before the engine's producers: reads external input or the previous step's state | input poll, physics interpolation, tilemap |
+| 0 | producers | physics step, particles, display |
+| 100–201 | consumers of the producers | lighting, UI layout |
+| 500 | timing | both process systems |
+| 1000 | game code | both component passes |
+| above 1000 | after game code | input clear, debug overlay |
+
+Ordering rules:
+
+- Runtime `scheduler.add(system)`: added while its own phase is running, the system first runs at that phase's next run; added during an earlier phase of the same frame, it runs its phase this frame; added during a later phase, next frame. A system removed while its phase is running does not run again. `getSystems(phase)` returns the current list; a list captured earlier is a stale snapshot.
+- Live entity set: `ComponentUpdateSystem`, the process systems and the physics systems iterate `scene.getEntities()` live, in insertion order. An entity spawned or pool-acquired during a pass is visited by that pass, after the entity that created it. An entity re-activated with `setActive(true)` during a pass keeps its position and is visited by that pass only if it sits after the activator.
+- One pass later: anything a component's `update`/`fixedUpdate` schedules on a `ProcessComponent` — `pc.run`, a slot `start`, a tween — first advances on the next pass of its clock, because the process systems at 500 have already run when component code at 1000 schedules it. A system below 500 that schedules a process sees it advance in the same pass.
+- `loop.stop()`, and `engine.destroy()` which calls it, from inside a phase takes effect at that phase's boundary: the running phase's systems finish, and the phases after it are skipped, remaining fixed steps included.
+- `loop.tick(dtMs)` throws unless `dtMs` is a finite number >= 0 (`GameLoop.tick: dtMs must be a finite number >= 0, got ${x}.`); `0` is a frame with no fixed step.
+
 ## Error Handling
 
 `ErrorBoundary` wraps system, component, and callback execution so a throw is
@@ -912,4 +973,4 @@ and rethrows.
   callback directly — see the "Attribute developer-supplied callbacks" rule
   in the repo-root `AGENTS.md`.
 
-`Logger` writes to the console by default in dev builds (gated by `isDev()`, tree-shakable in production the same way as `devWarn`). Pass `logger: { output }` in the `Engine` config to replace it; `LogLevel.None` silences everything. The `output` sink itself is guarded — a throwing sink is disabled after its first failure instead of taking down whatever was being reported.
+`Logger` writes to the console by default in dev builds (gated by `isDev()`, off in production builds like `devWarn`). Pass `logger: { output }` in the `Engine` config to replace it; `LogLevel.None` silences everything. The `output` sink itself is guarded: a sink that throws, or returns a promise that rejects, is disabled from its first observed failure on, with one console message, instead of taking down whatever was being reported. Calls an async sink already received before its first rejection settles still run.

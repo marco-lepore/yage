@@ -540,6 +540,34 @@ describe("Entity activeness", () => {
     expect(() => parent.addChild("child", orphan)).toThrow(/destroyed/);
   });
 
+  it("refuses a child that belongs to another scene", () => {
+    const { scene: sceneA } = createMockScene("A");
+    const { scene: sceneB } = createMockScene("B");
+    const parent = sceneA.spawn("parent");
+    const child = sceneB.spawn("child");
+
+    expect(() => parent.addChild("child", child)).toThrow(
+      'Entity "child" belongs to scene "B" and cannot be a child of "parent" in scene "A".',
+    );
+    expect(child.parent).toBeNull();
+    expect(parent.children.size).toBe(0);
+    expect(child.scene).toBe(sceneB);
+  });
+
+  it("accepts a same-scene child and a scene-less parent", () => {
+    const { scene } = createMockScene("A");
+    const parent = scene.spawn("parent");
+    const sibling = scene.spawn("sibling");
+    parent.addChild("sibling", sibling);
+    expect(parent.children.get("sibling")).toBe(sibling);
+
+    const loose = new Entity("loose");
+    const inScene = scene.spawn("inScene");
+    loose.addChild("inScene", inScene);
+    expect(loose.children.get("inScene")).toBe(inScene);
+    expect(inScene.scene).toBe(scene);
+  });
+
   it("does not reactivate a destroyed child when the parent wakes", () => {
     const { scene } = createMockScene();
     const parent = scene.spawn("parent");
