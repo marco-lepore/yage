@@ -32,7 +32,7 @@ not systems are in italics.
 | **FixedUpdate** (0 to `maxFixedStepsPerFrame` times) | *scene-time fixed tick* → `PhysicsSystem` (0, physics) → `ProcessFixedUpdateSystem` (500, core) → `ComponentFixedUpdateSystem` (1000, core) |
 | **Update** | `PhysicsInterpolationSystem` (-100, physics) → `ParticleSystem` (0, particles) → `ProcessSystem` (500, core) → `ComponentUpdateSystem` (1000, core) |
 | **LateUpdate** | `UILayoutSystem` (200, ui) → `UIRootLayoutSystem` (200, ui-react) → `FloatingOverlaySystem` (201, ui) |
-| **Render** | `TilemapRenderSystem` (-1, tilemap) → `DisplaySystem` (0, renderer) → `LightingSystem` (100, lighting) → `DebugRenderSystem` (9999, debug) |
+| **Render** | `DisplaySystem` (0, renderer) → `LightingSystem` (100, lighting) → `DebugRenderSystem` (9999, debug) |
 | **EndOfFrame** | `InputClearSystem` (9000, input) → *destroy-queue flush* |
 
 The priorities fall into bands. Pick the band a new system belongs to and

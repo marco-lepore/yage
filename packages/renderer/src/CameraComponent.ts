@@ -3,6 +3,7 @@ import type { Vec2Like, EasingFunction } from "@yagejs/core";
 import { RendererKey } from "./types.js";
 import type { SceneRenderTree } from "./SceneRenderTree.js";
 import { CameraFollow } from "./CameraFollow.js";
+import type { FollowTarget } from "./FollowTarget.js";
 import { CameraShake } from "./CameraShake.js";
 import { CameraZoom } from "./CameraZoom.js";
 import { CameraBoundsComponent } from "./CameraBoundsComponent.js";
@@ -18,11 +19,17 @@ export interface CameraBounds {
 
 /** Options for camera follow behavior. */
 export interface CameraFollowOptions {
-  /** Smoothing factor 0..1. 1 = instant snap, lower = smoother. Default: 1. */
+  /**
+   * Smoothing factor 0..1. `1` = instant snap, lower = smoother. `0` never
+   * moves the camera at all, so the follow appears frozen. Default: `1`.
+   */
   smoothing?: number;
-  /** Offset from the target position. */
+  /** Offset from the target position, in world pixels. */
   offset?: Vec2Like;
-  /** Deadzone rectangle (half-width, half-height). Camera won't move when target is inside. */
+  /**
+   * Deadzone rectangle in world pixels (half-width, half-height). The camera
+   * stays put while the target is inside it.
+   */
   deadzone?: { halfWidth: number; halfHeight: number };
   /**
    * Place the camera on the target as following starts, instead of easing in
@@ -51,8 +58,13 @@ export interface CameraShakeOptions {
  *
  * Common recipes:
  * - Parallax: `translateRatio: 0.5` (half the camera's translation).
- * - Billboard (upright, constant size, follows position): `rotateRatio: 0`, `scaleRatio: 0`.
- * - Partial-depth billboard (dampened zoom, still upright): `rotateRatio: 0, scaleRatio: 0.3`.
+ * - Dampened zoom, still upright: `rotateRatio: 0, scaleRatio: 0.3`.
+ *
+ * A ratio below `1` scales the layer by less than the camera does while the
+ * layer still translates by the full camera offset, so content drifts away
+ * from the world position it should sit on as the zoom leaves `1`. For UI
+ * that must track a world point at constant size, use `ScreenFollow`, which
+ * projects the point through the camera every frame.
  */
 export interface CameraBinding {
   /** Layer name to transform. */
@@ -130,7 +142,7 @@ export class CameraComponent extends Component {
   }
 
   /** Start following a target. */
-  follow(target: { position: Vec2Like }, options?: CameraFollowOptions): void {
+  follow(target: FollowTarget, options?: CameraFollowOptions): void {
     this.entity.get(CameraFollow).start(target, options);
   }
 
@@ -144,7 +156,11 @@ export class CameraComponent extends Component {
     this.entity.get(CameraFollow).snapToTarget();
   }
 
-  /** Start a screen shake effect. */
+  /**
+   * Start a screen shake effect. `intensity` is the maximum displacement per
+   * axis in **world pixels**, so what the player sees scales with zoom — the
+   * same intensity moves twice as far on screen at zoom 2.
+   */
   shake(
     intensity: number,
     duration: number,
@@ -167,7 +183,15 @@ export class CameraComponent extends Component {
     this.entity.get(CameraBoundsComponent).bounds = value;
   }
 
-  /** Convert screen coordinates to world coordinates. */
+  /**
+   * Convert screen coordinates to world coordinates.
+   *
+   * The conversion uses the camera's own transform, not any layer's. A layer
+   * bound with a ratio below `1` (parallax, dampened zoom) renders under a
+   * different transform, so this result does not name a point on that layer.
+   *
+   * The result is undefined for a zoom of `0` or a non-finite camera value.
+   */
   screenToWorld(screenX: number, screenY: number): Vec2 {
     const pos = this.effectivePosition;
     const zoom = this.effectiveZoom;
@@ -181,7 +205,13 @@ export class CameraComponent extends Component {
     return pos.add(offset);
   }
 
-  /** Convert world coordinates to screen coordinates. */
+  /**
+   * Convert world coordinates to screen coordinates.
+   *
+   * The conversion uses the camera's own transform, not any layer's. Content
+   * on a layer bound with a ratio below `1` (parallax, dampened zoom) is
+   * drawn somewhere else on screen than this result says.
+   */
   worldToScreen(worldX: number, worldY: number): Vec2 {
     const pos = this.effectivePosition;
     const zoom = this.effectiveZoom;

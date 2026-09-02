@@ -5,9 +5,6 @@ export { TilemapPlugin } from "./TilemapPlugin.js";
 export { TilemapComponent } from "./TilemapComponent.js";
 export type { TilemapComponentOptions } from "./TilemapComponent.js";
 
-// System
-export { TilemapRenderSystem } from "./TilemapRenderSystem.js";
-
 // Asset handle factory
 export { tiledMap } from "./assets.js";
 

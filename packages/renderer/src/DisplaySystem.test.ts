@@ -141,17 +141,36 @@ vi.mock("./spritesheet.js", () => ({
   resolveFrames: () => [{}],
 }));
 
-import { Transform, Vec2 } from "@yagejs/core";
+import { Transform, Vec2, ErrorBoundaryKey } from "@yagejs/core";
+import { Graphics } from "pixi.js";
 import { DisplaySystem } from "./DisplaySystem.js";
 import { CameraComponent } from "./CameraComponent.js";
 import { SpriteComponent } from "./SpriteComponent.js";
 import { GraphicsComponent } from "./GraphicsComponent.js";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 import { TextComponent } from "./TextComponent.js";
+import { SortGroupComponent } from "./SortGroupComponent.js";
+import { VisualComponent } from "./VisualComponent.js";
+import type { DisplayContainer } from "./public-types.js";
+import { ySort } from "./ySort.js";
 import {
   createRendererTestContext,
   spawnEntityInScene,
 } from "./test-helpers.js";
+
+/**
+ * Stands in for a `VisualComponent` subclass declared in another package —
+ * the tilemap's component is one — so the sync path is covered without a
+ * dependency on that package.
+ */
+class ProbeVisual extends VisualComponent {
+  readonly renderObject: DisplayContainer;
+
+  constructor() {
+    super(undefined);
+    this.renderObject = new Graphics();
+  }
+}
 
 describe("DisplaySystem", () => {
   let system: DisplaySystem;
@@ -687,5 +706,161 @@ describe("DisplaySystem", () => {
       (s2.sprite as unknown as InstanceType<typeof mocks.MockContainer>)
         .position.x,
     ).toBe(30);
+  });
+});
+
+describe("DisplaySystem visual coverage", () => {
+  let system: DisplaySystem;
+
+  beforeEach(() => {
+    mocks.MockSprite.from.mockClear();
+    system = new DisplaySystem();
+  });
+
+  function setup() {
+    const ctx = createRendererTestContext();
+    system._setContext(ctx.context);
+    system.onRegister?.(ctx.context);
+    return ctx;
+  }
+
+  function containerOf(visual: { renderObject: unknown }) {
+    return visual.renderObject as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+  }
+
+  it("syncs and modifies every visual an entity carries", () => {
+    const { scene } = setup();
+    const entity = spawnEntityInScene(scene);
+    entity.add(new Transform({ position: new Vec2(100, 200) }));
+    const background = entity.add(new GraphicsComponent());
+    const label = entity.add(new TextComponent({ text: "hp" }));
+    label.modifiers.addTransform({ position: new Vec2(0, -8) });
+
+    system.update();
+
+    expect(containerOf(background).position.x).toBe(100);
+    expect(containerOf(background).position.y).toBe(200);
+    expect(containerOf(label).position.x).toBe(100);
+    expect(containerOf(label).position.y).toBe(192);
+  });
+
+  it("skips a visual whose entity has no Transform", () => {
+    const { scene } = setup();
+    const entity = spawnEntityInScene(scene);
+    const graphics = entity.add(new GraphicsComponent());
+
+    system.update();
+
+    expect(containerOf(graphics).position.x).toBe(0);
+    expect(containerOf(graphics).position.y).toBe(0);
+  });
+
+  it("gates on effectiveEnabled, so a dormant entity is skipped", () => {
+    const { scene } = setup();
+    const entity = spawnEntityInScene(scene);
+    entity.add(new Transform({ position: new Vec2(50, 60) }));
+    const graphics = entity.add(new GraphicsComponent());
+    entity.setActive(false);
+
+    expect(graphics.enabled).toBe(true);
+    expect(graphics.effectiveEnabled).toBe(false);
+
+    system.update();
+
+    expect(containerOf(graphics).position.x).toBe(0);
+  });
+
+  it("keeps modifier offsets out of the depth key", () => {
+    const { scene, tree } = setup();
+    tree.ensureLayer({ name: "ground", order: 0, sort: ySort });
+    const entity = spawnEntityInScene(scene);
+    entity.add(new Transform({ position: new Vec2(0, 100) }));
+    const graphics = entity.add(new GraphicsComponent({ layer: "ground" }));
+    graphics.modifiers.addTransform({ position: new Vec2(0, 40) });
+
+    system.update();
+
+    expect(containerOf(graphics).zIndex).toBe(100);
+    expect(containerOf(graphics).position.y).toBe(140);
+  });
+
+  it("syncs a VisualComponent subclass declared outside this package", () => {
+    const { scene } = setup();
+    const entity = spawnEntityInScene(scene);
+    entity.add(new Transform({ position: new Vec2(7, 9) }));
+    const probe = entity.add(new ProbeVisual());
+    probe.modifiers.addTransform({ position: new Vec2(1, 2) });
+
+    system.update();
+
+    expect(containerOf(probe).position.x).toBe(8);
+    expect(containerOf(probe).position.y).toBe(11);
+  });
+
+  it("skips innerSort for a disabled sort group", () => {
+    const { scene, tree } = setup();
+    tree.ensureLayer({ name: "ground", order: 0 });
+    const entity = spawnEntityInScene(scene);
+    entity.add(new Transform());
+    const group = entity.add(
+      new SortGroupComponent({ layer: "ground", innerSort: () => 42 }),
+    );
+    const member = new mocks.MockContainer();
+    group.container.addChild(member as never);
+    group.enabled = false;
+
+    system.update();
+
+    expect(member.zIndex).toBe(0);
+
+    group.enabled = true;
+    system.update();
+    expect(member.zIndex).toBe(42);
+  });
+
+  it("attributes a throwing depth-key function to the callback", () => {
+    const { scene, tree, context } = setup();
+    tree.ensureLayer({
+      name: "ground",
+      order: 0,
+      sort: () => {
+        throw new Error("bad depth key");
+      },
+    });
+    const entity = spawnEntityInScene(scene);
+    entity.add(new Transform());
+    entity.add(new GraphicsComponent({ layer: "ground" }));
+
+    expect(() => system.update()).toThrow("bad depth key");
+    const boundary = context.resolve(ErrorBoundaryKey);
+    expect(boundary.getCallbackErrors().at(-1)).toMatchObject({
+      kind: "Layer depth-key function",
+      event: "ground",
+    });
+  });
+
+  it("attributes a throwing innerSort to the sort group's entity", () => {
+    const { scene, tree, context } = setup();
+    tree.ensureLayer({ name: "ground", order: 0 });
+    const entity = spawnEntityInScene(scene);
+    entity.add(new Transform());
+    const group = entity.add(
+      new SortGroupComponent({
+        layer: "ground",
+        innerSort: () => {
+          throw new Error("bad inner key");
+        },
+      }),
+    );
+    group.container.addChild(new mocks.MockContainer() as never);
+
+    expect(() => system.update()).toThrow("bad inner key");
+    const boundary = context.resolve(ErrorBoundaryKey);
+    expect(boundary.getCallbackErrors().at(-1)).toMatchObject({
+      kind: "Sort group innerSort function",
+      entity: entity.name,
+    });
   });
 });

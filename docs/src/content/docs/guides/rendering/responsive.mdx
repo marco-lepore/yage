@@ -52,9 +52,13 @@ Four modes cover the usual web-game needs:
 difference is a rendering convention: under `letterbox` the bars are the
 flat background color, under `expand` the game is expected to fill them.
 
-`fit.target` defaults to the `container` you passed (or the canvas'
-`parentElement`, or `document.body` as a last resort). You can override it to
-observe a different element.
+`fit.target` defaults to the `container` you passed, or the canvas'
+`parentElement`. There is no `document.body` fallback — a `ResizeObserver`
+on `body` fires on any page layout change, not just viewport resizes. With
+no host to observe, the fit applies once against the configured
+`width × height`. Pass `fit: { target: document.body }` to opt in, or name
+any other element. `setFit({ mode })` changes the mode and keeps the target
+already in use.
 
 Under the hood the plugin uses a `ResizeObserver` and calls
 `renderer.resize(hostW, hostH)` on each change, so the backing buffer stays
@@ -152,9 +156,28 @@ const cornerTL = renderer.visibleCanvasRect;
 hud.position.set(cornerTL.x + 16, cornerTL.y + 16);
 ```
 
-`extendedVirtualRects` is populated under `letterbox` too — geometrically
-identical to `expand` — so the same primitive drives optional bar
-customization on top of a letterbox render (scoreboards, branding, etc.).
+`extendedVirtualRects` is populated under `letterbox` too, geometrically
+identical to `expand`, but under that mode it only reports where the bars
+are. `letterbox` clips every scene layer to the virtual rect, so anything
+drawn at those coordinates on a scene layer is invisible.
+
+To put a scoreboard or branding in letterbox bars, parent a container
+directly on the Pixi stage, above the fit transform, and position it in
+**canvas pixels**:
+
+```typescript
+import { Container, Graphics } from "pixi.js";
+
+const bars = new Container();
+renderer.application.stage.addChild(bars);
+
+const { width } = renderer.canvasSize; // CSS px
+const play = renderer.virtualCanvasRect; // play area, in canvas px
+
+const branding = new Graphics();
+branding.rect(0, 0, width, play.y).fill({ color: 0x0f172a });
+bars.addChild(branding);
+```
 
 ## Reasoning about the cropped region under `cover`
 

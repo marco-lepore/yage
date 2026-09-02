@@ -56,12 +56,13 @@ vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
 }));
 
-import { Transform, Vec2 } from "@yagejs/core";
+import { Transform, Vec2, ErrorBoundaryKey } from "@yagejs/core";
 import { CameraEntity } from "./CameraEntity.js";
 import { CameraComponent } from "./CameraComponent.js";
 import { CameraBoundsComponent } from "./CameraBoundsComponent.js";
 import { CameraFollow } from "./CameraFollow.js";
 import { CameraShake } from "./CameraShake.js";
+import { CameraZoom } from "./CameraZoom.js";
 import { createRendererTestContext } from "./test-helpers.js";
 import { RendererKey } from "./types.js";
 
@@ -81,7 +82,7 @@ describe("CameraEntity", () => {
 
   it("starts following when a target is passed", () => {
     const { scene } = createRendererTestContext();
-    const target = { position: new Vec2(50, 50) };
+    const target = new Transform({ position: new Vec2(50, 50) });
     const cam = scene.spawn(CameraEntity, { follow: target, smoothing: 1 });
     // The CameraFollow component should have been started; sanity-check
     // by calling unfollow without throwing.
@@ -238,7 +239,7 @@ describe("CameraEntity", () => {
   describe("follow snap", () => {
     it("starts on the target instead of easing in from the spawn position", () => {
       const { scene } = createRendererTestContext();
-      const target = { position: new Vec2(1600, 900) };
+      const target = new Transform({ position: new Vec2(1600, 900) });
       const cam = scene.spawn(CameraEntity, {
         follow: target,
         smoothing: 0.1,
@@ -251,7 +252,7 @@ describe("CameraEntity", () => {
 
     it("applies the follow offset when snapping", () => {
       const { scene } = createRendererTestContext();
-      const target = { position: new Vec2(1600, 900) };
+      const target = new Transform({ position: new Vec2(1600, 900) });
       const cam = scene.spawn(CameraEntity, {
         follow: target,
         smoothing: 0.1,
@@ -265,7 +266,7 @@ describe("CameraEntity", () => {
 
     it("eases in from the spawn position without snap", () => {
       const { scene } = createRendererTestContext();
-      const target = { position: new Vec2(1000, 0) };
+      const target = new Transform({ position: new Vec2(1000, 0) });
       const cam = scene.spawn(CameraEntity, { follow: target, smoothing: 0.1 });
 
       expect(cam.position.x).toBe(0);
@@ -277,7 +278,7 @@ describe("CameraEntity", () => {
 
     it("cuts to the target when snapToTarget() is called after a teleport", () => {
       const { scene } = createRendererTestContext();
-      const target = { position: new Vec2(0, 0) };
+      const target = new Transform({ position: new Vec2(0, 0) });
       const cam = scene.spawn(CameraEntity, { follow: target, smoothing: 0.1 });
 
       target.position = new Vec2(400, 300);
@@ -289,7 +290,7 @@ describe("CameraEntity", () => {
 
     it("centres the target once, then the deadzone applies", () => {
       const { scene } = createRendererTestContext();
-      const target = { position: new Vec2(1600, 900) };
+      const target = new Transform({ position: new Vec2(1600, 900) });
       const cam = scene.spawn(CameraEntity, {
         follow: target,
         smoothing: 0.1,
@@ -362,5 +363,164 @@ describe("CameraEntity", () => {
       expect(cam.position.y).toBe(300);
       expect(cam.zoom).toBe(1);
     });
+  });
+});
+
+describe("CameraEntity follow targets", () => {
+  it("follows a target parented under a moving entity by its world position", () => {
+    const { scene } = createRendererTestContext();
+    const platform = scene.spawn("platform");
+    platform.add(new Transform({ position: new Vec2(1000, 500) }));
+    const rider = platform.spawnChild("rider");
+    const riderTransform = rider.add(
+      new Transform({ position: new Vec2(20, 10) }),
+    );
+
+    const cam = scene.spawn(CameraEntity, {
+      follow: riderTransform,
+      smoothing: 0.1,
+      snap: true,
+    });
+
+    expect(cam.position.x).toBe(1020);
+    expect(cam.position.y).toBe(510);
+  });
+
+  it("resolves an Entity, a Transform, a point and a function target", () => {
+    const { scene } = createRendererTestContext();
+    const player = scene.spawn("player");
+    player.add(new Transform({ position: new Vec2(100, 200) }));
+
+    const cam = scene.spawn(CameraEntity);
+    const follow = cam.get(CameraFollow);
+
+    cam.follow(player, { smoothing: 1, snap: true });
+    expect(cam.position.x).toBe(100);
+
+    cam.follow(player.get(Transform), { smoothing: 1, snap: true });
+    expect(cam.position.y).toBe(200);
+
+    cam.follow(new Vec2(7, 8), { smoothing: 1, snap: true });
+    expect(cam.position.x).toBe(7);
+
+    cam.follow(() => new Vec2(-3, -4), { smoothing: 1, snap: true });
+    expect(cam.position.y).toBe(-4);
+
+    expect(follow).toBe(cam.get(CameraFollow));
+  });
+
+  it("leaves the camera where it is when the target entity has no Transform", () => {
+    const { scene } = createRendererTestContext();
+    const marker = scene.spawn("marker");
+    const cam = scene.spawn(CameraEntity, { position: new Vec2(11, 22) });
+
+    cam.follow(marker, { smoothing: 1, snap: true });
+
+    expect(cam.position.x).toBe(11);
+    expect(cam.position.y).toBe(22);
+  });
+
+  it("attributes a throwing follow-target function to the callback", () => {
+    const { scene, context } = createRendererTestContext();
+    const cam = scene.spawn(CameraEntity);
+    cam.follow(() => {
+      throw new Error("bad target");
+    });
+
+    expect(() => cam.get(CameraFollow).update(1 / 60)).toThrow("bad target");
+    expect(
+      context.resolve(ErrorBoundaryKey).getCallbackErrors().at(-1),
+    ).toMatchObject({ kind: "Follow target function" });
+  });
+});
+
+describe("CameraEntity bounds and zoom ordering", () => {
+  it("clamps to this frame's zoom while a zoom-out animates at a level edge", () => {
+    const { scene } = createRendererTestContext();
+    const bounds = { minX: 0, minY: 0, maxX: 1600, maxY: 1200 };
+    const cam = scene.spawn(CameraEntity, {
+      position: new Vec2(1600, 1200),
+      zoom: 2,
+      bounds,
+    });
+    const zoom = cam.get(CameraZoom);
+    const boundsComp = cam.get(CameraBoundsComponent);
+
+    expect(CameraBoundsComponent.updatePriority).toBe(10);
+    expect(zoom.updatePriority).toBeLessThan(boundsComp.updatePriority);
+
+    zoom.start(0.5, 1);
+    for (let frame = 0; frame < 60; frame++) {
+      // Drive the components in the order the update pass would, so the test
+      // fails if the bounds priority stops holding.
+      for (const component of cam._componentsInUpdateOrder()) {
+        component.update?.(1 / 60);
+      }
+
+      const halfW = 800 / (2 * cam.zoom);
+      const halfH = 600 / (2 * cam.zoom);
+      expect(cam.position.x + halfW).toBeLessThanOrEqual(bounds.maxX + 1e-9);
+      expect(cam.position.y + halfH).toBeLessThanOrEqual(bounds.maxY + 1e-9);
+    }
+  });
+});
+
+describe("camera numeric gates", () => {
+  it("rejects a non-finite or negative follow smoothing", () => {
+    const { scene } = createRendererTestContext();
+    const cam = scene.spawn(CameraEntity);
+    const target = new Transform({ position: new Vec2(0, 0) });
+
+    expect(() => cam.follow(target, { smoothing: NaN })).toThrow(
+      "CameraFollow.start: smoothing must be finite and >= 0, got NaN.",
+    );
+    expect(() => cam.follow(target, { smoothing: -1 })).toThrow(
+      "smoothing must be finite and >= 0, got -1",
+    );
+    expect(() => cam.follow(target, { smoothing: 0 })).not.toThrow();
+  });
+
+  it("rejects a non-positive or non-finite zoom target and a bad duration", () => {
+    const { scene } = createRendererTestContext();
+    const cam = scene.spawn(CameraEntity);
+
+    expect(() => cam.zoomTo(0, 1)).toThrow(
+      "CameraZoom.start: target must be finite and > 0, got 0.",
+    );
+    expect(() => cam.zoomTo(Infinity, 1)).toThrow("target must be finite");
+    expect(() => cam.zoomTo(2, NaN)).toThrow(
+      "CameraZoom.start: duration must be finite and >= 0, got NaN.",
+    );
+    expect(() => cam.zoomTo(2, 0)).not.toThrow();
+  });
+
+  it("rejects a fitTo rect with a non-positive extent", () => {
+    const { scene } = createRendererTestContext();
+
+    expect(() =>
+      scene.spawn(CameraEntity, {
+        fitTo: { x: 0, y: 0, width: -100, height: 100 },
+      }),
+    ).toThrow(
+      "CameraEntity.setup: fitTo.width must be finite and > 0, got -100.",
+    );
+    expect(() =>
+      scene.spawn(CameraEntity, {
+        fitTo: { x: 0, y: 0, width: 100, height: NaN },
+      }),
+    ).toThrow("fitTo.height must be finite and > 0, got NaN");
+  });
+
+  it("attributes a throwing zoom easing to the callback", () => {
+    const { scene, context } = createRendererTestContext();
+    const cam = scene.spawn(CameraEntity);
+    cam.zoomTo(2, 1, () => {
+      throw new Error("bad easing");
+    });
+
+    expect(() => cam.get(CameraZoom).update(0.5)).toThrow("bad easing");
+    expect(
+      context.resolve(ErrorBoundaryKey).getCallbackErrors().at(-1),
+    ).toMatchObject({ kind: "Camera zoom easing" });
   });
 });

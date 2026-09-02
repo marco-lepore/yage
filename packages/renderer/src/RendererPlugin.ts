@@ -447,9 +447,18 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     };
   }
 
-  /** Change the fit mode and/or target at runtime. */
+  /**
+   * Change the fit mode and/or target at runtime. Omitting `target` keeps the
+   * element the fit currently observes, so switching mode alone does not send
+   * the fit back to its default host.
+   */
   setFit(options: RendererFitOptions): void {
-    this.startFit(options);
+    if (options.target !== undefined) {
+      this.startFit(options);
+      return;
+    }
+    const current = this._fitController.currentTarget;
+    this.startFit(current ? { ...options, target: current } : options);
   }
 
   /**
@@ -571,8 +580,13 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * Populated under `letterbox` and `expand` whenever aspect mismatches;
    * empty under `cover` and `stretch`. Under `expand` these are the
    * play-adjacent strips the game is expected to draw into (fog, parallax,
-   * HUD). Under `letterbox` they describe where the background-color bars
-   * land — so bar-customization can layer on top of a letterbox render.
+   * HUD).
+   *
+   * Under `letterbox` they only report where the background-color bars land.
+   * Every scene layer is clipped to the virtual rect under that mode, so
+   * content placed at these coordinates on a scene layer is invisible. To
+   * draw in the bars, parent a container directly on `renderer.application.stage` and
+   * position it in canvas pixels.
    */
   get extendedVirtualRects(): readonly VirtualRect[] {
     return this._fitController.extendedVirtualRects;

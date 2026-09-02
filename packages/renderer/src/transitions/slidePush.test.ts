@@ -34,6 +34,7 @@ function makeCtx(opts: {
     fromScene: opts.fromScene,
     toScene: opts.toScene,
     engineContext: {
+      tryResolve: () => undefined,
       resolve: (key: unknown) => {
         if (key === RendererKey) {
           return {

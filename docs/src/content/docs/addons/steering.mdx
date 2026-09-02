@@ -105,12 +105,6 @@ that pose as the body's next step target (see
 dynamic bodies and is never pushed back. Passing `drive` alongside a
 kinematic body throws; so does mounting on a `static` body.
 
-<Aside type="caution">
-Components are keyed by exact class: read the agent back with
-`entity.get(PhysicsSteeringAgent)` — `entity.get(SteeringAgent)` won't find
-it.
-</Aside>
-
 On the root class, the same integration is the structural `body` option — no
 physics import, and a custom mover works by implementing the two methods:
 

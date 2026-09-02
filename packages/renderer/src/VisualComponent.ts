@@ -47,8 +47,10 @@ export interface VisualComponentOptions {
   alpha?: number;
   /**
    * How this object's pixels combine with what is drawn beneath it.
-   * Default: `"normal"`. See {@link BlendMode} for the modes that need
-   * `import "pixi.js/advanced-blend-modes"`.
+   * Default: `"inherit"` — the mode of the nearest ancestor that sets one,
+   * which is `"normal"` unless a parent changed it. Set it explicitly to
+   * `"normal"` inside a group that uses another mode. See {@link BlendMode}
+   * for the modes that need `import "pixi.js/advanced-blend-modes"`.
    */
   blendMode?: BlendMode;
   /**
@@ -189,7 +191,7 @@ export abstract class VisualComponent extends Component {
    */
   setMask(factory: MaskFactory): MaskHandle {
     this._mask?.remove();
-    this._mask = attachMask(this.renderObject, factory);
+    this._mask = attachMask(this.renderObject, factory, this);
     return this._mask;
   }
 

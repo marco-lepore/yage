@@ -2,8 +2,12 @@ import type { Component } from "./Component.js";
 import type { EngineContext } from "./EngineContext.js";
 import type { SystemScheduler } from "./SystemScheduler.js";
 
-/** Constructor type for components. */
-export type ComponentClass<C extends Component = Component> = new (
+/**
+ * Constructor type for components. Abstract so a base class can be named as
+ * a query filter or a `getAll` argument; nothing in the engine constructs
+ * through this type.
+ */
+export type ComponentClass<C extends Component = Component> = abstract new (
   ...args: never[]
 ) => C;
 

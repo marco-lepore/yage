@@ -378,9 +378,7 @@ describe("Entity", () => {
     it("throws if the parent is detached from a scene", () => {
       const parent = new Entity("parent");
 
-      expect(() => parent.spawnChild("ui")).toThrow(
-        /not attached to a scene/,
-      );
+      expect(() => parent.spawnChild("ui")).toThrow(/not attached to a scene/);
     });
 
     it("throws if the child name is already taken on the parent", () => {
@@ -416,9 +414,7 @@ describe("Entity", () => {
 
     it("requireKey() throws when no key is set", () => {
       const e = new Entity("loose");
-      expect(() => e.requireKey()).toThrow(
-        /Entity "loose".*has no stable key/,
-      );
+      expect(() => e.requireKey()).toThrow(/Entity "loose".*has no stable key/);
     });
 
     it("requireKey() returns the key when set", () => {
@@ -800,5 +796,124 @@ describe("Entity activeness", () => {
     }
     e.add(new ThrowingComponent());
     expect(() => e.setActive(false)).toThrow("boom");
+  });
+});
+
+describe("Entity subclass-aware lookup", () => {
+  abstract class Base extends Component {
+    abstract readonly label: string;
+  }
+  class Sub extends Base {
+    readonly label = "sub";
+  }
+  class Sub2 extends Base {
+    readonly label = "sub2";
+  }
+  class Unrelated extends Component {}
+
+  it("has() matches a base class through a subclass instance", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+    const sub = e.add(new Sub());
+
+    expect(e.has(Base)).toBe(true);
+    expect(e.has(Sub)).toBe(true);
+    expect(e.has(Sub2)).toBe(false);
+    expect(e.has(Unrelated)).toBe(false);
+
+    e.remove(Sub);
+    expect(e.has(Base)).toBe(false);
+    expect(e.has(Sub)).toBe(false);
+    expect(sub.label).toBe("sub");
+  });
+
+  it("getAll(cls) lists every assignable component in add order", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+    expect(e.getAll(Base)).toEqual([]);
+
+    const sub2 = e.add(new Sub2());
+    const sub = e.add(new Sub());
+    expect(e.getAll(Base)).toEqual([sub2, sub]);
+    expect(e.getAll(Sub)).toEqual([sub]);
+    expect([...e.getAll()]).toEqual([sub2, sub]);
+  });
+
+  it("get()/tryGet() prefer an exact match, then the single assignable one", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+
+    expect(e.tryGet(Base)).toBeUndefined();
+    expect(() => e.get(Base)).toThrow("does not have component Base");
+
+    const sub = e.add(new Sub());
+    expect(e.get(Base)).toBe(sub);
+    expect(e.tryGet(Base)).toBe(sub);
+    expect(e.get(Sub)).toBe(sub);
+
+    e.add(new Sub2());
+    expect(() => e.get(Base)).toThrow(
+      'Entity "e" has 2 components assignable to Base (Sub, Sub2); use getAll(Base).',
+    );
+    expect(() => e.tryGet(Base)).toThrow("use getAll(Base)");
+  });
+
+  it("a walk in flight visits every member present when it started", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+    const sub = e.add(new Sub());
+    const sub2 = e.add(new Sub2());
+
+    const seen: Component[] = [];
+    for (const c of e.getAll(Base)) {
+      seen.push(c);
+      e.remove(Sub2);
+    }
+    expect(seen).toEqual([sub, sub2]);
+    expect(e.getAll(Base)).toEqual([sub]);
+  });
+
+  it("still rejects a second instance of the same exact class", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+    e.add(new Sub());
+    expect(() => e.add(new Sub())).toThrow("already has component Sub");
+  });
+
+  it("clears the index when the entity is destroyed", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+    e.add(new Sub());
+    e.destroy();
+    scene._flushDestroyQueue();
+    expect(e.has(Base)).toBe(false);
+    expect(e.getAll(Base)).toEqual([]);
+  });
+});
+
+describe("Entity lookup with a concrete base class", () => {
+  class Agent extends Component {}
+  class PhysicsAgent extends Agent {}
+
+  it("get(Base) returns the exact instance when base and subclass coexist", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+    const sub = e.add(new PhysicsAgent());
+    const base = e.add(new Agent());
+
+    expect(e.get(Agent)).toBe(base);
+    expect(e.tryGet(Agent)).toBe(base);
+    expect(e.get(PhysicsAgent)).toBe(sub);
+    expect(e.getAll(Agent)).toEqual([sub, base]);
+  });
+
+  it("get(Base) returns the subclass instance when it is the only match", () => {
+    const { scene } = createMockScene();
+    const e = scene.spawn("e");
+    const sub = e.add(new PhysicsAgent());
+
+    expect(e.get(Agent)).toBe(sub);
+    expect(e.has(Agent)).toBe(true);
+    expect(e.getAll(Agent)).toEqual([sub]);
   });
 });

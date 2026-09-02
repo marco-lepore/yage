@@ -9,6 +9,11 @@ import type {
   CameraShakeOptions,
 } from "./CameraComponent.js";
 import { CameraFollow } from "./CameraFollow.js";
+import type { FollowTarget } from "./FollowTarget.js";
+import {
+  assertFiniteNumber,
+  assertPositiveNumber,
+} from "./internal/validate.js";
 import { CameraShake } from "./CameraShake.js";
 import { CameraBoundsComponent } from "./CameraBoundsComponent.js";
 import { CameraZoom } from "./CameraZoom.js";
@@ -28,8 +33,8 @@ export interface CameraFitToRect {
 export interface CameraEntityParams {
   /** Initial position. */
   position?: Vec2;
-  /** Follow target — any object with a `position: Vec2Like` property (e.g. Transform). */
-  follow?: { position: Vec2Like };
+  /** Follow target — an `Entity`, a `Transform`, a world point, or a function returning one. */
+  follow?: FollowTarget;
   /** Follow smoothing factor 0..1. Default: 1 (instant). */
   smoothing?: number;
   /** Follow offset. */
@@ -95,6 +100,18 @@ export class CameraEntity extends Entity {
     // (snapshotting the framed area against the *current* viewport;
     // fitTo is a one-shot, not a responsive binding).
     if (params.fitTo !== undefined) {
+      assertPositiveNumber(
+        "CameraEntity.setup",
+        "fitTo.width",
+        params.fitTo.width,
+      );
+      assertPositiveNumber(
+        "CameraEntity.setup",
+        "fitTo.height",
+        params.fitTo.height,
+      );
+      assertFiniteNumber("CameraEntity.setup", "fitTo.x", params.fitTo.x);
+      assertFiniteNumber("CameraEntity.setup", "fitTo.y", params.fitTo.y);
       const viewport = this.scene.context.resolve(RendererKey).virtualSize;
       camOpts.position = new Vec2(
         params.fitTo.x + params.fitTo.width / 2,
@@ -186,7 +203,7 @@ export class CameraEntity extends Entity {
   // Method delegates
   // ---------------------------------------------------------------------------
 
-  follow(target: { position: Vec2Like }, options?: CameraFollowOptions): void {
+  follow(target: FollowTarget, options?: CameraFollowOptions): void {
     this.cam.follow(target, options);
   }
 

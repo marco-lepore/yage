@@ -77,7 +77,7 @@ The adapter contract (`RendererAdapter` in `@yagejs/core`) carries `canvas`, `ca
 
 ## Responsive fit
 
-The canvas is **responsive by default** — it tracks a host element and re-maps the virtual rectangle on every resize. Without an explicit `fit` config, the renderer defaults to `{ mode: "letterbox" }` against the configured `container` (falling back to `canvas.parentElement`, then `document.body`). Pass `fit` to override the mode or target. Fixed-size canvases are achieved via fixed CSS dimensions on the container.
+The canvas is **responsive by default** — it tracks a host element and re-maps the virtual rectangle on every resize. Without an explicit `fit` config, the renderer defaults to `{ mode: "letterbox" }` against the configured `container`, falling back to `canvas.parentElement`. There is no `document.body` fallback: a `ResizeObserver` on `body` fires on any page layout change, not just viewport resizes. With no host to observe, the fit applies once against `config.width × config.height`. Pass `fit: { target: document.body }` to opt in explicitly. `setFit({ mode })` changes the mode and keeps the current target. Fixed-size canvases are achieved via fixed CSS dimensions on the container.
 
 ```ts
 new RendererPlugin({
@@ -153,7 +153,19 @@ Rectangles of the visible canvas that sit **outside** the declared virtual rect 
 | `cover`                | `[]` (virtual covers the entire canvas)                                                        |
 | `stretch`              | `[]` (virtual exactly fills the canvas)                                                        |
 
-Under `expand` these are the play-adjacent strips the game is expected to draw into. The `responsive-ui` example fills each with a solid dark rect plus a short gradient along the inner edge (touching the play area) so the bars read as "not the play area, but still part of the rendered world." Under `letterbox` the same rects tell you where the `backgroundColor` bars are — useful for adding optional bar customization to an otherwise-plain letterbox render.
+Under `expand` these are the play-adjacent strips the game is expected to draw into. The `responsive-ui` example fills each with a solid dark rect plus a short gradient along the inner edge (touching the play area) so the bars read as "not the play area, but still part of the rendered world."
+
+Under `letterbox` the same rects only report where the `backgroundColor` bars land. That mode clips every scene layer to the virtual rect, so content placed at these coordinates on a scene layer is invisible. To draw in the bars, parent a container directly on `renderer.application.stage` and position it in **canvas pixels**:
+
+```ts
+const bars = new Container();
+renderer.application.stage.addChild(bars); // canvas px, above the fit transform
+const { width } = renderer.canvasSize;
+const play = renderer.virtualCanvasRect; // play area, in canvas px
+const branding = new Graphics();
+branding.rect(0, 0, width, play.y).fill({ color: 0x0f172a }); // top bar
+bars.addChild(branding);
+```
 
 Note: "screen" in the engine (UI `LayerSpace: "screen"`, `Camera.screenToWorld`) means _virtual viewport space_. The `canvasToVirtual` method is named after its inputs (DOM CSS pixels on the canvas) to avoid that collision.
 
@@ -215,7 +227,7 @@ All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitT
   visible?: boolean;   // initial visibility, default true
   tint?: ColorValue;    // number (0xff0000) or CSS color string ("red", "#ff0000")
   alpha?: number;       // opacity, default 1
-  blendMode?: BlendMode; // how the pixels combine with what is beneath, default "normal"
+  blendMode?: BlendMode; // how the pixels combine with what is beneath, default "inherit"
   interactive?: {
     eventMode?: "static" | "dynamic"; // default "static" when the object is set
     consumeOnInteraction?: boolean;    // claim the press for @yagejs/input's action map
@@ -641,6 +653,12 @@ camera's base values with every active `CameraModifierHandle`. Layer rendering
 and coordinate conversion use these effective values. Removing a handle does
 not restore a snapshot or affect other modifiers. Modifiers are transient.
 
+`screenToWorld` / `worldToScreen` use the camera's own transform, not any layer's. A layer bound with a ratio below `1` (parallax, dampened zoom) renders under a different transform, so the result does not name a point on that layer. `screenToWorld`'s result is undefined at a zoom of `0`.
+
+`shake(intensity, duration)` measures `intensity` in **world pixels per axis**, so the on-screen displacement scales with zoom — the same intensity moves twice as far at zoom 2. `CameraFollowOptions.offset` and `deadzone` are world pixels too. `smoothing: 0` never moves the camera, so the follow appears frozen.
+
+`follow(target)` takes a `FollowTarget`: an `Entity`, a `Transform`, a world point, or a function returning one. `Entity` and `Transform` are read through `worldPosition`, so a target parented under a moving platform tracks where it actually is. `smoothing` must be finite and `>= 0`, `zoomTo`'s target finite and `> 0`, and a `fitTo` rect's `width`/`height` finite and `> 0` — each throws at the call naming the offending value.
+
 ### Follow smoothing and `snap`
 
 `smoothing` is `1` by default (the camera reaches its target position every frame). Any value below `1` eases toward that position from the camera's current one, so a camera spawned at the default `(0, 0)` glides in from the world origin over the first frames of the scene.
@@ -1021,7 +1039,9 @@ tree.setMask(graphicsMask((g) => { g.circle(0, 0, 100).fill(0xffffff); }));
 | `spriteMask`                            | `(sprite: Sprite) => MaskFactory`                                       | User-owned sprite as mask.                                                                                                                                                                                                             |
 | `graphicsMask`                          | `(draw: (g: Graphics) => void) => MaskFactory`                          | Custom drawn mask; call `handle.redraw()` after dependencies change. The closure must `g.clear()` first (pixi commands accumulate) and read live state from a captured object/getter — `const` snapshots stay stale across `redraw()`. |
 | `defineMask`                            | `<O>({ name, factory: (opts: O) => Mask }) => (opts: O) => MaskFactory` | Define a reusable named mask preset.                                                                                                                                                                                                   |
-| `attachMask`                            | low-level helper                                                        | `attachMask(target, factory)` returns a `MaskHandle`.                                                                                                                                                                                  |
+| `attachMask`                            | low-level helper                                                        | `attachMask(target, factory, owner?)` returns a `MaskHandle`. Pass the owning `Component` as `owner` so a throw from the draw callback is attributed to it in `Inspector.getErrors().callbackErrors`.                                  |
+
+Mask coordinates are the masked object's own local space: world pixels on a world layer, where the mask scrolls with the camera, and virtual pixels on a screen layer, where it stays put.
 
 ## Offscreen render targets
 
@@ -1073,7 +1093,7 @@ target.renderIfNeeded();
 | `handle.needsRender`                     | `boolean`                                                                        | Whether a render is pending.                                                                                                                                                                                                        |
 | `handle.resize(w, h, scale?)`            | `(number, number, number?) => void`                                              | Resize and mark stale. Anything showing the texture picks up the new size on its next draw. Omitting `scale` keeps the configured `resolutionScale`, re-derived against the renderer's current resolution; passing one replaces it. |
 | `handle.width` / `height` / `resolution` | `number`                                                                         | Measured size in source coordinates, and the texels-per-pixel actually allocated.                                                                                                                                                   |
-| `handle.destroy()`                       | `() => void`                                                                     | Free the texture's GPU memory. Repeatable.                                                                                                                                                                                          |
+| `handle.destroy()`                       | `() => void`                                                                     | Free the texture's GPU memory. Repeatable. Every other member throws `RenderTargetHandle.<member>: the handle is destroyed.` afterwards.                                                                                            |
 
 Semantics:
 

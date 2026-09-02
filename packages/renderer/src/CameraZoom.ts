@@ -1,6 +1,11 @@
 import { Component } from "@yagejs/core";
 import type { EasingFunction } from "@yagejs/core";
 import { CameraComponent } from "./CameraComponent.js";
+import { attributed, boundaryFor } from "./internal/attribution.js";
+import {
+  assertFiniteNumber,
+  assertPositiveNumber,
+} from "./internal/validate.js";
 
 const LINEAR_EASING: EasingFunction = (t) => t;
 
@@ -19,6 +24,8 @@ export class CameraZoom extends Component {
 
   /** Start a zoom animation. */
   start(target: number, duration: number, easing?: EasingFunction): void {
+    assertPositiveNumber("CameraZoom.start", "target", target);
+    assertFiniteNumber("CameraZoom.start", "duration", duration, 0);
     this.zoomFrom = this.cam.zoom;
     this.zoomTarget = target;
     this.duration = duration;
@@ -38,7 +45,12 @@ export class CameraZoom extends Component {
     }
 
     const rawT = this.elapsed / this.duration;
-    const easedT = this.easing(rawT);
+    const easing = this.easing;
+    const easedT = attributed(
+      boundaryFor(this),
+      { kind: "Camera zoom easing", entity: this.entity.name },
+      () => easing(rawT),
+    );
     this.cam.zoom = this.zoomFrom + (this.zoomTarget - this.zoomFrom) * easedT;
   }
 }

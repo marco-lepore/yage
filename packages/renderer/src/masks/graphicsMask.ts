@@ -18,6 +18,10 @@ import type { MaskFactory } from "./MaskFactory.js";
  * handle.redraw();
  * ```
  *
+ * Everything the callback draws is in the masked object's own local space,
+ * which is world pixels on a world layer — the mask then scrolls with the
+ * camera — and virtual pixels on a screen layer, where it stays put.
+ *
  * **Two gotchas:**
  *
  * 1. **Always `g.clear()` first.** Pixi `Graphics` commands accumulate, so

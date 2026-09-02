@@ -1,4 +1,6 @@
+import { ErrorBoundaryKey } from "@yagejs/core";
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
+import { attributed } from "../internal/attribution.js";
 import { Graphics } from "pixi.js";
 import type { Container } from "pixi.js";
 import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
@@ -68,7 +70,12 @@ export function irisReveal(opts: IrisRevealOptions = {}): SceneTransition {
     tick(_dt: number, ctx: SceneTransitionContext) {
       if (!maskGfx) return;
       const t = Math.min(ctx.elapsed / duration, 1);
-      const r = easing(t) * maxRadius;
+      const r =
+        attributed(
+          ctx.engineContext.tryResolve(ErrorBoundaryKey),
+          { kind: "Scene transition easing", event: "irisReveal" },
+          () => easing(t),
+        ) * maxRadius;
       drawCircleMask(maskGfx, cx, cy, r);
     },
     end() {

@@ -63,9 +63,6 @@ the physics system takes that pose as the next step's target — and the agent
 pushes dynamic bodies and is never pushed back. Passing `drive` with a
 kinematic body throws; a static body throws at add.
 
-Components are keyed by exact class: query it back with
-`entity.get(PhysicsSteeringAgent)`, not `entity.get(SteeringAgent)`.
-
 Explicit `body` on the root class — structural, no physics import; also fits
 custom movers implementing the two methods:
 

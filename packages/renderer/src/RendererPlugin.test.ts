@@ -377,6 +377,75 @@ describe("RendererPlugin", () => {
     });
   });
 
+  describe("fit configuration", () => {
+    class StubResizeObserver {
+      observe(): void {}
+      disconnect(): void {}
+    }
+
+    function makeHost(width: number, height: number): HTMLElement {
+      return {
+        getBoundingClientRect: () => ({
+          width,
+          height,
+          top: 0,
+          left: 0,
+          right: width,
+          bottom: height,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        }),
+      } as unknown as HTMLElement;
+    }
+
+    let originalRO: typeof globalThis.ResizeObserver | undefined;
+
+    beforeEach(() => {
+      originalRO = globalThis.ResizeObserver;
+      globalThis.ResizeObserver =
+        StubResizeObserver as unknown as typeof globalThis.ResizeObserver;
+    });
+
+    afterEach(() => {
+      if (originalRO) globalThis.ResizeObserver = originalRO;
+      else
+        delete (globalThis as unknown as { ResizeObserver?: unknown })
+          .ResizeObserver;
+    });
+
+    it("keeps the configured target when only the mode changes", async () => {
+      const host = makeHost(1000, 500);
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin({
+        ...defaultConfig,
+        fit: { mode: "letterbox", target: host },
+      });
+      await plugin.install(context);
+      expect(plugin.fit.target).toBe(host);
+
+      plugin.setFit({ mode: "cover" });
+
+      expect(plugin.fit.mode).toBe("cover");
+      expect(plugin.fit.target).toBe(host);
+    });
+
+    it("switches target when a new one is passed", async () => {
+      const host = makeHost(1000, 500);
+      const other = makeHost(400, 400);
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin({
+        ...defaultConfig,
+        fit: { mode: "letterbox", target: host },
+      });
+      await plugin.install(context);
+
+      plugin.setFit({ mode: "letterbox", target: other });
+
+      expect(plugin.fit.target).toBe(other);
+    });
+  });
+
   describe("scene render trees", () => {
     it("exposes the per-scene render tree provider", async () => {
       const { context } = createInstallContext();

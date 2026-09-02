@@ -698,7 +698,7 @@ const grounded = hit !== null; // add coyote timer for better feel
 
 **Pixels everywhere**: All user-facing APIs work in pixels. Physics coordinate conversion is internal.
 
-**Component uniqueness**: One component per class per entity. `entity.add()` throws if the class already exists.
+**Component uniqueness**: One component per _exact_ class per entity. `entity.add()` throws if that class already exists. A base class and a subclass of it are different classes, so both can sit on one entity — `entity.getAll(Base)` lists them, while `entity.get(Base)` throws because there is no single answer.
 
 **No pixi.js in core**: `@yagejs/core` has zero runtime dependencies. Never import pixi.js in core code.
 

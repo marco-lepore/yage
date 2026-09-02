@@ -1,4 +1,6 @@
+import { ErrorBoundaryKey } from "@yagejs/core";
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
+import { attributed } from "../internal/attribution.js";
 import type { Container } from "pixi.js";
 import { getSceneContainer, getVirtualBounds } from "./helpers.js";
 
@@ -72,7 +74,11 @@ export function slidePush(opts: SlidePushOptions = {}): SceneTransition {
       }
     },
     tick(_dt: number, ctx: SceneTransitionContext) {
-      const t = easing(Math.min(ctx.elapsed / duration, 1));
+      const t = attributed(
+        ctx.engineContext.tryResolve(ErrorBoundaryKey),
+        { kind: "Scene transition easing", event: "slidePush" },
+        () => easing(Math.min(ctx.elapsed / duration, 1)),
+      );
       if (toContainer) {
         toContainer.x = -dx * (1 - t);
         toContainer.y = -dy * (1 - t);
