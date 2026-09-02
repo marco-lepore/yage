@@ -16,6 +16,8 @@ Pick `recommended` for a playable platformer seed (physics, input, animations, e
 npm install @yagejs/core @yagejs/renderer
 ```
 
+The packages must go through a bundler that supports TypeScript and ESM. Vite is recommended. Loading them in a browser without a bundler is not supported.
+
 Add more packages as needed:
 
 ```bash
