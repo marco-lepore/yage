@@ -1,19 +1,26 @@
-import { System, Phase, Transform, QueryCacheKey } from "@yagejs/core";
-import type { EngineContext, QueryResult, Scene } from "@yagejs/core";
+import {
+  System,
+  Phase,
+  Transform,
+  QueryCacheKey,
+  ErrorBoundaryKey,
+} from "@yagejs/core";
+import type {
+  EngineContext,
+  ErrorBoundary,
+  QueryResult,
+  Scene,
+} from "@yagejs/core";
 import type { SceneRenderTreeProvider } from "./SceneRenderTree.js";
 import { SceneRenderTreeProviderKey } from "./SceneRenderTree.js";
 import { CameraComponent } from "./CameraComponent.js";
-import { SpriteComponent } from "./SpriteComponent.js";
-import { GraphicsComponent } from "./GraphicsComponent.js";
-import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
-import { TextComponent } from "./TextComponent.js";
-import { SplitTextComponent } from "./SplitTextComponent.js";
 import {
   SortGroupComponent,
   sortGroupForContainer,
 } from "./SortGroupComponent.js";
 import type { Container } from "pixi.js";
-import type { VisualComponent } from "./VisualComponent.js";
+import { VisualComponent } from "./VisualComponent.js";
+import { attributed } from "./internal/attribution.js";
 
 /**
  * Syncs Transform components to PixiJS display objects and applies
@@ -25,65 +32,31 @@ export class DisplaySystem extends System {
   readonly phase = Phase.Render;
   readonly priority = 0;
 
-  private spriteQuery!: QueryResult;
-  private graphicsQuery!: QueryResult;
-  private animatedSpriteQuery!: QueryResult;
-  private textQuery!: QueryResult;
-  private splitTextQuery!: QueryResult;
+  private visualQuery!: QueryResult;
   private cameraQuery!: QueryResult;
   private sortGroupQuery!: QueryResult;
   private treeProvider!: SceneRenderTreeProvider;
+  private boundary: ErrorBoundary | undefined;
 
   onRegister(context: EngineContext): void {
     const queryCache = context.resolve(QueryCacheKey);
-    this.spriteQuery = queryCache.register([Transform, SpriteComponent]);
-    this.graphicsQuery = queryCache.register([Transform, GraphicsComponent]);
-    this.animatedSpriteQuery = queryCache.register([
-      Transform,
-      AnimatedSpriteComponent,
-    ]);
-    this.textQuery = queryCache.register([Transform, TextComponent]);
-    this.splitTextQuery = queryCache.register([Transform, SplitTextComponent]);
+    this.visualQuery = queryCache.register([Transform, VisualComponent]);
     this.cameraQuery = queryCache.register([CameraComponent]);
     this.sortGroupQuery = queryCache.register([SortGroupComponent]);
     this.treeProvider = context.resolve(SceneRenderTreeProviderKey);
+    this.boundary = context.tryResolve(ErrorBoundaryKey);
   }
 
   update(): void {
-    // 1. Sync transforms to display objects
-    for (const entity of this.spriteQuery) {
+    // 1. Sync transforms to display objects. One entity can carry several
+    //    visuals of different classes (a background plus a label), so every
+    //    assignable component is synced, not just the first.
+    for (const entity of this.visualQuery) {
       const transform = entity.get(Transform);
-      const sprite = entity.get(SpriteComponent);
-      if (!sprite.enabled) continue;
-      this.syncDisplayObject(transform, sprite.sprite);
-    }
-
-    for (const entity of this.graphicsQuery) {
-      const transform = entity.get(Transform);
-      const graphics = entity.get(GraphicsComponent);
-      if (!graphics.enabled) continue;
-      this.syncDisplayObject(transform, graphics.graphics);
-    }
-
-    for (const entity of this.animatedSpriteQuery) {
-      const transform = entity.get(Transform);
-      const anim = entity.get(AnimatedSpriteComponent);
-      if (!anim.enabled) continue;
-      this.syncDisplayObject(transform, anim.animatedSprite);
-    }
-
-    for (const entity of this.textQuery) {
-      const transform = entity.get(Transform);
-      const text = entity.get(TextComponent);
-      if (!text.enabled) continue;
-      this.syncDisplayObject(transform, text.text);
-    }
-
-    for (const entity of this.splitTextQuery) {
-      const transform = entity.get(Transform);
-      const splitText = entity.get(SplitTextComponent);
-      if (!splitText.enabled) continue;
-      this.syncDisplayObject(transform, splitText.splitText);
+      for (const visual of entity.getAll(VisualComponent)) {
+        if (!visual.effectiveEnabled) continue;
+        this.syncDisplayObject(transform, visual.renderObject as Container);
+      }
     }
 
     // 2. Apply per-layer depth keys. Runs AFTER authoritative transform sync so
@@ -102,25 +75,10 @@ export class DisplaySystem extends System {
   }
 
   private applyVisualModifiers(): void {
-    for (const entity of this.spriteQuery) {
-      const visual = entity.get(SpriteComponent);
-      if (visual.enabled) this.applyModifiers(visual);
-    }
-    for (const entity of this.graphicsQuery) {
-      const visual = entity.get(GraphicsComponent);
-      if (visual.enabled) this.applyModifiers(visual);
-    }
-    for (const entity of this.animatedSpriteQuery) {
-      const visual = entity.get(AnimatedSpriteComponent);
-      if (visual.enabled) this.applyModifiers(visual);
-    }
-    for (const entity of this.textQuery) {
-      const visual = entity.get(TextComponent);
-      if (visual.enabled) this.applyModifiers(visual);
-    }
-    for (const entity of this.splitTextQuery) {
-      const visual = entity.get(SplitTextComponent);
-      if (visual.enabled) this.applyModifiers(visual);
+    for (const entity of this.visualQuery) {
+      for (const visual of entity.getAll(VisualComponent)) {
+        if (visual.effectiveEnabled) this.applyModifiers(visual);
+      }
     }
   }
 
@@ -157,26 +115,38 @@ export class DisplaySystem extends System {
     // keyed off its anchor (so the whole group sorts as one unit); everything
     // else by the layer's depth-key fn. `sortGroupForContainer` is an O(1)
     // registry lookup — no per-frame allocation in this hot path.
-    for (const [, tree] of this.treeProvider.allTrees()) {
+    for (const [scene, tree] of this.treeProvider.allTrees()) {
       for (const layer of tree.getAll()) {
         const sort = layer.sort;
         if (!sort) continue;
+        const info = {
+          kind: "Layer depth-key function",
+          scene: scene.name,
+          event: layer.name,
+        };
         for (const child of layer.container.children) {
           const group = sortGroupForContainer(child);
-          child.zIndex = group ? group.resolveSortKey(sort) : sort(child);
+          child.zIndex = attributed(this.boundary, info, () =>
+            group ? group.resolveSortKey(sort) : sort(child),
+          );
         }
       }
     }
 
     // Pass 2: intra-group member ordering. A group with an `innerSort` re-keys
     // its own members each frame (independent of whether its layer has a sort);
-    // groups without one keep insertion order and honour a manual `zIndex`.
+    // groups without one keep insertion order and honour a manual `zIndex`. A
+    // disabled group is skipped, matching the visual sync pass.
     for (const entity of this.sortGroupQuery) {
       const group = entity.get(SortGroupComponent);
       const inner = group.innerSort;
-      if (!inner) continue;
+      if (!inner || !group.effectiveEnabled) continue;
+      const info = {
+        kind: "Sort group innerSort function",
+        entity: entity.name,
+      };
       for (const member of group.container.children) {
-        member.zIndex = inner(member);
+        member.zIndex = attributed(this.boundary, info, () => inner(member));
       }
     }
   }

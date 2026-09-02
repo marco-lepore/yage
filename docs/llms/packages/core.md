@@ -57,6 +57,24 @@ class Entity {
 - `entity.spawnChild(name, Class, params?)` combines `scene.spawn(...)` + `this.addChild(name, ...)`. Child is auto-added to the parent's scene. Use for sub-entities owned by a parent (enemy body + health bar, player + weapon, etc.).
 - `entity.addChild(name, child)` adopts an existing entity. A scene-less child joins the parent's scene; a child that belongs to a different scene is rejected with an error, because its events bubble to its own scene and that scene's teardown destroys it.
 
+### Component lookup
+
+```ts
+entity.add(component); // throws on a second instance of the same exact class
+entity.get(Cls); // throws when nothing matches
+entity.tryGet(Cls); // undefined when nothing matches
+entity.has(Cls); // boolean
+entity.remove(Cls); // exact class only
+entity.getAll(); // every component, add order
+entity.getAll(Cls); // readonly Cls[] — every component assignable to Cls
+```
+
+- A class argument matches the class itself **and any subclass of it**. An entity carrying a `SpriteComponent` answers `has(VisualComponent)` with `true`, and `getAll(VisualComponent)` lists it.
+- Uniqueness is per exact class: `add` rejects a second `SpriteComponent`, but a base and a subclass on one entity are both legal and both appear in `getAll(Base)`.
+- `get` / `tryGet` prefer an exact match. With no exact match they return the single assignable component, and **throw** when more than one is assignable — that is what `getAll(Base)` is for.
+- `getAll(Cls)` returns a read-only view in add order. Removing a component replaces the list rather than mutating it, so a walk already in flight visits every member it started with.
+- A base class works as an argument even when it is `abstract`.
+
 ### Activeness
 
 `setActive(false)` turns an entity off without destroying it — the cheap way to recycle a bullet, a hit spark, or an enemy instead of respawning one.
@@ -137,7 +155,7 @@ this.add(new Brain()).updatePriority = -1; // per instance: decides before Mover
 ```
 
 - `component.updatePriority` is writable at any time, before or after `add()`; the instance value overrides the class's `static updatePriority`, which subclasses inherit.
-- `entity.getAll()` stays in add order.
+- `entity.getAll()` and `entity.getAll(Cls)` stay in add order.
 
 ### EntityPool
 
@@ -601,6 +619,8 @@ a dropped promise can hide errors). Production builds suppress the warning.
 
 `cache.register(filter)` returns a `QueryResult` pre-populated with entities that already match, then kept current via `onComponentAdded`/`onComponentRemoved`/`onEntityDestroyed`/`onEntityActivated`/`onEntityDeactivated`. Only active entities are ever members — see Activeness above. Call `cache.unregister(result)` when it no longer needs live updates — otherwise it keeps receiving updates forever. Queries registered once at system-install time (`DisplaySystem`, `UILayoutSystem`) are engine-lifetime by design and are never unregistered; per-mount registrations (e.g. `@yagejs/ui-react`'s `useQuery`) release on unmount.
 
+A filter class matches the class itself and any subclass of it, so `register([Transform, VisualComponent])` finds an entity carrying a `SpriteComponent`. A `QueryResult` holds entities, not components — read them with `entity.getAll(VisualComponent)` when one entity may carry several.
+
 `cache.queryOnce(filter)` builds the same seeded snapshot but skips registration entirely — use it for a point-in-time read (e.g. a render-phase snapshot) that must not hold a live entry in the cache.
 
 ### Stable Identity
@@ -897,7 +917,7 @@ before `UIRootLayoutSystem` because `ui-react` depends on `ui`).
 - `FixedUpdate`, 0 to `maxFixedStepsPerFrame` times: *`SceneTime` fixed tick per active scene* → `PhysicsSystem (0, physics)` → `ProcessFixedUpdateSystem (500, core)` → `ComponentFixedUpdateSystem (1000, core)`
 - `Update`: `PhysicsInterpolationSystem (-100, physics)` → `ParticleSystem (0, particles)` → `ProcessSystem (500, core)` → `ComponentUpdateSystem (1000, core)`
 - `LateUpdate`: `UILayoutSystem (200, ui)` → `UIRootLayoutSystem (200, ui-react)` → `FloatingOverlaySystem (201, ui)`
-- `Render`: `TilemapRenderSystem (-1, tilemap)` → `DisplaySystem (0, renderer)` → `LightingSystem (100, lighting)` → `DebugRenderSystem (9999, debug)`
+- `Render`: `DisplaySystem (0, renderer)` → `LightingSystem (100, lighting)` → `DebugRenderSystem (9999, debug)`
 - `EndOfFrame`: `InputClearSystem (9000, input)` → *destroy-queue flush*
 
 Priority bands, for placing a new system:

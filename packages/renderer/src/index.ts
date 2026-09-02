@@ -127,6 +127,7 @@ export type {
   CameraComponentOptions,
 } from "./CameraComponent.js";
 export { CameraFollow } from "./CameraFollow.js";
+export type { FollowTarget } from "./FollowTarget.js";
 export { CameraShake } from "./CameraShake.js";
 export { CameraBoundsComponent } from "./CameraBoundsComponent.js";
 export { CameraZoom } from "./CameraZoom.js";

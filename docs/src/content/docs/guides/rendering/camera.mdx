@@ -89,9 +89,10 @@ const cam = this.spawn(CameraEntity, {
 });
 ```
 
-`smoothing` controls how quickly the camera catches up (1 = instant, 0 = never
-moves). The `deadzone` defines a rectangle in the center of the screen where
-the target can move without the camera responding.
+`smoothing` controls how quickly the camera catches up: `1` is instant, and
+`0` never moves the camera at all, so the follow looks frozen. `offset` and
+`deadzone` are both in world pixels; the `deadzone` is a rectangle centred on
+the camera where the target can move without the camera responding.
 
 `snap: true` starts the camera on the target. Leave it out and a smoothed
 camera begins wherever it spawned — the world origin, unless `position` or
@@ -120,7 +121,9 @@ camera.rotation = Math.PI / 12; // tilt the camera
 camera.shake(8, 0.4, { decay: 1 });
 ```
 
-`intensity` is the maximum pixel displacement per frame. `decay` sets how much
+`intensity` is the maximum displacement per axis in **world pixels**, so what
+the player sees scales with zoom — the same intensity moves twice as far on
+screen at zoom 2. `decay` sets how much
 the shake fades across its duration: `0` (the default) shakes at full strength
 until it ends, `1` fades linearly to zero over the duration, and values above
 `1` reach zero earlier — at `2` the camera stops moving halfway through.
@@ -153,9 +156,14 @@ this host, so it composes with other modifiers.
 Convert between screen (pixel) space and world space:
 
 ```typescript
-const worldPos = camera.screenToWorld(screenPos);
-const screenPos = camera.worldToScreen(worldPos);
+const worldPos = camera.screenToWorld(screenX, screenY);
+const screenPos = camera.worldToScreen(worldPos.x, worldPos.y);
 ```
+
+Both take two numbers and return a `Vec2`. They use the camera's own
+transform, not any layer's — a layer bound with a ratio below `1` (parallax,
+a dampened-zoom layer) renders under a different transform, so the result
+does not name a point on that layer.
 
 ### Bounds
 

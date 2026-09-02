@@ -131,23 +131,23 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 
 ### `@yagejs/renderer`
 
-| File                             | Purpose                                      |
-| -------------------------------- | -------------------------------------------- |
-| `src/RendererPlugin.ts`          | Plugin entry, PixiJS v8 setup                |
-| `src/SpriteComponent.ts`         | Sprite wrapper                               |
-| `src/GraphicsComponent.ts`       | Graphics wrapper with `draw()`               |
-| `src/AnimatedSpriteComponent.ts` | Animated sprite using `FrameSource`          |
-| `src/AnimationController.ts`     | Named animations, one-shot locking           |
-| `src/spritesheet.ts`             | `sliceSheet`, `FrameSource`, `resolveFrames` |
-| `src/assets.ts`                  | `texture()`, `spritesheet()` factories       |
-| `src/CameraEntity.ts`            | Entity for camera instances                  |
-| `src/CameraComponent.ts`         | Core camera component                        |
-| `src/CameraFollow.ts`            | Follow behavior component                    |
-| `src/CameraShake.ts`             | Shake behavior component                     |
-| `src/CameraZoom.ts`              | Zoom behavior component                      |
-| `src/CameraBoundsComponent.ts`   | Bounds constraint component                  |
-| `src/DisplaySystem.ts`           | Render-phase Transform→PixiJS sync           |
-| `src/RenderLayer.ts`             | Named draw-order layers                      |
+| File                             | Purpose                                                        |
+| -------------------------------- | -------------------------------------------------------------- |
+| `src/RendererPlugin.ts`          | Plugin entry, PixiJS v8 setup                                  |
+| `src/SpriteComponent.ts`         | Sprite wrapper                                                 |
+| `src/GraphicsComponent.ts`       | Graphics wrapper with `draw()`                                 |
+| `src/AnimatedSpriteComponent.ts` | Animated sprite using `FrameSource`                            |
+| `src/AnimationController.ts`     | Named animations, one-shot locking                             |
+| `src/spritesheet.ts`             | `sliceSheet`, `FrameSource`, `resolveFrames`                   |
+| `src/assets.ts`                  | `texture()`, `spritesheet()` factories                         |
+| `src/CameraEntity.ts`            | Entity for camera instances                                    |
+| `src/CameraComponent.ts`         | Core camera component                                          |
+| `src/CameraFollow.ts`            | Follow behavior component                                      |
+| `src/CameraShake.ts`             | Shake behavior component                                       |
+| `src/CameraZoom.ts`              | Zoom behavior component                                        |
+| `src/CameraBoundsComponent.ts`   | Bounds constraint component                                    |
+| `src/DisplaySystem.ts`           | Render-phase Transform→PixiJS sync for every `VisualComponent` |
+| `src/RenderLayer.ts`             | Named draw-order layers                                        |
 
 ### `@yagejs/lighting`
 
@@ -206,7 +206,6 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 | ---------------------------- | -------------------------------------------------------------------------------------- |
 | `src/TilemapPlugin.ts`       | Plugin entry                                                                           |
 | `src/TilemapComponent.ts`    | Map rendering component                                                                |
-| `src/TilemapRenderSystem.ts` | Render phase: draw tile layers                                                         |
 | `src/loaders/`               | Asset loaders for Tiled JSON                                                           |
 | `src/colliders.ts`           | `extractCollisionShapes()`                                                             |
 | `src/tiled/parseTiledMap.ts` | `extractObjects()`                                                                     |

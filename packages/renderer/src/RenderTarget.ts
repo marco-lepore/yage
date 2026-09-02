@@ -109,6 +109,7 @@ class RenderTargetImpl implements RenderTargetHandle {
    */
   private _resolutionScale: number;
   private _needsRender = true;
+  private _destroyed = false;
 
   constructor(
     renderer: Renderer,
@@ -141,18 +142,22 @@ class RenderTargetImpl implements RenderTargetHandle {
   }
 
   get texture(): TextureResource {
+    this._assertLive("texture");
     return this._texture;
   }
 
   get width(): number {
+    this._assertLive("width");
     return this._texture.width;
   }
 
   get height(): number {
+    this._assertLive("height");
     return this._texture.height;
   }
 
   get resolution(): number {
+    this._assertLive("resolution");
     return this._texture.source.resolution;
   }
 
@@ -165,6 +170,7 @@ class RenderTargetImpl implements RenderTargetHandle {
   }
 
   render(): void {
+    this._assertLive("render");
     // Pixi tears out the transform fields on destroy, so drawing a destroyed
     // source throws from deep inside its own update with nothing naming the
     // real mistake. Skipping instead would leave a permanently stale buffer.
@@ -200,6 +206,7 @@ class RenderTargetImpl implements RenderTargetHandle {
   }
 
   resize(width: number, height: number, resolutionScale?: number): void {
+    this._assertLive("resize");
     assertPositive(width, "width");
     assertPositive(height, "height");
     if (resolutionScale !== undefined) {
@@ -218,7 +225,22 @@ class RenderTargetImpl implements RenderTargetHandle {
   }
 
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
     this._texture.destroy(true);
+  }
+
+  /**
+   * Every member but `destroy` reads through the texture, which Pixi empties
+   * out on destroy. Without this the read fails as a bare
+   * `Cannot read properties of null` from inside Pixi.
+   */
+  private _assertLive(member: string): void {
+    if (!this._destroyed) return;
+    throw new Error(
+      `RenderTargetHandle.${member}: the handle is destroyed. ` +
+        `Create a new render target instead of reusing a destroyed one.`,
+    );
   }
 }
 

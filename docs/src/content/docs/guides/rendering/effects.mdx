@@ -394,6 +394,10 @@ Every visual component takes a `blendMode` option deciding how its pixels
 combine with what is already drawn beneath it. It is also a live accessor,
 so it can change at runtime.
 
+The default is `"inherit"` — the mode of the nearest ancestor that sets one,
+which is `"normal"` unless a parent changed it. Set `"normal"` explicitly on
+a child inside a group that uses another mode.
+
 ```ts
 import { SpriteComponent } from "@yagejs/renderer";
 

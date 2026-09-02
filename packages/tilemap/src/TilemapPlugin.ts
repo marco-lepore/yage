@@ -1,8 +1,7 @@
 import { AssetManagerKey } from "@yagejs/core";
-import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
+import type { EngineContext, Plugin } from "@yagejs/core";
 import { extensions, Assets } from "pixi.js";
 import { tiledMapAssetExtension } from "./tiled/tiledMapLoader.js";
-import { TilemapRenderSystem } from "./TilemapRenderSystem.js";
 import type { TiledMapData } from "./tiled/types.js";
 import { patchTilemapPipe } from "./patch-tilemap-pipe.js";
 
@@ -32,9 +31,5 @@ export class TilemapPlugin implements Plugin {
         Assets.unload(path);
       },
     });
-  }
-
-  registerSystems(scheduler: SystemScheduler): void {
-    scheduler.add(new TilemapRenderSystem());
   }
 }

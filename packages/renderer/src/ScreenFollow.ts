@@ -1,14 +1,11 @@
 import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
 import type { Vec2Like } from "@yagejs/core";
 import type { CameraEntity } from "./CameraEntity.js";
+import { resolveFollowTarget } from "./FollowTarget.js";
+import type { FollowTarget } from "./FollowTarget.js";
 
-/**
- * What the follow tracks each frame. An `Entity` reads the entity's current
- * `worldPosition`; a `Vec2Like` is a fixed world coord; a function is
- * called every frame and may compute any world coord (e.g. the midpoint
- * of two entities, a position along an animated path).
- */
-export type ScreenFollowTarget = Entity | Vec2Like | (() => Vec2Like);
+/** What the follow tracks each frame. See {@link FollowTarget}. */
+export type ScreenFollowTarget = FollowTarget;
 
 /** Options for `ScreenFollow`. */
 export interface ScreenFollowOptions {
@@ -33,7 +30,8 @@ export interface ScreenFollowOptions {
   offset?: Vec2Like;
 
   /**
-   * When the target is an `Entity`, copy its `worldRotation` onto this
+   * When the target is an `Entity` or a `Transform`, copy its
+   * `worldRotation` onto this
    * entity's Transform each frame. Useful when the UI should rotate with
    * the target itself (e.g. a vehicle UI that tilts with the vehicle) but
    * stay stable against the camera. Default `false` — this entity's
@@ -107,20 +105,20 @@ export class ScreenFollow extends Component {
       projected.y + this._offset.y,
     );
 
-    if (this._trackRotation && this._target instanceof Entity) {
-      const targetTransform = this._target.tryGet(Transform);
-      if (targetTransform) t.worldRotation = targetTransform.worldRotation;
+    if (this._trackRotation) {
+      const source =
+        this._target instanceof Entity
+          ? this._target.tryGet(Transform)
+          : this._target instanceof Transform
+            ? this._target
+            : undefined;
+      if (source) t.worldRotation = source.worldRotation;
     }
   }
 
   private resolveTargetPosition(): Vec2Like | undefined {
     const target = this._target;
     if (target === null) return undefined;
-    if (typeof target === "function") return target();
-    if (target instanceof Entity) {
-      const t = target.tryGet(Transform);
-      return t ? t.worldPosition : undefined;
-    }
-    return target;
+    return resolveFollowTarget(target, this);
   }
 }

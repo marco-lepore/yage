@@ -79,6 +79,8 @@ import { attachMask } from "./attachMask.js";
 import { rectMask } from "./rectMask.js";
 import { spriteMask } from "./spriteMask.js";
 import { graphicsMask } from "./graphicsMask.js";
+import { Component, ErrorBoundaryKey } from "@yagejs/core";
+import { createMockScene } from "@yagejs/core";
 
 describe("attachMask + rectMask", () => {
   it("parents the Graphics under the target and assigns it via setMask", () => {
@@ -198,9 +200,13 @@ describe("spriteMask", () => {
 describe("graphicsMask", () => {
   it("runs the draw fn once at attach time", () => {
     const target = new mocks.MockContainer();
-    const draw = vi.fn((g: { rect: (x: number, y: number, w: number, h: number) => unknown }) => {
-      g.rect(0, 0, 20, 20);
-    });
+    const draw = vi.fn(
+      (g: {
+        rect: (x: number, y: number, w: number, h: number) => unknown;
+      }) => {
+        g.rect(0, 0, 20, 20);
+      },
+    );
     attachMask(target as never, graphicsMask(draw as never));
     expect(draw).toHaveBeenCalledTimes(1);
   });
@@ -251,5 +257,28 @@ describe("graphicsMask", () => {
     handle.remove();
     handle.redraw();
     expect(draw).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("attachMask attribution", () => {
+  it("attributes a throwing draw callback to the owning component", () => {
+    const { scene, context } = createMockScene();
+    class Owner extends Component {}
+    const owner = scene.spawn("masked").add(new Owner());
+    const target = new mocks.MockContainer();
+
+    expect(() =>
+      attachMask(
+        target as never,
+        () => {
+          throw new Error("bad mask");
+        },
+        owner,
+      ),
+    ).toThrow("bad mask");
+    const boundary = context.resolve(ErrorBoundaryKey);
+    expect(boundary.getCallbackErrors().at(-1)).toMatchObject({
+      kind: "Mask draw callback",
+    });
   });
 });

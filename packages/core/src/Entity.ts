@@ -28,6 +28,29 @@ let nextEntityId = 1;
 /** Shared empty map returned by `children` when no children exist. */
 const EMPTY_CHILDREN: ReadonlyMap<string, Entity> = new Map();
 
+/** Shared empty list returned by `getAll(cls)` when nothing is assignable. */
+const EMPTY_COMPONENTS: readonly Component[] = Object.freeze([]);
+
+/** Memoised prototype chains, keyed on the concrete component class. */
+const classChains = new WeakMap<ComponentClass, readonly ComponentClass[]>();
+
+/**
+ * The classes a component of `cls` is findable under: `cls` itself, then each
+ * base up to and including `Component`. Most-derived first.
+ */
+function classChain(cls: ComponentClass): readonly ComponentClass[] {
+  const cached = classChains.get(cls);
+  if (cached) return cached;
+  const chain: ComponentClass[] = [];
+  let current: unknown = cls;
+  while (typeof current === "function" && current !== Function.prototype) {
+    chain.push(current as ComponentClass);
+    current = Object.getPrototypeOf(current);
+  }
+  classChains.set(cls, chain);
+  return chain;
+}
+
 /** Reset the entity ID counter. Exposed for testing only. */
 export function _resetEntityIdCounter(): void {
   nextEntityId = 1;
@@ -79,6 +102,12 @@ export class Entity {
   timeScale = 1;
 
   private components = new Map<ComponentClass, Component>();
+  /**
+   * Ancestor index: every class in a component's prototype chain maps to the
+   * components assignable to it, in add order. Lists are replaced rather than
+   * mutated on removal, so a walk in flight finishes over the old list.
+   */
+  private byClass = new Map<ComponentClass, Component[]>();
   /**
    * Components sorted for the update pass, ascending `updatePriority` with
    * ties in add order. Built lazily, and only once a component leaves the
@@ -462,6 +491,11 @@ export class Entity {
     }
     component.entity = this;
     this.components.set(cls, component);
+    for (const ancestor of classChain(cls)) {
+      const list = this.byClass.get(ancestor);
+      if (list) list.push(component);
+      else this.byClass.set(ancestor, [component]);
+    }
     this._invalidateUpdateOrder(component);
     // `onAdd` is where a component validates its dependencies, so this is a
     // throw site the game hits often while it is being written. Attribute it
@@ -480,28 +514,53 @@ export class Entity {
     return component;
   }
 
-  /** Get a component by class. Throws if not found. */
+  /**
+   * Get a component by class. An exact match wins; otherwise the single
+   * component assignable to `cls` is returned. Throws when nothing matches,
+   * and when several components are assignable to `cls` — use
+   * {@link Entity.getAll} for that case.
+   */
   get<C extends Component>(cls: ComponentClass<C>): C {
-    const comp = this.components.get(cls);
+    const comp = this.tryGet(cls);
     if (!comp) {
       throw new Error(
         `Entity "${this.name}" does not have component ${cls.name}.`,
       );
     }
-    return comp as C;
+    return comp;
   }
 
-  /** Get a component by class, or undefined if not found. */
+  /**
+   * Get a component by class, or `undefined` if none matches. An exact match
+   * wins; otherwise the single component assignable to `cls` is returned.
+   * Throws when several are assignable — use {@link Entity.getAll} instead.
+   */
   tryGet<C extends Component>(cls: ComponentClass<C>): C | undefined {
-    return this.components.get(cls) as C | undefined;
+    const exact = this.components.get(cls);
+    if (exact) return exact as C;
+    const list = this.byClass.get(cls);
+    if (!list || list.length === 0) return undefined;
+    if (list.length > 1) {
+      const names = list.map((c) => c.constructor.name).join(", ");
+      throw new Error(
+        `Entity "${this.name}" has ${list.length} components assignable to ${cls.name} (${names}); use getAll(${cls.name}).`,
+      );
+    }
+    return list[0] as C;
   }
 
-  /** Check if entity has a component of the given class. */
+  /**
+   * Check if entity has a component of the given class or any subclass of it.
+   */
   has(cls: ComponentClass): boolean {
-    return this.components.has(cls);
+    return this.byClass.has(cls);
   }
 
-  /** Remove a component by class. */
+  /**
+   * Remove the component of exactly this class. A base class is not
+   * resolved here: `remove(Base)` does nothing when the entity holds only a
+   * subclass, even though `has(Base)` is true. Remove the concrete class.
+   */
   remove(cls: ComponentClass): void {
     const comp = this.components.get(cls);
     if (!comp) return;
@@ -510,8 +569,20 @@ export class Entity {
     comp.onDestroy?.();
     comp._markTornDown();
     this.components.delete(cls);
+    this._unindex(comp, cls);
     this._updateOrder = null;
     this.callbacks?.onComponentRemoved(this, cls);
+  }
+
+  /** Drop `comp` from every ancestor list it was indexed under. */
+  private _unindex(comp: Component, cls: ComponentClass): void {
+    for (const ancestor of classChain(cls)) {
+      const list = this.byClass.get(ancestor);
+      if (!list) continue;
+      const remaining = list.filter((c) => c !== comp);
+      if (remaining.length === 0) this.byClass.delete(ancestor);
+      else this.byClass.set(ancestor, remaining);
+    }
   }
 
   /** Subscribe to a typed event on this entity. Returns an unsubscribe function. */
@@ -559,8 +630,21 @@ export class Entity {
   }
 
   /** Get all components as an iterable, in add order. */
-  getAll(): Iterable<Component> {
-    return this.components.values();
+  getAll(): Iterable<Component>;
+  /**
+   * Every component assignable to `cls` — the class itself and any subclass —
+   * in add order. The returned array is a read-only view of the entity's
+   * index: removing a component replaces the list rather than mutating it, so
+   * a walk already in flight visits every member it started with. Adding one
+   * appends to the live list, so a walk in flight also visits a component
+   * added during it.
+   */
+  getAll<C extends Component>(cls: ComponentClass<C>): readonly C[];
+  getAll<C extends Component>(
+    cls?: ComponentClass<C>,
+  ): Iterable<Component> | readonly C[] {
+    if (!cls) return this.components.values();
+    return (this.byClass.get(cls) ?? EMPTY_COMPONENTS) as readonly C[];
   }
 
   /**
@@ -804,6 +888,7 @@ export class Entity {
       this.callbacks?.onComponentRemoved(this, cls);
     }
     this.components.clear();
+    this.byClass.clear();
     this._updateOrder = null;
     this._eventHandlers?.clear();
 

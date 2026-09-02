@@ -21,7 +21,11 @@ export class CameraShake extends Component {
     return this._offset;
   }
 
-  /** Start a screen shake effect. */
+  /**
+   * Start a screen shake effect. `intensity` is the maximum displacement per
+   * axis in **world pixels**, so what the player sees scales with zoom — the
+   * same intensity moves twice as far on screen at zoom 2.
+   */
   start(
     intensity: number,
     duration: number,

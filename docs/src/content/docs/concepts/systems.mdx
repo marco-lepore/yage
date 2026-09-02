@@ -128,6 +128,12 @@ class SpriteRenderSystem extends System {
 
 ### Working with Query Results
 
+A filter class matches the class itself and any subclass of it, so
+`register([Transform, VisualComponent])` finds entities carrying a
+`SpriteComponent`, a `TextComponent`, or your own subclass. A result holds
+entities, not components — when one entity may carry several matching
+components, read them with `entity.getAll(VisualComponent)`.
+
 A `QueryResult` is a live result set — it updates automatically as entities
 gain or lose components:
 

@@ -21,9 +21,11 @@ let warned = false;
  *
  * ```ts
  * import { BlurFilter } from "pixi.js";
- * sprite.addEffect(rawFilter(new BlurFilter({ strength: 8 }), {
+ *
+ * const filter = new BlurFilter({ strength: 8 });
+ * sprite.fx.addEffect(rawFilter(filter, {
  *   intensity: {
- *     get: () => filter.strength,
+ *     get: () => filter.strength / 8,
  *     set: (v) => { filter.strength = v * 8; },
  *   },
  * }));

@@ -1,7 +1,11 @@
 import type { Entity } from "./Entity.js";
 import type { ComponentClass } from "./types.js";
 
-/** A filter used to register a query — an array of required component classes. */
+/**
+ * A filter used to register a query — an array of required component classes.
+ * A class matches any subclass of it too, so `[Transform, VisualComponent]`
+ * finds an entity carrying a `SpriteComponent`.
+ */
 export type QueryFilter = readonly ComponentClass[];
 
 /** A live, iterable set of entities matching a query filter. */
@@ -39,7 +43,8 @@ export class QueryResult {
 }
 
 /**
- * Incrementally maintained entity sets based on component signatures.
+ * Incrementally maintained entity sets based on component signatures. A
+ * filter class matches the class itself and any subclass of it.
  *
  * Registrations made once at system-install time (e.g. `DisplaySystem`,
  * `UILayoutSystem`) are intentionally engine-lifetime and never unregistered

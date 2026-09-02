@@ -242,3 +242,60 @@ describe("QueryCache", () => {
     });
   });
 });
+
+describe("QueryCache subclass matching", () => {
+  abstract class Base extends Component {}
+  class Sub extends Base {}
+  class Other extends Component {}
+
+  let cache: QueryCache;
+
+  beforeEach(() => {
+    _resetEntityIdCounter();
+    cache = new QueryCache();
+  });
+
+  function makeEntity(name: string): Entity {
+    const e = new Entity(name);
+    e._setScene(null, {
+      onComponentAdded: (entity) => cache.onComponentAdded(entity),
+      onComponentRemoved: (entity) => cache.onComponentRemoved(entity),
+      onEntityActivated: (entity) => cache.onEntityActivated(entity),
+      onEntityDeactivated: (entity) => cache.onEntityDeactivated(entity),
+    });
+    return e;
+  }
+
+  it("seeds a base-class query from an entity holding only a subclass", () => {
+    const e = makeEntity("e");
+    e.add(new Sub());
+    const result = cache.register([Base]);
+    expect(result.toArray()).toEqual([e]);
+  });
+
+  it("joins on add, leaves on remove and on going dormant", () => {
+    const result = cache.register([Base]);
+    const e = makeEntity("e");
+    expect(result.size).toBe(0);
+
+    e.add(new Sub());
+    expect(result.size).toBe(1);
+
+    e.setActive(false);
+    expect(result.size).toBe(0);
+    e.setActive(true);
+    expect(result.size).toBe(1);
+
+    e.remove(Sub);
+    expect(result.size).toBe(0);
+  });
+
+  it("requires every filter class, base ones included", () => {
+    const result = cache.register([Other, Base]);
+    const e = makeEntity("e");
+    e.add(new Sub());
+    expect(result.size).toBe(0);
+    e.add(new Other());
+    expect(result.size).toBe(1);
+  });
+});

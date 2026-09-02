@@ -3,11 +3,14 @@ import { CameraComponent } from "./CameraComponent.js";
 import type { CameraBounds } from "./CameraComponent.js";
 
 /**
- * Camera bounds clamping. Restricts `CameraComponent.position`
- * to a bounding rectangle each frame. Add order matters: runs
- * after `CameraFollow` so the follow position is clamped.
+ * Camera bounds clamping. Restricts `CameraComponent.position` to a bounding
+ * rectangle each frame. Runs after every camera behaviour that moves or zooms
+ * the camera, so the clamp sees this frame's position and zoom rather than
+ * last frame's.
  */
 export class CameraBoundsComponent extends Component {
+  static updatePriority = 10;
+
   private readonly cam = this.sibling(CameraComponent);
 
   bounds: CameraBounds | undefined;

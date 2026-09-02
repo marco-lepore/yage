@@ -1,11 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const { mocks } = vi.hoisted(() => {
+  class MockPoint {
+    x: number;
+    y: number;
+
+    constructor(x: number, y: number) {
+      this.x = x;
+      this.y = y;
+    }
+
+    set(x: number, y = x): void {
+      this.x = x;
+      this.y = y;
+    }
+  }
 
   class MockContainer {
     children: MockContainer[] = [];
-    position = { x: 0, y: 0 };
-    scale = { x: 1, y: 1 };
+    position = new MockPoint(0, 0);
+    scale = new MockPoint(1, 1);
     rotation = 0;
     visible = true;
     alpha = 1;
@@ -106,18 +120,18 @@ import {
   Scene,
   Transform,
   Vec2,
-  Phase,
   _resetEntityIdCounter,
 } from "@yagejs/core";
 import type { EngineEvents } from "@yagejs/core";
 import {
+  DisplaySystem,
   SceneRenderTreeKey,
   SceneRenderTreeProviderKey,
+  ySort,
 } from "@yagejs/renderer";
 import { RenderLayerManager } from "@yagejs/renderer";
 import type { SceneRenderTree } from "@yagejs/renderer";
 import { TilemapComponent } from "./TilemapComponent.js";
-import { TilemapRenderSystem } from "./TilemapRenderSystem.js";
 import type { TiledMapData } from "./tiled/types.js";
 
 class TestScene extends Scene {
@@ -178,7 +192,7 @@ function createTestContext() {
   scene._setContext(ctx);
   scene._registerScoped(SceneRenderTreeKey, tree);
 
-  return { ctx, scene, queryCache, root };
+  return { ctx, scene, queryCache, root, tree };
 }
 
 const testMap: TiledMapData = {
@@ -190,22 +204,21 @@ const testMap: TiledMapData = {
   tilesets: [],
 };
 
-describe("TilemapRenderSystem", () => {
+describe("tilemap rendering through DisplaySystem", () => {
   beforeEach(() => {
     _resetEntityIdCounter();
   });
 
-  it("has Render phase and priority -1", () => {
-    const system = new TilemapRenderSystem();
-    expect(system.phase).toBe(Phase.Render);
-    expect(system.priority).toBe(-1);
-  });
+  function createSystem(ctx: EngineContext): DisplaySystem {
+    const system = new DisplaySystem();
+    system._setContext(ctx);
+    system.onRegister(ctx);
+    return system;
+  }
 
   it("syncs Transform to tilemap container position", () => {
     const { ctx, scene } = createTestContext();
-    const system = new TilemapRenderSystem();
-    system._setContext(ctx);
-    system.onRegister!(ctx);
+    const system = createSystem(ctx);
 
     const entity = scene.spawn("tilemap");
     entity.add(
@@ -231,9 +244,7 @@ describe("TilemapRenderSystem", () => {
 
   it("combines visual modifiers without changing Transform", () => {
     const { ctx, scene } = createTestContext();
-    const system = new TilemapRenderSystem();
-    system._setContext(ctx);
-    system.onRegister!(ctx);
+    const system = createSystem(ctx);
 
     const entity = scene.spawn("tilemap");
     const transform = entity.add(
@@ -273,9 +284,7 @@ describe("TilemapRenderSystem", () => {
 
   it("skips disabled components", () => {
     const { ctx, scene } = createTestContext();
-    const system = new TilemapRenderSystem();
-    system._setContext(ctx);
-    system.onRegister!(ctx);
+    const system = createSystem(ctx);
 
     const entity = scene.spawn("tilemap");
     entity.add(new Transform({ position: new Vec2(50, 0) }));
@@ -289,5 +298,26 @@ describe("TilemapRenderSystem", () => {
       typeof mocks.MockContainer
     >;
     expect(container.position.x).toBe(0); // Not synced
+  });
+
+  it("keeps the depth key off the unmodified position in a ySort layer", () => {
+    const { ctx, scene, tree } = createTestContext();
+    tree.ensureLayer({ name: "ground", order: 0, sort: ySort });
+    const system = createSystem(ctx);
+
+    const entity = scene.spawn("tilemap");
+    entity.add(new Transform({ position: new Vec2(0, 100) }));
+    const comp = entity.add(
+      new TilemapComponent({ map: testMap, layer: "ground" }),
+    );
+    comp.modifiers.addTransform({ position: new Vec2(0, 40) });
+
+    system.update();
+
+    const container = comp.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    expect(container.zIndex).toBe(100);
+    expect(container.position.y).toBe(140);
   });
 });

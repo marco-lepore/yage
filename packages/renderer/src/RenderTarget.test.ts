@@ -263,4 +263,18 @@ describe("createRenderTarget", () => {
     expect(texture.destroyed).toBe(true);
     expect(() => target.destroy()).not.toThrow();
   });
+
+  it("every read after destroy names the handle and the member", () => {
+    const { target } = makeTarget();
+    target.destroy();
+
+    expect(() => target.width).toThrow(
+      "RenderTargetHandle.width: the handle is destroyed.",
+    );
+    expect(() => target.height).toThrow("RenderTargetHandle.height");
+    expect(() => target.resolution).toThrow("RenderTargetHandle.resolution");
+    expect(() => target.texture).toThrow("RenderTargetHandle.texture");
+    expect(() => target.render()).toThrow("RenderTargetHandle.render");
+    expect(() => target.resize(10, 10)).toThrow("RenderTargetHandle.resize");
+  });
 });

@@ -548,10 +548,7 @@ export class SceneManager {
       try {
         run.finalize();
       } catch (err: unknown) {
-        this.logger?.warn(
-          "SceneManager",
-          `Transition finalize error: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        this._reportTransitionError(run, "finalize", err);
       }
     }
     this.bus?.emit("scene:transition:ended", {
@@ -566,10 +563,7 @@ export class SceneManager {
     try {
       run.transition.tick(dt, this._makeContext(run));
     } catch (err: unknown) {
-      this.logger?.warn(
-        "SceneManager",
-        `Transition tick error: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this._reportTransitionError(run, "tick", err);
     }
   }
 
@@ -577,11 +571,35 @@ export class SceneManager {
     try {
       run.transition[method]?.(this._makeContext(run));
     } catch (err: unknown) {
-      this.logger?.warn(
-        "SceneManager",
-        `Transition ${method} error: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this._reportTransitionError(run, method, err);
     }
+  }
+
+  /**
+   * A transition step threw. The run continues by contract — a half-finished
+   * transition must still settle the stack and resolve its promise — so the
+   * error is reported rather than rethrown. It reaches `Logger` and
+   * `Inspector.getErrors().callbackErrors` through the error boundary; the
+   * direct `Logger` call is the fallback when no boundary is installed.
+   */
+  private _reportTransitionError(
+    run: TransitionRun,
+    step: string,
+    err: unknown,
+  ): void {
+    if (this.errorBoundary) {
+      const scene = run.toScene?.name ?? run.fromScene?.name;
+      this.errorBoundary.reportLifecycleError(err, {
+        kind: `Scene transition ${step}`,
+        ...(scene !== undefined ? { scene } : {}),
+        event: run.kind,
+      });
+      return;
+    }
+    this.logger?.warn(
+      "SceneManager",
+      `Transition ${step} error: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   private _makeContext(run: TransitionRun): SceneTransitionContext {

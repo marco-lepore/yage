@@ -1,24 +1,27 @@
 import { Component, Vec2 } from "@yagejs/core";
-import type { Vec2Like } from "@yagejs/core";
 import { CameraComponent, CAMERA_REFERENCE_DT } from "./CameraComponent.js";
 import type { CameraFollowOptions } from "./CameraComponent.js";
+import { resolveFollowTarget } from "./FollowTarget.js";
+import type { FollowTarget } from "./FollowTarget.js";
+import { assertFiniteNumber } from "./internal/validate.js";
 
 /**
  * Camera follow behavior. Smoothly moves `CameraComponent.position`
- * toward a target each frame. Add order matters: runs before
- * `CameraBoundsComponent` so bounds clamping happens after follow.
+ * toward the target's world position each frame.
  */
 export class CameraFollow extends Component {
   private readonly cam = this.sibling(CameraComponent);
-  private target: { position: Vec2Like } | null = null;
+  private target: FollowTarget | null = null;
   private smoothing = 1;
   private offset: Vec2 = Vec2.ZERO;
   private deadzone: { halfWidth: number; halfHeight: number } | null = null;
 
   /** Start following a target. */
-  start(target: { position: Vec2Like }, options?: CameraFollowOptions): void {
+  start(target: FollowTarget, options?: CameraFollowOptions): void {
+    const smoothing = options?.smoothing ?? 1;
+    assertFiniteNumber("CameraFollow.start", "smoothing", smoothing, 0);
     this.target = target;
-    this.smoothing = options?.smoothing ?? 1;
+    this.smoothing = smoothing;
     this.offset = options?.offset
       ? new Vec2(options.offset.x, options.offset.y)
       : Vec2.ZERO;
@@ -74,10 +77,11 @@ export class CameraFollow extends Component {
     }
   }
 
-  /** Current target position with the follow offset applied. */
+  /** Current target world position with the follow offset applied. */
   private targetPosition(): Vec2 | null {
     if (!this.target) return null;
-    const pos = this.target.position;
+    const pos = resolveFollowTarget(this.target, this);
+    if (!pos) return null;
     return new Vec2(pos.x + this.offset.x, pos.y + this.offset.y);
   }
 }

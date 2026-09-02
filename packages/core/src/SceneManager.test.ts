@@ -262,7 +262,9 @@ describe("SceneManager", () => {
       const { manager } = setup();
       // Inject an undefined into the internal stack to trigger the defensive guard.
       // This simulates an impossible state where pop() returns undefined despite length > 0.
-      const stack = (manager as unknown as { stack: Array<Scene | undefined> })["stack"];
+      const stack = (manager as unknown as { stack: Array<Scene | undefined> })[
+        "stack"
+      ];
       stack.push(undefined as unknown as Scene);
       // popAll should not throw — the loop terminates cleanly
       await manager.popAll();
@@ -379,7 +381,6 @@ describe("SceneManager", () => {
   });
 
   describe("scene hooks", () => {
-
     it("runs beforeEnter and afterExit hooks around push / pop", async () => {
       const { manager, hooks } = setupWithHooks();
       const events: string[] = [];
@@ -481,7 +482,6 @@ describe("SceneManager", () => {
   });
 
   describe("scene hooks (extended)", () => {
-
     it("runs beforeEnter for new before afterExit for old on replace", async () => {
       const { manager, hooks } = setupWithHooks();
       const events: string[] = [];
@@ -499,11 +499,7 @@ describe("SceneManager", () => {
       await manager.replace(second);
       // beforeEnter + preload for the new scene run before the old scene
       // is torn down, so a failed asset load can't leave the stack empty.
-      expect(events).toEqual([
-        "before:first",
-        "before:second",
-        "after:first",
-      ]);
+      expect(events).toEqual(["before:first", "before:second", "after:first"]);
     });
 
     it("runs afterExit hooks on popAll for every scene", async () => {
@@ -546,11 +542,7 @@ describe("SceneManager", () => {
       // Drain by awaiting another op; the reentrant push completes first.
       await manager.push(new GameScene("after"));
       expect(reentrantPushed).toBe(true);
-      expect(manager.all).toEqual([
-        outer,
-        reentrant,
-        manager.all[2],
-      ]);
+      expect(manager.all).toEqual([outer, reentrant, manager.all[2]]);
       expect((manager.all[2] as GameScene).name).toBe("after");
       expect(warnSpy).toHaveBeenCalled();
       warnSpy.mockRestore();
@@ -1165,6 +1157,26 @@ describe("SceneManager", () => {
       return { manager, ctx, boundary };
     }
 
+    it("a throwing transition step is reported through the boundary and the transition still settles", async () => {
+      const { manager, boundary } = setupWithBoundary();
+      const transition: SceneTransition = {
+        duration: 0,
+        begin() {
+          throw new Error("begin failed");
+        },
+        tick() {},
+        end() {},
+      };
+      await manager.push(new GameScene("a"), { transition });
+      expect(manager.active?.name).toBe("a");
+      expect(manager.isTransitioning).toBe(false);
+      expect(boundary.getCallbackErrors().at(-1)).toMatchObject({
+        kind: "Scene transition begin",
+        scene: "a",
+        event: "push",
+      });
+    });
+
     it("a throwing onEnter is reported and still rejects push()", async () => {
       const { manager, boundary } = setupWithBoundary();
       class BrokenEnter extends GameScene {
@@ -1243,7 +1255,10 @@ describe("SceneManager", () => {
 
       const errors = boundary.getCallbackErrors();
       expect(errors).toHaveLength(1);
-      expect(errors[0]).toMatchObject({ kind: "Scene onPause hook", scene: "below" });
+      expect(errors[0]).toMatchObject({
+        kind: "Scene onPause hook",
+        scene: "below",
+      });
     });
 
     it("a throwing beforeEnter hook is reported and still rejects push()", async () => {
@@ -1361,11 +1376,16 @@ describe("SceneManager", () => {
       await manager.push(scene);
       manager.autoPauseOnBlur = true;
 
-      expect(() => manager._handleVisibilityChange(true)).toThrow("blur pause failed");
+      expect(() => manager._handleVisibilityChange(true)).toThrow(
+        "blur pause failed",
+      );
 
       const errors = boundary.getCallbackErrors();
       expect(errors).toHaveLength(1);
-      expect(errors[0]).toMatchObject({ kind: "Scene onPause hook", scene: "broken" });
+      expect(errors[0]).toMatchObject({
+        kind: "Scene onPause hook",
+        scene: "broken",
+      });
     });
 
     it("a throwing onResume is reported when blur restores the active scene", async () => {
@@ -1381,7 +1401,9 @@ describe("SceneManager", () => {
       manager._handleVisibilityChange(true); // pauses cleanly — onResume is the broken hook
       expect(scene.isPaused).toBe(true);
 
-      expect(() => manager._handleVisibilityChange(false)).toThrow("blur resume failed");
+      expect(() => manager._handleVisibilityChange(false)).toThrow(
+        "blur resume failed",
+      );
 
       const errors = boundary.getCallbackErrors();
       expect(errors).toHaveLength(1);
@@ -1422,7 +1444,9 @@ describe("SceneManager", () => {
       const scene = new BrokenExit("broken");
       await manager._mountDetached(scene);
 
-      expect(() => manager._unmountDetached(scene)).toThrow("detached exit failed");
+      expect(() => manager._unmountDetached(scene)).toThrow(
+        "detached exit failed",
+      );
 
       const errors = boundary.getCallbackErrors();
       expect(errors).toHaveLength(1);

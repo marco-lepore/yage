@@ -1,6 +1,8 @@
+import type { Component } from "@yagejs/core";
 import type { DisplayContainer as Container } from "../public-types.js";
 import type { MaskHandle } from "./MaskHandle.js";
 import type { MaskFactory } from "./MaskFactory.js";
+import { attributed, boundaryFor } from "../internal/attribution.js";
 
 /**
  * Apply a mask to any pixi `Container`. Returns a {@link MaskHandle} that
@@ -13,12 +15,20 @@ import type { MaskFactory } from "./MaskFactory.js";
  *
  * Idempotent on `remove()`. The handle's `setInverse` toggles
  * pixi v8 `Container.setMask({ mask, inverse })`.
+ *
+ * Pass `owner` when a component holds the mask: a throw from the game's own
+ * draw callback is then attributed to the callback (readable via
+ * `Inspector.getErrors().callbackErrors`) instead of to whichever engine pass
+ * triggered the redraw.
  */
 export function attachMask(
   target: Container,
   factory: MaskFactory,
+  owner?: Component,
 ): MaskHandle {
-  const mask = factory();
+  const info = { kind: "Mask draw callback" };
+  const boundary = owner ? boundaryFor(owner) : undefined;
+  const mask = attributed(boundary, info, factory);
   let inverse = mask.inverse;
   let removed = false;
 
@@ -58,8 +68,9 @@ export function attachMask(
       return inverse;
     },
     redraw(): void {
-      if (removed) return;
-      mask.redraw?.();
+      if (removed || !mask.redraw) return;
+      const redraw = mask.redraw.bind(mask);
+      attributed(boundary, info, redraw);
     },
   };
 }

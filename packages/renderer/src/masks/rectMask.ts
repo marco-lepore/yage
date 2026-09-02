@@ -15,6 +15,10 @@ export interface RectMaskOptions {
  * Build a static rectangular mask. The renderer owns the underlying
  * `Graphics` node and destroys it on `remove()`.
  *
+ * `x`/`y`/`width`/`height` are in the masked object's own local space, which
+ * is world pixels on a world layer — the mask then scrolls with the camera —
+ * and virtual pixels on a screen layer, where it stays put.
+ *
  * For a mask that needs to update with the target's dimensions (e.g. a
  * layout-driven panel), use {@link graphicsMask} so you can call
  * `handle.redraw()` after each layout pass.
