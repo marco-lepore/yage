@@ -31,7 +31,7 @@ runtime.
 | `maxGraphics` | `number` | `256` | Graphics object pool size |
 | `maxHudLines` | `number` | `32` | Max HUD text lines |
 | `flags` | `Record<string, boolean>` | — | Initial flag overrides |
-| `eventLog` | `boolean` | `true` | Record bus + entity events at startup |
+| `eventLog` | `boolean` | `true` | Record bus, entity and scene events at startup |
 
 ## Built-In Debug Views
 
@@ -624,8 +624,10 @@ window.__yage__.inspector.snapshotScene("level2");
 If more than one active scene shares that name, `snapshotScene` throws instead
 of guessing — pass the id in that case.
 
-The event log records bus and entity events for `events.getLog()` and
-`events.waitFor()`. It is on by default (`DebugConfig.eventLog`); turn it off
+The event log records bus, entity and scene events for `events.getLog()` and
+`events.waitFor()`. Each entry's `source` is `"bus"`, `"entity"` (an
+`entity.emit`, with `targetId` set to the emitting entity's id) or `"scene"`
+(a `scene.emit`). It is on by default (`DebugConfig.eventLog`); turn it off
 at runtime when a probe doesn't read the log, to skip the per-event allocation
 entirely:
 

@@ -558,6 +558,57 @@ describe("Inspector", () => {
     });
   });
 
+  it("logs scene.emit as a scene event with no target", async () => {
+    const { inspector, scenes } = setup();
+    inspector.attachTimeController({
+      isFrozen: true,
+      freeze() {},
+      thaw() {},
+      stepFrames() {},
+      setDelta() {},
+      getFrame: () => 3,
+    });
+    inspector.setEventLogEnabled(true);
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    inspector.attachSceneEventObserver(scene);
+
+    const log = defineEvent<{ n: number }>("scene:log");
+    scene.emit(log, { n: 1 });
+
+    const entry = inspector.events.getLog().find((e) => e.type === "scene:log");
+    expect(entry).toEqual({
+      frame: 3,
+      source: "scene",
+      type: "scene:log",
+      payload: { n: 1 },
+    });
+    expect(inspector.snapshotScene("game").events).toContainEqual(entry);
+  });
+
+  it("waitFor matches a scene emit by source", async () => {
+    const { inspector, scenes } = setup();
+    inspector.setEventLogEnabled(true);
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    inspector.attachSceneEventObserver(scene);
+
+    const log = defineEvent("scene:wait");
+    scene.emit(log);
+
+    await expect(
+      inspector.events.waitFor("scene:wait", { source: "scene" }),
+    ).resolves.toMatchObject({ source: "scene", type: "scene:wait" });
+
+    const asEntity = inspector.events.waitFor("scene:wait", {
+      source: "entity",
+    });
+    const pending = new Promise((resolve) =>
+      setTimeout(() => resolve("pending"), 5),
+    );
+    await expect(Promise.race([asEntity, pending])).resolves.toBe("pending");
+  });
+
   it("events.setEnabled/isEnabled mirror the internal toggle", () => {
     const { inspector } = setup();
     expect(inspector.events.isEnabled()).toBe(false);

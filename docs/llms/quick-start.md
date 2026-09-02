@@ -118,7 +118,7 @@ window.__yage__.inspector.input.keyDown("ArrowRight");      // synthetic input
 window.__yage__.inspector.input.hold("ArrowRight", 30);     // press, run N frames, release
 window.__yage__.inspector.snapshotJSON();                   // stable JSON snapshot
 window.__yage__.inspector.setSeed(42);                      // pin every scene RNG (for replays)
-window.__yage__.inspector.events.getLog();                  // recorded engine + entity events
+window.__yage__.inspector.events.getLog();                  // recorded bus, entity and scene events
 await window.__yage__.inspector.events.waitFor("scene:pushed", { withinFrames: 30 });
 ```
 

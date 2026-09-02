@@ -55,6 +55,7 @@ class Entity {
 - `entity.isDestroyed` is true after `destroy()` and for entities torn down with their scene on exit. Teardown also emits `entity:destroyed` once per entity, so listeners tracking entity lifetimes are notified of every destruction, including destruction caused by scene exit.
 - `destroy()` deactivates immediately: `isActive` reads `false`, the entity leaves every query, and component `onDisable` fires in the same call. The rest of teardown — `onDestroy`, detaching from the scene — waits for the end-of-frame flush, so `isDestroyed` and component removal still happen later.
 - `entity.spawnChild(name, Class, params?)` combines `scene.spawn(...)` + `this.addChild(name, ...)`. Child is auto-added to the parent's scene. Use for sub-entities owned by a parent (enemy body + health bar, player + weapon, etc.).
+- `entity.addChild(name, child)` adopts an existing entity. A scene-less child joins the parent's scene; a child that belongs to a different scene is rejected with an error, because its events bubble to its own scene and that scene's teardown destroys it.
 
 ### Activeness
 
@@ -76,6 +77,25 @@ bullet.setActive(true); // back in play, nothing reallocated
 - A dormant entity's components and its `ProcessComponent` stop being ticked, so tweens and coroutines pause where they are and resume on reactivation.
 - Reuse resets nothing: `entity.timeScale`, animation position, process progress, entity event listeners and addon state all survive. Register listeners in `setup()`, and reset game state yourself when you bring an entity back.
 - `destroy()` also runs through this same activeness state (`isActive` reads `false` right away, `activeSelf` is untouched), so any code that checks `isActive` to decide whether an entity is "in play" sees a destroyed entity the same way it sees a dormant one.
+
+### Component subscriptions
+
+Subscriptions made through these helpers are released when the component is removed or its entity is destroyed, before `onDestroy`:
+
+```ts
+class Turret extends Component {
+  onAdd() {
+    this.listen(this.entity, DamagedEvent, ({ amount }) => {}); // any entity's token events
+    this.listenScene(WaveStartEvent, (data, entity) => {}); // scene.emit + every entity's bubbled emit
+    this.listenBus("entity:destroyed", ({ entity }) => {}); // the engine EventBus
+    this.addCleanup(() => model.off(handler)); // anything else
+  }
+}
+```
+
+- `listen(entity, token, handler)` takes any entity, not only the component's own.
+- `listenScene` and `listenBus` throw when the entity is not in a scene; call them from `onAdd()` or later.
+- `addCleanup(fn)` registers any other release. Cleanups run in registration order.
 
 ### Component enable/disable hooks
 
@@ -226,9 +246,13 @@ interface EntityHandle<out T extends Entity = Entity> {
 
 | Export                 | Purpose                                       |
 | ---------------------- | --------------------------------------------- |
-| `EventBus<E>`          | Typed pub/sub (`on`, `once`, `emit`, `clear`) |
-| `EventToken<T>`        | Typed token for entity events                 |
-| `defineEvent<T>(name)` | Create an event token                         |
+| `EventBus<E>`          | Typed pub/sub (`on`, `once`, `emit`, `clear`, `tap`)      |
+| `EventToken<T>`        | Typed token for entity and scene events                   |
+| `defineEvent<T>(name)` | Create an event token; the name must be a non-empty string |
+
+- `bus.on` returns an unsubscribe bound to that registration: the same function registered twice fires twice, and each unsubscribe removes its own entry, once.
+- `bus.tap(observer)` receives every emit before its handlers run, inside the same error boundary as a handler: a throwing observer is recorded, rethrown, and stops that emit's handlers. Tooling only (the Inspector event log uses it).
+- Entity and scene events dispatch by the token's name, not by the token object: two `defineEvent` calls with one name are one channel, and their payload types are not checked against each other. Prefix names with the owning module (`"inventory:item-added"`). In dev builds the second definition of a name logs a warning.
 
 `EngineEvents` (the typed map used by `EventBusKey`):
 
@@ -245,6 +269,8 @@ interface EntityHandle<out T extends Entity = Entity> {
 | `engine:started` / `engine:stopped`                   | `undefined`                                                                                                                                                       |
 | `screen:fullscreen`                                   | `{ active: boolean }` — emitted by `RendererPlugin` on `fullscreenchange` / `webkitfullscreenchange`                                                              |
 | `screen:orientation`                                  | `{ type: OrientationType }` — emitted by `RendererPlugin` on `screen.orientation.change` (or `orientationchange` fallback)                                        |
+
+`entity` in the `entity:*` and `component:*` payloads is the live `Entity` (`entity.tags`, `entity.get(...)` work in the handler). The `scene` fields are `{ name }`, except `scene:loading:*`, which carry the `Scene`.
 
 ### Scene Events
 
@@ -271,6 +297,8 @@ someEntity.emit(DamagedEvent, { amount: 10 }); // handler runs with entity = som
 ```
 
 `Scene.on` returns an unsubscribe function. The handler param is `(data, entity?)` regardless of which side emitted — game code should check `entity` to decide whether to read source state.
+
+Scene-level subscriptions are released when the scene exits, together with its entities, so subscribe in `onEnter` (or from a component through `listenScene`). A scene instance pushed again starts with none.
 
 `Scene.registerScoped<T>(key: ServiceKey<T>, value: T)` (public) attaches a scene-scoped service resolvable via `Component.use(key)`, and via `Scene.use(key)` / `Scene.service(key)` from the scene itself. Both are scope-aware: scene scope first, then engine. Plugins call it from `beforeEnter`; game code can call it from `onEnter` for scene-local state. Every key registered this way is auto-unregistered on scene exit (after `onExit` and plugin `afterExit` hooks), so scenes don't leak services into one another. `Scene.tryResolveScoped<T>(key)` (public) reads a scene-scoped service without engine-scope fallback, returning `undefined` when absent. Use it in systems that iterate scenes. `_registerScoped` / `_resolveScoped` are kept internal aliases — prefer the public names in new code.
 

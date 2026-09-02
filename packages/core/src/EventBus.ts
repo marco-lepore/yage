@@ -3,9 +3,9 @@ import type { ComponentClass } from "./types.js";
 import type { SceneTransitionKind } from "./SceneTransition.js";
 import type { Scene } from "./Scene.js";
 import type { ErrorBoundary } from "./ErrorBoundary.js";
+import type { Entity } from "./Entity.js";
 
-// Forward declarations for event payloads
-type EntityRef = { readonly id: number; readonly name: string };
+// Forward declaration for scene payloads
 type SceneRef = { readonly name: string };
 
 /** Base type for event map definitions. */
@@ -13,10 +13,10 @@ export type EventMap = Record<string, unknown>;
 
 /** Well-known engine events. */
 export interface EngineEvents {
-  "entity:created": { entity: EntityRef };
-  "entity:destroyed": { entity: EntityRef };
-  "component:added": { entity: EntityRef; component: Component };
-  "component:removed": { entity: EntityRef; componentClass: ComponentClass };
+  "entity:created": { entity: Entity };
+  "entity:destroyed": { entity: Entity };
+  "component:added": { entity: Entity; component: Component };
+  "component:removed": { entity: Entity; componentClass: ComponentClass };
   "scene:pushed": { scene: SceneRef };
   "scene:popped": { scene: SceneRef };
   "scene:replaced": { oldScene: SceneRef; newScene: SceneRef };
@@ -61,28 +61,42 @@ export class EventBus<E = EventMap> {
     this.errorBoundary = boundary;
   }
 
-  /** Subscribe to an event. Returns an unsubscribe function. */
+  /**
+   * Subscribe to an event. Returns an unsubscribe function bound to this
+   * registration: the same function registered twice fires twice, and each
+   * unsubscribe removes only its own entry, once.
+   */
   on<K extends keyof E>(event: K, handler: (data: E[K]) => void): () => void {
     let list = this.handlers.get(event);
     if (!list) {
       list = [];
       this.handlers.set(event, list);
     }
-    list.push(handler as (data: never) => void);
+    // One wrapper per registration: the same handler registered twice gets
+    // two distinct entries, so each unsubscribe finds its own.
+    const entry = (data: never): void => handler(data as E[K]);
+    list.push(entry);
+    // `clear()` drops the list from the map, so an unsubscribe held across it
+    // touches the detached array, never a later registration.
+    let removed = false;
     return () => {
-      const arr = this.handlers.get(event);
-      if (arr) {
-        const idx = arr.indexOf(handler as (data: never) => void);
-        if (idx !== -1) arr.splice(idx, 1);
-      }
+      if (removed) return;
+      removed = true;
+      const idx = list.indexOf(entry);
+      if (idx !== -1) list.splice(idx, 1);
     };
   }
 
   /** Subscribe to an event, auto-unsubscribe after first emission. */
   once<K extends keyof E>(event: K, handler: (data: E[K]) => void): () => void {
-    // Returns handler's result (rather than discarding it) so a rejected
-    // thenable from an async handler still reaches emit()'s wrapCallback.
+    // `fired` covers a re-entrant emit from an earlier handler: the wrapper is
+    // still in that emit's snapshot after `unsub()` ran. Returns handler's
+    // result (rather than discarding it) so a rejected thenable from an async
+    // handler still reaches emit()'s wrapCallback.
+    let fired = false;
     const unsub = this.on(event, (data) => {
+      if (fired) return;
+      fired = true;
       unsub();
       return handler(data);
     });
@@ -125,8 +139,10 @@ export class EventBus<E = EventMap> {
   }
 
   /**
-   * Observe every emitted event without affecting handler order or control
-   * flow. Used by tooling such as the Inspector event log.
+   * Observe every emitted event. Observers run before the handlers of each
+   * emit, inside the same error boundary as a handler: a throwing observer is
+   * recorded, rethrown, and stops that emit's handlers. Used by tooling such
+   * as the Inspector event log.
    */
   tap(observer: (event: keyof E, data: E[keyof E]) => void): () => void {
     this.observers.add(observer);

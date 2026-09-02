@@ -1,4 +1,4 @@
-import { Component, Entity, EventBusKey, LoadingScene } from "@yagejs/core";
+import { Component, Entity, LoadingScene } from "@yagejs/core";
 import { RendererKey } from "@yagejs/renderer";
 import { UISurface } from "./UISurface.js";
 import { UIProgressBar } from "./UIProgressBar.js";
@@ -109,8 +109,6 @@ export class LoadingSceneProgressBar extends Entity {
  * progress by subscribing to `scene:loading:progress` on the event bus.
  */
 class LoadingProgressSync extends Component {
-  private unsub?: () => void;
-
   constructor(
     private readonly bar: UIProgressBar,
     private readonly backdrop: Entity | undefined,
@@ -120,16 +118,13 @@ class LoadingProgressSync extends Component {
 
   override onAdd(): void {
     const scene = this.scene;
-    const bus = scene.context.resolve(EventBusKey);
-
-    this.unsub = bus.on("scene:loading:progress", (ev) => {
+    this.listenBus("scene:loading:progress", (ev) => {
       if (ev.scene !== scene) return;
       this.bar.update({ value: ev.ratio });
     });
   }
 
   override onDestroy(): void {
-    this.unsub?.();
     this.backdrop?.destroy();
   }
 }

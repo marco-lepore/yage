@@ -47,8 +47,8 @@ export interface DebugConfig {
   /** Whether the overlay starts enabled. Default: false */
   startEnabled?: boolean;
   /**
-   * Whether the Inspector records bus + entity events at startup. Default:
-   * true. Set false to skip the per-event allocation entirely (the EventBus
+   * Whether the Inspector records bus, entity and scene events at startup.
+   * Default: true. Set false to skip the per-event allocation entirely (the EventBus
    * tap never attaches) when nothing reads `inspector.events.getLog()` or
    * `waitFor()` — toggle back on at runtime with `inspector.events.setEnabled(true)`.
    */

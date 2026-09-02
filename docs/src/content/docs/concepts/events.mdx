@@ -37,37 +37,47 @@ The engine emits these events automatically through the global `EventBus`:
 | Event | Payload | When |
 |---|---|---|
 | `entity:created` | `{ entity }` | An entity is spawned |
-| `entity:destroyed` | `{ entity }` | An entity is destroyed (EndOfFrame) |
+| `entity:destroyed` | `{ entity }` | An entity is destroyed, on the end-of-frame flush or on scene teardown |
 | `component:added` | `{ entity, component }` | A component is added to an entity |
-| `component:removed` | `{ entity, component }` | A component is removed from an entity |
+| `component:removed` | `{ entity, componentClass }` | A component is removed from an entity |
 | `scene:pushed` | `{ scene }` | A scene is pushed onto the stack |
 | `scene:popped` | `{ scene }` | A scene is popped from the stack |
-| `scene:replaced` | `{ previous, next }` | The top scene is replaced |
-| `engine:started` | `{}` | The engine loop has started |
-| `engine:stopped` | `{}` | The engine is being destroyed |
+| `scene:replaced` | `{ oldScene, newScene }` | The top scene is replaced |
+| `scene:transition:started` | `{ kind, fromScene, toScene }` | A scene transition begins |
+| `scene:transition:ended` | `{ kind, fromScene, toScene }` | A scene transition finishes |
+| `scene:loading:progress` | `{ scene, ratio }` | A loading scene reports progress (0 to 1) |
+| `scene:loading:done` | `{ scene }` | A loading scene has finished loading |
+| `engine:started` | `undefined` | The engine loop has started |
+| `engine:stopped` | `undefined` | The engine is being destroyed |
+| `screen:fullscreen` | `{ active }` | The canvas host entered or left fullscreen |
+| `screen:orientation` | `{ type }` | The device orientation changed |
 
-Access the engine-wide bus through the DI container:
+`entity` in the `entity:*` and `component:*` payloads is the live `Entity`,
+so a listener can read its tags and components. The `scene` fields carry
+`{ name }`, except the loading events, which carry the `Scene`.
+
+From a component, subscribe with `this.listenBus(event, handler)`. The
+subscription is released when the component is removed or its entity is
+destroyed:
 
 ```typescript
-import { EventBusKey } from "@yagejs/core";
+import { Component } from "@yagejs/core";
 
 class ScoreTracker extends Component {
-  private off?: () => void;
+  score = 0;
 
   onAdd() {
-    const bus = this.use(EventBusKey);
-    this.off = bus.on("entity:destroyed", ({ entity }) => {
+    this.listenBus("entity:destroyed", ({ entity }) => {
       if (entity.tags.has("enemy")) {
         this.score += 100;
       }
     });
   }
-
-  onDestroy() {
-    this.off?.();
-  }
 }
 ```
+
+Outside a component, resolve the bus with `context.resolve(EventBusKey)` and
+keep the unsubscribe function `bus.on` returns.
 
 ## Typed EventBus
 
@@ -94,8 +104,9 @@ bus.emit("item:collected", { itemId: "gem", value: 50 });
 
 ## EventToken and defineEvent
 
-For events that cross module boundaries, use `defineEvent` to create a
-reusable, type-safe event token:
+Entity and scene events are addressed by an `EventToken`, not by a string.
+`defineEvent` creates one and pairs the event name with its payload type, so
+every `on` and `emit` site is checked against the same shape:
 
 ```typescript
 import { defineEvent } from "@yagejs/core";
@@ -104,16 +115,23 @@ import { defineEvent } from "@yagejs/core";
 export const PlayerHitEvent = defineEvent<{ damage: number }>("player:hit");
 export const WaveStartEvent = defineEvent<{ waveNumber: number }>("wave:started");
 
-// Use the token to subscribe and emit
-bus.on(PlayerHitEvent, (data) => {
+// Tokens address entity.on / entity.emit and scene.on / scene.emit
+player.on(PlayerHitEvent, (data) => {
   console.log(data.damage);
 });
+player.emit(PlayerHitEvent, { damage: 30 });
 
-bus.emit(PlayerHitEvent, { damage: 30 });
+scene.emit(WaveStartEvent, { waveNumber: 2 });
 ```
 
-Event tokens carry the event name and payload type together, eliminating
-string-typing errors across your codebase.
+The `EventBus` is keyed by string and does not take tokens:
+`bus.on(PlayerHitEvent, ...)` does not compile.
+
+Dispatch is by the token's name, not by the token object. Two `defineEvent`
+calls with the same name are one channel, and their payload types are not
+checked against each other. Prefix names with the owning module
+(`"inventory:item-added"`) to keep them distinct. In dev builds the second
+definition of a name logs a warning; an empty name throws.
 
 ## Entity-Scoped Events
 
@@ -136,15 +154,18 @@ class Health extends Component {
 
 class DamageFlash extends Component {
   onAdd() {
-    this.entity.on(DamagedEvent, ({ amount }) => {
+    this.listen(this.entity, DamagedEvent, ({ amount }) => {
       this.flash(amount > 50 ? "red" : "white");
     });
   }
 }
 ```
 
-Entity events are automatically cleaned up when the entity is destroyed — no
-manual unsubscribe needed.
+A subscription made with `this.listen` is released when the component is
+removed or its entity is destroyed. `this.listen` takes any entity, so a
+component can follow another entity's events, and that subscription is still
+released with the component. A bare `entity.on` subscription is released only
+when that entity is destroyed.
 
 ## Scene-Level Event Subscription
 
@@ -187,6 +208,11 @@ class GameScene extends Scene {
 `(data, entity?)` for every subscription — check `entity` to decide
 whether you can read source state (`entity.get(Health)`, etc.) or
 you're handling a scene-wide broadcast.
+
+Scene-level subscriptions are released when the scene exits, together with
+its entities. Subscribe in `onEnter`, as above, or from a component with
+`this.listenScene(token, handler)`, which is released with the component. A
+scene instance that is pushed again starts with no subscriptions.
 
 This is the canonical way to react to per-entity events at the scene
 level — for example, when a `Health` component on any entity emits
