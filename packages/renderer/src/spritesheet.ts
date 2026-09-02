@@ -15,9 +15,25 @@ interface GridLayout {
   count: number;
 }
 
+/**
+ * Names the public entry a grid error is attributed to, plus the sheet key
+ * when the caller resolved one.
+ */
+interface GridContext {
+  fn: string;
+  sheet?: string;
+}
+
+/**
+ * Resolve slice options into a concrete grid and validate it against the
+ * texture. Every public entry that slices a grid goes through here, so the
+ * degenerate cases fail with an authored message instead of producing an
+ * unbounded frame count or frames that read past the texture.
+ */
 function resolveGridLayout(
   base: Texture,
   options: TextureSliceOptions,
+  context: GridContext,
 ): GridLayout {
   const frameWidth = options.frameWidth;
   const frameHeight = options.frameHeight ?? frameWidth;
@@ -29,7 +45,7 @@ function resolveGridLayout(
     options.columns ??
     Math.max(1, Math.floor((base.width - startX + gapX) / (frameWidth + gapX)));
   const count = options.count ?? columns;
-  return {
+  const layout: GridLayout = {
     frameWidth,
     frameHeight,
     startX,
@@ -39,6 +55,83 @@ function resolveGridLayout(
     columns,
     count,
   };
+  validateGridLayout(base, layout, context);
+  return layout;
+}
+
+function validateGridLayout(
+  base: Texture,
+  layout: GridLayout,
+  { fn, sheet }: GridContext,
+): void {
+  const forSheet = sheet !== undefined ? ` for sheet "${sheet}"` : "";
+  for (const [name, value, min] of [
+    ["frameWidth", layout.frameWidth, 1],
+    ["frameHeight", layout.frameHeight, 1],
+    ["startX", layout.startX, 0],
+    ["startY", layout.startY, 0],
+    ["gapX", layout.gapX, 0],
+    ["gapY", layout.gapY, 0],
+    ["columns", layout.columns, 1],
+    ["count", layout.count, 1],
+  ] as const) {
+    if (!Number.isFinite(value) || value < min) {
+      throw new Error(
+        `${fn}: invalid ${name} (${value})${forSheet} — ` +
+          `expected a finite number >= ${min}.`,
+      );
+    }
+  }
+  const usedColumns = Math.min(layout.count, layout.columns);
+  const rows = Math.ceil(layout.count / layout.columns);
+  const maxX =
+    layout.startX +
+    usedColumns * layout.frameWidth +
+    (usedColumns - 1) * layout.gapX;
+  const maxY =
+    layout.startY + rows * layout.frameHeight + (rows - 1) * layout.gapY;
+  if (maxX > base.width || maxY > base.height) {
+    throw new Error(
+      `${fn}: the frame grid${forSheet} extends to ` +
+        `${maxX}×${maxY}, exceeding the ${base.width}×${base.height} texture ` +
+        `(frameWidth ${layout.frameWidth}, frameHeight ${layout.frameHeight}, ` +
+        `columns ${layout.columns}, count ${layout.count}).`,
+    );
+  }
+}
+
+function buildFrames(base: Texture, layout: GridLayout): Texture[] {
+  const frames: Texture[] = [];
+  for (let index = 0; index < layout.count; index++) {
+    const column = index % layout.columns;
+    const row = Math.floor(index / layout.columns);
+    frames.push(
+      new Texture({
+        source: base.source,
+        frame: new Rectangle(
+          layout.startX + column * (layout.frameWidth + layout.gapX),
+          layout.startY + row * (layout.frameHeight + layout.gapY),
+          layout.frameWidth,
+          layout.frameHeight,
+        ),
+      }),
+    );
+  }
+  return frames;
+}
+
+/**
+ * Slice a grid, attributing a validation failure to the public function the
+ * game actually called.
+ *
+ * @internal
+ */
+export function sliceGridNamed(
+  base: Texture,
+  options: TextureSliceOptions,
+  fn: string,
+): Texture[] {
+  return buildFrames(base, resolveGridLayout(base, options, { fn }));
 }
 
 /**
@@ -47,40 +140,15 @@ function resolveGridLayout(
  * Frame `i` is read at column `i % columns`, row `floor(i / columns)`.
  * Without `columns`, the column count is derived from the texture width;
  * without `count`, a single full row is read.
+ *
+ * Throws when a field is not a finite number at or above its minimum, or when
+ * the resulting grid extends past the texture.
  */
 export function sliceGrid(
   base: Texture,
   options: TextureSliceOptions,
 ): Texture[] {
-  const {
-    frameWidth,
-    frameHeight,
-    startX,
-    startY,
-    gapX,
-    gapY,
-    columns,
-    count,
-  } = resolveGridLayout(base, options);
-  const frames: Texture[] = [];
-
-  for (let index = 0; index < count; index++) {
-    const column = index % columns;
-    const row = Math.floor(index / columns);
-    frames.push(
-      new Texture({
-        source: base.source,
-        frame: new Rectangle(
-          startX + column * (frameWidth + gapX),
-          startY + row * (frameHeight + gapY),
-          frameWidth,
-          frameHeight,
-        ),
-      }),
-    );
-  }
-
-  return frames;
+  return sliceGridNamed(base, options, "sliceGrid");
 }
 
 /**
@@ -105,19 +173,14 @@ export function sliceSheet(
   // unregistered sheet fails loudly naming the key instead of slicing an
   // empty texture.
   const base = source instanceof Texture ? source : resolveTextureInput(source);
-  base.source.scaleMode = "nearest";
-  const count = Math.floor(base.width / frameWidth);
-  if (count === 0) {
-    throw new Error(
-      `sliceSheet: frameWidth (${frameWidth}) exceeds texture width (${base.width})`,
-    );
-  }
-  return sliceGrid(base, {
-    frameWidth,
-    ...(frameHeight !== undefined ? { frameHeight } : {}),
-    columns: count,
-    count,
-  });
+  return sliceGridNamed(
+    base,
+    {
+      frameWidth,
+      ...(frameHeight !== undefined ? { frameHeight } : {}),
+    },
+    "sliceSheet",
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -161,42 +224,11 @@ export function resolveFrames(source: FrameSource): Texture[] {
     // Resolve through the shared guard so an unloaded / unregistered sheet
     // fails loudly naming the key instead of reading an undefined texture.
     const base = resolveTextureInput(sheet);
-    base.source.scaleMode = "nearest";
-    const layout = resolveGridLayout(base, options);
-    for (const [name, value, min] of [
-      ["frameWidth", layout.frameWidth, 1],
-      ["frameHeight", layout.frameHeight, 1],
-      ["startX", layout.startX, 0],
-      ["startY", layout.startY, 0],
-      ["gapX", layout.gapX, 0],
-      ["gapY", layout.gapY, 0],
-      ["columns", layout.columns, 1],
-      ["count", layout.count, 1],
-    ] as const) {
-      if (!Number.isFinite(value) || value < min) {
-        throw new Error(
-          `resolveFrames: invalid ${name} (${value}) for sheet "${sheet}" — ` +
-            `expected a finite number >= ${min}.`,
-        );
-      }
-    }
-    const usedColumns = Math.min(layout.count, layout.columns);
-    const rows = Math.ceil(layout.count / layout.columns);
-    const maxX =
-      layout.startX +
-      usedColumns * layout.frameWidth +
-      (usedColumns - 1) * layout.gapX;
-    const maxY =
-      layout.startY + rows * layout.frameHeight + (rows - 1) * layout.gapY;
-    if (maxX > base.width || maxY > base.height) {
-      throw new Error(
-        `resolveFrames: the frame grid for sheet "${sheet}" extends to ` +
-          `${maxX}×${maxY}, exceeding the ${base.width}×${base.height} texture ` +
-          `(frameWidth ${layout.frameWidth}, frameHeight ${layout.frameHeight}, ` +
-          `columns ${layout.columns}, count ${layout.count}).`,
-      );
-    }
-    return sliceGrid(base, options);
+    const layout = resolveGridLayout(base, options, {
+      fn: "resolveFrames",
+      sheet,
+    });
+    return buildFrames(base, layout);
   }
   const spritesheet = Assets.get<Spritesheet>(source.atlas);
   if (!spritesheet) {
@@ -208,6 +240,11 @@ export function resolveFrames(source: FrameSource): Texture[] {
   if (!textures) {
     throw new Error(
       `resolveFrames: animation "${source.animation}" not found in atlas "${source.atlas}".`,
+    );
+  }
+  if (textures.length === 0) {
+    throw new Error(
+      `resolveFrames: animation "${source.animation}" in atlas "${source.atlas}" has no frames.`,
     );
   }
   return textures;

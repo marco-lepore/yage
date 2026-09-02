@@ -119,6 +119,8 @@ async function main(): Promise<void> {
       width: WIDTH,
       height: HEIGHT,
       backgroundColor: 0x0f172a,
+      // The boxer sheets are pixel art — keep frames crisp.
+      pixelArtPreset: true,
       container,
     }),
   );

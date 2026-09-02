@@ -9,7 +9,7 @@ import {
   TextStyle as PixiTextStyle,
 } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
-import { sliceGrid } from "./spritesheet.js";
+import { sliceGridNamed } from "./spritesheet.js";
 import {
   emphasisKey,
   registerBitmapFontVariant,
@@ -558,13 +558,15 @@ function bakeBitmapFontFamily(
   const baseFont = bakeBitmapFont({ name, ...shared });
   const installed: string[] = [name];
 
+  // Re-installing a font name replaces that family, so the previous install's
+  // emphasis entries go whether or not this install supplies variants (the
+  // registry is process-global and a stale bold would otherwise keep
+  // resolving).
+  unregisterBitmapFontVariants(name);
+
   // The base atlas registers itself as the regular variant so a `BitmapText`
   // with an explicit `fontWeight: "normal"` resolves back to it.
   if (opts.variants && opts.variants.length > 0) {
-    // Re-installing the same font name with a smaller / different variant set
-    // would otherwise inherit stale emphasis entries from the previous install
-    // (the registry is process-global), so wipe this name's slate first.
-    unregisterBitmapFontVariants(name);
     const baseKey = emphasisKey({});
     registerBitmapFontVariant(name, {}, name);
 
@@ -859,5 +861,9 @@ export function sliceTextureFrames(
   input: TextureInput,
   options: TextureSliceOptions,
 ): TextureResource[] {
-  return sliceGrid(resolveTextureInput(input), options);
+  return sliceGridNamed(
+    resolveTextureInput(input),
+    options,
+    "sliceTextureFrames",
+  );
 }

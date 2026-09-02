@@ -120,7 +120,7 @@ vi.mock("pixi.js", () => {
   };
 });
 
-import { Transform } from "@yagejs/core";
+import { ErrorBoundaryKey, Transform } from "@yagejs/core";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 import { AnimationController } from "./AnimationController.js";
 import type { AnimationDef } from "./AnimationController.js";
@@ -148,7 +148,7 @@ function testAnims(): Record<TestAnim, AnimationDef> {
 type MockSprite = InstanceType<typeof mocks.MockAnimatedSprite>;
 
 function setup(anims?: Record<TestAnim, AnimationDef>) {
-  const { scene } = createRendererTestContext();
+  const { scene, context } = createRendererTestContext();
   const entity = spawnEntityInScene(scene);
   entity.add(new Transform());
   const spriteComp = entity.add(
@@ -160,7 +160,7 @@ function setup(anims?: Record<TestAnim, AnimationDef>) {
     new AnimationController<TestAnim>(anims ?? testAnims()),
   );
   const sprite = spriteComp.animatedSprite as unknown as MockSprite;
-  return { entity, ctrl, sprite, spriteComp };
+  return { entity, scene, context, ctrl, sprite, spriteComp };
 }
 
 describe("AnimationController", () => {
@@ -473,5 +473,171 @@ describe("AnimationController", () => {
     ctrl.update!(16);
     expect(ctrl.locked).toBe(false);
     expect(ctrl.current).toBe("idle");
+  });
+
+  it("a second one-shot cancels the first instead of dropping it silently", () => {
+    const onComplete = vi.fn();
+    const onCancel = vi.fn();
+    const { ctrl } = setup();
+    ctrl.playOneShot("shoot", { duration: 200, onComplete, onCancel });
+    ctrl.playOneShot("walk", { duration: 100 });
+    expect(onCancel).toHaveBeenCalledOnce();
+    ctrl.update!(300);
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("forcePlay() and unlock() cancel a live one-shot; unlock() while idle does not", () => {
+    const forced = vi.fn();
+    const { ctrl } = setup();
+    ctrl.playOneShot("shoot", { duration: 200, onCancel: forced });
+    ctrl.forcePlay("idle");
+    expect(forced).toHaveBeenCalledOnce();
+
+    const released = vi.fn();
+    ctrl.playOneShot("shoot", { duration: 200, onCancel: released });
+    ctrl.unlock();
+    expect(released).toHaveBeenCalledOnce();
+
+    // Nothing pending — a second unlock notifies nobody.
+    ctrl.unlock();
+    expect(released).toHaveBeenCalledOnce();
+  });
+
+  it("natural completion fires onComplete and not onCancel", () => {
+    const onComplete = vi.fn();
+    const onCancel = vi.fn();
+    const { ctrl } = setup();
+    ctrl.playOneShot("shoot", { duration: 100, onComplete, onCancel });
+    ctrl.update!(101);
+    expect(onComplete).toHaveBeenCalledOnce();
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("re-playing the locked animation fires neither callback", () => {
+    const onComplete = vi.fn();
+    const onCancel = vi.fn();
+    const { ctrl } = setup();
+    ctrl.playOneShot("shoot", { duration: 200, onComplete, onCancel });
+    ctrl.playOneShot("shoot", { duration: 200 });
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("a one-shot started from inside onCancel survives", () => {
+    const { ctrl } = setup();
+    ctrl.playOneShot("shoot", {
+      duration: 200,
+      onCancel: () => ctrl.playOneShot("idle", { duration: 500 }),
+    });
+    ctrl.playOneShot("walk", { duration: 100 });
+    expect(ctrl.current).toBe("idle");
+    expect(ctrl.locked).toBe(true);
+  });
+
+  it("destroying the entity cancels a live one-shot", () => {
+    const onCancel = vi.fn();
+    const { ctrl, entity, scene } = setup();
+    ctrl.playOneShot("shoot", { duration: 200, onCancel });
+    entity.destroy();
+    scene._flushDestroyQueue();
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it("an unknown animation name throws naming the entry, the name and the defined set", () => {
+    const { ctrl } = setup();
+    const unknown = "jump" as TestAnim;
+    for (const [method, call] of [
+      ["play", () => ctrl.play(unknown)],
+      ["playOneShot", () => ctrl.playOneShot(unknown)],
+      ["forcePlay", () => ctrl.forcePlay(unknown)],
+      ["calcDuration", () => ctrl.calcDuration(unknown)],
+    ] as const) {
+      expect(call).toThrow(
+        new RegExp(
+          `AnimationController.${method}: unknown animation "jump", expected one of idle, walk, shoot.`,
+        ),
+      );
+      expect(ctrl.current).toBe("idle");
+      expect(ctrl.locked).toBe(false);
+    }
+  });
+
+  it("a known name still plays after an unknown-name throw", () => {
+    const { ctrl } = setup();
+    expect(() => ctrl.play("jump" as TestAnim)).toThrow();
+    ctrl.play("walk");
+    expect(ctrl.current).toBe("walk");
+  });
+
+  it("has() reports which names are defined", () => {
+    const { ctrl } = setup();
+    expect(ctrl.has("walk")).toBe(true);
+    expect(ctrl.has("jump")).toBe(false);
+    expect(ctrl.has("toString")).toBe(false);
+  });
+
+  it("playOneShot() starts at startFrame and locks for the remaining frames", () => {
+    const { ctrl, sprite } = setup();
+    ctrl.playOneShot("shoot", { startFrame: 1 });
+    expect(sprite.currentFrame).toBe(1);
+
+    const remaining = ((3 - 1) * (1 / 60)) / 0.4;
+    ctrl.update!(remaining - 0.001);
+    expect(ctrl.locked).toBe(true);
+    ctrl.update!(0.002);
+    expect(ctrl.locked).toBe(false);
+  });
+
+  it("playOneShot() rejects a startFrame outside the animation", () => {
+    const { ctrl } = setup();
+    expect(() => ctrl.playOneShot("shoot", { startFrame: 3 })).toThrow(
+      /startFrame 3 is out of range \(0-2\)/,
+    );
+    expect(() => ctrl.playOneShot("shoot", { startFrame: 1.5 })).toThrow(
+      /startFrame must be an integer, got 1.5/,
+    );
+    expect(ctrl.locked).toBe(false);
+  });
+
+  it("a per-shot speed scales playback and the automatic lock, and does not leak", () => {
+    const { ctrl, sprite } = setup();
+    ctrl.playOneShot("shoot", { speed: 2 });
+    expect(sprite.animationSpeed).toBe(0.4 * 2);
+
+    const scaled = (3 * (1 / 60)) / (0.4 * 2);
+    ctrl.update!(scaled + 0.001);
+    expect(ctrl.locked).toBe(false);
+
+    ctrl.play("walk");
+    expect(sprite.animationSpeed).toBe(0.2);
+  });
+
+  it("playOneShot() rejects a per-shot speed that is not positive and finite", () => {
+    const { ctrl } = setup();
+    for (const speed of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => ctrl.playOneShot("shoot", { speed })).toThrow(
+        /speed must be a finite number greater than 0/,
+      );
+    }
+    expect(ctrl.locked).toBe(false);
+  });
+
+  it("a throwing onCancel is attributed to the callback and rethrown", () => {
+    const { ctrl, context } = setup();
+    const boundary = context.resolve(ErrorBoundaryKey);
+    boundary.clearCallbackErrors();
+    ctrl.playOneShot("shoot", {
+      duration: 200,
+      onCancel: () => {
+        throw new Error("cancel handler blew up");
+      },
+    });
+    expect(() => ctrl.unlock()).toThrow(/cancel handler blew up/);
+    expect(boundary.getCallbackErrors()).toEqual([
+      expect.objectContaining({
+        kind: "Animation onCancel",
+        error: "cancel handler blew up",
+      }),
+    ]);
   });
 });

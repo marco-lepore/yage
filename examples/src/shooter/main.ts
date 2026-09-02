@@ -31,7 +31,8 @@ async function main() {
     width: WIDTH,
     height: HEIGHT,
     backgroundColor: 0x0f172a,
-    pixi: { roundPixels: true },
+    // Pixel art: nearest sampling plus rounded positions.
+    pixelArtPreset: true,
     container: gameContainer,
   });
   engine.use(renderer);

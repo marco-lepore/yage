@@ -97,7 +97,11 @@ export type {
 export { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 export type { AnimatedSpriteComponentOptions } from "./AnimatedSpriteComponent.js";
 export { AnimationController } from "./AnimationController.js";
-export type { AnimationDef } from "./AnimationController.js";
+export type {
+  AnimationDef,
+  AnimationOneShotOptions,
+  AnimationTimingOptions,
+} from "./AnimationController.js";
 export { LayeredAnimationController } from "./LayeredAnimationController.js";
 export type { LayeredAnimationControllerOptions } from "./LayeredAnimationController.js";
 

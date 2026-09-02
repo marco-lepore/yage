@@ -121,9 +121,33 @@ Switch animations at runtime:
 ```typescript
 const anim = entity.get(AnimationController);
 anim.play("run");
-anim.playOneShot("jump", { onComplete: () => anim.play("idle") });
+let inputLocked = true;
+anim.playOneShot("jump", {
+  onComplete: () => {
+    inputLocked = false;
+    anim.play("idle");
+  },
+  onCancel: () => {
+    inputLocked = false; // something else ended the jump
+  },
+});
 anim.speed = 0.5; // updates the animation already playing
 ```
+
+Exactly one of `onComplete` and `onCancel` runs per one-shot. `onComplete`
+fires when the lock plays out; `onCancel` fires when another one-shot,
+`forcePlay()`, `unlock()` or destroying the component ends it first. Give the
+game a way to release whatever the one-shot was holding — an input lock, a
+hitbox — instead of leaving it stuck when the animation is interrupted.
+
+Keep the cancel body to that release, and do not play another animation from
+it. The call that interrupted the one-shot has already chosen what plays next,
+so a `play()` inside `onCancel` overwrites it; and a cancel caused by
+destroying the entity runs after the sprite has been torn down.
+
+Playing a name the controller does not define throws, naming the method, the
+name and the defined set. `anim.has(name)` reports whether a name is defined,
+for animation names that come from data.
 
 Changing `AnimationController.speed` updates the current sprite immediately.
 An automatically timed one-shot keeps the same playback progress and adjusts
@@ -197,10 +221,51 @@ class HeroController extends Component {
 Annotate the field once; the cast is required because the type parameter is
 type-only and `sibling()` can only narrow by the runtime class.
 
+### Start partway in, or at a different speed
+
+`playOneShot(name, { startFrame, speed })` plays part of a clip, or plays it
+faster or slower than its definition, and derives the lock from the frames
+that actually play:
+
+```typescript
+// The last 8 frames of a 20-frame wind-up, at double speed.
+anim.playOneShot("attack", { startFrame: 12, speed: 2 });
+```
+
+`startFrame` is an integer within the animation; `speed` is finite and greater
+than 0, and multiplies `controller.speed` for this one-shot only — the next
+`play()` runs at the definition's own speed. The automatic lock duration is
+`((frames - startFrame) / 60) / (definition speed × controller speed ×
+one-shot speed)`, so the lock and the visible clip always end together.
+
 When `playOneShot()` calculates its own lock duration, the product of the
-animation definition's `speed` and `controller.speed` must be positive, and
-the calculation must produce a finite duration. Pass an explicit `duration`
-when you intentionally pause or reverse the animation.
+animation definition's `speed`, `controller.speed` and the one-shot `speed`
+must be positive, and the calculation must produce a finite duration. Pass an
+explicit `duration` when you intentionally pause or reverse the animation.
+
+### React to frame changes
+
+`onFrameChange(listener)` on `AnimatedSpriteComponent` calls back with each
+new frame index and returns an unsubscribe function. Use it for footstep
+sounds, frame-synced hitboxes, or an anchor that tracks the current frame:
+
+```typescript
+const sprite = entity.get(AnimatedSpriteComponent);
+
+this.addCleanup(
+  sprite.onFrameChange((frame) => {
+    if (frame === 4) playFootstep();
+  }),
+);
+```
+
+Any number of listeners can subscribe. A listener also sees the frame reset an
+`AnimationController` switch performs, so it can react to the first frame of a
+new animation.
+
+A `play({ onComplete })` owns its callback: a later `play()` without one
+clears it, and an `AnimationController` animation switch clears it too, so a
+completion callback never fires for an animation its author never saw.
 
 ### Layered characters (head + body + outfit)
 
@@ -260,7 +325,15 @@ speed changes at the current playback progress. The wrapper passes
 first controller completes. Set `layered.speed` to apply the same runtime
 multiplier to every layer. While the wrapper is attached, setting `speed` on
 any participating controller also updates the group. All layers unlock
-together, and `onComplete` runs once.
+together, and exactly one of `onComplete` and `onCancel` runs — the wrapper
+owns that signal, so the individual layers never receive an `onCancel`.
+
+Every layer must define every name played through the wrapper. `play()`,
+`playOneShot()` and `forcePlay()` throw naming the layer that is missing the
+animation, before any layer switches, so the layers can never end up on
+different animations. Automatically timed one-shots are checked the same way:
+layers can define the same name with different frame counts, so a `startFrame`
+one layer would reject throws before any layer switches.
 
 #### Manual workaround (when you don't want a wrapper)
 
@@ -293,8 +366,9 @@ playOneShotLayered([bodyAnim, headAnim, outfitAnim], "attack", () => {
 });
 ```
 
-`AnimationController.calcDuration(name)` exposes the same validated calculation
-that automatic one-shots use.
+`AnimationController.calcDuration(name, options?)` exposes the same validated
+calculation that automatic one-shots use, and takes the same `startFrame` and
+`speed`.
 
 ## Asset Factories
 
@@ -315,6 +389,16 @@ const asset = renderAsset("assets/tileset.png");
 
 These return handles that are resolved during scene loading, so textures are
 available by the time `setup()` runs.
+
+Sheet slicing — `sliceGrid`, `sliceSheet`, `sliceTextureFrames`, and a
+`{ sheet, frameWidth }` animation source — validates its options before it
+cuts anything: every field must be a finite number at or above its minimum,
+and the grid must fit inside the texture. A failure throws naming the function
+and the offending field instead of producing frames that read past the image.
+
+Slicing leaves texture sampling alone. For crisp pixel art, turn on
+`pixelArtPreset` in the renderer config, which switches every texture to
+nearest-neighbour sampling and rounds sprite positions.
 
 ## Runtime-generated textures
 

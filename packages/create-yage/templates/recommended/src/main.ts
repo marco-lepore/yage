@@ -14,6 +14,9 @@ async function main(): Promise<void> {
       width: 800,
       height: 600,
       backgroundColor: 0x0f172a,
+      // Crisp sprites: nearest sampling plus rounded positions. Drop this for
+      // smooth-art games.
+      pixelArtPreset: true,
       container: document.getElementById("game")!,
     }),
   );

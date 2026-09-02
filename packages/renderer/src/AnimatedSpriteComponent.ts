@@ -3,6 +3,7 @@ import { AnimatedSprite, Ticker } from "pixi.js";
 import type { DisplayAnimatedSprite } from "./public-types.js";
 import { resolveFrames } from "./spritesheet.js";
 import type { FrameSource } from "./spritesheet.js";
+import { runAttributed } from "./internal/attribution.js";
 import {
   VisualComponent,
   type VisualComponentOptions,
@@ -25,6 +26,8 @@ export interface AnimatedSpriteComponentOptions extends VisualComponentOptions {
 export class AnimatedSpriteComponent extends VisualComponent {
   readonly animatedSprite: DisplayAnimatedSprite;
 
+  private readonly _frameListeners: ((frame: number) => void)[] = [];
+
   constructor(options: AnimatedSpriteComponentOptions) {
     super(options.layer);
     this.animatedSprite = new AnimatedSprite(
@@ -43,7 +46,13 @@ export class AnimatedSpriteComponent extends VisualComponent {
     return this.animatedSprite;
   }
 
-  /** Resumes from the current frame; `fromStart: true` restarts at frame 0. */
+  /**
+   * Resumes from the current frame; `fromStart: true` restarts at frame 0.
+   *
+   * `speed` and `loop` are sticky — the next play keeps whatever this one set.
+   * `onComplete` is not: a play owns its completion callback, so a play
+   * without one clears the callback the previous play installed.
+   */
   play(options?: {
     speed?: number;
     loop?: boolean;
@@ -56,14 +65,45 @@ export class AnimatedSpriteComponent extends VisualComponent {
     if (options?.loop !== undefined) {
       this.animatedSprite.loop = options.loop;
     }
-    if (options?.onComplete) {
-      this.animatedSprite.onComplete = options.onComplete;
+    const onComplete = options?.onComplete;
+    if (onComplete) {
+      this.animatedSprite.onComplete = () =>
+        runAttributed(this, "Animation onComplete", onComplete);
+    } else {
+      delete this.animatedSprite.onComplete;
     }
     if (options?.fromStart) {
       this.animatedSprite.gotoAndPlay(0);
     } else {
       this.animatedSprite.play();
     }
+  }
+
+  /**
+   * Subscribe to frame changes on the underlying sprite. Returns an
+   * unsubscribe function, so `this.addCleanup(sprite.onFrameChange(fn))`
+   * drops the listener with the subscribing component.
+   *
+   * Pixi delivers a frame change on `play`, on a frame advance, and on the
+   * frame reset an animation switch performs, so a listener sees controller
+   * switches too. Assigning `animatedSprite.onFrameChange` directly replaces
+   * the dispatcher this installs and silences every subscriber.
+   */
+  onFrameChange(listener: (frame: number) => void): () => void {
+    if (this._frameListeners.length === 0) {
+      this.animatedSprite.onFrameChange = (frame: number) => {
+        // Copy: a listener that unsubscribes itself mid-dispatch would
+        // otherwise shift the next one past the iterator.
+        for (const l of [...this._frameListeners]) {
+          runAttributed(this, "Animation frame listener", () => l(frame));
+        }
+      };
+    }
+    this._frameListeners.push(listener);
+    return () => {
+      const idx = this._frameListeners.indexOf(listener);
+      if (idx !== -1) this._frameListeners.splice(idx, 1);
+    };
   }
 
   /** Stop the animation. */

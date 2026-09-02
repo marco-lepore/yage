@@ -98,6 +98,7 @@ import {
   loadWebFont,
   registerTexture,
   resolveTextureInput,
+  sliceTextureFrames,
   uninstallBitmapFont,
   unloadWebFont,
   unregisterTexture,
@@ -484,6 +485,25 @@ describe("installBitmapFont() variants", () => {
       "Body",
     );
   });
+
+  it("re-installing with no variants at all clears the previous emphasis atlases", async () => {
+    await installBitmapFont("Body.ttf", {
+      name: "Body",
+      variants: [{ fontWeight: "bold" }],
+    });
+    expect(resolveBitmapFontVariant("Body", { fontWeight: "bold" })).toBe(
+      "Body bold",
+    );
+
+    await installBitmapFont("Body.ttf", { name: "Body" });
+
+    // Nothing registered means "use the base font name", which is the state a
+    // first install with no variants leaves behind — the orphaned "Body bold"
+    // atlas must not keep resolving.
+    expect(
+      resolveBitmapFontVariant("Body", { fontWeight: "bold" }),
+    ).toBeUndefined();
+  });
 });
 
 describe("bitmap-font teardown (ref-counted)", () => {
@@ -664,5 +684,12 @@ describe("registerTexture() / unregisterTexture()", () => {
     expect(() =>
       resolveFrames({ sheet: "gone-strip", frameWidth: 32 }),
     ).toThrowError(/gone-strip/);
+  });
+
+  it("sliceTextureFrames rejects a grid larger than the texture, naming itself", () => {
+    registerTexture("run-strip", makeTexture(96, 32));
+    expect(() =>
+      sliceTextureFrames("run-strip", { frameWidth: 200 }),
+    ).toThrowError(/^sliceTextureFrames: the frame grid extends to/);
   });
 });
