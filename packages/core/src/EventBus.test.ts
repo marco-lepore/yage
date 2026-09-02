@@ -132,6 +132,50 @@ describe("EventBus", () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it("an unsubscribe removes only its own registration, once", () => {
+    const bus = new EventBus<TestEvents>();
+    const handler = vi.fn();
+    const unsubFirst = bus.on("greet", handler);
+    bus.on("greet", handler);
+
+    unsubFirst();
+    unsubFirst();
+    bus.emit("greet", { name: "test" });
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("an unsubscribe held across clear(event) does not remove a later registration", () => {
+    const bus = new EventBus<TestEvents>();
+    const handler = vi.fn();
+    const stale = bus.on("greet", handler);
+    bus.clear("greet");
+    bus.on("greet", handler);
+
+    stale();
+    bus.emit("greet", { name: "test" });
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("once() fires once when an earlier handler re-emits the same event", () => {
+    const bus = new EventBus<TestEvents>();
+    const order: string[] = [];
+    let reemitted = false;
+    bus.once("greet", () => {
+      order.push("A");
+      if (!reemitted) {
+        reemitted = true;
+        bus.emit("greet", { name: "again" });
+      }
+    });
+    bus.once("greet", () => order.push("B"));
+
+    bus.emit("greet", { name: "first" });
+
+    expect(order).toEqual(["A", "B"]);
+  });
+
   describe("with an error boundary wired", () => {
     function createWiredBus() {
       const logger = new Logger({ level: LogLevel.Debug });

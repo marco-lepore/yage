@@ -249,8 +249,8 @@ export abstract class Scene {
     string,
     Set<(data: never, entity: Entity) => void>
   >;
-  private _entityEventObserver?:
-    | ((eventName: string, data: unknown, entity: Entity) => void)
+  private _tokenEventObserver?:
+    | ((eventName: string, data: unknown, entity: Entity | undefined) => void)
     | undefined;
   private _scopedServices?: Map<string, unknown>;
   private _identityIndex?: Map<string, Entity>;
@@ -687,6 +687,8 @@ export abstract class Scene {
         }
       }
     }
+
+    this._observeTokenEvent(token.name, data, undefined);
   }
 
   /**
@@ -714,12 +716,31 @@ export abstract class Scene {
   }
 
   /**
-   * Observe entity-scoped event emissions after they dispatch locally and
-   * bubble to the scene. Tooling only; game code should keep using `on()`.
+   * Observe a token event after its handlers ran: an entity emit after it
+   * dispatched locally and bubbled here (`entity` is the source), or a
+   * `scene.emit` (`entity` is `undefined`). Tooling only; game code should
+   * keep using `on()`. The observer is a callback dispatched outside any
+   * wrapped tick, so a throw is attributed here.
    * @internal
    */
-  _observeEntityEvent(eventName: string, data: unknown, entity: Entity): void {
-    this._entityEventObserver?.(eventName, data, entity);
+  _observeTokenEvent(
+    eventName: string,
+    data: unknown,
+    entity: Entity | undefined,
+  ): void {
+    const observer = this._tokenEventObserver;
+    if (!observer) return;
+    const boundary = this._context?.tryResolve(ErrorBoundaryKey);
+    if (boundary) {
+      boundary.wrapCallback(() => observer(eventName, data, entity), {
+        kind: "Scene event observer",
+        scene: this.name,
+        event: eventName,
+        ...(entity ? { entity: entity.name } : {}),
+      });
+    } else {
+      observer(eventName, data, entity);
+    }
   }
 
   // ---- Lifecycle hooks (override in subclasses) ----
@@ -773,13 +794,18 @@ export abstract class Scene {
   }
 
   /**
-   * Install or clear a tooling-only observer for bubbled entity events.
+   * Install or clear a tooling-only observer for token events — bubbled
+   * entity emits and `scene.emit` alike.
    * @internal
    */
-  _setEntityEventObserver(
-    observer?: (eventName: string, data: unknown, entity: Entity) => void,
+  _setTokenEventObserver(
+    observer?: (
+      eventName: string,
+      data: unknown,
+      entity: Entity | undefined,
+    ) => void,
   ): void {
-    this._entityEventObserver = observer;
+    this._tokenEventObserver = observer;
   }
 
   /**

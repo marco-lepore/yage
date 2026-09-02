@@ -16,7 +16,7 @@ engine.use(
     maxHudLines: 32,
     flags: { "walls.show-walls": true }, // format: "contributorName.flagName"
     deterministicSeed: 0x00c0ffee, // optional: pin every scene RNG to this seed
-    eventLog: true, // record bus + entity events (default true)
+    eventLog: true, // record bus, entity and scene events (default true)
   }),
 );
 ```
@@ -83,7 +83,7 @@ inspector.setSeed(seed); // reseed every scene RNG
 inspector.input.hold("ArrowRight", 30); // press, step N frames, release (sync)
 inspector.input.tap("Space", 1); // sync; steps through time.step()
 inspector.input.fireAction("jump", 1); // sync; one-frame pulse per frame
-inspector.events.getLog(); // EventLogEntry[] (bus + entity events)
+inspector.events.getLog(); // EventLogEntry[]; source: "bus" | "entity" (targetId = emitter id) | "scene"
 inspector.events.setCapacity(1_000); // ring buffer size (default 500)
 inspector.events.setEnabled(false); // stop recording (zero per-event allocation)
 inspector.events.isEnabled(); // current on/off state

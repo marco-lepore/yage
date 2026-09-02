@@ -1,10 +1,11 @@
 import type { EngineContext, ServiceKey } from "./EngineContext.js";
 import type { Entity } from "./Entity.js";
+import type { EngineEvents } from "./EventBus.js";
 import type { EventToken } from "./EventToken.js";
 import type { Logger } from "./Logger.js";
 import type { Scene } from "./Scene.js";
 import type { ComponentClass } from "./types.js";
-import { LoggerKey, ErrorBoundaryKey } from "./EngineContext.js";
+import { LoggerKey, ErrorBoundaryKey, EventBusKey } from "./EngineContext.js";
 
 /**
  * Prototype of the lazy `service()` / `sibling()` proxy targets. Anything but
@@ -242,7 +243,24 @@ export abstract class Component {
     this.addCleanup(unsub);
   }
 
-  /** Register a cleanup function to run when this component is removed or destroyed. */
+  /**
+   * Subscribe to an engine `EventBus` event, auto-unsubscribe on removal.
+   * Throws when the entity is not in a scene, like `listenScene`.
+   */
+  protected listenBus<K extends keyof EngineEvents>(
+    event: K,
+    handler: (data: EngineEvents[K]) => void,
+  ): void {
+    const unsub = this.use(EventBusKey).on(event, handler);
+    this.addCleanup(unsub);
+  }
+
+  /**
+   * Register a cleanup function to run when this component is removed or
+   * destroyed, before `onDestroy`. Use it for what `listen`, `listenScene`
+   * and `listenBus` do not cover, such as an unsubscribe from a custom
+   * emitter.
+   */
   protected addCleanup(fn: () => void): void {
     this._cleanups ??= [];
     this._cleanups.push(fn);

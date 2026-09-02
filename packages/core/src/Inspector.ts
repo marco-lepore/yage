@@ -275,7 +275,11 @@ export interface PhysicsSnapshot {
 
 export interface EventLogEntry {
   frame: number;
-  source: "bus" | "entity";
+  /**
+   * `"bus"` for an `EventBus` emit, `"entity"` for an `entity.emit` (with
+   * `targetId`), `"scene"` for a `scene.emit` (no `targetId`).
+   */
+  source: "bus" | "entity" | "scene";
   type: string;
   targetId?: string;
   /**
@@ -514,7 +518,7 @@ interface LoggedEvent {
 
 interface EventWaiter {
   pattern: string | RegExp;
-  source: "bus" | "entity" | undefined;
+  source: EventLogEntry["source"] | undefined;
   withinFrames: number | undefined;
   deadlineFrame: number | undefined;
   resolve: (entry: EventLogEntry) => void;
@@ -562,13 +566,6 @@ export class Inspector {
     data: EngineEvents[keyof EngineEvents],
   ): void => {
     this.recordBusEvent(String(event), data);
-  };
-  private readonly sceneEventObserver = (
-    eventName: string,
-    data: unknown,
-    entity: Entity,
-  ): void => {
-    this.recordEntityEvent(eventName, data, entity);
   };
 
   readonly time = {
@@ -770,7 +767,7 @@ export class Inspector {
       pattern: string | RegExp,
       options?: {
         withinFrames?: number;
-        source?: "bus" | "entity";
+        source?: EventLogEntry["source"];
       },
     ): Promise<EventLogEntry> => {
       const existing = this.findMatchingEvent(pattern, options?.source);
@@ -1317,30 +1314,40 @@ export class Inspector {
     }
   }
 
-  /** @internal Install entity-event observation for one scene. No-op if disabled. */
+  /** @internal Install token-event observation for one scene. No-op if disabled. */
   attachSceneEventObserver(scene: Scene): void {
     if (!this.eventLogEnabled) return;
-    scene._setEntityEventObserver(this.sceneEventObserver);
+    scene._setTokenEventObserver((eventName, data, entity) => {
+      this.recordTokenEvent(scene, eventName, data, entity);
+    });
   }
 
-  /** @internal Clear entity-event observation for one scene. */
+  /** @internal Clear token-event observation for one scene. */
   detachSceneEventObserver(scene: Scene): void {
-    scene._setEntityEventObserver(undefined);
+    scene._setTokenEventObserver(undefined);
   }
 
-  /** @internal Scene hooks forward entity events through this method. */
-  recordEntityEvent(eventName: string, data: unknown, entity: Entity): void {
+  /**
+   * @internal Scene observers forward token events through this method:
+   * `entity` is the emitting entity for a bubbled `entity.emit`, `undefined`
+   * for a `scene.emit`.
+   */
+  recordTokenEvent(
+    scene: Scene,
+    eventName: string,
+    data: unknown,
+    entity: Entity | undefined,
+  ): void {
     if (!this.eventLogEnabled) return;
-    const scene = entity.tryScene;
     this.appendEvent(
       {
         frame: this.time.getFrame(),
-        source: "entity",
+        source: entity ? "entity" : "scene",
         type: eventName,
-        targetId: String(entity.id),
+        ...(entity ? { targetId: String(entity.id) } : {}),
         payload: serializeEventPayload(data),
       },
-      scene ? this.getSceneId(scene) : undefined,
+      this.getSceneId(scene),
     );
   }
 
@@ -1349,7 +1356,7 @@ export class Inspector {
     this.detachBusTap?.();
     this.detachBusTap = null;
     for (const scene of this.engine.scenes.all) {
-      scene._setEntityEventObserver(undefined);
+      scene._setTokenEventObserver(undefined);
     }
     this.extensions.clear();
     this.facetContributors.clear();
@@ -1443,7 +1450,7 @@ export class Inspector {
 
   private findMatchingEvent(
     pattern: string | RegExp,
-    source: "bus" | "entity" | undefined,
+    source: EventLogEntry["source"] | undefined,
   ): EventLogEntry | undefined {
     for (const { entry } of this.iterateLog()) {
       if (this.eventMatches(entry, pattern, source)) {
@@ -1456,7 +1463,7 @@ export class Inspector {
   private eventMatches(
     entry: EventLogEntry,
     pattern: string | RegExp,
-    source: "bus" | "entity" | undefined,
+    source: EventLogEntry["source"] | undefined,
   ): boolean {
     if (source && entry.source !== source) return false;
     return typeof pattern === "string"
