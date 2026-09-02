@@ -1,25 +1,26 @@
 /**
- * Dev-mode predicate. Returns `true` unless the bundler/runtime has marked
- * the build as production (`process.env.NODE_ENV === "production"`).
+ * Dev-mode predicate. Returns `true` unless `process.env.NODE_ENV` is
+ * `"production"`.
  *
- * Vite, esbuild, webpack, and tsup all replace `process.env.NODE_ENV` at
- * build time with a string literal when `NODE_ENV` is set, which lets the
- * `if (isDev())` guarded warning paths be tree-shaken out of minified
- * production bundles.
+ * The bare `process.env.NODE_ENV` token is read on purpose: bundlers (Vite,
+ * esbuild, webpack) replace exactly that token with a string literal at build
+ * time, so a production build folds the predicate to `false` in a browser as
+ * well as in Node. A `typeof process` guard would defeat the fold, because
+ * after replacement it would be the only reference to `process` left and a
+ * browser has none. Loading the packages in a browser without a bundler is
+ * not supported and throws a `ReferenceError` on the first call.
  *
  * @internal
  */
 export function isDev(): boolean {
-  if (typeof process !== "undefined" && process.env?.NODE_ENV === "production") {
-    return false;
-  }
-  return true;
+  return process.env.NODE_ENV !== "production";
 }
 
 /**
  * Emit a `console.warn` only in dev mode, prefixed with a stable tag.
  * Call sites should use this rather than reaching for `console.warn`
- * directly so the warning path drops out of production bundles.
+ * directly so the warning never fires in a production build. The message
+ * string itself can remain in the bundle.
  *
  * @internal
  */

@@ -18,6 +18,12 @@ import { SceneTimeKey } from "./SceneTime.js";
  * of an entity a component deactivated mid-pass (their `onDisable` has
  * fired).
  *
+ * The pass iterates `scene.getEntities()` live, in insertion order. An
+ * entity spawned or pool-acquired during the pass sits at the end of the
+ * set, so the pass visits it after the entity that created it. An entity
+ * re-activated with `setActive(true)` keeps its position and is visited
+ * only if it sits after the activator.
+ *
  * This system runs at two phases:
  * - Phase.FixedUpdate for fixedUpdate(dt)
  * - Phase.Update for update(dt)

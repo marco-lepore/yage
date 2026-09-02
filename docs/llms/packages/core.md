@@ -199,7 +199,7 @@ interface EntityPoolOptions<T, TMax> {
 - `forceAcquire` always returns a member. On a saturated capped pool it reclaims the lowest `reclaimPriority` (default: acquired longest ago), running `onRelease` then `onAcquire` in the same call.
 - `onAcquire` is required on a pooled class — an inherited one counts. It must be synchronous and non-overloaded, since `acquire`'s signature is derived from it. Declare an empty `onAcquire() {}` when there is nothing to reset.
 - Prewarm builds members and runs `setup()`, never `onAcquire`.
-- The member is active, in its queries, and past `onEnable` before `onAcquire` runs. Acquire during Update and it renders the same frame; acquire in Render or EndOfFrame and it first draws on the next one.
+- The member is active, in its queries, and past `onEnable` before `onAcquire` runs. Acquire from a component `update`/`fixedUpdate` and the member's components run in that same pass, after the acquirer's. Acquire during Update and it renders the same frame; acquire in Render or EndOfFrame and it first draws on the next one.
 - Release cancels scheduled actions, keeps inert state. It cancels the member's `ProcessComponent` (a pending `Process.delay` would otherwise fire unprompted on a later lease), but position, health, animation frame, `timeScale`, and entity listeners all survive a cycle. Reset them in `onAcquire`, and register listeners in `setup()` or drop them in `onRelease`.
 - Bookkeeping completes before the hooks run. A throwing `onAcquire` leaves the member leased and active; a throwing `onRelease` still parks it. Both throws are attributed to the entity and propagate.
 - Releasing an entity the pool has not leased — a double release, another pool's member — is a reported no-op. `setActive` called from outside does not change who holds the lease.
@@ -886,6 +886,39 @@ scheduler.fixedStepIndex; // number — monotonic count of fixed steps started; 
 // several steps, or none), holds the last step's number between steps
 ```
 
+### Frame order
+
+Every shipped system, in the order one frame runs them. Engine steps are in
+italics; systems read `Name (priority, package)`. Equal priorities run in add
+order, which for plugin systems is plugin install order (`UILayoutSystem`
+before `UIRootLayoutSystem` because `ui-react` depends on `ui`).
+
+- `EarlyUpdate`: *`logger.setFrame`, `SceneTime` frame tick per active scene, transition tick* → `InputPollSystem (-100, input)`
+- `FixedUpdate`, 0 to `maxFixedStepsPerFrame` times: *`SceneTime` fixed tick per active scene* → `PhysicsSystem (0, physics)` → `ProcessFixedUpdateSystem (500, core)` → `ComponentFixedUpdateSystem (1000, core)`
+- `Update`: `PhysicsInterpolationSystem (-100, physics)` → `ParticleSystem (0, particles)` → `ProcessSystem (500, core)` → `ComponentUpdateSystem (1000, core)`
+- `LateUpdate`: `UILayoutSystem (200, ui)` → `UIRootLayoutSystem (200, ui-react)` → `FloatingOverlaySystem (201, ui)`
+- `Render`: `TilemapRenderSystem (-1, tilemap)` → `DisplaySystem (0, renderer)` → `LightingSystem (100, lighting)` → `DebugRenderSystem (9999, debug)`
+- `EndOfFrame`: `InputClearSystem (9000, input)` → *destroy-queue flush*
+
+Priority bands, for placing a new system:
+
+| Band | Runs | Shipped systems |
+|---|---|---|
+| below 0 | before the engine's producers: reads external input or the previous step's state | input poll, physics interpolation, tilemap |
+| 0 | producers | physics step, particles, display |
+| 100–201 | consumers of the producers | lighting, UI layout |
+| 500 | timing | both process systems |
+| 1000 | game code | both component passes |
+| above 1000 | after game code | input clear, debug overlay |
+
+Ordering rules:
+
+- Runtime `scheduler.add(system)`: added while its own phase is running, the system first runs at that phase's next run; added during an earlier phase of the same frame, it runs its phase this frame; added during a later phase, next frame. A system removed while its phase is running does not run again. `getSystems(phase)` returns the current list; a list captured earlier is a stale snapshot.
+- Live entity set: `ComponentUpdateSystem`, the process systems and the physics systems iterate `scene.getEntities()` live, in insertion order. An entity spawned or pool-acquired during a pass is visited by that pass, after the entity that created it. An entity re-activated with `setActive(true)` during a pass keeps its position and is visited by that pass only if it sits after the activator.
+- One pass later: anything a component's `update`/`fixedUpdate` schedules on a `ProcessComponent` — `pc.run`, a slot `start`, a tween — first advances on the next pass of its clock, because the process systems at 500 have already run when component code at 1000 schedules it. A system below 500 that schedules a process sees it advance in the same pass.
+- `loop.stop()`, and `engine.destroy()` which calls it, from inside a phase takes effect at that phase's boundary: the running phase's systems finish, and the phases after it are skipped, remaining fixed steps included.
+- `loop.tick(dtMs)` throws unless `dtMs` is a finite number >= 0 (`GameLoop.tick: dtMs must be a finite number >= 0, got ${x}.`); `0` is a frame with no fixed step.
+
 ## Error Handling
 
 `ErrorBoundary` wraps system, component, and callback execution so a throw is
@@ -940,4 +973,4 @@ and rethrows.
   callback directly — see the "Attribute developer-supplied callbacks" rule
   in the repo-root `AGENTS.md`.
 
-`Logger` writes to the console by default in dev builds (gated by `isDev()`, tree-shakable in production the same way as `devWarn`). Pass `logger: { output }` in the `Engine` config to replace it; `LogLevel.None` silences everything. The `output` sink itself is guarded — a throwing sink is disabled after its first failure instead of taking down whatever was being reported.
+`Logger` writes to the console by default in dev builds (gated by `isDev()`, off in production builds like `devWarn`). Pass `logger: { output }` in the `Engine` config to replace it; `LogLevel.None` silences everything. The `output` sink itself is guarded: a sink that throws, or returns a promise that rejects, is disabled from its first observed failure on, with one console message, instead of taking down whatever was being reported. Calls an async sink already received before its first rejection settles still run.

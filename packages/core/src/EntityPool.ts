@@ -222,9 +222,11 @@ export class EntityPool<
    * with every member out.
    *
    * The member is active and in every matching query before `onAcquire` runs,
-   * so the hook can reach its own components and siblings. Acquire during
-   * Update and the member renders the same frame; acquire later (Render,
-   * EndOfFrame) and it first draws on the next one.
+   * so the hook can reach its own components and siblings. Acquire from a
+   * component's `update` or `fixedUpdate` and the member's components run in
+   * that same pass, after the acquirer's. Acquire during Update and the
+   * member renders the same frame; acquire later (Render, EndOfFrame) and it
+   * first draws on the next one.
    */
   acquire(...args: Parameters<T["onAcquire"]>): AcquireResult<T, TMax> {
     this.assertUsable("acquire");
@@ -241,6 +243,10 @@ export class EntityPool<
    * a saturated capped pool it reclaims instead — the lowest-`reclaimPriority`
    * live member is released and handed straight back, running `onRelease`,
    * then `onAcquire`, in the same call.
+   *
+   * A reclaimed member takes a fresh spawn's place in the entity set, so it
+   * updates in the acquiring pass like any acquired member — including when
+   * its previous life already updated earlier in that same pass.
    *
    * The one call it cannot serve is from inside `onRelease` on a capped pool
    * with no other member left. The member that hook belongs to is mid-release
@@ -458,6 +464,10 @@ export class EntityPool<
     const st = this.state.get(member);
     if (st) st.seq = seq;
     this.setStatus(member, "leased");
+    // Same set position as a fresh spawn, so a pass that is iterating the
+    // scene's entities visits the member after the entity acquiring it —
+    // whichever position the member's own insertion gave it.
+    this.scene._reinsert(member);
     member.setActive(true);
     return seq;
   }

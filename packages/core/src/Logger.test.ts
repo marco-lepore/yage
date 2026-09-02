@@ -224,6 +224,26 @@ describe("Logger", () => {
       );
       consoleSpy.mockRestore();
     });
+
+    it("a burst against a rejecting async sink reports the sink once", async () => {
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const output = vi.fn(() => Promise.reject(new Error("async sink boom")));
+      const logger = new Logger({ level: LogLevel.Debug, output });
+
+      // Three calls before the first rejection settles all reach the sink.
+      logger.error("core", "one");
+      logger.error("core", "two");
+      logger.error("core", "three");
+      expect(output).toHaveBeenCalledTimes(3);
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(consoleSpy).toHaveBeenCalledTimes(1);
+      logger.error("core", "four");
+      expect(output).toHaveBeenCalledTimes(3);
+      consoleSpy.mockRestore();
+    });
   });
 
   it("formatRecentLogs handles unknown log level gracefully", () => {
