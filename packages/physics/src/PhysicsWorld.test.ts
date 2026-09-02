@@ -135,14 +135,20 @@ const { mocks } = vi.hoisted(() => {
     applyImpulse() {}
     addTorque() {}
     applyTorqueImpulse() {}
+    _bodyType: "dynamic" | "fixed" | "kinematic" = "dynamic";
     isFixed() {
-      return false;
+      return this._bodyType === "fixed";
     }
     isKinematic() {
-      return false;
+      return this._bodyType === "kinematic";
     }
     isDynamic() {
-      return true;
+      return this._bodyType === "dynamic";
+    }
+    /** Rapier's `setBodyType` value → the mock's body kind. */
+    setBodyType(type: number) {
+      this._bodyType =
+        type === 1 ? "fixed" : type === 2 ? "kinematic" : "dynamic";
     }
     numColliders() {
       return this._colliders.length;
@@ -318,6 +324,7 @@ const { mocks } = vi.hoisted(() => {
     _bodies = new Map<number, MockRigidBody>();
     _colliders = new Map<number, MockCollider>();
     _stepCalled = false;
+    _stepCount = 0;
     narrowPhase = new MockNarrowPhase();
 
     constructor(gravity: { x: number; y: number }) {
@@ -326,6 +333,7 @@ const { mocks } = vi.hoisted(() => {
 
     step() {
       this._stepCalled = true;
+      this._stepCount++;
     }
 
     createRigidBody(): MockRigidBody {
@@ -440,6 +448,13 @@ vi.mock("@dimforge/rapier2d", () => ({
     EventQueue: mocks.MockEventQueue,
     Ray: mocks.MockRay,
     ActiveEvents: { COLLISION_EVENTS: 1, CONTACT_FORCE_EVENTS: 2 },
+    QueryFilterFlags: { EXCLUDE_SENSORS: 8, EXCLUDE_SOLIDS: 16 },
+    RigidBodyType: {
+      Dynamic: 0,
+      Fixed: 1,
+      KinematicPositionBased: 2,
+      KinematicVelocityBased: 3,
+    },
     ActiveCollisionTypes: { ALL: 60943 },
   },
 }));
@@ -788,32 +803,6 @@ describe("PhysicsWorld", () => {
 
       expect(spy).toHaveBeenCalledWith(0.04);
       spy.mockRestore();
-    });
-
-    it("rejects invalid box border radii and accepts zero or undefined", () => {
-      const pw = new PhysicsWorld();
-      const entity = new Entity("test");
-      const bodyHandle = pw.createBody(entity, { type: "dynamic" });
-      const create = (borderRadius?: number) =>
-        pw.createCollider(
-          entity,
-          bodyHandle,
-          {
-            shape: {
-              type: "box",
-              width: 20,
-              height: 10,
-              ...(borderRadius === undefined ? {} : { borderRadius }),
-            },
-          },
-          createMockColliderComponent(),
-        );
-
-      expect(() => create(5)).toThrow("Box border radius");
-      expect(() => create(-1)).toThrow("Box border radius");
-      expect(() => create(NaN)).toThrow("Box border radius");
-      expect(() => create(0)).not.toThrow();
-      expect(() => create()).not.toThrow();
     });
 
     it("applies config rotation to the collider desc", () => {
@@ -2212,6 +2201,23 @@ describe("PhysicsWorld", () => {
       expect(pw.bodyMap.has(bodyHandle)).toBe(false);
       expect(pw.colliderMap.has(colHandle)).toBe(false);
     });
+
+    it("leaves each attached ColliderComponent holding no handle", () => {
+      const pw = new PhysicsWorld();
+      const entity = new Entity("test");
+      const bodyHandle = pw.createBody(entity, { type: "dynamic" });
+      const comp = createMockColliderComponent();
+      comp._colliderHandle = pw.createCollider(
+        entity,
+        bodyHandle,
+        { shape: { type: "box", width: 10, height: 10 } },
+        comp,
+      );
+
+      pw.removeBody(bodyHandle);
+
+      expect(comp._colliderHandle).toBe(-1);
+    });
   });
 
   describe("removeCollider", () => {
@@ -2252,6 +2258,171 @@ describe("PhysicsWorld", () => {
       const pw = new PhysicsWorld();
       const body = pw.getBody(999);
       expect(body).toBeUndefined();
+    });
+
+    it("resolves only handles this world issued and has not freed", () => {
+      const pw = new PhysicsWorld();
+      const entity = new Entity("test");
+      const bodyHandle = pw.createBody(entity, { type: "dynamic" });
+      const comp = createMockColliderComponent();
+      const colHandle = pw.createCollider(
+        entity,
+        bodyHandle,
+        { shape: { type: "box", width: 10, height: 10 } },
+        comp,
+      );
+
+      expect(pw.getBody(-1)).toBeUndefined();
+      expect(pw.getBody(NaN)).toBeUndefined();
+      expect(pw.getCollider(-1)).toBeUndefined();
+      expect(pw.getCollider(colHandle)).toBeDefined();
+
+      pw.removeBody(bodyHandle);
+
+      expect(pw.getBody(bodyHandle)).toBeUndefined();
+      expect(pw.getCollider(colHandle)).toBeUndefined();
+    });
+  });
+
+  describe("query sensor mode and freshness", () => {
+    function worldOf(pw: PhysicsWorld) {
+      return (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> })
+        .world;
+    }
+
+    function spawnStatic(pw: PhysicsWorld, name = "target") {
+      const entity = new Entity(name);
+      const bodyHandle = pw.createBody(entity, { type: "static" });
+      const handle = pw.createCollider(
+        entity,
+        bodyHandle,
+        { shape: { type: "box", width: 10, height: 10 } },
+        createMockColliderComponent(),
+      );
+      return { entity, bodyHandle, handle };
+    }
+
+    it("passes Rapier's sensor flag for each mode on every query", () => {
+      const pw = new PhysicsWorld();
+      spawnStatic(pw);
+      const world = worldOf(pw);
+      const rayFlags: unknown[] = [];
+      const castFlags: unknown[] = [];
+      const shapeFlags: unknown[] = [];
+      world.castRayAndGetNormal = ((...args: unknown[]) => {
+        rayFlags.push(args[3]);
+        return null;
+      }) as unknown as typeof world.castRayAndGetNormal;
+      world.castShape = ((...args: unknown[]) => {
+        castFlags.push(args[7]);
+        return null;
+      }) as unknown as typeof world.castShape;
+      world.intersectionsWithShape = ((...args: unknown[]) => {
+        shapeFlags.push(args[4]);
+      }) as unknown as typeof world.intersectionsWithShape;
+      const shape = { type: "circle", radius: 5 } as const;
+      const origin = new Vec2(0, 0);
+      const dir = new Vec2(0, 1);
+
+      pw.raycast(origin, dir, 10);
+      pw.raycast(origin, dir, 10, { sensors: "include" });
+      pw.raycast(origin, dir, 10, { sensors: "only" });
+      pw.castShape(shape, origin, dir, 10);
+      pw.castShape(shape, origin, dir, 10, { sensors: "include" });
+      pw.castShape(shape, origin, dir, 10, { sensors: "only" });
+      pw.queryShape(shape, origin);
+      pw.queryShape(shape, origin, { sensors: "include" });
+      pw.queryRadius(origin, 5, { sensors: "only" });
+
+      expect(rayFlags).toEqual([8, undefined, 16]);
+      expect(castFlags).toEqual([8, undefined, 16]);
+      expect(shapeFlags).toEqual([8, undefined, 16]);
+    });
+
+    it("runs one zero-duration step before the first query after a collider change", () => {
+      const pw = new PhysicsWorld();
+      const world = worldOf(pw);
+      const { handle } = spawnStatic(pw);
+      expect(world._stepCount).toBe(0);
+
+      pw.queryShape({ type: "circle", radius: 5 }, new Vec2(0, 0));
+      expect(world._stepCount).toBe(1);
+      expect(world.timestep).toBe(0);
+      expect(pw.elapsed).toBe(0);
+
+      pw.raycast(new Vec2(0, 0), new Vec2(0, 1), 10);
+      pw.queryOverlapping(handle);
+      expect(world._stepCount).toBe(1);
+
+      pw.setColliderShape(handle, {
+        shape: { type: "box", width: 20, height: 20 },
+      });
+      pw.castShape(
+        { type: "circle", radius: 5 },
+        new Vec2(0, 0),
+        new Vec2(0, 1),
+        10,
+      );
+      expect(world._stepCount).toBe(2);
+
+      pw._markQueriesStale();
+      pw.queryRadius(new Vec2(0, 0), 5);
+      expect(world._stepCount).toBe(3);
+
+      // A real step refreshes the index itself.
+      spawnStatic(pw, "second");
+      pw.step(1 / 60);
+      pw.queryShape({ type: "circle", radius: 5 }, new Vec2(0, 0));
+      expect(world._stepCount).toBe(4);
+    });
+
+    it("resets a kinematic body's pending target to its pose before the zero step", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const world = worldOf(pw);
+      const { bodyHandle } = spawnStatic(pw);
+      const body = world._bodies.get(bodyHandle)!;
+      body._bodyType = "kinematic";
+      body._translation = { x: 2, y: 3 };
+      body._rotation = 0.25;
+      const spyT = vi.spyOn(body, "setNextKinematicTranslation");
+      const spyR = vi.spyOn(body, "setNextKinematicRotation");
+
+      pw.queryShape({ type: "circle", radius: 5 }, new Vec2(0, 0));
+
+      expect(spyT).toHaveBeenCalledWith({ x: 2, y: 3 });
+      expect(spyR).toHaveBeenCalledWith(0.25);
+    });
+
+    it("rejects a negative or non-finite step", () => {
+      const pw = new PhysicsWorld();
+      expect(() => pw.step(-1)).toThrow(
+        "PhysicsWorld.step: dt must be finite and >= 0, got -1.",
+      );
+      expect(() => pw.step(NaN)).toThrow(
+        "PhysicsWorld.step: dt must be finite and >= 0, got NaN.",
+      );
+    });
+
+    it("rejects a shape it cannot build under the query's own context", () => {
+      const pw = new PhysicsWorld();
+      const twoPoints = {
+        type: "polygon" as const,
+        vertices: [
+          { x: 0, y: 0 },
+          { x: 10, y: 0 },
+        ],
+      };
+      expect(() => pw.queryShape(twoPoints, new Vec2(0, 0))).toThrow(
+        "PhysicsWorld.queryShape: shape.vertices must have at least 3 vertices, got 2.",
+      );
+      expect(() =>
+        pw.castShape(twoPoints, new Vec2(0, 0), new Vec2(0, 1), 10),
+      ).toThrow(
+        "PhysicsWorld.castShape: shape.vertices must have at least 3 vertices, got 2.",
+      );
+      expect(() => pw.queryRadius(new Vec2(0, 0), 0)).toThrow(
+        "PhysicsWorld.queryRadius: radius must be finite and > 0, got 0.",
+      );
     });
   });
 
@@ -2372,6 +2543,60 @@ describe("PhysicsWorld", () => {
         String(args[0]).includes("Asymmetric collision masks"),
       );
       expect(matching.length).toBe(0);
+      warn.mockRestore();
+    });
+
+    it("warns in the other creation order too, naming the first entity of the signature", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const pw = new PhysicsWorld();
+      const first = new Entity("first");
+      const second = new Entity("second");
+      const bodyFirst = pw.createBody(first, { type: "dynamic" });
+      const bodySecond = pw.createBody(second, { type: "dynamic" });
+      pw.createCollider(
+        first,
+        bodyFirst,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+          layers: 0x0004,
+          mask: 0x0001,
+        },
+        createMockColliderComponent(),
+      );
+      pw.createCollider(
+        second,
+        bodySecond,
+        {
+          shape: { type: "box", width: 10, height: 10 },
+          layers: 0x0001,
+          mask: 0x0002,
+        },
+        createMockColliderComponent(),
+      );
+
+      const matching = warn.mock.calls.filter((args) =>
+        String(args[0]).includes("Asymmetric collision masks"),
+      );
+      expect(matching.length).toBe(1);
+      expect(String(matching[0]![0])).toContain("<first>");
+      expect(String(matching[0]![0])).toContain("<second>");
+      warn.mockRestore();
+    });
+
+    it("never warns for default-layer colliders, however many", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const pw = new PhysicsWorld();
+      for (let i = 0; i < 300; i++) {
+        const e = new Entity(`e${i}`);
+        const body = pw.createBody(e, { type: "static" });
+        pw.createCollider(
+          e,
+          body,
+          { shape: { type: "box", width: 10, height: 10 } },
+          createMockColliderComponent(),
+        );
+      }
+      expect(warn).not.toHaveBeenCalled();
       warn.mockRestore();
     });
 

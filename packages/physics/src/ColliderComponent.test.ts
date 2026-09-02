@@ -134,15 +134,23 @@ const { mocks } = vi.hoisted(() => {
     collider(i: number) {
       return this._colliders[i];
     }
+    _bodyType: "dynamic" | "fixed" | "kinematic" = "dynamic";
     isDynamic() {
-      return true;
+      return this._bodyType === "dynamic";
     }
     isFixed() {
-      return false;
+      return this._bodyType === "fixed";
     }
     isKinematic() {
-      return false;
+      return this._bodyType === "kinematic";
     }
+    /** Rapier's `setBodyType` value → the mock's body kind. */
+    setBodyType(type: number) {
+      this._bodyType =
+        type === 1 ? "fixed" : type === 2 ? "kinematic" : "dynamic";
+    }
+    setNextKinematicTranslation() {}
+    setNextKinematicRotation() {}
     sleep() {}
     wakeUp() {}
     setEnabled() {}
@@ -294,6 +302,13 @@ vi.mock("@dimforge/rapier2d", () => ({
     ColliderDesc: mocks.MockColliderDesc,
     EventQueue: mocks.MockEventQueue,
     ActiveEvents: { COLLISION_EVENTS: 1, CONTACT_FORCE_EVENTS: 2 },
+    QueryFilterFlags: { EXCLUDE_SENSORS: 8, EXCLUDE_SOLIDS: 16 },
+    RigidBodyType: {
+      Dynamic: 0,
+      Fixed: 1,
+      KinematicPositionBased: 2,
+      KinematicVelocityBased: 3,
+    },
     ActiveCollisionTypes: { ALL: 60943 },
     ActiveHooks: {
       NONE: 0,
@@ -341,6 +356,52 @@ describe("ColliderComponent", () => {
       // An amplifying bounce is legal.
       expect(
         () => new ColliderComponent({ shape, restitution: 1.5 }),
+      ).not.toThrow();
+    });
+
+    it("rejects a shape it cannot build, naming the field", () => {
+      expect(
+        () =>
+          new ColliderComponent({
+            shape: { type: "box", width: -20, height: 20 },
+          }),
+      ).toThrow(
+        "ColliderComponent: shape.width must be finite and > 0, got -20.",
+      );
+      expect(
+        () => new ColliderComponent({ shape: { type: "circle", radius: 0 } }),
+      ).toThrow(
+        "ColliderComponent: shape.radius must be finite and > 0, got 0.",
+      );
+      expect(
+        () =>
+          new ColliderComponent({
+            shape: { type: "capsule", halfHeight: -20, radius: 10 },
+          }),
+      ).toThrow(
+        "ColliderComponent: shape.halfHeight must be finite and >= 0, got -20.",
+      );
+      expect(
+        () =>
+          new ColliderComponent({
+            shape: {
+              type: "polygon",
+              vertices: [
+                { x: 0, y: 0 },
+                { x: 10, y: 0 },
+              ],
+            },
+          }),
+      ).toThrow(
+        "ColliderComponent: shape.vertices must have at least 3 vertices, got 2.",
+      );
+      // A capsule with no straight section is a circle; the tilemap
+      // converter emits it for square capsule objects.
+      expect(
+        () =>
+          new ColliderComponent({
+            shape: { type: "capsule", halfHeight: 0, radius: 10 },
+          }),
       ).not.toThrow();
     });
 
@@ -870,6 +931,29 @@ describe("ColliderComponent", () => {
         hy: 0.2,
       });
       expect(col._colliderHandle).toBe(handleBefore);
+    });
+
+    it("rejects a shape it cannot build and leaves the config and the live collider unchanged", async () => {
+      const { col, rapierCollider } = await setup();
+      col.setShape({ type: "box", width: 20, height: 20 });
+
+      expect(() =>
+        col.setShape({ type: "box", width: 20, height: -10 }),
+      ).toThrow(
+        "ColliderComponent.setShape: shape.height must be finite and > 0, got -10.",
+      );
+      expect(() =>
+        col.setShape({ type: "box", width: 10, height: 10, borderRadius: 20 }),
+      ).toThrow(
+        "ColliderComponent.setShape: shape.borderRadius must be finite, >= 0 and smaller than half the shorter side, got 20.",
+      );
+
+      expect(col.config.shape).toEqual({ type: "box", width: 20, height: 20 });
+      expect(rapierCollider._shape).toEqual({
+        kind: "cuboid",
+        hx: 0.2,
+        hy: 0.2,
+      });
     });
 
     it("keeps collision subscriptions across the swap", async () => {

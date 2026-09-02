@@ -99,6 +99,10 @@ for (let row = 0; row < rows; row++) {
 }
 ```
 
+Run the loop right after spawning the level's colliders — the query sees them
+without waiting for a physics step. Trigger zones (`sensor: true`) do not block:
+pass `sensors: "include"` to `queryShape` if they should.
+
 40×30 = 1200 queries; run once at level build, not per frame. `blocked` is a snapshot — colliders that move or spawn later don't update it. After a layout change, call `blocked.clear()` and re-run the loop; the loop only adds cells, so without the clear a removed wall stays blocked.
 
 ## Not supported

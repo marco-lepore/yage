@@ -47,7 +47,10 @@ export interface PhysicsConfig {
 
 /** Configuration for creating a rigid body. */
 export interface RigidBodyConfig {
-  /** Body type: dynamic, static, or kinematic. */
+  /**
+   * Body type: dynamic, static, or kinematic. `RigidBodyComponent.setType`
+   * changes it at runtime.
+   */
   type: BodyType;
   /** Linear damping coefficient; finite and >= 0. */
   linearDamping?: number;
@@ -111,11 +114,26 @@ export interface JointHandle {
   remove(): void;
 }
 
-/** Discriminated union for collider shapes. All dimensions in pixels. */
+/**
+ * Which colliders a spatial query reports: `"exclude"` skips sensors and
+ * reports solid colliders only (the default — a ground check or line of
+ * sight means surfaces, and a trigger zone is not one), `"include"` reports
+ * both, `"only"` reports sensors only.
+ */
+export type QuerySensorMode = "exclude" | "include" | "only";
+
+/**
+ * Discriminated union for collider shapes. All dimensions in pixels. Every
+ * entry that takes a shape (`ColliderComponent`, `setShape`, `castShape`,
+ * `queryShape`, `queryRadius`) throws on a dimension that is not finite and
+ * above 0, naming the field.
+ */
 export type ColliderShape =
   | {
       type: "box";
+      /** Finite and > 0. */
       width: number;
+      /** Finite and > 0. */
       height: number;
       /**
        * Rounds the corners by this many pixels. The inner half-extents shrink
@@ -131,27 +149,39 @@ export type ColliderShape =
        * inertia is the inner rectangle's, scaled by the same area ratio —
        * an approximation of the exact round-rectangle inertia.
        *
-       * Must be smaller than half the shorter side; anything else throws when
-       * the collider is built. Applies to shape casts and overlap queries too.
+       * Finite, >= 0 and smaller than half the shorter side; anything else
+       * throws. Applies to shape casts and overlap queries too.
        */
       borderRadius?: number;
     }
-  | { type: "circle"; radius: number }
+  | {
+      type: "circle";
+      /** Finite and > 0. */
+      radius: number;
+    }
   | {
       type: "capsule";
+      /**
+       * Half the straight section, finite and >= 0. Each cap adds `radius`,
+       * so the collider is `2 * (halfHeight + radius)` tall:
+       * `{ halfHeight: 20, radius: 10 }` stands 60 px. `0` is a circle.
+       */
       halfHeight: number;
+      /** Cap radius, finite and > 0. */
       radius: number;
       /** Orientation of the long axis. Default: `"y"` (vertical). */
       axis?: "x" | "y";
     }
   /**
-   * Closed convex shape. Rapier silently widens concave input to its convex
+   * Closed convex shape: at least 3 vertices, every coordinate finite, not
+   * all on one line. Rapier silently widens concave input to its convex
    * hull; use `polyline` for non-convex outlines.
    */
   | { type: "polygon"; vertices: Vec2Like[] }
   /**
-   * Chain of line segments. Supports non-convex shapes but is static-only
-   * (no mass/inertia computed). Best for world boundaries.
+   * Chain of line segments: at least 2 vertices, every coordinate finite.
+   * Supports non-convex shapes but is static-only (no mass/inertia
+   * computed). Best for world boundaries.
    */
   | { type: "polyline"; vertices: Vec2Like[] };
 

@@ -5,7 +5,7 @@ import { CollisionLayers } from "./CollisionLayers.js";
 import {
   colliderRotation,
   getBoxColliderGeometry,
-} from "./toRapierColliders.js";
+} from "./colliderGeometry.js";
 import type {
   PhysicsConfig,
   RigidBodyConfig,
@@ -15,12 +15,18 @@ import type {
   RaycastHit,
   JointConfig,
   JointHandle,
+  QuerySensorMode,
 } from "./types.js";
 import type { ColliderComponent } from "./ColliderComponent.js";
 import type { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { MutableContactCandidate } from "./ContactCandidate.js";
 import type { PreStepColliderState } from "./ContactCandidate.js";
-import { assertFiniteNumber, assertPixelsPerMeter } from "./validate.js";
+import {
+  assertColliderShape,
+  assertFiniteNumber,
+  assertPixelsPerMeter,
+  assertPositiveNumber,
+} from "./validate.js";
 
 const DEFAULT_PIXELS_PER_METER = 50;
 const DEFAULT_GRAVITY_X = 0;
@@ -106,12 +112,28 @@ export class PhysicsWorld {
 
   private readonly world: RAPIER.World;
   private readonly eventQueue: RAPIER.EventQueue;
+  /** Collider handle → its layer signature, so removal can decrement it. */
   private readonly _layerInfo = new Map<
     number,
     { layers: number; mask: number }
   >();
+  /**
+   * Live colliders grouped by `${layers}:${mask}`, so the asymmetric-mask
+   * check compares a new collider against each distinct signature instead
+   * of every collider. `entityName` is the first entity that used it.
+   */
+  private readonly _layerSignatures = new Map<
+    string,
+    { layers: number; mask: number; entityName: string; count: number }
+  >();
   private readonly _warnedAsymmetricPairs = new Set<string>();
   private _elapsed = 0;
+  /**
+   * True when a collider was created, re-shaped, enabled, disabled or
+   * teleported since the last step. Rapier's query index is rebuilt only by
+   * a step, so a query while this is set first runs a zero-duration one.
+   */
+  private _queriesStale = false;
   /** Handles of colliders with an active contact filter. */
   private readonly _contactFiltered = new Set<number>();
   /** Collider handle → parent body handle, for pre-step velocity capture. */
@@ -172,8 +194,13 @@ export class PhysicsWorld {
    * collision events, each captured with that step's contact data.
    * `processCollisionEvents()` delivers them; a caller that steps directly
    * must call it, or the queued pairs accumulate.
+   *
+   * `dt` must be finite and >= 0. A zero-duration step moves nothing and
+   * advances no simulated time; it rebuilds Rapier's query index, which is
+   * what the spatial queries use it for.
    */
   step(dt: number): void {
+    assertFiniteNumber("PhysicsWorld.step", "dt", dt, 0);
     this.world.timestep = dt;
     // Hooks are passed only while a contact filter exists: Rapier consults
     // them per candidate pair, and a world with no filters should step
@@ -183,6 +210,7 @@ export class PhysicsWorld {
       this._capturePreStepState();
     }
     this.world.step(this.eventQueue, useHooks ? this._hooks : undefined);
+    this._queriesStale = false;
     // Advanced after the step: to a contact filter running inside it,
     // `elapsed` is the time at the start of the step — matching the
     // pre-step position snapshot, and giving `dropThrough(seconds)` its
@@ -670,9 +698,41 @@ export class PhysicsWorld {
     this.colliderMap.set(collider.handle, entity);
     this._colliderComponents.set(collider.handle, component);
     this._layerInfo.set(collider.handle, { layers: membership, mask: filter });
-    this._checkAsymmetricMasks(collider.handle, entity, membership, filter);
+    this._checkAsymmetricMasks(entity, membership, filter);
+    this._trackLayerSignature(entity, membership, filter);
     this._checkConvexHullVertexDrop(collider, config.shape, entity);
+    this._queriesStale = true;
     return collider.handle;
+  }
+
+  private _trackLayerSignature(
+    entity: Entity,
+    layers: number,
+    mask: number,
+  ): void {
+    const key = `${layers}:${mask}`;
+    const signature = this._layerSignatures.get(key);
+    if (signature) {
+      signature.count++;
+    } else {
+      this._layerSignatures.set(key, {
+        layers,
+        mask,
+        entityName: entity.name,
+        count: 1,
+      });
+    }
+  }
+
+  private _untrackLayerSignature(handle: number): void {
+    const info = this._layerInfo.get(handle);
+    if (!info) return;
+    this._layerInfo.delete(handle);
+    const key = `${info.layers}:${info.mask}`;
+    const signature = this._layerSignatures.get(key);
+    if (!signature) return;
+    signature.count--;
+    if (signature.count === 0) this._layerSignatures.delete(key);
   }
 
   /**
@@ -702,20 +762,20 @@ export class PhysicsWorld {
   }
 
   /**
-   * Dev-mode check: when a new collider lands with explicit layers/mask,
-   * scan existing colliders for asymmetric filtering (one direction
-   * passes the layer test, the other doesn't). Rapier silently drops
-   * collision events for those pairs, so without this warning the user
-   * sees a trigger that never fires.
+   * Dev-mode check: compare a new collider's layers/mask against every
+   * distinct signature already in the world for asymmetric filtering (one
+   * direction passes the layer test, the other doesn't). Rapier silently
+   * drops collision events for those pairs, so without this warning the
+   * user sees a trigger that never fires. Two colliders with the same
+   * signature are symmetric by construction, so the scan is per signature,
+   * not per collider, and the warning names the signature's first entity.
    */
   private _checkAsymmetricMasks(
-    newHandle: number,
     newEntity: Entity,
     newLayers: number,
     newMask: number,
   ): void {
-    for (const [otherHandle, info] of this._layerInfo) {
-      if (otherHandle === newHandle) continue;
+    for (const info of this._layerSignatures.values()) {
       const aSeesB = (newLayers & info.mask) !== 0;
       const bSeesA = (info.layers & newMask) !== 0;
       if (aSeesB === bSeesA) continue;
@@ -724,9 +784,8 @@ export class PhysicsWorld {
       const key = a < b ? `${a}|${b}` : `${b}|${a}`;
       if (this._warnedAsymmetricPairs.has(key)) continue;
       this._warnedAsymmetricPairs.add(key);
-      const otherEntity = this.colliderMap.get(otherHandle);
       const aName = newEntity.name;
-      const bName = otherEntity?.name ?? "<unknown>";
+      const bName = info.entityName;
       const blocked = aSeesB ? bName : aName;
       const blocker = aSeesB ? aName : bName;
       devWarn(
@@ -737,9 +796,14 @@ export class PhysicsWorld {
     }
   }
 
-  /** Remove a rigid body and all its colliders from the world. */
+  /**
+   * Remove a rigid body and all its colliders from the world. Each
+   * collider's `ColliderComponent` is left holding no handle, so its own
+   * teardown and every later call on it are inert; a handle Rapier reuses
+   * for the next collider cannot be reached through the stale component.
+   */
   removeBody(handle: number): void {
-    const body = this.world.getRigidBody(handle);
+    const body = this.getBody(handle);
     if (!body) return;
 
     // Rapier frees attached joints as part of removing a body. Orphan their
@@ -757,9 +821,11 @@ export class PhysicsWorld {
     for (let i = 0; i < numColliders; i++) {
       const collider = body.collider(i);
       this._forgetColliderContacts(collider.handle);
+      const component = this._colliderComponents.get(collider.handle);
+      if (component) component._colliderHandle = -1;
       this.colliderMap.delete(collider.handle);
       this._colliderComponents.delete(collider.handle);
-      this._layerInfo.delete(collider.handle);
+      this._untrackLayerSignature(collider.handle);
       this._contactFiltered.delete(collider.handle);
       this._colliderBody.delete(collider.handle);
       this._preStepStates.delete(collider.handle);
@@ -775,14 +841,14 @@ export class PhysicsWorld {
    * tears down its colliders, so this covers the case where that ran first.
    */
   removeCollider(handle: number): void {
-    const collider = this.world.getCollider(handle);
+    const collider = this.getCollider(handle);
     if (!collider) return;
 
     this._forgetColliderContacts(handle);
     this.world.removeCollider(collider, true);
     this.colliderMap.delete(handle);
     this._colliderComponents.delete(handle);
-    this._layerInfo.delete(handle);
+    this._untrackLayerSignature(handle);
     this._contactFiltered.delete(handle);
     this._colliderBody.delete(handle);
     this._preStepStates.delete(handle);
@@ -890,23 +956,68 @@ export class PhysicsWorld {
     if (entity) {
       this._checkConvexHullVertexDrop(collider, config.shape, entity);
     }
+    this._queriesStale = true;
   }
 
-  /** Get a Rapier rigid body by handle. */
+  /**
+   * Get a Rapier rigid body by handle. A handle this world did not issue,
+   * or has freed since — including the `-1` a `RigidBodyComponent` holds
+   * before add and after destroy — resolves to `undefined`. Rapier itself
+   * decodes such a handle to whichever body now sits at that index.
+   */
   getBody(handle: number): RAPIER.RigidBody | undefined {
-    try {
-      return this.world.getRigidBody(handle);
-    } catch {
-      return undefined;
-    }
+    if (!this.bodyMap.has(handle)) return undefined;
+    return this.world.getRigidBody(handle);
   }
 
-  /** Get a Rapier collider by handle. */
+  /**
+   * Get a Rapier collider by handle. A handle this world did not issue, or
+   * has freed since — including the `-1` a `ColliderComponent` holds before
+   * add and after removal — resolves to `undefined`.
+   */
   getCollider(handle: number): RAPIER.Collider | undefined {
-    try {
-      return this.world.getCollider(handle);
-    } catch {
-      return undefined;
+    if (!this.colliderMap.has(handle)) return undefined;
+    return this.world.getCollider(handle);
+  }
+
+  /**
+   * @internal Note that a live collider moved without a step (a teleport,
+   * or a re-enable), so the next query rebuilds Rapier's index first.
+   */
+  _markQueriesStale(): void {
+    this._queriesStale = true;
+  }
+
+  /**
+   * Bring Rapier's query index up to date with every live collider by
+   * running a zero-duration step, when something changed since the last
+   * one. The zero step moves nothing and advances no simulated time; a
+   * kinematic body's pending target would still be applied by it, so each
+   * target is first reset to the body's current pose (`PhysicsSystem`
+   * re-applies the component's captured target at the next real step).
+   */
+  private _refreshQueries(): void {
+    if (!this._queriesStale) return;
+    for (const handle of this.bodyMap.keys()) {
+      const body = this.world.getRigidBody(handle);
+      if (!body.isKinematic()) continue;
+      body.setNextKinematicTranslation(body.translation());
+      body.setNextKinematicRotation(body.rotation());
+    }
+    this.step(0);
+  }
+
+  /** Rapier's `filterFlags` for a query's sensor mode; the default excludes sensors. */
+  private _queryFlags(
+    sensors: QuerySensorMode | undefined,
+  ): RAPIER.QueryFilterFlags | undefined {
+    switch (sensors) {
+      case "include":
+        return undefined;
+      case "only":
+        return RAPIER.QueryFilterFlags.EXCLUDE_SOLIDS;
+      default:
+        return RAPIER.QueryFilterFlags.EXCLUDE_SENSORS;
     }
   }
 
@@ -916,18 +1027,28 @@ export class PhysicsWorld {
    * The direction is normalized internally, so any non-zero vector works —
    * e.g. `target.sub(origin)`. Throws on a zero-length direction.
    * `excludeEntity` skips every collider of that entity — pass the caster
-   * when the ray starts inside its own collider.
+   * when the ray starts inside its own collider. Sensors are skipped unless
+   * `sensors` says otherwise.
+   *
+   * Reports every live collider at its current pose, including one created,
+   * re-shaped, enabled, disabled or teleported since the last step, at the
+   * cost of a zero-duration step before the query (see `step`).
    */
   raycast(
     origin: Vec2Like,
     direction: Vec2Like,
     maxDistance: number,
-    options?: { filterGroups?: number; excludeEntity?: Entity },
+    options?: {
+      filterGroups?: number;
+      excludeEntity?: Entity;
+      sensors?: QuerySensorMode;
+    },
   ): RaycastHit | null {
     const length = Math.hypot(direction.x, direction.y);
     if (length === 0) {
       throw new Error("raycast direction must be a non-zero vector");
     }
+    this._refreshQueries();
     const ray = new RAPIER.Ray(
       { x: this.toMeters(origin.x), y: this.toMeters(origin.y) },
       { x: direction.x / length, y: direction.y / length },
@@ -939,7 +1060,7 @@ export class PhysicsWorld {
       ray,
       maxToi,
       true,
-      undefined,
+      this._queryFlags(options?.sensors),
       options?.filterGroups,
       undefined,
       undefined,
@@ -977,9 +1098,13 @@ export class PhysicsWorld {
    * point, and `normal` the surface normal on the entity that was hit. A
    * shape already overlapping something at `origin` reports that hit at
    * `distance: 0`. The direction is normalized internally, so any non-zero
-   * vector works; a zero-length direction throws. `excludeEntity` skips every
+   * vector works; a zero-length direction throws, and so does a shape with
+   * a dimension that is not finite and above 0. `excludeEntity` skips every
    * collider of that entity — pass the mover when the sweep starts inside its
-   * own collider.
+   * own collider. Sensors are skipped unless `sensors` says otherwise.
+   *
+   * Reports every live collider at its current pose, running a
+   * zero-duration step first when colliders changed since the last step.
    */
   castShape(
     shape: ColliderShape,
@@ -990,12 +1115,15 @@ export class PhysicsWorld {
       rotation?: number;
       filterGroups?: number;
       excludeEntity?: Entity;
+      sensors?: QuerySensorMode;
     },
   ): RaycastHit | null {
     const length = Math.hypot(direction.x, direction.y);
     if (length === 0) {
       throw new Error("castShape direction must be a non-zero vector");
     }
+    assertColliderShape("PhysicsWorld.castShape", shape);
+    this._refreshQueries();
 
     const desc = this.buildColliderDesc(shape);
     // buildColliderDesc leaves the capsule axis:"x" 90° turn to the caller.
@@ -1013,7 +1141,7 @@ export class PhysicsWorld {
       0,
       this.toMeters(maxDistance),
       true,
-      undefined,
+      this._queryFlags(options?.sensors),
       options?.filterGroups,
       undefined,
       undefined,
@@ -1045,13 +1173,19 @@ export class PhysicsWorld {
 
   /**
    * Return all entities with a collider overlapping the circle around
-   * `center` (pixels). Sugar over `queryShape` with a circle.
+   * `center` (pixels). Sugar over `queryShape` with a circle; `radius` must
+   * be finite and above 0.
    */
   queryRadius(
     center: Vec2Like,
     radius: number,
-    options?: { filterGroups?: number; excludeEntity?: Entity },
+    options?: {
+      filterGroups?: number;
+      excludeEntity?: Entity;
+      sensors?: QuerySensorMode;
+    },
   ): Entity[] {
+    assertPositiveNumber("PhysicsWorld.queryRadius", "radius", radius);
     return this.queryShape({ type: "circle", radius }, center, options);
   }
 
@@ -1059,7 +1193,12 @@ export class PhysicsWorld {
    * Return all entities with a collider overlapping `shape` placed at
    * `position` (pixels, `rotation` in radians). `excludeEntity` skips every
    * collider of that entity — pass the querying entity for "what's around
-   * me" queries.
+   * me" queries. Sensors are skipped unless `sensors` says otherwise. A
+   * shape with a dimension that is not finite and above 0 throws.
+   *
+   * Reports every live collider at its current pose, running a
+   * zero-duration step first when colliders changed since the last step —
+   * a collider spawned this frame is already seen.
    */
   queryShape(
     shape: ColliderShape,
@@ -1068,8 +1207,11 @@ export class PhysicsWorld {
       rotation?: number;
       filterGroups?: number;
       excludeEntity?: Entity;
+      sensors?: QuerySensorMode;
     },
   ): Entity[] {
+    assertColliderShape("PhysicsWorld.queryShape", shape);
+    this._refreshQueries();
     const desc = this.buildColliderDesc(shape);
     const exclude = options?.excludeEntity;
     const result: Entity[] = [];
@@ -1089,19 +1231,26 @@ export class PhysicsWorld {
         }
         return true; // continue iteration
       },
-      undefined,
+      this._queryFlags(options?.sensors),
       options?.filterGroups,
     );
     return result;
   }
 
-  /** Return all entities whose colliders currently overlap the given collider. */
+  /**
+   * Return all entities whose colliders currently overlap the given
+   * collider. Reports Rapier's intersection pairs, which exist only when
+   * one side is a sensor. Reflects every live collider at its current pose,
+   * running a zero-duration step first when colliders changed since the
+   * last step.
+   */
   queryOverlapping(colliderHandle: number): Entity[] {
     const collider = this.getCollider(colliderHandle);
     // A dormant entity is out of the simulation, so it overlaps nothing —
     // including the peers its stale narrow-phase pairs still name.
     const self = this.colliderMap.get(colliderHandle);
     if (!collider || !self?.isActive) return [];
+    this._refreshQueries();
     const result: Entity[] = [];
     const seen = new Set<Entity>();
     this.world.intersectionPairsWith(collider, (other) => {
@@ -1210,6 +1359,7 @@ export class PhysicsWorld {
     this.colliderMap.clear();
     this._colliderComponents.clear();
     this._layerInfo.clear();
+    this._layerSignatures.clear();
     this._warnedAsymmetricPairs.clear();
     this._contactFiltered.clear();
     this._colliderBody.clear();
@@ -1342,8 +1492,12 @@ export class PhysicsWorld {
       case "polygon": {
         const flat = flattenVertices(shape.vertices, (v) => this.toMeters(v));
         const desc = RAPIER.ColliderDesc.convexHull(flat);
+        // Validated input always builds; this is the typed fallback for
+        // Rapier's `| null` return.
         if (!desc) {
-          throw new Error("Failed to create convex hull from vertices.");
+          throw new Error(
+            "Rapier rejected the convex hull for the polygon vertices.",
+          );
         }
         return desc;
       }

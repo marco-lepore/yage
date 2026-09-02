@@ -377,18 +377,16 @@ export class EnemyAI extends Component {
   /** Corpse choreography: play death, stop dealing/taking pushback, and
    *  detach the AI component entirely rather than gating it on a flag —
    *  `entity.remove` is safe to call on the component's own currently-
-   *  running listener (`Entity.emit` iterates a snapshot). No API exists to
-   *  change a `RigidBodyComponent`'s body type at runtime, so "static" is
-   *  approximated by zeroing velocity and locking translation — physics can
-   *  no longer push the corpse around. The corpse destroys itself after
-   *  `CORPSE_LINGER` (scheduled on the still-attached `ProcessComponent`
-   *  before the AI detaches) so `GameDirector`'s respawns don't pile up. */
+   *  running listener (`Entity.emit` iterates a snapshot). The body becomes
+   *  static, so physics can no longer push the corpse around and the corpse
+   *  pushes nothing. The corpse destroys itself after `CORPSE_LINGER`
+   *  (scheduled on the still-attached `ProcessComponent` before the AI
+   *  detaches) so `GameDirector`'s respawns don't pile up. */
   private die(): void {
     const entity = this.entity;
     tokenOf(entity).clear(entity);
     playBoxerAnim(entity, "death", { oneShot: true });
-    this.rb.setVelocity(Vec2.ZERO);
-    this.rb.setEnabledTranslations(false, false);
+    this.rb.setType("static");
     this.gfx.graphics.clear(); // no HP bar on a corpse
     this.pc
       .slot({ duration: CORPSE_LINGER, onComplete: () => entity.destroy() })

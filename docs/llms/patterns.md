@@ -548,6 +548,17 @@ entity.timeScale = 2; // ...or speed it up
 // it is durable game state.
 ```
 
+An entity excluded from a slow-motion effect still has its body integrated at
+the slowed rate. Scale velocity writes by the ratio of the two rates:
+
+```ts
+const world = time.effectiveScale;
+const factor = world > 0 ? time.effectiveScaleForUpdates(entity) / world : 1;
+rb.setVelocity(dir.scale(speed * factor));
+```
+
+The factor is `1` while the scene is frozen — nothing integrates then.
+
 ### Hitstop, slow motion, bullet time, freeze frames (SceneTime)
 
 ```ts
@@ -667,6 +678,7 @@ class HealthComponent extends Component {
 ### Ground detection (raycast)
 
 ```ts
+// Sensors are skipped by default, so a trigger zone underfoot is not ground.
 const hit = world.raycast(position, { x: 0, y: 1 }, halfHeight + 2);
 const grounded = hit !== null; // add coyote timer for better feel
 ```

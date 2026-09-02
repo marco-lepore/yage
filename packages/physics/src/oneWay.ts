@@ -1,5 +1,5 @@
 import type { ColliderComponent } from "./ColliderComponent.js";
-import { colliderRotation } from "./toRapierColliders.js";
+import { colliderRotation } from "./colliderGeometry.js";
 import type {
   ColliderShape,
   ContactCandidate,

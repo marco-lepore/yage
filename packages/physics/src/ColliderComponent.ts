@@ -23,7 +23,7 @@ import type {
   ContactFilter,
   TriggerEvent,
 } from "./types.js";
-import { assertFiniteNumber } from "./validate.js";
+import { assertColliderShape, assertFiniteNumber } from "./validate.js";
 
 /**
  * Wraps a Rapier collider. Attach after RigidBodyComponent.
@@ -73,6 +73,7 @@ export class ColliderComponent extends Component {
     assertFiniteNumber(context, "friction", config.friction, 0);
     assertFiniteNumber(context, "density", config.density, 0);
     assertFiniteNumber(context, "contactSkin", config.contactSkin, 0);
+    assertColliderShape(context, config.shape);
     if (config.oneWay) {
       assertFiniteNumber(context, "oneWay.margin", config.oneWay.margin);
       const direction = config.oneWay.direction;
@@ -157,6 +158,8 @@ export class ColliderComponent extends Component {
     // collider. Contacts end silently on disable, so clean up here.
     this._oneWayLanded?.clear();
     this.physicsWorld._forgetColliderContacts(this._colliderHandle);
+    // Out of the simulation, but still in Rapier's query index until a step.
+    this.physicsWorld._markQueriesStale();
   }
 
   onEnable(): void {
@@ -168,6 +171,8 @@ export class ColliderComponent extends Component {
     // sums to 0, and Rapier sums again only at the next step. Summing here
     // keeps `getMass()` correct before that step.
     collider.parent()?.recomputeMassPropertiesFromColliders();
+    // Back in the simulation, but not in Rapier's query index until a step.
+    this.physicsWorld._markQueriesStale();
   }
 
   onDestroy(): void {
@@ -315,8 +320,12 @@ export class ColliderComponent extends Component {
    * Callable before the component is added — the updated config is applied at
    * collider creation. A pre-add call cannot recompute mass: the body takes
    * its mass from the new shape at creation anyway.
+   *
+   * A shape with a dimension that is not finite and above 0 throws before
+   * anything is stored, so `config.shape` still describes the live collider.
    */
   setShape(shape: ColliderShape, options?: { recomputeMass?: boolean }): void {
+    assertColliderShape("ColliderComponent.setShape", shape);
     // Shape-dependent diagnostics read config.shape.
     this.config.shape = shape;
     if (this._colliderHandle === -1) return;
