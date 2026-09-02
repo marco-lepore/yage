@@ -205,9 +205,11 @@ stable domain id and resolve it while rebuilding the scene.
 ## Timing and visibility
 
 A member is active, in its queries and past `onEnable` before `onAcquire`
-runs, so the hook can reach its own components and its siblings. Acquire
-during Update and the entity renders on the same frame; acquire during Render
-or EndOfFrame and it first draws on the next one.
+runs, so the hook can reach its own components and its siblings. Acquire from
+a component's `update` or `fixedUpdate` and the member's components run in
+that same pass, after the acquirer's. Acquire during Update and the entity
+renders on the same frame; acquire during Render or EndOfFrame and it first
+draws on the next one.
 
 While a member sits in the pool it is dormant: hidden, out of the simulation,
 out of every query, and absent from `scene.findEntity` and

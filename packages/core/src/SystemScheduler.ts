@@ -8,6 +8,11 @@ import { Phase } from "./types.js";
  * registration lifecycle: once started, a system added here receives the
  * engine context and its `onRegister` immediately, and `remove` calls
  * `onUnregister`.
+ *
+ * Each phase list is replaced, never mutated in place, so a `run` in
+ * progress iterates the array it started with: a system added while its own
+ * phase is running first runs at that phase's next run, and a system removed
+ * while its phase is running does not run again.
  */
 export class SystemScheduler {
   private phases = new Map<Phase, System[]>();
@@ -74,33 +79,41 @@ export class SystemScheduler {
   }
 
   /**
-   * Add a system. Sorted by priority within its phase. On a started engine
-   * the system receives the context and its `onRegister` immediately.
+   * Add a system. Sorted by priority within its phase; ties keep add order.
+   * On a started engine the system receives the context and its `onRegister`
+   * before it enters the phase list, so a throwing `onRegister` leaves it
+   * unscheduled and unregistered. Added during its own phase, the system
+   * first runs at that phase's next run.
    */
   add(system: System): void {
-    let list = this.phases.get(system.phase);
-    if (!list) {
-      list = [];
-      this.phases.set(system.phase, list);
-    }
-    list.push(system);
-    list.sort((a, b) => a.priority - b.priority);
     if (this.context) this.register(system, this.context);
+    const list = this.phases.get(system.phase) ?? [];
+    this.phases.set(
+      system.phase,
+      [...list, system].sort((a, b) => a.priority - b.priority),
+    );
   }
 
-  /** Remove a system, calling its `onUnregister` if it was registered. */
+  /**
+   * Remove a system, calling its `onUnregister` if it was registered.
+   * Removed during its own phase, the system does not run again.
+   */
   remove(system: System): void {
     const list = this.phases.get(system.phase);
-    if (!list) return;
-    const idx = list.indexOf(system);
-    if (idx === -1) return;
-    list.splice(idx, 1);
+    if (!list?.includes(system)) return;
+    this.phases.set(
+      system.phase,
+      list.filter((s) => s !== system),
+    );
     if (this.registered.delete(system)) {
       this.dispatch(system, () => system.onUnregister?.());
     }
   }
 
-  /** Run all enabled systems in a given phase. Wraps each in ErrorBoundary if available. */
+  /**
+   * Run all enabled systems in a given phase, in the order the phase had
+   * when the run started. Wraps each in ErrorBoundary if available.
+   */
   run(phase: Phase, dt: number): void {
     // A fixed step with no fixed systems is still a step — the index must
     // track the loop's real step count, not just observed work.
@@ -111,6 +124,9 @@ export class SystemScheduler {
     this._currentPhase = phase;
     try {
       for (const system of list) {
+        // A remove during this run replaced the list; skip what it dropped.
+        const current = this.phases.get(phase);
+        if (current !== list && !current?.includes(system)) continue;
         if (!system.enabled) continue;
         this.dispatch(system, () => system.update(dt));
       }
@@ -134,9 +150,11 @@ export class SystemScheduler {
   }
 
   private register(system: System, context: EngineContext): void {
-    this.registered.add(system);
     system._setContext(context);
     this.dispatch(system, () => system.onRegister?.(context));
+    // After the hook: a throwing `onRegister` leaves the system unregistered,
+    // so `_destroy` does not call its `onUnregister`.
+    this.registered.add(system);
   }
 
   /** Run a system-owned callback through the ErrorBoundary when one is set. */

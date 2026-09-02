@@ -211,6 +211,25 @@ describe("EntityPool", () => {
       expect(member.getChild("body").isActive).toBe(false);
     });
 
+    it("acquire moves the member and its children to the end of the entity set", () => {
+      const { scene } = createMockScene();
+
+      class Composite extends Entity {
+        override setup(): void {
+          this.spawnChild("body");
+        }
+        onAcquire(): void {}
+      }
+      const pool = new EntityPool(scene, Composite, { prewarm: 1 });
+      scene.spawn("later");
+      const member = pool.acquire();
+
+      expect([...scene.getEntities()].slice(-2)).toEqual([
+        member,
+        member.getChild("body"),
+      ]);
+    });
+
     it("leaves an unrelated entity spawned during setup active", () => {
       const { scene } = createMockScene();
 

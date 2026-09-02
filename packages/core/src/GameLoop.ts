@@ -99,7 +99,9 @@ export class GameLoop {
       this.lastTime = performance.now();
       const loop = (now: number) => {
         if (!this.running) return;
-        const dt = now - this.lastTime;
+        // The first rAF timestamp can precede the `performance.now()` sampled
+        // at start(); a negative delta means "no time passed", not an error.
+        const dt = Math.max(0, now - this.lastTime);
         this.lastTime = now;
         this.tick(dt);
         this.rafId = requestAnimationFrame(loop);
@@ -108,7 +110,12 @@ export class GameLoop {
     }
   }
 
-  /** Stop the loop. */
+  /**
+   * Stop the loop. Takes effect at the next phase boundary: a `stop()` made
+   * from inside a phase — `Engine.destroy()` is one — lets the systems of
+   * the running phase finish and skips the phases after it, the frame's
+   * remaining fixed steps included.
+   */
   stop(): void {
     this.running = false;
     if (this.rafId !== null && typeof cancelAnimationFrame !== "undefined") {
@@ -124,7 +131,13 @@ export class GameLoop {
   /**
    * Process one frame. `dtMs` is the wall-clock delta in milliseconds (the
    * unit PixiJS tickers report). It is converted to seconds here, so every
-   * callback receives seconds.
+   * callback receives seconds. `dtMs` must be a finite number >= 0; `0` is a
+   * frame with no fixed step. Anything else throws before the frame starts,
+   * because a `NaN` accumulator never steps again and an `Infinity` one
+   * steps `maxFixedStepsPerFrame` times on every later frame.
+   *
+   * A `stop()` made from inside a phase ends the frame at that phase's
+   * boundary: the phases after it, and any remaining fixed steps, are skipped.
    *
    * A throw that escapes the whole frame — nothing downstream caught it —
    * stops the loop and rethrows, so it reaches the host (a caller's own
@@ -133,6 +146,11 @@ export class GameLoop {
    * `entity.emit(...)`) never reaches here, so the loop keeps running.
    */
   tick(dtMs: number): void {
+    if (!Number.isFinite(dtMs) || dtMs < 0) {
+      throw new Error(
+        `GameLoop.tick: dtMs must be a finite number >= 0, got ${dtMs}.`,
+      );
+    }
     if (!this.running || !this.callbacks) return;
 
     this._frameCount++;
@@ -148,6 +166,7 @@ export class GameLoop {
       this.accumulator += dt;
       let steps = 0;
       while (
+        this.running &&
         this.accumulator >= this.fixedTimestep &&
         steps < this.maxFixedStepsPerFrame
       ) {
@@ -157,15 +176,19 @@ export class GameLoop {
       }
 
       // 3. Update
+      if (!this.running) return;
       this.callbacks.update(dt);
 
       // 4. Late Update
+      if (!this.running) return;
       this.callbacks.lateUpdate(dt);
 
       // 5. Render
+      if (!this.running) return;
       this.callbacks.render(dt);
 
       // 6. End of Frame
+      if (!this.running) return;
       this.callbacks.endOfFrame(dt);
     } catch (err) {
       this.stop();

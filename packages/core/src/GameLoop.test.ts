@@ -425,4 +425,105 @@ describe("GameLoop", () => {
       expect(unsub).toHaveBeenCalledOnce();
     });
   });
+
+  describe("stop() from inside a phase", () => {
+    it("ends the frame at the boundary of the phase that stopped it", () => {
+      const loop = new GameLoop({ fixedTimestep: 0.016 });
+      const cbs = createCallbacks();
+      cbs.update.mockImplementation(() => loop.stop());
+      loop.setCallbacks(cbs);
+      loop.start();
+      loop.tick(16);
+      expect(cbs.update).toHaveBeenCalledOnce();
+      expect(cbs.lateUpdate).not.toHaveBeenCalled();
+      expect(cbs.render).not.toHaveBeenCalled();
+      expect(cbs.endOfFrame).not.toHaveBeenCalled();
+      expect(loop.isRunning).toBe(false);
+    });
+
+    it("skips the remaining fixed steps and every later phase", () => {
+      const loop = new GameLoop({ fixedTimestep: 0.01 });
+      const cbs = createCallbacks();
+      cbs.fixedUpdate.mockImplementation(() => loop.stop());
+      loop.setCallbacks(cbs);
+      loop.start();
+      loop.tick(30); // three due steps
+      expect(cbs.fixedUpdate).toHaveBeenCalledOnce();
+      expect(cbs.update).not.toHaveBeenCalled();
+      expect(cbs.lateUpdate).not.toHaveBeenCalled();
+      expect(cbs.render).not.toHaveBeenCalled();
+      expect(cbs.endOfFrame).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("tick(dtMs) validation", () => {
+    it.each([NaN, Infinity, -1])(
+      "rejects %s before the frame starts",
+      (dtMs) => {
+        const loop = new GameLoop();
+        const cbs = createCallbacks();
+        loop.setCallbacks(cbs);
+        loop.start();
+        expect(() => loop.tick(dtMs)).toThrow(
+          `GameLoop.tick: dtMs must be a finite number >= 0, got ${dtMs}.`,
+        );
+        expect(loop.frameCount).toBe(0);
+        expect(loop.isRunning).toBe(true);
+        expect(cbs.earlyUpdate).not.toHaveBeenCalled();
+      },
+    );
+
+    it("rejects garbage on a stopped loop too", () => {
+      const loop = new GameLoop();
+      expect(() => loop.tick(NaN)).toThrow("GameLoop.tick");
+      expect(loop.isRunning).toBe(false);
+    });
+
+    it("accepts 0 as a frame with no fixed step", () => {
+      const loop = new GameLoop({ fixedTimestep: 0.016 });
+      const cbs = createCallbacks();
+      loop.setCallbacks(cbs);
+      loop.start();
+      loop.tick(0);
+      expect(loop.frameCount).toBe(1);
+      expect(cbs.fixedUpdate).not.toHaveBeenCalled();
+      expect(cbs.update).toHaveBeenCalledWith(0);
+      expect(loop.interpolationAlpha).toBe(0);
+    });
+
+    it("clamps a rAF timestamp that precedes the start time to a 0 delta", () => {
+      const rafCallbacks: Array<(now: number) => void> = [];
+      const originalRAF = globalThis.requestAnimationFrame;
+      const originalCAF = globalThis.cancelAnimationFrame;
+      globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
+        rafCallbacks.push(cb);
+        return rafCallbacks.length;
+      };
+      globalThis.cancelAnimationFrame = vi.fn();
+      const nowSpy = vi.spyOn(performance, "now").mockReturnValue(1000);
+
+      try {
+        const loop = new GameLoop({ fixedTimestep: 0.016 });
+        const cbs = createCallbacks();
+        loop.setCallbacks(cbs);
+        loop.start();
+        expect(() => rafCallbacks[0]?.(500)).not.toThrow();
+        expect(cbs.update).toHaveBeenCalledOnce();
+        expect(cbs.update).toHaveBeenCalledWith(0);
+        loop.stop();
+      } finally {
+        nowSpy.mockRestore();
+        if (originalRAF) {
+          globalThis.requestAnimationFrame = originalRAF;
+        } else {
+          delete (globalThis as Record<string, unknown>)["requestAnimationFrame"];
+        }
+        if (originalCAF) {
+          globalThis.cancelAnimationFrame = originalCAF;
+        } else {
+          delete (globalThis as Record<string, unknown>)["cancelAnimationFrame"];
+        }
+      }
+    });
+  });
 });

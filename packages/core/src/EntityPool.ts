@@ -222,9 +222,11 @@ export class EntityPool<
    * with every member out.
    *
    * The member is active and in every matching query before `onAcquire` runs,
-   * so the hook can reach its own components and siblings. Acquire during
-   * Update and the member renders the same frame; acquire later (Render,
-   * EndOfFrame) and it first draws on the next one.
+   * so the hook can reach its own components and siblings. Acquire from a
+   * component's `update` or `fixedUpdate` and the member's components run in
+   * that same pass, after the acquirer's. Acquire during Update and the
+   * member renders the same frame; acquire later (Render, EndOfFrame) and it
+   * first draws on the next one.
    */
   acquire(...args: Parameters<T["onAcquire"]>): AcquireResult<T, TMax> {
     this.assertUsable("acquire");
@@ -458,6 +460,10 @@ export class EntityPool<
     const st = this.state.get(member);
     if (st) st.seq = seq;
     this.setStatus(member, "leased");
+    // Same set position as a fresh spawn, so a pass that is iterating the
+    // scene's entities visits the member after the entity acquiring it —
+    // whichever position the member's own insertion gave it.
+    this.scene._reinsert(member);
     member.setActive(true);
     return seq;
   }

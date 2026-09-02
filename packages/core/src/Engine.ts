@@ -73,7 +73,12 @@ export class Engine {
   readonly assets: AssetManager;
 
   private readonly plugins: Map<string, Plugin> = new Map();
-  private sortedPlugins: Plugin[] = [];
+  /**
+   * Plugins whose `install()` was called, in install order. A plugin is
+   * pushed before its install is awaited, so a `destroy()` after a failed or
+   * abandoned `start()` still releases what that plugin allocated.
+   */
+  private readonly installed: Plugin[] = [];
   /**
    * Where the instance is in its one and only lifecycle. `"failed"` and
    * `"destroyed"` are both terminal: plugins that installed before the engine
@@ -278,12 +283,11 @@ export class Engine {
         };
       }
 
-      // Topological sort of plugins (cached for reverse teardown)
-      this.sortedPlugins = this.topologicalSort();
-      const sorted = this.sortedPlugins;
+      const sorted = this.topologicalSort();
 
       // Install each plugin
       for (const plugin of sorted) {
+        this.installed.push(plugin);
         await plugin.install?.(this.context);
         // A host can tear the engine down mid-startup (hot reload, a component
         // unmounting). Teardown has already run by the time this resumes, so
@@ -343,6 +347,15 @@ export class Engine {
    * scene `onExit` cannot leave a plugin holding its GPU context. The first
    * error is rethrown once teardown has finished, and the rest are reported
    * through {@link Logger}.
+   *
+   * `onDestroy` runs for every plugin whose `install()` was called, in
+   * reverse install order (dependents first). A plugin `start()` never
+   * reached — because `destroy()` was called while an earlier install was
+   * awaiting — has nothing to release and is skipped.
+   *
+   * Called from inside a frame, `destroy()` stops the loop at the running
+   * phase's boundary: the systems of that phase finish, and the phases after
+   * it are skipped (see {@link GameLoop.stop}).
    */
   destroy(): void {
     if (this.lifecycle === "destroyed") return;
@@ -371,9 +384,9 @@ export class Engine {
     // Unregister all systems (reverse order for clean teardown)
     step(() => this.scheduler._destroy());
 
-    // Destroy plugins in reverse topological order (dependents first)
-    for (let i = this.sortedPlugins.length - 1; i >= 0; i--) {
-      const plugin = this.sortedPlugins[i];
+    // Destroy installed plugins in reverse install order (dependents first)
+    for (let i = this.installed.length - 1; i >= 0; i--) {
+      const plugin = this.installed[i];
       if (plugin) step(() => plugin.onDestroy?.());
     }
 
