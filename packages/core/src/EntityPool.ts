@@ -244,6 +244,10 @@ export class EntityPool<
    * live member is released and handed straight back, running `onRelease`,
    * then `onAcquire`, in the same call.
    *
+   * A reclaimed member takes a fresh spawn's place in the entity set, so it
+   * updates in the acquiring pass like any acquired member — including when
+   * its previous life already updated earlier in that same pass.
+   *
    * The one call it cannot serve is from inside `onRelease` on a capped pool
    * with no other member left. The member that hook belongs to is mid-release
    * and handing it straight back would run the rest of its release over a
