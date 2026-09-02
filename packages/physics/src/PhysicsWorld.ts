@@ -995,6 +995,9 @@ export class PhysicsWorld {
    * kinematic body's pending target would still be applied by it, so each
    * target is first reset to the body's current pose (`PhysicsSystem`
    * re-applies the component's captured target at the next real step).
+   * A contact transition the zero step detects is queued like any other and
+   * delivered with the next real step's batch — the same moment the next
+   * real step would have detected and delivered it without the refresh.
    */
   private _refreshQueries(): void {
     if (!this._queriesStale) return;
