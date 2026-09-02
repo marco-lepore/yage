@@ -10,6 +10,7 @@ import {
 import type { LevelCatalog, LevelInstance, PreparedLevel } from "@yagejs/level";
 import type { LevelDocument, LevelPlacement } from "@yagejs/level/document";
 import { SceneRenderTreeProviderKey, VisualComponent } from "@yagejs/renderer";
+import type { LayerDef } from "@yagejs/renderer";
 import { ARM_PIXELS } from "./gizmo.js";
 import { MARK_OFFSET_PIXELS } from "./marks.js";
 import {
@@ -63,6 +64,7 @@ vi.mock("@yagejs/level", async (importOriginal) => ({
             path: texturePathOf(placement),
           } as AssetHandle<unknown>,
         ],
+        references: [],
       })),
     diagnostics: document.entities
       .filter((placement) => typeof placement.params.texture !== "string")
@@ -293,7 +295,7 @@ async function createHarness(
   coordinator: PreviewCoordinator;
   store: EditorStore;
   events: string[];
-  build(document: LevelDocument): Promise<void>;
+  build(document: LevelDocument, layers?: readonly LayerDef[]): Promise<void>;
   tick(frames: number): void;
 }> {
   const parts = createParts(renderer, trees, camera);
@@ -303,10 +305,14 @@ async function createHarness(
     coordinator: parts.coordinator,
     store: parts.store,
     events,
-    async build(document: LevelDocument): Promise<void> {
+    async build(
+      document: LevelDocument,
+      layers: readonly LayerDef[] = [],
+    ): Promise<void> {
       parts.coordinator.requestRebuild({
         document,
         catalog: {} as LevelCatalog,
+        layers,
       });
       await settle();
     },
@@ -350,6 +356,7 @@ describe("PreviewCoordinator", () => {
     parts.coordinator.requestRebuild({
       document: document("crate"),
       catalog: {} as LevelCatalog,
+      layers: [],
     });
     await settle();
     expect(events).toEqual([]);
@@ -1275,6 +1282,85 @@ describe("PreviewCoordinator", () => {
       // lands unless the project put it elsewhere.
       expect(GUIDE_LAYER_ORDER).toBeLessThan(0);
       expect(added).toHaveLength(2);
+    });
+
+    it("provisions the open level's layers before it builds the placements", async () => {
+      const ensured: string[] = [];
+      const sorts: (string | undefined)[] = [];
+      const sort = (): number => 0;
+      const layer = {
+        container: { addChild: () => {} },
+        sort: undefined as unknown,
+        setSort: (next: unknown) => {
+          layer.sort = next;
+          sorts.push(next === undefined ? undefined : "sorted");
+        },
+      };
+      const trees = {
+        getTree: () => ({
+          getAll: () => [],
+          ensureLayer: (def: LayerDef) => {
+            ensured.push(def.name);
+            return layer;
+          },
+        }),
+      };
+
+      const harness = await createHarness(renderer, trees);
+      ensured.length = 0;
+      await harness.build(document("crate"), [
+        { name: "bg", order: -10 },
+        { name: "canopy", order: 20, sort },
+      ]);
+
+      expect(ensured).toEqual(["bg", "canopy"]);
+      // A layer that already exists keeps the configuration it was created
+      // with, so a declared sort is written afterwards — and only where the
+      // declaration and the live layer disagree.
+      expect(sorts).toEqual(["sorted"]);
+    });
+
+    it("clears a sort the level opened before it declared", async () => {
+      const sort = (): number => 0;
+      const layers = new Map<
+        string,
+        {
+          container: { addChild: () => void };
+          sort: unknown;
+          setSort: (next: unknown) => void;
+        }
+      >();
+      const ensure = (name: string) => {
+        const existing = layers.get(name);
+        if (existing) return existing;
+        const layer = {
+          container: { addChild: () => {} },
+          sort: undefined as unknown,
+          setSort: (next: unknown) => {
+            layer.sort = next;
+          },
+        };
+        layers.set(name, layer);
+        return layer;
+      };
+      const trees = {
+        getTree: () => ({
+          getAll: () => [],
+          ensureLayer: (def: LayerDef) => ensure(def.name),
+          tryGet: (name: string) => layers.get(name),
+        }),
+      };
+
+      const harness = await createHarness(renderer, trees);
+      await harness.build(document("crate"), [
+        { name: "default", order: 0, sort },
+      ]);
+      expect(layers.get("default")?.sort).toBe(sort);
+
+      // The scene outlives the level, so the next level's set has to undo it.
+      await harness.build(document("crate"), [{ name: "bg", order: -10 }]);
+
+      expect(layers.get("default")?.sort).toBeUndefined();
     });
 
     it("draws the overlay every frame once it has a canvas", async () => {

@@ -1,4 +1,5 @@
 import { createRoot, type Root } from "react-dom/client";
+import type { LayerDef } from "@yagejs/renderer";
 import type { EditorDiagnostic } from "../shared/diagnostics/index.js";
 import { EditorApiClient } from "./api/index.js";
 import { CommandController } from "./commands/index.js";
@@ -10,6 +11,7 @@ import {
 } from "./preview/index.js";
 import { ProjectCoordinator } from "./project/index.js";
 import { EditorShell } from "./shell/index.js";
+import { LayerSets } from "./layers.js";
 import { EditorStore, type ViewStorage } from "./store/index.js";
 
 export interface MountEditorOptions {
@@ -23,6 +25,11 @@ export interface MountEditorOptions {
   readonly harness: unknown;
   /** One entry per package that contributes level entities. */
   readonly contributions: readonly unknown[];
+  /**
+   * One `LayerDef[]` per layers module the config named, once each and in
+   * config order. A level's draft snapshot says which one it belongs to.
+   */
+  readonly layerSets?: readonly (readonly LayerDef[])[] | undefined;
   /** The project's game page URL, when its config named one. */
   readonly gamePage?: string | undefined;
 }
@@ -57,6 +64,8 @@ export async function mountEditor(
     storage: viewStorage(),
   });
 
+  const layers = new LayerSets(options.layerSets ?? []);
+
   const canvasHost = document.createElement("div");
   canvasHost.style.position = "absolute";
   canvasHost.style.inset = "0";
@@ -87,6 +96,10 @@ export async function mountEditor(
       inspectable={(typeId) => project.inspectable(typeId)}
       listAssets={() => api.listAssets()}
       levels={bootstrap.levels}
+      layerChoices={() => layers.choicesFor(store.getState().file?.layerSet)}
+      layerSorts={(layer) =>
+        layers.sorted(store.getState().file?.layerSet, layer)
+      }
     />,
   );
 
@@ -94,6 +107,7 @@ export async function mountEditor(
     store,
     () => project.current.catalog,
     preview,
+    (index) => layers.defsFor(index),
   );
 
   const built = project.initialize({

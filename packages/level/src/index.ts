@@ -6,8 +6,9 @@ export {
   defineParams,
 } from "./params/schema.js";
 export { defineLevelAsset, param } from "./params/kinds.js";
-export type { LevelAssetDescriptor } from "./params/kinds.js";
+export type { EntityRefOptions, LevelAssetDescriptor } from "./params/kinds.js";
 export type {
+  AssetFrames,
   ParamFieldDescription,
   ParamsOf,
   ParamsSchema,
@@ -33,6 +34,7 @@ export { levelAssets, prepareLevel, validateLevel } from "./prepare/prepare.js";
 export type {
   LevelDiagnostic,
   LevelDiagnosticCode,
+  PlacementReference,
   PreparedLevel,
   PreparedPlacement,
 } from "./prepare/types.js";

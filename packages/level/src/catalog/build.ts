@@ -1,5 +1,5 @@
 import { typeName } from "../internal/describe.js";
-import { schemaDefaultProblems } from "../params/schema.js";
+import { referenceFields, schemaDefaultProblems } from "../params/schema.js";
 import type {
   CatalogError,
   CatalogResult,
@@ -117,6 +117,29 @@ export function buildLevelCatalog(project: LevelProject): CatalogResult {
         packageName,
       );
     });
+  }
+
+  // A second pass, because a reference may name a type declared further down
+  // `entities` or contributed by a package composed later.
+  for (const entry of entries) {
+    const schema = entry.declaration.params;
+    if (schema === undefined) continue;
+    for (const field of referenceFields(schema)) {
+      if (field.types.length === 0) {
+        errors.push({
+          entityId: entry.id,
+          message: `Entity type "${entry.id}" parameter "${field.name}" accepts no types, so nothing can be chosen for it.`,
+        });
+        continue;
+      }
+      for (const typeId of field.types) {
+        if (byId.has(typeId)) continue;
+        errors.push({
+          entityId: entry.id,
+          message: `Entity type "${entry.id}" parameter "${field.name}" accepts entity type "${typeId}", which this project does not declare.`,
+        });
+      }
+    }
   }
 
   if (errors.length > 0) return { ok: false, errors };

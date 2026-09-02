@@ -57,6 +57,16 @@ export interface HistorySummary {
 export interface DraftSnapshot {
   readonly path: string;
   readonly epoch: string;
+  /**
+   * Which of the page's imported layer sets this level is authored against.
+   *
+   * The index is into the layer modules the config named, once each and in
+   * config order. It comes from the first `levels` entry that both names a
+   * layers module and matches this path; entries naming none are skipped
+   * rather than ending the search. Absent when no entry that names one
+   * matches.
+   */
+  readonly layerSet?: number;
   readonly document: LevelDocument;
   /** Ordering for commands. Advances whenever the document changes. */
   readonly draftRevision: number;

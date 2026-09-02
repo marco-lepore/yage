@@ -7,7 +7,7 @@ import {
   Transform,
   createMockScene,
 } from "@yagejs/core";
-import type { Scene } from "@yagejs/core";
+import type { EntityHandle, Scene } from "@yagejs/core";
 import { buildLevelCatalog } from "../catalog/build.js";
 import { defineLevelEntity, defineLevelProject } from "../catalog/declare.js";
 import type { LevelCatalog, LevelEntityClass } from "../catalog/types.js";
@@ -75,6 +75,37 @@ class Crate extends Entity {
     seen.setup.push(key);
     seen.texture.set(key, params.texture);
     seen.parents.set(key, this.parent?.requireKey() ?? null);
+  }
+}
+
+/** Stands in for a renderer visual: the two members a level duck-types. */
+class Painted extends Component {
+  private _layerName: string;
+
+  constructor(layer = "default") {
+    super();
+    this._layerName = layer;
+  }
+
+  get layerName(): string {
+    return this._layerName;
+  }
+
+  setLayer(name: string): void {
+    this._layerName = name;
+  }
+}
+
+/** A second visual the type deliberately puts somewhere else. */
+class Badge extends Painted {}
+
+class Painter extends Entity {
+  static readonly level = defineLevelEntity({ id: "game.painter", version: 1 });
+
+  setup(): void {
+    this.add(new Transform());
+    this.add(new Painted());
+    this.add(new Badge("ui"));
   }
 }
 
@@ -228,6 +259,45 @@ describe("instantiateLevel", () => {
       "forest/b",
       "forest/child",
     ]);
+  });
+
+  it("puts a placement's visuals on the layer it names, and leaves the rest", () => {
+    const scene = sceneOf();
+    const prepared = prepare(
+      [
+        placement({
+          id: "sign",
+          type: "game.painter",
+          layer: "props",
+          params: {},
+        }),
+      ],
+      Painter,
+    );
+
+    const instance = instantiateLevel(scene, prepared, {
+      namespace: "forest",
+    });
+
+    const entity = instance.entities[0];
+    expect(entity?.get(Painted).layerName).toBe("props");
+    // The type put this one on "ui" itself, so the level's layer is not an
+    // instruction to move it.
+    expect(entity?.get(Badge).layerName).toBe("ui");
+  });
+
+  it("leaves every visual alone when the placement names no layer", () => {
+    const scene = sceneOf();
+    const prepared = prepare(
+      [placement({ id: "sign", type: "game.painter", params: {} })],
+      Painter,
+    );
+
+    const instance = instantiateLevel(scene, prepared, {
+      namespace: "forest",
+    });
+
+    expect(instance.entities[0]?.get(Painted).layerName).toBe("default");
   });
 
   it("composes the instance transform into a top-level placement only", () => {
@@ -727,5 +797,166 @@ describe("LevelInstance", () => {
     instance.dispose();
 
     expect(() => instance.activate()).toThrow(/disposed/);
+  });
+});
+
+describe("entity references", () => {
+  const SwitchParams = defineParams({
+    door: param.entityRef<Crate>({ types: ["game.crate"] }),
+    twin: param.entityRef({ types: ["game.switch"], optional: true }),
+  });
+
+  /** How many setups had run when the switch's own component was enabled. */
+  let setupsAtEnable = -1;
+
+  class CountSetupsAtEnable extends Component {
+    onEnable(): void {
+      setupsAtEnable = seen.setup.length;
+    }
+  }
+
+  /** What each switch resolved, and whether its target had set up yet. */
+  const resolved = new Map<
+    string,
+    { door: EntityHandle<Crate>; doorSetUp: boolean; twin: boolean }
+  >();
+
+  class Switch extends Entity {
+    static readonly level = defineLevelEntity({
+      id: "game.switch",
+      version: 1,
+      params: SwitchParams,
+    });
+
+    private handles?: ParamsOf<typeof SwitchParams>;
+
+    setup(params: ParamsOf<typeof SwitchParams>): void {
+      this.add(new Transform());
+      this.add(new EnableMarker());
+      this.add(new CountSetupsAtEnable());
+      this.handles = params;
+      const key = this.requireKey();
+      seen.setup.push(key);
+      resolved.set(key, {
+        door: params.door,
+        // Read during setup on purpose: the target's own setup may not have
+        // run yet, which is the rule the documentation states.
+        doorSetUp: seen.setup.includes(params.door.current?.requireKey() ?? ""),
+        twin: params.twin !== undefined,
+      });
+    }
+
+    /** The entity the `door` handle points at now. */
+    get door(): Crate | undefined {
+      return this.handles?.door.current;
+    }
+  }
+
+  function aSwitch(overrides: Partial<LevelPlacement> = {}): LevelPlacement {
+    return placement({
+      id: "s1",
+      type: "game.switch",
+      params: { door: "p1", twin: null },
+      ...overrides,
+    });
+  }
+
+  it("hands setup a handle on the entity the target became", () => {
+    const scene = sceneOf();
+    const prepared = prepare([aSwitch(), placement()], Crate, Switch);
+
+    const instance = instantiateLevel(scene, prepared, {
+      namespace: "forest",
+    });
+
+    const target = instance.get("p1");
+    expect(resolved.get("forest/s1")?.door.current).toBe(target);
+    expect(target).toBeInstanceOf(Crate);
+  });
+
+  it("resolves a target listed after the placement that points at it", () => {
+    // The switch is first in the document, so its setup runs first. Every
+    // placement is reserved before any setup, so the handle still resolves.
+    const scene = sceneOf();
+    const prepared = prepare([aSwitch(), placement()], Crate, Switch);
+
+    instantiateLevel(scene, prepared, { namespace: "forest" });
+
+    expect(resolved.get("forest/s1")?.doorSetUp).toBe(false);
+    expect(resolved.get("forest/s1")?.door.current).toBeDefined();
+  });
+
+  it("resolves two placements that point at each other", () => {
+    const scene = sceneOf();
+    const Pair = class extends Entity {
+      static readonly level = defineLevelEntity({
+        id: "game.pair",
+        version: 1,
+        params: defineParams({
+          other: param.entityRef({ types: ["game.pair"] }),
+        }),
+      });
+
+      other: Entity | undefined;
+
+      setup(params: { other: EntityHandle }): void {
+        this.add(new Transform());
+        this.other = params.other.current;
+      }
+    };
+    const prepared = prepare(
+      [
+        placement({ id: "a", type: "game.pair", params: { other: "b" } }),
+        placement({ id: "b", type: "game.pair", params: { other: "a" } }),
+      ],
+      Pair,
+    );
+
+    const instance = instantiateLevel(scene, prepared, {
+      namespace: "forest",
+    });
+
+    const a = instance.get("a") as InstanceType<typeof Pair>;
+    const b = instance.get("b") as InstanceType<typeof Pair>;
+    expect(a.other).toBe(b);
+    expect(b.other).toBe(a);
+  });
+
+  it("decodes an unchosen optional reference to undefined", () => {
+    const scene = sceneOf();
+    const prepared = prepare([aSwitch(), placement()], Crate, Switch);
+
+    instantiateLevel(scene, prepared, { namespace: "forest" });
+
+    expect(resolved.get("forest/s1")?.twin).toBe(false);
+  });
+
+  it("has run every setup by the time a component is enabled", () => {
+    // What replaces an `onLevelReady()` hook: activation happens after the
+    // whole batch, so the first `onEnable()` is later than every `setup()`.
+    const scene = sceneOf();
+    const prepared = prepare([aSwitch(), placement()], Crate, Switch);
+
+    instantiateLevel(scene, prepared, { namespace: "forest" });
+
+    // The switch is enabled first and the crate sets up second, so a count of
+    // two is the whole document having set up before the first enable.
+    expect(seen.enabled).toEqual(["forest/s1", "forest/p1"]);
+    expect(setupsAtEnable).toBe(2);
+  });
+
+  it("expires the handle when the target is destroyed, and leaves the referrer", () => {
+    const scene = sceneOf();
+    const prepared = prepare([aSwitch(), placement()], Crate, Switch);
+    const instance = instantiateLevel(scene, prepared, {
+      namespace: "forest",
+    });
+    const referrer = instance.get("s1") as Switch;
+
+    instance.get("p1")?.destroy();
+    scene._flushDestroyQueue();
+
+    expect(referrer.door).toBeUndefined();
+    expect(referrer.isDestroyed).toBe(false);
   });
 });

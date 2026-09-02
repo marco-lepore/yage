@@ -4,7 +4,9 @@ import type {
   AssetListing,
   LevelSummary,
 } from "../../shared/protocol/index.js";
+import { inboundReferences } from "../commands/index.js";
 import type { CommandController } from "../commands/index.js";
+import type { LayerChoice } from "../layers.js";
 import type { InspectableType, PlaceableType } from "../project/index.js";
 import {
   isDirty,
@@ -75,6 +77,17 @@ export interface EditorShellProps {
    * page is open.
    */
   readonly levels: readonly LevelSummary[];
+  /**
+   * The layers the open level may put a placement on, read on each render.
+   * Empty when the project declared none for it, which is when the inspector
+   * shows no layer control at all.
+   */
+  readonly layerChoices: () => readonly LayerChoice[];
+  /**
+   * Whether the layer a placement draws on keys its own draw order. The
+   * ordering controls say so instead of reordering a document to no effect.
+   */
+  readonly layerSorts: (layer: string | undefined) => boolean;
 }
 
 /**
@@ -431,11 +444,89 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
             onSetKey={(id, key) => {
               props.commands.setKey(id, key);
             }}
+            layerChoices={props.layerChoices}
+            layerSorts={props.layerSorts}
+            onSetLayer={(id, layer) => {
+              props.commands.setLayer(id, layer);
+            }}
+            onOrder={(id, direction) => {
+              props.commands.orderPlacements([id], direction);
+            }}
           />
         </aside>
       </div>
 
+      <DeleteConfirm store={store} commands={props.commands} />
+
       <Problems store={store} />
+    </div>
+  );
+}
+
+/**
+ * What a delete would break, asked before it happens.
+ *
+ * The question is only worth asking when something outside the removed set
+ * points into it, so `CommandController` decides whether to open it and this
+ * renders whatever it opened. The referrers are derived from the live document
+ * on each render rather than captured when the question was asked, so an undo
+ * or another tab's edit cannot leave a stale list on screen.
+ *
+ * Confirming leaves the referring ids exactly as they are. Preparation then
+ * reports each as a missing target, which is repairable in one click and which
+ * one undo puts back.
+ */
+function DeleteConfirm({
+  store,
+  commands,
+}: {
+  store: EditorStore;
+  commands: CommandController;
+}): React.JSX.Element | null {
+  const pending = useEditorSlice(store, (state) => state.pendingDelete);
+  const entities = useEditorSlice(store, (state) => state.document.entities);
+  if (pending === undefined) return null;
+  const removing = new Set(pending);
+  const referrers = inboundReferences(entities, removing, (typeId) =>
+    commands.referenceFields(typeId),
+  );
+  const labelOf = (id: string): string => {
+    const placement = entities.find((one) => one.id === id);
+    return placement?.name ?? placement?.key ?? id;
+  };
+
+  return (
+    <div data-testid="delete-confirm" role="alertdialog" className="ye-confirm">
+      <p>
+        {pending.length === 1
+          ? `Deleting ${labelOf(pending[0] ?? "")} leaves these pointing at nothing:`
+          : `Deleting these ${String(pending.length)} placements leaves these pointing at nothing:`}
+      </p>
+      <ul data-testid="delete-confirm-referrers" className="ye-messages">
+        {referrers.map((use) => (
+          <li key={`${use.placementId}-${use.field}`}>
+            {labelOf(use.placementId)} — {use.field} → {labelOf(use.targetId)}
+          </li>
+        ))}
+      </ul>
+      <div className="ye-confirm__actions">
+        <Button
+          testId="confirm-delete"
+          onClick={() => {
+            void commands.confirmDelete();
+          }}
+        >
+          Delete anyway
+        </Button>
+        <Button
+          testId="cancel-delete"
+          onClick={() => {
+            store.dispatch({ type: "delete-confirm-dismissed" });
+          }}
+        >
+          Cancel
+        </Button>
+      </div>
     </div>
   );
 }

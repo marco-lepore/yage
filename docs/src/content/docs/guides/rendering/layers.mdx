@@ -37,6 +37,24 @@ A component with no `layer` renders on the auto-created `"default"` layer
 *can*, to configure it (see [Sorting the default
 layer](#sorting-the-default-layer)).
 
+## Moving a visual to another layer
+
+`layerName` is the layer a visual draws on, and `setLayer` moves it:
+
+```typescript
+const sprite = entity.get(SpriteComponent);
+sprite.layerName; // "characters"
+sprite.setLayer("fx"); // now drawn on the fx layer
+```
+
+The visual joins its new layer last, so on a layer with no `sort` it draws in
+front of everything already there. A
+[`SortGroupComponent`](#keeping-multi-part-entities-together-sortgroupcomponent)
+on the new layer claims it, the same way it would on the first add.
+
+A level file can set this without any code — see
+[Levels](/guides/levels/#choosing-what-draws-on-top).
+
 ## Layer space
 
 Each `LayerDef` has a `space: "world" | "screen"` (default `"world"`)

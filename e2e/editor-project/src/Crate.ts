@@ -14,7 +14,7 @@ const CrateParams = defineParams({
   sprite: param.asset(textureAsset, "assets/player_idle.png"),
 });
 
-/** The one placeable type this project has. */
+/** The placeable type most cases measure: one whole picture, drawn centred. */
 export class Crate extends Entity {
   static readonly level = defineLevelEntity({
     id: "game.crate",

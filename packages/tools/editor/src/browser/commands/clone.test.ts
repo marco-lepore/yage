@@ -57,6 +57,9 @@ function counter(): () => string {
   };
 }
 
+/** A project whose types declare no reference parameter. */
+const NO_REFERENCE_FIELDS = (): readonly string[] => [];
+
 function clones(
   inserts: ReturnType<typeof clonePlacements>,
 ): readonly LevelPlacement[] {
@@ -79,6 +82,7 @@ describe("clonePlacements", () => {
         destination: NESTED,
         mode: "duplicate",
         newId: counter(),
+        referenceFields: NO_REFERENCE_FIELDS,
       }),
     );
 
@@ -102,6 +106,7 @@ describe("clonePlacements", () => {
         destination: deep,
         mode: "duplicate",
         newId: counter(),
+        referenceFields: NO_REFERENCE_FIELDS,
       }),
     );
 
@@ -117,6 +122,7 @@ describe("clonePlacements", () => {
         destination: NESTED,
         mode: "duplicate",
         newId: counter(),
+        referenceFields: NO_REFERENCE_FIELDS,
       }),
     );
 
@@ -136,6 +142,7 @@ describe("clonePlacements", () => {
         destination: empty,
         mode: "paste",
         newId: counter(),
+        referenceFields: NO_REFERENCE_FIELDS,
       }),
     );
 
@@ -157,6 +164,7 @@ describe("clonePlacements", () => {
         destination: NESTED,
         mode: "paste",
         newId: counter(),
+        referenceFields: NO_REFERENCE_FIELDS,
       }),
     );
 
@@ -174,6 +182,7 @@ describe("clonePlacements", () => {
         destination: elsewhere,
         mode: "duplicate",
         newId: counter(),
+        referenceFields: NO_REFERENCE_FIELDS,
       }),
     );
 
@@ -189,6 +198,7 @@ describe("clonePlacements", () => {
         destination: document(),
         mode: "paste",
         newId: counter(),
+        referenceFields: NO_REFERENCE_FIELDS,
       }),
     );
 
@@ -214,6 +224,7 @@ describe("clonePlacements", () => {
         destination: document(),
         mode: "paste",
         newId: counter(),
+        referenceFields: NO_REFERENCE_FIELDS,
       }),
     );
 
@@ -232,6 +243,7 @@ describe("clonePlacements", () => {
         destination: NESTED,
         mode: "duplicate",
         newId: counter(),
+        referenceFields: NO_REFERENCE_FIELDS,
       }),
     );
 
@@ -250,6 +262,7 @@ describe("clonePlacements", () => {
         destination: keyed,
         mode: "duplicate",
         newId: counter(),
+        referenceFields: NO_REFERENCE_FIELDS,
       }),
     );
 
@@ -274,6 +287,7 @@ describe("clonePlacements", () => {
         destination: mixed,
         mode: "duplicate",
         newId: counter(),
+        referenceFields: NO_REFERENCE_FIELDS,
       }),
     );
 
@@ -299,6 +313,7 @@ describe("clonePlacements", () => {
         destination: keyed,
         mode: "duplicate",
         newId: counter(),
+        referenceFields: NO_REFERENCE_FIELDS,
       }),
     );
 
@@ -314,6 +329,7 @@ describe("clonePlacements", () => {
         destination: NESTED,
         mode: "duplicate",
         newId: counter(),
+        referenceFields: NO_REFERENCE_FIELDS,
       }),
     );
 
@@ -327,6 +343,7 @@ describe("clonePlacements", () => {
       destination: NESTED,
       mode: "duplicate",
       newId: counter(),
+      referenceFields: NO_REFERENCE_FIELDS,
       offset: { x: 24, y: 24 },
     });
     const copies = clones(inserts);
@@ -351,6 +368,7 @@ describe("clonePlacements", () => {
         destination: row,
         mode: "duplicate",
         newId: counter(),
+        referenceFields: NO_REFERENCE_FIELDS,
         offset: { x: 10, y: 5 },
       }),
     );
@@ -379,6 +397,7 @@ describe("clonePlacements", () => {
         destination: turned,
         mode: "duplicate",
         newId: counter(),
+        referenceFields: NO_REFERENCE_FIELDS,
         offset: { x: 10, y: 0 },
       }),
     );
@@ -395,6 +414,7 @@ describe("clonePlacements", () => {
       destination: NESTED,
       mode: "duplicate",
       newId: counter(),
+      referenceFields: NO_REFERENCE_FIELDS,
     });
 
     // `root` and `child` are at 0 and 1, so the copies take 2 and 3 and land
@@ -411,6 +431,7 @@ describe("clonePlacements", () => {
       destination: elsewhere,
       mode: "paste",
       newId: counter(),
+      referenceFields: NO_REFERENCE_FIELDS,
     });
 
     expect(inserts.map((insert) => insert.index)).toEqual([2]);
@@ -431,6 +452,7 @@ describe("clonePlacements", () => {
         destination: held,
         mode: "duplicate",
         newId: counter(),
+        referenceFields: NO_REFERENCE_FIELDS,
       }),
     );
 
@@ -452,6 +474,7 @@ describe("clonePlacements", () => {
         destination: NESTED,
         mode: "duplicate",
         newId: counter(),
+        referenceFields: NO_REFERENCE_FIELDS,
       }),
     ).toEqual([]);
   });
@@ -464,7 +487,113 @@ describe("clonePlacements", () => {
         destination: NESTED,
         mode: "duplicate",
         newId: counter(),
+        referenceFields: NO_REFERENCE_FIELDS,
       }),
     ).toEqual([]);
+  });
+});
+
+describe("clonePlacements and entity references", () => {
+  /** Both types declare one reference parameter named `door`. */
+  const REFERENCE_FIELDS = (): readonly string[] => ["door"];
+
+  function referrer(
+    id: string,
+    door: string | null,
+    extra: Partial<LevelPlacement> = {},
+  ): LevelPlacement {
+    return placement(id, { type: "game.switch", params: { door }, ...extra });
+  }
+
+  it("rewrites a reference inside the copied set to the copy", () => {
+    const source = document(
+      referrer("a", "b"),
+      referrer("b", "a"),
+      placement("outside"),
+    );
+
+    const copies = clones(
+      clonePlacements({
+        source,
+        ids: ["a", "b"],
+        destination: source,
+        mode: "duplicate",
+        newId: counter(),
+        referenceFields: REFERENCE_FIELDS,
+      }),
+    );
+
+    expect(copies.map((copy) => copy.id)).toEqual(["copy-1", "copy-2"]);
+    expect(copies[0]?.params.door).toBe("copy-2");
+    expect(copies[1]?.params.door).toBe("copy-1");
+  });
+
+  it("keeps the id of a target that was not copied", () => {
+    const source = document(referrer("a", "target"), placement("target"));
+
+    const copies = clones(
+      clonePlacements({
+        source,
+        ids: ["a"],
+        destination: source,
+        mode: "duplicate",
+        newId: counter(),
+        referenceFields: REFERENCE_FIELDS,
+      }),
+    );
+
+    expect(copies[0]?.params.door).toBe("target");
+  });
+
+  it("keeps the id when pasting into a document that does not hold it", () => {
+    // The paste lands as a missing target the picker fixes in one click.
+    // Guessing a replacement is the thing the editor must not do.
+    const source = document(referrer("a", "target"), placement("target"));
+    const elsewhere = document(placement("unrelated"));
+
+    const copies = clones(
+      clonePlacements({
+        source,
+        ids: ["a"],
+        destination: elsewhere,
+        mode: "paste",
+        newId: counter(),
+        referenceFields: REFERENCE_FIELDS,
+      }),
+    );
+
+    expect(copies[0]?.params.door).toBe("target");
+  });
+
+  it("leaves an unchosen reference unchosen", () => {
+    const source = document(referrer("a", null));
+
+    const copies = clones(
+      clonePlacements({
+        source,
+        ids: ["a"],
+        destination: source,
+        mode: "duplicate",
+        newId: counter(),
+        referenceFields: REFERENCE_FIELDS,
+      }),
+    );
+
+    expect(copies[0]?.params.door).toBeNull();
+  });
+
+  it("leaves the source's own parameters alone", () => {
+    const source = document(referrer("a", "b"), referrer("b", "a"));
+
+    clonePlacements({
+      source,
+      ids: ["a", "b"],
+      destination: source,
+      mode: "duplicate",
+      newId: counter(),
+      referenceFields: REFERENCE_FIELDS,
+    });
+
+    expect(source.entities[0]?.params.door).toBe("b");
   });
 });

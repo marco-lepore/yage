@@ -5,7 +5,9 @@ export default defineEditorConfig({
     project: "../src/levelProject.ts",
     harness: "../lab/harness.ts",
   },
-  levels: ["levels/*.yage-level.json"],
+  levels: [
+    { glob: "levels/*.yage-level.json", layers: "../src/forestLayers.ts" },
+  ],
   assets: ["sprites/*.png"],
   gamePage: "/game.html",
 });

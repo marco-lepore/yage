@@ -1,9 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { runnerImport } from "vite";
-import type { EditorConfig } from "../../index.js";
+import type { EditorConfig, EditorLevelGlob } from "../../index.js";
 import { OWN_PAGE_PATHS, shadowsOwnPage } from "../vite/pages.js";
-import type { ResolvedEditorConfig, ResolvedEditorModules } from "./types.js";
+import type {
+  ResolvedEditorConfig,
+  ResolvedEditorModules,
+  ResolvedLevelGlob,
+} from "./types.js";
 
 /** Config file names, probed in this order. */
 export const CONFIG_CANDIDATES = [
@@ -56,8 +60,8 @@ export async function loadEditorConfig(
     configFile,
     projectId: readProjectId(options.cwd, root),
     modules: resolveModules(config.modules, configDir, root, configFile),
-    levels: config.levels.map((glob) =>
-      checkPattern(glob, "levels", configFile),
+    levels: config.levels.map((entry) =>
+      resolveLevelGlob(entry, configDir, root, configFile),
     ),
     assets: config.assets.map((glob) =>
       checkPattern(glob, "assets", configFile),
@@ -91,6 +95,25 @@ type CheckedEditorConfig = Omit<EditorConfig, "assets"> & {
   readonly assets: readonly string[];
 };
 
+/**
+ * Turn one `levels` entry into its glob and, when it named one, the URL the
+ * generated entry imports the layers module by.
+ */
+function resolveLevelGlob(
+  entry: string | EditorLevelGlob,
+  configDir: string,
+  root: string,
+  configFile: string,
+): ResolvedLevelGlob {
+  if (typeof entry === "string") {
+    return { glob: checkPattern(entry, "levels", configFile) };
+  }
+  return {
+    glob: checkPattern(entry.glob, "levels", configFile),
+    layers: toRootUrl(entry.layers, configDir, root, configFile),
+  };
+}
+
 function asEditorConfig(
   value: unknown,
   configFile: string,
@@ -108,7 +131,7 @@ function asEditorConfig(
 
   return {
     modules: { project, harness },
-    levels: asPatternList(value["levels"], "levels", configFile),
+    levels: asLevelList(value["levels"], configFile),
     assets:
       value["assets"] === undefined
         ? []
@@ -167,6 +190,39 @@ function asModulePath(value: unknown, key: string, configFile: string): string {
     throw new Error(`${configFile}: "modules.${key}" must be a path.`);
   }
   return value;
+}
+
+/**
+ * `levels` accepts a bare glob or a glob paired with a layers module. Both
+ * halves of the pair are checked here, so a typo is a startup error naming the
+ * field rather than a missing layer nobody can explain later.
+ */
+function asLevelList(
+  value: unknown,
+  configFile: string,
+): readonly (string | EditorLevelGlob)[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(
+      `${configFile}: "levels" must be a non-empty array of patterns.`,
+    );
+  }
+  return value.map((entry: unknown) => {
+    if (typeof entry === "string" && entry !== "") return entry;
+    if (
+      isObject(entry) &&
+      typeof entry["glob"] === "string" &&
+      entry["glob"] !== "" &&
+      typeof entry["layers"] === "string" &&
+      entry["layers"] !== ""
+    ) {
+      return { glob: entry["glob"], layers: entry["layers"] };
+    }
+    throw new Error(
+      `${configFile}: every "levels" entry must be a pattern or ` +
+        `{ glob, layers }, where "layers" is the path of a module exporting ` +
+        `the scene's LayerDef[].`,
+    );
+  });
 }
 
 function asPatternList(

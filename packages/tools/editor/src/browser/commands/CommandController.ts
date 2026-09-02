@@ -39,6 +39,7 @@ import {
   withDescendants,
 } from "./graph.js";
 import { clonePlacements, type CloneRequest } from "./clone.js";
+import { inboundReferences, referenceFieldNames } from "./references.js";
 
 /**
  * The part of `PreviewCoordinator` a drag needs, declared here rather than
@@ -119,6 +120,9 @@ export interface GestureModifiers {
   /** Alt: let this gesture off the grid for as long as it is held. */
   readonly suspended?: boolean;
 }
+
+/** Where an ordering control moves the selection among its siblings. */
+export type OrderDirection = "front" | "forward" | "backward" | "back";
 
 /**
  * Where a hierarchy drag drops one placement. Before or after a row keeps that
@@ -292,8 +296,11 @@ export class CommandController {
   }
 
   /** Send one `add-placements` for a set of clones, and select what it adds. */
-  private submitClones(request: CloneRequest): void {
-    const inserts = clonePlacements(request);
+  private submitClones(request: Omit<CloneRequest, "referenceFields">): void {
+    const inserts = clonePlacements({
+      ...request,
+      referenceFields: (typeId) => this.referenceFields(typeId),
+    });
     if (inserts.length === 0) return;
     this.store.submit({
       kind: "add-placements",
@@ -326,15 +333,66 @@ export class CommandController {
   async deletePlacements(ids: readonly string[]): Promise<void> {
     await this.settleEdits();
     if (!this.store.writable) return;
+    const entities = this.store.getState().document.entities;
+    const removing = withDescendants(entities, ids);
+    if (removing.length === 0) return;
+    const referrers = inboundReferences(entities, new Set(removing), (typeId) =>
+      this.referenceFields(typeId),
+    );
+    if (referrers.length > 0) {
+      this.store.dispatch({
+        type: "delete-confirm-requested",
+        ids: removing,
+      });
+      return;
+    }
+    this.submitRemoval(removing);
+  }
+
+  /**
+   * The reference parameters a type declares. The shell asks so the delete
+   * question can name what points where; nothing else in the browser knows
+   * which parameter of a placement holds an id.
+   */
+  referenceFields(typeId: string): readonly string[] {
+    return referenceFieldNames(this.catalog(), typeId);
+  }
+
+  /**
+   * Send the removal the open question was about.
+   *
+   * The question is asked in a panel that leaves the rest of the editor
+   * working, so the document can move between asking and answering: an undo,
+   * a hierarchy drag parenting something new under a removing placement,
+   * another tab. The closure is therefore recomputed against the document as
+   * it stands, and edits are settled first, for the same reasons
+   * {@link deletePlacements} does both.
+   *
+   * The ids the survivors hold are left exactly as they are: a confirmed
+   * delete may leave a level with semantic errors and never with malformed
+   * JSON, and leaving them is what makes one undo put the whole thing back.
+   * Preparation then reports each as a missing target, and the picker offers
+   * what is left.
+   */
+  async confirmDelete(): Promise<void> {
+    const ids = this.store.getState().pendingDelete;
+    this.store.dispatch({ type: "delete-confirm-dismissed" });
+    if (ids === undefined) return;
+    await this.settleEdits();
+    if (!this.store.writable) return;
     const removing = withDescendants(
       this.store.getState().document.entities,
       ids,
     );
     if (removing.length === 0) return;
+    this.submitRemoval(removing);
+  }
+
+  private submitRemoval(ids: readonly string[]): void {
     this.store.submit({
       kind: "remove-placements",
       commandId: this.newId(),
-      ids: removing,
+      ids,
     });
   }
 
@@ -380,6 +438,54 @@ export class CommandController {
    */
   setKey(id: string, key: string | null): void {
     this.setOptionalField(id, "key", key);
+  }
+
+  /**
+   * Put one placement's visuals on a named render layer, or take the name away.
+   *
+   * `null` removes the field, and every visual goes back to the layer its own
+   * type chose. The preview rebuilds either way: a visual joins a layer when
+   * it is added to the display tree, so moving one is a new projection.
+   */
+  setLayer(id: string, layer: string | null): void {
+    this.setOptionalField(id, "layer", layer);
+  }
+
+  /**
+   * Move the selection among the placements that share its parent.
+   *
+   * Draw order inside one layer is add order, and add order is document
+   * order, so this is a `move-placements` that keeps every parent as it is —
+   * the same command a hierarchy drag produces. The destination is expressed
+   * as a drop beside a sibling, which is what carries the parent through
+   * rather than clearing it.
+   *
+   * A selection whose members do not all share one parent produces nothing:
+   * one destination cannot reorder two sibling groups, and reparenting is a
+   * different intention from reordering.
+   */
+  orderPlacements(ids: readonly string[], direction: OrderDirection): void {
+    if (!this.store.writable) return;
+    const document = this.store.getState().document;
+    const roots = selectionRoots(document, ids);
+    if (roots.length === 0) return;
+    const moving = new Set(roots);
+    const first = document.entities.find((one) => one.id === roots[0]);
+    if (!first) return;
+    const parent = first.parent;
+    if (
+      roots.some(
+        (id) =>
+          document.entities.find((one) => one.id === id)?.parent !== parent,
+      )
+    ) {
+      return;
+    }
+
+    const group = document.entities.filter((one) => one.parent === parent);
+    const drop = orderDrop(direction, group, moving);
+    if (!drop) return;
+    this.movePlacements(roots, drop);
   }
 
   /**
@@ -445,7 +551,7 @@ export class CommandController {
    */
   private setOptionalField(
     id: string,
-    field: "name" | "key",
+    field: "name" | "key" | "layer",
     value: string | null,
   ): void {
     if (!this.store.writable) return;
@@ -877,6 +983,56 @@ function moveState(
     transform,
     index,
   };
+}
+
+/**
+ * The drop that moves the selection one step, or all the way, among the
+ * siblings it shares a parent with.
+ *
+ * `group` is every placement with that parent, in document order — later in
+ * the document is later in add order, which is what draws on top. Undefined
+ * when the selection is already where the direction would take it, in which
+ * case there is no sibling to land beside.
+ */
+function orderDrop(
+  direction: OrderDirection,
+  group: readonly LevelPlacement[],
+  moving: ReadonlySet<string>,
+): HierarchyDrop | undefined {
+  const isMoving = (placement: LevelPlacement): boolean =>
+    moving.has(placement.id);
+  const still = group
+    .map((placement, index) => ({ placement, index }))
+    .filter((entry) => !moving.has(entry.placement.id));
+  if (still.length === 0) return undefined;
+  // Already at that end. Without this the drop still names a sibling, and the
+  // move rewrites indices in the file for a picture that does not change.
+  const held = group.length - still.length;
+  if (direction === "front" && group.slice(-held).every(isMoving)) {
+    return undefined;
+  }
+  if (direction === "back" && group.slice(0, held).every(isMoving)) {
+    return undefined;
+  }
+  const indices = group
+    .map((placement, index) => (moving.has(placement.id) ? index : -1))
+    .filter((index) => index >= 0);
+  const lowest = Math.min(...indices);
+  const highest = Math.max(...indices);
+
+  const landing =
+    direction === "back"
+      ? still[0]
+      : direction === "front"
+        ? still[still.length - 1]
+        : direction === "backward"
+          ? [...still].reverse().find((one) => one.index < lowest)
+          : still.find((one) => one.index > highest);
+  if (!landing) return undefined;
+  const before = direction === "back" || direction === "backward";
+  return before
+    ? { kind: "before", siblingId: landing.placement.id }
+    : { kind: "after", siblingId: landing.placement.id };
 }
 
 /**

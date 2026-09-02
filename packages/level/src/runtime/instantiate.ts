@@ -14,6 +14,7 @@ import type {
   PreparedPlacement,
 } from "../prepare/types.js";
 import { LevelLoadError } from "./errors.js";
+import { applyPlacementLayer } from "./layer.js";
 import { LevelInstance } from "./LevelInstance.js";
 import type {
   InstantiateLevelOptions,
@@ -119,9 +120,11 @@ function build(
         } else {
           batch.setup(
             entity as ParameterizedEntity,
-            decode(scene, entity, schema, entry),
+            decode(scene, entity, schema, entry, byPlacementId),
           );
         }
+        const layer = entry.placement.layer;
+        if (layer !== undefined) applyPlacementLayer(entity, layer);
         place(entity, entry.placement, root);
       }
 
@@ -161,11 +164,18 @@ function decode(
   entity: Entity,
   schema: ParamsSchema<ParamFields>,
   entry: PreparedPlacement,
+  byPlacementId: Map<string, Entity>,
 ): unknown {
   const boundary = scene.context?.tryResolve(ErrorBoundaryKey);
   let decoded: unknown;
   const run = (): void => {
-    decoded = decodeParams(schema, entry.placement.params);
+    decoded = decodeParams(schema, entry.placement.params, {
+      // Every placement is reserved before this loop starts, so a reference
+      // to a placement further down the document resolves, and so does a
+      // cycle. A reserved entity is neither destroyed nor pooled, so the
+      // handle it hands out is live.
+      resolveEntityRef: (id) => reserved(byPlacementId, id).handle(),
+    });
   };
   if (boundary) {
     boundary.wrapCallback(run, {
@@ -275,7 +285,7 @@ function reserved(byPlacementId: Map<string, Entity>, id: string): Entity {
   const entity = byPlacementId.get(id);
   if (!entity) {
     throw new Error(
-      `Placement "${id}" is referenced as a parent but is not in this level.`,
+      `Placement "${id}" is referenced but is not in this level.`,
     );
   }
   return entity;

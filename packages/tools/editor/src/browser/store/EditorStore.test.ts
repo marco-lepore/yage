@@ -579,6 +579,23 @@ describe("EditorStore", () => {
       });
     });
 
+    it("withdraws an open delete question when a level is opened", () => {
+      // The answer is about placements of the level being left, so it means
+      // nothing in the one being entered.
+      harness.store.dispatch({
+        type: "delete-confirm-requested",
+        ids: ["crate"],
+      });
+      expect(harness.store.getState().pendingDelete).toEqual(["crate"]);
+
+      harness.store.dispatch({
+        type: "level-opened",
+        snapshot: snapshot(0, document(placement("crate", 0))),
+      });
+
+      expect(harness.store.getState().pendingDelete).toBeUndefined();
+    });
+
     it("sends an undo against the committed revision and adopts the answer", async () => {
       harness.answer({
         status: "accepted",

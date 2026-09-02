@@ -40,6 +40,7 @@ function canonicalPlacement(
   if (placement.name !== undefined) canonical["name"] = placement.name;
   if (placement.key !== undefined) canonical["key"] = placement.key;
   if (placement.parent !== undefined) canonical["parent"] = placement.parent;
+  if (placement.layer !== undefined) canonical["layer"] = placement.layer;
   if (!placement.active) canonical["active"] = false;
 
   const { position, rotation, scale } = placement.transform;

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { atlasFrame, atlasPathFor, framePlacement } from "./thumbnailFrame.js";
+import {
+  atlasFrame,
+  atlasPathFor,
+  declaredFrame,
+  framePlacement,
+} from "./thumbnailFrame.js";
 
 describe("atlasPathFor", () => {
   it("names the atlas beside the texture", () => {
@@ -97,5 +102,57 @@ describe("framePlacement", () => {
     expect(placement.width).toBe(12);
     expect(placement.left).toBe(6);
     expect(placement.top).toBe(0);
+  });
+});
+
+describe("declaredFrame", () => {
+  it("squares the frame when the declaration gives no height", () => {
+    expect(declaredFrame({ frameWidth: 48 }, 480, 48)).toEqual({
+      x: 0,
+      y: 0,
+      width: 48,
+      height: 48,
+      sheetWidth: 480,
+      sheetHeight: 48,
+    });
+  });
+
+  it("honours an offset and an explicit height", () => {
+    expect(
+      declaredFrame(
+        { frameWidth: 32, frameHeight: 16, startX: 8, startY: 4 },
+        480,
+        48,
+      ),
+    ).toEqual({
+      x: 8,
+      y: 4,
+      width: 32,
+      height: 16,
+      sheetWidth: 480,
+      sheetHeight: 48,
+    });
+  });
+
+  it("places the first frame of a strip in the box", () => {
+    const frame = declaredFrame({ frameWidth: 48 }, 480, 48);
+    if (frame === undefined) throw new Error("expected a frame");
+    expect(framePlacement(frame, 24)).toEqual({
+      width: 240,
+      height: 24,
+      left: 0,
+      top: 0,
+    });
+  });
+
+  it("refuses a grid that runs off the image, in either direction", () => {
+    expect(declaredFrame({ frameWidth: 64 }, 480, 48)).toBeUndefined();
+    expect(
+      declaredFrame({ frameWidth: 48, startX: 460 }, 480, 48),
+    ).toBeUndefined();
+  });
+
+  it("has nothing to answer before the image has loaded", () => {
+    expect(declaredFrame({ frameWidth: 48 }, 0, 0)).toBeUndefined();
   });
 });

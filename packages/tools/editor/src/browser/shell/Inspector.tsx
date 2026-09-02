@@ -7,10 +7,13 @@ import {
 } from "../../shared/commands/index.js";
 import type { EditorDiagnostic } from "../../shared/diagnostics/index.js";
 import type { AssetListing } from "../../shared/protocol/index.js";
+import type { OrderDirection } from "../commands/index.js";
+import type { LayerChoice } from "../layers.js";
 import type { InspectableType } from "../project/index.js";
 import type { EditorState, EditorStore } from "../store/index.js";
 import { Panel, PanelEmpty } from "./Panel.js";
-import { Button, TextField, trimmedOrNull } from "./controls.js";
+import type { SelectOption } from "./controls.js";
+import { Button, Select, TextField, trimmedOrNull } from "./controls.js";
 import { useEditorState } from "./useEditorSlice.js";
 
 export interface InspectorProps {
@@ -26,10 +29,20 @@ export interface InspectorProps {
    * throws `EditorApiError`, which the field reports beside itself.
    */
   readonly listAssets: () => Promise<AssetListing>;
-  readonly onSetParam: (id: string, field: string, value: string) => void;
+  readonly onSetParam: (
+    id: string,
+    field: string,
+    value: string | null,
+  ) => void;
   readonly onResetParam: (id: string, field: string) => void;
   readonly onResetPlacement: (id: string) => void;
   readonly onSetKey: (id: string, key: string | null) => void;
+  /** The layers the open level may put a placement on. Empty hides the control. */
+  readonly layerChoices: () => readonly LayerChoice[];
+  /** Whether the layer a placement draws on keys its own draw order. */
+  readonly layerSorts: (layer: string | undefined) => boolean;
+  readonly onSetLayer: (id: string, layer: string | null) => void;
+  readonly onOrder: (id: string, direction: OrderDirection) => void;
 }
 
 /**
@@ -140,6 +153,7 @@ function PlacementInspector(props: PlacementProps): React.JSX.Element {
           disabled={!editable}
           diagnostics={atField(field.name)}
           listAssets={props.listAssets}
+          entities={props.state.document.entities}
           onCommit={(value) => {
             props.onSetParam(placement.id, field.name, value);
           }}
@@ -205,7 +219,89 @@ function PlacementInspector(props: PlacementProps): React.JSX.Element {
         </div>
       ) : null}
 
+      <DrawOrderSection {...props} />
       <KeySection {...props} />
+    </div>
+  );
+}
+
+/** The option that stands for "no authored layer", and its label. */
+const NO_LAYER = "default";
+
+/** The four ordering controls, back to front, and what each one is called. */
+const ORDER_CONTROLS: readonly {
+  direction: OrderDirection;
+  label: string;
+  testId: string;
+}[] = [
+  { direction: "back", label: "Send to back", testId: "order-back" },
+  { direction: "backward", label: "Backward", testId: "order-backward" },
+  { direction: "forward", label: "Forward", testId: "order-forward" },
+  { direction: "front", label: "Bring to front", testId: "order-front" },
+];
+
+/**
+ * What draws on top of what: the layer this placement's visuals join, and
+ * where it sits among the placements that share its parent.
+ *
+ * Both are the same question at two scales. A layer is the coarse one and is
+ * offered only when the project declared layers for this level; sibling order
+ * is the fine one, and it is what decides draw order inside one layer, since
+ * a level's entities are added in document order.
+ *
+ * Sibling-scoped is the whole promise: a child moves among its siblings and a
+ * root among the roots, and neither control ever changes a parent. On a layer
+ * that keys its own order the four controls are switched off and say why —
+ * reordering the document there would change the file and nothing on screen.
+ */
+function DrawOrderSection(props: PlacementProps): React.JSX.Element {
+  const { placement, editable } = props;
+  const choices = props.layerChoices();
+  const sorted = props.layerSorts(placement.layer);
+  return (
+    <div className="ye-section" data-testid="draw-order-section">
+      <h4 className="ye-section__title">Draw order</h4>
+      {choices.length > 0 ? (
+        <label className="ye-field">
+          <span className="ye-field__label">Layer</span>
+          <Select
+            label="Layer"
+            testId="placement-layer"
+            value={placement.layer ?? NO_LAYER}
+            disabled={!editable}
+            options={[
+              { value: NO_LAYER, label: "Default" },
+              ...choices.map((choice) => ({
+                value: choice.name,
+                label: choice.sorted ? `${choice.name} (sorted)` : choice.name,
+              })),
+            ]}
+            onChange={(value) => {
+              props.onSetLayer(placement.id, value === NO_LAYER ? null : value);
+            }}
+          />
+        </label>
+      ) : null}
+      <div className="ye-section__actions">
+        {ORDER_CONTROLS.map((control) => (
+          <Button
+            key={control.direction}
+            testId={control.testId}
+            disabled={!editable || sorted}
+            onClick={() => {
+              props.onOrder(placement.id, control.direction);
+            }}
+          >
+            {control.label}
+          </Button>
+        ))}
+      </div>
+      {sorted ? (
+        <p className="ye-section__note" data-testid="order-sorted-note">
+          This layer sorts what it draws every frame, so the order here would
+          change the file and nothing on screen.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -266,6 +362,8 @@ function Field(props: FieldProps): React.JSX.Element {
   switch (props.field.kind) {
     case "asset":
       return <AssetField {...props} />;
+    case "entityRef":
+      return <EntityRefField {...props} />;
     default: {
       const unhandled: never = props.field.kind;
       throw new Error(`No control for parameter kind ${String(unhandled)}.`);
@@ -279,7 +377,9 @@ interface FieldProps {
   disabled: boolean;
   diagnostics: readonly EditorDiagnostic[];
   listAssets: () => Promise<AssetListing>;
-  onCommit: (value: string) => void;
+  /** The open document's placements, which a reference field picks from. */
+  entities: readonly LevelPlacement[];
+  onCommit: (value: string | null) => void;
   onReset: () => void;
 }
 
@@ -378,6 +478,121 @@ function AssetField(props: FieldProps): React.JSX.Element {
       ) : null}
     </div>
   );
+}
+
+/**
+ * Another placement in the same level, chosen from the ones whose type the
+ * parameter accepts.
+ *
+ * The held id stays visible whatever the document says about it: a target that
+ * has been deleted, or one whose type no longer fits, renders as its own first
+ * row rather than blanking the control, so preparation's finding beneath it
+ * says what is wrong and one click replaces it. An optional field gets a
+ * `Clear` beside the list instead of an empty row in it, because the empty
+ * string is the placeholder's and no other string is provably free of
+ * collision with an authored id.
+ */
+function EntityRefField(props: FieldProps): React.JSX.Element {
+  const { field } = props;
+  const held = typeof props.value === "string" ? props.value : "";
+  const invalid = props.diagnostics.length > 0;
+  const types = field.types ?? [];
+  const { options, candidates } = referenceOptions(props.entities, types, held);
+
+  return (
+    <div>
+      <div className="ye-field">
+        <span className="ye-field__label">{field.name}</span>
+        <Select
+          label={field.name}
+          testId={`field-${field.name}`}
+          value={held}
+          placeholder="Choose a target"
+          invalid={invalid}
+          disabled={props.disabled || candidates === 0}
+          options={options}
+          onChange={props.onCommit}
+        />
+        {field.optional === true ? (
+          <Button
+            testId={`clear-${field.name}`}
+            disabled={props.disabled || held === ""}
+            onClick={() => {
+              props.onCommit(null);
+            }}
+          >
+            Clear
+          </Button>
+        ) : null}
+      </div>
+      {candidates === 0 ? (
+        <p
+          className="ye-section__note"
+          data-testid={`field-${field.name}-note`}
+        >
+          No {types.join(" or ")} in this level.
+        </p>
+      ) : null}
+      {invalid ? (
+        <ul
+          data-testid={`field-${field.name}-diagnostics`}
+          className="ye-messages ye-messages--error"
+        >
+          {props.diagnostics.map((diagnostic, index) => (
+            <li key={`${diagnostic.code}-${String(index)}`}>
+              {diagnostic.message}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The rows a reference field offers: every placement of an accepted type in
+ * document order, plus the held id when the document cannot account for it.
+ *
+ * A placement is labelled by whatever a person would recognize it as — its
+ * name, else its scene key, else its id — and two rows that would read the
+ * same both get their id appended. The placement being edited is offered like
+ * any other: a self-reference is a one-placement cycle, and the loader
+ * resolves cycles.
+ */
+function referenceOptions(
+  entities: readonly LevelPlacement[],
+  types: readonly string[],
+  held: string,
+): { readonly options: readonly SelectOption[]; readonly candidates: number } {
+  const accepted = new Set(types);
+  const matching = entities.filter((one) => accepted.has(one.type));
+  const counts = new Map<string, number>();
+  for (const one of matching) {
+    const label = labelOf(one);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  const options = matching.map((one) => {
+    const label = labelOf(one);
+    return {
+      value: one.id,
+      label: (counts.get(label) ?? 0) > 1 ? `${label} (${one.id})` : label,
+    };
+  });
+  if (held !== "" && !matching.some((one) => one.id === held)) {
+    const wrongType = entities.find((one) => one.id === held);
+    options.unshift({
+      value: held,
+      label:
+        wrongType === undefined
+          ? `Missing: ${held}`
+          : `Wrong type: ${labelOf(wrongType)}`,
+    });
+  }
+  return { options, candidates: matching.length };
+}
+
+function labelOf(placement: LevelPlacement): string {
+  return placement.name ?? placement.key ?? placement.id;
 }
 
 /**

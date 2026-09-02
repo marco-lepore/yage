@@ -19,6 +19,7 @@ import {
 import type { LevelDocument } from "@yagejs/level/document";
 import { Graphics } from "pixi.js";
 import { RendererKey, SceneRenderTreeProviderKey } from "@yagejs/renderer";
+import type { LayerDef } from "@yagejs/renderer";
 import type { PoseEdit } from "../../shared/commands/index.js";
 import type { EditorDiagnostic } from "../../shared/diagnostics/index.js";
 import type {
@@ -115,6 +116,12 @@ export function asHarness(value: unknown): EditorHarness | undefined {
 export interface PreviewRequest {
   readonly document: LevelDocument;
   readonly catalog: LevelCatalog;
+  /**
+   * The layers the open level is authored against. Provisioned before the
+   * placements are built, so a visual naming one lands there rather than
+   * falling back to `default` and flattening the level.
+   */
+  readonly layers: readonly LayerDef[];
 }
 
 export interface PreviewCoordinatorOptions {
@@ -153,6 +160,14 @@ export class PreviewCoordinator {
   private marked: readonly MarkedPlacement[] = [];
   private overlay: Graphics | undefined;
   private guides: Graphics | undefined;
+  /**
+   * The layers this coordinator gave a `sort` to for the level that is open.
+   *
+   * The scene outlives every level opened in it, so a sort written for one
+   * level's set has to be cleared when the next level's set does not declare
+   * it.
+   */
+  private provisionedSorts: ReadonlySet<string> = new Set();
   private readonly flushes = new DestroyFlushQueue();
   /** Rises on every request, and names the namespace each build's keys take. */
   private revision = 0;
@@ -446,6 +461,7 @@ export class PreviewCoordinator {
     this.revision += 1;
     const revision = this.revision;
 
+    this.provisionLayers(scene, request.layers);
     const prepared = prepareLevel(request.document, request.catalog);
 
     // Everything the new level needs is loaded before the old level's entities
@@ -525,6 +541,43 @@ export class PreviewCoordinator {
     this.placements = placements;
     this.byPlacementId = byId;
     this.marked = marked;
+  }
+
+  /**
+   * Give the scene the layers the open level is authored against.
+   *
+   * The preview scene is pushed once, before any level is open, so it cannot
+   * declare them the way a game's scene does. `ensureLayer` is the renderer's
+   * own mechanism for provisioning a layer a scene did not declare, and a
+   * `sort` is applied afterwards because a layer that already exists — the
+   * auto-created `default`, or one left over from the level edited before —
+   * keeps the configuration it was created with.
+   *
+   * A sort this method wrote for the level opened before is cleared when the
+   * set now open does not declare one for that name.
+   *
+   * A layer's order and space are fixed at creation. Switching between two
+   * levels whose sets give one name two different orders shows the first
+   * level's order until the page is reloaded.
+   */
+  private provisionLayers(
+    scene: EditPreviewScene,
+    layers: readonly LayerDef[],
+  ): void {
+    const trees = this.engine?.context.tryResolve(SceneRenderTreeProviderKey);
+    const tree = trees?.getTree(scene);
+    if (!tree) return;
+    const sorted = new Set<string>();
+    for (const def of layers) {
+      const layer = tree.ensureLayer(def);
+      if (layer.sort !== def.sort) layer.setSort(def.sort);
+      if (def.sort !== undefined) sorted.add(def.name);
+    }
+    for (const name of this.provisionedSorts) {
+      if (sorted.has(name)) continue;
+      tree.tryGet(name)?.setSort(undefined);
+    }
+    this.provisionedSorts = sorted;
   }
 
   /**

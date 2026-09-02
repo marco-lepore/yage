@@ -1,6 +1,8 @@
 import { levelAssets, prepareLevel } from "@yagejs/level";
 import type { Engine } from "@yagejs/core";
+import type { LayerDef } from "@yagejs/renderer";
 import { EditorApiClient } from "../api/index.js";
+import { LayerSets } from "../layers.js";
 import { asHarness } from "../preview/index.js";
 import { ProjectCoordinator } from "../project/index.js";
 import { PlayScene } from "./PlayScene.js";
@@ -19,6 +21,8 @@ export interface MountPlayOptions {
   readonly harness: unknown;
   /** One entry per package that contributes level entities. */
   readonly contributions: readonly unknown[];
+  /** One `LayerDef[]` per `levels` entry in the config that named a module. */
+  readonly layerSets?: readonly (readonly LayerDef[])[] | undefined;
   /** Which level to play. Defaults to the page's own `level` parameter. */
   readonly level?: string | undefined;
 }
@@ -52,6 +56,7 @@ export async function mountPlay(
   }
 
   const api = new EditorApiClient({ token: options.token });
+  const layers = new LayerSets(options.layerSets ?? []);
   const outcome = await api.fetchSnapshot(level);
   if (outcome.status === "rejected") {
     throw new Error(`${level} could not be read: ${outcome.message}`);
@@ -95,7 +100,9 @@ export async function mountPlay(
   await engine.start();
   try {
     await engine.assets.loadAll(levelAssets(prepared));
-    await engine.scenes.push(new PlayScene(prepared));
+    await engine.scenes.push(
+      new PlayScene(prepared, layers.defsFor(outcome.snapshot.layerSet)),
+    );
   } catch (failure) {
     // A level naming an asset that will not load is an ordinary state while
     // editing. The engine is running by this point and the caller never

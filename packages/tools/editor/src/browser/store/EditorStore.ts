@@ -595,6 +595,7 @@ function describesOpenLevel(
 function fileStateOf(snapshot: DraftSnapshot): EditorFileState {
   return {
     path: snapshot.path,
+    ...(snapshot.layerSet === undefined ? {} : { layerSet: snapshot.layerSet }),
     diskRevision: snapshot.diskRevision,
     contentHash: snapshot.contentHash,
     savedContentHash: snapshot.savedContentHash,
@@ -660,6 +661,9 @@ function reduce(state: EditorState, action: EditorAction): EditorState {
         // and `openLevel` settles it before it switches. Clearing it here is
         // the same totality the two above have.
         poseDraft: undefined,
+        // A question about deleting placements of the level being left has no
+        // answer that means anything in the level being entered.
+        pendingDelete: undefined,
         // Every source but `catalog` describes the level; `catalog` describes
         // the project and is still true.
         diagnostics: projectDiagnostics(state.diagnostics),
@@ -809,6 +813,13 @@ function reduce(state: EditorState, action: EditorAction): EditorState {
     case "pose-draft-dropped": {
       if (!state.poseDraft) return state;
       return { ...state, poseDraft: undefined };
+    }
+    case "delete-confirm-requested": {
+      return { ...state, pendingDelete: action.ids };
+    }
+    case "delete-confirm-dismissed": {
+      if (!state.pendingDelete) return state;
+      return { ...state, pendingDelete: undefined };
     }
     case "diagnostics-replaced": {
       const diagnostics = new Map(state.diagnostics);

@@ -114,7 +114,7 @@ async function fixture(options?: {
   }
   const files = await createLevelFileService({
     root,
-    levels: ["src/levels/**/*.yage-level.json"],
+    levels: [{ glob: "src/levels/**/*.yage-level.json" }],
     assets: [],
   });
   return {

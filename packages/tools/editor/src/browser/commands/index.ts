@@ -4,6 +4,7 @@ export type {
   GestureModifiers,
   GestureStart,
   HierarchyDrop,
+  OrderDirection,
   PosePreview,
 } from "./CommandController.js";
 export {
@@ -28,3 +29,9 @@ export {
   withDescendants,
 } from "./graph.js";
 export type { PlacementNode } from "./graph.js";
+export {
+  inboundReferences,
+  referenceFieldNames,
+  rewriteReferences,
+} from "./references.js";
+export type { ReferenceUse } from "./references.js";

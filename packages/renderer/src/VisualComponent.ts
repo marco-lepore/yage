@@ -84,7 +84,7 @@ export interface VisualComponentOptions {
 export abstract class VisualComponent extends Component {
   /** The underlying Pixi display object. */
   abstract readonly renderObject: DisplayContainer;
-  readonly layerName: string;
+  private _layerName: string;
   /**
    * Component-scope effects host. `.fx.addEffect(...)` attaches a filter to
    * this component's render object; the effect is torn down automatically
@@ -109,7 +109,7 @@ export abstract class VisualComponent extends Component {
 
   constructor(layer: string | undefined) {
     super();
-    this.layerName = layer ?? "default";
+    this._layerName = layer ?? "default";
     this.fx = new EffectsHost(
       () => this.renderObject,
       "component",
@@ -136,6 +136,37 @@ export abstract class VisualComponent extends Component {
         markPointerConsumeContainer(this.renderObject);
       }
     }
+  }
+
+  /** The layer this visual draws on. See {@link setLayer}. */
+  get layerName(): string {
+    return this._layerName;
+  }
+
+  /**
+   * Draw this visual on another layer.
+   *
+   * Called before the component reaches the display tree — in a subclass
+   * constructor, or on a component that has not been added yet — it records
+   * the name and nothing else. Called afterwards it detaches the render
+   * object and re-parents it through the same resolution `onAdd` uses, so a
+   * `SortGroupComponent` on the new layer still claims it.
+   *
+   * The visual joins its new parent last, which on a layer with no `sort`
+   * means it draws in front of everything already there.
+   */
+  setLayer(name: string): void {
+    if (name === this._layerName) return;
+    this._layerName = name;
+    // Nothing to move while the object is out of the tree: `onAdd` reads the
+    // name when it puts the object in.
+    if (!this.renderObject.parent) return;
+    this.renderObject.removeFromParent();
+    resolveRenderParent(
+      this.entity,
+      name,
+      this.use(SceneRenderTreeKey),
+    ).addChild(this.renderObject);
   }
 
   /** Set the container's tint color. */
@@ -218,7 +249,7 @@ export abstract class VisualComponent extends Component {
 
   onAdd(): void {
     const tree = this.use(SceneRenderTreeKey);
-    resolveRenderParent(this.entity, this.layerName, tree).addChild(
+    resolveRenderParent(this.entity, this._layerName, tree).addChild(
       this.renderObject,
     );
     // A component is never effectively enabled during `onAdd` — `onEnable`

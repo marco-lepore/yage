@@ -92,6 +92,18 @@ function catalog(): LevelCatalog {
       source: "project",
     },
     {
+      id: "game.switch",
+      declaration: {
+        id: "game.switch",
+        version: 1,
+        params: defineParams({
+          door: param.entityRef({ types: ["game.crate"] }),
+        }),
+      },
+      EntityClass: {} as LevelCatalogEntry["EntityClass"],
+      source: "project",
+    },
+    {
       id: "renderer.sprite",
       declaration: { id: "renderer.sprite", version: 1 },
       EntityClass: {} as LevelCatalogEntry["EntityClass"],
@@ -106,7 +118,8 @@ function catalog(): LevelCatalog {
   };
 }
 
-function createHarness(doc: LevelDocument) {
+function createHarness(initial: LevelDocument) {
+  let doc = initial;
   const sent: DocumentCommand[] = [];
   const steps: string[] = [];
   const answers: DraftOutcome[] = [];
@@ -196,6 +209,10 @@ function createHarness(doc: LevelDocument) {
     /** Make the cascade step, as a crowded spot would. */
     withCascade(by: { x: number; y: number }): void {
       cascade = (point) => ({ x: point.x + by.x, y: point.y + by.y });
+    },
+    /** What the server answers with from here on, as another writer would. */
+    withDocument(next: LevelDocument): void {
+      doc = next;
     },
     withoutCatalog(): void {
       built = undefined;
@@ -1368,6 +1385,7 @@ describe("CommandController", () => {
           }),
           placement("plain", 0),
           placement("keyed", 0, undefined, { key: "door" }),
+          placement("layered", 0, undefined, { layer: "props" }),
         ),
       );
     });
@@ -1430,6 +1448,36 @@ describe("CommandController", () => {
               placementId: "keyed",
               path: ["key"],
               expected: "door",
+              value: null,
+            },
+          ],
+        },
+      ]);
+    });
+
+    it("gives and takes away the layer the placement's visuals join", () => {
+      harness.commands.setLayer("crate", "props");
+      harness.commands.setLayer("layered", null);
+
+      expect(harness.sent).toMatchObject([
+        {
+          kind: "set-values",
+          edits: [
+            {
+              placementId: "crate",
+              path: ["layer"],
+              expected: null,
+              value: "props",
+            },
+          ],
+        },
+        {
+          kind: "set-values",
+          edits: [
+            {
+              placementId: "layered",
+              path: ["layer"],
+              expected: "props",
               value: null,
             },
           ],
@@ -1701,6 +1749,51 @@ describe("CommandController", () => {
         .flatMap((command) => command.moves);
     }
 
+    it("brings a placement to the front of its own siblings", () => {
+      harness.commands.orderPlacements(["root"], "front");
+
+      expect(moves()[0]).toMatchObject({
+        id: "root",
+        from: { index: 0 },
+        to: { index: 2 },
+      });
+      expect(moves()[0]?.to.parent).toBeUndefined();
+    });
+
+    it("sends a placement to the back of its own siblings", () => {
+      harness.commands.orderPlacements(["other"], "back");
+
+      expect(moves()[0]).toMatchObject({ id: "other", to: { index: 0 } });
+    });
+
+    it("steps one place at a time", () => {
+      harness.commands.orderPlacements(["root"], "forward");
+
+      // "root" and "other" are the two roots; "child" is not a sibling of
+      // either, so a step past one sibling lands after "other".
+      expect(moves()[0]).toMatchObject({ id: "root", to: { index: 2 } });
+    });
+
+    it("orders a child among its siblings and never past its parent", () => {
+      harness.commands.orderPlacements(["child"], "front");
+
+      // The only child of "root" has nowhere to go, so nothing is sent.
+      expect(harness.sent).toHaveLength(0);
+    });
+
+    it("produces nothing at the end it is already at", () => {
+      harness.commands.orderPlacements(["other"], "front");
+      harness.commands.orderPlacements(["root"], "back");
+
+      expect(harness.sent).toHaveLength(0);
+    });
+
+    it("refuses a selection whose members do not share one parent", () => {
+      harness.commands.orderPlacements(["child", "other"], "front");
+
+      expect(harness.sent).toHaveLength(0);
+    });
+
     it("reorders before a sibling without touching the transform", () => {
       harness.commands.movePlacements(["other"], {
         kind: "before",
@@ -1942,6 +2035,110 @@ describe("CommandController", () => {
         "remove-placements",
       ]);
       expect(harness.store.getState().diagnostics.size).toBe(0);
+    });
+  });
+
+  describe("deleting something a placement points at", () => {
+    beforeEach(() => {
+      harness = createHarness(
+        document(
+          placement("crate", 0),
+          placement("switch", 0, undefined, {
+            type: "game.switch",
+            params: { door: "crate" },
+          }),
+          placement("other", 0),
+        ),
+      );
+    });
+
+    it("submits straight away when nothing points into the set", async () => {
+      await harness.commands.deletePlacements(["other"]);
+
+      expect(harness.sent).toEqual([
+        { kind: "remove-placements", commandId: "id-1", ids: ["other"] },
+      ]);
+      expect(harness.store.getState().pendingDelete).toBeUndefined();
+    });
+
+    it("asks first when something outside the set points into it", async () => {
+      await harness.commands.deletePlacements(["crate"]);
+
+      expect(harness.sent).toEqual([]);
+      expect(harness.store.getState().pendingDelete).toEqual(["crate"]);
+    });
+
+    it("sends the removal the question was about", async () => {
+      await harness.commands.deletePlacements(["crate"]);
+      await harness.commands.confirmDelete();
+
+      expect(harness.sent).toEqual([
+        { kind: "remove-placements", commandId: "id-1", ids: ["crate"] },
+      ]);
+      expect(harness.store.getState().pendingDelete).toBeUndefined();
+    });
+
+    it("removes what the document holds when the answer comes", async () => {
+      await harness.commands.deletePlacements(["crate"]);
+      // The question is asked in a panel that leaves the rest of the editor
+      // working, so a child can land under the removing placement between the
+      // question and the answer.
+      const kid = placement("kid", 0, "crate");
+      harness.withDocument(
+        document(
+          ...harness.store.getState().document.entities.map((one) => one),
+          kid,
+        ),
+      );
+      harness.store.submit({
+        kind: "add-placements",
+        commandId: "added-later",
+        inserts: [{ placement: kid, index: 3 }],
+      });
+      await harness.commands.confirmDelete();
+      await settle();
+
+      // Sending the ids the question captured would leave the child without a
+      // parent, which the reducer refuses and which reads as a delete that
+      // failed.
+      expect(harness.sent.at(-1)).toEqual({
+        kind: "remove-placements",
+        commandId: "id-1",
+        ids: ["crate", "kid"],
+      });
+    });
+
+    it("leaves the referring id in the document", async () => {
+      await harness.commands.deletePlacements(["crate"]);
+      await harness.commands.confirmDelete();
+
+      const entities = harness.store.getState().document.entities;
+      expect(entities.map((one) => one.id)).toEqual(["switch", "other"]);
+      // Left as it was, so one undo puts the whole thing back and preparation
+      // reports a missing target in the meantime.
+      expect(entities[0]?.params.door).toBe("crate");
+    });
+
+    it("sends nothing when the question is dismissed", async () => {
+      await harness.commands.deletePlacements(["crate"]);
+      harness.store.dispatch({ type: "delete-confirm-dismissed" });
+      await harness.commands.confirmDelete();
+
+      expect(harness.sent).toEqual([]);
+      expect(harness.store.getState().document.entities).toHaveLength(3);
+    });
+
+    it("does not ask about a reference from inside the set", async () => {
+      // The switch goes too, so nothing is left pointing at anything.
+      await harness.commands.deletePlacements(["crate", "switch"]);
+
+      expect(harness.sent).toEqual([
+        {
+          kind: "remove-placements",
+          commandId: "id-1",
+          ids: ["crate", "switch"],
+        },
+      ]);
     });
   });
 

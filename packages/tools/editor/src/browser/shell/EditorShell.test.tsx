@@ -2,7 +2,7 @@
 import type { LevelDocument, LevelPlacement } from "@yagejs/level/document";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DraftSnapshot } from "../../shared/protocol/index.js";
 import { CommandController } from "../commands/index.js";
 import type { PlaceableType } from "../project/index.js";
@@ -90,6 +90,7 @@ function createHarness(
   runnable = true,
   types = placeables,
   listed: readonly { path: string; diskRevision: string }[] = levels,
+  assetPaths: readonly string[] = ["sprites/crate.png"],
 ) {
   const store = new EditorStore({
     api: unusedApi,
@@ -167,6 +168,8 @@ function createHarness(
       <EditorShell
         store={store}
         commands={commands}
+        layerChoices={() => []}
+        layerSorts={() => false}
         files={{
           runnable,
           openLevel: (path) => {
@@ -215,7 +218,7 @@ function createHarness(
             : undefined
         }
         listAssets={() =>
-          Promise.resolve({ paths: ["sprites/crate.png"], truncated: false })
+          Promise.resolve({ paths: [...assetPaths], truncated: false })
         }
         levels={listed}
       />,
@@ -225,6 +228,7 @@ function createHarness(
   return {
     actorsRenders: () => actorsRenders,
     store,
+    commands,
     host,
     root,
     saves,
@@ -405,6 +409,12 @@ describe("EditorShell", () => {
   });
 
   describe("the Actors strip", () => {
+    // A stubbed `fetch` is restored in a hook, so a failing assertion in one
+    // case cannot leave the stub installed for the rest of the file.
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
     function open(): void {
       act(() => {
         harness.store.dispatch({ type: "level-opened", snapshot: snapshot() });
@@ -509,6 +519,99 @@ describe("EditorShell", () => {
       // A default can name a file the project no longer has, and a broken
       // image glyph says nothing a developer can act on.
       expect(query(harness.host, "thumb-game.crate")?.tagName).toBe("SPAN");
+    });
+
+    /** Replace the shared harness with one built for a thumbnail case. */
+    function rebuild(
+      types: readonly PlaceableType[],
+      assetPaths: readonly string[],
+    ): void {
+      act(() => {
+        harness.root.unmount();
+      });
+      harness.host.remove();
+      harness = createHarness(true, types, levels, assetPaths);
+    }
+
+    /**
+     * Say what the browser loaded. happy-dom never fetches a picture, so the
+     * natural size a declared grid is measured against has to be stated.
+     */
+    function loaded(
+      image: HTMLImageElement,
+      width: number,
+      height: number,
+    ): void {
+      Object.defineProperty(image, "naturalWidth", { value: width });
+      Object.defineProperty(image, "naturalHeight", { value: height });
+      act(() => {
+        image.dispatchEvent(new Event("load"));
+      });
+    }
+
+    it("crops the picture to the first frame the type declares", () => {
+      const fetches = vi.fn();
+      vi.stubGlobal("fetch", fetches);
+      rebuild(
+        [
+          {
+            typeId: "game.torch",
+            source: "project",
+            thumbnail: "sprites/torch.png",
+            thumbnailFrames: { frameWidth: 48 },
+          },
+        ],
+        // The atlas is listed, and a declared grid still answers first.
+        ["sprites/torch.png", "sprites/torch.json"],
+      );
+      open();
+      expand();
+
+      const image = query<HTMLImageElement>(harness.host, "thumb-game.torch");
+      expect(image).not.toBeNull();
+      if (image === null) return;
+      loaded(image, 384, 48);
+
+      // One 48-pixel frame of a 384-pixel sheet, filling a 24-pixel box.
+      expect(image.style.width).toBe("192px");
+      expect(image.style.height).toBe("24px");
+      expect(image.style.left).toBe("0px");
+      expect(image.className).toContain("ye-actors__thumb-img--framed");
+      expect(fetches).not.toHaveBeenCalled();
+    });
+
+    it("still reads a sibling atlas for a type that declares no grid", async () => {
+      vi.stubGlobal("fetch", (path: string) => {
+        expect(path).toBe("sprites/crate.json");
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              frames: { "idle-0": { frame: { x: 0, y: 0, w: 48, h: 48 } } },
+              meta: { size: { w: 480, h: 48 } },
+            }),
+        });
+      });
+      rebuild(
+        [
+          {
+            typeId: "game.crate",
+            source: "project",
+            thumbnail: "sprites/crate.png",
+          },
+        ],
+        ["sprites/crate.png", "sprites/crate.json"],
+      );
+      open();
+      expand();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      const image = query<HTMLImageElement>(harness.host, "thumb-game.crate");
+      // 24 / 48 of a 480-pixel sheet.
+      expect(image?.style.width).toBe("240px");
+      expect(image?.className).toContain("ye-actors__thumb-img--framed");
     });
 
     it("carries the whole type id on the entry", () => {
@@ -1505,5 +1608,81 @@ describe("what a drag re-renders", () => {
     });
 
     expect(query(harness.host, "hierarchy-row-crate")).toBeNull();
+  });
+
+  describe("the delete confirmation", () => {
+    /** A switch pointing at the crate, and the crate it points at. */
+    const referring: DraftSnapshot = snapshot({
+      document: {
+        ...document_,
+        entities: [
+          crate,
+          {
+            ...crate,
+            id: "switch",
+            type: "game.switch",
+            name: "Lever",
+            params: { door: "crate" },
+          },
+        ],
+      },
+    });
+
+    beforeEach(() => {
+      act(() => {
+        harness.store.dispatch({ type: "level-opened", snapshot: referring });
+      });
+      harness.commands.referenceFields = (typeId) =>
+        typeId === "game.switch" ? ["door"] : [];
+    });
+
+    it("stays away until something asks it", () => {
+      expect(query(harness.host, "delete-confirm")).toBeNull();
+    });
+
+    it("names each referring placement and the parameter that holds it", () => {
+      act(() => {
+        harness.store.dispatch({
+          type: "delete-confirm-requested",
+          ids: ["crate"],
+        });
+      });
+
+      expect(query(harness.host, "delete-confirm-referrers")?.textContent).toBe(
+        "Lever — door → crate",
+      );
+    });
+
+    it("sends the removal when it is confirmed", () => {
+      let confirmed = 0;
+      harness.commands.confirmDelete = () => {
+        confirmed += 1;
+        return Promise.resolve();
+      };
+      act(() => {
+        harness.store.dispatch({
+          type: "delete-confirm-requested",
+          ids: ["crate"],
+        });
+      });
+      click(harness.host, "confirm-delete");
+
+      expect(confirmed).toBe(1);
+    });
+
+    it("leaves the document alone when it is cancelled", () => {
+      act(() => {
+        harness.store.dispatch({
+          type: "delete-confirm-requested",
+          ids: ["crate"],
+        });
+      });
+      click(harness.host, "cancel-delete");
+
+      expect(query(harness.host, "delete-confirm")).toBeNull();
+      expect(
+        harness.store.getState().document.entities.map((one) => one.id),
+      ).toEqual(["crate", "switch"]);
+    });
   });
 });

@@ -27,7 +27,18 @@ export type LevelDiagnosticCode =
   | "unknown-type"
   | "migration-failed"
   | "parameter-invalid"
-  | "asset-derivation-failed";
+  | "asset-derivation-failed"
+  | "reference-unset"
+  | "reference-missing"
+  | "reference-type";
+
+/** One entity reference a prepared placement holds. */
+export interface PlacementReference {
+  /** Parameter path. One segment today. */
+  readonly path: readonly string[];
+  /** The placement it points at: in this document, and of an accepted type. */
+  readonly targetId: string;
+}
 
 /** One placement that prepared cleanly, and everything loading it needs. */
 export interface PreparedPlacement {
@@ -44,6 +55,12 @@ export interface PreparedPlacement {
   readonly entry: LevelCatalogEntry;
   /** Handles derived from the migrated parameters, in field order. */
   readonly assets: readonly AssetHandle<unknown>[];
+  /**
+   * The placements this one points at, in field order. Empty for a type that
+   * declares no reference parameter, and a field holding no target
+   * contributes nothing.
+   */
+  readonly references: readonly PlacementReference[];
 }
 
 /**

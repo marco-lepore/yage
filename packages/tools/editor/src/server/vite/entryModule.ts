@@ -10,6 +10,12 @@ export interface EntryModuleOptions {
   readonly modules: ResolvedEditorModules;
   /** Package contribution specifiers, already validated. */
   readonly contributions: readonly string[];
+  /**
+   * Root-absolute URLs of the layer modules the config named, in the order a
+   * draft snapshot's `layerSet` indexes. The page imports each one, so a
+   * `sort` in it arrives as the function the game runs rather than as JSON.
+   */
+  readonly layerModules?: readonly string[] | undefined;
   /** The project's game page URL, when it named one. */
   readonly gamePage?: string | undefined;
 }
@@ -28,7 +34,7 @@ export interface EntryModuleOptions {
  * second of the two checks.
  */
 export function renderEntryModule(options: EntryModuleOptions): string {
-  const { modules, contributions } = options;
+  const { modules, contributions, layerModules = [] } = options;
   const imports = [
     `import project from ${JSON.stringify(modules.project)};`,
     `import harness from ${JSON.stringify(modules.harness)};`,
@@ -38,10 +44,18 @@ export function renderEntryModule(options: EntryModuleOptions): string {
       `import contribution${index} from ${JSON.stringify(specifier)};`,
     );
   });
+  layerModules.forEach((specifier, index) => {
+    imports.push(
+      `import layers${String(index)} from ${JSON.stringify(specifier)};`,
+    );
+  });
   imports.push(`import { mountEditor } from "@yagejs-tools/editor/browser";`);
 
   const contributionList = contributions
     .map((_specifier, index) => `contribution${index}`)
+    .join(", ");
+  const layerList = layerModules
+    .map((_specifier, index) => `layers${String(index)}`)
     .join(", ");
 
   return `${imports.join("\n")}
@@ -60,6 +74,7 @@ try {
     harness,
     gamePage: ${options.gamePage === undefined ? "undefined" : JSON.stringify(options.gamePage)},
     contributions: [${contributionList}],
+    layerSets: [${layerList}],
   });
 } catch (error) {
   console.error("[yage-editor]", error);
@@ -80,7 +95,7 @@ try {
  * entry would pull the whole shell into a page that draws none of it.
  */
 export function renderPlayEntryModule(options: EntryModuleOptions): string {
-  const { modules, contributions } = options;
+  const { modules, contributions, layerModules = [] } = options;
   const imports = [
     `import project from ${JSON.stringify(modules.project)};`,
     `import harness from ${JSON.stringify(modules.harness)};`,
@@ -90,10 +105,18 @@ export function renderPlayEntryModule(options: EntryModuleOptions): string {
       `import contribution${index} from ${JSON.stringify(specifier)};`,
     );
   });
+  layerModules.forEach((specifier, index) => {
+    imports.push(
+      `import layers${String(index)} from ${JSON.stringify(specifier)};`,
+    );
+  });
   imports.push(`import { mountPlay } from "@yagejs-tools/editor/browser";`);
 
   const contributionList = contributions
     .map((_specifier, index) => `contribution${index}`)
+    .join(", ");
+  const layerList = layerModules
+    .map((_specifier, index) => `layers${String(index)}`)
     .join(", ");
 
   return `${imports.join("\n")}
@@ -111,6 +134,7 @@ try {
     project,
     harness,
     contributions: [${contributionList}],
+    layerSets: [${layerList}],
   });
 } catch (error) {
   console.error("[yage-editor]", error);

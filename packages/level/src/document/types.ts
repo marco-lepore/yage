@@ -42,6 +42,12 @@ export interface LevelPlacement {
   readonly key?: string;
   /** The placement this one's transform is relative to, if any. */
   readonly parent?: string;
+  /**
+   * The render layer this placement's visuals join, overriding the layer the
+   * entity type left at its default. A visual the type deliberately put
+   * somewhere else keeps that layer.
+   */
+  readonly layer?: string;
   readonly active: boolean;
   readonly transform: LevelTransform;
   readonly params: JsonObject;

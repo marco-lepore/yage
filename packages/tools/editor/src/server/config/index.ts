@@ -3,4 +3,8 @@ export {
   loadEditorConfig,
   type LoadEditorConfigOptions,
 } from "./load.js";
-export type { ResolvedEditorConfig, ResolvedEditorModules } from "./types.js";
+export type {
+  ResolvedEditorConfig,
+  ResolvedEditorModules,
+  ResolvedLevelGlob,
+} from "./types.js";

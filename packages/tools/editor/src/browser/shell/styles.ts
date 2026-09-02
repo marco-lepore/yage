@@ -816,6 +816,12 @@ export const EDITOR_CSS = `
   color: var(--text-muted);
 }
 
+/* A select in a field row fills what the label leaves, like the text box the
+   rest of the rows hold. */
+.yage-editor .ye-field .ye-select {
+  flex: 1 1 auto;
+}
+
 /* The only thing on screen that says a number can be dragged. There are no
    arrow buttons; the cursor and the documentation carry the affordance. */
 .yage-editor .ye-field__label--scrub {
@@ -843,7 +849,8 @@ export const EDITOR_CSS = `
 /* Not scoped to .ye-field: TextField renders the shell's only input, and a
    call site that passes its own class, such as the bar's .ye-step, refuses
    text the same way and has to look refused. */
-.yage-editor input[aria-invalid="true"] {
+.yage-editor input[aria-invalid="true"],
+.yage-editor select[aria-invalid="true"] {
   border-color: var(--danger);
 }
 
@@ -917,6 +924,14 @@ export const EDITOR_CSS = `
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
+}
+
+.yage-editor .ye-section__actions {
+  display: flex;
+  /* Four buttons are wider than the panel at its narrowest. */
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
 }
 
 .yage-editor .ye-section__note {

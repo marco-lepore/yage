@@ -2,6 +2,7 @@ import type { AssetHandle } from "@yagejs/core";
 import type { JsonObject, JsonValue } from "../document/types.js";
 import { describeError } from "../internal/describe.js";
 import type {
+  ParamDecodeContext,
   ParamError,
   ParamFieldDescription,
   ParamFields,
@@ -9,7 +10,7 @@ import type {
   ParamsOf,
   ParamsSchema,
 } from "./types.js";
-import { isBuiltInParamKind } from "./types.js";
+import { frameProblems, isBuiltInParamKind } from "./types.js";
 
 /**
  * Declare a placeable entity's parameters.
@@ -55,6 +56,11 @@ export function schemaDefaultProblems(
     for (const message of kind.validate(kind.defaultValue)) {
       errors.push({ path: [name], message: `default ${message}` });
     }
+    if (kind.frames !== undefined) {
+      for (const message of frameProblems(kind.frames)) {
+        errors.push({ path: [name], message });
+      }
+    }
   }
   return errors;
 }
@@ -77,8 +83,11 @@ export function describeParams(
     return Object.freeze({
       name,
       kind: kind.name,
-      assetKind: kind.assetKind,
-      defaultValue: kind.defaultValue as string,
+      ...(kind.assetKind === undefined ? {} : { assetKind: kind.assetKind }),
+      ...(kind.frames === undefined ? {} : { frames: kind.frames }),
+      ...(kind.types === undefined ? {} : { types: kind.types }),
+      ...(kind.optional === undefined ? {} : { optional: kind.optional }),
+      defaultValue: kind.defaultValue as string | null,
     });
   });
   return Object.freeze(descriptions);
@@ -94,9 +103,9 @@ export function describeParams(
  * reason, rather than falling back to the default.
  *
  * Each value is the declaration's own `defaultValue` rather than a copy of it.
- * Every parameter kind is string-valued today, so nothing shares mutable
- * state; a kind whose default is an object or an array has to copy here before
- * two placements can hold one.
+ * Every parameter kind defaults to a string or `null` today, so nothing shares
+ * mutable state; a kind whose default is an object or an array has to copy
+ * here before two placements can hold one.
  */
 export function defaultParams(schema: ParamsSchema<ParamFields>): JsonObject {
   const params = Object.create(null) as Record<string, JsonValue>;
@@ -145,11 +154,12 @@ export function validateParams(
 export function decodeParams<F extends ParamFields>(
   schema: ParamsSchema<F>,
   params: JsonObject,
+  context: ParamDecodeContext,
 ): ParamsOf<ParamsSchema<F>> {
   const decoded = Object.create(null) as Record<string, unknown>;
   for (const [name, kind] of fieldsOf(schema)) {
     try {
-      decoded[name] = kind.decode(requireValue(params, name));
+      decoded[name] = kind.decode(requireValue(params, name), context);
     } catch (error) {
       throw new ParamDecodeError([name], error);
     }
@@ -191,6 +201,34 @@ export function paramAssets(
     handles.push(...kind.assets(requireValue(params, name)));
   }
   return handles;
+}
+
+/** One reference parameter a schema declares. */
+export interface ReferenceField {
+  readonly name: string;
+  /** The catalog type ids it accepts. */
+  readonly types: readonly string[];
+  readonly optional: boolean;
+}
+
+/**
+ * @internal The schema's reference parameters, in declaration order. Read off
+ * the kinds rather than off {@link describeParams}, so a schema carrying a
+ * kind this package did not build is skipped instead of throwing.
+ */
+export function referenceFields(
+  schema: ParamsSchema<ParamFields>,
+): readonly ReferenceField[] {
+  const fields: ReferenceField[] = [];
+  for (const [name, kind] of fieldsOf(schema)) {
+    if (!isBuiltInParamKind(kind) || kind.name !== "entityRef") continue;
+    fields.push({
+      name,
+      types: kind.types ?? [],
+      optional: kind.optional ?? false,
+    });
+  }
+  return fields;
 }
 
 function fieldsOf(

@@ -1,5 +1,46 @@
-import type { AssetHandle } from "@yagejs/core";
+import type { AssetHandle, EntityHandle } from "@yagejs/core";
 import type { JsonValue } from "../document/types.js";
+
+/**
+ * How the file an asset parameter names is cut into frames. Authoring data:
+ * the editor crops a thumbnail with it, and the type that declared it spreads
+ * the same object into the frame source it builds in `setup()`, so the numbers
+ * are written once.
+ *
+ * The members are the renderer's `TextureSliceOptions`, so one object literal
+ * is both this hint and the grid half of a `SheetFrameSource`. Only
+ * `frameWidth`, `frameHeight`, `startX` and `startY` change which pixels a
+ * thumbnail shows; the rest are carried so the author has one object rather
+ * than two overlapping ones.
+ */
+export interface AssetFrames {
+  readonly frameWidth: number;
+  readonly frameHeight?: number;
+  readonly startX?: number;
+  readonly startY?: number;
+  readonly columns?: number;
+  readonly count?: number;
+  readonly gapX?: number;
+  readonly gapY?: number;
+}
+
+/**
+ * Which control a parameter needs. A closed set: an authoring tool switches on
+ * it, and a new kind is meant to fail that switch to compile.
+ */
+export type ParamKindName = "asset" | "entityRef";
+
+/**
+ * @internal What a parameter kind may need beyond its own JSON value while
+ * decoding. Built by the loader, once per level, inside the spawn batch.
+ */
+export interface ParamDecodeContext {
+  /**
+   * The entity a placement id was reserved as, as a handle on its current
+   * life. Throws for an id this level does not hold.
+   */
+  resolveEntityRef(placementId: string): EntityHandle;
+}
 
 /**
  * One parameter's kind: the JSON it accepts, the runtime value that JSON
@@ -11,13 +52,23 @@ import type { JsonValue } from "../document/types.js";
  */
 export interface ParamKind<T> {
   /** Stable kind name, used in messages. */
-  readonly name: "asset";
+  readonly name: ParamKindName;
   /**
    * The kind of asset this parameter names, from the descriptor
    * `param.asset()` was given — `"texture"`, `"sound"`, whatever a project
-   * declared. Open, because {@link defineLevelAsset} is public.
+   * declared. Open, because {@link defineLevelAsset} is public. Absent for a
+   * kind that names no asset.
    */
-  readonly assetKind: string;
+  readonly assetKind?: string;
+  /** How the named file is cut into frames, when the declaration said. */
+  readonly frames?: AssetFrames;
+  /**
+   * For a reference parameter, the placement types it may point at, as
+   * catalog type ids. Absent for every other kind.
+   */
+  readonly types?: readonly string[];
+  /** For a reference parameter, whether "no target" is a value here. */
+  readonly optional?: boolean;
   /**
    * The value the editor writes into a new placement. Loading never fills it
    * in: a placement that omits the field fails validation, so changing this
@@ -31,7 +82,7 @@ export interface ParamKind<T> {
    */
   validate(value: JsonValue): readonly string[];
   /** The runtime value passed to `setup()`. Call only on a validated value. */
-  decode(value: JsonValue): T;
+  decode(value: JsonValue, context: ParamDecodeContext): T;
   /** Handles the decoded value needs loaded. Call only on a validated value. */
   assets(value: JsonValue): readonly AssetHandle<unknown>[];
 }
@@ -52,11 +103,8 @@ export interface ParamsSchema<F extends ParamFields> {
 /** One schema field an authoring tool can render. */
 export type ParamFieldDescription = {
   readonly name: string;
-  /**
-   * Which control the field needs. A closed set: a tool switches on it and a
-   * new kind is meant to fail that switch to compile.
-   */
-  readonly kind: "asset";
+  /** Which control the field needs. */
+  readonly kind: ParamKindName;
   /**
    * For an asset field, the kind of asset it names — the `kind` of the
    * descriptor `param.asset()` was given. Open rather than closed, because a
@@ -64,7 +112,22 @@ export type ParamFieldDescription = {
    * tool matches the kinds it knows and treats the rest as paths.
    */
   readonly assetKind?: string;
-  readonly defaultValue: string;
+  /**
+   * How the named file is cut into frames, when the declaration said.
+   * Authoring data rather than a control discriminant: it says what one frame
+   * of the default art is, so a tool can show that frame instead of the whole
+   * sheet. Absent for a parameter that names a single picture.
+   */
+  readonly frames?: AssetFrames;
+  /**
+   * For a reference field, the placement types it accepts, as catalog type
+   * ids. A picker offers the level's placements of those types.
+   */
+  readonly types?: readonly string[];
+  /** For a reference field, whether it may hold no target. */
+  readonly optional?: boolean;
+  /** `null` for a reference field, which starts with nothing chosen. */
+  readonly defaultValue: string | null;
 };
 
 /** The decoded parameter object a schema produces — a `setup()` signature. */
@@ -85,11 +148,15 @@ export interface ParamError {
   readonly message: string;
 }
 
-type AssetParamKindDefinition<T> = {
-  readonly assetKind: string;
+type ParamKindDefinition<T> = {
+  readonly name: ParamKindName;
+  readonly assetKind?: string;
+  readonly frames?: AssetFrames;
+  readonly types?: readonly string[];
+  readonly optional?: boolean;
   readonly defaultValue: JsonValue;
   readonly validate: (value: JsonValue) => readonly string[];
-  readonly decode: (value: JsonValue) => T;
+  readonly decode: (value: JsonValue, context: ParamDecodeContext) => T;
   readonly assets: (value: JsonValue) => readonly AssetHandle<unknown>[];
 };
 
@@ -98,17 +165,26 @@ type AssetParamKindDefinition<T> = {
  * tied to the exact instances this class creates and cannot be copied by
  * object spread.
  */
-class BuiltInAssetParamKind<T> implements ParamKind<T> {
+class BuiltInParamKind<T> implements ParamKind<T> {
   readonly #brand = true;
-  readonly name = "asset";
-  readonly assetKind: string;
+  readonly name: ParamKindName;
+  readonly assetKind?: string;
+  readonly frames?: AssetFrames;
+  readonly types?: readonly string[];
+  readonly optional?: boolean;
   readonly defaultValue: JsonValue;
   readonly validate: (value: JsonValue) => readonly string[];
-  readonly decode: (value: JsonValue) => T;
+  readonly decode: (value: JsonValue, context: ParamDecodeContext) => T;
   readonly assets: (value: JsonValue) => readonly AssetHandle<unknown>[];
 
-  constructor(definition: AssetParamKindDefinition<T>) {
-    this.assetKind = definition.assetKind;
+  constructor(definition: ParamKindDefinition<T>) {
+    this.name = definition.name;
+    if (definition.assetKind !== undefined) {
+      this.assetKind = definition.assetKind;
+    }
+    if (definition.frames !== undefined) this.frames = definition.frames;
+    if (definition.types !== undefined) this.types = definition.types;
+    if (definition.optional !== undefined) this.optional = definition.optional;
     this.defaultValue = definition.defaultValue;
     this.validate = definition.validate;
     this.decode = definition.decode;
@@ -120,16 +196,49 @@ class BuiltInAssetParamKind<T> implements ParamKind<T> {
   }
 }
 
-/** @internal Build a package-owned asset parameter kind. */
-export function createBuiltInAssetParamKind<T>(
-  definition: AssetParamKindDefinition<T>,
+/** @internal Build a package-owned parameter kind. */
+export function createBuiltInParamKind<T>(
+  definition: ParamKindDefinition<T>,
 ): ParamKind<T> {
-  return Object.freeze(new BuiltInAssetParamKind(definition));
+  return Object.freeze(new BuiltInParamKind(definition));
 }
 
 /** @internal Whether a value is a parameter kind built by this package. */
 export function isBuiltInParamKind(
   value: unknown,
 ): value is ParamKind<unknown> {
-  return BuiltInAssetParamKind.is(value);
+  return BuiltInParamKind.is(value);
+}
+
+/**
+ * @internal Problems with a declared frame grid, each a whole sentence.
+ *
+ * The same bounds the renderer checks when it slices a sheet, applied where a
+ * developer can act on them: a schema declaration is collected once when the
+ * catalog is built, and a bad grid is listed there instead of throwing out of
+ * the entity module's import.
+ */
+export function frameProblems(frames: AssetFrames): readonly string[] {
+  const problems: string[] = [];
+  const bounds = [
+    ["frameWidth", frames.frameWidth, 1],
+    ["frameHeight", frames.frameHeight, 1],
+    ["columns", frames.columns, 1],
+    ["count", frames.count, 1],
+    ["startX", frames.startX, 0],
+    ["startY", frames.startY, 0],
+    ["gapX", frames.gapX, 0],
+    ["gapY", frames.gapY, 0],
+  ] as const;
+  for (const [name, value, min] of bounds) {
+    // An absent optional member takes the renderer's own default. Only
+    // `frameWidth` is required, and it is checked whatever it holds.
+    if (value === undefined && name !== "frameWidth") continue;
+    if (typeof value !== "number" || !Number.isFinite(value) || value < min) {
+      problems.push(
+        `frames.${name} must be a finite number of at least ${String(min)}`,
+      );
+    }
+  }
+  return problems;
 }

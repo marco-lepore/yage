@@ -11,6 +11,7 @@ import type {
   DiagnosticCode,
   EditorDiagnostic,
 } from "../../shared/diagnostics/index.js";
+import type { LayerChoice } from "../layers.js";
 import type { InspectableType } from "../project/index.js";
 import { EditorStore, type DraftApi } from "../store/index.js";
 import type {
@@ -70,6 +71,7 @@ const DOCUMENT: LevelDocument = {
     // Its key is another placement's id, which is legal — the two derive
     // "nick"'s key and "named"'s own key, and those differ.
     placement("nick", { key: "named" }),
+    placement("layered", { layer: "canopy" }),
   ],
   extensions: {},
 };
@@ -121,6 +123,8 @@ interface HarnessOptions {
   readonly editable?: boolean;
   /** What each `listAssets` call answers, by call number. */
   readonly answers?: readonly (() => Promise<AssetListing>)[];
+  /** The layers the open level declares. None means no layer control. */
+  readonly layers?: readonly LayerChoice[];
 }
 
 function createHarness(editable = true, options: HarnessOptions = {}) {
@@ -161,6 +165,18 @@ function createHarness(editable = true, options: HarnessOptions = {}) {
           }}
           onSetKey={(id, key) => {
             intents.push(`key ${id}=${key ?? "(none)"}`);
+          }}
+          layerChoices={() => options.layers ?? []}
+          layerSorts={(layer) =>
+            (options.layers ?? []).some(
+              (choice) => choice.name === layer && choice.sorted,
+            )
+          }
+          onSetLayer={(id, layer) => {
+            intents.push(`layer ${id}=${layer ?? "(none)"}`);
+          }}
+          onOrder={(id, direction) => {
+            intents.push(`order ${id} ${direction}`);
           }}
         />,
       );
@@ -204,6 +220,14 @@ function input(host: HTMLElement, testId: string): HTMLInputElement {
   const found = query<HTMLInputElement>(host, testId);
   if (!found) throw new Error(`No ${testId} control rendered.`);
   return found;
+}
+
+/** Pick an option the way a person does: set the value, then say it changed. */
+function choose(select: HTMLSelectElement, value: string): void {
+  act(() => {
+    select.value = value;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
 }
 
 /** Type into a React-controlled input: set the value the way the DOM does, then say so. */
@@ -781,6 +805,82 @@ describe("Inspector", () => {
     });
   });
 
+  describe("the draw order section", () => {
+    /** The layers the fixture project declares for this level. */
+    const LAYERS: readonly LayerChoice[] = [
+      { name: "bg", sorted: false },
+      { name: "canopy", sorted: true },
+    ];
+
+    it("offers no layer control when the level declares no layers", () => {
+      harness.select("crate");
+
+      expect(query(harness.host, "placement-layer")).toBeNull();
+      expect(query(harness.host, "order-front")).not.toBeNull();
+    });
+
+    it("offers the declared layers plus the default, and sends the pick", () => {
+      const declared = createHarness(true, { layers: LAYERS });
+      declared.select("crate");
+      const select = query<HTMLSelectElement>(declared.host, "placement-layer");
+      if (!select) throw new Error("No placement-layer control rendered.");
+
+      expect([...select.options].map((option) => option.value)).toEqual([
+        "default",
+        "bg",
+        "canopy",
+      ]);
+      expect(select.value).toBe("default");
+
+      choose(select, "bg");
+      expect(declared.intents).toEqual(["layer crate=bg"]);
+
+      declared.root.unmount();
+    });
+
+    it("takes the layer away when the default is picked again", () => {
+      const declared = createHarness(true, { layers: LAYERS });
+      declared.select("layered");
+      const select = query<HTMLSelectElement>(declared.host, "placement-layer");
+      if (!select) throw new Error("No placement-layer control rendered.");
+      expect(select.value).toBe("canopy");
+
+      choose(select, "default");
+      expect(declared.intents).toEqual(["layer layered=(none)"]);
+
+      declared.root.unmount();
+    });
+
+    it("sends one ordering intent per control", () => {
+      harness.select("crate");
+
+      click(harness.host, "order-front");
+      click(harness.host, "order-forward");
+      click(harness.host, "order-backward");
+      click(harness.host, "order-back");
+
+      expect(harness.intents).toEqual([
+        "order crate front",
+        "order crate forward",
+        "order crate backward",
+        "order crate back",
+      ]);
+    });
+
+    it("switches the ordering off on a layer that sorts, and says why", () => {
+      const declared = createHarness(true, { layers: LAYERS });
+      declared.select("layered");
+
+      const button = query<HTMLButtonElement>(declared.host, "order-front");
+      expect(button?.disabled).toBe(true);
+      expect(query(declared.host, "order-sorted-note")?.textContent).toContain(
+        "sorts what it draws",
+      );
+
+      declared.root.unmount();
+    });
+  });
+
   describe("the key section", () => {
     it("is last in the panel, and its box is the last control in it", () => {
       harness.select("named");
@@ -919,5 +1019,248 @@ describe("Inspector", () => {
 
     expect(query(harness.host, "placement-key")).not.toBeNull();
     expect(query(harness.host, "field-texture")).toBeNull();
+  });
+});
+
+describe("a parameter that points at another placement", () => {
+  const SWITCH: InspectableType = {
+    typeId: "game.switch",
+    fields: [
+      {
+        name: "door",
+        kind: "entityRef",
+        types: ["game.crate"],
+        optional: false,
+        defaultValue: null,
+      },
+      {
+        name: "chime",
+        kind: "entityRef",
+        types: ["game.chime"],
+        optional: true,
+        defaultValue: null,
+      },
+    ],
+  };
+
+  const REFERENCE_DOCUMENT: LevelDocument = {
+    format: "yage-level",
+    version: 1,
+    id: "forest",
+    metadata: {},
+    entities: [
+      placement("c1", { name: "Left crate" }),
+      placement("c2", { key: "right-crate" }),
+      // Two crates a person would read the same, so both take their id.
+      placement("c3", { name: "Twin" }),
+      placement("c4", { name: "Twin" }),
+      placement("ch1", { type: "game.chime", params: {} }),
+      placement("s1", {
+        type: "game.switch",
+        params: { door: "c1", chime: null },
+      }),
+    ],
+    extensions: {},
+  };
+
+  function referenceHarness(held: {
+    door?: string | null;
+    chime?: string | null;
+  }) {
+    const entities = REFERENCE_DOCUMENT.entities.map((one) =>
+      one.id === "s1"
+        ? {
+            ...one,
+            params: {
+              door: held.door === undefined ? "c1" : held.door,
+              chime: held.chime ?? null,
+            },
+          }
+        : one,
+    );
+    const store = new EditorStore({
+      api: unusedApi,
+      epoch: "epoch-1",
+      projectId: "project-1",
+    });
+    store.dispatch({
+      type: "level-opened",
+      snapshot: {
+        ...snapshot(),
+        document: { ...REFERENCE_DOCUMENT, entities },
+      },
+    });
+    const intents: string[] = [];
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <Inspector
+          store={store}
+          editable={true}
+          inspectable={(typeId) =>
+            typeId === "game.switch" ? SWITCH : undefined
+          }
+          listAssets={() => Promise.resolve(LISTING)}
+          onSetParam={(id, field, value) => {
+            intents.push(`set ${id}.${field}=${String(value)}`);
+          }}
+          onResetParam={() => undefined}
+          onResetPlacement={() => undefined}
+          onSetKey={() => undefined}
+          layerChoices={() => []}
+          layerSorts={() => false}
+          onSetLayer={() => undefined}
+          onOrder={() => undefined}
+        />,
+      );
+    });
+    act(() => {
+      store.dispatch({ type: "selection-changed", ids: ["s1"] });
+    });
+    const report = (...diagnostics: EditorDiagnostic[]): void => {
+      act(() => {
+        store.dispatch({
+          type: "diagnostics-replaced",
+          source: "preview",
+          diagnostics,
+        });
+      });
+    };
+    return { host, root, store, intents, report };
+  }
+
+  let harness: ReturnType<typeof referenceHarness>;
+
+  afterEach(() => {
+    act(() => {
+      harness.root.unmount();
+    });
+    harness.host.remove();
+  });
+
+  function control(testId: string): HTMLSelectElement {
+    const found = query<HTMLSelectElement>(harness.host, testId);
+    if (!found) throw new Error(`No ${testId} control rendered.`);
+    return found;
+  }
+
+  function labels(select: HTMLSelectElement): string[] {
+    return [...select.options].map((option) => option.textContent ?? "");
+  }
+
+  it("offers only the placements of an accepted type", () => {
+    harness = referenceHarness({});
+
+    // The four crates, and neither the chime nor the switch itself.
+    expect(labels(control("field-door"))).toEqual([
+      "Left crate",
+      "right-crate",
+      "Twin (c3)",
+      "Twin (c4)",
+    ]);
+  });
+
+  it("names a placement by its name, else its key, else its id", () => {
+    harness = referenceHarness({});
+
+    expect(labels(control("field-chime"))).toEqual(["Choose a target", "ch1"]);
+  });
+
+  it("sends the placement id of the target that was picked", () => {
+    harness = referenceHarness({});
+
+    choose(control("field-door"), "c2");
+
+    expect(harness.intents).toEqual(["set s1.door=c2"]);
+  });
+
+  it("clears an optional reference and offers no Clear for a required one", () => {
+    harness = referenceHarness({ chime: "ch1" });
+
+    expect(query(harness.host, "clear-door")).toBeNull();
+    const clear = query<HTMLButtonElement>(harness.host, "clear-chime");
+    expect(clear?.disabled).toBe(false);
+    act(() => {
+      clear?.click();
+    });
+
+    expect(harness.intents).toEqual(["set s1.chime=null"]);
+  });
+
+  it("switches Clear off while nothing is chosen", () => {
+    harness = referenceHarness({});
+
+    expect(
+      query<HTMLButtonElement>(harness.host, "clear-chime")?.disabled,
+    ).toBe(true);
+  });
+
+  it("keeps a held id that names no placement, as its own row", () => {
+    harness = referenceHarness({ door: "gone" });
+
+    const select = control("field-door");
+    expect(select.value).toBe("gone");
+    expect(labels(select)[0]).toBe("Missing: gone");
+  });
+
+  it("keeps a held id of an unaccepted type, and says so", () => {
+    harness = referenceHarness({ door: "ch1" });
+
+    const select = control("field-door");
+    expect(select.value).toBe("ch1");
+    expect(labels(select)[0]).toBe("Wrong type: ch1");
+  });
+
+  it("switches the control off and says why when nothing fits", () => {
+    harness = referenceHarness({ chime: null });
+    act(() => {
+      harness.store.dispatch({
+        type: "level-opened",
+        snapshot: {
+          ...snapshot(),
+          document: {
+            ...REFERENCE_DOCUMENT,
+            entities: [
+              placement("s1", {
+                type: "game.switch",
+                params: { door: null, chime: null },
+              }),
+            ],
+          },
+        },
+      });
+      harness.store.dispatch({ type: "selection-changed", ids: ["s1"] });
+    });
+
+    expect(control("field-door").disabled).toBe(true);
+    expect(query(harness.host, "field-door-note")?.textContent).toBe(
+      "No game.crate in this level.",
+    );
+  });
+
+  it("shows a finding about the reference under its own field", () => {
+    harness = referenceHarness({ door: "gone" });
+    harness.report(diagnostic("s1", "reference-missing", ["door"]));
+
+    expect(
+      query(harness.host, "field-door-diagnostics")?.textContent,
+    ).toContain("reference-missing at s1");
+  });
+
+  it("marks the control itself invalid, not only the text under it", () => {
+    harness = referenceHarness({ door: "gone" });
+    harness.report(diagnostic("s1", "reference-missing", ["door"]));
+
+    // A target that is gone is a finding on every reference, optional or not:
+    // an optional slot's empty value is null, never an id pointing at nothing.
+    expect(control("field-door").getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("leaves a reference with no finding unmarked", () => {
+    harness = referenceHarness({ door: "d1" });
+
+    expect(control("field-door").getAttribute("aria-invalid")).toBe("false");
   });
 });

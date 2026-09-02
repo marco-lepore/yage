@@ -56,11 +56,106 @@ saved level. `version` is the parameter schema's version: a level records the
 version its parameters were written against, and `migrations` carries them
 forward when the schema changes.
 
-A parameter is a typed field with a default. `param.asset` is the asset kind —
-the level stores a project-relative path and `setup()` receives the loaded
-handle. `defineLevelAsset` is what says how a path becomes a handle, and its
-`create` function comes from the package that owns the asset: `texture` from
-`@yagejs/renderer`.
+A parameter is a typed field with a default. There are two kinds.
+`param.asset` names a file — the level stores a project-relative path and
+`setup()` receives the loaded handle. `defineLevelAsset` is what says how a
+path becomes a handle, and its `create` function comes from the package that
+owns the asset: `texture` from `@yagejs/renderer`. `param.entityRef` names
+another placement in the same level, and is [its own section
+below](#point-one-placement-at-another).
+
+### Say how a sheet is cut
+
+When the file a parameter names is a sprite sheet, give `param.asset` a third
+argument saying how it is cut into frames. Its members are the renderer's
+`TextureSliceOptions`, so you state the grid once and spread the same object
+into the frame source your `setup()` builds:
+
+```typescript title="src/Torch.ts"
+const TORCH_FRAMES = { frameWidth: 48 };
+
+const TorchParams = defineParams({
+  sprite: param.asset(textureAsset, "assets/torch.png", TORCH_FRAMES),
+});
+
+export class Torch extends Entity {
+  static readonly level = defineLevelEntity({
+    id: "game.torch",
+    version: 1,
+    params: TorchParams,
+  });
+
+  setup(params: ParamsOf<typeof TorchParams>): void {
+    this.add(new Transform());
+    this.add(
+      new AnimatedSpriteComponent({
+        source: { sheet: params.sprite.path, ...TORCH_FRAMES },
+        anchor: { x: 0.5, y: 0.5 },
+      }),
+    );
+  }
+}
+```
+
+The grid is for whoever is authoring: `setup()` still receives the same asset
+handle, and the level file still stores the path alone. What it buys is a
+truthful picture in a tool — the level editor's Actors panel shows the first
+frame instead of the whole strip. A grid that could not slice anything, such as
+a `frameWidth` below 1, is reported by `buildLevelCatalog` along with every
+other declaration problem, so a bad number lists rather than throws.
+
+### Point one placement at another
+
+A switch that opens a door, a spawner that feeds an arena, a camera that
+follows the player: each needs a slot the level author fills in with another
+placement. `param.entityRef` is that slot.
+
+```typescript title="src/Switch.ts"
+const SwitchParams = defineParams({
+  door: param.entityRef<Door>({ types: ["game.door"] }),
+  chime: param.entityRef<Chime>({ types: ["game.chime"], optional: true }),
+});
+
+export class Switch extends Entity {
+  static readonly level = defineLevelEntity({
+    id: "game.switch",
+    version: 1,
+    params: SwitchParams,
+  });
+
+  private door?: EntityHandle<Door>;
+
+  setup(params: ParamsOf<typeof SwitchParams>): void {
+    this.door = params.door;
+    this.add(new SwitchMechanism(this.door));
+  }
+
+  open(): void {
+    // Read when the switch is used, not while the level is being built.
+    this.door?.current?.open();
+  }
+}
+```
+
+`types` lists the entity type ids the slot accepts. In the level editor that is
+what the picker offers; in `buildLevelCatalog` it is checked against the
+project, so a type id nothing declares is a listed problem rather than a
+surprise at load time. `optional: true` lets the slot stay empty, and widens
+what `setup()` receives to `EntityHandle<Door> | undefined`.
+
+**Store the handle in `setup()`, and read `.current` later — from a component's
+`onEnable()`, from an update, or from a method your game calls.** Every
+placement in a level is reserved before any `setup()` runs, so two placements
+can point at each other and a slot can point at a placement further down the
+file. What that costs is that the target's own `setup()` may not have run when
+yours does. The whole document has set up by the time any of its components is
+enabled, which is the first moment the handle's entity is fully built.
+
+The handle expires when the target entity is destroyed, the way every
+`EntityHandle` does, and never points at anything else. Nothing about it is
+saved: to persist a reference, save the target's placement id — the same string
+the level file holds — and resolve it again with `LevelInstance.get(id)` once
+the level is loaded.
 
 Then list the classes once:
 
@@ -168,6 +263,33 @@ this.level.entities; // parent before child
 this.level.dispose(); // destroys this instance's entities and nothing else
 ```
 
+## Choosing what draws on top
+
+Inside one render layer, what a level lists later draws over what it lists
+earlier. That is the order entities are created in, and same-layer draw order
+in YAGE is creation order. Placements are created by depth, so every child
+draws over every root that shares its layer, whatever the hierarchy shows.
+
+A placement can also name the layer its visuals join:
+
+```json
+{
+  "id": "01J8Z...",
+  "type": "game.sign",
+  "typeVersion": 1,
+  "layer": "props"
+}
+```
+
+The name has to be one the scene declares in its `layers`. It moves every
+visual the entity type left on the `"default"` layer; a visual the type
+deliberately put somewhere else — a health bar on `"ui"` — stays there. A name
+no scene declares logs a warning in development and falls back to `"default"`.
+
+The [level editor](/tooling/level-editor/) writes this field from a picker, and
+it needs to know which layers your scene has: name the module that exports them
+beside the level glob in `editor/config.ts`.
+
 ## Fetching a level instead of importing it
 
 `readLevel` takes a parsed body, so a level fetched at runtime goes through the
@@ -192,10 +314,19 @@ tool that revalidates after every edit uses it; a game prepares once and loads
 the result.
 
 Each diagnostic has a stable `code`: `"unknown-type"`, `"migration-failed"`,
-`"parameter-invalid"`, or `"asset-derivation-failed"`. A tool uses the code
+`"parameter-invalid"`, `"asset-derivation-failed"`, or one of the three about
+a reference — `"reference-unset"` for a required slot nobody filled,
+`"reference-missing"` for an id no placement in the file holds, and
+`"reference-type"` for a target the slot does not accept. A tool uses the code
 and parameter path when it offers a corrective action. The message is for the
 developer to read. Every diagnostic blocks loading, so there is no warning
 severity.
+
+The reference codes are separate from `"parameter-invalid"` because the repair
+differs: writing a reference back to its default means "nothing chosen", which
+fixes none of the three. A reference to a placement that itself failed to
+prepare is not a problem — the check runs against what the file says, not
+against what loaded.
 
 ## Writing a placement from a tool
 
@@ -226,25 +357,36 @@ const fields = entry.declaration.params
   : [];
 ```
 
-Each result contains a field name, its kind, the kind of asset it names, and
-its default:
+Each result contains a field name, its kind, the kind of asset it names, any
+declared frame grid, and its default:
 
 ```ts
 // [{
 //   name: "sprite",
 //   kind: "asset",
 //   assetKind: "texture",
-//   defaultValue: "sprites/crate.png",
+//   frames: { frameWidth: 48 },
+//   defaultValue: "assets/torch.png",
 // }]
 ```
 
 The list is immutable and follows declaration order. `kind` says which control
-the field needs, and `"asset"` is the only one there is, so a tool can switch
-on it and present the value as a project-relative path. `assetKind` is the
-`kind` you gave `defineLevelAsset`, so a tool can tell a texture from a sound —
-the editor's Actors panel uses it to show a type's default art. Parameter kinds
-come from `param`; a hand-built kind object is rejected when the catalog is
-built.
+the field needs, and it is a closed set — `"asset"` and `"entityRef"` — so a
+tool can switch on it exhaustively.
+
+An asset field carries `assetKind`, the `kind` you gave `defineLevelAsset`, so
+a tool can tell a texture from a sound — the editor's Actors panel uses it to
+show a type's default art. `frames` is there only when the declaration gave
+one, and it says what one frame of that art is.
+
+A reference field carries `types`, the entity type ids it accepts, and
+`optional`; its `defaultValue` is `null`. To find what a level's placements
+already point at, read `references` off each `PreparedPlacement` — one entry
+per filled slot, in field order, carrying the parameter path and the target's
+placement id.
+
+Parameter kinds come from `param`; a hand-built kind object is rejected when
+the catalog is built.
 
 ## Reading level files outside the engine
 

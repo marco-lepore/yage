@@ -199,6 +199,27 @@ describe("readLevel", () => {
     ]);
   });
 
+  it("reads an authored layer, and refuses one that is not a name", () => {
+    const document = readOrThrow(
+      minimal({ entities: [placement({ layer: "props" })] }),
+    );
+    expect(document.entities[0]?.layer).toBe("props");
+
+    expect(errorsOf(minimal({ entities: [placement({ layer: "" })] }))).toEqual(
+      [{ path: "entities[0].layer", message: "must be a non-empty string" }],
+    );
+  });
+
+  it("writes an authored layer back and leaves out an absent one", () => {
+    const authored = readOrThrow(
+      minimal({ entities: [placement({ layer: "props" })] }),
+    );
+    expect(formatLevel(authored)).toContain(`"layer": "props"`);
+
+    const plain = readOrThrow(minimal({ entities: [placement()] }));
+    expect(formatLevel(plain)).not.toContain(`"layer"`);
+  });
+
   it("rejects a key that collides with another placement's id", () => {
     const errors = errorsOf(
       minimal({
@@ -519,6 +540,25 @@ describe("formatLevel", () => {
     );
     expect(Object.keys(written.metadata)).toEqual(["__proto__", "other"]);
     expect(formatLevel(readOrThrow(text))).toBe(text);
+  });
+
+  it("keeps a null parameter, which is a reference with nothing chosen", () => {
+    const text =
+      '{"format":"yage-level","version":1,"id":"level","entities":[' +
+      '{"id":"s1","type":"game.switch","typeVersion":1,' +
+      '"transform":{"position":{"x":0,"y":0},"rotation":0,' +
+      '"scale":{"x":1,"y":1}},"params":{"door":"p1","chime":null}}]}';
+
+    const document = readOrThrow(text);
+
+    expect(document.entities[0]?.params).toEqual({
+      door: "p1",
+      chime: null,
+    });
+    expect(formatLevel(document)).toContain('"chime": null');
+    expect(formatLevel(readOrThrow(formatLevel(document)))).toBe(
+      formatLevel(document),
+    );
   });
 
   it("round-trips through text without drifting", () => {

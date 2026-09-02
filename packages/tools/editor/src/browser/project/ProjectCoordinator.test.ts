@@ -291,5 +291,47 @@ describe("ProjectCoordinator", () => {
         undefined,
       ]);
     });
+
+    it("carries the texture parameter's declared frame grid, when it has one", () => {
+      const coordinator = new ProjectCoordinator();
+      coordinator.initialize({
+        project: {
+          entities: [
+            withParams(
+              "game.torch",
+              defineParams({
+                sprite: param.asset(textureDescriptor, "sprites/torch.png", {
+                  frameWidth: 48,
+                }),
+              }),
+            ),
+            withParams(
+              "game.crate",
+              defineParams({
+                sprite: param.asset(textureDescriptor, "sprites/crate.png"),
+              }),
+            ),
+          ],
+        },
+        contributions: [],
+      });
+
+      expect(coordinator.placeables).toEqual([
+        {
+          typeId: "game.torch",
+          source: "project",
+          thumbnail: "sprites/torch.png",
+          thumbnailFrames: { frameWidth: 48 },
+        },
+        {
+          typeId: "game.crate",
+          source: "project",
+          thumbnail: "sprites/crate.png",
+        },
+      ]);
+      expect(
+        Object.hasOwn(coordinator.placeables[1] as object, "thumbnailFrames"),
+      ).toBe(false);
+    });
   });
 });

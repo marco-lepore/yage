@@ -70,8 +70,14 @@ export function buildBestEffort<T>(
 
 /**
  * Exclude every placement that cannot load without an excluded one. A child
- * whose parent is gone has nothing to be positioned against, and the loader
- * refuses a parent reference it cannot resolve.
+ * whose parent is gone has nothing to be positioned against, and a placement
+ * whose reference target is gone would decode to a handle on nothing; the
+ * loader refuses both.
+ *
+ * An optional reference is closed over as well. A handle that resolves in the
+ * game and not in the preview would send `setup()` down a different branch in
+ * the editor than in the running level, which is the divergence the preview
+ * must not have.
  */
 export function closeDependents(
   placements: readonly PreparedPlacement[],
@@ -81,14 +87,21 @@ export function closeDependents(
   while (changed) {
     changed = false;
     for (const entry of placements) {
-      const parent = entry.placement.parent;
-      if (parent === undefined) continue;
       if (excluded.has(entry.placement.id)) continue;
-      if (!excluded.has(parent)) continue;
+      if (!dependsOnExcluded(entry, excluded)) continue;
       excluded.add(entry.placement.id);
       changed = true;
     }
   }
+}
+
+function dependsOnExcluded(
+  entry: PreparedPlacement,
+  excluded: ReadonlySet<string>,
+): boolean {
+  const parent = entry.placement.parent;
+  if (parent !== undefined && excluded.has(parent)) return true;
+  return entry.references.some((one) => excluded.has(one.targetId));
 }
 
 /** The prepared level minus the excluded placements, ready for a strict load. */

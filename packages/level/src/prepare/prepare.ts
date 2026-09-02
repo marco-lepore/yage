@@ -3,15 +3,23 @@ import type { LevelCatalog, LevelCatalogEntry } from "../catalog/types.js";
 import { isJsonValue, isPlainObject } from "../document/json.js";
 import type {
   JsonObject,
+  JsonValue,
   LevelDocument,
   LevelPlacement,
   StructuralError,
 } from "../document/types.js";
 import { describeError, describeValue } from "../internal/describe.js";
-import { defineParams, paramAssets, validateParams } from "../params/schema.js";
+import {
+  defineParams,
+  paramAssets,
+  referenceFields,
+  validateParams,
+} from "../params/schema.js";
+import type { ParamFields, ParamsSchema } from "../params/types.js";
 import type {
   LevelDiagnostic,
   LevelDiagnosticCode,
+  PlacementReference,
   PreparedLevel,
   PreparedPlacement,
 } from "./types.js";
@@ -62,6 +70,11 @@ export function prepareLevel(
   const placements: PreparedPlacement[] = [];
   const entities: LevelPlacement[] = [];
 
+  // Built from the authored document, so a reference to a placement that
+  // itself failed to prepare still resolves: a switch pointing at a crate with
+  // a bad asset path is not itself broken.
+  const typeById = new Map(copy.entities.map((one) => [one.id, one.type]));
+
   for (const placement of copy.entities) {
     const entry = catalog.get(placement.type);
     if (entry === undefined) {
@@ -75,7 +88,7 @@ export function prepareLevel(
       entities.push(placement);
       continue;
     }
-    const prepared = preparePlacement(placement, entry, diagnostics);
+    const prepared = preparePlacement(placement, entry, typeById, diagnostics);
     entities.push(prepared?.placement ?? placement);
     if (prepared) placements.push(prepared);
   }
@@ -131,6 +144,7 @@ function diagnostic(
 function preparePlacement(
   placement: LevelPlacement,
   entry: LevelCatalogEntry,
+  typeById: ReadonlyMap<string, string>,
   diagnostics: LevelDiagnostic[],
 ): PreparedPlacement | undefined {
   const { declaration } = entry;
@@ -164,6 +178,9 @@ function preparePlacement(
     return undefined;
   }
 
+  const references = prepareReferences(schema, migrated, typeById, report);
+  if (references === undefined) return undefined;
+
   let assets: readonly AssetHandle<unknown>[];
   try {
     assets = paramAssets(schema, migrated);
@@ -182,7 +199,71 @@ function preparePlacement(
     },
     entry,
     assets: Object.freeze([...assets]),
+    references: Object.freeze(references),
   });
+}
+
+/**
+ * Check every reference parameter against the document, and collect what the
+ * placement points at. `undefined` when any of them is a problem, so the
+ * placement is reported and left out of the loadable set.
+ *
+ * The three codes are separate from `parameter-invalid` because the repairs
+ * differ: resetting a parameter to its default writes "nothing chosen" back,
+ * which fixes none of them.
+ */
+function prepareReferences(
+  schema: ParamsSchema<ParamFields>,
+  params: JsonObject,
+  typeById: ReadonlyMap<string, string>,
+  report: (
+    code: LevelDiagnosticCode,
+    message: string,
+    path: readonly string[],
+  ) => undefined,
+): PlacementReference[] | undefined {
+  const references: PlacementReference[] = [];
+  let failed = false;
+  for (const field of referenceFields(schema)) {
+    const value = Reflect.get(params, field.name) as JsonValue;
+    const accepted = field.types.join(", ");
+    if (value === null) {
+      if (field.optional) continue;
+      report(
+        "reference-unset",
+        `Parameter "${field.name}" needs a ${accepted} and has none chosen.`,
+        [field.name],
+      );
+      failed = true;
+      continue;
+    }
+    const targetId = value as string;
+    const targetType = typeById.get(targetId);
+    if (targetType === undefined) {
+      report(
+        "reference-missing",
+        `Parameter "${field.name}" points at placement "${targetId}", which is not in this level.`,
+        [field.name],
+      );
+      failed = true;
+      continue;
+    }
+    if (!field.types.includes(targetType)) {
+      report(
+        "reference-type",
+        `Parameter "${field.name}" accepts ${accepted} and points at placement "${targetId}", which is a ${targetType}.`,
+        [field.name],
+      );
+      failed = true;
+      continue;
+    }
+    // A self-reference is not excluded: it is a one-placement cycle, and the
+    // loader reserves every placement before any setup runs.
+    references.push(
+      Object.freeze({ path: Object.freeze([field.name]), targetId }),
+    );
+  }
+  return failed ? undefined : references;
 }
 
 /**

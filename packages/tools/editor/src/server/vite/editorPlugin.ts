@@ -51,6 +51,16 @@ export function yageEditor(options: YageEditorOptions): Plugin {
   const html = renderEditorHtml({ entryId: EDITOR_ENTRY_ID });
   const playHtml = renderPlayHtml({ entryId: PLAY_ENTRY_ID });
   let contributions: readonly string[] = [];
+  // Every layers module the config named, once each and in config order. Both
+  // pages import them positionally, and a draft snapshot's `layerSet` indexes
+  // this array.
+  const layerModules = [
+    ...new Set(
+      config.levels
+        .map((level) => level.layers)
+        .filter((url): url is string => url !== undefined),
+    ),
+  ];
   // Read in `configResolved`, before any request reaches the hooks below.
   let base = "/";
 
@@ -102,6 +112,7 @@ export function yageEditor(options: YageEditorOptions): Plugin {
       const entry = {
         modules: config.modules,
         contributions,
+        layerModules,
         gamePage: config.gamePage,
       };
       if (id === EDITOR_ENTRY_ID) return renderEntryModule(entry);
@@ -112,7 +123,12 @@ export function yageEditor(options: YageEditorOptions): Plugin {
     async configureServer(server) {
       const files = await createLevelFileService({
         root: config.root,
-        levels: config.levels,
+        levels: config.levels.map((level) => ({
+          glob: level.glob,
+          ...(level.layers === undefined
+            ? {}
+            : { layerSet: layerModules.indexOf(level.layers) }),
+        })),
         assets: config.assets,
         publicDir: server.config.publicDir,
       });

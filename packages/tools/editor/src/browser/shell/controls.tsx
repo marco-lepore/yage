@@ -617,6 +617,12 @@ export interface SelectProps {
   readonly testId: string;
   readonly disabled?: boolean | undefined;
   readonly title?: string | undefined;
+  /**
+   * Marks the control invalid for a reason from outside it, such as a
+   * diagnostic against the field it stands for. It is what {@link TextField}'s
+   * own `invalid` does, so a bad choice and bad text look alike.
+   */
+  readonly invalid?: boolean | undefined;
   /** Defaults to `ye-select`. Pass a variant or a bespoke class. */
   readonly className?: string | undefined;
 }
@@ -637,6 +643,7 @@ export function Select(props: SelectProps): React.JSX.Element {
       data-testid={props.testId}
       aria-label={props.label}
       title={props.title}
+      aria-invalid={props.invalid === true}
       disabled={props.disabled ?? false}
       value={props.value}
       onChange={(event) => {

@@ -26,6 +26,7 @@ const PLACEMENT_FIELDS = [
   "name",
   "key",
   "parent",
+  "layer",
   "active",
   "transform",
   "params",
@@ -187,6 +188,11 @@ function readPlacement(
     `${path}.parent`,
     errors,
   );
+  const layer = optionalNonEmptyString(
+    source["layer"],
+    `${path}.layer`,
+    errors,
+  );
   const active = optionalBoolean(source["active"], `${path}.active`, errors);
   const transform = readTransform(
     source["transform"],
@@ -211,6 +217,7 @@ function readPlacement(
     ...(name !== undefined ? { name } : {}),
     ...(key !== undefined ? { key } : {}),
     ...(parent !== undefined ? { parent } : {}),
+    ...(layer !== undefined ? { layer } : {}),
     active: active ?? true,
     transform: transform ?? IDENTITY_TRANSFORM,
     params: params ?? {},

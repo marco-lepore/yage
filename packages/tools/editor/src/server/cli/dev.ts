@@ -39,6 +39,6 @@ export async function runDev(options: DevOptions): Promise<void> {
     `\n  project   ${editor.editor.projectId}\n` +
       `  root      ${editor.editor.root}\n` +
       `  config    ${editor.editor.configFile}\n` +
-      `  levels    ${editor.editor.levels.join(", ")}\n\n`,
+      `  levels    ${editor.editor.levels.map((level) => level.glob).join(", ")}\n\n`,
   );
 }

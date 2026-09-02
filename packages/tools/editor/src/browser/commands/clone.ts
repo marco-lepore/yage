@@ -9,6 +9,7 @@ import {
   type PlacementInsert,
 } from "../../shared/commands/index.js";
 import { placementById, selectionRoots, withDescendants } from "./graph.js";
+import { rewriteReferences } from "./references.js";
 import {
   parentFrame,
   parentWorld,
@@ -31,6 +32,11 @@ export interface CloneRequest {
   readonly mode: "duplicate" | "paste";
   /** Where the ids come from. Injected so a test can name them. */
   readonly newId: () => string;
+  /**
+   * The reference parameters a type declares. Injected the way `newId` is, so
+   * this module stays free of the catalog.
+   */
+  readonly referenceFields: (typeId: string) => readonly string[];
   /** A world offset applied to every copied root, so copies are not hidden. */
   readonly offset?: LevelPoint;
 }
@@ -51,6 +57,12 @@ export interface CloneRequest {
  * Only the copied roots take the offset. Everything under one is positioned
  * relative to it and moves when it does, so offsetting a child as well would
  * move it twice and pull the subtree apart.
+ *
+ * A reference parameter follows the same rule the parent link does: one
+ * pointing inside the copied set is rewritten to the copy, and one pointing
+ * outside it keeps the id it held. A kept id the destination does not hold
+ * becomes a finding the picker fixes in one click — the editor does not guess
+ * a replacement.
  *
  * Copies land after the last of their sources in the destination, so a
  * duplicate appears next to what it came from rather than at the end of a long
@@ -77,11 +89,17 @@ export function clonePlacements(
       throw new Error(`clone lost placement ${oldId}`);
     }
     const parent = parentFor(request, old, idFor);
+    const carried = carriedFields(old);
     return {
       placement: {
         // Spread rather than listed field by field, so a field added to
         // `LevelPlacement` later is copied without this module being told.
-        ...carriedFields(old),
+        ...carried,
+        params: rewriteReferences(
+          carried.params,
+          request.referenceFields(old.type),
+          idFor,
+        ),
         id,
         ...(old.key === undefined ? {} : { key: freeKey(old.key, keys) }),
         // A copy that detached carries no `parent` key at all. Setting one to

@@ -49,6 +49,24 @@ describe("renderEntryModule", () => {
     expect(source).toContain("contributions: [contribution0, contribution1],");
   });
 
+  it("names one import per layers module and passes them in order", () => {
+    const source = renderEntryModule({
+      modules: MODULES,
+      contributions: [],
+      layerModules: ["/src/forestLayers.ts", "/src/caveLayers.ts"],
+    });
+
+    expect(source).toContain('import layers0 from "/src/forestLayers.ts";');
+    expect(source).toContain('import layers1 from "/src/caveLayers.ts";');
+    expect(source).toContain("layerSets: [layers0, layers1],");
+  });
+
+  it("passes an empty layer set list when the config named none", () => {
+    const source = renderEntryModule({ modules: MODULES, contributions: [] });
+
+    expect(source).toContain("layerSets: [],");
+  });
+
   it("escapes a path rather than emitting it as source", () => {
     // Path validation is what stops this reaching here; the escaping is the
     // second check, so a quote can never close a string literal.

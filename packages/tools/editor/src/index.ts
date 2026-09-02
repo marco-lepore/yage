@@ -9,10 +9,33 @@ export interface EditorModules {
   readonly harness: string;
 }
 
+/**
+ * A level glob together with the render layers the levels it matches are
+ * authored against.
+ *
+ * `layers` is a path to a module default-exporting a `LayerDef[]` — the same
+ * array the game's own `Scene` spreads into its `layers`, exported once and
+ * imported by both. It is a path rather than the array itself because the CLI
+ * reads this config in Node before the server starts, and an imported array
+ * would evaluate the renderer and whatever the layers module reaches from
+ * there. The browser imports it, so a `sort` in it stays a real function.
+ *
+ * The path is relative to the config file, like `modules`; the glob is
+ * relative to the Vite root, like every other pattern here.
+ */
+export interface EditorLevelGlob {
+  readonly glob: string;
+  readonly layers: string;
+}
+
 export interface EditorConfig {
   readonly modules: EditorModules;
-  /** Globs for level files, relative to the Vite root. */
-  readonly levels: readonly string[];
+  /**
+   * Globs for level files, relative to the Vite root. A bare string is a glob
+   * whose levels declare no layers, which leaves every placement on the
+   * `default` layer — what a level could say before layers were authorable.
+   */
+  readonly levels: readonly (string | EditorLevelGlob)[];
   /**
    * Globs for the project files the asset picker offers, matched against where
    * a file sits on disk relative to the Vite root —
@@ -52,7 +75,10 @@ export interface EditorConfig {
  * ```ts
  * export default defineEditorConfig({
  *   modules: { project: "../src/levelProject.ts", harness: "../lab/harness.ts" },
- *   levels: ["src/levels/*.yage-level.json"],
+ *   levels: [
+ *     { glob: "src/levels/forest/*.yage-level.json", layers: "../src/forestLayers.ts" },
+ *     "src/levels/menu/*.yage-level.json",
+ *   ],
  *   assets: ["public/sprites/**\/*.png"],
  *   gamePage: "/game.html",
  * });

@@ -1,5 +1,7 @@
 import { Transform, type Engine } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
 import { Crate } from "./Crate.js";
+import { Switch } from "./Switch.js";
 
 /** The namespace the extension registers under, on both pages. */
 export const LEVEL_FACTS = "levelFixture";
@@ -13,6 +15,11 @@ export interface PlacementFact {
   readonly sceneId: string;
   /** The asset path the placement's parameters carry. */
   readonly sprite: string;
+  /**
+   * The render layer the crate's sprite is actually parented to, read off the
+   * display tree rather than off what the component recorded.
+   */
+  readonly layer: string;
   /** The runtime parent's scene id, absent for a top-level placement. */
   readonly parent?: string;
   /** Where the entity ended up, after the parent chain is applied. */
@@ -23,10 +30,25 @@ export interface PlacementFact {
   readonly scale: { readonly x: number; readonly y: number };
 }
 
+/** What a test can read about one switch and the placements it points at. */
+export interface SwitchFact {
+  readonly sceneId: string;
+  /**
+   * The scene id of the entity the `door` handle resolves to, and `null` once
+   * that entity is gone. This is the only check that a reference parameter
+   * reached the right entity rather than merely a live one.
+   */
+  readonly door: string | null;
+  /** The same for the optional `chime`, and `null` when none was chosen. */
+  readonly chime: string | null;
+}
+
 /** The read-only API {@link exposeLevelFacts} registers. */
 export interface LevelFacts {
   /** Every loaded placement, in the order the scene created them. */
   placements(): PlacementFact[];
+  /** Every loaded switch and what its two reference parameters resolved to. */
+  switches(): SwitchFact[];
 }
 
 /**
@@ -59,6 +81,9 @@ export function exposeLevelFacts(engine: Engine): void {
         placements.push({
           sceneId,
           sprite: entity.sprite,
+          layer: String(
+            entity.get(SpriteComponent).renderObject.parent?.label ?? "",
+          ),
           ...(parent === undefined ? {} : { parent }),
           world: { x: world.x, y: world.y },
           rotation: transform.worldRotation,
@@ -66,6 +91,22 @@ export function exposeLevelFacts(engine: Engine): void {
         });
       }
       return placements;
+    },
+    switches: () => {
+      const scene = engine.scenes.active;
+      if (!scene) return [];
+      const facts: SwitchFact[] = [];
+      for (const entity of scene.getEntities()) {
+        if (entity.isDestroyed || !(entity instanceof Switch)) continue;
+        const sceneId = sceneIdOf(entity.key);
+        if (sceneId === undefined) continue;
+        facts.push({
+          sceneId,
+          door: sceneIdOf(entity.door?.current?.key) ?? null,
+          chime: sceneIdOf(entity.chime?.current?.key) ?? null,
+        });
+      }
+      return facts;
     },
   };
   engine.inspector.addExtension(LEVEL_FACTS, facts);

@@ -57,11 +57,45 @@ dependencies you already have.
        project: "../src/levelProject.ts",
        harness: "../lab/harness.ts",
      },
-     levels: ["src/levels/*.yage-level.json"],
+     levels: [
+       {
+         glob: "src/levels/forest/*.yage-level.json",
+         layers: "../src/forestLayers.ts",
+       },
+       "src/levels/menu/*.yage-level.json",
+     ],
      assets: ["public/sprites/**/*.png"],
      gamePage: "/game.html",
    });
    ```
+
+   A `levels` entry is either a glob on its own or a glob plus the render
+   layers the levels it matches are authored against. `layers` names a module
+   that default-exports the same `LayerDef[]` your scene spreads into its own
+   `layers`:
+
+   ```typescript title="src/forestLayers.ts"
+   import { ySort, type LayerDef } from "@yagejs/renderer";
+
+   const FOREST_LAYERS: readonly LayerDef[] = [
+     { name: "bg", order: -10 },
+     { name: "world", order: 0, sort: ySort },
+     { name: "props", order: 10 },
+   ];
+
+   export default FOREST_LAYERS;
+   ```
+
+   Export the array once and import it in both places, so the editor's preview
+   draws the level the way your game will. Without it the preview puts every
+   placement on the `default` layer in creation order, which is rarely what the
+   running game shows. It is a path rather than the array itself because the
+   editor reads this config in Node before it starts, and a `sort` has to stay
+   a real function by the time it reaches the browser.
+
+   Layers belong to the entry rather than to the project because each scene
+   declares its own set, and they stay out of the level file because which
+   scene a level loads into is your game's decision, not the file's.
 
    `assets` is optional and lists what the asset picker offers. The editor
    cannot tell which files a given parameter would accept, so these globs are
@@ -503,14 +537,25 @@ straight from your project the way the running level loads it. A type that
 declares no texture, and one whose default names a file that is not there, get
 an empty frame instead.
 
-A sprite sheet shows one frame rather than the whole strip when an atlas sits
-beside it — `player.json` next to `player.png`, the file any packer writes —
-and the entry shows that atlas's first frame. The editor only looks for an
-atlas it can see, so the `assets` globs in your editor config need to match
-the `.json` as well as the image; a sheet with no atlas is fitted whole. The
-editor never guesses a frame from an image's proportions: a wide platform and
-a strip of square frames look the same from the outside, and a platform cropped
-to its left quarter is worse than a strip drawn small.
+A sprite sheet shows one frame rather than the whole strip, and the editor has
+three answers in this order.
+
+1. The frame grid the parameter declares. A third argument to `param.asset`
+   says how that file is cut — `{ frameWidth: 48 }` — and the entry shows its
+   first frame. This is the one to reach for: you state the number once and
+   spread the same object into the frame source your `setup()` builds. See
+   [saying how a sheet is cut](/guides/levels/#say-how-a-sheet-is-cut).
+2. An atlas beside the image — `player.json` next to `player.png`, the file any
+   packer writes — and the entry shows that atlas's first frame. The editor
+   only looks for an atlas it can see, so the `assets` globs in your editor
+   config need to match the `.json` as well as the image.
+3. Otherwise the whole image, fitted.
+
+The editor never guesses a frame from an image's proportions: a wide platform
+and a strip of square frames look the same from the outside, and a platform
+cropped to its left quarter is worse than a strip drawn small. A declared grid
+that runs off the edge of the file the browser loaded is refused the same way,
+and the whole image shows instead.
 
 A new placement is written with every parameter its declaration declares, each
 at the default you gave `param.asset(…)`. Those defaults are resolved once,
@@ -521,6 +566,12 @@ already built.
 while the viewport has focus — removes what is selected, and everything you
 parented under it. That subtree goes as a unit, because a level file cannot
 hold a placement whose parent is missing.
+
+If a placement that is staying points at one that is going, the editor asks
+first and names each one and the parameter that holds it. **Delete anyway**
+goes ahead and leaves those slots holding the id of the placement that is now
+gone: the file stays well formed, one undo puts everything back, and until then
+each of those slots is listed as a problem you can fix from its own picker.
 
 ### The hierarchy
 
@@ -621,14 +672,14 @@ level's number back.
 
 The **inspector** on the right shows the rest of what the selected placement
 holds, top to bottom: its type and id, one control per parameter its
-declaration declares, anything wrong with the placement, and an **In your
-game** section holding its **Key**.
+declaration declares, anything wrong with the placement, a **Draw order**
+section, and an **In your game** section holding its **Key**.
 
 #### Parameters
 
-The one parameter kind that ships is `param.asset()`, shown as a text field
-holding the project-relative path. **Reset** next to a field writes the default
-you gave `param.asset(…)`.
+An asset parameter — `param.asset()` — is a text field holding the
+project-relative path. **Reset** next to a field writes the default you gave
+`param.asset(…)`.
 
 **▾** beside the field opens your project's own files, the ones your `assets`
 globs match. Typing narrows the list — it matches anywhere in the path, so
@@ -656,6 +707,49 @@ you changed a schema during a spike and do not want to write a migration for
 values you are happy to lose. It asks first: every parameter goes back to its
 default and the placement is marked as authored against the current version,
 in one edit, and undo is the only way back.
+
+A reference parameter — `param.entityRef()` — is a list of the other placements
+in this level that the parameter accepts, named by whatever you would recognise
+them as: their name, else their key, else their id. Two that would read the
+same both get their id shown. Picking one is a single edit. A slot the type
+marked optional has a **Clear** beside it; a required one does not, because
+"nothing chosen" is a problem there rather than a value.
+
+The slot never blanks. If the placement it points at is gone the list shows
+`Missing: <id>` as its first row, and if that placement is there but of a type
+the slot does not take it shows `Wrong type: <name>` — in both cases with the
+reason under the field, and the fix one click away. When the level holds
+nothing the slot could take, the list is switched off and says which types it
+wanted.
+
+Copying carries references with it. A copy whose target you copied too points
+at the copy; a copy whose target you left behind keeps pointing at the
+original, and if you paste it into a level that has no such placement it
+arrives as a problem to answer rather than as a guess.
+
+#### Draw order
+
+Two things decide what a placement draws over: which layer it is on, and where
+it sits among the placements that share its parent.
+
+**Layer** lists the layers you declared for this level's glob in
+`editor/config.ts`, plus **Default**. Picking one moves every visual the entity
+type left on the default layer; a visual the type deliberately put somewhere
+else — a health bar on your `ui` layer — stays where the type put it. Screen-space
+layers are not offered: a camera leaves them fixed to the viewport, so a
+placement's world position would be read as raw screen pixels there. A level
+whose glob declares no layers has no Layer control.
+
+**Send to back**, **Backward**, **Forward** and **Bring to front** move the
+placement among its siblings: a child among the children of its parent, a root
+among the roots. They never change a parent. Inside one layer, what the level
+lists later is drawn on top, so this is the fine-grained half of the same
+question the Layer control answers coarsely.
+
+A layer that sorts itself — one you declared with `ySort` or a `sort` of your
+own — decides its order every frame from what it draws, so the four buttons are
+switched off there and the panel says why. Reordering the level would change
+the file and nothing on screen.
 
 #### Key
 

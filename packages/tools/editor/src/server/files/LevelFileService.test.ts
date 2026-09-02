@@ -52,7 +52,7 @@ function document(id: string): LevelDocument {
   };
 }
 
-const LEVELS = ["src/levels/**/*.yage-level.json"];
+const LEVELS = [{ glob: "src/levels/**/*.yage-level.json" }];
 const ASSETS = ["sprites/**/*.png"];
 
 async function service(root: string) {
@@ -84,6 +84,23 @@ describe("listLevels", () => {
       "src/levels/a.yage-level.json",
       "src/levels/deep/b.yage-level.json",
     ]);
+  });
+
+  it("says which layer set a path belongs to, first matching glob first", async () => {
+    const root = await makeProject();
+    const files = await createLevelFileService({
+      root,
+      levels: [
+        { glob: "src/levels/forest/*.yage-level.json", layerSet: 0 },
+        { glob: "src/levels/**/*.yage-level.json", layerSet: 1 },
+        { glob: "src/other/*.yage-level.json" },
+      ],
+      assets: [],
+    });
+
+    expect(files.layerSetOf("src/levels/forest/a.yage-level.json")).toBe(0);
+    expect(files.layerSetOf("src/levels/cave/a.yage-level.json")).toBe(1);
+    expect(files.layerSetOf("src/other/a.yage-level.json")).toBeUndefined();
   });
 
   it("stamps each level with the hash of its bytes", async () => {

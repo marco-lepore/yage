@@ -366,9 +366,11 @@ export class DraftService {
   }
 
   private toSnapshot(state: LevelState): DraftSnapshot {
+    const layerSet = this.files.layerSetOf(state.path);
     return {
       path: state.path,
       epoch: this.epoch,
+      ...(layerSet === undefined ? {} : { layerSet }),
       document: state.document,
       draftRevision: state.draftRevision,
       diskRevision: state.diskRevision,

@@ -51,6 +51,12 @@ export type WriteLevelResult =
 export interface LevelFileService {
   listLevels(): Promise<readonly LevelSummary[]>;
   /**
+   * Which layer set a level belongs to: the index of the first configured
+   * glob that both matches its path and named a layers module. Undefined when
+   * no such glob matches, which is every project that declared no layers.
+   */
+  layerSetOf(path: string): number | undefined;
+  /**
    * The project files the configured asset globs match, as the POSIX paths the
    * browser fetches them by, in sorted order. That is the shape a level stores,
    * so a picked path goes into `params` unchanged. A file under `publicDir` is
@@ -81,8 +87,12 @@ export interface LevelFileService {
 export interface LevelFileServiceOptions {
   /** The one writable root, normally the Vite root. */
   readonly root: string;
-  /** Level globs, relative to the root, from the editor config. */
-  readonly levels: readonly string[];
+  /**
+   * Level globs, relative to the root, in config order. `layerSet` is the
+   * index of the layer set the editor page imported for that glob, reported by
+   * `layerSetOf` for every level the glob matches.
+   */
+  readonly levels: readonly ConfiguredLevelGlob[];
   /** Asset globs, relative to the root. Empty lists nothing. */
   readonly assets: readonly string[];
   /**
@@ -97,6 +107,12 @@ export interface LevelFileServiceOptions {
    * host that wants a bigger list.
    */
   readonly maxAssets?: number | undefined;
+}
+
+/** One configured level glob, and the layer set it names, if any. */
+export interface ConfiguredLevelGlob {
+  readonly glob: string;
+  readonly layerSet?: number | undefined;
 }
 
 /** Directories a project walk never descends into. */
@@ -137,7 +153,19 @@ export async function createLevelFileService(
   options: LevelFileServiceOptions,
 ): Promise<LevelFileService> {
   const realRoot = await realpath(resolve(options.root));
-  const matches = picomatch([...options.levels]);
+  const matches = picomatch(options.levels.map((level) => level.glob));
+  // One matcher per glob that names a layer set, so a draft can say which set
+  // its level was authored against. Globs that named none are left out rather
+  // than ending the search, so a level matching both a bare glob and a glob
+  // with layers is authored against the layers. Among the globs that name a
+  // set the first match wins, which makes a narrower one listed first an
+  // override of a broader one after it.
+  const layerSets = options.levels
+    .filter((level) => level.layerSet !== undefined)
+    .map((level) => ({
+      matches: picomatch(level.glob),
+      layerSet: level.layerSet as number,
+    }));
   const assetMatches =
     options.assets.length > 0 ? picomatch([...options.assets]) : undefined;
   const publicPrefix = servedPrefix(options.root, options.publicDir);
@@ -183,6 +211,10 @@ export async function createLevelFileService(
         summaries.push({ path, diskRevision: hashBytes(bytes) });
       }
       return summaries;
+    },
+
+    layerSetOf(path) {
+      return layerSets.find((entry) => entry.matches(path))?.layerSet;
     },
 
     async listAssets() {

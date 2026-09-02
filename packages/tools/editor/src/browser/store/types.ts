@@ -44,6 +44,11 @@ export type WriteLockReason = "stale-project" | "stale-command";
 /** The open level's server file state, mirrored from the last snapshot. */
 export interface EditorFileState {
   readonly path: string;
+  /**
+   * Which of the page's imported layer sets this level is authored against,
+   * as the server matched it. Absent when its glob declared no layers.
+   */
+  readonly layerSet?: number;
   readonly diskRevision: string;
   /** Hash of the canonical committed draft. */
   readonly contentHash: string;
@@ -365,6 +370,11 @@ export interface EditorState {
   readonly marquee?: MarqueeGesture | undefined;
   /** A number a field is stepping or scrubbing. At most one at a time. */
   readonly poseDraft?: PoseDraft | undefined;
+  /**
+   * The placements a delete is waiting for an answer about, because something
+   * outside the set points at one of them. Absent while no question is open.
+   */
+  readonly pendingDelete?: readonly string[] | undefined;
   readonly diagnostics: ReadonlyMap<
     DiagnosticSource,
     readonly EditorDiagnostic[]
@@ -470,6 +480,12 @@ export type EditorAction =
   | { readonly type: "pose-drafted"; readonly draft: PoseDraft }
   /** That number was abandoned or committed; either way nothing is pending. */
   | { readonly type: "pose-draft-dropped" }
+  /** A delete is waiting: something outside `ids` points into it. */
+  | {
+      readonly type: "delete-confirm-requested";
+      readonly ids: readonly string[];
+    }
+  | { readonly type: "delete-confirm-dismissed" }
   | {
       readonly type: "diagnostics-replaced";
       readonly source: DiagnosticSource;

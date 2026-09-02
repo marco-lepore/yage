@@ -149,6 +149,7 @@ describe("placementsMissingAssets", () => {
           },
           entry: {} as PreparedPlacement["entry"],
           assets: entry.assets.map(handle),
+          references: [],
         }) satisfies PreparedPlacement,
     );
     return {

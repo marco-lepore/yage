@@ -6,6 +6,7 @@ import { Button } from "./controls.js";
 import {
   atlasFrame,
   atlasPathFor,
+  declaredFrame,
   framePlacement,
   type ThumbnailFrame,
 } from "./thumbnailFrame.js";
@@ -106,6 +107,12 @@ export function Actors(props: ActorsProps): React.JSX.Element {
  * fetched the way the running level fetches it — the authored path is the
  * address the browser asks for.
  *
+ * Which part of that file shows has three answers, in order: the frame grid
+ * the parameter declares, an atlas the project ships beside the image, and
+ * otherwise the whole image fitted. A declared grid is measured against the
+ * image the browser actually loaded, so it needs the natural size and the
+ * atlas is never requested.
+ *
  * A type that declares no texture, and one whose default file is not there,
  * both get the same empty frame. A default can name a file the project no
  * longer has, and a broken-image glyph in a list of things to place says
@@ -119,9 +126,16 @@ function Thumbnail({
   assetPaths: readonly string[];
 }): React.JSX.Element {
   const [failed, setFailed] = useState(false);
-  const [frame, setFrame] = useState<ThumbnailFrame | undefined>(undefined);
+  const [atlas, setAtlas] = useState<ThumbnailFrame | undefined>(undefined);
+  const [natural, setNatural] = useState<
+    { width: number; height: number } | undefined
+  >(undefined);
   const path = type.thumbnail;
-  const atlasPath = path === undefined ? undefined : atlasPathFor(path);
+  const declared = type.thumbnailFrames;
+  const atlasPath =
+    path === undefined || declared !== undefined
+      ? undefined
+      : atlasPathFor(path);
   // Looked up in the listing rather than fetched to find out. A request per
   // placeable type that mostly answers 404 fills the console with failures
   // that are not failures — and nothing about an image's own proportions says
@@ -130,6 +144,7 @@ function Thumbnail({
   const hasAtlas = atlasPath !== undefined && assetPaths.includes(atlasPath);
 
   useEffect(() => {
+    // A declared grid answers first, so no atlas is asked for.
     if (!hasAtlas || atlasPath === undefined) return;
     let live = true;
     void (async () => {
@@ -139,7 +154,7 @@ function Thumbnail({
         const read = atlasFrame(await answer.json());
         // An atlas that cannot be read is not worth reporting: the whole image
         // still shows.
-        if (live && read) setFrame(read);
+        if (live && read) setAtlas(read);
       } catch {
         // Same reason.
       }
@@ -159,6 +174,10 @@ function Thumbnail({
     );
   }
 
+  const frame =
+    declared !== undefined && natural !== undefined
+      ? declaredFrame(declared, natural.width, natural.height)
+      : atlas;
   const placement =
     frame === undefined ? undefined : framePlacement(frame, THUMB_PIXELS);
 
@@ -183,6 +202,13 @@ function Thumbnail({
                 top: `${String(placement.top)}px`,
               },
             })}
+        onLoad={(event) => {
+          const image = event.currentTarget;
+          setNatural({
+            width: image.naturalWidth,
+            height: image.naturalHeight,
+          });
+        }}
         onError={() => {
           setFailed(true);
         }}

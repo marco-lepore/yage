@@ -572,3 +572,149 @@ describe("validateLevel", () => {
     );
   });
 });
+
+describe("entity references", () => {
+  class Switch extends Entity {
+    static readonly level = defineLevelEntity({
+      id: "game.switch",
+      version: 1,
+      params: defineParams({
+        door: param.entityRef({ types: ["game.crate"] }),
+        chime: param.entityRef({ types: ["game.marker"], optional: true }),
+      }),
+    });
+  }
+
+  const catalog = catalogOf(Crate, Marker, Switch);
+
+  function aSwitch(params: JsonObject): LevelPlacement {
+    return placement({ id: "s1", type: "game.switch", params });
+  }
+
+  it("accepts a target listed after the placement that points at it", () => {
+    const document = documentOf(
+      aSwitch({ door: "p1", chime: null }),
+      placement(),
+    );
+
+    expect(validateLevel(document, catalog)).toEqual([]);
+  });
+
+  it("accepts two placements that point at each other", () => {
+    const document = documentOf(
+      placement({ id: "a", type: "game.switch", params: { door: "b" } }),
+      placement({ id: "b", type: "game.switch", params: { door: "a" } }),
+    );
+    const pairCatalog = catalogOf(
+      Crate,
+      class Pair extends Entity {
+        static readonly level = defineLevelEntity({
+          id: "game.switch",
+          version: 1,
+          params: defineParams({
+            door: param.entityRef({ types: ["game.switch"] }),
+          }),
+        });
+      },
+    );
+
+    expect(validateLevel(document, pairCatalog)).toEqual([]);
+  });
+
+  it("reports a required reference with nothing chosen", () => {
+    const document = documentOf(aSwitch({ door: null, chime: null }));
+
+    expect(validateLevel(document, catalog)).toEqual([
+      {
+        code: "reference-unset",
+        placementId: "s1",
+        path: ["door"],
+        message: 'Parameter "door" needs a game.crate and has none chosen.',
+      },
+    ]);
+  });
+
+  it("says nothing about an optional reference with nothing chosen", () => {
+    const document = documentOf(
+      aSwitch({ door: "p1", chime: null }),
+      placement(),
+    );
+
+    expect(validateLevel(document, catalog)).toEqual([]);
+  });
+
+  it("reports an id no placement in the document holds", () => {
+    const document = documentOf(aSwitch({ door: "gone", chime: null }));
+
+    expect(validateLevel(document, catalog)).toEqual([
+      {
+        code: "reference-missing",
+        placementId: "s1",
+        path: ["door"],
+        message:
+          'Parameter "door" points at placement "gone", which is not in ' +
+          "this level.",
+      },
+    ]);
+  });
+
+  it("reports a target of a type the parameter does not accept", () => {
+    const document = documentOf(
+      aSwitch({ door: "m1", chime: null }),
+      placement({ id: "m1", type: "game.marker", params: {} }),
+    );
+
+    expect(validateLevel(document, catalog)).toEqual([
+      {
+        code: "reference-type",
+        placementId: "s1",
+        path: ["door"],
+        message:
+          'Parameter "door" accepts game.crate and points at placement ' +
+          '"m1", which is a game.marker.',
+      },
+    ]);
+  });
+
+  it("resolves a target that itself failed to prepare", () => {
+    // The crate's asset path is unusable, so it is not loadable. The switch
+    // pointing at it is not itself broken, and says nothing.
+    const document = documentOf(
+      aSwitch({ door: "p1", chime: null }),
+      placement({ params: { texture: "../outside.png" } }),
+    );
+
+    expect(validateLevel(document, catalog).map((one) => one.code)).toEqual([
+      "parameter-invalid",
+    ]);
+  });
+
+  it("carries what a prepared placement points at, in field order", () => {
+    const document = documentOf(
+      aSwitch({ door: "p1", chime: "m1" }),
+      placement(),
+      placement({ id: "m1", type: "game.marker", params: {} }),
+    );
+
+    const prepared = prepareLevel(document, catalog);
+    const references = prepared.placements[0]?.references;
+
+    expect(references).toEqual([
+      { path: ["door"], targetId: "p1" },
+      { path: ["chime"], targetId: "m1" },
+    ]);
+    expect(Object.isFrozen(references)).toBe(true);
+    expect(prepared.placements[1]?.references).toEqual([]);
+  });
+
+  it("leaves an unchosen optional reference out of the list", () => {
+    const document = documentOf(
+      aSwitch({ door: "p1", chime: null }),
+      placement(),
+    );
+
+    expect(prepareLevel(document, catalog).placements[0]?.references).toEqual([
+      { path: ["door"], targetId: "p1" },
+    ]);
+  });
+});

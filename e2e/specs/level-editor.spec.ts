@@ -129,10 +129,20 @@ interface PlacementFact {
   /** The placement's `key` when it authored one, and its `id` when it did not. */
   readonly sceneId: string;
   readonly sprite: string;
+  /** The render layer the placement's sprite is parented to. */
+  readonly layer: string;
   readonly parent?: string;
   readonly world: Point;
   readonly rotation: number;
   readonly scale: Point;
+}
+
+/** What the same extension reports about one switch's reference parameters. */
+interface SwitchFact {
+  readonly sceneId: string;
+  /** The scene id the `door` handle resolves to, `null` once it is gone. */
+  readonly door: string | null;
+  readonly chime: string | null;
 }
 
 interface Point {
@@ -146,6 +156,7 @@ interface DraftPlacement {
   name?: string;
   key?: string;
   parent?: string;
+  layer?: string;
   typeVersion: number;
   transform: { position: Point };
   params: Record<string, unknown>;
@@ -350,6 +361,22 @@ async function placementsIn(page: Page): Promise<PlacementFact[]> {
       placements(): PlacementFact[];
     }>("levelFixture");
     return facts ? facts.placements() : [];
+  });
+}
+
+/**
+ * Every switch the page loaded, and the scene id each of its two reference
+ * parameters resolved to.
+ *
+ * The document only proves that an id was stored. This is what says the loader
+ * handed `setup()` a handle on the entity that id named.
+ */
+async function switchesIn(page: Page): Promise<SwitchFact[]> {
+  return page.evaluate(() => {
+    const facts = window.__yage__?.inspector.getExtension<{
+      switches(): SwitchFact[];
+    }>("levelFixture");
+    return facts ? facts.switches() : [];
   });
 }
 
@@ -948,6 +975,27 @@ test.describe("level editor", () => {
         crate.evaluate((image: HTMLImageElement) => image.naturalWidth),
       )
       .toBeGreaterThan(0);
+    // No declared grid and no atlas beside it: the whole picture, fitted.
+    await expect(crate).not.toHaveClass(/ye-actors__thumb-img--framed/);
+  });
+
+  test("crops a sheet to the frame its type declares", async ({ page }) => {
+    // The whole contract on one path: the torch states its frame width once,
+    // the parameter carries it to the browser, and the panel shows that frame
+    // instead of a 384-pixel strip drawn 24 pixels wide.
+    await openEditor(page);
+    await openActors(page);
+
+    const torch = page.getByTestId("thumb-game.torch");
+    await expect(torch).toHaveAttribute("src", "assets/player_walk.png");
+    await expect
+      .poll(async () =>
+        torch.evaluate((image: HTMLImageElement) => image.naturalWidth),
+      )
+      .toBeGreaterThan(0);
+    // One 48-pixel frame of a 384-pixel sheet, filling the 24-pixel box.
+    await expect(torch).toHaveCSS("width", "192px");
+    await expect(torch).toHaveCSS("left", "0px");
   });
 
   test("lands a drag on the grid, in one undo step", async ({
@@ -1809,6 +1857,131 @@ test.describe("level editor", () => {
     ).toHaveAttribute("aria-selected", "true");
   });
 
+  test("points a placement at another and loads the result", async ({
+    page,
+    context,
+    request,
+  }) => {
+    // A switch declares a required reference to a crate and an optional one to
+    // a chime. Nothing here types an id: the picker offers the level's crates,
+    // and the game page reports which entity the handle resolved to.
+    await openEditor(page);
+    const token = await tokenOf(page);
+
+    await openActors(page);
+    await page.getByTestId("place-game.switch").click();
+    const placed = await draftAfter(request, token, {
+      undoDepth: 1,
+      redoDepth: 0,
+    });
+    const created = placed.document.entities.find(
+      (entity) => !(entity.id in AUTHORED),
+    );
+    if (!created) throw new Error("the Actors strip created no switch.");
+    expect(created.params["door"]).toBeNull();
+
+    // A required reference with nothing chosen is a problem the editor lists,
+    // and the preview leaves the switch out until it is answered.
+    await expect(page.getByTestId("diagnostics")).toContainText(
+      "has none chosen",
+    );
+
+    const door = page.getByTestId("field-door");
+    // Every crate in the level, by the name the template gave it, and neither
+    // the chime nor the switch itself.
+    await expect(door.locator("option")).toHaveText([
+      "Choose a target",
+      "Root",
+      "Child",
+      "Later",
+    ]);
+    await door.selectOption(ROOT);
+    const pointed = await draftAfter(request, token, {
+      undoDepth: 2,
+      redoDepth: 0,
+    });
+    expect(
+      pointed.document.entities.find((entity) => entity.id === created.id)
+        ?.params["door"],
+    ).toBe(ROOT);
+    await expect(page.getByTestId("diagnostics")).toBeHidden();
+
+    // The optional one stays unanswered, and Clear is the control that says
+    // so — there is no empty row in the list to choose.
+    await expect(page.getByTestId("clear-chime")).toBeDisabled();
+
+    await page.getByTestId("save-level").click();
+    await expect(page.getByTestId("dirty-marker")).toBeHidden();
+    expect(savedPlacement(created.id).params["door"]).toBe(ROOT);
+
+    const game = await context.newPage();
+    await game.goto(`/game.html?file=/${level}`);
+    await waitForInspector(game);
+    // The whole point of the feature: `setup()` was handed a handle, and it
+    // resolves to the crate the picker named.
+    await expect
+      .poll(async () => switchesIn(game))
+      .toEqual([{ sceneId: created.id, door: ROOT, chime: null }]);
+  });
+
+  test("asks before deleting a placement something points at", async ({
+    page,
+    request,
+  }) => {
+    await openEditor(page);
+    const token = await tokenOf(page);
+
+    await openActors(page);
+    await page.getByTestId("place-game.switch").click();
+    const placed = await draftAfter(request, token, {
+      undoDepth: 1,
+      redoDepth: 0,
+    });
+    const created = placed.document.entities.find(
+      (entity) => !(entity.id in AUTHORED),
+    );
+    if (!created) throw new Error("the Actors strip created no switch.");
+    await page.getByTestId("field-door").selectOption(ROOT);
+    await draftAfter(request, token, { undoDepth: 2, redoDepth: 0 });
+
+    // Deleting the target is where the question belongs: the switch survives
+    // and would be left pointing at nothing.
+    await page.getByTestId(`hierarchy-row-${ROOT}`).click();
+    await page.getByTestId("delete-selection").click();
+    const dialog = page.getByTestId("delete-confirm");
+    await expect(dialog).toBeVisible();
+    await expect(page.getByTestId("delete-confirm-referrers")).toContainText(
+      "door",
+    );
+
+    await page.getByTestId("cancel-delete").click();
+    await expect(dialog).toBeHidden();
+    // Nothing was sent: the draft is still at the two edits above.
+    expect(idsOf(await draftOf(request, token))).toEqual([
+      ROOT,
+      CHILD,
+      LATER,
+      created.id,
+    ]);
+
+    await page.getByTestId("delete-selection").click();
+    await page.getByTestId("confirm-delete").click();
+    const deleted = await draftAfter(request, token, {
+      undoDepth: 3,
+      redoDepth: 0,
+    });
+    // The root and its child are gone; the switch keeps the id it held, which
+    // is what one undo puts back.
+    expect(idsOf(deleted)).toEqual([LATER, created.id]);
+    expect(
+      deleted.document.entities.find((entity) => entity.id === created.id)
+        ?.params["door"],
+    ).toBe(ROOT);
+    await expect(page.getByTestId("diagnostics")).toContainText(
+      "is not in this level",
+    );
+  });
+
   test("builds a placement, deletes it, takes both edits back, and saves", async ({
     page,
     context,
@@ -2308,6 +2481,60 @@ test.describe("level editor", () => {
     // One parameter, naming the file. The game fetches it the way it would
     // fetch any level, and carries no editor code at all.
     expect(new URL(run.url()).searchParams.get("level")).toBe(level);
+  });
+
+  test("puts a placement on a layer, orders it, and the game draws it there", async ({
+    page,
+    context,
+  }) => {
+    await openEditor(page);
+    await page.getByTestId(`hierarchy-row-${ROOT}`).click();
+
+    // The picker offers what `editor/config.ts` declared for this glob, minus
+    // the screen-space layer a level must never target and the default a
+    // placement is already on.
+    const picker = page.getByTestId("placement-layer");
+    await expect(picker.locator("option")).toHaveText([
+      "Default",
+      "bg",
+      "props",
+      "canopy (sorted)",
+    ]);
+
+    // On a layer with no sort, the four ordering controls are live and each
+    // one moves the placement among the placements sharing its parent.
+    await picker.selectOption("props");
+    await expect(page.getByTestId("order-front")).toBeEnabled();
+    await page.getByTestId("order-front").click();
+
+    // A layer that keys its own order switches them off and says why, so the
+    // check goes back to `props` before the level is saved.
+    await picker.selectOption("canopy");
+    await expect(page.getByTestId("order-front")).toBeDisabled();
+    await expect(page.getByTestId("order-sorted-note")).toBeVisible();
+    await picker.selectOption("props");
+
+    await page.getByTestId("save-level").click();
+    await expect(page.getByTestId("dirty-marker")).toBeHidden();
+    expect(savedPlacement(ROOT).layer).toBe("props");
+    expect(savedPlacement(LATER).layer).toBeUndefined();
+    // Later in the document is later in add order, which is what draws on top.
+    expect(savedPlacements().map((placement) => placement.id)).toEqual([
+      CHILD,
+      LATER,
+      ROOT,
+    ]);
+
+    // The layer the file names is the layer the running game parents the
+    // sprite to — read off the display tree, not off the document.
+    const game = await context.newPage();
+    await game.goto(`/game.html?file=/${level}`);
+    await waitForInspector(game);
+    expect((await placementIn(game, ROOT)).layer).toBe("props");
+    expect((await placementIn(game, LATER)).layer).toBe("default");
+    // And the editor's preview agrees, which is the whole point of declaring
+    // the set in the config.
+    expect((await placementIn(page, ROOT)).layer).toBe("props");
   });
 
   test("accepts one of two commands sent against one revision", async ({

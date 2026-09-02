@@ -2,12 +2,15 @@
  * Which part of a texture a thumbnail shows.
  *
  * A type's art is often a sprite sheet, and fitting a whole horizontal strip
- * into a 24-pixel square draws a line. The editor cannot ask the level what one
- * frame is — an asset parameter is a path and nothing else — so the frame comes
- * from an atlas the project ships beside the image, and from nowhere else: an
- * image's own proportions cannot tell a strip of frames from one wide prop, and
- * a platform cropped to its left quarter is worse than a strip drawn small.
+ * into a 24-pixel square draws a line. Three answers, in this order: the frame
+ * grid the asset parameter declares, then an atlas the project ships beside
+ * the image, then the whole image fitted. Nothing is ever read from the
+ * image's own proportions — they cannot tell a strip of frames from one wide
+ * prop, and a platform cropped to its left quarter is worse than a strip drawn
+ * small.
  */
+
+import type { AssetFrames } from "@yagejs/level";
 
 /** A rectangle of a sheet, and the sheet it is cut from. Pixels. */
 export interface ThumbnailFrame {
@@ -17,6 +20,37 @@ export interface ThumbnailFrame {
   readonly height: number;
   readonly sheetWidth: number;
   readonly sheetHeight: number;
+}
+
+/**
+ * The first frame of a declared grid, or `undefined` when the grid does not
+ * fit the loaded image.
+ *
+ * The first frame rather than a chosen one: a declaration belongs to the type,
+ * so an authored index would fix one picture for every placement of it, and
+ * the first frame of an animation is its rest pose.
+ *
+ * A grid that runs off the edge is refused rather than clamped. A declared
+ * default can name a file the project later replaced, and a thumbnail drawn
+ * from outside the image is worse than the whole image drawn small. The
+ * numbers themselves need no checking here: `buildLevelCatalog` refuses a
+ * declaration whose grid could not slice anything, so a catalog that built has
+ * none.
+ */
+export function declaredFrame(
+  frames: AssetFrames,
+  sheetWidth: number,
+  sheetHeight: number,
+): ThumbnailFrame | undefined {
+  if (sheetWidth <= 0 || sheetHeight <= 0) return undefined;
+  const x = frames.startX ?? 0;
+  const y = frames.startY ?? 0;
+  const width = frames.frameWidth;
+  // A sheet declared without a frame height is one row of square frames, which
+  // is what the renderer's own slice does with the same members absent.
+  const height = frames.frameHeight ?? frames.frameWidth;
+  if (x + width > sheetWidth || y + height > sheetHeight) return undefined;
+  return { x, y, width, height, sheetWidth, sheetHeight };
 }
 
 /**

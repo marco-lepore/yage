@@ -9,7 +9,7 @@ import {
 } from "./projection.js";
 
 function prepared(
-  entries: Array<{ id: string; parent?: string }>,
+  entries: Array<{ id: string; parent?: string; refs?: readonly string[] }>,
   diagnosticIds: readonly string[] = [],
 ): PreparedLevel {
   const placements = entries.map((entry) => {
@@ -31,6 +31,10 @@ function prepared(
       placement,
       entry: {} as PreparedPlacement["entry"],
       assets: [],
+      references: (entry.refs ?? []).map((targetId) => ({
+        path: ["target"],
+        targetId,
+      })),
     } satisfies PreparedPlacement;
   });
   return {
@@ -200,5 +204,55 @@ describe("closeDependents", () => {
     );
 
     expect(excluded.size).toBe(0);
+  });
+
+  it("excludes a placement whose reference target is excluded", () => {
+    const excluded = new Set(["door"]);
+    closeDependents(
+      prepared([{ id: "door" }, { id: "switch", refs: ["door"] }]).placements,
+      excluded,
+    );
+
+    expect([...excluded]).toEqual(["door", "switch"]);
+  });
+
+  it("follows a chain of references", () => {
+    const excluded = new Set(["a"]);
+    closeDependents(
+      prepared([
+        { id: "a" },
+        { id: "b", refs: ["a"] },
+        { id: "c", refs: ["b"] },
+      ]).placements,
+      excluded,
+    );
+
+    expect([...excluded]).toEqual(["a", "b", "c"]);
+  });
+
+  it("terminates on two placements that reference each other", () => {
+    const excluded = new Set<string>(["outside"]);
+    closeDependents(
+      prepared([
+        { id: "a", refs: ["b"] },
+        { id: "b", refs: ["a"] },
+      ]).placements,
+      excluded,
+    );
+
+    expect([...excluded]).toEqual(["outside"]);
+  });
+
+  it("excludes a cycle once one of its members is excluded", () => {
+    const excluded = new Set(["a"]);
+    closeDependents(
+      prepared([
+        { id: "a", refs: ["b"] },
+        { id: "b", refs: ["a"] },
+      ]).placements,
+      excluded,
+    );
+
+    expect([...excluded]).toEqual(["a", "b"]);
   });
 });

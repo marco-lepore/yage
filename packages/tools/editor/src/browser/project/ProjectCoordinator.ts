@@ -2,6 +2,7 @@ import {
   buildLevelCatalog,
   defineLevelProject,
   describeParams,
+  type AssetFrames,
   type LevelCatalog,
   type LevelEntityClass,
   type LevelEntityDeclaration,
@@ -43,6 +44,12 @@ export interface PlaceableType {
    * `<img>` and no engine involved.
    */
   readonly thumbnail?: string;
+  /**
+   * How that texture is cut into frames, when its parameter declared it. The
+   * panel shows the first frame instead of the whole file, which is the
+   * difference between a sprite and a line.
+   */
+  readonly thumbnailFrames?: AssetFrames;
 }
 
 /**
@@ -142,14 +149,21 @@ export class ProjectCoordinator {
     }
     this.catalog = result.catalog;
     this.types = result.catalog.entries.map((entry) => {
-      const thumbnail = firstTexturePath(entry.declaration.params);
+      const texture = firstTexture(entry.declaration.params);
       return {
         typeId: entry.id,
         source: entry.source,
         ...(entry.packageName === undefined
           ? {}
           : { packageName: entry.packageName }),
-        ...(thumbnail === undefined ? {} : { thumbnail }),
+        // A `null` default belongs to a reference parameter, never to a
+        // texture, but `defaultValue` carries both kinds' defaults.
+        ...(typeof texture?.defaultValue === "string"
+          ? { thumbnail: texture.defaultValue }
+          : {}),
+        ...(texture?.frames === undefined
+          ? {}
+          : { thumbnailFrames: texture.frames }),
       };
     });
     return { ok: true, catalog: result.catalog, diagnostics };
@@ -157,21 +171,20 @@ export class ProjectCoordinator {
 }
 
 /**
- * The default path of the first texture parameter a type declares, in
- * declaration order.
+ * The first texture parameter a type declares, in declaration order: its
+ * default path is the picture, and its frame grid says which part of it.
  *
  * First rather than chosen: nothing marks which parameter is the art, and a
  * type that declares two textures has no rule the editor could read. A type
  * that declares none has no picture.
  */
-function firstTexturePath(
+function firstTexture(
   params: LevelEntityDeclaration["params"],
-): string | undefined {
+): ParamFieldDescription | undefined {
   if (params === undefined) return undefined;
-  const field = describeParams(params).find(
+  return describeParams(params).find(
     (description) => description.assetKind === TEXTURE_ASSET_KIND,
   );
-  return field?.defaultValue;
 }
 
 /**

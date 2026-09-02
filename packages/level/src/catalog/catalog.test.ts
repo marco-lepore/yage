@@ -505,3 +505,69 @@ describe("level declarations", () => {
     expect(ids(catalogOrThrow(project))).toEqual(["game.crate", "yage.camera"]);
   });
 });
+
+describe("reference parameters", () => {
+  class Switch extends Entity {
+    static readonly level = defineLevelEntity({
+      id: "game.switch",
+      version: 1,
+      params: defineParams({
+        // Names a type declared after this one in `entities`.
+        door: param.entityRef({ types: ["game.door"] }),
+      }),
+    });
+  }
+
+  class Door extends Entity {
+    static readonly level = defineLevelEntity({ id: "game.door", version: 1 });
+  }
+
+  it("accepts a reference to a type declared later", () => {
+    const catalog = catalogOrThrow(
+      defineLevelProject({ entities: [Switch, Door] }),
+    );
+
+    expect(ids(catalog)).toEqual(["game.switch", "game.door"]);
+  });
+
+  it("accepts a reference to a type a package contributed", () => {
+    const catalog = catalogOrThrow(
+      defineLevelProject({
+        entities: [Switch],
+        contributions: [contribution("@game/doors", [Door])],
+      }),
+    );
+
+    expect(ids(catalog)).toEqual(["game.switch", "game.door"]);
+  });
+
+  it("reports a type the project does not declare", () => {
+    expect(
+      errorsOf(defineLevelProject({ entities: [Switch] })).map(
+        (error) => error.message,
+      ),
+    ).toEqual([
+      'Entity type "game.switch" parameter "door" accepts entity type ' +
+        '"game.door", which this project does not declare.',
+    ]);
+  });
+
+  it("reports a reference that accepts nothing", () => {
+    class Sensor extends Entity {
+      static readonly level = defineLevelEntity({
+        id: "game.sensor",
+        version: 1,
+        params: defineParams({ target: param.entityRef({ types: [] }) }),
+      });
+    }
+
+    expect(
+      errorsOf(defineLevelProject({ entities: [Sensor] })).map(
+        (error) => error.message,
+      ),
+    ).toEqual([
+      'Entity type "game.sensor" parameter "target" accepts no types, so ' +
+        "nothing can be chosen for it.",
+    ]);
+  });
+});

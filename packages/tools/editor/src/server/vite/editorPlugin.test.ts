@@ -88,7 +88,7 @@ async function startEditor(options: EditorOptions = {}): Promise<Fixture> {
     configFile: path.join(root, "editor/config.ts"),
     projectId: "fixture-project",
     modules: { project: "/src/levelProject.ts", harness: "/lab/harness.ts" },
-    levels: ["src/levels/**/*.yage-level.json"],
+    levels: [{ glob: "src/levels/**/*.yage-level.json" }],
     assets,
     ...(gamePage === undefined ? {} : { gamePage }),
   };

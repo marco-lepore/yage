@@ -76,15 +76,92 @@ export class Crate extends Entity {
   a level file stores; renaming the class does not change a saved level.
 - `version` is the parameter schema's version. A level records the version its
   parameters were authored against, and `migrations` moves them forward.
-- `param.asset(descriptor, defaultPath)` is the one parameter kind. The
+- `param.asset(descriptor, defaultPath, frames?)` names a project asset. The
   authored value is a project-relative POSIX path; `setup()` receives the
-  `AssetHandle` the descriptor built.
+  `AssetHandle` the descriptor built, with or without `frames`.
+- `param.entityRef({ types, optional? })` names another placement in the same
+  level. See [Pointing at another placement](#pointing-at-another-placement).
+- `frames` is an `AssetFrames`: how the named file is cut into a grid. Declare
+  it only for a parameter naming a sheet the type slices. Its members are the
+  renderer's `TextureSliceOptions`, so state the grid once and spread the same
+  object into the frame source:
+
+  ```ts
+  const TORCH_FRAMES = { frameWidth: 48 };
+
+  const TorchParams = defineParams({
+    sprite: param.asset(textureAsset, "assets/torch.png", TORCH_FRAMES),
+  });
+
+  setup(params: ParamsOf<typeof TorchParams>): void {
+    this.add(
+      new AnimatedSpriteComponent({
+        source: { sheet: params.sprite.path, ...TORCH_FRAMES },
+      }),
+    );
+  }
+  ```
+
+  It is authoring data: it reaches tools through `describeParams()` and changes
+  nothing about the path, the decoded handle, or the level file. A grid the
+  renderer could not slice with — a `frameWidth` below 1, a negative `startX` —
+  is reported by `buildLevelCatalog()` rather than thrown.
+
 - `defineLevelAsset({ kind, create })` says how a path becomes a handle. The
   `create` function comes from the plugin that owns the asset — `texture` from
   `@yagejs/renderer` — and must be deterministic.
 - Declaring never throws. A bad id, version, migration key, or default is
   reported by `buildLevelCatalog()`, so a tool can list the problem and keep
   working.
+
+## Pointing at another placement
+
+```ts
+import { param, defineParams, type ParamsOf } from "@yagejs/level";
+import type { EntityHandle } from "@yagejs/core";
+
+const SwitchParams = defineParams({
+  door: param.entityRef<Door>({ types: ["game.door"] }),
+  chime: param.entityRef<Chime>({ types: ["game.chime"], optional: true }),
+});
+
+export class Switch extends Entity {
+  static readonly level = defineLevelEntity({
+    id: "game.switch",
+    version: 1,
+    params: SwitchParams,
+  });
+
+  private door?: EntityHandle<Door>;
+
+  setup(params: ParamsOf<typeof SwitchParams>): void {
+    this.door = params.door; // EntityHandle<Door>
+    // params.chime is EntityHandle<Chime> | undefined
+    this.add(new SwitchMechanism(this.door));
+  }
+}
+```
+
+- The level file stores the target's placement `id`, or `null` for nothing
+  chosen. `defaultParams()` writes `null` for a reference field, required or
+  not.
+- `types` lists the catalog type ids the field accepts, and must name at least
+  one type the project declares — `buildLevelCatalog()` reports both an empty
+  list and a type nothing declares. A reference may name a type declared
+  further down `entities` or contributed by a package.
+- `optional: true` makes `null` a value here and widens what `setup()` receives
+  to `EntityHandle<T> | undefined`.
+- **Store the handle in `setup()`; read `.current` from a component's
+  `onEnable()` or later.** Every placement is reserved before any `setup()`
+  runs, so a forward reference and a cycle both resolve — but the target's own
+  `setup()` may not have run yet. `LevelInstance.activate()` runs after the
+  whole document has set up, so the first `onEnable()` any authored placement
+  sees is later than every `setup()`.
+- The handle expires when the target entity is destroyed, which is
+  `EntityHandle`'s ordinary contract. It never retargets.
+- **Saving a reference:** a handle is not part of a save. Persist the target's
+  placement id — the same string the level file holds — and resolve it again
+  with `LevelInstance.get(id)` after the level loads.
 
 ## The project
 
@@ -161,6 +238,24 @@ instance.dispose(); // destroys this instance's entities and nothing else
 instance.isDisposed;
 ```
 
+## Choosing what draws on top
+
+Inside one layer, draw order is add order, and add order is document order: a
+placement listed later draws over one listed earlier. `parentFirst` orders the
+build by depth alone, so every child draws over every root on the same layer,
+whatever the hierarchy says.
+
+A placement can name the layer its visuals join:
+
+```json
+{ "id": "sign", "type": "game.sign", "typeVersion": 1, "layer": "props" }
+```
+
+`layer` is optional and moves every visual the entity type left on `"default"`.
+A visual whose `setup()` chose a layer of its own — a health bar on `"ui"` —
+keeps it. The name must be a layer the scene declares; one no scene declares
+logs a dev warning and falls back to `"default"`.
+
 ## Validation without loading
 
 ```ts
@@ -181,8 +276,19 @@ type LevelDiagnosticCode =
   | "unknown-type"
   | "migration-failed"
   | "parameter-invalid"
-  | "asset-derivation-failed";
+  | "asset-derivation-failed"
+  | "reference-unset"
+  | "reference-missing"
+  | "reference-type";
 ```
+
+The three reference codes are separate from `parameter-invalid` because
+resetting a parameter to its default writes "nothing chosen" back and fixes
+none of them: `reference-unset` is a required reference holding `null`,
+`reference-missing` an id no placement in the document holds, and
+`reference-type` a target whose `type` the field does not accept. Each carries
+`path: [fieldName]`. They are checked against the authored document, so a
+reference to a placement that itself failed to prepare is not a problem.
 
 Use the code and parameter `path` when a tool offers a corrective action. The
 message is for display. Every level diagnostic is an error that blocks strict
@@ -213,9 +319,9 @@ the document — that is what makes a later change to a declaration's default
 leave existing levels alone.
 
 The values are the declaration's own defaults rather than copies. Every
-parameter kind is string-valued, so nothing shares mutable state; a kind whose
-default is an object or an array has to copy before two placements can hold
-one.
+parameter kind defaults to a string or `null`, so nothing shares mutable state;
+a kind whose default is an object or an array has to copy before two placements
+can hold one.
 
 `describeParams(schema)` returns the data an authoring tool needs to render the
 schema without receiving its validators, decoders, or asset factories:
@@ -230,7 +336,8 @@ const fields = entry.declaration.params
 //   name: "sprite",
 //   kind: "asset",
 //   assetKind: "texture",
-//   defaultValue: "sprites/crate.png",
+//   frames: { frameWidth: 48 },
+//   defaultValue: "assets/torch.png",
 // }]
 ```
 
@@ -238,11 +345,32 @@ The returned list and its entries are immutable and follow declaration order.
 Parameter kinds are built through `param`; hand-built kind objects are rejected
 when the catalog is built.
 
-`kind` says which control the field needs and is a closed set — `"asset"` is
-the only one — so a tool can switch on it exhaustively. `assetKind` is the
-`kind` of the descriptor `param.asset()` was given and is open, because
-`defineLevelAsset` is yours: match the kinds you know (`"texture"` for the
-descriptor built over the renderer's `texture()`) and treat the rest as paths.
+`kind` says which control the field needs and is a closed set — `"asset"` and
+`"entityRef"` — so a tool can switch on it exhaustively.
+
+For an asset field, `assetKind` is the `kind` of the descriptor `param.asset()`
+was given and is open, because `defineLevelAsset` is yours: match the kinds you
+know (`"texture"` for the descriptor built over the renderer's `texture()`) and
+treat the rest as paths. `frames` is present only when the declaration gave
+one, and it says what one frame of the default art is, so a tool can show that
+frame instead of the whole sheet.
+
+For a reference field, `types` is the frozen list of catalog type ids the field
+accepts and `optional` says whether it may hold nothing; `defaultValue` is
+`null`.
+
+A prepared placement carries what it points at, so a tool can follow references
+without reading a schema:
+
+```ts
+interface PlacementReference {
+  readonly path: readonly string[]; // parameter path; one segment today
+  readonly targetId: string; // in this document, of an accepted type
+}
+// PreparedPlacement.references: readonly PlacementReference[]
+```
+
+It is in field order, and a field holding nothing contributes no entry.
 
 ## The document layer alone
 
@@ -277,5 +405,8 @@ names an entity that exists is a question for a catalog.
   `AssetManager` counts references by. Pass its result to `preload` as-is.
 - A placement's authored `name` does not reach `Entity.name`; the entity is
   named after its class.
+- A placement's `layer` reaches the renderer through `VisualComponent.setLayer`,
+  which `@yagejs/level` finds by shape rather than by import. A game with no
+  renderer has no component that answers it, and the field does nothing.
 - The barrel re-exports the document layer, so a game needs one import. The
   `/document` subpath exists for code that must not pull in `@yagejs/core`.

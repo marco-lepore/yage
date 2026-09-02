@@ -1,5 +1,5 @@
 import { Scene } from "@yagejs/core";
-import { CameraEntity } from "@yagejs/renderer";
+import { CameraEntity, type LayerDef } from "@yagejs/renderer";
 import { instantiateLevel, type PreparedLevel } from "@yagejs/level";
 
 /** Where the play page's own scene key lives, kept clear of a game's. */
@@ -22,9 +22,15 @@ export const PLAY_SCENE_NAME = "yage-editor/play";
  */
 export class PlayScene extends Scene {
   readonly name = PLAY_SCENE_NAME;
+  /** The layers the level is authored against, from the editor's config. */
+  readonly layers: readonly LayerDef[];
 
-  constructor(private readonly level: PreparedLevel) {
+  constructor(
+    private readonly level: PreparedLevel,
+    layers: readonly LayerDef[] = [],
+  ) {
     super();
+    this.layers = layers;
   }
 
   onEnter(): void {

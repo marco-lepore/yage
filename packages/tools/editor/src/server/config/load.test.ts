@@ -61,7 +61,9 @@ describe("loadEditorConfig", () => {
       project: "/src/levelProject.ts",
       harness: "/lab/harness.ts",
     });
-    expect(config.levels).toEqual(["src/levels/**/*.yage-level.json"]);
+    expect(config.levels).toEqual([
+      { glob: "src/levels/**/*.yage-level.json" },
+    ]);
     expect(config.projectId).toBe("my-game");
   });
 
@@ -192,10 +194,45 @@ describe("loadEditorConfig", () => {
     await expect(load(root)).rejects.toThrow(/must default-export/);
   });
 
+  it("resolves a level glob's layers module to a URL under the root", async () => {
+    const root = await makeProject(
+      VALID_CONFIG.replace(
+        'levels: ["src/levels/**/*.yage-level.json"]',
+        'levels: [{ glob: "src/levels/**/*.yage-level.json", layers: "../src/forestLayers.ts" }]',
+      ),
+    );
+    await writeFile(
+      path.join(root, "src/forestLayers.ts"),
+      "export default [];",
+    );
+
+    const config = await load(root);
+
+    expect(config.levels).toEqual([
+      {
+        glob: "src/levels/**/*.yage-level.json",
+        layers: "/src/forestLayers.ts",
+      },
+    ]);
+  });
+
+  it("refuses a levels entry whose layers module is not there", async () => {
+    const root = await makeProject(
+      VALID_CONFIG.replace(
+        'levels: ["src/levels/**/*.yage-level.json"]',
+        'levels: [{ glob: "src/levels/*.json", layers: "../src/missing.ts" }]',
+      ),
+    );
+
+    await expect(load(root)).rejects.toThrow(/no module at/);
+  });
+
   it("refuses a config whose levels are not patterns", async () => {
     const root = await makeProject(VALID_CONFIG.replace('["src', '[1, "src'));
 
-    await expect(load(root)).rejects.toThrow(/non-empty array of patterns/);
+    await expect(load(root)).rejects.toThrow(
+      /must be a pattern or \{ glob, layers \}/,
+    );
   });
 
   it("reports a config file that throws while it is read", async () => {

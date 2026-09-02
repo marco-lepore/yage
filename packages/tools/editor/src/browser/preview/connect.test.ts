@@ -61,6 +61,8 @@ function typeVersionEdit(commandId: string): DocumentCommand {
 }
 
 const catalog = {} as LevelCatalog;
+/** One declared layer, so a rebuild request can be checked for carrying it. */
+const LAYERS = [{ name: "world", order: 10 }];
 
 function createHarness(withCatalog = true) {
   const store = new EditorStore({
@@ -82,6 +84,7 @@ function createHarness(withCatalog = true) {
       applyPoseDraft: (poses) => drafts.push([...poses]),
       applyView: (view) => views.push(view),
     },
+    () => LAYERS,
   );
   const open = (doc: LevelDocument, revision = 0): void => {
     store.dispatch({ type: "level-opened", snapshot: snapshot(revision, doc) });
@@ -105,6 +108,13 @@ describe("connectPreview", () => {
 
     expect(harness.rebuilds).toHaveLength(1);
     expect(harness.rebuilds[0]?.document.entities[0]?.id).toBe("crate");
+  });
+
+  it("carries the open level's declared layers into every rebuild", () => {
+    const harness = createHarness();
+    harness.open(document(placement("crate", 0)));
+
+    expect(harness.rebuilds[0]?.layers).toEqual(LAYERS);
   });
 
   it("rebuilds when the same level is opened again", () => {

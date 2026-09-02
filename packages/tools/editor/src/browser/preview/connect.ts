@@ -1,4 +1,5 @@
 import type { LevelCatalog } from "@yagejs/level";
+import type { LayerDef } from "@yagejs/renderer";
 import type { PoseEdit } from "../../shared/commands/index.js";
 import {
   posesOf,
@@ -47,6 +48,7 @@ export function connectPreview(
   store: EditorStore,
   catalogOf: () => LevelCatalog | undefined,
   preview: PreviewTarget,
+  layersOf: (layerSet: number | undefined) => readonly LayerDef[],
 ): () => void {
   let shown: string | undefined;
   let viewed: EditorViewState | undefined;
@@ -60,7 +62,11 @@ export function connectPreview(
     const catalog = catalogOf();
     if (!catalog) return;
     const rebuild = (): void => {
-      preview.requestRebuild({ document: state.document, catalog });
+      preview.requestRebuild({
+        document: state.document,
+        catalog,
+        layers: layersOf(state.file?.layerSet),
+      });
     };
 
     // The pending number went away without a command behind it: a selection

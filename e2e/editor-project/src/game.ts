@@ -9,12 +9,14 @@ import {
 } from "@yagejs/level";
 import { RendererPlugin } from "@yagejs/renderer";
 import { exposeLevelFacts } from "./inspect.js";
+import FOREST_LAYERS from "./forestLayers.js";
 import levelProject from "./levelProject.js";
 
 const SAVED_LEVEL = "/levels/forest.yage-level.json";
 
 class ForestScene extends Scene {
   readonly name = "forest";
+  readonly layers = FOREST_LAYERS;
   readonly preload: readonly AssetHandle<unknown>[];
   private readonly forest: PreparedLevel;
 
