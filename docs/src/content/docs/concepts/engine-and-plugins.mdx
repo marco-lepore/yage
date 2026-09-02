@@ -135,12 +135,14 @@ When `engine.start()` is called the engine processes plugins in this sequence:
    container. Runs for every plugin before any systems are added.
 2. **`registerSystems(scheduler)`** — add systems to the scheduler. All
    services from step 1 are available.
-3. **System wiring** — the scheduler sorts systems by phase and priority.
+3. **System wiring** — every `scheduler.add()` keeps its phase sorted by
+   priority, at startup and at runtime.
 4. **Loop starts** — `requestAnimationFrame` begins ticking.
 5. **`onStart()`** — called once the first frame is queued. Safe to spawn
    entities, push scenes, and interact with the full engine.
 6. **Game runs** — the loop calls systems each frame.
-7. **`onDestroy()`** — called by `engine.destroy()` in reverse plugin order.
+7. **`onDestroy()`** — called by `engine.destroy()` for every plugin whose
+   `install()` was called, in reverse install order.
 
 ## Plugin Configuration
 

@@ -296,5 +296,139 @@ describe("SystemScheduler", () => {
       scheduler._start(ctx);
       expect(log).toEqual(["+a", "-a", "+a"]);
     });
+
+    class ThrowingRegister extends LifecycleSystem {
+      override onRegister(): void {
+        throw new Error("register boom");
+      }
+    }
+
+    it("a runtime add whose onRegister throws leaves the system unscheduled", () => {
+      const scheduler = new SystemScheduler();
+      scheduler._start(ctx);
+      const log: string[] = [];
+      const sys = new ThrowingRegister(log, "bad");
+      const update = vi.spyOn(sys, "update");
+
+      expect(() => scheduler.add(sys)).toThrow("register boom");
+      expect(scheduler.getSystems(Phase.Update)).not.toContain(sys);
+      scheduler.run(Phase.Update, 16);
+      expect(update).not.toHaveBeenCalled();
+      scheduler._destroy();
+      expect(log).toEqual([]);
+    });
+
+    it("_start stops at a throwing onRegister; _destroy unregisters only what registered", () => {
+      const scheduler = new SystemScheduler();
+      const log: string[] = [];
+      const a = new LifecycleSystem(log, "a");
+      const b = new ThrowingRegister(log, "b");
+      const c = new LifecycleSystem(log, "c");
+      scheduler.add(a);
+      scheduler.add(b);
+      scheduler.add(c);
+
+      expect(() => scheduler._start(ctx)).toThrow("register boom");
+      expect(log).toEqual(["+a"]);
+      scheduler._destroy();
+      expect(log).toEqual(["+a", "-a"]);
+    });
+  });
+
+  describe("changes during a run", () => {
+    class OrderProbe extends System {
+      readonly phase: Phase;
+      override readonly priority: number;
+      constructor(
+        private readonly order: string[],
+        private readonly name: string,
+        phase: Phase,
+        priority: number,
+        private readonly onUpdate?: () => void,
+      ) {
+        super();
+        this.phase = phase;
+        this.priority = priority;
+      }
+      update(): void {
+        this.order.push(this.name);
+        this.onUpdate?.();
+      }
+    }
+
+    function runFrame(scheduler: SystemScheduler): void {
+      scheduler.run(Phase.Update, 16);
+      scheduler.run(Phase.LateUpdate, 16);
+    }
+
+    it("a system added during its own phase first runs at that phase's next run", () => {
+      const scheduler = new SystemScheduler();
+      const order: string[] = [];
+      const adder = new OrderProbe(order, "adder", Phase.Update, 0, () => {
+        scheduler.add(
+          new OrderProbe(order, "added-before", Phase.Update, -100),
+        );
+        scheduler.add(new OrderProbe(order, "added-tie", Phase.Update, 0));
+        scheduler.add(new OrderProbe(order, "added-after", Phase.Update, 100));
+        scheduler.add(new OrderProbe(order, "added-late", Phase.LateUpdate, 0));
+      });
+      scheduler.add(adder);
+      scheduler.add(new OrderProbe(order, "later-phase", Phase.LateUpdate, 0));
+
+      runFrame(scheduler);
+      expect(order).toEqual(["adder", "later-phase", "added-late"]);
+
+      order.length = 0;
+      adder.enabled = false; // stop re-adding
+      runFrame(scheduler);
+      expect(order).toEqual([
+        "added-before",
+        "added-tie",
+        "added-after",
+        "later-phase",
+        "added-late",
+      ]);
+    });
+
+    it("a system removed during its phase by an earlier system does not run that frame", () => {
+      const scheduler = new SystemScheduler();
+      const order: string[] = [];
+      const victim = new OrderProbe(order, "victim", Phase.Update, 10);
+      const remover = new OrderProbe(order, "remover", Phase.Update, 0, () => {
+        scheduler.remove(victim);
+      });
+      scheduler.add(remover);
+      scheduler.add(victim);
+      scheduler.add(new OrderProbe(order, "after", Phase.Update, 20));
+
+      scheduler.run(Phase.Update, 16);
+      expect(order).toEqual(["remover", "after"]);
+    });
+
+    it("a system removed during its phase after it already ran does not shift the rest of the run", () => {
+      const scheduler = new SystemScheduler();
+      const order: string[] = [];
+      const early = new OrderProbe(order, "early", Phase.Update, 0);
+      const remover = new OrderProbe(order, "remover", Phase.Update, 10, () => {
+        scheduler.remove(early);
+      });
+      scheduler.add(early);
+      scheduler.add(remover);
+      scheduler.add(new OrderProbe(order, "after", Phase.Update, 20));
+
+      scheduler.run(Phase.Update, 16);
+      expect(order).toEqual(["early", "remover", "after"]);
+    });
+
+    it("ties keep add order", () => {
+      const scheduler = new SystemScheduler();
+      const order: string[] = [];
+      scheduler.add(new OrderProbe(order, "first-200", Phase.LateUpdate, 200));
+      scheduler.add(new OrderProbe(order, "the-201", Phase.LateUpdate, 201));
+      scheduler.add(new OrderProbe(order, "second-200", Phase.LateUpdate, 200));
+
+      scheduler.run(Phase.LateUpdate, 16);
+      expect(order).toEqual(["first-200", "second-200", "the-201"]);
+    });
   });
 });

@@ -593,6 +593,18 @@ export abstract class Scene {
   }
 
   /**
+   * Move `entity` and its descendants to the end of the entity set, so a
+   * pass already iterating the set visits them after the entity that
+   * acquired them — the position a fresh spawn gets.
+   * @internal
+   */
+  _reinsert(entity: Entity): void {
+    this.entities.delete(entity);
+    this.entities.add(entity);
+    for (const child of entity.children.values()) this._reinsert(child);
+  }
+
+  /**
    * Add an entity to the destroy queue. Called by Entity.destroy().
    * @internal
    */

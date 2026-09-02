@@ -20,6 +20,54 @@ EarlyUpdate → FixedUpdate → Update → LateUpdate → Render → EndOfFrame
 | **Render** | Display sync — sprite transforms are flushed to the GPU, particles are drawn. |
 | **EndOfFrame** | Deferred entity teardown (`onDestroy`, detach from scene), event queue flush. An entity's `isActive` already read `false` earlier, at the `destroy()` call itself. |
 
+## What Runs When
+
+Within a phase, systems run in ascending priority. This is every system the
+engine packages ship, in the order one frame runs them. Engine steps that are
+not systems are in italics.
+
+| Phase | Order |
+|---|---|
+| **EarlyUpdate** | *logger frame stamp, scene-time frame tick, transition tick* → `InputPollSystem` (-100, input) |
+| **FixedUpdate** (0 to `maxFixedStepsPerFrame` times) | *scene-time fixed tick* → `PhysicsSystem` (0, physics) → `ProcessFixedUpdateSystem` (500, core) → `ComponentFixedUpdateSystem` (1000, core) |
+| **Update** | `PhysicsInterpolationSystem` (-100, physics) → `ParticleSystem` (0, particles) → `ProcessSystem` (500, core) → `ComponentUpdateSystem` (1000, core) |
+| **LateUpdate** | `UILayoutSystem` (200, ui) → `UIRootLayoutSystem` (200, ui-react) → `FloatingOverlaySystem` (201, ui) |
+| **Render** | `TilemapRenderSystem` (-1, tilemap) → `DisplaySystem` (0, renderer) → `LightingSystem` (100, lighting) → `DebugRenderSystem` (9999, debug) |
+| **EndOfFrame** | `InputClearSystem` (9000, input) → *destroy-queue flush* |
+
+The priorities fall into bands. Pick the band a new system belongs to and
+choose a number inside it:
+
+| Band | Runs | Shipped systems |
+|---|---|---|
+| below 0 | before the engine's producers: reads external input or the previous step's state | input poll, physics interpolation, tilemap |
+| 0 | producers | physics step, particles, display |
+| 100–201 | consumers of the producers | lighting, UI layout |
+| 500 | timing | both process systems |
+| 1000 | game code | both component passes |
+| above 1000 | after game code | input clear, debug overlay |
+
+Four rules follow from the table:
+
+- **Equal priorities run in add order.** For plugin systems that is plugin
+  install order: `UILayoutSystem` runs before `UIRootLayoutSystem` because
+  `ui-react` depends on `ui`.
+- **A system added at runtime waits for its phase's next run.** Add a system
+  while its own phase is running and it first runs at that phase's next run.
+  Add it during an earlier phase of the same frame and it runs its phase this
+  frame; during a later phase, next frame. A system removed while its phase is
+  running does not run again.
+- **The component passes visit entities in insertion order, live.** An
+  entity spawned or acquired from a pool during `update` or `fixedUpdate` is
+  visited by that same pass, after the entity that created it. An entity
+  re-activated with `setActive(true)` keeps its original position and is
+  visited by that pass only if it sits after the activator.
+- **Anything a component schedules first advances one pass later.** The
+  process systems (priority 500) have already run when component code
+  (priority 1000) calls `pc.run`, starts a slot, or starts a tween, so the
+  process first advances on the next pass of its clock. A system below 500
+  that schedules a process sees it advance in the same pass.
+
 ## Fixed Timestep Accumulator
 
 The `FixedUpdate` phase uses an accumulator to deliver a deterministic timestep
@@ -37,7 +85,7 @@ While the accumulator holds enough time for another tick, the engine runs one
 `FixedUpdate` pass and subtracts `fixedTimestep` from the accumulator:
 
 ```
-accumulator += frameDeltaMs
+accumulator += frameDeltaSeconds
 
 while (accumulator >= fixedTimestep && steps < maxFixedStepsPerFrame) {
   runFixedUpdate(fixedTimestep)

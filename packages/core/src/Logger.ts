@@ -177,6 +177,8 @@ export class Logger {
     // The sink is typed void-returning but nothing stops an async sink, so a
     // rejected thenable is caught the same way a synchronous throw is —
     // otherwise a rejecting async sink would keep running, unmuted, forever.
+    // Calls an async sink received before its first rejection settles still
+    // run; the mute starts at the first observed failure.
     try {
       const result = this.output(entry) as unknown;
       if (isThenable(result)) {
@@ -188,6 +190,8 @@ export class Logger {
   }
 
   private _disableOutput(err: unknown): void {
+    // A burst of async calls rejects once each; report the sink once.
+    if (this.outputDisabled) return;
     this.outputDisabled = true;
     console.error(
       "[yage] Logger output sink threw and was disabled for the rest of the session:",
