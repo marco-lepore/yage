@@ -912,4 +912,4 @@ and rethrows.
   callback directly — see the "Attribute developer-supplied callbacks" rule
   in the repo-root `AGENTS.md`.
 
-`Logger` writes to the console by default in dev builds (gated by `isDev()`, tree-shakable in production the same way as `devWarn`). Pass `logger: { output }` in the `Engine` config to replace it; `LogLevel.None` silences everything. The `output` sink itself is guarded — a throwing sink is disabled after its first failure instead of taking down whatever was being reported.
+`Logger` writes to the console by default in dev builds (gated by `isDev()`, off in production builds like `devWarn`). Pass `logger: { output }` in the `Engine` config to replace it; `LogLevel.None` silences everything. The `output` sink itself is guarded — a throwing sink is disabled after its first failure instead of taking down whatever was being reported.

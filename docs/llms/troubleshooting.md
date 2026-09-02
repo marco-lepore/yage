@@ -2,7 +2,10 @@
 
 Dev-mode warnings YAGE emits to flag silent failure modes. All warnings are
 prefixed with `[yage]` and gated on `process.env.NODE_ENV !== "production"`,
-so they don't appear in production builds.
+so they don't appear in production builds. The gate reads the bare
+`process.env.NODE_ENV` expression, which bundlers replace at build time, so
+the packages must go through a bundler: loading them in a browser without one
+is not supported and throws `ReferenceError: process is not defined`.
 
 ## Multiple copies of @yagejs/renderer are loaded
 
