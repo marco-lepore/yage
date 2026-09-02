@@ -145,6 +145,22 @@ describe("EventBus", () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
+  it("unsubscribing a later duplicate registration keeps the earlier one in place", () => {
+    const bus = new EventBus<TestEvents>();
+    const order: string[] = [];
+    const shared = () => order.push("shared");
+    bus.on("greet", shared);
+    bus.on("greet", () => order.push("between"));
+    const unsubSecond = bus.on("greet", shared);
+
+    unsubSecond();
+    bus.emit("greet", { name: "test" });
+
+    // Before each registration had its own entry, this removed the first
+    // "shared" and left the order ["between", "shared"].
+    expect(order).toEqual(["shared", "between"]);
+  });
+
   it("an unsubscribe held across clear(event) does not remove a later registration", () => {
     const bus = new EventBus<TestEvents>();
     const handler = vi.fn();

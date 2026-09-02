@@ -72,7 +72,9 @@ export class EventBus<E = EventMap> {
       list = [];
       this.handlers.set(event, list);
     }
-    const entry = handler as (data: never) => void;
+    // One wrapper per registration: the same handler registered twice gets
+    // two distinct entries, so each unsubscribe finds its own.
+    const entry = (data: never): void => handler(data as E[K]);
     list.push(entry);
     // `clear()` drops the list from the map, so an unsubscribe held across it
     // touches the detached array, never a later registration.
