@@ -503,13 +503,12 @@ scene from it.
 ## Death and corpses
 
 `HealthDied` reports death; the game decides what death does. Removing a
-controller from inside its own event listener is safe. A dynamic physics body
-can act as an immovable corpse by zeroing velocity and disabling translation:
+controller from inside its own event listener is safe. Switching the body to
+`"static"` makes an immovable corpse: nothing pushes it and it pushes nothing.
 
 ```ts
 entity.on(HealthDied, () => {
-  body.setVelocity(Vec2.ZERO);
-  body.setEnabledTranslations(false, false);
+  body.setType("static");
   entity.remove(EnemyController);
 });
 ```

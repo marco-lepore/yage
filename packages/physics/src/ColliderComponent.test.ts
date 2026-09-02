@@ -70,6 +70,17 @@ const { mocks } = vi.hoisted(() => {
     isEnabled() {
       return this._enabled;
     }
+    _density = 1;
+    _mass = 0;
+    setDensity(d: number) {
+      this._density = d;
+    }
+    mass() {
+      return this._mass;
+    }
+    setMass(m: number) {
+      this._mass = m;
+    }
     setActiveHooks(hooks: number) {
       this._activeHooks = hooks;
     }
@@ -123,15 +134,23 @@ const { mocks } = vi.hoisted(() => {
     collider(i: number) {
       return this._colliders[i];
     }
+    _bodyType: "dynamic" | "fixed" | "kinematic" = "dynamic";
     isDynamic() {
-      return true;
+      return this._bodyType === "dynamic";
     }
     isFixed() {
-      return false;
+      return this._bodyType === "fixed";
     }
     isKinematic() {
-      return false;
+      return this._bodyType === "kinematic";
     }
+    /** Rapier's `setBodyType` value → the mock's body kind. */
+    setBodyType(type: number) {
+      this._bodyType =
+        type === 1 ? "fixed" : type === 2 ? "kinematic" : "dynamic";
+    }
+    setNextKinematicTranslation() {}
+    setNextKinematicRotation() {}
     sleep() {}
     wakeUp() {}
     setEnabled() {}
@@ -283,6 +302,13 @@ vi.mock("@dimforge/rapier2d", () => ({
     ColliderDesc: mocks.MockColliderDesc,
     EventQueue: mocks.MockEventQueue,
     ActiveEvents: { COLLISION_EVENTS: 1, CONTACT_FORCE_EVENTS: 2 },
+    QueryFilterFlags: { EXCLUDE_SENSORS: 8, EXCLUDE_SOLIDS: 16 },
+    RigidBodyType: {
+      Dynamic: 0,
+      Fixed: 1,
+      KinematicPositionBased: 2,
+      KinematicVelocityBased: 3,
+    },
     ActiveCollisionTypes: { ALL: 60943 },
     ActiveHooks: {
       NONE: 0,
@@ -307,6 +333,101 @@ describe("ColliderComponent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.resetHandles();
+  });
+
+  describe("constructor", () => {
+    const shape = { type: "box", width: 10, height: 10 } as const;
+
+    it("rejects non-finite or negative material numbers", () => {
+      expect(() => new ColliderComponent({ shape, restitution: NaN })).toThrow(
+        "ColliderComponent: restitution must be finite and >= 0, got NaN.",
+      );
+      expect(() => new ColliderComponent({ shape, friction: -1 })).toThrow(
+        "ColliderComponent: friction must be finite and >= 0, got -1.",
+      );
+      expect(() => new ColliderComponent({ shape, density: -2 })).toThrow(
+        "ColliderComponent: density must be finite and >= 0, got -2.",
+      );
+      expect(
+        () => new ColliderComponent({ shape, contactSkin: Infinity }),
+      ).toThrow(
+        "ColliderComponent: contactSkin must be finite and >= 0, got Infinity.",
+      );
+      // An amplifying bounce is legal.
+      expect(
+        () => new ColliderComponent({ shape, restitution: 1.5 }),
+      ).not.toThrow();
+    });
+
+    it("rejects a shape it cannot build, naming the field", () => {
+      expect(
+        () =>
+          new ColliderComponent({
+            shape: { type: "box", width: -20, height: 20 },
+          }),
+      ).toThrow(
+        "ColliderComponent: shape.width must be finite and > 0, got -20.",
+      );
+      expect(
+        () => new ColliderComponent({ shape: { type: "circle", radius: 0 } }),
+      ).toThrow(
+        "ColliderComponent: shape.radius must be finite and > 0, got 0.",
+      );
+      expect(
+        () =>
+          new ColliderComponent({
+            shape: { type: "capsule", halfHeight: -20, radius: 10 },
+          }),
+      ).toThrow(
+        "ColliderComponent: shape.halfHeight must be finite and >= 0, got -20.",
+      );
+      expect(
+        () =>
+          new ColliderComponent({
+            shape: {
+              type: "polygon",
+              vertices: [
+                { x: 0, y: 0 },
+                { x: 10, y: 0 },
+              ],
+            },
+          }),
+      ).toThrow(
+        "ColliderComponent: shape.vertices must have at least 3 vertices, got 2.",
+      );
+      // A capsule with no straight section is a circle; the tilemap
+      // converter emits it for square capsule objects.
+      expect(
+        () =>
+          new ColliderComponent({
+            shape: { type: "capsule", halfHeight: 0, radius: 10 },
+          }),
+      ).not.toThrow();
+    });
+
+    it("rejects a zero or non-finite oneWay direction and a non-finite margin", () => {
+      expect(
+        () =>
+          new ColliderComponent({
+            shape,
+            oneWay: { direction: { x: 0, y: 0 } },
+          }),
+      ).toThrow(
+        "ColliderComponent: oneWay.direction must be a non-zero vector, got {x: 0, y: 0}.",
+      );
+      expect(
+        () =>
+          new ColliderComponent({
+            shape,
+            oneWay: { direction: { x: NaN, y: -1 } },
+          }),
+      ).toThrow(
+        "ColliderComponent: oneWay.direction.x must be finite, got NaN.",
+      );
+      expect(
+        () => new ColliderComponent({ shape, oneWay: { margin: NaN } }),
+      ).toThrow("ColliderComponent: oneWay.margin must be finite, got NaN.");
+    });
   });
 
   describe("onAdd", () => {
@@ -636,23 +757,109 @@ describe("ColliderComponent", () => {
   });
 
   describe("setSensor", () => {
-    it("delegates to Rapier collider", async () => {
-      const { scene, physicsWorld } = await createPhysicsTestContext();
-      const entity = spawnEntityInScene(scene, "test");
+    async function setup(sensor?: boolean) {
+      const ctx = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(ctx.scene, "test");
       entity.add(new Transform());
       entity.add(new RigidBodyComponent({ type: "dynamic" }));
       const col = entity.add(
         new ColliderComponent({
           shape: { type: "box", width: 10, height: 10 },
+          ...(sensor === undefined ? {} : { sensor }),
         }),
       );
+      const rapier = (handle: number) =>
+        ctx.physicsWorld.getCollider(handle) as unknown as
+          | InstanceType<typeof mocks.MockCollider>
+          | undefined;
+      return { ...ctx, entity, col, rapier };
+    }
+
+    it("recreates the Rapier collider with the new flag, keeping the body's mass", async () => {
+      const { physicsWorld, entity, col, rapier } = await setup();
+      const oldHandle = col._colliderHandle;
+      rapier(oldHandle)!._mass = 0.16;
 
       col.setSensor(true);
 
-      const rapierCollider = physicsWorld.getCollider(
-        col._colliderHandle,
-      ) as unknown as InstanceType<typeof mocks.MockCollider>;
-      expect(rapierCollider?.setSensorSpy).toHaveBeenCalledWith(true);
+      const newHandle = col._colliderHandle;
+      expect(newHandle).not.toBe(oldHandle);
+      expect(rapier(oldHandle)).toBeUndefined();
+      expect(physicsWorld.colliderMap.get(newHandle)).toBe(entity);
+      expect(physicsWorld._colliderComponents.get(newHandle)).toBe(col);
+      expect(physicsWorld.colliderMap.has(oldHandle)).toBe(false);
+      expect(physicsWorld._colliderComponents.has(oldHandle)).toBe(false);
+      expect(rapier(newHandle)!.isSensor()).toBe(true);
+      expect(rapier(newHandle)!._mass).toBe(0.16);
+      expect(rapier(newHandle)!.isEnabled()).toBe(true);
+    });
+
+    it("does nothing when the flag does not change", async () => {
+      const { col } = await setup(true);
+      const handle = col._colliderHandle;
+
+      col.setSensor(true);
+
+      expect(col._colliderHandle).toBe(handle);
+    });
+
+    it("keeps the new collider disabled while the entity is inactive", async () => {
+      const { entity, col, rapier } = await setup();
+      entity.setActive(false);
+
+      col.setSensor(true);
+
+      expect(rapier(col._colliderHandle)!.isEnabled()).toBe(false);
+    });
+
+    it("re-arms a contact filter on the new collider", async () => {
+      const { physicsWorld, col, rapier } = await setup();
+      const filter = () => true;
+      col.setContactFilter(filter);
+
+      col.setSensor(true);
+
+      expect(rapier(col._colliderHandle)!.activeHooks()).toBe(1);
+      expect(col._contactFilter).toBe(filter);
+      // The world still passes hooks to the step for the new handle.
+      physicsWorld.step(1 / 60);
+      const world = (
+        physicsWorld as unknown as {
+          world: InstanceType<typeof mocks.MockWorld>;
+        }
+      ).world;
+      expect(world.lastStepHooks).toBeDefined();
+    });
+
+    it("warns once per flip, only when a handler of the silenced kind exists", async () => {
+      const { col } = await setup();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      // No handlers: silent.
+      col.setSensor(true);
+      col.setSensor(false);
+      expect(warn).not.toHaveBeenCalled();
+
+      col.onCollision(() => {});
+      col.setSensor(true);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]![0]).toContain(
+        "now a sensor; its 1 onCollision handler(s) will not fire",
+      );
+
+      // Flipping back silences no trigger handler.
+      col.setSensor(false);
+      expect(warn).toHaveBeenCalledTimes(1);
+
+      col.onTrigger(() => {});
+      warn.mockClear();
+      col.setSensor(true);
+      col.setSensor(false);
+      expect(warn).toHaveBeenCalledTimes(2);
+      expect(warn.mock.calls[1]![0]).toContain(
+        "now solid; its 1 onTrigger handler(s) will not fire",
+      );
+      warn.mockRestore();
     });
 
     it("keeps config.sensor in sync with the live collider", async () => {
@@ -726,6 +933,29 @@ describe("ColliderComponent", () => {
       expect(col._colliderHandle).toBe(handleBefore);
     });
 
+    it("rejects a shape it cannot build and leaves the config and the live collider unchanged", async () => {
+      const { col, rapierCollider } = await setup();
+      col.setShape({ type: "box", width: 20, height: 20 });
+
+      expect(() =>
+        col.setShape({ type: "box", width: 20, height: -10 }),
+      ).toThrow(
+        "ColliderComponent.setShape: shape.height must be finite and > 0, got -10.",
+      );
+      expect(() =>
+        col.setShape({ type: "box", width: 10, height: 10, borderRadius: 20 }),
+      ).toThrow(
+        "ColliderComponent.setShape: shape.borderRadius must be finite, >= 0 and smaller than half the shorter side, got 20.",
+      );
+
+      expect(col.config.shape).toEqual({ type: "box", width: 20, height: 20 });
+      expect(rapierCollider._shape).toEqual({
+        kind: "cuboid",
+        hx: 0.2,
+        hy: 0.2,
+      });
+    });
+
     it("keeps collision subscriptions across the swap", async () => {
       const { col, scene } = await setup();
       const handler = vi.fn();
@@ -754,22 +984,25 @@ describe("ColliderComponent", () => {
     it("keeps the body's mass, so a crouch does not change knockback", async () => {
       const { col, rapierCollider } = await setup();
       const body = rapierCollider.parent()!;
+      // Enabling the component already summed the body once.
+      const recomputesAfterSetup = body._massRecomputes;
 
       col.setShape({ type: "box", width: 20, height: 20 });
 
-      expect(body._massRecomputes).toBe(0);
+      expect(body._massRecomputes).toBe(recomputesAfterSetup);
     });
 
     it("recomputes mass from the new shape when asked", async () => {
       const { col, rapierCollider } = await setup();
       const body = rapierCollider.parent()!;
+      const recomputesAfterSetup = body._massRecomputes;
 
       col.setShape(
         { type: "box", width: 40, height: 80 },
         { recomputeMass: true },
       );
 
-      expect(body._massRecomputes).toBe(1);
+      expect(body._massRecomputes).toBe(recomputesAfterSetup + 1);
     });
 
     it("buffers a pre-add swap in config and applies it at collider creation", async () => {

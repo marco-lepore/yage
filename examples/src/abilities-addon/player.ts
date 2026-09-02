@@ -161,8 +161,7 @@ export class PlayerController extends Component {
         this.charging = false;
         this.stopChargeSparks();
       }
-      this.rb.setVelocity(Vec2.ZERO);
-      this.rb.setEnabledTranslations(false, false); // corpse: physics can't push it
+      this.rb.setType("static"); // corpse: physics can't push it
       playBoxerAnim(this.entity, "death", { oneShot: true });
       cameraOf(this.entity).shake(9, 0.22, { decay: 0.75 });
       playDeathSfx(this.entity);

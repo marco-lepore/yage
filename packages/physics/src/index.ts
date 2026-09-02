@@ -19,6 +19,7 @@ export type {
   OneWayConfig,
   TriggerEvent,
   RaycastHit,
+  QuerySensorMode,
 } from "./types.js";
 
 export { CollisionLayers } from "./CollisionLayers.js";

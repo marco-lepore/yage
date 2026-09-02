@@ -6,7 +6,7 @@
  */
 import { Transform, Vec2 } from "@yagejs/core";
 import { RigidBodyComponent } from "@yagejs/physics";
-import type { PhysicsWorld, RaycastHit } from "@yagejs/physics";
+import type { PhysicsWorld, QuerySensorMode, RaycastHit } from "@yagejs/physics";
 import { SteeringAgent } from "./SteeringAgent.js";
 import type { SteeringAgentOptions } from "./SteeringAgent.js";
 import { resolve } from "./core/math.js";
@@ -140,12 +140,19 @@ export interface PhysicsNeighborsOptions {
   radius?: number;
   /** Rapier interaction groups filter for the query. */
   filterGroups?: number;
+  /**
+   * Which colliders count as neighbors: solid ones only (`"exclude"`, the
+   * default), sensors too (`"include"`), or sensors only (`"only"`).
+   */
+  sensors?: QuerySensorMode;
 }
 
 /**
  * A `NeighborsSource` backed by a world radius query around the agent:
- * every entity with a collider in range becomes a `Kinematic` (Transform
- * position + body velocity; entities without a body count as stationary).
+ * every entity with a solid collider in range becomes a `Kinematic`
+ * (Transform position + body velocity; entities without a body count as
+ * stationary). Pass `sensors: "include"` for agents whose collider is a
+ * sensor.
  * The agent itself is excluded via `AgentState.entity`. Feed it to
  * `separation`/`alignment`/`cohesion` — note each behavior resolves its
  * source in every `compute` call, so three flock rules mean three queries
@@ -161,6 +168,7 @@ export function physicsNeighbors(
     const queryOptions = {
       ...(agent.entity ? { excludeEntity: agent.entity } : {}),
       ...(opts.filterGroups !== undefined ? { filterGroups: opts.filterGroups } : {}),
+      ...(opts.sensors !== undefined ? { sensors: opts.sensors } : {}),
     };
     return physicsWorld.queryRadius(agent.position, radius, queryOptions).map(
       (entity): Kinematic => ({

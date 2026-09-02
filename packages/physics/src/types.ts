@@ -39,23 +39,26 @@ export type BodyType = "dynamic" | "static" | "kinematic";
 
 /** Configuration for the physics world. */
 export interface PhysicsConfig {
-  /** Gravity in pixels/s². Default: { x: 0, y: 980 }. */
+  /** Gravity in pixels/s², both components finite. Default: { x: 0, y: 980 }. */
   gravity?: { x: number; y: number };
-  /** Pixels per meter for internal conversion. Default: 50. */
+  /** Pixels per meter for internal conversion; finite and > 0. Default: 50. */
   pixelsPerMeter?: number;
 }
 
 /** Configuration for creating a rigid body. */
 export interface RigidBodyConfig {
-  /** Body type: dynamic, static, or kinematic. */
+  /**
+   * Body type: dynamic, static, or kinematic. `RigidBodyComponent.setType`
+   * changes it at runtime.
+   */
   type: BodyType;
-  /** Linear damping coefficient. */
+  /** Linear damping coefficient; finite and >= 0. */
   linearDamping?: number;
-  /** Angular damping coefficient. */
+  /** Angular damping coefficient; finite and >= 0. */
   angularDamping?: number;
   /** If true, body cannot rotate. */
   fixedRotation?: boolean;
-  /** Gravity multiplier for this body. */
+  /** Gravity multiplier for this body; finite (negative floats the body up). */
   gravityScale?: number;
   /** Enable continuous collision detection. */
   ccd?: boolean;
@@ -68,7 +71,8 @@ export interface RigidBodyConfig {
 }
 
 /** Elastic connection between two bodies. Pulls together when stretched past
- * restLength, pushes apart when compressed below it. */
+ * restLength, pushes apart when compressed below it. Every number is finite;
+ * `restLength`, `stiffness` and `damping` are >= 0. */
 export interface SpringJointConfig {
   type: "spring";
   /** Distance the spring tries to hold, in pixels. */
@@ -88,7 +92,8 @@ export interface SpringJointConfig {
   anchorB?: Vec2Like;
 }
 
-/** Inextensible tether that keeps the anchor points within length. */
+/** Inextensible tether that keeps the anchor points within length. Every
+ * number is finite; `length` is >= 0. */
 export interface RopeJointConfig {
   type: "rope";
   /** Maximum distance between the anchor points, in pixels. */
@@ -109,11 +114,26 @@ export interface JointHandle {
   remove(): void;
 }
 
-/** Discriminated union for collider shapes. All dimensions in pixels. */
+/**
+ * Which colliders a spatial query reports: `"exclude"` skips sensors and
+ * reports solid colliders only (the default — a ground check or line of
+ * sight means surfaces, and a trigger zone is not one), `"include"` reports
+ * both, `"only"` reports sensors only.
+ */
+export type QuerySensorMode = "exclude" | "include" | "only";
+
+/**
+ * Discriminated union for collider shapes. All dimensions in pixels. Every
+ * entry that takes a shape (`ColliderComponent`, `setShape`, `castShape`,
+ * `queryShape`, `queryRadius`) throws on a dimension that is not finite and
+ * above 0, naming the field.
+ */
 export type ColliderShape =
   | {
       type: "box";
+      /** Finite and > 0. */
       width: number;
+      /** Finite and > 0. */
       height: number;
       /**
        * Rounds the corners by this many pixels. The inner half-extents shrink
@@ -124,27 +144,44 @@ export type ColliderShape =
        * a body supported only by the last `borderRadius` pixels of a ledge
        * slides off it.
        *
-       * Must be smaller than half the shorter side; anything else throws when
-       * the collider is built. Applies to shape casts and overlap queries too.
+       * Mass is the rounded footprint's area at the configured `density`,
+       * so rounding changes it only by the four corner pieces. Angular
+       * inertia is the inner rectangle's, scaled by the same area ratio —
+       * an approximation of the exact round-rectangle inertia.
+       *
+       * Finite, >= 0 and smaller than half the shorter side; anything else
+       * throws. Applies to shape casts and overlap queries too.
        */
       borderRadius?: number;
     }
-  | { type: "circle"; radius: number }
+  | {
+      type: "circle";
+      /** Finite and > 0. */
+      radius: number;
+    }
   | {
       type: "capsule";
+      /**
+       * Half the straight section, finite and >= 0. Each cap adds `radius`,
+       * so the collider is `2 * (halfHeight + radius)` tall:
+       * `{ halfHeight: 20, radius: 10 }` stands 60 px. `0` is a circle.
+       */
       halfHeight: number;
+      /** Cap radius, finite and > 0. */
       radius: number;
       /** Orientation of the long axis. Default: `"y"` (vertical). */
       axis?: "x" | "y";
     }
   /**
-   * Closed convex shape. Rapier silently widens concave input to its convex
+   * Closed convex shape: at least 3 vertices, every coordinate finite, not
+   * all on one line. Rapier silently widens concave input to its convex
    * hull; use `polyline` for non-convex outlines.
    */
   | { type: "polygon"; vertices: Vec2Like[] }
   /**
-   * Chain of line segments. Supports non-convex shapes but is static-only
-   * (no mass/inertia computed). Best for world boundaries.
+   * Chain of line segments: at least 2 vertices, every coordinate finite.
+   * Supports non-convex shapes but is static-only (no mass/inertia
+   * computed). Best for world boundaries.
    */
   | { type: "polyline"; vertices: Vec2Like[] };
 
@@ -152,15 +189,16 @@ export type ColliderShape =
 export interface OneWayConfig {
   /**
    * Direction the solid side faces, in the platform body's local frame.
-   * Any non-zero vector; normalized internally. Default: `{ x: 0, y: -1 }` —
-   * the solid side faces up, so bodies land from above and pass through
-   * from below.
+   * Any non-zero vector with finite components, normalized internally; a
+   * zero vector throws when the component is constructed. Default:
+   * `{ x: 0, y: -1 }` — the solid side faces up, so bodies land from above
+   * and pass through from below.
    */
   direction?: Vec2Like;
   /**
    * How deep (in pixels) a body may already overlap the solid face and
    * still land on it. Below that, the body counts as inside the platform
-   * and passes through. Default: 4.
+   * and passes through. Finite. Default: 4.
    */
   margin?: number;
 }
@@ -176,16 +214,16 @@ export interface ColliderConfig {
    * point. For `axis: "x"` capsules it adds on top of the 90° axis rotation.
    */
   rotation?: number;
-  /** Coefficient of restitution (bounciness). */
+  /** Coefficient of restitution (bounciness); finite and >= 0. */
   restitution?: number;
-  /** Friction coefficient. */
+  /** Friction coefficient; finite and >= 0. */
   friction?: number;
-  /** Density (affects mass for dynamic bodies). */
+  /** Density (affects mass for dynamic bodies); finite and >= 0. Default: 1. */
   density?: number;
   /**
    * Keeps this collider this many pixels away from anything it touches, so a
    * resting body sits that far above the surface. Two colliders that both set
-   * a skin are held apart by the sum of the two.
+   * a skin are held apart by the sum of the two. Finite and >= 0.
    *
    * Contacts only — shape casts and overlap queries ignore it.
    */
@@ -253,7 +291,8 @@ export interface ContactCandidate {
  * Runs inside the physics step for every candidate pair involving the
  * collider, every step — keep it cheap and do not create or destroy
  * entities, bodies, or colliders from inside it. When both colliders in a
- * pair have filters, the pair is solid only if both return `true`.
+ * pair have filters, both run for every candidate pair and the pair is
+ * solid only if both return `true`.
  */
 export type ContactFilter = (contact: ContactCandidate) => boolean;
 

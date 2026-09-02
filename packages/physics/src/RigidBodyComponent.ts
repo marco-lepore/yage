@@ -1,8 +1,10 @@
+import RAPIER from "@dimforge/rapier2d";
 import { Component, MathUtils, Transform, Vec2 } from "@yagejs/core";
 import type { Vec2Like } from "@yagejs/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import { PhysicsWorldKey } from "./types.js";
 import type { BodyType, RigidBodyConfig } from "./types.js";
+import { assertFiniteNumber } from "./validate.js";
 
 /**
  * Tolerance for deciding whether the game wrote a Transform since physics
@@ -11,14 +13,27 @@ import type { BodyType, RigidBodyConfig } from "./types.js";
  */
 const POSE_EPSILON = 1e-6;
 
+function rapierBodyType(type: BodyType): RAPIER.RigidBodyType {
+  switch (type) {
+    case "dynamic":
+      return RAPIER.RigidBodyType.Dynamic;
+    case "static":
+      return RAPIER.RigidBodyType.Fixed;
+    case "kinematic":
+      return RAPIER.RigidBodyType.KinematicPositionBased;
+  }
+}
+
 /**
  * Wraps a Rapier rigid body. All public API values are in pixels.
  *
  * Component ordering: Transform must be added before RigidBodyComponent.
  */
 export class RigidBodyComponent extends Component {
-  /** Body type (dynamic, static, kinematic). */
-  readonly type: BodyType;
+  /** Body type (dynamic, static, kinematic). `setType` changes it. */
+  get type(): BodyType {
+    return this._type;
+  }
 
   /** If false, physics will not write rotation back to Transform. */
   syncRotation: boolean;
@@ -39,20 +54,28 @@ export class RigidBodyComponent extends Component {
   /** @internal Rotation the next step drives a kinematic body toward. */
   _kinematicTargetRotation = 0;
   /**
-   * @internal Position physics last wrote to the Transform (kinematic only).
-   * A Transform that still holds it carries no game write to capture.
+   * @internal Position physics last wrote to the Transform. A Transform
+   * that still holds it carries no game write to capture. Kept per frame
+   * for kinematic bodies; for dynamic bodies it is seeded on disable, so a
+   * Transform write while dormant reads as pending on enable.
    */
   _lastWrittenPosition: Vec2 = Vec2.ZERO;
-  /** @internal Rotation physics last wrote to the Transform (kinematic only). */
+  /** @internal Rotation physics last wrote to the Transform. */
   _lastWrittenRotation = 0;
+  private _type: BodyType;
   private readonly config: RigidBodyConfig;
   private readonly transform = this.sibling(Transform);
   private physicsWorld!: PhysicsWorld;
 
   constructor(config: RigidBodyConfig) {
     super();
+    const context = "RigidBodyComponent";
+    assertFiniteNumber(context, "linearDamping", config.linearDamping, 0);
+    assertFiniteNumber(context, "angularDamping", config.angularDamping, 0);
+    // Negative gravity scale is a legal "float up".
+    assertFiniteNumber(context, "gravityScale", config.gravityScale);
     this.config = config;
-    this.type = config.type;
+    this._type = config.type;
     this.syncRotation = config.syncRotation ?? true;
   }
 
@@ -99,10 +122,18 @@ export class RigidBodyComponent extends Component {
    * exactly what a reused entity gets to keep. Momentum and queued
    * forces/torques are cleared and joints are detached, so waking the body
    * cannot resume a motion — or a tether — that started a life ago.
+   *
+   * A dynamic body's Transform holds the pose physics last drew; it is
+   * recorded here as the last-written pose so that a Transform write made
+   * while the entity is dormant reads as pending when it is enabled again.
    */
   onDisable(): void {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return;
+    if (this._type === "dynamic") {
+      this._lastWrittenPosition = this.transform.worldPosition;
+      this._lastWrittenRotation = this.transform.worldRotation;
+    }
     this.physicsWorld._detachJointsForBody(this._bodyHandle);
     body.setLinvel({ x: 0, y: 0 }, false);
     body.setAngvel(0, false);
@@ -122,11 +153,12 @@ export class RigidBodyComponent extends Component {
     body.setEnabled(true);
     body.wakeUp();
 
-    // A Transform write made while a kinematic entity was dormant is the
-    // game repositioning it for reuse. Teleport the body there — gliding
-    // from where it slept would streak across the map, and the first drawn
-    // frame would show the stale sleep pose.
-    if (this.type === "kinematic") {
+    // A Transform write made while a dynamic or kinematic entity was dormant
+    // is the game repositioning it for reuse. Teleport the body there —
+    // gliding from where it slept would streak across the map, and the
+    // first drawn frame would show the stale sleep pose. A static body never
+    // reads its Transform.
+    if (this._type !== "static") {
       if (this._hasPendingTargetPosition()) {
         const target = this.transform.worldPosition;
         body.setTranslation(
@@ -268,14 +300,19 @@ export class RigidBodyComponent extends Component {
     return vx * vx + vy * vy;
   }
 
-  /** Apply torque. */
+  /**
+   * Apply torque, in Rapier's native units: the value is not converted from
+   * pixels, and angular inertia scales with `pixelsPerMeter`⁻⁴, so the same
+   * torque spins a body 16× faster at 100 px/m than at 50. Retune after
+   * changing the scale, as with spring stiffness.
+   */
   applyTorque(torque: number): void {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return;
     body.addTorque(torque, true);
   }
 
-  /** Set angular velocity in radians/s. */
+  /** Set angular velocity in radians/s (Rapier's native unit, not scaled by `pixelsPerMeter`). */
   setAngularVelocity(v: number): void {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return;
@@ -303,12 +340,15 @@ export class RigidBodyComponent extends Component {
    * Multiply gravity for this body: `1` is the scene's gravity, `0` removes
    * it, larger values fall faster. This is the per-body control a platformer
    * needs for variable jump height and fast-fall, without moving scene
-   * gravity for every other body.
+   * gravity for every other body. `scale` must be finite; a `NaN` would
+   * write `NaN` into the body's position at the next step and nothing
+   * recovers it.
    *
    * Callable before the component is added — the value is applied when the
    * Rapier body is created.
    */
   setGravityScale(scale: number): void {
+    assertFiniteNumber("RigidBodyComponent.setGravityScale", "scale", scale);
     // Keep the construction config aligned with the live body so a pre-add
     // write and a later body recreation use the same value.
     this.config.gravityScale = scale;
@@ -322,18 +362,77 @@ export class RigidBodyComponent extends Component {
     return this.physicsWorld.getBody(this._bodyHandle)?.gravityScale() ?? 1;
   }
 
-  /** Set which translation axes are enabled at runtime. */
+  /**
+   * Set which translation axes are enabled. A locked axis ignores forces,
+   * impulses and contacts; a velocity written with `setVelocity` still
+   * moves the body along it. Callable before the component is added — the
+   * locks are applied when the Rapier body is created.
+   */
   setEnabledTranslations(enableX: boolean, enableY: boolean): void {
-    const body = this.physicsWorld.getBody(this._bodyHandle);
-    if (!body) return;
-    body.setEnabledTranslations(enableX, enableY, true);
+    this.config.lockTranslationX = !enableX;
+    this.config.lockTranslationY = !enableY;
+    if (this._bodyHandle === -1) return;
+    this.physicsWorld
+      .getBody(this._bodyHandle)
+      ?.setEnabledTranslations(enableX, enableY, true);
   }
 
-  /** Lock or unlock rotations at runtime. */
+  /**
+   * Lock or unlock rotation. A locked body ignores torques and contact
+   * spin; `setAngularVelocity` still turns it. Callable before the
+   * component is added — the lock is applied when the Rapier body is
+   * created.
+   */
   lockRotations(locked: boolean): void {
+    this.config.fixedRotation = locked;
+    if (this._bodyHandle === -1) return;
+    this.physicsWorld.getBody(this._bodyHandle)?.lockRotations(locked, true);
+  }
+
+  /**
+   * Switch the body type at runtime — a dead enemy becomes `"static"` so
+   * nothing pushes it and it pushes nothing; a carried crate becomes
+   * `"kinematic"` while held. Linear and angular velocity are cleared by
+   * the switch; locks, gravity scale, damping, colliders and mass are kept.
+   * The drawn pose is the exact pose at the switch. Callable before
+   * `entity.add()`; the body is created as the new type.
+   */
+  setType(type: BodyType): void {
+    if (type === this._type) return;
+    this.config.type = type;
+    this._type = type;
+    if (this._bodyHandle === -1) return;
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return;
-    body.lockRotations(locked, true);
+    body.setBodyType(rapierBodyType(type), true);
+    if (type === "dynamic") {
+      // Rapier sums a body's mass at the next step; without this the first
+      // step's `applyImpulse` on the new dynamic body is ignored.
+      body.recomputeMassPropertiesFromColliders();
+    }
+    const translation = body.translation();
+    const pos = new Vec2(
+      this.physicsWorld.toPixels(translation.x),
+      this.physicsWorld.toPixels(translation.y),
+    );
+    const rot = body.rotation();
+    this._prevPosition = pos;
+    this._currPosition = pos;
+    this._prevRotation = rot;
+    this._currRotation = rot;
+    if (type === "kinematic") {
+      // The current Transform reads as "no pending write", so the next
+      // post-step snaps it to the exact pose instead of driving the body
+      // toward the interpolated one.
+      this._kinematicTargetPosition = pos;
+      this._kinematicTargetRotation = rot;
+      this._lastWrittenPosition = this.transform.worldPosition;
+      this._lastWrittenRotation = this.transform.worldRotation;
+    } else if (type === "static") {
+      // No system writes a static body's Transform.
+      this.transform.worldPosition = pos;
+      if (this.syncRotation) this.transform.worldRotation = rot;
+    }
   }
 
   /**
@@ -391,7 +490,8 @@ export class RigidBodyComponent extends Component {
   /**
    * Teleport to a position in pixels — no interpolation, no smoothing, for
    * any body type. On a kinematic body, `transform.setPosition()` instead
-   * moves it there smoothly over one step.
+   * moves it there smoothly over one step. A static body's Transform moves
+   * with it (no system writes one otherwise).
    */
   setPosition(x: number, y: number): void {
     const body = this.physicsWorld.getBody(this._bodyHandle);
@@ -403,9 +503,11 @@ export class RigidBodyComponent extends Component {
       },
       true,
     );
+    this.physicsWorld._markQueriesStale();
     const pos = new Vec2(x, y);
     this._prevPosition = pos;
     this._currPosition = pos;
+    if (this._type === "static") this.transform.worldPosition = pos;
     // Without this, the step after a kinematic teleport would drive the body
     // back toward the stale pre-teleport target.
     this._kinematicTargetPosition = pos;
@@ -418,14 +520,19 @@ export class RigidBodyComponent extends Component {
 
   /**
    * Teleport to a rotation in radians — no interpolation, no smoothing, for
-   * any body type. The rotation counterpart of `setPosition`.
+   * any body type. The rotation counterpart of `setPosition`; a static
+   * body's Transform rotates with it when `syncRotation` is on.
    */
   setRotation(radians: number): void {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return;
     body.setRotation(radians, true);
+    this.physicsWorld._markQueriesStale();
     this._prevRotation = radians;
     this._currRotation = radians;
+    if (this._type === "static" && this.syncRotation) {
+      this.transform.worldRotation = radians;
+    }
     this._kinematicTargetRotation = radians;
     // Supersede any not-yet-captured Transform rotation, as in setPosition.
     this._lastWrittenRotation = this.transform.worldRotation;

@@ -271,8 +271,9 @@ enemy.add(
 ```
 
 `physicsNeighbors` does the same for flocking: a `NeighborsSource` backed by
-`PhysicsWorld.queryRadius` around the agent, so anything with a collider in
-range counts as a neighbor (entities without a body count as stationary):
+`PhysicsWorld.queryRadius` around the agent, so any solid collider in range
+counts as a neighbor (entities without a body count as stationary). Pass
+`sensors: "include"` when the agents themselves carry sensor colliders:
 
 ```ts
 import { physicsNeighbors } from "@yagejs-addons/steering/physics";

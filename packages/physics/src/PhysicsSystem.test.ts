@@ -100,6 +100,12 @@ const { mocks } = vi.hoisted(() => {
     isKinematic() {
       return this._bodyType === "kinematic";
     }
+    /** Rapier's `setBodyType` value → the mock's body kind. */
+    setBodyType(type: number) {
+      this._bodyType =
+        type === 1 ? "fixed" : type === 2 ? "kinematic" : "dynamic";
+    }
+    recomputeMassPropertiesFromColliders() {}
     numColliders() {
       return this._colliders.length;
     }
@@ -229,6 +235,13 @@ vi.mock("@dimforge/rapier2d", () => ({
     ColliderDesc: mocks.MockColliderDesc,
     EventQueue: mocks.MockEventQueue,
     ActiveEvents: { COLLISION_EVENTS: 1, CONTACT_FORCE_EVENTS: 2 },
+    QueryFilterFlags: { EXCLUDE_SENSORS: 8, EXCLUDE_SOLIDS: 16 },
+    RigidBodyType: {
+      Dynamic: 0,
+      Fixed: 1,
+      KinematicPositionBased: 2,
+      KinematicVelocityBased: 3,
+    },
     ActiveCollisionTypes: { ALL: 60943 },
   },
 }));
@@ -537,6 +550,39 @@ describe("PhysicsSystem", () => {
       system.update(16.67);
 
       expect(world.stepSpy).toHaveBeenCalled();
+    });
+
+    it("delivers collision events after every step of a multi-step tick", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext();
+      const system = new PhysicsSystem();
+      system._setContext(context);
+      scene.timeScale = 2;
+
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const log: string[] = [];
+      const world = (
+        physicsWorld as unknown as {
+          world: InstanceType<typeof mocks.MockWorld>;
+        }
+      ).world;
+      world.stepSpy.mockImplementation(() => log.push("step"));
+      vi.spyOn(physicsWorld, "processCollisionEvents").mockImplementation(
+        () => {
+          log.push("processCollisionEvents");
+        },
+      );
+
+      system.update(1 / 60);
+
+      expect(log).toEqual([
+        "step",
+        "processCollisionEvents",
+        "step",
+        "processCollisionEvents",
+      ]);
     });
 
     it("steps two scenes with different timeScales independently", async () => {

@@ -27,6 +27,11 @@ import type { PhysicsWorldManager } from "./PhysicsWorldManager.js";
  * `scene.timeScale` composed with active freeze/slow-mo requests). Paused
  * scenes are simply not stepped — no sleep/wake needed.
  *
+ * Collision events are delivered after every step, so a scene running above
+ * time scale 1 sees each step's transitions in order, with Transforms synced
+ * to the step that produced them, and a handler's `setVelocity` or `destroy`
+ * takes effect before the next step of the same tick.
+ *
  * NOTE: `entity.timeScale` and SceneTime `excludeUpdates` exclusions are
  * intentionally NOT applied here. The whole scene shares one Rapier world
  * stepped once per (scaled) fixed tick, so there is no per-body notion of
@@ -70,12 +75,10 @@ export class PhysicsSystem extends System {
       this.preStep(scene, ctx.world);
       ctx.world.step(dt);
       this.postStep(scene, ctx.world);
+      ctx.world.processCollisionEvents();
       ctx.accumulator -= dt;
       steps++;
     }
-
-    // Process collision events once after all steps.
-    ctx.world.processCollisionEvents();
   }
 
   /** Pre-step: store prev state and drive kinematic bodies to their target. */

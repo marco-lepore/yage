@@ -103,6 +103,13 @@ vi.mock("@dimforge/rapier2d", () => ({
     ColliderDesc: mocks.MockColliderDesc,
     EventQueue: mocks.MockEventQueue,
     ActiveEvents: { COLLISION_EVENTS: 1 },
+    QueryFilterFlags: { EXCLUDE_SENSORS: 8, EXCLUDE_SOLIDS: 16 },
+    RigidBodyType: {
+      Dynamic: 0,
+      Fixed: 1,
+      KinematicPositionBased: 2,
+      KinematicVelocityBased: 3,
+    },
     ActiveCollisionTypes: { ALL: 60943 },
   },
 }));
@@ -136,6 +143,15 @@ describe("PhysicsPlugin", () => {
     const plugin = new PhysicsPlugin();
     expect(plugin.name).toBe("physics");
     expect(plugin.version).toBe("3.0.0");
+  });
+
+  it("rejects a pixelsPerMeter of 0 and non-finite gravity at construction", () => {
+    expect(() => new PhysicsPlugin({ pixelsPerMeter: 0 })).toThrow(
+      "PhysicsPlugin: pixelsPerMeter must be finite and > 0, got 0.",
+    );
+    expect(() => new PhysicsPlugin({ gravity: { x: NaN, y: 0 } })).toThrow(
+      "PhysicsPlugin: gravity.x must be finite, got NaN.",
+    );
   });
 
   describe("install", () => {

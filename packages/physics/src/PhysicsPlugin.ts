@@ -4,6 +4,7 @@ import { DebugRegistryKey } from "@yagejs/debug/api";
 import { PhysicsWorldManager } from "./PhysicsWorldManager.js";
 import { PhysicsWorldKey, PhysicsWorldManagerKey } from "./types.js";
 import type { PhysicsConfig } from "./types.js";
+import { assertFiniteNumber, assertPixelsPerMeter } from "./validate.js";
 import { PhysicsSystem } from "./PhysicsSystem.js";
 import { PhysicsInterpolationSystem } from "./PhysicsInterpolationSystem.js";
 import { PhysicsDebugContributor } from "./PhysicsDebugContributor.js";
@@ -30,6 +31,9 @@ export class PhysicsPlugin implements Plugin {
   private unregisterHooks: (() => void) | null = null;
 
   constructor(config?: PhysicsConfig) {
+    assertPixelsPerMeter("PhysicsPlugin", config?.pixelsPerMeter);
+    assertFiniteNumber("PhysicsPlugin", "gravity.x", config?.gravity?.x);
+    assertFiniteNumber("PhysicsPlugin", "gravity.y", config?.gravity?.y);
     this.config = config;
   }
 

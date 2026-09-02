@@ -28,7 +28,14 @@ const { mocks } = vi.hoisted(() => {
     setAngularDamping() {
       return this;
     }
+    _rotationsLocked = false;
     lockRotations() {
+      this._rotationsLocked = true;
+      return this;
+    }
+    _enabledTranslations: { x: boolean; y: boolean } = { x: true, y: true };
+    enabledTranslations(x: boolean, y: boolean) {
+      this._enabledTranslations = { x, y };
       return this;
     }
     _gravityScale = 1;
@@ -128,14 +135,42 @@ const { mocks } = vi.hoisted(() => {
     collider(i: number) {
       return this._colliders[i];
     }
+    setEnabledTranslationsSpy = vi.fn();
+    setEnabledTranslations(x: boolean, y: boolean, wake: boolean) {
+      this.setEnabledTranslationsSpy(x, y, wake);
+    }
+    lockRotationsSpy = vi.fn();
+    lockRotations(locked: boolean, wake: boolean) {
+      this.lockRotationsSpy(locked, wake);
+    }
+    _bodyType: "dynamic" | "fixed" | "kinematic" = "dynamic";
+    setBodyTypeSpy = vi.fn();
     isDynamic() {
-      return true;
+      return this._bodyType === "dynamic";
     }
     isFixed() {
-      return false;
+      return this._bodyType === "fixed";
     }
     isKinematic() {
-      return false;
+      return this._bodyType === "kinematic";
+    }
+    /** Rapier's `setBodyType` value → the mock's body kind. */
+    setBodyType(type: number, wake: boolean) {
+      this._bodyType =
+        type === 1 ? "fixed" : type === 2 ? "kinematic" : "dynamic";
+      this.setBodyTypeSpy(type, wake);
+    }
+    _nextKinematicTranslation: { x: number; y: number } | null = null;
+    _nextKinematicRotation: number | null = null;
+    setNextKinematicTranslation(t: { x: number; y: number }) {
+      this._nextKinematicTranslation = { ...t };
+    }
+    setNextKinematicRotation(r: number) {
+      this._nextKinematicRotation = r;
+    }
+    _massRecomputes = 0;
+    recomputeMassPropertiesFromColliders() {
+      this._massRecomputes++;
     }
     sleep() {}
     wakeUp() {
@@ -210,9 +245,17 @@ const { mocks } = vi.hoisted(() => {
 
     step() {}
 
+    _lastDesc: MockRigidBodyDesc | undefined;
     createRigidBody(desc: MockRigidBodyDesc): MockRigidBody {
       const body = new MockRigidBody();
       body._gravityScale = desc._gravityScale;
+      body._bodyType =
+        desc._type === "fixed"
+          ? "fixed"
+          : desc._type === "kinematic"
+            ? "kinematic"
+            : "dynamic";
+      this._lastDesc = desc;
       this._bodies.set(body.handle, body);
       return body;
     }
@@ -267,12 +310,20 @@ vi.mock("@dimforge/rapier2d", () => ({
     ColliderDesc: mocks.MockColliderDesc,
     EventQueue: mocks.MockEventQueue,
     ActiveEvents: { COLLISION_EVENTS: 1, CONTACT_FORCE_EVENTS: 2 },
+    QueryFilterFlags: { EXCLUDE_SENSORS: 8, EXCLUDE_SOLIDS: 16 },
+    RigidBodyType: {
+      Dynamic: 0,
+      Fixed: 1,
+      KinematicPositionBased: 2,
+      KinematicVelocityBased: 3,
+    },
     ActiveCollisionTypes: { ALL: 60943 },
   },
 }));
 
 import { Transform, Vec2 } from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
+import type { PhysicsWorld } from "./PhysicsWorld.js";
 import {
   createPhysicsTestContext,
   spawnEntityInScene,
@@ -282,6 +333,31 @@ describe("RigidBodyComponent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.resetHandles();
+  });
+
+  describe("constructor", () => {
+    it("rejects negative damping and non-finite gravityScale", () => {
+      expect(
+        () => new RigidBodyComponent({ type: "dynamic", linearDamping: -4 }),
+      ).toThrow(
+        "RigidBodyComponent: linearDamping must be finite and >= 0, got -4.",
+      );
+      expect(
+        () => new RigidBodyComponent({ type: "dynamic", angularDamping: NaN }),
+      ).toThrow(
+        "RigidBodyComponent: angularDamping must be finite and >= 0, got NaN.",
+      );
+      expect(
+        () =>
+          new RigidBodyComponent({ type: "dynamic", gravityScale: Infinity }),
+      ).toThrow(
+        "RigidBodyComponent: gravityScale must be finite, got Infinity.",
+      );
+      // A negative gravity scale floats the body up; it is legal.
+      expect(
+        () => new RigidBodyComponent({ type: "dynamic", gravityScale: -1 }),
+      ).not.toThrow();
+    });
   });
 
   describe("onAdd", () => {
@@ -557,6 +633,169 @@ describe("RigidBodyComponent", () => {
       ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
       expect(body._gravityScale).toBe(3);
     });
+
+    it("rejects a non-finite scale before storing it", async () => {
+      const { scene } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = entity.add(
+        new RigidBodyComponent({ type: "dynamic", gravityScale: 2 }),
+      );
+
+      expect(() => rb.setGravityScale(NaN)).toThrow(
+        "RigidBodyComponent.setGravityScale: scale must be finite, got NaN.",
+      );
+      expect(() => rb.setGravityScale(Infinity)).toThrow(
+        "RigidBodyComponent.setGravityScale: scale must be finite, got Infinity.",
+      );
+      expect(rb.gravityScale).toBe(2);
+    });
+  });
+
+  describe("setEnabledTranslations / lockRotations", () => {
+    it("applies the locks to the live body", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+
+      rb.setEnabledTranslations(false, true);
+      rb.lockRotations(true);
+
+      expect(body.setEnabledTranslationsSpy).toHaveBeenCalledWith(
+        false,
+        true,
+        true,
+      );
+      expect(body.lockRotationsSpy).toHaveBeenCalledWith(true, true);
+    });
+
+    it("buffers pre-add locks in config and applies them at body creation", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+
+      const rb = new RigidBodyComponent({ type: "dynamic" });
+      expect(() => rb.setEnabledTranslations(false, true)).not.toThrow();
+      expect(() => rb.lockRotations(true)).not.toThrow();
+
+      entity.add(rb);
+
+      const world = (
+        physicsWorld as unknown as {
+          world: InstanceType<typeof mocks.MockWorld>;
+        }
+      ).world;
+      expect(world._lastDesc?._enabledTranslations).toEqual({
+        x: false,
+        y: true,
+      });
+      expect(world._lastDesc?._rotationsLocked).toBe(true);
+    });
+  });
+
+  describe("setType", () => {
+    function bodyOf(
+      physicsWorld: PhysicsWorld,
+      rb: RigidBodyComponent,
+    ): InstanceType<typeof mocks.MockRigidBody> {
+      return physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<
+        typeof mocks.MockRigidBody
+      >;
+    }
+
+    it("maps each type to Rapier's RigidBodyType and re-sums mass only for dynamic", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const body = bodyOf(physicsWorld, rb);
+
+      rb.setType("static");
+      expect(rb.type).toBe("static");
+      expect(body.setBodyTypeSpy).toHaveBeenLastCalledWith(1, true);
+      expect(body._massRecomputes).toBe(0);
+
+      rb.setType("kinematic");
+      expect(rb.type).toBe("kinematic");
+      expect(body.setBodyTypeSpy).toHaveBeenLastCalledWith(2, true);
+      expect(body._massRecomputes).toBe(0);
+
+      rb.setType("dynamic");
+      expect(rb.type).toBe("dynamic");
+      expect(body.setBodyTypeSpy).toHaveBeenLastCalledWith(0, true);
+      expect(body._massRecomputes).toBe(1);
+    });
+
+    it("does nothing for the type the body already has", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      rb.setType("dynamic");
+
+      expect(bodyOf(physicsWorld, rb).setBodyTypeSpy).not.toHaveBeenCalled();
+    });
+
+    it("snaps the interpolation poses to the body, and a static body's Transform too", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext({
+        pixelsPerMeter: 50,
+      });
+      const entity = spawnEntityInScene(scene, "test");
+      const transform = entity.add(
+        new Transform({ position: new Vec2(100, 100) }),
+      );
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const body = bodyOf(physicsWorld, rb);
+      body._translation = { x: 6, y: 4 }; // 300, 200 px
+      body._rotation = 0.5;
+      rb._prevPosition = new Vec2(100, 100);
+
+      rb.setType("static");
+
+      expect(rb._prevPosition.x).toBe(300);
+      expect(rb._currPosition.y).toBe(200);
+      expect(rb._currRotation).toBe(0.5);
+      expect(transform.worldPosition.x).toBe(300);
+      expect(transform.worldPosition.y).toBe(200);
+      expect(transform.worldRotation).toBe(0.5);
+    });
+
+    it("seeds the kinematic target with the body pose and the current Transform as already written", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext({
+        pixelsPerMeter: 50,
+      });
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform({ position: new Vec2(100, 100) }));
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const body = bodyOf(physicsWorld, rb);
+      body._translation = { x: 6, y: 4 };
+
+      rb.setType("kinematic");
+
+      expect(rb._kinematicTargetPosition.x).toBe(300);
+      expect(rb._kinematicTargetPosition.y).toBe(200);
+      // The Transform still holds the drawn pose, which is not a pending
+      // write: the next post-step snaps it to the body.
+      expect(rb._hasPendingTargetPosition()).toBe(false);
+    });
+
+    it("creates the body as the type set before add", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = new RigidBodyComponent({ type: "dynamic" });
+
+      rb.setType("static");
+      entity.add(rb);
+
+      expect(rb.type).toBe("static");
+      expect(bodyOf(physicsWorld, rb).isFixed()).toBe(true);
+    });
   });
 
   describe("setPosition", () => {
@@ -591,6 +830,35 @@ describe("RigidBodyComponent", () => {
         { x: 4, y: 6 }, // 200/50, 300/50
         true,
       );
+    });
+
+    it("moves a static body's Transform with the teleport", async () => {
+      const { scene } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      const entity = spawnEntityInScene(scene, "test");
+      const transform = entity.add(
+        new Transform({ position: new Vec2(100, 100) }),
+      );
+      const rb = entity.add(new RigidBodyComponent({ type: "static" }));
+
+      rb.setPosition(500, 300);
+      rb.setRotation(1);
+
+      expect(transform.worldPosition.x).toBe(500);
+      expect(transform.worldPosition.y).toBe(300);
+      expect(transform.worldRotation).toBe(1);
+    });
+
+    it("leaves a dynamic body's Transform to the interpolation pass", async () => {
+      const { scene } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
+      const entity = spawnEntityInScene(scene, "test");
+      const transform = entity.add(
+        new Transform({ position: new Vec2(100, 100) }),
+      );
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      rb.setPosition(500, 300);
+
+      expect(transform.worldPosition.x).toBe(100);
     });
 
     it("moves the kinematic step target with the teleport", async () => {
@@ -715,6 +983,50 @@ describe("RigidBodyComponent", () => {
       entity.setActive(true);
       expect(body.isEnabled()).toBe(true);
       expect(body.wakeUpSpy.mock.calls).toHaveLength(2);
+    });
+
+    it("teleports a dynamic body to a Transform pose written while dormant", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext({
+        pixelsPerMeter: 50,
+      });
+      const entity = spawnEntityInScene(scene, "test");
+      const transform = entity.add(
+        new Transform({ position: new Vec2(100, 200) }),
+      );
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      // Physics drew the body somewhere else before the entity went dormant.
+      body._translation = { x: 3, y: 5 };
+      transform.setPosition(150, 250);
+
+      entity.setActive(false);
+      transform.setPosition(50, 50);
+      entity.setActive(true);
+
+      expect(body._translation).toEqual({ x: 1, y: 1 });
+      expect(rb._prevPosition.x).toBe(50);
+      expect(rb._currPosition.y).toBe(50);
+    });
+
+    it("re-enables a dynamic body where it slept when the Transform was not written", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext({
+        pixelsPerMeter: 50,
+      });
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform({ position: new Vec2(100, 200) }));
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const body = physicsWorld.getBody(
+        rb._bodyHandle,
+      ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      body._translation = { x: 3, y: 5 };
+
+      entity.setActive(false);
+      entity.setActive(true);
+
+      expect(body._translation).toEqual({ x: 3, y: 5 });
+      expect(rb._currPosition.x).toBe(150);
     });
 
     it("keeps a setPosition made while dormant", async () => {

@@ -13,8 +13,8 @@ to think about meters. All positions, velocities, and forces are in pixels.
 import { PhysicsPlugin } from "@yagejs/physics";
 
 engine.use(new PhysicsPlugin({
-  gravity: { x: 0, y: 980 },   // pixels/s², default: (0, 980)
-  pixelsPerMeter: 50,           // conversion factor, default: 50
+  gravity: { x: 0, y: 980 },   // pixels/s², default: (0, 980); both finite
+  pixelsPerMeter: 50,           // conversion factor, default: 50; finite and > 0
 }));
 ```
 
@@ -28,9 +28,9 @@ import { RigidBodyComponent } from "@yagejs/physics";
 entity.add(new RigidBodyComponent({
   type: "dynamic",          // "dynamic" | "static" | "kinematic"
   fixedRotation: true,      // prevent rotation
-  gravityScale: 0,          // ignore gravity (0 = zero-g, 1 = normal)
-  linearDamping: 5,         // velocity drag
-  angularDamping: 1,        // rotation drag
+  gravityScale: 0,          // ignore gravity (0 = zero-g, 1 = normal); finite
+  linearDamping: 5,         // velocity drag; finite and >= 0
+  angularDamping: 1,        // rotation drag; finite and >= 0
   ccd: true,                // continuous collision detection for fast objects
   lockTranslationX: false,  // lock horizontal movement
   syncRotation: true,       // sync physics rotation back to Transform
@@ -51,6 +51,19 @@ entity.add(new RigidBodyComponent({
   constant. `rb.setPosition` is the teleport for any body type: use it to
   move a platform across the map with no in-between frames.
 
+`rb.setType(type)` switches the type at runtime: a dead enemy becomes
+`"static"` so nothing pushes it and it pushes nothing, a carried crate becomes
+`"kinematic"` while held, a door becomes `"dynamic"` when it is knocked off its
+hinges. Linear and angular velocity are cleared by the switch; locks, gravity
+scale, damping, colliders and mass are kept, and the drawn pose is the pose at
+the switch. `rb.type` reads the current one.
+
+```typescript
+onDeath() {
+  this.rb.setType("static"); // a corpse nothing can shove around
+}
+```
+
 ## Colliders
 
 `ColliderComponent` defines the collision shape. Add it after `RigidBodyComponent`.
@@ -65,10 +78,10 @@ import { ColliderComponent } from "@yagejs/physics";
 // Box
 entity.add(new ColliderComponent({
   shape: { type: "box", width: 64, height: 32 },
-  restitution: 0.5,   // bounciness (0–1)
-  friction: 0.3,
-  density: 1,          // affects mass for dynamic bodies
-  // contactSkin: 1,   // rest about 1px off contact surfaces
+  restitution: 0.5,   // bounciness; finite and >= 0
+  friction: 0.3,      // finite and >= 0
+  density: 1,          // affects mass for dynamic bodies; finite and >= 0
+  // contactSkin: 1,   // rest about 1px off contact surfaces; finite and >= 0
 }));
 
 // Circle
@@ -76,13 +89,17 @@ entity.add(new ColliderComponent({
   shape: { type: "circle", radius: 16 },
 }));
 
-// Capsule (vertical by default — pass axis: "x" for horizontal)
+// Capsule (vertical by default — pass axis: "x" for horizontal).
+// halfHeight is half the straight section; each cap adds radius, so this
+// collider stands 2 * (20 + 10) = 60px tall. halfHeight: 0 is a circle.
+// Boxes and circles take outer dimensions.
 entity.add(new ColliderComponent({
   shape: { type: "capsule", halfHeight: 20, radius: 10, axis: "y" },
 }));
 
-// Convex polygon. Rapier silently widens concave input to its convex
-// hull; a dev warning is logged. Use polyline for non-convex outlines.
+// Convex polygon: at least 3 vertices, not all on one line. Rapier silently
+// widens concave input to its convex hull; a dev warning is logged. Use
+// polyline for non-convex outlines.
 entity.add(new ColliderComponent({
   shape: {
     type: "polygon",
@@ -131,7 +148,10 @@ entity.add(new ColliderComponent({
 The outer footprint stays 64×32 and a resting body keeps its height, because
 the corners are rounded inward. The radius must be smaller than half the
 shorter side; anything else throws when the collider is built. Shape casts and
-overlap queries use the rounded geometry too.
+overlap queries use the rounded geometry too. The body's mass is the rounded
+footprint's area at the configured `density`, so rounding takes off only the
+four corner pieces. Angular inertia is the inner rectangle's, scaled by the
+same area ratio, which is an approximation.
 
 Rounding does shrink the flat part of each face, to `width - 2 * borderRadius`.
 A body held up only by the last few pixels of a ledge slides off instead of
@@ -159,7 +179,9 @@ Rapier picks a contact normal that opposes the walk direction. Prefer
 Removing a `ColliderComponent` on its own (`entity.remove(ColliderComponent)`)
 frees its Rapier collider while the sibling `RigidBodyComponent` and body stay
 alive. Destroying the whole entity, or removing just the `RigidBodyComponent`,
-also removes every collider attached to that body.
+also removes every collider attached to that body. The `ColliderComponent`s
+left behind no longer hold a collider handle, so their remaining calls do
+nothing rather than reaching whatever collider Rapier creates next.
 
 ## Collision Layers
 
@@ -202,6 +224,12 @@ A `sensor: true` collider fires only `onTrigger`; a solid collider fires only
 `onCollision`. Register the wrong handler and nothing fires — dev builds log a
 warning when you add it.
 
+Events are collected after every physics step and delivered after that step.
+A scene running above `timeScale` 1 steps more than once per tick and receives
+every transition, in order, each with its own step's contact data. Handlers
+see Transforms synced to the step that produced the contact, and a handler's
+`setVelocity` or `destroy` takes effect before the next step of the same tick.
+
 ```typescript
 const collider = new ColliderComponent({
   shape: { type: "circle", radius: 10 },
@@ -221,6 +249,22 @@ collider.onTrigger((event) => {
   // event.otherCollider — the other entity's ColliderComponent
 });
 ```
+
+A collider can change kind while it is live. `setSensor(true)` turns a solid
+collider into a sensor, `setSensor(false)` turns it back:
+
+```typescript
+enemy.get(ColliderComponent).setSensor(true); // dead: stop blocking bullets
+```
+
+The collider is recreated with the new flag. Every pair it is in ends with a
+`stop` (or `exit`) at the next step and re-forms as the new kind, so a solid
+box flipped to a sensor falls through what it was resting on, and a sensor
+flipped to solid while overlapping something is pushed out to rest. The body's
+mass, the contact filter, and every registered handler are unchanged. A call
+that does not change the flag does nothing. Dev builds warn when the flip
+leaves handlers of the silenced kind registered: `onCollision` on a sensor,
+`onTrigger` on a solid.
 
 For non-sensor colliders, use `onCollision` instead:
 
@@ -307,7 +351,9 @@ const components = collider.getOverlappingComponents(HealthComponent);
 This reports an overlap only when this collider or the overlapping one is a
 `sensor: true`. Two solid colliders never report each other here, however
 deeply they penetrate — for solid-vs-solid contact such as contact damage, use
-`onCollision`.
+`onCollision`. It is the one query that is about sensors: the world queries
+below (`raycast`, `castShape`, `queryShape`, `queryRadius`) skip sensors
+unless you ask for them.
 
 ## Velocity and Forces
 
@@ -348,6 +394,31 @@ rb.applyTorque(50);
 For predictable movement, prefer `setVelocity`.
 :::
 
+:::caution[Torque is in Rapier's native units]
+`applyTorque` and `setAngularVelocity` are not converted from pixels, and
+angular inertia scales with `pixelsPerMeter`⁻⁴, so the same torque spins a body
+16× faster at 100 px/m than at 50. Retune after changing the scale, as with
+spring stiffness.
+:::
+
+### Velocity while the scene is slowed
+
+Physics runs at the scene's effective time scale. An entity excluded from a
+slow-motion effect still has its velocity integrated at the slowed rate, so a
+component running at full speed writes a velocity the world then applies too
+slowly. Scale velocity writes by the ratio of the two rates:
+
+```typescript
+const time = this.use(SceneTimeKey);
+
+const world = time.effectiveScale;
+const factor = world > 0 ? time.effectiveScaleForUpdates(entity) / world : 1;
+rb.setVelocity(dir.scale(speed * factor));
+```
+
+The factor is `1` while the scene is frozen — nothing integrates then, so
+nothing needs compensating.
+
 ## Teleporting
 
 Use `setPosition` to teleport a body of any type without interpolation
@@ -362,6 +433,10 @@ On a kinematic body, `rb.setPosition` and `transform.setPosition` do
 different things: the first is an instant jump, the second a smooth move the
 body completes over one physics step. Pick by whether the player should see
 the travel.
+
+On a static body, `rb.setPosition` and `rb.setRotation` move the `Transform`
+with the body, so the sprite follows the teleport. Nothing else writes a static
+body's `Transform`.
 
 ## Reading Positions
 
@@ -403,9 +478,31 @@ This is also why kinematic movement belongs in `fixedUpdate`. There, the
 or compute them from `rb.position`, and expect the body to apply the write
 one frame later.
 
+### Which channel moves which body
+
+A dynamic body's `Transform` is written by physics every frame. A write to it
+while the entity is active is overwritten before the next step and never
+reaches the body — move a dynamic body with `setVelocity`, `applyImpulse`, or
+`rb.setPosition`.
+
+A write made while the entity is **inactive** is a different thing: that is the
+game repositioning a pooled member, and the body teleports there when the
+entity is enabled again. It works the same for dynamic and kinematic bodies:
+
+```typescript
+bullet.setActive(false);
+// ...later, before putting it back in play
+bullet.get(Transform).setPosition(x, y);
+bullet.setActive(true);   // the body is at (x, y), not where it slept
+```
+
+A static body never reads its `Transform` at all; `rb.setPosition` moves both.
+
 ## Raycasting
 
-Cast a ray to find the first entity hit:
+Cast a ray to find the first entity hit. Sensor colliders are skipped, so a ray
+reports surfaces rather than trigger zones — pass `sensors: "include"` to see
+both, or `"only"` for the trigger zones alone:
 
 ```typescript
 const world = this.use(PhysicsWorldKey);
@@ -425,7 +522,9 @@ if (hit) {
 }
 ```
 
-A common use case is ground detection for platformers:
+A common use case is ground detection for platformers. A coin's trigger zone
+underfoot is not ground, and the default sensor mode keeps it out of the
+answer:
 
 ```typescript
 const grounded = world.raycast(
@@ -434,6 +533,12 @@ const grounded = world.raycast(
   playerHeight / 2 + 2,
 ) !== null;
 ```
+
+Every world query reports live colliders at their current pose, including ones
+created, re-shaped, enabled, disabled, or teleported since the last physics step — a
+wall spawned this frame blocks a ray cast in the same frame. Refreshing the
+query index costs one zero-duration physics step, which moves nothing and
+advances no simulated time, on a frame that both changed colliders and queried.
 
 ## Sweeping a Shape
 
@@ -459,7 +564,9 @@ if (hit) {
 ```
 
 The result has the same shape as a raycast hit. A shape that already overlaps
-something where it starts reports that hit at `distance: 0`.
+something where it starts reports that hit at `distance: 0`. Sensors are
+skipped here too; `sensors: "include"` and `"only"` work as on `raycast`. A
+shape with a dimension that is not finite and above 0 throws.
 
 Use this to test a move before committing to it. A fast-falling player can land
 on the floor it would otherwise pass through in one frame:
@@ -537,6 +644,17 @@ rb.setEnabledTranslations(true, false);  // lock Y axis
 rb.lockRotations(true);                   // lock rotation
 ```
 
+A locked axis ignores forces, impulses, and contacts; a velocity written with
+`setVelocity` still moves the body along it. Both calls, like `setGravityScale`
+and `setType`, work before `entity.add()` — the value is applied when the
+Rapier body is created:
+
+```typescript
+const rb = new RigidBodyComponent({ type: "dynamic" });
+rb.lockRotations(true);
+entity.add(rb);   // the body is created with rotation locked
+```
+
 ## Resizing a Collider
 
 `setShape` replaces a collider's shape in place. The Rapier collider, its
@@ -547,6 +665,10 @@ all survive the swap:
 collider.setShape({ type: "box", width: 24, height: 24 });  // crouch
 collider.setShape({ type: "box", width: 24, height: 48 });  // stand
 ```
+
+A shape with a dimension that is not finite and above 0 throws before anything
+is stored, so a bad computed height (`standing - shrink` gone negative) leaves
+the live collider and the component's config untouched.
 
 The body keeps the mass it already had. A collider describes where a body
 collides, not how much matter is in it, so a character who crouches takes the
@@ -591,6 +713,10 @@ Testing the standing box at the crouched position instead would report the
 floor as a blocker every time the character is grounded, and they could never
 stand up.
 
+`queryShape` sees colliders that appeared or changed since the last physics
+step, so a ceiling spawned this frame already blocks the stand-up. It skips
+sensor colliders, so a pickup's trigger zone overhead does not.
+
 ## One-Way Platforms
 
 A `oneWay` collider is solid from one side and passable from every other: the
@@ -610,8 +736,10 @@ snapped to the surface, so turning on the behavior mid-overlap never launches
 anything.
 
 The direction is in the platform body's local frame, so a rotated platform
-carries its solid face with it. `margin` is how deep (in pixels) a body may
-already overlap the face and still count as landing:
+carries its solid face with it. Any non-zero vector with finite components
+works; a zero vector throws when the collider is constructed. `margin` is how
+deep (in pixels) a body may already overlap the face and still count as
+landing; it must be finite:
 
 ```typescript
 oneWay: {
@@ -669,10 +797,13 @@ A few rules to keep filters healthy:
 - The filter runs for every candidate pair involving the collider, every
   step. Keep it cheap, and never create or destroy entities, bodies, or
   colliders from inside it.
+- While any collider in the world has a filter (a `oneWay` platform counts),
+  every step reads every collider's pose and velocity before stepping. That
+  costs about 0.8 ms per step with 2000 colliders in the world.
 - The `contact` object is reused across calls. Read what you need and return;
   don't store it.
-- When both colliders in a pair have filters, the pair is solid only if both
-  return `true`.
+- When both colliders in a pair have filters, both run for every candidate
+  pair, and the pair is solid only if both return `true`.
 - A filter that throws is reported through the error boundary
   (`Inspector.getErrors().callbackErrors`) and the pair stays solid — the
   conservative default. The report fires once per installed filter, so a
@@ -742,10 +873,13 @@ world.addJoint(playerBody, companionBody, {
 `addJoint` returns a handle with an `attached` flag and a `remove()` method
 that is safe to call more than once. The handle detaches when either jointed
 entity is destroyed or disabled (for example, released to a pool); re-enabling
-the entity does not restore the joint. Lengths and anchors are always in
-pixels. `stiffness` and `damping` are mass-relative and passed to the solver
-unconverted — collider mass depends on `pixelsPerMeter`, so retune them after
-changing the scale.
+the entity does not restore the joint, and `addJoint` throws when either
+entity is inactive. For a pooled entity, add the joint in `onAcquire`, where
+the entity is already active. Lengths and anchors are always in pixels. Every
+number must be finite, and `length`, `restLength`, `stiffness` and `damping`
+at least 0. `stiffness` and `damping` are mass-relative and passed to the
+solver unconverted — collider mass depends on `pixelsPerMeter`, so retune
+them after changing the scale.
 
 Joints are runtime objects. If a connection is durable game state, save the
 stable ids and joint configuration in the game's state root, then recreate the

@@ -68,7 +68,7 @@ bullet.get(Transform).setPosition(x, y);
 bullet.setActive(true); // back in play, nothing reallocated
 ```
 
-- Move a `RigidBodyComponent` entity with `rb.setPosition(x, y)`, not a direct `Transform` write: physics owns the transform of a dynamic body and overwrites the write on the next frame.
+- Move a `RigidBodyComponent` entity with `rb.setPosition(x, y)`, not a direct `Transform` write: while the entity is active, physics owns the transform of a dynamic body and overwrites the write on the next frame. A `Transform` write made while the entity is inactive is kept and teleports the body there on reactivation, which is what the snippet above does.
 
 - `activeSelf` is the entity's own bit; `isActive` is that bit AND every ancestor's. Deactivating a parent puts the whole subtree to sleep, and each descendant keeps its own `activeSelf` for when the parent wakes.
 - A dormant entity drops out of every `QueryCache` query, and out of `scene.findEntity`, `scene.findEntitiesByTag`, `scene.findEntities`, and `filterEntities`. `scene.getEntities()` still returns it for lifecycle tooling and teardown. `scene.findByKey` also still returns it — key lookup is identity, not a search.

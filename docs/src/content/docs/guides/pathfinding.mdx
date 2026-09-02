@@ -128,6 +128,10 @@ for (let row = 0; row < rows; row++) {
 }
 ```
 
+The loop can run right after the level's colliders are spawned — the query
+sees them without waiting for a physics step. Trigger zones (`sensor: true`)
+do not block; pass `sensors: "include"` to `queryShape` if they should.
+
 For a 40×30 grid that's 1200 shape queries — run the loop once at level
 build, not per frame. The result is a snapshot: colliders that move or
 spawn later don't update `blocked` on their own. After a layout change you

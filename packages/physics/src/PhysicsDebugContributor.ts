@@ -4,7 +4,7 @@ import type {
   WorldDebugApi,
 } from "@yagejs/debug/api";
 import type { PhysicsWorldManager } from "./PhysicsWorldManager.js";
-import { colliderRotation } from "./toRapierColliders.js";
+import { colliderRotation } from "./colliderGeometry.js";
 import type { ColliderConfig } from "./types.js";
 
 /** Rapier ShapeType enum values (mirrored to avoid pulling the wasm runtime). */

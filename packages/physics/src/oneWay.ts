@@ -1,5 +1,5 @@
 import type { ColliderComponent } from "./ColliderComponent.js";
-import { colliderRotation } from "./toRapierColliders.js";
+import { colliderRotation } from "./colliderGeometry.js";
 import type {
   ColliderShape,
   ContactCandidate,
@@ -83,7 +83,6 @@ export function createOneWayFilter(self: ColliderComponent): ContactFilter {
     const dirX = oneWay.direction?.x ?? DEFAULT_DIRECTION_X;
     const dirY = oneWay.direction?.y ?? DEFAULT_DIRECTION_Y;
     const len = Math.hypot(dirX, dirY);
-    if (len === 0) return true;
 
     // The solid-face normal, taken from the body's local frame to world.
     const relRotation = colliderRotation(config);
