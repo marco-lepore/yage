@@ -7,16 +7,18 @@ Depends on `@yagejs/core`, `@yagejs/renderer`. Debug overlay and performance too
 ```ts
 import { DebugPlugin } from "@yagejs/debug";
 
-engine.use(new DebugPlugin({
-  startEnabled: true,       // show on launch (default false)
-  toggleKey: "Backquote",   // key to toggle (default backtick)
-  stepKey: "Period",        // advance one frozen frame
-  maxGraphics: 256,         // graphics pool size
-  maxHudLines: 32,
-  flags: { "walls.show-walls": true },  // format: "contributorName.flagName"
-  deterministicSeed: 0x00c0ffee,        // optional: pin every scene RNG to this seed
-  eventLog: true,                       // record bus + entity events (default true)
-}));
+engine.use(
+  new DebugPlugin({
+    startEnabled: true, // show on launch (default false)
+    toggleKey: "Backquote", // key to toggle (default backtick)
+    stepKey: "Period", // advance one frozen frame
+    maxGraphics: 256, // graphics pool size
+    maxHudLines: 32,
+    flags: { "walls.show-walls": true }, // format: "contributorName.flagName"
+    deterministicSeed: 0x00c0ffee, // optional: pin every scene RNG to this seed
+    eventLog: true, // record bus + entity events (default true)
+  }),
+);
 ```
 
 `deterministicSeed` is opt-in. Leave it unset for normal debug builds; set it from test fixtures so each `Inspector.setSeed(...)` call has a known starting state.
@@ -26,7 +28,7 @@ engine.use(new DebugPlugin({
 An engine built with `debug: true` publishes `window.__yage__` as `start()` begins, carrying `inspector`, `logger` and `ready`. `DebugPlugin` adds `clock` from its `onStart` hook.
 
 ```ts
-await window.__yage__.ready;   // start() finished: plugins installed, loop running, onStart done
+await window.__yage__.ready; // start() finished: plugins installed, loop running, onStart done
 ```
 
 `ready` is what an out-of-page driver waits on after a page load or reload. The global appears before startup work, so its presence alone does not mean the engine got anywhere; a boot failure rejects `ready` with the error that stopped it, instead of leaving a poller to time out.
@@ -44,9 +46,9 @@ Inspector frame stepping is synchronous by default:
 
 ```ts
 window.__yage__.inspector.time.freeze();
-window.__yage__.inspector.time.step();           // advance 1 frame at the configured dt
-window.__yage__.inspector.time.step(30);         // advance 30 frames at the configured dt
-window.__yage__.inspector.time.setDelta(30);     // change configured dt to 30ms
+window.__yage__.inspector.time.step(); // advance 1 frame at the configured dt
+window.__yage__.inspector.time.step(30); // advance 30 frames at the configured dt
+window.__yage__.inspector.time.setDelta(30); // change configured dt to 30ms
 window.__yage__.inspector.time.thaw();
 ```
 
@@ -62,12 +64,12 @@ The lower-level `window.__yage__.clock` exposes a custom-dt API: `clock.step(dtM
 // Advance until a condition holds, or throw after too many frames:
 const frames = await inspector.time.stepUntil(
   () => inspector.getSceneStack().some((s) => s.name === "level2"),
-  { maxFrames: 300 },   // default 600 (10s at 60fps); throws if never satisfied
+  { maxFrames: 300 }, // default 600 (10s at 60fps); throws if never satisfied
 );
 
 // Advance a known number of frames, still draining async work between them:
 await inspector.time.stepAsync(45);
-await inspector.time.stepAsync(10, { dtMs: 32 });   // custom per-frame dt
+await inspector.time.stepAsync(10, { dtMs: 32 }); // custom per-frame dt
 ```
 
 `stepUntil` checks the predicate before stepping, resolving `0` immediately if it is already true, then again after each frame. It resolves with the number of frames it took. The clock must be frozen first, same as `time.step` — `inspector.drive()` below does that for you. Prefer `stepUntil`/`stepAsync` over `time.step(N)` whenever the sequence crosses a scene transition, an async dialogue or cutscene runner, or anything else that resolves off the synchronous call stack.
@@ -77,18 +79,19 @@ await inspector.time.stepAsync(10, { dtMs: 32 });   // custom per-frame dt
 `window.__yage__.inspector` exposes deterministic test controls in addition to the snapshot/query API:
 
 ```ts
-inspector.setSeed(seed);                       // reseed every scene RNG
-inspector.input.hold("ArrowRight", 30);        // press, step N frames, release (sync)
-inspector.input.tap("Space", 1);                // sync; steps through time.step()
-inspector.input.fireAction("jump", 1);          // sync; one-frame pulse per frame
-inspector.events.getLog();                     // EventLogEntry[] (bus + entity events)
-inspector.events.setCapacity(1_000);           // ring buffer size (default 500)
-inspector.events.setEnabled(false);            // stop recording (zero per-event allocation)
-inspector.events.isEnabled();                  // current on/off state
+inspector.setSeed(seed); // reseed every scene RNG
+inspector.input.hold("ArrowRight", 30); // press, step N frames, release (sync)
+inspector.input.tap("Space", 1); // sync; steps through time.step()
+inspector.input.fireAction("jump", 1); // sync; one-frame pulse per frame
+inspector.events.getLog(); // EventLogEntry[] (bus + entity events)
+inspector.events.setCapacity(1_000); // ring buffer size (default 500)
+inspector.events.setEnabled(false); // stop recording (zero per-event allocation)
+inspector.events.isEnabled(); // current on/off state
 await inspector.events.waitFor("scene:pushed", { withinFrames: 30 });
-inspector.snapshotJSON();                      // stable, sorted JSON for diffing
-inspector.snapshotScene("level2");             // one scene's snapshot, by name or by id
-inspector.time.isAdvancing();                  // true if a real frame ticked within the last 250ms
+inspector.snapshotJSON(); // stable, sorted JSON for diffing
+inspector.snapshotScene("level2"); // one scene's snapshot, by name or by id
+inspector.getEntityCount(); // live entities across the scene stack, no snapshot built
+inspector.time.isAdvancing(); // true if a real frame ticked within the last 250ms
 ```
 
 A logged `payload` is plain data. Class instances in a payload are stored as a compact ref instead of a deep copy — `Entity` as `{ id, name }`, `Component` as `{ component: "Health" }`, `Scene` as `{ name }`, `Vec2` as `{ x, y }`, anything else as `{ _type: "ClassName" }`.
@@ -96,7 +99,10 @@ A logged `payload` is plain data. Class instances in a payload are stored as a c
 A `component:added` payload:
 
 ```json
-{ "entity": { "id": 4, "name": "player" }, "component": { "component": "Health" } }
+{
+  "entity": { "id": 4, "name": "player" },
+  "component": { "component": "Health" }
+}
 ```
 
 Engine events carry live objects — `component:added` passes the `Component` itself — so the ref is what keeps a log entry from copying the whole object graph reachable from it. Read a component's fields from the entity snapshot, not from the log. Subscribers (`engine.events.on`, `entity.on`) receive the live object either way; only the log's copy is a ref.
@@ -113,9 +119,9 @@ Engine events carry live objects — `component:added` passes the `Component` it
 frame that was stepped to. It requires `RendererPlugin` and throws without it.
 
 ```ts
-await inspector.capture.dataURL();     // "data:image/png;base64,..."
-await inspector.capture.pngBase64();   // the base64 payload alone
-await inspector.capture.png();         // Uint8Array of PNG bytes
+await inspector.capture.dataURL(); // "data:image/png;base64,..."
+await inspector.capture.pngBase64(); // the base64 payload alone
+await inspector.capture.png(); // Uint8Array of PNG bytes
 ```
 
 `dataURL()` is the one to return from a `page.evaluate` — bytes do not survive
@@ -186,15 +192,33 @@ traps of driving a live page, is in `llms/play-sessions.md`.
 
 ### Component state reflection
 
-`snapshot()` and `getComponentData()` read a component's `serialize()` result if it defines one. A component with no `serialize()` still reports state. Both a snapshot's `components[].state` and `getComponentData()` fall back to the component's own enumerable fields plus its public getters (`get isReady()`, `get health()`, and similar), read straight off the instance. Fields and getters starting with `_` are excluded. Functions and non-plain-object values are excluded too — Pixi/Rapier handles and other class instances would either fail to serialize or leak meaningless object identities. A getter that throws is skipped rather than failing the whole snapshot. Define `serialize()` when a component needs a specific shape, such as renamed keys or a derived value that shouldn't be recomputed on every read. Otherwise the reflected state is enough to inspect a component with no configuration.
+`snapshot()` and `getComponentData()` reflect a component's own enumerable
+fields plus its public getters (`get isReady()`, `get health()`, and similar).
+Fields and getters starting with `_` are excluded. Functions and non-plain-object
+values are excluded too, because Pixi/Rapier handles and other class instances
+would leak meaningless object identities; `Vec2` is the exception and reads as
+`{ x, y }`. A field declared with `this.sibling()` or `this.service()` is
+skipped as well. Engine objects nested inside a field become compact refs, the
+same ones the event log stores: an entity reads as `{ id, name }`, a component
+as `{ component }`, a scene as `{ name }`, and any other class instance as
+`{ _type }`. A getter that throws is skipped rather than failing the whole
+diagnostic snapshot. Inspector snapshots are not save data.
+
+A component keeps bulk data out of its reflected state with a static list;
+lists merge down the class chain:
+
+```ts
+class TilemapComponent extends VisualComponent {
+  static inspectExclude = ["data"]; // one id per tile per layer
+}
+```
 
 ### Render facet — rendered geometry / visibility
 
-`snapshot()` / `snapshotScene()` report each graphical component's *rendered*
-state alongside its `serialize()` output, under `facets.render`
+`snapshot()` / `snapshotScene()` report each graphical component's _rendered_
+state alongside its reflected fields, under `facets.render`
 (`RenderFacetSnapshot` from `@yagejs/renderer`). This is computed on demand from
-the live display object — never from `serialize()` — so it reflects what is
-actually painted, not the declared/persisted state. The facet only appears when
+the live display object, so it reflects what is actually painted. The facet only appears when
 `RendererPlugin` is active (it registers the contributor that produces the facet).
 
 ```ts
@@ -202,7 +226,7 @@ const scene = inspector.snapshot().scenes[0];
 const e = scene.entities.find((ent) => ent.id === "3");
 
 // Entity-level facet (first painted component the entity added):
-e.facets?.render;            // { bounds: { x, y, width, height } | null, visible }
+e.facets?.render; // { bounds: { x, y, width, height } | null, visible }
 
 // Per-component facet (read this for entities with several graphical components):
 e.components.find((c) => c.type === "SpriteComponent")?.facets?.render;
@@ -216,28 +240,27 @@ geometry to measure (an empty `Graphics`, a zero-area object) — never merely
 because the object is hidden. Read `visible` for the hidden/shown state.
 
 `SplitTextComponent` adds per-glyph reporting, so a typewriter reveal is
-observable without touching Pixi internals — where `serialize()` reports the
-full declared string, the facet reports only what is on screen:
+observable without touching Pixi internals. The component state reports the
+declared string, while the facet reports what is on screen:
 
 ```ts
-const split = e.components.find((c) => c.type === "SplitTextComponent")
-  ?.facets?.render;
-split?.glyphs;        // [{ visible }, ...] in reading order
-split?.visibleText;   // painted glyphs joined, e.g. "Hel"
+const split = e.components.find((c) => c.type === "SplitTextComponent")?.facets
+  ?.render;
+split?.glyphs; // [{ visible }, ...] in reading order
+split?.visibleText; // painted glyphs joined, e.g. "Hel"
 ```
 
 `glyphs` / `visibleText` cover only rendered glyph segments — `SplitText.chars`
 excludes whitespace, so a fully-revealed `"Hello world"` reports `"Helloworld"`.
-Compare *which glyphs* are visible, not the verbatim string. `visible` is the
+Compare _which glyphs_ are visible, not the verbatim string. `visible` is the
 component's own (local) flag; Pixi v8 has no world-resolved getter, so a hidden
 ancestor's state is not reflected.
 
 **How it connects (no core↔renderer coupling).** `@yagejs/core`'s Inspector is
 renderer-agnostic: it exposes a generic extension point — `registerFacetContributor()`
 attaches namespaced `facets` to component/entity snapshots — with no
-rendering-specific code. `RendererPlugin` registers a `RenderFacetContributor` (the same
-contributor pattern as `DebugContributor` / save's `SnapshotContributor`) that
-owns the `render` namespace: it duck-types `inspectRender()` off each graphical
+rendering-specific code. `RendererPlugin` registers a `RenderFacetContributor`
+that owns the `render` namespace: it duck-types `inspectRender()` off each graphical
 component and picks the first painted one for the entity-level facet. `bounds` /
 `visible` are the shared fields; a component reports richer, mode-specific state
 by widening `RenderFacetSnapshot<Extra>` (as `SplitTextComponent` does with
@@ -253,13 +276,13 @@ type parameter so the returned methods are typed:
 import type { DebugDiagnostics } from "@yagejs/debug";
 
 const debug = window.__yage__.inspector.getExtension<DebugDiagnostics>("debug");
-debug?.getCameraStack();                       // every CameraComponent across the scene stack
+debug?.getCameraStack(); // every CameraComponent across the scene stack
 debug?.getLayerTransform("game", "world");
 debug?.isHudVisible();
 debug?.setHudVisible(false); // hide HUD text readouts (FPS, timings); world-space
-                             // debug graphics stay visible. Re-renders synchronously,
-                             // so it works under a frozen clock — use before canvas
-                             // captures to keep wall-clock text out of screenshots.
+// debug graphics stay visible. Re-renders synchronously,
+// so it works under a frozen clock — use before canvas
+// captures to keep wall-clock text out of screenshots.
 ```
 
 Plugins can publish their own inspector helpers the same way:
@@ -364,13 +387,11 @@ class AgentVisual extends Component {
 
   onAdd(): void {
     // tryResolve, not use(): use() throws when DebugPlugin isn't installed.
-    this.stopArrow = this.context
-      .tryResolve(DebugRegistryKey)
-      ?.drawVector(
-        this.entity,
-        () => this.agent.velocity,      // return null to skip a frame
-        { scale: 0.35, color: 0x4ade80, minLength: 1 },
-      );
+    this.stopArrow = this.context.tryResolve(DebugRegistryKey)?.drawVector(
+      this.entity,
+      () => this.agent.velocity, // return null to skip a frame
+      { scale: 0.35, color: 0x4ade80, minLength: 1 },
+    );
   }
 
   onDestroy(): void {
@@ -387,15 +408,15 @@ drawVector(
 ): () => void;                       // disposer, idempotent
 ```
 
-| Option | Default | Description |
-|---|---|---|
-| `scale` | `1` | Pixels of arrow per unit of the vector |
-| `color` | `0xffffff` | Arrow color |
-| `alpha` | `0.9` | Arrow opacity |
-| `origin` | `{ x: 0, y: 0 }` | World-space offset from the entity's position (not rotated by the entity) |
-| `minLength` | `0` | Draw nothing below this length |
-| `width` | `2` | Shaft thickness, in screen pixels |
-| `headSize` | `8` | Arrowhead length, in screen pixels |
+| Option      | Default          | Description                                                               |
+| ----------- | ---------------- | ------------------------------------------------------------------------- |
+| `scale`     | `1`              | Pixels of arrow per unit of the vector                                    |
+| `color`     | `0xffffff`       | Arrow color                                                               |
+| `alpha`     | `0.9`            | Arrow opacity                                                             |
+| `origin`    | `{ x: 0, y: 0 }` | World-space offset from the entity's position (not rotated by the entity) |
+| `minLength` | `0`              | Draw nothing below this length                                            |
+| `width`     | `2`              | Shaft thickness, in screen pixels                                         |
+| `headSize`  | `8`              | Arrowhead length, in screen pixels                                        |
 
 - `minLength` is measured before `scale`, in the vector's own units. A
   zero-length vector never draws — it has no direction.
@@ -430,17 +451,19 @@ interface DebugContributor {
 }
 
 // WorldDebugApi
-api.acquireGraphics();          // pooled Graphics | undefined
-api.cameraZoom;                 // scale line widths by 1/zoom
+api.acquireGraphics(); // pooled Graphics | undefined
+api.cameraZoom; // scale line widths by 1/zoom
 api.isFlagEnabled("flag");
 
 // HudDebugApi
-api.addLine("text");            // add HUD line
+api.addLine("text"); // add HUD line
 api.isFlagEnabled("flag");
-api.screenWidth; api.screenHeight;
+api.screenWidth;
+api.screenHeight;
 ```
 
 Register:
+
 ```ts
 const registry = this.service(DebugRegistryKey);
 registry.register(new MyContributor());
@@ -449,9 +472,9 @@ registry.register(new MyContributor());
 ## DebugRegistry
 
 ```ts
-registry.toggle();                               // show/hide
-registry.enabled;                                 // boolean
-registry.setFlag("contributor", "flag", true);    // toggle specific flags
+registry.toggle(); // show/hide
+registry.enabled; // boolean
+registry.setFlag("contributor", "flag", true); // toggle specific flags
 ```
 
 ## StatsStore
@@ -460,7 +483,7 @@ registry.setFlag("contributor", "flag", true);    // toggle specific flags
 import { StatsStore } from "@yagejs/debug";
 
 const stats = new StatsStore();
-stats.push("updateTime", value);     // add sample
-stats.average("updateTime");         // rolling average
-stats.latest("updateTime");          // most recent
+stats.push("updateTime", value); // add sample
+stats.average("updateTime"); // rolling average
+stats.latest("updateTime"); // most recent
 ```

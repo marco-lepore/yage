@@ -219,7 +219,6 @@ import Yoga from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
 import { UISurface } from "./UISurface.js";
 import { UIPanel } from "./UIPanel.js";
-import { SerializableRegistry, getSerializableType } from "@yagejs/core";
 import { Anchor } from "./types.js";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 import { createUITestContext, spawnEntityInScene } from "./test-helpers.js";
@@ -300,31 +299,6 @@ describe("UISurface", () => {
     it("container is the root panel's container", () => {
       const surface = new UISurface();
       expect(surface.container).toBe(surface.root.container);
-    });
-  });
-
-  describe("serialization", () => {
-    it('registers as "UISurface" and round-trips options through the registry', () => {
-      expect(getSerializableType(UISurface)).toBe("UISurface");
-      expect(SerializableRegistry.get("UISurface")).toBe(UISurface);
-
-      const opts = {
-        anchor: Anchor.Center,
-        offset: { x: 10, y: 20 },
-        gap: 4,
-        padding: { top: 2, left: 3 },
-      };
-      const surface = new UISurface(opts);
-      const snapshot = surface.serialize();
-      expect(snapshot).toEqual(opts);
-      expect(snapshot).not.toBe(opts);
-
-      const ctor = SerializableRegistry.get("UISurface") as typeof UISurface;
-      const restored = ctor.fromSnapshot(snapshot);
-      expect(restored).toBeInstanceOf(UISurface);
-      expect(restored.serialize()).toEqual(opts);
-      expect(restored._anchor).toBe(Anchor.Center);
-      expect(restored._offset).toEqual({ x: 10, y: 20 });
     });
   });
 

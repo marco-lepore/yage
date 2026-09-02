@@ -43,11 +43,23 @@ export class Hud extends Component {
       0xb8b8c0,
       { x: 0, y: 0 },
     );
-    this.status = this.spawnText(12, 34, this.statusText(), 14, 0xffe08a, { x: 0, y: 0 });
-    this.autoLabel = this.spawnText(WIDTH - 12, 12, this.autoText(), 13, 0x8888aa, { x: 1, y: 0 });
+    this.status = this.spawnText(12, 34, this.statusText(), 14, 0xffe08a, {
+      x: 0,
+      y: 0,
+    });
+    this.autoLabel = this.spawnText(
+      WIDTH - 12,
+      12,
+      this.autoText(),
+      13,
+      0x8888aa,
+      { x: 1, y: 0 },
+    );
 
     const meterEntity = this.scene.spawn("hud-meter");
-    meterEntity.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT - 28) }));
+    meterEntity.add(
+      new Transform({ position: new Vec2(WIDTH / 2, HEIGHT - 28) }),
+    );
     this.meter = meterEntity.add(new GraphicsComponent({ layer: HUD_LAYER }));
   }
 
@@ -68,8 +80,16 @@ export class Hud extends Component {
     // Bottom-centre meter: fast-forward glyph while J held; skip ring while X held.
     const ff = this.input.isPressed("attack");
     const skipHeld = this.input.isPressed("skip");
-    const skipT = MathUtils.clamp(this.input.getHoldDuration("skip") / SKIP_HOLD, 0, 1);
-    if (ff === this.meterFf && skipHeld === this.meterSkipHeld && skipT === this.meterSkipT) {
+    const skipT = MathUtils.clamp(
+      this.input.getHoldDuration("skip") / SKIP_HOLD,
+      0,
+      1,
+    );
+    if (
+      ff === this.meterFf &&
+      skipHeld === this.meterSkipHeld &&
+      skipT === this.meterSkipT
+    ) {
       return;
     }
     this.meterFf = ff;
@@ -83,7 +103,13 @@ export class Hud extends Component {
       }
       if (skipHeld) {
         g.circle(0, 0, 13).stroke({ color: 0x333355, width: 3 });
-        g.arc(0, 0, 13, -Math.PI / 2, -Math.PI / 2 + skipT * Math.PI * 2).stroke({
+        g.arc(
+          0,
+          0,
+          13,
+          -Math.PI / 2,
+          -Math.PI / 2 + skipT * Math.PI * 2,
+        ).stroke({
           color: skipT >= 1 ? 0x8ce06b : 0xffd866,
           width: 3,
         });
@@ -135,10 +161,6 @@ export class DialogueProbe extends Component {
   }
   onChoice(text: string): void {
     this.lastChoice = text;
-  }
-
-  serialize(): { lastLine: string; lineCount: number; lastChoice: string } {
-    return { lastLine: this.lastLine, lineCount: this.lineCount, lastChoice: this.lastChoice };
   }
 }
 
@@ -201,7 +223,10 @@ export class LifecycleControls extends Component {
       this.overlay.graphics.visible = this.lifecycle.paused;
       this.banner.text.visible = this.lifecycle.paused;
     }
-    if (this.input.isJustPressed("hide") && this.controllers.some((c) => c.isActive())) {
+    if (
+      this.input.isJustPressed("hide") &&
+      this.controllers.some((c) => c.isActive())
+    ) {
       this.lifecycle.hidden = !this.lifecycle.hidden;
       for (const c of this.controllers) c.setHidden(this.lifecycle.hidden);
     }

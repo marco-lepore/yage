@@ -158,7 +158,10 @@ vi.mock("pixi.js", () => {
     source = { scaleMode: "nearest" };
     width: number;
     height: number;
-    constructor(opts?: { source?: unknown; frame?: { width: number; height: number } }) {
+    constructor(opts?: {
+      source?: unknown;
+      frame?: { width: number; height: number };
+    }) {
       this.width = opts?.frame?.width ?? 96;
       this.height = opts?.frame?.height ?? 48;
     }
@@ -171,7 +174,12 @@ vi.mock("pixi.js", () => {
     }
   }
   class MockRectangle {
-    constructor(public x: number, public y: number, public width: number, public height: number) {}
+    constructor(
+      public x: number,
+      public y: number,
+      public width: number,
+      public height: number,
+    ) {}
   }
   class MockPoint {
     constructor(
@@ -196,7 +204,10 @@ import {
   Transform,
 } from "@yagejs/core";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
-import { createRendererTestContext, spawnEntityInScene } from "./test-helpers.js";
+import {
+  createRendererTestContext,
+  spawnEntityInScene,
+} from "./test-helpers.js";
 
 // frameWidth=48 against the mock's fixed 96px-wide texture → 2 frames.
 const SOURCE = { sheet: "hero.png", frameWidth: 48 };
@@ -236,8 +247,11 @@ describe("AnimatedSpriteComponent", () => {
     const comp = new AnimatedSpriteComponent({ source: SOURCE });
     expect(comp.animatedSprite).toBeDefined();
     expect(
-      (comp.animatedSprite as unknown as InstanceType<typeof mocks.MockAnimatedSprite>)
-        .textures,
+      (
+        comp.animatedSprite as unknown as InstanceType<
+          typeof mocks.MockAnimatedSprite
+        >
+      ).textures,
     ).toHaveLength(2);
     expect(comp.animatedSprite.autoUpdate).toBe(false);
   });
@@ -265,7 +279,10 @@ describe("AnimatedSpriteComponent", () => {
     const num = new AnimatedSpriteComponent({ source: SOURCE, tint: 0xff0000 });
     expect(num.animatedSprite.tint).toBe(0xff0000);
 
-    const str = new AnimatedSpriteComponent({ source: SOURCE, tint: "#00ff00" });
+    const str = new AnimatedSpriteComponent({
+      source: SOURCE,
+      tint: "#00ff00",
+    });
     expect(str.animatedSprite.tint).toBe("#00ff00");
   });
 
@@ -522,7 +539,8 @@ describe("AnimatedSpriteComponent", () => {
     entity.add(new Transform());
     const comp = entity.add(new AnimatedSpriteComponent({ source: SOURCE }));
 
-    const layerContainer = layerManager.defaultLayer.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const layerContainer = layerManager.defaultLayer
+      .container as unknown as InstanceType<typeof mocks.MockContainer>;
     expect(layerContainer.children).toContain(comp.animatedSprite);
   });
 
@@ -532,7 +550,9 @@ describe("AnimatedSpriteComponent", () => {
     entity.add(new Transform());
     const comp = entity.add(new AnimatedSpriteComponent({ source: SOURCE }));
 
-    const anim = comp.animatedSprite as unknown as InstanceType<typeof mocks.MockContainer>;
+    const anim = comp.animatedSprite as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
     expect(anim.parent).not.toBeNull();
 
     comp.onDestroy?.();
@@ -550,57 +570,13 @@ describe("AnimatedSpriteComponent", () => {
     });
   });
 
-  describe("serialization", () => {
+  describe("frame source", () => {
     it("construction with a single-row SheetFrameSource resolves one row of frames", () => {
       const comp = new AnimatedSpriteComponent({
         source: { sheet: "player.png", frameWidth: 48 },
       });
       // sliceSheet(player.png, 48) → mock texture width=96 / 48 = 2 frames
       expect(comp.animatedSprite.textures).toHaveLength(2);
-    });
-
-    it("serialize returns source, layer, and shared visual fields", () => {
-      const source = { sheet: "player.png", frameWidth: 48 };
-      const comp = new AnimatedSpriteComponent({ source, layer: "fg" });
-      const data = comp.serialize();
-      expect(data.source).toEqual(source);
-      expect(data.layer).toBe("fg");
-      expect(data.anchor).toEqual({ x: 0, y: 0 });
-    });
-
-    it("fromSnapshot round-trips", () => {
-      const source = { sheet: "player.png", frameWidth: 48 };
-      const original = new AnimatedSpriteComponent({ source, layer: "bg" });
-      const data = original.serialize();
-      const restored = AnimatedSpriteComponent.fromSnapshot(data);
-      expect(restored.layerName).toBe("bg");
-      expect(restored.serialize()).toEqual(data);
-    });
-
-    it("round-trips anchor and tint", () => {
-      const source = { sheet: "player.png", frameWidth: 48 };
-      const original = new AnimatedSpriteComponent({
-        source,
-        anchor: { x: 0.5, y: 1 },
-        tint: 0xff0000,
-      });
-      const data = original.serialize();
-      expect(data.anchor).toEqual({ x: 0.5, y: 1 });
-      expect(data.tint).toBe(0xff0000);
-
-      const restored = AnimatedSpriteComponent.fromSnapshot(data);
-      expect(restored.animatedSprite.anchor.x).toBe(0.5);
-      expect(restored.animatedSprite.anchor.y).toBe(1);
-      expect(restored.animatedSprite.tint).toBe(0xff0000);
-      expect(restored.serialize()).toEqual(data);
-    });
-
-    it("round-trips blendMode", () => {
-      const source = { sheet: "player.png", frameWidth: 48 };
-      const original = new AnimatedSpriteComponent({ source, blendMode: "add" });
-      const data = original.serialize();
-      expect(data.blendMode).toBe("add");
-      expect(AnimatedSpriteComponent.fromSnapshot(data).blendMode).toBe("add");
     });
   });
 

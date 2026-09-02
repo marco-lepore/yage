@@ -136,8 +136,8 @@ const INACTIVE_HANDLE: TimeEffectHandle = Object.freeze({
  * Request timers age on raw frame time, before any systems run, and only
  * while the scene is active — a stack-paused scene holds its effects (note:
  * that means pause-menu time does not consume a hitstop). Effects are
- * transient: they release on scene exit and are not saved; games re-issue
- * them after loading a snapshot.
+ * transient: they release on scene exit. Games re-issue them after rebuilding
+ * a scene from saved domain state.
  */
 export class SceneTime {
   private readonly scene: Scene;

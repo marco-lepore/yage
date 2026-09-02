@@ -385,36 +385,26 @@ immediately. Stopping the cue later does not stop the animation.
 Feel feedback does not become saved game state. Cue definitions, cooldown
 clocks, active playbacks, renderer and camera modifiers, temporary filters,
 time requests, particle-emission requests, live particles, and transient visual
-entities are omitted from snapshots. The `Feel` component is also omitted
-because its cue map contains code and live component references. Re-add it from
-the host entity's `afterRestore()` method:
+entities are runtime-only. Normal entity setup constructs `Feel` whenever the
+game builds the scene:
 
 ```ts
-@serializable
 class Enemy extends Entity {
   setup() {
-    this.installFeel();
-  }
-
-  afterRestore() {
-    this.installFeel();
-  }
-
-  private installFeel() {
     const sprite = this.get(SpriteComponent);
     this.add(new Feel({ hit: feelSquash({ target: sprite }) }));
   }
 }
 ```
 
-The restored component starts with no cue in progress. Saved base transform,
-camera, and visual values remain unchanged by built-in Feel effects.
+The component starts with no cue in progress. Built-in Feel effects leave base
+transform, camera, and visual values unchanged.
 
 <Aside type="caution">
 `feelCall`, `defineFeelEffect`, `feelKeyframeAnimation`, and
 `feelSpriteAnimation` can run user-supplied code. If that code writes to
-serializable game state, YAGE saves the resulting value. For custom visual
-movement, write to a renderer modifier handle and release the handle in
+an explicit game-owned state root, YAGE saves the resulting value. For custom
+visual movement, write to a renderer modifier handle and release the handle in
 `finish`.
 </Aside>
 

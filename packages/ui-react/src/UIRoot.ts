@@ -3,7 +3,6 @@ import {
   Transform,
   markPointerConsumeContainer,
   unmarkPointerConsumeContainer,
-  serializable,
 } from "@yagejs/core";
 import type { ReactElement } from "react";
 import { createElement } from "react";
@@ -72,7 +71,6 @@ export interface UIRootOptions {
  * root.render(<MyMenu />);
  * ```
  */
-@serializable
 export class UIRoot extends Component {
   private root: ReconcilerRoot | null = null;
   private readonly _container: Container;
@@ -81,7 +79,6 @@ export class UIRoot extends Component {
   private readonly _offset: { x: number; y: number };
   private readonly _layer: string | undefined;
   private readonly _positioning: UIPositioning;
-  private readonly _snapshot: UIRootOptions;
   private _onCommit: (() => void) | null = null;
 
   constructor(opts?: UIRootOptions) {
@@ -94,7 +91,6 @@ export class UIRoot extends Component {
     this._offset = opts?.offset ?? { x: 0, y: 0 };
     this._layer = opts?.layer;
     this._positioning = opts?.positioning ?? "anchor";
-    this._snapshot = cloneUIRootOptions(opts);
   }
 
   onAdd(): void {
@@ -266,19 +262,4 @@ export class UIRoot extends Component {
     this._container.removeFromParent();
     this._container.destroy();
   }
-
-  serialize(): UIRootOptions {
-    return cloneUIRootOptions(this._snapshot);
-  }
-
-  static fromSnapshot(data: UIRootOptions): UIRoot {
-    return new UIRoot(cloneUIRootOptions(data));
-  }
-}
-
-function cloneUIRootOptions(opts?: UIRootOptions): UIRootOptions {
-  if (!opts) return {};
-  const clone: UIRootOptions = { ...opts };
-  if (opts.offset) clone.offset = { ...opts.offset };
-  return clone;
 }

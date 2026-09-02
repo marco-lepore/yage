@@ -29,7 +29,16 @@ function resolveGridLayout(
     options.columns ??
     Math.max(1, Math.floor((base.width - startX + gapX) / (frameWidth + gapX)));
   const count = options.count ?? columns;
-  return { frameWidth, frameHeight, startX, startY, gapX, gapY, columns, count };
+  return {
+    frameWidth,
+    frameHeight,
+    startX,
+    startY,
+    gapX,
+    gapY,
+    columns,
+    count,
+  };
 }
 
 /**
@@ -43,8 +52,16 @@ export function sliceGrid(
   base: Texture,
   options: TextureSliceOptions,
 ): Texture[] {
-  const { frameWidth, frameHeight, startX, startY, gapX, gapY, columns, count } =
-    resolveGridLayout(base, options);
+  const {
+    frameWidth,
+    frameHeight,
+    startX,
+    startY,
+    gapX,
+    gapY,
+    columns,
+    count,
+  } = resolveGridLayout(base, options);
   const frames: Texture[] = [];
 
   for (let index = 0; index < count; index++) {
@@ -104,7 +121,7 @@ export function sliceSheet(
 }
 
 // ---------------------------------------------------------------------------
-// FrameSource — serializable frame descriptors
+// FrameSource — asset-backed frame descriptors
 // ---------------------------------------------------------------------------
 
 /**
@@ -123,7 +140,7 @@ export interface AtlasFrameSource {
   animation: string;
 }
 
-/** Union type for serializable frame references. */
+/** Union type for asset-backed frame references. */
 export type FrameSource = SheetFrameSource | AtlasFrameSource;
 
 export function isSheetSource(s: FrameSource): s is SheetFrameSource {

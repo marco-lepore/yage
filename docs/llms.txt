@@ -4,7 +4,7 @@
 
 ## Docs
 
-- [Core Concepts](llms/core-concepts.md): Architecture, lifecycle, ECS, scenes, events, DI, processes, serialization
+- [Core Concepts](llms/core-concepts.md): Architecture, lifecycle, ECS, scenes, events, DI, processes, save-state boundary
 - [Quick Start](llms/quick-start.md): Installation, engine setup, scene class, first project
 - [Patterns](llms/patterns.md): Component, entity, process, and testing patterns; common gotchas
 - [Play Sessions](llms/play-sessions.md): Driving a running game — picking a mechanism, rule-driven runs, frame budgets, traps
@@ -27,7 +27,7 @@
 - [pathfinding](llms/packages/pathfinding.md): Grid A* pathfinding — works without a tilemap, with an optional tilemap adapter
 - [ui](llms/packages/ui.md): Yoga flexbox UI, panels, buttons, anchoring
 - [ui-react](llms/packages/ui-react.md): React reconciler, hooks, reactive stores
-- [save](llms/packages/save.md): Save/load, @serializable, snapshots
+- [save](llms/packages/save.md): Controlled save/load, slots, adapters, migrations
 - [debug](llms/packages/debug.md): Debug overlay, custom contributors, stats
 - [effects](llms/packages/effects.md): Visual-effect presets — bloom, outline, CRT, vignette, color grade, etc.
 

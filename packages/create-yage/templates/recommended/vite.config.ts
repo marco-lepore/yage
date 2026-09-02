@@ -6,11 +6,7 @@ export default defineConfig({
   // @dimforge/rapier2d — a WebAssembly module that needs proper ESM loading.
   plugins: [wasm()],
   oxc: {
-    // Forward-compat: enable legacy (stage-2) decorators so that if you add
-    // @yagejs/save later and put @serializable on your own components, it Just
-    // Works without a config change. Not strictly required today — all
-    // @yagejs/* packages are pre-transpiled and their dists contain no raw
-    // decorator syntax. Costs nothing to include.
+    // YAGE's @trait decorator uses TypeScript's legacy decorator transform.
     decorator: {
       legacy: true,
     },
@@ -18,9 +14,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        // Preserve class/function names through minification. @yagejs/save
-        // matches classes by name when restoring snapshots; without this the
-        // production build would silently break save/load.
+        // Preserve readable class and function names in diagnostics.
         keepNames: true,
       },
     },

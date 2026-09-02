@@ -280,28 +280,6 @@ describe("SortGroupComponent", () => {
     expect(group.zIndex).toBe(100);
   });
 
-  it("re-homes the subtree on afterRestore (parent links wired in phase 2)", () => {
-    const { scene, tree } = setup();
-    tree.ensureLayer({ name: "world", order: 0, sort: ySort });
-    const layer = tree.get("world").container;
-
-    const knight = spawnEntityInScene(scene, "knight");
-    knight.add(new Transform({ position: new Vec2(0, 100) }));
-    const group = knight.add(new SortGroupComponent({ layer: "world" }));
-    const body = knight.add(
-      new SpriteComponent({ texture: {} as never, layer: "world" }),
-    );
-
-    // Simulate restore's phase-1 state: a member ended up flat on the layer
-    // because its parent link didn't exist when its onAdd ran.
-    layer.addChild(body.sprite);
-    expect(group.container.children).not.toContain(body.sprite);
-
-    group.afterRestore();
-    expect(group.container.children).toContain(body.sprite);
-    expect(layer.children).not.toContain(body.sprite);
-  });
-
   it("returns members to the layer when the group is removed", () => {
     const { scene, tree, system } = setup();
     tree.ensureLayer({ name: "world", order: 0, sort: ySort });

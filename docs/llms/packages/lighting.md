@@ -70,7 +70,9 @@ Transform scale does not change `radius`. Set `light.radius`,
 `light.intensity`, or `light.color` to update a live light. Disabling the
 component or its entity removes it until it becomes active again.
 
-`LightSource` is serializable.
+YAGE does not persist light components automatically. Store any durable light
+settings in the game's explicit save root and rebuild the component with the
+scene.
 
 ## Gameplay queries
 
@@ -139,7 +141,7 @@ rock.add(
 ```
 
 Shapes use local pixels. Position and rotation come from the entity's world
-transform. `LightOccluder` is serializable.
+transform. Store durable occluder settings in the game's explicit save root.
 
 The built-in overlay does not cast shadows, and occluders do not affect
 `levelAt()`. Custom renderers can read `LightingWorld.occluders`.

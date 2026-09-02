@@ -54,25 +54,20 @@ export type {
 } from "./internal/renderFacet.js";
 
 // Components
-export { VisualComponent, visualOptionsFromData } from "./VisualComponent.js";
+export { VisualComponent } from "./VisualComponent.js";
 export type {
-  VisualComponentData,
   VisualComponentOptions,
   VisualInteractiveOptions,
 } from "./VisualComponent.js";
 export { SpriteComponent } from "./SpriteComponent.js";
-export type { SpriteComponentOptions, SpriteData } from "./SpriteComponent.js";
+export type { SpriteComponentOptions } from "./SpriteComponent.js";
 export { GraphicsComponent } from "./GraphicsComponent.js";
-export type {
-  GraphicsComponentOptions,
-  GraphicsData,
-} from "./GraphicsComponent.js";
+export type { GraphicsComponentOptions } from "./GraphicsComponent.js";
 export { TextComponent } from "./TextComponent.js";
-export type { TextComponentOptions, TextData } from "./TextComponent.js";
+export type { TextComponentOptions } from "./TextComponent.js";
 export { SplitTextComponent } from "./SplitTextComponent.js";
 export type {
   SplitTextComponentOptions,
-  SplitTextData,
   SegmentAnchor,
   SplitTextRenderFacet,
   SplitTextRenderFacetExtras,
@@ -83,7 +78,6 @@ export {
 } from "./SortGroupComponent.js";
 export type {
   SortGroupComponentOptions,
-  SortGroupData,
   LayerRenderable,
 } from "./SortGroupComponent.js";
 /** @internal - shared Text/BitmapText constructor logic for @yagejs/ui, not for public consumption. */
@@ -101,15 +95,9 @@ export type {
   RadialGradientOptions,
 } from "./gradient.js";
 export { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
-export type {
-  AnimatedSpriteComponentOptions,
-  AnimatedSpriteData,
-} from "./AnimatedSpriteComponent.js";
+export type { AnimatedSpriteComponentOptions } from "./AnimatedSpriteComponent.js";
 export { AnimationController } from "./AnimationController.js";
-export type {
-  AnimationDef,
-  AnimationControllerData,
-} from "./AnimationController.js";
+export type { AnimationDef } from "./AnimationController.js";
 export { LayeredAnimationController } from "./LayeredAnimationController.js";
 export type { LayeredAnimationControllerOptions } from "./LayeredAnimationController.js";
 
@@ -137,16 +125,11 @@ export type {
   CameraShakeOptions,
   CameraBinding,
   CameraComponentOptions,
-  CameraComponentData,
 } from "./CameraComponent.js";
 export { CameraFollow } from "./CameraFollow.js";
-export type { CameraFollowData } from "./CameraFollow.js";
 export { CameraShake } from "./CameraShake.js";
-export type { CameraShakeData } from "./CameraShake.js";
 export { CameraBoundsComponent } from "./CameraBoundsComponent.js";
-export type { CameraBoundsComponentData } from "./CameraBoundsComponent.js";
 export { CameraZoom } from "./CameraZoom.js";
-export type { CameraZoomData } from "./CameraZoom.js";
 export { CameraModifierHost } from "./CameraModifiers.js";
 export type {
   CameraModifierHandle,
@@ -156,7 +139,6 @@ export { ScreenFollow } from "./ScreenFollow.js";
 export type {
   ScreenFollowOptions,
   ScreenFollowTarget,
-  ScreenFollowData,
 } from "./ScreenFollow.js";
 
 // Display
@@ -218,22 +200,16 @@ export type {
 export type { EffectHandle } from "./effects/EffectHandle.js";
 export type {
   Effect,
-  EffectAttachmentOptions,
   EffectFactory,
   EffectScope,
   EffectTarget,
 } from "./effects/Effect.js";
 export { EffectStack } from "./effects/EffectStack.js";
-export type {
-  EffectStackSnapshot,
-  EffectStackEntry,
-} from "./effects/EffectStack.js";
 export { EffectsHost } from "./effects/EffectsHost.js";
 export { defineEffect } from "./effects/defineEffect.js";
 export type { EffectDefinition } from "./effects/defineEffect.js";
 export { rawFilter } from "./effects/rawFilter.js";
 export type { RawFilterOptions } from "./effects/rawFilter.js";
-export type { RendererSnapshotData } from "./effects/RendererSnapshotContributor.js";
 
 // Offscreen buffers
 export type {
@@ -242,9 +218,9 @@ export type {
 } from "./RenderTarget.js";
 
 // Masks
-export type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
+export type { MaskHandle } from "./masks/MaskHandle.js";
 export type { Mask, MaskFactory } from "./masks/MaskFactory.js";
-export { attachMask, restoreMask } from "./masks/attachMask.js";
+export { attachMask } from "./masks/attachMask.js";
 export { defineMask } from "./masks/defineMask.js";
 export type { MaskDefinition } from "./masks/defineMask.js";
 export { rectMask } from "./masks/rectMask.js";

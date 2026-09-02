@@ -206,6 +206,7 @@ function createContext() {
   ticker.add(() => app.render());
   const inspectorExtensions = new Map<string, object>();
   const inspector = {
+    getEntityCount: () => 0,
     snapshot: () => ({
       frame: 0,
       sceneStack: [],

@@ -1,12 +1,9 @@
-import { Component, serializable } from "@yagejs/core";
+import { Component } from "@yagejs/core";
 import type { SoundHandle } from "./SoundHandle.js";
-import { AudioManagerKey, type SoundComponentOptions, type SoundData } from "./types.js";
+import { AudioManagerKey, type SoundComponentOptions } from "./types.js";
 
 /** Entity-bound audio component that delegates playback to AudioManager. */
-@serializable
 export class SoundComponent extends Component {
-  static restorePriority = 50;
-
   private readonly _alias: string;
   private readonly _channel: string;
   private readonly _loop: boolean;
@@ -66,18 +63,24 @@ export class SoundComponent extends Component {
     return this._handle;
   }
 
-  serialize(): SoundData {
-    return {
-      alias: this._alias,
-      channel: this._channel,
-      loop: this._loop,
-      volume: this._volume,
-      playOnAdd: this._playOnAdd,
-    };
+  /** The registered asset alias this component plays. */
+  get alias(): string {
+    return this._alias;
   }
 
-  static fromSnapshot(data: SoundData): SoundComponent {
-    return new SoundComponent(data);
+  /** The mixer channel playback is routed to. */
+  get channel(): string {
+    return this._channel;
+  }
+
+  /** Whether playback repeats. */
+  get loop(): boolean {
+    return this._loop;
+  }
+
+  /** Playback volume (0–1), before channel and master gain. */
+  get volume(): number {
+    return this._volume;
   }
 
   /**

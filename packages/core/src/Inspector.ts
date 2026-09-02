@@ -176,8 +176,7 @@ export interface ComponentStateSnapshot {
    * Namespaced, derived facets contributed by registered
    * {@link InspectorFacetContributor}s — e.g. the renderer publishes a `render`
    * facet (world-space bounds + visibility). Present only when at least one
-   * contributor produced a facet for this component. Always computed live, never
-   * from `serialize()`.
+   * contributor produced a facet for this component. Always computed live.
    */
   facets?: InspectorFacets;
 }
@@ -195,14 +194,13 @@ export interface InspectorFacets {
 
 /**
  * A plugin-registered contributor that augments component (and optionally
- * entity) snapshots with a namespaced facet derived from live, non-serialized
- * state — the seam that lets the renderer publish rendered geometry without
- * core taking a dependency on, or knowing anything about, the renderer.
+ * entity) snapshots with a namespaced facet derived from live runtime
+ * state. This is how the renderer publishes rendered geometry without core
+ * taking a dependency on, or knowing anything about, the renderer.
  *
  * Register via {@link Inspector.registerFacetContributor}. Mirrors the
- * contributor pattern used elsewhere in the engine (`DebugContributor`,
- * save's `SnapshotContributor`): the owning plugin pushes capability in, rather
- * than core reaching out to grab it.
+ * contributor pattern used elsewhere in the engine (`DebugContributor`): the
+ * owning plugin pushes capability in rather than core reaching out to grab it.
  */
 export interface InspectorFacetContributor {
   /** Stable key the facet is attached under (e.g. `"render"`). */
@@ -648,10 +646,7 @@ export class Inspector {
      * so the same async draining as {@link stepUntil} applies — for call sites
      * that already know how many frames they need.
      */
-    stepAsync: async (
-      frames = 1,
-      opts?: { dtMs?: number },
-    ): Promise<void> => {
+    stepAsync: async (frames = 1, opts?: { dtMs?: number }): Promise<void> => {
       this.assertNonNegativeInteger(frames, "Inspector.time.stepAsync(frames)");
       if (opts?.dtMs !== undefined) {
         this.assertPositiveDelta(opts.dtMs, "Inspector.time.stepAsync(dtMs)");
@@ -686,11 +681,7 @@ export class Inspector {
      * with `id` / `type: "touch"` to drive a specific finger; defaults match
      * the primary mouse pointer (same as `mouseMove`).
      */
-    pointerMove: (
-      x: number,
-      y: number,
-      opts?: InspectorPointerOpts,
-    ): void => {
+    pointerMove: (x: number, y: number, opts?: InspectorPointerOpts): void => {
       this.requireInputManager().firePointerMove(x, y, opts);
     },
     /**
@@ -698,25 +689,16 @@ export class Inspector {
      * this drives a multi-touch contact, exercising `getPointers()`,
      * per-pointer event hooks, and the any-pointer aggregate for `MouseLeft`.
      */
-    pointerDown: (
-      button: 0 | 1 | 2 = 0,
-      opts?: InspectorPointerOpts,
-    ): void => {
+    pointerDown: (button: 0 | 1 | 2 = 0, opts?: InspectorPointerOpts): void => {
       this.requireInputManager().firePointerDown(button, opts);
     },
-    pointerUp: (
-      button: 0 | 1 | 2 = 0,
-      opts?: { id?: number },
-    ): void => {
+    pointerUp: (button: 0 | 1 | 2 = 0, opts?: { id?: number }): void => {
       this.requireInputManager().firePointerUp(button, opts);
     },
     gamepadButton: (code: string, pressed: boolean): void => {
       this.requireInputManager().fireGamepadButton(code, pressed);
     },
-    gamepadAxis: (
-      side: InspectorGamepadAxisKey,
-      value: number,
-    ): void => {
+    gamepadAxis: (side: InspectorGamepadAxisKey, value: number): void => {
       this.requireInputManager().fireGamepadAxis(side, value);
     },
     tap: (code: string, frames = 1): void => {
@@ -917,7 +899,9 @@ export class Inspector {
     let state!: DriveState;
 
     try {
-      value = await fn(this.createDriveContext(captures, startFrame, checkBudget));
+      value = await fn(
+        this.createDriveContext(captures, startFrame, checkBudget),
+      );
     } catch (thrown) {
       error = thrown instanceof Error ? thrown.message : String(thrown);
       timedOut = thrown instanceof DriveBudgetExceededError;
@@ -994,7 +978,10 @@ export class Inspector {
     };
 
     const hold = async (code: string, frames: number): Promise<void> => {
-      this.assertNonNegativeInteger(frames, "Inspector.drive input.hold(frames)");
+      this.assertNonNegativeInteger(
+        frames,
+        "Inspector.drive input.hold(frames)",
+      );
       const input = this.requireInputManager();
       input.fireKeyDown(code);
       try {
@@ -1082,10 +1069,7 @@ export class Inspector {
 
   /** Register a namespaced extension API for plugin-specific debug helpers. */
   addExtension<T extends object>(namespace: string, api: T): T {
-    this.assertNonEmptyString(
-      namespace,
-      "Inspector.addExtension(namespace)",
-    );
+    this.assertNonEmptyString(namespace, "Inspector.addExtension(namespace)");
     if (!api || typeof api !== "object") {
       throw new Error("Inspector.addExtension(api) requires an object.");
     }
@@ -1100,10 +1084,7 @@ export class Inspector {
 
   /** Look up a previously registered extension API by namespace. */
   getExtension<T extends object>(namespace: string): T | undefined {
-    this.assertNonEmptyString(
-      namespace,
-      "Inspector.getExtension(namespace)",
-    );
+    this.assertNonEmptyString(namespace, "Inspector.getExtension(namespace)");
     return this.extensions.get(namespace) as T | undefined;
   }
 
@@ -1120,8 +1101,7 @@ export class Inspector {
    * Register an {@link InspectorFacetContributor} so a plugin can augment
    * component/entity snapshots with a namespaced facet (e.g. the renderer's
    * `render` geometry). Returns an unregister function; call it on plugin
-   * teardown. Re-registering a namespace replaces the prior contributor
-   * (mirrors save's `registerSnapshotExtra`).
+   * teardown. Re-registering a namespace replaces the prior contributor.
    */
   registerFacetContributor(contributor: InspectorFacetContributor): () => void {
     this.assertNonEmptyString(
@@ -1145,7 +1125,7 @@ export class Inspector {
       version: 1,
       frame: this.time.getFrame(),
       sceneStack: this.getSceneStack(),
-      entityCount: this.countEntities(),
+      entityCount: this.getEntityCount(),
       systemCount: this.getSystems().length,
       errors: this.getErrors(),
       scenes,
@@ -1209,7 +1189,7 @@ export class Inspector {
     return this.findComponentByName(entityName, componentClass) !== undefined;
   }
 
-  /** Get component data (serializable subset) by class name string. */
+  /** Get inspectable component data by class name string. */
   getComponentData(entityName: string, componentClass: string): unknown {
     const comp = this.findComponentByName(entityName, componentClass);
     if (!comp) return undefined;
@@ -1266,7 +1246,9 @@ export class Inspector {
   /** Create a new scene-scoped RNG instance using the current inspector seed policy. */
   createSceneRandom(): RandomService {
     const seed =
-      this.sceneSeedOverride ?? this.defaultSceneSeed ?? createDefaultRandomSeed();
+      this.sceneSeedOverride ??
+      this.defaultSceneSeed ??
+      createDefaultRandomSeed();
     return createRandomService(seed);
   }
 
@@ -1283,7 +1265,10 @@ export class Inspector {
   setDefaultSceneSeed(seed: number | undefined): void {
     this.defaultSceneSeed =
       seed === undefined ? undefined : normalizeSeed(seed);
-    if (this.sceneSeedOverride !== undefined || this.defaultSceneSeed === undefined) {
+    if (
+      this.sceneSeedOverride !== undefined ||
+      this.defaultSceneSeed === undefined
+    ) {
       return;
     }
     for (const scene of this.engine.scenes.all) {
@@ -1291,10 +1276,10 @@ export class Inspector {
     }
   }
 
-  private resolveInternalRandom(scene: Scene): InternalRandomService | undefined {
-    return scene._resolveScoped(RandomKey) as
-      | InternalRandomService
-      | undefined;
+  private resolveInternalRandom(
+    scene: Scene,
+  ): InternalRandomService | undefined {
+    return scene._resolveScoped(RandomKey) as InternalRandomService | undefined;
   }
 
   /** @internal DebugPlugin attaches the frozen-time controller through this hook. */
@@ -1372,9 +1357,7 @@ export class Inspector {
 
   private requireTimeController(): InspectorTimeController {
     if (!this.timeController) {
-      throw new Error(
-        "Inspector.time requires DebugPlugin to be active.",
-      );
+      throw new Error("Inspector.time requires DebugPlugin to be active.");
     }
     return this.timeController;
   }
@@ -1382,9 +1365,7 @@ export class Inspector {
   private requireInputManager(): InputManagerLike {
     const input = this.engine.context.tryResolve(InputManagerRuntimeKey);
     if (!input) {
-      throw new Error(
-        "Inspector.input requires InputPlugin to be active.",
-      );
+      throw new Error("Inspector.input requires InputPlugin to be active.");
     }
     return input;
   }
@@ -1413,8 +1394,7 @@ export class Inspector {
     } else {
       // Ring full: overwrite the oldest slot in O(1) and advance the head.
       this.eventLog[this.eventLogHead] = logged;
-      this.eventLogHead =
-        (this.eventLogHead + 1) % this.eventCapacity;
+      this.eventLogHead = (this.eventLogHead + 1) % this.eventCapacity;
     }
     this.flushMatchingWaiter(entry);
   }
@@ -1424,10 +1404,7 @@ export class Inspector {
     if (this.eventWaiters.size === 0) return;
     const frame = this.time.getFrame();
     for (const waiter of [...this.eventWaiters]) {
-      if (
-        waiter.deadlineFrame !== undefined &&
-        frame > waiter.deadlineFrame
-      ) {
+      if (waiter.deadlineFrame !== undefined && frame > waiter.deadlineFrame) {
         this.eventWaiters.delete(waiter);
         waiter.reject(
           new Error(
@@ -1503,11 +1480,10 @@ export class Inspector {
       seed: random?.getSeed() ?? 0,
       entities: this.getSceneEntities(scene),
       ui: this.buildUISnapshot(scene),
-      physics:
-        physicsManager?.getContext(scene)?.world.snapshot() ?? {
-          bodies: [],
-          contacts: [],
-        },
+      physics: physicsManager?.getContext(scene)?.world.snapshot() ?? {
+        bodies: [],
+        contacts: [],
+      },
       events: this.getSceneEvents(scene),
     };
   }
@@ -1589,19 +1565,26 @@ export class Inspector {
   }
 
   /**
-   * A component's `serialize()` result if it defines one, else its reflected
-   * public state (own properties + getters — see
-   * {@link serializeComponentOwnProperties}) so a component reports something
-   * useful in a snapshot without opting in. The reflected object is routed
-   * through `safeClone` for cycle-safety: `isSerializableValue` only checks
-   * that a value's *own* shape is a plain object/array, not that everything
-   * nested inside it is acyclic.
+   * Reflect a component's public state from own properties and getters. Each
+   * field is cloned on its own. Engine and foreign objects nested inside a
+   * field are stored as the compact refs the event log uses (see
+   * {@link summarizeInstance}): an array of pixi display objects reads as
+   * `[{ _type: "Sprite" }]` instead of dragging `parent` back-references in,
+   * and a plain-object field holding an entity reads as `{ id, name }`. A
+   * field that still cannot be cloned (a cycle through plain objects) drops
+   * on its own instead of blanking every other field with it. A field whose
+   * value is `undefined` is left out, as a JSON round trip would leave it out.
    */
-  private reflectComponentState(component: Component): unknown {
-    if (typeof component.serialize === "function") {
-      return trySerialize(component) ?? null;
+  private reflectComponentState(component: Component): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(
+      this.collectComponentState(component),
+    )) {
+      const cloned = safeClone(value, summarizeInstance);
+      if (cloned === undefined) continue;
+      result[key] = cloned;
     }
-    return safeClone(this.serializeComponentOwnProperties(component)) ?? null;
+    return result;
   }
 
   /**
@@ -1664,10 +1647,7 @@ export class Inspector {
     };
   }
 
-  private buildUINodeSnapshot(
-    node: UIElementLike,
-    id: string,
-  ): UINodeSnapshot {
+  private buildUINodeSnapshot(node: UIElementLike, id: string): UINodeSnapshot {
     const layout = node.yogaNode?.getComputedLayout();
     const children = (node.children ?? []).map((child, index) =>
       this.buildUINodeSnapshot(child, `${id}/${index}`),
@@ -1828,12 +1808,11 @@ export class Inspector {
 
   /**
    * Reflect a component's own enumerable fields plus its public prototype
-   * getters — the zero-config fallback when a component defines no
-   * `serialize()`. Getters make derived read-only state (`get isOnCooldown()`,
-   * `get health()`) visible without the component author writing a
-   * `serialize()` just to expose them.
+   * getters. Getters make derived read-only state (`get isOnCooldown()`,
+   * `get health()`) visible without extra diagnostic code. Keys named in the
+   * class's `static inspectExclude` are left out.
    */
-  private serializeComponentOwnProperties(comp: Component): unknown {
+  private collectComponentState(comp: Component): Record<string, unknown> {
     // These live on Component.prototype as accessors, so neither loop below
     // reaches them. `enabled` alone is ambiguous once entities can be dormant:
     // `effectiveEnabled` is what says whether the component is running.
@@ -1843,8 +1822,9 @@ export class Inspector {
       effectiveEnabled: comp.effectiveEnabled,
     };
     if (comp.updatePriority !== 0) result.updatePriority = comp.updatePriority;
+    const excluded = this.collectExcludedKeys(comp);
     for (const key of Object.getOwnPropertyNames(comp)) {
-      if (key === "entity") continue;
+      if (key === "entity" || excluded.has(key)) continue;
       // Skip private-by-convention fields. Components hold pixi/rapier handles
       // (e.g. _body) on underscore-prefixed slots; exposing them in
       // snapshots would either crash JSON.stringify on cycles or leak
@@ -1862,7 +1842,7 @@ export class Inspector {
       result[key] = value;
     }
     for (const key of this.collectGetterNames(comp)) {
-      if (key in result) continue;
+      if (key in result || excluded.has(key)) continue;
       let value: unknown;
       try {
         value = (comp as unknown as Record<string, unknown>)[key];
@@ -1898,7 +1878,26 @@ export class Inspector {
     return [...names];
   }
 
-  private countEntities(): number {
+  /**
+   * Keys named in `static inspectExclude` on the component's class or any
+   * base class, merged so a subclass adds to its base's list.
+   */
+  private collectExcludedKeys(comp: Component): Set<string> {
+    const excluded = new Set<string>();
+    let ctor: unknown = comp.constructor;
+    while (typeof ctor === "function" && ctor !== Component) {
+      if (Object.hasOwn(ctor, "inspectExclude")) {
+        for (const key of (ctor as typeof Component).inspectExclude ?? []) {
+          excluded.add(key);
+        }
+      }
+      ctor = Object.getPrototypeOf(ctor);
+    }
+    return excluded;
+  }
+
+  /** Live entities across every scene on the stack, dormant ones included. */
+  getEntityCount(): number {
     let count = 0;
     for (const scene of this.engine.scenes.all) {
       for (const entity of scene.getEntities()) {
@@ -1943,6 +1942,8 @@ function isSerializableValue(value: unknown): boolean {
   if (t === "function") return false;
   if (t !== "object") return true;
   if (Array.isArray(value)) return true;
+  // The engine's own value type reads as `{ x, y }`, so it counts as data.
+  if (value instanceof Vec2) return true;
   // Plain objects pass; class instances (Pixi, Rapier, Yoga, etc.) don't.
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;
@@ -1979,17 +1980,9 @@ function safeClone(
   }
 }
 
-function trySerialize(component: Component): unknown | undefined {
-  try {
-    return safeClone(component.serialize?.());
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * Invoke a contributor's `inspectComponent` hook, tolerating one that throws
- * (mid-teardown, no parent yet, etc.) — mirroring {@link trySerialize}.
+ * (mid-teardown, no parent yet, etc.).
  * Normalises a `null`/`undefined` result to `undefined` so the caller can omit
  * the namespace entirely.
  */
@@ -2012,13 +2005,13 @@ function serializeEventPayload(payload: unknown): unknown | null {
 }
 
 /**
- * `JSON.stringify` replacer that keeps a logged payload to the data the event
- * is about. Engine events pass live objects — `component:added` is typed to
- * carry the `Component` itself — and a deep copy of one also copies its entity
- * backref, that entity's scene, and every engine internal reachable from
- * there. Plain objects, arrays and primitives are cloned; any other class
- * instance is stored as a compact ref, which is also what keeps such a payload
- * free of cycles.
+ * `JSON.stringify` replacer that keeps a logged payload, or a reflected
+ * component field, to the data it is about. Engine events pass live objects —
+ * `component:added` is typed to carry the `Component` itself — and a deep copy
+ * of one also copies its entity backref, that entity's scene, and every engine
+ * internal reachable from there. Plain objects, arrays and primitives are
+ * cloned; any other class instance is stored as a compact ref, which is also
+ * what keeps such a payload free of cycles.
  *
  * Event subscribers receive the live object either way; the ref applies only
  * to the log's stored copy. A class that defines `toJSON` keeps that result,
@@ -2027,7 +2020,6 @@ function serializeEventPayload(payload: unknown): unknown | null {
 function summarizeInstance(_key: string, value: unknown): unknown {
   if (value === null || typeof value !== "object") return value;
   if (isSerializableValue(value)) return value;
-  if (value instanceof Vec2) return { x: value.x, y: value.y };
   if (value instanceof Component) return { component: value.constructor.name };
   if (value instanceof Entity) return { id: value.id, name: value.name };
   if (value instanceof Scene) return { name: value.name };
@@ -2067,14 +2059,18 @@ function decodeBase64(base64: string): Uint8Array {
     return bytes;
   }
 
-  const bufferCtor = (globalThis as {
-    Buffer?: {
-      from(value: string, encoding: "base64"): Uint8Array;
-    };
-  }).Buffer;
+  const bufferCtor = (
+    globalThis as {
+      Buffer?: {
+        from(value: string, encoding: "base64"): Uint8Array;
+      };
+    }
+  ).Buffer;
   if (bufferCtor) {
     return bufferCtor.from(base64, "base64");
   }
 
-  throw new Error("Inspector.capture.png() is not supported in this environment.");
+  throw new Error(
+    "Inspector.capture.png() is not supported in this environment.",
+  );
 }

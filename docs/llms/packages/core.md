@@ -6,34 +6,34 @@ Zero runtime dependencies. ECS foundation, DI, game loop, scenes, events, proces
 
 ### Architecture
 
-| Export | Purpose |
-|---|---|
-| `Engine` | Entry point; plugin orchestration, game loop, scene manager |
-| `EngineContext` | DI container |
-| `ServiceKey<T>` | Typed DI key |
-| `Scene` | Abstract scene base class |
-| `SceneManager` | Stack-based scene management (push/pop/replace) |
-| `Entity` | Named component container |
-| `EntityPool` | Reuses entities instead of spawning and destroying them; grows on demand unless capped |
-| `EntityHandle<T>` | Reference to one life of an entity; reads `undefined` once that life ends |
-| `Component` | Base class for game logic |
-| `System` | Base class for engine-level systems |
-| `Phase` | Enum: EarlyUpdate, FixedUpdate, Update, LateUpdate, Render, EndOfFrame |
+| Export            | Purpose                                                                                |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| `Engine`          | Entry point; plugin orchestration, game loop, scene manager                            |
+| `EngineContext`   | DI container                                                                           |
+| `ServiceKey<T>`   | Typed DI key                                                                           |
+| `Scene`           | Abstract scene base class                                                              |
+| `SceneManager`    | Stack-based scene management (push/pop/replace)                                        |
+| `Entity`          | Named component container                                                              |
+| `EntityPool`      | Reuses entities instead of spawning and destroying them; grows on demand unless capped |
+| `EntityHandle<T>` | Reference to one life of an entity; reads `undefined` once that life ends              |
+| `Component`       | Base class for game logic                                                              |
+| `System`          | Base class for engine-level systems                                                    |
+| `Phase`           | Enum: EarlyUpdate, FixedUpdate, Update, LateUpdate, Render, EndOfFrame                 |
 
 ### Entity
 
 ```ts
 class Entity {
   readonly name: string;
-  readonly key?: string;                      // stable identity (opt-in)
-  get scene(): Scene;                         // throws if detached
-  get tryScene(): Scene | null;               // null if detached
-  get activeSelf(): boolean;                  // own bit
-  get isActive(): boolean;                    // own bit AND every ancestor's
-  get generation(): number;                   // which life; moves on when one ends
+  readonly key?: string; // stable identity (opt-in)
+  get scene(): Scene; // throws if detached
+  get tryScene(): Scene | null; // null if detached
+  get activeSelf(): boolean; // own bit
+  get isActive(): boolean; // own bit AND every ancestor's
+  get generation(): number; // which life; moves on when one ends
   setActive(active: boolean): void;
-  handle(): EntityHandle<this>;               // reference that expires with this life
-  requireKey(): string;                       // throws if no key
+  handle(): EntityHandle<this>; // reference that expires with this life
+  requireKey(): string; // throws if no key
   addChild(name: string, child: Entity): void;
   spawnChild(name: string, options?: SpawnOptions): Entity;
   // Trailing args derived from the entity's setup() signature.
@@ -61,16 +61,16 @@ class Entity {
 `setActive(false)` turns an entity off without destroying it — the cheap way to recycle a bullet, a hit spark, or an enemy instead of respawning one.
 
 ```ts
-bullet.setActive(false);                   // hidden, physics body off, updates skipped
+bullet.setActive(false); // hidden, physics body off, updates skipped
 // ...later
 bullet.get(Transform).setPosition(x, y);
-bullet.setActive(true);                    // back in play, nothing reallocated
+bullet.setActive(true); // back in play, nothing reallocated
 ```
 
 - Move a `RigidBodyComponent` entity with `rb.setPosition(x, y)`, not a direct `Transform` write: physics owns the transform of a dynamic body and overwrites the write on the next frame.
 
 - `activeSelf` is the entity's own bit; `isActive` is that bit AND every ancestor's. Deactivating a parent puts the whole subtree to sleep, and each descendant keeps its own `activeSelf` for when the parent wakes.
-- A dormant entity drops out of every `QueryCache` query, and out of `scene.findEntity`, `scene.findEntitiesByTag`, `scene.findEntities`, and `filterEntities`. `scene.getEntities()` still returns it, so save and teardown see it. `scene.findByKey` also still returns it — key lookup is identity, not a search.
+- A dormant entity drops out of every `QueryCache` query, and out of `scene.findEntity`, `scene.findEntitiesByTag`, `scene.findEntities`, and `filterEntities`. `scene.getEntities()` still returns it for lifecycle tooling and teardown. `scene.findByKey` also still returns it — key lookup is identity, not a search.
 - Components keep their own `enabled` flags. A component you disabled by hand is still disabled after the entity comes back.
 - Adding a component to a dormant entity runs `onAdd()` but not `onEnable()`, and the entity joins no queries until it is activated.
 - A dormant entity's components and its `ProcessComponent` stop being ticked, so tweens and coroutines pause where they are and resume on reactivation.
@@ -79,13 +79,17 @@ bullet.setActive(true);                    // back in play, nothing reallocated
 
 ### Component enable/disable hooks
 
-`onEnable()` / `onDisable()` fire when a component's *effective* enabled-ness — `component.enabled && entity.isActive` — changes. `component.effectiveEnabled` reads that state.
+`onEnable()` / `onDisable()` fire when a component's _effective_ enabled-ness — `component.enabled && entity.isActive` — changes. `component.effectiveEnabled` reads that state.
 
 ```ts
 class Turret extends Component {
   private beam?: SoundHandle;
-  onEnable() { this.beam = this.use(AudioManagerKey).play("hum", { loop: true }); }
-  onDisable() { this.beam?.stop(); }
+  onEnable() {
+    this.beam = this.use(AudioManagerKey).play("hum", { loop: true });
+  }
+  onDisable() {
+    this.beam?.stop();
+  }
 }
 ```
 
@@ -106,14 +110,13 @@ Within one entity, `update()` / `fixedUpdate()` run in ascending `updatePriority
 
 ```ts
 class BoundsClamp extends Component {
-  static updatePriority = 10;              // class default: after the follow that moved the camera
+  static updatePriority = 10; // class default: after the follow that moved the camera
 }
 this.add(new Mover());
 this.add(new Brain()).updatePriority = -1; // per instance: decides before Mover moves
 ```
 
 - `component.updatePriority` is writable at any time, before or after `add()`; the instance value overrides the class's `static updatePriority`, which subclasses inherit.
-- Save/load keeps a per-instance value that differs from the class default.
 - `entity.getAll()` stays in add order.
 
 ### EntityPool
@@ -122,40 +125,51 @@ A group of entities cycled by deactivation rather than spawn and destroy. A memb
 
 ```ts
 class Bullet extends Entity {
-  setup() { /* Transform, GraphicsComponent, RigidBodyComponent, collider */ }
+  setup() {
+    /* Transform, GraphicsComponent, RigidBodyComponent, collider */
+  }
   // Required for a pooled class. Its parameters become acquire()'s arguments.
   onAcquire(x: number, y: number, dir: Vec2) {
     const rb = this.get(RigidBodyComponent);
     rb.setPosition(x, y);
     rb.setVelocity({ x: dir.x * 900, y: dir.y * 900 });
   }
-  onRelease() { this.target = undefined; }   // optional, game-level cleanup
+  onRelease() {
+    this.target = undefined;
+  } // optional, game-level cleanup
 }
 
 // In onEnter — members' components resolve scene services during setup().
 this.bullets = new EntityPool(this, Bullet, { prewarm: 32 });
 
-const bullet = this.bullets.acquire(x, y, dir);   // Bullet
+const bullet = this.bullets.acquire(x, y, dir); // Bullet
 this.bullets.release(bullet);
 ```
 
 ```ts
-class EntityPool<T extends PoolableEntity, TMax extends number | undefined = undefined> {
+class EntityPool<
+  T extends PoolableEntity,
+  TMax extends number | undefined = undefined,
+> {
   // Third argument carries { setup } when the class's setup() requires params.
-  constructor(scene: Scene, Class: new () => T, options?: EntityPoolOptions<T, TMax>);
-  get size(): number;        // total members
-  get leased(): number;      // handed out
-  get free(): number;        // available
-  acquire(...args: Parameters<T["onAcquire"]>): T | undefined;  // T when elastic
+  constructor(
+    scene: Scene,
+    Class: new () => T,
+    options?: EntityPoolOptions<T, TMax>,
+  );
+  get size(): number; // total members
+  get leased(): number; // handed out
+  get free(): number; // available
+  acquire(...args: Parameters<T["onAcquire"]>): T | undefined; // T when elastic
   forceAcquire(...args: Parameters<T["onAcquire"]>): T;
   release(member: T): void;
   releaseAll(): void;
-  dispose(): void;           // destroys members; the scene does this on exit
+  dispose(): void; // destroys members; the scene does this on exit
 }
 
 interface EntityPoolOptions<T, TMax> {
-  prewarm?: number;                       // built up front, parked dormant
-  maxSize?: TMax;                         // total members; unset = elastic
+  prewarm?: number; // built up front, parked dormant
+  maxSize?: TMax; // total members; unset = elastic
   reclaimPriority?: (member: T) => number; // lowest is reclaimed first
 }
 ```
@@ -172,7 +186,7 @@ interface EntityPoolOptions<T, TMax> {
 - Pools belong to their scene and are disposed on exit; `acquire` on a disposed pool throws. Build them in `onEnter()`, where scene services exist.
 - A member that picked up a parent while leased (attached via `addChild`) is detached before it goes back into the pool, after `onRelease` has run — so `onRelease` can still read `entity.parent`, but the next lease never inherits a stale one.
 - The pool owns its members' lifetimes. `entity.destroy()` on a member releases it back to the pool instead of tearing it down, so retire sites holding a plain `Entity` (collision handlers, `update`, event listeners) need no pool reference and the same code works pooled or not. `isDestroyed` stays `false` for such a member; destroying an entity with a member below it detaches and returns that member. Only `dispose()` destroys members.
-- Save snapshots skip members and everything parented under one. A pool restores empty and refills, so entities in flight at save time are gone on load.
+- Pools and their members are runtime objects. Save durable game facts through an explicit state root, then reconstruct and prewarm pools during scene setup.
 - A released member is alive and `isDestroyed` is `false`, so a stored reference to one silently follows the entity into its next life. Store `entity.handle()` instead when something else owns the release.
 - The physics collision drain captures both sides of every pair before running any handler, so a pair naming an entity a handler released is dropped instead of reaching whoever acquired it next.
 
@@ -184,10 +198,12 @@ interface EntityPoolOptions<T, TMax> {
 class Turret extends Entity {
   private target?: EntityHandle<Enemy>;
 
-  onSpotted(enemy: Enemy) { this.target = enemy.handle(); }
+  onSpotted(enemy: Enemy) {
+    this.target = enemy.handle();
+  }
 
   update() {
-    const enemy = this.target?.current;   // undefined once that enemy is gone
+    const enemy = this.target?.current; // undefined once that enemy is gone
     if (enemy) this.aimAt(enemy);
   }
 }
@@ -202,33 +218,33 @@ interface EntityHandle<out T extends Entity = Entity> {
 - Rule of thumb: use a handle whenever pooled entities are involved — a member can be retired from anywhere (`destroy()` in its own collision handler releases it), so a stored plain reference goes stale silently. A plain reference is fine for entities that live as long as the scene, or when the code storing the reference also controls when the entity goes away.
 - `.current` means "same life", not "currently active": an entity turned off with `setActive(false)` still resolves.
 - A life ends on `destroy()`, on scene teardown, on every path that ends a member's lease — `release`, `releaseAll`, a `forceAcquire` reclaim — and on `dispose()`, which destroys the members outright. A member's children end their lives with it, so a handle on a pooled entity's hitbox expires too.
-- `entity.generation` is the counter behind it: 0 for a fresh entity, increased whenever a life ends. Compare it for equality — a destruction cascade can advance it more than once, so it does not count lives. Public read, engine write. It is not saved and not in the Inspector snapshot.
+- `entity.generation` is the counter behind it: 0 for a fresh entity, increased whenever a life ends. Compare it for equality — a destruction cascade can advance it more than once, so it does not count lives. Public read, engine write. Inspector snapshots omit it.
 - `handle()` on a pool member the pool is not currently lending out returns a handle that never resolves, and warns in dev builds. The caller is holding a stale reference, so a handle from it would come alive at the next acquisition.
 - Handles are created by `entity.handle()` only; `EntityHandle` is a type, not a constructor. `T` is output-only, so an `EntityHandle<Enemy>` is assignable to `EntityHandle<Entity>` and not the other way round.
 
 ### Events
 
-| Export | Purpose |
-|---|---|
-| `EventBus<E>` | Typed pub/sub (`on`, `once`, `emit`, `clear`) |
-| `EventToken<T>` | Typed token for entity events |
-| `defineEvent<T>(name)` | Create an event token |
+| Export                 | Purpose                                       |
+| ---------------------- | --------------------------------------------- |
+| `EventBus<E>`          | Typed pub/sub (`on`, `once`, `emit`, `clear`) |
+| `EventToken<T>`        | Typed token for entity events                 |
+| `defineEvent<T>(name)` | Create an event token                         |
 
 `EngineEvents` (the typed map used by `EventBusKey`):
 
-| Event | Payload |
-|---|---|
-| `entity:created` / `entity:destroyed` | `{ entity }` — `entity:destroyed` fires on the end-of-frame flush after `destroy()` and once per entity on scene teardown, before `scene:popped`/`scene:replaced` |
-| `component:added` | `{ entity; component }` |
-| `component:removed` | `{ entity; componentClass }` |
-| `scene:pushed` / `scene:popped` | `{ scene }` |
-| `scene:replaced` | `{ oldScene; newScene }` |
-| `scene:transition:started` / `scene:transition:ended` | `{ kind; fromScene; toScene }` |
-| `scene:loading:progress` | `{ scene; ratio }` |
-| `scene:loading:done` | `{ scene }` |
-| `engine:started` / `engine:stopped` | `undefined` |
-| `screen:fullscreen` | `{ active: boolean }` — emitted by `RendererPlugin` on `fullscreenchange` / `webkitfullscreenchange` |
-| `screen:orientation` | `{ type: OrientationType }` — emitted by `RendererPlugin` on `screen.orientation.change` (or `orientationchange` fallback) |
+| Event                                                 | Payload                                                                                                                                                           |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entity:created` / `entity:destroyed`                 | `{ entity }` — `entity:destroyed` fires on the end-of-frame flush after `destroy()` and once per entity on scene teardown, before `scene:popped`/`scene:replaced` |
+| `component:added`                                     | `{ entity; component }`                                                                                                                                           |
+| `component:removed`                                   | `{ entity; componentClass }`                                                                                                                                      |
+| `scene:pushed` / `scene:popped`                       | `{ scene }`                                                                                                                                                       |
+| `scene:replaced`                                      | `{ oldScene; newScene }`                                                                                                                                          |
+| `scene:transition:started` / `scene:transition:ended` | `{ kind; fromScene; toScene }`                                                                                                                                    |
+| `scene:loading:progress`                              | `{ scene; ratio }`                                                                                                                                                |
+| `scene:loading:done`                                  | `{ scene }`                                                                                                                                                       |
+| `engine:started` / `engine:stopped`                   | `undefined`                                                                                                                                                       |
+| `screen:fullscreen`                                   | `{ active: boolean }` — emitted by `RendererPlugin` on `fullscreenchange` / `webkitfullscreenchange`                                                              |
+| `screen:orientation`                                  | `{ type: OrientationType }` — emitted by `RendererPlugin` on `screen.orientation.change` (or `orientationchange` fallback)                                        |
 
 ### Scene Events
 
@@ -250,8 +266,8 @@ scene.on(DamagedEvent, (data: { amount: number }, entity?: Entity) => {
   }
 });
 
-scene.emit(DamagedEvent, { amount: 5 });          // handler runs with entity = undefined
-someEntity.emit(DamagedEvent, { amount: 10 });    // handler runs with entity = someEntity
+scene.emit(DamagedEvent, { amount: 5 }); // handler runs with entity = undefined
+someEntity.emit(DamagedEvent, { amount: 10 }); // handler runs with entity = someEntity
 ```
 
 `Scene.on` returns an unsubscribe function. The handler param is `(data, entity?)` regardless of which side emitted — game code should check `entity` to decide whether to read source state.
@@ -262,29 +278,29 @@ someEntity.emit(DamagedEvent, { amount: 10 });    // handler runs with entity = 
 
 Per-scene arbitration for competing time effects. The engine registers one instance per scene under the scene-scoped `SceneTimeKey`; resolve via `Component.use(SceneTimeKey)` / `Scene.use(SceneTimeKey)`, or `scene.tryResolveScoped(SceneTimeKey)` from a System.
 
-| Member | Purpose |
-|---|---|
-| `scaleBy(factor, { for?, key?, excludeUpdates?, label? })` | Add a scale request. `factor` finite and > 0 (> 1 = speed-up; physics catch-up capped at ~8 sub-steps/frame). Returns `TimeEffectHandle { active, release() }` (idempotent) |
-| `freezeFor(duration, { key?, excludeUpdates?, label? })` | ×0 scene request for `duration` real-time seconds; exclusions keep selected updates running while physics remains frozen |
-| `scaleEntityBy(entity, factor, { for?, key?, label? })` | Scale one entity's component updates, processes, and particle emitters; does not affect physics |
-| `freezeEntityFor(entity, duration, { key?, label? })` | ×0 request for one entity's updates; expires on raw scene time and does not affect physics |
-| `effectiveScale` | `scene.timeScale × Π(channel winners)` — what physics and scene-pool processes run at |
-| `elapsed` | Simulation seconds elapsed under `effectiveScale`, accrued once per rendered frame; held by stack pause, `timeScale = 0`, and freeze requests; starts at 0 on scene entry and is not saved |
-| `fixedElapsed` | Simulation seconds accrued on the fixed timestep — one `fixedTimestep × effectiveScale` increment per fixed step; same holds as `elapsed` (stack pause, `timeScale = 0`, freeze); stamp and compare gameplay times against this from fixed-step code, never against `elapsed`. Whole-scene reading: ignores `entity.timeScale` and `excludeUpdates` |
-| `effectiveScaleForUpdates(entity)` | Scene scale after exclusions, multiplied by entity-request winners; `entity.timeScale` is composed on top by the update pipeline |
-| `isFrozen` | `effectiveScale === 0` |
-| `activeLabels` | Display labels of active requests (`label` option, defaults to `key`) |
+| Member                                                     | Purpose                                                                                                                                                                                                                                                                                                                                             |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scaleBy(factor, { for?, key?, excludeUpdates?, label? })` | Add a scale request. `factor` finite and > 0 (> 1 = speed-up; physics catch-up capped at ~8 sub-steps/frame). Returns `TimeEffectHandle { active, release() }` (idempotent)                                                                                                                                                                         |
+| `freezeFor(duration, { key?, excludeUpdates?, label? })`   | ×0 scene request for `duration` real-time seconds; exclusions keep selected updates running while physics remains frozen                                                                                                                                                                                                                            |
+| `scaleEntityBy(entity, factor, { for?, key?, label? })`    | Scale one entity's component updates, processes, and particle emitters; does not affect physics                                                                                                                                                                                                                                                     |
+| `freezeEntityFor(entity, duration, { key?, label? })`      | ×0 request for one entity's updates; expires on raw scene time and does not affect physics                                                                                                                                                                                                                                                          |
+| `effectiveScale`                                           | `scene.timeScale × Π(channel winners)` — what physics and scene-pool processes run at                                                                                                                                                                                                                                                               |
+| `elapsed`                                                  | Simulation seconds elapsed under `effectiveScale`, accrued once per rendered frame; held by stack pause, `timeScale = 0`, and freeze requests; starts at 0 on scene entry and is not saved                                                                                                                                                          |
+| `fixedElapsed`                                             | Simulation seconds accrued on the fixed timestep — one `fixedTimestep × effectiveScale` increment per fixed step; same holds as `elapsed` (stack pause, `timeScale = 0`, freeze); stamp and compare gameplay times against this from fixed-step code, never against `elapsed`. Whole-scene reading: ignores `entity.timeScale` and `excludeUpdates` |
+| `effectiveScaleForUpdates(entity)`                         | Scene scale after exclusions, multiplied by entity-request winners; `entity.timeScale` is composed on top by the update pipeline                                                                                                                                                                                                                    |
+| `isFrozen`                                                 | `effectiveScale === 0`                                                                                                                                                                                                                                                                                                                              |
+| `activeLabels`                                             | Display labels of active requests (`label` option, defaults to `key`)                                                                                                                                                                                                                                                                               |
 
-Composition: each `key` is a channel. Within a channel, the latest active request wins, and older still-active entries apply again when it ends. Across channels, winners multiply. Entity channels are independent per target and multiply after the scene request result. An unkeyed call is its own anonymous channel. `scene.timeScale` and `entity.timeScale` remain base values; the service never writes them. Durations age on raw frame time at the start of each frame, only while the scene is active, so an entity freeze can expire without that entity updating. A stack-paused scene holds its effects. Zero-duration requests return an inactive handle. Entity-scoped requests and `excludeUpdates` entries apply only to the entity life that was current when the request started; pool release ends that association before the entity can be reused. All requests release on scene exit and are transient across save/load. `excludeUpdates` and entity requests cover component updates, the entity's `ProcessComponent`, and its particle emitters. They do not provide per-body time: scene freeze still freezes physics, while an entity request leaves its target's rigid body running at scene speed. The two elapsed readings differ in cadence: `elapsed` advances once per rendered frame at the start of the frame, `fixedElapsed` advances once per fixed step before the `FixedUpdate` phase runs. Stamp and compare against the same reading. Inspector scene snapshots report `effectiveTimeScale` and `frozen`.
+Composition: each `key` is a channel. Within a channel, the latest active request wins, and older still-active entries apply again when it ends. Across channels, winners multiply. Entity channels are independent per target and multiply after the scene request result. An unkeyed call is its own anonymous channel. `scene.timeScale` and `entity.timeScale` remain base values; the service never writes them. Durations age on raw frame time at the start of each frame, only while the scene is active, so an entity freeze can expire without that entity updating. A stack-paused scene holds its effects. Zero-duration requests return an inactive handle. Entity-scoped requests and `excludeUpdates` entries apply only to the entity life that was current when the request started; pool release ends that association before the entity can be reused. All requests release on scene exit and are runtime-only. `excludeUpdates` and entity requests cover component updates, the entity's `ProcessComponent`, and its particle emitters. They do not provide per-body time: scene freeze still freezes physics, while an entity request leaves its target's rigid body running at scene speed. The two elapsed readings differ in cadence: `elapsed` advances once per rendered frame at the start of the frame, `fixedElapsed` advances once per fixed step before the `FixedUpdate` phase runs. Stamp and compare against the same reading. Inspector scene snapshots report `effectiveTimeScale` and `frozen`.
 
 ### Math
 
-| Export | Purpose |
-|---|---|
-| `Vec2` | Immutable 2D vector (`add`, `sub`, `scale`, `normalize`, `lerp`, `dot`, `distance`, static `moveTowards`) |
-| `Transform` | Mutable position/rotation/scale component (`setPosition`, `translate`, `rotate`); `worldPosition` / `worldRotation` / `worldScale` are lazily computed and cache-invalidate on local mutation or reparenting |
-| `MathUtils` | `lerp`, `inverseLerp`, `lerpAngle`, `shortestAngleBetween`, `pingPong`, `smoothDamp`, `clamp`, etc. |
-| `SmoothDampResult` | `{ value, velocity }` returned by `MathUtils.smoothDamp()` |
+| Export             | Purpose                                                                                                                                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Vec2`             | Immutable 2D vector (`add`, `sub`, `scale`, `normalize`, `lerp`, `dot`, `distance`, static `moveTowards`)                                                                                                    |
+| `Transform`        | Mutable position/rotation/scale component (`setPosition`, `translate`, `rotate`); `worldPosition` / `worldRotation` / `worldScale` are lazily computed and cache-invalidate on local mutation or reparenting |
+| `MathUtils`        | `lerp`, `inverseLerp`, `lerpAngle`, `shortestAngleBetween`, `pingPong`, `smoothDamp`, `clamp`, etc.                                                                                                          |
+| `SmoothDampResult` | `{ value, velocity }` returned by `MathUtils.smoothDamp()`                                                                                                                                                   |
 
 Math signatures:
 
@@ -323,7 +339,7 @@ import { SpriteComponent } from "@yagejs/renderer";
 
 class Character extends Entity {
   setup() {
-    this.add(new Transform());                      // parent — drives facing
+    this.add(new Transform()); // parent — drives facing
     const body = this.spawnChild("body");
     body.add(new Transform());
     body.add(new SpriteComponent({ texture: "body.png" }));
@@ -333,7 +349,7 @@ class Character extends Entity {
   }
 
   faceLeft(): void {
-    this.get(Transform).setScale(-1, 1);            // mirrors body + head together
+    this.get(Transform).setScale(-1, 1); // mirrors body + head together
   }
   faceRight(): void {
     this.get(Transform).setScale(1, 1);
@@ -345,33 +361,33 @@ Negative scale on a child still composes — a child with `setScale(-1, 1)` unde
 
 ### Processes
 
-| Export | Purpose |
-|---|---|
-| `Process` | Ticked action, advanced by whichever clock it is scheduled on; `Process.delay(seconds, cb)`; `.elapsed` — seconds ticked so far, scaled by the caller's timeScale |
-| `ProcessComponent` | Entity component managing processes and slots |
-| `ProcessSlot` | Reusable restartable handle (cooldowns, effects) |
-| `Tween` | Static factory: `to`, `custom`, `vec2`, `stagger` |
-| `Sequence` | Chainable step builder: `then`, `wait`, `call`, `parallel`, `loop` |
-| `TimerEntity` | Pre-built entity with ProcessComponent API |
-| `makeEntityScopedQueue` | `(entity, options?: { clock?: ProcessClock }) => ScopedProcessQueue`. Routes through the entity's `ProcessComponent`, adding one when the entity has none. `run(p): Process` enqueues, `cancelAll()` cancels only what this queue enqueued |
-| `ProcessSystem` | Engine-level process pools, resolved with `context.resolve(ProcessSystemKey)`. `add(p, options?): Process` (engine-global), `addForScene(scene, p, options?): Process`, `cancel(tag?)`, `cancelForScene(scene, tag?)`. Both `options` are `{ clock?: ProcessClock }` |
-| `makeSceneScopedQueue` | `(processSystem, scene, options?: { clock?: ProcessClock }) => ScopedProcessQueue`. Routes through `ProcessSystem.addForScene`, so its processes pause and scale with the scene. Same `run`/`cancelAll` contract |
-| `makeGlobalScopedQueue` | `(processSystem, options?: { clock?: ProcessClock }) => ScopedProcessQueue`. Routes through `ProcessSystem.add` — global time scale only, no per-scene pause gating. Same `run`/`cancelAll` contract |
+| Export                  | Purpose                                                                                                                                                                                                                                                              |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Process`               | Ticked action, advanced by whichever clock it is scheduled on; `Process.delay(seconds, cb)`; `.elapsed` — seconds ticked so far, scaled by the caller's timeScale                                                                                                    |
+| `ProcessComponent`      | Entity component managing processes and slots                                                                                                                                                                                                                        |
+| `ProcessSlot`           | Reusable restartable handle (cooldowns, effects)                                                                                                                                                                                                                     |
+| `Tween`                 | Static factory: `to`, `custom`, `vec2`, `stagger`                                                                                                                                                                                                                    |
+| `Sequence`              | Chainable step builder: `then`, `wait`, `call`, `parallel`, `loop`                                                                                                                                                                                                   |
+| `TimerEntity`           | Pre-built entity with ProcessComponent API                                                                                                                                                                                                                           |
+| `makeEntityScopedQueue` | `(entity, options?: { clock?: ProcessClock }) => ScopedProcessQueue`. Routes through the entity's `ProcessComponent`, adding one when the entity has none. `run(p): Process` enqueues, `cancelAll()` cancels only what this queue enqueued                           |
+| `ProcessSystem`         | Engine-level process pools, resolved with `context.resolve(ProcessSystemKey)`. `add(p, options?): Process` (engine-global), `addForScene(scene, p, options?): Process`, `cancel(tag?)`, `cancelForScene(scene, tag?)`. Both `options` are `{ clock?: ProcessClock }` |
+| `makeSceneScopedQueue`  | `(processSystem, scene, options?: { clock?: ProcessClock }) => ScopedProcessQueue`. Routes through `ProcessSystem.addForScene`, so its processes pause and scale with the scene. Same `run`/`cancelAll` contract                                                     |
+| `makeGlobalScopedQueue` | `(processSystem, options?: { clock?: ProcessClock }) => ScopedProcessQueue`. Routes through `ProcessSystem.add` — global time scale only, no per-scene pause gating. Same `run`/`cancelAll` contract                                                                 |
 
 Decision matrix:
 
-| Need | Use |
-|---|---|
-| Wait N seconds then run a callback | `Process.delay()` |
-| Cooldown / restartable timer (`completed`, `restart`) | `pc.slot()` |
-| Animate one property A → B | `Tween.to()` / `.vec2()` |
-| Interpolate a number from→to with a custom setter | `Tween.custom(setter, from, to, duration, easing?)` |
-| Cascade a tween across an array (staggered starts) | `Tween.stagger(items, (item, i) => Process, stepSeconds)` → `Process[]` |
-| Arbitrary per-frame logic (no interpolation) | `new Process({ update })` |
-| Multi-step "do this, then this, then this" | `Sequence` |
-| Run several animations together | `Sequence.parallel()` |
-| Multi-point or non-monotonic animation curves | `KeyframeAnimator` |
-| Fire discrete events at specific times | `KeyframeAnimator` keyframe `event` |
+| Need                                                  | Use                                                                     |
+| ----------------------------------------------------- | ----------------------------------------------------------------------- |
+| Wait N seconds then run a callback                    | `Process.delay()`                                                       |
+| Cooldown / restartable timer (`completed`, `restart`) | `pc.slot()`                                                             |
+| Animate one property A → B                            | `Tween.to()` / `.vec2()`                                                |
+| Interpolate a number from→to with a custom setter     | `Tween.custom(setter, from, to, duration, easing?)`                     |
+| Cascade a tween across an array (staggered starts)    | `Tween.stagger(items, (item, i) => Process, stepSeconds)` → `Process[]` |
+| Arbitrary per-frame logic (no interpolation)          | `new Process({ update })`                                               |
+| Multi-step "do this, then this, then this"            | `Sequence`                                                              |
+| Run several animations together                       | `Sequence.parallel()`                                                   |
+| Multi-point or non-monotonic animation curves         | `KeyframeAnimator`                                                      |
+| Fire discrete events at specific times                | `KeyframeAnimator` keyframe `event`                                     |
 
 Tag processes with `pc.run(p, { tags: ["vfx"] })` then cancel groups with `pc.cancel("vfx")`. Processes and slots auto-cancel on entity destroy via `ProcessComponent.onDestroy()`, and on `EntityPool` release too — a pending `Process.delay` scheduled before release would otherwise fire on the next lease.
 
@@ -392,33 +408,35 @@ alone keeps the reusable slot registered with its `ProcessComponent`.
 
 Keyframe-based property animation on top of `ProcessComponent`. Runs multiple named animations concurrently; values interpolate between keyframes via an easing function and are pushed to a user-supplied setter.
 
-| Export | Purpose |
-|---|---|
-| `KeyframeAnimator<T>` | Component hosting named keyframe animations (`play`, `stop`, `stopAll`, `isPlaying`) |
-| `Keyframe<T>` | `{ time, data, easing?, event? }` — single control point |
-| `KeyframeAnimationDef<T>` | `{ keyframes, setter?, clock?, loop?, speed?, duration?, easing?, onEnter?, onExit? }` |
-| `createKeyframeTrack<T>(options)` | Factory that returns a `Process` driving a single track |
-| `interpolate<T>(from, to, t, easing?)` | Blend two `Interpolatable` values |
-| `Interpolatable` | `number \| Vec2Like` — registered interpolation types |
+| Export                                 | Purpose                                                                                |
+| -------------------------------------- | -------------------------------------------------------------------------------------- |
+| `KeyframeAnimator<T>`                  | Component hosting named keyframe animations (`play`, `stop`, `stopAll`, `isPlaying`)   |
+| `Keyframe<T>`                          | `{ time, data, easing?, event? }` — single control point                               |
+| `KeyframeAnimationDef<T>`              | `{ keyframes, setter?, clock?, loop?, speed?, duration?, easing?, onEnter?, onExit? }` |
+| `createKeyframeTrack<T>(options)`      | Factory that returns a `Process` driving a single track                                |
+| `interpolate<T>(from, to, t, easing?)` | Blend two `Interpolatable` values                                                      |
+| `Interpolatable`                       | `number \| Vec2Like` — registered interpolation types                                  |
 
 ```ts
 import { KeyframeAnimator, ProcessComponent, Transform } from "@yagejs/core";
 
 entity.add(new ProcessComponent());
-const anim = entity.add(new KeyframeAnimator({
-  bob: {
-    keyframes: [
-      { time: 0, data: 0 },
-      { time: 0.5, data: 10 },
-      { time: 1, data: 0 },
-    ],
-    setter: (v) => {
-      const t = entity.get(Transform);
-      t.setPosition(t.position.x, v as number);
+const anim = entity.add(
+  new KeyframeAnimator({
+    bob: {
+      keyframes: [
+        { time: 0, data: 0 },
+        { time: 0.5, data: 10 },
+        { time: 1, data: 0 },
+      ],
+      setter: (v) => {
+        const t = entity.get(Transform);
+        t.setPosition(t.position.x, v as number);
+      },
+      loop: true,
     },
-    loop: true,
-  },
-}));
+  }),
+);
 anim.play("bob");
 ```
 
@@ -433,9 +451,9 @@ fire keyframe `event` callbacks (cutscenes, audio cues, gameplay beats):
 new KeyframeAnimator({
   intro: {
     keyframes: [
-      { time: 0,    data: 0, event: () => audio.play("step") },
+      { time: 0, data: 0, event: () => audio.play("step") },
       { time: 0.25, data: 0, event: () => audio.play("step") },
-      { time: 0.5,  data: 0, event: () => audio.play("door") },
+      { time: 0.5, data: 0, event: () => audio.play("door") },
     ],
     // no setter — only the events matter
   },
@@ -466,12 +484,12 @@ it breaks replay determinism.
 import { RandomKey } from "@yagejs/core";
 
 const rng = this.use(RandomKey);
-rng.float();          // [0, 1)
-rng.range(min, max);  // float in [min, max)
-rng.int(min, max);    // integer in [min, max], inclusive
-rng.pick(array);      // random element of a non-empty array
-rng.shuffle(array);   // shuffle in place, returns the same array
-rng.getSeed();        // current seed
+rng.float(); // [0, 1)
+rng.range(min, max); // float in [min, max)
+rng.int(min, max); // integer in [min, max], inclusive
+rng.pick(array); // random element of a non-empty array
+rng.shuffle(array); // shuffle in place, returns the same array
+rng.getSeed(); // current seed
 ```
 
 `globalRandom` is a process-wide `RandomService` for boot-time or cross-scene
@@ -483,21 +501,21 @@ replay-critical rolls on the scene RNG (`RandomKey`).
 ```ts
 const scenes = this.context.resolve(SceneManagerKey);
 
-scenes.autoPauseOnBlur = true;  // default: false
+scenes.autoPauseOnBlur = true; // default: false
 ```
 
 When enabled, `SceneManager` sets `scene.paused = true` on every scene in `activeScenes` on `document.hidden === true`, and restores them on `hidden === false`. Affected scenes get `onPause` on blur and `onResume` on focus. Only scenes paused by this mechanism are restored — user-paused scenes (manual `scene.paused = true` or `pauseBelow` cascade) are never touched, and get neither hook. Toggling the flag off mid-blur unpauses immediately. No-op in non-browser environments.
 
-`onPause`/`onResume` fire on every effective pause transition, i.e. whenever `scene.isPaused` flips, whatever the source: a `pauseBelow` scene pushed above, manual `scene.paused = true`/`false`, blur auto-pause, or a snapshot restoring the scene paused. Writes that don't change the effective state fire nothing: repeated assignments, flag flips masked by a stack pause, and writes before the scene is pushed. Pushing a scene whose `paused` flag is already true fires `onPause` on entry — this is how you start a scene paused. Do NOT write `scene.paused` from inside a lifecycle hook (`onEnter`/`onExit`/`onPause`/`onResume`): the write races the stack transition's own pause diff, so the hooks can fire twice or unpaired. A dev-mode warning flags it.
+`onPause`/`onResume` fire on every effective pause transition, i.e. whenever `scene.isPaused` flips, whatever the source: a `pauseBelow` scene pushed above, manual `scene.paused = true`/`false`, or blur auto-pause. Writes that don't change the effective state fire nothing: repeated assignments, flag flips masked by a stack pause, and writes before the scene is pushed. Pushing a scene whose `paused` flag is already true fires `onPause` on entry — this is how you start a scene paused. Do NOT write `scene.paused` from inside a lifecycle hook (`onEnter`/`onExit`/`onPause`/`onResume`): the write races the stack transition's own pause diff, so the hooks can fire twice or unpaired. A dev-mode warning flags it.
 
 ### Scene Transitions
 
-| Export | Purpose |
-|---|---|
-| `SceneTransition` | Interface: `duration`, `begin?`, `tick`, `end?` |
-| `SceneTransitionContext` | `elapsed`, `kind`, `engineContext`, `fromScene`, `toScene` |
-| `SceneTransitionKind` | `"push" \| "pop" \| "replace"` |
-| `SceneTransitionOptions` | `{ transition?: SceneTransition }` |
+| Export                                     | Purpose                                                       |
+| ------------------------------------------ | ------------------------------------------------------------- |
+| `SceneTransition`                          | Interface: `duration`, `begin?`, `tick`, `end?`               |
+| `SceneTransitionContext`                   | `elapsed`, `kind`, `engineContext`, `fromScene`, `toScene`    |
+| `SceneTransitionKind`                      | `"push" \| "pop" \| "replace"`                                |
+| `SceneTransitionOptions`                   | `{ transition?: SceneTransition }`                            |
 | `resolveTransition(callSite, destination)` | Precedence: call-site → `scene.defaultTransition` → undefined |
 
 Core ships the transition contract + orchestration only. Concrete transitions (`fade`, `flash`, `crossFade`) live in `@yagejs/renderer`.
@@ -535,33 +553,23 @@ a dropped promise can hide errors). Production builds suppress the warning.
 
 `easeLinear`, `easeInQuad`, `easeOutQuad`, `easeInOutQuad`, `easeOutBounce`
 
-### Serialization
-
-| Export | Purpose |
-|---|---|
-| `@serializable` | Class decorator for save/load registration |
-| `SerializableRegistry` | Auto-populated registry of decorated classes |
-| `SnapshotResolver` | Maps old entity IDs to restored instances in `afterRestore()` |
-
-`static restorePriority?: number` on a Component subclass sets its snapshot restore order: components are re-added in ascending priority on load (undeclared = 100, the engine reserves 0-99), so an `onAdd()` that reads a sibling declares a higher number than that sibling. Ties restore in save-time add order; subclasses inherit the base class's value.
-
 ### Traits
 
-| Export | Purpose |
-|---|---|
-| `defineTrait<T>(name)` | Define a trait token |
-| `@trait(token)` | Decorator: declare entity implements trait |
-| `TraitToken<T>` | Token used with `entity.hasTrait(token)` |
+| Export                                    | Purpose                                                                       |
+| ----------------------------------------- | ----------------------------------------------------------------------------- |
+| `defineTrait<T>(name)`                    | Define a trait token                                                          |
+| `@trait(token)`                           | Decorator: declare entity implements trait                                    |
+| `TraitToken<T>`                           | Token used with `entity.hasTrait(token)`                                      |
 | `entityClassHasTrait(EntityClass, token)` | Check whether an entity class declares or inherits a trait before spawning it |
 
 ### Entity Queries
 
-| Export | Purpose |
-|---|---|
-| `QueryCache` | Incremental entity query cache |
-| `QueryResult` | Iterable result from `cache.register([Component, ...])` |
-| `cache.queryOnce([Component, ...])` | Detached, seeded, one-shot `QueryResult` — never registered, never updated |
-| `filterEntities(entities, filter)` | One-off filter by name, tag, component, or trait; skips destroyed and dormant entities |
+| Export                              | Purpose                                                                                |
+| ----------------------------------- | -------------------------------------------------------------------------------------- |
+| `QueryCache`                        | Incremental entity query cache                                                         |
+| `QueryResult`                       | Iterable result from `cache.register([Component, ...])`                                |
+| `cache.queryOnce([Component, ...])` | Detached, seeded, one-shot `QueryResult` — never registered, never updated             |
+| `filterEntities(entities, filter)`  | One-off filter by name, tag, component, or trait; skips destroyed and dormant entities |
 
 `cache.register(filter)` returns a `QueryResult` pre-populated with entities that already match, then kept current via `onComponentAdded`/`onComponentRemoved`/`onEntityDestroyed`/`onEntityActivated`/`onEntityDeactivated`. Only active entities are ever members — see Activeness above. Call `cache.unregister(result)` when it no longer needs live updates — otherwise it keeps receiving updates forever. Queries registered once at system-install time (`DisplaySystem`, `UILayoutSystem`) are engine-lifetime by design and are never unregistered; per-mount registrations (e.g. `@yagejs/ui-react`'s `useQuery`) release on unmount.
 
@@ -571,17 +579,17 @@ a dropped promise can hide errors). Production builds suppress the warning.
 
 Opt-in per-scene entity keys. Most entities (bullets, particles, transient enemies) don't need them; pass `{ key }` only for entities whose state should persist (chests, doors, named NPCs).
 
-| Export | Purpose |
-|---|---|
-| `SpawnOptions` | `{ key?: string }` — trailing arg of `scene.spawn` / `entity.spawnChild` |
-| `entity.key` | `string \| undefined` — the assigned key |
-| `entity.requireKey()` | Returns `key` or throws (use in component `setup()`) |
-| `scene.findByKey<E>(key)` | Look up entity by key, scene-scoped, hides destroyed entities |
+| Export                    | Purpose                                                                  |
+| ------------------------- | ------------------------------------------------------------------------ |
+| `SpawnOptions`            | `{ key?: string }` — trailing arg of `scene.spawn` / `entity.spawnChild` |
+| `entity.key`              | `string \| undefined` — the assigned key                                 |
+| `entity.requireKey()`     | Returns `key` or throws (use in component `setup()`)                     |
+| `scene.findByKey<E>(key)` | Look up entity by key, scene-scoped, hides destroyed entities            |
 
 ```ts
 scene.spawn(Chest, { content: ["potion"] }, { key: "forest/chest-01" });
-scene.spawn(Plain, { key: "spawn-point" });        // class with no setup-params
-scene.spawn("anchor", { key: "anchor-01" });       // anonymous entity with a key
+scene.spawn(Plain, { key: "spawn-point" }); // class with no setup-params
+scene.spawn("anchor", { key: "anchor-01" }); // anonymous entity with a key
 parent.spawnChild("body", Bone, { key: "bone-01" });
 
 const chest = scene.findByKey<Chest>("forest/chest-01");
@@ -597,18 +605,18 @@ Duplicate keys throw at spawn time with no orphan side-effect — the entity is 
 
 ### Assets
 
-| Export | Purpose |
-|---|---|
+| Export           | Purpose                                          |
+| ---------------- | ------------------------------------------------ |
 | `AssetHandle<T>` | Typed handle returned by asset factory functions |
-| `AssetManager` | Load/unload assets, register loaders |
+| `AssetManager`   | Load/unload assets, register loaders             |
 
 ### Testing
 
-| Export | Purpose |
-|---|---|
-| `createTestEngine(config?)` | Fully assembled Engine for integration tests |
-| `createMockScene(name?)` | Lightweight scene with EngineContext for unit tests |
-| `createMockEntity(name?)` | Entity spawned in a mock scene |
+| Export                            | Purpose                                                                             |
+| --------------------------------- | ----------------------------------------------------------------------------------- |
+| `createTestEngine(config?)`       | Fully assembled Engine for integration tests                                        |
+| `createMockScene(name?)`          | Lightweight scene with EngineContext for unit tests                                 |
+| `createMockEntity(name?)`         | Entity spawned in a mock scene                                                      |
 | `advanceFrames(engine, n, dtMs?)` | Advance game loop by N frames (`dtMs` is the per-frame ms delta; default `1000/60`) |
 
 See also the `Testing & Debugging` section in the Quick Start for a runnable example and the Inspector API for runtime introspection.
@@ -617,13 +625,13 @@ See also the `Testing & Debugging` section in the Quick Start for a runnable exa
 
 Category-tagged logger with a ring buffer. Installed on `Engine` and available via `LoggerKey`. The game loop auto-updates the logger's frame counter, so every `LogEntry` carries the frame number it was emitted on.
 
-| Export | Purpose |
-|---|---|
-| `Logger` | `debug`, `info`, `warn`, `error` (all take `category, message, data?`); `getRecent(count?)`, `formatRecentLogs(count?)`, `clear()` |
-| `LogLevel` | `Debug` (0) / `Info` (1) / `Warn` (2) / `Error` (3) / `None` (4) |
-| `LoggerConfig` | `{ level?, categories?, bufferSize?, output? }` |
-| `LogEntry` | `{ level, category, message, data?, timestamp, frame }` |
-| `LoggerKey` | DI key for resolving a `Logger` from `EngineContext` |
+| Export         | Purpose                                                                                                                            |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `Logger`       | `debug`, `info`, `warn`, `error` (all take `category, message, data?`); `getRecent(count?)`, `formatRecentLogs(count?)`, `clear()` |
+| `LogLevel`     | `Debug` (0) / `Info` (1) / `Warn` (2) / `Error` (3) / `None` (4)                                                                   |
+| `LoggerConfig` | `{ level?, categories?, bufferSize?, output? }`                                                                                    |
+| `LogEntry`     | `{ level, category, message, data?, timestamp, frame }`                                                                            |
+| `LoggerKey`    | DI key for resolving a `Logger` from `EngineContext`                                                                               |
 
 ```ts
 import { LogLevel } from "@yagejs/core";
@@ -675,21 +683,37 @@ Typed reactive primitives for game-wide singleton state. Used by `@yagejs/ui-rea
 Three independent interfaces; every `Reactive*` shape implements all three:
 
 ```ts
-interface Reactive            { subscribe(fn: () => void): () => void }
-interface Serializable<TEnc>  { serialize(): TEnc; hydrate(raw: TEnc): void }
-interface Resettable          { reset(): void }
+interface Reactive {
+  subscribe(fn: () => void): () => void;
+}
+interface Serializable<TEnc> {
+  serialize(): TEnc;
+  hydrate(raw: TEnc): void;
+}
+interface Resettable {
+  reset(): void;
+}
 ```
 
 Each shape also carries a `[STATE_KIND]` symbol-brand (`"value" | "counter" | "record" | "map" | "set" | "list" | "store"`) — `useStore` dispatches on it.
 
 ```ts
-interface ReactiveValue<T>          extends Reactive, Serializable<{value:T}>, Resettable { get(): T; set(v: T): void }
-interface ReactiveCounter           extends Reactive, Serializable<number>,     Resettable {
-  value(): number; set(n: number): void; increment(by?: number): void;
-  decrement(by?: number): void; clamp(value: number, min: number, max: number): void;
+interface ReactiveValue<T>
+  extends Reactive, Serializable<{ value: T }>, Resettable {
+  get(): T;
+  set(v: T): void;
 }
-interface ReactiveRecord<T extends object> extends Reactive, Serializable<T>, Resettable {
-  get(): Readonly<T>; set(partial: Partial<T>): void;
+interface ReactiveCounter extends Reactive, Serializable<number>, Resettable {
+  value(): number;
+  set(n: number): void;
+  increment(by?: number): void;
+  decrement(by?: number): void;
+  clamp(value: number, min: number, max: number): void;
+}
+interface ReactiveRecord<T extends object>
+  extends Reactive, Serializable<T>, Resettable {
+  get(): Readonly<T>;
+  set(partial: Partial<T>): void;
   // Removes the key entirely (`set` can only overwrite). Absent key = no-op, no
   // notify. Accepts index-signature keys (`Record<string, V>`) and optional keys;
   // on a fixed-shape record a required key is a compile error, since `get()` is
@@ -699,44 +723,68 @@ interface ReactiveRecord<T extends object> extends Reactive, Serializable<T>, Re
   // open-ended `ReactiveRecord<Record<string, V>>`.
   delete: (key: DeletableRecordKey<T>) => void;
 }
-interface ReactiveMap<K, V>         extends Reactive, Serializable<Array<[K,V]>>, Resettable {
-  get(k: K): V | undefined; set(k: K, v: V): void; delete(k: K): void;
-  has(k: K): boolean; entries(): Array<[K, V]>; size(): number; clear(): void;
+interface ReactiveMap<K, V>
+  extends Reactive, Serializable<Array<[K, V]>>, Resettable {
+  get(k: K): V | undefined;
+  set(k: K, v: V): void;
+  delete(k: K): void;
+  has(k: K): boolean;
+  entries(): Array<[K, V]>;
+  size(): number;
+  clear(): void;
 }
-interface ReactiveSet<K>            extends Reactive, Serializable<K[]>, Resettable {
-  add(k: K): void; delete(k: K): void; has(k: K): boolean;
-  values(): K[]; size(): number; clear(): void;
+interface ReactiveSet<K> extends Reactive, Serializable<K[]>, Resettable {
+  add(k: K): void;
+  delete(k: K): void;
+  has(k: K): boolean;
+  values(): K[];
+  size(): number;
+  clear(): void;
 }
-interface ReactiveList<T>           extends Reactive, Serializable<ListEncoded<T>>, Resettable {
-  add(item: T): number;            // returns assigned id
-  remove(id: number): boolean;     // by id, not delete — semantically distinct
-  get(id: number): T | undefined; update(id: number, partial: Partial<T>): boolean;
-  list(): T[]; size(): number; clear(): void;
+interface ReactiveList<T>
+  extends Reactive, Serializable<ListEncoded<T>>, Resettable {
+  add(item: T): number; // returns assigned id
+  remove(id: number): boolean; // by id, not delete — semantically distinct
+  get(id: number): T | undefined;
+  update(id: number, partial: Partial<T>): boolean;
+  list(): T[];
+  size(): number;
+  clear(): void;
   // keyed lookup — requires the `keyBy` option, else these throw.
   // A keyed list holds at most one item per key; add/update/upsert throw on a
   // duplicate key. upsert requires keyBy(item) === key.
-  findId(key: string | number): number | undefined;   // id for a domain key
-  getByKey(key: string | number): T | undefined;       // item for a domain key
-  upsert(key: string | number, item: T): number;       // add-or-replace by key; returns id
+  findId(key: string | number): number | undefined; // id for a domain key
+  getByKey(key: string | number): T | undefined; // item for a domain key
+  upsert(key: string | number, item: T): number; // add-or-replace by key; returns id
 }
-interface ReactiveStore<L>          extends Reactive, Serializable<EncodedStore<L>>, Resettable { /* plus L's leaves */ }
+interface ReactiveStore<L>
+  extends Reactive, Serializable<EncodedStore<L>>, Resettable {
+  /* plus L's leaves */
+}
 ```
 
 ### Factories
 
 ```ts
 import {
-  createValue, createCounter, createRecord,
-  createMap, createSet, createList, createStore,
+  createValue,
+  createCounter,
+  createRecord,
+  createMap,
+  createSet,
+  createList,
+  createStore,
 } from "@yagejs/core";
 
 // Leaf factories — usable on their own.
-const settings = createRecord<Settings>({ default: () => ({ music: 0.8, sfx: 1.0 }) });
-const opened    = createSet<string>();
-const enemies   = createMap<string, number>();
+const settings = createRecord<Settings>({
+  default: () => ({ music: 0.8, sfx: 1.0 }),
+});
+const opened = createSet<string>();
+const enemies = createMap<string, number>();
 const restEpoch = createCounter();
-const day       = createValue<number>({ default: 1 });
-const journal   = createList<{ at: number; text: string }>();
+const day = createValue<number>({ default: 1 });
+const journal = createList<{ at: number; text: string }>();
 
 // Keyed list — pass `keyBy` to look items up by a domain field in O(1).
 // Keys are unique: at most one item per key. add/update/upsert throw if the
@@ -746,17 +794,19 @@ const inventory = createList<{ itemId: string; quantity: number }>({
 });
 inventory.upsert("sword", { itemId: "sword", quantity: 1 }); // insert
 inventory.upsert("sword", { itemId: "sword", quantity: 2 }); // replace in place
-inventory.findId("sword");    // -> id
-inventory.getByKey("sword");  // -> { itemId: "sword", quantity: 2 }
+inventory.findId("sword"); // -> id
+inventory.getByKey("sword"); // -> { itemId: "sword", quantity: 2 }
 
 // Compound — bundle leaves so they serialise/restore atomically.
 const game = createStore((s) => ({
   inventory: s.map<string, number>(),
-  recipes:   s.set<string>(),
-  gold:      s.counter({ default: 0 }),
-  shelf:     s.list<Potion>(),
-  day:       s.value<number>({ default: 1 }),
-  settings:  s.record<Settings>({ default: () => ({ volume: 0.8, lang: "en" }) }),
+  recipes: s.set<string>(),
+  gold: s.counter({ default: 0 }),
+  shelf: s.list<Potion>(),
+  day: s.value<number>({ default: 1 }),
+  settings: s.record<Settings>({
+    default: () => ({ volume: 0.8, lang: "en" }),
+  }),
 }));
 game.gold.increment(10);
 game.inventory.set("moonleaf", 3);
@@ -782,7 +832,12 @@ interface Plugin {
 }
 
 enum Phase {
-  EarlyUpdate, FixedUpdate, Update, LateUpdate, Render, EndOfFrame
+  EarlyUpdate,
+  FixedUpdate,
+  Update,
+  LateUpdate,
+  Render,
+  EndOfFrame,
 }
 
 type EasingFunction = (t: number) => number;
@@ -797,10 +852,10 @@ instead of assuming a phase — `@yagejs/input` uses them to scope edge queries
 to the caller's frame or fixed step:
 
 ```ts
-scheduler.currentPhase;   // Phase | null — phase running right now; null outside any phase
+scheduler.currentPhase; // Phase | null — phase running right now; null outside any phase
 scheduler.fixedStepIndex; // number — monotonic count of fixed steps started; identifies
-                          // the running step during Phase.FixedUpdate (a frame can run
-                          // several steps, or none), holds the last step's number between steps
+// the running step during Phase.FixedUpdate (a frame can run
+// several steps, or none), holds the last step's number between steps
 ```
 
 ## Error Handling

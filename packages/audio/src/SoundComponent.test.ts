@@ -62,6 +62,26 @@ describe("SoundComponent", () => {
     manager = new AudioManager(mockSound);
   });
 
+  it("exposes its playback config for reading back", () => {
+    const comp = new SoundComponent({
+      alias: "laser",
+      channel: "ui",
+      loop: true,
+      volume: 0.5,
+    });
+    expect(comp.alias).toBe("laser");
+    expect(comp.channel).toBe("ui");
+    expect(comp.loop).toBe(true);
+    expect(comp.volume).toBe(0.5);
+  });
+
+  it("defaults the readable config the same way playback does", () => {
+    const comp = new SoundComponent({ alias: "hit" });
+    expect(comp.channel).toBe("sfx");
+    expect(comp.loop).toBe(false);
+    expect(comp.volume).toBe(1);
+  });
+
   it("play() delegates to AudioManager", () => {
     const { scene } = createAudioTestContext(manager);
     const entity = spawnEntityInScene(scene);
@@ -213,47 +233,5 @@ describe("SoundComponent", () => {
         loop: true,
       }),
     );
-  });
-
-  describe("serialization", () => {
-    it("serialize returns all config fields", () => {
-      const comp = new SoundComponent({
-        alias: "explosion",
-        channel: "sfx",
-        loop: false,
-        volume: 0.8,
-        playOnAdd: true,
-      });
-      expect(comp.serialize()).toEqual({
-        alias: "explosion",
-        channel: "sfx",
-        loop: false,
-        volume: 0.8,
-        playOnAdd: true,
-      });
-    });
-
-    it("serialize uses defaults for optional fields", () => {
-      const comp = new SoundComponent({ alias: "beep" });
-      expect(comp.serialize()).toEqual({
-        alias: "beep",
-        channel: "sfx",
-        loop: false,
-        volume: 1,
-        playOnAdd: false,
-      });
-    });
-
-    it("fromSnapshot round-trips all fields", () => {
-      const original = new SoundComponent({
-        alias: "bgm",
-        channel: "music",
-        loop: true,
-        volume: 0.6,
-        playOnAdd: true,
-      });
-      const restored = SoundComponent.fromSnapshot(original.serialize());
-      expect(restored.serialize()).toEqual(original.serialize());
-    });
   });
 });

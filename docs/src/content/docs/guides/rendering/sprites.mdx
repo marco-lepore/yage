@@ -28,10 +28,10 @@ entity.add(
 ```
 
 All properties are optional except `texture`. `texture` is an asset key or a
-typed handle (`TextureRef`) — never a raw `Texture` object — so every sprite
-serializes fully for save/load. A key that isn't preloaded (or registered,
-see [Runtime-generated textures](#runtime-generated-textures)) throws an
-error naming the key. The `layer` property controls z-ordering — see
+typed handle (`TextureRef`), not a raw `Texture` object. A key that isn't
+preloaded (or registered, see
+[Runtime-generated textures](#runtime-generated-textures)) throws an error
+naming the key. The `layer` property controls z-ordering — see
 [Layers & Draw Order](/guides/rendering/layers/). A `blendMode`
 option decides how the sprite combines with what is drawn beneath it — see
 [Blend modes](/guides/rendering/effects/#blend-modes).
@@ -86,8 +86,8 @@ position. Modifiers are transient and are not saved.
 ## Animated Sprites
 
 For frame-based sprite animations, use `AnimatedSpriteComponent` together with
-an `AnimationController`. `source` is required on both — there's no raw
-`Texture[]` construction path, so every animation is fully serializable.
+an `AnimationController`. `source` is required on both; there is no raw
+`Texture[]` construction path.
 
 ```typescript
 import {
@@ -357,11 +357,8 @@ boss.add(
 
 The rules that make this safe:
 
-- **Save/load**: snapshots store only the key. Re-register the texture under
-  the same key at boot, before restoring — the same code that registered it
-  on the first run. For sprites and animations, restoring with a missing key
-  throws an error naming the key, so nothing silently disappears from a save.
-  (Particle emitters resolve `textureKey` without this guard.)
+- Register runtime-generated textures before constructing components that
+  reference their keys. A missing key throws an error naming the key.
 - Registered keys are engine-global and live until `unregisterTexture(key)`.
   Unregistering never destroys the texture — you created it, so call
   `texture.destroy()` when nothing draws it anymore.

@@ -211,7 +211,8 @@ class Weapon extends Component {
 
   onAdd() {
     // slot() lives on ProcessComponent, so make sure the entity has one
-    if (!this.entity.tryGet(ProcessComponent)) this.entity.add(new ProcessComponent());
+    if (!this.entity.tryGet(ProcessComponent))
+      this.entity.add(new ProcessComponent());
     this.cooldown = this.pc.slot({ duration: 0.5 });
   }
 
@@ -543,7 +544,8 @@ entity.timeScale = 2; // ...or speed it up
 // Affects: component update/fixedUpdate, the entity's ProcessComponent
 // (tweens), and its particle emitters. NOT physics — the scene shares one
 // Rapier world stepped under the scene's effective scale only; a rigid body
-// cannot be per-entity time-scaled. entity.timeScale is saved/restored.
+// cannot be per-entity time-scaled. Persist entity.timeScale explicitly when
+// it is durable game state.
 ```
 
 ### Hitstop, slow motion, bullet time, freeze frames (SceneTime)
@@ -582,8 +584,8 @@ time.elapsed; // simulation seconds on the rendered frame
 time.fixedElapsed; // simulation seconds on the fixed timestep — stamp/compare from fixedUpdate
 
 // Durations age on raw frame time but hold while the scene is stack-paused
-// (a pause menu does not consume a hitstop). Requests release on scene exit
-// and are not saved — re-issue after loading a snapshot.
+// (a pause menu does not consume a hitstop). Requests release on scene exit;
+// re-issue them when rebuilding a scene from saved domain state.
 ```
 
 ### Cross-scene access

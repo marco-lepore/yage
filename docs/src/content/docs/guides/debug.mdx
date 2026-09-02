@@ -481,13 +481,12 @@ the interval into one fat frame.
 `bigDt` under the latter, which diverges from real gameplay even though
 physics still substeps correctly.
 
-### Component state without `serialize()`
+### Component state
 
-A snapshot's `components[].state` and `getComponentData()` read a component's
-`serialize()` result when it defines one. A component with no `serialize()`
-still reports state: both fall back to reading the component's own enumerable
-fields plus its public getters (`get isReady()`, `get health()`, and similar)
-straight off the instance.
+An Inspector snapshot's `components[].state` and `getComponentData()` reflect a
+component's own enumerable fields plus its public getters (`get isReady()`,
+`get health()`, and similar) straight off the instance. These snapshots are
+diagnostic readings of the live world, not save data.
 
 ```typescript
 class Cooldown extends Component {
@@ -498,26 +497,37 @@ class Cooldown extends Component {
   }
 }
 
-// No serialize() defined — the reflected state still shows up:
+// The reflected state shows up without save-specific code:
 window.__yage__.inspector.getComponentData("turret", "Cooldown");
 // { isReady: true }
 ```
 
 Fields and getters starting with `_` are excluded, along with functions and
-non-plain-object values — a Pixi/Rapier handle or other class instance would
-either fail to serialize or leak a meaningless object identity. A getter that
-throws is skipped rather than failing the whole snapshot. Define `serialize()`
-when a component needs a specific shape, such as renamed keys or a value that
-shouldn't be recomputed on every read; otherwise the reflected state is enough
-to inspect a component with no extra code.
+non-plain-object values. A Pixi/Rapier handle or other class instance would
+otherwise leak a meaningless object identity. `Vec2` is the exception and reads
+as `{ x, y }`. A field declared with `this.sibling()` or `this.service()` is
+skipped too. Engine objects nested inside a field become the same compact refs
+the event log stores: an entity reads as `{ id, name }`, a component as
+`{ component }`, a scene as `{ name }`, and any other class instance as
+`{ _type }`. A getter that throws is skipped rather than failing the whole
+snapshot.
+
+A component keeps bulk data out of its reflected state with a static list.
+Lists merge down the class chain, so a subclass adds to its base class's
+exclusions:
+
+```typescript
+class TilemapComponent extends VisualComponent {
+  static inspectExclude = ["data"]; // one id per tile per layer
+}
+```
 
 ### Reading rendered geometry and visibility
 
 The entity `transform` in a snapshot is the entity *origin*. It does not tell
-you where a component actually paints, how big it is, or whether it is hidden —
-and for partial reveals (a typewriter `SplitTextComponent` that toggles
-`chars[i].visible`) the persisted `serialize()` state disagrees with the
-screen, reporting the full string with no per-glyph detail.
+you where a component actually paints, how big it is, or whether it is hidden.
+For partial reveals, such as a typewriter `SplitTextComponent` that toggles
+`chars[i].visible`, the component's text alone does not describe the screen.
 
 When `RendererPlugin` is active it publishes a derived **render facet** for each
 graphical component on the snapshot, under `facets.render`, computed on demand
@@ -555,15 +565,14 @@ v8 exposes no world-resolved visibility, so a hidden parent/layer container is
 not folded in. `glyphs` and `visibleText` cover only rendered glyph segments —
 `SplitText.chars` excludes whitespace, so a fully-revealed `"Hello world"`
 reports `"Helloworld"`; compare which glyphs are visible rather than treating it
-as the verbatim string. The facet is read-only and never part of
-`serialize()`, so it does not affect save/load.
+as the verbatim string. The facet is read-only and exists only in Inspector
+output.
 
 The facet lives entirely in `@yagejs/renderer`, keeping `@yagejs/core`
 renderer-agnostic. The Inspector exposes a generic seam —
 `registerFacetContributor()` attaches namespaced `facets` to snapshots — and
-`RendererPlugin` registers a `RenderFacetContributor` for the `render` namespace
-(the same contributor idiom as a `DebugContributor` or a save
-`SnapshotContributor`). That contributor duck-types `inspectRender()` off each
+`RendererPlugin` registers a `RenderFacetContributor` for the `render` namespace.
+That contributor duck-types `inspectRender()` off each
 component, so a custom graphical component opts in simply by exposing an
 `inspectRender(): RenderFacetSnapshot` method. `SpriteComponent`,
 `AnimatedSpriteComponent`, `GraphicsComponent`, `TextComponent`, and

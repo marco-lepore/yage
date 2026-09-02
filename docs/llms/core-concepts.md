@@ -82,17 +82,17 @@ class MyComponent extends Component {
   // Lazy sibling resolution
   private sprite = this.sibling(SpriteComponent);
 
-  onAdd() {}          // added to entity
-  update(dt) {}       // every frame (variable dt in seconds)
-  fixedUpdate(dt) {}  // every fixed step (fixed dt in seconds)
-  onDestroy() {}      // entity destroyed or component removed
+  onAdd() {} // added to entity
+  update(dt) {} // every frame (variable dt in seconds)
+  fixedUpdate(dt) {} // every fixed step (fixed dt in seconds)
+  onDestroy() {} // entity destroyed or component removed
 }
 ```
 
-| Method | When to use | Resolves |
-|---|---|---|
-| `this.service(key)` | Field declarations (`private x = this.service(K)`) | Lazy proxy — first property access |
-| `this.use(key)` | Inside `onAdd()` or later | Immediately (cached) |
+| Method                | When to use                                          | Resolves                           |
+| --------------------- | ---------------------------------------------------- | ---------------------------------- |
+| `this.service(key)`   | Field declarations (`private x = this.service(K)`)   | Lazy proxy — first property access |
+| `this.use(key)`       | Inside `onAdd()` or later                            | Immediately (cached)               |
 | `this.sibling(Class)` | Field declarations (`private rb = this.sibling(RB)`) | Lazy proxy — first property access |
 
 `this.listen(entity, token, handler)` auto-unsubscribes on removal. `this.scene` and `this.context` are accessors.
@@ -101,15 +101,15 @@ class MyComponent extends Component {
 
 ```ts
 // Spawn
-const e = scene.spawn("name");                    // plain entity
+const e = scene.spawn("name"); // plain entity
 const p = scene.spawn(PlayerEntity, { x: 0, y: 0 }); // subclass with setup()
 
 // Components
 e.add(new Transform({ position: new Vec2(10, 20) }));
-const t = e.get(Transform);       // throws if missing
-const t2 = e.tryGet(Transform);   // undefined if missing
-e.has(Transform);                  // boolean
-e.remove(Transform);               // remove + call onDestroy
+const t = e.get(Transform); // throws if missing
+const t2 = e.tryGet(Transform); // undefined if missing
+e.has(Transform); // boolean
+e.remove(Transform); // remove + call onDestroy
 // From inside a component, `this.destroy()` does the same thing without
 // having to name its own class — useful under subclassing.
 
@@ -122,7 +122,7 @@ parent.addChild("arm", childEntity);
 parent.getChild("arm");
 parent.removeChild("arm");
 
-// Per-entity time scale (composes with the scene's effective scale; saved/restored)
+// Per-entity time scale (composes with the scene's effective scale)
 e.timeScale = 0.5; // components get dt * sceneEffectiveScale * entity.timeScale
 // sceneEffectiveScale = scene.timeScale x active SceneTime requests (see SceneTime).
 // Affects component update/fixedUpdate, the entity's ProcessComponent, and its
@@ -161,8 +161,12 @@ const Interactable = defineTrait<{ interact(): void }>("Interactable");
 
 @trait(Interactable)
 class Door extends Entity {
-  interact() { /* open door */ }
-  setup() { /* ... */ }
+  interact() {
+    /* open door */
+  }
+  setup() {
+    /* ... */
+  }
 }
 
 // Type-guarded query:
@@ -176,10 +180,10 @@ if (entity.hasTrait(Interactable)) {
 Stack-based via `SceneManager`:
 
 ```ts
-await engine.scenes.push(new GameScene());   // enters scene
-await engine.scenes.pop();                   // exits top scene
-await engine.scenes.replace(new MenuScene());// swap top
-await engine.scenes.popAll();                // exits all (queued)
+await engine.scenes.push(new GameScene()); // enters scene
+await engine.scenes.pop(); // exits top scene
+await engine.scenes.replace(new MenuScene()); // swap top
+await engine.scenes.popAll(); // exits all (queued)
 ```
 
 All four are async and queued — they await `beforeEnter` hooks,
@@ -202,22 +206,30 @@ Entity queries: `scene.findEntity(name)`, `scene.findEntitiesByTag(tag)`, `scene
 ```ts
 const HitEvent = defineEvent<{ damage: number }>("hit");
 
-entity.on(HitEvent, ({ damage }) => { /* ... */ });
+entity.on(HitEvent, ({ damage }) => {
+  /* ... */
+});
 entity.emit(HitEvent, { damage: 10 });
 ```
 
 Entity events bubble to the scene:
 
 ```ts
-scene.on(HitEvent, (data, emittingEntity) => { /* ... */ });
+scene.on(HitEvent, (data, emittingEntity) => {
+  /* ... */
+});
 ```
 
 ### Engine EventBus (global)
 
 ```ts
 const bus = context.resolve(EventBusKey);
-const unsub = bus.on("entity:created", ({ entity }) => { /* ... */ });
-bus.once("engine:started", () => { /* ... */ });
+const unsub = bus.on("entity:created", ({ entity }) => {
+  /* ... */
+});
+bus.once("engine:started", () => {
+  /* ... */
+});
 ```
 
 Built-in events: `entity:created`, `entity:destroyed`, `component:added`, `component:removed`, `scene:pushed`, `scene:popped`, `scene:replaced`, `engine:started`, `engine:stopped`.
@@ -244,7 +256,7 @@ works from both `Component` code and from a `Scene` subclass: `Scene.use(key)`
 resolves from `onEnter` onward (scene-scoped values are registered by plugin
 `beforeEnter` hooks, which run before `onEnter`). Don't use the
 provider key (`SceneRenderTreeProviderKey`) from game code — that's tooling-only
-(inspector, debug, save) for enumerating trees across scenes.
+(inspector and debug) for enumerating trees across scenes.
 
 ### Scene render layers
 
@@ -280,10 +292,10 @@ pc.run(Tween.to(obj, "x", 100, 0.3, easeOutQuad));
 
 // Reusable slot (cooldowns, effects)
 const cd = pc.slot({ duration: 1, onComplete: () => fire() });
-cd.start();          // activate
-cd.running;          // boolean
-cd.ratio;            // 0..1 progress
-cd.restart();        // cancel + restart
+cd.start(); // activate
+cd.running; // boolean
+cd.ratio; // 0..1 progress
+cd.restart(); // cancel + restart
 cd.cancel();
 ```
 
@@ -314,29 +326,22 @@ Pre-built entity with `ProcessComponent` API. No manual component setup:
 
 ```ts
 const timers = scene.spawn(TimerEntity);
-timers.run(Process.delay(0.5, () => { /* ... */ }));
+timers.run(
+  Process.delay(0.5, () => {
+    /* ... */
+  }),
+);
 const cd = timers.slot({ duration: 0.3 });
 timers.removeSlot(cd); // cancel and unregister a slot that will not be reused
 ```
 
-## Serialization
+## Save state
 
-Decorate with `@serializable`. Implement `serialize()` and `static fromSnapshot()`.
-
-```ts
-@serializable
-class HealthComponent extends Component {
-  health = 100;
-  serialize() { return { health: this.health }; }
-  static fromSnapshot(data: { health: number }) {
-    const c = new HealthComponent();
-    c.health = data.health;
-    return c;
-  }
-}
-```
-
-Entities: `@serializable` + optional `serialize()` / `afterRestore(data, resolve)`. Components with `fromSnapshot()` are saved automatically.
+`@yagejs/save` consumes explicit `Serializable<TEncoded>` state roots. Core
+state factories implement that interface. Live scenes, entities, components,
+processes, and services are not traversed automatically. Save stable game facts
+and reconstruct runtime objects through normal scene and entity setup after
+load.
 
 ## Error Boundary
 

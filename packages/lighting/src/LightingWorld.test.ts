@@ -107,7 +107,7 @@ describe("LightingWorld", () => {
     expect(world.occluders.has(occluder)).toBe(false);
   });
 
-  it("serializes source and occluder configuration", () => {
+  it("keeps source and occluder configuration available at runtime", () => {
     const { entity, scene } = createMockEntity();
     const world = new LightingWorld(scene);
     scene.registerScoped(LightingWorldKey, world);
@@ -133,22 +133,20 @@ describe("LightingWorld", () => {
       }),
     );
 
-    expect(light.serialize()).toEqual({
+    expect(light).toMatchObject({
       radius: 80,
       intensity: 0.4,
       color: 0xff8800,
       enabled: false,
     });
-    expect(occluder.serialize()).toEqual({
-      shape: {
-        type: "polygon",
-        vertices: [
-          { x: 0, y: 0 },
-          { x: 10, y: 0 },
-          { x: 0, y: 10 },
-        ],
-      },
-      enabled: true,
+    expect(occluder.enabled).toBe(true);
+    expect(occluder.shape).toEqual({
+      type: "polygon",
+      vertices: [
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+        { x: 0, y: 10 },
+      ],
     });
   });
 

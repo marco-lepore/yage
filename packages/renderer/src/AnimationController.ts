@@ -1,4 +1,4 @@
-import { Component, serializable } from "@yagejs/core";
+import { Component } from "@yagejs/core";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 import type { Texture } from "pixi.js";
 import { resolveFrames } from "./spritesheet.js";
@@ -7,7 +7,7 @@ import { routeAnimationSpeedChange } from "./internal/animationSpeedGroup.js";
 
 /** Definition for a single named animation. */
 export interface AnimationDef {
-  /** Serializable frame source (sheet grid or atlas animation). */
+  /** Frame source (sheet grid or atlas animation). */
   source: FrameSource;
   /** PixiJS animationSpeed value (e.g. 0.15). */
   speed: number;
@@ -17,24 +17,8 @@ export interface AnimationDef {
   anchor?: { x: number; y: number };
 }
 
-/** Serializable snapshot of an AnimationController. */
-export interface AnimationControllerData {
-  animations: Record<
-    string,
-    {
-      source: FrameSource;
-      speed: number;
-      loop?: boolean;
-      anchor?: { x: number; y: number };
-    }
-  >;
-  current: string;
-  speed: number;
-}
-
 // Internal: AnimationDef with frames resolved from its source.
 interface ResolvedAnimDef {
-  source: FrameSource;
   frames: Texture[];
   speed: number;
   loop?: boolean;
@@ -67,13 +51,7 @@ interface ResolvedAnimDef {
  * {@link LayeredAnimationController} — it fans `play()`/`playOneShot()` across
  * a list of sibling controllers with a single shared lock timer.
  */
-@serializable
-export class AnimationController<
-  T extends string = string,
-> extends Component {
-  // onAdd() drives the sibling AnimatedSpriteComponent's sprite.
-  static restorePriority = 40;
-
+export class AnimationController<T extends string = string> extends Component {
   private readonly _anims: Record<T, ResolvedAnimDef>;
   private readonly _sprite = this.sibling(AnimatedSpriteComponent);
 
@@ -92,7 +70,6 @@ export class AnimationController<
     for (const name of Object.keys(animations) as T[]) {
       const def = animations[name];
       resolved[name] = {
-        source: def.source,
         frames: resolveFrames(def.source),
         speed: def.speed,
         ...(def.loop != null && { loop: def.loop }),
@@ -231,43 +208,11 @@ export class AnimationController<
     return f >= start && f <= end;
   }
 
-  serialize(): AnimationControllerData {
-    const animations: AnimationControllerData["animations"] = {};
-    for (const [name, def] of Object.entries<ResolvedAnimDef>(this._anims)) {
-      animations[name] = {
-        source: def.source,
-        speed: def.speed,
-        ...(def.loop != null && { loop: def.loop }),
-        ...(def.anchor && { anchor: def.anchor }),
-      };
-    }
-    return { animations, current: this._current, speed: this._speed };
-  }
-
-  static fromSnapshot(data: AnimationControllerData): AnimationController {
-    const anims: Record<string, AnimationDef> = {};
-    for (const [name, def] of Object.entries(data.animations)) {
-      anims[name] = {
-        source: def.source,
-        speed: def.speed,
-        ...(def.loop != null && { loop: def.loop }),
-        ...(def.anchor && { anchor: def.anchor }),
-      };
-    }
-    const ctrl = new AnimationController(anims);
-    ctrl._current = data.current;
-    ctrl._speed = data.speed;
-    return ctrl;
-  }
-
-  /** Auto-play the first defined animation (respects prior restore). */
+  /** Auto-play the first defined animation. */
   onAdd(): void {
     const names = Object.keys(this._anims) as T[];
     if (names.length > 0) {
-      const target = (this._current && this._current in this._anims)
-        ? this._current as T
-        : names[0]!;
-      this._apply(target);
+      this._apply(names[0]!);
     }
   }
 

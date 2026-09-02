@@ -160,7 +160,9 @@ describe("Inspector", () => {
 
     expect(() =>
       inspector.addExtension("inventory", { grantItem: () => {} }),
-    ).toThrow('Inspector.addExtension(): namespace "inventory" is already registered.');
+    ).toThrow(
+      'Inspector.addExtension(): namespace "inventory" is already registered.',
+    );
   });
 
   it("getEntityByName finds entity", async () => {
@@ -374,7 +376,10 @@ describe("Inspector", () => {
     const errors = inspector.getErrors();
     expect(errors.callbackErrors).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ kind: "System TestSystem", error: "sys-fail" }),
+        expect.objectContaining({
+          kind: "System TestSystem",
+          error: "sys-fail",
+        }),
         expect.objectContaining({
           kind: "Component Health",
           entity: "enemy",
@@ -502,9 +507,9 @@ describe("Inspector", () => {
     entity.add(new Health(80));
 
     const log = inspector.events.getLog();
-    expect(log.find((entry) => entry.type === "entity:created")?.payload).toEqual(
-      { entity: { id: entity.id, name: "player" } },
-    );
+    expect(
+      log.find((entry) => entry.type === "entity:created")?.payload,
+    ).toEqual({ entity: { id: entity.id, name: "player" } });
     expect(
       log.find(
         (entry) =>
@@ -629,7 +634,7 @@ describe("Inspector", () => {
       }
     }
 
-    it("reflects a public getter when the component has no serialize()", async () => {
+    it("reflects a public getter", async () => {
       const { inspector, scenes } = setup();
       const scene = new TestScene("game");
       await scenes.push(scene);
@@ -651,7 +656,7 @@ describe("Inspector", () => {
       expect(snapState["isReady"]).toBe(true);
     });
 
-    it("snapshot no longer reports state: null by default for a component without serialize()", async () => {
+    it("reflects public component fields by default", async () => {
       const { inspector, scenes } = setup();
       const scene = new TestScene("game");
       await scenes.push(scene);
@@ -675,6 +680,165 @@ describe("Inspector", () => {
         "ThrowingGetter",
       ) as Record<string, unknown>;
       expect(data["boom"]).toBeUndefined();
+    });
+
+    it("summarizes class instances inside an array instead of dropping the field", async () => {
+      // Mirrors a renderer component exposing an array of pixi display
+      // objects: their `parent` back-references would make a deep copy
+      // cyclic, so each instance is stored as the compact ref the event log
+      // uses.
+      class Node {
+        parent: Node | null = null;
+        children: Node[] = [];
+        attach(child: Node): Node {
+          child.parent = this;
+          this.children.push(child);
+          return child;
+        }
+      }
+      class GlyphHolder extends Component {
+        label = "still-here";
+        private _root = new Node();
+        get glyphs(): Node[] {
+          return [this._root.attach(new Node())];
+        }
+      }
+
+      const { inspector, scenes } = setup();
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+      scene.spawn("split").add(new GlyphHolder());
+
+      const data = inspector.getComponentData("split", "GlyphHolder") as Record<
+        string,
+        unknown
+      >;
+      expect(data["glyphs"]).toEqual([{ _type: "Node" }]);
+      expect(data["label"]).toBe("still-here");
+      expect(data["enabled"]).toBe(true);
+    });
+
+    it("drops only the field whose plain-object graph is cyclic", async () => {
+      class Ring extends Component {
+        label = "still-here";
+        loop: Record<string, unknown> = {};
+        constructor() {
+          super();
+          this.loop["self"] = this.loop;
+        }
+      }
+
+      const { inspector, scenes } = setup();
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+      scene.spawn("ring").add(new Ring());
+
+      const data = inspector.getComponentData("ring", "Ring") as Record<
+        string,
+        unknown
+      >;
+      expect("loop" in data).toBe(false);
+      expect(data["label"]).toBe("still-here");
+    });
+
+    it("reflects Vec2 fields and getters as { x, y } and leaves undefined out", async () => {
+      class Mover extends Component {
+        velocity = new Vec2(3, 4);
+        maybe: string | undefined = undefined;
+        get heading(): Vec2 {
+          return Vec2.RIGHT;
+        }
+      }
+
+      const { inspector, scenes } = setup();
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+      scene.spawn("ship").add(new Mover());
+
+      const data = inspector.getComponentData("ship", "Mover") as Record<
+        string,
+        unknown
+      >;
+      expect(data["velocity"]).toEqual({ x: 3, y: 4 });
+      expect(data["heading"]).toEqual({ x: 1, y: 0 });
+      expect("maybe" in data).toBe(false);
+    });
+
+    it("summarizes engine objects nested inside a plain-object field", async () => {
+      class Tracker extends Component {
+        target: { entity: unknown; slot: number } | null = null;
+      }
+
+      const { inspector, scenes } = setup();
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+      const enemy = scene.spawn("enemy");
+      const tracker = scene.spawn("turret").add(new Tracker());
+      tracker.target = { entity: enemy, slot: 2 };
+
+      const data = inspector.getComponentData("turret", "Tracker") as Record<
+        string,
+        unknown
+      >;
+      // Same compact ref the event log stores, instead of a deep copy of the
+      // entity and everything reachable from it.
+      expect(data["target"]).toEqual({
+        entity: { id: enemy.id, name: "enemy" },
+        slot: 2,
+      });
+    });
+
+    it("skips keys listed in static inspectExclude, merged down the class chain", async () => {
+      class Bulk extends Component {
+        static inspectExclude = ["grid"];
+        grid = [1, 2, 3];
+        label = "bulk";
+      }
+      class BulkChild extends Bulk {
+        static inspectExclude = ["extra"];
+        extra = "hidden";
+        get derived(): string {
+          return "shown";
+        }
+      }
+
+      const { inspector, scenes } = setup();
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+      scene.spawn("map").add(new BulkChild());
+
+      const data = inspector.getComponentData("map", "BulkChild") as Record<
+        string,
+        unknown
+      >;
+      expect("grid" in data).toBe(false);
+      expect("extra" in data).toBe(false);
+      expect(data["label"]).toBe("bulk");
+      expect(data["derived"]).toBe("shown");
+    });
+
+    it("skips fields declared with sibling() or service()", async () => {
+      class Other extends Component {}
+      class WithLazyRefs extends Component {
+        readonly other = this.sibling(Other);
+        readonly bus = this.service(EventBusKey);
+        label = "lazy";
+      }
+
+      const { inspector, scenes } = setup();
+      const scene = new TestScene("game");
+      await scenes.push(scene);
+      const e = scene.spawn("host");
+      e.add(new Other());
+      e.add(new WithLazyRefs());
+
+      const data = inspector.getComponentData("host", "WithLazyRefs") as Record<
+        string,
+        unknown
+      >;
+      expect("other" in data).toBe(false);
+      expect("bus" in data).toBe(false);
+      expect(data["label"]).toBe("lazy");
     });
   });
 
@@ -733,14 +897,17 @@ describe("Inspector", () => {
       let frame = 0;
       let transitionSettled = false;
       inspector.attachTimeController(
-        fakeController((count) => {
-          frame += count;
-          // Mirrors a SceneManager transition that resolves in a microtask
-          // rather than synchronously within stepFrames().
-          Promise.resolve().then(() => {
-            transitionSettled = true;
-          });
-        }, () => frame),
+        fakeController(
+          (count) => {
+            frame += count;
+            // Mirrors a SceneManager transition that resolves in a microtask
+            // rather than synchronously within stepFrames().
+            Promise.resolve().then(() => {
+              transitionSettled = true;
+            });
+          },
+          () => frame,
+        ),
       );
 
       const frames = await inspector.time.stepUntil(() => transitionSettled);
@@ -751,7 +918,12 @@ describe("Inspector", () => {
 
     it("throws once maxFrames is reached without the predicate becoming true", async () => {
       const { inspector } = setup();
-      inspector.attachTimeController(fakeController(() => {}, () => 0));
+      inspector.attachTimeController(
+        fakeController(
+          () => {},
+          () => 0,
+        ),
+      );
 
       await expect(
         inspector.time.stepUntil(() => false, { maxFrames: 3 }),
@@ -765,10 +937,13 @@ describe("Inspector", () => {
       const dts: Array<number | undefined> = [];
       let frame = 0;
       inspector.attachTimeController(
-        fakeController((count, dtMs) => {
-          frame += count;
-          dts.push(dtMs);
-        }, () => frame),
+        fakeController(
+          (count, dtMs) => {
+            frame += count;
+            dts.push(dtMs);
+          },
+          () => frame,
+        ),
       );
 
       await inspector.time.stepAsync(2, { dtMs: 32 });
@@ -1048,9 +1223,10 @@ describe("Inspector", () => {
       expect(outer.ok).toBe(true);
       expect((inner as Error).message).toContain("already in flight");
       // The guard clears, so the next drive runs.
-      await expect(
-        inspector.drive(() => "after"),
-      ).resolves.toMatchObject({ ok: true, value: "after" });
+      await expect(inspector.drive(() => "after")).resolves.toMatchObject({
+        ok: true,
+        value: "after",
+      });
     });
 
     it("holds the guard until the clock is restored, so a key-up listener cannot nest a drive", async () => {
@@ -1118,7 +1294,9 @@ describe("Inspector", () => {
       const { inspector } = setup();
       inspector.attachTimeController(driveController([]));
 
-      const result = await inspector.drive(({ events }) => events === inspector.events);
+      const result = await inspector.drive(
+        ({ events }) => events === inspector.events,
+      );
 
       expect(result).toMatchObject({ ok: true, value: true });
     });
@@ -1231,13 +1409,15 @@ describe("Inspector", () => {
       inspector.attachTimeController(driveController([]));
 
       for (const bad of [Number.NaN, -1, 1.5]) {
-        expect(() => inspector.drive(async () => {}, { maxFrames: bad })).toThrow(
-          "maxFrames must be a non-negative integer or Infinity",
-        );
+        expect(() =>
+          inspector.drive(async () => {}, { maxFrames: bad }),
+        ).toThrow("maxFrames must be a non-negative integer or Infinity");
       }
       // Infinity disables the budget on purpose, so it has to be accepted.
       await expect(
-        inspector.drive(async () => {}, { maxFrames: Number.POSITIVE_INFINITY }),
+        inspector.drive(async () => {}, {
+          maxFrames: Number.POSITIVE_INFINITY,
+        }),
       ).resolves.toMatchObject({ ok: true });
     });
 
@@ -1340,6 +1520,8 @@ describe("Inspector", () => {
 // how the renderer publishes its facet: core knows nothing about "render"; the
 // contributor owns the namespace and the duck-typing. No Pixi / renderer dep.
 class FakeRenderComponent extends Component {
+  readonly kind = "fake";
+
   constructor(
     readonly facet: {
       bounds: { x: number; y: number; width: number; height: number } | null;
@@ -1352,17 +1534,13 @@ class FakeRenderComponent extends Component {
   inspectRender() {
     return this.facet;
   }
-  serialize() {
-    return { kind: "fake" };
-  }
 }
 
 class ThrowingRenderComponent extends Component {
+  readonly kind = "throws";
+
   inspectRender(): never {
     throw new Error("display object not parented");
-  }
-  serialize() {
-    return { kind: "throws" };
   }
 }
 
@@ -1399,9 +1577,9 @@ describe("Inspector facet contributors", () => {
       }),
     );
 
-    const entity = inspector.snapshot().scenes[0]?.entities.find(
-      (candidate) => candidate.id === String(e.id),
-    );
+    const entity = inspector
+      .snapshot()
+      .scenes[0]?.entities.find((candidate) => candidate.id === String(e.id));
     expect(entity?.facets?.["render"]).toEqual({
       bounds: { x: 90, y: 40, width: 20, height: 20 },
       visible: true,
@@ -1495,8 +1673,8 @@ describe("Inspector facet contributors", () => {
     const comp = entity?.components.find(
       (c) => c.type === "ThrowingRenderComponent",
     );
-    // serialize() state is still captured; only the facet is omitted.
-    expect(comp?.state).toEqual({ kind: "throws" });
+    // Reflected component state is still captured; only the facet is omitted.
+    expect(comp?.state).toMatchObject({ kind: "throws" });
     expect(comp?.facets).toBeUndefined();
   });
 
@@ -1557,8 +1735,6 @@ describe("Inspector facet contributors", () => {
 
     unregister();
 
-    expect(
-      inspector.snapshot().scenes[0]?.entities[0]?.facets,
-    ).toBeUndefined();
+    expect(inspector.snapshot().scenes[0]?.entities[0]?.facets).toBeUndefined();
   });
 });

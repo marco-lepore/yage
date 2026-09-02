@@ -95,13 +95,12 @@ replace(C)   → B.onExit()   → C.onEnter()
 
 `onPause` and `onResume` fire on **every** effective pause transition, not
 just stack changes: setting `scene.paused = true` from game code, the
-manager's `autoPauseOnBlur` pausing scenes on tab blur, and a snapshot
-restoring a scene that was saved paused all fire `onPause`; the matching
-un-pause fires `onResume`. The hooks track `scene.isPaused` — a write that
-does not change the effective state (re-assigning the same value, or
-flipping the flag while the scene is already paused by a scene above)
-fires nothing. Ducking music or muting input in `onPause` therefore covers
-manual pauses and tab blur, not only pushed pause menus.
+manager's `autoPauseOnBlur` pausing scenes on tab blur, and scene stack
+changes all use the same hooks. The hooks track `scene.isPaused` — a write
+that does not change the effective state (re-assigning the same value, or
+flipping the flag while the scene is already paused by a scene above) fires
+nothing. Ducking music or muting input in `onPause` therefore covers manual
+pauses and tab blur, not only pushed pause menus.
 
 To start a scene already paused, set `scene.paused = true` before pushing
 it — the push fires `onPause` once. Don't write `scene.paused` from inside a
@@ -189,4 +188,3 @@ are usually a smell (an `onEnter` that immediately replaces the scene rarely
 matches intent, and the dropped-on-the-floor promise can hide errors), so the
 engine flags it — but it works correctly. Prefer doing the redirect from a
 component's `update()` or a one-shot `Process` for new code.
-

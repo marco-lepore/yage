@@ -19,10 +19,8 @@ tree.get("world").fx.addEffect(bloom({ threshold: 0.8, bloomScale: 1.4 }));
 tree.fx.addEffect(crt({ scanlines: true }));
 ```
 
-Every preset is registered through `defineEffect` (see
-`@yagejs/renderer`), so attached effects survive `SaveService` snapshot
-round-trips: their `name` + `options` are recorded, and on load the
-preset's factory is re-invoked to rebuild the filter.
+Every preset uses `defineEffect` from `@yagejs/renderer` and works with the
+same handle API as a custom effect.
 
 See [yage.dev/guides/rendering/effects](https://yage.dev/guides/rendering/effects)
 for the full list and option reference.

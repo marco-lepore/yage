@@ -38,22 +38,6 @@ class BitmapTextProbe extends Component {
     this.worldScaleX = this.entity.get(Transform).worldScale.x;
     this.captured = true;
   }
-
-  serialize(): {
-    pixiClass: string;
-    glyphWidth: number;
-    glyphHeight: number;
-    worldScaleX: number;
-    captured: boolean;
-  } {
-    return {
-      pixiClass: this.pixiClass,
-      glyphWidth: this.glyphWidth,
-      glyphHeight: this.glyphHeight,
-      worldScaleX: this.worldScaleX,
-      captured: this.captured,
-    };
-  }
 }
 
 class BitmapTextScene extends Scene {

@@ -86,10 +86,9 @@ The root entry supplies:
 
 ## Save and load
 
-Cue definitions, cooldown clocks, and active playbacks are not saved. The
-`Feel` component is omitted because its cue map contains code and live component
-references. A serializable host entity must re-add `Feel` in `afterRestore()`.
-The restored component starts with no cue in progress.
+Cue definitions, cooldown clocks, and active playbacks are runtime-only. Normal
+entity setup constructs `Feel` when the game builds a scene, with no cue in
+progress.
 
 Renderer and camera modifiers, temporary filter attachments, time requests,
 particle-emission requests, live particles, and transient visual entities are
@@ -98,9 +97,9 @@ unchanged by these effects.
 
 `feelCall`, `defineFeelEffect`, `feelKeyframeAnimation`, and
 `feelSpriteAnimation` can run user-supplied code. If that code writes to
-serializable game state, YAGE saves the resulting game state normally. Use
-renderer modifier handles for custom visual motion when the animation must stay
-outside snapshots.
+an explicit game-owned state root, YAGE saves the resulting value normally.
+Use renderer modifier handles for custom visual motion that should remain a
+runtime effect.
 
 ## Renderer effects
 

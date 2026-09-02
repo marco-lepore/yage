@@ -640,9 +640,8 @@ Two practical notes:
   steps and is never detected. That is ordinary tunneling — give the body
   `ccd: true` (see Continuous Collision Detection below). The CCD sweep
   respects one-way behavior, including drop-through.
-- `oneWay` is part of the collider config, so it survives save/load. It has no
-  effect on `sensor: true` colliders, since sensors never produce solid
-  contacts.
+- `oneWay` is part of the collider config. It has no effect on `sensor: true`
+  colliders, since sensors never produce solid contacts.
 
 ## Contact Filters
 
@@ -680,9 +679,8 @@ A few rules to keep filters healthy:
   persistently throwing filter can't flood the log; installing a new filter
   arms it again.
 - Setting a filter on a collider configured with `oneWay` replaces the
-  built-in one-way filter. Filters are functions, so they are not saved:
-  after a load, `oneWay` colliders get their built-in filter back, and custom
-  filters must be registered again.
+  built-in one-way filter. Register custom filters during normal component
+  setup whenever the scene is constructed.
 - Filters apply to solid contact pairs only; sensor overlap is unaffected.
 
 Clear a filter with `setContactFilter(null)`.
@@ -714,8 +712,7 @@ const world = this.use(PhysicsWorldKey);
 
 Each scene gets its own `PhysicsWorld`. The physics plugin creates the world
 in a `beforeEnter` hook and destroys it in `afterExit`. For cross-scene
-enumeration (save system, debug inspector) use the engine-scope
-`PhysicsWorldManagerKey` instead.
+diagnostics use the engine-scope `PhysicsWorldManagerKey` instead.
 
 ## Joints
 
@@ -750,5 +747,6 @@ pixels. `stiffness` and `damping` are mass-relative and passed to the solver
 unconverted — collider mass depends on `pixelsPerMeter`, so retune them after
 changing the scale.
 
-Joints are not saved: after a snapshot restore, recreate them (for example in
-`afterRestore`).
+Joints are runtime objects. If a connection is durable game state, save the
+stable ids and joint configuration in the game's state root, then recreate the
+joint while constructing the scene after load.

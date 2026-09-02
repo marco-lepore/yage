@@ -18,15 +18,8 @@ import type {
   Plugin,
   ProcessSystem,
   RendererAdapter,
-  ServiceKey,
   SystemScheduler,
 } from "@yagejs/core";
-import type { SnapshotContributor } from "@yagejs/save";
-// `@yagejs/save` is an optional peer dep — type-only import via top-level
-// `import type * as` keeps the runtime free of a hard dependency on the
-// save package while letting us reference `typeof SaveModule` for the
-// dynamic-import variable below.
-import type * as SaveModule from "@yagejs/save";
 import {
   Application as PixiApplication,
   Assets,
@@ -36,7 +29,6 @@ import {
 } from "pixi.js";
 import type { BitmapFont, Spritesheet, SCALE_MODE } from "pixi.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
-import { RendererSnapshotContributor } from "./effects/RendererSnapshotContributor.js";
 import { DisplaySystem } from "./DisplaySystem.js";
 import { RenderFacetContributor } from "./RenderFacetContributor.js";
 import { FitController } from "./Fit.js";
@@ -48,7 +40,10 @@ import type {
   TextStyle,
   TextureResource,
 } from "./public-types.js";
-import { getDefaultTextStyle, setDefaultTextStyle } from "./internal/textConstruction.js";
+import {
+  getDefaultTextStyle,
+  setDefaultTextStyle,
+} from "./internal/textConstruction.js";
 import { createRenderTarget } from "./RenderTarget.js";
 import type {
   RenderTargetHandle,
@@ -65,11 +60,6 @@ import { SceneRenderTreeProviderImpl } from "./SceneRenderTreeProvider.js";
 import { loadWebFont, unloadWebFont } from "./assets.js";
 
 import "./scene-augmentation.js";
-
-interface SnapshotServiceLike {
-  registerSnapshotExtra(key: string, contributor: SnapshotContributor): void;
-  unregisterSnapshotExtra(key: string): void;
-}
 
 /** RendererPlugin wraps PixiJS v8 behind the YAGE plugin interface. */
 export class RendererPlugin implements Plugin, RendererAdapter {
@@ -123,8 +113,6 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * wanted, or it lives until the renderer plugin is destroyed.
    */
   fx!: EffectsHost;
-  private _engineContext: EngineContext | null = null;
-  private _unregisterSaveContributor: (() => void) | null = null;
   private _unregisterFacetContributor: (() => void) | null = null;
   private _unregisterFullscreenListener: (() => void) | null = null;
   private _unregisterOrientationListener: (() => void) | null = null;
@@ -250,8 +238,8 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     this._processSystem = context.resolve(ProcessSystemKey);
 
     // 6b. Build the screen-scope EffectsHost over `app.stage`. The underlying
-    //     EffectStack is created lazily on first `addEffect`/`restore` so a
-    //     game with no screen-scope filters pays nothing.
+    //     EffectStack is created lazily on first `addEffect` so a game with no
+    //     screen-scope filters pays nothing.
     const ps = this._processSystem;
     this.fx = new EffectsHost(
       () => this._app.stage,
@@ -356,64 +344,16 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     });
 
     // 12. Publish the render facet (rendered geometry + visibility) into the
-    //     Inspector snapshot through the generic facet-contributor seam, so
-    //     `@yagejs/core` stays agnostic of any rendering concept. The Inspector
-    //     is always registered by the Engine, so — unlike the optional save
-    //     bridge below — this needs no dynamic-import dance and can wire up
-    //     here in install.
+    //     Inspector through `registerFacetContributor`, so `@yagejs/core`
+    //     stays agnostic of any rendering concept. The Engine always
+    //     registers the Inspector, so the contributor can register during
+    //     install.
     const inspector = context.tryResolve(InspectorKey);
     if (inspector) {
       this._unregisterFacetContributor = inspector.registerFacetContributor(
         new RenderFacetContributor(),
       );
     }
-
-    // 13. Stash the context for use in onStart, where the snapshot bridge is
-    //     wired up — we need to wait for every plugin to install before
-    //     resolving SnapshotServiceKey, otherwise registration order matters.
-    this._engineContext = context;
-  }
-
-  async onStart(): Promise<void> {
-    // Bridge layer/scene/screen-scope effects + masks into the snapshot system.
-    // `@yagejs/save` is an optional peer dep — the dynamic import + try/catch
-    // lets the renderer keep working when it's not installed (the contributor
-    // simply doesn't register). Done in onStart, not install, so RendererPlugin
-    // and SnapshotPlugin can be registered in any order.
-    if (!this._engineContext) return;
-    await this.tryRegisterSnapshotContributor(this._engineContext);
-    // Drop the install-time context reference once the snapshot bridge is wired —
-    // we don't need it past startup, no point holding the EngineContext alive
-    // for the plugin's lifetime.
-    this._engineContext = null;
-  }
-
-  private async tryRegisterSnapshotContributor(
-    context: EngineContext,
-  ): Promise<void> {
-    let save: typeof SaveModule;
-    try {
-      save = await import("@yagejs/save");
-    } catch {
-      // @yagejs/save not installed — snapshot support for renderer-scope effects
-      // is unavailable. Component-scope effects still serialize through the
-      // visual components' own snapshot path.
-      return;
-    }
-    const key = save.SnapshotServiceKey as
-      | ServiceKey<SnapshotServiceLike>
-      | undefined;
-    if (!key) return;
-    const service = context.tryResolve(key);
-    if (!service) return;
-    const contributor: SnapshotContributor = new RendererSnapshotContributor(
-      this._provider,
-      () => this.fx,
-    );
-    service.registerSnapshotExtra("renderer", contributor);
-    this._unregisterSaveContributor = () => {
-      service.unregisterSnapshotExtra("renderer");
-    };
   }
 
   registerSystems(scheduler: SystemScheduler): void {
@@ -425,8 +365,6 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     // tracks how far we got. If install rejected mid-way (e.g.
     // `await app.init()` failed), the unset fields stay untouched here
     // instead of throwing on access.
-    this._unregisterSaveContributor?.();
-    this._unregisterSaveContributor = null;
     this._unregisterFacetContributor?.();
     this._unregisterFacetContributor = null;
     this._unregisterFullscreenListener?.();
@@ -866,7 +804,8 @@ type WebkitDocument = Document & {
 function getFullscreenAPI(el: Element): FullscreenAPI {
   if (typeof document === "undefined") {
     return {
-      request: () => Promise.reject(new Error("Fullscreen unavailable: no document")),
+      request: () =>
+        Promise.reject(new Error("Fullscreen unavailable: no document")),
       exit: () => Promise.resolve(),
       fullscreenElement: () => null,
     };
@@ -882,8 +821,7 @@ function getFullscreenAPI(el: Element): FullscreenAPI {
   const webkitDoc = document as WebkitDocument;
   if (typeof webkitEl.webkitRequestFullscreen === "function") {
     return {
-      request: () =>
-        Promise.resolve(webkitEl.webkitRequestFullscreen?.()),
+      request: () => Promise.resolve(webkitEl.webkitRequestFullscreen?.()),
       exit: () => Promise.resolve(webkitDoc.webkitExitFullscreen?.()),
       fullscreenElement: () => webkitDoc.webkitFullscreenElement ?? null,
     };

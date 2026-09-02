@@ -218,9 +218,7 @@ export function feelDissolve(options: FeelDissolveOptions): FeelNode {
     return {
       start: () => {
         context.invoke("effect factory", () => {
-          handle = visual.fx.addEffect(dissolve(effectOptions), {
-            save: false,
-          });
+          handle = visual.fx.addEffect(dissolve(effectOptions));
         });
         handle?.setIntensity(0);
       },
@@ -292,9 +290,7 @@ export function feelGlitch(options: FeelGlitchOptions): FeelNode {
     return {
       start: () => {
         context.invoke("effect factory", () => {
-          handle = resolvedHost.addEffect(glitch(effectOptions), {
-            save: false,
-          });
+          handle = resolvedHost.addEffect(glitch(effectOptions));
         });
         handle?.setIntensity(0);
         refresh(options.seed);
@@ -350,7 +346,7 @@ export function feelEffect<H extends EffectHandle>(
     return {
       start: () => {
         context.invoke("effect factory", () => {
-          handle = host.addEffect(factory, { save: false });
+          handle = host.addEffect(factory);
         });
         handle?.setIntensity(0);
       },
@@ -450,7 +446,7 @@ export function feelHitFlash(
           ...options,
           peak: (options.peak ?? 1) * context.intensity,
         };
-        handle = host.addEffect(hitFlash(configured), { save: false });
+        handle = host.addEffect(hitFlash(configured));
         handle.trigger();
       },
       finish: () => handle?.remove(),
@@ -485,7 +481,6 @@ export function feelShockwave(
             ...options,
             amplitude: (options.amplitude ?? 30) * context.intensity,
           }),
-          { save: false },
         );
         handle.trigger(center?.x, center?.y);
       },
@@ -585,7 +580,7 @@ function feelVisualEffect<H extends EffectHandle>(
     let handle: H | undefined;
     return {
       start: () => {
-        handle = visual.fx.addEffect(factory, { save: false });
+        handle = visual.fx.addEffect(factory);
         handle.setIntensity(0);
       },
       update: (progress) => {

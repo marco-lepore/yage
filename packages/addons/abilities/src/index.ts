@@ -88,7 +88,6 @@ export {
   HealthDied,
   HealthHealed,
 } from "./components/Health.js";
-export type { HealthSnapshot } from "./components/Health.js";
 export { Stagger } from "./components/Stagger.js";
 export {
   damageStep,

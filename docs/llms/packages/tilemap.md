@@ -6,11 +6,11 @@ Depends on `@yagejs/core`, `@yagejs/renderer`. Tiled map loader and renderer.
 
 Supported: orthogonal Tiled JSON (tilesets must be exported as JSON, not TSX), multiple tile layers, object layers, custom properties on the map / layers / tilesets / objects, object-reference resolution, collision-shape extraction from rectangle / ellipse / polygon / polyline / tile objects (raw `rect` / `circle` / `polygon` / `polyline` / `capsule` shapes), `toPhysicsColliders()` adapter to Rapier collider configs, tileset-image and collection-of-images tilesets, embedded and external tilesets, flipped and rotated tiles, tile images that do not match the map grid (anchored bottom-left), tile objects (`gid`, position, size and properties, the position normalised to the top-left corner through the tileset's `objectalignment`), animated tiles (see below), layer `offsetx`/`offsety` and tileset `tileoffset`, per-layer `visible` and `opacity`.
 
-Tilesets MUST be exported as JSON (`.tsj` / `.json`). Tiled's default XML `.tsx` format is not supported — in Tiled, *Edit Tileset → File → Export As → JSON*.
+Tilesets MUST be exported as JSON (`.tsj` / `.json`). Tiled's default XML `.tsx` format is not supported — in Tiled, _Edit Tileset → File → Export As → JSON_.
 
 ### Staging Tiled assets
 
-The loader resolves a single-image tileset's `image` field **relative to the tileset JSON file** (`basePath + tileset.image`, where `basePath = path.dirname(tilesetSrc)`). Tiled writes that field as the relative path *from where the tileset was authored*, which is usually somewhere on your filesystem outside the project (e.g. `../../Downloads/spr_tileset.png`). Copying the tileset JSON into `public/` without rewriting `image` produces a silent 404 in the browser — the tileset loads, the texture doesn't, tiles render as blanks.
+The loader resolves a single-image tileset's `image` field **relative to the tileset JSON file** (`basePath + tileset.image`, where `basePath = path.dirname(tilesetSrc)`). Tiled writes that field as the relative path _from where the tileset was authored_, which is usually somewhere on your filesystem outside the project (e.g. `../../Downloads/spr_tileset.png`). Copying the tileset JSON into `public/` without rewriting `image` produces a silent 404 in the browser — the tileset loads, the texture doesn't, tiles render as blanks.
 
 When you stage a Tiled tileset into `public/assets/maps/`, rewrite `image` to a sibling-relative path:
 
@@ -26,7 +26,7 @@ When you stage a Tiled tileset into `public/assets/maps/`, rewrite `image` to a 
  }
 ```
 
-…and put `spr_tileset.png` next to the JSON. Same rule for embedded tilesets inside a map JSON — the `image` field is resolved relative to the *map* file's directory.
+…and put `spr_tileset.png` next to the JSON. Same rule for embedded tilesets inside a map JSON — the `image` field is resolved relative to the _map_ file's directory.
 
 Not supported: infinite/chunked maps, base64-encoded layer data, isometric/hex/staggered orientations, group layers and image layers, dynamic tile editing at runtime, built-in parallax layers (use a regular render layer with a scrolling sprite), drawing a tile object's image (its `gid` and box are parsed — you spawn the sprite), a tileset's `tilerendersize` / `fillmode` (a tile always draws at its image's own size), collision shapes authored on a tile inside the tileset.
 
@@ -62,17 +62,20 @@ import { TilemapComponent } from "@yagejs/tilemap";
 
 // Preferred: pass the asset handle. Captures both the parsed data and the
 // asset path, which doubles as the prefix for Tiled-derived auto-keys.
-entity.add(new TilemapComponent({
-  source: MapData,               // AssetHandle<TiledMapData>
-  layers: ["ground", "walls"],   // tile layers to render (omit for all)
-  layer: "map",                  // render layer name
-}));
+entity.add(
+  new TilemapComponent({
+    source: MapData, // AssetHandle<TiledMapData>
+    layers: ["ground", "walls"], // tile layers to render (omit for all)
+    layer: "map", // render layer name
+  }),
+);
 ```
 
 Properties:
+
 - `widthPx` / `heightPx` — total map size in pixels
 - `tileWidth` / `tileHeight` — single tile dimensions
-- `data: TilemapData` — parsed map structure (see Map Data below)
+- `data: TilemapData` — parsed map structure (see Map Data below). Left out of Inspector component state, since it holds one id per tile per layer
 - `mapKey: string | null` — asset path, or `null` if constructed from raw `map:` data
 - `keyPrefix: string | null` — prefix used for `objectKey` / `forEachObject`
 - `container: DisplayContainer` — the Pixi container holding the rendered layers
@@ -83,43 +86,37 @@ Properties:
 const tilemap = new TilemapComponent({
   source: MapData,
   layer: "map",
-  tint: 0x6688cc,   // whole-map colour multiply
+  tint: 0x6688cc, // whole-map colour multiply
   alpha: 0.8,
 });
 
-tilemap.tint = 0xffffff;              // clear the tint
+tilemap.tint = 0xffffff; // clear the tint
 tilemap.blendMode = "add";
 tilemap.visible = false;
-tilemap.fx.addEffect(bloom({ strength: 2 }));   // component-scope effects
+tilemap.fx.addEffect(bloom({ strength: 2 })); // component-scope effects
 tilemap.setMask(spriteMask(maskSprite));
 ```
 
 `tint` and `alpha` are applied by a colour filter on the container, because the tile shader has no colour uniform. They cost nothing while tint is white and alpha is 1.
 
-## Serialization
+## Map input options
 
-`TilemapComponent` is `@serializable`, but the live parsed `TiledMapData` object is not — it contains PixiJS textures. Pass `source` (an asset handle) or `mapKey` (an asset path) instead of `map` if you want save/load to restore the tilemap after a reload:
+Pass `source` for a preloaded asset, `mapKey` when only the asset path is in
+scope, or `map` for generated or already parsed data:
 
 ```ts
 interface TilemapComponentOptions extends VisualComponentOptions {
-  source?: AssetHandle<TiledMapData>;  // preferred — handle from tiledMap()
-  map?: TiledMapData;                  // raw parsed data — not serializable
-  mapKey?: string;                     // asset path — serializable, resolved via Assets.get
-  layers?: string[];                   // which tile layers to render (omit for all)
-  keyPrefix?: string;                  // override for auto-keys (default = mapKey)
+  source?: AssetHandle<TiledMapData>; // preferred — handle from tiledMap()
+  map?: TiledMapData; // raw parsed data
+  mapKey?: string; // asset path, resolved via Assets.get
+  layers?: string[]; // which tile layers to render (omit for all)
+  keyPrefix?: string; // override for auto-keys (default = mapKey)
   // from VisualComponentOptions: layer, visible, tint, alpha, blendMode, interactive
-}
-
-// Serialized shape stored in snapshots:
-interface TilemapComponentData extends VisualComponentData {
-  mapKey: string;               // required — saved snapshots always reference an asset
-  layers?: string[];
-  keyPrefix?: string;           // only present when overridden
-  // from VisualComponentData: layer, tint, alpha, visible, blendMode, effects, mask
 }
 ```
 
-At least one of `source`, `map`, or `mapKey` must be supplied. If you construct with an inline `map`, snapshot serialization will warn and require `source` or `mapKey` to round-trip.
+At least one of `source`, `map`, or `mapKey` must be supplied. Raw `map` data
+needs an explicit `keyPrefix` when you use Tiled-derived auto-keys.
 
 ## Tile Queries
 
@@ -158,7 +155,8 @@ An animation plays when all of the following hold. Tiled's animation editor prod
 
 Anything else renders unanimated, as the tile the map places, and reports an `unsupported-tile-animation` warning naming the tile and the reason: differing durations, an irregular frame layout, or a collection-of-images tileset.
 
-The animation phase is not saved. A tilemap restored from a snapshot starts its cycle from zero.
+The animation phase is runtime state. Reconstructing a tilemap starts its cycle
+from zero.
 
 ## Map Data
 
@@ -166,31 +164,31 @@ The `tilemap.data` property exposes the parsed map in a format-agnostic shape (s
 
 ```ts
 interface TilemapData {
-  width: number;           // tiles wide
-  height: number;          // tiles tall
-  tileWidth: number;       // pixel width of one tile
+  width: number; // tiles wide
+  height: number; // tiles tall
+  tileWidth: number; // pixel width of one tile
   tileHeight: number;
-  properties?: MapObjectProperty[];   // the map's own custom properties
+  properties?: MapObjectProperty[]; // the map's own custom properties
   tileLayers: TileLayerData[];
   objectLayers: ObjectLayerData[];
   tilesets: TilesetInfo[];
-  diagnostics: TilemapDiagnostic[];   // see Unsupported Forms
+  diagnostics: TilemapDiagnostic[]; // see Unsupported Forms
 }
 
 interface TileLayerData {
   name: string;
-  data: number[];          // flat row-major tile GIDs (0 = empty)
+  data: number[]; // flat row-major tile GIDs (0 = empty)
   width: number;
   height: number;
   visible: boolean;
-  offsetX: number;         // Tiled layer draw offset, in pixels
+  offsetX: number; // Tiled layer draw offset, in pixels
   offsetY: number;
   properties?: MapObjectProperty[];
 }
 
 interface ObjectLayerData {
   name: string;
-  objects: MapObject[];    // coordinates already include offsetX/offsetY
+  objects: MapObject[]; // coordinates already include offsetX/offsetY
   visible: boolean;
   offsetX: number;
   offsetY: number;
@@ -199,7 +197,7 @@ interface ObjectLayerData {
 
 interface TilesetInfo {
   firstGid: number;
-  name?: string;           // present once the tileset data is resolved
+  name?: string; // present once the tileset data is resolved
   properties?: MapObjectProperty[];
 }
 ```
@@ -222,8 +220,8 @@ for (const d of validateTiledMap(rawTiledJson)) {
 interface TilemapDiagnostic {
   code: TilemapDiagnosticCode;
   message: string;
-  severity: "error" | "warning";  // error: content is dropped or renders wrong
-  layer?: string;                 // set when the diagnostic is about a layer
+  severity: "error" | "warning"; // error: content is dropped or renders wrong
+  layer?: string; // set when the diagnostic is about a layer
   tileset?: string;
 }
 ```
@@ -252,7 +250,7 @@ const groups = tilemap.getObjectGroups();
 const all = tilemap.getAllObjects();
 
 // Direct lookups
-tilemap.findObject(42);            // by Tiled id
+tilemap.findObject(42); // by Tiled id
 tilemap.findObjectByName("Player"); // first match across all layers
 
 // MapObject: { id, name, class?, x, y, width, height, rotation, visible, gid?, point?, polygon?, polyline?, properties? }
@@ -268,9 +266,14 @@ Its `x`/`y` is the top-left corner, like every other object type. Tiled stores a
 import { readTileGid } from "@yagejs/tilemap";
 
 for (const obj of tilemap.getAllObjects()) {
-  if (obj.gid === undefined) continue;              // not a tile object
+  if (obj.gid === undefined) continue; // not a tile object
   const { id, flippedHorizontally } = readTileGid(obj.gid);
-  scene.spawn(PropEntity, { tileId: id, x: obj.x, y: obj.y, flippedHorizontally });
+  scene.spawn(PropEntity, {
+    tileId: id,
+    x: obj.x,
+    y: obj.y,
+    flippedHorizontally,
+  });
 }
 ```
 
@@ -281,10 +284,12 @@ import { MathUtils, Transform } from "@yagejs/core";
 import { SpriteComponent } from "@yagejs/renderer";
 
 // in the spawned entity's setup(), given the tile object it came from
-this.add(new Transform({
-  position: { x: obj.x, y: obj.y },
-  rotation: MathUtils.degToRad(obj.rotation), // Tiled stores degrees
-}));
+this.add(
+  new Transform({
+    position: { x: obj.x, y: obj.y },
+    rotation: MathUtils.degToRad(obj.rotation), // Tiled stores degrees
+  }),
+);
 this.add(new SpriteComponent({ texture, anchor: { x: 0, y: 0 } }));
 ```
 
@@ -302,7 +307,7 @@ tiledObjectKey("/assets/dungeon.json", 42);
 // → "/assets/dungeon.json#object:42"
 
 // On the component:
-tilemap.objectKey(obj);            // prefix already applied
+tilemap.objectKey(obj); // prefix already applied
 tilemap.forEachObject("interactables", (obj, key) => {
   if (obj.class === "EnemySpawn") {
     scene.spawn(EnemyEntity, { object: obj }, { key });
@@ -319,9 +324,9 @@ Pass `keyPrefix: "level1"` to the component constructor when multiple instances 
 ```ts
 // On the component (preferred — typed and discoverable):
 tilemap.getProperty<number>(obj, "speed");
-tilemap.getPropertyArray<number>(obj, "point");   // point[0], point[1], ...
-tilemap.resolveRef(obj, "target");                // auto-collects across layers
-tilemap.resolveRefArray(ctrl, "spawns");          // spawns[0], spawns[1], ...
+tilemap.getPropertyArray<number>(obj, "point"); // point[0], point[1], ...
+tilemap.resolveRef(obj, "target"); // auto-collects across layers
+tilemap.resolveRefArray(ctrl, "spawns"); // spawns[0], spawns[1], ...
 
 // Standalone equivalents (caller supplies the object pool):
 import {
@@ -332,8 +337,8 @@ import {
 } from "@yagejs/tilemap";
 getProperty<number>(obj, "speed");
 getPropertyArray<number>(obj, "point");
-resolveObjectRef(obj, "target", allObjs);             // single object ref
-resolveObjectRefArray(obj, "spawns", allObjs);        // spawns[0], spawns[1], ...
+resolveObjectRef(obj, "target", allObjs); // single object ref
+resolveObjectRefArray(obj, "spawns", allObjs); // spawns[0], spawns[1], ...
 ```
 
 The component-method variants of `resolveRef` / `resolveRefArray` walk every object layer for you; use the standalone helpers only when you've already collected the pool yourself.
@@ -359,6 +364,7 @@ const shapes = tilemap.getCollisionShapes("walls");
 ```
 
 Mapping from Tiled object → emitted shape:
+
 - Rectangle → `rect`.
 - Tile object (has a `gid`) → `rect` over the tile's whole box, exactly like a rectangle; per-tile shapes authored in the tileset are not read.
 - Ellipse (w === h) → `circle`.
@@ -396,5 +402,10 @@ Polylines are static-only (no inertia is computed). Attach them to a `RigidBodyC
 ## Camera Bounds
 
 ```ts
-camera.bounds = { minX: 0, minY: 0, maxX: tilemap.widthPx, maxY: tilemap.heightPx };
+camera.bounds = {
+  minX: 0,
+  minY: 0,
+  maxX: tilemap.widthPx,
+  maxY: tilemap.heightPx,
+};
 ```

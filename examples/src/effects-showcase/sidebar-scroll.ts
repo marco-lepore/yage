@@ -1,10 +1,8 @@
 import type { UIPanel } from "@yagejs/ui";
 import { VIRTUAL_WIDTH, VIRTUAL_HEIGHT, SIDEBAR_WIDTH } from "./constants.js";
 
-// Module-level state for the sidebar scroller. `bindSidebar` rewires these
-// each time the panel is built (initial spawn + every load), so the wheel
-// handler always operates on the live UIPanels — no per-scene listener
-// teardown needed across save/load.
+// Module-level state for the sidebar scroller. `bindSidebar` assigns the
+// panels built for this example so the wheel handler can reach them.
 let activeScroller: UIPanel | null = null;
 let activeSidebar: UIPanel | null = null;
 let sidebarScrollY = 0;

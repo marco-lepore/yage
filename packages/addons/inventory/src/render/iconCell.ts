@@ -18,7 +18,13 @@ import {
   TextComponent,
   type TextureResource,
 } from "@yagejs/renderer";
-import type { CellDefaults, CellHandle, CellPresenter, DiagnosticSink, Rect } from "../adapter.js";
+import type {
+  CellDefaults,
+  CellHandle,
+  CellPresenter,
+  DiagnosticSink,
+  Rect,
+} from "../adapter.js";
 import type { SlotView } from "../core/session.js";
 import type { InventoryTheme } from "../factory/theme.js";
 import { DEFAULT_TILE_COLORS, resolveCellRadius } from "../factory/theme.js";
@@ -83,7 +89,12 @@ class IconCellPresenter implements CellPresenter {
     this.warn = warn;
   }
 
-  renderCell(scene: Scene, view: SlotView, r: Rect, selected: boolean): CellHandle {
+  renderCell(
+    scene: Scene,
+    view: SlotView,
+    r: Rect,
+    selected: boolean,
+  ): CellHandle {
     // The fallback tile fill (icon-less occupied slots only).
     const tile =
       view.stack && view.def && !this.iconFor(view.def.icon)
@@ -94,7 +105,9 @@ class IconCellPresenter implements CellPresenter {
     // first so the content below paints over it.
     const bgEntity = scene.spawn("inv-cell-bg");
     bgEntity.add(new Transform());
-    const bg = bgEntity.add(new GraphicsComponent({ layer: this.cfg.layerContent }));
+    const bg = bgEntity.add(
+      new GraphicsComponent({ layer: this.cfg.layerContent }),
+    );
     const draw = (sel: boolean): void => {
       bg.draw((g) => {
         g.clear();
@@ -103,13 +116,25 @@ class IconCellPresenter implements CellPresenter {
           .stroke({ color: this.cfg.cellBorderColor, width: 1 });
         if (tile !== undefined) {
           const inset = 8;
-          g.roundRect(r.x + inset, r.y + inset, r.width - 2 * inset, r.height - 2 * inset, this.cfg.cellRadius).fill({
+          g.roundRect(
+            r.x + inset,
+            r.y + inset,
+            r.width - 2 * inset,
+            r.height - 2 * inset,
+            this.cfg.cellRadius,
+          ).fill({
             color: tile,
             alpha: 0.9,
           });
         }
         if (sel) {
-          g.roundRect(r.x - 1, r.y - 1, r.width + 2, r.height + 2, this.cfg.cellRadius + 1).stroke({
+          g.roundRect(
+            r.x - 1,
+            r.y - 1,
+            r.width + 2,
+            r.height + 2,
+            this.cfg.cellRadius + 1,
+          ).stroke({
             color: this.cfg.highlightColor,
             width: 2,
           });
@@ -133,15 +158,20 @@ class IconCellPresenter implements CellPresenter {
         const scale = texture.width > 0 ? size / texture.width : 1;
         t.setScale(scale, scale);
         const sprite = icon.add(
-          // The key (resolved above) keeps the sprite serializable; the
-          // component re-resolves the same cached texture from it.
-          new SpriteComponent({ texture: iconKey, layer: this.cfg.layerContent, anchor: { x: 0.5, y: 0.5 } }),
+          // The component resolves the registered texture from this key.
+          new SpriteComponent({
+            texture: iconKey,
+            layer: this.cfg.layerContent,
+            anchor: { x: 0.5, y: 0.5 },
+          }),
         );
         entities.push(icon);
         displays.push(sprite.sprite);
       } else {
         const letterEntity = scene.spawn("inv-cell-letter");
-        letterEntity.add(new Transform()).setPosition(r.x + r.width / 2, r.y + r.height / 2);
+        letterEntity
+          .add(new Transform())
+          .setPosition(r.x + r.width / 2, r.y + r.height / 2);
         const letter = letterEntity.add(
           new TextComponent(
             makeTextOptions(
@@ -160,7 +190,9 @@ class IconCellPresenter implements CellPresenter {
 
       if (view.stack.quantity > 1) {
         const badgeEntity = scene.spawn("inv-cell-qty");
-        badgeEntity.add(new Transform()).setPosition(r.x + r.width - 3, r.y + r.height - 1);
+        badgeEntity
+          .add(new Transform())
+          .setPosition(r.x + r.width - 3, r.y + r.height - 1);
         const badge = badgeEntity.add(
           new TextComponent(
             makeTextOptions(
@@ -200,7 +232,9 @@ class IconCellPresenter implements CellPresenter {
     try {
       return resolveTextureInput(icon);
     } catch {
-      this.warn?.(`inventory icon "${icon}" did not resolve to a texture — using the tile fallback`);
+      this.warn?.(
+        `inventory icon "${icon}" did not resolve to a texture — using the tile fallback`,
+      );
       this.missingIcons.add(icon);
       return null;
     }
@@ -210,7 +244,8 @@ class IconCellPresenter implements CellPresenter {
   private tileColor(id: string): number {
     const palette = this.cfg.tileColors ?? DEFAULT_TILE_COLORS;
     let hash = 0;
-    for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+    for (let i = 0; i < id.length; i++)
+      hash = (hash * 31 + id.charCodeAt(i)) | 0;
     return palette[Math.abs(hash) % palette.length] ?? 0xc9c9de;
   }
 }

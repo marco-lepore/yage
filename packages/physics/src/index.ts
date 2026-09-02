@@ -28,10 +28,8 @@ export { PhysicsWorld } from "./PhysicsWorld.js";
 export { PhysicsWorldManager } from "./PhysicsWorldManager.js";
 
 export { RigidBodyComponent } from "./RigidBodyComponent.js";
-export type { RigidBodyData } from "./RigidBodyComponent.js";
 
 export { ColliderComponent } from "./ColliderComponent.js";
-export type { ColliderData } from "./ColliderComponent.js";
 
 export { PhysicsSystem } from "./PhysicsSystem.js";
 

@@ -1,6 +1,6 @@
 # @yagejs/effects
 
-Depends on `@yagejs/renderer` (peer), `pixi.js` (peer), `pixi-filters`. Built-in visual-effect presets added via `.fx.addEffect` at any of the four scopes (component / layer / scene / screen). Each preset is registered through `defineEffect`, so attached effects round-trip through `SaveService.saveSnapshot` / `loadSnapshot` automatically.
+Depends on `@yagejs/renderer` (peer), `pixi.js` (peer), `pixi-filters`. Built-in visual-effect presets added via `.fx.addEffect` at any of the four scopes (component / layer / scene / screen). Each preset uses `defineEffect` to provide a named factory with typed options.
 
 ## Setup
 
@@ -181,7 +181,6 @@ const recolour = sprite.fx.addEffect(colorize({ color: 0xf2c14e }));
 recolour.setColor(0xd94a4a); // accepts numbers or strings ("#d94a4a", "red")
 recolour.setStrength(0.6); // rebases full ceiling; preserves intensity ratio
 recolour.fadeOut(0.2); // strength → 0 cross-fades back to the source (seconds)
-
 const glitchH = sprite.fx.addEffect(glitch({ slices: 8, offset: 24 }));
 glitchH.refresh(42); // deterministic replacement pattern
 glitchH.setOffset(36);
@@ -236,6 +235,8 @@ const pc = entity.tryGet(ProcessComponent) ?? entity.add(new ProcessComponent())
 pc.run(Tween.custom(...));   // entity-scoped, NOT bound to any one effect
 ```
 
-## Save/load
+## Save state
 
-All twenty-three presets register a stable `yage:<name>` string with `defineEffect`, so any `EffectStack` they're added to round-trips through `SaveService.saveSnapshot` / `loadSnapshot` — the snapshot records the preset's name + options + steady-state intensity + enabled flag, and on load the preset's factory is re-invoked to rebuild the filter. In-flight fades and one-shot ramps (`hitFlash.trigger()`, `shockwave.trigger()`) are not preserved.
+Effects and their processes are runtime resources. Save the durable game fact
+that selects an effect, then add it again during normal component or scene
+setup after load.

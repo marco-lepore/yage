@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  SerializableRegistry,
-  createMockEntity,
-  getSerializableType,
-} from "@yagejs/core";
+import { createMockEntity } from "@yagejs/core";
 import { Health, HealthDamaged, HealthDied, HealthHealed } from "./Health.js";
 
 function setup(options: { max: number; initial?: number }) {
@@ -63,44 +59,5 @@ describe("Health", () => {
     expect(health.heal(5)).toBe(0);
     expect(health.hp).toBe(0);
     expect(events).toEqual(["damaged:10:0", "died"]);
-  });
-
-  it("registers a stable namespaced snapshot type", () => {
-    const type = "@yagejs-addons/abilities/Health";
-
-    expect(getSerializableType(Health)).toBe(type);
-    expect(SerializableRegistry.get(type)).toBe(Health);
-  });
-
-  it("round-trips hp and max without emitting health events", () => {
-    const original = new Health({ max: 20, initial: 7 });
-    const snapshot = original.serialize();
-    const { entity } = createMockEntity("restored-victim");
-    const events: string[] = [];
-    entity.on(HealthDamaged, () => events.push("damaged"));
-    entity.on(HealthHealed, () => events.push("healed"));
-    entity.on(HealthDied, () => events.push("died"));
-
-    const restored = entity.add(Health.fromSnapshot(snapshot));
-
-    expect(snapshot).toEqual({ hp: 7, max: 20 });
-    expect(restored.hp).toBe(7);
-    expect(restored.max).toBe(20);
-    expect(events).toEqual([]);
-  });
-
-  it("restores dead health without emitting a death event", () => {
-    const snapshot = new Health({ max: 20, initial: 0 }).serialize();
-    const { entity } = createMockEntity("restored-dead-victim");
-    const events: string[] = [];
-    entity.on(HealthDamaged, () => events.push("damaged"));
-    entity.on(HealthHealed, () => events.push("healed"));
-    entity.on(HealthDied, () => events.push("died"));
-
-    const restored = entity.add(Health.fromSnapshot(snapshot));
-
-    expect(snapshot).toEqual({ hp: 0, max: 20 });
-    expect(restored.isDead).toBe(true);
-    expect(events).toEqual([]);
   });
 });

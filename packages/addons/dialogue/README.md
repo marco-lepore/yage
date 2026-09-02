@@ -40,13 +40,16 @@ The package is split so the headless path never pulls a renderer:
 import { DialogueRunner, DialogueController } from "@yagejs-addons/dialogue";
 
 // Pixi presentation — Graphics chrome + canvas text, themes, factories.
-import { defaultDialogueTheme, createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+import {
+  defaultDialogueTheme,
+  createBoxDialogue,
+} from "@yagejs-addons/dialogue/presenters";
 ```
 
-| Entry          | Imports                          | Contains                                                                 |
-| -------------- | -------------------------------- | ----------------------------------------------------------------------- |
-| `.`            | `@yagejs/core`, `@yagejs/input`  | runner, session, types, markup, i18n, canonical format, events, `DialogueController`, input bindings |
-| `./presenters` | + `@yagejs/renderer` (brings pixi)  | chrome, text views, composites, avatars, factories, `defaultDialogueTheme()`, textured nine-slice variants, radial (experimental) |
+| Entry          | Imports                            | Contains                                                                                                                          |
+| -------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `.`            | `@yagejs/core`, `@yagejs/input`    | runner, session, types, markup, i18n, canonical format, events, `DialogueController`, input bindings                              |
+| `./presenters` | + `@yagejs/renderer` (brings pixi) | chrome, text views, composites, avatars, factories, `defaultDialogueTheme()`, textured nine-slice variants, radial (experimental) |
 
 ## Defaults & opt-ins
 
@@ -62,9 +65,9 @@ import { defaultDialogueTheme, createBoxDialogue } from "@yagejs-addons/dialogue
 
 ## Save / load
 
-Snapshot/restore is **deferred to v1.1**. The runner keeps its cursor reachable
-through read-only getters so a `SnapshotContributor` (`@yagejs/save`) can be
-added later without a breaking change.
+The runner exposes read-only cursor state so a game can include dialogue in its
+own explicit save model. Dialogue does not depend on a storage package or save
+slots.
 
 ## Publishing caveat (`@yagejs-addons` scope)
 

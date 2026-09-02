@@ -55,21 +55,14 @@ export default defineConfig({
     port: 5199,
   },
   oxc: {
-    // Transform TypeScript's legacy (stage-2) decorators. oxc only supports
-    // the legacy transform — stage-3 decorators would be passed through to
-    // the browser, which can't parse them yet. @yagejs/save's @serializable
-    // decorator works under either transform, so legacy mode is the safe pick.
+    // YAGE decorators such as @trait use TypeScript's legacy transform.
     decorator: {
       legacy: true,
     },
   },
   build: {
     rollupOptions: {
-      // Preserve class/function names through the oxc minifier so that
-      // @yagejs/save's class-name-based snapshot restoration still works in
-      // production builds. Vite 8 switched from esbuild to oxc; the old
-      // `esbuild: { keepNames: true }` option is silently dropped by the
-      // oxc converter.
+      // Preserve readable class/function names in production diagnostics.
       output: {
         keepNames: true,
       },

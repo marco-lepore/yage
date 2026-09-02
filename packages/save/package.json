@@ -10,7 +10,7 @@
     "save",
     "load",
     "serialization",
-    "snapshot"
+    "persistence"
   ],
   "license": "MIT",
   "author": "Marco Lepore",

@@ -23,11 +23,10 @@ Call `.draw()` again at any time to redraw. The callback receives a PixiJS
 `roundRect`, `poly`, `moveTo`/`lineTo`, `stroke`, and `fill`.
 
 `GraphicsComponent` takes the same `visible` / `tint` / `alpha` /
-`blendMode` / `interactive` options as `SpriteComponent`, plus `setMask()` / `fx` for
-masking and filters. `serialize()` persists `layer`, those options, and any
-attached effects and mask — only the drawn geometry isn't recorded (Pixi has
-no way to read commands back off a `Graphics` object), so redo the `.draw()`
-call in `afterRestore()`; everything else restores on its own.
+`blendMode` / `interactive` options as `SpriteComponent`, plus `setMask()` / `fx`
+for masking and filters. Graphics are runtime resources and are not part of an
+`@yagejs/save` state root. Save the game facts that determine the drawing, then
+let normal scene setup call `.draw()` when the scene is constructed.
 
 **Escape hatch:** `.graphics` (and the `g` passed to `.draw(fn)`) is a raw
 pixi `Graphics` instance. The fluent API mirrors Canvas 2D vocabulary —

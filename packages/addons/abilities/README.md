@@ -362,12 +362,14 @@ Both consumers would receive the edge.
 
 ## Save boundary
 
-`Health` is serializable and restores `{ hp, max }` without emitting health
-events. Every other addon value is transient: cooldowns, active phases and
-lanes, payloads, linger, forced reactions, input-driver state, receiver
-i-frames, guards, invulnerability, stagger, facing, and time requests are not
-resumed from a snapshot. Rebuild the definitions and input driver when loading
-into a safe gameplay state.
+Include health in the game's explicit save root when it matters. Store
+`{ hp: health.hp, max: health.max }`, then rebuild the component with
+`new Health({ max, initial: hp })`. Construction does not emit health events.
+
+Treat the remaining addon values as runtime state: cooldowns, active phases
+and lanes, payloads, linger, forced reactions, input-driver state, receiver
+i-frames, guards, invulnerability, stagger, facing, and time requests. Rebuild
+definitions and the input driver when loading into a safe gameplay state.
 
 ## Out of scope
 

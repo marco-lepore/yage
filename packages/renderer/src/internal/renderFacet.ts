@@ -2,11 +2,10 @@ import { Point } from "pixi.js";
 import type { Container } from "pixi.js";
 
 /**
- * Derived, read-only rendered-geometry / visibility facet for a graphical
- * component, computed on demand from its live display object — NOT from
- * `serialize()` (which reports declared, persisted state). Where `serialize()`
- * says a typewriter's full string is present, this reports the bounds actually
- * painted.
+ * Derived, read-only rendered-geometry and visibility facet for a graphical
+ * component, computed on demand from its live display object. For a
+ * typewriter, this reports the glyphs and bounds actually painted rather than
+ * only the component's declared full string.
  *
  * Owned by `@yagejs/renderer`: the renderer publishes it into the Inspector
  * snapshot through the generic {@link InspectorFacetContributor} seam (see
@@ -90,7 +89,9 @@ export interface RenderInspectable {
  * reveal use case this is exactly right (glyphs are toggled directly); callers
  * hiding an entity via a parent container should read the parent's flag too.
  */
-export function computeRenderFacet(displayObject: Container): RenderFacetSnapshot {
+export function computeRenderFacet(
+  displayObject: Container,
+): RenderFacetSnapshot {
   return {
     bounds: computeWorldBounds(displayObject),
     visible: displayObject.visible,

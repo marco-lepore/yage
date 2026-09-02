@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Transform, createMockEntity, isSerializable } from "@yagejs/core";
+import { Transform, createMockEntity } from "@yagejs/core";
 import {
   GraphicsComponent,
   RenderLayerManager,
@@ -58,7 +58,6 @@ describe("Feel transient visuals", () => {
     const transform = spawned?.get(Transform);
     const text = spawned?.get(TextComponent);
     expect(text?.text.text).toBe("Level up!");
-    expect(spawned && isSerializable(spawned)).toBe(false);
     expect(transform?.position.x).toBe(100);
     expect(transform?.position.y).toBe(80);
 

@@ -121,6 +121,34 @@ describe("Save — slots", () => {
     expect(b.get()).toEqual({ chapter: 3, coins: 42 });
   });
 
+  it("a slot named like an Object.prototype member round-trips and lists", async () => {
+    // `__proto__` is the real hazard: on a plain object the assignment hits
+    // the inherited setter, so the slot saved but never listed. The others
+    // cover the `in` check in deleteSlot seeing inherited members.
+    const save = createSave({ adapter: memoryAdapter() });
+    for (const name of ["__proto__", "constructor", "toString"]) {
+      const a = make();
+      a.set({ chapter: 7, coins: 1 });
+      await save.saveSlot("run", name, a);
+    }
+
+    const listed = (await save.listSlots("run")).map((s) => s.name).sort();
+    expect(listed).toEqual(["__proto__", "constructor", "toString"]);
+
+    const b = make();
+    await save.loadSlot("run", "__proto__", b);
+    expect(b.get()).toEqual({ chapter: 7, coins: 1 });
+
+    await save.deleteSlot("run", "__proto__");
+    expect((await save.listSlots("run")).map((s) => s.name).sort()).toEqual([
+      "constructor",
+      "toString",
+    ]);
+    await expect(
+      save.loadSlot("run", "__proto__", make()),
+    ).rejects.toBeInstanceOf(SlotNotFoundError);
+  });
+
   it("loadSlot throws SlotNotFoundError for missing slot", async () => {
     const save = createSave({ adapter: memoryAdapter() });
     const s = make();
@@ -464,7 +492,9 @@ describe("Save — listSlots / deleteSlot edge cases", () => {
 
   it("deleteSlot is a no-op when slot doesn't exist", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    await expect(save.deleteSlot("ds-missing", "nope")).resolves.toBeUndefined();
+    await expect(
+      save.deleteSlot("ds-missing", "nope"),
+    ).resolves.toBeUndefined();
   });
 });
 

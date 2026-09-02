@@ -345,7 +345,7 @@ const spriteState = window.__yage__.inspector.getComponentData(
 | `getEntityByName(name)` | First active entity with that name. Destroyed and deactivated entities are skipped |
 | `getEntityPosition(name)` | Shortcut: `Transform` position for a named entity |
 | `hasComponent(name, componentName)` | Boolean: does the named entity have this component? Both arguments are strings |
-| `getComponentData(name, componentName)` | The component's `serialize()` result, or its reflected public state when it defines none. Typed `unknown`, and `null` for a component with nothing serializable |
+| `getComponentData(name, componentName)` | Reflected public fields and getters from the live component. Typed `unknown`, and `null` when nothing is inspectable |
 | `getSystems()` | Every registered system, with phase/priority/enabled flags |
 | `getErrors()` | Recorded failures from the error boundary (`callbackErrors`) — system, component, and callback throws, most recent last |
 
@@ -356,7 +356,7 @@ same applies to `tags` — filter client-side rather than expecting a built-in
 `getEntitiesByTag`.
 
 To assert what is actually *rendered* — not just the entity origin or the
-persisted component state — read the **render facet** off a world-scene
+component's reflected state — read the **render facet** off a world-scene
 snapshot (published by `RendererPlugin` under `facets.render`). Each graphical
 component carries a derived facet with world-space `bounds` and component-local
 `visible`, computed on demand from the live display object. `SplitTextComponent`

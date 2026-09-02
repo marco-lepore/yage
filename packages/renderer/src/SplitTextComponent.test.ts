@@ -205,6 +205,13 @@ describe("SplitTextComponent", () => {
     expect(comp.chars).toHaveLength(4);
   });
 
+  it("content reads the displayed string back, tracking setText", () => {
+    const comp = new SplitTextComponent({ text: "ab" });
+    expect(comp.content).toBe("ab");
+    comp.setText("abcd");
+    expect(comp.content).toBe("abcd");
+  });
+
   it("setStyle replaces the style (font lives in style.fontFamily)", () => {
     const comp = new SplitTextComponent({
       text: "hi",
@@ -331,92 +338,6 @@ describe("SplitTextComponent", () => {
     expect((obj as unknown as { destroyOpts?: unknown }).destroyOpts).toEqual({
       children: true,
     });
-  });
-
-  it("serialize/fromSnapshot round-trips text, style, bitmap, anchors, layer", () => {
-    const comp = new SplitTextComponent({
-      text: "score",
-      layer: "hud",
-      style: { fontSize: 16, fontFamily: "PressStart" },
-      bitmap: true,
-      anchor: { x: 0.5, y: 1 },
-      charAnchor: 0.5,
-      autoSplit: false,
-      tint: 0x123456,
-      alpha: 0.7,
-      visible: false,
-    });
-    const data = comp.serialize();
-    expect(data).toMatchObject({
-      text: "score",
-      layer: "hud",
-      style: { fontSize: 16, fontFamily: "PressStart" },
-      bitmap: true,
-      anchor: { x: 0.5, y: 1 },
-      charAnchor: 0.5,
-      autoSplit: false,
-      tint: 0x123456,
-      alpha: 0.7,
-      visible: false,
-    });
-
-    const restored = SplitTextComponent.fromSnapshot(data);
-    expect(restored.splitText).toBeInstanceOf(mocks.MockSplitBitmapText);
-    expect(restored.splitText.text).toBe("score");
-    expect(restored.serialize().anchor).toEqual({ x: 0.5, y: 1 });
-    expect(restored.charAnchor).toBe(0.5);
-    expect(restored.tint).toBe(0x123456);
-  });
-
-  it("serialize emits style as a POJO that survives JSON round-trip", () => {
-    const comp = new SplitTextComponent({
-      text: "x",
-      style: { fontSize: 16, fill: 0xff0000 },
-    });
-    const data = comp.serialize();
-    const json = JSON.parse(JSON.stringify(data)) as {
-      style?: Record<string, unknown>;
-    };
-    expect(json.style).toEqual({ fontSize: 16, fill: 0xff0000 });
-  });
-
-  it("decouples the cached style from the caller's options object", () => {
-    const style: { fontSize: number; fill?: number } = { fontSize: 14 };
-    const comp = new SplitTextComponent({ text: "x", style });
-    style.fontSize = 99;
-    style.fill = 0xff0000;
-    expect(comp.serialize().style).toEqual({ fontSize: 14 });
-  });
-
-  it("decouples a cached object-form anchor from the caller's object", () => {
-    const charAnchor = { x: 0.5, y: 0.5 };
-    const comp = new SplitTextComponent({ text: "x", charAnchor });
-    charAnchor.x = 0.1;
-    charAnchor.y = 0.9;
-    expect(comp.serialize().charAnchor).toEqual({ x: 0.5, y: 0.5 });
-  });
-
-  it("decouples the block anchor from caller and snapshot mutation", () => {
-    const anchor = { x: 0.5, y: 1 };
-    const comp = new SplitTextComponent({ text: "x", anchor });
-    anchor.x = 0;
-    const snapshot = comp.serialize();
-    expect(snapshot.anchor).toEqual({ x: 0.5, y: 1 });
-
-    if (!snapshot.anchor) throw new Error("Expected a serialized block anchor.");
-    snapshot.anchor.y = 0;
-    expect(comp.serialize().anchor).toEqual({ x: 0.5, y: 1 });
-  });
-
-  it("decouples the serialized anchor from the cache (mutating the snapshot)", () => {
-    const comp = new SplitTextComponent({
-      text: "x",
-      charAnchor: { x: 0.5, y: 0.5 },
-    });
-    const snap = comp.serialize().charAnchor as { x: number; y: number };
-    snap.x = 0.1;
-    snap.y = 0.9;
-    expect(comp.serialize().charAnchor).toEqual({ x: 0.5, y: 0.5 });
   });
 
   describe("inspectRender", () => {

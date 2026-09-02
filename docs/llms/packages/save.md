@@ -1,9 +1,9 @@
 # @yagejs/save
 
-Depends on `@yagejs/core`. Persistence for YAGE — two paths:
-
-1. **Stores + Save instance** (primary). Typed reactive stores for settings, save slots, world facts, progression. Most games need only this.
-2. **Snapshot system** (advanced). Full-scene serialization via `@serializable` for quicksave-style "pause and resume the simulator." See bottom of file.
+Depends on `@yagejs/core`. Controlled persistence for typed reactive stores or
+any explicit `Serializable<TEncoded>` state root. The package does not traverse
+scenes, entities, components, renderer resources, callbacks, or plugin
+internals.
 
 ## Setup
 
@@ -29,21 +29,29 @@ Save consumes any `Serializable<T>`. The reactive factories live in `@yagejs/cor
 
 ```ts
 import {
-  createStore, createRecord, createValue, createCounter,
-  createMap, createSet, createList,
+  createStore,
+  createRecord,
+  createValue,
+  createCounter,
+  createMap,
+  createSet,
+  createList,
 } from "@yagejs/core";
 
-interface Potion { name: string; quality: number }
+interface Potion {
+  name: string;
+  quality: number;
+}
 
 // Compound — bundle leaves so they serialize/restore atomically.
 const game = createStore((s) => ({
-  inventory:  s.map<string, number>(),
-  recipes:    s.set<string>(),
-  gold:       s.counter({ default: 0 }),
+  inventory: s.map<string, number>(),
+  recipes: s.set<string>(),
+  gold: s.counter({ default: 0 }),
   reputation: s.counter({ default: 50 }),
-  shelf:      s.list<Potion>(),
-  day:        s.value<number>({ default: 1 }),
-  settings:   s.record<{ volume: number; lang: string }>({
+  shelf: s.list<Potion>(),
+  day: s.value<number>({ default: 1 }),
+  settings: s.record<{ volume: number; lang: string }>({
     default: () => ({ volume: 0.8, lang: "en" }),
   }),
 }));
@@ -58,7 +66,7 @@ save.autoPersist("save-stores.run", game);
 export const settings = createRecord<SettingsData>({
   default: () => ({ audio: { music: 0.8, sfx: 1.0 }, vsync: true }),
 });
-export const opened   = createSet<string>();
+export const opened = createSet<string>();
 export const defeated = createMap<string, number>();
 ```
 
@@ -77,9 +85,11 @@ Shape APIs (every leaf also exposes `subscribe(fn)`, `serialize()`, `hydrate(raw
 
 ```ts
 // Before — three save documents, three autoPersist calls.
-const progression = createRecord<RunData>({ default: () => ({ chapter: 1, coins: 0 }) });
-const deaths      = createCounter();
-const flags       = createSet<string>();
+const progression = createRecord<RunData>({
+  default: () => ({ chapter: 1, coins: 0 }),
+});
+const deaths = createCounter();
+const flags = createSet<string>();
 save.autoPersist("run.progression", progression);
 save.autoPersist("run.deaths", deaths);
 save.autoPersist("run.flags", flags);
@@ -87,8 +97,8 @@ save.autoPersist("run.flags", flags);
 // After — one document, one autoPersist call, atomic serialize/hydrate.
 const game = createStore((s) => ({
   progression: s.record<RunData>({ default: () => ({ chapter: 1, coins: 0 }) }),
-  deaths:      s.counter({ default: 0 }),
-  flags:       s.set<string>(),
+  deaths: s.counter({ default: 0 }),
+  flags: s.set<string>(),
 }));
 save.autoPersist("run", game);
 ```
@@ -104,7 +114,10 @@ await save.restore("settings", settings);
 await Promise.all([save.restore("a", a), save.restore("b", b)]);
 
 // Slotted with typed metadata
-interface RunMeta { location: string; playtime: number }
+interface RunMeta {
+  location: string;
+  playtime: number;
+}
 await save.saveSlot<unknown, RunMeta>("run", "manual-1", game, {
   metadata: { location: "Forest", playtime: 60 },
 });
@@ -192,10 +205,10 @@ Stores accept a `Codec<T, TEncoded>` for non-JSON-native value types. `TEncoded`
 ```ts
 import { jsonCodec, setCodec, mapCodec, dateCodec } from "@yagejs/core";
 
-jsonCodec<T>()       // Codec<T, T>            — identity (default)
-setCodec<K>()        // Codec<Set<K>, K[]>
-mapCodec<K, V>()     // Codec<Map<K,V>, [K,V][]>
-dateCodec()          // Codec<Date, string>    — ISO string
+jsonCodec<T>(); // Codec<T, T>            — identity (default)
+setCodec<K>(); // Codec<Set<K>, K[]>
+mapCodec<K, V>(); // Codec<Map<K,V>, [K,V][]>
+dateCodec(); // Codec<Date, string>    — ISO string
 ```
 
 `createSet`/`createMap`/`createCounter`/`createList` bundle codecs internally — you only specify a codec for `createRecord<T>` / `createValue<T>` (and the compound `s.record`/`s.value` leaves) when `T` contains exotic types. When a custom codec changes the encoded shape (e.g. `Date → string`), declare both generics: `createValue<Date, string>({ default: () => new Date(), codec: dateCodec() })`.
@@ -256,7 +269,7 @@ await save.restore("saves", saves, {
 // each leaf consumes: `{ gold: number, day: { value: number } }` here.
 const game = createStore((s) => ({
   gold: s.counter({ default: 0 }),
-  day:  s.value<number>({ default: 1 }),
+  day: s.value<number>({ default: 1 }),
 }));
 await save.restore("run", game, {
   version: 2,
@@ -284,222 +297,16 @@ beforeEach(() => {
 
 ## Per-frame updates: don't
 
-Stores are for *intentional* state — settings, slots, world facts, progression. They notify all subscribers synchronously on every change, and UI bindings re-render. **Don't update stores from `update(dt)` or other per-frame paths**; that's what ECS state and `useQuery`/`useSceneSelector` are for. If you find yourself debouncing every set, you're using the wrong primitive.
+Stores are for _intentional_ state — settings, slots, world facts, progression. They notify all subscribers synchronously on every change, and UI bindings re-render. **Don't update stores from `update(dt)` or other per-frame paths**; that's what ECS state and `useQuery`/`useSceneSelector` are for. If you find yourself debouncing every set, you're using the wrong primitive.
 
----
+## Custom state roots
 
-# Snapshot path (advanced)
+Implement `Serializable<TEncoded>` when the state does not fit a built-in
+factory. `serialize()` returns the complete durable representation and
+`hydrate()` replaces the model from that representation. Use the same Save
+methods as for a store.
 
-Full-scene serialization via `@serializable` decorators. Use when you need quicksave/quickload of the running simulator (every entity, component, active process, scene stack). For settings, save slots, and progression, prefer the store path above.
-
-## Snapshot setup
-
-```ts
-import { SnapshotPlugin } from "@yagejs/save";
-
-engine.use(new SnapshotPlugin({
-  namespace: "my-game",     // localStorage key prefix (default "yage")
-  storage: myStorage,       // custom SnapshotStorage (default localStorage)
-}));
-```
-
-## Bundler setup
-
-`@yagejs/save` relies on TypeScript's `@serializable` class decorator and looks up classes by `class.name` at restore time. On Vite 8+ this requires two extra flags in your `vite.config.ts`:
-
-```ts
-import { defineConfig } from "vite";
-
-export default defineConfig({
-  oxc: {
-    decorator: { legacy: true },
-  },
-  build: {
-    rollupOptions: { output: { keepNames: true } },
-  },
-});
-```
-
-`oxc.decorator.legacy: true` rewrites `@serializable class Foo` as a stage-2 decorator call. `output.keepNames: true` preserves class names through the oxc minifier so the registry key stored in a snapshot still matches the runtime class.
-
-These flags are only required for user code that uses `@serializable` directly. `@yagejs/*` packages are pre-compiled and unaffected.
-
-## @serializable
-
-```ts
-import { serializable } from "@yagejs/core";
-
-@serializable
-class Player extends Entity { }
-
-@serializable
-class GameScene extends Scene { }
-```
-
-Built-in serializable components: `Transform`, `RigidBodyComponent`, `ColliderComponent`, `SpriteComponent`, `GraphicsComponent`.
-
-## Custom serialization
-
-```ts
-@serializable
-class MovingSpike extends Component {
-  serialize() {
-    return { startY: this.startY, speed: this.speed, elapsed: this.elapsed };
-  }
-  static fromSnapshot(data: { startY: number; speed: number; elapsed: number }) {
-    const spike = new MovingSpike({ startY: data.startY, speed: data.speed });
-    spike.elapsed = data.elapsed;
-    return spike;
-  }
-}
-```
-
-## Restore order
-
-On load, each entity's components are re-added in ascending `static restorePriority` (declared on the component class; undeclared = 100, and the engine reserves 0-99). Engine bands: `Transform` 0, `RigidBodyComponent` 10, `ColliderComponent` 20, visual components 30, `AnimationController` 40, `SoundComponent`/`ParticleEmitterComponent`/`TilemapComponent` 50 — so engine components exist before an undeclared game component's `onAdd()` runs. Ties restore in save-time add order. A game component whose `onAdd()` reads a sibling declares a number above that sibling's:
-
-```ts
-@serializable
-class HealthBar extends Component {
-  static restorePriority = 110; // after the default band (100)
-  onAdd() {
-    this.entity.get(HealthComponent); // safe: restored earlier
-  }
-}
-```
-
-## afterRestore hooks
-
-Re-create non-serializable state (draw callbacks, event listeners):
-
-```ts
-afterRestore(): void {
-  this.get(GraphicsComponent).draw(drawFn);
-  this.setupTrigger(this.get(ColliderComponent));
-}
-```
-
-Pattern: extract shared setup into a method called by both `onEnter()` and `afterRestore()`.
-
-## SnapshotService
-
-```ts
-import { SnapshotServiceKey } from "@yagejs/save";
-
-const save = this.use(SnapshotServiceKey);
-
-save.saveSnapshot("slot1");
-await save.loadSnapshot("slot1");
-save.hasSnapshot("slot1");
-save.deleteSnapshot("slot1");
-
-const data = save.exportSnapshot("slot1");   // GameSnapshot | null
-await save.importSnapshot("slot1", data);
-
-// Generic key/value blobs alongside snapshots — use the store path for new code.
-save.saveData("bestScore", { value: 9999 });
-save.loadData("bestScore");                  // T | null
-save.hasData("bestScore");                   // boolean
-save.deleteData("bestScore");
-save.exportData("bestScore");                // alias for loadData (external use)
-save.importData("bestScore", { value: 1 }); // alias for saveData (external use)
-
-// Contributor management
-save.registerSnapshotExtra("myPlugin", contributor);
-save.unregisterSnapshotExtra("myPlugin");
-```
-
-`loadSnapshot` calls `popAll()` then pushes a fresh scene rebuilt from the snapshot — `this` (and any handles a Scene method captured before the await) refer to a destroyed shell after the promise resolves. If you need to act on the post-load scene, capture `SceneManagerKey` BEFORE the await and read `sceneManager.active` after:
-
-```ts
-async doLoad(): Promise<void> {
-  const save = this.context.resolve(SnapshotServiceKey);
-  const sceneManager = this.context.resolve(SceneManagerKey);
-  await save.loadSnapshot("slot1");
-  const active = sceneManager.active;
-  if (active instanceof MyScene) active.syncUIToRestoredState();
-}
-```
-
-Same caveat for any caller-side effect handle: `loadSnapshot` destroys the current scene tree (via `popAll`) before rebuilding, so an `EffectHandle` / `MaskHandle` from `.fx.addEffect(...)` is invalid after the load — no matter when it was captured. Re-acquire it with `tree.fx.findEffect(definition)` on the new scene's render tree (renderer-contributed effects are restored by name + options).
-
-## Snapshot schema
-
-```ts
-interface GameSnapshot {
-  version: number;
-  timestamp: number;
-  scenes: SceneSnapshotEntry[];
-  extras?: Record<string, unknown>;  // plugin-contributed extras
-}
-
-interface SceneSnapshotEntry {
-  type: string;
-  paused: boolean;
-  entities: EntitySnapshotEntry[];
-  userData?: unknown;
-}
-
-interface EntitySnapshotEntry {
-  id: number;
-  type: string;
-  components: ComponentSnapshot[];
-  userData?: unknown;
-  parentId?: number;
-  childName?: string;
-}
-
-interface ComponentSnapshot {
-  type: string;
-  data: unknown;
-  updatePriority?: number; // only when it differs from the class default
-}
-```
-
-`SnapshotResolver.entity(oldId)` consults `EntitySnapshotEntry.id` inside `afterRestore()` hooks to rewire cross-entity references.
-
-`SnapshotResolver.handle<E>(oldId)` does the same for a reference held as an `EntityHandle` — the load-side counterpart of `entity.handle()`:
-
-```ts
-serialize() { return { targetId: this.target?.current?.id ?? null }; }
-afterRestore(data: { targetId: number | null }, resolve: SnapshotResolver) {
-  this.target = resolve.handle<Enemy>(data.targetId);
-}
-```
-
-- Serialize the id, not the handle, and serialize `null` when the handle is empty — an explicit `null` survives a JSON round trip, a missing key does not. `resolve.handle()` accepts the `null` and returns `undefined`. A target already gone at save time restores empty the same way.
-- Both resolver methods only see entities from the scene being restored. A reference into another scene does not resolve, because each scene's `afterRestore` runs before the next scene is pushed.
-- Pool members are not in the snapshot, so a handle on one always restores empty.
-
-## SnapshotStorage
-
-```ts
-interface SnapshotStorage {
-  load(key: string): string | null;
-  save(key: string, data: string): void;
-  delete(key: string): void;
-  list(prefix?: string): string[];
-}
-```
-
-Default: `LocalStorageSnapshotStorage`. (Distinct from the store path's async `SaveAdapter`.)
-
-## Snapshot contributors
-
-Plugins that own state outside the entity/component model:
-
-```ts
-import { SnapshotServiceKey, type SnapshotContributor } from "@yagejs/save";
-
-const svc = context.tryResolve(SnapshotServiceKey);
-svc?.registerSnapshotExtra("myPlugin", {
-  serialize: () => ({ ... }),
-  restore: (data) => { /* apply data */ },
-});
-```
-
-Every registered contributor is invoked on `loadSnapshot`, even when the snapshot has no matching entry — `restore(undefined)` is called, and the contributor is expected to reset to baseline. A failing contributor is logged and the load continues.
-
-The renderer plugin auto-registers a contributor under `"renderer"` for layer/scene/screen-scope effects + masks.
-
-`GameSnapshot.version` is `4`; older saves error at load with a version mismatch.
+Do not pass live ECS or renderer objects as state roots. Save stable facts such
+as scene identity, entity kind, position, health, inventory, and quest state.
+After load, normal scene setup reconstructs entities, components, processes,
+physics bodies, effects, and event listeners from those facts.

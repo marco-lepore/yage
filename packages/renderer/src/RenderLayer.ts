@@ -3,9 +3,9 @@ import type { EventMode } from "pixi.js";
 import type { ScopedProcessQueue } from "@yagejs/core";
 import type { LayerDef, LayerSortFn, LayerSpace } from "./LayerDef.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
-import { attachMask, reattachMaskFromSnapshot } from "./masks/attachMask.js";
+import { attachMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
-import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
+import type { MaskHandle } from "./masks/MaskHandle.js";
 import type { DisplayContainer } from "./public-types.js";
 
 /**
@@ -148,16 +148,6 @@ export class RenderLayer {
     this._mask?.remove();
     this._mask = undefined;
   }
-
-  /** @internal — used by the renderer's snapshot contributor. */
-  _serializeMask(): MaskSnapshot | undefined {
-    return this._mask?.serialize() ?? undefined;
-  }
-
-  /** @internal — used by the renderer's snapshot contributor. */
-  _restoreMask(snap: MaskSnapshot): void {
-    this._mask = reattachMaskFromSnapshot(this._mask, this.container, snap);
-  }
 }
 
 /**
@@ -191,11 +181,7 @@ export class RenderLayerManager {
   }
 
   /** Create a new named layer. Throws if `name` already exists. */
-  create(
-    name: string,
-    order: number,
-    opts?: CreateLayerOptions,
-  ): RenderLayer {
+  create(name: string, order: number, opts?: CreateLayerOptions): RenderLayer {
     if (this.layers.has(name)) {
       throw new Error(`RenderLayer "${name}" already exists.`);
     }

@@ -47,9 +47,8 @@ export interface SceneRenderTree {
    * Common use: scene-wide CRT, color grade, vignette. Survives until the
    * scene exits or the handle is `.remove()`d.
    *
-   * `.fx.findEffect(definition)` recovers a handle by registered definition
-   * after save/load, when the caller-side reference went stale during
-   * restoration.
+   * `.fx.findEffect(definition)` finds an attached effect when the caller no
+   * longer has its original handle.
    */
   readonly fx: EffectsHost;
   /**
@@ -63,7 +62,7 @@ export interface SceneRenderTree {
 
 /**
  * Provider that materializes and tears down per-scene render trees. Held
- * engine-globally so cross-scene tools (save, inspector) can enumerate
+ * engine-globally so the inspector and renderer-owned tools can enumerate
  * trees.
  */
 export interface SceneRenderTreeProvider {

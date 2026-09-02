@@ -133,7 +133,8 @@ export const BOXER_ANIM_SPECS: Record<BoxerAnim, BoxerAnimSpec> = {
 export const CAST_DURATION =
   BOXER_ANIM_SPECS.cast.frames / (60 * BOXER_ANIM_SPECS.cast.speed);
 export const CAST_RELEASE_FRAME = 29;
-export const CAST_RELEASE_AT = CAST_RELEASE_FRAME / (60 * BOXER_ANIM_SPECS.cast.speed);
+export const CAST_RELEASE_AT =
+  CAST_RELEASE_FRAME / (60 * BOXER_ANIM_SPECS.cast.speed);
 
 /** Composite `AnimationController` key for one (animation, direction) pair. */
 export function boxerKey(anim: BoxerAnim, dir: number): string {
@@ -163,7 +164,7 @@ export const BOXER_PRELOAD = [
   ),
 ];
 
-/** The serializable frame source for one (animation, direction) pair — a
+/** The asset-backed frame source for one (animation, direction) pair — a
  *  single-row grid slice of that direction's sheet. Assets must already be
  *  loaded (via `preload`) before the frames resolve. */
 export function sourceFor(anim: BoxerAnim, dir: number): SheetFrameSource {
@@ -346,7 +347,10 @@ export const FOOT_ANCHOR_PX: Partial<
  *  this to know which `FOOT_ANCHOR_PX` row a texture-array frame index
  *  belongs to; the frame index alone doesn't say which (anim, dir) it's
  *  from. Written by `playBoxerAnim`. */
-export const boxerAnimState = new WeakMap<Entity, { anim: BoxerAnim; dir: number }>();
+export const boxerAnimState = new WeakMap<
+  Entity,
+  { anim: BoxerAnim; dir: number }
+>();
 
 /** Frame rows from the torso anchor (`SPRITE_ANCHOR`'s row 66) down to a
  *  typical ground-contact line — subtracted from each frame's own measured

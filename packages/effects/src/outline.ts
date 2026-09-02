@@ -20,7 +20,7 @@ export interface OutlineOptions {
 /**
  * Hard-edge outline around opaque pixels. `setIntensity` scales the
  * configured thickness toward 0, which is also what `fadeIn`/`fadeOut`
- * tween. Saved across save/load.
+ * tween.
  */
 export const outline = defineEffect<OutlineHandle, OutlineOptions>({
   name: "yage:outline",

@@ -14,26 +14,28 @@ engine.use(new ParticlesPlugin());
 ```ts
 import { ParticleEmitterComponent } from "@yagejs/particles";
 
-entity.add(new ParticleEmitterComponent({
-  texture: particleTex,        // TextureInput — one of three sources
-  // textureKey: "assets/p.png", // serializable alternative
-  // shape: "softCircle",        // built-in shape, no asset needed
-  maxParticles: 200,            // default 100
-  rate: 20,                     // particles/sec, default 10
-  lifetime: [0.5, 1.5],        // seconds (required)
-  speed: [50, 150],            // px/s
-  angle: [-Math.PI, Math.PI],  // radians
-  scale: { start: 1, end: 0 }, // Lerped
-  alpha: { start: 1, end: 0 },
-  rotation: 0,                 // radians
-  rotationSpeed: 0,            // rad/s
-  tint: 0xff6600,
-  blendMode: "add",            // whole-emitter, default "normal"
-  gravity: { x: 0, y: 200 },  // px/s²
-  damping: 0,                  // 0–1
-  spawnOffset: { x: [-10, 10], y: 0 },
-  layer: "effects",
-}));
+entity.add(
+  new ParticleEmitterComponent({
+    texture: particleTex, // TextureInput — one of three sources
+    // textureKey: "assets/p.png", // asset-key alternative
+    // shape: "softCircle",        // built-in shape, no asset needed
+    maxParticles: 200, // default 100
+    rate: 20, // particles/sec, default 10
+    lifetime: [0.5, 1.5], // seconds (required)
+    speed: [50, 150], // px/s
+    angle: [-Math.PI, Math.PI], // radians
+    scale: { start: 1, end: 0 }, // Lerped
+    alpha: { start: 1, end: 0 },
+    rotation: 0, // radians
+    rotationSpeed: 0, // rad/s
+    tint: 0xff6600,
+    blendMode: "add", // whole-emitter, default "normal"
+    gravity: { x: 0, y: 200 }, // px/s²
+    damping: 0, // 0–1
+    spawnOffset: { x: [-10, 10], y: 0 },
+    layer: "effects",
+  }),
+);
 ```
 
 NumberRange: `number | [min, max]`. Lerped: `{ start: NumberRange, end: NumberRange }`.
@@ -86,9 +88,6 @@ asking for it: never destroy the texture `shapeTexture` returns. Generation
 writes an RGBA buffer directly, so it needs no DOM or renderer. A 1×1 `pixel` is
 `Texture.WHITE` and generates nothing.
 
-Emitters using a shape serialize (`shape: { type, size }` instead of
-`textureKey`), size included.
-
 Control:
 
 ```ts
@@ -139,8 +138,8 @@ rain(textureOrKey?: TextureInput): EmitterConfig    // downward, uniform
 ```
 
 ```ts
-new ParticleEmitterComponent(ParticlePresets.fire());       // zero assets
-new ParticleEmitterComponent(ParticlePresets.fire(myTex));  // your own art
+new ParticleEmitterComponent(ParticlePresets.fire()); // zero assets
+new ParticleEmitterComponent(ParticlePresets.fire(myTex)); // your own art
 ```
 
 With no argument each preset falls back to its own built-in shape, sized to the

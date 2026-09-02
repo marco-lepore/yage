@@ -7,10 +7,12 @@ Depends on `@yagejs/core`. Rapier2D physics with pixel-based API. All values in 
 ```ts
 import { PhysicsPlugin } from "@yagejs/physics";
 
-engine.use(new PhysicsPlugin({
-  gravity: { x: 0, y: 980 },   // px/s², default (0, 980)
-  pixelsPerMeter: 50,           // default 50
-}));
+engine.use(
+  new PhysicsPlugin({
+    gravity: { x: 0, y: 980 }, // px/s², default (0, 980)
+    pixelsPerMeter: 50, // default 50
+  }),
+);
 ```
 
 ## Bundler Setup
@@ -27,7 +29,7 @@ export default defineConfig({
 });
 ```
 
-That's all that's required for `@yagejs/physics`. See `examples/vite.config.ts` for the canonical reference config. If you also use `@yagejs/save`, check its Bundler Setup section for two additional oxc/minify options.
+That's all that's required for `@yagejs/physics`. See `examples/vite.config.ts` for the canonical reference config.
 
 ## Component Ordering
 
@@ -40,19 +42,22 @@ Every `ColliderComponent` needs a sibling `RigidBodyComponent`, including a `sen
 ```ts
 import { RigidBodyComponent } from "@yagejs/physics";
 
-entity.add(new RigidBodyComponent({
-  type: "dynamic",          // "dynamic" | "static" | "kinematic"
-  fixedRotation: true,
-  gravityScale: 0,          // 0 = no gravity
-  linearDamping: 5,
-  angularDamping: 1,
-  ccd: true,                // continuous collision detection
-  lockTranslationX: false,
-  syncRotation: true,       // sync rotation to Transform (default true)
-}));
+entity.add(
+  new RigidBodyComponent({
+    type: "dynamic", // "dynamic" | "static" | "kinematic"
+    fixedRotation: true,
+    gravityScale: 0, // 0 = no gravity
+    linearDamping: 5,
+    angularDamping: 1,
+    ccd: true, // continuous collision detection
+    lockTranslationX: false,
+    syncRotation: true, // sync rotation to Transform (default true)
+  }),
+);
 ```
 
 Methods:
+
 - `setVelocity(v: Vec2Like)` — set linear velocity (px/s). Preferred over impulse.
 - `setVelocityX(vx)` / `setVelocityY(vy)` — set single axis
 - `getVelocity(): Vec2` — read velocity (px/s), allocates a `Vec2`
@@ -89,23 +94,25 @@ Write the `Transform` (`setPosition`, `translate`) in `fixedUpdate`; the body re
 ```ts
 import { ColliderComponent } from "@yagejs/physics";
 
-entity.add(new ColliderComponent({
-  shape: { type: "box", width: 64, height: 32 },
-  // shape: { type: "box", width: 64, height: 32, borderRadius: 4 },  // rounded corners, same outer footprint
-  // shape: { type: "circle", radius: 16 },
-  // shape: { type: "capsule", halfHeight: 20, radius: 10, axis: "y" },   // axis defaults to "y" (vertical); "x" rotates 90°
-  // shape: { type: "polygon", vertices: [{x,y}, ...] },                  // closed convex; concave input is silently widened by Rapier (dev warning logged)
-  // shape: { type: "polyline", vertices: [{x,y}, ...] },                 // chain of segments; supports non-convex; static-only (no inertia)
-  restitution: 0.5,
-  friction: 0.3,
-  density: 1,
-  // contactSkin: 1,    // holds the collider 1px off whatever it touches
-  sensor: false,       // true = trigger (no physical response)
-  offset: { x: 0, y: 0 },
-  rotation: 0,         // radians, relative to the body, about the offset point (axis:"x" capsules: adds to the 90° axis rotation)
-  layers: LAYER_PLAYER,  // bitmask
-  mask: LAYER_WALL,      // which layers to interact with
-}));
+entity.add(
+  new ColliderComponent({
+    shape: { type: "box", width: 64, height: 32 },
+    // shape: { type: "box", width: 64, height: 32, borderRadius: 4 },  // rounded corners, same outer footprint
+    // shape: { type: "circle", radius: 16 },
+    // shape: { type: "capsule", halfHeight: 20, radius: 10, axis: "y" },   // axis defaults to "y" (vertical); "x" rotates 90°
+    // shape: { type: "polygon", vertices: [{x,y}, ...] },                  // closed convex; concave input is silently widened by Rapier (dev warning logged)
+    // shape: { type: "polyline", vertices: [{x,y}, ...] },                 // chain of segments; supports non-convex; static-only (no inertia)
+    restitution: 0.5,
+    friction: 0.3,
+    density: 1,
+    // contactSkin: 1,    // holds the collider 1px off whatever it touches
+    sensor: false, // true = trigger (no physical response)
+    offset: { x: 0, y: 0 },
+    rotation: 0, // radians, relative to the body, about the offset point (axis:"x" capsules: adds to the 90° axis rotation)
+    layers: LAYER_PLAYER, // bitmask
+    mask: LAYER_WALL, // which layers to interact with
+  }),
+);
 ```
 
 `box.borderRadius` rounds the corners. The inner half-extents shrink by the
@@ -133,25 +140,29 @@ Events:
 A `sensor: true` collider fires only `onTrigger`; a solid collider fires only `onCollision`. Register the wrong one and it never fires — dev builds log a warning when you add the handler.
 
 ```ts
-collider.onTrigger((ev) => { ev.other; ev.entered; });       // sensor events
+collider.onTrigger((ev) => {
+  ev.other;
+  ev.entered;
+}); // sensor events
 collider.onCollision((ev) => {
-  ev.other; ev.started;
+  ev.other;
+  ev.started;
   // contactNormal/contactPoint/penetrationDepth/contactImpulse(Vector): only
   // on started, non-sensor collisions, and may be absent if no contact
   // manifold is available. A pair can touch along several surfaces at once
   // (a box crossing a polyline corner); the geometry below describes the
   // deepest of those contacts.
-  ev.contactNormal;      // Vec2, unit, points from this entity toward `other`
-  ev.contactPoint;       // Vec2, world pixels, the deepest contact's point (not an
-                         // average); equally deep points are interchangeable
-  ev.penetrationDepth;   // number, world pixels, that contact's overlap, >= 0
-  ev.contactImpulse;     // number, magnitude of the solver's contact impulse (no friction),
-                         // `applyImpulse` units; divide by a dynamic body's getMass() for
-                         // the speed change that body received, px/s
+  ev.contactNormal; // Vec2, unit, points from this entity toward `other`
+  ev.contactPoint; // Vec2, world pixels, the deepest contact's point (not an
+  // average); equally deep points are interchangeable
+  ev.penetrationDepth; // number, world pixels, that contact's overlap, >= 0
+  ev.contactImpulse; // number, magnitude of the solver's contact impulse (no friction),
+  // `applyImpulse` units; divide by a dynamic body's getMass() for
+  // the speed change that body received, px/s
   ev.contactImpulseVector; // Vec2, the same impulse as a vector, oriented from this entity
-                           // toward `other` like contactNormal; the push on this body is
-                           // its negation (scale(-1/getMass()) = a dynamic body's velocity
-                           // change, px/s)
+  // toward `other` like contactNormal; the push on this body is
+  // its negation (scale(-1/getMass()) = a dynamic body's velocity
+  // change, px/s)
 });
 // Both return unsubscribe function
 ```
@@ -159,6 +170,7 @@ collider.onCollision((ev) => {
 Score impacts with `contactImpulse` — velocity read inside the handler is measured after the solver resolved the contact, so hard hits read near zero.
 
 Knockback example:
+
 ```ts
 collider.onCollision((ev) => {
   if (!ev.started || !ev.contactNormal) return;
@@ -170,16 +182,16 @@ collider.onCollision((ev) => {
 Overlap queries report only pairs where this collider or the other is `sensor: true`; two solid colliders never report, however deeply they penetrate. For solid-vs-solid contact (contact damage, say) use `onCollision`.
 
 ```ts
-collider.getOverlapping();                     // Entity[]
-collider.getOverlapping({ tags: ["enemy"] });  // filtered
-collider.getOverlappingComponents(Health);     // Component[]
+collider.getOverlapping(); // Entity[]
+collider.getOverlapping({ tags: ["enemy"] }); // filtered
+collider.getOverlappingComponents(Health); // Component[]
 ```
 
 Resizing:
 
 ```ts
-collider.setShape({ type: "box", width: 20, height: 20 });   // crouch
-collider.setShape({ type: "box", width: 20, height: 40 });   // stand back up
+collider.setShape({ type: "box", width: 20, height: 20 }); // crouch
+collider.setShape({ type: "box", width: 20, height: 40 }); // stand back up
 ```
 
 `setShape(shape, options?)` replaces the shape on the live Rapier collider. The handle, body attachment, and every `onCollision`/`onTrigger` subscription survive. Callable before `entity.add()`; the shape applies at collider creation.
@@ -187,8 +199,8 @@ collider.setShape({ type: "box", width: 20, height: 40 });   // stand back up
 The body keeps its mass. A collider is a collision proxy, not a measure of matter, so a crouching character takes the same `applyImpulse` knockback as a standing one. Pass `{ recomputeMass: true }` when the shape change means genuinely more or less matter and mass should come back from density × the new shape.
 
 ```ts
-collider.setShape(small);                              // same mass
-collider.setShape(big, { recomputeMass: true });        // heavier
+collider.setShape(small); // same mass
+collider.setShape(big, { recomputeMass: true }); // heavier
 ```
 
 Shrinking never pushes anything out of the way, and growing can leave the collider overlapping geometry it clears at the smaller size. Check clearance before growing back.
@@ -200,11 +212,12 @@ const rise = (STAND_HEIGHT - CROUCH_HEIGHT) / 2;
 const standing = { type: "box", width: 20, height: STAND_HEIGHT } as const;
 const pos = transform.worldPosition;
 
-const blocked = world.queryShape(
-  standing,
-  { x: pos.x, y: pos.y - rise },
-  { excludeEntity: entity },
-).length > 0;
+const blocked =
+  world.queryShape(
+    standing,
+    { x: pos.x, y: pos.y - rise },
+    { excludeEntity: entity },
+  ).length > 0;
 
 if (!blocked) {
   collider.setShape(standing);
@@ -217,24 +230,26 @@ Removing just the collider (`entity.remove(ColliderComponent)`) frees the Rapier
 ## One-Way Platforms
 
 ```ts
-platform.add(new ColliderComponent({
-  shape: { type: "box", width: 96, height: 8 },
-  oneWay: {},                               // solid from above, passable from below
-  // oneWay: {
-  //   direction: { x: 0, y: -1 },          // solid-face direction, body-local; default up
-  //   margin: 4,                           // px of overlap that still lands; default 4
-  // }
-}));
+platform.add(
+  new ColliderComponent({
+    shape: { type: "box", width: 96, height: 8 },
+    oneWay: {}, // solid from above, passable from below
+    // oneWay: {
+    //   direction: { x: 0, y: -1 },          // solid-face direction, body-local; default up
+    //   margin: 4,                           // px of overlap that still lands; default 4
+    // }
+  }),
+);
 
-riderCollider.dropThrough(0.2);    // this body falls through one-way platforms for 0.2s
-riderCollider.isDroppingThrough;   // boolean, true while the window is open
+riderCollider.dropThrough(0.2); // this body falls through one-way platforms for 0.2s
+riderCollider.isDroppingThrough; // boolean, true while the window is open
 ```
 
 - A body lands on the face `direction` points at, passes through from every other side, and a body already inside the platform keeps passing until clear — it is never snapped to the surface.
 - `dropThrough(seconds)` is per body: other bodies on the same platform stay supported. Seconds of simulated time (respects pause/timeScale). Wakes a sleeping body. Callable before `entity.add()`.
 - `direction` is in the platform body's local frame and rotates with the body.
 - A body that travels more than the platform-plus-body thickness in one step can cross the platform undetected; give it `ccd: true`. Rapier's CCD sweep honors one-way filtering, including drop-through.
-- `oneWay` round-trips through save/load. No effect on `sensor: true` colliders (dev warning).
+- `oneWay` is part of collider construction. It has no effect on `sensor: true` colliders (dev warning).
 
 ## Contact Filters
 
@@ -242,22 +257,27 @@ Decide per pair, per step, whether two colliders collide. `oneWay` is built on t
 
 ```ts
 collider.setContactFilter((contact) => {
-  contact.other;                                       // Entity on the other side
-  contact.otherCollider;                               // its ColliderComponent
-  contact.selfX; contact.selfY; contact.selfRotation;  // own collider, px / radians
-  contact.otherX; contact.otherY; contact.otherRotation;
-  contact.selfVelocityX; contact.otherVelocityY;       // body velocities, px/s
-  contact.dt;                                          // current step, seconds
-  return true;                                         // true = solid, false = pass through
+  contact.other; // Entity on the other side
+  contact.otherCollider; // its ColliderComponent
+  contact.selfX;
+  contact.selfY;
+  contact.selfRotation; // own collider, px / radians
+  contact.otherX;
+  contact.otherY;
+  contact.otherRotation;
+  contact.selfVelocityX;
+  contact.otherVelocityY; // body velocities, px/s
+  contact.dt; // current step, seconds
+  return true; // true = solid, false = pass through
 });
-collider.setContactFilter(null);   // remove
+collider.setContactFilter(null); // remove
 ```
 
 - Runs inside the physics step for every candidate pair involving the collider, every step. Keep it cheap; don't create or destroy entities, bodies, or colliders from inside it. The `contact` object is reused across calls — read, don't store.
 - No contact normal or point exists yet. Positions/velocities are from the start of the step, so a body that crossed a surface mid-step still shows which side it came from.
 - When both colliders in a pair have filters, the pair is solid only if both return `true`.
 - A filter that throws is reported (`Inspector.getErrors().callbackErrors`) once per installed filter and the pair stays solid.
-- `setContactFilter` replaces the built-in filter a `oneWay` config installed. Filters are functions and are not serialized: `oneWay` reinstalls its filter on load; custom filters must be re-registered after a restore.
+- `setContactFilter` replaces the built-in filter a `oneWay` config installed. Register custom filters during normal component setup whenever the scene is constructed.
 - Contact pairs only — sensor/trigger pairs are unaffected.
 
 ## CollisionLayers
@@ -266,7 +286,7 @@ collider.setContactFilter(null);   // remove
 import { CollisionLayers } from "@yagejs/physics";
 
 const layers = new CollisionLayers();
-const PLAYER = layers.define("player");   // bitmask value
+const PLAYER = layers.define("player"); // bitmask value
 const WALL = layers.define("wall");
 // Use as: layers: PLAYER, mask: WALL | COIN
 // Static helper: CollisionLayers.interactionGroups(membership, filter)
@@ -292,8 +312,8 @@ const hit = world.raycast(origin, direction, maxDistance, { filterGroups });
 
 // Overlap queries — what a shape touches where it already stands
 world.queryShape(shape, position, { rotation, filterGroups, excludeEntity }); // Entity[]
-world.queryRadius(center, radius, { filterGroups, excludeEntity });           // Entity[]
-world.queryOverlapping(colliderHandle);                                      // Entity[]
+world.queryRadius(center, radius, { filterGroups, excludeEntity }); // Entity[]
+world.queryOverlapping(colliderHandle); // Entity[]
 
 // Shape cast — sweep a shape along a direction and report the first hit.
 // Same result shape as raycast: `distance` is how far the shape travelled,
@@ -303,7 +323,7 @@ world.queryOverlapping(colliderHandle);                                      // 
 const swept = world.castShape(shape, origin, direction, maxDistance, {
   rotation,
   filterGroups,
-  excludeEntity,   // pass the mover when the sweep starts inside its own collider
+  excludeEntity, // pass the mover when the sweep starts inside its own collider
 });
 ```
 
@@ -339,7 +359,8 @@ are in pixels. Spring `stiffness` and `damping` are mass-relative and passed
 to the solver unconverted; collider mass depends on `pixelsPerMeter` (density
 × area in meters), so retune them after changing the scale.
 
-## Serialization
+## Save state
 
-Both `RigidBodyComponent` and `ColliderComponent` are `@serializable`. They implement `serialize()`, `fromSnapshot()`, and `afterRestore()` for save/load.
-Joints are not serialized; recreate them after restore, for example in `afterRestore`.
+Rapier bodies, colliders, joints, contacts, and callbacks are runtime objects.
+Save stable physics facts in the game's state root, then construct components
+and joints through normal scene setup after load.

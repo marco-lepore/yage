@@ -81,10 +81,9 @@ const TIME_EPSILON = 1e-9;
 /**
  * Plays named, composable game-feel cues on one entity.
  *
- * Cues and live playback are transient and are not serialized. A serializable
- * host entity must re-add this component from `afterRestore()`. Disabling or
- * destroying this component stops every live cue and restores its active
- * effects.
+ * Cues and live playback are runtime-only. Normal entity setup constructs the
+ * component when the game builds a scene. Disabling or destroying this
+ * component stops every live cue and restores its active effects.
  */
 export class Feel extends Component {
   static updatePriority = 100;

@@ -488,15 +488,17 @@ as a raw export.
 
 ## Save and restore
 
-`Health` is serializable under a stable namespaced type and round-trips
-`{ hp, max }` without emitting damage, heal, or death events during restore.
+YAGE does not persist combat components automatically. If health is durable,
+store `{ hp: health.hp, max: health.max }` in the game's explicit save root and
+rebuild it with `new Health({ max, initial: hp })`. Construction does not emit
+damage, heal, or death events.
 
-All other addon runtime values are transient. Snapshots do not resume
-cooldowns, active phases or lanes, activation payloads, linger, forced
-reactions, driver buffers or held-input ownership, receiver i-frames, open
-guards, invulnerability windows, stagger, facing, or time requests. Loading a
-snapshot is a game-owned reconstruction point: restore entity state, rebuild
-the definitions and input driver, then re-enter safe gameplay state.
+Treat cooldowns, active phases or lanes, activation payloads, linger, forced
+reactions, driver buffers, held-input ownership, receiver i-frames, open
+guards, invulnerability windows, stagger, facing, and time requests as runtime
+state unless the game deliberately models them as durable domain state. Load
+the explicit state first, then rebuild definitions, input, and a safe gameplay
+scene from it.
 
 ## Death and corpses
 

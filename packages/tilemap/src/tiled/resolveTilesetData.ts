@@ -21,7 +21,7 @@ export function resolveTilesetData(ref: TilesetRef): TilesetData | null {
   }
 
   // Copy rather than return `ref`: the loader assigns the result back to
-  // `ref.data`, and a reference to itself would make the asset unserializable.
+  // `ref.data`, and a reference to itself would make the asset cyclic.
   // The spread keeps fields `TilesetData` doesn't model (wangsets, grid,
   // per-tile objectgroup), which a game reading the raw tileset may want.
   const tileset = { ...ref } as Partial<TilesetRef>;

@@ -1,24 +1,13 @@
-import { Component, Vec2, serializable } from "@yagejs/core";
+import { Component, Vec2 } from "@yagejs/core";
 import type { CameraShakeOptions } from "./CameraComponent.js";
 import { CameraComponent } from "./CameraComponent.js";
 import type { CameraModifierHandle } from "./CameraModifiers.js";
-
-export interface CameraShakeData {
-  intensity: number;
-  duration: number;
-  elapsed: number;
-  decay: number;
-  offset: { x: number; y: number };
-}
 
 /**
  * Camera shake behavior. Writes one removable contribution to
  * `CameraComponent.modifiers` and leaves the base position unchanged.
  */
-@serializable
 export class CameraShake extends Component {
-  static restorePriority = 40;
-
   private intensity = 0;
   private duration = 0;
   private elapsed = 0;
@@ -84,33 +73,6 @@ export class CameraShake extends Component {
       ),
     );
   }
-
-  serialize(): CameraShakeData {
-    return {
-      intensity: this.intensity,
-      duration: this.duration,
-      elapsed: this.elapsed,
-      decay: this.decay,
-      offset: { x: this._offset.x, y: this._offset.y },
-    };
-  }
-
-  static fromSnapshot(data: CameraShakeData): CameraShake {
-    const shake = new CameraShake();
-    shake.intensity = data.intensity;
-    shake.duration = data.duration;
-    shake.elapsed = data.elapsed;
-    shake.decay = data.decay;
-    shake._offset = new Vec2(data.offset.x, data.offset.y);
-    return shake;
-  }
-
-  onAdd(): void {
-    if (this.duration > this.elapsed && this.intensity !== 0) {
-      this.ensureModifier();
-    }
-  }
-
   onDestroy(): void {
     this.modifier?.remove();
     this.modifier = undefined;

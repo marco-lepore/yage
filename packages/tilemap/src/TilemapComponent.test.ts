@@ -125,6 +125,7 @@ import {
   Scene,
   Transform,
   Vec2,
+  Inspector,
   _resetEntityIdCounter,
 } from "@yagejs/core";
 import type { EngineEvents } from "@yagejs/core";
@@ -341,6 +342,28 @@ describe("TilemapComponent", () => {
     expect(comp.heightPx).toBe(128);
     expect(comp.tileWidth).toBe(16);
     expect(comp.tileHeight).toBe(16);
+  });
+
+  it("keeps the parsed map out of Inspector component state", () => {
+    const { ctx, scene } = createTestContext();
+    const entity = scene.spawn("tilemap");
+    entity.add(new Transform());
+    entity.add(new TilemapComponent({ map: testMap }));
+    // The Inspector reads only `scenes.all` / `scenes.active` for this.
+    const inspector = new Inspector({
+      context: ctx,
+      scenes: { all: [scene], active: scene } as never,
+      loop: new GameLoop(),
+    });
+
+    const state = inspector.getComponentData(
+      "tilemap",
+      "TilemapComponent",
+    ) as Record<string, unknown>;
+
+    expect("data" in state).toBe(false);
+    expect(state["widthPx"]).toBe(160);
+    expect(state["mapKey"]).toBeNull();
   });
 
   it("onAdd creates container with tilemap layers and adds to render layer", () => {
@@ -590,7 +613,7 @@ describe("TilemapComponent", () => {
     });
   });
 
-  describe("serialization", () => {
+  describe("asset-backed construction", () => {
     it("construction with mapKey resolves from Assets.get", () => {
       mocks.mockAssetsGet.mockReturnValue(testMap);
       const comp = new TilemapComponent({ mapKey: "dungeon.json" });
@@ -613,64 +636,19 @@ describe("TilemapComponent", () => {
       );
     });
 
-    it("serialize returns null with warning when using raw map", () => {
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const comp = new TilemapComponent({ map: testMap });
-      expect(comp.serialize()).toBeNull();
-      expect(warnSpy).toHaveBeenCalledOnce();
-      warnSpy.mockRestore();
-    });
-
-    it("serialize returns mapKey + layer when using mapKey", () => {
+    it("applies tint, alpha, and render layer", () => {
       mocks.mockAssetsGet.mockReturnValue(testMap);
       const comp = new TilemapComponent({
-        mapKey: "dungeon.json",
-        layers: ["ground"],
-        layer: "bg",
-      });
-      expect(comp.serialize()).toEqual({
-        tint: 0xffffff,
-        alpha: 1,
-        visible: true,
-        mapKey: "dungeon.json",
-        layers: ["ground"],
-        layer: "bg",
-      });
-      mocks.mockAssetsGet.mockReset();
-    });
-
-    it("fromSnapshot round-trips", () => {
-      mocks.mockAssetsGet.mockReturnValue(testMap);
-      const original = new TilemapComponent({
-        mapKey: "dungeon.json",
-        layer: "bg",
-      });
-      const data = original.serialize()!;
-      const restored = TilemapComponent.fromSnapshot(data);
-      expect(restored.serialize()).toEqual(data);
-      mocks.mockAssetsGet.mockReset();
-    });
-
-    it("round-trips tint, alpha, and render layer", () => {
-      mocks.mockAssetsGet.mockReturnValue(testMap);
-      const original = new TilemapComponent({
         mapKey: "dungeon.json",
         layer: "background",
         tint: 0x336699,
         alpha: 0.4,
       });
 
-      const data = original.serialize()!;
-      const restored = TilemapComponent.fromSnapshot(data);
-
-      expect(restored.tint).toBe(0x336699);
-      expect(restored.alpha).toBe(0.4);
-      expect(restored.layerName).toBe("background");
-      // The base class writes constructor options straight to the container,
-      // bypassing the overridden setters, so a restored tilemap only renders
-      // tinted if construction syncs the filter itself.
-      expect(restored.container.filters).toHaveLength(1);
-      expect(restored.serialize()).toEqual(data);
+      expect(comp.tint).toBe(0x336699);
+      expect(comp.alpha).toBe(0.4);
+      expect(comp.layerName).toBe("background");
+      expect(comp.container.filters).toHaveLength(1);
       mocks.mockAssetsGet.mockReset();
     });
 
@@ -684,7 +662,6 @@ describe("TilemapComponent", () => {
 
       expect(comp.alpha).toBe(0.4);
       expect(comp.container.alpha).toBe(0.2);
-      expect(comp.serialize()?.alpha).toBe(0.4);
 
       modifier.remove();
       expect(comp.container.alpha).toBe(0.4);
@@ -699,27 +676,16 @@ describe("TilemapComponent", () => {
       );
       const comp = new TilemapComponent({ source: handle });
       expect(comp.mapKey).toBe("/assets/dungeon.json");
-      expect(comp.serialize()).toEqual({
-        tint: 0xffffff,
-        alpha: 1,
-        visible: true,
-        mapKey: "/assets/dungeon.json",
-        layer: "default",
-      });
       mocks.mockAssetsGet.mockReset();
     });
 
-    it("explicit keyPrefix round-trips through serialize", () => {
+    it("retains an explicit keyPrefix", () => {
       mocks.mockAssetsGet.mockReturnValue(testMap);
       const comp = new TilemapComponent({
         mapKey: "dungeon.json",
         keyPrefix: "level1",
       });
       expect(comp.keyPrefix).toBe("level1");
-      const data = comp.serialize()!;
-      expect(data.keyPrefix).toBe("level1");
-      const restored = TilemapComponent.fromSnapshot(data);
-      expect(restored.keyPrefix).toBe("level1");
       mocks.mockAssetsGet.mockReset();
     });
   });

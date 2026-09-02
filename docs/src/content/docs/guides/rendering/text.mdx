@@ -5,9 +5,8 @@ description: "TextComponent for free-positioned strings on a layer"
 
 `TextComponent` is for **free-positioned text on a render layer** — a debug
 HUD overlay, a diegetic floor label, a one-off world-space string that
-should zoom and rotate with the camera. It's Transform-synced like a
-sprite, serializable, and takes a style object that mirrors CSS font
-properties.
+should zoom and rotate with the camera. It's Transform-synced like a sprite
+and takes a style object that mirrors CSS font properties.
 
 ```typescript
 import { TextComponent } from "@yagejs/renderer";
@@ -34,9 +33,10 @@ beneath it, or mark itself as a pointer-consume surface without going through
 `@yagejs/ui`.
 
 Update at runtime with `setText()` / `setStyle()`, or tweak `tint` and
-`alpha` directly. `setStyle()` **replaces** the style — properties you
-don't pass fall back to the defaults. To change a few properties while
-keeping the rest, use `mergeStyle()`:
+`alpha` directly. Read the current string back with `content`.
+`setStyle()` **replaces** the style — properties you don't pass fall back
+to the defaults. To change a few properties while keeping the rest, use
+`mergeStyle()`:
 
 ```typescript
 text.setStyle({ fill: 0xff0000 }); // replaces: font/size revert to default

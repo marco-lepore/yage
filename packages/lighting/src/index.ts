@@ -4,13 +4,10 @@ export { LightingWorld } from "./LightingWorld.js";
 export { LightingWorldManager } from "./LightingWorldManager.js";
 
 export { LightSource } from "./LightSource.js";
-export type { LightSourceData, LightSourceOptions } from "./LightSource.js";
+export type { LightSourceOptions } from "./LightSource.js";
 
 export { LightOccluder } from "./LightOccluder.js";
-export type {
-  LightOccluderData,
-  LightOccluderOptions,
-} from "./LightOccluder.js";
+export type { LightOccluderOptions } from "./LightOccluder.js";
 
 export {
   OverlayLightingRenderer,

@@ -2,19 +2,19 @@
 
 YAGE's asset model has three pieces:
 
-- **Asset handles** — typed serializable refs (`{ type, path }`). Created via plugin factories.
+- **Asset handles** — typed path refs (`{ type, path }`). Created via plugin factories.
 - **`AssetManager`** — engine-owned cache + loader registry. Key: `AssetManagerKey`.
 - **`Scene.preload`** — array of handles auto-loaded by `SceneManager` before `onEnter()`.
 
 ## Factories
 
-| Factory | From | Returns |
-|---|---|---|
-| `texture(path)` | `@yagejs/renderer` | `TextureHandle` |
+| Factory                 | From               | Returns                                                        |
+| ----------------------- | ------------------ | -------------------------------------------------------------- |
+| `texture(path)`         | `@yagejs/renderer` | `TextureHandle`                                                |
 | `spritesheet(jsonPath)` | `@yagejs/renderer` | `AssetHandle<Spritesheet>` (atlas JSON references the texture) |
-| `renderAsset<T>(path)` | `@yagejs/renderer` | `RendererAsset<T>` for arbitrary Pixi-managed assets |
-| `sound(path)` | `@yagejs/audio` | `AssetHandle<Sound>` |
-| `tiledMap(path)` | `@yagejs/tilemap` | Handle for parsed `TiledMapData` |
+| `renderAsset<T>(path)`  | `@yagejs/renderer` | `RendererAsset<T>` for arbitrary Pixi-managed assets           |
+| `sound(path)`           | `@yagejs/audio`    | `AssetHandle<Sound>`                                           |
+| `tiledMap(path)`        | `@yagejs/tilemap`  | Handle for parsed `TiledMapData`                               |
 
 A handle is `{ type, path }`. `AssetManager.get(handle)` throws if uncached.
 
@@ -37,13 +37,17 @@ There's no manifest abstraction beyond plain arrays. Common layout: one handle m
 
 ```ts
 // content/heroes.ts
-export const HeroTex   = texture("assets/hero.png");
+export const HeroTex = texture("assets/hero.png");
 export const HeroSheet = spritesheet("assets/hero.json");
 
 // content/level1.ts
 import { HeroSheet } from "./heroes.js";
 import { CoinSfx } from "./sfx.js";
-export const Level1Manifest = [tiledMap("assets/levels/1.json"), HeroSheet, CoinSfx] as const;
+export const Level1Manifest = [
+  tiledMap("assets/levels/1.json"),
+  HeroSheet,
+  CoinSfx,
+] as const;
 
 // scenes/Level1.ts
 class Level1 extends Scene {
@@ -57,13 +61,13 @@ Reuse: spread shared manifests into multiple scenes' `preload`.
 
 The cache is engine-wide. Scenes don't own assets.
 
-| Action | Effect |
-|---|---|
-| `assets.loadAll([h1, h2])` | Loads handles not already cached |
-| `assets.get(handle)` | Reads cache (throws if absent) |
-| `assets.has(handle)` | Boolean |
-| `assets.unload(handle)` | Drops one handle, calls loader's `unload?()` |
-| `assets.clear()` | Drops everything |
+| Action                     | Effect                                       |
+| -------------------------- | -------------------------------------------- |
+| `assets.loadAll([h1, h2])` | Loads handles not already cached             |
+| `assets.get(handle)`       | Reads cache (throws if absent)               |
+| `assets.has(handle)`       | Boolean                                      |
+| `assets.unload(handle)`    | Drops one handle, calls loader's `unload?()` |
+| `assets.clear()`           | Drops everything                             |
 
 For a small game, never unload — cache hits are cheap. Use `unload`/`clear` between large levels, when streaming chapters, or when freeing audio bound to a scene.
 
@@ -104,8 +108,12 @@ const HeroTex = texture(asset("assets/hero.png"));
 import { AssetManagerKey, AssetHandle } from "@yagejs/core";
 
 context.resolve(AssetManagerKey).registerLoader("levelfmt", {
-  async load(path: string): Promise<Level> { /* fetch + parse */ },
-  unload?(path: string, asset: Level): void { /* dispose */ },
+  async load(path: string): Promise<Level> {
+    /* fetch + parse */
+  },
+  unload?(path: string, asset: Level): void {
+    /* dispose */
+  },
 });
 
 export function level(path: string): AssetHandle<Level> {
@@ -117,12 +125,12 @@ Once registered, handles of that type work in `Scene.preload` and `assets.get` l
 
 ## Decision Matrix
 
-| Need | Use |
-|---|---|
-| Load before scene starts | `Scene.preload` |
-| Progress UI while loading | `LoadingScene` + progress component |
-| Mid-scene additional load | `this.assets.loadAll([...])` |
-| Free per-level assets | `this.assets.unload(h)` per scene `onExit` |
-| Discard everything | `this.assets.clear()` |
-| New file type | Custom loader + handle factory |
-| Sub-path deploy | Prefix paths with `import.meta.env.BASE_URL` |
+| Need                      | Use                                          |
+| ------------------------- | -------------------------------------------- |
+| Load before scene starts  | `Scene.preload`                              |
+| Progress UI while loading | `LoadingScene` + progress component          |
+| Mid-scene additional load | `this.assets.loadAll([...])`                 |
+| Free per-level assets     | `this.assets.unload(h)` per scene `onExit`   |
+| Discard everything        | `this.assets.clear()`                        |
+| New file type             | Custom loader + handle factory               |
+| Sub-path deploy           | Prefix paths with `import.meta.env.BASE_URL` |

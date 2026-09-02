@@ -3,9 +3,15 @@ import type { Entity } from "./Entity.js";
 import type { EventToken } from "./EventToken.js";
 import type { Logger } from "./Logger.js";
 import type { Scene } from "./Scene.js";
-import type { SnapshotResolver } from "./Serializable.js";
 import type { ComponentClass } from "./types.js";
 import { LoggerKey, ErrorBoundaryKey } from "./EngineContext.js";
+
+/**
+ * Prototype of the lazy `service()` / `sibling()` proxy targets. Anything but
+ * `Object.prototype`, so the Inspector's plain-object check skips such a field
+ * instead of resolving the service or sibling while reflecting.
+ */
+const lazyRefPrototype: object = {};
 
 /**
  * Base class for all components.
@@ -172,7 +178,7 @@ export abstract class Component {
    */
   protected service<T extends object>(key: ServiceKey<T>): T {
     let resolved: T | undefined;
-    return new Proxy({} as object, {
+    return new Proxy(Object.create(lazyRefPrototype) as object, {
       get: (_target, prop) => {
         resolved ??= this.use(key);
         const value = (resolved as Record<string | symbol, unknown>)[prop];
@@ -197,7 +203,7 @@ export abstract class Component {
    */
   protected sibling<C extends Component>(cls: ComponentClass<C>): C {
     let resolved: C | undefined;
-    return new Proxy({} as object, {
+    return new Proxy(Object.create(lazyRefPrototype) as object, {
       get: (_target, prop) => {
         resolved ??= this.entity.get(cls);
         const value = (resolved as Record<string | symbol, unknown>)[prop];
@@ -361,18 +367,6 @@ export abstract class Component {
   fixedUpdate?(dt: number): void;
 
   /**
-   * Snapshot restore order. On load, an entity's components are re-added in
-   * ascending priority, so a component whose `onAdd()` reads a sibling can
-   * rely on lower-priority siblings being present and initialized.
-   * Undeclared = 100. Engine components reserve 0-99; game and addon
-   * components declare a value only when a sibling `onAdd()` dependency
-   * requires it. Equal priorities restore in save-time add order.
-   * Subclasses inherit their base class's priority unless they declare
-   * their own.
-   */
-  declare static restorePriority?: number;
-
-  /**
    * Class-level default for {@link updatePriority}: every instance runs at
    * this priority unless its own `updatePriority` is written. Undeclared = 0.
    * Subclasses inherit their base class's value unless they declare their
@@ -388,9 +382,17 @@ export abstract class Component {
    */
   declare static updatePriority?: number;
 
-  /** Return a JSON-serializable snapshot of this component's state. Used by the save system. */
-  serialize?(): unknown;
-
-  /** Called after onAdd() during save/load restoration. Apply state that depends on onAdd() having run. */
-  afterRestore?(data: unknown, resolve: SnapshotResolver): void;
+  /**
+   * Own fields and getters the Inspector leaves out of this component's
+   * reflected state. Use it for bulk data that is not worth a diagnostic
+   * copy — a parsed tilemap, a large lookup table. Lists merge down the
+   * class chain, so a subclass adds to its base class's exclusions.
+   *
+   * ```ts
+   * class TilemapComponent extends VisualComponent {
+   *   static inspectExclude = ["data"];
+   * }
+   * ```
+   */
+  declare static inspectExclude?: readonly string[];
 }

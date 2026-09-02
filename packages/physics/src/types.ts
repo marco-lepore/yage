@@ -19,7 +19,7 @@ export interface ScenePhysicsContext {
 
 /**
  * Engine-scope key for the PhysicsWorldManager. Owns all per-scene worlds;
- * resolve it for cross-scene enumeration (save system, debug inspector).
+ * resolve it for cross-scene inspection and debugging.
  */
 export const PhysicsWorldManagerKey = new ServiceKey<PhysicsWorldManager>(
   "physicsWorldManager",

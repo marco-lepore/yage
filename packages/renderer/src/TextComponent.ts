@@ -1,4 +1,3 @@
-import { serializable } from "@yagejs/core";
 import { BitmapText, Text } from "pixi.js";
 import { buildTextOptions } from "./internal/textConstruction.js";
 import type {
@@ -8,8 +7,6 @@ import type {
 } from "./public-types.js";
 import {
   VisualComponent,
-  visualOptionsFromData,
-  type VisualComponentData,
   type VisualComponentOptions,
 } from "./VisualComponent.js";
 
@@ -39,27 +36,13 @@ export interface TextComponentOptions extends VisualComponentOptions {
   anchor?: { x: number; y: number };
 }
 
-/** Serialisable snapshot of a TextComponent. */
-export interface TextData extends VisualComponentData {
-  text: string;
-  style?: TextStyle;
-  bitmap?: boolean;
-  resolution?: number;
-  anchor?: { x: number; y: number };
-}
-
 /** Component that displays text on a render layer. */
-@serializable
 export class TextComponent extends VisualComponent {
   readonly text: DisplayText | DisplayBitmapText;
-  // Raw style options as passed in — kept so `serialize()` emits a POJO, not
-  // the live pixi `TextStyle` instance (which has non-enumerable getters and
-  // would not round-trip through JSON).
+  // Raw style options are kept so mergeStyle can preserve prior values.
   private _styleOptions?: TextStyle;
-  // Raw bitmap / resolution options, cached for the same round-trip reason:
-  // the pixi instance doesn't faithfully read them back.
+  // The bitmap choice is needed when a later style update rebuilds options.
   private _bitmap?: boolean;
-  private _resolution?: number;
 
   constructor(options: TextComponentOptions) {
     super(options.layer);
@@ -69,16 +52,10 @@ export class TextComponent extends VisualComponent {
       options.bitmap,
       options.resolution,
     );
-    this.text = bitmap
-      ? new BitmapText(textOptions)
-      : new Text(textOptions);
-    // Shallow-clone so external mutation of the caller's options object
-    // doesn't drift our cached snapshot away from the live pixi state.
+    this.text = bitmap ? new BitmapText(textOptions) : new Text(textOptions);
+    // Shallow-clone so external mutation does not affect later mergeStyle calls.
     if (options.style) this._styleOptions = { ...options.style };
     if (options.bitmap !== undefined) this._bitmap = options.bitmap;
-    if (options.resolution !== undefined) {
-      this._resolution = options.resolution;
-    }
 
     if (options.anchor) {
       this.text.anchor.set(options.anchor.x, options.anchor.y);
@@ -89,6 +66,15 @@ export class TextComponent extends VisualComponent {
   /** The underlying Pixi display object. */
   get renderObject(): DisplayText | DisplayBitmapText {
     return this.text;
+  }
+
+  /**
+   * The string currently displayed. {@link text} is the Pixi display object,
+   * so this is the way to read the rendered string back — including from the
+   * Inspector, which reflects public getters but skips the display object.
+   */
+  get content(): string {
+    return this.text.text;
   }
 
   /** Replace the displayed string. */
@@ -125,34 +111,5 @@ export class TextComponent extends VisualComponent {
    */
   mergeStyle(style: TextStyle): void {
     this.setStyle({ ...this._styleOptions, ...style });
-  }
-
-  serialize(): TextData {
-    const data: TextData = {
-      ...this.serializeVisual(),
-      text: this.text.text,
-      anchor: { x: this.text.anchor.x, y: this.text.anchor.y },
-    };
-    if (this._styleOptions) data.style = { ...this._styleOptions };
-    if (this._bitmap !== undefined) data.bitmap = this._bitmap;
-    if (this._resolution !== undefined) data.resolution = this._resolution;
-    return data;
-  }
-
-  /** Restore effects and mask after the text node is parented. */
-  afterRestore(data: TextData): void {
-    this.restoreVisual(data);
-  }
-
-  static fromSnapshot(data: TextData): TextComponent {
-    const opts: TextComponentOptions = {
-      ...visualOptionsFromData(data),
-      text: data.text,
-    };
-    if (data.style) opts.style = data.style;
-    if (data.bitmap !== undefined) opts.bitmap = data.bitmap;
-    if (data.resolution !== undefined) opts.resolution = data.resolution;
-    if (data.anchor) opts.anchor = data.anchor;
-    return new TextComponent(opts);
   }
 }

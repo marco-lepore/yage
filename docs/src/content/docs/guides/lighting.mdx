@@ -68,8 +68,9 @@ light.enabled = false;
 ```
 
 Disabling the light or its entity removes it from rendering and queries until
-it becomes active again. Light sources save and restore through
-`@yagejs/save`.
+it becomes active again. If light settings are durable game state, include
+their plain values in the game's explicit save root and rebuild the light when
+the scene is created.
 
 ## Query the light level
 

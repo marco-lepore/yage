@@ -3,7 +3,6 @@ import type { Process, ProcessClock } from "./Process.js";
 import { tickProcessGuarded } from "./Process.js";
 import { ProcessSlot } from "./ProcessSlot.js";
 import type { ProcessSlotConfig } from "./ProcessSlot.js";
-import { serializable } from "./Serializable.js";
 import { ErrorBoundaryKey } from "./EngineContext.js";
 import type { ErrorBoundary, CallbackErrorInfo } from "./ErrorBoundary.js";
 
@@ -18,7 +17,6 @@ import type { ErrorBoundary, CallbackErrorInfo } from "./ErrorBoundary.js";
  *
  * All processes are cancelled when the entity is destroyed.
  */
-@serializable
 export class ProcessComponent extends Component {
   private processes = new Set<Process>();
   private fixedProcesses = new Set<Process>();
@@ -189,9 +187,5 @@ export class ProcessComponent extends Component {
   /** Cancel all processes and slots on entity destroy. */
   override onDestroy(): void {
     this.cancel();
-  }
-
-  serialize(): null {
-    return null;
   }
 }

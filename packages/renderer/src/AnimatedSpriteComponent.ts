@@ -1,4 +1,3 @@
-import { serializable } from "@yagejs/core";
 import type { Vec2Like } from "@yagejs/core";
 import { AnimatedSprite, Ticker } from "pixi.js";
 import type { DisplayAnimatedSprite } from "./public-types.js";
@@ -6,7 +5,6 @@ import { resolveFrames } from "./spritesheet.js";
 import type { FrameSource } from "./spritesheet.js";
 import {
   VisualComponent,
-  type VisualComponentData,
   type VisualComponentOptions,
 } from "./VisualComponent.js";
 
@@ -14,7 +12,7 @@ let animationTicker: Ticker | undefined;
 
 /** Options for creating an AnimatedSpriteComponent. */
 export interface AnimatedSpriteComponentOptions extends VisualComponentOptions {
-  /** Serializable frame source (sheet grid or atlas animation). */
+  /** Frame source (sheet grid or atlas animation). */
   source: FrameSource;
   /**
    * Default sprite anchor (0,0 = top-left, 0.5,0.5 = center, 1,1 = bottom-right).
@@ -23,22 +21,12 @@ export interface AnimatedSpriteComponentOptions extends VisualComponentOptions {
   anchor?: Vec2Like;
 }
 
-/** Serializable snapshot of an AnimatedSpriteComponent. */
-export interface AnimatedSpriteData extends VisualComponentData {
-  source: FrameSource;
-  /** Persisted component-level anchor; an active animation's anchor may still override at runtime. */
-  anchor?: { x: number; y: number };
-}
-
 /** Component that displays a PixiJS AnimatedSprite. */
-@serializable
 export class AnimatedSpriteComponent extends VisualComponent {
   readonly animatedSprite: DisplayAnimatedSprite;
-  private readonly _source: FrameSource;
 
   constructor(options: AnimatedSpriteComponentOptions) {
     super(options.layer);
-    this._source = options.source;
     this.animatedSprite = new AnimatedSprite(
       resolveFrames(options.source),
       false,
@@ -110,22 +98,5 @@ export class AnimatedSpriteComponent extends VisualComponent {
     const ticker = (animationTicker ??= new Ticker());
     ticker.deltaTime = dt * 1000 * Ticker.targetFPMS;
     this.animatedSprite.update(ticker);
-  }
-
-  serialize(): AnimatedSpriteData {
-    return {
-      ...this.serializeVisual(),
-      source: this._source,
-      anchor: { x: this.animatedSprite.anchor.x, y: this.animatedSprite.anchor.y },
-    };
-  }
-
-  static fromSnapshot(data: AnimatedSpriteData): AnimatedSpriteComponent {
-    return new AnimatedSpriteComponent(data);
-  }
-
-  /** Restore effects and mask after the animated sprite is parented. */
-  afterRestore(data: AnimatedSpriteData): void {
-    this.restoreVisual(data);
   }
 }

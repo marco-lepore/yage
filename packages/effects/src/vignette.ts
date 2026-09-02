@@ -16,8 +16,7 @@ export interface VignetteOptions {
 /**
  * Subtle edge darkening. Implemented by reusing pixi-filters' CRTFilter
  * with all CRT-specific features (scanlines, curvature, noise) zeroed,
- * leaving only the vignette controls active. Cheaper to ship than a custom
- * shader and round-trips through save/load like any other preset.
+ * leaving only the vignette controls active. This avoids a separate shader.
  */
 export const vignette = defineEffect<VignetteHandle, VignetteOptions>({
   name: "yage:vignette",
@@ -34,8 +33,7 @@ export const vignette = defineEffect<VignetteHandle, VignetteOptions>({
     });
     const effect: Effect<VignetteHandle> = {
       filter,
-      getIntensity: () =>
-        filter.vignettingAlpha / Math.max(baseAlpha, 1e-6),
+      getIntensity: () => filter.vignettingAlpha / Math.max(baseAlpha, 1e-6),
       setIntensity: (v) => {
         filter.vignettingAlpha = baseAlpha * v;
       },

@@ -1,10 +1,4 @@
-import {
-  Entity,
-  Transform,
-  Vec2,
-  createRandomService,
-  serializable,
-} from "@yagejs/core";
+import { Entity, Transform, Vec2, createRandomService } from "@yagejs/core";
 import {
   GraphicsComponent,
   linearGradient,
@@ -16,15 +10,10 @@ import { VIRTUAL_WIDTH, VIRTUAL_HEIGHT } from "./constants.js";
 
 /** Colourful, detailed backdrop so subtle effects stay visible. Lives on
  * the "background" layer below the world. */
-@serializable
 export class BackgroundEntity extends Entity {
   setup(): void {
     this.add(new Transform({ position: new Vec2(0, 0) }));
     this.add(new GraphicsComponent({ layer: "background" }));
-    this.redraw();
-  }
-
-  afterRestore(): void {
     this.redraw();
   }
 
@@ -84,7 +73,6 @@ export class BackgroundEntity extends Entity {
 }
 
 /** Blue circle with the demo's pre-attached hitFlash effect. */
-@serializable
 export class HeroEntity extends Entity {
   flashHandle: HitFlashHandle | null = null;
 
@@ -93,13 +81,6 @@ export class HeroEntity extends Entity {
     this.add(new GraphicsComponent({ layer: "world" }));
     this.redraw();
     this.attachHitFlash();
-  }
-
-  afterRestore(): void {
-    this.redraw();
-    const g = this.tryGet(GraphicsComponent);
-    this.flashHandle = g?.fx.findEffect(hitFlash) ?? null;
-    if (!this.flashHandle) this.attachHitFlash();
   }
 
   private attachHitFlash(): void {
@@ -122,15 +103,10 @@ export class HeroEntity extends Entity {
 }
 
 /** Orange square — outline / dropShadow target. */
-@serializable
 export class BlockEntity extends Entity {
   setup(): void {
     this.add(new Transform({ position: new Vec2(310, 320) }));
     this.add(new GraphicsComponent({ layer: "world" }));
-    this.redraw();
-  }
-
-  afterRestore(): void {
     this.redraw();
   }
 
@@ -146,15 +122,10 @@ export class BlockEntity extends Entity {
 }
 
 /** Green diamond — glow target. */
-@serializable
 export class GemEntity extends Entity {
   setup(): void {
     this.add(new Transform({ position: new Vec2(490, 320) }));
     this.add(new GraphicsComponent({ layer: "world" }));
-    this.redraw();
-  }
-
-  afterRestore(): void {
     this.redraw();
   }
 

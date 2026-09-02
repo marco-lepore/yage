@@ -528,7 +528,7 @@ describe("RigidBodyComponent", () => {
       expect(rb.gravityScale).toBe(1);
     });
 
-    it("keeps config in sync so a save captures the live scale", async () => {
+    it("keeps the live gravity scale in sync", async () => {
       const { scene } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
@@ -538,7 +538,7 @@ describe("RigidBodyComponent", () => {
 
       rb.setGravityScale(0);
 
-      expect(rb.serialize().gravityScale).toBe(0);
+      expect(rb.gravityScale).toBe(0);
     });
 
     it("buffers a pre-add scale in config and applies it at body creation", async () => {

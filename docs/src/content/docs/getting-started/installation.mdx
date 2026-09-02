@@ -136,9 +136,9 @@ export default defineConfig({
 });
 ```
 
-The `oxc` and `keepNames` options are only needed if you use `@yagejs/save`.
-If your project does not persist game state, you can omit them and use the
-shorter config:
+The `oxc` option is needed only when your game uses YAGE decorators such as
+`@trait`. `keepNames` preserves readable class and function names in production
+diagnostics. If you do not need them, use the shorter config:
 
 ```typescript
 import { defineConfig } from "vite";
@@ -151,25 +151,16 @@ export default defineConfig({
 
 ### Why `oxc.decorator.legacy: true`
 
-Vite 8 replaced esbuild with **oxc** as its TypeScript transformer. oxc
-only supports TypeScript's **legacy** (stage-2) decorator transform — it
-does not transform stage-3 decorators, and instead passes them through to
-the browser, which does not yet parse native decorator syntax. If you use
-`@yagejs/save`'s `@serializable` decorator in your project, you will hit a
-`SyntaxError: Invalid character: '@'` in the browser without this setting.
-Enabling `legacy: true` tells oxc to rewrite `@serializable class Foo` into
-the classic `Foo = _decorate([serializable], Foo)` runtime pattern, which
-runs in every browser.
+Vite 8 replaced esbuild with **oxc** as its TypeScript transformer. oxc only
+supports TypeScript's **legacy** (stage-2) decorator transform. If your game
+uses `@trait`, enable `legacy: true` so oxc transforms the decorator for the
+browser.
 
 ### Why `output.keepNames: true`
 
-`@serializable` looks up classes by `class.name` when restoring a snapshot,
-and Vite 8 ships with the oxc **minifier**, which mangles class and
-function names by default. Without `keepNames`, a minified production build
-will silently fail to round-trip save data through the
-`SerializableRegistry` — scenes will load as empty because the saved type
-strings no longer match any registered class. Set `keepNames: true` to
-preserve the original names across minification.
+Vite 8 ships with the oxc **minifier**, which can shorten class and function
+names. Set `keepNames: true` when you want production error reports and
+Inspector output to retain the original names.
 
 ## Verifying the Install
 

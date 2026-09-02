@@ -29,25 +29,3 @@ export { SaveServiceKey } from "./keys.js";
 
 export { memoryAdapter, localStorageAdapter } from "./adapters/index.js";
 export type { LocalStorageAdapterOptions } from "./adapters/index.js";
-
-// ---------------------------------------------------------------------------
-// Snapshot system (full-scene quicksave via @serializable)
-// ---------------------------------------------------------------------------
-
-export type {
-  SnapshotStorage,
-  UntypedSlots,
-  GameSnapshot,
-  SceneSnapshotEntry,
-  EntitySnapshotEntry,
-  ComponentSnapshot,
-  SnapshotContributor,
-} from "./snapshot/types.js";
-export type { SnapshotResolver } from "@yagejs/core";
-
-export { LocalStorageSnapshotStorage } from "./snapshot/LocalStorageSnapshotStorage.js";
-
-export { SnapshotService } from "./snapshot/SnapshotService.js";
-export { SnapshotPlugin } from "./snapshot/SnapshotPlugin.js";
-export type { SnapshotPluginOptions } from "./snapshot/SnapshotPlugin.js";
-export { SnapshotServiceKey } from "./snapshot/keys.js";

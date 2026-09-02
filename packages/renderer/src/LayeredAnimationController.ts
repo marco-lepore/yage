@@ -1,4 +1,4 @@
-import { Component, serializable } from "@yagejs/core";
+import { Component } from "@yagejs/core";
 import { AnimationController } from "./AnimationController.js";
 import {
   registerAnimationSpeedOwner,
@@ -42,7 +42,6 @@ export interface LayeredAnimationControllerOptions<T extends string> {
  * }
  * ```
  */
-@serializable
 export class LayeredAnimationController<
   T extends string = string,
 > extends Component {
@@ -160,13 +159,5 @@ export class LayeredAnimationController<
     const cb = this._onComplete;
     this.unlock();
     cb?.();
-  }
-
-  // The wrapper holds references to sibling controllers, which are not
-  // serializable across save/load (no stable identifier exists for an
-  // arbitrary other component). Restore by re-running the same `setup()` path
-  // that built the layered character.
-  serialize(): null {
-    return null;
   }
 }

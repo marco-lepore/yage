@@ -5,14 +5,7 @@
  * 2. SceneRenderTreeKey resolves and declared layers are accessible.
  * 3. The scene is on the stack with the expected name and entities.
  */
-import {
-  Engine,
-  Component,
-  Scene,
-  Transform,
-  Vec2,
-  serializable,
-} from "@yagejs/core";
+import { Engine, Component, Scene, Transform, Vec2 } from "@yagejs/core";
 import {
   RendererPlugin,
   GraphicsComponent,
@@ -39,7 +32,6 @@ const container = setupContainer(WIDTH, HEIGHT);
 // Components that record scoped-DI resolution results as inspectable data
 // ---------------------------------------------------------------------------
 
-@serializable
 class PhysicsProbe extends Component {
   hasWorld = false;
 
@@ -47,19 +39,8 @@ class PhysicsProbe extends Component {
     const world: PhysicsWorld = this.use(PhysicsWorldKey);
     this.hasWorld = world !== undefined && world !== null;
   }
-
-  serialize() {
-    return { hasWorld: this.hasWorld };
-  }
-
-  static fromSnapshot(data: { hasWorld: boolean }) {
-    const p = new PhysicsProbe();
-    p.hasWorld = data.hasWorld;
-    return p;
-  }
 }
 
-@serializable
 class RenderTreeProbe extends Component {
   hasTree = false;
   layerCount = 0;
@@ -71,26 +52,6 @@ class RenderTreeProbe extends Component {
     this.hasTree = true;
     this.layerCount = tree.getAll().length;
     this.hasCustomLayer = tree.tryGet("world") !== undefined;
-  }
-
-  serialize() {
-    return {
-      hasTree: this.hasTree,
-      layerCount: this.layerCount,
-      hasCustomLayer: this.hasCustomLayer,
-    };
-  }
-
-  static fromSnapshot(data: {
-    hasTree: boolean;
-    layerCount: number;
-    hasCustomLayer: boolean;
-  }) {
-    const p = new RenderTreeProbe();
-    p.hasTree = data.hasTree;
-    p.layerCount = data.layerCount;
-    p.hasCustomLayer = data.hasCustomLayer;
-    return p;
   }
 }
 

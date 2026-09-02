@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { LightOccluder } from "./LightOccluder.js";
-import type { LightOccluderData } from "./LightOccluder.js";
 import type { LightOccluderShape } from "./types.js";
 
 describe("LightOccluder", () => {
@@ -36,25 +35,22 @@ describe("LightOccluder", () => {
     },
   );
 
-  it("restores a cloned polygon snapshot", () => {
-    const data: LightOccluderData = {
-      shape: {
-        type: "polygon",
-        vertices: [
-          { x: -20, y: 10 },
-          { x: 0, y: -15 },
-          { x: 25, y: 12 },
-        ],
-      },
-      enabled: false,
+  it("clones polygon input", () => {
+    const shape: LightOccluderShape = {
+      type: "polygon",
+      vertices: [
+        { x: -20, y: 10 },
+        { x: 0, y: -15 },
+        { x: 25, y: 12 },
+      ],
     };
+    const occluder = new LightOccluder({ shape, enabled: false });
 
-    const restored = LightOccluder.fromSnapshot(data);
-
-    expect(restored.serialize()).toEqual(data);
-    expect(restored.shape).not.toBe(data.shape);
-    if (restored.shape.type === "polygon" && data.shape.type === "polygon") {
-      expect(restored.shape.vertices).not.toBe(data.shape.vertices);
+    expect(occluder.shape).toEqual(shape);
+    expect(occluder.shape).not.toBe(shape);
+    expect(occluder.enabled).toBe(false);
+    if (occluder.shape.type === "polygon" && shape.type === "polygon") {
+      expect(occluder.shape.vertices).not.toBe(shape.vertices);
     }
   });
 });

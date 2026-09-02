@@ -202,7 +202,7 @@ class LevelScene extends Scene {
 ```
 
 You don't need `SceneRenderTreeProviderKey` for this — that key is for
-cross-scene tooling (inspector, debug overlay, save system) that enumerates
+cross-scene tooling such as the inspector and debug overlay, which enumerate
 every scene's tree. Game code reaches its own scene's tree with
 `this.use(SceneRenderTreeKey)`.
 

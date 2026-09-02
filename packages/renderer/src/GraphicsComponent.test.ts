@@ -110,7 +110,10 @@ vi.mock("pixi.js", () => ({
 
 import { Transform } from "@yagejs/core";
 import { GraphicsComponent } from "./GraphicsComponent.js";
-import { createRendererTestContext, spawnEntityInScene } from "./test-helpers.js";
+import {
+  createRendererTestContext,
+  spawnEntityInScene,
+} from "./test-helpers.js";
 
 describe("GraphicsComponent", () => {
   beforeEach(() => {
@@ -138,7 +141,10 @@ describe("GraphicsComponent", () => {
       (g as unknown as InstanceType<typeof mocks.MockGraphics>).circle();
     });
     expect(result).toBe(comp);
-    expect((comp.graphics as unknown as InstanceType<typeof mocks.MockGraphics>)._drawCalls).toContain("circle");
+    expect(
+      (comp.graphics as unknown as InstanceType<typeof mocks.MockGraphics>)
+        ._drawCalls,
+    ).toContain("circle");
   });
 
   it("onAdd adds graphics to correct layer container", () => {
@@ -147,7 +153,8 @@ describe("GraphicsComponent", () => {
     entity.add(new Transform());
     const comp = entity.add(new GraphicsComponent());
 
-    const layerContainer = layerManager.defaultLayer.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const layerContainer = layerManager.defaultLayer
+      .container as unknown as InstanceType<typeof mocks.MockContainer>;
     expect(layerContainer.children).toContain(comp.graphics);
   });
 
@@ -157,7 +164,9 @@ describe("GraphicsComponent", () => {
     entity.add(new Transform());
     const comp = entity.add(new GraphicsComponent());
 
-    const gfx = comp.graphics as unknown as InstanceType<typeof mocks.MockContainer>;
+    const gfx = comp.graphics as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
     expect(gfx.parent).not.toBeNull();
 
     comp.onDestroy?.();
@@ -205,60 +214,9 @@ describe("GraphicsComponent", () => {
     expect(new GraphicsComponent().blendMode).toBe("inherit");
   });
 
-  it("omits an inherited blendMode from the snapshot but records an explicit one", () => {
-    expect(new GraphicsComponent().serialize()).not.toHaveProperty("blendMode");
-
-    // "normal" is NOT the default, and the two differ under a non-normal
-    // parent — so an explicit "normal" has to survive the round trip.
-    const explicit = new GraphicsComponent({ blendMode: "normal" });
-    expect(explicit.serialize()?.blendMode).toBe("normal");
-
-    const additive = new GraphicsComponent({ blendMode: "add" });
-    expect(additive.serialize()?.blendMode).toBe("add");
-  });
-
   it("applies the interactive option, defaulting eventMode to static", () => {
     const comp = new GraphicsComponent({ interactive: {} });
     expect(comp.graphics.eventMode).toBe("static");
-  });
-
-  describe("serialization", () => {
-    it("serialize/fromSnapshot round-trips layer, tint, alpha, visible, interactive", () => {
-      const original = new GraphicsComponent({
-        layer: "fx",
-        tint: 0x123456,
-        alpha: 0.7,
-        visible: false,
-        interactive: { consumeOnInteraction: true },
-      });
-      const data = original.serialize();
-      expect(data).toEqual({
-        layer: "fx",
-        tint: 0x123456,
-        alpha: 0.7,
-        visible: false,
-        interactive: { consumeOnInteraction: true },
-      });
-
-      const restored = GraphicsComponent.fromSnapshot(data);
-      expect(restored.layerName).toBe("fx");
-      expect(restored.graphics.tint).toBe(0x123456);
-      expect(restored.graphics.alpha).toBe(0.7);
-      expect(restored.graphics.visible).toBe(false);
-      expect(restored.serialize()).toEqual(data);
-    });
-
-    it("leaves blendMode out of the snapshot while blending is normal", () => {
-      const data = new GraphicsComponent().serialize();
-      expect(data).not.toHaveProperty("blendMode");
-    });
-
-    it("round-trips a non-default blendMode", () => {
-      const original = new GraphicsComponent({ blendMode: "multiply" });
-      const data = original.serialize();
-      expect(data.blendMode).toBe("multiply");
-      expect(GraphicsComponent.fromSnapshot(data).blendMode).toBe("multiply");
-    });
   });
 
   describe("inspectRender", () => {

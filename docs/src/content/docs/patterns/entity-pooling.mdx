@@ -198,10 +198,9 @@ the pool is disposed, which destroys its members.
 Children end their lives with their parent, so a handle on a member's hitbox
 expires when the member is released.
 
-Handles work on any entity, pooled or not, and a handle on a non-pooled entity
-survives a save. Pool members are left out of snapshots, so a handle on one
-restores empty. See [Snapshot quicksave](/guides/snapshot-quicksave/) for the
-serialize and restore pattern.
+Handles work on any entity, pooled or not. They are runtime references and are
+not save data. If a durable model needs a relationship between objects, store a
+stable domain id and resolve it while rebuilding the scene.
 
 ## Timing and visibility
 
@@ -218,19 +217,16 @@ A member you attached to something with `addChild` while it was leased is
 detached before it goes back to the pool, so the next lease never inherits a
 stale parent.
 
-## Lifetime and saves
+## Lifetime and save state
 
 Pools belong to the scene that created them. Scene exit disposes the pool and
 destroys its members, and `acquire` on a disposed pool throws. Calling
 `dispose()` yourself does the same thing early.
 
-<Aside type="note">
-**Pool members are not saved.** Snapshots skip them and everything parented
-under one, and a pool restores empty and refills on demand. An entity in flight
-when the game is saved — a bullet mid-air — is gone after a load. Anything that
-has to survive a save belongs on an entity outside the pool, not as a child of
-a member.
-</Aside>
+Pools and their members are runtime objects. A game-owned save model can record
+durable facts represented by a pooled object, but should not record pool
+membership. Normal scene construction creates and prewarms each pool after a
+load.
 
 ## Mistakes the pool reports
 
