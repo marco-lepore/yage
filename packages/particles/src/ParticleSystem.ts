@@ -8,9 +8,15 @@ import {
 import type { EngineContext, QueryResult } from "@yagejs/core";
 import { ParticleEmitterComponent } from "./ParticleEmitterComponent.js";
 
-/** System that drives all ParticleEmitterComponents each frame. */
+/**
+ * System that drives all ParticleEmitterComponents each frame. Runs in
+ * `LateUpdate` so it reads the frame's final `Transform`: component updates
+ * have already moved their entities, so an emitter's container and its new
+ * particles land where the entity is drawn this frame, not where it was last
+ * frame.
+ */
 export class ParticleSystem extends System {
-  readonly phase = Phase.Update;
+  readonly phase = Phase.LateUpdate;
   readonly priority = 0;
 
   private query!: QueryResult;
@@ -32,14 +38,10 @@ export class ParticleSystem extends System {
         time?.effectiveScaleForUpdates(entity) ?? scene?.timeScale ?? 1;
       const emitter = entity.get(ParticleEmitterComponent);
       if (!emitter.enabled) continue;
-      // World position, so parented emitters spawn where they are drawn:
-      // particles live in the layer container and carry absolute coordinates.
+      // World position, so parented emitters spawn where they are drawn: the
+      // emitter's container follows it and particles are local to that.
       const pos = entity.get(Transform).worldPosition;
-      emitter._update(
-        dt * sceneTimeScale * entity.timeScale,
-        pos.x,
-        pos.y,
-      );
+      emitter._update(dt * sceneTimeScale * entity.timeScale, pos.x, pos.y);
     }
   }
 }

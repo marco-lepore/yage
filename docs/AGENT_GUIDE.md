@@ -195,7 +195,7 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 | --------------------------------- | ------------------------------------------- |
 | `src/ParticlesPlugin.ts`          | Plugin entry                                |
 | `src/ParticleEmitterComponent.ts` | Emitter component with config               |
-| `src/ParticleSystem.ts`           | Update phase: tick emitters                 |
+| `src/ParticleSystem.ts`           | LateUpdate phase: tick emitters             |
 | `src/ParticlePool.ts`             | Allocation-free particle recycling          |
 | `src/presets.ts`                  | Built-in presets: fire, smoke, sparks, rain |
 | `src/shapes.ts`                   | Generated shape textures (no asset needed)  |
@@ -825,7 +825,7 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 | **Using `setTimeout` or `setInterval` in game logic**                  | Breaks deterministic frame execution. Timers drift and don't respect pause.                                                                                                                       | Use `ProcessComponent` with slots for cooldowns/timers, `pc.run()` for one-offs, or `TimerEntity` for scene-level timing.                                                                 |
 | **Using boolean flags for cooldown state**                             | Manual booleans + `Process.delay` to reset them is error-prone and verbose.                                                                                                                       | Use `ProcessSlot` — `slot.completed` IS the state. No separate boolean needed.                                                                                                            |
 | **Assuming render order = spawn order**                                | Render order is controlled by `RenderLayer` and draw priority, not entity creation order.                                                                                                         | Use layers for explicit draw ordering.                                                                                                                                                    |
-| **Passing raw `Texture` objects where an asset reference is expected** | Raw textures have caller-owned lifetime and cannot be preloaded by key. Sprites and animations reject them at the type level.                                                                     | Use `FrameSource` for animations, `textureKey` or a built-in shape for particles, and a `TextureRef` for sprites. Register runtime-created textures with `registerTexture(key, texture)`. |
+| **Passing raw `Texture` objects where an asset reference is expected** | Raw textures have caller-owned lifetime and cannot be preloaded by key. Sprites and animations reject them at the type level.                                                                     | Use `FrameSource` for animations, a `texture` key or a built-in shape for particles, and a `TextureRef` for sprites. Register runtime-created textures with `registerTexture(key, texture)`. |
 
 ### Type Safety Checklist
 
@@ -854,7 +854,7 @@ Quick summary of the key architectural decisions:
 | Error attribution (`ErrorBoundary`)                     | A throw is attributed to the system/component/callback that threw, logged, and inspectable, before it stops the loop                           |
 | Inspector + Logger as core features                     | Testing and debugging are first-class; `window.__yage__` enables Playwright assertions                                                         |
 | Explicit save roots (`Serializable<TEncoded>`)          | Save files hold selected durable game facts; scene setup rebuilds runtime ECS and plugin objects after load                                    |
-| String keys for texture-dependent components            | `FrameSource` (animation), `textureKey` (particles), and sprite texture keys integrate with asset loading without coupling to PixiJS objects   |
+| String keys for texture-dependent components            | `FrameSource` (animation), `texture` (particles), and sprite texture keys integrate with asset loading without coupling to PixiJS objects   |
 
 ## 10. Error-Handling Model
 

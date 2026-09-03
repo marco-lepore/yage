@@ -14,9 +14,7 @@ function source(
   shape: ShapeConfig,
 ): TextureSource {
   if (textureOrKey === undefined) return { shape };
-  return typeof textureOrKey === "string"
-    ? { textureKey: textureOrKey }
-    : { texture: textureOrKey };
+  return { texture: textureOrKey };
 }
 
 /**

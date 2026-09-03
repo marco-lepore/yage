@@ -334,17 +334,16 @@ FixedUpdate:
 
 Update:
   PhysicsInterpolationSystem (priority -100, from @yagejs/physics)
-  ParticleSystem (priority 0, from @yagejs/particles)
   ProcessSystem (priority 500, from @yagejs/core)
   ComponentUpdateSystem (priority 1000, from @yagejs/core)
 
 LateUpdate:
+  ParticleSystem (priority 0, from @yagejs/particles)
   UILayoutSystem (priority 200, from @yagejs/ui)
   UIRootLayoutSystem (priority 200, from @yagejs/ui-react)
   FloatingOverlaySystem (priority 201, from @yagejs/ui)
 
 Render:
-  TilemapRenderSystem (priority -1, from @yagejs/tilemap)
   DisplaySystem (priority 0, from @yagejs/renderer)
   LightingSystem (priority 100, from @yagejs/lighting)
   DebugRenderSystem (priority 9999, from @yagejs/debug)

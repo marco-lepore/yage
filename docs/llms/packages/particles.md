@@ -16,9 +16,8 @@ import { ParticleEmitterComponent } from "@yagejs/particles";
 
 entity.add(
   new ParticleEmitterComponent({
-    texture: particleTex, // TextureInput — one of three sources
-    // textureKey: "assets/p.png", // asset-key alternative
-    // shape: "softCircle",        // built-in shape, no asset needed
+    texture: particleTex, // TextureInput — a texture, handle, or asset key
+    // shape: "softCircle",     // built-in shape, no asset needed
     maxParticles: 200, // default 100
     rate: 20, // particles/sec, default 10
     lifetime: [0.5, 1.5], // seconds (required)
@@ -29,10 +28,12 @@ entity.add(
     rotation: 0, // radians
     rotationSpeed: 0, // rad/s
     tint: 0xff6600,
-    blendMode: "add", // whole-emitter, default "normal"
+    blendMode: "add", // whole-emitter, defaults to the layer's mode
     gravity: { x: 0, y: 200 }, // px/s²
     damping: 0, // 0–1
-    spawnOffset: { x: [-10, 10], y: 0 },
+    spawnOffset: { x: [-10, 10], y: 0 }, // or { radius, angle } for a ring
+    radialSpeed: -110, // px/s along the spawn offset; negative is inward
+    simulationSpace: "world", // or "local" to follow the emitter
     layer: "effects",
   }),
 );
@@ -40,9 +41,11 @@ entity.add(
 
 NumberRange: `number | [min, max]`. Lerped: `{ start: NumberRange, end: NumberRange }`.
 
-`texture`, `textureKey` and `shape` are mutually exclusive — setting more than
-one is a type error. All three are optional: `new ParticleEmitterComponent({
-lifetime: 1 })` renders white square particles with no asset. The default
+`texture` and `shape` are mutually exclusive — setting both is a type error.
+Both are optional: `new ParticleEmitterComponent({ lifetime: 1 })` renders
+white square particles with no asset. A string `texture` is an asset key and
+resolves like every other key-based surface: an unloaded key throws and names
+the key. The default
 `"pixel"` is 1×1, so set `scale` (or a shape `size`) for a visible size; the
 other shapes are 64px and already visible at `scale: 1`.
 
@@ -115,11 +118,43 @@ brighten where they pile up. Same `BlendMode` values and same
 `import "pixi.js/advanced-blend-modes"` requirement as the renderer's visual
 components (see `renderer.md`).
 
-Particles are simulated in world space: continuous emission and a no-argument
-`burst` both spawn at the entity's `Transform.worldPosition`, so a child entity
-emits where it is drawn, not at its parent's origin. Each particle is drawn
-centred on its spawn point and `rotationSpeed` turns it about its own centre —
-for a shape and for your own texture alike.
+Continuous emission and a no-argument `burst` both spawn at the entity's
+`Transform.worldPosition`, so a child entity emits where it is drawn, not at
+its parent's origin. Each particle is drawn centred on its spawn point and
+`rotationSpeed` turns it about its own centre — for a shape and for your own
+texture alike.
+
+The emitter's container follows the entity's position, so a layer sort reads
+it like any other visual: `ySort` keys an emitter off its entity, and
+`ySortBy` reads a depth offset you set on `emitter.container`.
+
+**`simulationSpace`** decides what happens to particles already in flight when
+the emitter moves. `"world"` (default) leaves them where they were drawn —
+a torch trail stays behind the walking torch. `"local"` carries them with the
+emitter, which is what an aura, a shield, or a charge-up glow needs. Position
+only: the emitter's rotation and scale are not applied.
+
+**A ring spawn plus `radialSpeed`** makes particles fly outward from, or
+converge on, where they spawned:
+
+```ts
+new ParticleEmitterComponent({
+  lifetime: 0.4,
+  spawnOffset: { radius: 42 }, // start on a ring (add `angle` for an arc)
+  radialSpeed: -110, // px/s inward; positive flies outward
+});
+```
+
+`radialSpeed` adds to the velocity `speed` and `angle` produce, so the two
+compose. It needs a `spawnOffset` — a particle at the emitter's origin has no
+outward direction — and a particle whose offset resolves to exactly (0, 0)
+takes no radial term.
+
+**Numeric config is checked at construction.** Every number in the config must
+be finite, `lifetime` above 0, `damping` between 0 and 1, `rate` at least 0,
+and `maxParticles` a whole number at least 0. A value outside its range throws
+a plain `Error` naming the option and the value, before the emitter allocates
+anything.
 
 **An emitter needs a `Transform` on the same entity.** `ParticleSystem` queries
 `[Transform, ParticleEmitterComponent]`, so without one the emitter never runs:

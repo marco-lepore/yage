@@ -1154,7 +1154,7 @@ class MyScene extends Scene {
 
 ### Runtime textures
 
-**`registerTexture(key, texture)` / `unregisterTexture(key)`** — register a runtime-created texture under an asset key so every key-based surface resolves it exactly like a preloaded asset: `texture: key` on `SpriteComponent`, `{ sheet: key, frameWidth }` on any `FrameSource`, `textureKey: key` on particle emitters.
+**`registerTexture(key, texture)` / `unregisterTexture(key)`** — register a runtime-created texture under an asset key so every key-based surface resolves it exactly like a preloaded asset: `texture: key` on `SpriteComponent` and on a particle emitter, `{ sheet: key, frameWidth }` on any `FrameSource`.
 
 ```ts
 import {
@@ -1188,7 +1188,7 @@ boss.add(
 
 Semantics:
 
-- Register runtime textures before constructing components that reference their keys. Sprite and animation lookups throw with the missing key; particle `textureKey` lookup resolves `undefined` with Pixi's generic cache warning.
+- Register runtime textures before constructing components that reference their keys. Every key-based lookup — sprite, animation, particle emitter — throws and names the missing key.
 - Registered keys are engine-global, outside the asset manager's ref counts, and live until `unregisterTexture(key)`.
 - `unregisterTexture` never destroys the texture — the creator owns the GPU resource; call `texture.destroy()` once nothing draws it. No-op for keys it never registered.
 - Re-registering a key replaces the entry; components constructed before the replacement keep the old texture instance (resolution happens at construction).
