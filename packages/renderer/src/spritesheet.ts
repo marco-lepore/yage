@@ -2,6 +2,7 @@ import { Texture, Rectangle, Assets } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
 import type { TextureSliceOptions } from "./public-types.js";
 import { resolveTextureInput } from "./assets.js";
+import { assertFiniteNumber } from "./internal/validate.js";
 
 /** Grid options with defaults applied against a concrete texture. */
 interface GridLayout {
@@ -65,6 +66,7 @@ function validateGridLayout(
   { fn, sheet }: GridContext,
 ): void {
   const forSheet = sheet !== undefined ? ` for sheet "${sheet}"` : "";
+  const context = `${fn}${forSheet}`;
   for (const [name, value, min] of [
     ["frameWidth", layout.frameWidth, 1],
     ["frameHeight", layout.frameHeight, 1],
@@ -75,12 +77,7 @@ function validateGridLayout(
     ["columns", layout.columns, 1],
     ["count", layout.count, 1],
   ] as const) {
-    if (!Number.isFinite(value) || value < min) {
-      throw new Error(
-        `${fn}: invalid ${name} (${value})${forSheet} — ` +
-          `expected a finite number >= ${min}.`,
-      );
-    }
+    assertFiniteNumber(context, name, value, min);
   }
   const usedColumns = Math.min(layout.count, layout.columns);
   const rows = Math.ceil(layout.count / layout.columns);

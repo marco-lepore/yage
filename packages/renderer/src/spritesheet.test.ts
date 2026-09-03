@@ -108,7 +108,7 @@ describe("sliceGrid", () => {
     // throw rather than run an unbounded frame loop.
     for (const frameWidth of [0, -16, NaN]) {
       expect(() => sliceGrid(Texture.from(""), { frameWidth })).toThrow(
-        /^sliceGrid: invalid frameWidth/,
+        /^sliceGrid: frameWidth must be finite and >= 1/,
       );
     }
   });
@@ -137,7 +137,7 @@ describe("sliceSheet", () => {
   it("rejects a frameWidth that is zero, negative or NaN", () => {
     for (const frameWidth of [0, -16, NaN]) {
       expect(() => sliceSheet(Texture.from(""), frameWidth)).toThrow(
-        /^sliceSheet: invalid frameWidth/,
+        /^sliceSheet: frameWidth must be finite and >= 1/,
       );
     }
   });
@@ -204,19 +204,19 @@ describe("resolveFrames — sheet sources", () => {
   it("rejects negative offsets and gaps", () => {
     expect(() =>
       resolveFrames({ sheet: "s.png", frameWidth: 48, startX: -100, columns: 1, count: 1 }),
-    ).toThrow(/invalid startX/);
+    ).toThrow(/startX must be finite and >= 0/);
     expect(() =>
       resolveFrames({ sheet: "s.png", frameWidth: 48, gapX: -100, columns: 2, count: 2 }),
-    ).toThrow(/invalid gapX/);
+    ).toThrow(/gapX must be finite and >= 0/);
   });
 
   it("rejects non-positive frame sizes and counts", () => {
     expect(() => resolveFrames({ sheet: "s.png", frameWidth: 0 })).toThrow(
-      /invalid frameWidth/,
+      /frameWidth must be finite and >= 1/,
     );
     expect(() =>
       resolveFrames({ sheet: "s.png", frameWidth: 48, count: 0 }),
-    ).toThrow(/invalid count/);
+    ).toThrow(/count must be finite and >= 1/);
   });
 
   it("leaves texture sampling alone", () => {
