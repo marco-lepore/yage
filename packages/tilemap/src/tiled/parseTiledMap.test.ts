@@ -269,6 +269,40 @@ describe("createTilemapLayers", () => {
     expect(calls).toHaveLength(2);
   });
 
+  it("skips a collection tile id the tileset does not list", () => {
+    mockAssets._cache.set("tile0.png", { label: "tile0" });
+    const map: TiledMapData = {
+      width: 2,
+      height: 1,
+      tilewidth: 16,
+      tileheight: 16,
+      layers: [makeTileLayer("ground", [1, 4], 2)],
+      tilesets: [
+        {
+          firstgid: 1,
+          data: {
+            name: "props",
+            tilewidth: 16,
+            tileheight: 16,
+            tilecount: 2,
+            columns: 0,
+            tiles: [
+              { id: 0, image: "tiles/tile0.png" },
+              { id: 5, image: "tiles/tile5.png" },
+            ],
+          },
+        },
+      ],
+    };
+
+    const [built] = createTilemapLayers(map);
+    const calls = (
+      built as unknown as InstanceType<typeof mockCompositeTilemap>
+    ).calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.x).toBe(0);
+  });
+
   it("throws naming a single-image tileset image that is not loaded", () => {
     const map = loadFixture("embedded.json");
     expect(() => createTilemapLayers(map)).toThrow(

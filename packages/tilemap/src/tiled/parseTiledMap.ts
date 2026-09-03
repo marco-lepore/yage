@@ -22,7 +22,7 @@ import type { TileAnimationSupport } from "./animation.js";
 import { validateTiledMap } from "./diagnostics.js";
 import { tileIdFromGid, tileRotationFromGid } from "./gid.js";
 import { resolveTilesetData } from "./resolveTilesetData.js";
-import { findTilesetIndexForGid } from "./tilesetRange.js";
+import { collectionTileIds, findTilesetIndexForGid } from "./tilesetRange.js";
 import type { TilesetRange } from "./tilesetRange.js";
 
 /** Objects of one class on one raw Tiled object layer. */
@@ -212,6 +212,19 @@ interface TilesetMatch extends TilesetRange {
 }
 
 /**
+ * Which local IDs a resolved tileset owns. `image` is what tells the two forms
+ * apart: a single-image tileset numbers its tiles densely, while a collection
+ * owns exactly the IDs it lists.
+ */
+function tilesetIdBound(
+  data: TilesetData | null,
+): Pick<TilesetRange, "tilecount" | "tileIds"> {
+  if (data === null) return {};
+  if (data.image) return { tilecount: data.tilecount };
+  return { tileIds: collectionTileIds(data.tiles) };
+}
+
+/**
  * Resolve each tileset once. An embedded tileset that never went through the
  * loader is rebuilt on every call, so resolving per tile or per object would
  * copy it once per drawn tile.
@@ -223,7 +236,7 @@ function toTilesetMatches(map: TiledMapData): TilesetMatch[] {
       ref,
       data,
       firstgid: ref.firstgid,
-      ...(data?.image ? { tilecount: data.tilecount } : {}),
+      ...tilesetIdBound(data),
     };
   });
 }

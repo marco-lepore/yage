@@ -1,7 +1,7 @@
 import { resolveTilesetData } from "./resolveTilesetData.js";
 import { readTileAnimation } from "./animation.js";
 import { tileIdFromGid } from "./gid.js";
-import { findTilesetIndexForGid } from "./tilesetRange.js";
+import { collectionTileIds, findTilesetIndexForGid } from "./tilesetRange.js";
 import type { TilesetRange } from "./tilesetRange.js";
 import type { TilemapDiagnostic } from "../types.js";
 import type { TiledMapData, TilesetRef } from "./types.js";
@@ -193,7 +193,11 @@ function tilesetRanges(rawMap: Record<string, unknown>): TilesetRange[] {
     const resolved = resolveTilesetData(value as unknown as TilesetRef);
     ranges.push({
       firstgid: value.firstgid,
-      ...(resolved?.image ? { tilecount: resolved.tilecount } : {}),
+      ...(resolved === null
+        ? {}
+        : resolved.image
+          ? { tilecount: resolved.tilecount }
+          : { tileIds: collectionTileIds(resolved.tiles) }),
     });
   }
   return ranges;

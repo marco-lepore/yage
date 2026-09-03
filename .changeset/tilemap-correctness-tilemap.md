@@ -29,10 +29,11 @@ A map answers and draws where its tiles are, and a map with one bad tileset or o
   load-order mistake, fixed by preloading the image, not a property of the map.
 - New `unknown-gid` diagnostic (severity `error`) reports the cells a layer
   fills with a tile id no tileset owns, naming the layer and, per distinct id,
-  the first cell it appears in. A single-image tileset's range is bounded by its
-  `tilecount`, so an id past its last tile is no longer attributed to it. A
-  collection-of-images tileset keeps an open range: Tiled preserves the other
-  tiles' ids when an image is deleted, so its ids can run past `tilecount`.
+  the first cell it appears in. A single-image tileset owns the ids its
+  `tilecount` covers, and a collection-of-images tileset owns exactly the ids it
+  lists — Tiled preserves the other tiles' ids when an image is deleted, so a
+  collection's ids are neither dense nor bounded by `tilecount`. An id past a
+  tileset's own is no longer attributed to it.
 - `encoded-layer-data` fires on layer data that is not a flat number array. It
   also fired on the presence of an `encoding` field, so a CSV-encoded layer —
   a flat number array that renders correctly — was reported as dropped content.

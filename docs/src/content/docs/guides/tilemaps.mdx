@@ -254,8 +254,9 @@ worth reading: a map missing a few tiles looks like a map, not like an error.
 
 `unknown-gid` covers the last of those. It reports the cells a layer fills
 with a tile id no tileset owns, which is what a map looks like after a tileset
-is removed without clearing the tiles painted from it. The message names the
-layer and, per distinct id, the first cell it appears in.
+is removed without clearing the tiles painted from it, or after a tile's image
+is deleted from a collection-of-images tileset. The message names the layer
+and, per distinct id, the first cell it appears in.
 
 An external tileset that has not been loaded yet is not reported — it resolves
 during preload. A tileset image that is not loaded when the component is added

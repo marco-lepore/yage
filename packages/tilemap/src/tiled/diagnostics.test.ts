@@ -173,6 +173,48 @@ describe("validateTiledMap", () => {
     expect(codes).not.toContain("unknown-gid");
   });
 
+  it("reports a collection tile id the tileset does not list", () => {
+    const map = {
+      width: 2,
+      height: 1,
+      tilewidth: 16,
+      tileheight: 16,
+      layers: [
+        {
+          type: "tilelayer",
+          id: 1,
+          name: "ground",
+          width: 2,
+          height: 1,
+          x: 0,
+          y: 0,
+          opacity: 1,
+          visible: true,
+          data: [1, 4],
+        },
+      ],
+      tilesets: [
+        {
+          firstgid: 1,
+          name: "props",
+          tilewidth: 16,
+          tileheight: 16,
+          tilecount: 2,
+          columns: 0,
+          tiles: [
+            { id: 0, image: "tile0.png" },
+            { id: 5, image: "tile5.png" },
+          ],
+        },
+      ],
+    };
+
+    const entry = validateTiledMap(map as unknown as TiledMapData).find(
+      (item) => item.code === "unknown-gid",
+    );
+    expect(entry?.message).toContain("4 at column 1, row 0");
+  });
+
   it("summarises the unknown tile ids past the first ten", () => {
     const map = loadFixture("embedded.json") as unknown as {
       layers: { data: number[]; width: number; height: number }[];

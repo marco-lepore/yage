@@ -232,7 +232,7 @@ Codes: `unsupported-orientation`, `infinite-map`, `chunked-layer`, `encoded-laye
 
 No diagnostic stops a map from rendering. What one names is skipped — a group layer, the tiles of a tileset that did not resolve, a tile whose id belongs to no tileset — and the rest of the map draws.
 
-`unknown-gid` reports the cells a layer fills with a tile id no tileset owns, which happens when a tileset is removed from a map without clearing the tiles painted from it. The message names the layer and, per distinct id, the first cell it appears in.
+`unknown-gid` reports the cells a layer fills with a tile id no tileset owns, which happens when a tileset is removed from a map without clearing the tiles painted from it, or when a tile's image is deleted from a collection-of-images tileset. The message names the layer and, per distinct id, the first cell it appears in.
 
 A group layer and everything nested inside it is dropped — the diagnostic names the children so you can see what is missing. An external tileset that has not loaded yet is not a diagnostic; it resolves during preload. A tileset image that is not loaded when the component is added is not a diagnostic either: building the layers throws, naming the image, so preload it before adding the map.
 
