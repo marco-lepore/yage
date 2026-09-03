@@ -111,7 +111,7 @@ context.resolve(AssetManagerKey).registerLoader("levelfmt", {
   async load(path: string): Promise<Level> {
     /* fetch + parse */
   },
-  unload?(path: string, asset: Level): void {
+  unload(path: string, asset: Level): void {
     /* dispose */
   },
 });

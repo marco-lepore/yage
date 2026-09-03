@@ -22,7 +22,7 @@ Worth knowing up front so you don't reach for something that isn't there.
 | `toPhysicsColliders()` adapter for Rapier          | Supported   |
 | Tileset-image and collection-of-images tilesets    | Supported   |
 | Embedded and external tilesets                     | Supported   |
-| Flipped and rotated tiles                          | Supported   |
+| Flipped and rotated tiles                          | Supported for square tiles — a diagonal flip on a non-square tile draws unrotated |
 | Tile images that don't match the map grid          | Supported — anchored bottom-left, as Tiled draws them |
 | Tile objects (an object that draws a tile)         | Data only — `gid`, position, size and properties are parsed; the image is not drawn |
 | Tileset `objectalignment` override                 | Supported — a tile object's position is normalised to its top-left corner |
@@ -41,9 +41,10 @@ Worth knowing up front so you don't reach for something that isn't there.
 A map that uses an unsupported map, layer or tileset setting does not fail
 silently: `validateTiledMap()` reports it against the raw JSON, and
 `TilemapComponent` logs what it finds when the map loads — see
-[Checking a Map](#checking-a-map). Three limits have no diagnostic, because the
-map itself parses fine: runtime tile editing, per-tile collision shapes, and a
-tileset's `tilerendersize` / `fillmode`.
+[Checking a Map](#checking-a-map). Four limits have no diagnostic, because the
+map itself parses fine: runtime tile editing, per-tile collision shapes, a
+tileset's `tilerendersize` / `fillmode`, and a diagonal flip on a non-square
+tile.
 
 For a worked example of loading a Tiled map and extracting collision
 shapes, see the
@@ -62,16 +63,18 @@ through the debug overlay. Two distinct steps make up the Tiled-collision-to-Rap
    polylines keep their original vertices with a top-left-based offset
    (`offset = { x, y }`), since vertex-defined shapes don't need centering.
 
-The wiring (extracted shapes → `toPhysicsColliders()` → static
-`RigidBodyComponent` + per-shape `ColliderComponent`) is shown inline
-in the [Collision Extraction](#collision-extraction) section below.
+The wiring (extracted shapes → `toPhysicsColliders()` → one static entity
+per shape) is shown inline in the
+[Collision Extraction](#collision-extraction) section below.
 
 ## Staging Tiled Assets
 
 Tiled's "Export As JSON" dumps the tileset wherever you point it, but
 the JSON itself still references its source PNG by **path-relative-to-
-the-JSON**. The loader resolves it as
-`dirname(tilesetSrc) + tileset.image`. Tiled writes that field exactly
+the-JSON**. The loader resolves an external tileset's `image` against
+the tileset file's own folder, so `maps/level.json` referencing
+`../tilesets/terrain.tsj` with `"image": "terrain.png"` loads
+`tilesets/terrain.png`. Tiled writes that field exactly
 as it was authored — typically a path that walks out of the project
 (`"../../Downloads/tiled-projects/dungeon/spr_tileset.png"`). The
 moment you copy the JSON into `public/`, that path no longer resolves
@@ -244,8 +247,20 @@ an error — it names the tile objects on a layer whose images the map does not
 draw — so a game that spawns its own sprites from them will want to let that
 one through.
 
+No diagnostic stops the map from rendering. What one names is skipped — a
+group layer, the tiles of a tileset that did not resolve, a tile whose id
+belongs to no tileset — and everything else draws. That is why the list is
+worth reading: a map missing a few tiles looks like a map, not like an error.
+
+`unknown-gid` covers the last of those. It reports the cells a layer fills
+with a tile id no tileset owns, which is what a map looks like after a tileset
+is removed without clearing the tiles painted from it. The message names the
+layer and, per distinct id, the first cell it appears in.
+
 An external tileset that has not been loaded yet is not reported — it resolves
-during preload.
+during preload. A tileset image that is not loaded when the component is added
+is not a diagnostic either: building the layers throws and names the image, so
+preload it before adding the map.
 
 ## Choosing the map input
 
@@ -391,8 +406,11 @@ const id = tilemap.getTileAt(worldX, worldY, "ground");
 // Returns the tile id, or null if the position is empty
 ```
 
-Each layer is read through its own draw offset, so the id you get back is the
-tile you see at that position.
+The point is converted through the inverse of the entity's world transform
+before any lookup, so a map parented under another entity, scaled or rotated
+answers where its tiles are drawn. Each layer is then read through its own draw
+offset, so the id you get back is the tile you see at that position. A world
+scale of 0 on either axis collapses the map, and the method returns `null`.
 
 A tileset's `tileoffset` is the exception. It moves where a tile's image is
 drawn without moving the cell the tile occupies. A tile from an offset tileset
@@ -423,6 +441,11 @@ Tiled lets you flip a tile horizontally, flip it vertically, or reflect it
 across its diagonal, in any combination — eight orientations in all. They
 render the way the editor shows them, so a tileset needs only one copy of a
 wall corner or an arrow.
+
+The diagonal flip holds for square tiles. On a tile whose image is not square
+it draws unrotated: the tile keeps its own width and height and only its image
+content turns, where Tiled swaps the two. Turning a 16×32 prop needs a second
+tile drawn at 32×16.
 
 Tiled packs that orientation into the high bits of the tile's GID. `getTileAt`
 strips them, so a comparison works whichever way a tile faces:
@@ -660,6 +683,12 @@ resolveObjectRef(obj, "target", allObjs);
 resolveObjectRefArray(obj, "path", allObjs);
 ```
 
+`getPropertyArray` and `resolveRefArray` read the `name[0]`, `name[1]`
+convention, and the indices must run from 0 without gaps. `point[0]` plus
+`point[2]` with no `point[1]` throws, naming the missing index, because a gap
+means a property was renamed or deleted in Tiled and the array you would get
+back has a hole in it.
+
 ## Collision Extraction
 
 Tiled objects map to physics-agnostic `TilemapColliderConfig` variants:
@@ -690,8 +719,10 @@ must be attached to a `type: "static"` rigid body (no mass/inertia is
 computed). For dynamic concave bodies, decompose the outline into
 convex pieces manually.
 
-Wire extracted shapes through `toPhysicsColliders()` to spawn one static
-body with one `ColliderComponent` per shape:
+Pass the extracted shapes through `toPhysicsColliders()` and give each config
+its own static entity. An entity holds one component per class, so a single
+entity cannot carry a collider per shape; a grouping parent placed at the map's
+origin keeps them together and lets you destroy the whole set with one call:
 
 ```typescript
 import { toPhysicsColliders } from "@yagejs/tilemap";
@@ -699,12 +730,19 @@ import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 
 const walls = this.spawn("walls");
 walls.add(new Transform());
-walls.add(new RigidBodyComponent({ type: "static" }));
 
-for (const cfg of toPhysicsColliders(tilemap.getCollisionShapes("walls"))) {
-  walls.add(new ColliderComponent(cfg));
-}
+toPhysicsColliders(tilemap.getCollisionShapes("walls")).forEach((cfg, i) => {
+  const wall = walls.spawnChild(`wall-${i}`);
+  wall.add(new Transform());
+  wall.add(new RigidBodyComponent({ type: "static" }));
+  wall.add(new ColliderComponent(cfg));
+});
 ```
+
+Each child sits at the parent's origin with an identity `Transform`, and the
+config's own offset places the shape. A static body reads its world position
+when it is created, so placing the grouping parent before spawning the children
+offsets the whole set with it.
 
 The component-method shortcut wraps two standalone functions for the
 same workflow:

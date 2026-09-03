@@ -1,4 +1,4 @@
-import { Transform } from "@yagejs/core";
+import { Transform, Vec2 } from "@yagejs/core";
 import type { AssetHandle } from "@yagejs/core";
 import type { CompositeTilemap } from "@pixi/tilemap";
 import { Assets, ColorMatrixFilter, Container } from "pixi.js";
@@ -195,9 +195,14 @@ export class TilemapComponent extends VisualComponent {
   }
 
   /**
-   * Returns the tile id at a world position, accounting for the entity
-   * Transform and each layer's own draw offset. Returns null if the position
-   * is outside every layer or the tile is empty.
+   * Returns the tile id at a world position. The point is converted through
+   * the inverse of the entity's world transform, so a map that is parented,
+   * scaled or rotated answers where its tiles are drawn; each layer's own
+   * draw offset is then applied. Returns null if the position is outside
+   * every layer or the tile is empty.
+   *
+   * A world scale of 0 on either axis collapses the map, so no world point
+   * maps back to a cell and the method returns null.
    *
    * A tileset's `tileoffset` is not reversed here: it moves where a tile's
    * image is drawn, not which cell the tile occupies, and one layer can mix
@@ -214,8 +219,10 @@ export class TilemapComponent extends VisualComponent {
    */
   getTileAt(worldX: number, worldY: number, layerName?: string): number | null {
     const transform = this.entity.tryGet(Transform);
-    const offsetX = transform ? transform.position.x : 0;
-    const offsetY = transform ? transform.position.y : 0;
+    const point = transform
+      ? transform.worldToLocal(new Vec2(worldX, worldY))
+      : new Vec2(worldX, worldY);
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
     const layers = layerName
       ? this.data.tileLayers.filter((l) => l.name === layerName)
       : this.data.tileLayers;
@@ -224,8 +231,8 @@ export class TilemapComponent extends VisualComponent {
     // so the top-most one wins.
     for (let i = layers.length - 1; i >= 0; i--) {
       const layer = layers[i]!;
-      const localX = worldX - offsetX - layer.offsetX;
-      const localY = worldY - offsetY - layer.offsetY;
+      const localX = point.x - layer.offsetX;
+      const localY = point.y - layer.offsetY;
       const col = Math.floor(localX / this.data.tileWidth);
       const row = Math.floor(localY / this.data.tileHeight);
 
@@ -373,7 +380,10 @@ export class TilemapComponent extends VisualComponent {
     return getProperty<T>(obj, name);
   }
 
-  /** Read an indexed property bag (`name[0]`, `name[1]`, ...) as an array. */
+  /**
+   * Read an indexed property bag (`name[0]`, `name[1]`, ...) as an array.
+   * Throws when the indices skip one.
+   */
   getPropertyArray<T = unknown>(obj: HasProperties, name: string): T[] {
     return getPropertyArray<T>(obj, name);
   }

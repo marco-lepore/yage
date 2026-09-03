@@ -262,10 +262,10 @@ interface EntityHandle<out T extends Entity = Entity> {
 
 ### Events
 
-| Export                 | Purpose                                       |
-| ---------------------- | --------------------------------------------- |
-| `EventBus<E>`          | Typed pub/sub (`on`, `once`, `emit`, `clear`, `tap`)      |
-| `EventToken<T>`        | Typed token for entity and scene events                   |
+| Export                 | Purpose                                                    |
+| ---------------------- | ---------------------------------------------------------- |
+| `EventBus<E>`          | Typed pub/sub (`on`, `once`, `emit`, `clear`, `tap`)       |
+| `EventToken<T>`        | Typed token for entity and scene events                    |
 | `defineEvent<T>(name)` | Create an event token; the name must be a non-empty string |
 
 - `bus.on` returns an unsubscribe bound to that registration: the same function registered twice fires twice, and each unsubscribe removes its own entry, once.
@@ -341,12 +341,12 @@ Composition: each `key` is a channel. Within a channel, the latest active reques
 
 ### Math
 
-| Export             | Purpose                                                                                                                                                                                                      |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Vec2`             | Immutable 2D vector (`add`, `sub`, `scale`, `normalize`, `lerp`, `dot`, `distance`, static `moveTowards`)                                                                                                    |
-| `Transform`        | Mutable position/rotation/scale component (`setPosition`, `translate`, `rotate`); `worldPosition` / `worldRotation` / `worldScale` are lazily computed and cache-invalidate on local mutation or reparenting |
-| `MathUtils`        | `lerp`, `inverseLerp`, `lerpAngle`, `shortestAngleBetween`, `pingPong`, `smoothDamp`, `clamp`, etc.                                                                                                          |
-| `SmoothDampResult` | `{ value, velocity }` returned by `MathUtils.smoothDamp()`                                                                                                                                                   |
+| Export             | Purpose                                                                                                                                                                                                                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Vec2`             | Immutable 2D vector (`add`, `sub`, `scale`, `normalize`, `lerp`, `dot`, `distance`, static `moveTowards`)                                                                                                                                                                            |
+| `Transform`        | Mutable position/rotation/scale component (`setPosition`, `translate`, `rotate`); `worldPosition` / `worldRotation` / `worldScale` are lazily computed and cache-invalidate on local mutation or reparenting; `worldToLocal(point)` maps a world point into the entity's local space |
+| `MathUtils`        | `lerp`, `inverseLerp`, `lerpAngle`, `shortestAngleBetween`, `pingPong`, `smoothDamp`, `clamp`, etc.                                                                                                                                                                                  |
+| `SmoothDampResult` | `{ value, velocity }` returned by `MathUtils.smoothDamp()`                                                                                                                                                                                                                           |
 
 Math signatures:
 
@@ -376,6 +376,8 @@ gives you and express `smoothTime` in seconds. `maxSpeed` is in units per second
 ### Scale inheritance
 
 `Transform.worldScale` composes through the parent chain (`parent.worldScale * local.scale`), the same way `worldPosition` and `worldRotation` do. `DisplaySystem` reads `worldScale` each Render phase, so flipping a parent flips every descendant sprite automatically — useful for multi-layer characters (head + body + outfit) where every layer must flip together.
+
+`Transform.worldToLocal(point)` reverses the entity's world position, rotation and scale, so a world-space point (a pointer, a hit) can be read in the entity's own space whatever its parent chain does. On an axis whose world scale is 0 the result is non-finite.
 
 Gotcha: while a parent's world scale is 0 on an axis (common mid scale-tween), assigning `worldPosition` cannot move the child along that axis. The setter keeps the child's local value on that axis unchanged and emits a dev-mode warning. The child stays at the parent's origin on that axis until the scale is non-zero again.
 
@@ -913,23 +915,23 @@ italics; systems read `Name (priority, package)`. Equal priorities run in add
 order, which for plugin systems is plugin install order (`UILayoutSystem`
 before `UIRootLayoutSystem` because `ui-react` depends on `ui`).
 
-- `EarlyUpdate`: *`logger.setFrame`, `SceneTime` frame tick per active scene, transition tick* → `InputPollSystem (-100, input)`
-- `FixedUpdate`, 0 to `maxFixedStepsPerFrame` times: *`SceneTime` fixed tick per active scene* → `PhysicsSystem (0, physics)` → `ProcessFixedUpdateSystem (500, core)` → `ComponentFixedUpdateSystem (1000, core)`
+- `EarlyUpdate`: _`logger.setFrame`, `SceneTime` frame tick per active scene, transition tick_ → `InputPollSystem (-100, input)`
+- `FixedUpdate`, 0 to `maxFixedStepsPerFrame` times: _`SceneTime` fixed tick per active scene_ → `PhysicsSystem (0, physics)` → `ProcessFixedUpdateSystem (500, core)` → `ComponentFixedUpdateSystem (1000, core)`
 - `Update`: `PhysicsInterpolationSystem (-100, physics)` → `ProcessSystem (500, core)` → `ComponentUpdateSystem (1000, core)`
 - `LateUpdate`: `ParticleSystem (0, particles)` → `UILayoutSystem (200, ui)` → `UIRootLayoutSystem (200, ui-react)` → `FloatingOverlaySystem (201, ui)`
 - `Render`: `DisplaySystem (0, renderer)` → `LightingSystem (100, lighting)` → `DebugRenderSystem (9999, debug)`
-- `EndOfFrame`: `InputClearSystem (9000, input)` → *destroy-queue flush*
+- `EndOfFrame`: `InputClearSystem (9000, input)` → _destroy-queue flush_
 
 Priority bands, for placing a new system:
 
-| Band | Runs | Shipped systems |
-|---|---|---|
-| below 0 | before the engine's producers: reads external input or the previous step's state | input poll, physics interpolation |
-| 0 | producers | physics step, particles, display |
-| 100–201 | consumers of the producers | lighting, UI layout |
-| 500 | timing | both process systems |
-| 1000 | game code | both component passes |
-| above 1000 | after game code | input clear, debug overlay |
+| Band       | Runs                                                                             | Shipped systems                   |
+| ---------- | -------------------------------------------------------------------------------- | --------------------------------- |
+| below 0    | before the engine's producers: reads external input or the previous step's state | input poll, physics interpolation |
+| 0          | producers                                                                        | physics step, particles, display  |
+| 100–201    | consumers of the producers                                                       | lighting, UI layout               |
+| 500        | timing                                                                           | both process systems              |
+| 1000       | game code                                                                        | both component passes             |
+| above 1000 | after game code                                                                  | input clear, debug overlay        |
 
 Ordering rules:
 

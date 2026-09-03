@@ -10,7 +10,7 @@ Tilesets MUST be exported as JSON (`.tsj` / `.json`). Tiled's default XML `.tsx`
 
 ### Staging Tiled assets
 
-The loader resolves a single-image tileset's `image` field **relative to the tileset JSON file** (`basePath + tileset.image`, where `basePath = path.dirname(tilesetSrc)`). Tiled writes that field as the relative path _from where the tileset was authored_, which is usually somewhere on your filesystem outside the project (e.g. `../../Downloads/spr_tileset.png`). Copying the tileset JSON into `public/` without rewriting `image` produces a silent 404 in the browser — the tileset loads, the texture doesn't, tiles render as blanks.
+The loader resolves a single-image tileset's `image` field **relative to the file the tileset lives in**: an external `.tsj` against its own folder, an embedded tileset against the map's. So `maps/level.json` referencing `../tilesets/terrain.tsj` whose `image` is `terrain.png` loads `tilesets/terrain.png`. Tiled writes that field as the relative path _from where the tileset was authored_, which is usually somewhere on your filesystem outside the project (e.g. `../../Downloads/spr_tileset.png`). Copying the tileset JSON into `public/` without rewriting `image` produces a silent 404 in the browser — the tileset loads, the texture doesn't, tiles render as blanks.
 
 When you stage a Tiled tileset into `public/assets/maps/`, rewrite `image` to a sibling-relative path:
 
@@ -28,11 +28,11 @@ When you stage a Tiled tileset into `public/assets/maps/`, rewrite `image` to a 
 
 …and put `spr_tileset.png` next to the JSON. Same rule for embedded tilesets inside a map JSON — the `image` field is resolved relative to the _map_ file's directory.
 
-Not supported: infinite/chunked maps, base64-encoded layer data, isometric/hex/staggered orientations, group layers and image layers, dynamic tile editing at runtime, built-in parallax layers (use a regular render layer with a scrolling sprite), drawing a tile object's image (its `gid` and box are parsed — you spawn the sprite), a tileset's `tilerendersize` / `fillmode` (a tile always draws at its image's own size), collision shapes authored on a tile inside the tileset.
+Not supported: infinite/chunked maps, base64-encoded layer data, isometric/hex/staggered orientations, group layers and image layers, a diagonal flip on a non-square tile (it draws unrotated), dynamic tile editing at runtime, built-in parallax layers (use a regular render layer with a scrolling sprite), drawing a tile object's image (its `gid` and box are parsed — you spawn the sprite), a tileset's `tilerendersize` / `fillmode` (a tile always draws at its image's own size), collision shapes authored on a tile inside the tileset.
 
-`validateTiledMap()` reports the forms that carry a diagnostic code — see [Unsupported Forms](#unsupported-forms). Three limits have no code, because the map itself parses fine: runtime tile editing, per-tile collision shapes, and a tileset's `tilerendersize` / `fillmode`.
+`validateTiledMap()` reports the forms that carry a diagnostic code — see [Unsupported Forms](#unsupported-forms). Four limits have no code, because the map itself parses fine: runtime tile editing, per-tile collision shapes, a tileset's `tilerendersize` / `fillmode`, and a diagonal flip on a non-square tile.
 
-Workflow: parse Tiled JSON → `tilemap.getCollisionShapes("walls")` returns raw top-left-origin shapes → `toPhysicsColliders(shapes)` converts to center-origin Rapier configs → spawn a static body with one `ColliderComponent` per config.
+Workflow: parse Tiled JSON → `tilemap.getCollisionShapes("walls")` returns raw top-left-origin shapes → `toPhysicsColliders(shapes)` converts to center-origin Rapier configs → spawn one static entity per config, each with a `RigidBodyComponent` and a `ColliderComponent`.
 
 ## Setup
 
@@ -124,7 +124,7 @@ needs an explicit `keyPrefix` when you use Tiled-derived auto-keys.
 tilemap.getTileAt(worldX, worldY, "ground"); // tile id | null
 ```
 
-Each layer is read through its own draw offset, and Tiled's flip bits are stripped, so the id compares against a tileset's numbering whichever way the tile faces.
+The point is converted through the inverse of the entity's world transform, so a map that is parented, scaled or rotated answers where its tiles are drawn. A world scale of 0 on either axis collapses the map and the method returns `null`. Each layer is then read through its own draw offset, and Tiled's flip bits are stripped, so the id compares against a tileset's numbering whichever way the tile faces.
 
 A tileset's `tileoffset` is not reversed: it moves where a tile's image is drawn, not which cell the tile occupies, and one layer can mix tilesets that offset differently. A tile from an offset tileset answers at its cell.
 
@@ -142,6 +142,8 @@ tileIdFromGid(gid); // just the id
 ```
 
 A flipped or rotated tile renders the way Tiled shows it. The diagonal flip is a reflection across the tile's main diagonal, and combined with the horizontal and vertical flips it covers all eight orientations of a square.
+
+A diagonal flip on a tile whose image is not square draws unrotated: the tile keeps its own width and height and only its image content turns, where Tiled swaps the two. Turning a 16×32 prop needs a second tile drawn at 32×16.
 
 ## Animated Tiles
 
@@ -226,9 +228,13 @@ interface TilemapDiagnostic {
 }
 ```
 
-Codes: `unsupported-orientation`, `infinite-map`, `chunked-layer`, `encoded-layer-data`, `group-layer`, `image-layer`, `tsx-tileset`, `unresolved-tileset`, `tile-object` (errors); `layer-parallax`, `unsupported-tile-animation` (warnings).
+Codes: `unsupported-orientation`, `infinite-map`, `chunked-layer`, `encoded-layer-data`, `group-layer`, `image-layer`, `tsx-tileset`, `unresolved-tileset`, `unknown-gid`, `tile-object` (errors); `layer-parallax`, `unsupported-tile-animation` (warnings).
 
-A group layer and everything nested inside it is dropped — the diagnostic names the children so you can see what is missing. An external tileset that has not loaded yet is not a diagnostic; it resolves during preload.
+No diagnostic stops a map from rendering. What one names is skipped — a group layer, the tiles of a tileset that did not resolve, a tile whose id belongs to no tileset — and the rest of the map draws.
+
+`unknown-gid` reports the cells a layer fills with a tile id no tileset owns, which happens when a tileset is removed from a map without clearing the tiles painted from it. The message names the layer and, per distinct id, the first cell it appears in.
+
+A group layer and everything nested inside it is dropped — the diagnostic names the children so you can see what is missing. An external tileset that has not loaded yet is not a diagnostic; it resolves during preload. A tileset image that is not loaded when the component is added is not a diagnostic either: building the layers throws, naming the image, so preload it before adding the map.
 
 ## Object Layers
 
@@ -343,6 +349,8 @@ resolveObjectRefArray(obj, "spawns", allObjs); // spawns[0], spawns[1], ...
 
 The component-method variants of `resolveRef` / `resolveRefArray` walk every object layer for you; use the standalone helpers only when you've already collected the pool yourself.
 
+`getPropertyArray` and `resolveRefArray` need the indices to run from 0 without gaps. `point[0]` and `point[2]` with no `point[1]` throws, naming the missing index — a gap means a property was renamed or deleted in Tiled.
+
 All four take anything carrying a `properties` array, so the map, a layer and a tileset read the same way as an object:
 
 ```ts
@@ -379,7 +387,11 @@ Standalone functions: `extractCollisionShapes()`, `toPhysicsColliders()`.
 
 ## Physics Integration
 
-`toPhysicsColliders(shapes)` converts the tilemap collision shapes (top-left origin, as stored in Tiled) into `@yagejs/physics` `ColliderConfig` shape-plus-offset pairs (center origin, as Rapier expects). Use it when attaching extracted walls to a static physics body:
+`toPhysicsColliders(shapes)` converts the tilemap collision shapes (top-left origin, as stored in Tiled) into `@yagejs/physics` `ColliderConfig` shape-plus-offset pairs (center origin, as Rapier expects). Use it when attaching extracted walls to static physics bodies.
+
+One entity carries one `ColliderComponent`, so each shape gets its own static
+entity under a grouping parent placed at the map's origin. The children sit at
+the parent's origin and the config's offset does the placement:
 
 ```ts
 import { toPhysicsColliders } from "@yagejs/tilemap";
@@ -387,12 +399,14 @@ import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 
 const walls = scene.spawn("walls");
 walls.add(new Transform());
-walls.add(new RigidBodyComponent({ type: "static" }));
 
 const configs = toPhysicsColliders(tilemap.getCollisionShapes("walls"));
-for (const cfg of configs) {
-  walls.add(new ColliderComponent(cfg));
-}
+configs.forEach((cfg, index) => {
+  const wall = walls.spawnChild(`wall-${index}`);
+  wall.add(new Transform());
+  wall.add(new RigidBodyComponent({ type: "static" }));
+  wall.add(new ColliderComponent(cfg));
+});
 ```
 
 `toPhysicsColliders` handles every emitted shape: rects → `box`, circles → `circle`, capsules → `capsule` (with `axis` preserved — `"x"` rotates the capsule 90°), polygons → `polygon`, polylines → `polyline`. Box, circle, and capsule colliders take the Tiled object's bounding-box center as their offset; polygon and polyline colliders keep the object's top-left position, with vertices relative to it. Rect and capsule `rotation` is forwarded to the physics config, with the center offset rotated about the Tiled pivot.

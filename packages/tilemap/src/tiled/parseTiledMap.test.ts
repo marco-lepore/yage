@@ -70,7 +70,11 @@ const { mockCompositeTilemap, mockAssets, mockRectangle } = vi.hoisted(() => {
     ) {}
   }
 
-  return { mockCompositeTilemap: MockCompositeTilemap, mockAssets, mockRectangle: MockRectangle };
+  return {
+    mockCompositeTilemap: MockCompositeTilemap,
+    mockAssets,
+    mockRectangle: MockRectangle,
+  };
 });
 
 vi.mock("@pixi/tilemap", () => ({
@@ -212,17 +216,90 @@ describe("createTilemapLayers", () => {
     // The CompositeTilemap should only have 1 tile call (for index 1)
   });
 
-  it("throws when no tileset matches a GID", () => {
+  it("skips a tile no tileset owns and keeps drawing the rest", () => {
+    const map = loadFixture("embedded.json");
+    const layer = map.layers[0] as { data: number[]; width: number };
+    // The fixture draws one tile; add a gid past the tileset's range.
+    layer.data = [1, 9999];
+    layer.width = 2;
+    map.width = 2;
+    mockAssets._cache.set("terrain.png:0", { label: "terrain tile" });
+
+    const [built] = createTilemapLayers(map);
+    const calls = (
+      built as unknown as InstanceType<typeof mockCompositeTilemap>
+    ).calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.x).toBe(0);
+  });
+
+  it("draws a collection tile whose id runs past the tileset's tilecount", () => {
+    // Deleting an image in Tiled keeps the other tiles' ids, so a collection
+    // tileset's ids can exceed `tilecount`; those tiles are still real.
+    mockAssets._cache.set("tile0.png", { label: "tile0" });
+    mockAssets._cache.set("tile5.png", { label: "tile5" });
+    const map: TiledMapData = {
+      width: 2,
+      height: 1,
+      tilewidth: 16,
+      tileheight: 16,
+      layers: [makeTileLayer("ground", [1, 6], 2)],
+      tilesets: [
+        {
+          firstgid: 1,
+          data: {
+            name: "props",
+            tilewidth: 16,
+            tileheight: 16,
+            tilecount: 2,
+            columns: 0,
+            tiles: [
+              { id: 0, image: "tiles/tile0.png" },
+              { id: 5, image: "tiles/tile5.png" },
+            ],
+          },
+        },
+      ],
+    };
+
+    const [built] = createTilemapLayers(map);
+    const calls = (
+      built as unknown as InstanceType<typeof mockCompositeTilemap>
+    ).calls;
+    expect(calls).toHaveLength(2);
+  });
+
+  it("throws naming a single-image tileset image that is not loaded", () => {
+    const map = loadFixture("embedded.json");
+    expect(() => createTilemapLayers(map)).toThrow(
+      /Tileset image "terrain\.png" for tileset ".*" is not loaded/,
+    );
+  });
+
+  it("throws naming a collection tile image that is not loaded", () => {
     const map: TiledMapData = {
       width: 1,
       height: 1,
       tilewidth: 16,
       tileheight: 16,
-      layers: [makeTileLayer("ground", [99], 1)],
-      tilesets: [],
+      layers: [makeTileLayer("ground", [1], 1)],
+      tilesets: [
+        {
+          firstgid: 1,
+          data: {
+            name: "props",
+            tilewidth: 16,
+            tileheight: 16,
+            tilecount: 1,
+            columns: 0,
+            tiles: [{ id: 0, image: "tiles/tile0.png" }],
+          },
+        },
+      ],
     };
-
-    expect(() => createTilemapLayers(map)).toThrow("No tileset found");
+    expect(() => createTilemapLayers(map)).toThrow(
+      /Tile image "tiles\/tile0\.png" for tileset "props" is not loaded/,
+    );
   });
 
   it("renders tiles from an embedded tileset", () => {
@@ -394,9 +471,9 @@ describe("createTilemapLayers", () => {
       (hidden as unknown as InstanceType<typeof mockCompositeTilemap>).visible,
     ).toBe(false);
     expect(
-      (dimmed as unknown as InstanceType<typeof mockCompositeTilemap>).calls.map(
-        ({ alpha }) => alpha,
-      ),
+      (
+        dimmed as unknown as InstanceType<typeof mockCompositeTilemap>
+      ).calls.map(({ alpha }) => alpha),
     ).toEqual([0.5]);
   });
 
@@ -439,7 +516,7 @@ describe("createTilemapLayers", () => {
     ]);
   });
 
-  it("names an unresolved embedded tileset by firstgid", () => {
+  it("skips the tiles of an unresolved tileset and builds the layer", () => {
     const map: TiledMapData = {
       width: 1,
       height: 1,
@@ -449,7 +526,11 @@ describe("createTilemapLayers", () => {
       tilesets: [{ firstgid: 1 }],
     };
 
-    expect(() => createTilemapLayers(map)).toThrow('tileset "firstgid 1"');
+    const [layer] = createTilemapLayers(map);
+    const calls = (
+      layer as unknown as InstanceType<typeof mockCompositeTilemap>
+    ).calls;
+    expect(calls).toHaveLength(0);
   });
 });
 
@@ -470,9 +551,41 @@ describe("extractObjects", () => {
           x: 0,
           y: 0,
           objects: [
-            { id: 1, name: "spawn1", class: "EnemySpawn", x: 0, y: 0, width: 0, height: 0, rotation: 0, visible: true, point: true },
-            { id: 2, name: "spawn2", class: "EnemySpawn", x: 32, y: 32, width: 0, height: 0, rotation: 0, visible: true, point: true },
-            { id: 3, name: "door", type: "Door", x: 64, y: 0, width: 16, height: 32, rotation: 0, visible: true },
+            {
+              id: 1,
+              name: "spawn1",
+              class: "EnemySpawn",
+              x: 0,
+              y: 0,
+              width: 0,
+              height: 0,
+              rotation: 0,
+              visible: true,
+              point: true,
+            },
+            {
+              id: 2,
+              name: "spawn2",
+              class: "EnemySpawn",
+              x: 32,
+              y: 32,
+              width: 0,
+              height: 0,
+              rotation: 0,
+              visible: true,
+              point: true,
+            },
+            {
+              id: 3,
+              name: "door",
+              type: "Door",
+              x: 64,
+              y: 0,
+              width: 16,
+              height: 32,
+              rotation: 0,
+              visible: true,
+            },
           ],
         } as ObjectGroup,
       ],
@@ -500,7 +613,18 @@ describe("extractObjects", () => {
           x: 0,
           y: 0,
           objects: [
-            { id: 1, name: "s1", class: "Spawn", x: 0, y: 0, width: 0, height: 0, rotation: 0, visible: true, point: true },
+            {
+              id: 1,
+              name: "s1",
+              class: "Spawn",
+              x: 0,
+              y: 0,
+              width: 0,
+              height: 0,
+              rotation: 0,
+              visible: true,
+              point: true,
+            },
           ],
         } as ObjectGroup,
         {
@@ -512,7 +636,17 @@ describe("extractObjects", () => {
           x: 0,
           y: 0,
           objects: [
-            { id: 2, name: "t1", class: "Trigger", x: 0, y: 0, width: 32, height: 32, rotation: 0, visible: true },
+            {
+              id: 2,
+              name: "t1",
+              class: "Trigger",
+              x: 0,
+              y: 0,
+              width: 32,
+              height: 32,
+              rotation: 0,
+              visible: true,
+            },
           ],
         } as ObjectGroup,
       ],
@@ -542,8 +676,27 @@ describe("extractObjects", () => {
           x: 0,
           y: 0,
           objects: [
-            { id: 1, name: "myObj", type: "Wall", x: 0, y: 0, width: 32, height: 32, rotation: 0, visible: true },
-            { id: 2, name: "unnamed", x: 0, y: 0, width: 16, height: 16, rotation: 0, visible: true },
+            {
+              id: 1,
+              name: "myObj",
+              type: "Wall",
+              x: 0,
+              y: 0,
+              width: 32,
+              height: 32,
+              rotation: 0,
+              visible: true,
+            },
+            {
+              id: 2,
+              name: "unnamed",
+              x: 0,
+              y: 0,
+              width: 16,
+              height: 16,
+              rotation: 0,
+              visible: true,
+            },
           ],
         } as ObjectGroup,
       ],
@@ -614,8 +767,29 @@ describe("toTilemapData", () => {
           x: 0,
           y: 0,
           objects: [
-            { id: 1, name: "wall", class: "Wall", x: 10, y: 20, width: 32, height: 16, rotation: 45, visible: true },
-            { id: 2, name: "spawn", type: "Spawn", x: 50, y: 60, width: 0, height: 0, rotation: 0, visible: true, point: true },
+            {
+              id: 1,
+              name: "wall",
+              class: "Wall",
+              x: 10,
+              y: 20,
+              width: 32,
+              height: 16,
+              rotation: 45,
+              visible: true,
+            },
+            {
+              id: 2,
+              name: "spawn",
+              type: "Spawn",
+              x: 50,
+              y: 60,
+              width: 0,
+              height: 0,
+              rotation: 0,
+              visible: true,
+              point: true,
+            },
           ],
         } as ObjectGroup,
       ],
@@ -662,8 +836,19 @@ describe("toTilemapData", () => {
           y: 0,
           objects: [
             {
-              id: 1, name: "slope", x: 10, y: 20, width: 0, height: 0, rotation: 0, visible: true,
-              polygon: [{ x: 0, y: 0 }, { x: 32, y: 0 }, { x: 32, y: 32 }],
+              id: 1,
+              name: "slope",
+              x: 10,
+              y: 20,
+              width: 0,
+              height: 0,
+              rotation: 0,
+              visible: true,
+              polygon: [
+                { x: 0, y: 0 },
+                { x: 32, y: 0 },
+                { x: 32, y: 32 },
+              ],
             },
           ],
         } as ObjectGroup,
@@ -673,7 +858,11 @@ describe("toTilemapData", () => {
 
     const result = toTilemapData(map);
     const slope = result.objectLayers[0]!.objects[0]!;
-    expect(slope.polygon).toEqual([{ x: 0, y: 0 }, { x: 32, y: 0 }, { x: 32, y: 32 }]);
+    expect(slope.polygon).toEqual([
+      { x: 0, y: 0 },
+      { x: 32, y: 0 },
+      { x: 32, y: 32 },
+    ]);
   });
 
   it("maps polyline objects", () => {
@@ -693,8 +882,18 @@ describe("toTilemapData", () => {
           y: 0,
           objects: [
             {
-              id: 1, name: "ledge", x: 10, y: 20, width: 0, height: 0, rotation: 0, visible: true,
-              polyline: [{ x: 0, y: 0 }, { x: 48, y: 16 }],
+              id: 1,
+              name: "ledge",
+              x: 10,
+              y: 20,
+              width: 0,
+              height: 0,
+              rotation: 0,
+              visible: true,
+              polyline: [
+                { x: 0, y: 0 },
+                { x: 48, y: 16 },
+              ],
             },
           ],
         } as ObjectGroup,
@@ -704,7 +903,10 @@ describe("toTilemapData", () => {
 
     const result = toTilemapData(map);
     const ledge = result.objectLayers[0]!.objects[0]!;
-    expect(ledge.polyline).toEqual([{ x: 0, y: 0 }, { x: 48, y: 16 }]);
+    expect(ledge.polyline).toEqual([
+      { x: 0, y: 0 },
+      { x: 48, y: 16 },
+    ]);
   });
 
   it("maps properties", () => {
@@ -724,7 +926,15 @@ describe("toTilemapData", () => {
           y: 0,
           objects: [
             {
-              id: 1, name: "door", class: "Door", x: 0, y: 0, width: 16, height: 32, rotation: 0, visible: true,
+              id: 1,
+              name: "door",
+              class: "Door",
+              x: 0,
+              y: 0,
+              width: 16,
+              height: 32,
+              rotation: 0,
+              visible: true,
               properties: [
                 { name: "locked", type: "bool", value: true },
                 { name: "key", type: "string", value: "gold_key" },

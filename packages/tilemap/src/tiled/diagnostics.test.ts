@@ -106,6 +106,91 @@ describe("validateTiledMap", () => {
     expect(validateTiledMap(loadFixture("oversized-tiles.json"))).toEqual([]);
   });
 
+  it("does not report a CSV-encoded layer that carries a flat number array", () => {
+    const map = loadFixture("clean.json") as unknown as {
+      layers: Record<string, unknown>[];
+    };
+    map.layers[0]!.encoding = "csv";
+
+    expect(validateTiledMap(map as unknown as TiledMapData)).toEqual([]);
+  });
+
+  it("reports the tiles a layer places from no tileset", () => {
+    const map = loadFixture("embedded.json") as unknown as {
+      layers: { name: string; data: number[]; width: number }[];
+    };
+    const layer = map.layers[0]!;
+    layer.width = 2;
+    layer.data = [1, 900];
+
+    const entry = validateTiledMap(map as unknown as TiledMapData).find(
+      (item) => item.code === "unknown-gid",
+    );
+    expect(entry?.severity).toBe("error");
+    expect(entry?.layer).toBe(layer.name);
+    expect(entry?.message).toContain("900 at column 1, row 0");
+  });
+
+  it("does not report a collection tile id past the tileset's tilecount", () => {
+    const map = {
+      width: 2,
+      height: 1,
+      tilewidth: 16,
+      tileheight: 16,
+      layers: [
+        {
+          type: "tilelayer",
+          id: 1,
+          name: "ground",
+          width: 2,
+          height: 1,
+          x: 0,
+          y: 0,
+          opacity: 1,
+          visible: true,
+          data: [1, 6],
+        },
+      ],
+      tilesets: [
+        {
+          firstgid: 1,
+          name: "props",
+          tilewidth: 16,
+          tileheight: 16,
+          tilecount: 2,
+          columns: 0,
+          tiles: [
+            { id: 0, image: "tile0.png" },
+            { id: 5, image: "tile5.png" },
+          ],
+        },
+      ],
+    };
+
+    const codes = validateTiledMap(map as unknown as TiledMapData).map(
+      (item) => item.code,
+    );
+    expect(codes).not.toContain("unknown-gid");
+  });
+
+  it("summarises the unknown tile ids past the first ten", () => {
+    const map = loadFixture("embedded.json") as unknown as {
+      layers: { data: number[]; width: number; height: number }[];
+    };
+    const layer = map.layers[0]!;
+    layer.width = 12;
+    layer.height = 1;
+    layer.data = Array.from({ length: 12 }, (_, index) => 900 + index);
+
+    const entry = validateTiledMap(map as unknown as TiledMapData).find(
+      (item) => item.code === "unknown-gid",
+    );
+    expect(entry?.message).toContain("900 at column 0, row 0");
+    expect(entry?.message).toContain("909 at column 9, row 0");
+    expect(entry?.message).not.toContain("910");
+    expect(entry?.message).toContain("2 more unknown tile ids");
+  });
+
   it("does not throw when map fields contain malformed values", () => {
     const malformed = {
       orientation: { unexpected: true },

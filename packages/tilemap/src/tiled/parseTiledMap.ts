@@ -22,6 +22,8 @@ import type { TileAnimationSupport } from "./animation.js";
 import { validateTiledMap } from "./diagnostics.js";
 import { tileIdFromGid, tileRotationFromGid } from "./gid.js";
 import { resolveTilesetData } from "./resolveTilesetData.js";
+import { findTilesetIndexForGid } from "./tilesetRange.js";
+import type { TilesetRange } from "./tilesetRange.js";
 
 /** Objects of one class on one raw Tiled object layer. */
 export interface TiledObjectGroup {
@@ -49,13 +51,7 @@ export function toTilemapData(map: TiledMapData): TilemapData {
   const tileLayers: TileLayerData[] = [];
   const objectLayers: ObjectLayerData[] = [];
 
-  // Resolve each tileset once. An embedded tileset that never went through the
-  // loader is rebuilt on every call, so resolving per object would copy it
-  // once per tile object.
-  const tilesetMatches: TilesetMatch[] = map.tilesets.map((ref) => ({
-    ref,
-    data: resolveTilesetData(ref),
-  }));
+  const tilesetMatches = toTilesetMatches(map);
 
   for (const layer of map.layers) {
     if (layer.type === "tilelayer") {
@@ -209,13 +205,27 @@ function tiledObjectToMapObject(
 
 // ─── Tiled-specific rendering ───────────────────────────────────────
 
-/**
- * Resolve the tileset that owns a given global tile ID.
- * Tilesets are sorted by firstgid; we find the last tileset whose firstgid <= gid.
- */
-interface TilesetMatch {
+/** A map's tileset reference with its resolved data and its gid range. */
+interface TilesetMatch extends TilesetRange {
   ref: TilesetRef;
   data: TilesetData | null;
+}
+
+/**
+ * Resolve each tileset once. An embedded tileset that never went through the
+ * loader is rebuilt on every call, so resolving per tile or per object would
+ * copy it once per drawn tile.
+ */
+function toTilesetMatches(map: TiledMapData): TilesetMatch[] {
+  return map.tilesets.map((ref) => {
+    const data = resolveTilesetData(ref);
+    return {
+      ref,
+      data,
+      firstgid: ref.firstgid,
+      ...(data?.image ? { tilecount: data.tilecount } : {}),
+    };
+  });
 }
 
 type TileAnimationCache = Map<
@@ -230,16 +240,12 @@ export function _tilemapLayerHasAnimation(layer: object): boolean {
   return animatedTilemapLayers.has(layer);
 }
 
-function findTileset(tilesets: TilesetMatch[], gid: number): TilesetMatch | null {
-  let result: TilesetMatch | null = null;
-  for (const ts of tilesets) {
-    if (ts.ref.firstgid <= gid) {
-      if (!result || ts.ref.firstgid > result.ref.firstgid) {
-        result = ts;
-      }
-    }
-  }
-  return result;
+function findTileset(
+  tilesets: TilesetMatch[],
+  gid: number,
+): TilesetMatch | null {
+  const index = findTilesetIndexForGid(tilesets, gid);
+  return index < 0 ? null : tilesets[index]!;
 }
 
 /**
@@ -268,7 +274,12 @@ function resolveTileTexture(
     const filename = filenameMatch?.[0];
     if (!filename) return null;
     const baseTex = Assets.get<Texture>(filename);
-    if (!baseTex) return null;
+    if (!baseTex) {
+      throw new Error(
+        `Tileset image "${data.image}" for tileset "${tilesetLabel(tileset)}" ` +
+          "is not loaded. Preload it before adding the map.",
+      );
+    }
 
     const cols = data.columns;
     const tw = data.tilewidth;
@@ -296,7 +307,13 @@ function resolveTileTexture(
     const filename = filenameMatch?.[0];
     if (!filename) return null;
     const tex = Assets.get<Texture>(filename);
-    return tex ?? null;
+    if (!tex) {
+      throw new Error(
+        `Tile image "${tileData.image}" for tileset "${tilesetLabel(tileset)}" ` +
+          "is not loaded. Preload the atlas that contains it before adding the map.",
+      );
+    }
+    return tex;
   }
 
   return null;
@@ -307,20 +324,20 @@ function resolveTileTexture(
  * tileset sizes every tile on its own, and its `tileheight` records only the
  * tallest of them, so the per-tile height is the one that places the image.
  */
-function drawnTileHeight(data: TilesetData, localId: number): number {
-  if (!data.image) {
-    const tileData = data.tiles?.find((entry) => entry.id === localId);
-    if (tileData?.imageheight !== undefined) return tileData.imageheight;
-  }
-  return data.tileheight;
-}
-
 function tilesetLabel(tileset: TilesetMatch): string {
   return (
     tileset.data?.name ??
     tileset.ref.source ??
     `firstgid ${tileset.ref.firstgid}`
   );
+}
+
+function drawnTileHeight(data: TilesetData, localId: number): number {
+  if (!data.image) {
+    const tileData = data.tiles?.find((entry) => entry.id === localId);
+    if (tileData?.imageheight !== undefined) return tileData.imageheight;
+  }
+  return data.tileheight;
 }
 
 function cachedTileAnimation(
@@ -359,13 +376,7 @@ export function createTilemapLayers(
     ? tileLayers.filter((l) => layerNames.includes(l.name))
     : tileLayers;
 
-  // Resolve each tileset once. An embedded tileset that never went through
-  // the loader is rebuilt on every call, so resolving per tile would copy it
-  // once per drawn tile.
-  const tilesets = map.tilesets.map((ref) => ({
-    ref,
-    data: resolveTilesetData(ref),
-  }));
+  const tilesets = toTilesetMatches(map);
   const animationCache: TileAnimationCache = new Map();
 
   return filtered.map((layer) => {
@@ -382,15 +393,19 @@ export function createTilemapLayers(
       const gid = tileIdFromGid(rawGid);
       if (gid === 0) continue;
 
+      // A gid no tileset owns, and a tile whose tileset never resolved, are
+      // dropped here so the rest of the map still draws. `validateTiledMap`
+      // reports both, as `unknown-gid` and `unresolved-tileset`/`tsx-tileset`.
       const tileset = findTileset(tilesets, gid);
-      if (!tileset) {
-        throw new Error(`No tileset found for tile GID ${gid}`);
-      }
+      if (!tileset?.data) continue;
+      const tilesetData = tileset.data;
 
       const localId = gid - tileset.ref.firstgid;
-      const animationSupport = tileset.data
-        ? cachedTileAnimation(animationCache, tileset.data, localId)
-        : null;
+      const animationSupport = cachedTileAnimation(
+        animationCache,
+        tilesetData,
+        localId,
+      );
       const animation =
         animationSupport?.supported === true
           ? animationSupport.animation
@@ -403,24 +418,21 @@ export function createTilemapLayers(
       const textureGid = animation
         ? tileset.ref.firstgid + animation.firstFrameId
         : gid;
+      // A missing image throws by name inside `resolveTileTexture`; only a
+      // collection tile that names no image is skipped here.
       const texture = resolveTileTexture(textureGid, tileset);
-      if (!texture) {
-        throw new Error(
-          `Could not resolve texture for tile GID ${textureGid} in tileset "${tilesetLabel(tileset)}"`,
-        );
-      }
+      if (!texture) continue;
 
       const x = index % width;
       const y = Math.floor(index / width);
-      const tileOffset = tileset.data?.tileoffset;
+      const tileOffset = tilesetData.tileoffset;
       const rotate = tileRotationFromGid(rawGid);
       // Tiled anchors a tile to the bottom-left of its cell, so an image
       // taller than the map's grid overhangs the cell upward. Width needs no
       // correction: drawing from the left edge already overhangs to the right.
-      const overhang = tileset.data
-        ? drawnTileHeight(tileset.data, textureGid - tileset.ref.firstgid) -
-          map.tileheight
-        : 0;
+      const overhang =
+        drawnTileHeight(tilesetData, textureGid - tileset.ref.firstgid) -
+        map.tileheight;
       // The tilemap shader reads a per-tile alpha attribute and ignores the
       // container's, so layer opacity has to be baked into each tile.
       tilemap.tile(

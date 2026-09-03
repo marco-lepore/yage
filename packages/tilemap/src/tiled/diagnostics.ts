@@ -1,7 +1,13 @@
 import { resolveTilesetData } from "./resolveTilesetData.js";
 import { readTileAnimation } from "./animation.js";
+import { tileIdFromGid } from "./gid.js";
+import { findTilesetIndexForGid } from "./tilesetRange.js";
+import type { TilesetRange } from "./tilesetRange.js";
 import type { TilemapDiagnostic } from "../types.js";
 import type { TiledMapData, TilesetRef } from "./types.js";
+
+/** Distinct ids an `unknown-gid` message names before it counts the rest. */
+const MAX_LISTED_UNKNOWN_GIDS = 10;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -28,7 +34,54 @@ function descendantNames(layer: Record<string, unknown>): string[] {
   return names;
 }
 
-function validateLayer(layer: unknown, diagnostics: TilemapDiagnostic[]): void {
+/**
+ * Report the tiles a layer places from no tileset. Tiled writes such a gid when
+ * a tileset was removed from the map without clearing the tiles that used it,
+ * or when a hand-built map numbers a tile past its tileset's `tilecount`.
+ */
+function validateLayerGids(
+  layer: Record<string, unknown>,
+  name: string,
+  tilesets: readonly TilesetRange[],
+  diagnostics: TilemapDiagnostic[],
+): void {
+  const data = layer.data;
+  const width = layer.width;
+  if (!isNumberArray(data) || typeof width !== "number" || width <= 0) return;
+
+  // One entry per distinct gid, at the first cell it appears in: a map that
+  // lost a tileset repeats the same handful of gids across thousands of cells.
+  const firstCell = new Map<number, { col: number; row: number }>();
+  for (let index = 0; index < data.length; index++) {
+    const gid = tileIdFromGid(data[index]!);
+    if (gid === 0 || firstCell.has(gid)) continue;
+    if (findTilesetIndexForGid(tilesets, gid) >= 0) continue;
+    firstCell.set(gid, {
+      col: index % width,
+      row: Math.floor(index / width),
+    });
+  }
+  if (firstCell.size === 0) return;
+
+  const listed = [...firstCell]
+    .slice(0, MAX_LISTED_UNKNOWN_GIDS)
+    .map(([gid, cell]) => `${gid} at column ${cell.col}, row ${cell.row}`);
+  const remaining = firstCell.size - listed.length;
+  const summary =
+    remaining > 0 ? ` …and ${remaining} more unknown tile ids.` : "";
+  diagnostics.push({
+    code: "unknown-gid",
+    message: `Tile layer "${name}" places tiles whose ids belong to no tileset, so those cells are empty: ${listed.join("; ")}.${summary}`,
+    severity: "error",
+    layer: name,
+  });
+}
+
+function validateLayer(
+  layer: unknown,
+  tilesets: readonly TilesetRange[],
+  diagnostics: TilemapDiagnostic[],
+): void {
   if (!isRecord(layer)) return;
 
   const name = recordName(layer, "unnamed layer");
@@ -55,12 +108,7 @@ function validateLayer(layer: unknown, diagnostics: TilemapDiagnostic[]): void {
         layer: name,
       });
     }
-    if (
-      layer.chunks === undefined &&
-      (layer.encoding !== undefined ||
-        layer.compression !== undefined ||
-        !isNumberArray(layer.data))
-    ) {
+    if (layer.chunks === undefined && !isNumberArray(layer.data)) {
       diagnostics.push({
         code: "encoded-layer-data",
         message: `Tile layer "${name}" does not contain a flat number array, so its tile content is dropped.`,
@@ -68,6 +116,7 @@ function validateLayer(layer: unknown, diagnostics: TilemapDiagnostic[]): void {
         layer: name,
       });
     }
+    validateLayerGids(layer, name, tilesets, diagnostics);
     return;
   }
 
@@ -107,7 +156,9 @@ function validateLayer(layer: unknown, diagnostics: TilemapDiagnostic[]): void {
       layer: name,
     });
     if (Array.isArray(layer.layers)) {
-      for (const child of layer.layers) validateLayer(child, diagnostics);
+      for (const child of layer.layers) {
+        validateLayer(child, tilesets, diagnostics);
+      }
     }
     return;
   }
@@ -133,10 +184,26 @@ function tilesetName(ref: Record<string, unknown>): string {
     : "unknown tileset";
 }
 
+/** Gid range of every tileset the map declares, in declaration order. */
+function tilesetRanges(rawMap: Record<string, unknown>): TilesetRange[] {
+  if (!Array.isArray(rawMap.tilesets)) return [];
+  const ranges: TilesetRange[] = [];
+  for (const value of rawMap.tilesets) {
+    if (!isRecord(value) || typeof value.firstgid !== "number") continue;
+    const resolved = resolveTilesetData(value as unknown as TilesetRef);
+    ranges.push({
+      firstgid: value.firstgid,
+      ...(resolved?.image ? { tilecount: resolved.tilecount } : {}),
+    });
+  }
+  return ranges;
+}
+
 /** Report the Tiled features this package does not support in a map. */
 export function validateTiledMap(map: TiledMapData): TilemapDiagnostic[] {
   const diagnostics: TilemapDiagnostic[] = [];
   const rawMap = map as unknown as Record<string, unknown>;
+  const tilesets = tilesetRanges(rawMap);
 
   if (rawMap.orientation !== undefined && rawMap.orientation !== "orthogonal") {
     diagnostics.push({
@@ -155,7 +222,9 @@ export function validateTiledMap(map: TiledMapData): TilemapDiagnostic[] {
   }
 
   if (Array.isArray(rawMap.layers)) {
-    for (const layer of rawMap.layers) validateLayer(layer, diagnostics);
+    for (const layer of rawMap.layers) {
+      validateLayer(layer, tilesets, diagnostics);
+    }
   }
 
   if (Array.isArray(rawMap.tilesets)) {
