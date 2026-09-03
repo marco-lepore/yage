@@ -165,11 +165,12 @@ describe("texture loader (loadTexture)", () => {
 
   it("leaves the image's sampling alone when no scaleMode is asked for", async () => {
     const loaded = new mocks.MockTexture();
+    loaded.source.scaleMode = "linear";
     mocks.assetsLoad.mockResolvedValue(loaded as never);
 
     await loadTexture("hero.png");
 
-    expect(loaded.source.scaleMode).toBeUndefined();
+    expect(loaded.source.scaleMode).toBe("linear");
   });
 });
 

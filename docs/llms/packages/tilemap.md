@@ -57,9 +57,12 @@ The map handle owns its tileset images: loading it loads every single-image
 tileset it references, and `assets.unload(MapData)` releases them. The images
 are ordinary counted `texture()` handles, so a second map on the same tileset,
 or a sprite drawing from the same sheet, keeps the image alive until it too
-releases it. Unloading the map also drops any external tileset (`.tsj`) file
-it inlined. Don't also declare the tileset PNG as a `texture()` or
-`renderAsset()` handle — one file, one declaration.
+releases it. A sprite drawing from the tileset sheet should declare
+`texture(tilesetPath)` in its own preload: same type and path is the same
+count, so the image survives the map's unload. Do not declare that file under
+a different handle type — `renderAsset()` counts separately while both loaders
+unload the same Pixi path, so the first unload destroys it for the other.
+Unloading the map also drops any external tileset (`.tsj`) file it inlined.
 
 A collection-of-images tileset is the exception: it names one image per tile
 and draws them from an atlas you preload yourself.
@@ -126,6 +129,12 @@ interface TilemapComponentOptions extends VisualComponentOptions {
 
 At least one of `source`, `map`, or `mapKey` must be supplied. Raw `map` data
 needs an explicit `keyPrefix` when you use Tiled-derived auto-keys.
+
+Only `source` — a `tiledMap()` handle loaded through the asset manager — brings
+the tileset images with it. A map reached by `mapKey` or handed over as raw
+`map` data was loaded some other way, so preload each tileset image yourself
+(`texture(path)`, or `registerTexture` under the key the tileset's `image`
+names). Without it the component throws when it is added, naming the image.
 
 ## Tile Queries
 

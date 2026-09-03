@@ -307,6 +307,28 @@ describe("AssetManager", () => {
     expect(am.has(handle)).toBe(false);
   });
 
+  it("retrying a failed manifest joins a sibling still loading", async () => {
+    let release!: (value: string) => void;
+    const slow = new Promise<string>((resolve) => (release = resolve));
+    const load = vi.fn(async (path: string) =>
+      path === "slow.dat" ? slow : Promise.reject(new Error("nope")),
+    );
+    am.registerLoader("fake", { load, unload: vi.fn() });
+    const fast = new AssetHandle<string>("fake", "fails.dat");
+    const slowHandle = new AssetHandle<string>("fake", "slow.dat");
+
+    // The fast handle rejects while the slow one is still in flight.
+    const first = am.loadAll([fast, slowHandle]);
+    await expect(first).rejects.toThrow("nope");
+    const retry = am.loadAll([slowHandle]);
+    release("loaded");
+    await retry;
+
+    // One load, so one asset — the losing copy would never reach `unload`.
+    expect(load.mock.calls.filter((c) => c[0] === "slow.dat")).toHaveLength(1);
+    expect(am.get(slowHandle)).toBe("loaded");
+  });
+
   it("stays quiet when two declarations of one path agree", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const loader = fakeLoader((p) => `loaded:${p}`);

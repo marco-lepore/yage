@@ -31,6 +31,7 @@ export class AssetManager {
   private refCounts = new Map<string, number>();
   /** Paths already warned about, so one authoring mistake warns once. */
   private warnedConflicts = new Set<string>();
+  private readonly loadsInFlight = new Map<string, Promise<unknown>>();
 
   /** Register a loader for a given asset type. Called by plugins during install(). */
   registerLoader(type: string, loader: AssetLoader): void {
@@ -101,14 +102,7 @@ export class AssetManager {
     onProgress?.(0);
     await Promise.all(
       toLoad.map(async (handle) => {
-        const loader = this.loaders.get(handle.type);
-        if (!loader) {
-          throw new Error(
-            `No loader registered for asset type "${handle.type}". Missing plugin?`,
-          );
-        }
-        const asset = await loader.load(handle.path, handle.data);
-        this.cache.set(this.key(handle), { asset, data: handle.data });
+        await this.loadOnce(handle);
         onProgress?.(++done / toLoad.length);
       }),
     );
@@ -154,6 +148,36 @@ export class AssetManager {
   /** Add one reference to a cache key. */
   private retain(key: string): void {
     this.refCounts.set(key, (this.refCounts.get(key) ?? 0) + 1);
+  }
+
+  /**
+   * Run a handle's loader, or join the run already in flight for its key. A
+   * call that rejects leaves its slower siblings loading, so the retry that
+   * follows would otherwise start a second load for one of them: two
+   * completions writing one cache slot, and the asset that lost never reaching
+   * `unload`.
+   */
+  private loadOnce(handle: AssetHandle<unknown>): Promise<unknown> {
+    const key = this.key(handle);
+    const running = this.loadsInFlight.get(key);
+    if (running) return running;
+    const loader = this.loaders.get(handle.type);
+    if (!loader) {
+      return Promise.reject(
+        new Error(
+          `No loader registered for asset type "${handle.type}". Missing plugin?`,
+        ),
+      );
+    }
+    const run = loader
+      .load(handle.path, handle.data)
+      .then((asset) => {
+        this.cache.set(key, { asset, data: handle.data });
+        return asset;
+      })
+      .finally(() => this.loadsInFlight.delete(key));
+    this.loadsInFlight.set(key, run);
+    return run;
   }
 
   private key(handle: AssetHandle<unknown>): string {
