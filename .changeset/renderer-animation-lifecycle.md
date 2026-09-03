@@ -18,10 +18,10 @@ Signal interrupted one-shots, validate animation names and sheet grids, and stop
   from data.
 - `LayeredAnimationController.play`, `playOneShot` and `forcePlay` throw
   naming the layer that lacks the animation before any layer switches, so the
-  layers can no longer end up on different animations. An automatically timed
-  `playOneShot` checks the shared `startFrame` and `speed` against every layer
-  the same way, which matters when layers define the same name with different
-  frame counts.
+  layers can no longer end up on different animations. `playOneShot` checks the shared
+  `startFrame` and `speed` against every layer the same way, an explicit
+  duration included, which matters when layers define the same name with
+  different frame counts.
 - Add `startFrame` and `speed` to `playOneShot` (and to `calcDuration`). The
   automatic lock duration is derived from the frames that will actually play,
   so the lock and the visible clip end together.
@@ -33,8 +33,9 @@ Signal interrupted one-shots, validate animation names and sheet grids, and stop
   cannot fire for an animation its author never saw.
 - Move the grid validation into the step every slicing entry shares.
   `sliceGrid`, `sliceSheet` and `sliceTextureFrames` now check that each field
-  is a finite number at or above its minimum and that the grid fits inside the
-  texture, throwing naming the function and the offending field. A
+  is a finite number at or above its minimum, that `columns` and `count` are
+  whole numbers, and that the grid fits inside the texture, throwing naming
+  the function and the offending field. A
   `frameWidth` of 0 previously derived an infinite frame count and looped
   forever; an oversize grid produced frames that read past the image.
 - Sheet slicing no longer switches the shared texture source to nearest

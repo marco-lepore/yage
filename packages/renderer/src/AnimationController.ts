@@ -247,6 +247,24 @@ export class AnimationController<T extends string = string> extends Component {
     return this.calcDurationAtSpeed(name, this._speed, shotSpeed, startFrame);
   }
 
+  /**
+   * Throw if this controller would reject the timing, without deriving a
+   * duration from it. `LayeredAnimationController` checks every layer before
+   * any layer switches; when the caller passes an explicit shared duration,
+   * no layer's own duration feeds the timer, so only the frame and speed
+   * gates apply.
+   * @internal
+   */
+  _assertTiming(name: T, options: AnimationTimingOptions | undefined): void {
+    const def = this._def(name, "playOneShot");
+    this._validateTiming(
+      def,
+      options?.startFrame ?? 0,
+      options?.speed ?? 1,
+      "playOneShot",
+    );
+  }
+
   private calcDurationAtSpeed(
     name: T,
     controllerSpeed: number,

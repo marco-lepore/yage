@@ -29,3 +29,13 @@ export function assertPositiveNumber(
   if (Number.isFinite(value) && value > 0) return;
   throw new Error(`${context}: ${name} must be finite and > 0, got ${value}.`);
 }
+
+/** Throws unless `value` is a whole count, at least 1. */
+export function assertCount(
+  context: string,
+  name: string,
+  value: number,
+): void {
+  if (Number.isInteger(value) && value >= 1) return;
+  throw new Error(`${context}: ${name} must be an integer >= 1, got ${value}.`);
+}

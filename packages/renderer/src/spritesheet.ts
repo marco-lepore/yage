@@ -2,7 +2,7 @@ import { Texture, Rectangle, Assets } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
 import type { TextureSliceOptions } from "./public-types.js";
 import { resolveTextureInput } from "./assets.js";
-import { assertFiniteNumber } from "./internal/validate.js";
+import { assertCount, assertFiniteNumber } from "./internal/validate.js";
 
 /** Grid options with defaults applied against a concrete texture. */
 interface GridLayout {
@@ -74,11 +74,13 @@ function validateGridLayout(
     ["startY", layout.startY, 0],
     ["gapX", layout.gapX, 0],
     ["gapY", layout.gapY, 0],
-    ["columns", layout.columns, 1],
-    ["count", layout.count, 1],
   ] as const) {
     assertFiniteNumber(context, name, value, min);
   }
+  // Both index the grid: a fractional columns places frames at fractional
+  // offsets, and a fractional count slices one frame too many.
+  assertCount(context, "columns", layout.columns);
+  assertCount(context, "count", layout.count);
   const usedColumns = Math.min(layout.count, layout.columns);
   const rows = Math.ceil(layout.count / layout.columns);
   const maxX =

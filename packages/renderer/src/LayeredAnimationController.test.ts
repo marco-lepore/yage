@@ -473,6 +473,28 @@ describe("LayeredAnimationController", () => {
     expect(short.current).toBe("idle");
   });
 
+  it("checks an explicit-duration startFrame against every layer before switching one", () => {
+    const { scene } = createRendererTestContext();
+    const long = makeLayer(scene, 10);
+    const short = makeLayer(scene, 5);
+    const host = spawnEntityInScene(scene);
+    const layered = host.add(
+      new LayeredAnimationController<Anim>({ controllers: [long, short] }),
+    );
+
+    // The leader accepts frame 7; the 5-frame layer does not. An explicit
+    // duration must not skip the check, or the leader switches and the layers
+    // end up on different animations.
+    expect(() =>
+      layered.playOneShot("attack", { duration: 1, startFrame: 7 }),
+    ).toThrow(/startFrame 7 is out of range \(0-4\)/);
+    expect(layered.current).toBe("");
+    expect(layered.locked).toBe(false);
+    expect(long.current).toBe("idle");
+    expect(long.locked).toBe(false);
+    expect(short.current).toBe("idle");
+  });
+
   it("leaves the wrapper unlocked when an explicit-duration play is rejected", () => {
     const { scene } = createRendererTestContext();
     const a = makeLayer(scene, 5);

@@ -124,9 +124,9 @@ export class LayeredAnimationController<
    * an infinite lock duration and are released with the wrapper. Pass an
    * explicit duration to keep the shared timer independent of playback speed.
    *
-   * With automatic timing the shared `startFrame` and `speed` are checked
-   * against every layer first, so a value one layer rejects throws with every
-   * layer still on its previous animation.
+   * The shared `startFrame` and `speed` are checked against every layer
+   * first, so a value one layer rejects throws with every layer still on its
+   * previous animation.
    *
    * The wrapper owns the interruption signal: exactly one of `onComplete` and
    * `onCancel` runs per one-shot, and layers never receive a cancel of their
@@ -143,11 +143,12 @@ export class LayeredAnimationController<
     };
     // Layers can define the same name with different frame counts, so a
     // startFrame legal for one is out of range for another. Validate the
-    // shared timing against every layer before anything mutates.
-    if (options?.duration === undefined) {
-      for (const controller of this._controllers) {
-        controller.calcDuration(name, timing);
-      }
+    // shared timing against every layer before anything mutates. An explicit
+    // duration drives the shared timer on its own, so those layers are only
+    // checked for the frame and speed they will play at.
+    for (const controller of this._controllers) {
+      if (options?.duration === undefined) controller.calcDuration(name, timing);
+      else controller._assertTiming(name, timing);
     }
 
     const cancelled = this._onCancel;

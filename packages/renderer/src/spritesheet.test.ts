@@ -113,6 +113,17 @@ describe("sliceGrid", () => {
     }
   });
 
+  it("rejects a fractional columns or count", () => {
+    // A caller deriving these from a division: `count: 1.5` used to slice two
+    // frames, and a fractional columns placed frames at fractional offsets.
+    expect(() =>
+      sliceGrid(Texture.from(""), { frameWidth: 48, count: 1.5 }),
+    ).toThrow(/^sliceGrid: count must be an integer >= 1, got 1.5/);
+    expect(() =>
+      sliceGrid(Texture.from(""), { frameWidth: 48, columns: 1.5, count: 1 }),
+    ).toThrow(/^sliceGrid: columns must be an integer >= 1, got 1.5/);
+  });
+
   it("rejects a grid larger than the texture", () => {
     expect(() =>
       sliceGrid(Texture.from(""), { frameWidth: 48, columns: 3, count: 3 }),
@@ -216,7 +227,7 @@ describe("resolveFrames — sheet sources", () => {
     );
     expect(() =>
       resolveFrames({ sheet: "s.png", frameWidth: 48, count: 0 }),
-    ).toThrow(/count must be finite and >= 1/);
+    ).toThrow(/count must be an integer >= 1/);
   });
 
   it("leaves texture sampling alone", () => {
