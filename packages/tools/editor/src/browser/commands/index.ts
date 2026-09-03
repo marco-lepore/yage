@@ -33,6 +33,7 @@ export {
   inboundReferences,
   referenceFieldNames,
   referenceTargets,
+  referenceUses,
   rewriteReferences,
 } from "./references.js";
 export type { ReferenceUse } from "./references.js";

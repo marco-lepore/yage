@@ -68,6 +68,14 @@ export interface OverlayView {
    * without the marks there is nothing to aim at in order to select it.
    */
   readonly marks?: readonly PlacedMark[] | undefined;
+  /**
+   * One line per reference the selection is an end of: what it points at, and
+   * what points at it.
+   *
+   * Drawn only around the selection, so at most a handful are ever on screen
+   * and a level's references never crowd the picture.
+   */
+  readonly links?: readonly OverlayLink[] | undefined;
   /** The rectangle a marquee is dragging out, while one is being dragged. */
   readonly marquee?: WorldBounds | undefined;
   /**
@@ -81,6 +89,12 @@ export interface OverlayView {
 export interface OverlayMarks {
   readonly boxes: readonly WorldBounds[];
   readonly points: readonly EditorPoint[];
+}
+
+/** One reference, from the placement that holds it to the one it names. */
+export interface OverlayLink {
+  readonly from: EditorPoint;
+  readonly to: EditorPoint;
 }
 
 /**
@@ -147,6 +161,22 @@ const COVERING_ALPHA = 0.75;
  */
 export const CASING_COLOR = 0x0b0e14;
 const CASING_PIXELS = 2;
+/**
+ * A reference line's colour, which is none of the four above: it is neither a
+ * selection nor an axis, and reading it as either would say the wrong thing
+ * about what a drag would move.
+ */
+const LINK_COLOR = 0xc084fc;
+const LINK_ALPHA = 0.9;
+const LINK_LINE_PIXELS = 1.5;
+/** How long one dash is, in screen pixels. */
+export const LINK_DASH_PIXELS = 7;
+/** How much space follows each dash, in screen pixels. */
+const LINK_GAP_PIXELS = 5;
+/** How far back from the target the arrowhead's two barbs reach. */
+const LINK_HEAD_PIXELS = 10;
+/** The angle each barb makes with the line, in radians. */
+const LINK_HEAD_ANGLE = Math.PI / 6;
 /** How heavily a mark's drawing is stroked, in screen pixels. */
 const MARK_LINE_PIXELS = 1.5;
 /** How solid the plate behind a mark is, so the drawing reads over scenery. */
@@ -171,6 +201,12 @@ export function drawOverlay(target: OverlayTarget, view: OverlayView): void {
     casing: (CARRIED_LINE_PIXELS + CASING_PIXELS) * view.perScreenPixel,
     alpha: CARRIED_ALPHA,
   };
+
+  // Under everything else: a line ends on two origins, and an origin is where
+  // a gizmo handle, a crosshair and a row of marks all sit.
+  for (const link of view.links ?? []) {
+    drawLink(target, link, view.perScreenPixel);
+  }
 
   // What the selection carries goes down first, so the selection sits on top
   // of it wherever a child overlaps its parent.
@@ -235,6 +271,61 @@ export function drawOverlay(target: OverlayTarget, view: OverlayView): void {
   }
 
   drawArms(target, gizmo.mode, gizmo.anchor, view.perScreenPixel, line, casing);
+}
+
+/**
+ * One reference: a dashed line from the placement holding it to the placement
+ * it names, with an arrowhead at the target.
+ *
+ * Dashed rather than solid so it is not read as an edge of anything, and
+ * headed because a reference runs one way and two placements can point at each
+ * other. Both the dashes and the head are counts of screen pixels, so a long
+ * line and a short one are drawn from the same pattern at any zoom.
+ */
+function drawLink(
+  target: OverlayTarget,
+  link: OverlayLink,
+  perScreenPixel: number,
+): void {
+  const span = Math.hypot(link.to.x - link.from.x, link.to.y - link.from.y);
+  // Two ends at one point have no direction, so there is no line to dash and
+  // no way to aim a head.
+  if (span === 0) return;
+  const along = {
+    x: (link.to.x - link.from.x) / span,
+    y: (link.to.y - link.from.y) / span,
+  };
+  const style = {
+    color: LINK_COLOR,
+    width: LINK_LINE_PIXELS * perScreenPixel,
+    alpha: LINK_ALPHA,
+  };
+
+  const dash = LINK_DASH_PIXELS * perScreenPixel;
+  const stride = dash + LINK_GAP_PIXELS * perScreenPixel;
+  // A span shorter than one dash draws that span, so two placements a few
+  // pixels apart are still joined by something.
+  for (let start = 0; start < span; start += stride) {
+    const end = Math.min(start + dash, span);
+    target
+      .moveTo(link.from.x + along.x * start, link.from.y + along.y * start)
+      .lineTo(link.from.x + along.x * end, link.from.y + along.y * end)
+      .stroke(style);
+  }
+
+  const head = LINK_HEAD_PIXELS * perScreenPixel;
+  for (const turn of [LINK_HEAD_ANGLE, -LINK_HEAD_ANGLE]) {
+    const cos = Math.cos(turn);
+    const sin = Math.sin(turn);
+    const back = { x: -along.x * head, y: -along.y * head };
+    target
+      .moveTo(link.to.x, link.to.y)
+      .lineTo(
+        link.to.x + back.x * cos - back.y * sin,
+        link.to.y + back.x * sin + back.y * cos,
+      )
+      .stroke(style);
+  }
 }
 
 /**

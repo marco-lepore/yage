@@ -7,6 +7,7 @@ import {
   type Engine,
   type System,
 } from "@yagejs/core";
+import { defineParams, param } from "@yagejs/level";
 import type { LevelCatalog, LevelInstance, PreparedLevel } from "@yagejs/level";
 import type {
   LevelDocument,
@@ -165,6 +166,35 @@ function document(...placements: (string | LevelPlacement)[]): LevelDocument {
     extensions: {},
   };
 }
+
+/**
+ * A catalog answering for the reference parameters each named type declares.
+ *
+ * That is the only thing the coordinator asks a catalog for: what a placement
+ * is made of goes through the stand-in `prepareLevel` above.
+ */
+function catalogDeclaring(
+  references: Readonly<Record<string, readonly string[]>> = {},
+): LevelCatalog {
+  const entries = Object.entries(references).map(([id, fields]) => ({
+    id,
+    declaration: {
+      id,
+      version: 1,
+      params: defineParams(
+        Object.fromEntries(
+          fields.map((field) => [field, param.entityRef({ types: [] })]),
+        ),
+      ),
+    },
+  }));
+  return {
+    get: (typeId: string) => entries.find((entry) => entry.id === typeId),
+  } as unknown as LevelCatalog;
+}
+
+/** A catalog in which no type declares a reference. */
+const NO_REFERENCES = catalogDeclaring();
 
 /**
  * The coordinator over a stand-in engine.
@@ -351,7 +381,11 @@ async function createHarness(
   coordinator: PreviewCoordinator;
   store: EditorStore;
   events: string[];
-  build(document: LevelDocument, layers?: readonly LayerDef[]): Promise<void>;
+  build(
+    document: LevelDocument,
+    layers?: readonly LayerDef[],
+    catalog?: LevelCatalog,
+  ): Promise<void>;
   tick(frames: number): void;
 }> {
   const parts = createParts(renderer, trees, camera);
@@ -364,12 +398,9 @@ async function createHarness(
     async build(
       document: LevelDocument,
       layers: readonly LayerDef[] = [],
+      catalog: LevelCatalog = NO_REFERENCES,
     ): Promise<void> {
-      parts.coordinator.requestRebuild({
-        document,
-        catalog: {} as LevelCatalog,
-        layers,
-      });
+      parts.coordinator.requestRebuild({ document, catalog, layers });
       await settle();
     },
     tick(frames: number): void {
@@ -411,7 +442,7 @@ describe("PreviewCoordinator", () => {
     // while the engine is still coming up.
     parts.coordinator.requestRebuild({
       document: document("crate"),
-      catalog: {} as LevelCatalog,
+      catalog: NO_REFERENCES,
       layers: [],
     });
     await settle();
@@ -2229,6 +2260,118 @@ describe("a reference field waiting for a target", () => {
     expect(coordinator.overlayView().marks?.map((mark) => mark.type)).toEqual([
       "game.Bell",
     ]);
+  });
+});
+
+describe("what the selection points at", () => {
+  const renderer = {
+    setFit: () => {},
+    virtualSize: { width: 800, height: 600 },
+    virtualCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
+  };
+
+  /** `game.switch` declares one reference parameter; nothing else does. */
+  const CATALOG = catalogDeclaring({ "game.switch": ["door"] });
+
+  /** A switch holding the id its `door` parameter names, or nothing. */
+  function pointing(id: string, at: string | null): LevelPlacement {
+    const one = placement(id);
+    return { ...one, type: "game.switch", params: { ...one.params, door: at } };
+  }
+
+  /**
+   * The coordinator over a level whose entities `place` fills in, with the
+   * document in the store: a link is read off the document and drawn between
+   * two built entities, so both halves have to be there.
+   */
+  async function linking(
+    level: LevelDocument,
+    place: () => void,
+  ): Promise<{ coordinator: PreviewCoordinator; store: EditorStore }> {
+    const harness = await createHarness(renderer);
+    place();
+    await harness.build(level, [], CATALOG);
+    opened(harness.store, level);
+    return { coordinator: harness.coordinator, store: harness.store };
+  }
+
+  /** A switch at the origin pointing at a crate 200 units to the right. */
+  function pair(): LevelDocument {
+    return document(pointing("switch", "crate"), placement("crate"));
+  }
+
+  function place(): void {
+    entities.set("switch", entityAt(0, 0, { half: 10 }));
+    entities.set("crate", entityAt(200, 0, { half: 25 }));
+  }
+
+  const BETWEEN = [{ from: { x: 0, y: 0 }, to: { x: 200, y: 0 } }];
+
+  it("draws a line from a selected placement to what it points at", async () => {
+    const { coordinator, store } = await linking(pair(), place);
+    store.dispatch({ type: "selection-changed", ids: ["switch"] });
+
+    expect(coordinator.overlayView().links).toEqual(BETWEEN);
+  });
+
+  it("draws a line into the selection from what points at it", async () => {
+    const { coordinator, store } = await linking(pair(), place);
+    // Selecting the target answers the other half of the question: what is
+    // this connected to includes what reaches it.
+    store.dispatch({ type: "selection-changed", ids: ["crate"] });
+
+    expect(coordinator.overlayView().links).toEqual(BETWEEN);
+  });
+
+  it("draws one line when both of its ends are selected", async () => {
+    const { coordinator, store } = await linking(pair(), place);
+    store.dispatch({ type: "selection-changed", ids: ["switch", "crate"] });
+
+    expect(coordinator.overlayView().links).toEqual(BETWEEN);
+  });
+
+  it("draws nothing for an id no placement has", async () => {
+    const level = document(pointing("switch", "gone"), placement("crate"));
+    const { coordinator, store } = await linking(level, place);
+    store.dispatch({ type: "selection-changed", ids: ["switch"] });
+
+    // A stale id is reported under the field in the inspector; a line to
+    // nowhere cannot be drawn and would say less.
+    expect(coordinator.overlayView().links).toEqual([]);
+  });
+
+  it("draws nothing for a placement pointing at itself", async () => {
+    const level = document(pointing("switch", "switch"), placement("crate"));
+    const { coordinator, store } = await linking(level, place);
+    store.dispatch({ type: "selection-changed", ids: ["switch"] });
+
+    // Both ends are one point, so there is no line and no direction to head.
+    expect(coordinator.overlayView().links).toEqual([]);
+  });
+
+  it("draws nothing while nothing is selected", async () => {
+    const { coordinator } = await linking(pair(), place);
+
+    expect(coordinator.overlayView().links).toEqual([]);
+  });
+
+  it("drops a line to an end the fade took away", async () => {
+    const { coordinator, store } = await linking(pair(), place);
+    store.dispatch({ type: "selection-changed", ids: ["switch"] });
+    store.dispatch({
+      type: "pick-started",
+      pick: { placementId: "switch", field: "door", types: ["game.crate"] },
+    });
+
+    // The crate is a candidate, so it stays lit and the line still reaches it.
+    expect(coordinator.overlayView().links).toEqual(BETWEEN);
+
+    store.dispatch({
+      type: "pick-started",
+      pick: { placementId: "switch", field: "door", types: ["game.door"] },
+    });
+
+    expect(coordinator.overlayView().links).toEqual([]);
   });
 });
 

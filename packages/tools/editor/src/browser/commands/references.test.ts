@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   inboundReferences,
   referenceTargets,
+  referenceUses,
   rewriteReferences,
 } from "./references.js";
 
@@ -88,6 +89,52 @@ describe("inboundReferences", () => {
     expect(inboundReferences(entities, new Set(["c1", "c2"]), two)).toEqual([
       { placementId: "s1", field: "door", targetId: "c1" },
       { placementId: "s1", field: "spare", targetId: "c2" },
+    ]);
+  });
+});
+
+describe("referenceUses", () => {
+  it("reports one entry per reference field holding an id", () => {
+    const two = (typeId: string): readonly string[] =>
+      typeId === "game.switch" ? ["door", "chime"] : [];
+    const entities = [
+      placement("s1", "game.switch", { door: "c1", chime: "b1" }),
+      placement("c1", "game.crate"),
+      placement("b1", "game.chime"),
+    ];
+
+    expect(referenceUses(entities, two)).toEqual([
+      { placementId: "s1", field: "door", targetId: "c1" },
+      { placementId: "s1", field: "chime", targetId: "b1" },
+    ]);
+  });
+
+  it("skips a slot with nothing chosen", () => {
+    const entities = [
+      placement("s1", "game.switch", { door: null }),
+      placement("c1", "game.crate"),
+    ];
+
+    expect(referenceUses(entities, FIELDS)).toEqual([]);
+  });
+
+  it("takes nothing from a type that declares no reference", () => {
+    // The document holds the value; only the catalog says it is a reference.
+    const entities = [placement("c2", "game.crate", { door: "c1" })];
+
+    expect(referenceUses(entities, FIELDS)).toEqual([]);
+  });
+
+  it("reports both halves of a pair pointing at each other", () => {
+    const both = (): readonly string[] => ["door"];
+    const entities = [
+      placement("a", "game.switch", { door: "b" }),
+      placement("b", "game.switch", { door: "a" }),
+    ];
+
+    expect(referenceUses(entities, both)).toEqual([
+      { placementId: "a", field: "door", targetId: "b" },
+      { placementId: "b", field: "door", targetId: "a" },
     ]);
   });
 });

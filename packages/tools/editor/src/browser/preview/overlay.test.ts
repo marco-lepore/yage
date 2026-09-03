@@ -5,6 +5,7 @@ import { RADIAL_BODY_PIXELS, RADIAL_EDGE_PIXELS } from "./radial.js";
 import { MARK_PIXELS } from "./marks.js";
 import {
   CASING_COLOR,
+  LINK_DASH_PIXELS,
   drawOverlay,
   type OverlayTarget,
   type OverlayView,
@@ -118,6 +119,33 @@ function shapes(all: Call[], name: string): Call[] {
     seen.add(key);
     return true;
   });
+}
+
+/**
+ * Every straight piece the picture is made of, in the order it was drawn: each
+ * `moveTo` and the `lineTo` that follows it. A dashed line is several of them,
+ * which is the whole difference from a solid one.
+ */
+function pieces(all: Call[]): { from: number[]; to: number[] }[] {
+  const found: { from: number[]; to: number[] }[] = [];
+  let start: number[] | undefined;
+  for (const call of all) {
+    if (call[0] === "moveTo") start = call.slice(1) as number[];
+    else if (call[0] === "lineTo" && start) {
+      found.push({ from: start, to: call.slice(1) as number[] });
+    }
+  }
+  return found;
+}
+
+/** The dashes of a link, without the two barbs of its arrowhead. */
+function dashes(all: Call[]): { from: number[]; to: number[] }[] {
+  return pieces(all).slice(0, -2);
+}
+
+/** The two barbs, which are the last two pieces a link draws. */
+function barbs(all: Call[]): { from: number[]; to: number[] }[] {
+  return pieces(all).slice(-2);
 }
 
 const TRANSLATE: OverlayView = {
@@ -471,5 +499,59 @@ describe("drawOverlay", () => {
     for (const [index, stroke] of far.entries()) {
       expect(stroke[2]).toBeCloseTo((near[index]?.[2] ?? 0) * 4, 9);
     }
+  });
+});
+
+describe("a reference line", () => {
+  function link(from: number, to: number, perScreenPixel = 1): Call[] {
+    return calls({
+      ...EMPTY,
+      perScreenPixel,
+      links: [{ from: { x: from, y: 0 }, to: { x: to, y: 0 } }],
+    });
+  }
+
+  it("draws the span as separate dashes", () => {
+    const drawn = dashes(link(0, 200));
+
+    // Several pieces with space between them: a solid line would read as an
+    // edge of something.
+    expect(drawn.length).toBeGreaterThan(1);
+    expect(drawn[1]?.from[0]).toBeGreaterThan(drawn[0]?.to[0] ?? 0);
+  });
+
+  it("keeps one dash length on screen at any zoom", () => {
+    const lengthOf = (perScreenPixel: number): number => {
+      const first = dashes(link(0, 200, perScreenPixel))[0];
+      if (!first) throw new Error("nothing was dashed");
+      return ((first.to[0] ?? 0) - (first.from[0] ?? 0)) / perScreenPixel;
+    };
+
+    expect(lengthOf(1)).toBeCloseTo(LINK_DASH_PIXELS, 9);
+    expect(lengthOf(4)).toBeCloseTo(LINK_DASH_PIXELS, 9);
+  });
+
+  it("draws one piece over a span shorter than a dash", () => {
+    const drawn = dashes(link(0, LINK_DASH_PIXELS / 2));
+
+    // Two placements a few pixels apart are still joined by something.
+    expect(drawn).toHaveLength(1);
+    expect(drawn[0]?.to[0]).toBeCloseTo(LINK_DASH_PIXELS / 2, 9);
+  });
+
+  it("puts the arrowhead on the target", () => {
+    const forward = barbs(link(0, 200));
+    const backward = barbs(link(200, 0));
+
+    // A reference runs one way, and two placements can point at each other.
+    expect(forward.map((barb) => barb.from[0])).toEqual([200, 200]);
+    expect(backward.map((barb) => barb.from[0])).toEqual([0, 0]);
+    // Both barbs reach back along the line rather than past its end.
+    for (const barb of forward) expect(barb.to[0]).toBeLessThan(200);
+  });
+
+  it("draws nothing between two ends at one point", () => {
+    // No direction, so no line to dash and no way to aim a head.
+    expect(link(30, 30)).toEqual([["clear"]]);
   });
 });

@@ -113,3 +113,27 @@ export function referenceTargets(
   }
   return targets;
 }
+
+/**
+ * Every reference every placement holds, in document order.
+ *
+ * A field holding `null` — an optional slot with nothing chosen — is not a
+ * reference and is skipped, as is a field holding anything that is not a
+ * string. The id is reported as it was authored: whether a placement has it is
+ * the caller's question, since a stale id is a problem the inspector reports
+ * rather than one to drop here.
+ */
+export function referenceUses(
+  entities: readonly LevelPlacement[],
+  fieldsOf: (typeId: string) => readonly string[],
+): readonly ReferenceUse[] {
+  const uses: ReferenceUse[] = [];
+  for (const placement of entities) {
+    for (const field of fieldsOf(placement.type)) {
+      const value = Reflect.get(placement.params, field) as unknown;
+      if (typeof value !== "string") continue;
+      uses.push({ placementId: placement.id, field, targetId: value });
+    }
+  }
+  return uses;
+}

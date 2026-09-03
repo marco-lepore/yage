@@ -262,6 +262,16 @@ near miss costs a retry and not the gizmo. A drag on the placement's body is an
 unconstrained move whatever the mode. One gesture commits one `set-poses`
 command, so one undo takes back the whole gesture.
 
+**A selection's references are drawn.** A dashed line runs from the origin of
+every placement holding a reference parameter to the origin of the placement it
+names, with an arrowhead at the target, whenever either end is selected — so a
+selection shows both what it points at and what points at it. Nothing selected
+draws no lines, and there is no toggle for them. A slot holding `null`, a slot
+holding an id no placement has, and a placement pointing at itself all draw
+nothing; a stale id is reported under the field in the inspector. While a
+reference field is waiting for a target, a line to a faded placement is not
+drawn.
+
 **A placement with nothing to see gets a row of marks.** A light, a particle
 emitter, a UI surface — anything the renderer does not draw — leaves a
 placement invisible in the viewport, so the editor draws a small square for

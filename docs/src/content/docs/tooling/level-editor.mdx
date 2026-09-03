@@ -316,6 +316,14 @@ faded line. Those are the placements a drag will take with it, and a child can
 be drawn a long way from its parent — the quiet outline is what tells you
 before you move it rather than after.
 
+Select something and every reference it is an end of is drawn as a dashed line
+with an arrowhead at the target, from the placement holding the reference to the
+placement it points at. It works both ways round, so one click tells you which
+door a switch opens and which switches open a door. Nothing selected draws no
+lines, and there is nothing to switch on or off. A slot with nothing chosen
+draws nothing, and so does one pointing at a placement that is gone — that is
+reported under the field in the inspector rather than as a line to nowhere.
+
 Select exactly one placement and a gizmo appears on it. Pick a tool from the
 toolbar or with its key — the toolbar shows which is live, and the two stay in
 step:

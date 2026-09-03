@@ -37,9 +37,12 @@ import { viewAfterResize } from "../store/index.js";
 import { PreviewAssetLease, placementsMissingAssets } from "./assets.js";
 import {
   parentWorld,
+  referenceFieldNames,
   referenceTargets,
+  referenceUses,
   selectionRoots,
   withDescendants,
+  type ReferenceUse,
 } from "../commands/index.js";
 import { armLength, handleAt, handleDirection, nearGizmo } from "./gizmo.js";
 import { nearRadial, radialHandleAt } from "./radial.js";
@@ -59,6 +62,7 @@ import {
 import {
   drawOverlay,
   type OverlayGizmo,
+  type OverlayLink,
   type OverlayMarks,
   type OverlayView,
 } from "./overlay.js";
@@ -160,6 +164,14 @@ export class PreviewCoordinator {
    * fixed for the life of a projection, and the overlay redraws every frame.
    */
   private marked: readonly MarkedPlacement[] = [];
+  /**
+   * Every reference the open document holds, in document order.
+   *
+   * Read from the document and the catalog once per build, like the marks: a
+   * reference changes only when one of those does, and the overlay asks which
+   * of them touch the selection every frame.
+   */
+  private links: readonly ReferenceUse[] = [];
   private overlay: Graphics | undefined;
   private guides: Graphics | undefined;
   /**
@@ -577,6 +589,7 @@ export class PreviewCoordinator {
     this.placements = [];
     this.byPlacementId = new Map();
     this.marked = [];
+    this.links = [];
     this.lease?.releaseAll();
     this.engine?.destroy();
     this.engine = undefined;
@@ -594,6 +607,9 @@ export class PreviewCoordinator {
     const revision = this.revision;
 
     this.provisionLayers(scene, request.layers);
+    this.links = referenceUses(request.document.entities, (type) =>
+      referenceFieldNames(request.catalog, type),
+    );
     const prepared = prepareLevel(request.document, request.catalog);
 
     // Everything the new level needs is loaded before the old level's entities
@@ -786,6 +802,7 @@ export class PreviewCoordinator {
       gizmo: shownAsOverlay(gizmo),
       origins: this.originsOf(state),
       marks: this.marksShown(state),
+      links: this.linksShown(state),
       ...(marquee === undefined
         ? {}
         : {
@@ -841,6 +858,38 @@ export class PreviewCoordinator {
           perScreenPixel,
         ),
       );
+    }
+    return shown;
+  }
+
+  /**
+   * The references the selection is an end of, as the two points a line runs
+   * between: what the selection points at, and what points at it.
+   *
+   * A reference whose two ends are both selected yields one line rather than
+   * two, because the list is walked once per reference and not once per
+   * selected placement.
+   */
+  private linksShown(state: EditorState): readonly OverlayLink[] {
+    if (state.selection.size === 0) return [];
+    const dimmed = this.dimmed();
+    const shown: OverlayLink[] = [];
+    for (const use of this.links) {
+      // A placement pointing at itself has one point and no direction.
+      if (use.placementId === use.targetId) continue;
+      const holds = state.selection.has(use.placementId);
+      const named = state.selection.has(use.targetId);
+      if (!holds && !named) continue;
+      // While a field is waiting for a target, an end the fade took out of the
+      // picture is not somewhere to point at.
+      if (!holds && dimmed.has(use.placementId)) continue;
+      if (!named && dimmed.has(use.targetId)) continue;
+      // An id no placement has has no second point to draw to. The inspector
+      // reports it under the field, which is where a broken slot belongs.
+      const from = this.byPlacementId.get(use.placementId);
+      const to = this.byPlacementId.get(use.targetId);
+      if (!from || !to) continue;
+      shown.push({ from: originOf(from), to: originOf(to) });
     }
     return shown;
   }
