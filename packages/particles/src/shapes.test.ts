@@ -222,12 +222,12 @@ describe("shapeTexture", () => {
     it("rejects a size that is not a positive finite number", () => {
       for (const size of [0, -8, NaN, Infinity] as ShapeSize[]) {
         expect(() => shapeTexture({ type: "circle", size })).toThrow(
-          /must be a finite number above 0/,
+          /^shapeTexture: shape size must be finite and > 0/,
         );
       }
       expect(() =>
         shapeTexture({ type: "circle", size: [16, Infinity] }),
-      ).toThrow(RangeError);
+      ).toThrow(/size must be finite and > 0/);
     });
 
     it("antialiases a diamond over one pixel across its lopsided short axis", () => {

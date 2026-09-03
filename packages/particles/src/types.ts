@@ -12,19 +12,16 @@ export interface Lerped {
 }
 
 /**
- * Where an emitter's particles get their look. The three options are mutually
- * exclusive: setting more than one is a type error. With none of them set, the
- * emitter renders the default `"pixel"` shape.
+ * Where an emitter's particles get their look. The two options are mutually
+ * exclusive: setting both is a type error. With neither set, the emitter
+ * renders the default `"pixel"` shape.
  */
 export type TextureSource =
-  // A texture, texture handle, or asset path.
-  | { texture: TextureInput; textureKey?: never; shape?: never }
-  // An asset key instead of a raw texture object.
-  | { texture?: never; textureKey: string; shape?: never }
+  // A texture, texture handle, or asset key.
+  | { texture: TextureInput; shape?: never }
   // A built-in white shape, optionally sized. Color it with `tint`.
   | {
       texture?: never;
-      textureKey?: never;
       shape?: ParticleShape | ShapeConfig;
     };
 
@@ -52,8 +49,9 @@ export interface EmitterOptions {
   tint?: number;
   /**
    * How the whole particle container's pixels combine with what is drawn
-   * beneath it — `"add"` for fire, sparks, and magic. Default: `"normal"`.
-   * See {@link BlendMode} for the modes that need
+   * beneath it — `"add"` for fire, sparks, and magic. Unset, the container
+   * inherits its render layer's blend mode, which is `"normal"` unless the
+   * game set one on the layer. See {@link BlendMode} for the modes that need
    * `import "pixi.js/advanced-blend-modes"`.
    */
   blendMode?: BlendMode;
@@ -61,11 +59,28 @@ export interface EmitterOptions {
   gravity?: { x: number; y: number };
   /** Velocity damping per second (0-1). Default: 0. */
   damping?: number;
-  /** Random offset from entity position at spawn time. */
-  spawnOffset?: {
-    x?: NumberRange;
-    y?: NumberRange;
-  };
+  /**
+   * Random offset from the emitter's origin at spawn time, in either form:
+   * a rectangle (`x`/`y` ranges) or a ring (`radius`, with an optional
+   * `angle` arc that defaults to the full circle). Setting members of both
+   * forms is a type error.
+   */
+  spawnOffset?:
+    | { x?: NumberRange; y?: NumberRange; radius?: never; angle?: never }
+    | { radius: NumberRange; angle?: NumberRange; x?: never; y?: never };
+  /**
+   * Speed in px/s along the direction from the emitter's origin to the
+   * particle's spawn offset. Negative moves inward. Adds to the velocity
+   * `speed` and `angle` produce. Needs a `spawnOffset`.
+   */
+  radialSpeed?: NumberRange;
+  /**
+   * `"world"` (default): particles keep the screen position they were spawned
+   * at, so moving the emitter afterwards does not drag them along.
+   * `"local"`: particles follow the emitter's position. Position only — the
+   * emitter's rotation and scale are not applied.
+   */
+  simulationSpace?: "world" | "local";
   /** Render layer name. Default: "default". */
   layer?: string;
 }

@@ -915,8 +915,8 @@ before `UIRootLayoutSystem` because `ui-react` depends on `ui`).
 
 - `EarlyUpdate`: *`logger.setFrame`, `SceneTime` frame tick per active scene, transition tick* → `InputPollSystem (-100, input)`
 - `FixedUpdate`, 0 to `maxFixedStepsPerFrame` times: *`SceneTime` fixed tick per active scene* → `PhysicsSystem (0, physics)` → `ProcessFixedUpdateSystem (500, core)` → `ComponentFixedUpdateSystem (1000, core)`
-- `Update`: `PhysicsInterpolationSystem (-100, physics)` → `ParticleSystem (0, particles)` → `ProcessSystem (500, core)` → `ComponentUpdateSystem (1000, core)`
-- `LateUpdate`: `UILayoutSystem (200, ui)` → `UIRootLayoutSystem (200, ui-react)` → `FloatingOverlaySystem (201, ui)`
+- `Update`: `PhysicsInterpolationSystem (-100, physics)` → `ProcessSystem (500, core)` → `ComponentUpdateSystem (1000, core)`
+- `LateUpdate`: `ParticleSystem (0, particles)` → `UILayoutSystem (200, ui)` → `UIRootLayoutSystem (200, ui-react)` → `FloatingOverlaySystem (201, ui)`
 - `Render`: `DisplaySystem (0, renderer)` → `LightingSystem (100, lighting)` → `DebugRenderSystem (9999, debug)`
 - `EndOfFrame`: `InputClearSystem (9000, input)` → *destroy-queue flush*
 
@@ -924,7 +924,7 @@ Priority bands, for placing a new system:
 
 | Band | Runs | Shipped systems |
 |---|---|---|
-| below 0 | before the engine's producers: reads external input or the previous step's state | input poll, physics interpolation, tilemap |
+| below 0 | before the engine's producers: reads external input or the previous step's state | input poll, physics interpolation |
 | 0 | producers | physics step, particles, display |
 | 100–201 | consumers of the producers | lighting, UI layout |
 | 500 | timing | both process systems |

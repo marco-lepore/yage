@@ -2,8 +2,8 @@ import { BufferImageSource, Texture } from "pixi.js";
 import type { TextureResource } from "@yagejs/renderer";
 
 /**
- * A built-in particle shape. Emitters that specify no `texture`/`textureKey`
- * render one of these, so a project needs no image asset to use particles.
+ * A built-in particle shape. Emitters that specify no `texture` render one of
+ * these, so a project needs no image asset to use particles.
  * Shapes are white — use `tint` to color them.
  */
 export type ParticleShape =
@@ -55,9 +55,14 @@ const DEFAULT_SIZE: Record<ParticleShape, [number, number]> = {
  */
 const generated = new Map<string, TextureResource>();
 
-/** Fill in the default size and the string shorthand. */
+/**
+ * Fill in the default size and the string shorthand. `context` names the entry
+ * point in the size error, so a caller that never invoked `shapeTexture` is not
+ * told that it did.
+ */
 export function normalizeShape(
   shape: ParticleShape | ShapeConfig,
+  context: string,
 ): ResolvedShape {
   const type = typeof shape === "string" ? shape : shape.type;
   const size = typeof shape === "string" ? undefined : shape.size;
@@ -68,7 +73,10 @@ export function normalizeShape(
   // Texture dimensions are whole pixels.
   const width = typeof size === "number" ? size : size[0];
   const height = typeof size === "number" ? size : size[1];
-  return { type, size: [toPixels(width), toPixels(height)] };
+  return {
+    type,
+    size: [toPixels(width, context), toPixels(height, context)],
+  };
 }
 
 /**
@@ -81,7 +89,7 @@ export function shapeTexture(
   const {
     type,
     size: [width, height],
-  } = normalizeShape(shape);
+  } = normalizeShape(shape, "shapeTexture");
 
   // A 1×1 white square is exactly Texture.WHITE, so the zero-config path
   // generates nothing.
@@ -228,11 +236,9 @@ function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
-function toPixels(v: number): number {
+function toPixels(v: number, context: string): number {
   if (!Number.isFinite(v) || v <= 0) {
-    throw new RangeError(
-      `Particle shape size must be a finite number above 0, got ${v}.`,
-    );
+    throw new Error(`${context}: shape size must be finite and > 0, got ${v}.`);
   }
   return Math.max(1, Math.round(v));
 }

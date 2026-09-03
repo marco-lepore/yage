@@ -152,6 +152,11 @@ sprite.sprite.depthOffset = 32; // depth key is `position.y + 32`
 so mixed-content layers work without every child carrying a depth
 offset.
 
+A particle emitter sorts the same way. Its container follows the entity's
+position, so `ySort` keys it off the emitter entity and `ySortBy` reads a
+depth offset you set on `emitter.container` — a torch's sparks interleave
+with the characters walking past it.
+
 ### Manual zIndex still works alongside `sort`
 
 Because `sort` writes to `zIndex`, anything that manually sets

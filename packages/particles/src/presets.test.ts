@@ -25,7 +25,7 @@ describe("ParticlePresets", () => {
 
       it("uses a string argument as an asset key", () => {
         const config = factory("assets/particle.png");
-        expect(config.textureKey).toBe("assets/particle.png");
+        expect(config.texture).toBe("assets/particle.png");
         expect(config.shape).toBeUndefined();
         expectUsableConfig(config);
       });
@@ -33,7 +33,6 @@ describe("ParticlePresets", () => {
       it("falls back to a built-in shape with no argument", () => {
         const config = factory();
         expect(config.texture).toBeUndefined();
-        expect(config.textureKey).toBeUndefined();
         expect(config.shape).toBeDefined();
         expectUsableConfig(config);
       });

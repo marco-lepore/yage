@@ -45,7 +45,8 @@ const sparkle = entity.add(new ParticleEmitterComponent({
 sparkle.burst(20);
 ```
 
-For an image asset, pass `texture` or its string form, `textureKey`:
+For an image asset, pass `texture` — a texture, a texture handle, or an
+asset key string:
 
 ```typescript
 import { texture } from "@yagejs/renderer";
@@ -74,8 +75,7 @@ emitter.emit();  // start continuous emission
 
 | Property | Type | Default | Description |
 |---|---|---|---|
-| `texture` | `TextureInput` | — | Particle texture |
-| `textureKey` | `string` | — | Asset key alternative to `texture` |
+| `texture` | `TextureInput` | — | Particle texture, texture handle, or asset key |
 | `shape` | `ParticleShape \| ShapeConfig` | `"pixel"` | Built-in shape, optionally sized |
 | `maxParticles` | `number` | `100` | Maximum live particles |
 | `rate` | `number` | `10` | Emission rate (particles/sec) |
@@ -87,11 +87,18 @@ emitter.emit();  // start continuous emission
 | `rotation` | `NumberRange` | `0` | Initial rotation (radians) |
 | `rotationSpeed` | `NumberRange` | `0` | Rotation speed (rad/s) |
 | `tint` | `number` | `0xffffff` | Color tint |
-| `blendMode` | `BlendMode` | `"normal"` | How the particles combine with what is beneath |
+| `blendMode` | `BlendMode` | the layer's mode | How the particles combine with what is beneath |
 | `gravity` | `{ x, y }` | — | Per-particle gravity (px/s²) |
 | `damping` | `number` | `0` | Velocity damping (0–1) |
-| `spawnOffset` | `{ x?, y? }` | — | Random offset from emitter position |
+| `spawnOffset` | `{ x?, y? }` or `{ radius, angle? }` | — | Random offset from the emitter, in a rectangle or on a ring |
+| `radialSpeed` | `NumberRange` | — | Speed along the spawn offset (px/s); negative moves inward |
+| `simulationSpace` | `"world" \| "local"` | `"world"` | Whether particles stay where they were spawned or follow the emitter |
 | `layer` | `string` | `"default"` | Render layer name |
+
+Every number in the config is checked when the emitter is constructed. A value
+that cannot be simulated — a non-finite number, a `damping` outside 0–1, a
+`lifetime` of 0, a fractional `maxParticles` — throws an error naming the
+option and the value, instead of turning particle positions into `NaN` later.
 
 **NumberRange** can be a single number or a `[min, max]` tuple for random values.
 
@@ -260,7 +267,7 @@ entity.add(new ParticleEmitterComponent({
 }));
 ```
 
-A preset already sets a texture source, and the three sources are mutually
+A preset already sets a texture source, and the two sources are mutually
 exclusive, so adding another by spreading does not compile:
 
 ```typescript
@@ -271,6 +278,43 @@ exclusive, so adding another by spreading does not compile:
 { ...ParticlePresets.fire(Particle), rate: 50 }
 ```
 
+## Converging and exploding rings
+
+`spawnOffset` also takes a ring — `radius`, plus an optional `angle` arc that
+defaults to the full circle. `radialSpeed` then moves each particle along the
+direction from the emitter to where it spawned: negative converges on the
+emitter, positive explodes outward.
+
+```typescript
+// Sparks that rush inward to the caster while a spell charges.
+const charge = new ParticleEmitterComponent({
+  shape: { type: "line", size: [6, 2] },
+  rate: 40,
+  lifetime: 0.38,
+  spawnOffset: { radius: 42 },
+  radialSpeed: -110,
+  tint: 0x66ddff,
+});
+```
+
+`radialSpeed` adds to the velocity `speed` and `angle` produce, so an outward
+rush plus a little random drift is just both together.
+
+## Following the emitter
+
+By default particles stay where they were spawned, which is what a torch trail
+or an explosion needs. `simulationSpace: "local"` makes them follow the emitter
+instead — for an aura, a shield, or a charge-up glow that has to stay centred on
+a moving character. It follows position only; the emitter's rotation and scale
+are not applied.
+
+```typescript
+const aura = new ParticleEmitterComponent({
+  ...ParticlePresets.fire(),
+  simulationSpace: "local",
+});
+```
+
 ## Tips
 
 - Position the emitter entity where you want particles to spawn — particles
@@ -279,10 +323,10 @@ exclusive, so adding another by spreading does not compile:
 - A particle is centred on its spawn point, and `rotationSpeed` turns it about
   its own centre. That holds for your own textures too, so a 64px sprite covers
   32px either side of the emitter rather than hanging down and to the right.
-- Particles live in world space. Once spawned they keep going on their own
-  path; moving the emitter afterwards does not drag them along.
+- Emitters depth-sort like any other visual: on a `ySort` layer an emitter
+  keys off its entity's position, so a torch's sparks interleave with the
+  characters walking past it.
 - Destroying the emitter entity stops emission and cleans up all particles.
 - Keep `maxParticles` reasonable. Hundreds are fine; thousands may impact
   performance on lower-end devices.
-- Use render layers to control whether particles appear above or below game
-  entities.
+- Use render layers to put particles above or below whole groups of entities.

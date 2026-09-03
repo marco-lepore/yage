@@ -108,14 +108,7 @@ export const PARRY_TAP_WINDOW = 0.3;
 // `PlayerController` (Graphics, not `@yagejs/particles`): a fixed count of
 // points on a ring around the caster's body center, each ticking its own
 // radius down to 0 and alpha with it, then respawning at the ring edge with
-// a fresh random angle. `@yagejs/particles`' `EmitterConfig` (see its
-// `types.ts`) draws `spawnOffset` (position) and `angle`/`speed` (velocity)
-// from independent random ranges per particle — there is no way to correlate
-// a particle's spawn position with its travel direction, so "start on a ring,
-// travel inward toward the ring's own center" cannot be expressed by the
-// package's config at all, built-in or preset. Hand-rolling a handful of
-// Graphics-drawn points sidesteps the gap entirely; see the evidence note in
-// `09-feedback.md` for the fuller writeup.
+// a fresh random angle.
 // ---------------------------------------------------------------------------
 
 export interface ChargeSpark {

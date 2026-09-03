@@ -1,0 +1,15 @@
+---
+"@yagejs/particles": minor
+---
+
+An emitter's container follows its entity, which makes emitters depth-sort and adds local-space simulation; a ring spawn with radial speed; numeric config validated at construction.
+
+- Fixed: emitters never depth-sorted. Their Pixi `ParticleContainer` sat at the layer origin while each particle carried an absolute world coordinate, so a `ySort` layer read `position.y = 0` for every emitter and a torch's sparks could never interleave with the character walking past it. The container now follows the entity's world position and particles carry container-local coordinates, so `ySort` keys an emitter off its entity and `ySortBy` reads a depth offset set on `emitter.container`, exactly as for a sprite.
+- `simulationSpace: "world" | "local"` on `EmitterConfig`. `"world"` is the default and the shipped behavior: particles hold the position they were drawn at, so moving the emitter does not drag them along. `"local"` carries them with the emitter — auras, shields, charge-up glows on a moving character. Position only; the emitter's rotation and scale are not applied.
+- `ParticleSystem` runs in `LateUpdate` instead of `Update`, so it reads the frame's final `Transform` — after every component update — rather than the previous frame's. An entity moving 600 px/s used to spawn its particles 10 px behind where its sprite was drawn.
+- `spawnOffset` takes a ring, `{ radius, angle? }`, beside the existing rectangle `{ x?, y? }`; `angle` defaults to the full circle. New `radialSpeed` (px/s) moves each particle along the direction from the emitter to its spawn offset — negative converges, positive explodes outward — and adds to the velocity `speed` and `angle` produce. Together they express a converging-spark charge-up in config instead of hand-rolled sprites.
+- `textureKey` is removed from the emitter's texture source. `texture` already accepts a string asset key, so both names took the same input down different paths, and only `textureKey` skipped the missing-asset check: an unloaded key built the emitter with no texture and crashed inside Pixi on the first live particle, naming neither the emitter nor the key. A string `texture` throws at construction naming the key.
+- Every numeric config entry is checked in the constructor and throws a plain `Error` naming the option, the constraint and the value. `damping` above 1 turned every velocity and position into a permanent `NaN`; `maxParticles: Infinity` hung the pool's pre-allocation loop; `NaN` and negative `damping` were silently ignored. The built-in shape generator's size check now throws in the same form.
+- Docs: the blend-mode default is the render layer's mode (`"normal"` unless the game set one on the layer), not always `"normal"`.
+
+**Breaking**, all pre-1.0: particle coordinates are container-local, so code reading a particle's position through the public `container` must add the container's own position. `textureKey` no longer exists — pass the key as `texture`. `ParticleSystem` runs in a different phase. Config values that used to be accepted and then corrupt particle state now throw at construction.

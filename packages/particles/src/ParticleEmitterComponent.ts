@@ -10,17 +10,21 @@ import type {
   ParticleContainer,
   TextureResource,
 } from "@yagejs/renderer";
-import { ParticleContainer as PixiParticleContainer, Texture } from "pixi.js";
+import { ParticleContainer as PixiParticleContainer } from "pixi.js";
 import type { Particle } from "pixi.js";
 import { ParticlePool } from "./ParticlePool.js";
 import { normalizeShape, shapeTexture } from "./shapes.js";
 import { isLerped, resolveRange } from "./types.js";
+import { assertEmitterConfig } from "./validate.js";
 import type {
   EmitterConfig,
   EmitterOptions,
   Lerped,
   NumberRange,
 } from "./types.js";
+
+/** Default bearing arc for a ring `spawnOffset` with no `angle` set. */
+const FULL_CIRCLE: [number, number] = [0, Math.PI * 2];
 
 /** Internal tracking state for a single active particle. */
 interface ParticleState {
@@ -53,6 +57,10 @@ export interface ParticleEmissionHandle {
  * Requires a `Transform` on the same entity: the system that ticks emitters
  * queries for both, so an emitter without one never emits and never ages the
  * particles a `burst` already spawned.
+ *
+ * The container follows the entity's world position, so particles carry
+ * container-local coordinates and the container's own `position` is the depth
+ * key a layer sort such as `ySort` reads.
  */
 export class ParticleEmitterComponent extends Component {
   readonly container: ParticleContainer;
@@ -87,6 +95,7 @@ export class ParticleEmitterComponent extends Component {
   constructor(config: EmitterConfig) {
     super();
 
+    assertEmitterConfig(config);
     const texture = resolveSource(config);
 
     const options: EmitterOptions = config;
@@ -182,14 +191,15 @@ export class ParticleEmitterComponent extends Component {
   burst(count: number, worldX: number, worldY: number): void;
   burst(count: number, worldX?: number, worldY?: number): void {
     this._warnIfNoTransform();
-    const origin =
-      worldX === undefined || worldY === undefined
-        ? this.entity?.tryGet(Transform)?.worldPosition
-        : undefined;
-    // The (0, 0) fallback only keeps a Transform-less emitter from crashing —
-    // its particles never move or expire, because nothing ticks it.
-    const x = worldX ?? origin?.x ?? 0;
-    const y = worldY ?? origin?.y ?? 0;
+    // Every spawn path syncs the container first, so a particle is never
+    // written against a stale origin. A Transform-less emitter keeps the
+    // container at (0, 0); its particles never move or expire, because
+    // nothing ticks it.
+    const origin = this.entity?.tryGet(Transform)?.worldPosition;
+    if (origin) this._syncContainer(origin.x, origin.y);
+    const { x: originX, y: originY } = this.container.position;
+    const x = worldX === undefined ? 0 : worldX - originX;
+    const y = worldY === undefined ? 0 : worldY - originY;
     for (let i = 0; i < count; i++) {
       this._spawn(x, y);
     }
@@ -255,12 +265,13 @@ export class ParticleEmitterComponent extends Component {
   _update(dt: number, worldX: number, worldY: number): void {
     const cfg = this.config;
 
-    // 1. Accumulate continuous emission
+    // 1. Follow the entity, then accumulate continuous emission
+    this._syncContainer(worldX, worldY);
     if (this.isEmitting) {
       this._accumulator += cfg.rate * dt;
       while (this._accumulator >= 1) {
         this._accumulator -= 1;
-        this._spawn(worldX, worldY);
+        this._spawn(0, 0);
       }
     }
 
@@ -312,32 +323,72 @@ export class ParticleEmitterComponent extends Component {
     }
   }
 
-  /** @internal */
-  _spawn(worldX: number, worldY: number): void {
+  /**
+   * Move the container to the entity's world position. In world space, live
+   * particles shift by the inverse delta so they keep the position they were
+   * drawn at; in local space they follow the container.
+   * @internal
+   */
+  _syncContainer(worldX: number, worldY: number): void {
+    const { x, y } = this.container.position;
+    const dx = worldX - x;
+    const dy = worldY - y;
+    if (dx === 0 && dy === 0) return;
+    this.container.position.set(worldX, worldY);
+    if (this.config.simulationSpace === "local") return;
+    for (const state of this._active) {
+      state.particle.x -= dx;
+      state.particle.y -= dy;
+    }
+  }
+
+  /**
+   * Spawn one particle at container-local coordinates.
+   * @internal
+   */
+  _spawn(localX: number, localY: number): void {
     const particle = this._pool.acquire();
     if (!particle) return; // at capacity
 
     const cfg = this.config;
 
     // Position with spawn offset
-    let x = worldX;
-    let y = worldY;
-    if (cfg.spawnOffset) {
-      if (cfg.spawnOffset.x !== undefined) {
-        x += resolveRange(cfg.spawnOffset.x, this._random);
-      }
-      if (cfg.spawnOffset.y !== undefined) {
-        y += resolveRange(cfg.spawnOffset.y, this._random);
+    let offsetX = 0;
+    let offsetY = 0;
+    const offset = cfg.spawnOffset;
+    if (offset) {
+      if (offset.radius !== undefined) {
+        const radius = resolveRange(offset.radius, this._random);
+        const bearing = resolveRange(offset.angle ?? FULL_CIRCLE, this._random);
+        offsetX = Math.cos(bearing) * radius;
+        offsetY = Math.sin(bearing) * radius;
+      } else {
+        if (offset.x !== undefined) {
+          offsetX = resolveRange(offset.x, this._random);
+        }
+        if (offset.y !== undefined) {
+          offsetY = resolveRange(offset.y, this._random);
+        }
       }
     }
-    particle.x = x;
-    particle.y = y;
+    particle.x = localX + offsetX;
+    particle.y = localY + offsetY;
 
-    // Velocity from speed + angle
+    // Velocity from speed + angle, plus the radial term along the spawn
+    // offset. A particle that resolved to the origin has no direction, so it
+    // takes no radial term.
     const speed = resolveRange(cfg.speed, this._random);
     const angle = resolveRange(cfg.angle, this._random);
-    const vx = Math.cos(angle) * speed;
-    const vy = Math.sin(angle) * speed;
+    let vx = Math.cos(angle) * speed;
+    let vy = Math.sin(angle) * speed;
+    if (cfg.radialSpeed !== undefined) {
+      const distance = Math.hypot(offsetX, offsetY);
+      if (distance > 0) {
+        const radialSpeed = resolveRange(cfg.radialSpeed, this._random);
+        vx += (offsetX / distance) * radialSpeed;
+        vy += (offsetY / distance) * radialSpeed;
+      }
+    }
 
     // Rotation
     particle.rotation = resolveRange(cfg.rotation, this._random);
@@ -382,18 +433,18 @@ export class ParticleEmitterComponent extends Component {
 }
 
 /**
- * Pick the emitter's texture. The three sources are mutually exclusive in the
+ * Pick the emitter's texture. The two sources are mutually exclusive in the
  * type, so the order below only matters for callers coming from plain JS:
- * `texture` wins, then `textureKey`, then `shape`, then the `"pixel"` default.
+ * `texture` wins, then `shape`, then the `"pixel"` default.
  */
 function resolveSource(config: EmitterConfig): TextureResource {
   if (config.texture !== undefined) {
     return resolveTextureInput(config.texture);
   }
-  if (config.textureKey !== undefined) {
-    return Texture.from(config.textureKey);
-  }
-  const shape = normalizeShape(config.shape ?? "pixel");
+  const shape = normalizeShape(
+    config.shape ?? "pixel",
+    "ParticleEmitterComponent",
+  );
   return shapeTexture(shape);
 }
 

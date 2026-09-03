@@ -18,6 +18,14 @@ const { mocks } = vi.hoisted(() => {
 
   class MockParticleContainer {
     children: unknown[] = [];
+    position = {
+      x: 0,
+      y: 0,
+      set(x: number, y: number) {
+        this.x = x;
+        this.y = y;
+      },
+    };
     parent: unknown = null;
     destroyed = false;
     addParticle(p: unknown): unknown { this.children.push(p); return p; }
@@ -87,8 +95,24 @@ describe("ParticleSystem", () => {
     return ctx;
   }
 
-  it("has phase = Update", () => {
-    expect(system.phase).toBe(Phase.Update);
+  it("has phase = LateUpdate", () => {
+    // After every component update, so an emitter reads the frame's final
+    // Transform instead of the previous frame's.
+    expect(system.phase).toBe(Phase.LateUpdate);
+  });
+
+  it("positions an emitter's container from its entity's Transform", () => {
+    const ctx = setup();
+    const entity = spawnEntityInScene(ctx.scene);
+    entity.add(new Transform({ position: new Vec2(120, 340) }));
+    const emitter = entity.add(
+      new ParticleEmitterComponent({ texture: tex, lifetime: 1 }),
+    );
+
+    system.update(0.1);
+
+    expect(emitter.container.position.x).toBe(120);
+    expect(emitter.container.position.y).toBe(340);
   });
 
   it("registers a query for [Transform, ParticleEmitterComponent]", () => {

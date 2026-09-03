@@ -35,6 +35,14 @@ const { mocks } = vi.hoisted(() => {
 
   class MockParticleContainer {
     children: MockParticle[] = [];
+    position = {
+      x: 0,
+      y: 0,
+      set(x: number, y: number) {
+        this.x = x;
+        this.y = y;
+      },
+    };
     parent: unknown = null;
     destroyed = false;
     texture: unknown = null;
@@ -129,8 +137,10 @@ const { mocks } = vi.hoisted(() => {
     constructor(opts: Record<string, unknown>) {
       this.source = opts.source;
     }
+    /** Pixi hands back `undefined` for a key that was never loaded. */
+    static loaded = new Set(["loaded.png"]);
     static from(key: string): unknown {
-      return { label: key };
+      return MockTexture.loaded.has(key) ? { label: key } : undefined;
     }
     static WHITE = { label: "WHITE" };
   }
@@ -155,6 +165,7 @@ vi.mock("pixi.js", () => ({
 }));
 
 import { Transform, Vec2 } from "@yagejs/core";
+import { ySort } from "@yagejs/renderer";
 import {
   createParticlesTestContext,
   spawnEntityInScene,
@@ -169,6 +180,13 @@ function createEmitter(overrides: Partial<EmitterOptions> = {}) {
     lifetime: 1,
     ...overrides,
   });
+}
+
+/** A particle's world position: its container-local coordinate plus the container's. */
+function worldOf(emitter: ParticleEmitterComponent, index = 0) {
+  const particle = emitter._active[index]!.particle;
+  const { x, y } = emitter.container.position;
+  return { x: particle.x + x, y: particle.y + y };
 }
 
 function setupEntity(
@@ -211,24 +229,19 @@ describe("ParticleEmitterComponent", () => {
       expect(container.texture).toEqual({ label: "WHITE" });
     });
 
-    it("rejects more than one texture source at the type level", () => {
+    it("rejects both texture sources at the type level", () => {
       const rejected: EmitterConfig[] = [
-        // @ts-expect-error texture and textureKey are mutually exclusive.
-        { texture: "spark.png", textureKey: "other.png", lifetime: 1 },
         // @ts-expect-error texture and shape are mutually exclusive.
         { texture: "spark.png", shape: "circle", lifetime: 1 },
-        // @ts-expect-error textureKey and shape are mutually exclusive.
-        { textureKey: "spark.png", shape: "circle", lifetime: 1 },
       ];
-      expect(rejected).toHaveLength(3);
+      expect(rejected).toHaveLength(1);
     });
 
-    it("prefers texture over textureKey and shape for a plain-JS caller", () => {
+    it("prefers texture over shape for a plain-JS caller", () => {
       // Only reachable without type checking, which is why the precedence
       // survives: the union above rules it out for TypeScript callers.
       const emitter = new ParticleEmitterComponent({
         texture: tex,
-        textureKey: "also-set.png",
         shape: "circle",
         lifetime: 1,
       } as unknown as EmitterConfig);
@@ -238,16 +251,74 @@ describe("ParticleEmitterComponent", () => {
       expect(container.texture).toBe(tex);
     });
 
-    it("prefers textureKey over shape for a plain-JS caller", () => {
+    it("resolves a string texture as an asset key", () => {
       const emitter = new ParticleEmitterComponent({
-        textureKey: "spark.png",
-        shape: "circle",
+        texture: "loaded.png",
         lifetime: 1,
-      } as unknown as EmitterConfig);
+      });
       const container = emitter.container as unknown as InstanceType<
         typeof mocks.MockParticleContainer
       >;
-      expect(container.texture).toEqual({ label: "spark.png" });
+      expect(container.texture).toEqual({ label: "loaded.png" });
+    });
+
+    it("names the key when it is not loaded", () => {
+      expect(
+        () =>
+          new ParticleEmitterComponent({ texture: "missing.png", lifetime: 1 }),
+      ).toThrow(/Texture "missing.png" is not loaded/);
+    });
+  });
+
+  describe("config validation", () => {
+    it("names the option, the constraint and the value", () => {
+      expect(() => createEmitter({ damping: 1.5 })).toThrow(
+        "ParticleEmitterComponent: damping must be between 0 and 1, got 1.5.",
+      );
+    });
+
+    it("accepts both ends of the damping range and rejects outside it", () => {
+      expect(() => createEmitter({ damping: 0 })).not.toThrow();
+      expect(() => createEmitter({ damping: 1 })).not.toThrow();
+      expect(() => createEmitter({ damping: -0.1 })).toThrow(/damping/);
+      expect(() => createEmitter({ damping: NaN })).toThrow(/damping/);
+    });
+
+    it("rejects a maxParticles the pool cannot pre-allocate", () => {
+      expect(() => createEmitter({ maxParticles: Infinity })).toThrow(
+        /maxParticles must be a whole number >= 0/,
+      );
+      expect(() => createEmitter({ maxParticles: 2.5 })).toThrow(
+        /maxParticles/,
+      );
+    });
+
+    it("names the offending end of a range", () => {
+      expect(() => createEmitter({ lifetime: [1, NaN] })).toThrow(
+        "ParticleEmitterComponent: lifetime[1] must be finite and > 0, got [1, NaN].",
+      );
+    });
+
+    it("names the emitter, not the texture helper, for a bad shape size", () => {
+      expect(
+        () =>
+          new ParticleEmitterComponent({
+            shape: { type: "circle", size: 0 },
+            lifetime: 1,
+          }),
+      ).toThrow(
+        "ParticleEmitterComponent: shape size must be finite and > 0, got 0.",
+      );
+    });
+
+    it("checks gravity, tint and both ends of a lerped value", () => {
+      expect(() => createEmitter({ gravity: { x: 0, y: Infinity } })).toThrow(
+        /gravity\.y/,
+      );
+      expect(() => createEmitter({ tint: NaN })).toThrow(/tint/);
+      expect(() => createEmitter({ scale: { start: 1, end: NaN } })).toThrow(
+        /scale\.end/,
+      );
     });
   });
 
@@ -539,9 +610,7 @@ describe("ParticleEmitterComponent", () => {
       });
       setupEntity(emitter, new Transform({ position: new Vec2(30, 40) }));
       emitter.burst(1);
-      const p = emitter._active[0]!.particle;
-      expect(p.x).toBe(30);
-      expect(p.y).toBe(40);
+      expect(worldOf(emitter)).toEqual({ x: 30, y: 40 });
     });
 
     it("a no-arg burst on a parented entity uses the world, not local, position", () => {
@@ -559,9 +628,7 @@ describe("ParticleEmitterComponent", () => {
       parent.addChild("child", entity);
 
       emitter.burst(1);
-      const p = emitter._active[0]!.particle;
-      expect(p.x).toBe(105);
-      expect(p.y).toBe(207);
+      expect(worldOf(emitter)).toEqual({ x: 105, y: 207 });
     });
 
     it("falls back to (0, 0) when the entity has no Transform", () => {
@@ -588,6 +655,142 @@ describe("ParticleEmitterComponent", () => {
       const p = emitter._active[0]!.particle;
       expect(p.x).toBe(0);
       expect(p.y).toBe(0);
+    });
+  });
+
+  describe("container position", () => {
+    it("follows the entity's world position", () => {
+      const emitter = createEmitter();
+      setupEntity(emitter, new Transform({ position: new Vec2(250, 275) }));
+      emitter._update(0, 250, 275);
+      expect(emitter.container.position.x).toBe(250);
+      expect(emitter.container.position.y).toBe(275);
+    });
+
+    it("is the depth key ySort reads", () => {
+      const emitter = createEmitter();
+      setupEntity(emitter, new Transform({ position: new Vec2(250, 275) }));
+      emitter._update(0, 250, 275);
+      expect(ySort(emitter.container)).toBe(275);
+    });
+
+    it("world-space particles hold their position as the emitter moves", () => {
+      const emitter = createEmitter({
+        speed: 0,
+        lifetime: 10,
+        maxParticles: 2,
+      });
+      setupEntity(emitter, new Transform({ position: new Vec2(100, 200) }));
+      emitter.burst(2);
+      emitter._update(0, 250, 275);
+
+      expect(emitter.container.position.x).toBe(250);
+      expect(emitter.container.position.y).toBe(275);
+      expect(worldOf(emitter, 0)).toEqual({ x: 100, y: 200 });
+      expect(worldOf(emitter, 1)).toEqual({ x: 100, y: 200 });
+    });
+
+    it("local-space particles follow the emitter", () => {
+      const emitter = createEmitter({
+        speed: 0,
+        lifetime: 10,
+        maxParticles: 2,
+        simulationSpace: "local",
+      });
+      setupEntity(emitter, new Transform({ position: new Vec2(100, 200) }));
+      emitter.burst(2);
+      emitter._update(0, 250, 275);
+
+      expect(worldOf(emitter, 0)).toEqual({ x: 250, y: 275 });
+      expect(worldOf(emitter, 1)).toEqual({ x: 250, y: 275 });
+    });
+
+    it("keeps an explicit-position burst where it was asked for", () => {
+      const emitter = createEmitter({
+        speed: 0,
+        lifetime: 10,
+        maxParticles: 1,
+      });
+      setupEntity(emitter, new Transform({ position: new Vec2(500, 500) }));
+      emitter.burst(1, 100, 200);
+      emitter._update(0, 800, 800);
+      expect(worldOf(emitter)).toEqual({ x: 100, y: 200 });
+    });
+  });
+
+  describe("radial spawn offset", () => {
+    it("spawns on a ring of the configured radius", () => {
+      const emitter = createEmitter({
+        speed: 0,
+        lifetime: 10,
+        maxParticles: 8,
+        spawnOffset: { radius: 42 },
+      });
+      setupEntity(emitter);
+      emitter.burst(8);
+      for (const state of emitter._active) {
+        const { x, y } = state.particle;
+        expect(Math.hypot(x, y)).toBeCloseTo(42, 6);
+      }
+    });
+
+    it("keeps every bearing inside the configured arc", () => {
+      const emitter = createEmitter({
+        speed: 0,
+        lifetime: 10,
+        maxParticles: 8,
+        spawnOffset: { radius: 10, angle: [0, Math.PI / 2] },
+      });
+      setupEntity(emitter);
+      emitter.burst(8);
+      for (const state of emitter._active) {
+        const bearing = Math.atan2(state.particle.y, state.particle.x);
+        expect(bearing).toBeGreaterThanOrEqual(0);
+        expect(bearing).toBeLessThanOrEqual(Math.PI / 2);
+      }
+    });
+
+    it("sends particles inward at a negative radialSpeed", () => {
+      const emitter = createEmitter({
+        speed: 0,
+        lifetime: 10,
+        maxParticles: 4,
+        spawnOffset: { radius: 42 },
+        radialSpeed: -110,
+      });
+      setupEntity(emitter);
+      emitter.burst(4);
+      for (const state of emitter._active) {
+        expect(Math.hypot(state.vx, state.vy)).toBeCloseTo(110, 6);
+        // Pointing back at the origin: velocity opposes the spawn offset.
+        const alongOffset =
+          state.vx * state.particle.x + state.vy * state.particle.y;
+        expect(alongOffset).toBeLessThan(0);
+      }
+    });
+
+    it("adds the radial term to the speed/angle velocity", () => {
+      const emitter = createEmitter({
+        speed: 20,
+        angle: [0, Math.PI * 2],
+        lifetime: 10,
+        maxParticles: 6,
+        spawnOffset: { radius: [10, 12] },
+        radialSpeed: 100,
+      });
+      setupEntity(emitter);
+      emitter.burst(6);
+      for (const state of emitter._active) {
+        const speed = Math.hypot(state.vx, state.vy);
+        expect(speed).toBeGreaterThanOrEqual(80);
+        expect(speed).toBeLessThanOrEqual(120);
+      }
+    });
+
+    it("rejects a radialSpeed with no spawnOffset", () => {
+      expect(() => createEmitter({ radialSpeed: 100 })).toThrow(
+        /radialSpeed needs a spawnOffset/,
+      );
     });
   });
 

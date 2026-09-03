@@ -461,8 +461,8 @@ const registeredTextures = new Map<string, TextureResource>();
 /**
  * Register a runtime-created texture under an asset key, so every key-based
  * surface resolves it exactly like a preloaded asset: `texture: key` on
- * `SpriteComponent`, `{ sheet: key, frameWidth }` on a `FrameSource`, and
- * `textureKey: key` on particle emitters.
+ * `SpriteComponent` and on a particle emitter, and `{ sheet: key, frameWidth }`
+ * on a `FrameSource`.
  *
  * Registered keys are engine-global and live until {@link unregisterTexture} —
  * registration is a boot-scoped act, outside the asset manager's ref counts

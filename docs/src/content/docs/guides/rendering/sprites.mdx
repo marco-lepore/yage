@@ -321,7 +321,7 @@ available by the time `setup()` runs.
 Textures created at runtime (procedural art, dynamically baked frames) have
 no asset path, so they can't be preloaded. Register them under a key of your
 choosing with `registerTexture` and every key-based surface — sprite
-`texture`, animation `FrameSource`, particle `textureKey` — resolves them
+`texture`, animation `FrameSource`, particle emitter `texture` — resolves them
 exactly like a preloaded asset:
 
 ```typescript
