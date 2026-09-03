@@ -228,9 +228,74 @@ describe("GridGraph", () => {
     expect(a).toEqual(b);
   });
 
-  it("rejects non-positive tile dimensions", () => {
+  it("rejects unusable tile dimensions", () => {
     const base = { cols: 4, rows: 4, isWalkable: () => true };
-    expect(() => new GridGraph({ ...base, tileWidth: 0, tileHeight: 16 })).toThrow(RangeError);
-    expect(() => new GridGraph({ ...base, tileWidth: 16, tileHeight: -8 })).toThrow(RangeError);
+    expect(() => new GridGraph({ ...base, tileWidth: 0, tileHeight: 16 })).toThrow(
+      /tileWidth must be finite and > 0, got 0/,
+    );
+    expect(() => new GridGraph({ ...base, tileWidth: 16, tileHeight: -8 })).toThrow(
+      /tileHeight must be finite and > 0, got -8/,
+    );
+    expect(() => new GridGraph({ ...base, tileWidth: NaN, tileHeight: 16 })).toThrow(
+      /tileWidth must be finite and > 0, got NaN/,
+    );
+    expect(() => new GridGraph({ ...base, tileWidth: Infinity, tileHeight: 16 })).toThrow(
+      /tileWidth must be finite and > 0, got Infinity/,
+    );
+  });
+
+  it("rejects grid extents that are not whole counts of cells", () => {
+    const base = { tileWidth: 10, tileHeight: 10, isWalkable: () => true };
+    expect(() => new GridGraph({ ...base, cols: 0, rows: 4 })).toThrow(
+      /cols must be an integer >= 1, got 0/,
+    );
+    expect(() => new GridGraph({ ...base, cols: 4.5, rows: 4 })).toThrow(
+      /cols must be an integer >= 1, got 4.5/,
+    );
+    expect(() => new GridGraph({ ...base, cols: NaN, rows: 4 })).toThrow(
+      /cols must be an integer >= 1, got NaN/,
+    );
+    expect(() => new GridGraph({ ...base, cols: 4, rows: 0 })).toThrow(
+      /rows must be an integer >= 1, got 0/,
+    );
+    expect(() => new GridGraph({ ...base, cols: 4, rows: 2.5 })).toThrow(
+      /rows must be an integer >= 1, got 2.5/,
+    );
+  });
+
+  it("rejects a non-finite origin", () => {
+    const base = { cols: 4, rows: 4, tileWidth: 10, tileHeight: 10, isWalkable: () => true };
+    expect(() => new GridGraph({ ...base, origin: { x: NaN, y: 0 } })).toThrow(
+      /origin.x must be finite, got NaN/,
+    );
+    expect(() => new GridGraph({ ...base, origin: { x: 0, y: Infinity } })).toThrow(
+      /origin.y must be finite, got Infinity/,
+    );
+  });
+
+  it("throws from findPath when cost returns a non-finite number", () => {
+    const base = { cols: 4, rows: 1, tileWidth: 10, tileHeight: 10, isWalkable: () => true };
+    const grid = new GridGraph({
+      ...base,
+      cost: (col) => (col === 2 ? NaN : 1),
+    });
+    expect(() => grid.findPath({ x: 5, y: 5 }, { x: 35, y: 5 })).toThrow(
+      /GridGraph.findPath: cost must return a finite number, got NaN at cell \(2, 0\)/,
+    );
+
+    const finite = new GridGraph({ ...base, cost: () => 1 });
+    expect(finite.findPath({ x: 5, y: 5 }, { x: 35, y: 5 })).not.toBeNull();
+  });
+
+  it("searches without a cost option", () => {
+    const grid = new GridGraph({
+      cols: 4,
+      rows: 1,
+      tileWidth: 10,
+      tileHeight: 10,
+      isWalkable: () => true,
+    });
+    const path = grid.findPath({ x: 5, y: 5 }, { x: 35, y: 5 });
+    expect(path!.cells).toHaveLength(4);
   });
 });

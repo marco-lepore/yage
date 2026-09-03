@@ -5,19 +5,26 @@ import type { Vec2Like } from "@yagejs/core";
 import type { TilemapColliderConfig, TilemapData } from "@yagejs/tilemap";
 import { shapeAabb, shapeOverlapsCell } from "./colliderRaster.js";
 import { GridGraph } from "./GridGraph.js";
+import { assertFiniteCost } from "./validate.js";
 
 export interface GridFromTilemapOptions {
-  /** Tile-layer names to read. Omit to read every tile layer. */
-  layers?: string[];
+  /**
+   * Tile-layer names to read. Required, and every name must match a layer:
+   * reading every layer blocks each cell any layer paints, which makes a map
+   * with a filled ground layer impassable, and an unmatched name would drop
+   * that layer's walls without a word.
+   */
+  layers: readonly string[];
   /** A cell blocks if any read layer's cell satisfies this. Default
    *  `gid => gid !== 0`. Receives the base tile id — Tiled's flip/rotation
    *  flag bits are masked off, so a flipped wall matches its plain gid. */
   blocked?: (gid: number, col: number, row: number) => boolean;
   /**
-   * Maps a gid to a cell cost, default 1. When multiple read layers give a
-   * cell a cost, the highest wins (worse terrain dominates). Each cell's
-   * cost is floored at 1 — a return value below 1 is ignored. Not called
-   * for gid 0 (no tile).
+   * Maps a gid to a cell cost, default 1. Must return a finite number;
+   * `NaN` or `Infinity` throws. When multiple read layers give a cell a
+   * cost, the highest wins (worse terrain dominates). Each cell's cost is
+   * floored at 1 — a return value below 1 is ignored. Not called for gid 0
+   * (no tile).
    */
   cost?: (gid: number, col: number, row: number) => number;
   /** World-pixel position of cell `(0,0)`'s top-left corner. Default `(0,0)`. */
@@ -42,19 +49,32 @@ const GID_MASK = 0x0fffffff;
  */
 export function gridFromTilemap(
   data: TilemapData,
-  options: GridFromTilemapOptions = {},
+  options: GridFromTilemapOptions,
 ): GridGraph {
   const cols = data.width;
   const rows = data.height;
-  const layers = options.layers
-    ? data.tileLayers.filter((l) => options.layers!.includes(l.name))
-    : data.tileLayers;
-  if (options.layers && layers.length === 0) {
+  const available = data.tileLayers.map((l) => l.name);
+  // A JavaScript caller can leave the options object or `layers` out even
+  // though both are required, so the missing case is named here instead of
+  // failing on a property read.
+  const requested: readonly string[] | undefined = options?.layers;
+  if (requested === undefined || requested.length === 0) {
     throw new Error(
-      `gridFromTilemap: no tile layer matches [${options.layers.join(", ")}] — ` +
-        `available: [${data.tileLayers.map((l) => l.name).join(", ")}]`,
+      `gridFromTilemap: layers must name at least one tile layer, got ${
+        requested === undefined ? "undefined" : "[]"
+      }.`,
     );
   }
+  // Every name is checked, not just the whole list: one typo among several
+  // would otherwise drop that layer's walls and still build a grid.
+  const unmatched = requested.filter((name) => !available.includes(name));
+  if (unmatched.length > 0) {
+    throw new Error(
+      `gridFromTilemap: no tile layer matches [${unmatched.join(", ")}] — ` +
+        `available: [${available.join(", ")}]`,
+    );
+  }
+  const layers = data.tileLayers.filter((l) => requested.includes(l.name));
   const blocked = options.blocked ?? DEFAULT_BLOCKED;
   const cost = options.cost;
 
@@ -69,8 +89,11 @@ export function gridFromTilemap(
       for (const layer of layers) {
         const gid = (layer.data[index] ?? 0) & GID_MASK;
         if (blocked(gid, col, row)) isBlocked = true;
-        if (cost && gid !== 0)
-          cellCost = Math.max(cellCost, cost(gid, col, row));
+        if (cost && gid !== 0) {
+          const value = cost(gid, col, row);
+          assertFiniteCost("gridFromTilemap", value, col, row, gid);
+          cellCost = Math.max(cellCost, value);
+        }
       }
       walkable[index] = isBlocked ? 0 : 1;
       costs[index] = cellCost;

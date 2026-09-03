@@ -2,6 +2,12 @@ import { Vec2, type Vec2Like } from "@yagejs/core";
 import { aStar } from "./aStar.js";
 import { resolveHeuristic } from "./heuristics.js";
 import type { DiagonalMovement, GridCell, HeuristicName, Path } from "./types.js";
+import {
+  assertFinite,
+  assertFiniteCost,
+  assertGridExtent,
+  assertPositive,
+} from "./validate.js";
 
 export interface GridGraphOptions {
   cols: number;
@@ -16,9 +22,10 @@ export interface GridGraphOptions {
   isWalkable: (col: number, row: number) => boolean;
   /**
    * Per-cell multiplier on the step entering that cell. Default `() => 1`.
-   * Must return `>= 1` for optimal paths — the heuristic assumes a minimum
-   * cell cost of 1, so sub-1 costs make it overestimate (a path is still
-   * returned, just not guaranteed shortest).
+   * Must return a finite number; `NaN` or `Infinity` throws during
+   * `findPath`. Must return `>= 1` for optimal paths — the heuristic assumes
+   * a minimum cell cost of 1, so sub-1 costs make it overestimate (a path is
+   * still returned, just not guaranteed shortest).
    */
   cost?: (col: number, row: number) => number;
   /** Default `"no-corner-cutting"`. */
@@ -30,6 +37,18 @@ export interface GridGraphOptions {
 }
 
 const DEFAULT_COST = (): number => 1;
+
+/** Wraps a game-supplied `cost` so a non-finite return names the cell it
+ *  came from instead of silently making that cell unreachable. */
+function guardCost(
+  cost: (col: number, row: number) => number,
+): (col: number, row: number) => number {
+  return (col, row) => {
+    const value = cost(col, row);
+    assertFiniteCost("GridGraph.findPath", value, col, row);
+    return value;
+  };
+}
 
 /** A grid graph with A* search. Coordinates in and out are world pixels. */
 export class GridGraph {
@@ -45,9 +64,15 @@ export class GridGraph {
   private readonly heuristicFn: (dx: number, dy: number) => number;
 
   constructor(options: GridGraphOptions) {
-    if (options.tileWidth <= 0 || options.tileHeight <= 0) {
-      // Zero divides to NaN in worldToCell; negative silently mirrors it.
-      throw new RangeError("GridGraph: tileWidth and tileHeight must be positive");
+    // Every number here indexes cells or divides world pixels: a fractional,
+    // zero or non-finite one makes every findPath return null forever.
+    assertGridExtent("GridGraph", "cols", options.cols);
+    assertGridExtent("GridGraph", "rows", options.rows);
+    assertPositive("GridGraph", "tileWidth", options.tileWidth);
+    assertPositive("GridGraph", "tileHeight", options.tileHeight);
+    if (options.origin) {
+      assertFinite("GridGraph", "origin.x", options.origin.x);
+      assertFinite("GridGraph", "origin.y", options.origin.y);
     }
     this.cols = options.cols;
     this.rows = options.rows;
@@ -55,7 +80,7 @@ export class GridGraph {
     this.tileHeight = options.tileHeight;
     this.origin = options.origin ? new Vec2(options.origin.x, options.origin.y) : Vec2.ZERO;
     this.isWalkableFn = options.isWalkable;
-    this.costFn = options.cost ?? DEFAULT_COST;
+    this.costFn = options.cost ? guardCost(options.cost) : DEFAULT_COST;
     this.diagonalMovement = options.diagonalMovement ?? "no-corner-cutting";
     this.heuristicFn = resolveHeuristic(options.heuristic, this.diagonalMovement);
   }
