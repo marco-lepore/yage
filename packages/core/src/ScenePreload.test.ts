@@ -156,6 +156,18 @@ describe("Scene preload integration", () => {
     expect(am.has(FakeAsset)).toBe(false);
   });
 
+  it("two concurrent preloads of one scene take one reference", async () => {
+    const { manager, am } = setup();
+    const scene = new PreloadScene();
+
+    // The menu's prefetch is still in flight when the loading scene starts.
+    await Promise.all([manager.preload(scene), manager.preload(scene)]);
+    await manager.push(scene);
+
+    am.unload(FakeAsset);
+    expect(am.has(FakeAsset)).toBe(false);
+  });
+
   it("preloading one scene twice still takes one reference", async () => {
     const { manager, am } = setup();
     const scene = new PreloadScene();

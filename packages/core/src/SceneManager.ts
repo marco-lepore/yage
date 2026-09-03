@@ -58,6 +58,7 @@ export class SceneManager {
    * taken once, by one owner.
    */
   private readonly _preloadedScenes = new WeakSet<Scene>();
+  private readonly _preloadsInFlight = new WeakMap<Scene, Promise<void>>();
 
   private _autoPauseOnBlur = false;
   private _isBlurred = false;
@@ -300,7 +301,8 @@ export class SceneManager {
    * ```
    *
    * `onProgress` runs alongside the scene's own `onProgress` hook, both
-   * reporting 0 → 1.
+   * reporting 0 → 1. A call that joins one already running for the same
+   * scene awaits it and reports no progress of its own.
    *
    * A scene preloaded and never pushed keeps its references until
    * `assets.clear()` — nothing later releases them on its behalf.
@@ -313,8 +315,19 @@ export class SceneManager {
     // The mark from an earlier call is still unclaimed, so its references
     // cover this one; loading again would leave a set nothing releases.
     if (this._preloadedScenes.has(scene)) return;
-    await this._loadSceneAssets(scene, onProgress);
-    this._preloadedScenes.add(scene);
+    // Same for a call still running: join it. Two calls that both loaded
+    // would take two reference sets and leave one mark for the push to claim.
+    const inFlight = this._preloadsInFlight.get(scene);
+    if (inFlight) return inFlight;
+    const run = this._loadSceneAssets(scene, onProgress).then(() => {
+      this._preloadedScenes.add(scene);
+    });
+    this._preloadsInFlight.set(scene, run);
+    try {
+      await run;
+    } finally {
+      this._preloadsInFlight.delete(scene);
+    }
   }
 
   /**

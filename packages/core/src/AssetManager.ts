@@ -64,6 +64,11 @@ export class AssetManager {
    * and a single `unload` won't free it under the other. Duplicate handles
    * within one call count once, and a call that rejects counts nothing.
    *
+   * A loader that loads assets of its own — a Tiled map loads its tileset
+   * images — counts those as soon as its own load succeeds. A sibling failing
+   * in the same call leaves them counted with nothing to release them, until
+   * the retry hands their owner its reference or `clear()` frees everything.
+   *
    * A second handle for a path already loaded under a different `data` reuses
    * the first load and warns: the cache is keyed by type and path alone.
    */

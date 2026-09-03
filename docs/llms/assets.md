@@ -109,7 +109,11 @@ each hold a reference, so the first scene's `onExit` unload leaves it standing
 for the second. `clear()` ignores the counts and frees everything.
 
 A `loadAll` that rejects takes no references at all: its already-loaded
-siblings stay cached and uncounted, so a retry counts each of them once.
+siblings stay cached and uncounted, so a retry counts each of them once. An
+asset whose loader loads others — a Tiled map loads its tileset images — is
+the exception: those inner loads count as soon as the map itself loads, and a
+sibling failing in the same call leaves them counted until the retry gives
+them their owner.
 
 ### One file path, one declaration form
 
