@@ -18,22 +18,36 @@ export function getProperty<T = unknown>(
  * Tiled doesn't support array properties natively, so a common convention
  * is to use indexed names like `spawns[0]`, `spawns[1]`, etc.
  * This function collects them into a proper array, preserving index order.
+ *
+ * The indices must run from 0 without gaps. A gap means a property was
+ * renamed or deleted in Tiled, which would otherwise hand back an array with
+ * `undefined` holes typed as values, so it throws naming the missing index.
  */
 export function getPropertyArray<T = unknown>(
   obj: HasProperties,
   name: string,
 ): T[] {
   const pattern = new RegExp(`^${escapeRegex(name)}\\[(\\d+)\\]$`);
-  const values: T[] = [];
+  const byIndex = new Map<number, T>();
 
-  if (!obj.properties) return values;
+  if (!obj.properties) return [];
 
   for (const prop of obj.properties) {
     const match = prop.name.match(pattern);
     if (match) {
-      const index = Number.parseInt(match[1]!, 10);
-      values[index] = prop.value as T;
+      byIndex.set(Number.parseInt(match[1]!, 10), prop.value as T);
     }
+  }
+
+  const values: T[] = [];
+  for (let index = 0; index < byIndex.size; index++) {
+    if (!byIndex.has(index)) {
+      const highest = Math.max(...byIndex.keys());
+      throw new Error(
+        `getPropertyArray: "${name}[${index}]" is missing, but "${name}[${highest}]" is set. Indexed properties must run from 0 without gaps.`,
+      );
+    }
+    values.push(byIndex.get(index)!);
   }
 
   return values;

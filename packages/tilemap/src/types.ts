@@ -9,6 +9,7 @@ export type TilemapDiagnosticCode =
   | "image-layer"
   | "tsx-tileset"
   | "unresolved-tileset"
+  | "unknown-gid"
   | "tile-object"
   | "layer-parallax"
   | "unsupported-tile-animation";
@@ -20,6 +21,9 @@ export interface TilemapDiagnostic {
   /**
    * `"error"`: authored content is dropped or will render wrong.
    * `"warning"`: an authored setting the renderer ignores.
+   *
+   * Neither stops the map from rendering: what a diagnostic names is skipped
+   * and everything else draws.
    */
   severity: "error" | "warning";
   /** Layer name, when the diagnostic is about a layer. */

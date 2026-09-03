@@ -91,7 +91,7 @@ export class Transform extends Component {
     if (!pt) {
       this._position = v;
     } else {
-      const delta = v.sub(pt.worldPosition).rotate(-pt.worldRotation);
+      const local = pt.worldToLocal(v);
       const ps = pt.worldScale;
       if ((ps.x === 0 || ps.y === 0) && !this._warnedZeroScaleAxis) {
         this._warnedZeroScaleAxis = true;
@@ -105,8 +105,8 @@ export class Transform extends Component {
         );
       }
       this._position = new Vec2(
-        ps.x === 0 ? this._position.x : delta.x / ps.x,
-        ps.y === 0 ? this._position.y : delta.y / ps.y,
+        ps.x === 0 ? this._position.x : local.x,
+        ps.y === 0 ? this._position.y : local.y,
       );
     }
     this._markDirty();
@@ -163,6 +163,24 @@ export class Transform extends Component {
   setScale(x: number, y: number): void {
     this._scale = new Vec2(x, y);
     this._markDirty();
+  }
+
+  /**
+   * Convert a world-space point into this entity's own local space — the
+   * inverse of this transform's world position, rotation and scale. Use it to
+   * ask where a world point falls inside an entity that is parented, rotated
+   * or scaled.
+   *
+   * On an axis whose world scale is 0 the world transform collapses that axis,
+   * so no local point maps back and the result is non-finite there. A caller
+   * that can be handed such a transform checks `Number.isFinite`.
+   */
+  worldToLocal(point: Vec2Like): Vec2 {
+    const scale = this.worldScale;
+    const delta = new Vec2(point.x, point.y)
+      .sub(this.worldPosition)
+      .rotate(-this.worldRotation);
+    return new Vec2(delta.x / scale.x, delta.y / scale.y);
   }
 
   /**

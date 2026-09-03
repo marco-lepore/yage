@@ -89,16 +89,22 @@ describe("getPropertyArray", () => {
     expect(result[0]).toBe("sword");
   });
 
-  it("handles sparse arrays", () => {
+  it("throws naming the first missing index when the indices have a gap", () => {
     const obj = makeObj([
       { name: "vals[0]", type: "int", value: 10 },
       { name: "vals[3]", type: "int", value: 40 },
     ]);
-    const result = getPropertyArray<number>(obj, "vals");
-    expect(result[0]).toBe(10);
-    expect(result[1]).toBeUndefined();
-    expect(result[2]).toBeUndefined();
-    expect(result[3]).toBe(40);
+    expect(() => getPropertyArray<number>(obj, "vals")).toThrow(
+      '"vals[1]" is missing, but "vals[3]" is set',
+    );
+  });
+
+  it("reads indices written out of order", () => {
+    const obj = makeObj([
+      { name: "vals[1]", type: "int", value: 20 },
+      { name: "vals[0]", type: "int", value: 10 },
+    ]);
+    expect(getPropertyArray<number>(obj, "vals")).toEqual([10, 20]);
   });
 });
 

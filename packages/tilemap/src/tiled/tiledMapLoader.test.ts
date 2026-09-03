@@ -58,8 +58,22 @@ vi.mock("pixi.js", () => ({
     get: (key: string) => mocks.cache.get(key),
   },
   path: {
-    dirname: (value: string) => value.slice(0, value.lastIndexOf("/")),
+    dirname: (value: string) =>
+      value.includes("/") ? value.slice(0, value.lastIndexOf("/")) : ".",
     extname: (value: string) => value.slice(value.lastIndexOf(".")),
+    // Pixi's `path.join` normalises the result; the tests need that much of it.
+    join: (...segments: string[]) => {
+      const parts: string[] = [];
+      for (const segment of segments.join("/").split("/")) {
+        if (segment === "" || segment === ".") continue;
+        if (segment === ".." && parts.length > 0 && parts.at(-1) !== "..") {
+          parts.pop();
+          continue;
+        }
+        parts.push(segment);
+      }
+      return parts.join("/");
+    },
   },
   Texture: mocks.MockTexture,
   Rectangle: mocks.MockRectangle,
@@ -108,5 +122,35 @@ describe("tiledMapLoader", () => {
       layer as unknown as InstanceType<typeof mocks.MockCompositeTilemap>
     ).calls;
     expect(calls).toHaveLength(1);
+  });
+
+  it("resolves an external tileset's image against the tileset's own folder", async () => {
+    const map = {
+      width: 1,
+      height: 1,
+      tilewidth: 16,
+      tileheight: 16,
+      layers: [],
+      tilesets: [{ firstgid: 1, source: "../tilesets/terrain.tsj" }],
+    } as unknown as TiledMapData;
+    const tilesetData = {
+      name: "terrain",
+      tilewidth: 16,
+      tileheight: 16,
+      tilecount: 1,
+      columns: 1,
+      image: "terrain.png",
+    };
+    const loader = {
+      load: async ({ src }: { src: string }) => {
+        expect(src).toBe("tilesets/terrain.tsj");
+        return tilesetData;
+      },
+    };
+    const parser = tiledMapAssetExtension.loader as TestLoaderParser;
+
+    await parser.parse(map, { src: "maps/level.json" }, loader);
+
+    expect(mocks.load).toHaveBeenCalledWith("tilesets/terrain.png");
   });
 });

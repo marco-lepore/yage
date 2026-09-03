@@ -340,6 +340,58 @@ describe("Transform dirty-flag propagation", () => {
     expect(child.get(Transform).position.y).toBeCloseTo(0, 5);
   });
 
+  describe("worldToLocal", () => {
+    it("returns the point unchanged on an identity root transform", () => {
+      const entity = new Entity("root");
+      const transform = entity.add(new Transform());
+
+      const local = transform.worldToLocal(new Vec2(30, -12));
+      expect(local.x).toBeCloseTo(30, 5);
+      expect(local.y).toBeCloseTo(-12, 5);
+    });
+
+    it("reverses position, rotation and scale", () => {
+      const entity = new Entity("root");
+      const transform = entity.add(
+        new Transform({
+          position: { x: 10, y: 20 },
+          rotation: Math.PI / 2,
+          scale: { x: 2, y: 2 },
+        }),
+      );
+
+      // Local (5, 0) scales to (10, 0), turns 90° to (0, 10) and lands at
+      // (10, 30) in the world.
+      const local = transform.worldToLocal(new Vec2(10, 30));
+      expect(local.x).toBeCloseTo(5, 5);
+      expect(local.y).toBeCloseTo(0, 5);
+    });
+
+    it("reverses the whole parent chain", () => {
+      const parent = new Entity("parent");
+      parent.add(
+        new Transform({ position: { x: 100, y: 0 }, scale: { x: 2, y: 2 } }),
+      );
+      const child = new Entity("child");
+      const transform = child.add(new Transform({ position: { x: 5, y: 0 } }));
+      parent.addChild("c", child);
+
+      // The child's world origin is 100 + 5*2 = 110, and its world scale is 2.
+      const local = transform.worldToLocal(new Vec2(120, 8));
+      expect(local.x).toBeCloseTo(5, 5);
+      expect(local.y).toBeCloseTo(4, 5);
+    });
+
+    it("returns a non-finite component on an axis whose world scale is 0", () => {
+      const entity = new Entity("root");
+      const transform = entity.add(new Transform({ scale: { x: 0, y: 1 } }));
+
+      const local = transform.worldToLocal(new Vec2(10, 4));
+      expect(Number.isFinite(local.x)).toBe(false);
+      expect(local.y).toBeCloseTo(4, 5);
+    });
+  });
+
   describe("worldPosition setter with a zero parent scale axis", () => {
     let warn: ReturnType<typeof vi.spyOn>;
 

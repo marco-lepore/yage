@@ -49,17 +49,19 @@ const tiledMapLoaderParser: LoaderParser<TiledMapData> = {
     const src = resolvedAsset?.src;
     if (!src || !loader) return asset;
 
-    let basePath = path.dirname(src);
-    if (basePath && !basePath.endsWith("/")) {
-      basePath += "/";
-    }
+    const mapDir = path.dirname(src);
 
     for (const tilesetRef of asset.tilesets as TilesetRef[]) {
       let tileset: TilesetData | null;
+      // Tiled writes a tileset's `image` relative to the file the tileset
+      // itself lives in, so an external tileset resolves its image against its
+      // own directory and an embedded one against the map's.
+      let imageDir = mapDir;
 
       if (tilesetRef.source) {
         // External tileset JSON — load it
-        const tilesetPath = basePath + tilesetRef.source;
+        const tilesetPath = path.join(mapDir, tilesetRef.source);
+        imageDir = path.dirname(tilesetPath);
         const tilesetData = (await loader.load<TilesetData>({
           src: tilesetPath,
         })) as TilesetData;
@@ -77,7 +79,7 @@ const tiledMapLoaderParser: LoaderParser<TiledMapData> = {
       // animation, class, custom property or collision shape, so `image` is
       // what tells the two forms apart.
       if (tileset.image) {
-        const imagePath = basePath + tileset.image;
+        const imagePath = path.join(imageDir, tileset.image);
         const baseTexture = await Assets.load<Texture>(imagePath);
         const cols = tileset.columns;
         const tw = tileset.tilewidth;

@@ -102,6 +102,15 @@ Negative scale composes through nested entities too — a child at
 `worldScale = (1, 1)` (the mirrors cancel out). Positive non-unit scale
 behaves the same way: a parent at `2x` zooms its whole subtree.
 
+To go the other way, `worldToLocal(point)` maps a world-space point into
+the entity's own space, reversing its world position, rotation and scale.
+It answers questions like "which of this entity's cells is the pointer
+over" without caring how the entity is parented or scaled:
+
+```typescript
+const local = entity.get(Transform).worldToLocal(pointerWorldPosition);
+```
+
 ### Destroying an Entity
 
 `entity.destroy()` deactivates the entity immediately: `isActive` reads

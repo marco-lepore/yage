@@ -438,6 +438,41 @@ describe("TilemapComponent", () => {
     expect(comp.getTileAt(0, 0)).toBeNull();
   });
 
+  it("getTileAt reads through the parent chain", () => {
+    const { scene } = createTestContext();
+    const parent = scene.spawn("group");
+    parent.add(new Transform({ position: new Vec2(100, 0) }));
+    const entity = parent.spawnChild("tilemap");
+    entity.add(new Transform());
+    const comp = entity.add(new TilemapComponent({ map: testMap }));
+
+    // The map is drawn from x = 100 because the parent sits there.
+    expect(comp.getTileAt(108, 8)).toBe(1);
+    expect(comp.getTileAt(8, 8)).toBeNull();
+  });
+
+  it("getTileAt reads through the entity's world scale", () => {
+    const { scene } = createTestContext();
+    const entity = scene.spawn("tilemap");
+    entity.add(new Transform({ scale: new Vec2(2, 2) }));
+    const comp = entity.add(new TilemapComponent({ map: testMap }));
+
+    // At scale 2 a 16px tile covers 32 world px, so world x = 24 is still the
+    // first column and the map ends at 10 columns × 32 px.
+    expect(comp.getTileAt(24, 24)).toBe(1);
+    expect(comp.getTileAt(319, 8)).toBe(1);
+    expect(comp.getTileAt(321, 8)).toBeNull();
+  });
+
+  it("getTileAt returns null when the map's world scale is 0", () => {
+    const { scene } = createTestContext();
+    const entity = scene.spawn("tilemap");
+    entity.add(new Transform({ scale: new Vec2(0, 0) }));
+    const comp = entity.add(new TilemapComponent({ map: testMap }));
+
+    expect(comp.getTileAt(0, 0)).toBeNull();
+  });
+
   it("getTileAt strips Tiled's flip bits off the returned id", () => {
     const { scene } = createTestContext();
     const entity = scene.spawn("tilemap");
