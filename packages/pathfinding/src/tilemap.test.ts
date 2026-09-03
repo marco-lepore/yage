@@ -36,7 +36,7 @@ function buildTilemap(overrides: Partial<TilemapData> = {}): TilemapData {
 
 describe("gridFromTilemap", () => {
   it("marks nonzero gids as walls by default", () => {
-    const grid = gridFromTilemap(buildTilemap());
+    const grid = gridFromTilemap(buildTilemap(), { layers: ["collision"] });
 
     const clearRow = grid.findPath({ x: 5, y: 5 }, { x: 35, y: 5 }); // row 0, no walls
     expect(clearRow).not.toBeNull();
@@ -89,13 +89,17 @@ describe("gridFromTilemap", () => {
   });
 
   it("honors a custom blocked predicate", () => {
-    const grid = gridFromTilemap(buildTilemap(), { blocked: () => false });
+    const grid = gridFromTilemap(buildTilemap(), {
+      layers: ["collision"],
+      blocked: () => false,
+    });
     const path = grid.findPath({ x: 5, y: 15 }, { x: 35, y: 15 });
     expect(path!.cells.every((c) => c.row === 1)).toBe(true); // straight through despite gid 1s
   });
 
   it("honors a custom cost function", () => {
     const grid = gridFromTilemap(buildTilemap(), {
+      layers: ["collision"],
       blocked: () => false,
       cost: (gid) => (gid === 1 ? 10 : 1),
     });
@@ -105,13 +109,14 @@ describe("gridFromTilemap", () => {
 
   it("threads origin into worldToCell/cellToWorld", () => {
     const grid = gridFromTilemap(buildTilemap(), {
+      layers: ["collision"],
       origin: { x: 100, y: 200 },
     });
     expect(grid.cellToWorld(0, 0)).toEqual(new Vec2(105, 205));
   });
 
   it("builds and routes around a wall end-to-end", () => {
-    const grid = gridFromTilemap(buildTilemap());
+    const grid = gridFromTilemap(buildTilemap(), { layers: ["collision"] });
     const path = grid.findPath({ x: 5, y: 25 }, { x: 35, y: 25 }); // row 2, clear
     expect(path).not.toBeNull();
     expect(path!.cells.every((c) => c.row === 2)).toBe(true);
@@ -128,6 +133,7 @@ describe("gridFromTilemap", () => {
 
     const seen: number[] = [];
     const grid = gridFromTilemap(map, {
+      layers: ["collision"],
       blocked: (gid) => {
         seen.push(gid);
         return gid === 1;
@@ -143,6 +149,59 @@ describe("gridFromTilemap", () => {
     expect(() =>
       gridFromTilemap(buildTilemap(), { layers: ["colision"] }),
     ).toThrow(/no tile layer matches/);
+  });
+
+  it("names only the unmatched layers when one of several is a typo", () => {
+    expect(() =>
+      gridFromTilemap(buildTilemap(), { layers: ["collision", "decoraton"] }),
+    ).toThrow(/no tile layer matches \[decoraton\] — available: \[collision\]/);
+  });
+
+  it("throws on an empty layers list", () => {
+    expect(() => gridFromTilemap(buildTilemap(), { layers: [] })).toThrow(
+      /layers must name at least one tile layer, got \[\]/,
+    );
+  });
+
+  it("throws when a JavaScript caller omits layers", () => {
+    // The types require `layers`; an untyped caller still reaches the entry.
+    const untyped = gridFromTilemap as unknown as (data: TilemapData) => void;
+    expect(() => untyped(buildTilemap())).toThrow(
+      /layers must name at least one tile layer, got undefined/,
+    );
+  });
+
+  it("throws when cost returns a non-number for an unlisted gid", () => {
+    const terrainCost: Record<number, number> = { 2: 5 }; // gid 1 is missing
+    expect(() =>
+      gridFromTilemap(buildTilemap(), {
+        layers: ["collision"],
+        cost: (gid) => terrainCost[gid]!,
+      }),
+    ).toThrow(
+      /cost must return a finite number, got undefined for gid 1 at cell \(1, 1\)/,
+    );
+  });
+
+  it("throws when cost returns a non-finite number on a walkable cell", () => {
+    expect(() =>
+      gridFromTilemap(buildTilemap(), {
+        layers: ["collision"],
+        blocked: () => false, // cell (1, 1) carries gid 1 and stays walkable
+        cost: () => NaN,
+      }),
+    ).toThrow(
+      /cost must return a finite number, got NaN for gid 1 at cell \(1, 1\)/,
+    );
+  });
+
+  it("throws when cost returns Infinity", () => {
+    expect(() =>
+      gridFromTilemap(buildTilemap(), {
+        layers: ["collision"],
+        cost: () => Infinity,
+      }),
+    ).toThrow(/cost must return a finite number, got Infinity/);
   });
 });
 

@@ -38,6 +38,12 @@ if (path) {
 `walls` (open a door, block a passage) and the next path reflects it, no
 rebuild step needed.
 
+The constructor checks its numbers and throws naming the offending one:
+`cols` and `rows` must be whole counts of cells of at least 1,
+`tileWidth`/`tileHeight` must be finite and above 0, and an `origin` must be
+finite. Each of those values indexes cells or divides world pixels, so a bad
+one would otherwise make every `findPath` return `null` with no explanation.
+
 ## From a tilemap
 
 `gridFromTilemap` lives behind a `./tilemap` subpath so a grid-only consumer
@@ -49,7 +55,7 @@ import { gridFromTilemap } from "@yagejs/pathfinding/tilemap";
 
 // tilemap is a TilemapComponent; tilemap.data is its parsed TilemapData.
 const grid = gridFromTilemap(tilemap.data, {
-  layers: ["collision"], // which tile layers block; omit = every layer
+  layers: ["collision"], // required: which tile layers block
   blocked: (gid) => gid !== 0, // default: any non-empty tile blocks
   origin: tilemap.entity.get(Transform).position, // map placement offset
 });
@@ -57,10 +63,15 @@ const grid = gridFromTilemap(tilemap.data, {
 const path = grid.findPath(agent.position, target.position);
 ```
 
-`layers` restricts which tile layers are read. A cell is blocked if **any**
-read layer's cell satisfies `blocked`. The adapter precomputes a
-walkability + cost pass over the grid once, so the returned `GridGraph`
-doesn't re-scan tilemap data on every search.
+`layers` chooses which tile layers are read, and is required — reading every
+layer would block each cell any layer paints, so a map with a filled ground
+layer would come out impassable. Every name must match a layer in the map; a
+name that matches nothing throws, because a typo would otherwise drop that
+layer's walls and still return a grid.
+
+A cell is blocked if **any** read layer's cell satisfies `blocked`. The
+adapter precomputes a walkability + cost pass over the grid once, so the
+returned `GridGraph` doesn't re-scan tilemap data on every search.
 
 ## From object-layer collision shapes
 
@@ -157,9 +168,11 @@ const grid = new GridGraph({
 
 - **`cost`** is a per-cell multiplier on the step entering that cell (default
   `1`). A diagonal step costs `Math.SQRT2` times the destination cell's cost;
-  an orthogonal step costs `1` times it. Costs must be `>= 1` for the search
-  to guarantee the shortest path — a lower cost still returns *a* path, just
-  not necessarily the cheapest one.
+  an orthogonal step costs `1` times it. It must return a finite number —
+  `NaN` (a lookup table missing an entry) or `Infinity` makes the cell
+  unreachable without marking it blocked, so `findPath` throws instead.
+  Costs must be `>= 1` for the search to guarantee the shortest path — a
+  lower cost still returns *a* path, just not necessarily the cheapest one.
 - **`diagonalMovement`** — `"never"` restricts movement to 4 directions.
   `"always"` allows all 8, including cutting a diagonal past a blocked wall
   corner. `"no-corner-cutting"` (the default) allows a diagonal step only
@@ -188,6 +201,6 @@ goal share a cell, it returns a one-waypoint path with `cost: 0`.
 ## Not supported
 
 Path smoothing, async or time-sliced search for large grids, nearest-walkable
-goal snapping, endpoint snapping to the exact start/goal position, grids
-derived from collision shapes (only tile GIDs are read), and waypoint/navmesh
-graphs or flow fields.
+goal snapping, endpoint snapping to the exact start/goal position, per-object
+cost, agent-radius inflation (a body wider than one cell can be routed
+through a one-cell gap), and waypoint/navmesh graphs or flow fields.

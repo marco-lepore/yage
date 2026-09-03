@@ -16,7 +16,7 @@ const grid = new GridGraph({
   tileWidth: 32,
   tileHeight: 32,
   isWalkable: (col, row) => walls[row * cols + col] === 0, // called on every findPath, never cached
-  cost: (col, row) => 1, // per-cell step multiplier, default 1, must be >= 1 for optimal paths
+  cost: (col, row) => 1, // per-cell step multiplier, default 1, must return a finite number, >= 1 for optimal paths
   diagonalMovement: "no-corner-cutting", // "never" | "always" | "no-corner-cutting" (default)
   heuristic: "octile", // "manhattan" | "chebyshev" | "octile" | "euclidean"; default: octile w/ diagonals, else manhattan
   origin: { x: 0, y: 0 }, // world px of cell (0,0)'s top-left corner
@@ -25,6 +25,8 @@ const grid = new GridGraph({
 const path = grid.findPath({ x: 48, y: 48 }, { x: 600, y: 400 });
 // Path | null: { waypoints: Vec2[], cells: GridCell[], cost: number }
 ```
+
+Constructor preconditions, each throwing an `Error` naming the input: `cols`/`rows` integers >= 1, `tileWidth`/`tileHeight` finite and > 0, `origin.x`/`origin.y` finite. A `cost` returning a non-finite number throws from `findPath`.
 
 Readonly fields: `cols`, `rows`, `tileWidth`, `tileHeight`, `origin`.
 Methods: `inBounds(col, row)`, `worldToCell(v): GridCell`, `cellToWorld(col, row): Vec2` (tile centre), `findPath(startWorld, goalWorld): Path | null`.
@@ -46,9 +48,9 @@ import { gridFromTilemap } from "@yagejs/pathfinding/tilemap";
 
 // tilemap.data is @yagejs/tilemap's TilemapData
 const grid = gridFromTilemap(tilemap.data, {
-  layers: ["collision"], // tile layers to read; omit = all; throws if none match
+  layers: ["collision"], // required; tile layers to read; throws when a name matches no layer
   blocked: (gid, col, row) => gid !== 0, // default; a cell blocks if any read layer's cell satisfies this
-  cost: (gid, col, row) => 1, // maps a gid to a cell cost, default 1, floored at 1; highest wins across layers
+  cost: (gid, col, row) => 1, // maps a gid to a cell cost, default 1, must be finite, floored at 1; highest wins across layers
   origin: tilemap.entity.get(Transform).position,
 });
 ```
