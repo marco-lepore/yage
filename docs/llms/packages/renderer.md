@@ -411,6 +411,8 @@ API: `chars` / `words` / `lines` (getters), `setText(v)`, `content` (reads the c
 
 `source` is required; there is no raw-`Texture[]` construction path. A `FrameSource` is either a sheet (`SheetFrameSource`: `{ sheet, frameWidth, frameHeight?, count?, columns?, startX?, startY?, gapX?, gapY? }` — top row by default; `count` wraps rows every `columns` frames for multi-row grid sheets) or an atlas animation (`{ atlas, animation }`). `sliceGrid(texture, options)` is the underlying slicer for use when you already have a `Texture` object.
 
+Every slicing entry (`sliceGrid`, `sliceSheet`, `sliceTextureFrames`, and a `SheetFrameSource`) validates its options: each field must be a finite number at or above its minimum, and the resulting grid must fit inside the texture. A failure throws naming the function and the offending field. Slicing does not change how the texture is sampled — turn on `pixelArtPreset` for nearest-neighbour sampling.
+
 ```ts
 import { AnimatedSpriteComponent } from "@yagejs/renderer";
 
@@ -443,6 +445,19 @@ index through `frame`. A bare `play()` resumes from the current frame. Pass
 `fromStart: true` to restart at frame 0, including replaying a completed
 non-looping animation.
 
+`play(options?)` owns its completion callback: a play with no `onComplete` clears the one the previous play installed, and an `AnimationController` animation switch clears it too. `speed` and `loop` are sticky — the next play keeps them.
+
+`onFrameChange(listener)` subscribes to frame changes and returns an unsubscribe function, so `this.addCleanup(sprite.onFrameChange(fn))` drops the listener with the component. Any number of listeners can subscribe; each receives the new frame index. Pixi delivers a frame change on play, on every advance, and on the frame reset an animation switch performs, so a listener sees controller switches too. Assigning `animatedSprite.onFrameChange` directly replaces the engine's dispatcher and silences every subscriber.
+
+```ts
+const sprite = entity.get(AnimatedSpriteComponent);
+this.addCleanup(
+  sprite.onFrameChange((frame) => {
+    if (frame === 4) playFootstep();
+  }),
+);
+```
+
 Playback runs in engine-scaled component time. `scene.timeScale` and
 `entity.timeScale` compose with Pixi's `animationSpeed`; a paused scene,
 `scene.timeScale = 0`, or a disabled component freezes the animation. Host an
@@ -473,7 +488,7 @@ entity.add(
 // In component:
 const anim = entity.get(AnimationController);
 anim.play("walk");
-anim.playOneShot("attack"); // locks until complete, then reverts
+anim.playOneShot("attack"); // locks until complete; the sprite holds the last frame
 ```
 
 ### Typing the controller
@@ -494,7 +509,16 @@ class HeroController extends Component {
 }
 ```
 
-`playOneShot(name, options?)` — `options.duration` (engine-scaled seconds) overrides the auto-computed lock duration; the fallback uses `(frames * (1 / 60)) / (AnimationDef.speed * controller.speed)`. The effective speed must be positive and the calculated duration must be finite. The lock timer and sprite playback receive the same scene and entity time scaling. Pass an explicit `duration` when synchronising lock release across multiple controllers or when automatic timing cannot produce a valid duration (see `LayeredAnimationController` below).
+`playOneShot(name, options?)` — `options` is `{ startFrame?, speed?, duration?, onComplete?, onCancel? }`.
+
+- `startFrame` (integer, 0 to the last frame) starts the clip partway in.
+- `speed` (finite, > 0) multiplies playback for this one-shot only; an ordinary `play()` afterwards runs at the definition's own speed.
+- `duration` (engine-scaled seconds) overrides the auto-computed lock duration. The fallback uses the frames that will actually play: `((frames - startFrame) * (1 / 60)) / (AnimationDef.speed * controller.speed * options.speed)`. The effective speed must be positive and the calculated duration must be finite.
+- Exactly one of `onComplete` and `onCancel` runs per one-shot: `onComplete` when the lock timer plays out, `onCancel` when another one-shot, `forcePlay`, `unlock` or destroying the component ends it first. Neither runs when `playOneShot` re-plays the animation that is already locked (a no-op), and `onCancel` runs after the new state is installed, so calling `playOneShot` from inside it takes effect. An `onCancel` from destruction runs while the entity is already marked destroyed.
+
+The lock timer and sprite playback receive the same scene and entity time scaling. Pass an explicit `duration` when synchronising lock release across multiple controllers or when automatic timing cannot produce a valid duration (see `LayeredAnimationController` below).
+
+`play`, `playOneShot`, `forcePlay` and `calcDuration` throw naming the method, the name and the defined set when the animation is not defined; nothing changes on the controller. `has(name)` reports whether a name is defined (and narrows the type), for names driven from data.
 
 Writing `controller.speed` updates the animation currently playing. An automatically timed one-shot preserves its playback progress and recomputes the remaining lock time. An explicit one-shot `duration` remains unchanged.
 
@@ -537,7 +561,9 @@ layered.playOneShot("attack", { onComplete: () => layered.play("idle") });
 
 - `play(name)` forwards to every child.
 - `speed` reads the first controller's runtime multiplier and writes a new value to every child. While the wrapper is attached, writing `speed` on any participating controller also updates the group. During an automatically timed one-shot, the lead timer retimes at its current progress.
-- `playOneShot(name, opts)` uses the first controller's lock timer and requires its automatic timing to produce a positive finite duration. `opts.duration` keeps that timer fixed. Every other child receives `Number.POSITIVE_INFINITY` and stays locked until the lead timer releases the group. `onComplete` runs exactly once.
+- `playOneShot(name, opts)` uses the first controller's lock timer. Every other child receives `Number.POSITIVE_INFINITY` and stays locked until the lead timer releases the group. `startFrame` and `speed` are forwarded to every layer. With automatic timing every layer must accept that timing and produce a positive finite duration, checked before any layer switches — layers can define the same name with different frame counts, so a `startFrame` legal for one can be out of range for another. `opts.duration` keeps the lead timer fixed and replaces that calculation.
+- The wrapper owns the interruption signal: exactly one of `onComplete` and `onCancel` runs per one-shot, and layers never receive an `onCancel` of their own.
+- Every layer must define every name played through the wrapper. `play`, `playOneShot` and `forcePlay` throw naming the layer index before any layer switches.
 - Rebuild the wrapper through the same `setup()` path whenever the scene is constructed.
 
 ### Layered characters: one-shot lock drift (the underlying problem)
@@ -568,7 +594,7 @@ function playOneShotLayered(
 playOneShotLayered([bodyAnim, headAnim, outfitAnim], "attack");
 ```
 
-`calcDuration(name)` is public on `AnimationController` and rejects speeds that cannot produce a valid automatic duration.
+`calcDuration(name, options?)` is public on `AnimationController`, takes the same `startFrame` / `speed` as a one-shot, and rejects speeds that cannot produce a valid automatic duration.
 
 ## Gradient fills
 

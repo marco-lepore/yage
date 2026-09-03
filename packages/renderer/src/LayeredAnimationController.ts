@@ -1,9 +1,11 @@
 import { Component } from "@yagejs/core";
 import { AnimationController } from "./AnimationController.js";
+import type { AnimationOneShotOptions } from "./AnimationController.js";
 import {
   registerAnimationSpeedOwner,
   withoutAnimationSpeedOwner,
 } from "./internal/animationSpeedGroup.js";
+import { runAttributed } from "./internal/attribution.js";
 
 /** Options for {@link LayeredAnimationController}. */
 export interface LayeredAnimationControllerOptions<T extends string> {
@@ -27,7 +29,10 @@ export interface LayeredAnimationControllerOptions<T extends string> {
  * - `speed` writes the same runtime multiplier to every child.
  * - `playOneShot(name, opts)` uses the first child as the shared timer and
  *   keeps every other child locked until that timer completes.
- * - The wrapper fires the user's `onComplete` exactly once.
+ * - The wrapper fires exactly one of the user's `onComplete` / `onCancel`.
+ * - Every layer must define every name played through the wrapper; a missing
+ *   name throws before any layer switches, and so does a `startFrame` or
+ *   `speed` that any layer rejects when the timing is automatic.
  *
  * ```ts
  * class Hero extends Entity {
@@ -50,6 +55,7 @@ export class LayeredAnimationController<
   private _current: T | "" = "";
   private _locked = false;
   private _onComplete: (() => void) | undefined;
+  private _onCancel: (() => void) | undefined;
 
   constructor(options: LayeredAnimationControllerOptions<T>) {
     super();
@@ -105,6 +111,7 @@ export class LayeredAnimationController<
 
   /** Play a named animation on every layer. No-op if already current or locked. */
   play(name: T): void {
+    this._assertEveryLayerHas(name, "play");
     if (this._current === name || this._locked) return;
     this._current = name;
     for (const c of this._controllers) c.play(name);
@@ -115,49 +122,107 @@ export class LayeredAnimationController<
    * The first controller owns the shared timer. Its normal automatic timing
    * keeps the lock aligned when its speed changes. Other controllers receive
    * an infinite lock duration and are released with the wrapper. Pass an
-   * explicit duration to keep the shared timer independent of playback speed. */
-  playOneShot(
-    name: T,
-    options?: { duration?: number; onComplete?: () => void },
-  ): void {
+   * explicit duration to keep the shared timer independent of playback speed.
+   *
+   * The shared `startFrame` and `speed` are checked against every layer
+   * first, so a value one layer rejects throws with every layer still on its
+   * previous animation.
+   *
+   * The wrapper owns the interruption signal: exactly one of `onComplete` and
+   * `onCancel` runs per one-shot, and layers never receive a cancel of their
+   * own. */
+  playOneShot(name: T, options?: AnimationOneShotOptions): void {
+    this._assertEveryLayerHas(name, "playOneShot");
     if (this._locked && this._current === name) return;
     const leader = this._leader;
-    if (options?.duration === undefined) leader.calcDuration(name);
-    for (const controller of this._controllers) controller.unlock();
+    const timing = {
+      ...(options?.startFrame !== undefined && {
+        startFrame: options.startFrame,
+      }),
+      ...(options?.speed !== undefined && { speed: options.speed }),
+    };
+    // Layers can define the same name with different frame counts, so a
+    // startFrame legal for one is out of range for another. Validate the
+    // shared timing against every layer before anything mutates. An explicit
+    // duration drives the shared timer on its own, so those layers are only
+    // checked for the frame and speed they will play at.
+    for (const controller of this._controllers) {
+      if (options?.duration === undefined) controller.calcDuration(name, timing);
+      else controller._assertTiming(name, timing);
+    }
 
-    this._current = name;
-    this._locked = true;
-    this._onComplete = options?.onComplete;
+    const cancelled = this._onCancel;
+    this._clearLock();
 
     leader.playOneShot(name, {
+      ...timing,
       ...(options?.duration !== undefined && { duration: options.duration }),
       onComplete: () => this.completeOneShot(),
     });
     for (const controller of this._controllers.slice(1)) {
       controller.playOneShot(name, {
+        ...timing,
         duration: Number.POSITIVE_INFINITY,
       });
     }
+
+    // Commit the wrapper's own lock only once every layer has accepted the
+    // play, so a layer that rejects the timing cannot leave the wrapper
+    // locked on an animation no leader timer will ever complete.
+    this._current = name;
+    this._locked = true;
+    this._onComplete = options?.onComplete;
+    this._onCancel = options?.onCancel;
+    // Notify last, so a re-entrant playOneShot from inside the cancelled
+    // callback replaces what was just installed instead of being clobbered.
+    if (cancelled) runAttributed(this, "Animation onCancel", cancelled);
   }
 
   /** Clear the lock and force-switch every layer to the given animation. */
   forcePlay(name: T): void {
-    this.unlock();
+    this._assertEveryLayerHas(name, "forcePlay");
+    const cancelled = this._onCancel;
+    this._clearLock();
     this._current = name;
     for (const c of this._controllers) c.forcePlay(name);
+    if (cancelled) runAttributed(this, "Animation onCancel", cancelled);
   }
 
   /** Manually release the one-shot lock on this wrapper and every child. */
   unlock(): void {
-    this._locked = false;
-    this._onComplete = undefined;
-    for (const c of this._controllers) c.unlock();
+    const cancelled = this._onCancel;
+    this._clearLock();
+    if (cancelled) runAttributed(this, "Animation onCancel", cancelled);
+  }
+
+  /** A live one-shot ends with the component, so its `onCancel` still runs. */
+  onDestroy(): void {
+    this.unlock();
   }
 
   private completeOneShot(): void {
     if (!this._locked) return;
     const cb = this._onComplete;
-    this.unlock();
-    cb?.();
+    this._clearLock();
+    if (cb) runAttributed(this, "Animation onComplete", cb);
+  }
+
+  /** Release the lock on this wrapper and every layer, notifying nobody. */
+  private _clearLock(): void {
+    this._locked = false;
+    this._onComplete = undefined;
+    this._onCancel = undefined;
+    for (const c of this._controllers) c.unlock();
+  }
+
+  private _assertEveryLayerHas(name: T, method: string): void {
+    for (let i = 0; i < this._controllers.length; i++) {
+      if (!this._controllers[i]!.has(name)) {
+        throw new Error(
+          `LayeredAnimationController.${method}: layer ${i} has no animation ` +
+            `"${name}"; every layer must define it.`,
+        );
+      }
+    }
   }
 }

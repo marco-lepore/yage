@@ -204,6 +204,7 @@ import {
   Transform,
 } from "@yagejs/core";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
+import { AnimationController } from "./AnimationController.js";
 import {
   createRendererTestContext,
   spawnEntityInScene,
@@ -328,7 +329,75 @@ describe("AnimatedSpriteComponent", () => {
     const comp = new AnimatedSpriteComponent({ source: SOURCE });
     const cb = vi.fn();
     comp.play({ onComplete: cb });
-    expect(comp.animatedSprite.onComplete).toBe(cb);
+    comp.animatedSprite.onComplete?.();
+    expect(cb).toHaveBeenCalledOnce();
+  });
+
+  it("a play without onComplete clears the previous one", () => {
+    const comp = new AnimatedSpriteComponent({ source: SOURCE });
+    const cb = vi.fn();
+    comp.play({ onComplete: cb });
+    comp.play({ loop: false });
+    expect(comp.animatedSprite.onComplete).toBeUndefined();
+  });
+
+  it("an animation switch through the controller clears a pending onComplete", () => {
+    const { scene } = createRendererTestContext();
+    const entity = spawnEntityInScene(scene);
+    entity.add(new Transform());
+    const comp = entity.add(new AnimatedSpriteComponent({ source: SOURCE }));
+    entity.add(
+      new AnimationController<"idle" | "walk">({
+        idle: { source: SOURCE, speed: 0.2 },
+        walk: { source: PLAYBACK_SOURCE, speed: 0.2 },
+      }),
+    );
+    comp.play({ onComplete: vi.fn() });
+
+    entity.get(AnimationController).play("walk");
+
+    expect(comp.animatedSprite.onComplete).toBeUndefined();
+  });
+
+  it("onFrameChange delivers to every subscriber until it unsubscribes", () => {
+    const { scene } = createRendererTestContext();
+    const entity = spawnEntityInScene(scene);
+    entity.add(new Transform());
+    const comp = entity.add(new AnimatedSpriteComponent({ source: SOURCE }));
+    const first = vi.fn();
+    const second = vi.fn();
+    const dropFirst = comp.onFrameChange(first);
+    comp.onFrameChange(second);
+
+    comp.animatedSprite.gotoAndPlay(1);
+    expect(first).toHaveBeenCalledWith(1);
+    expect(second).toHaveBeenCalledWith(1);
+
+    dropFirst();
+    comp.animatedSprite.gotoAndPlay(0);
+    expect(first).toHaveBeenCalledOnce();
+    expect(second).toHaveBeenCalledTimes(2);
+    expect(second).toHaveBeenLastCalledWith(0);
+  });
+
+  it("onFrameChange sees the frame reset an animation switch performs", () => {
+    const { scene } = createRendererTestContext();
+    const entity = spawnEntityInScene(scene);
+    entity.add(new Transform());
+    const comp = entity.add(new AnimatedSpriteComponent({ source: SOURCE }));
+    const ctrl = entity.add(
+      new AnimationController<"idle" | "walk">({
+        idle: { source: SOURCE, speed: 0.2 },
+        walk: { source: PLAYBACK_SOURCE, speed: 0.2 },
+      }),
+    );
+    comp.animatedSprite.gotoAndPlay(1);
+    const seen = vi.fn();
+    comp.onFrameChange(seen);
+
+    ctrl.play("walk");
+
+    expect(seen).toHaveBeenCalledWith(0);
   });
 
   it("stop() stops the animation", () => {

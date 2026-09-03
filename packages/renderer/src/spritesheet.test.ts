@@ -55,6 +55,7 @@ beforeEach(() => {
 describe("sliceGrid", () => {
   it("wraps rows every `columns` frames", () => {
     state.width = 882; // 7 columns of 126
+    state.height = 924; // 7 rows of 132
     const frames = sliceGrid(Texture.from(""), {
       frameWidth: 126,
       frameHeight: 132,
@@ -68,6 +69,7 @@ describe("sliceGrid", () => {
   });
 
   it("honors an explicit `columns` override", () => {
+    state.height = 96; // two rows of 48
     const frames = sliceGrid(Texture.from(""), {
       frameWidth: 48,
       columns: 2,
@@ -79,6 +81,7 @@ describe("sliceGrid", () => {
 
   it("applies start offsets and gaps", () => {
     state.width = 200;
+    state.height = 66; // 4 + two 30px rows + one 2px gap
     const frames = sliceGrid(Texture.from(""), {
       frameWidth: 40,
       frameHeight: 30,
@@ -99,20 +102,55 @@ describe("sliceGrid", () => {
     expect(frames).toHaveLength(2); // 96 / 48
     expect(frameAt(frames, 1)).toEqual({ x: 48, y: 0 });
   });
+
+  it("rejects a frameWidth that is zero, negative or NaN", () => {
+    // A zero width derives an infinite column count, so this case has to
+    // throw rather than run an unbounded frame loop.
+    for (const frameWidth of [0, -16, NaN]) {
+      expect(() => sliceGrid(Texture.from(""), { frameWidth })).toThrow(
+        /^sliceGrid: frameWidth must be finite and >= 1/,
+      );
+    }
+  });
+
+  it("rejects a fractional columns or count", () => {
+    // A caller deriving these from a division: `count: 1.5` used to slice two
+    // frames, and a fractional columns placed frames at fractional offsets.
+    expect(() =>
+      sliceGrid(Texture.from(""), { frameWidth: 48, count: 1.5 }),
+    ).toThrow(/^sliceGrid: count must be an integer >= 1, got 1.5/);
+    expect(() =>
+      sliceGrid(Texture.from(""), { frameWidth: 48, columns: 1.5, count: 1 }),
+    ).toThrow(/^sliceGrid: columns must be an integer >= 1, got 1.5/);
+  });
+
+  it("rejects a grid larger than the texture", () => {
+    expect(() =>
+      sliceGrid(Texture.from(""), { frameWidth: 48, columns: 3, count: 3 }),
+    ).toThrow(/^sliceGrid: the frame grid extends to/);
+  });
 });
 
 describe("sliceSheet", () => {
-  it("slices the top row and forces nearest scaling", () => {
+  it("slices the top row and leaves texture sampling alone", () => {
     const base = Texture.from("");
     const frames = sliceSheet(base, 48);
     expect(frames).toHaveLength(2);
-    expect(base.source.scaleMode).toBe("nearest");
+    expect(base.source.scaleMode).toBe("linear");
   });
 
   it("throws when frameWidth exceeds the texture width", () => {
     expect(() => sliceSheet(Texture.from(""), 200)).toThrow(
-      /exceeds texture width/,
+      /^sliceSheet: the frame grid extends to/,
     );
+  });
+
+  it("rejects a frameWidth that is zero, negative or NaN", () => {
+    for (const frameWidth of [0, -16, NaN]) {
+      expect(() => sliceSheet(Texture.from(""), frameWidth)).toThrow(
+        /^sliceSheet: frameWidth must be finite and >= 1/,
+      );
+    }
   });
 });
 
@@ -177,19 +215,25 @@ describe("resolveFrames — sheet sources", () => {
   it("rejects negative offsets and gaps", () => {
     expect(() =>
       resolveFrames({ sheet: "s.png", frameWidth: 48, startX: -100, columns: 1, count: 1 }),
-    ).toThrow(/invalid startX/);
+    ).toThrow(/startX must be finite and >= 0/);
     expect(() =>
       resolveFrames({ sheet: "s.png", frameWidth: 48, gapX: -100, columns: 2, count: 2 }),
-    ).toThrow(/invalid gapX/);
+    ).toThrow(/gapX must be finite and >= 0/);
   });
 
   it("rejects non-positive frame sizes and counts", () => {
     expect(() => resolveFrames({ sheet: "s.png", frameWidth: 0 })).toThrow(
-      /invalid frameWidth/,
+      /frameWidth must be finite and >= 1/,
     );
     expect(() =>
       resolveFrames({ sheet: "s.png", frameWidth: 48, count: 0 }),
-    ).toThrow(/invalid count/);
+    ).toThrow(/count must be an integer >= 1/);
+  });
+
+  it("leaves texture sampling alone", () => {
+    const frames = resolveFrames({ sheet: "player.png", frameWidth: 48 });
+    expect(frames).toHaveLength(2);
+    expect(Texture.from("").source.scaleMode).toBe("linear");
   });
 
   it("accepts offsets and gaps that stay inside the texture", () => {
@@ -220,5 +264,12 @@ describe("resolveFrames — atlas sources", () => {
     expect(() =>
       resolveFrames({ atlas: "missing.json", animation: "walk" }),
     ).toThrow(/not loaded/);
+  });
+
+  it("throws for an animation with no frames, naming atlas and animation", () => {
+    state.atlas = { animations: { walk: [] } };
+    expect(() =>
+      resolveFrames({ atlas: "a.json", animation: "walk" }),
+    ).toThrow(/animation "walk" in atlas "a.json" has no frames/);
   });
 });
