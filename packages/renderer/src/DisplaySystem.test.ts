@@ -715,7 +715,7 @@ describe("DisplaySystem", () => {
    * change to how the pass selects entities fails here.
    */
   describe("dormant entities", () => {
-    it("leaves an externally written pose and visibility alone", () => {
+    it("leaves an externally written pose, visibility and opacity alone", () => {
       const { scene } = setup();
       const entity = scene.spawn("dormant", { active: false });
       // Deliberately unlike the pose written below: a pass that synced dormant
@@ -732,6 +732,7 @@ describe("DisplaySystem", () => {
       sprite.rotation = 0.5;
       sprite.scale.set(2, 3);
       sprite.visible = true;
+      sprite.alpha = 0.25;
 
       system.update();
 
@@ -739,6 +740,7 @@ describe("DisplaySystem", () => {
       expect(sprite.rotation).toBe(0.5);
       expect(sprite.scale).toMatchObject({ x: 2, y: 3 });
       expect(sprite.visible).toBe(true);
+      expect(sprite.alpha).toBe(0.25);
       expect(entity.isActive).toBe(false);
     });
 

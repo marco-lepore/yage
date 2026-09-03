@@ -35,6 +35,14 @@ export interface InspectorProps {
     value: string | null,
   ) => void;
   readonly onResetParam: (id: string, field: string) => void;
+  /** Wait for this field's target to be pointed at in the viewport or the tree. */
+  readonly onPickTarget: (
+    id: string,
+    field: string,
+    types: readonly string[],
+  ) => void;
+  /** Stop waiting. The field keeps whatever it held. */
+  readonly onCancelPick: () => void;
   readonly onResetPlacement: (id: string) => void;
   readonly onSetKey: (id: string, key: string | null) => void;
   /** The layers the open level may put a placement on. Empty hides the control. */
@@ -154,6 +162,14 @@ function PlacementInspector(props: PlacementProps): React.JSX.Element {
           diagnostics={atField(field.name)}
           listAssets={props.listAssets}
           entities={props.state.document.entities}
+          picking={
+            props.state.pick?.placementId === placement.id &&
+            props.state.pick.field === field.name
+          }
+          onStartPick={(types) => {
+            props.onPickTarget(placement.id, field.name, types);
+          }}
+          onEndPick={props.onCancelPick}
           onCommit={(value) => {
             props.onSetParam(placement.id, field.name, value);
           }}
@@ -379,6 +395,10 @@ interface FieldProps {
   listAssets: () => Promise<AssetListing>;
   /** The open document's placements, which a reference field picks from. */
   entities: readonly LevelPlacement[];
+  /** Whether this field is the one waiting for a target to be pointed at. */
+  picking: boolean;
+  onStartPick: (types: readonly string[]) => void;
+  onEndPick: () => void;
   onCommit: (value: string | null) => void;
   onReset: () => void;
 }
@@ -491,6 +511,10 @@ function AssetField(props: FieldProps): React.JSX.Element {
  * `Clear` beside the list instead of an empty row in it, because the empty
  * string is the placeholder's and no other string is provably free of
  * collision with an authored id.
+ *
+ * `Pick` is the other way to set the value: it waits for the target to be
+ * clicked in the viewport or in the hierarchy, and a second press stops
+ * waiting. Left to right the row reads choose, point, empty.
  */
 function EntityRefField(props: FieldProps): React.JSX.Element {
   const { field } = props;
@@ -511,8 +535,25 @@ function EntityRefField(props: FieldProps): React.JSX.Element {
           invalid={invalid}
           disabled={props.disabled || candidates === 0}
           options={options}
-          onChange={props.onCommit}
+          onChange={(value) => {
+            // Choosing a row is a legitimate way to finish, so the list stays
+            // live while the field waits.
+            if (props.picking) props.onEndPick();
+            props.onCommit(value);
+          }}
         />
+        <Button
+          testId={`pick-${field.name}`}
+          pressed={props.picking}
+          disabled={props.disabled || candidates === 0}
+          title="Choose this target by clicking it in the level"
+          onClick={() => {
+            if (props.picking) props.onEndPick();
+            else props.onStartPick(types);
+          }}
+        >
+          Pick
+        </Button>
         {field.optional === true ? (
           <Button
             testId={`clear-${field.name}`}
@@ -525,6 +566,14 @@ function EntityRefField(props: FieldProps): React.JSX.Element {
           </Button>
         ) : null}
       </div>
+      {props.picking ? (
+        <p
+          className="ye-section__note"
+          data-testid={`field-${field.name}-picking`}
+        >
+          Click the target in the level or in the hierarchy. Esc cancels.
+        </p>
+      ) : null}
       {candidates === 0 ? (
         <p
           className="ye-section__note"

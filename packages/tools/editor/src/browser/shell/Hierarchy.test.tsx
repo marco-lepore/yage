@@ -75,6 +75,7 @@ function createHarness(
 ) {
   const selections: [string, boolean][] = [];
   const drops: [string, HierarchyDrop][] = [];
+  const picks: string[] = [];
   const store = new EditorStore({
     api: unusedApi,
     epoch: "epoch-1",
@@ -98,6 +99,7 @@ function createHarness(
         store={store}
         onSelect={(id, additive) => selections.push([id, additive])}
         onDrop={(id, drop) => drops.push([id, drop])}
+        onPickTarget={(id) => picks.push(id)}
       />,
     );
   });
@@ -109,7 +111,16 @@ function createHarness(
       load(next, selection);
     });
   };
-  return { host, root, store, selections, drops, render };
+  /** Wait for a target, as the inspector's Pick button does. */
+  const waitFor = (types: readonly string[]): void => {
+    act(() => {
+      store.dispatch({
+        type: "pick-started",
+        pick: { placementId: "other", field: "door", types },
+      });
+    });
+  };
+  return { host, root, store, selections, drops, picks, render, waitFor };
 }
 
 function query<T extends Element>(host: HTMLElement, testId: string): T | null {
@@ -199,6 +210,62 @@ describe("Hierarchy", () => {
       ["child", false],
       ["child", true],
       ["child", true],
+    ]);
+  });
+
+  it("chooses a target instead of selecting while a field is waiting", () => {
+    harness = createHarness(
+      document_(
+        placement("root", undefined, { name: "Ground" }),
+        placement("child", "root", { type: "game.hinge" }),
+        placement("other", undefined, { type: "game.switch" }),
+      ),
+    );
+    harness.waitFor(["game.crate"]);
+
+    const click = (id: string): void => {
+      act(() => {
+        query<HTMLElement>(harness.host, `hierarchy-row-${id}`)?.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
+      });
+    };
+    click("root");
+    // A child of a candidate chooses the candidate.
+    click("child");
+    // A row that cannot be one does nothing at all.
+    click("other");
+
+    expect(harness.picks).toEqual(["root", "root"]);
+    expect(harness.selections).toEqual([]);
+  });
+
+  it("marks the rows no press can choose, and drags none of them", () => {
+    harness = createHarness(
+      document_(
+        placement("root", undefined, { name: "Ground" }),
+        placement("other", undefined, { type: "game.switch" }),
+      ),
+    );
+    harness.waitFor(["game.crate"]);
+
+    const rows = [
+      ...harness.host.querySelectorAll<HTMLElement>(
+        "[data-testid^=hierarchy-row-]",
+      ),
+    ];
+    expect(
+      rows.map((row) => [
+        row.getAttribute("data-testid"),
+        row.className.includes("is-unpickable"),
+        // Inline rather than from the stylesheet: an inline opacity beats a
+        // rule, so the fade has to be written where the drag's is.
+        row.style.opacity,
+        row.getAttribute("draggable"),
+      ]),
+    ).toEqual([
+      ["hierarchy-row-root", false, "1", "false"],
+      ["hierarchy-row-other", true, "0.4", "false"],
     ]);
   });
 

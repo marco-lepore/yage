@@ -152,14 +152,20 @@ Three bars run across the top: the level and the file actions, then the tools
 and the grid, then the name and the pose of whatever you have selected. The
 **hierarchy** is the column on the left, the **inspector** is the column on the
 right, and **Actors** — everything you can place — is a strip under the
-viewport that starts closed and opens when you click its header. Opening it
-takes height from the viewport rather than covering it, so nothing you were
-working on ends up behind it. Nothing here can be dragged wider or narrower.
+viewport that starts closed and opens when you click its header. Nothing here
+can be dragged wider or narrower.
 
 A placement the editor cannot build — a type the project no longer declares, a
-parameter that does not match its schema — is left out and listed at the
-bottom of the window. The rest of the level still draws, so one broken entity
+parameter that does not match its schema — is left out and listed in the
+**Problems** band, which appears under the Actors strip with the first finding
+and goes away with the last. Its header puts a long list away and keeps saying
+how many there are. The rest of the level still draws, so one broken entity
 does not cost you the view of everything else.
+
+Both bands take their height from the viewport rather than covering it. Nothing
+you were working on ends up behind a panel, a finding arriving never resizes
+the hierarchy or the inspector, and the level stays exactly where it was drawn
+— see [Moving the view](#moving-the-view).
 
 ### Moving the view
 
@@ -181,11 +187,21 @@ and Space presses it. Starting a pan on top of a placement you are already
 dragging does nothing; finish the drag first.
 
 <kbd>F</kbd> frames what is selected — the camera moves onto it and zooms so it
-fits. <kbd>Shift</kbd>-<kbd>F</kbd> puts the view back at the world origin at
-zoom 1. Selecting a placement in the hierarchy and pressing <kbd>F</kbd> is the
+fits. <kbd>Shift</kbd>-<kbd>F</kbd> puts the view back where the level opened:
+the world origin, zoomed so the whole of the rectangle your game draws in fits
+the pane. A level you have not looked at before opens there too, so the first
+thing you see is what the game will show. Selecting a placement in the hierarchy and pressing <kbd>F</kbd> is the
 way to reach something you have lost track of — unless the placement draws
 nothing, which gives <kbd>F</kbd> no rectangle to frame and leaves the view
 where it is.
+
+The zoom is yours too, and it is the only thing that decides how large the
+level is drawn. A level you open for the first time is zoomed so the whole
+rectangle your game draws in fits the pane. Opening the Actors strip, a finding arriving, or dragging the
+window narrower changes how much of the level you can see and never its size or
+where it sits under the pointer: the world at the viewport's top-left corner
+stays where it is. If your harness passes a `fit` to its renderer, that fit
+governs the game page and the play page; the editor sets its own viewport's.
 
 The view is yours, not the level's. It never enters the file, never marks
 anything unsaved, and never appears in the undo history. Your browser
@@ -428,9 +444,10 @@ Select more than one and you get a rectangle around all of them: a light one
 under Move, Rotate, and Scale, and the Transform gizmo's own box — handles and
 all — under Transform. That is what **Center** is the centre of. **Each** draws no pivot at all —
 there isn't one — and puts a dot on every placement instead, since each turns
-where it stands. While you drag, the gizmo stays where it was when you pressed:
-a box around turning things breathes, and a pivot that wandered would not be a
-pivot.
+where it stands. While you turn or scale, the gizmo stays where it was when you
+pressed: a box around turning things breathes, and a pivot that wandered would
+not be a pivot. A move carries the gizmo along with what it is moving, whether
+you dragged a handle or the placement itself.
 
 Scaling several spreads them apart from the pivot and grows each one by the same
 amount. Grow them evenly and the result is exact. Grow one axis more than the
@@ -721,6 +738,24 @@ the slot does not take it shows `Wrong type: <name>` — in both cases with the
 reason under the field, and the fix one click away. When the level holds
 nothing the slot could take, the list is switched off and says which types it
 wanted.
+
+Choosing from a list means knowing which door is which before you open it, so
+there is a second way. **Pick**, beside the list, waits for you to click the
+target in the viewport or in the hierarchy. While it waits, everything the slot
+cannot take fades to a quarter of itself, including the placement you are
+editing — the selection box stays at full strength, so it is still easy to
+find. A press on a faded placement does nothing at all, which means a near miss
+costs you a second click rather than the mode. Clicking a target writes it and
+stops waiting.
+
+Anything authored under a placement the slot accepts chooses that placement, so
+clicking a door's handle picks the door however the door is built. The
+hierarchy takes the same clicks, which is how you reach a target that is off
+screen, authored inactive, or left out of the preview by a problem elsewhere.
+
+`Escape` stops waiting without writing anything, and so does a second press of
+**Pick**, choosing a row from the list, selecting something else, opening
+another level, or the placement you are editing going away.
 
 Copying carries references with it. A copy whose target you copied too points
 at the copy; a copy whose target you left behind keeps pointing at the

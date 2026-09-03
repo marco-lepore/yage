@@ -1,6 +1,10 @@
 import type { LevelPlacement } from "@yagejs/level/document";
 import { describe, expect, it } from "vitest";
-import { inboundReferences, rewriteReferences } from "./references.js";
+import {
+  inboundReferences,
+  referenceTargets,
+  rewriteReferences,
+} from "./references.js";
 
 function placement(
   id: string,
@@ -20,6 +24,11 @@ function placement(
     params,
     extensions: {},
   };
+}
+
+/** The same placement, parented under another. */
+function under(child: LevelPlacement, parentId: string): LevelPlacement {
+  return { ...child, parent: parentId };
 }
 
 /** `game.switch` declares one reference parameter; a crate declares none. */
@@ -103,5 +112,55 @@ describe("rewriteReferences", () => {
     expect(
       rewriteReferences({ door: null }, ["door"], new Map([["a", "b"]])),
     ).toEqual({ door: null });
+  });
+});
+
+describe("referenceTargets", () => {
+  it("maps a placement of an accepted type to itself", () => {
+    const entities = [placement("c1", "game.crate")];
+
+    expect([...referenceTargets(entities, ["game.crate"])]).toEqual([
+      ["c1", "c1"],
+    ]);
+  });
+
+  it("maps a descendant to the accepted placement above it", () => {
+    const entities = [
+      placement("c1", "game.crate"),
+      under(placement("lamp", "game.lamp"), "c1"),
+      under(placement("bulb", "game.bulb"), "lamp"),
+      under(placement("wick", "game.wick"), "bulb"),
+    ];
+
+    const targets = referenceTargets(entities, ["game.crate"]);
+
+    expect(targets.get("lamp")).toBe("c1");
+    expect(targets.get("wick")).toBe("c1");
+  });
+
+  it("maps an accepted placement under another one to itself", () => {
+    const entities = [
+      placement("outer", "game.crate"),
+      under(placement("inner", "game.crate"), "outer"),
+    ];
+
+    expect(referenceTargets(entities, ["game.crate"]).get("inner")).toBe(
+      "inner",
+    );
+  });
+
+  it("leaves out a placement with no accepted placement above it", () => {
+    const entities = [
+      placement("s1", "game.switch"),
+      under(placement("knob", "game.knob"), "s1"),
+    ];
+
+    expect([...referenceTargets(entities, ["game.crate"])]).toEqual([]);
+  });
+
+  it("accepts nothing when the list of types is empty", () => {
+    const entities = [placement("c1", "game.crate")];
+
+    expect([...referenceTargets(entities, [])]).toEqual([]);
   });
 });

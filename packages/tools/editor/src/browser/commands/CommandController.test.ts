@@ -1317,6 +1317,63 @@ describe("CommandController", () => {
     });
   });
 
+  describe("picking a reference target", () => {
+    beforeEach(() => {
+      harness = createHarness(
+        document(
+          placement("switch", 0, undefined, { params: { door: null } }),
+          placement("crate", 100),
+        ),
+      );
+    });
+
+    it("holds the placement, the field and the accepted types", () => {
+      harness.commands.startPick("switch", "door", ["game.crate"]);
+
+      expect(harness.store.getState().pick).toEqual({
+        placementId: "switch",
+        field: "door",
+        types: ["game.crate"],
+      });
+      expect(harness.sent).toEqual([]);
+    });
+
+    it("writes the chosen id into the waiting field and stops waiting", () => {
+      harness.commands.startPick("switch", "door", ["game.crate"]);
+      harness.commands.pickTarget("crate");
+
+      expect(harness.store.getState().pick).toBeUndefined();
+      expect(harness.sent).toEqual([
+        {
+          kind: "set-values",
+          commandId: "id-1",
+          edits: [
+            {
+              placementId: "switch",
+              path: ["params", "door"],
+              expected: null,
+              value: "crate",
+            },
+          ],
+        },
+      ]);
+    });
+
+    it("writes nothing when no field is waiting", () => {
+      harness.commands.pickTarget("crate");
+
+      expect(harness.sent).toEqual([]);
+    });
+
+    it("writes nothing when the developer stops waiting", () => {
+      harness.commands.startPick("switch", "door", ["game.crate"]);
+      harness.commands.cancelPick();
+
+      expect(harness.store.getState().pick).toBeUndefined();
+      expect(harness.sent).toEqual([]);
+    });
+  });
+
   describe("resetPlacement", () => {
     beforeEach(() => {
       harness = createHarness(

@@ -78,6 +78,8 @@ function createHarness(
   covered: readonly string[] = [],
   /** What the mark under the pointer stands for, when a case draws one. */
   named: string | null = null,
+  /** The reference target under the pointer, for the cases that arm a pick. */
+  picked: string | null = null,
 ) {
   const store = new EditorStore({
     api: unusedApi,
@@ -123,6 +125,7 @@ function createHarness(
           gizmoAt: () => grab?.() ?? null,
           gizmoNear: () => near,
           markAt: () => named,
+          pickAt: () => picked,
           placementsWithin: () => covered,
           // The identity conversion keeps the arithmetic under test in the
           // controller rather than in a stand-in camera.
@@ -718,6 +721,84 @@ describe("Viewport", () => {
   });
 });
 
+describe("a reference field waiting for a target", () => {
+  /** Arm the mode, as the inspector's Pick button does. */
+  function waitFor(store: EditorStore): void {
+    act(() => {
+      store.dispatch({
+        type: "pick-started",
+        pick: { placementId: "switch", field: "door", types: ["game.crate"] },
+      });
+    });
+  }
+
+  it("chooses the target a press lands on, and nothing else happens", () => {
+    const harness = createHarness("crate", undefined, false, [], null, "door");
+    waitFor(harness.store);
+
+    pointer(harness.frame, "pointerdown", 10, 10);
+
+    const state = harness.store.getState();
+    // The press wrote the id and stopped waiting; it selected nothing and
+    // started no drag.
+    expect(state.pick).toBeUndefined();
+    expect([...state.selection]).toEqual([]);
+    expect(state.gesture).toBeUndefined();
+  });
+
+  it("ignores a press on anything it cannot choose", () => {
+    const harness = createHarness("crate");
+    waitFor(harness.store);
+
+    pointer(harness.frame, "pointerdown", 10, 10);
+
+    const state = harness.store.getState();
+    expect(state.pick).toBeDefined();
+    expect([...state.selection]).toEqual([]);
+    expect(state.gesture).toBeUndefined();
+  });
+
+  it("still pans with Space held", () => {
+    const harness = createHarness("crate");
+    waitFor(harness.store);
+
+    space(true);
+    pointer(harness.frame, "pointerdown", 10, 10);
+    pointer(harness.frame, "pointermove", 30, 10);
+    space(false);
+
+    expect(harness.store.getState().view.center.x).toBe(-20);
+    expect(harness.store.getState().pick).toBeDefined();
+  });
+
+  it("says whether a press would choose anything, and names no mark", () => {
+    const overTarget = createHarness(
+      "crate",
+      undefined,
+      false,
+      [],
+      "LightSource",
+      "door",
+    );
+    waitFor(overTarget.store);
+    pointer(overTarget.frame, "pointermove", 10, 10);
+    expect(overTarget.frame.style.cursor).toBe("crosshair");
+    expect(overTarget.host.textContent).not.toContain("LightSource");
+
+    const overNothing = createHarness(
+      "crate",
+      undefined,
+      false,
+      [],
+      null,
+      null,
+    );
+    waitFor(overNothing.store);
+    pointer(overNothing.frame, "pointermove", 10, 10);
+    expect(overNothing.frame.style.cursor).toBe("not-allowed");
+  });
+});
+
 describe("cursorFor", () => {
   const idle = {
     panning: false,
@@ -726,6 +807,20 @@ describe("cursorFor", () => {
     overHandle: undefined,
     overPlacement: false,
   };
+
+  it("shows what a press would choose while a field waits for a target", () => {
+    expect(cursorFor({ ...idle, picking: true, overTarget: true })).toBe(
+      "crosshair",
+    );
+    expect(cursorFor({ ...idle, picking: true, overPlacement: true })).toBe(
+      "not-allowed",
+    );
+    // Finding the target is half the gesture, so both pans still win.
+    expect(cursorFor({ ...idle, picking: true, panning: true })).toBe(
+      "grabbing",
+    );
+    expect(cursorFor({ ...idle, picking: true, spaceHeld: true })).toBe("grab");
+  });
 
   it("shows a pan in progress over everything else", () => {
     expect(

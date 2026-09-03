@@ -19,7 +19,7 @@ import {
 import type { LevelDocument } from "@yagejs/level/document";
 import { Graphics } from "pixi.js";
 import { RendererKey, SceneRenderTreeProviderKey } from "@yagejs/renderer";
-import type { LayerDef } from "@yagejs/renderer";
+import type { LayerDef, RendererPlugin } from "@yagejs/renderer";
 import type { PoseEdit } from "../../shared/commands/index.js";
 import type { EditorDiagnostic } from "../../shared/diagnostics/index.js";
 import type {
@@ -33,9 +33,11 @@ import type {
   HandleId,
   PivotMode,
 } from "../store/index.js";
+import { viewAfterResize } from "../store/index.js";
 import { PreviewAssetLease, placementsMissingAssets } from "./assets.js";
 import {
   parentWorld,
+  referenceTargets,
   selectionRoots,
   withDescendants,
 } from "../commands/index.js";
@@ -181,6 +183,12 @@ export class PreviewCoordinator {
    * empty viewport.
    */
   private held: PreviewRequest | undefined;
+  /**
+   * The canvas size the view was last measured against, or nothing while the
+   * canvas has no room to be measured in.
+   */
+  private canvas: CanvasSize | undefined;
+  private resize: ResizeObserver | undefined;
 
   constructor(options: PreviewCoordinatorOptions) {
     this.host = options.host;
@@ -196,6 +204,7 @@ export class PreviewCoordinator {
     engine.use(
       new EditorPreviewPlugin(
         () => this.placements,
+        () => this.dimmed(),
         this.flushes,
         () => {
           this.draw();
@@ -203,6 +212,18 @@ export class PreviewCoordinator {
       ),
     );
     await engine.start();
+
+    // The editor's viewport is not a game window. A harness leaves the fit at
+    // its `letterbox` default, which centres the level inside the canvas and
+    // masks everything outside the design rectangle — so a band opening under
+    // the canvas rescales the picture or slides it, and the grid stops at an
+    // invisible edge. `expand` is the same transform without the mask; the
+    // scale it applies is taken back out in `applyView`, which leaves
+    // `view.zoom` the only thing deciding how large the level is drawn. The
+    // target is passed rather than left to the renderer's fallback, because a
+    // harness may build its renderer around a canvas of its own.
+    const renderer = engine.context.tryResolve(RendererKey);
+    renderer?.setFit({ mode: "expand", target: this.host });
 
     const scene = new EditPreviewScene();
     await engine.scenes.push(scene);
@@ -229,6 +250,61 @@ export class PreviewCoordinator {
     // the store is where the current view is, whether it moved during the boot
     // or not.
     this.applyView(this.store.getState().view);
+
+    // Constructed after `engine.start()` returned, so the renderer's own fit
+    // observer — which watches the same element — is delivered first within a
+    // cycle and the sizes read below are already the new ones.
+    this.canvas = measured(renderer);
+    this.reportViewport(renderer);
+    this.resize = new ResizeObserver(() => {
+      this.hostResized();
+    });
+    this.resize.observe(this.host);
+  }
+
+  /**
+   * Tell the store how large the pane and the game's own picture are, which is
+   * what a level with nothing remembered for it opens zoomed to.
+   */
+  private reportViewport(renderer: RendererPlugin | undefined): void {
+    const pane = measured(renderer);
+    if (!pane || !renderer) return;
+    this.store.dispatch({
+      type: "viewport-measured",
+      viewport: { pane, design: renderer.virtualSize },
+    });
+  }
+
+  /**
+   * Hold the world under the viewport's top-left corner where it is, whatever
+   * the pane's new size.
+   *
+   * A panel opening under the canvas is not a request to look somewhere else,
+   * so what changes is how much of the level is on screen and never how large
+   * it is drawn or where it sits under the pointer.
+   */
+  private hostResized(): void {
+    const renderer = this.engine?.context.tryResolve(RendererKey);
+    const to = measured(renderer);
+    // A pane collapsed to nothing, or a hidden tab, measures zero. Neither is
+    // a size the view should be moved against, and neither may become the
+    // size the next real one is compared with.
+    if (!to) return;
+    const from = this.canvas;
+    this.canvas = to;
+    const before = this.store.getState().view;
+    this.reportViewport(renderer);
+    const view = this.store.getState().view;
+    // The measurement framed an opening view to the pane it now has, which is
+    // already the answer for this size. Shifting it as well would move it
+    // twice; the redraw comes from the view the store just changed.
+    if (view !== before) return;
+    const next = from ? viewAfterResize(view, from, to) : view;
+    // The fit's scale may have changed even where the view did not, so the
+    // camera is written either way — through the store when the view moved, so
+    // the persisted view and the camera never disagree.
+    if (next === view) this.applyView(view);
+    else this.store.dispatch({ type: "view-changed", view: next });
   }
 
   /**
@@ -341,7 +417,10 @@ export class PreviewCoordinator {
     const camera = this.scene?.camera;
     if (!camera) return;
     camera.position = new Vec2(view.center.x, view.center.y);
-    camera.zoom = view.zoom;
+    // Divided by the fit's scale, so `view.zoom` is CSS pixels of canvas per
+    // world unit: the same picture in a 500-pixel pane and a 1500-pixel one,
+    // with the wider pane showing more level rather than a larger one.
+    camera.zoom = view.zoom / this.canvasScale();
   }
 
   /**
@@ -359,11 +438,9 @@ export class PreviewCoordinator {
     if (!bounds) return;
     this.store.dispatch({
       type: "view-changed",
-      view: framedView(
-        this.store.getState().view,
-        bounds,
-        renderer.virtualSize,
-      ),
+      // The canvas, not the design rectangle: framing fills the pane the
+      // developer actually has.
+      view: framedView(this.store.getState().view, bounds, renderer.canvasSize),
     });
   }
 
@@ -375,18 +452,70 @@ export class PreviewCoordinator {
   hitTest(clientPoint: { x: number; y: number }): string | null {
     const world = this.screenToWorld(clientPoint);
     if (!world) return null;
-    // A mark is tested before the artwork: it is drawn over everything the
-    // level draws, and for a placement that draws nothing it is the only thing
-    // there is to press.
-    const marked = this.markAtWorld(world);
+    return this.hitAmong(world);
+  }
+
+  /**
+   * The reference target a press at this point would choose, or `null` — for a
+   * point on nothing, on a placement no press can choose, and for a point read
+   * while no field is waiting.
+   *
+   * It skips everything the fade dimmed, so a candidate drawn under a
+   * non-candidate is still reachable: what is lit is what can be pressed.
+   */
+  pickAt(clientPoint: { x: number; y: number }): string | null {
+    const pick = this.store.getState().pick;
+    if (!pick) return null;
+    const world = this.screenToWorld(clientPoint);
+    if (!world) return null;
+    const targets = this.targets(pick.types);
+    const hit = this.hitAmong(world, new Set(targets.keys()));
+    return hit === null ? null : (targets.get(hit) ?? null);
+  }
+
+  /**
+   * The placement at a world point, or null. Later placements win, because
+   * they are the ones drawn on top. `among` narrows what can be hit at all, so
+   * a press passes through a placement no press can choose.
+   *
+   * A mark is tested before the artwork: it is drawn over everything the level
+   * draws, and for a placement that draws nothing it is the only thing there
+   * is to press.
+   */
+  private hitAmong(
+    world: EditorPoint,
+    among?: ReadonlySet<string>,
+  ): string | null {
+    const marked = this.markAtWorld(world, among);
     if (marked) return marked.id;
     for (let i = this.placements.length - 1; i >= 0; i -= 1) {
       const placement = this.placements[i];
       if (!placement) continue;
-      const id = this.idOf(placement.entity);
-      if (id !== undefined && containsPoint(placement.entity, world)) return id;
+      if (among && !among.has(placement.id)) continue;
+      if (containsPoint(placement.entity, world)) return placement.id;
     }
     return null;
+  }
+
+  /**
+   * The placements no press can choose while a reference field is waiting.
+   * Empty whenever nothing is.
+   */
+  private dimmed(): ReadonlySet<string> {
+    const state = this.store.getState();
+    const pick = state.pick;
+    if (!pick) return NOTHING_DIMMED;
+    const targets = this.targets(pick.types);
+    const dimmed = new Set<string>();
+    for (const placement of state.document.entities) {
+      if (!targets.has(placement.id)) dimmed.add(placement.id);
+    }
+    return dimmed;
+  }
+
+  /** What a press can choose, over the document the store holds now. */
+  private targets(types: readonly string[]): ReadonlyMap<string, string> {
+    return referenceTargets(this.store.getState().document.entities, types);
   }
 
   /**
@@ -439,6 +568,9 @@ export class PreviewCoordinator {
 
   /** Stop the engine and release every asset the open level held. */
   async dispose(): Promise<void> {
+    this.resize?.disconnect();
+    this.resize = undefined;
+    this.canvas = undefined;
     await this.queue.idle;
     this.instance?.dispose();
     this.instance = undefined;
@@ -534,7 +666,11 @@ export class PreviewCoordinator {
       const entity = instance.get(placement.id);
       if (!entity) continue;
       byId.set(placement.id, entity);
-      placements.push({ entity, authoredActive: placement.active });
+      placements.push({
+        id: placement.id,
+        entity,
+        authoredActive: placement.active,
+      });
       const marks = marksOf(entity);
       if (marks.length > 0) marked.push({ id: placement.id, entity, marks });
     }
@@ -625,7 +761,9 @@ export class PreviewCoordinator {
    */
   overlayView(): OverlayView {
     const state = this.store.getState();
-    const gizmo = this.gizmoOf(state);
+    // A press on a handle does nothing while a field is waiting for a target,
+    // and the gizmo draws what a press on it does.
+    const gizmo = state.pick ? undefined : this.gizmoOf(state);
     // The box gizmo already outlines a lone placement, along the placement's
     // own axes. The marker would draw a second, upright rectangle over it.
     const outlined = outlinedBy(gizmo);
@@ -689,8 +827,13 @@ export class PreviewCoordinator {
    */
   private marksShown(state: EditorState): readonly PlacedMark[] {
     const perScreenPixel = this.perScreenPixel(state);
+    // A placement whose only components are a light or a panel draws no
+    // artwork, so an alpha says nothing about it. Dropping its marks is what
+    // fades it.
+    const dimmed = this.dimmed();
     const shown: PlacedMark[] = [];
     for (const placement of this.marked) {
+      if (dimmed.has(placement.id)) continue;
       shown.push(
         ...placedMarks(
           placement.marks,
@@ -708,11 +851,13 @@ export class PreviewCoordinator {
    */
   private markAtWorld(
     world: EditorPoint,
+    among?: ReadonlySet<string>,
   ): { readonly id: string; readonly mark: PlacedMark } | undefined {
     const perScreenPixel = this.perScreenPixel(this.store.getState());
     for (let i = this.marked.length - 1; i >= 0; i -= 1) {
       const placement = this.marked[i];
       if (!placement) continue;
+      if (among && !among.has(placement.id)) continue;
       const origin = originOf(placement.entity);
       for (const mark of placedMarks(placement.marks, origin, perScreenPixel)) {
         if (pressesMark(mark.at, world, perScreenPixel)) {
@@ -912,21 +1057,21 @@ export class PreviewCoordinator {
    * World units per screen pixel: how much world one CSS pixel of pointer
    * travel on the canvas covers.
    *
-   * The zoom answers it in the renderer's virtual pixels, and a fit draws a
-   * virtual pixel at whatever size the canvas has room for — 0.59 CSS pixels
-   * for a 1280-wide virtual viewport in a 760-wide pane. The overlay and the
-   * hit test both measure in this, so a handle is the same size to the eye and
-   * to the pointer whatever the pane is.
-   *
-   * The tighter of the two axes under a fit that scales them differently, so a
-   * handle is never smaller than its nominal size on either.
+   * The zoom answers it directly, because {@link applyView} already took the
+   * fit's scale out of the camera. The overlay and the hit test both measure
+   * in this, so a handle is the same size to the eye and to the pointer
+   * whatever the pane is.
    */
   private perScreenPixel(state: EditorState): number {
-    const perVirtual = 1 / state.view.zoom;
-    return perVirtual / this.canvasScale();
+    return 1 / state.view.zoom;
   }
 
-  /** CSS pixels per virtual pixel, or 1 while there is no canvas to measure. */
+  /**
+   * CSS pixels per virtual pixel, or 1 while there is no canvas to measure.
+   *
+   * The tighter of the two axes under a fit that scales them differently, so
+   * nothing the camera draws runs off the pane on either.
+   */
   private canvasScale(): number {
     const renderer = this.engine?.context.tryResolve(RendererKey);
     if (!renderer) return 1;
@@ -937,7 +1082,7 @@ export class PreviewCoordinator {
       rect.height / virtual.height,
     );
     // A canvas in a pane with no room yet measures zero, which would divide
-    // every size into infinity and make the whole world one handle.
+    // the view's zoom into infinity and put the camera there.
     return scale > 0 && Number.isFinite(scale) ? scale : 1;
   }
 
@@ -974,21 +1119,45 @@ export class PreviewCoordinator {
     const covering = alone
       ? orientedBoxOf(active.entity)
       : coveringBox(entities.map(boxAround), 0);
-    const live: GizmoAnchor = {
-      position:
-        state.pivot === "center" && covering
-          ? covering.center
-          : originOf(active.entity),
-      rotation,
-    };
-    // A gesture froze its anchor and its pivot at the press, and orbits every
-    // placement about that point for as long as it runs. Recomputing them here
-    // would draw a ring wandering off the point the rotation is about, because
-    // the box round a turning arrangement breathes as it turns.
-    const anchor = state.gesture?.anchor ?? live;
-    const pivot = state.gesture
-      ? state.gesture.pivot
-      : pivotOf(state.pivot, ids.length, live.position);
+    // Where the handles sit if nothing holds them: the point the placements
+    // have reached this redraw.
+    const live: EditorPoint =
+      state.pivot === "center" && covering
+        ? covering.center
+        : originOf(active.entity);
+    const gesture = state.gesture;
+    // A rotate or a scale about a shared point keeps the anchor and the pivot
+    // it pressed on, and orbits every placement about that point for as long
+    // as it runs. Recomputing them would draw a ring wandering off the point
+    // the rotation is about, because the box round a turning arrangement
+    // breathes as it turns.
+    //
+    // A translate turns and stretches nothing: the box travels with the
+    // placements, so the handles and the pivot mark travel with it — where a
+    // drag that started on a placement's body has always drawn them. The
+    // condition is the one `posed` splits on, so what is drawn and what moves
+    // agree: a gesture with no anchor moves what it holds whatever its kind
+    // says.
+    const frozen =
+      gesture !== undefined &&
+      gesture.anchor !== undefined &&
+      gesture.kind !== "translate"
+        ? { anchor: gesture.anchor, pivot: gesture.pivot }
+        : undefined;
+    const anchor: GizmoAnchor =
+      frozen !== undefined
+        ? frozen.anchor
+        : {
+            position: live,
+            // Held at the press while the position travels: it names the axis
+            // the drag is locked to, which `posed` reads from the gesture and
+            // not from here.
+            rotation: gesture?.anchor?.rotation ?? rotation,
+          };
+    const pivot =
+      frozen !== undefined
+        ? frozen.pivot
+        : pivotOf(state.pivot, ids.length, anchor.position);
     // A box handle over one placement scaling about its own origin sets that
     // placement's scale, so it divides by the artwork rather than by the box
     // as drawn — which is what gives a placement at zero a side to drag.
@@ -1365,6 +1534,29 @@ const CASCADE_PIXELS = 24;
  * pile and short enough that the search is never noticed.
  */
 const CASCADE_LIMIT = 16;
+
+/** The drawing surface's size in CSS pixels. */
+interface CanvasSize {
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * The canvas's size, or nothing while it has no room to be measured in.
+ *
+ * A pane collapsed to nothing and a hidden tab both measure zero, and a size
+ * that cannot be measured is not one the view can be moved against.
+ */
+function measured(
+  renderer: RendererPlugin | undefined,
+): CanvasSize | undefined {
+  const size = renderer?.canvasSize;
+  if (!size) return undefined;
+  return size.width > 0 && size.height > 0 ? size : undefined;
+}
+
+/** The answer whenever no reference field is waiting: nothing is faded. */
+const NOTHING_DIMMED: ReadonlySet<string> = new Set<string>();
 
 /** What the overlay draws for the gizmo the viewport is showing. */
 function shownAsOverlay(

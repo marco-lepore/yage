@@ -8,7 +8,11 @@ import {
   type System,
 } from "@yagejs/core";
 import type { LevelCatalog, LevelInstance, PreparedLevel } from "@yagejs/level";
-import type { LevelDocument, LevelPlacement } from "@yagejs/level/document";
+import type {
+  LevelDocument,
+  LevelPlacement,
+  LevelTransform,
+} from "@yagejs/level/document";
 import { SceneRenderTreeProviderKey, VisualComponent } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { ARM_PIXELS } from "./gizmo.js";
@@ -21,7 +25,16 @@ import {
 } from "./EditPreviewScene.js";
 import { describe, expect, it, vi } from "vitest";
 import { EditorApiClient } from "../api/index.js";
-import { DEFAULT_VIEW, EditorStore, type HandleId } from "../store/index.js";
+import {
+  DEFAULT_VIEW,
+  EditorStore,
+  type EditGesture,
+  type EditorPoint,
+  type EditorViewState,
+  type GizmoAnchor,
+  type GizmoMode,
+  type HandleId,
+} from "../store/index.js";
 import { DestroyFlushQueue } from "./DestroyFlushQueue.js";
 import type { OrientedBox } from "./box.js";
 import type { OverlayGizmo } from "./overlay.js";
@@ -206,6 +219,49 @@ function withPointer(renderer: object): object {
 }
 
 /**
+ * A renderer whose fit draws the 800 by 600 design rectangle into a canvas
+ * `scale` times that size, with the pointer mapping the fit's own: a client
+ * offset in canvas pixels divided back into virtual ones.
+ */
+function fitted(scale: number): object {
+  return {
+    setFit: () => {},
+    virtualSize: { width: 800, height: 600 },
+    virtualCanvasRect: { x: 0, y: 0, width: 800 * scale, height: 600 * scale },
+    canvasSize: { width: 800 * scale, height: 600 * scale },
+    canvas: { getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+    canvasToVirtual: (x: number, y: number) => ({ x: x / scale, y: y / scale }),
+  };
+}
+
+/**
+ * The observer the coordinator watches its canvas host with. Node has none,
+ * and the callback is kept so a case can deliver a resize itself.
+ */
+class ResizeObserverStub {
+  static last: ResizeObserverStub | undefined;
+  observed = 0;
+  disconnected = 0;
+
+  constructor(readonly deliver: () => void) {
+    ResizeObserverStub.last = this;
+  }
+
+  observe(): void {
+    this.observed += 1;
+  }
+
+  unobserve(): void {}
+
+  disconnect(): void {
+    this.disconnected += 1;
+  }
+}
+
+globalThis.ResizeObserver =
+  ResizeObserverStub as unknown as typeof ResizeObserver;
+
+/**
  * Wait a queued rebuild out. Each step spans several turns of the task queue,
  * so this yields rather than draining microtasks alone.
  */
@@ -228,6 +284,7 @@ function createParts(
   store: EditorStore;
   harness: EditorHarness;
   systems: System[];
+  host: HTMLElement;
 } {
   events.length = 0;
   entities.clear();
@@ -274,16 +331,15 @@ function createParts(
     epoch: "epoch-1",
     projectId: "project-1",
   });
-  const coordinator = new PreviewCoordinator({
-    host: { appendChild: () => {} } as unknown as HTMLElement,
-    store,
-  });
+  const host = { appendChild: () => {} } as unknown as HTMLElement;
+  const coordinator = new PreviewCoordinator({ host, store });
 
   return {
     coordinator,
     store,
     harness: { engine: () => engine, plugins: () => [] },
     systems,
+    host,
   };
 }
 
@@ -432,11 +488,13 @@ describe("PreviewCoordinator", () => {
 
   describe("the view", () => {
     /**
-     * A renderer reduced to what framing and the overlay read: the virtual
-     * size, and where that rectangle lands on the canvas. Here they are the
-     * same, so one virtual pixel is one screen pixel.
+     * A renderer reduced to what framing and the overlay read: the canvas, the
+     * virtual size, and where that rectangle lands on the canvas. Here all
+     * three agree, so one virtual pixel is one screen pixel.
      */
     const renderer = {
+      setFit: () => {},
+      canvasSize: { width: 800, height: 600 },
       virtualSize: { width: 800, height: 600 },
       virtualCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
     };
@@ -680,7 +738,7 @@ describe("PreviewCoordinator", () => {
       ]);
     });
 
-    it("holds the drawn pivot still while a gesture runs", async () => {
+    it("holds a rotate gesture's ring on the point it pressed, whatever the placements do", async () => {
       const harness = await createHarness(renderer);
       entities.set("crate", entityAt(0, 0, { half: 50 }));
       entities.set("lid", entityAt(200, 0, { half: 50 }));
@@ -702,25 +760,224 @@ describe("PreviewCoordinator", () => {
       const elsewhere = { x: -400, y: 250 };
       harness.store.dispatch({
         type: "gesture-started",
-        gesture: {
+        gesture: gestureOf({
           kind: "rotate",
           anchor: { position: elsewhere, rotation: 0 },
           pivot: elsewhere,
-          spin: 0,
-          reference: { x: 1, y: 1, kind: "length" },
-          constrained: false,
-          suspended: false,
-          snapFrom: { position: elsewhere, rotation: 0 },
           ids: ["crate", "lid"],
-          origin: { x: 0, y: 0 },
-          current: { x: 0, y: 0 },
-          base: new Map(),
-        },
+        }),
       });
+      // Placed so the box they cover is centred somewhere else again: poses
+      // whose centre landed back on the pressed point would keep this green
+      // however the anchor were derived.
+      harness.coordinator.applyPoseDraft([
+        { id: "crate", transform: poseAt(-300, 400) },
+        { id: "lid", transform: poseAt(-700, 100) },
+      ]);
 
       expect(
         armsOf(harness.coordinator.overlayView().gizmo)?.anchor.position,
       ).toEqual(elsewhere);
+    });
+
+    it("carries the gizmo with a translate that started on a handle", async () => {
+      const harness = await createHarness(renderer);
+      entities.set("crate", entityAt(0, 0, { half: 50 }));
+      const level = document("crate");
+      await harness.build(level);
+      opened(harness.store, level);
+      harness.store.dispatch({ type: "selection-changed", ids: ["crate"] });
+      harness.store.dispatch({
+        type: "gesture-started",
+        gesture: gestureOf({
+          kind: "translate",
+          handle: "x",
+          anchor: { position: { x: 0, y: 0 }, rotation: 0 },
+          ids: ["crate"],
+        }),
+      });
+
+      // The drag has already moved the placement, so the handles are on it.
+      // Which press path started the drag decides nothing about where they go.
+      harness.coordinator.applyPoseDraft([
+        { id: "crate", transform: poseAt(60, 0) },
+      ]);
+
+      expect(armsOf(harness.coordinator.overlayView().gizmo)?.anchor).toEqual({
+        position: { x: 60, y: 0 },
+        rotation: 0,
+      });
+    });
+
+    it("keeps the arms on the axis the drag is held to", async () => {
+      const harness = await createHarness(renderer);
+      const turned = Math.PI / 4;
+      entities.set("crate", entityAt(0, 0, { half: 50, rotation: turned }));
+      const level = document("crate");
+      await harness.build(level);
+      opened(harness.store, level);
+      harness.store.dispatch({ type: "selection-changed", ids: ["crate"] });
+      harness.store.dispatch({ type: "axes-changed", axes: "local" });
+      harness.store.dispatch({
+        type: "gesture-started",
+        gesture: gestureOf({
+          kind: "translate",
+          handle: "x",
+          anchor: { position: { x: 0, y: 0 }, rotation: turned },
+          ids: ["crate"],
+        }),
+      });
+
+      // The arms name the axis the move is locked to, and that axis was
+      // chosen at the press. A toggle thrown mid-drag must not turn them.
+      harness.store.dispatch({ type: "axes-changed", axes: "world" });
+      harness.coordinator.applyPoseDraft([
+        { id: "crate", transform: poseAt(40, 40, turned) },
+      ]);
+
+      expect(armsOf(harness.coordinator.overlayView().gizmo)?.anchor).toEqual({
+        position: { x: 40, y: 40 },
+        rotation: turned,
+      });
+    });
+
+    it("moves the box tool's pivot mark with the box it belongs to", async () => {
+      const harness = await createHarness(renderer);
+      entities.set("crate", entityAt(0, 0, { half: 50 }));
+      entities.set("lid", entityAt(200, 0, { half: 50 }));
+      const level = document("crate", "lid");
+      await harness.build(level);
+      opened(harness.store, level);
+      harness.store.dispatch({
+        type: "selection-changed",
+        ids: ["crate", "lid"],
+      });
+      harness.store.dispatch({ type: "tool-changed", tool: "box" });
+      harness.store.dispatch({ type: "pivot-changed", pivot: "center" });
+      harness.store.dispatch({
+        type: "gesture-started",
+        gesture: gestureOf({
+          kind: "translate",
+          handle: "body",
+          anchor: { position: { x: 100, y: 0 }, rotation: 0 },
+          pivot: { x: 100, y: 0 },
+          ids: ["crate", "lid"],
+        }),
+      });
+      harness.coordinator.applyPoseDraft([
+        { id: "crate", transform: poseAt(60, 0) },
+        { id: "lid", transform: poseAt(260, 0) },
+      ]);
+
+      // The rectangle is recomputed every redraw, so a mark that stayed put
+      // would sit outside the box it claims to be the centre of.
+      const gizmo = harness.coordinator.overlayView().gizmo;
+      expect(boxOf(gizmo)?.center).toEqual({ x: 160, y: 0 });
+      expect(gizmo?.kind === "box" ? gizmo.pivot : "no box").toEqual({
+        x: 160,
+        y: 0,
+      });
+    });
+
+    it("marks the pivot through a drag that started on a placement's body", async () => {
+      const harness = await createHarness(renderer);
+      entities.set("crate", entityAt(0, 0, { half: 50 }));
+      entities.set("lid", entityAt(200, 0, { half: 50 }));
+      const level = document("crate", "lid");
+      await harness.build(level);
+      opened(harness.store, level);
+      harness.store.dispatch({
+        type: "selection-changed",
+        ids: ["crate", "lid"],
+      });
+      harness.store.dispatch({ type: "tool-changed", tool: "box" });
+      harness.store.dispatch({ type: "pivot-changed", pivot: "center" });
+      const before = gripsOf(harness.coordinator.overlayView().gizmo);
+      expect(before).toHaveLength(8);
+
+      // A press on a placement's body carries neither an anchor nor a pivot.
+      // Reading them off the gesture would blank the mark and change which
+      // grips are drawn for as long as the drag runs.
+      harness.store.dispatch({
+        type: "gesture-started",
+        gesture: gestureOf({ kind: "translate", ids: ["crate", "lid"] }),
+      });
+      harness.coordinator.applyPoseDraft([
+        { id: "crate", transform: poseAt(60, 0) },
+        { id: "lid", transform: poseAt(260, 0) },
+      ]);
+
+      const gizmo = harness.coordinator.overlayView().gizmo;
+      expect(gizmo?.kind === "box" ? gizmo.pivot : "no box").toEqual({
+        x: 160,
+        y: 0,
+      });
+      expect(gripsOf(gizmo)).toEqual(before);
+    });
+
+    it("keeps every box grip while a translate carries the box away", async () => {
+      const harness = await createHarness(renderer);
+      entities.set("crate", entityAt(0, 0, { half: 50 }));
+      entities.set("lid", entityAt(200, 0, { half: 50 }));
+      const level = document("crate", "lid");
+      await harness.build(level);
+      opened(harness.store, level);
+      harness.store.dispatch({
+        type: "selection-changed",
+        ids: ["crate", "lid"],
+      });
+      harness.store.dispatch({ type: "tool-changed", tool: "box" });
+      harness.store.dispatch({ type: "pivot-changed", pivot: "center" });
+      const before = gripsOf(harness.coordinator.overlayView().gizmo);
+      expect(before).toHaveLength(8);
+
+      harness.store.dispatch({
+        type: "gesture-started",
+        gesture: gestureOf({
+          kind: "translate",
+          handle: "body",
+          anchor: { position: { x: 100, y: 0 }, rotation: 0 },
+          pivot: { x: 100, y: 0 },
+          ids: ["crate", "lid"],
+        }),
+      });
+      // Exactly the box's half-width: a grip measures its side from the
+      // anchor, so an anchor left behind would put the whole west side on it
+      // and drop the three grips that hold it.
+      harness.coordinator.applyPoseDraft([
+        { id: "crate", transform: poseAt(150, 0) },
+        { id: "lid", transform: poseAt(350, 0) },
+      ]);
+
+      expect(gripsOf(harness.coordinator.overlayView().gizmo)).toEqual(before);
+    });
+
+    it("moves the disc that drags a placement with no rectangle", async () => {
+      const harness = await createHarness(renderer);
+      entities.set("crate", entityAt(0, 0));
+      const level = document("crate");
+      await harness.build(level);
+      opened(harness.store, level);
+      harness.store.dispatch({ type: "selection-changed", ids: ["crate"] });
+      harness.store.dispatch({ type: "tool-changed", tool: "box" });
+      harness.store.dispatch({
+        type: "gesture-started",
+        gesture: gestureOf({
+          kind: "translate",
+          handle: "body",
+          anchor: { position: { x: 0, y: 0 }, rotation: 0 },
+          ids: ["crate"],
+        }),
+      });
+      harness.coordinator.applyPoseDraft([
+        { id: "crate", transform: poseAt(0, 75) },
+      ]);
+
+      const gizmo = harness.coordinator.overlayView().gizmo;
+      expect(gizmo?.kind).toBe("radial");
+      expect(
+        gizmo?.kind === "radial" ? gizmo.anchor.position : undefined,
+      ).toEqual({ x: 0, y: 75 });
     });
 
     it("anchors on the outermost of a selection, not on a selected child", async () => {
@@ -1169,61 +1426,195 @@ describe("PreviewCoordinator", () => {
       expect(harness.coordinator.overlayView().perScreenPixel).toBe(0.25);
     });
 
-    it("sizes the overlay from the canvas scale as well as the zoom", async () => {
-      // A fit drawing an 800-wide virtual viewport into a 500-wide pane. Every
-      // gizmo size is a screen-pixel count, so it has to grow in world units by
-      // as much as the canvas shrank, or the handles shrink with the pane.
-      const scaled = {
-        virtualSize: { width: 800, height: 600 },
-        virtualCanvasRect: { x: 0, y: 0, width: 500, height: 375 },
-      };
-      const harness = await createHarness(scaled);
+    it("puts the fit's scale on the camera and not on the overlay", async () => {
+      // A fit drawing an 800-wide virtual viewport into a 500-wide pane. The
+      // camera carries the whole of it, so `view.zoom` is canvas pixels per
+      // world unit and every screen-pixel size the overlay draws is the same
+      // number of world units whatever the pane is.
+      const camera = cameraStub({ width: 800, height: 600 });
+      const harness = await createHarness(fitted(0.625), undefined, camera);
       await harness.build(document());
 
-      harness.store.dispatch({
-        type: "view-changed",
-        view: {
-          center: { x: 0, y: 0 },
-          zoom: 4,
-          guides: true,
-          snap: true,
-          step: 32,
-        },
-      });
+      const view = { ...DEFAULT_VIEW, zoom: 2 };
+      harness.store.dispatch({ type: "view-changed", view });
+      harness.coordinator.applyView(view);
 
-      expect(harness.coordinator.overlayView().perScreenPixel).toBeCloseTo(
-        0.25 / (500 / 800),
-        12,
-      );
+      expect(camera.zoom).toBeCloseTo(2 / 0.625, 12);
+      expect(harness.coordinator.overlayView().perScreenPixel).toBe(0.5);
     });
 
     it("takes the tighter axis when a fit scales them differently", async () => {
       // Under `stretch` the two axes scale apart. Taking the smaller keeps a
       // handle at least its nominal size on both rather than on neither.
       const stretched = {
+        setFit: () => {},
         virtualSize: { width: 800, height: 600 },
         virtualCanvasRect: { x: 0, y: 0, width: 800, height: 300 },
       };
-      const harness = await createHarness(stretched);
+      const camera = cameraStub({ width: 800, height: 600 });
+      const harness = await createHarness(stretched, undefined, camera);
       await harness.build(document());
 
-      expect(harness.coordinator.overlayView().perScreenPixel).toBeCloseTo(
-        1 / (300 / 600),
-        12,
-      );
+      harness.coordinator.applyView({ ...DEFAULT_VIEW, zoom: 1 });
+
+      expect(camera.zoom).toBeCloseTo(1 / (300 / 600), 12);
     });
 
-    it("falls back to one while the canvas has no room", async () => {
-      // A pane with no width yet measures zero, and dividing by it would make
-      // every point in the world one screen pixel from a handle.
+    it("leaves the camera on the zoom while the canvas has no room", async () => {
+      // A pane with no width yet measures zero, and dividing by it would put
+      // the camera at infinity.
       const unlaid = {
+        setFit: () => {},
         virtualSize: { width: 800, height: 600 },
         virtualCanvasRect: { x: 0, y: 0, width: 0, height: 0 },
       };
-      const harness = await createHarness(unlaid);
+      const camera = cameraStub({ width: 800, height: 600 });
+      const harness = await createHarness(unlaid, undefined, camera);
       await harness.build(document());
 
-      expect(harness.coordinator.overlayView().perScreenPixel).toBe(1);
+      harness.coordinator.applyView({ ...DEFAULT_VIEW, zoom: 2 });
+
+      expect(camera.zoom).toBe(2);
+    });
+
+    it("grabs the same handle whatever the fit scaled the canvas by", async () => {
+      // Two world units across, so the box is drawn and grabbed at its
+      // 48-pixel minimum and the answer depends on what a screen pixel is
+      // worth. A canvas-scale correction left in the overlay would put the
+      // east grip 38 world units out in the smaller pane instead of 24.
+      const grabbed = async (scale: number): Promise<string | undefined> => {
+        const camera = cameraStub({ width: 800, height: 600 });
+        const harness = await createHarness(fitted(scale), undefined, camera);
+        entities.set("crate", entityAt(-1, 0, { half: 0.5 }));
+        entities.set("barrel", entityAt(1, 0, { half: 0.5 }));
+        const level = document("crate", "barrel");
+        await harness.build(level);
+        opened(harness.store, level);
+        harness.store.dispatch({
+          type: "selection-changed",
+          ids: ["crate", "barrel"],
+        });
+        harness.store.dispatch({ type: "tool-changed", tool: "box" });
+        harness.store.dispatch({ type: "pivot-changed", pivot: "center" });
+
+        // 24 canvas pixels east of the middle of the canvas, which is where
+        // the selection is drawn.
+        return (
+          harness.coordinator.gizmoAt({
+            x: 800 * scale * 0.5 + 24,
+            y: 600 * scale * 0.5,
+          })?.handle ?? undefined
+        );
+      };
+
+      expect(await grabbed(1)).toBe("e");
+      expect(await grabbed(0.625)).toBe("e");
+    });
+
+    it("frames the selection into the canvas, not into the design rectangle", async () => {
+      // The two are stubbed apart on purpose: framing fills the pane the
+      // developer has, and the design rectangle says nothing about its size.
+      const paned = {
+        setFit: () => {},
+        virtualSize: { width: 800, height: 600 },
+        virtualCanvasRect: { x: 0, y: 0, width: 400, height: 300 },
+        canvasSize: { width: 400, height: 300 },
+      };
+      const harness = await createHarness(paned);
+      entities.set("crate", entityAt(100, 50, { half: 40, halfY: 10 }));
+      await harness.build(document("crate"));
+
+      harness.coordinator.frameSelection(["crate"]);
+
+      const view = harness.store.getState().view;
+      expect(view.center).toEqual({ x: 100, y: 50 });
+      expect(view.zoom).toBeCloseTo(400 / (80 * 1.2), 12);
+    });
+
+    it("takes the harness's mask off its own viewport", async () => {
+      // A harness leaves the fit at its `letterbox` default, which masks the
+      // level to the design rectangle and centres it. The editor's viewport is
+      // not a game window, so it asks for the same transform without the mask
+      // against the element it owns.
+      const calls: unknown[] = [];
+      const parts = createParts({
+        ...fitted(1),
+        setFit: (options: unknown) => calls.push(options),
+      });
+
+      await parts.coordinator.start(parts.harness);
+
+      expect(calls).toEqual([{ mode: "expand", target: parts.host }]);
+    });
+
+    it("holds the world at the viewport's top-left when the pane resizes", async () => {
+      const camera = cameraStub({ width: 800, height: 600 });
+      const surface = { width: 800, height: 600 };
+      const harness = await createHarness(
+        {
+          ...fitted(1),
+          // A fresh object each read, the way the renderer answers it.
+          get canvasSize() {
+            return { ...surface };
+          },
+        },
+        undefined,
+        camera,
+      );
+      // Distinct views, not notifications: a resize also reports the pane's
+      // new size, which the view is not written back for.
+      const views: EditorViewState[] = [];
+      let last = harness.store.getState().view;
+      harness.store.subscribe((state) => {
+        if (state.view === last) return;
+        last = state.view;
+        views.push(state.view);
+      });
+
+      // A band opening under the picture: 100 pixels of canvas gone from the
+      // bottom, and nothing the developer asked for.
+      surface.height = 500;
+      ResizeObserverStub.last?.deliver();
+
+      expect(harness.store.getState().view.center).toEqual({ x: 0, y: -50 });
+      expect(views).toHaveLength(1);
+    });
+
+    it("ignores a pane with no room, and does not measure the next one against it", async () => {
+      const camera = cameraStub({ width: 800, height: 600 });
+      const surface = { width: 800, height: 600 };
+      const harness = await createHarness(
+        {
+          ...fitted(1),
+          // A fresh object each read, the way the renderer answers it.
+          get canvasSize() {
+            return { ...surface };
+          },
+        },
+        undefined,
+        camera,
+      );
+
+      // A hidden tab measures zero. Moving the view against it would throw the
+      // camera across the level, and remembering it would do the same on the
+      // way back.
+      surface.height = 0;
+      ResizeObserverStub.last?.deliver();
+      expect(harness.store.getState().view.center).toEqual({ x: 0, y: 0 });
+
+      surface.height = 500;
+      ResizeObserverStub.last?.deliver();
+      expect(harness.store.getState().view.center).toEqual({ x: 0, y: -50 });
+    });
+
+    it("stops watching the pane when the editor closes", async () => {
+      const harness = await createHarness(fitted(1));
+      const observer = ResizeObserverStub.last;
+
+      await harness.coordinator.dispose();
+
+      expect(observer?.observed).toBe(1);
+      expect(observer?.disconnected).toBe(1);
     });
 
     it("crosses a selected placement whose visual has no area", async () => {
@@ -1719,6 +2110,128 @@ describe("PreviewCoordinator", () => {
   });
 });
 
+describe("a reference field waiting for a target", () => {
+  const renderer = {
+    setFit: () => {},
+    virtualSize: { width: 800, height: 600 },
+    virtualCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
+  };
+
+  /** A placement of a named type, optionally authored under another. */
+  function typed(id: string, type: string, parent?: string): LevelPlacement {
+    return {
+      ...placement(id),
+      type,
+      ...(parent === undefined ? {} : { parent }),
+    };
+  }
+
+  function waitFor(store: EditorStore, types: readonly string[]): void {
+    store.dispatch({
+      type: "pick-started",
+      pick: { placementId: "switch", field: "door", types },
+    });
+  }
+
+  /**
+   * The coordinator over a level whose entities `place` fills in. The callback
+   * runs after the harness is built, which is what clears the entity map.
+   */
+  async function pointing(
+    level: LevelDocument,
+    place: () => void,
+  ): Promise<{ coordinator: PreviewCoordinator; store: EditorStore }> {
+    const harness = await createHarness(
+      withPointer(renderer),
+      undefined,
+      cameraStub({ width: 800, height: 600 }),
+    );
+    place();
+    await harness.build(level);
+    opened(harness.store, level);
+    return { coordinator: harness.coordinator, store: harness.store };
+  }
+
+  it("chooses the placement under the point, and the one above a child", async () => {
+    const level = document(
+      typed("door", "game.door"),
+      typed("handle", "game.handle", "door"),
+      typed("switch", "game.switch"),
+    );
+    const { coordinator, store } = await pointing(level, () => {
+      entities.set("door", entityAt(0, 0, { half: 25 }));
+      entities.set("handle", entityAt(100, 0, { half: 10 }));
+      entities.set("switch", entityAt(-200, 0, { half: 10 }));
+    });
+
+    // Nothing is waiting yet, so nothing can be chosen.
+    expect(coordinator.pickAt({ x: 400, y: 300 })).toBeNull();
+
+    waitFor(store, ["game.door"]);
+    expect(coordinator.pickAt({ x: 400, y: 300 })).toBe("door");
+    // The handle is part of the door however the door is built.
+    expect(coordinator.pickAt({ x: 500, y: 300 })).toBe("door");
+    // The switch is of no accepted type, and empty space is empty space.
+    expect(coordinator.pickAt({ x: 200, y: 300 })).toBeNull();
+    expect(coordinator.pickAt({ x: 700, y: 500 })).toBeNull();
+  });
+
+  it("reaches a target drawn underneath something it cannot choose", async () => {
+    const level = document(
+      typed("door", "game.door"),
+      typed("fog", "game.fog"),
+    );
+    const { coordinator, store } = await pointing(level, () => {
+      entities.set("door", entityAt(0, 0, { half: 25 }));
+      // Added later and wide enough to cover the door, so an unfiltered press
+      // would land on it.
+      entities.set("fog", entityAt(0, 0, { half: 200 }));
+    });
+
+    expect(coordinator.hitTest({ x: 400, y: 300 })).toBe("fog");
+
+    waitFor(store, ["game.door"]);
+    expect(coordinator.pickAt({ x: 400, y: 300 })).toBe("door");
+  });
+
+  it("puts the gizmo away and marks the selection with its own box", async () => {
+    const level = document(typed("switch", "game.switch"));
+    const { coordinator, store } = await pointing(level, () => {
+      entities.set("switch", entityAt(0, 0, { half: 25 }));
+    });
+    store.dispatch({ type: "selection-changed", ids: ["switch"] });
+    store.dispatch({ type: "tool-changed", tool: "box" });
+
+    // The box gizmo outlines the placement in place of its own marker, so the
+    // marker has to come back when the gizmo goes.
+    expect(coordinator.overlayView().gizmo?.kind).toBe("box");
+    expect(coordinator.overlayView().boxes).toHaveLength(0);
+
+    waitFor(store, ["game.door"]);
+    const view = coordinator.overlayView();
+    expect(view.gizmo).toBeUndefined();
+    expect(view.boxes).toHaveLength(1);
+  });
+
+  it("draws no marks for a placement no press can choose", async () => {
+    const level = document(
+      typed("chime", "game.chime"),
+      typed("bell", "game.bell"),
+    );
+    const { coordinator, store } = await pointing(level, () => {
+      entities.set("chime", entityCarrying(0, 0, "game.Chime"));
+      entities.set("bell", entityCarrying(80, 0, "game.Bell"));
+    });
+
+    expect(coordinator.overlayView().marks).toHaveLength(2);
+
+    waitFor(store, ["game.bell"]);
+    expect(coordinator.overlayView().marks?.map((mark) => mark.type)).toEqual([
+      "game.Bell",
+    ]);
+  });
+});
+
 /**
  * An entity drawing one square of `half` units around a world position.
  *
@@ -1889,4 +2402,37 @@ function boxOf(gizmo: OverlayGizmo | undefined): OrientedBox | undefined {
 
 function gripsOf(gizmo: OverlayGizmo | undefined): readonly HandleId[] {
   return gizmo?.kind === "box" ? gizmo.grips : [];
+}
+
+/**
+ * A gesture in progress. The fields these cases do not read carry what a
+ * press that has not moved yet holds.
+ */
+function gestureOf(parts: {
+  readonly kind: GizmoMode;
+  readonly ids: readonly string[];
+  readonly handle?: HandleId;
+  readonly anchor?: GizmoAnchor;
+  readonly pivot?: EditorPoint;
+}): EditGesture {
+  return {
+    kind: parts.kind,
+    ids: parts.ids,
+    ...(parts.handle === undefined ? {} : { handle: parts.handle }),
+    ...(parts.anchor === undefined ? {} : { anchor: parts.anchor }),
+    ...(parts.pivot === undefined ? {} : { pivot: parts.pivot }),
+    spin: 0,
+    reference: { x: 1, y: 1, kind: "length" },
+    constrained: false,
+    suspended: false,
+    snapFrom: parts.anchor ?? { position: { x: 0, y: 0 }, rotation: 0 },
+    origin: { x: 0, y: 0 },
+    current: { x: 0, y: 0 },
+    base: new Map(),
+  };
+}
+
+/** The transform a drag's redraw writes: a point, and nothing else changed. */
+function poseAt(x: number, y: number, rotation = 0): LevelTransform {
+  return { position: { x, y }, rotation, scale: { x: 1, y: 1 } };
 }

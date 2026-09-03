@@ -76,12 +76,15 @@ class DormantVisualSystem extends System {
   readonly phase = Phase.Render;
   readonly priority = 100;
 
-  constructor(private readonly placements: () => readonly DormantPlacement[]) {
+  constructor(
+    private readonly placements: () => readonly DormantPlacement[],
+    private readonly dimmed: () => ReadonlySet<string>,
+  ) {
     super();
   }
 
   update(): void {
-    synchronizeDormantVisuals(this.placements());
+    synchronizeDormantVisuals(this.placements(), this.dimmed());
   }
 }
 
@@ -121,10 +124,11 @@ export class EditorPreviewPlugin implements Plugin {
 
   constructor(
     placements: () => readonly DormantPlacement[],
+    dimmed: () => ReadonlySet<string>,
     private readonly flushes: DestroyFlushQueue,
     draw: () => void,
   ) {
-    this.visuals = new DormantVisualSystem(placements);
+    this.visuals = new DormantVisualSystem(placements, dimmed);
     this.overlay = new OverlaySystem(draw);
   }
 

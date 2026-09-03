@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import type { EditorDiagnostic } from "../../shared/diagnostics/index.js";
 import type {
   AssetListing,
   LevelSummary,
@@ -18,7 +17,7 @@ import { ControlBar } from "./ControlBar.js";
 import { Hierarchy } from "./Hierarchy.js";
 import { Inspector } from "./Inspector.js";
 import { Actors } from "./Actors.js";
-import { Panel } from "./Panel.js";
+import { Problems } from "./Problems.js";
 import { Button, Select } from "./controls.js";
 import { selectedAfter } from "./selection.js";
 import { EDITOR_CSS } from "./styles.js";
@@ -189,6 +188,15 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
       },
     },
     {
+      // The editor's only window-level Escape. `useShortcuts` leaves a
+      // keystroke a text box owns to that box, so a field being typed into
+      // keeps its own.
+      key: "escape",
+      run: () => {
+        if (store.getState().pick) props.commands.cancelPick();
+      },
+    },
+    {
       key: "f",
       run: () => {
         props.preview.frameSelection([...store.getState().selection]);
@@ -198,9 +206,10 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
       key: "f",
       shift: true,
       run: () => {
+        const state = store.getState();
         store.dispatch({
           type: "view-changed",
-          view: resetView(store.getState().view),
+          view: resetView(state.view, state.viewport),
         });
       },
     },
@@ -395,6 +404,9 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
                 ids: selectedAfter(selection, id, additive),
               });
             }}
+            onPickTarget={(id) => {
+              props.commands.pickTarget(id);
+            }}
             onDrop={(id, drop) => {
               // Dragging a row that is part of the selection drags the whole
               // selection; dragging one outside it drags only that row, which
@@ -424,6 +436,8 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
               props.commands.createPlacement(typeId);
             }}
           />
+
+          <Problems store={store} />
         </div>
 
         <aside className="ye-body__right">
@@ -437,6 +451,12 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
             }}
             onResetParam={(id, field) => {
               props.commands.resetParam(id, field);
+            }}
+            onPickTarget={(id, field, types) => {
+              props.commands.startPick(id, field, types);
+            }}
+            onCancelPick={() => {
+              props.commands.cancelPick();
             }}
             onResetPlacement={(id) => {
               props.commands.resetPlacement(id);
@@ -457,8 +477,6 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
       </div>
 
       <DeleteConfirm store={store} commands={props.commands} />
-
-      <Problems store={store} />
     </div>
   );
 }
@@ -527,26 +545,6 @@ function DeleteConfirm({
           Cancel
         </Button>
       </div>
-    </div>
-  );
-}
-
-function Problems({ store }: { store: EditorStore }): React.JSX.Element | null {
-  const diagnostics = useEditorSlice(store, (state) => state.diagnostics);
-  const all: EditorDiagnostic[] = [...diagnostics.values()].flat();
-  if (all.length === 0) return null;
-  return (
-    <div className="ye-problems">
-      <Panel title="Problems" note={String(all.length)}>
-        <ul data-testid="diagnostics">
-          {all.map((diagnostic, index) => (
-            <li key={`${diagnostic.code}-${String(index)}`}>
-              <code>{diagnostic.source}</code>
-              <span>{diagnostic.message}</span>
-            </li>
-          ))}
-        </ul>
-      </Panel>
     </div>
   );
 }

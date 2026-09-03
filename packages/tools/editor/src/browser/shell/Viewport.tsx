@@ -25,6 +25,11 @@ import { ownsSpace } from "./useShortcuts.js";
 export interface ViewportPreview {
   hitTest(clientPoint: { x: number; y: number }): string | null;
   /**
+   * The reference target a press here would choose while a field is waiting
+   * for one, or `null` — including whenever nothing is waiting.
+   */
+  pickAt(clientPoint: { x: number; y: number }): string | null;
+  /**
    * Which gizmo handle is under the pointer, or `null` for none. The handles
    * are drawn by the renderer rather than the DOM, so nothing in this
    * component can see them.
@@ -111,6 +116,7 @@ export type ViewportCursor =
   | "ns-resize"
   | "nwse-resize"
   | "nesw-resize"
+  | "not-allowed"
   | "rotate";
 
 /** What is under the pointer, when a gizmo handle is. */
@@ -136,10 +142,17 @@ export function cursorFor(state: {
   readonly overPlacement: boolean;
   /** True under the Select tool, where an empty-space drag is a marquee. */
   readonly selecting?: boolean | undefined;
+  /** True while a reference field is waiting for a target to be pointed at. */
+  readonly picking?: boolean | undefined;
+  /** Whether a press would choose a target, while picking. */
+  readonly overTarget?: boolean | undefined;
 }): ViewportCursor {
   if (state.panning) return "grabbing";
   if (state.dragging) return "move";
   if (state.spaceHeld) return "grab";
+  // Finding the target is half the gesture, so a pan in progress and a held
+  // Space still win over it.
+  if (state.picking) return state.overTarget ? "crosshair" : "not-allowed";
   const handle = state.overHandle;
   if (handle) {
     // The box gizmo's interior moves the placement, and looks like it: the
@@ -226,6 +239,8 @@ export function Viewport(props: ViewportProps): React.JSX.Element {
   const spaceHeld = useRef(false);
   const overHandle = useRef<HandleUnderPointer | undefined>(undefined);
   const overPlacement = useRef(false);
+  /** Whether a press where the pointer rests would choose a target. */
+  const overTarget = useRef(false);
   const marqueePointer = useRef<number | undefined>(undefined);
   const [cursor, setCursor] = useState<ViewportCursor>("grab");
   /** The name of the mark under the pointer, and where to show it. */
@@ -240,6 +255,8 @@ export function Viewport(props: ViewportProps): React.JSX.Element {
         overHandle: overHandle.current,
         overPlacement: overPlacement.current,
         selecting: store.getState().tool === "select",
+        picking: store.getState().pick !== undefined,
+        overTarget: overTarget.current,
       }),
     );
   };
@@ -369,6 +386,15 @@ export function Viewport(props: ViewportProps): React.JSX.Element {
       beginPan(event, preview.screenToWorld(point));
       return;
     }
+    // While a reference field is waiting, a press chooses a target and does
+    // nothing else: no selection change, no drag, no marquee. A press on
+    // anything the field cannot accept is ignored rather than treated as
+    // giving up — a near miss costs a second click, not the mode.
+    if (running.pick) {
+      const target = preview.pickAt(point);
+      if (target !== null) commands.pickTarget(target);
+      return;
+    }
     // A handle is tested before the placements: it is drawn on top of them,
     // and an arm reaches past its placement's bounds onto whatever is behind.
     const grab = preview.gizmoAt(point);
@@ -457,6 +483,13 @@ export function Viewport(props: ViewportProps): React.JSX.Element {
           additive: event.metaKey || event.ctrlKey,
         });
       }
+      return;
+    }
+    if (store.getState().pick) {
+      overTarget.current = preview.pickAt(point) !== null;
+      // A mark that is not drawn must not be named.
+      setNamed(undefined);
+      refreshCursor();
       return;
     }
     if (!store.getState().gesture) {

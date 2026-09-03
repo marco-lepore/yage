@@ -76,3 +76,40 @@ export function rewriteReferences(
   }
   return rewritten ?? params;
 }
+
+/**
+ * What a press can choose while a reference field is waiting: every placement
+ * of an accepted type, and everything authored under one, mapped to the
+ * placement a press there would choose.
+ *
+ * A child maps to the nearest accepted placement at or above it, so a press
+ * anywhere on a door chooses the door however the door is built, and a door
+ * parented under another door chooses itself. A placement with no accepted
+ * placement above it is absent, which is what "cannot be chosen" means
+ * everywhere else in this mode: the map's keys are exactly what stays lit,
+ * exactly what the viewport hit-tests, and exactly what a hierarchy row picks.
+ */
+export function referenceTargets(
+  entities: readonly LevelPlacement[],
+  types: readonly string[],
+): ReadonlyMap<string, string> {
+  const accepted = new Set(types);
+  const byId = new Map(entities.map((one) => [one.id, one]));
+  const targets = new Map<string, string>();
+  for (const placement of entities) {
+    // A chain that loops stops where it started, the way every other walk over
+    // this document treats one.
+    const seen = new Set<string>();
+    let current: LevelPlacement | undefined = placement;
+    while (current !== undefined && !seen.has(current.id)) {
+      if (accepted.has(current.type)) {
+        targets.set(placement.id, current.id);
+        break;
+      }
+      seen.add(current.id);
+      current =
+        current.parent === undefined ? undefined : byId.get(current.parent);
+    }
+  }
+  return targets;
+}

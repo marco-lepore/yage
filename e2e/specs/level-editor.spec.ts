@@ -314,13 +314,19 @@ async function openEditorPage(page: Page): Promise<void> {
 /**
  * Open the Actors strip under the viewport, which starts closed so the
  * viewport keeps the height.
+ *
+ * The strip takes that height back from the canvas, and the canvas reaches the
+ * view through a resize observer — so this returns once the picture has
+ * settled, and a case that reads the camera afterwards reads the new one.
  */
 async function openActors(page: Page): Promise<void> {
+  const tall = await canvasHeight(page);
   await page.getByTestId("actors-toggle").click();
   await expect(page.getByTestId("actors-toggle")).toHaveAttribute(
     "aria-expanded",
     "true",
   );
+  await expect.poll(() => canvasHeight(page)).toBeLessThan(tall);
 }
 
 /** The lattice the toolbar is showing, in world units. */
@@ -499,13 +505,31 @@ async function editorCamera(
   return { position: camera.position, zoom: camera.zoom };
 }
 
-async function canvasBox(page: Page): Promise<{ x: number; y: number }> {
+async function canvasBox(
+  page: Page,
+): Promise<{ x: number; y: number; width: number; height: number }> {
   const box = await page
     .getByTestId("yage-editor-viewport")
     .locator("canvas")
     .boundingBox();
   if (!box) throw new Error("the preview canvas has no box");
   return box;
+}
+
+/**
+ * How tall the preview canvas is. A panel opening under the viewport takes its
+ * height from this, and the resize reaches the view through an observer — so a
+ * case that opens one waits on this before reading where the level is drawn.
+ */
+async function canvasHeight(page: Page): Promise<number> {
+  return (await canvasBox(page)).height;
+}
+
+/** How tall a panel is, in client pixels. */
+async function panelHeight(page: Page, testId: string): Promise<number> {
+  const box = await page.getByTestId(testId).boundingBox();
+  if (!box) throw new Error(`the ${testId} panel has no box`);
+  return box.height;
 }
 
 /** Drag one placement by a client-pixel delta, pressing where it is drawn. */
@@ -860,6 +884,9 @@ test.describe("level editor", () => {
     await page.mouse.move(from.x + 180, from.y + 140);
     await page.mouse.up({ button: "middle" });
 
+    // Before the centre is read: the strip takes its height from the viewport,
+    // which moves the middle of the view without moving the picture.
+    await openActors(page);
     const step = await gridStep(page);
     const centre = (await editorCamera(page)).position;
     const nearest = {
@@ -872,7 +899,6 @@ test.describe("level editor", () => {
       Math.abs(centre.x - nearest.x) + Math.abs(centre.y - nearest.y),
     ).toBeGreaterThan(1);
 
-    await openActors(page);
     await page.getByTestId("place-game.crate").click();
     const placed = await draftAfter(
       request,
@@ -1011,7 +1037,10 @@ test.describe("level editor", () => {
     const start = savedPlacement(ROOT).transform.position;
     const step = await gridStep(page);
 
-    const drag = { x: 120, y: 80 };
+    // Chosen to leave the pointer clear of a half-cell on both axes: landing
+    // exactly between two lattice points makes the assertion below a test of
+    // which way a tie breaks rather than of where the drag ended.
+    const drag = { x: 130, y: 80 };
     const free = offset(start, await expectedWorldDelta(page, drag));
     await dragPlacement(page, ROOT, drag);
     // One drag is one entry, snapped or not.
@@ -1671,9 +1700,12 @@ test.describe("level editor", () => {
 
   test("frames the selection, and puts the view back", async ({ page }) => {
     await openEditor(page);
+    // The camera carries the fit's scale, so the zoom a reset returns to is
+    // the one the editor booted with rather than 1.
+    const booted = (await editorCamera(page)).zoom;
     // Pan first, so "framed" cannot be read off a camera that never moved:
-    // the default view is the origin at zoom 1, which is also where a framing
-    // that did nothing would leave it.
+    // the default view is the origin, which is also where a framing that did
+    // nothing would leave it.
     await page.mouse.move(400, 300);
     await page.mouse.down({ button: "middle" });
     await page.mouse.move(300, 240);
@@ -1692,13 +1724,41 @@ test.describe("level editor", () => {
     expectPoint((await editorCamera(page)).position, authored(LATER));
 
     await page.keyboard.press("Shift+F");
-    await expect.poll(async () => (await editorCamera(page)).zoom).toBe(1);
+    await expect.poll(async () => (await editorCamera(page)).zoom).toBe(booted);
     expectPoint((await editorCamera(page)).position, { x: 0, y: 0 });
 
     // The view is not the document: neither the framing nor the reset is an
     // edit, so there is nothing to save.
     await expect(page.getByTestId("dirty-marker")).toBeHidden();
     await expectPlacements(page, authoredLines());
+  });
+
+  test("holds the picture still when a panel opens under it", async ({
+    page,
+  }) => {
+    await openEditor(page);
+    const drawnAt = await clientPointOf(page, authored(ROOT));
+    const hierarchy = await panelHeight(page, "hierarchy");
+    const tall = await canvasHeight(page);
+
+    // A strip the developer opened deliberately.
+    await openActors(page);
+    expect(await canvasHeight(page)).toBeLessThan(tall);
+    expectPoint(await clientPointOf(page, authored(ROOT)), drawnAt);
+
+    // And a finding, which arrives on its own schedule: a switch placed with
+    // nothing chosen for the crate its required reference wants.
+    const shorter = await canvasHeight(page);
+    await page.getByTestId("place-game.switch").click();
+    await expect(page.getByTestId("diagnostics")).toContainText(
+      "has none chosen",
+    );
+    await expect.poll(() => canvasHeight(page)).toBeLessThan(shorter);
+
+    expectPoint(await clientPointOf(page, authored(ROOT)), drawnAt);
+    // The band takes its height from the viewport's own column, so the panels
+    // beside it are exactly as tall as they were.
+    expect(await panelHeight(page, "hierarchy")).toBe(hierarchy);
   });
 
   test("leaves the keyboard to a field being typed into", async ({ page }) => {
@@ -1922,6 +1982,102 @@ test.describe("level editor", () => {
     await expect
       .poll(async () => switchesIn(game))
       .toEqual([{ sceneId: created.id, door: ROOT, chime: null }]);
+  });
+
+  test("chooses a reference target by clicking it in the level", async ({
+    page,
+    request,
+  }) => {
+    await openEditor(page);
+    const token = await tokenOf(page);
+
+    await openActors(page);
+    await page.getByTestId("place-game.switch").click();
+    const placed = await draftAfter(request, token, {
+      undoDepth: 1,
+      redoDepth: 0,
+    });
+    const created = placed.document.entities.find(
+      (entity) => !(entity.id in AUTHORED),
+    );
+    if (!created) throw new Error("the Actors strip created no switch.");
+
+    await page.getByTestId("pick-door").click();
+    await expect(page.getByTestId("field-door-picking")).toBeVisible();
+    // The switch is not a crate, so it fades like everything else that is not
+    // one; the three crates stay pickable.
+    await expect(page.getByTestId(`hierarchy-row-${created.id}`)).toHaveClass(
+      /is-unpickable/,
+    );
+    for (const id of [ROOT, CHILD, LATER]) {
+      await expect(page.getByTestId(`hierarchy-row-${id}`)).not.toHaveClass(
+        /is-unpickable/,
+      );
+    }
+
+    const at = await clientPointOf(page, authored(LATER));
+    await page.mouse.click(at.x, at.y);
+
+    const pointed = await draftAfter(request, token, {
+      undoDepth: 2,
+      redoDepth: 0,
+    });
+    expect(
+      pointed.document.entities.find((entity) => entity.id === created.id)
+        ?.params["door"],
+    ).toBe(LATER);
+    await expect(page.getByTestId("field-door")).toHaveValue(LATER);
+    // The press chose a target and did nothing else: the switch is still what
+    // the inspector is showing, and nothing is waiting any more.
+    await expect(page.getByTestId("field-door-picking")).toBeHidden();
+    await expect(
+      page.getByTestId(`hierarchy-item-${created.id}`),
+    ).toHaveAttribute("aria-selected", "true");
+  });
+
+  test("gives up on picking, and picks from the hierarchy instead", async ({
+    page,
+    request,
+  }) => {
+    await openEditor(page);
+    const token = await tokenOf(page);
+
+    await openActors(page);
+    await page.getByTestId("place-game.switch").click();
+    const placed = await draftAfter(request, token, {
+      undoDepth: 1,
+      redoDepth: 0,
+    });
+    const created = placed.document.entities.find(
+      (entity) => !(entity.id in AUTHORED),
+    );
+    if (!created) throw new Error("the Actors strip created no switch.");
+
+    await page.getByTestId("pick-door").click();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("field-door-picking")).toBeHidden();
+    expect(
+      (await draftOf(request, token)).document.entities.find(
+        (entity) => entity.id === created.id,
+      )?.params["door"],
+    ).toBeNull();
+
+    await page.getByTestId("pick-door").click();
+    await page.getByTestId(`hierarchy-row-${ROOT}`).click();
+
+    const pointed = await draftAfter(request, token, {
+      undoDepth: 2,
+      redoDepth: 0,
+    });
+    expect(
+      pointed.document.entities.find((entity) => entity.id === created.id)
+        ?.params["door"],
+    ).toBe(ROOT);
+    // The row chose a target; it did not move the selection to the crate.
+    await expect(page.getByTestId(`hierarchy-item-${ROOT}`)).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
   });
 
   test("asks before deleting a placement something points at", async ({

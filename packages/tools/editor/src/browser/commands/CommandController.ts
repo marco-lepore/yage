@@ -397,6 +397,39 @@ export class CommandController {
   }
 
   /**
+   * Wait for a target for one reference parameter, chosen by pointing at it in
+   * the viewport or in the hierarchy.
+   */
+  startPick(
+    placementId: string,
+    field: string,
+    types: readonly string[],
+  ): void {
+    this.store.dispatch({
+      type: "pick-started",
+      pick: { placementId, field, types },
+    });
+  }
+
+  /** Stop waiting. Nothing is written and the field keeps what it held. */
+  cancelPick(): void {
+    this.store.dispatch({ type: "pick-ended" });
+  }
+
+  /**
+   * Choose `targetId` for the field that is waiting, and stop waiting.
+   *
+   * The mode ends before the write, so a level that has since become read-only
+   * leaves nothing armed over a `set-values` the store refused.
+   */
+  pickTarget(targetId: string): void {
+    const pick = this.store.getState().pick;
+    if (!pick) return;
+    this.store.dispatch({ type: "pick-ended" });
+    this.setParam(pick.placementId, pick.field, targetId);
+  }
+
+  /**
    * Set one declared parameter of one placement.
    *
    * The command carries the value the document holds now as its precondition,

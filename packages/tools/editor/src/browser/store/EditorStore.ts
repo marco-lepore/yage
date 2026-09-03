@@ -24,10 +24,12 @@ import type {
   EditorViewState,
   PendingCommand,
   PoseDraft,
+  ReferencePick,
   WriteLockReason,
 } from "./types.js";
 import {
   DEFAULT_VIEW,
+  openingView,
   normalizedView,
   pannedView,
   parseView,
@@ -128,6 +130,13 @@ export class EditorStore {
   private readonly projectId: string;
   /** Cleared for the session the first time storage refuses a call. */
   private storage: ViewStorage | undefined;
+  /**
+   * Whether the view on screen is one the developer settled on — remembered
+   * for this level, or reached by panning, zooming or framing since it opened.
+   * False means it is still the opening view, which a pane measurement may
+   * replace.
+   */
+  private viewChosen = false;
 
   constructor(options: EditorStoreOptions) {
     this.api = options.api;
@@ -153,10 +162,27 @@ export class EditorStore {
     // same transition, so a listener never sees the new document under the old
     // camera.
     if (action.type === "level-opened") {
-      next = { ...next, view: this.storedView(action.snapshot.path) };
+      const stored = this.readStoredView(action.snapshot.path);
+      this.viewChosen = stored !== undefined;
+      next = { ...next, view: stored ?? openingView(next.viewport) };
+    }
+    // The pane is measured after the shell mounts, so the first level can open
+    // before there is anything to derive an opening zoom from. Only the first
+    // measurement fixes that view up, and only while the developer has not
+    // moved it: every later one is a pane that changed size, which moves the
+    // view by the rule `viewAfterResize` states rather than reframing it.
+    if (
+      action.type === "viewport-measured" &&
+      !this.viewChosen &&
+      this.state.viewport === undefined
+    ) {
+      next = { ...next, view: openingView(action.viewport) };
     }
     this.state = next;
-    if (isViewAction(action)) this.storeView(next.view);
+    if (isViewAction(action)) {
+      this.storeView(next.view);
+      this.viewChosen = true;
+    }
     for (const listener of this.listeners) listener(this.state, action);
   }
 
@@ -432,22 +458,21 @@ export class EditorStore {
   }
 
   /**
-   * The view this level was last edited from, or the default.
+   * The view this level was last edited from, or nothing remembered for it.
    *
    * A storage failure drops storage for the session instead of being reported.
    * The view holds no authored data and reaches no file, so the cost of a page
    * that cannot store it is a camera the editor forgets — and an editor that
    * refused to open a level over that would be the worse answer.
    */
-  private storedView(path: string): EditorViewState {
+  private readStoredView(path: string): EditorViewState | undefined {
     const storage = this.storage;
-    if (!storage) return DEFAULT_VIEW;
+    if (!storage) return undefined;
     try {
-      const raw = storage.getItem(viewStorageKey(this.projectId, path));
-      return parseView(raw) ?? DEFAULT_VIEW;
+      return parseView(storage.getItem(viewStorageKey(this.projectId, path)));
     } catch {
       this.storage = undefined;
-      return DEFAULT_VIEW;
+      return undefined;
     }
   }
 
@@ -571,6 +596,7 @@ function adopt(
     pending: replayed.kept,
     document: replayed.document,
     selection: retainSelection(state.selection, replayed.document),
+    pick: retainPick(state.pick, replayed.document),
     history: snapshot.history,
   };
 }
@@ -610,6 +636,17 @@ function retainSelection(
   const ids = new Set(document.entities.map((placement) => placement.id));
   const kept = [...selection].filter((id) => ids.has(id));
   return kept.length === selection.size ? selection : new Set(kept);
+}
+
+/** A pick follows the document: a holder it no longer has stops waiting. */
+function retainPick(
+  pick: ReferencePick | undefined,
+  document: LevelDocument,
+): ReferencePick | undefined {
+  if (!pick) return undefined;
+  return document.entities.some((one) => one.id === pick.placementId)
+    ? pick
+    : undefined;
 }
 
 /**
@@ -664,6 +701,9 @@ function reduce(state: EditorState, action: EditorAction): EditorState {
         // A question about deleting placements of the level being left has no
         // answer that means anything in the level being entered.
         pendingDelete: undefined,
+        // A field of the level being left cannot be waiting for a target in
+        // the level being entered.
+        pick: undefined,
         // Every source but `catalog` describes the level; `catalog` describes
         // the project and is still true.
         diagnostics: projectDiagnostics(state.diagnostics),
@@ -728,7 +768,15 @@ function reduce(state: EditorState, action: EditorAction): EditorState {
         action.ids[0] === state.poseDraft.id
           ? state.poseDraft
           : undefined;
-      return { ...state, selection, poseDraft };
+      // A waiting reference field is shown by that same panel, so it is left
+      // for exactly the same reason and by exactly the same rule.
+      const pick =
+        state.pick &&
+        action.ids.length === 1 &&
+        action.ids[0] === state.pick.placementId
+          ? state.pick
+          : undefined;
+      return { ...state, selection, poseDraft, pick };
     }
     case "placements-copied": {
       return { ...state, clipboard: action.placements };
@@ -768,6 +816,9 @@ function reduce(state: EditorState, action: EditorAction): EditorState {
     }
     case "step-changed": {
       return { ...state, view: withStep(state.view, action.step) };
+    }
+    case "viewport-measured": {
+      return { ...state, viewport: action.viewport };
     }
     case "gesture-started": {
       return { ...state, gesture: action.gesture };
@@ -820,6 +871,13 @@ function reduce(state: EditorState, action: EditorAction): EditorState {
     case "delete-confirm-dismissed": {
       if (!state.pendingDelete) return state;
       return { ...state, pendingDelete: undefined };
+    }
+    case "pick-started": {
+      return { ...state, pick: action.pick };
+    }
+    case "pick-ended": {
+      if (!state.pick) return state;
+      return { ...state, pick: undefined };
     }
     case "diagnostics-replaced": {
       const diagnostics = new Map(state.diagnostics);

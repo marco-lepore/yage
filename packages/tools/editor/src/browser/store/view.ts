@@ -1,9 +1,11 @@
 import { clampStep, DEFAULT_STEP } from "./snap.js";
-import type { EditorPoint, EditorViewState } from "./types.js";
+import type { EditorPoint, EditorViewState, ViewportSizes } from "./types.js";
 
 /**
- * Where the view sits with nothing stored: the world origin, unzoomed, with
- * the guides drawn and gestures landing on them.
+ * Where the view sits before the pane has been measured: the world origin, one
+ * canvas pixel per world unit, with the guides drawn and gestures landing on
+ * them. {@link openingView} refines the zoom once a measurement exists, which
+ * is what a level actually opens at.
  */
 export const DEFAULT_VIEW: EditorViewState = Object.freeze({
   center: Object.freeze({ x: 0, y: 0 }),
@@ -119,16 +121,74 @@ export function zoomedViewAt(
 }
 
 /**
+ * The view after the drawing surface changed size, with the world under its
+ * top-left corner left where it is.
+ *
+ * A band opening under the picture takes world away from the bottom edge. It
+ * is not a request to look somewhere else, and centring would slide the level
+ * by half of whatever opened — which is the one thing a diagnostic arriving
+ * mid-drag must not do.
+ *
+ * Returns `view` itself when nothing should move, so a caller can compare by
+ * identity.
+ */
+export function viewAfterResize(
+  view: EditorViewState,
+  from: { readonly width: number; readonly height: number },
+  to: { readonly width: number; readonly height: number },
+): EditorViewState {
+  if (!isMeasured(from) || !isMeasured(to)) return view;
+  if (from.width === to.width && from.height === to.height) return view;
+  return {
+    ...view,
+    center: {
+      x: view.center.x + (to.width - from.width) / 2 / view.zoom,
+      y: view.center.y + (to.height - from.height) / 2 / view.zoom,
+    },
+  };
+}
+
+/**
  * The camera back where it started, with the guides, the snap, and the step
  * left as they are: a reset is about where the developer is looking, not about
  * what the viewport draws for reference or where an edit lands.
  */
-export function resetView(view: EditorViewState): EditorViewState {
+export function resetView(
+  view: EditorViewState,
+  viewport?: ViewportSizes | undefined,
+): EditorViewState {
   return {
-    ...DEFAULT_VIEW,
+    ...openingView(viewport),
     guides: view.guides,
     snap: view.snap,
     step: view.step,
+  };
+}
+
+/**
+ * The view a level opens at when nothing is remembered for it: the world
+ * origin, zoomed so the whole of the game's own picture fits the pane.
+ *
+ * The zoom counts canvas pixels per world unit, so fitting a picture
+ * `design` units across into a pane `pane` pixels across is their ratio, and
+ * the tighter of the two axes is the one that fits. That is the same rectangle
+ * a game's `letterbox` fit draws, which is what makes a level open showing
+ * what the game will show.
+ *
+ * With no measurement yet — before the preview has started — the zoom stays at
+ * {@link DEFAULT_VIEW}'s, and the first measurement replaces it.
+ */
+export function openingView(
+  viewport: ViewportSizes | undefined,
+): EditorViewState {
+  if (!viewport) return DEFAULT_VIEW;
+  const { pane, design } = viewport;
+  if (!isMeasured(pane) || !isMeasured(design)) return DEFAULT_VIEW;
+  return {
+    ...DEFAULT_VIEW,
+    zoom: clampZoom(
+      Math.min(pane.width / design.width, pane.height / design.height),
+    ),
   };
 }
 
@@ -149,6 +209,18 @@ export function withStep(view: EditorViewState, step: number): EditorViewState {
 
 function clampZoom(zoom: number): number {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+}
+
+function isMeasured(size: {
+  readonly width: number;
+  readonly height: number;
+}): boolean {
+  return (
+    isFiniteNumber(size.width) &&
+    isFiniteNumber(size.height) &&
+    size.width > 0 &&
+    size.height > 0
+  );
 }
 
 function isFiniteNumber(value: unknown): value is number {

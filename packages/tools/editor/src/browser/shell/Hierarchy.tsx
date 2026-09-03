@@ -5,6 +5,7 @@ import {
 } from "react";
 import {
   placementTree,
+  referenceTargets,
   withDescendants,
   type HierarchyDrop,
   type PlacementNode,
@@ -18,6 +19,8 @@ export interface HierarchyProps {
   /** `additive` is the modifier the developer held: toggle rather than replace. */
   readonly onSelect: (id: string, additive: boolean) => void;
   readonly onDrop: (id: string, drop: HierarchyDrop) => void;
+  /** Choose this placement as the waiting reference field's target. */
+  readonly onPickTarget: (id: string) => void;
 }
 
 /** Which row the pointer is over during a drag, and what a release would do. */
@@ -46,6 +49,9 @@ interface DropHover {
  * it — dropping after a row puts the placement after that row's whole subtree,
  * and the row's own bottom edge is above its children.
  *
+ * While a reference field is waiting for a target, a row that can be one
+ * chooses it instead of selecting, every other row is inert, and no row drags.
+ *
  * It reads the document, the selection and whether the level is writable from
  * the store itself: the shell subscribes to none of the three, so a panel that
  * was handed them would draw the level as it stood at the shell's last render.
@@ -55,6 +61,13 @@ export function Hierarchy(props: HierarchyProps): React.JSX.Element {
   const selection = useEditorSlice(props.store, (state) => state.selection);
   // False while writes are locked: rows still select, but nothing drags.
   const editable = useEditorSlice(props.store, isEditable);
+  const pick = useEditorSlice(props.store, (state) => state.pick);
+  // While a field is waiting, the tree does one thing. A candidate authored
+  // inactive draws nothing and one the projection left out has no entity at
+  // all, so neither can be clicked in the viewport, and both are rows here.
+  const targets = pick
+    ? referenceTargets(document.entities, pick.types)
+    : undefined;
   const [dragging, setDragging] = useState<string | undefined>();
   const [hover, setHover] = useState<DropHover | undefined>();
   const roots = placementTree(document);
@@ -90,6 +103,8 @@ export function Hierarchy(props: HierarchyProps): React.JSX.Element {
     const id = placement.id;
     const selected = selection.has(id);
     const over = hover?.id === id ? hover.kind : undefined;
+    const target = targets?.get(id);
+    const unpickable = targets !== undefined && target === undefined;
     return (
       <li
         key={id}
@@ -111,9 +126,13 @@ export function Hierarchy(props: HierarchyProps): React.JSX.Element {
           data-testid={`hierarchy-row-${id}`}
           className={`ye-row${selected ? " is-selected" : ""}${
             editable ? "" : " is-static"
-          }`}
-          draggable={editable}
+          }${unpickable ? " is-unpickable" : ""}`}
+          draggable={editable && targets === undefined}
           onClick={(event: ReactMouseEvent) => {
+            if (targets !== undefined) {
+              if (target !== undefined) props.onPickTarget(target);
+              return;
+            }
             props.onSelect(id, event.metaKey || event.ctrlKey);
           }}
           onDragStart={(event: ReactDragEvent) => {
@@ -132,7 +151,9 @@ export function Hierarchy(props: HierarchyProps): React.JSX.Element {
             setDragging(id);
           }}
           onDragEnd={endDrag}
-          style={{ opacity: dragging === id ? 0.5 : 1 }}
+          // One place decides how faded a row is: an inline opacity beats the
+          // stylesheet, so a rule there would never reach a row.
+          style={{ opacity: dragging === id ? 0.5 : unpickable ? 0.4 : 1 }}
         >
           <span className="ye-row__name">
             {placement.name ?? placement.type}

@@ -26,9 +26,18 @@ export type {
   PivotMode,
   PoseComponent,
   PoseDraft,
+  ReferencePick,
+  ViewportSizes,
   WriteLockReason,
 } from "./types.js";
-export { DEFAULT_VIEW, MAX_ZOOM, MIN_ZOOM, resetView } from "./view.js";
+export {
+  DEFAULT_VIEW,
+  openingView,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  resetView,
+  viewAfterResize,
+} from "./view.js";
 export {
   DEFAULT_STEP,
   MAX_STEP,

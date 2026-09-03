@@ -353,8 +353,10 @@ export const EDITOR_CSS = `
   border-right: 1px solid var(--border);
 }
 
-/* The viewport, with the Actors strip taking height from under it rather than
-   covering it: nothing the viewport draws ends up behind the strip. */
+/* The viewport, with both conditional bands under it — the Actors strip and
+   the Problems band — taking height from it rather than covering it. Nothing
+   the viewport draws ends up behind a panel, and a finding arriving leaves the
+   hierarchy and the inspector exactly as they were. */
 .yage-editor .ye-body__center {
   flex: 1 1 auto;
   min-width: 0;
@@ -662,6 +664,10 @@ export const EDITOR_CSS = `
 
 .yage-editor .ye-row.is-static {
   cursor: default;
+}
+
+.yage-editor .ye-row.is-unpickable {
+  cursor: not-allowed;
 }
 
 /*
@@ -979,9 +985,13 @@ export const EDITOR_CSS = `
 /* Diagnostics ------------------------------------------------------------ */
 
 /*
+ * The band under the Actors strip, in the viewport's column.
+ *
  * A flex column, not a plain block: the cap is here and the scrolling is on
  * the panel inside, and a block parent gives that panel no height to scroll
- * against — every finding past the sixth is then clipped and unreachable.
+ * against — every finding past the sixth is then clipped and unreachable. The
+ * cap is in window terms, because that is what says how much of the screen a
+ * list of findings may take.
  */
 .yage-editor .ye-problems {
   flex: 0 0 auto;

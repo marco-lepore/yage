@@ -32,6 +32,7 @@ export type { PlacementNode } from "./graph.js";
 export {
   inboundReferences,
   referenceFieldNames,
+  referenceTargets,
   rewriteReferences,
 } from "./references.js";
 export type { ReferenceUse } from "./references.js";

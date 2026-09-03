@@ -163,6 +163,12 @@ function createHarness(editable = true, options: HarnessOptions = {}) {
           onResetPlacement={(id) => {
             intents.push(`reset-placement ${id}`);
           }}
+          onPickTarget={(id, field, types) => {
+            intents.push(`pick ${id}.${field} of ${types.join(",")}`);
+          }}
+          onCancelPick={() => {
+            intents.push("cancel-pick");
+          }}
           onSetKey={(id, key) => {
             intents.push(`key ${id}=${key ?? "(none)"}`);
           }}
@@ -1063,10 +1069,13 @@ describe("a parameter that points at another placement", () => {
     extensions: {},
   };
 
-  function referenceHarness(held: {
-    door?: string | null;
-    chime?: string | null;
-  }) {
+  function referenceHarness(
+    held: {
+      door?: string | null;
+      chime?: string | null;
+    },
+    editable = true,
+  ) {
     const entities = REFERENCE_DOCUMENT.entities.map((one) =>
       one.id === "s1"
         ? {
@@ -1098,7 +1107,7 @@ describe("a parameter that points at another placement", () => {
       root.render(
         <Inspector
           store={store}
-          editable={true}
+          editable={editable}
           inspectable={(typeId) =>
             typeId === "game.switch" ? SWITCH : undefined
           }
@@ -1108,6 +1117,12 @@ describe("a parameter that points at another placement", () => {
           }}
           onResetParam={() => undefined}
           onResetPlacement={() => undefined}
+          onPickTarget={(id, field, types) => {
+            intents.push(`pick ${id}.${field} of ${types.join(",")}`);
+          }}
+          onCancelPick={() => {
+            intents.push("cancel-pick");
+          }}
           onSetKey={() => undefined}
           layerChoices={() => []}
           layerSorts={() => false}
@@ -1128,7 +1143,20 @@ describe("a parameter that points at another placement", () => {
         });
       });
     };
-    return { host, root, store, intents, report };
+    /** Arm the mode for one of this switch's fields, as the button does. */
+    const arm = (field: string): void => {
+      act(() => {
+        store.dispatch({
+          type: "pick-started",
+          pick: {
+            placementId: "s1",
+            field,
+            types: field === "door" ? ["game.crate"] : ["game.chime"],
+          },
+        });
+      });
+    };
+    return { host, root, store, intents, report, arm };
   }
 
   let harness: ReturnType<typeof referenceHarness>;
@@ -1256,6 +1284,92 @@ describe("a parameter that points at another placement", () => {
     // A target that is gone is a finding on every reference, optional or not:
     // an optional slot's empty value is null, never an id pointing at nothing.
     expect(control("field-door").getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("waits for a target when Pick is pressed, and stops on a second press", () => {
+    harness = referenceHarness({});
+    const pick = query<HTMLButtonElement>(harness.host, "pick-door");
+    expect(pick?.getAttribute("aria-pressed")).toBe("false");
+    expect(query(harness.host, "field-door-picking")).toBeNull();
+
+    act(() => {
+      pick?.click();
+    });
+    expect(harness.intents).toEqual(["pick s1.door of game.crate"]);
+
+    harness.arm("door");
+    expect(
+      query<HTMLButtonElement>(harness.host, "pick-door")?.getAttribute(
+        "aria-pressed",
+      ),
+    ).toBe("true");
+    expect(query(harness.host, "field-door-picking")?.textContent).toContain(
+      "Esc cancels",
+    );
+
+    act(() => {
+      query<HTMLButtonElement>(harness.host, "pick-door")?.click();
+    });
+    expect(harness.intents).toEqual([
+      "pick s1.door of game.crate",
+      "cancel-pick",
+    ]);
+  });
+
+  it("leaves the other field's button unpressed", () => {
+    harness = referenceHarness({});
+    harness.arm("door");
+
+    expect(
+      query<HTMLButtonElement>(harness.host, "pick-chime")?.getAttribute(
+        "aria-pressed",
+      ),
+    ).toBe("false");
+    expect(query(harness.host, "field-chime-picking")).toBeNull();
+  });
+
+  it("switches Pick off on a read-only level and when nothing fits", () => {
+    harness = referenceHarness({}, false);
+    expect(query<HTMLButtonElement>(harness.host, "pick-door")?.disabled).toBe(
+      true,
+    );
+
+    act(() => {
+      harness.root.unmount();
+    });
+    harness.host.remove();
+    harness = referenceHarness({});
+    act(() => {
+      harness.store.dispatch({
+        type: "level-opened",
+        snapshot: {
+          ...snapshot(),
+          document: {
+            ...REFERENCE_DOCUMENT,
+            entities: [
+              placement("s1", {
+                type: "game.switch",
+                params: { door: null, chime: null },
+              }),
+            ],
+          },
+        },
+      });
+      harness.store.dispatch({ type: "selection-changed", ids: ["s1"] });
+    });
+
+    expect(query<HTMLButtonElement>(harness.host, "pick-door")?.disabled).toBe(
+      true,
+    );
+  });
+
+  it("stops waiting when a row is chosen from the list instead", () => {
+    harness = referenceHarness({});
+    harness.arm("door");
+
+    choose(control("field-door"), "c2");
+
+    expect(harness.intents).toEqual(["cancel-pick", "set s1.door=c2"]);
   });
 
   it("leaves a reference with no finding unmarked", () => {

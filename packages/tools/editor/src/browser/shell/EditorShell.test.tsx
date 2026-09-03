@@ -195,6 +195,7 @@ function createHarness(
           gizmoAt: () => null,
           gizmoNear: () => false,
           markAt: () => null,
+          pickAt: () => null,
           placementsWithin: () => [],
           frameSelection: (ids) => framed.push([...ids]),
         }}
@@ -406,6 +407,37 @@ describe("EditorShell", () => {
     expect(query(harness.host, "diagnostics")?.textContent).toContain(
       "could not be built",
     );
+  });
+
+  it("takes the room for a finding out of the viewport's column", () => {
+    // A finding arrives on its own schedule, often mid-drag. Taking its height
+    // from the body would shorten the hierarchy and the inspector as well, and
+    // move the picture with them.
+    expect(harness.host.querySelector(".ye-problems")).toBeNull();
+
+    act(() => {
+      harness.store.dispatch({
+        type: "diagnostics-replaced",
+        source: "preview",
+        diagnostics: [
+          {
+            code: "placement-excluded",
+            severity: "error",
+            source: "preview",
+            message: 'Placement "crate" could not be built.',
+            revision: 1,
+            placementId: "crate",
+          },
+        ],
+      });
+    });
+
+    const band = harness.host.querySelector(".ye-problems");
+    const centre = harness.host.querySelector(".ye-body__center");
+    expect(band?.parentElement).toBe(centre);
+    // Under the Actors strip, so the two bands stack in the order they were
+    // opened in rather than the strip moving when a finding arrives.
+    expect(centre?.lastElementChild).toBe(band);
   });
 
   describe("the Actors strip", () => {
@@ -1279,6 +1311,28 @@ describe("EditorShell", () => {
       press("z", { mod: true });
 
       expect(harness.intents).toEqual([]);
+    });
+
+    it("stops waiting for a reference target on Escape", () => {
+      open();
+      act(() => {
+        harness.store.dispatch({
+          type: "pick-started",
+          pick: {
+            placementId: "crate",
+            field: "door",
+            types: ["game.crate"],
+          },
+        });
+      });
+
+      expect(press("Escape")).toBe(true);
+      expect(harness.store.getState().pick).toBeUndefined();
+
+      // With nothing waiting the key still defaults away, and nothing else in
+      // the editor gives it a meaning.
+      expect(press("Escape")).toBe(true);
+      expect(harness.store.getState().pick).toBeUndefined();
     });
 
     it("leaves a keystroke a text field owns alone", () => {

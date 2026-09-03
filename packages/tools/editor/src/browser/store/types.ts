@@ -318,6 +318,22 @@ export interface PoseDraft {
   readonly value: number;
 }
 
+/**
+ * A reference parameter waiting for its target to be pointed at.
+ *
+ * `types` is captured when the mode is armed rather than looked up on each
+ * read: the accepted types come from the type declaration, and the preview and
+ * the hierarchy both need them without either reaching the catalog.
+ */
+export interface ReferencePick {
+  /** The placement whose parameter is waiting. */
+  readonly placementId: string;
+  /** The parameter's name. */
+  readonly field: string;
+  /** The placement types it accepts, as catalog type ids. Never empty. */
+  readonly types: readonly string[];
+}
+
 export interface EditorState {
   /** Absent until a level is open. */
   readonly file?: EditorFileState;
@@ -375,11 +391,31 @@ export interface EditorState {
    * outside the set points at one of them. Absent while no question is open.
    */
   readonly pendingDelete?: readonly string[] | undefined;
+  /**
+   * The reference parameter waiting for a target to be pointed at. Absent
+   * while nothing is waiting.
+   */
+  readonly pick?: ReferencePick | undefined;
   readonly diagnostics: ReadonlyMap<
     DiagnosticSource,
     readonly EditorDiagnostic[]
   >;
   readonly writesLocked: readonly WriteLockReason[];
+  /**
+   * How large the preview's pane is and how large the game says its picture
+   * is, which together decide the zoom a level opens at when nothing is
+   * remembered for it. Absent until the preview has measured, which is after
+   * the shell first renders.
+   */
+  readonly viewport?: ViewportSizes | undefined;
+}
+
+/** The two rectangles a default zoom is derived from, in canvas pixels. */
+export interface ViewportSizes {
+  /** The pane the level is drawn in. */
+  readonly pane: { readonly width: number; readonly height: number };
+  /** The picture size the game's renderer was configured with. */
+  readonly design: { readonly width: number; readonly height: number };
 }
 
 /**
@@ -455,6 +491,12 @@ export type EditorAction =
   | { readonly type: "snap-toggled" }
   /** The lattice was resized: what the grid draws and what a gesture lands on. */
   | { readonly type: "step-changed"; readonly step: number }
+  /**
+   * The preview measured its pane, at start and on every resize. It decides
+   * the zoom a level with nothing remembered opens at, so it is not written
+   * back to storage: the pane is a property of this window, not of the level.
+   */
+  | { readonly type: "viewport-measured"; readonly viewport: ViewportSizes }
   | { readonly type: "tool-changed"; readonly tool: EditorTool }
   /** The pivot rotate and scale work about. */
   | { readonly type: "pivot-changed"; readonly pivot: PivotMode }
@@ -486,6 +528,10 @@ export type EditorAction =
       readonly ids: readonly string[];
     }
   | { readonly type: "delete-confirm-dismissed" }
+  /** A reference field started waiting for a target. */
+  | { readonly type: "pick-started"; readonly pick: ReferencePick }
+  /** Nothing is waiting any more: a target was chosen, or the mode was left. */
+  | { readonly type: "pick-ended" }
   | {
       readonly type: "diagnostics-replaced";
       readonly source: DiagnosticSource;

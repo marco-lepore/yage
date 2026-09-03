@@ -8,10 +8,12 @@ import {
   normalizedView,
   pannedView,
   parseView,
+  openingView,
   resetView,
   serializeView,
   toggledGuides,
   toggledSnap,
+  viewAfterResize,
   viewStorageKey,
   withStep,
   zoomedViewAt,
@@ -95,6 +97,83 @@ describe("zoomedViewAt", () => {
     expect(after.zoom).toBeCloseTo(before.zoom, 12);
     expect(after.center.x).toBeCloseTo(before.center.x, 9);
     expect(after.center.y).toBeCloseTo(before.center.y, 9);
+  });
+});
+
+describe("viewAfterResize", () => {
+  it("holds the world under the viewport's top-left corner", () => {
+    const view = viewOf({ center: { x: 10, y: 40 }, zoom: 1 });
+
+    const after = viewAfterResize(
+      view,
+      { width: 800, height: 600 },
+      { width: 800, height: 500 },
+    );
+
+    // A hundred pixels off the bottom is fifty world units off the centre, and
+    // nothing sideways. Centring instead would slide the level up by fifty.
+    expect(after.center).toEqual({ x: 10, y: -10 });
+  });
+
+  it("measures the change in world units, so the zoom decides how far", () => {
+    const view = viewOf({ center: { x: 0, y: 0 }, zoom: 2 });
+
+    const after = viewAfterResize(
+      view,
+      { width: 800, height: 600 },
+      { width: 800, height: 500 },
+    );
+
+    expect(after.center).toEqual({ x: 0, y: -25 });
+  });
+
+  it("moves the other way when the pane grows", () => {
+    const view = viewOf({ center: { x: 0, y: 0 }, zoom: 1 });
+
+    const after = viewAfterResize(
+      view,
+      { width: 800, height: 500 },
+      { width: 900, height: 600 },
+    );
+
+    expect(after.center).toEqual({ x: 50, y: 50 });
+  });
+
+  it("carries the zoom and the grid settings", () => {
+    const view = viewOf({
+      center: { x: 0, y: 0 },
+      zoom: 3,
+      snap: false,
+      step: 8,
+    });
+
+    const after = viewAfterResize(
+      view,
+      { width: 800, height: 600 },
+      { width: 800, height: 500 },
+    );
+
+    expect(after.zoom).toBe(3);
+    expect(after.guides).toBe(true);
+    expect(after.snap).toBe(false);
+    expect(after.step).toBe(8);
+  });
+
+  it("answers the same view when nothing it can act on changed", () => {
+    // The caller compares by identity to decide whether to dispatch, so each
+    // of these has to be the object it was handed rather than a copy of it.
+    const view = viewOf({ center: { x: 10, y: 40 }, zoom: 1 });
+    const size = { width: 800, height: 600 };
+
+    expect(viewAfterResize(view, size, { ...size })).toBe(view);
+    expect(viewAfterResize(view, size, { width: 800, height: 0 })).toBe(view);
+    expect(viewAfterResize(view, { width: 0, height: 600 }, size)).toBe(view);
+    expect(
+      viewAfterResize(view, size, { width: Number.NaN, height: 600 }),
+    ).toBe(view);
+    expect(viewAfterResize(view, { width: 800, height: Infinity }, size)).toBe(
+      view,
+    );
   });
 });
 
@@ -283,6 +362,68 @@ describe("resetView", () => {
         step: 10,
       }),
     );
+  });
+
+  it("frames the game's picture in the pane when one has been measured", () => {
+    const view = viewOf({ center: { x: 400, y: 90 }, zoom: 6, step: 10 });
+
+    expect(
+      resetView(view, {
+        pane: { width: 480, height: 600 },
+        design: { width: 960, height: 600 },
+      }),
+    ).toEqual(viewOf({ center: { x: 0, y: 0 }, zoom: 0.5, step: 10 }));
+  });
+});
+
+describe("openingView", () => {
+  it("fits the design rectangle into the pane on its tighter axis", () => {
+    expect(
+      openingView({
+        pane: { width: 1920, height: 600 },
+        design: { width: 960, height: 600 },
+      }).zoom,
+    ).toBe(1);
+    expect(
+      openingView({
+        pane: { width: 1920, height: 300 },
+        design: { width: 960, height: 600 },
+      }).zoom,
+    ).toBe(0.5);
+  });
+
+  it("opens at the world origin, where the design rectangle is centred", () => {
+    expect(
+      openingView({
+        pane: { width: 480, height: 300 },
+        design: { width: 960, height: 600 },
+      }).center,
+    ).toEqual({ x: 0, y: 0 });
+  });
+
+  it("keeps the zoom inside the range the wheel is held to", () => {
+    expect(
+      openingView({
+        pane: { width: 100000, height: 100000 },
+        design: { width: 1, height: 1 },
+      }).zoom,
+    ).toBe(MAX_ZOOM);
+  });
+
+  it("is the unmeasured default with no pane, and with a pane of no size", () => {
+    expect(openingView(undefined)).toBe(DEFAULT_VIEW);
+    expect(
+      openingView({
+        pane: { width: 0, height: 600 },
+        design: { width: 960, height: 600 },
+      }),
+    ).toBe(DEFAULT_VIEW);
+    expect(
+      openingView({
+        pane: { width: 800, height: 600 },
+        design: { width: Number.NaN, height: 600 },
+      }),
+    ).toBe(DEFAULT_VIEW);
   });
 });
 

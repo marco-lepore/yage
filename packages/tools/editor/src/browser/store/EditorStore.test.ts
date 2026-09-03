@@ -557,6 +557,61 @@ describe("EditorStore", () => {
     });
   });
 
+  describe("a reference field waiting for a target", () => {
+    const pick = { placementId: "crate", field: "door", types: ["game.crate"] };
+
+    it("holds one, and clears it once", () => {
+      harness.store.dispatch({ type: "pick-started", pick });
+      expect(harness.store.getState().pick).toEqual(pick);
+
+      harness.store.dispatch({ type: "pick-ended" });
+      const cleared = harness.store.getState();
+      expect(cleared.pick).toBeUndefined();
+
+      harness.store.dispatch({ type: "pick-ended" });
+      expect(harness.store.getState()).toBe(cleared);
+    });
+
+    it("is not unsaved work", () => {
+      harness.store.dispatch({ type: "pick-started", pick });
+
+      expect(isDirty(harness.store.getState())).toBe(false);
+    });
+
+    it("stops waiting unless the holder stays the whole selection", () => {
+      harness.store.dispatch({ type: "pick-started", pick });
+      harness.store.dispatch({ type: "selection-changed", ids: ["crate"] });
+      expect(harness.store.getState().pick).toEqual(pick);
+
+      harness.store.dispatch({
+        type: "selection-changed",
+        ids: ["crate", "barrel"],
+      });
+      expect(harness.store.getState().pick).toBeUndefined();
+
+      harness.store.dispatch({ type: "pick-started", pick });
+      harness.store.dispatch({ type: "selection-changed", ids: ["barrel"] });
+      expect(harness.store.getState().pick).toBeUndefined();
+    });
+
+    it("stops waiting when a snapshot no longer holds the holder", () => {
+      harness.store.dispatch({ type: "pick-started", pick });
+      harness.store.dispatch({
+        type: "command-accepted",
+        commandId: "none",
+        snapshot: snapshot(1, document(placement("crate", 0))),
+      });
+      expect(harness.store.getState().pick).toEqual(pick);
+
+      harness.store.dispatch({
+        type: "command-accepted",
+        commandId: "none",
+        snapshot: snapshot(2, document(placement("barrel", 0))),
+      });
+      expect(harness.store.getState().pick).toBeUndefined();
+    });
+  });
+
   describe("the history", () => {
     it("mirrors the depths every snapshot carries", async () => {
       expect(harness.store.getState().history).toEqual({
@@ -830,6 +885,97 @@ describe("EditorStore", () => {
         snap: !DEFAULT_VIEW.snap,
         step: 64,
       });
+    });
+
+    it("opens a level with nothing remembered zoomed to fit the pane", () => {
+      const store = createHarness(fakeStorage()).store;
+      store.dispatch({
+        type: "viewport-measured",
+        viewport: {
+          pane: { width: 480, height: 300 },
+          design: { width: 960, height: 600 },
+        },
+      });
+
+      store.dispatch({
+        type: "level-opened",
+        snapshot: snapshot(0, document()),
+      });
+
+      expect(store.getState().view).toEqual({ ...DEFAULT_VIEW, zoom: 0.5 });
+    });
+
+    it("frames the level the first measurement arrives for, and no later one", () => {
+      const store = createHarness(fakeStorage()).store;
+      // The pane is measured after the shell mounts, so a level can open
+      // before there is anything to derive a zoom from.
+      store.dispatch({
+        type: "level-opened",
+        snapshot: snapshot(0, document()),
+      });
+      expect(store.getState().view).toEqual(DEFAULT_VIEW);
+
+      store.dispatch({
+        type: "viewport-measured",
+        viewport: {
+          pane: { width: 480, height: 300 },
+          design: { width: 960, height: 600 },
+        },
+      });
+      expect(store.getState().view).toEqual({ ...DEFAULT_VIEW, zoom: 0.5 });
+
+      // A later measurement is a pane that changed size, which moves the view
+      // rather than reframing it. This one leaves it alone.
+      store.dispatch({
+        type: "viewport-measured",
+        viewport: {
+          pane: { width: 960, height: 600 },
+          design: { width: 960, height: 600 },
+        },
+      });
+      expect(store.getState().view).toEqual({ ...DEFAULT_VIEW, zoom: 0.5 });
+    });
+
+    it("leaves a view the developer moved where they put it", () => {
+      const store = createHarness(fakeStorage()).store;
+      store.dispatch({
+        type: "level-opened",
+        snapshot: snapshot(0, document()),
+      });
+      store.dispatch({ type: "view-panned", by: { x: 12, y: 34 } });
+
+      store.dispatch({
+        type: "viewport-measured",
+        viewport: {
+          pane: { width: 480, height: 300 },
+          design: { width: 960, height: 600 },
+        },
+      });
+
+      expect(store.getState().view).toEqual({
+        ...DEFAULT_VIEW,
+        center: { x: 12, y: 34 },
+      });
+    });
+
+    it("does not write a pane measurement back as the level's view", () => {
+      const storage = fakeStorage();
+      const store = createHarness(storage).store;
+      store.dispatch({
+        type: "level-opened",
+        snapshot: snapshot(0, document()),
+      });
+      store.dispatch({
+        type: "viewport-measured",
+        viewport: {
+          pane: { width: 480, height: 300 },
+          design: { width: 960, height: 600 },
+        },
+      });
+
+      // Nothing stored: the pane belongs to this window, not to the level, so
+      // a second window with its own shape opens framed to its own.
+      expect([...storage.entries.keys()]).toEqual([]);
     });
 
     it("restores the view a level was last edited from", () => {
@@ -1208,6 +1354,21 @@ describe("switching levels", () => {
     expect(state.gesture).toBeUndefined();
     expect(state.marquee).toBeUndefined();
     expect(isDirty(state)).toBe(false);
+  });
+
+  it("stops waiting for a reference target the level being left held", () => {
+    const store = opened();
+    store.dispatch({
+      type: "pick-started",
+      pick: { placementId: "crate", field: "door", types: ["game.crate"] },
+    });
+
+    store.dispatch({
+      type: "level-opened",
+      snapshot: snapshot(0, document(), meadow),
+    });
+
+    expect(store.getState().pick).toBeUndefined();
   });
 
   it("keeps the clipboard and how the developer is working", () => {
