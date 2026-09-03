@@ -52,6 +52,13 @@ export class SceneManager {
   private _mutationDepth = 0;
   private _destroyed = false;
 
+  /**
+   * Scenes whose `preload` manifest has already been loaded and counted by
+   * {@link preload}. `_preloadScene` consumes the mark so the handles are
+   * taken once, by one owner.
+   */
+  private readonly _preloadedScenes = new WeakSet<Scene>();
+
   private _autoPauseOnBlur = false;
   private _isBlurred = false;
   private readonly _visibilityPausedScenes = new Set<Scene>();
@@ -206,9 +213,15 @@ export class SceneManager {
       // microtask too late — after the frame that emitted `ended` already
       // rendered — flashing the outgoing scene for one frame (#102).
       let removed: Scene | undefined;
-      await this._runTransition("pop", transition, fromScene, destination, () => {
-        removed = this._popScene();
-      });
+      await this._runTransition(
+        "pop",
+        transition,
+        fromScene,
+        destination,
+        () => {
+          removed = this._popScene();
+        },
+      );
       return removed;
     });
   }
@@ -273,6 +286,35 @@ export class SceneManager {
         }
       });
     });
+  }
+
+  /**
+   * Load a scene's `preload` manifest now, so pushing or replacing to it later
+   * enters immediately instead of loading again. The handles are counted once:
+   * the push consumes this load rather than acquiring its own references, and
+   * `LoadingScene` uses it for exactly that.
+   *
+   * ```ts
+   * await engine.scenes.preload(level2, (ratio) => bar.setFill(ratio));
+   * await engine.scenes.replace(level2);
+   * ```
+   *
+   * `onProgress` runs alongside the scene's own `onProgress` hook, both
+   * reporting 0 → 1.
+   *
+   * A scene preloaded and never pushed keeps its references until
+   * `assets.clear()` — nothing later releases them on its behalf.
+   */
+  async preload(
+    scene: Scene,
+    onProgress?: (ratio: number) => void,
+  ): Promise<void> {
+    scene._setContext(this._context);
+    // The mark from an earlier call is still unclaimed, so its references
+    // cover this one; loading again would leave a set nothing releases.
+    if (this._preloadedScenes.has(scene)) return;
+    await this._loadSceneAssets(scene, onProgress);
+    this._preloadedScenes.add(scene);
   }
 
   /**
@@ -392,10 +434,7 @@ export class SceneManager {
     return next;
   }
 
-  private async _pushScene(
-    scene: Scene,
-    suppressEvent = false,
-  ): Promise<void> {
+  private async _pushScene(scene: Scene, suppressEvent = false): Promise<void> {
     const wasPaused = this._snapshotPauseStates();
 
     await this._withMutation(async () => {
@@ -470,11 +509,38 @@ export class SceneManager {
   }
 
   private async _preloadScene(scene: Scene): Promise<void> {
+    // `preload` already loaded and counted this manifest; acquiring it again
+    // here would leave two references for one owner to release.
+    if (this._preloadedScenes.delete(scene)) return;
+    await this._loadSceneAssets(scene);
+  }
+
+  private async _loadSceneAssets(
+    scene: Scene,
+    onProgress?: (ratio: number) => void,
+  ): Promise<void> {
     if (!scene.preload?.length || !this.assetManager) return;
-    await this.assetManager.loadAll(
-      scene.preload,
-      scene.onProgress?.bind(scene),
-    );
+    const hookInfo = { kind: "Scene onProgress hook", scene: scene.name };
+    const callerInfo = {
+      kind: "SceneManager.preload onProgress callback",
+      scene: scene.name,
+    };
+    await this.assetManager.loadAll(scene.preload, (ratio) => {
+      const hook = scene.onProgress;
+      if (hook) this._invokeCallback(() => hook.call(scene, ratio), hookInfo);
+      if (onProgress) {
+        this._invokeCallback(() => onProgress(ratio), callerInfo);
+      }
+    });
+  }
+
+  /** Run a developer callback under the error boundary when one is available. */
+  private _invokeCallback(
+    fn: () => void,
+    info: { kind: string; scene?: string },
+  ): void {
+    if (this.errorBoundary) this.errorBoundary.wrapCallback(fn, info);
+    else fn();
   }
 
   private _teardownScene(scene: Scene): void {
@@ -613,9 +679,7 @@ export class SceneManager {
   }
 
   private _snapshotPauseStates(): Map<Scene, boolean> {
-    return new Map(
-      this.stack.map((scene) => [scene, scene.isPaused] as const),
-    );
+    return new Map(this.stack.map((scene) => [scene, scene.isPaused] as const));
   }
 
   private _warnIfMutating(method: string): void {

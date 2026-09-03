@@ -10,13 +10,18 @@ YAGE's asset model has three pieces:
 
 | Factory                 | From               | Returns                                                        |
 | ----------------------- | ------------------ | -------------------------------------------------------------- |
-| `texture(path)`         | `@yagejs/renderer` | `TextureHandle`                                                |
+| `texture(path, opts?)`  | `@yagejs/renderer` | `TextureHandle`; `opts.scaleMode: "nearest" \| "linear"`       |
 | `spritesheet(jsonPath)` | `@yagejs/renderer` | `AssetHandle<Spritesheet>` (atlas JSON references the texture) |
 | `renderAsset<T>(path)`  | `@yagejs/renderer` | `RendererAsset<T>` for arbitrary Pixi-managed assets           |
 | `sound(path)`           | `@yagejs/audio`    | `AssetHandle<Sound>`                                           |
 | `tiledMap(path)`        | `@yagejs/tilemap`  | Handle for parsed `TiledMapData`                               |
 
 A handle is `{ type, path }`. `AssetManager.get(handle)` throws if uncached.
+
+`texture(path, { scaleMode: "nearest" })` makes that one image sample without
+smoothing — for a pixel-art sheet in a project that is otherwise smooth. The
+setting applies to the loaded image, so every sprite drawing from it samples
+the same way. `pixelArtPreset` is the switch for a whole project.
 
 ## Per-Scene Preload
 
@@ -30,6 +35,20 @@ class GameScene extends Scene {
 ```
 
 `SceneManager` calls `assets.loadAll(this.preload)` before `onEnter()`, skips already-cached handles, and routes progress to `scene.onProgress(ratio)` if overridden. Throws with a clear message if a loader plugin for the handle's type isn't installed. The `scene:loading:progress` bus event is emitted by `LoadingScene` (which overrides `onProgress` to forward it), not by plain `Scene`.
+
+### Preloading ahead of time
+
+`scenes.preload(scene, onProgress?)` loads a scene's manifest before you push
+it, so the push enters straight away:
+
+```ts
+await engine.scenes.preload(level2, (ratio) => bar.setFill(ratio));
+await engine.scenes.replace(level2);
+```
+
+The push consumes that load instead of loading again, so the manifest is
+counted once. `LoadingScene` uses the same method. A scene preloaded and never
+pushed holds its references until `assets.clear()`.
 
 ## Manifest Pattern
 
@@ -81,6 +100,33 @@ class Level1 extends Scene {
 
 Default loaders dispose appropriately: `unload(textureHandle)` calls Pixi `Assets.unload(path)` so the texture is released and GC-able; `unload(soundHandle)` calls `sound.remove(path)`.
 
+### Reference counting
+
+Loads are counted per handle. Every handle passed to `loadAll` adds one
+reference once that call resolves; `unload(handle)` removes one and only frees
+the asset when the count reaches zero. Two scenes preloading the same texture
+each hold a reference, so the first scene's `onExit` unload leaves it standing
+for the second. `clear()` ignores the counts and frees everything.
+
+A `loadAll` that rejects takes no references at all: its already-loaded
+siblings stay cached and uncounted, so a retry counts each of them once.
+
+### One file path, one declaration form
+
+The cache is keyed by handle type and path, so two handles of one type for one
+path are one entry and the first load's options win. A second declaration with
+different options warns in development and is ignored.
+
+Below the manager, Pixi's own registry is keyed by path alone and is not
+counted, so reaching one file through two handle types destroys it for both.
+Declare each file once:
+
+- `texture(P)` beside `renderAsset(P)` — pick one.
+- A spritesheet's atlas image beside `texture(P)` — draw the frames from the
+  sheet, don't also declare the PNG.
+- `installBitmapFont`'s source face beside `webFont(P)` — bake from the
+  `webFont` handle instead (`webFont(P, { family, bitmap: true })`).
+
 ## Errors
 
 `assets.loadAll` throws on a failing handle. Catch in `LoadingScene.onLoadError(err)` (recommended) or wrap explicit ad-hoc `loadAll` calls in try/catch. Error message includes the failing path. No built-in fallback-asset mechanism — preload a known-good fallback if you need one.
@@ -125,12 +171,13 @@ Once registered, handles of that type work in `Scene.preload` and `assets.get` l
 
 ## Decision Matrix
 
-| Need                      | Use                                          |
-| ------------------------- | -------------------------------------------- |
-| Load before scene starts  | `Scene.preload`                              |
-| Progress UI while loading | `LoadingScene` + progress component          |
-| Mid-scene additional load | `this.assets.loadAll([...])`                 |
-| Free per-level assets     | `this.assets.unload(h)` per scene `onExit`   |
-| Discard everything        | `this.assets.clear()`                        |
-| New file type             | Custom loader + handle factory               |
-| Sub-path deploy           | Prefix paths with `import.meta.env.BASE_URL` |
+| Need                       | Use                                          |
+| -------------------------- | -------------------------------------------- |
+| Load before scene starts   | `Scene.preload`                              |
+| Progress UI while loading  | `LoadingScene` + progress component          |
+| Mid-scene additional load  | `this.assets.loadAll([...])`                 |
+| Free per-level assets      | `this.assets.unload(h)` per scene `onExit`   |
+| Load a scene ahead of time | `engine.scenes.preload(scene)`               |
+| Discard everything         | `this.assets.clear()`                        |
+| New file type              | Custom loader + handle factory               |
+| Sub-path deploy            | Prefix paths with `import.meta.env.BASE_URL` |

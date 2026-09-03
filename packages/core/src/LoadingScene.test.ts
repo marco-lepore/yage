@@ -30,7 +30,9 @@ class TargetScene extends Scene {
   }
 }
 
-function targetWithPreload(preload: readonly AssetHandle<unknown>[]): TargetScene {
+function targetWithPreload(
+  preload: readonly AssetHandle<unknown>[],
+): TargetScene {
   class WithPreload extends TargetScene {
     override readonly preload = preload;
   }
@@ -317,6 +319,66 @@ describe("LoadingScene", () => {
     expect(errors[0]?.message).toBe("boom");
     expect(manager.active).toBe(boot);
     expect(target.entered).toBe(false);
+  });
+
+  it("hands the target's assets to the scene manager, counted once", async () => {
+    const { manager, assets } = setup();
+    const FakeAsset = new AssetHandle<string>("fake", "a.dat");
+    assets.registerLoader("fake", { load: async (p) => `loaded:${p}` });
+
+    const target = targetWithPreload([FakeAsset]);
+    await manager.push(new AutoBoot(target));
+    await vi.waitFor(() => expect(manager.active).toBe(target));
+
+    // The loading scene loaded the manifest and the replace consumed it, so
+    // the game's own per-level unload frees the handle.
+    assets.unload(FakeAsset);
+    expect(assets.has(FakeAsset)).toBe(false);
+  });
+
+  it("attributes a throwing target factory", async () => {
+    const { manager, ctx } = setup();
+    const boundary = ctx.resolve(ErrorBoundaryKey);
+
+    await manager.push(
+      new AutoBoot(() => {
+        throw new Error("factory blew up");
+      }),
+    );
+
+    await vi.waitFor(() =>
+      expect(boundary.getCallbackErrors()).toEqual([
+        expect.objectContaining({ kind: "LoadingScene target factory" }),
+      ]),
+    );
+  });
+
+  it("attributes a throwing onLoadError hook", async () => {
+    const { manager, ctx, assets } = setup();
+    const boundary = ctx.resolve(ErrorBoundaryKey);
+    const FailAsset = new AssetHandle<string>("fail", "bad.dat");
+    assets.registerLoader("fail", {
+      load: async () => {
+        throw new Error("boom");
+      },
+    });
+
+    await manager.push(
+      new AutoBoot(targetWithPreload([FailAsset]), {
+        onLoadError: () => {
+          throw new Error("handler blew up");
+        },
+      }),
+    );
+
+    await vi.waitFor(() =>
+      expect(boundary.getCallbackErrors()).toEqual([
+        expect.objectContaining({
+          kind: "Scene onLoadError hook",
+          scene: "loading",
+        }),
+      ]),
+    );
   });
 
   it("with autoContinue=false, waits for continue() before handing off", async () => {

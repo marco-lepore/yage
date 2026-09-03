@@ -57,7 +57,7 @@ import {
   SceneRenderTreeProviderKey,
 } from "./SceneRenderTree.js";
 import { SceneRenderTreeProviderImpl } from "./SceneRenderTreeProvider.js";
-import { loadWebFont, unloadWebFont } from "./assets.js";
+import { loadTexture, loadWebFont, unloadWebFont } from "./assets.js";
 
 import "./scene-augmentation.js";
 
@@ -307,7 +307,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     // 11. Register asset loaders (if AssetManager is available)
     const am = context.tryResolve(AssetManagerKey);
     am?.registerLoader("texture", {
-      load: (path: string) => Assets.load<TextureResource>(path),
+      load: (path: string, data?: unknown) => loadTexture(path, data),
       unload: (path: string) => {
         Assets.unload(path);
       },

@@ -197,6 +197,7 @@ export type {
   MeasuredText,
   MeasureTextOptions,
   NineSliceOptions,
+  TextureOptions,
   WebFontBakeOptions,
   WebFontOptions,
 } from "./assets.js";

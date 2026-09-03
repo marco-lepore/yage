@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mocks, animationState } = vi.hoisted(() => {
+const { mocks, animationState, frameTextures } = vi.hoisted(() => {
   class MockContainer {
     children: MockContainer[] = [];
     position = { x: 0, y: 0 };
@@ -74,9 +74,27 @@ const { mocks, animationState } = vi.hoisted(() => {
 
   const animationState = { hasAnimatedTiles: false };
 
+  /** A tileset frame the layer builder cut and the component owns. */
+  class MockFrameTexture {
+    destroyedWithSource: boolean | undefined;
+
+    destroy(destroySource?: boolean): void {
+      this.destroyedWithSource = destroySource;
+    }
+  }
+
+  /** Frame textures the stubbed layer builder hands back. */
+  const frameTextures: MockFrameTexture[] = [];
+
   return {
-    mocks: { MockContainer, MockColorMatrixFilter, mockAssetsGet },
+    mocks: {
+      MockContainer,
+      MockColorMatrixFilter,
+      mockAssetsGet,
+      MockFrameTexture,
+    },
     animationState,
+    frameTextures,
   };
 });
 
@@ -101,10 +119,10 @@ vi.mock("./tiled/parseTiledMap.js", async () => {
   return {
     ...actual,
     _tilemapLayerHasAnimation: vi.fn(() => animationState.hasAnimatedTiles),
-    createTilemapLayers: vi.fn(() => [
-      new mocks.MockContainer(),
-      new mocks.MockContainer(),
-    ]),
+    createTilemapLayers: vi.fn(() => ({
+      layers: [new mocks.MockContainer(), new mocks.MockContainer()],
+      textures: [...frameTextures],
+    })),
   };
 });
 
@@ -334,6 +352,7 @@ describe("TilemapComponent", () => {
   beforeEach(() => {
     _resetEntityIdCounter();
     animationState.hasAnimatedTiles = false;
+    frameTextures.length = 0;
   });
 
   it("exposes map dimension getters", () => {
@@ -401,6 +420,26 @@ describe("TilemapComponent", () => {
     expect(filter.destroyed).toBe(true);
     expect(container.parent).toBeNull();
     expect(container.destroyed).toBe(true);
+  });
+
+  it("onDestroy frees the frame textures it cut, not the tileset image", () => {
+    const { scene } = createTestContext();
+    frameTextures.push(
+      new mocks.MockFrameTexture(),
+      new mocks.MockFrameTexture(),
+    );
+    const entity = scene.spawn("tilemap");
+    entity.add(new Transform());
+    const comp = entity.add(new TilemapComponent({ map: testMap }));
+
+    comp.onDestroy?.();
+
+    // `false` leaves the tileset image standing — the asset manager counts it
+    // and a second map may still draw from it.
+    expect(frameTextures.map((frame) => frame.destroyedWithSource)).toEqual([
+      false,
+      false,
+    ]);
   });
 
   it("getTileAt returns correct GID for valid position", () => {

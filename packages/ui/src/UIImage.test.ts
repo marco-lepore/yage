@@ -117,12 +117,11 @@ import { AssetManager } from "@yagejs/core";
 
 const mockTexture = new mocks.MockTexture(100, 50);
 
-beforeAll(() => {
+beforeAll(async () => {
   setYoga(Yoga);
   const am = new AssetManager();
   am.registerLoader("texture", { load: async () => mockTexture });
-  // Pre-populate cache
-  (am as unknown as { cache: Map<string, unknown> }).cache = new Map([["texture:test.png", mockTexture]]);
+  await am.loadAll([new AssetHandle<Texture>("texture", "test.png")]);
   setAssetManager(am);
 });
 

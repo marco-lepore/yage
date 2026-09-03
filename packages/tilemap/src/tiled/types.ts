@@ -241,6 +241,12 @@ export interface TilesetRef extends Partial<TilesetData> {
   source?: string;
   /** Resolved tileset data — the loader fills this for both forms. */
   data?: TilesetData;
+  /**
+   * External tileset: `source` joined against the map's directory, which is
+   * the key its JSON loads under. Filled by the map loader; absent for an
+   * embedded tileset and on a map handed to `TilemapComponent` as raw JSON.
+   */
+  resolvedSource?: string;
 }
 
 export interface TilesetData {
@@ -262,6 +268,12 @@ export interface TilesetData {
   objectalignment?: string;
   /** Single-image tileset: path to the spritesheet image. */
   image?: string;
+  /**
+   * Single-image tileset: `image` joined against the directory of the file the
+   * tileset lives in, which is the key its texture loads under. Filled by the
+   * map loader; absent on a map handed to `TilemapComponent` as raw JSON.
+   */
+  resolvedImage?: string;
   imagewidth?: number;
   imageheight?: number;
   /** Collection-of-images tileset: individual tile metadata. */
