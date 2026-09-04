@@ -59,7 +59,9 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yagejs/core": "^0.10.4",
+    "@yagejs/core": "^0.10.4"
+  },
+  "devDependencies": {
     "@yagejs/debug": "^0.10.4"
   }
 }

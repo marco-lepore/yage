@@ -47,7 +47,9 @@ the agent — it reads the body's type when added:
 import { PhysicsSteeringAgent } from "@yagejs-addons/steering/physics";
 
 enemy.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
-enemy.add(new ColliderComponent({ shape: { type: "circle", radius: 10 }, density: 1 }));
+enemy.add(
+  new ColliderComponent({ shape: { type: "circle", radius: 10 }, density: 1 }),
+);
 enemy.add(
   new PhysicsSteeringAgent({
     maxSpeed: 130,
@@ -91,13 +93,20 @@ Drive modes:
   `PhysicsSteeringAgent` handles them by Transform integration; with the
   base class, use no `body` — the default output integrates the Transform.
 - `"impulse"` — per step applies `clamp(desired − actual, maxAcceleration·dt)
-  · getMass()` through `applyImpulse`, so external impulses compose with
+· getMass()` through `applyImpulse`, so external impulses compose with
   steering. Requires a body with `applyImpulse`/`getMass` (a dynamic
   `RigidBodyComponent`). Two-way physics: push and be pushed.
 
 ```ts
-interface VelocityBody { setVelocity(v: Vec2Like): void; getVelocity(): Vec2Like; }
-interface ImpulseBody { applyImpulse(i: Vec2Like): void; getVelocity(): Vec2Like; getMass(): number; }
+interface VelocityBody {
+  setVelocity(v: Vec2Like): void;
+  getVelocity(): Vec2Like;
+}
+interface ImpulseBody {
+  applyImpulse(i: Vec2Like): void;
+  getVelocity(): Vec2Like;
+  getMass(): number;
+}
 ```
 
 With a `body`, behaviors and the ramp read `getVelocity()` — collisions and
@@ -136,7 +145,9 @@ enemy.add(
   new SteeringAgent({
     maxSpeed: 120,
     behaviors: [seek(() => target)],
-    apply: (velocity) => { commanded = velocity; },
+    apply: (velocity) => {
+      commanded = velocity;
+    },
   }),
 );
 // in a component's own update(dt):
@@ -159,24 +170,37 @@ default priority 0 = plain weighted sum. Zero behaviors, or all ZERO, →
 ZERO.
 
 ```ts
-interface AgentState { readonly position: Vec2; readonly velocity: Vec2; readonly maxSpeed: number; readonly entity?: Entity; }
-interface SteeringBehavior { readonly weight: number; readonly priority: number; evaluate(agent: AgentState, dt: number): Vec2; }
+interface AgentState {
+  readonly position: Vec2;
+  readonly velocity: Vec2;
+  readonly maxSpeed: number;
+  readonly entity?: Entity;
+}
+interface SteeringBehavior {
+  readonly weight: number;
+  readonly priority: number;
+  evaluate(agent: AgentState, dt: number): Vec2;
+}
 ```
 
 ## `SteeringAgent` (L2a Component)
 
 ```ts
 interface SteeringAgentOptions {
-  maxSpeed: number;                 // required, px/s, settable live
+  maxSpeed: number; // required, px/s, settable live
   behaviors?: SteeringBehavior[];
-  maxAcceleration?: number;         // px/s²; default 4 x maxSpeed (top speed in 0.25s); Infinity = instant snap
+  maxAcceleration?: number; // px/s²; default 4 x maxSpeed (top speed in 0.25s); Infinity = instant snap
   body?: VelocityBody | ImpulseBody; // structural; RigidBodyComponent satisfies both
-  drive?: "velocity" | "impulse";   // default "velocity"
+  drive?: "velocity" | "impulse"; // default "velocity"
   apply?: (velocity: Vec2, ctx: SteeringApplyContext) => void; // bodyless custom output; exclusive with body
-  faceHeading?: boolean;            // default false; rotates Transform to travel direction (>1 px/s)
-  enabled?: boolean;                // default true
+  faceHeading?: boolean; // default false; rotates Transform to travel direction (>1 px/s)
+  enabled?: boolean; // default true
 }
-interface SteeringApplyContext { readonly entity: Entity; readonly dt: number; readonly transform: Transform; }
+interface SteeringApplyContext {
+  readonly entity: Entity;
+  readonly dt: number;
+  readonly transform: Transform;
+}
 ```
 
 Per step (`fixedUpdate(dt)`): skip if `!enabled` → `current` = body's
@@ -201,9 +225,13 @@ counter-impulse, or `apply(ZERO)`), inherited `agent.enabled`.
 
 ```ts
 type PointTarget = Vec2Like | ((agent: AgentState) => Vec2Like);
-type KinematicTarget = Kinematic | ((agent: AgentState) => Kinematic);           // { position, velocity }
-type ObstaclesSource = readonly Obstacle[] | ((agent: AgentState) => readonly Obstacle[]); // { position, radius }
-type NeighborsSource = readonly Kinematic[] | ((agent: AgentState) => readonly Kinematic[]);
+type KinematicTarget = Kinematic | ((agent: AgentState) => Kinematic); // { position, velocity }
+type ObstaclesSource =
+  | readonly Obstacle[]
+  | ((agent: AgentState) => readonly Obstacle[]); // { position, radius }
+type NeighborsSource =
+  | readonly Kinematic[]
+  | ((agent: AgentState) => readonly Kinematic[]);
 ```
 
 Resolved fresh every `compute` call. Providers receive the agent's state —
@@ -222,7 +250,7 @@ returns a non-zero steer.
 - `seek(target: PointTarget, opts?: SeekOptions)` — `normalize(target - pos) * maxSpeed`. ZERO at the target.
 - `flee(target: PointTarget, opts?: FleeOptions)` — `{ radius? }`. `normalize(pos - target) * maxSpeed`. `radius` set: ZERO when `distance > radius`. ZERO at the target.
 - `arrive(target: PointTarget, opts?: ArriveOptions)` — `{ slowRadius = 120, arriveRadius = 4, onArrive?, onDepart? }`. Full speed outside `slowRadius`; `speed = maxSpeed * (d / slowRadius)` inside it; ZERO inside `arriveRadius`. `onArrive`/`onDepart` fire once per crossing.
-- `wander(opts?: WanderOptions)` — `{ distance = 60, radius = 30, jitter = 3, random = Math.random }`. Wander angle nudges by `(random()*2-1) * jitter * dt` rad/s; circle sits at `pos + heading * distance` (`heading` = `normalize(velocity)`, falls back to last heading then `Vec2.RIGHT` when stationary); target = `circleCenter + fromAngle(angle) * radius`.
+- `wander(opts?: WanderOptions)` — `{ distance = 60, radius = 30, jitter = 3, random = globalRandom.float }`. Pass a scene-scoped random source when wander must replay with the scene. Wander angle nudges by `(random()*2-1) * jitter * dt` rad/s; circle sits at `pos + heading * distance` (`heading` = `normalize(velocity)`, falls back to last heading then `Vec2.RIGHT` when stationary); target = `circleCenter + fromAngle(angle) * radius`.
 - `pursue(target: KinematicTarget, opts?: PursueOptions)` — `{ maxPrediction = 1 }`. Leads `target.position + target.velocity * min(maxPrediction, distance / maxSpeed)`. Stationary target ≈ `seek`.
 - `evade(target: KinematicTarget, opts?: PursueOptions)` — same prediction, then flees it. Stationary target ≈ `flee`.
 - `avoidObstacles(obstacles: ObstaclesSource, opts?: AvoidObstaclesOptions)` — `{ lookAhead = 100, agentRadius = 0 }`. Casts a ray of length `lookAhead` along `normalize(velocity)`; among obstacles whose `radius + agentRadius` crosses it, steers laterally away from the one closest to the agent. ZERO when stationary or nothing's in the path. High `weight` (2–3) typical so avoidance dominates the sum.

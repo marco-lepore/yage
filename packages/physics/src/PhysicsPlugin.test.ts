@@ -124,6 +124,7 @@ import {
   SceneHookRegistry,
   SceneHookRegistryKey,
 } from "@yagejs/core";
+import { DebugRegistryKey } from "@yagejs/debug/api";
 import { PhysicsPlugin } from "./PhysicsPlugin.js";
 import { PhysicsWorldManagerKey } from "./types.js";
 import { PhysicsWorldManager } from "./PhysicsWorldManager.js";
@@ -164,6 +165,34 @@ describe("PhysicsPlugin", () => {
       expect(context.resolve(PhysicsWorldManagerKey)).toBeInstanceOf(
         PhysicsWorldManager,
       );
+    });
+  });
+
+  describe("onStart", () => {
+    it("registers a contributor through the canonical debug key", () => {
+      const context = makeContext();
+      const register = vi.fn();
+      context.register(DebugRegistryKey, {
+        register,
+        isEnabled: () => true,
+        isFlagEnabled: () => true,
+        drawVector: () => () => {},
+      });
+      const plugin = new PhysicsPlugin();
+      plugin.install(context);
+
+      plugin.onStart();
+
+      expect(register).toHaveBeenCalledTimes(1);
+      expect(register.mock.calls[0]?.[0]).toHaveProperty("name", "physics");
+    });
+
+    it("does nothing when the debug registry is absent", () => {
+      const context = makeContext();
+      const plugin = new PhysicsPlugin();
+      plugin.install(context);
+
+      expect(() => plugin.onStart()).not.toThrow();
     });
   });
 

@@ -1,3 +1,5 @@
+import "./internal/duplicateModuleGuard.js";
+
 export const VERSION = "0.0.0";
 
 export { Phase } from "./types.js";

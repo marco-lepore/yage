@@ -12,9 +12,8 @@ import {
 } from "@yagejs/core";
 
 // Local mock key — simulates a foreign (non-@yagejs/renderer) renderer
-// registered under its own ServiceKey. ServiceKey lookup is by reference
-// identity, not string id, so the `"customRenderer"` label is purely
-// diagnostic.
+// registered under its own ServiceKey. Its distinct string id keeps it
+// separate from the canonical renderer service.
 const CustomRendererKey = new ServiceKey<{ canvas: HTMLCanvasElement }>(
   "customRenderer",
 );
@@ -502,9 +501,7 @@ describe("InputPlugin", () => {
     manager._drainInputQueue();
     expect(manager.isPressed("fire")).toBe(true);
 
-    window.dispatchEvent(
-      new PointerEvent("pointercancel", { pointerId: 7 }),
-    );
+    window.dispatchEvent(new PointerEvent("pointercancel", { pointerId: 7 }));
     manager._drainInputQueue();
     expect(manager.getPointer(7)).toBeUndefined();
     expect(manager.isPressed("fire")).toBe(false);

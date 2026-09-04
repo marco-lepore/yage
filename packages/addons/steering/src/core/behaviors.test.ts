@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { Vec2 } from "@yagejs/core";
+import { globalRandom, Vec2 } from "@yagejs/core";
 import {
   alignment,
   arrive,
@@ -78,10 +78,22 @@ describe("arrive", () => {
   });
 
   it("ramps speed down monotonically as distance shrinks inside slowRadius", () => {
-    const behavior = arrive(new Vec2(200, 0), { slowRadius: 100, arriveRadius: 4 });
-    const far = behavior.evaluate(agent(new Vec2(120, 0), Vec2.ZERO, 100), 1 / 60);
-    const mid = behavior.evaluate(agent(new Vec2(150, 0), Vec2.ZERO, 100), 1 / 60);
-    const near = behavior.evaluate(agent(new Vec2(180, 0), Vec2.ZERO, 100), 1 / 60);
+    const behavior = arrive(new Vec2(200, 0), {
+      slowRadius: 100,
+      arriveRadius: 4,
+    });
+    const far = behavior.evaluate(
+      agent(new Vec2(120, 0), Vec2.ZERO, 100),
+      1 / 60,
+    );
+    const mid = behavior.evaluate(
+      agent(new Vec2(150, 0), Vec2.ZERO, 100),
+      1 / 60,
+    );
+    const near = behavior.evaluate(
+      agent(new Vec2(180, 0), Vec2.ZERO, 100),
+      1 / 60,
+    );
     expect(far.length()).toBeGreaterThan(mid.length());
     expect(mid.length()).toBeGreaterThan(near.length());
   });
@@ -95,7 +107,11 @@ describe("arrive", () => {
   it("fires onArrive exactly once on entering and onDepart exactly once on leaving", () => {
     const onArrive = vi.fn();
     const onDepart = vi.fn();
-    const behavior = arrive(new Vec2(0, 0), { arriveRadius: 4, onArrive, onDepart });
+    const behavior = arrive(new Vec2(0, 0), {
+      arriveRadius: 4,
+      onArrive,
+      onDepart,
+    });
 
     // Outside, then crossing in twice in a row — onArrive fires once.
     behavior.evaluate(agent(new Vec2(10, 0)), 1 / 60);
@@ -113,15 +129,34 @@ describe("arrive", () => {
 });
 
 describe("wander", () => {
+  it("uses the engine global random source by default", () => {
+    const random = vi.spyOn(globalRandom, "float").mockReturnValue(0.75);
+    const behavior = wander();
+
+    behavior.evaluate(agent(Vec2.ZERO, Vec2.RIGHT, 100), 1 / 60);
+
+    expect(random).toHaveBeenCalledOnce();
+    random.mockRestore();
+  });
+
   it("stays a maxSpeed-magnitude vector, varies call-to-call, and is reproducible for a fixed seed", () => {
     const seedA = deterministicRandom([0.9, 0.1, 0.5, 0.7]);
     const seedB = deterministicRandom([0.9, 0.1, 0.5, 0.7]);
     const behaviorA = wander({ random: seedA });
     const behaviorB = wander({ random: seedB });
 
-    const a1 = behaviorA.evaluate(agent(Vec2.ZERO, new Vec2(1, 0), 100), 1 / 60);
-    const a2 = behaviorA.evaluate(agent(Vec2.ZERO, new Vec2(1, 0), 100), 1 / 60);
-    const b1 = behaviorB.evaluate(agent(Vec2.ZERO, new Vec2(1, 0), 100), 1 / 60);
+    const a1 = behaviorA.evaluate(
+      agent(Vec2.ZERO, new Vec2(1, 0), 100),
+      1 / 60,
+    );
+    const a2 = behaviorA.evaluate(
+      agent(Vec2.ZERO, new Vec2(1, 0), 100),
+      1 / 60,
+    );
+    const b1 = behaviorB.evaluate(
+      agent(Vec2.ZERO, new Vec2(1, 0), 100),
+      1 / 60,
+    );
 
     expect(a1.length()).toBeCloseTo(100);
     expect(a2.length()).toBeCloseTo(100);
@@ -135,8 +170,14 @@ describe("wander", () => {
     // Moving DOWN (+y) — deliberately not the Vec2.RIGHT initial fallback,
     // so a stationary frame distinguishes "kept the last heading" from
     // "reset to the default".
-    const moving = behavior.evaluate(agent(Vec2.ZERO, new Vec2(0, 1), 100), 1 / 60);
-    const stationary = behavior.evaluate(agent(Vec2.ZERO, Vec2.ZERO, 100), 1 / 60);
+    const moving = behavior.evaluate(
+      agent(Vec2.ZERO, new Vec2(0, 1), 100),
+      1 / 60,
+    );
+    const stationary = behavior.evaluate(
+      agent(Vec2.ZERO, Vec2.ZERO, 100),
+      1 / 60,
+    );
     expect(moving.length()).toBeCloseTo(100);
     expect(stationary.length()).toBeCloseTo(100);
     // Circle center 60px along the kept +y heading, offset radius 30 at
@@ -166,7 +207,10 @@ describe("pursue / evade", () => {
   });
 
   it("maxPrediction caps the lead", () => {
-    const fastTarget: Kinematic = { position: new Vec2(100, 0), velocity: new Vec2(0, 1000) };
+    const fastTarget: Kinematic = {
+      position: new Vec2(100, 0),
+      velocity: new Vec2(0, 1000),
+    };
     const capped = pursue(fastTarget, { maxPrediction: 0.1 }).evaluate(
       agent(Vec2.ZERO, Vec2.ZERO, 100),
       1 / 60,
@@ -180,14 +224,29 @@ describe("pursue / evade", () => {
   });
 
   it("a stationary target reduces pursue to seek / evade to flee", () => {
-    const stationary: Kinematic = { position: new Vec2(0, 100), velocity: Vec2.ZERO };
-    const pursued = pursue(stationary).evaluate(agent(Vec2.ZERO, Vec2.ZERO, 50), 1 / 60);
-    const sought = seek(stationary.position).evaluate(agent(Vec2.ZERO, Vec2.ZERO, 50), 1 / 60);
+    const stationary: Kinematic = {
+      position: new Vec2(0, 100),
+      velocity: Vec2.ZERO,
+    };
+    const pursued = pursue(stationary).evaluate(
+      agent(Vec2.ZERO, Vec2.ZERO, 50),
+      1 / 60,
+    );
+    const sought = seek(stationary.position).evaluate(
+      agent(Vec2.ZERO, Vec2.ZERO, 50),
+      1 / 60,
+    );
     expect(pursued.x).toBeCloseTo(sought.x);
     expect(pursued.y).toBeCloseTo(sought.y);
 
-    const evaded = evade(stationary).evaluate(agent(Vec2.ZERO, Vec2.ZERO, 50), 1 / 60);
-    const fled = flee(stationary.position).evaluate(agent(Vec2.ZERO, Vec2.ZERO, 50), 1 / 60);
+    const evaded = evade(stationary).evaluate(
+      agent(Vec2.ZERO, Vec2.ZERO, 50),
+      1 / 60,
+    );
+    const fled = flee(stationary.position).evaluate(
+      agent(Vec2.ZERO, Vec2.ZERO, 50),
+      1 / 60,
+    );
     expect(evaded.x).toBeCloseTo(fled.x);
     expect(evaded.y).toBeCloseTo(fled.y);
   });
@@ -197,7 +256,10 @@ describe("avoidObstacles", () => {
   it("steers laterally away from an obstacle straight ahead", () => {
     const obstacles: Obstacle[] = [{ position: new Vec2(50, 0), radius: 10 }];
     const behavior = avoidObstacles(obstacles, { lookAhead: 100 });
-    const result = behavior.evaluate(agent(Vec2.ZERO, new Vec2(1, 0), 100), 1 / 60);
+    const result = behavior.evaluate(
+      agent(Vec2.ZERO, new Vec2(1, 0), 100),
+      1 / 60,
+    );
     expect(result).not.toEqual(Vec2.ZERO);
   });
 
@@ -260,14 +322,24 @@ describe("avoidObstacles", () => {
 
 describe("separation / alignment / cohesion", () => {
   it("separation pushes away from a close neighbor", () => {
-    const neighbors: Kinematic[] = [{ position: new Vec2(10, 0), velocity: Vec2.ZERO }];
-    const result = separation(neighbors, { radius: 40 }).evaluate(agent(Vec2.ZERO), 1 / 60);
+    const neighbors: Kinematic[] = [
+      { position: new Vec2(10, 0), velocity: Vec2.ZERO },
+    ];
+    const result = separation(neighbors, { radius: 40 }).evaluate(
+      agent(Vec2.ZERO),
+      1 / 60,
+    );
     expect(result.x).toBeLessThan(0);
   });
 
   it("separation returns ZERO with no neighbor in radius", () => {
-    const neighbors: Kinematic[] = [{ position: new Vec2(1000, 0), velocity: Vec2.ZERO }];
-    const result = separation(neighbors, { radius: 40 }).evaluate(agent(Vec2.ZERO), 1 / 60);
+    const neighbors: Kinematic[] = [
+      { position: new Vec2(1000, 0), velocity: Vec2.ZERO },
+    ];
+    const result = separation(neighbors, { radius: 40 }).evaluate(
+      agent(Vec2.ZERO),
+      1 / 60,
+    );
     expect(result).toEqual(Vec2.ZERO);
   });
 
@@ -276,7 +348,10 @@ describe("separation / alignment / cohesion", () => {
       { position: new Vec2(10, 0), velocity: Vec2.ZERO },
       { position: new Vec2(-10, 0), velocity: Vec2.ZERO },
     ];
-    const result = separation(neighbors, { radius: 40 }).evaluate(agent(Vec2.ZERO), 1 / 60);
+    const result = separation(neighbors, { radius: 40 }).evaluate(
+      agent(Vec2.ZERO),
+      1 / 60,
+    );
     expect(result.x).toBeCloseTo(0);
     expect(result.y).toBeCloseTo(0);
   });
@@ -295,8 +370,13 @@ describe("separation / alignment / cohesion", () => {
   });
 
   it("alignment returns ZERO with no neighbor in radius", () => {
-    const neighbors: Kinematic[] = [{ position: new Vec2(1000, 0), velocity: new Vec2(0, 100) }];
-    const result = alignment(neighbors, { radius: 40 }).evaluate(agent(Vec2.ZERO), 1 / 60);
+    const neighbors: Kinematic[] = [
+      { position: new Vec2(1000, 0), velocity: new Vec2(0, 100) },
+    ];
+    const result = alignment(neighbors, { radius: 40 }).evaluate(
+      agent(Vec2.ZERO),
+      1 / 60,
+    );
     expect(result).toEqual(Vec2.ZERO);
   });
 
@@ -314,8 +394,13 @@ describe("separation / alignment / cohesion", () => {
   });
 
   it("cohesion returns ZERO with no neighbor in radius", () => {
-    const neighbors: Kinematic[] = [{ position: new Vec2(1000, 0), velocity: Vec2.ZERO }];
-    const result = cohesion(neighbors, { radius: 40 }).evaluate(agent(Vec2.ZERO), 1 / 60);
+    const neighbors: Kinematic[] = [
+      { position: new Vec2(1000, 0), velocity: Vec2.ZERO },
+    ];
+    const result = cohesion(neighbors, { radius: 40 }).evaluate(
+      agent(Vec2.ZERO),
+      1 / 60,
+    );
     expect(result).toEqual(Vec2.ZERO);
   });
 });
@@ -324,25 +409,38 @@ describe("followPath", () => {
   const path = [new Vec2(100, 0), new Vec2(100, 100), new Vec2(0, 100)];
 
   it("seeks the first waypoint at full speed", () => {
-    const result = followPath(path).evaluate(agent(Vec2.ZERO, Vec2.ZERO, 50), 1 / 60);
+    const result = followPath(path).evaluate(
+      agent(Vec2.ZERO, Vec2.ZERO, 50),
+      1 / 60,
+    );
     expect(result.x).toBeCloseTo(50);
     expect(result.y).toBeCloseTo(0);
   });
 
   it("advances to the next waypoint inside waypointRadius", () => {
     const behavior = followPath(path, { waypointRadius: 16 });
-    const result = behavior.evaluate(agent(new Vec2(95, 0), Vec2.ZERO, 50), 1 / 60);
+    const result = behavior.evaluate(
+      agent(new Vec2(95, 0), Vec2.ZERO, 50),
+      1 / 60,
+    );
     expect(result.y).toBeCloseTo(50, 0); // now heading to (100, 100)
   });
 
   it("gives the final waypoint arrive semantics and fires onArrive once", () => {
     const onArrive = vi.fn();
-    const behavior = followPath(path, { slowRadius: 100, arriveRadius: 4, onArrive });
+    const behavior = followPath(path, {
+      slowRadius: 100,
+      arriveRadius: 4,
+      onArrive,
+    });
     // Walk the index to the last waypoint.
     behavior.evaluate(agent(new Vec2(100, 0)), 1 / 60);
     behavior.evaluate(agent(new Vec2(100, 100)), 1 / 60);
 
-    const ramped = behavior.evaluate(agent(new Vec2(50, 100), Vec2.ZERO, 100), 1 / 60);
+    const ramped = behavior.evaluate(
+      agent(new Vec2(50, 100), Vec2.ZERO, 100),
+      1 / 60,
+    );
     expect(ramped.length()).toBeCloseTo(50); // d=50 inside slowRadius 100 at maxSpeed 100
 
     const settled = behavior.evaluate(agent(new Vec2(1, 100)), 1 / 60);
@@ -356,7 +454,10 @@ describe("followPath", () => {
     behavior.evaluate(agent(new Vec2(100, 0)), 1 / 60);
     behavior.evaluate(agent(new Vec2(100, 100)), 1 / 60);
     // At the last waypoint: advances back to (100, 0), never ZERO.
-    const result = behavior.evaluate(agent(new Vec2(0, 100), Vec2.ZERO, 50), 1 / 60);
+    const result = behavior.evaluate(
+      agent(new Vec2(0, 100), Vec2.ZERO, 50),
+      1 / 60,
+    );
     expect(result.length()).toBeCloseTo(50);
     expect(result.x).toBeGreaterThan(0);
     expect(result.y).toBeLessThan(0);
@@ -376,7 +477,10 @@ describe("followPath", () => {
 
   it("startAt resumes from a saved waypoint index", () => {
     const behavior = followPath(path, { startAt: 2 });
-    const result = behavior.evaluate(agent(new Vec2(50, 100), Vec2.ZERO, 50), 1 / 60);
+    const result = behavior.evaluate(
+      agent(new Vec2(50, 100), Vec2.ZERO, 50),
+      1 / 60,
+    );
     expect(result.x).toBeLessThan(0); // heading to (0, 100), not back to (100, 0)
     expect(behavior.waypointIndex).toBe(2);
   });
@@ -418,7 +522,10 @@ describe("contain", () => {
   });
 
   it("steers a stationary agent outside the bounds straight back in", () => {
-    const result = contain(bounds).evaluate(agent(new Vec2(-40, 100), Vec2.ZERO, 80), 1 / 60);
+    const result = contain(bounds).evaluate(
+      agent(new Vec2(-40, 100), Vec2.ZERO, 80),
+      1 / 60,
+    );
     expect(result.x).toBeCloseTo(80);
     expect(result.y).toBeCloseTo(0);
   });

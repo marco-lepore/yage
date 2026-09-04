@@ -1,6 +1,8 @@
 # @yagejs/tilemap
 
-Depends on `@yagejs/core`, `@yagejs/renderer`. Tiled map loader and renderer.
+Depends on `@yagejs/core`, `@yagejs/renderer`. The optional
+`@yagejs/tilemap/physics` entry uses `@yagejs/physics` types. Tiled map loader
+and renderer.
 
 ## Capabilities & Limits
 
@@ -401,18 +403,22 @@ Mapping from Tiled object → emitted shape:
 - Point → skipped.
 - Object rotation (degrees in Tiled, pivoting on the object's position) is honored for every shape: polygon/polyline/sampled-ellipse vertices are rotated at extraction, a rotated circle gets its position shifted, and rect/capsule configs carry `rotation` in radians.
 
-Standalone functions: `extractCollisionShapes()`, `toPhysicsColliders()`.
+The root package exports `extractCollisionShapes()`. The optional
+`@yagejs/tilemap/physics` entry exports `toPhysicsColliders()`.
 
 ## Physics Integration
 
 `toPhysicsColliders(shapes)` converts the tilemap collision shapes (top-left origin, as stored in Tiled) into `@yagejs/physics` `ColliderConfig` shape-plus-offset pairs (center origin, as Rapier expects). Use it when attaching extracted walls to static physics bodies.
+
+Install `@yagejs/physics` and import the adapter from the optional physics
+entry. The root `@yagejs/tilemap` entry does not require physics.
 
 One entity carries one `ColliderComponent`, so each shape gets its own static
 entity under a grouping parent placed at the map's origin. The children sit at
 the parent's origin and the config's offset does the placement:
 
 ```ts
-import { toPhysicsColliders } from "@yagejs/tilemap";
+import { toPhysicsColliders } from "@yagejs/tilemap/physics";
 import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 
 const walls = scene.spawn("walls");

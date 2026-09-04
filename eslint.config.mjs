@@ -31,8 +31,14 @@ export default tseslint.config(
     },
   },
   {
-    files: ["packages/*/src/**/*.ts"],
-    ignores: ["**/*.test.ts", "packages/core/src/Random.ts"],
+    files: ["packages/**/src/**/*.ts", "packages/**/src/**/*.tsx"],
+    ignores: [
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/*.spec.ts",
+      "**/*.spec.tsx",
+      "packages/core/src/Random.ts",
+    ],
     rules: {
       "no-restricted-properties": [
         "error",
@@ -43,6 +49,55 @@ export default tseslint.config(
             "Use RandomService or globalRandom instead of Math.random() in runtime source.",
         },
       ],
+    },
+  },
+  {
+    files: ["packages/**/src/**/*.ts", "packages/**/src/**/*.tsx"],
+    ignores: [
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/*.spec.ts",
+      "**/*.spec.tsx",
+      "packages/core/src/GameLoop.ts",
+      "packages/core/src/Inspector.ts",
+      "packages/core/src/Logger.ts",
+      "packages/core/src/Random.ts",
+      "packages/debug/src/DebugPlugin.ts",
+      "packages/save/src/Save.ts",
+      "packages/tools/lab/src/cli/test.ts",
+      "packages/tools/lab/src/runner/LabClock.ts",
+      "packages/tools/lab/src/runner/runDrive.ts",
+    ],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "CallExpression[callee.type='MemberExpression'][callee.object.name='Date'][callee.property.name='now']",
+          message:
+            "Use engine time instead of Date.now() outside approved infrastructure files.",
+        },
+        {
+          selector:
+            "CallExpression[callee.type='MemberExpression'][callee.object.name='performance'][callee.property.name='now']",
+          message:
+            "Use engine time instead of performance.now() outside approved infrastructure files.",
+        },
+      ],
+    },
+  },
+  {
+    files: ["packages/**/src/**/*.ts", "packages/**/src/**/*.tsx"],
+    ignores: [
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/*.spec.ts",
+      "**/*.spec.tsx",
+      "packages/tools/lab/src/cli/test.ts",
+      "packages/tools/lab/src/runner/LabPanel.ts",
+      "packages/tools/lab/src/runner/mountLab.ts",
+    ],
+    rules: {
       "no-restricted-globals": [
         "error",
         {

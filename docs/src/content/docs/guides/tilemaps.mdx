@@ -752,8 +752,12 @@ its own static entity. An entity holds one component per class, so a single
 entity cannot carry a collider per shape; a grouping parent placed at the map's
 origin keeps them together and lets you destroy the whole set with one call:
 
+Install `@yagejs/physics` and import the adapter from
+`@yagejs/tilemap/physics`. The root tilemap entry stays usable in projects that
+only load and render maps.
+
 ```typescript
-import { toPhysicsColliders } from "@yagejs/tilemap";
+import { toPhysicsColliders } from "@yagejs/tilemap/physics";
 import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 
 const walls = this.spawn("walls");
@@ -776,7 +780,8 @@ The component-method shortcut wraps two standalone functions for the
 same workflow:
 
 ```typescript
-import { extractCollisionShapes, toPhysicsColliders } from "@yagejs/tilemap";
+import { extractCollisionShapes } from "@yagejs/tilemap";
+import { toPhysicsColliders } from "@yagejs/tilemap/physics";
 ```
 
 :::caution[Convex-only `polygon` shape]

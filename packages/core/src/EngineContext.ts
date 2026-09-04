@@ -24,13 +24,19 @@ export interface ServiceKeyOptions {
   scope?: ServiceScope;
 }
 
-/** A typed key for service registration and resolution. */
+/**
+ * A typed key for service registration and resolution.
+ *
+ * Keys are identified by their `id` string, not by object identity. A package
+ * may re-declare an id for the same service contract to avoid an optional
+ * runtime dependency; keep an owner comment beside each repeated declaration.
+ */
 export class ServiceKey<T> {
   /** Declared scope (engine or scene). Defaults to `"engine"`. */
   readonly scope: ServiceScope;
 
   constructor(
-    /** Unique string identifier for this service. */
+    /** String identifier used for registration and resolution. */
     public readonly id: string,
     options?: ServiceKeyOptions,
   ) {

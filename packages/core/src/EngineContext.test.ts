@@ -68,6 +68,22 @@ describe("EngineContext", () => {
     expect(key.id).toBe("myService");
   });
 
+  it("resolves a service through another key with the same id", () => {
+    const ctx = new EngineContext();
+    const ownerKey = new ServiceKey<{ value: number }>("shared");
+    const optionalConsumerKey = new ServiceKey<{ value: number }>("shared");
+    ctx.register(ownerKey, { value: 42 });
+
+    expect(ctx.resolve(optionalConsumerKey)).toEqual({ value: 42 });
+    expect(ctx.has(optionalConsumerKey)).toBe(true);
+    expect(() => ctx.register(optionalConsumerKey, { value: 7 })).toThrow(
+      'Service "shared" is already registered.',
+    );
+
+    ctx.unregister(optionalConsumerKey);
+    expect(ctx.has(ownerKey)).toBe(false);
+  });
+
   it("unregister removes a registered service", () => {
     const ctx = new EngineContext();
     const key = new ServiceKey<string>("test");

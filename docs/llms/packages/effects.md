@@ -1,6 +1,6 @@
 # @yagejs/effects
 
-Depends on `@yagejs/renderer` (peer), `pixi.js` (peer), `pixi-filters`. Built-in visual-effect presets added via `.fx.addEffect` at any of the four scopes (component / layer / scene / screen). Each preset uses `defineEffect` to provide a named factory with typed options.
+Depends on `@yagejs/core` (peer), `@yagejs/renderer` (peer), `pixi.js` (peer), `pixi-filters`. Built-in visual-effect presets added via `.fx.addEffect` at any of the four scopes (component / layer / scene / screen). Each preset uses `defineEffect` to provide a named factory with typed options.
 
 ## Setup
 
