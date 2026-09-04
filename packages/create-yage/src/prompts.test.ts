@@ -149,11 +149,22 @@ describe("reportSuccess", () => {
   });
 
   it("uses a cross-drive directory command on Windows", () => {
-    expect(directoryChangeCommand("D:\\games\\yage", "win32")).toBe(
+    expect(directoryChangeCommand("D:\\games\\yage", "win32", "cmd")).toBe(
       "pushd D:\\games\\yage",
     );
-    expect(directoryChangeCommand("D:\\my games\\yage", "win32")).toBe(
+    expect(directoryChangeCommand("D:\\my games\\yage", "win32", "cmd")).toBe(
       'pushd "D:\\my games\\yage"',
+    );
+  });
+
+  it("preserves percent signs in Windows shell paths", () => {
+    const path = "D:\\my games\\100%complete%game";
+
+    expect(directoryChangeCommand(path, "win32", "cmd")).toBe(
+      'pushd "D:\\my games\\100"^%"complete"^%"game"',
+    );
+    expect(directoryChangeCommand(path, "win32", "powershell")).toBe(
+      "Set-Location -LiteralPath 'D:\\my games\\100%complete%game'",
     );
   });
 });

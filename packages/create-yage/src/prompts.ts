@@ -201,36 +201,59 @@ export interface SuccessReport {
   gitSucceeded: boolean | null;
 }
 
-function quoteShellPath(path: string, platform: NodeJS.Platform): string {
-  const commandPath = path.startsWith("-")
-    ? `${platform === "win32" ? ".\\" : "./"}${path}`
-    : path;
-  const safePath =
-    platform === "win32"
-      ? /^[A-Za-z0-9_@%+=:,./\\-]+$/
-      : /^[A-Za-z0-9_@%+=:,./-]+$/;
+function quotePosixShellPath(path: string): string {
+  const commandPath = path.startsWith("-") ? `./${path}` : path;
+  const safePath = /^[A-Za-z0-9_@%+=:,./-]+$/;
   if (safePath.test(commandPath)) return commandPath;
-  if (platform === "win32") return `"${commandPath}"`;
   return `'${commandPath.replaceAll("'", `'\\''`)}'`;
+}
+
+function quoteCommandPromptPath(path: string): string {
+  const commandPath = path.startsWith("-") ? `.\\${path}` : path;
+  if (!commandPath.includes("%")) {
+    return /^[A-Za-z0-9_@+=:,./\\-]+$/.test(commandPath)
+      ? commandPath
+      : `"${commandPath}"`;
+  }
+
+  // cmd.exe expands %name% inside quotes. Quoted segments keep the path in one
+  // argument while each unquoted ^% produces a literal percent sign.
+  return commandPath
+    .split("%")
+    .map((segment) => `"${segment}"`)
+    .join("^%");
+}
+
+function quotePowerShellPath(path: string): string {
+  return `'${path.replaceAll("'", "''")}'`;
 }
 
 export function directoryChangeCommand(
   path: string,
   platform: NodeJS.Platform = process.platform,
+  windowsShell: "powershell" | "cmd" = "powershell",
 ): string {
-  const command = platform === "win32" ? "pushd" : "cd";
-  return `${command} ${quoteShellPath(path, platform)}`;
+  if (platform !== "win32") return `cd ${quotePosixShellPath(path)}`;
+  if (windowsShell === "cmd") return `pushd ${quoteCommandPromptPath(path)}`;
+  return `Set-Location -LiteralPath ${quotePowerShellPath(path)}`;
 }
 
 export function reportSuccess(report: SuccessReport): void {
   const lines: string[] = [];
-  const changeDirectory = directoryChangeCommand(
-    relativeFromCwd(report.targetDir),
-  );
+  const relativeTarget = relativeFromCwd(report.targetDir);
   lines.push(`${pc.green("Success!")} Created ${pc.bold(report.projectName)}`);
   lines.push("");
   lines.push("Next steps:");
-  lines.push(`  ${pc.cyan(changeDirectory)}`);
+  if (process.platform === "win32") {
+    lines.push(
+      `  ${pc.dim("PowerShell:")} ${pc.cyan(directoryChangeCommand(relativeTarget, "win32", "powershell"))}`,
+    );
+    lines.push(
+      `  ${pc.dim("Command Prompt:")} ${pc.cyan(directoryChangeCommand(relativeTarget, "win32", "cmd"))}`,
+    );
+  } else {
+    lines.push(`  ${pc.cyan(directoryChangeCommand(relativeTarget))}`);
+  }
   if (report.installSucceeded === null) {
     lines.push(`  ${pc.cyan("npm install")}`);
   } else if (report.installSucceeded === false) {
