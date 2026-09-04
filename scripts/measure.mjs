@@ -234,6 +234,13 @@ function collectSourceSystems(files) {
   function inheritsSystem(info, seen = new Set()) {
     if (!info.base) return false;
     if (info.base === "System") return true;
+    const imported = info.imports.get(info.base);
+    if (
+      imported?.specifier === "@yagejs/core" &&
+      imported.importedName === "System"
+    ) {
+      return true;
+    }
     if (seen.has(info)) return false;
     seen.add(info);
     const parent = parentOf(info);

@@ -104,6 +104,30 @@ test("system inheritance resolves imports without borrowing same-named classes",
   );
 });
 
+test("system parity follows an aliased core System import", () => {
+  const sourceFiles = [
+    file(
+      "packages/demo/src/AliasedSystem.ts",
+      `
+        import { Phase, System as BaseSystem } from "@yagejs/core";
+        export class AliasedSystem extends BaseSystem {
+          readonly phase = Phase.Update;
+          readonly priority = 7;
+          update() {}
+        }
+      `,
+    ),
+  ];
+  const row = "- `Update`: `AliasedSystem (7, demo)`";
+  assert.deepEqual(
+    checkSystemDocParity({
+      sourceFiles,
+      documents: [file("a.md", row), file("b.mdx", row)],
+    }),
+    [],
+  );
+});
+
 test("clock options accept only the shared clock contracts", () => {
   const errors = checkClockOptionTypes([
     file(
