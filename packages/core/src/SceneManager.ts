@@ -525,6 +525,14 @@ export class SceneManager {
     // `preload` already loaded and counted this manifest; acquiring it again
     // here would leave two references for one owner to release.
     if (this._preloadedScenes.delete(scene)) return;
+    // A prefetch still running counts as that owner too: wait for it and take
+    // the mark it leaves, rather than loading the manifest a second time.
+    const inFlight = this._preloadsInFlight.get(scene);
+    if (inFlight) {
+      await inFlight;
+      this._preloadedScenes.delete(scene);
+      return;
+    }
     await this._loadSceneAssets(scene);
   }
 

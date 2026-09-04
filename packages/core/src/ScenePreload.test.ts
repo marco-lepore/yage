@@ -156,6 +156,20 @@ describe("Scene preload integration", () => {
     expect(am.has(FakeAsset)).toBe(false);
   });
 
+  it("pushing a scene whose prefetch is still running takes one reference", async () => {
+    const { manager, am } = setup();
+    const scene = new PreloadScene();
+
+    // The menu prefetches without awaiting; the player picks it immediately.
+    const prefetch = manager.preload(scene);
+    await manager.push(scene);
+    await prefetch;
+
+    expect(scene.entered).toBe(true);
+    am.unload(FakeAsset);
+    expect(am.has(FakeAsset)).toBe(false);
+  });
+
   it("two concurrent preloads of one scene take one reference", async () => {
     const { manager, am } = setup();
     const scene = new PreloadScene();
