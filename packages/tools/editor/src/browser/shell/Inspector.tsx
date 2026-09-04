@@ -1,5 +1,5 @@
 import type { ParamFieldDescription } from "@yagejs/level";
-import type { LevelPlacement } from "@yagejs/level/document";
+import type { JsonValue, LevelPlacement } from "@yagejs/level/document";
 import { useEffect, useRef, useState } from "react";
 import {
   derivedSceneKey,
@@ -12,8 +12,15 @@ import type { LayerChoice } from "../layers.js";
 import type { InspectableType } from "../project/index.js";
 import type { EditorState, EditorStore } from "../store/index.js";
 import { Panel, PanelEmpty } from "./Panel.js";
-import type { SelectOption } from "./controls.js";
-import { Button, Select, TextField, trimmedOrNull } from "./controls.js";
+import type { SelectOption, StepIntent } from "./controls.js";
+import {
+  Button,
+  Checkbox,
+  Select,
+  TextField,
+  trimmedOrNull,
+} from "./controls.js";
+import { rounded } from "./numbers.js";
 import { useEditorState } from "./useEditorSlice.js";
 
 export interface InspectorProps {
@@ -29,11 +36,7 @@ export interface InspectorProps {
    * throws `EditorApiError`, which the field reports beside itself.
    */
   readonly listAssets: () => Promise<AssetListing>;
-  readonly onSetParam: (
-    id: string,
-    field: string,
-    value: string | null,
-  ) => void;
+  readonly onSetParam: (id: string, field: string, value: JsonValue) => void;
   readonly onResetParam: (id: string, field: string) => void;
   /** Wait for this field's target to be pointed at in the viewport or the tree. */
   readonly onPickTarget: (
@@ -380,6 +383,15 @@ function Field(props: FieldProps): React.JSX.Element {
       return <AssetField {...props} />;
     case "entityRef":
       return <EntityRefField {...props} />;
+    case "number":
+    case "integer":
+      return <NumberField {...props} />;
+    case "boolean":
+      return <BooleanField {...props} />;
+    case "string":
+      return <StringField {...props} />;
+    case "select":
+      return <SelectField {...props} />;
     default: {
       const unhandled: never = props.field.kind;
       throw new Error(`No control for parameter kind ${String(unhandled)}.`);
@@ -399,7 +411,7 @@ interface FieldProps {
   picking: boolean;
   onStartPick: (types: readonly string[]) => void;
   onEndPick: () => void;
-  onCommit: (value: string | null) => void;
+  onCommit: (value: JsonValue) => void;
   onReset: () => void;
 }
 
@@ -484,18 +496,7 @@ function AssetField(props: FieldProps): React.JSX.Element {
           Reset
         </Button>
       </TextField>
-      {invalid ? (
-        <ul
-          data-testid={`field-${field.name}-diagnostics`}
-          className="ye-messages ye-messages--error"
-        >
-          {props.diagnostics.map((diagnostic, index) => (
-            <li key={`${diagnostic.code}-${String(index)}`}>
-              {diagnostic.message}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <FieldFindings field={field.name} diagnostics={props.diagnostics} />
     </div>
   );
 }
@@ -554,17 +555,11 @@ function EntityRefField(props: FieldProps): React.JSX.Element {
         >
           Pick
         </Button>
-        {field.optional === true ? (
-          <Button
-            testId={`clear-${field.name}`}
-            disabled={props.disabled || held === ""}
-            onClick={() => {
-              props.onCommit(null);
-            }}
-          >
-            Clear
-          </Button>
-        ) : null}
+        <ClearButton
+          field={field}
+          disabled={props.disabled || held === ""}
+          onClear={props.onCommit}
+        />
       </div>
       {props.picking ? (
         <p
@@ -582,20 +577,265 @@ function EntityRefField(props: FieldProps): React.JSX.Element {
           No {types.join(" or ")} in this level.
         </p>
       ) : null}
-      {invalid ? (
-        <ul
-          data-testid={`field-${field.name}-diagnostics`}
-          className="ye-messages ye-messages--error"
-        >
-          {props.diagnostics.map((diagnostic, index) => (
-            <li key={`${diagnostic.code}-${String(index)}`}>
-              {diagnostic.message}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <FieldFindings field={field.name} diagnostics={props.diagnostics} />
     </div>
   );
+}
+
+/**
+ * A number, in the box the control bar's transform numbers use: Up and Down
+ * step it, dragging the label scrubs it, and text this field cannot take stays
+ * in the box with the reason beside it instead of being written.
+ *
+ * A whole number shares the control and differs in two things: the ladder is
+ * whole, and a fraction is refused rather than rounded, because a fraction in
+ * the file is a mistake and not a number to correct silently.
+ */
+function NumberField(props: FieldProps): React.JSX.Element {
+  const { field } = props;
+  const held = numberText(props.value);
+  return (
+    <div>
+      <TextField
+        label={field.name}
+        testId={`field-${field.name}`}
+        value={held}
+        numeric
+        placeholder={field.optional === true ? EMPTY_LABEL : undefined}
+        disabled={props.disabled}
+        invalid={props.diagnostics.length > 0}
+        reject={(text) => refusedNumber(text, field)}
+        stepping={{
+          step: (text, intent) => steppedNumber(text, field, intent),
+        }}
+        onCommit={(text) => {
+          props.onCommit(Number(text.trim()));
+        }}
+      >
+        <ClearButton
+          field={field}
+          disabled={props.disabled || props.value === null}
+          onClear={props.onCommit}
+        />
+      </TextField>
+      <FieldFindings field={field.name} diagnostics={props.diagnostics} />
+    </div>
+  );
+}
+
+/**
+ * A switch. An optional one has three states rather than two, so a box holding
+ * nothing draws as mixed — neither on nor off — and Clear is how it gets back
+ * there once something has been chosen.
+ */
+function BooleanField(props: FieldProps): React.JSX.Element {
+  const { field } = props;
+  const held = typeof props.value === "boolean" ? props.value : undefined;
+  return (
+    <div>
+      <div className="ye-field">
+        <span className="ye-field__label">{field.name}</span>
+        <Checkbox
+          label={field.name}
+          testId={`field-${field.name}`}
+          checked={held === true}
+          mixed={held === undefined}
+          disabled={props.disabled}
+          invalid={props.diagnostics.length > 0}
+          onChange={props.onCommit}
+        />
+        <ClearButton
+          field={field}
+          disabled={props.disabled || props.value === null}
+          onClear={props.onCommit}
+        />
+      </div>
+      <FieldFindings field={field.name} diagnostics={props.diagnostics} />
+    </div>
+  );
+}
+
+/**
+ * Text, committed as typed. The empty string is a value here, so an optional
+ * field is emptied by Clear rather than by deleting what is in the box.
+ */
+function StringField(props: FieldProps): React.JSX.Element {
+  const { field } = props;
+  const held = typeof props.value === "string" ? props.value : "";
+  // A string field is the one place the empty box is ambiguous: text of no
+  // length and nothing at all both leave it blank. The label shows for
+  // nothing at all, so the two read apart without a second control.
+  const empty = field.optional === true && props.value === null;
+  return (
+    <div>
+      <TextField
+        label={field.name}
+        testId={`field-${field.name}`}
+        value={held}
+        multiline={field.multiline === true}
+        placeholder={empty ? EMPTY_LABEL : undefined}
+        disabled={props.disabled}
+        invalid={props.diagnostics.length > 0}
+        onCommit={props.onCommit}
+      >
+        <ClearButton
+          field={field}
+          disabled={props.disabled || props.value === null}
+          onClear={props.onCommit}
+        />
+      </TextField>
+      <FieldFindings field={field.name} diagnostics={props.diagnostics} />
+    </div>
+  );
+}
+
+/**
+ * One of the values the declaration lists.
+ *
+ * A held value the list no longer offers keeps its own first row, the way a
+ * reference keeps a target that has gone: the declaration changed under a
+ * level that was authored against it, and the finding beneath says so while
+ * one click replaces it.
+ */
+function SelectField(props: FieldProps): React.JSX.Element {
+  const { field } = props;
+  const held = typeof props.value === "string" ? props.value : "";
+  const values = field.options ?? [];
+  const rows = values.map((value) => ({ value, label: value }));
+  if (held !== "" && !values.includes(held)) {
+    rows.unshift({ value: held, label: `Not offered: ${held}` });
+  }
+  return (
+    <div>
+      <div className="ye-field">
+        <span className="ye-field__label">{field.name}</span>
+        <Select
+          label={field.name}
+          testId={`field-${field.name}`}
+          value={held}
+          placeholder={EMPTY_LABEL}
+          invalid={props.diagnostics.length > 0}
+          disabled={props.disabled || rows.length === 0}
+          options={rows}
+          onChange={props.onCommit}
+        />
+        <ClearButton
+          field={field}
+          disabled={props.disabled || props.value === null}
+          onClear={props.onCommit}
+        />
+      </div>
+      <FieldFindings field={field.name} diagnostics={props.diagnostics} />
+    </div>
+  );
+}
+
+/**
+ * What every control shows in place of a value an optional field does not
+ * hold. One word across the box, the text area and the dropdown, so nothing
+ * chosen reads the same wherever it is met.
+ */
+const EMPTY_LABEL = "None";
+
+/**
+ * Empties an optional field. A required field has no such value, so it gets no
+ * button at all.
+ */
+function ClearButton(props: {
+  readonly field: ParamFieldDescription;
+  readonly disabled: boolean;
+  readonly onClear: (value: null) => void;
+}): React.JSX.Element | null {
+  if (props.field.optional !== true) return null;
+  return (
+    <Button
+      testId={`clear-${props.field.name}`}
+      disabled={props.disabled}
+      onClick={() => {
+        props.onClear(null);
+      }}
+    >
+      Clear
+    </Button>
+  );
+}
+
+/** What preparation found about one field, under the control it belongs to. */
+function FieldFindings(props: {
+  readonly field: string;
+  readonly diagnostics: readonly EditorDiagnostic[];
+}): React.JSX.Element | null {
+  if (props.diagnostics.length === 0) return null;
+  return (
+    <ul
+      data-testid={`field-${props.field}-diagnostics`}
+      className="ye-messages ye-messages--error"
+    >
+      {props.diagnostics.map((diagnostic, index) => (
+        <li key={`${diagnostic.code}-${String(index)}`}>
+          {diagnostic.message}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * What a number box shows. A value of another type is shown as it was
+ * authored, so the finding under the box is about something visible.
+ */
+function numberText(value: unknown): string {
+  if (typeof value === "number") return String(rounded(value));
+  return typeof value === "string" ? value : "";
+}
+
+/**
+ * Why the typed text is not a number this field takes, if it is not. A refused
+ * entry keeps its text and renders the reason under the row; nothing is sent.
+ */
+function refusedNumber(
+  text: string,
+  field: ParamFieldDescription,
+): string | undefined {
+  const typed = Number(text.trim());
+  if (text.trim() === "" || !Number.isFinite(typed)) return "Type a number.";
+  if (field.kind === "integer" && !Number.isInteger(typed)) {
+    return "Type a whole number.";
+  }
+  if (field.min !== undefined && typed < field.min) {
+    return `Type ${String(field.min)} or more.`;
+  }
+  if (field.max !== undefined && typed > field.max) {
+    return `Type ${String(field.max)} or less.`;
+  }
+  return undefined;
+}
+
+/**
+ * The number one arrow press or one scrub step produces, held inside the range
+ * the field declared, or `undefined` when the box shows nothing to step from.
+ *
+ * `Shift` takes ten of the declared step and `Alt` a tenth of it. A whole
+ * number has no tenth, so there `Alt` moves by one like an ordinary press.
+ */
+function steppedNumber(
+  text: string,
+  field: ParamFieldDescription,
+  intent: StepIntent,
+): string | undefined {
+  const from = Number(text.trim());
+  if (text.trim() === "" || !Number.isFinite(from)) return undefined;
+  const whole = field.kind === "integer";
+  const unit = whole ? 1 : (field.step ?? 1);
+  const by = intent.coarse
+    ? unit * 10
+    : intent.fine && !whole
+      ? unit / 10
+      : unit;
+  let next = rounded(from + by * intent.direction);
+  if (field.min !== undefined) next = Math.max(next, field.min);
+  if (field.max !== undefined) next = Math.min(next, field.max);
+  return String(next);
 }
 
 /**

@@ -848,14 +848,43 @@ export const EDITOR_CSS = `
   font-family: var(--font-code);
 }
 
-.yage-editor .ye-field input:disabled {
+.yage-editor .ye-field input:disabled,
+.yage-editor .ye-field textarea:disabled {
   opacity: 0.45;
+}
+
+/* A box for text that runs to several lines. It takes the one-line box's
+   frame, and the browser's own handle resizes it downwards. */
+.yage-editor .ye-field textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-family: var(--font-code);
+  resize: vertical;
+}
+
+/* A switch is the one control in a field row that keeps its own size. The
+   selector carries the element as well as the class, so it outweighs the
+   full-width rule every other box in a row takes. */
+.yage-editor .ye-field input.ye-checkbox {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
 }
 
 /* Not scoped to .ye-field: TextField renders the shell's only input, and a
    call site that passes its own class, such as the bar's .ye-step, refuses
    text the same way and has to look refused. */
 .yage-editor input[aria-invalid="true"],
+.yage-editor textarea[aria-invalid="true"],
 .yage-editor select[aria-invalid="true"] {
   border-color: var(--danger);
 }

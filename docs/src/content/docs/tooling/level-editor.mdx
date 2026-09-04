@@ -702,6 +702,21 @@ section, and an **In your game** section holding its **Key**.
 
 #### Parameters
 
+What a field looks like follows the kind its declaration gave it.
+
+| Declared as | You edit it with |
+| --- | --- |
+| `param.number(…)` | A box you can type in, step with the arrow keys, or scrub by dragging its label. A value outside `min` or `max` is refused and says so. |
+| `param.integer(…)` | The same box, stepping by one. A fraction is refused rather than rounded. |
+| `param.boolean(…)` | A checkbox. |
+| `param.string(…)` | A box, or a text area when the declaration says `multiline`. |
+| `param.select(…)` | A dropdown of the values the declaration listed. |
+| `param.asset(…)` | A path, with your project's files behind **▾**. |
+| `param.entityRef(…)` | Another placement, from a dropdown or by **Pick** and a click in the level. |
+
+A field the declaration marked `optional` may hold nothing: **Clear** beside it
+empties it, and your `setup()` receives `undefined` instead of a value.
+
 An asset parameter — `param.asset()` — is a text field holding the
 project-relative path. **Reset** next to a field writes the default you gave
 `param.asset(…)`.
@@ -860,9 +875,10 @@ edge or centre. The grid catches a move and the side a box handle drags; the
 screen distance, so a drag on one lands on nothing. The step is remembered per
 level in your browser; there is no project-wide default.
 
-**Anything but the asset parameter.** `param.asset()` is the only parameter
-kind with a control. The active flag and extensions are not editable either,
-and the hierarchy is how you change a parent.
+**A parameter with a shape.** A value made of members, a list of them, a
+colour, or one your game decodes has no control yet. The active flag and
+extensions are not editable either, and the hierarchy is how you change a
+parent.
 
 **Listing every file.** The picker walks the Vite root, so a file under a
 `publicDir` you moved outside the root is not offered, and neither is anything

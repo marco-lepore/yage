@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { TextField, type TextFieldProps } from "./controls.js";
+import { Checkbox, TextField, type TextFieldProps } from "./controls.js";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -401,5 +401,119 @@ describe("TextField stepping", () => {
 
       expect(event.defaultPrevented).toBe(true);
     });
+  });
+});
+
+/** Type into a React-controlled box: set the value the DOM way, then say so. */
+function typeInto(box: HTMLTextAreaElement | HTMLInputElement, text: string) {
+  const prototype =
+    box instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+  act(() => {
+    setter?.call(box, text);
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+describe("a text box of several lines", () => {
+  let harness: ReturnType<typeof createHarness>;
+
+  beforeEach(() => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    harness = createHarness({ multiline: true, value: "one" });
+  });
+
+  afterEach(() => {
+    act(() => {
+      harness.root.unmount();
+    });
+    harness.host.remove();
+  });
+
+  it("types into a text area rather than a one-line box", () => {
+    expect(harness.box().tagName).toBe("TEXTAREA");
+  });
+
+  it("leaves Enter to the box and commits when the box is left", () => {
+    const box = harness.box();
+    typeInto(box, "one\ntwo");
+
+    // Enter belongs to the text here, so the box neither commits nor takes
+    // the keystroke over from the browser.
+    expect(press(box, "Enter")).toBe(false);
+    expect(harness.commits).toEqual([]);
+
+    blur(box);
+
+    expect(harness.commits).toEqual(["one\ntwo"]);
+  });
+
+  it("puts back what it was showing on Escape", () => {
+    const box = harness.box();
+    typeInto(box, "one\ntwo");
+
+    press(box, "Escape");
+
+    expect(box.value).toBe("one");
+    expect(harness.commits).toEqual([]);
+  });
+});
+
+describe("Checkbox", () => {
+  let root: Root;
+  let host: HTMLElement;
+  const changes: boolean[] = [];
+
+  beforeEach(() => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    changes.length = 0;
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+  });
+
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
+  function render(checked: boolean, mixed = false): HTMLInputElement {
+    act(() => {
+      root.render(
+        <Checkbox
+          label="Locked"
+          testId="locked"
+          checked={checked}
+          mixed={mixed}
+          onChange={(next) => {
+            changes.push(next);
+          }}
+        />,
+      );
+    });
+    const found = host.querySelector<HTMLInputElement>(
+      '[data-testid="locked"]',
+    );
+    if (!found) throw new Error("No box rendered.");
+    return found;
+  }
+
+  it("reports the state a press produced", () => {
+    const box = render(false);
+
+    act(() => {
+      box.click();
+    });
+
+    expect(changes).toEqual([true]);
+  });
+
+  it("draws no value at all as neither on nor off", () => {
+    expect(render(false, true).indeterminate).toBe(true);
+    expect(render(false).indeterminate).toBe(false);
   });
 });

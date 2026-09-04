@@ -156,8 +156,8 @@ export class ProjectCoordinator {
         ...(entry.packageName === undefined
           ? {}
           : { packageName: entry.packageName }),
-        // A `null` default belongs to a reference parameter, never to a
-        // texture, but `defaultValue` carries both kinds' defaults.
+        // `defaultValue` holds whatever its own kind defaults to — a number,
+        // a switch, nothing chosen — and only a path names a picture.
         ...(typeof texture?.defaultValue === "string"
           ? { thumbnail: texture.defaultValue }
           : {}),

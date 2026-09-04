@@ -81,6 +81,8 @@ export class Crate extends Entity {
   `AssetHandle` the descriptor built, with or without `frames`.
 - `param.entityRef({ types, optional? })` names another placement in the same
   level. See [Pointing at another placement](#pointing-at-another-placement).
+- The plain kinds carry the numbers, switches, names and choices a type needs.
+  See [Numbers, switches, names and choices](#numbers-switches-names-and-choices).
 - `frames` is an `AssetFrames`: how the named file is cut into a grid. Declare
   it only for a parameter naming a sheet the type slices. Its members are the
   renderer's `TextureSliceOptions`, so state the grid once and spread the same
@@ -113,6 +115,56 @@ export class Crate extends Entity {
 - Declaring never throws. A bad id, version, migration key, or default is
   reported by `buildLevelCatalog()`, so a tool can list the problem and keep
   working.
+
+## Numbers, switches, names and choices
+
+```ts
+const SlimeParams = defineParams({
+  speed: param.number(40, { min: 5, max: 200, step: 5 }),
+  coins: param.integer(3, { min: 0 }),
+  awake: param.boolean(true),
+  title: param.string("Slime"),
+  notes: param.string("", { multiline: true, optional: true }),
+  facing: param.select("left", ["left", "right"]),
+});
+
+setup(params: ParamsOf<typeof SlimeParams>): void {
+  // speed: number, coins: number, awake: boolean, title: string,
+  // notes: string | undefined, facing: "left" | "right"
+}
+```
+
+```ts
+param.number(defaultValue: number, options?: {
+  min?: number; max?: number; step?: number; optional?: boolean;
+}): ParamKind<number>
+param.integer(defaultValue: number, options?: {
+  min?: number; max?: number; optional?: boolean;
+}): ParamKind<number>
+param.boolean(defaultValue: boolean, options?: { optional?: boolean }): ParamKind<boolean>
+param.string(defaultValue: string, options?: {
+  multiline?: boolean; optional?: boolean;
+}): ParamKind<string>
+param.select<const O extends readonly string[]>(
+  defaultValue: O[number],
+  values: O,
+  options?: { optional?: boolean },
+): ParamKind<O[number]>
+```
+
+- The authored JSON is the value itself: a number, `true` or `false`, a string,
+  or one of the listed strings. The level file stores what `setup()` receives.
+- `param.select` reads its values literally, so `setup()` receives the union
+  `"left" | "right"` and a `switch` over it is exhaustive.
+- `integer` is a kind of its own rather than an option on `number`: `2.5` in a
+  file is reported, never rounded.
+- `min` and `max` are checked when the level is prepared, so a value outside
+  them is a finding on that placement. `step` and `multiline` are authoring
+  data — they size a control's presses and its box, and validate nothing.
+- `optional: true` makes `null` a value: `setup()` receives `undefined`, and
+  the declared type becomes `number | undefined` and so on. A missing key stays
+  an error whether or not the field is optional, so a placement that holds
+  nothing says so.
 
 ## Pointing at another placement
 
@@ -319,7 +371,7 @@ the document — that is what makes a later change to a declaration's default
 leave existing levels alone.
 
 The values are the declaration's own defaults rather than copies. Every
-parameter kind defaults to a string or `null`, so nothing shares mutable state;
+parameter kind defaults to a primitive or `null`, so nothing shares mutable state;
 a kind whose default is an object or an array has to copy before two placements
 can hold one.
 
@@ -345,8 +397,9 @@ The returned list and its entries are immutable and follow declaration order.
 Parameter kinds are built through `param`; hand-built kind objects are rejected
 when the catalog is built.
 
-`kind` says which control the field needs and is a closed set — `"asset"` and
-`"entityRef"` — so a tool can switch on it exhaustively.
+`kind` says which control the field needs and is a closed set — `"asset"`,
+`"entityRef"`, `"number"`, `"integer"`, `"boolean"`, `"string"` and
+`"select"` — so a tool can switch on it exhaustively.
 
 For an asset field, `assetKind` is the `kind` of the descriptor `param.asset()`
 was given and is open, because `defineLevelAsset` is yours: match the kinds you
@@ -356,8 +409,14 @@ one, and it says what one frame of the default art is, so a tool can show that
 frame instead of the whole sheet.
 
 For a reference field, `types` is the frozen list of catalog type ids the field
-accepts and `optional` says whether it may hold nothing; `defaultValue` is
-`null`.
+accepts; `defaultValue` is `null`.
+
+`optional` says whether the field may hold `null`, and is present on every kind
+but `asset`, which takes no options object. `defaultValue` is the value the
+editor writes into a new placement — a number for a number field and a boolean
+for a switch. A number field carries `min`, `max` and `step` when it declared
+them, a string field carries `multiline`, and a choice field carries `options`,
+the frozen list of values it accepts.
 
 A prepared placement carries what it points at, so a tool can follow references
 without reading a schema:

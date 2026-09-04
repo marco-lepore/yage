@@ -6,7 +6,15 @@ export {
   defineParams,
 } from "./params/schema.js";
 export { defineLevelAsset, param } from "./params/kinds.js";
-export type { EntityRefOptions, LevelAssetDescriptor } from "./params/kinds.js";
+export type {
+  BooleanParamOptions,
+  EntityRefOptions,
+  IntegerParamOptions,
+  LevelAssetDescriptor,
+  NumberParamOptions,
+  SelectParamOptions,
+  StringParamOptions,
+} from "./params/kinds.js";
 export type {
   AssetFrames,
   ParamFieldDescription,

@@ -269,6 +269,44 @@ describe("ProjectCoordinator", () => {
       ]);
     });
 
+    it("finds the texture past a parameter whose default is not a path", () => {
+      const coordinator = new ProjectCoordinator();
+      coordinator.initialize({
+        project: {
+          entities: [
+            withParams(
+              "game.slime",
+              defineParams({
+                speed: param.number(40),
+                awake: param.boolean(true),
+                sprite: param.asset(textureDescriptor, "sprites/slime.png"),
+              }),
+            ),
+          ],
+        },
+        contributions: [],
+      });
+
+      expect(coordinator.placeables[0]?.thumbnail).toBe("sprites/slime.png");
+    });
+
+    it("takes no thumbnail from a type whose parameters are all plain", () => {
+      const coordinator = new ProjectCoordinator();
+      coordinator.initialize({
+        project: {
+          entities: [
+            withParams(
+              "game.slime",
+              defineParams({ speed: param.number(40) }),
+            ),
+          ],
+        },
+        contributions: [],
+      });
+
+      expect(coordinator.placeables[0]?.thumbnail).toBeUndefined();
+    });
+
     it("leaves out the thumbnail for a type with no texture parameter", () => {
       const coordinator = new ProjectCoordinator();
       coordinator.initialize({

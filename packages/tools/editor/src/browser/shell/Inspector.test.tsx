@@ -1378,3 +1378,340 @@ describe("a parameter that points at another placement", () => {
     expect(control("field-door").getAttribute("aria-invalid")).toBe("false");
   });
 });
+
+describe("the plain parameter kinds", () => {
+  const SLIME: InspectableType = {
+    typeId: "game.slime",
+    fields: [
+      {
+        name: "speed",
+        kind: "number",
+        optional: false,
+        min: 5,
+        max: 200,
+        step: 5,
+        defaultValue: 40,
+      },
+      {
+        name: "coins",
+        kind: "integer",
+        optional: false,
+        min: 0,
+        defaultValue: 3,
+      },
+      { name: "locked", kind: "boolean", optional: false, defaultValue: true },
+      { name: "awake", kind: "boolean", optional: true, defaultValue: false },
+      { name: "title", kind: "string", optional: false, defaultValue: "Slime" },
+      {
+        name: "notes",
+        kind: "string",
+        optional: true,
+        multiline: true,
+        defaultValue: "",
+      },
+      {
+        name: "facing",
+        kind: "select",
+        optional: false,
+        options: ["left", "right"],
+        defaultValue: "left",
+      },
+      {
+        name: "mood",
+        kind: "select",
+        optional: true,
+        options: ["calm", "angry"],
+        defaultValue: "calm",
+      },
+    ],
+  };
+
+  const AUTHORED = {
+    speed: 40,
+    coins: 3,
+    locked: true,
+    awake: null,
+    title: "Slime",
+    notes: null,
+    facing: "left",
+    mood: null,
+  };
+
+  function plainHarness(
+    held: Record<string, unknown> = {},
+    editable = true,
+  ) {
+    const store = new EditorStore({
+      api: unusedApi,
+      epoch: "epoch-1",
+      projectId: "project-1",
+    });
+    store.dispatch({
+      type: "level-opened",
+      snapshot: {
+        ...snapshot(),
+        document: {
+          ...DOCUMENT,
+          entities: [
+            placement("s1", {
+              type: "game.slime",
+              params: { ...AUTHORED, ...held } as LevelPlacement["params"],
+            }),
+          ],
+        },
+      },
+    });
+    const intents: string[] = [];
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <Inspector
+          store={store}
+          editable={editable}
+          inspectable={(typeId) =>
+            typeId === "game.slime" ? SLIME : undefined
+          }
+          listAssets={() => Promise.resolve(LISTING)}
+          onSetParam={(id, field, value) => {
+            // Stringified as JSON, so a typed 50 and a typed "50" read apart.
+            intents.push(`set ${id}.${field}=${JSON.stringify(value)}`);
+          }}
+          onResetParam={() => undefined}
+          onResetPlacement={() => undefined}
+          onPickTarget={() => undefined}
+          onCancelPick={() => undefined}
+          onSetKey={() => undefined}
+          layerChoices={() => []}
+          layerSorts={() => false}
+          onSetLayer={() => undefined}
+          onOrder={() => undefined}
+        />,
+      );
+    });
+    act(() => {
+      store.dispatch({ type: "selection-changed", ids: ["s1"] });
+    });
+    const report = (...diagnostics: EditorDiagnostic[]): void => {
+      act(() => {
+        store.dispatch({
+          type: "diagnostics-replaced",
+          source: "preview",
+          diagnostics,
+        });
+      });
+    };
+    return { host, root, intents, report };
+  }
+
+  let harness: ReturnType<typeof plainHarness>;
+
+  afterEach(() => {
+    act(() => {
+      harness.root.unmount();
+    });
+    harness.host.remove();
+  });
+
+  function control<T extends Element>(testId: string): T {
+    const found = query<T>(harness.host, testId);
+    if (!found) throw new Error(`No ${testId} control rendered.`);
+    return found;
+  }
+
+  it("renders a control of its own for every kind", () => {
+    harness = plainHarness();
+
+    expect(control("field-speed").tagName).toBe("INPUT");
+    expect(control("field-coins").tagName).toBe("INPUT");
+    expect(control<HTMLInputElement>("field-locked").type).toBe("checkbox");
+    expect(control("field-title").tagName).toBe("INPUT");
+    expect(control("field-notes").tagName).toBe("TEXTAREA");
+    expect(control("field-facing").tagName).toBe("SELECT");
+  });
+
+  it("shows what the placement holds", () => {
+    harness = plainHarness({ speed: 65, title: "Big slime" });
+
+    expect(control<HTMLInputElement>("field-speed").value).toBe("65");
+    expect(control<HTMLInputElement>("field-title").value).toBe("Big slime");
+    expect(control<HTMLInputElement>("field-locked").checked).toBe(true);
+    expect(control<HTMLSelectElement>("field-facing").value).toBe("left");
+  });
+
+  it("commits a typed number as a number", () => {
+    harness = plainHarness();
+    const box = control<HTMLInputElement>("field-speed");
+
+    type(box, "65");
+    key(box, "Enter");
+
+    expect(harness.intents).toEqual(["set s1.speed=65"]);
+  });
+
+  it("commits typed text as text", () => {
+    harness = plainHarness();
+    const box = control<HTMLInputElement>("field-title");
+
+    type(box, "Big slime");
+    blur(box);
+
+    expect(harness.intents).toEqual(['set s1.title="Big slime"']);
+  });
+
+  it("keeps an out-of-range number in the box and sends nothing", () => {
+    harness = plainHarness();
+    const box = control<HTMLInputElement>("field-speed");
+
+    type(box, "999");
+    key(box, "Enter");
+
+    expect(harness.intents).toEqual([]);
+    expect(box.value).toBe("999");
+    expect(box.getAttribute("aria-invalid")).toBe("true");
+    expect(query(harness.host, "field-speed-reason")?.textContent).toBe(
+      "Type 200 or less.",
+    );
+  });
+
+  it("keeps a fraction out of a whole-number field", () => {
+    harness = plainHarness();
+    const box = control<HTMLInputElement>("field-coins");
+
+    type(box, "2.5");
+    key(box, "Enter");
+
+    expect(harness.intents).toEqual([]);
+    expect(query(harness.host, "field-coins-reason")?.textContent).toBe(
+      "Type a whole number.",
+    );
+
+    type(box, "2");
+    key(box, "Enter");
+
+    expect(harness.intents).toEqual(["set s1.coins=2"]);
+  });
+
+  it("steps a number by its declared step and a whole number by one", () => {
+    harness = plainHarness();
+    const speed = control<HTMLInputElement>("field-speed");
+    key(speed, "ArrowUp");
+    expect(speed.value).toBe("45");
+
+    const coins = control<HTMLInputElement>("field-coins");
+    key(coins, "ArrowDown");
+    expect(coins.value).toBe("2");
+  });
+
+  it("holds a step inside the range the field declared", () => {
+    harness = plainHarness({ speed: 198 });
+    const speed = control<HTMLInputElement>("field-speed");
+
+    key(speed, "ArrowUp");
+
+    expect(speed.value).toBe("200");
+  });
+
+  it("toggles a switch", () => {
+    harness = plainHarness();
+    const box = control<HTMLInputElement>("field-locked");
+
+    act(() => {
+      box.click();
+    });
+
+    expect(harness.intents).toEqual(["set s1.locked=false"]);
+  });
+
+  it("draws an optional switch that holds nothing as neither on nor off", () => {
+    harness = plainHarness();
+
+    // A cleared switch is not the same value as an unticked one, and the box
+    // says so rather than reading as false.
+    expect(control<HTMLInputElement>("field-awake").indeterminate).toBe(true);
+    expect(control<HTMLInputElement>("field-locked").indeterminate).toBe(false);
+
+    act(() => {
+      control<HTMLInputElement>("field-awake").click();
+    });
+
+    expect(harness.intents).toEqual(["set s1.awake=true"]);
+  });
+
+  it("lists a choice's values with the held one chosen", () => {
+    harness = plainHarness({ facing: "right" });
+    const list = control<HTMLSelectElement>("field-facing");
+
+    expect([...list.options].map((option) => option.value)).toEqual([
+      "left",
+      "right",
+    ]);
+    expect(list.value).toBe("right");
+
+    choose(list, "left");
+
+    expect(harness.intents).toEqual(['set s1.facing="left"']);
+  });
+
+  it("keeps a held choice the list no longer offers, as its own row", () => {
+    harness = plainHarness({ facing: "up" });
+    const list = control<HTMLSelectElement>("field-facing");
+
+    expect([...list.options].map((option) => option.textContent)).toEqual([
+      "Not offered: up",
+      "left",
+      "right",
+    ]);
+    expect(list.value).toBe("up");
+  });
+
+  it("offers Clear only on an optional field, and sends nothing at all", () => {
+    harness = plainHarness({ mood: "angry", notes: "hello", awake: true });
+
+    expect(query(harness.host, "clear-facing")).toBeNull();
+    expect(query(harness.host, "clear-speed")).toBeNull();
+    click(harness.host, "clear-mood");
+    click(harness.host, "clear-notes");
+    click(harness.host, "clear-awake");
+
+    expect(harness.intents).toEqual([
+      "set s1.mood=null",
+      "set s1.notes=null",
+      "set s1.awake=null",
+    ]);
+  });
+
+  it("switches Clear off while the field already holds nothing", () => {
+    harness = plainHarness();
+
+    expect(query<HTMLButtonElement>(harness.host, "clear-mood")?.disabled).toBe(
+      true,
+    );
+    expect(
+      query<HTMLButtonElement>(harness.host, "clear-notes")?.disabled,
+    ).toBe(true);
+  });
+
+  it("shows a finding under the field it is about, and marks the control", () => {
+    harness = plainHarness();
+    harness.report(diagnostic("s1", "parameter-invalid", ["speed"]));
+
+    expect(
+      query(harness.host, "field-speed-diagnostics")?.textContent,
+    ).toContain("parameter-invalid at s1");
+    expect(control("field-speed").getAttribute("aria-invalid")).toBe("true");
+    expect(query(harness.host, "field-title-diagnostics")).toBeNull();
+  });
+
+  it("switches every control off on a level that cannot be edited", () => {
+    harness = plainHarness({}, false);
+
+    expect(control<HTMLInputElement>("field-speed").disabled).toBe(true);
+    expect(control<HTMLInputElement>("field-locked").disabled).toBe(true);
+    expect(control<HTMLSelectElement>("field-facing").disabled).toBe(true);
+    expect(
+      query<HTMLButtonElement>(harness.host, "clear-mood")?.disabled,
+    ).toBe(true);
+  });
+});

@@ -56,13 +56,15 @@ saved level. `version` is the parameter schema's version: a level records the
 version its parameters were written against, and `migrations` carries them
 forward when the schema changes.
 
-A parameter is a typed field with a default. There are two kinds.
-`param.asset` names a file — the level stores a project-relative path and
-`setup()` receives the loaded handle. `defineLevelAsset` is what says how a
-path becomes a handle, and its `create` function comes from the package that
-owns the asset: `texture` from `@yagejs/renderer`. `param.entityRef` names
-another placement in the same level, and is [its own section
-below](#point-one-placement-at-another).
+A parameter is a typed field with a default. `param.number`,
+`param.integer`, `param.boolean`, `param.string` and `param.select` carry the
+values a game is made of, and are [their own section
+below](#numbers-switches-names-and-choices). `param.asset` names a file — the
+level stores a project-relative path and `setup()` receives the loaded handle.
+`defineLevelAsset` is what says how a path becomes a handle, and its `create`
+function comes from the package that owns the asset: `texture` from
+`@yagejs/renderer`. `param.entityRef` names another placement in the same
+level, and is [its own section below](#point-one-placement-at-another).
 
 ### Say how a sheet is cut
 
@@ -103,6 +105,68 @@ truthful picture in a tool — the level editor's Actors panel shows the first
 frame instead of the whole strip. A grid that could not slice anything, such as
 a `frameWidth` below 1, is reported by `buildLevelCatalog` along with every
 other declaration problem, so a bad number lists rather than throws.
+
+### Numbers, switches, names and choices
+
+A slime has a speed, a chest has a number of coins, a door is locked or it is
+not. Each is a parameter whose authored value is the value itself:
+
+```typescript title="src/Slime.ts"
+const SlimeParams = defineParams({
+  speed: param.number(40, { min: 5, max: 200, step: 5 }),
+  coins: param.integer(3, { min: 0 }),
+  awake: param.boolean(true),
+  title: param.string("Slime"),
+  notes: param.string("", { multiline: true, optional: true }),
+  facing: param.select("left", ["left", "right"]),
+});
+
+export class Slime extends Entity {
+  static readonly level = defineLevelEntity({
+    id: "game.slime",
+    version: 1,
+    params: SlimeParams,
+  });
+
+  setup(params: ParamsOf<typeof SlimeParams>): void {
+    // params.speed is a number, params.awake a boolean, params.title a string,
+    // params.notes a string or undefined, and params.facing is exactly
+    // "left" | "right".
+    this.add(new SlimeBrain(params.speed, params.facing));
+  }
+}
+```
+
+`param.select` reads its list literally, so what `setup()` gets is the union of
+the values you wrote and a `switch` over it is exhaustive. A misspelled value
+in a level file is refused before the level loads.
+
+`integer` is a kind of its own rather than a rounding option on `number`,
+because `2.5` where a whole number belongs is a mistake worth reporting rather
+than a number to correct behind your back.
+
+`min` and `max` are checked when the level is prepared: a value outside them is
+listed against that placement, and the editor marks the field. `step` and
+`multiline` are for whoever is authoring — `step` sizes one press of the
+editor's control and `multiline` gives the box room for several lines. Neither
+changes what a level may hold, so a typed value between two steps is accepted.
+
+Any of them can be `optional`, which makes "nothing at all" a value:
+
+```typescript
+const SlimeParams = defineParams({
+  patience: param.number(3, { optional: true }),
+});
+
+setup(params: ParamsOf<typeof SlimeParams>): void {
+  // params.patience is number | undefined
+  this.add(new SlimeBrain(params.patience ?? Number.POSITIVE_INFINITY));
+}
+```
+
+The level file stores `null` there and the editor's field gets a **Clear**
+button. Leaving the key out altogether is still an error: a placement says what
+it holds, including that it holds nothing.
 
 ### Point one placement at another
 

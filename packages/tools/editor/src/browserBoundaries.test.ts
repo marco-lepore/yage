@@ -21,6 +21,13 @@ function sourcesUnder(directory: string): string[] {
 }
 
 /**
+ * Long enough for one ESLint configuration resolution per browser file while
+ * the rest of the repository's tasks run beside this one. The work grows with
+ * the directory, and the default five seconds is a budget it shares.
+ */
+const RESOLVE_TIMEOUT = 30_000;
+
+/**
  * Every browser file is governed by one of the import blocks in the
  * repository's ESLint config.
  *
@@ -34,21 +41,25 @@ function sourcesUnder(directory: string): string[] {
  * resolved configuration is the only way to see it; running lint cannot.
  */
 describe("browser import boundaries", () => {
-  it("restricts server and Node imports in every browser file", async () => {
-    const eslint = new ESLint({ cwd: ROOT });
-    const ungoverned: string[] = [];
-    for (const file of sourcesUnder(BROWSER)) {
-      const config = await eslint.calculateConfigForFile(file);
-      const rule = config.rules?.["@typescript-eslint/no-restricted-imports"];
-      const groups = Array.isArray(rule)
-        ? (
-            (rule[1] as { patterns?: { group?: string[] }[] }).patterns ?? []
-          ).flatMap((pattern) => pattern.group ?? [])
-        : [];
-      if (!groups.includes("**/server") || !groups.includes("node:*")) {
-        ungoverned.push(relative(ROOT, file));
+  it(
+    "restricts server and Node imports in every browser file",
+    async () => {
+      const eslint = new ESLint({ cwd: ROOT });
+      const ungoverned: string[] = [];
+      for (const file of sourcesUnder(BROWSER)) {
+        const config = await eslint.calculateConfigForFile(file);
+        const rule = config.rules?.["@typescript-eslint/no-restricted-imports"];
+        const groups = Array.isArray(rule)
+          ? (
+              (rule[1] as { patterns?: { group?: string[] }[] }).patterns ?? []
+            ).flatMap((pattern) => pattern.group ?? [])
+          : [];
+        if (!groups.includes("**/server") || !groups.includes("node:*")) {
+          ungoverned.push(relative(ROOT, file));
+        }
       }
-    }
-    expect(ungoverned).toEqual([]);
-  });
+      expect(ungoverned).toEqual([]);
+    },
+    RESOLVE_TIMEOUT,
+  );
 });

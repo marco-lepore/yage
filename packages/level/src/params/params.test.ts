@@ -3,6 +3,7 @@ import type { EntityHandle } from "@yagejs/core";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type { JsonObject } from "../document/types.js";
 import { defineLevelAsset, param } from "./kinds.js";
+import type { NumberParamOptions } from "./kinds.js";
 import {
   decodeParams,
   defaultParams,
@@ -472,5 +473,283 @@ describe("entity reference parameters", () => {
     types.push("game.crate");
 
     expect(describeParams(schema)[0]?.types).toEqual(["game.door"]);
+  });
+});
+
+describe("the plain parameter kinds", () => {
+  const SlimeParams = defineParams({
+    speed: param.number(40, { min: 5, max: 200, step: 5 }),
+    coins: param.integer(3, { min: 0 }),
+    locked: param.boolean(true),
+    title: param.string("Slime"),
+    facing: param.select("left", ["left", "right"]),
+  });
+
+  const authoredSlime = {
+    speed: 40,
+    coins: 3,
+    locked: true,
+    title: "Slime",
+    facing: "left",
+  } satisfies JsonObject;
+
+  /** The reasons one field gives for one authored value. */
+  function reasons(field: string, value: unknown): string[] {
+    return validateParams(SlimeParams, {
+      ...authoredSlime,
+      [field]: value,
+    } as JsonObject)
+      .filter((error) => error.path[0] === field)
+      .map((error) => error.message);
+  }
+
+  it("decodes each kind to the type its declaration promises", () => {
+    const params = decodeParams(SlimeParams, authoredSlime, NO_REFS);
+
+    expectTypeOf<ParamsOf<typeof SlimeParams>>().toEqualTypeOf<{
+      speed: number;
+      coins: number;
+      locked: boolean;
+      title: string;
+      facing: "left" | "right";
+    }>();
+    expect({ ...params }).toEqual(authoredSlime);
+  });
+
+  it("writes every declared default into a new placement", () => {
+    expect({ ...defaultParams(SlimeParams) }).toEqual(authoredSlime);
+    expect(schemaDefaultProblems(SlimeParams)).toEqual([]);
+  });
+
+  it("accepts each kind's own JSON and refuses the others", () => {
+    expect(validateParams(SlimeParams, authoredSlime)).toEqual([]);
+
+    expect(reasons("speed", "40")).toEqual(["must be a number"]);
+    expect(reasons("speed", true)).toEqual(["must be a number"]);
+    expect(reasons("coins", "3")).toEqual(["must be a whole number"]);
+    expect(reasons("locked", 1)).toEqual(["must be true or false"]);
+    expect(reasons("title", 7)).toEqual(["must be a string"]);
+    expect(reasons("facing", 7)).toEqual(['must be one of "left", "right"']);
+  });
+
+  it("refuses a fraction in a whole-number field", () => {
+    expect(reasons("coins", 2.5)).toEqual(["must be a whole number"]);
+    expect(reasons("coins", 2)).toEqual([]);
+    // The fraction is the number's own business.
+    expect(reasons("speed", 40.5)).toEqual([]);
+  });
+
+  it("refuses a number that is not finite", () => {
+    expect(reasons("speed", Number.NaN)).toEqual(["must be a number"]);
+    expect(reasons("speed", Number.POSITIVE_INFINITY)).toEqual([
+      "must be a number",
+    ]);
+  });
+
+  it("refuses a number outside the range it was declared in", () => {
+    expect(reasons("speed", 4)).toEqual(["must be at least 5"]);
+    expect(reasons("speed", 201)).toEqual(["must be at most 200"]);
+    expect(reasons("speed", 5)).toEqual([]);
+    expect(reasons("speed", 200)).toEqual([]);
+    expect(reasons("coins", -1)).toEqual(["must be at least 0"]);
+  });
+
+  it("does not treat the step as a rule about the value", () => {
+    // The step sizes an authoring control's presses. A number between two
+    // steps is a number the field takes.
+    expect(reasons("speed", 42)).toEqual([]);
+  });
+
+  it("refuses a string outside a choice's own list", () => {
+    expect(reasons("facing", "up")).toEqual(['must be one of "left", "right"']);
+    expect(reasons("facing", "right")).toEqual([]);
+  });
+
+  it("accepts nothing at all only where the declaration said so", () => {
+    const OptionalParams = defineParams({
+      speed: param.number(40, { optional: true }),
+      coins: param.integer(3, { optional: true }),
+      locked: param.boolean(true, { optional: true }),
+      title: param.string("Slime", { optional: true }),
+      facing: param.select("left", ["left", "right"], { optional: true }),
+    });
+    const empty = {
+      speed: null,
+      coins: null,
+      locked: null,
+      title: null,
+      facing: null,
+    } satisfies JsonObject;
+
+    expect(validateParams(OptionalParams, empty)).toEqual([]);
+    expect(
+      validateParams(SlimeParams, {
+        ...authoredSlime,
+        ...empty,
+      } as JsonObject).map((error) => error.message),
+    ).toEqual([
+      "must be a number",
+      "must be a whole number",
+      "must be true or false",
+      "must be a string",
+      'must be one of "left", "right"',
+    ]);
+  });
+
+  it("decodes nothing at all to undefined, as a reference does", () => {
+    const OptionalParams = defineParams({
+      speed: param.number(40, { optional: true }),
+      facing: param.select("left", ["left", "right"], { optional: true }),
+    });
+
+    const params = decodeParams(
+      OptionalParams,
+      { speed: null, facing: null },
+      NO_REFS,
+    );
+
+    expectTypeOf<ParamsOf<typeof OptionalParams>>().toEqualTypeOf<{
+      speed: number | undefined;
+      facing: "left" | "right" | undefined;
+    }>();
+    expect(params.speed).toBeUndefined();
+    expect(params.facing).toBeUndefined();
+  });
+
+  it("says nothing at all is a value in the reason it gives", () => {
+    const OptionalParams = defineParams({
+      speed: param.number(40, { optional: true }),
+      locked: param.boolean(true, { optional: true }),
+      title: param.string("Slime", { optional: true }),
+      facing: param.select("left", ["left", "right"], { optional: true }),
+    });
+
+    expect(
+      validateParams(OptionalParams, {
+        speed: "40",
+        locked: 1,
+        title: 7,
+        facing: "up",
+      }).map((error) => error.message),
+    ).toEqual([
+      "must be a number or null",
+      "must be true, false or null",
+      "must be a string or null",
+      'must be one of "left", "right", or null',
+    ]);
+  });
+
+  it("describes each kind's own extras and leaves the rest off", () => {
+    const descriptions = describeParams(SlimeParams);
+
+    expect(descriptions).toEqual([
+      {
+        name: "speed",
+        kind: "number",
+        optional: false,
+        min: 5,
+        max: 200,
+        step: 5,
+        defaultValue: 40,
+      },
+      {
+        name: "coins",
+        kind: "integer",
+        optional: false,
+        min: 0,
+        defaultValue: 3,
+      },
+      { name: "locked", kind: "boolean", optional: false, defaultValue: true },
+      { name: "title", kind: "string", optional: false, defaultValue: "Slime" },
+      {
+        name: "facing",
+        kind: "select",
+        optional: false,
+        options: ["left", "right"],
+        defaultValue: "left",
+      },
+    ] satisfies readonly ParamFieldDescription[]);
+    expect(descriptions.every(Object.isFrozen)).toBe(true);
+  });
+
+  it("describes a multiline string as one", () => {
+    const schema = defineParams({
+      body: param.string("", { multiline: true }),
+      title: param.string(""),
+    });
+
+    const [body, title] = describeParams(schema);
+    expect(body?.multiline).toBe(true);
+    expect(Object.hasOwn(title as object, "multiline")).toBe(false);
+  });
+
+  it("copies a choice's values, so a later change cannot widen them", () => {
+    const values = ["left", "right"];
+    const schema = defineParams({ facing: param.select("left", values) });
+
+    values.push("up");
+
+    expect(describeParams(schema)[0]?.options).toEqual(["left", "right"]);
+    expect(Object.isFrozen(describeParams(schema)[0]?.options)).toBe(true);
+  });
+
+  it("reports a default its own kind rejects rather than throwing", () => {
+    // A list typed as `string[]` rather than read literally offers no
+    // compile-time check of the default, so the catalog is what catches it.
+    const facings: string[] = ["left", "right"];
+    const schema = defineParams({
+      speed: param.number(400, { max: 200 }),
+      coins: param.integer(2.5),
+      facing: param.select("up", facings),
+    });
+
+    expect(schemaDefaultProblems(schema)).toEqual([
+      { path: ["speed"], message: "default must be at most 200" },
+      { path: ["coins"], message: "default must be a whole number" },
+      {
+        path: ["facing"],
+        message: 'default must be one of "left", "right"',
+      },
+    ]);
+    expect(() => param.integer(2.5)).not.toThrow();
+  });
+
+  it("needs no assets", () => {
+    expect(paramAssets(SlimeParams, authoredSlime)).toEqual([]);
+  });
+});
+
+describe("what optional says setup() receives", () => {
+  it("answers from the options it can read, and widens when it cannot", () => {
+    // Options a caller holds in a variable decide nothing at compile time:
+    // this one is optional and the next one is not, and both have the type
+    // the parameter list gave them.
+    const held: NumberParamOptions = { optional: true };
+
+    const schema = defineParams({
+      plain: param.number(1),
+      bounded: param.number(1, { min: 0 }),
+      notOptional: param.number(1, { optional: false }),
+      optional: param.number(1, { optional: true }),
+      fromVariable: param.number(1, held),
+    });
+    type Params = ParamsOf<typeof schema>;
+
+    expectTypeOf<Params["plain"]>().toEqualTypeOf<number>();
+    expectTypeOf<Params["bounded"]>().toEqualTypeOf<number>();
+    expectTypeOf<Params["notOptional"]>().toEqualTypeOf<number>();
+    expectTypeOf<Params["optional"]>().toEqualTypeOf<number | undefined>();
+    // Wider than this call needs, and never narrower than what it can hand
+    // over: the alternative is a signature that promises a number and passes
+    // nothing.
+    expectTypeOf<Params["fromVariable"]>().toEqualTypeOf<number | undefined>();
+
+    expect(defaultParams(schema)).toEqual({
+      plain: 1,
+      bounded: 1,
+      notOptional: 1,
+      optional: 1,
+      fromVariable: 1,
+    });
   });
 });

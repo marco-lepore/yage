@@ -28,7 +28,14 @@ export interface AssetFrames {
  * Which control a parameter needs. A closed set: an authoring tool switches on
  * it, and a new kind is meant to fail that switch to compile.
  */
-export type ParamKindName = "asset" | "entityRef";
+export type ParamKindName =
+  | "asset"
+  | "entityRef"
+  | "number"
+  | "integer"
+  | "boolean"
+  | "string"
+  | "select";
 
 /**
  * @internal What a parameter kind may need beyond its own JSON value while
@@ -67,8 +74,25 @@ export interface ParamKind<T> {
    * catalog type ids. Absent for every other kind.
    */
   readonly types?: readonly string[];
-  /** For a reference parameter, whether "no target" is a value here. */
+  /**
+   * Whether `null` is a value here. Every kind can say so: a reference holds
+   * no target, a number or a name holds nothing at all. A missing key is still
+   * an error, so an absent value is written rather than implied.
+   */
   readonly optional?: boolean;
+  /** Smallest accepted number, for `number` and `integer`. */
+  readonly min?: number;
+  /** Largest accepted number, for `number` and `integer`. */
+  readonly max?: number;
+  /**
+   * How far one press of a control moves a `number`. Authoring data: a value
+   * off the step is legal.
+   */
+  readonly step?: number;
+  /** For a `string`, whether the value is expected to span several lines. */
+  readonly multiline?: boolean;
+  /** For a `select`, the values it accepts, in the order they are offered. */
+  readonly options?: readonly string[];
   /**
    * The value the editor writes into a new placement. Loading never fills it
    * in: a placement that omits the field fails validation, so changing this
@@ -124,10 +148,30 @@ export type ParamFieldDescription = {
    * ids. A picker offers the level's placements of those types.
    */
   readonly types?: readonly string[];
-  /** For a reference field, whether it may hold no target. */
+  /**
+   * Whether the field may hold `null`. A control for an optional field needs a
+   * way to empty it; a required one has none.
+   */
   readonly optional?: boolean;
-  /** `null` for a reference field, which starts with nothing chosen. */
-  readonly defaultValue: string | null;
+  /** Smallest accepted number, for a `number` or `integer` field. */
+  readonly min?: number;
+  /** Largest accepted number, for a `number` or `integer` field. */
+  readonly max?: number;
+  /**
+   * How far one press of a control moves a `number` field. A typed value off
+   * the step is accepted, so this sizes the control's steps and validates
+   * nothing.
+   */
+  readonly step?: number;
+  /** For a `string` field, whether to offer several lines to type into. */
+  readonly multiline?: boolean;
+  /** For a `select` field, the values it accepts, in the order to offer them. */
+  readonly options?: readonly string[];
+  /**
+   * The value a new placement is written with. `null` for a reference field,
+   * which starts with nothing chosen.
+   */
+  readonly defaultValue: JsonValue;
 };
 
 /** The decoded parameter object a schema produces — a `setup()` signature. */
@@ -154,6 +198,11 @@ type ParamKindDefinition<T> = {
   readonly frames?: AssetFrames;
   readonly types?: readonly string[];
   readonly optional?: boolean;
+  readonly min?: number;
+  readonly max?: number;
+  readonly step?: number;
+  readonly multiline?: boolean;
+  readonly options?: readonly string[];
   readonly defaultValue: JsonValue;
   readonly validate: (value: JsonValue) => readonly string[];
   readonly decode: (value: JsonValue, context: ParamDecodeContext) => T;
@@ -172,6 +221,11 @@ class BuiltInParamKind<T> implements ParamKind<T> {
   readonly frames?: AssetFrames;
   readonly types?: readonly string[];
   readonly optional?: boolean;
+  readonly min?: number;
+  readonly max?: number;
+  readonly step?: number;
+  readonly multiline?: boolean;
+  readonly options?: readonly string[];
   readonly defaultValue: JsonValue;
   readonly validate: (value: JsonValue) => readonly string[];
   readonly decode: (value: JsonValue, context: ParamDecodeContext) => T;
@@ -185,6 +239,13 @@ class BuiltInParamKind<T> implements ParamKind<T> {
     if (definition.frames !== undefined) this.frames = definition.frames;
     if (definition.types !== undefined) this.types = definition.types;
     if (definition.optional !== undefined) this.optional = definition.optional;
+    if (definition.min !== undefined) this.min = definition.min;
+    if (definition.max !== undefined) this.max = definition.max;
+    if (definition.step !== undefined) this.step = definition.step;
+    if (definition.multiline !== undefined) {
+      this.multiline = definition.multiline;
+    }
+    if (definition.options !== undefined) this.options = definition.options;
     this.defaultValue = definition.defaultValue;
     this.validate = definition.validate;
     this.decode = definition.decode;

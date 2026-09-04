@@ -87,7 +87,12 @@ export function describeParams(
       ...(kind.frames === undefined ? {} : { frames: kind.frames }),
       ...(kind.types === undefined ? {} : { types: kind.types }),
       ...(kind.optional === undefined ? {} : { optional: kind.optional }),
-      defaultValue: kind.defaultValue as string | null,
+      ...(kind.min === undefined ? {} : { min: kind.min }),
+      ...(kind.max === undefined ? {} : { max: kind.max }),
+      ...(kind.step === undefined ? {} : { step: kind.step }),
+      ...(kind.multiline === undefined ? {} : { multiline: kind.multiline }),
+      ...(kind.options === undefined ? {} : { options: kind.options }),
+      defaultValue: kind.defaultValue,
     });
   });
   return Object.freeze(descriptions);
@@ -103,9 +108,9 @@ export function describeParams(
  * reason, rather than falling back to the default.
  *
  * Each value is the declaration's own `defaultValue` rather than a copy of it.
- * Every parameter kind defaults to a string or `null` today, so nothing shares
- * mutable state; a kind whose default is an object or an array has to copy
- * here before two placements can hold one.
+ * Every parameter kind defaults to a primitive or `null` today, so nothing
+ * shares mutable state; a kind whose default is an object or an array has to
+ * copy here before two placements can hold one.
  */
 export function defaultParams(schema: ParamsSchema<ParamFields>): JsonObject {
   const params = Object.create(null) as Record<string, JsonValue>;

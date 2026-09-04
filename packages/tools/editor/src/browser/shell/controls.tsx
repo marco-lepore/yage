@@ -1,7 +1,9 @@
 import {
+  useEffect,
   useId,
   useRef,
   useState,
+  type ChangeEvent as ReactChangeEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -99,6 +101,11 @@ export interface TextFieldProps {
    * and the digits-only pad has no decimal separator.
    */
   readonly numeric?: boolean | undefined;
+  /**
+   * Offer several lines to type into rather than one. Enter then types a
+   * newline, so leaving the box is what commits.
+   */
+  readonly multiline?: boolean | undefined;
   /** A control rendered inside the label, after the box. */
   readonly children?: ReactNode;
   /**
@@ -203,6 +210,12 @@ export interface TextFieldCompletion {
 /** How many matches the list draws before it asks for a narrower filter. */
 const MAX_COMPLETION_ROWS = 50;
 
+/** The element a text field types into: one line, or several. */
+type EntryElement = HTMLInputElement | HTMLTextAreaElement;
+
+/** How tall a multiline box starts. It grows by the browser's own handle. */
+const MULTILINE_ROWS = 4;
+
 /**
  * Every text box in the shell.
  *
@@ -221,13 +234,16 @@ const MAX_COMPLETION_ROWS = 50;
  * A box given {@link TextFieldStepping} also changes by Up and Down and by
  * dragging its label. A completion list owns both arrow keys, so a box given
  * both leaves them to the list and steps only by its label.
+ *
+ * A `multiline` box is a text area: Enter types a newline there, so leaving
+ * the box is what commits, and Escape still puts back what it was showing.
  */
 export function TextField(props: TextFieldProps): React.JSX.Element {
   const [draft, setDraft] = useState<string | undefined>();
   const [refused, setRefused] = useState<string | undefined>();
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<number | undefined>();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<EntryElement | null>(null);
   const scrub = useRef<Scrub | undefined>(undefined);
   /** Whether the drag that just ended took a step, so its click is not a click. */
   const dragged = useRef(false);
@@ -336,8 +352,8 @@ export function TextField(props: TextFieldProps): React.JSX.Element {
     stepping.onStep?.(next);
     return next;
   };
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>): void => {
-    if (event.key === "Enter") {
+  const onKeyDown = (event: ReactKeyboardEvent<EntryElement>): void => {
+    if (event.key === "Enter" && props.multiline !== true) {
       event.preventDefault();
       const picked = active === undefined ? undefined : rows[active];
       if (picked === undefined) commit();
@@ -478,6 +494,46 @@ export function TextField(props: TextFieldProps): React.JSX.Element {
           onClick: cancelActivation,
         };
 
+  /**
+   * What the box needs whether it is one line or several. Written once so the
+   * two elements cannot drift apart; only `type` and the row count differ.
+   */
+  const entryProps = {
+    ref: (node: EntryElement | null) => {
+      inputRef.current = node;
+    },
+    ...(props.numeric === true ? { inputMode: "decimal" as const } : {}),
+    ...(completion === undefined
+      ? {}
+      : {
+          role: "combobox",
+          "aria-autocomplete": "list" as const,
+          "aria-expanded": open,
+          "aria-controls": listId,
+          ...(open && active !== undefined
+            ? { "aria-activedescendant": `${listId}-${String(active)}` }
+            : {}),
+        }),
+    "data-testid": props.testId,
+    value: draft ?? props.value,
+    placeholder: props.placeholder,
+    disabled,
+    "aria-invalid": props.invalid === true || refused !== undefined,
+    spellCheck: false,
+    onChange: (event: ReactChangeEvent<EntryElement>) => {
+      setDraft(event.currentTarget.value);
+      // The reason goes as soon as the text it was about does.
+      setRefused(undefined);
+      setActive(undefined);
+      if (completion !== undefined && !open) show();
+    },
+    onBlur: () => {
+      commit();
+      close();
+    },
+    onKeyDown,
+  };
+
   return (
     <>
       <label className={props.className ?? "ye-field"} title={props.title}>
@@ -492,40 +548,11 @@ export function TextField(props: TextFieldProps): React.JSX.Element {
         >
           {props.label}
         </span>
-        <input
-          ref={inputRef}
-          type="text"
-          {...(props.numeric === true ? { inputMode: "decimal" as const } : {})}
-          {...(completion === undefined
-            ? {}
-            : {
-                role: "combobox",
-                "aria-autocomplete": "list" as const,
-                "aria-expanded": open,
-                "aria-controls": listId,
-                ...(open && active !== undefined
-                  ? { "aria-activedescendant": `${listId}-${String(active)}` }
-                  : {}),
-              })}
-          data-testid={props.testId}
-          value={draft ?? props.value}
-          placeholder={props.placeholder}
-          disabled={disabled}
-          aria-invalid={props.invalid === true || refused !== undefined}
-          spellCheck={false}
-          onChange={(event) => {
-            setDraft(event.currentTarget.value);
-            // The reason goes as soon as the text it was about does.
-            setRefused(undefined);
-            setActive(undefined);
-            if (completion !== undefined && !open) show();
-          }}
-          onBlur={() => {
-            commit();
-            close();
-          }}
-          onKeyDown={onKeyDown}
-        />
+        {props.multiline === true ? (
+          <textarea {...entryProps} rows={MULTILINE_ROWS} />
+        ) : (
+          <input {...entryProps} type="text" />
+        )}
         {completion === undefined ? null : (
           <button
             type="button"
@@ -666,5 +693,53 @@ export function Select(props: SelectProps): React.JSX.Element {
         </option>
       ))}
     </select>
+  );
+}
+
+export interface CheckboxProps {
+  /** Read by assistive technology; the control carries no visible label. */
+  readonly label: string;
+  readonly checked: boolean;
+  /**
+   * No value at all, which is neither on nor off. Drawn as the box's own mixed
+   * state, so an optional field that holds nothing does not read as `false`.
+   */
+  readonly mixed?: boolean | undefined;
+  readonly onChange: (checked: boolean) => void;
+  readonly testId: string;
+  readonly disabled?: boolean | undefined;
+  readonly invalid?: boolean | undefined;
+}
+
+/**
+ * Every switch in the shell.
+ *
+ * It gives the keyboard back on each change for the reason {@link Select}
+ * does: a focused box counts as text entry, so it would swallow every
+ * single-letter shortcut, and Space would toggle it rather than pan the view.
+ */
+export function Checkbox(props: CheckboxProps): React.JSX.Element {
+  const box = useRef<HTMLInputElement>(null);
+  // `indeterminate` is a property with no attribute behind it, so it is set
+  // here rather than in the markup.
+  useEffect(() => {
+    if (box.current) box.current.indeterminate = props.mixed === true;
+  });
+  return (
+    <input
+      ref={box}
+      type="checkbox"
+      className="ye-checkbox"
+      data-testid={props.testId}
+      aria-label={props.label}
+      aria-invalid={props.invalid === true}
+      disabled={props.disabled ?? false}
+      checked={props.checked}
+      onChange={(event) => {
+        const input = event.currentTarget;
+        props.onChange(input.checked);
+        input.blur();
+      }}
+    />
   );
 }

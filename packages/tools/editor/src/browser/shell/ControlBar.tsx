@@ -6,6 +6,7 @@ import type {
   PoseComponent,
 } from "../store/index.js";
 import { TextField, trimmedOrNull, type StepIntent } from "./controls.js";
+import { rounded } from "./numbers.js";
 import { useEditorState } from "./useEditorSlice.js";
 
 export interface ControlBarProps {
@@ -228,11 +229,6 @@ const TRANSFORM_FIELDS: readonly TransformFieldSpec[] = [
     fine: 0.01,
   },
 ];
-
-/** At most four decimals, trailing zeros dropped, and no negative zero. */
-function rounded(value: number): number {
-  return Number(value.toFixed(4));
-}
 
 function shownNumber(value: number): string {
   return String(rounded(value));
