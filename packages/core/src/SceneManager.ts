@@ -38,6 +38,15 @@ interface TransitionRun {
   finalize: (() => void) | undefined;
 }
 
+/** A scene's `preload` manifest load started by {@link SceneManager.preload}. */
+interface PreloadRun {
+  run: Promise<void>;
+  /** Every caller's `onProgress`; the one load reports to all of them. */
+  listeners: Array<(ratio: number) => void>;
+  /** Last ratio reported, so a caller joining mid-load starts from it. */
+  ratio: number;
+}
+
 /** Stack-based scene manager with push/pop/replace semantics. */
 export class SceneManager {
   private stack: Scene[] = [];
@@ -53,12 +62,13 @@ export class SceneManager {
   private _destroyed = false;
 
   /**
-   * Scenes whose `preload` manifest has already been loaded and counted by
-   * {@link preload}. `_preloadScene` consumes the mark so the handles are
-   * taken once, by one owner.
+   * Per scene, the manifest load that {@link preload} started and no push has
+   * claimed yet. Presence is the mark: a later `preload` joins the entry
+   * instead of taking a second reference set, and `_preloadScene` deletes it
+   * to take over its references instead of loading again. A load that
+   * rejects removes itself — it counted nothing, so there is nothing to claim.
    */
-  private readonly _preloadedScenes = new WeakSet<Scene>();
-  private readonly _preloadsInFlight = new WeakMap<Scene, Promise<void>>();
+  private readonly _preloads = new WeakMap<Scene, PreloadRun>();
 
   private _autoPauseOnBlur = false;
   private _isBlurred = false;
@@ -302,7 +312,7 @@ export class SceneManager {
    *
    * `onProgress` runs alongside the scene's own `onProgress` hook, both
    * reporting 0 → 1. A call that joins one already running for the same
-   * scene awaits it and reports no progress of its own.
+   * scene receives the ratio reached so far, then every later one.
    *
    * A scene preloaded and never pushed keeps its references until
    * `assets.clear()` — nothing later releases them on its behalf.
@@ -312,22 +322,43 @@ export class SceneManager {
     onProgress?: (ratio: number) => void,
   ): Promise<void> {
     scene._setContext(this._context);
-    // The mark from an earlier call is still unclaimed, so its references
-    // cover this one; loading again would leave a set nothing releases.
-    if (this._preloadedScenes.has(scene)) return;
-    // Same for a call still running: join it. Two calls that both loaded
-    // would take two reference sets and leave one mark for the push to claim.
-    const inFlight = this._preloadsInFlight.get(scene);
-    if (inFlight) return inFlight;
-    const run = this._loadSceneAssets(scene, onProgress).then(() => {
-      this._preloadedScenes.add(scene);
-    });
-    this._preloadsInFlight.set(scene, run);
-    try {
-      await run;
-    } finally {
-      this._preloadsInFlight.delete(scene);
+    const callerInfo = {
+      kind: "SceneManager.preload onProgress callback",
+      scene: scene.name,
+    };
+    // An earlier call's references, running or resolved, are still unclaimed
+    // and cover this one; loading again would leave a set nothing releases.
+    const joined = this._preloads.get(scene);
+    if (joined) {
+      if (onProgress) {
+        this._invokeCallback(() => onProgress(joined.ratio), callerInfo);
+        joined.listeners.push(onProgress);
+      }
+      return joined.run;
     }
+    const entry: PreloadRun = {
+      run: Promise.resolve(),
+      listeners: onProgress ? [onProgress] : [],
+      ratio: 0,
+    };
+    entry.run = this._loadSceneAssets(scene, (ratio) => {
+      entry.ratio = ratio;
+      for (const listener of entry.listeners) {
+        this._invokeCallback(() => listener(ratio), callerInfo);
+      }
+    }).then(
+      () => {
+        // A manifest with nothing to load reports no ratio at all; a caller
+        // joining after that still learns the load is complete.
+        entry.ratio = 1;
+      },
+      (err: unknown) => {
+        this._preloads.delete(scene);
+        throw err;
+      },
+    );
+    this._preloads.set(scene, entry);
+    await entry.run;
   }
 
   /**
@@ -522,36 +553,30 @@ export class SceneManager {
   }
 
   private async _preloadScene(scene: Scene): Promise<void> {
-    // `preload` already loaded and counted this manifest; acquiring it again
-    // here would leave two references for one owner to release.
-    if (this._preloadedScenes.delete(scene)) return;
-    // A prefetch still running counts as that owner too: wait for it and take
-    // the mark it leaves, rather than loading the manifest a second time.
-    const inFlight = this._preloadsInFlight.get(scene);
-    if (inFlight) {
-      await inFlight;
-      this._preloadedScenes.delete(scene);
+    // A prefetch, running or done, already counted this manifest; loading
+    // again would leave two reference sets for one owner to release. It is
+    // claimed before the await so a `preload` arriving from here on starts a
+    // set of its own instead of joining one this scene now owns.
+    const prefetch = this._preloads.get(scene);
+    if (prefetch) {
+      this._preloads.delete(scene);
+      await prefetch.run;
       return;
     }
     await this._loadSceneAssets(scene);
   }
 
+  /** Load the manifest. `onProgress` runs unwrapped: `preload` attributes it. */
   private async _loadSceneAssets(
     scene: Scene,
     onProgress?: (ratio: number) => void,
   ): Promise<void> {
     if (!scene.preload?.length || !this.assetManager) return;
     const hookInfo = { kind: "Scene onProgress hook", scene: scene.name };
-    const callerInfo = {
-      kind: "SceneManager.preload onProgress callback",
-      scene: scene.name,
-    };
     await this.assetManager.loadAll(scene.preload, (ratio) => {
       const hook = scene.onProgress;
       if (hook) this._invokeCallback(() => hook.call(scene, ratio), hookInfo);
-      if (onProgress) {
-        this._invokeCallback(() => onProgress(ratio), callerInfo);
-      }
+      onProgress?.(ratio);
     });
   }
 

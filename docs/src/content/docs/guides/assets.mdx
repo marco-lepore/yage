@@ -200,7 +200,16 @@ frees everything.
 
 A `loadAll` that rejects takes no references at all. Its already-loaded
 siblings stay cached and uncounted, so a retry counts each of them once and
-one `unload` per handle still frees them.
+one `unload` per handle still frees them. An asset whose loader loads others,
+such as a Tiled map and its tileset images, holds them for as long as it is
+cached; freeing the map entry releases them.
+
+Never `unload` the handles of a `loadAll` call that rejected. `unload` frees
+an uncounted entry outright, so cleaning up a failed manifest handle by handle
+can free an asset another scene still holds: scene A holds `X` at one
+reference, scene B's `loadAll([X, Y])` fails so B takes none, and B's cleanup
+`unload(X)` drops A's only reference. Retry the call, or leave the entries to
+`clear()`.
 
 ### One file path, one declaration form
 

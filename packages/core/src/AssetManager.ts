@@ -66,9 +66,10 @@ export class AssetManager {
    * within one call count once, and a call that rejects counts nothing.
    *
    * A loader that loads assets of its own — a Tiled map loads its tileset
-   * images — counts those as soon as its own load succeeds. A sibling failing
-   * in the same call leaves them counted with nothing to release them, until
-   * the retry hands their owner its reference or `clear()` frees everything.
+   * images — holds one reference on each of them for as long as its own
+   * entry is cached, and freeing that entry releases them. A map cached by a
+   * call that then rejected still owns its images: the `unload` that follows
+   * a retry frees both, and so does one `unload` of the uncounted map.
    *
    * A second handle for a path already loaded under a different `data` reuses
    * the first load and warns: the cache is keyed by type and path alone.
@@ -115,7 +116,8 @@ export class AssetManager {
   /**
    * Release one reference to an asset. The loader's `unload` runs and the cache
    * entry is dropped only when the last reference is released; earlier calls
-   * just decrement. A no-op for handles that were never loaded.
+   * just decrement. An entry left uncounted by a `loadAll` that rejected is
+   * freed by its first `unload`. A no-op for handles that were never loaded.
    */
   unload(handle: AssetHandle<unknown>): void {
     const key = this.key(handle);
@@ -135,14 +137,19 @@ export class AssetManager {
 
   /** Unload every cached asset outright, ignoring reference counts. */
   clear(): void {
-    for (const [key, entry] of this.cache) {
+    // Empty the maps before any loader runs. A loader that holds assets of its
+    // own — a Tiled map on its tileset images — releases them through
+    // `unload` from inside its own `unload`; with the images still cached,
+    // that nested call would free an image this loop has already freed.
+    const entries = [...this.cache];
+    this.cache.clear();
+    this.refCounts.clear();
+    this.warnedConflicts.clear();
+    for (const [key, entry] of entries) {
       const [type, ...pathParts] = key.split(":");
       const path = pathParts.join(":");
       this.loaders.get(type!)?.unload?.(path, entry.asset);
     }
-    this.cache.clear();
-    this.refCounts.clear();
-    this.warnedConflicts.clear();
   }
 
   /** Add one reference to a cache key. */

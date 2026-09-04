@@ -196,6 +196,44 @@ describe("Scene preload integration", () => {
     expect(am.has(FakeAsset)).toBe(false);
   });
 
+  it("a preload joining one still running receives its progress", async () => {
+    const { manager, am } = setup();
+    let release!: () => void;
+    am.registerLoader("fake", {
+      load: (path: string) =>
+        new Promise<string>((resolve) => {
+          release = () => resolve(`loaded:${path}`);
+        }),
+    });
+    const scene = new PreloadScene();
+    const owner: number[] = [];
+    const joiner: number[] = [];
+
+    // The menu prefetches the level; a LoadingScene starts while it loads.
+    const prefetch = manager.preload(scene, (ratio) => owner.push(ratio));
+    const join = manager.preload(scene, (ratio) => joiner.push(ratio));
+    expect(joiner).toEqual([0]);
+    release();
+    await Promise.all([prefetch, join]);
+
+    expect(owner).toEqual([0, 1]);
+    expect(joiner).toEqual([0, 1]);
+    await manager.push(scene);
+    am.unload(FakeAsset);
+    expect(am.has(FakeAsset)).toBe(false);
+  });
+
+  it("a preload joining one already finished reports completion", async () => {
+    const { manager } = setup();
+    const scene = new PreloadScene();
+    const joiner: number[] = [];
+
+    await manager.preload(scene);
+    await manager.preload(scene, (ratio) => joiner.push(ratio));
+
+    expect(joiner).toEqual([1]);
+  });
+
   it("attributes a throwing caller callback to the caller, not the scene", async () => {
     const { manager, ctx } = setup();
     const logger = new Logger({ level: LogLevel.Error });

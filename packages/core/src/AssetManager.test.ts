@@ -218,6 +218,25 @@ describe("AssetManager", () => {
     expect(loader.unload).toHaveBeenCalledTimes(2);
   });
 
+  it("clear() frees an asset held by another asset's loader once", async () => {
+    const image = new AssetHandle<string>("texture", "tiles.png");
+    const imageLoader = fakeLoader((p) => `tex:${p}`);
+    am.registerLoader("texture", imageLoader);
+    // A map loader that holds its tileset image and releases it on unload.
+    am.registerLoader("map", {
+      load: async (path: string) => {
+        await am.loadAll([image]);
+        return `map:${path}`;
+      },
+      unload: () => am.unload(image),
+    });
+
+    await am.loadAll([new AssetHandle<string>("map", "level.json")]);
+    am.clear();
+
+    expect(imageLoader.unload).toHaveBeenCalledTimes(1);
+  });
+
   it("counts nothing for a failed loadAll, so a retry frees with one unload", async () => {
     let failing = true;
     const loader: AssetLoader<string> = {

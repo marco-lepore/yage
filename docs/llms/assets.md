@@ -110,10 +110,14 @@ for the second. `clear()` ignores the counts and frees everything.
 
 A `loadAll` that rejects takes no references at all: its already-loaded
 siblings stay cached and uncounted, so a retry counts each of them once. An
-asset whose loader loads others — a Tiled map loads its tileset images — is
-the exception: those inner loads count as soon as the map itself loads, and a
-sibling failing in the same call leaves them counted until the retry gives
-them their owner.
+asset whose loader loads others — a Tiled map loads its tileset images — holds
+them for as long as it is cached; freeing the map entry releases them.
+
+Never `unload` the handles of a `loadAll` call that rejected. `unload` frees an
+uncounted entry outright, so cleaning up a failed manifest handle by handle can
+free an asset another scene still holds: scene A holds `X` at one reference,
+scene B's `loadAll([X, Y])` fails so B takes none, and B's cleanup `unload(X)`
+drops A's only reference. Retry the call, or leave the entries to `clear()`.
 
 ### One file path, one declaration form
 

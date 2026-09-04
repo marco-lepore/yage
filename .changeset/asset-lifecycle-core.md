@@ -24,6 +24,14 @@ A scene's preloaded assets have one owner, so the documented per-level unload fr
   by type and path, so the second declaration's options were dropped in
   silence — `webFont(p, { family })` followed by `webFont(p, { family, bitmap })`
   loaded once with no atlas baked and no warning. The first load still wins.
+- A second request for an asset already loading joins that load instead of
+  starting its own. A rejected `loadAll` leaves its slower siblings loading, so
+  the retry that follows started a second load for one of them: two completions
+  writing one cache slot, and the asset that lost never reaching `unload`.
+- `clear()` empties its bookkeeping before running any loader, so an asset held
+  by another asset's loader — a Tiled map's tileset images — is freed once. The
+  map's `unload` releases its images from inside the same pass that had already
+  freed them, which unloaded each image twice.
 - Attribution: a throw from `Scene.onProgress`, from a `LoadingScene` target
   factory, or from an `onLoadError` hook is recorded against its source and
   readable through `Inspector.getErrors().callbackErrors`. Propagation is
