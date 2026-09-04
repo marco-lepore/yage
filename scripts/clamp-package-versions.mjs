@@ -5,42 +5,14 @@
  * defaults. Intended to run right after `changeset version` in the
  * `version-packages` script.
  *
- * Corrections 1 to 3 cover the independently versioned packages under
- * `packages/addons/*` and `packages/tools/*`, and are a consequence of one
- * changesets behavior: these packages declare engine packages as
- * `peerDependencies` with a capped range (e.g. `>=0.9.0 <0.10.0`), and when an
- * engine minor pushes that peer out of range changesets force-bumps the
- * dependent. Correction 4 covers the engine packages themselves.
+ * YAGE keeps breaking releases on the next minor while a package is below
+ * 1.0. Changesets can generate a major when an engine peer leaves its capped
+ * range, and propagate that major through a fixed version group.
  *
- *   1. Version: changesets bumps an out-of-range peer-dependent by `major`.
- *      On a pre-1.0 package `semver.inc("0.3.0", "major")` is `1.0.0`, so every
- *      one of them jumps to 1.0.0 regardless of its current 0.x version. In
- *      pre-1.0 semver a breaking change is a *minor* bump, so we clamp that
- *      back to `0.(minor+1).0` — and rewrite the generated CHANGELOG headings
- *      (the package's own, and the "Updated dependencies" lines in consumers)
- *      so no release note cites a version that will never be published.
- *      (See packages/addons/AGENTS.md — "never propose 1.0.0".)
- *
- *   2. Peer range: changesets rewrites the capped `>=0.9.0 <0.10.0` to an
- *      open-ended `>=0.10.0`, dropping the upper bound the package relies on
- *      (each engine minor is breaking pre-1.0). We restore the cap, re-flooring
- *      to the engine's new version: `>=0.10.0 <0.11.0`.
- *
- *   3. Engine dev-dependency floors must stay open (`>=<engine>`) per policy so
- *      the current workspace and the next engine minor both resolve. We
- *      normalize them, in case a package authored a capped or caret range that
- *      changesets carried forward.
- *
- *   4. Engine-on-engine peer ranges under `packages/*` get the same treatment
- *      as the addons — floored at the engine's version, capped below the next
- *      minor. Changesets leaves a peer range that the new version already
- *      satisfies, so a hand-written window stays open across minors and lets
- *      npm resolve two engine minors into one install.
- *
- * For corrections 1 to 3 only packages whose version actually changed this
- * release are touched, so a no-op release stays a no-op. Correction 4 compares
- * against the range already written and skips a manifest that needs no change,
- * so it is a no-op on the same terms.
+ * Versions are corrected first, for fixed groups (including create-yage) and
+ * independently versioned addons and tools. Dependency ranges and generated
+ * changelogs then use those final versions. Engine peers are capped below the
+ * next breaking release; addon and tool engine dev-dependencies stay open.
  *
  * The "previous" version of each package is read from a git ref (default
  * `HEAD`, which during `changeset version` is the pre-bump commit). Override
@@ -68,21 +40,63 @@ const DEP_SECTIONS = ["dependencies", "devDependencies", "peerDependencies"];
 /** Directories under packages/ whose packages are versioned independently. */
 const GROUPS = ["addons", "tools"];
 
-// Every engine package under packages/*, by name: current workspace version,
-// and the manifest to write back to.
-const engineVersions = new Map();
-const enginePackagePaths = new Map();
-for (const entry of readdirSync(join(repoRoot, "packages"))) {
-  const pkgPath = join(repoRoot, "packages", entry, "package.json");
-  if (!existsSync(pkgPath)) continue;
-  const pkg = readJson(pkgPath);
-  if (pkg.name?.startsWith(ENGINE_SCOPE)) {
-    engineVersions.set(pkg.name, pkg.version);
-    enginePackagePaths.set(pkg.name, pkgPath);
+assertBaseRefResolves(baseRef);
+
+const packagePaths = workspacePackageJsons();
+const packagesByName = new Map(
+  packagePaths.map((path) => [readJson(path).name, path]),
+);
+const independent = independentPackages();
+const clamped = new Map(); // package name -> { generated, final }
+
+// Fixed members share the next minor of the group's highest previous version,
+// including newly added members that have no version at the base ref.
+const { fixed } = readJson(join(repoRoot, ".changeset", "config.json"));
+for (const names of fixed) {
+  const paths = names.map((name) => {
+    const path = packagesByName.get(name);
+    if (!path)
+      throw new Error(`Fixed release package "${name}" was not found.`);
+    return path;
+  });
+  const previous = paths
+    .map((path) => versionAtRef(baseRef, rel(path)))
+    .filter((version) => version !== null);
+  if (
+    previous.length === 0 ||
+    previous.some((version) => major(version) !== 0)
+  ) {
+    continue;
+  }
+  if (!paths.some((path) => major(readJson(path).version) >= 1)) continue;
+  const nextMinor =
+    Math.max(...previous.map((v) => Number(v.split(".")[1]))) + 1;
+  for (const path of paths) clampVersion(path, `0.${nextMinor}.0`);
+}
+
+for (const { dir, relPath } of independent) {
+  const path = join(dir, "package.json");
+  const previous = versionAtRef(baseRef, relPath);
+  if (
+    previous !== null &&
+    major(previous) === 0 &&
+    major(readJson(path).version) >= 1
+  ) {
+    clampVersion(path, `0.${Number(previous.split(".")[1]) + 1}.0`);
   }
 }
 
-assertBaseRefResolves(baseRef);
+// Engine ranges must use the corrected versions, not Changesets' output.
+const enginePackagePaths = new Map(
+  [...packagesByName].filter(
+    ([name, path]) =>
+      name.startsWith(ENGINE_SCOPE) &&
+      dirname(dirname(path)) === join(repoRoot, "packages"),
+  ),
+);
+const engineVersions = new Map(
+  [...enginePackagePaths].map(([name, path]) => [name, readJson(path).version]),
+);
 
 // Cap every engine-on-engine peer range to the release's minor line.
 //
@@ -116,25 +130,15 @@ for (const [name, pkgPath] of enginePackagePaths) {
   }
 }
 
-const clamped = new Map(); // package name -> { generated, final }
-
-for (const { dir, relPath } of independentPackages()) {
+for (const { dir, relPath } of independent) {
   const pkgPath = join(dir, "package.json");
   const pkg = readJson(pkgPath);
-  const generated = pkg.version; // what changeset version wrote
   const previous = versionAtRef(baseRef, relPath);
 
   // Untouched this release (or brand-new package) — leave it alone.
-  if (previous === null || generated === previous) continue;
+  if (previous === null || pkg.version === previous) continue;
 
-  // 1. Clamp an unwanted pre-1.0 -> 1.x graduation back to a 0.x minor.
-  let finalVersion = generated;
-  const [prevMajor, prevMinor] = previous.split(".").map(Number);
-  if (prevMajor === 0 && major(generated) >= 1) {
-    finalVersion = `0.${prevMinor + 1}.0`;
-  }
-
-  // 2. Restore the capped engine peer ranges changesets opened up.
+  // Engine peer ranges cover one breaking release line.
   const peers = pkg.peerDependencies ?? {};
   for (const name of Object.keys(peers)) {
     const engineVersion = engineVersions.get(name);
@@ -142,7 +146,7 @@ for (const { dir, relPath } of independentPackages()) {
     peers[name] = `>=${engineVersion} <${nextBreaking(engineVersion)}`;
   }
 
-  // 3. Keep engine dev-dependency floors open per policy.
+  // Engine dev-dependency floors stay open per policy.
   const devDeps = pkg.devDependencies ?? {};
   for (const name of Object.keys(devDeps)) {
     const engineVersion = engineVersions.get(name);
@@ -150,25 +154,15 @@ for (const { dir, relPath } of independentPackages()) {
     devDeps[name] = `>=${engineVersion}`;
   }
 
-  if (finalVersion !== generated) {
-    rewriteChangelogHeading(dir, generated, finalVersion);
-  }
-  pkg.version = finalVersion;
   writeJson(pkgPath, pkg);
-  clamped.set(pkg.name, { generated, final: finalVersion });
-
-  const note =
-    finalVersion === generated
-      ? "peers re-floored"
-      : `${generated} → ${finalVersion}`;
-  console.log(`  ${pkg.name}: ${note}`);
+  console.log(`  ${pkg.name}: peers re-floored`);
 }
 
 // Re-point every workspace dependent at the clamped versions — changesets
 // wrote e.g. "^1.0.0" into examples/e2e when it graduated them — and fix the
 // version each dependent's generated changelog cites.
 if (clamped.size > 0) {
-  for (const pkgPath of workspacePackageJsons()) {
+  for (const pkgPath of packagePaths) {
     const pkg = readJson(pkgPath);
     let touched = false;
     for (const section of DEP_SECTIONS) {
@@ -179,7 +173,17 @@ if (clamped.size > 0) {
         const range = deps[name];
         if (/^(workspace|file|link):/.test(range)) continue; // local protocol — leave it
         const prefix = range.match(/^[\^~]/)?.[0] ?? "^";
-        const desired = `${prefix}${clamped.get(name).final}`;
+        const version = clamped.get(name).final;
+        const isEngine = engineVersions.has(name);
+        const isIndependent = independent.some(
+          ({ dir }) => dir === dirname(pkgPath),
+        );
+        const desired =
+          isEngine && section === "peerDependencies"
+            ? `>=${version} <${nextBreaking(version)}`
+            : isEngine && section === "devDependencies" && isIndependent
+              ? `>=${version}`
+              : `${prefix}${version}`;
         if (range !== desired) {
           deps[name] = desired;
           touched = true;
@@ -201,6 +205,16 @@ console.log(
 );
 
 // --- helpers ---------------------------------------------------------------
+
+function clampVersion(path, version) {
+  const pkg = readJson(path);
+  if (pkg.version === version) return;
+  clamped.set(pkg.name, { generated: pkg.version, final: version });
+  rewriteChangelogHeading(dirname(path), pkg.version, version);
+  console.log(`  ${pkg.name}: ${pkg.version} → ${version}`);
+  pkg.version = version;
+  writeJson(path, pkg);
+}
 
 function major(version) {
   return Number(version.split(".")[0]);
