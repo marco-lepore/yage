@@ -12,8 +12,11 @@ export type {
   IntegerParamOptions,
   LevelAssetDescriptor,
   NumberParamOptions,
+  PointParamOptions,
+  PointSpace,
   SelectParamOptions,
   StringParamOptions,
+  Vec2ParamOptions,
 } from "./params/kinds.js";
 export type {
   AssetFrames,

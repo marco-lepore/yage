@@ -22,6 +22,7 @@ import type {
   EditorFileState,
   EditorState,
   EditorViewState,
+  ParamDrag,
   PendingCommand,
   PoseDraft,
   ReferencePick,
@@ -216,6 +217,16 @@ export class EditorStore {
     const draft = this.state.poseDraft;
     if (draft) this.dispatch({ type: "pose-draft-dropped" });
     return draft;
+  }
+
+  /**
+   * Returns the parameter handle being dragged and clears it, the way
+   * {@link takeGesture} does — so one drag cannot become two commands.
+   */
+  takeParamDrag(): ParamDrag | undefined {
+    const drag = this.state.paramDrag;
+    if (drag) this.dispatch({ type: "param-drag-ended" });
+    return drag;
   }
 
   /**
@@ -696,8 +707,10 @@ function reduce(state: EditorState, action: EditorAction): EditorState {
         marquee: undefined,
         // A field's pending number names a placement of the level being left,
         // and `openLevel` settles it before it switches. Clearing it here is
-        // the same totality the two above have.
+        // the same totality the two above have, and a parameter handle being
+        // dragged names a placement of that level too.
         poseDraft: undefined,
+        paramDrag: undefined,
         // A question about deleting placements of the level being left has no
         // answer that means anything in the level being entered.
         pendingDelete: undefined,
@@ -865,6 +878,25 @@ function reduce(state: EditorState, action: EditorAction): EditorState {
       if (!state.poseDraft) return state;
       return { ...state, poseDraft: undefined };
     }
+    case "param-drag-started": {
+      return { ...state, paramDrag: action.drag };
+    }
+    case "param-drag-moved": {
+      if (!state.paramDrag) return state;
+      return {
+        ...state,
+        paramDrag: {
+          ...state.paramDrag,
+          current: action.current,
+          constrained: action.constrained,
+          suspended: action.suspended,
+        },
+      };
+    }
+    case "param-drag-ended": {
+      if (!state.paramDrag) return state;
+      return { ...state, paramDrag: undefined };
+    }
     case "delete-confirm-requested": {
       return { ...state, pendingDelete: action.ids };
     }
@@ -920,7 +952,8 @@ export function isDirty(state: EditorState): boolean {
   if (
     state.pending.length > 0 ||
     state.gesture !== undefined ||
-    state.poseDraft !== undefined
+    state.poseDraft !== undefined ||
+    state.paramDrag !== undefined
   ) {
     return true;
   }

@@ -16,7 +16,7 @@ import {
   type LevelInstance,
   type PreparedLevel,
 } from "@yagejs/level";
-import type { LevelDocument } from "@yagejs/level/document";
+import type { LevelDocument, LevelPlacement } from "@yagejs/level/document";
 import { Graphics } from "pixi.js";
 import { RendererKey, SceneRenderTreeProviderKey } from "@yagejs/renderer";
 import type { LayerDef, RendererPlugin } from "@yagejs/renderer";
@@ -31,17 +31,22 @@ import type {
   GizmoMode,
   GizmoReference,
   HandleId,
+  ParamDrag,
   PivotMode,
 } from "../store/index.js";
 import { viewAfterResize } from "../store/index.js";
 import { PreviewAssetLease, placementsMissingAssets } from "./assets.js";
 import {
+  draggedValue,
   parentWorld,
+  pointFields,
+  pointHandles,
   referenceFieldNames,
   referenceTargets,
   referenceUses,
   selectionRoots,
   withDescendants,
+  type PointField,
   type ReferenceUse,
 } from "../commands/index.js";
 import { armLength, handleAt, handleDirection, nearGizmo } from "./gizmo.js";
@@ -61,10 +66,12 @@ import {
 } from "./box.js";
 import {
   drawOverlay,
+  paramHandleAt,
   type OverlayGizmo,
   type OverlayLink,
   type OverlayMarks,
   type OverlayView,
+  type ParamHandle,
 } from "./overlay.js";
 import {
   marksOf,
@@ -172,6 +179,15 @@ export class PreviewCoordinator {
    * of them touch the selection every frame.
    */
   private links: readonly ReferenceUse[] = [];
+  /**
+   * The place-valued parameters each placed type declares, by type id.
+   *
+   * Read from the catalog once per build, like the references: a declaration
+   * changes only when the catalog does, and the overlay asks what the
+   * selection holds every frame.
+   */
+  private pointFieldsByType: ReadonlyMap<string, readonly PointField[]> =
+    new Map();
   private overlay: Graphics | undefined;
   private guides: Graphics | undefined;
   /**
@@ -590,6 +606,7 @@ export class PreviewCoordinator {
     this.byPlacementId = new Map();
     this.marked = [];
     this.links = [];
+    this.pointFieldsByType = new Map();
     this.lease?.releaseAll();
     this.engine?.destroy();
     this.engine = undefined;
@@ -609,6 +626,11 @@ export class PreviewCoordinator {
     this.provisionLayers(scene, request.layers);
     this.links = referenceUses(request.document.entities, (type) =>
       referenceFieldNames(request.catalog, type),
+    );
+    this.pointFieldsByType = new Map(
+      [...new Set(request.document.entities.map((one) => one.type))].map(
+        (type) => [type, pointFields(request.catalog, type)],
+      ),
     );
     const prepared = prepareLevel(request.document, request.catalog);
 
@@ -803,6 +825,7 @@ export class PreviewCoordinator {
       origins: this.originsOf(state),
       marks: this.marksShown(state),
       links: this.linksShown(state),
+      handles: this.handlesShown(state),
       ...(marquee === undefined
         ? {}
         : {
@@ -892,6 +915,55 @@ export class PreviewCoordinator {
       shown.push({ from: originOf(from), to: originOf(to) });
     }
     return shown;
+  }
+
+  /**
+   * The point handles on screen: one per place-valued parameter of the
+   * selected placement.
+   *
+   * The selection alone, the way the gizmo is, and one placement alone: a
+   * handle names a field of one placement, and several placements selected
+   * have no one field between them. While a field is waiting for a reference
+   * target a press does nothing but choose, so nothing draggable is drawn.
+   *
+   * A drag in progress draws its handle where the pointer has taken it, from
+   * the same arithmetic the release will write.
+   */
+  private handlesShown(state: EditorState): readonly ParamHandle[] {
+    if (state.pick || state.selection.size !== 1) return [];
+    const [id] = state.selection;
+    if (id === undefined) return [];
+    const placement = state.document.entities.find((one) => one.id === id);
+    if (!placement) return [];
+    const drag = state.paramDrag;
+    return pointHandles(
+      state.document,
+      dragged(state, placement, drag),
+      this.pointFieldsByType.get(placement.type) ?? [],
+    ).map((handle) => ({
+      kind: "point" as const,
+      id,
+      field: handle.field,
+      at: handle.at,
+      ...(handle.from === undefined ? {} : { from: handle.from }),
+    }));
+  }
+
+  /**
+   * Which parameter handle a client point grabs, and everything a drag of it
+   * needs. `null` for a point on none of them, and for one read while nothing
+   * is drawn.
+   */
+  paramHandleAt(clientPoint: { x: number; y: number }): ParamGrab | null {
+    const state = this.store.getState();
+    const handles = this.handlesShown(state);
+    if (handles.length === 0) return null;
+    const world = this.screenToWorld(clientPoint);
+    if (!world) return null;
+    const grabbed = paramHandleAt(handles, this.perScreenPixel(state), world);
+    if (!grabbed) return null;
+    // A point is one handle with no parts, so the whole of it is its body.
+    return { id: grabbed.id, field: grabbed.field, grip: "body" };
   }
 
   /**
@@ -1458,6 +1530,35 @@ export interface GizmoGrab {
    * placement under `active`.
    */
   readonly pivot?: EditorPoint | undefined;
+}
+
+/** A parameter handle under the pointer: what a drag of it needs to start. */
+export interface ParamGrab {
+  /** The placement holding the parameter. */
+  readonly id: string;
+  /** The parameter's name. */
+  readonly field: string;
+  /** Which part of the handle the press landed on. A point answers `body`. */
+  readonly grip: HandleId;
+}
+
+/**
+ * The placement with the value a drag has reached written into it, so the
+ * handle is drawn from the drag rather than from the document.
+ *
+ * Nothing else in the preview shows the value: `setup()` runs again on release,
+ * through the rebuild the edit asks for.
+ */
+function dragged(
+  state: EditorState,
+  placement: LevelPlacement,
+  drag: ParamDrag | undefined,
+): LevelPlacement {
+  if (!drag || drag.id !== placement.id) return placement;
+  return {
+    ...placement,
+    params: { ...placement.params, [drag.field]: draggedValue(state, drag) },
+  };
 }
 
 /** Whether a point is inside a rectangle. */

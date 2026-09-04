@@ -197,6 +197,33 @@ function catalogDeclaring(
 const NO_REFERENCES = catalogDeclaring();
 
 /**
+ * A catalog answering for the place-valued parameters each named type
+ * declares, as `[field, relative]` pairs.
+ */
+function catalogWithPoints(
+  points: Readonly<Record<string, readonly (readonly [string, boolean])[]>>,
+): LevelCatalog {
+  const entries = Object.entries(points).map(([id, fields]) => ({
+    id,
+    declaration: {
+      id,
+      version: 1,
+      params: defineParams(
+        Object.fromEntries(
+          fields.map(([field, relative]) => [
+            field,
+            param.point({ x: 0, y: 0 }, { relative }),
+          ]),
+        ),
+      ),
+    },
+  }));
+  return {
+    get: (typeId: string) => entries.find((entry) => entry.id === typeId),
+  } as unknown as LevelCatalog;
+}
+
+/**
  * The coordinator over a stand-in engine.
  *
  * `start()` uses four things: `use`, `start`, `scenes.push`, and one service
@@ -2471,6 +2498,161 @@ function entityAt(
     parent: null,
   };
 }
+
+describe("a parameter you can drag", () => {
+  const renderer = {
+    setFit: () => {},
+    virtualSize: { width: 800, height: 600 },
+    virtualCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
+  };
+
+  /** `game.slime` declares one relative point and one world point. */
+  const CATALOG = catalogWithPoints({
+    "game.slime": [
+      ["patrolEnd", true],
+      ["home", false],
+    ],
+  });
+
+  /** A slime with both points authored, at a transform of the caller's choice. */
+  function slime(
+    id: string,
+    transform: LevelTransform = poseAt(0, 0),
+  ): LevelPlacement {
+    return {
+      ...placement(id),
+      type: "game.slime",
+      transform,
+      // The texture is what the stand-in preparation projects a placement by.
+      params: {
+        texture: `${id}.png`,
+        patrolEnd: { x: 120, y: 0 },
+        home: { x: -80, y: 40 },
+      },
+    };
+  }
+
+  /**
+   * The coordinator over a level holding one slime, with the document in the
+   * store: a handle is read off the document and the catalog, and the
+   * placement has to be built for the level to project.
+   */
+  async function dragging(
+    level: LevelDocument,
+    camera?: unknown,
+  ): Promise<{ coordinator: PreviewCoordinator; store: EditorStore }> {
+    const harness = await createHarness(
+      camera ? withPointer(renderer) : renderer,
+      undefined,
+      camera,
+    );
+    for (const one of level.entities) {
+      entities.set(one.id, entityAt(0, 0, { half: 10 }));
+    }
+    await harness.build(level, [], CATALOG);
+    opened(harness.store, level);
+    // Off unless a case asks for it, so a handle lands where the pointer left
+    // it rather than where a lattice rounded it.
+    harness.store.dispatch({ type: "snap-toggled" });
+    return { coordinator: harness.coordinator, store: harness.store };
+  }
+
+  it("puts a relative handle through the placement's own frame", async () => {
+    const level = document(
+      slime("s1", {
+        position: { x: 50, y: 20 },
+        rotation: 0,
+        scale: { x: 2, y: 1 },
+      }),
+    );
+    const { coordinator, store } = await dragging(level);
+    store.dispatch({ type: "selection-changed", ids: ["s1"] });
+
+    // 120 along the placement's own x, doubled by its scale, from (50, 20).
+    expect(coordinator.overlayView().handles).toEqual([
+      {
+        kind: "point",
+        id: "s1",
+        field: "patrolEnd",
+        at: { x: 290, y: 20 },
+        from: { x: 50, y: 20 },
+      },
+      { kind: "point", id: "s1", field: "home", at: { x: -80, y: 40 } },
+    ]);
+  });
+
+  it("draws no handle for a placement that is not selected", async () => {
+    const { coordinator } = await dragging(document(slime("s1")));
+
+    expect(coordinator.overlayView().handles).toEqual([]);
+  });
+
+  it("draws no handle for several placements at once", async () => {
+    const level = document(slime("s1"), slime("s2"));
+    const { coordinator, store } = await dragging(level);
+    store.dispatch({ type: "selection-changed", ids: ["s1", "s2"] });
+
+    // A handle names a field of one placement, and two selected placements
+    // have no one field between them.
+    expect(coordinator.overlayView().handles).toEqual([]);
+  });
+
+  it("grabs the handle rather than the gizmo's centre", async () => {
+    // The relative point is authored at the origin, which is exactly where the
+    // translate gizmo's centre grip sits.
+    const level = document({
+      ...slime("s1"),
+      params: {
+        texture: "s1.png",
+        patrolEnd: { x: 0, y: 0 },
+        home: { x: -80, y: 40 },
+      },
+    });
+    const camera = cameraStub({ width: 800, height: 600 });
+    const { coordinator, store } = await dragging(level, camera);
+    store.dispatch({ type: "selection-changed", ids: ["s1"] });
+    store.dispatch({ type: "tool-changed", tool: "translate" });
+
+    expect(coordinator.gizmoAt({ x: 400, y: 300 })?.handle).toBe("xy");
+    expect(coordinator.paramHandleAt({ x: 400, y: 300 })).toEqual({
+      id: "s1",
+      field: "patrolEnd",
+      grip: "body",
+    });
+  });
+
+  it("draws the handle where a drag has taken it", async () => {
+    const level = document(slime("s1"));
+    const { coordinator, store } = await dragging(level);
+    store.dispatch({ type: "selection-changed", ids: ["s1"] });
+    store.dispatch({
+      type: "param-drag-started",
+      drag: {
+        id: "s1",
+        field: "patrolEnd",
+        kind: "point",
+        grip: "body",
+        relative: true,
+        from: { x: 120, y: 0 },
+        origin: { x: 120, y: 0 },
+        current: { x: 120, y: 0 },
+        constrained: false,
+        suspended: false,
+      },
+    });
+    store.dispatch({
+      type: "param-drag-moved",
+      current: { x: 150, y: 30 },
+      constrained: false,
+      suspended: false,
+    });
+
+    expect(coordinator.overlayView().handles?.[0]?.at).toEqual({
+      x: 150,
+      y: 30,
+    });
+  });
+});
 
 describe("scheduleRelease", () => {
   it("releases nothing in the frame the build finished in", () => {

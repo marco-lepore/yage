@@ -113,6 +113,9 @@ const MEADOW_POSITION: Point = { x: 240, y: 40 };
 const STALE = "01J000000000000000000STALE";
 const MISSING = "01J00000000000000000ABSENT";
 
+/** What the fixture `Slime` declares its relative `patrolEnd` default as. */
+const SLIME_PATROL_END: Point = { x: 120, y: 0 };
+
 const API = "/__yage_editor/api/v1";
 const TOKEN_HEADER = "x-yage-editor-token";
 
@@ -145,6 +148,13 @@ interface SwitchFact {
   readonly chime: string | null;
 }
 
+/** What the same extension reports about one slime's place-valued parameter. */
+interface SlimeFact {
+  readonly sceneId: string;
+  /** The world point `setup()` received for `patrolEnd`, `null` if it held nothing. */
+  readonly patrolTarget: Point | null;
+}
+
 interface Point {
   x: number;
   y: number;
@@ -153,6 +163,7 @@ interface Point {
 /** As much of a placement as this path reads out of a draft. */
 interface DraftPlacement {
   id: string;
+  type: string;
   name?: string;
   key?: string;
   parent?: string;
@@ -575,6 +586,33 @@ function fixed(value: number): string {
   const text = value.toFixed(1);
   // A world coordinate that rounds to zero from below is still zero.
   return text === "-0.0" ? "0.0" : text;
+}
+
+/**
+ * Every slime the page loaded and the world point its `setup()` was handed.
+ *
+ * The document stores `patrolEnd` relative to the slime. This is what says the
+ * level converted it through where the slime ended up, on the page that set
+ * the entity up.
+ */
+async function slimesIn(page: Page): Promise<SlimeFact[]> {
+  return page.evaluate(() => {
+    const facts = window.__yage__?.inspector.getExtension<{
+      slimes(): SlimeFact[];
+    }>("levelFixture");
+    return facts ? facts.slimes() : [];
+  });
+}
+
+/** Waits for the page's one slime to have been set up with `target`. */
+async function expectSlimeTarget(page: Page, target: Point): Promise<void> {
+  await expect
+    .poll(async () => {
+      const [slime] = await slimesIn(page);
+      const at = slime?.patrolTarget;
+      return at ? Math.hypot(at.x - target.x, at.y - target.y) < 0.5 : false;
+    })
+    .toBe(true);
 }
 
 function expectPoint(actual: Point | undefined, expected: Point): void {
@@ -2769,6 +2807,80 @@ test.describe("level editor", () => {
     const after = await draftOf(request, token);
     expect(after.history).toEqual({ undoDepth: 0, redoDepth: 1 });
     expect(positionOf(after, ROOT)).toEqual(AUTHORED[ROOT]);
+  });
+
+  test("drags a parameter's point to a place in the level", async ({
+    page,
+    request,
+  }) => {
+    // The whole path for a value that is a place: the declaration, the handle
+    // the overlay draws, the drag, the command, and the number in the file.
+    await openEditor(page);
+    const token = await tokenOf(page);
+    await withoutSnapping(page);
+
+    await openActors(page);
+    await page.getByTestId("place-game.slime").click();
+    const placed = await draftAfter(request, token, {
+      undoDepth: 1,
+      redoDepth: 0,
+    });
+    const slime = placed.document.entities.find(
+      (entity) => entity.type === "game.slime",
+    );
+    if (!slime) throw new Error("the Actors strip placed no slime.");
+    expect(slime.params["patrolEnd"]).toEqual(SLIME_PATROL_END);
+
+    // The handle sits at the placement's own origin plus its declared default,
+    // which an unturned, unscaled placement draws in world space unchanged.
+    const origin = slime.transform.position;
+    const handle = offset(origin, SLIME_PATROL_END);
+    const from = await clientPointOf(page, handle);
+    const drag = { x: 90, y: -50 };
+    const reached = offset(handle, await expectedWorldDelta(page, drag));
+
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + drag.x / 2, from.y + drag.y / 2);
+    await page.mouse.move(from.x + drag.x, from.y + drag.y);
+    await page.mouse.up();
+
+    // One drag is one edit and one undo entry, the way a pose drag is.
+    await draftAfter(request, token, { undoDepth: 2, redoDepth: 0 });
+    // The inspector's two boxes show what the handle reached, in the frame the
+    // value is stored in.
+    const local = { x: reached.x - origin.x, y: reached.y - origin.y };
+    expectPoint(
+      {
+        x: Number(await page.getByTestId("field-patrolEnd-x").inputValue()),
+        y: Number(await page.getByTestId("field-patrolEnd-y").inputValue()),
+      },
+      local,
+    );
+    // The preview set the slime up again, and its `setup()` received the
+    // world point the relative value resolves to, not the stored pair.
+    await expectSlimeTarget(page, reached);
+
+    // Moving the slime moves the place its point resolves to, so the preview
+    // sets it up once more rather than only writing the new pose.
+    const nudge = { x: 40, y: 30 };
+    const carried = await expectedWorldDelta(page, nudge);
+    // Pressed on the selected slime's own origin, where its gizmo's centre
+    // grip is, which moves it the way a press on its body would.
+    const grip = await clientPointOf(page, origin);
+    await page.mouse.move(grip.x, grip.y);
+    await page.mouse.down();
+    await page.mouse.move(grip.x + nudge.x / 2, grip.y + nudge.y / 2);
+    await page.mouse.move(grip.x + nudge.x, grip.y + nudge.y);
+    await page.mouse.up();
+    await draftAfter(request, token, { undoDepth: 3, redoDepth: 0 });
+    await expectSlimeTarget(page, offset(reached, carried));
+
+    await page.getByTestId("save-level").click();
+    await expect(page.getByTestId("dirty-marker")).toBeHidden();
+
+    const saved = savedPlacement(slime.id).params["patrolEnd"] as Point;
+    expectPoint(saved, local);
   });
 });
 

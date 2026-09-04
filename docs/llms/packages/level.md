@@ -83,6 +83,8 @@ export class Crate extends Entity {
   level. See [Pointing at another placement](#pointing-at-another-placement).
 - The plain kinds carry the numbers, switches, names and choices a type needs.
   See [Numbers, switches, names and choices](#numbers-switches-names-and-choices).
+- `param.vec2(default, options?)` and `param.point(default, options?)` carry a
+  pair of numbers. See [Pairs and places](#pairs-and-places).
 - `frames` is an `AssetFrames`: how the named file is cut into a grid. Declare
   it only for a parameter naming a sheet the type slices. Its members are the
   renderer's `TextureSliceOptions`, so state the grid once and spread the same
@@ -165,6 +167,46 @@ param.select<const O extends readonly string[]>(
   the declared type becomes `number | undefined` and so on. A missing key stays
   an error whether or not the field is optional, so a placement that holds
   nothing says so.
+
+## Pairs and places
+
+```ts
+const SlimeParams = defineParams({
+  drift: param.vec2({ x: 0, y: -12 }),
+  patrolEnd: param.point({ x: 120, y: 0 }, { relative: true }),
+  muzzle: param.point({ x: 24, y: -6 }, { relative: true, space: "local" }),
+  home: param.point({ x: 0, y: 0 }, { optional: true }),
+});
+
+setup(params: ParamsOf<typeof SlimeParams>): void {
+  // patrolEnd: a world Vec2, wherever the level put this slime
+  // muzzle: a Vec2 offset from the slime's own origin
+  // home: Vec2 | undefined
+}
+```
+
+```ts
+param.vec2(defaultValue: Vec2Like, options?: { optional?: boolean }): ParamKind<Vec2>
+param.point(defaultValue: Vec2Like, options?: {
+  relative?: boolean; space?: "world" | "local"; optional?: boolean;
+}): ParamKind<Vec2>
+```
+
+- The authored JSON is `{ "x": 12, "y": -4 }`: an object with those two members
+  and no others, both finite. `setup()` receives a `Vec2` from `@yagejs/core`.
+- `vec2` is a pair of numbers — a size, a factor, a velocity. `point` is a
+  place, and the level editor draws a handle on it that an author drags.
+- `relative: true` stores a `point` in the placement's own frame, so the value
+  travels with the placement: move the slime in the editor and its patrol end
+  moves too. Without it the value is a world point that stays where it is.
+- `space` says which frame `setup()` receives, and defaults to `"world"`. The
+  level converts between the two through where the placement ends up in the
+  world (the instance transform composed with every parent above it), so a
+  relative point arrives as a world position with nothing left to compose.
+- `space: "local"` asks for an offset from the placement instead — a muzzle, a
+  hardpoint, anything that has to keep following the entity. Turn it into a
+  world point where it is used, with `Transform.localToWorld(point)` from a
+  component's `onEnable()` or an update, once the level has placed the entity.
 
 ## Pointing at another placement
 
@@ -370,10 +412,8 @@ that creates placements calls it once, at creation, and writes the result into
 the document — that is what makes a later change to a declaration's default
 leave existing levels alone.
 
-The values are the declaration's own defaults rather than copies. Every
-parameter kind defaults to a primitive or `null`, so nothing shares mutable state;
-a kind whose default is an object or an array has to copy before two placements
-can hold one.
+A default that is not a primitive is copied, so two placements created from one
+declaration never share an object.
 
 `describeParams(schema)` returns the data an authoring tool needs to render the
 schema without receiving its validators, decoders, or asset factories:
@@ -398,8 +438,8 @@ Parameter kinds are built through `param`; hand-built kind objects are rejected
 when the catalog is built.
 
 `kind` says which control the field needs and is a closed set — `"asset"`,
-`"entityRef"`, `"number"`, `"integer"`, `"boolean"`, `"string"` and
-`"select"` — so a tool can switch on it exhaustively.
+`"entityRef"`, `"number"`, `"integer"`, `"boolean"`, `"string"`, `"select"`,
+`"vec2"` and `"point"` — so a tool can switch on it exhaustively.
 
 For an asset field, `assetKind` is the `kind` of the descriptor `param.asset()`
 was given and is open, because `defineLevelAsset` is yours: match the kinds you
@@ -415,8 +455,10 @@ accepts; `defaultValue` is `null`.
 but `asset`, which takes no options object. `defaultValue` is the value the
 editor writes into a new placement — a number for a number field and a boolean
 for a switch. A number field carries `min`, `max` and `step` when it declared
-them, a string field carries `multiline`, and a choice field carries `options`,
-the frozen list of values it accepts.
+them, a string field carries `multiline`, a choice field carries `options`, the
+frozen list of values it accepts, and a `point` field carries `relative` —
+the frame the value is stored in, which is the frame a tool authors in. A
+point's `space` is a load-time conversion and is not described.
 
 A prepared placement carries what it points at, so a tool can follow references
 without reading a schema:

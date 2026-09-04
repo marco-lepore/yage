@@ -92,6 +92,7 @@ export function describeParams(
       ...(kind.step === undefined ? {} : { step: kind.step }),
       ...(kind.multiline === undefined ? {} : { multiline: kind.multiline }),
       ...(kind.options === undefined ? {} : { options: kind.options }),
+      ...(kind.relative === undefined ? {} : { relative: kind.relative }),
       defaultValue: kind.defaultValue,
     });
   });
@@ -107,15 +108,23 @@ export function describeParams(
  * placement that omits a parameter is an error at load time for the same
  * reason, rather than falling back to the default.
  *
- * Each value is the declaration's own `defaultValue` rather than a copy of it.
- * Every parameter kind defaults to a primitive or `null` today, so nothing
- * shares mutable state; a kind whose default is an object or an array has to
- * copy here before two placements can hold one.
+ * A default that is not a primitive is copied, so two placements created from
+ * one declaration never share one object and an edit to either leaves the
+ * other alone.
  */
 export function defaultParams(schema: ParamsSchema<ParamFields>): JsonObject {
   const params = Object.create(null) as Record<string, JsonValue>;
-  for (const [name, kind] of fieldsOf(schema)) params[name] = kind.defaultValue;
+  for (const [name, kind] of fieldsOf(schema)) {
+    params[name] = copiedDefault(kind.defaultValue);
+  }
   return params as JsonObject;
+}
+
+/** A default that no two placements may share, and every other one as it is. */
+function copiedDefault(value: JsonValue): JsonValue {
+  return typeof value === "object" && value !== null
+    ? (structuredClone(value) as JsonValue)
+    : value;
 }
 
 /**

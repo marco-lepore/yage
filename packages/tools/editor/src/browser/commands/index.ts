@@ -10,6 +10,7 @@ export type {
 export {
   BOX_GRIPS,
   axisOf,
+  draggedValue,
   gesturePoses,
   diagonalOf,
   gripOf,
@@ -21,6 +22,8 @@ export {
   worldDeltaToLocal,
 } from "./pose.js";
 export type { BoxGrip, ParentFrame } from "./pose.js";
+export { pointFields, pointHandles } from "./params.js";
+export type { PointField } from "./params.js";
 export {
   isAncestorOrSelf,
   placementById,

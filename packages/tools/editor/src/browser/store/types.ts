@@ -319,6 +319,44 @@ export interface PoseDraft {
 }
 
 /**
+ * Which kind of parameter value a viewport handle drags. A point today; a
+ * value with more than one handle joins as a second name.
+ */
+export type ParamValueKind = "point";
+
+/**
+ * A parameter value being dragged by its handle in the viewport.
+ *
+ * It holds the handle's world point and the pointer's world point from the
+ * press, so every move computes the same offset from a fixed base rather than
+ * accumulating rounding across moves — the reason {@link EditGesture} holds a
+ * base too.
+ *
+ * `kind` and `relative` are read off the field's description when the drag
+ * starts, so working out the value needs the document and this alone, and
+ * never the catalog.
+ */
+export interface ParamDrag {
+  readonly id: string;
+  /** The parameter's name. */
+  readonly field: string;
+  readonly kind: ParamValueKind;
+  /** Which part of the handle the press landed on. A point answers `body`. */
+  readonly grip: HandleId;
+  /** Whether the value is in the placement's own frame rather than the world's. */
+  readonly relative: boolean;
+  /** Where the handle sat in world space when the press happened. */
+  readonly from: EditorPoint;
+  /** Where the pointer was in world space when the press happened. */
+  readonly origin: EditorPoint;
+  readonly current: EditorPoint;
+  /** Shift is held: the move is kept to one axis of the value's own frame. */
+  readonly constrained: boolean;
+  /** Alt is held: this drag is off the grid for as long as it is. */
+  readonly suspended: boolean;
+}
+
+/**
  * A reference parameter waiting for its target to be pointed at.
  *
  * `types` is captured when the mode is armed rather than looked up on each
@@ -386,6 +424,11 @@ export interface EditorState {
   readonly marquee?: MarqueeGesture | undefined;
   /** A number a field is stepping or scrubbing. At most one at a time. */
   readonly poseDraft?: PoseDraft | undefined;
+  /**
+   * A parameter value being dragged by its handle in the viewport. Never set
+   * at the same time as `gesture`: a press starts one or the other.
+   */
+  readonly paramDrag?: ParamDrag | undefined;
   /**
    * The placements a delete is waiting for an answer about, because something
    * outside the set points at one of them. Absent while no question is open.
@@ -522,6 +565,16 @@ export type EditorAction =
   | { readonly type: "pose-drafted"; readonly draft: PoseDraft }
   /** That number was abandoned or committed; either way nothing is pending. */
   | { readonly type: "pose-draft-dropped" }
+  /** A press landed on a parameter's handle in the viewport. */
+  | { readonly type: "param-drag-started"; readonly drag: ParamDrag }
+  | {
+      readonly type: "param-drag-moved";
+      readonly current: EditorPoint;
+      readonly constrained: boolean;
+      readonly suspended: boolean;
+    }
+  /** The drag was committed or abandoned; either way nothing is pending. */
+  | { readonly type: "param-drag-ended" }
   /** A delete is waiting: something outside `ids` points into it. */
   | {
       readonly type: "delete-confirm-requested";

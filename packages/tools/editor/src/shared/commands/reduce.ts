@@ -569,7 +569,12 @@ function defineOwn(target: object, key: string, value: unknown): void {
   });
 }
 
-function equalJson(left: JsonValue, right: JsonValue): boolean {
+/**
+ * Whether two authored values are the same value: key by key and item by
+ * item, so an object edit whose value equals what is held is recognised as
+ * writing nothing.
+ */
+export function equalJson(left: JsonValue, right: JsonValue): boolean {
   if (left === right) return true;
   if (Array.isArray(left) || Array.isArray(right)) {
     if (!Array.isArray(left) || !Array.isArray(right)) return false;

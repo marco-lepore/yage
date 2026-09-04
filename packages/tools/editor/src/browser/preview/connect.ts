@@ -6,6 +6,12 @@ import {
   type EditorStore,
   type EditorViewState,
 } from "../store/index.js";
+import {
+  placementById,
+  pointFields,
+  withDescendants,
+} from "../commands/index.js";
+import type { LevelDocument } from "@yagejs/level";
 import type { PreviewRequest } from "./PreviewCoordinator.js";
 
 /** What connecting a preview to the store needs from it. */
@@ -22,7 +28,10 @@ export interface PreviewTarget {
  * rebuild, a pose write for the affected placements, or nothing. Rebuilding on
  * a moved placement would destroy and recreate every entity on each committed
  * drag, which throws away asset references and blinks the viewport for a
- * result the scene already has — that is what the pose write is for.
+ * result the scene already has — that is what the pose write is for. The one
+ * exception is a moved placement, or a parent of one, holding a `point`
+ * parameter: the level decoded that through the placement's pose, so the
+ * entity was set up for the place it used to be and has to be set up again.
  *
  * Everything else that changes the document arrives without a local command:
  * a history step, a rebase onto a newer draft, a dropped edit. The browser
@@ -98,7 +107,9 @@ export function connectPreview(
       case "command-applied":
         if (action.impact === "rebuild") rebuild();
         else if (action.impact === "pose") {
-          preview.applyPoseDraft(posesOf(state, action.affected));
+          if (setUpFromPose(state.document, catalog, action.affected)) {
+            rebuild();
+          } else preview.applyPoseDraft(posesOf(state, action.affected));
         }
         return;
       case "command-rebased":
@@ -125,5 +136,27 @@ export function connectPreview(
       default:
         return;
     }
+  });
+}
+
+/**
+ * Whether one of the moved placements, or anything under one, holds a
+ * parameter the level decoded through the placement's pose. A `point` is
+ * converted into the frame `setup()` asked for as the entity is set up, so an
+ * entity built from one keeps the place its placement had then, and a pose
+ * write alone would leave it holding where the placement used to be. The
+ * catalog does not say which points convert, so every point counts.
+ */
+function setUpFromPose(
+  document: LevelDocument,
+  catalog: LevelCatalog,
+  moved: readonly string[],
+): boolean {
+  const byId = placementById(document);
+  return withDescendants(document.entities, moved).some((id) => {
+    const placement = byId.get(id);
+    return (
+      placement !== undefined && pointFields(catalog, placement.type).length > 0
+    );
   });
 }

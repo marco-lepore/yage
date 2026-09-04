@@ -1,4 +1,4 @@
-import type { LevelCatalog } from "@yagejs/level";
+import { defineParams, param, type LevelCatalog } from "@yagejs/level";
 import type { LevelDocument, LevelPlacement } from "@yagejs/level/document";
 import { describe, expect, it } from "vitest";
 import type {
@@ -12,10 +12,11 @@ import { EditorStore, type EditorViewState } from "../store/index.js";
 import { connectPreview } from "./connect.js";
 import type { PreviewRequest } from "./PreviewCoordinator.js";
 
-function placement(id: string, x: number): LevelPlacement {
+function placement(id: string, x: number, parent?: string): LevelPlacement {
   return {
     id,
     type: "game.crate",
+    ...(parent === undefined ? {} : { parent }),
     typeVersion: 1,
     active: true,
     transform: { position: { x, y: 0 }, rotation: 0, scale: { x: 1, y: 1 } },
@@ -49,6 +50,24 @@ function snapshot(revision: number, doc: LevelDocument): DraftSnapshot {
   };
 }
 
+/** A pose write putting one placement at `x`. */
+function move(id: string, x: number): DocumentCommand {
+  return {
+    kind: "set-poses",
+    commandId: `move-${id}`,
+    poses: [
+      {
+        id,
+        transform: {
+          position: { x, y: 0 },
+          rotation: 0,
+          scale: { x: 1, y: 1 },
+        },
+      },
+    ],
+  };
+}
+
 /** A command that keeps the placement set as it is; only its impact matters here. */
 function typeVersionEdit(commandId: string): DocumentCommand {
   return {
@@ -60,11 +79,25 @@ function typeVersionEdit(commandId: string): DocumentCommand {
   };
 }
 
-const catalog = {} as LevelCatalog;
+/** A catalog that declares no parameters for any type. */
+const catalog = { get: () => undefined } as unknown as LevelCatalog;
+/** A catalog whose crate holds a place, which the level decodes through the pose. */
+const pointed = {
+  get: (typeId: string) =>
+    typeId === "game.crate"
+      ? {
+          declaration: {
+            params: defineParams({
+              home: param.point({ x: 0, y: 0 }, { relative: true }),
+            }),
+          },
+        }
+      : undefined,
+} as unknown as LevelCatalog;
 /** One declared layer, so a rebuild request can be checked for carrying it. */
 const LAYERS = [{ name: "world", order: 10 }];
 
-function createHarness(withCatalog = true) {
+function createHarness(withCatalog = true, using: LevelCatalog = catalog) {
   const store = new EditorStore({
     api: new EditorApiClient({
       token: "t",
@@ -78,7 +111,7 @@ function createHarness(withCatalog = true) {
   const views: EditorViewState[] = [];
   const stop = connectPreview(
     store,
-    () => (withCatalog ? catalog : undefined),
+    () => (withCatalog ? using : undefined),
     {
       requestRebuild: (request) => rebuilds.push(request),
       applyPoseDraft: (poses) => drafts.push([...poses]),
@@ -90,13 +123,12 @@ function createHarness(withCatalog = true) {
     store.dispatch({ type: "level-opened", snapshot: snapshot(revision, doc) });
   };
   /** A local command, applied the way the store applies one. */
-  const apply = (command: DocumentCommand, impact: PreviewImpact): void => {
-    store.dispatch({
-      type: "command-applied",
-      command,
-      affected: ["crate"],
-      impact,
-    });
+  const apply = (
+    command: DocumentCommand,
+    impact: PreviewImpact,
+    affected: readonly string[] = ["crate"],
+  ): void => {
+    store.dispatch({ type: "command-applied", command, affected, impact });
   };
   return { store, rebuilds, drafts, views, stop, open, apply };
 }
@@ -163,6 +195,31 @@ describe("connectPreview", () => {
           },
         },
       ]);
+    });
+
+    it("sets a moved placement up again when it holds a place", () => {
+      // A point was decoded through the pose the placement had, so the entity
+      // built from it is set up for where the placement used to be.
+      const harness = createHarness(true, pointed);
+      harness.open(document(placement("crate", 0)));
+      harness.apply(move("crate", 40), "pose");
+
+      expect(harness.rebuilds).toHaveLength(2);
+      expect(harness.drafts).toEqual([]);
+    });
+
+    it("sets a moved parent's children up again when one holds a place", () => {
+      const harness = createHarness(true, pointed);
+      harness.open(
+        document(
+          { ...placement("root", 0), type: "game.empty" },
+          placement("crate", 10, "root"),
+        ),
+      );
+      harness.apply(move("root", 40), "pose", ["root"]);
+
+      expect(harness.rebuilds).toHaveLength(2);
+      expect(harness.drafts).toEqual([]);
     });
 
     it("rebuilds for a rebuild impact even though the placement set is unchanged", () => {

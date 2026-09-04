@@ -349,13 +349,13 @@ Composition: each `key` is a channel. Within a channel, the latest active reques
 
 ### Math
 
-| Export             | Purpose                                                                                                                                                                                                                                                                              |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Vec2`             | Immutable 2D vector (`add`, `sub`, `scale`, `normalize`, `lerp`, `dot`, `distance`, static `moveTowards`)                                                                                                                                                                            |
-| `Vec2Buffer`       | Caller-owned mutable coordinates for `Into` results; `new Vec2Buffer(x = 0, y = 0)`, writable `x` / `y`, `set(x, y): this`                                                                                                                                                           |
-| `Transform`        | Mutable position/rotation/scale component (`setPosition`, `translate`, `rotate`); `worldPosition` / `worldRotation` / `worldScale` are lazily computed and cache-invalidate on local mutation or reparenting; `worldToLocal(point)` maps a world point into the entity's local space |
-| `MathUtils`        | `lerp`, `inverseLerp`, `lerpAngle`, `shortestAngleBetween`, `pingPong`, `smoothDamp`, `clamp`, etc.                                                                                                                                                                                  |
-| `SmoothDampResult` | `{ value, velocity }` returned by `MathUtils.smoothDamp()`                                                                                                                                                                                                                           |
+| Export             | Purpose                                                                                                                                                                                                                                                                                                                    |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Vec2`             | Immutable 2D vector (`add`, `sub`, `scale`, `normalize`, `lerp`, `dot`, `distance`, static `moveTowards`)                                                                                                                                                                                                                  |
+| `Vec2Buffer`       | Caller-owned mutable coordinates for `Into` results; `new Vec2Buffer(x = 0, y = 0)`, writable `x` / `y`, `set(x, y): this`                                                                                                                                                                                                 |
+| `Transform`        | Mutable position/rotation/scale component (`setPosition`, `translate`, `rotate`); `worldPosition` / `worldRotation` / `worldScale` are lazily computed and cache-invalidate on local mutation or reparenting; `localToWorld(point)` / `worldToLocal(point)` convert a point between the entity's own space and the world's |
+| `MathUtils`        | `lerp`, `inverseLerp`, `lerpAngle`, `shortestAngleBetween`, `pingPong`, `smoothDamp`, `clamp`, etc.                                                                                                                                                                                                                        |
+| `SmoothDampResult` | `{ value, velocity }` returned by `MathUtils.smoothDamp()`                                                                                                                                                                                                                                                                 |
 
 Math signatures:
 
@@ -431,6 +431,17 @@ Transform position, scale, and rotation writes require finite numbers and
 reject invalid inputs or non-finite computed local values before storing the
 operation's values. Zero and negative scale are legal. Read-only conversions
 and derived world values do not validate non-finite results.
+
+### Points in an entity's own space
+
+`localToWorld(point)` scales a point by `worldScale`, turns it by `worldRotation`, and offsets it by `worldPosition` — the same composition a child transform goes through. `worldToLocal(point)` is the inverse. Both take a `Vec2Like` and return a `Vec2`.
+
+```ts
+const muzzle = this.get(Transform).localToWorld({ x: 24, y: -6 });
+scene.spawn(Bullet, { position: muzzle });
+```
+
+Use it for an offset authored beside the entity — a muzzle, a spawn point — so it follows the entity however the parent chain turns or scales it. On an axis whose world scale is 0 no local point maps back, so `worldToLocal` is non-finite there; check `Number.isFinite` if such a transform can reach you.
 
 ### Scale inheritance
 

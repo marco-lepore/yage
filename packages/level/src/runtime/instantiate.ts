@@ -111,21 +111,35 @@ function build(
         );
       }
 
+      // Where each placement ends up in the world, which a point parameter
+      // converts its authored value through. `ordered` is parent-first, so
+      // the pose above is always in hand by the time it is needed.
+      const worldPoses = new Map<string, LevelTransform>();
+
       for (const entry of ordered) {
         building = entry;
         const entity = reserved(byPlacementId, entry.placement.id);
+        const parent = entry.placement.parent;
+        const above = parent === undefined ? root : worldPoses.get(parent);
+        if (above === undefined) {
+          throw new Error(
+            `Placement "${parent}" was not composed before its child.`,
+          );
+        }
+        const worldPose = compose(above, entry.placement.transform);
+        worldPoses.set(entry.placement.id, worldPose);
         const schema = entry.entry.declaration.params;
         if (schema === undefined) {
           batch.setup(entity);
         } else {
           batch.setup(
             entity as ParameterizedEntity,
-            decode(scene, entity, schema, entry, byPlacementId),
+            decode(scene, entity, schema, entry, byPlacementId, worldPose),
           );
         }
         const layer = entry.placement.layer;
         if (layer !== undefined) applyPlacementLayer(entity, layer);
-        place(entity, entry.placement, root);
+        place(entity, entry.placement, worldPose);
       }
 
       building = undefined;
@@ -165,6 +179,7 @@ function decode(
   schema: ParamsSchema<ParamFields>,
   entry: PreparedPlacement,
   byPlacementId: Map<string, Entity>,
+  worldPose: LevelTransform,
 ): unknown {
   const boundary = scene.context?.tryResolve(ErrorBoundaryKey);
   let decoded: unknown;
@@ -175,6 +190,7 @@ function decode(
       // cycle. A reserved entity is neither destroyed nor pooled, so the
       // handle it hands out is live.
       resolveEntityRef: (id) => reserved(byPlacementId, id).handle(),
+      worldPose,
     });
   };
   if (boundary) {
@@ -194,13 +210,14 @@ function decode(
 }
 
 /**
- * Apply a placement's authored transform. A top-level placement composes the
- * instance transform first; a child's is already relative to its parent.
+ * Apply a placement's authored transform. A top-level placement is put at the
+ * world pose the level composed for it; a child's authored transform is
+ * already relative to its parent, and the scene graph composes it.
  */
 function place(
   entity: Entity,
   placement: LevelPlacement,
-  root: LevelTransform,
+  worldPose: LevelTransform,
 ): void {
   const transform = entity.tryGet(Transform);
   if (!transform) {
@@ -209,10 +226,7 @@ function place(
         `Add one in setup().`,
     );
   }
-  const pose =
-    placement.parent === undefined
-      ? compose(root, placement.transform)
-      : placement.transform;
+  const pose = placement.parent === undefined ? worldPose : placement.transform;
   transform.setPosition(pose.position.x, pose.position.y);
   transform.setRotation(pose.rotation);
   transform.setScale(pose.scale.x, pose.scale.y);

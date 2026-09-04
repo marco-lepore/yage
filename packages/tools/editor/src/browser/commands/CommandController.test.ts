@@ -104,6 +104,19 @@ function catalog(): LevelCatalog {
       source: "project",
     },
     {
+      id: "game.slime",
+      declaration: {
+        id: "game.slime",
+        version: 1,
+        params: defineParams({
+          patrolEnd: param.point({ x: 0, y: 0 }, { relative: true }),
+          home: param.point({ x: 0, y: 0 }),
+        }),
+      },
+      EntityClass: {} as LevelCatalogEntry["EntityClass"],
+      source: "project",
+    },
+    {
       id: "renderer.sprite",
       declaration: { id: "renderer.sprite", version: 1 },
       EntityClass: {} as LevelCatalogEntry["EntityClass"],
@@ -3386,5 +3399,185 @@ describe("stepping a turn", () => {
       degrees(27),
       12,
     );
+  });
+});
+
+describe("dragging a parameter's handle", () => {
+  /** A slime holding both point parameters, at a transform of its own. */
+  function slime(
+    id: string,
+    transform: LevelPlacement["transform"],
+    parent?: string,
+  ): LevelPlacement {
+    return placement(id, 0, parent, {
+      type: "game.slime",
+      typeVersion: 1,
+      transform,
+      params: { patrolEnd: { x: 120, y: 0 }, home: { x: -80, y: 40 } },
+    });
+  }
+
+  const UPRIGHT = {
+    position: { x: 50, y: 20 },
+    rotation: 0,
+    scale: { x: 1, y: 1 },
+  };
+
+  /** The value edits one command carries, for a path that sends exactly one. */
+  function edits(sent: readonly DocumentCommand[]): unknown {
+    expect(sent).toHaveLength(1);
+    const command = sent[0];
+    expect(command?.kind).toBe("set-values");
+    return command?.kind === "set-values" ? command.edits : undefined;
+  }
+
+  it("writes the local value one drag reached, as one command", async () => {
+    const harness = createHarness(document(slime("s1", UPRIGHT)));
+    // The handle sits at (170, 20): 120 along the placement's own x from its
+    // origin at (50, 20).
+    harness.commands.beginParamDrag("s1", "patrolEnd", "body", {
+      x: 170,
+      y: 20,
+    });
+    harness.commands.updateParamDrag({ x: 200, y: 45 });
+    await harness.commands.settleEdits();
+
+    expect(edits(harness.sent)).toEqual([
+      {
+        placementId: "s1",
+        path: ["params", "patrolEnd"],
+        expected: { x: 120, y: 0 },
+        value: { x: 150, y: 25 },
+      },
+    ]);
+  });
+
+  it("writes a world point as it is, whatever the placement is doing", async () => {
+    const harness = createHarness(
+      document(
+        slime("s1", {
+          position: { x: 50, y: 20 },
+          rotation: Math.PI / 2,
+          scale: { x: 2, y: 2 },
+        }),
+      ),
+    );
+    harness.commands.beginParamDrag("s1", "home", "body", { x: -80, y: 40 });
+    harness.commands.updateParamDrag({ x: -60, y: 70 });
+    await harness.commands.settleEdits();
+
+    expect(edits(harness.sent)).toEqual([
+      {
+        placementId: "s1",
+        path: ["params", "home"],
+        expected: { x: -80, y: 40 },
+        value: { x: -60, y: 70 },
+      },
+    ]);
+  });
+
+  it("lands the world point on the lattice while snapping is on", async () => {
+    const harness = createHarness(document(slime("s1", UPRIGHT)));
+    harness.withSnap(10);
+    harness.commands.beginParamDrag("s1", "home", "body", { x: -80, y: 40 });
+    harness.commands.updateParamDrag({ x: -57, y: 44 });
+    await harness.commands.settleEdits();
+
+    expect(edits(harness.sent)).toEqual([
+      {
+        placementId: "s1",
+        path: ["params", "home"],
+        expected: { x: -80, y: 40 },
+        value: { x: -60, y: 40 },
+      },
+    ]);
+  });
+
+  it("keeps the authored numbers under a parent flattened to nothing", async () => {
+    const harness = createHarness(
+      document(
+        placement("root", 0, undefined, {
+          transform: {
+            position: { x: 0, y: 0 },
+            rotation: 0,
+            scale: { x: 0, y: 1 },
+          },
+        }),
+        slime("s1", UPRIGHT, "root"),
+      ),
+    );
+    harness.commands.beginParamDrag("s1", "patrolEnd", "body", {
+      x: 0,
+      y: 20,
+    });
+    harness.commands.updateParamDrag({ x: 60, y: 45 });
+    await harness.commands.settleEdits();
+
+    // Every local x draws at the parent's origin, so no world point names one:
+    // x keeps what it was authored with and y takes the move.
+    expect(edits(harness.sent)).toEqual([
+      {
+        placementId: "s1",
+        path: ["params", "patrolEnd"],
+        expected: { x: 120, y: 0 },
+        value: { x: 120, y: 25 },
+      },
+    ]);
+  });
+
+  it("writes nothing for a press and release that moved nothing", async () => {
+    const harness = createHarness(document(slime("s1", UPRIGHT)));
+    harness.commands.beginParamDrag("s1", "patrolEnd", "body", {
+      x: 170,
+      y: 20,
+    });
+    await harness.commands.settleEdits();
+
+    expect(harness.sent).toEqual([]);
+  });
+
+  it("writes nothing for a click on a turned placement's point", async () => {
+    // Converting the authored value out to world space and back is not exact
+    // under a rotation; a click must still return the authored numbers.
+    const harness = createHarness(
+      document(
+        slime("s1", {
+          position: { x: 240, y: 40 },
+          rotation: Math.PI / 6,
+          scale: { x: 1, y: 1 },
+        }),
+      ),
+    );
+    harness.commands.beginParamDrag("s1", "patrolEnd", "body", {
+      x: 344,
+      y: 100,
+    });
+    await harness.commands.settleEdits();
+
+    expect(harness.sent).toEqual([]);
+  });
+
+  it("writes nothing for a drag that was abandoned", async () => {
+    const harness = createHarness(document(slime("s1", UPRIGHT)));
+    harness.commands.beginParamDrag("s1", "patrolEnd", "body", {
+      x: 170,
+      y: 20,
+    });
+    harness.commands.updateParamDrag({ x: 200, y: 45 });
+    harness.commands.cancelParamDrag();
+    await harness.commands.settleEdits();
+
+    expect(harness.sent).toEqual([]);
+    expect(harness.store.getState().paramDrag).toBeUndefined();
+  });
+
+  it("refuses to start on a field the catalog has no point for", () => {
+    const harness = createHarness(document(placement("crate", 0)));
+    harness.commands.beginParamDrag("crate", "texture", "body", {
+      x: 0,
+      y: 0,
+    });
+
+    expect(harness.store.getState().paramDrag).toBeUndefined();
   });
 });

@@ -63,8 +63,9 @@ below](#numbers-switches-names-and-choices). `param.asset` names a file — the
 level stores a project-relative path and `setup()` receives the loaded handle.
 `defineLevelAsset` is what says how a path becomes a handle, and its `create`
 function comes from the package that owns the asset: `texture` from
-`@yagejs/renderer`. `param.entityRef` names another placement in the same
-level, and is [its own section below](#point-one-placement-at-another).
+`@yagejs/renderer`. `param.vec2` and `param.point` carry a pair of numbers, and are [their own
+section below](#pairs-and-places). `param.entityRef` names another placement in
+the same level, and is [its own section below](#point-one-placement-at-another).
 
 ### Say how a sheet is cut
 
@@ -167,6 +168,78 @@ setup(params: ParamsOf<typeof SlimeParams>): void {
 The level file stores `null` there and the editor's field gets a **Clear**
 button. Leaving the key out altogether is still an error: a placement says what
 it holds, including that it holds nothing.
+
+### Pairs and places
+
+A drift, a size, a patrol end: two numbers that belong together. `param.vec2`
+carries a pair, and `param.point` carries a pair that is a *place* — which is
+what lets the level editor draw a handle on it, so the author points at the
+ground instead of typing where the ground is.
+
+```typescript title="src/Slime.ts"
+const SlimeParams = defineParams({
+  drift: param.vec2({ x: 0, y: -12 }),
+  patrolEnd: param.point({ x: 120, y: 0 }, { relative: true }),
+  home: param.point({ x: 0, y: 0 }, { optional: true }),
+});
+```
+
+The level file stores `{ "x": 120, "y": 0 }` and `setup()` receives a `Vec2`.
+Both members must be finite, and nothing else may be in the object.
+
+`relative: true` stores the point in the placement's own frame, so it travels
+with the placement: move the slime in the editor and its patrol end moves with
+it. Without `relative` the value is a world point, and it stays exactly where
+it is when the placement moves — which is what a shared destination, a gate or
+a drop site, usually means.
+
+That is where the value is *stored*. What `setup()` receives is a world point
+either way, because the level converts through where the placement ends up in
+the world, the instance transform composed with every parent above it:
+
+```typescript
+setup(params: ParamsOf<typeof SlimeParams>): void {
+  this.add(new Transform());
+  // A world position, whatever the level did with this slime.
+  this.add(new Patrol(params.patrolEnd));
+}
+```
+
+#### When you want the offset instead
+
+Some points are not a destination but a part of the entity: a muzzle, a
+hardpoint, the place a pickup pops out of. Those have to keep following the
+entity, so ask for the placement's own frame with `space: "local"`:
+
+```typescript
+const TurretParams = defineParams({
+  muzzle: param.point({ x: 24, y: -6 }, { relative: true, space: "local" }),
+});
+```
+
+`setup()` then receives the offset unchanged, and you turn it into a world
+point where you use it:
+
+```typescript
+class Gun extends Component {
+  constructor(private readonly muzzle: Vec2) {
+    super();
+  }
+
+  fire(): void {
+    const from = this.entity.get(Transform).localToWorld(this.muzzle);
+    // …spawn a bullet at from
+  }
+}
+```
+
+Compose it there rather than in `setup()`: a level applies the placement's own
+transform after `setup()` returns, so a point composed in `setup()` would use
+the transform the entity had before it was placed.
+
+`relative` and `space` are independent, and all four pairings work. A world
+point asked for as `"local"` arrives as an offset from the placement; a
+relative one asked for as `"world"` arrives as a position.
 
 ### Point one placement at another
 

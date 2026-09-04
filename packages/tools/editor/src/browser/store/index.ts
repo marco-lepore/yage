@@ -22,6 +22,8 @@ export type {
   GizmoTool,
   MarqueeGesture,
   HandleId,
+  ParamDrag,
+  ParamValueKind,
   PendingCommand,
   PivotMode,
   PoseComponent,

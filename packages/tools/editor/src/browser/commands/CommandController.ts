@@ -5,11 +5,12 @@ import type {
   LevelPlacement,
   LevelTransform,
 } from "@yagejs/level/document";
-import type {
-  MovePlacementState,
-  PlacementMove,
-  PoseEdit,
-  ValueEdit,
+import {
+  equalJson,
+  type MovePlacementState,
+  type PlacementMove,
+  type PoseEdit,
+  type ValueEdit,
 } from "../../shared/commands/index.js";
 import {
   posesOf,
@@ -22,6 +23,7 @@ import {
   type PoseComponent,
 } from "../store/index.js";
 import {
+  draggedValue,
   gesturePoses,
   parentWorld,
   samePose,
@@ -32,6 +34,7 @@ import {
   withPoseNumber,
   WORLD_ORIGIN,
 } from "./pose.js";
+import { pointFields, pointHandles } from "./params.js";
 import {
   isAncestorOrSelf,
   placementById,
@@ -839,6 +842,96 @@ export class CommandController {
   }
 
   /**
+   * Start dragging one parameter's handle in the viewport.
+   *
+   * Its own path rather than a fourth gizmo mode: a gesture poses placements,
+   * and a parameter value is not a placement. Nothing is written until the
+   * release, so the whole drag is one `set-values` and one undo step.
+   *
+   * Refused for a field the catalog has no point description for and for one
+   * holding something other than a pair of numbers, which is exactly what
+   * draws no handle.
+   */
+  beginParamDrag(
+    id: string,
+    field: string,
+    grip: HandleId,
+    origin: EditorPoint,
+  ): void {
+    if (!this.store.writable) return;
+    const state = this.store.getState();
+    // A second contact must not replace a drag already running, for the reason
+    // `beginGesture` refuses one.
+    if (state.gesture || state.paramDrag) return;
+    const placement = this.placement(id);
+    if (!placement) return;
+    const handle = pointHandles(
+      state.document,
+      placement,
+      pointFields(this.catalog(), placement.type).filter(
+        (one) => one.name === field,
+      ),
+    )[0];
+    if (!handle) return;
+    this.store.dispatch({
+      type: "param-drag-started",
+      drag: {
+        id,
+        field,
+        kind: "point",
+        grip,
+        relative: handle.relative,
+        from: handle.at,
+        origin,
+        current: origin,
+        constrained: false,
+        suspended: false,
+      },
+    });
+  }
+
+  /**
+   * Move the open parameter drag to a new pointer position.
+   *
+   * The modifiers are their state at this moment rather than at the press, for
+   * the reason {@link updateGesture} reads them the same way.
+   */
+  updateParamDrag(
+    current: EditorPoint,
+    modifiers: GestureModifiers = {},
+  ): void {
+    if (!this.store.getState().paramDrag) return;
+    this.store.dispatch({
+      type: "param-drag-moved",
+      current,
+      constrained: modifiers.constrained ?? false,
+      suspended: modifiers.suspended ?? false,
+    });
+  }
+
+  /** Abandons the drag. Nothing was written, so nothing has to be put back. */
+  cancelParamDrag(): void {
+    this.store.takeParamDrag();
+  }
+
+  /**
+   * Turn the open parameter drag into one `set-values`.
+   *
+   * A drag that reached the value the field already holds writes nothing, for
+   * the reason a gesture that never moved writes nothing: a press and release
+   * that changed nothing must not take an undo step.
+   */
+  private settleParamDrag(): void {
+    const drag = this.store.takeParamDrag();
+    if (!drag) return;
+    const value = draggedValue(this.store.getState(), drag);
+    const placement = this.placement(drag.id);
+    if (!placement) return;
+    if (equalJson(placement.params[drag.field] as JsonValue, value)) return;
+    this.setParam(drag.id, drag.field, value);
+  }
+
+  /**
    * Commit the open drag, then wait out every write already sent.
    *
    * Everything that addresses an exact revision calls this first: a save sends
@@ -849,6 +942,7 @@ export class CommandController {
   async settleEdits(): Promise<void> {
     this.settleGesture();
     this.settlePoseDraft();
+    this.settleParamDrag();
     const ids = this.store
       .getState()
       .pending.map((entry) => entry.command.commandId);

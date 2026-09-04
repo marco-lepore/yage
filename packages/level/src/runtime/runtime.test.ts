@@ -960,3 +960,126 @@ describe("entity references", () => {
     expect(referrer.isDestroyed).toBe(false);
   });
 });
+
+describe("point parameters", () => {
+  const PatrolParams = defineParams({
+    patrolEnd: param.point({ x: 10, y: 0 }, { relative: true }),
+    muzzle: param.point({ x: 10, y: 0 }, { relative: true, space: "local" }),
+    exit: param.point({ x: 0, y: 0 }),
+  });
+
+  /** A type that keeps its points, so the frames `setup()` saw are readable. */
+  class Patroller extends Entity {
+    static readonly level = defineLevelEntity({
+      id: "game.patroller",
+      version: 1,
+      params: PatrolParams,
+    });
+
+    points: ParamsOf<typeof PatrolParams> | undefined;
+
+    setup(params: ParamsOf<typeof PatrolParams>): void {
+      this.add(new Transform());
+      this.points = params;
+    }
+  }
+
+  const authoredPoints = {
+    patrolEnd: { x: 10, y: 0 },
+    muzzle: { x: 10, y: 0 },
+    exit: { x: 900, y: 300 },
+  };
+
+  function aPatroller(overrides: Partial<LevelPlacement> = {}): LevelPlacement {
+    return placement({
+      id: "walker",
+      type: "game.patroller",
+      params: authoredPoints,
+      ...overrides,
+    });
+  }
+
+  it("composes a relative point through the parent chain", () => {
+    const scene = sceneOf();
+    const prepared = prepare(
+      [
+        aPatroller({
+          id: "post",
+          transform: {
+            position: { x: 100, y: 50 },
+            rotation: Math.PI / 2,
+            scale: { x: 2, y: 2 },
+          },
+        }),
+        aPatroller({
+          parent: "post",
+          transform: {
+            position: { x: 5, y: 0 },
+            rotation: 0,
+            scale: { x: 1, y: 1 },
+          },
+        }),
+      ],
+      Patroller,
+    );
+
+    const instance = instantiateLevel(scene, prepared, { namespace: "forest" });
+
+    // The parent doubles and turns its child's offset, so the child sits at
+    // (100, 60); the child's own (10, 0) is doubled and turned the same way.
+    const walker = instance.get("walker") as Patroller;
+    expect(walker.points?.patrolEnd.equals({ x: 100, y: 80 })).toBe(true);
+    // And the pose the level decoded through is the pose it placed the entity
+    // at, so the entity's own transform reaches the same world point.
+    const placed = walker.get(Transform).localToWorld({ x: 10, y: 0 });
+    expect(placed.equals({ x: 100, y: 80 })).toBe(true);
+  });
+
+  it("composes the instance transform into a top-level placement's point", () => {
+    const scene = sceneOf();
+    const prepared = prepare(
+      [
+        aPatroller({
+          transform: {
+            position: { x: 10, y: 0 },
+            rotation: 0,
+            scale: { x: 1, y: 1 },
+          },
+        }),
+      ],
+      Patroller,
+    );
+
+    const instance = instantiateLevel(scene, prepared, {
+      namespace: "forest",
+      transform: { position: { x: 100, y: 0 }, scale: { x: 3, y: 3 } },
+    });
+
+    // The placement lands at (130, 0) at three times the size, so its own
+    // (10, 0) reaches 30 units further along.
+    const walker = instance.get("walker") as Patroller;
+    expect(walker.points?.patrolEnd.equals({ x: 160, y: 0 })).toBe(true);
+  });
+
+  it("hands over the authored numbers where the declaration asked for them", () => {
+    const scene = sceneOf();
+    const prepared = prepare(
+      [
+        aPatroller({
+          transform: {
+            position: { x: 100, y: 50 },
+            rotation: Math.PI / 2,
+            scale: { x: 2, y: 2 },
+          },
+        }),
+      ],
+      Patroller,
+    );
+
+    const instance = instantiateLevel(scene, prepared, { namespace: "forest" });
+
+    const walker = instance.get("walker") as Patroller;
+    expect({ ...(walker.points?.muzzle ?? {}) }).toEqual({ x: 10, y: 0 });
+    expect({ ...(walker.points?.exit ?? {}) }).toEqual({ x: 900, y: 300 });
+  });
+});

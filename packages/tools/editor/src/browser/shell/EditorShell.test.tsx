@@ -193,6 +193,7 @@ function createHarness(
           hitTest: () => null,
           screenToWorld: (point) => point,
           gizmoAt: () => null,
+          paramHandleAt: () => null,
           gizmoNear: () => false,
           markAt: () => null,
           pickAt: () => null,

@@ -711,6 +711,8 @@ What a field looks like follows the kind its declaration gave it.
 | `param.boolean(…)` | A checkbox. |
 | `param.string(…)` | A box, or a text area when the declaration says `multiline`. |
 | `param.select(…)` | A dropdown of the values the declaration listed. |
+| `param.vec2(…)` | Two boxes, **x** and **y**. Typing into one writes the whole pair. |
+| `param.point(…)` | The same two boxes, and a ring in the level you can drag. |
 | `param.asset(…)` | A path, with your project's files behind **▾**. |
 | `param.entityRef(…)` | Another placement, from a dropdown or by **Pick** and a click in the level. |
 
@@ -784,6 +786,28 @@ Copying carries references with it. A copy whose target you copied too points
 at the copy; a copy whose target you left behind keeps pointing at the
 original, and if you paste it into a level that has no such placement it
 arrives as a problem to answer rather than as a guess.
+
+##### Dragging a point
+
+A `param.point()` parameter is a place, so selecting the placement draws a
+green ring where the value is and dragging that ring moves it. The two boxes
+follow the ring while you drag, and the release is one edit you can undo in one
+step.
+
+A point declared `relative: true` is measured from the placement's own origin,
+and a dashed line runs back to it — move the placement and the point goes with
+it. One without that line is a world point and stays where it is.
+
+The ring lands on the grid while **Snap** is on, the way a dragged placement
+does, and <kbd>Alt</kbd> lets one drag off it. <kbd>Shift</kbd> holds the drag
+to one axis: the placement's own axes for a relative point, the world's for a
+world point.
+
+Rings are drawn for the selected placement only, and only when one placement is
+selected — a level of twenty slimes would otherwise be a level of twenty stray
+rings. A press on a ring beats the gizmo underneath it, which matters for a
+relative point sitting at the placement's origin; the gizmo's arms still reach
+the same move.
 
 #### Draw order
 

@@ -822,6 +822,15 @@ export const EDITOR_CSS = `
   color: var(--text-muted);
 }
 
+/* The boxes of one fixed-arity value share the width a single box would have,
+   so a pair of numbers sits on one row like every other field. */
+.yage-editor .ye-tuple {
+  display: flex;
+  flex: 1 1 auto;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
 /* A select in a field row fills what the label leaves, like the text box the
    rest of the rows hold. */
 .yage-editor .ye-field .ye-select {

@@ -283,6 +283,30 @@ export class Transform extends Component {
   }
 
   /**
+   * A point in this entity's own space, expressed in world space.
+   *
+   * The point is scaled by the world scale, turned by the world rotation, and
+   * offset by the world position — the same composition a child transform goes
+   * through — so an offset authored beside the entity lands where the artwork
+   * does whatever the parent chain does.
+   *
+   * ```ts
+   * const muzzle = this.get(Transform).localToWorld({ x: 24, y: -6 });
+   * ```
+   */
+  localToWorld(point: Vec2Like): Vec2 {
+    if (this._dirty) this._recompute();
+    const x = point.x * this._worldScaleX;
+    const y = point.y * this._worldScaleY;
+    const cos = Math.cos(this._worldRotation);
+    const sin = Math.sin(this._worldRotation);
+    return new Vec2(
+      this._worldPositionX + x * cos - y * sin,
+      this._worldPositionY + x * sin + y * cos,
+    );
+  }
+
+  /**
    * Convert a world-space point into this entity's own local space — the
    * inverse of this transform's world position, rotation and scale. Use it to
    * ask where a world point falls inside an entity that is parented, rotated

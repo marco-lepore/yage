@@ -1,5 +1,10 @@
-import type { AssetHandle, Entity, EntityHandle } from "@yagejs/core";
-import type { JsonValue } from "../document/types.js";
+import { Vec2 } from "@yagejs/core";
+import type { AssetHandle, Entity, EntityHandle, Vec2Like } from "@yagejs/core";
+import type {
+  JsonObject,
+  JsonValue,
+  LevelTransform,
+} from "../document/types.js";
 import {
   createBuiltInParamKind,
   type AssetFrames,
@@ -211,6 +216,39 @@ export interface StringParamOptions extends OptionalParamOptions {
 /** What a choice parameter accepts beyond its list of values. */
 export type SelectParamOptions = OptionalParamOptions;
 
+/** What a pair-of-numbers parameter accepts. */
+export type Vec2ParamOptions = OptionalParamOptions;
+
+/**
+ * Which frame a point parameter hands `setup()`.
+ *
+ * `"world"` is where the level put the placement; `"local"` is the placement's
+ * own frame, where `{ x: 0, y: 0 }` is its origin whatever the level did with
+ * it.
+ */
+export type PointSpace = "world" | "local";
+
+/** What a place-in-the-level parameter accepts. */
+export interface PointParamOptions extends OptionalParamOptions {
+  /**
+   * Whether the value is stored in the placement's own frame rather than the
+   * world's. Defaults to `false`.
+   *
+   * A relative point travels with the placement that holds it: move the slime
+   * in the editor and its patrol end moves too. A world one stays where it is.
+   */
+  readonly relative?: boolean;
+  /**
+   * Which frame `setup()` receives the value in. Defaults to `"world"`.
+   *
+   * Independent of {@link relative}, which says how the value is stored: the
+   * level converts between the two through the placement's authored world
+   * pose, so a relative point can arrive as a world position and a world one
+   * as an offset from the placement.
+   */
+  readonly space?: PointSpace;
+}
+
 /**
  * A number, authored and decoded as itself.
  *
@@ -404,6 +442,174 @@ function selectParam<const O extends readonly string[]>(
 }
 
 /**
+ * A pair of numbers, authored as `{ x, y }` and decoded to a `Vec2`.
+ *
+ * For a value whose two numbers belong together and are not a place: a size, a
+ * factor, a velocity. {@link pointParam} is the one that is a place.
+ *
+ * ```ts
+ * const WindParams = defineParams({
+ *   drift: param.vec2({ x: 12, y: 0 }),
+ * });
+ * ```
+ */
+function vec2Param(
+  defaultValue: Vec2Like,
+  options?: Vec2ParamOptions & { readonly optional?: false },
+): ParamKind<Vec2>;
+function vec2Param(
+  defaultValue: Vec2Like,
+  options: Vec2ParamOptions,
+): ParamKind<Vec2 | undefined>;
+function vec2Param(
+  defaultValue: Vec2Like,
+  options: Vec2ParamOptions = {},
+): ParamKind<Vec2 | undefined> {
+  return createBuiltInParamKind({
+    name: "vec2",
+    optional: options.optional ?? false,
+    defaultValue: pointValue(defaultValue),
+    validate: (value) => pointProblems(value, options.optional ?? false),
+    decode: decodePoint,
+    assets: () => [],
+  });
+}
+
+/**
+ * A place in the level, authored as `{ x, y }` and decoded to a `Vec2`.
+ *
+ * The same JSON as {@link vec2Param} and a different promise: this one names a
+ * position, which is what lets an authoring tool put a handle on it and let
+ * the author point at the ground instead of typing where the ground is.
+ *
+ * `relative: true` stores the value in the placement's own frame, so it
+ * travels with the placement when the author moves it. `space` says which
+ * frame `setup()` receives, and defaults to `"world"` — so a relative point
+ * arrives as a world position, ready to walk towards.
+ *
+ * ```ts
+ * const SlimeParams = defineParams({
+ *   patrolEnd: param.point({ x: 120, y: 0 }, { relative: true }),
+ *   muzzle: param.point({ x: 24, y: -6 }, { relative: true, space: "local" }),
+ * });
+ *
+ * setup(params: ParamsOf<typeof SlimeParams>): void {
+ *   this.add(new Transform());
+ *   this.add(new Patrol(params.patrolEnd));
+ *   this.add(new Gun(params.muzzle));
+ * }
+ * ```
+ *
+ * A `space: "local"` value is an offset from the placement, so turn it into a
+ * world point where it is used — `Transform.localToWorld(point)` from a
+ * component's `onEnable()` or an update, after the level has placed the
+ * entity.
+ */
+function pointParam(
+  defaultValue: Vec2Like,
+  options?: PointParamOptions & { readonly optional?: false },
+): ParamKind<Vec2>;
+function pointParam(
+  defaultValue: Vec2Like,
+  options: PointParamOptions,
+): ParamKind<Vec2 | undefined>;
+function pointParam(
+  defaultValue: Vec2Like,
+  options: PointParamOptions = {},
+): ParamKind<Vec2 | undefined> {
+  const stored: PointSpace = (options.relative ?? false) ? "local" : "world";
+  const wanted = options.space ?? "world";
+  return createBuiltInParamKind({
+    name: "point",
+    optional: options.optional ?? false,
+    relative: options.relative ?? false,
+    defaultValue: pointValue(defaultValue),
+    validate: (value) => pointProblems(value, options.optional ?? false),
+    decode: (value, context) =>
+      inSpace(decodePoint(value), stored, wanted, context.worldPose),
+    assets: () => [],
+  });
+}
+
+/**
+ * An authored point moved from the frame it is stored in to the frame the
+ * declaration asked for, through the placement's authored world pose. The
+ * loader composes that pose with the same steps it places the entity by, so
+ * the value and the entity agree.
+ */
+function inSpace(
+  point: Vec2 | undefined,
+  stored: PointSpace,
+  wanted: PointSpace,
+  pose: LevelTransform,
+): Vec2 | undefined {
+  if (point === undefined || stored === wanted) return point;
+  return wanted === "world"
+    ? poseToWorld(point, pose)
+    : poseToLocal(point, pose);
+}
+
+/** A point in `pose`'s frame, expressed in the world's. */
+function poseToWorld(point: Vec2, pose: LevelTransform): Vec2 {
+  return point.multiply(pose.scale).rotate(pose.rotation).add(pose.position);
+}
+
+/**
+ * A world point expressed in `pose`'s frame. An axis whose scale is 0 draws
+ * every local value at the same world place, so no local value names one there
+ * and the answer on that axis is 0 — the rule `Transform.worldToLocal` follows.
+ */
+function poseToLocal(point: Vec2, pose: LevelTransform): Vec2 {
+  const turned = point.sub(pose.position).rotate(-pose.rotation);
+  return new Vec2(
+    pose.scale.x === 0 ? 0 : turned.x / pose.scale.x,
+    pose.scale.y === 0 ? 0 : turned.y / pose.scale.y,
+  );
+}
+
+/**
+ * The JSON a declared default is stored as. Written member by member, so a
+ * `Vec2` and a plain object produce the same two-key object, and frozen,
+ * because `describeParams` hands the one object to every reader.
+ */
+function pointValue(value: Vec2Like): JsonObject {
+  return Object.freeze({ x: value.x, y: value.y });
+}
+
+/** A validated pair as `setup()` receives it. */
+function decodePoint(value: JsonValue): Vec2 | undefined {
+  if (value === null) return undefined;
+  const point = value as unknown as Vec2Like;
+  return new Vec2(point.x, point.y);
+}
+
+/**
+ * Problems with a pair: what it is, then each member, then anything else it
+ * holds. The rule a level document already applies to a position, so a
+ * parameter naming a place accepts exactly what a transform does.
+ */
+function pointProblems(value: JsonValue, optional: boolean): readonly string[] {
+  const noun = "an object with finite x and y";
+  if (value === null) return optional ? [] : [`must be ${noun}`];
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return [optional ? `must be ${noun} or null` : `must be ${noun}`];
+  }
+  const problems: string[] = [];
+  for (const axis of ["x", "y"] as const) {
+    const held = Reflect.get(value, axis) as unknown;
+    if (typeof held !== "number" || !Number.isFinite(held)) {
+      problems.push(`must hold a finite ${axis}`);
+    }
+  }
+  for (const key of Object.keys(value)) {
+    if (key !== "x" && key !== "y") {
+      problems.push(`must not hold ${JSON.stringify(key)}`);
+    }
+  }
+  return problems;
+}
+
+/**
  * What a plain kind's validated JSON is at runtime: itself, and `undefined`
  * where an optional field holds nothing — the same "no value" a reference
  * parameter decodes to.
@@ -480,6 +686,8 @@ export const param = Object.freeze({
   boolean: booleanParam,
   string: stringParam,
   select: selectParam,
+  vec2: vec2Param,
+  point: pointParam,
 });
 
 /**

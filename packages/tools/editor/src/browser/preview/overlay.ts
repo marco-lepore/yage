@@ -76,6 +76,13 @@ export interface OverlayView {
    * and a level's references never crowd the picture.
    */
   readonly links?: readonly OverlayLink[] | undefined;
+  /**
+   * One handle per place-valued parameter of the selected placement.
+   *
+   * Drawn for the selection alone, the way the gizmo is: a level of twenty
+   * slimes with patrol ends would otherwise be a level of twenty stray rings.
+   */
+  readonly handles?: readonly ParamHandle[] | undefined;
   /** The rectangle a marquee is dragging out, while one is being dragged. */
   readonly marquee?: WorldBounds | undefined;
   /**
@@ -96,6 +103,28 @@ export interface OverlayLink {
   readonly from: EditorPoint;
   readonly to: EditorPoint;
 }
+
+/**
+ * One parameter value a press can drag, drawn where the value is.
+ *
+ * A union by `kind` so a value needing more than one handle joins without
+ * changing what a point handle is.
+ */
+export type ParamHandle = {
+  readonly kind: "point";
+  /** The placement holding the parameter. */
+  readonly id: string;
+  /** The parameter's name, which the viewport shows on hover. */
+  readonly field: string;
+  /** Where the handle sits in world space. */
+  readonly at: EditorPoint;
+  /**
+   * The placement's own world origin, drawn as a dashed line back to the
+   * handle. Present only for a value in the placement's own frame, where the
+   * line is what says the value travels with the placement.
+   */
+  readonly from?: EditorPoint | undefined;
+};
 
 /**
  * What to draw over the selected placement: the handles for one transform, or
@@ -177,6 +206,20 @@ const LINK_GAP_PIXELS = 5;
 const LINK_HEAD_PIXELS = 10;
 /** The angle each barb makes with the line, in radians. */
 const LINK_HEAD_ANGLE = Math.PI / 6;
+/**
+ * A parameter handle's colour, which is none of the others: it is not a
+ * selection, not an axis, and not a reference — reading it as any of those
+ * would say the wrong thing about what a drag of it moves.
+ */
+const PARAM_COLOR = 0x34d399;
+/** The radius of the ring drawn at a parameter's value, in screen pixels. */
+export const PARAM_HANDLE_PIXELS = 7;
+/** How far outside that ring a press still grabs it, in screen pixels. */
+export const PARAM_GRAB_PIXELS = 8;
+/** How long one dash of the line back to the origin is, in screen pixels. */
+const PARAM_DASH_PIXELS = 5;
+/** How much space follows each of those dashes, in screen pixels. */
+const PARAM_GAP_PIXELS = 4;
 /** How heavily a mark's drawing is stroked, in screen pixels. */
 const MARK_LINE_PIXELS = 1.5;
 /** How solid the plate behind a mark is, so the drawing reads over scenery. */
@@ -244,9 +287,28 @@ export function drawOverlay(target: OverlayTarget, view: OverlayView): void {
   }
 
   const gizmo = view.gizmo;
-  if (!gizmo) return;
+  if (gizmo)
+    drawGizmo(target, gizmo, view.perScreenPixel, line, casing, carried);
+
+  // Above the marks and the gizmo, because a press tests a parameter handle
+  // before either of them: a relative point at the placement's origin sits
+  // under the translate gizmo's centre grip, and drawn below it would vanish.
+  for (const handle of view.handles ?? []) {
+    drawParamHandle(target, handle, view.perScreenPixel, casing);
+  }
+}
+
+/** The selection's gizmo: a box, a radial, a ring, or the arms. */
+function drawGizmo(
+  target: OverlayTarget,
+  gizmo: OverlayGizmo,
+  perScreenPixel: number,
+  line: number,
+  casing: number,
+  carried: MarkerStyle,
+): void {
   if (gizmo.kind === "box") {
-    drawBox(target, gizmo, view.perScreenPixel);
+    drawBox(target, gizmo, perScreenPixel);
     return;
   }
   if (gizmo.covering) {
@@ -257,11 +319,11 @@ export function drawOverlay(target: OverlayTarget, view: OverlayView): void {
     });
   }
   if (gizmo.kind === "radial") {
-    drawRadial(target, gizmo.anchor, view.perScreenPixel, line, casing);
+    drawRadial(target, gizmo.anchor, perScreenPixel, line, casing);
     return;
   }
   if (gizmo.mode === "rotate") {
-    const radius = RING_PIXELS * view.perScreenPixel;
+    const radius = RING_PIXELS * perScreenPixel;
     target
       .circle(gizmo.anchor.position.x, gizmo.anchor.position.y, radius)
       .stroke({ color: CASING_COLOR, width: casing, alpha: 0.55 })
@@ -270,7 +332,91 @@ export function drawOverlay(target: OverlayTarget, view: OverlayView): void {
     return;
   }
 
-  drawArms(target, gizmo.mode, gizmo.anchor, view.perScreenPixel, line, casing);
+  drawArms(target, gizmo.mode, gizmo.anchor, perScreenPixel, line, casing);
+}
+
+/**
+ * One parameter value: a ring where the value is, and a dashed line back to
+ * the placement's origin when the value is measured from it.
+ *
+ * A ring rather than a filled dot, so it does not read as a gizmo handle; the
+ * line says the value travels with the placement, and its absence says the
+ * value is a world point that stays where it is when the placement moves.
+ */
+function drawParamHandle(
+  target: OverlayTarget,
+  handle: ParamHandle,
+  perScreenPixel: number,
+  casing: number,
+): void {
+  const from = handle.from;
+  if (from) {
+    dashedLine(target, from, handle.at, perScreenPixel, {
+      color: PARAM_COLOR,
+      width: LINK_LINE_PIXELS * perScreenPixel,
+      alpha: LINK_ALPHA,
+    });
+  }
+  const radius = PARAM_HANDLE_PIXELS * perScreenPixel;
+  target
+    .circle(handle.at.x, handle.at.y, radius)
+    .stroke({ color: CASING_COLOR, width: casing, alpha: 0.55 })
+    .circle(handle.at.x, handle.at.y, radius)
+    .stroke({ color: PARAM_COLOR, width: LINE_PIXELS * perScreenPixel });
+}
+
+/**
+ * Which parameter handle a world point grabs, or nothing.
+ *
+ * The nearest wins, and among handles the same distance away the
+ * later-declared field does — so two values sitting on one point are told
+ * apart the way two rows of the inspector are, by declaration order.
+ */
+export function paramHandleAt(
+  handles: readonly ParamHandle[],
+  perScreenPixel: number,
+  point: EditorPoint,
+): ParamHandle | undefined {
+  const reach = PARAM_HANDLE_PIXELS + PARAM_GRAB_PIXELS;
+  let grabbed: ParamHandle | undefined;
+  let nearest = Number.POSITIVE_INFINITY;
+  for (const handle of handles) {
+    const away =
+      Math.hypot(point.x - handle.at.x, point.y - handle.at.y) / perScreenPixel;
+    if (away > reach || away > nearest) continue;
+    grabbed = handle;
+    nearest = away;
+  }
+  return grabbed;
+}
+
+/**
+ * A line drawn in dash-plus-gap strides from `from` towards `to`. Both lengths
+ * are counts of screen pixels, so a long line and a short one are drawn from
+ * the same pattern at any zoom, and a span shorter than one dash draws that
+ * span rather than nothing.
+ */
+function dashedLine(
+  target: OverlayTarget,
+  from: EditorPoint,
+  to: EditorPoint,
+  perScreenPixel: number,
+  style: { color: number; width: number; alpha?: number },
+  dashPixels: number = PARAM_DASH_PIXELS,
+  gapPixels: number = PARAM_GAP_PIXELS,
+): void {
+  const span = Math.hypot(to.x - from.x, to.y - from.y);
+  if (span === 0) return;
+  const along = { x: (to.x - from.x) / span, y: (to.y - from.y) / span };
+  const dash = dashPixels * perScreenPixel;
+  const stride = dash + gapPixels * perScreenPixel;
+  for (let start = 0; start < span; start += stride) {
+    const end = Math.min(start + dash, span);
+    target
+      .moveTo(from.x + along.x * start, from.y + along.y * start)
+      .lineTo(from.x + along.x * end, from.y + along.y * end)
+      .stroke(style);
+  }
 }
 
 /**
@@ -301,17 +447,15 @@ function drawLink(
     alpha: LINK_ALPHA,
   };
 
-  const dash = LINK_DASH_PIXELS * perScreenPixel;
-  const stride = dash + LINK_GAP_PIXELS * perScreenPixel;
-  // A span shorter than one dash draws that span, so two placements a few
-  // pixels apart are still joined by something.
-  for (let start = 0; start < span; start += stride) {
-    const end = Math.min(start + dash, span);
-    target
-      .moveTo(link.from.x + along.x * start, link.from.y + along.y * start)
-      .lineTo(link.from.x + along.x * end, link.from.y + along.y * end)
-      .stroke(style);
-  }
+  dashedLine(
+    target,
+    link.from,
+    link.to,
+    perScreenPixel,
+    style,
+    LINK_DASH_PIXELS,
+    LINK_GAP_PIXELS,
+  );
 
   const head = LINK_HEAD_PIXELS * perScreenPixel;
   for (const turn of [LINK_HEAD_ANGLE, -LINK_HEAD_ANGLE]) {

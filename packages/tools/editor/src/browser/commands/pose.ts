@@ -9,11 +9,15 @@ import {
   type GizmoMode,
   type GizmoReference,
   type HandleId,
+  type ParamDrag,
   type PoseComponent,
 } from "../store/index.js";
 import { placementById } from "./graph.js";
 import type {
+  JsonObject,
+  JsonValue,
   LevelDocument,
+  LevelPlacement,
   LevelPoint,
   LevelTransform,
 } from "@yagejs/level/document";
@@ -139,6 +143,32 @@ export function toLocal(
       x: parent.scale.x === 0 ? keep.scale.x : world.scale.x / parent.scale.x,
       y: parent.scale.y === 0 ? keep.scale.y : world.scale.y / parent.scale.y,
     },
+  };
+}
+
+/** A placement's own world transform, composed from the document. */
+export function placementWorld(
+  document: LevelDocument,
+  placement: LevelPlacement,
+): LevelTransform {
+  return toWorld(placement.transform, parentWorld(document, placement.parent));
+}
+
+/**
+ * A point in a frame's own space, expressed in world space — {@link toWorld}
+ * for a bare point, which has no rotation or scale of its own to compose.
+ */
+export function pointToWorld(
+  local: LevelPoint,
+  frame: LevelTransform,
+): LevelPoint {
+  const rotated = rotate(
+    { x: local.x * frame.scale.x, y: local.y * frame.scale.y },
+    frame.rotation,
+  );
+  return {
+    x: frame.position.x + rotated.x,
+    y: frame.position.y + rotated.y,
   };
 }
 
@@ -792,11 +822,19 @@ function lockAxis(
     return axisOf(anchor.rotation, gesture.handle);
   }
   if (!gesture.constrained) return undefined;
-  // The modifier holds a free move to whichever of the placement's own axes it
-  // has travelled furthest along, so the choice follows the drag rather than
-  // being fixed when it started.
-  const x = axisOf(anchor.rotation, "x");
-  const y = axisOf(anchor.rotation, "y");
+  return nearestAxis(anchor.rotation, delta);
+}
+
+/**
+ * Whichever of a frame's two axes a move has travelled furthest along.
+ *
+ * The choice follows the drag rather than being fixed when it started, so a
+ * developer who takes the modifier up part-way through picks the axis they
+ * have actually moved along.
+ */
+function nearestAxis(rotation: number, delta: EditorPoint): LevelPoint {
+  const x = axisOf(rotation, "x");
+  const y = axisOf(rotation, "y");
   const alongX = Math.abs(delta.x * x.x + delta.y * x.y);
   const alongY = Math.abs(delta.x * y.x + delta.y * y.y);
   return alongX >= alongY ? x : y;
@@ -813,7 +851,7 @@ function lockAxis(
  * other where it was, and one held to a turned placement's own axis reaches
  * the point on that line nearest the lattice.
  */
-function pulled(
+export function pulled(
   from: EditorPoint,
   delta: EditorPoint,
   step: number,
@@ -827,6 +865,82 @@ function pulled(
   const target = snappedPoint(to, step);
   const full = { x: target.x - from.x, y: target.y - from.y };
   return axis ? alongAxis(full, axis) : full;
+}
+
+/**
+ * A parameter value part-way through a drag of its handle.
+ *
+ * Recomputed from the drag on every read, the way {@link gesturePoses} is, so
+ * the ring the overlay draws, the boxes the inspector shows, and the value a
+ * release writes are the same arithmetic over the same inputs.
+ *
+ * The drag is a parameter rather than read from the state, because
+ * `settleParamDrag` takes it out of the state before computing what to write.
+ */
+export function draggedValue(state: EditorState, drag: ParamDrag): JsonValue {
+  switch (drag.kind) {
+    case "point":
+      return draggedPoint(state, drag);
+  }
+}
+
+/**
+ * Where a dragged point has reached, in the frame the value is stored in.
+ *
+ * The pointer's travel is applied to where the handle sat at the press, so the
+ * handle stays under the pointer wherever on it the press landed. `Shift`
+ * keeps the move to one axis of the value's own frame — the placement's when
+ * the value is relative, the world's when it is not — and the lattice lands
+ * the world point, which is the rule a dragged placement follows.
+ */
+function draggedPoint(state: EditorState, drag: ParamDrag): JsonValue {
+  const document = state.document;
+  const placement = placementById(document).get(drag.id);
+  const frame = placement ? placementWorld(document, placement) : WORLD_ORIGIN;
+  const raw = {
+    x: drag.current.x - drag.origin.x,
+    y: drag.current.y - drag.origin.y,
+  };
+  const axis = drag.constrained
+    ? nearestAxis(drag.relative ? frame.rotation : 0, raw)
+    : undefined;
+  const moved = axis ? alongAxis(raw, axis) : raw;
+  const lattice = latticeFor(state, drag);
+  const settled =
+    lattice === undefined ? moved : pulled(drag.from, moved, lattice, axis);
+  if (!drag.relative) {
+    return { x: drag.from.x + settled.x, y: drag.from.y + settled.y };
+  }
+  // The travel is applied to the authored numbers in their own frame rather
+  // than the world point converted back: a press and release that moved
+  // nothing then returns them bit for bit under any rotation, and an axis
+  // whose frame is flattened keeps them, since every local value draws at the
+  // frame's origin there and no world distance covers a local one.
+  const keep =
+    (placement ? authoredPoint(placement.params, drag.field) : undefined) ??
+    ORIGIN;
+  const local = worldDeltaToLocal(frame, settled);
+  return { x: keep.x + local.x, y: keep.y + local.y };
+}
+
+const ORIGIN: LevelPoint = { x: 0, y: 0 };
+
+/**
+ * The point a parameter holds, or nothing when it holds something else — an
+ * optional field emptied, or a value authored against a declaration that has
+ * since changed.
+ */
+export function authoredPoint(
+  params: JsonObject,
+  field: string,
+): LevelPoint | undefined {
+  const value = Reflect.get(params, field) as unknown;
+  if (typeof value !== "object" || value === null) return undefined;
+  const x = Reflect.get(value, "x") as unknown;
+  const y = Reflect.get(value, "y") as unknown;
+  if (typeof x !== "number" || !Number.isFinite(x)) return undefined;
+  if (typeof y !== "number" || !Number.isFinite(y)) return undefined;
+  return { x, y };
 }
 
 /** How large a step a stepped turn lands on. */

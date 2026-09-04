@@ -7,7 +7,7 @@ import {
 } from "../../shared/commands/index.js";
 import type { EditorDiagnostic } from "../../shared/diagnostics/index.js";
 import type { AssetListing } from "../../shared/protocol/index.js";
-import type { OrderDirection } from "../commands/index.js";
+import { draggedValue, type OrderDirection } from "../commands/index.js";
 import type { LayerChoice } from "../layers.js";
 import type { InspectableType } from "../project/index.js";
 import type { EditorState, EditorStore } from "../store/index.js";
@@ -160,7 +160,7 @@ function PlacementInspector(props: PlacementProps): React.JSX.Element {
         <Field
           key={field.name}
           field={field}
-          value={placement.params[field.name]}
+          value={liveValue(props.state, placement, field.name)}
           disabled={!editable}
           diagnostics={atField(field.name)}
           listAssets={props.listAssets}
@@ -392,6 +392,9 @@ function Field(props: FieldProps): React.JSX.Element {
       return <StringField {...props} />;
     case "select":
       return <SelectField {...props} />;
+    case "vec2":
+    case "point":
+      return <TupleField {...props} />;
     default: {
       const unhandled: never = props.field.kind;
       throw new Error(`No control for parameter kind ${String(unhandled)}.`);
@@ -736,6 +739,122 @@ function SelectField(props: FieldProps): React.JSX.Element {
  * chosen reads the same wherever it is met.
  */
 const EMPTY_LABEL = "None";
+
+/** The members each fixed-arity kind is written with, in order. */
+const TUPLE_MEMBERS: Readonly<Record<"vec2" | "point", readonly string[]>> = {
+  vec2: ["x", "y"],
+  point: ["x", "y"],
+};
+
+/**
+ * A value with a fixed set of numbers: one box per member, each committing the
+ * whole object.
+ *
+ * The members it does not change are taken from the value the field holds, or
+ * from the declared default when it holds nothing — so typing one number into
+ * an emptied optional field writes a whole value rather than half of one.
+ *
+ * A `point` also has a handle in the viewport, and the boxes follow it while
+ * it is being dragged.
+ */
+function TupleField(props: FieldProps): React.JSX.Element {
+  const { field } = props;
+  const members = TUPLE_MEMBERS[field.kind as "vec2" | "point"];
+  const held = tupleValue(props.value);
+  const fallback = tupleValue(field.defaultValue) ?? {};
+  return (
+    <div>
+      <div className="ye-field">
+        <span className="ye-field__label">{field.name}</span>
+        <div className="ye-tuple" data-testid={`field-${field.name}`}>
+          {members.map((member) => (
+            <TextField
+              key={member}
+              className="ye-num"
+              label={member}
+              testId={`field-${field.name}-${member}`}
+              value={memberText(held?.[member])}
+              numeric
+              placeholder={held === undefined ? EMPTY_LABEL : undefined}
+              disabled={props.disabled}
+              invalid={props.diagnostics.length > 0}
+              reject={(text) => refusedNumber(text, field)}
+              stepping={{
+                step: (text, intent) => steppedNumber(text, field, intent),
+              }}
+              onCommit={(text) => {
+                props.onCommit(
+                  committedTuple(
+                    members,
+                    held ?? fallback,
+                    member,
+                    Number(text.trim()),
+                  ),
+                );
+              }}
+            />
+          ))}
+        </div>
+        <ClearButton
+          field={field}
+          disabled={props.disabled || props.value === null}
+          onClear={props.onCommit}
+        />
+      </div>
+      <FieldFindings field={field.name} diagnostics={props.diagnostics} />
+    </div>
+  );
+}
+
+/** The members of an authored object, or nothing when it is not one. */
+function tupleValue(
+  value: unknown,
+): Readonly<Record<string, unknown>> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Readonly<Record<string, unknown>>)
+    : undefined;
+}
+
+/** What one box of a tuple shows: its number, or nothing at all. */
+function memberText(value: unknown): string {
+  if (typeof value === "number") return String(rounded(value));
+  return typeof value === "string" ? value : "";
+}
+
+/**
+ * The whole value one box commits: every member as it stands, with the one
+ * typed replaced. A member the held value has no number for takes 0, so the
+ * result is a value the field's own kind accepts.
+ */
+function committedTuple(
+  members: readonly string[],
+  from: Readonly<Record<string, unknown>>,
+  member: string,
+  typed: number,
+): JsonValue {
+  const value: Record<string, JsonValue> = {};
+  for (const name of members) {
+    const held = from[name];
+    value[name] = name === member ? typed : typeof held === "number" ? held : 0;
+  }
+  return value;
+}
+
+/**
+ * What a field shows: the value a drag of its handle has reached while one is
+ * running, and what the document holds otherwise.
+ */
+function liveValue(
+  state: EditorState,
+  placement: LevelPlacement,
+  field: string,
+): unknown {
+  const drag = state.paramDrag;
+  if (drag && drag.id === placement.id && drag.field === field) {
+    return draggedValue(state, drag);
+  }
+  return placement.params[field];
+}
 
 /**
  * Empties an optional field. A required field has no such value, so it gets no

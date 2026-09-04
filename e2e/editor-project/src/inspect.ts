@@ -1,6 +1,7 @@
 import { Transform, type Engine } from "@yagejs/core";
 import { SpriteComponent } from "@yagejs/renderer";
 import { Crate } from "./Crate.js";
+import { Slime } from "./Slime.js";
 import { Switch } from "./Switch.js";
 
 /** The namespace the extension registers under, on both pages. */
@@ -43,12 +44,25 @@ export interface SwitchFact {
   readonly chime: string | null;
 }
 
+/** What a test can read about one slime and the place it was set up with. */
+export interface SlimeFact {
+  readonly sceneId: string;
+  /**
+   * Where `setup()` was told to walk to, in world space. The document holds
+   * the value relative to the slime; this is what says the level converted it
+   * through where the slime ended up.
+   */
+  readonly patrolTarget: { readonly x: number; readonly y: number } | null;
+}
+
 /** The read-only API {@link exposeLevelFacts} registers. */
 export interface LevelFacts {
   /** Every loaded placement, in the order the scene created them. */
   placements(): PlacementFact[];
   /** Every loaded switch and what its two reference parameters resolved to. */
   switches(): SwitchFact[];
+  /** Every loaded slime and the world point its `setup()` received. */
+  slimes(): SlimeFact[];
 }
 
 /**
@@ -104,6 +118,22 @@ export function exposeLevelFacts(engine: Engine): void {
           sceneId,
           door: sceneIdOf(entity.door?.current?.key) ?? null,
           chime: sceneIdOf(entity.chime?.current?.key) ?? null,
+        });
+      }
+      return facts;
+    },
+    slimes: () => {
+      const scene = engine.scenes.active;
+      if (!scene) return [];
+      const facts: SlimeFact[] = [];
+      for (const entity of scene.getEntities()) {
+        if (entity.isDestroyed || !(entity instanceof Slime)) continue;
+        const sceneId = sceneIdOf(entity.key);
+        if (sceneId === undefined) continue;
+        const target = entity.patrolTarget;
+        facts.push({
+          sceneId,
+          patrolTarget: target ? { x: target.x, y: target.y } : null,
         });
       }
       return facts;

@@ -45,6 +45,15 @@ export interface ViewportPreview {
     readonly pivot?: EditorPoint | undefined;
   } | null;
   /**
+   * Which parameter handle is under the pointer, or `null` for none. Drawn by
+   * the renderer, like the gizmo, so nothing here can see it.
+   */
+  paramHandleAt(clientPoint: { x: number; y: number }): {
+    readonly id: string;
+    readonly field: string;
+    readonly grip: HandleId;
+  } | null;
+  /**
    * Whether the point is near enough to the gizmo that a press there reads as
    * a missed grab rather than as a press on the empty space behind it.
    */
@@ -139,6 +148,8 @@ export function cursorFor(state: {
   readonly spaceHeld: boolean;
   /** Which transform a press would perform, when one is under the pointer. */
   readonly overHandle?: HandleUnderPointer | undefined;
+  /** Whether a parameter's handle is under the pointer, which a press drags. */
+  readonly overValue?: boolean | undefined;
   readonly overPlacement: boolean;
   /** True under the Select tool, where an empty-space drag is a marquee. */
   readonly selecting?: boolean | undefined;
@@ -153,6 +164,9 @@ export function cursorFor(state: {
   // Finding the target is half the gesture, so a pan in progress and a held
   // Space still win over it.
   if (state.picking) return state.overTarget ? "crosshair" : "not-allowed";
+  // A parameter handle is what a press there grabs, so it decides the cursor
+  // the way it decides the press: before the gizmo.
+  if (state.overValue) return "move";
   const handle = state.overHandle;
   if (handle) {
     // The box gizmo's interior moves the placement, and looks like it: the
@@ -239,6 +253,8 @@ export function Viewport(props: ViewportProps): React.JSX.Element {
   const spaceHeld = useRef(false);
   const overHandle = useRef<HandleUnderPointer | undefined>(undefined);
   const overPlacement = useRef(false);
+  /** Whether a parameter's handle is under the pointer. */
+  const overValue = useRef(false);
   /** Whether a press where the pointer rests would choose a target. */
   const overTarget = useRef(false);
   const marqueePointer = useRef<number | undefined>(undefined);
@@ -250,9 +266,12 @@ export function Viewport(props: ViewportProps): React.JSX.Element {
     setCursor(
       cursorFor({
         panning: pan.current !== undefined,
-        dragging: store.getState().gesture !== undefined,
+        dragging:
+          store.getState().gesture !== undefined ||
+          store.getState().paramDrag !== undefined,
         spaceHeld: spaceHeld.current,
         overHandle: overHandle.current,
+        overValue: overValue.current,
         overPlacement: overPlacement.current,
         selecting: store.getState().tool === "select",
         picking: store.getState().pick !== undefined,
@@ -381,7 +400,13 @@ export function Viewport(props: ViewportProps): React.JSX.Element {
     // is reached — a pen and a finger, or two fingers — because capture on the
     // first does not redirect the second.
     const running = store.getState();
-    if (running.gesture !== undefined || running.marquee !== undefined) return;
+    if (
+      running.gesture !== undefined ||
+      running.marquee !== undefined ||
+      running.paramDrag !== undefined
+    ) {
+      return;
+    }
     if (pans) {
       beginPan(event, preview.screenToWorld(point));
       return;
@@ -395,8 +420,21 @@ export function Viewport(props: ViewportProps): React.JSX.Element {
       if (target !== null) commands.pickTarget(target);
       return;
     }
-    // A handle is tested before the placements: it is drawn on top of them,
-    // and an arm reaches past its placement's bounds onto whatever is behind.
+    // A parameter handle is tested before the gizmo: a relative point at
+    // {0, 0} sits on the translate gizmo's centre grip, whose two arms still
+    // reach the same gesture.
+    const value = preview.paramHandleAt(point);
+    const grabbedValue = value ? preview.screenToWorld(point) : undefined;
+    if (value && grabbedValue) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      commands.beginParamDrag(value.id, value.field, value.grip, grabbedValue);
+      dragPointer.current = event.pointerId;
+      refreshCursor();
+      return;
+    }
+    // A gizmo handle is tested before the placements: it is drawn on top of
+    // them, and an arm reaches past its placement's bounds onto whatever is
+    // behind.
     const grab = preview.gizmoAt(point);
     const grabbed = grab ? preview.screenToWorld(point) : undefined;
     if (grab && grabbed) {
@@ -492,18 +530,35 @@ export function Viewport(props: ViewportProps): React.JSX.Element {
       refreshCursor();
       return;
     }
+    if (store.getState().paramDrag) {
+      const world = preview.screenToWorld(point);
+      if (world)
+        commands.updateParamDrag(world, {
+          constrained: event.shiftKey,
+          suspended: event.altKey,
+        });
+      return;
+    }
     if (!store.getState().gesture) {
       // Only while nothing is being dragged: a hit test walks every
       // placement's bounds, and during a drag the answer cannot change what
       // the pointer means.
-      const grab = preview.gizmoAt(point);
+      const value = preview.paramHandleAt(point);
+      const grab = value ? null : preview.gizmoAt(point);
       overHandle.current = grab
         ? { mode: grab.mode, along: grab.along }
         : undefined;
-      overPlacement.current = !grab && preview.hitTest(point) !== null;
-      // A handle drawn over a mark wins: it is what a press there would grab.
-      const mark = grab ? null : preview.markAt(point);
-      setNamed(mark === null ? undefined : namedAt(mark, event, frame.current));
+      overValue.current = value !== null;
+      overPlacement.current =
+        !value && !grab && preview.hitTest(point) !== null;
+      // The name beside the pointer says which parameter a handle holds, the
+      // same way it says which component a mark stands for. A handle drawn
+      // over either wins: it is what a press there would grab.
+      const named =
+        value?.field ?? (grab ? null : preview.markAt(point)) ?? null;
+      setNamed(
+        named === null ? undefined : namedAt(named, event, frame.current),
+      );
       refreshCursor();
       return;
     }
@@ -539,7 +594,8 @@ export function Viewport(props: ViewportProps): React.JSX.Element {
       return;
     }
     if (dragPointer.current !== event.pointerId) return;
-    if (!store.getState().gesture) return;
+    const running = store.getState();
+    if (!running.gesture && !running.paramDrag) return;
     dragPointer.current = undefined;
     event.currentTarget.releasePointerCapture(event.pointerId);
     // The drag becomes one command here, which is also what makes it one undo
@@ -604,6 +660,7 @@ export function Viewport(props: ViewportProps): React.JSX.Element {
         if (dragPointer.current === event.pointerId) {
           dragPointer.current = undefined;
           commands.cancelGesture();
+          commands.cancelParamDrag();
         }
         if (marqueePointer.current === event.pointerId) {
           const base = store.getState().marquee?.base ?? [];

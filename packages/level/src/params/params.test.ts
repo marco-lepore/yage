@@ -1,7 +1,7 @@
-import { AssetHandle, Entity } from "@yagejs/core";
+import { AssetHandle, Entity, Vec2 } from "@yagejs/core";
 import type { EntityHandle } from "@yagejs/core";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import type { JsonObject } from "../document/types.js";
+import type { JsonObject, LevelTransform } from "../document/types.js";
 import { defineLevelAsset, param } from "./kinds.js";
 import type { NumberParamOptions } from "./kinds.js";
 import {
@@ -21,11 +21,19 @@ import type {
   ParamsOf,
 } from "./types.js";
 
+/** A placement sitting at the world origin, unturned and unscaled. */
+const AT_ORIGIN: LevelTransform = {
+  position: { x: 0, y: 0 },
+  rotation: 0,
+  scale: { x: 1, y: 1 },
+};
+
 /** A decode context for a schema with no reference parameter in it. */
 const NO_REFS: ParamDecodeContext = {
   resolveEntityRef: (id) => {
     throw new Error(`unexpected reference to "${id}"`);
   },
+  worldPose: AT_ORIGIN,
 };
 
 /** What `@yagejs/renderer`'s `texture()` does, without the renderer import. */
@@ -457,7 +465,7 @@ describe("entity reference parameters", () => {
     const params = decodeParams(
       SwitchParams,
       { door: "p1", chime: null },
-      { resolveEntityRef: () => door.handle() },
+      { ...NO_REFS, resolveEntityRef: () => door.handle() },
     );
 
     expectTypeOf(params.door).toEqualTypeOf<EntityHandle<Door>>();
@@ -750,6 +758,195 @@ describe("what optional says setup() receives", () => {
       notOptional: 1,
       optional: 1,
       fromVariable: 1,
+    });
+  });
+});
+
+describe("pair and place parameters", () => {
+  const PatrolParams = defineParams({
+    drift: param.vec2({ x: 12, y: -4 }),
+    patrolEnd: param.point({ x: 120, y: 0 }, { relative: true }),
+    spawn: param.point({ x: 0, y: 0 }),
+  });
+
+  const authoredPatrol = {
+    drift: { x: 12, y: -4 },
+    patrolEnd: { x: 120, y: 0 },
+    spawn: { x: 0, y: 0 },
+  } satisfies JsonObject;
+
+  /** The reasons one field gives for one authored value. */
+  function reasons(field: string, value: unknown): string[] {
+    return validateParams(PatrolParams, {
+      ...authoredPatrol,
+      [field]: value,
+    } as JsonObject)
+      .filter((error) => error.path[0] === field)
+      .map((error) => error.message);
+  }
+
+  it("decodes both kinds to a Vec2", () => {
+    const params = decodeParams(PatrolParams, authoredPatrol, NO_REFS);
+
+    expectTypeOf<ParamsOf<typeof PatrolParams>>().toEqualTypeOf<{
+      drift: Vec2;
+      patrolEnd: Vec2;
+      spawn: Vec2;
+    }>();
+    expect(params.patrolEnd).toBeInstanceOf(Vec2);
+    expect(params.patrolEnd.x).toBe(120);
+    expect(params.drift.y).toBe(-4);
+  });
+
+  it("takes a Vec2 as the declared default and stores its two numbers", () => {
+    const schema = defineParams({ drift: param.vec2(new Vec2(3, 4)) });
+
+    expect({ ...defaultParams(schema) }).toEqual({ drift: { x: 3, y: 4 } });
+    expect(schemaDefaultProblems(schema)).toEqual([]);
+  });
+
+  it("accepts an object with two finite numbers and refuses everything else", () => {
+    expect(validateParams(PatrolParams, authoredPatrol)).toEqual([]);
+
+    expect(reasons("drift", 12)).toEqual([
+      "must be an object with finite x and y",
+    ]);
+    expect(reasons("drift", null)).toEqual([
+      "must be an object with finite x and y",
+    ]);
+    expect(reasons("drift", [12, 4])).toEqual([
+      "must be an object with finite x and y",
+    ]);
+    expect(reasons("drift", { x: 12 })).toEqual(["must hold a finite y"]);
+    expect(reasons("drift", { x: "12", y: 4 })).toEqual([
+      "must hold a finite x",
+    ]);
+    expect(reasons("drift", { x: Number.NaN, y: 4 })).toEqual([
+      "must hold a finite x",
+    ]);
+    expect(reasons("drift", { x: 1, y: 2, z: 3 })).toEqual([
+      'must not hold "z"',
+    ]);
+  });
+
+  it("takes nothing at all only where the declaration said so", () => {
+    const OptionalParams = defineParams({
+      home: param.point({ x: 0, y: 0 }, { optional: true }),
+    });
+
+    expect(validateParams(OptionalParams, { home: null })).toEqual([]);
+    expect(
+      validateParams(OptionalParams, { home: 4 }).map((one) => one.message),
+    ).toEqual(["must be an object with finite x and y or null"]);
+
+    const params = decodeParams(OptionalParams, { home: null }, NO_REFS);
+    expectTypeOf<ParamsOf<typeof OptionalParams>>().toEqualTypeOf<{
+      home: Vec2 | undefined;
+    }>();
+    expect(params.home).toBeUndefined();
+  });
+
+  it("carries relative to the authoring tool, and only for a point", () => {
+    expect(describeParams(PatrolParams)).toEqual([
+      {
+        name: "drift",
+        kind: "vec2",
+        optional: false,
+        defaultValue: { x: 12, y: -4 },
+      },
+      {
+        name: "patrolEnd",
+        kind: "point",
+        optional: false,
+        relative: true,
+        defaultValue: { x: 120, y: 0 },
+      },
+      {
+        name: "spawn",
+        kind: "point",
+        optional: false,
+        relative: false,
+        defaultValue: { x: 0, y: 0 },
+      },
+    ] satisfies ParamFieldDescription[]);
+  });
+
+  it("gives each new placement its own object rather than a shared one", () => {
+    const first = defaultParams(PatrolParams);
+    const second = defaultParams(PatrolParams);
+
+    expect(first["drift"]).toEqual(second["drift"]);
+    expect(first["drift"]).not.toBe(second["drift"]);
+  });
+
+  describe("the frame setup() receives", () => {
+    /** A placement turned a quarter turn, doubled, and moved off the origin. */
+    const TURNED: LevelTransform = {
+      position: { x: 100, y: 50 },
+      rotation: Math.PI / 2,
+      scale: { x: 2, y: 2 },
+    };
+
+    /** The same authored point, stored and wanted in all four combinations. */
+    const FrameParams = defineParams({
+      patrolEnd: param.point({ x: 10, y: 0 }, { relative: true }),
+      muzzle: param.point({ x: 10, y: 0 }, { relative: true, space: "local" }),
+      exit: param.point({ x: 100, y: 70 }),
+      dock: param.point({ x: 100, y: 70 }, { space: "local" }),
+    });
+
+    function decodeAt(pose: LevelTransform): ParamsOf<typeof FrameParams> {
+      return decodeParams(
+        FrameParams,
+        {
+          patrolEnd: { x: 10, y: 0 },
+          muzzle: { x: 10, y: 0 },
+          exit: { x: 100, y: 70 },
+          dock: { x: 100, y: 70 },
+        },
+        { ...NO_REFS, worldPose: pose },
+      );
+    }
+
+    it("converts through the placement's world pose", () => {
+      const params = decodeAt(TURNED);
+
+      // Local (10, 0) doubled is (20, 0); a quarter turn puts it at (0, 20);
+      // the placement's own position moves it to (100, 70).
+      expect(params.patrolEnd.equals({ x: 100, y: 70 })).toBe(true);
+      expect(params.exit.equals({ x: 100, y: 70 })).toBe(true);
+      // And back the other way, from that same world point.
+      expect(params.dock.equals({ x: 10, y: 0 })).toBe(true);
+      expect(params.muzzle.equals({ x: 10, y: 0 })).toBe(true);
+    });
+
+    it("passes the authored numbers through when the frames agree", () => {
+      const params = decodeAt(TURNED);
+
+      expect({ ...params.muzzle }).toEqual({ x: 10, y: 0 });
+      expect({ ...params.exit }).toEqual({ x: 100, y: 70 });
+    });
+
+    it("answers 0 on an axis the placement scaled to nothing", () => {
+      const flattened: LevelTransform = {
+        position: { x: 0, y: 0 },
+        rotation: 0,
+        scale: { x: 0, y: 1 },
+      };
+
+      // Every local x draws at world 0, so no local x names the authored 100.
+      expect({ ...decodeAt(flattened).dock }).toEqual({ x: 0, y: 70 });
+    });
+
+    it("leaves an optional point holding nothing alone", () => {
+      const schema = defineParams({
+        home: param.point({ x: 0, y: 0 }, { relative: true, optional: true }),
+      });
+
+      expect(
+        decodeParams(schema, { home: null }, { ...NO_REFS, worldPose: TURNED })
+          .home,
+      ).toBeUndefined();
     });
   });
 });

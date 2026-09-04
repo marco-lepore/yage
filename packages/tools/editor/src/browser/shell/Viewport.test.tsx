@@ -80,6 +80,12 @@ function createHarness(
   named: string | null = null,
   /** The reference target under the pointer, for the cases that arm a pick. */
   picked: string | null = null,
+  /** The parameter handle under the pointer, for the cases that drag one. */
+  value?: () => {
+    readonly id: string;
+    readonly field: string;
+    readonly grip: HandleId;
+  } | null,
 ) {
   const store = new EditorStore({
     api: unusedApi,
@@ -108,6 +114,34 @@ function createHarness(
     removed.push([...ids]);
     return Promise.resolve();
   };
+  // The same, for the parameter drag: what a press routes to is this
+  // component's business, and what the controller does with it is its own.
+  const valueDrags: string[] = [];
+  commands.beginParamDrag = (id, field, grip, origin) => {
+    valueDrags.push(
+      `begin ${id}.${field} ${grip} at ${String(origin.x)},${String(origin.y)}`,
+    );
+    store.dispatch({
+      type: "param-drag-started",
+      drag: {
+        id,
+        field,
+        kind: "point",
+        grip,
+        relative: false,
+        from: origin,
+        origin,
+        current: origin,
+        constrained: false,
+        suspended: false,
+      },
+    });
+  };
+  commands.updateParamDrag = (current, modifiers = {}) => {
+    valueDrags.push(
+      `move ${String(current.x)},${String(current.y)}${modifiers.constrained === true ? " shift" : ""}`,
+    );
+  };
 
   const host = document.createElement("div");
   document.body.append(host);
@@ -123,6 +157,7 @@ function createHarness(
           // No gizmo unless a case asks for one: these drive selection, drags,
           // and the view, none of which a handle takes part in.
           gizmoAt: () => grab?.() ?? null,
+          paramHandleAt: () => value?.() ?? null,
           gizmoNear: () => near,
           markAt: () => named,
           pickAt: () => picked,
@@ -143,7 +178,7 @@ function createHarness(
   frame.setPointerCapture = () => {};
   frame.releasePointerCapture = () => {};
 
-  return { store, drafts, removed, host, root, frame };
+  return { store, drafts, removed, valueDrags, host, root, frame };
 }
 
 function key(frame: HTMLElement, value: string): boolean {
@@ -1145,6 +1180,63 @@ describe("the marquee", () => {
     // Select changes what an empty-space drag means and nothing else.
     expect(harness.store.getState().gesture).toBeDefined();
     expect(harness.store.getState().marquee).toBeUndefined();
+    harness.root.unmount();
+  });
+});
+
+describe("Viewport parameter handles", () => {
+  const HANDLE = { id: "crate", field: "patrolEnd", grip: "body" as const };
+
+  it("drags the parameter's value rather than the gizmo under it", () => {
+    const harness = createHarness(
+      "crate",
+      () => ({
+        mode: "translate" as const,
+        handle: "xy" as const,
+        anchor: { position: { x: 0, y: 0 }, rotation: 0 },
+        reference: { x: 64, y: 64, kind: "length" as const },
+      }),
+      false,
+      [],
+      null,
+      null,
+      () => HANDLE,
+    );
+    act(() => {
+      harness.store.dispatch({ type: "selection-changed", ids: ["crate"] });
+    });
+
+    // A relative point at the origin sits on the translate gizmo's centre
+    // grip, whose two arms still reach the same gesture.
+    pointer(harness.frame, "pointerdown", 0, 0);
+    pointer(harness.frame, "pointermove", 30, 10, 0, 1, { shiftKey: true });
+
+    expect(harness.valueDrags).toEqual([
+      "begin crate.patrolEnd body at 0,0",
+      "move 30,10 shift",
+    ]);
+    expect(harness.store.getState().gesture).toBeUndefined();
+    harness.root.unmount();
+  });
+
+  it("names the parameter while the pointer rests on its handle", () => {
+    const harness = createHarness(
+      "crate",
+      undefined,
+      false,
+      [],
+      "SpriteComponent",
+      null,
+      () => HANDLE,
+    );
+
+    pointer(harness.frame, "pointermove", 0, 0);
+
+    // The handle wins over the mark under it: it is what a press there grabs.
+    expect(
+      harness.host.querySelector('[data-testid="yage-editor-mark-name"]')
+        ?.textContent,
+    ).toBe("patrolEnd");
     harness.root.unmount();
   });
 });

@@ -1,5 +1,5 @@
 import type { AssetHandle, EntityHandle } from "@yagejs/core";
-import type { JsonValue } from "../document/types.js";
+import type { JsonValue, LevelTransform } from "../document/types.js";
 
 /**
  * How the file an asset parameter names is cut into frames. Authoring data:
@@ -35,11 +35,13 @@ export type ParamKindName =
   | "integer"
   | "boolean"
   | "string"
-  | "select";
+  | "select"
+  | "vec2"
+  | "point";
 
 /**
  * @internal What a parameter kind may need beyond its own JSON value while
- * decoding. Built by the loader, once per level, inside the spawn batch.
+ * decoding. Built by the loader for one placement, inside the spawn batch.
  */
 export interface ParamDecodeContext {
   /**
@@ -47,6 +49,15 @@ export interface ParamDecodeContext {
    * life. Throws for an id this level does not hold.
    */
   resolveEntityRef(placementId: string): EntityHandle;
+  /**
+   * Where the placement holding these parameters ends up in the world: the
+   * instance transform composed with every parent above it, the same
+   * composition the scene graph performs once the entity is placed. A `point`
+   * converts its authored
+   * value through this when the frame it is stored in is not the frame the
+   * declaration asked `setup()` for.
+   */
+  readonly worldPose: LevelTransform;
 }
 
 /**
@@ -93,6 +104,11 @@ export interface ParamKind<T> {
   readonly multiline?: boolean;
   /** For a `select`, the values it accepts, in the order they are offered. */
   readonly options?: readonly string[];
+  /**
+   * For a `point`, whether the value is in the placement's own frame rather
+   * than the world's.
+   */
+  readonly relative?: boolean;
   /**
    * The value the editor writes into a new placement. Loading never fills it
    * in: a placement that omits the field fails validation, so changing this
@@ -168,6 +184,13 @@ export type ParamFieldDescription = {
   /** For a `select` field, the values it accepts, in the order to offer them. */
   readonly options?: readonly string[];
   /**
+   * For a `point` field, whether the value is in the placement's own frame.
+   * A tool that draws the value in a viewport composes it through the
+   * placement's transform when this is set, and reads it as a world point
+   * when it is not.
+   */
+  readonly relative?: boolean;
+  /**
    * The value a new placement is written with. `null` for a reference field,
    * which starts with nothing chosen.
    */
@@ -203,6 +226,7 @@ type ParamKindDefinition<T> = {
   readonly step?: number;
   readonly multiline?: boolean;
   readonly options?: readonly string[];
+  readonly relative?: boolean;
   readonly defaultValue: JsonValue;
   readonly validate: (value: JsonValue) => readonly string[];
   readonly decode: (value: JsonValue, context: ParamDecodeContext) => T;
@@ -226,6 +250,7 @@ class BuiltInParamKind<T> implements ParamKind<T> {
   readonly step?: number;
   readonly multiline?: boolean;
   readonly options?: readonly string[];
+  readonly relative?: boolean;
   readonly defaultValue: JsonValue;
   readonly validate: (value: JsonValue) => readonly string[];
   readonly decode: (value: JsonValue, context: ParamDecodeContext) => T;
@@ -246,6 +271,7 @@ class BuiltInParamKind<T> implements ParamKind<T> {
       this.multiline = definition.multiline;
     }
     if (definition.options !== undefined) this.options = definition.options;
+    if (definition.relative !== undefined) this.relative = definition.relative;
     this.defaultValue = definition.defaultValue;
     this.validate = definition.validate;
     this.decode = definition.decode;

@@ -14,12 +14,15 @@ const SlimeParams = defineParams({
   notes: param.string("", { multiline: true, optional: true }),
   facing: param.select("left", ["left", "right"]),
   mood: param.select("calm", ["calm", "angry"], { optional: true }),
+  drift: param.vec2({ x: 0, y: -12 }),
+  patrolEnd: param.point({ x: 120, y: 0 }, { relative: true }),
+  home: param.point({ x: 0, y: 0 }, { optional: true }),
 });
 
 /** The one component a slime has, so a press in the viewport finds it. */
 class SlimeBody extends Component {}
 
-/** A placeable type declaring one parameter of every plain kind. */
+/** A placeable type declaring one parameter of every kind but `asset` and `entityRef`. */
 export class Slime extends Entity {
   static readonly level = defineLevelEntity({
     id: "game.slime",
@@ -30,8 +33,12 @@ export class Slime extends Entity {
   /** What the placement was set up with, held for a check that reads it. */
   params: ParamsOf<typeof SlimeParams> | undefined;
 
+  /** Where the slime walks to, in world space, as `setup()` received it. */
+  patrolTarget: Vec2 | undefined;
+
   setup(params: ParamsOf<typeof SlimeParams>): void {
     this.params = params;
+    this.patrolTarget = params.patrolEnd;
     this.add(new Transform({ position: new Vec2(0, 0) }));
     this.add(new SlimeBody());
   }

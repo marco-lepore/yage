@@ -1437,10 +1437,7 @@ describe("the plain parameter kinds", () => {
     mood: null,
   };
 
-  function plainHarness(
-    held: Record<string, unknown> = {},
-    editable = true,
-  ) {
+  function plainHarness(held: Record<string, unknown> = {}, editable = true) {
     const store = new EditorStore({
       api: unusedApi,
       epoch: "epoch-1",
@@ -1710,8 +1707,205 @@ describe("the plain parameter kinds", () => {
     expect(control<HTMLInputElement>("field-speed").disabled).toBe(true);
     expect(control<HTMLInputElement>("field-locked").disabled).toBe(true);
     expect(control<HTMLSelectElement>("field-facing").disabled).toBe(true);
-    expect(
-      query<HTMLButtonElement>(harness.host, "clear-mood")?.disabled,
-    ).toBe(true);
+    expect(query<HTMLButtonElement>(harness.host, "clear-mood")?.disabled).toBe(
+      true,
+    );
+  });
+});
+
+describe("a parameter holding a pair of numbers", () => {
+  const SLIME: InspectableType = {
+    typeId: "game.slime",
+    fields: [
+      {
+        name: "drift",
+        kind: "vec2",
+        optional: false,
+        defaultValue: { x: 12, y: -4 },
+      },
+      {
+        name: "patrolEnd",
+        kind: "point",
+        optional: false,
+        relative: true,
+        defaultValue: { x: 120, y: 0 },
+      },
+      {
+        name: "home",
+        kind: "point",
+        optional: true,
+        relative: false,
+        defaultValue: { x: 0, y: 0 },
+      },
+    ],
+  };
+
+  const AUTHORED = {
+    drift: { x: 12, y: -4 },
+    patrolEnd: { x: 120, y: 0 },
+    home: null,
+  };
+
+  function pairHarness(held: Record<string, unknown> = {}) {
+    const store = new EditorStore({
+      api: unusedApi,
+      epoch: "epoch-1",
+      projectId: "project-1",
+    });
+    store.dispatch({
+      type: "level-opened",
+      snapshot: {
+        ...snapshot(),
+        document: {
+          ...DOCUMENT,
+          entities: [
+            placement("s1", {
+              type: "game.slime",
+              params: { ...AUTHORED, ...held } as LevelPlacement["params"],
+            }),
+          ],
+        },
+      },
+    });
+    // Off, so the drag case asserts where the pointer went rather than where a
+    // lattice rounded it. The lattice has its own cases in the preview.
+    store.dispatch({ type: "snap-toggled" });
+    const intents: string[] = [];
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <Inspector
+          store={store}
+          editable
+          inspectable={(typeId) =>
+            typeId === "game.slime" ? SLIME : undefined
+          }
+          listAssets={() => Promise.resolve(LISTING)}
+          onSetParam={(id, field, value) => {
+            intents.push(`set ${id}.${field}=${JSON.stringify(value)}`);
+          }}
+          onResetParam={() => undefined}
+          onResetPlacement={() => undefined}
+          onPickTarget={() => undefined}
+          onCancelPick={() => undefined}
+          onSetKey={() => undefined}
+          layerChoices={() => []}
+          layerSorts={() => false}
+          onSetLayer={() => undefined}
+          onOrder={() => undefined}
+        />,
+      );
+    });
+    act(() => {
+      store.dispatch({ type: "selection-changed", ids: ["s1"] });
+    });
+    return { host, root, store, intents };
+  }
+
+  let harness: ReturnType<typeof pairHarness>;
+
+  afterEach(() => {
+    act(() => {
+      harness.root.unmount();
+    });
+    harness.host.remove();
+  });
+
+  function box(testId: string): HTMLInputElement {
+    return input(harness.host, testId);
+  }
+
+  it("draws one box per member of both kinds", () => {
+    harness = pairHarness();
+
+    expect(box("field-drift-x").value).toBe("12");
+    expect(box("field-drift-y").value).toBe("-4");
+    expect(box("field-patrolEnd-x").value).toBe("120");
+    expect(box("field-patrolEnd-y").value).toBe("0");
+  });
+
+  it("commits the whole value when one box is typed into", () => {
+    harness = pairHarness();
+
+    type(box("field-patrolEnd-x"), "160");
+    blur(box("field-patrolEnd-x"));
+
+    expect(harness.intents).toEqual(['set s1.patrolEnd={"x":160,"y":0}']);
+  });
+
+  it("refuses an entry that is not a number and writes nothing", () => {
+    harness = pairHarness();
+
+    type(box("field-drift-y"), "over there");
+    blur(box("field-drift-y"));
+
+    expect(harness.intents).toEqual([]);
+    expect(harness.host.textContent).toContain("Type a number.");
+  });
+
+  it("takes the other member from the default when the field holds nothing", () => {
+    harness = pairHarness();
+
+    expect(box("field-home-x").value).toBe("");
+    expect(box("field-home-x").placeholder).toBe("None");
+
+    type(box("field-home-x"), "48");
+    blur(box("field-home-x"));
+
+    expect(harness.intents).toEqual(['set s1.home={"x":48,"y":0}']);
+  });
+
+  it("empties an optional pair through Clear, and offers none for a required one", () => {
+    harness = pairHarness({ home: { x: 3, y: 4 } });
+
+    click(harness.host, "clear-home");
+
+    expect(harness.intents).toEqual(["set s1.home=null"]);
+    expect(query(harness.host, "clear-patrolEnd")).toBeNull();
+  });
+
+  it("steps one box by the arrow keys", () => {
+    harness = pairHarness();
+
+    expect(key(box("field-drift-x"), "ArrowUp")).toBe(true);
+    blur(box("field-drift-x"));
+
+    expect(harness.intents).toEqual(['set s1.drift={"x":13,"y":-4}']);
+  });
+
+  it("follows the handle while its value is being dragged", () => {
+    harness = pairHarness();
+    act(() => {
+      harness.store.dispatch({
+        type: "param-drag-started",
+        drag: {
+          id: "s1",
+          field: "patrolEnd",
+          kind: "point",
+          grip: "body",
+          relative: true,
+          from: { x: 120, y: 0 },
+          origin: { x: 120, y: 0 },
+          current: { x: 120, y: 0 },
+          constrained: false,
+          suspended: false,
+        },
+      });
+    });
+    act(() => {
+      harness.store.dispatch({
+        type: "param-drag-moved",
+        current: { x: 150, y: 20 },
+        constrained: false,
+        suspended: false,
+      });
+    });
+
+    expect(box("field-patrolEnd-x").value).toBe("150");
+    expect(box("field-patrolEnd-y").value).toBe("20");
+    // Nothing is written until the release settles it.
+    expect(harness.intents).toEqual([]);
   });
 });

@@ -6,9 +6,13 @@ import { MARK_PIXELS } from "./marks.js";
 import {
   CASING_COLOR,
   LINK_DASH_PIXELS,
+  PARAM_GRAB_PIXELS,
+  PARAM_HANDLE_PIXELS,
   drawOverlay,
+  paramHandleAt,
   type OverlayTarget,
   type OverlayView,
+  type ParamHandle,
 } from "./overlay.js";
 
 /** One drawing call, as the recorder saw it. */
@@ -553,5 +557,72 @@ describe("a reference line", () => {
   it("draws nothing between two ends at one point", () => {
     // No direction, so no line to dash and no way to aim a head.
     expect(link(30, 30)).toEqual([["clear"]]);
+  });
+});
+
+describe("a parameter handle", () => {
+  function handle(overrides: Partial<ParamHandle> = {}): ParamHandle {
+    return {
+      kind: "point",
+      id: "s1",
+      field: "patrolEnd",
+      at: { x: 120, y: 0 },
+      ...overrides,
+    };
+  }
+
+  function drawn(...handles: ParamHandle[]): Call[] {
+    return calls({ ...EMPTY, handles });
+  }
+
+  it("draws a ring at the value, in a colour of its own", () => {
+    const rings = named(drawn(handle()), "circle");
+
+    expect(rings).toEqual([
+      ["circle", 120, 0, PARAM_HANDLE_PIXELS],
+      ["circle", 120, 0, PARAM_HANDLE_PIXELS],
+    ]);
+    // Cased first, then coloured: the preview's background is the project's
+    // choice, so an uncased stroke can be invisible.
+    const strokes = named(drawn(handle()), "stroke");
+    expect(strokes[0]?.[1]).toBe(CASING_COLOR);
+    expect(strokes[1]?.[1]).not.toBe(CASING_COLOR);
+  });
+
+  it("draws a dashed line back to the origin only for a relative value", () => {
+    const relative = pieces(drawn(handle({ from: { x: 0, y: 0 } })));
+    const world = pieces(drawn(handle()));
+
+    expect(relative.length).toBeGreaterThan(1);
+    // A world point is measured from nothing, so there is nothing to draw to.
+    expect(world).toEqual([]);
+  });
+
+  it("grabs the nearest handle within reach, and nothing beyond it", () => {
+    const near = handle();
+    const far = handle({ field: "home", at: { x: 200, y: 0 } });
+    const reach = PARAM_HANDLE_PIXELS + PARAM_GRAB_PIXELS;
+
+    expect(paramHandleAt([near, far], 1, { x: 122, y: 0 })).toBe(near);
+    expect(paramHandleAt([near, far], 1, { x: 198, y: 0 })).toBe(far);
+    expect(
+      paramHandleAt([near, far], 1, { x: 120 + reach + 1, y: 0 }),
+    ).toBeUndefined();
+  });
+
+  it("keeps one grab size on screen at any zoom", () => {
+    const reach = PARAM_HANDLE_PIXELS + PARAM_GRAB_PIXELS;
+    const at = { x: 120 + reach * 4, y: 0 };
+
+    expect(paramHandleAt([handle()], 4, at)).toBeDefined();
+    expect(paramHandleAt([handle()], 1, at)).toBeUndefined();
+  });
+
+  it("gives the later-declared field the handles it shares a point with", () => {
+    const first = handle();
+    const second = handle({ field: "home" });
+
+    // Two values on one point are told apart the way two inspector rows are.
+    expect(paramHandleAt([first, second], 1, { x: 120, y: 0 })).toBe(second);
   });
 });
