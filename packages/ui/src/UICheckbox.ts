@@ -1,10 +1,13 @@
 import { Container, Graphics, Text } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, MeasureMode } from "yoga-layout";
+import { buildTextOptions } from "@yagejs/renderer";
 import type { DisplayContainer } from "@yagejs/renderer";
 import type { UIElement, UICheckboxProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
+import { getUIDefaultTextStyle } from "./text-defaults.js";
+import { runUICallback } from "./error-boundary.js";
 
 const DEFAULT_SIZE = 20;
 const DEFAULT_BOX_COLOR = 0x666666;
@@ -30,6 +33,7 @@ export class UICheckbox implements UIElement {
   private checkColor: number;
   private onChange: ((checked: boolean) => void) | undefined;
   private _destroyed = false;
+  private _pressStartedHere = false;
 
   constructor(props: UICheckboxProps) {
     this.yogaNode = createYogaNode();
@@ -78,12 +82,23 @@ export class UICheckbox implements UIElement {
 
     applyLayoutProps(this.yogaNode, props);
 
-    // Click handler
+    this.container.on("pointerdown", () => {
+      if (!this._disabled) this._pressStartedHere = true;
+    });
     this.container.on("pointerup", () => {
-      if (this._disabled) return;
+      const shouldToggle = !this._disabled && this._pressStartedHere;
+      this._pressStartedHere = false;
+      if (!shouldToggle) return;
       this._checked = !this._checked;
       this.drawCheckmark();
-      this.onChange?.(this._checked);
+      if (this.onChange) {
+        runUICallback(this.container, "UI onChange", () =>
+          this.onChange?.(this._checked),
+        );
+      }
+    });
+    this.container.on("pointerupoutside", () => {
+      this._pressStartedHere = false;
     });
 
     if (props.disabled) this.setDisabled(true);
@@ -109,6 +124,7 @@ export class UICheckbox implements UIElement {
 
   setDisabled(v: boolean): void {
     this._disabled = v;
+    if (v) this._pressStartedHere = false;
     this.container.eventMode = v ? "none" : "static";
     this.container.cursor = v ? "default" : "pointer";
     this.container.alpha = v ? 0.5 : 1;
@@ -132,6 +148,7 @@ export class UICheckbox implements UIElement {
         this._size = size;
         this.drawBox();
         this.drawCheckmark();
+        this.positionLabel();
         this.yogaNode.markDirty();
       }
     }
@@ -153,6 +170,7 @@ export class UICheckbox implements UIElement {
       if (p.label !== undefined) {
         if (this.label) {
           this.label.text = p.label;
+          this.positionLabel();
         } else {
           this.createLabel(p.label, p.labelStyle);
         }
@@ -164,7 +182,15 @@ export class UICheckbox implements UIElement {
     }
 
     if ("labelStyle" in p && this.label) {
-      this.label.style = { fontSize: 14, fill: 0xffffff, ...p.labelStyle };
+      this.label.style =
+        buildTextOptions(
+          this.label.text,
+          p.labelStyle,
+          false,
+          undefined,
+          getUIDefaultTextStyle(),
+        ).options.style ?? {};
+      this.positionLabel();
       this.yogaNode.markDirty();
     }
 
@@ -187,16 +213,28 @@ export class UICheckbox implements UIElement {
     this.container.destroy();
   }
 
-  private createLabel(text: string, style?: UICheckboxProps["labelStyle"]): void {
-    this.label = new Text({
+  private createLabel(
+    text: string,
+    style?: UICheckboxProps["labelStyle"],
+  ): void {
+    const { options } = buildTextOptions(
       text,
-      style: { fontSize: 14, fill: 0xffffff, ...style },
-    });
+      style,
+      false,
+      undefined,
+      getUIDefaultTextStyle(),
+    );
+    this.label = new Text(options);
+    this.positionLabel();
+    this.container.addChild(this.label);
+  }
+
+  private positionLabel(): void {
+    if (!this.label) return;
     this.label.position.set(
       this._size + LABEL_GAP,
       (this._size - this.label.height) / 2,
     );
-    this.container.addChild(this.label);
   }
 
   private drawBox(): void {
@@ -216,6 +254,9 @@ export class UICheckbox implements UIElement {
     this.checkmark.moveTo(pad, s * 0.5);
     this.checkmark.lineTo(s * 0.4, s - pad);
     this.checkmark.lineTo(s - pad, pad);
-    this.checkmark.stroke({ color: this.checkColor, width: Math.max(2, s * 0.12) });
+    this.checkmark.stroke({
+      color: this.checkColor,
+      width: Math.max(2, s * 0.12),
+    });
   }
 }

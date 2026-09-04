@@ -262,7 +262,7 @@ const tip = attachTooltip(panel.root, this.scene, {
 // use setPointerHandlers; on a child element use its `update({ onHover })`.
 panel.setPointerHandlers({ onHover: tip.setActive });
 
-// When the namecard goes away, release the overlay slot:
+// You can release the slot early. Destroying the anchor also releases it.
 tip.dispose();
 ```
 
@@ -277,10 +277,10 @@ long-press, or a programmatic call. Setting `onHover` **replaces** that single
 slot (which is what you want when the anchor has none); if it already handles
 hover, compose (`onHover: (h) => { existing(h); tip.setActive(h); }`). It's
 **headless** like the React `<Tooltip>`: nothing is styled for you, so pass a
-`background` / `padding` on the content node. Own the returned `dispose()`
-(e.g. call it from a component's `onDestroy`) to free the slot; `setActive` is
-a safe no-op afterwards, so a lingering hover wiring won't touch a freed
-tooltip.
+`background` / `padding` on the content node. Destroying the anchor frees the
+slot automatically. You can call the returned `dispose()` earlier when the
+tooltip has a shorter lifetime. `setActive` is a safe no-op after disposal, so
+a lingering hover handler cannot touch a freed tooltip.
 
 For fully custom popovers / menus, drop to the primitives: acquire a slot
 with `scene._resolveScoped(FloatingOverlayKey).acquire()` for a
@@ -478,13 +478,16 @@ import { UIImage, UIProgressBar, UICheckbox } from "@yagejs/ui";
 
 ```typescript
 const img = new UIImage({
-  texture: iconTexture,
+  texture: "save-icon",
   width: 32,
   height: 32,
   tint: 0xffffff,
 });
 panel.addElement(img);
 ```
+
+`UIImage`, `UINineSlice`, and texture backgrounds accept `TextureInput`: a
+registered asset key, a texture handle, or a raw renderer texture.
 
 ### Progress Bars
 
@@ -606,7 +609,7 @@ Backgrounds can be a solid color or a texture:
 
 // Texture (nine-slice for scaling)
 {
-  texture: panelTexture,
+  texture: "panel-frame",
   mode: "nine-slice",
   nineSlice: { left: 16, top: 16, right: 16, bottom: 16 },
 }

@@ -1,21 +1,34 @@
 import { Graphics, Sprite, NineSliceSprite, TilingSprite } from "pixi.js";
 import type { DisplayContainer } from "@yagejs/renderer";
-import type { BackgroundOptions, ColorBackground, TextureBackground } from "./types.js";
+import type {
+  BackgroundOptions,
+  ColorBackground,
+  TextureBackground,
+} from "./types.js";
 import { isTextureBackground } from "./types.js";
-import { resolveTexture } from "./asset-helpers.js";
+import { resolveTextureInput } from "@yagejs/renderer";
 
 /**
  * Manages a background display object for UI elements.
  * Supports solid-color (Graphics) and texture-based (Sprite/NineSliceSprite/TilingSprite) backgrounds.
  */
 export class BackgroundRenderer {
-  private displayObject: Graphics | Sprite | NineSliceSprite | TilingSprite | undefined;
+  private displayObject:
+    | Graphics
+    | Sprite
+    | NineSliceSprite
+    | TilingSprite
+    | undefined;
   private opts: BackgroundOptions | undefined;
   private lastWidth = 0;
   private lastHeight = 0;
 
   /** Create or replace the background display object. */
-  set(opts: BackgroundOptions, parent: DisplayContainer, insertIndex = 0): void {
+  set(
+    opts: BackgroundOptions,
+    parent: DisplayContainer,
+    insertIndex = 0,
+  ): void {
     // If the type of background changed, destroy the old one
     if (this.displayObject) {
       const wasTexture = this.opts && isTextureBackground(this.opts);
@@ -23,7 +36,8 @@ export class BackgroundRenderer {
       const modeChanged =
         wasTexture &&
         isTexture &&
-        (this.opts as TextureBackground).mode !== (opts as TextureBackground).mode;
+        (this.opts as TextureBackground).mode !==
+          (opts as TextureBackground).mode;
 
       if (wasTexture !== isTexture || modeChanged) {
         this.destroyDisplayObject();
@@ -34,7 +48,10 @@ export class BackgroundRenderer {
 
     if (!this.displayObject) {
       this.displayObject = this.createDisplayObject(opts);
-      parent.addChildAt(this.displayObject as unknown as DisplayContainer, insertIndex);
+      parent.addChildAt(
+        this.displayObject as unknown as DisplayContainer,
+        insertIndex,
+      );
     }
 
     // Apply properties
@@ -84,14 +101,20 @@ export class BackgroundRenderer {
   private createTextureObject(
     opts: TextureBackground,
   ): Sprite | NineSliceSprite | TilingSprite {
-    const texture = resolveTexture(opts.texture);
+    const texture = resolveTextureInput(opts.texture);
     const mode = opts.mode ?? "stretch";
 
     switch (mode) {
       case "nine-slice": {
         const insets = opts.nineSlice ?? 0;
         if (typeof insets === "number") {
-          return new NineSliceSprite({ texture, leftWidth: insets, topHeight: insets, rightWidth: insets, bottomHeight: insets });
+          return new NineSliceSprite({
+            texture,
+            leftWidth: insets,
+            topHeight: insets,
+            rightWidth: insets,
+            bottomHeight: insets,
+          });
         }
         return new NineSliceSprite({
           texture,
@@ -113,20 +136,18 @@ export class BackgroundRenderer {
     if (!this.displayObject) return;
 
     // Update the texture on the existing display object
-    const texture = resolveTexture(opts.texture);
+    const texture = resolveTextureInput(opts.texture);
     if ("texture" in this.displayObject) {
-      (this.displayObject as Sprite | NineSliceSprite | TilingSprite).texture = texture;
+      (this.displayObject as Sprite | NineSliceSprite | TilingSprite).texture =
+        texture;
     }
 
-    if (opts.alpha !== undefined) {
-      this.displayObject.alpha = opts.alpha;
-    }
-    if (opts.tint !== undefined) {
-      (this.displayObject as Sprite | NineSliceSprite | TilingSprite).tint = opts.tint;
-    }
+    this.displayObject.alpha = opts.alpha ?? 1;
+    (this.displayObject as Sprite | NineSliceSprite | TilingSprite).tint =
+      opts.tint ?? 0xffffff;
 
-    if (opts.mode === "tile" && opts.tileScale && this.displayObject instanceof TilingSprite) {
-      const s = opts.tileScale;
+    if (opts.mode === "tile" && this.displayObject instanceof TilingSprite) {
+      const s = opts.tileScale ?? 1;
       if (typeof s === "number") {
         this.displayObject.tileScale.set(s, s);
       } else {

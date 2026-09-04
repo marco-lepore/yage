@@ -1,6 +1,14 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
-import { createElement } from "react";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  afterEach,
+  vi,
+} from "vitest";
+import { createElement, useLayoutEffect } from "react";
 import { createRoot as createDomRoot } from "react-dom/client";
 import { act } from "react";
 import { EngineCtx, SceneCtx } from "./hooks.js";
@@ -80,9 +88,11 @@ describe("useSplitText", () => {
   ): void {
     function TestComp(): null {
       const tuple = useSplitText<StubNode>();
-      // Wire the element before the commit effect runs (the reconciler would
-      // normally do this); the hook's accessors read ref.current live.
-      tuple[0].current = node;
+      useLayoutEffect(() => {
+        const setRef = tuple[0];
+        setRef(node);
+        return () => setRef(null);
+      }, [tuple[0]]);
       capture(tuple);
       return null;
     }
@@ -107,7 +117,7 @@ describe("useSplitText", () => {
     render(node, makeHarness(), (t) => (tuple = t));
 
     const [ref, controls] = tuple;
-    expect(ref).toHaveProperty("current");
+    expect(ref).toBeTypeOf("function");
     expect(controls.chars).toBe(node.chars);
     expect(controls.segments.chars).toBe(node.chars);
     expect(typeof controls.run).toBe("function");
@@ -162,5 +172,20 @@ describe("useSplitText", () => {
 
     controls.resplit();
     expect(node.resplit).toHaveBeenCalledTimes(1);
+  });
+
+  it("subscribes to a replacement node after a keyed remount", () => {
+    const first = makeStubNode();
+    const second = makeStubNode();
+    let tuple!: [unknown, SplitTextControls];
+    render(first, makeHarness(), (t) => (tuple = t));
+    const setRef = tuple[0] as (node: StubNode | null) => void;
+    const process = new Process({ update: () => {} });
+    tuple[1].run(process);
+
+    act(() => setRef(second));
+    act(() => second.triggerSplit());
+
+    expect(process.completed).toBe(true);
   });
 });

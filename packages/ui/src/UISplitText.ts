@@ -20,6 +20,8 @@ import type { UIElement, UISplitTextProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
+import { getUIDefaultTextStyle } from "./text-defaults.js";
+import { runUICallback } from "./error-boundary.js";
 
 /** The per-character / per-word / per-line segments of a split text. */
 export interface TextSegments {
@@ -106,6 +108,7 @@ export class UISplitText implements UIElement {
       props.style,
       props.bitmap,
       undefined,
+      getUIDefaultTextStyle(),
     );
     this.isBitmap = bitmap;
     const splitOptions = {
@@ -189,7 +192,11 @@ export class UISplitText implements UIElement {
     if (this._splitListeners.size === 0) return;
     const segments = this.segments;
     // Snapshot: a listener may unsubscribe (or subscribe) itself while running.
-    for (const listener of [...this._splitListeners]) listener(segments);
+    for (const listener of [...this._splitListeners]) {
+      runUICallback(this.displayObject, "UI split listener", () =>
+        listener(segments),
+      );
+    }
   }
 
   setText(s?: string): void {
@@ -208,6 +215,7 @@ export class UISplitText implements UIElement {
       style,
       this._bitmap,
       undefined,
+      getUIDefaultTextStyle(),
     );
     this.splitText.style = options.style ?? style;
     this._appliedStyle = style;

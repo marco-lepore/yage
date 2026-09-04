@@ -31,6 +31,7 @@ root.render(<MyComponent />);
 ```
 
 Positioning modes (mirror `@yagejs/ui`'s `UISurface`):
+
 - `positioning: "anchor"` (default) — `anchor` resolves against the viewport.
 - `positioning: "transform"` — tree is pinned to `entity.get(Transform).worldPosition` in the target layer's local coord space; `anchor` is the pivot on the rendered tree. Throws at add time if the entity has no `Transform`.
 
@@ -39,13 +40,28 @@ For entity-anchored React UI (nameplates, health bars), pair `positioning: "tran
 ## JSX Components
 
 ```tsx
-import { Panel, ZStack, Text, Button, Image, ProgressBar, Checkbox } from "@yagejs/ui-react";
+import {
+  Panel,
+  ZStack,
+  Text,
+  Button,
+  Image,
+  ProgressBar,
+  Checkbox,
+} from "@yagejs/ui-react";
 
-<Panel direction="column" gap={8} padding={16} bg={{ color: 0x000000, alpha: 0.7 }}>
+<Panel
+  direction="column"
+  gap={8}
+  padding={16}
+  bg={{ color: 0x000000, alpha: 0.7 }}
+>
   <Text style={{ fontSize: 24, fill: 0xffffff }}>Hello</Text>
 
   {/* width/height are optional — omit to shrink-to-content */}
-  <Button bg={{ color: 0x4444aa }} onClick={() => {}}>Click</Button>
+  <Button bg={{ color: 0x4444aa }} onClick={() => {}}>
+    Click
+  </Button>
 
   {/* Button accepts ReactNode children for icon + label compositions */}
   <Button onClick={() => {}}>
@@ -53,17 +69,22 @@ import { Panel, ZStack, Text, Button, Image, ProgressBar, Checkbox } from "@yage
     <Text>Save</Text>
   </Button>
 
-  <ProgressBar width={200} height={16} value={0.75} fillBackground={{ color: 0x44cc44 }} />
+  <ProgressBar
+    width={200}
+    height={16}
+    value={0.75}
+    fillBackground={{ color: 0x44cc44 }}
+  />
   <Checkbox label="Mute" checked={false} onChange={(v) => {}} />
   <Image texture={iconTex} width={32} height={32} />
-</Panel>
+</Panel>;
 ```
 
 `<Text>` takes a single string child. Pre-join interpolated content into one template string (`` `Boats: ${count}/3` ``); mixing text and expressions (`Boats: {count}/3`) produces a `(string | number)[]` and fails typechecking. `<Button>`, by contrast, accepts arbitrary `ReactNode` children.
 
 PixiUI wrappers: `PixiFancyButton`, `PixiCheckbox`, `PixiProgressBar`, `PixiSlider`, `PixiInput`, `PixiSelect`, `PixiRadioGroup`.
 
-Each JSX prop type extends its `@yagejs/ui` imperative counterpart (e.g. `ButtonProps` extends `UIButtonProps`). A prop the imperative class accepts is always a valid JSX prop too. `consumeInput` works on every element, including `Checkbox`, `ScrollView`, and the Pixi* wrappers.
+Each JSX prop type extends its `@yagejs/ui` imperative counterpart (e.g. `ButtonProps` extends `UIButtonProps`). A prop the imperative class accepts is always a valid JSX prop too. `consumeInput` works on every element, including `Checkbox`, `ScrollView`, and the Pixi\* wrappers.
 
 **Prop removal resets to default.** Dropping a prop between renders resets it instead of leaving the old value: a cleared `background` removes the fill, an unbound handler stops firing, a removed layout value (`width`, `margin`, and the rest) goes back to its Yoga default. This applies to every element. Two JSX patterns both drop a prop this way: an explicit `undefined` (`bg={selected ? hl : undefined}`) and a conditional spread (`{...(open ? { onClick } : {})}`).
 
@@ -85,21 +106,30 @@ function OrdersPanel({ orders, fulfill, endDay }: OrdersProps) {
 
       <ScrollView flexGrow={1} gap={6} bg={{ color: 0x0b1220 }}>
         {orders.map((o) => (
-          <Panel key={o.id} direction="row" height={36} bg={{ color: 0x243042 }}>
+          <Panel
+            key={o.id}
+            direction="row"
+            height={36}
+            bg={{ color: 0x243042 }}
+          >
             <Text style={{ fontSize: 14, fill: 0xe5e7eb }}>{o.label}</Text>
-            <Button height={24} onClick={() => fulfill(o.id)}>Fulfill</Button>
+            <Button height={24} onClick={() => fulfill(o.id)}>
+              Fulfill
+            </Button>
           </Panel>
         ))}
       </ScrollView>
 
       {/* Sibling of <ScrollView> → stays fixed while the list scrolls. */}
-      <Button height={36} onClick={endDay}>End Day</Button>
+      <Button height={36} onClick={endDay}>
+        End Day
+      </Button>
     </Panel>
   );
 }
 ```
 
-Size the viewport with `LayoutProps` (`height` / `flexGrow`). Content overflowing the scroll axis is clipped and pannable (wheel + drag work anywhere over the box, including gaps and the gutter). Props: `direction` (`"vertical"` default / `"horizontal"`), `gap`, `padding`, `bg`, `onScroll(offset)`, and `scrollbar` — `true` (default) / `false`, or a `ScrollbarOptions` object (`thickness`, `color`, `alpha`, `radius`, `minThumbLength`, `margin`). When the scrollbar is shown a gutter equal to the thumb footprint is auto-reserved so content never sits under it (`node.scrollbarGutter` is the px). Keep fixed elements (a footer button, a header) as **siblings** of `<ScrollView>`, not children. The same node is available without React via the `UIPanel` / `UISurface` `.scrollView(opts)` builder, and exposes `scrollBy()` / `scrollTo()` / `scrollOffset` / `maxScroll`.
+Size the viewport with `LayoutProps` (`height` / `flexGrow`). Content overflowing the scroll axis is clipped and pannable (wheel + drag work anywhere over the box, including gaps and the gutter). Dragging starts after 10 px and does not activate a child button when released. Props: `direction` (`"vertical"` default / `"horizontal"`), `gap`, `padding`, `bg`, `onScroll(offset)`, and `scrollbar` — `true` (default) / `false`, or a `ScrollbarOptions` object (`thickness`, `color`, `alpha`, `radius`, `minThumbLength`, `margin`). When the scrollbar is shown a gutter equal to the thumb footprint is auto-reserved so content never sits under it (`node.scrollbarGutter` is the px). Keep fixed elements (a footer button, a header) as **siblings** of `<ScrollView>`, not children. A `ref` exposes `scrollBy()` / `scrollTo()` / `scrollOffset` / `maxScroll`. The same node is available without React via the `UIPanel` / `UISurface` `.scrollView(opts)` builder.
 
 > Appending JSX children to a layout-leaf element (one with no `addElement`, e.g. `<PixiSelect>`) silently drops them. The reconciler emits a one-shot dev `console.warn` pointing you at `<ScrollView>` / a container.
 
@@ -114,7 +144,12 @@ stacking use `<Panel direction="column" | "row">`.
 
 ```tsx
 <ZStack>
-  <Panel position="absolute" left={0} top={0} bg={{ color: 0x000000, alpha: 0.6 }} />
+  <Panel
+    position="absolute"
+    left={0}
+    top={0}
+    bg={{ color: 0x000000, alpha: 0.6 }}
+  />
   <Panel position="absolute" top={16} right={16} padding={4}>
     <Text>Score: 42</Text>
   </Panel>
@@ -214,21 +249,27 @@ without React) and re-anchored each frame by `@yagejs/ui`'s
 ## Hooks
 
 ```ts
-import { useEngine, useScene, useStore, useQuery, useSceneSelector } from "@yagejs/ui-react";
+import {
+  useEngine,
+  useScene,
+  useStore,
+  useQuery,
+  useSceneSelector,
+} from "@yagejs/ui-react";
 
 // Engine/scene context
 const engine = useEngine();
 const scene = useScene();
 
 // Reactive source — one overload per Reactive* shape, plus a selector escape hatch.
-useStore(record);           // ReactiveRecord<T>      → Readonly<T>
-useStore(counter);          // ReactiveCounter        → number
-useStore(map);              // ReactiveMap<K, V>      → Array<[K, V]>
-useStore(set);              // ReactiveSet<K>         → K[]
-useStore(list);             // ReactiveList<T>        → T[]
-useStore(value);            // ReactiveValue<T>       → T
-useStore(compound);         // ReactiveStore<L>       → encoded snapshot
-useStore(source, select);   // selector receives the source itself, not a snapshot
+useStore(record); // ReactiveRecord<T>      → Readonly<T>
+useStore(counter); // ReactiveCounter        → number
+useStore(map); // ReactiveMap<K, V>      → Array<[K, V]>
+useStore(set); // ReactiveSet<K>         → K[]
+useStore(list); // ReactiveList<T>        → T[]
+useStore(value); // ReactiveValue<T>       → T
+useStore(compound); // ReactiveStore<L>       → encoded snapshot
+useStore(source, select); // selector receives the source itself, not a snapshot
 
 // ECS query (polled each frame)
 const count = useQuery([EnemyTag], (result) => result.size);
@@ -242,10 +283,10 @@ const entityCount = useSceneSelector((scene) => scene.getEntities().length);
 `useQuery` registers its `QueryCache` query in an effect on mount and releases it when the component unmounts (`QueryCache.unregister`), so a query does not keep matching new entities after the component is gone. Passing an inline array literal as `filter` (`useQuery([EnemyTag], ...)`) is fine. Re-registration is keyed off the filter's contents, not its identity, so a new array with the same component classes on every render does not churn the registration. Before the effect commits (first paint, or the frame after `filter`'s contents change), reads fall back to `QueryCache.queryOnce`, a detached snapshot seeded with the same currently-matching entities the live query will pick up.
 
 ```ts
-const inv  = useStore(game.inventory);                          // entries snapshot
-const gold = useStore(game.gold);                               // number
-const lang = useStore(game.settings, (s) => s.get().lang);      // selector on leaf
-const hp   = useStore(game, (s) => s.player.get().health);      // selector on compound
+const inv = useStore(game.inventory); // entries snapshot
+const gold = useStore(game.gold); // number
+const lang = useStore(game.settings, (s) => s.get().lang); // selector on leaf
+const hp = useStore(game, (s) => s.player.get().health); // selector on compound
 ```
 
 ## In-memory record for UI

@@ -3,6 +3,9 @@ import type { PixiCheckboxProps } from "../types.js";
 import { PixiUIBase } from "./PixiUIBase.js";
 import { resolvePixiView } from "./view-resolver.js";
 
+const DEFAULT_CHECKED = false;
+const DEFAULT_TEXT = "";
+
 /** Yoga-aware wrapper around @pixi/ui CheckBox. */
 export class PixiCheckbox extends PixiUIBase<CheckBox> {
   constructor(props: PixiCheckboxProps) {
@@ -13,12 +16,12 @@ export class PixiCheckbox extends PixiUIBase<CheckBox> {
         text: props.textStyle,
         textOffset: props.textOffset,
       },
-      text: props.text,
-      checked: props.checked ?? false,
+      text: props.text ?? DEFAULT_TEXT,
+      checked: props.checked ?? DEFAULT_CHECKED,
     } as ConstructorParameters<typeof CheckBox>[0]);
     super(view, props);
 
-    if (props.onChange) view.onCheck.connect(props.onChange);
+    this.bridgeSignal(view.onCheck, "onChange", "UI onChange", { ...props });
     this.prevProps = { ...props };
   }
 
@@ -29,20 +32,17 @@ export class PixiCheckbox extends PixiUIBase<CheckBox> {
   }
 
   update(props: Record<string, unknown>): void {
-    const p = props as unknown as PixiCheckboxProps;
+    const p = props as unknown as Partial<PixiCheckboxProps>;
 
-    this.bridgeSignal(this.view.onCheck, "onChange", props);
+    this.bridgeSignal(this.view.onCheck, "onChange", "UI onChange", props);
 
-    if (p.checked !== undefined) this.view.forceCheck(p.checked);
-    if (p.text !== undefined) this.view.text = p.text;
+    if ("checked" in p) this.view.forceCheck(p.checked ?? DEFAULT_CHECKED);
+    if ("text" in p) this.view.text = p.text ?? DEFAULT_TEXT;
 
     this.updateBase(props);
   }
 
   protected disconnectAll(): void {
-    const cb = this.prevProps.onChange as
-      | ((checked: boolean) => void)
-      | undefined;
-    if (cb) this.view.onCheck.disconnect(cb);
+    this.disconnectBridgedSignal(this.view.onCheck, "onChange");
   }
 }

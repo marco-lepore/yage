@@ -1,5 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { getComponentData, gotoFixture, stepFrames, waitForClock } from "./helpers.js";
+import {
+  getComponentData,
+  gotoFixture,
+  stepFrames,
+  waitForClock,
+} from "./helpers.js";
 
 interface ProbeData {
   offset: number;
@@ -9,6 +14,9 @@ interface ProbeData {
   scrollBtnY: number;
   endX: number;
   endY: number;
+  rowX: number;
+  rowY: number;
+  orderClicks: number;
 }
 
 // Control buttons are CTRL_W x CTRL_H in the fixture; click their centers.
@@ -16,12 +24,47 @@ const CTRL_W = 110;
 const CTRL_H = 32;
 
 async function probe(page: Page): Promise<ProbeData> {
-  const data = await getComponentData<ProbeData>(page, "ui-state", "ScrollProbe");
+  const data = await getComponentData<ProbeData>(
+    page,
+    "ui-state",
+    "ScrollProbe",
+  );
   if (!data) throw new Error("ScrollProbe data unavailable");
   return data;
 }
 
 test.describe("ScrollView fixture", () => {
+  test("dragging the button list scrolls without clicking a row", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/scroll-view.html");
+    await waitForClock(page);
+    await stepFrames(page, 2);
+    const initial = await probe(page);
+    const canvas = page.locator("canvas");
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error("canvas has no bounding box");
+
+    await page.mouse.move(
+      box.x + initial.rowX + 110,
+      box.y + initial.rowY + 18,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      box.x + initial.rowX + 110,
+      box.y + initial.rowY - 32,
+      {
+        steps: 5,
+      },
+    );
+    await page.mouse.up();
+    await stepFrames(page, 2);
+
+    const afterDrag = await probe(page);
+    expect(afterDrag.offset).toBeGreaterThan(10);
+    expect(afterDrag.orderClicks).toBe(0);
+  });
+
   test("declarative list scrolls past the viewport while the footer stays fixed", async ({
     page,
   }) => {

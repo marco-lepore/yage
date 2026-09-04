@@ -1,5 +1,5 @@
-import { useRef, useMemo, useEffect } from "react";
-import type { RefObject } from "react";
+import { useRef, useMemo, useEffect, useCallback, useState } from "react";
+import type { RefCallback } from "react";
 import type { Process } from "@yagejs/core";
 import { ProcessSystemKey, makeSceneScopedQueue } from "@yagejs/core";
 import type { UISplitText, TextSegments } from "@yagejs/ui";
@@ -61,10 +61,15 @@ export interface SplitTextControls {
  * ```
  */
 export function useSplitText<T extends UISplitText = UISplitText>(): [
-  RefObject<T | null>,
+  RefCallback<T>,
   SplitTextControls,
 ] {
   const ref = useRef<T | null>(null);
+  const [node, setNode] = useState<T | null>(null);
+  const setRef = useCallback<RefCallback<T>>((next) => {
+    ref.current = next;
+    setNode(next);
+  }, []);
   const engine = useEngine();
   const scene = useScene();
 
@@ -76,14 +81,13 @@ export function useSplitText<T extends UISplitText = UISplitText>(): [
   // A re-split destroys the old glyph objects, so cancel anything still
   // animating them; cancel everything on unmount too.
   useEffect(() => {
-    const node = ref.current;
     if (!node) return;
     const off = node.onSplit(() => queue.cancelAll());
     return () => {
       off();
       queue.cancelAll();
     };
-  }, [queue]);
+  }, [node, queue]);
 
   const controls = useMemo<SplitTextControls>(
     () => ({
@@ -115,5 +119,5 @@ export function useSplitText<T extends UISplitText = UISplitText>(): [
     [queue],
   );
 
-  return [ref, controls];
+  return [setRef, controls];
 }

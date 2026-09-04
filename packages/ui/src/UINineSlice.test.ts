@@ -5,35 +5,79 @@ import type { Texture } from "pixi.js";
 const { mocks } = vi.hoisted(() => {
   class MockContainer {
     children: MockContainer[] = [];
-    position = { x: 0, y: 0, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    position = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
     visible = true;
     alpha = 1;
     parent: MockContainer | null = null;
     destroyed = false;
     eventMode = "auto";
 
-    addChild(child: MockContainer): MockContainer { this.children.push(child); child.parent = this; return child; }
-    addChildAt(child: MockContainer, index: number): MockContainer { this.children.splice(index, 0, child); child.parent = this; return child; }
-    removeChild(child: MockContainer): MockContainer { const i = this.children.indexOf(child); if (i !== -1) { this.children.splice(i, 1); child.parent = null; } return child; }
-    removeFromParent(): void { this.parent?.removeChild(this); }
+    addChild(child: MockContainer): MockContainer {
+      this.children.push(child);
+      child.parent = this;
+      return child;
+    }
+    addChildAt(child: MockContainer, index: number): MockContainer {
+      this.children.splice(index, 0, child);
+      child.parent = this;
+      return child;
+    }
+    removeChild(child: MockContainer): MockContainer {
+      const i = this.children.indexOf(child);
+      if (i !== -1) {
+        this.children.splice(i, 1);
+        child.parent = null;
+      }
+      return child;
+    }
+    removeFromParent(): void {
+      this.parent?.removeChild(this);
+    }
     private _listeners = new Map<string, Set<(...args: unknown[]) => void>>();
-    on(event: string, fn: (...args: unknown[]) => void): this { if (!this._listeners.has(event)) this._listeners.set(event, new Set()); this._listeners.get(event)!.add(fn); return this; }
-    emit(event: string, ...args: unknown[]): void { for (const fn of this._listeners.get(event) ?? []) fn(...args); }
-    destroy(): void { this.destroyed = true; this.removeFromParent(); }
+    on(event: string, fn: (...args: unknown[]) => void): this {
+      if (!this._listeners.has(event)) this._listeners.set(event, new Set());
+      this._listeners.get(event)!.add(fn);
+      return this;
+    }
+    emit(event: string, ...args: unknown[]): void {
+      for (const fn of this._listeners.get(event) ?? []) fn(...args);
+    }
+    destroy(): void {
+      this.destroyed = true;
+      this.removeFromParent();
+    }
   }
 
   class MockGraphics extends MockContainer {
-    clear(): MockGraphics { return this; }
-    rect(): MockGraphics { return this; }
-    roundRect(): MockGraphics { return this; }
-    fill(): MockGraphics { return this; }
+    clear(): MockGraphics {
+      return this;
+    }
+    rect(): MockGraphics {
+      return this;
+    }
+    roundRect(): MockGraphics {
+      return this;
+    }
+    fill(): MockGraphics {
+      return this;
+    }
   }
 
   class MockSprite extends MockContainer {
     texture: unknown;
     width = 0;
     height = 0;
-    constructor(texture?: unknown) { super(); this.texture = texture; }
+    constructor(texture?: unknown) {
+      super();
+      this.texture = texture;
+    }
   }
 
   class MockNineSliceSprite extends MockContainer {
@@ -61,11 +105,33 @@ const { mocks } = vi.hoisted(() => {
     texture: unknown;
     width = 0;
     height = 0;
-    tileScale = { x: 1, y: 1, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
-    constructor(opts?: Record<string, unknown>) { super(); if (opts) { this.texture = opts.texture; } }
+    tileScale = {
+      x: 1,
+      y: 1,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
+    constructor(opts?: Record<string, unknown>) {
+      super();
+      if (opts) {
+        this.texture = opts.texture;
+      }
+    }
   }
 
-  return { mocks: { MockContainer, MockGraphics, MockSprite, MockNineSliceSprite, MockTilingSprite } };
+  return {
+    mocks: {
+      MockContainer,
+      MockGraphics,
+      MockSprite,
+      MockNineSliceSprite,
+      MockTilingSprite,
+      mockTexture: { width: 64, height: 64 },
+      registeredTextures: new Map<string, unknown>(),
+    },
+  };
 });
 
 vi.mock("pixi.js", () => ({
@@ -76,20 +142,24 @@ vi.mock("pixi.js", () => ({
   TilingSprite: mocks.MockTilingSprite,
 }));
 
+vi.mock("@yagejs/renderer", () => ({
+  registerTexture: (key: string, texture: unknown) => {
+    mocks.registeredTextures.set(key, texture);
+  },
+  resolveTextureInput: (input: unknown) => {
+    const key =
+      typeof input === "string" ? input : (input as { path?: string }).path;
+    return (key && mocks.registeredTextures.get(key)) ?? mocks.mockTexture;
+  },
+}));
+
 import Yoga, { Direction } from "yoga-layout";
+import { registerTexture } from "@yagejs/renderer";
 import { setYoga } from "./yoga-helpers.js";
-import { setAssetManager } from "./asset-helpers.js";
 import { UINineSlice } from "./UINineSlice.js";
-import { AssetManager } from "@yagejs/core";
 
-const mockTexture = { width: 64, height: 64 };
-
-beforeAll(async () => {
+beforeAll(() => {
   setYoga(Yoga);
-  const am = new AssetManager();
-  am.registerLoader("texture", { load: async () => mockTexture });
-  await am.loadAll([new AssetHandle<Texture>("texture", "panel.png")]);
-  setAssetManager(am);
 });
 
 describe("UINineSlice", () => {
@@ -97,12 +167,32 @@ describe("UINineSlice", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.registeredTextures.clear();
+  });
+
+  it("resolves a registered texture key", () => {
+    const texture = { width: 80, height: 40 };
+    registerTexture("runtime-panel", texture as never);
+
+    const ns = new UINineSlice({ texture: "runtime-panel", insets: 4 });
+
+    const sprite = ns.container as unknown as InstanceType<
+      typeof mocks.MockNineSliceSprite
+    >;
+    expect(sprite.texture).toBe(texture);
   });
 
   it("creates with uniform insets", () => {
-    const ns = new UINineSlice({ texture: handle, insets: 10, width: 100, height: 50 });
+    const ns = new UINineSlice({
+      texture: handle,
+      insets: 10,
+      width: 100,
+      height: 50,
+    });
     expect(ns.displayObject).toBeDefined();
-    const sprite = ns.container as unknown as InstanceType<typeof mocks.MockNineSliceSprite>;
+    const sprite = ns.container as unknown as InstanceType<
+      typeof mocks.MockNineSliceSprite
+    >;
     expect(sprite.leftWidth).toBe(10);
     expect(sprite.topHeight).toBe(10);
     expect(sprite.rightWidth).toBe(10);
@@ -116,7 +206,9 @@ describe("UINineSlice", () => {
       width: 100,
       height: 50,
     });
-    const sprite = ns.container as unknown as InstanceType<typeof mocks.MockNineSliceSprite>;
+    const sprite = ns.container as unknown as InstanceType<
+      typeof mocks.MockNineSliceSprite
+    >;
     expect(sprite.leftWidth).toBe(5);
     expect(sprite.topHeight).toBe(10);
     expect(sprite.rightWidth).toBe(15);
@@ -124,18 +216,48 @@ describe("UINineSlice", () => {
   });
 
   it("applyLayout sets width and height", () => {
-    const ns = new UINineSlice({ texture: handle, insets: 8, width: 200, height: 100 });
+    const ns = new UINineSlice({
+      texture: handle,
+      insets: 8,
+      width: 200,
+      height: 100,
+    });
     ns.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     ns.applyLayout();
-    const sprite = ns.container as unknown as InstanceType<typeof mocks.MockNineSliceSprite>;
+    const sprite = ns.container as unknown as InstanceType<
+      typeof mocks.MockNineSliceSprite
+    >;
     expect(sprite.width).toBe(200);
     expect(sprite.height).toBe(100);
   });
 
   it("applies tint and alpha", () => {
-    const ns = new UINineSlice({ texture: handle, insets: 4, tint: 0xff0000, alpha: 0.5 });
-    const sprite = ns.container as unknown as InstanceType<typeof mocks.MockNineSliceSprite>;
+    const ns = new UINineSlice({
+      texture: handle,
+      insets: 4,
+      tint: 0xff0000,
+      alpha: 0.5,
+    });
+    const sprite = ns.container as unknown as InstanceType<
+      typeof mocks.MockNineSliceSprite
+    >;
     expect(sprite.alpha).toBe(0.5);
+  });
+
+  it("updates slice insets", () => {
+    const ns = new UINineSlice({ texture: handle, insets: 4 });
+
+    ns.update({ insets: { left: 5, top: 6, right: 7, bottom: 8 } });
+
+    const sprite = ns.container as unknown as InstanceType<
+      typeof mocks.MockNineSliceSprite
+    >;
+    expect([
+      sprite.leftWidth,
+      sprite.topHeight,
+      sprite.rightWidth,
+      sprite.bottomHeight,
+    ]).toEqual([5, 6, 7, 8]);
   });
 
   it("visibility can be toggled", () => {
@@ -149,7 +271,9 @@ describe("UINineSlice", () => {
   it("destroy cleans up", () => {
     const ns = new UINineSlice({ texture: handle, insets: 4 });
     ns.destroy();
-    const sprite = ns.container as unknown as InstanceType<typeof mocks.MockNineSliceSprite>;
+    const sprite = ns.container as unknown as InstanceType<
+      typeof mocks.MockNineSliceSprite
+    >;
     expect(sprite.destroyed).toBe(true);
   });
 });

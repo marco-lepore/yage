@@ -3,12 +3,27 @@ import type { PixiFancyButtonProps } from "../types.js";
 import { PixiUIBase } from "./PixiUIBase.js";
 import { resolvePixiView } from "./view-resolver.js";
 
+const DEFAULT_TEXT = "";
+const DEFAULT_TEXT_STYLE = {};
+const DEFAULT_DISABLED = false;
+
 /** Yoga-aware wrapper around @pixi/ui FancyButton. */
 export class PixiFancyButton extends PixiUIBase<FancyButton> {
   constructor(props: PixiFancyButtonProps) {
     const {
-      defaultView, hoverView, pressedView, disabledView,
-      text, textStyle, icon, padding, scale, anchor, nineSliceSprite, animations, textOffset,
+      defaultView,
+      hoverView,
+      pressedView,
+      disabledView,
+      text,
+      textStyle,
+      icon,
+      padding,
+      scale,
+      anchor,
+      nineSliceSprite,
+      animations,
+      textOffset,
     } = props;
     // Cast needed: exactOptionalPropertyTypes makes `T | undefined` incompatible with optional props
     const view = new FancyButton({
@@ -16,7 +31,14 @@ export class PixiFancyButton extends PixiUIBase<FancyButton> {
       hoverView: resolvePixiView(hoverView),
       pressedView: resolvePixiView(pressedView),
       disabledView: resolvePixiView(disabledView),
-      text, icon, padding, scale, anchor, nineSliceSprite, animations, textOffset,
+      text: text ?? DEFAULT_TEXT,
+      icon,
+      padding,
+      scale,
+      anchor,
+      nineSliceSprite,
+      animations,
+      textOffset,
     } as unknown as ConstructorParameters<typeof FancyButton>[0]);
     super(view, props);
 
@@ -24,27 +46,28 @@ export class PixiFancyButton extends PixiUIBase<FancyButton> {
     if (textStyle && view.textView) {
       view.textView.style = textStyle;
     }
-    if (props.disabled) view.enabled = false;
-    if (props.onClick) view.onPress.connect(props.onClick);
+    view.enabled = !(props.disabled ?? DEFAULT_DISABLED);
+    this.bridgeSignal(view.onPress, "onClick", "UI onClick", { ...props });
     this.prevProps = { ...props };
   }
 
   update(props: Record<string, unknown>): void {
-    const p = props as unknown as PixiFancyButtonProps;
+    const p = props as unknown as Partial<PixiFancyButtonProps>;
 
-    this.bridgeSignal(this.view.onPress, "onClick", props);
+    this.bridgeSignal(this.view.onPress, "onClick", "UI onClick", props);
 
-    if (p.text !== undefined) this.view.text = p.text;
-    if (p.textStyle !== undefined && this.view.textView) {
-      this.view.textView.style = p.textStyle;
+    if ("text" in p) this.view.text = p.text ?? DEFAULT_TEXT;
+    if ("textStyle" in p && this.view.textView) {
+      this.view.textView.style = p.textStyle ?? DEFAULT_TEXT_STYLE;
     }
-    if (p.disabled !== undefined) this.view.enabled = !p.disabled;
+    if ("disabled" in p) {
+      this.view.enabled = !(p.disabled ?? DEFAULT_DISABLED);
+    }
 
     this.updateBase(props);
   }
 
   protected disconnectAll(): void {
-    const cb = this.prevProps.onClick as (() => void) | undefined;
-    if (cb) this.view.onPress.disconnect(cb);
+    this.disconnectBridgedSignal(this.view.onPress, "onClick");
   }
 }

@@ -3,11 +3,19 @@ import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 const { mocks } = vi.hoisted(() => {
   // @pixi/ui reads navigator at import time — stub it for Node
   if (typeof globalThis.navigator === "undefined") {
-    (globalThis as unknown as { navigator: { userAgent: string } }).navigator = { userAgent: "" };
+    (globalThis as unknown as { navigator: { userAgent: string } }).navigator =
+      { userAgent: "" };
   }
   class MockContainer {
     children: MockContainer[] = [];
-    position = { x: 0, y: 0, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    position = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
     scale = { x: 1, y: 1 };
     rotation = 0;
     visible = true;
@@ -85,13 +93,21 @@ const { mocks } = vi.hoisted(() => {
   }
 
   class MockGraphics extends MockContainer {
-    clear(): MockGraphics { return this; }
+    clear(): MockGraphics {
+      return this;
+    }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    rect(...args: unknown[]): MockGraphics { return this; }
+    rect(...args: unknown[]): MockGraphics {
+      return this;
+    }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    roundRect(...args: unknown[]): MockGraphics { return this; }
+    roundRect(...args: unknown[]): MockGraphics {
+      return this;
+    }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    fill(...args: unknown[]): MockGraphics { return this; }
+    fill(...args: unknown[]): MockGraphics {
+      return this;
+    }
   }
 
   class MockText extends MockContainer {
@@ -99,7 +115,14 @@ const { mocks } = vi.hoisted(() => {
     style: Record<string, unknown>;
     width: number;
     height: number;
-    anchor = { x: 0, y: 0, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    anchor = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
 
     constructor(opts?: { text?: string; style?: Record<string, unknown> }) {
       super();
@@ -130,10 +153,29 @@ vi.mock("pixi.js", () => ({
 }));
 
 import Yoga from "yoga-layout";
-import { setYoga, createYogaNode, UIPanel, UIText as UITextNode, UIButton as UIButtonNode } from "@yagejs/ui";
-import { createElement } from "react";
-import { createRoot, getRootInstances, addOnCommit, removeOnCommit } from "./reconciler.js";
-import { Button, Checkbox, Panel, ScrollView, Tooltip, UIText as Text } from "./components.js";
+import {
+  setYoga,
+  createYogaNode,
+  UIPanel,
+  UIText as UITextNode,
+  UIButton as UIButtonNode,
+  UIScrollView as UIScrollViewNode,
+} from "@yagejs/ui";
+import { createElement, createRef, Fragment } from "react";
+import {
+  createRoot,
+  getRootInstances,
+  addOnCommit,
+  removeOnCommit,
+} from "./reconciler.js";
+import {
+  Button,
+  Checkbox,
+  Panel,
+  ScrollView,
+  Tooltip,
+  UIText as Text,
+} from "./components.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -155,7 +197,9 @@ describe("reconciler", () => {
 
   it("renders a panel element into the container", () => {
     const root = createRoot(container as never);
-    root.render(createElement("ui-element", { _ctor: UIPanel, direction: "column" }));
+    root.render(
+      createElement("ui-element", { _ctor: UIPanel, direction: "column" }),
+    );
 
     // React reconciler is synchronous for our config
     expect(container.children.length).toBe(1);
@@ -163,7 +207,13 @@ describe("reconciler", () => {
 
   it("renders a text element", () => {
     const root = createRoot(container as never);
-    root.render(createElement("ui-element", { _ctor: UITextNode, _consumesText: true, style: { fontSize: 20 } }, "Hello"));
+    root.render(
+      createElement(
+        "ui-element",
+        { _ctor: UITextNode, _consumesText: true, style: { fontSize: 20 } },
+        "Hello",
+      ),
+    );
 
     expect(container.children.length).toBe(1);
   });
@@ -171,7 +221,11 @@ describe("reconciler", () => {
   it("renders a button element", () => {
     const root = createRoot(container as never);
     root.render(
-      createElement("ui-element", { _ctor: UIButtonNode, _consumesText: true, width: 100, height: 40 }, "Click"),
+      createElement(
+        "ui-element",
+        { _ctor: UIButtonNode, _consumesText: true, width: 100, height: 40 },
+        "Click",
+      ),
     );
 
     expect(container.children.length).toBe(1);
@@ -196,7 +250,9 @@ describe("reconciler", () => {
         createElement("ui-element", { _ctor: UIPanel, key: "child" }),
       ),
     );
-    const rootInstance = getRootInstances(container as never)![0] as unknown as {
+    const rootInstance = getRootInstances(
+      container as never,
+    )![0] as unknown as {
       yogaNode: { free(): void };
       children: Array<{ yogaNode: { free(): void } }>;
     };
@@ -215,11 +271,15 @@ describe("reconciler", () => {
       createElement(
         "ui-element",
         { _ctor: UIPanel },
-        open ? createElement("ui-element", { _ctor: UIPanel, key: "conditional" }) : null,
+        open
+          ? createElement("ui-element", { _ctor: UIPanel, key: "conditional" })
+          : null,
       );
 
     root.render(tree(true));
-    const rootInstance = getRootInstances(container as never)![0] as unknown as {
+    const rootInstance = getRootInstances(
+      container as never,
+    )![0] as unknown as {
       children: Array<{ yogaNode: { free(): void } }>;
     };
     const removedChild = rootInstance.children[0]!;
@@ -236,11 +296,15 @@ describe("reconciler", () => {
       createElement(
         "ui-element",
         { _ctor: UIPanel },
-        open ? createElement("ui-element", { _ctor: UIPanel, key: "conditional" }) : null,
+        open
+          ? createElement("ui-element", { _ctor: UIPanel, key: "conditional" })
+          : null,
       );
 
     root.render(tree(true));
-    const rootInstance = getRootInstances(container as never)![0] as unknown as {
+    const rootInstance = getRootInstances(
+      container as never,
+    )![0] as unknown as {
       children: Array<{ yogaNode: { free(): void }; destroy(): void }>;
     };
     const removedChild = rootInstance.children[0]!;
@@ -257,7 +321,9 @@ describe("reconciler", () => {
 
   it("tracks root instances for layout", () => {
     const root = createRoot(container as never);
-    root.render(createElement("ui-element", { _ctor: UIPanel, direction: "column" }));
+    root.render(
+      createElement("ui-element", { _ctor: UIPanel, direction: "column" }),
+    );
 
     const instances = getRootInstances(container as never);
     expect(instances).toBeDefined();
@@ -281,8 +347,16 @@ describe("reconciler", () => {
       createElement(
         "ui-element",
         { _ctor: UIPanel, direction: "column" },
-        createElement("ui-element", { _ctor: UITextNode, _consumesText: true }, "Hello"),
-        createElement("ui-element", { _ctor: UIButtonNode, _consumesText: true, width: 80, height: 30 }, "OK"),
+        createElement(
+          "ui-element",
+          { _ctor: UITextNode, _consumesText: true },
+          "Hello",
+        ),
+        createElement(
+          "ui-element",
+          { _ctor: UIButtonNode, _consumesText: true, width: 80, height: 30 },
+          "OK",
+        ),
       ),
     );
 
@@ -292,6 +366,58 @@ describe("reconciler", () => {
     expect("children" in panel).toBe(true);
     const panelChildren = (panel as { children: unknown[] }).children;
     expect(panelChildren.length).toBe(2);
+  });
+
+  it("reorders keyed children without duplicating Panel or Button entries", () => {
+    for (const Parent of [Panel, Button]) {
+      const root = createRoot(container as never);
+      const tree = (keys: string[]) =>
+        createElement(
+          Parent,
+          {},
+          ...keys.map((key) => createElement(Panel, { key })),
+        );
+
+      root.render(tree(["a", "b", "c"]));
+      const parent = getRootInstances(container as never)![0] as unknown as {
+        children: unknown[];
+      };
+      const [a, b, c] = parent.children;
+
+      root.render(tree(["c", "a", "b"]));
+
+      expect(parent.children).toEqual([c, a, b]);
+      expect(new Set(parent.children).size).toBe(3);
+      root.unmount();
+    }
+  });
+
+  it("reorders keyed root children without duplicating layout entries", () => {
+    const root = createRoot(container as never);
+    const tree = (keys: string[]) =>
+      createElement(
+        Fragment,
+        null,
+        ...keys.map((key) => createElement(Panel, { key })),
+      );
+
+    root.render(tree(["a", "b", "c"]));
+    const [a, b, c] = getRootInstances(container as never)!;
+
+    root.render(tree(["c", "a", "b"]));
+
+    const instances = getRootInstances(container as never)!;
+    expect(instances).toEqual([c, a, b]);
+    expect(new Set(instances).size).toBe(3);
+  });
+
+  it("forwards a ScrollView ref to its UIScrollView instance", () => {
+    const ref = createRef<UIScrollViewNode>();
+    const root = createRoot(container as never);
+
+    root.render(createElement(ScrollView, { ref }));
+
+    expect(ref.current).toBe(getRootInstances(container as never)![0]);
   });
 
   it("does not crash on missing _ctor (React catches the error)", () => {
@@ -432,12 +558,20 @@ describe("reconciler", () => {
   it("commitUpdate calls instance.update()", () => {
     const root = createRoot(container as never);
     root.render(
-      createElement("ui-element", { _ctor: UITextNode, _consumesText: true, style: { fontSize: 20 } }, "Hello"),
+      createElement(
+        "ui-element",
+        { _ctor: UITextNode, _consumesText: true, style: { fontSize: 20 } },
+        "Hello",
+      ),
     );
 
     // Update with new text
     root.render(
-      createElement("ui-element", { _ctor: UITextNode, _consumesText: true, style: { fontSize: 20 } }, "World"),
+      createElement(
+        "ui-element",
+        { _ctor: UITextNode, _consumesText: true, style: { fontSize: 20 } },
+        "World",
+      ),
     );
 
     // Should not crash and text should be updated
@@ -501,7 +635,9 @@ describe("reconciler dev-warnings", () => {
       createElement(
         "ui-element",
         { _ctor: SilentLeafWidget },
-        open ? createElement("ui-element", { _ctor: UIPanel, key: "conditional" }) : null,
+        open
+          ? createElement("ui-element", { _ctor: UIPanel, key: "conditional" })
+          : null,
       );
 
     root.render(tree(true));
@@ -536,7 +672,8 @@ describe("reconciler dev-warnings", () => {
       // No direct "has background" getter on UIPanel; assert indirectly via
       // the background-renderer's absence — background: undefined must have
       // reached update() as an explicit reset, not been skipped.
-      const bgRenderer = (panel as unknown as { bgRenderer: unknown }).bgRenderer;
+      const bgRenderer = (panel as unknown as { bgRenderer: unknown })
+        .bgRenderer;
       expect(bgRenderer).toBeUndefined();
     });
 
@@ -593,7 +730,12 @@ describe("reconciler dev-warnings", () => {
       const root = createRoot(container as never);
 
       // @ts-expect-error — intentionally passing both for the collision test
-      root.render(createElement(Panel, { bg: { color: 0x00ff00 }, background: { color: 0xff0000 } }));
+      root.render(
+        createElement(Panel, {
+          bg: { color: 0x00ff00 },
+          background: { color: 0xff0000 },
+        }),
+      );
 
       const panel = getRootInstances(container as never)![0] as unknown as {
         bgRenderer: { opts: unknown } | undefined;
@@ -601,7 +743,9 @@ describe("reconciler dev-warnings", () => {
       expect(panel.bgRenderer).toBeDefined();
 
       const messages = warn.mock.calls.map((c) => String(c.join(" ")));
-      expect(messages.some((m) => m.includes("`bg`") && m.includes("`background`"))).toBe(true);
+      expect(
+        messages.some((m) => m.includes("`bg`") && m.includes("`background`")),
+      ).toBe(true);
       warn.mockRestore();
     });
 

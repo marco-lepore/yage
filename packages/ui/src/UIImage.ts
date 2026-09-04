@@ -4,11 +4,11 @@ import { Display, MeasureMode } from "yoga-layout";
 import type {
   DisplayContainer,
   DisplaySprite,
-  TextureHandle,
+  TextureInput,
 } from "@yagejs/renderer";
+import { resolveTextureInput } from "@yagejs/renderer";
 import type { UIElement, UIImageProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
-import { resolveTexture } from "./asset-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
 
@@ -21,15 +21,15 @@ export class UIImage implements UIElement {
     return this.container;
   }
 
-  private textureHandle: TextureHandle;
+  private textureInput: TextureInput;
   private readonly pointerEvents: PointerEvents;
   private _destroyed = false;
 
   constructor(props: UIImageProps) {
     this.yogaNode = createYogaNode();
-    this.textureHandle = props.texture;
+    this.textureInput = props.texture;
 
-    const texture = resolveTexture(this.textureHandle);
+    const texture = resolveTextureInput(this.textureInput);
     this.container = new Sprite(texture);
     applyConsumeInput(this.container, props.consumeInput);
     this.pointerEvents = new PointerEvents(this.container, props);
@@ -90,9 +90,9 @@ export class UIImage implements UIElement {
   }
 
   update(p: Partial<UIImageProps>): void {
-    if (p.texture !== undefined && p.texture !== this.textureHandle) {
-      this.textureHandle = p.texture;
-      this.container.texture = resolveTexture(p.texture);
+    if (p.texture !== undefined && p.texture !== this.textureInput) {
+      this.textureInput = p.texture;
+      this.container.texture = resolveTextureInput(p.texture);
       this.yogaNode.markDirty();
     }
 

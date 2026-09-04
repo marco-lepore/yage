@@ -12,6 +12,7 @@ const { mocks } = vi.hoisted(() => {
     zIndex = 0;
     sortableChildren = false;
     destroyed = false;
+    private _listeners = new Map<string, Set<() => void>>();
     position = {
       x: 0,
       y: 0,
@@ -40,6 +41,27 @@ const { mocks } = vi.hoisted(() => {
       this.parent?.removeChild(this);
     }
 
+    once(event: string, listener: () => void): this {
+      const onceListener = (): void => {
+        this.off(event, onceListener);
+        listener();
+      };
+      const listeners = this._listeners.get(event) ?? new Set();
+      listeners.add(onceListener);
+      this._listeners.set(event, listeners);
+      return this;
+    }
+
+    off(event: string, listener: () => void): this {
+      this._listeners.get(event)?.delete(listener);
+      return this;
+    }
+
+    emit(event: string): void {
+      for (const listener of [...(this._listeners.get(event) ?? [])])
+        listener();
+    }
+
     toLocal(
       p: { x: number; y: number },
       from?: MockContainer,
@@ -52,6 +74,7 @@ const { mocks } = vi.hoisted(() => {
     }
 
     destroy(): void {
+      this.emit("destroyed");
       this.destroyed = true;
       this.removeFromParent();
     }
@@ -69,7 +92,8 @@ import type { UIElement } from "./types.js";
 // A UIElement standing in for the laid-out tooltip content. Its yoga node
 // reports a fixed size so `layoutFloat` produces a deterministic bubble.
 function makeContent(width = 80, height = 24): UIElement {
-  const displayObject = new mocks.MockContainer() as unknown as UIElement["displayObject"];
+  const displayObject =
+    new mocks.MockContainer() as unknown as UIElement["displayObject"];
   let destroyed = false;
   return {
     displayObject,
@@ -101,7 +125,8 @@ function makeContent(width = 80, height = 24): UIElement {
 // `update()` calls — so a test can prove `attachTooltip` only reads the
 // anchor's geometry and never wires hover (or anything else) onto it.
 function makeAnchor(): UIElement & { readonly updateCalls: number } {
-  const displayObject = new mocks.MockContainer() as unknown as UIElement["displayObject"];
+  const displayObject =
+    new mocks.MockContainer() as unknown as UIElement["displayObject"];
   let updateCalls = 0;
   return {
     displayObject,
@@ -113,7 +138,9 @@ function makeAnchor(): UIElement & { readonly updateCalls: number } {
     update: () => {
       updateCalls += 1;
     },
-    destroy: () => undefined,
+    destroy: () => {
+      (displayObject as unknown as { destroy(): void }).destroy();
+    },
     get updateCalls() {
       return updateCalls;
     },
@@ -309,6 +336,24 @@ describe("attachTooltip", () => {
     }).not.toThrow();
     overlay.update(VIEWPORT);
     expect(bubble.visible).toBe(false);
+  });
+
+  it("disposes the tooltip when its anchor is destroyed", () => {
+    const { scene } = makeScene(overlay);
+    const anchor = makeAnchor();
+    const content = makeContent();
+    const tip = attachTooltip(anchor, scene, { content: () => content });
+    tip.setActive(true);
+    overlay.update(VIEWPORT);
+    const bubble = content.displayObject.parent!;
+
+    anchor.destroy();
+
+    expect((content as unknown as { _destroyed: boolean })._destroyed).toBe(
+      true,
+    );
+    expect((bubble as unknown as { destroyed: boolean }).destroyed).toBe(true);
+    expect(() => overlay.update(VIEWPORT)).not.toThrow();
   });
 
   it("throws when the scene has no FloatingOverlay", () => {

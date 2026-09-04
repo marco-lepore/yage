@@ -8,14 +8,13 @@ import { injectStyles, setupContainer } from "./shared.js";
 injectStyles();
 const container = setupContainer(360, 260);
 
-// Module refs the probe reads each frame (set in onEnter). Scrolling is
-// driven by clicking the control buttons (federated pointer/click events are
-// the proven-reliable e2e input path — see ui-button.spec) rather than
-// synthetic wheel/drag; the wheel/drag handlers are unit-tested directly.
+// Module refs the probe reads each frame (set in onEnter). The controls and
+// row coordinates expose both programmatic scrolling and pointer dragging.
 let svNode: UIScrollView | null = null;
 let scrollBtn: UIButton | null = null;
 let endBtn: UIButton | null = null;
 let orderSeq = 0;
+let orderClicks = 0;
 
 const CTRL_W = 110;
 const CTRL_H = 32;
@@ -25,7 +24,14 @@ function fillOrders(sv: UIScrollView, n: number): void {
   for (let i = 0; i < n; i++) {
     orderSeq += 1;
     sv.addElement(
-      new UIButton({ children: `Order #${orderSeq}`, width: 220, height: 36 }),
+      new UIButton({
+        children: `Order #${orderSeq}`,
+        width: 220,
+        height: 36,
+        onClick: () => {
+          orderClicks += 1;
+        },
+      }),
     );
   }
 }
@@ -43,12 +49,22 @@ class ScrollProbe extends Component {
   scrollBtnY = 0;
   endX = 0;
   endY = 0;
+  rowX = 0;
+  rowY = 0;
+  orderClicks = 0;
 
   update(): void {
     if (svNode) {
       this.offset = svNode.scrollOffset;
       this.maxScroll = svNode.maxScroll;
       this.orderCount = svNode.children.length;
+      const first = svNode.children[0];
+      if (first) {
+        const p = first.displayObject.getGlobalPosition();
+        this.rowX = p.x;
+        this.rowY = p.y;
+      }
+      this.orderClicks = orderClicks;
     }
     if (scrollBtn) {
       const p = scrollBtn.displayObject.getGlobalPosition();

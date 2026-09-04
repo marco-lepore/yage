@@ -79,7 +79,9 @@ function warnBareTextChild(text: string): void {
 const INTERNAL_KEYS = new Set(["_ctor", "_consumesText", "_bgAlias"]);
 
 /** Strip reconciler-internal props before forwarding to UI elements. */
-function stripInternal(props: Record<string, unknown>): Record<string, unknown> {
+function stripInternal(
+  props: Record<string, unknown>,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const k in props) {
     if (!INTERNAL_KEYS.has(k)) out[k] = props[k];
@@ -165,7 +167,9 @@ let currentUpdatePriority = 0;
 let nextTimeoutHandle = 1;
 const scheduledTimeouts = new Map<number, { cancelled: boolean }>();
 
-const noop = (): void => { /* noop */ };
+const noop = (): void => {
+  /* noop */
+};
 
 /**
  * React's host config still asks renderers to provide timeout hooks even
@@ -236,15 +240,24 @@ const hostConfig = {
   },
 
   // Suspense support stubs
-  maySuspendCommit() { return false; },
-  preloadInstance() { return true; },
+  maySuspendCommit() {
+    return false;
+  },
+  preloadInstance() {
+    return true;
+  },
   startSuspendingCommit: noop,
   suspendInstance: noop,
-  waitForCommitToBeReady() { return null; },
+  waitForCommitToBeReady() {
+    return null;
+  },
 
   // Transition support
   NotPendingTransition: null,
-  HostTransitionContext: { $$typeof: Symbol.for("react.context"), _currentValue: null },
+  HostTransitionContext: {
+    $$typeof: Symbol.for("react.context"),
+    _currentValue: null,
+  },
   resetFormInstance: noop,
 
   // ---- Instance lifecycle (generic via registry) ----
@@ -283,6 +296,8 @@ const hostConfig = {
       instances = [];
       rootInstanceMap.set(container, instances);
     }
+    const existingIndex = instances.indexOf(child);
+    if (existingIndex !== -1) instances.splice(existingIndex, 1);
     instances.push(child);
     container.addChild(child.displayObject);
   },
@@ -318,10 +333,16 @@ const hostConfig = {
     else warnNonContainerChild(parent);
   },
 
-  insertInContainerBefore(container: Container, child: UIElement, beforeChild: UIElement) {
+  insertInContainerBefore(
+    container: Container,
+    child: UIElement,
+    beforeChild: UIElement,
+  ) {
     if (!child) return;
     const instances = rootInstanceMap.get(container);
     if (instances) {
+      const existingIndex = instances.indexOf(child);
+      if (existingIndex !== -1) instances.splice(existingIndex, 1);
       const beforeIdx = instances.indexOf(beforeChild);
       if (beforeIdx !== -1) {
         instances.splice(beforeIdx, 0, child);
@@ -345,7 +366,12 @@ const hostConfig = {
     return true;
   },
 
-  commitUpdate(instance: UIElement, _type: string, oldProps: Record<string, unknown>, newProps: Record<string, unknown>) {
+  commitUpdate(
+    instance: UIElement,
+    _type: string,
+    oldProps: Record<string, unknown>,
+    newProps: Record<string, unknown>,
+  ) {
     const merged = diffProps(oldProps, newProps);
     // Shorthand expansion runs AFTER the removal diff above, on the
     // authored JSX prop names (`bg` included) — so removing `bg` clears
@@ -471,12 +497,14 @@ export interface ReconcilerRoot {
 export function createRoot(container: Container): ReconcilerRoot {
   const fiberRoot = reconciler.createContainer(
     container,
-    0,    // tag: LegacyRoot
+    0, // tag: LegacyRoot
     null, // hydrationCallbacks
     false, // isStrictMode
     null, // concurrentUpdatesByDefaultOverride
-    "",   // identifierPrefix
-    (err: unknown) => { console.error('[reconciler:onRecoverableError]', err); }, // onRecoverableError
+    "", // identifierPrefix
+    (err: unknown) => {
+      console.error("[reconciler:onRecoverableError]", err);
+    }, // onRecoverableError
     null, // transitionCallbacks
   );
 

@@ -20,6 +20,7 @@ import {
 } from "./yoga-helpers.js";
 import { UIPanel } from "./UIPanel.js";
 import { BackgroundRenderer } from "./background-renderer.js";
+import { runUICallback } from "./error-boundary.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 
 interface ResolvedScrollbar {
@@ -44,8 +45,7 @@ function resolveScrollbar(
   prop: boolean | ScrollbarOptions | undefined,
 ): ResolvedScrollbar {
   const enabled = prop !== false;
-  const o: ScrollbarOptions =
-    prop && typeof prop === "object" ? prop : {};
+  const o: ScrollbarOptions = prop && typeof prop === "object" ? prop : {};
   const thickness = o.thickness ?? SCROLLBAR_DEFAULTS.thickness;
   return {
     enabled,
@@ -99,6 +99,7 @@ export class UIScrollView implements UIContainerElement {
   private _contentTop = 0;
 
   private _dragging = false;
+  private _panning = false;
   private _dragStart = 0;
   private _dragStartOffset = 0;
   private _destroyed = false;
@@ -365,12 +366,21 @@ export class UIScrollView implements UIContainerElement {
   private readonly _onPointerMove = (e: FederatedPointerEvent): void => {
     if (!this._dragging) return;
     const cur = this.vertical ? e.global.y : e.global.x;
+    if (!this._panning) {
+      if (Math.abs(cur - this._dragStart) < 10) return;
+      this._panning = true;
+      this.viewport.interactiveChildren = false;
+    }
     // Drag up/left → reveal later content → offset increases.
     this._setOffset(this._dragStartOffset + (this._dragStart - cur));
   };
 
   private readonly _onPointerUp = (): void => {
     this._dragging = false;
+    if (this._panning) {
+      this._panning = false;
+      this.viewport.interactiveChildren = true;
+    }
   };
 
   private _setOffset(next: number): void {
@@ -385,7 +395,11 @@ export class UIScrollView implements UIContainerElement {
   private _notify(): void {
     if (this._offset === this._lastNotified) return;
     this._lastNotified = this._offset;
-    this.onScroll?.(this._offset);
+    if (this.onScroll) {
+      runUICallback(this.viewport, "UI onScroll", () =>
+        this.onScroll?.(this._offset),
+      );
+    }
   }
 
   // -- Visibility / update / destroy ---------------------------------------
@@ -434,7 +448,10 @@ export class UIScrollView implements UIContainerElement {
       }
     }
 
-    const contentUpdate: { gap?: number | undefined; padding?: Padding | undefined } = {};
+    const contentUpdate: {
+      gap?: number | undefined;
+      padding?: Padding | undefined;
+    } = {};
     if ("gap" in props) contentUpdate.gap = props.gap;
     if ("padding" in props) contentUpdate.padding = props.padding;
     if (Object.keys(contentUpdate).length > 0) {

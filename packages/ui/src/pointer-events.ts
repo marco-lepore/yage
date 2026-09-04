@@ -1,5 +1,6 @@
 import type { DisplayContainer } from "@yagejs/renderer";
 import type { PointerEventProps } from "./types.js";
+import { runUICallback } from "./error-boundary.js";
 
 /**
  * Shared hover-event fan-out for the interactive UI primitives.
@@ -26,17 +27,22 @@ export class PointerEvents {
   private _onPointerOut: (() => void) | undefined;
   private _onHover: ((hovering: boolean) => void) | undefined;
   private readonly inert: () => boolean;
+  private readonly container: DisplayContainer;
 
   constructor(
     container: DisplayContainer,
     props: PointerEventProps,
     inert: () => boolean = (): boolean => false,
   ) {
+    this.container = container;
     this._onPointerOver = props.onPointerOver;
     this._onPointerOut = props.onPointerOut;
     this._onHover = props.onHover;
     this.inert = inert;
-    if (container.eventMode === "passive" || container.eventMode === undefined) {
+    if (
+      container.eventMode === "passive" ||
+      container.eventMode === undefined
+    ) {
       container.eventMode = "static";
     }
     container.on("pointerover", this._handleOver);
@@ -59,13 +65,25 @@ export class PointerEvents {
 
   private readonly _handleOver = (): void => {
     if (this.inert()) return;
-    this._onPointerOver?.();
-    this._onHover?.(true);
+    if (this._onPointerOver) {
+      runUICallback(this.container, "UI pointer handler", this._onPointerOver);
+    }
+    if (this._onHover) {
+      runUICallback(this.container, "UI pointer handler", () =>
+        this._onHover?.(true),
+      );
+    }
   };
 
   private readonly _handleOut = (): void => {
     if (this.inert()) return;
-    this._onPointerOut?.();
-    this._onHover?.(false);
+    if (this._onPointerOut) {
+      runUICallback(this.container, "UI pointer handler", this._onPointerOut);
+    }
+    if (this._onHover) {
+      runUICallback(this.container, "UI pointer handler", () =>
+        this._onHover?.(false),
+      );
+    }
   };
 }

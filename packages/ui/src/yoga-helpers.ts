@@ -1,21 +1,16 @@
 import type { Node as YogaNode } from "yoga-layout";
 import type YogaDefault from "yoga-layout";
-import {
-  Align,
-  Display,
-  Edge,
-  Overflow,
-  PositionType,
-} from "yoga-layout";
+import { Align, Display, Edge, Overflow, PositionType } from "yoga-layout";
 import { isDev, devWarn } from "@yagejs/core";
 import type { LayoutProps, LayoutValue, UIElement } from "./types.js";
 
 type Yoga = typeof YogaDefault;
 
 // ---------------------------------------------------------------------------
-// Module-level Yoga instance (set by UIPlugin.install)
+// Process-scoped Yoga instance (set by UIPlugin.install)
 // ---------------------------------------------------------------------------
 
+// When two engines share a page, the most recently installed UIPlugin wins.
 let yoga: Yoga | undefined;
 
 /** Store the loaded Yoga instance for element constructors to use. */
@@ -47,9 +42,10 @@ export function createYogaNode(): YogaNode {
 }
 
 // ---------------------------------------------------------------------------
-// Viewport dimensions (set by UILayoutSystem each frame)
+// Process-scoped viewport dimensions (set once when UILayoutSystem registers)
 // ---------------------------------------------------------------------------
 
+// When two engines share a page, the most recently registered layout system wins.
 let vpWidth = 0;
 let vpHeight = 0;
 
@@ -384,8 +380,10 @@ export function warnChildOverflow(
 
     const overLeft = contentLeft - cn.getComputedLeft();
     const overTop = contentTop - cn.getComputedTop();
-    const overRight = cn.getComputedLeft() + cn.getComputedWidth() - contentRight;
-    const overBottom = cn.getComputedTop() + cn.getComputedHeight() - contentBottom;
+    const overRight =
+      cn.getComputedLeft() + cn.getComputedWidth() - contentRight;
+    const overBottom =
+      cn.getComputedTop() + cn.getComputedHeight() - contentBottom;
 
     if (
       overLeft <= OVERFLOW_EPSILON &&
@@ -402,10 +400,14 @@ export function warnChildOverflow(
     _overflowWarned.add(cn);
 
     const parts: string[] = [];
-    if (overLeft > OVERFLOW_EPSILON) parts.push(`${overLeft.toFixed(1)}px past the left edge`);
-    if (overRight > OVERFLOW_EPSILON) parts.push(`${overRight.toFixed(1)}px past the right edge`);
-    if (overTop > OVERFLOW_EPSILON) parts.push(`${overTop.toFixed(1)}px past the top edge`);
-    if (overBottom > OVERFLOW_EPSILON) parts.push(`${overBottom.toFixed(1)}px past the bottom edge`);
+    if (overLeft > OVERFLOW_EPSILON)
+      parts.push(`${overLeft.toFixed(1)}px past the left edge`);
+    if (overRight > OVERFLOW_EPSILON)
+      parts.push(`${overRight.toFixed(1)}px past the right edge`);
+    if (overTop > OVERFLOW_EPSILON)
+      parts.push(`${overTop.toFixed(1)}px past the top edge`);
+    if (overBottom > OVERFLOW_EPSILON)
+      parts.push(`${overBottom.toFixed(1)}px past the bottom edge`);
     devWarn(
       `UI layout: a child overflows its container by ${parts.join(" and ")}. ` +
         `Flex children keep their natural size by default (flexShrink: 0) — ` +

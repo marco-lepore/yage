@@ -1,11 +1,13 @@
 import { describe, it, expect } from "vitest";
 import type { EngineContext } from "@yagejs/core";
 import { UIPlugin } from "./UIPlugin.js";
-import { getUIDefaultTextStyle, setUIDefaultTextStyle } from "./text-defaults.js";
+import {
+  getUIDefaultTextStyle,
+  setUIDefaultTextStyle,
+} from "./text-defaults.js";
 
-// install() needs tryResolve (AssetManager is optional), resolve (the scene
-// hook registry, for the floating overlay), and loads Yoga via dynamic
-// import; a bare stub is enough to exercise the text-style lifecycle.
+// install() resolves the error boundary and scene hook registry, then loads
+// Yoga. This stub is enough to exercise the text-style lifecycle.
 const stubContext = {
   tryResolve: () => undefined,
   resolve: () => ({ register: () => () => {} }),
