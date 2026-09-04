@@ -54,15 +54,15 @@ import { AudioManagerKey } from "@yagejs/audio";
 
 const audio = this.use(AudioManagerKey);
 
-// Play
-const handle = audio.play(CoinSfx.path, {
+// Play — takes a `sound()` handle or the alias string it registers
+const handle = audio.play(CoinSfx, {
   channel: "sfx",
   volume: 1,
   loop: false,
   speed: 1,
 });
-audio.playOnce(alias, opts); // skips playback if already playing
-audio.playRandom([a, b, c], opts); // random pick
+audio.playOnce(CoinSfx, opts); // skips playback if already playing
+audio.playRandom([CoinSfx, "assets/step.wav"], opts); // random pick
 
 // SoundHandle
 handle.playing; // boolean
@@ -91,6 +91,8 @@ audio.unmuteAll();
 audio.pauseChannel("music");
 audio.resumeChannel("music");
 ```
+
+`play`, `playOnce` and `playRandom` throw naming the alias when no sound is registered under it — a typo, or playback before the asset finished preloading. Preload it with `sound(path)` or register it with `registerSound(alias, buffer)`.
 
 ## Runtime sounds
 

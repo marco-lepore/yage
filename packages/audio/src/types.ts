@@ -1,7 +1,14 @@
-import { ServiceKey } from "@yagejs/core";
+import { ServiceKey, type AssetHandle } from "@yagejs/core";
+import type { Sound } from "@pixi/sound";
 import type { AudioManager } from "./AudioManager.js";
 
 export const AudioManagerKey = new ServiceKey<AudioManager>("audioManager");
+
+/**
+ * A sound to play: the alias it is registered under, or the handle `sound()`
+ * returned for it — a handle's `path` is that alias.
+ */
+export type SoundRef = string | AssetHandle<Sound>;
 
 export interface AudioConfig {
   channels?: Record<string, ChannelConfig>;
