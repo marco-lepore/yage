@@ -37,16 +37,17 @@ describe("scaffold overwrite", () => {
     writeFileSync(join(targetDir, ".git", "HEAD"), "ref: refs/heads/main\n");
     writeFileSync(join(targetDir, "old.txt"), "old");
 
-    await scaffold({
+    const result = await scaffold({
       targetDir,
       projectName: "game",
       template: "minimal",
       templatesRoot,
       overwrite: true,
       install: false,
-      git: false,
+      git: true,
     });
 
+    expect(result.gitSucceeded).toBeNull();
     expect(readFileSync(join(targetDir, ".git", "HEAD"), "utf8")).toBe(
       "ref: refs/heads/main\n",
     );

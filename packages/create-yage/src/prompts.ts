@@ -201,26 +201,36 @@ export interface SuccessReport {
   gitSucceeded: boolean | null;
 }
 
-function quoteShellPath(path: string): string {
+function quoteShellPath(path: string, platform: NodeJS.Platform): string {
   const commandPath = path.startsWith("-")
-    ? `${process.platform === "win32" ? ".\\" : "./"}${path}`
+    ? `${platform === "win32" ? ".\\" : "./"}${path}`
     : path;
   const safePath =
-    process.platform === "win32"
+    platform === "win32"
       ? /^[A-Za-z0-9_@%+=:,./\\-]+$/
       : /^[A-Za-z0-9_@%+=:,./-]+$/;
   if (safePath.test(commandPath)) return commandPath;
-  if (process.platform === "win32") return `"${commandPath}"`;
+  if (platform === "win32") return `"${commandPath}"`;
   return `'${commandPath.replaceAll("'", `'\\''`)}'`;
+}
+
+export function directoryChangeCommand(
+  path: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const command = platform === "win32" ? "pushd" : "cd";
+  return `${command} ${quoteShellPath(path, platform)}`;
 }
 
 export function reportSuccess(report: SuccessReport): void {
   const lines: string[] = [];
-  const relDir = quoteShellPath(relativeFromCwd(report.targetDir));
+  const changeDirectory = directoryChangeCommand(
+    relativeFromCwd(report.targetDir),
+  );
   lines.push(`${pc.green("Success!")} Created ${pc.bold(report.projectName)}`);
   lines.push("");
   lines.push("Next steps:");
-  lines.push(`  ${pc.cyan(`cd ${relDir}`)}`);
+  lines.push(`  ${pc.cyan(changeDirectory)}`);
   if (report.installSucceeded === null) {
     lines.push(`  ${pc.cyan("npm install")}`);
   } else if (report.installSucceeded === false) {

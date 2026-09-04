@@ -32,6 +32,8 @@ export interface ScaffoldResult {
 export async function scaffold(
   options: ScaffoldOptions,
 ): Promise<ScaffoldResult> {
+  const existingRepository = await hasGitMetadata(options.targetDir);
+
   if (options.overwrite) {
     await clearTarget(options.targetDir);
   }
@@ -60,9 +62,31 @@ export async function scaffold(
     ? await runCommand("npm", ["install"], options.targetDir)
     : null;
 
-  const gitSucceeded = options.git ? await initGit(options.targetDir) : null;
+  const gitSucceeded =
+    options.git && !existingRepository
+      ? await initGit(options.targetDir)
+      : null;
 
   return { installSucceeded, gitSucceeded };
+}
+
+async function hasGitMetadata(target: string): Promise<boolean> {
+  let targetStat: Awaited<ReturnType<typeof lstat>>;
+  try {
+    targetStat = await lstat(target);
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return false;
+    throw error;
+  }
+  if (!targetStat.isDirectory()) return false;
+
+  try {
+    await lstat(join(target, ".git"));
+    return true;
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return false;
+    throw error;
+  }
 }
 
 async function clearTarget(target: string): Promise<void> {

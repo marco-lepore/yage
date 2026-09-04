@@ -1,6 +1,10 @@
 import { join, relative } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { reportSuccess, runPrompts } from "./prompts.js";
+import {
+  directoryChangeCommand,
+  reportSuccess,
+  runPrompts,
+} from "./prompts.js";
 
 const promptMocks = vi.hoisted(() => ({
   cancel: vi.fn(),
@@ -141,6 +145,15 @@ describe("reportSuccess", () => {
     expect(promptMocks.note).toHaveBeenCalledWith(
       expect.stringContaining(expected),
       "Done",
+    );
+  });
+
+  it("uses a cross-drive directory command on Windows", () => {
+    expect(directoryChangeCommand("D:\\games\\yage", "win32")).toBe(
+      "pushd D:\\games\\yage",
+    );
+    expect(directoryChangeCommand("D:\\my games\\yage", "win32")).toBe(
+      'pushd "D:\\my games\\yage"',
     );
   });
 });
