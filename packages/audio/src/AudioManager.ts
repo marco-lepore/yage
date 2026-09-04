@@ -1,13 +1,43 @@
-import type { SoundLibrary } from "@pixi/sound";
-import { globalRandom, type RandomService, type ErrorBoundary } from "@yagejs/core";
+import type { IMediaInstance, SoundLibrary } from "@pixi/sound";
+import {
+  globalRandom,
+  type RandomService,
+  type ErrorBoundary,
+} from "@yagejs/core";
 import { SoundHandle } from "./SoundHandle.js";
-import type { AudioConfig, AudioPlayOptions, SoundRef } from "./types.js";
+import type {
+  AudioConfig,
+  AudioPlayOptions,
+  SoundRef,
+  SoundRequestHandle,
+} from "./types.js";
+
+interface SoundRequestState {
+  active: boolean;
+  readonly onEnd: (() => void) | undefined;
+}
+
+interface SharedPlaybackState {
+  readonly alias: string;
+  readonly handle: SoundHandle;
+  readonly requests: Set<SoundRequestState>;
+  playOnceOwned: boolean;
+  playOnceOnEnd: (() => void) | undefined;
+}
 
 interface ChannelState {
   volume: number;
   muted: boolean;
   paused: boolean;
   handles: Map<SoundHandle, { instanceVolume: number }>;
+  shared: Map<string, SharedPlaybackState>;
+}
+
+interface StartedPlayback {
+  readonly alias: string;
+  readonly channel: ChannelState;
+  readonly handle: SoundHandle;
+  readonly instance: IMediaInstance;
 }
 
 const DEFAULT_CHANNELS: Record<string, { volume: number }> = {
@@ -24,7 +54,6 @@ export class AudioManager {
   private readonly _sound: SoundLibrary;
   private readonly _random: RandomService;
   private readonly _channels = new Map<string, ChannelState>();
-  private readonly _handleAliases = new WeakMap<SoundHandle, string>();
 
   private _autoMuteOnBlur: boolean;
   private readonly _unlockListeners: Array<() => void> = [];
@@ -50,6 +79,7 @@ export class AudioManager {
         muted: false,
         paused: false,
         handles: new Map(),
+        shared: new Map(),
       });
     }
 
@@ -68,84 +98,52 @@ export class AudioManager {
    * a typo, or playback before the asset was preloaded.
    */
   play(ref: SoundRef, options?: AudioPlayOptions): SoundHandle {
-    const alias = aliasOf(ref);
-    if (!this._sound.exists(alias)) {
-      throw new Error(
-        `AudioManager.play: no sound registered as "${alias}". Preload it ` +
-          `with sound(...) or register it with registerSound().`,
-      );
-    }
-
-    const channelName = options?.channel ?? "sfx";
-    const channel = this._ensureChannel(channelName);
-    const instanceVolume = options?.volume ?? 1;
-    const effectiveVolume = channel.volume * instanceVolume;
-
-    const result = this._sound.play(alias, {
-      volume: effectiveVolume,
-      loop: options?.loop ?? false,
-      speed: options?.speed ?? 1,
-    });
-
-    if (result instanceof Promise) {
-      throw new Error(
-        `Sound "${alias}" is not preloaded. Call sound.add() before playing.`,
-      );
-    }
-
-    const handle = new SoundHandle(result);
-
-    channel.handles.set(handle, { instanceVolume });
-
-    const cleanup = (): void => { channel.handles.delete(handle); };
-    result.once("end", cleanup);
-    result.once("stop", cleanup);
-
-    // Caller-supplied natural-completion hook (e.g. gating dialogue auto-advance
-    // on a voice clip). Fires on `end` only — not on `stop()`.
-    const onEnd = options?.onEnd;
-    if (onEnd) {
-      result.once("end", () =>
-        this._runCallback(onEnd, "Audio onEnd callback"),
-      );
-    }
-
-    // Apply channel mute/pause state to new handle
-    if (channel.muted) {
-      handle.muted = true;
-    }
-    if (channel.paused) {
-      handle.paused = true;
-    }
-
-    return handle;
+    return this._startPlayback(ref, options, true).handle;
   }
 
   /**
-   * Play a sound only if it isn't already playing (via a prior `playOnce` call).
-   * Returns the existing handle if still playing, or a new one otherwise.
-   * Note: only deduplicates against handles created by `playOnce`, not `play`.
+   * Play one shared instance per alias and channel. Repeated calls retain the
+   * same implicit owner, so callers may ignore the returned sound handle.
    */
   playOnce(ref: SoundRef, options?: AudioPlayOptions): SoundHandle {
     const alias = aliasOf(ref);
-    // Read the channel rather than creating it: `play` throws on an unknown
-    // alias, and an entry made here would outlive that throw.
     const channel = this._channels.get(options?.channel ?? "sfx");
-
-    // Check if any existing handle for this alias is still playing
-    for (const handle of channel?.handles.keys() ?? []) {
-      if (handle.playing) {
-        // We can't check alias on SoundHandle, so we track it with a WeakMap
-        const trackedAlias = this._handleAliases.get(handle);
-        if (trackedAlias === alias) {
-          return handle;
-        }
+    const existing = channel?.shared.get(alias);
+    if (existing) {
+      if (!existing.playOnceOwned) {
+        existing.playOnceOwned = true;
+        existing.playOnceOnEnd = options?.onEnd;
       }
+      return existing.handle;
     }
 
-    const handle = this.play(alias, options);
-    this._handleAliases.set(handle, alias);
-    return handle;
+    const playback = this._startSharedPlayback(ref, options);
+    playback.playOnceOwned = true;
+    playback.playOnceOnEnd = options?.onEnd;
+    return playback.handle;
+  }
+
+  /**
+   * Own one request for playback shared by alias and channel. Releasing the
+   * request stops the sound only after every request is gone and no `playOnce`
+   * owner remains.
+   */
+  requestOnce(ref: SoundRef, options?: AudioPlayOptions): SoundRequestHandle {
+    const alias = aliasOf(ref);
+    const channel = this._channels.get(options?.channel ?? "sfx");
+    const playback =
+      channel?.shared.get(alias) ?? this._startSharedPlayback(ref, options);
+    const request: SoundRequestState = {
+      active: true,
+      onEnd: options?.onEnd,
+    };
+    playback.requests.add(request);
+    return {
+      get active(): boolean {
+        return request.active;
+      },
+      release: () => this._releaseRequest(playback, request),
+    };
   }
 
   playRandom(aliases: SoundRef[], options?: AudioPlayOptions): SoundHandle {
@@ -366,9 +364,121 @@ export class AudioManager {
   private _ensureChannel(name: string): ChannelState {
     let state = this._channels.get(name);
     if (!state) {
-      state = { volume: 1, muted: false, paused: false, handles: new Map() };
+      state = {
+        volume: 1,
+        muted: false,
+        paused: false,
+        handles: new Map(),
+        shared: new Map(),
+      };
       this._channels.set(name, state);
     }
     return state;
+  }
+
+  private _startPlayback(
+    ref: SoundRef,
+    options: AudioPlayOptions | undefined,
+    attachOnEnd: boolean,
+  ): StartedPlayback {
+    const alias = aliasOf(ref);
+    if (!this._sound.exists(alias)) {
+      throw new Error(
+        `AudioManager.play: no sound registered as "${alias}". Preload it ` +
+          `with sound(...) or register it with registerSound().`,
+      );
+    }
+
+    const channel = this._ensureChannel(options?.channel ?? "sfx");
+    const instanceVolume = options?.volume ?? 1;
+    const result = this._sound.play(alias, {
+      volume: channel.volume * instanceVolume,
+      loop: options?.loop ?? false,
+      speed: options?.speed ?? 1,
+    });
+    if (result instanceof Promise) {
+      throw new Error(
+        `Sound "${alias}" is not preloaded. Call sound.add() before playing.`,
+      );
+    }
+
+    const handle = new SoundHandle(result);
+    channel.handles.set(handle, { instanceVolume });
+    const cleanup = (): void => {
+      channel.handles.delete(handle);
+    };
+    result.once("end", cleanup);
+    result.once("stop", cleanup);
+
+    const onEnd = options?.onEnd;
+    if (attachOnEnd && onEnd) {
+      result.once("end", () =>
+        this._runCallback(onEnd, "Audio onEnd callback"),
+      );
+    }
+
+    if (channel.muted) handle.muted = true;
+    if (channel.paused) handle.paused = true;
+    return { alias, channel, handle, instance: result };
+  }
+
+  private _startSharedPlayback(
+    ref: SoundRef,
+    options: AudioPlayOptions | undefined,
+  ): SharedPlaybackState {
+    const started = this._startPlayback(ref, options, false);
+    const playback: SharedPlaybackState = {
+      alias: started.alias,
+      handle: started.handle,
+      requests: new Set(),
+      playOnceOwned: false,
+      playOnceOnEnd: undefined,
+    };
+    started.channel.shared.set(started.alias, playback);
+    started.instance.once("end", () =>
+      this._finishSharedPlayback(started.channel, playback, true),
+    );
+    started.instance.once("stop", () =>
+      this._finishSharedPlayback(started.channel, playback, false),
+    );
+    return playback;
+  }
+
+  private _releaseRequest(
+    playback: SharedPlaybackState,
+    request: SoundRequestState,
+  ): void {
+    if (!request.active) return;
+    request.active = false;
+    playback.requests.delete(request);
+    if (playback.requests.size === 0 && !playback.playOnceOwned) {
+      playback.handle.stop();
+    }
+  }
+
+  private _finishSharedPlayback(
+    channel: ChannelState,
+    playback: SharedPlaybackState,
+    endedNaturally: boolean,
+  ): void {
+    if (channel.shared.get(playback.alias) === playback) {
+      channel.shared.delete(playback.alias);
+    }
+
+    const callbacks: Array<() => void> = [];
+    if (endedNaturally && playback.playOnceOnEnd) {
+      callbacks.push(playback.playOnceOnEnd);
+    }
+    playback.playOnceOwned = false;
+    playback.playOnceOnEnd = undefined;
+    for (const request of playback.requests) {
+      request.active = false;
+      if (endedNaturally && request.onEnd) callbacks.push(request.onEnd);
+    }
+    playback.requests.clear();
+
+    for (const callback of callbacks) {
+      this._runCallback(callback, "Audio onEnd callback");
+    }
   }
 }

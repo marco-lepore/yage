@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ErrorBoundaryKey, createMockEntity } from "@yagejs/core";
 import { VisualModifierHost, type VisualComponent } from "@yagejs/renderer";
 import { Feel } from "../Feel.js";
@@ -10,6 +10,8 @@ import {
   feelScalePunch,
   feelScaleShake,
   feelScaleSpring,
+  feelBounce,
+  feelRecoil,
 } from "./visual.js";
 
 function visualTarget(): VisualComponent {
@@ -178,6 +180,91 @@ describe("Feel visual modifiers", () => {
     expect(() => feel.play("shake")).toThrow("missing visual");
     expect(boundary.getCallbackErrors()[0]?.kind).toBe(
       "Feel callback (visual target source)",
+    );
+  });
+
+  it("forwards pulse timing through recoil and bounce", () => {
+    const { entity } = createMockEntity();
+    const recoilTarget = visualTarget();
+    const bounceTarget = visualTarget();
+    const recoilAttack = vi.fn((progress: number) => progress * 0.4);
+    const recoilRelease = vi.fn((progress: number) => progress * 0.2);
+    const bounceAttack = vi.fn((progress: number) => progress * 0.6);
+    const bounceRelease = vi.fn((progress: number) => progress * 0.4);
+    const feel = entity.add(
+      new Feel({
+        recoil: feelRecoil({
+          target: recoilTarget,
+          direction: { x: 1, y: 0 },
+          distance: 10,
+          duration: 1,
+          peakAt: 0.5,
+          attackEasing: recoilAttack,
+          releaseEasing: recoilRelease,
+        }),
+        bounce: feelBounce({
+          target: bounceTarget,
+          distance: 10,
+          duration: 1,
+          peakAt: 0.5,
+          attackEasing: bounceAttack,
+          releaseEasing: bounceRelease,
+        }),
+      }),
+    );
+
+    feel.play("recoil");
+    feel.play("bounce");
+    recoilAttack.mockClear();
+    bounceAttack.mockClear();
+    feel.update(0.25);
+    expect(recoilAttack).toHaveBeenLastCalledWith(0.5);
+    expect(bounceAttack).toHaveBeenLastCalledWith(0.5);
+    expect(recoilTarget.modifiers.positionOffset.x).toBeCloseTo(-2);
+    expect(bounceTarget.modifiers.positionOffset.y).toBeCloseTo(-3);
+
+    feel.update(0.5);
+    expect(recoilRelease).toHaveBeenLastCalledWith(0.5);
+    expect(bounceRelease).toHaveBeenLastCalledWith(0.5);
+    expect(recoilTarget.modifiers.positionOffset.x).toBeCloseTo(-9);
+    expect(bounceTarget.modifiers.positionOffset.y).toBeCloseTo(-8);
+  });
+
+  it("preserves recoil and bounce pulse defaults", () => {
+    const { entity } = createMockEntity();
+    const recoilTarget = visualTarget();
+    const bounceTarget = visualTarget();
+    const recoil = feelRecoil({
+      target: recoilTarget,
+      direction: { x: 1, y: 0 },
+    });
+    const bounce = feelBounce({ target: bounceTarget });
+    const feel = entity.add(new Feel({ recoil, bounce }));
+
+    feel.play("recoil");
+    feel.play("bounce");
+    feel.update(0.0225);
+
+    expect(recoil.duration).toBe(0.18);
+    expect(bounce.duration).toBe(0.18);
+    expect(recoilTarget.modifiers.positionOffset.x).toBeCloseTo(-6);
+    expect(bounceTarget.modifiers.positionOffset.y).toBeCloseTo(-6);
+  });
+
+  it("names thin pulse wrappers in construction errors", () => {
+    const target = visualTarget();
+
+    expect(() =>
+      feelRecoil({
+        target,
+        direction: { x: 1, y: 0 },
+        peakAt: Number.POSITIVE_INFINITY,
+      }),
+    ).toThrow(
+      "feelRecoil: peakAt must be a finite number between 0 and 1, got Infinity.",
+    );
+    expect(() => feelBounce({ target, duration: -1 })).toThrow(
+      "feelBounce: duration must be a finite number >= 0, got -1.",
     );
   });
 });

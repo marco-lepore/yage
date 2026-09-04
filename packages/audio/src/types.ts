@@ -34,6 +34,14 @@ export interface AudioPlayOptions {
   onEnd?: () => void;
 }
 
+/** One ownership request for playback shared by alias and channel. */
+export interface SoundRequestHandle {
+  /** True while this request still owns the shared playback. */
+  readonly active: boolean;
+  /** Release only this request. Idempotent. */
+  release(): void;
+}
+
 export interface SoundComponentOptions {
   alias: string;
   channel?: string;

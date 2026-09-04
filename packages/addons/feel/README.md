@@ -52,8 +52,10 @@ recipes have separate entry points.
 - `feelParallel(...nodes)` starts every node together.
 - `feelSequence(...nodes)` starts each node after the previous one finishes.
 - `feelDelay(seconds, node?)` delays a node or creates an empty wait.
-- `feelRepeat(node, times, gap?)` repeats a node.
+- `feelRepeat(node, times, gap?)` repeats a finite node a fixed number of times.
+- `feelLoop(node, gap?)` repeats a finite node until release.
 - `defineFeelEffect(duration, create)` adds a game-specific effect.
+- `defineFeelState(timing, create)` adds an attack, hold, and release state.
 
 Each cue also accepts trigger policy:
 
@@ -70,12 +72,34 @@ const feel = entity.add(
   }),
 );
 
-feel.play("hit", { intensity: 1.5 });
+feel.play("hit", { intensity: 1.5, duration: 0.3 });
 feel.stop("hit");
 ```
 
 Chance and intensity ranges use YAGE's scene-scoped random service. Disabling
-or destroying `Feel` stops every active cue and restores active effects.
+or destroying `Feel` stops every active cue and restores active effects. A
+finite play-time `duration` scales the cue's child timings and local update
+clock. Intensity is a non-negative multiplier and may exceed `1`. `release()`
+lets held states and loops finish their release behavior; `stop()` cancels
+immediately.
+
+`FeelPulseTiming` describes the finite rise-and-fall curve shared by renderer
+pulses:
+
+```ts
+interface FeelPulseTiming {
+  duration?: number;
+  peakAt?: number;
+  attackEasing?: EasingFunction;
+  releaseEasing?: EasingFunction;
+}
+```
+
+Builders validate and capture `duration` and `peakAt` when called. Most pulses,
+including opacity, recoil, and bounce, peak at `0.25` and use `easeOutQuad` for
+both phases. Hit flash keeps its 0.12-second linear midpoint pulse. A play-time
+`duration` scales the whole finite cue rather than replacing one builder's
+timing.
 
 ## Core effects
 
@@ -140,12 +164,15 @@ the live base value. `duration` sets the settling time, `oscillations` sets the
 number of rebounds, and `decay` controls how quickly the rebounds weaken.
 
 ```ts
+import { easeOutQuad } from "@yagejs/core";
 import { bloom } from "@yagejs/effects";
 import { feelEffect } from "@yagejs-addons/feel/renderer";
 
 const bloomPulse = feelEffect(worldLayer.fx, bloom({ bloomScale: 1.5 }), {
   duration: 0.25,
   peakAt: 0.2,
+  attackEasing: easeOutQuad,
+  releaseEasing: easeOutQuad,
 });
 ```
 
@@ -154,6 +181,11 @@ pulse. `feelGlitch` changes its slice pattern during playback. `feelDissolve`
 moves in one direction instead of returning to zero. The renderer package also
 supplies `zoomBlur`, `axisBlur`, and `implosion`; static pulses use
 `feelEffect`.
+
+`feelHitFlash`, `feelOpacity`, `feelRecoil`, and `feelBounce` accept the same
+four pulse-timing fields. A custom easing function runs through Feel's callback
+error boundary. The function must return a finite number before Feel writes
+renderer state.
 
 ## Recipes
 
@@ -171,7 +203,11 @@ import {
 const feel = entity.add(
   new Feel({
     hurt: damageImpact({ target: enemySprite, value: () => lastDamage }),
-    dash: dashBurst({ target: playerSprite, direction: { x: 1, y: 0 } }),
+    dash: dashBurst({
+      target: playerSprite,
+      direction: { x: 1, y: 0 },
+      peakAt: 0.45,
+    }),
     die: enemyDeath({
       target: enemySprite,
       onComplete: ({ entity }) => entity.destroy(),
@@ -193,6 +229,9 @@ Recipes do not add sound, camera movement, or time changes. `enemyDeath`
 requires `onComplete`, runs it after the temporary visual handles are removed,
 and does not destroy the entity itself. Stopping the cue before completion does
 not run the callback. Nested option objects expose each recipe's basic parts.
+`dashBurst` applies its top-level pulse curve to squash and axis blur. Its
+duration also controls the flight lines. The defaults are 0.3 seconds, a peak
+at `0.3`, and `easeOutQuad` for both phases.
 
 ## Highlights and combat callouts
 
@@ -230,10 +269,10 @@ transforms unchanged.
 
 ```ts
 const dash = feelParallel(
-  feelFlightLines({ direction: velocity, duration: 0.25 }),
+  feelFlightLines({ direction: () => velocity, duration: 0.25 }),
   feelMotionTrail({
     position: () => player.get(Transform).worldPosition,
-    duration: 0.3,
+    duration: "held",
     lifetime: 0.18,
   }),
   feelAfterimage({
@@ -245,10 +284,19 @@ const dash = feelParallel(
 );
 ```
 
+A fixed flight-line direction must be finite with a magnitude greater than
+`1e-6`; invalid fixed values throw when `feelFlightLines` is called. A direction
+function is evaluated once when each burst starts. A finite zero or near-zero
+result creates no streak entity, but the empty burst still lasts for its
+configured duration.
+
 Afterimages accept `SpriteComponent` and `AnimatedSpriteComponent`. Each copy
 captures the current animation frame, anchor, effective rendered transform,
 and opacity. Copies fade independently and are removed on completion or
 cancellation.
+
+A held motion trail samples until release, then stays alive for one `lifetime`
+while its last points fade.
 
 `feelFloatingText` and `feelDamageNumber` use the cue entity's world
 `Transform` by default. Pass `position` to spawn elsewhere. Each playback
@@ -271,6 +319,13 @@ const impact = feelParallel(
   feelParticleEmit({ emitter: smoke, duration: 0.2 }),
 );
 ```
+
+Sounds keep the overall playback active until natural completion, release, or
+cancellation. A sound remains a zero-time sequence step. With `once: true`,
+each cue owns one `AudioManager.requestOnce` request, so releasing the cue does
+not stop another request or a `playOnce` owner. Set particle emission to
+`duration: "held"` to emit until graceful release; existing particles keep
+their own lifetimes.
 
 ## Playback events
 

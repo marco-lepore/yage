@@ -1,4 +1,4 @@
-import { easeInQuad, easeOutQuad, type EasingFunction } from "@yagejs/core";
+import { easeInQuad, type EasingFunction } from "@yagejs/core";
 import {
   colorize,
   dissolve,
@@ -33,8 +33,17 @@ import type {
   VisualVisibilityModifierHandle,
 } from "@yagejs/renderer";
 import { defineFeelEffect } from "../core/node.js";
-import type { FeelEffectContext, FeelNode } from "../core/types.js";
-import { feelPunchAmount, validateFeelPeakAt } from "../internal/envelope.js";
+import type {
+  FeelEffectContext,
+  FeelNode,
+  FeelPulseTiming,
+} from "../core/types.js";
+import {
+  feelPunchAmount,
+  invokePulseEasing,
+  resolveFeelPulseTiming,
+  type ResolvedFeelPulseTiming,
+} from "../internal/envelope.js";
 import type { FeelVisualTarget } from "./visual.js";
 
 type FeelCamera = CameraEntity | CameraComponent;
@@ -87,21 +96,18 @@ export function feelCameraShake(options: FeelCameraShakeOptions): FeelNode {
   });
 }
 
-export interface FeelCameraZoomOptions {
+export interface FeelCameraZoomOptions extends FeelPulseTiming {
   camera: FeelCameraTarget;
   /** Peak zoom multiplier. Default: 1.08. */
   scale?: number;
-  duration?: number;
-  peakAt?: number;
-  attackEasing?: EasingFunction;
-  releaseEasing?: EasingFunction;
 }
 
 /** Pulse camera zoom without replacing follow or other live camera state. */
 export function feelCameraZoom(options: FeelCameraZoomOptions): FeelNode {
-  const duration = options.duration ?? 0.2;
-  validateFeelPeakAt(options.peakAt);
-  return defineFeelEffect(duration, (context) => {
+  const timing = resolveFeelPulseTiming("feelCameraZoom", options, {
+    duration: 0.2,
+  });
+  return defineFeelEffect(timing.duration, (context) => {
     const camera = resolveCamera(options.camera, context);
     let modifier: CameraModifierHandle | undefined;
     return {
@@ -110,16 +116,14 @@ export function feelCameraZoom(options: FeelCameraZoomOptions): FeelNode {
       },
       update: (progress) => {
         const amount = feelPunchAmount(
+          context,
+          "feelCameraZoom",
           progress,
-          options.peakAt,
-          options.attackEasing,
-          options.releaseEasing,
+          timing,
+          context.intensity,
         );
         modifier?.setZoom(
-          Math.max(
-            0.0001,
-            1 + ((options.scale ?? 1.08) - 1) * amount * context.intensity,
-          ),
+          Math.max(0.0001, 1 + ((options.scale ?? 1.08) - 1) * amount),
         );
       },
       finish: () => modifier?.remove(),
@@ -127,24 +131,20 @@ export function feelCameraZoom(options: FeelCameraZoomOptions): FeelNode {
   });
 }
 
-export interface FeelCameraRotationOptions {
+export interface FeelCameraRotationOptions extends FeelPulseTiming {
   camera: FeelCameraTarget;
   /** Peak additive camera angle in radians. Default: `0.04`. */
   radians?: number;
-  /** Total duration in seconds. Default: `0.25`. */
-  duration?: number;
-  peakAt?: number;
-  attackEasing?: EasingFunction;
-  releaseEasing?: EasingFunction;
 }
 
 /** Pulse camera rotation without replacing follow or other camera state. */
 export function feelCameraRotation(
   options: FeelCameraRotationOptions,
 ): FeelNode {
-  const duration = options.duration ?? 0.25;
-  validateFeelPeakAt(options.peakAt);
-  return defineFeelEffect(duration, (context) => {
+  const timing = resolveFeelPulseTiming("feelCameraRotation", options, {
+    duration: 0.25,
+  });
+  return defineFeelEffect(timing.duration, (context) => {
     const camera = resolveCamera(options.camera, context);
     let modifier: CameraModifierHandle | undefined;
     return {
@@ -155,12 +155,12 @@ export function feelCameraRotation(
         modifier?.setRotation(
           (options.radians ?? 0.04) *
             feelPunchAmount(
+              context,
+              "feelCameraRotation",
               progress,
-              options.peakAt,
-              options.attackEasing,
-              options.releaseEasing,
-            ) *
-            context.intensity,
+              timing,
+              context.intensity,
+            ),
         );
       },
       finish: () => modifier?.remove(),
@@ -168,15 +168,7 @@ export function feelCameraRotation(
   });
 }
 
-export interface FeelEffectOptions {
-  /** Total pulse duration. Default: 0.2. */
-  duration?: number;
-  peakAt?: number;
-  attackEasing?: EasingFunction;
-  releaseEasing?: EasingFunction;
-}
-
-export interface FeelGlitchOptions extends GlitchOptions, FeelEffectOptions {
+export interface FeelGlitchOptions extends GlitchOptions, FeelPulseTiming {
   host: FeelEffectsHostTarget;
   /** Pattern changes per second. Default: 24. */
   refreshRate?: number;
@@ -246,23 +238,25 @@ export function feelDissolve(options: FeelDissolveOptions): FeelNode {
 
 /** Pulse a glitch and refresh its bands from the cue's seeded random source. */
 export function feelGlitch(options: FeelGlitchOptions): FeelNode {
-  const duration = options.duration ?? 0.25;
+  const timing = resolveFeelPulseTiming("feelGlitch", options, {
+    duration: 0.25,
+    peakAt: 0.08,
+    releaseEasing: easeInQuad,
+  });
   const refreshRate = options.refreshRate ?? 24;
   if (!Number.isFinite(refreshRate) || refreshRate <= 0) {
     throw new Error(`feelGlitch: refreshRate must be a finite number > 0.`);
   }
-  const peakAt = options.peakAt ?? 0.08;
-  const releaseAt = options.releaseAt ?? Math.max(0.72, peakAt);
-  validateFeelPeakAt(peakAt);
+  const releaseAt = options.releaseAt ?? Math.max(0.72, timing.peakAt);
   if (!Number.isFinite(releaseAt) || releaseAt < 0 || releaseAt > 1) {
     throw new Error(`feelGlitch: releaseAt must be between 0 and 1.`);
   }
-  if (releaseAt < peakAt) {
+  if (releaseAt < timing.peakAt) {
     throw new Error(
       `feelGlitch: releaseAt must be greater than or equal to peakAt.`,
     );
   }
-  const { host, attackEasing, releaseEasing } = options;
+  const { host } = options;
   const effectOptions: GlitchOptions = {
     ...(options.slices === undefined ? {} : { slices: options.slices }),
     ...(options.offset === undefined ? {} : { offset: options.offset }),
@@ -280,7 +274,7 @@ export function feelGlitch(options: FeelGlitchOptions): FeelNode {
     ...(options.blue === undefined ? {} : { blue: options.blue }),
     ...(options.seed === undefined ? {} : { seed: options.seed }),
   };
-  return defineFeelEffect(duration, (context) => {
+  return defineFeelEffect(timing.duration, (context) => {
     const resolvedHost = resolveCallback(host, context, "effect host source");
     let handle: GlitchHandle | undefined;
     let refreshElapsed = 0;
@@ -308,12 +302,12 @@ export function feelGlitch(options: FeelGlitchOptions): FeelNode {
         }
         handle?.setIntensity(
           glitchPresenceAmount(
+            context,
             progress,
-            peakAt,
+            timing,
             releaseAt,
-            attackEasing,
-            releaseEasing,
-          ) * context.intensity,
+            context.intensity,
+          ),
         );
       },
       finish: () => handle?.remove(),
@@ -322,26 +316,48 @@ export function feelGlitch(options: FeelGlitchOptions): FeelNode {
 }
 
 function glitchPresenceAmount(
+  context: FeelEffectContext,
   progress: number,
-  peakAt: number,
+  timing: ResolvedFeelPulseTiming,
   releaseAt: number,
-  attack: EasingFunction = easeOutQuad,
-  release: EasingFunction = easeInQuad,
+  intensity: number,
 ): number {
-  if (peakAt > 0 && progress < peakAt) return attack(progress / peakAt);
-  if (progress <= releaseAt || releaseAt >= 1) return 1;
-  return 1 - release((progress - releaseAt) / (1 - releaseAt));
+  if (timing.peakAt > 0 && progress < timing.peakAt) {
+    return invokePulseEasing(
+      context,
+      "feelGlitch",
+      "attack",
+      timing.attackEasing,
+      progress / timing.peakAt,
+      false,
+      [intensity],
+    );
+  }
+  if (progress <= releaseAt || releaseAt >= 1) return intensity;
+  return invokePulseEasing(
+    context,
+    "feelGlitch",
+    "release",
+    timing.releaseEasing,
+    (progress - releaseAt) / (1 - releaseAt),
+    true,
+    [intensity],
+  );
 }
 
-/** Attach any YAGE effect, pulse its primary intensity, then remove it. */
+/**
+ * Attach any YAGE effect, pulse its primary intensity, then remove it.
+ * Defaults: 0.2 seconds, peak at 0.25, and `easeOutQuad` in both phases.
+ */
 export function feelEffect<H extends EffectHandle>(
   host: EffectsHost,
   factory: EffectFactory<H>,
-  options: FeelEffectOptions = {},
+  options: FeelPulseTiming = {},
 ): FeelNode {
-  const duration = options.duration ?? 0.2;
-  validateFeelPeakAt(options.peakAt);
-  return defineFeelEffect(duration, (context) => {
+  const timing = resolveFeelPulseTiming("feelEffect", options, {
+    duration: 0.2,
+  });
+  return defineFeelEffect(timing.duration, (context) => {
     let handle: H | undefined;
     return {
       start: () => {
@@ -353,11 +369,12 @@ export function feelEffect<H extends EffectHandle>(
       update: (progress) => {
         handle?.setIntensity(
           feelPunchAmount(
+            context,
+            "feelEffect",
             progress,
-            options.peakAt,
-            options.attackEasing,
-            options.releaseEasing,
-          ) * context.intensity,
+            timing,
+            context.intensity,
+          ),
         );
       },
       finish: () => handle?.remove(),
@@ -365,7 +382,7 @@ export function feelEffect<H extends EffectHandle>(
   });
 }
 
-export interface FeelOutlineOptions extends OutlineOptions, FeelEffectOptions {
+export interface FeelOutlineOptions extends OutlineOptions, FeelPulseTiming {
   target: FeelVisualTarget;
 }
 
@@ -379,7 +396,7 @@ export function feelOutline(options: FeelOutlineOptions): FeelNode {
     releaseEasing,
     ...effectOptions
   } = options;
-  return feelVisualEffect(target, outline(effectOptions), {
+  return feelVisualEffect("feelOutline", target, outline(effectOptions), {
     ...(duration === undefined ? {} : { duration }),
     ...(peakAt === undefined ? {} : { peakAt }),
     ...(attackEasing === undefined ? {} : { attackEasing }),
@@ -387,7 +404,7 @@ export function feelOutline(options: FeelOutlineOptions): FeelNode {
   });
 }
 
-export interface FeelGlowOptions extends GlowOptions, FeelEffectOptions {
+export interface FeelGlowOptions extends GlowOptions, FeelPulseTiming {
   target: FeelVisualTarget;
 }
 
@@ -401,7 +418,7 @@ export function feelGlow(options: FeelGlowOptions): FeelNode {
     releaseEasing,
     ...effectOptions
   } = options;
-  return feelVisualEffect(target, glow(effectOptions), {
+  return feelVisualEffect("feelGlow", target, glow(effectOptions), {
     ...(duration === undefined ? {} : { duration }),
     ...(peakAt === undefined ? {} : { peakAt }),
     ...(attackEasing === undefined ? {} : { attackEasing }),
@@ -409,8 +426,7 @@ export function feelGlow(options: FeelGlowOptions): FeelNode {
   });
 }
 
-export interface FeelColorizeOptions
-  extends ColorizeOptions, FeelEffectOptions {
+export interface FeelColorizeOptions extends ColorizeOptions, FeelPulseTiming {
   target: FeelVisualTarget;
 }
 
@@ -424,7 +440,7 @@ export function feelColorize(options: FeelColorizeOptions): FeelNode {
     releaseEasing,
     ...effectOptions
   } = options;
-  return feelVisualEffect(target, colorize(effectOptions), {
+  return feelVisualEffect("feelColorize", target, colorize(effectOptions), {
     ...(duration === undefined ? {} : { duration }),
     ...(peakAt === undefined ? {} : { peakAt }),
     ...(attackEasing === undefined ? {} : { attackEasing }),
@@ -432,22 +448,48 @@ export function feelColorize(options: FeelColorizeOptions): FeelNode {
   });
 }
 
-/** Attach and trigger the built-in hit flash, then remove it. */
+export interface FeelHitFlashOptions
+  extends Omit<HitFlashOptions, "duration">, FeelPulseTiming {}
+
+/**
+ * Pulse the built-in hit flash through a Feel-owned intensity envelope.
+ * Defaults: 0.12 seconds and a linear triangle with its peak at 0.5.
+ */
 export function feelHitFlash(
   host: EffectsHost,
-  options: HitFlashOptions = {},
+  options: FeelHitFlashOptions = {},
 ): FeelNode {
-  const duration = options.duration ?? 0.12;
-  return defineFeelEffect(duration, (context) => {
+  const linear: EasingFunction = (progress) => progress;
+  const timing = resolveFeelPulseTiming("feelHitFlash", options, {
+    duration: 0.12,
+    peakAt: 0.5,
+    attackEasing: linear,
+    releaseEasing: linear,
+  });
+  const peak = options.peak ?? 1;
+  return defineFeelEffect(timing.duration, (context) => {
     let handle: HitFlashHandle | undefined;
     return {
       start: () => {
         const configured: HitFlashOptions = {
-          ...options,
-          peak: (options.peak ?? 1) * context.intensity,
+          ...(options.color === undefined ? {} : { color: options.color }),
+          duration: context.duration,
+          peak,
         };
         handle = host.addEffect(hitFlash(configured));
-        handle.trigger();
+        handle.setIntensity(0);
+      },
+      update: (progress) => {
+        handle?.setIntensity(
+          feelPunchAmount(
+            context,
+            "feelHitFlash",
+            progress,
+            timing,
+            peak,
+            context.intensity,
+          ),
+        );
       },
       finish: () => handle?.remove(),
     };
@@ -479,6 +521,7 @@ export function feelShockwave(
         handle = host.addEffect(
           shockwave({
             ...options,
+            duration: context.duration,
             amplitude: (options.amplitude ?? 30) * context.intensity,
           }),
         );
@@ -489,19 +532,21 @@ export function feelShockwave(
   });
 }
 
-export interface FeelOpacityOptions {
+export interface FeelOpacityOptions extends FeelPulseTiming {
   target: FeelVisualTarget;
   /** Peak alpha multiplier. Default: 0.25. */
   alpha?: number;
-  duration?: number;
-  peakAt?: number;
 }
 
-/** Pulse a visual component's opacity and restore its live alpha. */
+/**
+ * Pulse a visual component's opacity and restore its live alpha.
+ * Defaults: 0.18 seconds, peak at 0.25, and `easeOutQuad` in both phases.
+ */
 export function feelOpacity(options: FeelOpacityOptions): FeelNode {
-  const duration = options.duration ?? 0.18;
-  validateFeelPeakAt(options.peakAt);
-  return defineFeelEffect(duration, (context) => {
+  const timing = resolveFeelPulseTiming("feelOpacity", options, {
+    duration: 0.18,
+  });
+  return defineFeelEffect(timing.duration, (context) => {
     const target = resolveVisual(options.target, context);
     let modifier: VisualOpacityModifierHandle | undefined;
     return {
@@ -509,12 +554,15 @@ export function feelOpacity(options: FeelOpacityOptions): FeelNode {
         modifier = target.modifiers.addOpacity();
       },
       update: (progress) => {
-        const amount = feelPunchAmount(progress, options.peakAt);
+        const amount = feelPunchAmount(
+          context,
+          "feelOpacity",
+          progress,
+          timing,
+          context.intensity,
+        );
         modifier?.setFactor(
-          Math.max(
-            0,
-            1 + ((options.alpha ?? 0.25) - 1) * amount * context.intensity,
-          ),
+          Math.max(0, 1 + ((options.alpha ?? 0.25) - 1) * amount),
         );
       },
       finish: () => modifier?.remove(),
@@ -569,13 +617,13 @@ function resolveVisual(
 }
 
 function feelVisualEffect<H extends EffectHandle>(
+  builder: string,
   target: FeelVisualTarget,
   factory: EffectFactory<H>,
-  options: FeelEffectOptions,
+  options: FeelPulseTiming,
 ): FeelNode {
-  const duration = options.duration ?? 0.2;
-  validateFeelPeakAt(options.peakAt);
-  return defineFeelEffect(duration, (context) => {
+  const timing = resolveFeelPulseTiming(builder, options, { duration: 0.2 });
+  return defineFeelEffect(timing.duration, (context) => {
     const visual = resolveVisual(target, context);
     let handle: H | undefined;
     return {
@@ -586,11 +634,12 @@ function feelVisualEffect<H extends EffectHandle>(
       update: (progress) => {
         handle?.setIntensity(
           feelPunchAmount(
+            context,
+            builder,
             progress,
-            options.peakAt,
-            options.attackEasing,
-            options.releaseEasing,
-          ) * context.intensity,
+            timing,
+            context.intensity,
+          ),
         );
       },
       finish: () => handle?.remove(),

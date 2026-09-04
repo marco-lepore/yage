@@ -43,4 +43,29 @@ describe("feelParticleEmit", () => {
     expect(requests[0]?.release).toHaveBeenCalledOnce();
     expect(requests[1]?.release).not.toHaveBeenCalled();
   });
+
+  it("holds emission until graceful release", () => {
+    const { entity } = createMockEntity();
+    const request = {
+      active: true,
+      release: vi.fn(() => {
+        request.active = false;
+      }),
+    };
+    const emitter = {
+      requestEmission: vi.fn(() => request),
+    } as unknown as ParticleEmitterComponent;
+    const feel = entity.add(
+      new Feel({ trail: feelParticleEmit({ emitter, duration: "held" }) }),
+    );
+
+    const playback = feel.play("trail");
+    feel.update(1);
+    expect(playback?.active).toBe(true);
+    expect(request.active).toBe(true);
+
+    playback?.release();
+    expect(playback?.active).toBe(false);
+    expect(request.release).toHaveBeenCalledOnce();
+  });
 });

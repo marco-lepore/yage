@@ -59,9 +59,9 @@ Pass the handle `sound()` returned, or the alias string it registers — the
 handle's `path`. The two forms can be mixed, and a sound added with
 `registerSound` has no handle, so it is always played by name.
 
-If nothing is registered under the alias, `play`, `playOnce` and `playRandom`
-throw and name it. That covers both a typo and playing a sound the scene never
-preloaded.
+If nothing is registered under the alias, `play`, `playOnce`, `requestOnce`,
+and `playRandom` throw and name it. That covers both a typo and playing a sound
+the scene never preloaded.
 
 **Play options:**
 
@@ -80,9 +80,25 @@ Additional play methods:
 // Only play if not already playing via playOnce
 audio.playOnce(BgMusic, { channel: "music", loop: true });
 
+// Own one request for playback shared by alias and channel
+const request = audio.requestOnce("charge", { onEnd: finishCharge });
+request.release();
+
 // Pick a random sound from an array
 audio.playRandom(["step1.wav", "step2.wav", "step3.wav"], { channel: "sfx" });
 ```
+
+`playOnce` holds one implicit owner for the shared playback. Repeated
+`playOnce` calls return the same `SoundHandle` without adding owners, so callers
+may ignore the handle. Each `requestOnce` call returns a separate
+`SoundRequestHandle` with `active` and an idempotent `release()`. Releasing one
+request does not stop the sound while another request or a `playOnce` owner
+remains.
+
+When the sound ends on its own, every active request becomes inactive and its
+`onEnd` callback runs once. A released request receives no callback. Stopping
+the shared `SoundHandle`, its channel, or all audio clears every request without
+calling `onEnd`.
 
 ## Sound Handles
 

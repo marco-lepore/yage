@@ -67,8 +67,9 @@ root import does not load PixiJS or optional plugins.
 ## Build one response from small effects
 
 `feelParallel` starts every child together. `feelSequence` waits for each
-child to finish. `feelDelay` offsets one child, and `feelRepeat` repeats a
-child with an optional gap.
+child's timeline to finish. `feelDelay` offsets one child, and `feelRepeat`
+repeats a finite child a fixed number of times. `feelLoop` repeats a finite
+child until the playback is released.
 
 ```ts
 const pickup = feelSequence(
@@ -95,14 +96,56 @@ const feel = entity.add(
   }),
 );
 
-feel.play("hit", { intensity: 1.5 }); // per-play override
+feel.play("hit", {
+  intensity: 1.5,
+  duration: 0.2,
+});
 feel.stop("hit");
 ```
 
 `play()` returns `null` while the component is dormant or when chance,
 cooldown, or `overlap: "ignore"` rejects the trigger. Otherwise it returns a
-handle with `active`, `finished`, and `stop()`. Disabling or destroying `Feel`
-stops all active cues.
+handle with `active`, `finished`, `release()`, and `stop()`. `intensity` is a
+finite non-negative multiplier; values above `1` are valid. An adapter may
+clamp the property it writes, such as alpha.
+
+A per-play `duration` replaces the total duration of a finite cue. Feel scales
+finite child start times, durations, gaps, and local update clocks together.
+The relative timing stays the same. A positive duration cannot stretch a
+zero-duration cue. A cue whose `FeelNode.duration` is `null` does not accept a
+duration override. Feel validates both play options before a restart can cancel
+the active playback.
+
+The root entry exports `FeelPulseTiming` for finite renderer pulses. It contains
+`duration`, `peakAt`, `attackEasing`, and `releaseEasing`. Most pulses, including
+opacity, recoil, and bounce, peak at `0.25` and use `easeOutQuad` for both
+phases. Hit flash uses a linear triangle with its peak at `0.5` and lasts 0.12
+seconds by default. Builders validate and capture their timing when called.
+
+`release()` is graceful. Held states begin their release tails, active finite
+children finish, and pending sequence children still run. The handle stays
+active until the cue completes and emits `FeelCompletedEvent`. `stop()` is
+immediate cancellation and emits `FeelStoppedEvent`. Restart overlap,
+disabling, and destroying `Feel` also cancel active cues. `finished` resolves
+after completion or cancellation.
+
+```ts
+const flight = feelParallel(
+  feelMotionTrail({
+    position: () => player.get(Transform).worldPosition,
+    duration: "held",
+    lifetime: 0.18,
+  }),
+  feelLoop(feelFlightLines({ direction: () => velocity }), 0.04),
+);
+
+const flightPlayback = feel.play("flight");
+flightPlayback?.release();
+```
+
+A loop finishes its current iteration after release and starts no new one.
+Release during a loop gap completes the loop immediately. A zero-duration loop
+child needs a positive gap.
 
 ## Visual motion and physics
 
@@ -154,11 +197,16 @@ effect factory, so the addon also supports current and future
 `@yagejs/effects` presets without one wrapper per filter.
 
 ```ts
+import { easeOutQuad } from "@yagejs/core";
 import { bloom, chromaticAberration } from "@yagejs/effects";
 import { feelEffect } from "@yagejs-addons/feel/renderer";
 
 const critical = feelParallel(
-  feelEffect(worldLayer.fx, bloom({ bloomScale: 1.5 }), { duration: 0.2 }),
+  feelEffect(worldLayer.fx, bloom({ bloomScale: 1.5 }), {
+    duration: 0.2,
+    peakAt: 0.4,
+    attackEasing: easeOutQuad,
+  }),
   feelEffect(worldLayer.fx, chromaticAberration({ separation: 6 }), {
     duration: 0.12,
   }),
@@ -169,6 +217,10 @@ Each generic pulse attaches the effect, moves its primary intensity from zero
 to the cue-scaled peak and back, then removes it. Choose the renderer scope as
 you would without the addon: component for one sprite, layer for the world
 without the HUD, scene for the whole scene, or screen across scenes.
+
+`feelHitFlash`, `feelOpacity`, `feelRecoil`, and `feelBounce` accept the same
+four timing fields. Feel attributes a custom easing failure to its builder and
+rejects a non-finite result before writing renderer state.
 
 Use a dedicated Feel wrapper when cue playback needs more than that intensity
 pulse. `feelGlitch` refreshes the filter's bands from the scene's seeded random
@@ -207,7 +259,11 @@ import {
 const feel = entity.add(
   new Feel({
     hurt: damageImpact({ target: enemySprite, value: () => lastDamage }),
-    dash: dashBurst({ target: playerSprite, direction: { x: 1, y: 0 } }),
+    dash: dashBurst({
+      target: playerSprite,
+      direction: { x: 1, y: 0 },
+      peakAt: 0.45,
+    }),
     die: enemyDeath({
       target: enemySprite,
       onComplete: ({ entity }) => entity.destroy(),
@@ -217,6 +273,9 @@ const feel = entity.add(
 ```
 
 A recipe returns a normal `FeelNode` and uses the existing `Feel` component.
+`dashBurst` applies its top-level pulse curve to squash and axis blur. Its
+duration also controls the flight lines. The defaults are 0.3 seconds, a peak
+at `0.3`, and `easeOutQuad` for both phases.
 
 | Recipe | What it combines |
 | --- | --- |
@@ -306,7 +365,7 @@ rendered pose.
 ```ts
 const dash = feelParallel(
   feelFlightLines({
-    direction: velocity,
+    direction: () => velocity,
     count: 10,
     length: [20, 48],
     duration: 0.25,
@@ -327,12 +386,23 @@ const dash = feelParallel(
 );
 ```
 
+A fixed flight-line direction must be finite with a magnitude greater than
+`1e-6`. `feelFlightLines` checks fixed directions when the node is built. A
+direction function is evaluated once when each burst starts. If the function
+returns a finite zero or near-zero vector, Feel creates no streak entity for
+that burst. The empty burst still lasts for its configured duration, so
+sequences, repeats, and loops keep their timing.
+
 The motion trail collects samples for `duration`, then remains alive for one
 `lifetime` so the final segments fade. Afterimages accept `SpriteComponent`
 and `AnimatedSpriteComponent`; each copy captures the current animation frame,
 anchor, and effective rendered transform. All three effects own temporary
 entities. Completion and cancellation destroy those entities without changing
 the source `Transform`.
+
+Set a motion trail's `duration` to `"held"` when gameplay owns the end signal.
+The trail samples until release, stops collecting points, and stays alive for
+one `lifetime` while the last points fade.
 
 ## Time, sound, particles, and animation
 
@@ -359,12 +429,24 @@ particle emitters. They do not stop a rigid body because physics uses one
 shared scene timestep.
 
 Time requests expire on `SceneTime`'s raw clock. Stopping a cue after a time
-request starts does not undo that request.
+request starts does not undo that request. A finite play-time duration override
+also scales the issued request duration. A positive-duration time node advances
+its sequence only after its retained `TimeEffectHandle` becomes inactive, even
+when its owner receives zero or scaled update time.
 
-`feelSound` plays a preloaded alias, with optional speed randomization.
+`feelSound` plays a preloaded alias, with optional speed randomization. The
+sound handle belongs to the cue until the sound ends naturally. A sound is a
+zero-time sequence step, so the next sequence child starts immediately, but
+the overall playback remains active while the sound plays. Graceful release or
+cancellation stops a sound that is still playing. `onEnd` runs only after
+natural audio completion. When `once: true` shares a sound between Feel
+playbacks, each playback owns one `AudioManager.requestOnce` request. Releasing
+one cue does not stop another request or a `playOnce` owner.
+
 `feelParticleBurst` bursts an existing emitter. `feelParticleEmit` owns a
-temporary emission request. Manual emission and overlapping requests remain
-active when one cue finishes.
+temporary emission request. Set `duration: "held"` to emit until graceful
+release. Particles that are already alive keep their own lifetimes. Manual
+emission and overlapping requests remain active when one cue finishes.
 
 `feelKeyframeAnimation` starts a core `KeyframeAnimator` timeline. Import
 `feelSpriteAnimation` from `/renderer` for named `AnimationController`
@@ -377,8 +459,10 @@ const stagger = feelSpriteAnimation("stagger", {
 });
 ```
 
-Both animation helpers start playback and complete their Feel node
-immediately. Stopping the cue later does not stop the animation.
+`feelKeyframeAnimation` and the `"play"` or `"force"` sprite modes start
+playback and complete their Feel node immediately. A `"oneShot"` sprite node
+with an explicit `duration` stays active for that duration and accepts finite
+play-time retiming. Stopping the cue later does not stop the animation.
 
 ## Save and load
 
@@ -411,7 +495,8 @@ visual movement, write to a renderer modifier handle and release the handle in
 ## Custom effects and events
 
 Use `feelCall` for an instant game callback. `defineFeelEffect` creates a
-game-specific timed effect:
+game-specific timed effect. The context reports the leaf's effective
+`duration`, and `update(progress, dt)` receives `dt` on the cue's local clock:
 
 ```ts
 const customSquash = defineFeelEffect(0.2, (context) => {
@@ -428,7 +513,31 @@ The returned `FeelNode` composes with every built-in node. A custom effect can
 also resolve scene services through `context.resolve`. Developer callbacks can
 use `context.invoke` when they need their own error-attribution label. Custom
 effects should acquire removable handles in `start` and release them in
-`finish`, which runs on completion and cancellation.
+`finish`, which runs on completion and cancellation. An effect that owns an
+external source can also provide `release()` and `isComplete()`. The source
+can keep the overall playback active after a zero-time sequence step.
+
+Use `defineFeelState` for an effect that attacks, holds until release, then
+returns to zero:
+
+```ts
+const focusGlow = defineFeelState(
+  { attack: 0.08, release: 0.16, attackEasing: easeOutQuad },
+  () => {
+    const opacity = sprite.modifiers.addOpacity();
+    return {
+      update: (amount) => opacity.setFactor(1 + amount * 0.5),
+      finish: () => opacity.remove(),
+    };
+  },
+);
+```
+
+The state instance receives `update(amount, dt)`. `amount` moves from `0` to
+`1`, stays at `1`, and falls from its current value to `0` after release.
+Releasing during attack does not jump to full intensity. Attack and release
+durations are not changed by a play-time duration override. State easing
+callbacks and instance hooks use Feel's callback error boundary.
 
 The host entity emits `FeelStartedEvent`, `FeelCompletedEvent`, and
 `FeelStoppedEvent`.

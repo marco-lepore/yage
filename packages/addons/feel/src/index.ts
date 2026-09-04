@@ -1,7 +1,9 @@
 export { Feel } from "./Feel.js";
 export {
   defineFeelEffect,
+  defineFeelState,
   feelDelay,
+  feelLoop,
   feelParallel,
   feelRepeat,
   feelSequence,
@@ -21,7 +23,12 @@ export type {
   FeelOverlap,
   FeelPlaybackHandle,
   FeelPlayOptions,
+  FeelPulseTiming,
   FeelRange,
+  FeelStateContext,
+  FeelStateInstance,
+  FeelStateTiming,
+  FeelTimedEffectContext,
 } from "./core/types.js";
 export {
   feelCall,

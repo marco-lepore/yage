@@ -1,9 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { createMockEntity } from "@yagejs/core";
-import { VisualModifierHost, type EffectsHost } from "@yagejs/renderer";
+import {
+  GraphicsComponent,
+  RenderLayerManager,
+  SceneRenderTreeKey,
+  VisualModifierHost,
+  type EffectsHost,
+  type SceneRenderTree,
+} from "@yagejs/renderer";
 import type { VisualComponent } from "@yagejs/renderer";
 import { Feel } from "./Feel.js";
-import type { ScheduledFeelEffect } from "./core/types.js";
 import {
   damageImpact,
   dashBurst,
@@ -13,18 +19,34 @@ import {
   voidCollapse,
 } from "./recipes.js";
 
-function scheduledEffects(recipe: {
-  _schedule(at: number, output: ScheduledFeelEffect[]): void;
-}): ScheduledFeelEffect[] {
-  const scheduled: ScheduledFeelEffect[] = [];
-  recipe._schedule(0, scheduled);
-  return scheduled;
-}
-
 function visualTarget(): VisualComponent {
   return {
     fx: { addEffect: vi.fn() },
   } as unknown as VisualComponent;
+}
+
+function createRenderedHost() {
+  const setup = createMockEntity();
+  const root = new GraphicsComponent();
+  const layers = new RenderLayerManager(root.graphics);
+  const tree: SceneRenderTree = {
+    root: root.graphics,
+    get: (name) => layers.get(name),
+    tryGet: (name) => layers.tryGet(name),
+    getAll: () => layers.getAll(),
+    get defaultLayer() {
+      return layers.defaultLayer;
+    },
+    ensureLayer: (def, options) =>
+      layers.tryGet(def.name) ?? layers.createFromDef(def, options),
+    fx: root.fx,
+    setMask: () => {
+      throw new Error("Masks are not used by this test.");
+    },
+    clearMask: () => {},
+  };
+  setup.scene._registerScoped(SceneRenderTreeKey, tree);
+  return setup;
 }
 
 describe("Feel recipes", () => {
@@ -37,19 +59,13 @@ describe("Feel recipes", () => {
       implosionDelay: 0.05,
       holdDuration: 0.1,
     });
-    const scheduled = scheduledEffects(recipe);
-
     expect(recipe.duration).toBe(0.8);
-    expect(scheduled).toHaveLength(3);
-    expect(scheduled.map((entry) => entry.at)).toEqual([0, 0.05, 0]);
   });
 
   it("voidCollapse can omit color and rejects timing that cannot fit", () => {
     const host = { addEffect: vi.fn() } as unknown as EffectsHost;
 
-    expect(scheduledEffects(voidCollapse({ host, color: false }))).toHaveLength(
-      2,
-    );
+    expect(voidCollapse({ host, color: false }).duration).toBeCloseTo(0.85);
     expect(() =>
       voidCollapse({ host, duration: 0.5, peakAt: 0.5, holdDuration: 0.3 }),
     ).toThrow(/holdDuration/);
@@ -58,14 +74,13 @@ describe("Feel recipes", () => {
     ).toThrow(/implosionDelay/);
   });
 
-  it("impact combines four effects under one duration", () => {
+  it("impact uses its configured duration", () => {
     const recipe = impact({ target: visualTarget(), duration: 0.4 });
 
     expect(recipe.duration).toBe(0.4);
-    expect(scheduledEffects(recipe)).toHaveLength(4);
   });
 
-  it("damageImpact adds one damage number to the standard impact", () => {
+  it("damageImpact lasts for its longest parallel child", () => {
     const recipe = damageImpact({
       target: visualTarget(),
       value: 42,
@@ -74,10 +89,9 @@ describe("Feel recipes", () => {
     });
 
     expect(recipe.duration).toBe(0.75);
-    expect(scheduledEffects(recipe)).toHaveLength(5);
   });
 
-  it("dashBurst combines stretch, blur, and flight lines", () => {
+  it("dashBurst uses its configured duration", () => {
     const recipe = dashBurst({
       target: visualTarget(),
       direction: { x: 1, y: 0 },
@@ -85,32 +99,59 @@ describe("Feel recipes", () => {
     });
 
     expect(recipe.duration).toBe(0.35);
-    expect(scheduledEffects(recipe)).toHaveLength(3);
   });
 
-  it("spawnPop combines two springs and one glow", () => {
+  it("forwards one pulse curve to both dash pulses and keeps line timing", () => {
+    const { entity, scene } = createRenderedHost();
+    const blurHandle = { setIntensity: vi.fn(), remove: vi.fn() };
+    const target = {
+      fx: { addEffect: vi.fn(() => blurHandle) },
+      modifiers: new VisualModifierHost(),
+    } as unknown as VisualComponent;
+    const attackEasing = vi.fn((progress: number) => progress);
+    const releaseEasing = vi.fn((progress: number) => progress);
+    const dash = dashBurst({
+      target,
+      direction: { x: 1, y: 0 },
+      position: { x: 0, y: 0 },
+      duration: 0.5,
+      peakAt: 0.5,
+      attackEasing,
+      releaseEasing,
+    });
+    const feel = entity.add(new Feel({ dash }));
+
+    const playback = feel.play("dash");
+    attackEasing.mockClear();
+    feel.update(0.125);
+    expect(attackEasing.mock.calls).toEqual([[0.5], [0.5]]);
+    expect(blurHandle.setIntensity).toHaveBeenLastCalledWith(0.5);
+
+    feel.update(0.25);
+    expect(releaseEasing.mock.calls).toEqual([[0.5], [0.5]]);
+    expect(scene.findEntity("feel:flight-lines")).toBeDefined();
+
+    feel.update(0.124);
+    expect(playback?.active).toBe(true);
+    feel.update(0.001);
+    expect(playback?.active).toBe(false);
+    expect(scene.findEntity("feel:flight-lines")).toBeUndefined();
+  });
+
+  it("spawnPop uses its configured duration", () => {
     const recipe = spawnPop({ target: visualTarget(), duration: 0.5 });
 
     expect(recipe.duration).toBe(0.5);
-    expect(scheduledEffects(recipe)).toHaveLength(3);
   });
 
-  it("enemyDeath sequences impact, dissolve, and caller cleanup", () => {
+  it("enemyDeath sums its sequential phase durations", () => {
     const recipe = enemyDeath({
       target: visualTarget(),
       impactDuration: 0.2,
       dissolveDuration: 0.5,
       onComplete: vi.fn(),
     });
-    const scheduled = scheduledEffects(recipe);
-
     expect(recipe.duration).toBe(0.7);
-    expect(scheduled).toHaveLength(7);
-    expect(scheduled.slice(0, 4).map((entry) => entry.at)).toEqual([
-      0, 0, 0, 0,
-    ]);
-    expect(scheduled.slice(4, 6).map((entry) => entry.at)).toEqual([0.2, 0.2]);
-    expect(scheduled[6]?.at).toBe(0.7);
   });
 
   it("enemyDeath can omit its transient ring", () => {
@@ -120,13 +161,13 @@ describe("Feel recipes", () => {
       onComplete: vi.fn(),
     });
 
-    expect(scheduledEffects(recipe)).toHaveLength(6);
+    expect(recipe.duration).toBe(0.82);
   });
 
   it("enemyDeath cleans its handles before calling the completion callback", () => {
     const { entity } = createMockEntity();
     const handles = [
-      { trigger: vi.fn(), remove: vi.fn() },
+      { setIntensity: vi.fn(), trigger: vi.fn(), remove: vi.fn() },
       { setIntensity: vi.fn(), remove: vi.fn() },
       { setIntensity: vi.fn(), remove: vi.fn() },
     ];
@@ -165,7 +206,7 @@ describe("Feel recipes", () => {
   it("enemyDeath does not call completion when cancelled", () => {
     const { entity } = createMockEntity();
     const handles = [
-      { trigger: vi.fn(), remove: vi.fn() },
+      { setIntensity: vi.fn(), trigger: vi.fn(), remove: vi.fn() },
       { setIntensity: vi.fn(), remove: vi.fn() },
       { setIntensity: vi.fn(), remove: vi.fn() },
     ];
@@ -196,5 +237,21 @@ describe("Feel recipes", () => {
         direction: { x: 0, y: 0 },
       }),
     ).toThrow(/direction/);
+    expect(() =>
+      dashBurst({
+        target: visualTarget(),
+        direction: { x: 1, y: 0 },
+        duration: 0,
+      }),
+    ).toThrow("dashBurst: duration must be a finite number > 0, got 0.");
+    expect(() =>
+      dashBurst({
+        target: visualTarget(),
+        direction: { x: 1, y: 0 },
+        peakAt: Number.NaN,
+      }),
+    ).toThrow(
+      "dashBurst: peakAt must be a finite number between 0 and 1, got NaN.",
+    );
   });
 });

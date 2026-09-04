@@ -59,6 +59,26 @@ describe("feelSpriteAnimation", () => {
     expect(completed).toHaveBeenCalledOnce();
   });
 
+  it("passes a play-time duration override to a one-shot animation", () => {
+    const { entity } = createMockEntity();
+    const controller = mockController();
+    const feel = entity.add(
+      new Feel({
+        oneShot: feelSpriteAnimation("stagger", {
+          target: controller,
+          mode: "oneShot",
+          duration: 0.2,
+        }),
+      }),
+    );
+
+    feel.play("oneShot", { duration: 0.4 });
+
+    expect(controller.playOneShot).toHaveBeenCalledWith("stagger", {
+      duration: 0.4,
+    });
+  });
+
   it("attributes target and completion callbacks", () => {
     const { entity, context } = createMockEntity();
     const boundary = context.resolve(ErrorBoundaryKey);
