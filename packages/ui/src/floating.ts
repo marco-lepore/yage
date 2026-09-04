@@ -1,10 +1,11 @@
 import { Container } from "pixi.js";
 import { ServiceKey } from "@yagejs/core";
+import type { ErrorBoundary } from "@yagejs/core";
 import type { DisplayContainer, SceneRenderTree } from "@yagejs/renderer";
 import type { UIElement } from "./types.js";
 import { computePosition } from "./positioning.js";
 import type { Dimensions, Placement, Rect } from "./positioning.js";
-import { runUICallback } from "./error-boundary.js";
+import { bindUIErrorBoundary, runUICallback } from "./error-boundary.js";
 
 /**
  * Per-floating-element config. All optional; the floating layer fills
@@ -106,6 +107,8 @@ export class FloatingOverlay {
   };
   private zSeq = 1;
 
+  constructor(private readonly errorBoundary?: ErrorBoundary) {}
+
   /** Idempotently ensure the overlay layer exists in this scene's tree. */
   attach(tree: SceneRenderTree): void {
     if (this.layer) return;
@@ -121,6 +124,9 @@ export class FloatingOverlay {
 
   acquire(): FloatingHandle {
     const container = new Container();
+    if (this.errorBoundary) {
+      bindUIErrorBoundary(container, this.errorBoundary);
+    }
     container.visible = false;
     const entry: Entry = {
       container,
@@ -205,13 +211,13 @@ export class FloatingOverlay {
       // maxWidth), then re-cap to the space available at the resolved side
       // so a wide bubble wraps instead of running off-screen.
       let size = EMPTY_SIZE;
-      runUICallback("UI floating layout", () => {
+      runUICallback(e.container, "UI floating layout", () => {
         size = e.layout(cfg.maxWidth);
       });
       let pos = computePosition(triggerRect, size, viewport, cfg);
       const effMax = Math.min(cfg.maxWidth ?? Infinity, pos.available.width);
       if (size.width > effMax + 0.5) {
-        runUICallback("UI floating layout", () => {
+        runUICallback(e.container, "UI floating layout", () => {
           size = e.layout(effMax);
         });
         pos = computePosition(triggerRect, size, viewport, cfg);

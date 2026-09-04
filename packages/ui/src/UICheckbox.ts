@@ -92,7 +92,9 @@ export class UICheckbox implements UIElement {
       this._checked = !this._checked;
       this.drawCheckmark();
       if (this.onChange) {
-        runUICallback("UI onChange", () => this.onChange?.(this._checked));
+        runUICallback(this.container, "UI onChange", () =>
+          this.onChange?.(this._checked),
+        );
       }
     });
     this.container.on("pointerupoutside", () => {

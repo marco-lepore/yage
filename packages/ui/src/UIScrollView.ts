@@ -396,7 +396,9 @@ export class UIScrollView implements UIContainerElement {
     if (this._offset === this._lastNotified) return;
     this._lastNotified = this._offset;
     if (this.onScroll) {
-      runUICallback("UI onScroll", () => this.onScroll?.(this._offset));
+      runUICallback(this.viewport, "UI onScroll", () =>
+        this.onScroll?.(this._offset),
+      );
     }
   }
 

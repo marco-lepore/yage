@@ -27,12 +27,14 @@ export class PointerEvents {
   private _onPointerOut: (() => void) | undefined;
   private _onHover: ((hovering: boolean) => void) | undefined;
   private readonly inert: () => boolean;
+  private readonly container: DisplayContainer;
 
   constructor(
     container: DisplayContainer,
     props: PointerEventProps,
     inert: () => boolean = (): boolean => false,
   ) {
+    this.container = container;
     this._onPointerOver = props.onPointerOver;
     this._onPointerOut = props.onPointerOut;
     this._onHover = props.onHover;
@@ -64,20 +66,24 @@ export class PointerEvents {
   private readonly _handleOver = (): void => {
     if (this.inert()) return;
     if (this._onPointerOver) {
-      runUICallback("UI pointer handler", this._onPointerOver);
+      runUICallback(this.container, "UI pointer handler", this._onPointerOver);
     }
     if (this._onHover) {
-      runUICallback("UI pointer handler", () => this._onHover?.(true));
+      runUICallback(this.container, "UI pointer handler", () =>
+        this._onHover?.(true),
+      );
     }
   };
 
   private readonly _handleOut = (): void => {
     if (this.inert()) return;
     if (this._onPointerOut) {
-      runUICallback("UI pointer handler", this._onPointerOut);
+      runUICallback(this.container, "UI pointer handler", this._onPointerOut);
     }
     if (this._onHover) {
-      runUICallback("UI pointer handler", () => this._onHover?.(false));
+      runUICallback(this.container, "UI pointer handler", () =>
+        this._onHover?.(false),
+      );
     }
   };
 }

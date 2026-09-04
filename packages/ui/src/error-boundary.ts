@@ -1,21 +1,29 @@
 import type { ErrorBoundary } from "@yagejs/core";
+import type { DisplayContainer } from "@yagejs/renderer";
 
-// UI services are process-scoped. When two engines share a page, callbacks
-// report through the boundary installed most recently.
-let uiErrorBoundary: ErrorBoundary | undefined;
+const errorBoundaries = new WeakMap<DisplayContainer, ErrorBoundary>();
 
-export function setUIErrorBoundary(boundary: ErrorBoundary | undefined): void {
-  uiErrorBoundary = boundary;
+/** @internal Associate one mounted UI tree with its owning engine. */
+export function bindUIErrorBoundary(
+  root: DisplayContainer,
+  boundary: ErrorBoundary,
+): void {
+  errorBoundaries.set(root, boundary);
 }
 
-export function getUIErrorBoundary(): ErrorBoundary | undefined {
-  return uiErrorBoundary;
-}
-
-export function runUICallback(kind: string, callback: () => void): void {
-  if (uiErrorBoundary) {
-    uiErrorBoundary.wrapCallback(callback, { kind });
-  } else {
-    callback();
+export function runUICallback(
+  owner: DisplayContainer,
+  kind: string,
+  callback: () => void,
+): void {
+  let current: DisplayContainer | null = owner;
+  while (current) {
+    const boundary = errorBoundaries.get(current);
+    if (boundary) {
+      boundary.wrapCallback(callback, { kind });
+      return;
+    }
+    current = current.parent;
   }
+  callback();
 }

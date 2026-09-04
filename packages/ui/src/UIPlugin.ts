@@ -1,9 +1,4 @@
-import type {
-  EngineContext,
-  ErrorBoundary,
-  Plugin,
-  SystemScheduler,
-} from "@yagejs/core";
+import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
 import { ErrorBoundaryKey, SceneHookRegistryKey } from "@yagejs/core";
 import type { TextStyle } from "@yagejs/renderer";
 import { UILayoutSystem } from "./UILayoutSystem.js";
@@ -14,7 +9,6 @@ import {
   getUIDefaultTextStyle,
   setUIDefaultTextStyle,
 } from "./text-defaults.js";
-import { getUIErrorBoundary, setUIErrorBoundary } from "./error-boundary.js";
 
 /** Options for {@link UIPlugin}. */
 export interface UIPluginOptions {
@@ -44,7 +38,6 @@ export class UIPlugin implements Plugin {
   // scoped to this plugin's lifetime — otherwise it leaks across engine
   // lifecycles (e.g. between tests). Mirrors RendererPlugin's defaultTextStyle.
   private _prevDefaultTextStyle: TextStyle | undefined = undefined;
-  private _prevErrorBoundary: ErrorBoundary | undefined = undefined;
   private _unregisterHooks: (() => void) | null = null;
 
   constructor(options: UIPluginOptions = {}) {
@@ -58,8 +51,7 @@ export class UIPlugin implements Plugin {
 
     this._prevDefaultTextStyle = getUIDefaultTextStyle();
     setUIDefaultTextStyle(this._options.defaultTextStyle);
-    this._prevErrorBoundary = getUIErrorBoundary();
-    setUIErrorBoundary(context.tryResolve(ErrorBoundaryKey));
+    const errorBoundary = context.resolve(ErrorBoundaryKey);
 
     // Provision one scene-scoped FloatingOverlay per scene — the top-most
     // screen-space surface tooltips/popovers/menus portal into. Owned here
@@ -67,7 +59,10 @@ export class UIPlugin implements Plugin {
     const hooks = context.resolve(SceneHookRegistryKey);
     this._unregisterHooks = hooks.register({
       beforeEnter: (scene) => {
-        scene.registerScoped(FloatingOverlayKey, new FloatingOverlay());
+        scene.registerScoped(
+          FloatingOverlayKey,
+          new FloatingOverlay(errorBoundary),
+        );
       },
       afterExit: (scene) => {
         scene._resolveScoped(FloatingOverlayKey)?.destroy();
@@ -83,8 +78,6 @@ export class UIPlugin implements Plugin {
   onDestroy(): void {
     setUIDefaultTextStyle(this._prevDefaultTextStyle);
     this._prevDefaultTextStyle = undefined;
-    setUIErrorBoundary(this._prevErrorBoundary);
-    this._prevErrorBoundary = undefined;
     this._unregisterHooks?.();
     this._unregisterHooks = null;
   }

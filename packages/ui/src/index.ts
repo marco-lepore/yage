@@ -100,6 +100,8 @@ export {
 } from "./floating.js";
 export type { FloatConfig, FloatingHandle } from "./floating.js";
 export { FloatingOverlaySystem } from "./FloatingOverlaySystem.js";
+/** @internal Used by framework integrations to bind UI trees to an engine. */
+export { bindUIErrorBoundary } from "./error-boundary.js";
 export { computePosition, parsePlacement } from "./positioning.js";
 export type {
   Placement,

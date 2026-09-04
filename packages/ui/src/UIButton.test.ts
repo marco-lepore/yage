@@ -217,7 +217,7 @@ import { UIButton } from "./UIButton.js";
 import { UIText } from "./UIText.js";
 import { UIPanel } from "./UIPanel.js";
 import { ErrorBoundary, Logger, LogLevel } from "@yagejs/core";
-import { setUIErrorBoundary } from "./error-boundary.js";
+import { bindUIErrorBoundary } from "./error-boundary.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -472,7 +472,6 @@ describe("UIButton", () => {
 
   it("attributes a throwing onClick callback", () => {
     const boundary = new ErrorBoundary(new Logger({ level: LogLevel.None }));
-    setUIErrorBoundary(boundary);
     const error = new Error("click failed");
     const btn = new UIButton({
       onClick: () => {
@@ -482,13 +481,13 @@ describe("UIButton", () => {
     const container = btn.container as unknown as InstanceType<
       typeof mocks.MockContainer
     >;
+    bindUIErrorBoundary(btn.container, boundary);
 
     container.emit("pointerdown");
     expect(() => container.emit("pointerup")).toThrow(error);
     expect(boundary.getCallbackErrors()).toEqual([
       { kind: "UI onClick", error: "click failed" },
     ]);
-    setUIErrorBoundary(undefined);
   });
 
   it("fires hover callbacks on pointerover/pointerout", () => {

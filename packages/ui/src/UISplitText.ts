@@ -193,7 +193,9 @@ export class UISplitText implements UIElement {
     const segments = this.segments;
     // Snapshot: a listener may unsubscribe (or subscribe) itself while running.
     for (const listener of [...this._splitListeners]) {
-      runUICallback("UI split listener", () => listener(segments));
+      runUICallback(this.displayObject, "UI split listener", () =>
+        listener(segments),
+      );
     }
   }
 

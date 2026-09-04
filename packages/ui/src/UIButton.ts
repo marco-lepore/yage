@@ -166,7 +166,7 @@ export class UIButton implements UIContainerElement {
       this._isPressed = false;
       this.applyBg(this.hoverBgOpts);
       if (shouldClick && this.onClick) {
-        runUICallback("UI onClick", this.onClick);
+        runUICallback(this.container, "UI onClick", this.onClick);
       }
     });
     this.container.on("pointerupoutside", () => {

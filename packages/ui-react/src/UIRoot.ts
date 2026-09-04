@@ -1,5 +1,6 @@
 import {
   Component,
+  ErrorBoundaryKey,
   Transform,
   markPointerConsumeContainer,
   unmarkPointerConsumeContainer,
@@ -13,6 +14,7 @@ import {
   resolveAnchor,
   UI_DEFAULT_LAYER,
   UI_DEFAULT_LAYER_ORDER,
+  bindUIErrorBoundary,
 } from "@yagejs/ui";
 import type { UIPositioning } from "@yagejs/ui";
 import {
@@ -100,6 +102,7 @@ export class UIRoot extends Component {
       );
     }
 
+    bindUIErrorBoundary(this._container, this.use(ErrorBoundaryKey));
     const tree = this.use(SceneRenderTreeKey);
     const layerName = this._layer ?? UI_DEFAULT_LAYER;
     let layer = tree.tryGet(layerName);

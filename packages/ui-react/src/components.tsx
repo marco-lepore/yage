@@ -43,6 +43,19 @@ import type {
 } from "@yagejs/ui";
 import { useFloating } from "./use-floating.js";
 
+interface UIElementHostProps {
+  _ctor: new (...args: never[]) => UIElement;
+  children?: ReactNode;
+  [prop: string]: unknown;
+}
+
+type UIElementHostComponent = (props: UIElementHostProps) => React.JSX.Element;
+
+// React receives the string at runtime; this local component type gives the
+// custom reconciler host element one checked JSX boundary without exposing it
+// as a public intrinsic element.
+const UIElementHost = "ui-element" as unknown as UIElementHostComponent;
+
 // ---------------------------------------------------------------------------
 // Prop types for JSX elements
 //
@@ -108,11 +121,10 @@ export type CheckboxProps = UIElementCheckboxProps;
 export function Panel(props: PropsWithChildren<PanelProps>): React.JSX.Element {
   const { children, ...rest } = props;
   // `_bgAlias` tells the reconciler to expand a `bg` prop to `background`;
-  // @ts-expect-error — custom reconciler element type
   return (
-    <ui-element _ctor={UIPanel} _bgAlias {...rest}>
+    <UIElementHost _ctor={UIPanel} _bgAlias {...rest}>
       {children}
-    </ui-element>
+    </UIElementHost>
   );
 }
 
@@ -125,11 +137,10 @@ export function Panel(props: PropsWithChildren<PanelProps>): React.JSX.Element {
 const RefPanel = forwardRef<UIElement, PropsWithChildren<PanelProps>>(
   function RefPanel(props, ref) {
     const { children, ...rest } = props;
-    // @ts-expect-error — custom reconciler element type
     return (
-      <ui-element _ctor={UIPanel} _bgAlias {...rest} ref={ref}>
+      <UIElementHost _ctor={UIPanel} _bgAlias {...rest} ref={ref}>
         {children}
-      </ui-element>
+      </UIElementHost>
     );
   },
 );
@@ -290,11 +301,10 @@ export function Tooltip(props: TooltipProps): React.JSX.Element {
 /** A text label. */
 export function UIText(props: TextProps): React.JSX.Element {
   const { children, ...rest } = props;
-  // @ts-expect-error — custom reconciler element type
   return (
-    <ui-element _ctor={UITextNode} _consumesText {...rest}>
+    <UIElementHost _ctor={UITextNode} _consumesText {...rest}>
       {children}
-    </ui-element>
+    </UIElementHost>
   );
 }
 
@@ -318,11 +328,10 @@ export type SplitTextProps = UIElementSplitTextProps;
 export const SplitText = forwardRef<UISplitTextNode, SplitTextProps>(
   function SplitText(props, ref) {
     const { children, ...rest } = props;
-    // @ts-expect-error — custom reconciler element type
     return (
-      <ui-element _ctor={UISplitTextNode} _consumesText {...rest} ref={ref}>
+      <UIElementHost _ctor={UISplitTextNode} _consumesText {...rest} ref={ref}>
         {children}
-      </ui-element>
+      </UIElementHost>
     );
   },
 );
@@ -357,9 +366,8 @@ export function Button(props: ButtonProps): React.JSX.Element {
   // `rest` still carries `bg` (see ButtonProps) — the reconciler's `_bgAlias`
   // marker expands it to `background`. `hoverBg`/`pressBg` are Button-only
   // sugar, mapped inline since no other element has those two states.
-  // @ts-expect-error — custom reconciler element type
   return (
-    <ui-element
+    <UIElementHost
       _ctor={UIButtonNode}
       _bgAlias
       {...rest}
@@ -367,32 +375,28 @@ export function Button(props: ButtonProps): React.JSX.Element {
       pressBackground={pressBg}
     >
       {content}
-    </ui-element>
+    </UIElementHost>
   );
 }
 
 /** An image element displaying a texture. */
 export function Image(props: ImageProps): React.JSX.Element {
-  // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={UIImageNode} {...props} />;
+  return <UIElementHost _ctor={UIImageNode} {...props} />;
 }
 
 /** A nine-slice panel with texture borders. */
 export function NineSlice(props: NineSliceProps): React.JSX.Element {
-  // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={UINineSliceNode} {...props} />;
+  return <UIElementHost _ctor={UINineSliceNode} {...props} />;
 }
 
 /** A progress bar with track and fill. */
 export function ProgressBar(props: ProgressBarProps): React.JSX.Element {
-  // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={UIProgressBarNode} {...props} />;
+  return <UIElementHost _ctor={UIProgressBarNode} {...props} />;
 }
 
 /** An interactive checkbox with optional label. */
 export function Checkbox(props: CheckboxProps): React.JSX.Element {
-  // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={UICheckboxNode} {...props} />;
+  return <UIElementHost _ctor={UICheckboxNode} {...props} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -405,16 +409,14 @@ export type PixiFancyButtonReactProps = UIElementPixiFancyButtonProps;
 export function PixiFancyButton(
   props: PixiFancyButtonReactProps,
 ): React.JSX.Element {
-  // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={PixiFancyButtonNode} {...props} />;
+  return <UIElementHost _ctor={PixiFancyButtonNode} {...props} />;
 }
 
 export type PixiCheckboxReactProps = UIElementPixiCheckboxProps;
 
 /** @pixi/ui CheckBox with Yoga layout. */
 export function PixiCheckbox(props: PixiCheckboxReactProps): React.JSX.Element {
-  // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={PixiCheckboxNode} {...props} />;
+  return <UIElementHost _ctor={PixiCheckboxNode} {...props} />;
 }
 
 export type PixiProgressBarReactProps = UIElementPixiProgressBarProps;
@@ -428,24 +430,21 @@ export type PixiProgressBarReactProps = UIElementPixiProgressBarProps;
 export function PixiProgressBar(
   props: PixiProgressBarReactProps,
 ): React.JSX.Element {
-  // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={PixiProgressBarNode} {...props} />;
+  return <UIElementHost _ctor={PixiProgressBarNode} {...props} />;
 }
 
 export type PixiSliderReactProps = UIElementPixiSliderProps;
 
 /** @pixi/ui Slider with Yoga layout. */
 export function PixiSlider(props: PixiSliderReactProps): React.JSX.Element {
-  // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={PixiSliderNode} {...props} />;
+  return <UIElementHost _ctor={PixiSliderNode} {...props} />;
 }
 
 export type PixiInputReactProps = UIElementPixiInputProps;
 
 /** @pixi/ui Input with Yoga layout. */
 export function PixiInput(props: PixiInputReactProps): React.JSX.Element {
-  // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={PixiInputNode} {...props} />;
+  return <UIElementHost _ctor={PixiInputNode} {...props} />;
 }
 
 export interface ScrollViewReactProps extends UIElementScrollViewProps {
@@ -465,11 +464,10 @@ export const ScrollView = forwardRef<
   PropsWithChildren<ScrollViewReactProps>
 >(function ScrollView(props, ref) {
   const { children, ...rest } = props;
-  // @ts-expect-error — custom reconciler element type
   return (
-    <ui-element _ctor={UIScrollView} _bgAlias {...rest} ref={ref}>
+    <UIElementHost _ctor={UIScrollView} _bgAlias {...rest} ref={ref}>
       {children}
-    </ui-element>
+    </UIElementHost>
   );
 });
 
@@ -477,8 +475,7 @@ export type PixiSelectReactProps = UIElementPixiSelectProps;
 
 /** @pixi/ui Select dropdown with Yoga layout. */
 export function PixiSelect(props: PixiSelectReactProps): React.JSX.Element {
-  // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={PixiSelectNode} {...props} />;
+  return <UIElementHost _ctor={PixiSelectNode} {...props} />;
 }
 
 export type PixiRadioGroupReactProps = UIElementPixiRadioGroupProps;
@@ -487,6 +484,5 @@ export type PixiRadioGroupReactProps = UIElementPixiRadioGroupProps;
 export function PixiRadioGroup(
   props: PixiRadioGroupReactProps,
 ): React.JSX.Element {
-  // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={PixiRadioGroupNode} {...props} />;
+  return <UIElementHost _ctor={PixiRadioGroupNode} {...props} />;
 }

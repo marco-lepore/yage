@@ -1,4 +1,4 @@
-import { Component, Transform } from "@yagejs/core";
+import { Component, ErrorBoundaryKey, Transform } from "@yagejs/core";
 import type { TextStyle } from "@yagejs/renderer";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 import type { DisplayContainer } from "@yagejs/renderer";
@@ -16,6 +16,7 @@ import type {
   UIElement,
 } from "./types.js";
 import type { Anchor } from "./types.js";
+import { bindUIErrorBoundary } from "./error-boundary.js";
 
 /**
  * Mounts a UI tree on an entity: `entity.add(new UISurface({...}))`.
@@ -131,6 +132,7 @@ export class UISurface extends Component {
   }
 
   onAdd(): void {
+    bindUIErrorBoundary(this.root.container, this.use(ErrorBoundaryKey));
     const tree = this.use(SceneRenderTreeKey);
     const layerName = this._layer ?? UI_DEFAULT_LAYER;
     let layer = tree.tryGet(layerName);

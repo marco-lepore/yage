@@ -87,7 +87,7 @@ export abstract class PixiUIBase<
     }
     if (newCb) {
       const wrapped = ((...args: Parameters<F>) => {
-        runUICallback(kind, () => newCb(...args));
+        runUICallback(this.view, kind, () => newCb(...args));
       }) as F;
       let callbacks = this.bridgedCallbacks.get(key);
       if (!callbacks) {
