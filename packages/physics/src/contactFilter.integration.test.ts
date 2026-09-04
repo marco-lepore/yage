@@ -43,6 +43,44 @@ function spawnFilteredBox(
 }
 
 describe("contact filters on both sides of a pair (real Rapier)", () => {
+  it("identifies the participating compound shape", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext({
+      gravity: { x: 0, y: 0 },
+    });
+    const compoundEntity = spawnEntityInScene(scene, "compound");
+    compoundEntity.add(new Transform());
+    compoundEntity.add(
+      new RigidBodyComponent({ type: "static", fixedRotation: true }),
+    );
+    const compound = compoundEntity.add(
+      new ColliderComponent({
+        parts: [
+          {
+            shape: { type: "box", width: 20, height: 20 },
+            offset: { x: -100, y: 0 },
+          },
+          { shape: { type: "box", width: 20, height: 20 } },
+        ],
+      }),
+    );
+    const seen: Array<[number, number]> = [];
+    compound.setContactFilter((contact) => {
+      seen.push([contact.selfShapeIndex, contact.otherShapeIndex]);
+      return true;
+    });
+    const other = spawnEntityInScene(scene, "other");
+    other.add(new Transform());
+    other.add(new RigidBodyComponent({ type: "dynamic", fixedRotation: true }));
+    other.add(
+      new ColliderComponent({ shape: { type: "box", width: 20, height: 20 } }),
+    );
+
+    physicsWorld.step(DT);
+
+    expect(seen).toContainEqual([1, 0]);
+    expect(seen).not.toContainEqual([0, 0]);
+  });
+
   it.each(["first", "second"])(
     "runs both filters every step when the %s collider vetoes",
     async (vetoSide) => {

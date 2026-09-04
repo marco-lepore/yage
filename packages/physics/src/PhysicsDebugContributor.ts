@@ -4,8 +4,9 @@ import type {
   WorldDebugApi,
 } from "@yagejs/debug/api";
 import type { PhysicsWorldManager } from "./PhysicsWorldManager.js";
+import type { ColliderComponent } from "./ColliderComponent.js";
 import { colliderRotation } from "./colliderGeometry.js";
-import type { ColliderConfig } from "./types.js";
+import type { ColliderPartConfig, OneWayConfig } from "./types.js";
 
 /** Rapier ShapeType enum values (mirrored to avoid pulling the wasm runtime). */
 const ShapeType = {
@@ -116,7 +117,16 @@ export class PhysicsDebugContributor implements DebugContributor {
         }
 
         if (oneWayActive && config) {
-          this.drawOneWayArrow(g, config, strokeStyle);
+          const shapeIndex = world._colliderShapeIndices.get(handle);
+          if (shapeIndex !== undefined) {
+            this.drawOneWayArrow(
+              g,
+              component._effectivePart(shapeIndex),
+              config.oneWay,
+              component,
+              strokeStyle,
+            );
+          }
         }
       }
     }
@@ -130,14 +140,16 @@ export class PhysicsDebugContributor implements DebugContributor {
    */
   private drawOneWayArrow(
     g: DebugGraphics,
-    config: ColliderConfig,
+    part: ColliderPartConfig,
+    oneWay: OneWayConfig | undefined,
+    component: ColliderComponent,
     strokeStyle: { width: number; color: number; alpha?: number },
   ): void {
-    const dir = config.oneWay?.direction ?? { x: 0, y: -1 };
+    const dir = component._scaleDirection(oneWay?.direction ?? { x: 0, y: -1 });
     const len = Math.hypot(dir.x, dir.y);
     if (len === 0) return;
 
-    const rel = colliderRotation(config);
+    const rel = colliderRotation(part);
     const cos = Math.cos(rel);
     const sin = Math.sin(rel);
     const dx = (dir.x * cos + dir.y * sin) / len;

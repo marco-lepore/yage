@@ -47,6 +47,28 @@ function spawnBox(
 }
 
 describe("rounded-box mass (real Rapier)", () => {
+  it("sums the mass of every collider part on one body", async () => {
+    const { scene } = await createPhysicsTestContext({
+      gravity: { x: 0, y: 0 },
+    });
+    const entity = spawnEntityInScene(scene, "compound");
+    entity.add(new Transform());
+    const rb = entity.add(
+      new RigidBodyComponent({ type: "dynamic", fixedRotation: true }),
+    );
+    entity.add(
+      new ColliderComponent({
+        parts: [
+          { shape: { type: "box", width: 20, height: 20 } },
+          { shape: { type: "circle", radius: 10 } },
+        ],
+      }),
+    );
+
+    // 0.4m square plus a circle with a 0.2m radius, both at density 1.
+    expect(rb.getMass()).toBeCloseTo(0.16 + Math.PI * 0.2 ** 2, 5);
+  });
+
   // 20×20 px at 50 px/m and density 1: 0.4 m × 0.4 m = 0.16. Rounding takes
   // off the four corner pieces, (4 − π) r² in pixels, and nothing else.
   it.each([

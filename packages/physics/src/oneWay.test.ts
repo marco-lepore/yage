@@ -1,7 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { createOneWayFilter } from "./oneWay.js";
 import type { ColliderComponent } from "./ColliderComponent.js";
-import type { ColliderConfig, ContactCandidate } from "./types.js";
+import type {
+  ColliderConfig,
+  ColliderPartConfig,
+  ColliderShape,
+  ContactCandidate,
+} from "./types.js";
 
 /**
  * Pure geometry tests for the one-way rule: the filter only reads
@@ -11,15 +16,27 @@ import type { ColliderConfig, ContactCandidate } from "./types.js";
 
 function fakeSelf(
   config: ColliderConfig,
-  landed?: Set<number>,
+  landed?: Set<string>,
+  effectivePart?: ColliderPartConfig,
+  scale: { x: number; y: number } = { x: 1, y: 1 },
 ): ColliderComponent {
   return {
     config,
-    _oneWayLanded: landed ?? new Set<number>(),
+    _oneWayLanded: landed ?? new Set<string>(),
+    _colliderHandles: [3],
+    _effectivePart(index: number) {
+      if (effectivePart) return effectivePart;
+      return "parts" in config ? config.parts[index]! : config;
+    },
+    _scaleDirection(direction: { x: number; y: number }) {
+      return { x: direction.x * scale.x, y: direction.y * scale.y };
+    },
   } as unknown as ColliderComponent;
 }
 
 interface CandidateInit {
+  selfShapeIndex?: number;
+  otherShapeIndex?: number;
   selfX?: number;
   selfY?: number;
   selfRotation?: number;
@@ -31,20 +48,26 @@ interface CandidateInit {
   otherVelocityX?: number;
   otherVelocityY?: number;
   dt?: number;
-  otherShape?: ColliderConfig["shape"];
+  otherShape?: ColliderShape;
   otherDropping?: boolean;
 }
 
 function fakeCandidate(init: CandidateInit): ContactCandidate {
+  const otherConfig: ColliderConfig = {
+    shape: init.otherShape ?? { type: "box", width: 20, height: 20 },
+  };
   return {
     other: {} as ContactCandidate["other"],
     otherCollider: {
-      config: {
-        shape: init.otherShape ?? { type: "box", width: 20, height: 20 },
-      },
+      config: otherConfig,
       isDroppingThrough: init.otherDropping ?? false,
-      _colliderHandle: 7,
+      _colliderHandles: [7],
+      _effectivePart() {
+        return otherConfig;
+      },
     } as unknown as ColliderComponent,
+    selfShapeIndex: init.selfShapeIndex ?? 0,
+    otherShapeIndex: init.otherShapeIndex ?? 0,
     dt: init.dt ?? 1 / 60,
     selfX: init.selfX ?? 0,
     selfY: init.selfY ?? 0,
@@ -67,6 +90,17 @@ const PLATFORM: ColliderConfig = {
 };
 
 describe("createOneWayFilter", () => {
+  it("uses the scaled platform geometry", () => {
+    const filter = createOneWayFilter(
+      fakeSelf(PLATFORM, undefined, {
+        shape: { type: "box", width: 200, height: 20 },
+      }),
+    );
+
+    expect(filter(fakeCandidate({ otherY: -15 }))).toBe(false);
+    expect(filter(fakeCandidate({ otherY: -20 }))).toBe(true);
+  });
+
   it("is solid for a body resting on the solid side", () => {
     const filter = createOneWayFilter(fakeSelf(PLATFORM));
     expect(filter(fakeCandidate({ otherY: -15 }))).toBe(true);
@@ -108,12 +142,12 @@ describe("createOneWayFilter", () => {
   it("stays solid for a landed rider regardless of the position rule", () => {
     // Rider handle 7 has a live contact with the platform: even a position
     // well past the face (a deep first impact mid-resolution) stays solid.
-    const filter = createOneWayFilter(fakeSelf(PLATFORM, new Set([7])));
+    const filter = createOneWayFilter(fakeSelf(PLATFORM, new Set(["3:7"])));
     expect(filter(fakeCandidate({ otherY: 0 }))).toBe(true);
   });
 
   it("drop-through overrides a landed contact", () => {
-    const filter = createOneWayFilter(fakeSelf(PLATFORM, new Set([7])));
+    const filter = createOneWayFilter(fakeSelf(PLATFORM, new Set(["3:7"])));
     expect(filter(fakeCandidate({ otherY: -15, otherDropping: true }))).toBe(
       false,
     );
@@ -149,6 +183,15 @@ describe("createOneWayFilter", () => {
     expect(filter(fakeCandidate({ otherY: -15 }))).toBe(false);
   });
 
+  it("mirrors the solid side with a negative scale", () => {
+    const filter = createOneWayFilter(
+      fakeSelf(PLATFORM, undefined, undefined, { x: 1, y: -1 }),
+    );
+
+    expect(filter(fakeCandidate({ otherY: 15 }))).toBe(true);
+    expect(filter(fakeCandidate({ otherY: -15 }))).toBe(false);
+  });
+
   it("honors a custom margin", () => {
     const filter = createOneWayFilter(
       fakeSelf({
@@ -178,7 +221,7 @@ describe("createOneWayFilter", () => {
 
     // Asymmetric polygon: reach toward the face is the support distance of
     // the vertices, not a symmetric half-extent.
-    const polygonShape: ColliderConfig["shape"] = {
+    const polygonShape: ColliderShape = {
       type: "polygon",
       vertices: [
         { x: 0, y: 20 },

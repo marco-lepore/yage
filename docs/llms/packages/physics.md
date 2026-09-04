@@ -137,6 +137,43 @@ entity.add(
 );
 ```
 
+One component can attach several ordered shapes to the same body. Each part
+has its own shape, offset, and rotation. The other settings apply to every
+part, and Rapier sums their mass:
+
+```ts
+entity.add(
+  new ColliderComponent({
+    parts: [
+      { shape: { type: "box", width: 48, height: 16 } },
+      {
+        shape: { type: "circle", radius: 8 },
+        offset: { x: 24, y: 0 },
+      },
+    ],
+    friction: 0.3,
+    layers: LAYER_PLAYER,
+    mask: LAYER_WALL,
+  }),
+);
+```
+
+`collider.colliderCount` is the number of parts. `getOverlapping()` checks all
+parts and returns each overlapping entity once.
+
+Collider geometry follows `Transform.worldScale` automatically. The scale in
+place when the component is added applies immediately; later local or ancestor
+scale writes apply at the next physics step. Scale changes update part offsets
+and recompute mass from `density`. A query before the next step sees the last
+simulated scale, like position queries.
+
+Positive uniform scale keeps Rapier's native primitives. For non-uniform or
+mirrored scale, polygons and polylines transform exactly. Boxes become their
+four transformed corners. Circles, capsules, and rounded boxes use a 32-point
+convex outline because Rapier has no scaled equivalent for those shapes. A
+zero scale axis disables the colliders and removes their mass until both axes
+are non-zero again.
+
 A capsule's `halfHeight` is half the straight section; each cap adds `radius`,
 so the collider is `2 * (halfHeight + radius)` tall — `{ halfHeight: 20, radius: 10 }`
 stands 60 px. `halfHeight: 0` is a circle. Boxes and circles take outer
@@ -180,10 +217,14 @@ Events are collected after every physics step and delivered after that step, so 
 ```ts
 collider.onTrigger((ev) => {
   ev.other;
+  ev.selfShapeIndex;
+  ev.otherShapeIndex;
   ev.entered;
 }); // sensor events
 collider.onCollision((ev) => {
   ev.other;
+  ev.selfShapeIndex;
+  ev.otherShapeIndex;
   ev.started;
   // contactNormal/contactPoint/penetrationDepth/contactImpulse(Vector): only
   // on started, non-sensor collisions, and may be absent if no contact
@@ -230,9 +271,15 @@ Resizing:
 ```ts
 collider.setShape({ type: "box", width: 20, height: 20 }); // crouch
 collider.setShape({ type: "box", width: 20, height: 40 }); // stand back up
+collider.setShape(newHeadShape, { index: 1 }); // replace compound part 1
 ```
 
-`setShape(shape, options?)` replaces the shape on the live Rapier collider. The handle, body attachment, and every `onCollision`/`onTrigger` subscription survive. Callable before `entity.add()`; the shape applies at collider creation. A shape with a dimension that is not finite and above 0 throws before anything is stored, so the config still describes the live collider.
+`setShape(shape, options?)` replaces one shape on the live collider component.
+`options.index` defaults to `0`. It must name an existing part. The body
+attachment and every `onCollision`/`onTrigger` subscription survive. Callable
+before `entity.add()`; the shape applies at collider creation. A bad shape or
+index throws before anything is stored, so the config still describes the live
+collider.
 
 The body keeps its mass. A collider is a collision proxy, not a measure of matter, so a crouching character takes the same `applyImpulse` knockback as a standing one. Pass `{ recomputeMass: true }` when the shape change means genuinely more or less matter and mass should come back from density × the new shape.
 

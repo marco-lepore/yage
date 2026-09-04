@@ -34,7 +34,7 @@ Not supported: infinite/chunked maps, base64-encoded layer data, isometric/hex/s
 
 `validateTiledMap()` reports the forms that carry a diagnostic code — see [Unsupported Forms](#unsupported-forms). Four limits have no code, because the map itself parses fine: runtime tile editing, per-tile collision shapes, a tileset's `tilerendersize` / `fillmode`, and a diagonal flip on a non-square tile.
 
-Workflow: parse Tiled JSON → `tilemap.getCollisionShapes("walls")` returns raw top-left-origin shapes → `toPhysicsColliders(shapes)` converts to center-origin Rapier configs → spawn one static entity per config, each with a `RigidBodyComponent` and a `ColliderComponent`.
+Workflow: parse Tiled JSON → `tilemap.getCollisionShapes("walls")` returns raw top-left-origin shapes → `toPhysicsColliders(shapes)` converts to center-origin collider parts → attach the parts to one static body's `ColliderComponent`.
 
 ## Setup
 
@@ -408,14 +408,12 @@ The root package exports `extractCollisionShapes()`. The optional
 
 ## Physics Integration
 
-`toPhysicsColliders(shapes)` converts the tilemap collision shapes (top-left origin, as stored in Tiled) into `@yagejs/physics` `ColliderConfig` shape-plus-offset pairs (center origin, as Rapier expects). Use it when attaching extracted walls to static physics bodies.
+`toPhysicsColliders(shapes)` converts the tilemap collision shapes (top-left origin, as stored in Tiled) into `@yagejs/physics` `ColliderPartConfig` entries (center origin, as Rapier expects). Use the returned array as one collider component's `parts`.
 
 Install `@yagejs/physics` and import the adapter from the optional physics
 entry. The root `@yagejs/tilemap` entry does not require physics.
 
-One entity carries one `ColliderComponent`, so each shape gets its own static
-entity under a grouping parent placed at the map's origin. The children sit at
-the parent's origin and the config's offset does the placement:
+One static entity can carry the whole collision layer:
 
 ```ts
 import { toPhysicsColliders } from "@yagejs/tilemap/physics";
@@ -423,14 +421,12 @@ import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 
 const walls = scene.spawn("walls");
 walls.add(new Transform());
-
-const configs = toPhysicsColliders(tilemap.getCollisionShapes("walls"));
-configs.forEach((cfg, index) => {
-  const wall = walls.spawnChild(`wall-${index}`);
-  wall.add(new Transform());
-  wall.add(new RigidBodyComponent({ type: "static" }));
-  wall.add(new ColliderComponent(cfg));
-});
+walls.add(new RigidBodyComponent({ type: "static" }));
+walls.add(
+  new ColliderComponent({
+    parts: toPhysicsColliders(tilemap.getCollisionShapes("walls")),
+  }),
+);
 ```
 
 `toPhysicsColliders` handles every emitted shape: rects → `box`, circles → `circle`, capsules → `capsule` (with `axis` preserved — `"x"` rotates the capsule 90°), polygons → `polygon`, polylines → `polyline`. Box, circle, and capsule colliders take the Tiled object's bounding-box center as their offset; polygon and polyline colliders keep the object's top-left position, with vertices relative to it. Rect and capsule `rotation` is forwarded to the physics config, with the center offset rotated about the Tiled pivot.

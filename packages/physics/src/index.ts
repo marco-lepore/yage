@@ -12,6 +12,7 @@ export type {
   JointConfig,
   JointHandle,
   ColliderShape,
+  ColliderPartConfig,
   ColliderConfig,
   CollisionEvent,
   ContactCandidate,

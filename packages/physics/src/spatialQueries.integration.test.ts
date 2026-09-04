@@ -59,7 +59,19 @@ function spawnGround(
   scene: Scene,
   x: number,
   y: number,
-  extra: Partial<ColliderConfig> = {},
+  extra: Partial<
+    Pick<
+      ColliderConfig,
+      | "restitution"
+      | "friction"
+      | "density"
+      | "contactSkin"
+      | "sensor"
+      | "layers"
+      | "mask"
+      | "oneWay"
+    >
+  > = {},
 ): Spawned {
   return spawnBody(scene, "ground", x, y, "static", {
     shape: { type: "box", width: 200, height: 20 },

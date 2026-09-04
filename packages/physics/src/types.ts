@@ -203,8 +203,8 @@ export interface OneWayConfig {
   margin?: number;
 }
 
-/** Configuration for creating a collider. */
-export interface ColliderConfig {
+/** Geometry and body-local placement for one collider part. */
+export interface ColliderPartConfig {
   /** Shape of the collider. */
   shape: ColliderShape;
   /** Offset from body center in pixels. */
@@ -214,6 +214,10 @@ export interface ColliderConfig {
    * point. For `axis: "x"` capsules it adds on top of the 90° axis rotation.
    */
   rotation?: number;
+}
+
+/** Settings shared by every part of a collider component. */
+interface ColliderSharedConfig {
   /** Coefficient of restitution (bounciness); finite and >= 0. */
   restitution?: number;
   /** Friction coefficient; finite and >= 0. */
@@ -242,6 +246,19 @@ export interface ColliderConfig {
   oneWay?: OneWayConfig;
 }
 
+/** Configuration for creating one collider or several parts on one body. */
+export type ColliderConfig = ColliderSharedConfig &
+  (
+    | (ColliderPartConfig & { parts?: never })
+    | {
+        /** Ordered collider parts attached to the same rigid body. */
+        parts: ColliderPartConfig[];
+        shape?: never;
+        offset?: never;
+        rotation?: never;
+      }
+  );
+
 /**
  * A candidate contact pair, seen from one collider's side, before any
  * contact exists. Passed to a `ContactFilter` — no contact normal or
@@ -259,6 +276,10 @@ export interface ContactCandidate {
   readonly other: Entity;
   /** The other entity's collider component. */
   readonly otherCollider: ColliderComponent;
+  /** Index of this participating shape in its collider component. */
+  readonly selfShapeIndex: number;
+  /** Index of the other participating shape in its collider component. */
+  readonly otherShapeIndex: number;
   /** Duration of the physics step being computed, in seconds. */
   readonly dt: number;
   /** Own collider's world X position in pixels. */
@@ -302,6 +323,10 @@ export interface CollisionEvent {
   other: Entity;
   /** The other entity's collider component. */
   otherCollider: ColliderComponent;
+  /** Index of this participating shape in its collider component. */
+  selfShapeIndex: number;
+  /** Index of the other participating shape in its collider component. */
+  otherShapeIndex: number;
   /** True if the collision just started, false if it ended. */
   started: boolean;
   /**
@@ -353,6 +378,10 @@ export interface TriggerEvent {
   other: Entity;
   /** The other entity's collider component. */
   otherCollider: ColliderComponent;
+  /** Index of this participating shape in its collider component. */
+  selfShapeIndex: number;
+  /** Index of the other participating shape in its collider component. */
+  otherShapeIndex: number;
   /** True if entering the trigger, false if leaving. */
   entered: boolean;
 }

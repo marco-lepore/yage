@@ -59,7 +59,19 @@ function spawnGround(
   scene: Scene,
   x: number,
   y: number,
-  extra: Partial<ColliderConfig> = {},
+  extra: Partial<
+    Pick<
+      ColliderConfig,
+      | "restitution"
+      | "friction"
+      | "density"
+      | "contactSkin"
+      | "sensor"
+      | "layers"
+      | "mask"
+      | "oneWay"
+    >
+  > = {},
 ): Spawned {
   return spawnBody(scene, "ground", x, y, "static", {
     shape: { type: "box", width: 200, height: 20 },
@@ -231,7 +243,8 @@ describe("setSensor on a live collider (real Rapier)", () => {
     const massBefore = box.rb.getMass();
     const body = physicsWorld.getBody(box.rb._bodyHandle)!;
     expect(body.isSleeping()).toBe(false);
-    expect(ground.collider._oneWayLanded!.has(oldHandle)).toBe(true);
+    const landedPair = `${ground.collider._colliderHandle}:${oldHandle}`;
+    expect(ground.collider._oneWayLanded!.has(landedPair)).toBe(true);
 
     box.collider.setSensor(true);
 
@@ -240,7 +253,7 @@ describe("setSensor on a live collider (real Rapier)", () => {
     expect(box.rb.getMass()).toBeCloseTo(massBefore, 6);
     expect(physicsWorld.colliderMap.has(oldHandle)).toBe(false);
     expect(physicsWorld._colliderComponents.has(oldHandle)).toBe(false);
-    expect(ground.collider._oneWayLanded!.has(oldHandle)).toBe(false);
+    expect(ground.collider._oneWayLanded!.has(landedPair)).toBe(false);
     expect(physicsWorld.colliderMap.get(newHandle)).toBe(box.entity);
     expect(physicsWorld._colliderComponents.get(newHandle)).toBe(box.collider);
     expect(box.collider._contactFilter).not.toBeNull();
