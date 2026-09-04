@@ -87,7 +87,7 @@ export interface InputConfig {
    * key.
    */
   rendererKey?: ServiceKey<RendererAdapter>;
-  /** Deadzone thresholds for analog inputs. */
+  /** Finite deadzone thresholds in `[0, 1)`. */
   deadzones?: {
     /** Radial deadzone applied to stick magnitude (default 0.15). */
     stick?: number;
@@ -96,8 +96,9 @@ export interface InputConfig {
   };
   /**
    * Trigger value at which `GamepadLT`/`GamepadRT` fire as button edges in the
-   * action map (default 0.5). Below this, the trigger remains "released" for
-   * `isPressed` purposes; the analog `getTrigger` value is unaffected.
+   * action map (default 0.5). Must be finite and in `(0, 1]`. Below this, the
+   * trigger remains "released" for `isPressed` purposes; the analog
+   * `getTrigger` value is unaffected.
    */
   triggerThreshold?: number;
   /**
@@ -156,6 +157,8 @@ export type PointerType = "mouse" | "pen" | "touch";
 export interface PointerInfo {
   /** Browser-assigned `PointerEvent.pointerId`, or the synthetic id passed via `firePointer*`. */
   readonly id: number;
+  /** Monotonic identity of this pointer press cycle. */
+  readonly generation: number;
   /** Position in screen-space pixels (already routed through `canvasToVirtual` if available). */
   readonly screenPos: Vec2;
   /** Source device class. */
@@ -177,6 +180,35 @@ export interface PointerInfo {
    * is drained into `buttons`, so `buttons` does not yet reflect this event.
    */
   readonly button: number;
+}
+
+/** Filter for {@link InputManager.getPointerPresses}. */
+export interface PointerPressOptions {
+  /** Button edge to include. Omit to include every button. */
+  button?: number;
+  /** Whether claimed presses are returned. Default: `"exclude"`. */
+  consumed?: "exclude" | "include" | "only";
+}
+
+/** Pointer-down edge retained for the current rendered frame. */
+export interface PointerPressInfo extends PointerInfo {
+  /** Position converted through the camera when the press was applied, or screenPos when unset. */
+  readonly worldPos: Vec2;
+  /** Whether UI or another pointer listener claimed this press. */
+  readonly consumed: boolean;
+}
+
+/**
+ * An independently releasable producer of sustained action presses.
+ *
+ * Create one per virtual device or automation driver. Two sources can hold
+ * the same action without either source releasing the other's press.
+ */
+export interface InputActionSource {
+  /** Start or end this source's hold. Starting an unknown action throws. */
+  setHeld(action: string, held: boolean): void;
+  /** Release every action held by this source. */
+  releaseAll(): void;
 }
 
 /**

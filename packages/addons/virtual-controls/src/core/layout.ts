@@ -93,21 +93,27 @@ export function normalizeControlsConfig(
     }
     stickIds.add(id);
     if (s.placement) validatePlacement(s.placement, `stick "${id}"`);
-    if (s.radius !== undefined && s.radius <= 0) {
-      throw new Error(`VirtualControls: stick "${id}" radius must be > 0.`);
+    if (
+      s.radius !== undefined &&
+      (!Number.isFinite(s.radius) || s.radius <= 0)
+    ) {
+      throw new Error(
+        `VirtualControls: stick "${id}" radius must be finite and > 0, got ${s.radius}.`,
+      );
     }
     const deadZone = s.deadZone ?? 0.1;
-    if (deadZone < 0 || deadZone >= 1) {
+    if (!Number.isFinite(deadZone) || deadZone < 0 || deadZone >= 1) {
       throw new Error(
-        `VirtualControls: stick "${id}" deadZone must be in [0, 1).`,
+        `VirtualControls: stick "${id}" deadZone must be finite and in [0, 1), got ${deadZone}.`,
       );
     }
     const threshold = s.threshold ?? 0.5;
-    if (threshold <= 0 || threshold > 1) {
+    if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 1) {
       throw new Error(
-        `VirtualControls: stick "${id}" threshold must be in (0, 1].`,
+        `VirtualControls: stick "${id}" threshold must be finite and in (0, 1], got ${threshold}.`,
       );
     }
+    if (s.zone) validateZone(s.zone, `stick "${id}"`);
     sticks.push({
       id,
       mode: s.mode ?? "floating",
@@ -143,9 +149,12 @@ export function normalizeControlsConfig(
     }
     buttonIds.add(b.id);
     if (b.placement) validatePlacement(b.placement, `button "${b.id}"`);
-    if (b.radius !== undefined && b.radius <= 0) {
+    if (
+      b.radius !== undefined &&
+      (!Number.isFinite(b.radius) || b.radius <= 0)
+    ) {
       throw new Error(
-        `VirtualControls: button "${b.id}" radius must be > 0.`,
+        `VirtualControls: button "${b.id}" radius must be finite and > 0, got ${b.radius}.`,
       );
     }
     buttons.push({
@@ -182,12 +191,37 @@ function normalizeStickActions(
 }
 
 function validatePlacement(p: ControlPlacement, what: string): void {
-  const horizontal = (p.left !== undefined ? 1 : 0) + (p.right !== undefined ? 1 : 0);
-  const vertical = (p.top !== undefined ? 1 : 0) + (p.bottom !== undefined ? 1 : 0);
+  const horizontal =
+    (p.left !== undefined ? 1 : 0) + (p.right !== undefined ? 1 : 0);
+  const vertical =
+    (p.top !== undefined ? 1 : 0) + (p.bottom !== undefined ? 1 : 0);
   if (horizontal !== 1 || vertical !== 1) {
     throw new Error(
       `VirtualControls: placement for ${what} needs exactly one of left/right and one of top/bottom.`,
     );
+  }
+  for (const [name, value] of Object.entries(p)) {
+    if (!Number.isFinite(value)) {
+      throw new Error(
+        `VirtualControls: placement for ${what} ${name} must be finite, got ${value}.`,
+      );
+    }
+  }
+}
+
+function validateZone(zone: ControlZone, what: string): void {
+  for (const name of ["x", "y", "width", "height"] as const) {
+    const value = zone[name];
+    const valid =
+      Number.isFinite(value) &&
+      value >= 0 &&
+      value <= 1 &&
+      ((name !== "width" && name !== "height") || value > 0);
+    if (!valid) {
+      throw new Error(
+        `VirtualControls: zone for ${what} ${name} must be ${name === "width" || name === "height" ? "finite and in (0, 1]" : "finite and in [0, 1]"}, got ${value}.`,
+      );
+    }
   }
 }
 

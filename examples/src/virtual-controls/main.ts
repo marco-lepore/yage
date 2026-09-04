@@ -18,9 +18,11 @@ import {
   VirtualControls,
 } from "@yagejs-addons/virtual-controls";
 import { createControlsPresenter } from "@yagejs-addons/virtual-controls/presenters";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+import {
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
 import "./styles.css";
-
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -111,45 +113,18 @@ class Player extends Component {
 }
 
 /**
- * Tap-to-ripple backdrop. Each pointer press is recorded, then judged on the
- * NEXT update — after the input drain has settled consumption — via
- * `isPointerConsumed`: touches the overlay claimed never ripple, everything
- * else does. That's the consumePointer guarantee, observable per pointer.
+ * Tap-to-ripple backdrop. The frame query excludes presses claimed by the
+ * touch controls or UI.
  */
 class RippleBackdrop extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly gfx = this.sibling(GraphicsComponent);
   private readonly ripples: { pos: Vec2; t: number }[] = [];
-  private pending = new Map<number, Vec2>();
-
-  override onAdd(): void {
-    this.addCleanup(
-      this.input.onPointerDown((p) => {
-        this.pending.set(p.id, p.screenPos);
-      }),
-    );
-    // A fast tap can press AND release before the next frame's judgment —
-    // and the consume mark clears when the release drains. Judge such taps
-    // at the up listener, where the mark is still readable.
-    this.addCleanup(
-      this.input.onPointerUp((p) => this.judge(p.id)),
-    );
-  }
-
-  /** Ripple once per press, only if no control consumed the pointer. */
-  private judge(id: number): void {
-    const pos = this.pending.get(id);
-    if (!pos) return;
-    this.pending.delete(id);
-    if (!this.input.isPointerConsumed(id)) {
-      this.ripples.push({ pos, t: 0 });
-      if (this.ripples.length > 16) this.ripples.shift();
-    }
-  }
 
   override update(dt: number): void {
-    for (const id of [...this.pending.keys()]) {
-      this.judge(id);
+    for (const press of this.input.getPointerPresses({ button: 0 })) {
+      this.ripples.push({ pos: press.screenPos, t: 0 });
+      if (this.ripples.length > 16) this.ripples.shift();
     }
 
     const g = this.gfx.graphics;

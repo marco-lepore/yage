@@ -157,11 +157,11 @@ describe("VirtualControls — action mirroring", () => {
 
   it("does not force-release synthetic holds owned by other code", () => {
     const { input } = setup();
-    // A cutscene (or any other system) holds "up" by name.
-    input.fireActionDown("up");
+    const cutscene = input.createActionSource();
+    cutscene.setHeld("up", true);
 
-    // Resting a thumb on the stick and wiggling below threshold used to
-    // fire setActionHeld(..., false) for every direction on every move.
+    // Resting a thumb on the stick and wiggling below threshold does not
+    // release a hold owned by another source.
     touchDown(input, 9, 150, 400);
     touchMove(input, 9, 155, 400);
     expect(input.isPressed("up")).toBe(true);
@@ -182,7 +182,12 @@ describe("VirtualControls — action mirroring", () => {
     const { input, controls } = setup();
     // Left button down inside the stick zone (mouse pointer id 1).
     input._enqueuePointerDown({
-      id: 1, screenX: 150, screenY: 400, type: "mouse", isPrimary: true, button: 0,
+      id: 1,
+      screenX: 150,
+      screenY: 400,
+      type: "mouse",
+      isPrimary: true,
+      button: 0,
     });
     input._drainInputQueue();
     expect(controls.stick()!.active).toBe(true);
@@ -190,17 +195,32 @@ describe("VirtualControls — action mirroring", () => {
     // Right button down + up mid-drag: down is skipped (pointer consumed),
     // and its release must not end the left-button gesture.
     input._enqueuePointerDown({
-      id: 1, screenX: 150, screenY: 400, type: "mouse", isPrimary: true, button: 2,
+      id: 1,
+      screenX: 150,
+      screenY: 400,
+      type: "mouse",
+      isPrimary: true,
+      button: 2,
     });
     input._drainInputQueue();
     input._enqueuePointerUp({
-      id: 1, screenX: 150, screenY: 400, type: "mouse", isPrimary: true, button: 2,
+      id: 1,
+      screenX: 150,
+      screenY: 400,
+      type: "mouse",
+      isPrimary: true,
+      button: 2,
     });
     input._drainInputQueue();
     expect(controls.stick()!.active).toBe(true);
 
     input._enqueuePointerUp({
-      id: 1, screenX: 150, screenY: 400, type: "mouse", isPrimary: true, button: 0,
+      id: 1,
+      screenX: 150,
+      screenY: 400,
+      type: "mouse",
+      isPrimary: true,
+      button: 0,
     });
     input._drainInputQueue();
     expect(controls.stick()!.active).toBe(false);
@@ -248,7 +268,7 @@ describe("VirtualControls — pointer consumption", () => {
   });
 
   it("skips pointers that land on UI surfaces (hitTestUI wins)", () => {
-    const { entity, context, input } = (() => {
+    const { entity, input } = (() => {
       const parts = createMockEntity("controls-host");
       const im = new InputManager();
       im.setActionMap(ACTIONS);
@@ -261,6 +281,7 @@ describe("VirtualControls — pointer consumption", () => {
         hitTestUI: () => true,
       };
       parts.context.register(RendererAdapterKey, adapter);
+      im._setRenderer(adapter);
       return { ...parts, input: im };
     })();
     const controls = new VirtualControls({
@@ -271,8 +292,7 @@ describe("VirtualControls — pointer consumption", () => {
 
     touchDown(input, 7, 150, 400); // in-zone, but "on UI"
     expect(controls.stick()!.active).toBe(false);
-    expect(input.isPointerConsumed(7)).toBe(false);
-    void context;
+    expect(input.isPointerConsumed(7)).toBe(true);
   });
 
   it("prefers the adapter's clamped visibleVirtualRect over corner mapping", () => {
@@ -283,13 +303,19 @@ describe("VirtualControls — pointer consumption", () => {
     // A letterbox-shaped adapter: corner mapping would span y -200..800,
     // but the clamped rect is the 800×600 design space.
     const adapter: RendererAdapter = {
-      canvas: { clientWidth: 800, clientHeight: 1000 } as unknown as HTMLCanvasElement,
+      canvas: {
+        clientWidth: 800,
+        clientHeight: 1000,
+      } as unknown as HTMLCanvasElement,
       canvasToVirtual: (x, y) => ({ x, y: y - 200 }),
       visibleVirtualRect: { x: 0, y: 0, width: 800, height: 600 },
     };
     parts.context.register(RendererAdapterKey, adapter);
 
-    const controls = new VirtualControls({ visible: true, buttons: [{ id: "a" }] });
+    const controls = new VirtualControls({
+      visible: true,
+      buttons: [{ id: "a" }],
+    });
     parts.entity.add(controls);
 
     const { center, radius } = controls.button("a")!.layout;
@@ -356,21 +382,21 @@ describe("VirtualControls — visibility", () => {
     expect(input.isJustReleased("jump")).toBe(true);
   });
 
-  it("a paused scene takes no new claims but existing gestures release", () => {
+  it("scene pause does not gate input-device state", () => {
     const { input, controls, scene } = setup();
     const { center } = controls.button("a")!.layout;
     touchDown(input, 7, center.x, center.y);
     expect(input.isPressed("jump")).toBe(true);
 
     scene.paused = true;
-    touchDown(input, 8, 150, 400); // new claim blocked
-    expect(controls.stick()!.active).toBe(false);
+    touchDown(input, 8, 150, 400);
+    expect(controls.stick()!.active).toBe(true);
 
     touchUp(input, 7, center.x, center.y); // release still flows
     expect(input.isPressed("jump")).toBe(false);
   });
 
-  it("a paused scene blocks pressOnEnter slide-in claims too", () => {
+  it("pressOnEnter can claim while the scene is paused", () => {
     const { input, controls, scene } = setup({
       buttons: [{ id: "a", action: "jump", pressOnEnter: true }],
     });
@@ -379,13 +405,8 @@ describe("VirtualControls — visibility", () => {
 
     scene.paused = true;
     touchMove(input, 7, center.x, center.y); // slide onto the button
-    expect(controls.button("a")!.pressed).toBe(false);
-    expect(input.isPressed("jump")).toBe(false);
-
-    // Unpaused, the same stray may claim again.
-    scene.paused = false;
-    touchMove(input, 7, center.x + 1, center.y);
     expect(controls.button("a")!.pressed).toBe(true);
+    expect(input.isPressed("jump")).toBe(true);
   });
 
   it("a dormant host claims nothing and releases what it held", () => {
@@ -473,10 +494,14 @@ describe("VirtualControls — events + teardown", () => {
   it("emits entity events for presses, releases and stick engagement", () => {
     const { entity, input, controls } = setup();
     const events: string[] = [];
-    entity.on(VirtualButtonPressEvent, (e) => events.push(`press:${e.id}:${e.action}`));
+    entity.on(VirtualButtonPressEvent, (e) =>
+      events.push(`press:${e.id}:${e.action}`),
+    );
     entity.on(VirtualButtonReleaseEvent, (e) => events.push(`release:${e.id}`));
     entity.on(VirtualStickEngageEvent, (e) => events.push(`engage:${e.id}`));
-    entity.on(VirtualStickReleaseEvent, (e) => events.push(`disengage:${e.id}`));
+    entity.on(VirtualStickReleaseEvent, (e) =>
+      events.push(`disengage:${e.id}`),
+    );
 
     const { center } = controls.button("a")!.layout;
     touchDown(input, 7, center.x, center.y);

@@ -4,6 +4,7 @@ import { InputManager, InputManagerKey } from "@yagejs/input";
 import { Abilities } from "../core/Abilities.js";
 import type { AbilityDef } from "../core/types.js";
 import { AbilityDriverComponent } from "./AbilityDriverComponent.js";
+import { setTestActionHeld } from "./test-action-source.js";
 
 function timeline(id: string, duration = 1): AbilityDef {
   return { id, duration, timeline: [] };
@@ -41,7 +42,7 @@ describe("AbilityDriverComponent", () => {
       { dash: { press: { send: "dash" } } },
     );
 
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", true);
     component.update();
 
     expect(abilities.activeId()).toBe("dash");
@@ -54,18 +55,18 @@ describe("AbilityDriverComponent", () => {
       { attack: { press: { send: "attack" } } },
     );
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     component.update();
-    input.fireActionUp("attack");
+    setTestActionHeld(input, "attack", false);
     component.update();
     abilities.cancel();
 
     component.replace({ bindings: { dash: { press: { send: "dash" } } } });
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     component.update();
     expect(abilities.active()).toBeNull();
 
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", true);
     component.update();
     expect(abilities.activeId()).toBe("dash");
   });
@@ -77,7 +78,7 @@ describe("AbilityDriverComponent", () => {
       { attack: { hold: { send: "charge", at: 0 } } },
     );
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     component.update();
     const activation = abilities.active();
     expect(activation?.isHolding).toBe(true);
@@ -86,7 +87,7 @@ describe("AbilityDriverComponent", () => {
 
     expect(activation?.state).toBe("cancelled");
     expect(abilities.active()).toBeNull();
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", true);
     component.update();
     expect(abilities.activeId()).toBe("dash");
   });
@@ -98,22 +99,22 @@ describe("AbilityDriverComponent", () => {
       { dash: { press: { send: "dash", buffer: 0.5 } } },
     );
     abilities.send("blocker");
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", true);
     component.update();
     expect(abilities.activeId()).toBe("blocker");
 
     entity.remove(AbilityDriverComponent);
     abilities.cancel();
     component.update();
-    input.fireActionUp("dash");
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", false);
+    setTestActionHeld(input, "dash", true);
     component.update();
 
     expect(abilities.active()).toBeNull();
 
     component.replace({ bindings: { dash: { press: { send: "dash" } } } });
-    input.fireActionUp("dash");
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", false);
+    setTestActionHeld(input, "dash", true);
     component.update();
 
     expect(abilities.active()).toBeNull();
@@ -126,7 +127,7 @@ describe("AbilityDriverComponent", () => {
       { attack: { hold: { send: "charge", at: 0 } } },
     );
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     component.update();
     const activation = abilities.active();
     expect(activation?.isHolding).toBe(true);
@@ -145,13 +146,13 @@ describe("AbilityDriverComponent", () => {
     );
 
     component.enabled = false;
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", true);
     component.update();
     expect(abilities.active()).toBeNull();
 
     component.enabled = true;
-    input.fireActionUp("dash");
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", false);
+    setTestActionHeld(input, "dash", true);
     component.update();
     expect(abilities.activeId()).toBe("dash");
   });
@@ -164,13 +165,13 @@ describe("AbilityDriverComponent", () => {
     );
 
     entity.setActive(false);
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", true);
     component.update();
     expect(abilities.active()).toBeNull();
 
     entity.setActive(true);
-    input.fireActionUp("dash");
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", false);
+    setTestActionHeld(input, "dash", true);
     component.update();
     expect(abilities.activeId()).toBe("dash");
   });

@@ -1,12 +1,7 @@
-import {
-  Component,
-  Engine,
-  Scene,
-  Transform,
-} from "@yagejs/core";
+import { Component, Engine, Scene, Transform } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
-import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
+import { UIPlugin, UISurface, UIPanel, Anchor } from "@yagejs/ui";
 import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, setupContainer } from "./shared.js";
 
@@ -76,7 +71,7 @@ class ConsumeScene extends Scene {
 
     // Default-consume UI panel covering the top-left quadrant.
     // Default `consumeInput: true` — clicks here MUST NOT fire `fire`.
-    this.spawn("ui-default").add(
+    const ui = this.spawn("ui-default").add(
       new UISurface({
         anchor: Anchor.TopLeft,
         offset: { x: 0, y: 0 },
@@ -85,6 +80,10 @@ class ConsumeScene extends Scene {
         background: { color: 0x1f2937, alpha: 0.95, radius: 0 },
       }),
     );
+    const scroll = ui.scrollView({ width: 100, height: 60 });
+    for (let i = 0; i < 4; i++) {
+      scroll.addElement(new UIPanel({ width: 100, height: 30 }));
+    }
 
     // Escape-hatch panel in the top-right. `consumeInput: false` makes the
     // panel transparent to the action map — clicks here SHOULD fire `fire`.
@@ -116,6 +115,7 @@ engine.use(
     actions: {
       fire: ["MouseLeft"],
       jump: ["Space"],
+      scrollDown: ["WheelDown"],
     },
   }),
 );

@@ -80,10 +80,13 @@ export type DriveResult<T = void> =
  */
 const InputManagerRuntimeKey = new ServiceKey<InputManagerLike>("inputManager");
 
-/** The two calls that press and release an action without advancing the clock. */
 interface InputManagerLike {
-  fireActionDown(name: string): void;
-  fireActionUp(name: string): void;
+  createActionSource(): InputActionSourceLike;
+}
+
+interface InputActionSourceLike {
+  setHeld(name: string, held: boolean): void;
+  releaseAll(): void;
 }
 
 interface DriveContextOptions {
@@ -92,6 +95,9 @@ interface DriveContextOptions {
   readonly warnings?: string[] | undefined;
   readonly startFrame?: number | undefined;
   readonly checkBudget?: (() => void) | undefined;
+  readonly onActionSourceCreated?:
+    | ((source: InputActionSourceLike) => void)
+    | undefined;
 }
 
 interface RunDriveOptions {
@@ -130,6 +136,14 @@ export function createDriveContext(
   const warnings = opts.warnings ?? [];
   const startFrame = opts.startFrame ?? time.getFrame();
   const checkBudget = opts.checkBudget ?? ((): void => undefined);
+  let actionSource: InputActionSourceLike | undefined;
+  const actions = (call: string): InputActionSourceLike => {
+    if (!actionSource) {
+      actionSource = requireActions(engine, call).createActionSource();
+      opts.onActionSourceCreated?.(actionSource);
+    }
+    return actionSource;
+  };
 
   const waitForAnimationFrame = (): Promise<void> =>
     new Promise((resolve) => {
@@ -244,14 +258,18 @@ export function createDriveContext(
       raw.clearAll();
     },
     pressAction: (name) => {
-      requireActions(engine, "pressAction").fireActionDown(name);
+      actions("pressAction").setHeld(name, true);
     },
     releaseAction: (name) => {
-      requireActions(engine, "releaseAction").fireActionUp(name);
+      actions("releaseAction").setHeld(name, false);
     },
     whileHolding: (codes, fn) =>
       driveWhileHolding(
-        { keyDown, keyUp, heldKeys: () => engine.inspector.getInputState().keys },
+        {
+          keyDown,
+          keyUp,
+          heldKeys: () => engine.inspector.getInputState().keys,
+        },
         codes,
         fn,
       ),
@@ -262,12 +280,12 @@ export function createDriveContext(
     // pulse per frame, so hold duration and the release edge read as they do
     // for a player holding the key.
     fireAction: async (name, frames = 1) => {
-      const manager = requireActions(engine, "fireAction");
-      manager.fireActionDown(name);
+      const source = actions("fireAction");
+      source.setHeld(name, true);
       try {
         await advance(frames);
       } finally {
-        manager.fireActionUp(name);
+        source.setHeld(name, false);
       }
     },
   };
@@ -329,6 +347,7 @@ export async function runDrive<T = void>(
   let error: string | undefined;
   let timedOut = false;
   let value: T | undefined;
+  let actionSource: InputActionSourceLike | undefined;
 
   try {
     value = await drive(
@@ -338,6 +357,9 @@ export async function runDrive<T = void>(
         warnings,
         startFrame,
         checkBudget,
+        onActionSourceCreated: (source) => {
+          actionSource = source;
+        },
       }),
     );
   } catch (thrown) {
@@ -346,6 +368,7 @@ export async function runDrive<T = void>(
   }
 
   const inputState = engine.inspector.getInputState();
+  actionSource?.releaseAll();
   const state: DriveState = {
     keys: inputState.keys,
     actions: inputState.actions,

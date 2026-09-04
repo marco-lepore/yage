@@ -602,35 +602,48 @@ describe("DialogueController — zero-config pointer input drives choices", () =
    *  the controller's default binding has a device to bind to. */
   function fakeInput() {
     let pointer = { x: -1, y: -1 };
-    const downHandlers = new Set<
-      (info: { button: number; id: number }) => void
-    >();
+    let pressed = false;
+    let pointerPressReads = 0;
     const fake = {
       isJustPressed: () => false,
       isPressed: () => false,
       isHeldFor: () => false,
-      onPointerDown: (fn: (info: { button: number; id: number }) => void) => {
-        downHandlers.add(fn);
-        return () => downHandlers.delete(fn);
+      getPointerPresses: () => {
+        pointerPressReads++;
+        return pressed
+          ? [
+              {
+                id: 1,
+                generation: 1,
+                screenPos: pointer,
+                worldPos: pointer,
+                type: "mouse",
+                isPrimary: true,
+                buttons: new Set([0]),
+                isDown: true,
+                button: 0,
+                consumed: false,
+              },
+            ]
+          : [];
       },
-      isPointerConsumed: () => false,
       getPointerScreenPosition: () => pointer,
       getPointerPosition: () => pointer,
       getActionNames: () => ["interact", "move-up", "move-down"],
     };
     return {
       manager: fake as unknown as InputManager,
-      /** Number of live onPointerDown subscriptions. */
-      get subscriptions() {
-        return downHandlers.size;
+      get pointerPressReads() {
+        return pointerPressReads;
       },
       move: (x: number, y: number) => {
         pointer = { x, y };
       },
       click: (x: number, y: number) => {
         pointer = { x, y };
-        for (const fn of downHandlers) fn({ button: 0, id: 1 });
+        pressed = true;
       },
+      clearFrame: () => (pressed = false),
     };
   }
 
@@ -724,16 +737,15 @@ describe("DialogueController — zero-config pointer input drives choices", () =
     expect(controller.isActive()).toBe(false); // tap advanced past the only line
   });
 
-  it("input: null attaches no binding — no pointer subscription, host-driven advance still works", async () => {
+  it("input: null does not read pointer input; host-driven advance still works", async () => {
     const { host, controller, device } = mountZeroConfig(
       new StubChoices(),
       null,
     );
-    expect(device.subscriptions).toBe(0); // nothing listens to the device
-
     controller.play(SCRIPT);
     await flush();
     expect(() => controller.update(0.016)).not.toThrow(); // update still pumps
+    expect(device.pointerPressReads).toBe(0);
     controller.advance(); // the host drives the session itself
     await flush();
     expect(controller.isActive()).toBe(false);
@@ -751,8 +763,8 @@ describe("DialogueController — zero-config pointer input drives choices", () =
     await flush();
 
     controller.enabled = false;
-    expect(device.subscriptions).toBe(0);
     device.click(42, 42);
+    device.clearFrame();
     controller.enabled = true;
     controller.update(0.016);
     await flush();

@@ -59,6 +59,7 @@ function stubEngine(
   // exercised by the `state` tests below.
   const heldKeys = new Set<string>();
   const heldActions = new Set<string>();
+  let releasedActionSources = 0;
 
   const engine = {
     inspector: {
@@ -104,14 +105,21 @@ function stubEngine(
         if (key.id === "inputManager") {
           return opts.actions === true
             ? {
-                fireActionDown: (name: string) => {
-                  heldActions.add(name);
-                  record("actionDown")(name);
-                },
-                fireActionUp: (name: string) => {
-                  heldActions.delete(name);
-                  record("actionUp")(name);
-                },
+                createActionSource: () => ({
+                  setHeld: (name: string, held: boolean) => {
+                    if (held) {
+                      heldActions.add(name);
+                      record("actionDown")(name);
+                    } else {
+                      heldActions.delete(name);
+                      record("actionUp")(name);
+                    }
+                  },
+                  releaseAll: () => {
+                    releasedActionSources++;
+                    heldActions.clear();
+                  },
+                }),
               }
             : undefined;
         }
@@ -120,7 +128,12 @@ function stubEngine(
     },
   };
 
-  return { calls, engine: engine as unknown as Engine, stepAsyncCalls };
+  return {
+    calls,
+    engine: engine as unknown as Engine,
+    releasedActionSources: () => releasedActionSources,
+    stepAsyncCalls,
+  };
 }
 
 /**
@@ -612,6 +625,28 @@ describe("the input facade", () => {
     });
     expect(calls).toEqual(["actionDown(aim)", "actionUp(aim)"]);
     expect(result.framesUsed).toBe(0);
+  });
+
+  it("releases its action source after recording the final state", async () => {
+    const { engine, releasedActionSources } = stubEngine({ actions: true });
+    const result = await runDrive(engine, SCENE, {}, (ctx) => {
+      ctx.input.pressAction("aim");
+    });
+    expect(result.state.actions).toEqual(["aim"]);
+    expect(engine.inspector.getInputState().actions).toEqual([]);
+    expect(releasedActionSources()).toBe(1);
+  });
+
+  it("releases its action source after a failed drive", async () => {
+    const { engine, releasedActionSources } = stubEngine({ actions: true });
+    const result = await runDrive(engine, SCENE, {}, (ctx) => {
+      ctx.input.pressAction("aim");
+      throw new Error("drive failed");
+    });
+    expect(result.ok).toBe(false);
+    expect(result.state.actions).toEqual(["aim"]);
+    expect(engine.inspector.getInputState().actions).toEqual([]);
+    expect(releasedActionSources()).toBe(1);
   });
 
   it("says which plugin is missing when a game has no input package", async () => {

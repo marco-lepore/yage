@@ -90,10 +90,7 @@ export class InputPlugin implements Plugin {
 
     const preventSet = new Set(this.config.preventDefaultKeys ?? []);
 
-    // Keyboard listeners. DOM events enqueue onto the input manager's buffer
-    // and apply at the next `Phase.EarlyUpdate` drain — so any listener that
-    // wants to claim the event (`consumePointer`, hit-test fallback, etc.) has
-    // a chance to run before action-map edges fire.
+    // DOM input is applied at the next `Phase.EarlyUpdate` drain.
     const onKeyDown = (e: Event): void => {
       const ke = e as KeyboardEvent;
       if (ke.repeat) return;
@@ -153,13 +150,11 @@ export class InputPlugin implements Plugin {
       const pe = e as PointerEvent;
       this.manager._enqueuePointerCancel(pe.pointerId);
     };
-    // `pointerleave` covers the hover lifecycle for pen / touch pointers that
-    // never receive a `pointerdown` (a stylus floating over the tablet, then
-    // pulled away). Without this, the manager would accumulate undead entries
-    // in `getPointers()` for every hover session. Mouse pointers ignore leave
-    // by design — `_applyPointerCancel` skips removal for `type === "mouse"`.
+    // Pen and touch leave ends an active or hover pointer. Mouse leave does not
+    // end a drag because the window listeners still deliver its later release.
     const onPointerLeave = (e: Event): void => {
       const pe = e as PointerEvent;
+      if (pe.pointerType !== "touch" && pe.pointerType !== "pen") return;
       this.manager._enqueuePointerCancel(pe.pointerId);
     };
 
@@ -184,7 +179,15 @@ export class InputPlugin implements Plugin {
       const we = e as WheelEvent;
       if (preventDefaultWheel) we.preventDefault();
       const dy = wheelInvertY ? -we.deltaY : we.deltaY;
-      this.manager._enqueueWheel(we.deltaX, dy);
+      let cssX = we.clientX;
+      let cssY = we.clientY;
+      if (coordinateElement) {
+        const rect = coordinateElement.getBoundingClientRect();
+        cssX -= rect.left;
+        cssY -= rect.top;
+      }
+      const mapped = mapPointer(cssX, cssY);
+      this.manager._enqueueWheel(we.deltaX, dy, mapped.x, mapped.y);
     };
     pointerTarget.addEventListener(
       "wheel",
@@ -224,15 +227,18 @@ export class InputPlugin implements Plugin {
         ),
     );
 
-    // When the tab hides, `navigator.getGamepads()` returns stale data and a
-    // touch held at the moment of hide may never receive its `pointerup`
-    // (Android notification shade, iOS app switcher). Force-release both so
-    // they don't appear stuck on return.
+    // A hidden or blurred page can miss the matching release events.
+    const releasePhysicalInput = (): void => {
+      this.manager._releaseAllPhysicalState();
+    };
+    window.addEventListener("blur", releasePhysicalInput);
+    this.cleanupFns.push(() =>
+      window.removeEventListener("blur", releasePhysicalInput),
+    );
     if (typeof document !== "undefined") {
       const onVisibilityChange = (): void => {
         if (document.visibilityState === "hidden") {
-          this.manager._releaseAllGamepadState();
-          this.manager.clearPointerButtons();
+          releasePhysicalInput();
         }
       };
       document.addEventListener("visibilitychange", onVisibilityChange);

@@ -478,6 +478,7 @@ describe("InputPlugin", () => {
         isPrimary: true,
       }),
     );
+    manager._drainInputQueue();
 
     const pointer = manager.getPointer(42);
     expect(pointer?.type).toBe("touch");
@@ -533,6 +534,7 @@ describe("InputPlugin", () => {
         clientY: 300,
       }),
     );
+    manager._drainInputQueue();
 
     const all = manager.getPointers();
     expect(all.length).toBe(2);
@@ -555,6 +557,7 @@ describe("InputPlugin", () => {
         isPrimary: true,
       }),
     );
+    manager._drainInputQueue();
 
     expect(manager.getPointer(50)?.type).toBe("mouse");
   });
@@ -669,6 +672,8 @@ describe("InputPlugin", () => {
     plugin = new InputPlugin({ actions: { fire: ["MouseLeft"] } });
     plugin.install(context);
     const manager = context.resolve(InputManagerKey);
+    const terminals: number[] = [];
+    manager.onPointerUp((info) => terminals.push(info.id));
 
     document.dispatchEvent(
       new PointerEvent("pointerdown", {
@@ -695,6 +700,7 @@ describe("InputPlugin", () => {
 
       expect(manager.isPressed("fire")).toBe(false);
       expect(manager.getPointers()).toHaveLength(0);
+      expect(terminals).toEqual([7]);
     } finally {
       delete (document as unknown as { visibilityState?: unknown })
         .visibilityState;
@@ -706,6 +712,25 @@ describe("InputPlugin", () => {
         );
       }
     }
+  });
+
+  it("releases keyboard state and discards queued input on window blur", () => {
+    context = createContext();
+    plugin = new InputPlugin({ actions: { jump: ["Space"] } });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }));
+    manager._drainInputQueue();
+    expect(manager.isPressed("jump")).toBe(true);
+
+    window.dispatchEvent(new KeyboardEvent("keyup", { code: "Space" }));
+    window.dispatchEvent(new Event("blur"));
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }));
+    manager._drainInputQueue();
+
+    expect(manager.isPressed("jump")).toBe(true);
+    expect(manager.isJustReleased("jump")).toBe(true);
   });
 
   it("pointerleave on canvas removes a hovering touch / pen pointer", () => {
@@ -756,6 +781,42 @@ describe("InputPlugin", () => {
       }),
     );
     expect(manager.getPointer(1)).toBeDefined();
+  });
+
+  it("pointerleave does not release a mouse drag", () => {
+    context = createContext();
+    plugin = new InputPlugin({ actions: { fire: ["MouseLeft"] } });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    document.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        pointerId: 1,
+        pointerType: "mouse",
+        isPrimary: true,
+      }),
+    );
+    manager._drainInputQueue();
+    document.dispatchEvent(
+      new PointerEvent("pointerleave", {
+        pointerId: 1,
+        pointerType: "mouse",
+      }),
+    );
+    manager._drainInputQueue();
+    expect(manager.isPressed("fire")).toBe(true);
+
+    window.dispatchEvent(
+      new PointerEvent("pointerup", {
+        button: 0,
+        pointerId: 1,
+        pointerType: "mouse",
+        isPrimary: true,
+      }),
+    );
+    manager._drainInputQueue();
+    expect(manager.isPressed("fire")).toBe(false);
   });
 
   it("applies deadzones, triggerThreshold, and pollGamepads from config", () => {

@@ -8,14 +8,11 @@
  * attaches NO binding (`input: null` on the controller) and drives the
  * session from its own menu focus instead.
  *
- * YAGE input is non-consuming by design, so a click handled here still fires
- * any gameplay action bound to the same button — claiming pointers
- * (`InputManager.consumePointer`) is the game's policy, not the binding's.
- * The binding does honor claims made elsewhere: a click on a consumed pointer
- * (e.g. a tap owned by a touch overlay) is skipped.
+ * The binding reads unclaimed pointer presses from the current frame. A press
+ * claimed by UI or another pointer owner is skipped.
  */
 
-import type { InputManager } from "@yagejs/input";
+import type { InputManager, PointerPressInfo } from "@yagejs/input";
 import type { InventorySessionDriver } from "../core/session.js";
 
 export interface InventoryActions {
@@ -178,11 +175,6 @@ function justPressed(input: InputManager, actions: readonly string[]): boolean {
 export class PointerInputBinding implements InputBinding {
   private input: InputManager | undefined;
   private session: InventorySessionDriver | undefined;
-  // Explicit `| undefined` so `dispose()` can null it (exactOptionalPropertyTypes).
-  private unsub: (() => void) | undefined;
-  /** Pointer ids of the primary-button presses since the last poll. poll()
-   *  clears the list and registers one click unless every press was consumed. */
-  private readonly clickedPointers: number[] = [];
 
   // Explicit `| undefined` (not `?:`) so the ctor can assign the possibly-
   // undefined argument under `exactOptionalPropertyTypes`.
@@ -201,14 +193,8 @@ export class PointerInputBinding implements InputBinding {
   }
 
   bind(input: InputManager, session: InventorySessionDriver): void {
-    // Self-heal a re-bind: release the previous pointer subscription, which
-    // would otherwise leak past dispose() and keep driving the old session.
-    this.unsub?.();
     this.input = input;
     this.session = session;
-    this.unsub = input.onPointerDown((info) => {
-      if (info.button === 0) this.clickedPointers.push(info.id); // primary button / touch only
-    });
   }
 
   /** Pointer position in the slots presenter's coordinate space. */
@@ -218,11 +204,16 @@ export class PointerInputBinding implements InputBinding {
       : input.getPointerScreenPosition();
   }
 
+  private pressPoint(press: PointerPressInfo): { x: number; y: number } {
+    return this.targets?.slots?.pointerSpace === "world"
+      ? press.worldPos
+      : press.screenPos;
+  }
+
   poll(): void {
     const { input, session } = this;
     if (!input || !session) return;
     if (!session.isOpen()) {
-      this.clickedPointers.length = 0;
       this.wasMenuOpen = false;
       return;
     }
@@ -245,34 +236,29 @@ export class PointerInputBinding implements InputBinding {
     }
     this.wasMenuOpen = menuOpen;
 
-    // A pointer claimed elsewhere (`consumePointer` — e.g. a touch overlay
-    // that owns the tap) must not also click the panel. The consume mark
-    // persists until the pointer releases, so reading it at poll time is
-    // safe whatever order the down-listeners ran in. Presses are checked
-    // individually: a claimed tap must not shadow an unclaimed one landing
-    // the same frame.
-    const clicked = this.clickedPointers.some(
-      (id) => !input.isPointerConsumed(id),
-    );
-    this.clickedPointers.length = 0;
-    if (!clicked) return;
+    const click = input.getPointerPresses({ button: 0 })[0];
+    if (!click) return;
+    const clickPoint = this.pressPoint(click);
     if (menuOpen) {
-      const row = this.targets?.actionMenu?.actionAtPoint?.(p.x, p.y);
+      const row = this.targets?.actionMenu?.actionAtPoint?.(
+        clickPoint.x,
+        clickPoint.y,
+      );
       if (row !== undefined) session.confirmAction(row);
       else session.cancel(); // click off the menu dismisses it
     } else {
-      const slot = this.targets?.slots?.slotAtPoint?.(p.x, p.y);
+      const slot = this.targets?.slots?.slotAtPoint?.(
+        clickPoint.x,
+        clickPoint.y,
+      );
       if (slot !== undefined) session.confirmSlot(slot);
       // A click off the panel does nothing (keyboard nav still available).
     }
   }
 
   dispose(): void {
-    this.unsub?.();
-    this.unsub = undefined;
     this.input = undefined;
     this.session = undefined;
-    this.clickedPointers.length = 0;
     this.lastX = Number.NaN;
     this.lastY = Number.NaN;
     this.wasMenuOpen = false;

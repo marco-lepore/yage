@@ -29,7 +29,10 @@ optional peer (only the `./presenters` subpath needs it).
   `GraphicsStickView` / `GraphicsButtonView`, `VIRTUAL_CONTROLS_LAYER(S)`.
 
 ```ts
-import { VirtualControls, prefersTouchControls } from "@yagejs-addons/virtual-controls";
+import {
+  VirtualControls,
+  prefersTouchControls,
+} from "@yagejs-addons/virtual-controls";
 import { createControlsPresenter } from "@yagejs-addons/virtual-controls/presenters";
 ```
 
@@ -122,15 +125,16 @@ zone), then sticks; each pointer owns at most one control. Every claimed
 pointer is `consumePointer`ed BEFORE the frame's drain applies action edges,
 so **a touch on the overlay never fires `MouseLeft/…` gameplay actions** — an
 unclaimed touch passes through untouched. Pointers that land on `@yagejs/ui`
-surfaces are skipped (`hitTestUI` wins over control zones). While the scene
-`isPaused`, no NEW claims happen; in-flight releases still process.
+surfaces are skipped (`hitTestUI` wins over control zones). Scene pause does
+not gate device state; hide or disable the controls when a pause screen should
+stop new claims.
 
 Mirroring (all idempotent, per pointer event):
 
-- Button ↔ `setActionHeld(action, pressed)` — press/release edges,
+- Button ↔ an addon-owned `InputActionSource` — press/release edges,
   `isPressed`, `getHoldDuration`, `onAction(Released)` all behave like a
-  physical key (charge/hold mechanics work).
-- Stick → 4 digital actions via `setActionHeld` when deflection crosses
+  physical key. Another device can hold the same action independently.
+- Stick → 4 digital actions through the same source when deflection crosses
   `threshold` (0.5, releases at 0.75× — hysteresis); reads back through
   `getVector`/`getAxis`.
 - Stick → `fireGamepadAxis(leftX/leftY …)` (raw, PRE-deadZone), so
@@ -145,41 +149,48 @@ Mirroring (all idempotent, per pointer event):
   digital mirror; `getStick()` applies `InputConfig.deadzones.stick`, same
   as for physical pads.
 
-Action names are re-validated LIVE on every mirror (`InputManager.hasAction`
+Action names are re-validated on every mirror (`InputManager.hasAction`
 — the action map can be swapped at runtime): unknown names warn once and are
-skipped instead of throwing mid-gesture, and start working the moment they
-exist.
+skipped instead of throwing mid-gesture. They work on the next control state
+update after the action exists.
 
 ## Config surface
 
 ```ts
 new VirtualControls({
-  stick:  { // or sticks: [ … ] for twin-stick
-    id: "left",                    // default: side, else by position
-    mode: "floating",              // "fixed" | "floating" | "follow"
-    actions: ["left", "right", "up", "down"],  // L/R/U/D tuple (null skips a
-                                   //   direction); object form also accepted:
-                                   //   { left: "left", right: "right", … }
-    side: "left",                  // or "right": flips placement/zone/axes/id
-                                   //   defaults without hand-written geometry
-    threshold: 0.5, deadZone: 0.1,
-    axes: "left",                  // or "right" | false; defaults from side/position
-    radius: 66,                    // virtual px; default 11% of min(vw, vh)
-    placement: { left: 106, bottom: 106 },  // center, from edges (one h + one v)
-    zone: { x: 0, y: 0.3, width: 0.5, height: 0.7 },  // viewport FRACTIONS
+  stick: {
+    // or sticks: [ … ] for twin-stick
+    id: "left", // default: side, else by position
+    mode: "floating", // "fixed" | "floating" | "follow"
+    actions: ["left", "right", "up", "down"], // L/R/U/D tuple (null skips a
+    //   direction); object form also accepted:
+    //   { left: "left", right: "right", … }
+    side: "left", // or "right": flips placement/zone/axes/id
+    //   defaults without hand-written geometry
+    threshold: 0.5,
+    deadZone: 0.1,
+    axes: "left", // or "right" | false; defaults from side/position
+    radius: 66, // virtual px; default 11% of min(vw, vh)
+    placement: { left: 106, bottom: 106 }, // center, from edges (one h + one v)
+    zone: { x: 0, y: 0.3, width: 0.5, height: 0.7 }, // viewport FRACTIONS
   },
-  buttons: [{
-    id: "a", action: "jump", label: "A",   // label defaults to id.toUpperCase()
-    radius: 39, placement: { right: 55, bottom: 55 },  // omit both → auto cluster
-    pressOnEnter: false,           // arcade thumb-roll: press on slide-in
-    releaseOnLeave: true,          // release past 1.15 × radius
-  }],
-  cluster: "bottom-left",          // corner keyword keeps the size-derived inset
-                                   //   (left-handed layouts); or pin exactly:
-                                   //   { right: 140, bottom: 140 }
+  buttons: [
+    {
+      id: "a",
+      action: "jump",
+      label: "A", // label defaults to id.toUpperCase()
+      radius: 39,
+      placement: { right: 55, bottom: 55 }, // omit both → auto cluster
+      pressOnEnter: false, // arcade thumb-roll: press on slide-in
+      releaseOnLeave: true, // release past 1.15 × radius
+    },
+  ],
+  cluster: "bottom-left", // corner keyword keeps the size-derived inset
+  //   (left-handed layouts); or pin exactly:
+  //   { right: 140, bottom: 140 }
   visible: "auto",
-  presenter: createControlsPresenter({ buttonPressedColor: 0xf472b6 }),  // Partial<ControlsTheme>; null = intentionally invisible (omitting warns)
-  viewport: { x: 0, y: 0, width: 800, height: 600 },  // override; default = the adapter's visibleVirtualRect, tracked per frame
+  presenter: createControlsPresenter({ buttonPressedColor: 0xf472b6 }), // Partial<ControlsTheme>; null = intentionally invisible (omitting warns)
+  viewport: { x: 0, y: 0, width: 800, height: 600 }, // override; default = the adapter's visibleVirtualRect, tracked per frame
 });
 ```
 
@@ -187,8 +198,9 @@ Stick modes: `"fixed"` (base pinned; grab circle = 1.5×radius; deflects
 immediately), `"floating"` (base recenters under the touch anywhere in the
 zone; returns to anchor on release), `"follow"` (floating + base drags along
 past full deflection). Config errors (duplicate ids, malformed placements,
-both `stick` and `sticks`, out-of-range deadZone/threshold) throw at
-construction.
+both `stick` and `sticks`, non-finite geometry, non-positive radii or viewport
+sizes, and out-of-range deadZone/threshold) throw at construction or at the
+`setViewport` call.
 
 ## Events (entity → scene bubble)
 
@@ -208,11 +220,15 @@ stays in the model (views only draw):
 ```ts
 interface ControlsPresenter {
   mount(scene: Scene): void;
-  createStickView(stick: VirtualStick): ControlView;   // poll stick.basePos/knobPos/active/layout
+  createStickView(stick: VirtualStick): ControlView; // poll stick.basePos/knobPos/active/layout
   createButtonView(button: VirtualButton): ControlView; // poll button.pressed/visible/enabled/layout/label
   dispose(): void;
 }
-interface ControlView { update(dt): void; setVisible(v): void; dispose(): void; }
+interface ControlView {
+  update(dt): void;
+  setVisible(v): void;
+  dispose(): void;
+}
 ```
 
 Pass `presenter: null` for intentionally invisible controls (a DOM overlay or

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { InputManager } from "@yagejs/input";
+import type {
+  InputManager,
+  PointerPressInfo,
+  PointerPressOptions,
+} from "@yagejs/input";
 import type { InventorySessionDriver, NavDirection } from "../core/session.js";
 import {
   CompositeInputBinding,
@@ -14,20 +18,41 @@ class FakeInput {
   pressed = new Set<string>();
   pointer = { x: 0, y: 0 };
   consumed = new Set<number>();
-  downHandlers: ((info: { button: number; id: number }) => void)[] = [];
-  unsubs = 0;
+  presses: Array<{ button: number; id: number }> = [];
 
   isJustPressed(action: string): boolean {
     return this.pressed.has(action);
   }
-  onPointerDown(fn: (info: { button: number; id: number }) => void): () => void {
-    this.downHandlers.push(fn);
-    return () => {
-      this.unsubs++;
-    };
-  }
-  isPointerConsumed(id: number): boolean {
-    return this.consumed.has(id);
+  getPointerPresses(
+    options: PointerPressOptions = {},
+  ): readonly PointerPressInfo[] {
+    return this.presses
+      .filter(({ button, id }) => {
+        if (options.button !== undefined && button !== options.button) {
+          return false;
+        }
+        const consumed = this.consumed.has(id);
+        return options.consumed === "include"
+          ? true
+          : options.consumed === "only"
+            ? consumed
+            : !consumed;
+      })
+      .map(
+        ({ button, id }) =>
+          ({
+            id,
+            generation: 1,
+            screenPos: this.pointer,
+            worldPos: { x: this.pointer.x + 1000, y: this.pointer.y + 1000 },
+            type: "mouse",
+            isPrimary: true,
+            buttons: new Set([button]),
+            isDown: true,
+            button,
+            consumed: this.consumed.has(id),
+          }) as unknown as PointerPressInfo,
+      );
   }
   getPointerScreenPosition(): { x: number; y: number } {
     return this.pointer;
@@ -40,7 +65,10 @@ class FakeInput {
     return this as unknown as InputManager;
   }
   click(id = 1): void {
-    for (const fn of this.downHandlers) fn({ button: 0, id });
+    this.presses.push({ button: 0, id });
+  }
+  clearFrame(): void {
+    this.presses.length = 0;
   }
 }
 
@@ -106,7 +134,13 @@ describe("KeyboardInputBinding", () => {
     binding.poll();
     input.pressed = new Set(["sort"]);
     binding.poll();
-    expect(session.calls).toEqual(["move:down", "move:right", "confirm", "cancel", "sort"]);
+    expect(session.calls).toEqual([
+      "move:down",
+      "move:right",
+      "confirm",
+      "cancel",
+      "sort",
+    ]);
   });
 
   it("polls only the toggle while the session is closed", () => {
@@ -128,7 +162,13 @@ describe("KeyboardInputBinding", () => {
   it("exposes its polled action names for host validation", () => {
     const binding = new KeyboardInputBinding(INVENTORY_ACTIONS);
     expect(binding.actionNames()).toEqual(
-      expect.arrayContaining(["move-up", "interact", "cancel", "sort", "inventory"]),
+      expect.arrayContaining([
+        "move-up",
+        "interact",
+        "cancel",
+        "sort",
+        "inventory",
+      ]),
     );
   });
 });
@@ -136,10 +176,12 @@ describe("KeyboardInputBinding", () => {
 describe("PointerInputBinding", () => {
   const targets = {
     slots: {
-      slotAtPoint: (x: number) => (x >= 100 && x < 200 ? Math.floor((x - 100) / 50) : undefined),
+      slotAtPoint: (x: number) =>
+        x >= 100 && x < 200 ? Math.floor((x - 100) / 50) : undefined,
     },
     actionMenu: {
-      actionAtPoint: (_x: number, y: number) => (y >= 300 && y < 340 ? Math.floor((y - 300) / 20) : undefined),
+      actionAtPoint: (_x: number, y: number) =>
+        y >= 300 && y < 340 ? Math.floor((y - 300) / 20) : undefined,
     },
   };
 
@@ -239,6 +281,7 @@ describe("PointerInputBinding", () => {
     input.click();
     binding.poll();
     expect(session.calls).toEqual([]);
+    input.clearFrame();
     session.open = true;
     binding.poll(); // the closed-time click must not fire now
     expect(session.calls).toEqual(["select:1"]);
@@ -260,15 +303,21 @@ describe("PointerInputBinding", () => {
     expect(session.calls).toEqual(["select:7"]);
   });
 
-  it("releases its pointer subscription on dispose and re-bind", () => {
+  it("re-binding and dispose clear the binding's device references", () => {
     const input = new FakeInput();
+    const replacement = new FakeInput();
     const session = new FakeSession();
     const binding = new PointerInputBinding(targets);
     binding.bind(input.asManager(), session.asSession());
-    binding.bind(input.asManager(), session.asSession()); // re-bind self-heals
-    expect(input.unsubs).toBe(1);
+    binding.bind(replacement.asManager(), session.asSession());
+    input.click();
+    binding.poll();
+    expect(session.calls).toEqual([]);
+
     binding.dispose();
-    expect(input.unsubs).toBe(2);
+    replacement.click();
+    binding.poll();
+    expect(session.calls).toEqual([]);
   });
 });
 
@@ -285,10 +334,12 @@ describe("inventoryControls / CompositeInputBinding", () => {
     input.pointer = { x: 5, y: 5 };
     binding.poll();
     expect(session.calls).toEqual(["confirm", "select:3"]);
-    expect(binding.actionNames?.()).toEqual(expect.arrayContaining(["interact", "inventory"]));
+    expect(binding.actionNames?.()).toEqual(
+      expect.arrayContaining(["interact", "inventory"]),
+    );
   });
 
-  it("composite disposes every child", () => {
+  it("composite dispose detaches every child", () => {
     const input = new FakeInput();
     const session = new FakeSession();
     const a = new PointerInputBinding();
@@ -296,6 +347,8 @@ describe("inventoryControls / CompositeInputBinding", () => {
     const composite = new CompositeInputBinding([a, b]);
     composite.bind(input.asManager(), session.asSession());
     composite.dispose();
-    expect(input.unsubs).toBe(2);
+    input.click();
+    composite.poll();
+    expect(session.calls).toEqual([]);
   });
 });

@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import { InputManager } from "./InputManager.js";
 import { InputPlugin } from "./InputPlugin.js";
 import { InputManagerKey } from "./types.js";
+import { setTestActionHeld } from "./test-action-source.js";
 
 class GameScene extends Scene {
   readonly name = "game";
@@ -62,7 +63,7 @@ describe("hold durations on a scene clock", () => {
     const clock = game.tryResolveScoped(SceneTimeKey);
     if (!clock) throw new Error("Expected the engine to register a SceneTime");
 
-    input.fireActionDown("charge");
+    setTestActionHeld(input, "charge", true);
     advanceFrames(engine, 6);
     const beforePause = input.getHoldDuration("charge", { clock });
     expect(beforePause).toBeGreaterThan(0);
@@ -91,7 +92,7 @@ describe("hold durations on a scene clock", () => {
     input.setActionMap({ charge: ["Space"] });
     input._registerClock(clock);
 
-    input.fireActionDown("charge");
+    setTestActionHeld(input, "charge", true);
     clock._tick(0.3);
     input._advanceTime(300);
 
@@ -248,13 +249,13 @@ describe("hold durations on a scene clock", () => {
 
   it("keeps a synthetic hold on scene time", () => {
     const { input, clock } = setup();
-    input.fireActionDown("charge");
+    setTestActionHeld(input, "charge", true);
 
     input._advanceTime(500);
     clock.elapsed = 0.2;
     expect(input.getHoldDuration("charge", { clock })).toBe(0.2);
 
-    input.fireActionUp("charge");
+    setTestActionHeld(input, "charge", false);
     expect(input.getReleaseDuration("charge", { clock })).toBe(0.2);
     expect(input.getReleaseDuration("charge")).toBe(0.5);
   });
@@ -300,7 +301,7 @@ describe("hold-duration clocks under fixed steps", () => {
     // The freeze ages on real time, so the raw clock reaches the threshold
     // during it and the scene clock only starts counting once it lifts.
     clock.freezeFor(0.1);
-    input.fireActionDown("charge");
+    setTestActionHeld(input, "charge", true);
     for (let i = 0; i < 15; i++) engine.loop.tick(16);
 
     expect(raw.readings.filter(Boolean).length).toBe(1);

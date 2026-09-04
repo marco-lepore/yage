@@ -9,6 +9,7 @@ import type {
   AbilityFireContext,
   AbilityGestureContext,
 } from "./AbilityDriver.js";
+import { setTestActionHeld } from "./test-action-source.js";
 
 function timeline(id: string, duration = 0.2): AbilityDef {
   return { id, duration, timeline: [] };
@@ -54,7 +55,7 @@ describe("AbilityDriver", () => {
       bindings: { dash: { press: { send: "dash" } } },
     });
 
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", true);
     driver.update();
 
     expect(abilities.activeId()).toBe("dash");
@@ -74,10 +75,10 @@ describe("AbilityDriver", () => {
       },
     );
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     driver.update();
     advanceInput(0.5);
-    input.fireActionUp("attack");
+    setTestActionHeld(input, "attack", false);
     driver.update();
 
     expect(abilities.activeId()).toBe("tap");
@@ -98,13 +99,13 @@ describe("AbilityDriver", () => {
     );
     const send = vi.spyOn(abilities, "send");
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     driver.update();
     advanceInput(0.5);
     driver.update();
     expect(abilities.activeId()).toBe("charge");
 
-    input.fireActionUp("attack");
+    setTestActionHeld(input, "attack", false);
     driver.update();
 
     expect(abilities.isActive()).toBe(false);
@@ -123,17 +124,17 @@ describe("AbilityDriver", () => {
       },
     );
 
-    input.fireActionDown("quick");
+    setTestActionHeld(input, "quick", true);
     driver.update();
     advanceInput(0.2);
-    input.fireActionUp("quick");
+    setTestActionHeld(input, "quick", false);
     driver.update();
     expect(abilities.activeId()).toBe(null);
 
-    input.fireActionDown("slow");
+    setTestActionHeld(input, "slow", true);
     driver.update();
     advanceInput(0.2);
-    input.fireActionUp("slow");
+    setTestActionHeld(input, "slow", false);
     driver.update();
     expect(abilities.activeId()).toBe("slow");
   });
@@ -146,7 +147,7 @@ describe("AbilityDriver", () => {
       },
     });
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     driver.update();
     advanceInput(0.1);
     driver.update();
@@ -168,12 +169,12 @@ describe("AbilityDriver", () => {
       },
     );
 
-    input.fireActionDown("guard");
+    setTestActionHeld(input, "guard", true);
     driver.update();
     expect(abilities.activeId()).toBe("guard");
 
     advanceInput(0.1);
-    input.fireActionUp("guard");
+    setTestActionHeld(input, "guard", false);
     driver.update();
 
     expect(abilities.activeId()).toBe("parry");
@@ -192,7 +193,7 @@ describe("AbilityDriver", () => {
     );
     abilities.send("blocker");
 
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", true);
     driver.update();
     expect(abilities.activeId()).toBe("blocker");
 
@@ -210,7 +211,7 @@ describe("AbilityDriver", () => {
     });
     abilities.send("blocker");
 
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", true);
     driver.update();
 
     expect(abilities.activeId()).toBe("blocker");
@@ -227,7 +228,7 @@ describe("AbilityDriver", () => {
     });
     abilities.send("blocker");
 
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", true);
     driver.update();
 
     expect(abilities.activeId()).toBe("dash");
@@ -239,7 +240,7 @@ describe("AbilityDriver", () => {
       { bindings: { dash: { press: { send: "dash", buffer: 0.2 } } } },
     );
     abilities.send("blocker");
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", true);
     driver.update();
 
     advanceInput(0.21);
@@ -262,10 +263,10 @@ describe("AbilityDriver", () => {
     );
     abilities.send("blocker");
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     driver.update();
     advanceInput(0.4);
-    input.fireActionUp("attack");
+    setTestActionHeld(input, "attack", false);
     driver.update();
 
     advanceInput(0.19);
@@ -287,7 +288,7 @@ describe("AbilityDriver", () => {
     );
     abilities.send("blocker");
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     driver.update();
     advanceInput(0.2);
     driver.update();
@@ -311,9 +312,9 @@ describe("AbilityDriver", () => {
     );
     abilities.send("blocker");
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     driver.update();
-    input.fireActionUp("attack");
+    setTestActionHeld(input, "attack", false);
     driver.update();
     advanceInput(0.21);
     driver.update();
@@ -335,7 +336,7 @@ describe("AbilityDriver", () => {
     );
     abilities.send("blocker");
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     driver.update();
     advanceInput(0.1);
     driver.update();
@@ -360,13 +361,13 @@ describe("AbilityDriver", () => {
     abilities.send("blocker");
     const send = vi.spyOn(abilities, "send");
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     driver.update();
     advanceInput(0.1);
     driver.update();
 
     abilities.cancel();
-    input.fireActionUp("attack");
+    setTestActionHeld(input, "attack", false);
     driver.update();
 
     expect(send.mock.calls.map(([intent]) => intent)).not.toContain("charge");
@@ -381,7 +382,7 @@ describe("AbilityDriver", () => {
       .mockReturnValueOnce({ ok: false, reason: "busy" })
       .mockImplementation(realSend);
 
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", true);
     driver.update();
     expect(abilities.activeId()).toBe(null);
 
@@ -406,7 +407,7 @@ describe("AbilityDriver", () => {
       },
     );
     abilities.send("blocker");
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", true);
     driver.update();
 
     value = 2;
@@ -452,13 +453,13 @@ describe("AbilityDriver", () => {
     );
     const send = vi.spyOn(abilities, "send");
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     driver.update();
     advanceInput(0.5);
     driver.update();
     processes._tick(0.2, undefined, "fixed");
     advanceInput(0.3);
-    input.fireActionUp("attack");
+    setTestActionHeld(input, "attack", false);
     driver.update();
 
     expect(abilities.active()?.phase).toBe("kick");
@@ -503,7 +504,7 @@ describe("AbilityDriver", () => {
       },
     );
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     driver.update();
     advanceInput(0.1);
     driver.update();
@@ -512,7 +513,7 @@ describe("AbilityDriver", () => {
     expect(chargeActivation?.state).toBe("cancelled");
 
     advanceInput(0.8);
-    input.fireActionUp("attack");
+    setTestActionHeld(input, "attack", false);
     driver.update();
     expect(abilities.activeId()).toBe("blocker");
 
@@ -552,12 +553,12 @@ describe("AbilityDriver", () => {
       },
     );
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     driver.update();
     advanceInput(0.1);
     driver.update();
     abilities.send("blocker");
-    input.fireActionUp("attack");
+    setTestActionHeld(input, "attack", false);
     driver.update();
 
     advanceInput(0.21);
@@ -599,7 +600,7 @@ describe("AbilityDriver", () => {
     );
     const send = vi.spyOn(abilities, "send");
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     driver.update();
     advanceInput(0.1);
     driver.update();
@@ -608,7 +609,7 @@ describe("AbilityDriver", () => {
 
     abilities.cancel();
     driver.update();
-    input.fireActionUp("attack");
+    setTestActionHeld(input, "attack", false);
     driver.update();
 
     expect(abilities.activeId()).toBe(null);
@@ -645,14 +646,14 @@ describe("AbilityDriver", () => {
     );
     const send = vi.spyOn(abilities, "send");
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     driver.update();
     advanceInput(0.1);
     driver.update();
     processes._tick(0.2, undefined, "fixed");
     expect(abilities.activeId()).toBe(null);
 
-    input.fireActionUp("attack");
+    setTestActionHeld(input, "attack", false);
     driver.update();
     expect(send.mock.calls.map(([intent]) => intent)).toEqual(["charge"]);
   });
@@ -669,7 +670,7 @@ describe("AbilityDriver", () => {
       },
     );
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     driver.update();
     advanceInput(0.1);
     driver.update();
@@ -702,7 +703,7 @@ describe("AbilityDriver", () => {
       },
     );
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     driver.update();
     advanceInput(0.1);
     driver.update();
@@ -723,7 +724,7 @@ describe("AbilityDriver", () => {
       },
     );
     abilities.send("blocker");
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     abilities.cancel();
     driver.update();
     advanceInput(0.1);
@@ -744,7 +745,7 @@ describe("AbilityDriver", () => {
       },
     );
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     driver.update();
     abilities.send("blocker");
     advanceInput(0.1);
@@ -758,14 +759,14 @@ describe("AbilityDriver", () => {
       bindings: { guard: { press: { send: "guard" } } },
     });
 
-    input.fireActionDown("guard");
+    setTestActionHeld(input, "guard", true);
     driver.update();
     const first = abilities.active();
     abilities.cancel();
     const second = abilities.send("guard");
     expect(second.ok).toBe(true);
 
-    input.fireActionUp("guard");
+    setTestActionHeld(input, "guard", false);
     driver.update();
 
     expect(first?.state).toBe("cancelled");
@@ -799,7 +800,7 @@ describe("AbilityDriver", () => {
       .mockReturnValueOnce(false)
       .mockImplementation(realCanSend);
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     driver.update();
     advanceInput(0.1);
     driver.update();
@@ -833,7 +834,7 @@ describe("AbilityDriver", () => {
       },
     });
 
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", true);
     driver.update();
     expect(calls).toEqual(["gate"]);
 
@@ -872,9 +873,9 @@ describe("AbilityDriver", () => {
     );
 
     advanceInput(0.1);
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     advanceInput(0.2);
-    input.fireActionUp("attack");
+    setTestActionHeld(input, "attack", false);
     driver.update();
 
     expect(heldFor).toBeCloseTo(0.2);
@@ -916,7 +917,7 @@ describe("AbilityDriver", () => {
     });
     driver.dispose();
 
-    input.fireActionDown("dash");
+    setTestActionHeld(input, "dash", true);
     driver.update();
 
     expect(abilities.activeId()).toBe(null);
@@ -927,7 +928,7 @@ describe("AbilityDriver", () => {
       bindings: { attack: { hold: { send: "charge", at: 0 } } },
     });
 
-    input.fireActionDown("attack");
+    setTestActionHeld(input, "attack", true);
     driver.update();
     const activation = abilities.active();
     expect(activation?.isHolding).toBe(true);

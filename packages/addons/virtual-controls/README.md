@@ -12,9 +12,9 @@ gameplay code reads ordinary actions (`isPressed`, `getVector`,
 - **No input leaks** — every touch a control claims is consumed
   (`consumePointer`), so joystick drags and button taps never fire gameplay
   `MouseLeft` actions or tap-to-move handlers underneath.
-- **Real action semantics** — buttons hold actions via the synthetic action
-  API (`setActionHeld`), so press/release edges, hold durations, and charge
-  mechanics behave exactly like a physical key; the stick also feeds
+- **Real action semantics** — the overlay owns its sustained action source, so
+  press/release edges, hold durations, and charge mechanics behave like a
+  physical key without releasing another device's hold; the stick also feeds
   `getStick("left")` when no physical gamepad is active.
 - **Customizable to fully custom** — placements, zones, stick modes
   (fixed / floating / follow), thresholds, a flat theme for the built-in
@@ -41,8 +41,12 @@ import { createControlsPresenter } from "@yagejs-addons/virtual-controls/present
 engine.use(
   new InputPlugin({
     actions: {
-      left: ["KeyA"], right: ["KeyD"], up: ["KeyW"], down: ["KeyS"],
-      jump: ["Space"], dash: ["ShiftLeft"],
+      left: ["KeyA"],
+      right: ["KeyD"],
+      up: ["KeyW"],
+      down: ["KeyS"],
+      jump: ["Space"],
+      dash: ["ShiftLeft"],
     },
   }),
 );

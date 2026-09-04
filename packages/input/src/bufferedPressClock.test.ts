@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { InputManager } from "./InputManager.js";
 import { InputPlugin } from "./InputPlugin.js";
 import { InputManagerKey } from "./types.js";
+import { setTestActionHeld } from "./test-action-source.js";
 
 class GameScene extends Scene {
   readonly name = "game";
@@ -36,7 +37,7 @@ describe("buffered press on a scene clock", () => {
     const clock = game.tryResolveScoped(SceneTimeKey);
     if (!clock) throw new Error("Expected the engine to register a SceneTime");
 
-    input.fireActionDown("jump");
+    setTestActionHeld(input, "jump", true);
     advanceFrames(engine, 1);
 
     // Half a second of pause menu. The input clock keeps running because
@@ -51,8 +52,8 @@ describe("buffered press on a scene clock", () => {
 
     // Back in the game, the same window expires on the scene's own time.
     await engine.scenes.pop();
-    input.fireActionUp("jump");
-    input.fireActionDown("jump");
+    setTestActionHeld(input, "jump", false);
+    setTestActionHeld(input, "jump", true);
     advanceFrames(engine, 10);
 
     expect(input.consumeBufferedPress("jump", 0.12, { clock })).toBe(false);
@@ -67,7 +68,7 @@ describe("buffered press on a scene clock", () => {
     input._registerClock(clock);
 
     clock.freezeFor(0.5);
-    input.fireActionDown("jump");
+    setTestActionHeld(input, "jump", true);
 
     // A frozen scene still ticks — it just accrues nothing.
     clock._tick(0.2);

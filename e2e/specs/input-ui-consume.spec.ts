@@ -35,11 +35,12 @@ test.describe("Input UI auto-consume fixture", () => {
     // frame runs InputPollSystem and drains the buffer.
     await page.dispatchEvent("canvas", "pointerdown", { button: 0 });
     const queued = await probe(page);
-    expect(queued?.pointerDowns).toBe(1); // listener fires sync at enqueue
+    expect(queued?.pointerDowns).toBe(0); // listener runs during drain
     expect(queued?.fireDowns).toBe(0); // action edge deferred
 
     await stepFrames(page, 1);
     const drained = await probe(page);
+    expect(drained?.pointerDowns).toBe(1);
     expect(drained?.fireDowns).toBe(1);
 
     // pointerup is attached on window (so releases outside the canvas still
@@ -150,5 +151,27 @@ test.describe("Input UI auto-consume fixture", () => {
     data = await probe(page);
     expect(data?.wheelUps).toBe(1);
     expect(data?.wheelDowns).toBe(1);
+  });
+
+  test("wheel over UIScrollView does not emit gameplay wheel edges", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/input-ui-consume.html");
+    await waitForClock(page);
+    await stepFrames(page, 1);
+
+    const canvas = page.locator("canvas");
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error("canvas has no bounding box");
+
+    await page.mouse.move(box.x + 50, box.y + 30);
+    await page.mouse.wheel(0, 120);
+    await stepFrames(page, 1);
+    expect((await probe(page))?.wheelDowns).toBe(0);
+
+    await page.mouse.move(box.x + 160, box.y + 120);
+    await page.mouse.wheel(0, 120);
+    await stepFrames(page, 1);
+    expect((await probe(page))?.wheelDowns).toBe(1);
   });
 });
