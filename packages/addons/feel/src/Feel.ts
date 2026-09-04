@@ -232,17 +232,22 @@ export class Feel extends Component {
   private advance(playback: LivePlayback, dt: number): void {
     if (!playback.handle.active || playback.state.cancelling) return;
     playback.advancing = true;
+    let returnedNormally = false;
     try {
       if (playback.state.released) playback.runtime.release();
       playback.runtime.advance(dt);
-      if (playback.state.cancelling) return;
-      if (playback.state.released) playback.runtime.release();
-      if (playback.runtime.timelineComplete && playback.runtime.complete) {
-        this.complete(playback);
+      if (!playback.state.cancelling) {
+        if (playback.state.released) playback.runtime.release();
+        if (playback.runtime.timelineComplete && playback.runtime.complete) {
+          this.complete(playback);
+        }
       }
+      returnedNormally = true;
     } finally {
       playback.advancing = false;
-      if (playback.state.cancelling) this.finishCancellation(playback);
+      if (returnedNormally && playback.state.cancelling) {
+        this.finishCancellation(playback);
+      }
     }
   }
 

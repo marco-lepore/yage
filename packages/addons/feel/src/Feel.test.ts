@@ -438,6 +438,37 @@ describe("Feel", () => {
     expect(completed).not.toHaveBeenCalled();
   });
 
+  it("does not run deferred cancellation after a callback throws", () => {
+    const { entity, context } = createMockEntity();
+    const boundary = context.resolve(ErrorBoundaryKey);
+    const finish = vi.fn();
+    const stopped = vi.fn();
+    let shouldThrow = false;
+    entity.on(FeelStoppedEvent, stopped);
+    const feel = entity.add(
+      new Feel({
+        pulse: defineFeelEffect(1, () => ({
+          update: () => {
+            if (!shouldThrow) return;
+            entity.get(Feel).stop("pulse");
+            throw new Error("broken pulse");
+          },
+          finish,
+        })),
+      }),
+    );
+    const playback = feel.play("pulse");
+    shouldThrow = true;
+
+    expect(() => feel.update(0.1)).toThrow("broken pulse");
+
+    expect(finish).not.toHaveBeenCalled();
+    expect(stopped).not.toHaveBeenCalled();
+    expect(playback?.active).toBe(true);
+    expect(feel.isPlaying("pulse")).toBe(false);
+    expect(boundary.getCallbackErrors()).toHaveLength(1);
+  });
+
   it("cleans up an instance whose factory stops the playback", () => {
     const { entity } = createMockEntity();
     const calls: string[] = [];
