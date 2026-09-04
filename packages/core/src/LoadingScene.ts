@@ -1,5 +1,6 @@
 import { Scene } from "./Scene.js";
 import {
+  ErrorBoundaryKey,
   EventBusKey,
   LoggerKey,
   ProcessSystemKey,
@@ -49,7 +50,7 @@ export abstract class LoadingScene extends Scene {
    * Scene to load and transition to. Accepts an instance or a factory —
    * use a factory when target construction should be deferred until
    * loading starts (heavy constructors, side effects). The factory runs
-   * before `assets.loadAll` so `target.preload` can be inspected.
+   * before the preload so `target.preload` can be inspected.
    */
   abstract readonly target: Scene | (() => Scene);
 
@@ -173,16 +174,26 @@ export abstract class LoadingScene extends Scene {
     if (!this._active) return;
 
     const attempt = ++this._attempt;
-    const target =
-      typeof this.target === "function" ? this.target() : this.target;
+    const factory = this.target;
+    let target!: Scene;
+    if (typeof factory === "function") {
+      this._runWrapped(() => {
+        target = factory();
+      }, "LoadingScene target factory");
+    } else {
+      target = factory;
+    }
     const bus = this.context.resolve(EventBusKey);
+    const scenes = this.context.resolve(SceneManagerKey);
     const minDuration = this._createEngineTimeDelay(this.minDuration);
 
     // `onLoadError` is specifically for asset-load failures. Narrow the
     // try/catch to the load phase so target-factory errors and
     // scenes.replace errors aren't silently swallowed through it.
     try {
-      await this.assets.loadAll(target.preload ?? [], (ratio) => {
+      // The scene manager owns the target's handles from here: the replace
+      // below consumes this preload instead of acquiring them a second time.
+      await scenes.preload(target, (ratio) => {
         if (!this._active || attempt !== this._attempt) return;
         this._progress = ratio;
         bus.emit("scene:loading:progress", { scene: this, ratio });
@@ -205,7 +216,17 @@ export abstract class LoadingScene extends Scene {
       this._started = false;
       this._attempt++;
       if (this.onLoadError) {
-        await this.onLoadError(error);
+        try {
+          await this.onLoadError(error);
+        } catch (hookError) {
+          this.context
+            .tryResolve(ErrorBoundaryKey)
+            ?.reportLifecycleError(hookError, {
+              kind: "Scene onLoadError hook",
+              scene: this.name,
+            });
+          throw hookError;
+        }
         return;
       }
       throw error;
@@ -220,11 +241,17 @@ export abstract class LoadingScene extends Scene {
       if (!this._active || attempt !== this._attempt) return;
     }
 
-    const scenes = this.context.resolve(SceneManagerKey);
     await scenes.replace(
       target,
       this.transition ? { transition: this.transition } : undefined,
     );
+  }
+
+  /** Run a developer callback under the error boundary when one is available. */
+  private _runWrapped(fn: () => void, kind: string): void {
+    const boundary = this.context.tryResolve(ErrorBoundaryKey);
+    if (boundary) boundary.wrapCallback(fn, { kind, scene: this.name });
+    else fn();
   }
 
   private _createEngineTimeDelay(seconds: number): {

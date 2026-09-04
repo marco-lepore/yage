@@ -544,6 +544,19 @@ rng.getSeed(); // current seed
 code that runs outside any scene. `inspector.setSeed` does not reseed it, so keep
 replay-critical rolls on the scene RNG (`RandomKey`).
 
+### Preloading a Scene Ahead of Time
+
+```ts
+await scenes.preload(level2, (ratio) => bar.setFill(ratio));
+await scenes.replace(level2);
+```
+
+`SceneManager.preload(scene, onProgress?)` loads `scene.preload` through the
+asset manager and marks the scene. The next `push`/`replace` of that scene
+consumes the mark instead of loading again, so the manifest is counted once
+and one `unload` per handle frees it. `LoadingScene` uses this method. A scene
+preloaded and never pushed keeps its references until `assets.clear()`.
+
 ### Pause on Tab Blur
 
 ```ts

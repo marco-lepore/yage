@@ -115,24 +115,44 @@ The plugin depends on `@yagejs/renderer`.
 
 ## Loading a Tiled Map
 
-Use the `tiledMap()` asset factory and pair it with a spritesheet texture:
+Use the `tiledMap()` asset factory and put the handle in your scene's
+`preload` array:
 
 ```typescript
 import { tiledMap } from "@yagejs/tilemap";
-import { renderAsset } from "@yagejs/renderer";
 
 const MapData = tiledMap("assets/level.json");
-const Tileset = renderAsset("assets/tileset.png");
+
+class LevelScene extends Scene {
+  readonly preload = [MapData];
+}
 ```
 
-Add both to your scene's `preload` array. The tileset texture must load before
-the map so tile rendering can resolve texture frames:
+The map handle owns its tileset images. Loading it loads every single-image
+tileset the map references, and `assets.unload(MapData)` releases them again:
 
 ```typescript
 class LevelScene extends Scene {
-  readonly preload = [Tileset, MapData];
+  readonly preload = [MapData];
+  onExit() {
+    this.assets.unload(MapData); // frees the map and its tileset images
+  }
 }
 ```
+
+The images are ordinary counted `texture()` handles, so a second map on the
+same tileset — or a sprite drawing from the same sheet — keeps the image alive
+until it too releases it. A sprite drawing from the tileset sheet should
+declare `texture(tilesetPath)` in its own preload — same type and path is the
+same reference count, so the image survives the map's unload. Do not declare
+that file under a different handle type: `renderAsset()` counts separately
+while both loaders unload the same Pixi path, so the first unload destroys it
+for the other. Unloading the map also drops any external tileset (`.tsj`) file
+it inlined.
+
+A collection-of-images tileset works differently. It names one image per tile
+rather than a single sheet, and those images are drawn from an atlas you
+preload yourself.
 
 ## TilemapComponent
 
@@ -145,7 +165,7 @@ import type { LayerDef } from "@yagejs/renderer";
 
 class LevelScene extends Scene {
   readonly name = "level";
-  readonly preload = [Tileset, MapData];
+  readonly preload = [MapData];
 
   // Declare the scene's layers — the renderer plugin materializes them
   // automatically when the scene is pushed.
@@ -170,6 +190,12 @@ uses both the parsed map data and the asset path, so the same argument also
 enables the [Tiled-derived auto-keys](#spawning-entities-from-tiled-objects-auto-keys)
 covered below. If you don't have a handle in scope, pass `mapKey` as a plain
 string.
+
+Only a `tiledMap()` handle loaded through the asset manager brings the tileset
+images with it. A map reached by `mapKey`, or handed over as raw `map` data,
+was loaded some other way — preload each tileset image yourself with
+`texture(path)`, or register it under the key the tileset's `image` names.
+Without it the component throws when it is added, naming the image.
 
 Query map dimensions from the component:
 
@@ -260,8 +286,9 @@ and, per distinct id, the first cell it appears in.
 
 An external tileset that has not been loaded yet is not reported — it resolves
 during preload. A tileset image that is not loaded when the component is added
-is not a diagnostic either: building the layers throws and names the image, so
-preload it before adding the map.
+is not a diagnostic either: building the layers throws and names the image and
+its tileset. Loading the map through the asset manager loads its images with
+it, so you mostly meet this when building a component from raw `TiledMapData`.
 
 ## Choosing the map input
 

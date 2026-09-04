@@ -59,7 +59,9 @@ describe("AssetManager", () => {
 
   it("throws when no loader is registered for a type", async () => {
     const handle = new AssetHandle<string>("font", "my.ttf");
-    await expect(am.loadAll([handle])).rejects.toThrow(/No loader.*font.*Missing plugin/);
+    await expect(am.loadAll([handle])).rejects.toThrow(
+      /No loader.*font.*Missing plugin/,
+    );
   });
 
   it("reports progress via callback", async () => {
@@ -214,6 +216,159 @@ describe("AssetManager", () => {
     expect(am.has(h1)).toBe(false);
     expect(am.has(h2)).toBe(false);
     expect(loader.unload).toHaveBeenCalledTimes(2);
+  });
+
+  it("clear() frees an asset held by another asset's loader once", async () => {
+    const image = new AssetHandle<string>("texture", "tiles.png");
+    const imageLoader = fakeLoader((p) => `tex:${p}`);
+    am.registerLoader("texture", imageLoader);
+    // A map loader that holds its tileset image and releases it on unload.
+    am.registerLoader("map", {
+      load: async (path: string) => {
+        await am.loadAll([image]);
+        return `map:${path}`;
+      },
+      unload: () => am.unload(image),
+    });
+
+    await am.loadAll([new AssetHandle<string>("map", "level.json")]);
+    am.clear();
+
+    expect(imageLoader.unload).toHaveBeenCalledTimes(1);
+  });
+
+  it("counts nothing for a failed loadAll, so a retry frees with one unload", async () => {
+    let failing = true;
+    const loader: AssetLoader<string> = {
+      load: vi.fn(async (path: string) => {
+        if (path === "b.png" && failing) throw new Error("network");
+        return `loaded:${path}`;
+      }),
+      unload: vi.fn(),
+    };
+    am.registerLoader("texture", loader);
+
+    const handles = ["a.png", "b.png", "c.png"].map(
+      (path) => new AssetHandle<string>("texture", path),
+    );
+    await expect(am.loadAll(handles)).rejects.toThrow("network");
+
+    failing = false;
+    await am.loadAll(handles);
+    for (const handle of handles) am.unload(handle);
+
+    expect(handles.map((handle) => am.has(handle))).toEqual([
+      false,
+      false,
+      false,
+    ]);
+    expect(loader.unload).toHaveBeenCalledTimes(3);
+  });
+
+  // ---------- conflicting declarations ----------
+
+  it("warns when a second declaration of one path carries different data", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const loader = fakeLoader((p) => `loaded:${p}`);
+    am.registerLoader("web-font", loader);
+
+    const plain = new AssetHandle<string>("web-font", "Inter.woff2", {
+      family: "Inter",
+    });
+    const baked = new AssetHandle<string>("web-font", "Inter.woff2", {
+      family: "Inter",
+      bitmap: { size: 24 },
+    });
+    await am.loadAll([plain]);
+    await am.loadAll([baked]);
+    await am.loadAll([baked]);
+
+    expect(loader.load).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain("Inter.woff2");
+    expect(warn.mock.calls[0]?.[0]).toContain('"bitmap":{"size":24}');
+    warn.mockRestore();
+  });
+
+  it("warns when one call declares the same path twice with different data", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const loader = fakeLoader((p) => `loaded:${p}`);
+    am.registerLoader("web-font", loader);
+
+    // A manifest composed from two modules that both declare the same font.
+    await am.loadAll([
+      new AssetHandle<string>("web-font", "Inter.woff2", { family: "Inter" }),
+      new AssetHandle<string>("web-font", "Inter.woff2", {
+        family: "Inter",
+        bitmap: { size: 24 },
+      }),
+    ]);
+
+    expect(loader.load).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain("Inter.woff2");
+    warn.mockRestore();
+  });
+
+  it("takes no references when a progress callback throws over a cached manifest", async () => {
+    const loader = fakeLoader((p) => `loaded:${p}`);
+    am.registerLoader("fake", loader);
+    const handle = new AssetHandle<string>("fake", "a.dat");
+
+    await am.loadAll([handle]);
+    await expect(
+      am.loadAll([handle], () => {
+        throw new Error("progress blew up");
+      }),
+    ).rejects.toThrow("progress blew up");
+
+    am.unload(handle);
+    expect(am.has(handle)).toBe(false);
+  });
+
+  it("retrying a failed manifest joins a sibling still loading", async () => {
+    let release!: (value: string) => void;
+    const slow = new Promise<string>((resolve) => (release = resolve));
+    const load = vi.fn(async (path: string) =>
+      path === "slow.dat" ? slow : Promise.reject(new Error("nope")),
+    );
+    am.registerLoader("fake", { load, unload: vi.fn() });
+    const fast = new AssetHandle<string>("fake", "fails.dat");
+    const slowHandle = new AssetHandle<string>("fake", "slow.dat");
+
+    // The fast handle rejects while the slow one is still in flight.
+    const first = am.loadAll([fast, slowHandle]);
+    await expect(first).rejects.toThrow("nope");
+    const retry = am.loadAll([slowHandle]);
+    release("loaded");
+    await retry;
+
+    // One load, so one asset — the losing copy would never reach `unload`.
+    expect(load.mock.calls.filter((c) => c[0] === "slow.dat")).toHaveLength(1);
+    expect(am.get(slowHandle)).toBe("loaded");
+  });
+
+  it("stays quiet when two declarations of one path agree", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const loader = fakeLoader((p) => `loaded:${p}`);
+    am.registerLoader("web-font", loader);
+
+    // Same options, written in the other order.
+    await am.loadAll([
+      new AssetHandle<string>("web-font", "Inter.woff2", {
+        family: "Inter",
+        bitmap: true,
+      }),
+    ]);
+    await am.loadAll([
+      new AssetHandle<string>("web-font", "Inter.woff2", {
+        bitmap: true,
+        family: "Inter",
+      }),
+    ]);
+
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   // ---------- key isolation ----------

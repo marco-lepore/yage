@@ -17,6 +17,10 @@ const { mocks } = vi.hoisted(() => {
       this.source = options.source;
       this.frame = options.frame;
     }
+
+    static from(key: string): unknown {
+      return cacheMap.get(key);
+    }
   }
 
   class MockRectangle {
@@ -84,7 +88,11 @@ vi.mock("@pixi/tilemap", () => ({
 }));
 
 import { createTilemapLayers } from "./parseTiledMap.js";
-import { tiledMapAssetExtension } from "./tiledMapLoader.js";
+import {
+  externalTilesetPaths,
+  tiledMapAssetExtension,
+  tilesetImagePaths,
+} from "./tiledMapLoader.js";
 import { loadFixture } from "./fixtures/loadFixture.js";
 import type { TiledMapData } from "./types.js";
 
@@ -102,7 +110,7 @@ describe("tiledMapLoader", () => {
     mocks.load.mockClear();
   });
 
-  it("resolves embedded tilesets and creates their subtextures", async () => {
+  it("resolves embedded tilesets and records their image path", async () => {
     const map = loadFixture("embedded.json");
     const ref = map.tilesets[0]!;
     const parser = tiledMapAssetExtension.loader as TestLoaderParser;
@@ -112,12 +120,17 @@ describe("tiledMapLoader", () => {
     expect(ref.data).toMatchObject({
       name: "embedded terrain",
       image: "terrain.png",
+      resolvedImage: "maps/terrain.png",
     });
     expect(ref.data).not.toBe(ref);
-    expect(mocks.load).toHaveBeenCalledWith("maps/terrain.png");
-    expect(mocks.cache.has("terrain.png:0")).toBe(true);
+    // The parser resolves tilesets; the asset manager's loader owns the images.
+    expect(mocks.load).not.toHaveBeenCalled();
+    expect(tilesetImagePaths(map)).toEqual(["maps/terrain.png"]);
 
-    const [layer] = createTilemapLayers(map);
+    mocks.cacheMap.set("maps/terrain.png", {
+      source: { label: "terrain source" },
+    });
+    const [layer] = createTilemapLayers(map).layers;
     const calls = (
       layer as unknown as InstanceType<typeof mocks.MockCompositeTilemap>
     ).calls;
@@ -151,6 +164,55 @@ describe("tiledMapLoader", () => {
 
     await parser.parse(map, { src: "maps/level.json" }, loader);
 
-    expect(mocks.load).toHaveBeenCalledWith("tilesets/terrain.png");
+    expect(tilesetImagePaths(map)).toEqual(["tilesets/terrain.png"]);
+    expect(externalTilesetPaths(map)).toEqual(["tilesets/terrain.tsj"]);
+  });
+
+  it("reports no external tileset for an embedded one", () => {
+    const map = {
+      width: 1,
+      height: 1,
+      tilewidth: 16,
+      tileheight: 16,
+      layers: [],
+      tilesets: [{ firstgid: 1, data: { image: "terrain.png" } }],
+    } as unknown as TiledMapData;
+
+    expect(externalTilesetPaths(map)).toEqual([]);
+  });
+
+  it("reports one image for two tilesets that share it", async () => {
+    const map = {
+      width: 1,
+      height: 1,
+      tilewidth: 16,
+      tileheight: 16,
+      layers: [],
+      tilesets: [
+        {
+          firstgid: 1,
+          name: "a",
+          tilewidth: 16,
+          tileheight: 16,
+          tilecount: 1,
+          columns: 1,
+          image: "terrain.png",
+        },
+        {
+          firstgid: 2,
+          name: "b",
+          tilewidth: 16,
+          tileheight: 16,
+          tilecount: 1,
+          columns: 1,
+          image: "terrain.png",
+        },
+      ],
+    } as unknown as TiledMapData;
+    const parser = tiledMapAssetExtension.loader as TestLoaderParser;
+
+    await parser.parse(map, { src: "maps/level.json" }, {});
+
+    expect(tilesetImagePaths(map)).toEqual(["maps/terrain.png"]);
   });
 });

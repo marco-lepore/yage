@@ -38,6 +38,15 @@ interface TransitionRun {
   finalize: (() => void) | undefined;
 }
 
+/** A scene's `preload` manifest load started by {@link SceneManager.preload}. */
+interface PreloadRun {
+  run: Promise<void>;
+  /** Every caller's `onProgress`; the one load reports to all of them. */
+  listeners: Array<(ratio: number) => void>;
+  /** Last ratio reported, so a caller joining mid-load starts from it. */
+  ratio: number;
+}
+
 /** Stack-based scene manager with push/pop/replace semantics. */
 export class SceneManager {
   private stack: Scene[] = [];
@@ -51,6 +60,15 @@ export class SceneManager {
   private _pendingChain: Promise<void> = Promise.resolve();
   private _mutationDepth = 0;
   private _destroyed = false;
+
+  /**
+   * Per scene, the manifest load that {@link preload} started and no push has
+   * claimed yet. Presence is the mark: a later `preload` joins the entry
+   * instead of taking a second reference set, and `_preloadScene` deletes it
+   * to take over its references instead of loading again. A load that
+   * rejects removes itself — it counted nothing, so there is nothing to claim.
+   */
+  private readonly _preloads = new WeakMap<Scene, PreloadRun>();
 
   private _autoPauseOnBlur = false;
   private _isBlurred = false;
@@ -206,9 +224,15 @@ export class SceneManager {
       // microtask too late — after the frame that emitted `ended` already
       // rendered — flashing the outgoing scene for one frame (#102).
       let removed: Scene | undefined;
-      await this._runTransition("pop", transition, fromScene, destination, () => {
-        removed = this._popScene();
-      });
+      await this._runTransition(
+        "pop",
+        transition,
+        fromScene,
+        destination,
+        () => {
+          removed = this._popScene();
+        },
+      );
       return removed;
     });
   }
@@ -273,6 +297,72 @@ export class SceneManager {
         }
       });
     });
+  }
+
+  /**
+   * Load a scene's `preload` manifest now, so pushing or replacing to it later
+   * enters immediately instead of loading again. The handles are counted once:
+   * the push consumes this load rather than acquiring its own references, and
+   * `LoadingScene` uses it for exactly that.
+   *
+   * ```ts
+   * await engine.scenes.preload(level2, (ratio) => bar.setFill(ratio));
+   * await engine.scenes.replace(level2);
+   * ```
+   *
+   * `onProgress` runs alongside the scene's own `onProgress` hook, both
+   * reporting 0 → 1. A call that joins one already running for the same
+   * scene receives the ratio reached so far, then every later one.
+   *
+   * A scene preloaded and never pushed keeps its references until
+   * `assets.clear()` — nothing later releases them on its behalf. Entering a
+   * scene claims the set waiting for it, so a `preload` of that same scene
+   * from then on loads a set of its own rather than joining one the entry now
+   * owns: the entering scene's exit must not free a prefetch someone else is
+   * still holding.
+   */
+  async preload(
+    scene: Scene,
+    onProgress?: (ratio: number) => void,
+  ): Promise<void> {
+    scene._setContext(this._context);
+    const callerInfo = {
+      kind: "SceneManager.preload onProgress callback",
+      scene: scene.name,
+    };
+    // An earlier call's references, running or resolved, are still unclaimed
+    // and cover this one; loading again would leave a set nothing releases.
+    const joined = this._preloads.get(scene);
+    if (joined) {
+      if (onProgress) {
+        this._invokeCallback(() => onProgress(joined.ratio), callerInfo);
+        joined.listeners.push(onProgress);
+      }
+      return joined.run;
+    }
+    const entry: PreloadRun = {
+      run: Promise.resolve(),
+      listeners: onProgress ? [onProgress] : [],
+      ratio: 0,
+    };
+    entry.run = this._loadSceneAssets(scene, (ratio) => {
+      entry.ratio = ratio;
+      for (const listener of entry.listeners) {
+        this._invokeCallback(() => listener(ratio), callerInfo);
+      }
+    }).then(
+      () => {
+        // A manifest with nothing to load reports no ratio at all; a caller
+        // joining after that still learns the load is complete.
+        entry.ratio = 1;
+      },
+      (err: unknown) => {
+        this._preloads.delete(scene);
+        throw err;
+      },
+    );
+    this._preloads.set(scene, entry);
+    await entry.run;
   }
 
   /**
@@ -392,10 +482,7 @@ export class SceneManager {
     return next;
   }
 
-  private async _pushScene(
-    scene: Scene,
-    suppressEvent = false,
-  ): Promise<void> {
+  private async _pushScene(scene: Scene, suppressEvent = false): Promise<void> {
     const wasPaused = this._snapshotPauseStates();
 
     await this._withMutation(async () => {
@@ -470,11 +557,40 @@ export class SceneManager {
   }
 
   private async _preloadScene(scene: Scene): Promise<void> {
+    // A prefetch, running or done, already counted this manifest; loading
+    // again would leave two reference sets for one owner to release. It is
+    // claimed before the await so a `preload` arriving from here on starts a
+    // set of its own instead of joining one this scene now owns.
+    const prefetch = this._preloads.get(scene);
+    if (prefetch) {
+      this._preloads.delete(scene);
+      await prefetch.run;
+      return;
+    }
+    await this._loadSceneAssets(scene);
+  }
+
+  /** Load the manifest. `onProgress` runs unwrapped: `preload` attributes it. */
+  private async _loadSceneAssets(
+    scene: Scene,
+    onProgress?: (ratio: number) => void,
+  ): Promise<void> {
     if (!scene.preload?.length || !this.assetManager) return;
-    await this.assetManager.loadAll(
-      scene.preload,
-      scene.onProgress?.bind(scene),
-    );
+    const hookInfo = { kind: "Scene onProgress hook", scene: scene.name };
+    await this.assetManager.loadAll(scene.preload, (ratio) => {
+      const hook = scene.onProgress;
+      if (hook) this._invokeCallback(() => hook.call(scene, ratio), hookInfo);
+      onProgress?.(ratio);
+    });
+  }
+
+  /** Run a developer callback under the error boundary when one is available. */
+  private _invokeCallback(
+    fn: () => void,
+    info: { kind: string; scene?: string },
+  ): void {
+    if (this.errorBoundary) this.errorBoundary.wrapCallback(fn, info);
+    else fn();
   }
 
   private _teardownScene(scene: Scene): void {
@@ -613,9 +729,7 @@ export class SceneManager {
   }
 
   private _snapshotPauseStates(): Map<Scene, boolean> {
-    return new Map(
-      this.stack.map((scene) => [scene, scene.isPaused] as const),
-    );
+    return new Map(this.stack.map((scene) => [scene, scene.isPaused] as const));
   }
 
   private _warnIfMutating(method: string): void {

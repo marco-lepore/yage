@@ -8,6 +8,7 @@ import type {
   DestroyOptions,
   DisplayContainer,
   Filter,
+  TextureResource,
   VisualComponentOptions,
 } from "@yagejs/renderer";
 import {
@@ -66,6 +67,8 @@ export class TilemapComponent extends VisualComponent {
   private readonly _tiledMap: TiledMapData;
   private readonly layerNames: string[] | undefined;
   private _tilemapLayers: CompositeTilemap[] = [];
+  /** Frame textures cut for this map's tiles — destroyed with the component. */
+  private _frameTextures: TextureResource[] = [];
   private _hasAnimatedTiles = false;
   private _animationTimeMs = 0;
   private _colorFilter: ColorMatrixFilter | undefined;
@@ -150,7 +153,9 @@ export class TilemapComponent extends VisualComponent {
   }
 
   onAdd(): void {
-    this._tilemapLayers = createTilemapLayers(this._tiledMap, this.layerNames);
+    const built = createTilemapLayers(this._tiledMap, this.layerNames);
+    this._tilemapLayers = built.layers;
+    this._frameTextures = built.textures;
     this._hasAnimatedTiles = this._tilemapLayers.some(
       _tilemapLayerHasAnimation,
     );
@@ -408,6 +413,11 @@ export class TilemapComponent extends VisualComponent {
   override onDestroy(): void {
     this.removeColorFilter();
     super.onDestroy();
+    // Each frame is a view onto a tileset image this component does not own,
+    // so destroy the frame alone. A `Texture` listens to its source, so
+    // dropping the array without destroying leaks the listener.
+    for (const texture of this._frameTextures) texture.destroy(false);
+    this._frameTextures = [];
   }
 
   private currentFilters(): Filter[] {
