@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseArgs } from "./argv.js";
+import { HELP_TEXT, parseArgs } from "./argv.js";
 
 describe("parseArgs", () => {
   it("parses no arguments", () => {
@@ -101,5 +101,9 @@ describe("parseArgs", () => {
 
   it("rejects --features without a value", () => {
     expect(parseArgs(["--features"]).error).toContain("requires a value");
+  });
+
+  it("documents that forced directory overwrite preserves .git", () => {
+    expect(HELP_TEXT).toContain("clear directory contents except .git");
   });
 });

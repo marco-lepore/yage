@@ -8,14 +8,19 @@ import { LAYER_COIN, LAYER_PLAYER } from "../layers";
 /** Collectible coin. Bobs in place and destroys itself on contact. */
 export class Coin extends Entity {
   setup(params: { x: number; y: number }): void {
-    this.add(new Transform({ position: new Vec2(params.x, params.y), scale: new Vec2(2, 2) }));
+    this.add(
+      new Transform({
+        position: new Vec2(params.x, params.y),
+        scale: new Vec2(2, 2),
+      }),
+    );
 
     const sprite = new AnimatedSpriteComponent({
       source: { sheet: coinTex.path, frameWidth: COIN_FRAME_SIZE },
       layer: "world",
+      anchor: { x: 0.5, y: 0.5 },
     });
     this.add(sprite);
-    sprite.animatedSprite.anchor.set(0.5, 0.5);
     sprite.play({ speed: 0.2, loop: true });
 
     this.add(

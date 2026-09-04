@@ -1,6 +1,13 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { readFile, writeFile, mkdir, readdir, copyFile } from "node:fs/promises";
+import {
+  readFile,
+  writeFile,
+  mkdir,
+  readdir,
+  copyFile,
+} from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * Validates a string as a valid npm package name per the rules in
@@ -14,7 +21,8 @@ export function validateProjectName(name: string): string | undefined {
   if (name.startsWith(".") || name.startsWith("_")) {
     return "Name cannot start with a dot or underscore";
   }
-  if (name.trim() !== name) return "Name cannot contain leading/trailing whitespace";
+  if (name.trim() !== name)
+    return "Name cannot contain leading/trailing whitespace";
   if (name !== name.toLowerCase()) return "Name must be lowercase";
   if (/[~'!()*]/.test(name)) {
     return "Name cannot contain ~'!()* characters";
@@ -32,16 +40,19 @@ export function validateProjectName(name: string): string | undefined {
  */
 export function deriveProjectName(targetDir: string): string {
   const base = targetDir.split(/[/\\]/).filter(Boolean).pop() ?? "my-yage-game";
-  return base
-    .toLowerCase()
-    .replace(/^[._]+/, "")
-    .replace(/[^a-z0-9._-]/g, "-")
-    .replace(/^-+|-+$/g, "") || "my-yage-game";
+  return (
+    base
+      .toLowerCase()
+      .replace(/^[._]+/, "")
+      .replace(/[^a-z0-9._-]/g, "-")
+      .replace(/^-+|-+$/g, "") || "my-yage-game"
+  );
 }
 
 export type DirectoryState =
   | { kind: "missing" }
   | { kind: "empty" }
+  | { kind: "file" }
   | { kind: "non-empty"; entries: string[] };
 
 /**
@@ -52,7 +63,7 @@ export function inspectDirectory(target: string): DirectoryState {
   if (!existsSync(target)) return { kind: "missing" };
   const stat = statSync(target);
   if (!stat.isDirectory()) {
-    return { kind: "non-empty", entries: [target] };
+    return { kind: "file" };
   }
   const entries = readdirSync(target);
   if (entries.length === 0) return { kind: "empty" };
@@ -66,7 +77,6 @@ export function inspectDirectory(target: string): DirectoryState {
  * accidentally gitignore the template directory itself.
  */
 const RENAME_FILES: Record<string, string> = {
-  _package: "package.json",
   _gitignore: ".gitignore",
   "_package.json": "package.json",
 };
@@ -116,7 +126,7 @@ export async function rewriteJson<T>(
  * lives at ../templates from the bundle.
  */
 export function resolveTemplatesRoot(importMetaUrl: string): string {
-  const filePath = new URL(importMetaUrl).pathname;
+  const filePath = fileURLToPath(importMetaUrl);
   const distDir = dirname(filePath);
   return resolve(distDir, "..", "templates");
 }

@@ -6,7 +6,6 @@ import {
   note,
   outro,
   select,
-  spinner,
   text,
 } from "@clack/prompts";
 import pc from "picocolors";
@@ -14,7 +13,11 @@ import type { TemplateId } from "./templates.js";
 import { DEFAULT_TEMPLATE, TEMPLATES } from "./templates.js";
 import type { FeatureId } from "./features.js";
 import type { DirectoryState } from "./utils.js";
-import { deriveProjectName, validateProjectName } from "./utils.js";
+import {
+  deriveProjectName,
+  relativeFromCwd,
+  validateProjectName,
+} from "./utils.js";
 
 export interface ResolvedOptions {
   targetDir: string;
@@ -84,21 +87,32 @@ export async function runPrompts(
   // --- directory collision handling ---
   const dirState = ctx.inspectTarget(targetDir);
   let overwrite = initial.overwrite ?? false;
-  if (dirState.kind === "non-empty" && !overwrite) {
+  if (
+    (dirState.kind === "file" || dirState.kind === "non-empty") &&
+    !overwrite
+  ) {
+    const targetDescription =
+      dirState.kind === "file"
+        ? "Target path is a file"
+        : "Target directory is not empty";
     if (initial.yes) {
-      cancel(
-        `Target directory is not empty: ${targetDir}. Pass --force to overwrite.`,
-      );
+      cancel(`${targetDescription}: ${targetDir}. Pass --force to overwrite.`);
       return null;
     }
     const choice = await select<"abort" | "overwrite">({
-      message: `${targetDir} is not empty. What do you want to do?`,
+      message:
+        dirState.kind === "file"
+          ? `${targetDir} is a file. What do you want to do?`
+          : `${targetDir} is not empty. What do you want to do?`,
       options: [
         { value: "abort", label: "Abort", hint: "Exit without changes" },
         {
           value: "overwrite",
           label: "Overwrite",
-          hint: "Delete existing contents and scaffold fresh",
+          hint:
+            dirState.kind === "file"
+              ? "Replace the file and scaffold the project"
+              : "Remove existing contents except .git and scaffold the project",
         },
       ],
       initialValue: "abort",
@@ -180,10 +194,6 @@ export function reportStart(template: TemplateId, targetDir: string): void {
   );
 }
 
-export function createScaffoldSpinner(): ReturnType<typeof spinner> {
-  return spinner();
-}
-
 export interface SuccessReport {
   projectName: string;
   targetDir: string;
@@ -191,13 +201,59 @@ export interface SuccessReport {
   gitSucceeded: boolean | null;
 }
 
+function quotePosixShellPath(path: string): string {
+  const commandPath = path.startsWith("-") ? `./${path}` : path;
+  const safePath = /^[A-Za-z0-9_@%+=:,./-]+$/;
+  if (safePath.test(commandPath)) return commandPath;
+  return `'${commandPath.replaceAll("'", `'\\''`)}'`;
+}
+
+function quoteCommandPromptPath(path: string): string {
+  const commandPath = path.startsWith("-") ? `.\\${path}` : path;
+  if (!commandPath.includes("%")) {
+    return /^[A-Za-z0-9_@+=:,./\\-]+$/.test(commandPath)
+      ? commandPath
+      : `"${commandPath}"`;
+  }
+
+  // cmd.exe expands %name% inside quotes. Quoted segments keep the path in one
+  // argument while each unquoted ^% produces a literal percent sign.
+  return commandPath
+    .split("%")
+    .map((segment) => `"${segment}"`)
+    .join("^%");
+}
+
+function quotePowerShellPath(path: string): string {
+  return `'${path.replaceAll("'", "''")}'`;
+}
+
+export function directoryChangeCommand(
+  path: string,
+  platform: NodeJS.Platform = process.platform,
+  windowsShell: "powershell" | "cmd" = "powershell",
+): string {
+  if (platform !== "win32") return `cd ${quotePosixShellPath(path)}`;
+  if (windowsShell === "cmd") return `pushd ${quoteCommandPromptPath(path)}`;
+  return `Set-Location -LiteralPath ${quotePowerShellPath(path)}`;
+}
+
 export function reportSuccess(report: SuccessReport): void {
   const lines: string[] = [];
-  const relDir = report.targetDir;
+  const relativeTarget = relativeFromCwd(report.targetDir);
   lines.push(`${pc.green("Success!")} Created ${pc.bold(report.projectName)}`);
   lines.push("");
   lines.push("Next steps:");
-  lines.push(`  ${pc.cyan(`cd ${relDir}`)}`);
+  if (process.platform === "win32") {
+    lines.push(
+      `  ${pc.dim("PowerShell:")} ${pc.cyan(directoryChangeCommand(relativeTarget, "win32", "powershell"))}`,
+    );
+    lines.push(
+      `  ${pc.dim("Command Prompt:")} ${pc.cyan(directoryChangeCommand(relativeTarget, "win32", "cmd"))}`,
+    );
+  } else {
+    lines.push(`  ${pc.cyan(directoryChangeCommand(relativeTarget))}`);
+  }
   if (report.installSucceeded === null) {
     lines.push(`  ${pc.cyan("npm install")}`);
   } else if (report.installSucceeded === false) {

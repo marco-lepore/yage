@@ -12,30 +12,40 @@ This is a [YAGE](https://yage.dev) 2D game engine project (TypeScript + Vite).
 ## What's in the starter
 
 A playable platformer seed: move with `A`/`D` (or arrow keys), jump with
-`Space`. Collect yellow coins. Avoid the red spiky hazards — touching one
-respawns the player at the start. The platforms, coins, and hazards are
-defined in `src/scenes/GameScene.ts`; tweak their positions or spawn more.
+`Space`. Collect yellow coins. Avoid the red spiky hazards and purple slimes.
+Touching either respawns the player at the start. The level is defined in
+`src/scenes/GameScene.ts`; change the entity positions or spawn more.
 
 ## Project layout
 
 ```
-src/
-├── main.ts                        # boot: Engine, plugins, push initial scene
-├── scenes/
-│   └── GameScene.ts               # camera + preload + spawns + event listeners
-├── entities/
-│   ├── Player/                    # complex entity — folder with supporting files
-│   │   ├── index.ts               #   the Entity subclass
-│   │   └── PlayerController.ts    #   entity-specific component
-│   ├── Platform.ts                # simple entity — single file
-│   ├── Coin.ts                    # simple entity — uses shared Oscillate
-│   ├── Hazard.ts                  # simple entity — uses shared Oscillate
-│   └── Wall.ts                    # simple entity — no graphics (invisible)
-├── components/
-│   └── Oscillate.ts               # shared: used by both Coin and Hazard
-└── public/assets/                 # static files (Vite serves from / at runtime)
-    ├── player.png
-    └── jump.wav
+├── public/
+│   └── assets/                    # sprites, sounds, and their credits
+│       ├── CREDITS.md
+│       ├── coin.png
+│       ├── hurt.wav
+│       ├── jump.wav
+│       ├── player-idle.png
+│       ├── player-jump.png
+│       ├── player-walk.png
+│       └── slime_purple.png
+└── src/
+    ├── main.ts                    # boot: Engine, plugins, initial scene
+    ├── layers.ts                  # physics collision layers
+    ├── traits.ts                  # shared entity traits
+    ├── scenes/
+    │   └── GameScene.ts           # camera, preload, spawns, event listeners
+    ├── entities/
+    │   ├── Player/                # entity plus its controller component
+    │   │   ├── index.ts
+    │   │   └── PlayerController.ts
+    │   ├── Coin.ts
+    │   ├── Hazard.ts
+    │   ├── Platform.ts
+    │   ├── Slime.ts
+    │   └── Wall.ts
+    └── components/
+        └── Oscillate.ts           # shared by Coin and Hazard
 ```
 
 See https://yage.dev/patterns/project-layout for the full convention writeup.
@@ -71,9 +81,16 @@ Add more as you need them: `@yagejs/particles`, `@yagejs/tilemap`, `@yagejs/ui`,
 ## Assets
 
 Files in `public/` are served at the site root by Vite. A handle declared
-as `texture("/assets/player.png")` resolves to `public/assets/player.png`.
-The starter ships one sprite (`player.png`, a 10-frame idle strip) and one
-sound effect (`jump.wav`), both Kenney.nl CC0. See `public/assets/CREDITS.md`.
+as `texture("/assets/player-idle.png")` resolves to
+`public/assets/player-idle.png`. The starter includes:
+
+- `public/assets/player-idle.png`, `public/assets/player-walk.png`, and
+  `public/assets/player-jump.png` by Zegley
+- `public/assets/coin.png`, `public/assets/slime_purple.png`,
+  `public/assets/jump.wav`, and `public/assets/hurt.wav` from the Brackeys
+  Platformer Bundle
+
+See `public/assets/CREDITS.md` for source links and license details.
 
 Replace them with your own assets — just keep the paths in sync with
 whatever your scene preload declares.
