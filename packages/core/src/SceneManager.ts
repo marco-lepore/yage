@@ -315,7 +315,11 @@ export class SceneManager {
    * scene receives the ratio reached so far, then every later one.
    *
    * A scene preloaded and never pushed keeps its references until
-   * `assets.clear()` — nothing later releases them on its behalf.
+   * `assets.clear()` — nothing later releases them on its behalf. Entering a
+   * scene claims the set waiting for it, so a `preload` of that same scene
+   * from then on loads a set of its own rather than joining one the entry now
+   * owns: the entering scene's exit must not free a prefetch someone else is
+   * still holding.
    */
   async preload(
     scene: Scene,
