@@ -14,6 +14,7 @@ import type { ScenePhysicsContext } from "./types.js";
 // not just the world; the scene-scoped `PhysicsWorldKey` only resolves the
 // `PhysicsWorld`. Components use the scoped key for ergonomic access.
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
+import { ColliderComponent } from "./ColliderComponent.js";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import type { PhysicsWorldManager } from "./PhysicsWorldManager.js";
 
@@ -87,6 +88,8 @@ export class PhysicsSystem extends System {
       if (!entity.isActive) continue;
       const rb = entity.tryGet(RigidBodyComponent);
       if (!rb || rb._bodyHandle === -1) continue;
+
+      entity.tryGet(ColliderComponent)?._syncScale();
 
       const body = world.getBody(rb._bodyHandle);
       if (!body) continue;

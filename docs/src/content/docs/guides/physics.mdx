@@ -135,6 +135,38 @@ entity.add(new ColliderComponent({
 }));
 ```
 
+Use `parts` when one body needs several collision shapes. Each part has its
+own shape, offset, and rotation. Settings outside `parts` apply to every
+shape, and Rapier adds their mass together:
+
+```typescript
+entity.add(new ColliderComponent({
+  parts: [
+    { shape: { type: "box", width: 48, height: 16 } },
+    {
+      shape: { type: "circle", radius: 8 },
+      offset: { x: 24, y: 0 },
+    },
+  ],
+  friction: 0.3,
+}));
+```
+
+`collider.colliderCount` gives the number of parts. Overlap queries check all
+parts and return an entity once even when several parts overlap it.
+
+Collider geometry follows the entity's `Transform` scale automatically. A
+scale set before the collider is added applies immediately. Later changes to
+the entity or an ancestor apply at the next physics step. Part offsets scale
+too, and a scale change recalculates body mass from `density`.
+
+Uniform positive scale keeps Rapier's box, circle, capsule, polygon, and
+polyline shapes. Non-uniform and mirrored scale transform polygons and
+polylines exactly. A plain box uses its four transformed corners. Circles,
+capsules, and rounded boxes use a 32-point convex outline because Rapier has no
+matching scaled primitive. If either scale axis is zero, the colliders are
+disabled and contribute no mass until both axes are non-zero again.
+
 All dimensions are in pixels; rotation is in radians.
 
 Box corners can be rounded while keeping the same outer width and height:
@@ -247,6 +279,7 @@ collider.onTrigger((event) => {
     console.log("exited by", event.other.name);
   }
   // event.otherCollider — the other entity's ColliderComponent
+  // event.selfShapeIndex / otherShapeIndex — participating compound parts
 });
 ```
 
@@ -664,11 +697,13 @@ all survive the swap:
 ```typescript
 collider.setShape({ type: "box", width: 24, height: 24 });  // crouch
 collider.setShape({ type: "box", width: 24, height: 48 });  // stand
+collider.setShape(newHeadShape, { index: 1 });               // compound part 1
 ```
 
 A shape with a dimension that is not finite and above 0 throws before anything
 is stored, so a bad computed height (`standing - shrink` gone negative) leaves
-the live collider and the component's config untouched.
+the live collider and the component's config untouched. `index` defaults to
+`0`; an index that does not name a part also throws before anything changes.
 
 The body keeps the mass it already had. A collider describes where a body
 collides, not how much matter is in it, so a character who crouches takes the

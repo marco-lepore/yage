@@ -57,14 +57,14 @@ through the debug overlay. Two distinct steps make up the Tiled-collision-to-Rap
    shape data in Tiled's coordinate system (top-left-origin
    `rect` / `circle` / `capsule` / `polygon` / `polyline` configs).
 2. **Physics conversion** — `toPhysicsColliders(shapes)` adapts those
-   raw shapes into Rapier `ColliderConfig`s with the offsets baked in.
+   raw shapes into Rapier `ColliderPartConfig`s with the offsets baked in.
    Bounding-box shapes (rect, circle, capsule) become center-origin
    configs (offset = `x + width/2, y + height/2`); polygons and
    polylines keep their original vertices with a top-left-based offset
    (`offset = { x, y }`), since vertex-defined shapes don't need centering.
 
-The wiring (extracted shapes → `toPhysicsColliders()` → one static entity
-per shape) is shown inline in the
+The wiring (extracted shapes → `toPhysicsColliders()` → one static body) is
+shown inline in the
 [Collision Extraction](#collision-extraction) section below.
 
 ## Staging Tiled Assets
@@ -747,10 +747,9 @@ must be attached to a `type: "static"` rigid body (no mass/inertia is
 computed). For dynamic concave bodies, decompose the outline into
 convex pieces manually.
 
-Pass the extracted shapes through `toPhysicsColliders()` and give each config
-its own static entity. An entity holds one component per class, so a single
-entity cannot carry a collider per shape; a grouping parent placed at the map's
-origin keeps them together and lets you destroy the whole set with one call:
+Pass the extracted shapes through `toPhysicsColliders()` and use the result as
+one collider component's `parts`. The collision layer then uses one static
+body:
 
 Install `@yagejs/physics` and import the adapter from
 `@yagejs/tilemap/physics`. The root tilemap entry stays usable in projects that
@@ -762,19 +761,15 @@ import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 
 const walls = this.spawn("walls");
 walls.add(new Transform());
-
-toPhysicsColliders(tilemap.getCollisionShapes("walls")).forEach((cfg, i) => {
-  const wall = walls.spawnChild(`wall-${i}`);
-  wall.add(new Transform());
-  wall.add(new RigidBodyComponent({ type: "static" }));
-  wall.add(new ColliderComponent(cfg));
-});
+walls.add(new RigidBodyComponent({ type: "static" }));
+walls.add(new ColliderComponent({
+  parts: toPhysicsColliders(tilemap.getCollisionShapes("walls")),
+}));
 ```
 
-Each child sits at the parent's origin with an identity `Transform`, and the
-config's own offset places the shape. A static body reads its world position
-when it is created, so placing the grouping parent before spawning the children
-offsets the whole set with it.
+Each part's own offset places its shape. A static body reads its world position
+when it is created, so position `walls` before adding the body to move the
+whole collision layer.
 
 The component-method shortcut wraps two standalone functions for the
 same workflow:

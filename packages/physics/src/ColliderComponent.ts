@@ -3,6 +3,7 @@ import {
   devWarn,
   filterEntities,
   ErrorBoundaryKey,
+  Transform,
 } from "@yagejs/core";
 import type {
   Entity,
@@ -22,8 +23,11 @@ import type {
   ContactCandidate,
   ContactFilter,
   TriggerEvent,
+  ColliderPartConfig,
 } from "./types.js";
 import { assertColliderShape, assertFiniteNumber } from "./validate.js";
+import { colliderPart, colliderParts } from "./colliderParts.js";
+import { scaleColliderPart } from "./colliderScale.js";
 
 /**
  * Wraps a Rapier collider. Attach after RigidBodyComponent.
@@ -34,24 +38,30 @@ export class ColliderComponent extends Component {
   /** Collider configuration (shape, sensor, etc.). */
   readonly config: ColliderConfig;
 
-  /** @internal Rapier collider handle, set during onAdd. */
-  _colliderHandle = -1;
+  /** @internal Ordered Rapier collider handles, set during onAdd. */
+  readonly _colliderHandles: number[] = [];
+
+  /** @internal First Rapier handle for single-shape access. */
+  get _colliderHandle(): number {
+    return this._colliderHandles[0] ?? -1;
+  }
 
   /** @internal Active contact filter, read by PhysicsWorld's pair hook. */
   _contactFilter: ContactFilter | null = null;
 
   /**
-   * @internal Collider handles of riders whose contact with this one-way
-   * platform has started and not yet ended. While a rider is in here the
+   * @internal Directed Rapier-handle pairs whose contact with this one-way
+   * platform has started and not yet ended. While a pair is in here the
    * platform stays solid for it regardless of the position rule — a deep
    * first-impact penetration must not flip an established landing back to
    * passable while the solver is still pushing the rider out. Maintained by
    * PhysicsWorld from collision start/end events and collider removal;
    * `null` unless the collider is configured `oneWay`.
    */
-  _oneWayLanded: Set<number> | null = null;
+  _oneWayLanded: Set<string> | null = null;
 
   private readonly rb = this.sibling(RigidBodyComponent);
+  private readonly transform = this.sibling(Transform);
   private physicsWorld!: PhysicsWorld;
   private errorBoundary: ErrorBoundary | undefined;
   private collisionHandlers: Array<(e: CollisionEvent) => void> = [];
@@ -65,15 +75,30 @@ export class ColliderComponent extends Component {
   private _reportedFilterError = false;
   /** The filter `config.oneWay` installed, to tell it apart from a custom one. */
   private _oneWayFilter: ContactFilter | null = null;
+  private _scaleX = 1;
+  private _scaleY = 1;
+  private _effectiveParts: ColliderPartConfig[];
 
   constructor(config: ColliderConfig) {
     super();
     const context = "ColliderComponent";
+    if ("parts" in config && "shape" in config) {
+      throw new Error(`${context}: provide either shape or parts, not both.`);
+    }
     assertFiniteNumber(context, "restitution", config.restitution, 0);
     assertFiniteNumber(context, "friction", config.friction, 0);
     assertFiniteNumber(context, "density", config.density, 0);
     assertFiniteNumber(context, "contactSkin", config.contactSkin, 0);
-    assertColliderShape(context, config.shape);
+    const parts = colliderParts(config);
+    if (parts.length === 0) {
+      throw new Error(`${context}: parts must contain at least one collider.`);
+    }
+    for (const part of parts) {
+      assertColliderShape(context, part.shape);
+    }
+    this._effectiveParts = parts.map((part) =>
+      scaleColliderPart(part, this._scaleX, this._scaleY),
+    );
     if (config.oneWay) {
       assertFiniteNumber(context, "oneWay.margin", config.oneWay.margin);
       const direction = config.oneWay.direction;
@@ -95,6 +120,27 @@ export class ColliderComponent extends Component {
     }
   }
 
+  /** Number of collider shapes attached to this component's rigid body. */
+  get colliderCount(): number {
+    return this._effectiveParts.length;
+  }
+
+  /** @internal Geometry and placement for one ordered collider shape. */
+  _part(index: number): ReturnType<typeof colliderPart> {
+    return colliderPart(this.config, index);
+  }
+
+  /** @internal Scaled geometry and placement for one ordered shape. */
+  _effectivePart(index: number): ColliderPartConfig {
+    return this._effectiveParts[index] as ColliderPartConfig;
+  }
+
+  /** @internal Forget one handle after PhysicsWorld removes its body. */
+  _detachColliderHandle(handle: number): void {
+    const index = this._colliderHandles.indexOf(handle);
+    if (index !== -1) this._colliderHandles.splice(index, 1);
+  }
+
   /**
    * @internal True while the collider's active filter is still the one
    * `config.oneWay` installed — the debug overlay draws one-way visuals
@@ -113,6 +159,7 @@ export class ColliderComponent extends Component {
     // leaves onAdd fully completed rather than half-done.
     this.errorBoundary = this.context.tryResolve(ErrorBoundaryKey);
     this.physicsWorld = this.use(PhysicsWorldKey);
+    this._readInitialScale();
 
     if (this.config.oneWay && this.config.sensor) {
       devWarn(
@@ -121,12 +168,18 @@ export class ColliderComponent extends Component {
       );
     }
 
-    this._colliderHandle = this.physicsWorld.createCollider(
-      this.entity,
-      this.rb._bodyHandle,
-      this.config,
-      this,
-    );
+    for (let index = 0; index < this.colliderCount; index++) {
+      this._colliderHandles.push(
+        this.physicsWorld.createCollider(
+          this.entity,
+          this.rb._bodyHandle,
+          this.config,
+          this,
+          index,
+          this._effectivePart(index),
+        ),
+      );
+    }
 
     if (this._pendingDropThrough > 0) {
       this._dropThroughUntil =
@@ -138,7 +191,14 @@ export class ColliderComponent extends Component {
     // runs right after, and only for an active entity. Rapier creates a
     // collider enabled, so without this a collider added to a dormant entity
     // would stay in the simulation and report contacts.
-    this.physicsWorld.getCollider(this._colliderHandle)?.setEnabled(false);
+    for (const handle of this._colliderHandles) {
+      this.physicsWorld.getCollider(handle)?.setEnabled(false);
+    }
+    if (!this._scaleHasArea) {
+      this.physicsWorld
+        .getBody(this.rb._bodyHandle)
+        ?.recomputeMassPropertiesFromColliders();
+    }
   }
 
   /**
@@ -148,7 +208,9 @@ export class ColliderComponent extends Component {
    * onto an existing contact gets no `onCollision` for it.
    */
   onDisable(): void {
-    this.physicsWorld.getCollider(this._colliderHandle)?.setEnabled(false);
+    for (const handle of this._colliderHandles) {
+      this.physicsWorld.getCollider(handle)?.setEnabled(false);
+    }
     // A pooled entity keeps its components; a drop-through window from the
     // previous life must not carry into the next one.
     this._dropThroughUntil = -1;
@@ -157,29 +219,37 @@ export class ColliderComponent extends Component {
     // platform's remembered riders nor any platform remembering this
     // collider. Contacts end silently on disable, so clean up here.
     this._oneWayLanded?.clear();
-    this.physicsWorld._forgetColliderContacts(this._colliderHandle);
+    for (const handle of this._colliderHandles) {
+      this.physicsWorld._forgetColliderContacts(handle);
+    }
     // Out of the simulation, but still in Rapier's query index until a step.
     this.physicsWorld._markQueriesStale();
   }
 
   onEnable(): void {
-    const collider = this.physicsWorld.getCollider(this._colliderHandle);
-    if (!collider) return;
-    collider.setEnabled(true);
+    this._syncScale();
+    if (!this._scaleHasArea) return;
+    for (const handle of this._colliderHandles) {
+      const collider = this.physicsWorld.getCollider(handle);
+      if (!collider) continue;
+      collider.setEnabled(true);
+    }
     // Rapier's mass re-sum skips a disabled collider, so a re-sum run while
     // this one was disabled (`setSensor`, `setShape` with `recomputeMass`)
     // sums to 0, and Rapier sums again only at the next step. Summing here
     // keeps `getMass()` correct before that step.
-    collider.parent()?.recomputeMassPropertiesFromColliders();
+    this.physicsWorld
+      .getBody(this.rb._bodyHandle)
+      ?.recomputeMassPropertiesFromColliders();
     // Back in the simulation, but not in Rapier's query index until a step.
     this.physicsWorld._markQueriesStale();
   }
 
   onDestroy(): void {
-    if (this._colliderHandle !== -1) {
-      this.physicsWorld.removeCollider(this._colliderHandle);
-      this._colliderHandle = -1;
+    for (const handle of this._colliderHandles) {
+      this.physicsWorld.removeCollider(handle);
     }
+    this._colliderHandles.length = 0;
     this.collisionHandlers.length = 0;
     this.triggerHandlers.length = 0;
   }
@@ -251,7 +321,13 @@ export class ColliderComponent extends Component {
   ): (Entity & T)[];
   getOverlapping(filter?: EntityFilter): Entity[];
   getOverlapping(filter?: EntityFilter): Entity[] {
-    const entities = this.physicsWorld.queryOverlapping(this._colliderHandle);
+    const entities = [
+      ...new Set(
+        this._colliderHandles.flatMap((handle) =>
+          this.physicsWorld.queryOverlapping(handle),
+        ),
+      ),
+    ];
     return filter ? filterEntities(entities, filter) : entities;
   }
 
@@ -281,20 +357,24 @@ export class ColliderComponent extends Component {
   setSensor(sensor: boolean): void {
     // Event routing and the sensor-mismatch warning read config.sensor, so it
     // must track the live collider.
-    if (this._colliderHandle === -1) {
+    if (this._colliderHandles.length === 0) {
       this.config.sensor = sensor;
       return;
     }
     if (sensor === (this.config.sensor === true)) return;
     this.config.sensor = sensor;
-    this._colliderHandle = this.physicsWorld._replaceCollider(
-      this._colliderHandle,
-      this.entity,
-      this.rb._bodyHandle,
-      this.config,
-      this,
-      this.effectiveEnabled,
-    );
+    for (let index = 0; index < this._colliderHandles.length; index++) {
+      const handle = this._colliderHandles[index] as number;
+      this._colliderHandles[index] = this.physicsWorld._replaceCollider(
+        handle,
+        this.entity,
+        this.rb._bodyHandle,
+        this.config,
+        this,
+        index,
+        this.effectiveEnabled && this._scaleHasArea,
+      );
+    }
     this._warnSilencedHandlers(sensor);
   }
 
@@ -322,17 +402,32 @@ export class ColliderComponent extends Component {
    * its mass from the new shape at creation anyway.
    *
    * A shape with a dimension that is not finite and above 0 throws before
-   * anything is stored, so `config.shape` still describes the live collider.
+   * anything is stored, so the selected config part still describes the live
+   * collider.
    */
-  setShape(shape: ColliderShape, options?: { recomputeMass?: boolean }): void {
+  setShape(
+    shape: ColliderShape,
+    options?: { index?: number; recomputeMass?: boolean },
+  ): void {
     assertColliderShape("ColliderComponent.setShape", shape);
-    // Shape-dependent diagnostics read config.shape.
-    this.config.shape = shape;
-    if (this._colliderHandle === -1) return;
+    const index = options?.index ?? 0;
+    if (!Number.isInteger(index) || index < 0 || index >= this.colliderCount) {
+      throw new Error(
+        `ColliderComponent.setShape: index must name an existing collider shape, got ${index}.`,
+      );
+    }
+    // Shape-dependent diagnostics read the selected authored part.
+    this._part(index).shape = shape;
+    this._effectiveParts[index] = this._scaleHasArea
+      ? scaleColliderPart(this._part(index), this._scaleX, this._scaleY)
+      : this._part(index);
+    if (this._colliderHandles.length === 0) return;
     this.physicsWorld.setColliderShape(
-      this._colliderHandle,
+      this._colliderHandles[index] as number,
       this.config,
       options,
+      index,
+      this._effectivePart(index),
     );
   }
 
@@ -357,11 +452,9 @@ export class ColliderComponent extends Component {
   setContactFilter(filter: ContactFilter | null): void {
     this._contactFilter = filter;
     this._reportedFilterError = false;
-    if (this._colliderHandle === -1) return;
-    this.physicsWorld._setContactFilterEnabled(
-      this._colliderHandle,
-      filter !== null,
-    );
+    for (const handle of this._colliderHandles) {
+      this.physicsWorld._setContactFilterEnabled(handle, filter !== null);
+    }
   }
 
   /**
@@ -375,7 +468,7 @@ export class ColliderComponent extends Component {
    * collider is created.
    */
   dropThrough(seconds: number): void {
-    if (this._colliderHandle === -1) {
+    if (this._colliderHandles.length === 0) {
       this._pendingDropThrough = seconds;
       return;
     }
@@ -388,9 +481,96 @@ export class ColliderComponent extends Component {
   /** True while a `dropThrough` window is active for this collider. */
   get isDroppingThrough(): boolean {
     return (
-      this._colliderHandle !== -1 &&
+      this._colliderHandles.length > 0 &&
       this.physicsWorld.elapsed < this._dropThroughUntil
     );
+  }
+
+  /** @internal Apply the Transform's world scale before a physics step. */
+  _syncScale(): void {
+    const scale = this.transform.worldScale;
+    if (scale.x === this._scaleX && scale.y === this._scaleY) return;
+    this._assertFiniteScale(scale.x, scale.y);
+
+    this._scaleX = scale.x;
+    this._scaleY = scale.y;
+    this._rebuildEffectiveParts();
+    if (this._colliderHandles.length === 0) return;
+
+    if (!this._scaleHasArea) {
+      for (const handle of this._colliderHandles) {
+        this.physicsWorld.getCollider(handle)?.setEnabled(false);
+        this.physicsWorld._forgetColliderContacts(handle);
+      }
+      this._oneWayLanded?.clear();
+      this.physicsWorld
+        .getBody(this.rb._bodyHandle)
+        ?.recomputeMassPropertiesFromColliders();
+      this.physicsWorld._markQueriesStale();
+      return;
+    }
+
+    for (let index = 0; index < this._colliderHandles.length; index++) {
+      this.physicsWorld.setColliderShape(
+        this._colliderHandles[index] as number,
+        this.config,
+        { recomputeMass: true },
+        index,
+        this._effectivePart(index),
+      );
+    }
+    if (this.effectiveEnabled) {
+      for (const handle of this._colliderHandles) {
+        this.physicsWorld.getCollider(handle)?.setEnabled(true);
+      }
+    }
+    this.physicsWorld
+      .getBody(this.rb._bodyHandle)
+      ?.recomputeMassPropertiesFromColliders();
+  }
+
+  /** @internal Apply signed world scale to a body-local direction. */
+  _scaleDirection(direction: { x: number; y: number }): {
+    x: number;
+    y: number;
+  } {
+    return {
+      x: direction.x * this._scaleX,
+      y: direction.y * this._scaleY,
+    };
+  }
+
+  private get _scaleHasArea(): boolean {
+    return this._scaleX !== 0 && this._scaleY !== 0;
+  }
+
+  private _readInitialScale(): void {
+    const scale = this.transform.worldScale;
+    this._assertFiniteScale(scale.x, scale.y);
+    this._scaleX = scale.x;
+    this._scaleY = scale.y;
+    this._rebuildEffectiveParts();
+  }
+
+  private _rebuildEffectiveParts(): void {
+    this._effectiveParts = colliderParts(this.config).map((part) =>
+      this._scaleHasArea
+        ? scaleColliderPart(part, this._scaleX, this._scaleY)
+        : part,
+    );
+  }
+
+  private _assertFiniteScale(scaleX: number, scaleY: number): void {
+    if (!Number.isFinite(scaleX)) {
+      throw new Error(
+        `ColliderComponent: Transform.worldScale.x must be finite, got ${scaleX}.`,
+      );
+    }
+    if (!Number.isFinite(scaleY)) {
+      throw new Error(
+        `ColliderComponent: Transform.worldScale.y must be finite, got ${scaleY}.`,
+      );
+    }
   }
 
   /**

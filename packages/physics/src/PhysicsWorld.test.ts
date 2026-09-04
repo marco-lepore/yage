@@ -72,6 +72,7 @@ const { mocks } = vi.hoisted(() => {
     setRotationWrtParent(angle: number) {
       this._rotationWrtParent = angle;
     }
+    setTranslationWrtParent() {}
     parent() {
       return this._parent;
     }
@@ -471,12 +472,20 @@ function createMockColliderComponent(
 ): ColliderComponent {
   const handlers: Array<(e: CollisionEvent) => void> = [];
   const triggerHandlers: Array<(e: TriggerEvent) => void> = [];
+  const colliderHandles: number[] = [];
   return {
     config: {
       shape: { type: "box", width: 10, height: 10 },
       sensor: opts.sensor,
     },
-    _colliderHandle: -1,
+    _colliderHandles: colliderHandles,
+    get _colliderHandle() {
+      return colliderHandles[0] ?? -1;
+    },
+    _detachColliderHandle(handle: number) {
+      const index = colliderHandles.indexOf(handle);
+      if (index !== -1) colliderHandles.splice(index, 1);
+    },
     _dispatchCollision(e: CollisionEvent) {
       for (const h of handlers) h(e);
     },
@@ -977,6 +986,65 @@ describe("PhysicsWorld", () => {
       const ev2 = events2[0] as CollisionEvent;
       expect(ev2.other).toBe(entity1);
       expect(ev2.started).toBe(true);
+    });
+
+    it("reports the participating shape index to both collision sides", () => {
+      const pw = new PhysicsWorld();
+      const entity1 = new Entity("compound-a");
+      const entity2 = new Entity("compound-b");
+      const body1 = pw.createBody(entity1, { type: "dynamic" });
+      const body2 = pw.createBody(entity2, { type: "dynamic" });
+      const comp1 = createMockColliderComponent();
+      const comp2 = createMockColliderComponent();
+      const col1 = pw.createCollider(
+        entity1,
+        body1,
+        {
+          parts: [
+            { shape: { type: "circle", radius: 3 } },
+            { shape: { type: "circle", radius: 4 } },
+            { shape: { type: "circle", radius: 5 } },
+          ],
+        },
+        comp1,
+        2,
+      );
+      const col2 = pw.createCollider(
+        entity2,
+        body2,
+        {
+          parts: [
+            { shape: { type: "circle", radius: 1 } },
+            { shape: { type: "circle", radius: 2 } },
+            { shape: { type: "circle", radius: 3 } },
+            { shape: { type: "circle", radius: 4 } },
+            { shape: { type: "circle", radius: 5 } },
+          ],
+        },
+        comp2,
+        4,
+      );
+      const event1: CollisionEvent[] = [];
+      const event2: CollisionEvent[] = [];
+      comp1.onCollision((event) => event1.push(event));
+      comp2.onCollision((event) => event2.push(event));
+      const eq = (
+        pw as unknown as {
+          eventQueue: InstanceType<typeof mocks.MockEventQueue>;
+        }
+      ).eventQueue;
+      eq._events.push([col1, col2, true]);
+
+      pw.processCollisionEvents();
+
+      expect(event1[0]).toMatchObject({
+        selfShapeIndex: 2,
+        otherShapeIndex: 4,
+      });
+      expect(event2[0]).toMatchObject({
+        selfShapeIndex: 4,
+        otherShapeIndex: 2,
+      });
     });
 
     it("dispatches trigger events to sensor colliders", () => {
@@ -2207,11 +2275,13 @@ describe("PhysicsWorld", () => {
       const entity = new Entity("test");
       const bodyHandle = pw.createBody(entity, { type: "dynamic" });
       const comp = createMockColliderComponent();
-      comp._colliderHandle = pw.createCollider(
-        entity,
-        bodyHandle,
-        { shape: { type: "box", width: 10, height: 10 } },
-        comp,
+      comp._colliderHandles.push(
+        pw.createCollider(
+          entity,
+          bodyHandle,
+          { shape: { type: "box", width: 10, height: 10 } },
+          comp,
+        ),
       );
 
       pw.removeBody(bodyHandle);

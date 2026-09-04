@@ -30,6 +30,8 @@ export interface PreStepColliderState {
 export class MutableContactCandidate implements ContactCandidate {
   other!: Entity;
   otherCollider!: ColliderComponent;
+  selfShapeIndex = 0;
+  otherShapeIndex = 0;
   dt = 0;
 
   private _self!: PreStepColliderState;
@@ -40,12 +42,16 @@ export class MutableContactCandidate implements ContactCandidate {
     other: PreStepColliderState,
     otherEntity: Entity,
     otherComponent: ColliderComponent,
+    selfShapeIndex: number,
+    otherShapeIndex: number,
     dt: number,
   ): void {
     this._self = self;
     this._other = other;
     this.other = otherEntity;
     this.otherCollider = otherComponent;
+    this.selfShapeIndex = selfShapeIndex;
+    this.otherShapeIndex = otherShapeIndex;
     this.dt = dt;
   }
 

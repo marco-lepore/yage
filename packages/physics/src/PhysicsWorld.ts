@@ -10,6 +10,7 @@ import type {
   PhysicsConfig,
   RigidBodyConfig,
   ColliderConfig,
+  ColliderPartConfig,
   ColliderShape,
   BodyType,
   RaycastHit,
@@ -27,6 +28,7 @@ import {
   assertPixelsPerMeter,
   assertPositiveNumber,
 } from "./validate.js";
+import { colliderPairKey, colliderPart } from "./colliderParts.js";
 
 const DEFAULT_PIXELS_PER_METER = 50;
 const DEFAULT_GRAVITY_X = 0;
@@ -57,6 +59,7 @@ interface ContactData {
 /** One side of a drained collision, pinned to the life it was queued for. */
 interface CollisionSide {
   readonly handle: number;
+  readonly shapeIndex: number;
   readonly entity: Entity;
   readonly collider: ColliderComponent;
   readonly life: number;
@@ -107,6 +110,8 @@ export class PhysicsWorld {
 
   /** @internal Map from collider handle to ColliderComponent. */
   readonly _colliderComponents = new Map<number, ColliderComponent>();
+  /** @internal Map from collider handle to its component shape index. */
+  readonly _colliderShapeIndices = new Map<number, number>();
   /** @internal Joint records indexed by each attached body handle. */
   readonly _jointsByBody = new Map<number, Set<JointRecord>>();
 
@@ -275,10 +280,19 @@ export class PhysicsWorld {
     if (!selfComponent?._contactFilter) return true;
 
     const otherComponent = this._colliderComponents.get(otherHandle);
+    const selfShapeIndex = this._colliderShapeIndices.get(selfHandle);
+    const otherShapeIndex = this._colliderShapeIndices.get(otherHandle);
     const otherEntity = this.colliderMap.get(otherHandle);
     const selfState = this._preStepStates.get(selfHandle);
     const otherState = this._preStepStates.get(otherHandle);
-    if (!otherComponent || !otherEntity || !selfState || !otherState) {
+    if (
+      !otherComponent ||
+      !otherEntity ||
+      selfShapeIndex === undefined ||
+      otherShapeIndex === undefined ||
+      !selfState ||
+      !otherState
+    ) {
       return true;
     }
 
@@ -287,6 +301,8 @@ export class PhysicsWorld {
       otherState,
       otherEntity,
       otherComponent,
+      selfShapeIndex,
+      otherShapeIndex,
       this.world.timestep,
     );
     return selfComponent._evaluateContactFilter(this._candidate);
@@ -358,11 +374,11 @@ export class PhysicsWorld {
       // events so a deep first-impact penetration can't flip the pair back
       // to passable while the solver is still pushing the rider out.
       if (started) {
-        comp1._oneWayLanded?.add(handle2);
-        comp2._oneWayLanded?.add(handle1);
+        comp1._oneWayLanded?.add(colliderPairKey(handle1, handle2));
+        comp2._oneWayLanded?.add(colliderPairKey(handle2, handle1));
       } else {
-        comp1._oneWayLanded?.delete(handle2);
-        comp2._oneWayLanded?.delete(handle1);
+        comp1._oneWayLanded?.delete(colliderPairKey(handle1, handle2));
+        comp2._oneWayLanded?.delete(colliderPairKey(handle2, handle1));
       }
 
       const needsContact =
@@ -384,7 +400,15 @@ export class PhysicsWorld {
     const collider = this._colliderComponents.get(handle);
     const entity = this.colliderMap.get(handle);
     if (collider && entity) {
-      return { handle, entity, collider, life: entity.generation };
+      const shapeIndex = this._colliderShapeIndices.get(handle);
+      if (shapeIndex === undefined) return undefined;
+      return {
+        handle,
+        shapeIndex,
+        entity,
+        collider,
+        life: entity.generation,
+      };
     }
     return this._retiredColliders.get(handle);
   }
@@ -400,8 +424,9 @@ export class PhysicsWorld {
   private _sideStillLive(side: CollisionSide): boolean {
     const registered =
       this._colliderComponents.get(side.handle) === side.collider ||
-      this._colliderComponents.get(side.collider._colliderHandle) ===
-        side.collider;
+      side.collider._colliderHandles.some(
+        (handle) => this._colliderComponents.get(handle) === side.collider,
+      );
     return (
       registered &&
       !side.entity.isDestroyed &&
@@ -422,6 +447,8 @@ export class PhysicsWorld {
       self.collider._dispatchTrigger({
         other: other.entity,
         otherCollider: other.collider,
+        selfShapeIndex: self.shapeIndex,
+        otherShapeIndex: other.shapeIndex,
         entered: pair.started,
       });
       return;
@@ -431,6 +458,8 @@ export class PhysicsWorld {
     self.collider._dispatchCollision({
       other: other.entity,
       otherCollider: other.collider,
+      selfShapeIndex: self.shapeIndex,
+      otherShapeIndex: other.shapeIndex,
       started: pair.started,
       ...(contact
         ? {
@@ -633,17 +662,20 @@ export class PhysicsWorld {
     bodyHandle: number,
     config: ColliderConfig,
     component: ColliderComponent,
+    shapeIndex = 0,
+    effectivePart?: ColliderPartConfig,
   ): number {
     const body = this.world.getRigidBody(bodyHandle);
-    const desc = this.buildColliderDesc(config.shape);
+    const part = effectivePart ?? colliderPart(config, shapeIndex);
+    const desc = this.buildColliderDesc(part.shape);
 
-    if (config.offset) {
+    if (part.offset) {
       desc.setTranslation(
-        this.toMeters(config.offset.x),
-        this.toMeters(config.offset.y),
+        this.toMeters(part.offset.x),
+        this.toMeters(part.offset.y),
       );
     }
-    const rotation = colliderRotation(config);
+    const rotation = colliderRotation(part);
     if (rotation !== 0) {
       desc.setRotation(rotation);
     }
@@ -653,7 +685,7 @@ export class PhysicsWorld {
     if (config.friction !== undefined) {
       desc.setFriction(config.friction);
     }
-    desc.setDensity(this._effectiveDensity(config));
+    desc.setDensity(this._effectiveDensity(config, part.shape));
     if (config.contactSkin !== undefined) {
       desc.setContactSkin(this.toMeters(config.contactSkin));
     }
@@ -697,10 +729,11 @@ export class PhysicsWorld {
     });
     this.colliderMap.set(collider.handle, entity);
     this._colliderComponents.set(collider.handle, component);
+    this._colliderShapeIndices.set(collider.handle, shapeIndex);
     this._layerInfo.set(collider.handle, { layers: membership, mask: filter });
     this._checkAsymmetricMasks(entity, membership, filter);
     this._trackLayerSignature(entity, membership, filter);
-    this._checkConvexHullVertexDrop(collider, config.shape, entity);
+    this._checkConvexHullVertexDrop(collider, part.shape, entity);
     this._queriesStale = true;
     return collider.handle;
   }
@@ -822,9 +855,10 @@ export class PhysicsWorld {
       const collider = body.collider(i);
       this._forgetColliderContacts(collider.handle);
       const component = this._colliderComponents.get(collider.handle);
-      if (component) component._colliderHandle = -1;
+      component?._detachColliderHandle(collider.handle);
       this.colliderMap.delete(collider.handle);
       this._colliderComponents.delete(collider.handle);
+      this._colliderShapeIndices.delete(collider.handle);
       this._untrackLayerSignature(collider.handle);
       this._contactFiltered.delete(collider.handle);
       this._colliderBody.delete(collider.handle);
@@ -848,6 +882,7 @@ export class PhysicsWorld {
     this.world.removeCollider(collider, true);
     this.colliderMap.delete(handle);
     this._colliderComponents.delete(handle);
+    this._colliderShapeIndices.delete(handle);
     this._untrackLayerSignature(handle);
     this._contactFiltered.delete(handle);
     this._colliderBody.delete(handle);
@@ -864,7 +899,7 @@ export class PhysicsWorld {
    * retired handle, and re-form in the new kind.
    *
    * The handle changes, so nothing outside this class may cache one; the
-   * component's `_colliderHandle` is the only place it lives.
+   * component's ordered handle list is the only place it lives.
    */
   _replaceCollider(
     handle: number,
@@ -872,11 +907,13 @@ export class PhysicsWorld {
     bodyHandle: number,
     config: ColliderConfig,
     component: ColliderComponent,
+    shapeIndex: number,
     enabled: boolean,
   ): number {
     const mass = this.world.getCollider(handle).mass();
     this._retiredColliders.set(handle, {
       handle,
+      shapeIndex,
       entity,
       collider: component,
       life: entity.generation,
@@ -887,6 +924,8 @@ export class PhysicsWorld {
       bodyHandle,
       config,
       component,
+      shapeIndex,
+      component._effectivePart(shapeIndex),
     );
     const created = this.world.getCollider(newHandle);
     // Explicit mass keeps `getMass()` unchanged across the flip, including
@@ -910,10 +949,13 @@ export class PhysicsWorld {
    * platform — the next collider with the same handle would inherit it.
    */
   _forgetColliderContacts(handle: number): void {
-    for (const filteredHandle of this._contactFiltered) {
-      this._colliderComponents
-        .get(filteredHandle)
-        ?._oneWayLanded?.delete(handle);
+    for (const component of new Set(this._colliderComponents.values())) {
+      const landed = component._oneWayLanded;
+      if (!landed) continue;
+      for (const pair of landed) {
+        const [self, other] = pair.split(":").map(Number);
+        if (self === handle || other === handle) landed.delete(pair);
+      }
     }
   }
 
@@ -929,6 +971,8 @@ export class PhysicsWorld {
     handle: number,
     config: ColliderConfig,
     options?: { recomputeMass?: boolean },
+    shapeIndex = 0,
+    effectivePart?: ColliderPartConfig,
   ): void {
     const collider = this.getCollider(handle);
     if (!collider) return;
@@ -939,22 +983,27 @@ export class PhysicsWorld {
       // new shape at the next step.
       collider.setMass(collider.mass());
     }
-    collider.setShape(this.buildColliderDesc(config.shape).shape);
+    const part = effectivePart ?? colliderPart(config, shapeIndex);
+    collider.setShape(this.buildColliderDesc(part.shape).shape);
+    collider.setTranslationWrtParent({
+      x: this.toMeters(part.offset?.x ?? 0),
+      y: this.toMeters(part.offset?.y ?? 0),
+    });
     // The capsule axis:"x" turn is part of the shape, so a swap can change
     // the rotation a collider needs even when config.rotation did not move.
-    collider.setRotationWrtParent(colliderRotation(config));
+    collider.setRotationWrtParent(colliderRotation(part));
 
     if (options?.recomputeMass) {
       // The density carries the rounded-box factor for the shape being
       // weighed, so it is set again for the new shape; this also takes a
       // collider off a pinned mass.
-      collider.setDensity(this._effectiveDensity(config));
+      collider.setDensity(this._effectiveDensity(config, part.shape));
       collider.parent()?.recomputeMassPropertiesFromColliders();
     }
 
     const entity = this.colliderMap.get(handle);
     if (entity) {
-      this._checkConvexHullVertexDrop(collider, config.shape, entity);
+      this._checkConvexHullVertexDrop(collider, part.shape, entity);
     }
     this._queriesStale = true;
   }
@@ -1361,6 +1410,7 @@ export class PhysicsWorld {
     this.bodyMap.clear();
     this.colliderMap.clear();
     this._colliderComponents.clear();
+    this._colliderShapeIndices.clear();
     this._layerInfo.clear();
     this._layerSignatures.clear();
     this._warnedAsymmetricPairs.clear();
@@ -1380,10 +1430,13 @@ export class PhysicsWorld {
    * two areas. Angular inertia is the inner rectangle's, scaled by the same
    * factor — an approximation of the round-rectangle inertia.
    */
-  private _effectiveDensity(config: ColliderConfig): number {
+  private _effectiveDensity(
+    config: ColliderConfig,
+    shape: ColliderShape,
+  ): number {
     const density = config.density ?? 1;
-    if (config.shape.type !== "box") return density;
-    return density * getBoxColliderGeometry(config.shape).areaScale;
+    if (shape.type !== "box") return density;
+    return density * getBoxColliderGeometry(shape).areaScale;
   }
 
   private _validateJointConfig(config: JointConfig): void {

@@ -5,6 +5,7 @@ import type {
   ContactCandidate,
   ContactFilter,
 } from "./types.js";
+import { colliderPairKey } from "./colliderParts.js";
 
 const DEFAULT_DIRECTION_X = 0;
 const DEFAULT_DIRECTION_Y = -1;
@@ -76,16 +77,32 @@ export function createOneWayFilter(self: ColliderComponent): ContactFilter {
 
     if (contact.otherCollider.isDroppingThrough) return false;
 
-    if (self._oneWayLanded?.has(contact.otherCollider._colliderHandle)) {
+    const selfHandle = self._colliderHandles[contact.selfShapeIndex];
+    const otherHandle =
+      contact.otherCollider._colliderHandles[contact.otherShapeIndex];
+    if (
+      selfHandle !== undefined &&
+      otherHandle !== undefined &&
+      self._oneWayLanded?.has(colliderPairKey(selfHandle, otherHandle))
+    ) {
       return true;
     }
 
-    const dirX = oneWay.direction?.x ?? DEFAULT_DIRECTION_X;
-    const dirY = oneWay.direction?.y ?? DEFAULT_DIRECTION_Y;
+    const selfPart = self._effectivePart(contact.selfShapeIndex);
+    const otherPart = contact.otherCollider._effectivePart(
+      contact.otherShapeIndex,
+    );
+
+    const direction = self._scaleDirection({
+      x: oneWay.direction?.x ?? DEFAULT_DIRECTION_X,
+      y: oneWay.direction?.y ?? DEFAULT_DIRECTION_Y,
+    });
+    const dirX = direction.x;
+    const dirY = direction.y;
     const len = Math.hypot(dirX, dirY);
 
     // The solid-face normal, taken from the body's local frame to world.
-    const relRotation = colliderRotation(config);
+    const relRotation = colliderRotation(selfPart);
     const bodyRotation = contact.selfRotation - relRotation;
     const cosB = Math.cos(bodyRotation);
     const sinB = Math.sin(bodyRotation);
@@ -108,7 +125,7 @@ export function createOneWayFilter(self: ColliderComponent): ContactFilter {
     const cosS = Math.cos(contact.selfRotation);
     const sinS = Math.sin(contact.selfRotation);
     const selfExtent = supportExtent(
-      config.shape,
+      selfPart.shape,
       nx * cosS + ny * sinS,
       -nx * sinS + ny * cosS,
     );
@@ -116,7 +133,7 @@ export function createOneWayFilter(self: ColliderComponent): ContactFilter {
     const cosO = Math.cos(otherRotation);
     const sinO = Math.sin(otherRotation);
     const otherExtent = supportExtent(
-      contact.otherCollider.config.shape,
+      otherPart.shape,
       -nx * cosO - ny * sinO,
       nx * sinO - ny * cosO,
     );

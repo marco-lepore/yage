@@ -1,4 +1,4 @@
-import type { ColliderConfig, ColliderShape } from "./types.js";
+import type { ColliderPartConfig, ColliderShape } from "./types.js";
 
 interface BoxColliderGeometry {
   halfWidth: number;
@@ -36,7 +36,7 @@ export function getBoxColliderGeometry(
  * Total rotation for a collider desc: the shape's base rotation (a horizontal
  * capsule is a vertical capsule rotated 90°) plus the configured rotation.
  */
-export function colliderRotation(config: ColliderConfig): number {
+export function colliderRotation(config: ColliderPartConfig): number {
   const base =
     config.shape.type === "capsule" && config.shape.axis === "x"
       ? Math.PI / 2

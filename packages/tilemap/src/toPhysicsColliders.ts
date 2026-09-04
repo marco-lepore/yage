@@ -1,9 +1,9 @@
-import type { ColliderConfig as PhysicsColliderConfig } from "@yagejs/physics";
+import type { ColliderPartConfig } from "@yagejs/physics";
 import type { TilemapColliderConfig } from "./types.js";
 
 /**
  * Convert tilemap TilemapColliderConfig[] (top-left origin rects/polygons) into
- * physics-package ColliderConfig[] (center-origin shape + offset).
+ * physics-package ColliderPartConfig[] (center-origin shape + offset).
  *
  * Notes:
  * - Tiled polygons are emitted as `polyline` (chain) shapes — they're authored
@@ -15,11 +15,11 @@ import type { TilemapColliderConfig } from "./types.js";
  */
 export function toPhysicsColliders(
   shapes: TilemapColliderConfig[],
-): PhysicsColliderConfig[] {
+): ColliderPartConfig[] {
   return shapes.map(toPhysicsCollider);
 }
 
-function toPhysicsCollider(config: TilemapColliderConfig): PhysicsColliderConfig {
+function toPhysicsCollider(config: TilemapColliderConfig): ColliderPartConfig {
   switch (config.type) {
     case "polygon":
       return {
@@ -38,7 +38,7 @@ function toPhysicsCollider(config: TilemapColliderConfig): PhysicsColliderConfig
         offset: { x: config.x, y: config.y },
       };
     case "rect": {
-      const result: PhysicsColliderConfig = {
+      const result: ColliderPartConfig = {
         shape: { type: "box", width: config.width, height: config.height },
         offset: bboxCenter(config),
       };
@@ -53,7 +53,7 @@ function toPhysicsCollider(config: TilemapColliderConfig): PhysicsColliderConfig
         offset: bboxCenter(config),
       };
     case "capsule": {
-      const result: PhysicsColliderConfig = {
+      const result: ColliderPartConfig = {
         shape: {
           type: "capsule",
           halfHeight: config.halfHeight,

@@ -45,6 +45,7 @@ const { mocks } = vi.hoisted(() => {
 
     _shape: unknown = undefined;
     _rotationWrtParent = 0;
+    _translationWrtParent = { x: 0, y: 0 };
     _parent: MockRigidBody | undefined;
     _activeHooks = 0;
 
@@ -60,6 +61,9 @@ const { mocks } = vi.hoisted(() => {
     }
     setRotationWrtParent(angle: number) {
       this._rotationWrtParent = angle;
+    }
+    setTranslationWrtParent(translation: { x: number; y: number }) {
+      this._translationWrtParent = { ...translation };
     }
     parent() {
       return this._parent;
@@ -165,6 +169,8 @@ const { mocks } = vi.hoisted(() => {
   class MockColliderDesc {
     _sensor = false;
     _activeHooks = 0;
+    _translation = { x: 0, y: 0 };
+    _rotation = 0;
     // Mirrors Rapier's `ColliderDesc.shape`, in meters.
     shape: Record<string, unknown> = { kind: "none" };
     private static of(shape: Record<string, unknown>) {
@@ -184,7 +190,12 @@ const { mocks } = vi.hoisted(() => {
     static convexHull() {
       return MockColliderDesc.of({ kind: "convexHull" });
     }
-    setTranslation() {
+    setTranslation(x: number, y: number) {
+      this._translation = { x, y };
+      return this;
+    }
+    setRotation(rotation: number) {
+      this._rotation = rotation;
       return this;
     }
     setRestitution() {
@@ -248,6 +259,8 @@ const { mocks } = vi.hoisted(() => {
       const collider = new MockCollider();
       collider._sensor = desc._sensor;
       collider._shape = desc.shape;
+      collider._translationWrtParent = desc._translation;
+      collider._rotationWrtParent = desc._rotation;
       collider._parent = parent;
       collider._activeHooks = desc._activeHooks;
       parent._colliders.push(collider);
@@ -327,7 +340,7 @@ import {
   createPhysicsTestContext,
   spawnEntityInScene,
 } from "./test-helpers.js";
-import type { CollisionEvent, TriggerEvent } from "./types.js";
+import type { ColliderConfig, CollisionEvent, TriggerEvent } from "./types.js";
 
 describe("ColliderComponent", () => {
   beforeEach(() => {
@@ -461,6 +474,162 @@ describe("ColliderComponent", () => {
     });
   });
 
+  describe("compound colliders", () => {
+    async function setup() {
+      const ctx = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(ctx.scene, "compound");
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const col = entity.add(
+        new ColliderComponent({
+          parts: [
+            {
+              shape: { type: "box", width: 20, height: 10 },
+              offset: { x: -15, y: 0 },
+            },
+            {
+              shape: { type: "circle", radius: 5 },
+              offset: { x: 15, y: 0 },
+              rotation: 0.25,
+            },
+          ],
+        }),
+      );
+      const rapier = (handle: number) =>
+        ctx.physicsWorld.getCollider(handle) as unknown as
+          | InstanceType<typeof mocks.MockCollider>
+          | undefined;
+      return { ...ctx, entity, rb, col, rapier };
+    }
+
+    it("rejects an empty part list and mixed single/compound geometry", () => {
+      expect(() => new ColliderComponent({ parts: [] })).toThrow(
+        "ColliderComponent: parts must contain at least one collider.",
+      );
+      expect(
+        () =>
+          new ColliderComponent({
+            shape: { type: "circle", radius: 5 },
+            parts: [{ shape: { type: "circle", radius: 10 } }],
+          } as unknown as ColliderConfig),
+      ).toThrow("ColliderComponent: provide either shape or parts, not both.");
+    });
+
+    it("creates ordered shapes with their own offsets and rotations on one body", async () => {
+      const { physicsWorld, rb, col, rapier } = await setup();
+
+      expect(col.colliderCount).toBe(2);
+      expect(col._colliderHandles).toHaveLength(2);
+      expect(physicsWorld.getBody(rb._bodyHandle)?.numColliders()).toBe(2);
+      expect(
+        physicsWorld._colliderShapeIndices.get(col._colliderHandles[0]!),
+      ).toBe(0);
+      expect(
+        physicsWorld._colliderShapeIndices.get(col._colliderHandles[1]!),
+      ).toBe(1);
+      expect(rapier(col._colliderHandles[0]!)?._shape).toEqual({
+        kind: "cuboid",
+        hx: 0.2,
+        hy: 0.1,
+      });
+      expect(rapier(col._colliderHandles[0]!)?._translationWrtParent).toEqual({
+        x: -0.3,
+        y: 0,
+      });
+      expect(rapier(col._colliderHandles[1]!)?._shape).toEqual({
+        kind: "ball",
+        radius: 0.1,
+      });
+      expect(rapier(col._colliderHandles[1]!)?._rotationWrtParent).toBe(0.25);
+    });
+
+    it("applies lifecycle, sensor, and contact-filter changes to every part", async () => {
+      const { entity, col, rapier } = await setup();
+
+      entity.setActive(false);
+      expect(
+        col._colliderHandles.every((handle) => !rapier(handle)?.isEnabled()),
+      ).toBe(true);
+      entity.setActive(true);
+      expect(
+        col._colliderHandles.every((handle) => rapier(handle)?.isEnabled()),
+      ).toBe(true);
+
+      col.setContactFilter(() => true);
+      expect(
+        col._colliderHandles.every(
+          (handle) => rapier(handle)?.activeHooks() === 1,
+        ),
+      ).toBe(true);
+
+      const oldHandles = [...col._colliderHandles];
+      col.setSensor(true);
+      expect(col._colliderHandles).not.toEqual(oldHandles);
+      expect(
+        col._colliderHandles.every((handle) => rapier(handle)?.isSensor()),
+      ).toBe(true);
+      expect(
+        col._colliderHandles.every(
+          (handle) => rapier(handle)?.activeHooks() === 1,
+        ),
+      ).toBe(true);
+
+      entity.remove(ColliderComponent);
+      expect(col._colliderHandles).toEqual([]);
+    });
+
+    it("replaces only the selected shape and rejects a bad index before mutation", async () => {
+      const { col, rapier } = await setup();
+      const first = rapier(col._colliderHandles[0]!)?._shape;
+
+      col.setShape({ type: "box", width: 40, height: 30 }, { index: 1 });
+
+      expect(rapier(col._colliderHandles[0]!)?._shape).toBe(first);
+      expect(rapier(col._colliderHandles[1]!)?._shape).toEqual({
+        kind: "cuboid",
+        hx: 0.4,
+        hy: 0.3,
+      });
+      expect(col._part(1).shape).toEqual({
+        type: "box",
+        width: 40,
+        height: 30,
+      });
+
+      expect(() =>
+        col.setShape({ type: "circle", radius: 1 }, { index: 2 }),
+      ).toThrow(
+        "ColliderComponent.setShape: index must name an existing collider shape, got 2.",
+      );
+      expect(col._part(1).shape).toEqual({
+        type: "box",
+        width: 40,
+        height: 30,
+      });
+    });
+
+    it("deduplicates entities overlapping more than one part", async () => {
+      const { physicsWorld, entity, col } = await setup();
+      const other = spawnEntityInScene(entity.scene, "other");
+      const query = vi
+        .spyOn(physicsWorld, "queryOverlapping")
+        .mockReturnValueOnce([other])
+        .mockReturnValueOnce([other]);
+
+      expect(col.getOverlapping()).toEqual([other]);
+      expect(query).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not rebuild geometry while world scale is unchanged", async () => {
+      const { physicsWorld, col } = await setup();
+      const setShape = vi.spyOn(physicsWorld, "setColliderShape");
+
+      col._syncScale();
+
+      expect(setShape).not.toHaveBeenCalled();
+    });
+  });
+
   describe("onCollision / _dispatchCollision", () => {
     it("calls collision handlers when dispatched", async () => {
       const { scene } = await createPhysicsTestContext();
@@ -488,6 +657,8 @@ describe("ColliderComponent", () => {
       col._dispatchCollision({
         other: otherEntity,
         otherCollider: otherCol,
+        selfShapeIndex: 0,
+        otherShapeIndex: 0,
         started: true,
       });
 
@@ -516,6 +687,8 @@ describe("ColliderComponent", () => {
       col._dispatchCollision({
         other: entity,
         otherCollider: col,
+        selfShapeIndex: 0,
+        otherShapeIndex: 0,
         started: true,
       });
 
@@ -540,6 +713,8 @@ describe("ColliderComponent", () => {
       col._dispatchCollision({
         other: entity,
         otherCollider: col,
+        selfShapeIndex: 0,
+        otherShapeIndex: 0,
         started: true,
       });
       expect(handler).toHaveBeenCalledOnce();
@@ -549,6 +724,8 @@ describe("ColliderComponent", () => {
       col._dispatchCollision({
         other: entity,
         otherCollider: col,
+        selfShapeIndex: 0,
+        otherShapeIndex: 0,
         started: false,
       });
       expect(handler).toHaveBeenCalledOnce(); // still 1
@@ -576,6 +753,8 @@ describe("ColliderComponent", () => {
         col._dispatchCollision({
           other: entity,
           otherCollider: col,
+          selfShapeIndex: 0,
+          otherShapeIndex: 0,
           started: true,
         }),
       ).toThrow("boom");
@@ -613,6 +792,8 @@ describe("ColliderComponent", () => {
       col._dispatchTrigger({
         other: entity,
         otherCollider: col,
+        selfShapeIndex: 0,
+        otherShapeIndex: 0,
         entered: true,
       });
 
@@ -639,6 +820,8 @@ describe("ColliderComponent", () => {
       col._dispatchTrigger({
         other: entity,
         otherCollider: col,
+        selfShapeIndex: 0,
+        otherShapeIndex: 0,
         entered: true,
       });
       expect(handler).toHaveBeenCalledOnce();
@@ -648,6 +831,8 @@ describe("ColliderComponent", () => {
       col._dispatchTrigger({
         other: entity,
         otherCollider: col,
+        selfShapeIndex: 0,
+        otherShapeIndex: 0,
         entered: false,
       });
       expect(handler).toHaveBeenCalledOnce();
@@ -678,6 +863,8 @@ describe("ColliderComponent", () => {
         col._dispatchTrigger({
           other: entity,
           otherCollider: col,
+          selfShapeIndex: 0,
+          otherShapeIndex: 0,
           entered: true,
         }),
       ).toThrow("door pad exploded");
@@ -719,11 +906,15 @@ describe("ColliderComponent", () => {
       col._dispatchCollision({
         other: entity,
         otherCollider: col,
+        selfShapeIndex: 0,
+        otherShapeIndex: 0,
         started: true,
       });
       col._dispatchTrigger({
         other: entity,
         otherCollider: col,
+        selfShapeIndex: 0,
+        otherShapeIndex: 0,
         entered: true,
       });
 
@@ -948,7 +1139,11 @@ describe("ColliderComponent", () => {
         "ColliderComponent.setShape: shape.borderRadius must be finite, >= 0 and smaller than half the shorter side, got 20.",
       );
 
-      expect(col.config.shape).toEqual({ type: "box", width: 20, height: 20 });
+      expect(col._part(0).shape).toEqual({
+        type: "box",
+        width: 20,
+        height: 20,
+      });
       expect(rapierCollider._shape).toEqual({
         kind: "cuboid",
         hx: 0.2,
@@ -967,6 +1162,8 @@ describe("ColliderComponent", () => {
       col._dispatchCollision({
         other,
         otherCollider: col,
+        selfShapeIndex: 0,
+        otherShapeIndex: 0,
         started: true,
       });
 
@@ -978,7 +1175,7 @@ describe("ColliderComponent", () => {
 
       col.setShape({ type: "circle", radius: 8 });
 
-      expect(col.config.shape).toEqual({ type: "circle", radius: 8 });
+      expect(col._part(0).shape).toEqual({ type: "circle", radius: 8 });
     });
 
     it("keeps the body's mass, so a crouch does not change knockback", async () => {
@@ -1015,7 +1212,7 @@ describe("ColliderComponent", () => {
         shape: { type: "box", width: 20, height: 40 },
       });
       expect(() => col.setShape({ type: "circle", radius: 8 })).not.toThrow();
-      expect(col.config.shape).toEqual({ type: "circle", radius: 8 });
+      expect(col._part(0).shape).toEqual({ type: "circle", radius: 8 });
 
       entity.add(col);
 
