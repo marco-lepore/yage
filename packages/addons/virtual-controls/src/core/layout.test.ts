@@ -11,9 +11,9 @@ const VP: ViewportRect = { x: 0, y: 0, width: 800, height: 600 };
 
 describe("normalizeControlsConfig", () => {
   it("rejects stick + sticks together", () => {
-    expect(() =>
-      normalizeControlsConfig({ stick: {}, sticks: [{}] }),
-    ).toThrow("not both");
+    expect(() => normalizeControlsConfig({ stick: {}, sticks: [{}] })).toThrow(
+      "not both",
+    );
   });
 
   it("defaults stick ids and axes by position", () => {
@@ -54,12 +54,24 @@ describe("normalizeControlsConfig", () => {
   });
 
   it("rejects out-of-range deadZone / threshold", () => {
+    expect(() => normalizeControlsConfig({ stick: { deadZone: 1 } })).toThrow(
+      "deadZone",
+    );
+    expect(() => normalizeControlsConfig({ stick: { threshold: 0 } })).toThrow(
+      "threshold",
+    );
     expect(() =>
-      normalizeControlsConfig({ stick: { deadZone: 1 } }),
-    ).toThrow("deadZone");
+      normalizeControlsConfig({ stick: { deadZone: Number.NaN } }),
+    ).toThrow(
+      'VirtualControls: stick "left" deadZone must be finite and in [0, 1), got NaN.',
+    );
     expect(() =>
-      normalizeControlsConfig({ stick: { threshold: 0 } }),
-    ).toThrow("threshold");
+      normalizeControlsConfig({
+        stick: { threshold: Number.POSITIVE_INFINITY },
+      }),
+    ).toThrow(
+      'VirtualControls: stick "left" threshold must be finite and in (0, 1], got Infinity.',
+    );
   });
 
   it("rejects non-positive radii", () => {
@@ -69,6 +81,18 @@ describe("normalizeControlsConfig", () => {
     expect(() =>
       normalizeControlsConfig({ buttons: [{ id: "a", radius: -5 }] }),
     ).toThrow("radius");
+    expect(() =>
+      normalizeControlsConfig({ stick: { radius: Number.NaN } }),
+    ).toThrow(
+      'VirtualControls: stick "left" radius must be finite and > 0, got NaN.',
+    );
+    expect(() =>
+      normalizeControlsConfig({
+        buttons: [{ id: "a", radius: Number.POSITIVE_INFINITY }],
+      }),
+    ).toThrow(
+      'VirtualControls: button "a" radius must be finite and > 0, got Infinity.',
+    );
   });
 
   it("rejects malformed placements", () => {
@@ -82,6 +106,45 @@ describe("normalizeControlsConfig", () => {
         buttons: [{ id: "a", placement: { left: 10 } }],
       }),
     ).toThrow("exactly one");
+    expect(() =>
+      normalizeControlsConfig({
+        buttons: [
+          {
+            id: "a",
+            placement: { left: Number.NaN, top: 10 },
+          },
+        ],
+      }),
+    ).toThrow(
+      'VirtualControls: placement for button "a" left must be finite, got NaN.',
+    );
+  });
+
+  it("rejects invalid stick zones", () => {
+    expect(() =>
+      normalizeControlsConfig({
+        stick: { zone: { x: 0, y: 0, width: Number.NaN, height: 1 } },
+      }),
+    ).toThrow('zone for stick "left" width must be finite and in (0, 1]');
+    expect(() =>
+      normalizeControlsConfig({
+        stick: { zone: { x: 0, y: 0, width: 1, height: 0 } },
+      }),
+    ).toThrow('zone for stick "left" height must be finite and in (0, 1]');
+    for (const zone of [
+      { x: -0.1, y: 0, width: 1, height: 1 },
+      { x: 0, y: 1.1, width: 1, height: 1 },
+      { x: 0, y: 0, width: 1.1, height: 1 },
+    ]) {
+      expect(() => normalizeControlsConfig({ stick: { zone } })).toThrow(
+        "must be finite and in",
+      );
+    }
+    expect(() =>
+      normalizeControlsConfig({
+        stick: { zone: { x: 1, y: 1, width: 1, height: 1 } },
+      }),
+    ).not.toThrow();
   });
 
   it("defaults button labels and slide behavior", () => {

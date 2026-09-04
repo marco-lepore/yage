@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { InputManager } from "./InputManager.js";
 import { InputPlugin } from "./InputPlugin.js";
 import { InputManagerKey, type SchedulerLike } from "./types.js";
+import { setTestActionHeld } from "./test-action-source.js";
 
 /** Records the result of an input query once per update of its phase. */
 class QueryReader extends System {
@@ -133,9 +134,9 @@ describe("edge queries from a fixed-phase system", () => {
     scheduler.add(pressed);
     scheduler.add(released);
 
-    input.fireActionDown("jump");
+    setTestActionHeld(input, "jump", true);
     engine.loop.tick(8); // zero-step frame: no step has seen the press yet
-    input.fireActionUp("jump");
+    setTestActionHeld(input, "jump", false);
     engine.loop.tick(8); // step 1 runs — its window spans both frames
     expect(pressed.readings).toEqual([true]);
     expect(released.readings).toEqual([true]);

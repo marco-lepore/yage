@@ -283,11 +283,27 @@ to touch). For multi-touch UIs, iterate every active pointer:
 import type { PointerInfo } from "@yagejs/input";
 
 for (const p of input.getPointers()) {
-  // p.id is PointerEvent.pointerId — stable across moves for the same finger
+  // p.id is PointerEvent.pointerId; generation changes when an id is reused
   // p.type is "mouse" | "pen" | "touch"
   // p.screenPos / p.buttons / p.isPrimary / p.isDown / p.button
 }
 ```
+
+For tap-driven components, read down edges retained for the current rendered
+frame. A quick down/up pair remains visible even when both browser events arrive
+before the frame runs:
+
+```typescript
+for (const press of input.getPointerPresses({ button: 0 })) {
+  placeMarker(press.worldPos);
+}
+```
+
+Claimed presses are excluded by default. Pass `consumed: "include"` to inspect
+all presses or `consumed: "only"` to inspect only claimed presses. Each result
+also includes `screenPos`, `worldPos`, `generation`, and `consumed`. The
+positions and held-button state describe the applied down edge. A pointer or
+camera move later in the frame does not alter the press record.
 
 Per-pointer events let you track a single finger across its lifetime (down →
 move → up). Each subscriber returns a disposer:
@@ -313,12 +329,9 @@ input.onPointerDown((p) => {
 ```
 
 :::caution[Use `p.button`, not `p.buttons`, in down/up listeners]
-Pointer listeners fire **synchronously, before** the press/release edge is
-drained into `p.buttons` (this ordering is what lets UI auto-consume and
-`consumePointer()` suppress gameplay edges for the same press). So inside an
-`onPointerDown` listener `p.buttons` does **not** yet include the button just
-pressed — gating on `p.buttons.has(0)` silently never runs. `p.button`
-carries the triggering edge regardless of drain timing.
+Down and up listeners run during input drain, before that edge changes
+`p.buttons`. Inside an `onPointerDown` listener, `p.buttons` does not yet include
+the button just pressed. `p.button` carries the triggering edge.
 :::
 
 Touch primary contacts fire `MouseLeft` (since `PointerEvent.button === 0` for
@@ -330,17 +343,14 @@ For device-orientation events (rotate-to-portrait detection, etc.), see
 
 ## UI vs gameplay clicks
 
-A common source of bugs in past versions: a Pixi UI button is mapped to one
-`onClick` callback, but the same `pointerdown` also fires whatever gameplay
-action is bound to `MouseLeft`. The 0.5 release fixes this end-to-end with no
-per-component boilerplate.
+A Pixi UI button can handle its own click without also firing the gameplay
+action bound to `MouseLeft`.
 
 Every primitive in `@yagejs/ui` (and `UIRoot` in `@yagejs/ui-react`) marks
-itself as a "consume surface". When a `pointerdown` lands on a marked
-container, `@yagejs/input` automatically claims that pointer for its entire
-event cycle — gameplay action edges (`MouseLeft`, `MouseMiddle`, `MouseRight`,
-or any custom binding to those codes) are suppressed, while the UI element's
-own handler still fires:
+itself as a consume surface. When a pointer-down or wheel event lands on a
+marked container, `@yagejs/input` suppresses its gameplay action edges while
+the UI element still handles the event. A pointer claim lasts for that press
+cycle.
 
 ```tsx
 <Panel>
@@ -412,8 +422,10 @@ input.onPointerDown((p) => {
 `pointerup`/`pointercancel`, so the drag's `pointerup` is also gated and a
 later fresh down starts unmarked.
 
-There's an analogous `consumeWheel()` for one-frame suppression of
-`WheelUp/Down/Left/Right` action edges.
+Call `consumeWheel()` inside an `onWheel` callback to suppress that wheel
+event's `WheelUp/Down/Left/Right` action edges. The call throws outside an
+active wheel callback. Each event has its own claim, even when several wheel
+events drain in one frame.
 
 `consumePointer` is also the answer to **forwarding or replaying a synthetic
 pointer to the canvas**. A DOM overlay above the canvas — a virtual joystick,
@@ -445,8 +457,8 @@ overlayEl.addEventListener("pointerdown", (e) => {
 });
 ```
 
-`onPointerDown` listeners (the dialogue box's binding, the renderer's UI
-hit-test) still fire — only the action-map edge is suppressed.
+Explicit `onPointerDown` listeners still fire. Consumption suppresses only the
+action-map edge.
 
 ## Frame deferral
 
@@ -458,9 +470,10 @@ event dispatch:
 
 ```
 F0  browser dispatches pointerdown
-    -> pointer listeners fire synchronously (low-latency)
-    -> action edge buffered, NOT yet visible to isJustPressed
+    -> InputPlugin queues the event
 F0  rAF tick — InputPollSystem drains the queue
+    -> UI hit-test
+    -> pointer listeners run
     -> action edges applied, isJustPressed("fire") returns true
 F0  user systems run (Update, FixedUpdate, …)
 ```
@@ -475,6 +488,11 @@ Synthetic injection (`fireKeyDown`, `firePointerDown`, …) bypasses the queue
 and applies state synchronously, so existing tests using these helpers don't
 need to change. Tests that drive `dispatchEvent` directly need an explicit
 `manager._drainInputQueue()` (or a frame step) before assertions.
+
+When the window blurs or the page becomes hidden, held keyboard, gamepad, and
+pointer input releases through the normal paths. Browser events queued before
+that focus boundary are discarded. Synthetic action-source holds remain owned
+by their source until it releases them.
 
 ## Listener APIs
 
@@ -491,6 +509,7 @@ input.onAction("attack", () => playSwooshSfx());        // rising edge
 input.onActionReleased("attack", () => stopChargeSfx()); // falling edge
 
 const offWheel = input.onWheel((dx, dy) => {
+  input.consumeWheel(); // claims this event only
   camera.zoomBy(dy * -0.001);
 });
 
@@ -522,6 +541,10 @@ new InputPlugin({
 so calling `preventDefault()` actually takes effect. Use it when your game
 canvas should not scroll the page.
 
+Wheel-bound actions participate in `consumeBufferedPress()`. Marked UI
+surfaces are checked before wheel action edges, so scrolling a `UIScrollView`
+does not also fire wheel-bound gameplay actions.
+
 ## Gamepad
 
 Gamepads are polled each frame from `navigator.getGamepads()` and routed
@@ -538,6 +561,8 @@ across devices.
 | `GamepadLT`, `GamepadRT` | Trigger buttons (fire when analog value crosses `triggerThreshold`) |
 | `GamepadSelect`, `GamepadStart` | Select / Start |
 | `GamepadLeftStick`, `GamepadRightStick` | Stick clicks (L3 / R3) |
+| `GamepadLeftStickUp/Down/Left/Right` | Left-stick directions |
+| `GamepadRightStickUp/Down/Left/Right` | Right-stick directions |
 | `GamepadDPadUp/Down/Left/Right` | D-pad |
 | `GamepadHome` | Home / Guide button |
 | `GamepadButtonN` | Numeric fallback for non-standard mappings (`N` is the browser button index — any non-negative integer the runtime emits, e.g. `GamepadButton0`, `GamepadButton16`) |
@@ -562,6 +587,11 @@ const player1 = input.getStick("left", { pad: 0 });
 const player2 = input.getStick("left", { pad: 1 });
 ```
 
+An explicit `{ pad }` read uses only that physical controller. It returns zero
+when the pad is absent or idle and never falls back to synthetic axes. Default
+reads may use synthetic axes when no active pad has a value outside its
+deadzone.
+
 Default deadzones: 0.15 for sticks (radial), 0.05 for triggers. Override per
 plugin:
 
@@ -571,6 +601,10 @@ new InputPlugin({
   triggerThreshold: 0.6,
 });
 ```
+
+Deadzones must be finite and in `[0, 1)`. The trigger threshold must be finite
+and in `(0, 1]`. Physical stick direction codes press at 0.5 and release below
+0.375, which prevents repeated edges near the boundary.
 
 ### Active pad
 
@@ -630,16 +664,18 @@ for "show me what pads are plugged in right now", call `gamepads()`.
 
 ```typescript
 let dispose: (() => void) | undefined;
+let replayed = false;
 dispose = input.onGamepadConnected((info) => {
   showHud(`Player ready! (${info.id})`);
-  dispose?.();
+  replayed = true;
+  if (dispose) dispose();
 });
+if (replayed) dispose();
 ```
 
-Replay-on-subscribe means this also fires for pads that were already known —
-you handle "current and future" pads with one callback. The `let dispose`
-indirection is needed because the callback can run synchronously inside
-`onGamepadConnected` (during replay) before the `const` would be bound.
+Replay-on-subscribe means this also fires for pads that were already known.
+The `replayed` branch disposes after registration when the callback ran before
+`onGamepadConnected` returned its disposer.
 
 ### Synthetic injection (testing)
 
@@ -660,37 +696,42 @@ new DebugPlugin({ deterministicSeed: 42 });
 
 ### Synthetic action injection (by action name)
 
-Sometimes you want to drive an **action** directly — from an on-screen touch
-button or virtual controls — without knowing which physical key it's bound to.
-These methods are keyed by action name and throw on an unknown action:
+Use `fireAction` for a one-frame pulse. For an on-screen control or another
+sustained synthetic device, create one source per independent owner. Two
+sources can hold the same action without either one releasing the other's
+press.
 
 ```typescript
 input.fireAction("attack");      // one-frame pulse (isJustPressed for 1 frame)
 
-input.fireActionDown("attack");  // sustained press: isPressed stays true,
-                                 //   getHoldDuration accrues, onAction fires once
-input.fireActionUp("attack");    // real release: isJustReleased + onActionReleased
+const touchControls = input.createActionSource();
+touchControls.setHeld("attack", chargeButton.isHeld);
 
-input.setActionHeld("attack", held); // mirror a boolean onto down/up
+// Disable or destroy the synthetic device.
+touchControls.releaseAll();
 ```
 
-`fireActionDown`/`fireActionUp` are the action-name twins of `fireKeyDown`/
-`fireKeyUp`, so a touch overlay can drive hold and charge actions purely
-through the action map. `fireActionDown` is idempotent — re-calling while held
-neither resets the hold start nor re-fires the press edge.
+`setHeld(action, true)` throws if the action is not in the current map.
+Reasserting the same hold is idempotent. A press and release before frame clear
+preserve both edges.
 
 A hold-to-charge attack driven by a touch button, with zero keymap knowledge.
 `getReleaseDuration` holds the charge length on the release frame, so the
 button can be mirrored in any order:
 
 ```typescript
-input.setActionHeld("attack", chargeButton.isHeld);
+touchControls.setHeld("attack", chargeButton.isHeld);
 
 if (input.isJustReleased("attack")) {
   const power = Math.min(input.getReleaseDuration("attack"), 1); // 0..1 over 1s
   fireChargedAttack(power);
 }
 ```
+
+Action bindings are captured when a press starts. Rebinding affects the next
+press and does not retarget a held key or source. If several inputs hold one
+action, `isJustReleased(action)` reports each contributing release. Duration
+helpers report only the release that ends the action's final hold.
 
 ## Rebinding Actions
 

@@ -104,14 +104,18 @@ function stubEngine(
         if (key.id === "inputManager") {
           return opts.actions === true
             ? {
-                fireActionDown: (name: string) => {
-                  heldActions.add(name);
-                  record("actionDown")(name);
-                },
-                fireActionUp: (name: string) => {
-                  heldActions.delete(name);
-                  record("actionUp")(name);
-                },
+                createActionSource: () => ({
+                  setHeld: (name: string, held: boolean) => {
+                    if (held) {
+                      heldActions.add(name);
+                      record("actionDown")(name);
+                    } else {
+                      heldActions.delete(name);
+                      record("actionUp")(name);
+                    }
+                  },
+                  releaseAll: () => heldActions.clear(),
+                }),
               }
             : undefined;
         }

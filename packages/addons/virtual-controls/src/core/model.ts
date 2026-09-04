@@ -28,9 +28,8 @@ export interface VirtualControlsModelCallbacks {
   /**
    * Gate for claims that do NOT go through the host's pointer-down path —
    * today that's a `pressOnEnter` slide-in. The host applies the same
-   * policy it applies to fresh presses (visible/enabled/unpaused/not
-   * consumed). Absent → slide-ins are always allowed. Releases are never
-   * gated.
+   * policy it applies to fresh presses (visible, enabled, and not consumed).
+   * Absent → slide-ins are always allowed. Releases are never gated.
    */
   canClaim?(pointerId: number): boolean;
 }
@@ -78,6 +77,18 @@ export class VirtualControlsModel {
 
   /** Re-resolve all control geometry against a new viewport rect. */
   setViewport(rect: ViewportRect): void {
+    for (const [name, value] of Object.entries(rect)) {
+      if (!Number.isFinite(value)) {
+        throw new Error(
+          `VirtualControlsModel.setViewport(): ${name} must be finite, got ${value}.`,
+        );
+      }
+    }
+    if (rect.width <= 0 || rect.height <= 0) {
+      throw new Error(
+        `VirtualControlsModel.setViewport(): width and height must be > 0, got ${rect.width}×${rect.height}.`,
+      );
+    }
     const v = this._viewport;
     if (
       v.x === rect.x &&

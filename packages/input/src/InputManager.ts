@@ -9,6 +9,9 @@ import type {
   GamepadInfo,
   HoldDurationOptions,
   InputClock,
+  InputActionSource,
+  PointerPressInfo,
+  PointerPressOptions,
   PointerEventInfo,
   PointerInfo,
   PointerType,
@@ -23,6 +26,7 @@ const MOUSE_BUTTON_CODES = ["MouseLeft", "MouseMiddle", "MouseRight"] as const;
 /** Mutable internal pointer record. Exposed externally as the read-only {@link PointerInfo}. */
 interface MutablePointerInfo {
   id: number;
+  generation: number;
   screenPos: Vec2;
   type: PointerType;
   isPrimary: boolean;
@@ -39,10 +43,29 @@ interface MutablePointerInfo {
 type BufferedInputEvent =
   | { kind: "keyDown"; code: string }
   | { kind: "keyUp"; code: string }
-  | { kind: "pointerDown"; info: PointerEventInfo }
-  | { kind: "pointerUp"; info: PointerEventInfo }
-  | { kind: "pointerCancel"; id: number }
-  | { kind: "wheel"; dx: number; dy: number };
+  | { kind: "pointerDown"; info: PointerEventInfo; generation: number }
+  | { kind: "pointerUp"; info: PointerEventInfo; generation: number }
+  | {
+      kind: "pointerCancel";
+      id: number;
+      generation: number;
+      hadActivePress: boolean;
+    }
+  | { kind: "wheel"; dx: number; dy: number; screenX: number; screenY: number };
+
+interface QueuedPointerState {
+  generation: number;
+  buttons: Set<number>;
+  type: PointerType;
+  isPrimary: boolean;
+  terminalQueued: boolean;
+}
+
+interface FramePointerPress {
+  info: PointerInfo;
+  worldPos: Vec2;
+  consumed: boolean;
+}
 
 /** Standard-mapping button codes, indexed by W3C button position. */
 const STANDARD_BUTTON_CODES = [
@@ -67,6 +90,8 @@ const STANDARD_BUTTON_CODES = [
 
 const TRIGGER_LEFT_INDEX = 6;
 const TRIGGER_RIGHT_INDEX = 7;
+const STICK_DIRECTION_PRESS_THRESHOLD = 0.5;
+const STICK_DIRECTION_RELEASE_THRESHOLD = 0.375;
 
 const STICK_AXIS_KEYS: Record<
   "left" | "right",
@@ -106,7 +131,7 @@ interface ClockState {
   readonly perSecond: number;
   /** Hold start per key code, for the hold-duration queries. */
   holdStart: Map<string, number>;
-  /** Hold start per action for synthetic presses ({@link InputManager.fireAction} and friends). */
+  /** Hold start per action for one-frame synthetic pulses. */
   syntheticStart: Map<string, number>;
   /** Hold length of the press that ended this frame, keyed by action. Valid only in the release frame. */
   releaseDuration: Map<string, number>;
@@ -120,6 +145,21 @@ interface ClockState {
   stepHoldSnapshot: Map<string, number>;
   /** Last press time per action, for {@link InputManager.consumeBufferedPress}. */
   pressStamp: Map<string, number>;
+}
+
+class ManagerActionSource implements InputActionSource {
+  constructor(
+    private readonly manager: InputManager,
+    private readonly id: number,
+  ) {}
+
+  setHeld(action: string, held: boolean): void {
+    this.manager._setActionSourceHeld(this.id, action, held);
+  }
+
+  releaseAll(): void {
+    this.manager._releaseActionSource(this.id);
+  }
 }
 
 function createClockState(
@@ -151,10 +191,17 @@ export class InputManager {
   private readonly clockStates = new Map<InputClock, ClockState>();
   /** One-frame synthetic action pulses from {@link fireAction}, cleared each frame. */
   private pulsedSyntheticActions = new Set<string>();
-  /** Sustained synthetic actions from {@link fireActionDown}, held until {@link fireActionUp}. */
-  private heldSyntheticActions = new Set<string>();
-  /** Synthetic action release edges, true for one frame after {@link fireActionUp}. */
-  private justReleasedActions = new Set<string>();
+  /** Actions pressed in the current frame by any physical or synthetic code. */
+  private actionPressesThisFrame = new Set<string>();
+  /** Actions released in the current frame by any physical or synthetic code. */
+  private actionReleasesThisFrame = new Set<string>();
+  /** Action mapping captured when each currently-held code was pressed. */
+  private activePressActions = new Map<string, readonly string[]>();
+  /** Internal codes owned by action sources, excluded from public key listeners. */
+  private syntheticCodes = new Set<string>();
+  /** Held internal codes per action source. */
+  private sourceCodes = new Map<number, Set<string>>();
+  private nextActionSourceId = 1;
   /** Actions whose buffered press has been claimed via {@link consumeBufferedPress}; cleared by the next press. */
   private claimedBufferedPress = new Set<string>();
   /**
@@ -171,8 +218,10 @@ export class InputManager {
   private stepReleaseTags = new Map<string, number>();
   /** Synthetic action pulses ({@link fireAction}), tagged like {@link stepPressTags}. */
   private stepPulseTags = new Map<string, number>();
-  /** Synthetic action releases ({@link fireActionUp}), tagged like {@link stepPressTags}. */
-  private stepSyntheticReleaseTags = new Map<string, number>();
+  /** Action press edges from any code, tagged like {@link stepPressTags}. */
+  private stepActionPressTags = new Map<string, number>();
+  /** Action release edges from any code, tagged like {@link stepPressTags}. */
+  private stepActionReleaseTags = new Map<string, number>();
   /** Step index of the latest hold-baseline rotation, shared by every clock. */
   private stepHoldRotatedAt = -1;
   /**
@@ -188,6 +237,11 @@ export class InputManager {
   private disabledGroups = new Set<string>();
   /** Tracked pointers keyed by `pointerId`. Mouse persists; touch/pen removed on up/cancel. */
   private pointers = new Map<number, MutablePointerInfo>();
+  /** Browser-order pointer state used to assign generations before queue drain. */
+  private queuedPointers = new Map<number, QueuedPointerState>();
+  private nextPointerGeneration = 1;
+  /** Pointer-down edges retained until the end of the rendered frame. */
+  private pointerPressesThisFrame: FramePointerPress[] = [];
   /** Id of the pointer the browser last marked `isPrimary`, or `null` when none are tracked. */
   private primaryPointerId: number | null = null;
   /**
@@ -204,9 +258,12 @@ export class InputManager {
    * cleared when the pointer's last button releases (drained `pointerUp`) or on
    * `pointercancel`.
    */
-  private consumedPointers = new Set<number>();
-  /** Wheel-edge gate flipped by {@link consumeWheel}. Cleared at end of frame. */
-  private consumedWheelThisFrame = false;
+  private consumedPointers = new Map<number, number>();
+  /** Pointer generation whose listeners are currently running. */
+  private activePointerDispatch: { id: number; generation: number } | null =
+    null;
+  /** Claim state for each active wheel dispatch, including nested injection. */
+  private wheelClaims: boolean[] = [];
   /** Buffered DOM-originated events awaiting drain at `Phase.EarlyUpdate`. */
   private inputQueue: BufferedInputEvent[] = [];
   /**
@@ -259,20 +316,19 @@ export class InputManager {
 
   // -- Action-based queries --
 
-  /** Whether the action has a sustained or one-frame synthetic press active. */
-  private isSyntheticPressed(action: string): boolean {
-    return (
-      this.heldSyntheticActions.has(action) ||
-      this.pulsedSyntheticActions.has(action)
-    );
+  /** Whether any currently-held code captured this action at press time. */
+  private isActionHeldByCode(action: string): boolean {
+    for (const actions of this.activePressActions.values()) {
+      if (actions.includes(action)) return true;
+    }
+    return false;
   }
 
   /** Whether any key mapped to this action is currently held. */
   isPressed(action: string): boolean {
     if (!this.isActionEnabled(action)) return false;
     return (
-      this.isSyntheticPressed(action) ||
-      this.anyKeyInSet(action, this.pressedKeys)
+      this.pulsedSyntheticActions.has(action) || this.isActionHeldByCode(action)
     );
   }
 
@@ -293,12 +349,12 @@ export class InputManager {
     if (window === null) {
       return (
         this.pulsedSyntheticActions.has(action) ||
-        this.anyKeyInSet(action, this.justPressedKeys)
+        this.actionPressesThisFrame.has(action)
       );
     }
     return (
       this.stepPulseTags.get(action) === window ||
-      this.anyKeyTagged(action, this.stepPressTags, window)
+      this.stepActionPressTags.get(action) === window
     );
   }
 
@@ -311,46 +367,16 @@ export class InputManager {
     if (!this.isActionEnabled(action)) return false;
     const window = this.currentStepWindow();
     if (window === null) {
-      return (
-        this.justReleasedActions.has(action) ||
-        this.anyKeyInSet(action, this.justReleasedKeys)
-      );
+      return this.actionReleasesThisFrame.has(action);
     }
-    return (
-      this.stepSyntheticReleaseTags.get(action) === window ||
-      this.anyKeyTagged(action, this.stepReleaseTags, window)
-    );
+    return this.stepActionReleaseTags.get(action) === window;
   }
 
   /** Whether any binding (key or synthetic) still holds the action, ignoring group enablement. */
   private isActionStillHeld(action: string): boolean {
     return (
-      this.anyKeyInSet(action, this.pressedKeys) ||
-      this.isSyntheticPressed(action)
+      this.isActionHeldByCode(action) || this.pulsedSyntheticActions.has(action)
     );
-  }
-
-  private anyKeyInSet(action: string, set: Set<string>): boolean {
-    const keys = this.actionMap.get(action);
-    if (!keys) return false;
-    for (const key of keys) {
-      if (set.has(key)) return true;
-    }
-    return false;
-  }
-
-  /** Whether any key bound to the action carries the given step-window tag. */
-  private anyKeyTagged(
-    action: string,
-    tags: Map<string, number>,
-    window: number,
-  ): boolean {
-    const keys = this.actionMap.get(action);
-    if (!keys) return false;
-    for (const key of keys) {
-      if (tags.get(key) === window) return true;
-    }
-    return false;
   }
 
   /** Tag for an edge arriving now: the number of fixed steps started so far. */
@@ -446,9 +472,8 @@ export class InputManager {
    * against the previous press's sample. Raw (enablement-ignoring),
    * matching how the baselines are sampled.
    */
-  private clearEndedStepHoldBaselines(code: string): void {
-    for (const [action, keys] of this.actionMap) {
-      if (!keys.includes(code)) continue;
+  private clearEndedStepHoldBaselines(actions: readonly string[]): void {
+    for (const action of actions) {
       for (const state of this.allStates()) {
         if (this.rawHoldOn(action, state) === 0) {
           state.stepPrevHold.delete(action);
@@ -464,19 +489,20 @@ export class InputManager {
    * how the hold baselines are sampled.
    */
   private rawHoldOn(action: string, state: ClockState): number {
-    const keys = this.actionMap.get(action);
-    if (!keys && !this.isSyntheticPressed(action)) return 0;
     const now = this.stateNow(state);
     let maxDuration = 0;
-    for (const key of keys ?? []) {
+    for (const [key, actions] of this.activePressActions) {
+      if (!actions.includes(action)) continue;
       const start = state.holdStart.get(key);
       if (start !== undefined) {
         maxDuration = Math.max(maxDuration, now - start);
       }
     }
-    const syntheticStart = state.syntheticStart.get(action);
-    if (syntheticStart !== undefined) {
-      maxDuration = Math.max(maxDuration, now - syntheticStart);
+    if (this.pulsedSyntheticActions.has(action)) {
+      const syntheticStart = state.syntheticStart.get(action);
+      if (syntheticStart !== undefined) {
+        maxDuration = Math.max(maxDuration, now - syntheticStart);
+      }
     }
     return maxDuration;
   }
@@ -776,20 +802,6 @@ export class InputManager {
     return durations;
   }
 
-  /** {@link endKeyHold} for a synthetic action press. */
-  private endSyntheticHold(action: string): ReadonlyMap<ClockState, number> {
-    const durations = new Map<ClockState, number>();
-    for (const state of this.allStates()) {
-      const start = state.syntheticStart.get(action);
-      durations.set(
-        state,
-        start !== undefined ? this.stateNow(state) - start : 0,
-      );
-      state.syntheticStart.delete(action);
-    }
-    return durations;
-  }
-
   // -- Axis helpers --
 
   /** Returns -1, 0, or 1 based on negative/positive action states. */
@@ -800,12 +812,7 @@ export class InputManager {
   }
 
   /** Returns a Vec2 from four directional actions. Not normalized. */
-  getVector(
-    left: string,
-    right: string,
-    up: string,
-    down: string,
-  ): Vec2 {
+  getVector(left: string, right: string, up: string, down: string): Vec2 {
     const x = this.getAxis(left, right);
     const y = this.getAxis(up, down);
     return new Vec2(x, y);
@@ -824,7 +831,10 @@ export class InputManager {
     const primary = this.getPrimaryPointer();
     if (!primary) return Vec2.ZERO;
     if (this.camera) {
-      const w = this.camera.screenToWorld(primary.screenPos.x, primary.screenPos.y);
+      const w = this.camera.screenToWorld(
+        primary.screenPos.x,
+        primary.screenPos.y,
+      );
       return new Vec2(w.x, w.y);
     }
     return primary.screenPos;
@@ -858,6 +868,35 @@ export class InputManager {
   }
 
   /**
+   * Pointer-down edges from the current rendered frame.
+   *
+   * Claimed presses are excluded by default. Use `consumed: "include"` to
+   * return every press or `consumed: "only"` to inspect claimed presses.
+   */
+  getPointerPresses(
+    options: PointerPressOptions = {},
+  ): readonly PointerPressInfo[] {
+    const consumed = options.consumed ?? "exclude";
+    const out: PointerPressInfo[] = [];
+    for (const press of this.pointerPressesThisFrame) {
+      if (
+        options.button !== undefined &&
+        press.info.button !== options.button
+      ) {
+        continue;
+      }
+      if (consumed === "exclude" && press.consumed) continue;
+      if (consumed === "only" && !press.consumed) continue;
+      out.push({
+        ...press.info,
+        worldPos: press.worldPos,
+        consumed: press.consumed,
+      });
+    }
+    return out;
+  }
+
+  /**
    * Defensive snapshot of a tracked pointer. The runtime `MutablePointerInfo`
    * holds a real `Set` for `buttons` — even though the `PointerInfo` type
    * declares `ReadonlySet`, JS doesn't enforce that at runtime, so we copy the
@@ -868,6 +907,7 @@ export class InputManager {
   private toPointerInfo(pointer: MutablePointerInfo, button = -1): PointerInfo {
     return {
       id: pointer.id,
+      generation: pointer.generation,
       screenPos: pointer.screenPos,
       type: pointer.type,
       isPrimary: pointer.isPrimary,
@@ -879,7 +919,8 @@ export class InputManager {
 
   /**
    * Subscribe to pointer-down events (button transitions from up → down on a
-   * tracked pointer). Returns a disposer that detaches the listener.
+   * tracked pointer). DOM listeners run during input drain, after the UI
+   * hit-test and before the button/action edge applies. Returns a disposer.
    */
   onPointerDown(fn: (info: PointerInfo) => void): () => void {
     this.pointerDownListeners.push(fn);
@@ -891,7 +932,8 @@ export class InputManager {
 
   /**
    * Subscribe to pointer-up events (button transitions from down → up, plus
-   * touch / pen lifecycle ends and `pointercancel`). Returns a disposer.
+   * touch / pen lifecycle ends and `pointercancel`). DOM listeners run during
+   * input drain before the button/action edge applies. Returns a disposer.
    */
   onPointerUp(fn: (info: PointerInfo) => void): () => void {
     this.pointerUpListeners.push(fn);
@@ -939,20 +981,52 @@ export class InputManager {
    * on `pointercancel`.
    */
   consumePointer(id: number): void {
-    this.consumedPointers.add(id);
+    const generation = this.claimablePointerGeneration(id);
+    if (generation === undefined) {
+      throw new Error(
+        `InputManager.consumePointer(): pointer ${id} is not active.`,
+      );
+    }
+    this.consumedPointers.set(id, generation);
+    for (const press of this.pointerPressesThisFrame) {
+      if (press.info.id === id && press.info.generation === generation) {
+        press.consumed = true;
+      }
+    }
   }
 
   /** Whether the pointer is currently marked consumed. */
   isPointerConsumed(id: number): boolean {
-    return this.consumedPointers.has(id);
+    const generation = this.claimablePointerGeneration(id);
+    return (
+      generation !== undefined && this.consumedPointers.get(id) === generation
+    );
+  }
+
+  private claimablePointerGeneration(id: number): number | undefined {
+    if (this.activePointerDispatch?.id === id) {
+      return this.activePointerDispatch.generation;
+    }
+    const queued = this.queuedPointers.get(id);
+    if (queued && queued.buttons.size > 0 && !queued.terminalQueued) {
+      return queued.generation;
+    }
+    const pointer = this.pointers.get(id);
+    return pointer?.isDown ? pointer.generation : undefined;
   }
 
   /**
-   * Suppress wheel action-map edges (`WheelUp/Down/Left/Right`) for the rest
-   * of the current frame. `onWheel` listeners still fire.
+   * Suppress action-map edges for the wheel event currently notifying its
+   * listeners. Calling outside an {@link onWheel} callback throws.
    */
   consumeWheel(): void {
-    this.consumedWheelThisFrame = true;
+    const activeIndex = this.wheelClaims.length - 1;
+    if (activeIndex < 0) {
+      throw new Error(
+        "InputManager.consumeWheel(): call this inside an onWheel callback.",
+      );
+    }
+    this.wheelClaims[activeIndex] = true;
   }
 
   // -- Listener parity (keys, actions, wheel) --
@@ -1139,7 +1213,11 @@ export class InputManager {
     // Remove existing occurrence to avoid duplicates, adjusting slot for the shift
     const existingIdx = keys.indexOf(key);
     let targetSlot = slot;
-    if (targetSlot !== undefined && existingIdx !== -1 && existingIdx !== targetSlot) {
+    if (
+      targetSlot !== undefined &&
+      existingIdx !== -1 &&
+      existingIdx !== targetSlot
+    ) {
       keys.splice(existingIdx, 1);
       if (targetSlot > existingIdx) targetSlot--;
     }
@@ -1338,10 +1416,7 @@ export class InputManager {
   }
 
   /** Public wrapper for synthetic pointer-button releases. */
-  firePointerUp(
-    button: 0 | 1 | 2 = 0,
-    opts?: { id?: number },
-  ): void {
+  firePointerUp(button: 0 | 1 | 2 = 0, opts?: { id?: number }): void {
     const id = opts?.id ?? 1;
     const existing = this.pointers.get(id);
     const info: PointerEventInfo = {
@@ -1359,8 +1434,7 @@ export class InputManager {
    * action edges and `onWheel` listener notification — matching the DOM path
    * so tests and inspector probes drive the full surface. */
   fireWheel(dx: number, dy: number): void {
-    this._callListeners(this.wheelListeners, (fn) => fn(dx, dy), "Wheel listener", "wheel");
-    this.applyWheelEdges(dx, dy);
+    this.dispatchWheel(dx, dy);
   }
 
   private makeSyntheticInfo(
@@ -1370,12 +1444,13 @@ export class InputManager {
     opts?: { id?: number; type?: PointerType; isPrimary?: boolean },
   ): PointerEventInfo {
     const id = opts?.id ?? 1;
+    const existing = this.pointers.get(id);
     return {
       id,
       screenX,
       screenY,
-      type: opts?.type ?? "mouse",
-      isPrimary: opts?.isPrimary ?? id === 1,
+      type: opts?.type ?? existing?.type ?? "mouse",
+      isPrimary: opts?.isPrimary ?? existing?.isPrimary ?? id === 1,
       button,
     };
   }
@@ -1409,14 +1484,22 @@ export class InputManager {
    * Trigger axes additionally emit `GamepadLT`/`GamepadRT` button edges when
    * crossing `triggerThreshold`, mirroring real-pad polling so synthetic
    * inspector probes drive `isPressed` the same way as physical hardware.
+   * Stick values must be finite and in `[-1, 1]`; triggers must be finite and
+   * in `[0, 1]`.
    */
   fireGamepadAxis(side: GamepadAxisKey, value: number): void {
-    const safe = Number.isFinite(value) ? value : 0;
-    this.syntheticAxisState.set(side, safe);
+    const isTrigger = side === "leftTrigger" || side === "rightTrigger";
+    const min = isTrigger ? 0 : -1;
+    if (!Number.isFinite(value) || value < min || value > 1) {
+      throw new Error(
+        `InputManager.fireGamepadAxis(): ${side} must be finite and in [${min}, 1], got ${value}`,
+      );
+    }
+    this.syntheticAxisState.set(side, value);
     if (side === "leftTrigger") {
-      this.fireGamepadButton("GamepadLT", safe >= this.triggerThreshold);
+      this.fireGamepadButton("GamepadLT", value >= this.triggerThreshold);
     } else if (side === "rightTrigger") {
-      this.fireGamepadButton("GamepadRT", safe >= this.triggerThreshold);
+      this.fireGamepadButton("GamepadRT", value >= this.triggerThreshold);
     }
   }
 
@@ -1427,8 +1510,9 @@ export class InputManager {
    *
    * By default reads from the active pad (the most recently used controller,
    * or the first connected one if nothing has been used yet). Pass
-   * `{ pad: index }` to read from a specific pad — useful for couch-co-op
-   * where each player's controller is addressed explicitly.
+   * `{ pad: index }` to read only that physical pad — useful for couch-co-op
+   * where each player's controller is addressed explicitly. Explicit reads
+   * return zero rather than falling back to synthetic axes.
    *
    * Falls back to synthetic injection (`fireGamepadAxis`) when no pad is
    * active — the test/probe/virtual-controls path — AND when the pad's own
@@ -1446,7 +1530,10 @@ export class InputManager {
       x = this.gamepadAxisState.get(`${padIdx}:${xKey}`) ?? 0;
       y = this.gamepadAxisState.get(`${padIdx}:${yKey}`) ?? 0;
     }
-    if (padIdx === null || Math.hypot(x, y) < this.stickDeadzone) {
+    if (
+      opts?.pad === undefined &&
+      (padIdx === null || Math.hypot(x, y) < this.stickDeadzone)
+    ) {
       x = this.syntheticAxisState.get(xKey) ?? 0;
       y = this.syntheticAxisState.get(yKey) ?? 0;
     }
@@ -1455,16 +1542,22 @@ export class InputManager {
 
   /**
    * Returns the deadzoned trigger value (0..1) for the given side.
-   * Reads from the active pad by default; use `{ pad: index }` for explicit
-   * per-pad reads. Falls back to synthetic state when no pad is active or
-   * the pad's trigger rests inside the deadzone (mirrors {@link getStick}).
+   * Reads from the active pad by default; use `{ pad: index }` to read only
+   * that physical pad. Default reads fall back to synthetic state when no pad
+   * is active or the active pad's trigger rests inside the deadzone (mirrors
+   * {@link getStick}).
    */
   getTrigger(side: "left" | "right", opts?: { pad?: number }): number {
     const key = TRIGGER_AXIS_KEYS[side];
     const padIdx = opts?.pad !== undefined ? opts.pad : this.activePadIndex;
     let v =
-      padIdx !== null ? (this.gamepadAxisState.get(`${padIdx}:${key}`) ?? 0) : 0;
-    if (padIdx === null || v < this.triggerDeadzone) {
+      padIdx !== null
+        ? (this.gamepadAxisState.get(`${padIdx}:${key}`) ?? 0)
+        : 0;
+    if (
+      opts?.pad === undefined &&
+      (padIdx === null || v < this.triggerDeadzone)
+    ) {
       v = this.syntheticAxisState.get(key) ?? 0;
     }
     if (v < this.triggerDeadzone) return 0;
@@ -1498,8 +1591,15 @@ export class InputManager {
    * Returns a disposer.
    */
   onGamepadConnected(fn: (info: GamepadInfo) => void): () => void {
+    for (const info of this.connectedPads.values()) {
+      this._callListeners(
+        [fn],
+        (listener) => listener(info),
+        "Gamepad connect listener",
+        String(info.index),
+      );
+    }
     this.gamepadConnectListeners.push(fn);
-    for (const info of this.connectedPads.values()) fn(info);
     return () => {
       const idx = this.gamepadConnectListeners.indexOf(fn);
       if (idx !== -1) this.gamepadConnectListeners.splice(idx, 1);
@@ -1542,11 +1642,15 @@ export class InputManager {
    * synchronously on subscribe so callers get the present state without a
    * separate `getActivePad()` call. Returns a disposer.
    */
-  onActivePadChanged(
-    fn: (info: GamepadInfo | null) => void,
-  ): () => void {
+  onActivePadChanged(fn: (info: GamepadInfo | null) => void): () => void {
+    const info = this.getActivePad();
+    this._callListeners(
+      [fn],
+      (listener) => listener(info),
+      "Active pad listener",
+      String(info?.index ?? "none"),
+    );
     this.activePadListeners.push(fn);
-    fn(this.getActivePad());
     return () => {
       const idx = this.activePadListeners.indexOf(fn);
       if (idx !== -1) this.activePadListeners.splice(idx, 1);
@@ -1579,25 +1683,42 @@ export class InputManager {
 
   /**
    * Update analog deadzones at runtime. Either field may be omitted.
-   * Values are clamped to `[0, 0.999]` — capping below 1 keeps the rescaling
-   * denominator non-zero. Non-finite values are ignored.
+   * Values must be finite and in `[0, 1)`.
    */
   setDeadzones(opts: { stick?: number; trigger?: number }): void {
-    if (opts.stick !== undefined && Number.isFinite(opts.stick)) {
-      this.stickDeadzone = Math.max(0, Math.min(0.999, opts.stick));
+    if (opts.stick !== undefined) {
+      if (!Number.isFinite(opts.stick) || opts.stick < 0 || opts.stick >= 1) {
+        throw new Error(
+          `InputManager.setDeadzones(): stick must be finite and in [0, 1), got ${opts.stick}`,
+        );
+      }
     }
-    if (opts.trigger !== undefined && Number.isFinite(opts.trigger)) {
-      this.triggerDeadzone = Math.max(0, Math.min(0.999, opts.trigger));
+    if (opts.trigger !== undefined) {
+      if (
+        !Number.isFinite(opts.trigger) ||
+        opts.trigger < 0 ||
+        opts.trigger >= 1
+      ) {
+        throw new Error(
+          `InputManager.setDeadzones(): trigger must be finite and in [0, 1), got ${opts.trigger}`,
+        );
+      }
     }
+    if (opts.stick !== undefined) this.stickDeadzone = opts.stick;
+    if (opts.trigger !== undefined) this.triggerDeadzone = opts.trigger;
   }
 
   /**
-   * Set the trigger button-edge threshold (default 0.5). Clamped to `[0, 1]`;
-   * non-finite values are ignored.
+   * Set the trigger button-edge threshold (default 0.5). Must be finite and in
+   * `(0, 1]`.
    */
   setTriggerThreshold(value: number): void {
-    if (!Number.isFinite(value)) return;
-    this.triggerThreshold = Math.max(0, Math.min(1, value));
+    if (!Number.isFinite(value) || value <= 0 || value > 1) {
+      throw new Error(
+        `InputManager.setTriggerThreshold(): value must be finite and in (0, 1], got ${value}`,
+      );
+    }
+    this.triggerThreshold = value;
   }
 
   // -- Internal: polling and connect/disconnect plumbing --
@@ -1798,6 +1919,7 @@ export class InputManager {
     pads: ReadonlyArray<Gamepad | null>,
   ): void {
     const codePressed = new Map<string, boolean>();
+    const directionStrengths = new Map<string, number>();
     for (const pad of pads) {
       if (!pad) continue;
       const standard = pad.mapping === "standard";
@@ -1813,9 +1935,63 @@ export class InputManager {
         const isTrigger =
           standard &&
           (btnIdx === TRIGGER_LEFT_INDEX || btnIdx === TRIGGER_RIGHT_INDEX);
-        const isDown = isTrigger ? btn.value >= this.triggerThreshold : btn.pressed;
+        const isDown = isTrigger
+          ? btn.value >= this.triggerThreshold
+          : btn.pressed;
         if (isDown) codePressed.set(code, true);
       }
+      if (standard) {
+        const lx = pad.axes[0] ?? 0;
+        const ly = pad.axes[1] ?? 0;
+        const rx = pad.axes[2] ?? 0;
+        const ry = pad.axes[3] ?? 0;
+        this.recordDirectionStrength(
+          directionStrengths,
+          "GamepadLeftStickLeft",
+          -lx,
+        );
+        this.recordDirectionStrength(
+          directionStrengths,
+          "GamepadLeftStickRight",
+          lx,
+        );
+        this.recordDirectionStrength(
+          directionStrengths,
+          "GamepadLeftStickUp",
+          -ly,
+        );
+        this.recordDirectionStrength(
+          directionStrengths,
+          "GamepadLeftStickDown",
+          ly,
+        );
+        this.recordDirectionStrength(
+          directionStrengths,
+          "GamepadRightStickLeft",
+          -rx,
+        );
+        this.recordDirectionStrength(
+          directionStrengths,
+          "GamepadRightStickRight",
+          rx,
+        );
+        this.recordDirectionStrength(
+          directionStrengths,
+          "GamepadRightStickUp",
+          -ry,
+        );
+        this.recordDirectionStrength(
+          directionStrengths,
+          "GamepadRightStickDown",
+          ry,
+        );
+      }
+    }
+    for (const [code, strength] of directionStrengths) {
+      const threshold = this.lastButtonState.get(code)
+        ? STICK_DIRECTION_RELEASE_THRESHOLD
+        : STICK_DIRECTION_PRESS_THRESHOLD;
+      if (strength >= threshold) codePressed.set(code, true);
     }
 
     const allCodes = new Set<string>([
@@ -1838,13 +2014,16 @@ export class InputManager {
     }
   }
 
-  /**
-   * Whether `name` is defined in the current action map. Synthetic injection
-   * ({@link fireAction} / {@link fireActionDown} / {@link setActionHeld})
-   * throws on unknown actions; callers that bind action names from config
-   * (virtual controls, rebind UIs) can validate up front instead of catching
-   * mid-gesture.
-   */
+  private recordDirectionStrength(
+    strengths: Map<string, number>,
+    code: string,
+    value: number,
+  ): void {
+    if (!Number.isFinite(value) || value <= 0) return;
+    strengths.set(code, Math.max(strengths.get(code) ?? 0, value));
+  }
+
+  /** Whether `name` is defined in the current action map. */
   hasAction(name: string): boolean {
     return this.actionMap.has(name);
   }
@@ -1857,7 +2036,7 @@ export class InputManager {
     this.pulsedSyntheticActions.add(name);
     this.stepPulseTags.set(name, this.stepTag());
     // Preserve a held action's start so a stray pulse can't rewind its hold.
-    if (!this.heldSyntheticActions.has(name)) {
+    if (!this.isActionHeldByCode(name)) {
       for (const state of this.allStates()) {
         state.syntheticStart.set(name, this.stateNow(state));
       }
@@ -1871,87 +2050,56 @@ export class InputManager {
   }
 
   /**
-   * Begin a sustained synthetic press on an action by name. Unlike
-   * {@link fireAction} (a one-frame pulse), the press persists across frames
-   * until {@link fireActionUp}, so `isPressed` stays true, `getHoldDuration`
-   * accrues, and a real release edge fires later. Symmetric to the physical-key
-   * path ({@link fireKeyDown}) but keyed by action, so synthetic devices (touch,
-   * virtual controls) drive hold and charge actions with no keymap knowledge.
-   *
-   * Idempotent: re-calling while already held does not reset the hold start or
-   * re-fire the press edge. Throws on an unknown action name.
+   * Create an independently releasable producer of sustained action presses.
+   * Create one source per virtual device, replay driver, or other owner.
    */
-  fireActionDown(name: string): void {
-    if (!this.actionMap.has(name)) {
-      throw new Error(`InputManager.fireActionDown(): unknown action "${name}".`);
-    }
-    if (this.heldSyntheticActions.has(name)) return;
-    this.heldSyntheticActions.add(name);
-    this.pulsedSyntheticActions.add(name);
-    this.stepPulseTags.set(name, this.stepTag());
-    // Frame-window semantics: a release-then-press in one frame reads as
-    // pressed. The step tag stays — a pending step window spans frames and
-    // must show every edge that landed in it, like the physical-key path.
-    this.justReleasedActions.delete(name);
-    for (const state of this.allStates()) {
-      state.syntheticStart.set(name, this.stateNow(state));
-    }
-    // Match the physical path: a disabled action's state is already suppressed
-    // at query time, so its press listeners must not fire either.
-    if (this.isActionEnabled(name)) {
-      this.notifyActionListeners(this.actionListeners, name);
-      this.recordActionPress(name);
-    }
+  createActionSource(): InputActionSource {
+    return new ManagerActionSource(this, this.nextActionSourceId++);
   }
 
-  /**
-   * Release a sustained synthetic press started by {@link fireActionDown}.
-   * Emits a one-frame `isJustReleased` edge and fires `onActionReleased`. No-op
-   * if the action is not currently held. Throws on an unknown action name.
-   */
-  fireActionUp(name: string): void {
-    if (!this.actionMap.has(name)) {
-      throw new Error(`InputManager.fireActionUp(): unknown action "${name}".`);
-    }
-    if (!this.heldSyntheticActions.has(name)) return;
-    const durations = this.endSyntheticHold(name);
-    this.heldSyntheticActions.delete(name);
-    // Frame-window semantics: a press-then-release in one frame reads as
-    // released. The step tag stays — see the matching note in fireActionDown.
-    this.pulsedSyntheticActions.delete(name);
-    this.justReleasedActions.add(name);
-    this.stepSyntheticReleaseTags.set(name, this.stepTag());
-    for (const state of this.allStates()) {
-      if (this.rawHoldOn(name, state) === 0) {
-        state.stepPrevHold.delete(name);
-        state.stepHoldSnapshot.delete(name);
-      }
-    }
-    // Match the physical path: a disabled action's release listeners must not
-    // fire, mirroring how its press was suppressed.
-    if (this.isActionEnabled(name)) {
-      this.notifyActionListeners(this.actionReleasedListeners, name);
-      this.recordActionRelease(name, durations);
-    }
-  }
-
-  /**
-   * Mirror a held boolean onto an action: `true` routes to
-   * {@link fireActionDown}, `false` to {@link fireActionUp}. Lets a caller feed
-   * a pointer's held state directly each frame. Throws on an unknown action name.
-   */
-  setActionHeld(name: string, held: boolean): void {
+  /** @internal Called by the source returned from {@link createActionSource}. */
+  _setActionSourceHeld(sourceId: number, action: string, held: boolean): void {
+    const code = `\u0000action:${sourceId}:${action}`;
     if (held) {
-      this.fireActionDown(name);
-    } else {
-      this.fireActionUp(name);
+      if (!this.actionMap.has(action)) {
+        throw new Error(
+          `InputActionSource.setHeld(): unknown action "${action}".`,
+        );
+      }
+      if (this.pressedKeys.has(code)) return;
+      let codes = this.sourceCodes.get(sourceId);
+      if (!codes) {
+        codes = new Set();
+        this.sourceCodes.set(sourceId, codes);
+      }
+      codes.add(code);
+      this.syntheticCodes.add(code);
+      this.applyCodeDown(code, [action], false);
+      return;
     }
+    if (!this.pressedKeys.has(code)) return;
+    this.applyCodeUp(code, false);
+    this.syntheticCodes.delete(code);
+    const codes = this.sourceCodes.get(sourceId);
+    codes?.delete(code);
+    if (codes?.size === 0) this.sourceCodes.delete(sourceId);
+  }
+
+  /** @internal Called by the source returned from {@link createActionSource}. */
+  _releaseActionSource(sourceId: number): void {
+    const codes = this.sourceCodes.get(sourceId);
+    if (!codes) return;
+    for (const code of [...codes]) {
+      this.applyCodeUp(code, false);
+      this.syntheticCodes.delete(code);
+    }
+    this.sourceCodes.delete(sourceId);
   }
 
   /** Release all synthetic and physical input state. */
   clearAll(): void {
     for (const code of [...this.pressedKeys]) {
-      this._applyKeyUp(code);
+      this.applyCodeUp(code, !this.syntheticCodes.has(code));
     }
     // Hard reset: synthetic releases generated above are intentionally
     // discarded. Callers want a clean slate, not a flurry of justReleased
@@ -1959,8 +2107,11 @@ export class InputManager {
     this.justPressedKeys.clear();
     this.justReleasedKeys.clear();
     this.pulsedSyntheticActions.clear();
-    this.heldSyntheticActions.clear();
-    this.justReleasedActions.clear();
+    this.actionPressesThisFrame.clear();
+    this.actionReleasesThisFrame.clear();
+    this.activePressActions.clear();
+    this.syntheticCodes.clear();
+    this.sourceCodes.clear();
     this.claimedBufferedPress.clear();
     for (const state of this.allStates()) {
       state.holdStart.clear();
@@ -1975,13 +2126,15 @@ export class InputManager {
     this.stepPressTags.clear();
     this.stepReleaseTags.clear();
     this.stepPulseTags.clear();
-    this.stepSyntheticReleaseTags.clear();
+    this.stepActionPressTags.clear();
+    this.stepActionReleaseTags.clear();
     this.stepHoldRotatedAt = -1;
     this.pointers.clear();
+    this.queuedPointers.clear();
+    this.pointerPressesThisFrame.length = 0;
     this.primaryPointerId = null;
     this.mouseButtonAggregate.clear();
     this.consumedPointers.clear();
-    this.consumedWheelThisFrame = false;
     this.inputQueue.length = 0;
     this.lastButtonState.clear();
     this.gamepadAxisState.clear();
@@ -1995,21 +2148,38 @@ export class InputManager {
    * / page-hide handling.
    */
   clearPointerButtons(): void {
-    for (const button of [...this.mouseButtonAggregate]) {
-      const code = MOUSE_BUTTON_CODES[button];
-      if (code) this._applyKeyUp(code);
+    this.inputQueue = this.inputQueue.filter(
+      (event) => !event.kind.startsWith("pointer"),
+    );
+    this.queuedPointers.clear();
+    for (const pointer of [...this.pointers.values()]) {
+      if (pointer.isDown) this._applyPointerCancel(pointer.id);
     }
-    this.mouseButtonAggregate.clear();
     this.pointers.clear();
     this.primaryPointerId = null;
     this.consumedPointers.clear();
-    // Discard any pointer events that arrived before tab-hide drained.
-    this.inputQueue = this.inputQueue.filter(
-      (e) =>
-        e.kind !== "pointerDown" &&
-        e.kind !== "pointerUp" &&
-        e.kind !== "pointerCancel",
-    );
+    this.mouseButtonAggregate.clear();
+  }
+
+  /**
+   * @internal Release physical input on window blur or page hide, then discard
+   * browser events queued before the boundary.
+   */
+  _releaseAllPhysicalState(): void {
+    this.inputQueue.length = 0;
+    this.queuedPointers.clear();
+    for (const code of [...this.pressedKeys]) {
+      if (
+        this.syntheticCodes.has(code) ||
+        code.startsWith("Gamepad") ||
+        MOUSE_BUTTON_CODES.includes(code as (typeof MOUSE_BUTTON_CODES)[number])
+      ) {
+        continue;
+      }
+      this._applyKeyUp(code);
+    }
+    this._releaseAllGamepadState();
+    this.clearPointerButtons();
   }
 
   /** Snapshot of current held input state for inspector tooling. */
@@ -2019,6 +2189,7 @@ export class InputManager {
     mouse: { x: number; y: number; buttons: number[]; down: boolean };
     pointers: Array<{
       id: number;
+      generation: number;
       x: number;
       y: number;
       type: PointerType;
@@ -2032,17 +2203,22 @@ export class InputManager {
     };
   } {
     const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
-    const keys = [...this.pressedKeys].sort(cmp);
+    const keys = [...this.pressedKeys]
+      .filter((code) => !this.syntheticCodes.has(code))
+      .sort(cmp);
     const nonGamepadKeys = keys.filter((k) => !k.startsWith("Gamepad"));
     const gamepadButtons = keys.filter((k) => k.startsWith("Gamepad"));
     const actions = this.getActionNames()
       .filter((action) => this.isPressed(action))
       .sort(cmp);
-    const aggregateButtons = [...this.mouseButtonAggregate].sort((a, b) => a - b);
+    const aggregateButtons = [...this.mouseButtonAggregate].sort(
+      (a, b) => a - b,
+    );
     const pointers = [...this.pointers.values()]
       .sort((a, b) => a.id - b.id)
       .map((p) => ({
         id: p.id,
+        generation: p.generation,
         x: p.screenPos.x,
         y: p.screenPos.y,
         type: p.type,
@@ -2057,7 +2233,9 @@ export class InputManager {
     const syntheticAxes = [...this.syntheticAxisState.entries()]
       .filter(([, value]) => Math.abs(value) > 0.001)
       .map(([key, value]) => ({ key: `synthetic:${key}`, value }));
-    const axes = [...realAxes, ...syntheticAxes].sort((a, b) => cmp(a.key, b.key));
+    const axes = [...realAxes, ...syntheticAxes].sort((a, b) =>
+      cmp(a.key, b.key),
+    );
 
     return {
       keys: nonGamepadKeys,
@@ -2115,63 +2293,69 @@ export class InputManager {
     this.inputQueue.push({ kind: "keyUp", code });
   }
 
-  /**
-   * @internal Sync portion: upsert the pointer entry (existence, screenPos,
-   * type, isPrimary, primaryPointerId) and notify pointerMoveListeners so
-   * pointer-tracking UIs see live cursor positions. Move events do not carry
-   * action-map edges, so they are not queued.
-   */
+  /** @internal Apply pointer movement immediately for live cursor tracking. */
   _enqueuePointerMove(info: PointerEventInfo): void {
-    const pointer = this.upsertPointer(info);
-    pointer.screenPos = new Vec2(info.screenX, info.screenY);
-    this.notifyPointerListeners(this.pointerMoveListeners, pointer, "pointermove");
+    const state = this.queuedPointerState(info);
+    this.drainPointerMove(info, state.generation);
   }
 
   /**
-   * @internal Sync portion: upsert pointer (existence, screenPos, type,
-   * isPrimary, primaryPointerId) and notify pointerDownListeners. Button
-   * mutation, action-map edges, and mouse-aggregate emit are deferred to the
-   * next drain at `Phase.EarlyUpdate` so {@link consumePointer} (or the
-   * renderer's UI hit-test) can suppress them, AND so a same-frame
-   * down+up that arrives before drain still produces the correct
-   * `MouseLeft` press/release edges (recomputing aggregate from live state
-   * after sync mutation would silently drop the transient transition).
-   *
-   * Listeners therefore observe `pointer.buttons` BEFORE this event's edge is
-   * applied — `buttons` does not yet include the button just pressed. To
-   * filter by button in an `onPointerDown` listener, read `info.button`
-   * (the triggering edge, threaded through to {@link PointerInfo.button}),
-   * not `info.buttons`.
+   * @internal Queue a pointer press with the generation assigned at browser
+   * dispatch time. Listeners and action edges run together at input drain.
    */
   _enqueuePointerDown(info: PointerEventInfo): void {
-    const pointer = this.upsertPointer(info);
-    pointer.screenPos = new Vec2(info.screenX, info.screenY);
-    this.notifyPointerListeners(this.pointerDownListeners, pointer, "pointerdown", info.button);
-    this.inputQueue.push({ kind: "pointerDown", info });
+    const state = this.queuedPointerState(info);
+    if (state.buttons.size === 0 || state.terminalQueued) {
+      state.generation = this.nextPointerGeneration++;
+      state.terminalQueued = false;
+    }
+    state.buttons.add(info.button);
+    this.inputQueue.push({
+      kind: "pointerDown",
+      info,
+      generation: state.generation,
+    });
   }
 
   /** @internal */
   _enqueuePointerUp(info: PointerEventInfo): void {
-    const pointer = this.upsertPointer(info);
-    pointer.screenPos = new Vec2(info.screenX, info.screenY);
-    this.notifyPointerListeners(this.pointerUpListeners, pointer, "pointerup", info.button);
-    this.inputQueue.push({ kind: "pointerUp", info });
+    const state = this.queuedPointerState(info);
+    if (state.terminalQueued || !state.buttons.has(info.button)) return;
+    const generation = state.generation;
+    state.buttons.delete(info.button);
+    if (state.buttons.size === 0) state.terminalQueued = true;
+    this.inputQueue.push({ kind: "pointerUp", info, generation });
   }
 
   /** @internal */
   _enqueuePointerCancel(id: number): void {
-    const pointer = this.pointers.get(id);
-    if (pointer) {
-      this.notifyPointerListeners(this.pointerUpListeners, pointer, "pointercancel");
+    const current = this.pointers.get(id);
+    let state = this.queuedPointers.get(id);
+    if (!state && current) {
+      state = {
+        generation: current.generation,
+        buttons: new Set(current.buttons),
+        type: current.type,
+        isPrimary: current.isPrimary,
+        terminalQueued: false,
+      };
+      this.queuedPointers.set(id, state);
     }
-    this.inputQueue.push({ kind: "pointerCancel", id });
+    if (!state || state.terminalQueued) return;
+    const hadActivePress = state.buttons.size > 0 || current?.isDown === true;
+    state.buttons.clear();
+    state.terminalQueued = true;
+    this.inputQueue.push({
+      kind: "pointerCancel",
+      id,
+      generation: state.generation,
+      hadActivePress,
+    });
   }
 
   /** @internal */
-  _enqueueWheel(dx: number, dy: number): void {
-    // Notify wheel listeners synchronously — they're explicit user opt-ins.
-    this._callListeners(this.wheelListeners, (fn) => fn(dx, dy), "Wheel listener", "wheel");
-    this.inputQueue.push({ kind: "wheel", dx, dy });
+  _enqueueWheel(dx: number, dy: number, screenX = 0, screenY = 0): void {
+    this.inputQueue.push({ kind: "wheel", dx, dy, screenX, screenY });
   }
 
   /**
@@ -2195,45 +2379,79 @@ export class InputManager {
           this._applyKeyUp(event.code);
           break;
         case "pointerDown":
-          this.drainPointerDown(event.info);
+          this.drainPointerDown(event.info, event.generation);
           break;
         case "pointerUp":
-          this.drainPointerUp(event.info);
+          this.drainPointerUp(event.info, event.generation);
           break;
         case "pointerCancel":
-          this.drainPointerCancel(event.id);
+          this.drainPointerCancel(
+            event.id,
+            event.generation,
+            event.hadActivePress,
+          );
           break;
         case "wheel":
-          this.applyWheelEdges(event.dx, event.dy);
+          this.dispatchWheel(event.dx, event.dy, event.screenX, event.screenY);
           break;
       }
     }
   }
 
-  private drainPointerDown(info: PointerEventInfo): void {
-    // Auto-consume on UI hit. Skipped if explicitly already consumed (the
-    // primitive `consumePointer` won — no need to re-check) so handler code
-    // stays authoritative.
-    if (
-      !this.consumedPointers.has(info.id) &&
-      this.renderer?.hitTestUI?.(info.screenX, info.screenY)
-    ) {
-      this.consumedPointers.add(info.id);
+  private drainPointerMove(info: PointerEventInfo, generation: number): void {
+    const pointer = this.upsertPointer(info, generation);
+    pointer.screenPos = new Vec2(info.screenX, info.screenY);
+    this.notifyPointerListeners(
+      this.pointerMoveListeners,
+      pointer,
+      "pointermove",
+    );
+  }
+
+  private drainPointerDown(info: PointerEventInfo, generation: number): void {
+    const pointer = this.upsertPointer(info, generation);
+    pointer.screenPos = new Vec2(info.screenX, info.screenY);
+    const world = this.camera?.screenToWorld(info.screenX, info.screenY);
+    const worldPos = world ? new Vec2(world.x, world.y) : pointer.screenPos;
+    if (this.renderer?.hitTestUI?.(info.screenX, info.screenY)) {
+      this.consumedPointers.set(info.id, generation);
     }
-    const pointer = this.pointers.get(info.id);
-    if (!pointer) return;
+    this.notifyPointerListeners(
+      this.pointerDownListeners,
+      pointer,
+      "pointerdown",
+      info.button,
+    );
+    const consumed = this.consumedPointers.get(info.id) === generation;
     if (info.button >= 0 && info.button <= 2) {
       pointer.buttons.add(info.button);
       pointer.isDown = true;
+      this.pointerPressesThisFrame.push({
+        info: this.toPointerInfo(pointer, info.button),
+        worldPos,
+        consumed,
+      });
       this.recomputeMouseAggregate(info.button);
     } else {
       pointer.isDown = pointer.buttons.size > 0;
+      this.pointerPressesThisFrame.push({
+        info: this.toPointerInfo(pointer, info.button),
+        worldPos,
+        consumed,
+      });
     }
   }
 
-  private drainPointerUp(info: PointerEventInfo): void {
+  private drainPointerUp(info: PointerEventInfo, generation: number): void {
     const pointer = this.pointers.get(info.id);
-    if (!pointer) return;
+    if (!pointer || pointer.generation !== generation) return;
+    pointer.screenPos = new Vec2(info.screenX, info.screenY);
+    this.notifyPointerListeners(
+      this.pointerUpListeners,
+      pointer,
+      "pointerup",
+      info.button,
+    );
     if (info.button >= 0 && info.button <= 2) {
       pointer.buttons.delete(info.button);
       this.recomputeMouseAggregate(info.button);
@@ -2243,30 +2461,70 @@ export class InputManager {
       // End of event cycle — clear the consume mark so the next press starts
       // unmarked. Touch / pen pointers also vanish here (mouse persists for
       // hover queries; the browser does not emit a separate "leave").
-      this.consumedPointers.delete(info.id);
+      if (this.consumedPointers.get(info.id) === generation) {
+        this.consumedPointers.delete(info.id);
+      }
       if (pointer.type !== "mouse") {
         this.removePointer(pointer.id);
+      }
+      const queued = this.queuedPointers.get(info.id);
+      if (queued?.generation === generation && queued.terminalQueued) {
+        this.queuedPointers.delete(info.id);
       }
     }
   }
 
-  private drainPointerCancel(id: number): void {
+  private drainPointerCancel(
+    id: number,
+    generation: number,
+    hadActivePress: boolean,
+  ): void {
     const pointer = this.pointers.get(id);
-    if (!pointer) return;
+    if (!pointer || pointer.generation !== generation) return;
     const heldButtons = [...pointer.buttons];
     pointer.buttons.clear();
     pointer.isDown = false;
     for (const button of heldButtons) {
       this.recomputeMouseAggregate(button);
     }
-    this.consumedPointers.delete(id);
+    if (hadActivePress) {
+      this.notifyPointerListeners(
+        this.pointerUpListeners,
+        pointer,
+        "pointercancel",
+      );
+    }
+    if (this.consumedPointers.get(id) === generation) {
+      this.consumedPointers.delete(id);
+    }
     if (pointer.type !== "mouse") {
       this.removePointer(id);
     }
+    const queued = this.queuedPointers.get(id);
+    if (queued?.generation === generation && queued.terminalQueued) {
+      this.queuedPointers.delete(id);
+    }
   }
 
-  private applyWheelEdges(dx: number, dy: number): void {
-    if (this.consumedWheelThisFrame) return;
+  private dispatchWheel(
+    dx: number,
+    dy: number,
+    screenX?: number,
+    screenY?: number,
+  ): void {
+    const autoConsumed =
+      screenX !== undefined &&
+      screenY !== undefined &&
+      (this.renderer?.hitTestUI?.(screenX, screenY) ?? false);
+    this.wheelClaims.push(autoConsumed);
+    this._callListeners(
+      this.wheelListeners,
+      (fn) => fn(dx, dy),
+      "Wheel listener",
+      "wheel",
+    );
+    const consumed = this.wheelClaims.pop() ?? false;
+    if (consumed) return;
     // Wheel codes appear as one-frame `justPressed` edges that never enter
     // `pressedKeys` — scrolling is not a held state, just discrete ticks.
     if (Math.abs(dy) > 0.001) {
@@ -2277,6 +2535,25 @@ export class InputManager {
       const code = dx < 0 ? "WheelLeft" : "WheelRight";
       this.fireOneFrameEdge(code);
     }
+  }
+
+  private queuedPointerState(info: PointerEventInfo): QueuedPointerState {
+    let state = this.queuedPointers.get(info.id);
+    if (!state) {
+      const current = this.pointers.get(info.id);
+      state = {
+        generation: current?.generation ?? 0,
+        buttons: new Set(current?.buttons),
+        type: info.type,
+        isPrimary: info.isPrimary,
+        terminalQueued: false,
+      };
+      this.queuedPointers.set(info.id, state);
+    } else {
+      state.type = info.type;
+      state.isPrimary = info.isPrimary;
+    }
+    return state;
   }
 
   /**
@@ -2293,9 +2570,16 @@ export class InputManager {
     }
     this.justPressedKeys.add(code);
     this.stepPressTags.set(code, this.stepTag());
-    this.notifyKeyListeners(this.keyDownListeners, this.keyDownListenersAny, code);
+    this.notifyKeyListeners(
+      this.keyDownListeners,
+      this.keyDownListenersAny,
+      code,
+    );
     for (const action of this.actionsForCode(code)) {
+      this.actionPressesThisFrame.add(action);
+      this.stepActionPressTags.set(action, this.stepTag());
       this.notifyActionListeners(this.actionListeners, action);
+      this.recordActionPress(action);
     }
   }
 
@@ -2307,7 +2591,15 @@ export class InputManager {
    * have a chance to run before action edges fire.
    */
   _applyKeyDown(code: string): void {
-    if (this.listenResolve) {
+    this.applyCodeDown(code, this.mappedActionsForCode(code), true);
+  }
+
+  private applyCodeDown(
+    code: string,
+    actions: readonly string[],
+    notifyKey: boolean,
+  ): void {
+    if (notifyKey && this.listenResolve) {
       const resolve = this.listenResolve;
       this.listenResolve = null;
       resolve(code);
@@ -2315,15 +2607,26 @@ export class InputManager {
     }
     if (!this.pressedKeys.has(code)) {
       this.pressedKeys.add(code);
+      this.activePressActions.set(code, [...actions]);
       this.justPressedKeys.add(code);
       this.stepPressTags.set(code, this.stepTag());
       for (const state of this.allStates()) {
         state.holdStart.set(code, this.stateNow(state));
       }
-      this.notifyKeyListeners(this.keyDownListeners, this.keyDownListenersAny, code);
-      for (const action of this.actionsForCode(code)) {
-        this.notifyActionListeners(this.actionListeners, action);
-        this.recordActionPress(action);
+      if (notifyKey) {
+        this.notifyKeyListeners(
+          this.keyDownListeners,
+          this.keyDownListenersAny,
+          code,
+        );
+      }
+      for (const action of actions) {
+        if (this.isActionEnabled(action)) {
+          this.actionPressesThisFrame.add(action);
+          this.stepActionPressTags.set(action, this.stepTag());
+          this.notifyActionListeners(this.actionListeners, action);
+          this.recordActionPress(action);
+        }
       }
     }
   }
@@ -2333,16 +2636,34 @@ export class InputManager {
    * {@link _enqueueKeyUp}.
    */
   _applyKeyUp(code: string): void {
+    this.applyCodeUp(code, true);
+  }
+
+  private applyCodeUp(code: string, notifyKey: boolean): void {
     if (this.pressedKeys.has(code)) {
+      const actions = this.activePressActions.get(code) ?? [];
       const durations = this.endKeyHold(code);
       this.pressedKeys.delete(code);
+      this.activePressActions.delete(code);
       this.justReleasedKeys.add(code);
       this.stepReleaseTags.set(code, this.stepTag());
-      this.clearEndedStepHoldBaselines(code);
-      this.notifyKeyListeners(this.keyUpListeners, this.keyUpListenersAny, code);
-      for (const action of this.actionsForCode(code)) {
-        this.notifyActionListeners(this.actionReleasedListeners, action);
-        this.recordActionRelease(action, durations);
+      this.clearEndedStepHoldBaselines(actions);
+      if (notifyKey) {
+        this.notifyKeyListeners(
+          this.keyUpListeners,
+          this.keyUpListenersAny,
+          code,
+        );
+      }
+      for (const action of actions) {
+        this.actionReleasesThisFrame.add(action);
+        this.stepActionReleaseTags.set(action, this.stepTag());
+        if (this.isActionEnabled(action)) {
+          this.notifyActionListeners(this.actionReleasedListeners, action);
+          if (!this.isActionStillHeld(action)) {
+            this.recordActionRelease(action, durations);
+          }
+        }
       }
     }
   }
@@ -2352,9 +2673,8 @@ export class InputManager {
    * {@link _enqueuePointerMove}.
    */
   _applyPointerMove(info: PointerEventInfo): void {
-    const pointer = this.upsertPointer(info);
-    pointer.screenPos = new Vec2(info.screenX, info.screenY);
-    this.notifyPointerListeners(this.pointerMoveListeners, pointer, "pointermove");
+    const state = this.queuedPointerState(info);
+    this.drainPointerMove(info, state.generation);
   }
 
   /**
@@ -2363,16 +2683,13 @@ export class InputManager {
    * mouse-aggregate emit, listener notify) synchronously.
    */
   _applyPointerDown(info: PointerEventInfo): void {
-    const pointer = this.upsertPointer(info);
-    pointer.screenPos = new Vec2(info.screenX, info.screenY);
-    if (info.button >= 0 && info.button <= 2) {
-      pointer.buttons.add(info.button);
-      pointer.isDown = true;
-      this.recomputeMouseAggregate(info.button);
-    } else {
-      pointer.isDown = pointer.buttons.size > 0;
+    const state = this.queuedPointerState(info);
+    if (state.buttons.size === 0 || state.terminalQueued) {
+      state.generation = this.nextPointerGeneration++;
+      state.terminalQueued = false;
     }
-    this.notifyPointerListeners(this.pointerDownListeners, pointer, "pointerdown", info.button);
+    state.buttons.add(info.button);
+    this.drainPointerDown(info, state.generation);
   }
 
   /**
@@ -2380,20 +2697,12 @@ export class InputManager {
    * {@link _enqueuePointerUp}.
    */
   _applyPointerUp(info: PointerEventInfo): void {
-    const pointer = this.upsertPointer(info);
-    pointer.screenPos = new Vec2(info.screenX, info.screenY);
-    if (info.button >= 0 && info.button <= 2) {
-      pointer.buttons.delete(info.button);
-      this.recomputeMouseAggregate(info.button);
-    }
-    pointer.isDown = pointer.buttons.size > 0;
-    this.notifyPointerListeners(this.pointerUpListeners, pointer, "pointerup", info.button);
-    if (!pointer.isDown) {
-      this.consumedPointers.delete(info.id);
-      if (pointer.type !== "mouse") {
-        this.removePointer(pointer.id);
-      }
-    }
+    const state = this.queuedPointerState(info);
+    if (state.terminalQueued || !state.buttons.has(info.button)) return;
+    const generation = state.generation;
+    state.buttons.delete(info.button);
+    if (state.buttons.size === 0) state.terminalQueued = true;
+    this.drainPointerUp(info, generation);
   }
 
   /**
@@ -2404,24 +2713,30 @@ export class InputManager {
   _applyPointerCancel(id: number): void {
     const pointer = this.pointers.get(id);
     if (!pointer) return;
-    const heldButtons = [...pointer.buttons];
-    pointer.buttons.clear();
-    pointer.isDown = false;
-    for (const button of heldButtons) {
-      this.recomputeMouseAggregate(button);
-    }
-    this.notifyPointerListeners(this.pointerUpListeners, pointer, "pointercancel");
-    this.consumedPointers.delete(id);
-    if (pointer.type !== "mouse") {
-      this.removePointer(id);
-    }
+    const state = this.queuedPointers.get(id) ?? {
+      generation: pointer.generation,
+      buttons: new Set(pointer.buttons),
+      type: pointer.type,
+      isPrimary: pointer.isPrimary,
+      terminalQueued: false,
+    };
+    this.queuedPointers.set(id, state);
+    if (state.terminalQueued) return;
+    const hadActivePress = state.buttons.size > 0 || pointer.isDown;
+    state.buttons.clear();
+    state.terminalQueued = true;
+    this.drainPointerCancel(id, state.generation, hadActivePress);
   }
 
-  private upsertPointer(info: PointerEventInfo): MutablePointerInfo {
+  private upsertPointer(
+    info: PointerEventInfo,
+    generation: number,
+  ): MutablePointerInfo {
     let pointer = this.pointers.get(info.id);
-    if (!pointer) {
+    if (!pointer || pointer.generation !== generation) {
       pointer = {
         id: info.id,
+        generation,
         screenPos: new Vec2(info.screenX, info.screenY),
         type: info.type,
         isPrimary: info.isPrimary,
@@ -2470,7 +2785,7 @@ export class InputManager {
     if (!code) return;
     let nowAny = false;
     for (const p of this.pointers.values()) {
-      if (this.consumedPointers.has(p.id)) continue;
+      if (this.consumedPointers.get(p.id) === p.generation) continue;
       if (p.buttons.has(button)) {
         nowAny = true;
         break;
@@ -2496,7 +2811,13 @@ export class InputManager {
     // Snapshot happens inside `_callListeners`; build the shared `PointerInfo`
     // view once so all listeners see the same values.
     const info = this.toPointerInfo(pointer, button);
+    const previousDispatch = this.activePointerDispatch;
+    this.activePointerDispatch = {
+      id: pointer.id,
+      generation: pointer.generation,
+    };
     this._callListeners(listeners, (fn) => fn(info), "Pointer listener", event);
+    this.activePointerDispatch = previousDispatch;
   }
 
   private notifyKeyListeners(
@@ -2555,18 +2876,24 @@ export class InputManager {
     return result;
   }
 
+  /** Action mapping for a press, independent of temporary group enablement. */
+  private mappedActionsForCode(code: string): string[] {
+    const result: string[] = [];
+    for (const [action, keys] of this.actionMap) {
+      if (keys.includes(code)) result.push(action);
+    }
+    return result;
+  }
+
   /** @internal End-of-frame reset: clear per-frame edge flags and snapshot per-action holds for the next frame's crossing tests. */
   _clearFrameState(): void {
     this.justPressedKeys.clear();
     this.justReleasedKeys.clear();
-    this.justReleasedActions.clear();
-    // One-frame pulses clear; sustained holds from fireActionDown persist.
-    const endedPulses: string[] = [];
-    for (const action of this.pulsedSyntheticActions) {
-      if (!this.heldSyntheticActions.has(action)) endedPulses.push(action);
-    }
+    this.actionPressesThisFrame.clear();
+    this.actionReleasesThisFrame.clear();
+    this.pointerPressesThisFrame.length = 0;
+    const endedPulses = [...this.pulsedSyntheticActions];
     this.pulsedSyntheticActions.clear();
-    this.consumedWheelThisFrame = false;
     // Fixed-step windows outlive the frame — a frame can run zero steps —
     // so only entries whose step has already started are dropped. This is
     // housekeeping: a stale tag can never match a future window, because
@@ -2593,7 +2920,8 @@ export class InputManager {
     this.pruneStepTags(this.stepPressTags, currentTag);
     this.pruneStepTags(this.stepReleaseTags, currentTag);
     this.pruneStepTags(this.stepPulseTags, currentTag);
-    this.pruneStepTags(this.stepSyntheticReleaseTags, currentTag);
+    this.pruneStepTags(this.stepActionPressTags, currentTag);
+    this.pruneStepTags(this.stepActionReleaseTags, currentTag);
   }
 
   /** Drop step-window entries whose step has already started. */

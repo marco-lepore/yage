@@ -435,17 +435,27 @@ describe("zero-config input", () => {
   function fakeInput() {
     const pressed = new Set<string>();
     let pointer = { x: -1, y: -1 };
-    const downHandlers = new Set<
-      (info: { button: number; id: number }) => void
-    >();
+    let pointerPressed = false;
     const fake = {
       isJustPressed: (a: string) => pressed.has(a),
       isPressed: () => false,
-      onPointerDown: (fn: (info: { button: number; id: number }) => void) => {
-        downHandlers.add(fn);
-        return () => downHandlers.delete(fn);
-      },
-      isPointerConsumed: () => false,
+      getPointerPresses: () =>
+        pointerPressed
+          ? [
+              {
+                id: 1,
+                generation: 1,
+                screenPos: pointer,
+                worldPos: pointer,
+                type: "mouse",
+                isPrimary: true,
+                buttons: new Set([0]),
+                isDown: true,
+                button: 0,
+                consumed: false,
+              },
+            ]
+          : [],
       getPointerScreenPosition: () => pointer,
       getPointerPosition: () => pointer,
       getActionNames: () => ["interact", "inventory", "cancel"],
@@ -456,8 +466,9 @@ describe("zero-config input", () => {
       release: () => pressed.clear(),
       click: (x: number, y: number) => {
         pointer = { x, y };
-        for (const fn of downHandlers) fn({ button: 0, id: 1 });
+        pointerPressed = true;
       },
+      clearFrame: () => (pointerPressed = false),
     };
   }
 
@@ -511,6 +522,7 @@ describe("zero-config input", () => {
 
     input.click(42, 42);
     controller.enabled = false;
+    input.clearFrame();
     controller.enabled = true;
     controller.update(0.016);
 

@@ -69,7 +69,7 @@ export type ClusterCorner =
 export type StickMode = "fixed" | "floating" | "follow";
 
 /**
- * Action names the stick mirrors digitally (via `InputManager.setActionHeld`)
+ * Action names the stick mirrors through its `InputActionSource`
  * when its deflection crosses `threshold` on an axis. Each direction is
  * optional — bind only what the game defines. Games that want the analog
  * value read `stick.value`, or `input.getStick(side)` when `axes` is on.
@@ -160,7 +160,7 @@ export interface VirtualButtonConfig {
   /** Identity for events, lookups and the default label. */
   readonly id: string;
   /**
-   * Action to mirror (`setActionHeld`) while pressed — press/release edges,
+   * Action to hold through the control's action source while pressed —
    * `isPressed`, and `getHoldDuration` all behave like a physical key.
    * Omit to only observe the button through entity events.
    */

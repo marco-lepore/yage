@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { InputManager } from "@yagejs/input";
+import type {
+  InputManager,
+  PointerPressInfo,
+  PointerPressOptions,
+} from "@yagejs/input";
 import type { DialogueSession } from "../core/session.js";
 import type { InputBinding } from "./InputBinding.js";
 import {
@@ -19,7 +23,7 @@ class FakeInput {
   screen = { x: 0, y: 0 };
   world = { x: 0, y: 0 };
   readonly consumed = new Set<number>();
-  private downCb: ((i: { button: number; id: number }) => void) | undefined;
+  private readonly presses: Array<{ button: number; id: number }> = [];
 
   isPressed(a: string): boolean {
     return this.pressed.has(a);
@@ -39,16 +43,43 @@ class FakeInput {
   getPointerScreenPosition(): { x: number; y: number } {
     return this.screen;
   }
-  onPointerDown(cb: (i: { button: number; id: number }) => void): () => void {
-    this.downCb = cb;
-    return () => (this.downCb = undefined);
+  getPointerPresses(
+    options: PointerPressOptions = {},
+  ): readonly PointerPressInfo[] {
+    return this.presses
+      .filter(({ button, id }) => {
+        if (options.button !== undefined && button !== options.button) {
+          return false;
+        }
+        const consumed = this.consumed.has(id);
+        return options.consumed === "include"
+          ? true
+          : options.consumed === "only"
+            ? consumed
+            : !consumed;
+      })
+      .map(
+        ({ button, id }) =>
+          ({
+            id,
+            generation: 1,
+            screenPos: this.screen,
+            worldPos: this.world,
+            type: "mouse",
+            isPrimary: true,
+            buttons: new Set([button]),
+            isDown: true,
+            button,
+            consumed: this.consumed.has(id),
+          }) as unknown as PointerPressInfo,
+      );
   }
-  isPointerConsumed(id: number): boolean {
-    return this.consumed.has(id);
-  }
-  /** Simulate a primary pointer press the binding latches in poll(). */
+  /** Simulate a primary pointer press retained for the current frame. */
   click(button = 0, id = 1): void {
-    this.downCb?.({ button, id });
+    this.presses.push({ button, id });
+  }
+  clearFrame(): void {
+    this.presses.length = 0;
   }
   asManager(): InputManager {
     return this as unknown as InputManager;
@@ -176,7 +207,7 @@ describe("PointerInputBinding", () => {
     expect(session.advanced).toBe(1);
   });
 
-  it("re-binding releases the previous pointer subscription (no leak)", () => {
+  it("re-binding reads presses from the current input only", () => {
     const first = new FakeInput();
     const second = new FakeInput();
     const session = new FakeSession();
@@ -184,7 +215,7 @@ describe("PointerInputBinding", () => {
     b.bind(first.asManager(), session.asSession());
     b.bind(second.asManager(), session.asSession());
 
-    first.click(0); // a leaked first-input subscription would latch this click
+    first.click(0);
     b.poll();
     expect(session.advanced).toBe(0);
 
@@ -192,7 +223,6 @@ describe("PointerInputBinding", () => {
     b.poll();
     expect(session.advanced).toBe(1);
   });
-
 });
 
 describe("action-name introspection", () => {

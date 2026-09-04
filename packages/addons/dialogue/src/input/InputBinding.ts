@@ -7,7 +7,7 @@
  * touch/gamepad/pointer binding is a parallel implementation of this interface.
  */
 
-import type { InputManager } from "@yagejs/input";
+import type { InputManager, PointerPressInfo } from "@yagejs/input";
 import type { DialogueSession } from "../core/session.js";
 
 export interface DialogueActions {
@@ -176,11 +176,6 @@ function held(input: InputManager, actions: readonly string[]): boolean {
 export class PointerInputBinding implements InputBinding {
   private input: InputManager | undefined;
   private session: DialogueSession | undefined;
-  // Explicit `| undefined` so `dispose()` can null it (exactOptionalPropertyTypes).
-  private unsub: (() => void) | undefined;
-  /** Pointer ids of the primary-button presses since the last poll. poll()
-   *  clears the list and registers one tap unless every press was consumed. */
-  private readonly clickedPointers: number[] = [];
 
   // Explicit `| undefined` (not `?:`) so the ctor can assign the possibly-
   // undefined argument under `exactOptionalPropertyTypes`.
@@ -199,15 +194,8 @@ export class PointerInputBinding implements InputBinding {
   }
 
   bind(input: InputManager, session: DialogueSession): void {
-    // Self-heal a re-bind (component re-add, or a binding instance reused by a
-    // second controller): release the previous pointer subscription, which
-    // would otherwise leak past dispose() and keep driving the old session.
-    this.unsub?.();
     this.input = input;
     this.session = session;
-    this.unsub = input.onPointerDown((info) => {
-      if (info.button === 0) this.clickedPointers.push(info.id); // primary button / touch only
-    });
   }
 
   /** Pointer position in the choice presenter's coordinate space. */
@@ -215,6 +203,12 @@ export class PointerInputBinding implements InputBinding {
     return this.choices?.pointerSpace === "world"
       ? input.getPointerPosition()
       : input.getPointerScreenPosition();
+  }
+
+  private pressPoint(press: PointerPressInfo): { x: number; y: number } {
+    return this.choices?.pointerSpace === "world"
+      ? press.worldPos
+      : press.screenPos;
   }
 
   poll(): void {
@@ -236,19 +230,10 @@ export class PointerInputBinding implements InputBinding {
     }
     this.wasChoosing = choosing;
 
-    // A pointer claimed elsewhere (`consumePointer` — e.g. a touch overlay
-    // that owns the tap) must not also advance the conversation. The consume
-    // mark persists until the pointer releases, so reading it at poll time
-    // is safe whatever order the down-listeners ran in. Presses are checked
-    // individually: a claimed tap must not shadow an unclaimed one landing
-    // the same frame.
-    const clicked = this.clickedPointers.some(
-      (id) => !input.isPointerConsumed(id),
-    );
-    this.clickedPointers.length = 0;
-    if (!clicked) return;
+    const click = input.getPointerPresses({ button: 0 })[0];
+    if (!click) return;
     if (choosing) {
-      const p = this.pointer(input);
+      const p = this.pressPoint(click);
       const hit = this.choices?.choiceAtPoint?.(p.x, p.y);
       // confirmAt commits the tapped row and refuses a disabled one — using
       // selectAt + confirm would refuse to move onto a disabled row, then
@@ -261,11 +246,8 @@ export class PointerInputBinding implements InputBinding {
   }
 
   dispose(): void {
-    this.unsub?.();
-    this.unsub = undefined;
     this.input = undefined;
     this.session = undefined;
-    this.clickedPointers.length = 0;
     this.lastX = Number.NaN;
     this.lastY = Number.NaN;
     this.wasChoosing = false;

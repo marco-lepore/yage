@@ -80,10 +80,13 @@ export type DriveResult<T = void> =
  */
 const InputManagerRuntimeKey = new ServiceKey<InputManagerLike>("inputManager");
 
-/** The two calls that press and release an action without advancing the clock. */
 interface InputManagerLike {
-  fireActionDown(name: string): void;
-  fireActionUp(name: string): void;
+  createActionSource(): InputActionSourceLike;
+}
+
+interface InputActionSourceLike {
+  setHeld(name: string, held: boolean): void;
+  releaseAll(): void;
 }
 
 interface DriveContextOptions {
@@ -130,6 +133,11 @@ export function createDriveContext(
   const warnings = opts.warnings ?? [];
   const startFrame = opts.startFrame ?? time.getFrame();
   const checkBudget = opts.checkBudget ?? ((): void => undefined);
+  let actionSource: InputActionSourceLike | undefined;
+  const actions = (call: string): InputActionSourceLike => {
+    actionSource ??= requireActions(engine, call).createActionSource();
+    return actionSource;
+  };
 
   const waitForAnimationFrame = (): Promise<void> =>
     new Promise((resolve) => {
@@ -244,14 +252,18 @@ export function createDriveContext(
       raw.clearAll();
     },
     pressAction: (name) => {
-      requireActions(engine, "pressAction").fireActionDown(name);
+      actions("pressAction").setHeld(name, true);
     },
     releaseAction: (name) => {
-      requireActions(engine, "releaseAction").fireActionUp(name);
+      actions("releaseAction").setHeld(name, false);
     },
     whileHolding: (codes, fn) =>
       driveWhileHolding(
-        { keyDown, keyUp, heldKeys: () => engine.inspector.getInputState().keys },
+        {
+          keyDown,
+          keyUp,
+          heldKeys: () => engine.inspector.getInputState().keys,
+        },
         codes,
         fn,
       ),
@@ -262,12 +274,12 @@ export function createDriveContext(
     // pulse per frame, so hold duration and the release edge read as they do
     // for a player holding the key.
     fireAction: async (name, frames = 1) => {
-      const manager = requireActions(engine, "fireAction");
-      manager.fireActionDown(name);
+      const source = actions("fireAction");
+      source.setHeld(name, true);
       try {
         await advance(frames);
       } finally {
-        manager.fireActionUp(name);
+        source.setHeld(name, false);
       }
     },
   };

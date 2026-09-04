@@ -158,10 +158,10 @@ entirely (explicit UI wins over the stick's engagement zone).
 
 ## Real action semantics
 
-Buttons mirror through the synthetic action API (`setActionHeld`), so they
-behave exactly like held keys: press/release edges, `onAction` /
-`onActionReleased` listeners, group enable/disable, and `getHoldDuration` for
-charge mechanics all work unchanged.
+The overlay owns an `InputActionSource` for its sustained actions. Buttons
+behave like held keys: press/release edges, `onAction` / `onActionReleased`
+listeners, group enable/disable, and `getHoldDuration` for charge mechanics all
+work. Another device can hold the same action without the overlay releasing it.
 
 The stick mirrors three ways at once:
 
@@ -188,6 +188,10 @@ The stick mirrors three ways at once:
   the knob immediately.
 - `"follow"` — floating, plus the base gets dragged along when the finger
   travels past full deflection, so deflection holds while the hand drifts.
+
+Geometry must be finite. Radii and viewport width/height must be greater than
+zero. `deadZone` accepts `[0, 1)` and `threshold` accepts `(0, 1]`. Invalid
+configuration throws before a gesture can store it.
 
 ## Observing the controls
 

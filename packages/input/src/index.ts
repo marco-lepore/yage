@@ -18,5 +18,8 @@ export type {
   GamepadInfo,
   GamepadAxisKey,
   PointerInfo,
+  PointerPressInfo,
+  PointerPressOptions,
   PointerType,
+  InputActionSource,
 } from "./types.js";

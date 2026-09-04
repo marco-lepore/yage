@@ -17,10 +17,7 @@ function makeModel(
 describe("VirtualControlsModel — routing", () => {
   it("claims a button press and reports it", () => {
     const onButtonPress = vi.fn();
-    const model = makeModel(
-      { buttons: [{ id: "a" }] },
-      { onButtonPress },
-    );
+    const model = makeModel({ buttons: [{ id: "a" }] }, { onButtonPress });
     const { center } = model.buttons[0]!.layout;
     expect(model.pointerDown(7, center.x, center.y)).toBe(true);
     expect(model.buttons[0]!.pressed).toBe(true);
@@ -241,6 +238,18 @@ describe("VirtualControlsModel — lifecycle", () => {
     model.setViewport({ x: 0, y: 0, width: 1600, height: 600 });
     const after = model.buttons[0]!.layout.center.x;
     expect(after).toBeGreaterThan(before);
+  });
+
+  it("setViewport rejects non-finite and non-positive geometry", () => {
+    const model = new VirtualControlsModel({ stick: {} });
+    expect(() =>
+      model.setViewport({ x: Number.NaN, y: 0, width: 800, height: 600 }),
+    ).toThrow("VirtualControlsModel.setViewport(): x must be finite, got NaN.");
+    expect(() =>
+      model.setViewport({ x: 0, y: 0, width: 0, height: 600 }),
+    ).toThrow(
+      "VirtualControlsModel.setViewport(): width and height must be > 0, got 0×600.",
+    );
   });
 
   it("a relayout releases a held button that moved out from under the finger", () => {

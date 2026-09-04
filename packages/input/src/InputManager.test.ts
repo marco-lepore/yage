@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Vec2, ErrorBoundary, Logger, LogLevel } from "@yagejs/core";
 import { InputManager } from "./InputManager.js";
 import type { PointerInfo } from "./types.js";
+import { setTestActionHeld } from "./test-action-source.js";
 
 describe("InputManager", () => {
   let input: InputManager;
@@ -225,22 +226,36 @@ describe("InputManager", () => {
       expect(input.isJustReleasedAfter("moveLeft", 0.4)).toBe(true);
     });
 
-    it("classifier works for synthetic presses (fireActionDown / fireActionUp)", () => {
-      input.fireActionDown("jump");
+    it("release duration comes from the final binding when a chord releases in one frame", () => {
+      input._onKeyDown("KeyA");
+      input._advanceTime(600);
+      input._onKeyDown("ArrowLeft");
+      input._advanceTime(200);
+
+      input._onKeyUp("KeyA");
+      input._advanceTime(100);
+      input._onKeyUp("ArrowLeft");
+
+      expect(input.isJustReleased("moveLeft")).toBe(true);
+      expect(input.getReleaseDuration("moveLeft")).toBe(0.3);
+    });
+
+    it("classifier works for action-source presses", () => {
+      setTestActionHeld(input, "jump", true);
       input._advanceTime(500);
       expect(input.isJustHeldFor("jump", 0.5)).toBe(true);
-      input.fireActionUp("jump");
+      setTestActionHeld(input, "jump", false);
       expect(input.getReleaseDuration("jump")).toBe(0.5);
       expect(input.isJustReleasedAfter("jump", 0.5)).toBe(true);
     });
 
-    it("classifier works under per-frame setActionHeld mirroring", () => {
-      input.setActionHeld("jump", true);
+    it("reasserting an action-source hold does not reset its duration", () => {
+      setTestActionHeld(input, "jump", true);
       input._advanceTime(200);
-      input.setActionHeld("jump", true); // idempotent re-assert keeps the start
+      setTestActionHeld(input, "jump", true); // idempotent re-assert keeps the start
       input._advanceTime(200);
       expect(input.getHoldDuration("jump")).toBe(0.4);
-      input.setActionHeld("jump", false); // release
+      setTestActionHeld(input, "jump", false); // release
       expect(input.getReleaseDuration("jump")).toBe(0.4);
     });
   });
@@ -280,7 +295,7 @@ describe("InputManager", () => {
     });
 
     it("records a buffered press for synthetic input", () => {
-      input.fireActionDown("jump");
+      setTestActionHeld(input, "jump", true);
       expect(input.consumeBufferedPress("jump", 0.12)).toBe(true);
     });
 
@@ -468,7 +483,11 @@ describe("InputManager", () => {
     it("getPointers returns one entry per active pointer", () => {
       input.firePointerMove(10, 20, { id: 1, type: "mouse" });
       input.firePointerDown(0, { id: 5, type: "touch", isPrimary: false });
-      input.firePointerMove(100, 200, { id: 5, type: "touch", isPrimary: false });
+      input.firePointerMove(100, 200, {
+        id: 5,
+        type: "touch",
+        isPrimary: false,
+      });
 
       const pointers = input.getPointers();
       expect(pointers.length).toBe(2);
@@ -515,7 +534,11 @@ describe("InputManager", () => {
 
     it("primary getters keep tracking the primary pointer when others are present", () => {
       input.firePointerMove(40, 50, { id: 1, type: "mouse" });
-      input.firePointerMove(900, 900, { id: 5, type: "touch", isPrimary: false });
+      input.firePointerMove(900, 900, {
+        id: 5,
+        type: "touch",
+        isPrimary: false,
+      });
 
       const pos = input.getPointerScreenPosition();
       expect(pos.x).toBe(40);
@@ -619,11 +642,30 @@ describe("InputManager", () => {
 
   // -- Action map management --
 
-  it("setActionMap replaces the action map", () => {
+  it("setActionMap applies new bindings to the next press", () => {
     input._onKeyDown("Space");
     input.setActionMap({ shoot: ["Space"] });
+    expect(input.isPressed("jump")).toBe(true);
+    expect(input.isPressed("shoot")).toBe(false);
+
+    input._onKeyUp("Space");
+    input._onKeyDown("Space");
     expect(input.isPressed("jump")).toBe(false);
     expect(input.isPressed("shoot")).toBe(true);
+  });
+
+  it("unbindKey preserves the action captured by an active press until release", () => {
+    input._onKeyDown("Space");
+    input.unbindKey("jump", "Space");
+
+    expect(input.isPressed("jump")).toBe(true);
+    input._onKeyUp("Space");
+    expect(input.isPressed("jump")).toBe(false);
+    expect(input.isJustReleased("jump")).toBe(true);
+
+    input._clearFrameState();
+    input._onKeyDown("Space");
+    expect(input.isPressed("jump")).toBe(false);
   });
 
   it("bindKey adds a key binding", () => {
@@ -821,6 +863,7 @@ describe("InputManager", () => {
         isPrimary: true,
         button: 2,
       });
+      input._drainInputQueue();
       input._enqueuePointerUp({
         id: 1,
         screenX: 0,
@@ -829,6 +872,7 @@ describe("InputManager", () => {
         isPrimary: true,
         button: 2,
       });
+      input._drainInputQueue();
 
       // `info.button` identifies the right-click even though the press edge
       // is not yet drained into `buttons` — the gap that made gating an
@@ -885,6 +929,159 @@ describe("InputManager", () => {
       expect(fires).toEqual(["fire"]);
     });
 
+    it("retains pointer presses and their claim state for the current frame", () => {
+      input._setRenderer({
+        canvas: document.createElement("canvas"),
+        hitTestUI: () => true,
+      });
+      const listenerClaims: boolean[] = [];
+      input.onPointerDown((info) => {
+        listenerClaims.push(input.isPointerConsumed(info.id));
+      });
+
+      input._enqueuePointerDown({
+        id: 7,
+        screenX: 12,
+        screenY: 34,
+        type: "touch",
+        isPrimary: true,
+        button: 0,
+      });
+      input._drainInputQueue();
+
+      expect(listenerClaims).toEqual([true]);
+      expect(input.getPointerPresses()).toEqual([]);
+      expect(input.getPointerPresses({ consumed: "only" })).toMatchObject([
+        {
+          id: 7,
+          generation: 1,
+          screenPos: new Vec2(12, 34),
+          consumed: true,
+        },
+      ]);
+
+      input._clearFrameState();
+      expect(input.getPointerPresses({ consumed: "include" })).toEqual([]);
+    });
+
+    it("updates the frame press when its active pointer is claimed later", () => {
+      input.firePointerDown(0);
+      expect(input.getPointerPresses()).toHaveLength(1);
+
+      input.consumePointer(1);
+
+      expect(input.getPointerPresses()).toEqual([]);
+      expect(input.getPointerPresses({ consumed: "only" })).toHaveLength(1);
+    });
+
+    it("captures applied button state and world position at press time", () => {
+      let cameraOffset = 100;
+      input.setCamera({
+        screenToWorld: (x, y) => new Vec2(x + cameraOffset, y + cameraOffset),
+      });
+      input.firePointerMove(12, 34);
+      input.firePointerDown(0);
+      cameraOffset = 200;
+
+      const press = input.getPointerPresses({ consumed: "include" })[0];
+      expect(press?.isDown).toBe(true);
+      expect(press?.buttons.has(0)).toBe(true);
+      expect(press?.worldPos).toEqual(new Vec2(112, 134));
+    });
+
+    it("rejects claiming an idle tracked mouse", () => {
+      input.firePointerDown(0);
+      input.firePointerUp(0);
+
+      expect(() => input.consumePointer(1)).toThrow("pointer 1 is not active");
+      expect(input.isPointerConsumed(1)).toBe(false);
+    });
+
+    it("claims the queued generation when an id is reused before drain", () => {
+      input.firePointerDown(0, { id: 7, type: "touch" });
+      input._clearFrameState();
+      input._enqueuePointerUp({
+        id: 7,
+        screenX: 0,
+        screenY: 0,
+        type: "touch",
+        isPrimary: true,
+        button: 0,
+      });
+      input._enqueuePointerDown({
+        id: 7,
+        screenX: 20,
+        screenY: 0,
+        type: "touch",
+        isPrimary: true,
+        button: 0,
+      });
+
+      input.consumePointer(7);
+      input._drainInputQueue();
+
+      expect(input.getPointerPresses()).toEqual([]);
+      expect(input.getPointerPresses({ consumed: "only" })[0]?.generation).toBe(
+        2,
+      );
+    });
+
+    it("keeps generations separate when a pointer id is reused before drain", () => {
+      const down = (x: number): void =>
+        input._enqueuePointerDown({
+          id: 7,
+          screenX: x,
+          screenY: 0,
+          type: "touch",
+          isPrimary: true,
+          button: 0,
+        });
+      const up = (): void =>
+        input._enqueuePointerUp({
+          id: 7,
+          screenX: 0,
+          screenY: 0,
+          type: "touch",
+          isPrimary: true,
+          button: 0,
+        });
+
+      down(10);
+      up();
+      down(20);
+      input._drainInputQueue();
+
+      const presses = input.getPointerPresses({ consumed: "include" });
+      expect(presses.map((press) => press.generation)).toEqual([1, 2]);
+      expect(input.getPointer(7)?.generation).toBe(2);
+      expect(input.getPointer(7)?.screenPos.x).toBe(20);
+    });
+
+    it("notifies one terminal event for pointerup followed by pointercancel", () => {
+      const upEvents: number[] = [];
+      input.onPointerUp((info) => upEvents.push(info.button));
+      input._enqueuePointerDown({
+        id: 7,
+        screenX: 0,
+        screenY: 0,
+        type: "touch",
+        isPrimary: true,
+        button: 0,
+      });
+      input._enqueuePointerUp({
+        id: 7,
+        screenX: 0,
+        screenY: 0,
+        type: "touch",
+        isPrimary: true,
+        button: 0,
+      });
+      input._enqueuePointerCancel(7);
+      input._drainInputQueue();
+
+      expect(upEvents).toEqual([0]);
+    });
+
     it("moves and query snapshots carry button === -1", () => {
       const moveButtons: number[] = [];
       input.onPointerMove((info) => moveButtons.push(info.button));
@@ -895,6 +1092,74 @@ describe("InputManager", () => {
       expect(moveButtons).toEqual([-1]);
       expect(input.getPointers().every((p) => p.button === -1)).toBe(true);
       expect(input.getPointer(1)?.button).toBe(-1);
+    });
+  });
+
+  describe("wheel claims", () => {
+    beforeEach(() => {
+      input.setActionMap({ scroll: ["WheelDown"] });
+    });
+
+    it("lets a wheel listener claim only its current event", () => {
+      const stop = input.onWheel(() => input.consumeWheel());
+
+      input.fireWheel(0, 10);
+      expect(input.isJustPressed("scroll")).toBe(false);
+
+      stop();
+      input.fireWheel(0, 10);
+      expect(input.isJustPressed("scroll")).toBe(true);
+    });
+
+    it("throws when consumeWheel is called outside a wheel listener", () => {
+      expect(() => input.consumeWheel()).toThrow(
+        "call this inside an onWheel callback",
+      );
+    });
+
+    it("records wheel action edges for buffered-press queries", () => {
+      input.fireWheel(0, 10);
+
+      expect(input.consumeBufferedPress("scroll", 0.1)).toBe(true);
+    });
+
+    it("keeps an outer wheel claim across a nested wheel dispatch", () => {
+      input.setActionMap({
+        outer: ["WheelDown"],
+        nested: ["WheelRight"],
+      });
+      let nested = false;
+      input.onWheel(() => {
+        if (nested) return;
+        input.consumeWheel();
+        nested = true;
+        input.fireWheel(10, 0);
+        nested = false;
+      });
+
+      input.fireWheel(0, 10);
+
+      expect(input.isJustPressed("outer")).toBe(false);
+      expect(input.isJustPressed("nested")).toBe(true);
+    });
+
+    it("can claim an outer wheel event after a nested dispatch", () => {
+      input.setActionMap({
+        outer: ["WheelDown"],
+        nested: ["WheelRight"],
+      });
+      let nested = false;
+      input.onWheel(() => {
+        if (nested) return;
+        nested = true;
+        input.fireWheel(10, 0);
+        nested = false;
+        input.consumeWheel();
+      });
+
+      expect(() => input.fireWheel(0, 10)).not.toThrow();
+      expect(input.isJustPressed("outer")).toBe(false);
+      expect(input.isJustPressed("nested")).toBe(true);
     });
   });
 
@@ -959,6 +1224,19 @@ describe("InputManager", () => {
 
       input.disableGroup("movement");
       expect(input.isPressed("jump")).toBe(false);
+    });
+
+    it("reveals a held key pressed while its action group was disabled", () => {
+      input.disableGroup("movement");
+      input._onKeyDown("Space");
+      input._advanceTime(250);
+      expect(input.isPressed("jump")).toBe(false);
+
+      input.enableGroup("movement");
+
+      expect(input.isPressed("jump")).toBe(true);
+      expect(input.isJustPressed("jump")).toBe(false);
+      expect(input.getHoldDuration("jump")).toBe(0.25);
     });
 
     it("disabled group silences isJustPressed", () => {
@@ -1134,8 +1412,19 @@ describe("InputManager", () => {
       expect(input.isJustPressed("jump")).toBe(false);
     });
 
+    it("retains both edges for an action-source tap within one frame", () => {
+      const source = input.createActionSource();
+      source.setHeld("jump", true);
+      source.setHeld("jump", false);
+
+      expect(input.isJustPressed("jump")).toBe(true);
+      expect(input.isJustReleased("jump")).toBe(true);
+    });
+
     it("fireAction throws for unknown actions", () => {
-      expect(() => input.fireAction("unknown")).toThrow('unknown action "unknown"');
+      expect(() => input.fireAction("unknown")).toThrow(
+        'unknown action "unknown"',
+      );
     });
 
     it("hasAction reflects the current action map", () => {
@@ -1143,8 +1432,8 @@ describe("InputManager", () => {
       expect(input.hasAction("unknown")).toBe(false);
     });
 
-    it("fireActionDown sustains isPressed across frames", () => {
-      input.fireActionDown("jump");
+    it("an action source sustains isPressed across frames", () => {
+      setTestActionHeld(input, "jump", true);
       expect(input.isPressed("jump")).toBe(true);
       expect(input.isJustPressed("jump")).toBe(true);
 
@@ -1157,13 +1446,13 @@ describe("InputManager", () => {
       expect(input.isPressed("jump")).toBe(true);
     });
 
-    it("fireActionUp emits a one-frame release edge and fires onActionReleased", () => {
+    it("an action source emits a release edge and onActionReleased", () => {
       const released: string[] = [];
       input.onActionReleased("jump", (n) => released.push(n));
 
-      input.fireActionDown("jump");
+      setTestActionHeld(input, "jump", true);
       input._clearFrameState();
-      input.fireActionUp("jump");
+      setTestActionHeld(input, "jump", false);
 
       expect(input.isPressed("jump")).toBe(false);
       expect(input.isJustReleased("jump")).toBe(true);
@@ -1174,7 +1463,7 @@ describe("InputManager", () => {
     });
 
     it("getHoldDuration accrues while a synthetic action is held and resets on release", () => {
-      input.fireActionDown("jump");
+      setTestActionHeld(input, "jump", true);
       input._advanceTime(100);
       expect(input.getHoldDuration("jump")).toBe(0.1);
 
@@ -1183,45 +1472,45 @@ describe("InputManager", () => {
       expect(input.getHoldDuration("jump")).toBe(0.25);
       expect(input.isHeldFor("jump", 0.2)).toBe(true);
 
-      input.fireActionUp("jump");
+      setTestActionHeld(input, "jump", false);
       expect(input.getHoldDuration("jump")).toBe(0);
     });
 
-    it("fireActionDown is idempotent — a repeat does not reset the hold start", () => {
-      input.fireActionDown("jump");
+    it("an action source is idempotent while held", () => {
+      setTestActionHeld(input, "jump", true);
       input._advanceTime(100);
       input._clearFrameState();
-      input.fireActionDown("jump");
+      setTestActionHeld(input, "jump", true);
       input._advanceTime(100);
       // Re-down kept the original start, so the duration keeps growing.
       expect(input.getHoldDuration("jump")).toBe(0.2);
     });
 
-    it("fireActionDown fires onAction only on the rising edge", () => {
+    it("an action source fires onAction only on the rising edge", () => {
       const pressed: string[] = [];
       input.onAction("jump", (n) => pressed.push(n));
 
-      input.fireActionDown("jump");
+      setTestActionHeld(input, "jump", true);
       input._clearFrameState();
-      input.fireActionDown("jump");
+      setTestActionHeld(input, "jump", true);
 
       expect(pressed).toEqual(["jump"]);
     });
 
-    it("setActionHeld mirrors a held boolean onto down/up", () => {
-      input.setActionHeld("jump", true);
+    it("an action source mirrors a held boolean onto down/up", () => {
+      setTestActionHeld(input, "jump", true);
       expect(input.isPressed("jump")).toBe(true);
 
       input._clearFrameState();
-      input.setActionHeld("jump", false);
+      setTestActionHeld(input, "jump", false);
       expect(input.isPressed("jump")).toBe(false);
       expect(input.isJustReleased("jump")).toBe(true);
     });
 
-    it("fireActionUp is a no-op when the action is not held", () => {
+    it("releasing an action not held by the source does nothing", () => {
       const released: string[] = [];
       input.onActionReleased("jump", (n) => released.push(n));
-      input.fireActionUp("jump");
+      setTestActionHeld(input, "jump", false);
       expect(input.isJustReleased("jump")).toBe(false);
       expect(released).toEqual([]);
     });
@@ -1234,29 +1523,32 @@ describe("InputManager", () => {
       input.setGroups({ movement: ["jump"] });
 
       input.disableGroup("movement");
-      input.fireActionDown("jump");
+      setTestActionHeld(input, "jump", true);
       input._clearFrameState();
-      input.fireActionUp("jump");
+      setTestActionHeld(input, "jump", false);
       expect(input.isPressed("jump")).toBe(false);
       expect(pressed).toEqual([]);
       expect(released).toEqual([]);
 
       input.enableGroup("movement");
-      input.fireActionDown("jump");
+      setTestActionHeld(input, "jump", true);
       input._clearFrameState();
-      input.fireActionUp("jump");
+      setTestActionHeld(input, "jump", false);
       expect(pressed).toEqual(["jump"]);
       expect(released).toEqual(["jump"]);
     });
 
     it("snapshotState lists a held synthetic action under actions", () => {
-      input.fireActionDown("jump");
+      setTestActionHeld(input, "jump", true);
       input._clearFrameState();
-      expect(input.snapshotState().actions).toContain("jump");
+      expect(input.snapshotState()).toMatchObject({
+        keys: [],
+        actions: ["jump"],
+      });
     });
 
     it("clearAll releases held synthetic actions", () => {
-      input.fireActionDown("jump");
+      setTestActionHeld(input, "jump", true);
       input.clearAll();
       expect(input.isPressed("jump")).toBe(false);
       expect(input.snapshotState().actions).toEqual([]);
@@ -1273,7 +1565,7 @@ describe("InputManager", () => {
 
     it("does not reset the input clock when clearing state", () => {
       input._advanceTime(250);
-      input.fireActionDown("jump");
+      setTestActionHeld(input, "jump", true);
 
       input.clearAll();
 
@@ -1290,9 +1582,9 @@ describe("InputManager", () => {
       });
 
       input._advanceTime(125);
-      input.fireActionDown("jump");
+      setTestActionHeld(input, "jump", true);
       input._advanceTime(75);
-      input.fireActionUp("jump");
+      setTestActionHeld(input, "jump", false);
 
       expect(edges).toEqual([
         { edge: "press", time: 0.125 },
@@ -1300,19 +1592,40 @@ describe("InputManager", () => {
       ]);
     });
 
-    it("fireActionDown / fireActionUp / setActionHeld throw for unknown actions", () => {
-      expect(() => input.fireActionDown("unknown")).toThrow(
+    it("an action source rejects an unknown press but permits its release", () => {
+      const source = input.createActionSource();
+      expect(() => source.setHeld("unknown", true)).toThrow(
         'unknown action "unknown"',
       );
-      expect(() => input.fireActionUp("unknown")).toThrow(
-        'unknown action "unknown"',
-      );
-      expect(() => input.setActionHeld("unknown", true)).toThrow(
-        'unknown action "unknown"',
-      );
-      expect(() => input.setActionHeld("unknown", false)).toThrow(
-        'unknown action "unknown"',
-      );
+      expect(() => source.setHeld("unknown", false)).not.toThrow();
+    });
+
+    it("keeps an action held until every source releases it", () => {
+      const first = input.createActionSource();
+      const second = input.createActionSource();
+
+      first.setHeld("jump", true);
+      second.setHeld("jump", true);
+      first.setHeld("jump", false);
+
+      expect(input.isPressed("jump")).toBe(true);
+      expect(input.isJustReleased("jump")).toBe(true);
+
+      input._clearFrameState();
+      second.setHeld("jump", false);
+      expect(input.isPressed("jump")).toBe(false);
+      expect(input.isJustReleased("jump")).toBe(true);
+    });
+
+    it("releases a source hold after the action map temporarily drops it", () => {
+      const source = input.createActionSource();
+      source.setHeld("jump", true);
+      input.setActionMap({ fire: ["MouseLeft"] });
+
+      source.setHeld("jump", false);
+      input.setActionMap({ jump: ["Space"] });
+
+      expect(input.isPressed("jump")).toBe(false);
     });
 
     it("snapshotState includes synthetic keyboard, mouse, and gamepad state", () => {
@@ -1329,6 +1642,7 @@ describe("InputManager", () => {
         pointers: [
           {
             id: 1,
+            generation: 1,
             x: 120,
             y: 240,
             type: "mouse",
@@ -1430,9 +1744,7 @@ describe("InputManager", () => {
       } as unknown as Gamepad;
     }
 
-    let originalGetGamepads:
-      | (() => (Gamepad | null)[])
-      | undefined;
+    let originalGetGamepads: (() => (Gamepad | null)[]) | undefined;
 
     function setPads(pads: Array<Gamepad | null>): void {
       Object.defineProperty(navigator, "getGamepads", {
@@ -1485,11 +1797,10 @@ describe("InputManager", () => {
       expect(v.y).toBeCloseTo(0, 5);
     });
 
-    it("getStick magnitude clamps to 1.0 even when raw value exceeds 1", () => {
-      input.fireGamepadAxis("leftX", 1.5);
-      input.fireGamepadAxis("leftY", 0);
-      const v = input.getStick("left");
-      expect(Math.hypot(v.x, v.y)).toBeLessThanOrEqual(1.0001);
+    it("fireGamepadAxis rejects an out-of-range stick value", () => {
+      expect(() => input.fireGamepadAxis("leftX", 1.5)).toThrow(
+        "leftX must be finite and in [-1, 1], got 1.5",
+      );
     });
 
     it("getTrigger returns 0 inside deadzone, normalized 0..1 outside", () => {
@@ -1635,7 +1946,10 @@ describe("InputManager", () => {
       input.setActionMap({ shoot: ["GamepadRT"] });
       input.setTriggerThreshold(0.5);
 
-      const buttons = Array.from({ length: 8 }, () => ({ pressed: false, value: 0 }));
+      const buttons = Array.from({ length: 8 }, () => ({
+        pressed: false,
+        value: 0,
+      }));
       buttons[7] = { pressed: false, value: 0.3 };
       setPads([makePad({ buttons })]);
       input._pollGamepads();
@@ -1649,9 +1963,7 @@ describe("InputManager", () => {
 
     it("non-standard mapping uses GamepadButton{N} fallback", () => {
       input.setActionMap({ jump: ["GamepadButton0"] });
-      setPads([
-        makePad({ mapping: "", buttons: [{ pressed: true }] }),
-      ]);
+      setPads([makePad({ mapping: "", buttons: [{ pressed: true }] })]);
       input._pollGamepads();
       expect(input.isPressed("jump")).toBe(true);
     });
@@ -1730,20 +2042,46 @@ describe("InputManager", () => {
       expect(input.getStick("right").x).toBeGreaterThan(0);
     });
 
-    it("non-finite axis input via fireGamepadAxis is coerced to 0", () => {
-      input.fireGamepadAxis("leftX", Number.NaN);
-      input.fireGamepadAxis("leftY", Number.POSITIVE_INFINITY);
-      const v = input.getStick("left");
-      expect(Number.isNaN(v.x)).toBe(false);
-      expect(Number.isNaN(v.y)).toBe(false);
-      expect(v).toEqual(Vec2.ZERO);
+    it("does not use synthetic axes for an explicit pad read", () => {
+      input.fireGamepadAxis("leftX", 0.8);
+      input.fireGamepadAxis("rightTrigger", 0.8);
+
+      expect(input.getStick("left").x).toBeGreaterThan(0);
+      expect(input.getTrigger("right")).toBeGreaterThan(0);
+      expect(input.getStick("left", { pad: 3 })).toEqual(Vec2.ZERO);
+      expect(input.getTrigger("right", { pad: 3 })).toBe(0);
     });
 
-    it("non-finite trigger input via fireGamepadAxis is coerced to 0", () => {
-      input.fireGamepadAxis("rightTrigger", Number.NaN);
-      const t = input.getTrigger("right");
-      expect(Number.isNaN(t)).toBe(false);
-      expect(t).toBe(0);
+    it("emits stick direction codes with release hysteresis", () => {
+      input.setActionMap({ left: ["GamepadLeftStickLeft"] });
+
+      setPads([makePad({ index: 0, axes: [-0.6, 0, 0, 0] })]);
+      input._pollGamepads();
+      expect(input.isPressed("left")).toBe(true);
+
+      setPads([makePad({ index: 0, axes: [-0.4, 0, 0, 0] })]);
+      input._pollGamepads();
+      expect(input.isPressed("left")).toBe(true);
+
+      setPads([makePad({ index: 0, axes: [-0.3, 0, 0, 0] })]);
+      input._pollGamepads();
+      expect(input.isPressed("left")).toBe(false);
+      expect(input.isJustReleased("left")).toBe(true);
+    });
+
+    it("fireGamepadAxis rejects non-finite stick values", () => {
+      expect(() => input.fireGamepadAxis("leftX", Number.NaN)).toThrow(
+        "leftX must be finite and in [-1, 1], got NaN",
+      );
+      expect(() =>
+        input.fireGamepadAxis("leftY", Number.POSITIVE_INFINITY),
+      ).toThrow("leftY must be finite and in [-1, 1], got Infinity");
+    });
+
+    it("fireGamepadAxis rejects non-finite trigger values", () => {
+      expect(() => input.fireGamepadAxis("rightTrigger", Number.NaN)).toThrow(
+        "rightTrigger must be finite and in [0, 1], got NaN",
+      );
     });
 
     it("non-finite axis values from polling are coerced to 0", () => {
@@ -1760,41 +2098,37 @@ describe("InputManager", () => {
       expect(v).toEqual(Vec2.ZERO);
     });
 
-    it("setDeadzones clamps stick to [0, 0.999] and ignores non-finite", () => {
-      input.setDeadzones({ stick: 5 });
-      input.fireGamepadAxis("leftX", 0.5);
-      // With deadzone clamped to 0.999, mag=0.5 falls below → returns ZERO
-      expect(input.getStick("left")).toEqual(Vec2.ZERO);
+    it("setDeadzones rejects invalid values", () => {
+      for (const stick of [5, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+        expect(() => input.setDeadzones({ stick })).toThrow(
+          "stick must be finite and in [0, 1)",
+        );
+      }
+      for (const trigger of [1, -1, Number.NaN]) {
+        expect(() => input.setDeadzones({ trigger })).toThrow(
+          "trigger must be finite and in [0, 1)",
+        );
+      }
+    });
 
-      input.setDeadzones({ stick: -1 });
-      input.fireGamepadAxis("leftX", 0.5);
-      // Clamped to 0; deadzone gate at 0 passes for mag=0.5
+    it("setDeadzones validates every field before changing either", () => {
+      input.setDeadzones({ stick: 0.25 });
+      input.fireGamepadAxis("leftX", 0.4);
       expect(input.getStick("left").x).toBeGreaterThan(0);
 
-      // Non-finite is ignored (stick stays at the previous clamped 0)
-      input.setDeadzones({ stick: Number.NaN });
-      input.fireGamepadAxis("leftX", 0.3);
+      expect(() =>
+        input.setDeadzones({ stick: 0.5, trigger: Number.NaN }),
+      ).toThrow("trigger must be finite and in [0, 1)");
+
       expect(input.getStick("left").x).toBeGreaterThan(0);
     });
 
-    it("setTriggerThreshold clamps to [0, 1] and ignores non-finite", () => {
-      input.setActionMap({ shoot: ["GamepadRT"] });
-
-      input.setTriggerThreshold(2);
-      input.fireGamepadAxis("rightTrigger", 0.99);
-      // Threshold clamped to 1 — value 0.99 doesn't reach
-      expect(input.isPressed("shoot")).toBe(false);
-
-      input.setTriggerThreshold(-1);
-      input.fireGamepadAxis("rightTrigger", 0.01);
-      // Threshold clamped to 0 — anything > 0 fires
-      expect(input.isPressed("shoot")).toBe(true);
-
-      input.fireGamepadAxis("rightTrigger", 0); // reset
-      input.setTriggerThreshold(Number.POSITIVE_INFINITY);
-      input.fireGamepadAxis("rightTrigger", 0.5);
-      // Non-finite ignored — last valid threshold (0) still wins
-      expect(input.isPressed("shoot")).toBe(true);
+    it("setTriggerThreshold rejects invalid values", () => {
+      for (const value of [0, 2, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+        expect(() => input.setTriggerThreshold(value)).toThrow(
+          "value must be finite and in (0, 1]",
+        );
+      }
     });
 
     it("polling drops axis state for pads that vanished without disconnect event", () => {
@@ -1846,16 +2180,32 @@ describe("InputManager", () => {
 
     it("rising-edge stick activity promotes inactive pad when active is idle", () => {
       setPads([
-        makePad({ index: 0, buttons: [{ pressed: false }], axes: [0, 0, 0, 0] }),
-        makePad({ index: 1, buttons: [{ pressed: false }], axes: [0, 0, 0, 0] }),
+        makePad({
+          index: 0,
+          buttons: [{ pressed: false }],
+          axes: [0, 0, 0, 0],
+        }),
+        makePad({
+          index: 1,
+          buttons: [{ pressed: false }],
+          axes: [0, 0, 0, 0],
+        }),
       ]);
       input._pollGamepads();
       expect(input.getActivePad()?.index).toBe(0);
 
       // Active pad is idle, pad 1 moves stick → promotion fires
       setPads([
-        makePad({ index: 0, buttons: [{ pressed: false }], axes: [0, 0, 0, 0] }),
-        makePad({ index: 1, buttons: [{ pressed: false }], axes: [0.9, 0, 0, 0] }),
+        makePad({
+          index: 0,
+          buttons: [{ pressed: false }],
+          axes: [0, 0, 0, 0],
+        }),
+        makePad({
+          index: 1,
+          buttons: [{ pressed: false }],
+          axes: [0.9, 0, 0, 0],
+        }),
       ]);
       input._pollGamepads();
       expect(input.getActivePad()?.index).toBe(1);
@@ -1937,10 +2287,7 @@ describe("InputManager", () => {
     });
 
     it("setActivePad manually switches between connected pads", () => {
-      setPads([
-        makePad({ index: 0 }),
-        makePad({ index: 1 }),
-      ]);
+      setPads([makePad({ index: 0 }), makePad({ index: 1 })]);
       input._pollGamepads();
       expect(input.getActivePad()?.index).toBe(0);
 
@@ -2056,9 +2403,32 @@ describe("InputManager", () => {
       });
       input.onGamepadConnected(() => calls.push("after"));
 
-      expect(() => input._onGamepadConnected({ index: 0, id: "pad-0" })).toThrow("boom");
+      expect(() =>
+        input._onGamepadConnected({ index: 0, id: "pad-0" }),
+      ).toThrow("boom");
       expect(calls).toEqual(["before"]);
       expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Gamepad connect listener",
+      });
+    });
+
+    it("attributes gamepad-connect replay before registering the listener", () => {
+      const { boundary } = wireBoundary();
+      input._onGamepadConnected({ index: 0, id: "pad-0" });
+      let calls = 0;
+
+      expect(() =>
+        input.onGamepadConnected(() => {
+          calls++;
+          throw new Error("replay failed");
+        }),
+      ).toThrow("replay failed");
+      expect(() =>
+        input._onGamepadConnected({ index: 1, id: "pad-1" }),
+      ).not.toThrow();
+
+      expect(calls).toBe(1);
       expect(boundary.getCallbackErrors()[0]).toMatchObject({
         kind: "Gamepad connect listener",
       });
@@ -2074,7 +2444,9 @@ describe("InputManager", () => {
       });
       input.onGamepadDisconnected(() => calls.push("after"));
 
-      expect(() => input._onGamepadDisconnected({ index: 0, id: "pad-0" })).toThrow("boom");
+      expect(() =>
+        input._onGamepadDisconnected({ index: 0, id: "pad-0" }),
+      ).toThrow("boom");
       expect(calls).toEqual(["before"]);
       expect(boundary.getCallbackErrors()).toHaveLength(1);
       expect(boundary.getCallbackErrors()[0]).toMatchObject({
@@ -2085,10 +2457,6 @@ describe("InputManager", () => {
     it("a throwing active-pad listener rethrows, stopping later listeners for the same change", () => {
       const { boundary } = wireBoundary();
       const calls: string[] = [];
-      // onActivePadChanged replays synchronously (and unguarded) on subscribe,
-      // so the throwing listener stays quiet for that initial replay and only
-      // throws once armed — isolating the guarded fan-out in
-      // setActivePadInternal, which is what this test targets.
       let armed = false;
       input.onActivePadChanged(() => calls.push("before"));
       input.onActivePadChanged(() => {
@@ -2099,9 +2467,31 @@ describe("InputManager", () => {
       calls.length = 0;
       armed = true;
 
-      expect(() => input._onGamepadConnected({ index: 0, id: "pad-0" })).toThrow("boom");
+      expect(() =>
+        input._onGamepadConnected({ index: 0, id: "pad-0" }),
+      ).toThrow("boom");
       expect(calls).toEqual(["before"]);
       expect(boundary.getCallbackErrors()).toHaveLength(1);
+      expect(boundary.getCallbackErrors()[0]).toMatchObject({
+        kind: "Active pad listener",
+      });
+    });
+
+    it("attributes active-pad replay before registering the listener", () => {
+      const { boundary } = wireBoundary();
+      let calls = 0;
+
+      expect(() =>
+        input.onActivePadChanged(() => {
+          calls++;
+          throw new Error("replay failed");
+        }),
+      ).toThrow("replay failed");
+      expect(() =>
+        input._onGamepadConnected({ index: 0, id: "pad-0" }),
+      ).not.toThrow();
+
+      expect(calls).toBe(1);
       expect(boundary.getCallbackErrors()[0]).toMatchObject({
         kind: "Active pad listener",
       });

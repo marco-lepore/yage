@@ -6,6 +6,7 @@ import {
 } from "@yagejs/core";
 import {
   InputManagerKey,
+  type InputActionSource,
   type InputManager,
   type PointerInfo,
 } from "@yagejs/input";
@@ -96,6 +97,7 @@ export class VirtualControls extends Component {
 
   private readonly opts: VirtualControlsOptions;
   private input: InputManager | null = null;
+  private actionSource: InputActionSource | null = null;
   private adapter: RendererAdapter | null = null;
   private views: ControlView[] = [];
   private warnedActions = new Set<string>();
@@ -117,18 +119,23 @@ export class VirtualControls extends Component {
       },
       onButtonPress: (b) => {
         this.mirrorButton(b);
-        this.entity.emit(VirtualButtonPressEvent, { id: b.id, action: b.action });
+        this.entity.emit(VirtualButtonPressEvent, {
+          id: b.id,
+          action: b.action,
+        });
       },
       onButtonRelease: (b) => {
         this.mirrorButton(b);
-        this.entity.emit(VirtualButtonReleaseEvent, { id: b.id, action: b.action });
+        this.entity.emit(VirtualButtonReleaseEvent, {
+          id: b.id,
+          action: b.action,
+        });
       },
       // Gates slide-in (pressOnEnter) claims the same way handleDown gates
       // fresh presses — releases of already-claimed pointers stay ungated.
       canClaim: (pointerId) =>
         this._visible &&
         this.effectiveEnabled &&
-        !this.scene.isPaused &&
         !(this.input?.isPointerConsumed(pointerId) ?? false),
     });
   }
@@ -185,6 +192,7 @@ export class VirtualControls extends Component {
   override onAdd(): void {
     const input = this.use(InputManagerKey);
     this.input = input;
+    this.actionSource = input.createActionSource();
     this.adapter = this.context.tryResolve(RendererAdapterKey) ?? null;
     // Eager pass so a typo warns at mount, not at first touch. Mirroring
     // re-checks live (checkAction), so a later setActionMap can add or
@@ -222,6 +230,7 @@ export class VirtualControls extends Component {
     this.addCleanup(input.onPointerDown((p) => this.handleDown(p)));
     this.addCleanup(input.onPointerMove((p) => this.handleMove(p)));
     this.addCleanup(input.onPointerUp((p) => this.handleUp(p)));
+    this.addCleanup(() => this.actionSource?.releaseAll());
   }
 
   override update(dt: number): void {
@@ -241,6 +250,7 @@ export class VirtualControls extends Component {
    */
   override onDisable(): void {
     this.model.releaseAll();
+    this.actionSource?.releaseAll();
     this.applyViewVisibility();
   }
 
@@ -257,20 +267,14 @@ export class VirtualControls extends Component {
     for (const v of this.views) v.dispose();
     this.views.length = 0;
     this.opts.presenter?.dispose();
+    this.actionSource = null;
     this.input = null;
   }
 
   private handleDown(p: PointerInfo): void {
     const input = this.input;
     if (!input || !this._visible || !this.effectiveEnabled) return;
-    // While paused (e.g. a pause scene pushed on top), take no new claims —
-    // but moves/releases of already-claimed pointers keep flowing above so
-    // nothing sticks.
-    if (this.scene.isPaused) return;
     if (input.isPointerConsumed(p.id)) return;
-    // Explicit UI wins over control zones: a tap on a @yagejs/ui surface
-    // inside the stick zone belongs to that UI, not the stick.
-    if (this.adapter?.hitTestUI?.(p.screenPos.x, p.screenPos.y)) return;
     if (this.model.pointerDown(p.id, p.screenPos.x, p.screenPos.y)) {
       input.consumePointer(p.id);
     }
@@ -297,7 +301,7 @@ export class VirtualControls extends Component {
   /**
    * Push stick state onto the action map + synthetic gamepad axes. Runs on
    * every move event: axes writes are idempotent value sets, and the digital
-   * mirror is edge-diffed — `setActionHeld` fires only on THIS stick's own
+   * mirror is edge-diffed — the action source updates only on this stick's own
    * transitions, so a synthetic hold some other system put on the same
    * action is never force-released by a mere stick wiggle.
    */
@@ -313,7 +317,8 @@ export class VirtualControls extends Component {
     const d = s.digital;
     const last = this.lastDigital.get(s);
     if (d.left !== (last?.left ?? false)) this.setHeld(actions.left, d.left);
-    if (d.right !== (last?.right ?? false)) this.setHeld(actions.right, d.right);
+    if (d.right !== (last?.right ?? false))
+      this.setHeld(actions.right, d.right);
     if (d.up !== (last?.up ?? false)) this.setHeld(actions.up, d.up);
     if (d.down !== (last?.down ?? false)) this.setHeld(actions.down, d.down);
     this.lastDigital.set(s, d);
@@ -331,8 +336,8 @@ export class VirtualControls extends Component {
    */
   private setHeld(action: string | undefined, held: boolean): void {
     if (!action) return;
-    if (!this.checkAction(action)) return;
-    this.input?.setActionHeld(action, held);
+    if (held && !this.checkAction(action)) return;
+    this.actionSource?.setHeld(action, held);
   }
 
   private checkAction(name: string): boolean {
