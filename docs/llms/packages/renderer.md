@@ -60,7 +60,7 @@ One flag for pixel-art games. When `true`, the plugin:
 - Passes `roundPixels: true` into the Pixi `Application` so subpixel transforms don't smear sprite edges.
 - Writes `image-rendering: -webkit-optimize-contrast; image-rendering: pixelated;` onto the canvas `style.cssText` so the browser scales the backing store with nearest-neighbor. The Safari fallback is the first declaration; modern browsers pick the second from the cascade.
 
-Default: `false`. Composes with `pixi`: explicit `pixi: { roundPixels: false }` wins over the preset, so games can opt parts back out. Per-texture overrides (`source.scaleMode = "linear"` on a specific texture) keep working — the preset only sets the _default_.
+Default: `false`. Composes with `pixi`: explicit `pixi: { roundPixels: false }` wins over the preset, so games can opt parts back out. The preset only sets the _default_, so a per-texture `texture(path, { scaleMode })` still decides for that image.
 
 ```ts
 new RendererPlugin({
@@ -411,7 +411,7 @@ API: `chars` / `words` / `lines` (getters), `setText(v)`, `content` (reads the c
 
 `source` is required; there is no raw-`Texture[]` construction path. A `FrameSource` is either a sheet (`SheetFrameSource`: `{ sheet, frameWidth, frameHeight?, count?, columns?, startX?, startY?, gapX?, gapY? }` — top row by default; `count` wraps rows every `columns` frames for multi-row grid sheets) or an atlas animation (`{ atlas, animation }`). `sliceGrid(texture, options)` is the underlying slicer for use when you already have a `Texture` object.
 
-Every slicing entry (`sliceGrid`, `sliceSheet`, `sliceTextureFrames`, and a `SheetFrameSource`) validates its options: each field must be a finite number at or above its minimum, and the resulting grid must fit inside the texture. A failure throws naming the function and the offending field. Slicing does not change how the texture is sampled — turn on `pixelArtPreset` for nearest-neighbour sampling.
+Every slicing entry (`sliceGrid`, `sliceSheet`, `sliceTextureFrames`, and a `SheetFrameSource`) validates its options: each field must be a finite number at or above its minimum, and the resulting grid must fit inside the texture. A failure throws naming the function and the offending field. Slicing does not change how the texture is sampled — turn on `pixelArtPreset` for the whole project, or `texture(path, { scaleMode: "nearest" })` for one sheet.
 
 ```ts
 import { AnimatedSpriteComponent } from "@yagejs/renderer";
@@ -1153,6 +1153,9 @@ import {
 
 // Returns AssetHandle<Texture> for preloading
 const heroTex = texture("hero.png");
+// `scaleMode` sets how the loaded image is sampled — one sheet at a time,
+// where `pixelArtPreset` switches the whole project.
+const tiles = texture("tiles.png", { scaleMode: "nearest" });
 const sheet = spritesheet("characters.json");
 const asset = renderAsset("ui-atlas.json");
 // AssetHandle<BitmapFont> — a BMFont .fnt/.xml + atlas. The loaded font

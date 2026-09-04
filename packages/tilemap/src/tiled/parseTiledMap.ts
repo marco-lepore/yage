@@ -1,5 +1,7 @@
 import { CompositeTilemap } from "@pixi/tilemap";
 import { Assets, Texture, Rectangle } from "pixi.js";
+import { resolveTextureInput } from "@yagejs/renderer";
+import type { TextureResource } from "@yagejs/renderer";
 import type {
   TiledMapData,
   TileLayer,
@@ -16,7 +18,6 @@ import type {
   MapObject,
   MapObjectProperty,
 } from "../types.js";
-import { subtextureCacheKey } from "./cacheKey.js";
 import { readTileAnimation } from "./animation.js";
 import type { TileAnimationSupport } from "./animation.js";
 import { validateTiledMap } from "./diagnostics.js";
@@ -262,11 +263,43 @@ function findTileset(
 }
 
 /**
- * Resolve the texture for a tile given its GID and owning tileset.
+ * Frame textures one {@link createTilemapLayers} call has cut, so a tile id
+ * drawn on several layers is cut once and the caller gets one texture to
+ * destroy per drawn id.
+ */
+type FrameTextureCache = Map<TilesetData, Map<number, Texture>>;
+
+/**
+ * Base texture of a single-image tileset. The loader records where the image
+ * loaded from; a map handed over as raw JSON never went through it, so its
+ * `image` is the key as written.
+ */
+function resolveTilesetImage(
+  imageKey: string,
+  tileset: TilesetMatch,
+): TextureResource {
+  try {
+    return resolveTextureInput(imageKey);
+  } catch (cause) {
+    throw new Error(
+      `Tileset image "${imageKey}" for tileset "${tilesetLabel(tileset)}" ` +
+        "is not loaded. Load the map through the asset manager, which loads " +
+        "its tileset images with it, or — for a component built from raw map " +
+        "JSON — preload the image or register it under that key.",
+      { cause },
+    );
+  }
+}
+
+/**
+ * Resolve the texture for a tile given its GID and owning tileset. A
+ * single-image tileset's frame is cut here and recorded in `frames`; a
+ * collection-of-images tile draws an atlas frame nothing here owns.
  */
 function resolveTileTexture(
   gid: number,
   tileset: TilesetMatch,
+  frames: FrameTextureCache,
 ): Texture | null {
   const data = tileset.data;
   if (!data) return null;
@@ -277,23 +310,18 @@ function resolveTileTexture(
   // class, custom property or collision shape, so the presence of that array
   // says nothing about which form this is.
   if (data.image) {
-    // Single-image tileset: sub-textures were created by the loader
-    const cacheKey = subtextureCacheKey(data.image, localId);
-    const tex = Assets.get<Texture>(cacheKey);
-    if (tex) return tex;
-
-    // Fallback: create sub-texture on the fly from the base image
-    const filenameMatch = data.image.match(/[^/]*$/);
-    const filename = filenameMatch?.[0];
-    if (!filename) return null;
-    const baseTex = Assets.get<Texture>(filename);
-    if (!baseTex) {
-      throw new Error(
-        `Tileset image "${data.image}" for tileset "${tilesetLabel(tileset)}" ` +
-          "is not loaded. Preload it before adding the map.",
-      );
+    let byLocalId = frames.get(data);
+    if (!byLocalId) {
+      byLocalId = new Map();
+      frames.set(data, byLocalId);
     }
+    const cut = byLocalId.get(localId);
+    if (cut) return cut;
 
+    const source = resolveTilesetImage(
+      data.resolvedImage ?? data.image,
+      tileset,
+    );
     const cols = data.columns;
     const tw = data.tilewidth;
     const th = data.tileheight;
@@ -304,10 +332,12 @@ function resolveTileTexture(
     const x = margin + col * (tw + spacing);
     const y = margin + row * (th + spacing);
 
-    return new Texture({
-      source: baseTex.source,
+    const frame = new Texture({
+      source: source.source,
       frame: new Rectangle(x, y, tw, th),
     });
+    byLocalId.set(localId, frame);
+    return frame;
   }
 
   if (data.tiles?.length) {
@@ -332,11 +362,7 @@ function resolveTileTexture(
   return null;
 }
 
-/**
- * Height in pixels of the image drawn for a tile. A collection-of-images
- * tileset sizes every tile on its own, and its `tileheight` records only the
- * tallest of them, so the per-tile height is the one that places the image.
- */
+/** Name a tileset carries in a diagnostic, falling back to its `firstgid`. */
 function tilesetLabel(tileset: TilesetMatch): string {
   return (
     tileset.data?.name ??
@@ -345,6 +371,11 @@ function tilesetLabel(tileset: TilesetMatch): string {
   );
 }
 
+/**
+ * Height in pixels of the image drawn for a tile. A collection-of-images
+ * tileset sizes every tile on its own, and its `tileheight` records only the
+ * tallest of them, so the per-tile height is the one that places the image.
+ */
 function drawnTileHeight(data: TilesetData, localId: number): number {
   if (!data.image) {
     const tileData = data.tiles?.find((entry) => entry.id === localId);
@@ -370,17 +401,31 @@ function cachedTileAnimation(
   return result;
 }
 
+/** What {@link createTilemapLayers} builds. */
+export interface TilemapLayers {
+  /** One container per rendered tile layer, in map order. */
+  layers: CompositeTilemap[];
+  /**
+   * Frame textures cut from the tileset images for these layers. The caller
+   * owns them and calls `destroy(false)` on each once the layers are gone: a
+   * `Texture` subscribes to its source, so dropping the reference alone leaks.
+   * Frames of a collection-of-images tileset are not here — those belong to
+   * the atlas that loaded them.
+   */
+  textures: TextureResource[];
+}
+
 /**
  * Build CompositeTilemap display objects from a parsed Tiled map.
  *
  * @param map - Parsed TiledMapData (with resolved tilesets).
  * @param layerNames - Optional filter: only process these tile layer names.
- * @returns Array of CompositeTilemap, one per tile layer.
+ * @returns The layer containers plus the frame textures they draw with.
  */
 export function createTilemapLayers(
   map: TiledMapData,
   layerNames?: string[],
-): CompositeTilemap[] {
+): TilemapLayers {
   const tileLayers = map.layers.filter(
     (l): l is TileLayer => l.type === "tilelayer",
   );
@@ -391,8 +436,9 @@ export function createTilemapLayers(
 
   const tilesets = toTilesetMatches(map);
   const animationCache: TileAnimationCache = new Map();
+  const frames: FrameTextureCache = new Map();
 
-  return filtered.map((layer) => {
+  const layers = filtered.map((layer) => {
     const tilemap = new CompositeTilemap();
     let hasAnimatedTile = false;
     tilemap.visible = layer.visible;
@@ -433,7 +479,7 @@ export function createTilemapLayers(
         : gid;
       // A missing image throws by name inside `resolveTileTexture`; only a
       // collection tile that names no image is skipped here.
-      const texture = resolveTileTexture(textureGid, tileset);
+      const texture = resolveTileTexture(textureGid, tileset, frames);
       if (!texture) continue;
 
       const x = index % width;
@@ -473,6 +519,13 @@ export function createTilemapLayers(
 
     return tilemap;
   });
+
+  const textures: TextureResource[] = [];
+  for (const byLocalId of frames.values()) {
+    for (const frame of byLocalId.values()) textures.push(frame);
+  }
+
+  return { layers, textures };
 }
 
 /**

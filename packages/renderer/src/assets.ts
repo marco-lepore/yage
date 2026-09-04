@@ -38,9 +38,58 @@ import type {
   WebFontResource,
 } from "./public-types.js";
 
-/** Create a typed asset handle for a texture. */
-export function texture(path: string): TextureHandle {
-  return new AssetHandle("texture", path);
+/** Options for {@link texture}. */
+export interface TextureOptions {
+  /**
+   * How the GPU samples this texture when it is drawn at a size other than
+   * its own: `"nearest"` keeps pixel-art edges hard, `"linear"` smooths them.
+   * Omit to leave Pixi's default (`"linear"`, or whatever `pixelArtPreset`
+   * set globally).
+   *
+   * The setting lands on the loaded image, so every sprite drawing from it
+   * samples the same way.
+   */
+  scaleMode?: "nearest" | "linear";
+}
+
+/** Loader metadata stashed onto a {@link texture} handle. @internal */
+interface TextureHandleData {
+  scaleMode: "nearest" | "linear";
+}
+
+/**
+ * Create a typed asset handle for a texture.
+ *
+ * ```ts
+ * const Hero = texture("hero.png");
+ * const Tiles = texture("tiles.png", { scaleMode: "nearest" });
+ * ```
+ */
+export function texture(path: string, opts?: TextureOptions): TextureHandle {
+  return new AssetHandle(
+    "texture",
+    path,
+    opts?.scaleMode !== undefined ? { scaleMode: opts.scaleMode } : undefined,
+  );
+}
+
+/**
+ * Load a texture for the `texture` asset loader, applying the handle's
+ * `scaleMode` to the loaded image.
+ *
+ * Split out of the loader registration so it is unit testable against the
+ * Pixi mock rather than through the whole plugin.
+ *
+ * @internal
+ */
+export async function loadTexture(
+  path: string,
+  data?: unknown,
+): Promise<TextureResource> {
+  const loaded = await Assets.load<TextureResource>(path);
+  const scaleMode = (data as TextureHandleData | undefined)?.scaleMode;
+  if (scaleMode !== undefined) loaded.source.scaleMode = scaleMode;
+  return loaded;
 }
 
 /** Create a typed asset handle for a spritesheet JSON atlas. */

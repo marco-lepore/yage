@@ -14,6 +14,9 @@ import { QueryCache } from "./QueryCache.js";
 import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
 import { _resetEntityIdCounter } from "./Entity.js";
+import { ErrorBoundary } from "./ErrorBoundary.js";
+import { ErrorBoundaryKey } from "./EngineContext.js";
+import { Logger, LogLevel } from "./Logger.js";
 
 const FakeAsset = new AssetHandle<string>("fake", "test.dat");
 
@@ -133,6 +136,162 @@ describe("Scene preload integration", () => {
 
     await promise;
     expect(handler).toHaveBeenCalledWith({ scene });
+  });
+
+  it("preload() loads the manifest and the push consumes it", async () => {
+    const { manager, am } = setup();
+    const scene = new PreloadScene();
+    const progress: number[] = [];
+
+    await manager.preload(scene, (ratio) => progress.push(ratio));
+    expect(am.has(FakeAsset)).toBe(true);
+    expect(progress.at(-1)).toBe(1);
+    expect(scene.progressValues.at(-1)).toBe(1);
+
+    await manager.push(scene);
+    expect(scene.entered).toBe(true);
+
+    // One owner, one reference: the scene's own unload frees the handle.
+    am.unload(FakeAsset);
+    expect(am.has(FakeAsset)).toBe(false);
+  });
+
+  it("pushing a scene whose prefetch is still running takes one reference", async () => {
+    const { manager, am } = setup();
+    const scene = new PreloadScene();
+
+    // The menu prefetches without awaiting; the player picks it immediately.
+    const prefetch = manager.preload(scene);
+    await manager.push(scene);
+    await prefetch;
+
+    expect(scene.entered).toBe(true);
+    am.unload(FakeAsset);
+    expect(am.has(FakeAsset)).toBe(false);
+  });
+
+  it("two concurrent preloads of one scene take one reference", async () => {
+    const { manager, am } = setup();
+    const scene = new PreloadScene();
+
+    // The menu's prefetch is still in flight when the loading scene starts.
+    await Promise.all([manager.preload(scene), manager.preload(scene)]);
+    await manager.push(scene);
+
+    am.unload(FakeAsset);
+    expect(am.has(FakeAsset)).toBe(false);
+  });
+
+  it("preloading one scene twice still takes one reference", async () => {
+    const { manager, am } = setup();
+    const scene = new PreloadScene();
+
+    // A menu prefetches the level, then routes to that same instance through
+    // a LoadingScene, which preloads it again.
+    await manager.preload(scene);
+    await manager.preload(scene);
+    await manager.push(scene);
+
+    am.unload(FakeAsset);
+    expect(am.has(FakeAsset)).toBe(false);
+  });
+
+  it("a preload joining one still running receives its progress", async () => {
+    const { manager, am } = setup();
+    let release!: () => void;
+    am.registerLoader("fake", {
+      load: (path: string) =>
+        new Promise<string>((resolve) => {
+          release = () => resolve(`loaded:${path}`);
+        }),
+    });
+    const scene = new PreloadScene();
+    const owner: number[] = [];
+    const joiner: number[] = [];
+
+    // The menu prefetches the level; a LoadingScene starts while it loads.
+    const prefetch = manager.preload(scene, (ratio) => owner.push(ratio));
+    const join = manager.preload(scene, (ratio) => joiner.push(ratio));
+    expect(joiner).toEqual([0]);
+    release();
+    await Promise.all([prefetch, join]);
+
+    expect(owner).toEqual([0, 1]);
+    expect(joiner).toEqual([0, 1]);
+    await manager.push(scene);
+    am.unload(FakeAsset);
+    expect(am.has(FakeAsset)).toBe(false);
+  });
+
+  it("a preload joining one already finished reports completion", async () => {
+    const { manager } = setup();
+    const scene = new PreloadScene();
+    const joiner: number[] = [];
+
+    await manager.preload(scene);
+    await manager.preload(scene, (ratio) => joiner.push(ratio));
+
+    expect(joiner).toEqual([1]);
+  });
+
+  it("attributes a throwing caller callback to the caller, not the scene", async () => {
+    const { manager, ctx } = setup();
+    const logger = new Logger({ level: LogLevel.Error });
+    const boundary = new ErrorBoundary(logger);
+    ctx.register(ErrorBoundaryKey, boundary);
+    manager._setContext(ctx);
+
+    await expect(
+      manager.preload(new PreloadScene(), () => {
+        throw new Error("progress bar blew up");
+      }),
+    ).rejects.toThrow("progress bar blew up");
+    expect(boundary.getCallbackErrors()).toEqual([
+      expect.objectContaining({
+        kind: "SceneManager.preload onProgress callback",
+        scene: "preloaded",
+      }),
+    ]);
+  });
+
+  it("preloads normally when the same scene is pushed twice", async () => {
+    const { manager, am } = setup();
+    const scene = new PreloadScene();
+
+    await manager.preload(scene);
+    await manager.push(scene);
+    await manager.pop();
+    await manager.push(scene);
+
+    // The mark is consumed once; the second push takes its own reference.
+    am.unload(FakeAsset);
+    expect(am.has(FakeAsset)).toBe(true);
+    am.unload(FakeAsset);
+    expect(am.has(FakeAsset)).toBe(false);
+  });
+
+  it("attributes a throwing onProgress hook to the scene", async () => {
+    const { manager, ctx } = setup();
+    const logger = new Logger({ level: LogLevel.Error });
+    const boundary = new ErrorBoundary(logger);
+    ctx.register(ErrorBoundaryKey, boundary);
+    manager._setContext(ctx);
+
+    class BadProgress extends PreloadScene {
+      override onProgress(): void {
+        throw new Error("progress blew up");
+      }
+    }
+
+    await expect(manager.push(new BadProgress())).rejects.toThrow(
+      "progress blew up",
+    );
+    expect(boundary.getCallbackErrors()).toEqual([
+      expect.objectContaining({
+        kind: "Scene onProgress hook",
+        scene: "preloaded",
+      }),
+    ]);
   });
 
   it("skips preloading when asset manager is not registered", async () => {

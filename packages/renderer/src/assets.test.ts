@@ -51,7 +51,10 @@ const { mocks } = vi.hoisted(() => {
     height: number;
     frame: MockRectangle | undefined;
     destroy = vi.fn();
-    constructor(opts?: { source?: MockTexture["source"]; frame?: MockRectangle }) {
+    constructor(opts?: {
+      source?: MockTexture["source"];
+      frame?: MockRectangle;
+    }) {
       this.source = opts?.source ?? {};
       this.frame = opts?.frame;
       this.width = opts?.frame?.width ?? 0;
@@ -95,10 +98,12 @@ import {
   clearInstalledBitmapFontSources,
   clearRegisteredTextures,
   installBitmapFont,
+  loadTexture,
   loadWebFont,
   registerTexture,
   resolveTextureInput,
   sliceTextureFrames,
+  texture,
   uninstallBitmapFont,
   unloadWebFont,
   unregisterTexture,
@@ -126,6 +131,46 @@ describe("bitmapFont()", () => {
     expect(handle).toBeInstanceOf(AssetHandle);
     expect(handle.type).toBe("bitmap-font");
     expect(handle.path).toBe("fonts/pixel.fnt");
+  });
+});
+
+describe("texture()", () => {
+  it("creates a plain texture handle with no loader data", () => {
+    const handle = texture("hero.png");
+    expect(handle).toBeInstanceOf(AssetHandle);
+    expect(handle.type).toBe("texture");
+    expect(handle.data).toBeUndefined();
+  });
+
+  it("carries a requested scaleMode as loader data", () => {
+    expect(texture("tiles.png", { scaleMode: "nearest" }).data).toEqual({
+      scaleMode: "nearest",
+    });
+  });
+});
+
+describe("texture loader (loadTexture)", () => {
+  beforeEach(() => {
+    mocks.assetsLoad.mockReset();
+  });
+
+  it("applies the handle's scaleMode to the loaded image", async () => {
+    const loaded = new mocks.MockTexture();
+    mocks.assetsLoad.mockResolvedValue(loaded as never);
+
+    await loadTexture("tiles.png", { scaleMode: "nearest" });
+
+    expect(loaded.source.scaleMode).toBe("nearest");
+  });
+
+  it("leaves the image's sampling alone when no scaleMode is asked for", async () => {
+    const loaded = new mocks.MockTexture();
+    loaded.source.scaleMode = "linear";
+    mocks.assetsLoad.mockResolvedValue(loaded as never);
+
+    await loadTexture("hero.png");
+
+    expect(loaded.source.scaleMode).toBe("linear");
   });
 });
 
@@ -291,7 +336,9 @@ describe("installBitmapFont()", () => {
 
   it("bakes a white atlas by default so per-text fill/tint can colour it", async () => {
     await installBitmapFont("a.ttf", { name: "A" });
-    expect(mocks.bitmapFontInstall.mock.calls[0]?.[0].style.fill).toBe(0xffffff);
+    expect(mocks.bitmapFontInstall.mock.calls[0]?.[0].style.fill).toBe(
+      0xffffff,
+    );
   });
 
   it("lets an explicit style.fill override the white default", async () => {
@@ -299,7 +346,9 @@ describe("installBitmapFont()", () => {
       name: "A",
       style: { fill: 0x00ff00 },
     });
-    expect(mocks.bitmapFontInstall.mock.calls[0]?.[0].style.fill).toBe(0x00ff00);
+    expect(mocks.bitmapFontInstall.mock.calls[0]?.[0].style.fill).toBe(
+      0x00ff00,
+    );
   });
 
   it("defaults size/resolution/padding and merges extra style props", async () => {
@@ -309,7 +358,12 @@ describe("installBitmapFont()", () => {
     });
     expect(mocks.bitmapFontInstall).toHaveBeenCalledWith({
       name: "A",
-      style: { fill: 0xffffff, fontWeight: "bold", fontFamily: "A", fontSize: 32 },
+      style: {
+        fill: 0xffffff,
+        fontWeight: "bold",
+        fontFamily: "A",
+        fontSize: 32,
+      },
       resolution: 2,
       padding: 4,
     });
@@ -325,7 +379,10 @@ describe("installBitmapFont()", () => {
   });
 
   it("honors an explicit @font-face family override", async () => {
-    await installBitmapFont("font.ttf", { name: "Hud", family: "Press Start 2P" });
+    await installBitmapFont("font.ttf", {
+      name: "Hud",
+      family: "Press Start 2P",
+    });
     expect(mocks.assetsLoad).toHaveBeenCalledWith({
       src: "font.ttf",
       data: { family: "Press Start 2P" },
@@ -421,9 +478,9 @@ describe("installBitmapFont() variants", () => {
     );
     // No emphasis resolves the base atlas.
     expect(resolveBitmapFontVariant("Body", {})).toBe("Body");
-    expect(
-      resolveBitmapFontVariant("Body", { fontWeight: "normal" }),
-    ).toBe("Body");
+    expect(resolveBitmapFontVariant("Body", { fontWeight: "normal" })).toBe(
+      "Body",
+    );
   });
 
   it("falls back to the base atlas for an emphasis with no baked variant", async () => {
@@ -441,7 +498,9 @@ describe("installBitmapFont() variants", () => {
 
   it("registers no variants when none are requested", async () => {
     await installBitmapFont("Body.ttf", { name: "Body" });
-    expect(resolveBitmapFontVariant("Body", { fontWeight: "bold" })).toBeUndefined();
+    expect(
+      resolveBitmapFontVariant("Body", { fontWeight: "bold" }),
+    ).toBeUndefined();
   });
 
   it("skips a variant that doesn't cross the bold/italic axis", async () => {

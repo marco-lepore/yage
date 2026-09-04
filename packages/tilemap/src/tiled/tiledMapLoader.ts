@@ -1,27 +1,21 @@
-import {
-  ExtensionType,
-  LoaderParserPriority,
-  Assets,
-  path,
-  Texture,
-  Rectangle,
-} from "pixi.js";
+import { ExtensionType, LoaderParserPriority, path } from "pixi.js";
 import type { LoaderParser, ResolvedAsset, Loader } from "pixi.js";
 import type { TiledMapData, TilesetData, TilesetRef } from "./types.js";
-import { subtextureCacheKey } from "./cacheKey.js";
 import { resolveTilesetData } from "./resolveTilesetData.js";
 
 /**
  * PixiJS loader extension that detects Tiled map JSON files and resolves
- * their tileset references.
+ * their tileset references: an external tileset's JSON is loaded and inlined,
+ * and every single-image tileset records where its image lives relative to
+ * the file that names it (`TilesetData.resolvedImage`).
  *
- * Supports two tileset formats:
- * 1. **Collection-of-images** — tileset has `tiles[]` with image paths.
- *    Assumes textures are already in the PixiJS cache (e.g. from a
- *    pre-loaded spritesheet atlas).
- * 2. **Single-image tileset** — tileset has an `image` property pointing
- *    to a spritesheet. The loader loads the image and creates sub-textures
- *    for each tile based on grid layout.
+ * It loads no images itself. The `"tiledMap"` loader the plugin registers with
+ * the asset manager loads them as counted `texture()` handles, so a map, a
+ * second map sharing the tileset and a sprite on the same sheet each hold
+ * their own reference.
+ *
+ * A collection-of-images tileset names one image per tile and expects those
+ * to be in the Pixi cache already, normally as frames of a preloaded atlas.
  */
 const tiledMapLoaderParser: LoaderParser<TiledMapData> = {
   id: "tiledMapLoader",
@@ -61,6 +55,7 @@ const tiledMapLoaderParser: LoaderParser<TiledMapData> = {
       if (tilesetRef.source) {
         // External tileset JSON — load it
         const tilesetPath = path.join(mapDir, tilesetRef.source);
+        tilesetRef.resolvedSource = tilesetPath;
         imageDir = path.dirname(tilesetPath);
         const tilesetData = (await loader.load<TilesetData>({
           src: tilesetPath,
@@ -74,49 +69,47 @@ const tiledMapLoaderParser: LoaderParser<TiledMapData> = {
 
       if (!tileset) continue;
 
-      // Single-image tileset: load the image and create sub-textures. A
-      // single-image tileset also carries `tiles[]` once any tile has an
-      // animation, class, custom property or collision shape, so `image` is
-      // what tells the two forms apart.
+      // `image` is what tells the two tileset forms apart. A single-image
+      // tileset also carries `tiles[]` once any tile has an animation, class,
+      // custom property or collision shape.
       if (tileset.image) {
-        const imagePath = path.join(imageDir, tileset.image);
-        const baseTexture = await Assets.load<Texture>(imagePath);
-        const cols = tileset.columns;
-        const tw = tileset.tilewidth;
-        const th = tileset.tileheight;
-        const margin = tileset.margin ?? 0;
-        const spacing = tileset.spacing ?? 0;
-
-        for (let id = 0; id < tileset.tilecount; id++) {
-          const col = id % cols;
-          const row = Math.floor(id / cols);
-          const x = margin + col * (tw + spacing);
-          const y = margin + row * (th + spacing);
-
-          // Keep the cache key globally unique by anchoring it to the
-          // tileset's image path — two tilesets sharing a display name
-          // would otherwise collide, and with the has-guard below the
-          // second load would silently return the first's subtextures.
-          const cacheKey = subtextureCacheKey(tileset.image, id);
-          if (Assets.cache.has(cacheKey)) continue;
-
-          const frame = new Rectangle(x, y, tw, th);
-          const subtex = new Texture({
-            source: baseTexture.source,
-            frame,
-          });
-          Assets.cache.set(cacheKey, subtex);
-        }
+        tileset.resolvedImage = path.join(imageDir, tileset.image);
       }
-      // Collection-of-images: textures are expected to already be
-      // in the PixiJS cache (loaded via spritesheet atlas).
     }
 
     return asset;
   },
-
-  unload() {},
 };
+
+/**
+ * Every distinct tileset image a parsed map draws from, as the keys their
+ * textures load under. Empty for a map whose tilesets are all
+ * collections of images.
+ *
+ * @internal
+ */
+export function tilesetImagePaths(map: TiledMapData): string[] {
+  const images = new Set<string>();
+  for (const ref of map.tilesets) {
+    const image = ref.data?.resolvedImage;
+    if (image !== undefined) images.add(image);
+  }
+  return [...images];
+}
+
+/**
+ * Every external tileset JSON a parsed map inlined, as the keys they loaded
+ * under. Empty for a map whose tilesets are all embedded.
+ *
+ * @internal
+ */
+export function externalTilesetPaths(map: TiledMapData): string[] {
+  const sources = new Set<string>();
+  for (const ref of map.tilesets) {
+    if (ref.resolvedSource !== undefined) sources.add(ref.resolvedSource);
+  }
+  return [...sources];
+}
 
 /** PixiJS asset extension bundle for Tiled map JSON files. */
 export const tiledMapAssetExtension = {

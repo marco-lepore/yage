@@ -1,81 +1,104 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock PixiJS and @pixi/tilemap before importing modules
-const { mockCompositeTilemap, mockAssets, mockRectangle } = vi.hoisted(() => {
-  class MockCompositeTilemap {
-    visible = true;
-    calls: {
-      texture: unknown;
-      x: number;
-      y: number;
-      alpha: number | undefined;
-      rotate: number | undefined;
-      animX?: number;
-      animY?: number;
-      animCountX?: number;
-      animCountY?: number;
-      animDivisor?: number;
-    }[] = [];
-    tileAnim: [number, number] = [0, 0];
-
-    tile(
-      texture: unknown,
-      x: number,
-      y: number,
-      options?: {
-        alpha?: number;
-        rotate?: number;
+const { mockCompositeTilemap, mockAssets, mockRectangle, mockTexture } =
+  vi.hoisted(() => {
+    class MockCompositeTilemap {
+      visible = true;
+      calls: {
+        texture: unknown;
+        x: number;
+        y: number;
+        alpha: number | undefined;
+        rotate: number | undefined;
         animX?: number;
         animY?: number;
         animCountX?: number;
         animCountY?: number;
         animDivisor?: number;
-      },
-    ) {
-      this.calls.push({
-        texture,
-        x,
-        y,
-        alpha: options?.alpha,
-        rotate: options?.rotate,
-        ...(options?.animX !== undefined && { animX: options.animX }),
-        ...(options?.animY !== undefined && { animY: options.animY }),
-        ...(options?.animCountX !== undefined && {
-          animCountX: options.animCountX,
-        }),
-        ...(options?.animCountY !== undefined && {
-          animCountY: options.animCountY,
-        }),
-        ...(options?.animDivisor !== undefined && {
-          animDivisor: options.animDivisor,
-        }),
-      });
-      return this;
+      }[] = [];
+      tileAnim: [number, number] = [0, 0];
+
+      tile(
+        texture: unknown,
+        x: number,
+        y: number,
+        options?: {
+          alpha?: number;
+          rotate?: number;
+          animX?: number;
+          animY?: number;
+          animCountX?: number;
+          animCountY?: number;
+          animDivisor?: number;
+        },
+      ) {
+        this.calls.push({
+          texture,
+          x,
+          y,
+          alpha: options?.alpha,
+          rotate: options?.rotate,
+          ...(options?.animX !== undefined && { animX: options.animX }),
+          ...(options?.animY !== undefined && { animY: options.animY }),
+          ...(options?.animCountX !== undefined && {
+            animCountX: options.animCountX,
+          }),
+          ...(options?.animCountY !== undefined && {
+            animCountY: options.animCountY,
+          }),
+          ...(options?.animDivisor !== undefined && {
+            animDivisor: options.animDivisor,
+          }),
+        });
+        return this;
+      }
     }
-  }
 
-  const textureCache = new Map<string, unknown>();
+    const textureCache = new Map<string, unknown>();
 
-  const mockAssets = {
-    get: vi.fn((key: string) => textureCache.get(key)),
-    _cache: textureCache,
-  };
+    const mockAssets = {
+      get: vi.fn((key: string) => textureCache.get(key)),
+      _cache: textureCache,
+    };
 
-  class MockRectangle {
-    constructor(
-      public x: number,
-      public y: number,
-      public width: number,
-      public height: number,
-    ) {}
-  }
+    class MockRectangle {
+      constructor(
+        public x: number,
+        public y: number,
+        public width: number,
+        public height: number,
+      ) {}
+    }
 
-  return {
-    mockCompositeTilemap: MockCompositeTilemap,
-    mockAssets,
-    mockRectangle: MockRectangle,
-  };
-});
+    // `Texture.from` is how the renderer resolves an asset key, and the
+    // constructor is how a tileset frame is cut from the loaded image.
+    class MockTexture {
+      readonly source: unknown;
+      readonly frame: unknown;
+      destroyedWithSource: boolean | undefined;
+
+      constructor(options: { source: unknown; frame: unknown }) {
+        this.source = options.source;
+        this.frame = options.frame;
+      }
+
+      destroy(destroySource?: boolean): void {
+        this.destroyedWithSource = destroySource;
+      }
+
+      static from(key: string): unknown {
+        return textureCache.get(key);
+      }
+    }
+
+    return {
+      mockCompositeTilemap: MockCompositeTilemap,
+      mockAssets,
+      mockRectangle: MockRectangle,
+      mockTexture: MockTexture,
+    };
+  });
 
 vi.mock("@pixi/tilemap", () => ({
   CompositeTilemap: mockCompositeTilemap,
@@ -83,7 +106,7 @@ vi.mock("@pixi/tilemap", () => ({
 
 vi.mock("pixi.js", () => ({
   Assets: mockAssets,
-  Texture: vi.fn(),
+  Texture: mockTexture,
   Rectangle: mockRectangle,
 }));
 
@@ -113,6 +136,17 @@ function makeTileLayer(name: string, data: number[], width: number): TileLayer {
     x: 0,
     y: 0,
   };
+}
+
+/**
+ * Put a texture in the asset cache under `key`. A single-image tileset cuts
+ * its frames from this one and they carry its `source`; a collection tile
+ * draws it directly.
+ */
+function seedTexture(key: string): { source: { label: string } } {
+  const texture = { source: { label: `${key} source` } };
+  mockAssets._cache.set(key, texture);
+  return texture;
 }
 
 describe("createTilemapLayers", () => {
@@ -150,7 +184,7 @@ describe("createTilemapLayers", () => {
     };
 
     const result = createTilemapLayers(map);
-    expect(result).toHaveLength(2);
+    expect(result.layers).toHaveLength(2);
   });
 
   it("filters layers by name", () => {
@@ -183,7 +217,7 @@ describe("createTilemapLayers", () => {
     };
 
     const result = createTilemapLayers(map, ["ground", "deco"]);
-    expect(result).toHaveLength(2);
+    expect(result.layers).toHaveLength(2);
   });
 
   it("skips empty tiles (GID 0)", () => {
@@ -212,7 +246,7 @@ describe("createTilemapLayers", () => {
     };
 
     const result = createTilemapLayers(map);
-    expect(result).toHaveLength(1);
+    expect(result.layers).toHaveLength(1);
     // The CompositeTilemap should only have 1 tile call (for index 1)
   });
 
@@ -223,9 +257,9 @@ describe("createTilemapLayers", () => {
     layer.data = [1, 9999];
     layer.width = 2;
     map.width = 2;
-    mockAssets._cache.set("terrain.png:0", { label: "terrain tile" });
+    seedTexture("terrain.png");
 
-    const [built] = createTilemapLayers(map);
+    const [built] = createTilemapLayers(map).layers;
     const calls = (
       built as unknown as InstanceType<typeof mockCompositeTilemap>
     ).calls;
@@ -262,7 +296,7 @@ describe("createTilemapLayers", () => {
       ],
     };
 
-    const [built] = createTilemapLayers(map);
+    const [built] = createTilemapLayers(map).layers;
     const calls = (
       built as unknown as InstanceType<typeof mockCompositeTilemap>
     ).calls;
@@ -295,7 +329,7 @@ describe("createTilemapLayers", () => {
       ],
     };
 
-    const [built] = createTilemapLayers(map);
+    const [built] = createTilemapLayers(map).layers;
     const calls = (
       built as unknown as InstanceType<typeof mockCompositeTilemap>
     ).calls;
@@ -336,17 +370,30 @@ describe("createTilemapLayers", () => {
     );
   });
 
-  it("renders tiles from an embedded tileset", () => {
+  it("cuts a tile's frame from the tileset image", () => {
     const map = loadFixture("embedded.json");
-    const fakeTexture = { label: "terrain tile" };
-    mockAssets._cache.set("terrain.png:0", fakeTexture);
+    const image = seedTexture("terrain.png");
 
-    const [layer] = createTilemapLayers(map);
+    const [layer] = createTilemapLayers(map).layers;
     const calls = (
       layer as unknown as InstanceType<typeof mockCompositeTilemap>
     ).calls;
     expect(calls).toEqual([
-      { texture: fakeTexture, x: 0, y: 0, alpha: 1, rotate: 0 },
+      {
+        texture: expect.objectContaining({
+          source: image.source,
+          frame: expect.objectContaining({
+            x: 0,
+            y: 0,
+            width: 16,
+            height: 16,
+          }),
+        }),
+        x: 0,
+        y: 0,
+        alpha: 1,
+        rotate: 0,
+      },
     ]);
   });
 
@@ -355,7 +402,7 @@ describe("createTilemapLayers", () => {
     const fakeTexture = { label: "tile" };
     mockAssets._cache.set("tile.png", fakeTexture);
 
-    const [layer] = createTilemapLayers(map);
+    const [layer] = createTilemapLayers(map).layers;
     const calls = (
       layer as unknown as InstanceType<typeof mockCompositeTilemap>
     ).calls;
@@ -372,22 +419,22 @@ describe("createTilemapLayers", () => {
     // Tiled writes `tiles[]` on a single-image tileset as soon as one tile has
     // an animation, class, custom property or collision shape.
     const map = loadFixture("animated-parallax.json");
-    const fakeTexture = { label: "terrain tile" };
-    mockAssets._cache.set("terrain.png:0", fakeTexture);
+    const image = seedTexture("terrain.png");
 
-    const [layer] = createTilemapLayers(map);
+    const [layer] = createTilemapLayers(map).layers;
     const calls = (
       layer as unknown as InstanceType<typeof mockCompositeTilemap>
     ).calls;
-    expect(calls.map(({ texture }) => texture)).toEqual([fakeTexture]);
+    expect(calls.map(({ texture }) => texture)).toEqual([
+      expect.objectContaining({ source: image.source }),
+    ]);
   });
 
   it("passes a conforming horizontal animation to the tilemap shader", () => {
     const map = loadFixture("animation-horizontal.json");
-    const fakeTexture = { label: "horizontal tile" };
-    mockAssets._cache.set("horizontal.png:0", fakeTexture);
+    seedTexture("horizontal.png");
 
-    const [layer] = createTilemapLayers(map);
+    const [layer] = createTilemapLayers(map).layers;
     const calls = (
       layer as unknown as InstanceType<typeof mockCompositeTilemap>
     ).calls;
@@ -412,15 +459,15 @@ describe("createTilemapLayers", () => {
     // shader steps forward from the drawn image, so starting from tile 2's
     // image would play tiles 2 and 3 instead of 0 and 1.
     const map = loadFixture("animation-offset-start.json");
-    const firstFrame = { label: "frame 0" };
-    const ownImage = { label: "tile 2" };
-    mockAssets._cache.set("terrain.png:0", firstFrame);
-    mockAssets._cache.set("terrain.png:2", ownImage);
+    seedTexture("terrain.png");
 
-    const [layer] = createTilemapLayers(map);
+    const [layer] = createTilemapLayers(map).layers;
     const call = (layer as unknown as InstanceType<typeof mockCompositeTilemap>)
       .calls[0];
-    expect(call?.texture).toBe(firstFrame);
+    // Tile 0's frame sits at the image's origin; tile 2's would start at x=32.
+    expect(call?.texture).toMatchObject({
+      frame: expect.objectContaining({ x: 0, y: 0 }),
+    });
     expect(call).toEqual(
       expect.objectContaining({ animX: 16, animCountX: 2, animDivisor: 120 }),
     );
@@ -428,10 +475,9 @@ describe("createTilemapLayers", () => {
 
   it("passes a conforming vertical animation to the tilemap shader", () => {
     const map = loadFixture("animation-vertical.json");
-    const fakeTexture = { label: "vertical tile" };
-    mockAssets._cache.set("vertical.png:0", fakeTexture);
+    seedTexture("vertical.png");
 
-    const [layer] = createTilemapLayers(map);
+    const [layer] = createTilemapLayers(map).layers;
     const call = (layer as unknown as InstanceType<typeof mockCompositeTilemap>)
       .calls[0];
     expect(call).toEqual(
@@ -448,10 +494,10 @@ describe("createTilemapLayers", () => {
   it.each([
     [
       "animation-unequal-durations.json",
-      "unequal.png:0",
+      "unequal.png",
       "Frame durations differ (100, 200 ms)",
     ],
-    ["animation-uneven-stride.json", "uneven.png:0", "Frame stride varies"],
+    ["animation-uneven-stride.json", "uneven.png", "Frame stride varies"],
     [
       "animation-collection.json",
       "water-0.png",
@@ -461,9 +507,9 @@ describe("createTilemapLayers", () => {
     "renders the first frame without animation options for %s",
     (fixture, textureKey, reason) => {
       const map = loadFixture(fixture);
-      mockAssets._cache.set(textureKey, { label: "first frame" });
+      seedTexture(textureKey);
 
-      const [layer] = createTilemapLayers(map);
+      const [layer] = createTilemapLayers(map).layers;
       const call = (
         layer as unknown as InstanceType<typeof mockCompositeTilemap>
       ).calls[0];
@@ -483,9 +529,9 @@ describe("createTilemapLayers", () => {
 
   it("treats a single-frame animation as a still tile", () => {
     const map = loadFixture("animation-single-frame.json");
-    mockAssets._cache.set("single.png:0", { label: "still tile" });
+    seedTexture("single.png");
 
-    const [layer] = createTilemapLayers(map);
+    const [layer] = createTilemapLayers(map).layers;
     const call = (layer as unknown as InstanceType<typeof mockCompositeTilemap>)
       .calls[0];
     expect(call).not.toHaveProperty("animX");
@@ -500,7 +546,7 @@ describe("createTilemapLayers", () => {
     const fakeTexture = { label: "tile" };
     mockAssets._cache.set("tile.png", fakeTexture);
 
-    const [hidden, dimmed] = createTilemapLayers(map);
+    const [hidden, dimmed] = createTilemapLayers(map).layers;
     expect(
       (hidden as unknown as InstanceType<typeof mockCompositeTilemap>).visible,
     ).toBe(false);
@@ -516,7 +562,7 @@ describe("createTilemapLayers", () => {
     const fakeTexture = { label: "tile" };
     mockAssets._cache.set("tile.png", fakeTexture);
 
-    const [layer] = createTilemapLayers(map);
+    const [layer] = createTilemapLayers(map).layers;
     const calls = (
       layer as unknown as InstanceType<typeof mockCompositeTilemap>
     ).calls;
@@ -528,12 +574,12 @@ describe("createTilemapLayers", () => {
 
   it("sits a tile on the bottom edge of its cell whatever its image size", () => {
     const map = loadFixture("oversized-tiles.json");
-    mockAssets._cache.set("tall.png:0", { label: "wall" });
-    mockAssets._cache.set("stump.png", { label: "stump" });
-    mockAssets._cache.set("pine.png", { label: "pine" });
-    mockAssets._cache.set("coin.png", { label: "coin" });
+    seedTexture("tall.png");
+    seedTexture("stump.png");
+    seedTexture("pine.png");
+    seedTexture("coin.png");
 
-    const [layer] = createTilemapLayers(map);
+    const [layer] = createTilemapLayers(map).layers;
     const calls = (
       layer as unknown as InstanceType<typeof mockCompositeTilemap>
     ).calls;
@@ -550,6 +596,77 @@ describe("createTilemapLayers", () => {
     ]);
   });
 
+  it("cuts one frame per drawn tile id and returns it for the caller", () => {
+    const image = seedTexture("terrain.png");
+    const map: TiledMapData = {
+      width: 2,
+      height: 1,
+      tilewidth: 16,
+      tileheight: 16,
+      layers: [
+        makeTileLayer("ground", [1, 2], 2),
+        makeTileLayer("walls", [1, 1], 2),
+      ],
+      tilesets: [
+        {
+          firstgid: 1,
+          data: {
+            name: "terrain",
+            tilewidth: 16,
+            tileheight: 16,
+            tilecount: 2,
+            columns: 2,
+            image: "terrain.png",
+          },
+        },
+      ],
+    };
+
+    const { layers, textures } = createTilemapLayers(map);
+
+    // Four tiles are drawn from two distinct ids, so two frames are cut and
+    // the one drawn on both layers is the same texture in both.
+    const drawn = layers.flatMap(
+      (layer) =>
+        (layer as unknown as InstanceType<typeof mockCompositeTilemap>).calls,
+    );
+    expect(drawn).toHaveLength(4);
+    expect(new Set(drawn.map(({ texture }) => texture)).size).toBe(2);
+    expect(textures).toHaveLength(2);
+    expect(
+      textures.every(
+        (frame) =>
+          (frame as unknown as { source: unknown }).source === image.source,
+      ),
+    ).toBe(true);
+  });
+
+  it("does not claim ownership of a collection tileset's atlas frames", () => {
+    seedTexture("tile0.png");
+    const map: TiledMapData = {
+      width: 1,
+      height: 1,
+      tilewidth: 16,
+      tileheight: 16,
+      layers: [makeTileLayer("ground", [1], 1)],
+      tilesets: [
+        {
+          firstgid: 1,
+          data: {
+            name: "props",
+            tilewidth: 16,
+            tileheight: 16,
+            tilecount: 1,
+            columns: 0,
+            tiles: [{ id: 0, image: "tiles/tile0.png" }],
+          },
+        },
+      ],
+    };
+
+    expect(createTilemapLayers(map).textures).toEqual([]);
+  });
+
   it("skips the tiles of an unresolved tileset and builds the layer", () => {
     const map: TiledMapData = {
       width: 1,
@@ -560,7 +677,7 @@ describe("createTilemapLayers", () => {
       tilesets: [{ firstgid: 1 }],
     };
 
-    const [layer] = createTilemapLayers(map);
+    const [layer] = createTilemapLayers(map).layers;
     const calls = (
       layer as unknown as InstanceType<typeof mockCompositeTilemap>
     ).calls;

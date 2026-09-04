@@ -55,7 +55,7 @@ export {
   extractObjects,
   toTilemapData,
 } from "./tiled/parseTiledMap.js";
-export type { TiledObjectGroup } from "./tiled/parseTiledMap.js";
+export type { TiledObjectGroup, TilemapLayers } from "./tiled/parseTiledMap.js";
 export type {
   TiledMapData,
   TiledLayer,

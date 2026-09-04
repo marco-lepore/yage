@@ -90,7 +90,10 @@ vi.mock("@pixi/tilemap", () => ({
 
 vi.mock("./tiled/parseTiledMap.js", () => ({
   _tilemapLayerHasAnimation: vi.fn(() => false),
-  createTilemapLayers: vi.fn(() => [new mocks.MockContainer()]),
+  createTilemapLayers: vi.fn(() => ({
+    layers: [new mocks.MockContainer()],
+    textures: [],
+  })),
   toTilemapData: vi.fn((map: Record<string, unknown>) => ({
     width: map.width,
     height: map.height,

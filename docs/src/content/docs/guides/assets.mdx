@@ -36,6 +36,18 @@ A handle is just `{ type, path }`. It becomes a loaded asset only when
 the manager has resolved it — `AssetManager.get(handle)` throws if you
 ask for an asset that hasn't been preloaded.
 
+A few factories take options. `texture(path, { scaleMode: "nearest" })`
+makes that one image sample without smoothing, which is what a pixel-art
+sheet wants in a project that is otherwise smooth:
+
+```typescript
+const Tiles = texture("assets/tiles.png", { scaleMode: "nearest" });
+```
+
+The setting lands on the loaded image, so every sprite drawing from it
+samples the same way. Use `pixelArtPreset` when the whole project is
+pixel art.
+
 ## Per-Scene Preload
 
 The simplest pattern: each scene declares what it needs.
@@ -69,6 +81,21 @@ You don't need to call `loadAll` yourself in `onEnter`. The
 of this — `LoadingScene` overrides `onProgress` to also emit
 `scene:loading:progress` on the event bus, which is what progress
 components subscribe to.
+
+### Loading a scene ahead of time
+
+`scenes.preload(scene)` loads a scene's manifest before you push it, so
+the push enters straight away:
+
+```typescript
+await engine.scenes.preload(level2, (ratio) => bar.setFill(ratio));
+await engine.scenes.replace(level2);
+```
+
+The push consumes that load rather than loading again, so the manifest is
+counted once and one `unload` per handle frees it. `LoadingScene` uses the
+same method. A scene you preload and never push holds its references until
+`assets.clear()`.
 
 ## Manifests for Larger Games
 
@@ -161,6 +188,45 @@ The default loaders dispose appropriately: `unload(textureHandle)`
 calls Pixi's `Assets.unload(path)` so the texture can be released and
 garbage-collected; `unload(soundHandle)` calls `sound.remove(path)` to
 release the `@pixi/sound` instance.
+
+### Reference counting
+
+Loads are counted per handle. Every handle passed to `loadAll` adds one
+reference once that call resolves, and `unload(handle)` removes one — the
+asset is freed only when the count reaches zero. So two scenes preloading
+the same texture each hold a reference, and the first scene's `onExit`
+unload leaves it standing for the second. `clear()` ignores the counts and
+frees everything.
+
+A `loadAll` that rejects takes no references at all. Its already-loaded
+siblings stay cached and uncounted, so a retry counts each of them once and
+one `unload` per handle still frees them. An asset whose loader loads others,
+such as a Tiled map and its tileset images, holds them for as long as it is
+cached; freeing the map entry releases them.
+
+Never `unload` the handles of a `loadAll` call that rejected. `unload` frees
+an uncounted entry outright, so cleaning up a failed manifest handle by handle
+can free an asset another scene still holds: scene A holds `X` at one
+reference, scene B's `loadAll([X, Y])` fails so B takes none, and B's cleanup
+`unload(X)` drops A's only reference. Retry the call, or leave the entries to
+`clear()`.
+
+### One file path, one declaration form
+
+The manager's cache is keyed by handle type and path, so two handles of the
+same type for one path are one entry: the first load's options win, and a
+second declaration with different options warns in development and is
+otherwise ignored.
+
+Below the manager, Pixi's own registry is keyed by path alone and is not
+counted, so reaching one file through two different handle types destroys it
+for both. Declare each file once:
+
+- `texture(P)` beside `renderAsset(P)` — pick one.
+- A spritesheet's atlas image beside `texture(P)` — draw the frames from the
+  sheet rather than also declaring the PNG.
+- `installBitmapFont`'s source face beside `webFont(P)` — bake from the
+  `webFont` handle instead, with `webFont(P, { family, bitmap: true })`.
 
 ## Error Handling
 

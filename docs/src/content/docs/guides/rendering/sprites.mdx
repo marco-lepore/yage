@@ -398,7 +398,16 @@ and the offending field instead of producing frames that read past the image.
 
 Slicing leaves texture sampling alone. For crisp pixel art, turn on
 `pixelArtPreset` in the renderer config, which switches every texture to
-nearest-neighbour sampling and rounds sprite positions.
+nearest-neighbour sampling and rounds sprite positions. For one pixel-art
+sheet in a project that is otherwise smooth, ask for the sampling on the
+handle instead:
+
+```typescript
+const tiles = texture("assets/tiles.png", { scaleMode: "nearest" });
+```
+
+The setting lands on the loaded image, so every sprite drawing from that
+sheet samples the same way.
 
 ## Runtime-generated textures
 

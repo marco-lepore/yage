@@ -45,15 +45,27 @@ engine.use(new TilemapPlugin());
 
 ```ts
 import { tiledMap } from "@yagejs/tilemap";
-import { renderAsset } from "@yagejs/renderer";
 
 const MapData = tiledMap("assets/level.json");
-const Tileset = renderAsset("assets/tileset.png");
 
 class Level extends Scene {
-  readonly preload = [Tileset, MapData]; // tileset must load first
+  readonly preload = [MapData];
 }
 ```
+
+The map handle owns its tileset images: loading it loads every single-image
+tileset it references, and `assets.unload(MapData)` releases them. The images
+are ordinary counted `texture()` handles, so a second map on the same tileset,
+or a sprite drawing from the same sheet, keeps the image alive until it too
+releases it. A sprite drawing from the tileset sheet should declare
+`texture(tilesetPath)` in its own preload: same type and path is the same
+count, so the image survives the map's unload. Do not declare that file under
+a different handle type — `renderAsset()` counts separately while both loaders
+unload the same Pixi path, so the first unload destroys it for the other.
+Unloading the map also drops any external tileset (`.tsj`) file it inlined.
+
+A collection-of-images tileset is the exception: it names one image per tile
+and draws them from an atlas you preload yourself.
 
 ## TilemapComponent
 
@@ -117,6 +129,12 @@ interface TilemapComponentOptions extends VisualComponentOptions {
 
 At least one of `source`, `map`, or `mapKey` must be supplied. Raw `map` data
 needs an explicit `keyPrefix` when you use Tiled-derived auto-keys.
+
+Only `source` — a `tiledMap()` handle loaded through the asset manager — brings
+the tileset images with it. A map reached by `mapKey` or handed over as raw
+`map` data was loaded some other way, so preload each tileset image yourself
+(`texture(path)`, or `registerTexture` under the key the tileset's `image`
+names). Without it the component throws when it is added, naming the image.
 
 ## Tile Queries
 
@@ -234,7 +252,7 @@ No diagnostic stops a map from rendering. What one names is skipped — a group 
 
 `unknown-gid` reports the cells a layer fills with a tile id no tileset owns, which happens when a tileset is removed from a map without clearing the tiles painted from it, or when a tile's image is deleted from a collection-of-images tileset. The message names the layer and, per distinct id, the first cell it appears in.
 
-A group layer and everything nested inside it is dropped — the diagnostic names the children so you can see what is missing. An external tileset that has not loaded yet is not a diagnostic; it resolves during preload. A tileset image that is not loaded when the component is added is not a diagnostic either: building the layers throws, naming the image, so preload it before adding the map.
+A group layer and everything nested inside it is dropped — the diagnostic names the children so you can see what is missing. An external tileset that has not loaded yet is not a diagnostic; it resolves during preload. A tileset image that is not loaded when the component is added is not a diagnostic either: building the layers throws, naming the image and the tileset. Loading the map through the asset manager loads its images with it, so this is reachable mainly for a component built from raw `TiledMapData`.
 
 ## Object Layers
 
