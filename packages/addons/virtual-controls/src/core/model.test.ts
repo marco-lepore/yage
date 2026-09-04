@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { VirtualControlsModel } from "./model.js";
-import type { VirtualControlsConfig } from "./types.js";
+import type { ViewportRect, VirtualControlsConfig } from "./types.js";
 import type { VirtualControlsModelCallbacks } from "./model.js";
 
 const VP = { x: 0, y: 0, width: 800, height: 600 };
@@ -242,6 +242,15 @@ describe("VirtualControlsModel — lifecycle", () => {
 
   it("setViewport rejects non-finite and non-positive geometry", () => {
     const model = new VirtualControlsModel({ stick: {} });
+    expect(() =>
+      model.setViewport({
+        x: 0,
+        y: 0,
+        width: 800,
+      } as unknown as ViewportRect),
+    ).toThrow(
+      "VirtualControlsModel.setViewport(): height must be finite, got undefined.",
+    );
     expect(() =>
       model.setViewport({ x: Number.NaN, y: 0, width: 800, height: 600 }),
     ).toThrow("VirtualControlsModel.setViewport(): x must be finite, got NaN.");

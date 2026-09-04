@@ -77,7 +77,8 @@ export class VirtualControlsModel {
 
   /** Re-resolve all control geometry against a new viewport rect. */
   setViewport(rect: ViewportRect): void {
-    for (const [name, value] of Object.entries(rect)) {
+    for (const name of ["x", "y", "width", "height"] as const) {
+      const value = rect[name];
       if (!Number.isFinite(value)) {
         throw new Error(
           `VirtualControlsModel.setViewport(): ${name} must be finite, got ${value}.`,

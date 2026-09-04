@@ -666,8 +666,9 @@ for "show me what pads are plugged in right now", call `gamepads()`.
 let dispose: (() => void) | undefined;
 let replayed = false;
 dispose = input.onGamepadConnected((info) => {
-  showHud(`Player ready! (${info.id})`);
+  if (replayed) return;
   replayed = true;
+  showHud(`Player ready! (${info.id})`);
   if (dispose) dispose();
 });
 if (replayed) dispose();

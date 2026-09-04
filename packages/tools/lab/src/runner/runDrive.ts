@@ -95,6 +95,9 @@ interface DriveContextOptions {
   readonly warnings?: string[] | undefined;
   readonly startFrame?: number | undefined;
   readonly checkBudget?: (() => void) | undefined;
+  readonly onActionSourceCreated?:
+    | ((source: InputActionSourceLike) => void)
+    | undefined;
 }
 
 interface RunDriveOptions {
@@ -135,7 +138,10 @@ export function createDriveContext(
   const checkBudget = opts.checkBudget ?? ((): void => undefined);
   let actionSource: InputActionSourceLike | undefined;
   const actions = (call: string): InputActionSourceLike => {
-    actionSource ??= requireActions(engine, call).createActionSource();
+    if (!actionSource) {
+      actionSource = requireActions(engine, call).createActionSource();
+      opts.onActionSourceCreated?.(actionSource);
+    }
     return actionSource;
   };
 
@@ -341,6 +347,7 @@ export async function runDrive<T = void>(
   let error: string | undefined;
   let timedOut = false;
   let value: T | undefined;
+  let actionSource: InputActionSourceLike | undefined;
 
   try {
     value = await drive(
@@ -350,6 +357,9 @@ export async function runDrive<T = void>(
         warnings,
         startFrame,
         checkBudget,
+        onActionSourceCreated: (source) => {
+          actionSource = source;
+        },
       }),
     );
   } catch (thrown) {
@@ -358,6 +368,7 @@ export async function runDrive<T = void>(
   }
 
   const inputState = engine.inspector.getInputState();
+  actionSource?.releaseAll();
   const state: DriveState = {
     keys: inputState.keys,
     actions: inputState.actions,

@@ -210,7 +210,8 @@ function validatePlacement(p: ControlPlacement, what: string): void {
 }
 
 function validateZone(zone: ControlZone, what: string): void {
-  for (const [name, value] of Object.entries(zone)) {
+  for (const name of ["x", "y", "width", "height"] as const) {
+    const value = zone[name];
     const valid =
       Number.isFinite(value) &&
       value >= 0 &&

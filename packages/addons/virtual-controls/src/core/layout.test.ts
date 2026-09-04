@@ -5,7 +5,7 @@ import {
   resolvePlacement,
   resolveStickLayout,
 } from "./layout.js";
-import type { ViewportRect } from "./types.js";
+import type { ControlZone, ViewportRect } from "./types.js";
 
 const VP: ViewportRect = { x: 0, y: 0, width: 800, height: 600 };
 
@@ -121,6 +121,15 @@ describe("normalizeControlsConfig", () => {
   });
 
   it("rejects invalid stick zones", () => {
+    expect(() =>
+      normalizeControlsConfig({
+        stick: {
+          zone: { x: 0, y: 0, width: 1 } as unknown as ControlZone,
+        },
+      }),
+    ).toThrow(
+      'zone for stick "left" height must be finite and in (0, 1], got undefined',
+    );
     expect(() =>
       normalizeControlsConfig({
         stick: { zone: { x: 0, y: 0, width: Number.NaN, height: 1 } },
