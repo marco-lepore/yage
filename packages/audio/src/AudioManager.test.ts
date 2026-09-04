@@ -1,7 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { SoundLibrary, IMediaInstance } from "@pixi/sound";
+
+// `sound()` lives beside `registerSound`, which imports `@pixi/sound`'s
+// singleton — it constructs an `AudioContext` unavailable under Vitest. The
+// manager under test is driven by its own fake library, so the singleton only
+// has to exist.
+vi.mock("@pixi/sound", () => ({ sound: {} }));
+
 import { ErrorBoundary, Logger, LogLevel } from "@yagejs/core";
 import { AudioManager } from "./AudioManager.js";
+import { sound } from "./assets.js";
 
 type MockMediaInstance = IMediaInstance & { _emit(event: string): void };
 
@@ -150,6 +158,46 @@ describe("AudioManager", () => {
       );
       expect(() => manager.play("unloaded")).toThrow("not preloaded");
     });
+
+    it("throws naming the alias when nothing is registered under it", () => {
+      (mockSound.exists as ReturnType<typeof vi.fn>).mockReturnValue(false);
+      expect(() => manager.play("sfx/coni.wav")).toThrow(
+        'AudioManager.play: no sound registered as "sfx/coni.wav"',
+      );
+      expect(mockSound.play).not.toHaveBeenCalled();
+    });
+
+    it("accepts a sound() handle and plays the alias it registers", () => {
+      manager.play(sound("assets/coin.wav"), { volume: 0.5 });
+      expect(mockSound.play).toHaveBeenCalledWith("assets/coin.wav", {
+        volume: 0.5,
+        loop: false,
+        speed: 1,
+      });
+    });
+  });
+
+  describe("playOnce()", () => {
+    it("reuses the handle of a sound that is still playing", () => {
+      const first = manager.playOnce("music", { channel: "music" });
+      const second = manager.playOnce("music", { channel: "music" });
+      expect(second).toBe(first);
+      expect(mockSound.play).toHaveBeenCalledTimes(1);
+    });
+
+    it("matches a sound() handle against an alias already playing", () => {
+      const first = manager.playOnce("assets/coin.wav");
+      const second = manager.playOnce(sound("assets/coin.wav"));
+      expect(second).toBe(first);
+      expect(mockSound.play).toHaveBeenCalledTimes(1);
+    });
+
+    it("throws naming the alias when nothing is registered under it", () => {
+      (mockSound.exists as ReturnType<typeof vi.fn>).mockReturnValue(false);
+      expect(() => manager.playOnce("typo")).toThrow(
+        'no sound registered as "typo"',
+      );
+    });
   });
 
   describe("playRandom()", () => {
@@ -161,8 +209,23 @@ describe("AudioManager", () => {
       expect(aliases).toContain(calledAlias);
     });
 
+    it("accepts sound() handles", () => {
+      manager.playRandom([sound("assets/step.wav")]);
+      expect(mockSound.play).toHaveBeenCalledWith(
+        "assets/step.wav",
+        expect.anything(),
+      );
+    });
+
     it("throws on empty aliases array", () => {
       expect(() => manager.playRandom([])).toThrow("must not be empty");
+    });
+
+    it("throws naming the alias when nothing is registered under it", () => {
+      (mockSound.exists as ReturnType<typeof vi.fn>).mockReturnValue(false);
+      expect(() => manager.playRandom(["typo"])).toThrow(
+        'no sound registered as "typo"',
+      );
     });
   });
 
@@ -288,6 +351,36 @@ describe("AudioManager", () => {
       const handle = manager.play("test", { onEnd });
       handle.stop(); // emits the instance's `stop` event, not `end`
       expect(onEnd).not.toHaveBeenCalled();
+    });
+
+    it("attributes a throwing onEnd to the boundary and rethrows", () => {
+      const boundary = new ErrorBoundary(new Logger({ level: LogLevel.Debug }));
+      manager._setErrorBoundary(boundary);
+      manager.play("test", {
+        onEnd: () => {
+          throw new Error("boom");
+        },
+      });
+
+      const inst = mockSound._instances.get("test")!;
+      expect(() => inst._emit("end")).toThrow("boom");
+
+      const errors = boundary.getCallbackErrors();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({
+        kind: "Audio onEnd callback",
+        error: "boom",
+      });
+    });
+
+    it("lets a throwing onEnd propagate when no boundary is wired", () => {
+      manager.play("test", {
+        onEnd: () => {
+          throw new Error("boom");
+        },
+      });
+      const inst = mockSound._instances.get("test")!;
+      expect(() => inst._emit("end")).toThrow("boom");
     });
   });
 

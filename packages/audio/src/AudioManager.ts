@@ -1,7 +1,7 @@
 import type { SoundLibrary } from "@pixi/sound";
 import { globalRandom, type RandomService, type ErrorBoundary } from "@yagejs/core";
 import { SoundHandle } from "./SoundHandle.js";
-import type { AudioConfig, AudioPlayOptions } from "./types.js";
+import type { AudioConfig, AudioPlayOptions, SoundRef } from "./types.js";
 
 interface ChannelState {
   volume: number;
@@ -14,6 +14,11 @@ const DEFAULT_CHANNELS: Record<string, { volume: number }> = {
   sfx: { volume: 1 },
   music: { volume: 0.7 },
 };
+
+/** A `sound()` handle's `path` is the alias the asset is registered under. */
+function aliasOf(ref: SoundRef): string {
+  return typeof ref === "string" ? ref : ref.path;
+}
 
 export class AudioManager {
   private readonly _sound: SoundLibrary;
@@ -57,7 +62,20 @@ export class AudioManager {
     if (ctx) ctx.autoPause = this._autoMuteOnBlur;
   }
 
-  play(alias: string, options?: AudioPlayOptions): SoundHandle {
+  /**
+   * Play a preloaded or registered sound. Accepts the alias or the handle
+   * `sound()` returned. Throws when the alias resolves to nothing — that is
+   * a typo, or playback before the asset was preloaded.
+   */
+  play(ref: SoundRef, options?: AudioPlayOptions): SoundHandle {
+    const alias = aliasOf(ref);
+    if (!this._sound.exists(alias)) {
+      throw new Error(
+        `AudioManager.play: no sound registered as "${alias}". Preload it ` +
+          `with sound(...) or register it with registerSound().`,
+      );
+    }
+
     const channelName = options?.channel ?? "sfx";
     const channel = this._ensureChannel(channelName);
     const instanceVolume = options?.volume ?? 1;
@@ -85,7 +103,12 @@ export class AudioManager {
 
     // Caller-supplied natural-completion hook (e.g. gating dialogue auto-advance
     // on a voice clip). Fires on `end` only — not on `stop()`.
-    if (options?.onEnd) result.once("end", options.onEnd);
+    const onEnd = options?.onEnd;
+    if (onEnd) {
+      result.once("end", () =>
+        this._runCallback(onEnd, "Audio onEnd callback"),
+      );
+    }
 
     // Apply channel mute/pause state to new handle
     if (channel.muted) {
@@ -103,12 +126,14 @@ export class AudioManager {
    * Returns the existing handle if still playing, or a new one otherwise.
    * Note: only deduplicates against handles created by `playOnce`, not `play`.
    */
-  playOnce(alias: string, options?: AudioPlayOptions): SoundHandle {
-    const channelName = options?.channel ?? "sfx";
-    const channel = this._ensureChannel(channelName);
+  playOnce(ref: SoundRef, options?: AudioPlayOptions): SoundHandle {
+    const alias = aliasOf(ref);
+    // Read the channel rather than creating it: `play` throws on an unknown
+    // alias, and an entry made here would outlive that throw.
+    const channel = this._channels.get(options?.channel ?? "sfx");
 
     // Check if any existing handle for this alias is still playing
-    for (const handle of channel.handles.keys()) {
+    for (const handle of channel?.handles.keys() ?? []) {
       if (handle.playing) {
         // We can't check alias on SoundHandle, so we track it with a WeakMap
         const trackedAlias = this._handleAliases.get(handle);
@@ -123,12 +148,11 @@ export class AudioManager {
     return handle;
   }
 
-  playRandom(aliases: string[], options?: AudioPlayOptions): SoundHandle {
+  playRandom(aliases: SoundRef[], options?: AudioPlayOptions): SoundHandle {
     if (aliases.length === 0) {
       throw new Error("playRandom: aliases array must not be empty.");
     }
-    const alias = this._random.pick(aliases);
-    return this.play(alias, options);
+    return this.play(this._random.pick(aliases), options);
   }
 
   stop(handle: SoundHandle): void {
@@ -272,8 +296,8 @@ export class AudioManager {
   }
 
   /**
-   * Wire the error boundary so a throwing `onUnlock` callback is reported
-   * instead of silently swallowed. Called by `AudioPlugin.install`.
+   * Wire the error boundary so a throwing developer callback is attributed
+   * instead of escaping into `@pixi/sound`. Called by `AudioPlugin.install`.
    * @internal
    */
   _setErrorBoundary(boundary: ErrorBoundary | undefined): void {
@@ -281,18 +305,32 @@ export class AudioManager {
   }
 
   /**
-   * Run one `onUnlock` callback. One-shot, so there's nothing to unsubscribe
-   * or mute — a throw is reported and otherwise has no consequence.
+   * Run one developer callback: a throw is recorded against `kind` and
+   * rethrown, and with no boundary registered the callback runs raw. The
+   * `onEnd` site uses this directly; `onUnlock` wraps it to keep its own
+   * no-boundary swallow.
    */
+  private _runCallback(cb: () => void, kind: string): void {
+    if (this._errorBoundary) {
+      this._errorBoundary.wrapCallback(cb, { kind });
+    } else {
+      cb();
+    }
+  }
+
+  /** Run one `onUnlock` listener. */
   private _runUnlockCallback(cb: () => void): void {
     if (this._errorBoundary) {
-      this._errorBoundary.wrapCallback(cb, { kind: "Audio unlock callback" });
-    } else {
-      try {
-        cb();
-      } catch {
-        // No boundary registered — match the historical swallow behavior.
-      }
+      this._runCallback(cb, "Audio unlock callback");
+      return;
+    }
+    // An unlock listener fires synchronously from `onUnlock` when the context
+    // is already running, so an unattributed throw would surface at the
+    // registration site rather than where the queued path delivers it.
+    try {
+      cb();
+    } catch {
+      // No boundary registered — nothing to report it to.
     }
   }
 

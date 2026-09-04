@@ -49,11 +49,19 @@ import { AudioManagerKey } from "@yagejs/audio";
 const audio = this.use(AudioManagerKey);
 
 // Play a sound effect
-audio.play(CoinSfx.path, { channel: "sfx" });
+audio.play(CoinSfx, { channel: "sfx" });
 
 // Play background music (looping)
-audio.play(BgMusic.path, { channel: "music", loop: true, volume: 0.5 });
+audio.play(BgMusic, { channel: "music", loop: true, volume: 0.5 });
 ```
+
+Pass the handle `sound()` returned, or the alias string it registers — the
+handle's `path`. The two forms can be mixed, and a sound added with
+`registerSound` has no handle, so it is always played by name.
+
+If nothing is registered under the alias, `play`, `playOnce` and `playRandom`
+throw and name it. That covers both a typo and playing a sound the scene never
+preloaded.
 
 **Play options:**
 
@@ -70,7 +78,7 @@ Additional play methods:
 
 ```typescript
 // Only play if not already playing via playOnce
-audio.playOnce(BgMusic.path, { channel: "music", loop: true });
+audio.playOnce(BgMusic, { channel: "music", loop: true });
 
 // Pick a random sound from an array
 audio.playRandom(["step1.wav", "step2.wav", "step3.wav"], { channel: "sfx" });
@@ -81,7 +89,7 @@ audio.playRandom(["step1.wav", "step2.wav", "step3.wav"], { channel: "sfx" });
 `play` returns a `SoundHandle` for controlling playback:
 
 ```typescript
-const handle = audio.play(BgMusic.path, { channel: "music", loop: true });
+const handle = audio.play(BgMusic, { channel: "music", loop: true });
 
 handle.playing;        // boolean
 handle.volume = 0.5;   // adjust volume
