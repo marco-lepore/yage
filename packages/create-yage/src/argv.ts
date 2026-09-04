@@ -148,7 +148,7 @@ Options:
       --features <list>  Comma-separated extras: ${FEATURE_IDS.join(", ")}
       --no-install       Skip \`npm install\`
       --no-git           Skip \`git init\`
-  -f, --force            Overwrite non-empty target directory without prompting
+  -f, --force            Replace a file or clear directory contents except .git
   -y, --yes              Accept all defaults (CI/automation)
   -h, --help             Show this help
   -v, --version          Print version

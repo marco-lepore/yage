@@ -28,13 +28,16 @@ export class Player extends Entity {
   setup(params: { x: number; y: number }): void {
     this.add(new Transform({ position: new Vec2(params.x, params.y) }));
 
-    const idleSource = { sheet: playerIdleTex.path, frameWidth: PLAYER_FRAME_SIZE };
+    const idleSource = {
+      sheet: playerIdleTex.path,
+      frameWidth: PLAYER_FRAME_SIZE,
+    };
     const sprite = new AnimatedSpriteComponent({
       source: idleSource,
       layer: "player",
+      anchor: { x: 0.5, y: 0.5 },
     });
     this.add(sprite);
-    sprite.animatedSprite.anchor.set(0.5, 0.5);
 
     this.add(
       new AnimationController<PlayerAnim>({

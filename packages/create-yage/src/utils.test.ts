@@ -1,12 +1,14 @@
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   copyTemplateDirectory,
   deriveProjectName,
   inspectDirectory,
+  resolveTemplatesRoot,
   rewriteJson,
   validateProjectName,
 } from "./utils.js";
@@ -89,6 +91,24 @@ describe("inspectDirectory", () => {
       expect(state.entries).toContain("hello.txt");
     }
   });
+
+  it("reports file for an existing file target", () => {
+    const target = join(workDir, "existing-file");
+    writeFileSync(target, "contents");
+
+    expect(inspectDirectory(target)).toEqual({ kind: "file" });
+  });
+});
+
+describe("resolveTemplatesRoot", () => {
+  it("decodes file URLs before resolving the templates directory", () => {
+    const entryPath = join(tmpdir(), "space dir", "dist", "index.js");
+    const importMetaUrl = pathToFileURL(entryPath).href;
+
+    expect(resolveTemplatesRoot(importMetaUrl)).toBe(
+      resolve(dirname(entryPath), "..", "templates"),
+    );
+  });
 });
 
 describe("copyTemplateDirectory", () => {
@@ -115,15 +135,15 @@ describe("copyTemplateDirectory", () => {
 
     await copyTemplateDirectory(sourceDir, targetDir);
 
-    await expect(readFile(join(targetDir, "package.json"), "utf8")).resolves.toBe(
-      '{"name":"demo"}',
-    );
-    await expect(readFile(join(targetDir, ".gitignore"), "utf8")).resolves.toContain(
-      "node_modules",
-    );
-    await expect(readFile(join(targetDir, "index.html"), "utf8")).resolves.toContain(
-      "<html>",
-    );
+    await expect(
+      readFile(join(targetDir, "package.json"), "utf8"),
+    ).resolves.toBe('{"name":"demo"}');
+    await expect(
+      readFile(join(targetDir, ".gitignore"), "utf8"),
+    ).resolves.toContain("node_modules");
+    await expect(
+      readFile(join(targetDir, "index.html"), "utf8"),
+    ).resolves.toContain("<html>");
     await expect(
       readFile(join(targetDir, "src", "main.ts"), "utf8"),
     ).resolves.toContain("export");

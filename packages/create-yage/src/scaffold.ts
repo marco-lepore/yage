@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { rm } from "node:fs/promises";
+import { lstat, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { TemplateId } from "./templates.js";
 import type { FeatureId } from "./features.js";
@@ -13,7 +13,7 @@ export interface ScaffoldOptions {
   templatesRoot: string;
   /** Optional feature add-ons (see `features.ts`). */
   features?: readonly FeatureId[];
-  /** If true, delete the target directory before copying (overwrite mode). */
+  /** If true, replace a target file or clear directory contents except `.git`. */
   overwrite: boolean;
   install: boolean;
   git: boolean;
@@ -33,7 +33,7 @@ export async function scaffold(
   options: ScaffoldOptions,
 ): Promise<ScaffoldResult> {
   if (options.overwrite) {
-    await rm(options.targetDir, { recursive: true, force: true });
+    await clearTarget(options.targetDir);
   }
 
   const templateDir = join(options.templatesRoot, options.template);
@@ -42,7 +42,11 @@ export async function scaffold(
   const features = options.features ?? [];
   await rewriteJson<PackageJson>(
     join(options.targetDir, "package.json"),
-    (pkg) => applyFeaturesToPackageJson({ ...pkg, name: options.projectName }, features),
+    (pkg) =>
+      applyFeaturesToPackageJson(
+        { ...pkg, name: options.projectName },
+        features,
+      ),
   );
 
   if (features.length > 0) {
@@ -56,11 +60,37 @@ export async function scaffold(
     ? await runCommand("npm", ["install"], options.targetDir)
     : null;
 
-  const gitSucceeded = options.git
-    ? await initGit(options.targetDir)
-    : null;
+  const gitSucceeded = options.git ? await initGit(options.targetDir) : null;
 
   return { installSucceeded, gitSucceeded };
+}
+
+async function clearTarget(target: string): Promise<void> {
+  let targetStat: Awaited<ReturnType<typeof lstat>>;
+  try {
+    targetStat = await lstat(target);
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return;
+    throw error;
+  }
+
+  if (!targetStat.isDirectory()) {
+    await rm(target, { force: true });
+    return;
+  }
+
+  const entries = await readdir(target);
+  await Promise.all(
+    entries
+      .filter((entry) => entry !== ".git")
+      .map((entry) =>
+        rm(join(target, entry), { recursive: true, force: true }),
+      ),
+  );
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }
 
 async function initGit(cwd: string): Promise<boolean> {
@@ -131,7 +161,9 @@ export function applyFeaturesToTsConfig(
   cfg: TsConfigJson,
   features: readonly FeatureId[],
 ): TsConfigJson {
-  const compilerOptions: Record<string, unknown> = { ...(cfg.compilerOptions ?? {}) };
+  const compilerOptions: Record<string, unknown> = {
+    ...(cfg.compilerOptions ?? {}),
+  };
   for (const id of features) {
     const opts = FEATURES[id].tsconfigOptions;
     if (!opts) continue;

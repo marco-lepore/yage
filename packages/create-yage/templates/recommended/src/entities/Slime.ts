@@ -14,7 +14,12 @@ export class Slime extends Entity {
   setup(params: { x: number; y: number }): void {
     this.spawnX = params.x;
     this.spawnY = params.y;
-    this.add(new Transform({ position: new Vec2(params.x, params.y), scale: new Vec2(2, 2) }));
+    this.add(
+      new Transform({
+        position: new Vec2(params.x, params.y),
+        scale: new Vec2(2, 2),
+      }),
+    );
 
     const sprite = new AnimatedSpriteComponent({
       source: {
@@ -23,9 +28,9 @@ export class Slime extends Entity {
         frameHeight: SLIME_FRAME_SIZE,
       },
       layer: "world",
+      anchor: { x: 0.5, y: 0.5 },
     });
     this.add(sprite);
-    sprite.animatedSprite.anchor.set(0.5, 0.5);
     sprite.play({ speed: 0.1, loop: true });
 
     this.add(

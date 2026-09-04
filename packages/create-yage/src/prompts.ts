@@ -6,7 +6,6 @@ import {
   note,
   outro,
   select,
-  spinner,
   text,
 } from "@clack/prompts";
 import pc from "picocolors";
@@ -14,7 +13,11 @@ import type { TemplateId } from "./templates.js";
 import { DEFAULT_TEMPLATE, TEMPLATES } from "./templates.js";
 import type { FeatureId } from "./features.js";
 import type { DirectoryState } from "./utils.js";
-import { deriveProjectName, validateProjectName } from "./utils.js";
+import {
+  deriveProjectName,
+  relativeFromCwd,
+  validateProjectName,
+} from "./utils.js";
 
 export interface ResolvedOptions {
   targetDir: string;
@@ -84,21 +87,32 @@ export async function runPrompts(
   // --- directory collision handling ---
   const dirState = ctx.inspectTarget(targetDir);
   let overwrite = initial.overwrite ?? false;
-  if (dirState.kind === "non-empty" && !overwrite) {
+  if (
+    (dirState.kind === "file" || dirState.kind === "non-empty") &&
+    !overwrite
+  ) {
+    const targetDescription =
+      dirState.kind === "file"
+        ? "Target path is a file"
+        : "Target directory is not empty";
     if (initial.yes) {
-      cancel(
-        `Target directory is not empty: ${targetDir}. Pass --force to overwrite.`,
-      );
+      cancel(`${targetDescription}: ${targetDir}. Pass --force to overwrite.`);
       return null;
     }
     const choice = await select<"abort" | "overwrite">({
-      message: `${targetDir} is not empty. What do you want to do?`,
+      message:
+        dirState.kind === "file"
+          ? `${targetDir} is a file. What do you want to do?`
+          : `${targetDir} is not empty. What do you want to do?`,
       options: [
         { value: "abort", label: "Abort", hint: "Exit without changes" },
         {
           value: "overwrite",
           label: "Overwrite",
-          hint: "Delete existing contents and scaffold fresh",
+          hint:
+            dirState.kind === "file"
+              ? "Replace the file and scaffold the project"
+              : "Remove existing contents except .git and scaffold the project",
         },
       ],
       initialValue: "abort",
@@ -180,10 +194,6 @@ export function reportStart(template: TemplateId, targetDir: string): void {
   );
 }
 
-export function createScaffoldSpinner(): ReturnType<typeof spinner> {
-  return spinner();
-}
-
 export interface SuccessReport {
   projectName: string;
   targetDir: string;
@@ -191,9 +201,22 @@ export interface SuccessReport {
   gitSucceeded: boolean | null;
 }
 
+function quoteShellPath(path: string): string {
+  const commandPath = path.startsWith("-")
+    ? `${process.platform === "win32" ? ".\\" : "./"}${path}`
+    : path;
+  const safePath =
+    process.platform === "win32"
+      ? /^[A-Za-z0-9_@%+=:,./\\-]+$/
+      : /^[A-Za-z0-9_@%+=:,./-]+$/;
+  if (safePath.test(commandPath)) return commandPath;
+  if (process.platform === "win32") return `"${commandPath}"`;
+  return `'${commandPath.replaceAll("'", `'\\''`)}'`;
+}
+
 export function reportSuccess(report: SuccessReport): void {
   const lines: string[] = [];
-  const relDir = report.targetDir;
+  const relDir = quoteShellPath(relativeFromCwd(report.targetDir));
   lines.push(`${pc.green("Success!")} Created ${pc.bold(report.projectName)}`);
   lines.push("");
   lines.push("Next steps:");
