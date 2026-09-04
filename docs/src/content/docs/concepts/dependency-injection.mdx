@@ -27,6 +27,12 @@ const AudioMixerKey = new ServiceKey<AudioMixer>("AudioMixer");
 
 Never use plain strings for service resolution — always define a `ServiceKey`.
 
+The id string is the key's identity. Two `ServiceKey` objects with the same id
+resolve the same service. An optional integration may repeat an id for the same
+service contract when importing the owner's key would add a runtime dependency.
+Keep a comment beside the repeated declaration that names the package that owns
+the key.
+
 ## Registering and Resolving
 
 ```typescript

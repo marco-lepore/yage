@@ -4,8 +4,9 @@ import {
   RendererAdapterKey,
   SceneHookRegistryKey,
   SceneTimeKey,
+  ServiceKey,
 } from "@yagejs/core";
-import { DebugRegistryKey } from "@yagejs/debug/api";
+import type { DebugRegistry } from "@yagejs/debug/api";
 import { InputManager } from "./InputManager.js";
 import {
   InputManagerKey,
@@ -16,6 +17,10 @@ import {
 import { InputPollSystem } from "./InputPollSystem.js";
 import { InputClearSystem } from "./InputClearSystem.js";
 import { InputDebugContributor } from "./InputDebugContributor.js";
+
+// @yagejs/debug owns this well-known service id. Re-declare it here so input
+// can contribute diagnostics without adding a runtime dependency on debug.
+const DebugRegistryKey = new ServiceKey<DebugRegistry>("debugRegistry");
 
 /** Input plugin — wires keyboard and pointer listeners, registers InputManager. */
 export class InputPlugin implements Plugin {
@@ -74,9 +79,7 @@ export class InputPlugin implements Plugin {
     // pixels — so prefer the canvas over a custom `config.target` (which may
     // be a wrapping element). Falls back to null if neither is available.
     const coordinateElement: Element | null =
-      renderer?.canvas ??
-      this.config.target ??
-      null;
+      renderer?.canvas ?? this.config.target ?? null;
 
     // When the renderer exposes canvasToVirtual, route pointer coords through
     // it so they stay correct under responsive fit or custom virtual sizes.
@@ -215,7 +218,10 @@ export class InputPlugin implements Plugin {
     this.cleanupFns.push(
       () => window.removeEventListener("gamepadconnected", onGamepadConnected),
       () =>
-        window.removeEventListener("gamepaddisconnected", onGamepadDisconnected),
+        window.removeEventListener(
+          "gamepaddisconnected",
+          onGamepadDisconnected,
+        ),
     );
 
     // When the tab hides, `navigator.getGamepads()` returns stale data and a

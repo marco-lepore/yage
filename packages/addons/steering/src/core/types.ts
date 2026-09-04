@@ -94,7 +94,10 @@ export interface WanderOptions extends SteeringOptions {
   radius?: number;
   /** Max wander-angle change, in radians/second. Default 3. */
   jitter?: number;
-  /** Random source, injectable for deterministic tests. Default `Math.random`. */
+  /**
+   * Random source. Defaults to the engine's global random source. Pass a
+   * scene-scoped source when wander must replay with the scene.
+   */
   random?: () => number;
 }
 

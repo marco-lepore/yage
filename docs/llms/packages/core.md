@@ -20,6 +20,12 @@ Zero runtime dependencies. ECS foundation, DI, game loop, scenes, events, proces
 | `System`          | Base class for engine-level systems                                                    |
 | `Phase`           | Enum: EarlyUpdate, FixedUpdate, Update, LateUpdate, Render, EndOfFrame                 |
 
+`ServiceKey` uses its id string for identity. Two keys with the same id
+resolve the same service. A package may repeat an id for the same service
+contract when a value import would add an optional runtime dependency. Keep a
+comment beside the repeated declaration that names the package that owns the
+key.
+
 ### Entity
 
 ```ts

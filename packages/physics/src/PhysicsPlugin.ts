@@ -1,6 +1,6 @@
 import type { EngineContext, SystemScheduler, Plugin } from "@yagejs/core";
-import { SceneHookRegistryKey } from "@yagejs/core";
-import { DebugRegistryKey } from "@yagejs/debug/api";
+import { SceneHookRegistryKey, ServiceKey } from "@yagejs/core";
+import type { DebugRegistry } from "@yagejs/debug/api";
 import { PhysicsWorldManager } from "./PhysicsWorldManager.js";
 import { PhysicsWorldKey, PhysicsWorldManagerKey } from "./types.js";
 import type { PhysicsConfig } from "./types.js";
@@ -8,6 +8,10 @@ import { assertFiniteNumber, assertPixelsPerMeter } from "./validate.js";
 import { PhysicsSystem } from "./PhysicsSystem.js";
 import { PhysicsInterpolationSystem } from "./PhysicsInterpolationSystem.js";
 import { PhysicsDebugContributor } from "./PhysicsDebugContributor.js";
+
+// @yagejs/debug owns this well-known service id. Re-declare it here so physics
+// can contribute diagnostics without adding a runtime dependency on debug.
+const DebugRegistryKey = new ServiceKey<DebugRegistry>("debugRegistry");
 
 /**
  * Physics plugin that installs Rapier2D physics into the YAGE engine.

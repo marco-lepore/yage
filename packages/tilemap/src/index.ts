@@ -13,7 +13,6 @@ export { tiledObjectKey } from "./keys.js";
 
 // Collision extraction
 export { extractCollisionShapes } from "./colliders.js";
-export { toPhysicsColliders } from "./toPhysicsColliders.js";
 
 // Property utilities
 export {

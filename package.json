@@ -22,6 +22,8 @@
     "test": "turbo run test",
     "e2e": "turbo run e2e",
     "lint": "turbo run lint",
+    "measure": "node --test scripts/*.test.mjs && node scripts/measure.mjs",
+    "siblings": "node scripts/siblings.mjs",
     "typecheck": "turbo run typecheck",
     "dev": "turbo run dev",
     "clean": "turbo run clean",

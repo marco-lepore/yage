@@ -1,4 +1,4 @@
-import { Vec2 } from "@yagejs/core";
+import { globalRandom, Vec2 } from "@yagejs/core";
 import type { Vec2Like } from "@yagejs/core";
 import type {
   AgentState,
@@ -23,7 +23,10 @@ import type {
 import { clamp, resolve } from "./math.js";
 
 /** Steer straight toward `target` at full speed. ZERO at the target. */
-export function seek(target: PointTarget, opts: SeekOptions = {}): SteeringBehavior {
+export function seek(
+  target: PointTarget,
+  opts: SeekOptions = {},
+): SteeringBehavior {
   return {
     weight: opts.weight ?? 1,
     priority: opts.priority ?? 0,
@@ -39,7 +42,10 @@ export function seek(target: PointTarget, opts: SeekOptions = {}): SteeringBehav
  * Steer straight away from `target` at full speed. With `radius` set, only
  * flees when within that distance; omit to always flee. ZERO at the target.
  */
-export function flee(target: PointTarget, opts: FleeOptions = {}): SteeringBehavior {
+export function flee(
+  target: PointTarget,
+  opts: FleeOptions = {},
+): SteeringBehavior {
   const radius = opts.radius;
   return {
     weight: opts.weight ?? 1,
@@ -58,7 +64,10 @@ export function flee(target: PointTarget, opts: FleeOptions = {}): SteeringBehav
  * settling to ZERO inside `arriveRadius`. `onArrive`/`onDepart` fire once, on
  * the first evaluation with the distance below or back above `arriveRadius`.
  */
-export function arrive(target: PointTarget, opts: ArriveOptions = {}): SteeringBehavior {
+export function arrive(
+  target: PointTarget,
+  opts: ArriveOptions = {},
+): SteeringBehavior {
   const slowRadius = opts.slowRadius ?? 120;
   const arriveRadius = opts.arriveRadius ?? 4;
   let arrived = false;
@@ -83,7 +92,9 @@ export function arrive(target: PointTarget, opts: ArriveOptions = {}): SteeringB
       }
 
       const speed =
-        distance < slowRadius ? agent.maxSpeed * (distance / slowRadius) : agent.maxSpeed;
+        distance < slowRadius
+          ? agent.maxSpeed * (distance / slowRadius)
+          : agent.maxSpeed;
       return toTarget.normalize().scale(speed);
     },
   };
@@ -97,7 +108,7 @@ export function wander(opts: WanderOptions = {}): SteeringBehavior {
   const distance = opts.distance ?? 60;
   const radius = opts.radius ?? 30;
   const jitter = opts.jitter ?? 3;
-  const random = opts.random ?? Math.random;
+  const random = opts.random ?? (() => globalRandom.float());
   let angle = 0;
   let lastHeading: Vec2 = Vec2.RIGHT;
   return {
@@ -118,7 +129,11 @@ export function wander(opts: WanderOptions = {}): SteeringBehavior {
   };
 }
 
-function predict(target: KinematicTarget, agent: AgentState, maxPrediction: number): Vec2 {
+function predict(
+  target: KinematicTarget,
+  agent: AgentState,
+  maxPrediction: number,
+): Vec2 {
   const k = resolve(target, agent);
   const targetPos = new Vec2(k.position.x, k.position.y);
   const distance = targetPos.distance(agent.position);
@@ -132,7 +147,10 @@ function predict(target: KinematicTarget, agent: AgentState, maxPrediction: numb
  * Seek `target`'s predicted future position, leading by up to
  * `maxPrediction` seconds. A stationary target collapses to `seek`.
  */
-export function pursue(target: KinematicTarget, opts: PursueOptions = {}): SteeringBehavior {
+export function pursue(
+  target: KinematicTarget,
+  opts: PursueOptions = {},
+): SteeringBehavior {
   const maxPrediction = opts.maxPrediction ?? 1;
   return {
     weight: opts.weight ?? 1,
@@ -149,7 +167,10 @@ export function pursue(target: KinematicTarget, opts: PursueOptions = {}): Steer
  * Flee `target`'s predicted future position, leading by up to
  * `maxPrediction` seconds. A stationary target collapses to `flee`.
  */
-export function evade(target: KinematicTarget, opts: PursueOptions = {}): SteeringBehavior {
+export function evade(
+  target: KinematicTarget,
+  opts: PursueOptions = {},
+): SteeringBehavior {
   const maxPrediction = opts.maxPrediction ?? 1;
   return {
     weight: opts.weight ?? 1,
@@ -205,7 +226,10 @@ export function avoidObstacles(
       }
 
       if (!closestObstacle) return Vec2.ZERO;
-      const obstaclePos = new Vec2(closestObstacle.position.x, closestObstacle.position.y);
+      const obstaclePos = new Vec2(
+        closestObstacle.position.x,
+        closestObstacle.position.y,
+      );
       let away = closestAhead.sub(obstaclePos);
       if (away.lengthSq() === 0) {
         // Obstacle center sits exactly on the ray: the ahead-point minus
@@ -223,7 +247,10 @@ export function avoidObstacles(
  * distance (closer neighbors push harder). ZERO with no neighbor in range;
  * symmetric neighbors cancel to ZERO.
  */
-export function separation(neighbors: NeighborsSource, opts: FlockOptions = {}): SteeringBehavior {
+export function separation(
+  neighbors: NeighborsSource,
+  opts: FlockOptions = {},
+): SteeringBehavior {
   const radius = opts.radius ?? 40;
   return {
     weight: opts.weight ?? 1,
@@ -247,7 +274,10 @@ export function separation(neighbors: NeighborsSource, opts: FlockOptions = {}):
  * Match the mean velocity of every neighbor within `radius`. ZERO with no
  * neighbor in range.
  */
-export function alignment(neighbors: NeighborsSource, opts: FlockOptions = {}): SteeringBehavior {
+export function alignment(
+  neighbors: NeighborsSource,
+  opts: FlockOptions = {},
+): SteeringBehavior {
   const radius = opts.radius ?? 80;
   return {
     weight: opts.weight ?? 1,
@@ -262,7 +292,10 @@ export function alignment(neighbors: NeighborsSource, opts: FlockOptions = {}): 
         count++;
       }
       if (count === 0) return Vec2.ZERO;
-      return sum.scale(1 / count).normalize().scale(agent.maxSpeed);
+      return sum
+        .scale(1 / count)
+        .normalize()
+        .scale(agent.maxSpeed);
     },
   };
 }
@@ -271,7 +304,10 @@ export function alignment(neighbors: NeighborsSource, opts: FlockOptions = {}): 
  * Seek the centre of mass of every neighbor within `radius`. ZERO with no
  * neighbor in range.
  */
-export function cohesion(neighbors: NeighborsSource, opts: FlockOptions = {}): SteeringBehavior {
+export function cohesion(
+  neighbors: NeighborsSource,
+  opts: FlockOptions = {},
+): SteeringBehavior {
   const radius = opts.radius ?? 80;
   return {
     weight: opts.weight ?? 1,
@@ -330,7 +366,8 @@ export function followPath(
           const wp = waypoints[i]!;
           const bestWp = waypoints[best]!;
           if (
-            Vec2.distance(agent.position, wp) < Vec2.distance(agent.position, bestWp)
+            Vec2.distance(agent.position, wp) <
+            Vec2.distance(agent.position, bestWp)
           ) {
             best = i;
           }
@@ -362,7 +399,9 @@ export function followPath(
           opts.onDepart?.();
         }
         const speed =
-          distance < slowRadius ? agent.maxSpeed * (distance / slowRadius) : agent.maxSpeed;
+          distance < slowRadius
+            ? agent.maxSpeed * (distance / slowRadius)
+            : agent.maxSpeed;
         return toTarget.normalize().scale(speed);
       }
 
@@ -377,7 +416,10 @@ export function followPath(
  * current heading, so the agent banks along the edge instead of bouncing.
  * ZERO while safely inside.
  */
-export function contain(bounds: ContainBounds, opts: ContainOptions = {}): SteeringBehavior {
+export function contain(
+  bounds: ContainBounds,
+  opts: ContainOptions = {},
+): SteeringBehavior {
   const lookAhead = opts.lookAhead ?? 60;
   return {
     weight: opts.weight ?? 1,
@@ -394,7 +436,10 @@ export function contain(bounds: ContainBounds, opts: ContainOptions = {}): Steer
       else if (ahead.y > bounds.y + bounds.height) dy = -1;
       if (dx === 0 && dy === 0) return Vec2.ZERO;
 
-      const inward = new Vec2(dx !== 0 ? dx : heading.x, dy !== 0 ? dy : heading.y);
+      const inward = new Vec2(
+        dx !== 0 ? dx : heading.x,
+        dy !== 0 ? dy : heading.y,
+      );
       return inward.normalize().scale(agent.maxSpeed);
     },
   };

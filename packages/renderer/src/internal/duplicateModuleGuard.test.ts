@@ -38,13 +38,13 @@ describe("duplicate renderer module guard", () => {
     vi.resetModules();
     await import("./duplicateModuleGuard.js");
 
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("Multiple copies of @yagejs/renderer"),
+    const rendererWarnings = warn.mock.calls.filter(
+      ([message]) =>
+        typeof message === "string" &&
+        message.includes("Multiple copies of @yagejs/renderer"),
     );
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("peer dependencies"),
-    );
+    expect(rendererWarnings).toHaveLength(1);
+    expect(rendererWarnings[0]?.[0]).toContain("peer dependencies");
   });
 
   it("does not register or warn in production", async () => {
