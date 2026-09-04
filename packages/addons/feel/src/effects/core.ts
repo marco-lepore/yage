@@ -4,9 +4,14 @@ import {
   SceneTimeKey,
   type SceneTimeFreezeOptions,
   type SceneTimeScaleOptions,
+  type TimeEffectHandle,
 } from "@yagejs/core";
-import { defineFeelEffect } from "../core/node.js";
-import type { FeelEffectContext, FeelNode } from "../core/types.js";
+import { defineFeelEffect, defineFeelSourceEffect } from "../core/node.js";
+import type {
+  FeelEffectContext,
+  FeelNode,
+  FeelTimedEffectContext,
+} from "../core/types.js";
 
 /** Invoke a game callback at this point in a cue. */
 export function feelCall(
@@ -59,19 +64,15 @@ export interface FeelHitStopOptions extends SceneTimeFreezeOptions {
 
 /** Freeze the owning scene through its composable `SceneTime` service. */
 export function feelHitStop(options: FeelHitStopOptions = {}): FeelNode {
-  return defineFeelEffect(0, (context) => ({
-    start: () => {
-      const excluded = options.excludeUpdates
-        ? [...options.excludeUpdates]
-        : [];
-      if (options.includeOwner === false) excluded.push(context.entity);
-      context.resolve(SceneTimeKey).freezeFor(options.duration ?? 0.05, {
-        key: options.key ?? "feel:hitstop",
-        ...(excluded.length > 0 ? { excludeUpdates: excluded } : {}),
-        ...(options.label !== undefined ? { label: options.label } : {}),
-      });
-    },
-  }));
+  return defineSceneTimeEffect(options.duration ?? 0.05, (context) => {
+    const excluded = options.excludeUpdates ? [...options.excludeUpdates] : [];
+    if (options.includeOwner === false) excluded.push(context.entity);
+    return context.resolve(SceneTimeKey).freezeFor(context.duration, {
+      key: options.key ?? "feel:hitstop",
+      ...(excluded.length > 0 ? { excludeUpdates: excluded } : {}),
+      ...(options.label !== undefined ? { label: options.label } : {}),
+    });
+  });
 }
 
 export type FeelEntityTarget =
@@ -105,30 +106,42 @@ export type FeelSlowMotionOptions =
 
 /** Apply a timed scene time-scale request. */
 export function feelSlowMotion(options: FeelSlowMotionOptions = {}): FeelNode {
-  return defineFeelEffect(0, (context) => ({
-    start: () => {
-      const time = context.resolve(SceneTimeKey);
-      if (options.target !== undefined) {
-        time.scaleEntityBy(
-          resolveEntityTarget(options.target, context, "slow-motion target"),
-          options.scale ?? 0.35,
-          {
-            for: options.duration ?? 0.2,
-            key: options.key ?? "feel:target-slowmo",
-            ...(options.label !== undefined ? { label: options.label } : {}),
-          },
-        );
-        return;
-      }
-      const scaleOptions: SceneTimeScaleOptions = {
-        for: options.duration ?? 0.2,
-        key: options.key ?? "feel:slowmo",
-        ...(options.label !== undefined ? { label: options.label } : {}),
-        ...(options.includeOwner ? {} : { excludeUpdates: [context.entity] }),
-      };
-      time.scaleBy(options.scale ?? 0.35, scaleOptions);
-    },
-  }));
+  return defineSceneTimeEffect(options.duration ?? 0.2, (context) => {
+    const time = context.resolve(SceneTimeKey);
+    if (options.target !== undefined) {
+      return time.scaleEntityBy(
+        resolveEntityTarget(options.target, context, "slow-motion target"),
+        options.scale ?? 0.35,
+        {
+          for: context.duration,
+          key: options.key ?? "feel:target-slowmo",
+          ...(options.label !== undefined ? { label: options.label } : {}),
+        },
+      );
+    }
+    const scaleOptions: SceneTimeScaleOptions = {
+      for: context.duration,
+      key: options.key ?? "feel:slowmo",
+      ...(options.label !== undefined ? { label: options.label } : {}),
+      ...(options.includeOwner ? {} : { excludeUpdates: [context.entity] }),
+    };
+    return time.scaleBy(options.scale ?? 0.35, scaleOptions);
+  });
+}
+
+function defineSceneTimeEffect(
+  duration: number,
+  request: (context: FeelTimedEffectContext) => TimeEffectHandle,
+): FeelNode {
+  return defineFeelSourceEffect(duration, (context) => {
+    let handle: TimeEffectHandle;
+    return {
+      start: () => {
+        handle = request(context);
+      },
+      isComplete: () => !handle.active,
+    };
+  });
 }
 
 export interface FeelTargetFreezeOptions {
@@ -142,20 +155,18 @@ export interface FeelTargetFreezeOptions {
 
 /** Freeze one entity's updates without freezing its scene or rigid body. */
 export function feelTargetFreeze(options: FeelTargetFreezeOptions): FeelNode {
-  return defineFeelEffect(0, (context) => ({
-    start: () => {
-      context
-        .resolve(SceneTimeKey)
-        .freezeEntityFor(
-          resolveEntityTarget(options.target, context, "freeze target"),
-          options.duration ?? 0.05,
-          {
-            key: options.key ?? "feel:target-freeze",
-            ...(options.label !== undefined ? { label: options.label } : {}),
-          },
-        );
-    },
-  }));
+  return defineSceneTimeEffect(options.duration ?? 0.05, (context) =>
+    context
+      .resolve(SceneTimeKey)
+      .freezeEntityFor(
+        resolveEntityTarget(options.target, context, "freeze target"),
+        context.duration,
+        {
+          key: options.key ?? "feel:target-freeze",
+          ...(options.label !== undefined ? { label: options.label } : {}),
+        },
+      ),
+  );
 }
 
 function resolveEntityTarget(

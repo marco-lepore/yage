@@ -3,7 +3,12 @@ import { axisBlur, colorize, implosion, zoomBlur } from "@yagejs/effects";
 import type { AxisBlurOptions, ColorizeOptions } from "@yagejs/effects";
 import type { EffectsHost, VisualComponent } from "@yagejs/renderer";
 import { feelDelay, feelParallel, feelSequence } from "./core/node.js";
-import type { FeelEffectContext, FeelNode } from "./core/types.js";
+import type {
+  FeelEffectContext,
+  FeelNode,
+  FeelPulseTiming,
+} from "./core/types.js";
+import { resolveFeelPulseTiming } from "./internal/envelope.js";
 import { feelCall } from "./effects/core.js";
 import {
   feelDissolve,
@@ -110,15 +115,13 @@ export function damageImpact(options: DamageImpactOptions): FeelNode {
   );
 }
 
-export interface DashBurstOptions {
+export interface DashBurstOptions extends FeelPulseTiming {
   /** Visual that stretches and blurs along the dash axis. */
   target: VisualComponent;
   /** Dash direction. The dominant component selects the blur axis. */
   direction: Vec2Like;
   /** World position for the flight lines. Defaults to the cue entity. */
   position?: FeelFlightLinesOptions["position"];
-  /** Total recipe duration in seconds. Default: `0.3`. */
-  duration?: number;
   /** Stretch above the base scale. Default: `0.28`. */
   stretch?: number;
   /** Axis-blur options. The recipe supplies the axis. */
@@ -127,10 +130,17 @@ export interface DashBurstOptions {
   lines?: Omit<FeelFlightLinesOptions, "duration" | "direction" | "position">;
 }
 
-/** Stretch, blur, and draw flight lines along a dash direction. */
+/**
+ * Stretch, blur, and draw flight lines along a dash direction. The pulse
+ * defaults to 0.3 seconds with its peak at 0.3 and `easeOutQuad` in both phases.
+ */
 export function dashBurst(options: DashBurstOptions): FeelNode {
   validateDirection("dashBurst", options.direction);
-  const duration = positiveDuration("dashBurst", options.duration ?? 0.3);
+  const timing = resolveFeelPulseTiming("dashBurst", options, {
+    duration: 0.3,
+    peakAt: 0.3,
+    positiveDuration: true,
+  });
   const axis =
     Math.abs(options.direction.x) >= Math.abs(options.direction.y)
       ? "horizontal"
@@ -140,8 +150,10 @@ export function dashBurst(options: DashBurstOptions): FeelNode {
       target: options.target,
       axis: axis === "horizontal" ? "x" : "y",
       amount: options.stretch ?? 0.28,
-      duration,
-      peakAt: 0.3,
+      duration: timing.duration,
+      peakAt: timing.peakAt,
+      attackEasing: timing.attackEasing,
+      releaseEasing: timing.releaseEasing,
     }),
     feelEffect(
       options.target.fx,
@@ -151,7 +163,12 @@ export function dashBurst(options: DashBurstOptions): FeelNode {
         ...options.blur,
         axis,
       }),
-      { duration, peakAt: 0.3 },
+      {
+        duration: timing.duration,
+        peakAt: timing.peakAt,
+        attackEasing: timing.attackEasing,
+        releaseEasing: timing.releaseEasing,
+      },
     ),
     feelFlightLines({
       count: 8,
@@ -160,7 +177,7 @@ export function dashBurst(options: DashBurstOptions): FeelNode {
       ...options.lines,
       direction: options.direction,
       ...(options.position === undefined ? {} : { position: options.position }),
-      duration,
+      duration: timing.duration,
     }),
   );
 }

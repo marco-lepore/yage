@@ -18,6 +18,7 @@ export type {
   AudioPlayOptions,
   SoundComponentOptions,
   SoundRef,
+  SoundRequestHandle,
 } from "./types.js";
 
 // Asset factories

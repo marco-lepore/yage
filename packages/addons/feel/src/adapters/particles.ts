@@ -1,7 +1,7 @@
 import type { Vec2Like } from "@yagejs/core";
 import { ParticleEmitterComponent } from "@yagejs/particles";
 import type { ParticleEmissionHandle } from "@yagejs/particles";
-import { defineFeelEffect } from "../core/node.js";
+import { defineFeelEffect, defineFeelState } from "../core/node.js";
 import type { FeelEffectContext, FeelNode } from "../core/types.js";
 
 type FeelEmitterTarget =
@@ -38,13 +38,30 @@ export function feelParticleBurst(options: FeelParticleBurstOptions): FeelNode {
 
 export interface FeelParticleEmitOptions {
   emitter: FeelEmitterTarget;
-  /** Emission window in seconds. Default: 0.25. */
-  duration?: number;
+  /** Emission window in seconds, or until release. Default: 0.25. */
+  duration?: number | "held";
 }
 
 /** Request emission from an existing emitter for a timed window. */
 export function feelParticleEmit(options: FeelParticleEmitOptions): FeelNode {
-  return defineFeelEffect(options.duration ?? 0.25, (context) => {
+  const duration = options.duration ?? 0.25;
+  if (duration === "held") {
+    return defineFeelState({}, (context) => {
+      const emitter = resolveEmitter(options.emitter, context);
+      let request: ParticleEmissionHandle | undefined;
+      return {
+        start: () => {
+          request = emitter.requestEmission();
+        },
+        update: () => {},
+        release: () => request?.release(),
+        finish: (cancelled) => {
+          if (cancelled) request?.release();
+        },
+      };
+    });
+  }
+  return defineFeelEffect(duration, (context) => {
     const emitter = resolveEmitter(options.emitter, context);
     let request: ParticleEmissionHandle | undefined;
     return {

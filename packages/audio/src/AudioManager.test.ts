@@ -56,7 +56,9 @@ function setAudioContextState(
   s: SoundLibrary,
   state: "suspended" | "running",
 ): void {
-  (s as unknown as { context: { audioContext: { state: string } } }).context.audioContext.state = state;
+  (
+    s as unknown as { context: { audioContext: { state: string } } }
+  ).context.audioContext.state = state;
 }
 
 function createMockSoundLibrary(options?: {
@@ -197,6 +199,97 @@ describe("AudioManager", () => {
       expect(() => manager.playOnce("typo")).toThrow(
         'no sound registered as "typo"',
       );
+    });
+
+    it("keeps an outside playOnce owner when a request releases", () => {
+      const outside = manager.playOnce("impact");
+      const request = manager.requestOnce("impact");
+
+      request.release();
+
+      expect(request.active).toBe(false);
+      expect(outside.playing).toBe(true);
+      expect(mockSound.play).toHaveBeenCalledTimes(1);
+    });
+
+    it("adds one playOnce owner when requests started the shared playback", () => {
+      const request = manager.requestOnce("impact");
+      const outside = manager.playOnce("impact");
+      const repeated = manager.playOnce("impact");
+
+      request.release();
+
+      expect(outside).toBe(repeated);
+      expect(outside.playing).toBe(true);
+      expect(mockSound.play).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("requestOnce()", () => {
+    it("throws naming the alias when nothing is registered under it", () => {
+      (mockSound.exists as ReturnType<typeof vi.fn>).mockReturnValue(false);
+
+      expect(() => manager.requestOnce("typo")).toThrow(
+        'no sound registered as "typo"',
+      );
+      expect(mockSound.play).not.toHaveBeenCalled();
+    });
+
+    it("releases independent requests without stopping another owner", () => {
+      const first = manager.requestOnce("impact");
+      const second = manager.requestOnce("impact");
+      const instance = mockSound._instances.get("impact")!;
+
+      first.release();
+      first.release();
+      expect(first.active).toBe(false);
+      expect(second.active).toBe(true);
+      expect(instance.stop).not.toHaveBeenCalled();
+
+      second.release();
+      expect(second.active).toBe(false);
+      expect(instance.stop).toHaveBeenCalledOnce();
+    });
+
+    it("calls every active request callback on natural completion", () => {
+      const firstEnd = vi.fn();
+      const secondEnd = vi.fn();
+      const first = manager.requestOnce("impact", { onEnd: firstEnd });
+      const second = manager.requestOnce("impact", { onEnd: secondEnd });
+
+      mockSound._instances.get("impact")!._emit("end");
+
+      expect(first.active).toBe(false);
+      expect(second.active).toBe(false);
+      expect(firstEnd).toHaveBeenCalledOnce();
+      expect(secondEnd).toHaveBeenCalledOnce();
+    });
+
+    it("does not call a released request's callback", () => {
+      const releasedEnd = vi.fn();
+      const activeEnd = vi.fn();
+      const released = manager.requestOnce("impact", {
+        onEnd: releasedEnd,
+      });
+      manager.requestOnce("impact", { onEnd: activeEnd });
+
+      released.release();
+      mockSound._instances.get("impact")!._emit("end");
+
+      expect(releasedEnd).not.toHaveBeenCalled();
+      expect(activeEnd).toHaveBeenCalledOnce();
+    });
+
+    it("clears every request when a channel force-stops the sound", () => {
+      const first = manager.requestOnce("impact");
+      const second = manager.requestOnce("impact");
+
+      manager.stopChannel("sfx");
+
+      expect(first.active).toBe(false);
+      expect(second.active).toBe(false);
+      manager.requestOnce("impact");
+      expect(mockSound.play).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -564,5 +657,4 @@ describe("AudioManager", () => {
       expect(getAutoPause(s)).toBe(true);
     });
   });
-
 });

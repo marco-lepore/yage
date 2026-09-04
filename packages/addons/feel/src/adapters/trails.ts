@@ -11,15 +11,22 @@ import {
   type VisualOpacityModifierHandle,
   type VisualTransformModifierHandle,
 } from "@yagejs/renderer";
-import { defineFeelEffect } from "../core/node.js";
+import { defineFeelEffect, defineFeelState } from "../core/node.js";
 import type { FeelEffectContext, FeelNode, FeelRange } from "../core/types.js";
 
 type FeelPositionSource = Vec2Like | ((context: FeelEffectContext) => Vec2Like);
 
+const ZERO_DIRECTION_LENGTH_SQ = 1e-12;
+const ZERO_DIRECTION_COMPONENT_LIMIT = 1e-6;
+
 export interface FeelFlightLinesOptions {
   /** Center of the line field in world pixels. Defaults to the cue entity. */
   position?: FeelPositionSource;
-  /** Direction of travel. Lines point along this vector. Default: `{ x: 1, y: 0 }`. */
+  /**
+   * Direction of travel. A fixed vector must have a magnitude greater than
+   * `1e-6`. A function is evaluated once per burst; a finite zero or near-zero
+   * result skips that burst. Default: `{ x: 1, y: 0 }`.
+   */
   direction?: FeelPositionSource;
   /** Number of lines. Default: `8`. */
   count?: number;
@@ -46,8 +53,8 @@ export interface FeelFlightLinesOptions {
 export interface FeelMotionTrailOptions {
   /** Live world position to sample. Defaults to the cue entity's `Transform`. */
   position?: FeelPositionSource;
-  /** Time spent collecting positions in seconds. Default: `0.35`. */
-  duration?: number;
+  /** Time spent collecting positions in seconds, or until release. Default: `0.35`. */
+  duration?: number | "held";
   /** Lifetime of each sampled point in seconds. Default: `0.2`. */
   lifetime?: number;
   /** Minimum time between samples in seconds. Default: `1 / 60`. */
@@ -92,14 +99,23 @@ export function feelFlightLines(
   validateNonNegative(depth, "feelFlightLines: depth");
   validateNonNegative(travel, "feelFlightLines: travel");
   validateUnit(alpha, "feelFlightLines: alpha");
+  const directionSource = options.direction;
+  const staticDirection =
+    typeof directionSource === "function"
+      ? undefined
+      : requireFlightDirection(directionSource ?? Vec2.RIGHT);
 
   return defineFeelEffect(duration, (context) => {
+    const direction =
+      typeof directionSource === "function"
+        ? resolveLiveFlightDirection(directionSource, context)
+        : staticDirection;
+    if (!direction) return {};
     const position = resolvePosition(
       options.position,
       context,
       "feelFlightLines",
     );
-    const direction = resolveDirection(options.direction, context);
     const perpendicular = new Vec2(-direction.y, direction.x);
     const lines = Array.from({ length: count }, () => ({
       center: direction
@@ -171,84 +187,143 @@ export function feelMotionTrail(
   const maxPoints = options.maxPoints ?? 32;
   const width = options.width ?? 4;
   const alpha = options.alpha ?? 0.65;
-  validateNonNegative(sampleDuration, "feelMotionTrail: duration");
+  if (sampleDuration !== "held") {
+    validateNonNegative(sampleDuration, "feelMotionTrail: duration");
+  }
   validatePositive(lifetime, "feelMotionTrail: lifetime");
   validatePositive(sampleInterval, "feelMotionTrail: sampleInterval");
   validateNonNegative(minDistance, "feelMotionTrail: minDistance");
   validateInteger(maxPoints, "feelMotionTrail: maxPoints", 2);
   validatePositive(width, "feelMotionTrail: width");
   validateUnit(alpha, "feelMotionTrail: alpha");
+  if (sampleDuration === "held") {
+    return defineFeelState({ release: lifetime }, (context) => {
+      const trail = createMotionTrail(context, options, {
+        sampleDuration: null,
+        lifetime,
+        sampleInterval,
+        minDistance,
+        maxPoints,
+        width,
+        alpha,
+      });
+      return {
+        start: trail.start,
+        update: (_amount, dt) => trail.update(dt),
+        release: trail.release,
+        finish: trail.finish,
+      };
+    });
+  }
+
   const totalDuration = sampleDuration + lifetime;
 
   return defineFeelEffect(totalDuration, (context) => {
-    const points: TrailPoint[] = [];
-    let spawned: Entity | undefined;
-    let graphics: GraphicsComponent | undefined;
-    let nextSampleAt = 0;
+    const trail = createMotionTrail(context, options, {
+      sampleDuration,
+      lifetime,
+      sampleInterval,
+      minDistance,
+      maxPoints,
+      width,
+      alpha,
+    });
     return {
-      start: () => {
-        spawned = context.entity.scene.spawn("feel:motion-trail");
-        try {
-          spawned.add(new Transform());
-          graphics = spawned.add(
-            new GraphicsComponent(
-              options.layer === undefined
-                ? undefined
-                : { layer: options.layer },
-            ),
-          );
-          addTrailPoint(
-            points,
-            resolvePosition(options.position, context, "feelMotionTrail"),
-            0,
-            {
-              minDistance,
-              maxPoints,
-            },
-          );
-          nextSampleAt = sampleInterval;
-          drawTrail(graphics, points, 0, lifetime, {
-            color: options.color ?? 0xffffff,
-            width,
-            alpha,
-            taper: options.taper ?? true,
-            intensity: context.intensity,
-          });
-        } catch (error) {
-          spawned.destroy();
-          throw error;
-        }
-      },
-      update: (progress) => {
-        const elapsed = progress * totalDuration;
-        if (elapsed <= sampleDuration && elapsed >= nextSampleAt) {
-          addTrailPoint(
-            points,
-            resolvePosition(options.position, context, "feelMotionTrail"),
-            elapsed,
-            { minDistance, maxPoints },
-          );
-          while (nextSampleAt <= elapsed) nextSampleAt += sampleInterval;
-        }
-        while (
-          points.length > 0 &&
-          elapsed - (points[0]?.createdAt ?? elapsed) >= lifetime
-        ) {
-          points.shift();
-        }
-        if (graphics) {
-          drawTrail(graphics, points, elapsed, lifetime, {
-            color: options.color ?? 0xffffff,
-            width,
-            alpha,
-            taper: options.taper ?? true,
-            intensity: context.intensity,
-          });
-        }
-      },
-      finish: () => spawned?.destroy(),
+      start: trail.start,
+      update: (_progress, dt) => trail.update(dt),
+      finish: trail.finish,
     };
   });
+}
+
+function createMotionTrail(
+  context: FeelEffectContext,
+  options: FeelMotionTrailOptions,
+  timing: {
+    sampleDuration: number | null;
+    lifetime: number;
+    sampleInterval: number;
+    minDistance: number;
+    maxPoints: number;
+    width: number;
+    alpha: number;
+  },
+): {
+  start(): void;
+  update(dt: number): void;
+  release(): void;
+  finish(): void;
+} {
+  const points: TrailPoint[] = [];
+  let spawned: Entity | undefined;
+  let graphics: GraphicsComponent | undefined;
+  let elapsed = 0;
+  let nextSampleAt = 0;
+  let sampling = true;
+  return {
+    start: () => {
+      spawned = context.entity.scene.spawn("feel:motion-trail");
+      try {
+        spawned.add(new Transform());
+        graphics = spawned.add(
+          new GraphicsComponent(
+            options.layer === undefined ? undefined : { layer: options.layer },
+          ),
+        );
+        addTrailPoint(
+          points,
+          resolvePosition(options.position, context, "feelMotionTrail"),
+          0,
+          { minDistance: timing.minDistance, maxPoints: timing.maxPoints },
+        );
+        nextSampleAt = timing.sampleInterval;
+        drawTrail(graphics, points, 0, timing.lifetime, {
+          color: options.color ?? 0xffffff,
+          width: timing.width,
+          alpha: timing.alpha,
+          taper: options.taper ?? true,
+          intensity: context.intensity,
+        });
+      } catch (error) {
+        spawned.destroy();
+        throw error;
+      }
+    },
+    update: (dt) => {
+      elapsed += dt;
+      if (timing.sampleDuration !== null && elapsed > timing.sampleDuration) {
+        sampling = false;
+      }
+      if (sampling && elapsed >= nextSampleAt) {
+        addTrailPoint(
+          points,
+          resolvePosition(options.position, context, "feelMotionTrail"),
+          elapsed,
+          { minDistance: timing.minDistance, maxPoints: timing.maxPoints },
+        );
+        while (nextSampleAt <= elapsed) nextSampleAt += timing.sampleInterval;
+      }
+      while (
+        points.length > 0 &&
+        elapsed - (points[0]?.createdAt ?? elapsed) >= timing.lifetime
+      ) {
+        points.shift();
+      }
+      if (graphics) {
+        drawTrail(graphics, points, elapsed, timing.lifetime, {
+          color: options.color ?? 0xffffff,
+          width: timing.width,
+          alpha: timing.alpha,
+          taper: options.taper ?? true,
+          intensity: context.intensity,
+        });
+      }
+    },
+    release: () => {
+      sampling = false;
+    },
+    finish: () => spawned?.destroy(),
+  };
 }
 
 function drawTrail(
@@ -316,20 +391,42 @@ function resolvePosition(
   return new Vec2(transform.worldPosition.x, transform.worldPosition.y);
 }
 
-function resolveDirection(
-  source: FeelPositionSource | undefined,
+function resolveLiveFlightDirection(
+  source: (context: FeelEffectContext) => Vec2Like,
   context: FeelEffectContext,
-): Vec2 {
-  const direction = toVec2(
-    source === undefined
-      ? new Vec2(1, 0)
-      : resolveCallback(source, context, "flight-line direction source"),
-    "direction",
-  );
-  if (direction.lengthSq() <= 1e-12) {
+): Vec2 | null {
+  let direction: Vec2 | null = null;
+  context.invoke("flight-line direction source", () => {
+    direction = normalizeFlightDirection(source(context));
+  });
+  return direction;
+}
+
+function requireFlightDirection(source: Vec2Like): Vec2 {
+  const direction = normalizeFlightDirection(source);
+  if (!direction) {
     throw new Error("feelFlightLines: direction must not be zero.");
   }
-  return direction.normalize();
+  return direction;
+}
+
+function normalizeFlightDirection(source: Vec2Like): Vec2 | null {
+  const direction = toVec2(source, "feelFlightLines: direction");
+  const largestComponent = Math.max(
+    Math.abs(direction.x),
+    Math.abs(direction.y),
+  );
+  if (
+    largestComponent <= ZERO_DIRECTION_COMPONENT_LIMIT &&
+    direction.lengthSq() <= ZERO_DIRECTION_LENGTH_SQ
+  ) {
+    return null;
+  }
+
+  const scaledX = direction.x / largestComponent;
+  const scaledY = direction.y / largestComponent;
+  const scaledLength = Math.sqrt(scaledX * scaledX + scaledY * scaledY);
+  return new Vec2(scaledX / scaledLength, scaledY / scaledLength);
 }
 
 function resolveCallback<T>(

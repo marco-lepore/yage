@@ -41,7 +41,7 @@ export function feelSpriteAnimation<T extends string = string>(
       `feelSpriteAnimation: duration must be finite and >= 0, got ${options.duration}.`,
     );
   }
-  return defineFeelEffect(0, (context) => ({
+  return defineFeelEffect(options.duration ?? 0, (context) => ({
     start: () => {
       const controller = resolveController(options.target, context);
       if (mode === "force") {
@@ -55,7 +55,7 @@ export function feelSpriteAnimation<T extends string = string>(
           : undefined;
         controller.playOneShot(name, {
           ...(options.duration !== undefined
-            ? { duration: options.duration }
+            ? { duration: context.duration }
             : {}),
           ...(onComplete ? { onComplete } : {}),
         });

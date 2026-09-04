@@ -62,7 +62,11 @@ const handle = audio.play(CoinSfx, {
   speed: 1,
 });
 audio.playOnce(CoinSfx, opts); // skips playback if already playing
+const request = audio.requestOnce(CoinSfx, opts); // one releasable request for shared playback
 audio.playRandom([CoinSfx, "assets/step.wav"], opts); // random pick
+
+request.active; // boolean
+request.release(); // release only this request
 
 // SoundHandle
 handle.playing; // boolean
@@ -92,7 +96,16 @@ audio.pauseChannel("music");
 audio.resumeChannel("music");
 ```
 
-`play`, `playOnce` and `playRandom` throw naming the alias when no sound is registered under it — a typo, or playback before the asset finished preloading. Preload it with `sound(path)` or register it with `registerSound(alias, buffer)`.
+`play`, `playOnce`, `requestOnce`, and `playRandom` throw naming the alias when no sound is registered under it — a typo, or playback before the asset finished preloading. Preload it with `sound(path)` or register it with `registerSound(alias, buffer)`.
+
+`playOnce` and `requestOnce` share one playback for each alias and channel.
+`playOnce` holds one implicit owner; repeated calls return the same
+`SoundHandle` without adding owners. Each `requestOnce` call returns an
+independent `SoundRequestHandle`. Releasing a request stops the shared sound
+only when no requests or `playOnce` owner remain. Natural completion makes all
+request handles inactive and calls `onEnd` for each request that was still
+active. A released request receives no callback. Stopping the shared
+`SoundHandle`, its channel, or all audio makes every request inactive.
 
 ## Runtime sounds
 
