@@ -20,20 +20,37 @@ import { BackgroundRenderer } from "./background-renderer.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
 import { UIText } from "./UIText.js";
+import {
+  addChild,
+  insertChildBefore,
+  removeChild,
+} from "./internal/child-list.js";
+import { runUICallback } from "./error-boundary.js";
 
 import { type ColorBackground, isTextureBackground } from "./types.js";
 
 /** Default background colors for button states. */
 const DEFAULT_BG: ColorBackground = { color: 0x444444, alpha: 1, radius: 4 };
-const DEFAULT_HOVER_BG: ColorBackground = { color: 0x555555, alpha: 1, radius: 4 };
-const DEFAULT_PRESS_BG: ColorBackground = { color: 0x333333, alpha: 1, radius: 4 };
+const DEFAULT_HOVER_BG: ColorBackground = {
+  color: 0x555555,
+  alpha: 1,
+  radius: 4,
+};
+const DEFAULT_PRESS_BG: ColorBackground = {
+  color: 0x333333,
+  alpha: 1,
+  radius: 4,
+};
 
 /** Default padding so auto-sized buttons have breathing room around their content. */
 const DEFAULT_PAD_X = 12;
 const DEFAULT_PAD_Y = 6;
 
 /** Merge background options: use as-is for texture backgrounds, spread defaults for color. */
-function mergeBg(def: ColorBackground, override?: BackgroundOptions): BackgroundOptions {
+function mergeBg(
+  def: ColorBackground,
+  override?: BackgroundOptions,
+): BackgroundOptions {
   if (!override) return def;
   if (isTextureBackground(override)) return override;
   return { ...def, ...override };
@@ -74,6 +91,7 @@ export class UIButton implements UIContainerElement {
   private _disabled = false;
   private _isHovered = false;
   private _isPressed = false;
+  private _pressStartedHere = false;
   private _computedWidth = 0;
   private _computedHeight = 0;
   private _hasExplicitWidth = false;
@@ -137,19 +155,33 @@ export class UIButton implements UIContainerElement {
     });
     this.container.on("pointerdown", () => {
       if (this._disabled) return;
+      this._pressStartedHere = true;
       this._isPressed = true;
       this.applyBg(this.pressBgOpts);
     });
     this.container.on("pointerup", () => {
       if (this._disabled) return;
+      const shouldClick = this._pressStartedHere;
+      this._pressStartedHere = false;
       this._isPressed = false;
       this.applyBg(this.hoverBgOpts);
-      this.onClick?.();
+      if (shouldClick && this.onClick) {
+        runUICallback("UI onClick", this.onClick);
+      }
+    });
+    this.container.on("pointerupoutside", () => {
+      this._pressStartedHere = false;
+      this._isPressed = false;
+      this.applyCurrentBg();
     });
 
     // Hover callbacks fan out alongside the bg-swap above (separate listener
     // pair). Suppressed while disabled, mirroring the bg-swap guards.
-    this.pointerEvents = new PointerEvents(this.container, p, () => this._disabled);
+    this.pointerEvents = new PointerEvents(
+      this.container,
+      p,
+      () => this._disabled,
+    );
   }
 
   get children(): readonly UIElement[] {
@@ -157,44 +189,44 @@ export class UIButton implements UIContainerElement {
   }
 
   addElement(child: UIElement): void {
-    this._children.push(child);
-    this.container.addChild(child.displayObject);
-    this.yogaNode.insertChild(child.yogaNode, this.yogaNode.getChildCount());
+    addChild(
+      {
+        children: this._children,
+        container: this.container,
+        yogaNode: this.yogaNode,
+      },
+      child,
+      "UIButton.addElement",
+    );
   }
 
   removeElement(child: UIElement): void {
-    const idx = this._children.indexOf(child);
-    if (idx === -1) return;
-    this._children.splice(idx, 1);
-    this.container.removeChild(child.displayObject);
-    this.yogaNode.removeChild(child.yogaNode);
-    if (child === this._label) this._label = undefined;
+    if (
+      removeChild(
+        {
+          children: this._children,
+          container: this.container,
+          yogaNode: this.yogaNode,
+        },
+        child,
+      ) &&
+      child === this._label
+    ) {
+      this._label = undefined;
+    }
   }
 
   insertElementBefore(child: UIElement, before: UIElement): void {
-    // React's mutation-mode reconciler may move a still-mounted child to a
-    // new position via insertBefore. Detach it from its current slot first
-    // so the splice below doesn't duplicate it in _children / Yoga.
-    const existingIdx = this._children.indexOf(child);
-    if (existingIdx !== -1) {
-      this._children.splice(existingIdx, 1);
-      this.container.removeChild(child.displayObject);
-      this.yogaNode.removeChild(child.yogaNode);
-    }
-
-    const beforeIdx = this._children.indexOf(before);
-    if (beforeIdx === -1) {
-      this.addElement(child);
-      return;
-    }
-    this._children.splice(beforeIdx, 0, child);
-    const pixiIdx = this.container.children.indexOf(before.displayObject);
-    if (pixiIdx !== -1) {
-      this.container.addChildAt(child.displayObject, pixiIdx);
-    } else {
-      this.container.addChild(child.displayObject);
-    }
-    this.yogaNode.insertChild(child.yogaNode, beforeIdx);
+    insertChildBefore(
+      {
+        children: this._children,
+        container: this.container,
+        yogaNode: this.yogaNode,
+      },
+      child,
+      before,
+      "UIButton.insertElementBefore",
+    );
   }
 
   /** Apply Yoga-computed positions to children and resize background. */
@@ -272,6 +304,8 @@ export class UIButton implements UIContainerElement {
     this.container.cursor = v ? "default" : "pointer";
     this.container.alpha = v ? 0.5 : 1;
     if (v) {
+      this._pressStartedHere = false;
+      this._isPressed = false;
       this.applyBg(this.bgOpts);
     } else {
       this.applyCurrentBg();

@@ -14,7 +14,14 @@ const { mocks } = vi.hoisted(() => {
 
   class MockContainer {
     children: MockContainer[] = [];
-    position = { x: 0, y: 0, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    position = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
     visible = true;
     alpha = 1;
     parent: MockContainer | null = null;
@@ -36,11 +43,16 @@ const { mocks } = vi.hoisted(() => {
 
     removeChild(child: MockContainer): MockContainer {
       const idx = this.children.indexOf(child);
-      if (idx !== -1) { this.children.splice(idx, 1); child.parent = null; }
+      if (idx !== -1) {
+        this.children.splice(idx, 1);
+        child.parent = null;
+      }
       return child;
     }
 
-    removeFromParent(): void { this.parent?.removeChild(this); }
+    removeFromParent(): void {
+      this.parent?.removeChild(this);
+    }
 
     private _listeners = new Map<string, Set<(...args: unknown[]) => void>>();
     on(event: string, fn: (...args: unknown[]) => void): this {
@@ -52,7 +64,10 @@ const { mocks } = vi.hoisted(() => {
       for (const fn of this._listeners.get(event) ?? []) fn(...args);
     }
 
-    destroy(): void { this.destroyed = true; this.removeFromParent(); }
+    destroy(): void {
+      this.destroyed = true;
+      this.removeFromParent();
+    }
   }
 
   class MockSprite extends MockContainer {
@@ -60,7 +75,14 @@ const { mocks } = vi.hoisted(() => {
     width = 0;
     height = 0;
     tint = 0xffffff;
-    anchor = { x: 0, y: 0, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    anchor = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
 
     constructor(texture?: MockTexture) {
       super();
@@ -71,10 +93,18 @@ const { mocks } = vi.hoisted(() => {
   }
 
   class MockGraphics extends MockContainer {
-    clear(): MockGraphics { return this; }
-    rect(): MockGraphics { return this; }
-    roundRect(): MockGraphics { return this; }
-    fill(): MockGraphics { return this; }
+    clear(): MockGraphics {
+      return this;
+    }
+    rect(): MockGraphics {
+      return this;
+    }
+    roundRect(): MockGraphics {
+      return this;
+    }
+    fill(): MockGraphics {
+      return this;
+    }
   }
 
   class MockNineSliceSprite extends MockContainer {
@@ -91,14 +121,36 @@ const { mocks } = vi.hoisted(() => {
     texture: unknown;
     width = 0;
     height = 0;
-    tileScale = { x: 1, y: 1, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    tileScale = {
+      x: 1,
+      y: 1,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
     constructor(opts?: Record<string, unknown>) {
       super();
-      if (opts) { this.texture = opts.texture; this.width = (opts.width as number) ?? 0; this.height = (opts.height as number) ?? 0; }
+      if (opts) {
+        this.texture = opts.texture;
+        this.width = (opts.width as number) ?? 0;
+        this.height = (opts.height as number) ?? 0;
+      }
     }
   }
 
-  return { mocks: { MockContainer, MockSprite, MockGraphics, MockNineSliceSprite, MockTilingSprite, MockTexture } };
+  return {
+    mocks: {
+      MockContainer,
+      MockSprite,
+      MockGraphics,
+      MockNineSliceSprite,
+      MockTilingSprite,
+      MockTexture,
+      mockTexture: new MockTexture(100, 50),
+      registeredTextures: new Map<string, unknown>(),
+    },
+  };
 });
 
 vi.mock("pixi.js", () => ({
@@ -109,21 +161,24 @@ vi.mock("pixi.js", () => ({
   TilingSprite: mocks.MockTilingSprite,
 }));
 
-import Yoga, { Direction } from "yoga-layout";
-import { setYoga } from "./yoga-helpers.js";
-import { setAssetManager } from "./asset-helpers.js";
-import { UIImage } from "./UIImage.js";
-import { AssetManager } from "@yagejs/core";
+vi.mock("@yagejs/renderer", () => ({
+  registerTexture: (key: string, texture: unknown) => {
+    mocks.registeredTextures.set(key, texture);
+  },
+  resolveTextureInput: (input: unknown) => {
+    const key =
+      typeof input === "string" ? input : (input as { path?: string }).path;
+    return (key && mocks.registeredTextures.get(key)) ?? mocks.mockTexture;
+  },
+}));
 
-const mockTexture = new mocks.MockTexture(100, 50);
+import Yoga, { Direction } from "yoga-layout";
+import { registerTexture } from "@yagejs/renderer";
+import { setYoga } from "./yoga-helpers.js";
+import { UIImage } from "./UIImage.js";
 
 beforeAll(() => {
   setYoga(Yoga);
-  const am = new AssetManager();
-  am.registerLoader("texture", { load: async () => mockTexture });
-  // Pre-populate cache
-  (am as unknown as { cache: Map<string, unknown> }).cache = new Map([["texture:test.png", mockTexture]]);
-  setAssetManager(am);
 });
 
 describe("UIImage", () => {
@@ -131,6 +186,19 @@ describe("UIImage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.registeredTextures.clear();
+  });
+
+  it("resolves a registered texture key", () => {
+    const texture = new mocks.MockTexture(80, 40);
+    registerTexture("runtime-image", texture as never);
+
+    const img = new UIImage({ texture: "runtime-image" });
+
+    const sprite = img.container as unknown as InstanceType<
+      typeof mocks.MockSprite
+    >;
+    expect(sprite.texture).toBe(texture);
   });
 
   it("creates a sprite from an asset handle", () => {
@@ -151,14 +219,18 @@ describe("UIImage", () => {
     const img = new UIImage({ texture: handle, width: 200, height: 100 });
     img.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     img.applyLayout();
-    const sprite = img.container as unknown as InstanceType<typeof mocks.MockSprite>;
+    const sprite = img.container as unknown as InstanceType<
+      typeof mocks.MockSprite
+    >;
     expect(sprite.width).toBe(200);
     expect(sprite.height).toBe(100);
   });
 
   it("applies tint and alpha", () => {
     const img = new UIImage({ texture: handle, tint: 0xff0000, alpha: 0.5 });
-    const sprite = img.container as unknown as InstanceType<typeof mocks.MockSprite>;
+    const sprite = img.container as unknown as InstanceType<
+      typeof mocks.MockSprite
+    >;
     expect(sprite.tint).toBe(0xff0000);
     expect(sprite.alpha).toBe(0.5);
   });
@@ -166,7 +238,9 @@ describe("UIImage", () => {
   it("update changes tint and alpha", () => {
     const img = new UIImage({ texture: handle });
     img.update({ tint: 0x00ff00, alpha: 0.3 });
-    const sprite = img.container as unknown as InstanceType<typeof mocks.MockSprite>;
+    const sprite = img.container as unknown as InstanceType<
+      typeof mocks.MockSprite
+    >;
     expect(sprite.tint).toBe(0x00ff00);
     expect(sprite.alpha).toBe(0.3);
   });
@@ -182,7 +256,9 @@ describe("UIImage", () => {
   it("destroy cleans up", () => {
     const img = new UIImage({ texture: handle });
     img.destroy();
-    const sprite = img.container as unknown as InstanceType<typeof mocks.MockSprite>;
+    const sprite = img.container as unknown as InstanceType<
+      typeof mocks.MockSprite
+    >;
     expect(sprite.destroyed).toBe(true);
   });
 });

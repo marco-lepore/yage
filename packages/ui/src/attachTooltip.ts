@@ -112,19 +112,21 @@ export function attachTooltip(
   // after `dispose()` has released the slot. The guard makes post-dispose
   // activation a no-op and `dispose()` idempotent.
   let disposed = false;
+  const dispose = (): void => {
+    if (disposed) return;
+    disposed = true;
+    anchor.displayObject.off("destroyed", dispose);
+    content.destroy();
+    handle.release();
+  };
+  anchor.displayObject.once("destroyed", dispose);
+
   return {
     setActive(active: boolean): void {
       if (disposed) return;
       handle.setActive(active);
       if (active) handle.bringToFront();
     },
-    dispose(): void {
-      if (disposed) return;
-      disposed = true;
-      // Destroy the content first (frees its Yoga node + removes its display
-      // object from the handle container), then release the now-empty slot.
-      content.destroy();
-      handle.release();
-    },
+    dispose,
   };
 }

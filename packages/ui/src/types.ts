@@ -7,6 +7,7 @@ import type {
   SegmentAnchor,
   TextStyle,
   TextureHandle,
+  TextureInput,
   TextureResource,
 } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
@@ -66,7 +67,7 @@ export interface ColorBackground {
 
 /** Texture-based background with stretch, nine-slice, or tile modes. */
 export interface TextureBackground {
-  texture: TextureHandle;
+  texture: TextureInput;
   mode?: "stretch" | "nine-slice" | "tile";
   nineSlice?:
     | { left: number; top: number; right: number; bottom: number }
@@ -233,9 +234,7 @@ export interface PointerEventProps {
 
 /** Props for UIText (used by reconciler and props-driven constructor). */
 export interface UITextProps
-  extends LayoutProps,
-    ConsumeInputProps,
-    PointerEventProps {
+  extends LayoutProps, ConsumeInputProps, PointerEventProps {
   children?: string;
   style?: Partial<TextStyle>;
   /**
@@ -267,9 +266,7 @@ export interface UITextProps
 
 /** Props for UISplitText (used by reconciler and props-driven constructor). */
 export interface UISplitTextProps
-  extends LayoutProps,
-    ConsumeInputProps,
-    PointerEventProps {
+  extends LayoutProps, ConsumeInputProps, PointerEventProps {
   children?: string;
   style?: Partial<TextStyle>;
   /**
@@ -293,9 +290,7 @@ export interface UISplitTextProps
 
 /** Props for UIButton (used by reconciler and props-driven constructor). */
 export interface UIButtonProps
-  extends LayoutProps,
-    ConsumeInputProps,
-    PointerEventProps {
+  extends LayoutProps, ConsumeInputProps, PointerEventProps {
   children?: string;
   onClick?: () => void;
   background?: BackgroundOptions;
@@ -322,18 +317,11 @@ export interface UIButtonProps
 
 /** Props for UIPanel (used by reconciler and props-driven constructor). */
 export interface UIPanelProps
-  extends LayoutProps,
-    ConsumeInputProps,
-    PointerEventProps {
+  extends LayoutProps, ConsumeInputProps, PointerEventProps {
   direction?: FlexDirection;
   gap?: number;
   padding?: Padding;
-  alignItems?:
-    | "flex-start"
-    | "center"
-    | "flex-end"
-    | "stretch"
-    | "baseline";
+  alignItems?: "flex-start" | "center" | "flex-end" | "stretch" | "baseline";
   justifyContent?:
     | "flex-start"
     | "center"
@@ -347,32 +335,24 @@ export interface UIPanelProps
 
 /** Props for UIImage. */
 export interface UIImageProps
-  extends LayoutProps,
-    ConsumeInputProps,
-    PointerEventProps {
-  texture: TextureHandle;
+  extends LayoutProps, ConsumeInputProps, PointerEventProps {
+  texture: TextureInput;
   tint?: number;
   alpha?: number;
 }
 
 /** Props for UINineSlice. */
 export interface UINineSliceProps
-  extends LayoutProps,
-    ConsumeInputProps,
-    PointerEventProps {
-  texture: TextureHandle;
-  insets:
-    | { left: number; top: number; right: number; bottom: number }
-    | number;
+  extends LayoutProps, ConsumeInputProps, PointerEventProps {
+  texture: TextureInput;
+  insets: { left: number; top: number; right: number; bottom: number } | number;
   tint?: number;
   alpha?: number;
 }
 
 /** Props for UIProgressBar. */
 export interface UIProgressBarProps
-  extends LayoutProps,
-    ConsumeInputProps,
-    PointerEventProps {
+  extends LayoutProps, ConsumeInputProps, PointerEventProps {
   value: number;
   trackBackground?: BackgroundOptions;
   fillBackground?: BackgroundOptions;
@@ -419,7 +399,12 @@ export interface PixiFancyButtonProps extends LayoutProps, ConsumeInputProps {
   anchor?: number;
   scale?: number;
   animations?: FancyButtonAnimations;
-  textOffset?: { x?: number; y?: number } & { [K in "default" | "hover" | "pressed" | "disabled"]?: { x?: number; y?: number } };
+  textOffset?: { x?: number; y?: number } & {
+    [K in "default" | "hover" | "pressed" | "disabled"]?: {
+      x?: number;
+      y?: number;
+    };
+  };
 }
 
 /** Props for PixiCheckbox. */
@@ -438,7 +423,12 @@ export interface PixiProgressBarProps extends LayoutProps, ConsumeInputProps {
   value: number;
   bg: PixiViewType;
   fill: PixiViewType;
-  fillPaddings?: { top?: number; right?: number; bottom?: number; left?: number };
+  fillPaddings?: {
+    top?: number;
+    right?: number;
+    bottom?: number;
+    left?: number;
+  };
   nineSliceSprite?: [number, number, number, number];
 }
 
@@ -455,7 +445,12 @@ export interface PixiSliderProps extends LayoutProps, ConsumeInputProps {
   onUpdate?: (value: number) => void;
   showValue?: boolean;
   valueTextStyle?: Partial<TextStyle>;
-  fillPaddings?: { top?: number; right?: number; bottom?: number; left?: number };
+  fillPaddings?: {
+    top?: number;
+    right?: number;
+    bottom?: number;
+    left?: number;
+  };
   nineSliceSprite?: [number, number, number, number];
 }
 
@@ -579,7 +574,6 @@ export interface UISurfaceOptions extends UIPanelProps {
    */
   positioning?: UIPositioning;
 }
-
 
 // ---------------------------------------------------------------------------
 // Helpers

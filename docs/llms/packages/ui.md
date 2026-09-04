@@ -8,10 +8,12 @@ Depends on `@yagejs/core`, `@yagejs/renderer`. Yoga flexbox-based UI. Supports b
 import { UIPlugin } from "@yagejs/ui";
 engine.use(new UIPlugin());
 
-// Optional: an app-wide default style for UI text (UIText + auto-wrapped
-// Button/Checkbox labels). Layered over RendererConfig.defaultTextStyle;
+// Optional: an app-wide default style for UI text (UIText, UISplitText, and
+// auto-wrapped Button/Checkbox labels). Layered over RendererConfig.defaultTextStyle;
 // per-text `style` still wins.
-engine.use(new UIPlugin({ defaultTextStyle: { fontFamily: "Inter", fill: 0xffffff } }));
+engine.use(
+  new UIPlugin({ defaultTextStyle: { fontFamily: "Inter", fill: 0xffffff } }),
+);
 ```
 
 ## UISurface
@@ -22,6 +24,7 @@ Root UI component — mounts a UI tree on an entity. Its public `root` is the tr
 - `positioning: "transform"` — panel is positioned at `entity.get(Transform).worldPosition` in the target layer's local coord space; `anchor` is reinterpreted as the pivot on the panel itself (e.g. `Anchor.BottomCenter` → panel's bottom-center sits at the Transform). `offset` is still a pixel nudge. Throws at add time if the entity has no `Transform`.
 
 The positioning mode is independent of the target layer's `space`:
+
 - **Screen-space layer + `positioning: "transform"`** = billboard pattern. Pair with `ScreenFollow` from `@yagejs/renderer` which writes `cam.worldToScreen(target) + offset` to this entity's Transform each frame (offset is in screen pixels, applied post-projection). UI stays axis-aligned and constant-size under any camera zoom/rotation.
 - **World-space layer + `positioning: "transform"`** = genuinely diegetic UI. Transform holds a world coord; layer scales/rotates the UI like any other world object.
 
@@ -29,27 +32,31 @@ The positioning mode is independent of the target layer's `space`:
 import { UISurface, Anchor } from "@yagejs/ui";
 
 // Screen-space HUD (default)
-entity.add(new UISurface({
-  anchor: Anchor.TopLeft,
-  offset: { x: 16, y: 16 },
-  direction: "column",
-  gap: 8,
-  padding: 16,
-  alignItems: "center",
-  justifyContent: "center",
-  overflow: "visible",
-  background: { color: 0x000000, alpha: 0.7, radius: 8 },
-  layer: "ui",
-  visible: true,
-}));
+entity.add(
+  new UISurface({
+    anchor: Anchor.TopLeft,
+    offset: { x: 16, y: 16 },
+    direction: "column",
+    gap: 8,
+    padding: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "visible",
+    background: { color: 0x000000, alpha: 0.7, radius: 8 },
+    layer: "ui",
+    visible: true,
+  }),
+);
 
 // Billboard nameplate (paired with ScreenFollow elsewhere)
 entity.add(new Transform());
 entity.add(new ScreenFollow({ target, camera, offset: new Vec2(0, -40) }));
-entity.add(new UISurface({
-  positioning: "transform",
-  anchor: Anchor.BottomCenter, // pivot on the panel
-}));
+entity.add(
+  new UISurface({
+    positioning: "transform",
+    anchor: Anchor.BottomCenter, // pivot on the panel
+  }),
+);
 ```
 
 Anchor enum: `TopLeft`, `TopCenter`, `TopRight`, `CenterLeft`, `Center`, `CenterRight`, `BottomLeft`, `BottomCenter`, `BottomRight`.
@@ -67,12 +74,15 @@ label.mergeStyle({ fill: 0x00ff00 }); // patch — keeps the current font/size/e
 
 // Button — width/height are optional; omit them to shrink-to-content
 const btn = panel.button("Start", {
-  width: 200, height: 50,                           // optional
+  width: 200,
+  height: 50, // optional
   background: { color: 0x4444aa },
   hoverBackground: { color: 0x5555cc },
   pressBackground: { color: 0x333388 },
   textStyle: { fontSize: 18, fill: 0xffffff },
-  onClick: () => { /* ... */ },
+  onClick: () => {
+    /* ... */
+  },
 });
 const autoBtn = panel.button("Auto-sized", { onClick: () => {} }); // shrinks to label
 btn.setText("Loading...");
@@ -80,7 +90,10 @@ btn.setDisabled(true);
 
 // Long/i18n labels: a fixed-size button can't grow, so keep the label on one
 // line and ellipsize it instead of letting it overflow the frame.
-panel.button("A very long label that won't fit", { width: 120, truncate: "ellipsis" });
+panel.button("A very long label that won't fit", {
+  width: 120,
+  truncate: "ellipsis",
+});
 
 // Button is a flex container — addElement on it for icon + label rows etc.
 btn.addElement(new UIImage({ texture: iconTex, width: 16, height: 16 }));
@@ -91,6 +104,7 @@ row.text("HP");
 
 // Scrollable viewport (clipped + wheel/drag pannable). Children are normal
 // Yoga elements; size the viewport via LayoutProps (height / flexGrow).
+// A drag starts after 10 px and does not click a child button on release.
 const list = panel.scrollView({
   flexGrow: 1,
   gap: 6,
@@ -111,8 +125,8 @@ row.addElement(bar);
 ## Flex layout defaults
 
 Layout uses **Yoga's raw defaults**, notably **`flexShrink: 0`** — an element
-keeps its natural main-axis size and *overflows* a too-small row/column rather
-than being crushed. This is *not* the web's `flexShrink: 1`: Yoga has no
+keeps its natural main-axis size and _overflows_ a too-small row/column rather
+than being crushed. This is _not_ the web's `flexShrink: 1`: Yoga has no
 `min-width: auto` content floor, so a global `1` crushes fixed-size siblings and
 collapses scroll content (a ScrollView's content must exceed its viewport to
 scroll). Shrinking and wrapping are therefore **opt-in**:
@@ -128,7 +142,7 @@ scroll). Shrinking and wrapping are therefore **opt-in**:
 
 ```ts
 // Fixed icon, growing/wrapping text column, fixed button — the common row.
-row.panel({ width: 16, height: 16 });           // fixed, flexShrink 0 (default)
+row.panel({ width: 16, height: 16 }); // fixed, flexShrink 0 (default)
 const col = row.panel({ flex: 1, direction: "column" }); // fills + wraps
 col.text("a long label that wraps within the column");
 row.button("Buy", { width: 68, onClick: () => {} }); // fixed
@@ -157,10 +171,18 @@ Fixes: give the container more room, set `maxWidth`/`maxHeight`, mark the child
 ```ts
 // `bitmap: true` bakes (or looks up) the atlas from `style.fontFamily`
 // at `style.fontSize` — the font is a normal style property.
-new UIText({ children: "SCORE", bitmap: true, style: { fontFamily: "monospace", fontSize: 12 } });
+new UIText({
+  children: "SCORE",
+  bitmap: true,
+  style: { fontFamily: "monospace", fontSize: 12 },
+});
 
 // An installed / loaded bitmap font: name it via fontFamily.
-new UIText({ children: "READY", bitmap: true, style: { fontFamily: "PressStart", fontSize: 16 } });
+new UIText({
+  children: "READY",
+  bitmap: true,
+  style: { fontFamily: "PressStart", fontSize: 16 },
+});
 
 // Per-text canvas resolution (see gotcha below).
 new UIText({ children: "HUD", resolution: window.devicePixelRatio });
@@ -170,7 +192,7 @@ Use `installBitmapFont(...)` / `bitmapFont(...)` from `@yagejs/renderer` to obta
 
 `UIButton` and the React `<Button>` forward a `bitmap` boolean to their auto-wrapped string label: `new UIButton({ children: "PLAY", bitmap: true, textStyle: { fontFamily: "PressStart" } })` / `<Button bitmap textStyle={{ fontFamily: "PressStart" }}>PLAY</Button>`. (No effect when the child is a composed element — set `bitmap` on that `<Text>` directly.)
 
-**`resolution` gotcha (Pixi v8).** `resolution` is a `Text` *constructor* option, NOT a `TextStyle` property — setting `TextStyle.defaultTextStyle.resolution` does nothing. Pass `resolution` explicitly per text for crisp canvas output without a prototype patch, or use `bitmap` for pixel-perfect rendering. `resolution` is ignored when `bitmap` is set (bitmap resolution is fixed at font-bake time).
+**`resolution` gotcha (Pixi v8).** `resolution` is a `Text` _constructor_ option, NOT a `TextStyle` property — setting `TextStyle.defaultTextStyle.resolution` does nothing. Pass `resolution` explicitly per text for crisp canvas output without a prototype patch, or use `bitmap` for pixel-perfect rendering. `resolution` is ignored when `bitmap` is set (bitmap resolution is fixed at font-bake time).
 
 ## UISplitText — animated / per-glyph text
 
@@ -179,16 +201,19 @@ UI sibling of `@yagejs/renderer`'s `SplitTextComponent` (wraps Pixi's experiment
 ```ts
 import { UISplitText } from "@yagejs/ui";
 
-const title = panel.addElement(new UISplitText({
+const title = new UISplitText({
   children: "GAME OVER",
   style: { fontSize: 48, fill: 0xffffff },
-  charAnchor: 0.5,                  // segment pivots: char / word / lineAnchor
+  charAnchor: 0.5, // segment pivots: char / word / lineAnchor
   // bitmap: true, autoSplit: false,   // font via style.fontFamily
-}));
+});
+panel.addElement(title);
 
-title.chars;   // (Text | BitmapText)[]   title.words / title.lines: Container[]
-title.onSplit((seg) => { /* rebind animations — fires after each re-split */ });
-title.setText("YOU WIN");           // destroys + recreates chars, then onSplit
+title.chars; // (Text | BitmapText)[]   title.words / title.lines: Container[]
+title.onSplit((seg) => {
+  /* rebind animations — fires after each re-split */
+});
+title.setText("YOU WIN"); // destroys + recreates chars, then onSplit
 ```
 
 API: `chars` / `words` / `lines` getters, `segments`, `setText`, `setStyle`, `resplit()`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `onSplit(cb) → unsubscribe`. Animate the segments with the engine's `Tween` / `Process` — the element doesn't impose an animation API.
@@ -199,9 +224,19 @@ API: `chars` / `words` / `lines` getters, `segments`, `setText`, `setStyle`, `re
 const [ref, split] = useSplitText();
 const reveal = () => {
   split.chars.forEach((c) => (c.alpha = 0));
-  split.run(Tween.stagger(split.chars, (c) => Tween.custom((v) => (c.alpha = v), 0, 1, 0.3), 0.05));
+  split.run(
+    Tween.stagger(
+      split.chars,
+      (c) => Tween.custom((v) => (c.alpha = v), 0, 1, 0.3),
+      0.05,
+    ),
+  );
 };
-return <SplitText ref={ref} charAnchor={0.5} onPointerDown={reveal}>{label}</SplitText>;
+return (
+  <SplitText ref={ref} charAnchor={0.5} onPointerDown={reveal}>
+    {label}
+  </SplitText>
+);
 ```
 
 `SplitText` is experimental in Pixi and re-lays-out on every `text` / `style` change — prefer `UIText` for static / simple dynamic labels.
@@ -214,11 +249,11 @@ Drop-in progress bar for a `LoadingScene` (in `@yagejs/core`). Subscribes to `sc
 import { LoadingSceneProgressBar } from "@yagejs/ui";
 
 this.spawn(LoadingSceneProgressBar, {
-  width: 400,                               // default 400
-  height: 16,                               // default 16
-  track: { color: 0x1e293b },               // bar background
-  fill: { color: 0x38bdf8 },                // bar fill
-  backdrop: { color: 0x0b0f14 },            // full-viewport bg (default: none)
+  width: 400, // default 400
+  height: 16, // default 16
+  track: { color: 0x1e293b }, // bar background
+  fill: { color: 0x38bdf8 }, // bar fill
+  backdrop: { color: 0x0b0f14 }, // full-viewport bg (default: none)
   anchor: Anchor.Center,
   offset: { x: 0, y: 40 },
   layer: "ui",
@@ -291,25 +326,30 @@ is required** — this works in a pure imperative scene.
 ```ts
 import { attachTooltip, UIPanel, UIText } from "@yagejs/ui";
 
-const tip = attachTooltip(surface.root, scene, { // any UIElement
+const tip = attachTooltip(surface.root, scene, {
+  // any UIElement
   content: () => {
     const card = new UIPanel({
       padding: 6,
       gap: 4,
       background: { color: 0x111827, alpha: 0.95, radius: 6 },
     });
-    card.addElement(new UIText({ children: "Goblin", style: { fontSize: 13 } }));
-    card.addElement(new UIText({ children: "HP 100/100", style: { fontSize: 11 } }));
+    card.addElement(
+      new UIText({ children: "Goblin", style: { fontSize: 13 } }),
+    );
+    card.addElement(
+      new UIText({ children: "HP 100/100", style: { fontSize: 11 } }),
+    );
     return card;
   },
   placement: "top", // Placement: side or side-align (default "top", centered)
-  offset: 8,        // px gap between trigger and bubble (default 6)
-  maxWidth: 200,    // px; content wraps + clamps to available space
+  offset: 8, // px gap between trigger and bubble (default 6)
+  maxWidth: 200, // px; content wraps + clamps to available space
 });
 // Activation is yours — connect it on hover (the usual case):
 surface.setPointerHandlers({ onHover: tip.setActive }); // entity-mounted surface
 // a child element instead? element.update({ onHover: tip.setActive })
-// later: tip.dispose();  // releases the overlay slot
+// Optional: tip.dispose(); // destroying the anchor also releases the slot
 ```
 
 `attachTooltip` builds the floating parts and returns a `{ setActive, dispose }`
@@ -320,12 +360,13 @@ handlers. `anchor` is any `UIElement` (`UIButton`, `UIImage`, a nested
 `surface.setPointerHandlers({ onHover: tip.setActive })`, or on an element
 via `element.update({ onHover: tip.setActive })` — or trigger from focus /
 long-press / a programmatic call.
-Setting `onHover` *replaces* that single slot (which is what you want when the
+Setting `onHover` _replaces_ that single slot (which is what you want when the
 anchor has none). If it already handles hover, compose (`onHover: (h) => {
 existing(h); tip.setActive(h); }`). `content` is a factory, called once, and
 headless. Return a styled node for visuals — nothing is added automatically.
 `setActive` stays a no-op after `dispose()`, so a lingering hover handler is
-harmless.
+harmless. Destroying the anchor disposes the tooltip automatically. You can
+still call `dispose()` earlier when the tooltip has a shorter lifetime.
 Requires the scene to have the `FloatingOverlay` (i.e. `UIPlugin` is
 registered); throws otherwise. The bubble flips to the opposite side and
 shifts along the cross axis to stay on-screen, and z-stacks above other floats
@@ -363,3 +404,6 @@ this exact overlay.
 // Nine-slice texture
 { texture: tex, mode: "nine-slice", nineSlice: { left: 12, top: 12, right: 12, bottom: 12 } }
 ```
+
+`UIImage`, `UINineSlice`, and texture backgrounds accept `TextureInput`: a
+registered asset key, a texture handle, or a raw renderer texture.

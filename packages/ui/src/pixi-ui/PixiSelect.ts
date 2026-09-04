@@ -90,6 +90,46 @@ class PortalSelect extends Select {
     this.view.rotation = 0;
     this.addChildAt(this.view, this._originalIndex);
   }
+
+  replaceItems(
+    items: Parameters<Select["addItems"]>[0],
+    selected: number,
+  ): void {
+    this.scrollBox?.removeItems();
+    if (items.items.length === 0) {
+      this.openButton.text = "";
+      this.closeButton.text = "";
+      this.value = -1;
+      return;
+    }
+    this.addItems(items, selected);
+    this.value = selected;
+  }
+}
+
+const DEFAULT_SELECTED = 0;
+
+function selectedForItems(requested: number, itemCount: number): number {
+  if (itemCount === 0) return DEFAULT_SELECTED;
+  return Math.min(Math.max(requested, 0), itemCount - 1);
+}
+
+function selectItems(
+  props: PixiSelectProps,
+): Parameters<Select["addItems"]>[0] {
+  return {
+    items: props.items,
+    backgroundColor: props.itemBG ?? 0x000000,
+    width: props.itemWidth ?? 200,
+    height: props.itemHeight ?? 40,
+    ...(props.itemHoverBG !== undefined
+      ? { hoverColor: props.itemHoverBG }
+      : {}),
+    ...(props.itemTextStyle !== undefined || props.textStyle !== undefined
+      ? { textStyle: props.itemTextStyle ?? props.textStyle }
+      : {}),
+    radius: 0,
+  };
 }
 
 /** Yoga-aware wrapper around @pixi/ui Select (dropdown). */
@@ -99,18 +139,10 @@ export class PixiSelect extends PixiUIBase<PortalSelect> {
       closedBG: resolvePixiView(props.closedBG),
       openBG: resolvePixiView(props.openBG),
       textStyle: props.textStyle,
-      selected: props.selected,
+      selected: props.selected ?? DEFAULT_SELECTED,
       scrollBoxOffset: props.scrollBoxOffset,
       visibleItems: props.visibleItems,
-      items: {
-        items: props.items,
-        backgroundColor: props.itemBG ?? 0x000000,
-        width: props.itemWidth ?? 200,
-        height: props.itemHeight ?? 40,
-        hoverColor: props.itemHoverBG,
-        textStyle: props.itemTextStyle ?? props.textStyle,
-        radius: 0,
-      },
+      items: selectItems(props),
     } as ConstructorParameters<typeof Select>[0]);
     super(view, props);
 
@@ -120,7 +152,7 @@ export class PixiSelect extends PixiUIBase<PortalSelect> {
       else view.restoreDropdown();
     };
 
-    if (props.onSelect) view.onSelect.connect(props.onSelect);
+    this.bridgeSignal(view.onSelect, "onSelect", "UI onSelect", { ...props });
     this.prevProps = { ...props };
   }
 
@@ -131,11 +163,28 @@ export class PixiSelect extends PixiUIBase<PortalSelect> {
   }
 
   update(props: Record<string, unknown>): void {
-    const p = props as unknown as PixiSelectProps;
+    const p = props as unknown as Partial<PixiSelectProps>;
 
-    this.bridgeSignal(this.view.onSelect, "onSelect", props);
+    this.bridgeSignal(this.view.onSelect, "onSelect", "UI onSelect", props);
 
-    if (p.selected !== undefined) this.view.value = p.selected;
+    if ("items" in p) {
+      const merged = {
+        ...this.prevProps,
+        ...props,
+      } as unknown as PixiSelectProps;
+      const requested = merged.selected ?? DEFAULT_SELECTED;
+      const selected = selectedForItems(requested, merged.items.length);
+      this.view.replaceItems(selectItems(merged), selected);
+    } else if ("selected" in p) {
+      const merged = {
+        ...this.prevProps,
+        ...props,
+      } as unknown as PixiSelectProps;
+      this.view.replaceItems(
+        selectItems(merged),
+        p.selected ?? DEFAULT_SELECTED,
+      );
+    }
 
     this.updateBase(props);
   }
@@ -148,9 +197,6 @@ export class PixiSelect extends PixiUIBase<PortalSelect> {
   }
 
   protected disconnectAll(): void {
-    const cb = this.prevProps.onSelect as
-      | ((index: number, text: string) => void)
-      | undefined;
-    if (cb) this.view.onSelect.disconnect(cb);
+    this.disconnectBridgedSignal(this.view.onSelect, "onSelect");
   }
 }

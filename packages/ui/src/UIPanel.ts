@@ -31,6 +31,11 @@ import {
 import { BackgroundRenderer } from "./background-renderer.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
+import {
+  addChild,
+  insertChildBefore,
+  removeChild,
+} from "./internal/child-list.js";
 
 // ---------------------------------------------------------------------------
 // Enum mapping helpers
@@ -114,36 +119,39 @@ export class UIPanel implements UIContainerElement {
   }
 
   addElement(child: UIElement): void {
-    this._children.push(child);
-    this.container.addChild(child.displayObject);
-    this.yogaNode.insertChild(child.yogaNode, this.yogaNode.getChildCount());
+    addChild(
+      {
+        children: this._children,
+        container: this.container,
+        yogaNode: this.yogaNode,
+      },
+      child,
+      "UIPanel.addElement",
+    );
   }
 
   removeElement(child: UIElement): void {
-    const idx = this._children.indexOf(child);
-    if (idx === -1) return;
-    this._children.splice(idx, 1);
-    this.container.removeChild(child.displayObject);
-    this.yogaNode.removeChild(child.yogaNode);
+    removeChild(
+      {
+        children: this._children,
+        container: this.container,
+        yogaNode: this.yogaNode,
+      },
+      child,
+    );
   }
 
   insertElementBefore(child: UIElement, before: UIElement): void {
-    const beforeIdx = this._children.indexOf(before);
-    if (beforeIdx === -1) {
-      this.addElement(child);
-      return;
-    }
-    this._children.splice(beforeIdx, 0, child);
-
-    // Insert in Pixi at the correct position
-    const pixiIdx = this.container.children.indexOf(before.displayObject);
-    if (pixiIdx !== -1) {
-      this.container.addChildAt(child.displayObject, pixiIdx);
-    } else {
-      this.container.addChild(child.displayObject);
-    }
-
-    this.yogaNode.insertChild(child.yogaNode, beforeIdx);
+    insertChildBefore(
+      {
+        children: this._children,
+        container: this.container,
+        yogaNode: this.yogaNode,
+      },
+      child,
+      before,
+      "UIPanel.insertElementBefore",
+    );
   }
 
   // ---------------------------------------------------------------------------

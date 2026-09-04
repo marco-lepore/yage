@@ -3,7 +3,14 @@ import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 const { mocks } = vi.hoisted(() => {
   class MockContainer {
     children: MockContainer[] = [];
-    position = { x: 0, y: 0, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    position = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
     visible = true;
     alpha = 1;
     parent: MockContainer | null = null;
@@ -12,10 +19,27 @@ const { mocks } = vi.hoisted(() => {
     cursor = "default";
     private _listeners = new Map<string, Set<(...args: unknown[]) => void>>();
 
-    addChild(child: MockContainer): MockContainer { this.children.push(child); child.parent = this; return child; }
-    addChildAt(child: MockContainer, index: number): MockContainer { this.children.splice(index, 0, child); child.parent = this; return child; }
-    removeChild(child: MockContainer): MockContainer { const i = this.children.indexOf(child); if (i !== -1) { this.children.splice(i, 1); child.parent = null; } return child; }
-    removeFromParent(): void { this.parent?.removeChild(this); }
+    addChild(child: MockContainer): MockContainer {
+      this.children.push(child);
+      child.parent = this;
+      return child;
+    }
+    addChildAt(child: MockContainer, index: number): MockContainer {
+      this.children.splice(index, 0, child);
+      child.parent = this;
+      return child;
+    }
+    removeChild(child: MockContainer): MockContainer {
+      const i = this.children.indexOf(child);
+      if (i !== -1) {
+        this.children.splice(i, 1);
+        child.parent = null;
+      }
+      return child;
+    }
+    removeFromParent(): void {
+      this.parent?.removeChild(this);
+    }
 
     on(event: string, fn: (...args: unknown[]) => void): this {
       if (!this._listeners.has(event)) this._listeners.set(event, new Set());
@@ -28,17 +52,34 @@ const { mocks } = vi.hoisted(() => {
       if (listeners) for (const fn of listeners) fn(...args);
     }
 
-    destroy(): void { this.destroyed = true; this.removeFromParent(); }
+    destroy(): void {
+      this.destroyed = true;
+      this.removeFromParent();
+    }
   }
 
   class MockGraphics extends MockContainer {
-    clear(): MockGraphics { return this; }
-    rect(): MockGraphics { return this; }
-    roundRect(): MockGraphics { return this; }
-    fill(): MockGraphics { return this; }
-    moveTo(): MockGraphics { return this; }
-    lineTo(): MockGraphics { return this; }
-    stroke(): MockGraphics { return this; }
+    clear(): MockGraphics {
+      return this;
+    }
+    rect(): MockGraphics {
+      return this;
+    }
+    roundRect(): MockGraphics {
+      return this;
+    }
+    fill(): MockGraphics {
+      return this;
+    }
+    moveTo(): MockGraphics {
+      return this;
+    }
+    lineTo(): MockGraphics {
+      return this;
+    }
+    stroke(): MockGraphics {
+      return this;
+    }
   }
 
   class MockText extends MockContainer {
@@ -57,22 +98,53 @@ const { mocks } = vi.hoisted(() => {
   }
 
   class MockSprite extends MockContainer {
-    texture: unknown; width = 0; height = 0;
-    constructor(texture?: unknown) { super(); this.texture = texture; }
+    texture: unknown;
+    width = 0;
+    height = 0;
+    constructor(texture?: unknown) {
+      super();
+      this.texture = texture;
+    }
   }
 
   class MockNineSliceSprite extends MockContainer {
-    texture: unknown; width = 0; height = 0;
-    constructor(opts?: Record<string, unknown>) { super(); if (opts) this.texture = opts.texture; }
+    texture: unknown;
+    width = 0;
+    height = 0;
+    constructor(opts?: Record<string, unknown>) {
+      super();
+      if (opts) this.texture = opts.texture;
+    }
   }
 
   class MockTilingSprite extends MockContainer {
-    texture: unknown; width = 0; height = 0;
-    tileScale = { x: 1, y: 1, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
-    constructor(opts?: Record<string, unknown>) { super(); if (opts) this.texture = opts.texture; }
+    texture: unknown;
+    width = 0;
+    height = 0;
+    tileScale = {
+      x: 1,
+      y: 1,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
+    constructor(opts?: Record<string, unknown>) {
+      super();
+      if (opts) this.texture = opts.texture;
+    }
   }
 
-  return { mocks: { MockContainer, MockGraphics, MockText, MockSprite, MockNineSliceSprite, MockTilingSprite } };
+  return {
+    mocks: {
+      MockContainer,
+      MockGraphics,
+      MockText,
+      MockSprite,
+      MockNineSliceSprite,
+      MockTilingSprite,
+    },
+  };
 });
 
 vi.mock("pixi.js", () => ({
@@ -112,12 +184,16 @@ describe("UICheckbox", () => {
   it("toggles checked on pointerup", () => {
     const onChange = vi.fn();
     const cb = new UICheckbox({ onChange });
-    const container = cb.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = cb.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
 
+    container.emit("pointerdown");
     container.emit("pointerup");
     expect(cb.checked).toBe(true);
     expect(onChange).toHaveBeenCalledWith(true);
 
+    container.emit("pointerdown");
     container.emit("pointerup");
     expect(cb.checked).toBe(false);
     expect(onChange).toHaveBeenCalledWith(false);
@@ -126,8 +202,11 @@ describe("UICheckbox", () => {
   it("does not toggle when disabled", () => {
     const onChange = vi.fn();
     const cb = new UICheckbox({ onChange, disabled: true });
-    const container = cb.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = cb.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
 
+    container.emit("pointerdown");
     container.emit("pointerup");
     expect(cb.checked).toBe(false);
     expect(onChange).not.toHaveBeenCalled();
@@ -135,7 +214,9 @@ describe("UICheckbox", () => {
 
   it("disabled state changes cursor and alpha", () => {
     const cb = new UICheckbox({});
-    const container = cb.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = cb.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
     expect(container.cursor).toBe("pointer");
     expect(container.alpha).toBe(1);
 
@@ -151,7 +232,9 @@ describe("UICheckbox", () => {
 
   it("creates a label when provided", () => {
     const cb = new UICheckbox({ label: "Accept" });
-    const container = cb.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = cb.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
     // Should have box + checkmark + label = 3 children
     expect(container.children.length).toBe(3);
   });
@@ -168,10 +251,26 @@ describe("UICheckbox", () => {
     const onChange2 = vi.fn();
     const cb = new UICheckbox({ onChange: onChange1 });
     cb.update({ onChange: onChange2 });
-    const container = cb.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = cb.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    container.emit("pointerdown");
     container.emit("pointerup");
     expect(onChange1).not.toHaveBeenCalled();
     expect(onChange2).toHaveBeenCalledWith(true);
+  });
+
+  it("does not toggle when the press started outside the checkbox", () => {
+    const onChange = vi.fn();
+    const cb = new UICheckbox({ onChange });
+    const container = cb.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+
+    container.emit("pointerup");
+
+    expect(cb.checked).toBe(false);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("visibility can be toggled", () => {
@@ -185,7 +284,9 @@ describe("UICheckbox", () => {
   it("destroy cleans up", () => {
     const cb = new UICheckbox({});
     cb.destroy();
-    const container = cb.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = cb.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
     expect(container.destroyed).toBe(true);
   });
 });

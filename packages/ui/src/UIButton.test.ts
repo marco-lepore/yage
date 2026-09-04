@@ -3,7 +3,14 @@ import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 const { mocks } = vi.hoisted(() => {
   class MockContainer {
     children: MockContainer[] = [];
-    position = { x: 0, y: 0, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    position = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
     scale = { x: 1, y: 1 };
     rotation = 0;
     visible = true;
@@ -62,13 +69,21 @@ const { mocks } = vi.hoisted(() => {
   }
 
   class MockGraphics extends MockContainer {
-    clear(): MockGraphics { return this; }
+    clear(): MockGraphics {
+      return this;
+    }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    rect(...args: unknown[]): MockGraphics { return this; }
+    rect(...args: unknown[]): MockGraphics {
+      return this;
+    }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    roundRect(...args: unknown[]): MockGraphics { return this; }
+    roundRect(...args: unknown[]): MockGraphics {
+      return this;
+    }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    fill(...args: unknown[]): MockGraphics { return this; }
+    fill(...args: unknown[]): MockGraphics {
+      return this;
+    }
   }
 
   class MockText extends MockContainer {
@@ -76,7 +91,14 @@ const { mocks } = vi.hoisted(() => {
     style: Record<string, unknown>;
     width: number;
     height: number;
-    anchor = { x: 0, y: 0, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    anchor = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
 
     constructor(opts?: { text?: string; style?: Record<string, unknown> }) {
       super();
@@ -95,7 +117,14 @@ const { mocks } = vi.hoisted(() => {
     width = 0;
     height = 0;
     tint = 0xffffff;
-    anchor = { x: 0, y: 0, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    anchor = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
 
     constructor(texture?: unknown) {
       super();
@@ -128,7 +157,14 @@ const { mocks } = vi.hoisted(() => {
     texture: unknown;
     width = 0;
     height = 0;
-    tileScale = { x: 1, y: 1, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    tileScale = {
+      x: 1,
+      y: 1,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
     tilePosition = { x: 0, y: 0 };
 
     constructor(opts?: Record<string, unknown>) {
@@ -150,7 +186,18 @@ const { mocks } = vi.hoisted(() => {
     ) {}
   }
 
-  return { mocks: { MockContainer, MockGraphics, MockText, MockBitmapText, MockSprite, MockNineSliceSprite, MockTilingSprite, MockRectangle } };
+  return {
+    mocks: {
+      MockContainer,
+      MockGraphics,
+      MockText,
+      MockBitmapText,
+      MockSprite,
+      MockNineSliceSprite,
+      MockTilingSprite,
+      MockRectangle,
+    },
+  };
 });
 
 vi.mock("pixi.js", () => ({
@@ -169,6 +216,8 @@ import { setYoga } from "./yoga-helpers.js";
 import { UIButton } from "./UIButton.js";
 import { UIText } from "./UIText.js";
 import { UIPanel } from "./UIPanel.js";
+import { ErrorBoundary, Logger, LogLevel } from "@yagejs/core";
+import { setUIErrorBoundary } from "./error-boundary.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -188,24 +237,42 @@ describe("UIButton", () => {
 
   it("fires onClick when pointer up", () => {
     const onClick = vi.fn();
-    const btn = new UIButton({ children: "Test", width: 100, height: 30, onClick });
-    const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const btn = new UIButton({
+      children: "Test",
+      width: 100,
+      height: 30,
+      onClick,
+    });
+    const container = btn.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    container.emit("pointerdown");
     container.emit("pointerup");
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
   it("does not fire onClick when disabled", () => {
     const onClick = vi.fn();
-    const btn = new UIButton({ children: "Test", width: 100, height: 30, onClick });
+    const btn = new UIButton({
+      children: "Test",
+      width: 100,
+      height: 30,
+      onClick,
+    });
     btn.setDisabled(true);
-    const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = btn.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    container.emit("pointerdown");
     container.emit("pointerup");
     expect(onClick).not.toHaveBeenCalled();
   });
 
   it("disabled state changes cursor and alpha", () => {
     const btn = new UIButton({ children: "Test", width: 100, height: 30 });
-    const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = btn.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
     expect(container.cursor).toBe("pointer");
     expect(container.alpha).toBe(1);
 
@@ -221,7 +288,12 @@ describe("UIButton", () => {
   });
 
   it("disabled via constructor option", () => {
-    const btn = new UIButton({ children: "Test", width: 100, height: 30, disabled: true });
+    const btn = new UIButton({
+      children: "Test",
+      width: 100,
+      height: 30,
+      disabled: true,
+    });
     expect(btn.disabled).toBe(true);
   });
 
@@ -274,7 +346,9 @@ describe("UIButton", () => {
     btn.update({ textStyle: { fill: 0xff0000 } });
     btn.update({ children: "SCORE" });
     const label = btn.children[0] as UIText;
-    const text = label.displayObject as unknown as { style: Record<string, unknown> };
+    const text = label.displayObject as unknown as {
+      style: Record<string, unknown>;
+    };
     expect(text.style).toMatchObject({ fill: 0xff0000 });
   });
 
@@ -310,7 +384,9 @@ describe("UIButton", () => {
 
   it("hover state changes background", () => {
     const btn = new UIButton({ children: "Test", width: 100, height: 30 });
-    const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = btn.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
     // Should not throw on hover/out events
     container.emit("pointerover");
     container.emit("pointerout");
@@ -318,7 +394,9 @@ describe("UIButton", () => {
 
   it("press state changes background", () => {
     const btn = new UIButton({ children: "Test", width: 100, height: 30 });
-    const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = btn.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
     // Should not throw on down event
     container.emit("pointerdown");
   });
@@ -326,7 +404,9 @@ describe("UIButton", () => {
   it("destroy cleans up", () => {
     const btn = new UIButton({ children: "Test", width: 100, height: 30 });
     btn.destroy();
-    const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = btn.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
     expect(container.destroyed).toBe(true);
   });
 
@@ -338,7 +418,9 @@ describe("UIButton", () => {
       background: { color: 0x444444 },
       hoverBackground: { color: 0xff0000 },
     });
-    const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = btn.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
 
     // Simulate hover
     container.emit("pointerover");
@@ -359,20 +441,63 @@ describe("UIButton", () => {
   it("update() changes onClick handler", () => {
     const onClick1 = vi.fn();
     const onClick2 = vi.fn();
-    const btn = new UIButton({ children: "Test", width: 100, height: 30, onClick: onClick1 });
+    const btn = new UIButton({
+      children: "Test",
+      width: 100,
+      height: 30,
+      onClick: onClick1,
+    });
     btn.update({ onClick: onClick2 });
 
-    const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = btn.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    container.emit("pointerdown");
     container.emit("pointerup");
     expect(onClick1).not.toHaveBeenCalled();
     expect(onClick2).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not click when the press started outside the button", () => {
+    const onClick = vi.fn();
+    const btn = new UIButton({ onClick });
+    const container = btn.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+
+    container.emit("pointerup");
+
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("attributes a throwing onClick callback", () => {
+    const boundary = new ErrorBoundary(new Logger({ level: LogLevel.None }));
+    setUIErrorBoundary(boundary);
+    const error = new Error("click failed");
+    const btn = new UIButton({
+      onClick: () => {
+        throw error;
+      },
+    });
+    const container = btn.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+
+    container.emit("pointerdown");
+    expect(() => container.emit("pointerup")).toThrow(error);
+    expect(boundary.getCallbackErrors()).toEqual([
+      { kind: "UI onClick", error: "click failed" },
+    ]);
+    setUIErrorBoundary(undefined);
   });
 
   it("fires hover callbacks on pointerover/pointerout", () => {
     const onHover = vi.fn();
     const onPointerOver = vi.fn();
     const btn = new UIButton({ children: "Hi", onHover, onPointerOver });
-    const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = btn.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
 
     container.emit("pointerover");
     container.emit("pointerout");
@@ -385,7 +510,9 @@ describe("UIButton", () => {
     const onHover = vi.fn();
     const btn = new UIButton({ children: "Hi", onHover });
     btn.setDisabled(true);
-    const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = btn.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
 
     container.emit("pointerover");
     expect(onHover).not.toHaveBeenCalled();
@@ -396,7 +523,9 @@ describe("UIButton", () => {
     const second = vi.fn();
     const btn = new UIButton({ children: "Hi", onHover: first });
     btn.update({ onHover: second });
-    const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = btn.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
 
     container.emit("pointerover");
     expect(first).not.toHaveBeenCalled();
@@ -422,7 +551,11 @@ describe("UIButton", () => {
     });
 
     it("treats width: 'auto' the same as omitted (shrink-to-content)", () => {
-      const btn = new UIButton({ children: "Hi", width: "auto", height: "auto" });
+      const btn = new UIButton({
+        children: "Hi",
+        width: "auto",
+        height: "auto",
+      });
       btn.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
       expect(btn.yogaNode.getComputedWidth()).toBe(50 + 12 * 2);
       expect(btn.yogaNode.getComputedHeight()).toBe(14 + 6 * 2);
@@ -437,7 +570,11 @@ describe("UIButton", () => {
         width: 200,
         height: 60,
       });
-      const btn = new UIButton({ children: "Hi", width: "100%", height: "100%" });
+      const btn = new UIButton({
+        children: "Hi",
+        width: "100%",
+        height: "100%",
+      });
       parent.addElement(btn);
 
       parent.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
@@ -553,6 +690,19 @@ describe("UIButton", () => {
       expect(btn.children[0]).toBe(b);
       expect(btn.children[1]).toBe(a);
       expect(btn.yogaNode.getChildCount()).toBe(2);
+    });
+
+    it("rejects a child that still belongs to another container", () => {
+      const panel = new UIPanel({});
+      const btn = new UIButton({});
+      const child = new UIText({ children: "A" });
+      panel.addElement(child);
+
+      expect(() => btn.addElement(child)).toThrow(
+        "UIButton.addElement: the element is already a child of another container; remove it there first.",
+      );
+      expect(panel.children).toEqual([child]);
+      expect(btn.children).toHaveLength(0);
     });
   });
 });

@@ -1,11 +1,15 @@
 import { describe, it, expect } from "vitest";
-import type { EngineContext } from "@yagejs/core";
+import { ErrorBoundaryKey } from "@yagejs/core";
+import type { EngineContext, ErrorBoundary } from "@yagejs/core";
 import { UIPlugin } from "./UIPlugin.js";
-import { getUIDefaultTextStyle, setUIDefaultTextStyle } from "./text-defaults.js";
+import {
+  getUIDefaultTextStyle,
+  setUIDefaultTextStyle,
+} from "./text-defaults.js";
+import { getUIErrorBoundary, setUIErrorBoundary } from "./error-boundary.js";
 
-// install() needs tryResolve (AssetManager is optional), resolve (the scene
-// hook registry, for the floating overlay), and loads Yoga via dynamic
-// import; a bare stub is enough to exercise the text-style lifecycle.
+// install() resolves the optional error boundary and the scene hook registry,
+// then loads Yoga. This stub is enough to exercise its process-scoped state.
 const stubContext = {
   tryResolve: () => undefined,
   resolve: () => ({ register: () => () => {} }),
@@ -34,5 +38,24 @@ describe("UIPlugin default text style lifecycle", () => {
 
     plugin.onDestroy();
     expect(getUIDefaultTextStyle()).toBeUndefined();
+  });
+
+  it("sets the UI callback boundary and restores the prior value", async () => {
+    const previous = {} as ErrorBoundary;
+    const boundary = {} as ErrorBoundary;
+    setUIErrorBoundary(previous);
+    const plugin = new UIPlugin();
+    const context = {
+      tryResolve: (key: unknown) =>
+        key === ErrorBoundaryKey ? boundary : undefined,
+      resolve: () => ({ register: () => () => {} }),
+    } as unknown as EngineContext;
+
+    await plugin.install(context);
+    expect(getUIErrorBoundary()).toBe(boundary);
+
+    plugin.onDestroy();
+    expect(getUIErrorBoundary()).toBe(previous);
+    setUIErrorBoundary(undefined);
   });
 });

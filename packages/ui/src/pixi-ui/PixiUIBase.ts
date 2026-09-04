@@ -3,6 +3,7 @@ import type { Node as YogaNode } from "yoga-layout";
 import { Display, MeasureMode } from "yoga-layout";
 import type { LayoutProps, UIElement } from "../types.js";
 import { createYogaNode, applyLayoutProps } from "../yoga-helpers.js";
+import { runUICallback } from "../error-boundary.js";
 
 /**
  * Abstract base class for wrapping @pixi/ui components as Yoga-aware UIElements.
@@ -10,11 +11,17 @@ import { createYogaNode, applyLayoutProps } from "../yoga-helpers.js";
  * Handles: Yoga node + measure function, prevProps storage, bridgeSignal helper,
  * visible prop, applyLayout, and destroy cleanup.
  */
-export abstract class PixiUIBase<T extends DisplayContainer>
-implements UIElement {
+export abstract class PixiUIBase<
+  T extends DisplayContainer,
+> implements UIElement {
   readonly yogaNode: YogaNode;
   protected readonly view: T;
   protected prevProps: Record<string, unknown> = {};
+  private readonly bridgedCallbacks = new Map<
+    string,
+    Map<(...args: never[]) => void, (...args: never[]) => void>
+  >();
+  private _destroyed = false;
 
   get displayObject(): DisplayContainer {
     return this.view;
@@ -62,27 +69,69 @@ implements UIElement {
   protected bridgeSignal<F extends (...args: unknown[]) => void>(
     signal: { connect: (cb: F) => void; disconnect: (cb: F) => void },
     key: string,
+    kind: string,
     newProps: Record<string, unknown>,
   ): void {
     if (!(key in newProps)) return;
     const oldCb = this.prevProps[key] as F | undefined;
     const newCb = newProps[key] as F | undefined;
     if (newCb === oldCb) return;
-    if (oldCb) signal.disconnect(oldCb);
-    if (newCb) signal.connect(newCb);
+    if (oldCb) {
+      const callbacks = this.bridgedCallbacks.get(key);
+      const oldWrapped = callbacks?.get(oldCb as (...args: never[]) => void) as
+        | F
+        | undefined;
+      signal.disconnect(oldWrapped ?? oldCb);
+      callbacks?.delete(oldCb as (...args: never[]) => void);
+      if (callbacks?.size === 0) this.bridgedCallbacks.delete(key);
+    }
+    if (newCb) {
+      const wrapped = ((...args: Parameters<F>) => {
+        runUICallback(kind, () => newCb(...args));
+      }) as F;
+      let callbacks = this.bridgedCallbacks.get(key);
+      if (!callbacks) {
+        callbacks = new Map();
+        this.bridgedCallbacks.set(key, callbacks);
+      }
+      callbacks.set(
+        newCb as (...args: never[]) => void,
+        wrapped as (...args: never[]) => void,
+      );
+      signal.connect(wrapped);
+    }
+  }
+
+  protected disconnectBridgedSignal<F extends (...args: unknown[]) => void>(
+    signal: { disconnect: (cb: F) => void },
+    key: string,
+  ): void {
+    const callback = this.prevProps[key] as F | undefined;
+    if (!callback) return;
+    const callbacks = this.bridgedCallbacks.get(key);
+    const wrapped = callbacks?.get(callback as (...args: never[]) => void) as
+      | F
+      | undefined;
+    signal.disconnect(wrapped ?? callback);
+    callbacks?.delete(callback as (...args: never[]) => void);
+    if (callbacks?.size === 0) this.bridgedCallbacks.delete(key);
   }
 
   /** Apply layout props, visible, and store prevProps. Call at end of subclass update(). */
   protected updateBase(props: Record<string, unknown>): void {
     applyLayoutProps(this.yogaNode, props as LayoutProps);
-    if ("visible" in props) this.visible = props.visible as boolean;
+    if ("visible" in props)
+      this.visible = (props.visible as boolean | undefined) ?? true;
     Object.assign(this.prevProps, props);
   }
 
   abstract update(props: Record<string, unknown>): void;
 
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
     this.disconnectAll();
+    this.bridgedCallbacks.clear();
     this.yogaNode.free();
     this.view.destroy();
   }

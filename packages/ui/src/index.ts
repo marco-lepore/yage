@@ -44,8 +44,6 @@ export type {
 // Yoga helpers (for testing and custom element implementations)
 export { setYoga, createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 
-// Asset helpers
-export { setAssetManager, resolveTexture } from "./asset-helpers.js";
 export { createNineSliceView } from "./views.js";
 export type { NineSliceViewOptions } from "./views.js";
 
@@ -95,7 +93,11 @@ export {
 
 // Floating UI (tooltips/popovers/menus) — framework-agnostic overlay,
 // pure positioning engine, and the imperative tooltip helper.
-export { FloatingOverlay, FloatingOverlayKey, layoutFloat } from "./floating.js";
+export {
+  FloatingOverlay,
+  FloatingOverlayKey,
+  layoutFloat,
+} from "./floating.js";
 export type { FloatConfig, FloatingHandle } from "./floating.js";
 export { FloatingOverlaySystem } from "./FloatingOverlaySystem.js";
 export { computePosition, parsePlacement } from "./positioning.js";

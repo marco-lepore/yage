@@ -109,7 +109,11 @@ export function Panel(props: PropsWithChildren<PanelProps>): React.JSX.Element {
   const { children, ...rest } = props;
   // `_bgAlias` tells the reconciler to expand a `bg` prop to `background`;
   // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={UIPanel} _bgAlias {...rest}>{children}</ui-element>;
+  return (
+    <ui-element _ctor={UIPanel} _bgAlias {...rest}>
+      {children}
+    </ui-element>
+  );
 }
 
 /**
@@ -122,7 +126,11 @@ const RefPanel = forwardRef<UIElement, PropsWithChildren<PanelProps>>(
   function RefPanel(props, ref) {
     const { children, ...rest } = props;
     // @ts-expect-error — custom reconciler element type
-    return <ui-element _ctor={UIPanel} _bgAlias {...rest} ref={ref}>{children}</ui-element>;
+    return (
+      <ui-element _ctor={UIPanel} _bgAlias {...rest} ref={ref}>
+        {children}
+      </ui-element>
+    );
   },
 );
 
@@ -135,15 +143,10 @@ const RefPanel = forwardRef<UIElement, PropsWithChildren<PanelProps>>(
  * `ZStack` (contrast with `VStack` / `HStack`, which are the flex column /
  * row directions on `<Panel>`). Defaults can be overridden via props.
  */
-export function ZStack(props: PropsWithChildren<PanelProps>): React.JSX.Element {
-  return (
-    <Panel
-      width="100%"
-      height="100%"
-      position="relative"
-      {...props}
-    />
-  );
+export function ZStack(
+  props: PropsWithChildren<PanelProps>,
+): React.JSX.Element {
+  return <Panel width="100%" height="100%" position="relative" {...props} />;
 }
 
 export interface TooltipProps {
@@ -288,7 +291,11 @@ export function Tooltip(props: TooltipProps): React.JSX.Element {
 export function UIText(props: TextProps): React.JSX.Element {
   const { children, ...rest } = props;
   // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={UITextNode} _consumesText {...rest}>{children}</ui-element>;
+  return (
+    <ui-element _ctor={UITextNode} _consumesText {...rest}>
+      {children}
+    </ui-element>
+  );
 }
 
 export type SplitTextProps = UIElementSplitTextProps;
@@ -312,7 +319,11 @@ export const SplitText = forwardRef<UISplitTextNode, SplitTextProps>(
   function SplitText(props, ref) {
     const { children, ...rest } = props;
     // @ts-expect-error — custom reconciler element type
-    return <ui-element _ctor={UISplitTextNode} _consumesText {...rest} ref={ref}>{children}</ui-element>;
+    return (
+      <ui-element _ctor={UISplitTextNode} _consumesText {...rest} ref={ref}>
+        {children}
+      </ui-element>
+    );
   },
 );
 
@@ -328,23 +339,36 @@ export const SplitText = forwardRef<UISplitTextNode, SplitTextProps>(
  *   dropped (this reconciler has no `createTextInstance`).
  */
 export function Button(props: ButtonProps): React.JSX.Element {
-  const { children, hoverBg, pressBg, textStyle, truncate, bitmap, ...rest } = props;
+  const { children, hoverBg, pressBg, textStyle, truncate, bitmap, ...rest } =
+    props;
   const isPrimitiveLabel =
     typeof children === "string" || typeof children === "number";
-  const content = isPrimitiveLabel
-    ? <UIText
-        {...(textStyle ? { style: textStyle } : {})}
-        {...(truncate ? { truncate } : {})}
-        {...(bitmap !== undefined ? { bitmap } : {})}
-      >
-        {String(children)}
-      </UIText>
-    : children;
+  const content = isPrimitiveLabel ? (
+    <UIText
+      {...(textStyle ? { style: textStyle } : {})}
+      {...(truncate ? { truncate } : {})}
+      {...(bitmap !== undefined ? { bitmap } : {})}
+    >
+      {String(children)}
+    </UIText>
+  ) : (
+    children
+  );
   // `rest` still carries `bg` (see ButtonProps) — the reconciler's `_bgAlias`
   // marker expands it to `background`. `hoverBg`/`pressBg` are Button-only
   // sugar, mapped inline since no other element has those two states.
   // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={UIButtonNode} _bgAlias {...rest} hoverBackground={hoverBg} pressBackground={pressBg}>{content}</ui-element>;
+  return (
+    <ui-element
+      _ctor={UIButtonNode}
+      _bgAlias
+      {...rest}
+      hoverBackground={hoverBg}
+      pressBackground={pressBg}
+    >
+      {content}
+    </ui-element>
+  );
 }
 
 /** An image element displaying a texture. */
@@ -378,7 +402,9 @@ export function Checkbox(props: CheckboxProps): React.JSX.Element {
 export type PixiFancyButtonReactProps = UIElementPixiFancyButtonProps;
 
 /** @pixi/ui FancyButton with Yoga layout. */
-export function PixiFancyButton(props: PixiFancyButtonReactProps): React.JSX.Element {
+export function PixiFancyButton(
+  props: PixiFancyButtonReactProps,
+): React.JSX.Element {
   // @ts-expect-error — custom reconciler element type
   return <ui-element _ctor={PixiFancyButtonNode} {...props} />;
 }
@@ -399,7 +425,9 @@ export type PixiProgressBarReactProps = UIElementPixiProgressBarProps;
  * from the style-config `background` on `<Panel>`/`<Button>`/`<ScrollView>`,
  * so they are NOT expanded by the shorthand alias table.
  */
-export function PixiProgressBar(props: PixiProgressBarReactProps): React.JSX.Element {
+export function PixiProgressBar(
+  props: PixiProgressBarReactProps,
+): React.JSX.Element {
   // @ts-expect-error — custom reconciler element type
   return <ui-element _ctor={PixiProgressBarNode} {...props} />;
 }
@@ -432,13 +460,18 @@ export interface ScrollViewReactProps extends UIElementScrollViewProps {
  * viewport with `height` / `flexGrow`; keep fixed siblings (e.g. a footer
  * button) outside the `<ScrollView>`.
  */
-export function ScrollView(
-  props: PropsWithChildren<ScrollViewReactProps>,
-): React.JSX.Element {
+export const ScrollView = forwardRef<
+  UIScrollView,
+  PropsWithChildren<ScrollViewReactProps>
+>(function ScrollView(props, ref) {
   const { children, ...rest } = props;
   // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={UIScrollView} _bgAlias {...rest}>{children}</ui-element>;
-}
+  return (
+    <ui-element _ctor={UIScrollView} _bgAlias {...rest} ref={ref}>
+      {children}
+    </ui-element>
+  );
+});
 
 export type PixiSelectReactProps = UIElementPixiSelectProps;
 
@@ -451,7 +484,9 @@ export function PixiSelect(props: PixiSelectReactProps): React.JSX.Element {
 export type PixiRadioGroupReactProps = UIElementPixiRadioGroupProps;
 
 /** @pixi/ui RadioGroup with Yoga layout. */
-export function PixiRadioGroup(props: PixiRadioGroupReactProps): React.JSX.Element {
+export function PixiRadioGroup(
+  props: PixiRadioGroupReactProps,
+): React.JSX.Element {
   // @ts-expect-error — custom reconciler element type
   return <ui-element _ctor={PixiRadioGroupNode} {...props} />;
 }

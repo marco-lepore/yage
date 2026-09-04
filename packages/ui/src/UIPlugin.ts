@@ -1,27 +1,36 @@
-import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
-import { AssetManagerKey, SceneHookRegistryKey } from "@yagejs/core";
+import type {
+  EngineContext,
+  ErrorBoundary,
+  Plugin,
+  SystemScheduler,
+} from "@yagejs/core";
+import { ErrorBoundaryKey, SceneHookRegistryKey } from "@yagejs/core";
 import type { TextStyle } from "@yagejs/renderer";
 import { UILayoutSystem } from "./UILayoutSystem.js";
 import { FloatingOverlay, FloatingOverlayKey } from "./floating.js";
 import { FloatingOverlaySystem } from "./FloatingOverlaySystem.js";
 import { setYoga } from "./yoga-helpers.js";
-import { setAssetManager } from "./asset-helpers.js";
-import { getUIDefaultTextStyle, setUIDefaultTextStyle } from "./text-defaults.js";
+import {
+  getUIDefaultTextStyle,
+  setUIDefaultTextStyle,
+} from "./text-defaults.js";
+import { getUIErrorBoundary, setUIErrorBoundary } from "./error-boundary.js";
 
 /** Options for {@link UIPlugin}. */
 export interface UIPluginOptions {
   /**
-   * Default style for UI text (`UIText`, and the auto-wrapped labels in
-   * `Button` / `Checkbox`). Layered over `RendererConfig.defaultTextStyle`
-   * — set here to give widgets a different font / fill than free-positioned
-   * `TextComponent`. Per-text `style` still wins.
+   * Default style for UI text (`UIText`, `UISplitText`, and the auto-wrapped
+   * labels in `Button` / `Checkbox`). Layered over
+   * `RendererConfig.defaultTextStyle` — set here to give widgets a different
+   * font / fill than free-positioned `TextComponent`. Per-text `style` still
+   * wins.
    */
   defaultTextStyle?: TextStyle;
 }
 
 /**
- * UIPlugin loads Yoga, wires the AssetManager for UI-specific texture
- * assets, and registers the layout system. UI entities attach to the
+ * UIPlugin loads Yoga, installs UI defaults, and registers the layout system.
+ * UI entities attach to the
  * active scene's render tree via `this.use(SceneRenderTreeKey)` — no
  * dedicated global screen container is created.
  */
@@ -35,6 +44,7 @@ export class UIPlugin implements Plugin {
   // scoped to this plugin's lifetime — otherwise it leaks across engine
   // lifecycles (e.g. between tests). Mirrors RendererPlugin's defaultTextStyle.
   private _prevDefaultTextStyle: TextStyle | undefined = undefined;
+  private _prevErrorBoundary: ErrorBoundary | undefined = undefined;
   private _unregisterHooks: (() => void) | null = null;
 
   constructor(options: UIPluginOptions = {}) {
@@ -46,12 +56,10 @@ export class UIPlugin implements Plugin {
     const { default: yoga } = await import("yoga-layout");
     setYoga(yoga);
 
-    // Wire up AssetManager for texture-based UI elements
-    const am = context.tryResolve(AssetManagerKey);
-    if (am) setAssetManager(am);
-
     this._prevDefaultTextStyle = getUIDefaultTextStyle();
     setUIDefaultTextStyle(this._options.defaultTextStyle);
+    this._prevErrorBoundary = getUIErrorBoundary();
+    setUIErrorBoundary(context.tryResolve(ErrorBoundaryKey));
 
     // Provision one scene-scoped FloatingOverlay per scene — the top-most
     // screen-space surface tooltips/popovers/menus portal into. Owned here
@@ -75,6 +83,8 @@ export class UIPlugin implements Plugin {
   onDestroy(): void {
     setUIDefaultTextStyle(this._prevDefaultTextStyle);
     this._prevDefaultTextStyle = undefined;
+    setUIErrorBoundary(this._prevErrorBoundary);
+    this._prevErrorBoundary = undefined;
     this._unregisterHooks?.();
     this._unregisterHooks = null;
   }

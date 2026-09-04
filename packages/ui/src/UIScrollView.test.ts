@@ -120,6 +120,7 @@ import Yoga from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
 import { UIScrollView } from "./UIScrollView.js";
 import { UIPanel } from "./UIPanel.js";
+import { UIButton } from "./UIButton.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -243,6 +244,33 @@ describe("UIScrollView", () => {
     };
     viewport.emit("wheel", { deltaY: 24, deltaX: 0, deltaMode: 0 });
     expect(sv.scrollOffset).toBe(24);
+  });
+
+  it("starts panning after 10px and suppresses a child release click", () => {
+    const onClick = vi.fn();
+    const sv = new UIScrollView({ width: 200, height: 100 });
+    const button = new UIButton({ height: 150, onClick });
+    sv.addElement(button);
+    layout(sv);
+    const viewport = sv.displayObject as unknown as InstanceType<
+      typeof mocks.MockContainer
+    > & { interactiveChildren: boolean };
+    const buttonView = button.displayObject as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+
+    viewport.emit("pointerdown", { global: { x: 0, y: 50 } });
+    viewport.emit("globalpointermove", { global: { x: 0, y: 42 } });
+    expect(sv.scrollOffset).toBe(0);
+
+    viewport.emit("globalpointermove", { global: { x: 0, y: 30 } });
+    expect(sv.scrollOffset).toBe(20);
+    expect(viewport.interactiveChildren).toBe(false);
+
+    buttonView.emit("pointerup", {});
+    expect(onClick).not.toHaveBeenCalled();
+    viewport.emit("pointerup", {});
+    expect(viewport.interactiveChildren).toBe(true);
   });
 
   it("fires onScroll only when the offset changes", () => {
@@ -387,7 +415,11 @@ describe("UIScrollView", () => {
   });
 
   it("an explicit-height viewport keeps its height", () => {
-    const parent = new UIPanel({ direction: "column", width: 200, height: 200 });
+    const parent = new UIPanel({
+      direction: "column",
+      width: 200,
+      height: 200,
+    });
     const sv = new UIScrollView({ height: 120 });
     for (let i = 0; i < 8; i++) sv.addElement(new UIPanel({ height: 30 }));
     parent.addElement(sv);
@@ -402,7 +434,11 @@ describe("UIScrollView", () => {
   it("respects an explicit flexBasis prop", () => {
     // With basis 60 (and no grow), the viewport's main size resolves to 60, not
     // its content size (240) — the caller's flexBasis is applied verbatim.
-    const parent = new UIPanel({ direction: "column", width: 200, height: 300 });
+    const parent = new UIPanel({
+      direction: "column",
+      width: 200,
+      height: 300,
+    });
     const sv = new UIScrollView({ flexBasis: 60 });
     for (let i = 0; i < 8; i++) sv.addElement(new UIPanel({ height: 30 }));
     parent.addElement(sv);
