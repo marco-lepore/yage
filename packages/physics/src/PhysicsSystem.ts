@@ -2,7 +2,6 @@ import {
   System,
   Phase,
   Transform,
-  Vec2,
   SceneManagerKey,
   SceneTimeKey,
 } from "@yagejs/core";
@@ -95,7 +94,8 @@ export class PhysicsSystem extends System {
       if (!body) continue;
 
       // Store previous state for interpolation
-      rb._prevPosition = rb._currPosition;
+      rb._prevPositionX = rb._currPositionX;
+      rb._prevPositionY = rb._currPositionY;
       rb._prevRotation = rb._currRotation;
 
       // Kinematic bodies move toward the captured target, not toward the
@@ -108,8 +108,8 @@ export class PhysicsSystem extends System {
       if (body.isKinematic()) {
         rb._capturePendingTarget();
         body.setNextKinematicTranslation({
-          x: world.toMeters(rb._kinematicTargetPosition.x),
-          y: world.toMeters(rb._kinematicTargetPosition.y),
+          x: world.toMeters(rb._kinematicTargetPositionX),
+          y: world.toMeters(rb._kinematicTargetPositionY),
         });
         body.setNextKinematicRotation(rb._kinematicTargetRotation);
       }
@@ -129,16 +129,14 @@ export class PhysicsSystem extends System {
       if (!isDynamic && !body.isKinematic()) continue;
 
       const translation = body.translation();
-      rb._currPosition = new Vec2(
-        world.toPixels(translation.x),
-        world.toPixels(translation.y),
-      );
+      rb._currPositionX = world.toPixels(translation.x);
+      rb._currPositionY = world.toPixels(translation.y);
       rb._currRotation = body.rotation();
 
       const transform = entity.get(Transform);
       if (isDynamic) {
         // Update Transform — set world-space values
-        transform.worldPosition = rb._currPosition;
+        transform.setWorldPosition(rb._currPositionX, rb._currPositionY);
         if (rb.syncRotation) {
           transform.worldRotation = rb._currRotation;
         }
@@ -152,8 +150,9 @@ export class PhysicsSystem extends System {
         // it alone. The last-written pose moves with the restore so the
         // restored value doesn't itself read as a pending game write.
         if (!rb._hasPendingTargetPosition()) {
-          transform.worldPosition = rb._currPosition;
-          rb._lastWrittenPosition = rb._currPosition;
+          transform.setWorldPosition(rb._currPositionX, rb._currPositionY);
+          rb._lastWrittenPositionX = rb._currPositionX;
+          rb._lastWrittenPositionY = rb._currPositionY;
         }
         if (rb.syncRotation && !rb._hasPendingTargetRotation()) {
           transform.worldRotation = rb._currRotation;

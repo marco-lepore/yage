@@ -3,6 +3,7 @@ import {
   createMockScene,
   Transform,
   Vec2,
+  Vec2Buffer,
 } from "@yagejs/core";
 import { describe, expect, it } from "vitest";
 import { LightOccluder } from "./LightOccluder.js";
@@ -36,6 +37,30 @@ function addLight(
 }
 
 describe("LightingWorld", () => {
+  it("copies parented light and occluder positions into retained outputs", () => {
+    const { scene } = createMockScene();
+    const world = new LightingWorld(scene, { level: 0 });
+    scene.registerScoped(LightingWorldKey, world);
+    const parent = scene.spawn("parent");
+    const transform = parent.add(
+      new Transform({ position: { x: 10, y: 20 }, scale: { x: 2, y: 3 } }),
+    );
+    const source = addLight(world, { x: 4, y: 5, intensity: 1 });
+    parent.addChild("source", source.entity);
+    const occluder = source.entity.add(
+      new LightOccluder({ shape: { type: "box", width: 10, height: 10 } }),
+    );
+    const out = new Vec2Buffer();
+    expect(source.getPositionInto(out)).toBe(out);
+    expect([out.x, out.y]).toEqual([18, 35]);
+    expect(occluder.getPositionInto(out)).toBe(out);
+    expect([out.x, out.y]).toEqual([source.position.x, source.position.y]);
+    transform.setPosition(30, 40);
+    expect([out.x, out.y]).toEqual([18, 35]);
+    expect(world.levelAt(38, 55)).toBe(1);
+    expect(source.getPositionInto(out)).toEqual(new Vec2Buffer(38, 55));
+  });
+
   it("adds ambient and radial contributions with linear falloff", () => {
     const { scene } = createMockScene();
     const world = new LightingWorld(scene, { level: 0.1 });

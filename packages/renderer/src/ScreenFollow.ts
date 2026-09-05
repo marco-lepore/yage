@@ -1,4 +1,4 @@
-import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
+import { Component, Entity, Transform, Vec2, Vec2Buffer } from "@yagejs/core";
 import type { Vec2Like } from "@yagejs/core";
 import type { CameraEntity } from "./CameraEntity.js";
 import { resolveFollowTarget } from "./FollowTarget.js";
@@ -73,6 +73,7 @@ export interface ScreenFollowOptions {
  * ```
  */
 export class ScreenFollow extends Component {
+  private readonly positionScratch = new Vec2Buffer();
   private _target: ScreenFollowTarget | null;
   private _camera: CameraEntity | null;
   private _offset: Vec2;
@@ -98,9 +99,13 @@ export class ScreenFollow extends Component {
     // offset — a 40px offset would become 80px at zoom 2 and would rotate
     // off-axis as the camera rotates. Screen-space addition keeps the
     // visual gap between UI and target fixed under any camera transform.
-    const projected = this._camera.worldToScreen(world.x, world.y);
+    const projected = this._camera.worldToScreenInto(
+      this.positionScratch,
+      world.x,
+      world.y,
+    );
     const t = this.entity.get(Transform);
-    t.worldPosition = new Vec2(
+    t.setWorldPosition(
       projected.x + this._offset.x,
       projected.y + this._offset.y,
     );
@@ -119,6 +124,6 @@ export class ScreenFollow extends Component {
   private resolveTargetPosition(): Vec2Like | undefined {
     const target = this._target;
     if (target === null) return undefined;
-    return resolveFollowTarget(target, this);
+    return resolveFollowTarget(target, this, this.positionScratch);
   }
 }

@@ -2,6 +2,7 @@ import {
   Component,
   ErrorBoundaryKey,
   Transform,
+  Vec2Buffer,
   markPointerConsumeContainer,
   unmarkPointerConsumeContainer,
 } from "@yagejs/core";
@@ -74,6 +75,7 @@ export interface UIRootOptions {
  * ```
  */
 export class UIRoot extends Component {
+  private readonly positionScratch = new Vec2Buffer();
   private root: ReconcilerRoot | null = null;
   private readonly _container: Container;
   private _floating: FloatingOverlay | null = null;
@@ -215,7 +217,9 @@ export class UIRoot extends Component {
     const anchor = this._anchor;
 
     if (this._positioning === "transform") {
-      const source = this.entity.get(Transform).worldPosition;
+      const source = this.entity
+        .get(Transform)
+        .getWorldPositionInto(this.positionScratch);
       if (anchor !== undefined) {
         const pivot = pivotOffsetFromAnchor(anchor, maxWidth, totalHeight);
         this._container.position.set(

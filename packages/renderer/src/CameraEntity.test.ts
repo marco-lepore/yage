@@ -56,17 +56,43 @@ vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
 }));
 
-import { Transform, Vec2, ErrorBoundaryKey } from "@yagejs/core";
+import { Transform, Vec2, Vec2Buffer, ErrorBoundaryKey } from "@yagejs/core";
 import { CameraEntity } from "./CameraEntity.js";
 import { CameraComponent } from "./CameraComponent.js";
 import { CameraBoundsComponent } from "./CameraBoundsComponent.js";
 import { CameraFollow } from "./CameraFollow.js";
 import { CameraShake } from "./CameraShake.js";
 import { CameraZoom } from "./CameraZoom.js";
+import { ScreenFollow } from "./ScreenFollow.js";
 import { createRendererTestContext } from "./test-helpers.js";
 import { RendererKey } from "./types.js";
 
 describe("CameraEntity", () => {
+  it("reuses projection outputs and roundtrips with modifiers", () => {
+    const { scene } = createRendererTestContext();
+    const cam = scene.spawn(CameraEntity, {
+      position: new Vec2(30, -20),
+      zoom: 2,
+    });
+    cam.rotation = 0.7;
+    cam.modifiers.add({ position: { x: 4, y: -8 }, rotation: 0.2, zoom: 1.5 });
+    const out = new Vec2Buffer();
+    expect(cam.getEffectivePositionInto(out)).toBe(out);
+    expect([out.x, out.y]).toEqual([
+      cam.effectivePosition.x,
+      cam.effectivePosition.y,
+    ]);
+    const expected = cam.worldToScreen(77, -55);
+    expect(cam.worldToScreenInto(out, 77, -55)).toBe(out);
+    expect([out.x, out.y]).toEqual([expected.x, expected.y]);
+    expect(cam.screenToWorldInto(out, out.x, out.y)).toBe(out);
+    expect(out.x).toBeCloseTo(77);
+    expect(out.y).toBeCloseTo(-55);
+    const inverse = cam.screenToWorld(19, 87);
+    cam.screenToWorldInto(out, 19, 87);
+    expect([out.x, out.y]).toEqual([inverse.x, inverse.y]);
+  });
+
   it("spawns without params (no crash on params.position)", () => {
     const { scene } = createRendererTestContext();
     expect(() => scene.spawn(CameraEntity)).not.toThrow();
@@ -367,6 +393,81 @@ describe("CameraEntity", () => {
 });
 
 describe("CameraEntity follow targets", () => {
+  it("projects ScreenFollow through camera modifiers and both parent transforms", () => {
+    const { scene } = createRendererTestContext();
+    const platform = scene.spawn("platform");
+    const platformTransform = platform.add(
+      new Transform({
+        position: { x: 100, y: 50 },
+        rotation: Math.PI / 2,
+        scale: { x: 2, y: 3 },
+      }),
+    );
+    const target = platform.spawnChild("target");
+    const targetTransform = target.add(
+      new Transform({
+        position: { x: 4, y: 5 },
+        rotation: 0.2,
+      }),
+    );
+    const camera = scene.spawn(CameraEntity, {
+      position: new Vec2(30, -20),
+      zoom: 2,
+    });
+    const modifier = camera.modifiers.add({
+      position: { x: 5, y: 8 },
+      rotation: Math.PI / 2,
+      zoom: 1.5,
+    });
+    const panel = scene.spawn("panel");
+    const panelTransform = panel.add(
+      new Transform({
+        position: { x: 17, y: 19 },
+        rotation: Math.PI / 2,
+        scale: { x: 2, y: -3 },
+      }),
+    );
+    const label = panel.spawnChild("label");
+    const labelTransform = label.add(new Transform());
+    const follow = label.add(
+      new ScreenFollow({
+        target,
+        camera,
+        offset: { x: 7, y: -11 },
+        trackRotation: true,
+      }),
+    );
+
+    expect(targetTransform.worldPosition.x).toBeCloseTo(85);
+    expect(targetTransform.worldPosition.y).toBeCloseTo(58);
+    const projected = camera.worldToScreen(85, 58);
+    expect(projected.x).toBeCloseTo(610);
+    expect(projected.y).toBeCloseTo(150);
+    follow.update();
+    const firstPosition = labelTransform.worldPosition;
+    expect(firstPosition.x).toBeCloseTo(617);
+    expect(firstPosition.y).toBeCloseTo(139);
+    expect(labelTransform.position.x).toBeCloseTo(60);
+    expect(labelTransform.position.y).toBeCloseTo(200);
+    expect(labelTransform.worldRotation).toBeCloseTo(Math.PI / 2 + 0.2);
+
+    platformTransform.setPosition(120, 70);
+    platformTransform.setRotation(0);
+    panelTransform.setPosition(7, 10);
+    panelTransform.setRotation(0);
+    modifier.setPosition({ x: -2, y: 4 });
+    modifier.setRotation(0);
+    modifier.setZoom(0.5);
+    follow.update();
+    expect(labelTransform.worldPosition.x).toBeCloseTo(507);
+    expect(labelTransform.worldPosition.y).toBeCloseTo(390);
+    expect(labelTransform.position.x).toBeCloseTo(250);
+    expect(labelTransform.position.y).toBeCloseTo(-380 / 3);
+    expect(labelTransform.worldRotation).toBeCloseTo(0.2);
+    expect(firstPosition.x).toBeCloseTo(617);
+    expect(firstPosition.y).toBeCloseTo(139);
+  });
+
   it("follows a target parented under a moving entity by its world position", () => {
     const { scene } = createRendererTestContext();
     const platform = scene.spawn("platform");

@@ -4,6 +4,7 @@ import {
   filterEntities,
   ErrorBoundaryKey,
   Transform,
+  Vec2Buffer,
 } from "@yagejs/core";
 import type {
   Entity,
@@ -67,6 +68,7 @@ export class ColliderComponent extends Component {
 
   private readonly rb = this.sibling(RigidBodyComponent);
   private readonly transform = this.sibling(Transform);
+  private readonly scaleScratch = new Vec2Buffer();
   private physicsWorld!: PhysicsWorld;
   private errorBoundary: ErrorBoundary | undefined;
   private collisionHandlers: Array<(e: CollisionEvent) => void> = [];
@@ -561,7 +563,7 @@ export class ColliderComponent extends Component {
 
   /** @internal Apply the Transform's world scale before a physics step. */
   _syncScale(): void {
-    const scale = this.transform.worldScale;
+    const scale = this.transform.getWorldScaleInto(this.scaleScratch);
     if (scale.x === this._scaleX && scale.y === this._scaleY) return;
     this._assertFiniteScale(scale.x, scale.y);
 
@@ -623,7 +625,7 @@ export class ColliderComponent extends Component {
   }
 
   private _readInitialScale(): void {
-    const scale = this.transform.worldScale;
+    const scale = this.transform.getWorldScaleInto(this.scaleScratch);
     this._assertFiniteScale(scale.x, scale.y);
     const effectiveParts = this._buildEffectiveParts(
       scale.x,

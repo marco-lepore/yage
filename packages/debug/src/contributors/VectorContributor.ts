@@ -1,4 +1,4 @@
-import { Transform } from "@yagejs/core";
+import { Transform, Vec2Buffer } from "@yagejs/core";
 import type { ErrorBoundary, Vec2Like } from "@yagejs/core";
 import type {
   DebugContributor,
@@ -16,6 +16,7 @@ const HEAD_WIDTH_RATIO = 0.75;
  * off or the `arrows` flag is disabled.
  */
 export class VectorContributor implements DebugContributor {
+  private readonly positionScratch = new Vec2Buffer();
   readonly name = "vectors";
   readonly flags = ["arrows"] as const;
 
@@ -68,7 +69,7 @@ export class VectorContributor implements DebugContributor {
 
       // worldPosition walks the parent chain, so a child entity's arrow sits
       // where the entity is drawn, not where its local offset would put it.
-      const origin = transform.worldPosition;
+      const origin = transform.getWorldPositionInto(this.positionScratch);
       g.position.x = origin.x + entry.originX;
       g.position.y = origin.y + entry.originY;
 

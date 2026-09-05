@@ -1,4 +1,4 @@
-import { Component, Transform, devWarn } from "@yagejs/core";
+import { Component, Transform, Vec2Buffer, devWarn } from "@yagejs/core";
 import type { Entity } from "@yagejs/core";
 import { Container } from "pixi.js";
 import type { LayerSortFn } from "./LayerDef.js";
@@ -162,6 +162,7 @@ export interface SortGroupComponentOptions {
  * unit rather than nesting inside the ancestor's.
  */
 export class SortGroupComponent extends Component {
+  private readonly positionScratch = new Vec2Buffer();
   /** The group's Pixi container. Kept at identity; holds the member visuals. */
   readonly container: DisplayContainer;
   /** Layer this group renders into. */
@@ -224,7 +225,7 @@ export class SortGroupComponent extends Component {
     const proxy = (this._proxy ??= new Container());
     const transform = this.entity.tryGet(Transform);
     if (transform) {
-      const world = transform.worldPosition;
+      const world = transform.getWorldPositionInto(this.positionScratch);
       proxy.position.set(world.x, world.y);
     }
     return sort(proxy);

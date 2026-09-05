@@ -1,4 +1,4 @@
-import { Component, Vec2 } from "@yagejs/core";
+import { Component, Vec2, Vec2Buffer } from "@yagejs/core";
 import { CameraComponent, CAMERA_REFERENCE_DT } from "./CameraComponent.js";
 import type { CameraFollowOptions } from "./CameraComponent.js";
 import { resolveFollowTarget } from "./FollowTarget.js";
@@ -11,6 +11,7 @@ import { assertFiniteNumber } from "./internal/validate.js";
  */
 export class CameraFollow extends Component {
   private readonly cam = this.sibling(CameraComponent);
+  private readonly targetScratch = new Vec2Buffer();
   private target: FollowTarget | null = null;
   private smoothing = 1;
   private offset: Vec2 = Vec2.ZERO;
@@ -43,7 +44,7 @@ export class CameraFollow extends Component {
    */
   snapToTarget(): void {
     const targetPos = this.targetPosition();
-    if (targetPos) this.cam.position = targetPos;
+    if (targetPos) this.cam.position = new Vec2(targetPos.x, targetPos.y);
   }
 
   update(dt: number): void {
@@ -65,7 +66,7 @@ export class CameraFollow extends Component {
 
       if (moveX === 0 && moveY === 0) return;
 
-      const destination = new Vec2(
+      const destination = this.targetScratch.set(
         this.cam.position.x + moveX,
         this.cam.position.y + moveY,
       );
@@ -78,11 +79,11 @@ export class CameraFollow extends Component {
   }
 
   /** Current target world position with the follow offset applied. */
-  private targetPosition(): Vec2 | null {
+  private targetPosition(): Vec2Buffer | null {
     if (!this.target) return null;
-    const pos = resolveFollowTarget(this.target, this);
+    const pos = resolveFollowTarget(this.target, this, this.targetScratch);
     if (!pos) return null;
-    return new Vec2(pos.x + this.offset.x, pos.y + this.offset.y);
+    return pos.set(pos.x + this.offset.x, pos.y + this.offset.y);
   }
 }
 

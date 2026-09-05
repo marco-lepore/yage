@@ -1,5 +1,5 @@
-import { Entity, Transform } from "@yagejs/core";
-import type { Component, Vec2Like } from "@yagejs/core";
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import type { Component, Vec2Like, Vec2Buffer } from "@yagejs/core";
 import { attributed, boundaryFor } from "./internal/attribution.js";
 
 /**
@@ -20,10 +20,11 @@ export type FollowTarget = Entity | Transform | Vec2Like | (() => Vec2Like);
 export function resolveFollowTarget(
   target: FollowTarget,
   owner: Component,
-): Vec2Like | undefined {
+  out: Vec2Buffer,
+): Vec2Buffer | undefined {
   if (typeof target === "function") {
     const name = (owner.entity as Entity | undefined)?.name;
-    return attributed(
+    const position = attributed(
       boundaryFor(owner),
       {
         kind: "Follow target function",
@@ -31,8 +32,10 @@ export function resolveFollowTarget(
       },
       target,
     );
+    return Vec2.copyInto(out, position);
   }
-  if (target instanceof Entity) return target.tryGet(Transform)?.worldPosition;
-  if (target instanceof Transform) return target.worldPosition;
-  return target;
+  if (target instanceof Entity)
+    return target.tryGet(Transform)?.getWorldPositionInto(out);
+  if (target instanceof Transform) return target.getWorldPositionInto(out);
+  return Vec2.copyInto(out, target);
 }

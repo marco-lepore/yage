@@ -61,6 +61,16 @@ Tags are useful for fast filtering without creating empty marker components.
 
 ### Transform inheritance
 
+`Transform` stores mutable position, rotation, and scale. Use scalar methods
+when moving an entity:
+
+```typescript
+const transform = player.get(Transform);
+transform.setPosition(100, 200);      // relative to the parent
+transform.translate(10, 0);          // move in local coordinates
+transform.setWorldPosition(300, 80); // world coordinates, even with a parent
+```
+
 A child entity's `Transform` composes against its parent's: position is
 rotated and scaled by the parent before being added, rotation sums, and
 **scale multiplies through the chain**. `DisplaySystem` reads each
@@ -110,6 +120,41 @@ over" without caring how the entity is parented or scaled:
 ```typescript
 const local = entity.get(Transform).worldToLocal(pointerWorldPosition);
 ```
+
+### Reusing vector results
+
+Use `Vec2` for positions and directions you want to keep or share. Its vector
+operations return immutable values, so adding an offset cannot change a
+position another component holds.
+
+For calculations repeated every frame, `Vec2Buffer` gives you a mutable result
+you can reuse. Create the buffer once, then pass it to methods ending in
+`Into`:
+
+```typescript
+import { Vec2, Vec2Buffer } from "@yagejs/core";
+
+const position = new Vec2Buffer(); // keep this buffer between updates
+transform.getWorldPositionInto(position);
+Vec2.addInto(position, position, { x: 0, y: -20 });
+```
+
+Each `Into` method overwrites and returns the same buffer without creating a
+`Vec2`. The buffer can also be an input, as in the offset calculation above.
+`Vec2` provides `copyInto`, `addInto`, `subInto`, `scaleInto`, `multiplyInto`,
+`normalizeInto`, `lerpInto`, `rotateInto`, `fromAngleInto`, and
+`moveTowardsInto`. A `Vec2Buffer` has writable `x` and `y` coordinates and a
+`set(x, y)` method; an immutable `Vec2` cannot be used as an output.
+
+`Transform` provides `getPositionInto`, `getWorldPositionInto`, `getScaleInto`,
+and `getWorldScaleInto`. A buffer holds the coordinates from that read. Moving
+the transform later does not change the buffer; read again to refresh it.
+
+The ordinary `position`, `worldPosition`, `scale`, and `worldScale` getters
+return immutable snapshots. Repeated reads reuse a snapshot until the
+transform changes, and a snapshot you already hold keeps its original value.
+Scalar writes such as `setPosition`, `setWorldPosition`, and `translate` do
+not create a `Vec2`; an immutable getter creates its snapshot when needed.
 
 ### Destroying an Entity
 

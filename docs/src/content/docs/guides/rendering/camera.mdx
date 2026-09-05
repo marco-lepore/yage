@@ -165,6 +165,25 @@ transform, not any layer's — a layer bound with a ratio below `1` (parallax,
 a dampened-zoom layer) renders under a different transform, so the result
 does not name a point on that layer.
 
+For repeated queries, keep a `Vec2Buffer` and pass it to the corresponding
+`Into` method:
+
+```typescript
+import { Vec2Buffer } from "@yagejs/core";
+
+const point = new Vec2Buffer(); // keep between updates
+camera.screenToWorldInto(point, screenX, screenY);
+camera.worldToScreenInto(point, point.x, point.y);
+camera.getEffectivePositionInto(point);
+```
+
+These methods are available on both `CameraEntity` and `CameraComponent`.
+Each overwrites and returns the same buffer without constructing a `Vec2`.
+The results include active camera modifiers. Screen coordinates use virtual
+viewport pixels, and world coordinates use world pixels. A buffer keeps the
+last query's coordinates until you overwrite it; use the ordinary immutable
+queries for values you want to keep or share.
+
 ### Bounds
 
 Constrain the camera to a region so it never shows areas outside the level:

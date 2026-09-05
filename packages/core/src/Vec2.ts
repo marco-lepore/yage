@@ -1,3 +1,5 @@
+import type { Vec2Buffer } from "./Vec2Buffer.js";
+
 /** Default epsilon for floating-point comparisons. */
 const EPSILON = 1e-6;
 
@@ -7,8 +9,86 @@ export interface Vec2Like {
   readonly y: number;
 }
 
-/** Immutable 2D vector. All operations return new instances. */
+/** Immutable 2D vector. Into statics write to caller-owned buffers. */
 export class Vec2 implements Vec2Like {
+  /** Copy coordinates into caller-owned scratch. Into methods permit input/output aliasing. */
+  static copyInto(out: Vec2Buffer, source: Vec2Like): Vec2Buffer {
+    return out.set(source.x, source.y);
+  }
+
+  static addInto(out: Vec2Buffer, a: Vec2Like, b: Vec2Like): Vec2Buffer {
+    return out.set(a.x + b.x, a.y + b.y);
+  }
+
+  static subInto(out: Vec2Buffer, a: Vec2Like, b: Vec2Like): Vec2Buffer {
+    return out.set(a.x - b.x, a.y - b.y);
+  }
+
+  static scaleInto(
+    out: Vec2Buffer,
+    source: Vec2Like,
+    scalar: number,
+  ): Vec2Buffer {
+    return out.set(source.x * scalar, source.y * scalar);
+  }
+
+  static multiplyInto(out: Vec2Buffer, a: Vec2Like, b: Vec2Like): Vec2Buffer {
+    return out.set(a.x * b.x, a.y * b.y);
+  }
+
+  static normalizeInto(out: Vec2Buffer, source: Vec2Like): Vec2Buffer {
+    const length = Math.sqrt(source.x * source.x + source.y * source.y);
+    if (length < EPSILON) return out.set(0, 0);
+    return out.set(source.x / length, source.y / length);
+  }
+
+  static lerpInto(
+    out: Vec2Buffer,
+    a: Vec2Like,
+    b: Vec2Like,
+    t: number,
+  ): Vec2Buffer {
+    return out.set(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+  }
+
+  static rotateInto(
+    out: Vec2Buffer,
+    source: Vec2Like,
+    radians: number,
+  ): Vec2Buffer {
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    return out.set(
+      source.x * cos - source.y * sin,
+      source.x * sin + source.y * cos,
+    );
+  }
+
+  static fromAngleInto(
+    out: Vec2Buffer,
+    radians: number,
+    length = 1,
+  ): Vec2Buffer {
+    return out.set(Math.cos(radians) * length, Math.sin(radians) * length);
+  }
+
+  static moveTowardsInto(
+    out: Vec2Buffer,
+    current: Vec2Like,
+    target: Vec2Like,
+    maxDelta: number,
+  ): Vec2Buffer {
+    const dx = target.x - current.x;
+    const dy = target.y - current.y;
+    const distanceSq = dx * dx + dy * dy;
+    if (distanceSq < EPSILON * EPSILON) return out.set(target.x, target.y);
+    if (maxDelta <= 0) return out.set(current.x, current.y);
+    const distance = Math.sqrt(distanceSq);
+    if (distance <= maxDelta) return out.set(target.x, target.y);
+    const scale = maxDelta / distance;
+    return out.set(current.x + dx * scale, current.y + dy * scale);
+  }
+
   /** The zero vector (0, 0). */
   static readonly ZERO = new Vec2(0, 0);
   /** The one vector (1, 1). */

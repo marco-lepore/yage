@@ -327,8 +327,10 @@ describe("PhysicsInterpolationSystem", () => {
     const transform = entity.add(new Transform());
     const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
 
-    rb._prevPosition = new Vec2(100, 100);
-    rb._currPosition = new Vec2(200, 200);
+    rb._prevPositionX = 100;
+    rb._prevPositionY = 100;
+    rb._currPositionX = 200;
+    rb._currPositionY = 200;
     rb._prevRotation = 0;
     rb._currRotation = Math.PI;
 
@@ -349,8 +351,10 @@ describe("PhysicsInterpolationSystem", () => {
     const transform = entity.add(new Transform());
     const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
 
-    rb._prevPosition = new Vec2(0, 0);
-    rb._currPosition = new Vec2(100, 200);
+    rb._prevPositionX = 0;
+    rb._prevPositionY = 0;
+    rb._currPositionX = 100;
+    rb._currPositionY = 200;
     rb._prevRotation = 0;
     rb._currRotation = 2;
 
@@ -373,8 +377,10 @@ describe("PhysicsInterpolationSystem", () => {
     const transform = entity.add(new Transform());
     const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
 
-    rb._prevPosition = new Vec2(0, 0);
-    rb._currPosition = new Vec2(100, 200);
+    rb._prevPositionX = 0;
+    rb._prevPositionY = 0;
+    rb._currPositionX = 100;
+    rb._currPositionY = 200;
     rb._prevRotation = 0;
     rb._currRotation = 2;
 
@@ -397,8 +403,10 @@ describe("PhysicsInterpolationSystem", () => {
     const transform = entity.add(new Transform());
     const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
 
-    rb._prevPosition = new Vec2(0, 0);
-    rb._currPosition = new Vec2(100, 0);
+    rb._prevPositionX = 0;
+    rb._prevPositionY = 0;
+    rb._currPositionX = 100;
+    rb._currPositionY = 0;
 
     manager.getContext(scene)!.accumulator = gameLoop.fixedTimestep * 4;
 
@@ -422,8 +430,10 @@ describe("PhysicsInterpolationSystem", () => {
     // to the negative side. A raw lerp would sweep backwards through 0.
     rb._prevRotation = Math.PI - 0.1;
     rb._currRotation = -Math.PI + 0.1;
-    rb._prevPosition = Vec2.ZERO;
-    rb._currPosition = Vec2.ZERO;
+    rb._prevPositionX = 0;
+    rb._prevPositionY = 0;
+    rb._currPositionX = 0;
+    rb._currPositionY = 0;
 
     manager.getContext(scene)!.accumulator = gameLoop.fixedTimestep * 0.5;
 
@@ -443,8 +453,10 @@ describe("PhysicsInterpolationSystem", () => {
 
     rb._prevRotation = 0;
     rb._currRotation = Math.PI;
-    rb._prevPosition = Vec2.ZERO;
-    rb._currPosition = Vec2.ZERO;
+    rb._prevPositionX = 0;
+    rb._prevPositionY = 0;
+    rb._currPositionX = 0;
+    rb._currPositionY = 0;
 
     system.update(0);
 
@@ -461,8 +473,10 @@ describe("PhysicsInterpolationSystem", () => {
     const transform = entity.add(new Transform({ position: new Vec2(50, 50) }));
     const rb = entity.add(new RigidBodyComponent({ type: "static" }));
 
-    rb._prevPosition = new Vec2(0, 0);
-    rb._currPosition = new Vec2(100, 100);
+    rb._prevPositionX = 0;
+    rb._prevPositionY = 0;
+    rb._currPositionX = 100;
+    rb._currPositionY = 100;
 
     system.update(0);
 
@@ -481,8 +495,10 @@ describe("PhysicsInterpolationSystem", () => {
     const transform = entity.add(new Transform({ position: new Vec2(75, 75) }));
     const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
 
-    rb._prevPosition = new Vec2(0, 0);
-    rb._currPosition = new Vec2(200, 200);
+    rb._prevPositionX = 0;
+    rb._prevPositionY = 0;
+    rb._currPositionX = 200;
+    rb._currPositionY = 200;
 
     manager.getContext(scene)!.accumulator = gameLoop.fixedTimestep * 0.5;
 
@@ -506,8 +522,8 @@ describe("PhysicsInterpolationSystem", () => {
 
     system.update(0);
 
-    expect(rb._kinematicTargetPosition.x).toBe(300);
-    expect(rb._kinematicTargetPosition.y).toBe(400);
+    expect(rb._kinematicTargetPositionX).toBe(300);
+    expect(rb._kinematicTargetPositionY).toBe(400);
     expect(rb._kinematicTargetRotation).toBe(1.5);
     // The Transform itself now holds the interpolated pose.
     expect(transform.position.x).toBeCloseTo(75);
@@ -525,9 +541,12 @@ describe("PhysicsInterpolationSystem", () => {
     const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
 
     // A step segment is in flight; the target is ahead of it.
-    rb._prevPosition = new Vec2(80, 0);
-    rb._currPosition = new Vec2(90, 0);
-    rb._kinematicTargetPosition = new Vec2(100, 0);
+    rb._prevPositionX = 80;
+    rb._prevPositionY = 0;
+    rb._currPositionX = 90;
+    rb._currPositionY = 0;
+    rb._kinematicTargetPositionX = 100;
+    rb._kinematicTargetPositionY = 0;
 
     // Two frames with different alphas, no game write in between: the lerp
     // writes a trailing pose into the Transform each time, and the target
@@ -537,7 +556,7 @@ describe("PhysicsInterpolationSystem", () => {
     manager.getContext(scene)!.accumulator = gameLoop.fixedTimestep * 0.75;
     system.update(0);
 
-    expect(rb._kinematicTargetPosition.x).toBe(100);
+    expect(rb._kinematicTargetPositionX).toBe(100);
   });
 
   it("blends each scene by its own accumulator", async () => {
@@ -550,8 +569,10 @@ describe("PhysicsInterpolationSystem", () => {
     const e1 = spawnEntityInScene(scene, "e1");
     const t1 = e1.add(new Transform());
     const rb1 = e1.add(new RigidBodyComponent({ type: "dynamic" }));
-    rb1._prevPosition = new Vec2(0, 0);
-    rb1._currPosition = new Vec2(100, 0);
+    rb1._prevPositionX = 0;
+    rb1._prevPositionY = 0;
+    rb1._currPositionX = 100;
+    rb1._currPositionY = 0;
     manager.getContext(scene)!.accumulator = gameLoop.fixedTimestep * 0.5;
 
     // Scene 2: a full step waiting
@@ -562,8 +583,10 @@ describe("PhysicsInterpolationSystem", () => {
     const e2 = spawnEntityInScene(scene2, "e2");
     const t2 = e2.add(new Transform());
     const rb2 = e2.add(new RigidBodyComponent({ type: "dynamic" }));
-    rb2._prevPosition = new Vec2(0, 0);
-    rb2._currPosition = new Vec2(100, 0);
+    rb2._prevPositionX = 0;
+    rb2._prevPositionY = 0;
+    rb2._currPositionX = 100;
+    rb2._currPositionY = 0;
     manager.getContext(scene2)!.accumulator = gameLoop.fixedTimestep;
 
     system.update(0);
@@ -974,11 +997,11 @@ describe("PhysicsInterpolationSystem", () => {
 
       // Frame 1: the write lands after interpolation ran — not yet captured.
       gameLoop.tick(10);
-      expect(rb._kinematicTargetPosition.x).toBe(0);
+      expect(rb._kinematicTargetPositionX).toBe(0);
 
       // Frame 2: captured; the following steps drive the body there.
       gameLoop.tick(10);
-      expect(rb._kinematicTargetPosition.x).toBe(240);
+      expect(rb._kinematicTargetPositionX).toBe(240);
 
       for (let i = 0; i < 4; i++) gameLoop.tick(10);
       expect(rb.positionX).toBeCloseTo(240, 6);
@@ -1072,9 +1095,9 @@ describe("PhysicsInterpolationSystem", () => {
       // Transform trails the stepped body.
       for (let i = 0; i < 4; i++) gameLoop.tick(10);
 
-      expect(rb.position.x).toBeCloseTo(rb._currPosition.x, 6);
-      expect(rb.positionX).toBeCloseTo(rb._currPosition.x, 6);
-      expect(rb.positionY).toBeCloseTo(rb._currPosition.y, 6);
+      expect(rb.position.x).toBeCloseTo(rb._currPositionX, 6);
+      expect(rb.positionX).toBeCloseTo(rb._currPositionX, 6);
+      expect(rb.positionY).toBeCloseTo(rb._currPositionY, 6);
       expect(rb.rotation).toBeCloseTo(rb._currRotation, 6);
       expect(rb.positionX).toBeGreaterThan(transform.worldPosition.x);
     });

@@ -559,8 +559,10 @@ describe("Integration Tests", () => {
     const transform = entity.add(new Transform());
     const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
 
-    rb._prevPosition = new Vec2(0, 0);
-    rb._currPosition = new Vec2(100, 200);
+    rb._prevPositionX = 0;
+    rb._prevPositionY = 0;
+    rb._currPositionX = 100;
+    rb._currPositionY = 200;
     rb._prevRotation = 0;
     rb._currRotation = Math.PI;
 

@@ -1,4 +1,10 @@
-import { System, Phase, QueryCacheKey, Transform } from "@yagejs/core";
+import {
+  System,
+  Phase,
+  QueryCacheKey,
+  Transform,
+  Vec2Buffer,
+} from "@yagejs/core";
 import type { EngineContext, QueryResult } from "@yagejs/core";
 import { RendererKey } from "@yagejs/renderer";
 import { Direction } from "yoga-layout";
@@ -11,6 +17,7 @@ import { setViewport } from "./yoga-helpers.js";
  * Runs in LateUpdate (after game logic, before render).
  */
 export class UILayoutSystem extends System {
+  private readonly positionScratch = new Vec2Buffer();
   readonly phase = Phase.LateUpdate;
   readonly priority = 200;
 
@@ -61,7 +68,9 @@ export class UILayoutSystem extends System {
       const anchor = surface._anchor;
 
       if (surface._positioning === "transform") {
-        const source = entity.get(Transform).worldPosition;
+        const source = entity
+          .get(Transform)
+          .getWorldPositionInto(this.positionScratch);
         if (anchor !== undefined) {
           const pivot = pivotOffsetFromAnchor(anchor, pw, ph);
           surface.container.position.set(

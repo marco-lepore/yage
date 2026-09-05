@@ -1,5 +1,5 @@
 import { Container, Texture } from "pixi.js";
-import { createMockScene, Transform, Vec2 } from "@yagejs/core";
+import { createMockScene, Transform, Vec2, Vec2Buffer } from "@yagejs/core";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 import type * as RendererModule from "@yagejs/renderer";
 import type {
@@ -79,13 +79,17 @@ describe("OverlayLightingRenderer", () => {
     });
     const camera = {
       zoom: 2,
-      worldToScreen: vi.fn(() => new Vec2(44, 55)),
+      worldToScreenInto: vi.fn((out: Vec2Buffer) => out.set(44, 55)),
     } as unknown as CameraComponent;
     const frame = { camera, width: 800, height: 600 };
 
     backend.render(frame);
 
-    expect(camera.worldToScreen).toHaveBeenCalledWith(120, 80);
+    expect(camera.worldToScreenInto).toHaveBeenCalledWith(
+      expect.any(Vec2Buffer),
+      120,
+      80,
+    );
     expect(offscreenSource?.children).toHaveLength(2);
     const lightGraphic = offscreenSource?.children[1];
     expect(lightGraphic?.position.x).toBe(44);

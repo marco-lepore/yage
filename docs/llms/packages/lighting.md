@@ -146,6 +146,21 @@ transform. Store durable occluder settings in the game's explicit save root.
 The built-in overlay does not cast shadows, and occluders do not affect
 `levelAt()`. Custom renderers can read `LightingWorld.occluders`.
 
+Both `LightSource` and `LightOccluder` expose world coordinates as an immutable
+`position: Vec2` and as `getPositionInto(out: Vec2Buffer): Vec2Buffer`.
+For repeated reads, reuse a buffer from `@yagejs/core`:
+
+```ts
+const position = new Vec2Buffer();
+light.getPositionInto(position);
+occluder.getPositionInto(position);
+```
+
+`getPositionInto` overwrites and returns the supplied buffer without
+constructing a `Vec2`. The buffer holds world pixels, including parent
+transforms, and stays unchanged until overwritten. Use `position` for an
+immutable value you retain or share.
+
 ## Custom renderer
 
 `LightingConfig.renderer` accepts a per-scene `LightingRendererFactory`:

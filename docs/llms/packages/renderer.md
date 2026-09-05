@@ -681,6 +681,22 @@ not restore a snapshot or affect other modifiers. Modifiers are transient.
 
 `screenToWorld` / `worldToScreen` use the camera's own transform, not any layer's. A layer bound with a ratio below `1` (parallax, dampened zoom) renders under a different transform, so the result does not name a point on that layer. `screenToWorld`'s result is undefined at a zoom of `0`.
 
+`CameraComponent` and `CameraEntity` also accept caller-owned `Vec2Buffer`
+outputs from `@yagejs/core`:
+
+```ts
+camera.getEffectivePositionInto(out: Vec2Buffer): Vec2Buffer
+camera.screenToWorldInto(out: Vec2Buffer, screenX: number, screenY: number): Vec2Buffer
+camera.worldToScreenInto(out: Vec2Buffer, worldX: number, worldY: number): Vec2Buffer
+```
+
+Each method overwrites and returns `out` without constructing a `Vec2`.
+Create the buffer once and reuse it for repeated queries. The coordinates
+match the immutable queries, including active modifiers. Screen coordinates
+are virtual viewport pixels; world coordinates are world pixels. A buffer
+does not follow camera changes; query again to refresh it. Use the immutable
+queries for values you retain or share.
+
 `shake(intensity, duration)` measures `intensity` in **world pixels per axis**, so the on-screen displacement scales with zoom — the same intensity moves twice as far at zoom 2. `CameraFollowOptions.offset` and `deadzone` are world pixels too. `smoothing: 0` never moves the camera, so the follow appears frozen.
 
 `follow(target)` takes a `FollowTarget`: an `Entity`, a `Transform`, a world point, or a function returning one. `Entity` and `Transform` are read through `worldPosition`, so a target parented under a moving platform tracks where it actually is. `smoothing` must be finite and `>= 0`, `zoomTo`'s target finite and `> 0`, and a `fitTo` rect's `width`/`height` finite and `> 0` — each throws at the call naming the offending value.

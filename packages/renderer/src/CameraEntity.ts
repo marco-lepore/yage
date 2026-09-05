@@ -1,5 +1,5 @@
 import { Entity, Vec2 } from "@yagejs/core";
-import type { Vec2Like, EasingFunction } from "@yagejs/core";
+import type { Vec2Like, Vec2Buffer, EasingFunction } from "@yagejs/core";
 import { CameraComponent } from "./CameraComponent.js";
 import type {
   CameraBounds,
@@ -229,6 +229,26 @@ export class CameraEntity extends Entity {
 
   screenToWorld(screenX: number, screenY: number): Vec2 {
     return this.cam.screenToWorld(screenX, screenY);
+  }
+
+  getEffectivePositionInto(out: Vec2Buffer): Vec2Buffer {
+    return this.cam.getEffectivePositionInto(out);
+  }
+
+  screenToWorldInto(
+    out: Vec2Buffer,
+    screenX: number,
+    screenY: number,
+  ): Vec2Buffer {
+    return this.cam.screenToWorldInto(out, screenX, screenY);
+  }
+
+  worldToScreenInto(
+    out: Vec2Buffer,
+    worldX: number,
+    worldY: number,
+  ): Vec2Buffer {
+    return this.cam.worldToScreenInto(out, worldX, worldY);
   }
 
   worldToScreen(worldX: number, worldY: number): Vec2 {

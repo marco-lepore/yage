@@ -61,11 +61,13 @@ Methods:
 - `setVelocity(v: Vec2Like)` — set linear velocity (px/s). Preferred over impulse.
 - `setVelocityX(vx)` / `setVelocityY(vy)` — set single axis
 - `getVelocity(): Vec2` — read velocity (px/s), allocates a `Vec2`
+- `getVelocityInto(out: Vec2Buffer): Vec2Buffer` — read both velocity coordinates (px/s) into the caller's buffer with one Rapier read and no `Vec2` construction
 - `velocityX` / `velocityY` — scalar reads (px/s) that skip the `Vec2` allocation; reading both calls into Rapier twice
 - `speed` / `speedSquared` — velocity magnitude (px/s) / squared magnitude, no `Vec2` allocation
 - `applyImpulse(v: Vec2Like)` — instant momentum change
 - `applyForce(v: Vec2Like)` — continuous force
 - `position: Vec2` — read the simulated position (px), allocates a `Vec2`
+- `getPositionInto(out: Vec2Buffer): Vec2Buffer` — read both simulated position coordinates (px) into the caller's buffer with one Rapier read and no `Vec2` construction
 - `positionX` / `positionY` — scalar reads (px) that skip the `Vec2` allocation; reading both calls into Rapier twice
 - `rotation: number` — read the simulated rotation (radians)
 - `setPosition(x, y)` — teleport any body type: no interpolation, the drawn pose jumps. A static body's `Transform` moves with it. Writing the `Transform` of a kinematic body instead moves it there smoothly over one step.
@@ -87,6 +89,24 @@ A dynamic or kinematic body has two positions, and they differ within a frame:
 - `rb.position` / `rb.positionX` / `rb.positionY` / `rb.rotation` — the exact simulated pose, as of the last completed fixed step. Use it when a number must match the simulation: distance thresholds, snapping a body to a grid, saving a checkpoint.
 
 Interpolation runs at the start of `Update`, so the `Transform` a component's `update(dt)` reads is the one that gets drawn that frame. Raycasts, collision events, and other physics queries always report exact poses — they run inside the simulation, not against the `Transform`.
+
+For repeated reads, create `Vec2Buffer` instances from `@yagejs/core` once:
+
+```ts
+const velocity = new Vec2Buffer();
+const simulated = new Vec2Buffer();
+const drawn = new Vec2Buffer();
+rb.getVelocityInto(velocity); // px/s
+rb.getPositionInto(simulated); // exact simulated world pixels
+entity.get(Transform).getWorldPositionInto(drawn); // interpolated world pixels
+```
+
+Each `Into` method overwrites and returns the supplied buffer. A later body or
+transform change does not update the buffer; call the getter again to refresh
+it. Keep `getVelocity()` and `position` for immutable values you retain or
+share. Without a live body, `getVelocityInto` writes `(0, 0)` and
+`getPositionInto` reads the entity's `Transform` world position, matching the
+immutable getters.
 
 ### Writing positions
 

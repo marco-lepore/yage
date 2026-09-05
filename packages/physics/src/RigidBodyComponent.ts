@@ -1,5 +1,11 @@
 import RAPIER from "@dimforge/rapier2d";
-import { Component, MathUtils, Transform, Vec2 } from "@yagejs/core";
+import {
+  Component,
+  MathUtils,
+  Transform,
+  Vec2,
+  Vec2Buffer,
+} from "@yagejs/core";
 import type { Vec2Like } from "@yagejs/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import { PhysicsWorldKey } from "./types.js";
@@ -42,15 +48,21 @@ export class RigidBodyComponent extends Component {
   _bodyHandle = -1;
 
   /** @internal Previous position for interpolation. */
-  _prevPosition: Vec2 = Vec2.ZERO;
+  _prevPositionX = 0;
+  /** @internal */
+  _prevPositionY = 0;
   /** @internal Previous rotation for interpolation. */
   _prevRotation = 0;
   /** @internal Current authoritative position (post physics step). */
-  _currPosition: Vec2 = Vec2.ZERO;
+  _currPositionX = 0;
+  /** @internal */
+  _currPositionY = 0;
   /** @internal Current authoritative rotation (post physics step). */
   _currRotation = 0;
   /** @internal Position the next step drives a kinematic body toward. */
-  _kinematicTargetPosition: Vec2 = Vec2.ZERO;
+  _kinematicTargetPositionX = 0;
+  /** @internal */
+  _kinematicTargetPositionY = 0;
   /** @internal Rotation the next step drives a kinematic body toward. */
   _kinematicTargetRotation = 0;
   /**
@@ -59,13 +71,16 @@ export class RigidBodyComponent extends Component {
    * for kinematic bodies; for dynamic bodies it is seeded on disable, so a
    * Transform write while dormant reads as pending on enable.
    */
-  _lastWrittenPosition: Vec2 = Vec2.ZERO;
+  _lastWrittenPositionX = 0;
+  /** @internal */
+  _lastWrittenPositionY = 0;
   /** @internal Rotation physics last wrote to the Transform. */
   _lastWrittenRotation = 0;
   private _type: BodyType;
   private readonly config: RigidBodyConfig;
   private readonly transform = this.sibling(Transform);
   private physicsWorld!: PhysicsWorld;
+  private readonly positionScratch = new Vec2Buffer();
 
   constructor(config: RigidBodyConfig) {
     super();
@@ -85,30 +100,36 @@ export class RigidBodyComponent extends Component {
     this._bodyHandle = this.physicsWorld.createBody(this.entity, this.config);
 
     // Set initial position from Transform (use world coords for Rapier)
+    const position = this.transform.getWorldPositionInto(this.positionScratch);
+    const rotation = this.transform.worldRotation;
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (body) {
       body.setTranslation(
         {
-          x: this.physicsWorld.toMeters(this.transform.worldPosition.x),
-          y: this.physicsWorld.toMeters(this.transform.worldPosition.y),
+          x: this.physicsWorld.toMeters(position.x),
+          y: this.physicsWorld.toMeters(position.y),
         },
         true,
       );
-      body.setRotation(this.transform.worldRotation, true);
+      body.setRotation(rotation, true);
     }
 
-    this._prevPosition = this.transform.worldPosition;
-    this._currPosition = this.transform.worldPosition;
-    this._prevRotation = this.transform.worldRotation;
-    this._currRotation = this.transform.worldRotation;
-    this._kinematicTargetPosition = this.transform.worldPosition;
-    this._kinematicTargetRotation = this.transform.worldRotation;
+    this._prevPositionX = position.x;
+    this._prevPositionY = position.y;
+    this._currPositionX = position.x;
+    this._currPositionY = position.y;
+    this._prevRotation = rotation;
+    this._currRotation = rotation;
+    this._kinematicTargetPositionX = position.x;
+    this._kinematicTargetPositionY = position.y;
+    this._kinematicTargetRotation = rotation;
     // Seeding the last-written pose too makes the spawn Transform read as
     // "no pending game write": a setPosition teleport issued before the
     // first interpolation pass would otherwise lose its target to a capture
     // of the stale spawn pose.
-    this._lastWrittenPosition = this.transform.worldPosition;
-    this._lastWrittenRotation = this.transform.worldRotation;
+    this._lastWrittenPositionX = position.x;
+    this._lastWrittenPositionY = position.y;
+    this._lastWrittenRotation = rotation;
 
     // A component is never effectively enabled during `onAdd` — `onEnable`
     // runs right after, and only for an active entity. Rapier creates a body
@@ -131,7 +152,9 @@ export class RigidBodyComponent extends Component {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return;
     if (this._type === "dynamic") {
-      this._lastWrittenPosition = this.transform.worldPosition;
+      this.transform.getWorldPositionInto(this.positionScratch);
+      this._lastWrittenPositionX = this.positionScratch.x;
+      this._lastWrittenPositionY = this.positionScratch.y;
       this._lastWrittenRotation = this.transform.worldRotation;
     }
     this.physicsWorld._detachJointsForBody(this._bodyHandle);
@@ -160,7 +183,9 @@ export class RigidBodyComponent extends Component {
     // reads its Transform.
     if (this._type !== "static") {
       if (this._hasPendingTargetPosition()) {
-        const target = this.transform.worldPosition;
+        const target = this.transform.getWorldPositionInto(
+          this.positionScratch,
+        );
         body.setTranslation(
           {
             x: this.physicsWorld.toMeters(target.x),
@@ -168,8 +193,10 @@ export class RigidBodyComponent extends Component {
           },
           true,
         );
-        this._kinematicTargetPosition = target;
-        this._lastWrittenPosition = target;
+        this._kinematicTargetPositionX = target.x;
+        this._kinematicTargetPositionY = target.y;
+        this._lastWrittenPositionX = target.x;
+        this._lastWrittenPositionY = target.y;
       }
       if (this._hasPendingTargetRotation()) {
         const target = this.transform.worldRotation;
@@ -180,12 +207,14 @@ export class RigidBodyComponent extends Component {
     }
 
     const translation = body.translation();
-    const pos = new Vec2(
+    const pos = this.positionScratch.set(
       this.physicsWorld.toPixels(translation.x),
       this.physicsWorld.toPixels(translation.y),
     );
-    this._prevPosition = pos;
-    this._currPosition = pos;
+    this._prevPositionX = pos.x;
+    this._prevPositionY = pos.y;
+    this._currPositionX = pos.x;
+    this._currPositionY = pos.y;
     this._prevRotation = body.rotation();
     this._currRotation = body.rotation();
   }
@@ -238,14 +267,18 @@ export class RigidBodyComponent extends Component {
 
   /** Set only the X component of velocity (px/s), preserving Y. */
   setVelocityX(vx: number): void {
-    const vel = this.getVelocity();
-    this.setVelocity({ x: vx, y: vel.y });
+    const body = this.physicsWorld.getBody(this._bodyHandle);
+    if (!body) return;
+    const velocity = body.linvel();
+    body.setLinvel({ x: this.physicsWorld.toMeters(vx), y: velocity.y }, true);
   }
 
   /** Set only the Y component of velocity (px/s), preserving X. */
   setVelocityY(vy: number): void {
-    const vel = this.getVelocity();
-    this.setVelocity({ x: vel.x, y: vy });
+    const body = this.physicsWorld.getBody(this._bodyHandle);
+    if (!body) return;
+    const velocity = body.linvel();
+    body.setLinvel({ x: velocity.x, y: this.physicsWorld.toMeters(vy) }, true);
   }
 
   /** Get linear velocity in pixels/s. */
@@ -259,12 +292,22 @@ export class RigidBodyComponent extends Component {
     );
   }
 
+  /** Copy linear velocity in pixels/s into caller-owned scratch. */
+  getVelocityInto(out: Vec2Buffer): Vec2Buffer {
+    const body = this.physicsWorld.getBody(this._bodyHandle);
+    if (!body) return out.set(0, 0);
+    const velocity = body.linvel();
+    return out.set(
+      this.physicsWorld.toPixels(velocity.x),
+      this.physicsWorld.toPixels(velocity.y),
+    );
+  }
+
   /**
    * X component of linear velocity in pixels/s. Avoids the `Vec2`
    * allocation of `getVelocity()` — prefer this and `velocityY` on a
    * per-frame read path. Reading both components calls into Rapier twice;
-   * for both as numbers without the double call, `getVelocity()` is still
-   * the option.
+   * use `getVelocityInto()` to copy both coordinates with one read.
    */
   get velocityX(): number {
     const body = this.physicsWorld.getBody(this._bodyHandle);
@@ -443,26 +486,31 @@ export class RigidBodyComponent extends Component {
       body.recomputeMassPropertiesFromColliders();
     }
     const translation = body.translation();
-    const pos = new Vec2(
+    const pos = this.positionScratch.set(
       this.physicsWorld.toPixels(translation.x),
       this.physicsWorld.toPixels(translation.y),
     );
     const rot = body.rotation();
-    this._prevPosition = pos;
-    this._currPosition = pos;
+    this._prevPositionX = pos.x;
+    this._prevPositionY = pos.y;
+    this._currPositionX = pos.x;
+    this._currPositionY = pos.y;
     this._prevRotation = rot;
     this._currRotation = rot;
     if (type === "kinematic") {
       // The current Transform reads as "no pending write", so the next
       // post-step snaps it to the exact pose instead of driving the body
       // toward the interpolated one.
-      this._kinematicTargetPosition = pos;
+      this._kinematicTargetPositionX = pos.x;
+      this._kinematicTargetPositionY = pos.y;
       this._kinematicTargetRotation = rot;
-      this._lastWrittenPosition = this.transform.worldPosition;
+      this.transform.getWorldPositionInto(this.positionScratch);
+      this._lastWrittenPositionX = this.positionScratch.x;
+      this._lastWrittenPositionY = this.positionScratch.y;
       this._lastWrittenRotation = this.transform.worldRotation;
     } else if (type === "static") {
       // No system writes a static body's Transform.
-      this.transform.worldPosition = pos;
+      this.transform.setWorldPosition(pos.x, pos.y);
       if (this.syncRotation) this.transform.worldRotation = rot;
     }
   }
@@ -485,6 +533,17 @@ export class RigidBodyComponent extends Component {
     );
   }
 
+  /** Copy the exact simulated position in pixels into caller-owned scratch. */
+  getPositionInto(out: Vec2Buffer): Vec2Buffer {
+    const body = this.physicsWorld.getBody(this._bodyHandle);
+    if (!body) return this.transform.getWorldPositionInto(out);
+    const position = body.translation();
+    return out.set(
+      this.physicsWorld.toPixels(position.x),
+      this.physicsWorld.toPixels(position.y),
+    );
+  }
+
   /**
    * X component of the exact simulated position in pixels. Avoids the `Vec2`
    * allocation of `position` — prefer this and `positionY` on a per-frame
@@ -492,7 +551,8 @@ export class RigidBodyComponent extends Component {
    */
   get positionX(): number {
     const body = this.physicsWorld.getBody(this._bodyHandle);
-    if (!body) return this.transform.worldPosition.x;
+    if (!body)
+      return this.transform.getWorldPositionInto(this.positionScratch).x;
     return this.physicsWorld.toPixels(body.translation().x);
   }
 
@@ -502,7 +562,8 @@ export class RigidBodyComponent extends Component {
    */
   get positionY(): number {
     const body = this.physicsWorld.getBody(this._bodyHandle);
-    if (!body) return this.transform.worldPosition.y;
+    if (!body)
+      return this.transform.getWorldPositionInto(this.positionScratch).y;
     return this.physicsWorld.toPixels(body.translation().y);
   }
 
@@ -536,18 +597,23 @@ export class RigidBodyComponent extends Component {
       true,
     );
     this.physicsWorld._markQueriesStale();
-    const pos = new Vec2(x, y);
-    this._prevPosition = pos;
-    this._currPosition = pos;
-    if (this._type === "static") this.transform.worldPosition = pos;
+    const pos = this.positionScratch.set(x, y);
+    this._prevPositionX = pos.x;
+    this._prevPositionY = pos.y;
+    this._currPositionX = pos.x;
+    this._currPositionY = pos.y;
+    if (this._type === "static") this.transform.setWorldPosition(pos.x, pos.y);
     // Without this, the step after a kinematic teleport would drive the body
     // back toward the stale pre-teleport target.
-    this._kinematicTargetPosition = pos;
+    this._kinematicTargetPositionX = pos.x;
+    this._kinematicTargetPositionY = pos.y;
     // The teleport also supersedes any Transform write the capture has not
     // consumed yet — marking the current pose as already written keeps that
     // write from becoming the next step's target and pulling the body off
     // the teleport destination.
-    this._lastWrittenPosition = this.transform.worldPosition;
+    this.transform.getWorldPositionInto(this.positionScratch);
+    this._lastWrittenPositionX = this.positionScratch.x;
+    this._lastWrittenPositionY = this.positionScratch.y;
   }
 
   /**
@@ -576,10 +642,10 @@ export class RigidBodyComponent extends Component {
    * and the write is waiting to become the kinematic step target.
    */
   _hasPendingTargetPosition(): boolean {
-    const pos = this.transform.worldPosition;
+    const pos = this.transform.getWorldPositionInto(this.positionScratch);
     return (
-      Math.abs(pos.x - this._lastWrittenPosition.x) > POSE_EPSILON ||
-      Math.abs(pos.y - this._lastWrittenPosition.y) > POSE_EPSILON
+      Math.abs(pos.x - this._lastWrittenPositionX) > POSE_EPSILON ||
+      Math.abs(pos.y - this._lastWrittenPositionY) > POSE_EPSILON
     );
   }
 
@@ -608,7 +674,9 @@ export class RigidBodyComponent extends Component {
    */
   _capturePendingTarget(): void {
     if (this._hasPendingTargetPosition()) {
-      this._kinematicTargetPosition = this.transform.worldPosition;
+      this.transform.getWorldPositionInto(this.positionScratch);
+      this._kinematicTargetPositionX = this.positionScratch.x;
+      this._kinematicTargetPositionY = this.positionScratch.y;
     }
     if (this._hasPendingTargetRotation()) {
       this._kinematicTargetRotation = this.transform.worldRotation;
