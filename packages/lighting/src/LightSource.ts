@@ -1,5 +1,5 @@
 import { Component, Transform } from "@yagejs/core";
-import type { Vec2 } from "@yagejs/core";
+import type { Vec2, Vec2Buffer } from "@yagejs/core";
 import type { LightingWorld } from "./LightingWorld.js";
 import { LightingWorldKey } from "./types.js";
 import { assertColor, assertPositive, assertUnit } from "./validation.js";
@@ -44,6 +44,11 @@ export class LightSource extends Component {
   /** Current world-space centre. */
   get position(): Vec2 {
     return this.transform.worldPosition;
+  }
+
+  /** Copy world coordinates into caller-owned scratch. */
+  getPositionInto(out: Vec2Buffer): Vec2Buffer {
+    return this.transform.getWorldPositionInto(out);
   }
 
   /** Radius in world pixels. */

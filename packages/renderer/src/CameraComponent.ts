@@ -1,4 +1,4 @@
-import { Component, Vec2 } from "@yagejs/core";
+import { Component, Vec2, Vec2Buffer } from "@yagejs/core";
 import type { Vec2Like, EasingFunction } from "@yagejs/core";
 import { RendererKey } from "./types.js";
 import type { SceneRenderTree } from "./SceneRenderTree.js";
@@ -98,6 +98,7 @@ export const CAMERA_REFERENCE_DT = 1 / 60;
  * or by querying entities with this component.
  */
 export class CameraComponent extends Component {
+  private readonly projectionScratch = new Vec2Buffer();
   position: Vec2;
   zoom: number;
   rotation: number;
@@ -128,7 +129,13 @@ export class CameraComponent extends Component {
 
   /** Effective position including every active camera modifier. */
   get effectivePosition(): Vec2 {
-    return this.position.add(this.modifiers.positionOffset);
+    const position = this.getEffectivePositionInto(this.projectionScratch);
+    return new Vec2(position.x, position.y);
+  }
+
+  /** Copy the position including active modifiers into caller-owned scratch. */
+  getEffectivePositionInto(out: Vec2Buffer): Vec2Buffer {
+    return Vec2.addInto(out, this.position, this.modifiers.positionOffset);
   }
 
   /** Effective rotation including every active camera modifier. */
@@ -193,16 +200,28 @@ export class CameraComponent extends Component {
    * The result is undefined for a zoom of `0` or a non-finite camera value.
    */
   screenToWorld(screenX: number, screenY: number): Vec2 {
-    const pos = this.effectivePosition;
+    const position = this.screenToWorldInto(
+      this.projectionScratch,
+      screenX,
+      screenY,
+    );
+    return new Vec2(position.x, position.y);
+  }
+
+  /** Copy a screen-to-world projection into caller-owned scratch. */
+  screenToWorldInto(
+    out: Vec2Buffer,
+    screenX: number,
+    screenY: number,
+  ): Vec2Buffer {
+    this.getEffectivePositionInto(out);
     const zoom = this.effectiveZoom;
     const rotation = this.effectiveRotation;
-    const offset = new Vec2(
-      screenX - this.viewportWidth / 2,
-      screenY - this.viewportHeight / 2,
-    )
-      .scale(1 / zoom)
-      .rotate(rotation);
-    return pos.add(offset);
+    const x = (screenX - this.viewportWidth / 2) * (1 / zoom);
+    const y = (screenY - this.viewportHeight / 2) * (1 / zoom);
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    return out.set(out.x + (x * cos - y * sin), out.y + (x * sin + y * cos));
   }
 
   /**
@@ -213,15 +232,30 @@ export class CameraComponent extends Component {
    * drawn somewhere else on screen than this result says.
    */
   worldToScreen(worldX: number, worldY: number): Vec2 {
-    const pos = this.effectivePosition;
+    const position = this.worldToScreenInto(
+      this.projectionScratch,
+      worldX,
+      worldY,
+    );
+    return new Vec2(position.x, position.y);
+  }
+
+  /** Copy a world-to-screen projection into caller-owned scratch. */
+  worldToScreenInto(
+    out: Vec2Buffer,
+    worldX: number,
+    worldY: number,
+  ): Vec2Buffer {
+    this.getEffectivePositionInto(out);
     const zoom = this.effectiveZoom;
     const rotation = this.effectiveRotation;
-    const offset = new Vec2(worldX - pos.x, worldY - pos.y)
-      .rotate(-rotation)
-      .scale(zoom);
-    return new Vec2(
-      offset.x + this.viewportWidth / 2,
-      offset.y + this.viewportHeight / 2,
+    const x = worldX - out.x;
+    const y = worldY - out.y;
+    const cos = Math.cos(-rotation);
+    const sin = Math.sin(-rotation);
+    return out.set(
+      (x * cos - y * sin) * zoom + this.viewportWidth / 2,
+      (x * sin + y * cos) * zoom + this.viewportHeight / 2,
     );
   }
 

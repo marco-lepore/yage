@@ -76,9 +76,15 @@ export class PhysicsInterpolationSystem extends System {
           rb._capturePendingTarget();
         }
 
-        const position = rb._prevPosition.lerp(rb._currPosition, alpha);
-        transform.worldPosition = position;
-        if (kinematic) rb._lastWrittenPosition = position;
+        const x =
+          rb._prevPositionX + (rb._currPositionX - rb._prevPositionX) * alpha;
+        const y =
+          rb._prevPositionY + (rb._currPositionY - rb._prevPositionY) * alpha;
+        transform.setWorldPosition(x, y);
+        if (kinematic) {
+          rb._lastWrittenPositionX = x;
+          rb._lastWrittenPositionY = y;
+        }
         if (rb.syncRotation) {
           // Shortest arc: Rapier reports rotations normalized to (-π, π], so
           // a spinning body crossing the boundary would otherwise draw a

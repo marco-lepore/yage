@@ -2,6 +2,7 @@ import {
   Component,
   RandomKey,
   Transform,
+  Vec2Buffer,
   type RandomService,
 } from "@yagejs/core";
 import { SceneRenderTreeKey, resolveTextureInput } from "@yagejs/renderer";
@@ -63,6 +64,7 @@ export interface ParticleEmissionHandle {
  * key a layer sort such as `ySort` reads.
  */
 export class ParticleEmitterComponent extends Component {
+  private readonly positionScratch = new Vec2Buffer();
   readonly container: ParticleContainer;
   /** Container visibility to restore on enable, so a hand-set hide survives. */
   private _visibleWhenActive = true;
@@ -195,7 +197,9 @@ export class ParticleEmitterComponent extends Component {
     // written against a stale origin. A Transform-less emitter keeps the
     // container at (0, 0); its particles never move or expire, because
     // nothing ticks it.
-    const origin = this.entity?.tryGet(Transform)?.worldPosition;
+    const origin = this.entity
+      ?.tryGet(Transform)
+      ?.getWorldPositionInto(this.positionScratch);
     if (origin) this._syncContainer(origin.x, origin.y);
     const { x: originX, y: originY } = this.container.position;
     const x = worldX === undefined ? 0 : worldX - originX;

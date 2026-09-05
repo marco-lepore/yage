@@ -2,6 +2,7 @@ import {
   System,
   Phase,
   Transform,
+  Vec2Buffer,
   QueryCacheKey,
   ErrorBoundaryKey,
 } from "@yagejs/core";
@@ -30,6 +31,7 @@ import { syncCameraTransform } from "./cameraTransform.js";
  * stay at identity (screen-space behavior).
  */
 export class DisplaySystem extends System {
+  private readonly transformScratch = new Vec2Buffer();
   readonly phase = Phase.Render;
   readonly priority = 0;
 
@@ -54,9 +56,19 @@ export class DisplaySystem extends System {
     //    assignable component is synced, not just the first.
     for (const entity of this.visualQuery) {
       const transform = entity.get(Transform);
+      const position = transform.getWorldPositionInto(this.transformScratch);
+      const x = position.x;
+      const y = position.y;
+      const rotation = transform.worldRotation;
+      const scale = transform.getWorldScaleInto(this.transformScratch);
+      const scaleX = scale.x;
+      const scaleY = scale.y;
       for (const visual of entity.getAll(VisualComponent)) {
         if (!visual.effectiveEnabled) continue;
-        this.syncDisplayObject(transform, visual.renderObject as Container);
+        const displayObject = visual.renderObject as Container;
+        displayObject.position.set(x, y);
+        displayObject.rotation = rotation;
+        displayObject.scale.set(scaleX, scaleY);
       }
     }
 
@@ -206,16 +218,5 @@ export class DisplaySystem extends System {
         }
       }
     }
-  }
-
-  private syncDisplayObject(
-    transform: Transform,
-    displayObject: Container,
-  ): void {
-    displayObject.position.x = transform.worldPosition.x;
-    displayObject.position.y = transform.worldPosition.y;
-    displayObject.rotation = transform.worldRotation;
-    displayObject.scale.x = transform.worldScale.x;
-    displayObject.scale.y = transform.worldScale.y;
   }
 }

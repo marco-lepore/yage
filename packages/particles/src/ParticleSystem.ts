@@ -2,6 +2,7 @@ import {
   System,
   Phase,
   Transform,
+  Vec2Buffer,
   QueryCacheKey,
   SceneTimeKey,
 } from "@yagejs/core";
@@ -16,6 +17,7 @@ import { ParticleEmitterComponent } from "./ParticleEmitterComponent.js";
  * frame.
  */
 export class ParticleSystem extends System {
+  private readonly positionScratch = new Vec2Buffer();
   readonly phase = Phase.LateUpdate;
   readonly priority = 0;
 
@@ -40,7 +42,9 @@ export class ParticleSystem extends System {
       if (!emitter.enabled) continue;
       // World position, so parented emitters spawn where they are drawn: the
       // emitter's container follows it and particles are local to that.
-      const pos = entity.get(Transform).worldPosition;
+      const pos = entity
+        .get(Transform)
+        .getWorldPositionInto(this.positionScratch);
       emitter._update(dt * sceneTimeScale * entity.timeScale, pos.x, pos.y);
     }
   }

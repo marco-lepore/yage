@@ -208,3 +208,21 @@ YAGE calls the factory once for each entered scene and calls `destroy()` when
 that scene exits. Each source contains renderer-neutral light data, so a
 custom renderer can draw visibility polygons, material lighting, or another
 visual treatment without changing game entities.
+
+Both `LightSource` and `LightOccluder` expose an immutable `position` in world
+pixels. For coordinate reads inside a render loop, keep a `Vec2Buffer` and
+reuse it:
+
+```typescript
+import { Vec2Buffer } from "@yagejs/core";
+
+const position = new Vec2Buffer(); // keep between render calls
+light.getPositionInto(position);
+occluder.getPositionInto(position);
+```
+
+Each `getPositionInto` call overwrites and returns the same buffer without
+constructing a `Vec2`. The coordinates include parent transforms. Moving a
+light or occluder later does not change the buffer; call the getter again to
+refresh it. Keep the ordinary `position` getter for values you retain or
+share.

@@ -1,3 +1,4 @@
+import { Vec2Buffer } from "@yagejs/core";
 import { Container, Graphics, Sprite } from "pixi.js";
 import type { FillGradient } from "pixi.js";
 import { SceneRenderTreeKey, radialGradient } from "@yagejs/renderer";
@@ -44,6 +45,7 @@ interface SourceVisual {
  * the world for custom renderers but do not cast shadows in this renderer.
  */
 export class OverlayLightingRenderer implements LightingRenderer {
+  private readonly positionScratch = new Vec2Buffer();
   private readonly world;
   private readonly source = new Container();
   private readonly ambient = new Graphics();
@@ -179,9 +181,9 @@ export class OverlayLightingRenderer implements LightingRenderer {
     const camera = frame.camera;
     const scale = Math.abs(camera?.zoom ?? 1);
     for (const source of this.world.sources) {
-      const position = source.position;
+      const position = source.getPositionInto(this.positionScratch);
       const projected = camera
-        ? camera.worldToScreen(position.x, position.y)
+        ? camera.worldToScreenInto(this.positionScratch, position.x, position.y)
         : position;
       const radius = source.radius * scale;
       let visual = this.visuals.get(source);

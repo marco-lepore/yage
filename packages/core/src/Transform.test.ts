@@ -432,6 +432,16 @@ describe("Transform dirty-flag propagation", () => {
       expect(warn).toHaveBeenCalledOnce();
     });
 
+    it("scalar world writes preserve collapsed axes and share the one-shot warning", () => {
+      const { child } = parented();
+      child.setWorldPosition(140, 70);
+      expect([child.position.x, child.position.y]).toEqual([20, 20]);
+      child.worldPosition = new Vec2(150, 80);
+      child.setWorldPosition(160, 90);
+      expect([child.worldPosition.x, child.worldPosition.y]).toEqual([100, 90]);
+      expect(warn).toHaveBeenCalledOnce();
+    });
+
     it("does not produce NaN when the target is the parent's origin", () => {
       const { child } = parented();
       child.worldPosition = new Vec2(100, 60);

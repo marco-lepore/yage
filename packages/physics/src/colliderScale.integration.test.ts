@@ -152,9 +152,8 @@ describe("collider Transform scale (real Rapier)", () => {
     const raw = physicsWorld.getCollider(collider._colliderHandle)!;
     const before = raw.halfExtents().x;
 
-    transform.setScale(Number.NaN, 2);
-    expect(() => collider._syncScale()).toThrow(
-      "ColliderComponent: Transform.worldScale.x must be finite, got NaN.",
+    expect(() => transform.setScale(Number.NaN, 2)).toThrow(
+      "Transform.setScale: x must be finite, got NaN.",
     );
     expect(raw.halfExtents().x).toBe(before);
   });

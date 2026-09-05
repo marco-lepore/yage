@@ -1,3 +1,4 @@
+import { Vec2Buffer } from "@yagejs/core";
 import type { ErrorBoundary, Scene } from "@yagejs/core";
 import type { LightOccluder } from "./LightOccluder.js";
 import type { LightSource } from "./LightSource.js";
@@ -18,6 +19,7 @@ const DEFAULT_AMBIENT_COLOR = 0xffffff;
  * and every radial source contribution are added, then clamped.
  */
 export class LightingWorld {
+  private readonly positionScratch = new Vec2Buffer();
   readonly scene: Scene;
 
   private readonly _sources = new Set<LightSource>();
@@ -77,7 +79,7 @@ export class LightingWorld {
   levelAt(x: number, y: number): number {
     let level = this._ambientLevel;
     for (const source of this._sources) {
-      const position = source.position;
+      const position = source.getPositionInto(this.positionScratch);
       const dx = x - position.x;
       const dy = y - position.y;
       const distanceSquared = dx * dx + dy * dy;

@@ -351,6 +351,7 @@ Composition: each `key` is a channel. Within a channel, the latest active reques
 | Export             | Purpose                                                                                                                                                                                                                                                                              |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `Vec2`             | Immutable 2D vector (`add`, `sub`, `scale`, `normalize`, `lerp`, `dot`, `distance`, static `moveTowards`)                                                                                                                                                                            |
+| `Vec2Buffer`       | Caller-owned mutable coordinates for `Into` results; `new Vec2Buffer(x = 0, y = 0)`, writable `x` / `y`, `set(x, y): this`                                                                                                                                                           |
 | `Transform`        | Mutable position/rotation/scale component (`setPosition`, `translate`, `rotate`); `worldPosition` / `worldRotation` / `worldScale` are lazily computed and cache-invalidate on local mutation or reparenting; `worldToLocal(point)` maps a world point into the entity's local space |
 | `MathUtils`        | `lerp`, `inverseLerp`, `lerpAngle`, `shortestAngleBetween`, `pingPong`, `smoothDamp`, `clamp`, etc.                                                                                                                                                                                  |
 | `SmoothDampResult` | `{ value, velocity }` returned by `MathUtils.smoothDamp()`                                                                                                                                                                                                                           |
@@ -376,9 +377,59 @@ Vec2.lerp(a: Vec2Like, b: Vec2Like, t: number): Vec2
 Vec2.moveTowards(current: Vec2Like, target: Vec2Like, maxDelta: number): Vec2
 ```
 
+`Vec2` is the default for values you keep or share. Its vector operations return
+immutable values. For repeated calculations, allocate a `Vec2Buffer` once and
+pass it as the first argument to an `Into` method:
+
+```ts
+Vec2.copyInto(out: Vec2Buffer, source: Vec2Like): Vec2Buffer
+Vec2.addInto(out: Vec2Buffer, a: Vec2Like, b: Vec2Like): Vec2Buffer
+Vec2.subInto(out: Vec2Buffer, a: Vec2Like, b: Vec2Like): Vec2Buffer
+Vec2.scaleInto(out: Vec2Buffer, source: Vec2Like, scalar: number): Vec2Buffer
+Vec2.multiplyInto(out: Vec2Buffer, a: Vec2Like, b: Vec2Like): Vec2Buffer
+Vec2.normalizeInto(out: Vec2Buffer, source: Vec2Like): Vec2Buffer
+Vec2.lerpInto(out: Vec2Buffer, a: Vec2Like, b: Vec2Like, t: number): Vec2Buffer
+Vec2.rotateInto(out: Vec2Buffer, source: Vec2Like, radians: number): Vec2Buffer
+Vec2.fromAngleInto(out: Vec2Buffer, radians: number, length?: number): Vec2Buffer
+Vec2.moveTowardsInto(out: Vec2Buffer, current: Vec2Like, target: Vec2Like, maxDelta: number): Vec2Buffer
+```
+
+Each method overwrites and returns the supplied buffer without constructing a
+`Vec2`. The output may also be either input. `fromAngleInto` defaults `length`
+to `1`; the formulas and edge behavior match the immutable methods. A `Vec2`
+is not a valid output. Buffers do not validate numbers; pure math results are
+undefined for non-finite inputs.
+
 For `smoothDamp`, pass the returned `velocity` into the next frame. `smoothTime`
 and `deltaTime` must use the same unit: pass the `dt` (seconds) the engine
 gives you and express `smoothTime` in seconds. `maxSpeed` is in units per second.
+
+### Transform reads and writes
+
+```ts
+transform.setPosition(x: number, y: number): void
+transform.setWorldPosition(x: number, y: number): void
+transform.getPositionInto(out: Vec2Buffer): Vec2Buffer
+transform.getWorldPositionInto(out: Vec2Buffer): Vec2Buffer
+transform.getScaleInto(out: Vec2Buffer): Vec2Buffer
+transform.getWorldScaleInto(out: Vec2Buffer): Vec2Buffer
+```
+
+Scalar writes and `Into` reads do not construct `Vec2` values. Each `Into`
+read overwrites and returns the caller's buffer. Later transform changes do
+not update that buffer; call the getter again to refresh it.
+
+`position`, `worldPosition`, `scale`, and `worldScale` return immutable
+snapshots, created on demand. Repeated reads preserve identity until mutation,
+and previously returned snapshots never change. Constructor options are copied.
+Assigning a `Vec2` to `position` or `scale` preserves that value's identity;
+assigning `worldPosition` does so on a root. Root local/world getters share
+the same snapshot.
+
+Transform position, scale, and rotation writes require finite numbers and
+reject invalid inputs or non-finite computed local values before storing the
+operation's values. Zero and negative scale are legal. Read-only conversions
+and derived world values do not validate non-finite results.
 
 ### Scale inheritance
 
@@ -386,7 +437,7 @@ gives you and express `smoothTime` in seconds. `maxSpeed` is in units per second
 
 `Transform.worldToLocal(point)` reverses the entity's world position, rotation and scale, so a world-space point (a pointer, a hit) can be read in the entity's own space whatever its parent chain does. On an axis whose world scale is 0 the result is non-finite.
 
-Gotcha: while a parent's world scale is 0 on an axis (common mid scale-tween), assigning `worldPosition` cannot move the child along that axis. The setter keeps the child's local value on that axis unchanged and emits a dev-mode warning. The child stays at the parent's origin on that axis until the scale is non-zero again.
+Gotcha: while a parent's world scale is 0 on an axis (common mid scale-tween), assigning `worldPosition` or calling `setWorldPosition` cannot move the child along that axis. The write keeps the child's local value on that axis unchanged and emits a dev-mode warning once per transform. The child stays at the parent's origin on that axis until the scale is non-zero again.
 
 ```ts
 import { Entity, Transform } from "@yagejs/core";
@@ -578,12 +629,12 @@ When enabled, `SceneManager` sets `scene.paused = true` on every scene in `activ
 
 ### Scene Transitions
 
-| Export                                     | Purpose                                                       |
-| ------------------------------------------ | ------------------------------------------------------------- |
-| `SceneTransition`                          | Interface: `duration`, `begin?`, `tick`, `end?`               |
-| `SceneTransitionContext`                   | `elapsed`, `kind`, `engineContext`, `fromScene`, `toScene`    |
-| `SceneTransitionKind`                      | `"push" \| "pop" \| "replace"`                                |
-| `SceneTransitionOptions`                   | `{ transition?: SceneTransition \| null }`                     |
+| Export                                     | Purpose                                                                   |
+| ------------------------------------------ | ------------------------------------------------------------------------- |
+| `SceneTransition`                          | Interface: `duration`, `begin?`, `tick`, `end?`                           |
+| `SceneTransitionContext`                   | `elapsed`, `kind`, `engineContext`, `fromScene`, `toScene`                |
+| `SceneTransitionKind`                      | `"push" \| "pop" \| "replace"`                                            |
+| `SceneTransitionOptions`                   | `{ transition?: SceneTransition \| null }`                                |
 | `resolveTransition(callSite, destination)` | `null` skips; otherwise call-site → `scene.defaultTransition` → undefined |
 
 Core ships the transition contract + orchestration only. Concrete transitions (`fade`, `flash`, `crossFade`) live in `@yagejs/renderer`.

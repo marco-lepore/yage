@@ -321,7 +321,7 @@ vi.mock("@dimforge/rapier2d", () => ({
   },
 }));
 
-import { Transform, Vec2 } from "@yagejs/core";
+import { Transform, Vec2, Vec2Buffer } from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import {
@@ -369,8 +369,8 @@ describe("RigidBodyComponent", () => {
 
       expect(rb._bodyHandle).not.toBe(-1);
       expect(physicsWorld.bodyMap.has(rb._bodyHandle)).toBe(true);
-      expect(rb._currPosition.x).toBe(100);
-      expect(rb._currPosition.y).toBe(200);
+      expect(rb._currPositionX).toBe(100);
+      expect(rb._currPositionY).toBe(200);
     });
 
     it("sets initial rotation from Transform", async () => {
@@ -479,6 +479,57 @@ describe("RigidBodyComponent", () => {
   });
 
   describe("getVelocity", () => {
+    it("copies velocity and position with one Rapier read each", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext({
+        pixelsPerMeter: 50,
+      });
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const body = physicsWorld.getBody(rb._bodyHandle)!;
+      const velocity = vi
+        .spyOn(body, "linvel")
+        .mockReturnValue({ x: 3, y: -4 });
+      const position = vi
+        .spyOn(body, "translation")
+        .mockReturnValue({ x: 5, y: 6 });
+      const out = new Vec2Buffer();
+      expect(rb.getVelocityInto(out)).toBe(out);
+      expect([out.x, out.y]).toEqual([150, -200]);
+      expect(velocity).toHaveBeenCalledTimes(1);
+      expect(rb.getPositionInto(out)).toBe(out);
+      expect([out.x, out.y]).toEqual([250, 300]);
+      expect(position).toHaveBeenCalledTimes(1);
+      velocity.mockClear();
+      const set = vi.spyOn(body, "setLinvel");
+      rb.setVelocityX(100);
+      expect(velocity).toHaveBeenCalledTimes(1);
+      expect(set).toHaveBeenLastCalledWith({ x: 2, y: -4 }, true);
+      velocity.mockClear();
+      rb.setVelocityY(200);
+      expect(velocity).toHaveBeenCalledTimes(1);
+      expect(set).toHaveBeenLastCalledWith({ x: 3, y: 4 }, true);
+    });
+
+    it("Into reads match immutable fallbacks after body removal", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const parent = spawnEntityInScene(scene, "parent");
+      parent.add(
+        new Transform({ position: { x: 10, y: 20 }, scale: { x: 2, y: 3 } }),
+      );
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform({ position: { x: 4, y: 5 } }));
+      parent.addChild("test", entity);
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      physicsWorld.removeBody(rb._bodyHandle);
+      const out = new Vec2Buffer(99, 99);
+      expect(rb.getVelocityInto(out)).toBe(out);
+      expect([out.x, out.y]).toEqual([0, 0]);
+      expect(rb.getPositionInto(out)).toBe(out);
+      expect([out.x, out.y]).toEqual([rb.position.x, rb.position.y]);
+      expect([out.x, out.y]).toEqual([18, 35]);
+    });
+
     it("converts velocity from meters back to pixels", async () => {
       const { scene, physicsWorld } = await createPhysicsTestContext({
         pixelsPerMeter: 50,
@@ -753,12 +804,13 @@ describe("RigidBodyComponent", () => {
       const body = bodyOf(physicsWorld, rb);
       body._translation = { x: 6, y: 4 }; // 300, 200 px
       body._rotation = 0.5;
-      rb._prevPosition = new Vec2(100, 100);
+      rb._prevPositionX = 100;
+      rb._prevPositionY = 100;
 
       rb.setType("static");
 
-      expect(rb._prevPosition.x).toBe(300);
-      expect(rb._currPosition.y).toBe(200);
+      expect(rb._prevPositionX).toBe(300);
+      expect(rb._currPositionY).toBe(200);
       expect(rb._currRotation).toBe(0.5);
       expect(transform.worldPosition.x).toBe(300);
       expect(transform.worldPosition.y).toBe(200);
@@ -777,8 +829,8 @@ describe("RigidBodyComponent", () => {
 
       rb.setType("kinematic");
 
-      expect(rb._kinematicTargetPosition.x).toBe(300);
-      expect(rb._kinematicTargetPosition.y).toBe(200);
+      expect(rb._kinematicTargetPositionX).toBe(300);
+      expect(rb._kinematicTargetPositionY).toBe(200);
       // The Transform still holds the drawn pose, which is not a pending
       // write: the next post-step snaps it to the body.
       expect(rb._hasPendingTargetPosition()).toBe(false);
@@ -807,10 +859,10 @@ describe("RigidBodyComponent", () => {
 
       rb.setPosition(200, 300);
 
-      expect(rb._prevPosition.x).toBe(200);
-      expect(rb._prevPosition.y).toBe(300);
-      expect(rb._currPosition.x).toBe(200);
-      expect(rb._currPosition.y).toBe(300);
+      expect(rb._prevPositionX).toBe(200);
+      expect(rb._prevPositionY).toBe(300);
+      expect(rb._currPositionX).toBe(200);
+      expect(rb._currPositionY).toBe(300);
     });
 
     it("converts position to meters for Rapier", async () => {
@@ -871,8 +923,8 @@ describe("RigidBodyComponent", () => {
 
       // Without this, the next step would drive the body back toward the
       // stale pre-teleport target.
-      expect(rb._kinematicTargetPosition.x).toBe(200);
-      expect(rb._kinematicTargetPosition.y).toBe(300);
+      expect(rb._kinematicTargetPositionX).toBe(200);
+      expect(rb._kinematicTargetPositionY).toBe(300);
     });
 
     it("drops a Transform write superseded by a kinematic setPosition", async () => {
@@ -890,8 +942,8 @@ describe("RigidBodyComponent", () => {
 
       expect(rb._hasPendingTargetPosition()).toBe(false);
       rb._capturePendingTarget();
-      expect(rb._kinematicTargetPosition.x).toBe(300);
-      expect(rb._kinematicTargetPosition.y).toBe(50);
+      expect(rb._kinematicTargetPositionX).toBe(300);
+      expect(rb._kinematicTargetPositionY).toBe(50);
     });
   });
 
@@ -921,8 +973,8 @@ describe("RigidBodyComponent", () => {
       entity.add(new Transform({ position: new Vec2(50, 75) }));
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
 
-      expect(rb._prevPosition.equals(new Vec2(50, 75))).toBe(true);
-      expect(rb._currPosition.equals(new Vec2(50, 75))).toBe(true);
+      expect([rb._prevPositionX, rb._prevPositionY]).toEqual([50, 75]);
+      expect([rb._currPositionX, rb._currPositionY]).toEqual([50, 75]);
     });
 
     it("seeds the kinematic step target from the spawn Transform", async () => {
@@ -931,7 +983,10 @@ describe("RigidBodyComponent", () => {
       entity.add(new Transform({ position: new Vec2(50, 75), rotation: 0.5 }));
       const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
 
-      expect(rb._kinematicTargetPosition.equals(new Vec2(50, 75))).toBe(true);
+      expect([
+        rb._kinematicTargetPositionX,
+        rb._kinematicTargetPositionY,
+      ]).toEqual([50, 75]);
       expect(rb._kinematicTargetRotation).toBe(0.5);
     });
   });
@@ -1006,8 +1061,8 @@ describe("RigidBodyComponent", () => {
       entity.setActive(true);
 
       expect(body._translation).toEqual({ x: 1, y: 1 });
-      expect(rb._prevPosition.x).toBe(50);
-      expect(rb._currPosition.y).toBe(50);
+      expect(rb._prevPositionX).toBe(50);
+      expect(rb._currPositionY).toBe(50);
     });
 
     it("re-enables a dynamic body where it slept when the Transform was not written", async () => {
@@ -1026,7 +1081,7 @@ describe("RigidBodyComponent", () => {
       entity.setActive(true);
 
       expect(body._translation).toEqual({ x: 3, y: 5 });
-      expect(rb._currPosition.x).toBe(150);
+      expect(rb._currPositionX).toBe(150);
     });
 
     it("keeps a setPosition made while dormant", async () => {
@@ -1041,9 +1096,9 @@ describe("RigidBodyComponent", () => {
       rb.setPosition(700, 40);
       entity.setActive(true);
 
-      expect(rb._currPosition.x).toBe(700);
-      expect(rb._currPosition.y).toBe(40);
-      expect(rb._prevPosition.x).toBe(700);
+      expect(rb._currPositionX).toBe(700);
+      expect(rb._currPositionY).toBe(40);
+      expect(rb._prevPositionX).toBe(700);
     });
 
     it("reactivates a kinematic body at a Transform pose written while dormant", async () => {
@@ -1063,10 +1118,10 @@ describe("RigidBodyComponent", () => {
       transform.setPosition(700, 40);
       entity.setActive(true);
 
-      expect(rb._prevPosition.x).toBe(700);
-      expect(rb._prevPosition.y).toBe(40);
-      expect(rb._currPosition.x).toBe(700);
-      expect(rb._kinematicTargetPosition.x).toBe(700);
+      expect(rb._prevPositionX).toBe(700);
+      expect(rb._prevPositionY).toBe(40);
+      expect(rb._currPositionX).toBe(700);
+      expect(rb._kinematicTargetPositionX).toBe(700);
       const body = physicsWorld.getBody(
         rb._bodyHandle,
       ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
@@ -1086,10 +1141,10 @@ describe("RigidBodyComponent", () => {
 
       // The stale Transform (still at the spawn pose) must not win over the
       // teleport: the target keeps pointing at the setPosition destination.
-      expect(rb._prevPosition.x).toBe(300);
-      expect(rb._currPosition.x).toBe(300);
-      expect(rb._kinematicTargetPosition.x).toBe(300);
-      expect(rb._kinematicTargetPosition.y).toBe(50);
+      expect(rb._prevPositionX).toBe(300);
+      expect(rb._currPositionX).toBe(300);
+      expect(rb._kinematicTargetPositionX).toBe(300);
+      expect(rb._kinematicTargetPositionY).toBe(50);
     });
 
     it("snaps interpolation to the body pose on reactivation", async () => {
@@ -1101,12 +1156,13 @@ describe("RigidBodyComponent", () => {
       entity.setActive(false);
       // Stale interpolation state from the life before, as a physics step
       // would have left it.
-      rb._prevPosition = new Vec2(-500, -500);
+      rb._prevPositionX = -500;
+      rb._prevPositionY = -500;
       entity.setActive(true);
 
-      expect(rb._prevPosition.x).toBe(rb._currPosition.x);
-      expect(rb._prevPosition.y).toBe(rb._currPosition.y);
-      expect(rb._currPosition.x).toBe(100);
+      expect(rb._prevPositionX).toBe(rb._currPositionX);
+      expect(rb._prevPositionY).toBe(rb._currPositionY);
+      expect(rb._currPositionX).toBe(100);
     });
   });
 });

@@ -6,6 +6,7 @@ export { Phase } from "./types.js";
 export type { ComponentClass, Plugin, EasingFunction } from "./types.js";
 
 export { Vec2 } from "./Vec2.js";
+export { Vec2Buffer } from "./Vec2Buffer.js";
 export type { Vec2Like } from "./Vec2.js";
 
 export { MathUtils } from "./MathUtils.js";

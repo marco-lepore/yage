@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Container } from "pixi.js";
-import { Vec2 } from "@yagejs/core";
+import type { Vec2Buffer } from "@yagejs/core";
 import type { CameraComponent } from "./CameraComponent.js";
 import { syncCameraTransform } from "./cameraTransform.js";
 
@@ -8,7 +8,7 @@ describe("syncCameraTransform", () => {
   it("uses effective pose with independent binding ratios", () => {
     const target = new Container();
     const camera = {
-      effectivePosition: new Vec2(10, 20),
+      getEffectivePositionInto: (out: Vec2Buffer) => out.set(10, 20),
       effectiveZoom: 3,
       effectiveRotation: Math.PI,
       viewportWidth: 640,

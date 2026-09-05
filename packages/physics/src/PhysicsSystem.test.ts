@@ -311,12 +311,12 @@ describe("PhysicsSystem", () => {
       system.update(16.67);
 
       // prev should be the old position
-      expect(rb._prevPosition.x).toBeCloseTo(100);
-      expect(rb._prevPosition.y).toBeCloseTo(200);
+      expect(rb._prevPositionX).toBeCloseTo(100);
+      expect(rb._prevPositionY).toBeCloseTo(200);
 
       // curr should be updated from Rapier
-      expect(rb._currPosition.x).toBeCloseTo(110);
-      expect(rb._currPosition.y).toBeCloseTo(210);
+      expect(rb._currPositionX).toBeCloseTo(110);
+      expect(rb._currPositionY).toBeCloseTo(210);
       expect(rb._currRotation).toBeCloseTo(0.5);
     });
 
@@ -342,8 +342,10 @@ describe("PhysicsSystem", () => {
       // the last-written fields); only the captured target may drive the
       // body.
       transform.setPosition(999, 999);
-      rb._lastWrittenPosition = new Vec2(999, 999);
-      rb._kinematicTargetPosition = new Vec2(200, 300);
+      rb._lastWrittenPositionX = 999;
+      rb._lastWrittenPositionY = 999;
+      rb._kinematicTargetPositionX = 200;
+      rb._kinematicTargetPositionY = 300;
       rb._kinematicTargetRotation = 0.5;
 
       system.update(16.67);
@@ -371,13 +373,14 @@ describe("PhysicsSystem", () => {
       ) as unknown as InstanceType<typeof mocks.MockRigidBody>;
       body._bodyType = "kinematic";
 
-      rb._kinematicTargetPosition = new Vec2(150, 200);
+      rb._kinematicTargetPositionX = 150;
+      rb._kinematicTargetPositionY = 200;
 
       system.update(16.67);
 
       // The mock adopts the queued pose immediately, so postStep reads it.
-      expect(rb._currPosition.x).toBeCloseTo(150);
-      expect(rb._currPosition.y).toBeCloseTo(200);
+      expect(rb._currPositionX).toBeCloseTo(150);
+      expect(rb._currPositionY).toBeCloseTo(200);
     });
 
     it("restores the reached pose into an untouched kinematic Transform, but not over a pending write", async () => {
@@ -400,7 +403,8 @@ describe("PhysicsSystem", () => {
 
       // Untouched Transform (still holds what physics last wrote): the
       // reached pose is restored so fixedUpdate authors accumulate on it.
-      rb._kinematicTargetPosition = new Vec2(150, 200);
+      rb._kinematicTargetPositionX = 150;
+      rb._kinematicTargetPositionY = 200;
       system.update(16.67);
       expect(transform.position.x).toBeCloseTo(150);
       expect(transform.position.y).toBeCloseTo(200);
@@ -766,17 +770,17 @@ describe("PhysicsSystem", () => {
       body._translation = { x: 1, y: 1 };
       system.update(16.67);
 
-      expect(rb._prevPosition.equals(Vec2.ZERO)).toBe(true); // was at origin
-      expect(rb._currPosition.x).toBeCloseTo(50);
-      expect(rb._currPosition.y).toBeCloseTo(50);
+      expect([rb._prevPositionX, rb._prevPositionY]).toEqual([0, 0]); // was at origin
+      expect(rb._currPositionX).toBeCloseTo(50);
+      expect(rb._currPositionY).toBeCloseTo(50);
 
       // Second step: body moves to (2, 2) meters = (100, 100) pixels
       body._translation = { x: 2, y: 2 };
       system.update(16.67);
 
-      expect(rb._prevPosition.x).toBeCloseTo(50); // was at (50,50)
-      expect(rb._currPosition.x).toBeCloseTo(100);
-      expect(rb._currPosition.y).toBeCloseTo(100);
+      expect(rb._prevPositionX).toBeCloseTo(50); // was at (50,50)
+      expect(rb._currPositionX).toBeCloseTo(100);
+      expect(rb._currPositionY).toBeCloseTo(100);
     });
 
     it("skips scenes without a physics context", async () => {
