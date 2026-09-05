@@ -570,23 +570,15 @@ describe("developer callbacks", () => {
   it("attributes a throwing parameter codec through the error boundary", () => {
     const { scene, context } = createMockScene();
     const boundary = context.resolve(ErrorBoundaryKey);
-    // Asset descriptors must be deterministic. This deliberately broken one
-    // succeeds while preparation derives assets and fails when runtime
-    // decoding calls it again, so the runtime callback boundary stays covered
-    // without admitting a custom parameter kind.
-    let calls = 0;
-    const fragileAsset = defineLevelAsset({
-      kind: "fragile",
-      create: (path: string) => {
-        calls++;
-        if (calls > 1) {
-          throw new Error("this codec is broken");
-        }
-        return new AssetHandle<string>("fragile", path);
-      },
-    });
+    // A codec runs only while the level loads: preparation validates the
+    // value and never decodes it, so this one is reached exactly once, here.
     const FragileParams = defineParams({
-      broken: param.asset(fragileAsset, "x"),
+      broken: param.custom<string>({
+        default: "x",
+        decode: () => {
+          throw new Error("this codec is broken");
+        },
+      }),
     });
     class Fragile extends Entity {
       static readonly level = defineLevelEntity({

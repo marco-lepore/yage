@@ -9,12 +9,15 @@ export { defineLevelAsset, param } from "./params/kinds.js";
 export type {
   ArrayParamOptions,
   BooleanParamOptions,
+  ColorParamOptions,
+  CustomParamOptions,
   EntityRefOptions,
   IntegerParamOptions,
   JsonParamOptions,
   LevelAssetDescriptor,
   NumberParamOptions,
   ObjectParamOptions,
+  ParamEditorHint,
   PointParamOptions,
   PointSpace,
   SelectParamOptions,
@@ -23,6 +26,8 @@ export type {
 } from "./params/kinds.js";
 export type {
   AssetFrames,
+  ParamDecodeContext,
+  ParamEditorKind,
   ParamFieldDescription,
   ParamKind,
   ParamKindName,

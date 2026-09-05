@@ -2183,3 +2183,272 @@ describe("Inspector — values with a shape", () => {
     expect(box.value).toBe("{seed: 9}");
   });
 });
+
+describe("a value the game decodes, and a colour", () => {
+  const LAMP: InspectableType = {
+    typeId: "game.lamp",
+    fields: [
+      {
+        name: "facing",
+        kind: "custom",
+        editor: "select",
+        options: ["left", "right"],
+        defaultValue: "left",
+      },
+      {
+        name: "volume",
+        kind: "custom",
+        editor: "integer",
+        min: 0,
+        max: 100,
+        defaultValue: 50,
+      },
+      { name: "label", kind: "custom", editor: "string", defaultValue: "" },
+      { name: "lit", kind: "custom", editor: "boolean", defaultValue: true },
+      {
+        name: "terrain",
+        kind: "custom",
+        editor: "json",
+        defaultValue: { seed: 1 },
+      },
+      {
+        name: "mood",
+        kind: "custom",
+        optional: true,
+        editor: "select",
+        options: ["calm", "angry"],
+        defaultValue: "calm",
+      },
+      { name: "tint", kind: "color", optional: false, defaultValue: "#ffcc88" },
+      { name: "glow", kind: "color", optional: true, defaultValue: "#f80" },
+    ],
+  };
+
+  const AUTHORED = {
+    facing: "left",
+    volume: 50,
+    label: "Lamp",
+    lit: true,
+    terrain: { seed: 7 },
+    mood: "calm",
+    tint: "#ffcc88",
+    glow: "#f80",
+  };
+
+  function lampHarness(held: Record<string, unknown> = {}) {
+    const store = new EditorStore({
+      api: unusedApi,
+      epoch: "epoch-1",
+      projectId: "project-1",
+    });
+    store.dispatch({
+      type: "level-opened",
+      snapshot: {
+        ...snapshot(),
+        document: {
+          ...DOCUMENT,
+          entities: [
+            placement("lamp", {
+              type: "game.lamp",
+              params: { ...AUTHORED, ...held } as LevelPlacement["params"],
+            }),
+          ],
+        },
+      },
+    });
+    const intents: string[] = [];
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <Inspector
+          store={store}
+          editable
+          inspectable={(typeId) => (typeId === "game.lamp" ? LAMP : undefined)}
+          listAssets={() => Promise.resolve(LISTING)}
+          onSetParam={(id, path, value) => {
+            intents.push(
+              `set ${id}.${path.join(".")}=${JSON.stringify(value)}`,
+            );
+          }}
+          onResetParam={() => undefined}
+          onResetPlacement={() => undefined}
+          onPickTarget={() => undefined}
+          onCancelPick={() => undefined}
+          onSetKey={() => undefined}
+          layerChoices={() => []}
+          layerSorts={() => false}
+          onSetLayer={() => undefined}
+          onOrder={() => undefined}
+        />,
+      );
+    });
+    act(() => {
+      store.dispatch({ type: "selection-changed", ids: ["lamp"] });
+    });
+    return { host, root, intents };
+  }
+
+  let harness: ReturnType<typeof lampHarness>;
+
+  afterEach(() => {
+    act(() => {
+      harness.root.unmount();
+    });
+    harness.host.remove();
+  });
+
+  function control<T extends Element>(testId: string): T {
+    const found = query<T>(harness.host, testId);
+    if (!found) throw new Error(`No ${testId} control rendered.`);
+    return found;
+  }
+
+  /**
+   * Report a swatch value the way the browser's own picker does: an input
+   * event for every move through the spectrum, a change event for the pick.
+   */
+  function report(
+    swatch: HTMLInputElement,
+    value: string,
+    event: "input" | "change",
+  ): void {
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    act(() => {
+      setter?.call(swatch, value);
+      swatch.dispatchEvent(new Event(event, { bubbles: true }));
+    });
+  }
+
+  /** Pick a colour the way the browser's own picker reports one. */
+  function pick(swatch: HTMLInputElement, value: string): void {
+    report(swatch, value, "change");
+  }
+
+  it("draws the control the declaration named for it", () => {
+    harness = lampHarness();
+
+    expect(control("field-facing").tagName).toBe("SELECT");
+    expect(control("field-volume").tagName).toBe("INPUT");
+    expect(control("field-label").tagName).toBe("INPUT");
+    expect(control<HTMLInputElement>("field-lit").type).toBe("checkbox");
+    expect(control("field-terrain").tagName).toBe("TEXTAREA");
+  });
+
+  it("edits a custom value through that control", () => {
+    harness = lampHarness();
+
+    choose(control<HTMLSelectElement>("field-facing"), "right");
+    const box = control<HTMLInputElement>("field-volume");
+    type(box, "60");
+    key(box, "Enter");
+
+    expect(harness.intents).toEqual([
+      'set lamp.facing="right"',
+      "set lamp.volume=60",
+    ]);
+  });
+
+  it("holds a custom value to the rules its control was given", () => {
+    harness = lampHarness();
+    const box = control<HTMLInputElement>("field-volume");
+
+    type(box, "2.5");
+    key(box, "Enter");
+
+    expect(harness.intents).toEqual([]);
+    expect(query(harness.host, "field-volume-reason")?.textContent).toBe(
+      "Type a whole number.",
+    );
+  });
+
+  it("edits a custom value with no named control as its own JSON", () => {
+    harness = lampHarness();
+    const box = area(harness.host, "field-terrain");
+
+    expect(box.value).toBe('{\n  "seed": 7\n}');
+    typeLines(box, '{"seed": 9}');
+    blur(box);
+
+    expect(harness.intents).toEqual(['set lamp.terrain={"seed":9}']);
+  });
+
+  it("empties an optional custom value and leaves a required one alone", () => {
+    harness = lampHarness();
+
+    expect(query(harness.host, "clear-facing")).toBeNull();
+    click(harness.host, "clear-mood");
+
+    expect(harness.intents).toEqual(["set lamp.mood=null"]);
+  });
+
+  it("shows a colour as text and as a swatch that agree", () => {
+    harness = lampHarness();
+
+    expect(control<HTMLInputElement>("field-tint").value).toBe("#ffcc88");
+    expect(control<HTMLInputElement>("swatch-tint").value).toBe("#ffcc88");
+    // Three digits in the file, six in the element the picker needs.
+    expect(control<HTMLInputElement>("field-glow").value).toBe("#f80");
+    expect(control<HTMLInputElement>("swatch-glow").value).toBe("#ff8800");
+  });
+
+  it("writes what the picker chose", () => {
+    harness = lampHarness();
+
+    pick(control<HTMLInputElement>("swatch-tint"), "#3366ff");
+
+    expect(harness.intents).toEqual(['set lamp.tint="#3366ff"']);
+  });
+
+  it("writes nothing while the pick is still being made", () => {
+    harness = lampHarness();
+    const swatch = control<HTMLInputElement>("swatch-tint");
+
+    report(swatch, "#112233", "input");
+    report(swatch, "#223344", "input");
+
+    expect(harness.intents).toEqual([]);
+
+    report(swatch, "#3366ff", "change");
+
+    expect(harness.intents).toEqual(['set lamp.tint="#3366ff"']);
+  });
+
+  it("commits typed hex and refuses text that is not a colour", () => {
+    harness = lampHarness();
+    const box = control<HTMLInputElement>("field-tint");
+
+    type(box, "orange");
+    key(box, "Enter");
+
+    expect(harness.intents).toEqual([]);
+    expect(box.value).toBe("orange");
+    expect(query(harness.host, "field-tint-reason")?.textContent).toBe(
+      'Type a colour such as "#ff8800".',
+    );
+
+    type(box, "#f80");
+    key(box, "Enter");
+
+    expect(harness.intents).toEqual(['set lamp.tint="#f80"']);
+  });
+
+  it("shows a black swatch for text that is not a colour", () => {
+    harness = lampHarness({ tint: "orange" });
+
+    expect(control<HTMLInputElement>("swatch-tint").value).toBe("#000000");
+  });
+
+  it("empties an optional colour and offers no Clear on a required one", () => {
+    harness = lampHarness();
+
+    expect(query(harness.host, "clear-tint")).toBeNull();
+    click(harness.host, "clear-glow");
+
+    expect(harness.intents).toEqual(["set lamp.glow=null"]);
+  });
+});

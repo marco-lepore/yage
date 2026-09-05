@@ -28,6 +28,12 @@ const SlimeParams = defineParams({
     }),
   ),
   noise: param.json({ default: { seed: 1 } }),
+  tint: param.color("#88ff88"),
+  pace: param.custom<number>({
+    default: "slow",
+    decode: (value) => (value === "fast" ? 120 : 40),
+    editor: { kind: "select", options: ["slow", "fast"] },
+  }),
 });
 
 /** The one component a slime has, so a press in the viewport finds it. */

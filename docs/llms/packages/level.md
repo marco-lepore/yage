@@ -88,6 +88,9 @@ export class Crate extends Entity {
 - `param.object(fields, options?)`, `param.array(item, options?)` and
   `param.json(options?)` carry a value with members, a list of them, and
   anything else. See [Values with a shape](#values-with-a-shape).
+- `param.custom(options)` carries a value the game decodes and
+  `param.color(default, options?)` a colour. See
+  [Values the game decodes](#values-the-game-decodes).
 - `frames` is an `AssetFrames`: how the named file is cut into a grid. Declare
   it only for a parameter naming a sheet the type slices. Its members are the
   renderer's `TextureSliceOptions`, so state the grid once and spread the same
@@ -284,6 +287,68 @@ param.json(options?: {
   the target check, the ids a copy rewrites — reads one named parameter.
 - An `asset` inside one works: the assets a level preloads are collected
   through every member and element.
+
+## Values the game decodes
+
+```ts
+const SlimeParams = defineParams({
+  facing: param.custom<Direction>({
+    default: "left",
+    decode: (value) => Direction.fromName(value as string),
+    editor: { kind: "select", options: ["left", "right"] },
+  }),
+  tint: param.color("#ffcc88"),
+});
+
+setup(params: ParamsOf<typeof SlimeParams>): void {
+  // facing: Direction, tint: 0xffcc88
+}
+```
+
+```ts
+param.custom<T>(options: {
+  default: JsonValue;
+  decode(value: JsonValue, context: ParamDecodeContext): T;
+  validate?(value: JsonValue): readonly string[];
+  optional?: boolean;
+  editor?:
+    | { kind: "string"; multiline?: boolean }
+    | { kind: "number" | "integer"; min?: number; max?: number; step?: number }
+    | { kind: "boolean" }
+    | { kind: "select"; options: readonly string[] }
+    | { kind: "json" };
+}): ParamKind<T>
+param.color(defaultValue: string, options?: { optional?: boolean }): ParamKind<number>
+```
+
+- `custom` is the kind whose runtime value is not its JSON: a class, a lookup,
+  a packed number. The level file stores `default`'s shape, and `setup()`
+  receives whatever `decode` makes of it.
+- `editor` names which plain kind's control edits the JSON, and the JSON that
+  control produces is what `decode` receives — so a `select` hint guarantees
+  `decode` sees one of the listed names. Without a hint the value is edited as
+  its own JSON text. A `select` hint listing no values is a catalog error.
+- Validation is the hint kind's own check first — a `number` hint applies its
+  `min` and `max` — then `validate`, which runs only over a value the hint
+  accepted. Each message completes the sentence "`<name>` …".
+- `optional` makes `null` a value here as it does elsewhere, and the return
+  type `ParamKind<T | undefined>`. Neither `validate` nor `decode` is called
+  for it: `setup()` receives `undefined`.
+- `ParamDecodeContext` holds `worldPose`, where the placement ends up in the
+  world, and `resolveEntityRef`, which is for the built-in reference kind only.
+  A codec that resolves an id gets none of what a declared reference gets — no
+  target check when the level is prepared, no link in the editor, no rewritten
+  id in a copy — so declare `param.entityRef` for a reference.
+- `decode` must be deterministic and free of side effects. It runs while a
+  level loads in the game, while the level editor rebuilds its preview, and in
+  a check run from the command line, and none of those may tell the others
+  apart. A throw fails the load as a `LevelLoadError` naming the parameter.
+- There is no `encode`: nothing reads a runtime value back into a document, so
+  `default` is JSON like every other authored value.
+- `color` is authored as `"#rgb"` or `"#rrggbb"` and decoded to the number
+  `0xRRGGBB` that `tint`, `fill` and the rest take. Opacity is not part of it —
+  `"#rrggbbaa"` is refused — because the number carries three channels and the
+  renderer takes alpha of its own. The file keeps the text as it was written.
 
 ## Pointing at another placement
 
@@ -516,8 +581,8 @@ when the catalog is built.
 
 `kind` says which control the field needs and is a closed set — `"asset"`,
 `"entityRef"`, `"number"`, `"integer"`, `"boolean"`, `"string"`, `"select"`,
-`"vec2"`, `"point"`, `"object"`, `"array"` and `"json"` — so a tool can switch
-on it exhaustively.
+`"vec2"`, `"point"`, `"object"`, `"array"`, `"json"`, `"custom"` and `"color"`
+— so a tool can switch on it exhaustively.
 
 A description is a tree, and `kind` is flat at every node of it. An `object`
 field carries `fields`, its members as descriptions with names of their own; an
@@ -531,7 +596,7 @@ type ParamValueDescription = {
   readonly item?: ParamValueDescription; // an array's element
   readonly defaultValue: JsonValue;
   // assetKind, frames, types, optional, min, max, step, multiline, options,
-  // relative — as below
+  // editor, relative — as below
 };
 type ParamFieldDescription = ParamValueDescription & { readonly name: string };
 ```
@@ -546,15 +611,21 @@ frame instead of the whole sheet.
 For a reference field, `types` is the frozen list of catalog type ids the field
 accepts; `defaultValue` is `null`.
 
+A `custom` field carries `editor`, the name of the plain kind whose control
+edits its JSON — `"json"` where the declaration named none — and whatever that
+control needs sits in the slots below, so a tool draws the named kind exactly
+as it draws a field of it. A `color` field needs nothing beyond its own
+control.
+
 `optional` says whether the field may hold `null`, and is present on every kind
 but `asset`, which takes no options object. `defaultValue` is the value the
 editor writes into a new placement — a number for a number field and a boolean
-for a switch. A number field carries `min`, `max` and `step` when it declared
-them, a string field carries `multiline`, a choice field carries `options`, the
-frozen list of values it accepts, an `array` field carries `min` and `max` as
-how many elements it may hold, and a `point` field carries `relative` —
-the frame the value is stored in, which is the frame a tool authors in. A
-point's `space` is a load-time conversion and is not described.
+for a switch. A number field carries `min`, `max` and `step` when it
+declared them, a string field carries `multiline`, a choice field carries
+`options`, the frozen list of values it accepts, an `array` field carries `min`
+and `max` as how many elements it may hold, and a `point` field carries
+`relative` — the frame the value is stored in, which is the frame a tool
+authors in. A point's `space` is a load-time conversion and is not described.
 
 A prepared placement carries what it points at, so a tool can follow references
 without reading a schema:

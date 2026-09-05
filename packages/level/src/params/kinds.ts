@@ -243,6 +243,48 @@ export interface JsonParamOptions extends OptionalParamOptions {
   readonly default?: JsonValue;
 }
 
+/** What a colour parameter accepts. */
+export type ColorParamOptions = OptionalParamOptions;
+
+/**
+ * Which control edits a custom value, and what that control needs. One of the
+ * plain kinds: an authoring tool draws that kind's control and hands the JSON
+ * it produces to the codec, so a value the kinds cannot describe is still
+ * authored with something better than a text box.
+ */
+export type ParamEditorHint =
+  | { readonly kind: "string"; readonly multiline?: boolean }
+  | {
+      readonly kind: "number" | "integer";
+      readonly min?: number;
+      readonly max?: number;
+      readonly step?: number;
+    }
+  | { readonly kind: "boolean" }
+  | { readonly kind: "select"; readonly options: readonly string[] }
+  | { readonly kind: "json" };
+
+/** What a codec parameter is declared with. */
+export interface CustomParamOptions<T> extends OptionalParamOptions {
+  /** The JSON a new placement is written with. */
+  readonly default: JsonValue;
+  /**
+   * The runtime value the authored JSON stands for. Called once per placement
+   * while the level loads, over a value the editor hint and
+   * {@link CustomParamOptions.validate} accepted. A throw here fails the load
+   * and names the parameter.
+   */
+  decode(value: JsonValue, context: ParamDecodeContext): T;
+  /**
+   * Problems the editor hint cannot see: a name no lookup holds, a pair of
+   * numbers that is not a legal size. Each message completes the sentence
+   * "`<name>` …". Runs only over a value the hint's own kind accepted.
+   */
+  validate?(value: JsonValue): readonly string[];
+  /** Which control edits the JSON. Defaults to the text of the value. */
+  readonly editor?: ParamEditorHint;
+}
+
 /**
  * Which frame a point parameter hands `setup()`.
  *
@@ -808,11 +850,213 @@ function jsonParam(
     defaultValue: keptDefault<JsonValue>(
       options.default === undefined ? {} : options.default,
     ),
-    validate: (value) =>
-      value === null && !optional ? own(["must not be null"]) : [],
+    validate: (value) => own(jsonProblems(value, optional)),
     decode: decodeOptional<JsonValue>,
     assets: () => [],
   });
+}
+
+/**
+ * A value the game decodes: authored as JSON, handed to `setup()` as whatever
+ * the declaration's `decode` makes of it.
+ *
+ * The kinds above cover the shapes a level file holds. This one covers the
+ * rest — a class, a lookup, a packed number — by naming the JSON and the
+ * function that turns it into the value the game uses:
+ *
+ * ```ts
+ * const SlimeParams = defineParams({
+ *   facing: param.custom<Direction>({
+ *     default: "left",
+ *     decode: (value) => Direction.fromName(value as string),
+ *     editor: { kind: "select", options: ["left", "right"] },
+ *   }),
+ * });
+ *
+ * setup(params: ParamsOf<typeof SlimeParams>): void {
+ *   this.add(new Walk(params.facing)); // a Direction
+ * }
+ * ```
+ *
+ * `editor` says which control the value is edited with, and the JSON that
+ * control produces is what `decode` receives — so the cast above is safe: the
+ * hint refused everything that is not one of the two names before `decode` was
+ * reached. Without a hint the value is edited as its own JSON text.
+ *
+ * `decode` must be deterministic and free of side effects. It runs while a
+ * level loads in the game, while the editor rebuilds its preview, and in a
+ * check run from the command line, and none of those may tell the others
+ * apart. Reaching a scene, a clock or a random number from it is a bug.
+ *
+ * `optional` makes `null` a value here as it is for every other kind: the
+ * control it is edited with offers a way to empty it, and neither `validate`
+ * nor `decode` is called for it — `setup()` receives `undefined`.
+ */
+function customParam<T>(
+  options: CustomParamOptions<T> & { readonly optional?: false },
+): ParamKind<T>;
+function customParam<T>(
+  options: CustomParamOptions<T>,
+): ParamKind<T | undefined>;
+function customParam<T>(
+  options: CustomParamOptions<T>,
+): ParamKind<T | undefined> {
+  // Frozen, and a copy of the hint's list, because the caller keeps what it
+  // passed: the description and the rule below read this one.
+  const hint = keptHint(options.editor ?? { kind: "json" });
+  const optional = options.optional ?? false;
+  const check = options.validate;
+  return createBuiltInParamKind({
+    name: "custom",
+    optional,
+    editor: hint.kind,
+    ...editorMembers(hint),
+    defaultValue: keptDefault(options.default),
+    validate: (value) => {
+      // The declaration's own rule runs only over a value the control's kind
+      // accepted, so a check written for a name never meets a number — nor
+      // the absence of a value, which is nothing to check.
+      const refused = hintProblems(value, hint, optional);
+      if (refused.length > 0) return own(refused);
+      if (value === null && optional) return [];
+      return own(check?.(value) ?? []);
+    },
+    decode: (value, context) =>
+      value === null && optional ? undefined : options.decode(value, context),
+    assets: () => [],
+  });
+}
+
+/** A hint whose members are this kind's own, safe from a later change. */
+function keptHint(hint: ParamEditorHint): ParamEditorHint {
+  return hint.kind === "select"
+    ? { kind: "select", options: Object.freeze([...hint.options]) }
+    : hint;
+}
+
+/**
+ * A colour, authored as `"#rgb"` or `"#rrggbb"` and decoded to the number
+ * `0xRRGGBB` that every drawing API here takes.
+ *
+ * ```ts
+ * const LampParams = defineParams({
+ *   tint: param.color("#ffcc88"),
+ * });
+ *
+ * setup(params: ParamsOf<typeof LampParams>): void {
+ *   this.add(new SpriteComponent({ texture, tint: params.tint }));
+ * }
+ * ```
+ *
+ * The file keeps the text, so a level reads as the colours it holds. Opacity
+ * is not part of it — `"#rrggbbaa"` is refused — because the number carries
+ * three channels and the renderer takes alpha of its own.
+ */
+function colorParam(
+  defaultValue: string,
+  options?: ColorParamOptions & { readonly optional?: false },
+): ParamKind<number>;
+function colorParam(
+  defaultValue: string,
+  options: ColorParamOptions,
+): ParamKind<number | undefined>;
+function colorParam(
+  defaultValue: string,
+  options: ColorParamOptions = {},
+): ParamKind<number | undefined> {
+  const optional = options.optional ?? false;
+  return createBuiltInParamKind({
+    name: "color",
+    optional,
+    defaultValue,
+    validate: (value) => own(colorProblems(value, optional)),
+    decode: decodeColor,
+    assets: () => [],
+  });
+}
+
+/**
+ * The members an editor hint contributes to the kind carrying it. They go in
+ * the same slots the hinted kind fills, so a tool reads a `custom` field's
+ * `options` or `min` exactly where it reads a `select`'s or a `number`'s.
+ */
+function editorMembers(hint: ParamEditorHint): EditorMembers {
+  switch (hint.kind) {
+    case "string":
+      return hint.multiline === undefined ? {} : { multiline: hint.multiline };
+    case "number":
+    case "integer":
+      return {
+        ...(hint.min === undefined ? {} : { min: hint.min }),
+        ...(hint.max === undefined ? {} : { max: hint.max }),
+        ...(hint.step === undefined ? {} : { step: hint.step }),
+      };
+    case "select":
+      return { options: hint.options };
+    default:
+      return {};
+  }
+}
+
+/** What a hint puts in the flat slots every kind shares. */
+interface EditorMembers {
+  readonly min?: number;
+  readonly max?: number;
+  readonly step?: number;
+  readonly multiline?: boolean;
+  readonly options?: readonly string[];
+}
+
+/** Problems the hinted kind's own rule finds, in that kind's own words. */
+function hintProblems(
+  value: JsonValue,
+  hint: ParamEditorHint,
+  optional: boolean,
+): readonly string[] {
+  switch (hint.kind) {
+    case "string":
+      return stringProblems(value, optional);
+    case "number":
+      return numberProblems(value, { ...hint, optional }, false);
+    case "integer":
+      return numberProblems(value, { ...hint, optional }, true);
+    case "boolean":
+      return booleanProblems(value, optional);
+    case "select":
+      return selectProblems(value, hint.options, optional);
+    case "json":
+      return jsonProblems(value, optional);
+  }
+}
+
+/** What any JSON refuses: nothing at all, where the field must hold a value. */
+function jsonProblems(value: JsonValue, optional: boolean): readonly string[] {
+  return value === null && !optional ? ["must not be null"] : [];
+}
+
+/** Three or six hex digits behind a `#`, in either case. */
+const HEX_COLOR = /^#(?:[\da-f]{3}|[\da-f]{6})$/i;
+
+/** What a colour is written as, for a message about one that is not. */
+const COLOR_NOUN = 'a colour such as "#ff8800"';
+
+function colorProblems(value: JsonValue, optional: boolean): readonly string[] {
+  if (typeof value === "string" && HEX_COLOR.test(value)) return [];
+  if (value === null && optional) return [];
+  return [
+    optional ? `must be ${COLOR_NOUN}, or null` : `must be ${COLOR_NOUN}`,
+  ];
+}
+
+/** A validated colour as the number `0xRRGGBB`. */
+function decodeColor(value: JsonValue): number | undefined {
+  if (value === null) return undefined;
+  const digits = (value as string).slice(1);
+  const full =
+    digits.length === 3
+      ? [...digits].map((digit) => digit + digit).join("")
+      : digits;
+  return Number.parseInt(full, 16);
 }
 
 /**
@@ -1050,6 +1294,8 @@ export const param = Object.freeze({
   object: objectParam,
   array: arrayParam,
   json: jsonParam,
+  custom: customParam,
+  color: colorParam,
 });
 
 /**

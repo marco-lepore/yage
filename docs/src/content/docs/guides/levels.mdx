@@ -66,8 +66,10 @@ function comes from the package that owns the asset: `texture` from
 `@yagejs/renderer`. `param.vec2` and `param.point` carry a pair of numbers, and are [their own
 section below](#pairs-and-places). `param.object`, `param.array` and
 `param.json` carry a value with members, a list of them, and anything else, and
-are [their own section below](#values-with-a-shape). `param.entityRef` names
-another placement in the same level, and is [its own section
+are [their own section below](#values-with-a-shape). `param.custom` carries a
+value your game decodes and `param.color` a colour, and they are [their own
+section below](#values-your-game-decodes). `param.entityRef` names another
+placement in the same level, and is [its own section
 below](#point-one-placement-at-another).
 
 ### Say how a sheet is cut
@@ -363,6 +365,74 @@ Nothing checks what is inside it and the editor offers only the text of it, so
 use it when the shape is open — a table another tool exports, a blob a system
 of your own parses. Declare the shape for everything else, and you get controls
 and findings with it.
+
+### Values your game decodes
+
+Sometimes the value your game needs is not the value a file can hold. A facing
+is a `Direction` object; a tint is a number the renderer takes and a name a
+person reads. `param.custom` names both halves: the JSON the level stores, and
+the function that turns it into what `setup()` receives.
+
+```ts
+const SlimeParams = defineParams({
+  facing: param.custom<Direction>({
+    default: "left",
+    decode: (value) => Direction.fromName(value as string),
+    editor: { kind: "select", options: ["left", "right"] },
+  }),
+});
+
+class Slime extends Entity {
+  static readonly level = defineLevelEntity({
+    id: "game.slime",
+    version: 1,
+    params: SlimeParams,
+  });
+
+  setup(params: ParamsOf<typeof SlimeParams>): void {
+    this.add(new Walk(params.facing)); // a Direction, not a string
+  }
+}
+```
+
+`editor` says which control the editor draws, borrowed from one of the plain
+kinds, and the JSON that control produces is what `decode` receives. Leave
+`editor` out and the value is edited as its own JSON text.
+
+Two checks run before your `decode` does: the control's own kind first — a
+`select` editor accepts only the names it lists, a `number` editor applies its
+`min` and `max` — then a `validate` of your own, if you gave one, over a value
+that passed. Both report; neither corrects. Those checks are what makes the
+cast above safe: a level naming a third direction is refused when it is
+prepared, however it came to say so.
+
+`optional: true` makes "nothing at all" a value here as it is for the plain
+kinds: the file stores `null`, the field gets a **Clear** button, neither your
+`validate` nor your `decode` is called for it, and `setup()` receives
+`undefined`.
+
+Your `decode` runs while a level loads in the game, while the editor rebuilds
+its preview, and in a check run from the command line, so keep it deterministic
+and free of side effects. Reaching a scene, a clock or a random number from it
+is a bug. Throwing fails the load with an error naming the parameter.
+
+A colour is common enough to have a kind of its own:
+
+```ts
+const LampParams = defineParams({
+  tint: param.color("#ffcc88"),
+});
+
+setup(params: ParamsOf<typeof LampParams>): void {
+  this.add(new SpriteComponent({ texture, tint: params.tint })); // 0xffcc88
+}
+```
+
+The level file holds `"#rgb"` or `"#rrggbb"`, so it reads as the colours it
+sets, and `setup()` receives the number every drawing API here takes. Opacity
+is not part of it — `"#rrggbbaa"` is refused — because the number carries three
+channels and the renderer takes alpha of its own. In the editor the field is a
+box of text with a colour picker beside it, and the two show one value.
 
 ### Point one placement at another
 

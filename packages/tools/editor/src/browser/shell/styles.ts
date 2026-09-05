@@ -932,8 +932,8 @@ export const EDITOR_CSS = `
   resize: vertical;
 }
 
-/* A switch is the one control in a field row that keeps its own size. The
-   selector carries the element as well as the class, so it outweighs the
+/* A switch and a colour swatch keep a size of their own in a field row. Both
+   selectors carry the element as well as the class, so they outweigh the
    full-width rule every other box in a row takes. */
 .yage-editor .ye-field input.ye-checkbox {
   flex: 0 0 auto;
@@ -942,6 +942,15 @@ export const EDITOR_CSS = `
   margin: 0;
   padding: 0;
   accent-color: var(--accent);
+}
+
+/* Square, so the swatch reads as the colour rather than as another box, and
+   the text beside it keeps the width every other row's box has. */
+.yage-editor .ye-field input.ye-swatch {
+  flex: 0 0 auto;
+  width: var(--control-height);
+  padding: 2px;
+  cursor: pointer;
 }
 
 /* Not scoped to .ye-field: TextField renders the shell's only input, and a

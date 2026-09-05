@@ -91,6 +91,17 @@ export function schemaDefaultProblems(
             "parameter of its own",
         });
       }
+      // A dropdown with nothing in it offers the author no way to write a
+      // value the codec would accept, so the declaration is the problem.
+      if (
+        node.kind.editor === "select" &&
+        (node.kind.options ?? []).length === 0
+      ) {
+        errors.push({
+          path,
+          message: "is edited as a choice and lists no values to choose from",
+        });
+      }
     }
     // Last, and only over a field built entirely out of `param.*`: validating
     // a default calls each member kind's own `validate`, so a lookalike is
@@ -157,6 +168,7 @@ function describeValue(
     ...(kind.step === undefined ? {} : { step: kind.step }),
     ...(kind.multiline === undefined ? {} : { multiline: kind.multiline }),
     ...(kind.options === undefined ? {} : { options: kind.options }),
+    ...(kind.editor === undefined ? {} : { editor: kind.editor }),
     ...(kind.relative === undefined ? {} : { relative: kind.relative }),
     ...(kind.fields === undefined
       ? {}

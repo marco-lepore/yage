@@ -1,5 +1,6 @@
 import type {
   ParamFieldDescription,
+  ParamKindName,
   ParamValueDescription,
 } from "@yagejs/level";
 import type { JsonValue, LevelPlacement } from "@yagejs/level/document";
@@ -423,9 +424,39 @@ function Field(props: FieldProps): React.JSX.Element {
       return <ListField {...props} />;
     case "json":
       return <JsonField {...props} />;
+    case "custom":
+      return <CustomField {...props} />;
+    case "color":
+      return <ColorField {...props} />;
     default: {
       const unhandled: never = props.description.kind;
       throw new Error(`No control for parameter kind ${String(unhandled)}.`);
+    }
+  }
+}
+
+/**
+ * A value the game decodes, edited with the control its declaration named. The
+ * document holds the JSON that control produces, so nothing here knows what
+ * the game makes of it.
+ */
+function CustomField(props: FieldProps): React.JSX.Element {
+  switch (props.description.editor) {
+    case "number":
+    case "integer":
+      return <NumberField {...props} />;
+    case "boolean":
+      return <BooleanField {...props} />;
+    case "string":
+      return <StringField {...props} />;
+    case "select":
+      return <SelectField {...props} />;
+    case "json":
+    case undefined:
+      return <JsonField {...props} />;
+    default: {
+      const unhandled: never = props.description.editor;
+      throw new Error(`No control for parameter editor ${String(unhandled)}.`);
     }
   }
 }
@@ -774,6 +805,83 @@ function SelectField(props: FieldProps): React.JSX.Element {
       <FieldFindings field={key} diagnostics={props.diagnostics} />
     </div>
   );
+}
+
+/**
+ * A colour, as the text of it and as a swatch that opens the browser's own
+ * picker. The two show one value: the box takes `#rgb` as readily as
+ * `#rrggbb`, and a pick writes the six-digit form the picker produces.
+ */
+function ColorField(props: FieldProps): React.JSX.Element {
+  const key = fieldKey(props.path);
+  const held = typeof props.value === "string" ? props.value : "";
+  return (
+    <div>
+      <TextField
+        label={props.label}
+        testId={`field-${key}`}
+        value={held}
+        placeholder={
+          props.description.optional === true ? EMPTY_LABEL : undefined
+        }
+        disabled={props.disabled}
+        invalid={props.diagnostics.length > 0}
+        reject={(text) => refusedColor(text)}
+        onCommit={(text) => {
+          props.onCommit(props.path, text.trim());
+        }}
+      >
+        <input
+          type="color"
+          className="ye-swatch"
+          data-testid={`swatch-${key}`}
+          aria-label={`${props.label} picker`}
+          // The element keeps its own value while the picker is open, and the
+          // key hands it a new one whenever the held colour changes underneath
+          // it. React writing the held value back on every move through the
+          // spectrum would fight the picker.
+          key={swatchColor(held)}
+          defaultValue={swatchColor(held)}
+          disabled={props.disabled}
+          onChange={(event) => {
+            // Commits on `change` only: the picker sends one of those per pick
+            // and an input event per move through the spectrum. One edit per
+            // pick, rather than one per pixel travelled.
+            if (event.nativeEvent.type !== "change") return;
+            props.onCommit(props.path, event.currentTarget.value);
+          }}
+        />
+        <ClearButton
+          {...props}
+          disabled={props.disabled || props.value === null}
+        />
+      </TextField>
+      <FieldFindings field={key} diagnostics={props.diagnostics} />
+    </div>
+  );
+}
+
+/** Three or six hex digits behind a `#`, the shapes a level file may hold. */
+const HEX_COLOR = /^#(?:[\da-f]{3}|[\da-f]{6})$/i;
+
+/** Why the typed text is not a colour, if it is not. */
+function refusedColor(text: string): string | undefined {
+  return HEX_COLOR.test(text.trim())
+    ? undefined
+    : 'Type a colour such as "#ff8800".';
+}
+
+/**
+ * What the swatch shows: the held colour in the six-digit lowercase form the
+ * element accepts, and black for text that is not a colour — which the box
+ * beside it is already refusing or reporting.
+ */
+function swatchColor(held: string): string {
+  if (!HEX_COLOR.test(held)) return "#000000";
+  const digits = held.slice(1).toLowerCase();
+  return digits.length === 3
+    ? `#${[...digits].map((digit) => digit + digit).join("")}`
+    : `#${digits}`;
 }
 
 /**
@@ -1268,6 +1376,16 @@ function FieldFindings(props: {
 }
 
 /**
+ * Which kind's control a value is drawn with: its own, or for a value the game
+ * decodes, the one its declaration named. A control reads this rather than
+ * `kind` wherever the two kinds behave differently.
+ */
+function controlKind(description: ParamValueDescription): ParamKindName {
+  if (description.kind !== "custom") return description.kind;
+  return description.editor ?? "json";
+}
+
+/**
  * What a number box shows. A value of another type is shown as it was
  * authored, so the finding under the box is about something visible.
  */
@@ -1286,7 +1404,7 @@ function refusedNumber(
 ): string | undefined {
   const typed = Number(text.trim());
   if (text.trim() === "" || !Number.isFinite(typed)) return "Type a number.";
-  if (description.kind === "integer" && !Number.isInteger(typed)) {
+  if (controlKind(description) === "integer" && !Number.isInteger(typed)) {
     return "Type a whole number.";
   }
   if (description.min !== undefined && typed < description.min) {
@@ -1312,7 +1430,7 @@ function steppedNumber(
 ): string | undefined {
   const from = Number(text.trim());
   if (text.trim() === "" || !Number.isFinite(from)) return undefined;
-  const whole = description.kind === "integer";
+  const whole = controlKind(description) === "integer";
   const unit = whole ? 1 : (description.step ?? 1);
   const by = intent.coarse
     ? unit * 10

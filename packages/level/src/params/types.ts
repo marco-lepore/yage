@@ -45,25 +45,42 @@ export type ParamKindName =
   | "point"
   | "object"
   | "array"
-  | "json";
+  | "json"
+  | "custom"
+  | "color";
 
 /**
- * @internal What a parameter kind may need beyond its own JSON value while
- * decoding. Built by the loader for one placement, inside the spawn batch.
+ * Which control a `custom` value borrows: one of the plain kinds, named on the
+ * description as {@link ParamValueDescription.editor}. A tool draws that kind's
+ * control and hands what it produces to the codec.
+ */
+export type ParamEditorKind = Extract<
+  ParamKindName,
+  "number" | "integer" | "boolean" | "string" | "select" | "json"
+>;
+
+/**
+ * What a parameter kind may need beyond its own JSON value while decoding.
+ * Built by the loader for one placement, inside the spawn batch, and handed to
+ * the codec a `param.custom` declaration supplies.
  */
 export interface ParamDecodeContext {
   /**
    * The entity a placement id was reserved as, as a handle on its current
    * life. Throws for an id this level does not hold.
+   *
+   * A codec must not call this: an id it resolves is checked against no
+   * declared types when the level is prepared, drawn as no link in an editor,
+   * and rewritten in no copy of the placement. Declare a reference with
+   * `param.entityRef` instead.
    */
   resolveEntityRef(placementId: string): EntityHandle;
   /**
    * Where the placement holding these parameters ends up in the world: the
    * instance transform composed with every parent above it, the same
    * composition the scene graph performs once the entity is placed. A `point`
-   * converts its authored
-   * value through this when the frame it is stored in is not the frame the
-   * declaration asked `setup()` for.
+   * converts its authored value through this when the frame it is stored in is
+   * not the frame the declaration asked `setup()` for.
    */
   readonly worldPose: LevelTransform;
 }
@@ -112,6 +129,11 @@ export interface ParamKind<T> {
   readonly multiline?: boolean;
   /** For a `select`, the values it accepts, in the order they are offered. */
   readonly options?: readonly string[];
+  /**
+   * For a `custom`, which plain kind's control edits the JSON. The members
+   * that control needs sit in the slots above, as they do on the kind itself.
+   */
+  readonly editor?: ParamEditorKind;
   /**
    * For a `point`, whether the value is in the placement's own frame rather
    * than the world's.
@@ -221,6 +243,15 @@ export type ParamValueDescription = {
   /** For a `select` field, the values it accepts, in the order to offer them. */
   readonly options?: readonly string[];
   /**
+   * For a `custom` field, which plain kind's control edits its JSON. Always
+   * there on such a field, and `"json"` — the text of the value — where the
+   * declaration named no control; it is optional here only because one flat
+   * shape describes every kind. Whatever that control needs is in the slots
+   * above — a `select` editor's `options`, a `number` editor's `min` — so a
+   * tool draws the named kind exactly as it draws a field of it.
+   */
+  readonly editor?: ParamEditorKind;
+  /**
    * For a `point` field, whether the value is in the placement's own frame.
    * A tool that draws the value in a viewport composes it through the
    * placement's transform when this is set, and reads it as a world point
@@ -283,6 +314,7 @@ type ParamKindDefinition<T> = {
   readonly step?: number;
   readonly multiline?: boolean;
   readonly options?: readonly string[];
+  readonly editor?: ParamEditorKind;
   readonly relative?: boolean;
   readonly fields?: ParamFields;
   readonly item?: ParamKind<unknown>;
@@ -309,6 +341,7 @@ class BuiltInParamKind<T> implements ParamKind<T> {
   readonly step?: number;
   readonly multiline?: boolean;
   readonly options?: readonly string[];
+  readonly editor?: ParamEditorKind;
   readonly relative?: boolean;
   readonly fields?: ParamFields;
   readonly item?: ParamKind<unknown>;
@@ -332,6 +365,7 @@ class BuiltInParamKind<T> implements ParamKind<T> {
       this.multiline = definition.multiline;
     }
     if (definition.options !== undefined) this.options = definition.options;
+    if (definition.editor !== undefined) this.editor = definition.editor;
     if (definition.relative !== undefined) this.relative = definition.relative;
     if (definition.fields !== undefined) this.fields = definition.fields;
     if (definition.item !== undefined) this.item = definition.item;

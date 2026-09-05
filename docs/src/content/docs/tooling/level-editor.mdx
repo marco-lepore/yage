@@ -751,6 +751,8 @@ What a field looks like follows the kind its declaration gave it.
 | `param.object(…)` | Its members, indented under the field, each the control its own kind asks for. |
 | `param.array(…)` | A row per element, with **▲ ▼** to reorder, **✕** to remove, and **Add** at the foot. |
 | `param.json(…)` | A text area holding the JSON. Text that will not parse stays in the box with the reason beside it. |
+| `param.custom(…)` | The control its `editor` named — a dropdown, a box, a checkbox — or the JSON text area when it named none. |
+| `param.color(…)` | A box holding `#rgb` or `#rrggbb`, with a picker beside it. Text that is not a colour is refused and says so. |
 
 A field the declaration marked `optional` may hold nothing: **Clear** beside it
 empties it, and your `setup()` receives `undefined` instead of a value.

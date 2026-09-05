@@ -1352,3 +1352,326 @@ describe("values with a shape", () => {
     ]);
   });
 });
+
+describe("a value the game decodes", () => {
+  /** A facing a level names and the game holds as an object of its own. */
+  class Direction {
+    static readonly left = new Direction("left", -1);
+    static readonly right = new Direction("right", 1);
+
+    private constructor(
+      readonly name: string,
+      readonly step: number,
+    ) {}
+
+    static fromName(name: string): Direction {
+      return name === "right" ? Direction.right : Direction.left;
+    }
+  }
+
+  const FacingParams = defineParams({
+    facing: param.custom<Direction>({
+      default: "left",
+      decode: (value) => Direction.fromName(value as string),
+      editor: { kind: "select", options: ["left", "right"] },
+    }),
+  });
+
+  /** Every value the declaration's own rule was asked about. */
+  const asked: JsonValue[] = [];
+
+  const VolumeParams = defineParams({
+    volume: param.custom<number>({
+      default: 50,
+      editor: { kind: "integer", min: 0, max: 100 },
+      validate: (value) => {
+        asked.push(value);
+        return Number(value) % 5 === 0 ? [] : ["must be a multiple of 5"];
+      },
+      decode: (value) => Number(value) / 100,
+    }),
+  });
+
+  function volumeReasons(value: JsonValue): string[] {
+    return validateParams(VolumeParams, { volume: value }).map(
+      (problem) => problem.message,
+    );
+  }
+
+  it("hands setup() what the codec made of the authored JSON", () => {
+    expectTypeOf<ParamsOf<typeof FacingParams>>().toEqualTypeOf<{
+      facing: Direction;
+    }>();
+
+    const params = decodeParams(FacingParams, { facing: "right" }, NO_REFS);
+
+    expect(params.facing).toBe(Direction.right);
+    expect(params.facing.step).toBe(1);
+    expect(decodeParams(VolumeParams, { volume: 50 }, NO_REFS).volume).toBe(
+      0.5,
+    );
+  });
+
+  it("checks the control's kind first, and the codec's rule after", () => {
+    asked.length = 0;
+
+    expect(volumeReasons(2.5)).toEqual(["must be a whole number"]);
+    expect(volumeReasons(120)).toEqual(["must be at most 100"]);
+    // The declaration's rule never met a value the control's kind refused, so
+    // a check written for a whole number sees only whole numbers.
+    expect(asked).toEqual([]);
+
+    expect(volumeReasons(7)).toEqual(["must be a multiple of 5"]);
+    expect(volumeReasons(60)).toEqual([]);
+    expect(asked).toEqual([7, 60]);
+  });
+
+  it("refuses a choice the declaration does not list", () => {
+    expect(
+      validateParams(FacingParams, { facing: "up" }).map((one) => one.message),
+    ).toEqual(['must be one of "left", "right"']);
+    expect(validateParams(FacingParams, { facing: "right" })).toEqual([]);
+  });
+
+  it("refuses nothing at all where the declaration did not allow it", () => {
+    expect(
+      validateParams(FacingParams, { facing: null }).map((one) => one.message),
+    ).toEqual(['must be one of "left", "right"']);
+  });
+
+  it("holds nothing where the declaration allows it, and decodes it so", () => {
+    const schema = defineParams({
+      facing: param.custom<Direction>({
+        default: "left",
+        optional: true,
+        decode: (value) => Direction.fromName(value as string),
+        validate: () => ["was asked about"],
+        editor: { kind: "select", options: ["left", "right"] },
+      }),
+    });
+
+    expectTypeOf<ParamsOf<typeof schema>>().toEqualTypeOf<{
+      facing: Direction | undefined;
+    }>();
+    expect(describeParams(schema)).toEqual([
+      {
+        name: "facing",
+        kind: "custom",
+        optional: true,
+        editor: "select",
+        options: ["left", "right"],
+        defaultValue: "left",
+      },
+    ] satisfies readonly ParamFieldDescription[]);
+    // Neither the declaration's own rule nor its codec is asked about the
+    // absence of a value: the rule refuses every value it is given, and the
+    // codec would make a facing of `null`.
+    expect(validateParams(schema, { facing: null })).toEqual([]);
+    expect(
+      validateParams(schema, { facing: "left" }).map((one) => one.message),
+    ).toEqual(["was asked about"]);
+    expect(
+      decodeParams(schema, { facing: null }, NO_REFS).facing,
+    ).toBeUndefined();
+  });
+
+  it("describes the control it named, with that control's own members", () => {
+    expect(describeParams(FacingParams)).toEqual([
+      {
+        name: "facing",
+        kind: "custom",
+        optional: false,
+        editor: "select",
+        options: ["left", "right"],
+        defaultValue: "left",
+      },
+    ] satisfies readonly ParamFieldDescription[]);
+    expect(describeParams(VolumeParams)).toEqual([
+      {
+        name: "volume",
+        kind: "custom",
+        optional: false,
+        editor: "integer",
+        min: 0,
+        max: 100,
+        defaultValue: 50,
+      },
+    ] satisfies readonly ParamFieldDescription[]);
+  });
+
+  it("takes any JSON when the declaration names no control", () => {
+    const schema = defineParams({
+      terrain: param.custom<string>({
+        default: { seed: 1 },
+        decode: (value) => JSON.stringify(value),
+      }),
+    });
+
+    expect(describeParams(schema)).toEqual([
+      {
+        name: "terrain",
+        kind: "custom",
+        optional: false,
+        editor: "json",
+        defaultValue: { seed: 1 },
+      },
+    ] satisfies readonly ParamFieldDescription[]);
+    expect(validateParams(schema, { terrain: [1, { deep: true }] })).toEqual(
+      [],
+    );
+    expect(
+      validateParams(schema, { terrain: null }).map((one) => one.message),
+    ).toEqual(["must not be null"]);
+    expect({ ...defaultParams(schema) }).toEqual({ terrain: { seed: 1 } });
+  });
+
+  it("reports a default its own control refuses", () => {
+    const schema = defineParams({
+      facing: param.custom<string>({
+        default: "up",
+        decode: (value) => String(value),
+        editor: { kind: "select", options: ["left", "right"] },
+      }),
+    });
+
+    expect(schemaDefaultProblems(schema)).toEqual([
+      {
+        path: ["facing"],
+        message: 'default must be one of "left", "right"',
+      },
+    ]);
+  });
+
+  it("reports a default the declaration's own rule refuses", () => {
+    const schema = defineParams({
+      volume: param.custom<number>({
+        default: 7,
+        editor: { kind: "integer" },
+        validate: () => ["must be a multiple of 5"],
+        decode: (value) => Number(value),
+      }),
+    });
+
+    expect(schemaDefaultProblems(schema)).toEqual([
+      { path: ["volume"], message: "default must be a multiple of 5" },
+    ]);
+  });
+
+  it("reports a choice control with nothing to choose from", () => {
+    const schema = defineParams({
+      facing: param.custom<string>({
+        default: "left",
+        decode: (value) => String(value),
+        editor: { kind: "select", options: [] },
+      }),
+    });
+
+    expect(schemaDefaultProblems(schema).map((one) => one.message)).toContain(
+      "is edited as a choice and lists no values to choose from",
+    );
+  });
+
+  it("decodes a member with the context the placement was given", () => {
+    const schema = defineParams({
+      reach: param.custom<number>({
+        default: 10,
+        editor: { kind: "number" },
+        decode: (value, context) => Number(value) * context.worldPose.scale.x,
+      }),
+    });
+
+    const params = decodeParams(
+      schema,
+      { reach: 10 },
+      {
+        ...NO_REFS,
+        worldPose: {
+          position: { x: 0, y: 0 },
+          rotation: 0,
+          scale: { x: 3, y: 3 },
+        },
+      },
+    );
+
+    expect(params.reach).toBe(30);
+  });
+});
+
+describe("colour parameters", () => {
+  const LampParams = defineParams({
+    tint: param.color("#ffcc88"),
+    glow: param.color("#f80", { optional: true }),
+  });
+
+  function reasons(value: JsonValue): string[] {
+    return validateParams(LampParams, { tint: value, glow: null })
+      .filter((problem) => problem.path[0] === "tint")
+      .map((problem) => problem.message);
+  }
+
+  it("decodes both hex shapes to the number a drawing API takes", () => {
+    expectTypeOf<ParamsOf<typeof LampParams>>().toEqualTypeOf<{
+      tint: number;
+      glow: number | undefined;
+    }>();
+
+    const params = decodeParams(
+      LampParams,
+      { tint: "#ff8800", glow: "#f80" },
+      NO_REFS,
+    );
+
+    expect(params.tint).toBe(0xff8800);
+    expect(params.glow).toBe(0xff8800);
+    expect(
+      decodeParams(LampParams, { tint: "#FF8800", glow: null }, NO_REFS).glow,
+    ).toBeUndefined();
+  });
+
+  it("accepts three or six hex digits and nothing else", () => {
+    expect(reasons("#ff8800")).toEqual([]);
+    expect(reasons("#F80")).toEqual([]);
+
+    for (const refused of ["#ff8800ff", 0xff8800, "orange", "ff8800", "#gg0"]) {
+      expect(reasons(refused as JsonValue)).toEqual([
+        'must be a colour such as "#ff8800"',
+      ]);
+    }
+    expect(reasons(null)).toEqual(['must be a colour such as "#ff8800"']);
+  });
+
+  it("says null is a value only where the declaration did", () => {
+    expect(validateParams(LampParams, { tint: "#fff", glow: null })).toEqual(
+      [],
+    );
+    expect(
+      validateParams(LampParams, { tint: "#fff", glow: "#ff8800ff" }).map(
+        (one) => one.message,
+      ),
+    ).toEqual(['must be a colour such as "#ff8800", or null']);
+  });
+
+  it("describes the field and starts a new placement at the declared text", () => {
+    expect(describeParams(LampParams)).toEqual([
+      {
+        name: "tint",
+        kind: "color",
+        optional: false,
+        defaultValue: "#ffcc88",
+      },
+      { name: "glow", kind: "color", optional: true, defaultValue: "#f80" },
+    ] satisfies readonly ParamFieldDescription[]);
+    expect({ ...defaultParams(LampParams) }).toEqual({
+      tint: "#ffcc88",
+      glow: "#f80",
+    });
+  });
+
+  it("reports a default that is not a colour", () => {
+    expect(
+      schemaDefaultProblems(defineParams({ tint: param.color("orange") })),
+    ).toEqual([
+      { path: ["tint"], message: 'default must be a colour such as "#ff8800"' },
+    ]);
+  });
+});
