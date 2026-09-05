@@ -233,3 +233,10 @@ ids no longer declared within a restored quest, clamping surviving counts to
 the current target. A quest never started stays absent from the snapshot; its
 status re-derives from `requires` on restore, same as before any snapshot
 existed.
+
+The full restored log is available before any listener runs. An active quest
+that now meets every target auto-completes, for example after a catalog target
+was reduced. Its `questCompleted` event precedes its `changed` event, so a
+completion listener can start a dependent quest immediately. Restore does not
+replay objective-completion events. Manual-completion quests and saved completed
+or failed quests keep their status.

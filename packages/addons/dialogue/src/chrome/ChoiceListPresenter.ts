@@ -1,3 +1,4 @@
+import { ensureDialogueLayer } from "../render/ensureLayer.js";
 /**
  * Default choice presenter — a vertical list inside the box, with a highlight
  * bar behind the selected row. Split out of `DialogueChrome` so the choice UI is
@@ -16,12 +17,21 @@
  */
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
-import { GraphicsComponent, TextComponent, type TextComponentOptions } from "@yagejs/renderer";
+import {
+  GraphicsComponent,
+  TextComponent,
+  type TextComponentOptions,
+} from "@yagejs/renderer";
 import type { PresentedChoice } from "../core/session.js";
 import { type BoxLayout, type ChoiceRowRect } from "../render/BoxLayout.js";
 import type { ChoicePresenter, DiagnosticSink } from "./DialogueUiAdapter.js";
 import { makeTextOptions, type FontConfig } from "./textOptions.js";
-import { applyChoiceTint, choiceRowLabel, clampSelection, firstEnabledIndex } from "./choiceRow.js";
+import {
+  applyChoiceTint,
+  choiceRowLabel,
+  clampSelection,
+  firstEnabledIndex,
+} from "./choiceRow.js";
 import { DEFAULT_CHOICE_GAP } from "../factory/theme.js";
 
 export interface ChoiceListConfig extends FontConfig {
@@ -79,6 +89,8 @@ export class ChoiceListPresenter implements ChoicePresenter {
   }
 
   mount(scene: Scene): void {
+    ensureDialogueLayer(scene, this.cfg.layerFrame, 1100);
+    ensureDialogueLayer(scene, this.cfg.layerText, 1110);
     this.scene = scene;
     const hl = scene.spawn("dlg-highlight");
     hl.add(new Transform()).setPosition(0, 0);
@@ -109,7 +121,9 @@ export class ChoiceListPresenter implements ChoicePresenter {
     const built = choices.map((choice) => {
       const entity = this.scene!.spawn("dlg-choice");
       entity.add(new Transform());
-      const comp = entity.add(new TextComponent(this.textOptions(choiceRowLabel(choice), wrapWidth)));
+      const comp = entity.add(
+        new TextComponent(this.textOptions(choiceRowLabel(choice), wrapWidth)),
+      );
       comp.text.visible = true;
       const slotHeight = Math.ceil(comp.text.height) + gap;
       return { entity, comp, disabled: choice.disabled ?? false, slotHeight };
@@ -121,7 +135,12 @@ export class ChoiceListPresenter implements ChoicePresenter {
     // each label at its rect (indented for the highlight bar's rounded edge).
     const rects = this.layout.layoutChoicePanel(built.map((b) => b.slotHeight));
     this.rows = built.map((b, i) => {
-      const rect = rects[i] ?? { x: 0, y: 0, width: innerWidth, height: b.slotHeight };
+      const rect = rects[i] ?? {
+        x: 0,
+        y: 0,
+        width: innerWidth,
+        height: b.slotHeight,
+      };
       b.entity.get(Transform).setPosition(rect.x + ROW_TEXT_INDENT, rect.y);
       return { entity: b.entity, comp: b.comp, disabled: b.disabled, rect };
     });
@@ -146,7 +165,8 @@ export class ChoiceListPresenter implements ChoicePresenter {
   private applyHidden(): void {
     for (const row of this.rows) row.comp.text.visible = !this.hidden;
     if (this.highlightBar) {
-      const onEnabled = this.selected >= 0 && !this.rows[this.selected]?.disabled;
+      const onEnabled =
+        this.selected >= 0 && !this.rows[this.selected]?.disabled;
       this.highlightBar.gfx.graphics.visible = !this.hidden && onEnabled;
     }
   }
@@ -156,7 +176,14 @@ export class ChoiceListPresenter implements ChoicePresenter {
   choiceAtPoint(x: number, y: number): number | undefined {
     for (let i = 0; i < this.rows.length; i++) {
       const r = this.rows[i]?.rect;
-      if (r && x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height) return i;
+      if (
+        r &&
+        x >= r.x &&
+        x <= r.x + r.width &&
+        y >= r.y &&
+        y <= r.y + r.height
+      )
+        return i;
     }
     return undefined;
   }
@@ -177,7 +204,12 @@ export class ChoiceListPresenter implements ChoicePresenter {
   private highlightAt(position: number): void {
     if (this.rows.length === 0) return;
     this.selected = clampSelection(position, this.rows.length);
-    applyChoiceTint(this.rows, this.selected, this.cfg.choiceColor, this.cfg.choiceSelectedColor);
+    applyChoiceTint(
+      this.rows,
+      this.selected,
+      this.cfg.choiceColor,
+      this.cfg.choiceSelectedColor,
+    );
     this.drawHighlight();
   }
 

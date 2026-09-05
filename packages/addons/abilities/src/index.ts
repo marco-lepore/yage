@@ -23,6 +23,7 @@ export type {
   AbilityDef,
   AbilityMatcher,
   AbilitySendOptions,
+  AbilityReleaseOptions,
   AbilityStep,
   CancelWindow,
   PhaseDef,

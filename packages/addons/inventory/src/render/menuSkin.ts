@@ -1,3 +1,4 @@
+import { ensureInventoryLayer } from "./ensureLayer.js";
 /**
  * `menuSkin` — the default action-menu renderer: a rounded frame, one text row
  * per action, and a filled highlight bar on the selected row. {@link
@@ -8,8 +9,17 @@
  */
 
 import { Transform, type Scene } from "@yagejs/core";
-import { createNineSlice, GraphicsComponent, TextComponent } from "@yagejs/renderer";
-import type { MenuSkinHandle, MenuSkinPresenter, MenuSkinRow, Rect } from "../adapter.js";
+import {
+  createNineSlice,
+  GraphicsComponent,
+  TextComponent,
+} from "@yagejs/renderer";
+import type {
+  MenuSkinHandle,
+  MenuSkinPresenter,
+  MenuSkinRow,
+  Rect,
+} from "../adapter.js";
 import type { InventoryTheme, NineSliceFrame } from "../factory/theme.js";
 import { resolveHighlightRadius } from "../factory/theme.js";
 import { makeTextOptions, type FontConfig } from "./textOptions.js";
@@ -61,13 +71,20 @@ class DefaultMenuSkin implements MenuSkinPresenter {
     };
   }
 
-  renderMenu(scene: Scene, menu: Rect, rows: readonly MenuSkinRow[]): MenuSkinHandle {
+  renderMenu(
+    scene: Scene,
+    menu: Rect,
+    rows: readonly MenuSkinRow[],
+  ): MenuSkinHandle {
+    ensureInventoryLayer(scene, this.cfg.layerOverlay, 1070);
     // The frame draws one of two ways: a stretched nine-slice (opt-in) or the
     // Graphics rounded rect (default). Spawned first either way, so the bar +
     // labels paint on top.
     const frameEntity = scene.spawn("inv-menu-frame");
     frameEntity.add(new Transform());
-    const frame = frameEntity.add(new GraphicsComponent({ layer: this.cfg.layerOverlay }));
+    const frame = frameEntity.add(
+      new GraphicsComponent({ layer: this.cfg.layerOverlay }),
+    );
     if (this.cfg.textured) {
       const sprite = createNineSlice({
         texture: this.cfg.textured.texture,
@@ -84,11 +101,23 @@ class DefaultMenuSkin implements MenuSkinPresenter {
     } else {
       frame.draw((g) => {
         g.clear();
-        g.roundRect(menu.x, menu.y, menu.width, menu.height, this.cfg.cornerRadius).fill({
+        g.roundRect(
+          menu.x,
+          menu.y,
+          menu.width,
+          menu.height,
+          this.cfg.cornerRadius,
+        ).fill({
           color: this.cfg.frameColor,
           alpha: this.cfg.frameAlpha,
         });
-        g.roundRect(menu.x, menu.y, menu.width, menu.height, this.cfg.cornerRadius).stroke({
+        g.roundRect(
+          menu.x,
+          menu.y,
+          menu.width,
+          menu.height,
+          this.cfg.cornerRadius,
+        ).stroke({
           color: this.cfg.borderColor,
           width: 1,
         });
@@ -97,14 +126,22 @@ class DefaultMenuSkin implements MenuSkinPresenter {
 
     const barEntity = scene.spawn("inv-menu-bar");
     barEntity.add(new Transform());
-    const bar = barEntity.add(new GraphicsComponent({ layer: this.cfg.layerOverlay }));
+    const bar = barEntity.add(
+      new GraphicsComponent({ layer: this.cfg.layerOverlay }),
+    );
 
     const labels = rows.map((row) => {
       const entity = scene.spawn("inv-menu-row");
       entity.add(new Transform()).setPosition(row.rect.x + 4, row.rect.y + 1);
       const comp = entity.add(
         new TextComponent(
-          makeTextOptions(this.cfg, row.label, this.cfg.textSize, this.cfg.actionColor, this.cfg.layerOverlay),
+          makeTextOptions(
+            this.cfg,
+            row.label,
+            this.cfg.textSize,
+            this.cfg.actionColor,
+            this.cfg.layerOverlay,
+          ),
         ),
       );
       return { entity, comp, rect: row.rect };
@@ -116,7 +153,13 @@ class DefaultMenuSkin implements MenuSkinPresenter {
       bar.draw((g) => {
         g.clear();
         if (!r) return;
-        g.roundRect(r.x, r.y, r.width, r.height - 2, this.cfg.highlightRadius).fill({
+        g.roundRect(
+          r.x,
+          r.y,
+          r.width,
+          r.height - 2,
+          this.cfg.highlightRadius,
+        ).fill({
           color: this.cfg.actionHighlightColor,
           alpha: this.cfg.highlightAlpha,
         });
@@ -128,7 +171,10 @@ class DefaultMenuSkin implements MenuSkinPresenter {
         if (labels.length === 0) return;
         selected = Math.max(0, Math.min(position, labels.length - 1));
         labels.forEach((row, i) => {
-          row.comp.text.tint = i === selected ? this.cfg.actionSelectedColor : this.cfg.actionColor;
+          row.comp.text.tint =
+            i === selected
+              ? this.cfg.actionSelectedColor
+              : this.cfg.actionColor;
         });
         drawBar();
       },

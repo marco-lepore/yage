@@ -230,6 +230,7 @@ interface AbilityDefBase {
    * continuations neither check nor re-arm it). Default 0 (no cooldown).
    * A `Scalar` function is resolved once each time the ability fires
    * (snapshot semantics), so a haste stat can shorten the next cooldown.
+   * Static values and callback results must be finite. Values <= 0 mean no cooldown.
    */
   cooldown?: Scalar;
   /** Sugar: cancel windows applied to every phase independently, each on that phase's local clock. A phase's own `cancels` overrides it. */
@@ -293,6 +294,12 @@ export interface AbilitySendOptions {
   /** Data stored on the activation when this intent enters or transitions it. */
   data?: unknown;
   /** Restrict intent resolution to one lane. */
+  lane?: string;
+}
+
+/** Options for {@link Abilities.release}. */
+export interface AbilityReleaseOptions {
+  /** Restrict release to one lane. Omit to release the first matching hold. */
   lane?: string;
 }
 

@@ -179,6 +179,10 @@ enemy.get(Transform).translate(commanded.x * dt, commanded.y * dt);
 last value and the integration above keeps moving the entity. `agent.stop()`
 pushes a zero through `apply`.
 
+A zero-time update, such as a freeze, skips behavior evaluation and output.
+The agent keeps its velocity and heading, and does not change its Transform
+or physics body or call a custom `apply` callback.
+
 ## Blending behaviors
 
 Two options govern how behaviors combine. `weight` (default 1) sets how strongly

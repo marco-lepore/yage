@@ -160,6 +160,10 @@ abilities.send("charge");
 abilities.release("charge");
 ```
 
+When two lanes hold the same intent, pass `release("charge", { lane: "weapon" })`
+to release only the named lane. Omitting `lane` releases the first matching
+hold. `AbilityDriver` automatically releases the lane of the activation it owns.
+
 `priority` decides whether an incoming definition may interrupt a busy lane.
 `cancels` opens an explicit admission window. String matchers name resolved
 definition ids; `{ tag: "movement" }` matches any definition carrying that
@@ -217,7 +221,7 @@ One run emits one start/end pair; phase changes do not end the activation.
 
 Disabling `Abilities`, or deactivating its entity, pauses active phases, linger,
 and cooldowns. New `send`, `canSend`, `force`, and `release` calls are refused.
-Open windows temporarily release the effects they created, including detached
+Open windows call their disable hooks to release effects, including detached
 hitboxes and scene-level slow motion. The sibling components keep their own
 `enabled` values. Enabling `Abilities` restores the same activation, clocks,
 and open-window effects.
@@ -230,6 +234,10 @@ reach, and cooldowns all count fixed-step seconds, in step with physics
 rather than the display's frame rate. The other addon timers do the same —
 `HitReceiver` i-frames, `Stagger`, `TouchDamage` intervals, `Projectile`
 lifetime, and hitbox `follow` tracking run in `fixedUpdate`.
+
+A `send()` made from a component's `fixedUpdate` first advances on the next
+fixed step. Fixed-clock processes run before component fixed updates; see the
+[frame order](/concepts/game-loop/) when coordinating an attack with physics.
 
 Presentation stays smooth regardless: an `anim` step triggers a
 `KeyframeAnimator` whose playback runs on rendered-frame time by default, and
@@ -358,6 +366,66 @@ emits `HitDealt` on the original attacker with the result, typed default
 fire-time data, target, and optional ability provenance. Reporting deliveries
 inherit the source `HitReceiver.team`; an explicit delivery team wins.
 
+Destroyed targets return `"ignored"` and receive no hit callbacks, even before
+their deferred teardown runs. An attack can still hit after its caster dies.
+
+Import the event tokens to subscribe. Their ids are `abilities:health:damaged`,
+`abilities:health:healed`, `abilities:health:died`, `abilities:hit:received`,
+`abilities:hit:dealt`, and `abilities:hit:guarded`.
+
+### Solid projectiles
+
+`Projectile` defaults to a sensor with no gravity. Set `sensor: false` to use
+solid collision response and `gravityScale: 1` to apply world gravity:
+
+```ts
+spawn({
+  at: 0,
+  entity: Projectile,
+  params: {
+    speed: 200,
+    lifetime: 3,
+    shape: { type: "circle", radius: 5 },
+    sensor: false,
+    gravityScale: 1,
+    consume: (result) => result !== "ignored",
+  },
+  hit: { damage: 12 },
+});
+```
+
+This rule does not consume the projectile when delivery returns `"ignored"`,
+so it can land on a one-way platform. Configure `oneWay` on the platform's collider.
+Without a custom rule, `shouldConsumeProjectile(result, otherIsSensor)` consumes
+on any accepted hit or non-sensor contact. Speed must be finite; lifetime must
+be finite and non-negative.
+
+### Pooled attacks
+
+Pass `acquire` to reuse a game-owned entity pool instead of creating an entity
+for every attack:
+
+```ts
+spawn({
+  at: 0.2,
+  entity: PooledAttack,
+  params: { speed: 300, lifetime: 2 },
+  hit: { damage: 12 },
+  acquire: (context) => attackPool.acquire(context),
+});
+```
+
+The callback receives the resolved spawn context and, as its second argument,
+the live `StepContext`. Returning `undefined` skips the spawn, including when
+the pool is full. No extra entity is created.
+
+Use a purpose-built `PoolableEntity` with
+`setup(context?: AbilitySpawnContext<AttackParams>)` to construct components
+once. The optional context supports pool prewarming and preserves typed
+`params`. In `onAcquire(context)`, store the new `abilitySpawnContext` and reset
+position, velocity, lifetime, and hit state. Release through the pool when the
+attack finishes. The supplied `Projectile` is not poolable.
+
 ## Guards, invulnerability, reactions, and time
 
 `guard` opens a window whose policy returns `"pass"`, `"modified"`, or
@@ -429,6 +497,10 @@ the common numeric cases:
 - **Cooldown speed:** use a `Scalar` function. The runner resolves it once when
   the ability starts, so an already armed cooldown does not change under a
   later haste update.
+
+Cooldowns must be finite. Static values are checked when definitions compile;
+function results are checked at activation before cooldown state changes.
+Finite values at or below zero mean no cooldown.
 
 ```ts
 const ATTACK: AbilityDef = {

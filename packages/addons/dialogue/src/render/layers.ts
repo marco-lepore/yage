@@ -6,7 +6,7 @@ import type { LayerDef } from "@yagejs/renderer";
  * any in-scene React chrome, and `space: "screen"` pins the box to the
  * viewport (it doesn't scroll/zoom with the world camera).
  *
- * A host scene opts in by spreading `DIALOGUE_LAYERS` into its `layers` field:
+ * Built-in presenters create missing layers. A host can declare orders explicitly:
  *   readonly layers = [...DIALOGUE_LAYERS];
  */
 export const DIALOGUE_LAYER_FRAME = "dialogue-frame";

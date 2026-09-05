@@ -7,7 +7,7 @@ import type { LayerDef } from "@yagejs/renderer";
  * `space: "screen"` pins the panel to the viewport (it doesn't scroll/zoom
  * with the world camera).
  *
- * A host scene opts in by spreading `INVENTORY_LAYERS` into its `layers` field:
+ * Built-in presenters create missing layers. A host can declare orders explicitly:
  *   readonly layers = [...INVENTORY_LAYERS];
  */
 export const INVENTORY_LAYER_PANEL = "inventory-panel";

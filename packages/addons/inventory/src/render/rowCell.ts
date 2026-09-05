@@ -1,3 +1,4 @@
+import { ensureInventoryLayer } from "./ensureLayer.js";
 /**
  * `rowCell` — a text-row cell preset: the item name left-aligned, a
  * right-aligned `×qty`, and a filled highlight bar on the selected row. This
@@ -12,7 +13,12 @@
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
 import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
-import type { CellDefaults, CellHandle, CellPresenter, Rect } from "../adapter.js";
+import type {
+  CellDefaults,
+  CellHandle,
+  CellPresenter,
+  Rect,
+} from "../adapter.js";
 import type { SlotView } from "../core/session.js";
 import type { InventoryTheme } from "../factory/theme.js";
 import { resolveHighlightRadius } from "../factory/theme.js";
@@ -69,17 +75,31 @@ class RowCellPresenter implements CellPresenter {
     };
   }
 
-  renderCell(scene: Scene, view: SlotView, r: Rect, selected: boolean): CellHandle {
+  renderCell(
+    scene: Scene,
+    view: SlotView,
+    r: Rect,
+    selected: boolean,
+  ): CellHandle {
+    ensureInventoryLayer(scene, this.cfg.layerContent, 1060);
     // Highlight bar first (paints under the text). Empty rows still get it, so
     // an empty slot is a blank, selectable row.
     const barEntity = scene.spawn("inv-row-bar");
     barEntity.add(new Transform());
-    const bar = barEntity.add(new GraphicsComponent({ layer: this.cfg.layerContent }));
+    const bar = barEntity.add(
+      new GraphicsComponent({ layer: this.cfg.layerContent }),
+    );
     const draw = (sel: boolean): void => {
       bar.draw((g) => {
         g.clear();
         if (sel) {
-          g.roundRect(r.x, r.y, r.width, r.height - 1, this.cfg.highlightRadius).fill({
+          g.roundRect(
+            r.x,
+            r.y,
+            r.width,
+            r.height - 1,
+            this.cfg.highlightRadius,
+          ).fill({
             color: this.cfg.highlightColor,
             alpha: this.cfg.rowHighlightAlpha,
           });
@@ -94,10 +114,19 @@ class RowCellPresenter implements CellPresenter {
       const nameEntity = scene.spawn("inv-row-name");
       nameEntity
         .add(new Transform())
-        .setPosition(r.x + ROW_TEXT_INDENT, r.y + (r.height - this.cfg.textSize) / 2 - 1);
+        .setPosition(
+          r.x + ROW_TEXT_INDENT,
+          r.y + (r.height - this.cfg.textSize) / 2 - 1,
+        );
       const name = nameEntity.add(
         new TextComponent(
-          makeTextOptions(this.cfg, view.def.name, this.cfg.textSize, this.cfg.textColor, this.cfg.layerContent),
+          makeTextOptions(
+            this.cfg,
+            view.def.name,
+            this.cfg.textSize,
+            this.cfg.textColor,
+            this.cfg.layerContent,
+          ),
         ),
       );
       entities.push(nameEntity);
@@ -107,7 +136,10 @@ class RowCellPresenter implements CellPresenter {
         const qtyEntity = scene.spawn("inv-row-qty");
         qtyEntity
           .add(new Transform())
-          .setPosition(r.x + r.width - ROW_TEXT_INDENT, r.y + (r.height - this.cfg.quantitySize) / 2);
+          .setPosition(
+            r.x + r.width - ROW_TEXT_INDENT,
+            r.y + (r.height - this.cfg.quantitySize) / 2,
+          );
         const qty = qtyEntity.add(
           new TextComponent(
             makeTextOptions(

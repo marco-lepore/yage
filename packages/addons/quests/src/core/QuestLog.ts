@@ -39,7 +39,9 @@ interface QuestRuntimeState {
   objectives: Map<string, number>;
 }
 
-export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<string, QuestDefInput>> {
+export class QuestLog<
+  TDefs extends Record<string, QuestDefInput> = Record<string, QuestDefInput>,
+> {
   private readonly emitter = new Emitter<QuestEvents>();
   private readonly states = new Map<string, QuestRuntimeState>();
 
@@ -58,12 +60,15 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
   start(quest: QuestId<TDefs>): QuestStartResult {
     if (!this.catalog.has(quest)) return { ok: false, reason: "unknown-quest" };
     const state = this.states.get(quest);
-    if (state?.phase === "active") return { ok: false, reason: "already-active" };
+    if (state?.phase === "active")
+      return { ok: false, reason: "already-active" };
     if (state?.phase === "completed" || state?.phase === "failed") {
       return { ok: false, reason: "already-completed" };
     }
     const def = this.catalog.get(quest);
-    const locked = def.requires.some((reqId) => this.states.get(reqId)?.phase !== "completed");
+    const locked = def.requires.some(
+      (reqId) => this.states.get(reqId)?.phase !== "completed",
+    );
     if (locked) return { ok: false, reason: "locked" };
     this.states.set(quest, { phase: "active", objectives: new Map() });
     this.emitter.emit("questStarted", { questId: quest });
@@ -88,7 +93,13 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
     if (amount <= 0) return;
     const def = this.objectiveDef(quest, objective);
     const current = state.objectives.get(objective) ?? 0;
-    this.applyProgress(quest, state, objective, def, Math.min(def.count, current + amount));
+    this.applyProgress(
+      quest,
+      state,
+      objective,
+      def,
+      Math.min(def.count, current + amount),
+    );
   }
 
   /**
@@ -111,7 +122,10 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
 
   /** Drive `objective` straight to its target. No-op if `quest` isn't
    *  `active`, or if the objective is already done. */
-  complete<Q extends QuestId<TDefs>>(quest: Q, objective: ObjectiveIdOf<TDefs, Q>): void {
+  complete<Q extends QuestId<TDefs>>(
+    quest: Q,
+    objective: ObjectiveIdOf<TDefs, Q>,
+  ): void {
     const state = this.states.get(quest);
     if (!state || state.phase !== "active") return;
     const def = this.objectiveDef(quest, objective);
@@ -141,7 +155,10 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
     const state = this.states.get(quest);
     if (state?.phase === "completed" || state?.phase === "failed") return;
     const def = this.catalog.get(quest);
-    const next: QuestRuntimeState = state ?? { phase: "active", objectives: new Map() };
+    const next: QuestRuntimeState = state ?? {
+      phase: "active",
+      objectives: new Map(),
+    };
     for (const objId of def.objectiveIds) {
       next.objectives.set(objId, def.objectives.get(objId)!.count);
     }
@@ -160,7 +177,10 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
     if (state?.phase === "completed" || state?.phase === "failed") return;
     const status = this.status(quest);
     if (status !== "active" && status !== "available") return;
-    const next: QuestRuntimeState = state ?? { phase: "active", objectives: new Map() };
+    const next: QuestRuntimeState = state ?? {
+      phase: "active",
+      objectives: new Map(),
+    };
     next.phase = "failed";
     this.states.set(quest, next);
     this.emitter.emit("questFailed", { questId: quest });
@@ -175,7 +195,9 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
     const state = this.states.get(quest);
     if (state) return state.phase;
     const def = this.catalog.get(quest);
-    const locked = def.requires.some((reqId) => this.states.get(reqId)?.phase !== "completed");
+    const locked = def.requires.some(
+      (reqId) => this.states.get(reqId)?.phase !== "completed",
+    );
     return locked ? "locked" : "available";
   }
 
@@ -194,17 +216,28 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
     const def = this.catalog.get(quest);
     return def.objectiveIds.every((objId) => {
       const objDef = this.objectiveDef(quest, objId);
-      return objDef.optional || (state.objectives.get(objId) ?? 0) >= objDef.count;
+      return (
+        objDef.optional || (state.objectives.get(objId) ?? 0) >= objDef.count
+      );
     });
   }
 
   /** Current progress count for `objective` (0 if never touched). */
-  progress<Q extends QuestId<TDefs>>(quest: Q, objective: ObjectiveIdOf<TDefs, Q>): number {
+  progress<Q extends QuestId<TDefs>>(
+    quest: Q,
+    objective: ObjectiveIdOf<TDefs, Q>,
+  ): number {
     return this.states.get(quest)?.objectives.get(objective) ?? 0;
   }
 
-  objectiveDone<Q extends QuestId<TDefs>>(quest: Q, objective: ObjectiveIdOf<TDefs, Q>): boolean {
-    return this.progress(quest, objective) >= this.objectiveDef(quest, objective).count;
+  objectiveDone<Q extends QuestId<TDefs>>(
+    quest: Q,
+    objective: ObjectiveIdOf<TDefs, Q>,
+  ): boolean {
+    return (
+      this.progress(quest, objective) >=
+      this.objectiveDef(quest, objective).count
+    );
   }
 
   /** Quest ids `available` right now, in authoring order — what a
@@ -229,13 +262,20 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
     const def = this.catalog.get(quest);
     const state = this.states.get(quest);
     const objectives: Record<string, number> = {};
-    for (const objId of def.objectiveIds) objectives[objId] = state?.objectives.get(objId) ?? 0;
-    return Object.freeze({ status: this.status(quest), objectives: Object.freeze(objectives) });
+    for (const objId of def.objectiveIds)
+      objectives[objId] = state?.objectives.get(objId) ?? 0;
+    return Object.freeze({
+      status: this.status(quest),
+      objectives: Object.freeze(objectives),
+    });
   }
 
   // ------------------------------------------------------------------ events
 
-  on<K extends keyof QuestEvents>(event: K, fn: (payload: QuestEvents[K]) => void): () => void {
+  on<K extends keyof QuestEvents>(
+    event: K,
+    fn: (payload: QuestEvents[K]) => void,
+  ): () => void {
     return this.emitter.on(event, fn);
   }
 
@@ -247,7 +287,10 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
   snapshot(): QuestSnapshot {
     const quests: Record<string, QuestStateSnapshot> = {};
     for (const [id, state] of this.states) {
-      quests[id] = { phase: state.phase, objectives: Object.fromEntries(state.objectives) };
+      quests[id] = {
+        phase: state.phase,
+        objectives: Object.fromEntries(state.objectives),
+      };
     }
     return { quests };
   }
@@ -266,24 +309,44 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
    * `0`, same as an untouched objective); a fractional count is truncated;
    * the surviving count is clamped to `[0, target]` (a catalog change since
    * the snapshot was taken never resurrects a removed quest/objective or
-   * exceeds a shrunk target). Emits one coarse `changed` per restored (and
-   * known) quest id — not-started quests re-derive `locked`/`available` from
+   * exceeds a shrunk target). Installs all state before notifying listeners.
+   * Satisfied active quests with auto-completion emit `questCompleted`, then
+   * each restored quest emits `changed`. Objective events are not replayed.
+   * Not-started quests re-derive `locked`/`available` from
    * `requires` the next time they're read.
    */
   restore(snapshot: QuestSnapshot): void {
     const quests: unknown = snapshot?.quests;
-    if (typeof quests !== "object" || quests === null || Array.isArray(quests)) {
-      throw new Error("QuestLog.restore: snapshot.quests must be a plain object");
+    if (
+      typeof quests !== "object" ||
+      quests === null ||
+      Array.isArray(quests)
+    ) {
+      throw new Error(
+        "QuestLog.restore: snapshot.quests must be a plain object",
+      );
     }
     const restored = new Map<string, QuestRuntimeState>();
-    for (const [questId, snap] of Object.entries(quests as Record<string, QuestStateSnapshot>)) {
+    for (const [questId, snap] of Object.entries(
+      quests as Record<string, QuestStateSnapshot>,
+    )) {
       if (!this.catalog.has(questId)) continue;
       // Per-entry drop policy covers entry shape too: a known quest id
       // mapping to null, a non-object, or one without an objectives object
       // is dropped, not thrown on.
-      if (typeof snap !== "object" || snap === null || Array.isArray(snap)) continue;
-      if (snap.phase !== "active" && snap.phase !== "completed" && snap.phase !== "failed") continue;
-      if (typeof snap.objectives !== "object" || snap.objectives === null || Array.isArray(snap.objectives)) {
+      if (typeof snap !== "object" || snap === null || Array.isArray(snap))
+        continue;
+      if (
+        snap.phase !== "active" &&
+        snap.phase !== "completed" &&
+        snap.phase !== "failed"
+      )
+        continue;
+      if (
+        typeof snap.objectives !== "object" ||
+        snap.objectives === null ||
+        Array.isArray(snap.objectives)
+      ) {
         continue;
       }
       const def = this.catalog.get(questId);
@@ -291,13 +354,19 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
       for (const [objId, count] of Object.entries(snap.objectives)) {
         const objDef = def.objectives.get(objId);
         if (!objDef || !Number.isFinite(count)) continue;
-        objectives.set(objId, Math.max(0, Math.min(objDef.count, Math.trunc(count))));
+        objectives.set(
+          objId,
+          Math.max(0, Math.min(objDef.count, Math.trunc(count))),
+        );
       }
       restored.set(questId, { phase: snap.phase, objectives });
     }
     this.states.clear();
     for (const [questId, state] of restored) {
       this.states.set(questId, state);
+    }
+    for (const [questId, state] of restored) {
+      this.tryAutoComplete(questId, state);
       this.emitter.emit("changed", { questId });
     }
   }
@@ -307,8 +376,11 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
   /** The objective def for `objective` under `quest`. Throws when unreachable
    *  through the typed API — an id that isn't a declared objective. */
   private objectiveDef(quest: string, objective: string): ObjectiveDef {
-    const def = this.catalog.get(quest as QuestId<TDefs>).objectives.get(objective);
-    if (!def) throw new Error(`quest "${quest}": unknown objective id "${objective}"`);
+    const def = this.catalog
+      .get(quest as QuestId<TDefs>)
+      .objectives.get(objective);
+    if (!def)
+      throw new Error(`quest "${quest}": unknown objective id "${objective}"`);
     return def;
   }
 
@@ -337,7 +409,10 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
     });
     const crossedToTarget = current < def.count && nextProgress >= def.count;
     if (crossedToTarget) {
-      this.emitter.emit("objectiveCompleted", { questId: quest, objectiveId: objective });
+      this.emitter.emit("objectiveCompleted", {
+        questId: quest,
+        objectiveId: objective,
+      });
       this.tryAutoComplete(quest, state);
     }
     this.emitter.emit("changed", { questId: quest });

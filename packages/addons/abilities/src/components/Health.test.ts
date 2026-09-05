@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createMockEntity } from "@yagejs/core";
+import { createMockEntity, defineEvent } from "@yagejs/core";
 import { Health, HealthDamaged, HealthDied, HealthHealed } from "./Health.js";
 
 function setup(options: { max: number; initial?: number }) {
@@ -13,6 +13,15 @@ function setup(options: { max: number; initial?: number }) {
 }
 
 describe("Health", () => {
+  it("does not publish death into a game's health:died channel", () => {
+    const gameDied = defineEvent("health:died");
+    const { entity } = createMockEntity();
+    const events: string[] = [];
+    entity.on(gameDied, () => events.push("game"));
+    entity.on(HealthDied, () => events.push("abilities"));
+    entity.add(new Health({ max: 1 })).takeDamage(1);
+    expect(events).toEqual(["abilities"]);
+  });
   it("starts at max unless an initial value is given", () => {
     expect(setup({ max: 10 }).health.hp).toBe(10);
     expect(setup({ max: 10, initial: 4 }).health.hp).toBe(4);

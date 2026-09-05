@@ -456,6 +456,7 @@ playback:
 const stagger = feelSpriteAnimation("stagger", {
   target: enemyAnimations,
   mode: "oneShot",
+  onCancel: () => console.log("Stagger animation interrupted"),
 });
 ```
 
@@ -463,6 +464,12 @@ const stagger = feelSpriteAnimation("stagger", {
 playback and complete their Feel node immediately. A `"oneShot"` sprite node
 with an explicit `duration` stays active for that duration and accepts finite
 play-time retiming. Stopping the cue later does not stop the animation.
+
+`duration`, `onComplete`, and `onCancel` require `mode: "oneShot"`.
+`onComplete` reports natural animation completion. `onCancel` reports an
+interruption, such as another one-shot, `forcePlay`, `unlock`, or destruction.
+Neither callback changes the Feel node's timing. Without an explicit duration,
+the node completes immediately after starting the animation.
 
 ## Save and load
 

@@ -15,6 +15,70 @@ function herbLog() {
   return new QuestLog(catalog);
 }
 
+describe("restore completion", () => {
+  it("completes a shrunk active quest after installing all restored state", () => {
+    const log = new QuestLog(
+      defineQuests({
+        a: { title: "A", objectives: { step: { count: 2 } } },
+        b: { title: "B", requires: ["a"], objectives: { step: {} } },
+        c: { title: "C", objectives: { step: { count: 10 } } },
+      }),
+    );
+    const events: string[] = [];
+    const progress = vi.fn();
+    log.on("objectiveCompleted", progress);
+    log.on("objectiveProgressChanged", progress);
+    log.on("questCompleted", ({ questId }) => {
+      events.push(`completed:${questId}`);
+      expect(log.progress("c", "step")).toBe(3);
+      expect(log.start("b")).toEqual({ ok: true });
+    });
+    log.on("changed", ({ questId }) => events.push(`changed:${questId}`));
+    log.restore({
+      quests: {
+        a: { phase: "active", objectives: { step: 5 } },
+        c: { phase: "active", objectives: { step: 3 } },
+      },
+    });
+    expect(log.status("a")).toBe("completed");
+    expect(log.status("b")).toBe("active");
+    expect(events).toEqual([
+      "completed:a",
+      "changed:b",
+      "changed:a",
+      "changed:c",
+    ]);
+    expect(progress).not.toHaveBeenCalled();
+  });
+
+  it("preserves manual and terminal quest phases without replaying completion", () => {
+    const log = new QuestLog(
+      defineQuests({
+        manual: {
+          title: "Manual",
+          autoComplete: false,
+          objectives: { step: {} },
+        },
+        done: { title: "Done", objectives: { step: {} } },
+        failed: { title: "Failed", objectives: { step: {} } },
+      }),
+    );
+    const completed = vi.fn();
+    log.on("questCompleted", completed);
+    log.restore({
+      quests: {
+        manual: { phase: "active", objectives: { step: 1 } },
+        done: { phase: "completed", objectives: { step: 1 } },
+        failed: { phase: "failed", objectives: { step: 1 } },
+      },
+    });
+    expect(log.status("manual")).toBe("active");
+    expect(log.status("done")).toBe("completed");
+    expect(log.status("failed")).toBe("failed");
+    expect(completed).not.toHaveBeenCalled();
+  });
+});
+
 describe("start", () => {
   it("available -> active: questStarted then changed, { ok: true }", () => {
     const log = herbLog();
@@ -45,19 +109,28 @@ describe("start", () => {
   it("starting twice returns already-active", () => {
     const log = herbLog();
     log.start("gatherHerbs");
-    expect(log.start("gatherHerbs")).toEqual({ ok: false, reason: "already-active" });
+    expect(log.start("gatherHerbs")).toEqual({
+      ok: false,
+      reason: "already-active",
+    });
   });
 
   it("starting a completed quest returns already-completed", () => {
     const log = herbLog();
     log.start("gatherHerbs");
     log.forceCompleteQuest("gatherHerbs");
-    expect(log.start("gatherHerbs")).toEqual({ ok: false, reason: "already-completed" });
+    expect(log.start("gatherHerbs")).toEqual({
+      ok: false,
+      reason: "already-completed",
+    });
   });
 
   it("an unknown quest id returns unknown-quest without throwing", () => {
     const log = herbLog();
-    expect(log.start("nope" as never)).toEqual({ ok: false, reason: "unknown-quest" });
+    expect(log.start("nope" as never)).toEqual({
+      ok: false,
+      reason: "unknown-quest",
+    });
   });
 });
 
@@ -70,7 +143,13 @@ describe("advance / setProgress / complete", () => {
 
     log.advance("gatherHerbs", "herb", 2);
     expect(advanced).toEqual([
-      { questId: "gatherHerbs", objectiveId: "herb", progress: 2, count: 5, done: false },
+      {
+        questId: "gatherHerbs",
+        objectiveId: "herb",
+        progress: 2,
+        count: 5,
+        done: false,
+      },
     ]);
     expect(log.progress("gatherHerbs", "herb")).toBe(2);
   });
@@ -82,7 +161,10 @@ describe("advance / setProgress / complete", () => {
     log.on("objectiveCompleted", completed);
 
     log.advance("gatherHerbs", "herb", 5);
-    expect(completed).toHaveBeenCalledWith({ questId: "gatherHerbs", objectiveId: "herb" });
+    expect(completed).toHaveBeenCalledWith({
+      questId: "gatherHerbs",
+      objectiveId: "herb",
+    });
   });
 
   it("advancing past the target does not overshoot", () => {
@@ -149,7 +231,9 @@ describe("advance / setProgress / complete", () => {
   it("an unknown objective id throws", () => {
     const log = herbLog();
     log.start("gatherHerbs");
-    expect(() => log.advance("gatherHerbs", "nope" as never)).toThrow(/unknown objective id/);
+    expect(() => log.advance("gatherHerbs", "nope" as never)).toThrow(
+      /unknown objective id/,
+    );
   });
 });
 
@@ -429,7 +513,9 @@ describe("snapshot / restore", () => {
     log.start("gatherHerbs");
     log.advance("gatherHerbs", "herb", 3);
 
-    expect(() => log.restore({} as never)).toThrow(/snapshot\.quests must be a plain object/);
+    expect(() => log.restore({} as never)).toThrow(
+      /snapshot\.quests must be a plain object/,
+    );
     expect(log.status("gatherHerbs")).toBe("active");
     expect(log.progress("gatherHerbs", "herb")).toBe(3);
   });

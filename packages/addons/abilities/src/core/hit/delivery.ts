@@ -58,7 +58,7 @@ export interface HitDelivery {
    * Deliver to one contact. `from` is the world-space position the hit comes
    * from (the hitbox owner or the projectile itself); the payload direction
    * is the unit vector from `from` to the target's position. Returns
-   * `"ignored"` for the delivery's own source and for entities without the
+   * `"ignored"` for destroyed targets, the delivery's own source and entities without the
    * `Hittable` trait; otherwise whatever the receiver decides.
    */
   deliver(target: Entity, from: Vec2Like): HitResult;
@@ -71,6 +71,7 @@ export function createHitDelivery<TData = StandardHitData>(
   const { source, team, tags = [] } = options;
   return {
     deliver(target, from) {
+      if (target.isDestroyed) return "ignored";
       if (target === source) return "ignored";
       if (!target.hasTrait(Hittable)) return "ignored";
       const hit: Hit = {

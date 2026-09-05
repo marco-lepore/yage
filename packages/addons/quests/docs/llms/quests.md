@@ -132,7 +132,13 @@ log.restore(snapshot): void;
 Only started quests appear in a snapshot. `restore` drops quest ids the
 current catalog no longer declares, drops objective ids no longer declared
 within a restored quest, clamps surviving counts to the current target, and
-emits one `changed` per restored (and known) quest. Not-started quests
+installs the complete restored log before notifying listeners. An active quest
+whose current targets are all satisfied auto-completes unless `autoComplete`
+is `false`. It emits `questCompleted` before that quest's `changed`, so completion
+listeners can start dependent quests against the full restored state. Restore
+does not replay `objectiveCompleted`. Completed, failed, and manual-completion
+quests keep their saved status. It emits one `changed` per restored (and known)
+quest, in addition to changes made by listeners. Not-started quests
 re-derive `locked`/`available` from `requires`. `@yagejs/save` is not a
 dependency. Include this domain snapshot in the game's explicit save state and
 call `restore` after loading it.

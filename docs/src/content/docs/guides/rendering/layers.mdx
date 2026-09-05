@@ -61,6 +61,14 @@ guide](/guides/ui/#layer-space-and-positioning) for how
 `UISurface`/`UIRoot` pick between viewport-anchored and Transform-pinned
 positioning.
 
+## Automatically created layers
+
+Plugins and addon presenters can create missing layers with
+`tree.ensureLayer({ name, order, space })`. If the host has already declared
+that name, its layer and order remain unchanged. A different requested order
+produces one development warning per scene tree, name, and requested order.
+Repeated requests with the same order are silent.
+
 ## Depth sorting with `sort`
 
 By default, sprites within a layer paint in the order their containers

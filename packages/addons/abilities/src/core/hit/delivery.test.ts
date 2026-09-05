@@ -29,6 +29,21 @@ function spawnTarget(scene: Scene, x: number, y: number): Target {
 }
 
 describe("createHitDelivery", () => {
+  it("ignores a destroyed target before and after teardown while allowing a dead source's hit", () => {
+    const { scene } = createMockScene();
+    const source = scene.spawn("source");
+    const target = spawnTarget(scene, 10, 0);
+    const delivery = createHitDelivery({ source });
+    source.destroy();
+    expect(delivery.deliver(target, Vec2.ZERO)).toBe("hit");
+    target.destroy();
+    const traitQuery = vi.spyOn(target, "hasTrait");
+    expect(delivery.deliver(target, Vec2.ZERO)).toBe("ignored");
+    scene._flushDestroyQueue();
+    expect(delivery.deliver(target, Vec2.ZERO)).toBe("ignored");
+    expect(traitQuery).not.toHaveBeenCalled();
+    expect(target.received).toHaveLength(1);
+  });
   it("delivers the payload to a Hittable entity and returns its result", () => {
     const { scene } = createMockScene();
     const source = scene.spawn("attacker");

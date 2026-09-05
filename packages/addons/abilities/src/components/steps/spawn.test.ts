@@ -1,6 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
   Entity,
+  EntityPool,
+  ErrorBoundaryKey,
   ProcessComponent,
   Transform,
   Vec2,
@@ -10,7 +12,6 @@ import {
 import { AbilitySpawned } from "../../core/AbilitySpawned.js";
 import type {
   AbilitySpawnContext,
-  AbilitySpawnedClass,
   AbilitySpawnParams,
 } from "../../core/AbilitySpawned.js";
 import { Abilities } from "../../core/Abilities.js";
@@ -68,6 +69,101 @@ function findOrb(entities: readonly Entity[]): Orb {
 }
 
 describe("spawn step", () => {
+  it("acquires and reuses a capped pool member with inferred optional setup params", () => {
+    @trait(AbilitySpawned)
+    class PooledOrb extends Entity {
+      abilitySpawnContext: AbilitySpawnContext<OrbParams> | undefined;
+      override setup(context?: AbilitySpawnContext<OrbParams>): void {
+        this.abilitySpawnContext = context;
+        this.add(new Transform());
+      }
+      override onAcquire(context: AbilitySpawnContext<OrbParams>): void {
+        this.abilitySpawnContext = context;
+        this.get(Transform).setPosition(context.position.x, context.position.y);
+      }
+    }
+    const { entity, scene, pc } = setup();
+    const pool = new EntityPool(scene, PooledOrb, { prewarm: 1, maxSize: 1 });
+    const contexts: AbilitySpawnContext<OrbParams>[] = [];
+    const abilities = entity.add(
+      new Abilities([
+        {
+          id: "pool",
+          duration: 0.1,
+          timeline: [
+            spawn({
+              at: 0,
+              entity: PooledOrb,
+              params: { power: 4, label: "pooled" },
+              offset: { x: 3, y: 0 },
+              hit: { damage: 7 },
+              acquire(context, stepContext) {
+                const power: number = context.params.power;
+                expect(power).toBe(4);
+                expect(context.activation).toBe(stepContext.activation);
+                contexts.push(context);
+                return pool.acquire(context);
+              },
+            }),
+          ],
+        },
+      ]),
+    );
+    const fire = (): void => {
+      abilities.send("pool");
+      pc._tick(0.2, undefined, "fixed");
+    };
+    fire();
+    const member = scene
+      .findEntities()
+      .find((e): e is PooledOrb => e instanceof PooledOrb)!;
+    expect(member.abilitySpawnContext).toMatchObject({
+      caster: entity,
+      team: "player",
+      aim: new Vec2(0, 1),
+      position: new Vec2(10, 23),
+      params: { power: 4, label: "pooled" },
+    });
+    fire();
+    expect(member.abilitySpawnContext).toBe(contexts[0]);
+    expect(
+      scene.findEntities().filter((e) => e instanceof PooledOrb),
+    ).toHaveLength(1);
+    pool.release(member);
+    fire();
+    expect(member.abilitySpawnContext).toBe(contexts[2]);
+    pool.dispose();
+  });
+
+  it("attributes an acquire throw without spawning a fallback", () => {
+    const { entity, scene, pc } = setup();
+    const error = new Error("acquire failed");
+    const abilities = entity.add(
+      new Abilities([
+        {
+          id: "orb",
+          timeline: [
+            spawn({
+              at: 0,
+              entity: Orb,
+              params: { power: 1, label: "x" },
+              acquire() {
+                throw error;
+              },
+            }),
+          ],
+        },
+      ]),
+    );
+    abilities.send("orb");
+    expect(() => pc._tick(0.1, undefined, "fixed")).toThrow(error);
+    expect(scene.findEntities().filter((e) => e instanceof Orb)).toHaveLength(
+      0,
+    );
+    expect(
+      scene.context.resolve(ErrorBoundaryKey).getCallbackErrors(),
+    ).toMatchObject([{ kind: "Ability spawn acquire callback" }]);
+  });
   it("passes typed params and resolved spawn context to the entity", () => {
     const { entity, scene, pc } = setup();
     entity.add(
@@ -302,7 +398,9 @@ describe("spawn step", () => {
     );
 
     entity.get(Abilities).send("invalid");
-    expect(() => pc._tick(0.01, undefined, "fixed")).toThrow(/step "spawn".*AbilitySpawned trait/);
+    expect(() => pc._tick(0.01, undefined, "fixed")).toThrow(
+      /step "spawn".*AbilitySpawned trait/,
+    );
     expect(InvalidSpawn.latest).toBeUndefined();
   });
 
@@ -477,12 +575,15 @@ describe("spawn step", () => {
       }
     }
 
-    const invalidAssignment = (): AbilitySpawnedClass => {
+    expectTypeOf<
+      AbilitySpawnParams<typeof WrongSetup>
+    >().toEqualTypeOf<never>();
+    spawn({
+      at: 0,
+      entity: WrongSetup,
       // @ts-expect-error setup must receive AbilitySpawnContext<OrbParams>
-      const entityClass: AbilitySpawnedClass = WrongSetup;
-      return entityClass;
-    };
-    expect(invalidAssignment).toBeTypeOf("function");
+      params: { power: 2, label: "invalid" },
+    });
   });
 
   it("requires trait classes to declare abilitySpawnContext", () => {

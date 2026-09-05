@@ -1,3 +1,4 @@
+import { ensureInventoryLayer } from "./ensureLayer.js";
 /**
  * DetailView — the selected-item pane in the panel's bottom band: item name
  * (with quantity) and the wrapped description. Two persistent TextComponents
@@ -33,20 +34,39 @@ export class DetailView implements DetailPresenter {
   ) {}
 
   mount(scene: Scene): void {
+    ensureInventoryLayer(scene, this.cfg.layerContent, 1060);
     const renderer = scene.context.tryResolve(RendererKey);
-    if (renderer) this.layout.setViewport(renderer.virtualSize.width, renderer.virtualSize.height);
+    if (renderer)
+      this.layout.setViewport(
+        renderer.virtualSize.width,
+        renderer.virtualSize.height,
+      );
     // One entity per text node (one component of a class per entity), placed
     // through each entity's Transform.
     const name = scene.spawn("inv-detail-name");
     name.add(new Transform());
     this.name = name.add(
-      new TextComponent(makeTextOptions(this.cfg, "", this.cfg.textSize, this.cfg.textColor, this.cfg.layerContent)),
+      new TextComponent(
+        makeTextOptions(
+          this.cfg,
+          "",
+          this.cfg.textSize,
+          this.cfg.textColor,
+          this.cfg.layerContent,
+        ),
+      ),
     );
     const description = scene.spawn("inv-detail-desc");
     description.add(new Transform());
     this.description = description.add(
       new TextComponent(
-        makeTextOptions(this.cfg, "", this.cfg.descriptionSize, this.cfg.descriptionColor, this.cfg.layerContent),
+        makeTextOptions(
+          this.cfg,
+          "",
+          this.cfg.descriptionSize,
+          this.cfg.descriptionColor,
+          this.cfg.layerContent,
+        ),
       ),
     );
     this.place();
@@ -67,7 +87,8 @@ export class DetailView implements DetailPresenter {
       this.description.text.text = "";
       return;
     }
-    this.name.text.text = stack.quantity > 1 ? `${def.name} ×${stack.quantity}` : def.name;
+    this.name.text.text =
+      stack.quantity > 1 ? `${def.name} ×${stack.quantity}` : def.name;
     this.description.text.text = def.description ?? "";
   }
 
@@ -92,7 +113,9 @@ export class DetailView implements DetailPresenter {
     const r = this.layout.detailRect();
     this.name?.entity.get(Transform).setPosition(r.x + 2, r.y);
     if (this.description) {
-      this.description.entity.get(Transform).setPosition(r.x + 2, r.y + this.cfg.textSize + 7);
+      this.description.entity
+        .get(Transform)
+        .setPosition(r.x + 2, r.y + this.cfg.textSize + 7);
       this.description.text.style.wordWrap = true;
       this.description.text.style.wordWrapWidth = Math.max(10, r.width - 4);
     }

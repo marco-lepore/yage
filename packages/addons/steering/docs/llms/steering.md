@@ -115,6 +115,10 @@ commanded velocity.
 
 ## Clock
 
+An enabled `SteeringAgent` skips a zero-time update before evaluating behaviors
+or applying output. Velocity, heading, Transform, and physics body state remain
+unchanged; this also covers custom `apply` callbacks and infinite acceleration.
+
 `ComponentFixedUpdateSystem` drives `fixedUpdate(dt)`, so the agent steers
 once per fixed step. Steering output is simulation input, and physics runs on
 the same clock.

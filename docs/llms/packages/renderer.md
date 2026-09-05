@@ -744,6 +744,14 @@ class GameScene extends Scene {
 
 **Undeclared `layer` name.** A visual component (`SpriteComponent`, `GraphicsComponent`, etc.) whose `layer` names a layer the scene never declared emits a dev-mode `[yage]` warning (naming the entity, the missing layer, and the scene) and falls back to the `"default"` layer — the visual still renders, just on the wrong layer. The fix is to add `{ name: "<layer>", order: N }` to the scene's `layers`.
 
+### Ensuring a layer
+
+`tree.ensureLayer(def, options?)` creates a missing layer and otherwise returns
+the existing layer without changing its order. In development, an order
+mismatch warns once per scene tree, layer name, and requested order. Repeated
+matching requests are silent. Addon presenters use this same contract for
+their configured layer names.
+
 ### Camera binding rule
 
 A `CameraEntity` spawned without explicit `bindings` auto-binds every

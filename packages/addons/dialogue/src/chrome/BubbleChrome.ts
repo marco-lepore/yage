@@ -1,3 +1,4 @@
+import { ensureDialogueLayer } from "../render/ensureLayer.js";
 /**
  * Diegetic speech-bubble chrome: a rounded bubble + downward tail drawn on a
  * *world* layer, repositioned every frame to sit above the speaking actor's
@@ -93,6 +94,7 @@ export class BubbleChrome implements ChromePresenter {
   }
 
   mount(scene: Scene): void {
+    ensureDialogueLayer(scene, this.cfg.layer, 0, "world");
     this.scene = scene;
     const c = this.cfg;
     const root = scene.spawn("dlg-bubble");
@@ -121,7 +123,9 @@ export class BubbleChrome implements ChromePresenter {
     const nameEntity = scene.spawn("dlg-bubble-name");
     this.nameTransform = nameEntity.add(new Transform());
     this.name = nameEntity.add(
-      new TextComponent(makeTextOptions(c, "", c.nameSize, c.nameColor, c.layer)),
+      new TextComponent(
+        makeTextOptions(c, "", c.nameSize, c.nameColor, c.layer),
+      ),
     );
     this.name.text.visible = false;
 
@@ -192,7 +196,8 @@ export class BubbleChrome implements ChromePresenter {
       this.name.text.visible = this.visible && this.hasLine && this.nameShown;
     }
     if (this.caret) {
-      this.caret.graphics.visible = this.visible && this.hasLine && this.caretShown;
+      this.caret.graphics.visible =
+        this.visible && this.hasLine && this.caretShown;
     }
   }
 
@@ -234,7 +239,10 @@ export class BubbleChrome implements ChromePresenter {
     const caretSize = c.caret?.size ?? DEFAULT_CARET_SIZE;
     this.transform?.setPosition(a.x, a.y);
     // Name: top-left corner of the bubble, lifted by the (grown) bubble height.
-    this.nameTransform?.setPosition(a.x - w / 2 + padding, a.y - (offsetY + h) - c.nameSize - 1);
+    this.nameTransform?.setPosition(
+      a.x - w / 2 + padding,
+      a.y - (offsetY + h) - c.nameSize - 1,
+    );
     // Caret: bottom-right interior of the bubble (anchored near the bottom edge).
     this.caretTransform?.setPosition(
       a.x + w / 2 - padding - caretSize.width,
@@ -265,7 +273,10 @@ export class BubbleChrome implements ChromePresenter {
       this.bubbleSlice.width = w;
       this.bubbleSlice.height = h;
       this.gfx?.draw((g) => {
-        g.poly([-half, B, half, B, tipX, tipY]).fill({ color: c.frameColor, alpha: c.frameAlpha });
+        g.poly([-half, B, half, B, tipX, tipY]).fill({
+          color: c.frameColor,
+          alpha: c.frameAlpha,
+        });
       });
       return;
     }

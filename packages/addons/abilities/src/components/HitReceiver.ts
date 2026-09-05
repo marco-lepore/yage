@@ -20,7 +20,9 @@ export interface HitReceivedPayload {
  * `StandardHitData` vocabulary; multi-system handlers narrow with their own
  * type guard.
  */
-export const HitReceived = defineEvent<HitReceivedPayload>("hit:received");
+export const HitReceived = defineEvent<HitReceivedPayload>(
+  "abilities:hit:received",
+);
 
 /**
  * Emitted after the resolution fold completes, once per open `guard` that
@@ -30,7 +32,7 @@ export const HitReceived = defineEvent<HitReceivedPayload>("hit:received");
  * still-executing window, and doing that mid-fold would be reentrant.
  */
 export const HitGuarded = defineEvent<{ hit: Hit; outcome: GuardOutcome }>(
-  "hit:guarded",
+  "abilities:hit:guarded",
 );
 
 /**

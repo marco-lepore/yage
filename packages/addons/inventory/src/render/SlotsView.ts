@@ -1,3 +1,4 @@
+import { ensureInventoryLayer } from "./ensureLayer.js";
 /**
  * SlotsView — the one slot surface. A windowed `columns × visibleRows` grid of
  * cells with integer-row scrolling, scroll hints, and a selection cursor. It
@@ -52,7 +53,9 @@ export interface SlotsViewConfig {
   readonly mountWarnings?: readonly string[] | undefined;
 }
 
-export class SlotsView<TId extends string = string> implements SlotsPresenter<TId> {
+export class SlotsView<
+  TId extends string = string,
+> implements SlotsPresenter<TId> {
   private scene?: Scene | undefined;
   private warn?: DiagnosticSink | undefined;
   private slots: readonly SlotView<TId>[] = [];
@@ -80,9 +83,14 @@ export class SlotsView<TId extends string = string> implements SlotsPresenter<TI
   }
 
   mount(scene: Scene): void {
+    ensureInventoryLayer(scene, this.cfg.layerContent, 1060);
     this.scene = scene;
     const renderer = scene.context.tryResolve(RendererKey);
-    if (renderer) this.layout.setViewport(renderer.virtualSize.width, renderer.virtualSize.height);
+    if (renderer)
+      this.layout.setViewport(
+        renderer.virtualSize.width,
+        renderer.virtualSize.height,
+      );
     // Scroll hints sit outside the window rect; the preset spawns first so it
     // paints under the cells.
     this.hintsHandle = this.hints.render(scene, this.hintsState());
@@ -123,15 +131,31 @@ export class SlotsView<TId extends string = string> implements SlotsPresenter<TI
   }
 
   navigate(from: number, dir: "up" | "down" | "left" | "right"): number {
-    return cellNavigate(from, dir, this.slots.length, this.cfg.columns, this.cfg.wrap ?? false);
+    return cellNavigate(
+      from,
+      dir,
+      this.slots.length,
+      this.cfg.columns,
+      this.cfg.wrap ?? false,
+    );
   }
 
   slotAtPoint(x: number, y: number): number | undefined {
-    return cellAtPoint(x, y, this.spec(), this.origin(), this.scrollRow, this.slots.length);
+    return cellAtPoint(
+      x,
+      y,
+      this.spec(),
+      this.origin(),
+      this.scrollRow,
+      this.slots.length,
+    );
   }
 
   selectionAnchor(): Rect | undefined {
-    return cellRect(this.selected, this.spec(), this.origin(), this.scrollRow) ?? undefined;
+    return (
+      cellRect(this.selected, this.spec(), this.origin(), this.scrollRow) ??
+      undefined
+    );
   }
 
   setVisible(visible: boolean): void {
@@ -175,7 +199,8 @@ export class SlotsView<TId extends string = string> implements SlotsPresenter<TI
     const size = cellWindowSize(this.spec());
     return {
       x: content.x + Math.max(0, Math.round((content.width - size.width) / 2)),
-      y: content.y + Math.max(0, Math.round((content.height - size.height) / 2)),
+      y:
+        content.y + Math.max(0, Math.round((content.height - size.height) / 2)),
     };
   }
 
@@ -190,7 +215,10 @@ export class SlotsView<TId extends string = string> implements SlotsPresenter<TI
     for (const view of this.slots) {
       const r = cellRect(view.slot, spec, origin, this.scrollRow);
       if (!r) continue;
-      this.handles.set(view.slot, this.cell.renderCell(scene, view, r, view.slot === this.selected));
+      this.handles.set(
+        view.slot,
+        this.cell.renderCell(scene, view, r, view.slot === this.selected),
+      );
     }
     this.hintsHandle?.update(this.hintsState());
     this.applyHidden();
@@ -205,7 +233,12 @@ export class SlotsView<TId extends string = string> implements SlotsPresenter<TI
     return {
       up: this.scrollRow > 0,
       down: this.scrollRow + this.cfg.visibleRows < totalRows,
-      window: { x: origin.x, y: origin.y, width: size.width, height: size.height },
+      window: {
+        x: origin.x,
+        y: origin.y,
+        width: size.width,
+        height: size.height,
+      },
     };
   }
 

@@ -1,3 +1,4 @@
+import { ensureDialogueLayer } from "./ensureLayer.js";
 /**
  * A {@link DialogueTextView} that lays its body text inside a diegetic bubble
  * and follows the speaking actor. Per line it asks the shared {@link BubbleLayout}
@@ -12,7 +13,10 @@ import type { Scene } from "@yagejs/core";
 import type { DiagnosticSink } from "../chrome/DialogueUiAdapter.js";
 import type { PresentedLine } from "../core/session.js";
 import type { BubbleLayout } from "./BubbleLayout.js";
-import { DialogueTextView, type DialogueTextConfig } from "./DialogueTextView.js";
+import {
+  DialogueTextView,
+  type DialogueTextConfig,
+} from "./DialogueTextView.js";
 
 export class BubbleTextView extends DialogueTextView {
   private sceneRef?: Scene;
@@ -31,6 +35,10 @@ export class BubbleTextView extends DialogueTextView {
   override mount(scene: Scene): void {
     super.mount(scene);
     this.sceneRef = scene;
+  }
+
+  protected override ensureLayer(scene: Scene): void {
+    ensureDialogueLayer(scene, this.cfg.layer, 0, "world");
   }
 
   /** Route the missing-actor warning to the engine Logger (the layout owns the

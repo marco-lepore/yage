@@ -28,6 +28,23 @@ The fix is not a perfect mid-level abstraction. It is **separating layers so eac
 is opinionated at its own level and replaceable independently**, plus the seven
 rules below that keep each layer honest.
 
+## Default render-layer orders
+
+Built-in presenters ensure their configured layers before drawing, including
+standalone mounting. Use the shared renderer `ensureLayer` contract: an existing
+host layer keeps its order; a mismatch warns once per tree, name, and requested
+order in development. Do not add a separate warning registry in an addon.
+
+| Use                                    | Default order range |
+| -------------------------------------- | ------------------- |
+| Engine UI                              | 1000                |
+| Gameplay overlays, including inventory | 1040–1079           |
+| Virtual controls                       | 1080–1099           |
+| Dialogue screen overlays               | 1100–1199           |
+
+World-space bubble dialogue uses the configured world layer, creating it at
+order 0 when absent. The screen-overlay ranges do not apply to world layers.
+
 ## The layer model (L0–L3)
 
 An addon uses **only the layers its pattern needs**.

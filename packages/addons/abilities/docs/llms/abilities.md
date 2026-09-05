@@ -92,7 +92,7 @@ interface AbilityDefBase {
   tags?: readonly string[];
   lane?: string; // default "main"
   priority?: number; // default 0
-  cooldown?: Scalar; // seconds, resolved once on entry
+  cooldown?: Scalar; // finite seconds, resolved once on entry; <= 0 disables cooldown
   cancels?: readonly CancelWindow[];
   entry?: Readonly<Record<string, string>>; // intent -> phase
 }
@@ -141,6 +141,13 @@ that starts when a fixed phase finishes, prefer
 `{ to, from: "end", for: seconds }`. `from: "end"` is invalid on a hold phase.
 A matching intent during linger creates a new activation at the target phase
 without a cooldown check or re-arm. These `on` ranges are transition windows.
+
+`release(intent, { lane })` checks only that lane. Without a lane, the first
+matching hold is released. A non-matching lane returns `false`.
+
+Static cooldowns are checked when definitions compile. Function cooldowns run
+once at activation with the live `StepContext`; their result must be finite
+before cooldown state changes. Finite values at or below zero mean no cooldown.
 
 `hold` binds the phase to the intent that entered it. `release(intent)` flows
 to `next`, or completes the run when `next` is absent. `hold.max` caps the
@@ -248,7 +255,7 @@ class Abilities extends Component {
     intent: string,
     options?: { lane?: string; interrupts?: boolean },
   ): boolean;
-  release(intent: string): boolean;
+  release(intent: string, options?: AbilityReleaseOptions): boolean;
   force(def: AbilityDef): PlayResult;
   cancel(lane?: string): void;
   cancelAll(): void;
@@ -262,6 +269,9 @@ class Abilities extends Component {
 }
 
 type PlayRejection = "cooldown" | "busy" | "noMatch";
+interface AbilityReleaseOptions {
+  lane?: string;
+}
 type PlayResult =
   | { readonly ok: true; readonly activation: AbilityActivation }
   | { readonly ok: false; readonly reason: PlayRejection };
@@ -292,6 +302,10 @@ transition.
 `canSend` excludes priority interruption by default so buffered sends wait.
 `{ interrupts: true }` asks whether direct `send` would succeed including
 priority preemption.
+
+A `send()` from a component's `fixedUpdate` first advances on the next fixed
+step: fixed-clock processes run before component fixed updates. See the core
+frame-order reference when coordinating physics and timeline entry.
 
 `force` is for imposed reactions. It skips cooldown check/arm and permits a
 same-definition restart. Player/AI actions use `send`.
@@ -324,11 +338,15 @@ Events are deferred until the current runner entry settles. Listeners observe
 settled lane state. One run has one start/end pair; phase changes do not end it.
 
 Disabling `Abilities`, or deactivating its entity, pauses active phases, linger,
-and cooldown clocks. It also releases the effects owned by open windows without
+and cooldown clocks. It calls the disable hooks of open windows without
 changing any sibling component's `enabled` value. `send`, `canSend`, `force`,
 and `release` refuse new work while dormant. Enabling `Abilities` restores the
 same activation, clocks, and open-window effects. Built-in hitbox, guard,
 invulnerability, slow-motion, and stagger windows implement this lifecycle.
+
+Point fire and window enter, tick, and exit hooks are attributed callbacks.
+The first throwing hook stops the operation and is rethrown; later hooks do
+not run. Closing a window attributes its exit as `Ability window exit hook`.
 
 ### Definition replacement
 
@@ -439,7 +457,7 @@ Ability phases use scaled scene time.
 `hold` triggers at its threshold and suppresses tap. `fromNeutral` requires the
 lane to be idle both on press and at the threshold. `resume` retries a cancelled
 hold while the action remains held. Omit `hold.release` to call
-`abilities.release(hold.send)` automatically; include it when release is a
+`abilities.release(hold.send, { lane: activation.lane })` automatically; include it when release is a
 separate intent.
 
 Every interaction accepts one edge-relative `buffer`. Retry uses polite
@@ -598,7 +616,7 @@ and declare the `abilitySpawnContext` field. `position` is an absolute world
 position or fire-time resolver; the facing-local `offset` is applied after
 that base. The entity owns all behavior and lifetime. `hit` is optional; when
 present, context receives a ready reporting delivery. `Projectile` is a
-supplied dynamic sensor entity:
+supplied dynamic entity with a zero-gravity sensor by default:
 
 ```ts
 spawn({
@@ -614,10 +632,136 @@ spawn({
 });
 ```
 
-Projectile consumes on any result except `"ignored"`, or any non-sensor solid
-contact. It passes through ignored sensor overlaps. `resolveAbilitySource` and
+`ProjectileConfig.sensor` defaults to `true`; `gravityScale` defaults to `0`.
+`consume?: (result: HitResult, otherIsSensor: boolean) => boolean` defaults to
+`shouldConsumeProjectile`: consume on any result except `"ignored"`, or any
+non-sensor contact. Ignored sensor overlaps pass through. Speed must be finite;
+lifetime must be finite and non-negative. Shape, groups, and gravity use the
+physics components' config constraints.
+
+For a solid projectile that lands on one-way platforms, use `sensor: false`,
+`gravityScale: 1`, and `consume: (result) => result !== "ignored"`. The platform
+owns the collider's `oneWay` config. Solid projectiles handle collision starts;
+sensor projectiles handle trigger entries. A custom consume callback is
+attributed and a throw is terminal.
+
+`resolveAbilitySource` and
 `resolveAbilityTeam` recover original-caster provenance inside nested spawned
 attacks.
+
+### Acquiring a pooled spawn
+
+`SpawnParams.acquire?: (context: AbilitySpawnContext<AbilitySpawnParams<TClass>>,
+stepContext: StepContext) => InstanceType<TClass> | undefined` replaces the
+`Scene.spawn` call. It receives the resolved position, aim, team, params, and
+delivery. Returning `undefined` skips the spawn without a fallback. Throws are
+attributed and terminal.
+
+Compose it with a game-owned `PoolableEntity`:
+
+```ts
+import {
+  Entity,
+  EntityPool,
+  Process,
+  ProcessComponent,
+  Transform,
+  trait,
+} from "@yagejs/core";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
+import {
+  AbilitySpawned,
+  spawn,
+  type AbilitySpawnContext,
+} from "@yagejs-addons/abilities";
+
+interface AttackParams {
+  speed: number;
+  lifetime: number;
+}
+
+@trait(AbilitySpawned)
+class PooledAttack extends Entity {
+  abilitySpawnContext: AbilitySpawnContext<AttackParams> | undefined;
+  private spent = false;
+
+  override setup(context?: AbilitySpawnContext<AttackParams>): void {
+    this.abilitySpawnContext = context;
+    this.add(new Transform());
+    this.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
+    this.add(new ProcessComponent());
+    this.add(
+      new ColliderComponent({
+        shape: { type: "circle", radius: 5 },
+        sensor: true,
+      }),
+    ).onTrigger((event) => {
+      const shot = this.abilitySpawnContext;
+      if (!event.entered || this.spent || !shot || event.other === shot.caster)
+        return;
+      const result = shot.delivery?.deliver(
+        event.other,
+        this.get(Transform).worldPosition,
+      );
+      if (result === undefined || result === "ignored") return;
+      this.spent = true;
+      attackPool.release(this);
+    });
+  }
+
+  override onAcquire(context: AbilitySpawnContext<AttackParams>): void {
+    this.abilitySpawnContext = context;
+    this.spent = false;
+    const body = this.get(RigidBodyComponent);
+    body.setPosition(context.position.x, context.position.y);
+    body.setVelocity(context.aim.scale(context.params.speed));
+    this.get(ProcessComponent).run(
+      Process.delay(context.params.lifetime, () => attackPool.release(this)),
+      { clock: "fixed" },
+    );
+  }
+}
+
+// Construct in scene setup, after physics services are available.
+const attackPool = new EntityPool(scene, PooledAttack, {
+  prewarm: 16,
+  maxSize: 64,
+});
+
+spawn({
+  at: 0.2,
+  entity: PooledAttack,
+  params: { speed: 300, lifetime: 2 },
+  hit: { damage: 12 },
+  acquire: (context) => attackPool.acquire(context),
+});
+```
+
+`PooledAttack.setup(context?: AbilitySpawnContext<AttackParams>)` constructs
+components once. The optional context keeps params inferred and permits pool
+prewarming. `onAcquire(context)` stores the new `abilitySpawnContext` and
+resets position, velocity, lifetime, and per-target hit state. Release through
+the pool when the attack finishes; release cancels the previous lifetime
+process. This example uses one fixed sensor shape for every lease. Dispose the
+pool with the scene's teardown. The supplied `Projectile` is not poolable.
+
+### Hit target lifetime and events
+
+Hit delivery returns `"ignored"` for a destroyed target before trait lookup or
+callbacks, including before deferred teardown. A destroyed caster does not
+invalidate an attack that is already in flight.
+
+The exported event tokens use addon-scoped ids. Import the tokens rather than
+redeclaring their strings:
+
+| Token           | Id                         |
+| --------------- | -------------------------- |
+| `HealthDamaged` | `abilities:health:damaged` |
+| `HealthHealed`  | `abilities:health:healed`  |
+| `HealthDied`    | `abilities:health:died`    |
+| `HitReceived`   | `abilities:hit:received`   |
+| `HitDealt`      | `abilities:hit:dealt`      |
+| `HitGuarded`    | `abilities:hit:guarded`    |
 
 ### Touch damage
 
@@ -718,7 +862,7 @@ Root entry, runner:
   `AbilitySendOptions`, `AbilityCanSendOptions`.
 - Timeline and activation types: `AbilityActivation`, `AbilityStep`,
   `PointStep`, `PointStepHooks`, `WindowStep`, `WindowStepHooks`,
-  `StepContext`.
+  `StepContext`, `AbilityReleaseOptions`.
 
 Root entry, spawning and aim:
 

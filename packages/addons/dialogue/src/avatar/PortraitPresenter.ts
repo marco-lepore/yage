@@ -1,3 +1,4 @@
+import { ensureDialogueLayer } from "../render/ensureLayer.js";
 /**
  * Portrait avatar: a sprite that sits beside the box on the left or right.
  * Expression variants are just different textures (from the speaker's
@@ -8,7 +9,10 @@
 import { Transform, type Entity, type Scene } from "@yagejs/core";
 import { SpriteComponent, texture, type TextureHandle } from "@yagejs/renderer";
 import type { AvatarRef, LoadedSpeaker, MarkerToken } from "../core/types.js";
-import { applyExpressionMarker, type AvatarPresenter } from "./AvatarPresenter.js";
+import {
+  applyExpressionMarker,
+  type AvatarPresenter,
+} from "./AvatarPresenter.js";
 
 export interface PortraitPresenterConfig {
   readonly layer: string;
@@ -42,6 +46,7 @@ export class PortraitPresenter implements AvatarPresenter {
   constructor(private readonly cfg: PortraitPresenterConfig) {}
 
   mount(scene: Scene): void {
+    ensureDialogueLayer(scene, this.cfg.layer, 1105);
     this.scene = scene;
   }
 
@@ -77,7 +82,9 @@ export class PortraitPresenter implements AvatarPresenter {
 
   setExpression(expression: string | undefined): void {
     if (!this.current) return;
-    const variant = expression ? this.current.expressions?.[expression] : undefined;
+    const variant = expression
+      ? this.current.expressions?.[expression]
+      : undefined;
     this.applyTexture(variant ?? this.current.ref);
   }
 
@@ -99,7 +106,10 @@ export class PortraitPresenter implements AvatarPresenter {
     if (!this.speaking || !this.transform) return;
     // `dt` is seconds; `bobMs` feeds the millisecond-tuned bob sine.
     this.bobMs += dt * 1000;
-    this.transform.setPosition(this.baseX, this.baseY + Math.sin(this.bobMs / 110) * 1.5);
+    this.transform.setPosition(
+      this.baseX,
+      this.baseY + Math.sin(this.bobMs / 110) * 1.5,
+    );
   }
 
   dispose(): void {

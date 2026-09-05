@@ -1,3 +1,4 @@
+import { ensureInventoryLayer } from "./ensureLayer.js";
 /**
  * InventoryChrome — the drawn panel frame: rounded-rect background, header
  * band (title left, slot counter right), and the divider lines that separate
@@ -42,7 +43,9 @@ export class InventoryChrome implements ChromePresenter {
   private frame?: { entity: Entity; gfx: GraphicsComponent } | undefined;
   /** Nine-slice panel frame (only when `cfg.textured` is set): a sprite hosted
    *  in its own GraphicsComponent, below the divider draws. */
-  private frameTex?: { entity: Entity; host: GraphicsComponent; sprite: NineSliceSprite } | undefined;
+  private frameTex?:
+    | { entity: Entity; host: GraphicsComponent; sprite: NineSliceSprite }
+    | undefined;
   private title?: TextComponent | undefined;
   private counter?: TextComponent | undefined;
   private hidden = true;
@@ -54,15 +57,23 @@ export class InventoryChrome implements ChromePresenter {
   ) {}
 
   mount(scene: Scene): void {
+    ensureInventoryLayer(scene, this.cfg.layerPanel, 1050);
+    ensureInventoryLayer(scene, this.cfg.layerContent, 1060);
     const renderer = scene.context.tryResolve(RendererKey);
-    if (renderer) this.layout.setViewport(renderer.virtualSize.width, renderer.virtualSize.height);
+    if (renderer)
+      this.layout.setViewport(
+        renderer.virtualSize.width,
+        renderer.virtualSize.height,
+      );
     // Textured frame spawns first so it paints UNDER the divider lines (same
     // panel layer → z is spawn order). Only when the theme opts in.
     if (this.cfg.textured) {
       const panel = this.layout.panelRect();
       const texEntity = scene.spawn("inv-chrome-frame-tex");
       texEntity.add(new Transform());
-      const host = texEntity.add(new GraphicsComponent({ layer: this.cfg.layerPanel }));
+      const host = texEntity.add(
+        new GraphicsComponent({ layer: this.cfg.layerPanel }),
+      );
       const sprite = createNineSlice({
         texture: this.cfg.textured.texture,
         leftWidth: this.cfg.textured.insets.left,
@@ -87,17 +98,30 @@ export class InventoryChrome implements ChromePresenter {
     title.add(new Transform());
     this.title = title.add(
       new TextComponent(
-        makeTextOptions(this.cfg, "", this.cfg.titleSize, this.cfg.titleColor, this.cfg.layerContent),
+        makeTextOptions(
+          this.cfg,
+          "",
+          this.cfg.titleSize,
+          this.cfg.titleColor,
+          this.cfg.layerContent,
+        ),
       ),
     );
     const counter = scene.spawn("inv-chrome-counter");
     counter.add(new Transform());
     this.counter = counter.add(
       new TextComponent(
-        makeTextOptions(this.cfg, "", this.cfg.quantitySize, this.cfg.quantityColor, this.cfg.layerContent, {
-          x: 1,
-          y: 0,
-        }),
+        makeTextOptions(
+          this.cfg,
+          "",
+          this.cfg.quantitySize,
+          this.cfg.quantityColor,
+          this.cfg.layerContent,
+          {
+            x: 1,
+            y: 0,
+          },
+        ),
       ),
     );
     this.layoutUnsub = this.layout.onChange(() => this.redraw());
@@ -110,7 +134,8 @@ export class InventoryChrome implements ChromePresenter {
     if (this.counter) {
       // The counter only means something with a slot limit; unbounded
       // inventories show none.
-      this.counter.text.text = info.capacity !== undefined ? `${info.used}/${info.capacity}` : "";
+      this.counter.text.text =
+        info.capacity !== undefined ? `${info.used}/${info.capacity}` : "";
     }
     this.redraw();
   }
@@ -150,11 +175,23 @@ export class InventoryChrome implements ChromePresenter {
     this.frame?.gfx.draw((g) => {
       g.clear();
       if (!this.frameTex) {
-        g.roundRect(panel.x, panel.y, panel.width, panel.height, this.cfg.cornerRadius).fill({
+        g.roundRect(
+          panel.x,
+          panel.y,
+          panel.width,
+          panel.height,
+          this.cfg.cornerRadius,
+        ).fill({
           color: this.cfg.frameColor,
           alpha: this.cfg.frameAlpha,
         });
-        g.roundRect(panel.x, panel.y, panel.width, panel.height, this.cfg.cornerRadius).stroke({
+        g.roundRect(
+          panel.x,
+          panel.y,
+          panel.width,
+          panel.height,
+          this.cfg.cornerRadius,
+        ).stroke({
           color: this.cfg.borderColor,
           width: this.cfg.borderWidth,
         });
@@ -176,7 +213,10 @@ export class InventoryChrome implements ChromePresenter {
     this.title?.entity.get(Transform).setPosition(header.x, header.y);
     this.counter?.entity
       .get(Transform)
-      .setPosition(header.x + header.width, header.y + (this.cfg.titleSize - this.cfg.quantitySize) / 2 + 1);
+      .setPosition(
+        header.x + header.width,
+        header.y + (this.cfg.titleSize - this.cfg.quantitySize) / 2 + 1,
+      );
   }
 
   private applyHidden(): void {

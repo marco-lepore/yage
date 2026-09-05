@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   Entity,
+  ErrorBoundaryKey,
   ProcessComponent,
   Transform,
   Vec2,
@@ -28,6 +29,10 @@ interface FakeTriggerEvent {
 const captured = vi.hoisted(() => ({
   velocities: [] as { x: number; y: number }[],
   triggerHandlers: new WeakMap<object, (ev: FakeTriggerEvent) => void>(),
+  collisionHandlers: new WeakMap<
+    object,
+    (ev: Omit<FakeTriggerEvent, "entered"> & { started: boolean }) => void
+  >(),
 }));
 
 vi.mock("@yagejs/physics", async () => {
@@ -53,6 +58,14 @@ vi.mock("@yagejs/physics", async () => {
       captured.triggerHandlers.set(this, handler);
       return () => captured.triggerHandlers.delete(this);
     }
+    onCollision(
+      handler: (
+        ev: Omit<FakeTriggerEvent, "entered"> & { started: boolean },
+      ) => void,
+    ): () => void {
+      captured.collisionHandlers.set(this, handler);
+      return () => captured.collisionHandlers.delete(this);
+    }
   }
 
   return { RigidBodyComponent, ColliderComponent };
@@ -61,6 +74,10 @@ vi.mock("@yagejs/physics", async () => {
 function fireTrigger(collider: ColliderComponent, ev: FakeTriggerEvent): void {
   captured.triggerHandlers.get(collider)?.(ev);
 }
+
+beforeEach(() => {
+  captured.velocities.length = 0;
+});
 
 @trait(Hittable)
 class Target extends Entity {
@@ -88,6 +105,11 @@ function spawnProjectile(
     speed: overrides.speed ?? 100,
     shape: overrides.shape ?? { type: "circle", radius: 4 },
     lifetime: overrides.lifetime ?? 1,
+    ...(overrides.sensor !== undefined ? { sensor: overrides.sensor } : {}),
+    ...(overrides.gravityScale !== undefined
+      ? { gravityScale: overrides.gravityScale }
+      : {}),
+    ...(overrides.consume ? { consume: overrides.consume } : {}),
     ...(overrides.groups ? { groups: overrides.groups } : {}),
   };
   const projectile = scene.spawn(Projectile, {
@@ -99,6 +121,52 @@ function spawnProjectile(
   });
   return { owner, delivery, projectile };
 }
+
+describe("Projectile solid contacts", () => {
+  it("uses collision starts and a custom consume rule for solid contacts", () => {
+    const { scene } = createMockScene();
+    const consume = vi.fn(() => false);
+    const { projectile } = spawnProjectile(scene, {
+      sensor: false,
+      gravityScale: 1,
+      consume,
+    });
+    const collider = projectile.get(ColliderComponent);
+    expect(captured.triggerHandlers.has(collider)).toBe(false);
+    const other = scene.spawn("ground");
+    const contact = {
+      other,
+      otherCollider: { config: { sensor: false } },
+      started: false,
+    };
+    captured.collisionHandlers.get(collider)?.(contact);
+    expect(consume).not.toHaveBeenCalled();
+    captured.collisionHandlers.get(collider)?.({ ...contact, started: true });
+    expect(consume).toHaveBeenCalledWith("ignored", false);
+    expect(projectile.isDestroyed).toBe(false);
+  });
+
+  it("attributes a custom consume throw and preserves its identity", () => {
+    const { scene, context } = createMockScene();
+    const error = new Error("consume failed");
+    const { projectile } = spawnProjectile(scene, {
+      consume() {
+        throw error;
+      },
+    });
+    expect(() =>
+      fireTrigger(projectile.get(ColliderComponent), {
+        entered: true,
+        other: scene.spawn("wall"),
+        otherCollider: { config: {} },
+      }),
+    ).toThrow(error);
+    expect(context.resolve(ErrorBoundaryKey).getCallbackErrors()).toMatchObject(
+      [{ kind: "Projectile consume callback" }],
+    );
+    expect(projectile.isDestroyed).toBe(false);
+  });
+});
 
 const solid: FakeTriggerEvent["otherCollider"] = { config: { sensor: false } };
 const sensor: FakeTriggerEvent["otherCollider"] = { config: { sensor: true } };

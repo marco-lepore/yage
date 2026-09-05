@@ -95,7 +95,7 @@ export class Hitbox extends Entity {
   /** Deliver another hit to every target that still overlaps this hitbox. */
   repeatHits(): void {
     for (const target of this.overlapping) {
-      if (!target.isDestroyed) this.delivery.deliver(target, this.from);
+      this.delivery.deliver(target, this.from);
     }
   }
 

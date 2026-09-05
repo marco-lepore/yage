@@ -11,6 +11,11 @@
  */
 
 import { Component, ServiceKey } from "@yagejs/core";
+import type { SceneRenderTreeProvider } from "@yagejs/renderer";
+
+// Test-only service identity, shared by the renderer mock and its callers.
+export const SceneRenderTreeProviderKey =
+  new ServiceKey<SceneRenderTreeProvider>("renderer-tree-stub");
 
 /** One recorded drawing call inside a `draw()` block. */
 export interface DrawOp {
@@ -78,7 +83,11 @@ export class GraphicsComponent extends Component {
 
 export interface TextOptions {
   readonly text: string;
-  readonly style: { readonly fontSize: number; readonly fill: number; readonly fontFamily?: string };
+  readonly style: {
+    readonly fontSize: number;
+    readonly fill: number;
+    readonly fontFamily?: string;
+  };
   readonly layer: string;
   readonly anchor?: { readonly x: number; readonly y: number };
   readonly bitmap?: boolean;
@@ -86,7 +95,10 @@ export interface TextOptions {
 }
 
 export class TextComponent extends Component {
-  readonly text = { visible: true };
+  readonly text = {
+    visible: true,
+    style: { wordWrap: false, wordWrapWidth: 0 },
+  };
   constructor(readonly options: TextOptions) {
     super();
   }
@@ -118,8 +130,12 @@ export function seedTexture(key: string): void {
 export function resetTextures(): void {
   seededTextures.clear();
 }
-export function resolveTextureInput(input: string): { width: number; height: number } {
-  if (!seededTextures.has(input)) throw new Error(`stub: no texture seeded for "${input}"`);
+export function resolveTextureInput(input: string): {
+  width: number;
+  height: number;
+} {
+  if (!seededTextures.has(input))
+    throw new Error(`stub: no texture seeded for "${input}"`);
   return { width: 32, height: 32 };
 }
 
@@ -131,7 +147,13 @@ export class NineSliceSprite {
   y = 0;
   width: number;
   height: number;
-  constructor(readonly options: { readonly texture: string; readonly width: number; readonly height: number }) {
+  constructor(
+    readonly options: {
+      readonly texture: string;
+      readonly width: number;
+      readonly height: number;
+    },
+  ) {
     this.width = options.width;
     this.height = options.height;
   }
@@ -149,5 +171,9 @@ export function createNineSlice(options: {
   readonly height: number;
 }): NineSliceSprite {
   resolveTextureInput(options.texture);
-  return new NineSliceSprite({ texture: options.texture, width: options.width, height: options.height });
+  return new NineSliceSprite({
+    texture: options.texture,
+    width: options.width,
+    height: options.height,
+  });
 }

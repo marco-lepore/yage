@@ -118,8 +118,16 @@ callback boundary.
 
 ## `/renderer`
 
+For `feelSpriteAnimation`, `duration`, `onComplete`, and `onCancel` require
+`mode: "oneShot"`. `onComplete` reports natural controller completion;
+`onCancel` reports interruption by another one-shot, force play, unlock, or
+destruction. Both callbacks are attributed through Feel's invocation context;
+throws are terminal. These notifications do not determine the Feel node's
+duration: an explicit duration remains retimed with the cue, and no duration
+means an immediate node.
+
 ```ts
-feelSpriteAnimation(name, { target?, mode?: "play" | "force" | "oneShot", duration?, onComplete? });
+feelSpriteAnimation(name, { target?, mode?: "play" | "force" | "oneShot", duration?, onComplete?, onCancel? });
 feelPositionPunch({ target, offset, duration?, peakAt?, ... });
 feelPositionSpring({ target, offset, duration?, oscillations?, decay? });
 feelRecoil({ target, direction, distance?, duration?, peakAt?, attackEasing?, releaseEasing? });

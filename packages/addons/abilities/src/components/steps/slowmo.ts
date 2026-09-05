@@ -56,8 +56,7 @@ const open = new WeakMap<StepContext, Map<object, TimeEffectHandle>>();
 
 /**
  * A window that dilates scene time through the owning scene's `SceneTime`:
- * `enter` opens a scale request, `exit` (natural or cancelled) releases it, so
- * a cancelled ability can never leave the scene stuck in slow motion. The
+ * `enter` opens a scale request; `exit` (natural or cancelled) releases it. The
  * activation owner is excluded by default — see `includeOwner`.
  *
  * ```ts
