@@ -4,7 +4,7 @@ import type { Vec2Like } from "@yagejs/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import { PhysicsWorldKey } from "./types.js";
 import type { BodyType, RigidBodyConfig } from "./types.js";
-import { assertFiniteNumber } from "./validate.js";
+import { assertFiniteNumber, assertRequiredFinite } from "./validate.js";
 
 /**
  * Tolerance for deciding whether the game wrote a Transform since physics
@@ -360,6 +360,38 @@ export class RigidBodyComponent extends Component {
   get gravityScale(): number {
     if (this._bodyHandle === -1) return this.config.gravityScale ?? 1;
     return this.physicsWorld.getBody(this._bodyHandle)?.gravityScale() ?? 1;
+  }
+
+  /**
+   * Set linear velocity damping. Values must be finite and at least 0.
+   * Callable before the component is added; the value applies at creation.
+   */
+  setLinearDamping(damping: number): void {
+    assertRequiredFinite(
+      "RigidBodyComponent.setLinearDamping",
+      "damping",
+      damping,
+      0,
+    );
+    this.config.linearDamping = damping;
+    if (this._bodyHandle === -1) return;
+    this.physicsWorld.getBody(this._bodyHandle)?.setLinearDamping(damping);
+  }
+
+  /**
+   * Set angular velocity damping. Values must be finite and at least 0.
+   * Callable before the component is added; the value applies at creation.
+   */
+  setAngularDamping(damping: number): void {
+    assertRequiredFinite(
+      "RigidBodyComponent.setAngularDamping",
+      "damping",
+      damping,
+      0,
+    );
+    this.config.angularDamping = damping;
+    if (this._bodyHandle === -1) return;
+    this.physicsWorld.getBody(this._bodyHandle)?.setAngularDamping(damping);
   }
 
   /**

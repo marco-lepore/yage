@@ -25,7 +25,7 @@ export function assertFiniteNumber(
  * like any other unusable one, so a field left out reaches Rapier as the
  * named error rather than as `NaN`.
  */
-function assertRequiredFinite(
+export function assertRequiredFinite(
   context: string,
   name: string,
   value: number,

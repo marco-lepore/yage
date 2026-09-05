@@ -75,6 +75,7 @@ Methods:
 - `setEnabledTranslations(enableX, enableY)` — lock or unlock translation axes. A locked axis ignores forces, impulses and contacts; `setVelocity` still moves the body along it. Callable before `entity.add()`; the locks apply at body creation.
 - `lockRotations(locked)` — lock or unlock rotation. A locked body ignores torques and contact spin; `setAngularVelocity` still turns it. Callable before `entity.add()`.
 - `setGravityScale(scale)` / `gravityScale` — per-body gravity multiplier at runtime. `1` is scene gravity, `0` removes it, higher falls faster. Use it for variable jump height and fast-fall, where one body must fall differently from the rest. `scale` must be finite. Callable before `entity.add()`; the value applies at body creation.
+- `setLinearDamping(damping)` / `setAngularDamping(damping)` — change velocity drag at runtime. Each value must be finite and >= 0. Callable before `entity.add()` and while the entity is inactive; an inactive body stays disabled.
 - `type: BodyType` — read the current body type
 - `setType(type)` — switch the body type at runtime: a dead enemy becomes `"static"` so nothing pushes it and it pushes nothing, a carried crate becomes `"kinematic"` while held. Linear and angular velocity are cleared by the switch; locks, gravity scale, damping, colliders and mass are kept, and the drawn pose is the pose at the switch. Callable before `entity.add()`; the body is created as the new type.
 
@@ -269,17 +270,22 @@ collider.getOverlappingComponents(Health); // Component[]
 Resizing:
 
 ```ts
-collider.setShape({ type: "box", width: 20, height: 20 }); // crouch
-collider.setShape({ type: "box", width: 20, height: 40 }); // stand back up
+collider.setShape(
+  { type: "box", width: 20, height: 20 },
+  { offset: { x: 0, y: -10 } },
+); // crouch while the body origin stays at the feet
 collider.setShape(newHeadShape, { index: 1 }); // replace compound part 1
 ```
 
 `setShape(shape, options?)` replaces one shape on the live collider component.
-`options.index` defaults to `0`. It must name an existing part. The body
-attachment and every `onCollision`/`onTrigger` subscription survive. Callable
-before `entity.add()`; the shape applies at collider creation. A bad shape or
-index throws before anything is stored, so the config still describes the live
-collider.
+`options.index` defaults to `0`. It must name an existing part.
+`options.offset` changes that part's body-local offset in the same operation;
+its coordinates use authored pixels before `Transform` scale. Omitting it
+keeps the current offset, and `{ x: 0, y: 0 }` resets the part to the body
+origin. The body attachment and every `onCollision`/`onTrigger` subscription
+survive. Callable before `entity.add()`; the shape and offset apply at collider
+creation. A bad shape, index, offset coordinate, or scaled result throws before
+anything is stored. The component copies a supplied offset object.
 
 The body keeps its mass. A collider is a collision proxy, not a measure of matter, so a crouching character takes the same `applyImpulse` knockback as a standing one. Pass `{ recomputeMass: true }` when the shape change means genuinely more or less matter and mass should come back from density × the new shape.
 
@@ -288,7 +294,47 @@ collider.setShape(small); // same mass
 collider.setShape(big, { recomputeMass: true }); // heavier
 ```
 
-Shrinking never pushes anything out of the way, and growing can leave the collider overlapping geometry it clears at the smaller size. Check clearance before growing back.
+Changing a shape or offset can leave the collider overlapping other geometry.
+For a feet-origin character, query only the headroom that standing will newly
+occupy. Querying the full standing collider also touches the floor and can
+report a false blocker.
+
+```ts
+const STAND_WIDTH = 20;
+const CROUCH_HEIGHT = 20;
+const STAND_HEIGHT = 40;
+const clearanceHeight = STAND_HEIGHT - CROUCH_HEIGHT;
+const clearance = {
+  type: "box",
+  width: STAND_WIDTH,
+  height: clearanceHeight,
+} as const;
+const standing = {
+  type: "box",
+  width: STAND_WIDTH,
+  height: STAND_HEIGHT,
+} as const;
+const feet = rb.position;
+
+const blocked =
+  world.queryShape(
+    clearance,
+    {
+      x: feet.x,
+      y: feet.y - (STAND_HEIGHT + CROUCH_HEIGHT) / 2,
+    },
+    { excludeEntity: entity },
+  ).length > 0;
+
+if (!blocked) {
+  collider.setShape(standing, {
+    offset: { x: 0, y: -STAND_HEIGHT / 2 },
+  });
+}
+```
+
+If side contacts need a small tolerance, reduce only the clearance query's
+width. Keep the target collider at its full width.
 
 Switching kinds:
 
@@ -299,25 +345,18 @@ collider.setSensor(false); // sensor → solid: pushed out to rest
 
 `setSensor(bool)` recreates the Rapier collider with the new flag. Every pair it is in ends with a `stop`/`exit` at the next step and re-forms as the new kind. `getMass()`, the contact filter, and every subscription are unchanged; the collider handle changes. A call that does not change the flag does nothing. Dev builds warn when the flip leaves handlers of the silenced kind registered (`onCollision` on a sensor, `onTrigger` on a solid). Callable before `entity.add()`; the flag applies at collider creation.
 
-A collider is centred on its body's origin unless given an `offset`, so growing upward with the feet planted also moves the body up by half the gained height. Query the standing box where it will sit, not where the crouched one sits — querying at the crouched position reports the floor as a blocker whenever the character is grounded, so they can never stand.
+Material values can change without recreating the collider:
 
 ```ts
-const rise = (STAND_HEIGHT - CROUCH_HEIGHT) / 2;
-const standing = { type: "box", width: 20, height: STAND_HEIGHT } as const;
-const pos = transform.worldPosition;
-
-const blocked =
-  world.queryShape(
-    standing,
-    { x: pos.x, y: pos.y - rise },
-    { excludeEntity: entity },
-  ).length > 0;
-
-if (!blocked) {
-  collider.setShape(standing);
-  rb.setPosition(pos.x, pos.y - rise);
-}
+collider.setRestitution(0.8);
+collider.setFriction(0.1);
 ```
+
+Both values must be finite and >= 0; restitution above `1` is valid. Each
+setter applies to every part in a compound collider. Calls made before
+`entity.add()` apply at creation. Calls made while the entity is inactive
+update the dormant colliders without enabling them. The values survive a
+later `setSensor` recreation.
 
 Removing just the collider (`entity.remove(ColliderComponent)`) frees the Rapier collider and its internal lookup entries while the sibling body stays alive. Removing the whole entity, or the `RigidBodyComponent`, also removes every attached collider; the `ColliderComponent`s left behind no longer hold a collider handle, so their later calls do nothing.
 
