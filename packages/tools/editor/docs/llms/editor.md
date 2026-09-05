@@ -95,20 +95,21 @@ export default {
 ## What the editor edits
 
 Three bars run across the top. The **file bar** owns which level is open; the
-**toolbar** owns the tool, the pivot, the grid and the edit actions; the
-**control bar** under them holds the selected placement's name and its five
-transform numbers. Below them the **hierarchy** is the left column, the
-viewport takes the middle, the **inspector** is the right column, and two
-bands sit under the viewport in its own column: the **Actors** strip, and the
-**Problems** band under it. The strip starts closed and its header opens it;
-open, its entries wrap into rows under their group headings, and past a few
-rows it scrolls down — never sideways, which on a trackpad or touchscreen is
-the browser's back gesture. The Problems band appears with the first finding
-and leaves with the last, capped at a fifth of the window, and its header
-collapses the list while keeping the count. Both take their height from the
-viewport rather than covering it, so nothing the viewport draws ends up behind
-a panel and a finding arriving never resizes the hierarchy or the inspector.
-Panels are not resizable and none of these positions is configurable.
+**toolbar** owns the tool, the pivot, the grid, the edit actions and the eight
+arrange actions; the **control bar** under them holds the selected placement's
+name and its five transform numbers. Below them the **hierarchy** is the left
+column, the viewport takes the middle, the **inspector** is the right column,
+and two bands sit under the viewport in its own column: the **Actors** strip,
+and the **Problems** band under it. The strip starts closed and its header
+opens it; open, its entries wrap into rows under their group headings, and
+past a few rows it scrolls down — never sideways, which on a trackpad or
+touchscreen is the browser's back gesture. The Problems band appears with the
+first finding and leaves with the last, capped at a fifth of the window, and
+its header collapses the list while keeping the count. Both take their height
+from the viewport rather than covering it, so nothing the viewport draws ends
+up behind a panel and a finding arriving never resizes the hierarchy or the
+inspector. Panels are not resizable and none of these positions is
+configurable.
 
 The file bar's first control is a `select` listing every level the `levels`
 globs matched, as project-relative paths in alphabetical order. Choosing one
@@ -205,6 +206,14 @@ The controls:
 | Toolbar **Hide**, or `H`                                               | Hides the selection's outermost placements, or shows them again                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Toolbar **Isolate**                                                    | Hides every top-level placement the selection is not part of                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Toolbar **Show all**, or `Shift`-`H`                                   | Puts everything hidden back on screen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Toolbar **Align left**                                                 | Moves every selected root so its box's left edge sits on the left edge of the rectangle covering the whole selection                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Toolbar **Align centre X**                                             | The same, putting every box's horizontal centre on that rectangle's horizontal centre                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Toolbar **Align right**                                                | The same, on the right edge                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Toolbar **Align top**                                                  | The same on `y`, on the top edge                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Toolbar **Align centre Y**                                             | Every box's vertical centre onto that rectangle's vertical centre                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Toolbar **Align bottom**                                               | The same on `y`, on the bottom edge                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Toolbar **Distribute horizontally**                                    | Leaves the leftmost and rightmost roots where they are and spaces the rest so every gap between neighbouring boxes is equal                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Toolbar **Distribute vertically**                                      | The same on `y`, between the topmost and the bottommost                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Hold `Alt` during a drag                                               | Lets that gesture off the grid for as long as it is held, `Shift`'s 15° aside. Read on every pointer move                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Toolbar **Select** / **Move** / **Rotate** / **Scale** / **Transform** | Picks the tool. Each button carries its key and reports `aria-pressed`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Toolbar **Active** / **Center** / **Each**                             | What rotate and scale work about. No key                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -384,6 +393,25 @@ rectangle covering all of them — without handles under `Move`, `Rotate`, and
 the centre of. Under `Each` there is no single pivot to
 mark, so none is drawn; the origin crosshairs are what show where each
 placement turns.
+
+**Eight buttons line a selection up.** The **Arrange** group holds six
+alignments — left, centre X, right, top, centre Y, bottom — and two
+distributions, horizontal and vertical. They are offered when two or more of
+the selection's roots sit under one parent, three or more for a distribution,
+and they are one command and one undo step each.
+
+An alignment measures against the rectangle covering the whole selection, so
+the outermost member on the side asked for does not move and the rest come to
+it. A distribution keeps the outermost two where they are and equalizes the
+gaps between the boxes rather than the distances between the centres, which is
+what boxes of unequal size need. A member the preview draws nothing for
+measures as a point at its origin, and a turned member measures as its upright
+world rectangle. A member already where it belongs is left out of the command,
+so an arrangement that changes nothing writes nothing.
+
+One parent is required because a world move is written as each placement's
+local position, converted through its parent's frame; a selection spanning
+parents has no single frame to convert through.
 
 **A turn or a scale holds the gizmo still; a move carries it.** Rotate and
 scale orbit every placement about the point they took at the press, and the

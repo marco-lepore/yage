@@ -105,6 +105,7 @@ function createHarness(
       applyPoseDraft: () => {},
       viewportCenter: () => undefined,
       freeSpotNear: (point: { x: number; y: number }) => point,
+      boundsFor: () => new Map(),
     },
     catalog: () => undefined,
   });
@@ -157,6 +158,12 @@ function createHarness(
   };
   commands.setPose = (ids, component, value) => {
     intents.push(`pose ${ids.join(",")} ${component}=${String(value)}`);
+  };
+  commands.alignPlacements = (ids, edge) => {
+    intents.push(`align ${ids.join(",")} ${edge}`);
+  };
+  commands.distributePlacements = (ids, axis) => {
+    intents.push(`distribute ${ids.join(",")} ${axis}`);
   };
   commands.redrawGesture = () => intents.push("redraw");
   // The Actors panel reads what it can place on each of its own renders, and
@@ -1353,6 +1360,83 @@ describe("EditorShell", () => {
       expect(state.document).toBe(family);
       expect(state.pending).toEqual([]);
       expect(harness.intents).toEqual([]);
+    });
+  });
+
+  describe("lining a selection up", () => {
+    /** A crate, a beam authored under it, and two more at the top level. */
+    const row: LevelDocument = {
+      ...document_,
+      entities: [
+        crate,
+        { ...crate, id: "beam", parent: "crate" },
+        { ...crate, id: "barrel" },
+        { ...crate, id: "lamp" },
+      ],
+    };
+
+    function openRow(): void {
+      act(() => {
+        harness.store.dispatch({
+          type: "level-opened",
+          snapshot: snapshot({ document: row }),
+        });
+      });
+    }
+
+    function select(...ids: string[]): void {
+      act(() => {
+        harness.store.dispatch({ type: "selection-changed", ids });
+      });
+    }
+
+    const enabled = (testId: string): boolean =>
+      query<HTMLButtonElement>(harness.host, testId)?.disabled === false;
+
+    it("offers align from two roots under one parent, and distribute from three", () => {
+      openRow();
+      expect(enabled("align-left")).toBe(false);
+      expect(enabled("distribute-x")).toBe(false);
+
+      select("crate");
+      expect(enabled("align-left")).toBe(false);
+
+      select("crate", "barrel");
+      expect(enabled("align-left")).toBe(true);
+      expect(enabled("distribute-x")).toBe(false);
+
+      select("crate", "barrel", "lamp");
+      expect(enabled("align-left")).toBe(true);
+      expect(enabled("distribute-x")).toBe(true);
+    });
+
+    it("counts a selected child as travelling with its parent", () => {
+      openRow();
+      // Two selected placements, but the beam is under the crate, so there is
+      // one root and nothing to line up against.
+      select("crate", "beam");
+
+      expect(enabled("align-left")).toBe(false);
+    });
+
+    it("refuses a selection spanning two parents", () => {
+      openRow();
+      select("beam", "barrel");
+
+      expect(enabled("align-left")).toBe(false);
+    });
+
+    it("sends the whole selection to the controller", () => {
+      openRow();
+      select("crate", "barrel", "lamp");
+
+      click(harness.host, "align-bottom");
+      click(harness.host, "distribute-y");
+
+      expect(harness.intents).toEqual([
+        "align crate,barrel,lamp bottom",
+        "distribute crate,barrel,lamp y",
+      ]);
     });
   });
 

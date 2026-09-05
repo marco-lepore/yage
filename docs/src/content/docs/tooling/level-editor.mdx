@@ -466,6 +466,35 @@ turned rectangle along someone else's axes leaves a shape a level file has no
 way to write down, so each placement grows along its own axes instead and the
 arrangement spreads along yours.
 
+### Lining things up
+
+Six crates on one shelf, five lamps at even spacing: dragging each one there is
+slow, and typing the numbers is slower. The **Arrange** group in the toolbar
+does it in one click.
+
+The six alignment buttons put every selected placement's box against one line
+of the rectangle around the whole selection: its left, its horizontal centre,
+its right, its top, its vertical centre, or its bottom. The placement already
+on that side stays where it is, and the others come to it — so an alignment
+never moves the whole arrangement somewhere new.
+
+The two distribute buttons space the selection out along one axis. The
+outermost two stay where they are, and everything between them moves until
+every gap is the same width. Gaps between the pictures, not distances between
+their centres: a wide crate between two narrow ones looks evenly spaced only
+when the gaps match, which is the whole reason you reached for the button.
+
+Both need at least two placements — three to distribute, since two have only
+the gap they already have — and all of them must sit under the same parent. A
+level stores each placement's position relative to its own parent, so a
+selection reaching across two parents has no single frame to write the answer
+into. Select the parents instead.
+
+A placement with no picture is lined up by its origin. A turned one is lined up
+by the upright rectangle its picture covers, which is what you see the
+selection box drawn around. Whatever moves, one click is one entry in the
+history.
+
 ### Choosing several things
 
 <kbd>Q</kbd> is the Select tool, and it is where you go to pick things rather

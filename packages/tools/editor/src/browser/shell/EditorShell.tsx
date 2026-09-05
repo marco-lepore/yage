@@ -4,6 +4,7 @@ import {
   inboundReferences,
   rootsWithout,
   selectionRoots,
+  sharedParent,
 } from "../commands/index.js";
 import type { CommandController } from "../commands/index.js";
 import type { LayerChoice } from "../layers.js";
@@ -169,6 +170,14 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
     store,
     (state) => state.hidden.size > 0,
   );
+  // How many placements an arrangement would act on: the selection's roots
+  // when they all sit under one parent, and none when they do not. A count
+  // rather than the ids, so this stays a primitive the store can bail out on.
+  const arrangeable = useEditorSlice(store, (state) => {
+    if (state.selection.size < 2) return 0;
+    const roots = selectionRoots(state.document, state.selection);
+    return sharedParent(state.document, roots) === undefined ? 0 : roots.length;
+  });
   // The two depths rather than the `history` object: a snapshot carries a
   // fresh one per server answer, so the object changes when nothing has.
   const undoDepth = useEditorSlice(store, (state) => state.history.undoDepth);
@@ -473,6 +482,17 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
         }}
         onShowAll={() => {
           store.dispatch({ type: "hidden-cleared" });
+        }}
+        canArrange={editable && arrangeable >= 2}
+        canDistribute={editable && arrangeable >= 3}
+        onAlign={(edge) => {
+          props.commands.alignPlacements([...store.getState().selection], edge);
+        }}
+        onDistribute={(axis) => {
+          props.commands.distributePlacements(
+            [...store.getState().selection],
+            axis,
+          );
         }}
       />
 

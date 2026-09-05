@@ -23,6 +23,8 @@ export interface ButtonProps {
   readonly testId?: string | undefined;
   readonly disabled?: boolean | undefined;
   readonly title?: string | undefined;
+  /** The name a screen reader reads. For a button whose content is an icon. */
+  readonly ariaLabel?: string | undefined;
   /** Set on a toggle: whether this is the choice currently in effect. */
   readonly pressed?: boolean | undefined;
   /** Takes the focus when it is rendered. For the safe answer in a dialog. */
@@ -45,6 +47,7 @@ export function Button(props: ButtonProps): React.JSX.Element {
       data-testid={props.testId}
       disabled={props.disabled ?? false}
       title={props.title}
+      aria-label={props.ariaLabel}
       aria-pressed={props.pressed}
       autoFocus={props.autoFocus ?? false}
       onClick={(event) => {

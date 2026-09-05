@@ -1,10 +1,10 @@
+import type { WorldBounds } from "../commands/index.js";
 import type {
   EditorPoint,
   GizmoAnchor,
   GizmoMode,
   HandleId,
 } from "../store/index.js";
-import type { WorldBounds } from "./bounds.js";
 import {
   CROSSHAIR_PIXELS,
   HANDLE_PIXELS,

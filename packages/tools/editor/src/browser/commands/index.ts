@@ -7,6 +7,10 @@ export type {
   OrderDirection,
   PosePreview,
 } from "./CommandController.js";
+export { unionBounds } from "./bounds.js";
+export type { WorldBounds } from "./bounds.js";
+export { alignMoves, distributeMoves, edgeAxis } from "./arrange.js";
+export type { AlignEdge, ArrangeAxis, ArrangeMoves } from "./arrange.js";
 export {
   BOX_GRIPS,
   axisOf,

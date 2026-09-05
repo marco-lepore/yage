@@ -2867,6 +2867,66 @@ test.describe("level editor", () => {
     expect((await placementIn(off, CHILD)).active).toBe(false);
   });
 
+  test("lines three crates up on their top edges, and the game loads it", async ({
+    page,
+    context,
+    request,
+  }) => {
+    await openEditor(page);
+    const token = await tokenOf(page);
+
+    // Three crates from the Actors strip. Each one lands a step down and to
+    // the right of the last, because the middle of the view is taken by then —
+    // so the three start at three different heights without a drag.
+    await openActors(page);
+    for (let round = 1; round <= 3; round += 1) {
+      await page.getByTestId("place-game.crate").click();
+      await draftAfter(request, token, { undoDepth: round, redoDepth: 0 });
+    }
+    const built = (await draftOf(request, token)).document.entities
+      .filter((entity) => !(entity.id in AUTHORED))
+      .map((entity) => entity.id);
+    expect(built).toHaveLength(3);
+    const before = await draftOf(request, token);
+    const heights = built.map((id) => positionOf(before, id).y);
+    expect(new Set(heights).size).toBe(3);
+
+    // All three at the top level, so they share a parent and the Arrange group
+    // is offered.
+    for (const [index, id] of built.entries()) {
+      await page
+        .getByTestId(`hierarchy-row-${id}`)
+        .click(index === 0 ? {} : { modifiers: ["ControlOrMeta"] });
+    }
+    await page.getByTestId("align-top").click();
+
+    // One command over the two that had to move, so one undo takes the whole
+    // arrangement back.
+    const aligned = await draftAfter(request, token, {
+      undoDepth: 4,
+      redoDepth: 0,
+    });
+    const tops = built.map((id) => positionOf(aligned, id).y);
+    expect(tops[1]).toBeCloseTo(tops[0] ?? 0, 5);
+    expect(tops[2]).toBeCloseTo(tops[0] ?? 0, 5);
+    // The three authored placements are untouched: an arrangement acts on the
+    // selection and nothing else.
+    expectPoint(positionOf(aligned, ROOT), authored(ROOT));
+
+    await page.getByTestId("save-level").click();
+    await expect(page.getByTestId("dirty-marker")).toBeHidden();
+
+    // Every crate draws the same artwork at the same scale, so equal top edges
+    // are equal origins — which is what the game page reports.
+    const game = await context.newPage();
+    await game.goto(`/game.html?file=/${level}`);
+    await waitForInspector(game);
+    const worlds: number[] = [];
+    for (const id of built) worlds.push((await placementIn(game, id)).world.y);
+    expect(worlds[1]).toBeCloseTo(worlds[0] ?? 0, 5);
+    expect(worlds[2]).toBeCloseTo(worlds[0] ?? 0, 5);
+  });
+
   test("accepts one of two commands sent against one revision", async ({
     page,
     request,

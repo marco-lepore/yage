@@ -574,6 +574,39 @@ describe("PreviewCoordinator", () => {
       expect(view.zoom).toBeCloseTo(800 / (80 * 1.2), 12);
     });
 
+    it("measures a placement that draws nothing as a point at its origin", async () => {
+      const harness = await createHarness(renderer);
+      // No visual at all, which is what a placement carrying only marks is:
+      // an arrangement has to treat it as both its edge and its centre.
+      entities.set("crate", entityAt(100, 50));
+      await harness.build(document("crate"));
+
+      expect(harness.coordinator.boundsFor(["crate"]).get("crate")).toEqual({
+        minX: 100,
+        minY: 50,
+        maxX: 100,
+        maxY: 50,
+      });
+    });
+
+    it("measures nothing for a placement this build is not holding", async () => {
+      const harness = await createHarness(renderer);
+      entities.set("crate", entityAt(100, 50, { half: 25 }));
+      await harness.build(document("crate"));
+
+      const measured = harness.coordinator.boundsFor(["crate", "barrel"]);
+      // One entry per id asked for, so a caller reads an absent placement off
+      // the answer rather than off what is missing from it.
+      expect(measured.has("barrel")).toBe(true);
+      expect(measured.get("barrel")).toBeUndefined();
+      expect(measured.get("crate")).toEqual({
+        minX: 75,
+        minY: 25,
+        maxX: 125,
+        maxY: 75,
+      });
+    });
+
     it("marks every selected placement and draws one gizmo over them", async () => {
       const harness = await createHarness(renderer);
       entities.set("crate", entityAt(100, 50, { half: 25 }));

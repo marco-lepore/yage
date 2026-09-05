@@ -1,14 +1,7 @@
 import { Transform, type Entity } from "@yagejs/core";
 import { VisualComponent } from "@yagejs/renderer";
+import { unionBounds, type WorldBounds } from "../commands/index.js";
 import type { EditorViewState } from "../store/index.js";
-
-/** An axis-aligned rectangle in world space. */
-export interface WorldBounds {
-  readonly minX: number;
-  readonly minY: number;
-  readonly maxX: number;
-  readonly maxY: number;
-}
 
 /**
  * How much larger than the framed rectangle the view is left, so a framed
@@ -80,25 +73,6 @@ export function worldBoundsOf(entity: Entity): WorldBounds | undefined {
       };
       found = found === undefined ? boundsAt(point) : grown(found, point);
     }
-  }
-  return found;
-}
-
-/** The rectangle covering every one of `all`, or `undefined` when it is empty. */
-export function unionBounds(
-  all: readonly WorldBounds[],
-): WorldBounds | undefined {
-  let found: WorldBounds | undefined;
-  for (const bounds of all) {
-    found =
-      found === undefined
-        ? bounds
-        : {
-            minX: Math.min(found.minX, bounds.minX),
-            minY: Math.min(found.minY, bounds.minY),
-            maxX: Math.max(found.maxX, bounds.maxX),
-            maxY: Math.max(found.maxY, bounds.maxY),
-          };
   }
   return found;
 }

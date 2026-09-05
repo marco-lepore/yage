@@ -69,9 +69,7 @@ import {
   FRAME_MARGIN,
   containsPoint,
   framedView,
-  unionBounds,
   worldBoundsOf,
-  type WorldBounds,
 } from "./bounds.js";
 
 interface Rect {
@@ -183,26 +181,6 @@ describe("worldBoundsOf", () => {
 
   it("reports nothing for an entity that draws nothing", () => {
     expect(worldBoundsOf(entityWith([new Transform()]))).toBeUndefined();
-  });
-});
-
-describe("unionBounds", () => {
-  it("covers every rectangle", () => {
-    const all: WorldBounds[] = [
-      { minX: 0, minY: 0, maxX: 10, maxY: 10 },
-      { minX: -5, minY: 20, maxX: 5, maxY: 30 },
-    ];
-
-    expect(unionBounds(all)).toEqual({
-      minX: -5,
-      minY: 0,
-      maxX: 10,
-      maxY: 30,
-    });
-  });
-
-  it("reports nothing for no rectangles", () => {
-    expect(unionBounds([])).toBeUndefined();
   });
 });
 

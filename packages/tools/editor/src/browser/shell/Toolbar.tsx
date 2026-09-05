@@ -1,4 +1,9 @@
 import {
+  edgeAxis,
+  type AlignEdge,
+  type ArrangeAxis,
+} from "../commands/index.js";
+import {
   clampStep,
   MAX_STEP,
   MIN_STEP,
@@ -92,6 +97,115 @@ export const SNAP_KEY = "S";
  */
 export const HIDE_KEY = "H";
 
+/**
+ * The six alignments, in the order a design tool puts them: the three that act
+ * on x, then the three on y, each running from the low edge through the middle
+ * to the high one.
+ */
+const ALIGNMENTS: readonly { edge: AlignEdge; title: string }[] = [
+  { edge: "left", title: "Line the left edges up" },
+  { edge: "centerX", title: "Line the horizontal centres up" },
+  { edge: "right", title: "Line the right edges up" },
+  { edge: "top", title: "Line the top edges up" },
+  { edge: "centerY", title: "Line the vertical centres up" },
+  { edge: "bottom", title: "Line the bottom edges up" },
+];
+
+/** The two distributions, on the same two axes and in the same order. */
+const DISTRIBUTIONS: readonly { axis: ArrangeAxis; title: string }[] = [
+  { axis: "x", title: "Leave an equal gap between them, left to right" },
+  { axis: "y", title: "Leave an equal gap between them, top to bottom" },
+];
+
+/**
+ * One block of the icon, laid out along the axis the button acts on.
+ *
+ * `at` and `length` run along that axis, `across` and `thickness` across it,
+ * and all four are fractions of the icon's square — so the same numbers draw
+ * the horizontal button and the vertical one.
+ */
+function Block(props: {
+  axis: ArrangeAxis;
+  at: number;
+  length: number;
+  across: number;
+  thickness: number;
+}): React.JSX.Element {
+  const along = props.axis === "x";
+  return (
+    <rect
+      x={(along ? props.at : props.across) * 16}
+      y={(along ? props.across : props.at) * 16}
+      width={(along ? props.length : props.thickness) * 16}
+      height={(along ? props.thickness : props.length) * 16}
+      fill="currentColor"
+    />
+  );
+}
+
+/**
+ * Three blocks of unequal length in three lanes, meeting the line the
+ * alignment moves them to.
+ *
+ * Unequal lengths are the point: they are what shows that the button moves an
+ * edge rather than a centre.
+ */
+function AlignIcon(props: { edge: AlignEdge }): React.JSX.Element {
+  const axis = edgeAxis(props.edge);
+  const low = props.edge === "left" || props.edge === "top";
+  const high = props.edge === "right" || props.edge === "bottom";
+  const rule = low ? 0.5 / 16 : high ? 15.5 / 16 : 0.5;
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <line
+        x1={(axis === "x" ? rule : 0) * 16}
+        y1={(axis === "x" ? 0 : rule) * 16}
+        x2={(axis === "x" ? rule : 1) * 16}
+        y2={(axis === "x" ? 1 : rule) * 16}
+        stroke="currentColor"
+        strokeWidth={1}
+      />
+      {[0.9, 0.45, 0.7].map((length, lane) => (
+        <Block
+          key={lane}
+          axis={axis}
+          at={low ? 0.08 : high ? 0.92 - length : 0.5 - length / 2}
+          length={length}
+          across={0.16 + lane * 0.28}
+          thickness={0.16}
+        />
+      ))}
+    </svg>
+  );
+}
+
+/**
+ * Three blocks of unequal length in one lane, with an equal gap on either side
+ * of the middle one. Unequal lengths again: what the button equalizes is the
+ * gaps and not the strides.
+ */
+function DistributeIcon(props: { axis: ArrangeAxis }): React.JSX.Element {
+  const blocks = [
+    { at: 0, length: 0.28 },
+    { at: 0.42, length: 0.16 },
+    { at: 0.72, length: 0.28 },
+  ];
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      {blocks.map((block, index) => (
+        <Block
+          key={index}
+          axis={props.axis}
+          at={block.at}
+          length={block.length}
+          across={0.15}
+          thickness={0.7}
+        />
+      ))}
+    </svg>
+  );
+}
+
 export interface ToolbarProps {
   readonly tool: EditorTool;
   readonly onTool: (tool: EditorTool) => void;
@@ -118,6 +232,12 @@ export interface ToolbarProps {
   readonly onHide: () => void;
   readonly onIsolate: () => void;
   readonly onShowAll: () => void;
+  /** Whether two or more selected roots share one parent, which align needs. */
+  readonly canArrange: boolean;
+  /** The same for three or more, which is the fewest a gap can be equal across. */
+  readonly canDistribute: boolean;
+  readonly onAlign: (edge: AlignEdge) => void;
+  readonly onDistribute: (axis: ArrangeAxis) => void;
 }
 
 /**
@@ -180,7 +300,7 @@ function StepField(props: {
  */
 export function Toolbar(props: ToolbarProps): React.JSX.Element {
   return (
-    <div className="ye-bar" data-testid="toolbar">
+    <div className="ye-bar ye-bar--tools" data-testid="toolbar">
       <div className="ye-group" role="group" aria-label="Viewport tool">
         {TOOLS.map((tool) => (
           <Button
@@ -279,6 +399,42 @@ export function Toolbar(props: ToolbarProps): React.JSX.Element {
         >
           Show all
         </Button>
+      </div>
+
+      {/* Eight one-shot edits over the whole selection. They are enabled by
+          what the selection is rather than by the tool, because lining things
+          up is an answer to where they already are. */}
+      <div className="ye-group" role="group" aria-label="Arrange">
+        {ALIGNMENTS.map((choice) => (
+          <Button
+            key={choice.edge}
+            className="ye-button ye-icon"
+            testId={`align-${choice.edge}`}
+            disabled={!props.canArrange}
+            title={choice.title}
+            ariaLabel={choice.title}
+            onClick={() => {
+              props.onAlign(choice.edge);
+            }}
+          >
+            <AlignIcon edge={choice.edge} />
+          </Button>
+        ))}
+        {DISTRIBUTIONS.map((choice) => (
+          <Button
+            key={choice.axis}
+            className="ye-button ye-icon"
+            testId={`distribute-${choice.axis}`}
+            disabled={!props.canDistribute}
+            title={choice.title}
+            ariaLabel={choice.title}
+            onClick={() => {
+              props.onDistribute(choice.axis);
+            }}
+          >
+            <DistributeIcon axis={choice.axis} />
+          </Button>
+        ))}
       </div>
 
       {/* One lattice, three controls: Guides draws it, Snap lands on it, and

@@ -98,6 +98,17 @@ export const EDITOR_CSS = `
   scrollbar-width: thin;
 }
 
+/* The toolbar carries more groups than a 1440-wide window fits. Wrapping keeps
+   every group reachable: sideways scrolling in a bar is the back gesture on a
+   trackpad. */
+.yage-editor .ye-bar--tools {
+  flex-wrap: wrap;
+  height: auto;
+  min-height: var(--toolbar-height);
+  row-gap: var(--space-1);
+  padding-block: var(--space-1);
+}
+
 .yage-editor .ye-select {
   flex: 0 0 auto;
   min-width: 0;
@@ -186,6 +197,20 @@ export const EDITOR_CSS = `
 
 .yage-editor .ye-button--primary:hover:not(:disabled) {
   background: var(--focus);
+}
+
+/* A button carrying a picture instead of a word: square, and the picture
+   inherits the text colour so it fades with the button when it is disabled. */
+.yage-editor .ye-icon {
+  width: var(--control-height);
+  padding: 0;
+  justify-content: center;
+}
+
+.yage-editor .ye-icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 .yage-editor .ye-tool {

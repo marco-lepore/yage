@@ -46,8 +46,10 @@ import {
   referenceTargets,
   referenceUses,
   selectionRoots,
+  unionBounds,
   type PointField,
   type ReferenceUse,
+  type WorldBounds,
   withDescendants,
 } from "../commands/index.js";
 import { armLength, handleAt, handleDirection, nearGizmo } from "./gizmo.js";
@@ -86,9 +88,7 @@ import {
   containsPoint,
   framedView,
   localBoxOf,
-  unionBounds,
   worldBoundsOf,
-  type WorldBounds,
 } from "./bounds.js";
 import { DestroyFlushQueue } from "./DestroyFlushQueue.js";
 import type { DormantPlacement } from "./dormant.js";
@@ -1051,6 +1051,29 @@ export class PreviewCoordinator {
   }
 
   /**
+   * The world rectangle each named placement covers, one entry per id asked
+   * for.
+   *
+   * What lining a selection up measures against. A placement that draws
+   * nothing has no rectangle, and answers one of no size at its origin —
+   * which is the point an arrangement then treats as its edge and its centre
+   * alike. A placement this build is not holding answers `undefined`.
+   */
+  boundsFor(
+    ids: readonly string[],
+  ): ReadonlyMap<string, WorldBounds | undefined> {
+    const measured = new Map<string, WorldBounds | undefined>();
+    for (const id of ids) {
+      const entity = this.byPlacementId.get(id);
+      measured.set(
+        id,
+        entity ? (worldBoundsOf(entity) ?? pointBounds(entity)) : undefined,
+      );
+    }
+    return measured;
+  }
+
+  /**
    * The point asked for, or the first step away from it that no placement is
    * already sitting on.
    *
@@ -1610,6 +1633,12 @@ function within(area: WorldBounds, point: EditorPoint): boolean {
 /** Whether a rectangle covers anything a stroke would show. */
 function hasArea(bounds: WorldBounds): boolean {
   return bounds.maxX > bounds.minX || bounds.maxY > bounds.minY;
+}
+
+/** A rectangle of no size at an entity's origin. */
+function pointBounds(entity: Entity): WorldBounds {
+  const origin = originOf(entity);
+  return { minX: origin.x, minY: origin.y, maxX: origin.x, maxY: origin.y };
 }
 
 /** An entity's world position — where its gizmo sits and what it turns around. */

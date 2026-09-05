@@ -106,6 +106,7 @@ function createHarness(
       applyPoseDraft: (poses) => drafts.push([...poses]),
       viewportCenter: () => undefined,
       freeSpotNear: (point: { x: number; y: number }) => point,
+      boundsFor: () => new Map(),
     },
     catalog: () => undefined,
   });

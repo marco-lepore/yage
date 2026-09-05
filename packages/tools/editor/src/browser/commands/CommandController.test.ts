@@ -14,6 +14,7 @@ import type {
   DraftSnapshot,
 } from "../../shared/protocol/index.js";
 import { EditorApiClient } from "../api/index.js";
+import type { WorldBounds } from "./bounds.js";
 import { EditorStore, isDirty, type EditorPoint } from "../store/index.js";
 import {
   CommandController,
@@ -200,6 +201,9 @@ function createHarness(initial: LevelDocument) {
   } = (point) => point;
 
   const probed: { x: number; y: number }[] = [];
+  // What the preview says it drew, for the cases about lining a selection up.
+  // Empty by default: a case that arranges says what the rectangles are.
+  let boxes = new Map<string, WorldBounds | undefined>();
   const preview = {
     applyPoseDraft(poses: readonly PoseEdit[]) {
       drafts.push([...poses]);
@@ -209,6 +213,8 @@ function createHarness(initial: LevelDocument) {
       probed.push(point);
       return cascade(point);
     },
+    boundsFor: (ids: readonly string[]) =>
+      new Map(ids.map((id) => [id, boxes.get(id)])),
   };
   const commands = new CommandController({
     store,
@@ -236,6 +242,10 @@ function createHarness(initial: LevelDocument) {
     withSnap(step: number): void {
       store.dispatch({ type: "snap-toggled" });
       store.dispatch({ type: "step-changed", step });
+    },
+    /** What the preview measured for each placement, as a build would. */
+    withBoxes(measured: Record<string, WorldBounds | undefined>): void {
+      boxes = new Map(Object.entries(measured));
     },
     /** Make the cascade step, as a crowded spot would. */
     withCascade(by: { x: number; y: number }): void {
@@ -3820,5 +3830,184 @@ describe("dragging a parameter's handle", () => {
     });
 
     expect(harness.store.getState().paramDrag).toBeUndefined();
+  });
+});
+
+describe("lining a selection up", () => {
+  /** A rectangle of `size` with its top-left corner at `x`, `y`. */
+  function box(x: number, y: number, size: number): WorldBounds {
+    return { minX: x, minY: y, maxX: x + size, maxY: y + size };
+  }
+
+  /** Three top-level crates, the pose the arrangement moves. */
+  function three(): ReturnType<typeof createHarness> {
+    const harness = createHarness(
+      document(placement("a", 0), placement("b", 40), placement("c", 100)),
+    );
+    harness.withBoxes({
+      a: box(0, 0, 10),
+      b: box(40, 30, 10),
+      c: box(100, 80, 10),
+    });
+    return harness;
+  }
+
+  it("moves the members that are out of line, as one command", async () => {
+    const harness = three();
+    harness.commands.alignPlacements(["a", "b", "c"], "top");
+    await settle();
+
+    // `a` is already on the union's top edge, so it is not in the command at
+    // all: an arrangement writes only what it moves.
+    expect(harness.poses).toHaveLength(1);
+    expect(harness.poses[0]).toEqual([
+      {
+        id: "b",
+        transform: {
+          position: { x: 40, y: -30 },
+          rotation: 0,
+          scale: { x: 1, y: 1 },
+        },
+      },
+      {
+        id: "c",
+        transform: {
+          position: { x: 100, y: -80 },
+          rotation: 0,
+          scale: { x: 1, y: 1 },
+        },
+      },
+    ]);
+  });
+
+  it("writes nothing when they already line up", async () => {
+    const harness = three();
+    harness.withBoxes({
+      a: box(0, 60, 10),
+      b: box(40, 60, 10),
+      c: box(100, 60, 10),
+    });
+    harness.commands.alignPlacements(["a", "b", "c"], "top");
+    await settle();
+
+    expect(harness.sent).toEqual([]);
+  });
+
+  it("refuses a selection whose members sit under different parents", async () => {
+    const harness = createHarness(
+      document(
+        placement("holder", 0),
+        placement("a", 0, "holder"),
+        placement("b", 40),
+      ),
+    );
+    harness.withBoxes({ a: box(0, 0, 10), b: box(40, 30, 10) });
+    harness.commands.alignPlacements(["a", "b"], "top");
+    await settle();
+
+    expect(harness.sent).toEqual([]);
+  });
+
+  it("refuses one placement", async () => {
+    const harness = three();
+    harness.commands.alignPlacements(["a"], "left");
+    await settle();
+
+    expect(harness.sent).toEqual([]);
+  });
+
+  it("acts on the roots, so a selected child travels with its parent", async () => {
+    const harness = createHarness(
+      document(
+        placement("a", 0),
+        placement("inside", 5, "a"),
+        placement("b", 40),
+        placement("c", 100),
+      ),
+    );
+    harness.withBoxes({
+      a: box(0, 0, 10),
+      inside: box(5, 5, 10),
+      b: box(40, 30, 10),
+      c: box(100, 80, 10),
+    });
+    harness.commands.alignPlacements(["a", "inside", "b", "c"], "top");
+    await settle();
+
+    expect(harness.poses[0]?.map((pose) => pose.id)).toEqual(["b", "c"]);
+  });
+
+  it("converts the world move through the shared parent's frame", async () => {
+    // A parent turned a quarter-turn: a world move along y is a local move
+    // along -x for everything under it.
+    const harness = createHarness(
+      document(
+        placement("holder", 0, undefined, {
+          transform: {
+            position: { x: 0, y: 0 },
+            rotation: Math.PI / 2,
+            scale: { x: 1, y: 1 },
+          },
+        }),
+        placement("a", 0, "holder"),
+        placement("b", 0, "holder"),
+      ),
+    );
+    harness.withBoxes({ a: box(0, 0, 10), b: box(0, 30, 10) });
+    harness.commands.alignPlacements(["a", "b"], "top");
+    await settle();
+
+    const moved = harness.poses[0]?.[0];
+    expect(moved?.id).toBe("b");
+    expect(moved?.transform.position.x).toBeCloseTo(-30);
+    expect(moved?.transform.position.y).toBeCloseTo(0);
+  });
+
+  it("leaves a member the preview is not drawing where it is", async () => {
+    const harness = three();
+    harness.withBoxes({
+      a: box(0, 0, 10),
+      b: undefined,
+      c: box(100, 80, 10),
+    });
+    harness.commands.alignPlacements(["a", "b", "c"], "top");
+    await settle();
+
+    expect(harness.poses[0]?.map((pose) => pose.id)).toEqual(["c"]);
+  });
+
+  it("spaces three placements evenly and leaves the outer two", async () => {
+    const harness = three();
+    harness.commands.distributePlacements(["a", "b", "c"], "x");
+    await settle();
+
+    // 0 to 110 holds 30 of box, so each gap is 40 and the middle starts at 50.
+    expect(harness.poses[0]).toEqual([
+      {
+        id: "b",
+        transform: {
+          position: { x: 50, y: 0 },
+          rotation: 0,
+          scale: { x: 1, y: 1 },
+        },
+      },
+    ]);
+  });
+
+  it("refuses to distribute two placements", async () => {
+    const harness = three();
+    harness.commands.distributePlacements(["a", "b"], "x");
+    await settle();
+
+    expect(harness.sent).toEqual([]);
+  });
+
+  it("writes nothing while the level refuses writes", async () => {
+    const harness = three();
+    harness.store.lockWrites("stale-project");
+    harness.commands.alignPlacements(["a", "b", "c"], "top");
+    await settle();
+
+    expect(harness.sent).toEqual([]);
   });
 });

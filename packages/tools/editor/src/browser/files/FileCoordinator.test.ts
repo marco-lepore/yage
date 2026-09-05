@@ -125,6 +125,7 @@ function createHarness(
       applyPoseDraft: () => {},
       viewportCenter: () => undefined,
       freeSpotNear: (point: { x: number; y: number }) => point,
+      boundsFor: () => new Map(),
     },
     catalog: () => undefined,
     newId: () => "cmd-1",
@@ -702,6 +703,7 @@ function createFileHarness(answers: Record<string, unknown>) {
       applyPoseDraft: () => {},
       viewportCenter: () => undefined,
       freeSpotNear: (point: { x: number; y: number }) => point,
+      boundsFor: () => new Map(),
     },
     catalog: () => undefined,
   });

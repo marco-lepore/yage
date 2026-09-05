@@ -1,12 +1,17 @@
 import { Transform, type Entity } from "@yagejs/core";
-import { BOX_GRIPS, gripOf, type BoxGrip } from "../commands/index.js";
+import {
+  BOX_GRIPS,
+  gripOf,
+  type BoxGrip,
+  type WorldBounds,
+} from "../commands/index.js";
 import type {
   EditorPoint,
   GizmoAnchor,
   GizmoReference,
   HandleId,
 } from "../store/index.js";
-import { localBoxOf, type WorldBounds } from "./bounds.js";
+import { localBoxOf } from "./bounds.js";
 import { GRAB_PIXELS, HANDLE_PIXELS, MISS_PIXELS } from "./gizmo.js";
 
 /**

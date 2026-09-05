@@ -23,15 +23,26 @@ import {
   type PoseComponent,
 } from "../store/index.js";
 import {
+  alignMoves,
+  distributeMoves,
+  type AlignEdge,
+  type ArrangeAxis,
+  type ArrangeMoves,
+} from "./arrange.js";
+import type { WorldBounds } from "./bounds.js";
+import {
   draggedValue,
   gesturePoses,
+  parentFrame,
   parentWorld,
   samePose,
   spunTo,
   toLocal,
   toWorld,
+  translated,
   UNIT_REFERENCE,
   withPoseNumber,
+  worldDeltaToLocal,
   WORLD_ORIGIN,
 } from "./pose.js";
 import { defaultAt, pointFields, pointHandles, valueAt } from "./params.js";
@@ -46,9 +57,9 @@ import { clonePlacements, type CloneRequest } from "./clone.js";
 import { inboundReferences, referenceFieldNames } from "./references.js";
 
 /**
- * The part of `PreviewCoordinator` a drag needs, declared here rather than
- * imported, so producing commands never pulls the engine into this module's
- * import graph. The coordinator satisfies it as it stands.
+ * The part of `PreviewCoordinator` a drag and an arrangement need, declared
+ * here rather than imported, so producing commands never pulls the engine into
+ * this module's import graph. The coordinator satisfies it as it stands.
  */
 export interface PosePreview {
   applyPoseDraft(poses: readonly PoseEdit[]): void;
@@ -59,6 +70,17 @@ export interface PosePreview {
    * repeated creation does not stack.
    */
   freeSpotNear(point: EditorPoint): EditorPoint;
+  /**
+   * The world rectangle each named placement covers, as the preview drew it.
+   *
+   * Only the preview knows what a placement's artwork measures, so lining a
+   * selection up starts here. A placement that draws nothing answers a
+   * rectangle of no size at its origin; one the preview is not holding — left
+   * out of the build, or not built yet — answers `undefined`.
+   */
+  boundsFor(
+    ids: readonly string[],
+  ): ReadonlyMap<string, WorldBounds | undefined>;
 }
 
 export interface CommandControllerOptions {
@@ -545,6 +567,84 @@ export class CommandController {
     const drop = orderDrop(direction, group, moving);
     if (!drop) return;
     this.movePlacements(roots, drop);
+  }
+
+  /**
+   * Line the selection up: every member's chosen side, or its centre on one
+   * axis, onto that line of the box around the whole selection.
+   *
+   * The outermost member on the side asked for never moves — the box is the
+   * union of the members' own boxes, so the side already sits on it — and the
+   * rest come to it.
+   */
+  alignPlacements(ids: readonly string[], edge: AlignEdge): void {
+    this.arrange(ids, 2, (boxes) => alignMoves(boxes, edge));
+  }
+
+  /**
+   * Space the selection out along one axis so every gap between neighbouring
+   * boxes is equal, leaving the outermost two where they are.
+   *
+   * Two members have only the gap they already have, so three is the fewest
+   * this does anything for.
+   */
+  distributePlacements(ids: readonly string[], axis: ArrangeAxis): void {
+    this.arrange(ids, 3, (boxes) => distributeMoves(boxes, axis));
+  }
+
+  /**
+   * Move the selection's roots by a world delta each, as one command.
+   *
+   * Roots, because a member travelling with a selected parent must not also be
+   * moved itself. One shared parent, because a world delta becomes a local one
+   * through the parent's frame: the parent they share is where the one frame
+   * comes from, and a selection spanning parents has none.
+   *
+   * A member the preview is not drawing has no rectangle to line up and is
+   * left alone; a member already where it belongs writes nothing, so an
+   * arrangement that changes nothing costs no undo step.
+   */
+  private arrange(
+    ids: readonly string[],
+    least: number,
+    moves: (boxes: ReadonlyMap<string, WorldBounds>) => ArrangeMoves,
+  ): void {
+    if (!this.store.writable) return;
+    const document = this.store.getState().document;
+    const roots = selectionRoots(document, ids);
+    const first = roots[0];
+    const shared = sharedParent(document, roots);
+    if (roots.length < least || first === undefined || shared === undefined)
+      return;
+
+    const measured = this.preview.boundsFor(roots);
+    const boxes = new Map<string, WorldBounds>();
+    for (const id of roots) {
+      const box = measured.get(id);
+      if (box) boxes.set(id, box);
+    }
+
+    // Every root shares one parent, so one frame turns all the world deltas.
+    const frame = parentFrame(document, first);
+    const shifts = moves(boxes);
+    const poses: PoseEdit[] = [];
+    for (const placement of document.entities) {
+      const delta = shifts.get(placement.id);
+      if (delta === undefined || (delta.x === 0 && delta.y === 0)) continue;
+      poses.push({
+        id: placement.id,
+        transform: translated(
+          placement.transform,
+          worldDeltaToLocal(frame, delta),
+        ),
+      });
+    }
+    if (poses.length === 0) return;
+    this.store.submit({
+      kind: "set-poses",
+      commandId: this.newId(),
+      poses,
+    });
   }
 
   /**

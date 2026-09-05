@@ -1,5 +1,5 @@
+import type { WorldBounds } from "../commands/index.js";
 import { latticeMultiple } from "../store/index.js";
-import type { WorldBounds } from "./bounds.js";
 import { CASING_COLOR, type OverlayTarget } from "./overlay.js";
 
 /** What the guides show this frame. */
