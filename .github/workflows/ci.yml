@@ -51,6 +51,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx turbo test
+      - run: node --test scripts/clamp-package-versions.test.mjs
 
   build:
     name: Build
