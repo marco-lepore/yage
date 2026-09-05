@@ -670,23 +670,44 @@ created.
 
 ## Runtime Body Configuration
 
-Lock or unlock axes at runtime:
+Change damping or lock axes at runtime:
 
 ```typescript
+rb.setLinearDamping(6);                    // slow linear velocity
+rb.setAngularDamping(2);                   // slow rotation
 rb.setEnabledTranslations(true, false);  // lock Y axis
 rb.lockRotations(true);                   // lock rotation
 ```
 
-A locked axis ignores forces, impulses, and contacts; a velocity written with
-`setVelocity` still moves the body along it. Both calls, like `setGravityScale`
-and `setType`, work before `entity.add()` — the value is applied when the
-Rapier body is created:
+Damping must be finite and at least `0`. A locked axis ignores forces,
+impulses, and contacts; a velocity written with `setVelocity` still moves the
+body along it. These calls, like `setGravityScale` and `setType`, work before
+`entity.add()` — the values apply when the body is created:
 
 ```typescript
 const rb = new RigidBodyComponent({ type: "dynamic" });
+rb.setLinearDamping(6);
 rb.lockRotations(true);
-entity.add(rb);   // the body is created with rotation locked
+entity.add(rb);   // the body is created with damping and rotation locked
 ```
+
+The damping setters also work while the entity is inactive. They update the
+dormant body without enabling or waking it.
+
+## Runtime Collider Materials
+
+Change bounciness and friction without replacing the collider:
+
+```typescript
+collider.setRestitution(0.8);
+collider.setFriction(0.1);
+```
+
+Both values must be finite and at least `0`. Restitution above `1` is valid.
+Each call updates every part in a compound collider. You can call either
+method before `entity.add()` or while the entity is inactive. An inactive
+collider stays disabled. The values are retained when `setSensor` recreates
+the collider.
 
 ## Resizing a Collider
 
@@ -695,15 +716,23 @@ attachment to the body, and every collision or trigger handler you registered
 all survive the swap:
 
 ```typescript
-collider.setShape({ type: "box", width: 24, height: 24 });  // crouch
-collider.setShape({ type: "box", width: 24, height: 48 });  // stand
-collider.setShape(newHeadShape, { index: 1 });               // compound part 1
+collider.setShape(
+  { type: "box", width: 24, height: 24 },
+  { offset: { x: 0, y: -12 } },
+); // crouch while the body origin stays at the feet
+collider.setShape(newHeadShape, { index: 1 }); // compound part 1
 ```
 
 A shape with a dimension that is not finite and above 0 throws before anything
 is stored, so a bad computed height (`standing - shrink` gone negative) leaves
 the live collider and the component's config untouched. `index` defaults to
 `0`; an index that does not name a part also throws before anything changes.
+Pass `offset` to change the selected part's body-local offset with its shape.
+The coordinates use authored pixels before `Transform` scale. Omitting
+`offset` keeps the current value, while `{ x: 0, y: 0 }` resets the part to the
+body origin. Both coordinates are required and finite. The component copies
+the supplied object. An invalid offset or a scaled value that is not finite
+also throws before the config or live collider changes.
 
 The body keeps the mass it already had. A collider describes where a body
 collides, not how much matter is in it, so a character who crouches takes the
@@ -715,38 +744,51 @@ a chunk — ask for the mass back from density and the new shape:
 collider.setShape({ type: "circle", radius: 48 }, { recomputeMass: true });
 ```
 
-Shrinking is always safe. Growing is not: nothing is pushed out of the way, so
-a collider can end up overlapping a ceiling it did not touch while crouched.
-Check for clearance first.
+Changing a shape or offset can leave the collider overlapping other geometry.
+Check the region that the target collider will newly occupy before applying
+the change.
 
-A collider is centred on its body's origin unless you give it an `offset`, so a
-character who grows upward while keeping their feet planted also has to move up
-by half the height they gained. Test the standing box where it will actually
-sit, not where the crouched one sits:
+A feet-origin body can crouch and stand without moving the body. Keep each box's
+bottom at the origin by setting its offset to negative half its height. Before
+standing, query the headroom between the crouched and standing top edges:
 
 ```typescript
+const STAND_WIDTH = 24;
 const CROUCH_HEIGHT = 24;
 const STAND_HEIGHT = 48;
-const rise = (STAND_HEIGHT - CROUCH_HEIGHT) / 2;
+const clearanceHeight = STAND_HEIGHT - CROUCH_HEIGHT;
 
-const standing = { type: "box", width: 24, height: STAND_HEIGHT } as const;
-const pos = this.transform.worldPosition;
+const standing = {
+  type: "box",
+  width: STAND_WIDTH,
+  height: STAND_HEIGHT,
+} as const;
+const clearance = {
+  type: "box",
+  width: STAND_WIDTH,
+  height: clearanceHeight,
+} as const;
+const feet = this.rb.position;
 
 const blocked = world.queryShape(
-  standing,
-  { x: pos.x, y: pos.y - rise },
+  clearance,
+  {
+    x: feet.x,
+    y: feet.y - (STAND_HEIGHT + CROUCH_HEIGHT) / 2,
+  },
   { excludeEntity: this.entity },
 ).length > 0;
 
 if (!blocked) {
-  collider.setShape(standing);
-  this.rb.setPosition(pos.x, pos.y - rise);
+  collider.setShape(standing, {
+    offset: { x: 0, y: -STAND_HEIGHT / 2 },
+  });
 }
 ```
 
-Testing the standing box at the crouched position instead would report the
-floor as a blocker every time the character is grounded, and they could never
-stand up.
+Querying the full standing box would also touch the floor and can report a
+false blocker. If side contacts need a small tolerance, reduce the clearance
+box width by that deliberate inset; keep the target collider at its full width.
 
 `queryShape` sees colliders that appeared or changed since the last physics
 step, so a ceiling spawned this frame already blocks the stand-up. It skips

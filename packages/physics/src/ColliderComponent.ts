@@ -11,6 +11,7 @@ import type {
   EntityFilter,
   TraitToken,
   ErrorBoundary,
+  Vec2Like,
 } from "@yagejs/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import { createOneWayFilter } from "./oneWay.js";
@@ -25,7 +26,11 @@ import type {
   TriggerEvent,
   ColliderPartConfig,
 } from "./types.js";
-import { assertColliderShape, assertFiniteNumber } from "./validate.js";
+import {
+  assertColliderShape,
+  assertFiniteNumber,
+  assertRequiredFinite,
+} from "./validate.js";
 import { colliderPart, colliderParts } from "./colliderParts.js";
 import { scaleColliderPart } from "./colliderScale.js";
 
@@ -97,7 +102,12 @@ export class ColliderComponent extends Component {
       assertColliderShape(context, part.shape);
     }
     this._effectiveParts = parts.map((part) =>
-      scaleColliderPart(part, this._scaleX, this._scaleY),
+      this._buildEffectivePart(
+        part,
+        this._scaleX,
+        this._scaleY,
+        "ColliderComponent after Transform.worldScale",
+      ),
     );
     if (config.oneWay) {
       assertFiniteNumber(context, "oneWay.margin", config.oneWay.margin);
@@ -379,11 +389,48 @@ export class ColliderComponent extends Component {
   }
 
   /**
-   * Replace the collider's shape in place, in pixels like the rest of
-   * `ColliderConfig`. The Rapier collider, its body attachment, and every
-   * `onCollision`/`onTrigger` subscription survive the swap, so a crouch or
-   * slide can shrink the collider and restore it without removing and
-   * re-adding the component.
+   * Set this component's restitution on every collider part. Values must be
+   * finite and at least 0. Callable before the component is added; the value
+   * is also kept when `setSensor` recreates the Rapier colliders.
+   */
+  setRestitution(restitution: number): void {
+    assertRequiredFinite(
+      "ColliderComponent.setRestitution",
+      "restitution",
+      restitution,
+      0,
+    );
+    this.config.restitution = restitution;
+    for (const handle of this._colliderHandles) {
+      this.physicsWorld.getCollider(handle)?.setRestitution(restitution);
+    }
+  }
+
+  /**
+   * Set this component's friction on every collider part. Values must be
+   * finite and at least 0. Callable before the component is added; the value
+   * is also kept when `setSensor` recreates the Rapier colliders.
+   */
+  setFriction(friction: number): void {
+    assertRequiredFinite(
+      "ColliderComponent.setFriction",
+      "friction",
+      friction,
+      0,
+    );
+    this.config.friction = friction;
+    for (const handle of this._colliderHandles) {
+      this.physicsWorld.getCollider(handle)?.setFriction(friction);
+    }
+  }
+
+  /**
+   * Replace one collider shape in place, optionally changing its body-local
+   * offset in the same operation. Shape dimensions and offset coordinates use
+   * authored pixels like `ColliderConfig`; the current Transform scale applies
+   * to both. Omitting `offset` preserves the selected part's current offset.
+   * The Rapier collider, its body attachment, and every
+   * `onCollision`/`onTrigger` subscription survive the swap.
    *
    * The body keeps the mass it already had. A collider is a collision proxy,
    * not a measure of how much matter is there, so a character that crouches
@@ -392,35 +439,61 @@ export class ColliderComponent extends Component {
    * matter, and the body's mass should come back from density × the new
    * shape.
    *
-   * Shrinking never pushes anything out of the way, and growing can leave the
-   * collider overlapping geometry it clears at the smaller size. Check
-   * clearance (`PhysicsWorld.queryShape` at the target size) before growing
-   * back.
+   * Shape or offset changes can leave the collider overlapping other geometry.
+   * Check the region the target collider will newly occupy before applying the
+   * change. For a feet-origin character standing from a crouch, that region is
+   * the headroom between the crouched and standing top edges.
    *
    * Callable before the component is added — the updated config is applied at
    * collider creation. A pre-add call cannot recompute mass: the body takes
    * its mass from the new shape at creation anyway.
    *
-   * A shape with a dimension that is not finite and above 0 throws before
-   * anything is stored, so the selected config part still describes the live
-   * collider.
+   * A bad shape, index, offset coordinate, or scaled result throws before
+   * anything is stored. Supplied offset coordinates are copied, so later
+   * caller mutation cannot change the selected part.
    */
   setShape(
     shape: ColliderShape,
-    options?: { index?: number; recomputeMass?: boolean },
+    options?: {
+      index?: number;
+      offset?: Vec2Like;
+      recomputeMass?: boolean;
+    },
   ): void {
-    assertColliderShape("ColliderComponent.setShape", shape);
+    const context = "ColliderComponent.setShape";
+    assertColliderShape(context, shape);
     const index = options?.index ?? 0;
     if (!Number.isInteger(index) || index < 0 || index >= this.colliderCount) {
       throw new Error(
-        `ColliderComponent.setShape: index must name an existing collider shape, got ${index}.`,
+        `${context}: index must name an existing collider shape, got ${index}.`,
       );
     }
+
+    const offset = options?.offset;
+    if (offset !== undefined) {
+      assertRequiredFinite(context, "offset.x", offset.x);
+      assertRequiredFinite(context, "offset.y", offset.y);
+    }
+
+    const currentPart = this._part(index);
+    const candidatePart: ColliderPartConfig = {
+      ...currentPart,
+      shape,
+      ...(offset === undefined ? {} : { offset: { x: offset.x, y: offset.y } }),
+    };
+    const effectivePart = this._buildEffectivePart(
+      candidatePart,
+      this._scaleX,
+      this._scaleY,
+      `${context} after Transform.worldScale`,
+    );
+
     // Shape-dependent diagnostics read the selected authored part.
-    this._part(index).shape = shape;
-    this._effectiveParts[index] = this._scaleHasArea
-      ? scaleColliderPart(this._part(index), this._scaleX, this._scaleY)
-      : this._part(index);
+    currentPart.shape = shape;
+    if (offset !== undefined) {
+      currentPart.offset = { x: offset.x, y: offset.y };
+    }
+    this._effectiveParts[index] = effectivePart;
     if (this._colliderHandles.length === 0) return;
     this.physicsWorld.setColliderShape(
       this._colliderHandles[index] as number,
@@ -492,9 +565,14 @@ export class ColliderComponent extends Component {
     if (scale.x === this._scaleX && scale.y === this._scaleY) return;
     this._assertFiniteScale(scale.x, scale.y);
 
+    const effectiveParts = this._buildEffectiveParts(
+      scale.x,
+      scale.y,
+      "ColliderComponent after Transform.worldScale",
+    );
     this._scaleX = scale.x;
     this._scaleY = scale.y;
-    this._rebuildEffectiveParts();
+    this._effectiveParts = effectiveParts;
     if (this._colliderHandles.length === 0) return;
 
     if (!this._scaleHasArea) {
@@ -547,17 +625,42 @@ export class ColliderComponent extends Component {
   private _readInitialScale(): void {
     const scale = this.transform.worldScale;
     this._assertFiniteScale(scale.x, scale.y);
+    const effectiveParts = this._buildEffectiveParts(
+      scale.x,
+      scale.y,
+      "ColliderComponent after Transform.worldScale",
+    );
     this._scaleX = scale.x;
     this._scaleY = scale.y;
-    this._rebuildEffectiveParts();
+    this._effectiveParts = effectiveParts;
   }
 
-  private _rebuildEffectiveParts(): void {
-    this._effectiveParts = colliderParts(this.config).map((part) =>
-      this._scaleHasArea
-        ? scaleColliderPart(part, this._scaleX, this._scaleY)
-        : part,
+  private _buildEffectiveParts(
+    scaleX: number,
+    scaleY: number,
+    context: string,
+  ): ColliderPartConfig[] {
+    return colliderParts(this.config).map((part) =>
+      this._buildEffectivePart(part, scaleX, scaleY, context),
     );
+  }
+
+  private _buildEffectivePart(
+    part: ColliderPartConfig,
+    scaleX: number,
+    scaleY: number,
+    context: string,
+  ): ColliderPartConfig {
+    const effectivePart =
+      scaleX !== 0 && scaleY !== 0
+        ? scaleColliderPart(part, scaleX, scaleY)
+        : part;
+    assertColliderShape(context, effectivePart.shape);
+    if (effectivePart.offset) {
+      assertRequiredFinite(context, "offset.x", effectivePart.offset.x);
+      assertRequiredFinite(context, "offset.y", effectivePart.offset.y);
+    }
+    return effectivePart;
   }
 
   private _assertFiniteScale(scaleX: number, scaleY: number): void {
