@@ -46,7 +46,7 @@ import {
   LandSfx,
 } from "./assets.js";
 import { isWon } from "./ui.js";
-import { spawnBulletImpactParticles, spawnEnemyHitParticles } from "./particles.js";
+import type { VfxHub } from "./particles.js";
 
 // ---------------------------------------------------------------------------
 // PlayerController
@@ -65,7 +65,10 @@ class PlayerController extends Component {
   private readonly collider = this.sibling(ColliderComponent);
   private readonly pc = this.sibling(ProcessComponent);
 
-  constructor(camera: CameraEntity) {
+  constructor(
+    camera: CameraEntity,
+    private readonly vfx: VfxHub,
+  ) {
     super();
     this.camera = camera;
   }
@@ -323,7 +326,7 @@ class PlayerController extends Component {
     const scene = this.scene;
     const pos = this.transform.position;
     const dir = this.facingRight ? 1 : -1;
-    scene.spawn(BulletEntity, { x: pos.x + dir * 18, y: pos.y - 6, dir });
+    scene.spawn(BulletEntity, { x: pos.x + dir * 18, y: pos.y - 6, dir, vfx: this.vfx });
   }
 }
 
@@ -331,7 +334,7 @@ class PlayerController extends Component {
 // Entities
 // ---------------------------------------------------------------------------
 export class PlayerEntity extends Entity {
-  setup(params: { camera: CameraEntity }): void {
+  setup(params: { camera: CameraEntity; vfx: VfxHub }): void {
     this.tags.add("player");
     this.add(new Transform({ position: new Vec2(SPAWN.x, SPAWN.y) }));
     const idleSource = { sheet: PlayerIdleTex.path, frameWidth: FRAME_SIZE };
@@ -365,12 +368,12 @@ export class PlayerEntity extends Entity {
       }),
     );
     this.add(new ProcessComponent());
-    this.add(new PlayerController(params.camera));
+    this.add(new PlayerController(params.camera, params.vfx));
   }
 }
 
 class BulletEntity extends Entity {
-  setup(params: { x: number; y: number; dir: number }): void {
+  setup(params: { x: number; y: number; dir: number; vfx: VfxHub }): void {
     const { x, y, dir } = params;
     this.tags.add("bullet");
     this.add(new Transform({ position: new Vec2(x, y) }));
@@ -416,10 +419,9 @@ class BulletEntity extends Entity {
 
       if (ev.other.tags.has("enemy")) {
         ev.other.emit(Hurt, { dir });
-        spawnEnemyHitParticles(scene, bPos.x, bPos.y);
+        params.vfx.enemyHit(bPos.x, bPos.y);
       } else {
-        const normalAngle = dir > 0 ? Math.PI : 0;
-        spawnBulletImpactParticles(scene, bPos.x, bPos.y, normalAngle);
+        params.vfx.bulletImpact(bPos.x, bPos.y, -dir);
       }
       this.destroy();
     });

@@ -83,12 +83,12 @@
  *     `present`, logging each line the moment it appears (no waiting for the
  *     typewriter) to a small semi-opaque HUD panel; a channel that gates nothing.
  *
- * Eight scripts live in plain **YAML data files** under `./dialogue/` (a designer
+ * Eight scripts live in plain **YAML data files** under `./scripts/` (a designer
  * edits them without touching code), imported via Vite's `?raw` suffix and parsed
  * by `loadYaml` (the `/yaml` subpath). Conditions and `set` values are plain string
  * expressions (`"gold >= 50 and not has_item('rusty-key')"`, `"gold - 50"`) instead
  * of hand-built trees — `loadYaml` runs them through the same string→expression
- * parser the JSON loader uses. Pip's script (`./dialogue/locksmith.dlg`) is the
+ * parser the JSON loader uses. Pip's script (`./scripts/locksmith.dlg`) is the
  * same idea in the **compact DSL**: `loadCompact` (the root entry, no `yaml` dep)
  * over a terse, line-oriented format that compiles to the identical frozen IR.
  *

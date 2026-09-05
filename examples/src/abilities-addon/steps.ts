@@ -27,7 +27,10 @@ import { INVULN_FLASH_TINT, fxOf } from "./feedback.js";
  *  entity covers ground at its own unslowed pace. 1 for entities the slowmo
  *  applies to and whenever no slowmo is active; 1 while frozen too (nothing
  *  integrates, and it avoids dividing by zero). */
-export function slowmoVelocityCompensation(time: SceneTime, entity: Entity): number {
+export function slowmoVelocityCompensation(
+  time: SceneTime,
+  entity: Entity,
+): number {
   const world = time.effectiveScale;
   if (world <= 0) return 1;
   return time.effectiveScaleForUpdates(entity) / world;
@@ -69,21 +72,17 @@ export const heal = defineStep<{ amount: number }>("heal", {
 
 /** Point step: plays a one-shot boxer animation, direction-aware. The
  *  sibling `AnimationController` (built by `buildBoxerAnimDefs`) must
- *  include `name` for every direction. `startFrame`/`lockDuration` are the
- *  windup-skip escape hatch `CHARGE_RELEASE` uses — see `playBoxerAnim`. */
+ *  include `name` for every direction. `startFrame` skips opening windup
+ *  frames while the controller times the remaining clip. */
 export const spriteAnim = defineStep<{
   name: BoxerAnim;
   startFrame?: number;
-  lockDuration?: number;
 }>("spriteAnim", {
   fire(params, ctx) {
     playBoxerAnim(ctx.entity, params.name, {
       oneShot: true,
       ...(params.startFrame !== undefined
         ? { startFrame: params.startFrame }
-        : {}),
-      ...(params.lockDuration !== undefined
-        ? { lockDuration: params.lockDuration }
         : {}),
     });
   },

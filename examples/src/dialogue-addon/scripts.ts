@@ -16,7 +16,7 @@ import gossipYaml from "./scripts/gossip.yaml?raw";
 // `loadCompact` from the root entry (no `yaml` dep), same validated/frozen IR.
 import locksmithCompact from "./scripts/locksmith.dlg?raw";
 
-// ── scripts — authored in `./dialogue/*.yaml`, parsed by `loadYaml` ──────────
+// ── scripts — authored in `./scripts/*.yaml`, parsed by `loadYaml` ──────────
 //
 // The dialogue lives in plain YAML data files (imported above via Vite `?raw`),
 // each mirroring the JSON `DialogueScript` and all content-only
@@ -54,7 +54,7 @@ export const SAGE = loadYaml(sageYaml);
 export const CAPTAIN = loadYaml(captainYaml);
 /** Ambient gossip — loops forever, each line auto-advancing, no input binding. */
 export const GOSSIP = loadYaml(gossipYaml);
-/** Pip — the one NPC authored in the **compact DSL** (`./dialogue/locksmith.dlg`,
+/** Pip — the one NPC authored in the **compact DSL** (`./scripts/locksmith.dlg`,
  *  parsed by `loadCompact`, not `loadYaml`). Shows the compact-only conveniences:
  *  a `declare`d visit flag + a conditional jump (`-> regreet if: pip_seen`) that
  *  re-greets a returning customer, line-driven `#portrait:`/`#side:` avatars, a

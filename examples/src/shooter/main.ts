@@ -5,6 +5,7 @@
  * fullscreen toggle stays in the DOM. Wiring lives in the sibling modules
  * (constants, assets, ui, particles, player, enemies, scene).
  */
+import { ParticlesPlugin } from "@yagejs/particles";
 import { Engine, EventBusKey } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
@@ -50,6 +51,7 @@ async function main() {
   }));
   await installDebugFromUrl(engine);
 
+  engine.use(new ParticlesPlugin());
   await engine.start();
 
   // Fullscreen button: toggle on click, sync label from the bus event so

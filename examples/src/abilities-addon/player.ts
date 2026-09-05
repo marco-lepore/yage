@@ -15,6 +15,7 @@ import {
 } from "@yagejs/renderer";
 import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 import { InputManagerKey } from "@yagejs/input";
+import { ParticleEmitterComponent } from "@yagejs/particles";
 import {
   Abilities,
   Facing,
@@ -45,7 +46,7 @@ import {
   SPRITE_ANCHOR,
   SPRITE_SCALE,
   buildBoxerAnimDefs,
-  installFootAnchorTracking,
+  BoxerFootAnchorTracking,
   playBoxerAnim,
   sourceFor,
 } from "./boxer-sprites.js";
@@ -103,32 +104,6 @@ export const REFLECT_SPEED = 260;
  *  alongside `PARRY_ACTIVE_WINDOW` — see its doc. */
 export const PARRY_TAP_WINDOW = 0.3;
 
-// ---------------------------------------------------------------------------
-// Charge convergence sparks — a hand-rolled few-particle effect on
-// `PlayerController` (Graphics, not `@yagejs/particles`): a fixed count of
-// points on a ring around the caster's body center, each ticking its own
-// radius down to 0 and alpha with it, then respawning at the ring edge with
-// a fresh random angle.
-// ---------------------------------------------------------------------------
-
-export interface ChargeSpark {
-  angle: number;
-  radius: number;
-}
-
-export const CHARGE_SPARK_COUNT = 10;
-export const CHARGE_SPARK_RING_RADIUS = 42;
-export const CHARGE_SPARK_INWARD_SPEED = 110; // px/s
-export const CHARGE_SPARK_ALPHA = 0.35; // dimmer than the old rising-ember stream
-export const CHARGE_SPARK_COLOR = 0xffe066;
-
-export function spawnChargeSpark(): ChargeSpark {
-  return {
-    angle: Math.random() * Math.PI * 2,
-    radius: CHARGE_SPARK_RING_RADIUS,
-  };
-}
-
 export class PlayerController extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly time = this.service(SceneTimeKey);
@@ -145,9 +120,10 @@ export class PlayerController extends Component {
   dead = false;
 
   charging = false;
-  private chargeSparks: ChargeSpark[] = [];
+  private chargeEmitter: ParticleEmitterComponent | undefined;
 
   onAdd(): void {
+    this.addCleanup(() => this.stopChargeSparks());
     this.listen(this.entity, HealthDied, () => {
       this.dead = true;
       if (this.charging) {
@@ -240,7 +216,7 @@ export class PlayerController extends Component {
     };
   }
 
-  update(dt: number): void {
+  update(): void {
     if (this.input.isJustPressed("reset")) {
       this.resetDemo();
       return;
@@ -260,7 +236,6 @@ export class PlayerController extends Component {
       if (charging) this.startChargeSparks();
       else this.stopChargeSparks();
     }
-    if (this.charging) this.updateChargeSparks(dt);
 
     if (!activeMain) {
       const dx = this.input.getAxis("left", "right");
@@ -350,45 +325,32 @@ export class PlayerController extends Component {
     };
   }
 
-  // -------------------------------------------------------------------------
-  // Charge convergence sparks — see the `ChargeSpark`/`CHARGE_SPARK_*`
-  // section above for why this is hand-rolled Graphics rather than a
-  // `@yagejs/particles` emitter. Ticked while the charge phase is active,
-  // drawn from `redraw` alongside the HP bar (one entity, one
-  // `GraphicsComponent` — see the codebase's one-component-per-class rule).
-  // -------------------------------------------------------------------------
-
   private startChargeSparks(): void {
-    this.chargeSparks = Array.from(
-      { length: CHARGE_SPARK_COUNT },
-      spawnChargeSpark,
+    // Local particles follow position; their radius, speed and size include
+    // the player's scale explicitly. Continuous emission renews the ring.
+    this.chargeEmitter = this.entity.add(
+      new ParticleEmitterComponent({
+        maxParticles: 10,
+        rate: 27.5,
+        lifetime: 40 / 110,
+        speed: 0,
+        spawnOffset: { radius: 42 * SPRITE_SCALE },
+        radialSpeed: -110 * SPRITE_SCALE,
+        shape: { type: "circle", size: 6 },
+        scale: SPRITE_SCALE,
+        alpha: { start: 0.35, end: (0.35 * 2) / 42 },
+        tint: 0xffe066,
+        simulationSpace: "local",
+        layer: this.gfx.layerName,
+      }),
     );
+    this.chargeEmitter.burst(10);
+    this.chargeEmitter.emit();
   }
 
   private stopChargeSparks(): void {
-    this.chargeSparks = [];
-  }
-
-  private updateChargeSparks(dt: number): void {
-    for (let i = 0; i < this.chargeSparks.length; i++) {
-      const spark = this.chargeSparks[i]!;
-      spark.radius -= CHARGE_SPARK_INWARD_SPEED * dt;
-      if (spark.radius <= 2) this.chargeSparks[i] = spawnChargeSpark();
-    }
-  }
-
-  private drawChargeSparks(): void {
-    // Drawn in the entity's local space, which is already centered on the
-    // body (the Transform origin is the torso — see `SPRITE_ANCHOR`).
-    for (const spark of this.chargeSparks) {
-      const x = Math.cos(spark.angle) * spark.radius;
-      const y = Math.sin(spark.angle) * spark.radius;
-      const alpha =
-        CHARGE_SPARK_ALPHA * (spark.radius / CHARGE_SPARK_RING_RADIUS);
-      this.gfx.graphics
-        .circle(x, y, 3)
-        .fill({ color: CHARGE_SPARK_COLOR, alpha });
-    }
+    this.chargeEmitter?.destroy();
+    this.chargeEmitter = undefined;
   }
 
   /** Re-aims Facing to the currently-held movement axis, if any. The input
@@ -448,11 +410,9 @@ export class PlayerController extends Component {
     });
   }
 
-  /** HP bar plus the charge-hold convergence sparks while charging — the
-   *  sprite animation itself conveys guard/dash/stun/dead. */
+  /** The sprite animation conveys guard/dash/stun/dead alongside the HP bar. */
   private redraw(): void {
     drawHealthBar(this.gfx, this.health.hp / this.health.max, 0x4ade80);
-    if (this.charging) this.drawChargeSparks();
   }
 }
 
@@ -474,7 +434,7 @@ export class PlayerEntity extends Entity {
         anchor: SPRITE_ANCHOR,
       }),
     );
-    installFootAnchorTracking(this);
+    this.add(new BoxerFootAnchorTracking());
     this.add(new AnimationController(buildBoxerAnimDefs(PLAYER_ANIMS)));
     this.add(new GraphicsComponent());
     this.add(new RigidBodyComponent({ type: "dynamic", fixedRotation: true }));

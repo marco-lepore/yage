@@ -57,7 +57,6 @@ import {
   GemEntity,
 } from "./entities.js";
 import { Toast, bindToast, showToast } from "./toast.js";
-import { bindSidebar } from "./sidebar-scroll.js";
 
 export class ShowcaseScene extends Scene {
   readonly name = "effects-showcase";
@@ -116,27 +115,18 @@ export class ShowcaseScene extends Scene {
         gap: 4,
         padding: 10,
         width: SIDEBAR_WIDTH,
-        // Cap the panel at the canvas height (with a margin matching the
-        // anchor offset on top + bottom) and clip the overflow. Sections
-        // expanded enough to overflow the cap are scrollable via the wheel
-        // handler installed in main() — it offsets `scroller`'s top margin.
-        maxHeight: VIRTUAL_HEIGHT - 16,
+        height: VIRTUAL_HEIGHT - 16,
         overflow: "hidden",
         background: { color: 0x000000, alpha: 0.85, radius: 6 },
       }),
     );
 
-    // Everything visible inside the sidebar lives inside `scroller`, the
-    // sole child of the sidebar's flex column. Wheel scrolling translates
-    // `scroller` via a negative top margin, sliding overflowing content
-    // under the sidebar's mask. Title goes inside the scroller too so the
-    // whole panel scrolls as one document — pinning the title outside lets
-    // scrolled rows draw over it (no z-isolation between sidebar children).
-    const scroller = sidebar.panel({
+    const scrollView = sidebar.scrollView({ flex: 1, scrollbar: false });
+    const scroller = new UIPanel({
       direction: "column",
       gap: 4,
     });
-    bindSidebar(scroller, sidebar.root);
+    scrollView.addElement(scroller);
 
     scroller.text("Effects Showcase", TXT_TITLE);
 

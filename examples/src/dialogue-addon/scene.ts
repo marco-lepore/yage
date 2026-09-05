@@ -1,3 +1,4 @@
+import { TopDownPlayerMover } from "../shared/TopDownPlayerMover.js";
 import { Scene, Transform, Vec2 } from "@yagejs/core";
 import { CameraEntity, GraphicsComponent, TextComponent } from "@yagejs/renderer";
 import { InputManagerKey } from "@yagejs/input";
@@ -38,6 +39,7 @@ import {
   ROOM_LAYER,
   BUBBLE_LAYER,
   LAYERS,
+  PLAYER_SPEED,
   type Bounds,
   type GameState,
 } from "./constants.js";
@@ -52,7 +54,7 @@ import {
   SAGE,
   GOSSIP,
 } from "./scripts.js";
-import { PlayerMover, ProximityInteract, ProximityZone, Gate, spawnNpc } from "./town.js";
+import { ProximityInteract, ProximityZone, Gate, spawnNpc } from "./town.js";
 import { Hud, DialogueProbe, LifecycleControls, ChoiceTimer } from "./hud.js";
 import { VOICE, BlipSynth, TranscriptChannel } from "./channels.js";
 import { registerPortraitTextures } from "./theme.js";
@@ -133,9 +135,6 @@ export class RoomScene extends Scene {
     const functions: Record<string, DialogueFunction> = {
       has_item: (id) => state.inventory.has(String(id)),
     };
-    // Forward-declared so the `choice-timer` handler (installed on the controller
-    // below) can reach the ChoiceTimer component created after it.
-    let choiceTimer: ChoiceTimer | undefined;
     const commands: Record<string, CommandHandler> = {
       "give-gold": (cmd) => {
         state.gold += Number(cmd.amount);
@@ -148,7 +147,7 @@ export class RoomScene extends Scene {
       },
       "open-gate": () => gate.open(),
       // Timed-choice recipe: just stash the params; ChoiceTimer arms on show.
-      "choice-timer": (cmd) => choiceTimer?.arm(Number(cmd.seconds), Number(cmd.default)),
+      "choice-timer": (cmd) => choiceTimer.arm(Number(cmd.seconds), Number(cmd.default)),
     };
 
     const bitmapFont = this.bitmapFont;
@@ -269,11 +268,13 @@ export class RoomScene extends Scene {
 
     // Host-owned timer for Rook's timed choice. Gated on `lifecycle.paused`
     // so P freezes the countdown along with the conversation.
-    choiceTimer = host.add(new ChoiceTimer(interactive, () => lifecycle.paused));
+    const choiceTimer = host.add(new ChoiceTimer(interactive, () => lifecycle.paused));
 
     // The player idles while a conversation owns input, and while paused.
     const busy = (): boolean => interactive.isActive() || lifecycle.paused;
-    player.add(new PlayerMover(bounds, busy));
+    player.add(
+      new TopDownPlayerMover({ speed: PLAYER_SPEED, bounds, isBlocked: busy }),
+    );
 
     // Ambient controller (bubble) for the eavesdropped gossip. `input: null`
     // attaches no device binding at all: the gossip stays alive and

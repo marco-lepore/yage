@@ -1,4 +1,5 @@
-import { Assets, Texture } from "pixi.js";
+import { registerTexture } from "@yagejs/renderer";
+import { Texture } from "pixi.js";
 import { defaultDialogueTheme, type DialogueTheme } from "@yagejs-addons/dialogue/presenters";
 import {
   FACE_NEUTRAL,
@@ -77,18 +78,18 @@ let facePipSmile: Texture | undefined;
 let facePipThink: Texture | undefined;
 
 /** Build the portrait textures once and register them under their meta.portrait
- * keys in Pixi's Assets cache, so the in-box avatars resolve synchronously. */
+ * keys, so the in-box avatars resolve synchronously. */
 export function registerPortraitTextures(): void {
   faceNeutral ??= makeFace(0xe8c9a0, false);
   faceStern ??= makeFace(0xe8c9a0, true);
   faceSage ??= makeFace(0x9fc6e8, false);
   facePipSmile ??= makeFace(0xffcf9a, false);
   facePipThink ??= makeFace(0xffcf9a, true);
-  Assets.cache.set(FACE_NEUTRAL, faceNeutral);
-  Assets.cache.set(FACE_STERN, faceStern);
-  Assets.cache.set(FACE_SAGE, faceSage);
-  Assets.cache.set(FACE_PIP_SMILE, facePipSmile);
-  Assets.cache.set(FACE_PIP_THINK, facePipThink);
+  registerTexture(FACE_NEUTRAL, faceNeutral);
+  registerTexture(FACE_STERN, faceStern);
+  registerTexture(FACE_SAGE, faceSage);
+  registerTexture(FACE_PIP_SMILE, facePipSmile);
+  registerTexture(FACE_PIP_THINK, facePipThink);
 }
 
 const insets = (n: number): { left: number; top: number; right: number; bottom: number } => ({

@@ -18,8 +18,8 @@
  *    `turnIn` objective.
  *  • **Chaining** — `gatherHerbs` completing (both objectives satisfied — the
  *    auto-complete rollup) starts `thinThePack` via one `on("questCompleted",
- *    …)` line. That quest's `wolf` objective advances from the player's own
- *    "defeat" entity event (E near a wolf) — a third, unrelated event source.
+ *    …)` line. That quest's `wolf` objective advances when the player
+ *    interacts with a wolf (E in range).
  *  • **The log gates it** — every binding above fires unconditionally; none
  *    guards on "is this quest active?" themselves. Advancing wolves before
  *    `thinThePack` starts is a silent no-op.
@@ -31,7 +31,13 @@
  * Controls: WASD/arrows walk · E interact/talk/defeat.
  */
 
-import { Component, Engine, MathUtils, Scene, Transform, Vec2 } from "@yagejs/core";
+import { TopDownPlayerMover } from "../shared/TopDownPlayerMover.js";
+import {
+  Interactable,
+  Interactor,
+  InteractionFocusChangedEvent,
+} from "@yagejs-addons/interaction";
+import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
 import {
   CameraEntity,
   GraphicsComponent,
@@ -40,7 +46,7 @@ import {
   type LayerDef,
 } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
-import { InputManagerKey, InputPlugin } from "@yagejs/input";
+import { InputPlugin } from "@yagejs/input";
 import { defineItems, Inventory } from "@yagejs-addons/inventory";
 import { DialogueController, defineScript } from "@yagejs-addons/dialogue";
 import { createBoxDialogue, DIALOGUE_LAYERS } from "@yagejs-addons/dialogue/presenters";
@@ -94,30 +100,6 @@ const ITEMS = defineItems({ redHerb: { name: "Red Herb", maxStack: 10 } });
 
 // ── world components ──────────────────────────────────────────────────────
 
-/** WASD/arrow movement, frozen while a conversation owns input. */
-class PlayerMover extends Component {
-  private readonly input = this.service(InputManagerKey);
-  private readonly transform = this.sibling(Transform);
-
-  constructor(private readonly isBusy: () => boolean) {
-    super();
-  }
-
-  update(dt: number): void {
-    if (this.isBusy()) return;
-    const dx = this.input.getAxis("move-left", "move-right");
-    const dy = this.input.getAxis("move-up", "move-down");
-    if (dx === 0 && dy === 0) return;
-    const len = Math.hypot(dx, dy) || 1;
-    const step = PLAYER_SPEED * dt;
-    const p = this.transform.position;
-    this.transform.setPosition(
-      MathUtils.clamp(p.x + (dx / len) * step, 24, WIDTH - 24),
-      MathUtils.clamp(p.y + (dy / len) * step, 100, HEIGHT - 24),
-    );
-  }
-}
-
 /** A herb on the ground: walk over it and it lands in the inventory, then
  *  destroys itself. The `itemAdded` model event (not this component) is what
  *  drives the quest objective — this just makes the herb collectible. */
@@ -136,86 +118,21 @@ class HerbPickup extends Component {
   }
 }
 
-/** A wolf: press E in range to defeat it — the `thinThePack` objective's
- *  binding source, unrelated to inventory/dialogue on purpose. */
-class Wolf extends Component {
-  private readonly input = this.service(InputManagerKey);
-  private prompt!: TextComponent;
-
-  constructor(
-    private readonly cfg: {
-      readonly playerPos: () => Vec2;
-      readonly isBusy: () => boolean;
-      readonly onDefeated: () => void;
-    },
-  ) {
-    super();
-  }
+/** Shows the single ranked interaction focus above its target. */
+class InteractionPrompt extends Component {
+  private readonly label = this.sibling(TextComponent);
+  private readonly transform = this.sibling(Transform);
 
   onAdd(): void {
-    const here = this.entity.get(Transform).position;
-    const tip = this.scene.spawn("wolf-prompt");
-    tip.add(new Transform({ position: new Vec2(here.x, here.y - 20) }));
-    this.prompt = tip.add(
-      new TextComponent({
-        text: "E defeat",
-        style: { fontSize: 11, fill: 0xffffff, fontFamily: "sans-serif" },
-        layer: ROOM_LAYER,
-        anchor: { x: 0.5, y: 0.5 },
-      }),
-    );
-    this.prompt.text.visible = false;
-  }
-
-  onDestroy(): void {
-    this.prompt.entity.destroy();
-  }
-
-  update(): void {
-    const me = this.entity.get(Transform).position;
-    const near = !this.cfg.isBusy() && Math.hypot(me.x - this.cfg.playerPos().x, me.y - this.cfg.playerPos().y) <= 30;
-    this.prompt.text.visible = near;
-    if (near && this.input.isJustPressed("interact")) {
-      this.cfg.onDefeated();
-      this.entity.destroy();
-    }
-  }
-}
-
-/** The healer NPC: E opens a box conversation when in range and none is active. */
-class Healer extends Component {
-  private readonly input = this.service(InputManagerKey);
-  private prompt!: TextComponent;
-
-  constructor(
-    private readonly cfg: {
-      readonly playerPos: () => Vec2;
-      readonly dialogue: DialogueController;
-    },
-  ) {
-    super();
-  }
-
-  onAdd(): void {
-    const here = this.entity.get(Transform).position;
-    const tip = this.scene.spawn("healer-prompt");
-    tip.add(new Transform({ position: new Vec2(here.x, here.y - 26) }));
-    this.prompt = tip.add(
-      new TextComponent({
-        text: "E talk",
-        style: { fontSize: 11, fill: 0xffffff, fontFamily: "sans-serif" },
-        layer: ROOM_LAYER,
-        anchor: { x: 0.5, y: 0.5 },
-      }),
-    );
-    this.prompt.text.visible = false;
-  }
-
-  update(): void {
-    const me = this.entity.get(Transform).position;
-    const near = !this.cfg.dialogue.isActive() && Math.hypot(me.x - this.cfg.playerPos().x, me.y - this.cfg.playerPos().y) <= 34;
-    this.prompt.text.visible = near;
-    if (near && this.input.isJustPressed("interact")) this.cfg.dialogue.play(healerScript);
+    this.label.visible = false;
+    this.listenScene(InteractionFocusChangedEvent, ({ interactable, prompt }) => {
+      this.label.visible = interactable !== null;
+      if (!interactable) return;
+      const position = interactable.entity.get(Transform).position;
+      const offset = interactable.entity.name === "healer" ? 26 : 20;
+      this.transform.setPosition(position.x, position.y - offset);
+      this.label.setText(prompt ?? "");
+    });
   }
 }
 
@@ -354,7 +271,7 @@ class QuestsRoomScene extends Scene {
       hud.showToast(`Quest complete: ${QUESTS.tryGet(questId)?.title ?? questId}`);
     });
 
-    // ── the binding wires: three unrelated event sources, one guardless line each ──
+    // Inventory and quest events advance the chain without checking quest state.
     inventory.on("itemAdded", (e) => {
       if (e.itemId === "redHerb") log.advance("gatherHerbs", "herb", e.quantity);
     });
@@ -391,7 +308,14 @@ class QuestsRoomScene extends Scene {
         g.roundRect(-11, -16, 22, 32, 6).stroke({ color: 0xffffff, width: 1.5, alpha: 0.6 });
       }),
     );
-    healer.add(new Healer({ playerPos, dialogue }));
+    healer.add(
+      new Interactable({
+        radius: 4,
+        prompt: "E talk",
+        enabled: () => !busy(),
+        onInteract: () => dialogue.play(healerScript),
+      }),
+    );
 
     // Wolves — the thinThePack binding source; killable any time, but the log
     // ignores it until thinThePack is active.
@@ -409,10 +333,39 @@ class QuestsRoomScene extends Scene {
           g.roundRect(-13, -8, 26, 16, 5).stroke({ color: 0xcccccc, width: 1, alpha: 0.6 });
         }),
       );
-      w.add(new Wolf({ playerPos, isBusy: busy, onDefeated: () => log.advance("thinThePack", "wolf") }));
+      w.add(
+        new Interactable({
+          radius: 0,
+          prompt: "E defeat",
+          enabled: () => !busy(),
+          onInteract: () => {
+            log.advance("thinThePack", "wolf");
+            w.destroy();
+          },
+        }),
+      );
     }
 
-    player.add(new PlayerMover(busy));
+    player.add(
+      new TopDownPlayerMover({
+        speed: PLAYER_SPEED,
+        bounds: { minX: 24, maxX: WIDTH - 24, minY: 100, maxY: HEIGHT - 24 },
+        isBlocked: busy,
+      }),
+    );
+    player.add(new Interactor({ range: 30 }));
+
+    const prompt = this.spawn("interaction-prompt");
+    prompt.add(new Transform());
+    prompt.add(
+      new TextComponent({
+        text: "",
+        style: { fontSize: 11, fill: 0xffffff, fontFamily: "sans-serif" },
+        layer: ROOM_LAYER,
+        anchor: { x: 0.5, y: 0.5 },
+      }),
+    );
+    prompt.add(new InteractionPrompt());
 
     // E2E / console handle.
     exposeProbe({ log, inventory, dialogue });

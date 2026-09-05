@@ -20,7 +20,6 @@ import { UIReactPlugin } from "@yagejs/ui-react";
 import { InputPlugin } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
 import { SavePlugin } from "@yagejs/save";
-import { loadFonts } from "../shared/ui-theme.js";
 import { setupGameContainer } from "../shared/bootstrap.js";
 import { save, game, settings, GAME_ID, SETTINGS_ID } from "./stores.js";
 import { MenuScene } from "./scenes.js";
@@ -63,7 +62,6 @@ async function main(): Promise<void> {
   engine.use(new SavePlugin({ save }));
   engine.use(new DebugPlugin());
 
-  await loadFonts();
   await engine.start();
   await engine.scenes.push(new MenuScene());
 }

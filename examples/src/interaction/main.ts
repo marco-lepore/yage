@@ -28,7 +28,8 @@
  * Controls: WASD/arrows walk · E interact/take · Q cycle the selection.
  */
 
-import { Component, Engine, type Entity, MathUtils, Scene, Transform, Vec2 } from "@yagejs/core";
+import { TopDownPlayerMover } from "../shared/TopDownPlayerMover.js";
+import { Component, Engine, type Entity, Scene, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent, RendererPlugin, TextComponent } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import {
@@ -52,26 +53,6 @@ interface DemoState {
   coinsCollected: number;
   gemsTaken: number;
   doorOpen: boolean;
-}
-
-// ── player movement (plain WASD, no physics) ─────────────────────────────────
-
-class PlayerMover extends Component {
-  private readonly input = this.service(InputManagerKey);
-  private readonly transform = this.sibling(Transform);
-
-  update(dt: number): void {
-    const dx = this.input.getAxis("move-left", "move-right");
-    const dy = this.input.getAxis("move-up", "move-down");
-    if (dx === 0 && dy === 0) return;
-    const len = Math.hypot(dx, dy) || 1;
-    const step = PLAYER_SPEED * dt;
-    const p = this.transform.position;
-    this.transform.setPosition(
-      MathUtils.clamp(p.x + (dx / len) * step, BOUNDS.minX, BOUNDS.maxX),
-      MathUtils.clamp(p.y + (dy / len) * step, BOUNDS.minY, BOUNDS.maxY),
-    );
-  }
 }
 
 // ── selection menu: reads inRange, cycles, confirms ─────────────────────────
@@ -185,7 +166,7 @@ class InteractionRoomScene extends Scene {
         g.circle(0, 0, 16).stroke({ color: 0x0ea5e9, width: 2 });
       }),
     );
-    player.add(new PlayerMover());
+    player.add(new TopDownPlayerMover({ speed: PLAYER_SPEED, bounds: BOUNDS }));
     // action: null — the InteractionMenu below owns the interact input so it
     // can act on the highlighted option, not just the focus.
     const interactor = player.add(new Interactor({ range: 60, action: null }));

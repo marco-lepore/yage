@@ -19,7 +19,6 @@ import {
 } from "../shared/bootstrap.js";
 import { VIRTUAL_WIDTH, VIRTUAL_HEIGHT } from "./constants.js";
 import { ShowcaseScene } from "./scene.js";
-import { installSidebarWheel } from "./sidebar-scroll.js";
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
@@ -35,8 +34,6 @@ async function main(): Promise<void> {
   );
   engine.use(new UIPlugin());
   await installDebugFromUrl(engine);
-
-  installSidebarWheel(container);
 
   await engine.start();
   await engine.scenes.push(new ShowcaseScene());

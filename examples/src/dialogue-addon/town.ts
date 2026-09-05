@@ -1,38 +1,10 @@
-import { Component, MathUtils, Transform, Vec2, type Entity, type Scene } from "@yagejs/core";
+import { Component, Transform, Vec2, type Entity, type Scene } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
 import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
 import { DialogueActor } from "@yagejs-addons/dialogue/presenters";
-import { PLAYER_SPEED, BUBBLE_LAYER, ROOM_LAYER, type Bounds } from "./constants.js";
+import { BUBBLE_LAYER, ROOM_LAYER } from "./constants.js";
 
 // ── world entities (all Graphics, no assets) ─────────────────────────────────
-
-/** WASD/arrow movement, clamped to the (mutable) walkable bounds; idles while a
- *  conversation owns input (you can still walk while merely eavesdropping). */
-export class PlayerMover extends Component {
-  private readonly input = this.service(InputManagerKey);
-  private readonly transform = this.sibling(Transform);
-
-  constructor(
-    private readonly bounds: Bounds,
-    private readonly isBusy: () => boolean,
-  ) {
-    super();
-  }
-
-  update(dt: number): void {
-    if (this.isBusy()) return;
-    const dx = this.input.getAxis("move-left", "move-right");
-    const dy = this.input.getAxis("move-up", "move-down");
-    if (dx === 0 && dy === 0) return;
-    const len = Math.hypot(dx, dy) || 1;
-    const step = PLAYER_SPEED * dt;
-    const p = this.transform.position;
-    this.transform.setPosition(
-      MathUtils.clamp(p.x + (dx / len) * step, this.bounds.minX, this.bounds.maxX),
-      MathUtils.clamp(p.y + (dy / len) * step, this.bounds.minY, this.bounds.maxY),
-    );
-  }
-}
 
 /** Floating "press F" prompt + interact trigger when the player is in range. */
 export class ProximityInteract extends Component {

@@ -3,7 +3,7 @@ import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
 import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
-import { textStyle, loadFonts, allAssets, nineSliceBtn, panelBg } from "../shared/ui-theme.js";
+import { textStyle, allAssets, nineSliceBtn, panelBg } from "../shared/ui-theme.js";
 
 
 const WIDTH = 800;
@@ -185,7 +185,6 @@ async function main() {
   engine.use(new UIPlugin());
   await installDebugFromUrl(engine);
 
-  await loadFonts();
   await engine.start();
   await engine.scenes.push(new UILayersScene());
 }
