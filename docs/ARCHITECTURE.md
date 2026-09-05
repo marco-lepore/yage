@@ -1,768 +1,247 @@
-# YAGE -- Plugin Architecture
-
-## Overview
-
-YAGE's plugin system is the mechanism by which all engine features beyond the core kernel are delivered. Rendering, physics, input, audio -- everything is a plugin. This document specifies the plugin interface, lifecycle, dependency management, and how to create custom plugins.
-
----
-
-## 1. Plugin Interface
-
-Every plugin implements the `Plugin` interface from `@yagejs/core`:
-
-```typescript
-import type { EngineContext, SystemScheduler } from "@yagejs/core";
-
-export interface Plugin {
-  /** Unique plugin name. Used for dependency resolution and logging. */
-  readonly name: string;
-
-  /** Plugin version (semver). */
-  readonly version: string;
-
-  /**
-   * Names of plugins this plugin depends on.
-   * The engine installs plugins in topological order based on dependencies.
-   * Optional -- omit or return empty array if no dependencies.
-   */
-  readonly dependencies?: readonly string[];
-
-  /**
-   * Called during engine.start() to set up the plugin.
-   * Register services, allocate resources, bind event listeners.
-   * May be async (e.g., loading WASM for physics).
-   * Optional -- omit if the plugin has nothing to install.
-   */
-  install?(context: EngineContext): void | Promise<void>;
-
-  /**
-   * Register systems into the game loop.
-   * Called after install(), before onStart().
-   * Optional -- omit if the plugin doesn't need per-frame systems.
-   */
-  registerSystems?(scheduler: SystemScheduler): void;
-
-  /**
-   * Called after all plugins are installed and the game loop has started.
-   * May be async: the engine awaits it before calling the next plugin's
-   * onStart() and before emitting engine:started.
-   * Optional -- use for post-initialization logic.
-   */
-  onStart?(): void | Promise<void>;
-
-  /**
-   * Called when the engine is destroyed.
-   * Clean up resources, remove event listeners.
-   * Optional -- omit if nothing to clean up.
-   */
-  onDestroy?(): void;
-}
-```
-
----
-
-## 2. Plugin Lifecycle
-
-### Registration Phase
-
-```typescript
-import { Engine } from "@yagejs/core";
-import { RendererPlugin } from "@yagejs/renderer";
-import { PhysicsPlugin } from "@yagejs/physics";
-import { InputPlugin } from "@yagejs/input";
-
-const engine = new Engine();
-engine.use(new RendererPlugin({ width: 800, height: 600 }));
-engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
-engine.use(new InputPlugin({ actions: { jump: ["Space"] } }));
-```
-
-`engine.use()` stores the plugin instance. No installation happens yet. Plugins can be registered in any order -- dependency sorting happens at start time.
-
-### Start Phase (`engine.start()`)
-
-```
-1. Sort plugins topologically by dependencies
-2. For each plugin (in dependency order):
-   a. Call plugin.install(context)        -- Register services (awaited)
-3. For each plugin (in dependency order):
-   a. Call plugin.registerSystems?()      -- Add systems to scheduler
-4. Initialize registered systems          -- system.onRegister?(context)
-5. Start the game loop
-6. For each plugin (in dependency order):
-   a. Call plugin.onStart?()              -- Post-init logic (awaited)
-7. Emit engine:started
-```
-
-`engine.start()` resolves after step 7, so a scene pushed right after
-`await engine.start()` sees every plugin's `onStart()` work.
-
-### Destroy Phase (`engine.destroy()`)
-
-```
-1. Emit engine:stopped
-2. Stop the game loop
-3. Tear down every scene on the stack
-4. Call system.onUnregister?() (reverse registration order)
-5. For each plugin (in reverse dependency order):
-   a. Call plugin.onDestroy?()            -- Clean up
-6. Dispose the inspector and clear the event bus
-```
-
-The stages are independent: a throw in one still lets the others run, and the
-first error is rethrown once teardown has finished.
-
-### Lifecycle Diagram
-
-```
-engine.use(plugin)     →  stored (not installed)
-engine.start()         →  install() → registerSystems() → onRegister() → loop starts → onStart() → engine:started
-engine.destroy()       →  loop stops → scenes torn down → onUnregister() → onDestroy() (reverse order)
-```
-
-An engine instance runs once. `destroy()` is terminal, and so is a `start()`
-that rejects: both make later `start()` and `use()` calls throw. Services stay
-registered in `EngineContext` — plugins do not unregister them — which is why
-the same instance cannot be started a second time. Construct a new `Engine`
-instead.
-
----
-
-## 3. Dependency Declaration and Topological Sorting
-
-### How Dependencies Work
-
-A plugin declares dependencies by name:
-
-```typescript
-import type { Plugin, EngineContext } from "@yagejs/core";
-import { RendererKey } from "@yagejs/renderer";
-
-class ParticlesPlugin implements Plugin {
-  readonly name = "particles";
-  readonly version = "2.0.0";
-  readonly dependencies = ["renderer"]; // Requires renderer to be installed first
-
-  install(context: EngineContext) {
-    // Safe to resolve RendererKey here -- renderer is guaranteed to be installed
-    const renderer = context.resolve(RendererKey);
-    // ...
-  }
-}
-```
-
-### Sorting Algorithm
-
-The engine uses Kahn's algorithm (BFS topological sort) to determine install order:
-
-```
-Input: [renderer, input, physics, particles, ui, ui-react, debug]
-Dependencies:
-  renderer: []
-  input: []
-  physics: []
-  particles: [renderer]
-  ui: [renderer]
-  ui-react: [ui]
-  debug: [renderer]
-
-Sorted: [renderer, input, physics, particles, ui, ui-react, debug]
-  (order among independent plugins is stable based on registration order)
-```
-
-### Error Cases
-
-| Error               | When                                            | Message                                                              |
-| ------------------- | ----------------------------------------------- | -------------------------------------------------------------------- |
-| Missing dependency  | Plugin A depends on B, but B was not registered | `Plugin "particles" depends on "renderer", which is not registered.` |
-| Circular dependency | A depends on B, B depends on A                  | `Circular dependency detected among plugins.`                        |
-| Duplicate name      | Two plugins with the same name                  | `Plugin "renderer" is already registered.`                           |
-
-The dependency errors are thrown by `engine.start()` before any plugin is installed. A duplicate name is rejected by `engine.use()` itself.
-
----
-
-## 4. Service Registration via EngineContext
-
-### The ServiceKey Pattern
-
-Plugins register services using typed `ServiceKey<T>` objects. This provides:
-
-- **Type safety**: `context.resolve(RendererKey)` returns `RendererPlugin`, not `unknown`.
-- **Decoupling**: Consumers resolve by key, not by import. A mock can replace a real service.
-- **Discovery**: Each plugin exports its own service keys.
-
-The id string identifies the service. Separate `ServiceKey` objects with the
-same id resolve the same registration. A package may repeat an id for the same
-service contract when importing the owner's key would add an optional runtime
-dependency. The repeated declaration needs a nearby comment that names the
-package that owns the key.
-
-### Registration Flow
-
-```typescript yage-context="scene-enter"
-import { ServiceKey, Transform, type EngineContext } from "@yagejs/core";
-import { CameraEntity, type RendererPlugin } from "@yagejs/renderer";
-
-// @yagejs/renderer owns this key and registers its plugin instance.
-const RendererKey = new ServiceKey<RendererPlugin>("renderer");
-
-function registerRenderer(context: EngineContext, renderer: RendererPlugin) {
-  context.register(RendererKey, renderer);
-}
-
-// In a scene's onEnter():
-const player = this.spawn("player");
-player.add(new Transform());
-const cam = this.spawn(CameraEntity, { follow: player.get(Transform) });
-cam.shake(6, 0.3); // durations in seconds
-cam.zoomTo(1.5, 0.5);
-```
-
-### Well-Known Service Keys
-
-These keys are registered by `@yagejs/core` itself (not by plugins):
-
-| Key                    | Type                           | Registered by                         |
-| ---------------------- | ------------------------------ | ------------------------------------- |
-| `EngineKey`            | `Engine`                       | Engine constructor                    |
-| `EventBusKey`          | `EventBus<EngineEvents>`       | Engine constructor                    |
-| `SceneManagerKey`      | `SceneManager`                 | Engine constructor                    |
-| `LoggerKey`            | `Logger`                       | Engine constructor                    |
-| `InspectorKey`         | `Inspector`                    | Engine constructor                    |
-| `QueryCacheKey`        | `QueryCache`                   | Engine constructor                    |
-| `ErrorBoundaryKey`     | `ErrorBoundary`                | Engine constructor                    |
-| `GameLoopKey`          | `GameLoop`                     | Engine constructor                    |
-| `SystemSchedulerKey`   | `SystemScheduler`              | Engine constructor                    |
-| `ProcessSystemKey`     | `ProcessSystem`                | Engine constructor                    |
-| `AssetManagerKey`      | `AssetManager`                 | Engine constructor                    |
-| `SceneHookRegistryKey` | `SceneHookRegistry`            | Engine constructor                    |
-| `SceneTimeKey`         | `SceneTime` (scene-scoped)     | Engine's own `beforeEnter` scene hook |
-| `RandomKey`            | `RandomService` (scene-scoped) | Engine's own `beforeEnter` scene hook |
-
-`RendererAdapterKey` (`RendererAdapter`) is also defined in `@yagejs/core`: the pointer-input adapter of the current renderer. `@yagejs/renderer` registers itself under it, and `@yagejs/input` resolves it for canvas targeting and coordinate mapping without depending on the renderer package.
-
-Keys registered by official plugins:
-
-| Key                          | Type                             | Registered by      |
-| ---------------------------- | -------------------------------- | ------------------ |
-| `RendererKey`                | `RendererPlugin`                 | `@yagejs/renderer` |
-| `SceneRenderTreeProviderKey` | `SceneRenderTreeProvider`        | `@yagejs/renderer` |
-| `SceneRenderTreeKey`         | `SceneRenderTree` (scene-scoped) | `@yagejs/renderer` |
-| `PhysicsWorldManagerKey`     | `PhysicsWorldManager`            | `@yagejs/physics`  |
-| `PhysicsWorldKey`            | `PhysicsWorld` (scene-scoped)    | `@yagejs/physics`  |
-| `InputManagerKey`            | `InputManager`                   | `@yagejs/input`    |
-| `AudioManagerKey`            | `AudioManager`                   | `@yagejs/audio`    |
-| `DebugRegistryKey`           | `DebugRegistry`                  | `@yagejs/debug`    |
-| `LightingWorldManagerKey`    | `LightingWorldManager`           | `@yagejs/lighting` |
-| `LightingWorldKey`           | `LightingWorld` (scene-scoped)   | `@yagejs/lighting` |
-| `FloatingOverlayKey`         | `FloatingOverlay` (scene-scoped) | `@yagejs/ui`       |
-| `UIReactPluginKey`           | `UIReactPlugin`                  | `@yagejs/ui-react` |
-| `SaveServiceKey`             | `Save`                           | `@yagejs/save`     |
-
-Keys marked **(scene-scoped)** are declared with `new ServiceKey(id, { scope: "scene" })` and hold one instance per scene. `Component.use()` resolves the active scene's instance automatically. A plugin provides them from scene lifecycle hooks, registered through `SceneHookRegistryKey`:
-
-```typescript
-import { SceneHookRegistryKey, type EngineContext } from "@yagejs/core";
-import { PhysicsWorldKey, type PhysicsWorldManager } from "@yagejs/physics";
-
-// The physics plugin owns the manager and the returned unregister function.
-function registerPhysicsHooks(
-  context: EngineContext,
-  manager: PhysicsWorldManager,
-): () => void {
-  const hooks = context.resolve(SceneHookRegistryKey);
-  return hooks.register({
-    beforeEnter: (scene) => {
-      scene.registerScoped(PhysicsWorldKey, manager.getOrCreateWorld(scene));
-    },
-    afterExit: (scene) => {
-      manager.destroyWorld(scene);
-    },
-  });
-}
-```
-
-Scoped registrations are cleared automatically when the scene exits. Resolving a scene-scoped key that no hook registered throws from `Scene.use()`; resolving it before `onEnter()` is the usual cause.
-
-### Optional Dependencies
-
-A plugin that works with or without another plugin's service resolves it with `context.tryResolve()`, which returns `undefined` instead of throwing:
-
-```typescript
-import type { Plugin, EngineContext } from "@yagejs/core";
-import { PhysicsWorldManagerKey } from "@yagejs/physics";
-
-class MinimapPlugin implements Plugin {
-  readonly name = "minimap";
-  readonly version = "1.0.0";
-  readonly dependencies = ["renderer"]; // Hard dependency: renderer required
-
-  install(context: EngineContext) {
-    // Optional physics integration: draw collider outlines when physics is present
-    const physicsManager = context.tryResolve(PhysicsWorldManagerKey);
-    if (physicsManager) {
-      // ...
-    }
-  }
-}
-```
-
-Use `context.tryResolve()` for optional dependencies and `context.resolve()` for required ones. A dependency that is optional at runtime must not appear in `dependencies`, or `engine.start()` rejects when it is absent.
-
-An optional integration does not always need a service at all.
-`@yagejs/tilemap/physics` exports `toPhysicsColliders()`, a plain function that
-converts a map's collision layer into `@yagejs/physics` collider configs. The
-root `@yagejs/tilemap` entry does not import physics, so rendering-only projects
-do not need the physics package.
-
-`@yagejs/input` and `@yagejs/physics` use private keys with the
-`"debugRegistry"` id to contribute optional diagnostics. Their built packages
-do not depend on `@yagejs/debug`; installing either package remains headless.
-
----
-
-## 5. System Registration
-
-Plugins register systems into the game loop via `registerSystems()`:
-
-```typescript
-import type { Plugin, SystemScheduler } from "@yagejs/core";
-import { PhysicsSystem, PhysicsInterpolationSystem } from "@yagejs/physics";
-
-class PhysicsPlugin implements Plugin {
-  readonly name = "physics";
-  readonly version = "1.0.0";
-  registerSystems(scheduler: SystemScheduler) {
-    scheduler.add(new PhysicsSystem());
-    scheduler.add(new PhysicsInterpolationSystem());
-  }
-}
-```
-
-### Phase Assignment
-
-Each system declares which phase it runs in:
-
-```typescript
-import { System, Phase } from "@yagejs/core";
-
-abstract class PhysicsSystem extends System {
-  readonly phase = Phase.FixedUpdate;
-  readonly priority = 0;
-}
-
-abstract class PhysicsInterpolationSystem extends System {
-  readonly phase = Phase.Update;
-  readonly priority = -100; // Before game logic reads positions
-}
-```
-
-### Execution Order
-
-Within each phase, systems run in priority order (lower first). Systems from different plugins can interleave:
-
-```
-EarlyUpdate:
-  InputPollSystem (priority -100, from @yagejs/input)
-
-FixedUpdate:
-  PhysicsSystem (priority 0, from @yagejs/physics)
-  UserGameplaySystem (priority 10, user code)
-  ProcessFixedUpdateSystem (priority 500, from @yagejs/core)
-  ComponentFixedUpdateSystem (priority 1000, from @yagejs/core)
-
-Update:
-  PhysicsInterpolationSystem (priority -100, from @yagejs/physics)
-  ProcessSystem (priority 500, from @yagejs/core)
-  ComponentUpdateSystem (priority 1000, from @yagejs/core)
-
-LateUpdate:
-  ParticleSystem (priority 0, from @yagejs/particles)
-  UILayoutSystem (priority 200, from @yagejs/ui)
-  UIRootLayoutSystem (priority 200, from @yagejs/ui-react)
-  FloatingOverlaySystem (priority 201, from @yagejs/ui)
-
-Render:
-  DisplaySystem (priority 0, from @yagejs/renderer)
-  LightingSystem (priority 100, from @yagejs/lighting)
-  DebugRenderSystem (priority 9999, from @yagejs/debug)
-
-EndOfFrame:
-  InputClearSystem (priority 9000, from @yagejs/input)
-```
-
----
-
-## 6. Component Exposure
-
-Components don't need to be "registered" with the engine. They're just classes that extend `Component`. Any plugin can export component classes, and users import and use them directly:
-
-```typescript yage-context="scene"
-import { Transform } from "@yagejs/core";
-import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
-
-const entity = scene.spawn("ball");
-entity.add(new Transform());
-entity.add(new RigidBodyComponent({ type: "dynamic" }));
-entity.add(new ColliderComponent({ shape: { type: "circle", radius: 20 } }));
-```
-
-### Component-System Communication
-
-Components store data. Systems operate on data. The link is through `QueryCache`:
-
-```typescript
-import {
-  System,
-  Phase,
-  QueryCacheKey,
-  Transform,
-  type QueryResult,
-  type EngineContext,
-} from "@yagejs/core";
-import { RigidBodyComponent } from "@yagejs/physics";
-
-// System queries for entities with specific components
-class PhysicsSystem extends System {
-  readonly phase = Phase.FixedUpdate;
-  private query!: QueryResult;
-
-  onRegister(context: EngineContext) {
-    const cache = context.resolve(QueryCacheKey);
-    this.query = cache.register([Transform, RigidBodyComponent]);
-  }
-
-  onUnregister() {
-    this.use(QueryCacheKey).unregister(this.query);
-  }
-
-  update(dt: number) {
-    for (const entity of this.query) {
-      const transform = entity.get(Transform);
-      const body = entity.get(RigidBodyComponent);
-      // Sync transforms, step physics, etc.
-    }
-  }
-}
-```
-
----
-
-## 7. Engine Events
-
-Plugins can listen to engine-wide events via the `EventBus`:
-
-```typescript
-import { EventBusKey, type Plugin, type EngineContext } from "@yagejs/core";
-
-class DebugPlugin implements Plugin {
-  readonly name = "debug-events";
-  readonly version = "1.0.0";
-  install(context: EngineContext) {
-    const events = context.resolve(EventBusKey);
-
-    events.on("entity:created", ({ entity }) => {
-      console.log(`Entity created: ${entity.name}`);
-    });
-
-    events.on("entity:destroyed", ({ entity }) => {
-      console.log(`Entity destroyed: ${entity.name}`);
-    });
-
-    events.on("scene:pushed", ({ scene }) => {
-      console.log(`Scene pushed: ${scene.name}`);
-    });
-  }
-}
-```
-
-### Available Engine Events
-
-| Event                      | Data                                                 | When                                                              |
-| -------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------- |
-| `entity:created`           | `{ entity: Entity }`                                 | After `scene.spawn()`                                             |
-| `entity:destroyed`         | `{ entity: Entity }`                                 | After entity is cleaned up in endOfFrame                          |
-| `component:added`          | `{ entity: Entity; component: Component }`           | After `entity.add()`                                              |
-| `component:removed`        | `{ entity: Entity; componentClass: ComponentClass }` | After `entity.remove()`                                           |
-| `scene:pushed`             | `{ scene: Scene }`                                   | After `sceneManager.push()`                                       |
-| `scene:popped`             | `{ scene: Scene }`                                   | After `sceneManager.pop()`                                        |
-| `scene:replaced`           | `{ oldScene: Scene; newScene: Scene }`               | After `sceneManager.replace()`                                    |
-| `scene:transition:started` | `{ kind; fromScene?; toScene? }`                     | A scene transition begins                                         |
-| `scene:transition:ended`   | `{ kind; fromScene?; toScene? }`                     | A scene transition finishes                                       |
-| `scene:loading:progress`   | `{ scene: Scene; ratio: number }`                    | A loading scene reports progress                                  |
-| `scene:loading:done`       | `{ scene: Scene }`                                   | A loading scene finishes                                          |
-| `engine:started`           | `undefined`                                          | After every plugin's `onStart()` has completed                    |
-| `engine:stopped`           | `undefined`                                          | First step of `engine.destroy()`                                  |
-| `screen:fullscreen`        | `{ active: boolean }`                                | Canvas host enters or leaves fullscreen (from `@yagejs/renderer`) |
-| `screen:orientation`       | `{ type: OrientationType }`                          | Device orientation changes (from `@yagejs/renderer`)              |
-
-Entity payloads carry the live `Entity`. Scene payloads are `SceneRef` views, except the loading events, which carry the full `Scene`.
-
----
-
-## 8. Creating a Custom Plugin (Step-by-Step)
-
-### Example: A Score Tracking Plugin
-
-**Goal**: Track player score across scenes, emit events on change, expose via service key.
-
-#### Step 1: Define the Service Key and Types
-
-```typescript yage-group="score" yage-file="types.ts"
-import type { ScoreManager } from "./ScoreManager.js";
-// packages/score/src/types.ts
-import { ServiceKey } from "@yagejs/core";
-
-export const ScoreManagerKey = new ServiceKey<ScoreManager>("scoreManager");
-
-export interface ScoreEvents {
-  "score:changed": { score: number; delta: number };
-  "score:milestone": { score: number; milestone: number };
-}
-```
-
-#### Step 2: Implement the Service
-
-The engine's `EventBus<EngineEvents>` is typed to the engine's own events, so a plugin with events of its own owns a bus for them:
-
-```typescript yage-group="score" yage-file="ScoreManager.ts"
-// packages/score/src/ScoreManager.ts
-import { EventBus } from "@yagejs/core";
-import type { ScoreEvents } from "./types.js";
-
-export class ScoreManager {
-  readonly events = new EventBus<ScoreEvents>();
-  private _score: number = 0;
-  private milestones: number[];
-
-  constructor(milestones: number[] = [100, 500, 1000]) {
-    this.milestones = milestones;
-  }
-
-  get score(): number {
-    return this._score;
-  }
-
-  add(points: number): void {
-    const oldScore = this._score;
-    this._score += points;
-
-    this.events.emit("score:changed", {
-      score: this._score,
-      delta: points,
-    });
-
-    // Check milestones
-    for (const m of this.milestones) {
-      if (oldScore < m && this._score >= m) {
-        this.events.emit("score:milestone", {
-          score: this._score,
-          milestone: m,
-        });
-      }
-    }
-  }
-
-  reset(): void {
-    const delta = -this._score;
-    this._score = 0;
-    this.events.emit("score:changed", { score: 0, delta });
-  }
-}
-```
-
-#### Step 3: Implement the Plugin
-
-```typescript yage-group="score" yage-file="ScorePlugin.ts"
-// packages/score/src/ScorePlugin.ts
-import type { Plugin, EngineContext } from "@yagejs/core";
-import { ScoreManager } from "./ScoreManager.js";
-import { ScoreManagerKey } from "./types.js";
-
-export interface ScoreConfig {
-  milestones?: number[];
-}
-
-export class ScorePlugin implements Plugin {
-  readonly name = "score";
-  readonly version = "1.0.0";
-  // No dependencies -- works with just @yagejs/core
-
-  private config: ScoreConfig;
-  private manager: ScoreManager | undefined;
-
-  constructor(config?: ScoreConfig) {
-    this.config = config ?? {};
-  }
-
-  install(context: EngineContext): void {
-    this.manager = new ScoreManager(this.config.milestones);
-    context.register(ScoreManagerKey, this.manager);
-  }
-
-  onDestroy(): void {
-    this.manager = undefined;
-  }
-}
-```
-
-#### Step 4: Export the Public API
-
-```typescript yage-group="score" yage-file="index.ts"
-// packages/score/src/index.ts
-export { ScorePlugin } from "./ScorePlugin.js";
-export { ScoreManager } from "./ScoreManager.js";
-export { ScoreManagerKey } from "./types.js";
-export type { ScoreEvents } from "./types.js";
-export type { ScoreConfig } from "./ScorePlugin.js";
-```
-
-#### Step 5: Use It
-
-```typescript yage-group="score" yage-file="main.ts"
-import { Engine, Scene } from "@yagejs/core";
-import { ScorePlugin, ScoreManagerKey } from "./index.js";
-
-const engine = new Engine();
-engine.use(new ScorePlugin({ milestones: [100, 500, 1000, 5000] }));
-
-class GameScene extends Scene {
-  readonly name = "game";
-
-  onEnter() {
-    const score = this.context.resolve(ScoreManagerKey);
-    score.events.on("score:milestone", ({ milestone }) => {
-      console.log(`Reached ${milestone}`);
-    });
-    score.add(50);
-    console.log(score.score); // 50
-  }
-}
-```
-
-#### Step 6: Add a System (Optional)
-
-If the plugin needs per-frame logic, add a system:
-
-```typescript yage-group="score" yage-file="ScoreDisplaySystem.ts"
-import type { SystemScheduler } from "@yagejs/core";
-import { ScorePlugin } from "./ScorePlugin.js";
-// ScoreDisplaySystem.ts
-import { System, Phase } from "@yagejs/core";
-import type { EngineContext } from "@yagejs/core";
-import type { ScoreManager } from "./ScoreManager.js";
-import { ScoreManagerKey } from "./types.js";
-
-export class ScoreDisplaySystem extends System {
-  readonly phase = Phase.LateUpdate;
-  readonly priority = 50;
-
-  private scoreManager!: ScoreManager;
-
-  onRegister(context: EngineContext) {
-    this.scoreManager = context.resolve(ScoreManagerKey);
-  }
-
-  update(dt: number) {
-    // Update score display entity, if present
-  }
-}
-
-// A plugin variant that also updates the display:
-export class DisplayScorePlugin extends ScorePlugin {
-  registerSystems(scheduler: SystemScheduler) {
-    scheduler.add(new ScoreDisplaySystem());
-  }
-}
-```
-
----
-
-## 9. Plugin Isolation Guarantees
-
-### What Plugins Can Do
-
-- Register services on `EngineContext`
-- Resolve services from `EngineContext` (their own + dependencies')
-- Register systems into the game loop
-- Listen to engine events
-- Export component classes
-- Read/write entities and components
-
-### What Plugins Cannot Do
-
-- **Access another plugin's internals**: Only public service keys are accessible. Private state stays private.
-- **Override another plugin's services**: `EngineContext.register()` throws on duplicate keys. A plugin cannot replace another plugin's service.
-- **Remove another plugin's systems**: `SystemScheduler.remove()` accepts any system, but a plugin removes only the systems it added. Nothing enforces this; it is the contract.
-- **Escape the error boundary**: every system `update()` runs through `ErrorBoundary.wrapSystem`, so a throw is attributed to the system that threw before it propagates.
-
-### Failure Model
-
-A throw is reported, not repaired around. If a plugin's system throws:
-
-1. `ErrorBoundary` records the culprit system (readable via `Inspector.getErrors().callbackErrors`) and logs it through `Logger`.
-2. The error is rethrown. Nothing is disabled, unsubscribed, or muted; `system.enabled` is a flag the game sets, never the boundary.
-3. If nothing inside the frame catches it, `GameLoop.tick()` stops the loop and rethrows so the error reaches the host (`window.onerror`, an unhandled-rejection handler, or the caller's own `try`/`catch`).
-
-If a plugin's `install()` or `onStart()` throws:
-
-1. `engine.start()` rejects with that error.
-2. Plugins installed earlier in the order stay installed; their services stay registered.
-3. The instance is terminal: a later `start()` or `use()` throws. Call `engine.destroy()` to release what did install, then construct a new `Engine`.
-
----
-
-## 10. Plugin Configuration Patterns
-
-### Constructor Config
-
-The standard pattern. Pass configuration when creating the plugin:
-
-```typescript yage-context="engine"
-import { RendererPlugin } from "@yagejs/renderer";
-
-engine.use(
-  new RendererPlugin({
-    width: 800,
-    height: 600,
-    virtualWidth: 400,
-    virtualHeight: 300,
-  }),
-);
-```
-
-### Runtime Reconfiguration
-
-For settings that can change during gameplay, expose methods on the service:
-
-```typescript yage-context="context"
-import { AudioManagerKey } from "@yagejs/audio";
-
-const audio = context.resolve(AudioManagerKey);
-audio.setChannelVolume("music", 0.5);
-audio.muteAll();
-```
-
-### Event-Driven Configuration
-
-For plugins that react to engine events:
-
-```typescript yage-context="context"
-import { EventBusKey } from "@yagejs/core";
-import { AudioManagerKey } from "@yagejs/audio";
-
-const audio = context.resolve(AudioManagerKey);
-const events = context.resolve(EventBusKey);
-events.on("screen:fullscreen", ({ active }) => {
-  if (!active) audio.muteAll();
-});
-```
-
-`EventBus<EngineEvents>` only accepts the events in `EngineEvents`. A plugin's own events go on a bus it owns, as `ScoreManager` does above.
-
----
-
-## References
-
-- [AGENT_GUIDE.md](./AGENT_GUIDE.md) -- How to add/modify plugins as a coding agent
+# YAGE Architecture
+
+This document states the constraints that changes to YAGE must preserve and
+why they matter. For package layout and modification steps, use the
+[agent development guide](./AGENT_GUIDE.md). For plugin authoring, use
+[Engine and plugins](./src/content/docs/concepts/engine-and-plugins.mdx).
+Public API signatures live in the [core reference](./llms/packages/core.md).
+
+## Package boundaries
+
+Core has zero runtime dependencies. It owns the ECS, scene lifecycle,
+scheduler, service container, state primitives and diagnostics contracts.
+Rendering and physics remain optional so a headless game or test does not
+load PixiJS or Rapier.
+
+An optional integration belongs in an explicit entry point. For example,
+`@yagejs/tilemap/physics` depends on physics; the tilemap root does not.
+Addon model entries must remain usable without their rendering adapters.
+Check built imports as well as source imports: a barrel can introduce a
+runtime dependency through a re-export.
+
+Public rendering signatures use the renderer's aliases, such as
+`DisplayContainer`, `GraphicsContext` and `ColorValue`. Implementations
+may construct PixiJS objects directly. The aliases make the types discoverable
+without requiring consumers to import PixiJS; they are not an encapsulation
+boundary.
+
+## Ownership and shared mechanisms
+
+Components own game logic. Systems implement cross-entity engine work with
+explicit scheduler ordering. An entity's `setup()` runs after attachment;
+component constructors accept configuration, while `onAdd()` can resolve
+scene services.
+
+Extend the mechanism that already owns an invariant. Do not maintain a
+parallel registry for entity participation, a second camera projection, or
+another clock counter. Two mechanisms that derive the same fact can disagree
+at activation, removal or teardown.
+
+The creator of a resource owns its release, or explicitly transfers that
+ownership. Apply this to subscriptions, renderer objects, asset references
+and diagnostic leases. Ownership follows the resource's actual lifetime,
+not whichever callback is most convenient.
+
+### Services are infrastructure, not game state
+
+Plugins register infrastructure through `ServiceKey<T>`. Engine services
+live in the engine container; per-scene services such as `PhysicsWorldKey`
+and `SceneRenderTreeKey` live in the scene container. Scene setup installs
+those services before `onEnter()`; exit disposes the scene resources.
+Do not retain a resolved scene service across scene entries.
+
+A service key's id string is its identity. Re-declaring the same id is valid
+only for the same contract when avoiding an optional runtime dependency.
+Name the owning package in a nearby comment. Optional debug integration
+uses this rule without making debug a runtime dependency.
+
+Game-owned score, inventory and quest state are explicit model references
+or entity components, not self-registered services. Construct a shared
+state root once and pass it to each consumer. This makes ownership visible
+and permits independent games and scenes in the same process.
+
+Plugins declare their required dependencies and expose the required
+`name` and `version` fields. Register each engine service once, from its
+owning plugin. A missing required plugin is not an optional capability to
+silently replace.
+
+## Entity and component lifetime
+
+Use `entity.isActive` for simulation participation. It includes ancestor
+activity and excludes destroyed entities. Use `component.effectiveEnabled`
+when component participation matters: it also includes attachment and the
+component's own enabled flag. Queries maintain active membership; a raw
+entity collection can also contain dormant entities.
+
+Ordinary entity destruction deactivates immediately. The end-of-frame flush
+frees resources; it is not the point at which simulation stops.
+`isDestroyed` answers whether the entity has been destroyed, not whether it
+should update.
+
+Pool release ends the current lease, detaches the entity and cancels its
+scheduled processes. It keeps inert state, such as position, health and
+animation frame, for `onAcquire()` to initialize. Ordinary deactivation
+pauses processes; it is not pool release.
+
+`onDisable()` is reversible sleep. `onDestroy()` is terminal cleanup.
+Removing a component destroys that instance; it cannot be moved to another
+entity. Component uniqueness is per exact class. Base-class lookup and
+queries include subclasses; use `getAll()` when several matches are valid,
+because a singular ambiguous lookup throws.
+
+## Time and scheduler ordering
+
+Simulation advances through supplied delta time, `SceneTime`, and
+processes. Wall-clock timers do not respect scene pause, time scaling or
+deterministic stepping. Reserve wall time for infrastructure such as host
+frame scheduling, profiling and external IO deadlines.
+
+Scene `elapsed` and `fixedElapsed` measure different update streams.
+Compare timestamps from the same clock; neither reading is a universal
+replacement for the other. Entity time scale affects component updates,
+not the scene clock readings. Component update delta time is already scaled;
+do not multiply by the same scene or entity scale again. A body's entity
+scale does not independently scale the shared physics world.
+
+The canonical [frame-order table](./llms/packages/core.md#frame-order)
+defines phases, priorities, tie ordering and runtime registration behavior.
+Use it when adding a system; do not copy its inventory into another table.
+The human [game-loop guide](./src/content/docs/concepts/game-loop.mdx)
+explains the same ordering for game authors.
+
+`GameLoop.frameCount` is the frame identity for the Inspector, logs and
+events. `Inspector.time` owns public clock control. Drivers acquire an
+`InspectorTimeLease` and use it for every mutation until release.
+Async stepping holds ownership for the whole operation. The internal debug
+clock implements control; it is not a second public driver API or frame
+counter.
+
+## Events and subscriptions
+
+An event token's name is its channel identity. Define tokens once with an
+owning game or package prefix. Repeating a name joins the same channel and
+warns in development; it does not create an isolated token.
+
+A component owns the subscriptions it takes. Use `listen()`,
+`listenScene()` and `listenBus()`, or register another API's unsubscribe
+function with `addCleanup()`. A destroyed consumer must not remain
+subscribed to a longer-lived scene, bus or model.
+
+New token dispatch paths notify the scene's token observer, as
+`Entity.emit()` and `Scene.emit()` do, so Inspector event history includes
+game-visible dispatch. Developer callbacks still need error attribution.
+Events can announce a state change; they do not justify a second mutable
+copy of that state in the UI.
+
+## Coordinates, vectors and rendering
+
+Public coordinates, distances and velocities use pixels. `PhysicsWorld`
+alone converts to and from Rapier's units. Conversion in a component or game
+recipe risks applying the scale twice.
+
+`Vec2` values are immutable, including vectors returned by `Transform`.
+A mutable `Transform` can replace its state without changing a snapshot
+already returned to a caller. Repeated calculations may use explicit
+`Into` methods and a caller-owned `Vec2Buffer`. Never return shared
+internal scratch as a public value or use a `Vec2` as an output buffer.
+
+Use `SceneRenderTree.ensureLayer()` to provision a shared layer. An
+existing game-defined layer is authoritative; addons do not replace its
+settings. The [addon layer rules](../packages/addons/AGENTS.md#default-render-layer-orders)
+own the default order bands.
+
+Camera transforms apply to layers, not the scene root that carries viewport
+fit and letterboxing. Rendering, lighting and debug drawing use the shared
+camera projection. Pooled debug graphics must leave a scene's layer before
+that layer is destroyed, because the pool outlives the scene.
+
+## Physics ownership
+
+A collider component owns an ordered set of collider parts. A sensor change
+recreates the underlying colliders; callers must not cache their handles.
+`PhysicsWorld` owns body and collider lookup, including the component and
+part associated with a handle and retired ownership needed for queued stop
+events. Resolve only handles the world issued and still holds; do not look
+up arbitrary numbers through Rapier.
+
+Material, damping and shape changes update configuration and live objects
+through their owning APIs. Validate authored physics inputs at their public
+entry through the shared physics validation functions. Internal builders
+consume the validated values.
+
+Collect and deliver collision transitions per physics step, not after a
+batch of steps. Otherwise intermediate transitions disappear. Pooled lease
+identity must prevent a contact from reaching a different use of the same
+entity.
+
+A spatial query reflects live colliders even before the next simulation
+step. The world's zero-duration refresh owns this synchronization, including
+preserving pending kinematic targets. Do not add a second query cache.
+Solid casts can hit the body containing their origin; exclude the casting
+body when that is not the intended result.
+
+Physics writes an active dynamic body's `Transform`. Dormant transform
+writes teleport dynamic and kinematic bodies on enable. Move a static body
+through its rigid body's `setPosition()`, which also writes the transform.
+
+Rounded-box mass uses the rounded footprint area
+`width * height - (4 - Math.PI) * radius * radius` at the configured
+density. Density compensation corrects Rapier's inner-rectangle mass.
+Angular inertia remains the inner rectangle's inertia scaled by that
+compensation, not an exact rounded-footprint calculation.
+
+## Assets and durable state
+
+An asset reference is counted by its type and path. `loadAll()` acquires
+each distinct entry only after the whole call succeeds; a failed call takes
+no references. Scene preloading has one manifest acquisition, which scene
+entry claims instead of loading it twice.
+
+Manifest acquisition does not imply automatic unloading on scene exit.
+The game may retain assets for reuse or release the acquired handles
+explicitly. An unused preload remains retained until released or the asset
+manager is cleared. Do not add another manifest owner beside
+`SceneManager.preload()`.
+
+A loader owns any nested handles it acquires. Derived renderer resources
+need an owner too: tilemap frame textures belong to the component that
+creates and destroys them, not an unowned global sub-texture cache.
+
+Persist only explicit `Serializable<TEncoded>` roots, including the core
+state factories. Restore durable facts before reconstructing scene,
+component, UI and plugin resources. ECS objects, callbacks and renderer or
+Rapier objects are not traversed automatically.
+
+Addon persistence must use the domain's shipped snapshot and restore APIs.
+For dialogue, saved variables do not restore an active dialogue cursor.
+Do not promise cursor continuation through variable storage alone.
+
+## Errors and numeric inputs
+
+Attribute developer callbacks through `ErrorBoundary.wrapCallback`,
+system and component updates through their dedicated wrappers, and scene
+hooks through `wrapLifecycleHook`. The boundary records the culprit,
+logs the error and rethrows synchronous failures. Attribution does not
+disable or unsubscribe the offender.
+
+An unhandled frame error stops the game loop. A throwing hook aborts its
+engine-owned sequence; later teardown or event handlers do not run.
+Do not add recovery collectors, rollback or `finally` blocks to complete
+a failed sequence. The [error-handling model](./AGENT_GUIDE.md#10-error-handling-model)
+documents async reporting and the two explicit exceptions:
+`Engine.destroy()` and plugin `afterExit` hooks.
+
+Predictable authored failures should name the invalid input at the entry,
+before mutation. Numeric behavior depends on the boundary:
+
+- A game-supplied non-finite number entering simulation state throws at the
+  write site with the context, constraint and offending value.
+- Two documented-legal inputs that produce a non-finite result get a defined
+  result. Emit a one-shot `devWarn` only if that result discards requested
+  behavior.
+- A non-finite argument to a read-only query remains unguarded and its result
+  is documented as undefined.
+
+`devWarn` is exported from core for engine packages. Browser builds require
+a bundler that replaces bare `process.env.NODE_ENV`; unbundled browser
+imports are not supported.

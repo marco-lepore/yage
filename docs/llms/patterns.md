@@ -716,47 +716,63 @@ game.timeScale = 0.25;
 
 ## State Management Patterns
 
-Do not use module-level `let` variables for game state (e.g. `let score = 0`). Module-level state breaks save/load, prevents scene isolation, and cannot be reset on restart. Use `ServiceKey` + DI registration or `createRecord()` instead.
+Create game-owned state once per run and pass it to scenes, components and UI.
+Service keys are for plugin infrastructure, not game-state lookup. Direct
+model and component references are valid; avoid module-global mutable state
+that couples independent runs.
 
-### DI service for game state
+```tsx
+import { Component, Scene, createRecord, defineEvent } from "@yagejs/core";
+import { Text, useStore } from "@yagejs/ui-react";
 
-```ts yage-context="component"
-import { ServiceKey } from "@yagejs/core";
-interface GameState {
-  score: number;
-  health: number;
+function createGameState() {
+  return createRecord({ default: () => ({ score: 0, health: 100 }) });
+}
+type GameState = ReturnType<typeof createGameState>;
+
+const PointsAwarded = defineEvent<{ points: number }>("my-game:points-awarded");
+
+class ScoreTracker extends Component {
+  constructor(private readonly state: GameState) {
+    super();
+  }
+
+  onAdd(): void {
+    this.listenScene(PointsAwarded, ({ points }) => {
+      this.state.set({ score: this.state.get().score + points });
+    });
+  }
 }
 
-const GameStateKey = new ServiceKey<GameState>("gameState");
-this.context.register(GameStateKey, { score: 0, health: 100 });
-// Access: this.use(GameStateKey).score
+class GameScene extends Scene {
+  readonly name = "game";
+  constructor(private readonly state: GameState) {
+    super();
+  }
+  onEnter(): void {
+    this.spawn("score-tracker").add(new ScoreTracker(this.state));
+  }
+}
+
+function HUD({ state }: { state: GameState }) {
+  const score = useStore(state, (source) => source.get().score);
+  return <Text>{`Score: ${score}`}</Text>;
+}
+
+const state = createGameState();
+const scene = new GameScene(state);
+// Push scene onto the engine; render <HUD state={state} /> in a UIRoot.
 ```
 
-### Reactive store (for React UI)
+Emit `PointsAwarded` on the entered scene to update that same root.
+`listenScene` unsubscribes on component removal; use `addCleanup` for
+subscriptions from other APIs. Events notify consumers, not a second UI copy.
+Use `set()`, not mutation of `get()`, to notify store subscribers.
 
-```ts
-import { createRecord } from "@yagejs/core";
-import { useStore } from "@yagejs/ui-react";
-
-const store = createRecord({ default: () => ({ score: 0 }) });
-store.set({ score: 10 }); // ECS writes
-function useScore() {
-  return useStore(store, (src) => src.get().score);
-} // React reads (selector takes source)
-```
-
-### Event-driven state
-
-```ts yage-context="entity"
-import { defineEvent } from "@yagejs/core";
-const state = { score: 0 };
-
-const CoinCollected = defineEvent("coin:collected");
-entity.on(CoinCollected, () => {
-  state.score += 10;
-});
-entity.emit(CoinCollected); // from trigger handler
-```
+Core state factories implement `Serializable`: persist the root with
+`@yagejs/save`, then restore it before constructing runtime consumers.
+See the human [state management guide](https://yage.dev/patterns/state-management/)
+for scene and HUD assembly.
 
 ## Common Game Patterns
 

@@ -493,7 +493,7 @@ export class MySystem extends System {
 
 ### Add a New Plugin
 
-Follow the step-by-step guide in [ARCHITECTURE.md](./ARCHITECTURE.md#8-creating-a-custom-plugin-step-by-step).
+Follow the step-by-step guide in [Engine and plugins](./src/content/docs/concepts/engine-and-plugins.mdx).
 
 Summary:
 
@@ -872,7 +872,7 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 | **Immutable Vec2 by default**      | Keep or share values as `Vec2`; its vector operations return immutable values. For repeated calculations, reuse a caller-owned `Vec2Buffer` with `Into` methods. Never mutate a `Vec2` or pass it as an output.                                                               |
 | **Transform is mutable**           | Use scalar writes such as `setPosition`, `setWorldPosition`, and `translate`. `Into` getters copy into a caller-owned buffer without constructing `Vec2`; ordinary vector getters return lazy immutable snapshots that never change after being returned.                     |
 | **Components own game logic**      | Components can have `update(dt)` and `fixedUpdate(dt)` methods — the built-in `ComponentUpdateSystem` calls them, per entity in ascending `updatePriority` (add order by default). Systems are for engine internals and cross-cutting concerns (physics, rendering).          |
-| **Phase assignment**               | Physics in `FixedUpdate`. Input polling in `EarlyUpdate`. Rendering in `Render`. Cleanup in `EndOfFrame`.                                                                                                                                                                     |
+| **Phase assignment**               | Use the canonical [frame-order table](./llms/packages/core.md#frame-order) for phases, priorities, ties and runtime registration rules.                                                                                                                                                                     |
 | **ServiceKey for DI**              | Always use `ServiceKey<T>` for type-safe service resolution. Keys use their id string for identity. A repeated id is allowed only for the same contract when avoiding an optional runtime dependency, with a nearby comment naming the owner. Never use string keys directly. |
 | **Plain objects for config**       | Plugin configs, action maps, collider shapes -- all plain objects. No `Map`, no classes for config.                                                                                                                                                                           |
 | **Pixels everywhere**              | All user-facing APIs work in pixels. Physics coordinate conversion is internal to `PhysicsWorld`.                                                                                                                                                                             |
@@ -959,7 +959,7 @@ Two kinds of fix are always in scope:
 
 `NaN` fails every comparison, so a guard like `value <= 0` lets it through, and once it reaches position, velocity, a cooldown, or particle state, nothing recovers it. The response depends on where the number enters. Three cases:
 
-- **Two already-legal inputs combine into a non-finite result.** Example: a documented `Infinity` option multiplied by a `dt` of `0` from a time-scale freeze. Define the result at that point instead of throwing; a throw here would fire on ordinary, documented usage. When the defined result drops what the caller asked for, emit a one-shot `devWarn` naming what could not be honoured. When the result is exact (`dt = 0` meaning nothing changes), stay silent. `devWarn` is internal to `@yagejs/core`, so only core sites can warn this way. A package without it stays silent on this edge; that is fine as long as its own result is exact rather than lossy.
+- **Two already-legal inputs combine into a non-finite result.** Example: a documented `Infinity` option multiplied by a `dt` of `0` from a time-scale freeze. Define the result at that point instead of throwing; a throw here would fire on ordinary, documented usage. When the defined result drops what the caller asked for, emit a one-shot `devWarn` naming what could not be honoured. When the result is exact (`dt = 0` meaning nothing changes), stay silent. `devWarn` is exported from `@yagejs/core` for use by engine packages.
 - **A single game-supplied number is about to be written into simulation state**, through a setter, constructor config, or a value returned from a game-authored callback. Throw a plain `Error` at that write site before the value is stored, naming the offending input and the constraint it violates. The message follows the style already shipped for scene-time and entity-pool validation: `Context.method: constraint, got ${x}`.
 - **A non-finite input only changes what a read-only query returns** and is never stored anywhere. Leave it unguarded and document that the result is undefined for non-finite input. Don't add a branch for it.
 
@@ -967,4 +967,4 @@ Two kinds of fix are always in scope:
 
 ## References
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md) -- Plugin system specification
+- [ARCHITECTURE.md](./ARCHITECTURE.md) -- Architectural constraints and their reasons

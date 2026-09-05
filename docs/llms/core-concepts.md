@@ -276,20 +276,15 @@ Built-in events: `entity:created`, `entity:destroyed`, `component:added`, `compo
 
 ## Dependency Injection
 
-`EngineContext` is a typed DI container using `ServiceKey<T>`.
+`EngineContext` resolves plugin-owned infrastructure through `ServiceKey<T>`.
+Pass game-owned state by reference; see [State Management Patterns](./patterns.md#state-management-patterns).
 
 ```ts yage-context="context"
-import { ServiceKey } from "@yagejs/core";
-class MyService {
-  now() {
-    return performance.now();
-  }
-}
+import { InputManagerKey } from "@yagejs/input";
 
-const MyServiceKey = new ServiceKey<MyService>("myService");
-context.register(MyServiceKey, new MyService());
-const svc = context.resolve(MyServiceKey); // throws if missing
-const svc2 = context.tryResolve(MyServiceKey); // undefined if missing
+// InputPlugin registers this infrastructure during engine startup.
+const input = context.resolve(InputManagerKey); // throws if missing
+const optionalInput = context.tryResolve(InputManagerKey); // undefined if missing
 ```
 
 Well-known keys: `EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`, `SceneTimeKey` (per-scene, registered by the engine itself).
