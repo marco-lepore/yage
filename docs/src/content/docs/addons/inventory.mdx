@@ -39,9 +39,11 @@ the item's initial, so a working inventory needs no art at all.
 
 <Steps>
 
-1. **Declare the inventory layers on your scene.** They are screen-space, and
-   sit below the dialogue addon's layers so a conversation can play over an
-   open inventory.
+1. **Optionally declare layer order on your scene.** Built-in presenters create
+   missing screen-space layers on mount, even when used independently. Panel,
+   content, and overlay use orders 1050, 1060, and 1070, below dialogue. Custom
+   theme names receive the same orders. The exported array is useful when you
+   want to declare or adjust that order explicitly.
 
    ```ts
    import { Scene } from "@yagejs/core";
@@ -52,6 +54,9 @@ the item's initial, so a working inventory needs no art at all.
      // ...
    }
    ```
+
+   An existing host layer keeps its order. A different requested order produces
+   one development warning per scene tree, layer name, and requested order.
 
 2. **Define the catalog and the inventory.** Item ids are the map keys and
    flow through the types — `inventory.add("potino")` is a compile error.

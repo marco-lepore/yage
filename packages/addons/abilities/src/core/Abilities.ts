@@ -12,6 +12,7 @@ import type {
   AbilityCanSendOptions,
   AbilityDef,
   AbilitySendOptions,
+  AbilityReleaseOptions,
   AbilityStep,
   CancelWindow,
   PhaseDef,
@@ -648,11 +649,13 @@ export class Abilities extends Component {
    * a hold completed; false is a no-op (nothing held on `intent` — the
    * driver's late-delivery fallback keys off this). A hold entered by
    * `force()` has no binding and never releases.
+   * Supply `options.lane` to release only that lane; omit it for the first match.
    */
-  release(intent: string): boolean {
+  release(intent: string, options?: AbilityReleaseOptions): boolean {
     return this.runEntry(() => {
       if (!this.effectiveEnabled && !this.tearingDown) return false;
       for (const [lane, activation] of this.lanes) {
+        if (options?.lane !== undefined && lane !== options.lane) continue;
         if (activation.heldIntent !== intent) continue;
         if (!activation.compiledPhase.hold) continue;
         const next = activation.compiledPhase.next;
@@ -1153,7 +1156,9 @@ export class Abilities extends Component {
     if (activation.openWindows.size === 0) return;
     for (const step of activation.compiledPhase.steps) {
       if (isWindowStep(step) && activation.openWindows.delete(step)) {
-        step.hooks.exit?.(step.params, activation.ctx, cancelled);
+        this.invokeStep(step, "window exit", () =>
+          step.hooks.exit?.(step.params, activation.ctx, cancelled),
+        );
       }
     }
   }
@@ -1225,7 +1230,9 @@ export class Abilities extends Component {
         if (!activation.openWindows.has(holdTick.step)) break;
         this.hookRemainder = track.position - holdTick.next;
         holdTick.next += holdTick.step.every!;
-        holdTick.step.hooks.tick?.(holdTick.step.params, activation.ctx);
+        this.invokeStep(holdTick.step, "window tick", () =>
+          holdTick.step.hooks.tick?.(holdTick.step.params, activation.ctx),
+        );
       }
     }
   }
@@ -1281,13 +1288,26 @@ export class Abilities extends Component {
    * duration is cached for `cooldownRemaining`.
    */
   private armCooldown(def: AbilityDef, activation: AbilityActivation): void {
-    const duration = resolveScalar(def.cooldown ?? 0, {
+    const ctx: StepContext = {
       entity: activation.entity,
       def,
       abilities: this,
       activation,
       time: this.use(SceneTimeKey),
-    });
+    };
+    let duration = 0;
+    this.use(ErrorBoundaryKey).wrapCallback(
+      () => {
+        duration = resolveScalar(def.cooldown ?? 0, ctx);
+        this.validateCooldown(def, duration);
+      },
+      {
+        kind: "Ability cooldown callback",
+        entity: this.entity.name,
+        scene: this.scene.name,
+        event: def.id,
+      },
+    );
     if (duration <= 0) return;
     let cooldown = this.cooldowns.get(def.id);
     if (!cooldown) {
@@ -1300,6 +1320,27 @@ export class Abilities extends Component {
       cooldown.duration = duration;
     }
     cooldown.slot.start({ duration });
+  }
+
+  private validateCooldown(def: AbilityDef, duration: number): void {
+    if (!Number.isFinite(duration)) {
+      throw new Error(
+        `Abilities.cooldown: ability "${def.id}" requires a finite duration, got ${duration}.`,
+      );
+    }
+  }
+
+  private invokeStep(
+    step: AbilityStep,
+    hook: string,
+    invoke: () => void,
+  ): void {
+    this.use(ErrorBoundaryKey).wrapCallback(invoke, {
+      kind: `Ability ${hook} hook`,
+      entity: this.entity.name,
+      scene: this.scene.name,
+      event: step.kind,
+    });
   }
 
   private mustGetDef(id: string): AbilityDef {
@@ -1336,6 +1377,8 @@ export class Abilities extends Component {
 
   /** Normalize the `timeline:` sugar, compile every phase, and run the cross-phase validation. Throws on the first problem found, naming the def id. */
   private compile(def: AbilityDef): CompiledAbility {
+    if (typeof def.cooldown === "number")
+      this.validateCooldown(def, def.cooldown);
     const hasTimeline = def.timeline !== undefined;
     const hasPhases = def.phases !== undefined;
     if (hasTimeline === hasPhases) {
@@ -1624,7 +1667,10 @@ export class Abilities extends Component {
           time: step.at,
           priority: 1,
           order,
-          run: (activation) => step.hooks.fire(step.params, activation.ctx),
+          run: (activation) =>
+            this.invokeStep(step, "point fire", () =>
+              step.hooks.fire(step.params, activation.ctx),
+            ),
         });
         return;
       }
@@ -1641,7 +1687,9 @@ export class Abilities extends Component {
         order,
         run: (activation, track) => {
           activation.openWindows.add(step);
-          step.hooks.enter?.(step.params, activation.ctx);
+          this.invokeStep(step, "window enter", () =>
+            step.hooks.enter?.(step.params, activation.ctx),
+          );
           if (elastic && step.every !== undefined) {
             // The enter hook itself may have transitioned or ended the
             // activation — its windows are closed then, and the ticks must
@@ -1659,7 +1707,9 @@ export class Abilities extends Component {
           order,
           run: (activation) => {
             activation.openWindows.delete(step);
-            step.hooks.exit?.(step.params, activation.ctx, false);
+            this.invokeStep(step, "window exit", () =>
+              step.hooks.exit?.(step.params, activation.ctx, false),
+            );
           },
         });
         if (step.every !== undefined) {
@@ -1670,7 +1720,9 @@ export class Abilities extends Component {
               priority: 1,
               order,
               run: (activation) =>
-                step.hooks.tick?.(step.params, activation.ctx),
+                this.invokeStep(step, "window tick", () =>
+                  step.hooks.tick?.(step.params, activation.ctx),
+                ),
             });
           }
         }

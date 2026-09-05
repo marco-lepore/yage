@@ -74,7 +74,10 @@ export interface SteeringAgentOptions {
   enabled?: boolean;
 }
 
-function defaultKinematicApply(velocity: Vec2, ctx: SteeringApplyContext): void {
+function defaultKinematicApply(
+  velocity: Vec2,
+  ctx: SteeringApplyContext,
+): void {
   ctx.transform.translate(velocity.x * ctx.dt, velocity.y * ctx.dt);
 }
 
@@ -142,7 +145,11 @@ export class SteeringAgent extends Component {
     this._velocity = Vec2.ZERO;
     const body = this.body;
     if (!body) {
-      this.applyFn(Vec2.ZERO, { entity: this.entity, dt: 0, transform: this.transform });
+      this.applyFn(Vec2.ZERO, {
+        entity: this.entity,
+        dt: 0,
+        transform: this.transform,
+      });
       return;
     }
     if (this.drive === "impulse") {
@@ -161,6 +168,7 @@ export class SteeringAgent extends Component {
 
   private step(dt: number): void {
     if (!this.enabled) return;
+    if (dt === 0) return;
 
     const body = this.body;
     let current = this._velocity;
@@ -186,19 +194,33 @@ export class SteeringAgent extends Component {
           "SteeringAgent: impulse drive requires a `body` with `applyImpulse()`/`getMass()` (e.g. a dynamic RigidBodyComponent)",
         );
       }
-      const dv = clampMagnitude(desired.sub(current), this.maxAcceleration * dt);
+      const dv = clampMagnitude(
+        desired.sub(current),
+        this.maxAcceleration * dt,
+      );
       impulseBody.applyImpulse(dv.scale(impulseBody.getMass()));
       this._velocity = current.add(dv);
     } else {
-      this._velocity = Vec2.moveTowards(current, desired, this.maxAcceleration * dt);
+      this._velocity = Vec2.moveTowards(
+        current,
+        desired,
+        this.maxAcceleration * dt,
+      );
       if (body) {
         (body as VelocityBody).setVelocity(this._velocity);
       } else {
-        this.applyFn(this._velocity, { entity: this.entity, dt, transform: this.transform });
+        this.applyFn(this._velocity, {
+          entity: this.entity,
+          dt,
+          transform: this.transform,
+        });
       }
     }
 
-    if (this.faceHeading && this._velocity.lengthSq() > FACE_HEADING_MIN_SPEED_SQ) {
+    if (
+      this.faceHeading &&
+      this._velocity.lengthSq() > FACE_HEADING_MIN_SPEED_SQ
+    ) {
       this.transform.setRotation(this._velocity.angle());
     }
   }

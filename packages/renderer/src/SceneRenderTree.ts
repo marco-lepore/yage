@@ -39,6 +39,8 @@ export interface SceneRenderTree {
    * plugins like UI that auto-provision a layer if the game didn't declare
    * one explicitly. Pass `{ space: "screen" }` so a default camera leaves
    * the layer fixed to the viewport (e.g. screen-space HUD).
+   * Existing layers keep their settings. A differing requested order warns in
+   * development once per tree, layer name, and expected order.
    */
   ensureLayer(def: LayerDef, opts?: EnsureLayerOptions): RenderLayer;
   /**

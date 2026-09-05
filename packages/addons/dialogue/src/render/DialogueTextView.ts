@@ -1,3 +1,4 @@
+import { ensureDialogueLayer } from "./ensureLayer.js";
 /**
  * DialogueTextView — renders one parsed line as a single {@link SplitTextComponent}
  * (the engine wrapper for Pixi `SplitText`/`SplitBitmapText`) on a screen-space
@@ -48,7 +49,11 @@ import type { TextPresenter } from "../chrome/DialogueUiAdapter.js";
 import type { FontConfig } from "../chrome/textOptions.js";
 import type { PresentedLine } from "../core/session.js";
 import type { ParsedText, RunStyle } from "../core/types.js";
-import { evaluateEffect, effectDrivesTint, type EffectOutput } from "./textEffects.js";
+import {
+  evaluateEffect,
+  effectDrivesTint,
+  type EffectOutput,
+} from "./textEffects.js";
 
 export interface DialogueTextConfig extends FontConfig {
   /** Font size in px. */
@@ -62,7 +67,11 @@ export interface DialogueTextConfig extends FontConfig {
   /** Render layer name (screen-space). */
   readonly layer: string;
   /** Resting text region (screen px). Bubbles override per line via `setBox`. */
-  readonly box?: { readonly x: number; readonly y: number; readonly width: number };
+  readonly box?: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+  };
 }
 
 /**
@@ -125,7 +134,12 @@ export class DialogueTextView implements TextPresenter {
    *  from the reveal cursor, which LineReveal owns. */
   private elapsed = 0;
   /** Scratch for {@link evaluateEffect} — one object reused across all glyphs. */
-  private readonly effectScratch: EffectOutput = { dx: 0, dy: 0, scale: 1, tint: undefined };
+  private readonly effectScratch: EffectOutput = {
+    dx: 0,
+    dy: 0,
+    scale: 1,
+    tint: undefined,
+  };
 
   /** Reveal-completed listener, registered by the Session through
    *  {@link setRevealListener} (a private seam, not a public field, so a
@@ -138,7 +152,7 @@ export class DialogueTextView implements TextPresenter {
    *  clearing it, so a hide/show round-trip resumes mid-typewriter. */
   private hidden = false;
 
-  constructor(private readonly cfg: DialogueTextConfig) {
+  constructor(protected readonly cfg: DialogueTextConfig) {
     this.reveal = new LineReveal(cfg.charsPerSec);
     // The reveal clock reports completion + beats through the view's
     // session-owned listeners — never public fields a game could clobber.
@@ -149,7 +163,12 @@ export class DialogueTextView implements TextPresenter {
 
   /** Attach to a scene (host lifecycle). Must run before the first `present`. */
   mount(scene: Scene): void {
+    this.ensureLayer(scene);
     this.scene = scene;
+  }
+
+  protected ensureLayer(scene: Scene): void {
+    ensureDialogueLayer(scene, this.cfg.layer, 1110);
   }
 
   /** Top-left of the text region, in screen px, plus the wrap width. */
@@ -290,8 +309,12 @@ export class DialogueTextView implements TextPresenter {
     this.layoutOriginY = this.boxY;
 
     const entity = this.scene.spawn("dlg-line");
-    entity.add(new Transform()).setPosition(this.layoutOriginX, this.layoutOriginY);
-    const comp = entity.add(new SplitTextComponent(this.lineSplitOptions(text)));
+    entity
+      .add(new Transform())
+      .setPosition(this.layoutOriginX, this.layoutOriginY);
+    const comp = entity.add(
+      new SplitTextComponent(this.lineSplitOptions(text)),
+    );
     const chars = comp.chars;
     const root = comp.splitText;
 
@@ -377,7 +400,11 @@ export class DialogueTextView implements TextPresenter {
       return;
     }
     if (style.bold || style.italic) {
-      const s: TextStyle = { fontSize: this.cfg.textSize, fill: 0xffffff, lineHeight: this.cfg.lineHeight };
+      const s: TextStyle = {
+        fontSize: this.cfg.textSize,
+        fill: 0xffffff,
+        lineHeight: this.cfg.lineHeight,
+      };
       if (this.cfg.fontFamily) s.fontFamily = this.cfg.fontFamily;
       if (style.bold) s.fontWeight = "bold";
       if (style.italic) s.fontStyle = "italic";
@@ -389,7 +416,11 @@ export class DialogueTextView implements TextPresenter {
 
   private applyReveal(): void {
     if (!this.line) return;
-    const cursor = MathUtils.clamp(Math.floor(this.reveal.revealed), 0, this.nonSpacePrefix.length - 1);
+    const cursor = MathUtils.clamp(
+      Math.floor(this.reveal.revealed),
+      0,
+      this.nonSpacePrefix.length - 1,
+    );
     const shown = this.nonSpacePrefix[cursor]!;
     if (shown === this.shownCount) return;
     // Toggle only the glyphs whose visibility changed since the last step —
@@ -417,10 +448,16 @@ export class DialogueTextView implements TextPresenter {
     }
     for (const m of line.effectMetas) {
       if (!m.node.visible) continue;
-      const out = evaluateEffect(m.effect, this.elapsed, m.splitX, this.effectScratch);
+      const out = evaluateEffect(
+        m.effect,
+        this.elapsed,
+        m.splitX,
+        this.effectScratch,
+      );
       m.node.position.set(m.baseX + out.dx, m.baseY + out.dy);
       if (out.scale !== 1) m.node.scale.set(out.scale, out.scale);
-      if (effectDrivesTint(m.effect) && out.tint !== undefined) m.node.tint = out.tint;
+      if (effectDrivesTint(m.effect) && out.tint !== undefined)
+        m.node.tint = out.tint;
     }
   }
 

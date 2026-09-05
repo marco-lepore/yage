@@ -409,7 +409,7 @@ export class AbilityDriver<
         state.pressActivation = activation;
         state.lastActivation = activation;
         if (state.released && this.ownsActiveHold(activation)) {
-          this.abilities.release(press.send);
+          this.abilities.release(press.send, { lane: activation.lane });
         }
       });
     }
@@ -436,7 +436,9 @@ export class AbilityDriver<
       state.binding.press &&
       this.ownsActiveHold(state.pressActivation)
     ) {
-      this.abilities.release(state.binding.press.send);
+      this.abilities.release(state.binding.press.send, {
+        lane: state.pressActivation.lane,
+      });
     }
 
     if (hold && state.holdActivation) {
@@ -455,7 +457,7 @@ export class AbilityDriver<
           );
         }
       } else if (this.ownsActiveHold(state.holdActivation)) {
-        this.abilities.release(hold.send);
+        this.abilities.release(hold.send, { lane: state.holdActivation.lane });
       }
     }
 

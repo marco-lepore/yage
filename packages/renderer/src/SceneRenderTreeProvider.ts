@@ -1,6 +1,6 @@
 import { Container } from "pixi.js";
 import type { ProcessSystem, Scene } from "@yagejs/core";
-import { devWarn, makeSceneScopedQueue } from "@yagejs/core";
+import { devWarn, isDev, makeSceneScopedQueue } from "@yagejs/core";
 import type { LayerDef } from "./LayerDef.js";
 import type {
   SceneRenderTree,
@@ -24,6 +24,7 @@ interface SceneEntry {
 class SceneRenderTreeImpl implements SceneRenderTree {
   readonly fx: EffectsHost;
   private _mask: MaskHandle | undefined;
+  private readonly warnedOrders = new Map<string, Set<number>>();
 
   constructor(
     readonly root: DisplayContainer,
@@ -50,9 +51,22 @@ class SceneRenderTreeImpl implements SceneRenderTree {
   }
 
   ensureLayer(def: LayerDef, opts?: EnsureLayerOptions): RenderLayer {
-    return (
-      this.manager.tryGet(def.name) ?? this.manager.createFromDef(def, opts)
-    );
+    const existing = this.manager.tryGet(def.name);
+    if (!existing) return this.manager.createFromDef(def, opts);
+    if (isDev() && existing.order !== def.order) {
+      let orders = this.warnedOrders.get(def.name);
+      if (!orders) {
+        orders = new Set();
+        this.warnedOrders.set(def.name, orders);
+      }
+      if (!orders.has(def.order)) {
+        orders.add(def.order);
+        devWarn(
+          `SceneRenderTree.ensureLayer: layer "${def.name}" has order ${existing.order}; requested ${def.order}. The existing order is preserved.`,
+        );
+      }
+    }
+    return existing;
   }
 
   setMask(factory: MaskFactory): MaskHandle {

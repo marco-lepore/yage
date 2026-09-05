@@ -1,3 +1,4 @@
+import { ensureDialogueLayer } from "../render/ensureLayer.js";
 /**
  * Default chrome — draws the dialogue box frame, the name plate, and the
  * blinking "continue" caret with the renderer (Graphics + Text on screen-space
@@ -77,8 +78,10 @@ export function resolveActiveFrame(
   styles: ReadonlyMap<string, unknown>,
 ): ActiveFrame {
   if (styleKey === CHROME_STYLE_NONE) return { kind: "none" };
-  if (styleKey !== undefined && styles.has(styleKey)) return { kind: "nineSlice", key: styleKey };
-  if (styles.has(CHROME_STYLE_DEFAULT)) return { kind: "nineSlice", key: CHROME_STYLE_DEFAULT };
+  if (styleKey !== undefined && styles.has(styleKey))
+    return { kind: "nineSlice", key: styleKey };
+  if (styles.has(CHROME_STYLE_DEFAULT))
+    return { kind: "nineSlice", key: CHROME_STYLE_DEFAULT };
   return { kind: "graphics" };
 }
 
@@ -92,8 +95,12 @@ export class DialogueChrome implements ChromePresenter {
   private frameTexTransform?: Transform | undefined;
   private nineSliceHost?: GraphicsComponent | undefined;
   private readonly nineSlices = new Map<string, NineSliceSprite>();
-  private name?: { entity: Entity; transform: Transform; comp: TextComponent } | undefined;
-  private indicator?: { entity: Entity; transform: Transform; gfx: GraphicsComponent } | undefined;
+  private name?:
+    | { entity: Entity; transform: Transform; comp: TextComponent }
+    | undefined;
+  private indicator?:
+    | { entity: Entity; transform: Transform; gfx: GraphicsComponent }
+    | undefined;
   private indicatorTime = 0;
   /** Selected textured-style name from the line's `meta.chrome`, or undefined
    *  when the line names none. */
@@ -125,6 +132,8 @@ export class DialogueChrome implements ChromePresenter {
   }
 
   mount(scene: Scene): void {
+    ensureDialogueLayer(scene, this.cfg.layerFrame, 1100);
+    ensureDialogueLayer(scene, this.cfg.layerText, 1110);
     const cfg = this.cfg;
 
     // Bind the design viewport so the box is a full-width bottom bar at any
@@ -132,7 +141,11 @@ export class DialogueChrome implements ChromePresenter {
     // (the chrome owns the frame); a custom box chrome should do the same. Falls
     // back to the layout's default size if no renderer is present (headless).
     const renderer = scene.context.tryResolve(RendererKey);
-    if (renderer) this.layout.setViewport(renderer.virtualSize.width, renderer.virtualSize.height);
+    if (renderer)
+      this.layout.setViewport(
+        renderer.virtualSize.width,
+        renderer.virtualSize.height,
+      );
 
     // Frame: the drawn Graphics rounded rect (the default look). Drawn per line
     // in applyGeometry — the rect moves with `meta.position` and grows for a
@@ -152,7 +165,9 @@ export class DialogueChrome implements ChromePresenter {
     if (styles && Object.keys(styles).length > 0) {
       const texEntity = scene.spawn("dlg-frame-tex");
       this.frameTexTransform = texEntity.add(new Transform());
-      const host = texEntity.add(new GraphicsComponent({ layer: cfg.layerFrame }));
+      const host = texEntity.add(
+        new GraphicsComponent({ layer: cfg.layerFrame }),
+      );
       for (const [key, spec] of Object.entries(styles)) {
         const sprite = createNineSlice({
           texture: spec.texture,
@@ -175,9 +190,15 @@ export class DialogueChrome implements ChromePresenter {
     const nameEntity = scene.spawn("dlg-name");
     const nameTransform = nameEntity.add(new Transform());
     const nameComp = nameEntity.add(
-      new TextComponent(makeTextOptions(cfg, "", cfg.nameSize, cfg.nameColor, cfg.layerText)),
+      new TextComponent(
+        makeTextOptions(cfg, "", cfg.nameSize, cfg.nameColor, cfg.layerText),
+      ),
     );
-    this.name = { entity: nameEntity, transform: nameTransform, comp: nameComp };
+    this.name = {
+      entity: nameEntity,
+      transform: nameTransform,
+      comp: nameComp,
+    };
 
     // Continue indicator (blinking caret), sized by the theme. Drawn once in
     // local coords; positioned per line via its transform.
@@ -227,7 +248,9 @@ export class DialogueChrome implements ChromePresenter {
       !this.warnedKeys.has(this.styleKey)
     ) {
       this.warnedKeys.add(this.styleKey);
-      this.warn?.(`unknown meta.chrome style "${this.styleKey}" — using the default frame`);
+      this.warn?.(
+        `unknown meta.chrome style "${this.styleKey}" — using the default frame`,
+      );
     }
     this.layout.layoutLine(line); // place the frame at meta.position
     this.applyGeometry();
@@ -261,7 +284,9 @@ export class DialogueChrome implements ChromePresenter {
       this.name.transform.setPosition(p.x, p.y);
     }
     if (this.indicator) {
-      const p = this.layout.caretPos(this.cfg.caret?.size ?? DEFAULT_CARET_SIZE);
+      const p = this.layout.caretPos(
+        this.cfg.caret?.size ?? DEFAULT_CARET_SIZE,
+      );
       this.indicator.transform.setPosition(p.x, p.y);
     }
   }
@@ -270,12 +295,14 @@ export class DialogueChrome implements ChromePresenter {
   private apply(): void {
     const active = resolveActiveFrame(this.styleKey, this.nineSlices);
     if (this.frameGfx) {
-      this.frameGfx.graphics.visible = this.visible && active.kind === "graphics";
+      this.frameGfx.graphics.visible =
+        this.visible && active.kind === "graphics";
     }
     if (this.nineSliceHost) {
       // The host shows only while a nine-slice is the active frame (so the
       // "graphics"/"none" cases leave nothing textured on screen).
-      this.nineSliceHost.graphics.visible = this.visible && active.kind === "nineSlice";
+      this.nineSliceHost.graphics.visible =
+        this.visible && active.kind === "nineSlice";
       for (const [key, sprite] of this.nineSlices) {
         sprite.visible = active.kind === "nineSlice" && active.key === key;
       }

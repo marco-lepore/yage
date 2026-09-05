@@ -1,3 +1,4 @@
+import { ensureInventoryLayer } from "./ensureLayer.js";
 /**
  * `iconCell` — the default cell preset: an icon sprite (or a colored fallback
  * tile with the item's initial) plus a quantity badge, on a rounded cell
@@ -95,6 +96,7 @@ class IconCellPresenter implements CellPresenter {
     r: Rect,
     selected: boolean,
   ): CellHandle {
+    ensureInventoryLayer(scene, this.cfg.layerContent, 1060);
     // The fallback tile fill (icon-less occupied slots only).
     const tile =
       view.stack && view.def && !this.iconFor(view.def.icon)

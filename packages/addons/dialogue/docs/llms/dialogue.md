@@ -39,7 +39,12 @@ import { loadYaml } from "@yagejs-addons/dialogue/yaml";
 ## 5-minute setup (zero assets)
 
 `defaultDialogueTheme()` = Graphics chrome + canvas SplitText/Text, native bold/italic,
-per-glyph effects. No bundled files. The scene must declare the dialogue layers.
+per-glyph effects. No bundled files. Built-in presenters create their layers
+before drawing, including when mounted independently. Screen-space frame,
+avatar, and text layers use orders 1100, 1105, and 1110, including custom theme
+names. A bubble's configured `worldLayer` is created in world space at order 0
+when absent. Existing host layers keep their order; differing requested orders
+warn once per scene tree, name, and requested order in development.
 
 ```ts
 import { Scene, Entity } from "@yagejs/core";
@@ -47,7 +52,7 @@ import { DialogueController, DialogueEndedEvent } from "@yagejs-addons/dialogue"
 import { createBoxDialogue, DIALOGUE_LAYERS } from "@yagejs-addons/dialogue/presenters";
 
 class TalkScene extends Scene {
-  readonly layers = [...DIALOGUE_LAYERS]; // dialogue-frame / -avatar / -text (screen-space)
+  readonly layers = [...DIALOGUE_LAYERS]; // optional: declare the default orders explicitly
 
   onEnter() {
     const host = this.spawn("dialogue") as Entity;

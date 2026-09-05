@@ -1,3 +1,4 @@
+import { ensureDialogueLayer } from "../render/ensureLayer.js";
 /**
  * A Mass-Effect-style radial choice wheel — an alternative {@link ChoicePresenter}
  * that proves the choice seam is swappable without touching the Session. Options
@@ -14,7 +15,11 @@ import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
 import type { PresentedChoice } from "../core/session.js";
 import type { ChoicePresenter } from "./DialogueUiAdapter.js";
 import { makeTextOptions, type FontConfig } from "./textOptions.js";
-import { applyChoiceTint, clampSelection, firstEnabledIndex } from "./choiceRow.js";
+import {
+  applyChoiceTint,
+  clampSelection,
+  firstEnabledIndex,
+} from "./choiceRow.js";
 
 export interface RadialChoiceConfig extends FontConfig {
   readonly center: { readonly x: number; readonly y: number };
@@ -50,10 +55,15 @@ export class RadialChoicePresenter implements ChoicePresenter {
   constructor(private readonly cfg: RadialChoiceConfig) {}
 
   mount(scene: Scene): void {
+    ensureDialogueLayer(scene, this.cfg.layerFrame, 1100);
+    ensureDialogueLayer(scene, this.cfg.layerText, 1110);
     this.scene = scene;
     const hub = scene.spawn("dlg-radial-hub");
     hub.add(new Transform()).setPosition(0, 0);
-    this.hub = { entity: hub, gfx: hub.add(new GraphicsComponent({ layer: this.cfg.layerFrame })) };
+    this.hub = {
+      entity: hub,
+      gfx: hub.add(new GraphicsComponent({ layer: this.cfg.layerFrame })),
+    };
   }
 
   present(choices: readonly PresentedChoice[]): void {
@@ -81,7 +91,13 @@ export class RadialChoicePresenter implements ChoicePresenter {
         ),
       );
       comp.text.visible = true;
-      this.spokes.push({ entity, comp, x, y, disabled: choice.disabled ?? false });
+      this.spokes.push({
+        entity,
+        comp,
+        x,
+        y,
+        disabled: choice.disabled ?? false,
+      });
     });
     this.highlight(firstEnabledIndex(this.spokes));
     this.applyHidden();
@@ -90,7 +106,12 @@ export class RadialChoicePresenter implements ChoicePresenter {
   highlight(position: number): void {
     if (this.spokes.length === 0) return;
     this.selected = clampSelection(position, this.spokes.length);
-    applyChoiceTint(this.spokes, this.selected, this.cfg.choiceColor, this.cfg.choiceSelectedColor);
+    applyChoiceTint(
+      this.spokes,
+      this.selected,
+      this.cfg.choiceColor,
+      this.cfg.choiceSelectedColor,
+    );
     // Radial-only: scale the selected spoke up.
     this.spokes.forEach((s, i) => {
       const scale = i === this.selected && !s.disabled ? 1.15 : 1;
@@ -107,7 +128,8 @@ export class RadialChoicePresenter implements ChoicePresenter {
 
   private applyHidden(): void {
     for (const s of this.spokes) s.comp.text.visible = !this.hidden;
-    if (this.hub) this.hub.gfx.graphics.visible = !this.hidden && this.spokes.length > 0;
+    if (this.hub)
+      this.hub.gfx.graphics.visible = !this.hidden && this.spokes.length > 0;
   }
 
   /** {@link ChoicePresenter}: nearest spoke within a small radius. */
@@ -146,7 +168,13 @@ export class RadialChoicePresenter implements ChoicePresenter {
     this.hub.gfx.draw((g) => {
       g.clear();
       if (active) {
-        g.moveTo(c.x, c.y).lineTo(active.x, active.y).stroke({ color: this.cfg.choiceSelectedColor, width: 2, alpha: 0.7 });
+        g.moveTo(c.x, c.y)
+          .lineTo(active.x, active.y)
+          .stroke({
+            color: this.cfg.choiceSelectedColor,
+            width: 2,
+            alpha: 0.7,
+          });
       }
       g.circle(c.x, c.y, 4).fill({ color: this.cfg.hubColor, alpha: 1 });
     });

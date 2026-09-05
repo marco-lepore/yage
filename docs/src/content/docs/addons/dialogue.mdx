@@ -40,8 +40,10 @@ files.
 
 <Steps>
 
-1. **Declare the dialogue layers on your scene.** They are screen-space and sit
-   above the in-scene UI so a conversation overlays everything.
+1. **Optionally declare layer order on your scene.** Built-in presenters create
+   missing layers on mount, even when used independently. Screen-space frame,
+   avatar, and text layers use orders 1100, 1105, and 1110, including custom
+   theme names. The exported array lets you declare or adjust those orders.
 
    ```ts
    import { Scene } from "@yagejs/core";
@@ -52,6 +54,11 @@ files.
      // ...
    }
    ```
+
+   An existing host layer keeps its order. A different requested order produces
+   one development warning per scene tree, layer name, and requested order.
+   Bubble presenters create a missing configured `worldLayer` in world space
+   at order 0. Declare that layer yourself to choose a different world order.
 
 2. **Spawn a host entity and add the controller.** Spread a factory bundle into
    `DialogueController` and override any one piece.

@@ -51,8 +51,8 @@ controller. The bundle factory and action preset are domain-named
 ## 5-minute setup (zero assets)
 
 `defaultInventoryTheme()` = Graphics panel + canvas text; icon-less items render
-as colored tiles with the item's initial. The scene must declare the inventory
-layers.
+as colored tiles with the item's initial. Built-in presenters create their
+screen-space layers before drawing, including when mounted independently.
 
 ```ts
 import { Scene } from "@yagejs/core";
@@ -82,7 +82,7 @@ const inventory = new Inventory({
 });
 
 class MyScene extends Scene {
-  readonly layers = [...INVENTORY_LAYERS]; // inventory-panel / -content / -overlay (screen-space)
+  readonly layers = [...INVENTORY_LAYERS]; // optional: declare the default orders explicitly
   onEnter() {
     const bundle = createInventoryPanel(); // theme defaults to defaultInventoryTheme()
     const host = this.spawn("inventory");
@@ -386,6 +386,11 @@ anchors beside the selected cell. `INVENTORY_LAYERS` (screen-space, orders
 1050–1070) sit BELOW the dialogue addon's 1100+ so a conversation plays over an
 open inventory.
 
+Panel, content, and overlay default to orders 1050, 1060, and 1070. Custom
+configured names receive the same orders. Existing host layers keep their order;
+a mismatch warns once per scene tree, name, and requested order in development.
+Declare layers explicitly only when the game needs a different order.
+
 `InventoryTheme` is a flat data object: every field a built-in renderer reads.
 It covers colors, sizes, alphas, radii, layer names, and texture keys/insets.
 Cell geometry (columns, cell size, gaps) is NOT here — it lives on the factory
@@ -546,8 +551,8 @@ re-check), same trust level as `setSlot`.
   that control silently does nothing (`inventory` is the toggle key — without
   it the panel never opens from the keyboard); a TOTAL mismatch warns in dev,
   a partial one is treated as intentional.
-- Scene must spread `INVENTORY_LAYERS` (undeclared layers fall back to the
-  default layer with a warning — the panel would render under the world).
+- `INVENTORY_LAYERS` is optional. Built-in presenters create missing layers;
+  custom presenters must declare or ensure the layers they draw into.
 - YAGE input is non-consuming: a click handled by the panel still reaches
   gameplay actions bound to the same button; claim pointers in game code if
   needed (`InputManager.consumePointer`).

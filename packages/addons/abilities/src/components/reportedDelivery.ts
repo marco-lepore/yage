@@ -30,7 +30,7 @@ export interface HitDealtPayload {
   ability?: AbilityDef;
 }
 
-export const HitDealt = defineEvent<HitDealtPayload>("hit:dealt");
+export const HitDealt = defineEvent<HitDealtPayload>("abilities:hit:dealt");
 
 /** Frozen provenance stamped into every `HitDealt` of a reporting delivery. */
 export interface DeliveryProvenance {

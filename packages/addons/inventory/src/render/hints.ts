@@ -1,3 +1,4 @@
+import { ensureInventoryLayer } from "./ensureLayer.js";
 /**
  * `hints` — the default scroll-hint renderer: small ▲/▼ triangles at the cell
  * window's right edge when rows are scrolled out of view. {@link SlotsView}
@@ -38,9 +39,12 @@ class DefaultHints implements HintsPresenter {
   }
 
   render(scene: Scene, state: HintsState): HintsHandle {
+    ensureInventoryLayer(scene, this.cfg.layerContent, 1060);
     const entity = scene.spawn("inv-slots-hints");
     entity.add(new Transform());
-    const gfx = entity.add(new GraphicsComponent({ layer: this.cfg.layerContent }));
+    const gfx = entity.add(
+      new GraphicsComponent({ layer: this.cfg.layerContent }),
+    );
 
     const draw = (s: HintsState): void => {
       const w = s.window;

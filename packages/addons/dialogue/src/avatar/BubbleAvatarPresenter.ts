@@ -1,3 +1,4 @@
+import { ensureDialogueLayer } from "../render/ensureLayer.js";
 /**
  * BubbleAvatarPresenter — the reference **line-driven portrait INSIDE the speech
  * bubble**, the bubble counterpart to {@link InBoxAvatarPresenter}. Built only
@@ -18,7 +19,10 @@ import {
   texture,
   type TextureHandle,
 } from "@yagejs/renderer";
-import { applyExpressionMarker, type AvatarPresenter } from "./AvatarPresenter.js";
+import {
+  applyExpressionMarker,
+  type AvatarPresenter,
+} from "./AvatarPresenter.js";
 import type { PresentedLine } from "../core/session.js";
 import type { MarkerToken } from "../core/types.js";
 import type { BubbleLayout } from "../render/BubbleLayout.js";
@@ -70,6 +74,7 @@ export class BubbleAvatarPresenter implements AvatarPresenter {
   }
 
   mount(scene: Scene): void {
+    ensureDialogueLayer(scene, this.cfg.layer, 0, "world");
     this.scene = scene;
   }
 
@@ -86,7 +91,10 @@ export class BubbleAvatarPresenter implements AvatarPresenter {
 
   present(line: PresentedLine | undefined): void {
     const meta = line?.meta;
-    const portrait = typeof meta?.["portrait"] === "string" ? (meta["portrait"] as string) : undefined;
+    const portrait =
+      typeof meta?.["portrait"] === "string"
+        ? (meta["portrait"] as string)
+        : undefined;
     const visible = portrait !== undefined && meta?.["presence"] !== false;
     this.side = meta?.["side"] === "right" ? "right" : "left";
     this.speakerId = line?.speaker?.id;
@@ -94,7 +102,11 @@ export class BubbleAvatarPresenter implements AvatarPresenter {
       // Reserve the column BEFORE the chrome/text/choices size the bubble, so it
       // grows to contain the portrait and the text/rows reflow past it.
       const gap = this.cfg.gap ?? 8;
-      this.layout.setPortraitInset({ side: this.side, width: this.cfg.size + gap, height: this.cfg.size });
+      this.layout.setPortraitInset({
+        side: this.side,
+        width: this.cfg.size + gap,
+        height: this.cfg.size,
+      });
       this.ensureSprite(portrait);
       this.applyTexture(portrait);
       this.shown = true;

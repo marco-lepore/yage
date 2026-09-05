@@ -2,16 +2,16 @@ import { Component, defineEvent } from "@yagejs/core";
 
 /** Damage landed on a `Health`. `amount` is the HP actually subtracted (post-clamp). */
 export const HealthDamaged = defineEvent<{ amount: number; hp: number }>(
-  "health:damaged",
+  "abilities:health:damaged",
 );
 
 /** Healing landed on a `Health`. `amount` is the HP actually restored (post-clamp). */
 export const HealthHealed = defineEvent<{ amount: number; hp: number }>(
-  "health:healed",
+  "abilities:health:healed",
 );
 
 /** HP reached 0. Emitted once per death. */
-export const HealthDied = defineEvent("health:died");
+export const HealthDied = defineEvent("abilities:health:died");
 
 /**
  * HP tracker with entity events. Damage usually arrives through

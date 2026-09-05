@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMockEntity, Transform, Vec2 } from "@yagejs/core";
 import type { Vec2Like } from "@yagejs/core";
 import { SteeringAgent } from "./SteeringAgent.js";
@@ -13,6 +13,54 @@ function setup(options: ConstructorParameters<typeof SteeringAgent>[0]) {
 }
 
 describe("SteeringAgent", () => {
+  it.each([60, Infinity])(
+    "preserves state and skips behaviors and custom apply at dt=0 with acceleration %s",
+    (maxAcceleration) => {
+      const apply = vi.fn();
+      const { entity, agent } = setup({
+        maxSpeed: 100,
+        maxAcceleration,
+        behaviors: [seek(new Vec2(20, 40))],
+        apply,
+        faceHeading: true,
+      });
+      agent.fixedUpdate(0.1);
+      const compute = vi.spyOn(agent.steering, "compute");
+      const velocity = agent.velocity;
+      const transform = entity.get(Transform);
+      const position = transform.position;
+      const rotation = transform.rotation;
+      apply.mockClear();
+      agent.fixedUpdate(0);
+      expect(agent.velocity).toBe(velocity);
+      expect(transform.position).toEqual(position);
+      expect(transform.rotation).toBe(rotation);
+      expect(compute).not.toHaveBeenCalled();
+      expect(apply).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["velocity", "impulse"] as const)(
+    "does not read or drive a %s body at dt=0",
+    (drive) => {
+      const body = {
+        getVelocity: vi.fn(() => Vec2.ZERO),
+        setVelocity: vi.fn(),
+        applyImpulse: vi.fn(),
+        getMass: vi.fn(() => 1),
+      };
+      const { agent } = setup({
+        maxSpeed: 100,
+        maxAcceleration: Infinity,
+        body,
+        drive,
+      });
+      agent.fixedUpdate(0);
+      for (const callback of Object.values(body))
+        expect(callback).not.toHaveBeenCalled();
+      expect(agent.velocity).toEqual(Vec2.ZERO);
+    },
+  );
   it("default kinematic apply walks the Transform toward a seek target over steps", () => {
     const { entity, agent } = setup({
       maxSpeed: 60,
@@ -122,7 +170,11 @@ describe("SteeringAgent", () => {
   });
 
   it("agent.steering.add(...) changes behavior live", () => {
-    const { agent } = setup({ maxSpeed: 40, maxAcceleration: Infinity, behaviors: [] });
+    const { agent } = setup({
+      maxSpeed: 40,
+      maxAcceleration: Infinity,
+      behaviors: [],
+    });
     agent.fixedUpdate(1 / 60);
     expect(agent.velocity).toEqual(Vec2.ZERO);
 
@@ -347,7 +399,9 @@ describe("SteeringAgent with a body", () => {
       maxSpeed: 100,
       maxAcceleration: Infinity,
       faceHeading: true,
-      behaviors: [{ weight: 1, priority: 0, evaluate: () => new Vec2(0.5, 0.5) }],
+      behaviors: [
+        { weight: 1, priority: 0, evaluate: () => new Vec2(0.5, 0.5) },
+      ],
     });
     const transform = entity.get(Transform);
     transform.setRotation(0.7);

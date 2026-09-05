@@ -1,5 +1,5 @@
-import { Vec2, entityClassHasTrait } from "@yagejs/core";
-import type { Vec2Like } from "@yagejs/core";
+import { ErrorBoundaryKey, Vec2, entityClassHasTrait } from "@yagejs/core";
+import type { Entity, Vec2Like } from "@yagejs/core";
 import { AbilitySpawned } from "../../core/AbilitySpawned.js";
 import type {
   AbilitySpawnContext,
@@ -27,6 +27,11 @@ export interface SpawnParams<
   entity: TClass;
   /** Parameters inferred from the entity class's `setup` context. */
   params: AbilitySpawnParams<TClass>;
+  /** Acquire a game-owned instance. Undefined skips this spawn (for example, a full pool). */
+  acquire?: (
+    context: AbilitySpawnContext<AbilitySpawnParams<TClass>>,
+    stepContext: StepContext,
+  ) => InstanceType<TClass> | undefined;
   /** Firing direction; omit to read the running entity's `Facing`. */
   aim?: Aim;
   /** Team stamped into the optional delivery; omit to inherit it. */
@@ -106,5 +111,20 @@ function fireSpawn<TClass extends AbilitySpawnedClass, TData>(
     activation: ctx.activation,
   };
 
-  ctx.entity.scene.spawn(params.entity, context);
+  if (params.acquire) {
+    ctx.entity.scene.context
+      .resolve(ErrorBoundaryKey)
+      .wrapCallback(() => params.acquire!(context, ctx), {
+        kind: "Ability spawn acquire callback",
+        entity: ctx.entity.name,
+        scene: ctx.entity.scene.name,
+        event: "spawn",
+      });
+  } else {
+    // The public params inference checks setup's context shape; restore it at dispatch.
+    const EntityClass = params.entity as new () => Entity & {
+      setup(context: AbilitySpawnContext<AbilitySpawnParams<TClass>>): void;
+    };
+    ctx.entity.scene.spawn(EntityClass, context);
+  }
 }

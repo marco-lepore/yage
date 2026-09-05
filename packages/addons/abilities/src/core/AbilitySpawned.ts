@@ -35,7 +35,7 @@ export interface AbilitySpawnedEntity<TParams = unknown> {
   /** The context supplied when the entity entered its scene. */
   readonly abilitySpawnContext: AbilitySpawnContext<TParams> | undefined;
   /** Configure the entity after it has been registered with its scene. */
-  setup(context: AbilitySpawnContext<TParams>): void;
+  setup(...args: never[]): void;
 }
 
 /** Entity constructor accepted by the typed ability `spawn` step. */
@@ -43,12 +43,14 @@ export type AbilitySpawnedClass = new () => Entity & AbilitySpawnedEntity;
 
 /**
  * Game-defined params inferred from an ability-spawned class's
- * `setup(context: AbilitySpawnContext<TParams>)` signature. If inference
- * produces `never`, give the entity that exact setup parameter type and
+ * required or optional `setup(context: AbilitySpawnContext<TParams>)` parameter.
+ * If inference produces `never`, give the entity that context parameter type and
  * declare its `abilitySpawnContext` field.
  */
 export type AbilitySpawnParams<TClass extends AbilitySpawnedClass> =
-  SetupParams<InstanceType<TClass>> extends AbilitySpawnContext<infer TParams>
+  NonNullable<SetupParams<InstanceType<TClass>>> extends AbilitySpawnContext<
+    infer TParams
+  >
     ? TParams
     : never;
 

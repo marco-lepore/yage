@@ -17,6 +17,8 @@ export interface FeelSpriteAnimationOptions<T extends string = string> {
   duration?: number;
   /** Called when a one-shot lock completes. */
   onComplete?: () => void;
+  /** Called when another play, unlock, or entity destruction interrupts the one-shot. */
+  onCancel?: () => void;
 }
 
 /** Start a named `AnimationController` sprite animation. */
@@ -27,10 +29,12 @@ export function feelSpriteAnimation<T extends string = string>(
   const mode = options.mode ?? "play";
   if (
     mode !== "oneShot" &&
-    (options.duration !== undefined || options.onComplete !== undefined)
+    (options.duration !== undefined ||
+      options.onComplete !== undefined ||
+      options.onCancel !== undefined)
   ) {
     throw new Error(
-      'feelSpriteAnimation: duration and onComplete require mode "oneShot".',
+      'feelSpriteAnimation: duration, onComplete and onCancel require mode "oneShot".',
     );
   }
   if (
@@ -53,11 +57,16 @@ export function feelSpriteAnimation<T extends string = string>(
         const onComplete = completion
           ? () => context.invoke("sprite animation completion", completion)
           : undefined;
+        const cancellation = options.onCancel;
+        const onCancel = cancellation
+          ? () => context.invoke("sprite animation cancellation", cancellation)
+          : undefined;
         controller.playOneShot(name, {
           ...(options.duration !== undefined
             ? { duration: context.duration }
             : {}),
           ...(onComplete ? { onComplete } : {}),
+          ...(onCancel ? { onCancel } : {}),
         });
         return;
       }

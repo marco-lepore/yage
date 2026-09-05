@@ -13,6 +13,44 @@ function mockController() {
 }
 
 describe("feelSpriteAnimation", () => {
+  it("forwards cancellation without changing the retimed cue duration and attributes a throw", () => {
+    const { entity, context } = createMockEntity();
+    const controller = mockController();
+    const error = new Error("cancel failed");
+    const cancelled = vi.fn(() => {
+      throw error;
+    });
+    const completed = vi.fn();
+    const feel = entity.add(
+      new Feel({
+        shot: feelSpriteAnimation("stagger", {
+          target: controller,
+          mode: "oneShot",
+          duration: 0.2,
+          onComplete: completed,
+          onCancel: cancelled,
+        }),
+      }),
+    );
+    feel.play("shot", { duration: 0.4 });
+    const options = vi.mocked(controller.playOneShot).mock.calls[0]?.[1];
+    expect(options?.duration).toBe(0.4);
+    expect(() => options?.onCancel?.()).toThrow(error);
+    expect(cancelled).toHaveBeenCalledOnce();
+    expect(completed).not.toHaveBeenCalled();
+    expect(context.resolve(ErrorBoundaryKey).getCallbackErrors()).toMatchObject(
+      [{ kind: "Feel callback (sprite animation cancellation)" }],
+    );
+  });
+
+  it.each(["play", "force"] as const)(
+    "rejects cancellation callbacks in %s mode",
+    (mode) => {
+      expect(() =>
+        feelSpriteAnimation("idle", { mode, onCancel() {} }),
+      ).toThrow(/require mode "oneShot"/);
+    },
+  );
   it("plays a named sprite animation", () => {
     const { entity } = createMockEntity();
     const controller = mockController();

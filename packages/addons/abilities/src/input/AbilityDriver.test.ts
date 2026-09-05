@@ -50,6 +50,70 @@ function setup<TAction extends string, TIntent extends string>(
 }
 
 describe("AbilityDriver", () => {
+  it.each(["press", "hold"] as const)(
+    "releases a %s-owned hold in its own lane",
+    (gesture) => {
+      const defs: AbilityDef[] = ["left", "right"].map((lane) => ({
+        id: lane,
+        lane,
+        start: "ready",
+        phases: {
+          ready: { duration: 10, timeline: [], on: { channel: "held" } },
+          held: { hold: true, timeline: [] },
+        },
+      }));
+      const binding =
+        gesture === "press"
+          ? { press: { send: "channel" } }
+          : { hold: { send: "channel", at: 0.1 } };
+      const { input, abilities, driver, advanceInput } = setup(defs, {
+        bindings: { right: { lane: "right", ...binding } },
+      });
+      abilities.send("left");
+      abilities.send("channel", { lane: "left" });
+      abilities.send("right");
+      setTestActionHeld(input, "right", true);
+      driver.update();
+      advanceInput(0.2);
+      driver.update();
+      expect(abilities.active("right")?.phase).toBe("held");
+      setTestActionHeld(input, "right", false);
+      driver.update();
+      expect(abilities.active("right")).toBeNull();
+      expect(abilities.active("left")?.phase).toBe("held");
+    },
+  );
+
+  it("passes the activation lane when releasing a press delivered after key-up", () => {
+    const def: AbilityDef = {
+      id: "right",
+      lane: "right",
+      start: "ready",
+      phases: {
+        ready: {
+          duration: 10,
+          timeline: [],
+          on: { channel: { to: "held", from: 0.2 } },
+        },
+        held: { hold: true, timeline: [] },
+      },
+    };
+    const { input, abilities, driver, processes } = setup([def], {
+      bindings: {
+        right: { lane: "right", press: { send: "channel", buffer: 1 } },
+      },
+    });
+    abilities.send("right");
+    const release = vi.spyOn(abilities, "release");
+    setTestActionHeld(input, "right", true);
+    driver.update();
+    setTestActionHeld(input, "right", false);
+    driver.update();
+    processes._tick(0.3, undefined, "fixed");
+    driver.update();
+    expect(release).toHaveBeenCalledWith("channel", { lane: "right" });
+    expect(abilities.active("right")).toBeNull();
+  });
   it("fires press interactions on the press edge", () => {
     const { input, abilities, driver } = setup([timeline("dash")], {
       bindings: { dash: { press: { send: "dash" } } },

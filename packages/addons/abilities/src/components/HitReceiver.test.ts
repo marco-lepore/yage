@@ -63,6 +63,23 @@ function guardParams(over: Partial<GuardParams> = {}): GuardParams {
 }
 
 describe("HitReceiver — receipt sequence", () => {
+  it("ignores guard punish against a destroyed caster before and after teardown without HitDealt", () => {
+    const { scene } = createMockScene();
+    const attacker = scene.spawn(PunishTarget);
+    const defender = scene.spawn("defender");
+    const receiver = defender.add(new HitReceiver());
+    receiver.openGuard(
+      guardParams({ outcome: "parried", punish: { stun: 0.2 } }),
+    );
+    const dealt = vi.fn();
+    defender.on(HitDealt, dealt);
+    attacker.destroy();
+    expect(receiver.receive(makeHit(attacker))).toBe("parried");
+    scene._flushDestroyQueue();
+    expect(receiver.receive(makeHit(attacker))).toBe("parried");
+    expect(attacker.received).toEqual([]);
+    expect(dealt).not.toHaveBeenCalled();
+  });
   it("lands a hit: runs steps in order, emits HitReceived, returns 'hit'", () => {
     const order: string[] = [];
     const { receiver, received } = setup({

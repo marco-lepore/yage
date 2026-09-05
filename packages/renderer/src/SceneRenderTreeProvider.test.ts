@@ -57,6 +57,33 @@ function makeFakeScene(name: string, layers?: LayerDef[]): Scene {
   return { name, layers } as unknown as Scene;
 }
 
+describe("ensureLayer order", () => {
+  it("creates missing layers, preserves host order, and warns once per expected order", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const provider = new SceneRenderTreeProviderImpl(
+      new MockContainer() as never,
+    );
+    const tree = provider.createForScene(
+      makeFakeScene("test", [{ name: "host", order: 9 }]),
+    );
+    const created = tree.ensureLayer({
+      name: "new",
+      order: 10,
+      space: "screen",
+    });
+    expect(tree.ensureLayer({ name: "new", order: 10 })).toBe(created);
+    expect(warn).not.toHaveBeenCalled();
+    const host = tree.ensureLayer({ name: "host", order: 20 });
+    expect(host.order).toBe(9);
+    expect(tree.ensureLayer({ name: "host", order: 20 })).toBe(host);
+    expect(warn).toHaveBeenCalledTimes(1);
+    tree.ensureLayer({ name: "host", order: 30 });
+    expect(warn).toHaveBeenCalledTimes(2);
+    provider.destroyAll();
+    warn.mockRestore();
+  });
+});
+
 function makeScene(name: string, transparentBelow = false): Scene {
   // `readonly transparentBelow` is a compile-time guard for game code, not
   // a runtime invariant; tests reach past it to spin up scenes with every
@@ -69,7 +96,10 @@ function makeScene(name: string, transparentBelow = false): Scene {
   return scene;
 }
 
-function visibleOf(provider: SceneRenderTreeProviderImpl, scene: Scene): boolean {
+function visibleOf(
+  provider: SceneRenderTreeProviderImpl,
+  scene: Scene,
+): boolean {
   const tree = provider.getTree(scene);
   if (!tree) throw new Error(`no tree for ${scene.name}`);
   return (tree.root as unknown as InstanceType<typeof MockContainer>).visible;
@@ -85,7 +115,9 @@ describe("SceneRenderTreeProvider — 'ui' layer name-shadow warning", () => {
     const provider = new SceneRenderTreeProviderImpl(
       new MockContainer() as never,
     );
-    provider.createForScene(makeFakeScene("scene", [{ name: "ui", order: 1000 }]));
+    provider.createForScene(
+      makeFakeScene("scene", [{ name: "ui", order: 1000 }]),
+    );
 
     const matching = warn.mock.calls.filter((args) =>
       String(args[0]).includes("Layer 'ui' is the canonical UI layer name"),
@@ -258,11 +290,16 @@ describe("SceneRenderTreeProviderImpl", () => {
       provider.createForScene(detached);
 
       const detachedTree = provider.getTree(detached)!;
-      (detachedTree.root as unknown as InstanceType<typeof MockContainer>).visible = true;
+      (
+        detachedTree.root as unknown as InstanceType<typeof MockContainer>
+      ).visible = true;
 
       provider.applyTransparentBelow([stacked]);
 
-      expect((detachedTree.root as unknown as InstanceType<typeof MockContainer>).visible).toBe(true);
+      expect(
+        (detachedTree.root as unknown as InstanceType<typeof MockContainer>)
+          .visible,
+      ).toBe(true);
     });
   });
 
@@ -290,11 +327,16 @@ describe("SceneRenderTreeProviderImpl", () => {
       // root visibility is owned by whoever mounted it, so a transition
       // start mustn't silently re-show a deliberately hidden detached root.
       const detachedTree = provider.getTree(detached)!;
-      (detachedTree.root as unknown as InstanceType<typeof MockContainer>).visible = false;
+      (
+        detachedTree.root as unknown as InstanceType<typeof MockContainer>
+      ).visible = false;
 
       provider.resetVisibility([stacked]);
 
-      expect((detachedTree.root as unknown as InstanceType<typeof MockContainer>).visible).toBe(false);
+      expect(
+        (detachedTree.root as unknown as InstanceType<typeof MockContainer>)
+          .visible,
+      ).toBe(false);
     });
   });
 });

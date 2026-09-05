@@ -1,3 +1,4 @@
+import { ensureDialogueLayer } from "../render/ensureLayer.js";
 /**
  * InBoxAvatarPresenter — the reference **line-driven, reflowing in-box avatar**.
  * It is built ONLY from the documented presenter contract:
@@ -26,7 +27,10 @@ import {
   texture,
   type TextureHandle,
 } from "@yagejs/renderer";
-import { applyExpressionMarker, type AvatarPresenter } from "./AvatarPresenter.js";
+import {
+  applyExpressionMarker,
+  type AvatarPresenter,
+} from "./AvatarPresenter.js";
 import type { PresentedLine } from "../core/session.js";
 import type { MarkerToken } from "../core/types.js";
 import type { BoxLayout } from "../render/BoxLayout.js";
@@ -91,6 +95,7 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
   }
 
   mount(scene: Scene): void {
+    ensureDialogueLayer(scene, this.cfg.layer, 1105);
     this.scene = scene;
   }
 
@@ -112,7 +117,10 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
    *  to the narrowed region. */
   present(line: PresentedLine | undefined): void {
     const meta = line?.meta;
-    const portrait = typeof meta?.["portrait"] === "string" ? (meta["portrait"] as string) : undefined;
+    const portrait =
+      typeof meta?.["portrait"] === "string"
+        ? (meta["portrait"] as string)
+        : undefined;
     const visible = portrait !== undefined && meta?.["presence"] !== false;
     this.side = meta?.["side"] === "right" ? "right" : "left";
     if (visible && portrait !== undefined) {
@@ -120,7 +128,10 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
       this.applyTexture(portrait);
       this.shown = true;
       // Reserve the column (+ gap) so the body text reflows past the portrait.
-      this.layout.setInset(this.insetKey, { side: this.side, width: this.cfg.width + (this.cfg.gap ?? 8) });
+      this.layout.setInset(this.insetKey, {
+        side: this.side,
+        width: this.cfg.width + (this.cfg.gap ?? 8),
+      });
     } else {
       this.shown = false;
       this.layout.setInset(this.insetKey, undefined); // text reclaims the full width

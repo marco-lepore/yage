@@ -58,6 +58,107 @@ function setup(defs: readonly AbilityDef[]) {
 
 const okResult = { ok: true, activation: expect.any(Object) };
 
+describe("release lanes and callback contracts", () => {
+  function dualHolds() {
+    const defs: AbilityDef[] = ["left", "right"].map((lane) => ({
+      id: lane,
+      lane,
+      phases: {
+        ready: { duration: 1, timeline: [], on: { channel: "held" } },
+        held: { hold: true, timeline: [] },
+      },
+      start: "ready",
+    }));
+    const result = setup(defs);
+    for (const lane of ["left", "right"]) {
+      result.abilities.send(lane);
+      result.abilities.send("channel", { lane });
+    }
+    return result;
+  }
+
+  it("releases only the requested lane, and preserves first-match release when omitted", () => {
+    const { abilities } = dualHolds();
+    expect(abilities.release("channel", { lane: "missing" })).toBe(false);
+    expect(abilities.release("other", { lane: "right" })).toBe(false);
+    expect(abilities.release("channel", { lane: "right" })).toBe(true);
+    expect(abilities.active("right")).toBeNull();
+    expect(abilities.active("left")).not.toBeNull();
+    const second = dualHolds().abilities;
+    expect(second.release("channel")).toBe(true);
+    expect(second.active("left")).toBeNull();
+    expect(second.active("right")).not.toBeNull();
+  });
+
+  it("attributes the first throwing exit once and aborts later exits", () => {
+    const error = new Error("exit failed");
+    const later = vi.fn();
+    const broken = defineStep<Record<never, never>>("broken-exit", {
+      enter() {},
+      exit() {
+        throw error;
+      },
+    });
+    const next = defineStep<Record<never, never>>("later-exit", {
+      enter() {},
+      exit: later,
+    });
+    const { abilities, pc, scene } = setup([
+      {
+        id: "test",
+        duration: 1,
+        timeline: [broken({ from: 0, to: 1 }), next({ from: 0, to: 1 })],
+      },
+    ]);
+    abilities.send("test");
+    pc._tick(0.1, undefined, "fixed");
+    expect(() => abilities.cancel()).toThrow(error);
+    expect(later).not.toHaveBeenCalled();
+    expect(
+      scene.context.resolve(ErrorBoundaryKey).getCallbackErrors(),
+    ).toMatchObject([
+      {
+        kind: "Ability window exit hook",
+        event: "broken-exit",
+        error: "exit failed",
+      },
+    ]);
+  });
+
+  it.each([NaN, Infinity, -Infinity])(
+    "rejects static non-finite cooldown %s during compilation",
+    (cooldown) => {
+      expect(() => setup([{ id: "bad", cooldown, timeline: [] }])).toThrow(
+        `Abilities.cooldown: ability "bad" requires a finite duration, got ${cooldown}.`,
+      );
+    },
+  );
+
+  it.each([NaN, Infinity, -Infinity])(
+    "preserves an existing cooldown on invalid dynamic result %s",
+    (invalid) => {
+      let duration = 0.2;
+      const callback = vi.fn((ctx) => {
+        expect(ctx.activation.entity).toBe(ctx.entity);
+        return duration;
+      });
+      const { abilities, pc, scene } = setup([
+        { id: "test", cooldown: callback, duration: 0.1, timeline: [] },
+      ]);
+      abilities.send("test");
+      pc._tick(0.3, undefined, "fixed");
+      duration = invalid;
+      expect(() => abilities.send("test")).toThrow(`got ${invalid}`);
+      expect(abilities.cooldownRemaining("test")).toBe(0);
+      expect(abilities.cooldownRatio("test")).toBe(1);
+      expect(
+        scene.context.resolve(ErrorBoundaryKey).getCallbackErrors(),
+      ).toMatchObject([{ kind: "Ability cooldown callback", event: "test" }]);
+      expect(callback).toHaveBeenCalledTimes(2);
+    },
+  );
+});
+
 describe("Abilities — timeline playback (single-phase sugar)", () => {
   it("points fire at their time, not before", () => {
     const { pc, abilities, log } = setup([

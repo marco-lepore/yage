@@ -1,3 +1,4 @@
+import { ensureDialogueLayer } from "../render/ensureLayer.js";
 /**
  * A diegetic choice list: the options float in their own bubble panel over the
  * speaking actor (resolved via the {@link ActorRegistry} from the choice's
@@ -20,7 +21,12 @@ import type { ChoiceContext, PresentedChoice } from "../core/session.js";
 import type { BubbleLayout } from "../render/BubbleLayout.js";
 import type { ChoicePresenter, DiagnosticSink } from "./DialogueUiAdapter.js";
 import { makeTextOptions, type FontConfig } from "./textOptions.js";
-import { applyChoiceTint, choiceRowLabel, clampSelection, firstEnabledIndex } from "./choiceRow.js";
+import {
+  applyChoiceTint,
+  choiceRowLabel,
+  clampSelection,
+  firstEnabledIndex,
+} from "./choiceRow.js";
 import { DEFAULT_CHOICE_GAP } from "../factory/theme.js";
 
 export interface BubbleChoiceConfig extends FontConfig {
@@ -88,13 +94,20 @@ export class BubbleChoicePresenter implements ChoicePresenter {
   }
 
   mount(scene: Scene): void {
+    ensureDialogueLayer(scene, this.cfg.layer, 0, "world");
     this.scene = scene;
     const bg = scene.spawn("dlg-bchoice-bg");
     bg.add(new Transform()).setPosition(0, 0);
-    this.bg = { entity: bg, gfx: bg.add(new GraphicsComponent({ layer: this.cfg.layer })) };
+    this.bg = {
+      entity: bg,
+      gfx: bg.add(new GraphicsComponent({ layer: this.cfg.layer })),
+    };
     const hl = scene.spawn("dlg-bchoice-hl");
     hl.add(new Transform()).setPosition(0, 0);
-    this.highlightBar = { entity: hl, gfx: hl.add(new GraphicsComponent({ layer: this.cfg.layer })) };
+    this.highlightBar = {
+      entity: hl,
+      gfx: hl.add(new GraphicsComponent({ layer: this.cfg.layer })),
+    };
   }
 
   present(choices: readonly PresentedChoice[], context?: ChoiceContext): void {
@@ -120,7 +133,9 @@ export class BubbleChoicePresenter implements ChoicePresenter {
     if (promptStr) {
       const e = this.scene.spawn("dlg-bchoice-prompt");
       e.add(new Transform());
-      const comp = e.add(new TextComponent(this.textOptions(promptStr, c.textColor, innerW)));
+      const comp = e.add(
+        new TextComponent(this.textOptions(promptStr, c.textColor, innerW)),
+      );
       comp.text.visible = true;
       promptH = Math.ceil(comp.text.height);
       this.prompt = { entity: e, comp };
@@ -146,7 +161,11 @@ export class BubbleChoicePresenter implements ChoicePresenter {
       const rowY = optionsTop + i * lineH;
       const entity = this.scene!.spawn("dlg-bchoice");
       entity.add(new Transform()).setPosition(contentX + 4, rowY);
-      const comp = entity.add(new TextComponent(this.textOptions(choiceRowLabel(choice), c.choiceColor)));
+      const comp = entity.add(
+        new TextComponent(
+          this.textOptions(choiceRowLabel(choice), c.choiceColor),
+        ),
+      );
       comp.text.visible = true;
       this.rows.push({
         entity,
@@ -176,7 +195,8 @@ export class BubbleChoicePresenter implements ChoicePresenter {
     const shown = !this.hidden;
     if (this.bg) this.bg.gfx.graphics.visible = shown && this.rows.length > 0;
     if (this.highlightBar) {
-      const onEnabled = this.selected >= 0 && !this.rows[this.selected]?.disabled;
+      const onEnabled =
+        this.selected >= 0 && !this.rows[this.selected]?.disabled;
       this.highlightBar.gfx.graphics.visible = shown && onEnabled;
     }
     if (this.prompt) this.prompt.comp.text.visible = shown;
@@ -186,7 +206,12 @@ export class BubbleChoicePresenter implements ChoicePresenter {
   highlight(position: number): void {
     if (this.rows.length === 0) return;
     this.selected = clampSelection(position, this.rows.length);
-    applyChoiceTint(this.rows, this.selected, this.cfg.choiceColor, this.cfg.choiceSelectedColor);
+    applyChoiceTint(
+      this.rows,
+      this.selected,
+      this.cfg.choiceColor,
+      this.cfg.choiceSelectedColor,
+    );
     this.drawHighlight();
   }
 
@@ -231,7 +256,14 @@ export class BubbleChoicePresenter implements ChoicePresenter {
       g.roundRect(left, top, width, h, c.cornerRadius)
         .fill({ color: c.frameColor, alpha: c.frameAlpha })
         .stroke({ color: c.borderColor, alpha: 1, width: 2 });
-      g.poly([tailX - c.tail, bottom, tailX + c.tail, bottom, tailX, bottom + c.tail]).fill({
+      g.poly([
+        tailX - c.tail,
+        bottom,
+        tailX + c.tail,
+        bottom,
+        tailX,
+        bottom + c.tail,
+      ]).fill({
         color: c.frameColor,
         alpha: c.frameAlpha,
       });
@@ -248,15 +280,27 @@ export class BubbleChoicePresenter implements ChoicePresenter {
     }
     this.highlightBar.gfx.draw((g) => {
       g.clear();
-      g.roundRect(row.x0, row.y0, row.x1 - row.x0, row.y1 - row.y0 - 1, 3).fill({
-        color: this.cfg.highlightColor,
-        alpha: 0.3,
-      });
+      g.roundRect(row.x0, row.y0, row.x1 - row.x0, row.y1 - row.y0 - 1, 3).fill(
+        {
+          color: this.cfg.highlightColor,
+          alpha: 0.3,
+        },
+      );
     });
   }
 
-  private textOptions(text: string, color: number, wrapWidth?: number): TextComponentOptions {
-    const opts = makeTextOptions(this.cfg, text, this.cfg.choiceSize, color, this.cfg.layer);
+  private textOptions(
+    text: string,
+    color: number,
+    wrapWidth?: number,
+  ): TextComponentOptions {
+    const opts = makeTextOptions(
+      this.cfg,
+      text,
+      this.cfg.choiceSize,
+      color,
+      this.cfg.layer,
+    );
     if (wrapWidth != null) {
       opts.style.wordWrap = true;
       opts.style.wordWrapWidth = wrapWidth;
