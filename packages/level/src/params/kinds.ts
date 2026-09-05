@@ -7,8 +7,13 @@ import type {
 } from "../document/types.js";
 import {
   createBuiltInParamKind,
+  frozenFields,
   type AssetFrames,
+  type ParamDecodeContext,
+  type ParamError,
+  type ParamFields,
   type ParamKind,
+  type RuntimeValueOf,
 } from "./types.js";
 
 /**
@@ -90,7 +95,7 @@ function assetParam<T>(
     // source and a later mutation of it must not change what the schema says.
     ...(frames === undefined ? {} : { frames: Object.freeze({ ...frames }) }),
     defaultValue: defaultPath,
-    validate: validateAssetPath,
+    validate: (value) => own(validateAssetPath(value)),
     decode: create,
     assets: (value: JsonValue) => [create(value)],
   });
@@ -153,7 +158,7 @@ function entityRefParam<T extends Entity = Entity>(
     // Nothing is chosen until an author chooses it. A required reference left
     // at its default is reported when the level is prepared, not here.
     defaultValue: null,
-    validate: validateEntityRef,
+    validate: (value) => own(validateEntityRef(value)),
     decode: (value, context) =>
       value === null
         ? undefined
@@ -219,6 +224,25 @@ export type SelectParamOptions = OptionalParamOptions;
 /** What a pair-of-numbers parameter accepts. */
 export type Vec2ParamOptions = OptionalParamOptions;
 
+/** What a value-with-members parameter accepts beyond its members. */
+export type ObjectParamOptions = OptionalParamOptions;
+
+/** What a list parameter accepts beyond the kind of its elements. */
+export interface ArrayParamOptions extends OptionalParamOptions {
+  /** The list a new placement starts with. Defaults to an empty one. */
+  readonly default?: readonly JsonValue[];
+  /** Fewest accepted elements. */
+  readonly min?: number;
+  /** Most accepted elements. */
+  readonly max?: number;
+}
+
+/** What an any-JSON parameter accepts. */
+export interface JsonParamOptions extends OptionalParamOptions {
+  /** The value a new placement starts with. Defaults to an empty object. */
+  readonly default?: JsonValue;
+}
+
 /**
  * Which frame a point parameter hands `setup()`.
  *
@@ -283,7 +307,7 @@ function numberParam(
     ...(options.max === undefined ? {} : { max: options.max }),
     ...(options.step === undefined ? {} : { step: options.step }),
     defaultValue,
-    validate: (value) => numberProblems(value, options, false),
+    validate: (value) => own(numberProblems(value, options, false)),
     decode: decodeOptional<number>,
     assets: () => [],
   });
@@ -319,7 +343,7 @@ function integerParam(
     ...(options.min === undefined ? {} : { min: options.min }),
     ...(options.max === undefined ? {} : { max: options.max }),
     defaultValue,
-    validate: (value) => numberProblems(value, options, true),
+    validate: (value) => own(numberProblems(value, options, true)),
     decode: decodeOptional<number>,
     assets: () => [],
   });
@@ -350,7 +374,7 @@ function booleanParam(
     name: "boolean",
     optional: options.optional ?? false,
     defaultValue,
-    validate: (value) => booleanProblems(value, options.optional ?? false),
+    validate: (value) => own(booleanProblems(value, options.optional ?? false)),
     decode: decodeOptional<boolean>,
     assets: () => [],
   });
@@ -389,7 +413,7 @@ function stringParam(
       ? {}
       : { multiline: options.multiline }),
     defaultValue,
-    validate: (value) => stringProblems(value, options.optional ?? false),
+    validate: (value) => own(stringProblems(value, options.optional ?? false)),
     decode: decodeOptional<string>,
     assets: () => [],
   });
@@ -471,7 +495,7 @@ function selectParam(
     options: accepted,
     defaultValue,
     validate: (value) =>
-      selectProblems(value, accepted, options.optional ?? false),
+      own(selectProblems(value, accepted, options.optional ?? false)),
     decode: decodeOptional<string>,
     assets: () => [],
   });
@@ -505,7 +529,7 @@ function vec2Param(
     name: "vec2",
     optional: options.optional ?? false,
     defaultValue: pointValue(defaultValue),
-    validate: (value) => pointProblems(value, options.optional ?? false),
+    validate: (value) => own(pointProblems(value, options.optional ?? false)),
     decode: decodePoint,
     assets: () => [],
   });
@@ -560,7 +584,7 @@ function pointParam(
     optional: options.optional ?? false,
     relative: options.relative ?? false,
     defaultValue: pointValue(defaultValue),
-    validate: (value) => pointProblems(value, options.optional ?? false),
+    validate: (value) => own(pointProblems(value, options.optional ?? false)),
     decode: (value, context) =>
       inSpace(decodePoint(value), stored, wanted, context.worldPose),
     assets: () => [],
@@ -643,6 +667,298 @@ function pointProblems(value: JsonValue, optional: boolean): readonly string[] {
     }
   }
   return problems;
+}
+
+/**
+ * A value with members, each a parameter kind of its own.
+ *
+ * The members are declared the way a schema's fields are, and `setup()`
+ * receives an object of their decoded values:
+ *
+ * ```ts
+ * const ChestParams = defineParams({
+ *   loot: param.object({
+ *     item: param.string("coin"),
+ *     count: param.integer(1, { min: 1 }),
+ *   }),
+ * });
+ *
+ * setup(params: ParamsOf<typeof ChestParams>): void {
+ *   this.add(new Loot(params.loot.item, params.loot.count));
+ * }
+ * ```
+ *
+ * A member is required the way a parameter is: a level that leaves one out is
+ * reported rather than filled in. A new placement starts with the members' own
+ * defaults composed, and every member is validated and decoded by its own
+ * kind, however deep it sits.
+ */
+function objectParam<F extends ParamFields>(
+  fields: F,
+  options?: ObjectParamOptions & { readonly optional?: false },
+): ParamKind<{ [K in keyof F]: RuntimeValueOf<F[K]> }>;
+function objectParam<F extends ParamFields>(
+  fields: F,
+  options: ObjectParamOptions,
+): ParamKind<{ [K in keyof F]: RuntimeValueOf<F[K]> } | undefined>;
+function objectParam<F extends ParamFields>(
+  fields: F,
+  options: ObjectParamOptions = {},
+): ParamKind<Record<string, unknown> | undefined> {
+  const members = frozenFields(fields);
+  const optional = options.optional ?? false;
+  return createBuiltInParamKind({
+    name: "object",
+    optional,
+    fields: members,
+    defaultValue: memberDefaults(members),
+    validate: (value) => objectProblems(value, members, optional),
+    decode: (value, context) => decodeMembers(value, members, context),
+    assets: (value) => memberAssets(value, members),
+  });
+}
+
+/**
+ * A list of values, every element the same kind.
+ *
+ * ```ts
+ * const WaveParams = defineParams({
+ *   spawns: param.array(
+ *     param.object({
+ *       type: param.select("slime", ["slime", "bat"]),
+ *       delay: param.number(1, { min: 0 }),
+ *     }),
+ *     { default: [{ type: "slime", delay: 1 }], min: 1 },
+ *   ),
+ * });
+ *
+ * setup(params: ParamsOf<typeof WaveParams>): void {
+ *   for (const spawn of params.spawns) this.queue(spawn.type, spawn.delay);
+ * }
+ * ```
+ *
+ * `min` and `max` are how many elements the list may hold, checked when the
+ * level is prepared. A new placement starts with an empty list unless the
+ * declaration gives it one, so a `min` above zero needs a `default` — an empty
+ * list is a default this kind rejects, which the catalog reports.
+ */
+function arrayParam<K extends ParamKind<unknown>>(
+  item: K,
+  options?: ArrayParamOptions & { readonly optional?: false },
+): ParamKind<readonly RuntimeValueOf<K>[]>;
+function arrayParam<K extends ParamKind<unknown>>(
+  item: K,
+  options: ArrayParamOptions,
+): ParamKind<readonly RuntimeValueOf<K>[] | undefined>;
+function arrayParam<K extends ParamKind<unknown>>(
+  item: K,
+  options: ArrayParamOptions = {},
+): ParamKind<readonly unknown[] | undefined> {
+  const defaultValue = keptDefault(
+    options.default === undefined ? [] : [...options.default],
+  );
+  return createBuiltInParamKind({
+    name: "array",
+    optional: options.optional ?? false,
+    item,
+    ...(options.min === undefined ? {} : { min: options.min }),
+    ...(options.max === undefined ? {} : { max: options.max }),
+    defaultValue,
+    validate: (value) => arrayProblems(value, item, options),
+    decode: (value, context) =>
+      value === null
+        ? undefined
+        : elementsOf(value).map((element) => item.decode(element, context)),
+    assets: (value) =>
+      value === null
+        ? []
+        : elementsOf(value).flatMap((element) => item.assets(element)),
+  });
+}
+
+/**
+ * Any JSON, authored and decoded as itself: the escape for a value whose shape
+ * the parameter kinds cannot describe.
+ *
+ * Nothing checks what is inside it, so an authoring tool can only offer the
+ * text of it. Use it when the shape is open — a table of numbers a tool
+ * exports, a blob a system of your own parses — and for anything else declare
+ * the shape, which gets you controls and findings.
+ *
+ * ```ts
+ * const TerrainParams = defineParams({
+ *   noise: param.json({ default: { seed: 1, octaves: 3 } }),
+ * });
+ * ```
+ *
+ * `null` means the field holds nothing, as it does for every other kind, so a
+ * required `json` refuses it and an optional one decodes it to `undefined`.
+ */
+function jsonParam(
+  options?: JsonParamOptions & { readonly optional?: false },
+): ParamKind<JsonValue>;
+function jsonParam(options: JsonParamOptions): ParamKind<JsonValue | undefined>;
+function jsonParam(
+  options: JsonParamOptions = {},
+): ParamKind<JsonValue | undefined> {
+  const optional = options.optional ?? false;
+  return createBuiltInParamKind({
+    name: "json",
+    optional,
+    defaultValue: keptDefault<JsonValue>(
+      options.default === undefined ? {} : options.default,
+    ),
+    validate: (value) =>
+      value === null && !optional ? own(["must not be null"]) : [],
+    decode: decodeOptional<JsonValue>,
+    assets: () => [],
+  });
+}
+
+/**
+ * A default a declaration handed over, kept as a value of this kind's own:
+ * cloned all the way down, so a later change to the object the caller still
+ * holds cannot change what a new placement is written with, and frozen at
+ * every level so nothing here changes it either.
+ */
+function keptDefault<T extends JsonValue>(value: T): T {
+  const copy = structuredClone(value);
+  freezeDeep(copy);
+  return copy;
+}
+
+function freezeDeep(value: JsonValue): void {
+  if (typeof value !== "object" || value === null) return;
+  Object.freeze(value);
+  for (const child of Object.values(value)) freezeDeep(child);
+}
+
+/** What a new placement writes for a value with members: each at its default. */
+function memberDefaults(members: ParamFields): JsonObject {
+  const value = Object.create(null) as Record<string, JsonValue>;
+  for (const [name, kind] of Object.entries(members)) {
+    value[name] = kind.defaultValue;
+  }
+  return Object.freeze(value);
+}
+
+/**
+ * Problems with a value with members: what it is, then anything it holds that
+ * was not declared, then each declared member through its own kind. A member's
+ * own problems keep the path they were reported at, under the member's name.
+ */
+function objectProblems(
+  value: JsonValue,
+  members: ParamFields,
+  optional: boolean,
+): readonly ParamError[] {
+  if (value === null) return optional ? [] : own(["must be an object"]);
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return own([optional ? "must be an object or null" : "must be an object"]);
+  }
+  const problems: ParamError[] = [];
+  for (const key of Object.keys(value)) {
+    if (!Object.hasOwn(members, key)) {
+      problems.push({ path: [key], message: "is not a declared member" });
+    }
+  }
+  for (const [name, kind] of Object.entries(members)) {
+    if (!Object.hasOwn(value, name)) {
+      problems.push({ path: [name], message: "is required and is missing" });
+      continue;
+    }
+    for (const problem of kind.validate(
+      Reflect.get(value, name) as JsonValue,
+    )) {
+      problems.push({
+        path: [name, ...problem.path],
+        message: problem.message,
+      });
+    }
+  }
+  return problems;
+}
+
+/** The members as `setup()` receives them, each through its own kind. */
+function decodeMembers(
+  value: JsonValue,
+  members: ParamFields,
+  context: ParamDecodeContext,
+): Record<string, unknown> | undefined {
+  if (value === null) return undefined;
+  const held = value as JsonObject;
+  const decoded = Object.create(null) as Record<string, unknown>;
+  for (const [name, kind] of Object.entries(members)) {
+    decoded[name] = kind.decode(Reflect.get(held, name) as JsonValue, context);
+  }
+  return decoded;
+}
+
+/** Every asset the members name, in declaration order. */
+function memberAssets(
+  value: JsonValue,
+  members: ParamFields,
+): readonly AssetHandle<unknown>[] {
+  if (value === null) return [];
+  const held = value as JsonObject;
+  const handles: AssetHandle<unknown>[] = [];
+  for (const [name, kind] of Object.entries(members)) {
+    handles.push(...kind.assets(Reflect.get(held, name) as JsonValue));
+  }
+  return handles;
+}
+
+/**
+ * Problems with a list: what it is, then its length, then each element through
+ * the item kind. An element's problems are reported under its position, so a
+ * finding names the row it is about.
+ */
+function arrayProblems(
+  value: JsonValue,
+  item: ParamKind<unknown>,
+  options: ArrayParamOptions,
+): readonly ParamError[] {
+  const optional = options.optional ?? false;
+  if (value === null) return optional ? [] : own(["must be a list"]);
+  if (!Array.isArray(value)) {
+    return own([optional ? "must be a list or null" : "must be a list"]);
+  }
+  const problems: ParamError[] = [];
+  if (options.min !== undefined && value.length < options.min) {
+    problems.push({
+      path: [],
+      message: `must hold at least ${itemCount(options.min)}`,
+    });
+  }
+  if (options.max !== undefined && value.length > options.max) {
+    problems.push({
+      path: [],
+      message: `must hold at most ${itemCount(options.max)}`,
+    });
+  }
+  value.forEach((element, index) => {
+    for (const problem of item.validate(element)) {
+      problems.push({
+        path: [String(index), ...problem.path],
+        message: problem.message,
+      });
+    }
+  });
+  return problems;
+}
+
+/** A validated list's elements. */
+function elementsOf(value: JsonValue): readonly JsonValue[] {
+  return value as readonly JsonValue[];
+}
+
+function itemCount(count: number): string {
+  return `${String(count)} item${count === 1 ? "" : "s"}`;
+}
+
+/** Problems with the value itself rather than with something inside it. */
+function own(messages: readonly string[]): readonly ParamError[] {
+  return messages.map((message) => ({ path: [], message }));
 }
 
 /**
@@ -731,6 +1047,9 @@ export const param = Object.freeze({
   select: selectParam,
   vec2: vec2Param,
   point: pointParam,
+  object: objectParam,
+  array: arrayParam,
+  json: jsonParam,
 });
 
 /**

@@ -7,11 +7,14 @@ export {
 } from "./params/schema.js";
 export { defineLevelAsset, param } from "./params/kinds.js";
 export type {
+  ArrayParamOptions,
   BooleanParamOptions,
   EntityRefOptions,
   IntegerParamOptions,
+  JsonParamOptions,
   LevelAssetDescriptor,
   NumberParamOptions,
+  ObjectParamOptions,
   PointParamOptions,
   PointSpace,
   SelectParamOptions,
@@ -21,8 +24,12 @@ export type {
 export type {
   AssetFrames,
   ParamFieldDescription,
+  ParamKind,
+  ParamKindName,
   ParamsOf,
   ParamsSchema,
+  ParamValueDescription,
+  RuntimeValueOf,
 } from "./params/types.js";
 
 export { defineLevelEntity, defineLevelProject } from "./catalog/declare.js";

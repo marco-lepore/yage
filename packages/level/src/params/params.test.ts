@@ -1,7 +1,11 @@
 import { AssetHandle, Entity, Vec2 } from "@yagejs/core";
 import type { EntityHandle } from "@yagejs/core";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import type { JsonObject, LevelTransform } from "../document/types.js";
+import type {
+  JsonObject,
+  JsonValue,
+  LevelTransform,
+} from "../document/types.js";
 import { defineLevelAsset, param } from "./kinds.js";
 import type { NumberParamOptions } from "./kinds.js";
 import {
@@ -18,6 +22,7 @@ import { defineLevelEntity, defineLevelProject } from "../catalog/declare.js";
 import type {
   ParamDecodeContext,
   ParamFieldDescription,
+  ParamKind,
   ParamsOf,
 } from "./types.js";
 
@@ -999,5 +1004,351 @@ describe("pair and place parameters", () => {
           .home,
       ).toBeUndefined();
     });
+  });
+});
+
+describe("values with a shape", () => {
+  const SpawnParams = defineParams({
+    spawns: param.array(
+      param.object({
+        type: param.select("slime", ["slime", "bat"]),
+        count: param.integer(1, { min: 1 }),
+      }),
+      { min: 1, max: 3 },
+    ),
+  });
+
+  function wave(spawns: JsonObject[]): JsonObject {
+    return { spawns };
+  }
+
+  it("hands setup() the members and the elements it declared", () => {
+    expectTypeOf<ParamsOf<typeof SpawnParams>>().toEqualTypeOf<{
+      spawns: readonly { type: "slime" | "bat"; count: number }[];
+    }>();
+
+    const params = decodeParams(
+      SpawnParams,
+      wave([
+        { type: "bat", count: 3 },
+        { type: "slime", count: 1 },
+      ]),
+      NO_REFS,
+    );
+
+    expect(params.spawns.map((spawn) => spawn.type)).toEqual(["bat", "slime"]);
+    expect(params.spawns[0]?.count).toBe(3);
+  });
+
+  it("validates each member by its own kind and names it", () => {
+    const problems = validateParams(
+      SpawnParams,
+      wave([{ type: "ghost", count: 2.5 }]),
+    );
+
+    expect(problems).toEqual([
+      {
+        path: ["spawns", "0", "type"],
+        message: 'must be one of "slime", "bat"',
+      },
+      { path: ["spawns", "0", "count"], message: "must be a whole number" },
+    ]);
+  });
+
+  it("names an element by its position as a decimal string", () => {
+    const problems = validateParams(
+      SpawnParams,
+      wave([
+        { type: "bat", count: 1 },
+        { type: "bat", count: 0 },
+      ]),
+    );
+
+    expect(problems.map((one) => one.path)).toEqual([["spawns", "1", "count"]]);
+  });
+
+  it("reports a missing member and one that was not declared", () => {
+    expect(validateParams(SpawnParams, wave([{ kind: "bat" }]))).toEqual([
+      { path: ["spawns", "0", "kind"], message: "is not a declared member" },
+      {
+        path: ["spawns", "0", "type"],
+        message: "is required and is missing",
+      },
+      {
+        path: ["spawns", "0", "count"],
+        message: "is required and is missing",
+      },
+    ]);
+  });
+
+  it("checks how many elements the list holds", () => {
+    const short = validateParams(SpawnParams, { spawns: [] });
+    const long = validateParams(
+      SpawnParams,
+      wave([
+        { type: "bat", count: 1 },
+        { type: "bat", count: 1 },
+        { type: "bat", count: 1 },
+        { type: "bat", count: 1 },
+      ]),
+    );
+
+    expect(short).toEqual([
+      { path: ["spawns"], message: "must hold at least 1 item" },
+    ]);
+    expect(long).toEqual([
+      { path: ["spawns"], message: "must hold at most 3 items" },
+    ]);
+  });
+
+  it("refuses a value that is not the shape the declaration names", () => {
+    expect(
+      validateParams(SpawnParams, { spawns: "slime" }).map(
+        (one) => one.message,
+      ),
+    ).toEqual(["must be a list"]);
+    expect(
+      validateParams(SpawnParams, { spawns: [7] }).map((one) => one.message),
+    ).toEqual(["must be an object"]);
+  });
+
+  it("starts a new placement with the members' own defaults, cloned", () => {
+    const schema = defineParams({
+      loot: param.object({
+        item: param.string("coin"),
+        count: param.integer(1),
+      }),
+      spawns: param.array(param.integer(0), { default: [1, 2] }),
+    });
+
+    const first = defaultParams(schema);
+    const second = defaultParams(schema);
+
+    expect({ ...first }).toEqual({
+      loot: { item: "coin", count: 1 },
+      spawns: [1, 2],
+    });
+    expect(first["loot"]).not.toBe(second["loot"]);
+    expect(first["spawns"]).not.toBe(second["spawns"]);
+    expect(validateParams(schema, first)).toEqual([]);
+  });
+
+  it("describes the tree, with the kind flat at every node", () => {
+    expect(describeParams(SpawnParams)).toEqual([
+      {
+        name: "spawns",
+        kind: "array",
+        optional: false,
+        min: 1,
+        max: 3,
+        item: {
+          kind: "object",
+          optional: false,
+          fields: [
+            {
+              name: "type",
+              kind: "select",
+              optional: false,
+              options: ["slime", "bat"],
+              defaultValue: "slime",
+            },
+            {
+              name: "count",
+              kind: "integer",
+              optional: false,
+              min: 1,
+              defaultValue: 1,
+            },
+          ],
+          defaultValue: { type: "slime", count: 1 },
+        },
+        defaultValue: [],
+      },
+    ] satisfies readonly ParamFieldDescription[]);
+  });
+
+  it("loads the assets its members and elements name", () => {
+    const schema = defineParams({
+      sprites: param.array(
+        param.object({
+          idle: param.asset(textureAsset, "sprites/idle.png"),
+        }),
+      ),
+    });
+    const authoredValue = {
+      sprites: [{ idle: "sprites/walk.png" }, { idle: "sprites/jump.png" }],
+    };
+
+    expect(paramAssets(schema, authoredValue).map((one) => one.path)).toEqual([
+      "sprites/walk.png",
+      "sprites/jump.png",
+    ]);
+  });
+
+  it("decodes a member with the context the placement was given", () => {
+    const schema = defineParams({
+      route: param.object({
+        end: param.point({ x: 10, y: 0 }, { relative: true }),
+      }),
+    });
+
+    const params = decodeParams(
+      schema,
+      { route: { end: { x: 10, y: 0 } } },
+      {
+        ...NO_REFS,
+        worldPose: {
+          position: { x: 100, y: 50 },
+          rotation: 0,
+          scale: { x: 2, y: 2 },
+        },
+      },
+    );
+
+    expect(params.route.end.equals({ x: 120, y: 50 })).toBe(true);
+  });
+
+  it("takes null only where the declaration said it may", () => {
+    const schema = defineParams({
+      loot: param.object({ item: param.string("coin") }, { optional: true }),
+      spawns: param.array(param.integer(0), { optional: true }),
+    });
+
+    expectTypeOf<ParamsOf<typeof schema>>().toEqualTypeOf<{
+      loot: { item: string } | undefined;
+      spawns: readonly number[] | undefined;
+    }>();
+    expect(validateParams(schema, { loot: null, spawns: null })).toEqual([]);
+
+    const params = decodeParams(schema, { loot: null, spawns: null }, NO_REFS);
+    expect(params.loot).toBeUndefined();
+    expect(params.spawns).toBeUndefined();
+
+    expect(
+      validateParams(defineParams({ loot: param.object({}) }), {
+        loot: null,
+      }).map((one) => one.message),
+    ).toEqual(["must be an object"]);
+  });
+
+  it("accepts any JSON value in a json parameter", () => {
+    const schema = defineParams({
+      noise: param.json({ default: { seed: 1 } }),
+    });
+
+    for (const value of [
+      7,
+      "text",
+      true,
+      [1, [2, { deep: null }]],
+      { seed: 2, octaves: [1, 2] },
+    ]) {
+      expect(validateParams(schema, { noise: value })).toEqual([]);
+    }
+    expect(decodeParams(schema, { noise: { seed: 4 } }, NO_REFS).noise).toEqual(
+      { seed: 4 },
+    );
+    expect({ ...defaultParams(schema) }).toEqual({ noise: { seed: 1 } });
+  });
+
+  it("treats null in a json parameter as nothing at all", () => {
+    const required = defineParams({ noise: param.json() });
+    const optional = defineParams({ noise: param.json({ optional: true }) });
+
+    expect(
+      validateParams(required, { noise: null }).map((one) => one.message),
+    ).toEqual(["must not be null"]);
+    expect(validateParams(optional, { noise: null })).toEqual([]);
+    expect(
+      decodeParams(optional, { noise: null }, NO_REFS).noise,
+    ).toBeUndefined();
+  });
+
+  it("reports a bad default inside a value with members", () => {
+    const schema = defineParams({
+      loot: param.object({ count: param.integer(0, { min: 1 }) }),
+    });
+
+    expect(schemaDefaultProblems(schema)).toEqual([
+      { path: ["loot", "count"], message: "default must be at least 1" },
+    ]);
+  });
+
+  it("makes a declaration nested deeper than four levels a catalog error", () => {
+    const four = param.object({
+      a: param.array(param.object({ b: param.array(param.integer(0)) })),
+    });
+    const five = param.object({ deep: four });
+
+    expect(schemaDefaultProblems(defineParams({ wave: four }))).toEqual([]);
+    expect(schemaDefaultProblems(defineParams({ wave: five }))).toEqual([
+      {
+        path: ["wave"],
+        message:
+          "nests values 5 levels deep, and the most a level can author is 4",
+      },
+    ]);
+  });
+
+  it("reports a list default the declared minimum rejects", () => {
+    const spawn = param.object({
+      type: param.select("slime", ["slime", "bat"]),
+      delay: param.number(1, { min: 0 }),
+    });
+
+    expect(
+      schemaDefaultProblems(
+        defineParams({ spawns: param.array(spawn, { min: 1 }) }),
+      ),
+    ).toEqual([
+      { path: ["spawns"], message: "default must hold at least 1 item" },
+    ]);
+    expect(
+      schemaDefaultProblems(
+        defineParams({
+          spawns: param.array(spawn, {
+            default: [{ type: "slime", delay: 1 }],
+            min: 1,
+          }),
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("rejects a hand-built member kind without calling it", () => {
+    const calls: JsonValue[] = [];
+    const lookalike: ParamKind<number> = {
+      name: "integer",
+      defaultValue: 0,
+      validate: (value) => {
+        calls.push(value);
+        return [];
+      },
+      decode: () => 0,
+      assets: () => [],
+    };
+    const schema = defineParams({ loot: param.object({ count: lookalike }) });
+
+    expect(schemaDefaultProblems(schema)).toEqual([
+      { path: ["loot", "count"], message: "kind did not come from param.*" },
+    ]);
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses a reference nested inside another value", () => {
+    const schema = defineParams({
+      guards: param.array(
+        param.object({ door: param.entityRef({ types: ["game.door"] }) }),
+      ),
+    });
+
+    expect(schemaDefaultProblems(schema)).toEqual([
+      {
+        path: ["guards", "0", "door"],
+        message:
+          "is a reference inside another value; a reference must be a " +
+          "parameter of its own",
+      },
+    ]);
   });
 });

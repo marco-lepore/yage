@@ -16,7 +16,12 @@ import type {
   ValueEdit,
 } from "./types.js";
 import { derivedSceneKey } from "./sceneKey.js";
-import { isOptionalFieldPath, isValueEditPath } from "./valuePath.js";
+import {
+  MISSING_VALUE,
+  isOptionalFieldPath,
+  isValueEditPath,
+  valueAtPath,
+} from "./valuePath.js";
 
 /**
  * Apply one command to a level document.
@@ -218,8 +223,8 @@ function setValues(
       );
     }
 
-    const own = readOwnPath(placement, edit.path);
-    if (own === missingPath && !isOptionalFieldPath(edit.path)) {
+    const own = valueAtPath(placement, edit.path);
+    if (own === MISSING_VALUE && !isOptionalFieldPath(edit.path)) {
       reject(
         command,
         `Placement "${edit.placementId}" has a missing path ${formatPath(edit.path)}.`,
@@ -228,7 +233,7 @@ function setValues(
     // A field the format lets a document leave out reads as `null` when it is
     // not there, so the precondition and the inverse below both work over one
     // value whether the placement carries the field or not.
-    const prior: JsonValue = own === missingPath ? null : own;
+    const prior: JsonValue = own === MISSING_VALUE ? null : own;
     if (!equalJson(prior, edit.expected)) {
       reject(
         command,
@@ -497,22 +502,6 @@ function pathsOverlap(
     if (left[index] !== right[index]) return false;
   }
   return true;
-}
-
-const missingPath = Symbol("missing path");
-
-function readOwnPath(
-  placement: LevelPlacement,
-  path: readonly string[],
-): JsonValue | typeof missingPath {
-  let current: unknown = placement;
-  for (const segment of path) {
-    if (!isContainer(current) || !Object.hasOwn(current, segment)) {
-      return missingPath;
-    }
-    current = current[segment];
-  }
-  return current as JsonValue;
 }
 
 function writeOwnPath(

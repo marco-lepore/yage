@@ -117,6 +117,23 @@ function catalog(): LevelCatalog {
       source: "project",
     },
     {
+      id: "game.wave",
+      declaration: {
+        id: "game.wave",
+        version: 1,
+        params: defineParams({
+          spawns: param.array(
+            param.object({
+              type: param.select("slime", ["slime", "bat"]),
+              delay: param.number(1),
+            }),
+          ),
+        }),
+      },
+      EntityClass: {} as LevelCatalogEntry["EntityClass"],
+      source: "project",
+    },
+    {
       id: "renderer.sprite",
       declaration: { id: "renderer.sprite", version: 1 },
       EntityClass: {} as LevelCatalogEntry["EntityClass"],
@@ -1256,7 +1273,7 @@ describe("CommandController", () => {
     });
 
     it("writes one field with the document's value as its precondition", () => {
-      harness.commands.setParam("crate", "texture", "sprites/new.png");
+      harness.commands.setParam("crate", ["texture"], "sprites/new.png");
 
       expect(harness.sent).toEqual([
         {
@@ -1275,7 +1292,7 @@ describe("CommandController", () => {
     });
 
     it("adds a field the placement lacks by replacing the parameter object", () => {
-      harness.commands.setParam("bare", "texture", "sprites/new.png");
+      harness.commands.setParam("bare", ["texture"], "sprites/new.png");
 
       // The reducer will not write through a path into a missing property, so
       // the same field-level change goes through the object it belongs to.
@@ -1293,7 +1310,7 @@ describe("CommandController", () => {
     });
 
     it("resets a field to the default its declaration gives it", () => {
-      harness.commands.resetParam("crate", "texture");
+      harness.commands.resetParam("crate", ["texture"]);
 
       expect(harness.sent[0]).toMatchObject({
         kind: "set-values",
@@ -1309,24 +1326,99 @@ describe("CommandController", () => {
     });
 
     it("resets nothing for a field the declaration does not have", () => {
-      harness.commands.resetParam("crate", "tint");
+      harness.commands.resetParam("crate", ["tint"]);
 
       expect(harness.sent).toEqual([]);
     });
 
     it("writes nothing for a placement the document does not have", () => {
-      harness.commands.setParam("ghost", "texture", "x.png");
-      harness.commands.resetParam("ghost", "texture");
+      harness.commands.setParam("ghost", ["texture"], "x.png");
+      harness.commands.resetParam("ghost", ["texture"]);
 
       expect(harness.sent).toEqual([]);
     });
 
     it("writes nothing while writes are locked", () => {
       harness.store.lockWrites("stale-project");
-      harness.commands.setParam("crate", "texture", "x.png");
-      harness.commands.resetParam("crate", "texture");
+      harness.commands.setParam("crate", ["texture"], "x.png");
+      harness.commands.resetParam("crate", ["texture"]);
 
       expect(harness.sent).toEqual([]);
+    });
+
+    describe("a value inside a parameter", () => {
+      beforeEach(() => {
+        harness = createHarness(
+          document(
+            placement("wave", 0, undefined, {
+              type: "game.wave",
+              params: {
+                spawns: [
+                  { type: "bat", delay: 2 },
+                  { type: "slime", delay: 5 },
+                ],
+              },
+            }),
+          ),
+        );
+      });
+
+      it("writes one member of one element at its own path", () => {
+        harness.commands.setParam("wave", ["spawns", "1", "delay"], 9);
+
+        expect(harness.sent[0]).toMatchObject({
+          kind: "set-values",
+          edits: [
+            {
+              placementId: "wave",
+              path: ["params", "spawns", "1", "delay"],
+              expected: 5,
+              value: 9,
+            },
+          ],
+        });
+      });
+
+      it("resets an element to the value the declaration gives one", () => {
+        // The list's own default is empty, so the value a row goes back to is
+        // the element kind's, read off the description tree.
+        harness.commands.resetParam("wave", ["spawns", "1"]);
+
+        expect(harness.sent[0]).toMatchObject({
+          kind: "set-values",
+          edits: [
+            {
+              placementId: "wave",
+              path: ["params", "spawns", "1"],
+              expected: { type: "slime", delay: 5 },
+              value: { type: "slime", delay: 1 },
+            },
+          ],
+        });
+      });
+
+      it("resets one member of one element", () => {
+        harness.commands.resetParam("wave", ["spawns", "0", "delay"]);
+
+        expect(harness.sent[0]).toMatchObject({
+          kind: "set-values",
+          edits: [
+            {
+              placementId: "wave",
+              path: ["params", "spawns", "0", "delay"],
+              expected: 2,
+              value: 1,
+            },
+          ],
+        });
+      });
+
+      it("writes nothing for a value the placement does not hold", () => {
+        harness.commands.setParam("wave", ["spawns", "5", "delay"], 1);
+        harness.commands.resetParam("wave", ["spawns", "0", "weight"]);
+
+        expect(harness.sent).toEqual([]);
+      });
     });
   });
 

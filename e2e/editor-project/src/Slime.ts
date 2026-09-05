@@ -17,6 +17,17 @@ const SlimeParams = defineParams({
   drift: param.vec2({ x: 0, y: -12 }),
   patrolEnd: param.point({ x: 120, y: 0 }, { relative: true }),
   home: param.point({ x: 0, y: 0 }, { optional: true }),
+  loot: param.object({
+    item: param.string("coin"),
+    count: param.integer(1, { min: 1 }),
+  }),
+  spawns: param.array(
+    param.object({
+      type: param.select("slime", ["slime", "bat"]),
+      delay: param.number(1, { min: 0 }),
+    }),
+  ),
+  noise: param.json({ default: { seed: 1 } }),
 });
 
 /** The one component a slime has, so a press in the viewport finds it. */

@@ -748,9 +748,28 @@ What a field looks like follows the kind its declaration gave it.
 | `param.point(…)` | The same two boxes, and a ring in the level you can drag. |
 | `param.asset(…)` | A path, with your project's files behind **▾**. |
 | `param.entityRef(…)` | Another placement, from a dropdown or by **Pick** and a click in the level. |
+| `param.object(…)` | Its members, indented under the field, each the control its own kind asks for. |
+| `param.array(…)` | A row per element, with **▲ ▼** to reorder, **✕** to remove, and **Add** at the foot. |
+| `param.json(…)` | A text area holding the JSON. Text that will not parse stays in the box with the reason beside it. |
 
 A field the declaration marked `optional` may hold nothing: **Clear** beside it
 empties it, and your `setup()` receives `undefined` instead of a value.
+
+#### Values with members
+
+An object draws its members as an indented group, and a list draws a row per
+element. A member is the control its own kind asks for, whichever kind that is,
+so an object of numbers is boxes and a list of objects is a group per row.
+
+Each of them is its own edit. Typing into one member changes that member, and
+one undo takes back that one change. **Add**, **✕** and the arrows change the
+list itself: they move every later element to a new position, so they are one
+edit on the whole list. **Add** appends the value the declaration gives an
+element, the same way a new placement starts at its parameters' defaults.
+
+A `param.point` declared inside an object or a list gets its two boxes and no
+ring in the viewport: the ring is drawn for a parameter of the placement's own,
+and a point one value down is edited by typing.
 
 An asset parameter — `param.asset()` — is a text field holding the
 project-relative path. **Reset** next to a field writes the default you gave

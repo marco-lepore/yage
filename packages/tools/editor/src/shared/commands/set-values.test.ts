@@ -296,7 +296,6 @@ describe("reduceCommand — set-values", () => {
   it.each([
     ["placement identity", ["id"]],
     ["a normalized transform", ["transform"]],
-    ["a nested parameter member", ["params", "items", "length"]],
     ["a nested type version member", ["typeVersion", "value"]],
   ])("rejects an unsupported path to %s", (_name, path) => {
     const before = levelOf(placement("a", { items: ["first", "second"] }));
@@ -425,6 +424,12 @@ describe("isDocumentCommand — set-values", () => {
             expected: "door",
             value: null,
           },
+          {
+            placementId: "d",
+            path: ["params", "spawns", "0", "count"],
+            expected: 1,
+            value: 2,
+          },
         ],
       }),
     ).toBe(true);
@@ -449,10 +454,10 @@ describe("isDocumentCommand — set-values", () => {
       { ...valid, edits: [{ ...valid.edits[0], path: ["parent"] }] },
     ],
     [
-      "a nested parameter path",
+      "a path into a placement field that is not params",
       {
         ...valid,
-        edits: [{ ...valid.edits[0], path: ["params", "items", "length"] }],
+        edits: [{ ...valid.edits[0], path: ["extensions", "editor"] }],
       },
     ],
     [
@@ -480,6 +485,173 @@ describe("isDocumentCommand — set-values", () => {
     ["an extra command field", { ...valid, reason: "inspector" }],
   ])("rejects %s", (_name, value) => {
     expect(isDocumentCommand(value)).toBe(false);
+  });
+});
+
+describe("reduceCommand — a value with a shape", () => {
+  /** Two spawns, the shape a wave parameter holds. */
+  function wave(): LevelPlacement {
+    return placement("a", {
+      spawns: [
+        { type: "slime", count: 1 },
+        { type: "bat", count: 3 },
+      ],
+    });
+  }
+
+  it("writes one member of one element and leaves the rest alone", () => {
+    const result = reduceCommand(
+      levelOf(wave()),
+      setValues([
+        {
+          placementId: "a",
+          path: ["params", "spawns", "1", "count"],
+          expected: 3,
+          value: 5,
+        },
+      ]),
+    );
+
+    expect(result.document.entities[0]?.params).toEqual({
+      spawns: [
+        { type: "slime", count: 1 },
+        { type: "bat", count: 5 },
+      ],
+    });
+    expect(result.impact).toBe("rebuild");
+    expect(result.inverse).toEqual({
+      kind: "set-values",
+      commandId: "c1",
+      edits: [
+        {
+          placementId: "a",
+          path: ["params", "spawns", "1", "count"],
+          expected: 5,
+          value: 3,
+        },
+      ],
+    });
+  });
+
+  it("refuses an element member whose expected value has moved on", () => {
+    const before = levelOf(wave());
+    const snapshot = structuredClone(before);
+
+    expect(() =>
+      reduceCommand(
+        before,
+        setValues([
+          {
+            placementId: "a",
+            path: ["params", "spawns", "1", "count"],
+            expected: 1,
+            value: 5,
+          },
+        ]),
+      ),
+    ).toThrow(/expected value/i);
+    expect(before).toEqual(snapshot);
+  });
+
+  it("refuses a position the list does not have", () => {
+    expect(() =>
+      reduceCommand(
+        levelOf(wave()),
+        setValues([
+          {
+            placementId: "a",
+            path: ["params", "spawns", "2"],
+            expected: null,
+            value: { type: "bat", count: 1 },
+          },
+        ]),
+      ),
+    ).toThrow(/missing path/i);
+  });
+
+  it("reorders as one edit on the list, and inverts by the same shape", () => {
+    const before = levelOf(wave());
+    const reordered = [
+      { type: "bat", count: 3 },
+      { type: "slime", count: 1 },
+    ];
+
+    const result = reduceCommand(
+      before,
+      setValues([
+        {
+          placementId: "a",
+          path: ["params", "spawns"],
+          expected: before.entities[0]?.params["spawns"] as JsonValue,
+          value: reordered,
+        },
+      ]),
+    );
+
+    expect(result.document.entities[0]?.params["spawns"]).toEqual(reordered);
+    const inverse = result.inverse as Extract<
+      DocumentCommand,
+      { kind: "set-values" }
+    >;
+    expect(inverse.edits).toHaveLength(1);
+    expect(inverse.edits[0]?.value).toEqual([
+      { type: "slime", count: 1 },
+      { type: "bat", count: 3 },
+    ]);
+  });
+
+  it("shifts later positions when an element is removed", () => {
+    const before = levelOf(wave());
+
+    const result = reduceCommand(
+      before,
+      setValues([
+        {
+          placementId: "a",
+          path: ["params", "spawns"],
+          expected: before.entities[0]?.params["spawns"] as JsonValue,
+          value: [{ type: "bat", count: 3 }],
+        },
+      ]),
+    );
+
+    // What was at position 1 is now at position 0, so an edit at the old
+    // position is an edit to a different spawn.
+    expect(result.document.entities[0]?.params["spawns"]).toEqual([
+      { type: "bat", count: 3 },
+    ]);
+    expect(() =>
+      reduceCommand(
+        result.document,
+        setValues([
+          {
+            placementId: "a",
+            path: ["params", "spawns", "1"],
+            expected: { type: "bat", count: 3 },
+            value: { type: "bat", count: 4 },
+          },
+        ]),
+      ),
+    ).toThrow(/missing path/i);
+  });
+
+  it("refuses a segment the document does not hold as a value", () => {
+    const before = levelOf(placement("a", { spawns: ["slime"] }));
+
+    expect(() =>
+      reduceCommand(
+        before,
+        setValues([
+          {
+            placementId: "a",
+            path: ["params", "spawns", "length"],
+            expected: 1,
+            value: 0,
+          },
+        ]),
+      ),
+    ).toThrow(/missing path/i);
+    expect(before.entities[0]?.params["spawns"]).toEqual(["slime"]);
   });
 });
 

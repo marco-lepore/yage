@@ -22,7 +22,7 @@ export {
   worldDeltaToLocal,
 } from "./pose.js";
 export type { BoxGrip, ParentFrame } from "./pose.js";
-export { pointFields, pointHandles } from "./params.js";
+export { defaultAt, pointFields, pointHandles, valueAt } from "./params.js";
 export type { PointField } from "./params.js";
 export {
   hiddenClosure,

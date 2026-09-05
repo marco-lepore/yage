@@ -72,6 +72,17 @@ const DOCUMENT: LevelDocument = {
     // "nick"'s key and "named"'s own key, and those differ.
     placement("nick", { key: "named" }),
     placement("layered", { layer: "canopy" }),
+    placement("wave", {
+      type: "game.wave",
+      params: {
+        loot: { item: "gem", count: 2 },
+        spawns: [
+          { type: "bat", delay: 2 },
+          { type: "slime", delay: 5 },
+        ],
+        noise: { seed: 7 },
+      },
+    }),
   ],
   extensions: {},
 };
@@ -94,6 +105,41 @@ const CRATE: InspectableType = {
   typeId: "game.crate",
   fields: [
     { name: "texture", kind: "asset", defaultValue: "sprites/crate.png" },
+  ],
+};
+
+/** A type whose parameters have members, elements and no shape at all. */
+const WAVE: InspectableType = {
+  typeId: "game.wave",
+  fields: [
+    {
+      name: "loot",
+      kind: "object",
+      fields: [
+        { name: "item", kind: "string", defaultValue: "coin" },
+        { name: "count", kind: "integer", min: 1, defaultValue: 1 },
+      ],
+      defaultValue: { item: "coin", count: 1 },
+    },
+    {
+      name: "spawns",
+      kind: "array",
+      item: {
+        kind: "object",
+        fields: [
+          {
+            name: "type",
+            kind: "select",
+            options: ["slime", "bat"],
+            defaultValue: "slime",
+          },
+          { name: "delay", kind: "number", defaultValue: 1 },
+        ],
+        defaultValue: { type: "slime", delay: 1 },
+      },
+      defaultValue: [],
+    },
+    { name: "noise", kind: "json", defaultValue: { seed: 1 } },
   ],
 };
 
@@ -135,6 +181,8 @@ function createHarness(editable = true, options: HarnessOptions = {}) {
   });
   store.dispatch({ type: "level-opened", snapshot: snapshot() });
   const intents: string[] = [];
+  /** Every parameter edit as it was asked for, where the value has a shape. */
+  const sets: { path: string; value: unknown }[] = [];
   let reads = 0;
   const listAssets = (): Promise<AssetListing> => {
     const answer = options.answers?.[reads];
@@ -151,14 +199,19 @@ function createHarness(editable = true, options: HarnessOptions = {}) {
           store={store}
           editable={editable}
           inspectable={(typeId) =>
-            typeId === "game.crate" ? CRATE : undefined
+            typeId === "game.crate"
+              ? CRATE
+              : typeId === "game.wave"
+                ? WAVE
+                : undefined
           }
           listAssets={listAssets}
-          onSetParam={(id, field, value) => {
-            intents.push(`set ${id}.${field}=${value}`);
+          onSetParam={(id, path, value) => {
+            intents.push(`set ${id}.${path.join(".")}=${String(value)}`);
+            sets.push({ path: path.join("."), value });
           }}
-          onResetParam={(id, field) => {
-            intents.push(`reset ${id}.${field}`);
+          onResetParam={(id, path) => {
+            intents.push(`reset ${id}.${path.join(".")}`);
           }}
           onResetPlacement={(id) => {
             intents.push(`reset-placement ${id}`);
@@ -208,6 +261,7 @@ function createHarness(editable = true, options: HarnessOptions = {}) {
     root,
     store,
     intents,
+    sets,
     select,
     report,
     reads: () => reads,
@@ -224,6 +278,12 @@ function field(host: HTMLElement): HTMLInputElement {
 
 function input(host: HTMLElement, testId: string): HTMLInputElement {
   const found = query<HTMLInputElement>(host, testId);
+  if (!found) throw new Error(`No ${testId} control rendered.`);
+  return found;
+}
+
+function area(host: HTMLElement, testId: string): HTMLTextAreaElement {
+  const found = query<HTMLTextAreaElement>(host, testId);
   if (!found) throw new Error(`No ${testId} control rendered.`);
   return found;
 }
@@ -248,6 +308,18 @@ function type(input: HTMLInputElement, value: string): void {
   });
 }
 
+/** Type into a React-controlled text area, which has a setter of its own. */
+function typeLines(area: HTMLTextAreaElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLTextAreaElement.prototype,
+    "value",
+  )?.set;
+  act(() => {
+    setter?.call(area, value);
+    area.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
 /** Press a key, answering whether the field took it over from the browser. */
 function key(input: HTMLInputElement, name: string): boolean {
   const event = new KeyboardEvent("keydown", {
@@ -261,9 +333,9 @@ function key(input: HTMLInputElement, name: string): boolean {
   return event.defaultPrevented;
 }
 
-function blur(input: HTMLInputElement): void {
+function blur(entry: HTMLInputElement | HTMLTextAreaElement): void {
   act(() => {
-    input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    entry.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
   });
 }
 
@@ -1907,5 +1979,207 @@ describe("a parameter holding a pair of numbers", () => {
     expect(box("field-patrolEnd-y").value).toBe("20");
     // Nothing is written until the release settles it.
     expect(harness.intents).toEqual([]);
+  });
+});
+
+describe("Inspector — values with a shape", () => {
+  let harness: ReturnType<typeof createHarness>;
+
+  beforeEach(() => {
+    harness = createHarness();
+    harness.select("wave");
+  });
+
+  afterEach(() => {
+    act(() => {
+      harness.root.unmount();
+    });
+    harness.host.remove();
+  });
+
+  it("draws an object's members as a group of their own controls", () => {
+    const group = query<HTMLElement>(harness.host, "field-loot");
+    expect(group).not.toBeNull();
+    expect(input(harness.host, "field-loot.item").value).toBe("gem");
+    expect(input(harness.host, "field-loot.count").value).toBe("2");
+  });
+
+  it("commits a member at its own path", () => {
+    const box = input(harness.host, "field-loot.item");
+    type(box, "ruby");
+    blur(box);
+
+    expect(harness.sets).toEqual([{ path: "loot.item", value: "ruby" }]);
+  });
+
+  it("commits the whole object for a member the value does not hold", () => {
+    act(() => {
+      harness.store.dispatch({
+        type: "history-stepped",
+        snapshot: {
+          ...snapshot(),
+          draftRevision: 1,
+          document: {
+            ...DOCUMENT,
+            entities: DOCUMENT.entities.map((one) =>
+              one.id === "wave"
+                ? { ...one, params: { ...one.params, loot: { item: "gem" } } }
+                : one,
+            ),
+          },
+        },
+      });
+    });
+
+    const box = input(harness.host, "field-loot.count");
+    type(box, "4");
+    blur(box);
+
+    // A path into a member that is not there is not one the reducer writes, so
+    // the edit is the whole object with the missing member at its default.
+    expect(harness.sets).toEqual([
+      { path: "loot", value: { item: "gem", count: 4 } },
+    ]);
+  });
+
+  it("draws one row per element, each holding the element's controls", () => {
+    expect(query(harness.host, "field-spawns-row-0")).not.toBeNull();
+    expect(query(harness.host, "field-spawns-row-1")).not.toBeNull();
+    expect(query(harness.host, "field-spawns-row-2")).toBeNull();
+    expect(input(harness.host, "field-spawns.0.delay").value).toBe("2");
+    expect(
+      query<HTMLSelectElement>(harness.host, "field-spawns.1.type")?.value,
+    ).toBe("slime");
+  });
+
+  it("commits an element's member at its position", () => {
+    const box = input(harness.host, "field-spawns.1.delay");
+    type(box, "9");
+    blur(box);
+
+    expect(harness.sets).toEqual([{ path: "spawns.1.delay", value: 9 }]);
+  });
+
+  it("adds a row holding the value the declaration gives an element", () => {
+    click(harness.host, "field-spawns-add");
+
+    expect(harness.sets).toEqual([
+      {
+        path: "spawns",
+        value: [
+          { type: "bat", delay: 2 },
+          { type: "slime", delay: 5 },
+          { type: "slime", delay: 1 },
+        ],
+      },
+    ]);
+  });
+
+  it("removes a row as one edit on the list", () => {
+    click(harness.host, "field-spawns-remove-0");
+
+    expect(harness.sets).toEqual([
+      { path: "spawns", value: [{ type: "slime", delay: 5 }] },
+    ]);
+  });
+
+  it("reorders by the row buttons, as one edit on the list", () => {
+    click(harness.host, "field-spawns-down-0");
+
+    expect(harness.sets).toEqual([
+      {
+        path: "spawns",
+        value: [
+          { type: "slime", delay: 5 },
+          { type: "bat", delay: 2 },
+        ],
+      },
+    ]);
+  });
+
+  it("offers no move past either end of the list", () => {
+    expect(
+      query<HTMLButtonElement>(harness.host, "field-spawns-up-0")?.disabled,
+    ).toBe(true);
+    expect(
+      query<HTMLButtonElement>(harness.host, "field-spawns-down-1")?.disabled,
+    ).toBe(true);
+  });
+
+  /** The list after the two spawns have swapped places, as the server sends it. */
+  function reordered(): void {
+    act(() => {
+      harness.store.dispatch({
+        type: "history-stepped",
+        snapshot: {
+          ...snapshot(),
+          draftRevision: 1,
+          document: {
+            ...DOCUMENT,
+            entities: DOCUMENT.entities.map((one) =>
+              one.id === "wave"
+                ? {
+                    ...one,
+                    params: {
+                      ...one.params,
+                      spawns: [
+                        { type: "slime", delay: 5 },
+                        { type: "bat", delay: 2 },
+                      ],
+                    },
+                  }
+                : one,
+            ),
+          },
+        },
+      });
+    });
+  }
+
+  it("moves a half-typed entry with the element it belongs to", () => {
+    type(input(harness.host, "field-spawns.1.delay"), "over there");
+
+    click(harness.host, "field-spawns-up-1");
+    reordered();
+
+    expect(input(harness.host, "field-spawns.0.delay").value).toBe(
+      "over there",
+    );
+    expect(input(harness.host, "field-spawns.1.delay").value).toBe("2");
+  });
+
+  it("leaves the keyboard on the moved element's own buttons", () => {
+    click(harness.host, "field-spawns-up-1");
+    reordered();
+
+    // The element reached the top of the list, so the button that moved it is
+    // switched off and the keyboard lands on the one beside it. Both belong to
+    // the row the element is now in.
+    expect(document.activeElement).toBe(
+      query(harness.host, "field-spawns-down-0"),
+    );
+  });
+
+  it("shows a json value as formatted text and commits what it parses", () => {
+    const box = area(harness.host, "field-noise");
+    expect(box.value).toBe('{\n  "seed": 7\n}');
+
+    typeLines(box, '{"seed": 9, "octaves": 2}');
+    blur(box);
+
+    expect(harness.sets).toEqual([
+      { path: "noise", value: { seed: 9, octaves: 2 } },
+    ]);
+  });
+
+  it("refuses json it cannot parse, and says why", () => {
+    const box = area(harness.host, "field-noise");
+    typeLines(box, "{seed: 9}");
+    blur(box);
+
+    expect(harness.sets).toEqual([]);
+    expect(query(harness.host, "field-noise-reason")?.textContent).toBeTruthy();
+    // The text stays in the box, so nothing typed disappears.
+    expect(box.value).toBe("{seed: 9}");
   });
 });

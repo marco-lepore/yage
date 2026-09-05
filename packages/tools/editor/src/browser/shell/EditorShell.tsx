@@ -485,11 +485,11 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
             editable={editable}
             inspectable={props.inspectable}
             listAssets={props.listAssets}
-            onSetParam={(id, field, value) => {
-              props.commands.setParam(id, field, value);
+            onSetParam={(id, path, value) => {
+              props.commands.setParam(id, path, value);
             }}
-            onResetParam={(id, field) => {
-              props.commands.resetParam(id, field);
+            onResetParam={(id, path) => {
+              props.commands.resetParam(id, path);
             }}
             onPickTarget={(id, field, types) => {
               props.commands.startPick(id, field, types);

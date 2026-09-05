@@ -64,8 +64,11 @@ level stores a project-relative path and `setup()` receives the loaded handle.
 `defineLevelAsset` is what says how a path becomes a handle, and its `create`
 function comes from the package that owns the asset: `texture` from
 `@yagejs/renderer`. `param.vec2` and `param.point` carry a pair of numbers, and are [their own
-section below](#pairs-and-places). `param.entityRef` names another placement in
-the same level, and is [its own section below](#point-one-placement-at-another).
+section below](#pairs-and-places). `param.object`, `param.array` and
+`param.json` carry a value with members, a list of them, and anything else, and
+are [their own section below](#values-with-a-shape). `param.entityRef` names
+another placement in the same level, and is [its own section
+below](#point-one-placement-at-another).
 
 ### Say how a sheet is cut
 
@@ -293,6 +296,73 @@ the transform the entity had before it was placed.
 `relative` and `space` are independent, and all four pairings work. A world
 point asked for as `"local"` arrives as an offset from the placement; a
 relative one asked for as `"world"` arrives as a position.
+
+### Values with a shape
+
+A wave has a list of spawns. A spawn has a type and a delay. `param.object`
+declares a value with members, and `param.array` a list of them:
+
+```ts
+const WaveParams = defineParams({
+  loot: param.object({
+    item: param.string("coin"),
+    count: param.integer(1, { min: 1 }),
+  }),
+  spawns: param.array(
+    param.object({
+      type: param.select("slime", ["slime", "bat"]),
+      delay: param.number(1, { min: 0 }),
+    }),
+    { default: [{ type: "slime", delay: 1 }], min: 1 },
+  ),
+});
+
+class Wave extends Entity {
+  static readonly level = defineLevelEntity({
+    id: "game.wave",
+    version: 1,
+    params: WaveParams,
+  });
+
+  setup(params: ParamsOf<typeof WaveParams>): void {
+    this.add(new Chest(params.loot.item, params.loot.count));
+    for (const spawn of params.spawns) {
+      this.add(new Spawner(spawn.type, spawn.delay));
+    }
+  }
+}
+```
+
+The members are declared the way the schema's own fields are, and every one is
+checked by its own kind — `count` below 1 is a finding on that placement,
+naming the member it is about. `min` and `max` on a list are how many elements
+it may hold, and the list a placement starts with is checked against them too,
+so a `min` above zero needs a `default`. In the editor an object draws its members as a group, and a list
+draws a row per element with buttons to reorder it, remove it, and add one
+holding the value the declaration gives an element.
+
+A member is required the way a parameter is: a level that leaves one out is
+reported rather than filled in from the default. Make it `optional` to let it
+hold nothing.
+
+Nesting is capped at four levels of objects and lists — deep enough for a wave
+of spawns of drops. A deeper declaration is a catalog error, listed with the
+other declaration problems. A reference belongs at the top: `param.entityRef`
+inside an object or a list is a catalog error too.
+
+For a shape the kinds cannot describe, `param.json` takes any JSON value and
+hands it over unchanged:
+
+```ts
+const TerrainParams = defineParams({
+  noise: param.json({ default: { seed: 1, octaves: 3 } }),
+});
+```
+
+Nothing checks what is inside it and the editor offers only the text of it, so
+use it when the shape is open — a table another tool exports, a blob a system
+of your own parses. Declare the shape for everything else, and you get controls
+and findings with it.
 
 ### Point one placement at another
 

@@ -608,6 +608,15 @@ is a world point that stays where it is. The ring lands on the grid under
 `Snap`, `Alt` holds it off, and `Shift` keeps the drag to one axis of the
 value's own frame.
 
+An `object` draws its members indented under the field, each the control its
+own kind names, and an `array` draws a row per element with **▲ ▼** to reorder,
+**✕** to remove, and **Add** at the foot, which appends the value the declaration
+gives an element. A member is an edit of its own; adding, removing and
+reordering are one edit on the whole list. A `json` parameter is a text area
+holding the formatted JSON, and text that will not parse stays in the box with
+the parser's own reason under it. A `point` declared inside an `object` or an
+`array` gets its two boxes and no ring in the viewport.
+
 **Key** is the placement's developer-facing identity, and the section shows the
 scene key a game looks the entity up by: `<namespace>/<key or id>`, where the
 namespace is the argument the game passes `instantiateLevel`. It is last in the

@@ -34,7 +34,7 @@ import {
   withPoseNumber,
   WORLD_ORIGIN,
 } from "./pose.js";
-import { pointFields, pointHandles } from "./params.js";
+import { defaultAt, pointFields, pointHandles, valueAt } from "./params.js";
 import {
   isAncestorOrSelf,
   placementById,
@@ -429,11 +429,15 @@ export class CommandController {
     const pick = this.store.getState().pick;
     if (!pick) return;
     this.store.dispatch({ type: "pick-ended" });
-    this.setParam(pick.placementId, pick.field, targetId);
+    this.setParam(pick.placementId, [pick.field], targetId);
   }
 
   /**
-   * Set one declared parameter of one placement.
+   * Set one declared parameter of one placement, or one value inside it.
+   *
+   * The path is measured from the parameter object: one field, or a member or
+   * an element inside it, however deep. An element is named by its position
+   * written as a decimal string.
    *
    * The command carries the value the document holds now as its precondition,
    * so an edit typed against a placement the server has since changed is
@@ -442,14 +446,16 @@ export class CommandController {
    * replacing the whole parameter object with one that adds it, which is the
    * same field-level change through the one path the reducer accepts for it.
    */
-  setParam(id: string, field: string, value: JsonValue): void {
+  setParam(id: string, path: readonly string[], value: JsonValue): void {
     if (!this.store.writable) return;
     const placement = this.placement(id);
     if (!placement) return;
+    const edit = valueEdit(placement, path, value);
+    if (!edit) return;
     this.store.submit({
       kind: "set-values",
       commandId: this.newId(),
-      edits: [fieldEdit(placement, field, value)],
+      edits: [edit],
     });
   }
 
@@ -603,16 +609,21 @@ export class CommandController {
   }
 
   /**
-   * Put one declared parameter back to the default its declaration gives it.
-   * A field the current declaration does not have has no default to go to,
-   * and produces nothing.
+   * Put one declared value back to the default its declaration gives it: a
+   * whole parameter, a member of one, or one element of a list.
+   *
+   * The default comes from the declaration's description rather than from a
+   * new placement's parameter object, so an element goes back to what the
+   * declaration says one element is — a list's own default is usually empty
+   * and has no element to copy. A value the current declaration does not
+   * describe has no default to go to, and produces nothing.
    */
-  resetParam(id: string, field: string): void {
+  resetParam(id: string, path: readonly string[]): void {
     const placement = this.placement(id);
     if (!placement) return;
-    const defaults = this.defaultsFor(placement.type);
-    if (!defaults || !Object.hasOwn(defaults, field)) return;
-    this.setParam(id, field, defaults[field] as JsonValue);
+    const value = defaultAt(this.catalog(), placement.type, path);
+    if (value === undefined) return;
+    this.setParam(id, path, value);
   }
 
   /**
@@ -928,7 +939,7 @@ export class CommandController {
     const placement = this.placement(drag.id);
     if (!placement) return;
     if (equalJson(placement.params[drag.field] as JsonValue, value)) return;
-    this.setParam(drag.id, drag.field, value);
+    this.setParam(drag.id, [drag.field], value);
   }
 
   /**
@@ -1034,24 +1045,31 @@ export class CommandController {
 }
 
 /**
- * One field's edit as the reducer accepts it: through `["params", field]` when
- * the placement holds the field, and through `["params"]` — the whole object,
- * with the field added — when it does not, since a path into a missing
- * property is not one the reducer will write.
+ * One value's edit as the reducer accepts it: through `["params", ...path]`
+ * when the placement holds every step of the path, and through `["params"]` —
+ * the whole object, with the field added — when the field itself is not there,
+ * since a path into a missing property is not one the reducer will write.
+ *
+ * A control commits a value of the shape its declaration describes, so a step
+ * inside a field it holds is always there to write over. When one is not,
+ * there is nothing this can write and nothing is sent.
  */
-function fieldEdit(
+function valueEdit(
   placement: LevelPlacement,
-  field: string,
+  path: readonly string[],
   value: JsonValue,
-): ValueEdit {
-  if (Object.hasOwn(placement.params, field)) {
+): ValueEdit | undefined {
+  const held = valueAt(placement.params, path);
+  if (held !== undefined) {
     return {
       placementId: placement.id,
-      path: ["params", field],
-      expected: placement.params[field] as JsonValue,
+      path: ["params", ...path],
+      expected: held,
       value,
     };
   }
+  const field = path[0];
+  if (path.length !== 1 || field === undefined) return undefined;
   return {
     placementId: placement.id,
     path: ["params"],

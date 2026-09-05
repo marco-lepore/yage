@@ -27,7 +27,11 @@ export interface PlacementInsert {
 /** One existing JSON value to replace when its precondition still matches. */
 export interface ValueEdit {
   readonly placementId: string;
-  /** `params`, one direct parameter field, or `typeVersion`. */
+  /**
+   * `params`, any value inside it however deep, or `typeVersion`. An array
+   * element is named by its position written as a decimal string, so one
+   * segment type reaches a member and an element alike.
+   */
   readonly path: readonly string[];
   readonly expected: JsonValue;
   readonly value: JsonValue;

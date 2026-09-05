@@ -85,6 +85,9 @@ export class Crate extends Entity {
   See [Numbers, switches, names and choices](#numbers-switches-names-and-choices).
 - `param.vec2(default, options?)` and `param.point(default, options?)` carry a
   pair of numbers. See [Pairs and places](#pairs-and-places).
+- `param.object(fields, options?)`, `param.array(item, options?)` and
+  `param.json(options?)` carry a value with members, a list of them, and
+  anything else. See [Values with a shape](#values-with-a-shape).
 - `frames` is an `AssetFrames`: how the named file is cut into a grid. Declare
   it only for a parameter naming a sheet the type slices. Its members are the
   renderer's `TextureSliceOptions`, so state the grid once and spread the same
@@ -177,6 +180,10 @@ param.select<const O extends Record<string, unknown>>(
   the declared type becomes `number | undefined` and so on. A missing key stays
   an error whether or not the field is optional, so a placement that holds
   nothing says so.
+- `ParamKind<T>` is what every `param.*` call returns and what `param.array`
+  takes. It is a type to name — an item kind held in a variable, a helper that
+  returns one — not one to implement: a kind the package did not build is a
+  catalog error.
 
 ## Pairs and places
 
@@ -217,6 +224,66 @@ param.point(defaultValue: Vec2Like, options?: {
   hardpoint, anything that has to keep following the entity. Turn it into a
   world point where it is used, with `Transform.localToWorld(point)` from a
   component's `onEnable()` or an update, once the level has placed the entity.
+
+## Values with a shape
+
+```ts
+const WaveParams = defineParams({
+  loot: param.object({
+    item: param.string("coin"),
+    count: param.integer(1, { min: 1 }),
+  }),
+  spawns: param.array(
+    param.object({
+      type: param.select("slime", ["slime", "bat"]),
+      delay: param.number(1, { min: 0 }),
+    }),
+    { default: [{ type: "slime", delay: 1 }], min: 1 },
+  ),
+  noise: param.json({ default: { seed: 1, octaves: 3 } }),
+});
+
+setup(params: ParamsOf<typeof WaveParams>): void {
+  // loot: { item: string; count: number }
+  this.chest = new Chest(params.loot.item, params.loot.count);
+  // spawns: readonly { type: "slime" | "bat"; delay: number }[]
+  for (const spawn of params.spawns) this.queue(spawn.type, spawn.delay);
+  // noise: JsonValue
+}
+```
+
+```ts
+param.object<F extends ParamFields>(fields: F, options?: {
+  optional?: boolean;
+}): ParamKind<{ [K in keyof F]: RuntimeValueOf<F[K]> }>
+param.array<K extends ParamKind<unknown>>(item: K, options?: {
+  default?: readonly JsonValue[]; min?: number; max?: number; optional?: boolean;
+}): ParamKind<readonly RuntimeValueOf<K>[]>
+param.json(options?: {
+  default?: JsonValue; optional?: boolean;
+}): ParamKind<JsonValue>
+```
+
+- An `object`'s members are declared the way a schema's fields are, and each is
+  validated and decoded by its own kind. A member is required the same way a
+  parameter is: a level that leaves one out is reported, never filled in. A new
+  placement starts with the members' own defaults composed.
+- An `array` holds one kind of element. `min` and `max` are how many elements
+  the list may hold, checked when the level is prepared; a new placement starts
+  with an empty list unless `default` gives it one. The default is checked the
+  same way, so a `min` above zero without a `default` is a catalog error.
+- `json` accepts any JSON value and hands it over unchanged. It is the escape
+  for a shape the kinds cannot describe: nothing checks what is inside it, and
+  an authoring tool can only offer the text of it. `null` means the value is
+  not there, as it does for every other kind, so a required `json` refuses it.
+- Nesting is capped at four levels of `object` and `array`. A declaration that
+  nests deeper is reported by `buildLevelCatalog()`, with the declaration
+  problems.
+- A reference must be a parameter of its own: `param.entityRef` inside an
+  `object` or an `array` is a catalog error, because what follows a reference —
+  the target check, the ids a copy rewrites — reads one named parameter.
+- An `asset` inside one works: the assets a level preloads are collected
+  through every member and element.
 
 ## Pointing at another placement
 
@@ -449,7 +516,25 @@ when the catalog is built.
 
 `kind` says which control the field needs and is a closed set — `"asset"`,
 `"entityRef"`, `"number"`, `"integer"`, `"boolean"`, `"string"`, `"select"`,
-`"vec2"` and `"point"` — so a tool can switch on it exhaustively.
+`"vec2"`, `"point"`, `"object"`, `"array"` and `"json"` — so a tool can switch
+on it exhaustively.
+
+A description is a tree, and `kind` is flat at every node of it. An `object`
+field carries `fields`, its members as descriptions with names of their own; an
+`array` field carries `item`, one description with no name, because an element
+is named by its position. Switch on `kind` the same way wherever you stand:
+
+```ts
+type ParamValueDescription = {
+  readonly kind: ParamKindName;
+  readonly fields?: readonly ParamFieldDescription[]; // an object's members
+  readonly item?: ParamValueDescription; // an array's element
+  readonly defaultValue: JsonValue;
+  // assetKind, frames, types, optional, min, max, step, multiline, options,
+  // relative — as below
+};
+type ParamFieldDescription = ParamValueDescription & { readonly name: string };
+```
 
 For an asset field, `assetKind` is the `kind` of the descriptor `param.asset()`
 was given and is open, because `defineLevelAsset` is yours: match the kinds you
@@ -466,7 +551,8 @@ but `asset`, which takes no options object. `defaultValue` is the value the
 editor writes into a new placement — a number for a number field and a boolean
 for a switch. A number field carries `min`, `max` and `step` when it declared
 them, a string field carries `multiline`, a choice field carries `options`, the
-frozen list of values it accepts, and a `point` field carries `relative` —
+frozen list of values it accepts, an `array` field carries `min` and `max` as
+how many elements it may hold, and a `point` field carries `relative` —
 the frame the value is stored in, which is the frame a tool authors in. A
 point's `space` is a load-time conversion and is not described.
 
@@ -475,7 +561,7 @@ without reading a schema:
 
 ```ts
 interface PlacementReference {
-  readonly path: readonly string[]; // parameter path; one segment today
+  readonly path: readonly string[]; // the parameter's name, one segment
   readonly targetId: string; // in this document, of an accepted type
 }
 // PreparedPlacement.references: readonly PlacementReference[]

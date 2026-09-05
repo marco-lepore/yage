@@ -855,6 +855,37 @@ export const EDITOR_CSS = `
   min-width: 0;
 }
 
+/* What is inside a value with a shape, indented under the label that names it
+   and ruled on the left, so where one set of members ends and the next begins
+   is read from the picture rather than from the labels. */
+.yage-editor .ye-members {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-left: var(--space-3);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--control-border);
+}
+
+/* One element of a list: what it holds, and the buttons that move or remove
+   it, which sit at the end of the row whatever control the element draws. */
+.yage-editor .ye-members__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.yage-editor .ye-members__row > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.yage-editor .ye-members__actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--space-1);
+}
+
 /* A select in a field row fills what the label leaves, like the text box the
    rest of the rows hold. */
 .yage-editor .ye-field .ye-select {

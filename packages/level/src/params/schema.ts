@@ -9,8 +9,15 @@ import type {
   ParamKind,
   ParamsOf,
   ParamsSchema,
+  ParamValueDescription,
 } from "./types.js";
-import { frameProblems, isBuiltInParamKind } from "./types.js";
+import {
+  MAX_PARAM_DEPTH,
+  frameProblems,
+  frozenFields,
+  isBuiltInParamKind,
+  paramNodes,
+} from "./types.js";
 
 /**
  * Declare a placeable entity's parameters.
@@ -32,11 +39,7 @@ import { frameProblems, isBuiltInParamKind } from "./types.js";
 export function defineParams<F extends ParamFields>(
   fields: F,
 ): ParamsSchema<F> {
-  // Null prototype, so a parameter named "__proto__" becomes an own key
-  // instead of replacing the prototype.
-  const copied = Object.create(null) as Record<string, ParamKind<unknown>>;
-  for (const [name, kind] of Object.entries(fields)) copied[name] = kind;
-  return Object.freeze({ _fields: Object.freeze(copied) as F });
+  return Object.freeze({ _fields: frozenFields(fields) });
 }
 
 /**
@@ -53,13 +56,54 @@ export function schemaDefaultProblems(
       errors.push({ path: [name], message: "kind did not come from param.*" });
       continue;
     }
-    for (const message of kind.validate(kind.defaultValue)) {
-      errors.push({ path: [name], message: `default ${message}` });
+    const nodes = paramNodes(kind);
+    const depth = Math.max(...nodes.map((node) => node.path.length));
+    if (depth > MAX_PARAM_DEPTH) {
+      errors.push({
+        path: [name],
+        message:
+          `nests values ${String(depth)} levels deep, and the most a level ` +
+          `can author is ${String(MAX_PARAM_DEPTH)}`,
+      });
     }
-    if (kind.frames !== undefined) {
-      for (const message of frameProblems(kind.frames)) {
-        errors.push({ path: [name], message });
+    let builtIn = true;
+    for (const node of nodes) {
+      const path = [name, ...node.path];
+      if (!isBuiltInParamKind(node.kind)) {
+        errors.push({ path, message: "kind did not come from param.*" });
+        builtIn = false;
+        continue;
       }
+      if (node.kind.frames !== undefined) {
+        for (const message of frameProblems(node.kind.frames)) {
+          errors.push({ path, message });
+        }
+      }
+      // Everything that follows a reference — preparation's target check, the
+      // links the editor draws, the ids a copy rewrites — reads one named
+      // parameter of a placement. A reference deeper than that would load and
+      // point at nothing, so the catalog reports the declaration instead.
+      if (node.kind.name === "entityRef" && node.path.length > 0) {
+        errors.push({
+          path,
+          message:
+            "is a reference inside another value; a reference must be a " +
+            "parameter of its own",
+        });
+      }
+    }
+    // Last, and only over a field built entirely out of `param.*`: validating
+    // a default calls each member kind's own `validate`, so a lookalike is
+    // reported above rather than run.
+    if (!builtIn) continue;
+    // One call for the whole field: a value with members runs each member's
+    // own kind over the matching part of the default and says which member
+    // the problem is in.
+    for (const problem of kind.validate(kind.defaultValue)) {
+      errors.push({
+        path: [name, ...problem.path],
+        message: `default ${problem.message}`,
+      });
     }
   }
   return errors;
@@ -74,29 +118,60 @@ export function schemaDefaultProblems(
 export function describeParams(
   schema: ParamsSchema<ParamFields>,
 ): readonly ParamFieldDescription[] {
-  const descriptions = fieldsOf(schema).map(([name, kind]) => {
-    if (!isBuiltInParamKind(kind)) {
-      throw new TypeError(
-        `Parameter "${name}" kind did not come from param.*.`,
-      );
-    }
-    return Object.freeze({
-      name,
-      kind: kind.name,
-      ...(kind.assetKind === undefined ? {} : { assetKind: kind.assetKind }),
-      ...(kind.frames === undefined ? {} : { frames: kind.frames }),
-      ...(kind.types === undefined ? {} : { types: kind.types }),
-      ...(kind.optional === undefined ? {} : { optional: kind.optional }),
-      ...(kind.min === undefined ? {} : { min: kind.min }),
-      ...(kind.max === undefined ? {} : { max: kind.max }),
-      ...(kind.step === undefined ? {} : { step: kind.step }),
-      ...(kind.multiline === undefined ? {} : { multiline: kind.multiline }),
-      ...(kind.options === undefined ? {} : { options: kind.options }),
-      ...(kind.relative === undefined ? {} : { relative: kind.relative }),
-      defaultValue: kind.defaultValue,
-    });
+  return Object.freeze(
+    fieldsOf(schema).map(([name, kind]) => describeField(name, kind, [name])),
+  );
+}
+
+/** One named value: what it is, and the word a tool labels it with. */
+function describeField(
+  name: string,
+  kind: ParamKind<unknown>,
+  path: readonly string[],
+): ParamFieldDescription {
+  return Object.freeze({ name, ...describeValue(kind, path) });
+}
+
+/**
+ * One value, and everything inside it. The members below a value with a shape
+ * are descriptions in turn, so the code that renders a top-level field renders
+ * a member of an object and an element of an array as well.
+ */
+function describeValue(
+  kind: ParamKind<unknown>,
+  path: readonly string[],
+): ParamValueDescription {
+  if (!isBuiltInParamKind(kind)) {
+    throw new TypeError(
+      `Parameter "${path.join(".")}" kind did not come from param.*.`,
+    );
+  }
+  return Object.freeze({
+    kind: kind.name,
+    ...(kind.assetKind === undefined ? {} : { assetKind: kind.assetKind }),
+    ...(kind.frames === undefined ? {} : { frames: kind.frames }),
+    ...(kind.types === undefined ? {} : { types: kind.types }),
+    ...(kind.optional === undefined ? {} : { optional: kind.optional }),
+    ...(kind.min === undefined ? {} : { min: kind.min }),
+    ...(kind.max === undefined ? {} : { max: kind.max }),
+    ...(kind.step === undefined ? {} : { step: kind.step }),
+    ...(kind.multiline === undefined ? {} : { multiline: kind.multiline }),
+    ...(kind.options === undefined ? {} : { options: kind.options }),
+    ...(kind.relative === undefined ? {} : { relative: kind.relative }),
+    ...(kind.fields === undefined
+      ? {}
+      : {
+          fields: Object.freeze(
+            Object.entries(kind.fields).map(([member, memberKind]) =>
+              describeField(member, memberKind, [...path, member]),
+            ),
+          ),
+        }),
+    ...(kind.item === undefined
+      ? {}
+      : { item: describeValue(kind.item, [...path, "0"]) }),
+    defaultValue: kind.defaultValue,
   });
-  return Object.freeze(descriptions);
 }
 
 /**
@@ -154,8 +229,8 @@ export function validateParams(
       errors.push({ path: [name], message: "is required and is missing" });
       continue;
     }
-    for (const message of kind.validate(value)) {
-      errors.push({ path: [name], message });
+    for (const problem of kind.validate(value)) {
+      errors.push({ path: [name, ...problem.path], message: problem.message });
     }
   }
   return errors;

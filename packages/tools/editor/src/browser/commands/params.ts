@@ -1,10 +1,68 @@
-import { describeParams, type LevelCatalog } from "@yagejs/level";
+import {
+  describeParams,
+  type LevelCatalog,
+  type ParamValueDescription,
+} from "@yagejs/level";
 import type {
+  JsonObject,
+  JsonValue,
   LevelDocument,
   LevelPlacement,
   LevelPoint,
 } from "@yagejs/level/document";
+import { MISSING_VALUE, valueAtPath } from "../../shared/commands/index.js";
 import { authoredPoint, placementWorld, pointToWorld } from "./pose.js";
+
+/**
+ * The value at `path` inside an authored parameter object, or nothing when the
+ * object does not hold every step of it.
+ *
+ * The reducer's own read, so a control shows exactly what an edit at that path
+ * would be measured against. An authored value is never `undefined`, so it
+ * stands for the missing path here.
+ */
+export function valueAt(
+  params: JsonObject,
+  path: readonly string[],
+): JsonValue | undefined {
+  const value = valueAtPath(params, path);
+  return value === MISSING_VALUE ? undefined : value;
+}
+
+/**
+ * The default one type's declaration gives the value at `path`, or nothing
+ * when it describes no such value.
+ *
+ * Read off the description tree rather than off a new placement's parameter
+ * object, because a list's own default is usually empty: the value a new row
+ * needs is the one the declaration gives an element.
+ */
+export function defaultAt(
+  catalog: LevelCatalog | undefined,
+  typeId: string,
+  path: readonly string[],
+): JsonValue | undefined {
+  const schema = catalog?.get(typeId)?.declaration.params;
+  const [name, ...rest] = path;
+  if (schema === undefined || name === undefined) return undefined;
+  const field = describeParams(schema).find((one) => one.name === name);
+  return field === undefined ? undefined : defaultInside(field, rest);
+}
+
+/** The default at a path under one described value. */
+function defaultInside(
+  description: ParamValueDescription,
+  path: readonly string[],
+): JsonValue | undefined {
+  const [segment, ...rest] = path;
+  if (segment === undefined) return description.defaultValue;
+  // One kind is what every element of a list is, so a position leads to it
+  // whichever position it names.
+  if (description.item !== undefined)
+    return defaultInside(description.item, rest);
+  const member = description.fields?.find((one) => one.name === segment);
+  return member === undefined ? undefined : defaultInside(member, rest);
+}
 
 /** One place-valued parameter a type declares. */
 export interface PointField {

@@ -1,13 +1,21 @@
-import type { ParamFieldDescription } from "@yagejs/level";
+import type {
+  ParamFieldDescription,
+  ParamValueDescription,
+} from "@yagejs/level";
 import type { JsonValue, LevelPlacement } from "@yagejs/level/document";
 import { useEffect, useRef, useState } from "react";
 import {
   derivedSceneKey,
+  equalJson,
   sceneKeyHolder,
 } from "../../shared/commands/index.js";
 import type { EditorDiagnostic } from "../../shared/diagnostics/index.js";
 import type { AssetListing } from "../../shared/protocol/index.js";
-import { draggedValue, type OrderDirection } from "../commands/index.js";
+import {
+  draggedValue,
+  valueAt,
+  type OrderDirection,
+} from "../commands/index.js";
 import type { LayerChoice } from "../layers.js";
 import type { InspectableType } from "../project/index.js";
 import type { EditorState, EditorStore } from "../store/index.js";
@@ -36,8 +44,16 @@ export interface InspectorProps {
    * throws `EditorApiError`, which the field reports beside itself.
    */
   readonly listAssets: () => Promise<AssetListing>;
-  readonly onSetParam: (id: string, field: string, value: JsonValue) => void;
-  readonly onResetParam: (id: string, field: string) => void;
+  /**
+   * Set one value inside a placement's parameters. The path is measured from
+   * the parameter object: one field, or a member or an element inside it.
+   */
+  readonly onSetParam: (
+    id: string,
+    path: readonly string[],
+    value: JsonValue,
+  ) => void;
+  readonly onResetParam: (id: string, path: readonly string[]) => void;
   /** Wait for this field's target to be pointed at in the viewport or the tree. */
   readonly onPickTarget: (
     id: string,
@@ -159,8 +175,10 @@ function PlacementInspector(props: PlacementProps): React.JSX.Element {
       {fields.map((field) => (
         <Field
           key={field.name}
-          field={field}
-          value={liveValue(props.state, placement, field.name)}
+          description={field}
+          label={field.name}
+          path={[field.name]}
+          value={liveValue(props.state, placement, [field.name])}
           disabled={!editable}
           diagnostics={atField(field.name)}
           listAssets={props.listAssets}
@@ -173,11 +191,11 @@ function PlacementInspector(props: PlacementProps): React.JSX.Element {
             props.onPickTarget(placement.id, field.name, types);
           }}
           onEndPick={props.onCancelPick}
-          onCommit={(value) => {
-            props.onSetParam(placement.id, field.name, value);
+          onCommit={(path, value) => {
+            props.onSetParam(placement.id, path, value);
           }}
-          onReset={() => {
-            props.onResetParam(placement.id, field.name);
+          onReset={(path) => {
+            props.onResetParam(placement.id, path);
           }}
         />
       ))}
@@ -373,12 +391,16 @@ function KeySection(props: PlacementProps): React.JSX.Element {
 }
 
 /**
- * One declared field. The switch is over the kinds the level package can
- * describe; a kind added there without a control here fails to compile
- * rather than rendering nothing.
+ * One declared value: a whole field, a member of an object, or one element of
+ * a list. The switch is over the kinds the level package can describe; a kind
+ * added there without a control here fails to compile rather than rendering
+ * nothing.
+ *
+ * `kind` is flat at every depth, so a member and an element reach this switch
+ * exactly as a top-level field does.
  */
 function Field(props: FieldProps): React.JSX.Element {
-  switch (props.field.kind) {
+  switch (props.description.kind) {
     case "asset":
       return <AssetField {...props} />;
     case "entityRef":
@@ -395,15 +417,26 @@ function Field(props: FieldProps): React.JSX.Element {
     case "vec2":
     case "point":
       return <TupleField {...props} />;
+    case "object":
+      return <ObjectField {...props} />;
+    case "array":
+      return <ListField {...props} />;
+    case "json":
+      return <JsonField {...props} />;
     default: {
-      const unhandled: never = props.field.kind;
+      const unhandled: never = props.description.kind;
       throw new Error(`No control for parameter kind ${String(unhandled)}.`);
     }
   }
 }
 
 interface FieldProps {
-  field: ParamFieldDescription;
+  /** What this value is, and which control it needs. */
+  description: ParamValueDescription;
+  /** The word beside the control: a field or member name, or a position. */
+  label: string;
+  /** Where the value sits inside the placement's parameters. */
+  path: readonly string[];
   value: unknown;
   disabled: boolean;
   diagnostics: readonly EditorDiagnostic[];
@@ -414,8 +447,17 @@ interface FieldProps {
   picking: boolean;
   onStartPick: (types: readonly string[]) => void;
   onEndPick: () => void;
-  onCommit: (value: JsonValue) => void;
-  onReset: () => void;
+  onCommit: (path: readonly string[], value: JsonValue) => void;
+  onReset: (path: readonly string[]) => void;
+}
+
+/**
+ * What a control is called in the markup, and what a finding under it is keyed
+ * by. A top-level field is its own name, and a value inside one is the path
+ * that reaches it.
+ */
+function fieldKey(path: readonly string[]): string {
+  return path.join(".");
 }
 
 /** What the asset field has of the project's listing at this moment. */
@@ -447,7 +489,8 @@ function shownListing(offer: AssetOffer): AssetListing | undefined {
  * never blanks.
  */
 function AssetField(props: FieldProps): React.JSX.Element {
-  const { field } = props;
+  const { description } = props;
+  const key = fieldKey(props.path);
   const held = typeof props.value === "string" ? props.value : "";
   const invalid = props.diagnostics.length > 0;
   const [offer, setOffer] = useState<AssetOffer>({ status: "idle" });
@@ -478,12 +521,14 @@ function AssetField(props: FieldProps): React.JSX.Element {
   return (
     <div>
       <TextField
-        label={field.name}
-        testId={`field-${field.name}`}
+        label={props.label}
+        testId={`field-${key}`}
         value={held}
         disabled={props.disabled}
         invalid={invalid}
-        onCommit={props.onCommit}
+        onCommit={(text) => {
+          props.onCommit(props.path, text);
+        }}
         completion={{
           values: shownListing(offer)?.paths ?? [],
           onOpen: read,
@@ -491,15 +536,17 @@ function AssetField(props: FieldProps): React.JSX.Element {
         }}
       >
         <Button
-          testId={`reset-${field.name}`}
-          disabled={props.disabled || held === field.defaultValue}
-          title={`Reset to ${String(field.defaultValue)}`}
-          onClick={props.onReset}
+          testId={`reset-${key}`}
+          disabled={props.disabled || held === description.defaultValue}
+          title={`Reset to ${String(description.defaultValue)}`}
+          onClick={() => {
+            props.onReset(props.path);
+          }}
         >
           Reset
         </Button>
       </TextField>
-      <FieldFindings field={field.name} diagnostics={props.diagnostics} />
+      <FieldFindings field={key} diagnostics={props.diagnostics} />
     </div>
   );
 }
@@ -521,19 +568,20 @@ function AssetField(props: FieldProps): React.JSX.Element {
  * waiting. Left to right the row reads choose, point, empty.
  */
 function EntityRefField(props: FieldProps): React.JSX.Element {
-  const { field } = props;
+  const { description } = props;
+  const key = fieldKey(props.path);
   const held = typeof props.value === "string" ? props.value : "";
   const invalid = props.diagnostics.length > 0;
-  const types = field.types ?? [];
+  const types = description.types ?? [];
   const { options, candidates } = referenceOptions(props.entities, types, held);
 
   return (
     <div>
       <div className="ye-field">
-        <span className="ye-field__label">{field.name}</span>
+        <span className="ye-field__label">{props.label}</span>
         <Select
-          label={field.name}
-          testId={`field-${field.name}`}
+          label={props.label}
+          testId={`field-${key}`}
           value={held}
           placeholder="Choose a target"
           invalid={invalid}
@@ -543,11 +591,11 @@ function EntityRefField(props: FieldProps): React.JSX.Element {
             // Choosing a row is a legitimate way to finish, so the list stays
             // live while the field waits.
             if (props.picking) props.onEndPick();
-            props.onCommit(value);
+            props.onCommit(props.path, value);
           }}
         />
         <Button
-          testId={`pick-${field.name}`}
+          testId={`pick-${key}`}
           pressed={props.picking}
           disabled={props.disabled || candidates === 0}
           title="Choose this target by clicking it in the level"
@@ -558,29 +606,19 @@ function EntityRefField(props: FieldProps): React.JSX.Element {
         >
           Pick
         </Button>
-        <ClearButton
-          field={field}
-          disabled={props.disabled || held === ""}
-          onClear={props.onCommit}
-        />
+        <ClearButton {...props} disabled={props.disabled || held === ""} />
       </div>
       {props.picking ? (
-        <p
-          className="ye-section__note"
-          data-testid={`field-${field.name}-picking`}
-        >
+        <p className="ye-section__note" data-testid={`field-${key}-picking`}>
           Click the target in the level or in the hierarchy. Esc cancels.
         </p>
       ) : null}
       {candidates === 0 ? (
-        <p
-          className="ye-section__note"
-          data-testid={`field-${field.name}-note`}
-        >
+        <p className="ye-section__note" data-testid={`field-${key}-note`}>
           No {types.join(" or ")} in this level.
         </p>
       ) : null}
-      <FieldFindings field={field.name} diagnostics={props.diagnostics} />
+      <FieldFindings field={key} diagnostics={props.diagnostics} />
     </div>
   );
 }
@@ -595,33 +633,33 @@ function EntityRefField(props: FieldProps): React.JSX.Element {
  * the file is a mistake and not a number to correct silently.
  */
 function NumberField(props: FieldProps): React.JSX.Element {
-  const { field } = props;
+  const { description } = props;
+  const key = fieldKey(props.path);
   const held = numberText(props.value);
   return (
     <div>
       <TextField
-        label={field.name}
-        testId={`field-${field.name}`}
+        label={props.label}
+        testId={`field-${key}`}
         value={held}
         numeric
-        placeholder={field.optional === true ? EMPTY_LABEL : undefined}
+        placeholder={description.optional === true ? EMPTY_LABEL : undefined}
         disabled={props.disabled}
         invalid={props.diagnostics.length > 0}
-        reject={(text) => refusedNumber(text, field)}
+        reject={(text) => refusedNumber(text, description)}
         stepping={{
-          step: (text, intent) => steppedNumber(text, field, intent),
+          step: (text, intent) => steppedNumber(text, description, intent),
         }}
         onCommit={(text) => {
-          props.onCommit(Number(text.trim()));
+          props.onCommit(props.path, Number(text.trim()));
         }}
       >
         <ClearButton
-          field={field}
+          {...props}
           disabled={props.disabled || props.value === null}
-          onClear={props.onCommit}
         />
       </TextField>
-      <FieldFindings field={field.name} diagnostics={props.diagnostics} />
+      <FieldFindings field={key} diagnostics={props.diagnostics} />
     </div>
   );
 }
@@ -632,28 +670,29 @@ function NumberField(props: FieldProps): React.JSX.Element {
  * there once something has been chosen.
  */
 function BooleanField(props: FieldProps): React.JSX.Element {
-  const { field } = props;
+  const key = fieldKey(props.path);
   const held = typeof props.value === "boolean" ? props.value : undefined;
   return (
     <div>
       <div className="ye-field">
-        <span className="ye-field__label">{field.name}</span>
+        <span className="ye-field__label">{props.label}</span>
         <Checkbox
-          label={field.name}
-          testId={`field-${field.name}`}
+          label={props.label}
+          testId={`field-${key}`}
           checked={held === true}
           mixed={held === undefined}
           disabled={props.disabled}
           invalid={props.diagnostics.length > 0}
-          onChange={props.onCommit}
+          onChange={(checked) => {
+            props.onCommit(props.path, checked);
+          }}
         />
         <ClearButton
-          field={field}
+          {...props}
           disabled={props.disabled || props.value === null}
-          onClear={props.onCommit}
         />
       </div>
-      <FieldFindings field={field.name} diagnostics={props.diagnostics} />
+      <FieldFindings field={key} diagnostics={props.diagnostics} />
     </div>
   );
 }
@@ -663,31 +702,33 @@ function BooleanField(props: FieldProps): React.JSX.Element {
  * field is emptied by Clear rather than by deleting what is in the box.
  */
 function StringField(props: FieldProps): React.JSX.Element {
-  const { field } = props;
+  const { description } = props;
+  const key = fieldKey(props.path);
   const held = typeof props.value === "string" ? props.value : "";
   // A string field is the one place the empty box is ambiguous: text of no
   // length and nothing at all both leave it blank. The label shows for
   // nothing at all, so the two read apart without a second control.
-  const empty = field.optional === true && props.value === null;
+  const empty = description.optional === true && props.value === null;
   return (
     <div>
       <TextField
-        label={field.name}
-        testId={`field-${field.name}`}
+        label={props.label}
+        testId={`field-${key}`}
         value={held}
-        multiline={field.multiline === true}
+        multiline={description.multiline === true}
         placeholder={empty ? EMPTY_LABEL : undefined}
         disabled={props.disabled}
         invalid={props.diagnostics.length > 0}
-        onCommit={props.onCommit}
+        onCommit={(text) => {
+          props.onCommit(props.path, text);
+        }}
       >
         <ClearButton
-          field={field}
+          {...props}
           disabled={props.disabled || props.value === null}
-          onClear={props.onCommit}
         />
       </TextField>
-      <FieldFindings field={field.name} diagnostics={props.diagnostics} />
+      <FieldFindings field={key} diagnostics={props.diagnostics} />
     </div>
   );
 }
@@ -701,9 +742,10 @@ function StringField(props: FieldProps): React.JSX.Element {
  * one click replaces it.
  */
 function SelectField(props: FieldProps): React.JSX.Element {
-  const { field } = props;
+  const { description } = props;
+  const key = fieldKey(props.path);
   const held = typeof props.value === "string" ? props.value : "";
-  const values = field.options ?? [];
+  const values = description.options ?? [];
   const rows = values.map((value) => ({ value, label: value }));
   if (held !== "" && !values.includes(held)) {
     rows.unshift({ value: held, label: `Not offered: ${held}` });
@@ -711,24 +753,25 @@ function SelectField(props: FieldProps): React.JSX.Element {
   return (
     <div>
       <div className="ye-field">
-        <span className="ye-field__label">{field.name}</span>
+        <span className="ye-field__label">{props.label}</span>
         <Select
-          label={field.name}
-          testId={`field-${field.name}`}
+          label={props.label}
+          testId={`field-${key}`}
           value={held}
           placeholder={EMPTY_LABEL}
           invalid={props.diagnostics.length > 0}
           disabled={props.disabled || rows.length === 0}
           options={rows}
-          onChange={props.onCommit}
+          onChange={(value) => {
+            props.onCommit(props.path, value);
+          }}
         />
         <ClearButton
-          field={field}
+          {...props}
           disabled={props.disabled || props.value === null}
-          onClear={props.onCommit}
         />
       </div>
-      <FieldFindings field={field.name} diagnostics={props.diagnostics} />
+      <FieldFindings field={key} diagnostics={props.diagnostics} />
     </div>
   );
 }
@@ -758,32 +801,35 @@ const TUPLE_MEMBERS: Readonly<Record<"vec2" | "point", readonly string[]>> = {
  * it is being dragged.
  */
 function TupleField(props: FieldProps): React.JSX.Element {
-  const { field } = props;
-  const members = TUPLE_MEMBERS[field.kind as "vec2" | "point"];
-  const held = tupleValue(props.value);
-  const fallback = tupleValue(field.defaultValue) ?? {};
+  const { description } = props;
+  const key = fieldKey(props.path);
+  const members = TUPLE_MEMBERS[description.kind as "vec2" | "point"];
+  const held = objectValue(props.value);
+  const fallback = objectValue(description.defaultValue) ?? {};
   return (
     <div>
       <div className="ye-field">
-        <span className="ye-field__label">{field.name}</span>
-        <div className="ye-tuple" data-testid={`field-${field.name}`}>
+        <span className="ye-field__label">{props.label}</span>
+        <div className="ye-tuple" data-testid={`field-${key}`}>
           {members.map((member) => (
             <TextField
               key={member}
               className="ye-num"
               label={member}
-              testId={`field-${field.name}-${member}`}
+              testId={`field-${key}-${member}`}
               value={memberText(held?.[member])}
               numeric
               placeholder={held === undefined ? EMPTY_LABEL : undefined}
               disabled={props.disabled}
               invalid={props.diagnostics.length > 0}
-              reject={(text) => refusedNumber(text, field)}
+              reject={(text) => refusedNumber(text, description)}
               stepping={{
-                step: (text, intent) => steppedNumber(text, field, intent),
+                step: (text, intent) =>
+                  steppedNumber(text, description, intent),
               }}
               onCommit={(text) => {
                 props.onCommit(
+                  props.path,
                   committedTuple(
                     members,
                     held ?? fallback,
@@ -796,22 +842,341 @@ function TupleField(props: FieldProps): React.JSX.Element {
           ))}
         </div>
         <ClearButton
-          field={field}
+          {...props}
           disabled={props.disabled || props.value === null}
-          onClear={props.onCommit}
         />
       </div>
-      <FieldFindings field={field.name} diagnostics={props.diagnostics} />
+      <FieldFindings field={key} diagnostics={props.diagnostics} />
     </div>
   );
 }
 
+/**
+ * A value with declared members, drawn as an indented group under its label:
+ * one control per member, each the control its own kind names.
+ *
+ * A member commits at its own path, so two members of one object are two
+ * independent edits and an undo takes back the one that was made. When what
+ * the field holds is not an object of the declared shape — an optional one
+ * emptied, or a value authored against a declaration that has since changed —
+ * a member commits the whole object instead: everything the value holds, each
+ * declared member filled in from the default where it holds none, and that
+ * member replaced. Typing into one box writes a value the declaration accepts
+ * rather than half of one, and keeps whatever else was authored there.
+ */
+function ObjectField(props: FieldProps): React.JSX.Element {
+  const { description } = props;
+  const key = fieldKey(props.path);
+  // One description type covers every kind, so `fields` is optional on it; a
+  // node whose `kind` is `object` always carries its members.
+  const members = description.fields as readonly ParamFieldDescription[];
+  const held = objectValue(props.value);
+  const fallback = objectValue(description.defaultValue) ?? {};
+  return (
+    <div>
+      <div className="ye-field">
+        <span className="ye-field__label">{props.label}</span>
+        <ClearButton
+          {...props}
+          disabled={props.disabled || props.value === null}
+        />
+      </div>
+      <div className="ye-members" data-testid={`field-${key}`}>
+        {members.map((member) => (
+          <Field
+            {...props}
+            key={member.name}
+            description={member}
+            label={member.name}
+            path={[...props.path, member.name]}
+            value={held?.[member.name]}
+            diagnostics={[]}
+            onCommit={(path, value) => {
+              if (held !== undefined && Object.hasOwn(held, member.name)) {
+                props.onCommit(path, value);
+                return;
+              }
+              props.onCommit(props.path, {
+                ...held,
+                ...composed(members, held ?? fallback),
+                [member.name]: value,
+              });
+            }}
+          />
+        ))}
+      </div>
+      <FieldFindings field={key} diagnostics={props.diagnostics} />
+    </div>
+  );
+}
+
+/**
+ * A list of values, one row per element: the element's own control, buttons to
+ * move it up or down and to take it out, and an Add at the foot that appends
+ * the value the declaration gives an element.
+ *
+ * A row's control commits at its own position. Adding, removing and reordering
+ * commit the whole list, because each of them changes which position every
+ * later element is at — an element edit and a list edit are different edits,
+ * chosen by what changed.
+ *
+ * Buttons rather than a drag: the hierarchy's drag moves placements the
+ * document names by id, and a list names its elements by position instead.
+ */
+function ListField(props: FieldProps): React.JSX.Element {
+  const { description } = props;
+  const key = fieldKey(props.path);
+  // One description type covers every kind, so `item` is optional on it; a
+  // node whose `kind` is `array` always carries its element's description.
+  const item = description.item as ParamValueDescription;
+  const held = Array.isArray(props.value)
+    ? (props.value as readonly JsonValue[])
+    : undefined;
+  const rows = held ?? [];
+  const ids = useRowIds(rows.length);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const refocus = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const testId = refocus.current;
+    if (testId === undefined) return;
+    refocus.current = undefined;
+    focusButton(listRef.current, testId);
+  });
+  const commitList = (list: readonly JsonValue[]): void => {
+    props.onCommit(props.path, [...list]);
+  };
+  const move = (
+    from: number,
+    to: number,
+    button: "up" | "down",
+    clicks: number,
+  ): void => {
+    // A press of the keyboard leaves the focus on the button, which is about
+    // to belong to whichever element takes this position. `detail` counts the
+    // clicks a pointer made, so 0 is the keyboard.
+    if (clicks === 0) refocus.current = `field-${key}-${button}-${String(to)}`;
+    ids.swap(from, to);
+    commitList(swapped(rows, from, to));
+  };
+  return (
+    <div>
+      <div className="ye-field">
+        <span className="ye-field__label">{props.label}</span>
+        <ClearButton
+          {...props}
+          disabled={props.disabled || props.value === null}
+        />
+      </div>
+      <div className="ye-members" data-testid={`field-${key}`} ref={listRef}>
+        {rows.map((element, index) => (
+          <div
+            key={ids.at(index)}
+            className="ye-members__row"
+            data-testid={`field-${key}-row-${String(index)}`}
+          >
+            <Field
+              {...props}
+              description={item}
+              label={String(index)}
+              path={[...props.path, String(index)]}
+              value={element}
+              diagnostics={[]}
+            />
+            <div className="ye-members__actions">
+              <Button
+                testId={`field-${key}-up-${String(index)}`}
+                title="Move up"
+                disabled={props.disabled || index === 0}
+                onClick={(event) => {
+                  move(index, index - 1, "up", event.detail);
+                }}
+              >
+                ▲
+              </Button>
+              <Button
+                testId={`field-${key}-down-${String(index)}`}
+                title="Move down"
+                disabled={props.disabled || index === rows.length - 1}
+                onClick={(event) => {
+                  move(index, index + 1, "down", event.detail);
+                }}
+              >
+                ▼
+              </Button>
+              <Button
+                testId={`field-${key}-remove-${String(index)}`}
+                title="Remove"
+                disabled={props.disabled}
+                onClick={() => {
+                  ids.remove(index);
+                  commitList(rows.filter((_, at) => at !== index));
+                }}
+              >
+                ✕
+              </Button>
+            </div>
+          </div>
+        ))}
+        <Button
+          testId={`field-${key}-add`}
+          disabled={props.disabled}
+          onClick={() => {
+            commitList([...rows, item.defaultValue]);
+          }}
+        >
+          Add
+        </Button>
+      </div>
+      <FieldFindings field={key} diagnostics={props.diagnostics} />
+    </div>
+  );
+}
+
+/** What a list's rows are keyed by, and how a change to the list moves them. */
+interface RowIds {
+  readonly at: (index: number) => number;
+  readonly swap: (from: number, to: number) => void;
+  readonly remove: (index: number) => void;
+}
+
+/**
+ * An identity per row, for as long as the control is on screen.
+ *
+ * A row is a position and an element carries no identity of its own, so a row
+ * keyed by its position would hand the box there whatever the element that
+ * used to be there left half-typed in it, and would leave a key press that
+ * reordered the list focused on a button that now belongs to something else.
+ * The ids move with the elements instead: a swap swaps them, a removal takes
+ * one out, and a row the list grew takes an id nothing has had.
+ */
+function useRowIds(count: number): RowIds {
+  const ids = useRef<number[]>([]);
+  const minted = useRef(0);
+  while (ids.current.length < count) {
+    ids.current.push(minted.current);
+    minted.current += 1;
+  }
+  ids.current.length = count;
+  return {
+    at: (index) => ids.current[index] as number,
+    swap: (from, to) => {
+      const moved = ids.current[from] as number;
+      ids.current[from] = ids.current[to] as number;
+      ids.current[to] = moved;
+    },
+    remove: (index) => {
+      ids.current.splice(index, 1);
+    },
+  };
+}
+
+/**
+ * Put the keyboard on one of a row's buttons, or on the one beside it when the
+ * move it just made disabled it — a press that carried an element to an end of
+ * the list has to leave the focus somewhere it can act.
+ */
+function focusButton(list: HTMLElement | null, testId: string): void {
+  const button = list?.querySelector<HTMLButtonElement>(
+    `[data-testid="${testId}"]`,
+  );
+  if (button === null || button === undefined) return;
+  if (!button.disabled) {
+    button.focus();
+    return;
+  }
+  const beside = button.parentElement?.querySelector<HTMLButtonElement>(
+    "button:not([disabled])",
+  );
+  beside?.focus();
+}
+
+/**
+ * A value of no declared shape, as the JSON text of it.
+ *
+ * The box holds formatted text and commits what it parses to, so the document
+ * gets a value and not a string. Text that is not JSON stays in the box with
+ * the parser's own reason beside it, since there is nothing here to write, and
+ * text that parses to what the field already holds writes nothing either — so
+ * reindenting the box is not an edit to undo.
+ */
+function JsonField(props: FieldProps): React.JSX.Element {
+  const key = fieldKey(props.path);
+  const held = props.value as JsonValue | undefined;
+  const empty = props.value === null || props.value === undefined;
+  return (
+    <div>
+      <TextField
+        label={props.label}
+        testId={`field-${key}`}
+        value={empty ? "" : JSON.stringify(props.value, null, 2)}
+        multiline
+        placeholder={empty ? EMPTY_LABEL : undefined}
+        disabled={props.disabled}
+        invalid={props.diagnostics.length > 0}
+        reject={(text) => refusedJson(text)}
+        onCommit={(text) => {
+          const parsed = JSON.parse(text) as JsonValue;
+          if (held !== undefined && equalJson(parsed, held)) return;
+          props.onCommit(props.path, parsed);
+        }}
+      >
+        <ClearButton
+          {...props}
+          disabled={props.disabled || props.value === null}
+        />
+      </TextField>
+      <FieldFindings field={key} diagnostics={props.diagnostics} />
+    </div>
+  );
+}
+
+/** Why the typed text is not JSON, if it is not. */
+function refusedJson(text: string): string | undefined {
+  if (text.trim() === "") return "Type a JSON value.";
+  try {
+    JSON.parse(text);
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+/** The list with two positions exchanged. */
+function swapped(
+  list: readonly JsonValue[],
+  from: number,
+  to: number,
+): readonly JsonValue[] {
+  const moved = [...list];
+  const held = moved[from] as JsonValue;
+  moved[from] = moved[to] as JsonValue;
+  moved[to] = held;
+  return moved;
+}
+
+/**
+ * A whole object of declared members: what the value holds for each, and the
+ * declared default for a member it has nothing for.
+ */
+function composed(
+  members: readonly ParamFieldDescription[],
+  from: Readonly<Record<string, unknown>>,
+): Record<string, JsonValue> {
+  const value: Record<string, JsonValue> = {};
+  for (const member of members) {
+    value[member.name] = Object.hasOwn(from, member.name)
+      ? (from[member.name] as JsonValue)
+      : member.defaultValue;
+  }
+  return value;
+}
+
 /** The members of an authored object, or nothing when it is not one. */
-function tupleValue(
+function objectValue(
   value: unknown,
-): Readonly<Record<string, unknown>> | undefined {
+): Readonly<Record<string, JsonValue>> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Readonly<Record<string, unknown>>)
+    ? (value as Readonly<Record<string, JsonValue>>)
     : undefined;
 }
 
@@ -847,31 +1212,34 @@ function committedTuple(
 function liveValue(
   state: EditorState,
   placement: LevelPlacement,
-  field: string,
+  path: readonly string[],
 ): unknown {
   const drag = state.paramDrag;
-  if (drag && drag.id === placement.id && drag.field === field) {
+  if (
+    drag &&
+    drag.id === placement.id &&
+    path.length === 1 &&
+    drag.field === path[0]
+  ) {
     return draggedValue(state, drag);
   }
-  return placement.params[field];
+  return valueAt(placement.params, path);
 }
 
 /**
- * Empties an optional field. A required field has no such value, so it gets no
+ * Empties an optional value. A required one has no such value, so it gets no
  * button at all.
  */
-function ClearButton(props: {
-  readonly field: ParamFieldDescription;
-  readonly disabled: boolean;
-  readonly onClear: (value: null) => void;
-}): React.JSX.Element | null {
-  if (props.field.optional !== true) return null;
+function ClearButton(
+  props: FieldProps & { readonly disabled: boolean },
+): React.JSX.Element | null {
+  if (props.description.optional !== true) return null;
   return (
     <Button
-      testId={`clear-${props.field.name}`}
+      testId={`clear-${fieldKey(props.path)}`}
       disabled={props.disabled}
       onClick={() => {
-        props.onClear(null);
+        props.onCommit(props.path, null);
       }}
     >
       Clear
@@ -914,18 +1282,18 @@ function numberText(value: unknown): string {
  */
 function refusedNumber(
   text: string,
-  field: ParamFieldDescription,
+  description: ParamValueDescription,
 ): string | undefined {
   const typed = Number(text.trim());
   if (text.trim() === "" || !Number.isFinite(typed)) return "Type a number.";
-  if (field.kind === "integer" && !Number.isInteger(typed)) {
+  if (description.kind === "integer" && !Number.isInteger(typed)) {
     return "Type a whole number.";
   }
-  if (field.min !== undefined && typed < field.min) {
-    return `Type ${String(field.min)} or more.`;
+  if (description.min !== undefined && typed < description.min) {
+    return `Type ${String(description.min)} or more.`;
   }
-  if (field.max !== undefined && typed > field.max) {
-    return `Type ${String(field.max)} or less.`;
+  if (description.max !== undefined && typed > description.max) {
+    return `Type ${String(description.max)} or less.`;
   }
   return undefined;
 }
@@ -939,21 +1307,22 @@ function refusedNumber(
  */
 function steppedNumber(
   text: string,
-  field: ParamFieldDescription,
+  description: ParamValueDescription,
   intent: StepIntent,
 ): string | undefined {
   const from = Number(text.trim());
   if (text.trim() === "" || !Number.isFinite(from)) return undefined;
-  const whole = field.kind === "integer";
-  const unit = whole ? 1 : (field.step ?? 1);
+  const whole = description.kind === "integer";
+  const unit = whole ? 1 : (description.step ?? 1);
   const by = intent.coarse
     ? unit * 10
     : intent.fine && !whole
       ? unit / 10
       : unit;
   let next = rounded(from + by * intent.direction);
-  if (field.min !== undefined) next = Math.max(next, field.min);
-  if (field.max !== undefined) next = Math.min(next, field.max);
+  const { min, max } = description;
+  if (min !== undefined) next = Math.max(next, min);
+  if (max !== undefined) next = Math.min(next, max);
   return String(next);
 }
 

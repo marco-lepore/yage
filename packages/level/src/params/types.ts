@@ -27,6 +27,11 @@ export interface AssetFrames {
 /**
  * Which control a parameter needs. A closed set: an authoring tool switches on
  * it, and a new kind is meant to fail that switch to compile.
+ *
+ * A value with members carries a kind name of its own and describes its
+ * members as descriptions in turn, so this stays the one discriminant at every
+ * depth: an `object`'s member and an `array`'s element are switched on exactly
+ * as a top-level field is.
  */
 export type ParamKindName =
   | "asset"
@@ -37,7 +42,10 @@ export type ParamKindName =
   | "string"
   | "select"
   | "vec2"
-  | "point";
+  | "point"
+  | "object"
+  | "array"
+  | "json";
 
 /**
  * @internal What a parameter kind may need beyond its own JSON value while
@@ -64,9 +72,9 @@ export interface ParamDecodeContext {
  * One parameter's kind: the JSON it accepts, the runtime value that JSON
  * decodes to, and the assets the value needs loaded.
  *
- * @internal Kinds are built through {@link param}. This type is exported so
- * `ParamsOf` can be written down, not so code outside the package implements
- * one.
+ * Every kind comes from {@link param}. This is a type to name — the item kind
+ * `param.array` takes, a helper that returns one — not one to implement: a
+ * kind built any other way is a catalog error.
  */
 export interface ParamKind<T> {
   /** Stable kind name, used in messages. */
@@ -109,6 +117,10 @@ export interface ParamKind<T> {
    * than the world's.
    */
   readonly relative?: boolean;
+  /** For an `object`, the kinds of its members, in declaration order. */
+  readonly fields?: ParamFields;
+  /** For an `array`, the kind every element is. */
+  readonly item?: ParamKind<unknown>;
   /**
    * The value the editor writes into a new placement. Loading never fills it
    * in: a placement that omits the field fails validation, so changing this
@@ -116,11 +128,13 @@ export interface ParamKind<T> {
    */
   readonly defaultValue: JsonValue;
   /**
-   * Problems with an authored value, each completing the sentence
-   * "`<path>` …". An empty list means {@link decode} and {@link assets} may
+   * Problems with an authored value. Each message completes the sentence
+   * "`<path>` …", and each path is measured from the value being validated —
+   * empty for the value itself, and a member name or an array index for a
+   * value inside it. An empty list means {@link decode} and {@link assets} may
    * run on the value.
    */
-  validate(value: JsonValue): readonly string[];
+  validate(value: JsonValue): readonly ParamError[];
   /** The runtime value passed to `setup()`. Call only on a validated value. */
   decode(value: JsonValue, context: ParamDecodeContext): T;
   /** Handles the decoded value needs loaded. Call only on a validated value. */
@@ -129,6 +143,17 @@ export interface ParamKind<T> {
 
 /** The parameter kinds of one schema, by parameter name. */
 export type ParamFields = Readonly<Record<string, ParamKind<unknown>>>;
+
+/**
+ * @internal The kinds copied into a frozen null-prototype object, so a
+ * parameter named `__proto__` becomes an own key instead of replacing the
+ * prototype, and a later mutation of what the caller passed changes nothing.
+ */
+export function frozenFields<F extends ParamFields>(fields: F): F {
+  const copied = Object.create(null) as Record<string, ParamKind<unknown>>;
+  for (const [name, kind] of Object.entries(fields)) copied[name] = kind;
+  return Object.freeze(copied) as F;
+}
 
 /**
  * A placeable entity's parameter schema, built by {@link defineParams}. It is
@@ -140,10 +165,16 @@ export interface ParamsSchema<F extends ParamFields> {
   readonly _fields: F;
 }
 
-/** One schema field an authoring tool can render. */
-export type ParamFieldDescription = {
-  readonly name: string;
-  /** Which control the field needs. */
+/**
+ * One value an authoring tool can render: a whole field, a member of an
+ * `object`, or one element of an `array`.
+ *
+ * A description is a tree, and {@link ParamValueDescription.kind} is flat at
+ * every node of it — the members below say what one value is, never what its
+ * container is, so a tool switches on `kind` the same way wherever it stands.
+ */
+export type ParamValueDescription = {
+  /** Which control the value needs. */
   readonly kind: ParamKindName;
   /**
    * For an asset field, the kind of asset it names — the `kind` of the
@@ -169,9 +200,15 @@ export type ParamFieldDescription = {
    * way to empty it; a required one has none.
    */
   readonly optional?: boolean;
-  /** Smallest accepted number, for a `number` or `integer` field. */
+  /**
+   * Smallest accepted number, for a `number` or `integer` field, and smallest
+   * accepted number of elements for an `array`.
+   */
   readonly min?: number;
-  /** Largest accepted number, for a `number` or `integer` field. */
+  /**
+   * Largest accepted number, for a `number` or `integer` field, and largest
+   * accepted number of elements for an `array`.
+   */
   readonly max?: number;
   /**
    * How far one press of a control moves a `number` field. A typed value off
@@ -191,10 +228,26 @@ export type ParamFieldDescription = {
    */
   readonly relative?: boolean;
   /**
+   * For an `object` field, its members in declaration order. Each is a field
+   * description of its own, so a member group renders through the same code
+   * that renders the top-level fields.
+   */
+  readonly fields?: readonly ParamFieldDescription[];
+  /**
+   * For an `array` field, what one element is. Elements are named by their
+   * position, so the element has a description and no name.
+   */
+  readonly item?: ParamValueDescription;
+  /**
    * The value a new placement is written with. `null` for a reference field,
    * which starts with nothing chosen.
    */
   readonly defaultValue: JsonValue;
+};
+
+/** One schema field an authoring tool can render: a value with a name. */
+export type ParamFieldDescription = ParamValueDescription & {
+  readonly name: string;
 };
 
 /** The decoded parameter object a schema produces — a `setup()` signature. */
@@ -203,7 +256,11 @@ export type ParamsOf<S> =
     ? { [K in keyof F]: RuntimeValueOf<F[K]> }
     : never;
 
-type RuntimeValueOf<K> = K extends ParamKind<infer T> ? T : never;
+/**
+ * What one kind hands `setup()`: the runtime value its authored JSON decodes
+ * to. `param.object` and `param.array` are typed in terms of it.
+ */
+export type RuntimeValueOf<K> = K extends ParamKind<infer T> ? T : never;
 
 /** Where a parameter problem is, and what it is. */
 export interface ParamError {
@@ -227,8 +284,10 @@ type ParamKindDefinition<T> = {
   readonly multiline?: boolean;
   readonly options?: readonly string[];
   readonly relative?: boolean;
+  readonly fields?: ParamFields;
+  readonly item?: ParamKind<unknown>;
   readonly defaultValue: JsonValue;
-  readonly validate: (value: JsonValue) => readonly string[];
+  readonly validate: (value: JsonValue) => readonly ParamError[];
   readonly decode: (value: JsonValue, context: ParamDecodeContext) => T;
   readonly assets: (value: JsonValue) => readonly AssetHandle<unknown>[];
 };
@@ -251,8 +310,10 @@ class BuiltInParamKind<T> implements ParamKind<T> {
   readonly multiline?: boolean;
   readonly options?: readonly string[];
   readonly relative?: boolean;
+  readonly fields?: ParamFields;
+  readonly item?: ParamKind<unknown>;
   readonly defaultValue: JsonValue;
-  readonly validate: (value: JsonValue) => readonly string[];
+  readonly validate: (value: JsonValue) => readonly ParamError[];
   readonly decode: (value: JsonValue, context: ParamDecodeContext) => T;
   readonly assets: (value: JsonValue) => readonly AssetHandle<unknown>[];
 
@@ -272,6 +333,8 @@ class BuiltInParamKind<T> implements ParamKind<T> {
     }
     if (definition.options !== undefined) this.options = definition.options;
     if (definition.relative !== undefined) this.relative = definition.relative;
+    if (definition.fields !== undefined) this.fields = definition.fields;
+    if (definition.item !== undefined) this.item = definition.item;
     this.defaultValue = definition.defaultValue;
     this.validate = definition.validate;
     this.decode = definition.decode;
@@ -295,6 +358,47 @@ export function isBuiltInParamKind(
   value: unknown,
 ): value is ParamKind<unknown> {
   return BuiltInParamKind.is(value);
+}
+
+/**
+ * @internal How deep a parameter may nest values that have members. Four is a
+ * wave of spawns of drops and one level to spare; deeper than that is a form
+ * nobody can read, so the catalog reports the declaration instead.
+ */
+export const MAX_PARAM_DEPTH = 4;
+
+/** One value inside a kind, and the path from that kind down to it. */
+export interface ParamNode {
+  /**
+   * Member names, and `"0"` for the element of an array — the path an authored
+   * value of that shape is reached by. Empty for the kind itself.
+   */
+  readonly path: readonly string[];
+  readonly kind: ParamKind<unknown>;
+}
+
+/**
+ * @internal A kind and every value inside it, outermost first.
+ *
+ * An array contributes its element once, under `"0"`: one kind is what every
+ * element is, whatever the level authored. A kind this package did not build
+ * is listed and not descended into, since nothing here can trust what it
+ * carries.
+ */
+export function paramNodes(kind: ParamKind<unknown>): readonly ParamNode[] {
+  const nodes: ParamNode[] = [];
+  const collect = (node: ParamKind<unknown>, path: readonly string[]): void => {
+    nodes.push({ path, kind: node });
+    if (!isBuiltInParamKind(node)) return;
+    if (node.fields !== undefined) {
+      for (const [name, member] of Object.entries(node.fields)) {
+        collect(member, [...path, name]);
+      }
+    }
+    if (node.item !== undefined) collect(node.item, [...path, "0"]);
+  };
+  collect(kind, []);
+  return nodes;
 }
 
 /**
