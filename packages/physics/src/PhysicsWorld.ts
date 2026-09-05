@@ -1320,6 +1320,7 @@ export class PhysicsWorld {
 
   /** Inspector-facing snapshot of the current rigid bodies and active contacts. */
   snapshot(): {
+    elapsed: number;
     bodies: Array<{
       entityId: string;
       type: BodyType;
@@ -1396,7 +1397,7 @@ export class PhysicsWorld {
         return left.b < right.b ? -1 : left.b > right.b ? 1 : 0;
       });
 
-    return { bodies, contacts };
+    return { elapsed: this.elapsed, bodies, contacts };
   }
 
   /** Destroy the physics world and free resources. */

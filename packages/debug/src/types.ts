@@ -1,5 +1,5 @@
 import { ServiceKey } from "@yagejs/core";
-import type { Entity, Vec2Like } from "@yagejs/core";
+import type { Entity, Scene, Vec2Like } from "@yagejs/core";
 
 /**
  * Minimal subset of PixiJS Graphics used by debug drawing.
@@ -21,15 +21,24 @@ export interface DebugGraphics {
   circle(x: number, y: number, radius: number): DebugGraphics;
   moveTo(x: number, y: number): DebugGraphics;
   lineTo(x: number, y: number): DebugGraphics;
-  stroke(style: { width: number; color: number; alpha?: number }): DebugGraphics;
+  stroke(style: {
+    width: number;
+    color: number;
+    alpha?: number;
+  }): DebugGraphics;
   fill(style: { color: number; alpha?: number }): DebugGraphics;
 }
 
 /** Camera-space drawing API passed to contributors. */
-export interface WorldDebugApi {
+export interface SceneWorldDebugApi {
   acquireGraphics(): DebugGraphics | undefined;
-  isFlagEnabled(flag: string): boolean;
   readonly cameraZoom: number;
+}
+
+export interface WorldDebugApi extends SceneWorldDebugApi {
+  isFlagEnabled(flag: string): boolean;
+  /** Drawing for a visible scene, or undefined while hidden or off the stack. */
+  forScene(scene: Scene): SceneWorldDebugApi | undefined;
 }
 
 /** Screen-space HUD API passed to contributors. */

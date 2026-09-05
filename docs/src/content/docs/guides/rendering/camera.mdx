@@ -212,6 +212,28 @@ the right answer for entity-anchored UI like nameplates or health bars
 transform separates the UI from its target under zoom. For that use
 case, see [`ScreenFollow`](#screenfollow-entity-anchored-ui) below.
 
+### Applying a camera to a custom container
+
+`syncCameraTransform` positions a custom display container through a camera,
+including its active modifiers. Use it when writing a rendering tool that
+owns its own container:
+
+```typescript
+import { CameraComponent, syncCameraTransform } from "@yagejs/renderer";
+
+syncCameraTransform(container, camera.get(CameraComponent));
+```
+
+The signature is `syncCameraTransform(target: DisplayContainer,
+camera?: CameraComponent, binding?: CameraBinding): void`. The optional
+binding applies the translation, rotation and scale ratios described above;
+omitted ratios use `1`. Without a camera, the helper resets the target to
+position `(0, 0)`, scale `(1, 1)` and rotation `0`.
+
+The helper changes only the container's transform. It does not attach the
+container to a layer or apply responsive fit scaling. Ordinary scene layers
+receive the same camera calculation automatically from `DisplaySystem`.
+
 ### ScreenFollow (entity-anchored UI)
 
 `ScreenFollow` projects a world source through a camera and writes the

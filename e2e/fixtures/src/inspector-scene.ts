@@ -75,3 +75,22 @@ engine.use(new DebugPlugin());
 await engine.start();
 engine.inspector.time.freeze();
 await engine.scenes.push(new BaseScene());
+
+engine.inspector.addExtension("sanity", {
+  frameReadings() {
+    engine.logger.info("sanity", "Frame reading");
+    engine.events.emit("engine:started", undefined);
+    return {
+      loop: engine.loop.frameCount,
+      inspector: engine.inspector.time.getFrame(),
+      snapshot: engine.inspector.snapshot().frame,
+      log: engine.logger.getRecent(1)[0]?.frame,
+      event: engine.inspector.events.getLog().at(-1)?.frame,
+    };
+  },
+  destroyPendingSnapshot() {
+    const entity = engine.scenes.active!.spawn("destroy-pending");
+    entity.destroy();
+    return engine.inspector.snapshot();
+  },
+});

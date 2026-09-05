@@ -36,6 +36,7 @@ function createApi(
   const acquired: DebugGraphics[] = [];
   const poolSize = options.poolSize ?? Infinity;
   const api: WorldDebugApi = {
+    forScene: () => api,
     acquireGraphics: () => {
       if (acquired.length >= poolSize) return undefined;
       const g = createMockGraphics();

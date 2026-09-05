@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { EngineSnapshot } from "@yagejs/core";
 import {
   getEntityByName,
   getSceneStack,
@@ -10,6 +11,54 @@ import {
 } from "./helpers.js";
 
 test.describe("Inspector scene sanity", () => {
+  test("freely-running frames agree across diagnostics and pending destroys use one count", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/inspector-scene.html");
+    await waitForClock(page);
+    await page.waitForFunction(
+      () => window.__yage__?.inspector.getExtension("sanity") !== undefined,
+    );
+    const baseline = await page.evaluate(() => {
+      const time = window.__yage__!.inspector.time;
+      const frame = time.getFrame();
+      time.thaw();
+      return frame;
+    });
+    await page.waitForFunction(
+      (frame) => window.__yage__!.inspector.time.getFrame() >= frame + 5,
+      baseline,
+    );
+    const readings = await page.evaluate(() => {
+      const inspector = window.__yage__!.inspector;
+      inspector.time.freeze();
+      const sanity = inspector.getExtension<{
+        frameReadings(): Record<string, number>;
+      }>("sanity")!;
+      return sanity.frameReadings();
+    });
+    expect(readings.loop).toBeGreaterThan(baseline);
+    expect(new Set(Object.values(readings)).size).toBe(1);
+    const snapshot = await page.evaluate(() =>
+      window
+        .__yage__!.inspector.getExtension<{
+          destroyPendingSnapshot(): EngineSnapshot;
+        }>("sanity")!
+        .destroyPendingSnapshot(),
+    );
+    const sceneCount = snapshot.scenes.reduce(
+      (count, scene) => count + scene.entities.length,
+      0,
+    );
+    expect(snapshot.entityCount).toBe(sceneCount);
+    expect(
+      snapshot.sceneStack.reduce(
+        (count, scene) => count + scene.entityCount,
+        0,
+      ),
+    ).toBe(sceneCount);
+  });
+
   test("inspector sees initial scene and delayed push", async ({ page }) => {
     await gotoFixture(page, "/inspector-scene.html");
     await waitForClock(page);

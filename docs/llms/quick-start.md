@@ -45,7 +45,9 @@ import { Engine } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 
 const engine = new Engine();
-engine.use(new RendererPlugin({ width: 800, height: 600, backgroundColor: 0x1a1a2e }));
+engine.use(
+  new RendererPlugin({ width: 800, height: 600, backgroundColor: 0x1a1a2e }),
+);
 await engine.start();
 ```
 
@@ -58,7 +60,13 @@ import { InputPlugin } from "@yagejs/input";
 import { PhysicsPlugin } from "@yagejs/physics";
 
 const engine = new Engine({ debug: true, fixedTimestep: 1 / 60 });
-engine.use(new RendererPlugin({ width: 800, height: 600, container: document.getElementById("game")! }));
+engine.use(
+  new RendererPlugin({
+    width: 800,
+    height: 600,
+    container: document.getElementById("game")!,
+  }),
+);
 engine.use(new InputPlugin({ actions: { jump: ["Space", "KeyW"] } }));
 engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
 
@@ -106,20 +114,20 @@ engine.use(new InputPlugin({ actions: {} })); // inspector.input needs InputPlug
 await engine.start();
 
 // In the browser console:
-window.__yage__.inspector.snapshot();                       // full engine state
-window.__yage__.inspector.getEntities();                    // all entities in active scene
-window.__yage__.inspector.getEntityByName("player");        // single entity
+window.__yage__.inspector.snapshot(); // full engine state
+window.__yage__.inspector.getEntities(); // all entities in active scene
+window.__yage__.inspector.getEntityByName("player"); // first active entity with this name
 window.__yage__.inspector.getComponentData("player", "SpriteComponent");
-window.__yage__.inspector.getSceneStack();                  // scenes + pause state
-window.__yage__.inspector.getErrors();                      // failures recorded by ErrorBoundary
-window.__yage__.inspector.time.freeze();                    // stop auto-advance
-window.__yage__.inspector.time.step(1);                     // advance one frame (sync)
-window.__yage__.inspector.input.keyDown("ArrowRight");      // synthetic input
-window.__yage__.inspector.input.hold("ArrowRight", 30);     // press, run N frames, release
-window.__yage__.inspector.snapshotJSON();                   // stable JSON snapshot
-window.__yage__.inspector.setSeed(42);                      // pin every scene RNG (for replays)
-window.__yage__.inspector.events.getLog();                  // recorded bus, entity and scene events
-await window.__yage__.inspector.events.waitFor("scene:pushed", { withinFrames: 30 });
+window.__yage__.inspector.getSceneStack(); // scenes + pause state
+window.__yage__.inspector.getErrors(); // failures recorded by ErrorBoundary
+window.__yage__.inspector.time.freeze(); // stop auto-advance
+window.__yage__.inspector.time.step(1); // advance one frame (sync)
+window.__yage__.inspector.input.keyDown("ArrowRight"); // synthetic input
+window.__yage__.inspector.input.hold("ArrowRight", 30); // press, run N frames, release
+window.__yage__.inspector.snapshotJSON(); // stable JSON snapshot
+window.__yage__.inspector.setSeed(42); // pin every scene RNG (for replays)
+window.__yage__.inspector.events.getLog(); // recorded bus, entity and scene events
+window.__yage__.inspector.time.getFrame(); // real game-loop frame, automatic or manual
 ```
 
 Snapshot and query calls work with `debug: true` alone. Frame stepping (`inspector.time.*`) needs `DebugPlugin`; synthetic input (`inspector.input.*`) needs `InputPlugin`. Without those plugins, the gated calls throw.
@@ -137,6 +145,32 @@ await window.__yage__.inspector.time.stepAsync(45);
 ```
 
 See `packages/debug.md` for `stepUntil`/`stepAsync` options, `snapshotScene(nameOrId)`, `events.setEnabled`/`isEnabled`, and `time.isAdvancing()`.
+
+`events.waitFor` checks retained history without consuming matches. Clear the
+log before an action when checking for a new occurrence. On a frozen clock,
+advance frames while the wait is pending:
+
+```ts
+await window.__yage__.inspector.drive(async ({ events, input }) => {
+  events.clearLog();
+  await Promise.all([
+    events.waitFor("player:jumped", { withinFrames: 30 }),
+    input.hold("Space", 30),
+  ]);
+});
+```
+
+The example expects game code to emit `player:jumped`. Deadlines count real
+frames, including automatic playback. A drive owns the clock until it ends;
+use its context to step or inject frame-advancing input. Custom tools can
+reserve the same control through `inspector.time.acquire()` and release the
+returned lease when done. Raw time mutators reject while owned.
+
+World-entity snapshots include `name`, optional `key`, `generation` and
+`pooled`. Counts include inactive entities and exclude destroyed ones. Engine
+snapshots report `fixedStepIndex` and `interpolationAlpha`; scene snapshots
+report `elapsed`, `fixedElapsed` and `physics.elapsed` in seconds. Scene ids
+identify runtime instances and change when a run creates new scenes.
 
 Diagnostics that need optional plugins live under inspector extension
 namespaces. For example, `DebugPlugin` registers `debug` while installed.
@@ -158,7 +192,7 @@ const enemies = window.__yage__.inspector
   .filter((e) => e.tags.includes("enemy"));
 ```
 
-For agent-driven debugging: write a throwaway Playwright spec, boot the game, freeze the clock, drive scripted input, and snapshot. See `packages/debug.md` → *Agent-driven debugging: throwaway Inspector specs*.
+For agent-driven debugging: write a throwaway Playwright spec, boot the game, freeze the clock, drive scripted input, and snapshot. See `packages/debug.md` → _Agent-driven debugging: throwaway Inspector specs_.
 
 ### Unit tests (deterministic frame stepping)
 

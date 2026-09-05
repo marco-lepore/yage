@@ -25,31 +25,31 @@ describe("DebugClock", () => {
     expect(clock.isFrozen).toBe(false);
   });
 
-  it("stopAuto freezes and freezes the host", () => {
+  it("freeze freezes and freezes the host", () => {
     const { clock, host } = createClock();
-    clock.stopAuto();
+    clock.freeze();
     expect(clock.isFrozen).toBe(true);
     expect(host.freeze).toHaveBeenCalledOnce();
   });
 
-  it("startAuto thaws the host", () => {
+  it("thaw thaws the host", () => {
     const { clock, host } = createClock({ frozen: true });
     host.thaw.mockClear();
-    clock.startAuto();
+    clock.thaw();
     expect(clock.isFrozen).toBe(false);
     expect(host.thaw).toHaveBeenCalledOnce();
   });
 
-  it("stopAuto is idempotent when already frozen", () => {
+  it("freeze is idempotent when already frozen", () => {
     const { clock, host } = createClock({ frozen: true });
     host.freeze.mockClear();
-    clock.stopAuto();
+    clock.freeze();
     expect(host.freeze).not.toHaveBeenCalled();
   });
 
-  it("startAuto is idempotent when already auto", () => {
+  it("thaw is idempotent when already auto", () => {
     const { clock, host } = createClock();
-    clock.startAuto();
+    clock.thaw();
     expect(host.thaw).not.toHaveBeenCalled();
   });
 
@@ -79,21 +79,13 @@ describe("DebugClock", () => {
     },
   );
 
-  it("tracks frame count while frozen", () => {
-    const { clock } = createClock({ frozen: true });
-    expect(clock.getFrame()).toBe(0);
-    clock.step();
-    clock.step();
-    expect(clock.getFrame()).toBe(2);
-  });
-
-  it("does not advance the frame counter if advance throws", () => {
+  it("propagates an advance failure", () => {
     const { clock, host } = createClock({ frozen: true });
     host.advance.mockImplementationOnce(() => {
       throw new Error("listener boom");
     });
     expect(() => clock.step()).toThrow("listener boom");
-    expect(clock.getFrame()).toBe(0);
+    expect(host.advance).toHaveBeenCalledOnce();
   });
 
   it("stepFrames advances the host n times", () => {

@@ -65,7 +65,6 @@ const POLL_MS = 100;
  */
 const URL_WRITE_MS = 250;
 
-
 export interface MountOptions {
   harness: HarnessDef;
   /** The module map from `import.meta.glob("<pattern>", { eager: true })`. */
@@ -379,8 +378,22 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
     // Asked of the engine rather than tracked here: `push` preloads before it
     // stacks the scene, so a scenario whose assets fail to load leaves nothing
     // on the stack and the next attempt still has to push.
-    if (engine.scenes.active) await engine.scenes.replace(next);
-    else await engine.scenes.push(next);
+    const previous = engine.scenes.active;
+    if (previous) {
+      const unregister = engine.registerSceneHooks({
+        afterExit: (exited) => {
+          if (exited === previous) engine.inspector.events.clearLog();
+        },
+      });
+      try {
+        await engine.scenes.replace(next);
+      } finally {
+        unregister();
+      }
+    } else {
+      engine.inspector.events.clearLog();
+      await engine.scenes.push(next);
+    }
     scene = next;
     builtEntry = builtWith;
     builtValues = builtFrom;
@@ -452,10 +465,10 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
     driving = true;
     panel.setBusy(true);
     try {
-      return await clock.whileStopped(async () => {
+      return await clock.whileStopped(async (time) => {
         await prepare();
         if (!scene) throw new Error("No scene is mounted.");
-        return runDrive(engine, scene, values, fn, opts);
+        return runDrive(engine, scene, values, fn, { ...opts, time });
       });
     } finally {
       driving = false;

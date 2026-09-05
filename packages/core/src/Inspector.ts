@@ -224,6 +224,10 @@ export interface InspectorFacetContributor {
 
 export interface WorldEntitySnapshot {
   id: string;
+  name: string;
+  key?: string;
+  generation: number;
+  pooled: boolean;
   type: string;
   parent: string | null;
   /**
@@ -262,6 +266,7 @@ export interface UITreeSnapshot {
 }
 
 export interface PhysicsSnapshot {
+  elapsed: number;
   bodies: Array<{
     entityId: string;
     type: "dynamic" | "kinematic" | "static";
@@ -296,6 +301,8 @@ export interface EventLogEntry {
 
 export interface WorldSceneSnapshot {
   id: string;
+  elapsed: number;
+  fixedElapsed: number;
   name: string;
   paused: boolean;
   timeScale: number;
@@ -373,6 +380,8 @@ export interface InputStateSnapshot {
 export interface EngineSnapshot {
   version: 1;
   frame: number;
+  fixedStepIndex: number;
+  interpolationAlpha: number;
   sceneStack: SceneSnapshot[];
   entityCount: number;
   systemCount: number;
@@ -389,7 +398,32 @@ export interface InspectorTimeController {
   /** `dtMs` overrides the configured per-frame delta for this call only. */
   stepFrames(count: number, dtMs?: number): void;
   setDelta(ms: number): void;
+}
+
+/** Queries and controls for the engine clock. */
+export interface InspectorTimeControl {
+  freeze(): void;
+  thaw(): void;
+  step(frames?: number): void;
+  setDelta(ms: number): void;
+  isFrozen(): boolean;
   getFrame(): number;
+  isAdvancing(withinMs?: number): boolean;
+  stepUntil(
+    predicate: () => boolean,
+    opts?: { maxFrames?: number; dtMs?: number },
+  ): Promise<number>;
+  stepAsync(frames?: number, opts?: { dtMs?: number }): Promise<void>;
+}
+
+/** Exclusive clock control. Queries remain available after release. */
+export interface InspectorTimeLease extends InspectorTimeControl {
+  release(): void;
+}
+
+export interface InspectorTime extends InspectorTimeControl {
+  acquire(): InspectorTimeLease;
+  isOwned(): boolean;
 }
 
 /** Per-frame delta override for one `step` or `until` call. */
@@ -568,94 +602,154 @@ export class Inspector {
     this.recordBusEvent(String(event), data);
   };
 
-  readonly time = {
-    freeze: (): void => {
-      this.requireTimeController().freeze();
-    },
-    thaw: (): void => {
-      this.requireTimeController().thaw();
-    },
-    step: (frames = 1): void => {
-      this.assertNonNegativeInteger(frames, "Inspector.time.step(frames)");
-      if (frames === 0) return;
-      this.requireTimeController().stepFrames(frames);
-      // Event matching happens inside appendEvent during the step. A trailing
-      // pass here only needs to expire deadline waiters whose time ran out.
-      this.expireDeadlineWaiters();
-    },
-    setDelta: (ms: number): void => {
-      this.assertPositiveDelta(ms, "Inspector.time.setDelta(ms)");
-      this.requireTimeController().setDelta(ms);
-    },
-    isFrozen: (): boolean => this.timeController?.isFrozen ?? false,
-    getFrame: (): number =>
-      this.timeController?.getFrame() ?? this.engine.loop.frameCount,
-    /**
-     * True if a real `GameLoop.tick()` happened within the last `withinMs`
-     * (default 250) milliseconds of wall-clock time. Independent of
-     * `isFrozen()`: a frozen clock that isn't being stepped reads `false`
-     * (nothing is ticking), but a manual `step`/`stepUntil`/`stepAsync` fires a
-     * real tick, so this reads `true` for `withinMs` after one. A
-     * stalled-but-not-frozen game — a hung `await`, a runaway synchronous loop —
-     * also reads `false`, the case this method exists to tell apart from
-     * "frozen on purpose".
-     */
-    isAdvancing: (withinMs = 250): boolean => {
-      const lastTickAt = this.engine.loop.lastTickAt;
-      if (lastTickAt === 0) return false;
-      return performance.now() - lastTickAt <= withinMs;
-    },
-    /**
-     * Advance frame-by-frame until `predicate()` returns true, yielding a real
-     * macrotask between frames so async work parked on the microtask queue —
-     * a scene transition's `await`, a dialogue runner's promise chain — gets a
-     * chance to settle before the next frame steps. Checks `predicate` before
-     * the first frame (resolves `0` if already satisfied) and after each
-     * subsequent frame. Throws if `predicate` is still false after
-     * `opts.maxFrames` (default 600, i.e. 10s at 60fps).
-     */
-    stepUntil: async (
-      predicate: () => boolean,
-      opts?: { maxFrames?: number; dtMs?: number },
-    ): Promise<number> => {
-      if (predicate()) return 0;
-      const maxFrames = opts?.maxFrames ?? 600;
-      this.assertNonNegativeInteger(
-        maxFrames,
-        "Inspector.time.stepUntil(maxFrames)",
-      );
-      if (opts?.dtMs !== undefined) {
-        this.assertPositiveDelta(opts.dtMs, "Inspector.time.stepUntil(dtMs)");
-      }
-      const controller = this.requireTimeController();
-      for (let frame = 1; frame <= maxFrames; frame++) {
-        controller.stepFrames(1, opts?.dtMs);
-        this.expireDeadlineWaiters();
-        await yieldMacrotask();
-        if (predicate()) return frame;
-      }
-      throw new Error(
-        `Inspector.time.stepUntil(): predicate still false after ${maxFrames} frames.`,
-      );
-    },
-    /**
-     * Advance a fixed number of frames, yielding a real macrotask between each
-     * so the same async draining as {@link stepUntil} applies — for call sites
-     * that already know how many frames they need.
-     */
-    stepAsync: async (frames = 1, opts?: { dtMs?: number }): Promise<void> => {
-      this.assertNonNegativeInteger(frames, "Inspector.time.stepAsync(frames)");
-      if (opts?.dtMs !== undefined) {
-        this.assertPositiveDelta(opts.dtMs, "Inspector.time.stepAsync(dtMs)");
-      }
-      const controller = this.requireTimeController();
-      for (let i = 0; i < frames; i++) {
-        controller.stepFrames(1, opts?.dtMs);
-        this.expireDeadlineWaiters();
-        await yieldMacrotask();
-      }
-    },
+  private timeOwner: object | undefined;
+
+  readonly time: InspectorTime = {
+    ...this.createTimeControl(),
+    acquire: () => this.acquireTime(),
+    isOwned: () => this.timeOwner !== undefined,
   };
+
+  private acquireTime(): InspectorTimeLease {
+    this.requireTimeController();
+    if (this.timeOwner)
+      throw new Error("Inspector.time.acquire(): clock is already owned.");
+    const owner = {};
+    this.timeOwner = owner;
+    let released = false;
+    return {
+      ...this.createTimeControl(owner),
+      release: () => {
+        if (released) return;
+        released = true;
+        this.timeOwner = undefined;
+      },
+    };
+  }
+
+  private assertTimeAccess(owner?: object): void {
+    if (owner !== this.timeOwner) {
+      throw new Error(
+        owner
+          ? "Inspector.time: lease has been released."
+          : "Inspector.time: clock is already owned.",
+      );
+    }
+  }
+
+  private createTimeControl(owner?: object): InspectorTimeControl {
+    const runAsync = async <T>(
+      work: (time: InspectorTimeControl) => Promise<T>,
+    ): Promise<T> => {
+      this.assertTimeAccess(owner);
+      if (owner) return work(control);
+      const lease = this.acquireTime();
+      try {
+        return await work(lease);
+      } finally {
+        lease.release();
+      }
+    };
+    const control: InspectorTimeControl = {
+      freeze: (): void => {
+        this.assertTimeAccess(owner);
+        this.requireTimeController().freeze();
+      },
+      thaw: (): void => {
+        this.assertTimeAccess(owner);
+        this.requireTimeController().thaw();
+      },
+      step: (frames = 1): void => {
+        this.assertTimeAccess(owner);
+        this.assertNonNegativeInteger(frames, "Inspector.time.step(frames)");
+        if (frames === 0) return;
+        this.requireTimeController().stepFrames(frames);
+      },
+      setDelta: (ms: number): void => {
+        this.assertTimeAccess(owner);
+        this.assertPositiveDelta(ms, "Inspector.time.setDelta(ms)");
+        this.requireTimeController().setDelta(ms);
+      },
+      isFrozen: (): boolean => this.timeController?.isFrozen ?? false,
+      getFrame: (): number => this.engine.loop.frameCount,
+      /**
+       * True if a real `GameLoop.tick()` happened within the last `withinMs`
+       * (default 250) milliseconds of wall-clock time. Independent of
+       * `isFrozen()`: a frozen clock that isn't being stepped reads `false`
+       * (nothing is ticking), but a manual `step`/`stepUntil`/`stepAsync` fires a
+       * real tick, so this reads `true` for `withinMs` after one. A
+       * stalled-but-not-frozen game — a hung `await`, a runaway synchronous loop —
+       * also reads `false`, the case this method exists to tell apart from
+       * "frozen on purpose".
+       */
+      isAdvancing: (withinMs = 250): boolean => {
+        const lastTickAt = this.engine.loop.lastTickAt;
+        if (lastTickAt === 0) return false;
+        return performance.now() - lastTickAt <= withinMs;
+      },
+      /**
+       * Advance frame-by-frame until `predicate()` returns true, yielding a real
+       * macrotask between frames so async work parked on the microtask queue —
+       * a scene transition's `await`, a dialogue runner's promise chain — gets a
+       * chance to settle before the next frame steps. Checks `predicate` before
+       * the first frame (resolves `0` if already satisfied) and after each
+       * subsequent frame. Throws if `predicate` is still false after
+       * `opts.maxFrames` (default 600, i.e. 10s at 60fps).
+       */
+      stepUntil: async (
+        predicate: () => boolean,
+        opts?: { maxFrames?: number; dtMs?: number },
+      ): Promise<number> => {
+        this.assertTimeAccess(owner);
+        if (!owner) return runAsync((time) => time.stepUntil(predicate, opts));
+        if (predicate()) return 0;
+        const maxFrames = opts?.maxFrames ?? 600;
+        this.assertNonNegativeInteger(
+          maxFrames,
+          "Inspector.time.stepUntil(maxFrames)",
+        );
+        if (opts?.dtMs !== undefined) {
+          this.assertPositiveDelta(opts.dtMs, "Inspector.time.stepUntil(dtMs)");
+        }
+        const controller = this.requireTimeController();
+        for (let frame = 1; frame <= maxFrames; frame++) {
+          this.assertTimeAccess(owner);
+          controller.stepFrames(1, opts?.dtMs);
+          await yieldMacrotask();
+          if (predicate()) return frame;
+        }
+        throw new Error(
+          `Inspector.time.stepUntil(): predicate still false after ${maxFrames} frames.`,
+        );
+      },
+      /**
+       * Advance a fixed number of frames, yielding a real macrotask between each
+       * so the same async draining as {@link stepUntil} applies — for call sites
+       * that already know how many frames they need.
+       */
+      stepAsync: async (
+        frames = 1,
+        opts?: { dtMs?: number },
+      ): Promise<void> => {
+        this.assertTimeAccess(owner);
+        if (!owner) return runAsync((time) => time.stepAsync(frames, opts));
+        this.assertNonNegativeInteger(
+          frames,
+          "Inspector.time.stepAsync(frames)",
+        );
+        if (opts?.dtMs !== undefined) {
+          this.assertPositiveDelta(opts.dtMs, "Inspector.time.stepAsync(dtMs)");
+        }
+        const controller = this.requireTimeController();
+        for (let i = 0; i < frames; i++) {
+          this.assertTimeAccess(owner);
+          controller.stepFrames(1, opts?.dtMs);
+          await yieldMacrotask();
+        }
+      },
+    };
+    return control;
+  }
 
   readonly input = {
     keyDown: (code: string): void => {
@@ -763,6 +857,13 @@ export class Inspector {
       this.eventLog = ordered;
       this.eventLogHead = 0;
     },
+    /**
+     * Resolve the earliest retained match without consuming it, or wait for a
+     * future match. Clear the log before an action to require a new event.
+     * `withinFrames` expires after that many completed engine frames; events
+     * on the deadline frame match first. Zero searches retained history only.
+     * Disposing the Inspector or disabling the log rejects pending waits.
+     */
     waitFor: (
       pattern: string | RegExp,
       options?: {
@@ -770,9 +871,6 @@ export class Inspector {
         source?: EventLogEntry["source"];
       },
     ): Promise<EventLogEntry> => {
-      const existing = this.findMatchingEvent(pattern, options?.source);
-      if (existing) return Promise.resolve(existing);
-
       const withinFrames = options?.withinFrames;
       if (
         withinFrames !== undefined &&
@@ -782,6 +880,17 @@ export class Inspector {
           "Inspector.events.waitFor(withinFrames) requires a non-negative integer.",
         );
       }
+
+      const existing = this.findMatchingEvent(pattern, options?.source);
+      if (existing) return Promise.resolve(existing);
+      if (withinFrames === 0)
+        return Promise.reject(
+          new Error("Inspector.events.waitFor() timed out after 0 frames."),
+        );
+      if (!this.eventLogEnabled)
+        return Promise.reject(
+          new Error("Inspector.events.waitFor(): event logging is disabled."),
+        );
 
       return new Promise<EventLogEntry>((resolve, reject) => {
         const waiter: EventWaiter = {
@@ -854,29 +963,18 @@ export class Inspector {
   ): Promise<InspectorDriveResult<T>> {
     // Resolved here rather than inside the async body so a game without
     // DebugPlugin fails at the call instead of in a promise nobody awaited.
-    const controller = this.requireTimeController();
-    if (this.driving) {
-      throw new Error(
-        "Inspector.drive() is already in flight. Await the running drive before starting another.",
-      );
-    }
     if (opts?.maxFrames !== undefined) {
       assertDriveMaxFrames(opts.maxFrames, "Inspector.drive()");
     }
-    return this.executeDrive(controller, fn, opts);
+    return this.executeDrive(this.time.acquire(), fn, opts);
   }
 
-  /** Guards against a second drive starting while one holds the clock. */
-  private driving = false;
-
   private async executeDrive<T>(
-    controller: InspectorTimeController,
+    controller: InspectorTimeLease,
     fn: (ctx: InspectorDriveContext) => Promise<T> | T,
     opts?: InspectorDriveOptions,
   ): Promise<InspectorDriveResult<T>> {
-    const wasFrozen = controller.isFrozen;
-    if (!wasFrozen) controller.freeze();
-    this.driving = true;
+    const wasFrozen = controller.isFrozen();
 
     const captures: InspectorDriveCapture[] = [];
     const startFrame = this.time.getFrame();
@@ -896,8 +994,9 @@ export class Inspector {
     let state!: DriveState;
 
     try {
+      if (!wasFrozen) controller.freeze();
       value = await fn(
-        this.createDriveContext(captures, startFrame, checkBudget),
+        this.createDriveContext(controller, captures, startFrame, checkBudget),
       );
     } catch (thrown) {
       error = thrown instanceof Error ? thrown.message : String(thrown);
@@ -916,11 +1015,11 @@ export class Inspector {
         // throws reaches here through the error boundary. Restoring the clock
         // from an inner `finally` keeps that throw from leaving the page
         // frozen with nothing advancing.
-        if (!wasFrozen) controller.thaw();
-        // Cleared last: a key-up listener that starts its own drive would
-        // otherwise pass the guard and run against a clock this one is about
-        // to thaw underneath it.
-        this.driving = false;
+        try {
+          if (!wasFrozen) controller.thaw();
+        } finally {
+          controller.release();
+        }
       }
     }
 
@@ -952,12 +1051,11 @@ export class Inspector {
    * instead of stalling on work parked in the microtask queue.
    */
   private createDriveContext(
+    time: InspectorTimeLease,
     captures: InspectorDriveCapture[],
     startFrame: number,
     checkBudget: () => void,
   ): InspectorDriveContext {
-    const time = this.time;
-
     const step = (
       frames = 1,
       opts?: InspectorDriveStepOptions,
@@ -1121,6 +1219,9 @@ export class Inspector {
     return {
       version: 1,
       frame: this.time.getFrame(),
+      fixedStepIndex:
+        this.engine.context.tryResolve(SystemSchedulerKey)?.fixedStepIndex ?? 0,
+      interpolationAlpha: this.engine.loop.interpolationAlpha,
       sceneStack: this.getSceneStack(),
       entityCount: this.getEntityCount(),
       systemCount: this.getSystems().length,
@@ -1216,7 +1317,9 @@ export class Inspector {
     return this.engine.scenes.all.map((scene) => ({
       id: this.getSceneId(scene),
       name: scene.name,
-      entityCount: scene.getEntities().size,
+      entityCount: [...scene.getEntities()].filter(
+        (entity) => !entity.isDestroyed,
+      ).length,
       paused: scene.isPaused,
     }));
   }
@@ -1301,6 +1404,9 @@ export class Inspector {
         this.detachBusTap = this.engine.events.tap(this.busEventObserver);
       }
     } else {
+      this.rejectEventWaiters(
+        "Inspector.events.waitFor(): event logging is disabled.",
+      );
       this.detachBusTap?.();
       this.detachBusTap = null;
     }
@@ -1353,6 +1459,9 @@ export class Inspector {
 
   /** @internal Engine teardown releases the event-bus tap through this hook. */
   dispose(): void {
+    this.rejectEventWaiters(
+      "Inspector.events.waitFor(): Inspector was disposed.",
+    );
     this.detachBusTap?.();
     this.detachBusTap = null;
     for (const scene of this.engine.scenes.all) {
@@ -1406,12 +1515,17 @@ export class Inspector {
     this.flushMatchingWaiter(entry);
   }
 
-  /** Resolve waiters whose deadline has passed without a match. */
-  private expireDeadlineWaiters(): void {
+  private rejectEventWaiters(message: string): void {
+    for (const waiter of this.eventWaiters) waiter.reject(new Error(message));
+    this.eventWaiters.clear();
+  }
+
+  /** @internal Expire unmatched waiters after the frame's events and destruction. */
+  _completeFrame(): void {
     if (this.eventWaiters.size === 0) return;
     const frame = this.time.getFrame();
     for (const waiter of [...this.eventWaiters]) {
-      if (waiter.deadlineFrame !== undefined && frame > waiter.deadlineFrame) {
+      if (waiter.deadlineFrame !== undefined && frame >= waiter.deadlineFrame) {
         this.eventWaiters.delete(waiter);
         waiter.reject(
           new Error(
@@ -1468,7 +1582,7 @@ export class Inspector {
     if (source && entry.source !== source) return false;
     return typeof pattern === "string"
       ? entry.type === pattern
-      : pattern.test(entry.type);
+      : new RegExp(pattern.source, pattern.flags).test(entry.type);
   }
 
   private sceneToWorldSnapshot(scene: Scene): WorldSceneSnapshot {
@@ -1479,6 +1593,8 @@ export class Inspector {
     );
     return {
       id: this.getSceneId(scene),
+      elapsed: time?.elapsed ?? 0,
+      fixedElapsed: time?.fixedElapsed ?? 0,
       name: scene.name,
       paused: scene.isPaused,
       timeScale: scene.timeScale,
@@ -1488,6 +1604,7 @@ export class Inspector {
       entities: this.getSceneEntities(scene),
       ui: this.buildUISnapshot(scene),
       physics: physicsManager?.getContext(scene)?.world.snapshot() ?? {
+        elapsed: 0,
         bodies: [],
         contacts: [],
       },
@@ -1525,6 +1642,10 @@ export class Inspector {
 
     const snapshot: WorldEntitySnapshot = {
       id: String(entity.id),
+      name: entity.name,
+      ...(entity.key === undefined ? {} : { key: entity.key }),
+      generation: entity.generation,
+      pooled: entity.isPooled,
       type: entity.constructor.name,
       parent: entity.parent ? String(entity.parent.id) : null,
       active: entity.isActive,
@@ -1758,8 +1879,7 @@ export class Inspector {
   }
 
   private extractScene(value: unknown): Scene | undefined {
-    if (!value || typeof value !== "object") return undefined;
-    return this.engine.scenes.all.find((scene) => scene === value);
+    return value instanceof Scene ? value : undefined;
   }
 
   private extractSceneFromEntity(value: unknown): Scene | undefined {

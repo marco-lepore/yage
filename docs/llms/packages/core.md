@@ -262,7 +262,7 @@ interface EntityHandle<out T extends Entity = Entity> {
 - Rule of thumb: use a handle whenever pooled entities are involved — a member can be retired from anywhere (`destroy()` in its own collision handler releases it), so a stored plain reference goes stale silently. A plain reference is fine for entities that live as long as the scene, or when the code storing the reference also controls when the entity goes away.
 - `.current` means "same life", not "currently active": an entity turned off with `setActive(false)` still resolves.
 - A life ends on `destroy()`, on scene teardown, on every path that ends a member's lease — `release`, `releaseAll`, a `forceAcquire` reclaim — and on `dispose()`, which destroys the members outright. A member's children end their lives with it, so a handle on a pooled entity's hitbox expires too.
-- `entity.generation` is the counter behind it: 0 for a fresh entity, increased whenever a life ends. Compare it for equality — a destruction cascade can advance it more than once, so it does not count lives. Public read, engine write. Inspector snapshots omit it.
+- `entity.generation` is the counter behind it: 0 for a fresh entity, increased whenever a life ends. Compare it for equality — a destruction cascade can advance it more than once, so it does not count lives. Public read, engine write. Inspector world-entity snapshots include it.
 - `handle()` on a pool member the pool is not currently lending out returns a handle that never resolves, and warns in dev builds. The caller is holding a stale reference, so a handle from it would come alive at the next acquisition.
 - Handles are created by `entity.handle()` only; `EntityHandle` is a type, not a constructor. `T` is output-only, so an `EntityHandle<Enemy>` is assignable to `EntityHandle<Entity>` and not the other way round.
 
@@ -280,21 +280,22 @@ interface EntityHandle<out T extends Entity = Entity> {
 
 `EngineEvents` (the typed map used by `EventBusKey`):
 
-| Event                                                 | Payload                                                                                                                                                           |
-| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `entity:created` / `entity:destroyed`                 | `{ entity }` — `entity:destroyed` fires on the end-of-frame flush after `destroy()` and once per entity on scene teardown, before `scene:popped`/`scene:replaced` |
-| `component:added`                                     | `{ entity; component }`                                                                                                                                           |
-| `component:removed`                                   | `{ entity; componentClass }`                                                                                                                                      |
-| `scene:pushed` / `scene:popped`                       | `{ scene }`                                                                                                                                                       |
-| `scene:replaced`                                      | `{ oldScene; newScene }`                                                                                                                                          |
-| `scene:transition:started` / `scene:transition:ended` | `{ kind; fromScene; toScene }`                                                                                                                                    |
-| `scene:loading:progress`                              | `{ scene; ratio }`                                                                                                                                                |
-| `scene:loading:done`                                  | `{ scene }`                                                                                                                                                       |
-| `engine:started` / `engine:stopped`                   | `undefined`                                                                                                                                                       |
-| `screen:fullscreen`                                   | `{ active: boolean }` — emitted by `RendererPlugin` on `fullscreenchange` / `webkitfullscreenchange`                                                              |
-| `screen:orientation`                                  | `{ type: OrientationType }` — emitted by `RendererPlugin` on `screen.orientation.change` (or `orientationchange` fallback)                                        |
+| Event                                                 | Payload                                                                                                                                                      |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `entity:created`                                      | `{ entity }`                                                                                                                                                 |
+| `entity:destroyed`                                    | `{ entity, scene: Scene }` — fires on the end-of-frame flush after `destroy()` and once per entity on scene teardown, before `scene:popped`/`scene:replaced` |
+| `component:added`                                     | `{ entity; component }`                                                                                                                                      |
+| `component:removed`                                   | `{ entity; componentClass }`                                                                                                                                 |
+| `scene:pushed` / `scene:popped`                       | `{ scene }`                                                                                                                                                  |
+| `scene:replaced`                                      | `{ oldScene; newScene }`                                                                                                                                     |
+| `scene:transition:started` / `scene:transition:ended` | `{ kind; fromScene; toScene }`                                                                                                                               |
+| `scene:loading:progress`                              | `{ scene; ratio }`                                                                                                                                           |
+| `scene:loading:done`                                  | `{ scene }`                                                                                                                                                  |
+| `engine:started` / `engine:stopped`                   | `undefined`                                                                                                                                                  |
+| `screen:fullscreen`                                   | `{ active: boolean }` — emitted by `RendererPlugin` on `fullscreenchange` / `webkitfullscreenchange`                                                         |
+| `screen:orientation`                                  | `{ type: OrientationType }` — emitted by `RendererPlugin` on `screen.orientation.change` (or `orientationchange` fallback)                                   |
 
-`entity` in the `entity:*` and `component:*` payloads is the live `Entity` (`entity.tags`, `entity.get(...)` work in the handler). The `scene` fields are `{ name }`, except `scene:loading:*`, which carry the `Scene`.
+`entity` in the `entity:*` and `component:*` payloads is the live `Entity` (`entity.tags`, `entity.get(...)` work in the handler). The `scene` fields are `{ name }`, except `scene:loading:*` and `entity:destroyed`, which carry the `Scene`. The destruction payload retains its owning scene after the entity detaches.
 
 ### Scene Events
 
@@ -689,6 +690,83 @@ Duplicate keys throw at spawn time with no orphan side-effect — the entity is 
 | `advanceFrames(engine, n, dtMs?)` | Advance game loop by N frames (`dtMs` is the per-frame ms delta; default `1000/60`) |
 
 See also the `Testing & Debugging` section in the Quick Start for a runnable example and the Inspector API for runtime introspection.
+
+### Inspector time and snapshots
+
+`engine.inspector` reads runtime state; `debug: true` also publishes it as
+`window.__yage__.inspector`. Time mutation requires `DebugPlugin`.
+
+```ts
+interface InspectorTimeControl {
+  freeze(): void;
+  thaw(): void;
+  step(frames?: number): void;
+  setDelta(ms: number): void;
+  isFrozen(): boolean;
+  getFrame(): number;
+  isAdvancing(withinMs?: number): boolean;
+  stepAsync(frames?: number, opts?: { dtMs?: number }): Promise<void>;
+  stepUntil(
+    predicate: () => boolean,
+    opts?: { maxFrames?: number; dtMs?: number },
+  ): Promise<number>;
+}
+interface InspectorTimeLease extends InspectorTimeControl {
+  release(): void;
+}
+interface InspectorTime extends InspectorTimeControl {
+  acquire(): InspectorTimeLease;
+  isOwned(): boolean;
+}
+```
+
+`inspector.time: InspectorTime` is the public clock-control surface. `step`
+defaults to one frame at the configured delta; `setDelta` sets milliseconds
+per frame. Stepping requires a frozen clock. `stepAsync` and `stepUntil` yield
+between frames; their `dtMs` override applies to that call only. `stepUntil`
+checks before stepping and after each frame, returns the frames used, and
+rejects after `maxFrames` (default 600) when still unmatched.
+
+`acquire()` requires an attached controller and throws if already owned. Use
+the returned lease for every mutation until `release()`. Raw time mutators
+reject while leased. Queries remain available, including on a released lease.
+Release is idempotent; acquisition and release do not freeze, thaw, change
+delta or issue frames. Raw async operations hold a lease for their whole
+await. Await operations sequentially even through the same lease.
+`inspector.drive()` owns a lease, restores the previous frozen state, and
+releases ownership after cleanup; advance through its context.
+
+`getFrame()` always reads `engine.loop.frameCount`. Automatic and manual ticks
+share the frame identity used by `snapshot().frame`, event entries and logger
+entries. Compare against a captured baseline when asserting frames advanced.
+
+`events.waitFor(pattern, { withinFrames?, source? })` checks the earliest
+retained match first without consuming it. Clear the log before an action
+when the assertion needs a new occurrence. `withinFrames` is validated before
+history lookup and must be a non-negative integer. Zero permits history only.
+A positive deadline counts real frames from registration and rejects on
+completion of the deadline frame if still unmatched; an event during that
+frame wins. Frozen clocks need caller-issued frames; no wall-clock timeout
+applies. Disposing the Inspector or disabling logging rejects pending waits.
+RegExp matching preserves flags and the caller's `lastIndex`.
+
+Snapshot readings:
+
+| Type / field                                 | Meaning                                         |
+| -------------------------------------------- | ----------------------------------------------- |
+| `WorldEntitySnapshot.name`, `key?`           | Entity name and optional authored key           |
+| `WorldEntitySnapshot.generation`, `pooled`   | Entity-life generation and pool membership      |
+| `EngineSnapshot.fixedStepIndex`              | Scheduler's count of fixed steps started        |
+| `EngineSnapshot.interpolationAlpha`          | Game loop's fraction toward the next fixed step |
+| `WorldSceneSnapshot.elapsed`, `fixedElapsed` | SceneTime frame-clock and fixed-clock seconds   |
+| `PhysicsSnapshot.elapsed`                    | Physics-world seconds, or `0` without physics   |
+
+All entity counts exclude destroyed entities and include dormant/inactive
+ones. Entity name helpers return the first active match. Scene ids remain
+unique for the Inspector lifetime, so rebuilt scene instances get different
+ids; do not use them as cross-run golden keys. Compare elapsed timestamps
+only with readings from the same clock. Inspector snapshots are diagnostics,
+not save data. See `debug.md` for event and drive examples.
 
 ### Logging & Diagnostics
 

@@ -229,6 +229,12 @@ by whole numbers; `boolean` is a checkbox; `select` is a dropdown. `min` and
 literal types, so `setup` sees `"green" | "sky" | "amber"` rather than `string`,
 with no `as const` at the call site.
 
+Numeric controls require finite initial values and bounds. `min` must not
+exceed `max`, and the value must lie within the range. A number control's
+`step` must be finite and positive; an integer control always steps by `1`.
+Supply explicit bounds for a large value whose automatically
+derived range would overflow.
+
 Every control change rebuilds the scene from scratch, which means `setup` has to
 be re-runnable. In practice this pushes you toward entities and scenes that take
 their numbers as parameters — which is worth doing anyway.
@@ -283,6 +289,12 @@ restores the play state afterwards. Frames come from the run itself, so a
 scenario that reports 120 frames used 120 frames — wall-clock speed and the
 panel's speed slider change nothing about the result.
 
+Playback, manual stepping and drives reserve exclusive control through
+`Inspector.time`. Raw Inspector time mutations reject while the lab owns the
+clock. Use the lab controls or the drive context's methods to advance frames.
+Pausing releases playback's reservation; a drive restores the previous play
+state when it completes.
+
 `step` and `until` can set the simulated milliseconds for each frame in one
 call. The setting does not affect later calls:
 
@@ -309,19 +321,28 @@ What the context gives you:
 
 <Aside type="caution">
 **Every call that advances a frame is async and has to be awaited.** The engine's
-own `Inspector.time.step()` is synchronous and drains nothing, so a `drive` uses
-`step` from the context instead.
+own `Inspector.time.step()` is synchronous. A drive uses the context's `step`,
+which advances through the run's exclusive clock lease.
 
 The same applies to waiting for an event. The run is the only thing issuing
 frames, so `await events.waitFor(...)` on its own parks the run forever. Start
 the wait, issue the frames, then await it:
 
 ```ts
-const hit = events.waitFor("enemy:hit", { withinFrames: 60 });
-await step(60);
-await hit;
+await Promise.all([
+  events.waitFor("enemy:hit", { withinFrames: 60 }),
+  step(60),
+]);
 ```
 </Aside>
+
+`waitFor` checks retained history first and does not consume its match. Every
+rebuild clears the event log before scene setup. Within a run, clear the log
+before an action when checking for another occurrence of the same event.
+Ad-hoc drives that do not rebuild retain the log. `withinFrames` counts real
+frames from registration; an event during the deadline frame satisfies the
+wait, otherwise it rejects when that frame completes. Zero checks history
+only. An event wait has no wall-clock timeout.
 
 A run finishes as fast as the browser can issue frames, so a 300-frame drive
 shows you its end state and none of the motion. Select **real time** beside the
@@ -395,7 +416,7 @@ Useful flags:
 
 | Flag | Effect |
 | --- | --- |
-| `--scenarios <globs>` | Comma-separated patterns, so a run covers one scenario or one folder. |
+| `--scenarios <globs>` | Comma-separated file patterns under the Vite root, such as `src/entities/*.scenario.ts`. Runs every scenario exported by each matched file. |
 | `--timeout <ms>` | How long one scenario may take. Default 30000. |
 | `--screenshots <dir>` | Write a PNG per scenario there, plus one per `capture(label)`. |
 | `--screenshot-view <content\|camera>` | Choose drawn content or the camera's virtual viewport. Default `content`. Requires `--screenshots`. |
@@ -453,9 +474,9 @@ A file holding several scenarios becomes the group they sit in. A file holding
 one keeps the file's own place, rather than nesting a lone child under a group
 named after it.
 
-Ids are also how a scenario is named from outside the page — in a link
-(`?scenario=entities/slime/idle`) and in `--scenarios` — so they are worth
-keeping stable.
+Ids identify scenarios in links (`?scenario=entities/slime/idle`) and calls
+to `lab.show(id)`. The `--scenarios` flag selects file paths, independently
+of those ids.
 
 ### Putting a scenario somewhere else
 
@@ -470,7 +491,7 @@ export const king = defineScenario({
 ```
 
 That lists under **Bosses** › **Act 1** › Slime King. The id stays
-`entities/slime/king`, so links and `--scenarios` keep pointing at the file.
+`entities/slime/king`, so existing scenario links keep working.
 
 <Aside type="note">
 `defineScenario` is what marks an export as a scenario. A plain object with the

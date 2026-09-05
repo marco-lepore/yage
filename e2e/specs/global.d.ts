@@ -1,14 +1,5 @@
 import type { Inspector, Logger } from "@yagejs/core";
 
-/** Mirrors IDebugClock from @yagejs/debug (kept inline to avoid ambient import issues). */
-interface IDebugClock {
-  readonly isFrozen: boolean;
-  startAuto(): void;
-  stopAuto(): void;
-  step(dtMs?: number): void;
-  stepFrames(count: number, dtMs?: number): void;
-}
-
 declare global {
   interface Window {
     __yage__?: {
@@ -16,7 +7,6 @@ declare global {
       logger: Logger;
       /** Resolves when the engine finished starting; rejects with the boot error. */
       ready: Promise<void>;
-      clock?: IDebugClock;
     };
   }
 }

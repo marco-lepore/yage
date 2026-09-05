@@ -4,6 +4,7 @@ import {
   GameLoopKey,
   InspectorKey,
   SceneManagerKey,
+  SceneHookRegistryKey,
 } from "@yagejs/core";
 import type {
   EngineContext,
@@ -20,7 +21,7 @@ import type { RendererPlugin, SceneRenderTreeProvider } from "@yagejs/renderer";
 import { SceneRenderTreeProviderKey } from "@yagejs/renderer";
 import type { Application, Container } from "pixi.js";
 import { DebugClock } from "./DebugClock.js";
-import type { DebugClockHost, IDebugClock } from "./DebugClock.js";
+import type { DebugClockHost } from "./DebugClock.js";
 import { DebugRegistryImpl } from "./DebugRegistryImpl.js";
 import { DebugScene } from "./DebugScene.js";
 import { StatsStore } from "./StatsStore.js";
@@ -183,6 +184,11 @@ export class DebugPlugin implements Plugin {
     }
 
     this.stats = new StatsStore();
+    this.eventUnsubs.push(
+      context.resolve(SceneHookRegistryKey).register({
+        afterExit: (scene) => this.worldApi?.releaseScene(scene),
+      }),
+    );
 
     // Drop a destroyed entity's `drawVector` registrations here rather than
     // while drawing: the overlay may never draw a frame, and a provider
@@ -217,7 +223,7 @@ export class DebugPlugin implements Plugin {
       }
       if (e.code === stepKey && this.clock?.isFrozen) {
         e.preventDefault();
-        this.clock.step();
+        this.context.resolve(InspectorKey).time.step();
       }
     };
     if (typeof window !== "undefined") {
@@ -264,7 +270,6 @@ export class DebugPlugin implements Plugin {
     );
     inspector.attachTimeController(this.clock);
     inspector.setEventLogEnabled(this.config.eventLog ?? true);
-    this.attachToGlobal(this.clock);
     if (this.config.startFrozen) {
       // `install()` already called `app.stop()`. Run the clock's own
       // `freeze()` now to take ownership: it captures `minFPS`, zeroes
@@ -309,7 +314,6 @@ export class DebugPlugin implements Plugin {
       this.keyListener = null;
     }
 
-    this.detachFromGlobal();
     const inspector = this.context.resolve(InspectorKey);
     inspector.removeExtension("debug");
     // Only detach our own clock — passing undefined would clear whatever
@@ -355,25 +359,12 @@ export class DebugPlugin implements Plugin {
     this.provider = null;
   }
 
-  private findActiveCamera(): CameraComponent | undefined {
-    return findTopmostCamera(this.sceneManager);
-  }
-
   private setUpDebugInfra(
     worldContainer: Container,
     hudContainer: Container,
   ): void {
     const vw = this.renderer.virtualSize.width;
     const vh = this.renderer.virtualSize.height;
-
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const self = this;
-    // Lazy camera accessor — reads from whichever stacked scene has a camera
-    const cameraProxy = {
-      get zoom() {
-        return self.findActiveCamera()?.zoom ?? 1;
-      },
-    };
 
     this.graphicsPool = new GraphicsPool(
       worldContainer,
@@ -385,7 +376,9 @@ export class DebugPlugin implements Plugin {
     this.worldApi = new WorldDebugApiImpl(
       this.graphicsPool,
       this.registry,
-      cameraProxy,
+      this.sceneManager,
+      this.provider!,
+      worldContainer,
     );
     this.hudApi = new HudDebugApiImpl(this.textPool, this.registry, vw, vh);
 
@@ -398,11 +391,6 @@ export class DebugPlugin implements Plugin {
       this.stats,
       worldContainer,
       hudContainer,
-      {
-        findCamera: () => self.findActiveCamera(),
-        viewportWidth: vw,
-        viewportHeight: vh,
-      },
     );
     this.scheduler.add(this.renderSystem);
   }
@@ -470,24 +458,6 @@ export class DebugPlugin implements Plugin {
     };
     this.context.resolve(InspectorKey).addExtension("debug", diagnostics);
   }
-
-  private attachToGlobal(clock: IDebugClock): void {
-    const g = (globalThis as Record<string, unknown>)["__yage__"];
-    if (g && typeof g === "object") {
-      (g as Record<string, unknown>)["clock"] = clock;
-    }
-  }
-
-  private detachFromGlobal(): void {
-    const g = (globalThis as Record<string, unknown>)["__yage__"];
-    if (
-      g &&
-      typeof g === "object" &&
-      (g as Record<string, unknown>)["clock"] === this.clock
-    ) {
-      delete (g as Record<string, unknown>)["clock"];
-    }
-  }
 }
 
 /**
@@ -535,36 +505,4 @@ function createPixiTickerHost(
       app.ticker.update(syntheticTime);
     },
   };
-}
-
-/**
- * Find the highest-priority enabled camera on the topmost scene that has one.
- * `sceneManager.all` is bottom→top, so we walk in reverse — a pause/HUD
- * scene's camera wins over a frozen scene beneath it.
- */
-export function findTopmostCamera(
-  sceneManager: SceneManager,
-): CameraComponent | undefined {
-  const stack = sceneManager.all;
-  for (let i = stack.length - 1; i >= 0; i--) {
-    const scene = stack[i];
-    if (!scene) continue;
-    let highestPriorityCamera: CameraComponent | undefined;
-    for (const entity of scene.getEntities()) {
-      // Matches DisplaySystem, which reaches cameras through a query and so
-      // never sees a dormant one.
-      if (!entity.isActive) continue;
-      const cam = entity.tryGet(CameraComponent);
-      if (
-        cam &&
-        cam.enabled &&
-        (!highestPriorityCamera ||
-          cam.priority > highestPriorityCamera.priority)
-      ) {
-        highestPriorityCamera = cam;
-      }
-    }
-    if (highestPriorityCamera) return highestPriorityCamera;
-  }
-  return undefined;
 }

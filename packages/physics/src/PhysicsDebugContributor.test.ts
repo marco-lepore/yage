@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import type { DebugGraphics, WorldDebugApi } from "@yagejs/debug/api";
 import { PhysicsDebugContributor } from "./PhysicsDebugContributor.js";
 import type { PhysicsWorldManager } from "./PhysicsWorldManager.js";
+import type { Scene } from "@yagejs/core";
 
 const PPM = 50;
 
@@ -59,6 +60,7 @@ function drawCollider(shape: ShapeStub): DebugGraphics {
 
   const g = createMockGraphics();
   const api: WorldDebugApi = {
+    forScene: () => api,
     acquireGraphics: () => g,
     isFlagEnabled: () => true,
     cameraZoom: 1,
@@ -68,6 +70,49 @@ function drawCollider(shape: ShapeStub): DebugGraphics {
 }
 
 describe("PhysicsDebugContributor", () => {
+  it("uses each scene's drawing target and zoom and skips hidden scenes", () => {
+    const scenes = [{}, {}, {}] as Scene[];
+    const graphics = [createMockGraphics(), createMockGraphics()];
+    const collider = {
+      isSensor: () => false,
+      parent: () => ({ isDynamic: () => false, isKinematic: () => false }),
+      translation: () => ({ x: 2, y: 3 }),
+      rotation: () => 0,
+      shapeType: () => CUBOID,
+      halfExtents: () => ({ x: 1, y: 1 }),
+    };
+    const getCollider = vi.fn(() => collider);
+    const world = {
+      pixelsPerMeter: PPM,
+      colliderMap: new Map([[1, {}]]),
+      getCollider,
+      _colliderComponents: new Map(),
+    };
+    const manager = {
+      getAllContexts: () => scenes.map((scene) => [scene, { world }]),
+    } as unknown as PhysicsWorldManager;
+    const api: WorldDebugApi = {
+      acquireGraphics: vi.fn(),
+      cameraZoom: 99,
+      isFlagEnabled: () => true,
+      forScene: (scene) => {
+        const index = scenes.indexOf(scene);
+        return index === 2
+          ? undefined
+          : { acquireGraphics: () => graphics[index], cameraZoom: index + 2 };
+      },
+    };
+    new PhysicsDebugContributor(manager).drawWorld(api);
+    expect(getCollider).toHaveBeenCalledTimes(2);
+    expect(api.acquireGraphics).not.toHaveBeenCalled();
+    for (const [index, g] of graphics.entries()) {
+      expect(g.position).toEqual({ x: 100, y: 150 });
+      expect(g.stroke).toHaveBeenCalledWith(
+        expect.objectContaining({ width: 1 / (index + 2) }),
+      );
+    }
+  });
+
   it("draws a plain box as a square-cornered rect", () => {
     const g = drawCollider({
       shapeType: CUBOID,

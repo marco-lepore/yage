@@ -34,7 +34,9 @@ yage-lab test [--timeout 30000] [--screenshots <dir>] \
   [--screenshot-view <content|camera>]                  # headless, exits non-zero
 ```
 
-Every command also takes `--scenarios <comma-separated globs>`.
+Every command also takes `--scenarios <comma-separated globs>`. These match
+files under the Vite root, for example `--scenarios 'src/entities/*.scenario.ts'`.
+A matched file runs all of its scenario exports.
 
 All four load the project's own `vite.config.ts` and merge the lab into it, so
 scenarios run under the same plugins and transforms the game uses, including
@@ -191,6 +193,12 @@ control.select("green", ["green", "sky", "amber"]); // dropdown
 `min`/`max` default to a range containing the value. `select` infers literal
 types, so `setup` sees the union rather than `string` — no `as const` needed.
 
+`number` and `int` require finite values and bounds, with `min <= max` and the
+initial value within the range. A number control's `step` must be finite and
+positive; an integer control always uses `1`. Default
+bounds must also be finite; supply explicit bounds when deriving the default
+range from a large value would overflow.
+
 Changing a control rebuilds the scene from scratch, so `setup` must be able to
 run again. Scenarios reward entities and scenes that take their values as
 constructor parameters.
@@ -233,21 +241,21 @@ async drive({ scene, controls, step, until, expect, input, events, capture }) {
 
 `DriveContext`:
 
-| Member       | Signature                                               | Notes                                                                                                                             |
-| ------------ | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `scene`      | `Scene`                                                 | `findByKey(...)` reaches what the scenario spawned.                                                                               |
-| `controls`   | `ControlValues<C>`                                      | The values the run started with.                                                                                                  |
-| `framesUsed` | `number`                                                | Frames the run has spent so far. Counts frames issued through `step`/`until` and through `Inspector.time.step()` called directly. |
-| `step`       | `(frames?, { dtMs? }) => Promise<void>`                 | Advances frames, one at a time. `dtMs` sets the simulated milliseconds per frame for this call.                                   |
-| `until`      | `(predicate, { maxFrames?, dtMs? }) => Promise<number>` | Steps until true, resolving with the frames it took. Rejects after 600 frames by default.                                         |
-| `expect`     | `ExpectStatic`                                          | `@vitest/expect`, Jest-style.                                                                                                     |
-| `events`     | `Inspector["events"]`                                   | The engine's event log.                                                                                                           |
-| `input`      | `DriveInput`                                            | Synthetic input, below.                                                                                                           |
-| `capture`    | `(label?) => Promise<string>`                           | Screenshots into the run's result, resolves with a PNG data URL.                                                                  |
+| Member       | Signature                                               | Notes                                                                                           |
+| ------------ | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `scene`      | `Scene`                                                 | `findByKey(...)` reaches what the scenario spawned.                                             |
+| `controls`   | `ControlValues<C>`                                      | The values the run started with.                                                                |
+| `framesUsed` | `number`                                                | Real game-loop frames spent by the run, advanced through the drive context.                     |
+| `step`       | `(frames?, { dtMs? }) => Promise<void>`                 | Advances frames, one at a time. `dtMs` sets the simulated milliseconds per frame for this call. |
+| `until`      | `(predicate, { maxFrames?, dtMs? }) => Promise<number>` | Steps until true, resolving with the frames it took. Rejects after 600 frames by default.       |
+| `expect`     | `ExpectStatic`                                          | `@vitest/expect`, Jest-style.                                                                   |
+| `events`     | `Inspector["events"]`                                   | The engine's event log.                                                                         |
+| `input`      | `DriveInput`                                            | Synthetic input, below.                                                                         |
+| `capture`    | `(label?) => Promise<string>`                           | Screenshots into the run's result, resolves with a PNG data URL.                                |
 
 **Every call that advances a frame is async and has to be awaited.**
-`Inspector.time.step()` is synchronous and drains nothing — use `step` from the
-context.
+The run owns the Inspector clock lease, so raw `Inspector.time` mutations
+reject during it. Use `step`, `until` and `input` from the context.
 
 `dtMs` defaults to the clock's fixed step. The override applies only to that
 `step` or `until` call:
@@ -262,10 +270,20 @@ run is the only thing issuing frames, so awaiting it first parks the run with
 nothing left to advance it:
 
 ```ts
-const hit = events.waitFor("enemy:hit", { withinFrames: 60 });
-await step(60);
-await hit;
+await Promise.all([
+  events.waitFor("enemy:hit", { withinFrames: 60 }),
+  step(60),
+]);
 ```
+
+`waitFor` resolves with the earliest retained match without consuming it.
+Each rebuild clears the log before scene setup, so previous scenarios and
+runs cannot satisfy the new run's waits. Within one run, clear the log before
+an action when testing another occurrence of the same event. Ad-hoc drives
+without a rebuild retain history. Deadlines count real frames from
+registration and reject when the deadline frame completes if still unmatched;
+an event during that frame satisfies the wait. Zero checks history only.
+There is no wall-clock timeout on an event wait.
 
 ### Synthetic input
 
@@ -390,7 +408,8 @@ named one:
 Leave the glob at its `**` default and the shared prefix is empty, so every id
 carries `src/`. The whole path is kept either way, so two files both named
 `jump.scenario.ts` stay distinct. Ids address a scenario from outside the
-page — in a URL (`?scenario=entities/slime/idle`) and in `--scenarios`.
+page, in a URL (`?scenario=entities/slime/idle`) or `lab.show(id)`.
+`--scenarios` matches file paths, independently of these ids.
 
 **The id is also where the list nests it.** Every `/` is a level, the last
 segment is the entry, and a file with several scenarios becomes the group
@@ -572,9 +591,12 @@ cannot swap the scene mid-drive.
   every frame itself. The default delta is 1/60s. A drive can set `dtMs` for one
   `step` or `until` call. Speed changes how often the panel clock issues a
   frame, never the delta the frame reports.
-- **A run and the clock control are two writers on one clock.** A run stops the
-  clock for its duration and restores the play state afterwards. Switching
-  scenario or changing a control during a run is rejected.
+- **Clock control is exclusive.** Lab playback holds an Inspector time lease
+  until pause. Step and drive operations pause playback, acquire their own
+  lease, and release it when finished. A drive restores the previous play
+  state. Play or step rejects when a foreign caller owns the clock; repeated
+  play while already playing is harmless. Switching scenario or changing a
+  control during a run is rejected.
 - **A throw that escapes a whole frame stops the game loop permanently.** The
   engine detaches its ticker, and only a page reload recovers. The panel reports
   the state, and `yage-lab test` gives every scenario its own page for this

@@ -4,6 +4,7 @@ import {
   driveFramesUsed,
   driveWhileHolding,
   type Engine,
+  type InspectorTimeLease,
   type Scene,
   ServiceKey,
 } from "@yagejs/core";
@@ -90,6 +91,7 @@ interface InputActionSourceLike {
 }
 
 interface DriveContextOptions {
+  readonly time: InspectorTimeLease;
   readonly pace?: RunPace | undefined;
   readonly captureView?: CaptureView | undefined;
   readonly warnings?: string[] | undefined;
@@ -101,6 +103,7 @@ interface DriveContextOptions {
 }
 
 interface RunDriveOptions {
+  readonly time: InspectorTimeLease;
   readonly pace?: RunPace;
   readonly captureView?: CaptureView;
   /**
@@ -129,9 +132,10 @@ export function createDriveContext(
   scene: Scene,
   controls: Record<string, ControlValue>,
   captures: DriveCapture[],
-  opts: DriveContextOptions = {},
+  opts: DriveContextOptions,
 ): ErasedDriveContext {
-  const { events, input: raw, time } = engine.inspector;
+  const { events, input: raw } = engine.inspector;
+  const { time } = opts;
   const pace = opts.pace ?? "immediate";
   const warnings = opts.warnings ?? [];
   const startFrame = opts.startFrame ?? time.getFrame();
@@ -324,12 +328,12 @@ export async function runDrive<T = void>(
   scene: Scene,
   controls: Record<string, ControlValue>,
   drive: (ctx: ErasedDriveContext) => Promise<T> | T,
-  opts: RunDriveOptions = {},
+  opts: RunDriveOptions,
 ): Promise<DriveResult<T>> {
   if (opts.maxFrames !== undefined) {
     assertDriveMaxFrames(opts.maxFrames, "drive()");
   }
-  const time = engine.inspector.time;
+  const time = opts.time;
   const captures: DriveCapture[] = [];
   const warnings: string[] = [];
   const startFrame = time.getFrame();
@@ -352,6 +356,7 @@ export async function runDrive<T = void>(
   try {
     value = await drive(
       createDriveContext(engine, scene, controls, captures, {
+        time,
         pace: opts.pace,
         captureView: opts.captureView,
         warnings,

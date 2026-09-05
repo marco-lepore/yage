@@ -206,6 +206,7 @@ function createContext() {
   ticker.add(() => app.render());
   const inspectorExtensions = new Map<string, object>();
   const inspector = {
+    time: { step: () => getAttachedClock(context).step() },
     getEntityCount: () => 0,
     snapshot: () => ({
       frame: 0,
@@ -222,7 +223,9 @@ function createContext() {
       inspectorExtensions.set(namespace, api);
       return api;
     }),
-    getExtension: vi.fn((namespace: string) => inspectorExtensions.get(namespace)),
+    getExtension: vi.fn((namespace: string) =>
+      inspectorExtensions.get(namespace),
+    ),
     removeExtension: vi.fn((namespace: string) => {
       inspectorExtensions.delete(namespace);
     }),
@@ -261,7 +264,7 @@ function createContext() {
       clearMask: vi.fn(),
     }),
     destroyForScene: vi.fn(),
-    getTree: vi.fn(),
+    getTree: (scene) => scene._resolveScoped(SceneRenderTreeKey),
     allTrees: () => [][Symbol.iterator](),
     bringSceneToFront: vi.fn(),
   };
@@ -287,16 +290,15 @@ function createContext() {
   context.register(InspectorKey, inspector as never);
 
   sceneManager._setContext(context);
+  scheduler._start(context);
 
   return { context, scheduler, app, loop, sceneManager, inspector };
 }
 
-function getExposedClock(): IDebugClock {
-  const g = (globalThis as Record<string, unknown>)["__yage__"] as Record<
-    string,
-    unknown
-  >;
-  return g["clock"] as IDebugClock;
+function getAttachedClock(context: EngineContext): IDebugClock {
+  const inspector = context.resolve(InspectorKey);
+  return vi.mocked(inspector.attachTimeController).mock
+    .calls[0]![0] as IDebugClock;
 }
 
 beforeEach(() => {
@@ -314,7 +316,7 @@ afterEach(() => {
 });
 
 describe("DebugPlugin", () => {
-  it("exposes a clock on the debug global in auto mode", async () => {
+  it("attaches the time controller without exposing a global clock", async () => {
     const { context, scheduler, app, inspector } = createContext();
     const plugin = new DebugPlugin();
 
@@ -322,7 +324,10 @@ describe("DebugPlugin", () => {
     plugin.registerSystems(scheduler);
     await plugin.onStart();
 
-    const clock = getExposedClock();
+    const clock = getAttachedClock(context);
+    expect(
+      (globalThis as Record<string, unknown>)["__yage__"],
+    ).not.toHaveProperty("clock");
     expect(clock.isFrozen).toBe(false);
     expect(app.stop).not.toHaveBeenCalled();
     expect(inspector.setDefaultSceneSeed).not.toHaveBeenCalled();
@@ -371,7 +376,7 @@ describe("DebugPlugin", () => {
     plugin.registerSystems(scheduler);
     await plugin.onStart();
 
-    const clock = getExposedClock();
+    const clock = getAttachedClock(context);
     expect(clock.isFrozen).toBe(true);
 
     plugin.onDestroy();
@@ -385,7 +390,7 @@ describe("DebugPlugin", () => {
     plugin.registerSystems(scheduler);
     await plugin.onStart();
 
-    const clock = getExposedClock();
+    const clock = getAttachedClock(context);
     clock.freeze();
     clock.stepFrames(3);
 
@@ -406,12 +411,12 @@ describe("DebugPlugin", () => {
     plugin.registerSystems(scheduler);
     await plugin.onStart();
 
-    const clock = getExposedClock();
+    const clock = getAttachedClock(context);
 
     expect(clock.isFrozen).toBe(false);
     expect(() => clock.step()).toThrow("DebugClock is not frozen.");
 
-    clock.stopAuto();
+    clock.freeze();
     expect(app.stop).toHaveBeenCalledOnce();
     expect(clock.isFrozen).toBe(true);
 
@@ -419,7 +424,7 @@ describe("DebugPlugin", () => {
     expect(loop.tick).toHaveBeenCalledWith(10);
     expect(app.render).toHaveBeenCalledOnce();
 
-    clock.startAuto();
+    clock.thaw();
     expect(app.start).toHaveBeenCalledOnce();
     expect(clock.isFrozen).toBe(false);
 
@@ -434,7 +439,7 @@ describe("DebugPlugin", () => {
     plugin.registerSystems(scheduler);
     await plugin.onStart();
 
-    const clock = getExposedClock();
+    const clock = getAttachedClock(context);
     clock.freeze();
 
     const event = new Event("keydown", { cancelable: true });
@@ -467,7 +472,7 @@ describe("DebugPlugin", () => {
     const animatedSpriteAdvance = vi.fn();
     app.ticker.add(animatedSpriteAdvance);
 
-    const clock = getExposedClock();
+    const clock = getAttachedClock(context);
     clock.freeze();
     clock.step();
 
@@ -500,7 +505,7 @@ describe("DebugPlugin", () => {
   });
 
   it("never reads a drawVector provider while the overlay is off", async () => {
-    const { context, scheduler } = createContext();
+    const { context, scheduler, sceneManager } = createContext();
     const plugin = new DebugPlugin();
 
     plugin.install(context);
@@ -509,7 +514,7 @@ describe("DebugPlugin", () => {
 
     const registry = context.resolve(DebugRegistryKey) as DebugRegistryImpl;
     const scene = new VectorScene();
-    scene._setContext(context);
+    await sceneManager.push(scene);
     const entity = scene.spawn("agent");
     entity.add(new Transform());
     const provider = vi.fn(() => ({ x: 10, y: 0 }));

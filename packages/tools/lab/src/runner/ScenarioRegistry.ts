@@ -1,7 +1,7 @@
 import { isScenario, type AnyScenario } from "../grammar/scenario.js";
 
 export interface ScenarioEntry {
-  /** Stable identifier. Names it to `show(id)`, a URL and `--scenarios`. */
+  /** Stable identifier for `show(id)` and URLs. CLI `--scenarios` takes file globs. */
   readonly id: string;
   /** The module path the scenario came from. */
   readonly path: string;

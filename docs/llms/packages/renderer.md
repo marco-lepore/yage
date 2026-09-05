@@ -899,6 +899,28 @@ Recipes:
 { layer: "minimap", translateRatio: 0, rotateRatio: 0, scaleRatio: 0 }
 ```
 
+### `syncCameraTransform`
+
+Apply a camera pose to a custom display container:
+
+```ts
+import { syncCameraTransform } from "@yagejs/renderer";
+
+syncCameraTransform(container, cameraComponent);
+syncCameraTransform(container, cameraComponent, {
+  layer: "background",
+  translateRatio: 0.5,
+});
+```
+
+Signature: `syncCameraTransform(target: DisplayContainer,
+camera?: CameraComponent, binding?: CameraBinding): void`.
+Reads `effectivePosition`, `effectiveZoom` and `effectiveRotation`, including
+modifiers. Omitted binding ratios are `1`. Omitted camera resets position to
+`(0, 0)`, scale to `(1, 1)` and rotation to `0`. The helper writes only the
+target's transform; it does not attach the target to a layer or apply the
+renderer fit transform. `DisplaySystem` uses the same calculation for layers.
+
 ## ScreenFollow
 
 Component. Each frame projects a world source through a camera and writes the resulting screen coord to this entity's `Transform.worldPosition`. The canonical billboard primitive — pair with `UISurface`/`UIRoot` on a screen-space layer using `positioning: "transform"` and the UI tracks the target while staying axis-aligned and constant-size under any camera zoom or rotation.

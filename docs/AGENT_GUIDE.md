@@ -350,6 +350,35 @@ const pos = await page.evaluate(() =>
 expect(pos!.y).toBeGreaterThan(100);
 ```
 
+### Clock ownership and snapshot readings
+
+`Inspector.time` owns public clock control. A custom driver acquires an
+`InspectorTimeLease` through `time.acquire()` and uses that lease for every
+mutation until `release()`. Acquisition and release change ownership only.
+Queries remain available, but raw mutators reject while a lease is held.
+Raw async stepping holds a lease for the entire operation. `Inspector.drive`
+and Lab playback use the same ownership; do not add a separate driver flag.
+
+`time.getFrame()`, snapshot frames, event frames and logger frames all use
+`GameLoop.frameCount`. Deadline waits expire through `Inspector._completeFrame`
+after end-of-frame systems and destroy flushing; an event on the deadline
+frame can satisfy its wait. Tests of these claims must advance the real loop.
+Event waits match retained history without consuming it. Clear the log before
+testing a new occurrence; Lab rebuilds clear it before scene setup.
+
+All entity counts exclude destroyed entities and include dormant/inactive
+ones. World-entity snapshots expose `name`, optional `key`, `generation` and
+`pooled` from existing metadata. Scene ids identify instances for the
+Inspector lifetime and must not reset while retained events refer to them.
+They are not keys for golden comparisons across rebuilt runs.
+
+Snapshot clock readings come from their owners: `fixedStepIndex` from the
+scheduler, `interpolationAlpha` from the game loop, scene `elapsed` and
+`fixedElapsed` from `SceneTime`, and `physics.elapsed` from the scene's physics
+world (`0` without physics). Elapsed values are seconds. Compare timestamps
+from the same clock; do not add diagnostic counters for existing runtime
+readings.
+
 ---
 
 ## 6. Reading Structured Logs

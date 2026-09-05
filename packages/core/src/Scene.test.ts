@@ -119,11 +119,7 @@ describe("Scene", () => {
     const unrelated = scene.spawn("unrelated");
 
     expect(() =>
-      scene.spawn(
-        BrokenSetup,
-        { message: "broken setup" },
-        { key: "broken" },
-      ),
+      scene.spawn(BrokenSetup, { message: "broken setup" }, { key: "broken" }),
     ).toThrow("broken setup");
 
     const failed = BrokenSetup.latest;
@@ -276,7 +272,7 @@ describe("Scene", () => {
     // No flush before scene exit — teardown handles the queued entity.
     scene._destroyAllEntities();
     expect(handler).toHaveBeenCalledOnce();
-    expect(handler).toHaveBeenCalledWith({ entity: e });
+    expect(handler).toHaveBeenCalledWith({ entity: e, scene });
   });
 
   it("_destroyAllEntities marks and tears down an entity spawned from onDestroy during teardown", () => {

@@ -906,7 +906,7 @@ export abstract class Scene {
       // destroy + respawn can replace the map entry before destruction flushes.
       this._identityIndex.delete(entity.key);
     }
-    this.bus?.emit("entity:destroyed", { entity });
+    this.bus?.emit("entity:destroyed", { entity, scene: this });
   }
 
   /**
@@ -951,7 +951,7 @@ export abstract class Scene {
       }
       entity._performDestroy();
       this.queryCache?.onEntityDestroyed(entity);
-      this.bus?.emit("entity:destroyed", { entity });
+      this.bus?.emit("entity:destroyed", { entity, scene: this });
     }
     this.entities.clear();
     this.destroyQueue.length = 0;

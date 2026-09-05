@@ -1,4 +1,9 @@
-import type { Engine, Scene, ServiceKey } from "@yagejs/core";
+import type {
+  Engine,
+  Scene,
+  ServiceKey,
+  InspectorTimeLease,
+} from "@yagejs/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type DriveResult, runDrive } from "./runDrive.js";
 
@@ -37,6 +42,8 @@ function stubEngine(
   };
 
   const time = {
+    acquire: (): InspectorTimeLease =>
+      ({ ...time, release() {} }) as unknown as InspectorTimeLease,
     getFrame: () => frame,
     stepAsync: (frames = 1, stepOpts?: { dtMs?: number }) => {
       stepAsyncCalls.push(
@@ -197,10 +204,16 @@ describe("runDrive", () => {
   it("passes the scene and the control values through", async () => {
     const { engine } = stubEngine();
     let seen: unknown;
-    const result = await runDrive(engine, SCENE, { count: 3 }, async (ctx) => {
-      seen = [ctx.scene, ctx.controls];
-      await ctx.step();
-    });
+    const result = await runDrive(
+      engine,
+      SCENE,
+      { count: 3 },
+      async (ctx) => {
+        seen = [ctx.scene, ctx.controls];
+        await ctx.step();
+      },
+      { time: engine.inspector.time.acquire() },
+    );
     expect(seen).toEqual([SCENE, { count: 3 }]);
     expect(result.ok).toBe(true);
     expect(result.framesUsed).toBe(1);
@@ -208,10 +221,16 @@ describe("runDrive", () => {
 
   it("carries the callback's return value on the ok branch", async () => {
     const { engine } = stubEngine();
-    const result = await runDrive(engine, SCENE, {}, async (ctx) => {
-      await ctx.step();
-      return { hp: 7 };
-    });
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      async (ctx) => {
+        await ctx.step();
+        return { hp: 7 };
+      },
+      { time: engine.inspector.time.acquire() },
+    );
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value).toEqual({ hp: 7 });
   });
@@ -219,13 +238,19 @@ describe("runDrive", () => {
   it("counts every frame the run issued, however it asked for them", async () => {
     const { engine } = stubEngine();
     let ticks = 0;
-    const result = await runDrive(engine, SCENE, {}, async (ctx) => {
-      await ctx.step(3);
-      await ctx.input.tap("Space", 2);
-      // Checked once before the first frame, so this takes three.
-      const took = await ctx.until(() => ++ticks >= 4);
-      ctx.expect(took).toBe(3);
-    });
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      async (ctx) => {
+        await ctx.step(3);
+        await ctx.input.tap("Space", 2);
+        // Checked once before the first frame, so this takes three.
+        const took = await ctx.until(() => ++ticks >= 4);
+        ctx.expect(took).toBe(3);
+      },
+      { time: engine.inspector.time.acquire() },
+    );
     expect(failure(result)).toBeUndefined();
     expect(result.framesUsed).toBe(8);
   });
@@ -233,16 +258,22 @@ describe("runDrive", () => {
   it("forwards per-call frame deltas and omits absent options", async () => {
     const { engine, stepAsyncCalls } = stubEngine();
 
-    await runDrive(engine, SCENE, {}, async (ctx) => {
-      await ctx.step(3, { dtMs: 20 });
-      await ctx.step(3);
-      let checks = 0;
-      const took = await ctx.until(() => ++checks >= 3, {
-        maxFrames: 5,
-        dtMs: 25,
-      });
-      ctx.expect(took).toBe(2);
-    });
+    await runDrive(
+      engine,
+      SCENE,
+      {},
+      async (ctx) => {
+        await ctx.step(3, { dtMs: 20 });
+        await ctx.step(3);
+        let checks = 0;
+        const took = await ctx.until(() => ++checks >= 3, {
+          maxFrames: 5,
+          dtMs: 25,
+        });
+        ctx.expect(took).toBe(2);
+      },
+      { time: engine.inspector.time.acquire() },
+    );
 
     expect(stepAsyncCalls).toEqual([
       [3, { dtMs: 20 }],
@@ -271,7 +302,7 @@ describe("runDrive", () => {
         await ctx.input.hold("Space", 3);
         ctx.expect(waits).toHaveBeenCalledTimes(7);
       },
-      { pace: "frame" },
+      { time: engine.inspector.time.acquire(), pace: "frame" },
     );
 
     expect(failure(result)).toBeUndefined();
@@ -281,12 +312,18 @@ describe("runDrive", () => {
     const waits = stubAnimationFrames();
     const { engine } = stubEngine();
 
-    await runDrive(engine, SCENE, {}, async (ctx) => {
-      await ctx.step(2);
-      let checks = 0;
-      await ctx.until(() => ++checks >= 3);
-      await ctx.input.hold("Space", 2);
-    });
+    await runDrive(
+      engine,
+      SCENE,
+      {},
+      async (ctx) => {
+        await ctx.step(2);
+        let checks = 0;
+        await ctx.until(() => ++checks >= 3);
+        await ctx.input.hold("Space", 2);
+      },
+      { time: engine.inspector.time.acquire() },
+    );
 
     expect(waits).not.toHaveBeenCalled();
   });
@@ -305,7 +342,7 @@ describe("runDrive", () => {
         async (ctx) => {
           counts.push(await ctx.until(() => ++checks >= 4));
         },
-        { pace },
+        { time: engine.inspector.time.acquire(), pace },
       );
       expect(failure(result)).toBeUndefined();
     }
@@ -323,7 +360,7 @@ describe("runDrive", () => {
       async (ctx) => {
         await ctx.capture("shot");
       },
-      { captureView: "camera" },
+      { time: engine.inspector.time.acquire(), captureView: "camera" },
     );
 
     expect(result.captures).toEqual([
@@ -337,10 +374,16 @@ describe("runDrive", () => {
       textureLimit: 4_096,
     });
 
-    const result = await runDrive(engine, SCENE, {}, async (ctx) => {
-      await ctx.capture("first");
-      await ctx.capture("second");
-    });
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      async (ctx) => {
+        await ctx.capture("first");
+        await ctx.capture("second");
+      },
+      { time: engine.inspector.time.acquire() },
+    );
 
     expect(result.ok).toBe(true);
     expect(result.warnings).toHaveLength(1);
@@ -350,8 +393,12 @@ describe("runDrive", () => {
 
   it("until reports its limit when the predicate stays false", async () => {
     const { engine } = stubEngine();
-    const result = await runDrive(engine, SCENE, {}, (ctx) =>
-      ctx.until(() => false, { maxFrames: 2 }).then(() => undefined),
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      (ctx) => ctx.until(() => false, { maxFrames: 2 }).then(() => undefined),
+      { time: engine.inspector.time.acquire() },
     );
 
     expect(failure(result)).toBe(
@@ -361,51 +408,81 @@ describe("runDrive", () => {
 
   it("reports a failed assertion as a result rather than a rejection", async () => {
     const { engine } = stubEngine();
-    const result = await runDrive(engine, SCENE, {}, (ctx) => {
-      ctx.expect(1).toBe(2);
-      return Promise.resolve();
-    });
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      (ctx) => {
+        ctx.expect(1).toBe(2);
+        return Promise.resolve();
+      },
+      { time: engine.inspector.time.acquire() },
+    );
     expect(result.ok).toBe(false);
     expect(failure(result)).toContain("expected 1 to be 2");
   });
 
   it("keeps the label an assertion was given", async () => {
     const { engine } = stubEngine();
-    const result = await runDrive(engine, SCENE, {}, (ctx) => {
-      ctx.expect(1, "hp after the hit").toBe(2);
-      return Promise.resolve();
-    });
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      (ctx) => {
+        ctx.expect(1, "hp after the hit").toBe(2);
+        return Promise.resolve();
+      },
+      { time: engine.inspector.time.acquire() },
+    );
     expect(failure(result)).toContain("hp after the hit");
   });
 
   it("carries the jest-style matchers `@vitest/expect` adds to chai", async () => {
     const { engine } = stubEngine();
-    const result = await runDrive(engine, SCENE, {}, (ctx) => {
-      ctx.expect({ hp: 10, hits: 1 }).toEqual({
-        hp: ctx.expect.any(Number),
-        hits: 1,
-      });
-      return Promise.resolve();
-    });
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      (ctx) => {
+        ctx.expect({ hp: 10, hits: 1 }).toEqual({
+          hp: ctx.expect.any(Number),
+          hits: 1,
+        });
+        return Promise.resolve();
+      },
+      { time: engine.inspector.time.acquire() },
+    );
     expect(failure(result)).toBeUndefined();
   });
 
   it("reports what a run threw for any other reason", async () => {
     const { engine } = stubEngine();
-    const result = await runDrive(engine, SCENE, {}, () => {
-      throw new Error("no slime in the scene");
-    });
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      () => {
+        throw new Error("no slime in the scene");
+      },
+      { time: engine.inspector.time.acquire() },
+    );
     expect(result.ok).toBe(false);
     expect(failure(result)).toBe("no slime in the scene");
   });
 
   it("collects the screenshots the run asked for", async () => {
     const { engine } = stubEngine();
-    const result = await runDrive(engine, SCENE, {}, async (ctx) => {
-      await ctx.capture("before");
-      await ctx.step(2);
-      await ctx.capture();
-    });
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      async (ctx) => {
+        await ctx.capture("before");
+        await ctx.step(2);
+        await ctx.capture();
+      },
+      { time: engine.inspector.time.acquire() },
+    );
     expect(result.captures).toEqual([
       { label: "before", dataUrl: "data:image/png;base64,frame-0" },
       { label: undefined, dataUrl: "data:image/png;base64,frame-2" },
@@ -415,30 +492,48 @@ describe("runDrive", () => {
   it("reports framesUsed live, counting frames issued directly through inspector.time too", async () => {
     const { engine } = stubEngine();
     const seen: number[] = [];
-    await runDrive(engine, SCENE, {}, async (ctx) => {
-      await ctx.step(2);
-      seen.push(ctx.framesUsed);
-      await engine.inspector.time.stepAsync(3);
-      seen.push(ctx.framesUsed);
-    });
+    await runDrive(
+      engine,
+      SCENE,
+      {},
+      async (ctx) => {
+        await ctx.step(2);
+        seen.push(ctx.framesUsed);
+        await engine.inspector.time.stepAsync(3);
+        seen.push(ctx.framesUsed);
+      },
+      { time: engine.inspector.time.acquire() },
+    );
     expect(seen).toEqual([2, 5]);
   });
 
   it("captures the keys and scene stack held when the run ended", async () => {
     const { engine } = stubEngine();
-    const result = await runDrive(engine, SCENE, {}, (ctx) => {
-      ctx.input.keyDown("KeyD");
-      return Promise.resolve();
-    });
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      (ctx) => {
+        ctx.input.keyDown("KeyD");
+        return Promise.resolve();
+      },
+      { time: engine.inspector.time.acquire() },
+    );
     expect(result.state.keys).toEqual(["KeyD"]);
     expect(result.state.scenes).toEqual(engine.inspector.getSceneStack());
   });
 
   it("applies no frame budget when maxFrames is omitted", async () => {
     const { engine } = stubEngine();
-    const result = await runDrive(engine, SCENE, {}, async (ctx) => {
-      await ctx.step(50_000);
-    });
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      async (ctx) => {
+        await ctx.step(50_000);
+      },
+      { time: engine.inspector.time.acquire() },
+    );
     expect(result.ok).toBe(true);
   });
 
@@ -451,7 +546,7 @@ describe("runDrive", () => {
       async (ctx) => {
         await ctx.step(50_000);
       },
-      { maxFrames: Infinity },
+      { time: engine.inspector.time.acquire(), maxFrames: Infinity },
     );
     expect(result.ok).toBe(true);
   });
@@ -467,7 +562,7 @@ describe("runDrive", () => {
           await ctx.step(1);
         }
       },
-      { maxFrames: 5 },
+      { time: engine.inspector.time.acquire(), maxFrames: 5 },
     );
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -485,7 +580,7 @@ describe("runDrive", () => {
       () => {
         throw new Error("no slime in the scene");
       },
-      { maxFrames: 5 },
+      { time: engine.inspector.time.acquire(), maxFrames: 5 },
     );
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -500,7 +595,10 @@ describe("the frame budget's maxFrames option", () => {
     const { engine } = stubEngine();
     for (const bad of [Number.NaN, -1, 1.5]) {
       await expect(
-        runDrive(engine, SCENE, {}, async () => {}, { maxFrames: bad }),
+        runDrive(engine, SCENE, {}, async () => {}, {
+          time: engine.inspector.time.acquire(),
+          maxFrames: bad,
+        }),
       ).rejects.toThrow("maxFrames must be a non-negative integer or Infinity");
     }
   });
@@ -508,6 +606,7 @@ describe("the frame budget's maxFrames option", () => {
   it("accepts Infinity, which disables the budget on purpose", async () => {
     const { engine } = stubEngine();
     const result = await runDrive(engine, SCENE, {}, async () => {}, {
+      time: engine.inspector.time.acquire(),
       maxFrames: Number.POSITIVE_INFINITY,
     });
     expect(result.ok).toBe(true);
@@ -518,19 +617,30 @@ describe("input.whileHolding", () => {
   it("nests: the inner release leaves the outer key held", async () => {
     const { engine } = stubEngine();
     let midRunKeys: string[] | undefined;
-    await runDrive(engine, SCENE, {}, async (ctx) => {
-      await ctx.input.whileHolding(["KeyA"], async () => {
-        await ctx.input.whileHolding(["KeyB"], async () => {});
-        midRunKeys = [...engine.inspector.getInputState().keys];
-      });
-    });
+    await runDrive(
+      engine,
+      SCENE,
+      {},
+      async (ctx) => {
+        await ctx.input.whileHolding(["KeyA"], async () => {
+          await ctx.input.whileHolding(["KeyB"], async () => {});
+          midRunKeys = [...engine.inspector.getInputState().keys];
+        });
+      },
+      { time: engine.inspector.time.acquire() },
+    );
     expect(midRunKeys).toEqual(["KeyA"]);
   });
 
   it("resolves with what its callback returned", async () => {
     const { engine } = stubEngine();
-    const result = await runDrive(engine, SCENE, {}, async (ctx) =>
-      ctx.input.whileHolding(["KeyD"], () => ctx.until(() => true)),
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      async (ctx) =>
+        ctx.input.whileHolding(["KeyD"], () => ctx.until(() => true)),
+      { time: engine.inspector.time.acquire() },
     );
     expect(result).toMatchObject({ ok: true, value: 0 });
   });
@@ -539,14 +649,20 @@ describe("input.whileHolding", () => {
     const { engine } = stubEngine();
     let insideKeys: string[] | undefined;
     let afterInnerKeys: string[] | undefined;
-    await runDrive(engine, SCENE, {}, async (ctx) => {
-      await ctx.input.whileHolding(["KeyD"], async () => {
-        await ctx.input.whileHolding(["KeyD", "Space"], async () => {
-          insideKeys = [...engine.inspector.getInputState().keys].sort();
+    await runDrive(
+      engine,
+      SCENE,
+      {},
+      async (ctx) => {
+        await ctx.input.whileHolding(["KeyD"], async () => {
+          await ctx.input.whileHolding(["KeyD", "Space"], async () => {
+            insideKeys = [...engine.inspector.getInputState().keys].sort();
+          });
+          afterInnerKeys = [...engine.inspector.getInputState().keys];
         });
-        afterInnerKeys = [...engine.inspector.getInputState().keys];
-      });
-    });
+      },
+      { time: engine.inspector.time.acquire() },
+    );
     expect(insideKeys).toEqual(["KeyD", "Space"]);
     // The inner call repeated "KeyD", so it is the outer call's to release.
     expect(afterInnerKeys).toEqual(["KeyD"]);
@@ -555,15 +671,21 @@ describe("input.whileHolding", () => {
   it("releases exactly its own codes when fn throws, leaving other held keys alone", async () => {
     const { engine } = stubEngine();
     let keysAfterThrow: string[] | undefined;
-    const result = await runDrive(engine, SCENE, {}, async (ctx) => {
-      ctx.input.keyDown("KeyA");
-      await expect(
-        ctx.input.whileHolding(["KeyB"], async () => {
-          throw new Error("maneuver failed");
-        }),
-      ).rejects.toThrow("maneuver failed");
-      keysAfterThrow = [...engine.inspector.getInputState().keys];
-    });
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      async (ctx) => {
+        ctx.input.keyDown("KeyA");
+        await expect(
+          ctx.input.whileHolding(["KeyB"], async () => {
+            throw new Error("maneuver failed");
+          }),
+        ).rejects.toThrow("maneuver failed");
+        keysAfterThrow = [...engine.inspector.getInputState().keys];
+      },
+      { time: engine.inspector.time.acquire() },
+    );
     expect(result.ok).toBe(true);
     expect(keysAfterThrow).toEqual(["KeyA"]);
   });
@@ -572,24 +694,32 @@ describe("input.whileHolding", () => {
 describe("the input facade", () => {
   it("advances no frame for the calls that do not touch the clock", async () => {
     const { calls, engine } = stubEngine();
-    const result = await runDrive(engine, SCENE, {}, (ctx) => {
-      ctx.input.keyDown("KeyA");
-      ctx.input.keyUp("KeyA");
-      ctx.input.mouseMove(10, 20);
-      ctx.input.pointerDown(0);
-      ctx.input.pointerUp(0);
-      ctx.input.gamepadButton("GamepadA", true);
-      ctx.input.gamepadAxis("leftX", 1);
-      ctx.input.clearAll();
-      return Promise.resolve();
-    });
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      (ctx) => {
+        ctx.input.keyDown("KeyA");
+        ctx.input.keyUp("KeyA");
+        ctx.input.mouseMove(10, 20);
+        ctx.input.pointerDown(0);
+        ctx.input.pointerUp(0);
+        ctx.input.gamepadButton("GamepadA", true);
+        ctx.input.gamepadAxis("leftX", 1);
+        ctx.input.clearAll();
+        return Promise.resolve();
+      },
+      { time: engine.inspector.time.acquire() },
+    );
     expect(result.framesUsed).toBe(0);
     expect(calls).not.toContain("step");
   });
 
   it("holds a key for the frames asked for and releases it after", async () => {
     const { calls, engine } = stubEngine();
-    await runDrive(engine, SCENE, {}, (ctx) => ctx.input.hold("Space", 3));
+    await runDrive(engine, SCENE, {}, (ctx) => ctx.input.hold("Space", 3), {
+      time: engine.inspector.time.acquire(),
+    });
     expect(calls).toEqual([
       "keyDown(Space)",
       "step",
@@ -601,13 +731,21 @@ describe("the input facade", () => {
 
   it("taps for one frame unless told otherwise", async () => {
     const { calls, engine } = stubEngine();
-    await runDrive(engine, SCENE, {}, (ctx) => ctx.input.tap("Space"));
+    await runDrive(engine, SCENE, {}, (ctx) => ctx.input.tap("Space"), {
+      time: engine.inspector.time.acquire(),
+    });
     expect(calls).toEqual(["keyDown(Space)", "step", "keyUp(Space)"]);
   });
 
   it("sustains an action across the frames it covers", async () => {
     const { calls, engine } = stubEngine({ actions: true });
-    await runDrive(engine, SCENE, {}, (ctx) => ctx.input.fireAction("jump", 2));
+    await runDrive(
+      engine,
+      SCENE,
+      {},
+      (ctx) => ctx.input.fireAction("jump", 2),
+      { time: engine.inspector.time.acquire() },
+    );
     expect(calls).toEqual([
       "actionDown(jump)",
       "step",
@@ -618,20 +756,32 @@ describe("the input facade", () => {
 
   it("presses and releases an action without advancing anything", async () => {
     const { calls, engine } = stubEngine({ actions: true });
-    const result = await runDrive(engine, SCENE, {}, (ctx) => {
-      ctx.input.pressAction("aim");
-      ctx.input.releaseAction("aim");
-      return Promise.resolve();
-    });
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      (ctx) => {
+        ctx.input.pressAction("aim");
+        ctx.input.releaseAction("aim");
+        return Promise.resolve();
+      },
+      { time: engine.inspector.time.acquire() },
+    );
     expect(calls).toEqual(["actionDown(aim)", "actionUp(aim)"]);
     expect(result.framesUsed).toBe(0);
   });
 
   it("releases its action source after recording the final state", async () => {
     const { engine, releasedActionSources } = stubEngine({ actions: true });
-    const result = await runDrive(engine, SCENE, {}, (ctx) => {
-      ctx.input.pressAction("aim");
-    });
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      (ctx) => {
+        ctx.input.pressAction("aim");
+      },
+      { time: engine.inspector.time.acquire() },
+    );
     expect(result.state.actions).toEqual(["aim"]);
     expect(engine.inspector.getInputState().actions).toEqual([]);
     expect(releasedActionSources()).toBe(1);
@@ -639,10 +789,16 @@ describe("the input facade", () => {
 
   it("releases its action source after a failed drive", async () => {
     const { engine, releasedActionSources } = stubEngine({ actions: true });
-    const result = await runDrive(engine, SCENE, {}, (ctx) => {
-      ctx.input.pressAction("aim");
-      throw new Error("drive failed");
-    });
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      (ctx) => {
+        ctx.input.pressAction("aim");
+        throw new Error("drive failed");
+      },
+      { time: engine.inspector.time.acquire() },
+    );
     expect(result.ok).toBe(false);
     expect(result.state.actions).toEqual(["aim"]);
     expect(engine.inspector.getInputState().actions).toEqual([]);
@@ -651,8 +807,12 @@ describe("the input facade", () => {
 
   it("says which plugin is missing when a game has no input package", async () => {
     const { engine } = stubEngine();
-    const result = await runDrive(engine, SCENE, {}, (ctx) =>
-      ctx.input.fireAction("jump"),
+    const result = await runDrive(
+      engine,
+      SCENE,
+      {},
+      (ctx) => ctx.input.fireAction("jump"),
+      { time: engine.inspector.time.acquire() },
     );
     expect(failure(result)).toBe(
       "input.fireAction() requires InputPlugin to be active.",
@@ -661,7 +821,9 @@ describe("the input facade", () => {
 
   it("still runs a drive that never touches input", async () => {
     const { engine } = stubEngine();
-    const result = await runDrive(engine, SCENE, {}, (ctx) => ctx.step(2));
+    const result = await runDrive(engine, SCENE, {}, (ctx) => ctx.step(2), {
+      time: engine.inspector.time.acquire(),
+    });
     expect(result.ok).toBe(true);
   });
 });

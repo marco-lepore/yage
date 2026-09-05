@@ -177,9 +177,9 @@ test.describe("Examples", () => {
       const inspector = window.__yage__!.inspector;
       inspector.events.clearLog();
       inspector.input.keyDown("ShiftLeft");
-      await inspector.time.step(1);
+      await inspector.time.stepAsync(1);
       inspector.input.keyUp("ShiftLeft");
-      await inspector.time.step(1);
+      await inspector.time.stepAsync(1);
     });
 
     const activeDash = await page.evaluate(
@@ -191,15 +191,16 @@ test.describe("Examples", () => {
     );
     expect(activeDash.content).not.toBe("0.0");
 
-    const tapLoadout = async (): Promise<void> => {
-      await page.evaluate(async () => {
+    const tapLoadout = (): Promise<number> =>
+      page.evaluate(async () => {
         const inspector = window.__yage__!.inspector;
+        const baseline = inspector.time.getFrame();
         inspector.input.keyDown("KeyE");
-        await inspector.time.step(1);
+        await inspector.time.stepAsync(1);
         inspector.input.keyUp("KeyE");
-        await inspector.time.step(1);
+        await inspector.time.stepAsync(1);
+        return baseline;
       });
-    };
     const hudText = (): Promise<string> =>
       page.evaluate(
         () =>
@@ -211,7 +212,7 @@ test.describe("Examples", () => {
           ).content,
       );
 
-    await tapLoadout();
+    const loadoutStartFrame = await tapLoadout();
     expect(await hudText()).toContain("LOADOUT KICKS");
 
     const resetDash = await page.evaluate(
@@ -231,7 +232,7 @@ test.describe("Examples", () => {
             event.source === "entity" && event.type === "ability:ended",
         ),
     );
-    expect(endedDash?.frame).toBe(2);
+    expect(endedDash?.frame).toBe(loadoutStartFrame + 1);
 
     for (const expected of ["FISTS", "KICKS", "FISTS"]) {
       await tapLoadout();
@@ -255,12 +256,12 @@ test.describe("Examples", () => {
 
     const result = await page.evaluate(async () => {
       const inspector = window.__yage__!.inspector;
-      await inspector.time.step(1);
+      await inspector.time.stepAsync(1);
       const start = inspector.getEntityPosition("PlayerEntity")!;
 
       inspector.input.keyDown("KeyD");
       inspector.input.keyDown("ShiftLeft");
-      await inspector.time.step(30);
+      await inspector.time.stepAsync(30);
       const runEnd = inspector.getEntityPosition("PlayerEntity")!;
       const runAnimation = (
         inspector.getComponentData("PlayerEntity", "AnimationController") as {
@@ -269,7 +270,7 @@ test.describe("Examples", () => {
       ).current;
       inspector.input.keyUp("ShiftLeft");
       inspector.input.keyUp("KeyD");
-      await inspector.time.step(2);
+      await inspector.time.stepAsync(2);
       const heldDashCooldown = (
         inspector.getComponentData("hotbar-dash-time", "TextComponent") as {
           content: string;
@@ -277,9 +278,9 @@ test.describe("Examples", () => {
       ).content;
 
       inspector.input.keyDown("ShiftLeft");
-      await inspector.time.step(1);
+      await inspector.time.stepAsync(1);
       inspector.input.keyUp("ShiftLeft");
-      await inspector.time.step(2);
+      await inspector.time.stepAsync(2);
       const tappedDashCooldown = (
         inspector.getComponentData("hotbar-dash-time", "TextComponent") as {
           content: string;

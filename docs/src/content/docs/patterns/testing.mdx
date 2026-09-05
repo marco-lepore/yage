@@ -341,6 +341,7 @@ const spriteState = window.__yage__.inspector.getComponentData(
 |---|---|
 | `snapshot()` | Full engine snapshot — frame, scene stack, entity/system counts, errors, plus per-scene entity detail under `scenes`, camera, and input state |
 | `getSceneStack()` | All scenes with their pause state and entity counts |
+| `getEntityCount()` | Total entities across the stack, excluding destroyed entities and including inactive ones |
 | `getEntities()` | Every entity in the active scene — `id`, `name`, `tags`, `components`, `position` |
 | `getEntityByName(name)` | First active entity with that name. Destroyed and deactivated entities are skipped |
 | `getEntityPosition(name)` | Shortcut: `Transform` position for a named entity |
@@ -380,6 +381,67 @@ expect(split?.glyphs.filter((g) => g.visible)).toHaveLength(3);
 
 See the [debug guide](/guides/debug/#reading-rendered-geometry-and-visibility)
 for the full facet shape.
+
+### Frame assertions and event waits
+
+`inspector.time.getFrame()` reads the real game-loop frame count during both
+automatic playback and manual stepping. Snapshot, event-log and logger frame
+numbers share that count. Compare with a baseline taken before the action:
+
+```typescript
+await inspector.drive(async ({ step }) => {
+  const before = inspector.time.getFrame();
+  await step(3);
+  expect(inspector.time.getFrame() - before).toBe(3);
+});
+```
+
+A drive owns the clock until it completes. Use its `step`, `until` and `input`
+methods; raw `inspector.time` mutations reject during the drive. For custom
+tools, `inspector.time.acquire()` returns an exclusive lease with the same
+controls and a `release()` method. Acquisition and release do not change the
+clock's frozen state. Raw `stepAsync` and `stepUntil` reserve control for their
+whole operation, so await each before issuing another.
+
+`events.waitFor` returns the earliest retained match without consuming it.
+Clear the log before an action when testing a new occurrence, and advance
+frames while the wait is pending:
+
+```typescript
+await inspector.drive(async ({ events, input }) => {
+  events.clearLog();
+  const [hit] = await Promise.all([
+    events.waitFor("player:jumped", { withinFrames: 30 }),
+    input.hold("Space", 30),
+  ]);
+  expect(hit.type).toBe("player:jumped");
+});
+```
+
+The game must emit the event the test names. `withinFrames` counts real frames
+from registration. An event during the deadline frame satisfies the wait;
+otherwise the wait rejects when that frame completes. A frozen clock needs
+the test to issue those frames. Zero checks history only. Disabling logging
+or disposing the Inspector rejects pending waits.
+
+### Reading snapshot identity and time
+
+World-entity snapshots include `name`, optional authored `key`, `generation`
+and `pooled`. Compare `generation` to distinguish lives of a reused entity.
+All entity counts exclude destroyed entities and include dormant and inactive
+ones, as do the per-scene entity lists.
+
+Scene ids identify instances for the Inspector's lifetime. Rebuilding a scene
+creates a new id, so compare selected state when testing repeated runs in one
+engine. Entity names can repeat; name-based queries select the first active
+match.
+
+`snapshot().fixedStepIndex` counts fixed steps started, and
+`interpolationAlpha` reports the game loop's fraction toward its next fixed
+step. Each scene snapshot has `elapsed` and `fixedElapsed` from `SceneTime`,
+plus `physics.elapsed` from its physics world (`0` without physics). These
+elapsed values are seconds. Use the same clock for both ends of a duration
+assertion because frame time, fixed time and physics time can differ.
 
 ### The Agent Feedback Loop
 

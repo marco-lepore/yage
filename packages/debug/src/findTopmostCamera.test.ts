@@ -40,7 +40,7 @@ vi.mock("pixi.js", () => ({
 
 import { CameraComponent } from "@yagejs/renderer";
 import type { Scene, SceneManager } from "@yagejs/core";
-import { findTopmostCamera } from "./DebugPlugin.js";
+import { findTopmostCamera } from "./cameraSelection.js";
 
 function makeSceneWithCameras(cameras: CameraComponent[]): Scene {
   const entities = cameras.map((camera) => ({
@@ -69,7 +69,7 @@ describe("findTopmostCamera", () => {
     const top = makeSceneWithCamera(topCam);
     // `.all` is bottom→top, so top is last.
     const sm = makeSceneManager([bottom, top]);
-    const found = findTopmostCamera(sm);
+    const found = findTopmostCamera(sm.all);
     expect(found?.cameraName).toBe("top");
   });
 
@@ -78,7 +78,7 @@ describe("findTopmostCamera", () => {
     const lower = makeSceneWithCamera(lowerCam);
     const topNoCam = makeSceneWithCamera(undefined);
     const sm = makeSceneManager([lower, topNoCam]);
-    const found = findTopmostCamera(sm);
+    const found = findTopmostCamera(sm.all);
     expect(found?.cameraName).toBe("lower");
   });
 
@@ -87,12 +87,12 @@ describe("findTopmostCamera", () => {
       makeSceneWithCamera(undefined),
       makeSceneWithCamera(undefined),
     ]);
-    expect(findTopmostCamera(sm)).toBeUndefined();
+    expect(findTopmostCamera(sm.all)).toBeUndefined();
   });
 
   it("returns undefined on an empty stack", () => {
     const sm = makeSceneManager([]);
-    expect(findTopmostCamera(sm)).toBeUndefined();
+    expect(findTopmostCamera(sm.all)).toBeUndefined();
   });
 
   it("does not skip paused scenes — a paused top scene's camera still wins", () => {
@@ -107,7 +107,7 @@ describe("findTopmostCamera", () => {
       new CameraComponent({ name: "active-lower" }),
     );
     const sm = makeSceneManager([activeLower, paused]);
-    expect(findTopmostCamera(sm)?.cameraName).toBe("paused-top");
+    expect(findTopmostCamera(sm.all)?.cameraName).toBe("paused-top");
   });
 
   it("returns the highest-priority enabled camera within a scene", () => {
@@ -119,6 +119,6 @@ describe("findTopmostCamera", () => {
     const scene = makeSceneWithCameras([low, disabledTop, high]);
     const sm = makeSceneManager([scene]);
 
-    expect(findTopmostCamera(sm)?.cameraName).toBe("high");
+    expect(findTopmostCamera(sm.all)?.cameraName).toBe("high");
   });
 });
