@@ -11,6 +11,8 @@ YAGE's plugin system is the mechanism by which all engine features beyond the co
 Every plugin implements the `Plugin` interface from `@yagejs/core`:
 
 ```typescript
+import type { EngineContext, SystemScheduler } from "@yagejs/core";
+
 export interface Plugin {
   /** Unique plugin name. Used for dependency resolution and logging. */
   readonly name: string;
@@ -64,6 +66,11 @@ export interface Plugin {
 ### Registration Phase
 
 ```typescript
+import { Engine } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
+import { PhysicsPlugin } from "@yagejs/physics";
+import { InputPlugin } from "@yagejs/input";
+
 const engine = new Engine();
 engine.use(new RendererPlugin({ width: 800, height: 600 }));
 engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
@@ -128,6 +135,9 @@ instead.
 A plugin declares dependencies by name:
 
 ```typescript
+import type { Plugin, EngineContext } from "@yagejs/core";
+import { RendererKey } from "@yagejs/renderer";
+
 class ParticlesPlugin implements Plugin {
   readonly name = "particles";
   readonly version = "2.0.0";
@@ -190,27 +200,23 @@ package that owns the key.
 
 ### Registration Flow
 
-```typescript
-// @yagejs/renderer exports:
-export const RendererKey = new ServiceKey<RendererPlugin>("renderer");
+```typescript yage-context="scene-enter"
+import { ServiceKey, Transform, type EngineContext } from "@yagejs/core";
+import { CameraEntity, type RendererPlugin } from "@yagejs/renderer";
 
-// Inside RendererPlugin.install():
-class RendererPlugin implements Plugin {
-  async install(context: EngineContext) {
-    const app = new Application();
-    await app.init(this.config);
+// @yagejs/renderer owns this key and registers its plugin instance.
+const RendererKey = new ServiceKey<RendererPlugin>("renderer");
 
-    context.register(RendererKey, this);
-  }
+function registerRenderer(context: EngineContext, renderer: RendererPlugin) {
+  context.register(RendererKey, renderer);
 }
 
-// Camera is now an entity, not a service:
-import { CameraEntity } from "@yagejs/renderer";
-
 // In a scene's onEnter():
+const player = this.spawn("player");
+player.add(new Transform());
 const cam = this.spawn(CameraEntity, { follow: player.get(Transform) });
-cam.shake(6, 0.3); // durations in seconds; convenience methods delegate to CameraComponent
-cam.zoomTo(1.5, 0.5); // no need for cam.get(CameraComponent)
+cam.shake(6, 0.3); // durations in seconds
+cam.zoomTo(1.5, 0.5);
 ```
 
 ### Well-Known Service Keys
@@ -257,16 +263,24 @@ Keys registered by official plugins:
 Keys marked **(scene-scoped)** are declared with `new ServiceKey(id, { scope: "scene" })` and hold one instance per scene. `Component.use()` resolves the active scene's instance automatically. A plugin provides them from scene lifecycle hooks, registered through `SceneHookRegistryKey`:
 
 ```typescript
-// Inside PhysicsPlugin.install():
-const hooks = context.resolve(SceneHookRegistryKey);
-this.unregisterHooks = hooks.register({
-  beforeEnter: (scene) => {
-    scene.registerScoped(PhysicsWorldKey, this.manager.getOrCreateWorld(scene));
-  },
-  afterExit: (scene) => {
-    this.manager.destroyWorld(scene);
-  },
-});
+import { SceneHookRegistryKey, type EngineContext } from "@yagejs/core";
+import { PhysicsWorldKey, type PhysicsWorldManager } from "@yagejs/physics";
+
+// The physics plugin owns the manager and the returned unregister function.
+function registerPhysicsHooks(
+  context: EngineContext,
+  manager: PhysicsWorldManager,
+): () => void {
+  const hooks = context.resolve(SceneHookRegistryKey);
+  return hooks.register({
+    beforeEnter: (scene) => {
+      scene.registerScoped(PhysicsWorldKey, manager.getOrCreateWorld(scene));
+    },
+    afterExit: (scene) => {
+      manager.destroyWorld(scene);
+    },
+  });
+}
 ```
 
 Scoped registrations are cleared automatically when the scene exits. Resolving a scene-scoped key that no hook registered throws from `Scene.use()`; resolving it before `onEnter()` is the usual cause.
@@ -276,8 +290,12 @@ Scoped registrations are cleared automatically when the scene exits. Resolving a
 A plugin that works with or without another plugin's service resolves it with `context.tryResolve()`, which returns `undefined` instead of throwing:
 
 ```typescript
+import type { Plugin, EngineContext } from "@yagejs/core";
+import { PhysicsWorldManagerKey } from "@yagejs/physics";
+
 class MinimapPlugin implements Plugin {
   readonly name = "minimap";
+  readonly version = "1.0.0";
   readonly dependencies = ["renderer"]; // Hard dependency: renderer required
 
   install(context: EngineContext) {
@@ -309,7 +327,12 @@ do not depend on `@yagejs/debug`; installing either package remains headless.
 Plugins register systems into the game loop via `registerSystems()`:
 
 ```typescript
+import type { Plugin, SystemScheduler } from "@yagejs/core";
+import { PhysicsSystem, PhysicsInterpolationSystem } from "@yagejs/physics";
+
 class PhysicsPlugin implements Plugin {
+  readonly name = "physics";
+  readonly version = "1.0.0";
   registerSystems(scheduler: SystemScheduler) {
     scheduler.add(new PhysicsSystem());
     scheduler.add(new PhysicsInterpolationSystem());
@@ -322,12 +345,14 @@ class PhysicsPlugin implements Plugin {
 Each system declares which phase it runs in:
 
 ```typescript
-class PhysicsSystem extends System {
+import { System, Phase } from "@yagejs/core";
+
+abstract class PhysicsSystem extends System {
   readonly phase = Phase.FixedUpdate;
   readonly priority = 0;
 }
 
-class PhysicsInterpolationSystem extends System {
+abstract class PhysicsInterpolationSystem extends System {
   readonly phase = Phase.Update;
   readonly priority = -100; // Before game logic reads positions
 }
@@ -373,17 +398,14 @@ EndOfFrame:
 
 Components don't need to be "registered" with the engine. They're just classes that extend `Component`. Any plugin can export component classes, and users import and use them directly:
 
-```typescript
-// @yagejs/physics exports:
-export class RigidBodyComponent extends Component { ... }
-export class ColliderComponent extends Component { ... }
+```typescript yage-context="scene"
+import { Transform } from "@yagejs/core";
+import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 
-// User code imports and uses:
-import { RigidBodyComponent, ColliderComponent } from '@yagejs/physics';
-
-const entity = scene.spawn('ball');
-entity.add(new RigidBodyComponent({ type: 'dynamic' }));
-entity.add(new ColliderComponent({ shape: { type: 'circle', radius: 20 } }));
+const entity = scene.spawn("ball");
+entity.add(new Transform());
+entity.add(new RigidBodyComponent({ type: "dynamic" }));
+entity.add(new ColliderComponent({ shape: { type: "circle", radius: 20 } }));
 ```
 
 ### Component-System Communication
@@ -391,13 +413,28 @@ entity.add(new ColliderComponent({ shape: { type: 'circle', radius: 20 } }));
 Components store data. Systems operate on data. The link is through `QueryCache`:
 
 ```typescript
+import {
+  System,
+  Phase,
+  QueryCacheKey,
+  Transform,
+  type QueryResult,
+  type EngineContext,
+} from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
+
 // System queries for entities with specific components
 class PhysicsSystem extends System {
+  readonly phase = Phase.FixedUpdate;
   private query!: QueryResult;
 
   onRegister(context: EngineContext) {
     const cache = context.resolve(QueryCacheKey);
     this.query = cache.register([Transform, RigidBodyComponent]);
+  }
+
+  onUnregister() {
+    this.use(QueryCacheKey).unregister(this.query);
   }
 
   update(dt: number) {
@@ -417,7 +454,11 @@ class PhysicsSystem extends System {
 Plugins can listen to engine-wide events via the `EventBus`:
 
 ```typescript
+import { EventBusKey, type Plugin, type EngineContext } from "@yagejs/core";
+
 class DebugPlugin implements Plugin {
+  readonly name = "debug-events";
+  readonly version = "1.0.0";
   install(context: EngineContext) {
     const events = context.resolve(EventBusKey);
 
@@ -468,7 +509,8 @@ Entity payloads carry the live `Entity`. Scene payloads are `SceneRef` views, ex
 
 #### Step 1: Define the Service Key and Types
 
-```typescript
+```typescript yage-group="score" yage-file="types.ts"
+import type { ScoreManager } from "./ScoreManager.js";
 // packages/score/src/types.ts
 import { ServiceKey } from "@yagejs/core";
 
@@ -484,10 +526,10 @@ export interface ScoreEvents {
 
 The engine's `EventBus<EngineEvents>` is typed to the engine's own events, so a plugin with events of its own owns a bus for them:
 
-```typescript
+```typescript yage-group="score" yage-file="ScoreManager.ts"
 // packages/score/src/ScoreManager.ts
 import { EventBus } from "@yagejs/core";
-import type { ScoreEvents } from "./types";
+import type { ScoreEvents } from "./types.js";
 
 export class ScoreManager {
   readonly events = new EventBus<ScoreEvents>();
@@ -532,11 +574,11 @@ export class ScoreManager {
 
 #### Step 3: Implement the Plugin
 
-```typescript
+```typescript yage-group="score" yage-file="ScorePlugin.ts"
 // packages/score/src/ScorePlugin.ts
 import type { Plugin, EngineContext } from "@yagejs/core";
-import { ScoreManager } from "./ScoreManager";
-import { ScoreManagerKey } from "./types";
+import { ScoreManager } from "./ScoreManager.js";
+import { ScoreManagerKey } from "./types.js";
 
 export interface ScoreConfig {
   milestones?: number[];
@@ -548,7 +590,7 @@ export class ScorePlugin implements Plugin {
   // No dependencies -- works with just @yagejs/core
 
   private config: ScoreConfig;
-  private manager?: ScoreManager;
+  private manager: ScoreManager | undefined;
 
   constructor(config?: ScoreConfig) {
     this.config = config ?? {};
@@ -567,19 +609,20 @@ export class ScorePlugin implements Plugin {
 
 #### Step 4: Export the Public API
 
-```typescript
+```typescript yage-group="score" yage-file="index.ts"
 // packages/score/src/index.ts
-export { ScorePlugin } from "./ScorePlugin";
-export { ScoreManager } from "./ScoreManager";
-export { ScoreManagerKey } from "./types";
-export type { ScoreConfig, ScoreEvents } from "./types";
+export { ScorePlugin } from "./ScorePlugin.js";
+export { ScoreManager } from "./ScoreManager.js";
+export { ScoreManagerKey } from "./types.js";
+export type { ScoreEvents } from "./types.js";
+export type { ScoreConfig } from "./ScorePlugin.js";
 ```
 
 #### Step 5: Use It
 
-```typescript
+```typescript yage-group="score" yage-file="main.ts"
 import { Engine, Scene } from "@yagejs/core";
-import { ScorePlugin, ScoreManagerKey } from "@yagejs/score";
+import { ScorePlugin, ScoreManagerKey } from "./index.js";
 
 const engine = new Engine();
 engine.use(new ScorePlugin({ milestones: [100, 500, 1000, 5000] }));
@@ -602,12 +645,14 @@ class GameScene extends Scene {
 
 If the plugin needs per-frame logic, add a system:
 
-```typescript
+```typescript yage-group="score" yage-file="ScoreDisplaySystem.ts"
+import type { SystemScheduler } from "@yagejs/core";
+import { ScorePlugin } from "./ScorePlugin.js";
 // ScoreDisplaySystem.ts
-import { System, Phase } from '@yagejs/core';
-import type { EngineContext } from '@yagejs/core';
-import type { ScoreManager } from './ScoreManager';
-import { ScoreManagerKey } from './types';
+import { System, Phase } from "@yagejs/core";
+import type { EngineContext } from "@yagejs/core";
+import type { ScoreManager } from "./ScoreManager.js";
+import { ScoreManagerKey } from "./types.js";
 
 export class ScoreDisplaySystem extends System {
   readonly phase = Phase.LateUpdate;
@@ -624,9 +669,11 @@ export class ScoreDisplaySystem extends System {
   }
 }
 
-// In ScorePlugin:
-registerSystems(scheduler: SystemScheduler) {
-  scheduler.add(new ScoreDisplaySystem());
+// A plugin variant that also updates the display:
+export class DisplayScorePlugin extends ScorePlugin {
+  registerSystems(scheduler: SystemScheduler) {
+    scheduler.add(new ScoreDisplaySystem());
+  }
 }
 ```
 
@@ -672,7 +719,9 @@ If a plugin's `install()` or `onStart()` throws:
 
 The standard pattern. Pass configuration when creating the plugin:
 
-```typescript
+```typescript yage-context="engine"
+import { RendererPlugin } from "@yagejs/renderer";
+
 engine.use(
   new RendererPlugin({
     width: 800,
@@ -687,7 +736,9 @@ engine.use(
 
 For settings that can change during gameplay, expose methods on the service:
 
-```typescript
+```typescript yage-context="context"
+import { AudioManagerKey } from "@yagejs/audio";
+
 const audio = context.resolve(AudioManagerKey);
 audio.setChannelVolume("music", 0.5);
 audio.muteAll();
@@ -697,7 +748,11 @@ audio.muteAll();
 
 For plugins that react to engine events:
 
-```typescript
+```typescript yage-context="context"
+import { EventBusKey } from "@yagejs/core";
+import { AudioManagerKey } from "@yagejs/audio";
+
+const audio = context.resolve(AudioManagerKey);
 const events = context.resolve(EventBusKey);
 events.on("screen:fullscreen", ({ active }) => {
   if (!active) audio.muteAll();

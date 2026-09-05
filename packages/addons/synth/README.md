@@ -20,9 +20,13 @@ subpath — there is nothing to draw.
 
 ## 5-minute setup
 
-```ts
+```ts yage-context="engine,component"
 import { AudioPlugin, AudioManagerKey } from "@yagejs/audio";
-import { SynthPlugin, synthPresets, synthVariantAliases } from "@yagejs-addons/synth";
+import {
+  SynthPlugin,
+  synthPresets,
+  synthVariantAliases,
+} from "@yagejs-addons/synth";
 
 engine.use(new AudioPlugin());
 engine.use(
@@ -49,6 +53,8 @@ unlock. Playing is the normal `AudioManager` API — nothing new to learn.
 A preset returns plain data, so a different gun is a one-number edit:
 
 ```ts
+import { synthPresets } from "@yagejs-addons/synth";
+
 synthPresets.shoot({ frequency: 900, gain: 0.5 });
 ```
 
@@ -63,7 +69,12 @@ Or write the patch yourself:
 import { renderSynthPatch, synthBuffer } from "@yagejs-addons/synth";
 import { registerSound } from "@yagejs/audio";
 
-const zap = { wave: "square", frequency: 1200, glideTo: 200, duration: 0.09 } as const;
+const zap = {
+  wave: "square",
+  frequency: 1200,
+  glideTo: 200,
+  duration: 0.09,
+} as const;
 
 registerSound("zap", synthBuffer(zap)); // outside the plugin config
 const samples = renderSynthPatch(zap); // plain Float32Array — assert on it in a test

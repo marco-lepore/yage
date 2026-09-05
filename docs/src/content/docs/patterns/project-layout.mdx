@@ -32,6 +32,33 @@ public/
 
 ## Rules
 
+The scene excerpt below uses these game-specific contracts. Entity implementations
+are omitted because this page shows module layout; the starter contains their
+rendering, movement, and collision behavior.
+
+```typescript yage-group="layout" yage-file="entities/contracts.ts"
+import { Entity, type Scene } from "@yagejs/core";
+
+export declare class Player extends Entity {
+  setup(params: { x: number; y: number }): void;
+}
+export declare class Platform extends Entity {
+  setup(params: { x: number; y: number; width: number; height: number }): void;
+}
+export declare class Coin extends Entity {
+  setup(params: { x: number; y: number }): void;
+}
+export declare class Hazard extends Entity {
+  setup(params: {
+    x: number;
+    y: number;
+    amplitude: number;
+    period: number;
+  }): void;
+}
+export declare function respawnPlayer(scene: Scene): void;
+```
+
 ### 1. One scene per file
 
 Scene classes should be **orchestrators**: preload assets, set up the camera,
@@ -42,9 +69,24 @@ Rule of thumb: if a scene grows past ~150 lines, that's a signal you're
 inlining entity logic. Extract entity classes until the scene is just a list
 of spawns and a few listeners.
 
-```typescript
+```typescript yage-group="layout" yage-file="scenes/GameScene.ts"
+import { Scene, defineEvent } from "@yagejs/core";
+import { texture } from "@yagejs/renderer";
+import { sound } from "@yagejs/audio";
+import {
+  Player,
+  Platform,
+  Coin,
+  Hazard,
+  respawnPlayer,
+} from "../entities/contracts.js";
+
+const playerTexture = texture("/assets/player.png");
+const jumpSfx = sound("/assets/jump.wav");
+const PlayerHit = defineEvent("game:player-hit");
+
 // Good — the scene is a spawn list
-class GameScene extends Scene {
+export class GameScene extends Scene {
   readonly name = "game";
   readonly preload = [playerTexture, jumpSfx];
 
@@ -102,16 +144,40 @@ component crosses — it's used by both `Coin` (vertical bob) and `Hazard`
 (horizontal slide), so it lives in `components/Oscillate.ts`:
 
 ```typescript
+import { Component, Entity, Transform } from "@yagejs/core";
+
 // components/Oscillate.ts — shared between Coin and Hazard
 export class Oscillate extends Component {
-  // ... sine-wave motion along an axis ...
+  private transform = this.sibling(Transform);
+  private origin = { x: 0, y: 0 };
+  private elapsed = 0;
+  constructor(
+    private options: { axis: "x" | "y"; amplitude: number; period: number },
+  ) {
+    super();
+  }
+  onAdd() {
+    this.origin = this.transform.position;
+  }
+  update(dt: number) {
+    this.elapsed += dt;
+    const offset =
+      Math.sin((this.elapsed * Math.PI * 2) / this.options.period) *
+      this.options.amplitude;
+    this.transform.setPosition(
+      this.origin.x + (this.options.axis === "x" ? offset : 0),
+      this.origin.y + (this.options.axis === "y" ? offset : 0),
+    );
+  }
 }
 
-// entities/Coin.ts
-this.add(new Oscillate({ axis: "y", amplitude: 4, period: 1.2 }));
-
-// entities/Hazard.ts
-this.add(new Oscillate({ axis: "x", amplitude: 60, period: 2.2 }));
+// In each entity's setup(), after adding Transform:
+function addCoinMotion(coin: Entity) {
+  coin.add(new Oscillate({ axis: "y", amplitude: 4, period: 1.2 }));
+}
+function addHazardMotion(hazard: Entity) {
+  hazard.add(new Oscillate({ axis: "x", amplitude: 60, period: 2.2 }));
+}
 ```
 
 If the starter had only `Coin` using `Oscillate`, the component would live at
@@ -123,7 +189,7 @@ folder).
 Engine creation, plugin registration, scene push. No game logic. If `main.ts`
 grows, the overflow belongs in a scene or a plugin.
 
-```typescript
+```typescript yage-group="layout" yage-file="main.ts"
 // main.ts — entire file
 import { Engine } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
@@ -132,7 +198,13 @@ import { InputPlugin } from "@yagejs/input";
 import { GameScene } from "./scenes/GameScene.js";
 
 const engine = new Engine({ debug: true });
-engine.use(new RendererPlugin({ width: 800, height: 600, container: document.getElementById("game")! }));
+engine.use(
+  new RendererPlugin({
+    width: 800,
+    height: 600,
+    container: document.getElementById("game")!,
+  }),
+);
 engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
 engine.use(new InputPlugin({ actions: { jump: ["Space"] } }));
 await engine.start();
@@ -158,11 +230,16 @@ that uses them, and list them in `Scene.preload` — YAGE guarantees they're
 loaded before `onEnter` runs.
 
 ```typescript
+import { Scene } from "@yagejs/core";
+import { texture } from "@yagejs/renderer";
+import { sound } from "@yagejs/audio";
+
 // scenes/GameScene.ts
 export const playerTexture = texture("/assets/player.png");
 export const jumpSfx = sound("/assets/jump.wav");
 
 export class GameScene extends Scene {
+  readonly name = "game";
   readonly preload = [playerTexture, jumpSfx];
   // ...
 }

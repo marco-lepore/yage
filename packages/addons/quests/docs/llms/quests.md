@@ -20,7 +20,7 @@ ids from each quest's own `objectives` map keys. No `<T>` argument is ever
 written — `QuestLog<TDefs>` infers both levels from the `defineQuests` return
 value.
 
-```ts
+```ts yage-group="herbs" yage-context="entity,scene"
 import { defineQuests, QuestLog } from "@yagejs-addons/quests";
 
 const quests = defineQuests({
@@ -59,7 +59,7 @@ predicate), `objectiveIds(quest)`.
 
 ## QuestLog — the runtime model
 
-```ts
+```ts yage-group="herbs" yage-context="entity,scene"
 const log = new QuestLog(quests); // TDefs inferred from `quests`, zero <T>
 ```
 
@@ -124,9 +124,11 @@ fine-grained event(s)).
 
 ### Save
 
-```ts
-log.snapshot(): QuestSnapshot; // { quests: Record<questId, { phase, objectives }> } — plain JSON
-log.restore(snapshot): void;
+```ts yage-group="herbs" yage-context="entity,scene"
+import type { QuestSnapshot } from "@yagejs-addons/quests";
+
+const snapshot: QuestSnapshot = log.snapshot();
+log.restore(snapshot);
 ```
 
 Only started quests appear in a snapshot. `restore` drops quest ids the
@@ -145,10 +147,10 @@ call `restore` after loading it.
 
 ## QuestController (optional L2a)
 
-```ts
+```ts yage-group="herbs" yage-context="entity,scene"
 import { QuestController, QuestCompletedEvent } from "@yagejs-addons/quests";
 
-player.add(new QuestController({ log })); // TDefs inferred from `log`
+entity.add(new QuestController({ log })); // TDefs inferred from `log`
 scene.on(QuestCompletedEvent, ({ questId }) => {});
 ```
 
@@ -170,9 +172,9 @@ Quests declares only `@yagejs/core`. The game subscribes to whatever events it
 likes and calls `advance`/`complete` directly — the silent-no-op-on-inactive
 contract means no active-state guard is needed in the adapter:
 
-```ts
+```ts yage-group="herbs" yage-context="entity,scene"
 import { InventoryItemAddedEvent } from "@yagejs-addons/inventory";
-player.on(InventoryItemAddedEvent, (e) => {
+entity.on(InventoryItemAddedEvent, (e) => {
   if (e.itemId === "redHerb") log.advance("gatherHerbs", "herb", e.quantity);
 });
 ```
@@ -181,6 +183,20 @@ For a current-inventory requirement, set `autoComplete: false` on the quest
 and synchronize absolute progress on both inventory additions and removals:
 
 ```ts
+import { defineQuests, QuestLog } from "@yagejs-addons/quests";
+import { defineItems, Inventory } from "@yagejs-addons/inventory";
+
+const quests = defineQuests({
+  bringWood: {
+    title: "Bring 10 wood",
+    autoComplete: false,
+    objectives: { wood: { count: 10 } },
+  },
+});
+const log = new QuestLog(quests);
+const inventory = new Inventory({
+  catalog: defineItems({ wood: { name: "Wood" } }),
+});
 const syncWood = () =>
   log.setProgress("bringWood", "wood", inventory.count("wood"));
 inventory.on("itemAdded", syncWood);

@@ -67,6 +67,22 @@ jobs:
       - run: npm ci
       - run: npx turbo build
 
+  docs-snippets:
+    name: Docs snippets
+    runs-on: ubuntu-latest
+    needs: [build]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx turbo build
+      - run: npm run test:snippets --workspace @yagejs/docs
+      - run: npm run docs:check
+
   e2e:
     name: E2E
     runs-on: ubuntu-latest

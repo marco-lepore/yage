@@ -11,7 +11,10 @@ returns an unsubscribe function — call it to stop listening:
 ```typescript
 import { EventBus } from "@yagejs/core";
 
-const bus = new EventBus();
+const bus = new EventBus<{
+  "player:hit": { damage: number };
+  "level:complete": { levelId: string };
+}>();
 
 // Subscribe — returns an unsubscribe function
 const off = bus.on("player:hit", (data) => {
@@ -84,6 +87,8 @@ keep the unsubscribe function `bus.on` returns.
 For custom events with full type safety, create a typed bus with an interface:
 
 ```typescript
+import { EventBus } from "@yagejs/core";
+
 interface GameEvents {
   "player:hit": { damage: number; source: string };
   "item:collected": { itemId: string; value: number };
@@ -108,14 +113,17 @@ Entity and scene events are addressed by an `EventToken`, not by a string.
 `defineEvent` creates one and pairs the event name with its payload type, so
 every `on` and `emit` site is checked against the same shape:
 
-```typescript
+```typescript yage-context="scene"
 import { defineEvent } from "@yagejs/core";
 
 // Define once in a shared module
 export const PlayerHitEvent = defineEvent<{ damage: number }>("player:hit");
-export const WaveStartEvent = defineEvent<{ waveNumber: number }>("wave:started");
+export const WaveStartEvent = defineEvent<{ waveNumber: number }>(
+  "wave:started",
+);
 
 // Tokens address entity.on / entity.emit and scene.on / scene.emit
+const player = scene.spawn("player");
 player.on(PlayerHitEvent, (data) => {
   console.log(data.damage);
 });
@@ -139,7 +147,9 @@ Entities have their own lightweight event emitter for local communication
 between components on the same entity:
 
 ```typescript
-import { defineEvent } from "@yagejs/core";
+import { Component, defineEvent } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+import { hitFlash } from "@yagejs/effects";
 
 const DamagedEvent = defineEvent<{ amount: number }>("damaged");
 
@@ -155,7 +165,9 @@ class Health extends Component {
 class DamageFlash extends Component {
   onAdd() {
     this.listen(this.entity, DamagedEvent, ({ amount }) => {
-      this.flash(amount > 50 ? "red" : "white");
+      this.sibling(SpriteComponent)
+        .fx.addEffect(hitFlash({ color: amount > 50 ? 0xff0000 : 0xffffff }))
+        .trigger();
     });
   }
 }
@@ -176,7 +188,7 @@ events, or `undefined` for scene-emitted ones — so a single handler can
 distinguish the two cases:
 
 ```typescript
-import { defineEvent, type Entity } from "@yagejs/core";
+import { Scene, defineEvent, type Entity } from "@yagejs/core";
 
 const DamagedEvent = defineEvent<{ amount: number }>("damaged");
 

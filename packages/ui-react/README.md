@@ -13,22 +13,35 @@ React is a **peer dependency** - bring your own (^18 or ^19).
 ## Usage
 
 ```tsx
-import { Engine } from "@yagejs/core";
-import { UIPlugin } from "@yagejs/ui";
-import { createUIRoot, Panel, Text, Button } from "@yagejs/ui-react";
-
-const engine = new Engine();
-engine.use(new UIPlugin());
-await engine.start();
+import { Engine, Entity, Scene } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
+import { UIPlugin, Anchor } from "@yagejs/ui";
+import { UIReactPlugin, UIRoot, Panel, Text, Button } from "@yagejs/ui-react";
 
 function HUD({ score }: { score: number }) {
   return (
-    <Panel anchor="TopCenter" direction="row" gap={16}>
-      <Text fontSize={32} fill={0xffffff}>Score: {score}</Text>
-      <Button onPress={() => console.log("pause")}>Pause</Button>
+    <Panel direction="row" gap={16}>
+      <Text style={{ fontSize: 32, fill: 0xffffff }}>{`Score: ${score}`}</Text>
+      <Button onClick={() => console.log("pause")}>Pause</Button>
     </Panel>
   );
 }
+
+class GameScene extends Scene {
+  readonly name = "game";
+  onEnter() {
+    const hud = this.spawn(Entity);
+    const root = hud.add(new UIRoot({ anchor: Anchor.TopCenter }));
+    root.render(<HUD score={0} />);
+  }
+}
+
+const engine = new Engine();
+engine.use(new RendererPlugin({ width: 800, height: 600 }));
+engine.use(new UIPlugin());
+engine.use(new UIReactPlugin());
+await engine.start();
+await engine.scenes.push(new GameScene());
 ```
 
 ## What's in the box

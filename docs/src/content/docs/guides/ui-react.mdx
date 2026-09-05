@@ -17,7 +17,7 @@ npm install @yagejs/ui @yagejs/ui-react react
 
 Both `UIPlugin` and `UIReactPlugin` must be registered before using React UI. `UIReactPlugin` registers the `LateUpdate`-phase layout pass that positions `UIRoot` trees after any Update-phase Transform writers (e.g. `ScreenFollow`):
 
-```typescript
+```typescript yage-context="engine"
 import { UIPlugin } from "@yagejs/ui";
 import { UIReactPlugin } from "@yagejs/ui-react";
 
@@ -29,9 +29,18 @@ engine.use(new UIReactPlugin());
 
 `UIRoot` is a component that hosts a React tree on an entity:
 
-```typescript
-import { UIRoot } from "@yagejs/ui-react";
+```tsx yage-context="scene"
+import { Transform } from "@yagejs/core";
+import { UIRoot, Panel, Text } from "@yagejs/ui-react";
 import { Anchor } from "@yagejs/ui";
+
+function MyMenu() {
+  return (
+    <Panel>
+      <Text>Menu</Text>
+    </Panel>
+  );
+}
 
 const ui = scene.spawn("ui");
 ui.add(new Transform());
@@ -59,24 +68,27 @@ tracks the target while staying axis-aligned and constant-size under
 any camera zoom or rotation.
 
 ```tsx
-import { ScreenFollow } from "@yagejs/renderer";
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { ScreenFollow, type CameraEntity } from "@yagejs/renderer";
 import { UIRoot, Panel, Text } from "@yagejs/ui-react";
 import { Anchor } from "@yagejs/ui";
 
 class EnemyNameplate extends Entity {
-  setup(params: {
-    target: Entity; camera: CameraEntity; label: string;
-  }) {
+  setup(params: { target: Entity; camera: CameraEntity; label: string }) {
     this.add(new Transform());
-    this.add(new ScreenFollow({
-      target: params.target,
-      camera: params.camera,
-      offset: new Vec2(0, -40),     // 40 screen px above the target
-    }));
-    const root = this.add(new UIRoot({
-      positioning: "transform",     // read Transform.worldPosition
-      anchor: Anchor.BottomCenter,  // pivot on the rendered tree
-    }));
+    this.add(
+      new ScreenFollow({
+        target: params.target,
+        camera: params.camera,
+        offset: new Vec2(0, -40), // 40 screen px above the target
+      }),
+    );
+    const root = this.add(
+      new UIRoot({
+        positioning: "transform", // read Transform.worldPosition
+        anchor: Anchor.BottomCenter, // pivot on the rendered tree
+      }),
+    );
     root.render(<NameplateView label={params.label} />);
   }
 }
@@ -101,13 +113,26 @@ for genuinely diegetic UI, and when to pick which).
 React components mirror the imperative `@yagejs/ui` API:
 
 ```tsx
-import { Panel, Text, Button, Image, ProgressBar, Checkbox } from "@yagejs/ui-react";
+import { useState } from "react";
+import {
+  Panel,
+  Text,
+  Button,
+  Image,
+  ProgressBar,
+  Checkbox,
+} from "@yagejs/ui-react";
 
 function HUD() {
   const [score, setScore] = useState(0);
 
   return (
-    <Panel direction="column" gap={8} padding={16} bg={{ color: 0x000000, alpha: 0.7 }}>
+    <Panel
+      direction="column"
+      gap={8}
+      padding={16}
+      bg={{ color: 0x000000, alpha: 0.7 }}
+    >
       <Text style={{ fontSize: 24, fill: 0xffffff }}>{`Score: ${score}`}</Text>
 
       {/* width/height are optional — omit them and the button shrinks to
@@ -116,7 +141,7 @@ function HUD() {
         bg={{ color: 0x4444aa }}
         hoverBg={{ color: 0x5555cc }}
         textStyle={{ fontSize: 16, fill: 0xffffff }}
-        onClick={() => setScore(s => s + 1)}
+        onClick={() => setScore((s) => s + 1)}
       >
         Add Point
       </Button>
@@ -146,10 +171,23 @@ labeled-button case (it's auto-wrapped in a centered `<Text>` styled with
 `textStyle`), or pass JSX children to compose icons and text:
 
 ```tsx
-<Button onClick={() => save()}>
-  <Image texture={saveIcon} width={16} height={16} />
-  <Text style={{ fontSize: 14, fill: 0xffffff }}>Save</Text>
-</Button>
+import { Button, Image, Text } from "@yagejs/ui-react";
+import type { TextureRef } from "@yagejs/renderer";
+
+function Example({
+  save,
+  saveIcon,
+}: {
+  save: () => void;
+  saveIcon: TextureRef;
+}) {
+  return (
+    <Button onClick={() => save()}>
+      <Image texture={saveIcon} width={16} height={16} />
+      <Text style={{ fontSize: 14, fill: 0xffffff }}>Save</Text>
+    </Button>
+  );
+}
 ```
 
 `<Text>` is the counterpart: it takes a single **string** child. Pre-join
@@ -157,8 +195,14 @@ interpolated values into one template string rather than mixing static
 text with expressions:
 
 ```tsx
-<Text>{`Score: ${score}`}</Text>   // one string child
-<Text>Score: {score}</Text>        // mixed children — fails typecheck
+import { Text } from "@yagejs/ui-react";
+
+function Score({ score }: { score: number }) {
+  const valid = <Text>{`Score: ${score}`}</Text>; // one string child
+  // yage-expect-error TS2322
+  const invalid = <Text>Score: {score}</Text>; // mixed children
+  return valid;
+}
 ```
 
 ### Available Components
@@ -181,16 +225,34 @@ Setting a prop to `undefined`, or dropping it with a conditional spread,
 resets it to its default instead of leaving the previous value in place:
 
 ```tsx
-{/* Clears the background on the render where `selected` is false, rather
-    than keeping the last highlight color. */}
-<Panel bg={selected ? highlightBg : undefined} />
+import { Panel } from "@yagejs/ui-react";
+import type { ComponentProps } from "react";
 
-{/* Same reset applies when the key disappears from a spread. */}
-<Panel {...(selected ? { bg: highlightBg } : {})} />
+function Selection({
+  selected,
+  highlightBg,
+}: {
+  selected: boolean;
+  highlightBg: NonNullable<ComponentProps<typeof Panel>["bg"]>;
+}) {
+  return (
+    <>
+      {/* Clears the background on the render where `selected` is false, rather
+          than keeping the last highlight color. */}
+      <Panel bg={selected ? highlightBg : undefined} />
+
+      {/* Same reset applies when the key disappears from a spread. */}
+      <Panel {...(selected ? { bg: highlightBg } : {})} />
+    </>
+  );
+}
 ```
 
 This holds for every prop on every component — a removed `onClick` unbinds
 the handler, a removed `width` goes back to Yoga's auto sizing, and so on.
+
+Optional props accept explicit `undefined`. Required inputs, such as a Pixi
+widget's view slots, must still be supplied.
 
 ### The `bg` shorthand
 
@@ -209,12 +271,24 @@ Every component accepts the shared layout props `position`, `left`, `top`,
 `right`, `bottom`. Combine them with a relative parent to overlay elements:
 
 ```tsx
-<Panel position="relative" width={400} height={300}>
-  <ProgressBar width={400} height={300} value={progress} />
-  <Panel position="absolute" top={8} right={8} padding={4} bg={{ color: 0x000000, alpha: 0.6 }}>
-    <Text style={{ fontSize: 12 }}>{`${Math.round(progress * 100)}%`}</Text>
-  </Panel>
-</Panel>
+import { Panel, ProgressBar, Text } from "@yagejs/ui-react";
+
+function Example({ progress }: { progress: number }) {
+  return (
+    <Panel position="relative" width={400} height={300}>
+      <ProgressBar width={400} height={300} value={progress} />
+      <Panel
+        position="absolute"
+        top={8}
+        right={8}
+        padding={4}
+        bg={{ color: 0x000000, alpha: 0.6 }}
+      >
+        <Text style={{ fontSize: 12 }}>{`${Math.round(progress * 100)}%`}</Text>
+      </Panel>
+    </Panel>
+  );
+}
 ```
 
 ### `<ZStack>` — Z-axis overlay primitive
@@ -227,23 +301,48 @@ badge markers. The name follows the SwiftUI convention (`VStack` /
 in YAGE use `<Panel direction="column" | "row">`.
 
 ```tsx
-<ZStack>
-  {/* Dimmed backdrop fills the stack */}
-  <Panel position="absolute" left={0} top={0} width="100%" height="100%"
-         bg={{ color: 0x000000, alpha: 0.6 }} />
+import { ZStack, Panel, Text, Button } from "@yagejs/ui-react";
 
-  {/* Centered modal */}
-  <Panel position="absolute" left={0} top={0} width="100%" height="100%"
-         alignItems="center" justifyContent="center">
-    <Panel padding={24} gap={12} bg={{ color: 0x222222, radius: 8 }}>
-      <Text style={{ fontSize: 20 }}>Are you sure?</Text>
-      <Panel direction="row" gap={8}>
-        <Button onClick={onConfirm}>Confirm</Button>
-        <Button onClick={onCancel}>Cancel</Button>
+function Example({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <ZStack>
+      {/* Dimmed backdrop fills the stack */}
+      <Panel
+        position="absolute"
+        left={0}
+        top={0}
+        width="100%"
+        height="100%"
+        bg={{ color: 0x000000, alpha: 0.6 }}
+      />
+
+      {/* Centered modal */}
+      <Panel
+        position="absolute"
+        left={0}
+        top={0}
+        width="100%"
+        height="100%"
+        alignItems="center"
+        justifyContent="center"
+      >
+        <Panel padding={24} gap={12} bg={{ color: 0x222222, radius: 8 }}>
+          <Text style={{ fontSize: 20 }}>Are you sure?</Text>
+          <Panel direction="row" gap={8}>
+            <Button onClick={onConfirm}>Confirm</Button>
+            <Button onClick={onCancel}>Cancel</Button>
+          </Panel>
+        </Panel>
       </Panel>
-    </Panel>
-  </Panel>
-</ZStack>
+    </ZStack>
+  );
+}
 ```
 
 ### Hover events
@@ -262,6 +361,9 @@ Three independent props (combine them freely):
   and `false` on leave. One setter drives a "while hovered" state.
 
 ```tsx
+import { useState } from "react";
+import { Panel, Text } from "@yagejs/ui-react";
+
 function HoverableCard() {
   const [active, setActive] = useState(false);
   return (
@@ -288,31 +390,44 @@ trigger/content subcomponents. It is **headless**: no default visuals —
 pass `bg` / `padding` / `textStyle` to style it.
 
 ```tsx
-<Tooltip
-  content="Save your game"
-  placement="top"
-  bg={{ color: 0x1f2430, radius: 6 }}
-  padding={8}
->
-  <Button onClick={save}>Save</Button>
-</Tooltip>
+import { Tooltip, Button } from "@yagejs/ui-react";
+
+function Example({ save }: { save: () => void }) {
+  return (
+    <Tooltip
+      content="Save your game"
+      placement="top"
+      bg={{ color: 0x1f2430, radius: 6 }}
+      padding={8}
+    >
+      <Button onClick={save}>Save</Button>
+    </Tooltip>
+  );
+}
 ```
 
 `content` also takes arbitrary nodes for rich tooltips (item cards, stat
 breakdowns):
 
 ```tsx
-<Tooltip
-  placement="right"
-  content={
-    <Panel gap={2}>
-      <Text style={{ fontWeight: "bold" }}>Iron Sword</Text>
-      <Text style={{ fontSize: 12 }}>+5 ATK · Rare</Text>
-    </Panel>
-  }
->
-  <Image texture={swordIcon} width={32} height={32} />
-</Tooltip>
+import { Tooltip, Panel, Text, Image } from "@yagejs/ui-react";
+import type { TextureRef } from "@yagejs/renderer";
+
+function Example({ swordIcon }: { swordIcon: TextureRef }) {
+  return (
+    <Tooltip
+      placement="right"
+      content={
+        <Panel gap={2}>
+          <Text style={{ fontWeight: "bold" }}>Iron Sword</Text>
+          <Text style={{ fontSize: 12 }}>+5 ATK · Rare</Text>
+        </Panel>
+      }
+    >
+      <Image texture={swordIcon} width={32} height={32} />
+    </Tooltip>
+  );
+}
 ```
 
 | Prop | Description |
@@ -381,7 +496,10 @@ refilling a store-driven list never jumps the scroll back to the top.
 ```tsx
 import { ScrollView, Panel, Button, Text } from "@yagejs/ui-react";
 
-interface Order { id: string; label: string }
+interface Order {
+  id: string;
+  label: string;
+}
 
 function OrdersPanel({
   orders,
@@ -393,23 +511,39 @@ function OrdersPanel({
   endDay: () => void;
 }) {
   return (
-    <Panel direction="column" width={300} height={220} gap={10} padding={10}
-           bg={{ color: 0x000000, alpha: 0.7 }}>
+    <Panel
+      direction="column"
+      width={300}
+      height={220}
+      gap={10}
+      padding={10}
+      bg={{ color: 0x000000, alpha: 0.7 }}
+    >
       <Text style={{ fontSize: 16, fill: 0x93c5fd }}>Orders</Text>
 
       <ScrollView flexGrow={1} gap={6} bg={{ color: 0x0b1220 }}>
         {orders.map((o) => (
-          <Panel key={o.id} direction="row" height={36} padding={{ left: 8, right: 6 }}
-                 alignItems="center" justifyContent="space-between"
-                 bg={{ color: 0x243042, radius: 4 }}>
+          <Panel
+            key={o.id}
+            direction="row"
+            height={36}
+            padding={{ left: 8, right: 6 }}
+            alignItems="center"
+            justifyContent="space-between"
+            bg={{ color: 0x243042, radius: 4 }}
+          >
             <Text style={{ fontSize: 14, fill: 0xe5e7eb }}>{o.label}</Text>
-            <Button height={24} onClick={() => fulfill(o.id)}>Fulfill</Button>
+            <Button height={24} onClick={() => fulfill(o.id)}>
+              Fulfill
+            </Button>
           </Panel>
         ))}
       </ScrollView>
 
       {/* A sibling of <ScrollView>, so it stays put while the list scrolls. */}
-      <Button height={36} onClick={endDay}>End Day</Button>
+      <Button height={36} onClick={endDay}>
+        End Day
+      </Button>
     </Panel>
   );
 }
@@ -448,13 +582,22 @@ and pointing you at `<ScrollView>` or another container.
 Access the engine context or current scene from any React component:
 
 ```tsx
-import { useEngine, useScene } from "@yagejs/ui-react";
+import { Scene, SceneManagerKey } from "@yagejs/core";
+import { Button, useEngine, useScene } from "@yagejs/ui-react";
+
+class PauseScene extends Scene {
+  readonly name = "pause";
+}
 
 function PauseButton() {
-  const engine = useEngine();
+  const scenes = useEngine().resolve(SceneManagerKey);
 
   return (
-    <Button onClick={() => engine.scenes.push(new PauseScene())} width={100} height={40}>
+    <Button
+      onClick={() => scenes.push(new PauseScene())}
+      width={100}
+      height={40}
+    >
       Pause
     </Button>
   );
@@ -470,7 +613,7 @@ overload per shape, plus a selector escape hatch. Dispatch is symbol-driven
 
 ```tsx
 import { createRecord } from "@yagejs/core";
-import { useStore } from "@yagejs/ui-react";
+import { useStore, Text } from "@yagejs/ui-react";
 
 // Plain record (object with shallow merge)
 const gameStore = createRecord({ default: () => ({ score: 0, health: 100 }) });
@@ -488,28 +631,52 @@ function ScoreDisplay() {
 Each `useStore(source)` returns the source's natural snapshot:
 
 ```tsx
-useStore(record);   // ReactiveRecord<T>  → Readonly<T>
-useStore(counter);  // ReactiveCounter    → number
-useStore(map);      // ReactiveMap<K, V>  → Array<[K, V]>
-useStore(set);      // ReactiveSet<K>     → K[]
-useStore(list);     // ReactiveList<T>    → T[]
-useStore(value);    // ReactiveValue<T>   → T
-useStore(compound); // ReactiveStore<L>   → encoded snapshot
+import {
+  createRecord,
+  createCounter,
+  createMap,
+  createSet,
+  createList,
+  createValue,
+  createStore,
+} from "@yagejs/core";
+import { useStore } from "@yagejs/ui-react";
+
+const record = createRecord({ default: () => ({ score: 0 }) });
+const counter = createCounter();
+const map = createMap<string, number>();
+const set = createSet<string>();
+const list = createList<string>();
+const value = createValue({ default: () => "ready" });
+const compound = createStore((s) => ({ score: s.counter() }));
+
+function useSnapshots() {
+  useStore(record); // ReactiveRecord<T>  → Readonly<T>
+  useStore(counter); // ReactiveCounter    → number
+  useStore(map); // ReactiveMap<K, V>  → Array<[K, V]>
+  useStore(set); // ReactiveSet<K>     → K[]
+  useStore(list); // ReactiveList<T>    → T[]
+  useStore(value); // ReactiveValue<T>   → T
+  useStore(compound); // ReactiveStore<L>   → encoded snapshot
+}
 ```
 
 Compounds returned by `createStore` are accepted too — `useStore(compound)`
 returns the encoded snapshot of the whole tree. For finer subscription
 granularity read individual leaves:
 
-```tsx
+```tsx yage-group="compound"
+import { createStore, createRecord } from "@yagejs/core";
+import { useStore, Text } from "@yagejs/ui-react";
+
 const game = createStore((s) => ({
   gold: s.counter({ default: 0 }),
   inventory: s.map<string, number>(),
 }));
 
 function HUD() {
-  const gold = useStore(game.gold);            // number
-  const entries = useStore(game.inventory);    // Array<[string, number]>
+  const gold = useStore(game.gold); // number
+  const entries = useStore(game.inventory); // Array<[string, number]>
   return <Text>{`${gold} gold · ${entries.length} items`}</Text>;
 }
 ```
@@ -517,16 +684,20 @@ function HUD() {
 For partial reads, use the selector escape hatch. The selector receives the
 **source itself**, not a snapshot — call its accessors inside:
 
-```tsx
-// One map entry only — re-renders only when "moonleaf" changes
-const moonleafQty = useStore(game.inventory, (m) => m.get("moonleaf") ?? 0);
+```tsx yage-group="compound"
+const store = createRecord({ default: () => ({ position: { x: 0, y: 0 } }) });
 
-// Custom equality check
-const pos = useStore(
-  store,
-  (src) => src.get().position,
-  (a, b) => a.x === b.x && a.y === b.y,
-);
+function useSelections() {
+  // One map entry only — re-renders only when "moonleaf" changes
+  const moonleafQty = useStore(game.inventory, (m) => m.get("moonleaf") ?? 0);
+
+  // Custom equality check
+  const pos = useStore(
+    store,
+    (src) => src.get().position,
+    (a, b) => a.x === b.x && a.y === b.y,
+  );
+}
 ```
 
 ### useQuery
@@ -534,13 +705,13 @@ const pos = useStore(
 Query ECS entities directly from React:
 
 ```tsx
-import { useQuery } from "@yagejs/ui-react";
+import { Component } from "@yagejs/core";
+import { useQuery, Text } from "@yagejs/ui-react";
+
+class EnemyTag extends Component {}
 
 function EnemyCount() {
-  const count = useQuery(
-    [EnemyTag],
-    (result) => result.size,
-  );
+  const count = useQuery([EnemyTag], (result) => result.size);
   return <Text>{`Enemies: ${count}`}</Text>;
 }
 ```
@@ -557,10 +728,10 @@ selector result changes.
 Read arbitrary scene state:
 
 ```tsx
-import { useSceneSelector } from "@yagejs/ui-react";
+import { useSceneSelector, Text } from "@yagejs/ui-react";
 
 function EntityCounter() {
-  const count = useSceneSelector((scene) => scene.getEntities().length);
+  const count = useSceneSelector((scene) => scene.getEntities().size);
   return <Text>{`Entities: ${count}`}</Text>;
 }
 ```

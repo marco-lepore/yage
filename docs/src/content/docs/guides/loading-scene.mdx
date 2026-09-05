@@ -18,10 +18,14 @@ This gives you two layers:
 
 ## Quick Start
 
-```typescript
-import { LoadingScene } from "@yagejs/core";
+```typescript yage-context="engine"
+import { LoadingScene, Scene } from "@yagejs/core";
 import { fade } from "@yagejs/renderer";
 import { LoadingSceneProgressBar } from "@yagejs/ui";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
 
 class Boot extends LoadingScene {
   readonly target = new GameScene();
@@ -51,6 +55,16 @@ you'd rather defer until loading actually starts (the factory runs before
 the preload, so `target.preload` is still inspected):
 
 ```typescript
+import { LoadingScene, Scene } from "@yagejs/core";
+import { LoadingSceneProgressBar } from "@yagejs/ui";
+
+class GameScene extends Scene {
+  readonly name = "game";
+  constructor(readonly config: { level: number }) {
+    super();
+  }
+}
+
 class Boot extends LoadingScene {
   readonly target = () => new GameScene({ level: 1 });
   override onEnter() {
@@ -70,7 +84,15 @@ player feels the pop. Set `minDuration` to the shortest time you're
 willing to show the bar:
 
 ```typescript
-readonly minDuration = 0.5; // stays visible at least 0.5s
+import { LoadingScene, Scene } from "@yagejs/core";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
+class Boot extends LoadingScene {
+  readonly target = new GameScene();
+  readonly minDuration = 0.5; // stays visible at least 0.5s
+}
 ```
 
 Wall-clock seconds. Ignores `timeScale`.
@@ -80,7 +102,13 @@ Wall-clock seconds. Ignores `timeScale`.
 Attach a `SceneTransition` to animate the handoff:
 
 ```typescript
+import { LoadingScene, Scene } from "@yagejs/core";
+import { LoadingSceneProgressBar } from "@yagejs/ui";
 import { crossFade } from "@yagejs/renderer";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
 
 class Boot extends LoadingScene {
   readonly target = new GameScene();
@@ -130,7 +158,9 @@ class Spinner extends Component {
     });
   }
 
-  override onDestroy() { this.unsub?.(); }
+  override onDestroy() {
+    this.unsub?.();
+  }
 
   update(dt: number) {
     // rotate a sprite by (dt * speed) — use this.ratio for fill effects
@@ -147,13 +177,21 @@ a splash that sits until the player presses a key. Set `autoContinue =
 false` and call `continue()` when ready:
 
 ```typescript
+import { Component, LoadingScene, Scene, EventBusKey } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
+import { LoadingSceneProgressBar } from "@yagejs/ui";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
+
 class Boot extends LoadingScene {
   readonly target = new GameScene();
   readonly autoContinue = false;
 
   override onEnter() {
     this.spawn(LoadingSceneProgressBar);
-    this.spawn(PressAnyKeyPrompt);
+    this.spawn("continue-prompt").add(new PressAnyKeyPrompt());
     this.startLoading();
   }
 }
@@ -172,7 +210,9 @@ class PressAnyKeyPrompt extends Component {
     });
   }
 
-  override onDestroy() { this.unsub?.(); }
+  override onDestroy() {
+    this.unsub?.();
+  }
 
   update() {
     if (!this.ready) return;
@@ -193,6 +233,13 @@ caller to propagate rejections back to — the scene stays mounted in a
 failed state. Override `onLoadError` to recover in place:
 
 ```typescript
+import { LoadingScene, Scene } from "@yagejs/core";
+import { LoadingSceneProgressBar } from "@yagejs/ui";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
+
 class Boot extends LoadingScene {
   readonly target = new GameScene();
   override onEnter() {
@@ -230,16 +277,18 @@ The `AssetManager` caches handles by key. Consequences:
 
 ## `LoadingSceneProgressBar` options (`@yagejs/ui`)
 
-```typescript
+```typescript yage-context="scene-enter"
+import { LoadingSceneProgressBar, Anchor } from "@yagejs/ui";
+
 this.spawn(LoadingSceneProgressBar, {
-  width: 400,                                 // virtual px, default 400
-  height: 16,                                 // virtual px, default 16
-  track: { color: 0x1e293b, alpha: 1 },       // bar background
-  fill:  { color: 0x38bdf8, alpha: 1 },       // bar progress
-  backdrop: { color: 0x0b0f14, alpha: 1 },    // full-viewport bg (default: none)
-  anchor: Anchor.Center,                      // screen position of the bar
-  offset: { x: 0, y: 40 },                    // offset from anchor
-  layer: "ui",                                // UI layer name
+  width: 400, // virtual px, default 400
+  height: 16, // virtual px, default 16
+  track: { color: 0x1e293b, alpha: 1 }, // bar background
+  fill: { color: 0x38bdf8, alpha: 1 }, // bar progress
+  backdrop: { color: 0x0b0f14, alpha: 1 }, // full-viewport bg (default: none)
+  anchor: Anchor.Center, // screen position of the bar
+  offset: { x: 0, y: 40 }, // offset from anchor
+  layer: "ui", // UI layer name
 });
 ```
 

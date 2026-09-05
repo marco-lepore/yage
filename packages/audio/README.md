@@ -17,19 +17,28 @@ import { Engine } from "@yagejs/core";
 import { AudioPlugin, sound } from "@yagejs/audio";
 
 const engine = new Engine();
-engine.use(new AudioPlugin({
-  channels: {
-    music: { volume: 0.7 },
-    sfx: { volume: 1.0 },
-  },
-}));
+engine.use(
+  new AudioPlugin({
+    channels: {
+      music: { volume: 0.7 },
+      sfx: { volume: 1.0 },
+    },
+  }),
+);
 ```
 
 Play sounds via the asset system or a `SoundComponent`:
 
-```ts
+```ts yage-context="context,entity"
+import { AssetManagerKey } from "@yagejs/core";
+import { sound, SoundComponent } from "@yagejs/audio";
+
 const jumpSfx = sound("jump.mp3");
-entity.add(new SoundComponent({ source: jumpSfx, channel: "sfx" }));
+await context.resolve(AssetManagerKey).loadAll([jumpSfx]);
+const jump = entity.add(
+  new SoundComponent({ alias: jumpSfx.path, channel: "sfx" }),
+);
+jump.play();
 ```
 
 ## What's in the box

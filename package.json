@@ -25,6 +25,7 @@
     "measure": "node --test scripts/*.test.mjs && node scripts/measure.mjs",
     "siblings": "node scripts/siblings.mjs",
     "typecheck": "turbo run typecheck",
+    "docs:check": "npm run check:snippets --workspace @yagejs/docs --",
     "dev": "turbo run dev",
     "clean": "turbo run clean",
     "build:site": "turbo run build && node scripts/assemble-site.mjs",

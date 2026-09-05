@@ -9,7 +9,7 @@ per-frame depth sorting to get correct paint order for a top-down game,
 where a character standing below a sign should paint over it, and one
 standing above it should paint under it.
 
-```typescript
+```typescript yage-context="engine"
 import { Scene } from "@yagejs/core";
 import { RendererPlugin, type LayerDef } from "@yagejs/renderer";
 
@@ -81,13 +81,17 @@ Pixi's render pipeline then orders the layer by zIndex — this is the
 engine's Y-sort / depth-sort mechanism:
 
 ```typescript
+import { Scene } from "@yagejs/core";
 import { ySort, type LayerDef } from "@yagejs/renderer";
 
-readonly layers: readonly LayerDef[] = [
-  { name: "ground", order: -10 },
-  { name: "characters", order: 0, sort: ySort },
-  { name: "ui", order: 100, space: "screen" },
-];
+class SortedScene extends Scene {
+  readonly name = "sorted";
+  readonly layers: readonly LayerDef[] = [
+    { name: "ground", order: -10 },
+    { name: "characters", order: 0, sort: ySort },
+    { name: "ui", order: 100, space: "screen" },
+  ];
+}
 ```
 
 `ySort` is just `(c) => c.position.y` — terse enough that you can write
@@ -103,12 +107,15 @@ component: declare a `LayerDef` named `"default"` to configure the
 pre-created layer in place.
 
 ```typescript
+import { Scene } from "@yagejs/core";
 import { ySort, type LayerDef } from "@yagejs/renderer";
 
 class TopDownScene extends Scene {
   readonly name = "game";
   // Sprites added with no `layer` land here and depth-sort by y.
-  readonly layers: readonly LayerDef[] = [{ name: "default", sort: ySort }];
+  readonly layers: readonly LayerDef[] = [
+    { name: "default", order: 0, sort: ySort },
+  ];
 }
 ```
 
@@ -117,7 +124,7 @@ definition. To flip sorting on (or off) after the scene is live, call
 `setSort` on the layer (any component can reach the tree through scene
 scope):
 
-```typescript
+```typescript yage-context="component"
 import { SceneRenderTreeKey, ySort } from "@yagejs/renderer";
 
 const tree = this.use(SceneRenderTreeKey); // inside a Component
@@ -146,14 +153,19 @@ that gets added to `position.y` before the depth-key is computed. This
 is the same idea as Godot's `y_sort_origin`:
 
 ```typescript
-import { ySortBy } from "@yagejs/renderer";
+import {
+  SpriteComponent,
+  ySortBy,
+  type DisplayContainer,
+} from "@yagejs/renderer";
 
-const sort = ySortBy(
-  (c) => (c as { depthOffset?: number }).depthOffset,
-);
+const sprite = new SpriteComponent({ texture: "hero" });
+const depthOffsets = new WeakMap<DisplayContainer, number>();
+
+const sort = ySortBy((c) => depthOffsets.get(c));
 
 // On each sprite that should sort by its visual base:
-sprite.sprite.depthOffset = 32; // depth key is `position.y + 32`
+depthOffsets.set(sprite.sprite, 32); // depth key is `position.y + 32`
 ```
 
 `offsetOf` returns `undefined` to fall through to plain `position.y`,
@@ -195,7 +207,22 @@ they sort *among themselves* inside it, while the container as a whole
 takes **one** slot in the layer's sort.
 
 ```typescript
+import { Entity, Transform } from "@yagejs/core";
 import { SortGroupComponent, SpriteComponent } from "@yagejs/renderer";
+
+class Lantern extends Entity {
+  setup() {
+    this.add(new Transform({ position: { x: 0, y: 8 } }));
+    this.add(new SpriteComponent({ texture: "lantern", layer: "world" }));
+  }
+}
+
+class Hat extends Entity {
+  setup() {
+    this.add(new Transform({ position: { x: 0, y: -16 } }));
+    this.add(new SpriteComponent({ texture: "hat", layer: "world" }));
+  }
+}
 
 class Hero extends Entity {
   setup() {
@@ -253,13 +280,19 @@ than the CPU, which can be useful for isolating large, slow-changing
 subtrees.
 
 ```typescript
-readonly layers: readonly LayerDef[] = [
-  { name: "ground",  order: -10 },
-  // Stable mid-scene actors — promote to a render group so transform
-  // updates above this layer don't re-walk its children every frame.
-  { name: "actors",  order: 0,   isRenderGroup: true },
-  { name: "ui",      order: 100, space: "screen" },
-];
+import { Scene } from "@yagejs/core";
+import type { LayerDef } from "@yagejs/renderer";
+
+class RenderGroupScene extends Scene {
+  readonly name = "render-groups";
+  readonly layers: readonly LayerDef[] = [
+    { name: "ground", order: -10 },
+    // Stable mid-scene actors — promote to a render group so transform
+    // updates above this layer don't re-walk its children every frame.
+    { name: "actors", order: 0, isRenderGroup: true },
+    { name: "ui", order: 100, space: "screen" },
+  ];
+}
 ```
 
 Render groups carry a small fixed cost (their own render pass and

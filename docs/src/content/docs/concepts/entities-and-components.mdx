@@ -8,14 +8,14 @@ description: "The building blocks of your game world"
 An entity is a named container for components with O(1) type-based lookups.
 Create entities through a scene:
 
-```typescript
+```typescript yage-group="entity-basics" yage-context="scene"
 const player = scene.spawn("player");
 const bullet = scene.spawn("bullet");
 ```
 
 ### Adding and Querying Components
 
-```typescript
+```typescript yage-group="entity-basics" yage-context="scene"
 import { Transform, Vec2 } from "@yagejs/core";
 import { SpriteComponent, texture } from "@yagejs/renderer";
 
@@ -48,7 +48,7 @@ instead, which is useful for optional lookups.
 
 Tags are lightweight labels with no data attached:
 
-```typescript
+```typescript yage-group="entity-basics" yage-context="scene"
 player.tags.add("friendly");
 player.tags.add("controllable");
 
@@ -64,10 +64,12 @@ Tags are useful for fast filtering without creating empty marker components.
 `Transform` stores mutable position, rotation, and scale. Use scalar methods
 when moving an entity:
 
-```typescript
-const transform = player.get(Transform);
-transform.setPosition(100, 200);      // relative to the parent
-transform.translate(10, 0);          // move in local coordinates
+```typescript yage-context="entity"
+import { Transform } from "@yagejs/core";
+
+const transform = entity.get(Transform);
+transform.setPosition(100, 200); // relative to the parent
+transform.translate(10, 0); // move in local coordinates
 transform.setWorldPosition(300, 80); // world coordinates, even with a parent
 ```
 
@@ -87,7 +89,7 @@ import { SpriteComponent } from "@yagejs/renderer";
 
 class Character extends Entity {
   setup() {
-    this.add(new Transform());                              // parent — drives facing
+    this.add(new Transform()); // parent — drives facing
 
     const body = this.spawnChild("body");
     body.add(new Transform());
@@ -99,7 +101,7 @@ class Character extends Entity {
   }
 
   faceLeft(): void {
-    this.get(Transform).setScale(-1, 1);                    // mirrors body + head together
+    this.get(Transform).setScale(-1, 1); // mirrors body + head together
   }
   faceRight(): void {
     this.get(Transform).setScale(1, 1);
@@ -117,7 +119,10 @@ the entity's own space, reversing its world position, rotation and scale.
 It answers questions like "which of this entity's cells is the pointer
 over" without caring how the entity is parented or scaled:
 
-```typescript
+```typescript yage-context="entity"
+import { Transform } from "@yagejs/core";
+
+const pointerWorldPosition = { x: 300, y: 200 };
 const local = entity.get(Transform).worldToLocal(pointerWorldPosition);
 ```
 
@@ -131,9 +136,10 @@ For calculations repeated every frame, `Vec2Buffer` gives you a mutable result
 you can reuse. Create the buffer once, then pass it to methods ending in
 `Into`:
 
-```typescript
-import { Vec2, Vec2Buffer } from "@yagejs/core";
+```typescript yage-context="entity"
+import { Transform, Vec2, Vec2Buffer } from "@yagejs/core";
 
+const transform = entity.get(Transform);
 const position = new Vec2Buffer(); // keep this buffer between updates
 transform.getWorldPositionInto(position);
 Vec2.addInto(position, position, { x: 0, y: -20 });
@@ -164,11 +170,13 @@ away — the same as `setActive(false)`. The rest of teardown is deferred to
 the **EndOfFrame** phase, where each component's `onDestroy` runs and the
 entity detaches from the scene:
 
-```typescript
+```typescript yage-context="scene"
+const bullet = scene.spawn("bullet");
+
 bullet.destroy();
 
-bullet.isActive;     // false — gone from queries and findEntity right away
-bullet.isDestroyed;  // true
+bullet.isActive; // false — gone from queries and findEntity right away
+bullet.isDestroyed; // true
 // component onDestroy and detaching from the scene happen at EndOfFrame
 ```
 
@@ -192,8 +200,15 @@ Not every entity that leaves play has to be destroyed. `setActive(false)` puts
 an entity to sleep and keeps everything it owns allocated — its components, its
 physics body, its display object:
 
-```typescript
-bullet.setActive(false);                          // hidden, body off, updates skipped
+```typescript yage-context="scene"
+import { Transform } from "@yagejs/core";
+
+const bullet = scene.spawn("bullet");
+bullet.add(new Transform());
+const muzzleX = 100;
+const muzzleY = 200;
+
+bullet.setActive(false); // hidden, body off, updates skipped
 
 // later, for the next shot
 bullet.get(Transform).setPosition(muzzleX, muzzleY);
@@ -214,13 +229,13 @@ Two properties read the state. `activeSelf` is the entity's own switch, the
 one `setActive` writes. `isActive` is `activeSelf` combined with every
 ancestor's, so deactivating a parent puts the whole subtree to sleep:
 
-```typescript
+```typescript yage-context="scene"
 const enemy = scene.spawn("enemy");
-const healthBar = enemy.spawnChild("hp", HealthBar);
+const healthBar = enemy.spawnChild("hp");
 
 enemy.setActive(false);
 healthBar.activeSelf; // true  — its own switch is untouched
-healthBar.isActive;   // false — its parent is asleep
+healthBar.isActive; // false — its parent is asleep
 ```
 
 Because each descendant keeps its own switch, a child you deactivated
@@ -243,8 +258,8 @@ reset hook on each one. See [Entity Pooling](/patterns/entity-pooling).
 
 Components hold state and game logic. Extend the `Component` base class:
 
-```typescript
-import { Component } from "@yagejs/core";
+```typescript yage-group="health"
+import { Component, Transform } from "@yagejs/core";
 
 class Health extends Component {
   current = 100;
@@ -263,6 +278,8 @@ class Health extends Component {
 Components have several lifecycle hooks:
 
 ```typescript
+import { Component } from "@yagejs/core";
+
 class PlayerController extends Component {
   onAdd() {
     // Called when the component is added to an entity.
@@ -316,6 +333,8 @@ from inside itself, which breaks under subclassing.
 sibling component, a render layer. Throwing is how it reports a failed check.
 
 ```ts
+import { Component, Transform } from "@yagejs/core";
+
 class Follower extends Component {
   private target!: Transform;
 
@@ -358,8 +377,27 @@ is `0`, so a negative value runs before siblings that keep the default and a
 positive value runs after them.
 
 ```typescript
+import { Component, Entity, Transform } from "@yagejs/core";
+
+class Brain extends Component {
+  direction = 1;
+  update() {
+    this.direction = this.entity.get(Transform).position.x > 400 ? -1 : 1;
+  }
+}
+
+class Mover extends Component {
+  update(dt: number) {
+    this.sibling(Transform).translate(
+      this.sibling(Brain).direction * 100 * dt,
+      0,
+    );
+  }
+}
+
 class Player extends Entity {
   setup() {
+    this.add(new Transform());
     this.add(new Mover());
     this.add(new Brain()).updatePriority = -1; // decides before Mover moves
   }
@@ -370,6 +408,8 @@ A component that always belongs after (or before) a sibling can declare the
 default for every instance with a static:
 
 ```typescript
+import { Component } from "@yagejs/core";
+
 class BoundsClamp extends Component {
   static updatePriority = 10; // after the follow that moved the camera
 
@@ -389,14 +429,16 @@ Use `this.use(key)` inside a component to resolve a service from the DI
 container. The result is cached after the first call:
 
 ```typescript
+import { Component } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
+import { RigidBodyComponent } from "@yagejs/physics";
 
 class PlayerController extends Component {
   update(dt: number) {
     const input = this.use(InputManagerKey);
 
     if (input.isPressed("jump")) {
-      this.sibling(RigidBody).applyImpulse({ x: 0, y: -500 });
+      this.sibling(RigidBodyComponent).applyImpulse({ x: 0, y: -500 });
     }
   }
 }
@@ -407,7 +449,7 @@ class PlayerController extends Component {
 `this.sibling(Type)` returns a lazy reference to another component on the same
 entity. The lookup is deferred until first access and then cached:
 
-```typescript
+```typescript yage-group="health"
 class Enemy extends Component {
   update(dt: number) {
     const transform = this.sibling(Transform);

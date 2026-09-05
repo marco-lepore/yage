@@ -32,7 +32,7 @@ the default knockback reaction. The addon does not add a plugin of its own.
 
 1. **Define an ability.** A plain `timeline` is a single phase.
 
-   ```ts
+   ```ts yage-group="quickstart" yage-context="scene"
    import type { AbilityDef } from "@yagejs-addons/abilities";
    import { hitbox } from "@yagejs-addons/abilities";
 
@@ -57,11 +57,16 @@ the default knockback reaction. The addon does not add a plugin of its own.
    supplies the default aim for delivery steps; update it from movement or
    pass an explicit `aim` resolver.
 
-   ```ts
+   ```ts yage-group="quickstart" yage-context="scene"
    import { Entity, ProcessComponent, Transform, trait } from "@yagejs/core";
    import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
    import {
-     Abilities, Facing, Health, Hittable, HitReceiver, Stagger,
+     Abilities,
+     Facing,
+     Health,
+     Hittable,
+     HitReceiver,
+     Stagger,
    } from "@yagejs-addons/abilities";
    import type { Hit, HitResult } from "@yagejs-addons/abilities";
 
@@ -87,7 +92,8 @@ the default knockback reaction. The addon does not add a plugin of its own.
 
 3. **Send an intent.** Players and AI use the same runner call.
 
-   ```ts
+   ```ts yage-group="quickstart" yage-context="scene"
+   const fighter = scene.spawn(Fighter);
    const abilities = fighter.get(Abilities);
    const result = abilities.send("slash");
    if (!result.ok) console.log(result.reason);
@@ -107,21 +113,31 @@ through `on`. A guarded transition accepts the intent only inside its
 transition window. Use `from: "end"` with `for` for a post-phase combo input:
 
 ```ts
+import type { AbilityDef } from "@yagejs-addons/abilities";
 const COMBO: AbilityDef = {
   id: "attack",
   tags: ["melee"],
   phases: {
     jab: {
       duration: 0.4,
-      timeline: [/* jab steps */],
+      timeline: [
+        /* jab steps */
+      ],
       on: { attack: { to: "cross", from: "end", for: 0.25 } },
     },
     cross: {
       duration: 0.46,
-      timeline: [/* cross steps */],
+      timeline: [
+        /* cross steps */
+      ],
       on: { attack: { to: "hook", from: "end", for: 0.25 } },
     },
-    hook: { duration: 0.8, timeline: [/* finisher steps */] },
+    hook: {
+      duration: 0.8,
+      timeline: [
+        /* finisher steps */
+      ],
+    },
   },
 };
 ```
@@ -136,29 +152,45 @@ A hold phase lasts until `release(intent)`, `hold.max`, or an `after`
 transition. `next` is the normal release destination:
 
 ```ts
-const CHARGE: AbilityDef = {
-  id: "charge",
-  phases: {
-    windup: {
-      hold: { max: 3 },
-      next: "strike",
-      timeline: [anim({ at: 0, name: "charge" })],
+import {
+  anim,
+  hitbox,
+  type AbilityDef,
+  type Abilities,
+} from "@yagejs-addons/abilities";
+function installChargeAbility(abilities: Abilities) {
+  const CHARGE: AbilityDef = {
+    id: "charge",
+    phases: {
+      windup: {
+        hold: { max: 3 },
+        next: "strike",
+        timeline: [anim({ at: 0, name: "charge" })],
+      },
+      strike: {
+        priority: 110,
+        timeline: [
+          hitbox({
+            from: 0.1,
+            to: 0.25,
+            shape: { type: "capsule", halfHeight: 18, radius: 10, axis: "x" },
+            hit: { damage: 24, knockback: 320, stun: 0.35 },
+          }),
+        ],
+      },
     },
-    strike: {
-      priority: 110,
-      timeline: [hitbox({
-        from: 0.1,
-        to: 0.25,
-        shape: { type: "capsule", halfHeight: 18, radius: 10, axis: "x" },
-        hit: { damage: 24, knockback: 320, stun: 0.35 },
-      })],
-    },
-  },
-};
+  };
 
-abilities.send("charge");
-abilities.release("charge");
+  abilities.addDefinitions([CHARGE]);
+  return {
+    begin: () => abilities.send("charge"),
+    release: () => abilities.release("charge"),
+  };
+}
 ```
+
+Call `installChargeAbility` once. Call the returned `begin()` when charging
+starts and `release()` when the player releases the control.
 
 When two lanes hold the same intent, pass `release("charge", { lane: "weapon" })`
 to release only the named lane. Omitting `lane` releases the first matching
@@ -170,17 +202,22 @@ definition ids; `{ tag: "movement" }` matches any definition carrying that
 tag:
 
 ```ts
+import type { AbilityDef } from "@yagejs-addons/abilities";
 const attack: AbilityDef = {
   id: "attack",
   duration: 0.7,
   cancels: [{ from: 0.35, into: [{ tag: "movement" }] }],
-  timeline: [/* ... */],
+  timeline: [
+    /* ... */
+  ],
 };
 
 const dash: AbilityDef = {
   id: "dash",
   tags: ["movement"],
-  timeline: [/* ... */],
+  timeline: [
+    /* ... */
+  ],
 };
 ```
 
@@ -193,12 +230,21 @@ time.
 The runtime surface is small:
 
 ```ts
-abilities.send(intent, { data, lane });                 // PlayResult
-abilities.canSend(intent, { lane, interrupts: true });  // boolean dry-run
-abilities.release(intent);                             // complete a matching hold
-abilities.cancel(lane);                                // cancel one lane
-abilities.cancelAll();                                 // cancel every lane
-abilities.force(reactionDef);                          // reactions only
+import type { Abilities, AbilityDef } from "@yagejs-addons/abilities";
+function driveAbilities(
+  abilities: Abilities,
+  intent: string,
+  lane: string,
+  data: { power: number },
+  reactionDef: AbilityDef,
+) {
+  abilities.send(intent, { data, lane }); // PlayResult
+  abilities.canSend(intent, { lane, interrupts: true }); // boolean dry-run
+  abilities.release(intent); // complete a matching hold
+  abilities.cancel(lane); // cancel one lane
+  abilities.cancelAll(); // cancel every lane
+  abilities.force(reactionDef); // reactions only
+}
 ```
 
 `send` returns `{ ok: true, activation }` or `{ ok: false, reason }`. Rejection
@@ -252,7 +298,11 @@ For a purely presentation-driven timeline with no simulation coupling, opt
 into rendered-frame timing:
 
 ```ts
-entity.add(new Abilities(defs, { clock: "frame" }));
+import type { Entity } from "@yagejs/core";
+import { Abilities, type AbilityDef } from "@yagejs-addons/abilities";
+function frameAbilities(entity: Entity, defs: readonly AbilityDef[]) {
+  entity.add(new Abilities(defs, { clock: "frame" }));
+}
 ```
 
 The component's clock is readable as `abilities.clock` — a custom step that
@@ -268,23 +318,28 @@ and cleans up with the entity. Disabling the component or its entity releases
 the input listeners and any owned hold. Enabling it binds a fresh driver:
 
 ```ts
+import type { Entity } from "@yagejs/core";
 import { AbilityDriverComponent } from "@yagejs-addons/abilities/input";
 
-this.add(new AbilityDriverComponent({
-  defaults: { tapWithin: 0.22, holdAt: 0.5 },
-  bindings: {
-    attack: {
-      tap: { send: "attack", buffer: 0.18 },
-      hold: {
-        send: "charge",
-        fromNeutral: true,
-        resume: true,
-        release: { send: "charge-release", buffer: 0.4 },
+function bindAbilities(entity: Entity) {
+  entity.add(
+    new AbilityDriverComponent({
+      defaults: { tapWithin: 0.22, holdAt: 0.5 },
+      bindings: {
+        attack: {
+          tap: { send: "attack", buffer: 0.18 },
+          hold: {
+            send: "charge",
+            fromNeutral: true,
+            resume: true,
+            release: { send: "charge-release", buffer: 0.4 },
+          },
+        },
+        dash: { press: { send: "dash", buffer: 0.12 } },
       },
-    },
-    dash: { press: { send: "dash", buffer: 0.12 } },
-  },
-}));
+    }),
+  );
+}
 ```
 
 Use the plain `AbilityDriver(input, abilities, options)` when another object
@@ -315,8 +370,23 @@ and cooldown work, installs the new intent vocabulary, and emits cancellation
 events after listeners can observe the new set.
 
 ```ts
-abilities.replaceDefinitions(next.defs);
-driverComponent.replace(next.input);
+import type { Entity } from "@yagejs/core";
+import type { Abilities, AbilityDef } from "@yagejs-addons/abilities";
+import type {
+  AbilityDriverComponent,
+  AbilityDriverOptions,
+} from "@yagejs-addons/abilities/input";
+function replaceLoadout(
+  abilities: Abilities,
+  driverComponent: AbilityDriverComponent,
+  next: {
+    defs: readonly AbilityDef[];
+    input: AbilityDriverOptions<string, string>;
+  },
+) {
+  abilities.replaceDefinitions(next.defs);
+  driverComponent.replace(next.input);
+}
 ```
 
 The game owns the matching input map. Replacing definitions does not reload an
@@ -339,8 +409,8 @@ and typed data. The default data fields are:
 interface StandardHitData {
   damage?: number;
   knockback?: number; // px/s
-  stun?: number;      // seconds
-  hitstop?: number;   // carried to HitDealt; the game applies it
+  stun?: number; // seconds
+  hitstop?: number; // carried to HitDealt; the game applies it
 }
 ```
 
@@ -379,6 +449,7 @@ Import the event tokens to subscribe. Their ids are `abilities:health:damaged`,
 solid collision response and `gravityScale: 1` to apply world gravity:
 
 ```ts
+import { spawn, Projectile } from "@yagejs-addons/abilities";
 spawn({
   at: 0,
   entity: Projectile,
@@ -406,14 +477,94 @@ Pass `acquire` to reuse a game-owned entity pool instead of creating an entity
 for every attack:
 
 ```ts
-spawn({
-  at: 0.2,
-  entity: PooledAttack,
-  params: { speed: 300, lifetime: 2 },
-  hit: { damage: 12 },
-  acquire: (context) => attackPool.acquire(context),
-});
+import type { Scene } from "@yagejs/core";
+import {
+  Entity,
+  EntityPool,
+  Process,
+  ProcessComponent,
+  Transform,
+  trait,
+} from "@yagejs/core";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
+import {
+  AbilitySpawned,
+  spawn,
+  type AbilitySpawnContext,
+} from "@yagejs-addons/abilities";
+
+function pooledAttacks(scene: Scene) {
+  interface AttackParams {
+    speed: number;
+    lifetime: number;
+  }
+
+  @trait(AbilitySpawned)
+  class PooledAttack extends Entity {
+    abilitySpawnContext: AbilitySpawnContext<AttackParams> | undefined;
+    private spent = false;
+
+    override setup(context?: AbilitySpawnContext<AttackParams>): void {
+      this.abilitySpawnContext = context;
+      this.add(new Transform());
+      this.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
+      this.add(new ProcessComponent());
+      this.add(
+        new ColliderComponent({
+          shape: { type: "circle", radius: 5 },
+          sensor: true,
+        }),
+      ).onTrigger((event) => {
+        const shot = this.abilitySpawnContext;
+        if (
+          !event.entered ||
+          this.spent ||
+          !shot ||
+          event.other === shot.caster
+        )
+          return;
+        const result = shot.delivery?.deliver(
+          event.other,
+          this.get(Transform).worldPosition,
+        );
+        if (result === undefined || result === "ignored") return;
+        this.spent = true;
+        attackPool.release(this);
+      });
+    }
+
+    override onAcquire(context: AbilitySpawnContext<AttackParams>): void {
+      this.abilitySpawnContext = context;
+      this.spent = false;
+      const body = this.get(RigidBodyComponent);
+      body.setPosition(context.position.x, context.position.y);
+      body.setVelocity(context.aim.scale(context.params.speed));
+      this.get(ProcessComponent).run(
+        Process.delay(context.params.lifetime, () => attackPool.release(this)),
+        { clock: "fixed" },
+      );
+    }
+  }
+
+  // Construct in scene setup, after physics services are available.
+  const attackPool = new EntityPool(scene, PooledAttack, {
+    prewarm: 16,
+    maxSize: 64,
+  });
+
+  const step = spawn({
+    at: 0.2,
+    entity: PooledAttack,
+    params: { speed: 300, lifetime: 2 },
+    hit: { damage: 12 },
+    acquire: (context) => attackPool.acquire(context),
+  });
+  return { step, dispose: () => attackPool.dispose() };
+}
 ```
+
+Put the returned `step` in an ability's `timeline`. The scene disposes its pools
+on exit. Call the returned `dispose` function if the pool should end earlier.
 
 The callback receives the resolved spawn context and, as its second argument,
 the live `StepContext`. Returning `undefined` skips the spawn, including when
@@ -457,6 +608,9 @@ which landed hits freeze time and which entities are excluded.
 the effect; the step only opens, updates, and closes it:
 
 ```ts
+import { Vec2 } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
+import { defineStep, Facing } from "@yagejs-addons/abilities";
 const lunge = defineStep<{ speed: number }>("velocity", {
   enter({ speed }, ctx) {
     const direction = ctx.entity.get(Facing).unit;
@@ -503,18 +657,25 @@ function results are checked at activation before cooldown state changes.
 Finite values at or below zero mean no cooldown.
 
 ```ts
-const ATTACK: AbilityDef = {
-  id: "attack",
-  cooldown: (ctx) => 0.8 / statsOf(ctx.entity).attackSpeed,
-  timeline: [
-    hitbox({
-      from: 0.1,
-      to: 0.2,
-      shape: { type: "capsule", halfHeight: 18, radius: 10, axis: "x" },
-      hit: (ctx) => ({ damage: statsOf(ctx.entity).attack, stun: 0.2 }),
-    }),
-  ],
-};
+import type { Entity } from "@yagejs/core";
+import { hitbox, type AbilityDef } from "@yagejs-addons/abilities";
+function attackDefinition(
+  statsOf: (entity: Entity) => { attackSpeed: number; attack: number },
+) {
+  const ATTACK: AbilityDef = {
+    id: "attack",
+    cooldown: (ctx) => 0.8 / statsOf(ctx.entity).attackSpeed,
+    timeline: [
+      hitbox({
+        from: 0.1,
+        to: 0.2,
+        shape: { type: "capsule", halfHeight: 18, radius: 10, axis: "x" },
+        hit: (ctx) => ({ damage: statsOf(ctx.entity).attack, stun: 0.2 }),
+      }),
+    ],
+  };
+  return ATTACK;
+}
 ```
 
 Resource costs use input or game policy: check in a binding `gate`, then spend
@@ -526,12 +687,27 @@ in `beforeFire` after admission. AI can perform the same check before calling
 Raw primitives accept generics directly:
 
 ```ts
+import {
+  HitReceiver,
+  hitbox,
+  type StandardHitData,
+  type HitStage,
+  type HitboxStepArgs,
+} from "@yagejs-addons/abilities";
 interface ElementHit extends StandardHitData {
   element: "fire" | "ice";
 }
-
-const receiver = new HitReceiver<ElementHit>({ steps });
-const burn = hitbox<ElementHit>({ ...args, hit: { element: "fire", damage: 8 } });
+function elementalAttack(
+  steps: readonly HitStage<ElementHit, HitReceiver<ElementHit>>[],
+  args: Omit<HitboxStepArgs<ElementHit>, "hit">,
+) {
+  const receiver = new HitReceiver<ElementHit>({ steps });
+  const burn = hitbox<ElementHit>({
+    ...args,
+    hit: { element: "fire", damage: 8 },
+  });
+  return { receiver, burn };
+}
 ```
 
 For a game or combat system that uses the same data type throughout, call
@@ -539,18 +715,41 @@ For a game or combat system that uses the same data type throughout, call
 for singleton trait and event boundaries:
 
 ```ts
-const elementHits = createHitTools<ElementHit>({
-  isData(data): data is ElementHit {
-    return typeof data === "object" && data !== null && "element" in data;
-  },
-});
+import type { Entity } from "@yagejs/core";
+import {
+  createHitTools,
+  HitDealt,
+  type StandardHitData,
+  type HitStage,
+  type HitReceiver,
+  type HitboxStepArgs,
+} from "@yagejs-addons/abilities";
+interface ElementHit extends StandardHitData {
+  element: "fire" | "ice";
+}
+function elementalFeedback(
+  attacker: Entity,
+  args: Omit<HitboxStepArgs<ElementHit>, "hit">,
+  resist: HitStage<ElementHit, HitReceiver<ElementHit>>,
+  applyElementFeedback: (element: ElementHit["element"]) => void,
+) {
+  const elementHits = createHitTools<ElementHit>({
+    isData(data): data is ElementHit {
+      return typeof data === "object" && data !== null && "element" in data;
+    },
+  });
 
-const receiver = elementHits.receiver({ steps: [elementHits.stage(resist)] });
-const burn = elementHits.hitbox({ ...args, hit: { element: "fire", damage: 8 } });
+  const receiver = elementHits.receiver({ steps: [elementHits.stage(resist)] });
+  const burn = elementHits.hitbox({
+    ...args,
+    hit: { element: "fire", damage: 8 },
+  });
 
-attacker.on(HitDealt, ({ data }) => {
-  if (elementHits.isData(data)) applyElementFeedback(data.element);
-});
+  attacker.on(HitDealt, ({ data }) => {
+    if (elementHits.isData(data)) applyElementFeedback(data.element);
+  });
+  return { receiver, burn };
+}
 ```
 
 Use `isHit` before passing an unknown `Hit` across the global `Hittable`
@@ -579,27 +778,43 @@ controller from inside its own event listener is safe. Switching the body to
 `"static"` makes an immovable corpse: nothing pushes it and it pushes nothing.
 
 ```ts
-entity.on(HealthDied, () => {
-  body.setType("static");
-  entity.remove(EnemyController);
-});
+import type { Entity, Component } from "@yagejs/core";
+import type { RigidBodyComponent } from "@yagejs/physics";
+import { HealthDied } from "@yagejs-addons/abilities";
+function corpse(
+  entity: Entity,
+  body: RigidBodyComponent,
+  EnemyController: new () => Component,
+) {
+  entity.on(HealthDied, () => {
+    body.setType("static");
+    entity.remove(EnemyController);
+  });
+}
 ```
 
 Corpses remain hittable unless the receiver filter rejects them. Preserve the
 default team rule when adding the dead-state check:
 
 ```ts
-const health = entity.get(Health);
+import type { Entity } from "@yagejs/core";
+import { Health, HitReceiver, type Hit } from "@yagejs-addons/abilities";
+function ignoreDead(entity: Entity) {
+  const health = entity.get(Health);
 
-const sameTeamAllowed = (hit: Hit, receiver: HitReceiver) =>
-  receiver.team === undefined || hit.team === undefined || hit.team !== receiver.team;
+  const sameTeamAllowed = (hit: Hit, receiver: HitReceiver) =>
+    receiver.team === undefined ||
+    hit.team === undefined ||
+    hit.team !== receiver.team;
 
-entity.add(
-  new HitReceiver({
-    team: "enemy",
-    filter: (hit, receiver) => !health.isDead && sameTeamAllowed(hit, receiver),
-  }),
-);
+  entity.add(
+    new HitReceiver({
+      team: "enemy",
+      filter: (hit, receiver) =>
+        !health.isDead && sameTeamAllowed(hit, receiver),
+    }),
+  );
+}
 ```
 
 ## Try the example

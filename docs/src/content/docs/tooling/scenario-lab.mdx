@@ -133,6 +133,13 @@ your game already has. Declaring both, or neither, fails to compile.
 `setup` runs against a blank scene, and again on every rebuild:
 
 ```ts title="src/entities/ball.scenario.ts"
+import { Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent, texture } from "@yagejs/renderer";
+import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
+import { control, defineScenario } from "@yagejs-tools/lab";
+
+const textures = { ball: texture("/assets/ball.png") };
+
 export default defineScenario({
   describe: "Bodies falling onto a floor. Raise bounce and watch again.",
   controls: {
@@ -140,13 +147,30 @@ export default defineScenario({
     bounce: control.number(0.6, { min: 0, max: 0.95, step: 0.05 }),
   },
   setup(scene, c) {
+    const floor = scene.spawn("floor");
+    floor.add(new Transform({ position: new Vec2(400, 460) }));
+    floor.add(new RigidBodyComponent({ type: "static" }));
+    floor.add(
+      new ColliderComponent({ shape: { type: "box", width: 800, height: 20 } }),
+    );
     for (let i = 0; i < c.count; i++) {
       const ball = scene.spawn(`ball-${i}`, { key: `ball-${i}` });
-      // ...
+      ball.add(new Transform({ position: new Vec2(80 + i * 60, 80) }));
+      ball.add(new SpriteComponent({ texture: textures.ball }));
+      ball.add(new RigidBodyComponent({ type: "dynamic" }));
+      ball.add(
+        new ColliderComponent({
+          shape: { type: "circle", radius: 16 },
+          restitution: c.bounce,
+        }),
+      );
     }
   },
   // Only on this form — the scene form takes both from the Scene itself.
-  layers: [{ name: "background" }, { name: "entities" }],
+  layers: [
+    { name: "background", order: -10 },
+    { name: "entities", order: 0 },
+  ],
   preload: [textures.ball],
 });
 ```
@@ -158,6 +182,15 @@ prints under the title as a sentence about what to look at.
 ### Mounting a scene you already have
 
 ```ts title="src/levels/cave.scenario.ts"
+import { Scene } from "@yagejs/core";
+import { control, defineScenario } from "@yagejs-tools/lab";
+
+// Contract of the game scene imported by this scenario.
+declare class CaveScene extends Scene {
+  readonly name: string;
+  constructor(options: { torches: number });
+}
+
 export default defineScenario({
   scene: (c) => new CaveScene({ torches: c.torches }),
   controls: { torches: control.int(3, { min: 0, max: 8 }) },
@@ -179,11 +212,18 @@ under the file in the list, and — the reason to put them together — they sha
 whatever else the file declares:
 
 ```ts title="src/entities/slime.scenario.ts"
-const health = { hp: control.int(30, { min: 1, max: 200 }) };
+import type { Entity, Scene } from "@yagejs/core";
+import { control, defineScenario } from "@yagejs-tools/lab";
 
-function arena(scene: Scene) {
-  // Floor, walls and lighting both scenarios need.
-}
+// Game helpers shared by these scenarios; implementations live with the game.
+declare function spawnSlime(
+  scene: Scene,
+  options: { hp: number; target?: Entity },
+): Entity;
+declare function spawnPlayer(scene: Scene): Entity;
+declare function arena(scene: Scene): void;
+
+const health = { hp: control.int(30, { min: 1, max: 200 }) };
 
 export const idle = defineScenario({
   controls: health,
@@ -222,10 +262,12 @@ Controls are plain data. A scenario file that declares them pulls in no runtime
 engine code.
 
 ```ts
-control.number(0.6, { min: 0, max: 1, step: 0.05, label: "bounce" })
-control.int(3, { min: 1, max: 12 })
-control.boolean(true, { label: "outline" })
-control.select("green", ["green", "sky", "amber"])
+import { control } from "@yagejs-tools/lab";
+
+control.number(0.6, { min: 0, max: 1, step: 0.05, label: "bounce" });
+control.int(3, { min: 1, max: 12 });
+control.boolean(true, { label: "outline" });
+control.select("green", ["green", "sky", "amber"]);
 ```
 
 `number` renders a slider and steps by 0.01 unless told otherwise; `int` steps
@@ -250,6 +292,33 @@ Some values are fields on a component, set nowhere near a constructor. `onMounte
 runs after the scene is on the stack, on every rebuild, and can reach them:
 
 ```ts title="src/feel/pulse.scenario.ts"
+import { Component, Scene, Transform } from "@yagejs/core";
+import { GraphicsComponent } from "@yagejs/renderer";
+import { control, defineScenario } from "@yagejs-tools/lab";
+
+class Pulse extends Component {
+  amplitude = 0.4;
+  rate = 3;
+  private elapsed = 0;
+  private transform = this.sibling(Transform);
+  update(dt: number) {
+    this.elapsed += dt;
+    const scale = 1 + Math.sin(this.elapsed * this.rate) * this.amplitude;
+    this.transform.setScale(scale, scale);
+  }
+}
+class PulseScene extends Scene {
+  readonly name = "pulse";
+  onEnter() {
+    const disc = this.spawn("disc", { key: "disc" });
+    disc.add(new Transform());
+    disc.add(
+      new GraphicsComponent().draw((g) => g.circle(0, 0, 24).fill(0xffffff)),
+    );
+    disc.add(new Pulse());
+  }
+}
+
 export default defineScenario({
   scene: () => new PulseScene(),
   controls: {
@@ -257,8 +326,7 @@ export default defineScenario({
     rate: control.number(3, { min: 0.5, max: 12, step: 0.5 }),
   },
   onMounted(scene, c) {
-    const pulse = scene.findByKey("disc")?.get(Pulse);
-    if (!pulse) return;
+    const pulse = scene.findByKey("disc")!.get(Pulse);
     pulse.amplitude = c.amplitude;
     pulse.rate = c.rate;
   },
@@ -272,8 +340,17 @@ the result. The panel grows a **Run** button for it, and `yage-lab test` runs
 every one of them.
 
 ```ts title="src/entities/ball.scenario.ts"
+import { Transform } from "@yagejs/core";
+import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
+import { control, defineScenario } from "@yagejs-tools/lab";
+
 export default defineScenario({
-  setup(scene, c) { /* ... */ },
+  setup(scene) {
+    const ball = scene.spawn("ball", { key: "ball-0" });
+    ball.add(new Transform());
+    ball.add(new RigidBodyComponent({ type: "dynamic" }));
+    ball.add(new ColliderComponent({ shape: { type: "circle", radius: 16 } }));
+  },
 
   async drive({ scene, step, expect }) {
     const ball = scene.findByKey("ball-0");
@@ -304,11 +381,18 @@ state when it completes.
 call. The setting does not affect later calls:
 
 ```ts
-await step(90, { dtMs: 1000 / 90 });
-await until(() => probe.settled, {
-  maxFrames: 180,
-  dtMs: 1000 / 90,
-});
+import type { DriveContext } from "@yagejs-tools/lab";
+
+async function waitForRest(
+  { step, until }: DriveContext,
+  probe: { readonly settled: boolean },
+) {
+  await step(90, { dtMs: 1000 / 90 });
+  await until(() => probe.settled, {
+    maxFrames: 180,
+    dtMs: 1000 / 90,
+  });
+}
 ```
 
 What the context gives you:
@@ -334,10 +418,14 @@ frames, so `await events.waitFor(...)` on its own parks the run forever. Start
 the wait, issue the frames, then await it:
 
 ```ts
-await Promise.all([
-  events.waitFor("enemy:hit", { withinFrames: 60 }),
-  step(60),
-]);
+import type { DriveContext } from "@yagejs-tools/lab";
+
+async function waitForHit({ events, step }: DriveContext) {
+  await Promise.all([
+    events.waitFor("enemy:hit", { withinFrames: 60 }),
+    step(60),
+  ]);
+}
 ```
 </Aside>
 
@@ -364,23 +452,40 @@ a run.
 async; calls that only change state are not:
 
 ```ts
-async drive({ input, step, scene, expect }) {
-  const probe = scene.findByKey("player")!.get(InputProbe);
+import { Component } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
+import { defineScenario } from "@yagejs-tools/lab";
 
-  // Hold a key across an exact number of frames.
-  await input.hold("Space", 3);
-
-  // Or drive the frames yourself to read a one-frame edge.
-  input.keyDown("Space");
-  await step(1);
-  expect(probe.jumpJustPressed).toBe(true);
-  await step(1);
-  expect(probe.jumpJustPressed).toBe(false);
-  input.keyUp("Space");
-
-  // Actions, when the harness declares InputPlugin.
-  await input.fireAction("jump", 2);
+class InputProbe extends Component {
+  private input = this.service(InputManagerKey);
+  jumpJustPressed = false;
+  update() {
+    this.jumpJustPressed = this.input.isJustPressed("jump");
+  }
 }
+
+export default defineScenario({
+  setup(scene) {
+    scene.spawn("player", { key: "player" }).add(new InputProbe());
+  },
+  async drive({ input, step, scene, expect }) {
+    const probe = scene.findByKey("player")!.get(InputProbe);
+
+    // Hold a key across an exact number of frames.
+    await input.hold("Space", 3);
+
+    // Or drive the frames yourself to read a one-frame edge.
+    input.keyDown("Space");
+    await step(1);
+    expect(probe.jumpJustPressed).toBe(true);
+    await step(1);
+    expect(probe.jumpJustPressed).toBe(false);
+    input.keyUp("Space");
+
+    // Actions, when the harness declares InputPlugin.
+    await input.fireAction("jump", 2);
+  },
+});
 ```
 
 The full set: `keyDown`, `keyUp`, `mouseMove`, `mouseDown`, `mouseUp`,
@@ -491,9 +596,13 @@ When a scenario belongs under a heading its file's location does not give it,
 `title` sets the path directly:
 
 ```ts title="src/entities/slime.scenario.ts"
+import { control, defineScenario } from "@yagejs-tools/lab";
+
 export const king = defineScenario({
   title: "Bosses / Act 1 / Slime King",
-  setup(scene) { /* ... */ },
+  setup(scene) {
+    /* ... */
+  },
 });
 ```
 

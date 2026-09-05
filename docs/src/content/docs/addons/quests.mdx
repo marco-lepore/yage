@@ -29,7 +29,7 @@ nested `objectives` map — so `log.advance("gatherHerbs", "herb")` type-checks
 and `log.advance("gatherHerbs", "wolf")` doesn't, with no type argument written
 anywhere.
 
-```ts
+```ts yage-group="herbs"
 import { defineQuests, QuestLog } from "@yagejs-addons/quests";
 
 const quests = defineQuests({
@@ -60,22 +60,36 @@ Instead, the game subscribes to whatever events it likes and calls
 guard needed**: the log silently ignores progress calls on a quest that isn't
 currently active, so firing unconditionally on every pickup/kill is correct.
 
-```ts
+```ts yage-group="herbs"
+import { defineEvent, type Entity } from "@yagejs/core";
+import type {
+  DialogueController,
+  DialogueScript,
+} from "@yagejs-addons/dialogue";
 import { InventoryItemAddedEvent } from "@yagejs-addons/inventory";
 
-// Inventory pickup -> advance the collect objective.
-player.on(InventoryItemAddedEvent, (e) => {
-  if (e.itemId === "redHerb") log.advance("gatherHerbs", "herb", e.quantity);
-});
+const WolfDiedEvent = defineEvent<void>("game:wolf-died");
 
-// Dialogue command -> complete the turn-in objective (the healer's script
-// runs `[turnIn/]` via a command handler injected at play() time).
-dialogue.play(healerScript, {
-  commands: { turnIn: () => log.complete("gatherHerbs", "turnIn") },
-});
+function bindObjectives(
+  player: Entity,
+  wolf: Entity,
+  dialogue: DialogueController,
+  healerScript: DialogueScript,
+) {
+  // Inventory pickup -> advance the collect objective.
+  player.on(InventoryItemAddedEvent, (e) => {
+    if (e.itemId === "redHerb") log.advance("gatherHerbs", "herb", e.quantity);
+  });
 
-// The game's own entity event -> advance wolf kills.
-wolf.on(WolfDiedEvent, () => log.advance("thinThePack", "wolf"));
+  // Dialogue command -> complete the turn-in objective (the healer's script
+  // runs `[turnIn/]` via a command handler injected at play() time).
+  dialogue.play(healerScript, {
+    commands: { turnIn: () => log.complete("gatherHerbs", "turnIn") },
+  });
+
+  // The game's own entity event -> advance wolf kills.
+  wolf.on(WolfDiedEvent, () => log.advance("thinThePack", "wolf"));
+}
 ```
 
 <Aside type="tip">
@@ -86,15 +100,23 @@ translate their events into `advance()` calls yourself.
 
 ## React to consequences
 
-```ts
-log.on("questCompleted", ({ questId }) => {
-  hud.toast(`Quest complete: ${quests.get(questId).title}`);
-  if (questId === "gatherHerbs") log.start("thinThePack"); // chain, one line
-});
+```ts yage-group="herbs"
+function connectQuestHud(
+  hud: { toast(message: string): void },
+  tracker: Map<string, string>,
+) {
+  log.on("questCompleted", ({ questId }) => {
+    hud.toast(`Quest complete: ${quests.tryGet(questId)?.title ?? questId}`);
+    if (questId === "gatherHerbs") log.start("thinThePack"); // chain, one line
+  });
 
-log.on("objectiveProgressChanged", ({ questId, objectiveId, progress, count }) => {
-  tracker.set(objectiveId, `${progress}/${count}`); // "3/5"
-});
+  log.on(
+    "objectiveProgressChanged",
+    ({ questId, objectiveId, progress, count }) => {
+      tracker.set(objectiveId, `${progress}/${count}`); // "3/5"
+    },
+  );
+}
 ```
 
 Model events: `questStarted`, `objectiveProgressChanged { progress, count, done }`,
@@ -103,7 +125,7 @@ after every mutating call.
 
 ## Reading state (what a journal/tracker needs)
 
-```ts
+```ts yage-group="herbs"
 log.status("thinThePack"); // "locked" | "available" | "active" | "completed" | "failed"
 log.available(); // QuestId[] — startable now (prereqs met, not started)
 log.active(); // QuestId[]
@@ -134,6 +156,8 @@ reaches its target — no explicit "finish quest" call needed for the common
 case. `optional` objectives never gate completion:
 
 ```ts
+import { defineQuests } from "@yagejs-addons/quests";
+
 defineQuests({
   q: {
     title: "Explore the Ruins",
@@ -159,7 +183,10 @@ Use `setProgress()` when an objective represents current state rather than a
 cumulative total. The quest must use `autoComplete: false` so reaching the
 target does not make completion permanent before the player turns it in.
 
-```ts
+```ts yage-group="wood"
+import { defineQuests, QuestLog } from "@yagejs-addons/quests";
+import { defineItems, Inventory } from "@yagejs-addons/inventory";
+
 const quests = defineQuests({
   bringWood: {
     title: "Bring Robin 10 wood",
@@ -168,6 +195,10 @@ const quests = defineQuests({
   },
 });
 
+const log = new QuestLog(quests);
+const inventory = new Inventory({
+  catalog: defineItems({ wood: { name: "Wood" } }),
+});
 const syncWood = () =>
   log.setProgress("bringWood", "wood", inventory.count("wood"));
 
@@ -181,7 +212,7 @@ If the player reaches 10 wood and then drops to 9, the objective becomes
 incomplete again. The NPC can finish the quest only while the requirement is
 satisfied:
 
-```ts
+```ts yage-group="wood"
 if (log.canComplete("bringWood")) {
   log.completeQuest("bringWood");
 }
@@ -196,11 +227,18 @@ For a HUD or achievements system that shouldn't hold a `log` reference
 directly, mount a `QuestController` on any persistent entity — it re-emits the
 model's six events onto the engine bus (entity → scene):
 
-```ts
+```ts yage-group="herbs"
 import { QuestController, QuestCompletedEvent } from "@yagejs-addons/quests";
+import type { Scene } from "@yagejs/core";
 
-player.add(new QuestController({ log }));
-scene.on(QuestCompletedEvent, ({ questId }) => achievements.check(questId));
+function mirrorQuests(
+  player: Entity,
+  scene: Scene,
+  achievements: { check(questId: string): void },
+) {
+  player.add(new QuestController({ log }));
+  scene.on(QuestCompletedEvent, ({ questId }) => achievements.check(questId));
+}
 ```
 
 The controller is entirely optional — `log.on(...)` reaches the same
@@ -215,9 +253,14 @@ the controller is dormant are not replayed when it enables.
 `snapshot()` / `restore()` round-trip the whole log as plain JSON. Include the
 quest data in the game's explicit save root:
 
-```ts
+```ts yage-group="herbs"
 import type { Serializable } from "@yagejs/core";
 import type { QuestSnapshot } from "@yagejs-addons/quests";
+import { createSave, localStorageAdapter } from "@yagejs/save";
+
+const save = createSave({
+  adapter: localStorageAdapter({ namespace: "quests-demo" }),
+});
 
 const gameState: Serializable<{ quests: QuestSnapshot }> = {
   serialize: () => ({ quests: log.snapshot() }),

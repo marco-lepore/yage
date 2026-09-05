@@ -13,7 +13,7 @@ time.
 `SpriteComponent` displays a texture on an entity. It automatically syncs with
 the entity's `Transform`.
 
-```typescript
+```typescript yage-context="entity"
 import { SpriteComponent } from "@yagejs/renderer";
 
 entity.add(
@@ -57,7 +57,10 @@ API is available. See the [pixi Sprite docs](https://pixijs.com/8.x/guides/compo
 Every visual component has a `modifiers` host for temporary feedback that
 must not change gameplay state:
 
-```typescript
+```typescript yage-context="entity"
+import { SpriteComponent } from "@yagejs/renderer";
+
+const sprite = entity.get(SpriteComponent);
 const punch = sprite.modifiers.addTransform({
   position: { x: 6, y: 0 },
   rotation: 0.05,
@@ -89,11 +92,8 @@ For frame-based sprite animations, use `AnimatedSpriteComponent` together with
 an `AnimationController`. `source` is required on both; there is no raw
 `Texture[]` construction path.
 
-```typescript
-import {
-  AnimatedSpriteComponent,
-  AnimationController,
-} from "@yagejs/renderer";
+```typescript yage-context="entity"
+import { AnimatedSpriteComponent, AnimationController } from "@yagejs/renderer";
 
 entity.add(
   new AnimatedSpriteComponent({
@@ -118,7 +118,9 @@ entity.add(
 
 Switch animations at runtime:
 
-```typescript
+```typescript yage-context="entity"
+import { AnimationController } from "@yagejs/renderer";
+
 const anim = entity.get(AnimationController);
 anim.play("run");
 let inputLocked = true;
@@ -176,7 +178,9 @@ Select and hold any frame when a sprite sheet contains poses that are not
 separate animations. For example, a movement sheet can also provide frames
 for falling, gripping a wall, or crouching:
 
-```typescript
+```typescript yage-context="entity"
+import { AnimatedSpriteComponent } from "@yagejs/renderer";
+
 const sprite = entity.get(AnimatedSpriteComponent);
 
 sprite.gotoFrame(5); // stop and hold the crouching pose
@@ -209,11 +213,12 @@ import { AnimationController } from "@yagejs/renderer";
 type HeroAnim = "idle" | "walk" | "attack";
 
 class HeroController extends Component {
-  private readonly _anim = this.sibling(AnimationController) as
-    AnimationController<HeroAnim>;
+  private readonly _anim = this.sibling(
+    AnimationController,
+  ) as AnimationController<HeroAnim>;
 
   update() {
-    this._anim.play("walk");      // typed — a typo here is a compile error
+    this._anim.play("walk"); // typed — a typo here is a compile error
   }
 }
 ```
@@ -227,7 +232,10 @@ type-only and `sibling()` can only narrow by the runtime class.
 faster or slower than its definition, and derives the lock from the frames
 that actually play:
 
-```typescript
+```typescript yage-context="entity"
+import { AnimationController } from "@yagejs/renderer";
+
+const anim = entity.get(AnimationController);
 // The last 8 frames of a 20-frame wind-up, at double speed.
 anim.playOneShot("attack", { startFrame: 12, speed: 2 });
 ```
@@ -249,8 +257,12 @@ explicit `duration` when you intentionally pause or reverse the animation.
 new frame index and returns an unsubscribe function. Use it for footstep
 sounds, frame-synced hitboxes, or an anchor that tracks the current frame:
 
-```typescript
-const sprite = entity.get(AnimatedSpriteComponent);
+```typescript yage-context="component"
+import { AnimatedSpriteComponent } from "@yagejs/renderer";
+import { AudioManagerKey } from "@yagejs/audio";
+
+const sprite = this.sibling(AnimatedSpriteComponent);
+const playFootstep = () => this.use(AudioManagerKey).play("footstep");
 
 this.addCleanup(
   sprite.onFrameChange((frame) => {
@@ -283,12 +295,27 @@ The recommended fix is `LayeredAnimationController`, which wraps the
 per-layer controllers and uses the first controller's lock timer to release
 the whole group:
 
-```typescript
+```typescript yage-context="scene"
+import { Entity, Transform } from "@yagejs/core";
 import {
   AnimatedSpriteComponent,
   AnimationController,
   LayeredAnimationController,
 } from "@yagejs/renderer";
+
+class HeroLayer extends Entity {
+  setup({ sheet }: { sheet: string }) {
+    this.add(new Transform());
+    const source = { sheet, frameWidth: 48 };
+    this.add(new AnimatedSpriteComponent({ source }));
+    this.add(
+      new AnimationController({
+        idle: { source, speed: 0.1 },
+        attack: { source, speed: 0.2, loop: false },
+      }),
+    );
+  }
+}
 
 class Hero extends Entity {
   setup() {
@@ -299,14 +326,19 @@ class Hero extends Entity {
     this.add(
       new LayeredAnimationController<"idle" | "attack">({
         controllers: [
-          body.get(AnimationController) as AnimationController<"idle" | "attack">,
-          head.get(AnimationController) as AnimationController<"idle" | "attack">,
+          body.get(AnimationController) as AnimationController<
+            "idle" | "attack"
+          >,
+          head.get(AnimationController) as AnimationController<
+            "idle" | "attack"
+          >,
         ],
       }),
     );
   }
 }
 
+const hero = scene.spawn(Hero);
 const layered = hero.get(LayeredAnimationController);
 layered.speed = 1.5; // applies to every layer
 layered.playOneShot("attack", {
@@ -361,9 +393,15 @@ function playOneShotLayered(
   }
 }
 
-playOneShotLayered([bodyAnim, headAnim, outfitAnim], "attack", () => {
-  // every layer is back from the one-shot at the same instant
-});
+function attack(
+  bodyAnim: AnimationController,
+  headAnim: AnimationController,
+  outfitAnim: AnimationController,
+) {
+  playOneShotLayered([bodyAnim, headAnim, outfitAnim], "attack", () => {
+    // every layer is back from the one-shot at the same instant
+  });
+}
 ```
 
 `AnimationController.calcDuration(name, options?)` exposes the same validated
@@ -403,6 +441,8 @@ sheet in a project that is otherwise smooth, ask for the sampling on the
 handle instead:
 
 ```typescript
+import { texture } from "@yagejs/renderer";
+
 const tiles = texture("assets/tiles.png", { scaleMode: "nearest" });
 ```
 
@@ -417,7 +457,7 @@ choosing with `registerTexture` and every key-based surface — sprite
 `texture`, animation `FrameSource`, particle emitter `texture` — resolves them
 exactly like a preloaded asset:
 
-```typescript
+```typescript yage-context="scene-enter"
 import {
   AnimatedSpriteComponent,
   registerTexture,
@@ -427,6 +467,8 @@ import {
 
 // Inside a Scene: draw a texture, register it, reference it by key.
 const renderer = this.context.resolve(RendererKey);
+const entity = this.spawn("marker");
+const boss = this.spawn("boss");
 registerTexture(
   "marker",
   renderer.createTexture((g) => g.circle(8, 8, 8).fill(0xff0000)),

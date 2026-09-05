@@ -22,12 +22,17 @@ engine.use(new UIPlugin());
 
 Build panels, text, buttons, and images with Flexbox:
 
-```ts
-entity.add(new UISurface({
-  anchor: Anchor.TopCenter,
-  direction: "row",
-  gap: 16,
-}).text("Score: 0", { fontSize: 32, fill: 0xffffff }));
+```ts yage-context="entity"
+import { UISurface, Anchor } from "@yagejs/ui";
+
+const surface = entity.add(
+  new UISurface({
+    anchor: Anchor.TopCenter,
+    direction: "row",
+    gap: 16,
+  }),
+);
+surface.text("Score: 0", { fontSize: 32, fill: 0xffffff });
 ```
 
 ## What's in the box

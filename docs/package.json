@@ -9,6 +9,8 @@
   "scripts": {
     "dev": "astro dev",
     "build": "node scripts/copy-llms.mjs && astro build",
+    "check:snippets": "node scripts/check-snippets.mjs",
+    "test:snippets": "node --test scripts/*.test.mjs",
     "preview": "astro preview",
     "clean": "rm -rf dist .astro"
   },
@@ -34,6 +36,9 @@
     "@yagejs/renderer": "^0.10.0",
     "@yagejs/save": "^0.10.0",
     "@yagejs/tilemap": "^0.10.0",
-    "@yagejs/ui": "^0.10.0"
+    "@yagejs/ui": "^0.10.0",
+    "remark-mdx": "^3.1.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5"
   }
 }

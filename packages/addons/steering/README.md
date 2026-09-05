@@ -23,24 +23,47 @@ No `/presenters` subpath — steering has no view to swap, only a velocity to
 compute. The `/physics` entry exists so the root stays physics-free:
 
 ```ts
-import { SteeringAgent, seek, flee, arrive, wander, pursue, evade, avoidObstacles, separation, alignment, cohesion, followPath, contain, Steering } from "@yagejs-addons/steering";
-import { avoidColliders, physicsNeighbors, PhysicsSteeringAgent } from "@yagejs-addons/steering/physics";
+import {
+  SteeringAgent,
+  seek,
+  flee,
+  arrive,
+  wander,
+  pursue,
+  evade,
+  avoidObstacles,
+  separation,
+  alignment,
+  cohesion,
+  followPath,
+  contain,
+  Steering,
+} from "@yagejs-addons/steering";
+import {
+  avoidColliders,
+  physicsNeighbors,
+  PhysicsSteeringAgent,
+} from "@yagejs-addons/steering/physics";
 ```
 
 ## 5-minute setup
 
 ```ts
+import type { Entity } from "@yagejs/core";
+
 import { SteeringAgent, seek } from "@yagejs-addons/steering";
 import { Transform } from "@yagejs/core";
 
-// enemy is an Entity with a Transform. The default output integrates it:
-// position += velocity * dt. Nothing else to wire.
-enemy.add(
-  new SteeringAgent({
-    maxSpeed: 120,
-    behaviors: [seek(() => player.get(Transform).position)],
-  }),
-);
+function chase(enemy: Entity, player: Entity) {
+  // enemy is an Entity with a Transform. The default output integrates it:
+  // position += velocity * dt. Nothing else to wire.
+  enemy.add(
+    new SteeringAgent({
+      maxSpeed: 120,
+      behaviors: [seek(() => player.get(Transform).position)],
+    }),
+  );
+}
 ```
 
 Physics body — mount `PhysicsSteeringAgent` next to a `RigidBodyComponent`
@@ -49,15 +72,20 @@ the agent pushes crates, takes knockback, and steering pulls it back on
 course at `maxAcceleration`:
 
 ```ts
+import type { Entity, Vec2 } from "@yagejs/core";
+import { arrive } from "@yagejs-addons/steering";
+
 import { PhysicsSteeringAgent } from "@yagejs-addons/steering/physics";
 
-enemy.add(
-  new PhysicsSteeringAgent({
-    maxSpeed: 130,
-    maxAcceleration: 500, // default 4x maxSpeed; the per-step impulse is the capped correction
-    behaviors: [arrive(() => waypoint, { slowRadius: 140 })],
-  }),
-);
+function approach(enemy: Entity, waypoint: Vec2) {
+  enemy.add(
+    new PhysicsSteeringAgent({
+      maxSpeed: 130,
+      maxAcceleration: 500, // default 4x maxSpeed; the per-step impulse is the capped correction
+      behaviors: [arrive(() => waypoint, { slowRadius: 140 })],
+    }),
+  );
+}
 ```
 
 Or use the structural `body` option on the root class — the addon's root
@@ -65,17 +93,21 @@ entry never imports physics; `{ setVelocity, getVelocity }` is satisfied by
 `RigidBodyComponent` as-is, and by any custom mover object:
 
 ```ts
+import type { Entity, Vec2 } from "@yagejs/core";
+
 import { SteeringAgent, arrive } from "@yagejs-addons/steering";
 import { RigidBodyComponent } from "@yagejs/physics";
 
-enemy.add(
-  new SteeringAgent({
-    maxSpeed: 130,
-    maxAcceleration: 500,
-    behaviors: [arrive(() => waypoint)],
-    body: enemy.get(RigidBodyComponent),
-  }),
-);
+function approach(enemy: Entity, waypoint: Vec2) {
+  enemy.add(
+    new SteeringAgent({
+      maxSpeed: 130,
+      maxAcceleration: 500,
+      behaviors: [arrive(() => waypoint)],
+      body: enemy.get(RigidBodyComponent),
+    }),
+  );
+}
 ```
 
 See [the full docs](https://yage.dev/addons/steering/) for blending, obstacle
@@ -85,11 +117,16 @@ headless/manual-drive API.
 ## Live escape hatches
 
 ```ts
-agent.steering.add(flee(() => boss.position, { weight: 4 })); // add behavior live
-agent.maxSpeed = 200; // retune
-agent.velocity; // Vec2 the agent is steering toward — for a debug arrow
-agent.stop(); // halt now: zeroes the model AND the body/output
-agent.enabled = false; // pause ticking without removing the component
+import { SteeringAgent, flee } from "@yagejs-addons/steering";
+import { Transform, type Entity } from "@yagejs/core";
+
+function retreat(agent: SteeringAgent, boss: Entity) {
+  agent.steering.add(flee(() => boss.get(Transform).position, { weight: 4 })); // add behavior live
+  agent.maxSpeed = 200; // retune
+  agent.velocity; // Vec2 the agent is steering toward — for a debug arrow
+  agent.stop(); // halt now: zeroes the model AND the body/output
+  agent.enabled = false; // pause ticking without removing the component
+}
 ```
 
 ## Not in v1

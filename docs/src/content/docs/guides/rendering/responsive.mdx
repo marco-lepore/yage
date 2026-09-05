@@ -9,6 +9,8 @@ needed. To pin the canvas at a fixed size, give the container fixed CSS
 dimensions; the canvas will track that constant size.
 
 ```typescript
+import { RendererPlugin } from "@yagejs/renderer";
+
 new RendererPlugin({
   width: 800,
   height: 600,
@@ -20,10 +22,14 @@ new RendererPlugin({
 Pass `fit` to override the mode or the observed element:
 
 ```typescript
+import { RendererPlugin } from "@yagejs/renderer";
+
+const host = document.getElementById("game")!;
 new RendererPlugin({
-  width: 800, height: 600,
+  width: 800,
+  height: 600,
   container: host,
-  fit: { mode: "cover" },                    // change mode
+  fit: { mode: "cover" }, // change mode
   // fit: { mode: "letterbox", target: other } // observe a different element
 });
 ```
@@ -87,17 +93,24 @@ letting the page grow until it hangs.
 
 At runtime you can switch modes or observe a different element:
 
-```typescript
-renderer.setFit({ mode: "expand" });     // swap modes / target
-renderer.fit;                              // current { mode, target? }
-renderer.canvasSize;                       // { width, height } in CSS px
-renderer.canvasToVirtual(cssX, cssY);      // invert the stage transform
-renderer.virtualToCanvas(x, y);            // forward transform (virtual → CSS px)
-renderer.visibleVirtualRect;               // on-screen sub-rect of virtual space
-renderer.croppedVirtualRects;              // virtual regions off-screen under cover
-renderer.virtualCanvasRect;                // where virtual sits on canvas (CSS px)
-renderer.visibleCanvasRect;                // full canvas extent in virtual px
-renderer.extendedVirtualRects;             // bars outside virtual (letterbox/expand)
+```typescript yage-context="context"
+import { RendererKey } from "@yagejs/renderer";
+
+const renderer = context.resolve(RendererKey);
+const cssX = 400;
+const cssY = 300;
+const x = 400;
+const y = 300;
+renderer.setFit({ mode: "expand" }); // swap modes / target
+renderer.fit; // current { mode, target? }
+renderer.canvasSize; // { width, height } in CSS px
+renderer.canvasToVirtual(cssX, cssY); // invert the stage transform
+renderer.virtualToCanvas(x, y); // forward transform (virtual → CSS px)
+renderer.visibleVirtualRect; // on-screen sub-rect of virtual space
+renderer.croppedVirtualRects; // virtual regions off-screen under cover
+renderer.virtualCanvasRect; // where virtual sits on canvas (CSS px)
+renderer.visibleCanvasRect; // full canvas extent in virtual px
+renderer.extendedVirtualRects; // bars outside virtual (letterbox/expand)
 ```
 
 ## HUD anchoring under `cover`
@@ -110,7 +123,12 @@ currently-visible sub-rect of virtual space (clamped to virtual bounds),
 so HUD code can track what the player actually sees while gameplay keeps
 operating in the full declared virtual space:
 
-```typescript
+```typescript yage-context="context,entity"
+import { RendererKey, TextComponent } from "@yagejs/renderer";
+
+const renderer = context.resolve(RendererKey);
+const scoreLabel = entity.get(TextComponent).text;
+
 // Gameplay: always the full declared play area.
 const { width, height } = renderer.virtualSize;
 
@@ -139,16 +157,31 @@ around the virtual rect. Two getters describe that space:
   that sit outside virtual, in virtual-space pixels. Exactly the bars.
   Empty on aspect-matched hosts, under `cover`, and under `stretch`.
 
-```typescript
+```typescript yage-context="scene-enter"
+import {
+  RendererKey,
+  GraphicsComponent,
+  SceneRenderTreeKey,
+} from "@yagejs/renderer";
+
+const renderer = this.use(RendererKey);
+const bgGraphics = this.spawn("background").add(
+  new GraphicsComponent(),
+).graphics;
+const fogGraphics = this.spawn("fog").add(new GraphicsComponent()).graphics;
+const hud = this.use(SceneRenderTreeKey).get("ui").container;
+
 // Backdrop that fills the whole canvas, extending into bars under expand:
 const canvas = renderer.visibleCanvasRect;
-bgGraphics.rect(canvas.x, canvas.y, canvas.width, canvas.height)
-          .fill({ color: 0x0f172a });
+bgGraphics
+  .rect(canvas.x, canvas.y, canvas.width, canvas.height)
+  .fill({ color: 0x0f172a });
 
 // Fog-of-war over the bars:
 for (const bar of renderer.extendedVirtualRects) {
-  fogGraphics.rect(bar.x, bar.y, bar.width, bar.height)
-             .fill({ color: 0x000000, alpha: 0.78 });
+  fogGraphics
+    .rect(bar.x, bar.y, bar.width, bar.height)
+    .fill({ color: 0x000000, alpha: 0.78 });
 }
 
 // HUD that follows the canvas corners (so cards live in the bars):
@@ -165,8 +198,11 @@ To put a scoreboard or branding in letterbox bars, parent a container
 directly on the Pixi stage, above the fit transform, and position it in
 **canvas pixels**:
 
-```typescript
+```typescript yage-context="context"
 import { Container, Graphics } from "pixi.js";
+import { RendererKey } from "@yagejs/renderer";
+
+const renderer = context.resolve(RendererKey);
 
 const bars = new Container();
 renderer.application.stage.addChild(bars);
@@ -198,7 +234,11 @@ canvas in **CSS pixels** — useful for absolutely-positioned HTML overlays
 (menus, tooltips, inspector panels) that should track the virtual rect
 rather than the canvas:
 
-```typescript
+```typescript yage-context="context"
+import { RendererKey } from "@yagejs/renderer";
+
+const renderer = context.resolve(RendererKey);
+const menuEl = document.getElementById("menu")!;
 const r = renderer.virtualCanvasRect;
 menuEl.style.left = `${r.x}px`;
 menuEl.style.top = `${r.y}px`;
@@ -225,12 +265,19 @@ resolves that key during install — so pointer events target the canvas
 and coordinates route through `canvasToVirtual` with no config. Just
 make sure you register `RendererPlugin` before `InputPlugin`.
 
-```typescript
+```typescript yage-context="engine"
 import { RendererPlugin } from "@yagejs/renderer";
 import { InputPlugin } from "@yagejs/input";
 
+const host = document.getElementById("game")!;
 engine.use(new RendererPlugin({ width: 800, height: 600, container: host }));
-engine.use(new InputPlugin({ actions: { /* ... */ } }));
+engine.use(
+  new InputPlugin({
+    actions: {
+      /* ... */
+    },
+  }),
+);
 ```
 
 ## Fullscreen
@@ -241,8 +288,17 @@ iOS Safari. The target is the configured `container` when present
 (so DOM overlays alongside the canvas remain inside the fullscreen
 area), or the canvas itself otherwise.
 
-```typescript
-const renderer = engine.use(new RendererPlugin({ width: 800, height: 600, container: host }));
+```typescript yage-context="engine"
+import { RendererPlugin } from "@yagejs/renderer";
+
+const host = document.getElementById("game")!;
+const button = document.getElementById("fullscreen")!;
+const renderer = new RendererPlugin({
+  width: 800,
+  height: 600,
+  container: host,
+});
+engine.use(renderer);
 
 button.addEventListener("click", () => {
   if (renderer.isFullscreen) renderer.exitFullscreen();
@@ -261,11 +317,15 @@ event bus whenever the fullscreen state changes (entering, exiting,
 or the user pressing Esc). Subscribe via `EventBusKey` for HUD
 relayouts or to update a button label:
 
-```typescript
+```typescript yage-context="engine"
 import { EventBusKey } from "@yagejs/core";
+
+const fullscreenButton = document.getElementById("fullscreen")!;
 const bus = engine.context.resolve(EventBusKey);
 bus.on("screen:fullscreen", ({ active }) => {
-  fullscreenButton.textContent = active ? "Exit fullscreen" : "Enter fullscreen";
+  fullscreenButton.textContent = active
+    ? "Exit fullscreen"
+    : "Enter fullscreen";
 });
 ```
 
@@ -284,8 +344,16 @@ the device orientation changes. Payload is
 DOM union (`"portrait-primary" | "portrait-secondary" |
 "landscape-primary" | "landscape-secondary"`).
 
-```typescript
+```typescript yage-context="engine"
 import { EventBusKey } from "@yagejs/core";
+
+const overlay = document.getElementById("rotate-device")!;
+const showRotateOverlay = () => {
+  overlay.hidden = false;
+};
+const hideRotateOverlay = () => {
+  overlay.hidden = true;
+};
 const bus = engine.context.resolve(EventBusKey);
 bus.on("screen:orientation", ({ type }) => {
   if (type.startsWith("portrait")) showRotateOverlay();

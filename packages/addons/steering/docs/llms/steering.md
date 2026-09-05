@@ -20,15 +20,18 @@ entry only).
 ## Zero-config kinematic chase
 
 ```ts
+import type { Entity } from "@yagejs/core";
 import { SteeringAgent, seek } from "@yagejs-addons/steering";
 import { Transform } from "@yagejs/core";
 
-enemy.add(
-  new SteeringAgent({
-    maxSpeed: 120,
-    behaviors: [seek(() => player.get(Transform).position)],
-  }),
-);
+function chase(enemy: Entity, player: Entity) {
+  enemy.add(
+    new SteeringAgent({
+      maxSpeed: 120,
+      behaviors: [seek(() => player.get(Transform).position)],
+    }),
+  );
+}
 ```
 
 `SteeringAgent` is a `@yagejs/core` Component; `ComponentFixedUpdateSystem`
@@ -44,19 +47,27 @@ contacts while steering corrects at `maxAcceleration`). Add the body before
 the agent — it reads the body's type when added:
 
 ```ts
+import type { Entity, Vec2Like } from "@yagejs/core";
+import { arrive } from "@yagejs-addons/steering";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 import { PhysicsSteeringAgent } from "@yagejs-addons/steering/physics";
 
-enemy.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
-enemy.add(
-  new ColliderComponent({ shape: { type: "circle", radius: 10 }, density: 1 }),
-);
-enemy.add(
-  new PhysicsSteeringAgent({
-    maxSpeed: 130,
-    maxAcceleration: 500, // default 4x maxSpeed; the per-step impulse is the capped correction
-    behaviors: [arrive(() => target, { slowRadius: 140 })],
-  }),
-);
+function steerPhysics(enemy: Entity, target: Vec2Like) {
+  enemy.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
+  enemy.add(
+    new ColliderComponent({
+      shape: { type: "circle", radius: 10 },
+      density: 1,
+    }),
+  );
+  enemy.add(
+    new PhysicsSteeringAgent({
+      maxSpeed: 130,
+      maxAcceleration: 500, // default 4x maxSpeed; the per-step impulse is the capped correction
+      behaviors: [arrive(() => target, { slowRadius: 140 })],
+    }),
+  );
+}
 ```
 
 On a kinematic body the agent switches automatically: kinematic bodies
@@ -69,18 +80,21 @@ Explicit `body` on the root class — structural, no physics import; also fits
 custom movers implementing the two methods:
 
 ```ts
+import type { Entity, Vec2Like } from "@yagejs/core";
 import { SteeringAgent, arrive } from "@yagejs-addons/steering";
 import { RigidBodyComponent } from "@yagejs/physics";
 
-enemy.add(
-  new SteeringAgent({
-    maxSpeed: 130,
-    maxAcceleration: 500,
-    behaviors: [arrive(() => target)],
-    body: enemy.get(RigidBodyComponent), // read actual velocity + write output
-    drive: "impulse", // needs applyImpulse + getMass on the body; omit for velocity drive
-  }),
-);
+function steerCustomBody(enemy: Entity, target: Vec2Like) {
+  enemy.add(
+    new SteeringAgent({
+      maxSpeed: 130,
+      maxAcceleration: 500,
+      behaviors: [arrive(() => target)],
+      body: enemy.get(RigidBodyComponent), // read actual velocity + write output
+      drive: "impulse", // needs applyImpulse + getMass on the body; omit for velocity drive
+    }),
+  );
+}
 ```
 
 Drive modes:
@@ -98,6 +112,8 @@ Drive modes:
   `RigidBodyComponent`). Two-way physics: push and be pushed.
 
 ```ts
+import type { Vec2Like } from "@yagejs/core";
+
 interface VelocityBody {
   setVelocity(v: Vec2Like): void;
   getVelocity(): Vec2Like;
@@ -144,18 +160,33 @@ clock is to take the commanded velocity from `apply` and integrate it
 yourself:
 
 ```ts
-let commanded = Vec2.ZERO;
-enemy.add(
-  new SteeringAgent({
-    maxSpeed: 120,
-    behaviors: [seek(() => target)],
-    apply: (velocity) => {
-      commanded = velocity;
-    },
-  }),
-);
-// in a component's own update(dt):
-enemy.get(Transform).translate(commanded.x * dt, commanded.y * dt);
+import {
+  Component,
+  Transform,
+  Vec2,
+  type Entity,
+  type Vec2Like,
+} from "@yagejs/core";
+import { SteeringAgent, seek } from "@yagejs-addons/steering";
+
+function installFrameMovement(enemy: Entity, target: Vec2Like) {
+  let commanded = Vec2.ZERO;
+  enemy.add(
+    new SteeringAgent({
+      maxSpeed: 120,
+      behaviors: [seek(() => target)],
+      apply: (velocity) => {
+        commanded = velocity;
+      },
+    }),
+  );
+  class FrameMovement extends Component {
+    update(dt: number) {
+      this.entity.get(Transform).translate(commanded.x * dt, commanded.y * dt);
+    }
+  }
+  enemy.add(new FrameMovement());
+}
 ```
 
 `enabled = false` stops the `apply` callback, so `commanded` keeps its last
@@ -174,6 +205,8 @@ default priority 0 = plain weighted sum. Zero behaviors, or all ZERO, →
 ZERO.
 
 ```ts
+import type { Entity, Vec2 } from "@yagejs/core";
+
 interface AgentState {
   readonly position: Vec2;
   readonly velocity: Vec2;
@@ -190,6 +223,13 @@ interface SteeringBehavior {
 ## `SteeringAgent` (L2a Component)
 
 ```ts
+import type { Entity, Transform, Vec2 } from "@yagejs/core";
+import type {
+  SteeringBehavior,
+  VelocityBody,
+  ImpulseBody,
+} from "@yagejs-addons/steering";
+
 interface SteeringAgentOptions {
   maxSpeed: number; // required, px/s, settable live
   behaviors?: SteeringBehavior[];
@@ -228,6 +268,9 @@ counter-impulse, or `apply(ZERO)`), inherited `agent.enabled`.
 ## Targets, obstacles, neighbors — static or live
 
 ```ts
+import type { Vec2Like } from "@yagejs/core";
+import type { AgentState, Kinematic, Obstacle } from "@yagejs-addons/steering";
+
 type PointTarget = Vec2Like | ((agent: AgentState) => Vec2Like);
 type KinematicTarget = Kinematic | ((agent: AgentState) => Kinematic); // { position, velocity }
 type ObstaclesSource =
@@ -272,12 +315,35 @@ returns a non-zero steer.
 ## Headless / manual drive
 
 ```ts
+import { Vec2, type Vec2Like } from "@yagejs/core";
 import { Steering, seek } from "@yagejs-addons/steering";
-const steering = new Steering([seek(() => target)]);
-let pos = new Vec2(0, 0);
-let vel = Vec2.ZERO;
-vel = steering.compute({ position: pos, velocity: vel, maxSpeed: 120 }, dt);
-pos = pos.add(vel.scale(dt));
+
+function createSimulation(readTarget: () => Vec2Like) {
+  const steering = new Steering([seek(readTarget)]);
+  let pos = new Vec2(0, 0);
+  let vel = Vec2.ZERO;
+  return {
+    get position() {
+      return pos;
+    },
+    get velocity() {
+      return vel;
+    },
+    tick(dt: number) {
+      vel = steering.compute(
+        { position: pos, velocity: vel, maxSpeed: 120 },
+        dt,
+      );
+      pos = pos.add(vel.scale(dt));
+      return pos;
+    },
+  };
+}
+
+const simulation = createSimulation(() => ({ x: 200, y: 0 }));
+simulation.tick(1 / 60);
+simulation.tick(1 / 60); // advances the same position and velocity
+simulation.position;
 ```
 
 ## Not in v1

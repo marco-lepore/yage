@@ -34,7 +34,10 @@ npm install @yagejs-addons/virtual-controls @yagejs/core @yagejs/input @yagejs/r
 The bound action names must exist in your `InputPlugin` action map — the
 overlay drives existing actions (unknown names warn and are skipped):
 
-```ts
+```ts yage-context="engine"
+import { Scene } from "@yagejs/core";
+import { InputPlugin } from "@yagejs/input";
+
 import { VirtualControls } from "@yagejs-addons/virtual-controls";
 import { createControlsPresenter } from "@yagejs-addons/virtual-controls/presenters";
 
@@ -52,6 +55,7 @@ engine.use(
 );
 
 class GameScene extends Scene {
+  readonly name = "game";
   onEnter() {
     this.spawn("touch-controls").add(
       new VirtualControls({

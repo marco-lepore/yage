@@ -23,11 +23,21 @@
       "dependsOn": ["^build"],
       "cache": false
     },
-    "docs#build": {
+    "@yagejs/docs#build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/addons/*/docs/llms/**",
+        "$TURBO_ROOT$/packages/tools/*/docs/llms/**"
+      ],
+      "outputs": [
+        "dist/**",
+        "public/llms/**",
+        "public/llms.txt",
+        "public/llms-full.txt"
+      ]
     },
-    "docs#dev": {
+    "@yagejs/docs#dev": {
       "cache": false,
       "persistent": true
     },

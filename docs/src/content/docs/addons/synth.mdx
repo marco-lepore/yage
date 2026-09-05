@@ -28,9 +28,13 @@ Both peers are required — the addon registers its buffers through
 
 ## Five-minute setup
 
-```ts
+```ts yage-context="engine"
 import { AudioPlugin, AudioManagerKey } from "@yagejs/audio";
-import { SynthPlugin, synthPresets, synthVariantAliases } from "@yagejs-addons/synth";
+import {
+  SynthPlugin,
+  synthPresets,
+  synthVariantAliases,
+} from "@yagejs-addons/synth";
 
 engine.use(new AudioPlugin());
 engine.use(
@@ -47,7 +51,10 @@ engine.use(
 
 Playing them is the normal audio API — from a Component, Entity, or Scene:
 
-```ts
+```ts yage-context="component"
+import { AudioManagerKey } from "@yagejs/audio";
+import { synthVariantAliases } from "@yagejs-addons/synth";
+
 const audio = this.use(AudioManagerKey);
 
 audio.play("explosion", { volume: 0.8 });
@@ -68,11 +75,13 @@ Each preset is a function returning patch data, and takes overrides — so a
 different gun, a bigger explosion, or a wooden floor is one number away.
 
 ```ts
-synthPresets.shoot({ frequency: 900 });                    // higher-pitched
+import { synthPresets } from "@yagejs-addons/synth";
+
+synthPresets.shoot({ frequency: 900 }); // higher-pitched
 synthPresets.explosion({ frequency: 200, duration: 0.6 }); // bigger boom
-synthPresets.footstep({ surface: "wood" });                // stone | wood | grass
-synthPresets.victory({ noteDuration: 0.24 });              // slower fanfare
-synthPresets.shoot({ gain: 0.5 });                         // half as loud
+synthPresets.footstep({ surface: "wood" }); // stone | wood | grass
+synthPresets.victory({ noteDuration: 0.24 }); // slower fanfare
+synthPresets.shoot({ gain: 0.5 }); // half as loud
 ```
 
 What you can override follows the shape of the sound, so a field the preset
@@ -100,13 +109,33 @@ Two of them are loops rather than one-shots. `wind` is an ambient bed with
 gust swells baked inside the loop. `dialogueBeeps` is speech chatter for
 text reveals — short blips around a base pitch with syllable-like rests:
 
-```ts
-new SynthPlugin({
-  sounds: { "voice/guard": synthPresets.dialogueBeeps({ frequency: 220, phraseSeed: 4 }) },
-});
+Register the voice during engine setup, before `engine.start()`:
 
-const talking = audio.play("voice/guard", { loop: true, channel: "voice" });
-audio.stop(talking); // when the line finishes revealing
+```ts yage-context="engine"
+import { SynthPlugin, synthPresets } from "@yagejs-addons/synth";
+
+engine.use(
+  new SynthPlugin({
+    sounds: {
+      "voice/guard": synthPresets.dialogueBeeps({
+        frequency: 220,
+        phraseSeed: 4,
+      }),
+    },
+  }),
+);
+```
+
+Start the loop when a line begins. Keep the returned cleanup and call it when
+the line finishes revealing:
+
+```ts
+import type { AudioManager } from "@yagejs/audio";
+
+function startTalking(audio: AudioManager) {
+  const talking = audio.play("voice/guard", { loop: true, channel: "voice" });
+  return () => audio.stop(talking);
+}
 ```
 
 The same `phraseSeed` always speaks the same phrase, so a character's voice is
@@ -118,48 +147,67 @@ character their own.
 A patch is one voice:
 
 ```ts
+import type { SynthPatch } from "@yagejs-addons/synth";
+
 const zap = {
-  wave: "square",      // sine | square | sawtooth | triangle | noise
-  frequency: 1200,     // starting pitch
-  glideTo: 200,        // pitch at the end — the exponential fall
+  wave: "square", // sine | square | sawtooth | triangle | noise
+  frequency: 1200, // starting pitch
+  glideTo: 200, // pitch at the end — the exponential fall
   duration: 0.09,
-  attack: 0.004,       // fade-in; the rest of the duration is the release
-  curve: 4,            // release steepness
+  attack: 0.004, // fade-in; the rest of the duration is the release
+  curve: 4, // release steepness
   volume: 0.2,
-};
+} satisfies SynthPatch;
 ```
 
 Add `noise: 0.4` to mix white noise into the tone, or a filter with an
 optional sweep:
 
 ```ts
+import type { SynthPatch } from "@yagejs-addons/synth";
+
 const whoosh = {
   wave: "noise",
   duration: 0.22,
   filter: { type: "bandpass", frequency: 500, sweepTo: 5200, q: 2 },
-};
+} satisfies SynthPatch;
 ```
 
 An array of patches plays as one sound, so layers stack — each voice can start
 late:
 
 ```ts
+import type { SynthSound } from "@yagejs-addons/synth";
+
 const shotgun = [
-  { wave: "sawtooth", frequency: 300, glideTo: 40, duration: 0.25, volume: 0.3 },
-  { wave: "noise", duration: 0.3, volume: 0.3, filter: { type: "lowpass", frequency: 2000, sweepTo: 300 } },
+  {
+    wave: "sawtooth",
+    frequency: 300,
+    glideTo: 40,
+    duration: 0.25,
+    volume: 0.3,
+  },
+  {
+    wave: "noise",
+    duration: 0.3,
+    volume: 0.3,
+    filter: { type: "lowpass", frequency: 2000, sweepTo: 300 },
+  },
   { wave: "square", frequency: 90, duration: 0.1, delay: 0.28, volume: 0.1 }, // the pump
-];
+] satisfies SynthSound;
 ```
 
 And a jingle bakes a note sequence into a single buffer:
 
 ```ts
+import type { SynthJingle } from "@yagejs-addons/synth";
+
 const levelUp = {
   notes: [523, 659, 784, 1046], // Hz; 0 is a rest
   noteDuration: 0.18,
-  noteSpacing: 0.12,            // shorter than the notes, so they ring into each other
+  noteSpacing: 0.12, // shorter than the notes, so they ring into each other
   voice: { wave: "triangle", volume: 0.26 },
-};
+} satisfies SynthJingle;
 ```
 
 Any of the three shapes — a patch, an array of patches, a jingle — goes
@@ -174,8 +222,13 @@ way any other pure function is.
 
 ```ts
 import { renderSynthPatch } from "@yagejs-addons/synth";
+import { expect } from "vitest";
 
-const samples = renderSynthPatch({ frequency: 800, glideTo: 100, duration: 0.4 });
+const samples = renderSynthPatch({
+  frequency: 800,
+  glideTo: 100,
+  duration: 0.4,
+});
 expect(samples).toHaveLength(0.4 * 44100);
 ```
 
@@ -198,11 +251,28 @@ unregisterSound("boss-hit");
 A rendered buffer sounds identical every time it plays. Two ways to break that
 up:
 
-```ts
+Register the variants during engine setup, before `engine.start()`:
+
+```ts yage-context="engine"
+import { SynthPlugin, synthPresets } from "@yagejs-addons/synth";
+
 // Several takes, picked at random per play.
-new SynthPlugin({
-  sounds: { shoot: { sound: synthPresets.shoot(), variants: 4, detune: 0.08 } },
-});
+engine.use(
+  new SynthPlugin({
+    sounds: {
+      shoot: { sound: synthPresets.shoot(), variants: 4, detune: 0.08 },
+    },
+  }),
+);
+```
+
+Then choose a variant when the game fires a shot:
+
+```ts yage-context="component"
+import { AudioManagerKey } from "@yagejs/audio";
+import { synthVariantAliases } from "@yagejs-addons/synth";
+
+const audio = this.use(AudioManagerKey);
 audio.playRandom(synthVariantAliases("shoot", 4));
 
 // Or jitter the playback rate at the call site (variants register only the
@@ -220,9 +290,24 @@ its start, so it loops without a click. The crossfade consumes up to 50 ms, so
 the buffer comes out slightly shorter than `duration` — don't schedule
 anything against the exact requested length:
 
-```ts
-new SynthPlugin({ sounds: { ambience: synthPresets.roomTone({ duration: 6 }) } });
+Register the loop during engine setup, before `engine.start()`:
 
+```ts yage-context="engine"
+import { SynthPlugin, synthPresets } from "@yagejs-addons/synth";
+
+engine.use(
+  new SynthPlugin({
+    sounds: { ambience: synthPresets.roomTone({ duration: 6 }) },
+  }),
+);
+```
+
+Start it when the scene enters:
+
+```ts yage-context="scene-enter"
+import { AudioManagerKey } from "@yagejs/audio";
+
+const audio = this.use(AudioManagerKey);
 audio.play("ambience", { loop: true, channel: "music" });
 ```
 

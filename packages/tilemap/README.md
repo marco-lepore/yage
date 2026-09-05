@@ -22,14 +22,18 @@ engine.use(new TilemapPlugin());
 
 Load and render a Tiled map:
 
-```ts
-const map = await assets.load(tiledMap("level1.json"));
-entity.add(new TilemapComponent({ map }));
+```ts yage-context="context,entity"
+import { AssetManagerKey } from "@yagejs/core";
+import { tiledMap, TilemapComponent } from "@yagejs/tilemap";
+
+const level = tiledMap("level1.json");
+await context.resolve(AssetManagerKey).loadAll([level]);
+entity.add(new TilemapComponent({ source: level }));
 ```
 
 > **Tileset format:** export tilesets as **JSON** (`.tsj` or `.json`).
 > Tiled's default XML `.tsx` format is not supported by the loader. In Tiled,
-> use *Edit Tileset → File → Export As → JSON*.
+> use _Edit Tileset → File → Export As → JSON_.
 
 ## What's in the box
 

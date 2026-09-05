@@ -9,32 +9,36 @@ to think about meters. All positions, velocities, and forces are in pixels.
 
 ## PhysicsPlugin Setup
 
-```typescript
+```typescript yage-context="engine"
 import { PhysicsPlugin } from "@yagejs/physics";
 
-engine.use(new PhysicsPlugin({
-  gravity: { x: 0, y: 980 },   // pixels/s², default: (0, 980); both finite
-  pixelsPerMeter: 50,           // conversion factor, default: 50; finite and > 0
-}));
+engine.use(
+  new PhysicsPlugin({
+    gravity: { x: 0, y: 980 }, // pixels/s², default: (0, 980); both finite
+    pixelsPerMeter: 50, // conversion factor, default: 50; finite and > 0
+  }),
+);
 ```
 
 ## Rigid Bodies
 
 `RigidBodyComponent` wraps a Rapier rigid body. Add it after `Transform`.
 
-```typescript
+```typescript yage-context="entity"
 import { RigidBodyComponent } from "@yagejs/physics";
 
-entity.add(new RigidBodyComponent({
-  type: "dynamic",          // "dynamic" | "static" | "kinematic"
-  fixedRotation: true,      // prevent rotation
-  gravityScale: 0,          // ignore gravity (0 = zero-g, 1 = normal); finite
-  linearDamping: 5,         // velocity drag; finite and >= 0
-  angularDamping: 1,        // rotation drag; finite and >= 0
-  ccd: true,                // continuous collision detection for fast objects
-  lockTranslationX: false,  // lock horizontal movement
-  syncRotation: true,       // sync physics rotation back to Transform
-}));
+entity.add(
+  new RigidBodyComponent({
+    type: "dynamic", // "dynamic" | "static" | "kinematic"
+    fixedRotation: true, // prevent rotation
+    gravityScale: 0, // ignore gravity (0 = zero-g, 1 = normal); finite
+    linearDamping: 5, // velocity drag; finite and >= 0
+    angularDamping: 1, // rotation drag; finite and >= 0
+    ccd: true, // continuous collision detection for fast objects
+    lockTranslationX: false, // lock horizontal movement
+    syncRotation: true, // sync physics rotation back to Transform
+  }),
+);
 ```
 
 **Body types:**
@@ -59,8 +63,14 @@ scale, damping, colliders and mass are kept, and the drawn pose is the pose at
 the switch. `rb.type` reads the current one.
 
 ```typescript
-onDeath() {
-  this.rb.setType("static"); // a corpse nothing can shove around
+import { Component } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
+
+class BodyDeath extends Component {
+  private readonly rb = this.sibling(RigidBodyComponent);
+  onDeath() {
+    this.rb.setType("static"); // a corpse nothing can shove around
+  }
 }
 ```
 
@@ -72,84 +82,106 @@ The required component order is: `Transform` → `RigidBodyComponent` → `Colli
 
 Every collider needs a sibling `RigidBodyComponent`, including a `sensor: true` one. For a trigger you move through its `Transform` (a bobbing pickup, say), use a `kinematic` body. Leaving out the body throws when the collider is added, not when you construct it.
 
-```typescript
+```typescript yage-context="entity"
+import { RigidBodyComponent } from "@yagejs/physics";
+
 import { ColliderComponent } from "@yagejs/physics";
 
 // Box
-entity.add(new ColliderComponent({
-  shape: { type: "box", width: 64, height: 32 },
-  restitution: 0.5,   // bounciness; finite and >= 0
-  friction: 0.3,      // finite and >= 0
-  density: 1,          // affects mass for dynamic bodies; finite and >= 0
-  // contactSkin: 1,   // rest about 1px off contact surfaces; finite and >= 0
-}));
+entity.add(
+  new ColliderComponent({
+    shape: { type: "box", width: 64, height: 32 },
+    restitution: 0.5, // bounciness; finite and >= 0
+    friction: 0.3, // finite and >= 0
+    density: 1, // affects mass for dynamic bodies; finite and >= 0
+    // contactSkin: 1,   // rest about 1px off contact surfaces; finite and >= 0
+  }),
+);
 
 // Circle
-entity.add(new ColliderComponent({
-  shape: { type: "circle", radius: 16 },
-}));
+entity.add(
+  new ColliderComponent({
+    shape: { type: "circle", radius: 16 },
+  }),
+);
 
 // Capsule (vertical by default — pass axis: "x" for horizontal).
 // halfHeight is half the straight section; each cap adds radius, so this
 // collider stands 2 * (20 + 10) = 60px tall. halfHeight: 0 is a circle.
 // Boxes and circles take outer dimensions.
-entity.add(new ColliderComponent({
-  shape: { type: "capsule", halfHeight: 20, radius: 10, axis: "y" },
-}));
+entity.add(
+  new ColliderComponent({
+    shape: { type: "capsule", halfHeight: 20, radius: 10, axis: "y" },
+  }),
+);
 
 // Convex polygon: at least 3 vertices, not all on one line. Rapier silently
 // widens concave input to its convex hull; a dev warning is logged. Use
 // polyline for non-convex outlines.
-entity.add(new ColliderComponent({
-  shape: {
-    type: "polygon",
-    vertices: [{ x: 0, y: -20 }, { x: 20, y: 20 }, { x: -20, y: 20 }],
-  },
-}));
+entity.add(
+  new ColliderComponent({
+    shape: {
+      type: "polygon",
+      vertices: [
+        { x: 0, y: -20 },
+        { x: 20, y: 20 },
+        { x: -20, y: 20 },
+      ],
+    },
+  }),
+);
 
 // Polyline — chain of line segments. Supports non-convex shapes but is
 // static-only (no mass/inertia). Best for tilemap-driven world boundaries
 // such as winding water edges or U-shaped walls.
 entity.add(new RigidBodyComponent({ type: "static" }));
-entity.add(new ColliderComponent({
-  shape: {
-    type: "polyline",
-    vertices: [
-      { x: 0, y: 0 },
-      { x: 64, y: 0 },
-      { x: 64, y: 16 },
-      { x: 16, y: 16 },
-      { x: 16, y: 48 },
-    ],
-  },
-}));
+entity.add(
+  new ColliderComponent({
+    shape: {
+      type: "polyline",
+      vertices: [
+        { x: 0, y: 0 },
+        { x: 64, y: 0 },
+        { x: 64, y: 16 },
+        { x: 16, y: 16 },
+        { x: 16, y: 48 },
+      ],
+    },
+  }),
+);
 
 // Offset and rotation position the collider relative to its body — here a
 // tilted attack hitbox in front of the entity. Rotation is in radians,
 // about the offset point.
-entity.add(new ColliderComponent({
-  shape: { type: "box", width: 60, height: 10 },
-  offset: { x: 20, y: 0 },
-  rotation: Math.PI / 4,
-  sensor: true,
-}));
+entity.add(
+  new ColliderComponent({
+    shape: { type: "box", width: 60, height: 10 },
+    offset: { x: 20, y: 0 },
+    rotation: Math.PI / 4,
+    sensor: true,
+  }),
+);
 ```
 
 Use `parts` when one body needs several collision shapes. Each part has its
 own shape, offset, and rotation. Settings outside `parts` apply to every
 shape, and Rapier adds their mass together:
 
-```typescript
-entity.add(new ColliderComponent({
-  parts: [
-    { shape: { type: "box", width: 48, height: 16 } },
-    {
-      shape: { type: "circle", radius: 8 },
-      offset: { x: 24, y: 0 },
-    },
-  ],
-  friction: 0.3,
-}));
+```typescript yage-context="entity"
+import { ColliderComponent } from "@yagejs/physics";
+
+entity.add(
+  new ColliderComponent({
+    parts: [
+      { shape: { type: "box", width: 48, height: 16 } },
+      {
+        shape: { type: "circle", radius: 8 },
+        offset: { x: 24, y: 0 },
+      },
+    ],
+    friction: 0.3,
+  }),
+);
 ```
 
 `collider.colliderCount` gives the number of parts. Overlap queries check all
@@ -171,10 +203,14 @@ All dimensions are in pixels; rotation is in radians.
 
 Box corners can be rounded while keeping the same outer width and height:
 
-```typescript
-entity.add(new ColliderComponent({
-  shape: { type: "box", width: 64, height: 32, borderRadius: 4 },
-}));
+```typescript yage-context="entity"
+import { ColliderComponent } from "@yagejs/physics";
+
+entity.add(
+  new ColliderComponent({
+    shape: { type: "box", width: 64, height: 32, borderRadius: 4 },
+  }),
+);
 ```
 
 The outer footprint stays 64×32 and a resting body keeps its height, because
@@ -192,11 +228,15 @@ standing on it.
 `contactSkin` is the other way to round off a contact. It holds the collider a
 set number of pixels away from whatever it touches:
 
-```typescript
-entity.add(new ColliderComponent({
-  shape: { type: "box", width: 12, height: 44 },
-  contactSkin: 1,
-}));
+```typescript yage-context="entity"
+import { ColliderComponent } from "@yagejs/physics";
+
+entity.add(
+  new ColliderComponent({
+    shape: { type: "box", width: 12, height: 44 },
+    contactSkin: 1,
+  }),
+);
 ```
 
 A resting body then sits 1px above the ground. When both colliders in a pair
@@ -220,28 +260,39 @@ nothing rather than reaching whatever collider Rapier creates next.
 `CollisionLayers` lets you control which objects can collide using named layer
 bitmasks.
 
-```typescript
-import { CollisionLayers } from "@yagejs/physics";
+```typescript yage-context="entity,scene"
+import { ColliderComponent } from "@yagejs/physics";
+
+import { Transform } from "@yagejs/core";
+import { CollisionLayers, RigidBodyComponent } from "@yagejs/physics";
+
+const coinEntity = scene.spawn("coin");
+coinEntity.add(new Transform());
+coinEntity.add(new RigidBodyComponent({ type: "static" }));
 
 const layers = new CollisionLayers();
 const LAYER_PLAYER = layers.define("player");
-const LAYER_WALL   = layers.define("wall");
-const LAYER_COIN   = layers.define("coin");
+const LAYER_WALL = layers.define("wall");
+const LAYER_COIN = layers.define("coin");
 
 // Player collides with walls and coins
-entity.add(new ColliderComponent({
-  shape: { type: "circle", radius: 16 },
-  layers: LAYER_PLAYER,
-  mask: LAYER_WALL | LAYER_COIN,
-}));
+entity.add(
+  new ColliderComponent({
+    shape: { type: "circle", radius: 16 },
+    layers: LAYER_PLAYER,
+    mask: LAYER_WALL | LAYER_COIN,
+  }),
+);
 
 // Coin only collides with player
-coinEntity.add(new ColliderComponent({
-  shape: { type: "circle", radius: 10 },
-  sensor: true,
-  layers: LAYER_COIN,
-  mask: LAYER_PLAYER,
-}));
+coinEntity.add(
+  new ColliderComponent({
+    shape: { type: "circle", radius: 10 },
+    sensor: true,
+    layers: LAYER_COIN,
+    mask: LAYER_PLAYER,
+  }),
+);
 ```
 
 An object on layer A with mask B will only interact with objects on layer B that
@@ -262,7 +313,9 @@ every transition, in order, each with its own step's contact data. Handlers
 see Transforms synced to the step that produced the contact, and a handler's
 `setVelocity` or `destroy` takes effect before the next step of the same tick.
 
-```typescript
+```typescript yage-context="entity"
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
+
 const collider = new ColliderComponent({
   shape: { type: "circle", radius: 10 },
   sensor: true,
@@ -286,8 +339,10 @@ collider.onTrigger((event) => {
 A collider can change kind while it is live. `setSensor(true)` turns a solid
 collider into a sensor, `setSensor(false)` turns it back:
 
-```typescript
-enemy.get(ColliderComponent).setSensor(true); // dead: stop blocking bullets
+```typescript yage-context="entity"
+import { ColliderComponent } from "@yagejs/physics";
+
+entity.get(ColliderComponent).setSensor(true); // dead: stop blocking bullets
 ```
 
 The collider is recreated with the new flag. Every pair it is in ends with a
@@ -302,15 +357,19 @@ leaves handlers of the silenced kind registered: `onCollision` on a sensor,
 For non-sensor colliders, use `onCollision` instead:
 
 ```typescript
-collider.onCollision((event) => {
-  if (event.started) {
-    console.log("hit", event.other.name);
-    console.log("contact normal:", event.contactNormal);
-    console.log("contact point:", event.contactPoint);
-    console.log("penetration depth:", event.penetrationDepth);
-    console.log("contact impulse:", event.contactImpulse);
-  }
-});
+import { type ColliderComponent } from "@yagejs/physics";
+
+function logContacts(collider: ColliderComponent) {
+  collider.onCollision((event) => {
+    if (event.started) {
+      console.log("hit", event.other.name);
+      console.log("contact normal:", event.contactNormal);
+      console.log("contact point:", event.contactPoint);
+      console.log("penetration depth:", event.penetrationDepth);
+      console.log("contact impulse:", event.contactImpulse);
+    }
+  });
+}
 ```
 
 `contactNormal`, `contactPoint`, `penetrationDepth`, `contactImpulse`, and
@@ -342,7 +401,10 @@ impulse can be `0` when the solver did not need to apply an impulse, such as
 for a grazing contact.
 Guard on `contactNormal` before using any of them:
 
-```typescript
+```typescript yage-context="entity"
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
+
+const collider = entity.get(ColliderComponent);
 collider.onCollision((event) => {
   if (!event.started || !event.contactNormal) return;
   const knockback = event.contactNormal.scale(-300);
@@ -354,15 +416,22 @@ Use `contactImpulse` to score impacts — for example, deal damage when the
 impulse passes a threshold:
 
 ```typescript
-collider.onCollision((event) => {
-  if (
-    event.started &&
-    event.contactImpulse !== undefined &&
-    event.contactImpulse > 100
-  ) {
-    dealDamage(10);
-  }
-});
+import { type ColliderComponent } from "@yagejs/physics";
+
+function damageOnImpact(
+  collider: ColliderComponent,
+  dealDamage: (amount: number) => void,
+) {
+  collider.onCollision((event) => {
+    if (
+      event.started &&
+      event.contactImpulse !== undefined &&
+      event.contactImpulse > 100
+    ) {
+      dealDamage(10);
+    }
+  });
+}
 ```
 
 Reading the body's velocity inside the handler does not work for this: it
@@ -376,9 +445,18 @@ Both handlers return an unsubscribe function.
 You can query which entities currently overlap a sensor collider:
 
 ```typescript
-const overlapping = collider.getOverlapping();
-const enemies = collider.getOverlapping({ tags: ["enemy"] });
-const components = collider.getOverlappingComponents(HealthComponent);
+import { Component } from "@yagejs/core";
+import { type ColliderComponent } from "@yagejs/physics";
+
+class HealthComponent extends Component {
+  health = 100;
+}
+
+function readOverlaps(collider: ColliderComponent) {
+  const overlapping = collider.getOverlapping();
+  const enemies = collider.getOverlapping({ tags: ["enemy"] });
+  const components = collider.getOverlappingComponents(HealthComponent);
+}
 ```
 
 This reports an overlap only when this collider or the overlapping one is a
@@ -393,23 +471,26 @@ unless you ask for them.
 Prefer `setVelocity` for direct control. Use `applyImpulse` or `applyForce`
 for physics-driven movement.
 
-```typescript
+```typescript yage-context="entity"
+import { Vec2 } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
+
 const rb = entity.get(RigidBodyComponent);
 
 // Direct velocity control (px/s) — best for player movement
 rb.setVelocity(new Vec2(200, 0));
-rb.setVelocityX(200);     // set X, keep Y
-rb.setVelocityY(-300);    // set Y, keep X
+rb.setVelocityX(200); // set X, keep Y
+rb.setVelocityY(-300); // set Y, keep X
 
 // Read velocity
 const vel = rb.getVelocity(); // Vec2 in px/s
 
 // Reading a single axis or the magnitude — these read numbers straight from
 // Rapier without allocating a Vec2, so prefer them on a per-frame read path.
-rb.velocityX;      // number, px/s
-rb.velocityY;      // number, px/s
-rb.speed;          // number, px/s — velocity magnitude
-rb.speedSquared;   // number — cheaper than speed when only comparing magnitudes
+rb.velocityX; // number, px/s
+rb.velocityY; // number, px/s
+rb.speed; // number, px/s — velocity magnitude
+rb.speedSquared; // number — cheaper than speed when only comparing magnitudes
 
 // Impulse (instant momentum change)
 rb.applyImpulse(new Vec2(0, -4000));
@@ -427,10 +508,13 @@ read both velocity coordinates every frame, create a `Vec2Buffer` once and
 reuse it:
 
 ```typescript
+import { type RigidBodyComponent } from "@yagejs/physics";
 import { Vec2Buffer } from "@yagejs/core";
 
-const velocity = new Vec2Buffer(); // keep between updates
-rb.getVelocityInto(velocity);      // writes x and y in pixels per second
+function readVelocity(rb: RigidBodyComponent) {
+  const velocity = new Vec2Buffer(); // keep between updates
+  rb.getVelocityInto(velocity); // writes x and y in pixels per second
+}
 ```
 
 `getVelocityInto` overwrites and returns the same buffer without constructing
@@ -458,11 +542,20 @@ component running at full speed writes a velocity the world then applies too
 slowly. Scale velocity writes by the ratio of the two rates:
 
 ```typescript
-const time = this.use(SceneTimeKey);
+import { type SceneTime, type Entity, type Vec2 } from "@yagejs/core";
+import { type RigidBodyComponent } from "@yagejs/physics";
 
-const world = time.effectiveScale;
-const factor = world > 0 ? time.effectiveScaleForUpdates(entity) / world : 1;
-rb.setVelocity(dir.scale(speed * factor));
+function compensateVelocity(
+  time: SceneTime,
+  entity: Entity,
+  rb: RigidBodyComponent,
+  dir: Vec2,
+  speed: number,
+) {
+  const world = time.effectiveScale;
+  const factor = world > 0 ? time.effectiveScaleForUpdates(entity) / world : 1;
+  rb.setVelocity(dir.scale(speed * factor));
+}
 ```
 
 The factor is `1` while the scene is frozen — nothing integrates then, so
@@ -474,8 +567,12 @@ Use `setPosition` to teleport a body of any type without interpolation
 artifacts — no in-between poses are ever drawn:
 
 ```typescript
-rb.setPosition(400, 300);   // pixels
-rb.setRotation(Math.PI / 2); // radians
+import { type RigidBodyComponent } from "@yagejs/physics";
+
+function configureBody(rb: RigidBodyComponent) {
+  rb.setPosition(400, 300); // pixels
+  rb.setRotation(Math.PI / 2); // radians
+}
 ```
 
 On a kinematic body, `rb.setPosition` and `transform.setPosition` do
@@ -499,7 +596,9 @@ refreshes, and it trails the simulation by at most one physics step. Use it for
 anything visual — camera follow, a health bar pinned above a character, a dust
 puff spawned at a body:
 
-```typescript
+```typescript yage-context="entity"
+import { Transform } from "@yagejs/core";
+
 const drawn = entity.get(Transform).worldPosition; // smooth, what the player sees
 ```
 
@@ -508,21 +607,29 @@ step. Use it when a number has to match the simulation exactly — a distance
 threshold, snapping to a grid, writing a checkpoint:
 
 ```typescript
-rb.position;    // Vec2, pixels
-rb.positionX;   // number, pixels — skips the Vec2 allocation
-rb.positionY;   // number, pixels
-rb.rotation;    // number, radians
+import { type RigidBodyComponent } from "@yagejs/physics";
+
+function configureBody(rb: RigidBodyComponent) {
+  rb.position; // Vec2, pixels
+  rb.positionX; // number, pixels — skips the Vec2 allocation
+  rb.positionY; // number, pixels
+  rb.rotation; // number, radians
+}
 ```
 
 Both positions can also be read into buffers you keep between updates:
 
 ```typescript
+import { type RigidBodyComponent } from "@yagejs/physics";
+import { Transform, type Entity } from "@yagejs/core";
 import { Vec2Buffer } from "@yagejs/core";
 
-const simulated = new Vec2Buffer();
-const drawn = new Vec2Buffer();
-rb.getPositionInto(simulated);
-entity.get(Transform).getWorldPositionInto(drawn);
+function readPositions(rb: RigidBodyComponent, entity: Entity) {
+  const simulated = new Vec2Buffer();
+  const drawn = new Vec2Buffer();
+  rb.getPositionInto(simulated);
+  entity.get(Transform).getWorldPositionInto(drawn);
+}
 ```
 
 Each method overwrites and returns its buffer in world pixels without
@@ -555,10 +662,14 @@ game repositioning a pooled member, and the body teleports there when the
 entity is enabled again. It works the same for dynamic and kinematic bodies:
 
 ```typescript
-bullet.setActive(false);
-// ...later, before putting it back in play
-bullet.get(Transform).setPosition(x, y);
-bullet.setActive(true);   // the body is at (x, y), not where it slept
+import { Transform, type Entity } from "@yagejs/core";
+
+function reuseBullet(bullet: Entity, x: number, y: number) {
+  bullet.setActive(false);
+  // ...later, before putting it back in play
+  bullet.get(Transform).setPosition(x, y);
+  bullet.setActive(true); // the body is at (x, y), not where it slept
+}
 ```
 
 A static body never reads its `Transform` at all; `rb.setPosition` moves both.
@@ -569,21 +680,28 @@ Cast a ray to find the first entity hit. Sensor colliders are skipped, so a ray
 reports surfaces rather than trigger zones — pass `sensors: "include"` to see
 both, or `"only"` for the trigger zones alone:
 
-```typescript
+```typescript yage-context="component"
+import { Transform } from "@yagejs/core";
+import { PhysicsWorldKey, CollisionLayers } from "@yagejs/physics";
+
+const layers = new CollisionLayers();
+const LAYER_PLAYER = layers.define("player");
+const LAYER_WALL = layers.define("wall");
+const origin = this.sibling(Transform).worldPosition;
 const world = this.use(PhysicsWorldKey);
 
 const hit = world.raycast(
-  origin,                  // Vec2Like — start position in pixels
-  { x: 0, y: 1 },         // direction — any non-zero vector (normalized internally)
-  100,                     // max distance in pixels
+  origin, // Vec2Like — start position in pixels
+  { x: 0, y: 1 }, // direction — any non-zero vector (normalized internally)
+  100, // max distance in pixels
   { filterGroups: CollisionLayers.interactionGroups(LAYER_PLAYER, LAYER_WALL) },
 );
 
 if (hit) {
-  console.log(hit.entity);    // Entity that was hit
-  console.log(hit.point);     // Vec2 — hit position in pixels
-  console.log(hit.normal);    // Vec2 — surface normal
-  console.log(hit.distance);  // number — distance in pixels
+  console.log(hit.entity); // Entity that was hit
+  console.log(hit.point); // Vec2 — hit position in pixels
+  console.log(hit.normal); // Vec2 — surface normal
+  console.log(hit.distance); // number — distance in pixels
 }
 ```
 
@@ -592,11 +710,23 @@ underfoot is not ground, and the default sensor mode keeps it out of the
 answer:
 
 ```typescript
-const grounded = world.raycast(
-  this.transform.worldPosition,
-  { x: 0, y: 1 },
-  playerHeight / 2 + 2,
-) !== null;
+import { type PhysicsWorld } from "@yagejs/physics";
+import { type Transform } from "@yagejs/core";
+
+function isGrounded(
+  world: PhysicsWorld,
+  transform: Transform,
+  playerHeight: number,
+) {
+  const grounded =
+    world.raycast(
+      transform.worldPosition,
+      { x: 0, y: 1 },
+      playerHeight / 2 + 2,
+      { excludeEntity: transform.entity },
+    ) !== null;
+  return grounded;
+}
 ```
 
 Every world query reports live colliders at their current pose, including ones
@@ -612,19 +742,24 @@ between rays. `castShape` sweeps a whole shape along a direction and reports
 the first thing it would hit:
 
 ```typescript
-const hit = world.castShape(
-  { type: "box", width: 24, height: 40 },  // the shape to sweep
-  this.transform.worldPosition,            // where it starts, in pixels
-  { x: 0, y: 1 },                          // direction — any non-zero vector
-  120,                                     // how far to sweep, in pixels
-  { excludeEntity: this.entity },          // skip the mover's own colliders
-);
+import { type PhysicsWorld } from "@yagejs/physics";
+import { Transform, type Entity } from "@yagejs/core";
 
-if (hit) {
-  hit.entity;    // Entity that was hit
-  hit.distance;  // how far the shape travelled before contact, in pixels
-  hit.point;     // Vec2 — world contact point
-  hit.normal;    // Vec2 — surface normal on the entity that was hit
+function sweepBody(world: PhysicsWorld, entity: Entity) {
+  const hit = world.castShape(
+    { type: "box", width: 24, height: 40 }, // the shape to sweep
+    entity.get(Transform).worldPosition, // where it starts, in pixels
+    { x: 0, y: 1 }, // direction — any non-zero vector
+    120, // how far to sweep, in pixels
+    { excludeEntity: entity }, // skip the mover's own colliders
+  );
+
+  if (hit) {
+    hit.entity; // Entity that was hit
+    hit.distance; // how far the shape travelled before contact, in pixels
+    hit.point; // Vec2 — world contact point
+    hit.normal; // Vec2 — surface normal on the entity that was hit
+  }
 }
 ```
 
@@ -637,22 +772,34 @@ Use this to test a move before committing to it. A fast-falling player can land
 on the floor it would otherwise pass through in one frame:
 
 ```typescript
-const travel = this.rb.velocityY * dt;
-if (travel > 0) {                              // only while falling
-  const pos = this.transform.worldPosition;
-  const ground = world.castShape(
-    this.footShape,
-    pos,
-    { x: 0, y: 1 },
-    travel,
-    { excludeEntity: this.entity },
-  );
+import {
+  RigidBodyComponent,
+  type PhysicsWorld,
+  type ColliderShape,
+} from "@yagejs/physics";
+import { Transform, type Entity } from "@yagejs/core";
 
-  if (ground) {
-    // setPosition on the body, not the Transform: physics writes the
-    // Transform back every step for dynamic bodies.
-    this.rb.setPosition(pos.x, pos.y + ground.distance);
-    this.rb.setVelocityY(0);
+function stopAtGround(
+  world: PhysicsWorld,
+  entity: Entity,
+  footShape: ColliderShape,
+  dt: number,
+) {
+  const rb = entity.get(RigidBodyComponent);
+  const travel = rb.velocityY * dt;
+  if (travel > 0) {
+    // only while falling
+    const pos = entity.get(Transform).worldPosition;
+    const ground = world.castShape(footShape, pos, { x: 0, y: 1 }, travel, {
+      excludeEntity: entity,
+    });
+
+    if (ground) {
+      // setPosition on the body, not the Transform: physics writes the
+      // Transform back every step for dynamic bodies.
+      rb.setPosition(pos.x, pos.y + ground.distance);
+      rb.setVelocityY(0);
+    }
   }
 }
 ```
@@ -664,21 +811,27 @@ stands. It misses anything the shape would pass through on the way.
 
 Change gravity at runtime via the `PhysicsWorld`:
 
-```typescript
+```typescript yage-context="component"
+import { PhysicsWorldKey } from "@yagejs/physics";
+
 const world = this.use(PhysicsWorldKey);
 
-world.setGravity(0, -980);  // flip gravity upward
-world.setGravity(0, 0);     // zero gravity
+world.setGravity(0, -980); // flip gravity upward
+world.setGravity(0, 0); // zero gravity
 ```
 
 A single body can fall differently from everything else, and can change how it
 falls at any time:
 
 ```typescript
-rb.setGravityScale(0);     // floats — no gravity on this body
-rb.setGravityScale(2.5);   // falls two and a half times as fast
-rb.setGravityScale(1);     // back to scene gravity
-rb.gravityScale;           // read the current multiplier
+import { type RigidBodyComponent } from "@yagejs/physics";
+
+function configureBody(rb: RigidBodyComponent) {
+  rb.setGravityScale(0); // floats — no gravity on this body
+  rb.setGravityScale(2.5); // falls two and a half times as fast
+  rb.setGravityScale(1); // back to scene gravity
+  rb.gravityScale; // read the current multiplier
+}
 ```
 
 This is how platformers get variable jump height and a fast-fall. Hold the jump
@@ -687,13 +840,23 @@ a heavier multiplier pulls them back down — all without touching gravity for
 any other body:
 
 ```typescript
-override update(): void {
-  const rising = this.rb.velocityY < 0;
-  const holdingJump = this.input.isPressed("jump");
+import { Component } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
+import { InputManagerKey } from "@yagejs/input";
 
-  if (rising && holdingJump) this.rb.setGravityScale(0.6);   // floaty ascent
-  else if (rising) this.rb.setGravityScale(2.0);             // cut the jump short
-  else this.rb.setGravityScale(1.6);                         // snappy fall
+class JumpGravity extends Component {
+  private readonly rb = this.sibling(RigidBodyComponent);
+  private readonly input = this.service(InputManagerKey);
+  override update(): void {
+    const rising = this.rb.velocityY < 0;
+    const holdingJump = this.input.isPressed("jump");
+
+    if (rising && holdingJump)
+      this.rb.setGravityScale(0.6); // floaty ascent
+    else if (rising)
+      this.rb.setGravityScale(2.0); // cut the jump short
+    else this.rb.setGravityScale(1.6); // snappy fall
+  }
 }
 ```
 
@@ -705,10 +868,14 @@ created.
 Change damping or lock axes at runtime:
 
 ```typescript
-rb.setLinearDamping(6);                    // slow linear velocity
-rb.setAngularDamping(2);                   // slow rotation
-rb.setEnabledTranslations(true, false);  // lock Y axis
-rb.lockRotations(true);                   // lock rotation
+import { type RigidBodyComponent } from "@yagejs/physics";
+
+function configureBody(rb: RigidBodyComponent) {
+  rb.setLinearDamping(6); // slow linear velocity
+  rb.setAngularDamping(2); // slow rotation
+  rb.setEnabledTranslations(true, false); // lock Y axis
+  rb.lockRotations(true); // lock rotation
+}
 ```
 
 Damping must be finite and at least `0`. A locked axis ignores forces,
@@ -716,11 +883,13 @@ impulses, and contacts; a velocity written with `setVelocity` still moves the
 body along it. These calls, like `setGravityScale` and `setType`, work before
 `entity.add()` — the values apply when the body is created:
 
-```typescript
+```typescript yage-context="entity"
+import { RigidBodyComponent } from "@yagejs/physics";
+
 const rb = new RigidBodyComponent({ type: "dynamic" });
 rb.setLinearDamping(6);
 rb.lockRotations(true);
-entity.add(rb);   // the body is created with damping and rotation locked
+entity.add(rb); // the body is created with damping and rotation locked
 ```
 
 The damping setters also work while the entity is inactive. They update the
@@ -731,8 +900,12 @@ dormant body without enabling or waking it.
 Change bounciness and friction without replacing the collider:
 
 ```typescript
-collider.setRestitution(0.8);
-collider.setFriction(0.1);
+import { type ColliderComponent } from "@yagejs/physics";
+
+function configureCollider(collider: ColliderComponent) {
+  collider.setRestitution(0.8);
+  collider.setFriction(0.1);
+}
 ```
 
 Both values must be finite and at least `0`. Restitution above `1` is valid.
@@ -748,11 +921,15 @@ attachment to the body, and every collision or trigger handler you registered
 all survive the swap:
 
 ```typescript
-collider.setShape(
-  { type: "box", width: 24, height: 24 },
-  { offset: { x: 0, y: -12 } },
-); // crouch while the body origin stays at the feet
-collider.setShape(newHeadShape, { index: 1 }); // compound part 1
+import { type ColliderComponent, type ColliderShape } from "@yagejs/physics";
+
+function resizeBody(collider: ColliderComponent, newHeadShape: ColliderShape) {
+  collider.setShape(
+    { type: "box", width: 24, height: 24 },
+    { offset: { x: 0, y: -12 } },
+  ); // crouch while the body origin stays at the feet
+  collider.setShape(newHeadShape, { index: 1 }); // compound part 1
+}
 ```
 
 A shape with a dimension that is not finite and above 0 throws before anything
@@ -773,7 +950,11 @@ change does mean more or less matter — an object that grows, or one that loses
 a chunk — ask for the mass back from density and the new shape:
 
 ```typescript
-collider.setShape({ type: "circle", radius: 48 }, { recomputeMass: true });
+import { type ColliderComponent } from "@yagejs/physics";
+
+function configureCollider(collider: ColliderComponent) {
+  collider.setShape({ type: "circle", radius: 48 }, { recomputeMass: true });
+}
 ```
 
 Changing a shape or offset can leave the collider overlapping other geometry.
@@ -784,7 +965,16 @@ A feet-origin body can crouch and stand without moving the body. Keep each box's
 bottom at the origin by setting its offset to negative half its height. Before
 standing, query the headroom between the crouched and standing top edges:
 
-```typescript
+```typescript yage-context="component"
+import {
+  PhysicsWorldKey,
+  RigidBodyComponent,
+  ColliderComponent,
+} from "@yagejs/physics";
+
+const world = this.use(PhysicsWorldKey);
+const rb = this.sibling(RigidBodyComponent);
+const collider = this.sibling(ColliderComponent);
 const STAND_WIDTH = 24;
 const CROUCH_HEIGHT = 24;
 const STAND_HEIGHT = 48;
@@ -800,16 +990,17 @@ const clearance = {
   width: STAND_WIDTH,
   height: clearanceHeight,
 } as const;
-const feet = this.rb.position;
+const feet = rb.position;
 
-const blocked = world.queryShape(
-  clearance,
-  {
-    x: feet.x,
-    y: feet.y - (STAND_HEIGHT + CROUCH_HEIGHT) / 2,
-  },
-  { excludeEntity: this.entity },
-).length > 0;
+const blocked =
+  world.queryShape(
+    clearance,
+    {
+      x: feet.x,
+      y: feet.y - (STAND_HEIGHT + CROUCH_HEIGHT) / 2,
+    },
+    { excludeEntity: this.entity },
+  ).length > 0;
 
 if (!blocked) {
   collider.setShape(standing, {
@@ -831,11 +1022,15 @@ sensor colliders, so a pickup's trigger zone overhead does not.
 A `oneWay` collider is solid from one side and passable from every other: the
 player lands on the platform from above, and jumps up through it from below.
 
-```typescript
-platform.add(new ColliderComponent({
-  shape: { type: "box", width: 96, height: 8 },
-  oneWay: {},
-}));
+```typescript yage-context="entity"
+import { ColliderComponent } from "@yagejs/physics";
+
+entity.add(
+  new ColliderComponent({
+    shape: { type: "box", width: 96, height: 8 },
+    oneWay: {},
+  }),
+);
 ```
 
 With no options, the solid face points up (`{ x: 0, y: -1 }`). Bodies falling
@@ -851,17 +1046,21 @@ deep (in pixels) a body may already overlap the face and still count as
 landing; it must be finite:
 
 ```typescript
-oneWay: {
-  direction: { x: 0, y: -1 },  // default: solid face up
-  margin: 4,                   // default
-}
+import { type OneWayConfig } from "@yagejs/physics";
+
+const oneWay: OneWayConfig = {
+  direction: { x: 0, y: -1 }, // default: solid face up
+  margin: 4, // default
+};
 ```
 
 For the down-jump — the player presses down and falls through the platform they
 are standing on — give the rider's collider a drop-through window:
 
-```typescript
-player.get(ColliderComponent).dropThrough(0.2);  // seconds of simulated time
+```typescript yage-context="entity"
+import { ColliderComponent } from "@yagejs/physics";
+
+entity.get(ColliderComponent).dropThrough(0.2); // seconds of simulated time
 ```
 
 The window is per body: every one-way platform lets this body pass while it is
@@ -887,11 +1086,13 @@ filter, which decides for each candidate pair of colliders, every physics
 step, whether that pair is solid. Return `true` to collide normally, `false`
 to let the two bodies pass through each other for that step:
 
-```typescript
+```typescript yage-context="entity"
+import { ColliderComponent } from "@yagejs/physics";
+
 // A wall that only blocks entities tagged "enemy".
-wall.get(ColliderComponent).setContactFilter((contact) =>
-  contact.other.tags.has("enemy"),
-);
+entity
+  .get(ColliderComponent)
+  .setContactFilter((contact) => contact.other.tags.has("enemy"));
 ```
 
 The filter runs inside the physics step, before any contact exists, so there
@@ -929,11 +1130,15 @@ Clear a filter with `setContactFilter(null)`.
 
 Enable CCD on fast-moving bodies to prevent tunneling through thin colliders:
 
-```typescript
-entity.add(new RigidBodyComponent({
-  type: "dynamic",
-  ccd: true,
-}));
+```typescript yage-context="entity"
+import { RigidBodyComponent } from "@yagejs/physics";
+
+entity.add(
+  new RigidBodyComponent({
+    type: "dynamic",
+    ccd: true,
+  }),
+);
 ```
 
 CCD adds a small performance cost — only enable it for bullets, fast projectiles,
@@ -944,7 +1149,7 @@ or small objects that move at high speed.
 Access the active scene's physics world from any component via the
 scene-scoped `PhysicsWorldKey`:
 
-```typescript
+```typescript yage-context="component"
 import { PhysicsWorldKey } from "@yagejs/physics";
 
 const world = this.use(PhysicsWorldKey);
@@ -961,22 +1166,31 @@ use pixels. A rope limits the distance between two bodies; a spring pulls them
 toward its `restLength` and also resists relative motion.
 
 ```typescript
-const world = this.use(PhysicsWorldKey);
+import { type PhysicsWorld, type RigidBodyComponent } from "@yagejs/physics";
+import { type InputManager } from "@yagejs/input";
 
-const tether = world.addJoint(playerBody, anchorBody, {
-  type: "rope",
-  length: 140,
-});
+function connectBodies(
+  world: PhysicsWorld,
+  playerBody: RigidBodyComponent,
+  anchorBody: RigidBodyComponent,
+  companionBody: RigidBodyComponent,
+  input: InputManager,
+) {
+  const tether = world.addJoint(playerBody, anchorBody, {
+    type: "rope",
+    length: 140,
+  });
 
-// A static anchor makes a simple swing. Release the rope when the player lets go.
-if (input.isJustPressed("release")) tether.remove();
+  // A static anchor makes a simple swing. Release the rope when the player lets go.
+  if (input.isJustPressed("release")) tether.remove();
 
-world.addJoint(playerBody, companionBody, {
-  type: "spring",
-  restLength: 80,
-  stiffness: 40,
-  damping: 4,
-});
+  world.addJoint(playerBody, companionBody, {
+    type: "spring",
+    restLength: 80,
+    stiffness: 40,
+    damping: 4,
+  });
+}
 ```
 
 `addJoint` returns a handle with an `attached` flag and a `remove()` method

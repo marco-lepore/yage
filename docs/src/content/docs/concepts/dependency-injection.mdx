@@ -18,8 +18,12 @@ import { EngineContext, ServiceKey } from "@yagejs/core";
 Every service is identified by a `ServiceKey<T>`. The type parameter ensures
 that `resolve()` returns the correct type without casts:
 
-```typescript
+```typescript yage-group="mixer" yage-context="context"
 import { ServiceKey } from "@yagejs/core";
+
+class AudioMixer {
+  readonly output = new AudioContext();
+}
 
 // Define a key with a descriptive label
 const AudioMixerKey = new ServiceKey<AudioMixer>("AudioMixer");
@@ -35,7 +39,9 @@ the key.
 
 ## Registering and Resolving
 
-```typescript
+```typescript yage-group="mixer" yage-context="context"
+import type { EngineContext } from "@yagejs/core";
+
 // In a plugin's install():
 function install(context: EngineContext) {
   const mixer = new AudioMixer();
@@ -46,7 +52,7 @@ function install(context: EngineContext) {
 const mixer = context.resolve(AudioMixerKey);
 
 // Try resolve (returns undefined if not registered)
-const mixer = context.tryResolve(AudioMixerKey);
+const optionalMixer = context.tryResolve(AudioMixerKey);
 
 // Check existence
 if (context.has(AudioMixerKey)) {
@@ -84,7 +90,7 @@ call so repeated access is free:
 ```typescript
 import { Component } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
-import { PhysicsWorldKey } from "@yagejs/physics";
+import { PhysicsWorldKey, RigidBodyComponent } from "@yagejs/physics";
 
 class PlayerController extends Component {
   update(dt: number) {
@@ -92,7 +98,7 @@ class PlayerController extends Component {
     const physics = this.use(PhysicsWorldKey);
 
     if (input.isPressed("jump")) {
-      const body = this.sibling(RigidBody);
+      const body = this.sibling(RigidBodyComponent);
       body.setVelocityY(-600);
     }
   }
@@ -109,7 +115,13 @@ Systems receive the `EngineContext` in `onRegister`. Store references there or
 call `this.use(key)` during `update`:
 
 ```typescript
-import { System, Phase, EngineContext } from "@yagejs/core";
+import {
+  System,
+  Phase,
+  LoggerKey,
+  type EngineContext,
+  type Logger,
+} from "@yagejs/core";
 
 class DebugOverlaySystem extends System {
   readonly phase = Phase.Render;
@@ -122,8 +134,7 @@ class DebugOverlaySystem extends System {
   }
 
   update(dt: number) {
-    const stats = this.use(GameLoopKey).stats;
-    this.logger.debug(`FPS: ${stats.fps}`);
+    this.logger.debug("performance", `Frame delta: ${dt} seconds`);
   }
 }
 ```
@@ -146,12 +157,18 @@ export const InventoryKey = new ServiceKey<Inventory>("Inventory");
 export function inventoryPlugin(): Plugin {
   return {
     name: "inventory",
+    version: "1.0.0",
     install(context: EngineContext) {
-      context.register(InventoryKey, {
+      const inventory: Inventory = {
         items: [],
-        add(item) { this.items.push(item); },
-        has(item) { return this.items.includes(item); },
-      });
+        add(item) {
+          this.items.push(item);
+        },
+        has(item) {
+          return this.items.includes(item);
+        },
+      };
+      context.register(InventoryKey, inventory);
     },
   };
 }
@@ -173,6 +190,7 @@ import { Scene, ServiceKey } from "@yagejs/core";
 const LevelClockKey = new ServiceKey<{ elapsed: number }>("LevelClock");
 
 class LevelScene extends Scene {
+  readonly name = "level";
   override onEnter() {
     this.registerScoped(LevelClockKey, { elapsed: 0 });
   }
@@ -199,10 +217,11 @@ import { SceneRenderTreeKey } from "@yagejs/renderer";
 import { crt } from "@yagejs/effects";
 
 class LevelScene extends Scene {
+  readonly name = "level";
   override onEnter() {
     // Resolves this scene's render tree — registered by RendererPlugin's
     // beforeEnter hook, which ran before onEnter.
-    this.use(SceneRenderTreeKey).fx.addEffect(crt({ scanlines: true }));
+    this.use(SceneRenderTreeKey).fx.addEffect(crt({ lineContrast: 0.25 }));
   }
 }
 ```

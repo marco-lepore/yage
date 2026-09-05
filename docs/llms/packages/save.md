@@ -7,7 +7,7 @@ internals.
 
 ## Setup
 
-```ts
+```ts yage-group="stores"
 import { Engine } from "@yagejs/core";
 import { createSave, SavePlugin, localStorageAdapter } from "@yagejs/save";
 
@@ -27,7 +27,12 @@ engine.use(new SavePlugin({ save }));
 
 Save consumes any `Serializable<T>`. The reactive factories live in `@yagejs/core`:
 
-```ts
+```ts yage-group="stores"
+interface SettingsData {
+  audio: { music: number; sfx: number };
+  vsync: boolean;
+}
+
 import {
   createStore,
   createRecord,
@@ -84,6 +89,19 @@ Shape APIs (every leaf also exposes `subscribe(fn)`, `serialize()`, `hydrate(raw
 ### Migrating N leaf factories to one compound
 
 ```ts
+import { createSave, memoryAdapter } from "@yagejs/save";
+const save = createSave({ adapter: memoryAdapter() });
+import {
+  createRecord,
+  createCounter,
+  createSet,
+  createStore,
+} from "@yagejs/core";
+interface RunData {
+  chapter: number;
+  coins: number;
+}
+
 // Before — three save documents, three autoPersist calls.
 const progression = createRecord<RunData>({
   default: () => ({ chapter: 1, coins: 0 }),
@@ -107,7 +125,11 @@ save.autoPersist("run", game);
 
 All methods take `(id, thing, opts?)`. `thing` is any `Serializable<T>`; the id and optional version live at the call site.
 
-```ts
+```ts yage-group="stores"
+const a = createCounter();
+const b = createCounter();
+const profile = "player-1";
+
 // Unslotted single-document
 await save.persist("settings", settings);
 await save.restore("settings", settings);
@@ -138,6 +160,19 @@ await save.listSlots("run", { prefix: `${profile}/` });
 `version` is optional on every write/read (defaults to `1`). Migration runs on read when stored version < current:
 
 ```ts
+import { createSave, memoryAdapter } from "@yagejs/save";
+const save = createSave({ adapter: memoryAdapter() });
+import { createRecord } from "@yagejs/core";
+interface V1 {
+  coins: number;
+}
+interface V2 {
+  coins: number;
+  chapter: number;
+}
+const game = createRecord<V2>({ default: () => ({ coins: 0, chapter: 1 }) });
+const migrateV1ToV2 = (old: V1): V2 => ({ ...old, chapter: 1 });
+
 await save.restore("run", game, {
   version: 2,
   migrate: (old, fromVersion) => migrateV1ToV2(old as V1),
@@ -154,7 +189,26 @@ Errors:
 
 ## Boot pattern
 
-```ts
+```ts yage-group="boot" yage-file="persistence/stores.ts"
+import { createRecord, createSet, createMap } from "@yagejs/core";
+export const settings = createRecord<{ volume: number }>({
+  default: () => ({ volume: 0.8 }),
+});
+export const saves = createRecord<{ chapter: number }>({
+  default: () => ({ chapter: 1 }),
+});
+export const opened = createSet<string>();
+export const defeated = createMap<string, number>();
+```
+
+```ts yage-group="boot" yage-file="persistence/save.ts"
+import { createSave, localStorageAdapter } from "@yagejs/save";
+export const save = createSave({ adapter: localStorageAdapter() });
+```
+
+```ts yage-group="boot" yage-file="main.ts"
+import { Engine } from "@yagejs/core";
+import { SavePlugin } from "@yagejs/save";
 // game/main.ts
 import { settings, saves, opened, defeated } from "./persistence/stores.js";
 import { save } from "./persistence/save.js";
@@ -175,22 +229,29 @@ await engine.start();
 
 ## Continue pattern
 
-```ts
+```ts yage-group="boot" yage-file="continue.ts"
+import { save } from "./persistence/save.js";
+import { saves } from "./persistence/stores.js";
+
 const slots = await save.listSlots("saves");
-if (slots.length > 0) {
-  const latest = slots.sort((a, b) => b.savedAt - a.savedAt)[0];
+const latest = slots.sort((a, b) => b.savedAt - a.savedAt)[0];
+if (latest) {
   await save.loadSlot("saves", latest.name, saves);
 }
 ```
 
 ## Component access
 
-```ts
+```ts yage-group="boot" yage-file="checkpoint.ts"
+import { Component, defineEvent } from "@yagejs/core";
+import { saves } from "./persistence/stores.js";
+const Rested = defineEvent<void>("rested");
+
 import { SaveServiceKey } from "@yagejs/save";
 
 class CheckpointOnRest extends Component {
-  setup() {
-    this.entity.on(Rested, async () => {
+  onAdd() {
+    this.listen(this.entity, Rested, async () => {
       const save = this.use(SaveServiceKey);
       await save.saveSlot("saves", "auto", saves);
     });
@@ -205,9 +266,9 @@ Stores accept a `Codec<T, TEncoded>` for non-JSON-native value types. `TEncoded`
 ```ts
 import { jsonCodec, setCodec, mapCodec, dateCodec } from "@yagejs/core";
 
-jsonCodec<T>(); // Codec<T, T>            — identity (default)
-setCodec<K>(); // Codec<Set<K>, K[]>
-mapCodec<K, V>(); // Codec<Map<K,V>, [K,V][]>
+jsonCodec<{ volume: number }>(); // Codec<T, T>            — identity (default)
+setCodec<string>(); // Codec<Set<K>, K[]>
+mapCodec<string, number>(); // Codec<Map<K,V>, [K,V][]>
 dateCodec(); // Codec<Date, string>    — ISO string
 ```
 
@@ -218,8 +279,8 @@ dateCodec(); // Codec<Date, string>    — ISO string
 ```ts
 import { localStorageAdapter, memoryAdapter } from "@yagejs/save";
 
-localStorageAdapter({ namespace?: string })  // browser; namespaces every key
-memoryAdapter()                              // in-memory; tests + Node
+localStorageAdapter({ namespace: "game" }); // browser; namespaces every key
+memoryAdapter(); // in-memory; tests + Node
 ```
 
 `SaveAdapter` interface:
@@ -253,15 +314,28 @@ saves/m                    ← slot manifest (savedAt + metadata)
 `version` + `migrate` live on the read call (`restore` / `loadSlot` / `autoPersist`), not on the primitive. Per-leaf migration is not supported.
 
 ```ts
+import { createSave, memoryAdapter } from "@yagejs/save";
+const save = createSave({ adapter: memoryAdapter() });
+import { createRecord, createStore } from "@yagejs/core";
+interface RunData {
+  inventory: string[];
+  position: { x: number; y: number };
+}
+function initialRun(): RunData {
+  return { inventory: [], position: { x: 0, y: 0 } };
+}
+
 // Single record:
 const saves = createRecord<RunData>({ default: () => initialRun() });
 await save.restore("saves", saves, {
   version: 3,
   migrate: (old, fromVersion) => {
-    let v = old as Record<string, unknown>;
-    if (fromVersion < 2) v = { ...v, inventory: [] };
-    if (fromVersion < 3) v = { ...v, position: v.startPos ?? { x: 0, y: 0 } };
-    return v as RunData;
+    if (fromVersion < 2) {
+      const v1 = old as { startPos: RunData["position"] };
+      return { inventory: [], position: v1.startPos };
+    }
+    const v2 = old as { inventory: string[]; startPos: RunData["position"] };
+    return { inventory: v2.inventory, position: v2.startPos };
   },
 });
 
@@ -284,7 +358,7 @@ A stored version newer than the read's `version` throws `StoreVersionTooNewError
 
 ## Test setup
 
-```ts
+```ts yage-context="vitest"
 import { createSave, memoryAdapter } from "@yagejs/save";
 import { createRecord } from "@yagejs/core";
 

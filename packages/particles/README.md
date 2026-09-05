@@ -12,7 +12,11 @@ npm install @yagejs/particles
 
 ```ts
 import { Engine } from "@yagejs/core";
-import { ParticlesPlugin, ParticleEmitterComponent, ParticlePresets } from "@yagejs/particles";
+import {
+  ParticlesPlugin,
+  ParticleEmitterComponent,
+  ParticlePresets,
+} from "@yagejs/particles";
 
 const engine = new Engine();
 engine.use(new ParticlesPlugin());
@@ -20,12 +24,16 @@ engine.use(new ParticlesPlugin());
 
 Attach an emitter to an entity:
 
-```ts
-entity.add(new ParticleEmitterComponent({
-  ...ParticlePresets.fire(),
-  rate: 60,
-  lifetime: [0.3, 0.6],
-}));
+```ts yage-context="entity"
+import { ParticleEmitterComponent, ParticlePresets } from "@yagejs/particles";
+
+entity.add(
+  new ParticleEmitterComponent({
+    ...ParticlePresets.fire(),
+    rate: 60,
+    lifetime: [0.3, 0.6],
+  }),
+);
 ```
 
 ## What's in the box

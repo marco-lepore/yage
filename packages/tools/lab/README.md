@@ -79,19 +79,39 @@ with nothing to configure. A file can export several named scenarios that share
 its helpers, and they nest under the file:
 
 ```ts
+import { defineScenario } from "@yagejs-tools/lab";
+import type { Scene } from "@yagejs/core";
+import { GraphicsComponent } from "@yagejs/renderer";
+
+function arena(scene: Scene) {
+  scene.spawn("floor").add(
+    new GraphicsComponent().draw((g) => {
+      g.rect(0, 400, 800, 40).fill({ color: 0x334155 });
+    }),
+  );
+}
+
 // src/entities/slime.scenario.ts  →  entities › slime › { idle, chase }
-export const idle = defineScenario({ setup(scene) { arena(scene); /* ... */ } });
-export const chase = defineScenario({ setup(scene) { arena(scene); /* ... */ } });
+export const idle = defineScenario({
+  setup(scene) {
+    arena(scene); /* ... */
+  },
+});
+export const chase = defineScenario({
+  setup(scene) {
+    arena(scene); /* ... */
+  },
+});
 ```
 
 ## Commands
 
-| Command | What it does |
-| --- | --- |
-| `yage-lab init` | Write `lab/harness.ts`, prefilled from your dependencies |
-| `yage-lab [dev]` | Start the scenario browser (port 5210) |
-| `yage-lab build` | Build it as a static site |
-| `yage-lab test` | Run every scenario headless, exiting non-zero if one failed |
+| Command          | What it does                                                |
+| ---------------- | ----------------------------------------------------------- |
+| `yage-lab init`  | Write `lab/harness.ts`, prefilled from your dependencies    |
+| `yage-lab [dev]` | Start the scenario browser (port 5210)                      |
+| `yage-lab build` | Build it as a static site                                   |
+| `yage-lab test`  | Run every scenario headless, exiting non-zero if one failed |
 
 Every command loads your own `vite.config.ts` and merges the lab into it, so
 scenarios run under the same plugins and transforms your game uses.
@@ -103,16 +123,27 @@ come from the run, so it advances an exact number of them rather than depending
 on wall-clock timing:
 
 ```ts
-async drive({ scene, input, step, expect }) {
-  const ball = scene.findByKey("ball-0");
-  if (!ball) throw new Error("the scenario spawned no ball-0");
-  const transform = ball.get(Transform);
-  const startY = transform.position.y;
+import { defineScenario } from "@yagejs-tools/lab";
+import { Transform, Vec2 } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
 
-  await step(120);
+export default defineScenario({
+  setup(scene) {
+    const ball = scene.spawn("ball", { key: "ball-0" });
+    ball.add(new Transform({ position: new Vec2(100, 60) }));
+    ball.add(new RigidBodyComponent({ type: "dynamic" }));
+  },
+  async drive({ scene, input, step, expect }) {
+    const ball = scene.findByKey("ball-0");
+    if (!ball) throw new Error("the scenario spawned no ball-0");
+    const transform = ball.get(Transform);
+    const startY = transform.position.y;
 
-  expect(transform.position.y).toBeGreaterThan(startY);
-}
+    await step(120);
+
+    expect(transform.position.y).toBeGreaterThan(startY);
+  },
+});
 ```
 
 The panel grows a Run button for it, and `yage-lab test` runs every one:

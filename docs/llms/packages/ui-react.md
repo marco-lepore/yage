@@ -4,7 +4,7 @@ Depends on `@yagejs/ui`, `react`. React reconciler over the UI system.
 
 ## Setup
 
-```ts
+```ts yage-context="engine"
 import { UIPlugin } from "@yagejs/ui";
 import { UIReactPlugin } from "@yagejs/ui-react";
 
@@ -16,15 +16,20 @@ engine.use(new UIReactPlugin());
 
 ## UIRoot
 
-```ts
+```tsx yage-context="entity"
+import { Text } from "@yagejs/ui-react";
+function MyComponent() {
+  return <Text>Score: 0</Text>;
+}
+
 import { UIRoot } from "@yagejs/ui-react";
 import { Anchor } from "@yagejs/ui";
 
 const root = new UIRoot({
   anchor: Anchor.Center,
   offset: { x: 0, y: 0 },
-  layer: "ui",                   // optional; defaults to auto-provisioned "ui" (screen-space)
-  positioning: "anchor",          // "anchor" (default) | "transform"
+  layer: "ui", // optional; defaults to auto-provisioned "ui" (screen-space)
+  positioning: "anchor", // "anchor" (default) | "transform"
 });
 entity.add(root);
 root.render(<MyComponent />);
@@ -40,6 +45,9 @@ For entity-anchored React UI (nameplates, health bars), pair `positioning: "tran
 ## JSX Components
 
 ```tsx
+import { texture } from "@yagejs/renderer";
+const iconTex = texture("assets/save.png");
+
 import {
   Panel,
   ZStack,
@@ -97,6 +105,12 @@ Removing an element destroys it: a child removed from a container, or the whole 
 `<ScrollView>` is the scroll primitive for any list that can outgrow its container — inventories, quest logs, chat, order panels, leaderboards. A plain `<Panel>` clips overflow silently. `<ScrollView>` adds wheel + drag scrolling and is a true Yoga container: children are normal elements, not handed to a foreign widget. It also **preserves scroll position across re-renders** — fulfilling/refilling a store-driven list does not jump the scroll.
 
 ```tsx
+interface OrdersProps {
+  orders: Array<{ id: string; label: string }>;
+  fulfill(id: string): void;
+  endDay(): void;
+}
+
 import { ScrollView, Panel, Button, Text } from "@yagejs/ui-react";
 
 function OrdersPanel({ orders, fulfill, endDay }: OrdersProps) {
@@ -143,6 +157,8 @@ SwiftUI convention (`VStack` / `HStack` / `ZStack`). For column / row
 stacking use `<Panel direction="column" | "row">`.
 
 ```tsx
+import { ZStack, Panel, Text } from "@yagejs/ui-react";
+
 <ZStack>
   <Panel
     position="absolute"
@@ -153,7 +169,7 @@ stacking use `<Panel direction="column" | "row">`.
   <Panel position="absolute" top={16} right={16} padding={4}>
     <Text>Score: 42</Text>
   </Panel>
-</ZStack>
+</ZStack>;
 ```
 
 ### Absolute positioning
@@ -162,9 +178,11 @@ stacking use `<Panel direction="column" | "row">`.
 `right`, `bottom`:
 
 ```tsx
+import { Panel } from "@yagejs/ui-react";
+
 <Panel position="relative" width={400} height={300}>
   <Panel position="absolute" left={10} top={20} width={50} height={30} />
-</Panel>
+</Panel>;
 ```
 
 `position` defaults to `"relative"`. Set `"absolute"` to lift the element out
@@ -194,8 +212,30 @@ listeners). Three independent, combinable props:
   `false` on leave. Ideal for "show while hovered" toggles.
 
 ```tsx
-<Button onClick={save} onHover={setGlow}>Save</Button>
-<Panel onPointerOver={preview} onPointerOut={clearPreview}>…</Panel>
+import { Button, Panel } from "@yagejs/ui-react";
+
+function HoverControls({
+  save,
+  setGlow,
+  preview,
+  clearPreview,
+}: {
+  save(): void;
+  setGlow(hovering: boolean): void;
+  preview(): void;
+  clearPreview(): void;
+}) {
+  return (
+    <>
+      <Button onClick={save} onHover={setGlow}>
+        Save
+      </Button>
+      <Panel onPointerOver={preview} onPointerOut={clearPreview}>
+        …
+      </Panel>
+    </>
+  );
+}
 ```
 
 Callbacks are suppressed on a disabled `<Button>`.
@@ -214,13 +254,41 @@ camera-transformed triggers. Without a `<UIRoot>` overlay it falls back to
 an in-tree absolute bubble (no collision handling).
 
 ```tsx
-<Tooltip content="Save your game" placement="top" bg={{ color: 0x1f2430, radius: 6 }} padding={8}>
-  <Button onClick={save}>Save</Button>
-</Tooltip>
+import { Tooltip, Button, Panel, Text, Image } from "@yagejs/ui-react";
+import type { TextureInput } from "@yagejs/renderer";
 
-<Tooltip content={<Panel gap={2}><Text>+5 ATK</Text><Text>Rare</Text></Panel>} placement="right">
-  <Image texture={swordIcon} />
-</Tooltip>
+function SaveTooltips({
+  save,
+  swordIcon,
+}: {
+  save(): void;
+  swordIcon: TextureInput;
+}) {
+  return (
+    <>
+      <Tooltip
+        content="Save your game"
+        placement="top"
+        bg={{ color: 0x1f2430, radius: 6 }}
+        padding={8}
+      >
+        <Button onClick={save}>Save</Button>
+      </Tooltip>
+
+      <Tooltip
+        content={
+          <Panel gap={2}>
+            <Text>+5 ATK</Text>
+            <Text>Rare</Text>
+          </Panel>
+        }
+        placement="right"
+      >
+        <Image texture={swordIcon} />
+      </Tooltip>
+    </>
+  );
+}
 ```
 
 Props: `content` (string/number → auto `<Text>`; nodes for rich content),
@@ -250,6 +318,28 @@ without React) and re-anchored each frame by `@yagejs/ui`'s
 
 ```ts
 import {
+  Component,
+  createRecord,
+  createCounter,
+  createMap,
+  createSet,
+  createList,
+  createValue,
+  createStore,
+} from "@yagejs/core";
+
+const record = createRecord({ default: () => ({ hp: 100 }) });
+const counter = createCounter();
+const map = createMap<string, number>();
+const set = createSet<string>();
+const list = createList<string>();
+const value = createValue({ default: 1 });
+const compound = createStore((s) => ({ gold: s.counter() }));
+const source = record;
+const select = (state: typeof record) => state.get().hp;
+class EnemyTag extends Component {}
+
+import {
   useEngine,
   useScene,
   useStore,
@@ -257,25 +347,27 @@ import {
   useSceneSelector,
 } from "@yagejs/ui-react";
 
-// Engine/scene context
-const engine = useEngine();
-const scene = useScene();
+function useGameState() {
+  // Engine/scene context
+  const engine = useEngine();
+  const scene = useScene();
 
-// Reactive source — one overload per Reactive* shape, plus a selector escape hatch.
-useStore(record); // ReactiveRecord<T>      → Readonly<T>
-useStore(counter); // ReactiveCounter        → number
-useStore(map); // ReactiveMap<K, V>      → Array<[K, V]>
-useStore(set); // ReactiveSet<K>         → K[]
-useStore(list); // ReactiveList<T>        → T[]
-useStore(value); // ReactiveValue<T>       → T
-useStore(compound); // ReactiveStore<L>       → encoded snapshot
-useStore(source, select); // selector receives the source itself, not a snapshot
+  // Reactive source — one overload per Reactive* shape, plus a selector escape hatch.
+  useStore(record); // ReactiveRecord<T>      → Readonly<T>
+  useStore(counter); // ReactiveCounter        → number
+  useStore(map); // ReactiveMap<K, V>      → Array<[K, V]>
+  useStore(set); // ReactiveSet<K>         → K[]
+  useStore(list); // ReactiveList<T>        → T[]
+  useStore(value); // ReactiveValue<T>       → T
+  useStore(compound); // ReactiveStore<L>       → encoded snapshot
+  useStore(source, select); // selector receives the source itself, not a snapshot
 
-// ECS query (polled each frame)
-const count = useQuery([EnemyTag], (result) => result.size);
+  // ECS query (polled each frame)
+  const count = useQuery([EnemyTag], (result) => result.size);
 
-// Scene selector (polled each frame)
-const entityCount = useSceneSelector((scene) => scene.getEntities().length);
+  // Scene selector (polled each frame)
+  const entityCount = useSceneSelector((scene) => scene.getEntities().size);
+}
 ```
 
 `useStore(compound)` is supported — it returns the encoded snapshot of the whole tree. Reading individual leaves keeps subscription granularity per-leaf. Dispatch is symbol-driven (each shape carries a `[STATE_KIND]` brand from `@yagejs/core`).
@@ -283,10 +375,22 @@ const entityCount = useSceneSelector((scene) => scene.getEntities().length);
 `useQuery` registers its `QueryCache` query in an effect on mount and releases it when the component unmounts (`QueryCache.unregister`), so a query does not keep matching new entities after the component is gone. Passing an inline array literal as `filter` (`useQuery([EnemyTag], ...)`) is fine. Re-registration is keyed off the filter's contents, not its identity, so a new array with the same component classes on every render does not churn the registration. Before the effect commits (first paint, or the frame after `filter`'s contents change), reads fall back to `QueryCache.queryOnce`, a detached snapshot seeded with the same currently-matching entities the live query will pick up.
 
 ```ts
-const inv = useStore(game.inventory); // entries snapshot
-const gold = useStore(game.gold); // number
-const lang = useStore(game.settings, (s) => s.get().lang); // selector on leaf
-const hp = useStore(game, (s) => s.player.get().health); // selector on compound
+import { createStore } from "@yagejs/core";
+import { useStore } from "@yagejs/ui-react";
+const game = createStore((s) => ({
+  inventory: s.map<string, number>(),
+  gold: s.counter(),
+  settings: s.record({ default: () => ({ lang: "en" }) }),
+  player: s.record({ default: () => ({ health: 100 }) }),
+}));
+
+function useHud() {
+  const inv = useStore(game.inventory); // entries snapshot
+  const gold = useStore(game.gold); // number
+  const lang = useStore(game.settings, (s) => s.get().lang); // selector on leaf
+  const hp = useStore(game, (s) => s.player.get().health); // selector on compound
+  return { inv, gold, lang, hp };
+}
 ```
 
 ## In-memory record for UI
@@ -303,7 +407,9 @@ const ui = createRecord({ default: () => ({ score: 0, health: 100 }) });
 ui.set({ score: ui.get().score + 10 });
 
 // React side: read (auto-rerenders)
-const score = useStore(ui, (src) => src.get().score);
+function useScore() {
+  return useStore(ui, (src) => src.get().score);
+}
 
 // Manual subscribe
 const unsub = ui.subscribe(() => console.log(ui.get()));

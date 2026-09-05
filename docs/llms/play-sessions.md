@@ -13,14 +13,14 @@ to write the run.
 
 ## Pick a mechanism
 
-| Situation | Use |
-| --- | --- |
-| One question about the game as it is running | one `inspector.drive()` call on the game page |
-| A bug whose situation you can build from nothing | a scenario file, rerun with `yage-lab test --scenarios <file>` |
-| Rerunning the same probe while iterating on a fix | move it out of the console into a scenario file |
-| State only the real game reaches: progression, saves, the room graph | the Inspector on the game page |
-| Tuning a number by feel, with a person watching | a lab scenario with `controls` |
-| Behavior a person accepted and wants kept true | a scenario committed next to the code it exercises |
+| Situation                                                            | Use                                                            |
+| -------------------------------------------------------------------- | -------------------------------------------------------------- |
+| One question about the game as it is running                         | one `inspector.drive()` call on the game page                  |
+| A bug whose situation you can build from nothing                     | a scenario file, rerun with `yage-lab test --scenarios <file>` |
+| Rerunning the same probe while iterating on a fix                    | move it out of the console into a scenario file                |
+| State only the real game reaches: progression, saves, the room graph | the Inspector on the game page                                 |
+| Tuning a number by feel, with a person watching                      | a lab scenario with `controls`                                 |
+| Behavior a person accepted and wants kept true                       | a scenario committed next to the code it exercises             |
 
 A scenario written to reproduce a bug mid-session is throwaway. Mixing it in
 with the scenarios the project keeps makes both the lab's sidebar and a
@@ -35,7 +35,7 @@ with the scenarios the project keeps makes both the lab's sidebar and a
 
 ## Wait for the game before driving it
 
-```ts
+```ts yage-context="browser,playwright"
 await page.waitForFunction(() => window.__yage__ !== undefined);
 await page.evaluate(() => window.__yage__.ready);
 await page.waitForFunction(
@@ -59,16 +59,24 @@ frozen.
 play verbs, and reports the run as one object. It restores the clock to the
 state it found and releases every synthetic input afterwards.
 
-```ts
-const run = await window.__yage__.inspector.drive(async (ctx) => {
-  const i = window.__yage__.inspector;
-  ctx.input.keyDown("KeyD");
-  const frames = await ctx.until(() => i.getEntityPosition("player").x > 950, {
-    maxFrames: 240,
-  });
-  ctx.input.clearAll();
-  return { frames, x: i.getEntityPosition("player").x };
-}, { maxFrames: 900 });
+```ts yage-context="browser"
+const run = await window.__yage__.inspector.drive(
+  async (ctx) => {
+    const i = window.__yage__.inspector;
+    const playerPosition = () => {
+      const position = i.getEntityPosition("player");
+      if (!position) throw new Error("The player is missing.");
+      return position;
+    };
+    ctx.input.keyDown("KeyD");
+    const frames = await ctx.until(() => playerPosition().x > 950, {
+      maxFrames: 240,
+    });
+    ctx.input.clearAll();
+    return { frames, x: playerPosition().x };
+  },
+  { maxFrames: 900 },
+);
 
 run.framesUsed; // frames the whole run issued
 run.state; // { keys, actions, scenes } at the moment the run ended
@@ -104,15 +112,17 @@ one drive.
 past it when a run spans several evaluated calls, or when you want the clock
 frozen while a person looks at the screen:
 
-```ts
-const { time, input } = window.__yage__.inspector;
+```ts yage-context="browser"
+async function advanceUntilDefeated(enemyDown: () => boolean) {
+  const { time, input } = window.__yage__.inspector;
 
-time.freeze(); // nothing advances until thaw()
-time.step(1); // synchronous: one frame, no microtask draining
-await time.stepAsync(30); // drains between frames
-await time.stepUntil(() => enemyDown(), { maxFrames: 240 });
-time.setDelta(16.667); // milliseconds per simulated frame
-time.thaw();
+  time.freeze(); // nothing advances until thaw()
+  time.step(1); // synchronous: one frame, no microtask draining
+  await time.stepAsync(30); // drains between frames
+  await time.stepUntil(() => enemyDown(), { maxFrames: 240 });
+  time.setDelta(16.667); // milliseconds per simulated frame
+  time.thaw();
+}
 ```
 
 `time.isFrozen()` reports the flag; `time.isAdvancing(withinMs)` reports
@@ -135,45 +145,67 @@ script. The shape is a `while` loop with an `if` chain for priority, `continue` 
 restart it, and `input.whileHolding` for a key that stays down across the
 maneuvers inside:
 
-```ts
-// src/levels/gauntlet.scenario.ts
+```ts yage-group="gauntlet" yage-file="gauntlet-driver.ts"
+import { Component, type Scene } from "@yagejs/core";
+import { RigidBodyComponent, PhysicsWorldKey } from "@yagejs/physics";
+export class GroundProbe extends Component {
+  get grounded() {
+    const body = this.entity.get(RigidBodyComponent);
+    return (
+      this.use(PhysicsWorldKey).raycast(body.position, { x: 0, y: 1 }, 18, {
+        excludeEntity: this.entity,
+      }) !== null
+    );
+  }
+}
+export interface Sensors {
+  atExit(body: RigidBodyComponent): boolean;
+  gapAhead(body: RigidBodyComponent, distance: number): boolean;
+  overTarget(body: RigidBodyComponent): boolean;
+  enemyAhead(body: RigidBodyComponent, distance: number): boolean;
+}
+
+// src/levels/gauntlet-driver.ts — reusable setup for the scenario below.
 import { defineScenario } from "@yagejs-tools/lab";
 
-export default defineScenario({
-  scene: () => new GauntletScene(),
+export function gauntletScenario(makeScene: () => Scene, sensors: Sensors) {
+  const { atExit, gapAhead, overTarget, enemyAhead } = sensors;
+  return defineScenario({
+    scene: makeScene,
 
-  async drive(ctx) {
-    const player = ctx.scene.findByKey("player");
-    if (!player) throw new Error("the scene has no player");
-    const body = player.get(RigidBodyComponent);
-    const ground = player.get(GroundProbe);   // this game's own component
+    async drive(ctx) {
+      const player = ctx.scene.findByKey("player");
+      if (!player) throw new Error("the scene has no player");
+      const body = player.get(RigidBodyComponent);
+      const ground = player.get(GroundProbe); // this game's own component
 
-    await ctx.input.whileHolding(["KeyD"], async () => {
-      while (ctx.framesUsed < 900 && !atExit(body)) {
-        if (ground.grounded && gapAhead(body, 48)) {
-          await ctx.input.whileHolding(["Space"], () => ctx.step(6));
-          continue;
+      await ctx.input.whileHolding(["KeyD"], async () => {
+        while (ctx.framesUsed < 900 && !atExit(body)) {
+          if (ground.grounded && gapAhead(body, 48)) {
+            await ctx.input.whileHolding(["Space"], () => ctx.step(6));
+            continue;
+          }
+          if (ground.grounded && overTarget(body)) {
+            await diveAttack(ctx, body, ground);
+            continue;
+          }
+          if (enemyAhead(body, 120)) {
+            await ctx.input.tap("KeyJ", 3);
+            continue;
+          }
+          await ctx.step(1);
         }
-        if (ground.grounded && overTarget(body)) {
-          await diveAttack(ctx, body, ground);
-          continue;
-        }
-        if (enemyAhead(body, 120)) {
-          await ctx.input.tap("KeyJ", 3);
-          continue;
-        }
-        await ctx.step(1);
-      }
-    });
-  },
-});
+      });
+    },
+  });
+}
 ```
 
 **A maneuver is an ordinary async function** that awaits its own frames. It
 needs no state machine and no per-frame phase counter, because the frames it
 spends are the ones it awaits:
 
-```ts
+```ts yage-group="gauntlet" yage-file="gauntlet-driver.ts"
 import type { DriveContext } from "@yagejs-tools/lab";
 
 async function diveAttack(
@@ -183,12 +215,35 @@ async function diveAttack(
 ) {
   await ctx.input.whileHolding(["Space"], async () => {
     await ctx.step(4);
-    await ctx.until(() => body.velocityY > -20);          // rising to the apex
+    await ctx.until(() => body.velocityY > -20); // rising to the apex
     await ctx.input.whileHolding(["KeyS", "KeyJ"], () =>
       ctx.until(() => ground.grounded, { maxFrames: 60 }),
     );
   });
 }
+```
+
+The game supplies its existing scene and sensor functions. The declarations
+below describe that game module; they omit the level and sensor implementations.
+The scene must create a player with `RigidBodyComponent`, `GroundProbe`, and
+the game's movement and attack components.
+
+```ts yage-group="gauntlet" yage-file="gauntlet-game.ts"
+import type { Scene } from "@yagejs/core";
+import type { Sensors } from "./gauntlet-driver.js";
+
+export declare function makeGauntletScene(): Scene;
+export declare const gauntletSensors: Sensors;
+```
+
+Export the returned scenario from the `.scenario.ts` file. The lab discovers
+scenario values, not a factory function that has not been called.
+
+```ts yage-group="gauntlet" yage-file="gauntlet.scenario.ts"
+import { gauntletScenario } from "./gauntlet-driver.js";
+import { makeGauntletScene, gauntletSensors } from "./gauntlet-game.js";
+
+export default gauntletScenario(makeGauntletScene, gauntletSensors);
 ```
 
 **Nest `whileHolding` rather than tracking which keys are down.**
@@ -231,16 +286,27 @@ rather than in the callback's return value. A budget that stops the run unwinds
 the callback, so the return value is lost while the variable keeps its last
 assignment:
 
-```ts
-const i = window.__yage__.inspector;
-let lastX = 0;
-const run = await i.drive(async (ctx) => {
-  while (!atExit()) {
-    lastX = i.getEntityPosition("player").x;
-    await ctx.step(1);
-  }
-}, { maxFrames: 600 });
-// run.timedOut === true, run.value === undefined, lastX === how far it got
+```ts yage-context="browser"
+async function measureProgress(atExit: () => boolean) {
+  const i = window.__yage__.inspector;
+  const playerPosition = () => {
+    const position = i.getEntityPosition("player");
+    if (!position) throw new Error("The player is missing.");
+    return position;
+  };
+  let lastX = 0;
+  const run = await i.drive(
+    async (ctx) => {
+      while (!atExit()) {
+        lastX = playerPosition().x;
+        await ctx.step(1);
+      }
+    },
+    { maxFrames: 600 },
+  );
+  // run.timedOut === true, run.value === undefined, lastX === how far it got
+  return { run, lastX };
+}
 ```
 
 ## Frame budgets from the game's own numbers
@@ -250,7 +316,12 @@ crossed at 300px/s takes 3 seconds, which is 180 frames at 1/60 — so wait on
 the predicate and cap it a little above the derived number:
 
 ```ts
-await ctx.until(() => body.positionX > 900, { maxFrames: 240 });
+import type { InspectorDriveContext } from "@yagejs/core";
+import type { RigidBodyComponent } from "@yagejs/physics";
+
+async function crossGap(ctx: InspectorDriveContext, body: RigidBodyComponent) {
+  await ctx.until(() => body.positionX > 900, { maxFrames: 240 });
+}
 ```
 
 The predicate decides when the run moves on; the cap only decides when to give
@@ -260,14 +331,14 @@ measurement worth returning.
 
 ## Reading the state back
 
-```ts
-inspector.getEntityPosition("player");           // { x, y } | undefined
-inspector.getComponentData("player", "Health");  // reflected fields and getters
-inspector.getSceneStack();                       // scene snapshots, bottom to top
-inspector.getInputState();                       // { keys, actions, mouse, pointers, gamepad }
-inspector.snapshotJSON();                        // whole world, sorted, for diffing
-inspector.events.getLog();                       // bus, entity and scene events
-await ctx.events.waitFor("enemy:hit", { withinFrames: 60 });
+```ts yage-context="inspector"
+inspector.getEntityPosition("player"); // { x, y } | undefined
+inspector.getComponentData("player", "Health"); // reflected fields and getters
+inspector.getSceneStack(); // scene snapshots, bottom to top
+inspector.getInputState(); // { keys, actions, mouse, pointers, gamepad }
+inspector.snapshotJSON(); // whole world, sorted, for diffing
+inspector.events.getLog(); // bus, entity and scene events
+await inspector.events.waitFor("enemy:hit", { withinFrames: 60 });
 ```
 
 `getComponentData` reflects a component's enumerable fields and public
@@ -279,9 +350,13 @@ walks every scene and entity.
 the run is the only thing issuing frames:
 
 ```ts
-const hit = ctx.events.waitFor("enemy:hit", { withinFrames: 60 });
-await ctx.step(60);
-await hit;
+import type { InspectorDriveContext } from "@yagejs/core";
+
+async function observeHit(ctx: InspectorDriveContext) {
+  const hit = ctx.events.waitFor("enemy:hit", { withinFrames: 60 });
+  await ctx.step(60);
+  await hit;
+}
 ```
 
 ## Screenshots
@@ -291,12 +366,15 @@ in the run's `captures` as `{ label, dataUrl }`, so one call returns both the
 measurements and the frames behind them. A frozen clock means the image is the
 exact frame that was stepped to.
 
-```ts
-const run = await inspector.drive(async (ctx) => {
-  await ctx.until(() => doorOpen(), { maxFrames: 240 });
-  await ctx.capture("door-open");
-});
-run.captures; // [{ label: "door-open", dataUrl: "data:image/png;base64,..." }]
+```ts yage-context="inspector"
+async function captureDoor(doorOpen: () => boolean) {
+  const run = await inspector.drive(async (ctx) => {
+    await ctx.until(() => doorOpen(), { maxFrames: 240 });
+    await ctx.capture("door-open");
+  });
+  run.captures; // [{ label: "door-open", dataUrl: "data:image/png;base64,..." }]
+  return run;
+}
 ```
 
 The standalone `inspector.capture.dataURL()` / `pngBase64()` / `png()`, the
@@ -309,7 +387,21 @@ Helpers defined in an evaluated snippet are gone after the next page load.
 Register them as an inspector extension instead, from a module the production
 build drops:
 
-```ts
+```ts yage-group="probe" yage-file="dev/probe.ts"
+import { Component, type Entity } from "@yagejs/core";
+export interface World {
+  rooms: Array<{ id: string; exits: string[] }>;
+}
+export class Inventory extends Component {
+  readonly items = new Set<string>();
+  grant(id: string) {
+    this.items.add(id);
+  }
+}
+export class Movement extends Component {
+  runSpeed = 300;
+}
+
 // src/dev/probe.ts — imported only under a build flag the release drops.
 import { type Engine, InspectorKey } from "@yagejs/core";
 
@@ -324,17 +416,27 @@ export function registerProbe(engine: Engine, world: World, player: Entity) {
 }
 ```
 
-```ts
-// src/main.ts — call it once the world exists.
-if (import.meta.env.DEV) {
-  const { registerProbe } = await import("./dev/probe.js");
-  registerProbe(engine, world, player);
+```ts yage-group="probe" yage-file="main.ts"
+/// <reference types="vite/client" />
+import type { Engine, Entity } from "@yagejs/core";
+import type { World } from "./dev/probe.js";
+
+export async function enableProbe(
+  engine: Engine,
+  world: World,
+  player: Entity,
+) {
+  // src/main.ts — call it once the world exists.
+  if (import.meta.env.DEV) {
+    const { registerProbe } = await import("./dev/probe.js");
+    registerProbe(engine, world, player);
+  }
 }
 ```
 
 Read it back from a drive or the console:
 
-```ts
+```ts yage-context="browser"
 const probe = window.__yage__.inspector.getExtension<{
   roomGraph(): { id: string; exits: string[] }[];
   grantKey(): void;
@@ -375,16 +477,21 @@ alternative — one call to press a key, another to step, another to read the
 result — pays a round trip per line and loses everything the previous call
 declared.
 
-```ts
+```ts yage-context="browser,playwright"
 const verdict = await page.evaluate(async () => {
   const i = window.__yage__.inspector;
   const probe = i.getExtension<{ setRunSpeed(v: number): void }>("probe")!;
+  const playerPosition = () => {
+    const position = i.getEntityPosition("player");
+    if (!position) throw new Error("The player is missing.");
+    return position;
+  };
   const results = [];
   for (const speed of [200, 300, 400]) {
     probe.setRunSpeed(speed);
     const run = await i.drive(async (ctx) => {
       ctx.input.keyDown("KeyD");
-      return await ctx.until(() => i.getEntityPosition("player").x > 900, {
+      return await ctx.until(() => playerPosition().x > 900, {
         maxFrames: 400,
       });
     });

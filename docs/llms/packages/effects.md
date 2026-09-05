@@ -6,7 +6,15 @@ Depends on `@yagejs/core` (peer), `@yagejs/renderer` (peer), `pixi.js` (peer), `
 
 No plugin install — just import a preset and call it like a factory:
 
-```ts
+```ts yage-context="component"
+import {
+  RendererKey,
+  SceneRenderTreeKey,
+  SpriteComponent,
+} from "@yagejs/renderer";
+const sprite = this.entity.get(SpriteComponent);
+const tree = this.use(SceneRenderTreeKey);
+
 import { hitFlash, bloom, crt, vignette } from "@yagejs/effects";
 
 sprite.fx.addEffect(hitFlash({ color: 0xffffff }));
@@ -70,11 +78,11 @@ The public handle controls an effect's strength three ways. `setIntensity(value)
 
 ## Scope rationale
 
-Three presets work best at scene scope (or higher) rather than on a single component:
+These presets need more room than a single component usually provides. Choose a layer, scene, or screen host according to the effect and its coordinates:
 
 - `godRay` — its alpha-aware fragment shader treats fully transparent host pixels as black, so on a per-component sprite the rays render against a black box. At scene scope, the layer rasterizes alpha=1 across the visible area, and the rays blend into the world as intended.
 - `bulgePinch` — distortion samples outside the host's bounding rect, so a sprite-scoped bulge clips at the sprite edges. Apply at scene/layer scope so the lens has room to bend pixels around its `radius`.
-- `shockwave` — the ring expands outward from `center` and is naturally clipped at the host's bounds, so a component-scoped shockwave on a small sprite looks like a tiny "bump" rather than a ring. Scene scope makes `trigger(heroX, heroY)` line up with the entity's transform.
+- `shockwave` — the ring expands outward from `center` and is clipped at the host's bounds. A component-scoped shockwave on a small sprite has little room to expand. Attach it to a world-space layer to pass entity world coordinates to `trigger(x, y)`. Scene and screen hosts use their own local coordinates, not entity world coordinates.
 
 The `examples/src/effects-showcase/main.ts` demo sets up each of these at the recommended scope — copy that as the worked-out reference.
 
@@ -98,7 +106,44 @@ If you need resolution-stable visual output today on the other presets, scale yo
 
 ## Per-preset handle extras
 
-```ts
+```ts yage-context="component"
+import {
+  RendererKey,
+  SceneRenderTreeKey,
+  SpriteComponent,
+} from "@yagejs/renderer";
+const sprite = this.entity.get(SpriteComponent);
+const tree = this.use(SceneRenderTreeKey);
+import {
+  hitFlash,
+  outline,
+  bloom,
+  dropShadow,
+  pixelate,
+  glow,
+  crt,
+  chromaticAberration,
+  vignette,
+  colorGrade,
+  godRay,
+  shockwave,
+  motionBlur,
+  oldFilm,
+  bulgePinch,
+  halftone,
+  wave,
+  colorize,
+  glitch,
+  zoomBlur,
+  axisBlur,
+  implosion,
+  dissolve,
+} from "@yagejs/effects";
+import { Transform } from "@yagejs/core";
+const layer = tree.get("world");
+const renderer = this.use(RendererKey);
+const playerPosition = this.entity.get(Transform).worldPosition;
+
 const flash = sprite.fx.addEffect(hitFlash({ color: 0xffffff }));
 flash.trigger(); // one-shot ramp up + down
 flash.setColor(0xff0000);
@@ -135,31 +180,26 @@ vig.setStrength(0.8);
 const grade = tree.fx.addEffect(colorGrade({ preset: "neutral" }));
 grade.setPreset("sepia");
 
-const ray = scene.fx.addEffect(godRay({ angle: 30, gain: 0.5 }));
+const ray = tree.fx.addEffect(godRay({ angle: 30, gain: 0.5 }));
 ray.setAngle(45); // tweak ray angle in degrees
 ray.setGain(0.8); // rebases full strength; preserves intensity ratio
 
-const sw = scene.fx.addEffect(shockwave({ speed: 600, amplitude: 40 }));
-sw.trigger(heroX, heroY); // ALL pixel-valued inputs (center, amplitude,
-// wavelength, radius, speed) are in the filter
-// target's local space — virtual px for
-// scene/layer scope, sprite-local for
-// component scope. The wrapper rescales them
-// to input-texture px every frame from the
-// target's live worldTransform, so resize /
-// camera zoom / scope changes preserve both
-// the trigger point AND the visual ring shape
-// / travel speed at any size.
+const sw = layer.fx.addEffect(shockwave({ speed: 600, amplitude: 40 }));
+sw.trigger(playerPosition.x, playerPosition.y);
+// Center, amplitude, wavelength, radius, and speed use the host's local space.
+// This world-space layer accepts entity world coordinates. The wrapper
+// converts them to input-texture pixels using the host's live transform,
+// including camera zoom and resize.
 // Re-trigger cancels any in-flight ramp.
 
 const mb = sprite.fx.addEffect(motionBlur({ velocity: { x: 30, y: 0 } }));
 mb.setVelocity(50, 12); // rebases full vector; preserves intensity ratio
 
-scene.fx.addEffect(oldFilm({ sepia: 0.4, noise: 0.4 }));
+tree.fx.addEffect(oldFilm({ sepia: 0.4, noise: 0.4 }));
 // noise self-animates; only the base
 // EffectHandle surface is exposed
 
-const bp = scene.fx.addEffect(bulgePinch({ strength: 1, radius: 200 }));
+const bp = tree.fx.addEffect(bulgePinch({ strength: 1, radius: 200 }));
 bp.setStrength(-0.8); // flips bulge → pinch; intensity ratio preserved
 bp.setCenter(0.5, 0.5); // normalized screen coords
 bp.setRadius(300); // distortion radius in pixels
@@ -188,7 +228,7 @@ glitchH.setOffset(36);
 const zoom = layer.fx.addEffect(
   zoomBlur({ center: playerPosition, strength: 0.15 }),
 );
-zoom.setCenter(nextX, nextY); // host-local coordinates
+zoom.setCenter(400, 300); // host-local coordinates
 zoom.setStrength(-0.12); // negative pulls inward
 
 const axis = sprite.fx.addEffect(
@@ -219,20 +259,33 @@ Every preset's `fadeIn` / `fadeOut` tweens its primary intensity (column 4 in th
 
 If you need to drive a non-primary uniform (or any custom fade shape), schedule it via `handle.run(p)` — the process is bound to the effect's lifetime and auto-cancels on `.remove()`:
 
-```ts
+```ts yage-context="component"
+import {
+  RendererKey,
+  SceneRenderTreeKey,
+  SpriteComponent,
+} from "@yagejs/renderer";
+const sprite = this.entity.get(SpriteComponent);
+const tree = this.use(SceneRenderTreeKey);
+import { bloom } from "@yagejs/effects";
+
 import { Tween } from "@yagejs/core";
 
 const h = sprite.fx.addEffect(bloom({ bloomScale: 1.5 }));
-h.run(Tween.custom((v) => h.someExtra(v), 1, 0, 0.5)); // pauses with scene, ends with effect
+h.run(Tween.custom((v) => h.setThreshold(v), 1, 0, 0.5)); // pauses with scene, ends with effect
 ```
 
 For work that should outlive a single effect (e.g. a global animator), schedule directly on the matching scope's queue and manage cancellation yourself:
 
-```ts
+```ts yage-context="entity"
+import { Tween, Transform } from "@yagejs/core";
+
 import { ProcessComponent, ProcessSystemKey } from "@yagejs/core";
 
-const pc = entity.tryGet(ProcessComponent) ?? entity.add(new ProcessComponent());
-pc.run(Tween.custom(...));   // entity-scoped, NOT bound to any one effect
+const pc =
+  entity.tryGet(ProcessComponent) ?? entity.add(new ProcessComponent());
+const transform = entity.get(Transform);
+pc.run(Tween.custom((v) => transform.setRotation(v), 0, Math.PI, 0.5)); // entity-scoped, NOT bound to any one effect
 ```
 
 ## Save state

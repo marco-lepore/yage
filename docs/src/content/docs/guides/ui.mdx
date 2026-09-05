@@ -11,7 +11,7 @@ For a React-based alternative, see [UI (React)](/guides/ui-react).
 
 ## UIPlugin Setup
 
-```typescript
+```typescript yage-context="engine"
 import { UIPlugin } from "@yagejs/ui";
 
 engine.use(new UIPlugin());
@@ -26,18 +26,21 @@ tree. Its `root` property is the tree's root `UIPanel` element — the builder
 methods below forward to it, and APIs that take a `UIElement` (like
 `attachTooltip`) accept `surface.root`.
 
-```typescript
+```typescript yage-context="scene-enter"
+import { Transform } from "@yagejs/core";
 import { UISurface, Anchor } from "@yagejs/ui";
 
 const ui = this.spawn("hud");
 ui.add(new Transform());
-ui.add(new UISurface({
-  anchor: Anchor.TopLeft,
-  direction: "column",
-  gap: 8,
-  padding: 16,
-  background: { color: 0x000000, alpha: 0.7, radius: 8 },
-}));
+ui.add(
+  new UISurface({
+    anchor: Anchor.TopLeft,
+    direction: "column",
+    gap: 8,
+    padding: 16,
+    background: { color: 0x000000, alpha: 0.7, radius: 8 },
+  }),
+);
 ```
 
 **Panel options:**
@@ -82,11 +85,15 @@ for there to be anything to scroll. So shrinking and wrapping are **opt-in**:
   overflows and pushes the neighbours.
 
 ```ts
-// Fixed icon · growing + wrapping text column · fixed button — the common row.
-row.panel({ width: 16, height: 16 });                    // fixed (flexShrink 0)
-const col = row.panel({ flex: 1, direction: "column" }); // fills & wraps
-col.text("a long label that wraps within the column");
-row.button("Buy", { width: 68, onClick: () => {} });     // fixed
+import { type UIPanel } from "@yagejs/ui";
+
+function addRow(row: UIPanel) {
+  // Fixed icon · growing + wrapping text column · fixed button — the common row.
+  row.panel({ width: 16, height: 16 }); // fixed (flexShrink 0)
+  const col = row.panel({ flex: 1, direction: "column" }); // fills & wraps
+  col.text("a long label that wraps within the column");
+  row.button("Buy", { width: 68, onClick: () => {} }); // fixed
+}
 ```
 
 Note that **text only wraps once a width constraint reaches it** — some ancestor
@@ -114,18 +121,20 @@ The `Anchor` enum positions panels relative to the screen:
 ```typescript
 import { Anchor } from "@yagejs/ui";
 
-Anchor.TopLeft      Anchor.TopCenter      Anchor.TopRight
-Anchor.CenterLeft   Anchor.Center         Anchor.CenterRight
-Anchor.BottomLeft   Anchor.BottomCenter   Anchor.BottomRight
+const top = [Anchor.TopLeft, Anchor.TopCenter, Anchor.TopRight];
+const middle = [Anchor.CenterLeft, Anchor.Center, Anchor.CenterRight];
+const bottom = [Anchor.BottomLeft, Anchor.BottomCenter, Anchor.BottomRight];
 ```
 
 Add an offset to fine-tune position:
 
 ```typescript
+import { UISurface, Anchor } from "@yagejs/ui";
+
 new UISurface({
   anchor: Anchor.TopRight,
   offset: { x: -16, y: 16 },
-})
+});
 ```
 
 ## Layer space and positioning
@@ -174,12 +183,32 @@ This option is orthogonal to the layer's space:
 The common "nameplate above an enemy" pattern:
 
 ```typescript
-import { ScreenFollow } from "@yagejs/renderer";
+import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
+import { UISurface, Anchor } from "@yagejs/ui";
+import {
+  ScreenFollow,
+  GraphicsComponent,
+  type CameraEntity,
+} from "@yagejs/renderer";
+
+class Health extends Component {
+  health: number;
+  constructor({ max }: { max: number }) {
+    super();
+    this.health = max;
+  }
+}
+class EnemyBody extends Entity {
+  setup({ color }: { color: number }) {
+    this.add(new Transform());
+    this.add(
+      new GraphicsComponent().draw((g) => g.circle(0, 0, 16).fill(color)),
+    );
+  }
+}
 
 class Enemy extends Entity {
-  setup(params: {
-    x: number; y: number; label: string; camera: CameraEntity;
-  }) {
+  setup(params: { x: number; y: number; label: string; camera: CameraEntity }) {
     this.add(new Transform({ position: new Vec2(params.x, params.y) }));
     this.add(new Health({ max: 100 }));
 
@@ -199,21 +228,23 @@ class Enemy extends Entity {
 }
 
 class EnemyNameplate extends Entity {
-  setup(params: {
-    target: Entity; camera: CameraEntity; label: string;
-  }) {
+  setup(params: { target: Entity; camera: CameraEntity; label: string }) {
     this.add(new Transform());
-    this.add(new ScreenFollow({
-      target: params.target,
-      camera: params.camera,
-      offset: new Vec2(0, -40), // 40 screen px above the target, at any zoom
-    }));
-    const panel = this.add(new UISurface({
-      positioning: "transform",
-      anchor: Anchor.BottomCenter,
-      padding: 4,
-      background: { color: 0x000000, alpha: 0.6, radius: 4 },
-    }));
+    this.add(
+      new ScreenFollow({
+        target: params.target,
+        camera: params.camera,
+        offset: new Vec2(0, -40), // 40 screen px above the target, at any zoom
+      }),
+    );
+    const panel = this.add(
+      new UISurface({
+        positioning: "transform",
+        anchor: Anchor.BottomCenter,
+        padding: 4,
+        background: { color: 0x000000, alpha: 0.6, radius: 4 },
+      }),
+    );
     panel.text(params.label, { fontSize: 11, fill: 0xffffff });
   }
 }
@@ -236,34 +267,41 @@ trigger's live geometry — stays glued to world-space / camera-transformed
 triggers like the `ScreenFollow` namecard above.
 
 ```ts
-import { attachTooltip, UIPanel, UIText } from "@yagejs/ui";
+import type { Scene } from "@yagejs/core";
+import { attachTooltip, UIPanel, UIText, type UISurface } from "@yagejs/ui";
 
-// `anchor` is any UIElement — for an entity-mounted UISurface (here the
-// namecard) pass its root panel. It's read only for positioning;
-// attachTooltip never wires hover onto it.
-const tip = attachTooltip(panel.root, this.scene, {
-  placement: "top", // side, or side-align (e.g. "bottom-start"); default "top"
-  offset: 8,        // px gap between trigger and bubble (default 6)
-  maxWidth: 200,    // px; long content wraps + clamps to available space
-  // Headless: build (and style) the bubble yourself. Called once.
-  content: () => {
-    const card = new UIPanel({
-      padding: 6,
-      gap: 4,
-      background: { color: 0x111827, alpha: 0.95, radius: 6 },
-    });
-    card.addElement(new UIText({ children: "Goblin", style: { fontSize: 13 } }));
-    card.addElement(new UIText({ children: "HP 100 / 100", style: { fontSize: 11 } }));
-    return card;
-  },
-});
+function addNamecardTooltip(panel: UISurface, scene: Scene) {
+  // `anchor` is any UIElement — for an entity-mounted UISurface (here the
+  // namecard) pass its root panel. It's read only for positioning;
+  // attachTooltip never wires hover onto it.
+  const tip = attachTooltip(panel.root, scene, {
+    placement: "top", // side, or side-align (e.g. "bottom-start"); default "top"
+    offset: 8, // px gap between trigger and bubble (default 6)
+    maxWidth: 200, // px; long content wraps + clamps to available space
+    // Headless: build (and style) the bubble yourself. Called once.
+    content: () => {
+      const card = new UIPanel({
+        padding: 6,
+        gap: 4,
+        background: { color: 0x111827, alpha: 0.95, radius: 6 },
+      });
+      card.addElement(
+        new UIText({ children: "Goblin", style: { fontSize: 13 } }),
+      );
+      card.addElement(
+        new UIText({ children: "HP 100 / 100", style: { fontSize: 11 } }),
+      );
+      return card;
+    },
+  });
 
-// Activation is yours — wire it on hover (the common case). On a UISurface
-// use setPointerHandlers; on a child element use its `update({ onHover })`.
-panel.setPointerHandlers({ onHover: tip.setActive });
+  // Activation is yours — wire it on hover (the common case). On a UISurface
+  // use setPointerHandlers; on a child element use its `update({ onHover })`.
+  panel.setPointerHandlers({ onHover: tip.setActive });
 
-// You can release the slot early. Destroying the anchor also releases it.
-tip.dispose();
+  // Call this cleanup to release the tooltip before its anchor is destroyed.
+  return () => tip.dispose();
+}
 ```
 
 `attachTooltip` builds the floating parts and hands back a `{ setActive,
@@ -299,7 +337,9 @@ this automatically through its normal render update.
 
 Add text to a panel with the builder API:
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
+import { UISurface } from "@yagejs/ui";
+
 const panel = entity.get(UISurface);
 
 const label = panel.text("Score: 0", {
@@ -324,8 +364,16 @@ import { UIText } from "@yagejs/ui";
 // Crisp pixel-art text — draws pre-baked glyph quads instead of a
 // blurry bilinear-sampled canvas texture. `bitmap: true` bakes (or looks
 // up) the atlas from `style.fontFamily` at `style.fontSize`.
-new UIText({ children: "SCORE", bitmap: true, style: { fontFamily: "monospace", fontSize: 12 } });
-new UIText({ children: "READY", bitmap: true, style: { fontFamily: "PressStart", fontSize: 16 } });
+new UIText({
+  children: "SCORE",
+  bitmap: true,
+  style: { fontFamily: "monospace", fontSize: 12 },
+});
+new UIText({
+  children: "READY",
+  bitmap: true,
+  style: { fontFamily: "PressStart", fontSize: 16 },
+});
 
 // Per-text canvas resolution.
 new UIText({ children: "HUD", resolution: window.devicePixelRatio });
@@ -372,11 +420,22 @@ function GameOver({ label }: { label: string }) {
   const reveal = () => {
     split.chars.forEach((c) => (c.alpha = 0));
     // stagger each char's fade-in by 0.05s; run() returns a cancel handle.
-    split.run(Tween.stagger(split.chars, (c) => Tween.custom((v) => (c.alpha = v), 0, 1, 0.3), 0.05));
+    split.run(
+      Tween.stagger(
+        split.chars,
+        (c) => Tween.custom((v) => (c.alpha = v), 0, 1, 0.3),
+        0.05,
+      ),
+    );
   };
 
   return (
-    <SplitText ref={ref} charAnchor={0.5} style={{ fontSize: 48 }} onPointerOver={reveal}>
+    <SplitText
+      ref={ref}
+      charAnchor={0.5}
+      style={{ fontSize: 48 }}
+      onPointerOver={reveal}
+    >
       {label}
     </SplitText>
   );
@@ -396,10 +455,16 @@ change, so keep static and simple dynamic labels on `UIText`.
 
 ## Buttons
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
+import { Scene } from "@yagejs/core";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
+
 const btn = panel.button("Start Game", {
-  width: 200,       // optional — omit to shrink-to-content
-  height: 50,       // optional — omit to shrink-to-content
+  width: 200, // optional — omit to shrink-to-content
+  height: 50, // optional — omit to shrink-to-content
   background: { color: 0x4444aa, radius: 6 },
   hoverBackground: { color: 0x5555cc, radius: 6 },
   pressBackground: { color: 0x333388, radius: 6 },
@@ -427,7 +492,7 @@ For a fixed-size button whose label might be longer than the box — especially
 with variable-length (i18n) strings — pass `truncate: "clip" | "ellipsis"` to
 keep the label on a single line so it can't spill past the frame:
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
 panel.button("A label that is too long to fit", {
   width: 120,
   truncate: "ellipsis", // → "A label that is…"
@@ -442,10 +507,13 @@ either give it room to grow or truncate the label.
 `UIElement` (text, image, nested panels) for icon + label compositions:
 
 ```typescript
-import { UIImage } from "@yagejs/ui";
+import { UIImage, type UIPanel } from "@yagejs/ui";
+import type { TextureInput } from "@yagejs/renderer";
 
-const saveBtn = panel.button("Save", { onClick: () => {} });
-saveBtn.addElement(new UIImage({ texture: iconTex, width: 16, height: 16 }));
+function addSaveButton(panel: UIPanel, iconTex: TextureInput) {
+  const saveBtn = panel.button("Save", { onClick: () => {} });
+  saveBtn.addElement(new UIImage({ texture: iconTex, width: 16, height: 16 }));
+}
 ```
 
 ### Nine-Slice Buttons
@@ -453,16 +521,23 @@ saveBtn.addElement(new UIImage({ texture: iconTex, width: 16, height: 16 }));
 Use a texture background for scalable button artwork:
 
 ```typescript
-panel.button("Play", {
-  width: 180,
-  height: 48,
-  background: {
-    texture: buttonTexture,
-    mode: "nine-slice",
-    nineSlice: { left: 12, top: 12, right: 12, bottom: 12 },
-  },
-  onClick: () => { /* ... */ },
-});
+import { type UIPanel } from "@yagejs/ui";
+import type { TextureInput } from "@yagejs/renderer";
+
+function addPlayButton(panel: UIPanel, buttonTexture: TextureInput) {
+  panel.button("Play", {
+    width: 180,
+    height: 48,
+    background: {
+      texture: buttonTexture,
+      mode: "nine-slice",
+      nineSlice: { left: 12, top: 12, right: 12, bottom: 12 },
+    },
+    onClick: () => {
+      /* ... */
+    },
+  });
+}
 ```
 
 ## Additional Elements
@@ -470,13 +545,13 @@ panel.button("Play", {
 `UISurface` provides builder methods for `.text()`, `.button()`, and `.panel()`.
 For other elements, create them directly and add via `addElement`:
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
 import { UIImage, UIProgressBar, UICheckbox } from "@yagejs/ui";
 ```
 
 ### Images
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
 const img = new UIImage({
   texture: "save-icon",
   width: 32,
@@ -491,11 +566,11 @@ registered asset key, a texture handle, or a raw renderer texture.
 
 ### Progress Bars
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
 const bar = new UIProgressBar({
   width: 200,
   height: 20,
-  value: 0.75,              // 0–1
+  value: 0.75, // 0–1
   trackBackground: { color: 0x333333 },
   fillBackground: { color: 0x44cc44 },
 });
@@ -507,7 +582,7 @@ bar.update({ value: 0.5 });
 
 ### Checkboxes
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
 const cb = new UICheckbox({
   label: "Fullscreen",
   checked: false,
@@ -536,7 +611,9 @@ that subscribes to the events emitted by `LoadingScene`. See the
 
 Build complex layouts with nested panels:
 
-```typescript
+```typescript yage-context="entity"
+import { UISurface } from "@yagejs/ui";
+
 const menu = entity.get(UISurface);
 
 // Header row
@@ -549,23 +626,37 @@ content.text("Volume", { fontSize: 16, fill: 0xaaaaaa });
 
 // Button row
 const buttons = menu.panel({ direction: "row", gap: 12 });
-buttons.button("Save", { width: 100, height: 40, onClick: () => { /* ... */ } });
-buttons.button("Cancel", { width: 100, height: 40, onClick: () => { /* ... */ } });
+buttons.button("Save", {
+  width: 100,
+  height: 40,
+  onClick: () => {
+    /* ... */
+  },
+});
+buttons.button("Cancel", {
+  width: 100,
+  height: 40,
+  onClick: () => {
+    /* ... */
+  },
+});
 ```
 
 ## Visibility
 
 Toggle panel visibility at runtime:
 
-```typescript
+```typescript yage-context="entity"
+import { UISurface } from "@yagejs/ui";
+
 const panel = entity.get(UISurface);
-panel.visible = false;  // hide
-panel.visible = true;   // show
+panel.visible = false; // hide
+panel.visible = true; // show
 ```
 
 Child elements also support visibility:
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
 label.visible = false;
 btn.visible = true;
 ```
@@ -577,7 +668,7 @@ shared `LayoutProps`. Use them to lift an element out of its parent's flex
 flow and pin it against the parent's content box — handy for overlays,
 badges, and HUD markers.
 
-```typescript
+```typescript yage-group="panel" yage-context="entity,engine"
 // Pin a notification badge to the top-right of its parent.
 const badge = panel.panel({
   position: "absolute",
@@ -604,13 +695,15 @@ original layout.
 Backgrounds can be a solid color or a texture:
 
 ```typescript
+import { type BackgroundOptions } from "@yagejs/ui";
+
 // Solid color with rounded corners
-{ color: 0x222222, alpha: 0.9, radius: 8 }
+const solid: BackgroundOptions = { color: 0x222222, alpha: 0.9, radius: 8 };
 
 // Texture (nine-slice for scaling)
-{
+const textured: BackgroundOptions = {
   texture: "panel-frame",
   mode: "nine-slice",
   nineSlice: { left: 16, top: 16, right: 16, bottom: 16 },
-}
+};
 ```

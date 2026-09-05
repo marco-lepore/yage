@@ -36,7 +36,10 @@ The overlay drives actions that already exist — define them in your
 `InputPlugin` action map first (an unknown name warns and is skipped until it
 exists, so a typo can't crash a gesture):
 
-```ts
+```ts yage-group="controls" yage-context="engine"
+import { Scene } from "@yagejs/core";
+import { InputPlugin } from "@yagejs/input";
+
 engine.use(
   new InputPlugin({
     actions: {
@@ -53,8 +56,9 @@ engine.use(
 
 Then spawn the controls in the scenes that want them:
 
-```ts
+```ts yage-group="controls" yage-context="engine"
 class GameScene extends Scene {
+  readonly name = "game";
   onEnter() {
     this.spawn("touch-controls").add(
       new VirtualControls({
@@ -94,9 +98,12 @@ the bottom-right corner. Every default is derived, not hardcoded:
 
 ## Two entry points
 
-```ts
+```ts yage-group="controls" yage-context="engine"
 // Headless — model, component, events, presenter contracts. No pixi.
-import { VirtualControls, prefersTouchControls } from "@yagejs-addons/virtual-controls";
+import {
+  VirtualControls,
+  prefersTouchControls,
+} from "@yagejs-addons/virtual-controls";
 
 // Pixi presentation — the built-in Graphics look + theme.
 import { createControlsPresenter } from "@yagejs-addons/virtual-controls/presenters";
@@ -111,12 +118,18 @@ pointer is still the mouse.
 
 You stay in charge:
 
-```ts
-new VirtualControls({ visible: true, … });       // always (e.g. this demo page)
-new VirtualControls({ visible: settings.touch ?? "auto", … });
+```ts yage-group="controls" yage-context="engine"
+function configureVisibility(settings: { touch?: boolean }) {
+  new VirtualControls({ visible: true, presenter: createControlsPresenter() });
+  const controls = new VirtualControls({
+    visible: settings.touch ?? "auto",
+    presenter: createControlsPresenter(),
+  });
 
-controls.setVisible(false);                      // runtime lever (settings toggle, cutscene)
-prefersTouchControls();                          // the raw detection, for your own policy
+  controls.setVisible(false); // runtime lever (settings toggle, cutscene)
+  prefersTouchControls(); // the raw detection, for your own policy
+  return controls;
+}
 ```
 
 Hiding releases every engaged control — mirrored actions get a real release
@@ -132,9 +145,15 @@ the entity back on restores the overlay you asked for, not a forced-on one.
 
 Show or hide a configured button without rebuilding the overlay:
 
-```ts
-controls.setButtonVisible("restart", gameOver);
-controls.setButtonEnabled("jump", canJump);
+```ts yage-group="controls" yage-context="engine"
+function syncButtons(
+  controls: VirtualControls,
+  showDash: boolean,
+  canJump: boolean,
+) {
+  controls.setButtonVisible("b", showDash);
+  controls.setButtonEnabled("a", canJump);
+}
 ```
 
 `controls.enabled` controls the whole overlay. `setButtonEnabled` affects only
@@ -213,6 +232,12 @@ The model owns hit-testing, routing, and layout; a presenter only draws. Two
 pixi-free interfaces from the root entry:
 
 ```ts
+import type { Scene } from "@yagejs/core";
+import type {
+  VirtualStick,
+  VirtualButton,
+} from "@yagejs-addons/virtual-controls";
+
 interface ControlsPresenter {
   mount(scene: Scene): void;
   createStickView(stick: VirtualStick): ControlView;
@@ -220,7 +245,7 @@ interface ControlsPresenter {
   dispose(): void;
 }
 interface ControlView {
-  update(dt: number): void;   // poll stick state or button.pressed / visible / enabled / layout
+  update(dt: number): void; // poll stick state or button.pressed / visible / enabled / layout
   setVisible(visible: boolean): void;
   dispose(): void;
 }

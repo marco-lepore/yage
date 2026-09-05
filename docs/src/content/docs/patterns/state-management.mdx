@@ -11,8 +11,8 @@ events for decoupled communication.
 
 The most common approach is a plain class registered as a DI service:
 
-```typescript
-import { ServiceKey } from "@yagejs/core";
+```typescript yage-group="service-state"
+import { Component, Scene, ServiceKey } from "@yagejs/core";
 
 interface GameState {
   score: number;
@@ -25,8 +25,9 @@ const GameStateKey = new ServiceKey<GameState>("gameState");
 
 Register it in your scene:
 
-```typescript
+```typescript yage-group="service-state"
 class GameScene extends Scene {
+  readonly name = "game";
   onEnter(): void {
     const state: GameState = { score: 0, health: 100, level: 1 };
     this.context.register(GameStateKey, state);
@@ -36,7 +37,7 @@ class GameScene extends Scene {
 
 Access it from any component or system in the scene:
 
-```typescript
+```typescript yage-group="service-state"
 class ScoreDisplay extends Component {
   private readonly state = this.use(GameStateKey);
 
@@ -53,7 +54,7 @@ its durable fields in an explicit `Serializable<TEncoded>` save root.
 
 When bridging ECS state to React UI, use `createRecord`:
 
-```typescript
+```typescript yage-group="react-store" yage-file="hud.tsx"
 import { createRecord } from "@yagejs/core";
 
 const uiStore = createRecord({
@@ -67,15 +68,15 @@ const uiStore = createRecord({
 
 **Write from ECS** (systems, components, event handlers):
 
-```typescript
+```typescript yage-group="react-store" yage-file="hud.tsx"
 // In a component or event handler
 uiStore.set({ score: uiStore.get().score + 10 });
 ```
 
 **Read from React** (auto-rerenders on change):
 
-```tsx
-import { useStore } from "@yagejs/ui-react";
+```tsx yage-group="react-store" yage-file="hud.tsx"
+import { Text, useStore } from "@yagejs/ui-react";
 
 function HUD() {
   const score = useStore(uiStore, (src) => src.get().score);
@@ -90,30 +91,40 @@ game logic in the ECS layer and rendering in the UI layer.
 
 For decoupled state changes, use typed events:
 
-```typescript
-import { defineEvent } from "@yagejs/core";
+```typescript yage-group="events"
+import { Component, Scene, createRecord, defineEvent } from "@yagejs/core";
+import { ColliderComponent } from "@yagejs/physics";
 
 const CoinCollected = defineEvent("coin:collected");
 const PlayerDied = defineEvent("player:died");
+const uiStore = createRecord({ default: () => ({ score: 0 }) });
 ```
 
 **Emit from entities** (via entity events — bubble up to the scene):
 
-```typescript
+```typescript yage-group="events"
 // In a coin's trigger handler
-collider.onTrigger((ev) => {
-  if (ev.entered) {
-    this.entity.emit(CoinCollected);
-    this.entity.destroy();
+class CollectCoin extends Component {
+  onAdd(): void {
+    this.sibling(ColliderComponent).onTrigger((ev) => {
+      if (ev.entered) {
+        this.entity.emit(CoinCollected);
+        this.entity.destroy();
+      }
+    });
   }
-});
+}
 ```
 
 **Listen at the scene level:**
 
-```typescript
+```typescript yage-group="events"
 class GameScene extends Scene {
+  readonly name = "game";
+
   onEnter(): void {
+    const state = { score: 0, health: 100 };
+
     this.on(CoinCollected, () => {
       state.score += 10;
       uiStore.set({ score: state.score });
@@ -136,6 +147,14 @@ system, it just emits an event.
 A typical game combines all three:
 
 ```typescript
+import { Scene, ServiceKey, createRecord, defineEvent } from "@yagejs/core";
+
+interface GameState {
+  score: number;
+  health: number;
+  level: number;
+}
+
 // 1. Game state as a DI service
 const GameStateKey = new ServiceKey<GameState>("gameState");
 
@@ -146,6 +165,7 @@ const uiStore = createRecord({ default: () => ({ score: 0, health: 100 }) });
 const CoinCollected = defineEvent("coin:collected");
 
 class GameScene extends Scene {
+  readonly name = "game";
   onEnter(): void {
     const state: GameState = { score: 0, health: 100, level: 1 };
     this.context.register(GameStateKey, state);

@@ -4,20 +4,28 @@ Named, composable game-feel cues. Root entry uses `@yagejs/core` only.
 Optional entries: `/renderer`, `/audio`, `/particles`, `/recipes`.
 
 ```ts
-const feel = entity.add(
-  new Feel({
-    hit: feelParallel(
-      feelSquash({ target: sprite, amount: 0.2 }),
-      feelHitStop({ duration: 0.05 }),
-    ),
-  }),
-);
-feel.play("hit");
+import type { Entity } from "@yagejs/core";
+import type { SpriteComponent } from "@yagejs/renderer";
+import { Feel, feelParallel, feelHitStop } from "@yagejs-addons/feel";
+import { feelSquash } from "@yagejs-addons/feel/renderer";
+function installHit(entity: Entity, sprite: SpriteComponent) {
+  const feel = entity.add(
+    new Feel({
+      hit: feelParallel(
+        feelSquash({ target: sprite, amount: 0.2 }),
+        feelHitStop({ duration: 0.05 }),
+      ),
+    }),
+  );
+  feel.play("hit");
+}
 ```
 
 ## Cue types
 
 ```ts
+import { Component, type EasingFunction } from "@yagejs/core";
+import type { FeelNode } from "@yagejs-addons/feel";
 type FeelOverlap = "restart" | "ignore" | "allow";
 type FeelRange = number | readonly [min: number, max: number];
 
@@ -36,7 +44,7 @@ interface FeelCueOptions {
   intensity?: FeelRange; // default 1
 }
 
-class Feel extends Component {
+declare class Feel extends Component {
   constructor(cues: Readonly<Record<string, FeelNode | FeelCueOptions>>);
   play(
     name: string,
@@ -77,13 +85,31 @@ overlap, disable, and destroy cancel immediately and emit `FeelStoppedEvent`.
 ## Composition
 
 ```ts
-feelParallel(...nodes: FeelNode[]): FeelNode;
-feelSequence(...nodes: FeelNode[]): FeelNode;
-feelDelay(seconds: number, node?: FeelNode): FeelNode;
-feelRepeat(node: FeelNode, times: number, gap?: number): FeelNode;
-feelLoop(node: FeelNode, gap?: number): FeelNode;
-defineFeelEffect(duration, create): FeelNode;
-defineFeelState({ attack?, release?, attackEasing?, releaseEasing? }, create): FeelNode;
+import type {
+  FeelNode,
+  FeelTimedEffectContext,
+  FeelEffectInstance,
+  FeelStateTiming,
+  FeelStateContext,
+  FeelStateInstance,
+} from "@yagejs-addons/feel";
+declare function feelParallel(...nodes: FeelNode[]): FeelNode;
+declare function feelSequence(...nodes: FeelNode[]): FeelNode;
+declare function feelDelay(seconds: number, node?: FeelNode): FeelNode;
+declare function feelRepeat(
+  node: FeelNode,
+  times: number,
+  gap?: number,
+): FeelNode;
+declare function feelLoop(node: FeelNode, gap?: number): FeelNode;
+declare function defineFeelEffect(
+  duration: number,
+  create: (context: FeelTimedEffectContext) => FeelEffectInstance,
+): FeelNode;
+declare function defineFeelState(
+  timing: FeelStateTiming,
+  create: (context: FeelStateContext) => FeelStateInstance,
+): FeelNode;
 ```
 
 Every effect leaf gets `FeelEffectContext` with `entity`, `cue`, `intensity`,
@@ -127,38 +153,98 @@ duration: an explicit duration remains retimed with the cue, and no duration
 means an immediate node.
 
 ```ts
-feelSpriteAnimation(name, { target?, mode?: "play" | "force" | "oneShot", duration?, onComplete?, onCancel? });
-feelPositionPunch({ target, offset, duration?, peakAt?, ... });
-feelPositionSpring({ target, offset, duration?, oscillations?, decay? });
-feelRecoil({ target, direction, distance?, duration?, peakAt?, attackEasing?, releaseEasing? });
-feelBounce({ target, distance?, duration?, peakAt?, attackEasing?, releaseEasing? });
-feelRotationPunch({ target, radians, duration?, peakAt?, ... });
-feelRotationSpring({ target, radians, duration?, oscillations?, decay? });
-feelRotationShake({ target, radians?, frequency?, decay?, duration? });
-feelScalePunch({ target, scale?, duration?, peakAt?, ... });
-feelScaleSpring({ target, scale?, duration?, oscillations?, decay? });
-feelScaleShake({ target, amplitude?, frequency?, decay?, duration? });
-feelSquash({ target, axis?, amount?, duration?, peakAt?, ... });
-feelTransformShake({ target, amplitude?, frequency?, decay?, duration? });
-feelCameraShake({ camera, intensity?, duration?, frequency?, decay? });
-feelCameraRotation({ camera, radians?, duration?, peakAt?, ... });
-feelCameraZoom({ camera, scale?, duration?, peakAt?, ... });
-feelEffect(host: EffectsHost, factory: EffectFactory, timing?: FeelPulseTiming);
-feelGlitch({ host, refreshRate?, slices?, offset?, direction?, red?, green?, blue?, duration?, peakAt?, releaseAt?, ... });
-feelDissolve({ target, duration?, easing?, edgeColor?, edgeWidth?, noiseScale?, softness?, seed? });
-feelHitFlash(host: EffectsHost, options?: FeelHitFlashOptions);
-feelShockwave(host: EffectsHost, options?: ShockwaveOptions & { center? });
-feelOutline({ target, thickness?, color?, alpha?, quality?, knockout?, duration?, peakAt?, ... });
-feelGlow({ target, color?, distance?, outerStrength?, innerStrength?, alpha?, quality?, knockout?, duration?, peakAt?, ... });
-feelColorize({ target, color, strength?, duration?, peakAt?, ... });
-feelOpacity({ target, alpha?, duration?, peakAt?, attackEasing?, releaseEasing? });
-feelBlink({ target, duration?, interval? });
-feelFloatingText({ text, position?, style?, offset?, travel?, spread?, sway?, layer?, duration?, fadeAt?, startScale?, peakScale?, peakAt?, settleAt? });
-feelDamageNumber({ value, critical?, prefix?, suffix?, format?, position?, color?, criticalColor?, fontSize?, criticalSize?, outlineColor?, outlineWidth?, style?, criticalStyle?, rise?, spread?, sway?, layer?, duration?, fadeAt? });
-feelImpactRing({ position?, radius?, expand?, thickness?, color?, spikes?, spikeLength?, layer?, duration?, startScale? });
-feelFlightLines({ position?, direction?, count?, length?, width?, spread?, depth?, travel?, color?, alpha?, layer?, duration? });
-feelMotionTrail({ position?, duration?: number | "held", lifetime?, sampleInterval?, minDistance?, maxPoints?, width?, taper?, color?, alpha?, layer? });
-feelAfterimage({ target, count?, interval?, lifetime?, tint?, alpha?, endScale?, layer?, blendMode? });
+import { Transform } from "@yagejs/core";
+import type {
+  SpriteComponent,
+  CameraComponent,
+  AnimationController,
+  EffectFactory,
+} from "@yagejs/renderer";
+import {
+  feelSpriteAnimation,
+  feelPositionPunch,
+  feelPositionSpring,
+  feelRecoil,
+  feelBounce,
+  feelRotationPunch,
+  feelRotationSpring,
+  feelRotationShake,
+  feelScalePunch,
+  feelScaleSpring,
+  feelScaleShake,
+  feelSquash,
+  feelTransformShake,
+  feelCameraShake,
+  feelCameraRotation,
+  feelCameraZoom,
+  feelEffect,
+  feelGlitch,
+  feelDissolve,
+  feelHitFlash,
+  feelShockwave,
+  feelOutline,
+  feelGlow,
+  feelColorize,
+  feelOpacity,
+  feelBlink,
+  feelFloatingText,
+  feelDamageNumber,
+  feelImpactRing,
+  feelFlightLines,
+  feelMotionTrail,
+  feelAfterimage,
+} from "@yagejs-addons/feel/renderer";
+function rendererCues(
+  target: SpriteComponent,
+  camera: CameraComponent,
+  animation: AnimationController,
+  factory: EffectFactory,
+) {
+  feelSpriteAnimation("hit", {
+    target: animation,
+    mode: "oneShot",
+    duration: 0.2,
+  });
+  feelPositionPunch({ target, offset: { x: 8, y: 0 }, duration: 0.2 });
+  feelPositionSpring({
+    target,
+    offset: { x: 8, y: 0 },
+    oscillations: 3,
+    decay: 2,
+  });
+  feelRecoil({ target, direction: { x: 1, y: 0 }, distance: 8 });
+  feelBounce({ target, distance: 12 });
+  feelRotationPunch({ target, radians: 0.2 });
+  feelRotationSpring({ target, radians: 0.2 });
+  feelRotationShake({ target, radians: 0.1, frequency: 24 });
+  feelScalePunch({ target, scale: 1.2 });
+  feelScaleSpring({ target, scale: 1.2 });
+  feelScaleShake({ target, amplitude: 0.1 });
+  feelSquash({ target, axis: "y", amount: 0.2 });
+  feelTransformShake({ target, amplitude: 4 });
+  feelCameraShake({ camera, intensity: 5 });
+  feelCameraRotation({ camera, radians: 0.05 });
+  feelCameraZoom({ camera, scale: 1.1 });
+  feelEffect(target.fx, factory, { duration: 0.2, peakAt: 0.4 });
+  feelGlitch({ host: target.fx, refreshRate: 20, slices: 8, offset: 24 });
+  feelDissolve({ target, duration: 0.4, edgeColor: 0xff8800 });
+  feelHitFlash(target.fx, { color: 0xffffff });
+  feelShockwave(target.fx, { center: { x: 0.5, y: 0.5 } });
+  feelOutline({ target, color: 0xffff00, thickness: 3 });
+  feelGlow({ target, color: 0xff8800, outerStrength: 5 });
+  feelColorize({ target, color: 0xff0000, strength: 0.5 });
+  feelOpacity({ target, alpha: 0.5 });
+  feelBlink({ target, duration: 0.5, interval: 0.08 });
+  feelFloatingText({ text: "Health restored", travel: { x: 0, y: -40 } });
+  feelDamageNumber({ value: 25, critical: true, prefix: "-" });
+  feelImpactRing({ radius: 20, spikes: 8, color: 0xffd54a });
+  feelFlightLines({ direction: { x: 1, y: 0 }, count: 10 });
+  feelMotionTrail({
+    position: () => target.entity.get(Transform).worldPosition,
+    duration: "held",
+  });
+  feelAfterimage({ target, count: 5, interval: 0.05, lifetime: 0.25 });
+}
 ```
 
 Visual motion targets a `VisualComponent`. Each playback owns a renderer
@@ -204,9 +290,10 @@ defaults to the cue entity's `Transform.worldPosition`.
 Each floating text, damage number, or impact ring playback spawns a separate
 transient entity. The entity is destroyed on completion or cancellation, so
 overlapping callouts do not restore or mutate one another. Text uses a centered
-`TextComponent`; impact rings use `GraphicsComponent`. Active callouts are not
-saved. Pass `layer` to choose their render layer. Use a custom pool for
-callout-heavy games.
+`TextComponent`; impact rings use `GraphicsComponent`. Keep active callouts and
+filter handles out of the game's explicit saved state. Save the game fact that
+should recreate an effect after load. Pass `layer` to choose their render layer.
+Use a custom pool for callout-heavy games.
 
 `feelFlightLines` owns a temporary directional streak field. A fixed
 `direction` must be finite with a magnitude greater than `1e-6` and is
@@ -237,12 +324,23 @@ in `start` and release them in `finish`. Developer callbacks can use
 ## `/recipes`
 
 ```ts
-impact({ target, position?, color?, duration?, scale?, shake?, ringRadius?, ringExpand? });
-damageImpact({ target, value, position?, critical?, impact?, number? });
-dashBurst({ target, direction, position?, duration?, peakAt?, attackEasing?, releaseEasing?, stretch?, blur?, lines? });
-spawnPop({ target, duration?, startScale?, offset?, oscillations?, decay?, glow? });
-enemyDeath({ target, onComplete, position?, color?, impactDuration?, dissolveDuration?, scale?, shake?, dissolve?, glow?, ring? });
-voidCollapse({ host, center?, radius?, strength?, darkness?, swirl?, expandFromCenter?, zoomStrength?, implosionDelay?, holdDuration?, color?, colorStrength?, duration?, peakAt?, ... });
+import type { SpriteComponent } from "@yagejs/renderer";
+import {
+  impact,
+  damageImpact,
+  dashBurst,
+  spawnPop,
+  enemyDeath,
+  voidCollapse,
+} from "@yagejs-addons/feel/recipes";
+function recipeCues(target: SpriteComponent) {
+  impact({ target, color: 0xffffff, duration: 0.3 });
+  damageImpact({ target, value: 25, critical: true });
+  dashBurst({ target, direction: { x: 1, y: 0 }, duration: 0.3 });
+  spawnPop({ target, startScale: 0.2 });
+  enemyDeath({ target, onComplete: ({ entity }) => entity.destroy() });
+  voidCollapse({ host: target.fx, radius: 120, duration: 0.6 });
+}
 ```
 
 A recipe is a ready-made composition that returns an ordinary `FeelNode`. It
@@ -271,13 +369,14 @@ recipe destroys an entity by itself.
 ## `/audio`
 
 ```ts
+import { feelSound } from "@yagejs-addons/feel/audio";
 feelSound({
-  alias: string,
-  channel?: string,
-  volume?: number,
-  speed?: FeelRange,
-  once?: boolean,
-  onEnd?: () => void,
+  alias: "impact",
+  channel: "sfx",
+  volume: 0.8,
+  speed: [0.95, 1.05],
+  once: true,
+  onEnd: () => console.log("Impact sound finished"),
 });
 ```
 
@@ -291,8 +390,15 @@ request or a `playOnce` owner.
 ## `/particles`
 
 ```ts
-feelParticleBurst({ emitter, count: number | [min, max], position? });
-feelParticleEmit({ emitter, duration?: number | "held" });
+import type { ParticleEmitterComponent } from "@yagejs/particles";
+import {
+  feelParticleBurst,
+  feelParticleEmit,
+} from "@yagejs-addons/feel/particles";
+function particleCues(emitter: ParticleEmitterComponent) {
+  feelParticleBurst({ emitter, count: [8, 12], position: { x: 100, y: 80 } });
+  feelParticleEmit({ emitter, duration: "held" });
+}
 ```
 
 Each `feelParticleEmit` playback owns a `ParticleEmissionHandle`. Releasing
@@ -316,9 +422,9 @@ Cue definitions, cooldown clocks, and in-flight playback are runtime-only.
 Normal entity setup constructs `Feel` when the game builds a scene, with no cue
 in progress.
 
-Renderer and camera modifiers, Feel-owned filter attachments, `SceneTime`
+Keep renderer and camera modifiers, Feel-owned filter attachments, `SceneTime`
 requests, particle-emission requests, live particles, and transient visual
-entities are also omitted.
+entities out of explicit saved roots.
 
 `feelCall`, custom effects, `feelKeyframeAnimation`, and
 `feelSpriteAnimation` can write through user-supplied callbacks. Changes to an
