@@ -38,7 +38,17 @@ class MenuScene extends Scene {
   readonly name = "menu";
   readonly defaultTransition = fade({ duration: 0.3 });
 }
+
+// Skip the destination's default transition for this operation
+await engine.scenes.push(new MenuScene(), { transition: null });
 ```
+
+`SceneTransitionOptions` is `{ transition?: SceneTransition | null }` for
+`push`, `pop`, and `replace`. Omission uses the destination's
+`defaultTransition`; a transition object overrides it; `null` skips it.
+For `pop`, the destination is the scene revealed below the outgoing scene.
+Without a transition, `replace` preloads the new scene, exits the old scene,
+then enters the new one without waiting for frames.
 
 ## Contract
 

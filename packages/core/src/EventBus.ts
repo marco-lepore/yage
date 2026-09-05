@@ -14,7 +14,7 @@ export type EventMap = Record<string, unknown>;
 /** Well-known engine events. */
 export interface EngineEvents {
   "entity:created": { entity: Entity };
-  "entity:destroyed": { entity: Entity };
+  "entity:destroyed": { entity: Entity; scene: Scene };
   "component:added": { entity: Entity; component: Component };
   "component:removed": { entity: Entity; componentClass: ComponentClass };
   "scene:pushed": { scene: SceneRef };

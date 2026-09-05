@@ -1,4 +1,4 @@
-import type { Inspector } from "@yagejs/core";
+import { Engine } from "@yagejs/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CLOCK_SPEEDS,
@@ -18,28 +18,51 @@ function fakeTime() {
     throwOnStep: null as Error | null,
     freezeThrows: null as Error | null,
   };
-  const time = {
+  const engine = new Engine();
+  engine.loop.setCallbacks({
+    earlyUpdate() {},
+    fixedUpdate() {},
+    update() {},
+    lateUpdate() {},
+    render() {},
+    endOfFrame() {},
+  });
+  engine.loop.attachTicker(() => () => {});
+  engine.loop.start();
+  engine.inspector.attachTimeController({
+    get isFrozen() {
+      return state.frozen;
+    },
     freeze: () => {
       if (state.freezeThrows) throw state.freezeThrows;
       state.frozen = true;
     },
-    isFrozen: () => state.frozen,
-    setDelta: (ms: number) => {
+    thaw: () => {
+      state.frozen = false;
+    },
+    setDelta: (ms) => {
       state.delta = ms;
     },
-    getFrame: () => state.frame,
-    step: (frames: number) => {
+    stepFrames: (frames, dtMs) => {
       if (state.throwOnStep) throw state.throwOnStep;
       state.stepped.push(frames);
-      state.frame += frames;
+      for (let i = 0; i < frames; i++) engine.loop.tick(dtMs ?? state.delta);
+      state.frame = engine.loop.frameCount;
     },
-    stepAsync: (frames: number) => {
-      state.steppedAsync.push(frames);
-      state.frame += frames;
-      return Promise.resolve();
-    },
+  });
+  const time = engine.inspector.time;
+  const acquire = time.acquire;
+  time.acquire = () => {
+    const lease = acquire();
+    return {
+      ...lease,
+      stepAsync: (frames = 1, opts) => {
+        state.steppedAsync.push(frames);
+        return lease.stepAsync(frames, opts);
+      },
+    };
   };
-  return { state, time: time as unknown as Inspector["time"] };
+  return { state, time, engine };
 }
 
 let now = 0;
@@ -79,10 +102,41 @@ const makeClock = () => {
       errors.push(error);
     },
   });
-  return { state, clock };
+  return { state, clock, time };
 };
 
 describe("LabClock", () => {
+  it("rejects foreign ownership and pause only releases the play lease", async () => {
+    const { clock, time } = makeClock();
+    const foreign = time.acquire();
+    expect(() => clock.play()).toThrow("owned");
+    await expect(clock.step()).rejects.toThrow("owned");
+    clock.pause();
+    expect(time.isOwned()).toBe(true);
+    foreign.release();
+    clock.play();
+    clock.play();
+    expect(time.isOwned()).toBe(true);
+    expect(() => time.step()).toThrow("owned");
+    clock.pause();
+    expect(time.isOwned()).toBe(false);
+    await clock.step();
+    expect(time.isOwned()).toBe(false);
+  });
+
+  it("passes its lease to driven work and releases after a failed step", async () => {
+    const { clock, time, state } = makeClock();
+    await clock.whileStopped(async (lease) => {
+      expect(time.isOwned()).toBe(true);
+      await lease.stepAsync(2);
+      expect(() => time.step()).toThrow("owned");
+    });
+    expect(time.isOwned()).toBe(false);
+    state.throwOnStep = new Error("frame failed");
+    await expect(clock.step()).rejects.toThrow("frame failed");
+    expect(time.isOwned()).toBe(false);
+  });
+
   it("does not touch the clock until it is asked to", () => {
     const { state } = makeClock();
     expect(state.frozen).toBe(false);
@@ -103,10 +157,10 @@ describe("LabClock", () => {
     expect(clock.isRunning).toBe(false);
   });
 
-  it("stands down while a step is draining", async () => {
+  it("rejects play while a step is draining", async () => {
     const { state, clock } = makeClock();
     const stepping = clock.step(3);
-    clock.play();
+    expect(() => clock.play()).toThrow("owned");
     expect(clock.isRunning).toBe(false);
     await stepping;
     clock.play();
@@ -227,8 +281,8 @@ describe("LabClock", () => {
     clock.play();
     let ranWhileHeld: number[] = [];
     await clock.whileStopped(async () => {
-      clock.play();
-      await clock.step(10);
+      expect(() => clock.play()).toThrow("owned");
+      await expect(clock.step(10)).rejects.toThrow("owned");
       frame(100);
       ranWhileHeld = [...state.stepped, ...state.steppedAsync];
     });

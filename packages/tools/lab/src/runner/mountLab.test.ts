@@ -1,5 +1,11 @@
 // @vitest-environment happy-dom
-import type { CallbackErrorRecord, Engine, Plugin, Scene } from "@yagejs/core";
+import { Engine } from "@yagejs/core";
+import type {
+  CallbackErrorRecord,
+  Plugin,
+  Scene,
+  SceneHooks,
+} from "@yagejs/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { control } from "../grammar/controls.js";
 import { defineHarness } from "../grammar/harness.js";
@@ -27,27 +33,55 @@ function stubEngine() {
     mountGate: undefined as Promise<void> | undefined,
   };
   let active: Scene | null = null;
+  const sceneHooks = new Set<SceneHooks>();
 
-  const time = {
+  const clockEngine = new Engine();
+  clockEngine.loop.setCallbacks({
+    earlyUpdate() {},
+    fixedUpdate() {},
+    update() {},
+    lateUpdate() {},
+    render() {},
+    endOfFrame() {},
+  });
+  clockEngine.loop.attachTicker(() => () => {});
+  clockEngine.loop.start();
+  clockEngine.inspector.attachTimeController({
+    get isFrozen() {
+      return state.frozen;
+    },
     freeze: () => {
       state.frozen = true;
     },
-    isFrozen: () => state.frozen,
-    setDelta: (ms: number) => {
+    thaw: () => {
+      state.frozen = false;
+    },
+    setDelta: (ms) => {
       state.delta = ms;
     },
-    getFrame: () => state.frame,
-    step: (frames: number) => {
-      state.frame += frames;
+    stepFrames: (frames, dtMs) => {
+      for (let i = 0; i < frames; i++)
+        clockEngine.loop.tick(dtMs ?? state.delta);
+      state.frame = clockEngine.loop.frameCount;
     },
-    stepAsync: (frames: number) => {
-      state.frame += frames;
-      return Promise.resolve();
-    },
+  });
+  const time = clockEngine.inspector.time;
+  const acquire = time.acquire;
+  time.acquire = () => {
+    const lease = acquire();
+    return {
+      ...lease,
+      stepAsync: async (frames = 1) => {
+        lease.step(frames);
+      },
+    };
   };
 
   const mountScene = (scene: Scene): Promise<void> => {
     const land = (): void => {
+      if (active) {
+        for (const hooks of sceneHooks) hooks.afterExit?.(active);
+      }
       active = scene;
       state.mounted.push(scene.name);
       // The engine runs `onEnter` as it stacks the scene, which is what makes
@@ -63,6 +97,10 @@ function stubEngine() {
   };
 
   const engine = {
+    registerSceneHooks(hooks: SceneHooks) {
+      sceneHooks.add(hooks);
+      return () => sceneHooks.delete(hooks);
+    },
     use(plugin: Plugin) {
       state.plugins.push(plugin.name);
       return this;
@@ -85,6 +123,7 @@ function stubEngine() {
     },
     inspector: {
       time,
+      events: { clearLog: vi.fn() },
       getErrors: () => ({ callbackErrors: [...state.errors] }),
       getInputState: () => ({
         keys: [],
@@ -361,8 +400,8 @@ describe("run", () => {
     const before = state.frame;
 
     const running = api.run();
-    api.clock.play();
-    await api.clock.step(10);
+    expect(() => api.clock.play()).toThrow("owned");
+    await expect(api.clock.step(10)).rejects.toThrow("owned");
 
     const result = await running;
     expect(result.framesUsed).toBe(DRIVE_FRAMES);
@@ -605,9 +644,9 @@ describe("drive", () => {
     // The boot mount ran with `shouldFail` still false, so this is the only
     // rebuild that fails.
     shouldFail = true;
-    await expect(
-      api.drive(() => undefined, { rebuild: true }),
-    ).rejects.toThrow("setup boom");
+    await expect(api.drive(() => undefined, { rebuild: true })).rejects.toThrow(
+      "setup boom",
+    );
 
     await vi.advanceTimersByTimeAsync(200);
     const text = errorText().join();
@@ -653,9 +692,9 @@ describe("drive", () => {
 
     // Asking for the rebuild explicitly is the way through, and it fails
     // loudly rather than silently driving the wrong scene.
-    await expect(
-      api.drive(() => undefined, { rebuild: true }),
-    ).rejects.toThrow("setup boom");
+    await expect(api.drive(() => undefined, { rebuild: true })).rejects.toThrow(
+      "setup boom",
+    );
   });
 
   it("marks the scene with the values it was built from, not ones set during the mount", async () => {

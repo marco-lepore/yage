@@ -67,7 +67,7 @@ export async function stepFrame(page: Page, dtMs?: number): Promise<void> {
     if (dt !== undefined) {
       inspector.time.setDelta(dt);
     }
-    await inspector.time.step(1);
+    await inspector.time.stepAsync(1);
   }, dtMs);
 }
 
@@ -85,7 +85,7 @@ export async function stepFrames(
       if (dt !== undefined) {
         inspector.time.setDelta(dt);
       }
-      await inspector.time.step(frames);
+      await inspector.time.stepAsync(frames);
     },
     { frames: count, dt: dtMs },
   );

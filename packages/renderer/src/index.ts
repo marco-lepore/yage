@@ -233,3 +233,4 @@ export { rectMask } from "./masks/rectMask.js";
 export type { RectMaskOptions } from "./masks/rectMask.js";
 export { spriteMask } from "./masks/spriteMask.js";
 export { graphicsMask } from "./masks/graphicsMask.js";
+export { syncCameraTransform } from "./cameraTransform.js";

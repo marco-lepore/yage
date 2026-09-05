@@ -1,14 +1,11 @@
-/** Public interface for the manual debug clock, accessible via `window.__yage__.clock`. */
+/** Controller infrastructure used by DebugPlugin. Use Inspector.time to drive games. */
 export interface IDebugClock {
   readonly isFrozen: boolean;
-  startAuto(): void;
-  stopAuto(): void;
   step(dtMs?: number): void;
   stepFrames(count: number, dtMs?: number): void;
   freeze(): void;
   thaw(): void;
   setDelta(ms: number): void;
-  getFrame(): number;
 }
 
 /**
@@ -32,13 +29,11 @@ export interface DebugClockHost {
  * Controls engine time-stepping for deterministic E2E tests.
  *
  * While frozen the renderer ticker is paused and frames advance only via
- * explicit `step()` / `stepFrames()` calls. `freeze()` / `thaw()` and
- * `startAuto()` / `stopAuto()` are equivalent verbs for the same toggle.
+ * explicit `step()` / `stepFrames()` calls.
  */
 export class DebugClock implements IDebugClock {
   private _isFrozen = false;
   private deltaMs: number;
-  private frame = 0;
 
   constructor(private readonly host: DebugClockHost) {
     this.deltaMs = host.fixedTimestep;
@@ -48,24 +43,16 @@ export class DebugClock implements IDebugClock {
     return this._isFrozen;
   }
 
-  startAuto(): void {
+  thaw(): void {
     if (!this._isFrozen) return;
     this.host.thaw();
     this._isFrozen = false;
   }
 
-  stopAuto(): void {
+  freeze(): void {
     if (this._isFrozen) return;
     this.host.freeze();
     this._isFrozen = true;
-  }
-
-  freeze(): void {
-    this.stopAuto();
-  }
-
-  thaw(): void {
-    this.startAuto();
   }
 
   setDelta(ms: number): void {
@@ -73,10 +60,6 @@ export class DebugClock implements IDebugClock {
       throw new Error("DebugClock.setDelta(ms) requires a positive number.");
     }
     this.deltaMs = ms;
-  }
-
-  getFrame(): number {
-    return this.frame;
   }
 
   step(dtMs?: number): void {
@@ -87,11 +70,7 @@ export class DebugClock implements IDebugClock {
     if (!Number.isFinite(dt) || dt <= 0) {
       throw new Error("DebugClock.step(dtMs) requires a positive number.");
     }
-    // Increment after a successful advance — if a ticker subscriber throws
-    // (system exception, render failure) the frame counter shouldn't advance
-    // ahead of state.
     this.host.advance(dt);
-    this.frame++;
   }
 
   stepFrames(count: number, dtMs?: number): void {

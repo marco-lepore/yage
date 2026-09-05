@@ -71,6 +71,8 @@ function resolveRange(
 ): { min: number; max: number } {
   const lo = min ?? Math.min(0, value);
   const hi = max ?? Math.max(1, value * 2, value);
+  requireFinite(kind, "min", lo);
+  requireFinite(kind, "max", hi);
   if (lo > hi) {
     throw new Error(
       `control.${kind}(): min (${lo}) is greater than max (${hi}).`,
@@ -86,7 +88,9 @@ function resolveRange(
 
 function requireFinite(kind: string, name: string, value: number): void {
   if (!Number.isFinite(value)) {
-    throw new Error(`control.${kind}(): ${name} must be a finite number.`);
+    throw new Error(
+      `control.${kind}(): ${name} must be a finite number, got ${value}.`,
+    );
   }
 }
 
@@ -95,8 +99,11 @@ export const control = {
   number(value: number, opts: NumberControlOptions = {}): NumberControl {
     requireFinite("number", "value", value);
     const step = opts.step ?? 0.01;
+    requireFinite("number", "step", step);
     if (!(step > 0)) {
-      throw new Error(`control.number(): step must be greater than 0.`);
+      throw new Error(
+        `control.number(): step must be greater than 0, got ${step}.`,
+      );
     }
     return {
       kind: "number",

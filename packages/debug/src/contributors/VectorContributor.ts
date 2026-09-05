@@ -30,7 +30,6 @@ export class VectorContributor implements DebugContributor {
     // A zoomed-in camera scales world-space strokes up with everything else;
     // dividing by the zoom keeps shaft and head at their configured size on
     // screen while the arrow's length stays in world pixels.
-    const zoom = api.cameraZoom || 1;
 
     for (const entry of this.store) {
       const entity = entry.entity;
@@ -44,6 +43,9 @@ export class VectorContributor implements DebugContributor {
       // A dormant entity keeps its registration — it draws again when it
       // comes back — but draws nothing while it is off.
       if (!entity.isActive) continue;
+      const target = api.forScene(entry.scene);
+      if (!target) continue;
+      const zoom = target.cameraZoom;
 
       const transform = entity.tryGet(Transform);
       if (!transform) continue;
@@ -61,7 +63,7 @@ export class VectorContributor implements DebugContributor {
       const drawnLength = Math.hypot(tipX, tipY);
       if (drawnLength === 0) continue;
 
-      const g = api.acquireGraphics();
+      const g = target.acquireGraphics();
       if (!g) return; // pool exhausted — skip the remaining arrows this frame
 
       // worldPosition walks the parent chain, so a child entity's arrow sits

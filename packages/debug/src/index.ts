@@ -5,13 +5,13 @@ export type {
   LayerTransformSnapshot,
   CameraStackSnapshot,
 } from "./DebugPlugin.js";
-export type { IDebugClock } from "./DebugClock.js";
 // Mirrored from the ./api subpath, which stays the import to reach for in game
 // code — it carries the same surface without pulling in pixi.js.
 export { DebugRegistryKey } from "./types.js";
 export type {
   DebugGraphics,
   WorldDebugApi,
+  SceneWorldDebugApi,
   HudDebugApi,
   StatsApi,
   DebugContributor,

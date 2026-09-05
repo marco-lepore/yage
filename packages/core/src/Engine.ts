@@ -203,6 +203,7 @@ export class Engine {
       endOfFrame: (dt) => {
         this.scheduler.run(Phase.EndOfFrame, dt);
         this.scenes._flushDestroyQueues();
+        this.inspector._completeFrame();
       },
     });
   }

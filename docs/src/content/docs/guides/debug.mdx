@@ -43,7 +43,7 @@ When the debug overlay is active, the plugin automatically shows:
   - Blue: kinematic bodies
   - Yellow: sensor colliders
 - **FPS counter** — frames per second in the HUD
-- **Entity count** — total entities in the current scene
+- **Entity count** — total entities across the scene stack, including inactive entities and excluding destroyed ones
 - **System timing** — per-system execution time breakdown
 - **Vector arrows** — any per-entity vector you registered with `drawVector`
 
@@ -82,9 +82,10 @@ Use `this.use(DebugRegistryKey)` instead when the plugin is always installed —
 in an example or a dev-only build — and keep `tryResolve` for game code that
 has to survive without it.
 
-The callback runs once per frame while the overlay is on, and not at all while
-it is off, so leaving a `drawVector` call in a hot path is free. Return `null`
-from it to skip a frame (for example while the agent is disabled).
+The callback runs while the overlay is on and the entity's scene is visible.
+Arrows follow that scene's primary camera, including shake, rotation and zoom.
+Hidden or popped scenes neither draw arrows nor call their providers. Return
+`null` from the callback to skip a frame.
 
 ### Options
 
@@ -147,6 +148,7 @@ that happens.
 Implement `DebugContributor` to add your own debug visualizations:
 
 ```typescript
+import type { Scene } from "@yagejs/core";
 import type { DebugContributor, WorldDebugApi, HudDebugApi } from "@yagejs/debug/api";
 
 class WallDebugContributor implements DebugContributor {
@@ -155,18 +157,23 @@ class WallDebugContributor implements DebugContributor {
 
   private readonly shapes: Array<{ x: number; y: number; w: number; h: number }>;
 
-  constructor(shapes: Array<{ x: number; y: number; w: number; h: number }>) {
+  constructor(
+    private readonly scene: Scene,
+    shapes: Array<{ x: number; y: number; w: number; h: number }>,
+  ) {
     this.shapes = shapes;
   }
 
   drawWorld(api: WorldDebugApi): void {
     if (!api.isFlagEnabled("show-walls")) return;
+    const target = api.forScene(this.scene);
+    if (!target) return;
 
     for (const s of this.shapes) {
-      const g = api.acquireGraphics();
+      const g = target.acquireGraphics();
       if (!g) break;
       g.rect(s.x, s.y, s.w, s.h)
-        .stroke({ color: 0xff0000, width: 2 / api.cameraZoom });
+        .stroke({ color: 0xff0000, width: 2 / target.cameraZoom });
     }
   }
 
@@ -183,7 +190,7 @@ import { DebugRegistryKey } from "@yagejs/debug/api";
 
 onEnter(): void {
   const registry = this.service(DebugRegistryKey);
-  registry.register(new WallDebugContributor(this.wallShapes));
+  registry.register(new WallDebugContributor(this, this.wallShapes));
 }
 ```
 
@@ -191,9 +198,20 @@ onEnter(): void {
 
 | Method | Description |
 |---|---|
-| `acquireGraphics()` | Get a pooled `Graphics` object (returns `undefined` if pool exhausted) |
-| `cameraZoom` | Current camera zoom level (scale line widths by `1/cameraZoom`) |
+| `forScene(scene)` | Get a `SceneWorldDebugApi` for a visible scene, or `undefined` when hidden or popped |
+| `acquireGraphics()` | Get pooled `DebugGraphics` using the topmost visible camera, or `undefined` when the pool is exhausted |
+| `cameraZoom` | That camera's effective zoom |
 | `isFlagEnabled(flag)` | Check if a debug flag is active |
+
+`SceneWorldDebugApi` has `acquireGraphics()` and readonly `cameraZoom`. Use it
+for drawings tied to a scene, such as walls or paths. Graphics use that scene's
+full primary-camera transform, regardless of explicit layer bindings in the
+game. With no camera, graphics use identity coordinates and zoom is `1`.
+Physics outlines and vector arrows use these scene targets automatically.
+
+The unscoped methods use the primary camera of the topmost visible scene that
+has one. They suit input and singleton diagnostics. Every scene and contributor
+shares the same `maxGraphics` limit.
 
 ### HudDebugApi
 
@@ -310,6 +328,11 @@ The configured `stepKey` only advances frames while the inspector clock is
 frozen. This is useful for debugging physics, animations, or frame-specific
 logic.
 
+`time.getFrame()` counts real game-loop frames during automatic playback and
+manual stepping. Snapshot, event-log and logger frame numbers use the same
+count. Freezing the clock does not reset it; take a baseline before stepping
+when measuring an interval.
+
 ### Async stepping across scene transitions
 
 `time.step(N)` is fully synchronous, so it never gives async work a chance to
@@ -341,11 +364,35 @@ below does that for you. Reach for `stepUntil`/`stepAsync` whenever the
 sequence crosses a scene transition or an async runner; keep using
 `time.step(N)` for everything else, since it is the simpler call.
 
+### Reserving clock control
+
+Use a lease when a custom tool needs exclusive control across several calls:
+
+```typescript
+const time = inspector.time.acquire();
+try {
+  time.freeze();
+  await time.stepAsync(30, { dtMs: 1000 / 60 });
+} finally {
+  time.release();
+}
+```
+
+The returned `InspectorTimeLease` has the same controls as `inspector.time`
+plus `release()`. Acquisition needs `DebugPlugin` and throws if another tool
+owns the clock. Raw `inspector.time` mutations reject while leased; queries
+remain available. `isOwned()` reports whether a lease is held.
+
+Acquisition and release do not change the frozen state, delta or frame count.
+Release is safe to call twice. A released lease can query, but cannot mutate.
+Raw `stepAsync` and `stepUntil` reserve control until they settle. Await each
+operation before starting another, including operations through one lease.
+
 ### Waiting for the engine, and driving it in one call
 
 An engine built with `debug: true` publishes `window.__yage__` as `start()`
-begins. The object carries `inspector`, `logger` and `ready`; `DebugPlugin`
-adds `clock` when its `onStart` hook runs.
+begins. The object carries `inspector`, `logger` and `ready`. `DebugPlugin`
+supplies the controls accessed through `inspector.time`.
 
 `ready` settles when `start()` finishes — plugins installed, loop running,
 `onStart` hooks done. It is what a script waits on after loading or reloading
@@ -391,6 +438,10 @@ if (!run.ok) throw new Error(run.error);
 run.value.frames;   // frames the walk took
 run.framesUsed;     // frames the whole drive issued
 ```
+
+A drive holds an exclusive clock lease until cleanup completes. Advance with
+the context's controls inside the callback; raw `inspector.time` mutations
+reject while the drive is running.
 
 The context carries `step`, `until`, `input`, `events` and `capture`. Every
 frame-advancing call is awaitable and drains async work between frames —
@@ -474,12 +525,10 @@ The two spec styles serve very different purposes:
 | Brittleness to balance changes | Stable by design | Brittle on purpose — that's why they're throwaway |
 | Example | `e2e/specs/inspector-determinism.spec.ts` | "did my jump-arc change still let the player reach the ledge?" |
 
-Always advance one frame at a time — through the drive context's `step`/`until`
-or `inspector.time.step(N)` — rather than `clock.step(bigDt)`, which collapses
-the interval into one fat frame.
-`Component.update`, tweens, and AI logic only see one update at the full
-`bigDt` under the latter, which diverges from real gameplay even though
-physics still substeps correctly.
+Advance frame-by-frame through the drive context's `step`/`until`, or through
+`inspector.time.stepAsync(N)` outside a drive. A large per-frame `dtMs` gives
+`Component.update`, tweens and AI one large update; it does not simulate a
+sequence of normal frames.
 
 ### Component state
 
@@ -585,7 +634,7 @@ These are truths, not bugs to fix — keep them in mind when interpreting probe 
 - **Visuals**: `snapshotJSON()` covers structural state — positions, components, scene stack — plus the render facet's world-space bounds and visibility, but still not pixel output (colours, shaders, exact rasterisation). `page.screenshot()` helps but agent-grade interpretation of pixels is imperfect. Combine both for confidence.
 - **Audio**: no introspection surface, and WebAudio doesn't pause in step mode. Probes can't tell you whether a sound effect played at the right frame.
 - **Wall-clock leaks**: `setTimeout`, `Date.now()`, and raw `performance.now()` reads bypass the frame clock. No callers in core YAGE today, but custom plugins might.
-- **`step(bigDt)` ≠ `stepFrames(N)`** for variable-update logic. Always prefer the latter in probes.
+- **Frame count and delta are different.** `stepAsync(60)` runs 60 frames; `stepAsync(1, { dtMs: 1000 })` runs one large frame.
 
 ### Screenshots
 
@@ -624,6 +673,20 @@ window.__yage__.inspector.snapshotScene("level2");
 If more than one active scene shares that name, `snapshotScene` throws instead
 of guessing — pass the id in that case.
 
+Scene ids identify instances for the Inspector's lifetime. A rebuilt scene
+gets a new id even with the same name, so compare selected fields when testing
+repeated runs. Entity name helpers return the first active match.
+
+All snapshot entity counts and per-scene lists exclude destroyed entities and
+include dormant or inactive ones. Each world-entity snapshot reports `name`,
+optional `key`, `generation` and `pooled`. Use `generation` to distinguish
+different lives of a reused entity.
+
+Engine snapshots include `fixedStepIndex` and `interpolationAlpha`. Scene
+snapshots include `elapsed` and `fixedElapsed` from `SceneTime`, plus
+`physics.elapsed` from their physics world (`0` without physics). Elapsed
+readings are seconds; compare timestamps from the same clock.
+
 The event log records bus, entity and scene events for `events.getLog()` and
 `events.waitFor()`. Each entry's `source` is `"bus"`, `"entity"` (an
 `entity.emit`, with `targetId` set to the emitting entity's id) or `"scene"`
@@ -635,6 +698,30 @@ entirely:
 window.__yage__.inspector.events.setEnabled(false);
 window.__yage__.inspector.events.isEnabled(); // false
 ```
+
+`events.waitFor(pattern, { withinFrames?, source? })` returns the earliest
+retained match without consuming it. Repeated waits can return the same entry.
+Clear the log before an action when checking for a new occurrence:
+
+```typescript
+await inspector.drive(async ({ events, input }) => {
+  events.clearLog();
+  await Promise.all([
+    events.waitFor("player:jumped", { withinFrames: 30 }),
+    input.hold("Space", 30),
+  ]);
+});
+```
+
+The game must emit the event the probe names. `withinFrames` must be a
+non-negative integer, even when history matches. Zero checks history only
+and rejects immediately if unmatched. Positive deadlines count real frames
+from registration in automatic or manual playback. An event during the
+deadline frame satisfies the wait; otherwise it rejects when that frame
+completes. A frozen clock needs the caller to advance frames; there is no
+wall-clock timeout. Disabling logging or disposing the Inspector rejects
+pending waits. Re-enabling logging permits new waits. RegExp patterns preserve
+their flags and the caller's `lastIndex`.
 
 Each entry's `payload` is plain data. A class instance inside a payload is
 stored as a compact ref rather than a deep copy: an `Entity` as

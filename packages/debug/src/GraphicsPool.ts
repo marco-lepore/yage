@@ -27,10 +27,11 @@ export class GraphicsPool {
   }
 
   /** Return the next available Graphics, or undefined if the pool is exhausted. */
-  acquire(): Graphics | undefined {
+  acquire(target: Container = this.container): Graphics | undefined {
     const pool = this.ensure();
     if (this.index >= pool.length) return undefined;
     const g = pool[this.index]!;
+    target.addChild(g);
     g.visible = true;
     this.index++;
     return g;
@@ -46,6 +47,7 @@ export class GraphicsPool {
       g.position.set(0, 0);
       g.rotation = 0;
       g.scale.set(1, 1);
+      this.container.addChild(g);
     }
     this.index = 0;
   }
@@ -56,5 +58,15 @@ export class GraphicsPool {
       g.destroy();
     }
     this.pool.length = 0;
+  }
+
+  /** Park graphics before destroying a scene's target container. */
+  releaseTarget(target: Container): void {
+    for (const graphics of this.pool ?? []) {
+      if (graphics.parent !== target) continue;
+      graphics.clear();
+      graphics.visible = false;
+      this.container.addChild(graphics);
+    }
   }
 }

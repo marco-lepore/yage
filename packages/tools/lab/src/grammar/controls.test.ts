@@ -134,3 +134,27 @@ describe("coerceControlValue", () => {
     expect(coerceControlValue(control.boolean(true), false)).toBe(false);
   });
 });
+describe("numeric control bounds", () => {
+  for (const kind of ["number", "int"] as const) {
+    it.each([NaN, Infinity, -Infinity])(
+      `${kind} rejects non-finite bounds: %s`,
+      (value) => {
+        for (const field of ["min", "max"] as const)
+          expect(() => control[kind](1, { [field]: value })).toThrow(
+            `${field} must be a finite number, got ${value}`,
+          );
+      },
+    );
+    it(`${kind} rejects an overflowing default maximum`, () => {
+      expect(() => control[kind](Number.MAX_VALUE)).toThrow(
+        "max must be a finite number, got Infinity",
+      );
+    });
+  }
+  it.each([NaN, Infinity, -Infinity, 0, -1])(
+    "rejects invalid step: %s",
+    (step) => {
+      expect(() => control.number(1, { step })).toThrow("step");
+    },
+  );
+});

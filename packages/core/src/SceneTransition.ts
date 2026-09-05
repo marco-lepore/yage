@@ -36,17 +36,20 @@ export interface SceneTransition {
 
 /** Options accepted by `SceneManager.push/pop/replace`. */
 export interface SceneTransitionOptions {
-  transition?: SceneTransition;
+  /** Omit to use the destination's default; null skips the transition. */
+  transition?: SceneTransition | null;
 }
 
 /**
  * Resolve the effective transition for a scene op.
- * Precedence: call-site option → destination's `defaultTransition` → undefined.
+ * Null skips transitions; otherwise the call-site option overrides the
+ * destination's `defaultTransition`.
  */
 export function resolveTransition(
-  callSite: SceneTransition | undefined,
+  callSite: SceneTransition | null | undefined,
   destination: Scene | undefined,
 ): SceneTransition | undefined {
-  if (callSite) return callSite;
-  return destination?.defaultTransition;
+  return callSite === null
+    ? undefined
+    : (callSite ?? destination?.defaultTransition);
 }

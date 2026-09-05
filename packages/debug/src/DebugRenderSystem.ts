@@ -1,6 +1,6 @@
-import { System, Phase } from "@yagejs/core";
+import { System, Phase, ErrorBoundaryKey } from "@yagejs/core";
+import type { EngineContext, ErrorBoundary } from "@yagejs/core";
 import type { Container } from "pixi.js";
-import type { CameraComponent } from "@yagejs/renderer";
 import type { DebugRegistryImpl } from "./DebugRegistryImpl.js";
 import type { GraphicsPool } from "./GraphicsPool.js";
 import type { TextPool } from "./TextPool.js";
@@ -8,16 +8,15 @@ import type { WorldDebugApiImpl } from "./WorldDebugApiImpl.js";
 import type { HudDebugApiImpl } from "./HudDebugApiImpl.js";
 import type { StatsStore } from "./StatsStore.js";
 
-export interface DebugCameraAccessor {
-  findCamera(): CameraComponent | undefined;
-  viewportWidth: number;
-  viewportHeight: number;
-}
-
 /** Renders all debug contributors. Runs after DisplaySystem in the Render phase. */
 export class DebugRenderSystem extends System {
   readonly phase = Phase.Render;
   readonly priority = 9999;
+  private boundary!: ErrorBoundary;
+
+  onRegister(context: EngineContext): void {
+    this.boundary = context.resolve(ErrorBoundaryKey);
+  }
 
   constructor(
     private readonly registry: DebugRegistryImpl,
@@ -28,7 +27,6 @@ export class DebugRenderSystem extends System {
     private readonly stats: StatsStore,
     private readonly worldContainer: Container,
     private readonly hudContainer: Container,
-    private readonly cameraAccessor: DebugCameraAccessor,
   ) {
     super();
   }
@@ -43,46 +41,32 @@ export class DebugRenderSystem extends System {
     this.worldContainer.visible = true;
     this.hudContainer.visible = true;
 
-    // Apply camera transform to the debug world container so that
-    // world-space debug drawing (collision shapes, etc.) aligns with
-    // the active scene's camera.
-    this.syncWorldCamera();
-
     this.graphicsPool.resetFrame();
+    this.worldApi.prepareFrame();
     this.textPool.resetFrame();
 
     for (const [name, contributor] of this.registry.contributors) {
-      contributor.sample?.(this.stats, dt);
+      if (contributor.sample)
+        this.boundary.wrapCallback(() => contributor.sample!(this.stats, dt), {
+          kind: "Debug contributor sample",
+          event: name,
+        });
 
       if (contributor.drawWorld) {
         this.worldApi.setContributor(name);
-        contributor.drawWorld(this.worldApi);
+        this.boundary.wrapCallback(
+          () => contributor.drawWorld!(this.worldApi),
+          { kind: "Debug contributor drawWorld", event: name },
+        );
       }
 
       if (contributor.drawHud) {
         this.hudApi.setContributor(name);
-        contributor.drawHud(this.hudApi);
+        this.boundary.wrapCallback(() => contributor.drawHud!(this.hudApi), {
+          kind: "Debug contributor drawHud",
+          event: name,
+        });
       }
     }
-  }
-
-  private syncWorldCamera(): void {
-    const cam = this.cameraAccessor.findCamera();
-    if (!cam) {
-      this.worldContainer.position.set(0, 0);
-      this.worldContainer.scale.set(1, 1);
-      this.worldContainer.rotation = 0;
-      return;
-    }
-
-    const vw = this.cameraAccessor.viewportWidth;
-    const vh = this.cameraAccessor.viewportHeight;
-    const rotatedPos = cam.effectivePosition
-      .scale(cam.zoom)
-      .rotate(-cam.rotation);
-    this.worldContainer.position.x = vw / 2 - rotatedPos.x;
-    this.worldContainer.position.y = vh / 2 - rotatedPos.y;
-    this.worldContainer.scale.set(cam.zoom);
-    this.worldContainer.rotation = -cam.rotation;
   }
 }

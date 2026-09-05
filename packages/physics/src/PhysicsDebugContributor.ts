@@ -33,7 +33,9 @@ export class PhysicsDebugContributor implements DebugContributor {
   drawWorld(api: WorldDebugApi): void {
     if (!api.isFlagEnabled("shapes")) return;
 
-    for (const [, ctx] of this.manager.getAllContexts()) {
+    for (const [scene, ctx] of this.manager.getAllContexts()) {
+      const target = api.forScene(scene);
+      if (!target) continue;
       const world = ctx.world;
       const ppm = world.pixelsPerMeter;
 
@@ -41,7 +43,7 @@ export class PhysicsDebugContributor implements DebugContributor {
         const collider = world.getCollider(handle);
         if (!collider) continue;
 
-        const g = api.acquireGraphics();
+        const g = target.acquireGraphics();
         if (!g) return; // pool exhausted
 
         const component = world._colliderComponents.get(handle);
@@ -62,7 +64,7 @@ export class PhysicsDebugContributor implements DebugContributor {
         g.rotation = collider.rotation();
 
         const alpha = collider.isSensor() ? 0.3 : 0.5;
-        const strokeStyle = { width: 1 / api.cameraZoom, color, alpha };
+        const strokeStyle = { width: 1 / target.cameraZoom, color, alpha };
 
         switch (collider.shapeType()) {
           case ShapeType.Ball: {

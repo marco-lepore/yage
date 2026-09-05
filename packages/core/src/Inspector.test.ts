@@ -70,6 +70,15 @@ function setup() {
 
   const engine = { context: ctx, scenes, loop, logger, events: bus };
   const inspector = new Inspector(engine);
+  loop.setCallbacks({
+    earlyUpdate() {},
+    fixedUpdate() {},
+    update() {},
+    lateUpdate() {},
+    render() {},
+    endOfFrame: () => inspector._completeFrame(),
+  });
+  loop.start();
 
   return { inspector, engine, scenes, scheduler, boundary, ctx, bus };
 }
@@ -453,8 +462,8 @@ describe("Inspector", () => {
     expect(errors.callbackErrors).toEqual([]);
   });
 
-  it("snapshot uses the attached logical frame controller", async () => {
-    const { inspector, scenes } = setup();
+  it("snapshot uses the engine frame while a controller is attached", async () => {
+    const { inspector, scenes, engine } = setup();
     await scenes.push(new TestScene("game"));
 
     inspector.attachTimeController({
@@ -463,15 +472,15 @@ describe("Inspector", () => {
       thaw() {},
       stepFrames() {},
       setDelta() {},
-      getFrame: () => 42,
     });
+    for (let i = 0; i < 42; i++) engine.loop.tick(16);
 
     const snap = inspector.snapshot();
     expect(snap.frame).toBe(42);
   });
 
   it("records bus events only while the event log is enabled", () => {
-    const { inspector, bus } = setup();
+    const { inspector, bus, engine } = setup();
 
     bus.emit("engine:started", undefined);
     expect(inspector.events.getLog()).toEqual([]);
@@ -482,8 +491,8 @@ describe("Inspector", () => {
       thaw() {},
       stepFrames() {},
       setDelta() {},
-      getFrame: () => 7,
     });
+    for (let i = 0; i < 7; i++) engine.loop.tick(16);
     inspector.setEventLogEnabled(true);
 
     bus.emit("engine:started", undefined);
@@ -559,15 +568,15 @@ describe("Inspector", () => {
   });
 
   it("logs scene.emit as a scene event with no target", async () => {
-    const { inspector, scenes } = setup();
+    const { inspector, scenes, engine } = setup();
     inspector.attachTimeController({
       isFrozen: true,
       freeze() {},
       thaw() {},
       stepFrames() {},
       setDelta() {},
-      getFrame: () => 3,
     });
+    for (let i = 0; i < 3; i++) engine.loop.tick(16);
     inspector.setEventLogEnabled(true);
     const scene = new TestScene("game");
     await scenes.push(scene);
@@ -921,44 +930,42 @@ describe("Inspector", () => {
 
   describe("time.stepUntil / time.stepAsync", () => {
     function fakeController(
+      loop: GameLoop,
       onStep: (count: number, dtMs?: number) => void,
-      getFrame: () => number,
     ) {
       return {
         isFrozen: true,
         freeze() {},
         thaw() {},
-        stepFrames: onStep,
+        stepFrames: (count: number, dtMs?: number) => {
+          for (let i = 0; i < count; i++) loop.tick(dtMs ?? 16);
+          onStep(count, dtMs);
+        },
         setDelta() {},
-        getFrame,
       };
     }
 
     it("stepUntil resolves 0 without stepping if the predicate is already true", async () => {
-      const { inspector } = setup();
+      const { inspector, engine } = setup();
       const onStep = vi.fn();
-      inspector.attachTimeController(fakeController(onStep, () => 0));
+      inspector.attachTimeController(fakeController(engine.loop, onStep));
 
       await expect(inspector.time.stepUntil(() => true)).resolves.toBe(0);
       expect(onStep).not.toHaveBeenCalled();
     });
 
     it("advances frame-by-frame, yielding a macrotask so a microtask-deferred change is observed", async () => {
-      const { inspector } = setup();
-      let frame = 0;
+      const { inspector, engine } = setup();
       let transitionSettled = false;
       inspector.attachTimeController(
-        fakeController(
-          (count) => {
-            frame += count;
-            // Mirrors a SceneManager transition that resolves in a microtask
-            // rather than synchronously within stepFrames().
-            Promise.resolve().then(() => {
-              transitionSettled = true;
-            });
-          },
-          () => frame,
-        ),
+        fakeController(engine.loop, (count) => {
+          expect(count).toBe(1);
+          // Mirrors a SceneManager transition that resolves in a microtask
+          // rather than synchronously within stepFrames().
+          Promise.resolve().then(() => {
+            transitionSettled = true;
+          });
+        }),
       );
 
       const frames = await inspector.time.stepUntil(() => transitionSettled);
@@ -968,13 +975,8 @@ describe("Inspector", () => {
     });
 
     it("throws once maxFrames is reached without the predicate becoming true", async () => {
-      const { inspector } = setup();
-      inspector.attachTimeController(
-        fakeController(
-          () => {},
-          () => 0,
-        ),
-      );
+      const { inspector, engine } = setup();
+      inspector.attachTimeController(fakeController(engine.loop, () => {}));
 
       await expect(
         inspector.time.stepUntil(() => false, { maxFrames: 3 }),
@@ -984,17 +986,14 @@ describe("Inspector", () => {
     });
 
     it("stepAsync advances a fixed frame count, passing dtMs through each step", async () => {
-      const { inspector } = setup();
+      const { inspector, engine } = setup();
       const dts: Array<number | undefined> = [];
       let frame = 0;
       inspector.attachTimeController(
-        fakeController(
-          (count, dtMs) => {
-            frame += count;
-            dts.push(dtMs);
-          },
-          () => frame,
-        ),
+        fakeController(engine.loop, (count, dtMs) => {
+          frame += count;
+          dts.push(dtMs);
+        }),
       );
 
       await inspector.time.stepAsync(2, { dtMs: 32 });
@@ -1004,9 +1003,9 @@ describe("Inspector", () => {
     });
 
     it("rejects a non-positive or non-finite dtMs without stepping", async () => {
-      const { inspector } = setup();
+      const { inspector, engine } = setup();
       const onStep = vi.fn();
-      inspector.attachTimeController(fakeController(onStep, () => 0));
+      inspector.attachTimeController(fakeController(engine.loop, onStep));
 
       await expect(
         inspector.time.stepUntil(() => false, { dtMs: -1 }),
@@ -1076,10 +1075,10 @@ describe("Inspector", () => {
 
     /** A clock whose frozen state actually moves, so restore can be asserted. */
     function driveController(
+      loop: GameLoop,
       log: string[],
       onStep?: (count: number, dtMs?: number) => void,
     ) {
-      let frame = 0;
       const controller = {
         isFrozen: false,
         freeze() {
@@ -1091,20 +1090,19 @@ describe("Inspector", () => {
           log.push("thaw");
         },
         stepFrames(count: number, dtMs?: number) {
-          frame += count;
+          for (let i = 0; i < count; i++) loop.tick(dtMs ?? 16);
           log.push("step");
           onStep?.(count, dtMs);
         },
         setDelta() {},
-        getFrame: () => frame,
       };
       return controller;
     }
 
     it("freezes a running clock for the drive and thaws it afterwards", async () => {
-      const { inspector } = setup();
+      const { inspector, engine } = setup();
       const log: string[] = [];
-      const controller = driveController(log);
+      const controller = driveController(engine.loop, log);
       inspector.attachTimeController(controller);
 
       const result = await inspector.drive(async ({ step }) => {
@@ -1121,9 +1119,9 @@ describe("Inspector", () => {
     });
 
     it("leaves an already-frozen clock frozen", async () => {
-      const { inspector } = setup();
+      const { inspector, engine } = setup();
       const log: string[] = [];
-      const controller = driveController(log);
+      const controller = driveController(engine.loop, log);
       controller.isFrozen = true;
       inspector.attachTimeController(controller);
 
@@ -1136,9 +1134,9 @@ describe("Inspector", () => {
     });
 
     it("releases synthetic input after the drive, even when the callback threw", async () => {
-      const { inspector, ctx } = setup();
+      const { inspector, engine, ctx } = setup();
       const log: string[] = [];
-      const controller = driveController(log);
+      const controller = driveController(engine.loop, log);
       inspector.attachTimeController(controller);
       ctx.register(InputManagerRuntimeKey, fakeInput(log));
 
@@ -1154,10 +1152,10 @@ describe("Inspector", () => {
     });
 
     it("holds a key across frames and releases it after the frames are issued", async () => {
-      const { inspector, ctx } = setup();
+      const { inspector, engine, ctx } = setup();
       const log: string[] = [];
       let settledMidStep = false;
-      const controller = driveController(log, () => {
+      const controller = driveController(engine.loop, log, () => {
         // A scene transition resolves in a microtask rather than inside
         // stepFrames; the drive's frames yield a macrotask, so it settles
         // before the key is released.
@@ -1188,9 +1186,9 @@ describe("Inspector", () => {
     });
 
     it("fires an action once per frame", async () => {
-      const { inspector, ctx } = setup();
+      const { inspector, engine, ctx } = setup();
       const log: string[] = [];
-      inspector.attachTimeController(driveController(log));
+      inspector.attachTimeController(driveController(engine.loop, log));
       ctx.register(InputManagerRuntimeKey, fakeInput(log));
 
       await inspector.drive(async ({ input }) => {
@@ -1201,11 +1199,11 @@ describe("Inspector", () => {
     });
 
     it("reports the frames until() took, and its exhaustion as a failed drive", async () => {
-      const { inspector } = setup();
+      const { inspector, engine } = setup();
       const log: string[] = [];
       let stepped = 0;
       inspector.attachTimeController(
-        driveController(log, () => {
+        driveController(engine.loop, log, () => {
           stepped++;
         }),
       );
@@ -1234,9 +1232,9 @@ describe("Inspector", () => {
     });
 
     it("keeps the clock restored when releasing input throws", async () => {
-      const { inspector, ctx } = setup();
+      const { inspector, engine, ctx } = setup();
       const log: string[] = [];
-      const controller = driveController(log);
+      const controller = driveController(engine.loop, log);
       inspector.attachTimeController(controller);
       const input = fakeInput(log);
       // A game key-up listener that throws reaches clearAll through the
@@ -1258,8 +1256,8 @@ describe("Inspector", () => {
     });
 
     it("refuses a second drive while one is in flight", async () => {
-      const { inspector } = setup();
-      inspector.attachTimeController(driveController([]));
+      const { inspector, engine } = setup();
+      inspector.attachTimeController(driveController(engine.loop, []));
 
       let inner: unknown;
       const outer = await inspector.drive(async ({ step }) => {
@@ -1272,7 +1270,7 @@ describe("Inspector", () => {
       });
 
       expect(outer.ok).toBe(true);
-      expect((inner as Error).message).toContain("already in flight");
+      expect((inner as Error).message).toContain("already owned");
       // The guard clears, so the next drive runs.
       await expect(inspector.drive(() => "after")).resolves.toMatchObject({
         ok: true,
@@ -1281,9 +1279,9 @@ describe("Inspector", () => {
     });
 
     it("holds the guard until the clock is restored, so a key-up listener cannot nest a drive", async () => {
-      const { inspector, ctx } = setup();
+      const { inspector, engine, ctx } = setup();
       const log: string[] = [];
-      const controller = driveController(log);
+      const controller = driveController(engine.loop, log);
       inspector.attachTimeController(controller);
       const input = fakeInput(log);
       let nested: unknown;
@@ -1303,16 +1301,16 @@ describe("Inspector", () => {
         driveInput.keyDown("KeyD");
       });
 
-      expect((nested as Error).message).toContain("already in flight");
+      expect((nested as Error).message).toContain("already owned");
       expect(controller.isFrozen).toBe(false);
     });
 
     it("passes dtMs through step and until to the clock", async () => {
-      const { inspector } = setup();
+      const { inspector, engine } = setup();
       const dts: Array<number | undefined> = [];
       let frames = 0;
       inspector.attachTimeController(
-        driveController([], (_count, dtMs) => {
+        driveController(engine.loop, [], (_count, dtMs) => {
           frames++;
           dts.push(dtMs);
         }),
@@ -1327,8 +1325,8 @@ describe("Inspector", () => {
     });
 
     it("reports frames and duration on a failed drive too", async () => {
-      const { inspector } = setup();
-      inspector.attachTimeController(driveController([]));
+      const { inspector, engine } = setup();
+      inspector.attachTimeController(driveController(engine.loop, []));
 
       const result = await inspector.drive(async ({ step }) => {
         await step(4);
@@ -1342,8 +1340,8 @@ describe("Inspector", () => {
     });
 
     it("hands the callback the inspector's own event log", async () => {
-      const { inspector } = setup();
-      inspector.attachTimeController(driveController([]));
+      const { inspector, engine } = setup();
+      inspector.attachTimeController(driveController(engine.loop, []));
 
       const result = await inspector.drive(
         ({ events }) => events === inspector.events,
@@ -1353,8 +1351,8 @@ describe("Inspector", () => {
     });
 
     it("collects captures the drive asked for", async () => {
-      const { inspector } = setup();
-      inspector.attachTimeController(driveController([]));
+      const { inspector, engine } = setup();
+      inspector.attachTimeController(driveController(engine.loop, []));
       const dataUrl = "data:image/png;base64,AAAA";
       vi.spyOn(inspector.capture, "dataURL").mockResolvedValue(dataUrl);
 
@@ -1369,15 +1367,15 @@ describe("Inspector", () => {
       ]);
     });
 
-    it("reports framesUsed live, counting frames issued through inspector.time.step directly too", async () => {
-      const { inspector } = setup();
-      inspector.attachTimeController(driveController([]));
+    it("reports framesUsed live for lease-bound steps", async () => {
+      const { inspector, engine } = setup();
+      inspector.attachTimeController(driveController(engine.loop, []));
 
       const seen: number[] = [];
       await inspector.drive(async (ctx) => {
         await ctx.step(2);
         seen.push(ctx.framesUsed);
-        inspector.time.step(3);
+        await ctx.step(3);
         seen.push(ctx.framesUsed);
       });
 
@@ -1385,8 +1383,8 @@ describe("Inspector", () => {
     });
 
     it("whileHolding nests: the inner release leaves the outer key held", async () => {
-      const { inspector, ctx } = setup();
-      inspector.attachTimeController(driveController([]));
+      const { inspector, engine, ctx } = setup();
+      inspector.attachTimeController(driveController(engine.loop, []));
       ctx.register(InputManagerRuntimeKey, fakeInput([]));
 
       let midRunKeys: string[] | undefined;
@@ -1401,8 +1399,8 @@ describe("Inspector", () => {
     });
 
     it("whileHolding resolves with what its callback returned", async () => {
-      const { inspector, ctx } = setup();
-      inspector.attachTimeController(driveController([]));
+      const { inspector, engine, ctx } = setup();
+      inspector.attachTimeController(driveController(engine.loop, []));
       ctx.register(InputManagerRuntimeKey, fakeInput([]));
 
       const run = await inspector.drive(async ({ input, until }) =>
@@ -1415,8 +1413,8 @@ describe("Inspector", () => {
     });
 
     it("whileHolding leaves a code the caller already holds down when it returns", async () => {
-      const { inspector, ctx } = setup();
-      inspector.attachTimeController(driveController([]));
+      const { inspector, engine, ctx } = setup();
+      inspector.attachTimeController(driveController(engine.loop, []));
       ctx.register(InputManagerRuntimeKey, fakeInput([]));
 
       let insideKeys: string[] | undefined;
@@ -1436,8 +1434,8 @@ describe("Inspector", () => {
     });
 
     it("whileHolding releases exactly its own codes when fn throws, leaving other held keys alone", async () => {
-      const { inspector, ctx } = setup();
-      inspector.attachTimeController(driveController([]));
+      const { inspector, engine, ctx } = setup();
+      inspector.attachTimeController(driveController(engine.loop, []));
       ctx.register(InputManagerRuntimeKey, fakeInput([]));
 
       let keysAfterThrow: string[] | undefined;
@@ -1456,8 +1454,8 @@ describe("Inspector", () => {
     });
 
     it("rejects a maxFrames that is not a non-negative integer or Infinity", async () => {
-      const { inspector } = setup();
-      inspector.attachTimeController(driveController([]));
+      const { inspector, engine } = setup();
+      inspector.attachTimeController(driveController(engine.loop, []));
 
       for (const bad of [Number.NaN, -1, 1.5]) {
         expect(() =>
@@ -1473,8 +1471,8 @@ describe("Inspector", () => {
     });
 
     it("ends a run that exceeds its frame budget with timedOut: true and framesUsed equal to the budget", async () => {
-      const { inspector } = setup();
-      inspector.attachTimeController(driveController([]));
+      const { inspector, engine } = setup();
+      inspector.attachTimeController(driveController(engine.loop, []));
 
       const result = await inspector.drive(
         async ({ step }) => {
@@ -1493,8 +1491,8 @@ describe("Inspector", () => {
     });
 
     it("reports timedOut: false when the callback throws for its own reason", async () => {
-      const { inspector } = setup();
-      inspector.attachTimeController(driveController([]));
+      const { inspector, engine } = setup();
+      inspector.attachTimeController(driveController(engine.loop, []));
 
       const result = await inspector.drive(
         async () => {
@@ -1511,13 +1509,13 @@ describe("Inspector", () => {
     });
 
     it("applies the default 10,000-frame budget when maxFrames is omitted", async () => {
-      const { inspector } = setup();
-      inspector.attachTimeController(driveController([]));
+      const { inspector, engine } = setup();
+      inspector.attachTimeController(driveController(engine.loop, []));
 
       const result = await inspector.drive(async ({ step }) => {
         // A single synchronous jump, so the test does not issue 10,000 real
         // macrotask-yielding frames to reach the default.
-        inspector.time.step(10_000);
+        for (let i = 0; i < 10_000; i++) engine.loop.tick(0);
         await step(1);
       });
 
@@ -1526,12 +1524,12 @@ describe("Inspector", () => {
     });
 
     it("never times out when maxFrames is Infinity", async () => {
-      const { inspector } = setup();
-      inspector.attachTimeController(driveController([]));
+      const { inspector, engine } = setup();
+      inspector.attachTimeController(driveController(engine.loop, []));
 
       const result = await inspector.drive(
         async ({ step }) => {
-          inspector.time.step(50_000);
+          for (let i = 0; i < 50_000; i++) engine.loop.tick(0);
           await step(1);
         },
         { maxFrames: Infinity },
@@ -1541,9 +1539,9 @@ describe("Inspector", () => {
     });
 
     it("captures state.keys before cleanup releases them", async () => {
-      const { inspector, ctx } = setup();
+      const { inspector, engine, ctx } = setup();
       const log: string[] = [];
-      inspector.attachTimeController(driveController(log));
+      inspector.attachTimeController(driveController(engine.loop, log));
       ctx.register(InputManagerRuntimeKey, fakeInput(log));
 
       const result = await inspector.drive(({ input }) => {
@@ -1557,8 +1555,8 @@ describe("Inspector", () => {
     });
 
     it("reports the scene stack on state.scenes", async () => {
-      const { inspector } = setup();
-      inspector.attachTimeController(driveController([]));
+      const { inspector, engine } = setup();
+      inspector.attachTimeController(driveController(engine.loop, []));
 
       const result = await inspector.drive(() => undefined);
 

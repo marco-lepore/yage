@@ -1,10 +1,11 @@
 import { devWarn, Transform } from "@yagejs/core";
-import type { Entity } from "@yagejs/core";
+import type { Entity, Scene } from "@yagejs/core";
 import type { DebugVectorOptions, DebugVectorProvider } from "./types.js";
 
 /** A registered vector arrow, with every option resolved to a value. */
 export interface VectorEntry {
   readonly entity: Entity;
+  readonly scene: Scene;
   /**
    * The entity life this registration belongs to. Both destruction and an
    * `EntityPool` release end a life and move `Entity.generation` on, so a
@@ -58,6 +59,7 @@ export class VectorDrawStore {
 
     const entry: VectorEntry = {
       entity,
+      scene: entity.scene,
       generation: entity.generation,
       vector,
       scale: options.scale ?? 1,

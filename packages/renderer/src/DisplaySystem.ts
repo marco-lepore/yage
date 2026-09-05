@@ -21,6 +21,7 @@ import {
 import type { Container } from "pixi.js";
 import { VisualComponent } from "./VisualComponent.js";
 import { attributed } from "./internal/attribution.js";
+import { syncCameraTransform } from "./cameraTransform.js";
 
 /**
  * Syncs Transform components to PixiJS display objects and applies
@@ -174,10 +175,7 @@ export class DisplaySystem extends System {
     // transform after the final camera is destroyed/disabled.
     for (const [, tree] of this.treeProvider.allTrees()) {
       for (const layer of tree.getAll()) {
-        const c = layer.container;
-        c.position.set(0, 0);
-        c.scale.set(1, 1);
-        c.rotation = 0;
+        syncCameraTransform(layer.container);
       }
     }
 
@@ -199,30 +197,12 @@ export class DisplaySystem extends System {
 
       for (const cam of cameras) {
         const bindings = cam.getResolvedBindings(tree);
-        const pos = cam.effectivePosition;
 
         for (const binding of bindings) {
           const layer = tree.tryGet(binding.layer);
           if (!layer) continue;
 
-          const translateRatio = binding.translateRatio ?? 1;
-          const rotateRatio = binding.rotateRatio ?? 1;
-          const scaleRatio = binding.scaleRatio ?? 1;
-
-          // Blend each axis from identity toward full camera effect. When
-          // all three ratios are 1 (the default), this reduces to the
-          // classic camera transform exactly.
-          const effScale = 1 + (cam.effectiveZoom - 1) * scaleRatio;
-          const effRot = cam.effectiveRotation * rotateRatio;
-          const translated = pos
-            .scale(effScale * translateRatio)
-            .rotate(-effRot);
-
-          const c = layer.container;
-          c.position.x = cam.viewportWidth / 2 - translated.x;
-          c.position.y = cam.viewportHeight / 2 - translated.y;
-          c.scale.set(effScale);
-          c.rotation = -effRot;
+          syncCameraTransform(layer.container, cam, binding);
         }
       }
     }

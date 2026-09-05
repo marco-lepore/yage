@@ -1,4 +1,8 @@
-import type { Inspector } from "@yagejs/core";
+import type {
+  Inspector,
+  InspectorTimeControl,
+  InspectorTimeLease,
+} from "@yagejs/core";
 
 /** What every frame simulates, at every speed. */
 export const STEP_MS = 1000 / 60;
@@ -61,11 +65,7 @@ export class LabClock {
   private carry = 0;
   private last = 0;
   private running = false;
-  /**
-   * Set while a step is draining or a driven run is using the clock. Whoever
-   * holds it issues the only frames until it resolves.
-   */
-  private busy = false;
+  private playLease: InspectorTimeLease | undefined;
   private rate = 1;
 
   constructor(
@@ -81,7 +81,7 @@ export class LabClock {
     return this.rate;
   }
 
-  /** The frame the engine is on, counted by the debug clock. */
+  /** The current engine frame number. */
   get frame(): number {
     return this.time.getFrame();
   }
@@ -110,10 +110,17 @@ export class LabClock {
     this.ensureFrozen();
   }
 
-  /** Does nothing while a step or a driven run owns the clock. */
+  /** Starts issuing frames. Repeated calls while playing do nothing. */
   play(): void {
-    if (this.running || this.busy) return;
-    this.ensureFrozen();
+    if (this.running) return;
+    const lease = this.time.acquire();
+    try {
+      this.ensureFrozen(lease);
+    } catch (error) {
+      lease.release();
+      throw error;
+    }
+    this.playLease = lease;
     this.running = true;
     this.last = performance.now();
     this.carry = 0;
@@ -124,42 +131,40 @@ export class LabClock {
     this.running = false;
     if (this.handle) cancelAnimationFrame(this.handle);
     this.handle = 0;
+    this.playLease?.release();
+    this.playLease = undefined;
   }
 
   /**
-   * Advances `frames` with the clock paused. `stepAsync` rather than `step`:
-   * `step` is synchronous, so awaiting it drains nothing and anything a frame
-   * starts asynchronously lands after the result is read. It yields a real
-   * macrotask between frames, which is why `play` waits for it: both writing
-   * the clock at once would issue two sets of frames.
-   *
-   * Does nothing while something else owns the clock, for the same reason.
+   * Advances `frames` while paused, yielding between frames for asynchronous
+   * game work. Other clock commands reject until stepping finishes.
    */
   async step(frames = 1): Promise<void> {
-    if (this.busy) return;
     this.pause();
-    this.ensureFrozen();
-    this.busy = true;
+    const lease = this.time.acquire();
     try {
-      await this.time.stepAsync(frames);
+      this.ensureFrozen(lease);
+      await lease.stepAsync(frames);
     } finally {
-      this.busy = false;
+      lease.release();
     }
   }
 
   /**
-   * Runs `work` with the clock stopped and held, then restores the play state
-   * it had. A driven run issues its own frames, so `play` and `step` stand
-   * down for the duration rather than issuing a second set.
+   * Runs `work` with exclusive clock control, then restores the previous play
+   * state. The callback uses its lease to advance frames.
    */
-  async whileStopped<T>(work: () => Promise<T>): Promise<T> {
+  async whileStopped<T>(
+    work: (time: InspectorTimeLease) => Promise<T>,
+  ): Promise<T> {
     const wasRunning = this.running;
     this.pause();
-    this.busy = true;
+    const lease = this.time.acquire();
     try {
-      return await work();
+      this.ensureFrozen(lease);
+      return await work(lease);
     } finally {
-      this.busy = false;
+      lease.release();
       if (wasRunning) this.play();
     }
   }
@@ -169,9 +174,9 @@ export class LabClock {
    * pause, step and speed mean anything, and `stepAsync` throws unless the
    * clock is already frozen.
    */
-  private ensureFrozen(): void {
-    if (!this.time.isFrozen()) this.time.freeze();
-    this.time.setDelta(STEP_MS);
+  private ensureFrozen(time: InspectorTimeControl = this.time): void {
+    if (!time.isFrozen()) time.freeze();
+    time.setDelta(STEP_MS);
   }
 
   private readonly tick = (): void => {
@@ -192,7 +197,7 @@ export class LabClock {
     if (frames === MAX_BURST) this.carry = 0;
     if (frames === 0) return;
     try {
-      this.time.step(frames);
+      this.playLease!.step(frames);
     } catch (error) {
       this.pause();
       this.options.onError(error);

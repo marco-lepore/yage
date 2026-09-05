@@ -165,7 +165,16 @@ await engine.scenes.push(new MenuScene());
 await engine.scenes.push(new MenuScene(), {
   transition: flash({ duration: 0.2 }),
 });
+
+// Skip the default transition for this operation
+await engine.scenes.push(new MenuScene(), { transition: null });
 ```
+
+The same option works with `pop` and `replace`. Omitting `transition` uses
+the destination scene's default; passing an object overrides it; passing
+`null` skips it. On `pop`, the destination is the scene revealed below the
+outgoing scene. A replacement without a transition preloads the new scene,
+exits the old scene, then enters the new one without waiting for frames.
 
 ## Checking Transition State
 

@@ -28,7 +28,8 @@ interface ProbeData {
 
 function probe(page: Page): Promise<ProbeData> {
   return page.evaluate(() => {
-    const h = (window as unknown as { __interaction__: Handle }).__interaction__;
+    const h = (window as unknown as { __interaction__: Handle })
+      .__interaction__;
     const focus = h.interactor.focus;
     return {
       isCoinFocused: focus === h.coinInteractable,
@@ -50,19 +51,25 @@ async function walk(page: Page, code: string, frames: number): Promise<void> {
 }
 
 async function fireInteract(page: Page): Promise<void> {
-  await page.evaluate(() => window.__yage__!.inspector.input.fireAction("interact"));
+  await page.evaluate(() =>
+    window.__yage__!.inspector.input.fireAction("interact"),
+  );
 }
 
 async function boot(page: Page): Promise<void> {
   await gotoFixture(page, "/interaction.html");
   await waitForClock(page);
   await page.waitForFunction(
-    () => (window as unknown as { __interaction__?: unknown }).__interaction__ !== undefined,
+    () =>
+      (window as unknown as { __interaction__?: unknown }).__interaction__ !==
+      undefined,
   );
 }
 
 test.describe("@yagejs-addons/interaction addon", () => {
-  test("walking the player toward the coin makes it the focus", async ({ page }) => {
+  test("walking the player toward the coin makes it the focus", async ({
+    page,
+  }) => {
     await boot(page);
 
     const before = await probe(page);
@@ -87,7 +94,7 @@ test.describe("@yagejs-addons/interaction addon", () => {
 
     await fireInteract(page);
     // The destroy is queued for end-of-frame flush; step one more frame.
-    await page.evaluate(() => window.__yage__!.inspector.time.step(1));
+    await page.evaluate(() => window.__yage__!.inspector.time.stepAsync(1));
 
     const after = await probe(page);
     expect(after.coinsCollected).toBe(1);
