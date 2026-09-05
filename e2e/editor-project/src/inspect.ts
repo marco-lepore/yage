@@ -23,6 +23,13 @@ export interface PlacementFact {
   readonly layer: string;
   /** The runtime parent's scene id, absent for a top-level placement. */
   readonly parent?: string;
+  /**
+   * Whether the entity is switched on: its own flag and every ancestor's. A
+   * level applies the placement's authored `active` once, after every
+   * `setup()` has run. The editor's preview never gets that far — every
+   * placement there is dormant — so this is a fact about a game page.
+   */
+  readonly active: boolean;
   /** Where the entity ended up, after the parent chain is applied. */
   readonly world: { readonly x: number; readonly y: number };
   /** How far it ended up turned, in radians, after the parent chain. */
@@ -99,6 +106,7 @@ export function exposeLevelFacts(engine: Engine): void {
             entity.get(SpriteComponent).renderObject.parent?.label ?? "",
           ),
           ...(parent === undefined ? {} : { parent }),
+          active: entity.isActive,
           world: { x: world.x, y: world.y },
           rotation: transform.worldRotation,
           scale: { x: scale.x, y: scale.y },

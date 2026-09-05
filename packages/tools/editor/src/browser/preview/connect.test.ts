@@ -381,7 +381,7 @@ describe("connectPreview", () => {
     harness.open(document(placement("crate", 0)));
     harness.store.dispatch({
       type: "pose-drafted",
-      draft: { id: "crate", component: "x", value: 40 },
+      draft: { ids: ["crate"], component: "x", value: 40 },
     });
     const before = harness.drafts.length;
     harness.store.dispatch({
@@ -401,7 +401,7 @@ describe("connectPreview", () => {
     harness.open(document(placement("crate", 0), placement("rock", 100)));
     harness.store.dispatch({
       type: "pose-drafted",
-      draft: { id: "crate", component: "x", value: 99 },
+      draft: { ids: ["crate"], component: "x", value: 99 },
     });
     const before = harness.drafts.length;
     harness.store.dispatch({ type: "selection-changed", ids: ["rock"] });
@@ -420,6 +420,25 @@ describe("connectPreview", () => {
         },
       },
     ]);
+  });
+
+  it("leaves the poses alone when the same placements are stepped again", () => {
+    const harness = createHarness();
+    harness.open(document(placement("crate", 0), placement("rock", 100)));
+    harness.store.dispatch({
+      type: "pose-drafted",
+      draft: { ids: ["crate", "rock"], component: "x", value: 40 },
+    });
+    const before = harness.drafts.length;
+    harness.store.dispatch({
+      type: "pose-drafted",
+      draft: { ids: ["crate", "rock"], component: "x", value: 60 },
+    });
+
+    // Every press hands the store a new array naming the same placements.
+    // Reading that as a dropped number would paint the document pose over the
+    // press the controller has already drawn.
+    expect(harness.drafts).toHaveLength(before);
   });
 
   it("does nothing before a catalog exists", () => {

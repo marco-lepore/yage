@@ -1,11 +1,22 @@
-import type { LevelPlacement, LevelTransform } from "@yagejs/level/document";
-import { gesturePoses, poseNumber, withPoseNumber } from "../commands/index.js";
+import type { LevelPlacement } from "@yagejs/level/document";
+import {
+  gesturePoses,
+  placementById,
+  poseNumber,
+  sharedParent,
+} from "../commands/index.js";
 import type {
   EditorState,
   EditorStore,
   PoseComponent,
 } from "../store/index.js";
-import { TextField, trimmedOrNull, type StepIntent } from "./controls.js";
+import {
+  MIXED_LABEL,
+  TextField,
+  isMixed,
+  trimmedOrNull,
+  type StepIntent,
+} from "./controls.js";
 import { rounded } from "./numbers.js";
 import { useEditorState } from "./useEditorSlice.js";
 
@@ -13,13 +24,18 @@ export interface ControlBarProps {
   readonly store: EditorStore;
   readonly editable: boolean;
   readonly onSetName: (id: string, name: string | null) => void;
-  readonly onSetPose: (id: string, transform: LevelTransform) => void;
+  /** Write one number of the transform to every selected placement. */
+  readonly onSetPose: (
+    ids: readonly string[],
+    component: PoseComponent,
+    value: number,
+  ) => void;
   /**
    * One number of a transform, part-way through being stepped or scrubbed:
    * held and drawn, not written. The box commits it on Enter or blur.
    */
   readonly onDraftPose: (
-    id: string,
+    ids: readonly string[],
     component: PoseComponent,
     value: number,
   ) => void;
@@ -28,7 +44,7 @@ export interface ControlBarProps {
 }
 
 /**
- * The name and the pose of the one selected placement, on a bar of their own
+ * The name and the pose of the selected placements, on a bar of their own
  * under the toolbar.
  *
  * These are the numbers a developer reaches for while working the viewport,
@@ -36,28 +52,36 @@ export interface ControlBarProps {
  * declared parameters vary in count and an asset path needs width, so they
  * stay in the inspector panel at the side.
  *
+ * The numbers show for a selection whose members are all under one parent. A
+ * local transform is read in its parent's frame, so with two parents there is
+ * no one thing an X of 40 would mean, and the bar says how many are selected
+ * instead. The name box is for one placement at a time: several placements
+ * sharing one name is a mistake, not a shortcut.
+ *
  * It subscribes to the whole state: it reads the document, the selection, the
  * grid step and the running gesture, and a drag is the one thing it has to
  * follow number by number.
  */
 export function ControlBar(props: ControlBarProps): React.JSX.Element {
   const state = useEditorState(props.store);
+  const byId = placementById(state.document);
   const selected = [...state.selection];
-  const placement =
-    selected.length === 1
-      ? state.document.entities.find((one) => one.id === selected[0])
-      : undefined;
+  const placements = selected
+    .map((id) => byId.get(id))
+    .filter((one): one is LevelPlacement => one !== undefined);
+  const parent = sharedParent(state.document, selected);
 
   return (
     <div className="ye-bar ye-bar--controls" data-testid="control-bar">
-      {placement ? (
-        // Keyed by id so a box being edited does not carry its draft over to
-        // the next selected placement.
+      {placements.length > 0 && parent !== undefined ? (
+        // Keyed by the selection so a box being edited does not carry its
+        // draft over to the next one.
         <PlacementControls
-          key={placement.id}
+          key={placements.map((one) => one.id).join(" ")}
           {...props}
           state={state}
-          placement={placement}
+          placements={placements}
+          parent={parent}
         />
       ) : (
         <span className="ye-bar__empty" data-testid="control-bar-empty">
@@ -70,86 +94,102 @@ export function ControlBar(props: ControlBarProps): React.JSX.Element {
   );
 }
 
-/** What every part below the bar takes: the props, the state, the subject. */
+/** What every part below the bar takes: the props, the state, the subjects. */
 type PlacementProps = ControlBarProps & {
   readonly state: EditorState;
-  readonly placement: LevelPlacement;
+  /** At least one, in selection order, all under {@link PlacementProps.parent}. */
+  readonly placements: readonly LevelPlacement[];
+  /** The parent they share, or `null` for the level's top level. */
+  readonly parent: string | null;
 };
 
 /**
- * A placement's name, then its pose as five typed numbers in the frame the
- * file holds — the placement's own local transform, which for a parented
- * placement is relative to its parent and for a root is where it sits in the
- * level.
+ * A placement's name, then the pose as five typed numbers in the frame the
+ * file holds — the local transform, which for a parented placement is relative
+ * to its parent and for a root is where it sits in the level.
  *
  * A number changes three ways: type it, press Up or Down, or drag the word
- * beside it. There are no arrow buttons. A press paints the placement at once
+ * beside it. There are no arrow buttons. A press paints the placements at once
  * and holds the number; Enter or blur turns the whole focus session into one
- * command and one undo step, and Escape puts the document's number back. The
- * four numbers a field did not change travel with it unaltered.
+ * command and one undo step, and Escape puts the document's numbers back. The
+ * four numbers a field did not change stay as each placement had them.
+ *
+ * A box whose placements do not agree shows `Mixed` and no number. Typing one
+ * writes it to all of them; an arrow press and a label scrub do nothing there,
+ * because a step is measured from a number the box does not have.
  *
  * A typed or stepped number is exact, so nothing here lands it on the grid
  * whatever the snap setting says — `Shift` chooses the size of the step and
  * not a lattice to land on.
  */
 function PlacementControls(props: PlacementProps): React.JSX.Element {
-  const { placement } = props;
+  const { placements } = props;
+  const ids = placements.map((one) => one.id);
+  const single = placements.length === 1 ? placements[0] : undefined;
   const cell = props.state.view.step;
   // A drag never touches the document, so during one the numbers come from the
   // gesture — the same poses the viewport is drawing and the release will
   // write.
   const dragged = props.state.gesture
-    ? gesturePoses(props.state, props.state.gesture).find(
-        (pose) => pose.id === placement.id,
-      )
-    : undefined;
-  const shown = dragged?.transform ?? placement.transform;
+    ? gesturePoses(props.state, props.state.gesture)
+    : [];
+  const shown = placements.map(
+    (one) =>
+      dragged.find((pose) => pose.id === one.id)?.transform ?? one.transform,
+  );
   const parent =
-    placement.parent === undefined
+    props.parent === null
       ? undefined
-      : props.state.document.entities.find(
-          (one) => one.id === placement.parent,
-        );
+      : props.state.document.entities.find((one) => one.id === props.parent);
 
   return (
     <>
-      <TextField
-        className="ye-name"
-        label="Name"
-        testId="placement-name"
-        value={placement.name ?? ""}
-        placeholder={placement.type}
-        disabled={!props.editable}
-        onCommit={(text) => {
-          props.onSetName(placement.id, trimmedOrNull(text));
-        }}
-      />
+      {single === undefined ? null : (
+        <TextField
+          className="ye-name"
+          label="Name"
+          testId="placement-name"
+          value={single.name ?? ""}
+          placeholder={single.type}
+          disabled={!props.editable}
+          onCommit={(text) => {
+            props.onSetName(single.id, trimmedOrNull(text));
+          }}
+        />
+      )}
       <div className="ye-group" data-testid="transform-fields">
-        {TRANSFORM_FIELDS.map((spec) => (
-          <TextField
-            key={spec.testId}
-            className="ye-num"
-            label={spec.label}
-            testId={spec.testId}
-            numeric
-            disabled={!props.editable}
-            value={shownNumber(poseNumber(shown, spec.component))}
-            reject={(text) => refusedNumber(text, props.editable)}
-            stepping={{
-              step: (text, intent) => steppedNumber(text, spec, intent, cell),
-              onStep: (text) => {
-                props.onDraftPose(placement.id, spec.component, Number(text));
-              },
-              onCancel: props.onCancelPoseDraft,
-            }}
-            onCommit={(text) => {
-              props.onSetPose(
-                placement.id,
-                withPoseNumber(shown, spec.component, Number(text.trim())),
-              );
-            }}
-          />
-        ))}
+        {TRANSFORM_FIELDS.map((spec) => {
+          const numbers = shown.map((transform) =>
+            shownNumber(poseNumber(transform, spec.component)),
+          );
+          // Compared as the box writes them, so two numbers that round to the
+          // same four decimals read as one rather than as a disagreement
+          // nothing on screen could show.
+          const mixed = isMixed(numbers);
+          return (
+            <TextField
+              key={spec.testId}
+              className="ye-num"
+              label={spec.label}
+              testId={spec.testId}
+              numeric
+              disabled={!props.editable}
+              value={mixed ? "" : (numbers[0] as string)}
+              placeholder={mixed ? MIXED_LABEL : undefined}
+              reject={(text) => refusedNumber(text, props.editable)}
+              stepping={{
+                step: (text, intent) => steppedNumber(text, spec, intent, cell),
+                onStep: (text) => {
+                  props.onDraftPose(ids, spec.component, Number(text));
+                },
+                onCancel: props.onCancelPoseDraft,
+              }}
+              onCommit={(text) => {
+                props.onSetPose(ids, spec.component, Number(text.trim()));
+              }}
+            />
+          );
+        })}
       </div>
       {parent ? (
         <small className="ye-bar__note" data-testid="transform-frame">

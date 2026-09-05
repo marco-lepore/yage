@@ -846,6 +846,14 @@ export const EDITOR_CSS = `
   color: var(--text-muted);
 }
 
+/* Stands where a control would be for a value the selected placements do not
+   agree on, and takes the width that control would have had. */
+.yage-editor .ye-field__mixed {
+  flex: 1 1 auto;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* The boxes of one fixed-arity value share the width a single box would have,
    so a pair of numbers sits on one row like every other field. */
 .yage-editor .ye-tuple {
@@ -951,6 +959,28 @@ export const EDITOR_CSS = `
   width: var(--control-height);
   padding: 2px;
   cursor: pointer;
+}
+
+.yage-editor .ye-swatch-slot {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+/* The picker element paints its own swatch and takes no pattern, so selected
+   placements that disagree are marked by a hatch laid over it. The hatch takes
+   no pointer events, which leaves the picker itself clickable. */
+.yage-editor .ye-swatch-slot.is-mixed::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  pointer-events: none;
+  border-radius: var(--radius-sm);
+  background: repeating-linear-gradient(
+    45deg,
+    var(--surface) 0 3px,
+    var(--text-muted) 3px 6px
+  );
 }
 
 /* Not scoped to .ye-field: TextField renders the shell's only input, and a

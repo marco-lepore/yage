@@ -97,11 +97,11 @@ function createHarness(editable = true) {
         onSetName={(id, name) => {
           intents.push(`name ${id}=${name ?? "(none)"}`);
         }}
-        onSetPose={(id, transform) => {
-          intents.push(`pose ${id} ${poseText(transform)}`);
+        onSetPose={(ids, component, value) => {
+          intents.push(`pose ${ids.join(",")}.${component}=${String(value)}`);
         }}
-        onDraftPose={(id, component, value) => {
-          intents.push(`draft ${id}.${component}=${String(value)}`);
+        onDraftPose={(ids, component, value) => {
+          intents.push(`draft ${ids.join(",")}.${component}=${String(value)}`);
         }}
         onCancelPoseDraft={() => {
           intents.push("cancel-draft");
@@ -115,15 +115,6 @@ function createHarness(editable = true) {
     });
   };
   return { host, root, store, intents, select };
-}
-
-/** A whole transform in one line, so a commit can be asserted in one string. */
-function poseText(transform: LevelTransform): string {
-  return (
-    `${String(transform.position.x)},${String(transform.position.y)} ` +
-    `r=${String(transform.rotation)} ` +
-    `s=${String(transform.scale.x)},${String(transform.scale.y)}`
-  );
 }
 
 function query<T extends Element>(host: HTMLElement, testId: string): T | null {
@@ -225,11 +216,21 @@ describe("ControlBar", () => {
     harness.host.remove();
   });
 
-  it("carries the boxes for exactly one selected placement, and says why not otherwise", () => {
+  it("carries the boxes for a selection sharing one parent, and says why not otherwise", () => {
     expect(query(harness.host, "control-bar-empty")?.textContent).toBe(
       "Nothing selected",
     );
+
+    // Two roots share the level's top level, so one typed number means one
+    // thing for both and the boxes are live.
     harness.select("crate", "moved");
+    expect(query(harness.host, "control-bar-empty")).toBeNull();
+    expect(input(harness.host, "transform-x").value).toBe("0");
+    // The name is one placement's, so it is not offered for two.
+    expect(query(harness.host, "placement-name")).toBeNull();
+
+    // A root and someone else's child have no frame in common.
+    harness.select("crate", "child");
     expect(query(harness.host, "control-bar-empty")?.textContent).toBe(
       "2 placements selected",
     );
@@ -237,6 +238,7 @@ describe("ControlBar", () => {
 
     harness.select("crate");
     expect(query(harness.host, "control-bar-empty")).toBeNull();
+    expect(query(harness.host, "placement-name")).not.toBeNull();
     expect(input(harness.host, "transform-x").value).toBe("0");
   });
 
@@ -329,6 +331,42 @@ describe("ControlBar", () => {
     });
   });
 
+  describe("several selected placements", () => {
+    it("shows the numbers they share and Mixed for the ones they do not", () => {
+      // "crate" and "moved" are both at the origin; "named" is not.
+      harness.select("crate", "moved");
+      expect(input(harness.host, "transform-x").value).toBe("0");
+      expect(input(harness.host, "transform-x").placeholder).toBe("");
+
+      harness.select("crate", "named");
+      expect(input(harness.host, "transform-x").value).toBe("");
+      expect(input(harness.host, "transform-x").placeholder).toBe("Mixed");
+      expect(input(harness.host, "transform-scale-y").value).toBe("");
+    });
+
+    it("writes a typed number to every one of them", () => {
+      harness.select("crate", "named");
+      const box = input(harness.host, "transform-x");
+      type(box, "137");
+      blur(box);
+
+      expect(harness.intents).toEqual(["pose crate,named.x=137"]);
+    });
+
+    it("steps a shared number for all of them, and a mixed one for none", () => {
+      harness.select("crate", "moved");
+      arrow(input(harness.host, "transform-x"), "ArrowUp");
+      expect(harness.intents).toEqual(["draft crate,moved.x=1"]);
+
+      // A step is measured from the number the box shows, and a mixed box
+      // shows none — so there is nothing to step from and the press does
+      // nothing rather than landing both on one number.
+      harness.select("crate", "named");
+      arrow(input(harness.host, "transform-x"), "ArrowUp");
+      expect(harness.intents).toHaveLength(1);
+    });
+  });
+
   describe("the transform boxes", () => {
     it("shows the five numbers of the local transform, in order", () => {
       harness.select("named");
@@ -396,26 +434,22 @@ describe("ControlBar", () => {
       expect(input(harness.host, "transform-y").value).toBe("-4");
     });
 
-    it("writes a typed angle in degrees and leaves the rest alone", () => {
+    it("writes the angle in the degrees the box is typed in", () => {
       harness.select("named");
       const box = input(harness.host, "transform-rotation");
       type(box, "90");
       key(box, "Enter");
 
-      expect(harness.intents).toEqual([
-        `pose named 12,-4 r=${String(Math.PI / 2)} s=2,0.5`,
-      ]);
+      expect(harness.intents).toEqual(["pose named.rotation=90"]);
     });
 
-    it("writes one coordinate and carries the other four unchanged", () => {
+    it("writes the one number that was typed", () => {
       harness.select("named");
       const box = input(harness.host, "transform-x");
       type(box, "137");
       blur(box);
 
-      expect(harness.intents).toEqual([
-        `pose named 137,-4 r=${String(Math.PI / 4)} s=2,0.5`,
-      ]);
+      expect(harness.intents).toEqual(["pose named.x=137"]);
     });
 
     it("commits nothing when the number is what the document holds", () => {
@@ -465,9 +499,7 @@ describe("ControlBar", () => {
       key(box, "Enter");
 
       expect(query(harness.host, "transform-scale-x-reason")).toBeNull();
-      expect(harness.intents).toEqual([
-        `pose named 12,-4 r=${String(Math.PI / 4)} s=0,0.5`,
-      ]);
+      expect(harness.intents).toEqual(["pose named.scaleX=0"]);
     });
 
     it("says whose frame the numbers are in, and only when there is one", () => {
@@ -598,7 +630,7 @@ describe("ControlBar", () => {
         "draft named.x=13",
         "draft named.x=14",
         "draft named.x=15",
-        `pose named 15,-4 r=${String(Math.PI / 4)} s=2,0.5`,
+        "pose named.x=15",
       ]);
     });
 
@@ -640,7 +672,7 @@ describe("ControlBar", () => {
         "draft named.x=13",
         "draft named.x=14",
         "draft named.x=15",
-        `pose named 15,-4 r=${String(Math.PI / 4)} s=2,0.5`,
+        "pose named.x=15",
       ]);
     });
 

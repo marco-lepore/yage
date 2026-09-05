@@ -140,14 +140,14 @@ function createHarness(
   commands.movePlacements = (ids, drop) => {
     intents.push(`move ${ids.join(",")} ${JSON.stringify(drop)}`);
   };
-  commands.setParam = (id, field, value) => {
-    intents.push(`set ${id}.${field}=${JSON.stringify(value)}`);
+  commands.setParam = (ids, field, value) => {
+    intents.push(`set ${ids.join(",")}.${field}=${JSON.stringify(value)}`);
   };
-  commands.resetParam = (id, field) => {
-    intents.push(`reset ${id}.${field}`);
+  commands.resetParam = (ids, field) => {
+    intents.push(`reset ${ids.join(",")}.${field}`);
   };
-  commands.resetPlacement = (id) => {
-    intents.push(`reset-placement ${id}`);
+  commands.resetPlacements = (ids) => {
+    intents.push(`reset-placement ${ids.join(",")}`);
   };
   commands.setName = (id, name) => {
     intents.push(`name ${id}=${name ?? "(none)"}`);
@@ -155,8 +155,8 @@ function createHarness(
   commands.setKey = (id, key) => {
     intents.push(`key ${id}=${key ?? "(none)"}`);
   };
-  commands.setPose = (id, transform) => {
-    intents.push(`pose ${id} x=${String(transform.position.x)}`);
+  commands.setPose = (ids, component, value) => {
+    intents.push(`pose ${ids.join(",")} ${component}=${String(value)}`);
   };
   commands.redrawGesture = () => intents.push("redraw");
   // The Actors panel reads what it can place on each of its own renders, and

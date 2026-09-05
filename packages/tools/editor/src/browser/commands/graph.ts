@@ -111,6 +111,39 @@ export function selectionRoots(
 }
 
 /**
+ * The parent every named placement sits under: its id, `null` for the top
+ * level, and `undefined` when they do not all share one.
+ *
+ * Two questions rest on the answer and must not disagree: whether one
+ * destination can reorder them, and whether one typed number means the same
+ * thing for all of them. A local transform is read in its parent's frame, so a
+ * selection spanning parents has no frame to type into. Both callers pass what
+ * their own question is about — ordering passes the selection's roots, since a
+ * selected child travels with its selected parent.
+ *
+ * An id the document does not hold is skipped, and naming none of them answers
+ * `undefined`.
+ */
+export function sharedParent(
+  document: LevelDocument,
+  ids: Iterable<string>,
+): string | null | undefined {
+  const byId = placementById(document);
+  let shared: string | null | undefined;
+  let found = false;
+  for (const id of ids) {
+    const placement = byId.get(id);
+    if (!placement) continue;
+    const parent = placement.parent ?? null;
+    if (!found) {
+      shared = parent;
+      found = true;
+    } else if (parent !== shared) return undefined;
+  }
+  return found ? shared : undefined;
+}
+
+/**
  * The top-level placements whose subtree holds none of the named ones, in
  * document order.
  *

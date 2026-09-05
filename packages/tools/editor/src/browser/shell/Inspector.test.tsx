@@ -207,15 +207,17 @@ function createHarness(editable = true, options: HarnessOptions = {}) {
                 : undefined
           }
           listAssets={listAssets}
-          onSetParam={(id, path, value) => {
-            intents.push(`set ${id}.${path.join(".")}=${String(value)}`);
+          onSetParam={(ids, path, value) => {
+            intents.push(
+              `set ${ids.join(",")}.${path.join(".")}=${String(value)}`,
+            );
             sets.push({ path: path.join("."), value });
           }}
-          onResetParam={(id, path) => {
-            intents.push(`reset ${id}.${path.join(".")}`);
+          onResetParam={(ids, path) => {
+            intents.push(`reset ${ids.join(",")}.${path.join(".")}`);
           }}
-          onResetPlacement={(id) => {
-            intents.push(`reset-placement ${id}`);
+          onResetPlacement={(ids) => {
+            intents.push(`reset-placement ${ids.join(",")}`);
           }}
           onPickTarget={(id, field, types) => {
             intents.push(`pick ${id}.${field} of ${types.join(",")}`);
@@ -226,17 +228,20 @@ function createHarness(editable = true, options: HarnessOptions = {}) {
           onSetKey={(id, key) => {
             intents.push(`key ${id}=${key ?? "(none)"}`);
           }}
+          onSetActive={(ids, active) => {
+            intents.push(`active ${ids.join(",")}=${String(active)}`);
+          }}
           layerChoices={() => options.layers ?? []}
           layerSorts={(layer) =>
             (options.layers ?? []).some(
               (choice) => choice.name === layer && choice.sorted,
             )
           }
-          onSetLayer={(id, layer) => {
-            intents.push(`layer ${id}=${layer ?? "(none)"}`);
+          onSetLayer={(ids, layer) => {
+            intents.push(`layer ${ids.join(",")}=${layer ?? "(none)"}`);
           }}
-          onOrder={(id, direction) => {
-            intents.push(`order ${id} ${direction}`);
+          onOrder={(ids, direction) => {
+            intents.push(`order ${ids.join(",")} ${direction}`);
           }}
         />,
       );
@@ -410,19 +415,19 @@ describe("Inspector", () => {
     harness.host.remove();
   });
 
-  it("renders for exactly one selected placement, and says why not otherwise", () => {
+  it("renders for the selection, and says so only when there is none", () => {
     expect(query(harness.host, "inspector-empty")?.textContent).toBe(
       "Nothing selected",
     );
-    harness.select("crate", "moved");
-    expect(query(harness.host, "inspector-empty")?.textContent).toBe(
-      "2 placements selected",
-    );
-    expect(query(harness.host, "field-texture")).toBeNull();
 
     harness.select("crate");
     expect(query(harness.host, "inspector-empty")).toBeNull();
     expect(field(harness.host).value).toBe("sprites/crate.png");
+
+    // Two of one type get one control per field, over both of them.
+    harness.select("crate", "moved");
+    expect(query(harness.host, "inspector-empty")).toBeNull();
+    expect(query(harness.host, "field-texture")).not.toBeNull();
   });
 
   it("names the placement and its type", () => {
@@ -1186,11 +1191,14 @@ describe("a parameter that points at another placement", () => {
             typeId === "game.switch" ? SWITCH : undefined
           }
           listAssets={() => Promise.resolve(LISTING)}
-          onSetParam={(id, field, value) => {
-            intents.push(`set ${id}.${field}=${String(value)}`);
+          onSetParam={(ids, path, value) => {
+            intents.push(
+              `set ${ids.join(",")}.${path.join(".")}=${String(value)}`,
+            );
           }}
           onResetParam={() => undefined}
           onResetPlacement={() => undefined}
+          onSetActive={() => undefined}
           onPickTarget={(id, field, types) => {
             intents.push(`pick ${id}.${field} of ${types.join(",")}`);
           }}
@@ -1546,12 +1554,15 @@ describe("the plain parameter kinds", () => {
             typeId === "game.slime" ? SLIME : undefined
           }
           listAssets={() => Promise.resolve(LISTING)}
-          onSetParam={(id, field, value) => {
+          onSetParam={(ids, path, value) => {
             // Stringified as JSON, so a typed 50 and a typed "50" read apart.
-            intents.push(`set ${id}.${field}=${JSON.stringify(value)}`);
+            intents.push(
+              `set ${ids.join(",")}.${path.join(".")}=${JSON.stringify(value)}`,
+            );
           }}
           onResetParam={() => undefined}
           onResetPlacement={() => undefined}
+          onSetActive={() => undefined}
           onPickTarget={() => undefined}
           onCancelPick={() => undefined}
           onSetKey={() => undefined}
@@ -1859,11 +1870,14 @@ describe("a parameter holding a pair of numbers", () => {
             typeId === "game.slime" ? SLIME : undefined
           }
           listAssets={() => Promise.resolve(LISTING)}
-          onSetParam={(id, field, value) => {
-            intents.push(`set ${id}.${field}=${JSON.stringify(value)}`);
+          onSetParam={(ids, path, value) => {
+            intents.push(
+              `set ${ids.join(",")}.${path.join(".")}=${JSON.stringify(value)}`,
+            );
           }}
           onResetParam={() => undefined}
           onResetPlacement={() => undefined}
+          onSetActive={() => undefined}
           onPickTarget={() => undefined}
           onCancelPick={() => undefined}
           onSetKey={() => undefined}
@@ -1902,13 +1916,13 @@ describe("a parameter holding a pair of numbers", () => {
     expect(box("field-patrolEnd-y").value).toBe("0");
   });
 
-  it("commits the whole value when one box is typed into", () => {
+  it("commits the member that was typed, leaving the other alone", () => {
     harness = pairHarness();
 
     type(box("field-patrolEnd-x"), "160");
     blur(box("field-patrolEnd-x"));
 
-    expect(harness.intents).toEqual(['set s1.patrolEnd={"x":160,"y":0}']);
+    expect(harness.intents).toEqual(["set s1.patrolEnd.x=160"]);
   });
 
   it("refuses an entry that is not a number and writes nothing", () => {
@@ -1948,7 +1962,7 @@ describe("a parameter holding a pair of numbers", () => {
     expect(key(box("field-drift-x"), "ArrowUp")).toBe(true);
     blur(box("field-drift-x"));
 
-    expect(harness.intents).toEqual(['set s1.drift={"x":13,"y":-4}']);
+    expect(harness.intents).toEqual(["set s1.drift.x=13"]);
   });
 
   it("follows the handle while its value is being dragged", () => {
@@ -2272,13 +2286,14 @@ describe("a value the game decodes, and a colour", () => {
           editable
           inspectable={(typeId) => (typeId === "game.lamp" ? LAMP : undefined)}
           listAssets={() => Promise.resolve(LISTING)}
-          onSetParam={(id, path, value) => {
+          onSetParam={(ids, path, value) => {
             intents.push(
-              `set ${id}.${path.join(".")}=${JSON.stringify(value)}`,
+              `set ${ids.join(",")}.${path.join(".")}=${JSON.stringify(value)}`,
             );
           }}
           onResetParam={() => undefined}
           onResetPlacement={() => undefined}
+          onSetActive={() => undefined}
           onPickTarget={() => undefined}
           onCancelPick={() => undefined}
           onSetKey={() => undefined}
@@ -2455,5 +2470,397 @@ describe("a value the game decodes, and a colour", () => {
     click(harness.host, "clear-glow");
 
     expect(harness.intents).toEqual(["set lamp.glow=null"]);
+  });
+});
+
+describe("several selected placements", () => {
+  /** Two types sharing one field exactly, and a third sharing none. */
+  const HERO: InspectableType = {
+    typeId: "game.hero",
+    fields: [
+      { name: "speed", kind: "number", defaultValue: 1 },
+      { name: "label", kind: "string", defaultValue: "" },
+      {
+        name: "facing",
+        kind: "select",
+        options: ["left", "right"],
+        defaultValue: "left",
+      },
+      { name: "flying", kind: "boolean", defaultValue: false },
+      { name: "tint", kind: "color", defaultValue: "#ffffff" },
+      { name: "drift", kind: "vec2", defaultValue: { x: 0, y: 0 } },
+      { name: "notes", kind: "json", defaultValue: {} },
+      { name: "sprite", kind: "asset", defaultValue: "sprites/barrel.png" },
+      {
+        name: "target",
+        kind: "entityRef",
+        types: ["game.rock", "game.foe"],
+        defaultValue: "",
+      },
+      {
+        name: "hitbox",
+        kind: "object",
+        fields: [
+          { name: "width", kind: "number", defaultValue: 1 },
+          { name: "height", kind: "number", defaultValue: 1 },
+        ],
+        defaultValue: { width: 1, height: 1 },
+      },
+      {
+        name: "waypoints",
+        kind: "array",
+        item: { kind: "number", defaultValue: 0 },
+        defaultValue: [],
+      },
+    ],
+  };
+  const FOE: InspectableType = {
+    typeId: "game.foe",
+    fields: [
+      { name: "speed", kind: "number", defaultValue: 1 },
+      // The same name and kind, a different default: not one control, because
+      // Reset would mean two things.
+      { name: "label", kind: "string", defaultValue: "unnamed" },
+      { name: "menace", kind: "number", defaultValue: 3 },
+    ],
+  };
+  const ROCK: InspectableType = {
+    typeId: "game.rock",
+    fields: [{ name: "mass", kind: "number", defaultValue: 1 }],
+  };
+
+  const HERO_PARAMS = {
+    speed: 4,
+    label: "one",
+    facing: "left",
+    flying: true,
+    tint: "#ff0000",
+    drift: { x: 1, y: 2 },
+    notes: { a: 1 },
+    sprite: "sprites/barrel.png",
+    target: "r1",
+    hitbox: { width: 2, height: 3 },
+    waypoints: [1, 2],
+  };
+
+  const LAYERS: readonly LayerChoice[] = [
+    { name: "bg", sorted: false },
+    { name: "props", sorted: false },
+  ];
+
+  function manyHarness() {
+    const store = new EditorStore({
+      api: unusedApi,
+      epoch: "epoch-1",
+      projectId: "project-1",
+      levels: [],
+    });
+    store.dispatch({
+      type: "level-opened",
+      snapshot: {
+        ...snapshot(),
+        document: {
+          ...DOCUMENT,
+          entities: [
+            placement("h1", {
+              type: "game.hero",
+              layer: "bg",
+              params: HERO_PARAMS as LevelPlacement["params"],
+            }),
+            placement("h2", {
+              type: "game.hero",
+              layer: "props",
+              active: false,
+              params: {
+                ...HERO_PARAMS,
+                label: "two",
+                facing: "right",
+                flying: false,
+                tint: "#00ff00",
+                drift: { x: 1, y: 9 },
+                notes: { b: 2 },
+                sprite: "sprites/CRATE.png",
+                target: "f1",
+                hitbox: { width: 2, height: 9 },
+                waypoints: [3],
+              } as LevelPlacement["params"],
+            }),
+            placement("kid", { type: "game.hero", parent: "h1" }),
+            placement("f1", {
+              type: "game.foe",
+              params: { speed: 4, label: "unnamed", menace: 3 },
+            }),
+            placement("r1", { type: "game.rock", params: { mass: 2 } }),
+            placement("g1", { type: "game.ghost" }),
+            placement("g2", { type: "game.ghost" }),
+          ],
+        },
+      },
+    });
+    const intents: string[] = [];
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <Inspector
+          store={store}
+          editable
+          inspectable={(typeId) =>
+            typeId === "game.hero"
+              ? HERO
+              : typeId === "game.foe"
+                ? FOE
+                : typeId === "game.rock"
+                  ? ROCK
+                  : undefined
+          }
+          listAssets={() => Promise.resolve(LISTING)}
+          onSetParam={(ids, path, value) => {
+            intents.push(
+              `set ${ids.join(",")}.${path.join(".")}=${JSON.stringify(value)}`,
+            );
+          }}
+          onResetParam={(ids, path) => {
+            intents.push(`reset ${ids.join(",")}.${path.join(".")}`);
+          }}
+          onResetPlacement={(ids) => {
+            intents.push(`reset-placement ${ids.join(",")}`);
+          }}
+          onSetActive={(ids, active) => {
+            intents.push(`active ${ids.join(",")}=${String(active)}`);
+          }}
+          onPickTarget={() => undefined}
+          onCancelPick={() => undefined}
+          onSetKey={() => undefined}
+          layerChoices={() => LAYERS}
+          layerSorts={() => false}
+          onSetLayer={(ids, layer) => {
+            intents.push(`layer ${ids.join(",")}=${layer ?? "(none)"}`);
+          }}
+          onOrder={(ids, direction) => {
+            intents.push(`order ${ids.join(",")} ${direction}`);
+          }}
+        />,
+      );
+    });
+    const select = (...ids: string[]): void => {
+      act(() => {
+        store.dispatch({ type: "selection-changed", ids });
+      });
+    };
+    const report = (...diagnostics: EditorDiagnostic[]): void => {
+      act(() => {
+        store.dispatch({
+          type: "diagnostics-replaced",
+          source: "preview",
+          diagnostics,
+        });
+      });
+    };
+    return { host, root, store, intents, select, report };
+  }
+
+  let harness: ReturnType<typeof manyHarness>;
+
+  beforeEach(() => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    harness = manyHarness();
+  });
+
+  afterEach(() => {
+    act(() => {
+      harness.root.unmount();
+    });
+    harness.host.remove();
+  });
+
+  it("names the one type, or how many types there are", () => {
+    harness.select("h1", "h2");
+    expect(harness.host.textContent).toContain("game.hero");
+    expect(harness.host.textContent).toContain("2 placements");
+
+    harness.select("h1", "f1");
+    expect(harness.host.textContent).toContain("2 types");
+  });
+
+  it("shows a value they share, and Mixed for one they do not", () => {
+    harness.select("h1", "h2");
+
+    expect(input(harness.host, "field-speed").value).toBe("4");
+    expect(input(harness.host, "field-label").value).toBe("");
+    expect(input(harness.host, "field-label").placeholder).toBe("Mixed");
+    const facing = query<HTMLSelectElement>(harness.host, "field-facing");
+    expect(facing?.value).toBe("");
+    // The row standing for the disagreement is first and cannot be chosen.
+    expect(facing?.querySelector("option")?.textContent).toBe("Mixed");
+    expect(facing?.querySelector("option")?.hasAttribute("disabled")).toBe(
+      true,
+    );
+    expect(input(harness.host, "field-flying").indeterminate).toBe(true);
+    expect(input(harness.host, "field-tint").placeholder).toBe("Mixed");
+    // A pair recurses: the member they agree on still shows its number.
+    expect(input(harness.host, "field-drift-x").value).toBe("1");
+    expect(input(harness.host, "field-drift-y").value).toBe("");
+    expect(input(harness.host, "field-drift-y").placeholder).toBe("Mixed");
+    // A value of no declared shape has no text that stands for both, so it
+    // offers the one edit that means the same for either.
+    expect(query(harness.host, "field-notes-mixed")?.textContent).toBe("Mixed");
+    expect(query(harness.host, "field-notes")).toBeNull();
+  });
+
+  it("shows Mixed for an asset path they do not share", () => {
+    harness.select("h1", "h2");
+    const box = input(harness.host, "field-sprite");
+
+    expect(box.value).toBe("");
+    expect(box.placeholder).toBe("Mixed");
+  });
+
+  it("shows Mixed for a reference they do not share, and no Pick", () => {
+    harness.select("h1", "h2");
+    const picker = query<HTMLSelectElement>(harness.host, "field-target");
+
+    expect(picker?.value).toBe("");
+    expect(picker?.querySelector("option")?.textContent).toBe("Mixed");
+    // Pointing at a target belongs to one field of one placement, so a
+    // selection of several has the list and nothing else.
+    expect(query(harness.host, "pick-target")).toBeNull();
+  });
+
+  it("reads an object one member at a time", () => {
+    harness.select("h1", "h2");
+
+    expect(input(harness.host, "field-hitbox.width").value).toBe("2");
+    expect(input(harness.host, "field-hitbox.height").value).toBe("");
+    expect(input(harness.host, "field-hitbox.height").placeholder).toBe(
+      "Mixed",
+    );
+  });
+
+  it("shows the word and no rows for lists that differ", () => {
+    harness.select("h1", "h2");
+
+    expect(query(harness.host, "field-waypoints-mixed")?.textContent).toBe(
+      "Mixed",
+    );
+    // Row three of one list and row three of another are not the same value,
+    // so there is nothing to draw a row for and nothing to append to.
+    expect(query(harness.host, "field-waypoints-row-0")).toBeNull();
+    expect(query(harness.host, "field-waypoints-add")).toBeNull();
+  });
+
+  it("shows a mixed colour as a hatch rather than a black swatch", () => {
+    harness.select("h1", "h2");
+
+    expect(query(harness.host, "swatch-slot-tint")?.className).toContain(
+      "is-mixed",
+    );
+    harness.select("h1");
+    expect(query(harness.host, "swatch-slot-tint")?.className).not.toContain(
+      "is-mixed",
+    );
+  });
+
+  it("writes one typed value to every selected placement", () => {
+    harness.select("h1", "h2");
+    const box = input(harness.host, "field-speed");
+    type(box, "9");
+    blur(box);
+
+    expect(harness.intents).toEqual(["set h1,h2.speed=9"]);
+  });
+
+  it("resets a mixed value on all of them", () => {
+    harness.select("h1", "h2");
+    click(harness.host, "reset-notes");
+
+    expect(harness.intents).toEqual(["reset h1,h2.notes"]);
+  });
+
+  it("offers only the fields the selected types declare the same way", () => {
+    harness.select("h1", "f1");
+
+    expect(query(harness.host, "field-speed")).not.toBeNull();
+    // Declared with a different default in each type, so it is not one field.
+    expect(query(harness.host, "field-label")).toBeNull();
+    expect(query(harness.host, "field-menace")).toBeNull();
+    expect(query(harness.host, "no-shared-params")).toBeNull();
+  });
+
+  it("says so when the selected types share no parameters", () => {
+    harness.select("h1", "r1");
+
+    expect(query(harness.host, "no-shared-params")?.textContent).toBe(
+      "The selected placements share no parameters.",
+    );
+  });
+
+  it("says a type the project lacks is missing, however many hold it", () => {
+    harness.select("g1", "g2");
+
+    expect(harness.host.textContent).toContain(
+      "game.ghost — not in the project",
+    );
+    // A type the project does not hold declares nothing, so the line above is
+    // the whole explanation and a note about shared parameters would mislead.
+    expect(query(harness.host, "no-shared-params")).toBeNull();
+  });
+
+  it("puts every selected placement on a chosen layer", () => {
+    harness.select("h1", "h2");
+    const picker = query<HTMLSelectElement>(harness.host, "placement-layer");
+    if (!picker) throw new Error("No layer control rendered.");
+
+    expect(picker.value).toBe("");
+    choose(picker, "props");
+
+    expect(harness.intents).toEqual(["layer h1,h2=props"]);
+  });
+
+  it("reads the active flag as mixed until they agree, and writes both", () => {
+    harness.select("h1", "h2");
+    const box = input(harness.host, "placement-active");
+
+    expect(box.indeterminate).toBe(true);
+    expect(box.checked).toBe(false);
+    act(() => {
+      box.click();
+    });
+
+    expect(harness.intents).toEqual(["active h1,h2=true"]);
+  });
+
+  it("keeps the key with one placement", () => {
+    harness.select("h1");
+    expect(query(harness.host, "placement-key")).not.toBeNull();
+
+    harness.select("h1", "h2");
+    expect(query(harness.host, "placement-key")).toBeNull();
+    expect(query(harness.host, "placement-active")).not.toBeNull();
+  });
+
+  it("switches the ordering controls off for placements under two parents", () => {
+    harness.select("h1", "h2");
+    expect(
+      query<HTMLButtonElement>(harness.host, "order-front")?.disabled,
+    ).toBe(false);
+
+    harness.select("h2", "kid");
+    expect(
+      query<HTMLButtonElement>(harness.host, "order-front")?.disabled,
+    ).toBe(true);
+    expect(query(harness.host, "order-spread-note")?.textContent).toBe(
+      "The selected placements have different parents.",
+    );
+  });
+
+  it("resets the parameters of every selected placement in one go", () => {
+    harness.select("h1", "h2");
+    harness.report(diagnostic("h2", "parameter-invalid"));
+    click(harness.host, "reset-placement");
+    click(harness.host, "confirm-reset-placement");
+
+    expect(harness.intents).toEqual(["reset-placement h1,h2"]);
   });
 });

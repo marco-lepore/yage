@@ -805,15 +805,13 @@ function reduce(state: EditorState, action: EditorAction): EditorState {
     }
     case "selection-changed": {
       const selection = new Set(action.ids);
-      // A pending number belongs to the panel that was showing it, and the
-      // inspector shows that panel for exactly one selected placement. Any
-      // other selection takes the panel away, so the number is dropped rather
-      // than written — the rule the asset field already keeps for a half-typed
+      // A pending number belongs to the placements it was stepped over, and
+      // the bar shows those boxes for the selection as it stands. Any other
+      // selection takes the boxes away, so the number is dropped rather than
+      // written — the rule the asset field already keeps for a half-typed
       // path.
       const poseDraft =
-        state.poseDraft &&
-        action.ids.length === 1 &&
-        action.ids[0] === state.poseDraft.id
+        state.poseDraft && sameIds(action.ids, state.poseDraft.ids)
           ? state.poseDraft
           : undefined;
       // A waiting reference field is shown by that same panel, so it is left
@@ -1007,6 +1005,16 @@ export function isDirty(state: EditorState): boolean {
     return true;
   }
   return state.file.contentHash !== state.file.savedContentHash;
+}
+
+/** Whether two id lists name the same placements, whatever order they are in. */
+export function sameIds(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  if (left.length !== right.length) return false;
+  const named = new Set(left);
+  return right.every((id) => named.has(id));
 }
 
 /** The named placements' current poses, for a consumer that mirrors the document. */

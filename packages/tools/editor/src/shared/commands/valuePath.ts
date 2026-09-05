@@ -3,7 +3,8 @@ import type { JsonValue } from "@yagejs/level/document";
 /**
  * Paths the structured inspector can write as one atomic value command: the
  * whole parameter object, any value inside it however deep, the type version,
- * or one of the placement fields a document may leave out.
+ * whether the placement starts active, or one of the placement fields a
+ * document may leave out.
  *
  * Depth is not capped here. A parameter can hold an object of arrays of
  * objects, and every level of it is edited at its own path; what a level may
@@ -16,6 +17,9 @@ export function isValueEditPath(path: readonly string[]): boolean {
     return (
       path[0] === "params" ||
       path[0] === "typeVersion" ||
+      // Required and always a boolean, so it is not an optional field: `null`
+      // has no meaning at it and a document never leaves it out.
+      path[0] === "active" ||
       isOptionalFieldPath(path)
     );
   }

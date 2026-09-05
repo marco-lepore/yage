@@ -97,6 +97,25 @@ describe("reduceCommand — set-values", () => {
     expect(result.impact).toBe("rebuild");
   });
 
+  it("writes whether a placement starts its life in the game switched on", () => {
+    const before = levelOf(placement("a", {}));
+
+    const result = reduceCommand(
+      before,
+      setValues([
+        { placementId: "a", path: ["active"], expected: true, value: false },
+      ]),
+    );
+
+    expect(result.document.entities[0]?.active).toBe(false);
+    // Required and always a boolean: it is never removed the way an optional
+    // field is, and the preview has to build again to honour it.
+    expect(result.impact).toBe("rebuild");
+    expect(result.inverse).toMatchObject({
+      edits: [{ placementId: "a", path: ["active"], value: true }],
+    });
+  });
+
   it("reports each affected placement once in first-edit order", () => {
     const result = reduceCommand(
       levelOf(

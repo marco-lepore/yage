@@ -753,10 +753,34 @@ level's number back.
 
 ### The inspector
 
-The **inspector** on the right shows the rest of what the selected placement
-holds, top to bottom: its type and id, one control per parameter its
-declaration declares, anything wrong with the placement, a **Draw order**
-section, and an **In your game** section holding its **Key**.
+The **inspector** on the right shows the rest of what the selection holds, top
+to bottom: the type and id, one control per parameter the declaration declares,
+anything wrong with the placement, a **Draw order** section, and an **In your
+game** section holding **Active in game** and the **Key**.
+
+#### Several at once
+
+Select more than one placement and the same panel edits all of them. Each
+control shows the value they all hold, or `Mixed` when they do not: a dropdown
+gets a first row you cannot choose, a box shows the word greyed out and no
+text, a checkbox goes half-ticked, a colour's swatch is hatched, and a list or
+a free-form value offers **Reset** — plus **Clear** where the field is optional
+— since editing row three of two different lists means nothing in particular. Setting a value writes it to every selected placement, whatever
+each of them held, as one edit and one undo step.
+
+The controls you get are the parameters every selected type declares in the
+same way — the same name, kind, bounds, options and members. Two types that
+declare `speed` differently share no control for it, and two types with nothing
+in common say so.
+
+**Name** and **Key** stay with one placement: a shared name is a mistake and a
+shared key would stop the level loading. So do the findings about a particular
+placement. The bar above the viewport offers its five numbers while every
+selected placement is under the same parent — those numbers are read in the
+parent's frame, so across two parents an X of 40 would mean two different
+places, and the bar shows the count instead. A number they disagree on reads
+`Mixed`; type one and they all take it, while the arrow keys and the label drag
+do nothing there, because a step needs a number to start from.
 
 #### Parameters
 
@@ -910,7 +934,21 @@ question the Layer control answers coarsely.
 A layer that sorts itself — one you declared with `ySort` or a `sort` of your
 own — decides its order every frame from what it draws, so the four buttons are
 switched off there and the panel says why. Reordering the level would change
-the file and nothing on screen.
+the file and nothing on screen. They are off for a selection spread across two
+parents as well, for the reason they never change a parent: there is no one
+group of siblings to move within.
+
+#### Active in game
+
+**Active in game** is what the placement's entity starts as when your game
+loads the level. Untick it and the entity is still created — the level's
+`setup()` runs, the key finds it — but it is switched off: no updates, nothing
+drawn, and everything under it off with it, until your game calls
+`entity.setActive(true)`. It is how you author a door that opens later, or a
+wave that arrives on a trigger.
+
+This is in the file and your game reads it. Hiding a placement while you work
+is a different thing: that stays in your browser and never reaches the level.
 
 #### Key
 
@@ -930,7 +968,7 @@ Two placements cannot end up with the same scene key: the level would not load.
 Type one another placement already uses and the editor says which placement
 holds it and sends nothing.
 
-The active flag and extensions have no controls, and the parent is changed by
+A placement's extensions have no controls, and the parent is changed by
 dragging in the hierarchy.
 
 The fields above are edits to the level, so each is one undo step. The
@@ -978,10 +1016,8 @@ edge or centre. The grid catches a move and the side a box handle drags; the
 screen distance, so a drag on one lands on nothing. The step is remembered per
 level in your browser; there is no project-wide default.
 
-**A parameter with a shape.** A value made of members, a list of them, a
-colour, or one your game decodes has no control yet. The active flag and
-extensions are not editable either, and the hierarchy is how you change a
-parent.
+**Editing a placement's extensions.** The `extensions` object a placement can
+carry has no control, and the hierarchy is how you change a parent.
 
 **Listing every file.** The picker walks the Vite root, so a file under a
 `publicDir` you moved outside the root is not offered, and neither is anything

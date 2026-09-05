@@ -31,6 +31,7 @@ export {
   placementTree,
   rootsWithout,
   selectionRoots,
+  sharedParent,
   withDescendants,
 } from "./graph.js";
 export type { PlacementNode } from "./graph.js";

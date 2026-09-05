@@ -482,11 +482,11 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
         onSetName={(id, name) => {
           props.commands.setName(id, name);
         }}
-        onSetPose={(id, transform) => {
-          props.commands.setPose(id, transform);
+        onSetPose={(ids, component, value) => {
+          props.commands.setPose(ids, component, value);
         }}
-        onDraftPose={(id, component, value) => {
-          props.commands.draftPose(id, component, value);
+        onDraftPose={(ids, component, value) => {
+          props.commands.draftPose(ids, component, value);
         }}
         onCancelPoseDraft={() => {
           props.commands.cancelPoseDraft();
@@ -555,11 +555,11 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
             editable={editable}
             inspectable={props.inspectable}
             listAssets={props.listAssets}
-            onSetParam={(id, path, value) => {
-              props.commands.setParam(id, path, value);
+            onSetParam={(ids, path, value) => {
+              props.commands.setParam(ids, path, value);
             }}
-            onResetParam={(id, path) => {
-              props.commands.resetParam(id, path);
+            onResetParam={(ids, path) => {
+              props.commands.resetParam(ids, path);
             }}
             onPickTarget={(id, field, types) => {
               props.commands.startPick(id, field, types);
@@ -567,19 +567,22 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
             onCancelPick={() => {
               props.commands.cancelPick();
             }}
-            onResetPlacement={(id) => {
-              props.commands.resetPlacement(id);
+            onResetPlacement={(ids) => {
+              props.commands.resetPlacements(ids);
             }}
             onSetKey={(id, key) => {
               props.commands.setKey(id, key);
             }}
+            onSetActive={(ids, active) => {
+              props.commands.setActive(ids, active);
+            }}
             layerChoices={props.layerChoices}
             layerSorts={props.layerSorts}
-            onSetLayer={(id, layer) => {
-              props.commands.setLayer(id, layer);
+            onSetLayer={(ids, layer) => {
+              props.commands.setLayer(ids, layer);
             }}
-            onOrder={(id, direction) => {
-              props.commands.orderPlacements([id], direction);
+            onOrder={(ids, direction) => {
+              props.commands.orderPlacements(ids, direction);
             }}
           />
         </aside>

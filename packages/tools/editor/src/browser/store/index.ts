@@ -5,6 +5,7 @@ export {
   isDirty,
   isEditable,
   posesOf,
+  sameIds,
 } from "./EditorStore.js";
 export type { DraftApi, EditorStoreOptions } from "./EditorStore.js";
 export type {

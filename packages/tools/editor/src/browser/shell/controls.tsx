@@ -73,6 +73,27 @@ export function releaseFocus(event: ReactMouseEvent<HTMLElement>): void {
   if (event.detail > 0) event.currentTarget.blur();
 }
 
+/**
+ * What a control shows in place of a value the selected placements do not
+ * agree on. One word across the box, the dropdown and the bar's numbers, so
+ * "they differ" reads the same wherever it is met.
+ */
+export const MIXED_LABEL = "Mixed";
+
+/**
+ * Whether the values a control was handed — one per selected placement —
+ * disagree, which is what puts `MIXED_LABEL` where a value would be. Compared
+ * by identity unless the caller knows a wider sameness, as a parameter value
+ * does: two placements holding equal objects agree.
+ */
+export function isMixed<T>(
+  values: readonly T[],
+  same: (left: T, right: T) => boolean = Object.is,
+): boolean {
+  const [first, ...rest] = values;
+  return rest.some((one) => !same(one, first as T));
+}
+
 /** The typed text without its surrounding spaces, or `null` when nothing is left. */
 export function trimmedOrNull(text: string): string | null {
   const trimmed = text.trim();

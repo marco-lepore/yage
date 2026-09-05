@@ -141,6 +141,8 @@ interface PlacementFact {
   /** The render layer the placement's sprite is parented to. */
   readonly layer: string;
   readonly parent?: string;
+  /** Whether the entity is switched on, which a dormant preview never is. */
+  readonly active: boolean;
   readonly world: Point;
   readonly rotation: number;
   readonly scale: Point;
@@ -174,6 +176,8 @@ interface DraftPlacement {
   key?: string;
   parent?: string;
   layer?: string;
+  /** Left out by the canonical format while it holds its default of `true`. */
+  active?: boolean;
   typeVersion: number;
   transform: { position: Point };
   params: Record<string, unknown>;
@@ -2818,6 +2822,49 @@ test.describe("level editor", () => {
     // And the editor's preview agrees, which is the whole point of declaring
     // the set in the config.
     expect((await placementIn(page, ROOT)).layer).toBe("props");
+  });
+
+  test("edits two placements at once, and takes them out of the game", async ({
+    page,
+    context,
+  }) => {
+    await openEditor(page);
+    await page.getByTestId(`hierarchy-row-${ROOT}`).click();
+    await page
+      .getByTestId(`hierarchy-row-${LATER}`)
+      .click({ modifiers: ["ControlOrMeta"] });
+
+    // One control over both roots: one command, so one undo would take both
+    // back, and the file has the layer on each of them.
+    await page.getByTestId("placement-layer").selectOption("props");
+    await page.getByTestId("save-level").click();
+    await expect(page.getByTestId("dirty-marker")).toBeHidden();
+    expect(savedPlacement(ROOT).layer).toBe("props");
+    expect(savedPlacement(LATER).layer).toBe("props");
+
+    const drawn = await context.newPage();
+    await drawn.goto(`/game.html?file=/${level}`);
+    await waitForInspector(drawn);
+    expect((await placementIn(drawn, ROOT)).layer).toBe("props");
+    expect((await placementIn(drawn, LATER)).layer).toBe("props");
+    expect((await placementIn(drawn, ROOT)).active).toBe(true);
+    await drawn.close();
+
+    // The active flag is authored game state: unticking it is what makes the
+    // running game start these placements switched off, and a child follows
+    // the placement it is under.
+    await page.getByTestId("placement-active").uncheck();
+    await page.getByTestId("save-level").click();
+    await expect(page.getByTestId("dirty-marker")).toBeHidden();
+    expect(savedPlacement(ROOT).active).toBe(false);
+    expect(savedPlacement(LATER).active).toBe(false);
+
+    const off = await context.newPage();
+    await off.goto(`/game.html?file=/${level}`);
+    await waitForInspector(off);
+    expect((await placementIn(off, ROOT)).active).toBe(false);
+    expect((await placementIn(off, LATER)).active).toBe(false);
+    expect((await placementIn(off, CHILD)).active).toBe(false);
   });
 
   test("accepts one of two commands sent against one revision", async ({

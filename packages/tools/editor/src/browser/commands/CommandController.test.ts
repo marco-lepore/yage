@@ -1274,7 +1274,7 @@ describe("CommandController", () => {
     });
 
     it("writes one field with the document's value as its precondition", () => {
-      harness.commands.setParam("crate", ["texture"], "sprites/new.png");
+      harness.commands.setParam(["crate"], ["texture"], "sprites/new.png");
 
       expect(harness.sent).toEqual([
         {
@@ -1293,7 +1293,7 @@ describe("CommandController", () => {
     });
 
     it("adds a field the placement lacks by replacing the parameter object", () => {
-      harness.commands.setParam("bare", ["texture"], "sprites/new.png");
+      harness.commands.setParam(["bare"], ["texture"], "sprites/new.png");
 
       // The reducer will not write through a path into a missing property, so
       // the same field-level change goes through the object it belongs to.
@@ -1311,7 +1311,7 @@ describe("CommandController", () => {
     });
 
     it("resets a field to the default its declaration gives it", () => {
-      harness.commands.resetParam("crate", ["texture"]);
+      harness.commands.resetParam(["crate"], ["texture"]);
 
       expect(harness.sent[0]).toMatchObject({
         kind: "set-values",
@@ -1327,22 +1327,22 @@ describe("CommandController", () => {
     });
 
     it("resets nothing for a field the declaration does not have", () => {
-      harness.commands.resetParam("crate", ["tint"]);
+      harness.commands.resetParam(["crate"], ["tint"]);
 
       expect(harness.sent).toEqual([]);
     });
 
     it("writes nothing for a placement the document does not have", () => {
-      harness.commands.setParam("ghost", ["texture"], "x.png");
-      harness.commands.resetParam("ghost", ["texture"]);
+      harness.commands.setParam(["ghost"], ["texture"], "x.png");
+      harness.commands.resetParam(["ghost"], ["texture"]);
 
       expect(harness.sent).toEqual([]);
     });
 
     it("writes nothing while writes are locked", () => {
       harness.store.lockWrites("stale-project");
-      harness.commands.setParam("crate", ["texture"], "x.png");
-      harness.commands.resetParam("crate", ["texture"]);
+      harness.commands.setParam(["crate"], ["texture"], "x.png");
+      harness.commands.resetParam(["crate"], ["texture"]);
 
       expect(harness.sent).toEqual([]);
     });
@@ -1365,7 +1365,7 @@ describe("CommandController", () => {
       });
 
       it("writes one member of one element at its own path", () => {
-        harness.commands.setParam("wave", ["spawns", "1", "delay"], 9);
+        harness.commands.setParam(["wave"], ["spawns", "1", "delay"], 9);
 
         expect(harness.sent[0]).toMatchObject({
           kind: "set-values",
@@ -1383,7 +1383,7 @@ describe("CommandController", () => {
       it("resets an element to the value the declaration gives one", () => {
         // The list's own default is empty, so the value a row goes back to is
         // the element kind's, read off the description tree.
-        harness.commands.resetParam("wave", ["spawns", "1"]);
+        harness.commands.resetParam(["wave"], ["spawns", "1"]);
 
         expect(harness.sent[0]).toMatchObject({
           kind: "set-values",
@@ -1399,7 +1399,7 @@ describe("CommandController", () => {
       });
 
       it("resets one member of one element", () => {
-        harness.commands.resetParam("wave", ["spawns", "0", "delay"]);
+        harness.commands.resetParam(["wave"], ["spawns", "0", "delay"]);
 
         expect(harness.sent[0]).toMatchObject({
           kind: "set-values",
@@ -1415,8 +1415,8 @@ describe("CommandController", () => {
       });
 
       it("writes nothing for a value the placement does not hold", () => {
-        harness.commands.setParam("wave", ["spawns", "5", "delay"], 1);
-        harness.commands.resetParam("wave", ["spawns", "0", "weight"]);
+        harness.commands.setParam(["wave"], ["spawns", "5", "delay"], 1);
+        harness.commands.resetParam(["wave"], ["spawns", "0", "weight"]);
 
         expect(harness.sent).toEqual([]);
       });
@@ -1494,7 +1494,7 @@ describe("CommandController", () => {
     });
 
     it("writes fresh defaults and the current type version in one command", () => {
-      harness.commands.resetPlacement("crate");
+      harness.commands.resetPlacements(["crate"]);
 
       // One command, so one undo puts both back — the authored parameters and
       // the version they were authored against.
@@ -1521,16 +1521,192 @@ describe("CommandController", () => {
     });
 
     it("has nothing to reset a type the catalog does not have to", () => {
-      harness.commands.resetPlacement("alien");
+      harness.commands.resetPlacements(["alien"]);
 
       expect(harness.sent).toEqual([]);
     });
 
     it("resets nothing while writes are locked", () => {
       harness.store.lockWrites("stale-project");
-      harness.commands.resetPlacement("crate");
+      harness.commands.resetPlacements(["crate"]);
 
       expect(harness.sent).toEqual([]);
+    });
+  });
+
+  describe("one edit over several placements", () => {
+    beforeEach(() => {
+      harness = createHarness(
+        document(
+          placement("one", 0, undefined, {
+            layer: "bg",
+            params: { texture: "sprites/one.png" },
+          }),
+          placement("two", 10, undefined, {
+            active: false,
+            params: { texture: "sprites/two.png" },
+          }),
+          placement("three", 20, undefined, {
+            layer: "props",
+            params: { texture: "sprites/three.png" },
+          }),
+        ),
+      );
+    });
+
+    it("sends one command whose edits each carry their own precondition", () => {
+      harness.commands.setLayer(["one", "two", "three"], "props");
+
+      // One command is one undo step: taking the layer back takes it back for
+      // all three. Each edit carries the value it was made against, and one
+      // placement having moved under the command refuses the whole of it.
+      expect(harness.sent).toEqual([
+        {
+          kind: "set-values",
+          commandId: "id-1",
+          edits: [
+            {
+              placementId: "one",
+              path: ["layer"],
+              expected: "bg",
+              value: "props",
+            },
+            {
+              placementId: "two",
+              path: ["layer"],
+              expected: null,
+              value: "props",
+            },
+          ],
+        },
+      ]);
+    });
+
+    it("sends nothing when every named placement is already on the value", () => {
+      harness.commands.setLayer(["one"], "bg");
+      harness.commands.setActive(["one", "three"], true);
+
+      expect(harness.sent).toEqual([]);
+    });
+
+    it("writes the active flag, skipping the ones already on it", () => {
+      harness.commands.setActive(["one", "two", "three"], false);
+
+      expect(harness.sent).toEqual([
+        {
+          kind: "set-values",
+          commandId: "id-1",
+          edits: [
+            {
+              placementId: "one",
+              path: ["active"],
+              expected: true,
+              value: false,
+            },
+            {
+              placementId: "three",
+              path: ["active"],
+              expected: true,
+              value: false,
+            },
+          ],
+        },
+      ]);
+    });
+
+    it("writes one parameter to all of them at their own held values", () => {
+      harness.commands.setParam(
+        ["one", "two", "three"],
+        ["texture"],
+        "sprites/two.png",
+      );
+
+      expect(harness.sent[0]).toMatchObject({
+        kind: "set-values",
+        edits: [
+          {
+            placementId: "one",
+            path: ["params", "texture"],
+            expected: "sprites/one.png",
+          },
+          {
+            placementId: "three",
+            path: ["params", "texture"],
+            expected: "sprites/three.png",
+          },
+        ],
+      });
+    });
+
+    it("resets several placements in one command", () => {
+      harness.commands.resetPlacements(["one", "two"]);
+
+      expect(
+        harness.sent[0]?.kind === "set-values"
+          ? harness.sent[0].edits.map((edit) => edit.placementId)
+          : [],
+      ).toEqual(["one", "one", "two", "two"]);
+    });
+
+    it("writes one number of the pose to all of them, keeping the rest", () => {
+      harness.commands.setPose(["one", "two", "three"], "x", 64);
+
+      expect(harness.sent).toEqual([
+        {
+          kind: "set-poses",
+          commandId: "id-1",
+          poses: [
+            {
+              id: "one",
+              transform: {
+                position: { x: 64, y: 0 },
+                rotation: 0,
+                scale: { x: 1, y: 1 },
+              },
+            },
+            {
+              id: "two",
+              transform: {
+                position: { x: 64, y: 0 },
+                rotation: 0,
+                scale: { x: 1, y: 1 },
+              },
+            },
+            {
+              id: "three",
+              transform: {
+                position: { x: 64, y: 0 },
+                rotation: 0,
+                scale: { x: 1, y: 1 },
+              },
+            },
+          ],
+        },
+      ]);
+    });
+
+    it("draws a stepped number on all of them and settles them as one", async () => {
+      harness.store.dispatch({
+        type: "selection-changed",
+        ids: ["one", "two"],
+      });
+      harness.commands.draftPose(["one", "two"], "y", 8);
+
+      expect(harness.drafts.at(-1)?.map((pose) => pose.id)).toEqual([
+        "one",
+        "two",
+      ]);
+      expect(harness.store.getState().poseDraft).toEqual({
+        ids: ["one", "two"],
+        component: "y",
+        value: 8,
+      });
+
+      await harness.commands.settleEdits();
+      expect(harness.poses.at(-1)?.map((pose) => pose.id)).toEqual([
+        "one",
+        "two",
+      ]);
     });
   });
 
@@ -1619,8 +1795,8 @@ describe("CommandController", () => {
     });
 
     it("gives and takes away the layer the placement's visuals join", () => {
-      harness.commands.setLayer("crate", "props");
-      harness.commands.setLayer("layered", null);
+      harness.commands.setLayer(["crate"], "props");
+      harness.commands.setLayer(["layered"], null);
 
       expect(harness.sent).toMatchObject([
         {
@@ -1658,11 +1834,7 @@ describe("CommandController", () => {
     });
 
     it("writes one transform as one command, carrying the rest unchanged", () => {
-      harness.commands.setPose("crate", {
-        position: { x: 137, y: -4 },
-        rotation: Math.PI / 4,
-        scale: { x: 2, y: 0.5 },
-      });
+      harness.commands.setPose(["crate"], "x", 137);
 
       expect(harness.sent).toEqual([
         {
@@ -1685,11 +1857,7 @@ describe("CommandController", () => {
     it("does not land a typed number on the lattice", () => {
       harness.withSnap(32);
 
-      harness.commands.setPose("crate", {
-        position: { x: 137, y: -4 },
-        rotation: Math.PI / 4,
-        scale: { x: 2, y: 0.5 },
-      });
+      harness.commands.setPose(["crate"], "x", 137);
 
       // Snapping is what a gesture does when the pointer cannot be exact. A
       // typed number already is.
@@ -1699,12 +1867,8 @@ describe("CommandController", () => {
       });
     });
 
-    it("sends nothing for the transform the placement already holds", () => {
-      harness.commands.setPose("crate", {
-        position: { x: 12, y: -4 },
-        rotation: Math.PI / 4,
-        scale: { x: 2, y: 0.5 },
-      });
+    it("sends nothing for the number the placement already holds", () => {
+      harness.commands.setPose(["crate"], "x", 12);
 
       expect(harness.sent).toEqual([]);
     });
@@ -1712,11 +1876,7 @@ describe("CommandController", () => {
     it("writes nothing for a placement the document does not have", () => {
       harness.commands.setName("ghost", "x");
       harness.commands.setKey("ghost", "x");
-      harness.commands.setPose("ghost", {
-        position: { x: 1, y: 1 },
-        rotation: 0,
-        scale: { x: 1, y: 1 },
-      });
+      harness.commands.setPose(["ghost"], "x", 1);
 
       expect(harness.sent).toEqual([]);
     });
@@ -1725,11 +1885,7 @@ describe("CommandController", () => {
       harness.store.lockWrites("stale-project");
       harness.commands.setName("crate", "Renamed");
       harness.commands.setKey("crate", "spawn");
-      harness.commands.setPose("crate", {
-        position: { x: 1, y: 1 },
-        rotation: 0,
-        scale: { x: 1, y: 1 },
-      });
+      harness.commands.setPose(["crate"], "x", 1);
 
       expect(harness.sent).toEqual([]);
     });
@@ -1764,16 +1920,16 @@ describe("CommandController", () => {
     });
 
     it("paints every press and sends nothing until the settle", () => {
-      harness.commands.draftPose("crate", "x", 13);
-      harness.commands.draftPose("crate", "x", 14);
-      harness.commands.draftPose("crate", "x", 15);
+      harness.commands.draftPose(["crate"], "x", 13);
+      harness.commands.draftPose(["crate"], "x", 14);
+      harness.commands.draftPose(["crate"], "x", 15);
 
       expect(
         harness.drafts.map((draft) => draft[0]?.transform.position.x),
       ).toEqual([13, 14, 15]);
       expect(harness.sent).toEqual([]);
       expect(harness.store.getState().poseDraft).toEqual({
-        id: "crate",
+        ids: ["crate"],
         component: "x",
         value: 15,
       });
@@ -1781,13 +1937,13 @@ describe("CommandController", () => {
 
     it("makes the level dirty, so nothing leaves the editor without it", () => {
       expect(isDirty(harness.store.getState())).toBe(false);
-      harness.commands.draftPose("crate", "x", 13);
+      harness.commands.draftPose(["crate"], "x", 13);
       expect(isDirty(harness.store.getState())).toBe(true);
     });
 
     it("settles a burst as one command and one undo step", async () => {
-      harness.commands.draftPose("crate", "rotation", 46);
-      harness.commands.draftPose("crate", "rotation", 47);
+      harness.commands.draftPose(["crate"], "rotation", 46);
+      harness.commands.draftPose(["crate"], "rotation", 47);
       await harness.commands.settleEdits();
 
       expect(harness.poses).toEqual([
@@ -1806,28 +1962,24 @@ describe("CommandController", () => {
     });
 
     it("composes the settle from the projection, not from where it opened", async () => {
-      harness.commands.draftPose("crate", "x", 100);
+      harness.commands.draftPose(["crate"], "x", 100);
       // Something else moved the placement underneath the open box. Only the
       // number the field is holding may travel with the settle; a transform
       // captured when the box opened would put the other four back.
-      harness.commands.setPose("crate", {
-        position: { x: 12, y: 999 },
-        rotation: 0,
-        scale: { x: 3, y: 3 },
-      });
+      harness.commands.setPose(["crate"], "y", 999);
       // `setPose` takes the draft with it, so the field opens another one.
-      harness.commands.draftPose("crate", "x", 100);
+      harness.commands.draftPose(["crate"], "x", 100);
       await harness.commands.settleEdits();
 
       expect(harness.poses.at(-1)?.[0]?.transform).toEqual({
         position: { x: 100, y: 999 },
-        rotation: 0,
-        scale: { x: 3, y: 3 },
+        rotation: Math.PI / 4,
+        scale: { x: 2, y: 0.5 },
       });
     });
 
     it("is dropped, not written, when the selection moves on", async () => {
-      harness.commands.draftPose("crate", "x", 13);
+      harness.commands.draftPose(["crate"], "x", 13);
       harness.store.dispatch({ type: "selection-changed", ids: [] });
       await harness.commands.settleEdits();
 
@@ -1835,7 +1987,7 @@ describe("CommandController", () => {
     });
 
     it("is dropped when another level is opened", () => {
-      harness.commands.draftPose("crate", "x", 13);
+      harness.commands.draftPose(["crate"], "x", 13);
       harness.store.dispatch({
         type: "level-opened",
         snapshot: snapshot(1, document(placement("crate", 0))),
@@ -1845,7 +1997,7 @@ describe("CommandController", () => {
     });
 
     it("puts the preview back when it is cancelled", () => {
-      harness.commands.draftPose("crate", "x", 13);
+      harness.commands.draftPose(["crate"], "x", 13);
       harness.commands.cancelPoseDraft();
 
       expect(harness.drafts.at(-1)?.[0]?.transform.position.x).toBe(12);
@@ -1854,7 +2006,7 @@ describe("CommandController", () => {
     });
 
     it("settles before an undo, so the burst is on the stack to take back", async () => {
-      harness.commands.draftPose("crate", "x", 13);
+      harness.commands.draftPose(["crate"], "x", 13);
       await harness.commands.undo();
 
       expect(harness.sent).toHaveLength(1);
@@ -1862,12 +2014,8 @@ describe("CommandController", () => {
     });
 
     it("is taken by the command the box commits, so no settle repeats it", async () => {
-      harness.commands.draftPose("crate", "x", 13);
-      harness.commands.setPose("crate", {
-        position: { x: 13, y: -4 },
-        rotation: Math.PI / 4,
-        scale: { x: 2, y: 0.5 },
-      });
+      harness.commands.draftPose(["crate"], "x", 13);
+      harness.commands.setPose(["crate"], "x", 13);
 
       // The number is the command now. Left in the store it would keep the
       // dirty marker on after a committed edit and be written a second time
@@ -1879,7 +2027,7 @@ describe("CommandController", () => {
     });
 
     it("puts the preview back when a locked settle refuses it", async () => {
-      harness.commands.draftPose("crate", "x", 13);
+      harness.commands.draftPose(["crate"], "x", 13);
       harness.store.lockWrites("stale-project");
       await harness.commands.settleEdits();
 

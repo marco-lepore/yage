@@ -39,6 +39,7 @@ import {
   isAncestorOrSelf,
   placementById,
   selectionRoots,
+  sharedParent,
   withDescendants,
 } from "./graph.js";
 import { clonePlacements, type CloneRequest } from "./clone.js";
@@ -429,34 +430,33 @@ export class CommandController {
     const pick = this.store.getState().pick;
     if (!pick) return;
     this.store.dispatch({ type: "pick-ended" });
-    this.setParam(pick.placementId, [pick.field], targetId);
+    this.setParam([pick.placementId], [pick.field], targetId);
   }
 
   /**
-   * Set one declared parameter of one placement, or one value inside it.
+   * Set one declared parameter, or one value inside it, on every named
+   * placement.
    *
    * The path is measured from the parameter object: one field, or a member or
    * an element inside it, however deep. An element is named by its position
    * written as a decimal string.
    *
-   * The command carries the value the document holds now as its precondition,
+   * Each edit carries the value that placement holds now as its precondition,
    * so an edit typed against a placement the server has since changed is
-   * refused rather than silently winning. A field the placement's `params`
-   * does not have — a schema that moved under an older file — is written by
+   * refused rather than silently winning. A field a placement's `params` does
+   * not have — a schema that moved under an older file — is written by
    * replacing the whole parameter object with one that adds it, which is the
    * same field-level change through the one path the reducer accepts for it.
    */
-  setParam(id: string, path: readonly string[], value: JsonValue): void {
+  setParam(
+    ids: readonly string[],
+    path: readonly string[],
+    value: JsonValue,
+  ): void {
     if (!this.store.writable) return;
-    const placement = this.placement(id);
-    if (!placement) return;
-    const edit = valueEdit(placement, path, value);
-    if (!edit) return;
-    this.store.submit({
-      kind: "set-values",
-      commandId: this.newId(),
-      edits: [edit],
-    });
+    this.submitValues(
+      this.edits(ids, (placement) => valueEdit(placement, path, value)),
+    );
   }
 
   /**
@@ -467,7 +467,7 @@ export class CommandController {
    * name, so the reduction reports `document-only` and the preview stands.
    */
   setName(id: string, name: string | null): void {
-    this.setOptionalField(id, "name", name);
+    this.setOptionalField([id], "name", name);
   }
 
   /**
@@ -479,18 +479,43 @@ export class CommandController {
    * which placement holds it instead of watching the edit come back.
    */
   setKey(id: string, key: string | null): void {
-    this.setOptionalField(id, "key", key);
+    this.setOptionalField([id], "key", key);
   }
 
   /**
-   * Put one placement's visuals on a named render layer, or take the name away.
+   * Put every named placement's visuals on a render layer, or take the name
+   * away.
    *
    * `null` removes the field, and every visual goes back to the layer its own
    * type chose. The preview rebuilds either way: a visual joins a layer when
    * it is added to the display tree, so moving one is a new projection.
    */
-  setLayer(id: string, layer: string | null): void {
-    this.setOptionalField(id, "layer", layer);
+  setLayer(ids: readonly string[], layer: string | null): void {
+    this.setOptionalField(ids, "layer", layer);
+  }
+
+  /**
+   * Say whether every named placement starts its life in the game switched on.
+   *
+   * A placement authored inactive is created and then disabled, so it takes no
+   * update and draws nothing until game code wakes it. It is authored state
+   * and it is in the file — not a way to get something out of the way while
+   * editing, which is what hiding is for.
+   */
+  setActive(ids: readonly string[], active: boolean): void {
+    if (!this.store.writable) return;
+    this.submitValues(
+      this.edits(ids, (placement) =>
+        placement.active === active
+          ? undefined
+          : {
+              placementId: placement.id,
+              path: ["active"],
+              expected: placement.active,
+              value: active,
+            },
+      ),
+    );
   }
 
   /**
@@ -512,17 +537,9 @@ export class CommandController {
     const roots = selectionRoots(document, ids);
     if (roots.length === 0) return;
     const moving = new Set(roots);
-    const first = document.entities.find((one) => one.id === roots[0]);
-    if (!first) return;
-    const parent = first.parent;
-    if (
-      roots.some(
-        (id) =>
-          document.entities.find((one) => one.id === id)?.parent !== parent,
-      )
-    ) {
-      return;
-    }
+    const shared = sharedParent(document, roots);
+    if (shared === undefined) return;
+    const parent = shared ?? undefined;
 
     const group = document.entities.filter((one) => one.parent === parent);
     const drop = orderDrop(direction, group, moving);
@@ -531,30 +548,35 @@ export class CommandController {
   }
 
   /**
-   * Replace one placement's local transform.
+   * Write one number of the local transform to every named placement.
    *
-   * One typed field is one call, one command, and one undo step: the caller
-   * carries the four components it did not change. A typed number is exact, so
-   * nothing here snaps it, whatever the grid is set to.
+   * One typed field is one call, one command, and one undo step. The four
+   * components it did not change come from each placement's own transform as
+   * it stands, so a number typed for several does not carry one placement's
+   * pose onto another. A typed number is exact, so nothing here snaps it,
+   * whatever the grid is set to.
    */
-  setPose(id: string, transform: LevelTransform): void {
+  setPose(
+    ids: readonly string[],
+    component: PoseComponent,
+    value: number,
+  ): void {
     // The number a field was stepping is this command now, so it must not
     // settle again behind it.
     const drafted = this.store.takePoseDraft() !== undefined;
     if (!this.store.writable) return;
-    const placement = this.placement(id);
-    if (!placement) return;
-    if (samePose(placement.transform, transform)) {
+    const poses = this.posesWith(ids, component, value);
+    if (poses.length === 0) {
       // Stepped up and back down again. There is nothing to write, and the
       // preview is still drawing the draft, so put it on the document.
       if (drafted)
-        this.preview.applyPoseDraft(posesOf(this.store.getState(), [id]));
+        this.preview.applyPoseDraft(posesOf(this.store.getState(), ids));
       return;
     }
     this.store.submit({
       kind: "set-poses",
       commandId: this.newId(),
-      poses: [{ id, transform }],
+      poses,
     });
   }
 
@@ -567,24 +589,42 @@ export class CommandController {
    * a level switch begins with. A focus session is therefore one command and
    * one undo step.
    */
-  draftPose(id: string, component: PoseComponent, value: number): void {
+  draftPose(
+    ids: readonly string[],
+    component: PoseComponent,
+    value: number,
+  ): void {
     if (!this.store.writable) return;
-    const placement = this.placement(id);
-    if (!placement) return;
+    // Every placement is drawn at the number, including one already on it: the
+    // draft is what the preview shows until the box commits, and one left out
+    // of it would be repainted by nothing.
+    const drawn = ids
+      .map((id) => this.placement(id))
+      .filter(
+        (placement): placement is LevelPlacement => placement !== undefined,
+      );
+    if (drawn.length === 0) return;
     this.store.dispatch({
       type: "pose-drafted",
-      draft: { id, component, value },
+      draft: {
+        ids: drawn.map((placement) => placement.id),
+        component,
+        value,
+      },
     });
-    this.preview.applyPoseDraft([
-      { id, transform: withPoseNumber(placement.transform, component, value) },
-    ]);
+    this.preview.applyPoseDraft(
+      drawn.map((placement) => ({
+        id: placement.id,
+        transform: withPoseNumber(placement.transform, component, value),
+      })),
+    );
   }
 
-  /** Abandon a stepped number and put the preview back on the document's pose. */
+  /** Abandon a stepped number and put the preview back on the documented poses. */
   cancelPoseDraft(): void {
     const draft = this.store.takePoseDraft();
     if (!draft) return;
-    this.preview.applyPoseDraft(posesOf(this.store.getState(), [draft.id]));
+    this.preview.applyPoseDraft(posesOf(this.store.getState(), draft.ids));
   }
 
   /**
@@ -592,20 +632,72 @@ export class CommandController {
    * means the field is not there — on the wire and in the document alike.
    */
   private setOptionalField(
-    id: string,
+    ids: readonly string[],
     field: "name" | "key" | "layer",
     value: string | null,
   ): void {
     if (!this.store.writable) return;
-    const placement = this.placement(id);
-    if (!placement) return;
-    const expected = placement[field] ?? null;
-    if (expected === value) return;
+    this.submitValues(
+      this.edits(ids, (placement) => {
+        const expected = placement[field] ?? null;
+        return expected === value
+          ? undefined
+          : { placementId: placement.id, path: [field], expected, value };
+      }),
+    );
+  }
+
+  /**
+   * The edits one intent produces, one per named placement that has something
+   * to write. A placement the document does not hold, and one already holding
+   * the value, both contribute nothing.
+   */
+  private edits(
+    ids: readonly string[],
+    of: (placement: LevelPlacement) => ValueEdit | undefined,
+  ): readonly ValueEdit[] {
+    const edits: ValueEdit[] = [];
+    for (const id of ids) {
+      const placement = this.placement(id);
+      if (!placement) continue;
+      const edit = of(placement);
+      if (edit) edits.push(edit);
+    }
+    return edits;
+  }
+
+  /**
+   * One command over every edit, so a change to several placements is one undo
+   * step. An intent that changes nothing sends nothing, which is what keeps
+   * re-choosing what the selection already holds from taking a step.
+   */
+  private submitValues(edits: readonly ValueEdit[]): void {
+    if (edits.length === 0) return;
     this.store.submit({
       kind: "set-values",
       commandId: this.newId(),
-      edits: [{ placementId: id, path: [field], expected, value }],
+      edits,
     });
+  }
+
+  /**
+   * The transform each named placement would have with one of its numbers
+   * replaced, leaving out any placement already holding that number.
+   */
+  private posesWith(
+    ids: readonly string[],
+    component: PoseComponent,
+    value: number,
+  ): readonly PoseEdit[] {
+    const poses: PoseEdit[] = [];
+    for (const id of ids) {
+      const placement = this.placement(id);
+      if (!placement) continue;
+      const transform = withPoseNumber(placement.transform, component, value);
+      if (samePose(placement.transform, transform)) continue;
+      poses.push({ id, transform });
+    }
+    return poses;
   }
 
   /**
@@ -618,32 +710,38 @@ export class CommandController {
    * and has no element to copy. A value the current declaration does not
    * describe has no default to go to, and produces nothing.
    */
-  resetParam(id: string, path: readonly string[]): void {
-    const placement = this.placement(id);
-    if (!placement) return;
-    const value = defaultAt(this.catalog(), placement.type, path);
-    if (value === undefined) return;
-    this.setParam(id, path, value);
+  resetParam(ids: readonly string[], path: readonly string[]): void {
+    if (!this.store.writable) return;
+    this.submitValues(
+      // The default is read per placement, so a selection of several types
+      // each goes back to what its own declaration says.
+      this.edits(ids, (placement) => {
+        const value = defaultAt(this.catalog(), placement.type, path);
+        return value === undefined
+          ? undefined
+          : valueEdit(placement, path, value);
+      }),
+    );
   }
 
   /**
-   * Discard a placement's authored parameters: every declared field at its
-   * default, and the type version the declaration is at now, in one command
-   * — so one undo restores both. This is the recovery for a placement whose
-   * schema moved under it; the shell confirms it, because it loses what was
-   * authored. A type the catalog does not have offers nothing to reset to.
+   * Discard the authored parameters of every named placement: each declared
+   * field at its default, and the type version its declaration is at now, in
+   * one command — so one undo restores all of it. This is the recovery for a
+   * placement whose schema moved under it; the shell confirms it, because it
+   * loses what was authored. A type the catalog does not have offers nothing
+   * to reset to, and is left alone.
    */
-  resetPlacement(id: string): void {
+  resetPlacements(ids: readonly string[]): void {
     if (!this.store.writable) return;
-    const placement = this.placement(id);
-    if (!placement) return;
-    const entry = this.catalog()?.get(placement.type);
-    const defaults = this.defaultsFor(placement.type);
-    if (!entry || !defaults) return;
-    this.store.submit({
-      kind: "set-values",
-      commandId: this.newId(),
-      edits: [
+    const edits: ValueEdit[] = [];
+    for (const id of ids) {
+      const placement = this.placement(id);
+      if (!placement) continue;
+      const entry = this.catalog()?.get(placement.type);
+      const defaults = this.defaultsFor(placement.type);
+      if (!entry || !defaults) continue;
+      edits.push(
         {
           placementId: id,
           path: ["params"],
@@ -656,8 +754,9 @@ export class CommandController {
           expected: placement.typeVersion,
           value: entry.declaration.version,
         },
-      ],
-    });
+      );
+    }
+    this.submitValues(edits);
   }
 
   /**
@@ -939,7 +1038,7 @@ export class CommandController {
     const placement = this.placement(drag.id);
     if (!placement) return;
     if (equalJson(placement.params[drag.field] as JsonValue, value)) return;
-    this.setParam(drag.id, [drag.field], value);
+    this.setParam([drag.id], [drag.field], value);
   }
 
   /**
@@ -1000,24 +1099,18 @@ export class CommandController {
   private settlePoseDraft(): void {
     const draft = this.store.takePoseDraft();
     if (!draft) return;
-    const placement = this.placement(draft.id);
-    if (!placement) return;
-    const transform = withPoseNumber(
-      placement.transform,
-      draft.component,
-      draft.value,
-    );
-    if (samePose(placement.transform, transform)) return;
+    const poses = this.posesWith(draft.ids, draft.component, draft.value);
+    if (poses.length === 0) return;
     if (this.store.writable) {
       this.store.submit({
         kind: "set-poses",
         commandId: this.newId(),
-        poses: [{ id: draft.id, transform }],
+        poses,
       });
       return;
     }
-    // Refused, so the preview is drawing a pose no document holds.
-    this.preview.applyPoseDraft(posesOf(this.store.getState(), [draft.id]));
+    // Refused, so the preview is drawing poses no document holds.
+    this.preview.applyPoseDraft(posesOf(this.store.getState(), draft.ids));
   }
 
   private placement(id: string): LevelPlacement | undefined {
@@ -1053,6 +1146,10 @@ export class CommandController {
  * A control commits a value of the shape its declaration describes, so a step
  * inside a field it holds is always there to write over. When one is not,
  * there is nothing this can write and nothing is sent.
+ *
+ * A placement already holding the value contributes nothing either. That is
+ * what lets one control write a value to a selection where some of them are
+ * already on it, without those taking part in the command.
  */
 function valueEdit(
   placement: LevelPlacement,
@@ -1061,6 +1158,7 @@ function valueEdit(
 ): ValueEdit | undefined {
   const held = valueAt(placement.params, path);
   if (held !== undefined) {
+    if (equalJson(held as JsonValue, value)) return undefined;
     return {
       placementId: placement.id,
       path: ["params", ...path],

@@ -478,16 +478,37 @@ The set is this browser's, for this level, until the level is closed. It is not
 command, no draft, and no undo step; it makes nothing unsaved and it is
 forgotten when another level is opened or the page is reloaded.
 
-The **control bar** and the **inspector** both render for exactly one selected
-placement, and both say so when nothing or several are. The split is by how
-much room the thing needs: the bar holds **Name** and the five transform
-numbers, which are always six boxes; the inspector holds one control per
-declared parameter, any finding about the placement, a **Draw order** section,
-and an **In your game** section holding **Key** — all of which vary with the
-type.
+The **control bar** and the **inspector** render for the selection. The split
+is by how much room the thing needs: the bar holds **Name** and the five
+transform numbers, which are always six boxes; the inspector holds one control
+per declared parameter, any finding about the placement, a **Draw order**
+section, and an **In your game** section holding **Active in game** and
+**Key** — all of which vary with the type.
 
-The inspector's order is: the placement's type and id, the parameter controls,
-the findings, **Draw order**, then **In your game**.
+The inspector's order is: the type and id, the parameter controls, the
+findings, **Draw order**, then **In your game**.
+
+With several placements selected, one control stands for all of them and one
+edit is one command and one undo step. A control shows the value they all hold,
+and `Mixed` when they do not: a `select` gets an unchoosable first row, a box
+shows `Mixed` greyed out and no text, a checkbox draws its indeterminate state,
+a colour's swatch is hatched, and a list or a value of no declared shape shows
+the word with **Reset** beside it — and **Clear** when the field is optional —
+since a row-by-row edit over lists that differ has no one meaning. Writing
+lands on every selected placement, whatever each held; a placement already on
+the value takes no part in the command. The parameter controls are the fields
+every selected type declares identically — the whole declaration, so the same
+name, kind, bounds, options and members. Selected types with none in common say
+so and offer no controls.
+
+Three things stay with one placement, and are not shown for several: **Name**,
+**Key**, and the findings about a particular placement. The bar shows its
+numbers only while every selected placement is under one parent — a local
+transform is read in its parent's frame, so with two parents there is no one
+thing an X of 40 would mean, and the bar says how many are selected instead. A
+box whose placements disagree shows `Mixed`; typing writes to all of them,
+while an arrow press and a label drag do nothing, because a step is measured
+from a number that box does not have.
 
 Every field in both commits on Enter or on leaving it, and only when the text
 differs from what the box shows — so tabbing through them writes nothing.
@@ -510,7 +531,9 @@ placement among the placements that share its parent — a child among its
 siblings, a root among the roots — and never change a parent. Inside one layer
 draw order is document order, so later is on top. On a layer that declares a
 `sort` the four are switched off and say why: reordering the document there
-would change the file and nothing on screen.
+would change the file and nothing on screen. They are switched off for a
+selection whose outermost members are under different parents too, and say
+that: one destination cannot reorder two groups of siblings.
 
 **Name** is a label; it need not be unique and nothing below the document reads
 it, so making a rename leaves the preview standing. Undoing one rebuilds it: a
@@ -629,12 +652,18 @@ placement already derives is refused before it is sent, naming the placement
 that holds it; the reducer refuses it too, because a document where two
 placements derive one scene key cannot be read back.
 
+**Active in game** is the placement's `active` flag, in the file and read by
+the running game: a placement authored inactive is created and then switched
+off, so it takes no update and draws nothing until game code wakes it, and
+everything under it is off with it. It is not the same as hiding, which is this
+browser's own and never reaches the file.
+
 The control bar's and the inspector's fields are document edits. The toolbar's
 **Step** is a view setting: it takes no undo entry and makes nothing dirty.
 
-Between them they edit the name, the transform, the declared parameters, and
-the key. The active flag, the parent, and extensions have no controls; the
-parent moves through the hierarchy.
+Between them they edit the name, the transform, the declared parameters, the
+layer, the draw order, the active flag, and the key. The parent and extensions
+have no controls; the parent moves through the hierarchy.
 
 A new placement is written whole: `active`, an identity transform at the
 viewport centre, and every parameter its declaration declares, each at the

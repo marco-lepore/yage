@@ -3,6 +3,7 @@ import type { LayerDef } from "@yagejs/renderer";
 import type { PoseEdit } from "../../shared/commands/index.js";
 import {
   posesOf,
+  sameIds,
   type EditorStore,
   type EditorViewState,
 } from "../store/index.js";
@@ -61,8 +62,8 @@ export function connectPreview(
 ): () => void {
   let shown: string | undefined;
   let viewed: EditorViewState | undefined;
-  /** The placement whose pending number the preview is drawing, if any. */
-  let drafted: string | undefined;
+  /** The placements whose pending number the preview is drawing, if any. */
+  let drafted: readonly string[] | undefined;
   return store.subscribe((state, action) => {
     if (state.view !== viewed) {
       viewed = state.view;
@@ -78,17 +79,24 @@ export function connectPreview(
       });
     };
 
-    // The pending number went away without a command behind it: a selection
-    // moving on, a level switch. Nothing else will repaint, so the placement
-    // goes back on what the document says. A draft the controller takes for a
-    // command comes through here too, and the command's own pose write lands
-    // on top of it in the same call.
-    const draftId = state.poseDraft?.id;
-    if (draftId !== drafted) {
+    // The pending number stopped covering the placements it was drawn on:
+    // dropped without a command behind it (a selection moving on, a level
+    // switch), or moved to a different set. Nothing else will repaint them, so
+    // they go back on what the document says. Stepping the same placements
+    // again is neither, and the ids say so by content — each step hands the
+    // store a fresh array. A draft the controller takes for a command comes
+    // through here too, and the command's own pose write lands on top of it in
+    // the same call.
+    const draftIds = state.poseDraft?.ids;
+    const moved =
+      draftIds === undefined || drafted === undefined
+        ? draftIds !== drafted
+        : !sameIds(draftIds, drafted);
+    if (moved) {
       const dropped = drafted;
-      drafted = draftId;
+      drafted = draftIds;
       if (dropped !== undefined) {
-        preview.applyPoseDraft(posesOf(state, [dropped]));
+        preview.applyPoseDraft(posesOf(state, dropped));
       }
     }
 

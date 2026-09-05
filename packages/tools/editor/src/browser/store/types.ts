@@ -311,9 +311,12 @@ export type PoseComponent = "x" | "y" | "rotation" | "scaleX" | "scaleY";
  * field changed. It lives here beside {@link EditorState.gesture} for the same
  * reason a gesture does: `settleEdits` has to find it, undo and save have to
  * wait for it, and `isDirty` has to count it.
+ *
+ * One number is stepped for the whole selection, so it names every placement
+ * it is drawn on: the settle writes one command over all of them.
  */
 export interface PoseDraft {
-  readonly id: string;
+  readonly ids: readonly string[];
   readonly component: PoseComponent;
   /** In the field's own unit, so degrees for `rotation`. */
   readonly value: number;

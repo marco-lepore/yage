@@ -6,6 +6,7 @@ import {
   placementTree,
   rootsWithout,
   selectionRoots,
+  sharedParent,
   withDescendants,
 } from "./graph.js";
 
@@ -140,6 +141,43 @@ describe("selectionRoots", () => {
     const looped = document(placement("a", "b"), placement("b", "a"));
 
     expect(selectionRoots(looped, ["a"])).toEqual(["a"]);
+  });
+});
+
+describe("sharedParent", () => {
+  it("answers the parent every named placement is under", () => {
+    expect(sharedParent(FAMILY, ["child"])).toBe("root");
+  });
+
+  it("answers null for placements at the top level", () => {
+    expect(sharedParent(FAMILY, ["root", "stranger"])).toBeNull();
+  });
+
+  it("answers undefined when they are under different parents", () => {
+    expect(sharedParent(FAMILY, ["child", "grandchild"])).toBeUndefined();
+  });
+
+  it("counts the top level as a parent, not as the absence of one", () => {
+    // A root and a child are two frames, so a number typed for both would
+    // mean two things.
+    expect(sharedParent(FAMILY, ["root", "child"])).toBeUndefined();
+  });
+
+  it("answers undefined for nothing named", () => {
+    expect(sharedParent(FAMILY, [])).toBeUndefined();
+  });
+
+  it("skips an id the document does not hold", () => {
+    expect(sharedParent(FAMILY, ["ghost", "child"])).toBe("root");
+  });
+
+  it("answers the roots of a selection when it is handed them", () => {
+    // What ordering asks: a selected child travels with its selected parent,
+    // so the roots are what has to share a group to move within.
+    const ids = ["root", "child", "grandchild", "stranger"];
+
+    expect(sharedParent(FAMILY, ids)).toBeUndefined();
+    expect(sharedParent(FAMILY, selectionRoots(FAMILY, ids))).toBeNull();
   });
 });
 
