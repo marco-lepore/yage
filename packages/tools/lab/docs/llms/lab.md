@@ -141,6 +141,11 @@ export default defineScenario({
 The `scene` form gets layers and preloads from the `Scene` itself, which is why
 those two fields exist on the `setup` form only.
 
+The first mount and every rebuild skip the scene's `defaultTransition` to
+establish the initial state without advancing frames. To exercise transitions,
+issue normal scene operations from a `drive` and advance frames with `step`
+or `until` while the operation is pending.
+
 ### Several scenarios in one file
 
 Named exports each become a scenario, and they nest under the file. Anything
@@ -277,8 +282,10 @@ await Promise.all([
 ```
 
 `waitFor` resolves with the earliest retained match without consuming it.
-Each rebuild clears the log before scene setup, so previous scenarios and
-runs cannot satisfy the new run's waits. Within one run, clear the log before
+Each rebuild clears the log after the old scene exits and before the new
+scene's setup or `onEnter`. Events from the new entry and `onMounted` remain
+available, so previous scenarios and runs cannot satisfy the new run's waits.
+Within one run, clear the log before
 an action when testing another occurrence of the same event. Ad-hoc drives
 without a rebuild retain history. Deadlines count real frames from
 registration and reject when the deadline frame completes if still unmatched;

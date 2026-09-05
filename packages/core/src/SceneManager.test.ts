@@ -641,6 +641,60 @@ describe("SceneManager", () => {
   });
 
   describe("transitions", () => {
+    it("skips defaults on push, pop and replace while preserving lifecycle order", async () => {
+      const { manager } = setup();
+      const log: string[] = [];
+      const transition = {
+        duration: 0.5,
+        begin: vi.fn(),
+        tick: vi.fn(),
+        end: vi.fn(),
+      };
+      class DefaultScene extends Scene {
+        override readonly defaultTransition = transition;
+        constructor(readonly name: string) {
+          super();
+        }
+        onEnter() {
+          log.push(`${this.name}:enter`);
+        }
+        onExit() {
+          log.push(`${this.name}:exit`);
+        }
+        onPause() {
+          log.push(`${this.name}:pause`);
+        }
+        onResume() {
+          log.push(`${this.name}:resume`);
+        }
+      }
+      const base = new DefaultScene("base");
+      const overlay = new DefaultScene("overlay");
+      const replacement = new DefaultScene("replacement");
+      await manager.push(base, { transition: null });
+      expect(log.splice(0)).toEqual(["base:enter"]);
+      expect(manager.all).toEqual([base]);
+      expect(manager.isTransitioning).toBe(false);
+
+      await manager.push(overlay, { transition: null });
+      expect(log.splice(0)).toEqual(["overlay:enter", "base:pause"]);
+      expect(manager.all).toEqual([base, overlay]);
+      expect(manager.isTransitioning).toBe(false);
+
+      expect(await manager.pop({ transition: null })).toBe(overlay);
+      expect(log.splice(0)).toEqual(["overlay:exit", "base:resume"]);
+      expect(manager.all).toEqual([base]);
+      expect(manager.isTransitioning).toBe(false);
+
+      await manager.replace(replacement, { transition: null });
+      expect(log).toEqual(["base:exit", "replacement:enter"]);
+      expect(manager.all).toEqual([replacement]);
+      expect(manager.isTransitioning).toBe(false);
+      expect(transition.begin).not.toHaveBeenCalled();
+      expect(transition.tick).not.toHaveBeenCalled();
+      expect(transition.end).not.toHaveBeenCalled();
+    });
+
     function makeFakeTransition(
       duration: number,
       log?: string[],

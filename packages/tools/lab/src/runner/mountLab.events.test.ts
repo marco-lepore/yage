@@ -64,6 +64,67 @@ async function boot(scenario: AnyScenario) {
 }
 
 describe("Lab rebuild event history", () => {
+  it.each([0, 0.5])(
+    "preserves new entry events with a %s-second default transition without advancing frames",
+    async (duration) => {
+      let run = 0;
+      const transition = {
+        duration,
+        begin: vi.fn(),
+        tick: vi.fn(),
+        end: vi.fn(),
+      };
+      class TransitionScene extends Scene {
+        readonly name = "transition-events";
+        override readonly defaultTransition = transition;
+        onEnter() {
+          this.spawn("previous-run-entity");
+          this.emit(entered, { run: ++run });
+        }
+        onExit() {
+          this.emit(exited);
+        }
+      }
+      const { engine, api, unregisters } = await boot(
+        defineScenario({
+          scene: () => new TransitionScene(),
+          onMounted: (scene) => scene.emit(mounted, { run }),
+          async drive() {},
+        }),
+      );
+      for (let expectedRun = 1; expectedRun <= 3; expectedRun++) {
+        if (expectedRun > 1) {
+          expect(await api.run()).toMatchObject({ ok: true });
+        }
+        expect(run).toBe(expectedRun);
+        for (const pattern of ["lab:entered", "lab:mounted"]) {
+          await expect(
+            engine.inspector.events.waitFor(pattern, { withinFrames: 0 }),
+          ).resolves.toMatchObject({ payload: { run: expectedRun } });
+        }
+        for (const pattern of [
+          "lab:exited",
+          "entity:destroyed",
+          "engine:stopped",
+        ]) {
+          await expect(
+            engine.inspector.events.waitFor(pattern, { withinFrames: 0 }),
+          ).rejects.toThrow("0 frames");
+        }
+        expect(engine.inspector.time.isFrozen()).toBe(true);
+        expect(engine.inspector.time.getFrame()).toBe(0);
+        expect(engine.scenes.isTransitioning).toBe(false);
+        expect(unregisters).toHaveLength(expectedRun - 1);
+        for (const unregister of unregisters) {
+          expect(unregister).toHaveBeenCalledOnce();
+        }
+      }
+      expect(transition.begin).not.toHaveBeenCalled();
+      expect(transition.tick).not.toHaveBeenCalled();
+      expect(transition.end).not.toHaveBeenCalled();
+    },
+  );
+
   it.each(["setup", "scene"] as const)(
     "keeps only the new %s entry events across consecutive runs",
     async (form) => {

@@ -583,8 +583,8 @@ When enabled, `SceneManager` sets `scene.paused = true` on every scene in `activ
 | `SceneTransition`                          | Interface: `duration`, `begin?`, `tick`, `end?`               |
 | `SceneTransitionContext`                   | `elapsed`, `kind`, `engineContext`, `fromScene`, `toScene`    |
 | `SceneTransitionKind`                      | `"push" \| "pop" \| "replace"`                                |
-| `SceneTransitionOptions`                   | `{ transition?: SceneTransition }`                            |
-| `resolveTransition(callSite, destination)` | Precedence: call-site → `scene.defaultTransition` → undefined |
+| `SceneTransitionOptions`                   | `{ transition?: SceneTransition \| null }`                     |
+| `resolveTransition(callSite, destination)` | `null` skips; otherwise call-site → `scene.defaultTransition` → undefined |
 
 Core ships the transition contract + orchestration only. Concrete transitions (`fade`, `flash`, `crossFade`) live in `@yagejs/renderer`.
 

@@ -386,13 +386,13 @@ export async function mount(opts: MountOptions): Promise<LabApi> {
         },
       });
       try {
-        await engine.scenes.replace(next);
+        await engine.scenes.replace(next, { transition: null });
       } finally {
         unregister();
       }
     } else {
       engine.inspector.events.clearLog();
-      await engine.scenes.push(next);
+      await engine.scenes.push(next, { transition: null });
     }
     scene = next;
     builtEntry = builtWith;

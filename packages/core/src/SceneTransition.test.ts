@@ -27,6 +27,16 @@ describe("resolveTransition", () => {
     expect(resolveTransition(undefined, scene)).toBe(scene.defaultTransition);
   });
 
+  it("skips the destination defaultTransition when the call-site is null", () => {
+    expect(
+      resolveTransition(null, new DefaultTransitionScene()),
+    ).toBeUndefined();
+  });
+
+  it("returns undefined for null without a destination", () => {
+    expect(resolveTransition(null, undefined)).toBeUndefined();
+  });
+
   it("returns undefined when neither is set", () => {
     const scene = new BareScene();
     expect(resolveTransition(undefined, scene)).toBeUndefined();

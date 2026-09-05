@@ -167,6 +167,11 @@ export default defineScenario({
 This is the form that keeps a lab honest: the scenario shows the same scene the
 game ships, not a copy of it that can drift.
 
+The first mount and every rebuild skip the scene's `defaultTransition`, so
+the scene reaches its initial state without advancing frames. To test a
+transition, issue a normal scene operation from a `drive` and advance frames
+with `step` or `until` while the operation is pending.
+
 ### Several scenarios in one file
 
 A file can export as many scenarios as you like, as named exports. They nest
@@ -337,7 +342,9 @@ await Promise.all([
 </Aside>
 
 `waitFor` checks retained history first and does not consume its match. Every
-rebuild clears the event log before scene setup. Within a run, clear the log
+rebuild clears the event log after the old scene exits and before the new
+scene's setup or `onEnter`. Events from the new entry and `onMounted` remain
+available. Within a run, clear the log
 before an action when checking for another occurrence of the same event.
 Ad-hoc drives that do not rebuild retain the log. `withinFrames` counts real
 frames from registration; an event during the deadline frame satisfies the
