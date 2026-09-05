@@ -84,6 +84,14 @@ export const GUIDES_KEY = "G";
 /** The key that switches snapping. */
 export const SNAP_KEY = "S";
 
+/**
+ * The key that hides the selection, and with `Shift` shows everything again.
+ *
+ * Hiding is not an edit: it takes a placement off the screen and out of the
+ * way of a press, and it never reaches the level file.
+ */
+export const HIDE_KEY = "H";
+
 export interface ToolbarProps {
   readonly tool: EditorTool;
   readonly onTool: (tool: EditorTool) => void;
@@ -103,6 +111,13 @@ export interface ToolbarProps {
   readonly onUndo: () => void;
   readonly onRedo: () => void;
   readonly onDelete: () => void;
+  /** Whether anything is selected, which both Hide and Isolate act on. */
+  readonly canHide: boolean;
+  /** Whether anything is hidden, which is when Show all has work to do. */
+  readonly canShowAll: boolean;
+  readonly onHide: () => void;
+  readonly onIsolate: () => void;
+  readonly onShowAll: () => void;
 }
 
 /**
@@ -232,6 +247,37 @@ export function Toolbar(props: ToolbarProps): React.JSX.Element {
           onClick={props.onDelete}
         >
           Delete
+        </Button>
+      </div>
+
+      {/* Taking a placement out of the way is not editing it: nothing here
+          reaches the file, and all three work on a level that refuses
+          writes. */}
+      <div className="ye-group" role="group" aria-label="Hiding">
+        <Button
+          testId="hide-selection"
+          disabled={!props.canHide}
+          title={`Take the selection off the screen, or put it back (${HIDE_KEY})`}
+          onClick={props.onHide}
+        >
+          Hide
+          <kbd>{HIDE_KEY}</kbd>
+        </Button>
+        <Button
+          testId="isolate-selection"
+          disabled={!props.canHide}
+          title="Hide everything the selection is not part of"
+          onClick={props.onIsolate}
+        >
+          Isolate
+        </Button>
+        <Button
+          testId="show-all"
+          disabled={!props.canShowAll}
+          title={`Put everything hidden back on the screen (Shift-${HIDE_KEY})`}
+          onClick={props.onShowAll}
+        >
+          Show all
         </Button>
       </div>
 

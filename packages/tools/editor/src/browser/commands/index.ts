@@ -25,9 +25,11 @@ export type { BoxGrip, ParentFrame } from "./pose.js";
 export { pointFields, pointHandles } from "./params.js";
 export type { PointField } from "./params.js";
 export {
+  hiddenClosure,
   isAncestorOrSelf,
   placementById,
   placementTree,
+  rootsWithout,
   selectionRoots,
   withDescendants,
 } from "./graph.js";

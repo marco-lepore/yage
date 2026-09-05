@@ -11,7 +11,12 @@ import {
 } from "react";
 
 export interface ButtonProps {
-  readonly onClick: () => void;
+  /**
+   * The click. It is handed the event for the one case that needs it: a button
+   * inside something else that is clickable — a hierarchy row — has to keep
+   * the click from reaching it.
+   */
+  readonly onClick: (event: ReactMouseEvent<HTMLElement>) => void;
   readonly children: ReactNode;
   /** Defaults to the ordinary button. Pass a variant or a bespoke class. */
   readonly className?: string | undefined;
@@ -40,7 +45,7 @@ export function Button(props: ButtonProps): React.JSX.Element {
       title={props.title}
       aria-pressed={props.pressed}
       onClick={(event) => {
-        props.onClick();
+        props.onClick(event);
         releaseFocus(event);
       }}
     >

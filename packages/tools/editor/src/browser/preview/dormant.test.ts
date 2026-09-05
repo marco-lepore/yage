@@ -112,6 +112,7 @@ describe("synchronizeDormantVisuals", () => {
     synchronizeDormantVisuals(
       [{ id: "one", entity, authoredActive: true }],
       NONE,
+      NONE,
     );
 
     expect(visual.renderObject.position).toMatchObject({ x: 30, y: 40 });
@@ -126,6 +127,7 @@ describe("synchronizeDormantVisuals", () => {
 
     synchronizeDormantVisuals(
       [{ id: "one", entity, authoredActive: false }],
+      NONE,
       NONE,
     );
 
@@ -144,6 +146,7 @@ describe("synchronizeDormantVisuals", () => {
         { id: "child", entity: child, authoredActive: true },
       ],
       NONE,
+      NONE,
     );
 
     expect(parentVisual.renderObject.visible).toBe(false);
@@ -161,6 +164,7 @@ describe("synchronizeDormantVisuals", () => {
         { id: "child", entity: child, authoredActive: true },
       ],
       NONE,
+      NONE,
     );
 
     expect(childVisual.renderObject.visible).toBe(true);
@@ -173,6 +177,7 @@ describe("synchronizeDormantVisuals", () => {
 
     synchronizeDormantVisuals(
       [{ id: "one", entity, authoredActive: true }],
+      NONE,
       NONE,
     );
 
@@ -187,6 +192,7 @@ describe("synchronizeDormantVisuals", () => {
     synchronizeDormantVisuals(
       [{ id: "one", entity, authoredActive: true }],
       NONE,
+      NONE,
     );
 
     expect(visual.renderObject.visible).toBe(false);
@@ -199,6 +205,7 @@ describe("synchronizeDormantVisuals", () => {
     expect(() =>
       synchronizeDormantVisuals(
         [{ id: "one", entity, authoredActive: true }],
+        NONE,
         NONE,
       ),
     ).not.toThrow();
@@ -223,6 +230,7 @@ describe("synchronizeDormantVisuals", () => {
         },
       ],
       NONE,
+      NONE,
     );
 
     expect(plain.renderObject.alpha).toBe(1);
@@ -235,10 +243,10 @@ describe("synchronizeDormantVisuals", () => {
     const entity = entityWith([new Transform(), visual]);
     const placements = [{ id: "one", entity, authoredActive: true }];
 
-    synchronizeDormantVisuals(placements, new Set(["one"]));
+    synchronizeDormantVisuals(placements, new Set(["one"]), NONE);
     expect(visual.applied).toBe(0.125);
 
-    synchronizeDormantVisuals(placements, NONE);
+    synchronizeDormantVisuals(placements, NONE, NONE);
     expect(visual.applied).toBe(0.5);
   });
 
@@ -248,7 +256,7 @@ describe("synchronizeDormantVisuals", () => {
     const placements = [{ id: "one", entity, authoredActive: true }];
 
     for (let pass = 0; pass < 5; pass += 1) {
-      synchronizeDormantVisuals(placements, new Set(["one"]));
+      synchronizeDormantVisuals(placements, new Set(["one"]), NONE);
     }
 
     expect(visual.renderObject.alpha).toBe(0.25);
@@ -261,10 +269,10 @@ describe("synchronizeDormantVisuals", () => {
     const entity = entityWith([new Transform(), visual]);
     const placements = [{ id: "one", entity, authoredActive: true }];
 
-    synchronizeDormantVisuals(placements, new Set(["one"]));
+    synchronizeDormantVisuals(placements, new Set(["one"]), NONE);
     expect(visual.renderObject.alpha).toBe(0.125);
 
-    synchronizeDormantVisuals(placements, NONE);
+    synchronizeDormantVisuals(placements, NONE, NONE);
     expect(visual.renderObject.alpha).toBe(0.5);
   });
 
@@ -280,10 +288,38 @@ describe("synchronizeDormantVisuals", () => {
         { id: "child", entity: child, authoredActive: false },
       ],
       new Set(["parent", "child"]),
+      NONE,
     );
 
     expect(active.renderObject.visible).toBe(true);
     expect(hidden.renderObject.visible).toBe(false);
+  });
+
+  it("draws nothing for a hidden placement", () => {
+    const visual = sprite();
+    const entity = entityWith([new Transform(), visual]);
+    const placements = [{ id: "one", entity, authoredActive: true }];
+
+    synchronizeDormantVisuals(placements, NONE, new Set(["one"]));
+    expect(visual.renderObject.visible).toBe(false);
+
+    synchronizeDormantVisuals(placements, NONE, NONE);
+    expect(visual.renderObject.visible).toBe(true);
+  });
+
+  it("hides a placement without fading it", () => {
+    const visual = sprite();
+    const entity = entityWith([new Transform(), visual]);
+
+    synchronizeDormantVisuals(
+      [{ id: "one", entity, authoredActive: true }],
+      NONE,
+      new Set(["one"]),
+    );
+
+    // A hidden placement is not a faded one: the alpha is what a fade uses,
+    // and putting a hidden placement back must not have to undo one.
+    expect(visual.renderObject.alpha).toBe(1);
   });
 
   it("ignores an ancestor that is not a placement of this level", () => {
@@ -293,6 +329,7 @@ describe("synchronizeDormantVisuals", () => {
 
     synchronizeDormantVisuals(
       [{ id: "one", entity, authoredActive: true }],
+      NONE,
       NONE,
     );
 

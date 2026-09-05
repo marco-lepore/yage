@@ -620,6 +620,39 @@ recomputed for the new parent, so reparenting never shifts anything in the
 world. One drop is one edit and one undo step. You cannot drop a row onto
 itself or onto anything under it.
 
+### Getting things out of the way
+
+The ground under the props you are arranging, the canopy over them, the twelve
+crates you finished an hour ago: every level of any size has things in the way.
+Hiding takes them off the screen without changing the level.
+
+Each hierarchy row carries an eye at its right, which appears when you point at
+the row. Click it to hide that placement, and click it again to bring it back.
+<kbd>H</kbd> hides whatever is selected, **Hide** in the toolbar does the same,
+and **Isolate** beside it hides every top-level placement whose subtree holds
+nothing selected, so the selection is what is left. **Show all**, on
+<kbd>Shift</kbd>-<kbd>H</kbd>, puts everything back.
+
+Hiding a placement hides everything under it, so a whole set piece goes with
+one click and comes back the same way. A hidden row greys and keeps its eye
+showing, so the way back is always where you left it.
+
+A hidden placement is not there as far as the viewport is concerned. It draws
+nothing, a click passes straight through it to whatever it was covering, a
+marquee does not pick it up, <kbd>F</kbd> does not frame it, and a click in
+the viewport while a reference field waits for a target passes over it. It
+stays in that field's list, and its hierarchy row still chooses it. Click the
+row and the placement is selected, so the inspector still reaches it and the
+selection box and gizmo still show you where it is.
+
+Hiding is editor state, not level data. It never enters the file, never marks
+anything unsaved, and never appears in the undo history. Opening another level
+or reloading the page shows everything again.
+
+This is not the same as marking a placement inactive. That is authored game
+state: the file holds it and the game starts with it that way. Hiding changes
+only what the editor draws.
+
 ### The control bar
 
 Select exactly one placement and the bar under the toolbar fills in with its

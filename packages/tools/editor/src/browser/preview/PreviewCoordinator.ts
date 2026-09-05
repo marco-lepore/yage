@@ -38,6 +38,7 @@ import { viewAfterResize } from "../store/index.js";
 import { PreviewAssetLease, placementsMissingAssets } from "./assets.js";
 import {
   draggedValue,
+  hiddenClosure,
   parentWorld,
   pointFields,
   pointHandles,
@@ -45,9 +46,9 @@ import {
   referenceTargets,
   referenceUses,
   selectionRoots,
-  withDescendants,
   type PointField,
   type ReferenceUse,
+  withDescendants,
 } from "../commands/index.js";
 import { armLength, handleAt, handleDirection, nearGizmo } from "./gizmo.js";
 import { nearRadial, radialHandleAt } from "./radial.js";
@@ -233,6 +234,7 @@ export class PreviewCoordinator {
       new EditorPreviewPlugin(
         () => this.placements,
         () => this.dimmed(),
+        () => this.hiddenClosed(),
         this.flushes,
         () => {
           this.draw();
@@ -455,14 +457,16 @@ export class PreviewCoordinator {
    * Move the view onto the named placements: the camera on the rectangle their
    * visuals cover, zoomed so all of it fits.
    *
-   * Nothing happens when none of them is drawn — an empty selection, or one
-   * holding only placements this build left out. Framing a placement that is
-   * not on screen would move the view to empty space.
+   * Nothing happens when none of them is drawn — an empty selection, one
+   * holding only placements this build left out, and one holding only hidden
+   * ones. Framing a placement that is not on screen would move the view to
+   * empty space.
    */
   frameSelection(ids: readonly string[]): void {
     const renderer = this.engine?.context.tryResolve(RendererKey);
     if (!renderer) return;
-    const bounds = this.boundsOf(ids);
+    const hidden = this.hiddenClosed();
+    const bounds = this.boundsOf(ids.filter((id) => !hidden.has(id)));
     if (!bounds) return;
     this.store.dispatch({
       type: "view-changed",
@@ -504,7 +508,9 @@ export class PreviewCoordinator {
   /**
    * The placement at a world point, or null. Later placements win, because
    * they are the ones drawn on top. `among` narrows what can be hit at all, so
-   * a press passes through a placement no press can choose.
+   * a press passes through a placement no press can choose, and `hidden` is
+   * what the developer has taken off the screen — a press reaches whatever was
+   * behind it.
    *
    * A mark is tested before the artwork: it is drawn over everything the level
    * draws, and for a placement that draws nothing it is the only thing there
@@ -514,12 +520,14 @@ export class PreviewCoordinator {
     world: EditorPoint,
     among?: ReadonlySet<string>,
   ): string | null {
-    const marked = this.markAtWorld(world, among);
+    const hidden = this.hiddenClosed();
+    const marked = this.markAtWorld(world, among, hidden);
     if (marked) return marked.id;
     for (let i = this.placements.length - 1; i >= 0; i -= 1) {
       const placement = this.placements[i];
       if (!placement) continue;
       if (among && !among.has(placement.id)) continue;
+      if (hidden.has(placement.id)) continue;
       if (containsPoint(placement.entity, world)) return placement.id;
     }
     return null;
@@ -532,13 +540,25 @@ export class PreviewCoordinator {
   private dimmed(): ReadonlySet<string> {
     const state = this.store.getState();
     const pick = state.pick;
-    if (!pick) return NOTHING_DIMMED;
+    if (!pick) return NO_PLACEMENTS;
     const targets = this.targets(pick.types);
     const dimmed = new Set<string>();
     for (const placement of state.document.entities) {
       if (!targets.has(placement.id)) dimmed.add(placement.id);
     }
     return dimmed;
+  }
+
+  /**
+   * The placements the developer has put out of the way, and everything
+   * authored under one — the set every consumer works from, so a hidden parent
+   * takes its children with it without their ids being in the store.
+   *
+   * Empty whenever nothing is hidden, which is the case that runs every frame.
+   */
+  private hiddenClosed(): ReadonlySet<string> {
+    const state = this.store.getState();
+    return hiddenClosure(state.document, state.hidden);
   }
 
   /** What a press can choose, over the document the store holds now. */
@@ -557,7 +577,9 @@ export class PreviewCoordinator {
   markAt(clientPoint: { x: number; y: number }): string | null {
     const world = this.screenToWorld(clientPoint);
     if (!world) return null;
-    return this.markAtWorld(world)?.mark.type ?? null;
+    return (
+      this.markAtWorld(world, undefined, this.hiddenClosed())?.mark.type ?? null
+    );
   }
 
   /**
@@ -570,6 +592,9 @@ export class PreviewCoordinator {
    *
    * The corners arrive in either order, so a rectangle dragged up and to the
    * left means the same as one dragged down and to the right.
+   *
+   * A hidden placement is not covered by anything: a marquee takes what the
+   * developer can see.
    */
   placementsWithin(from: EditorPoint, to: EditorPoint): readonly string[] {
     const area = {
@@ -578,10 +603,11 @@ export class PreviewCoordinator {
       maxX: Math.max(from.x, to.x),
       maxY: Math.max(from.y, to.y),
     };
+    const hidden = this.hiddenClosed();
     const covered: string[] = [];
     for (const placement of this.placements) {
       const id = this.idOf(placement.entity);
-      if (id === undefined) continue;
+      if (id === undefined || hidden.has(id)) continue;
       const bounds = worldBoundsOf(placement.entity);
       const inside = bounds
         ? bounds.minX >= area.minX &&
@@ -869,11 +895,12 @@ export class PreviewCoordinator {
     const perScreenPixel = this.perScreenPixel(state);
     // A placement whose only components are a light or a panel draws no
     // artwork, so an alpha says nothing about it. Dropping its marks is what
-    // fades it.
+    // fades it, and dropping them is also the whole of what hiding one means.
     const dimmed = this.dimmed();
+    const hidden = this.hiddenClosed();
     const shown: PlacedMark[] = [];
     for (const placement of this.marked) {
-      if (dimmed.has(placement.id)) continue;
+      if (dimmed.has(placement.id) || hidden.has(placement.id)) continue;
       shown.push(
         ...placedMarks(
           placement.marks,
@@ -896,6 +923,7 @@ export class PreviewCoordinator {
   private linksShown(state: EditorState): readonly OverlayLink[] {
     if (state.selection.size === 0) return [];
     const dimmed = this.dimmed();
+    const hidden = this.hiddenClosed();
     const shown: OverlayLink[] = [];
     for (const use of this.links) {
       // A placement pointing at itself has one point and no direction.
@@ -903,10 +931,16 @@ export class PreviewCoordinator {
       const holds = state.selection.has(use.placementId);
       const named = state.selection.has(use.targetId);
       if (!holds && !named) continue;
-      // While a field is waiting for a target, an end the fade took out of the
-      // picture is not somewhere to point at.
-      if (!holds && dimmed.has(use.placementId)) continue;
-      if (!named && dimmed.has(use.targetId)) continue;
+      // An end that is out of the picture — hidden, or faded while a field
+      // waits for a target — is not somewhere to draw to, unless it is the
+      // selected one: the selection's own marker still shows where it is.
+      if (
+        !holds &&
+        (hidden.has(use.placementId) || dimmed.has(use.placementId))
+      )
+        continue;
+      if (!named && (hidden.has(use.targetId) || dimmed.has(use.targetId)))
+        continue;
       // An id no placement has has no second point to draw to. The inspector
       // reports it under the field, which is where a broken slot belongs.
       const from = this.byPlacementId.get(use.placementId);
@@ -972,13 +1006,15 @@ export class PreviewCoordinator {
    */
   private markAtWorld(
     world: EditorPoint,
-    among?: ReadonlySet<string>,
+    among: ReadonlySet<string> | undefined,
+    hidden: ReadonlySet<string>,
   ): { readonly id: string; readonly mark: PlacedMark } | undefined {
     const perScreenPixel = this.perScreenPixel(this.store.getState());
     for (let i = this.marked.length - 1; i >= 0; i -= 1) {
       const placement = this.marked[i];
       if (!placement) continue;
       if (among && !among.has(placement.id)) continue;
+      if (hidden.has(placement.id)) continue;
       const origin = originOf(placement.entity);
       for (const mark of placedMarks(placement.marks, origin, perScreenPixel)) {
         if (pressesMark(mark.at, world, perScreenPixel)) {
@@ -1705,8 +1741,8 @@ function measured(
   return size.width > 0 && size.height > 0 ? size : undefined;
 }
 
-/** The answer whenever no reference field is waiting: nothing is faded. */
-const NOTHING_DIMMED: ReadonlySet<string> = new Set<string>();
+/** The answer whenever nothing is faded and whenever nothing is hidden. */
+const NO_PLACEMENTS: ReadonlySet<string> = new Set<string>();
 
 /** What the overlay draws for the gizmo the viewport is showing. */
 function shownAsOverlay(

@@ -671,6 +671,30 @@ export const EDITOR_CSS = `
 }
 
 /*
+ * The eye each row carries. It appears on hover, and stays on a hidden row so
+ * the way back is always visible on the rows that need one. Opacity rather
+ * than a display switch, so the row's layout does not shift as the pointer
+ * arrives.
+ */
+.yage-editor .ye-row__eye {
+  flex: 0 0 auto;
+  padding: 0 var(--space-1);
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.yage-editor .ye-row:hover .ye-row__eye,
+.yage-editor .ye-row__eye.is-on,
+.yage-editor .ye-row__eye:focus-visible {
+  opacity: 1;
+}
+
+/*
  * The name reads, the id truncates. An id is a uuid and never fits, so a row
  * that lets it take the space it wants leaves the name as one letter and an
  * ellipsis — which is what a placement is actually recognised by.

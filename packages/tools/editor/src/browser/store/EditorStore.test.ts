@@ -557,6 +557,56 @@ describe("EditorStore", () => {
     });
   });
 
+  describe("hiding placements", () => {
+    it("hides what is named and shows it again", () => {
+      harness.store.dispatch({
+        type: "hidden-toggled",
+        ids: ["crate", "barrel"],
+      });
+      expect([...harness.store.getState().hidden]).toEqual(["crate", "barrel"]);
+
+      harness.store.dispatch({ type: "hidden-toggled", ids: ["crate"] });
+      expect([...harness.store.getState().hidden]).toEqual(["barrel"]);
+    });
+
+    it("replaces the whole set, which is what isolating does", () => {
+      harness.store.dispatch({ type: "hidden-toggled", ids: ["crate"] });
+      harness.store.dispatch({ type: "hidden-set", ids: ["barrel", "torch"] });
+
+      expect([...harness.store.getState().hidden]).toEqual(["barrel", "torch"]);
+    });
+
+    it("clears the set, and answers the same state when it is already empty", () => {
+      harness.store.dispatch({ type: "hidden-toggled", ids: ["crate"] });
+      harness.store.dispatch({ type: "hidden-cleared" });
+      const cleared = harness.store.getState();
+      expect(cleared.hidden.size).toBe(0);
+
+      harness.store.dispatch({ type: "hidden-cleared" });
+      expect(harness.store.getState()).toBe(cleared);
+    });
+
+    it("is not unsaved work", () => {
+      harness.store.dispatch({ type: "hidden-toggled", ids: ["crate"] });
+
+      expect(isDirty(harness.store.getState())).toBe(false);
+    });
+
+    it("drops hidden ids the committed document no longer has", () => {
+      harness.store.dispatch({
+        type: "hidden-toggled",
+        ids: ["crate", "barrel"],
+      });
+      harness.store.dispatch({
+        type: "command-accepted",
+        commandId: "none",
+        snapshot: snapshot(1, document(placement("crate", 0))),
+      });
+
+      expect([...harness.store.getState().hidden]).toEqual(["crate"]);
+    });
+  });
+
   describe("a reference field waiting for a target", () => {
     const pick = { placementId: "crate", field: "door", types: ["game.crate"] };
 
@@ -1354,6 +1404,18 @@ describe("switching levels", () => {
     expect(state.gesture).toBeUndefined();
     expect(state.marquee).toBeUndefined();
     expect(isDirty(state)).toBe(false);
+  });
+
+  it("shows everything the level being left had hidden", () => {
+    const store = opened();
+    store.dispatch({ type: "hidden-toggled", ids: ["crate"] });
+
+    store.dispatch({
+      type: "level-opened",
+      snapshot: snapshot(0, document(), meadow),
+    });
+
+    expect(store.getState().hidden.size).toBe(0);
   });
 
   it("stops waiting for a reference target the level being left held", () => {

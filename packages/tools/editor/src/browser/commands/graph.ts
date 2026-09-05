@@ -110,6 +110,45 @@ export function selectionRoots(
     .map((placement) => placement.id);
 }
 
+/**
+ * The top-level placements whose subtree holds none of the named ones, in
+ * document order.
+ *
+ * It is what isolating hides: everything the selection is not part of, named
+ * at the outermost level so one entry stands for a whole tree. It walks up from
+ * each named placement rather than down from every root.
+ */
+export function rootsWithout(
+  document: LevelDocument,
+  ids: Iterable<string>,
+): readonly string[] {
+  const byId = placementById(document);
+  const holding = new Set<string>();
+  for (const id of ids) {
+    const root = rootOf(byId, id);
+    if (root !== undefined) holding.add(root);
+  }
+  return document.entities
+    .filter((placement) => placement.parent === undefined)
+    .filter((placement) => !holding.has(placement.id))
+    .map((placement) => placement.id);
+}
+
+/** The outermost ancestor of a placement, which is itself when it has none. */
+function rootOf(
+  byId: ReadonlyMap<string, LevelPlacement>,
+  id: string,
+): string | undefined {
+  const seen = new Set<string>();
+  let current = byId.get(id);
+  while (current !== undefined && !seen.has(current.id)) {
+    if (current.parent === undefined) return current.id;
+    seen.add(current.id);
+    current = byId.get(current.parent);
+  }
+  return undefined;
+}
+
 function hasNamedAncestor(
   byId: ReadonlyMap<string, LevelPlacement>,
   named: ReadonlySet<string>,
@@ -158,4 +197,18 @@ export function placementTree(
     children: (childrenOf.get(placement.id) ?? []).map(node),
   });
   return roots.map(node);
+}
+
+/**
+ * The placements put out of the way and everything authored under one: the
+ * set every consumer of hiding works from, so a hidden parent takes its
+ * children with it without their ids being in the store. The one place that
+ * answers it, for the viewport and the hierarchy alike.
+ */
+export function hiddenClosure(
+  document: LevelDocument,
+  hidden: ReadonlySet<string>,
+): ReadonlySet<string> {
+  if (hidden.size === 0) return hidden;
+  return new Set(withDescendants(document.entities, [...hidden]));
 }

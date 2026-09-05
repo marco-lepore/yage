@@ -41,6 +41,10 @@ const fades = new WeakMap<VisualComponent, VisualOpacityModifierHandle>();
  * modifiers. All three are recomputed from state, so a fade is never something
  * to put back.
  *
+ * Fading and hiding are separate and both can apply: a fade says a placement
+ * is not what a press is looking for, and hiding says the developer put it out
+ * of the way.
+ *
  * It writes and it fades. Enabling the entity or its components would run the
  * game logic the editor exists to keep still, and patching component behaviour
  * would follow every other scene in the page.
@@ -49,6 +53,11 @@ export function synchronizeDormantVisuals(
   placements: readonly DormantPlacement[],
   /** Placements to fade. Empty whenever nothing is waiting for a target. */
   dimmed: ReadonlySet<string>,
+  /**
+   * Placements to draw nothing for, each one authored under a hidden one
+   * included. Empty whenever the developer has hidden nothing.
+   */
+  hidden: ReadonlySet<string>,
 ): void {
   const byEntity = new Map(
     placements.map((placement) => [placement.entity, placement]),
@@ -57,6 +66,7 @@ export function synchronizeDormantVisuals(
     // Every placement has one: the loader refuses an entity without a
     // Transform before an instance exists.
     const transform = placement.entity.get(Transform);
+    const shown = !hidden.has(placement.id);
     const hierarchyVisible = authoredVisible(placement, byEntity);
     const fade = dimmed.has(placement.id) ? DIMMED_ALPHA : 1;
     for (const component of placement.entity.getAll()) {
@@ -82,7 +92,7 @@ export function synchronizeDormantVisuals(
       // overrules: the component reads the engine's enabled state, and a
       // dormant entity is inactive whatever the document authored.
       object.visible =
-        component.enabled && component.visible && hierarchyVisible;
+        component.enabled && component.visible && hierarchyVisible && shown;
     }
   }
 }

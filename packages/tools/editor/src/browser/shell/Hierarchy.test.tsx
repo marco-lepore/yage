@@ -76,6 +76,7 @@ function createHarness(
   const selections: [string, boolean][] = [];
   const drops: [string, HierarchyDrop][] = [];
   const picks: string[] = [];
+  const hides: string[] = [];
   const store = new EditorStore({
     api: unusedApi,
     epoch: "epoch-1",
@@ -100,6 +101,7 @@ function createHarness(
         onSelect={(id, additive) => selections.push([id, additive])}
         onDrop={(id, drop) => drops.push([id, drop])}
         onPickTarget={(id) => picks.push(id)}
+        onToggleHidden={(id) => hides.push(id)}
       />,
     );
   });
@@ -120,7 +122,17 @@ function createHarness(
       });
     });
   };
-  return { host, root, store, selections, drops, picks, render, waitFor };
+  return {
+    host,
+    root,
+    store,
+    selections,
+    drops,
+    picks,
+    hides,
+    render,
+    waitFor,
+  };
 }
 
 function query<T extends Element>(host: HTMLElement, testId: string): T | null {
@@ -171,11 +183,12 @@ describe("Hierarchy", () => {
   });
 
   it("shows the name when there is one, otherwise the type, and always the id", () => {
+    // The trailing glyph is the row's own eye, which every row carries.
     expect(query(harness.host, "hierarchy-row-root")?.textContent).toBe(
-      "Groundroot",
+      "Groundroot◉",
     );
     expect(query(harness.host, "hierarchy-row-child")?.textContent).toBe(
-      "game.cratechild",
+      "game.cratechild◉",
     );
   });
 
@@ -420,5 +433,62 @@ describe("Hierarchy", () => {
       ).toBe("false");
       expect(query(harness.host, "drop-root")).toBeNull();
     });
+  });
+});
+
+describe("the hierarchy's eyes", () => {
+  let harness: ReturnType<typeof createHarness>;
+
+  beforeEach(() => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    harness = createHarness();
+  });
+
+  afterEach(() => {
+    act(() => {
+      harness.root.unmount();
+    });
+    harness.host.remove();
+  });
+
+  function clickEye(id: string): void {
+    act(() => {
+      query<HTMLElement>(harness.host, `hierarchy-eye-${id}`)?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+  }
+
+  it("toggles one placement and does not select it", () => {
+    clickEye("child");
+
+    expect(harness.hides).toEqual(["child"]);
+    // The press landed inside a row that selects, and it must not have
+    // reached it.
+    expect(harness.selections).toEqual([]);
+  });
+
+  it("greys a hidden row and everything under it, and still selects", () => {
+    act(() => {
+      harness.store.dispatch({ type: "hidden-toggled", ids: ["root"] });
+    });
+
+    for (const id of ["root", "child"]) {
+      const row = query<HTMLElement>(harness.host, `hierarchy-row-${id}`);
+      expect(row?.className).toContain("is-hidden");
+      // The inline opacity is what a row is faded by: a stylesheet rule for a
+      // property the component writes inline would never land.
+      expect(row?.style.opacity).toBe("0.4");
+    }
+    expect(
+      query<HTMLElement>(harness.host, "hierarchy-row-other")?.className,
+    ).not.toContain("is-hidden");
+
+    act(() => {
+      query<HTMLElement>(harness.host, "hierarchy-row-root")?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+    expect(harness.selections).toEqual([["root", false]]);
   });
 });

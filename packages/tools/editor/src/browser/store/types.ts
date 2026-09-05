@@ -385,6 +385,20 @@ export interface EditorState {
   readonly document: LevelDocument;
   readonly selection: ReadonlySet<string>;
   /**
+   * The placements put out of the way while the developer works on what was
+   * behind them.
+   *
+   * It is the editor's own state and nothing else's: it never reaches a
+   * command, the draft, or a level document, it makes nothing dirty, and it is
+   * empty again whenever a level is opened. A placement authored inactive is a
+   * different thing — that is what the game starts with, and it is in the file.
+   *
+   * The set holds the placements that were named. Everything authored under a
+   * member is hidden with it, so showing a parent again brings its children
+   * back.
+   */
+  readonly hidden: ReadonlySet<string>;
+  /**
    * What a paste would put down: the placements copied last, held as they were
    * rather than as ids, so a paste still works after the originals are gone.
    *
@@ -510,6 +524,12 @@ export type EditorAction =
   /** A save completed; only the file hashes and the revision move. */
   | { readonly type: "saved"; readonly snapshot: DraftSnapshot }
   | { readonly type: "selection-changed"; readonly ids: readonly string[] }
+  /** Each named placement was hidden, or shown again when it already was. */
+  | { readonly type: "hidden-toggled"; readonly ids: readonly string[] }
+  /** The hidden set was replaced whole, which is what isolating does. */
+  | { readonly type: "hidden-set"; readonly ids: readonly string[] }
+  /** Everything hidden is on screen again. */
+  | { readonly type: "hidden-cleared" }
   /** Placements were copied. An empty list is a copy of nothing, not a clear. */
   | {
       readonly type: "placements-copied";

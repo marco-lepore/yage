@@ -79,12 +79,13 @@ class DormantVisualSystem extends System {
   constructor(
     private readonly placements: () => readonly DormantPlacement[],
     private readonly dimmed: () => ReadonlySet<string>,
+    private readonly hidden: () => ReadonlySet<string>,
   ) {
     super();
   }
 
   update(): void {
-    synchronizeDormantVisuals(this.placements(), this.dimmed());
+    synchronizeDormantVisuals(this.placements(), this.dimmed(), this.hidden());
   }
 }
 
@@ -125,10 +126,11 @@ export class EditorPreviewPlugin implements Plugin {
   constructor(
     placements: () => readonly DormantPlacement[],
     dimmed: () => ReadonlySet<string>,
+    hidden: () => ReadonlySet<string>,
     private readonly flushes: DestroyFlushQueue,
     draw: () => void,
   ) {
-    this.visuals = new DormantVisualSystem(placements, dimmed);
+    this.visuals = new DormantVisualSystem(placements, dimmed, hidden);
     this.overlay = new OverlaySystem(draw);
   }
 

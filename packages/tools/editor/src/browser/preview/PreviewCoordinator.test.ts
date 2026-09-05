@@ -2490,6 +2490,11 @@ function entityAt(
       rotation: 0,
       visible: true,
     },
+    // The pass reads both off the component before it writes a visibility.
+    // They are own properties, set before the prototype is, so they stand in
+    // for the accessors a real component has.
+    enabled: true,
+    visible: true,
   };
   Object.setPrototypeOf(visual, VisualComponent.prototype);
   return {
@@ -2497,6 +2502,236 @@ function entityAt(
     getAll: () => [transform, visual],
     parent: null,
   };
+}
+
+describe("placements put out of the way", () => {
+  const renderer = {
+    setFit: () => {},
+    virtualSize: { width: 800, height: 600 },
+    virtualCanvasRect: { x: 0, y: 0, width: 800, height: 600 },
+    canvasSize: { width: 800, height: 600 },
+  };
+
+  /** A placement of the default type, optionally authored under another. */
+  function under(id: string, parent?: string): LevelPlacement {
+    return {
+      ...placement(id),
+      ...(parent === undefined ? {} : { parent }),
+    };
+  }
+
+  function hide(store: EditorStore, ...ids: string[]): void {
+    store.dispatch({ type: "hidden-toggled", ids });
+  }
+
+  it("draws nothing for a hidden placement or anything under it", async () => {
+    const harness = await createHarness(renderer);
+    const parent = entityAt(0, 0, { half: 25 });
+    const child = entityAt(80, 0, { half: 25 });
+    entities.set("parent", parent);
+    entities.set("child", child);
+    const level = document(under("parent"), under("child", "parent"));
+    await harness.build(level);
+    opened(harness.store, level);
+
+    harness.tick(1);
+    expect(visibilityOf(child)).toBe(true);
+
+    // The child's own id is not in the store's set: the closure is what the
+    // dormant pass is handed, so hiding a parent takes its children with it.
+    hide(harness.store, "parent");
+    harness.tick(1);
+    expect(visibilityOf(parent)).toBe(false);
+    expect(visibilityOf(child)).toBe(false);
+
+    hide(harness.store, "parent");
+    harness.tick(1);
+    expect(visibilityOf(child)).toBe(true);
+  });
+
+  it("lets a press reach what a hidden placement was covering", async () => {
+    const harness = await createHarness(
+      withPointer(renderer),
+      undefined,
+      cameraStub({ width: 800, height: 600 }),
+    );
+    entities.set("floor", entityAt(0, 0, { half: 200 }));
+    entities.set("crate", entityAt(0, 0, { half: 25 }));
+    const level = document("floor", "crate");
+    await harness.build(level);
+    opened(harness.store, level);
+
+    expect(harness.coordinator.hitTest({ x: 400, y: 300 })).toBe("crate");
+
+    hide(harness.store, "crate");
+    expect(harness.coordinator.hitTest({ x: 400, y: 300 })).toBe("floor");
+  });
+
+  it("lets a press through the mark of a hidden placement", async () => {
+    // A placement that draws nothing is pressed through its mark, and the mark
+    // is tested before the artwork; hidden, it must give way like the artwork.
+    const harness = await createHarness(
+      withPointer(renderer),
+      undefined,
+      cameraStub({ width: 800, height: 600 }),
+    );
+    entities.set("floor", entityAt(0, 0, { half: 200 }));
+    entities.set("beacon", entityCarrying(0, 0, "LightSource"));
+    const level = document("floor", "beacon");
+    await harness.build(level);
+    opened(harness.store, level);
+    const onMark = { x: 400, y: 300 - MARK_OFFSET_PIXELS };
+
+    expect(harness.coordinator.hitTest(onMark)).toBe("beacon");
+
+    hide(harness.store, "beacon");
+    expect(harness.coordinator.hitTest(onMark)).toBe("floor");
+  });
+
+  it("keeps a reference line whose hidden end is the selected one", async () => {
+    const harness = await createHarness(renderer);
+    entities.set("switch", entityCarrying(0, 0, "game.Switch"));
+    entities.set("crate", entityCarrying(80, 0, "game.Crate"));
+    const level = document(
+      {
+        ...placement("switch"),
+        type: "game.switch",
+        params: { door: "crate" },
+      },
+      under("crate"),
+    );
+    await harness.build(
+      level,
+      [],
+      catalogDeclaring({ "game.switch": ["door"] }),
+    );
+    opened(harness.store, level);
+    harness.store.dispatch({ type: "selection-changed", ids: ["switch"] });
+
+    // The selection's own marker still shows where the switch is, so the line
+    // from it still has a first point to draw from.
+    hide(harness.store, "switch");
+    expect(harness.coordinator.overlayView().links).toHaveLength(1);
+  });
+
+  it("leaves a hidden placement out of a marquee", async () => {
+    const harness = await createHarness(renderer);
+    entities.set("crate", entityAt(0, 0, { half: 10 }));
+    entities.set("barrel", entityAt(40, 0, { half: 10 }));
+    const level = document("crate", "barrel");
+    await harness.build(level);
+    opened(harness.store, level);
+
+    hide(harness.store, "crate");
+
+    expect(
+      harness.coordinator.placementsWithin(
+        { x: -100, y: -100 },
+        { x: 100, y: 100 },
+      ),
+    ).toEqual(["barrel"]);
+  });
+
+  it("frames what is left of the selection, and nothing when none is", async () => {
+    const harness = await createHarness(renderer);
+    entities.set("crate", entityAt(100, 50, { half: 40, halfY: 10 }));
+    entities.set("barrel", entityAt(-400, 0, { half: 10 }));
+    const level = document("crate", "barrel");
+    await harness.build(level);
+    opened(harness.store, level);
+
+    hide(harness.store, "barrel");
+    harness.coordinator.frameSelection(["crate", "barrel"]);
+
+    // The barrel is 400 units away: framing both would put the view between
+    // them, on nothing the developer can see.
+    expect(harness.store.getState().view.center).toEqual({ x: 100, y: 50 });
+
+    const framed = harness.store.getState().view;
+    harness.coordinator.frameSelection(["barrel"]);
+    expect(harness.store.getState().view).toBe(framed);
+  });
+
+  it("draws no marks and no reference lines for a hidden placement", async () => {
+    const harness = await createHarness(renderer);
+    entities.set("switch", entityCarrying(0, 0, "game.Switch"));
+    entities.set("crate", entityCarrying(80, 0, "game.Crate"));
+    const level = document(
+      {
+        ...placement("switch"),
+        type: "game.switch",
+        params: { door: "crate" },
+      },
+      under("crate"),
+    );
+    await harness.build(
+      level,
+      [],
+      catalogDeclaring({ "game.switch": ["door"] }),
+    );
+    opened(harness.store, level);
+    harness.store.dispatch({ type: "selection-changed", ids: ["switch"] });
+
+    expect(harness.coordinator.overlayView().marks).toHaveLength(2);
+    expect(harness.coordinator.overlayView().links).toHaveLength(1);
+
+    hide(harness.store, "crate");
+    const view = harness.coordinator.overlayView();
+    expect(view.marks?.map((mark) => mark.type)).toEqual(["game.Switch"]);
+    expect(view.links).toEqual([]);
+  });
+
+  it("never offers a hidden placement as a reference target", async () => {
+    const harness = await createHarness(
+      withPointer(renderer),
+      undefined,
+      cameraStub({ width: 800, height: 600 }),
+    );
+    entities.set("crate", entityAt(0, 0, { half: 25 }));
+    const level = document(
+      { ...placement("switch"), type: "game.switch" },
+      under("crate"),
+    );
+    await harness.build(level);
+    opened(harness.store, level);
+    harness.store.dispatch({
+      type: "pick-started",
+      pick: { placementId: "switch", field: "door", types: ["game.crate"] },
+    });
+
+    expect(harness.coordinator.pickAt({ x: 400, y: 300 })).toBe("crate");
+
+    hide(harness.store, "crate");
+    expect(harness.coordinator.pickAt({ x: 400, y: 300 })).toBeNull();
+  });
+
+  it("still draws the editor's own marker over a hidden selection", async () => {
+    const harness = await createHarness(renderer);
+    entities.set("crate", entityAt(0, 0, { half: 10 }));
+    const level = document("crate");
+    await harness.build(level);
+    opened(harness.store, level);
+    harness.store.dispatch({ type: "selection-changed", ids: ["crate"] });
+    harness.store.dispatch({ type: "tool-changed", tool: "select" });
+
+    hide(harness.store, "crate");
+
+    // The box and the origin crosshair are not part of the placement's
+    // picture: they are what says where the thing you hid is.
+    const view = harness.coordinator.overlayView();
+    expect(view.boxes).toHaveLength(1);
+    expect(view.origins).toEqual([{ x: 0, y: 0 }]);
+  });
+});
+
+/** What the dormant pass last wrote onto an entity stub's only visual. */
+function visibilityOf(entity: unknown): unknown {
+  const visual = (
+    entity as { getAll(): { renderObject?: { visible: boolean } }[] }
+  )
+    .getAll()
+    .find((component) => component.renderObject !== undefined);
+  return visual?.renderObject?.visible;
 }
 
 describe("a parameter you can drag", () => {

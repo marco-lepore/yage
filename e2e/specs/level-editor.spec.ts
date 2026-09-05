@@ -2882,6 +2882,75 @@ test.describe("level editor", () => {
     const saved = savedPlacement(slime.id).params["patrolEnd"] as Point;
     expectPoint(saved, local);
   });
+
+  test("hides a placement out of the way and never out of the file", async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await withoutSnapping(page);
+
+    // The template keeps its three placements apart, so one has to be moved
+    // onto another for "what was underneath" to mean anything.
+    const over = await clientPointOf(page, authored(ROOT));
+    const from = await clientPointOf(page, authored(CHILD));
+    await dragPlacement(page, CHILD, {
+      x: over.x - from.x,
+      y: over.y - from.y,
+    });
+    await page.getByTestId("save-level").click();
+    await expect(page.getByTestId("dirty-marker")).toBeHidden();
+
+    /**
+     * Put the selection on the far placement, so the gizmo is nowhere near the
+     * point the next press lands on: a press on the gizmo drags the selection
+     * it is drawn for instead of choosing something else.
+     */
+    const selectFarPlacement = async (): Promise<void> => {
+      await page.getByTestId(`hierarchy-row-${LATER}`).click();
+    };
+
+    // The child is authored after the root, so it is the one drawn on top and
+    // the one a press finds.
+    await selectFarPlacement();
+    await page.mouse.click(over.x, over.y);
+    await expect(page.getByTestId(`hierarchy-item-${CHILD}`)).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    await page.getByTestId(`hierarchy-eye-${CHILD}`).click();
+    await expect(page.getByTestId(`hierarchy-row-${CHILD}`)).toHaveClass(
+      /is-hidden/,
+    );
+
+    await selectFarPlacement();
+    await page.mouse.click(over.x, over.y);
+    await expect(page.getByTestId(`hierarchy-item-${ROOT}`)).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await expect(page.getByTestId(`hierarchy-item-${CHILD}`)).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+
+    // Hiding is the editor's own state: no edit was made, so there is nothing
+    // to save, and Save stays off.
+    await expect(page.getByTestId("dirty-marker")).toBeHidden();
+    await expect(page.getByTestId("save-level")).toBeDisabled();
+
+    // Shift-H puts everything back, and the press finds the child again.
+    await page.keyboard.press("Shift+H");
+    await expect(page.getByTestId(`hierarchy-row-${CHILD}`)).not.toHaveClass(
+      /is-hidden/,
+    );
+    await selectFarPlacement();
+    await page.mouse.click(over.x, over.y);
+    await expect(page.getByTestId(`hierarchy-item-${CHILD}`)).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
 });
 
 /**

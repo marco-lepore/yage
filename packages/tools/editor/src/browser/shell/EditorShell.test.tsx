@@ -1217,6 +1217,100 @@ describe("EditorShell", () => {
     });
   });
 
+  describe("hiding what is in the way", () => {
+    /** A crate, a beam authored under it, and a lone barrel. */
+    const family: LevelDocument = {
+      ...document_,
+      entities: [
+        crate,
+        { ...crate, id: "beam", parent: "crate" },
+        { ...crate, id: "barrel" },
+      ],
+    };
+
+    function openFamily(): void {
+      act(() => {
+        harness.store.dispatch({
+          type: "level-opened",
+          snapshot: snapshot({ document: family }),
+        });
+      });
+    }
+
+    function select(...ids: string[]): void {
+      act(() => {
+        harness.store.dispatch({ type: "selection-changed", ids });
+      });
+    }
+
+    it("hides the selection's roots on the key, and shows them again", () => {
+      openFamily();
+      select("crate", "beam");
+
+      press("h");
+
+      // The beam travels with the crate, so naming it as well would leave it
+      // hidden once the crate came back.
+      expect([...harness.store.getState().hidden]).toEqual(["crate"]);
+
+      press("h");
+      expect(harness.store.getState().hidden.size).toBe(0);
+    });
+
+    it("shows everything again on the shifted key", () => {
+      openFamily();
+      select("crate");
+      press("h");
+
+      expect(press("H", { shift: true })).toBe(true);
+
+      expect(harness.store.getState().hidden.size).toBe(0);
+    });
+
+    it("hides and isolates from the toolbar", () => {
+      openFamily();
+      select("beam");
+
+      click(harness.host, "hide-selection");
+      expect([...harness.store.getState().hidden]).toEqual(["beam"]);
+
+      // Isolating replaces the set with every tree the selection is not in.
+      click(harness.host, "isolate-selection");
+      expect([...harness.store.getState().hidden]).toEqual(["barrel"]);
+
+      click(harness.host, "show-all");
+      expect(harness.store.getState().hidden.size).toBe(0);
+    });
+
+    it("offers Hide with a selection and Show all with something hidden", () => {
+      const enabled = (testId: string): boolean =>
+        query<HTMLButtonElement>(harness.host, testId)?.disabled === false;
+      openFamily();
+      expect(enabled("hide-selection")).toBe(false);
+      expect(enabled("isolate-selection")).toBe(false);
+      expect(enabled("show-all")).toBe(false);
+
+      select("crate");
+      expect(enabled("hide-selection")).toBe(true);
+      expect(enabled("show-all")).toBe(false);
+
+      click(harness.host, "hide-selection");
+      expect(enabled("show-all")).toBe(true);
+    });
+
+    it("writes nothing to the document", () => {
+      openFamily();
+      select("crate");
+
+      press("h");
+
+      const state = harness.store.getState();
+      expect(state.document).toBe(family);
+      expect(state.pending).toEqual([]);
+      expect(harness.intents).toEqual([]);
+    });
+  });
+
   describe("shortcuts", () => {
     it("picks each gizmo with its own key", () => {
       press("e");

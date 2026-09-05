@@ -111,6 +111,7 @@ export class EditorStore {
     pending: [],
     document: EMPTY_LEVEL_DOCUMENT,
     selection: new Set(),
+    hidden: new Set(),
     clipboard: [],
     view: DEFAULT_VIEW,
     tool: "translate",
@@ -606,7 +607,8 @@ function adopt(
     },
     pending: replayed.kept,
     document: replayed.document,
-    selection: retainSelection(state.selection, replayed.document),
+    selection: retainIds(state.selection, replayed.document),
+    hidden: retainIds(state.hidden, replayed.document),
     pick: retainPick(state.pick, replayed.document),
     history: snapshot.history,
   };
@@ -639,14 +641,18 @@ function fileStateOf(snapshot: DraftSnapshot): EditorFileState {
   };
 }
 
-/** Selection follows the document: an id it no longer has stops being selected. */
-function retainSelection(
-  selection: ReadonlySet<string>,
+/**
+ * A set of placements follows the document: an id the document no longer has
+ * drops out of it. The selection and the hidden set both name placements and
+ * both outlive an edit that removes one.
+ */
+function retainIds(
+  named: ReadonlySet<string>,
   document: LevelDocument,
 ): ReadonlySet<string> {
   const ids = new Set(document.entities.map((placement) => placement.id));
-  const kept = [...selection].filter((id) => ids.has(id));
-  return kept.length === selection.size ? selection : new Set(kept);
+  const kept = [...named].filter((id) => ids.has(id));
+  return kept.length === named.size ? named : new Set(kept);
 }
 
 /** A pick follows the document: a holder it no longer has stops waiting. */
@@ -696,6 +702,10 @@ function reduce(state: EditorState, action: EditorAction): EditorState {
         pending: [],
         document: snapshot.document,
         selection: new Set(),
+        // Hiding is this session's view of one level. Carrying it across would
+        // hide whatever the next level happened to name an id the same way,
+        // and there is nothing on screen in the new level to explain it.
+        hidden: new Set(),
         history: snapshot.history,
         // A drag and a marquee hold ids from the document being left.
         // `openLevel` settles the gesture before it switches, so this is the
@@ -790,6 +800,20 @@ function reduce(state: EditorState, action: EditorAction): EditorState {
           ? state.pick
           : undefined;
       return { ...state, selection, poseDraft, pick };
+    }
+    case "hidden-toggled": {
+      if (action.ids.length === 0) return state;
+      const hidden = new Set(state.hidden);
+      for (const id of action.ids) {
+        if (!hidden.delete(id)) hidden.add(id);
+      }
+      return { ...state, hidden };
+    }
+    case "hidden-set": {
+      return { ...state, hidden: new Set(action.ids) };
+    }
+    case "hidden-cleared": {
+      return state.hidden.size === 0 ? state : { ...state, hidden: new Set() };
     }
     case "placements-copied": {
       return { ...state, clipboard: action.placements };

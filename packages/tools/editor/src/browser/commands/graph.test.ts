@@ -4,6 +4,7 @@ import {
   isAncestorOrSelf,
   placementById,
   placementTree,
+  rootsWithout,
   selectionRoots,
   withDescendants,
 } from "./graph.js";
@@ -171,5 +172,25 @@ describe("placementById", () => {
   it("finds each placement by its id", () => {
     expect(placementById(FAMILY).get("child")?.parent).toBe("root");
     expect(placementById(FAMILY).get("ghost")).toBeUndefined();
+  });
+});
+
+describe("rootsWithout", () => {
+  it("names every top-level placement the named ones are not part of", () => {
+    expect(rootsWithout(FAMILY, ["grandchild"])).toEqual(["stranger"]);
+    expect(rootsWithout(FAMILY, ["root"])).toEqual(["stranger"]);
+    expect(rootsWithout(FAMILY, ["stranger"])).toEqual(["root"]);
+  });
+
+  it("names every root when nothing is chosen", () => {
+    expect(rootsWithout(FAMILY, [])).toEqual(["root", "stranger"]);
+  });
+
+  it("names none when the chosen ones cover every tree", () => {
+    expect(rootsWithout(FAMILY, ["child", "stranger"])).toEqual([]);
+  });
+
+  it("ignores an id the document does not hold", () => {
+    expect(rootsWithout(FAMILY, ["ghost"])).toEqual(["root", "stranger"]);
   });
 });

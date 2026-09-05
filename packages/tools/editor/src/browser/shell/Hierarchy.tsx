@@ -4,13 +4,15 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
+  hiddenClosure,
   placementTree,
   referenceTargets,
-  withDescendants,
   type HierarchyDrop,
   type PlacementNode,
+  withDescendants,
 } from "../commands/index.js";
 import { isEditable, type EditorStore } from "../store/index.js";
+import { Button } from "./controls.js";
 import { Panel, PanelEmpty } from "./Panel.js";
 import { useEditorSlice } from "./useEditorSlice.js";
 
@@ -21,6 +23,8 @@ export interface HierarchyProps {
   readonly onDrop: (id: string, drop: HierarchyDrop) => void;
   /** Choose this placement as the waiting reference field's target. */
   readonly onPickTarget: (id: string) => void;
+  /** Hide this placement, or show it again. */
+  readonly onToggleHidden: (id: string) => void;
 }
 
 /** Which row the pointer is over during a drag, and what a release would do. */
@@ -49,6 +53,11 @@ interface DropHover {
  * it — dropping after a row puts the placement after that row's whole subtree,
  * and the row's own bottom edge is above its children.
  *
+ * Each row carries an eye that takes the placement off the screen and brings
+ * it back. A hidden row greys and keeps its eye showing, and it still selects
+ * and drags, so the inspector can reach a placement that is out of the way and
+ * the eye can bring it back.
+ *
  * While a reference field is waiting for a target, a row that can be one
  * chooses it instead of selecting, every other row is inert, and no row drags.
  *
@@ -62,12 +71,17 @@ export function Hierarchy(props: HierarchyProps): React.JSX.Element {
   // False while writes are locked: rows still select, but nothing drags.
   const editable = useEditorSlice(props.store, isEditable);
   const pick = useEditorSlice(props.store, (state) => state.pick);
+  const hiddenIds = useEditorSlice(props.store, (state) => state.hidden);
   // While a field is waiting, the tree does one thing. A candidate authored
   // inactive draws nothing and one the projection left out has no entity at
   // all, so neither can be clicked in the viewport, and both are rows here.
   const targets = pick
     ? referenceTargets(document.entities, pick.types)
     : undefined;
+  // The closure, so a child of a hidden parent greys with it: the viewport
+  // draws nothing for it either, and a row that looked ordinary would be the
+  // one place claiming otherwise.
+  const hidden = hiddenClosure(document, hiddenIds);
   const [dragging, setDragging] = useState<string | undefined>();
   const [hover, setHover] = useState<DropHover | undefined>();
   const roots = placementTree(document);
@@ -105,6 +119,7 @@ export function Hierarchy(props: HierarchyProps): React.JSX.Element {
     const over = hover?.id === id ? hover.kind : undefined;
     const target = targets?.get(id);
     const unpickable = targets !== undefined && target === undefined;
+    const away = hidden.has(id);
     return (
       <li
         key={id}
@@ -126,7 +141,7 @@ export function Hierarchy(props: HierarchyProps): React.JSX.Element {
           data-testid={`hierarchy-row-${id}`}
           className={`ye-row${selected ? " is-selected" : ""}${
             editable ? "" : " is-static"
-          }${unpickable ? " is-unpickable" : ""}`}
+          }${unpickable ? " is-unpickable" : ""}${away ? " is-hidden" : ""}`}
           draggable={editable && targets === undefined}
           onClick={(event: ReactMouseEvent) => {
             if (targets !== undefined) {
@@ -153,12 +168,30 @@ export function Hierarchy(props: HierarchyProps): React.JSX.Element {
           onDragEnd={endDrag}
           // One place decides how faded a row is: an inline opacity beats the
           // stylesheet, so a rule there would never reach a row.
-          style={{ opacity: dragging === id ? 0.5 : unpickable ? 0.4 : 1 }}
+          style={{
+            opacity: dragging === id ? 0.5 : unpickable || away ? 0.4 : 1,
+          }}
         >
           <span className="ye-row__name">
             {placement.name ?? placement.type}
           </span>
           <small className="ye-row__id">{id}</small>
+          <Button
+            className={`ye-row__eye${away ? " is-on" : ""}`}
+            testId={`hierarchy-eye-${id}`}
+            title={away ? "Show this placement" : "Hide this placement"}
+            pressed={away}
+            onClick={(event) => {
+              // The row underneath selects, and this is not a way of choosing
+              // what to work on.
+              event.stopPropagation();
+              props.onToggleHidden(id);
+            }}
+          >
+            {/* Solid while the placement is on screen, broken while it is
+                not. The title says which, for a reader the shape does not. */}
+            {away ? "◌" : "◉"}
+          </Button>
           {dropTargets && !excluded.has(id) ? (
             <>
               <DropZone

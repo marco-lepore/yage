@@ -3,7 +3,11 @@ import type {
   AssetListing,
   LevelSummary,
 } from "../../shared/protocol/index.js";
-import { inboundReferences } from "../commands/index.js";
+import {
+  inboundReferences,
+  rootsWithout,
+  selectionRoots,
+} from "../commands/index.js";
 import type { CommandController } from "../commands/index.js";
 import type { LayerChoice } from "../layers.js";
 import type { InspectableType, PlaceableType } from "../project/index.js";
@@ -21,7 +25,7 @@ import { Problems } from "./Problems.js";
 import { Button, Select } from "./controls.js";
 import { selectedAfter } from "./selection.js";
 import { EDITOR_CSS } from "./styles.js";
-import { GUIDES_KEY, SNAP_KEY, TOOLS, Toolbar } from "./Toolbar.js";
+import { GUIDES_KEY, HIDE_KEY, SNAP_KEY, TOOLS, Toolbar } from "./Toolbar.js";
 import { useEditorSlice } from "./useEditorSlice.js";
 import { useShortcuts } from "./useShortcuts.js";
 import { Viewport, type ViewportPreview } from "./Viewport.js";
@@ -125,6 +129,10 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
   const hasSelection = useEditorSlice(
     store,
     (state) => state.selection.size > 0,
+  );
+  const anythingHidden = useEditorSlice(
+    store,
+    (state) => state.hidden.size > 0,
   );
   // The two depths rather than the `history` object: a snapshot carries a
   // fresh one per server answer, so the object changes when nothing has.
@@ -242,6 +250,19 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
       key: GUIDES_KEY.toLowerCase(),
       run: () => {
         store.dispatch({ type: "guides-toggled" });
+      },
+    },
+    {
+      key: HIDE_KEY.toLowerCase(),
+      run: () => {
+        hideSelection(store);
+      },
+    },
+    {
+      key: HIDE_KEY.toLowerCase(),
+      shift: true,
+      run: () => {
+        store.dispatch({ type: "hidden-cleared" });
       },
     },
     {
@@ -368,6 +389,21 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
         onDelete={() => {
           void props.commands.deletePlacements([...store.getState().selection]);
         }}
+        canHide={hasSelection}
+        canShowAll={anythingHidden}
+        onHide={() => {
+          hideSelection(store);
+        }}
+        onIsolate={() => {
+          const state = store.getState();
+          store.dispatch({
+            type: "hidden-set",
+            ids: rootsWithout(state.document, state.selection),
+          });
+        }}
+        onShowAll={() => {
+          store.dispatch({ type: "hidden-cleared" });
+        }}
       />
 
       <ControlBar
@@ -406,6 +442,9 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
             }}
             onPickTarget={(id) => {
               props.commands.pickTarget(id);
+            }}
+            onToggleHidden={(id) => {
+              store.dispatch({ type: "hidden-toggled", ids: [id] });
             }}
             onDrop={(id, drop) => {
               // Dragging a row that is part of the selection drags the whole
@@ -479,6 +518,21 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
       <DeleteConfirm store={store} commands={props.commands} />
     </div>
   );
+}
+
+/**
+ * Take the selection off the screen, or put it back.
+ *
+ * The roots alone: everything authored under a hidden placement is hidden with
+ * it, and naming a child as well would leave it hidden after its parent came
+ * back.
+ */
+function hideSelection(store: EditorStore): void {
+  const state = store.getState();
+  store.dispatch({
+    type: "hidden-toggled",
+    ids: selectionRoots(state.document, state.selection),
+  });
 }
 
 /**
