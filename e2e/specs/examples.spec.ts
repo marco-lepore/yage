@@ -54,15 +54,18 @@ async function moveQuestPlayer(
   await page.evaluate(
     ({ x, y }) => {
       const inspector = window.__yage__!.inspector;
+      // At 20 Hz each movement step is 8.75 px, below the herbs' 20 px reach.
+      // Focus crossings and interactions use the restored 60 Hz delta.
+      const travelFps = 20;
       for (const [axis, target, negative, positive] of [
         ["x", x, "KeyA", "KeyD"],
         ["y", y, "KeyW", "KeyS"],
       ] as const) {
         const distance = target - inspector.getEntityPosition("player")![axis];
         const key = distance < 0 ? negative : positive;
-        const frames = Math.floor((Math.abs(distance) * 60) / 175);
+        const frames = Math.floor((Math.abs(distance) * travelFps) / 175);
         inspector.input.keyDown(key);
-        inspector.time.setDelta(1000 / 60);
+        inspector.time.setDelta(1000 / travelFps);
         inspector.time.step(frames);
         const remaining = Math.abs(
           target - inspector.getEntityPosition("player")![axis],
