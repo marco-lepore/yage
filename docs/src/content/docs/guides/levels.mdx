@@ -169,6 +169,59 @@ The level file stores `null` there and the editor's field gets a **Clear**
 button. Leaving the key out altogether is still an error: a placement says what
 it holds, including that it holds nothing.
 
+#### Name a behaviour with a choice
+
+Give `param.select` an object instead of a list and the choices are its keys.
+That is how a level names one of several things your code can do: the level
+file stores the name, and the same object turns the name back into the
+function.
+
+```typescript title="src/Door.ts"
+const ON_OPEN = {
+  nothing: () => {},
+  vanish: (door: Door) => door.destroy(),
+  ringAlarm: (door: Door) => door.add(new Alarm()),
+};
+
+const DoorParams = defineParams({
+  onOpen: param.select("nothing", ON_OPEN),
+});
+
+export class Door extends Entity {
+  static readonly level = defineLevelEntity({
+    id: "game.door",
+    version: 1,
+    params: DoorParams,
+  });
+
+  private onOpen: (door: Door) => void = ON_OPEN.nothing;
+
+  setup(params: ParamsOf<typeof DoorParams>): void {
+    // params.onOpen is exactly "nothing" | "vanish" | "ringAlarm"
+    this.onOpen = ON_OPEN[params.onOpen];
+  }
+
+  open(): void {
+    this.onOpen(this);
+  }
+}
+```
+
+The editor offers those three names, and a level file holding any other name
+is refused when the level is prepared, exactly as a value outside a list is.
+Because the choices come from the object, `ON_OPEN[params.onOpen]` is always a
+function — there is no second list to keep in step with it. Export the object
+if another placement type offers the same behaviours.
+
+The keys are read once, where you call `param.select`, so a function added to
+the object afterwards is not a choice. A key has to be a string: write `"1"`,
+not `1`. Names like that are offered first whatever order you wrote them in,
+because that is how JavaScript lists an object's keys.
+
+Behaviour that belongs to one level rather than to a type is a different
+question: point the placement at another placement with `param.entityRef`,
+[below](#point-one-placement-at-another).
+
 ### Pairs and places
 
 A drift, a size, a patrol end: two numbers that belong together. `param.vec2`

@@ -152,12 +152,22 @@ param.select<const O extends readonly string[]>(
   values: O,
   options?: { optional?: boolean },
 ): ParamKind<O[number]>
+param.select<const O extends Record<string, unknown>>(
+  defaultValue: keyof O & string,
+  values: O,
+  options?: { optional?: boolean },
+): ParamKind<keyof O & string>
 ```
 
 - The authored JSON is the value itself: a number, `true` or `false`, a string,
   or one of the listed strings. The level file stores what `setup()` receives.
 - `param.select` reads its values literally, so `setup()` receives the union
   `"left" | "right"` and a `switch` over it is exhaustive.
+- Given an object instead of a list, `param.select` takes the choices from its
+  keys, so the name a level stores and the code that name stands for are one
+  declaration: `param.select("none", OPEN)` accepts `keyof typeof OPEN`, and
+  `OPEN[params.onOpen]` is the behaviour. The keys are read once at the call;
+  write a numeric key as a string (`"1"`), and expect it listed first.
 - `integer` is a kind of its own rather than an option on `number`: `2.5` in a
   file is reported, never rounded.
 - `min` and `max` are checked when the level is prepared, so a value outside

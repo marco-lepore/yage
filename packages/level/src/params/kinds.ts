@@ -410,6 +410,30 @@ function stringParam(
  *   // params.facing is "left" | "right"
  * }
  * ```
+ *
+ * Passing an object instead of a list makes the choices its keys, so a name a
+ * level authors and the code that name stands for are one declaration:
+ *
+ * ```ts
+ * const OPEN = {
+ *   none: () => {},
+ *   vanish: (door: Door) => door.destroy(),
+ * };
+ *
+ * const DoorParams = defineParams({
+ *   onOpen: param.select("none", OPEN),
+ * });
+ *
+ * setup(params: ParamsOf<typeof DoorParams>): void {
+ *   this.onOpen = OPEN[params.onOpen]; // the key union is the object's own
+ * }
+ * ```
+ *
+ * The keys are read once, here, so a later change to the object does not
+ * change what the schema accepts. A key is a string: write `"1"`, not `1`,
+ * or `keyof` yields no string and the default has no type. They are listed
+ * in `Object.keys` order, which puts integer-like keys first whatever order
+ * they were written in.
  */
 function selectParam<const O extends readonly string[]>(
   defaultValue: O[number],
@@ -421,14 +445,26 @@ function selectParam<const O extends readonly string[]>(
   values: O,
   options: SelectParamOptions,
 ): ParamKind<O[number] | undefined>;
-function selectParam<const O extends readonly string[]>(
-  defaultValue: O[number],
+function selectParam<const O extends Record<string, unknown>>(
+  defaultValue: keyof O & string,
   values: O,
+  options?: SelectParamOptions & { readonly optional?: false },
+): ParamKind<keyof O & string>;
+function selectParam<const O extends Record<string, unknown>>(
+  defaultValue: keyof O & string,
+  values: O,
+  options: SelectParamOptions,
+): ParamKind<(keyof O & string) | undefined>;
+function selectParam(
+  defaultValue: string,
+  values: readonly string[] | Record<string, unknown>,
   options: SelectParamOptions = {},
-): ParamKind<O[number] | undefined> {
-  // Copied and frozen, because the caller keeps the array it passed and a
-  // later mutation of it must not change what the schema accepts.
-  const accepted = Object.freeze([...values]);
+): ParamKind<string | undefined> {
+  // Frozen, and a copy of a list, because the caller keeps what it passed
+  // and a later mutation of it must not change what the schema accepts.
+  const accepted = Object.freeze(
+    isList(values) ? [...values] : Object.keys(values),
+  );
   return createBuiltInParamKind({
     name: "select",
     optional: options.optional ?? false,
@@ -436,7 +472,7 @@ function selectParam<const O extends readonly string[]>(
     defaultValue,
     validate: (value) =>
       selectProblems(value, accepted, options.optional ?? false),
-    decode: decodeOptional<O[number]>,
+    decode: decodeOptional<string>,
     assets: () => [],
   });
 }
@@ -660,6 +696,13 @@ function stringProblems(
   if (typeof value === "string") return [];
   if (value === null && optional) return [];
   return [optional ? "must be a string or null" : "must be a string"];
+}
+
+/** `Array.isArray` narrows a union to `any[]`; this keeps the element type. */
+function isList(
+  values: readonly string[] | Record<string, unknown>,
+): values is readonly string[] {
+  return Array.isArray(values);
 }
 
 function selectProblems(

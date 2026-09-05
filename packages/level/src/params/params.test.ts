@@ -701,6 +701,57 @@ describe("the plain parameter kinds", () => {
     expect(Object.isFrozen(describeParams(schema)[0]?.options)).toBe(true);
   });
 
+  it("takes a choice's values from an object's keys", () => {
+    const open = {
+      none: () => "nothing",
+      unlockBossRoom: () => "unlocked",
+      startAlarm: () => "alarm",
+    };
+    const schema = defineParams({ onOpen: param.select("none", open) });
+
+    expect(describeParams(schema)[0]?.options).toEqual([
+      "none",
+      "unlockBossRoom",
+      "startAlarm",
+    ]);
+    expectTypeOf<ParamsOf<typeof schema>>().toEqualTypeOf<{
+      onOpen: "none" | "unlockBossRoom" | "startAlarm";
+    }>();
+    expect(decodeParams(schema, { onOpen: "startAlarm" }, NO_REFS).onOpen).toBe(
+      "startAlarm",
+    );
+  });
+
+  it("refuses a name the object does not have, as a list does", () => {
+    const schema = defineParams({
+      onOpen: param.select("none", { none: () => {}, startAlarm: () => {} }),
+    });
+
+    expect(
+      validateParams(schema, { onOpen: "unlockBossRoom" }).map(
+        (error) => error.message,
+      ),
+    ).toEqual(['must be one of "none", "startAlarm"']);
+    // @ts-expect-error a default that is not one of the object's keys
+    param.select("unlockBossRoom", { none: () => {} });
+  });
+
+  it("reads an object's keys once, so a later change cannot widen them", () => {
+    const open: Record<string, () => void> = { none: () => {} };
+    const schema = defineParams({
+      onOpen: param.select("none", open, { optional: true }),
+    });
+
+    open["startAlarm"] = () => {};
+
+    expect(describeParams(schema)[0]?.options).toEqual(["none"]);
+    expect(Object.isFrozen(describeParams(schema)[0]?.options)).toBe(true);
+    expect(validateParams(schema, { onOpen: null })).toEqual([]);
+    expectTypeOf<ParamsOf<typeof schema>>().toEqualTypeOf<{
+      onOpen: string | undefined;
+    }>();
+  });
+
   it("reports a default its own kind rejects rather than throwing", () => {
     // A list typed as `string[]` rather than read literally offers no
     // compile-time check of the default, so the catalog is what catches it.
