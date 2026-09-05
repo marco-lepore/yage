@@ -1084,6 +1084,24 @@ export const EDITOR_CSS = `
   gap: var(--space-2);
 }
 
+/* The New and Duplicate dialog: the same band the delete question uses,
+   without the warning border, because creating a level breaks nothing. */
+.yage-editor .ye-confirm--ask {
+  border-color: var(--border);
+}
+
+.yage-editor .ye-confirm input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--control-height);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
 /* Diagnostics ------------------------------------------------------------ */
 
 /*

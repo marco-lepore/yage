@@ -25,6 +25,8 @@ export interface ButtonProps {
   readonly title?: string | undefined;
   /** Set on a toggle: whether this is the choice currently in effect. */
   readonly pressed?: boolean | undefined;
+  /** Takes the focus when it is rendered. For the safe answer in a dialog. */
+  readonly autoFocus?: boolean | undefined;
 }
 
 /**
@@ -44,6 +46,7 @@ export function Button(props: ButtonProps): React.JSX.Element {
       disabled={props.disabled ?? false}
       title={props.title}
       aria-pressed={props.pressed}
+      autoFocus={props.autoFocus ?? false}
       onClick={(event) => {
         props.onClick(event);
         releaseFocus(event);

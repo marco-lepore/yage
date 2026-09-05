@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { emptyLevelDocument } from "./empty.js";
 import { formatLevel } from "./format.js";
 import { readLevel } from "./read.js";
 import type { LevelDocument, StructuralError } from "./types.js";
@@ -567,5 +568,22 @@ describe("formatLevel", () => {
 
     expect(twice).toBe(once);
     expect(once.endsWith("}\n")).toBe(true);
+  });
+});
+
+describe("emptyLevelDocument", () => {
+  it("writes a level a reader accepts, with the id it was given", () => {
+    const text = formatLevel(emptyLevelDocument("forest"));
+
+    expect(text).toBe(
+      `{
+  "format": "yage-level",
+  "version": 1,
+  "id": "forest",
+  "entities": []
+}
+`,
+    );
+    expect(readOrThrow(text)).toEqual(emptyLevelDocument("forest"));
   });
 });

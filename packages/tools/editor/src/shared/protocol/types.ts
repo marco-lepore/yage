@@ -37,6 +37,12 @@ export interface BootstrapResponse {
   /** Unique per server boot: a request from an older boot cannot be applied. */
   readonly epoch: string;
   readonly levels: readonly LevelSummary[];
+  /**
+   * Where a new level can be put: the fixed directory of each configured level
+   * glob, in config order. `""` is the project root. Whatever a dialog offers
+   * from it, the path a create asks for is matched against the globs.
+   */
+  readonly levelDirectories: readonly string[];
 }
 
 /**
@@ -110,6 +116,48 @@ export type DraftOutcome =
       readonly snapshot?: DraftSnapshot;
     };
 
+/** Why a request about a level file changed nothing. */
+export type LevelFileRefusal =
+  /** The server restarted: refetch bootstrap and the snapshot. */
+  | "epoch-mismatch"
+  /** A file already holds that path. A level is never created over one. */
+  | "exists"
+  /** No configured level glob matches the path. */
+  | "not-configured"
+  /** There is no level file to copy or remove at that path. */
+  | "not-found"
+  /** The file is there but is not a level this version can read. */
+  | "unreadable"
+  /** The write itself failed; the project's files are unchanged. */
+  | "write-failed";
+
+/**
+ * What creating and duplicating a level answer.
+ *
+ * A created level carries its own summary and its draft, so the browser adds
+ * it to the picker and opens it without asking again.
+ */
+export type LevelCreateOutcome =
+  | {
+      readonly status: "created";
+      readonly level: LevelSummary;
+      readonly snapshot: DraftSnapshot;
+    }
+  | {
+      readonly status: "refused";
+      readonly reason: LevelFileRefusal;
+      readonly message: string;
+    };
+
+/** What deleting a level answers: the levels that are left. */
+export type LevelDeleteOutcome =
+  | { readonly status: "deleted"; readonly levels: readonly LevelSummary[] }
+  | {
+      readonly status: "refused";
+      readonly reason: LevelFileRefusal;
+      readonly message: string;
+    };
+
 /**
  * What each route answers when it is handled at all.
  *
@@ -126,6 +174,9 @@ export interface EditorRouteResponses {
   "POST /draft/undo": DraftOutcome;
   "POST /draft/redo": DraftOutcome;
   "POST /draft/save": DraftOutcome;
+  "POST /levels/create": LevelCreateOutcome;
+  "POST /levels/duplicate": LevelCreateOutcome;
+  "POST /levels/delete": LevelDeleteOutcome;
 }
 
 /**
@@ -141,6 +192,9 @@ export const EDITOR_ROUTES = [
   "POST /draft/undo",
   "POST /draft/redo",
   "POST /draft/save",
+  "POST /levels/create",
+  "POST /levels/duplicate",
+  "POST /levels/delete",
 ] as const satisfies readonly (keyof EditorRouteResponses)[];
 
 export type EditorRoute = (typeof EDITOR_ROUTES)[number];
@@ -165,4 +219,30 @@ export interface DraftSaveRequest {
   readonly epoch: string;
   readonly expectedDraftRevision: number;
   readonly expectedDiskRevision: string;
+}
+
+/**
+ * Create a level at the path the request names in its query, under this id.
+ *
+ * These three carry no revision. A level file is not a draft: nothing is being
+ * applied to a document, so there is no revision to apply it to and no history
+ * entry to undo.
+ */
+export interface LevelCreateRequest {
+  readonly epoch: string;
+  /** The `id` the new document holds, which the game reads. */
+  readonly levelId: string;
+}
+
+/** The same, copying an existing level instead of writing an empty one. */
+export interface LevelDuplicateRequest {
+  readonly epoch: string;
+  readonly levelId: string;
+  /** The level being copied, project-relative. */
+  readonly sourcePath: string;
+}
+
+/** Remove the level the request names in its query. */
+export interface LevelDeleteRequest {
+  readonly epoch: string;
 }

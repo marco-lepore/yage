@@ -91,6 +91,7 @@ function createHarness(
     api: unusedApi,
     epoch: "epoch-1",
     projectId: "project-1",
+    levels: [],
   });
   store.dispatch({ type: "level-opened", snapshot });
   // Off unless a case turns it on: these cases are about what a pointer event

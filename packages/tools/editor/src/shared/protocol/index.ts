@@ -12,12 +12,21 @@ export {
   type EditorRoute,
   type EditorRouteResponses,
   type HistorySummary,
+  type LevelCreateOutcome,
+  type LevelCreateRequest,
+  type LevelDeleteOutcome,
+  type LevelDeleteRequest,
+  type LevelDuplicateRequest,
+  type LevelFileRefusal,
   type LevelSummary,
   type RevisionedRequest,
 } from "./types.js";
 export {
   isRevision,
   parseCommandRequest,
+  parseLevelCreateRequest,
+  parseLevelDeleteRequest,
+  parseLevelDuplicateRequest,
   parseRevisionedRequest,
   parseSaveRequest,
 } from "./parse.js";

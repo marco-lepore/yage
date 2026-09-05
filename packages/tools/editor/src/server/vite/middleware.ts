@@ -4,6 +4,9 @@ import {
   EDITOR_ROUTES,
   EDITOR_TOKEN_HEADER,
   parseCommandRequest,
+  parseLevelCreateRequest,
+  parseLevelDeleteRequest,
+  parseLevelDuplicateRequest,
   parseRevisionedRequest,
   parseSaveRequest,
   type EditorRoute,
@@ -165,6 +168,39 @@ export function createEditorMiddleware(
         }
         const answer: EditorRouteResponses["POST /draft/save"] =
           await draft.save(path, request);
+        send(res, 200, answer);
+        return;
+      }
+      case "POST /levels/create": {
+        const request = parseLevelCreateRequest(body);
+        if (!request) {
+          send(res, 400, { error: "Not a valid level create request." });
+          return;
+        }
+        const answer: EditorRouteResponses["POST /levels/create"] =
+          await draft.createLevel(path, request);
+        send(res, 200, answer);
+        return;
+      }
+      case "POST /levels/duplicate": {
+        const request = parseLevelDuplicateRequest(body);
+        if (!request) {
+          send(res, 400, { error: "Not a valid level duplicate request." });
+          return;
+        }
+        const answer: EditorRouteResponses["POST /levels/duplicate"] =
+          await draft.duplicateLevel(path, request);
+        send(res, 200, answer);
+        return;
+      }
+      case "POST /levels/delete": {
+        const request = parseLevelDeleteRequest(body);
+        if (!request) {
+          send(res, 400, { error: "Not a valid level delete request." });
+          return;
+        }
+        const answer: EditorRouteResponses["POST /levels/delete"] =
+          await draft.deleteLevel(path, request);
         send(res, 200, answer);
         return;
       }

@@ -82,6 +82,7 @@ function createHarness(editable = true) {
     api: unusedApi,
     epoch: "epoch-1",
     projectId: "project-1",
+    levels: [],
   });
   store.dispatch({ type: "level-opened", snapshot: snapshot() });
   const intents: string[] = [];

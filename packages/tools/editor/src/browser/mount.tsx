@@ -61,6 +61,7 @@ export async function mountEditor(
     api,
     epoch: bootstrap.epoch,
     projectId: bootstrap.projectId,
+    levels: bootstrap.levels,
     storage: viewStorage(),
   });
 
@@ -95,7 +96,7 @@ export async function mountEditor(
       placeables={() => project.placeables}
       inspectable={(typeId) => project.inspectable(typeId)}
       listAssets={() => api.listAssets()}
-      levels={bootstrap.levels}
+      levelDirectories={bootstrap.levelDirectories}
       layerChoices={() => layers.choicesFor(store.getState().file?.layerSet)}
       layerSorts={(layer) =>
         layers.sorted(store.getState().file?.layerSet, layer)
@@ -139,7 +140,7 @@ export async function mountEditor(
   }
   if (harness) await preview.start(harness);
 
-  const first = bootstrap.levels[0];
+  const first = store.getState().levels[0];
   if (first) await files.openInitialLevel(first.path);
 
   return {

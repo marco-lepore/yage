@@ -721,13 +721,22 @@ the catalog is built.
 ## Reading level files outside the engine
 
 ```typescript
-import { formatLevel, readLevel } from "@yagejs/level/document";
+import {
+  emptyLevelDocument,
+  formatLevel,
+  readLevel,
+} from "@yagejs/level/document";
+
+// A level file with nothing in it, for a tool that creates one.
+writeFileSync("levels/forest.yage-level.json", formatLevel(emptyLevelDocument("forest")));
 ```
 
 The `/document` subpath is the parser and the canonical writer with no
 dependency on `@yagejs/core`, so a Node script can read and rewrite level files
 without evaluating engine code. `formatLevel` produces one canonical text per
-document, so a file written by two different tools compares byte for byte.
+document, so a file written by two different tools compares byte for byte, and
+`emptyLevelDocument` gives you a level at the current format version with no
+placements in it.
 
 ## Gotchas
 

@@ -6,7 +6,12 @@ import type {
   DraftSnapshot,
 } from "../../shared/protocol/index.js";
 import { EditorApiClient } from "../api/index.js";
-import { EditorStore, MAX_REBASES, isDirty } from "./EditorStore.js";
+import {
+  EditorStore,
+  MAX_REBASES,
+  isDirty,
+  type DraftApi,
+} from "./EditorStore.js";
 import { MIN_STEP } from "./snap.js";
 import type { EditorAction, EditorViewState } from "./types.js";
 import {
@@ -162,6 +167,7 @@ function createHarness(storage?: ViewStorage): {
       api,
       epoch: "epoch-1",
       projectId: "project-1",
+      levels: [],
       storage,
     }),
     calls,
@@ -1580,5 +1586,57 @@ describe("switching levels", () => {
     expect(state.file?.path).toBe(meadow.path);
     expect(state.committed.draftRevision).toBe(3);
     expect(state.history).toEqual({ undoDepth: 0, redoDepth: 0 });
+  });
+});
+
+/** Nothing in these cases sends anything, so none of the calls are made. */
+const unusedApi: DraftApi = {
+  sendCommand: () => Promise.reject(new Error("not used")),
+  undo: () => Promise.reject(new Error("not used")),
+  redo: () => Promise.reject(new Error("not used")),
+};
+
+describe("the level list", () => {
+  const forest = { path: "levels/forest.yage-level.json", diskRevision: "d1" };
+  const meadow = { path: "levels/meadow.yage-level.json", diskRevision: "d2" };
+
+  it("starts as the levels bootstrap listed", () => {
+    const store = new EditorStore({
+      api: unusedApi,
+      epoch: "epoch-1",
+      projectId: "project-1",
+      levels: [forest],
+    });
+
+    expect(store.getState().levels).toEqual([forest]);
+  });
+
+  it("puts a created level in path order and takes a deleted one out", () => {
+    const store = createHarness().store;
+    store.dispatch({ type: "levels-replaced", levels: [meadow] });
+
+    store.dispatch({ type: "level-added", level: forest });
+    expect(store.getState().levels).toEqual([forest, meadow]);
+
+    store.dispatch({ type: "levels-replaced", levels: [meadow] });
+    expect(store.getState().levels).toEqual([meadow]);
+  });
+
+  it("closes the open level, leaving the emptiness an unopened editor has", () => {
+    const store = createHarness().store;
+    store.dispatch({
+      type: "level-opened",
+      snapshot: snapshot(1, document(placement("crate", 8))),
+    });
+    store.dispatch({ type: "selection-changed", ids: ["crate"] });
+
+    store.dispatch({ type: "level-closed" });
+
+    const state = store.getState();
+    expect(state.file).toBeUndefined();
+    expect(state.document.entities).toEqual([]);
+    expect(state.selection.size).toBe(0);
+    expect(state.history).toEqual({ undoDepth: 0, redoDepth: 0 });
+    expect(isDirty(state)).toBe(false);
   });
 });

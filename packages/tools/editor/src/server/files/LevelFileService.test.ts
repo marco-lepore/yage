@@ -2,6 +2,7 @@ import {
   chmod,
   mkdtemp,
   mkdir,
+  readdir,
   readFile,
   rm,
   symlink,
@@ -10,7 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { LevelDocument } from "@yagejs/level/document";
+import { formatLevel, type LevelDocument } from "@yagejs/level/document";
 import { createLevelFileService } from "./LevelFileService.js";
 
 const roots: string[] = [];
@@ -411,5 +412,207 @@ describe("writeLevel", () => {
 
     const listed = await (await service(root)).listLevels();
     expect(listed.map((entry) => entry.path)).toEqual([relative]);
+  });
+});
+
+describe("levelDirectories", () => {
+  it("answers the fixed directory of each glob, once each, in config order", async () => {
+    const root = await makeProject();
+    const files = await createLevelFileService({
+      root,
+      levels: [
+        { glob: "src/levels/**/*.yage-level.json" },
+        { glob: "src/levels/*.yage-level.json" },
+        { glob: "*.yage-level.json" },
+      ],
+      assets: [],
+    });
+
+    expect(files.levelDirectories()).toEqual(["src/levels", ""]);
+  });
+
+  it("leaves out a directory every create under it would be refused for", async () => {
+    const root = await makeProject();
+    const files = await createLevelFileService({
+      root,
+      levels: [
+        { glob: "extra/{a,b}/*.yage-level.json" },
+        { glob: "src/levels/*.yage-level.json" },
+      ],
+      assets: [],
+    });
+
+    // `extra` is as far as the brace glob is fixed, and a level written
+    // directly in it matches nothing.
+    expect(files.levelDirectories()).toEqual(["src/levels"]);
+  });
+});
+
+describe("createLevel", () => {
+  it("writes a canonical empty document under the id it was given", async () => {
+    const root = await makeProject();
+    const relative = "src/levels/forest.yage-level.json";
+    const files = await service(root);
+
+    const created = await files.createLevel(relative, "forest");
+
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    expect(created.document.entities).toEqual([]);
+    expect(await readFile(path.join(root, relative), "utf8")).toBe(
+      `{
+  "format": "yage-level",
+  "version": 1,
+  "id": "forest",
+  "entities": []
+}
+`,
+    );
+    expect((await files.listLevels())[0]?.diskRevision).toBe(
+      created.diskRevision,
+    );
+  });
+
+  it("makes the directories on the way to a level nothing has used yet", async () => {
+    const root = await makeProject();
+    const files = await createLevelFileService({
+      root,
+      levels: [{ glob: "src/levels/**/*.yage-level.json" }],
+      assets: [],
+    });
+
+    const created = await files.createLevel(
+      "src/levels/caves/deep.yage-level.json",
+      "deep",
+    );
+
+    expect(created.ok).toBe(true);
+    expect((await files.listLevels()).map((level) => level.path)).toEqual([
+      "src/levels/caves/deep.yage-level.json",
+    ]);
+  });
+
+  it("refuses a path a file already holds, and leaves that file alone", async () => {
+    const root = await makeProject();
+    const relative = "src/levels/forest.yage-level.json";
+    const held = JSON.stringify(document("forest"));
+    await writeFile(path.join(root, relative), held);
+    const files = await service(root);
+
+    expect(await files.createLevel(relative, "other")).toEqual({
+      ok: false,
+      reason: "exists",
+    });
+    expect(await readFile(path.join(root, relative), "utf8")).toBe(held);
+  });
+
+  it("leaves no half-written sibling behind, whether it wrote or refused", async () => {
+    const root = await makeProject();
+    const relative = "src/levels/forest.yage-level.json";
+    const files = await service(root);
+
+    await files.createLevel(relative, "forest");
+    await files.createLevel(relative, "again");
+
+    expect(await readdir(path.join(root, "src/levels"))).toEqual([
+      "forest.yage-level.json",
+    ]);
+  });
+
+  it("refuses a path no configured glob matches", async () => {
+    const root = await makeProject();
+    const files = await service(root);
+
+    expect(
+      await files.createLevel("src/other.yage-level.json", "other"),
+    ).toEqual({ ok: false, reason: "not-configured" });
+    expect(
+      await files.createLevel("src/levels/../escape.yage-level.json", "escape"),
+    ).toEqual({ ok: false, reason: "not-configured" });
+  });
+});
+
+describe("duplicateLevel", () => {
+  it("copies the source document with the new id and nothing else changed", async () => {
+    const root = await makeProject();
+    const from = "src/levels/forest.yage-level.json";
+    const to = "src/levels/forest-copy.yage-level.json";
+    const files = await service(root);
+    await writeFile(path.join(root, from), formatLevel(document("forest")));
+
+    const copied = await files.duplicateLevel(from, to, "forest-copy");
+
+    expect(copied.ok).toBe(true);
+    if (!copied.ok) return;
+    expect(copied.document).toEqual({
+      ...document("forest"),
+      id: "forest-copy",
+    });
+    // The same bytes as the source but for the id: both are canonical, and a
+    // placement's id is scoped to its own document.
+    const source = await readFile(path.join(root, from), "utf8");
+    expect(await readFile(path.join(root, to), "utf8")).toBe(
+      source.replace('"id": "forest"', '"id": "forest-copy"'),
+    );
+  });
+
+  it("refuses a source that is not there, and one that is not a level", async () => {
+    const root = await makeProject();
+    const to = "src/levels/copy.yage-level.json";
+    const files = await service(root);
+    await writeFile(path.join(root, "src/levels/broken.yage-level.json"), "{}");
+
+    expect(
+      await files.duplicateLevel("src/levels/gone.yage-level.json", to, "copy"),
+    ).toEqual({ ok: false, reason: "not-found" });
+    expect(
+      await files.duplicateLevel(
+        "src/levels/broken.yage-level.json",
+        to,
+        "copy",
+      ),
+    ).toEqual({ ok: false, reason: "unreadable" });
+    expect(await files.listLevels()).toHaveLength(1);
+  });
+});
+
+describe("deleteLevel", () => {
+  it("removes the file and only the file", async () => {
+    const root = await makeProject();
+    const files = await service(root);
+    await writeFile(
+      path.join(root, "src/levels/forest.yage-level.json"),
+      JSON.stringify(document("forest")),
+    );
+    await writeFile(
+      path.join(root, "src/levels/cave.yage-level.json"),
+      JSON.stringify(document("cave")),
+    );
+
+    expect(
+      await files.deleteLevel("src/levels/forest.yage-level.json"),
+    ).toEqual({ ok: true });
+
+    expect((await files.listLevels()).map((level) => level.path)).toEqual([
+      "src/levels/cave.yage-level.json",
+    ]);
+  });
+
+  it("refuses a path no glob matches, and reports one with no file", async () => {
+    const root = await makeProject();
+    const files = await service(root);
+    await writeFile(path.join(root, "src/keep.txt"), "keep");
+
+    expect(await files.deleteLevel("src/keep.txt")).toEqual({
+      ok: false,
+      reason: "not-configured",
+    });
+    expect(await files.deleteLevel("src/levels/gone.yage-level.json")).toEqual({
+      ok: false,
+      reason: "not-found",
+    });
+    expect(await readFile(path.join(root, "src/keep.txt"), "utf8")).toBe(
+      "keep",
+    );
   });
 });

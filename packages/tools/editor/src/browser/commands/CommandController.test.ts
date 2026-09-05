@@ -180,6 +180,7 @@ function createHarness(initial: LevelDocument) {
     api: new EditorApiClient({ token: "t", fetch: fetchImpl }),
     epoch: "epoch-1",
     projectId: "project-1",
+    levels: [],
   });
   store.dispatch({ type: "level-opened", snapshot: snapshot(0, doc) });
   // Off unless a case turns it on: most of these cases are about the pose

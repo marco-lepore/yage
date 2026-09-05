@@ -14,6 +14,7 @@ import type {
   DraftCommandRequest,
   DraftOutcome,
   DraftSnapshot,
+  LevelSummary,
   RevisionedRequest,
 } from "../../shared/protocol/index.js";
 import type {
@@ -90,6 +91,8 @@ export interface EditorStoreOptions {
   readonly epoch: string;
   /** Names whose stored views these are, so two projects cannot share one. */
   readonly projectId: string;
+  /** The levels the server listed at bootstrap. Empty for a project with none. */
+  readonly levels: readonly LevelSummary[];
   /** Omitted when the page has no usable storage; the view then starts fresh. */
   readonly storage?: ViewStorage | undefined;
 }
@@ -107,6 +110,7 @@ type Listener = (state: EditorState, action: EditorAction) => void;
  */
 export class EditorStore {
   private state: EditorState = {
+    levels: [],
     committed: { document: EMPTY_LEVEL_DOCUMENT, draftRevision: 0 },
     pending: [],
     document: EMPTY_LEVEL_DOCUMENT,
@@ -145,6 +149,7 @@ export class EditorStore {
     this.epoch = options.epoch;
     this.projectId = options.projectId;
     this.storage = options.storage;
+    this.state = { ...this.state, levels: options.levels };
   }
 
   getState(): EditorState {
@@ -688,49 +693,69 @@ function projectDiagnostics(
   return kept === undefined ? new Map() : new Map([["catalog", kept]]);
 }
 
+/**
+ * The state with no level in it: what closing one leaves, and what opening one
+ * puts a document, a file and a history back into.
+ *
+ * Everything a level owns is cleared here rather than at each call site, so the
+ * transition is total. A drag and a marquee hold ids from the document being
+ * left — a leaked gesture makes `isDirty` true for a level nobody has touched,
+ * and a leaked marquee makes `Viewport`'s second-contact guard refuse every
+ * press. A pending number, a parameter drag, a delete question and a waiting
+ * pick each name a placement that is not in the next level either. Hiding is
+ * this session's view of one level, and carrying it across would hide whatever
+ * the next level happened to name an id the same way. Of the diagnostics only
+ * `catalog` describes the project rather than the level, and it is still true.
+ */
+function withoutLevel(state: EditorState): EditorState {
+  return {
+    ...state,
+    file: undefined,
+    committed: { document: EMPTY_LEVEL_DOCUMENT, draftRevision: 0 },
+    pending: [],
+    document: EMPTY_LEVEL_DOCUMENT,
+    selection: new Set(),
+    hidden: new Set(),
+    history: NO_HISTORY,
+    gesture: undefined,
+    marquee: undefined,
+    poseDraft: undefined,
+    paramDrag: undefined,
+    pendingDelete: undefined,
+    pick: undefined,
+    diagnostics: projectDiagnostics(state.diagnostics),
+  };
+}
+
 function reduce(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case "level-opened": {
       const snapshot = action.snapshot;
       return {
-        ...state,
+        ...withoutLevel(state),
         file: fileStateOf(snapshot),
         committed: {
           document: snapshot.document,
           draftRevision: snapshot.draftRevision,
         },
-        pending: [],
         document: snapshot.document,
-        selection: new Set(),
-        // Hiding is this session's view of one level. Carrying it across would
-        // hide whatever the next level happened to name an id the same way,
-        // and there is nothing on screen in the new level to explain it.
-        hidden: new Set(),
         history: snapshot.history,
-        // A drag and a marquee hold ids from the document being left.
-        // `openLevel` settles the gesture before it switches, so this is the
-        // state transition being total rather than a path with a caller: a
-        // leaked gesture makes `isDirty` true for a level nobody has touched,
-        // and a leaked marquee makes `Viewport`'s second-contact guard refuse
-        // every press.
-        gesture: undefined,
-        marquee: undefined,
-        // A field's pending number names a placement of the level being left,
-        // and `openLevel` settles it before it switches. Clearing it here is
-        // the same totality the two above have, and a parameter handle being
-        // dragged names a placement of that level too.
-        poseDraft: undefined,
-        paramDrag: undefined,
-        // A question about deleting placements of the level being left has no
-        // answer that means anything in the level being entered.
-        pendingDelete: undefined,
-        // A field of the level being left cannot be waiting for a target in
-        // the level being entered.
-        pick: undefined,
-        // Every source but `catalog` describes the level; `catalog` describes
-        // the project and is still true.
-        diagnostics: projectDiagnostics(state.diagnostics),
       };
+    }
+    case "level-closed":
+      // No level to put in the empty state's place: the one that was open is
+      // gone from disk.
+      return withoutLevel(state);
+    case "level-added": {
+      // In path order, which is the order the server lists them in and the
+      // order the picker shows.
+      const levels = [...state.levels, action.level].sort((one, other) =>
+        one.path < other.path ? -1 : one.path > other.path ? 1 : 0,
+      );
+      return { ...state, levels };
+    }
+    case "levels-replaced": {
+      return { ...state, levels: action.levels };
     }
     case "command-applied": {
       const pending = [

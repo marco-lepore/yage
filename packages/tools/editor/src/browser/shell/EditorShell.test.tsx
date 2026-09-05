@@ -91,11 +91,13 @@ function createHarness(
   types = placeables,
   listed: readonly { path: string; diskRevision: string }[] = levels,
   assetPaths: readonly string[] = ["sprites/crate.png"],
+  directories: readonly string[] = ["levels"],
 ) {
   const store = new EditorStore({
     api: unusedApi,
     epoch: "epoch-1",
     projectId: "project-1",
+    levels: listed,
   });
   const commands = new CommandController({
     store,
@@ -108,6 +110,14 @@ function createHarness(
   });
   const intents: string[] = [];
   const framed: string[][] = [];
+  /**
+   * What the coordinator does with a create or a duplicate. The dialog closes
+   * on the level being open, so the stub has to open it the way the real one
+   * does; `refuseWrites` swaps in the other answer.
+   */
+  let answerWrite = (path: string): void => {
+    store.dispatch({ type: "level-opened", snapshot: snapshot({ path }) });
+  };
   // The shell's job is to call the right intent; what each one produces is the
   // controller's own tests.
   commands.createPlacement = (typeId) => intents.push(`create ${typeId}`);
@@ -157,6 +167,8 @@ function createHarness(
   const runs: number[] = [];
   const plays: number[] = [];
   const opens: string[] = [];
+  /** What the file bar asked of the coordinator, as one line each. */
+  const fileCalls: string[] = [];
   const host = document.createElement("div");
   const canvasHost = document.createElement("div");
   canvasHost.id = "canvas-host";
@@ -186,6 +198,20 @@ function createHarness(
           },
           play: () => {
             plays.push(1);
+            return Promise.resolve();
+          },
+          createLevel: (path, levelId) => {
+            fileCalls.push(`create ${path} ${levelId}`);
+            answerWrite(path);
+            return Promise.resolve();
+          },
+          duplicateLevel: (source, path, levelId) => {
+            fileCalls.push(`duplicate ${source} ${path} ${levelId}`);
+            answerWrite(path);
+            return Promise.resolve();
+          },
+          deleteLevel: (path) => {
+            fileCalls.push(`delete ${path}`);
             return Promise.resolve();
           },
         }}
@@ -222,7 +248,7 @@ function createHarness(
         listAssets={() =>
           Promise.resolve({ paths: [...assetPaths], truncated: false })
         }
-        levels={listed}
+        levelDirectories={[...directories]}
       />,
     );
   });
@@ -237,9 +263,28 @@ function createHarness(
     runs,
     plays,
     opens,
+    fileCalls,
     intents,
     framed,
     canvasHost,
+    /** Make every later create or duplicate come back refused, saying this. */
+    refuseWrites(message: string): void {
+      answerWrite = () => {
+        store.dispatch({
+          type: "diagnostics-replaced",
+          source: "file",
+          diagnostics: [
+            {
+              code: "server-rejected",
+              severity: "error",
+              source: "file",
+              message,
+              revision: 0,
+            },
+          ],
+        });
+      };
+    },
   };
 }
 
@@ -1833,5 +1878,263 @@ describe("what a drag re-renders", () => {
         harness.store.getState().document.entities.map((one) => one.id),
       ).toEqual(["crate", "switch"]);
     });
+  });
+});
+
+describe("creating, duplicating and deleting a level", () => {
+  let harness: ReturnType<typeof createHarness>;
+
+  beforeEach(() => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    harness = createHarness();
+    act(() => {
+      harness.store.dispatch({ type: "level-opened", snapshot: snapshot() });
+    });
+  });
+
+  afterEach(() => {
+    act(() => {
+      harness.root.unmount();
+    });
+    harness.host.remove();
+  });
+
+  function box(testId: string): HTMLInputElement {
+    const input = query<HTMLInputElement>(harness.host, testId);
+    if (!input) throw new Error(`No ${testId} box rendered.`);
+    return input;
+  }
+
+  /** Press a key on one control, the way a dialog reads Enter and Escape. */
+  function key(testId: string, name: string): void {
+    const element = query(harness.host, testId);
+    if (!element) throw new Error(`No ${testId} rendered.`);
+    act(() => {
+      element.dispatchEvent(
+        new KeyboardEvent("keydown", { key: name, bubbles: true }),
+      );
+    });
+  }
+
+  it("derives the path from the name, and creates what it shows", () => {
+    click(harness.host, "new-level");
+    act(() => {
+      setValue(box("level-name"), "cave");
+    });
+
+    expect(box("level-path").value).toBe("levels/cave.yage-level.json");
+    click(harness.host, "create-level");
+
+    expect(harness.fileCalls).toEqual([
+      "create levels/cave.yage-level.json cave",
+    ]);
+    expect(query(harness.host, "level-dialog")).toBeNull();
+  });
+
+  it("keeps a typed path, and refuses one a level already holds", () => {
+    click(harness.host, "new-level");
+    act(() => {
+      setValue(box("level-name"), "cave");
+      setValue(box("level-path"), "levels/meadow.yage-level.json");
+    });
+
+    expect(query(harness.host, "level-path-taken")).not.toBeNull();
+    expect(
+      query<HTMLButtonElement>(harness.host, "create-level")?.disabled,
+    ).toBe(true);
+
+    act(() => {
+      setValue(box("level-path"), "levels/deep/cave.yage-level.json");
+    });
+    click(harness.host, "create-level");
+
+    // The typed path, not the one the name derives, and the name is still the
+    // level's id.
+    expect(harness.fileCalls).toEqual([
+      "create levels/deep/cave.yage-level.json cave",
+    ]);
+  });
+
+  it("offers no folder control for a project with one level directory", () => {
+    click(harness.host, "new-level");
+
+    expect(query(harness.host, "level-directory")).toBeNull();
+  });
+
+  it("keeps a refused create on screen, with the reason under the path", () => {
+    harness.refuseWrites('"levels/cave.yage-level.json" already exists.');
+    click(harness.host, "new-level");
+    act(() => {
+      setValue(box("level-name"), "cave");
+    });
+    click(harness.host, "create-level");
+
+    expect(query(harness.host, "level-dialog")).not.toBeNull();
+    expect(query(harness.host, "level-dialog-reason")?.textContent).toBe(
+      '"levels/cave.yage-level.json" already exists.',
+    );
+    // What was typed is still there to correct.
+    expect(box("level-name").value).toBe("cave");
+    expect(box("level-path").value).toBe("levels/cave.yage-level.json");
+  });
+
+  it("says a duplicate copies the file when the level has unsaved work", () => {
+    act(() => {
+      harness.store.dispatch({
+        type: "level-opened",
+        snapshot: snapshot({ contentHash: "content-1", dirty: true }),
+      });
+    });
+
+    click(harness.host, "duplicate-level");
+
+    expect(query(harness.host, "level-copies-file")?.textContent).toContain(
+      "your unsaved edits are not in it",
+    );
+  });
+
+  it("says nothing about the file when the level being copied is clean", () => {
+    click(harness.host, "duplicate-level");
+
+    expect(query(harness.host, "level-copies-file")).toBeNull();
+  });
+
+  it("submits on Enter and leaves the dialog on Escape", () => {
+    click(harness.host, "new-level");
+    act(() => {
+      setValue(box("level-name"), "cave");
+    });
+    key("level-name", "Enter");
+
+    expect(harness.fileCalls).toEqual([
+      "create levels/cave.yage-level.json cave",
+    ]);
+
+    click(harness.host, "new-level");
+    key("level-path", "Escape");
+
+    expect(query(harness.host, "level-dialog")).toBeNull();
+  });
+
+  it("copies the open level under a name derived from its own", () => {
+    click(harness.host, "duplicate-level");
+
+    expect(box("level-name").value).toBe("forest-copy");
+    expect(box("level-path").value).toBe("levels/forest-copy.yage-level.json");
+    click(harness.host, "create-level");
+
+    expect(harness.fileCalls).toEqual([
+      "duplicate levels/forest.yage-level.json " +
+        "levels/forest-copy.yage-level.json forest-copy",
+    ]);
+  });
+
+  it("asks before deleting, and says when the draft has unsaved work", async () => {
+    act(() => {
+      harness.store.dispatch({
+        type: "level-opened",
+        snapshot: snapshot({ contentHash: "content-1", dirty: true }),
+      });
+    });
+
+    click(harness.host, "delete-level");
+
+    const question = query(harness.host, "delete-level-confirm");
+    expect(question?.textContent).toContain("levels/forest.yage-level.json");
+    expect(question?.textContent).toContain("unsaved work");
+    click(harness.host, "confirm-delete-level");
+    await act(async () => {});
+
+    expect(harness.fileCalls).toEqual(["delete levels/forest.yage-level.json"]);
+    expect(query(harness.host, "delete-level-confirm")).toBeNull();
+  });
+
+  it("leaves the delete question on Escape, and asks nothing else", () => {
+    click(harness.host, "delete-level");
+    key("delete-level-confirm", "Escape");
+
+    expect(harness.fileCalls).toEqual([]);
+    expect(query(harness.host, "delete-level-confirm")).toBeNull();
+  });
+
+  it("deletes nothing when the question is answered no", () => {
+    click(harness.host, "delete-level");
+    click(harness.host, "cancel-delete-level");
+
+    expect(harness.fileCalls).toEqual([]);
+    expect(query(harness.host, "delete-level-confirm")).toBeNull();
+  });
+
+  describe("with more than one level directory", () => {
+    beforeEach(() => {
+      act(() => {
+        harness.root.unmount();
+      });
+      harness.host.remove();
+      harness = createHarness(
+        true,
+        placeables,
+        levels,
+        ["sprites/crate.png"],
+        ["levels", "levels/bonus"],
+      );
+      act(() => {
+        harness.store.dispatch({ type: "level-opened", snapshot: snapshot() });
+      });
+    });
+
+    it("offers the folders, and re-derives the path from the one chosen", () => {
+      click(harness.host, "new-level");
+      act(() => {
+        setValue(box("level-name"), "cave");
+      });
+      const folders = query<HTMLSelectElement>(harness.host, "level-directory");
+      if (!folders) throw new Error("No folder control rendered.");
+      expect([...folders.options].map((option) => option.value)).toEqual([
+        "levels",
+        "levels/bonus",
+      ]);
+
+      choose(folders, "levels/bonus");
+
+      expect(box("level-path").value).toBe("levels/bonus/cave.yage-level.json");
+      click(harness.host, "create-level");
+      expect(harness.fileCalls).toEqual([
+        "create levels/bonus/cave.yage-level.json cave",
+      ]);
+    });
+
+    it("starts a duplicate in the folder the level it copies sits in", () => {
+      act(() => {
+        harness.store.dispatch({
+          type: "level-opened",
+          snapshot: snapshot({ path: "levels/bonus/cave.yage-level.json" }),
+        });
+      });
+
+      click(harness.host, "duplicate-level");
+
+      const folders = query<HTMLSelectElement>(harness.host, "level-directory");
+      expect(folders?.value).toBe("levels/bonus");
+      expect(box("level-path").value).toBe(
+        "levels/bonus/cave-copy.yage-level.json",
+      );
+    });
+  });
+
+  it("offers New with no level open, and neither of the other two", () => {
+    act(() => {
+      harness.store.dispatch({ type: "level-closed" });
+    });
+
+    expect(query<HTMLButtonElement>(harness.host, "new-level")?.disabled).toBe(
+      false,
+    );
+    expect(
+      query<HTMLButtonElement>(harness.host, "duplicate-level")?.disabled,
+    ).toBe(true);
+    expect(
+      query<HTMLButtonElement>(harness.host, "delete-level")?.disabled,
+    ).toBe(true);
   });
 });

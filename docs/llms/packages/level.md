@@ -643,7 +643,13 @@ It is in field order, and a field holding nothing contributes no entry.
 ## The document layer alone
 
 ```ts
-import { formatLevel, readLevel } from "@yagejs/level/document";
+import {
+  emptyLevelDocument,
+  formatLevel,
+  readLevel,
+} from "@yagejs/level/document";
+
+const text = formatLevel(emptyLevelDocument("forest")); // a new level file
 ```
 
 `@yagejs/level/document` is the parser and the canonical writer with no
@@ -651,6 +657,8 @@ dependency on `@yagejs/core`, so a Node tool can read and rewrite level files
 without evaluating engine code. `formatLevel(document)` returns the one
 canonical text for a document: the same document always produces the same
 bytes, and reading them back produces the same document.
+`emptyLevelDocument(id)` is a level with no placements at the current format
+version — what a tool writes when it creates a level file.
 
 Structural errors are returned, never thrown, and all of them are collected:
 

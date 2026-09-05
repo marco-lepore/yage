@@ -117,6 +117,7 @@ function createHarness(
     api,
     epoch: "epoch-1",
     projectId: "project-1",
+    levels: [],
   });
   const commands = new CommandController({
     store,
@@ -651,5 +652,184 @@ describe("FileCoordinator", () => {
     expect(harness.store.getState().file?.path).toBe(
       "levels/meadow.yage-level.json",
     );
+  });
+});
+
+/**
+ * A coordinator whose level-file routes answer what the test queued. `GET
+ * /draft` answers a snapshot of the level it was asked for, the way the server
+ * does, so a delete that opens the next level lands on that one.
+ */
+function createFileHarness(answers: Record<string, unknown>) {
+  const calls: Call[] = [];
+  const fetchImpl: typeof globalThis.fetch = (url, init) => {
+    const route = String(url).split("?")[0] ?? "";
+    const path =
+      new URL(String(url), "http://editor.invalid").searchParams.get("path") ??
+      "";
+    calls.push({
+      route,
+      path,
+      body:
+        init?.body === undefined
+          ? undefined
+          : (JSON.parse(String(init.body)) as Record<string, unknown>),
+    });
+    const queued = Object.entries(answers).find(([suffix]) =>
+      route.endsWith(suffix),
+    )?.[1];
+    const answer = queued ?? {
+      status: "accepted",
+      snapshot: snapshot(0, document(placement("crate", 0)), { path }),
+    };
+    return Promise.resolve(
+      new Response(JSON.stringify(answer), { status: 200 }),
+    );
+  };
+  const api = new EditorApiClient({ token: "t", fetch: fetchImpl });
+  const store = new EditorStore({
+    api,
+    epoch: "epoch-1",
+    projectId: "project-1",
+    levels: [
+      { path: "levels/forest.yage-level.json", diskRevision: "disk-1" },
+      { path: "levels/meadow.yage-level.json", diskRevision: "disk-2" },
+    ],
+  });
+  const commands = new CommandController({
+    store,
+    preview: {
+      applyPoseDraft: () => {},
+      viewportCenter: () => undefined,
+      freeSpotNear: (point: { x: number; y: number }) => point,
+    },
+    catalog: () => undefined,
+  });
+  const files = new FileCoordinator({
+    api,
+    store,
+    commands,
+    epoch: "epoch-1",
+  });
+  return { store, files, calls };
+}
+
+describe("level files", () => {
+  const created = {
+    status: "created",
+    level: { path: "levels/cave.yage-level.json", diskRevision: "disk-3" },
+    snapshot: snapshot(0, document(), {
+      path: "levels/cave.yage-level.json",
+      dirty: false,
+    }),
+  };
+
+  it("creates a level, lists it in path order, and opens it in one request", async () => {
+    const harness = createFileHarness({ "/levels/create": created });
+
+    await harness.files.createLevel("levels/cave.yage-level.json", "cave");
+
+    expect(harness.calls).toHaveLength(1);
+    expect(harness.calls[0]?.body).toEqual({
+      epoch: "epoch-1",
+      levelId: "cave",
+    });
+    expect(harness.store.getState().levels.map((one) => one.path)).toEqual([
+      "levels/cave.yage-level.json",
+      "levels/forest.yage-level.json",
+      "levels/meadow.yage-level.json",
+    ]);
+    expect(harness.store.getState().file?.path).toBe(
+      "levels/cave.yage-level.json",
+    );
+  });
+
+  it("names the level it copies", async () => {
+    const harness = createFileHarness({ "/levels/duplicate": created });
+
+    await harness.files.duplicateLevel(
+      "levels/forest.yage-level.json",
+      "levels/cave.yage-level.json",
+      "cave",
+    );
+
+    expect(harness.calls[0]?.body).toEqual({
+      epoch: "epoch-1",
+      levelId: "cave",
+      sourcePath: "levels/forest.yage-level.json",
+    });
+    expect(harness.store.getState().file?.path).toBe(
+      "levels/cave.yage-level.json",
+    );
+  });
+
+  it("reports a refused create and opens nothing", async () => {
+    const harness = createFileHarness({
+      "/levels/create": {
+        status: "refused",
+        reason: "exists",
+        message: '"levels/cave.yage-level.json" already exists.',
+      },
+    });
+    await harness.files.openLevel("levels/forest.yage-level.json");
+
+    await harness.files.createLevel("levels/cave.yage-level.json", "cave");
+
+    expect(harness.store.getState().file?.path).toBe(
+      "levels/forest.yage-level.json",
+    );
+    expect(harness.store.getState().levels).toHaveLength(2);
+    expect(
+      harness.store.getState().diagnostics.get("file")?.[0]?.message,
+    ).toContain("already exists");
+  });
+
+  it("opens the level that takes the deleted one's place", async () => {
+    const harness = createFileHarness({
+      "/levels/delete": {
+        status: "deleted",
+        levels: [{ path: "levels/meadow.yage-level.json", diskRevision: "d2" }],
+      },
+    });
+    await harness.files.openLevel("levels/forest.yage-level.json");
+
+    await harness.files.deleteLevel("levels/forest.yage-level.json");
+
+    expect(harness.store.getState().levels.map((one) => one.path)).toEqual([
+      "levels/meadow.yage-level.json",
+    ]);
+    expect(harness.store.getState().file?.path).toBe(
+      "levels/meadow.yage-level.json",
+    );
+  });
+
+  it("leaves nothing open when the level deleted was the last one", async () => {
+    const harness = createFileHarness({
+      "/levels/delete": { status: "deleted", levels: [] },
+    });
+    await harness.files.openLevel("levels/forest.yage-level.json");
+
+    await harness.files.deleteLevel("levels/forest.yage-level.json");
+
+    expect(harness.store.getState().file).toBeUndefined();
+    expect(harness.store.getState().document.entities).toEqual([]);
+  });
+
+  it("keeps the open level when another one is deleted", async () => {
+    const harness = createFileHarness({
+      "/levels/delete": {
+        status: "deleted",
+        levels: [{ path: "levels/forest.yage-level.json", diskRevision: "d1" }],
+      },
+    });
+    await harness.files.openLevel("levels/forest.yage-level.json");
+
+    await harness.files.deleteLevel("levels/meadow.yage-level.json");
+
+    expect(harness.store.getState().file?.path).toBe(
+      "levels/forest.yage-level.json",
+    );
+    // One open and one delete: nothing was reopened.
+    expect(harness.calls).toHaveLength(2);
   });
 });

@@ -35,6 +35,7 @@ function createHarness() {
     api: unusedApi,
     epoch: "epoch-1",
     projectId: "project-1",
+    levels: [],
   });
   const host = document.createElement("div");
   document.body.append(host);

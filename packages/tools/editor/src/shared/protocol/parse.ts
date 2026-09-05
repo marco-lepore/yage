@@ -2,6 +2,9 @@ import { isDocumentCommand } from "../commands/index.js";
 import type {
   DraftCommandRequest,
   DraftSaveRequest,
+  LevelCreateRequest,
+  LevelDeleteRequest,
+  LevelDuplicateRequest,
   RevisionedRequest,
 } from "./types.js";
 
@@ -24,7 +27,7 @@ export function parseCommandRequest(
   const epoch: unknown = body["epoch"];
   const expectedDraftRevision: unknown = body["expectedDraftRevision"];
   const command: unknown = body["command"];
-  if (typeof epoch !== "string" || epoch.length === 0) return undefined;
+  if (!isText(epoch)) return undefined;
   if (!isRevision(expectedDraftRevision)) return undefined;
   if (!isDocumentCommand(command)) return undefined;
   return { epoch, expectedDraftRevision, command };
@@ -38,7 +41,7 @@ export function parseRevisionedRequest(
   if (!hasOnlyKeys(body, ["epoch", "expectedDraftRevision"])) return undefined;
   const epoch: unknown = body["epoch"];
   const expectedDraftRevision: unknown = body["expectedDraftRevision"];
-  if (typeof epoch !== "string" || epoch.length === 0) return undefined;
+  if (!isText(epoch)) return undefined;
   if (!isRevision(expectedDraftRevision)) return undefined;
   return { epoch, expectedDraftRevision };
 }
@@ -50,10 +53,50 @@ export function parseSaveRequest(body: unknown): DraftSaveRequest | undefined {
   const epoch: unknown = body["epoch"];
   const expectedDraftRevision: unknown = body["expectedDraftRevision"];
   const expectedDiskRevision: unknown = body["expectedDiskRevision"];
-  if (typeof epoch !== "string" || epoch.length === 0) return undefined;
+  if (!isText(epoch)) return undefined;
   if (!isRevision(expectedDraftRevision)) return undefined;
   if (typeof expectedDiskRevision !== "string") return undefined;
   return { epoch, expectedDraftRevision, expectedDiskRevision };
+}
+
+export function parseLevelCreateRequest(
+  body: unknown,
+): LevelCreateRequest | undefined {
+  if (!isObject(body)) return undefined;
+  if (!hasOnlyKeys(body, ["epoch", "levelId"])) return undefined;
+  const epoch: unknown = body["epoch"];
+  const levelId: unknown = body["levelId"];
+  if (!isText(epoch) || !isText(levelId)) return undefined;
+  return { epoch, levelId };
+}
+
+export function parseLevelDuplicateRequest(
+  body: unknown,
+): LevelDuplicateRequest | undefined {
+  if (!isObject(body)) return undefined;
+  if (!hasOnlyKeys(body, ["epoch", "levelId", "sourcePath"])) return undefined;
+  const epoch: unknown = body["epoch"];
+  const levelId: unknown = body["levelId"];
+  const sourcePath: unknown = body["sourcePath"];
+  if (!isText(epoch) || !isText(levelId) || !isText(sourcePath)) {
+    return undefined;
+  }
+  return { epoch, levelId, sourcePath };
+}
+
+export function parseLevelDeleteRequest(
+  body: unknown,
+): LevelDeleteRequest | undefined {
+  if (!isObject(body)) return undefined;
+  if (!hasOnlyKeys(body, ["epoch"])) return undefined;
+  const epoch: unknown = body["epoch"];
+  if (!isText(epoch)) return undefined;
+  return { epoch };
+}
+
+/** A string the wire carries as an identity: present, and not empty. */
+function isText(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
 }
 
 /**

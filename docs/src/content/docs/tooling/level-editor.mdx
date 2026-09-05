@@ -15,10 +15,10 @@ What it writes is a `*.yage-level.json` file your game loads through
 it exports reaches your game bundle.
 
 <Aside type="caution" title="What it does today">
-  The editor opens any level your globs match and lets you place, move, rotate,
-  scale, delete, reparent, reorder, copy, rename, type a transform, set a scene
-  key, choose a sprite from your project's files, move the view, snap to a
-  grid, and undo.
+  The editor makes, copies and removes level files, opens any level your globs
+  match, and lets you place, move, rotate, scale, delete, reparent, reorder,
+  copy, rename, type a transform, set a scene key, choose a sprite from your
+  project's files, move the view, snap to a grid, and undo.
   [What it does not do](#what-it-does-not-do) has the rest.
 </Aside>
 
@@ -145,8 +145,10 @@ you see is the level's authored state, not a simulation of it.
 
 Click a placement to select it and drag to move it. The header's first control
 chooses the level: it lists every level your `levels` globs matched, and
-picking one opens it. The badge beside it says whether that level has unsaved
-work, and **Save** writes the file.
+picking one opens it. **New**, **Duplicate** and **Delete** beside it make and
+remove level files — see [Making a level](#making-a-level). The badge after
+them says whether the open level has unsaved work, and **Save** writes the
+file.
 
 Three bars run across the top: the level and the file actions, then the tools
 and the grid, then the name and the pose of whatever you have selected. The
@@ -598,6 +600,29 @@ goes ahead and leaves those slots holding the id of the placement that is now
 gone: the file stays well formed, one undo puts everything back, and until then
 each of those slots is listed as a problem you can fix from its own picker.
 
+### Making a level
+
+**New** asks for a name and shows the path it lands on: `forest` becomes
+`levels/forest.yage-level.json` under the directory your first `levels` glob
+names. The name is also the level's `id`, which is what the document holds and
+what your game reads out of it. Type over the path for anything else, and pick
+between directories when your config names more than one glob. The level is
+written with nothing in it and opens straight away.
+
+**Duplicate** copies the open level under a new name. The copy holds the same
+placements at the same ids — those are scoped to one document — with the new
+name as its `id`. It copies the file, so a draft you have not saved is not in
+it.
+
+**Delete** asks first, and says when the level has unsaved work, because the
+file and its draft go together and no undo brings either back. The level that
+takes its place in the list opens; delete the last one and the editor has
+nothing open until you make one.
+
+The server decides what it will write: a path outside the directories your
+`levels` globs cover is refused, and so is one a file already holds. A refusal
+says so in the dialog, which stays open, and changes nothing.
+
 ### The hierarchy
 
 The **hierarchy** on the left lists the placements in your level as a tree:
@@ -978,10 +1003,16 @@ keeps using it and stops finding anything. The one lookup a key change cannot
 break is `instance.get(placementId)` on the `LevelInstance` `instantiateLevel`
 returns: it is keyed on the placement id, which never changes.
 
-**Levels you add while it is running.** The list is read once, when the page
-loads, so a level file you create afterwards needs a reload before you can pick
-it. The editor cannot create, rename, duplicate, or delete a level file
-either.
+**Renaming a level.** There is no rename, because a level is referenced by its
+path — by whatever your game passes to `loadLevelDocument`, and by the URL
+**Run** opens. Moving the file is something the editor cannot follow through
+your code. Duplicate under the new name, change the references yourself, and
+delete the old file.
+
+**Levels that appear while it is running.** The list holds what the server
+found when the page loaded, plus what **New** and **Duplicate** have made
+since. A level file written from outside the editor needs a reload before you
+can pick it.
 
 **Noticing the file changing underneath it.** Edit the level in your editor,
 or open it in a second browser tab, and the page you are looking at will not

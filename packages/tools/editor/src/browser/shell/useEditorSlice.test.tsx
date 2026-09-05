@@ -21,6 +21,7 @@ function createStore(): EditorStore {
     api: unusedApi,
     epoch: "epoch-1",
     projectId: "project-1",
+    levels: [],
   });
 }
 

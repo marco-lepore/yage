@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   isRevision,
   parseCommandRequest,
+  parseLevelCreateRequest,
+  parseLevelDeleteRequest,
+  parseLevelDuplicateRequest,
   parseRevisionedRequest,
   parseSaveRequest,
 } from "./parse.js";
@@ -129,5 +132,68 @@ describe("isRevision", () => {
     [null, false],
   ])("reads %s as %s", (value, expected) => {
     expect(isRevision(value)).toBe(expected);
+  });
+});
+
+describe("parseLevelCreateRequest", () => {
+  it("reads a boot and a level id", () => {
+    expect(
+      parseLevelCreateRequest({ epoch: "epoch-1", levelId: "meadow" }),
+    ).toEqual({ epoch: "epoch-1", levelId: "meadow" });
+  });
+
+  it.each([
+    ["a missing level id", { epoch: "epoch-1" }],
+    ["an empty level id", { epoch: "epoch-1", levelId: "" }],
+    ["an empty epoch", { epoch: "", levelId: "meadow" }],
+    // The path is in the query, so a body carrying one is a browser naming a
+    // level this route would never read.
+    ["a path in the body", { epoch: "epoch-1", levelId: "m", path: "a.json" }],
+    ["a body that is not an object", "epoch-1"],
+  ])("refuses %s", (_name, body) => {
+    expect(parseLevelCreateRequest(body)).toBeUndefined();
+  });
+});
+
+describe("parseLevelDuplicateRequest", () => {
+  it("reads a boot, a level id, and the level being copied", () => {
+    expect(
+      parseLevelDuplicateRequest({
+        epoch: "epoch-1",
+        levelId: "meadow",
+        sourcePath: "levels/forest.yage-level.json",
+      }),
+    ).toEqual({
+      epoch: "epoch-1",
+      levelId: "meadow",
+      sourcePath: "levels/forest.yage-level.json",
+    });
+  });
+
+  it.each([
+    ["a missing source", { epoch: "epoch-1", levelId: "meadow" }],
+    ["an empty source", { epoch: "epoch-1", levelId: "m", sourcePath: "" }],
+    ["a source that is not text", { epoch: "e", levelId: "m", sourcePath: 1 }],
+  ])("refuses %s", (_name, body) => {
+    expect(parseLevelDuplicateRequest(body)).toBeUndefined();
+  });
+});
+
+describe("parseLevelDeleteRequest", () => {
+  it("reads the boot and nothing else", () => {
+    expect(parseLevelDeleteRequest({ epoch: "epoch-1" })).toEqual({
+      epoch: "epoch-1",
+    });
+  });
+
+  it.each([
+    ["an empty epoch", { epoch: "" }],
+    [
+      "a revision it would ignore",
+      { epoch: "epoch-1", expectedDraftRevision: 0 },
+    ],
+    ["a null body", null],
+  ])("refuses %s", (_name, body) => {
+    expect(parseLevelDeleteRequest(body)).toBeUndefined();
   });
 });

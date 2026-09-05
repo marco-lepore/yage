@@ -1,4 +1,5 @@
 import type { EditorDiagnostic } from "../../shared/diagnostics/index.js";
+import type { LevelCreateOutcome } from "../../shared/protocol/index.js";
 import { EditorApiError, type EditorApiClient } from "../api/index.js";
 import type { CommandController } from "../commands/index.js";
 import { isDirty, type EditorStore } from "../store/index.js";
@@ -27,6 +28,20 @@ export const RUN_LEVEL_PARAM = "level";
 
 /** Stands in for the page's own location while a URL is assembled. */
 const RUN_BASE = "http://editor.invalid/";
+
+/**
+ * What an answer looks like when the server changed nothing: a draft route
+ * calls it rejected and a level-file route calls it refused, and both carry
+ * the message the shell shows.
+ */
+interface Refused {
+  readonly status: "rejected" | "refused";
+  readonly message: string;
+}
+
+function isRefused(outcome: { readonly status: string }): outcome is Refused {
+  return outcome.status === "rejected" || outcome.status === "refused";
+}
 
 /**
  * The editor's play page, relative to the editor page so it resolves under
@@ -88,26 +103,115 @@ export class FileCoordinator {
    * it runs, and deletes none.
    */
   async openLevel(path: string): Promise<void> {
+    // A refusal here is no file at that path, or one that does not parse. The
+    // editor stays open on whatever it already had and says why this level did
+    // not.
+    const outcome = await this.exchange(
+      () => this.api.fetchSnapshot(path),
+      `Could not open ${path}.`,
+    );
+    if (!outcome) return;
+    this.store.dispatch({ type: "level-opened", snapshot: outcome.snapshot });
+  }
+
+  /**
+   * Write a level holding nothing and open it.
+   *
+   * The response carries the new level's summary and its draft, so the picker
+   * lists it and the editor opens it with no second round trip. The server
+   * decides whether the path is one this project's globs cover and whether a
+   * file already holds it; a refusal is reported and nothing changes.
+   */
+  async createLevel(path: string, levelId: string): Promise<void> {
+    await this.opened(path, () =>
+      this.api.createLevel(path, { epoch: this.epoch, levelId }),
+    );
+  }
+
+  /** The same, from a copy of another level rather than from nothing. */
+  async duplicateLevel(
+    sourcePath: string,
+    path: string,
+    levelId: string,
+  ): Promise<void> {
+    await this.opened(path, () =>
+      this.api.duplicateLevel(path, { epoch: this.epoch, levelId, sourcePath }),
+    );
+  }
+
+  /**
+   * Remove a level file, and land somewhere sensible if it was the open one.
+   *
+   * The level that takes its place in the list opens; when it was the last
+   * level, nothing is open and the shell says so. The draft goes with the
+   * file, so its unsaved work and its undo history are gone — this is not a
+   * document command and undo does not bring a file back.
+   */
+  async deleteLevel(path: string): Promise<void> {
+    // Where the deleted level sat, so the one that takes its place is the one
+    // that opens. Read before the answer replaces the list.
+    const at = this.store
+      .getState()
+      .levels.findIndex((one) => one.path === path);
+    const outcome = await this.exchange(
+      () => this.api.deleteLevel(path, { epoch: this.epoch }),
+      `Could not delete ${path}.`,
+    );
+    if (!outcome) return;
+    this.store.dispatch({ type: "levels-replaced", levels: outcome.levels });
+    if (this.store.getState().file?.path !== path) return;
+    const next = outcome.levels[Math.min(at, outcome.levels.length - 1)];
+    if (next) await this.openLevel(next.path);
+    else this.store.dispatch({ type: "level-closed" });
+  }
+
+  /** Send a request that writes a level file, and open what it wrote. */
+  private async opened(
+    path: string,
+    send: () => Promise<LevelCreateOutcome>,
+  ): Promise<void> {
+    const outcome = await this.exchange(send, `Could not create ${path}.`);
+    if (!outcome) return;
+    // The list first: the picker's value is the open level's path, and a value
+    // its options do not carry shows as nothing chosen.
+    this.store.dispatch({ type: "level-added", level: outcome.level });
+    this.store.dispatch({ type: "level-opened", snapshot: outcome.snapshot });
+  }
+
+  /**
+   * Send one request about which level is open, and hand back the answer worth
+   * acting on.
+   *
+   * The edits in flight are settled first, so they land in the level being
+   * left rather than addressing it from the level being entered.
+   *
+   * Undefined means the caller has nothing to do. A refusal and a request that
+   * never arrived are both reported as a file diagnostic, which is where the
+   * shell reads them; an answer a later request has overtaken is dropped in
+   * silence, because that request is already deciding what is open.
+   */
+  private async exchange<T extends { readonly status: string }>(
+    send: () => Promise<T>,
+    failureMessage: string,
+  ): Promise<Exclude<T, Refused> | undefined> {
     this.opening += 1;
     const attempt = this.opening;
     await this.commands.settleEdits();
-    if (attempt !== this.opening) return;
-    let outcome;
+    if (attempt !== this.opening) return undefined;
+    let outcome: T;
     try {
-      outcome = await this.api.fetchSnapshot(path);
+      outcome = await send();
     } catch (error) {
-      if (attempt !== this.opening) return;
-      this.report(error, `Could not open ${path}.`);
-      return;
+      if (attempt !== this.opening) return undefined;
+      this.report(error, failureMessage);
+      return undefined;
     }
-    if (attempt !== this.opening) return;
-    if (outcome.status === "rejected") {
-      // No file at that path, or one that does not parse. The editor stays
-      // open on whatever it already had and says why this level did not.
+    if (attempt !== this.opening) return undefined;
+    if (isRefused(outcome)) {
       this.fail(outcome.message, this.store.getState().committed.draftRevision);
-      return;
+      return undefined;
     }
-    this.store.dispatch({ type: "level-opened", snapshot: outcome.snapshot });
+    return outcome as Exclude<T, Refused>;
   }
 
   /**

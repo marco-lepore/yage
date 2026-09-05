@@ -105,6 +105,7 @@ function createHarness(withCatalog = true, using: LevelCatalog = catalog) {
     }),
     epoch: "epoch-1",
     projectId: "project-1",
+    levels: [],
   });
   const rebuilds: PreviewRequest[] = [];
   const drafts: PoseEdit[][] = [];

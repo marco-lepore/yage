@@ -81,6 +81,7 @@ function createHarness(
     api: unusedApi,
     epoch: "epoch-1",
     projectId: "project-1",
+    levels: [],
   });
   // The panel reads all three of these from the store, so a test that changes
   // what it draws dispatches rather than re-rendering with other props.

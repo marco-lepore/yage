@@ -14,6 +14,7 @@ import type {
 import type {
   DraftSnapshot,
   HistorySummary,
+  LevelSummary,
 } from "../../shared/protocol/index.js";
 
 /** A point in world space, the units every editor-facing API works in. */
@@ -373,8 +374,16 @@ export interface ReferencePick {
 }
 
 export interface EditorState {
+  /**
+   * Every level the project has, by project-relative path, alphabetically.
+   *
+   * It is what the picker lists. The server answers it at bootstrap and again
+   * whenever a level is created, duplicated or deleted, so a file the editor
+   * made is offered without a reload; one made outside the editor is not.
+   */
+  readonly levels: readonly LevelSummary[];
   /** Absent until a level is open. */
-  readonly file?: EditorFileState;
+  readonly file?: EditorFileState | undefined;
   /** The last document the server accepted, and the revision it accepted it at. */
   readonly committed: {
     readonly document: LevelDocument;
@@ -483,6 +492,15 @@ export interface ViewportSizes {
 export type EditorAction =
   /** A level was opened, or its draft was re-read whole. */
   | { readonly type: "level-opened"; readonly snapshot: DraftSnapshot }
+  /** No level is open: the one that was has been deleted. */
+  | { readonly type: "level-closed" }
+  /** A level file was created or duplicated; it joins the list in path order. */
+  | { readonly type: "level-added"; readonly level: LevelSummary }
+  /** The levels that are left after one was deleted. */
+  | {
+      readonly type: "levels-replaced";
+      readonly levels: readonly LevelSummary[];
+    }
   /**
    * A local command was applied optimistically and sent. `impact` is what the
    * reduction said the preview has to do: rebuild the scene, write the

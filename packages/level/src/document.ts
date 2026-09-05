@@ -15,3 +15,4 @@ export type {
 } from "./document/types.js";
 export { readLevel } from "./document/read.js";
 export { formatLevel } from "./document/format.js";
+export { emptyLevelDocument } from "./document/empty.js";

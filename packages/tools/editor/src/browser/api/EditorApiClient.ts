@@ -7,6 +7,11 @@ import {
   type DraftOutcome,
   type DraftSaveRequest,
   type EditorRouteResponses,
+  type LevelCreateOutcome,
+  type LevelCreateRequest,
+  type LevelDeleteOutcome,
+  type LevelDeleteRequest,
+  type LevelDuplicateRequest,
   type RevisionedRequest,
 } from "../../shared/protocol/index.js";
 
@@ -126,6 +131,50 @@ export class EditorApiClient {
     return await this.request<DraftOutcome>(
       "POST",
       "/draft/save",
+      { path },
+      request,
+    );
+  }
+
+  /**
+   * Write a level file holding nothing at `path`, and read it back.
+   *
+   * The answer carries the new level's summary and its draft, so the browser
+   * lists it and opens it without a second round trip.
+   */
+  async createLevel(
+    path: string,
+    request: LevelCreateRequest,
+  ): Promise<EditorRouteResponses["POST /levels/create"]> {
+    return await this.request<LevelCreateOutcome>(
+      "POST",
+      "/levels/create",
+      { path },
+      request,
+    );
+  }
+
+  /** The same, copying `sourcePath` instead of writing an empty level. */
+  async duplicateLevel(
+    path: string,
+    request: LevelDuplicateRequest,
+  ): Promise<EditorRouteResponses["POST /levels/duplicate"]> {
+    return await this.request<LevelCreateOutcome>(
+      "POST",
+      "/levels/duplicate",
+      { path },
+      request,
+    );
+  }
+
+  /** Remove a level file. The answer is the levels that are left. */
+  async deleteLevel(
+    path: string,
+    request: LevelDeleteRequest,
+  ): Promise<EditorRouteResponses["POST /levels/delete"]> {
+    return await this.request<LevelDeleteOutcome>(
+      "POST",
+      "/levels/delete",
       { path },
       request,
     );

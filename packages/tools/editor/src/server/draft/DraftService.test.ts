@@ -1050,5 +1050,192 @@ describe("bootstrap", () => {
     expect(response.projectId).toBe("fixture");
     expect(response.epoch).toBe(EPOCH);
     expect(response.levels.map((level) => level.path)).toEqual([OTHER, LEVEL]);
+    expect(response.levelDirectories).toEqual(["src/levels"]);
+  });
+});
+
+describe("level files", () => {
+  const NEW = "src/levels/meadow.yage-level.json";
+
+  it("creates a level and answers it open, listed and clean", async () => {
+    const { draft, root } = await fixture();
+
+    const outcome = await draft.createLevel(NEW, {
+      epoch: EPOCH,
+      levelId: "meadow",
+    });
+
+    expect(outcome.status).toBe("created");
+    if (outcome.status !== "created") return;
+    expect(outcome.snapshot.document).toEqual({
+      format: "yage-level",
+      version: 1,
+      id: "meadow",
+      metadata: {},
+      entities: [],
+      extensions: {},
+    });
+    expect(outcome.snapshot.dirty).toBe(false);
+    expect(outcome.level).toEqual({
+      path: NEW,
+      diskRevision: outcome.snapshot.diskRevision,
+    });
+    expect((await draft.bootstrap()).levels.map((one) => one.path)).toContain(
+      NEW,
+    );
+    expect(await readFile(path.join(root, NEW), "utf8")).toContain(
+      '"id": "meadow"',
+    );
+  });
+
+  it("duplicates the open level's file, not its unsaved work", async () => {
+    const { draft } = await fixture();
+    await draft.snapshot(LEVEL);
+    await draft.command(LEVEL, {
+      epoch: EPOCH,
+      expectedDraftRevision: 0,
+      command: move("drag-1", 64),
+    });
+
+    const outcome = await draft.duplicateLevel(NEW, {
+      epoch: EPOCH,
+      levelId: "meadow",
+      sourcePath: LEVEL,
+    });
+
+    expect(outcome.status).toBe("created");
+    if (outcome.status !== "created") return;
+    // The copy is of the file, which is where the drag has not landed.
+    expect(outcome.snapshot.document.id).toBe("meadow");
+    expect(outcome.snapshot.document.entities[0]?.transform.position.x).toBe(0);
+    expect(outcome.snapshot.history).toEqual({ undoDepth: 0, redoDepth: 0 });
+  });
+
+  it("refuses a create over a level that exists, and a path no glob matches", async () => {
+    const { draft } = await fixture();
+
+    expect(
+      await draft.createLevel(LEVEL, { epoch: EPOCH, levelId: "again" }),
+    ).toMatchObject({ status: "refused", reason: "exists" });
+    expect(
+      await draft.createLevel("src/loose.yage-level.json", {
+        epoch: EPOCH,
+        levelId: "loose",
+      }),
+    ).toMatchObject({ status: "refused", reason: "not-configured" });
+  });
+
+  it("refuses every level file request from an earlier boot", async () => {
+    const { draft } = await fixture();
+    const stale = { epoch: "epoch-0" };
+
+    expect(
+      await draft.createLevel(NEW, { ...stale, levelId: "meadow" }),
+    ).toMatchObject({ status: "refused", reason: "epoch-mismatch" });
+    expect(
+      await draft.duplicateLevel(NEW, {
+        ...stale,
+        levelId: "meadow",
+        sourcePath: LEVEL,
+      }),
+    ).toMatchObject({ status: "refused", reason: "epoch-mismatch" });
+    expect(await draft.deleteLevel(LEVEL, stale)).toMatchObject({
+      status: "refused",
+      reason: "epoch-mismatch",
+    });
+  });
+
+  it("deletes the file, drops its draft, and answers what is left", async () => {
+    const { draft, root } = await fixture();
+    await draft.snapshot(LEVEL);
+    await draft.command(LEVEL, {
+      epoch: EPOCH,
+      expectedDraftRevision: 0,
+      command: move("drag-1", 64),
+    });
+
+    const outcome = await draft.deleteLevel(LEVEL, { epoch: EPOCH });
+
+    expect(outcome).toEqual({
+      status: "deleted",
+      levels: [{ path: OTHER, diskRevision: expect.any(String) as string }],
+    });
+    await expect(readFile(path.join(root, LEVEL), "utf8")).rejects.toThrow();
+    // The draft went with the file: what is left is a request for a level
+    // that is not there, not the edit that was in it.
+    expect(await draft.snapshot(LEVEL)).toMatchObject({
+      status: "rejected",
+      code: "missing-file",
+    });
+  });
+
+  it("runs a delete behind a save already on that level's queue", async () => {
+    const { root, files } = await fixture();
+    let releaseWrite = (): void => {};
+    const held = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    // A save that is inside its write when the delete arrives. Unlinking there
+    // would be undone by the write finishing, and the level would come back.
+    const slow: LevelFileService = {
+      ...files,
+      async writeLevel(levelPath, document_, expectedDiskRevision) {
+        await held;
+        return await files.writeLevel(
+          levelPath,
+          document_,
+          expectedDiskRevision,
+        );
+      },
+    };
+    const draft = new DraftService({
+      files: slow,
+      projectId: "fixture",
+      epoch: EPOCH,
+    });
+    const opened = snapshotOf(await draft.snapshot(LEVEL));
+    await draft.command(LEVEL, {
+      epoch: EPOCH,
+      expectedDraftRevision: 0,
+      command: move("drag-1", 64),
+    });
+
+    const saving = draft.save(LEVEL, {
+      epoch: EPOCH,
+      expectedDraftRevision: 1,
+      expectedDiskRevision: opened.diskRevision,
+    });
+    const deleting = draft.deleteLevel(LEVEL, { epoch: EPOCH });
+    releaseWrite();
+    const [saved, deleted] = await Promise.all([saving, deleting]);
+
+    // The save saw the file it was told about, and the delete took the file
+    // the save had just written.
+    expect(saved.status).toBe("accepted");
+    expect(deleted.status).toBe("deleted");
+    await expect(readFile(path.join(root, LEVEL), "utf8")).rejects.toThrow();
+  });
+
+  it("opens what a create wrote, not the draft the old file left behind", async () => {
+    const { draft, root } = await fixture();
+    await draft.snapshot(LEVEL);
+    await draft.command(LEVEL, {
+      epoch: EPOCH,
+      expectedDraftRevision: 0,
+      command: move("drag-1", 64),
+    });
+    // Removed from outside the editor, so the draft of the old file is still
+    // resident when the path is created again.
+    await rm(path.join(root, LEVEL));
+
+    const outcome = await draft.createLevel(LEVEL, {
+      epoch: EPOCH,
+      levelId: "forest",
+    });
+
+    expect(outcome.status).toBe("created");
+    if (outcome.status !== "created") return;
+    expect(outcome.snapshot.document.entities).toEqual([]);
+    expect(outcome.snapshot.dirty).toBe(false);
   });
 });

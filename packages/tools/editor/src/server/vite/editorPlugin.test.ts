@@ -307,6 +307,24 @@ describe("the API boundary", () => {
     expect(response.status).toBe(400);
   });
 
+  it.each([
+    ["create", "/levels/create", { epoch: EPOCH, name: "meadow" }],
+    ["duplicate", "/levels/duplicate", { epoch: EPOCH, levelId: "meadow" }],
+    ["delete", "/levels/delete", { epoch: EPOCH, path: "elsewhere" }],
+  ])(
+    "refuses a %s body this version does not understand",
+    async (_name, route, body) => {
+      const editor = await startEditor();
+
+      const response = await editor.api(`${route}?path=${LEVEL}`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+
+      expect(response.status).toBe(400);
+    },
+  );
+
   it("refuses a body too large to be an editor request", async () => {
     const editor = await startEditor();
 
@@ -457,6 +475,86 @@ describe("the draft routes", () => {
     expect(JSON.stringify(before["document"])).not.toContain('"x":64');
     expect(JSON.stringify(after["document"])).toContain('"x":64');
   });
+
+  it("creates a level, opens it, and lists it at the next bootstrap", async () => {
+    const editor = await startEditor();
+    const created = "src/levels/meadow.yage-level.json";
+
+    const body = await json(
+      await editor.api(`/levels/create?path=${created}`, {
+        method: "POST",
+        body: JSON.stringify({ epoch: EPOCH, levelId: "meadow" }),
+      }),
+    );
+
+    expect(body["status"]).toBe("created");
+    const snapshot = body["snapshot"] as Record<string, unknown>;
+    expect((snapshot["document"] as { id: string }).id).toBe("meadow");
+    expect(snapshot["dirty"]).toBe(false);
+    expect(body["level"]).toEqual({
+      path: created,
+      diskRevision: snapshot["diskRevision"],
+    });
+    const bootstrapped = await json(await editor.api("/bootstrap"));
+    expect(
+      (bootstrapped["levels"] as { path: string }[]).map((one) => one.path),
+    ).toEqual([LEVEL, created]);
+    expect(bootstrapped["levelDirectories"]).toEqual(["src/levels"]);
+  });
+
+  it("duplicates a level and deletes it again", async () => {
+    const editor = await startEditor();
+    const copy = "src/levels/forest-copy.yage-level.json";
+
+    const duplicated = await json(
+      await editor.api(`/levels/duplicate?path=${copy}`, {
+        method: "POST",
+        body: JSON.stringify({
+          epoch: EPOCH,
+          levelId: "forest-copy",
+          sourcePath: LEVEL,
+        }),
+      }),
+    );
+    const deleted = await json(
+      await editor.api(`/levels/delete?path=${copy}`, {
+        method: "POST",
+        body: JSON.stringify({ epoch: EPOCH }),
+      }),
+    );
+
+    expect(duplicated["status"]).toBe("created");
+    expect(
+      await readFile(path.join(editor.root, copy), "utf8").catch(() => null),
+    ).toBe(null);
+    expect(deleted).toEqual({
+      status: "deleted",
+      levels: [{ path: LEVEL, diskRevision: expect.any(String) as string }],
+    });
+  });
+
+  it.each([
+    ["create", { epoch: EPOCH, levelId: "escape" }],
+    ["duplicate", { epoch: EPOCH, levelId: "escape", sourcePath: LEVEL }],
+    ["delete", { epoch: EPOCH }],
+  ])(
+    "refuses a %s that names a path outside the levels",
+    async (route, body) => {
+      const editor = await startEditor();
+
+      const answer = await json(
+        await editor.api(
+          `/levels/${route}?path=${encodeURIComponent("src/levels/../escape.yage-level.json")}`,
+          { method: "POST", body: JSON.stringify(body) },
+        ),
+      );
+
+      expect(answer).toMatchObject({
+        status: "refused",
+        reason: "not-configured",
+      });
+    },
+  );
 
   it("has no run route: a game reads its level file like any other", async () => {
     const editor = await startEditor();

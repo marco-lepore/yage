@@ -178,6 +178,7 @@ function createHarness(editable = true, options: HarnessOptions = {}) {
     api: unusedApi,
     epoch: "epoch-1",
     projectId: "project-1",
+    levels: [],
   });
   store.dispatch({ type: "level-opened", snapshot: snapshot() });
   const intents: string[] = [];
@@ -1163,6 +1164,7 @@ describe("a parameter that points at another placement", () => {
       api: unusedApi,
       epoch: "epoch-1",
       projectId: "project-1",
+      levels: [],
     });
     store.dispatch({
       type: "level-opened",
@@ -1514,6 +1516,7 @@ describe("the plain parameter kinds", () => {
       api: unusedApi,
       epoch: "epoch-1",
       projectId: "project-1",
+      levels: [],
     });
     store.dispatch({
       type: "level-opened",
@@ -1823,6 +1826,7 @@ describe("a parameter holding a pair of numbers", () => {
       api: unusedApi,
       epoch: "epoch-1",
       projectId: "project-1",
+      levels: [],
     });
     store.dispatch({
       type: "level-opened",
@@ -2240,6 +2244,7 @@ describe("a value the game decodes, and a colour", () => {
       api: unusedApi,
       epoch: "epoch-1",
       projectId: "project-1",
+      levels: [],
     });
     store.dispatch({
       type: "level-opened",

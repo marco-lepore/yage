@@ -387,6 +387,7 @@ function createParts(
     }),
     epoch: "epoch-1",
     projectId: "project-1",
+    levels: [],
   });
   const host = { appendChild: () => {} } as unknown as HTMLElement;
   const coordinator = new PreviewCoordinator({ host, store });

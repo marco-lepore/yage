@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import {
+  link,
+  mkdir,
   readdir,
   readFile,
   realpath,
@@ -7,9 +9,13 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import picomatch from "picomatch";
-import { formatLevel, readLevel } from "@yagejs/level/document";
+import {
+  emptyLevelDocument,
+  formatLevel,
+  readLevel,
+} from "@yagejs/level/document";
 import type { LevelDocument, StructuralResult } from "@yagejs/level/document";
 import type {
   AssetListing,
@@ -41,6 +47,36 @@ export type WriteLevelResult =
     };
 
 /**
+ * Why a level file was not created.
+ *
+ * `not-configured` covers every path the service will not write: one that
+ * leaves the root, and one no configured glob matches. `not-found` and
+ * `unreadable` describe the source a duplicate copies, so a create never
+ * answers them.
+ */
+export type CreateLevelFailure =
+  | "exists"
+  | "not-configured"
+  | "not-found"
+  | "unreadable"
+  | "write-failed";
+
+export type CreateLevelResult =
+  | {
+      readonly ok: true;
+      readonly document: LevelDocument;
+      readonly diskRevision: string;
+    }
+  | { readonly ok: false; readonly reason: CreateLevelFailure };
+
+export type DeleteLevelResult =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly reason: "not-configured" | "not-found" | "write-failed";
+    };
+
+/**
  * The only code that touches project level files and asset listings.
  *
  * Every path it accepts is confined to one writable root and matched against
@@ -56,6 +92,38 @@ export interface LevelFileService {
    * no such glob matches, which is every project that declared no layers.
    */
   layerSetOf(path: string): number | undefined;
+  /**
+   * The directories a new level can be written to: the fixed leading segments
+   * of each configured glob, deduplicated, in config order, keeping the ones a
+   * level file directly inside them matches a glob. `""` is the root itself,
+   * which is what a glob that starts with a wildcard answers.
+   *
+   * It is where a dialog offers to put a new file. The path it ends up asking
+   * for is still matched against the globs like any other.
+   */
+  levelDirectories(): readonly string[];
+  /**
+   * Write a level holding nothing at a path no file holds yet.
+   *
+   * The path must be one of the configured levels, and an existing file is
+   * never replaced — a level is created once, and a mistyped name that lands
+   * on a level someone built is refused rather than emptied.
+   */
+  createLevel(path: string, levelId: string): Promise<CreateLevelResult>;
+  /**
+   * Copy one level to another path under a new level id.
+   *
+   * The document is otherwise unchanged: placement ids and the references
+   * between them are scoped to one document, so a verbatim copy is consistent
+   * on its own.
+   */
+  duplicateLevel(
+    sourcePath: string,
+    path: string,
+    levelId: string,
+  ): Promise<CreateLevelResult>;
+  /** Remove one level file. Nothing else on disk is touched. */
+  deleteLevel(path: string): Promise<DeleteLevelResult>;
   /**
    * The project files the configured asset globs match, as the POSIX paths the
    * browser fetches them by, in sorted order. That is the shape a level stores,
@@ -127,6 +195,39 @@ const MAX_LISTED_ASSETS = 5000;
 
 /** Makes each temporary write name unique within this process. */
 let temporaryCounter = 0;
+
+/** A sibling of the file being written that no other write in here names. */
+function temporaryPath(absolute: string): string {
+  return `${absolute}.${process.pid}.${(temporaryCounter += 1)}.tmp`;
+}
+
+/**
+ * Glob syntax. A segment carrying any of these matches more than the text it
+ * holds, so it names no one directory — and neither does anything after it.
+ */
+const GLOB_SYNTAX = /[*?[\]{}!()+@]/;
+
+/**
+ * The name a directory is tested with before it is offered: what a dialog
+ * would ask for in it, since a level file is what the offer is about.
+ */
+const PROBE_LEVEL = "level.yage-level.json";
+
+/**
+ * The fixed directory a glob's matches live under: every leading segment that
+ * names itself. `levels/*.yage-level.json` answers `"levels"`, and a glob
+ * whose first segment is a pattern answers `""`, the root.
+ */
+function staticDirectory(glob: string): string {
+  const segments = glob.split("/");
+  const fixed: string[] = [];
+  // The last segment names the file rather than a directory to write it in.
+  for (const segment of segments.slice(0, -1)) {
+    if (GLOB_SYNTAX.test(segment)) break;
+    fixed.push(segment);
+  }
+  return fixed.join("/");
+}
 
 /**
  * The leading segments Vite drops when it serves a project file, with a
@@ -200,7 +301,56 @@ export async function createLevelFileService(
     }
   }
 
-  return {
+  // A glob's fixed part is not always somewhere a level may go:
+  // `extra/{a,b}/*.yage-level.json` names `extra`, where every create is
+  // refused. Only a directory a level file in it would be matched in is
+  // offered.
+  const directories = [
+    ...new Set(options.levels.map((level) => staticDirectory(level.glob))),
+  ].filter((directory) =>
+    matches(directory === "" ? PROBE_LEVEL : `${directory}/${PROBE_LEVEL}`),
+  );
+
+  /**
+   * Write a document to a path no file holds yet.
+   *
+   * The bytes go to a temporary sibling and the path is claimed by linking the
+   * sibling to it, which fails with EEXIST when a file is already there. So a
+   * reader never sees half a level, two creates of one name cannot both win,
+   * and a level someone built is never emptied by a mistyped one. A rename
+   * would replace that file rather than refuse the create.
+   *
+   * The directories on the way are made, so a project whose configured level
+   * directory holds nothing yet can still be given its first level. They are
+   * inside the root: the path was resolved before this was called.
+   */
+  async function createFile(
+    absolute: string,
+    document: LevelDocument,
+  ): Promise<CreateLevelResult> {
+    const canonical = formatLevel(document);
+    const temporary = temporaryPath(absolute);
+    try {
+      await mkdir(dirname(absolute), { recursive: true });
+      await writeFile(temporary, canonical, "utf8");
+      await link(temporary, absolute);
+    } catch (error) {
+      await unlink(temporary).catch(() => undefined);
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+        return { ok: false, reason: "exists" };
+      }
+      return { ok: false, reason: "write-failed" };
+    }
+    // The link is the file now; the sibling was only how it got its bytes.
+    await unlink(temporary).catch(() => undefined);
+    return {
+      ok: true,
+      document,
+      diskRevision: hashBytes(Buffer.from(canonical, "utf8")),
+    };
+  }
+
+  const service: LevelFileService = {
     async listLevels() {
       const found: string[] = [];
       await walk(realRoot, matches, found);
@@ -215,6 +365,44 @@ export async function createLevelFileService(
 
     layerSetOf(path) {
       return layerSets.find((entry) => entry.matches(path))?.layerSet;
+    },
+
+    levelDirectories() {
+      return directories;
+    },
+
+    async createLevel(path, levelId) {
+      const resolved = await resolveLevelPath(rules, path);
+      if (!resolved.ok) return { ok: false, reason: "not-configured" };
+      return await createFile(resolved.absolute, emptyLevelDocument(levelId));
+    },
+
+    async duplicateLevel(sourcePath, path, levelId) {
+      const resolved = await resolveLevelPath(rules, path);
+      if (!resolved.ok) return { ok: false, reason: "not-configured" };
+      const source = await service.readLevel(sourcePath);
+      if (!source.ok)
+        return { ok: false, reason: SOURCE_FAILURES[source.reason] };
+      if (!source.structural.ok) return { ok: false, reason: "unreadable" };
+      return await createFile(resolved.absolute, {
+        ...source.structural.document,
+        id: levelId,
+      });
+    },
+
+    async deleteLevel(path) {
+      const resolved = await resolveLevelPath(rules, path);
+      if (!resolved.ok) return { ok: false, reason: "not-configured" };
+      try {
+        await unlink(resolved.absolute);
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        return {
+          ok: false,
+          reason: code === "ENOENT" ? "not-found" : "write-failed",
+        };
+      }
+      return { ok: true };
     },
 
     async listAssets() {
@@ -285,9 +473,9 @@ export async function createLevelFileService(
       const canonical = formatLevel(document);
       const revision = hashBytes(Buffer.from(canonical, "utf8"));
       // A temporary sibling and a rename, so a reader never sees half a file
-      // and a failed write leaves the old one exactly as it was.
-      const suffix = `${process.pid}.${(temporaryCounter += 1)}`;
-      const temporary = `${resolved.absolute}.${suffix}.tmp`;
+      // and a failed write leaves the old one exactly as it was. The rename
+      // replaces the file, which is what a save is for.
+      const temporary = temporaryPath(resolved.absolute);
       try {
         await writeFile(temporary, canonical, "utf8");
         await rename(temporary, resolved.absolute);
@@ -302,7 +490,19 @@ export async function createLevelFileService(
       return hashBytes(Buffer.from(formatLevel(document), "utf8"));
     },
   };
+
+  return service;
 }
+
+/** What a duplicate answers when the level it was told to copy is not there. */
+const SOURCE_FAILURES = {
+  "not-found": "not-found",
+  "outside-roots": "not-configured",
+  unreadable: "unreadable",
+} as const satisfies Record<
+  Extract<ReadLevelResult, { ok: false }>["reason"],
+  CreateLevelFailure
+>;
 
 function hashBytes(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");

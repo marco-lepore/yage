@@ -1,8 +1,5 @@
 import { useEffect, useState } from "react";
-import type {
-  AssetListing,
-  LevelSummary,
-} from "../../shared/protocol/index.js";
+import type { AssetListing } from "../../shared/protocol/index.js";
 import {
   inboundReferences,
   rootsWithout,
@@ -23,6 +20,11 @@ import { Inspector } from "./Inspector.js";
 import { Actors } from "./Actors.js";
 import { Problems } from "./Problems.js";
 import { Button, Select } from "./controls.js";
+import {
+  DeleteLevelConfirm,
+  NewLevelDialog,
+  type LevelRequest,
+} from "./LevelDialogs.js";
 import { selectedAfter } from "./selection.js";
 import { EDITOR_CSS } from "./styles.js";
 import { GUIDES_KEY, HIDE_KEY, SNAP_KEY, TOOLS, Toolbar } from "./Toolbar.js";
@@ -47,6 +49,16 @@ export interface ShellFiles {
    */
   openLevel(path: string): Promise<void>;
   save(): Promise<void>;
+  /** Write a level holding nothing at `path`, under this level id, and open it. */
+  createLevel(path: string, levelId: string): Promise<void>;
+  /** The same, from a copy of `sourcePath`. */
+  duplicateLevel(
+    sourcePath: string,
+    path: string,
+    levelId: string,
+  ): Promise<void>;
+  /** Remove a level file, and open what is left in its place. */
+  deleteLevel(path: string): Promise<void>;
   run(): Promise<void>;
   /** Open the level running in the editor's own page. Needs no game page. */
   play(): Promise<void>;
@@ -75,11 +87,10 @@ export interface EditorShellProps {
    */
   readonly listAssets: () => Promise<AssetListing>;
   /**
-   * Every level the server listed when the page loaded, in the order it listed
-   * them — alphabetical by project-relative path. It does not change while the
-   * page is open.
+   * Where a new level can go, as the server read it off the config's globs.
+   * The New dialog offers these, and puts the level in the first one.
    */
-  readonly levels: readonly LevelSummary[];
+  readonly levelDirectories: readonly string[];
   /**
    * The layers the open level may put a placement on, read on each render.
    * Empty when the project declared none for it, which is when the inspector
@@ -111,8 +122,9 @@ export interface EditorShellProps {
  * own header opens and closes, taking its height from the viewport rather than
  * covering it.
  *
- * Its picker lists what the server found when the page loaded, so a level file
- * created since then needs a reload before it can be chosen.
+ * Its picker lists the levels the store holds: what the server found when the
+ * page loaded, plus what New and Duplicate have made since. A level file
+ * written from outside the editor needs a reload before it can be chosen.
  */
 export function EditorShell(props: EditorShellProps): React.JSX.Element {
   const store = props.store;
@@ -123,6 +135,29 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
   // them, and with them neither panel below. The control bar is the one part
   // that follows a drag, and it subscribes for itself.
   const filePath = useEditorSlice(store, (state) => state.file?.path);
+  const levels = useEditorSlice(store, (state) => state.levels);
+  /** Which level file question is open: New, Duplicate, or a delete. */
+  const [levelRequest, setLevelRequest] = useState<LevelRequest | undefined>();
+  /**
+   * The path a submitted New or Duplicate is waiting for the server to open.
+   *
+   * The dialog stays up until that level is the open one, so a refusal — a
+   * path no glob covers, a file already there — is answered in front of the
+   * name and the path that were typed rather than after they are gone.
+   */
+  const [awaiting, setAwaiting] = useState<string | undefined>();
+  // What this dialog's own request produced: submitting clears the source
+  // first, so anything under it now is the answer to what was submitted.
+  const fileProblem = useEditorSlice(
+    store,
+    (state) => state.diagnostics.get("file")?.[0]?.message,
+  );
+  useEffect(() => {
+    if (awaiting !== undefined && filePath === awaiting) {
+      setAwaiting(undefined);
+      setLevelRequest(undefined);
+    }
+  }, [awaiting, filePath]);
   const writesLocked = useEditorSlice(store, (state) => state.writesLocked);
   const dirty = useEditorSlice(store, isDirty);
   const editable = useEditorSlice(store, isEditable);
@@ -298,10 +333,10 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
           title="Which level is open"
           value={filePath ?? ""}
           placeholder={
-            props.levels.length === 0 ? "No levels found" : "No level open"
+            levels.length === 0 ? "No levels found" : "No level open"
           }
-          disabled={props.levels.length === 0}
-          options={props.levels.map((level) => ({
+          disabled={levels.length === 0}
+          options={levels.map((level) => ({
             value: level.path,
             label: level.path,
           }))}
@@ -309,6 +344,41 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
             void props.files.openLevel(path);
           }}
         />
+        <div className="ye-group">
+          <Button
+            testId="new-level"
+            title="Create a level with nothing in it, and open it"
+            onClick={() => {
+              setLevelRequest({ kind: "new" });
+            }}
+          >
+            New
+          </Button>
+          <Button
+            testId="duplicate-level"
+            disabled={filePath === undefined}
+            title="Copy this level under another name, and open the copy"
+            onClick={() => {
+              if (filePath !== undefined) {
+                setLevelRequest({ kind: "duplicate", source: filePath });
+              }
+            }}
+          >
+            Duplicate
+          </Button>
+          <Button
+            testId="delete-level"
+            disabled={filePath === undefined}
+            title="Remove this level file"
+            onClick={() => {
+              if (filePath !== undefined) {
+                setLevelRequest({ kind: "delete", path: filePath });
+              }
+            }}
+          >
+            Delete
+          </Button>
+        </div>
         {dirty ? (
           <span className="ye-badge" data-testid="dirty-marker">
             unsaved
@@ -516,8 +586,56 @@ export function EditorShell(props: EditorShellProps): React.JSX.Element {
       </div>
 
       <DeleteConfirm store={store} commands={props.commands} />
+
+      {levelRequest === undefined ? null : levelRequest.kind === "delete" ? (
+        <DeleteLevelConfirm
+          path={levelRequest.path}
+          dirty={dirty && filePath === levelRequest.path}
+          onConfirm={() => {
+            void props.files.deleteLevel(levelRequest.path).then(() => {
+              setLevelRequest(undefined);
+            });
+          }}
+          onCancel={() => {
+            setLevelRequest(undefined);
+          }}
+        />
+      ) : (
+        <NewLevelDialog
+          // A fresh dialog per question, so opening Duplicate over New starts
+          // on the copy's name rather than on what was typed for the other.
+          key={levelRequest.kind === "duplicate" ? levelRequest.source : "new"}
+          request={levelRequest}
+          directories={props.levelDirectories}
+          levels={levels}
+          dirty={dirty && filePath === duplicatedSource(levelRequest)}
+          reason={awaiting === undefined ? undefined : fileProblem}
+          onSubmit={(path, levelId) => {
+            // The old answer goes before the new question is asked, so what
+            // the dialog shows next is this request's and not the last one's.
+            store.dispatch({
+              type: "diagnostics-replaced",
+              source: "file",
+              diagnostics: [],
+            });
+            setAwaiting(path);
+            void (levelRequest.kind === "duplicate"
+              ? props.files.duplicateLevel(levelRequest.source, path, levelId)
+              : props.files.createLevel(path, levelId));
+          }}
+          onCancel={() => {
+            setAwaiting(undefined);
+            setLevelRequest(undefined);
+          }}
+        />
+      )}
     </div>
   );
+}
+
+/** The level a Duplicate copies, and nothing for a New. */
+function duplicatedSource(request: LevelRequest): string | undefined {
+  return request.kind === "duplicate" ? request.source : undefined;
 }
 
 /**

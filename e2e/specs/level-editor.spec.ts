@@ -1,4 +1,10 @@
-import { copyFileSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -2675,6 +2681,89 @@ test.describe("level editor", () => {
     // One parameter, naming the file. The game fetches it the way it would
     // fetch any level, and carries no editor code at all.
     expect(new URL(run.url()).searchParams.get("level")).toBe(level);
+  });
+
+  test("makes a level, builds it, runs it, copies it, and deletes the copy", async ({
+    page,
+    context,
+    request,
+  }) => {
+    await openEditor(page);
+    const token = await tokenOf(page);
+    const name = `made-${String(levelCount)}`;
+    const made = `levels/${name}.yage-level.json`;
+    const copy = `levels/${name}-copy.yage-level.json`;
+
+    // The viewport's height with no dialog over it, to come back to: the
+    // dialog is a band above the body and takes the room while it is open.
+    const viewport = await canvasHeight(page);
+
+    // New asks for a name. The path follows it, under the directory the
+    // config's one level glob names.
+    await page.getByTestId("new-level").click();
+    await page.getByTestId("level-name").fill(name);
+    await expect(page.getByTestId("level-path")).toHaveValue(made);
+    await page.getByTestId("create-level").click();
+
+    // Listed and open with nothing in it, and with no reload: the create
+    // answered with the level's summary and its draft. The dialog stays up
+    // until the level it asked for is the open one, which is what makes a
+    // refusal answerable in front of what was typed.
+    const picker = page.getByTestId("level-picker");
+    await expect(picker).toHaveValue(made);
+    await expect(picker.locator("option")).toHaveText([level, made]);
+    await expect(page.getByTestId("level-dialog")).toBeHidden();
+    await expect.poll(() => canvasHeight(page)).toBe(viewport);
+    await expectPlacements(page, []);
+
+    await openActors(page);
+    await page.getByTestId("place-game.crate").click();
+    const placed = await draftAfter(
+      request,
+      token,
+      { undoDepth: 1, redoDepth: 0 },
+      made,
+    );
+    const built = placed.document.entities[0];
+    if (!built) throw new Error("the Actors strip created no placement.");
+
+    const [run] = await Promise.all([
+      context.waitForEvent("page"),
+      page.getByTestId("run-level").click(),
+    ]);
+
+    // The file the editor made is a level the game loads like any other.
+    await expect(page.getByTestId("dirty-marker")).toBeHidden();
+    expect(savedPlacements(made).map((one) => one.id)).toEqual([built.id]);
+    expect(new URL(run.url()).searchParams.get("level")).toBe(made);
+    await waitForInspector(run);
+    expectPoint(
+      (await placementIn(run, built.id)).world,
+      built.transform.position,
+    );
+
+    // A duplicate is the file with a new level id: the same placement, at the
+    // same id, in a second file that opens on the spot.
+    await page.getByTestId("duplicate-level").click();
+    await expect(page.getByTestId("level-path")).toHaveValue(copy);
+    await page.getByTestId("create-level").click();
+    await expect(picker).toHaveValue(copy);
+    await expect(page.getByTestId("level-dialog")).toBeHidden();
+    // `-copy` sorts above `.yage-level.json`, so the copy is listed first.
+    await expect(picker.locator("option")).toHaveText([level, copy, made]);
+    await expectPlacements(page, [
+      factLine(built.id, built.transform.position, { sprite: spriteOf(ROOT) }),
+    ]);
+    expect(savedPlacements(copy).map((one) => one.id)).toEqual([built.id]);
+
+    // Deleting asks first, and lands on the level that takes its place.
+    await page.getByTestId("delete-level").click();
+    await page.getByTestId("confirm-delete-level").click();
+    await expect(picker).toHaveValue(made);
+    await expect(picker.locator("option")).toHaveText([level, made]);
+    expect(existsSync(path.join(LEVELS, path.basename(copy)))).toBe(false);
+
+    await expect(page.getByTestId("diagnostics")).toBeHidden();
   });
 
   test("puts a placement on a layer, orders it, and the game draws it there", async ({

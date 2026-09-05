@@ -13,9 +13,15 @@ import type {
   DraftRejectionCode,
   DraftSaveRequest,
   DraftSnapshot,
+  LevelCreateOutcome,
+  LevelCreateRequest,
+  LevelDeleteOutcome,
+  LevelDeleteRequest,
+  LevelDuplicateRequest,
+  LevelFileRefusal,
   RevisionedRequest,
 } from "../../shared/protocol/index.js";
-import type { LevelFileService } from "../files/index.js";
+import type { CreateLevelResult, LevelFileService } from "../files/index.js";
 import { DraftHistory, type HistoryStep } from "./DraftHistory.js";
 import { SerialQueue } from "./SerialQueue.js";
 
@@ -98,6 +104,100 @@ export class DraftService {
       projectId: this.projectId,
       epoch: this.epoch,
       levels: await this.files.listLevels(),
+      levelDirectories: this.files.levelDirectories(),
+    };
+  }
+
+  /**
+   * Write a level holding nothing, and answer it as an open one.
+   *
+   * A file is not a document: nothing is applied to a revision here, so these
+   * three take no revision and record no history entry, and undo does not put
+   * a deleted level back.
+   */
+  createLevel(
+    path: string,
+    request: LevelCreateRequest,
+  ): Promise<LevelCreateOutcome> {
+    const stale = this.refuseStaleEpoch(request.epoch);
+    if (stale) return Promise.resolve(stale);
+    return this.opened(path, () =>
+      this.files.createLevel(path, request.levelId),
+    );
+  }
+
+  /** The same, from a copy of another level rather than from nothing. */
+  duplicateLevel(
+    path: string,
+    request: LevelDuplicateRequest,
+  ): Promise<LevelCreateOutcome> {
+    const stale = this.refuseStaleEpoch(request.epoch);
+    if (stale) return Promise.resolve(stale);
+    return this.opened(path, () =>
+      this.files.duplicateLevel(request.sourcePath, path, request.levelId),
+    );
+  }
+
+  /**
+   * Remove a level file, and the draft it was the disk side of.
+   *
+   * It answers the levels that are left, because that is what the browser has
+   * to show next and a second request for it could see a different project.
+   */
+  async deleteLevel(
+    path: string,
+    request: LevelDeleteRequest,
+  ): Promise<LevelDeleteOutcome> {
+    const stale = this.refuseStaleEpoch(request.epoch);
+    if (stale) return stale;
+    // Unlinking the file and dropping the draft are one queue step: a save
+    // still in flight would otherwise write the file back between them, and
+    // the browser would reopen a level the developer deleted.
+    const refusal = await this.queueFor(path).run(async () => {
+      const removed = await this.files.deleteLevel(path);
+      if (!removed.ok) return refuse(removed.reason, path);
+      this.states.delete(path);
+      return undefined;
+    });
+    if (refusal) return refusal;
+    return { status: "deleted", levels: await this.files.listLevels() };
+  }
+
+  /**
+   * Write a level file and answer it as an open one, in one queue step.
+   *
+   * Any draft left over for that path is dropped between the write and the
+   * read: a file created here is a new level, and a draft that outlived a file
+   * removed from outside the editor describes the old one. Nothing else on
+   * this path runs in between, so no operation sees the new file under the old
+   * draft.
+   */
+  private opened(
+    path: string,
+    write: () => Promise<CreateLevelResult>,
+  ): Promise<LevelCreateOutcome> {
+    return this.queueFor(path).run(async () => {
+      const created = await write();
+      if (!created.ok) return refuse(created.reason, path);
+      this.states.delete(path);
+      const reopened = await this.open(path);
+      if ("rejection" in reopened) return refuse("unreadable", path);
+      return {
+        status: "created",
+        level: { path, diskRevision: created.diskRevision },
+        snapshot: this.toSnapshot(reopened.state),
+      };
+    });
+  }
+
+  private refuseStaleEpoch(
+    epoch: string,
+  ): Extract<LevelCreateOutcome, { status: "refused" }> | undefined {
+    if (epoch === this.epoch) return undefined;
+    return {
+      status: "refused",
+      reason: "epoch-mismatch",
+      message: EPOCH_MESSAGE,
     };
   }
 
@@ -399,6 +499,27 @@ export class DraftService {
     return queue;
   }
 }
+
+/** What a refused level-file request says, by what refused it. */
+function refuse(
+  reason: FileRefusal,
+  path: string,
+): { status: "refused"; reason: FileRefusal; message: string } {
+  return { status: "refused", reason, message: FILE_MESSAGES[reason](path) };
+}
+
+/** Every refusal a file operation itself can answer. The epoch is checked first. */
+type FileRefusal = Exclude<LevelFileRefusal, "epoch-mismatch">;
+
+const FILE_MESSAGES = {
+  exists: (path: string) => `"${path}" already exists.`,
+  "not-configured": (path: string) =>
+    `"${path}" is not one of the configured levels.`,
+  "not-found": (path: string) => `No level file at "${path}".`,
+  unreadable: (path: string) => `"${path}" could not be read.`,
+  "write-failed": (path: string) =>
+    `Writing "${path}" failed; the project's files are unchanged.`,
+} as const;
 
 const EPOCH_MESSAGE =
   "The editor server restarted; refetch bootstrap and the draft snapshot.";
