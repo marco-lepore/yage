@@ -1,4 +1,4 @@
-import { Transform, Vec2 } from "@yagejs/core";
+import { Component, Transform, Vec2 } from "@yagejs/core";
 import type { Entity, Vec2Like } from "@yagejs/core";
 import {
   AnimatedSpriteComponent,
@@ -343,7 +343,7 @@ export const FOOT_ANCHOR_PX: Partial<
 };
 
 /** Per-entity record of what's currently playing — `applyFootAnchor` (called
- *  from the `onFrameChange` hook `installFootAnchorTracking` installs) reads
+ *  from the `BoxerFootAnchorTracking` frame listener) reads
  *  this to know which `FOOT_ANCHOR_PX` row a texture-array frame index
  *  belongs to; the frame index alone doesn't say which (anim, dir) it's
  *  from. Written by `playBoxerAnim`. */
@@ -382,15 +382,16 @@ export function applyFootAnchor(entity: Entity, frame: number): void {
   }
 }
 
-/** Hooks `AnimatedSprite.onFrameChange` once so `applyFootAnchor` runs on
- *  every displayed frame, including a freshly-switched animation's first
- *  (Pixi fires `onFrameChange` synchronously when `AnimatedSprite.textures`
- *  is reassigned, which `AnimationController.play`/`playOneShot` does on
- *  every real animation switch). Call once per entity, after its
- *  `AnimatedSpriteComponent` is added. */
-export function installFootAnchorTracking(entity: Entity): void {
-  entity.get(AnimatedSpriteComponent).animatedSprite.onFrameChange = (frame) =>
-    applyFootAnchor(entity, frame);
+/** Keeps feet planted across displayed frames. Add after the sprite and before
+ *  its controller so the listener also observes the first animation. */
+export class BoxerFootAnchorTracking extends Component {
+  onAdd(): void {
+    this.addCleanup(
+      this.entity
+        .get(AnimatedSpriteComponent)
+        .onFrameChange((frame) => applyFootAnchor(this.entity, frame)),
+    );
+  }
 }
 
 /** Play a boxer animation on the entity's `AnimationController`, direction
@@ -399,13 +400,12 @@ export function installFootAnchorTracking(entity: Entity): void {
  *  `startFrame` jumps a one-shot past its own opening frames instead of
  *  always starting at 0 — `KICK_CHARGE` uses this to open onto the kick's
  *  windup already partway coiled, landing contact sooner without re-timing
- *  the whole clip. `lockDuration` overrides `AnimationController`'s own
- *  frames/speed-derived lock length to match, so `AnimationController.locked`
- *  clears in step with the shortened clip rather than the un-skipped one. */
+ *  the whole clip. The controller calculates its lock from the remaining
+ *  frames and the optional per-play speed multiplier. */
 export function playBoxerAnim(
   entity: Entity,
   anim: BoxerAnim,
-  options: { oneShot: boolean; startFrame?: number; lockDuration?: number },
+  options: { oneShot: boolean; startFrame?: number; speed?: number },
 ): void {
   const facing = entity.tryGet(Facing);
   const dir = facing ? facingToDir(facing) : DEFAULT_DIR;
@@ -419,17 +419,12 @@ export function playBoxerAnim(
   const controller = entity.get(AnimationController);
   const key = boxerKey(anim, dir);
   if (options.oneShot) {
-    controller.playOneShot(
-      key,
-      options.lockDuration !== undefined
-        ? { duration: options.lockDuration }
-        : undefined,
-    );
-    if (options.startFrame !== undefined) {
-      entity
-        .get(AnimatedSpriteComponent)
-        .animatedSprite.gotoAndPlay(options.startFrame);
-    }
+    controller.playOneShot(key, {
+      ...(options.startFrame !== undefined
+        ? { startFrame: options.startFrame }
+        : {}),
+      ...(options.speed !== undefined ? { speed: options.speed } : {}),
+    });
   } else {
     controller.play(key);
   }
@@ -439,23 +434,18 @@ export function playBoxerAnim(
 export const STAGGER_SPEED_MIN = 0.32;
 export const STAGGER_SPEED_MAX = 0.7;
 
-/** Plays the stagger reaction at whatever `AnimatedSprite.animationSpeed`
- *  makes its full playthrough take about as long as the hit's actual `stun`
- *  — mechanic and animation agree instead of the anim running on a fixed
- *  clock unrelated to how long the character is actually stunned for.
- *  Clamped to stay in a readable range regardless of how short or long a
- *  given hit's stun is (a very brief stun still gets a legible flinch; a
- *  long one doesn't turn into slow motion). Setting `animationSpeed`
- *  directly (rather than `AnimationController.speed`, which is shared by
- *  every animation on the controller) confines the override to this one
- *  play — the next `playOneShot`/`play` call recomputes it fresh. */
+/** Restarts the stagger reaction for each hit. Its per-play speed follows the
+ *  hit's stun duration, clamped so brief and long stuns stay readable. */
 export function playStaggerAnim(entity: Entity, stun: number): void {
-  playBoxerAnim(entity, "stagger", { oneShot: true });
   const frames = BOXER_ANIM_SPECS.stagger.frames;
   const rawSpeed = frames / (60 * Math.max(stun, 0.05));
   const speed = Math.min(
     STAGGER_SPEED_MAX,
     Math.max(STAGGER_SPEED_MIN, rawSpeed),
   );
-  entity.get(AnimatedSpriteComponent).animatedSprite.animationSpeed = speed;
+  entity.get(AnimationController).unlock();
+  playBoxerAnim(entity, "stagger", {
+    oneShot: true,
+    speed: speed / BOXER_ANIM_SPECS.stagger.speed,
+  });
 }

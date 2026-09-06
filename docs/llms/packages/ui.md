@@ -4,9 +4,10 @@ Depends on `@yagejs/core`, `@yagejs/renderer`. Yoga flexbox-based UI. Supports b
 
 ## Setup
 
-```ts
+```ts yage-context="engine"
 import { UIPlugin } from "@yagejs/ui";
-engine.use(new UIPlugin());
+// Basic install:
+// engine.use(new UIPlugin());
 
 // Optional: an app-wide default style for UI text (UIText, UISplitText, and
 // auto-wrapped Button/Checkbox labels). Layered over RendererConfig.defaultTextStyle;
@@ -29,41 +30,52 @@ The positioning mode is independent of the target layer's `space`:
 - **World-space layer + `positioning: "transform"`** = genuinely diegetic UI. Transform holds a world coord; layer scales/rotates the UI like any other world object.
 
 ```ts
+import { Transform, Vec2, type Entity } from "@yagejs/core";
+import { ScreenFollow, type CameraEntity } from "@yagejs/renderer";
+
 import { UISurface, Anchor } from "@yagejs/ui";
 
-// Screen-space HUD (default)
-entity.add(
-  new UISurface({
-    anchor: Anchor.TopLeft,
-    offset: { x: 16, y: 16 },
-    direction: "column",
-    gap: 8,
-    padding: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "visible",
-    background: { color: 0x000000, alpha: 0.7, radius: 8 },
-    layer: "ui",
-    visible: true,
-  }),
-);
+function addHud(entity: Entity) {
+  // Screen-space HUD (default)
+  entity.add(
+    new UISurface({
+      anchor: Anchor.TopLeft,
+      offset: { x: 16, y: 16 },
+      direction: "column",
+      gap: 8,
+      padding: 16,
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "visible",
+      background: { color: 0x000000, alpha: 0.7, radius: 8 },
+      layer: "ui",
+      visible: true,
+    }),
+  );
+}
 
-// Billboard nameplate (paired with ScreenFollow elsewhere)
-entity.add(new Transform());
-entity.add(new ScreenFollow({ target, camera, offset: new Vec2(0, -40) }));
-entity.add(
-  new UISurface({
-    positioning: "transform",
-    anchor: Anchor.BottomCenter, // pivot on the panel
-  }),
-);
+function addNameplate(entity: Entity, target: Entity, camera: CameraEntity) {
+  // Billboard nameplate
+  entity.add(new Transform());
+  entity.add(new ScreenFollow({ target, camera, offset: new Vec2(0, -40) }));
+  entity.add(
+    new UISurface({
+      positioning: "transform",
+      anchor: Anchor.BottomCenter, // pivot on the panel
+    }),
+  );
+}
 ```
 
 Anchor enum: `TopLeft`, `TopCenter`, `TopRight`, `CenterLeft`, `Center`, `CenterRight`, `BottomLeft`, `BottomCenter`, `BottomRight`.
 
 ## Builder API
 
-```ts
+```ts yage-context="entity"
+import { UISurface, UIImage, UIButton } from "@yagejs/ui";
+import { texture } from "@yagejs/renderer";
+const iconTex = texture("assets/icon.png");
+
 const panel = entity.get(UISurface);
 
 // Text
@@ -140,7 +152,10 @@ scroll). Shrinking and wrapping are therefore **opt-in**:
   siblings and its text wraps cleanly. **Prefer `flex: 1` over `flexGrow: 1`**:
   `flexGrow: 1` alone keeps `flexBasis: auto` (content width) and overflows.
 
-```ts
+```ts yage-context="entity"
+import { UISurface } from "@yagejs/ui";
+const row = entity.get(UISurface).panel({ direction: "row", width: 320 });
+
 // Fixed icon, growing/wrapping text column, fixed button — the common row.
 row.panel({ width: 16, height: 16 }); // fixed, flexShrink 0 (default)
 const col = row.panel({ flex: 1, direction: "column" }); // fills + wraps
@@ -169,6 +184,8 @@ Fixes: give the container more room, set `maxWidth`/`maxHeight`, mark the child
 `UIText` (and the `panel.text(...)` builder, `UIButton` labels, the React `<Text>`) accept two extra props for crisp pixel-art text. Yoga measurement — the default word-wrap and the `truncate?: "clip" | "ellipsis"` modes — is unchanged on the bitmap path.
 
 ```ts
+import { UIText } from "@yagejs/ui";
+
 // `bitmap: true` bakes (or looks up) the atlas from `style.fontFamily`
 // at `style.fontSize` — the font is a normal style property.
 new UIText({
@@ -198,7 +215,10 @@ Use `installBitmapFont(...)` / `bitmapFont(...)` from `@yagejs/renderer` to obta
 
 UI sibling of `@yagejs/renderer`'s `SplitTextComponent` (wraps Pixi's experimental `SplitText` / `SplitBitmapText`). Lays the whole block out as one Yoga element and exposes `chars` / `words` / `lines` for animation. **No `truncate` / word-wrap** (pre-break with `\n`, or use `UIText` for paragraphs). It measures its natural size via Pixi text metrics, so the Yoga box doesn't jitter as you animate glyphs.
 
-```ts
+```ts yage-context="entity"
+import { UISurface } from "@yagejs/ui";
+const panel = entity.get(UISurface);
+
 import { UISplitText } from "@yagejs/ui";
 
 const title = new UISplitText({
@@ -221,22 +241,29 @@ API: `chars` / `words` / `lines` getters, `segments`, `setText`, `setStyle`, `re
 **React:** `<SplitText>` (props mirror `<Text>` minus `truncate`, plus the three anchors + `autoSplit`) and the `useSplitText()` hook. The hook returns a `[ref, controls]` tuple — `controls` has live `chars` / `words` / `lines` / `segments` getters, `resplit()`, and `run(process | process[])`. `run` enqueues on a scene-scoped process queue (pauses with the scene; cancelled on unmount and on re-split, so a tween never writes to a destroyed glyph) and returns `{ cancel() }` for that batch. Animate imperatively from any handler — pair `run` with `Tween.stagger(items, factory, stepSeconds)` to cascade a tween across the segments.
 
 ```tsx
-const [ref, split] = useSplitText();
-const reveal = () => {
-  split.chars.forEach((c) => (c.alpha = 0));
-  split.run(
-    Tween.stagger(
-      split.chars,
-      (c) => Tween.custom((v) => (c.alpha = v), 0, 1, 0.3),
-      0.05,
-    ),
+import { useSplitText, SplitText, Button } from "@yagejs/ui-react";
+import { Tween } from "@yagejs/core";
+
+function AnimatedLabel({ label }: { label: string }) {
+  const [ref, split] = useSplitText();
+  const reveal = () => {
+    split.chars.forEach((c) => (c.alpha = 0));
+    split.run(
+      Tween.stagger(
+        split.chars,
+        (c) => Tween.custom((v) => (c.alpha = v), 0, 1, 0.3),
+        0.05,
+      ),
+    );
+  };
+  return (
+    <Button onClick={reveal}>
+      <SplitText ref={ref} charAnchor={0.5}>
+        {label}
+      </SplitText>
+    </Button>
   );
-};
-return (
-  <SplitText ref={ref} charAnchor={0.5} onPointerDown={reveal}>
-    {label}
-  </SplitText>
-);
+}
 ```
 
 `SplitText` is experimental in Pixi and re-lays-out on every `text` / `style` change — prefer `UIText` for static / simple dynamic labels.
@@ -246,18 +273,30 @@ return (
 Drop-in progress bar for a `LoadingScene` (in `@yagejs/core`). Subscribes to `scene:loading:progress` internally and updates a `UIProgressBar`. Spawn inside a `LoadingScene` (throws otherwise). Full contract: `loading-scene.md`.
 
 ```ts
+import { LoadingScene, Scene } from "@yagejs/core";
+import { Anchor } from "@yagejs/ui";
+class GameScene extends Scene {
+  readonly name = "game";
+}
+
 import { LoadingSceneProgressBar } from "@yagejs/ui";
 
-this.spawn(LoadingSceneProgressBar, {
-  width: 400, // default 400
-  height: 16, // default 16
-  track: { color: 0x1e293b }, // bar background
-  fill: { color: 0x38bdf8 }, // bar fill
-  backdrop: { color: 0x0b0f14 }, // full-viewport bg (default: none)
-  anchor: Anchor.Center,
-  offset: { x: 0, y: 40 },
-  layer: "ui",
-});
+class Boot extends LoadingScene {
+  readonly target = new GameScene();
+  onEnter() {
+    this.spawn(LoadingSceneProgressBar, {
+      width: 400, // default 400
+      height: 16, // default 16
+      track: { color: 0x1e293b }, // bar background
+      fill: { color: 0x38bdf8 }, // bar fill
+      backdrop: { color: 0x0b0f14 }, // full-viewport bg (default: none)
+      anchor: Anchor.Center,
+      offset: { x: 0, y: 40 },
+      layer: "ui",
+    });
+    this.startLoading();
+  }
+}
 ```
 
 Pass `backdrop` when the loading scene is transitioned into — without it the scene is transparent and the previous scene bleeds through the fade.
@@ -265,15 +304,22 @@ Pass `backdrop` when the loading scene is transitioned into — without it the s
 ## Visibility
 
 ```ts
-panel.visible = false; // hide
-label.visible = true;
+import { UIPanel, UIText } from "@yagejs/ui";
+
+function showLabel(panel: UIPanel, label: UIText) {
+  panel.visible = false; // hide
+  label.visible = true;
+}
 ```
 
 ## Absolute Positioning
 
 Every element accepts `position`, `left`, `top`, `right`, `bottom` via `LayoutProps`:
 
-```ts
+```ts yage-context="entity"
+import { UISurface } from "@yagejs/ui";
+const panel = entity.get(UISurface);
+
 // Pin a badge to the top-right of its parent. The parent must be
 // `position: "relative"` (the default) so it acts as the containing block.
 const badge = panel.panel({
@@ -302,8 +348,17 @@ helper (also exported) binds one listener pair and swaps callbacks in place on
 `update()`. `UIButton` suppresses callbacks while disabled.
 
 ```ts
-new UIButton({ children: "Save", onHover: (h) => setGlow(h) });
-panel.panel({ onPointerOver: showDetail, onPointerOut: hideDetail });
+import { UIButton, UIPanel } from "@yagejs/ui";
+
+function addHoverControls(
+  panel: UIPanel,
+  setGlow: (hovering: boolean) => void,
+  showDetail: () => void,
+  hideDetail: () => void,
+) {
+  new UIButton({ children: "Save", onHover: (h) => setGlow(h) });
+  panel.panel({ onPointerOver: showDetail, onPointerOut: hideDetail });
+}
 ```
 
 The React layer (`@yagejs/ui-react`) exposes these props on the matching
@@ -323,7 +378,10 @@ is required** — this works in a pure imperative scene.
 
 ### attachTooltip (imperative, headless)
 
-```ts
+```ts yage-context="entity,scene"
+import { UISurface } from "@yagejs/ui";
+const surface = entity.get(UISurface);
+
 import { attachTooltip, UIPanel, UIText } from "@yagejs/ui";
 
 const tip = attachTooltip(surface.root, scene, {
@@ -398,11 +456,19 @@ this exact overlay.
 ## Background Options
 
 ```ts
+import type { BackgroundOptions } from "@yagejs/ui";
+import { texture } from "@yagejs/renderer";
+const tex = texture("assets/panel.png");
+
 // Solid color
-{ color: 0x222222, alpha: 0.9, radius: 8 }
+const solid: BackgroundOptions = { color: 0x222222, alpha: 0.9, radius: 8 };
 
 // Nine-slice texture
-{ texture: tex, mode: "nine-slice", nineSlice: { left: 12, top: 12, right: 12, bottom: 12 } }
+const nineSlice: BackgroundOptions = {
+  texture: tex,
+  mode: "nine-slice",
+  nineSlice: { left: 12, top: 12, right: 12, bottom: 12 },
+};
 ```
 
 `UIImage`, `UINineSlice`, and texture backgrounds accept `TextureInput`: a

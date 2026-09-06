@@ -57,7 +57,7 @@ import {
   SPRITE_SCALE,
   buildBoxerAnimDefs,
   castHandPosition,
-  installFootAnchorTracking,
+  BoxerFootAnchorTracking,
   playBoxerAnim,
   sourceFor,
 } from "./boxer-sprites.js";
@@ -423,7 +423,7 @@ export class EnemyEntity extends Entity {
         tint: ENEMY_TINT,
       }),
     );
-    installFootAnchorTracking(this);
+    this.add(new BoxerFootAnchorTracking());
     this.add(new AnimationController(buildBoxerAnimDefs(ENEMY_ANIMS)));
     this.add(new GraphicsComponent());
     this.add(new RigidBodyComponent({ type: "dynamic", fixedRotation: true }));

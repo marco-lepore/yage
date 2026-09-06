@@ -4,14 +4,17 @@ Depends on `@yagejs/core`, `@yagejs/renderer`. Pooled particle emitters.
 
 ## Setup
 
-```ts
+```ts yage-context="engine"
 import { ParticlesPlugin } from "@yagejs/particles";
 engine.use(new ParticlesPlugin());
 ```
 
 ## ParticleEmitterComponent
 
-```ts
+```ts yage-context="entity"
+import { texture } from "@yagejs/renderer";
+const particleTex = texture("assets/particle.png");
+
 import { ParticleEmitterComponent } from "@yagejs/particles";
 
 entity.add(
@@ -52,26 +55,39 @@ other shapes are 64px and already visible at `scale: 1`.
 ## Built-in shapes
 
 ```ts
+import type { TextureResource } from "@yagejs/renderer";
+
 type ParticleShape =
-  | "pixel"        // white rectangle; 1×1 by default (shared Texture.WHITE)
-  | "circle"       // solid disc, ellipse on a non-square size
-  | "softCircle"   // disc fading to transparent at the edge
-  | "diamond"      // solid diamond
-  | "softDiamond"  // diamond fading to transparent — reads as a 4-point sparkle
-  | "line";        // filled streak, 64×8 by default
+  | "pixel" // white rectangle; 1×1 by default (shared Texture.WHITE)
+  | "circle" // solid disc, ellipse on a non-square size
+  | "softCircle" // disc fading to transparent at the edge
+  | "diamond" // solid diamond
+  | "softDiamond" // diamond fading to transparent — reads as a 4-point sparkle
+  | "line"; // filled streak, 64×8 by default
 
 type ShapeSize = number | [width: number, height: number];
-interface ShapeConfig { type: ParticleShape; size?: ShapeSize }
+interface ShapeConfig {
+  type: ParticleShape;
+  size?: ShapeSize;
+}
 
-shape?: ParticleShape | ShapeConfig
-shapeTexture(shape: ParticleShape | ShapeConfig): TextureResource
+interface ShapeOptions {
+  shape?: ParticleShape | ShapeConfig;
+}
+declare function shapeTexture(
+  shape: ParticleShape | ShapeConfig,
+): TextureResource;
 ```
 
 ```ts
-{ shape: "softCircle" }                            // 64×64
-{ shape: { type: "softCircle", size: 16 } }        // 16×16 texture
-{ shape: { type: "circle", size: [32, 16] } }      // ellipse
-{ shape: { type: "line", size: [4, 32] } }         // vertical streak (rain)
+import type { ShapeConfig, ParticleShape } from "@yagejs/particles";
+
+const shapes: Array<{ shape: ParticleShape | ShapeConfig }> = [
+  { shape: "softCircle" }, // 64×64
+  { shape: { type: "softCircle", size: 16 } }, // 16×16 texture
+  { shape: { type: "circle", size: [32, 16] } }, // ellipse
+  { shape: { type: "line", size: [4, 32] } }, // vertical streak (rain)
+];
 ```
 
 Shapes are white — set `tint` to color them. `size` is the generated texture's
@@ -93,13 +109,16 @@ writes an RGBA buffer directly, so it needs no DOM or renderer. A 1×1 `pixel` i
 
 Control:
 
-```ts
+```ts yage-context="entity"
+import { ParticleEmitterComponent } from "@yagejs/particles";
+const emitter = entity.get(ParticleEmitterComponent);
+
 emitter.emit(); // start continuous
 emitter.stop(); // stop only emission started by emit()
 const request = emitter.requestEmission(); // ParticleEmissionHandle
 request.release(); // release only this request; idempotent
 emitter.burst(50); // spawn at the entity's world position
-emitter.burst(10, x, y); // burst at an explicit world position
+emitter.burst(10, 400, 300); // burst at an explicit world position
 emitter.isEmitting; // boolean
 emitter.activeCount; // number
 emitter.blendMode = "add"; // BlendMode, read/write
@@ -138,6 +157,8 @@ only: the emitter's rotation and scale are not applied.
 converge on, where they spawned:
 
 ```ts
+import { ParticleEmitterComponent } from "@yagejs/particles";
+
 new ParticleEmitterComponent({
   lifetime: 0.4,
   spawnOffset: { radius: 42 }, // start on a ring (add `angle` for an arc)
@@ -163,7 +184,10 @@ no continuous emission, and `burst` particles stay frozen forever. The first
 
 ## ParticlePresets
 
-```ts
+```ts yage-context="object-member"
+import type { TextureInput } from "@yagejs/renderer";
+import type { EmitterConfig } from "@yagejs/particles";
+
 import { ParticlePresets } from "@yagejs/particles";
 
 fire(textureOrKey?: TextureInput): EmitterConfig    // warm, upward, shrinking
@@ -173,6 +197,10 @@ rain(textureOrKey?: TextureInput): EmitterConfig    // downward, uniform
 ```
 
 ```ts
+import { ParticleEmitterComponent, ParticlePresets } from "@yagejs/particles";
+import { texture } from "@yagejs/renderer";
+const myTex = texture("assets/particle.png");
+
 new ParticleEmitterComponent(ParticlePresets.fire()); // zero assets
 new ParticleEmitterComponent(ParticlePresets.fire(myTex)); // your own art
 ```
@@ -186,7 +214,19 @@ effect animates it at its natural size.
 Spreading overrides anything except the texture source:
 
 ```ts
-{ ...ParticlePresets.fire(), rate: 50, tint: 0x00ccff }  // ok
-{ ...ParticlePresets.fire(), texture: myTex }            // type error: two sources
-{ ...ParticlePresets.fire(myTex), rate: 50 }             // pass the source as the argument
+import { ParticlePresets, type EmitterConfig } from "@yagejs/particles";
+import { texture } from "@yagejs/renderer";
+const myTex = texture("assets/particle.png");
+
+const greenFire: EmitterConfig = {
+  ...ParticlePresets.fire(),
+  rate: 50,
+  tint: 0x00ccff,
+};
+// yage-expect-error TS2375
+const conflictingSource: EmitterConfig = {
+  ...ParticlePresets.fire(),
+  texture: myTex,
+};
+const customFire: EmitterConfig = { ...ParticlePresets.fire(myTex), rate: 50 };
 ```

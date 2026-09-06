@@ -1,198 +1,158 @@
 ---
 title: "State Management"
-description: "Game state with DI services, reactive stores, and event-driven patterns"
+description: "Share game-owned state between components, scenes, UI, and save files"
 ---
 
-YAGE provides several ways to manage game state depending on your needs:
-DI-registered services for shared state, reactive stores for UI binding, and
-events for decoupled communication.
+Create state where its lifetime begins, then pass the same object to the
+scenes and components that use it. A core reactive record lets gameplay update
+the state while React reads it, without keeping a separate UI copy.
 
-## Service Key Pattern
+## Create one state root
 
-The most common approach is a plain class registered as a DI service:
+A factory creates an independent state root for each game or run:
 
-```typescript
-import { ServiceKey } from "@yagejs/core";
-
-interface GameState {
-  score: number;
-  health: number;
-  level: number;
-}
-
-const GameStateKey = new ServiceKey<GameState>("gameState");
-```
-
-Register it in your scene:
-
-```typescript
-class GameScene extends Scene {
-  onEnter(): void {
-    const state: GameState = { score: 0, health: 100, level: 1 };
-    this.context.register(GameStateKey, state);
-  }
-}
-```
-
-Access it from any component or system in the scene:
-
-```typescript
-class ScoreDisplay extends Component {
-  private readonly state = this.use(GameStateKey);
-
-  update(): void {
-    this.state.score; // read
-  }
-}
-```
-
-This pattern is simple and type-safe. If the service needs to persist, include
-its durable fields in an explicit `Serializable<TEncoded>` save root.
-
-## Reactive Stores (for React UI)
-
-When bridging ECS state to React UI, use `createRecord`:
-
-```typescript
+```typescript yage-group="game-state" yage-file="state.ts"
 import { createRecord } from "@yagejs/core";
 
-const uiStore = createRecord({
-  default: () => ({
-    score: 0,
-    health: 100,
-    message: "",
-  }),
-});
+export function createGameState() {
+  return createRecord({
+    default: () => ({ score: 0, health: 100, level: 1 }),
+  });
+}
+
+export type GameState = ReturnType<typeof createGameState>;
 ```
 
-**Write from ECS** (systems, components, event handlers):
+Call the factory once for a run. Passing that root to successive scenes keeps
+the run's state; creating another root starts an independent run. Plugin
+infrastructure uses [dependency injection](/concepts/dependency-injection/),
+but game-owned score and inventory do not need service keys.
 
-```typescript
-// In a component or event handler
-uiStore.set({ score: uiStore.get().score + 10 });
+## Write from components
+
+Use `set()` to update fields. It notifies subscribers and preserves the other
+fields in the record:
+
+```typescript yage-group="game-state" yage-file="score.ts"
+import { Component, defineEvent } from "@yagejs/core";
+import type { GameState } from "./state.js";
+
+export const PointsAwarded = defineEvent<{ points: number }>(
+  "my-game:points-awarded",
+);
+
+export class ScoreTracker extends Component {
+  constructor(private readonly state: GameState) {
+    super();
+  }
+
+  onAdd(): void {
+    this.listenScene(PointsAwarded, ({ points }) => {
+      this.state.set({ score: this.state.get().score + points });
+    });
+  }
+}
 ```
 
-**Read from React** (auto-rerenders on change):
+`listenScene()` releases the subscription when the component is removed.
+Use `listen()` for entity subscriptions, `listenBus()` for engine events,
+and `addCleanup(unsubscribe)` for other subscription APIs.
 
-```tsx
-import { useStore } from "@yagejs/ui-react";
+Events let a producer award points without holding the record. A direct
+reference is also valid when the producer already knows the state or component
+it should update. Neither approach needs another copy of the score.
 
-function HUD() {
-  const score = useStore(uiStore, (src) => src.get().score);
+## Read the same root from React
+
+Pass the root as a prop. `useStore()` subscribes to it and reads the selected
+value on changes:
+
+```tsx yage-group="game-state" yage-file="hud.tsx"
+import { Text, useStore } from "@yagejs/ui-react";
+import type { GameState } from "./state.js";
+
+export function HUD({ state }: { state: GameState }) {
+  const score = useStore(state, (source) => source.get().score);
   return <Text>{`Score: ${score}`}</Text>;
 }
 ```
 
-The store acts as a one-way bridge: ECS writes, React reads. This keeps
-game logic in the ECS layer and rendering in the UI layer.
+Mount the score tracker and HUD with the same root:
 
-## Event-Driven State
+```tsx yage-group="game-state" yage-file="scene.tsx"
+import { Scene } from "@yagejs/core";
+import { UIRoot } from "@yagejs/ui-react";
+import { HUD } from "./hud.js";
+import { ScoreTracker } from "./score.js";
+import type { GameState } from "./state.js";
 
-For decoupled state changes, use typed events:
+export class GameScene extends Scene {
+  readonly name = "game";
 
-```typescript
-import { defineEvent } from "@yagejs/core";
-
-const CoinCollected = defineEvent("coin:collected");
-const PlayerDied = defineEvent("player:died");
-```
-
-**Emit from entities** (via entity events — bubble up to the scene):
-
-```typescript
-// In a coin's trigger handler
-collider.onTrigger((ev) => {
-  if (ev.entered) {
-    this.entity.emit(CoinCollected);
-    this.entity.destroy();
+  constructor(private readonly state: GameState) {
+    super();
   }
-});
-```
 
-**Listen at the scene level:**
-
-```typescript
-class GameScene extends Scene {
   onEnter(): void {
-    this.on(CoinCollected, () => {
-      state.score += 10;
-      uiStore.set({ score: state.score });
-    });
-
-    this.on(PlayerDied, () => {
-      state.health = 100;
-      state.score = 0;
-      // Reset player position...
-    });
+    const hud = this.spawn("hud");
+    hud.add(new ScoreTracker(this.state));
+    hud.add(new UIRoot()).render(<HUD state={this.state} />);
   }
 }
 ```
 
-This keeps entities decoupled — a coin doesn't need to know about the score
-system, it just emits an event.
+The engine must have `RendererPlugin`, `UIPlugin` and `UIReactPlugin`
+installed before entering this scene. See [React UI](/guides/ui-react/)
+for setup.
 
-## Combining Patterns
+For a running engine with those plugins installed:
 
-A typical game combines all three:
+```typescript yage-group="game-state" yage-file="start.ts" yage-context="engine"
+import { createGameState } from "./state.js";
+import { GameScene } from "./scene.js";
+import { PointsAwarded } from "./score.js";
 
-```typescript
-// 1. Game state as a DI service
-const GameStateKey = new ServiceKey<GameState>("gameState");
-
-// 2. UI store for React binding
-const uiStore = createRecord({ default: () => ({ score: 0, health: 100 }) });
-
-// 3. Events for decoupled communication
-const CoinCollected = defineEvent("coin:collected");
-
-class GameScene extends Scene {
-  onEnter(): void {
-    const state: GameState = { score: 0, health: 100, level: 1 };
-    this.context.register(GameStateKey, state);
-
-    this.on(CoinCollected, () => {
-      state.score += 10;
-      uiStore.set({ score: state.score });
-    });
-  }
-}
+const state = createGameState();
+const scene = new GameScene(state);
+await engine.scenes.push(scene);
+scene.emit(PointsAwarded, { points: 10 });
 ```
 
-- **ServiceKey** — source of truth, accessible from any component
-- **Store** — React-friendly projection of the state
-- **Events** — triggers that cause state transitions
+The tracker changes the record and the HUD reads the new score. Scene teardown
+removes the tracker subscription and the React tree; the caller still owns the
+record.
 
-## Serialization
+## Save durable facts
 
-If your state service needs to survive save/load, make it serializable:
+A reactive record already implements `Serializable`. Its `serialize()`
+result contains data, not scenes, components or UI objects. Restore that data
+before constructing the consumers:
 
-```typescript
-class GameStateService {
-  score = 0;
-  health = 100;
-  level = 1;
+```typescript yage-group="game-state" yage-file="restore.ts"
+import { createGameState } from "./state.js";
+import { GameScene } from "./scene.js";
 
-  serialize() {
-    return { score: this.score, health: this.health, level: this.level };
-  }
+const state = createGameState();
+state.set({ score: 30 });
+const saved = state.serialize();
 
-  hydrate(data: { score: number; health: number; level: number }) {
-    this.score = data.score;
-    this.health = data.health;
-    this.level = data.level;
-  }
-}
+const restored = createGameState();
+restored.hydrate(saved);
+const restoredScene = new GameScene(restored);
 ```
 
-Expose this service through a game-owned `Serializable<TEncoded>` adapter, or
-make the service itself implement that interface. Restore the state before
-constructing the scene that consumes it.
+For storage, migrations and named slots, pass the root to
+[`@yagejs/save`](/guides/save-and-load/). Larger domains can compose state
+factories with `createStore()` or implement `Serializable` on a game-owned
+model.
 
-## Anti-Patterns
+## Keep ownership explicit
 
-- **Global mutable state** — avoid `window.score` or module-level `let score`.
-  This breaks scene isolation and makes testing difficult.
-- **Component-to-component direct references** — don't reach into another
-  entity's components to modify their state. Use events or shared services.
-- **Storing state in the UI layer** — keep game logic state in the ECS layer.
-  The UI should read state, not own it.
+- Avoid module-global mutable game state. A factory lets tests and independent
+  runs construct their own roots.
+- Do not register game state during repeated scene entry. Pass the existing
+  root to the scene instead.
+- Keep durable gameplay state outside the UI. Local UI state, such as an open
+  menu tab, can stay in React.
+- Do not mutate a record's `get()` result. Use its mutation methods so
+  subscribers receive changes.

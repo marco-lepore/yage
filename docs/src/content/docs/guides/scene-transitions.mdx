@@ -9,8 +9,13 @@ crossfade, flash, or run any custom animation.
 
 ## Quick Start
 
-```typescript
+```typescript yage-context="engine"
+import { Scene } from "@yagejs/core";
 import { fade } from "@yagejs/renderer";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
 
 // Push with a fade to black
 await engine.scenes.push(new GameScene(), {
@@ -35,9 +40,9 @@ black, play-area-only. Pass `coverScreen: true` to also obscure letterbox bars
 ```typescript
 import { fade } from "@yagejs/renderer";
 
-fade() // 0.3s black
-fade({ duration: 0.5, color: 0x1a1a2e }) // 0.5s dark blue
-fade({ coverScreen: true }) // also obscure the letterbox bars
+fade(); // 0.3s black
+fade({ duration: 0.5, color: 0x1a1a2e }); // 0.5s dark blue
+fade({ coverScreen: true }); // also obscure the letterbox bars
 ```
 
 **`flash({ duration?, color?, coverScreen? })`** — Flashes a solid color that
@@ -47,9 +52,9 @@ effects. Defaults to 0.2s, white, play-area-only.
 ```typescript
 import { flash } from "@yagejs/renderer";
 
-flash() // 0.2s white
-flash({ duration: 0.15, color: 0xff0000 }) // quick red flash
-flash({ coverScreen: true }) // also obscure the letterbox bars
+flash(); // 0.2s white
+flash({ duration: 0.15, color: 0xff0000 }); // quick red flash
+flash({ coverScreen: true }); // also obscure the letterbox bars
 ```
 
 **`crossFade({ duration? })`** — Cross-dissolves between scenes. The
@@ -59,8 +64,8 @@ visible throughout — no blackout in the middle. Defaults to 0.4s.
 ```typescript
 import { crossFade } from "@yagejs/renderer";
 
-crossFade() // 0.4s
-crossFade({ duration: 0.6 })
+crossFade(); // 0.4s
+crossFade({ duration: 0.6 });
 ```
 
 **`iris({ duration?, color?, center?, coverScreen? })`** — Closing iris →
@@ -74,9 +79,9 @@ black, virtual-center, play-area-only.
 ```typescript
 import { iris } from "@yagejs/renderer";
 
-iris() // 0.6s black iris from the virtual-space center
-iris({ duration: 0.9, color: 0x111111, center: { x: 64, y: 64 } })
-iris({ coverScreen: true }) // also obscure the letterbox bars
+iris(); // 0.6s black iris from the virtual-space center
+iris({ duration: 0.9, color: 0x111111, center: { x: 64, y: 64 } });
+iris({ coverScreen: true }); // also obscure the letterbox bars
 ```
 
 `iris.center` and `irisReveal.center` are both in **virtual pixels** —
@@ -96,12 +101,12 @@ want the retro hard-cut feel.
 ```typescript
 import { irisReveal } from "@yagejs/renderer";
 
-irisReveal() // 0.6s reveal from the center
+irisReveal(); // 0.6s reveal from the center
 irisReveal({
   duration: 0.8,
-  center: { x: 0, y: 0 },           // bloom from the top-left (virtual px)
+  center: { x: 0, y: 0 }, // bloom from the top-left (virtual px)
   easing: (t) => 1 - Math.pow(1 - t, 3),
-})
+});
 ```
 
 **`chessboard({ duration?, rows?, cols? })`** — Staggered checkerboard
@@ -114,8 +119,8 @@ Defaults to 0.7s and a 6×10 grid.
 ```typescript
 import { chessboard } from "@yagejs/renderer";
 
-chessboard() // 0.7s 6×10 grid
-chessboard({ rows: 4, cols: 6, duration: 0.9 })
+chessboard(); // 0.7s 6×10 grid
+chessboard({ rows: 4, cols: 6, duration: 0.9 });
 ```
 
 **`slidePush({ duration?, direction?, reverseOnPop?, easing? })`** — Both
@@ -129,13 +134,13 @@ cubic ease-out.
 ```typescript
 import { slidePush } from "@yagejs/renderer";
 
-slidePush() // 0.5s left push
-slidePush({ direction: "up", duration: 0.4 })
+slidePush(); // 0.5s left push
+slidePush({ direction: "up", duration: 0.4 });
 slidePush({
   direction: "right",
   reverseOnPop: false, // pop also slides right
   easing: (t) => t * t,
-})
+});
 ```
 
 `@yagejs/core` ships the `SceneTransition` contract and orchestration but
@@ -150,12 +155,17 @@ usually not what you want.
 Set `defaultTransition` on a scene class to use it automatically when no
 call-site transition is provided:
 
-```typescript
+```typescript yage-context="engine"
+import { Scene } from "@yagejs/core";
+import { fade, flash } from "@yagejs/renderer";
+
 class MenuScene extends Scene {
   readonly name = "menu";
   readonly defaultTransition = fade({ duration: 0.3 });
 
-  onEnter() { /* ... */ }
+  onEnter() {
+    /* ... */
+  }
 }
 
 // Uses MenuScene.defaultTransition automatically
@@ -178,7 +188,7 @@ exits the old scene, then enters the new one without waiting for frames.
 
 ## Checking Transition State
 
-```typescript
+```typescript yage-context="engine,scene,async"
 // On the scene manager
 if (engine.scenes.isTransitioning) {
   // don't accept input during transitions
@@ -194,7 +204,7 @@ if (scene.isTransitioning) {
 
 The engine event bus emits events when transitions start and end:
 
-```typescript
+```typescript yage-context="engine"
 engine.events.on("scene:transition:started", ({ kind }) => {
   console.log(`Transition started: ${kind}`); // "push", "pop", or "replace"
 });
@@ -282,9 +292,23 @@ visible behind a dip-to-black.
 one used when it hands off to its target scene. It composes cleanly with a
 call-site transition passed to `push`/`replace`:
 
-```typescript
+```typescript yage-context="engine"
+import { LoadingScene, Scene } from "@yagejs/core";
+import { fade } from "@yagejs/renderer";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
+class Boot extends LoadingScene {
+  readonly target = new GameScene();
+  readonly transition = fade({ duration: 0.3 });
+  onEnter() {
+    this.startLoading();
+  }
+}
+
 await engine.scenes.replace(new Boot(), {
-  transition: fade({ duration: 0.4 }),   // mount Boot with this fade
+  transition: fade({ duration: 0.4 }), // mount Boot with this fade
 });
 // Boot.transition animates the handoff Boot → target separately.
 ```

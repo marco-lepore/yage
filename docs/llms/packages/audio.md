@@ -4,7 +4,7 @@ Depends on `@yagejs/core`, `@pixi/sound`. Channel-based audio playback.
 
 ## Setup
 
-```ts
+```ts yage-context="engine"
 import { AudioPlugin } from "@yagejs/audio";
 
 engine.use(
@@ -22,13 +22,16 @@ engine.use(
 
 Browsers suspend the `AudioContext` until the user interacts with the page. `@pixi/sound` already resumes it on the first pointer/touch gesture, so "play on click" works without extra setup. That means **music scheduled on page-load stays silent until first click** — not a bug, but surprising. Use `isUnlocked` / `onUnlock` to schedule autoplay that survives the delay:
 
-```ts
+```ts yage-context="component"
+import { AudioManagerKey } from "@yagejs/audio";
+
 const audio = this.use(AudioManagerKey);
 
 audio.isUnlocked(); // boolean — AudioContext.state === "running"
-audio.onUnlock(() =>
-  audio.play("music/title", { channel: "music", loop: true }),
-);
+const cb = () => {
+  audio.play("music/title", { channel: "music", loop: true });
+};
+audio.onUnlock(cb);
 audio.offUnlock(cb); // remove a pending listener (disposer from onUnlock also works)
 
 audio.autoMuteOnBlur = true; // default true — toggles @pixi/sound's WebAudioContext.autoPause (suspends context on window blur)
@@ -49,7 +52,11 @@ const CoinSfx = sound("assets/coin.wav");
 
 ## AudioManager
 
-```ts
+```ts yage-context="component"
+import { sound, type AudioPlayOptions } from "@yagejs/audio";
+const CoinSfx = sound("assets/coin.wav");
+const opts: AudioPlayOptions = { channel: "sfx" };
+
 import { AudioManagerKey } from "@yagejs/audio";
 
 const audio = this.use(AudioManagerKey);
@@ -111,10 +118,16 @@ active. A released request receives no callback. Stopping the shared
 
 **`registerSound(alias, buffer)` / `unregisterSound(alias)`** — register a runtime-generated `AudioBuffer` under an alias so it resolves and plays exactly like a preloaded sound, through the same `AudioManager` channels, mute, and blur auto-pause. Audio analogue of the renderer's `registerTexture(key, texture)`.
 
-```ts
+```ts yage-context="component"
 import { registerSound, AudioManagerKey } from "@yagejs/audio";
 
-const buffer = synthesizeShot(); // any code that produces an AudioBuffer
+const buffer = new AudioBuffer({ length: 4410, sampleRate: 44100 });
+const samples = buffer.getChannelData(0);
+for (let i = 0; i < samples.length; i++) {
+  samples[i] =
+    Math.sin((2 * Math.PI * 880 * i) / buffer.sampleRate) *
+    (1 - i / samples.length);
+}
 registerSound("shoot", buffer);
 
 const audio = this.use(AudioManagerKey);
@@ -135,7 +148,10 @@ Semantics:
 
 Entity-bound audio. Auto-stops on entity destroy.
 
-```ts
+```ts yage-context="entity"
+import { sound } from "@yagejs/audio";
+const CoinSfx = sound("assets/coin.wav");
+
 import { SoundComponent } from "@yagejs/audio";
 
 entity.add(

@@ -4,7 +4,12 @@ Animate the handoff between scenes during `push`, `pop`, and `replace`. Both sce
 
 ## Usage
 
-```ts
+```ts yage-context="engine"
+import { Scene } from "@yagejs/core";
+class Level extends Scene {
+  readonly name = "level";
+}
+
 import {
   chessboard,
   crossFade,
@@ -16,22 +21,32 @@ import {
 } from "@yagejs/renderer";
 
 // Push with a fade
-await engine.scenes.push(nextScene, { transition: fade({ duration: 0.4 }) });
+await engine.scenes.push(new Level(), { transition: fade({ duration: 0.4 }) });
 
 // Pop with a flash
-await engine.scenes.pop({ transition: flash({ duration: 0.2, color: 0xff0000 }) });
+await engine.scenes.pop({
+  transition: flash({ duration: 0.2, color: 0xff0000 }),
+});
 
 // Replace with a cross-dissolve
-await engine.scenes.replace(newScene, { transition: crossFade({ duration: 0.5 }) });
+await engine.scenes.replace(new Level(), {
+  transition: crossFade({ duration: 0.5 }),
+});
 
 // Iris-out → swap → iris-in (Zelda-style)
-await engine.scenes.replace(nextScene, { transition: iris({ duration: 0.7 }) });
+await engine.scenes.replace(new Level(), {
+  transition: iris({ duration: 0.7 }),
+});
 
 // Checkerboard wipe with a custom grid
-await engine.scenes.push(nextScene, { transition: chessboard({ rows: 4, cols: 6 }) });
+await engine.scenes.push(new Level(), {
+  transition: chessboard({ rows: 4, cols: 6 }),
+});
 
 // Both scenes slide together (incoming pushes the previous one off)
-await engine.scenes.push(nextScene, { transition: slidePush({ direction: "left" }) });
+await engine.scenes.push(new Level(), {
+  transition: slidePush({ direction: "left" }),
+});
 
 // Per-scene default
 class MenuScene extends Scene {
@@ -53,15 +68,17 @@ then enters the new one without waiting for frames.
 ## Contract
 
 ```ts
+import type { EngineContext, Scene } from "@yagejs/core";
+
 interface SceneTransition {
-  readonly duration: number;           // Total wall-clock seconds
+  readonly duration: number; // Total wall-clock seconds
   begin?(ctx: SceneTransitionContext): void;
   tick(dt: number, ctx: SceneTransitionContext): void;
   end?(ctx: SceneTransitionContext): void;
 }
 
 interface SceneTransitionContext {
-  readonly elapsed: number;            // Wall-clock seconds since begin()
+  readonly elapsed: number; // Wall-clock seconds since begin()
   readonly kind: "push" | "pop" | "replace";
   readonly engineContext: EngineContext;
   readonly fromScene: Scene | undefined;
@@ -78,17 +95,17 @@ interface SceneTransitionContext {
 Core ships the `SceneTransition` contract and orchestration but no concrete
 transitions. All built-ins live in `@yagejs/renderer` (PIXI-based).
 
-| Function | Description |
-|---|---|
-| `fade({ duration?, color?, coverScreen? })` | Triangle alpha ramp: fade out → fade in. Scene swap happens under the fully-opaque mid-point. Default 0.3s, black, play-area-only. |
-| `flash({ duration?, color?, coverScreen? })` | Overlay decays from alpha 1→0. Scene swap happens under the opaque peak at begin. Default 0.2s, white, play-area-only. |
-| `crossFade({ duration? })` | Cross-dissolve: outgoing alpha 1→0 while incoming alpha 0→1. Both visible throughout. Default 0.4s. |
-| `iris({ duration?, color?, center?, coverScreen? })` | Circular cut-out shrinks to zero (closing iris) over the first half, then grows back (opening iris) to reveal the destination. Mask-based; redrawn each frame. `center` is in virtual pixels. Default 0.6s, black, virtual-center, play-area-only. |
-| `irisReveal({ duration?, center?, easing? })` | One-way variant of `iris` — the destination scene's container is masked by an expanding circle so the new scene "blooms" over the previous one. No color overlay, no mid-point swap. Default 0.6s, virtual-center, linear. |
-| `chessboard({ duration?, rows?, cols? })` | Reveals the destination through a staggered checkerboard mask painted onto the incoming scene's container. Even-parity cells grow over `[0, 0.7]`, odd-parity over `[0.3, 1]` (0.4-wide overlap, smoothstep-eased); the previous scene stays visible underneath until each cell covers it. Default 0.7s, 6×10. |
-| `slidePush({ duration?, direction?, reverseOnPop?, easing? })` | Both scenes translate in lockstep — the incoming scene pushes the outgoing one off the opposite edge. `direction` is the outgoing scene's exit direction (default `"left"`). `reverseOnPop` (default `true`) mirrors the motion on `pop`. Default 0.5s, cubic ease-out. |
-| `getSceneContainer(ctx, scene)` | Helper — resolves a scene's PIXI root container. Returns `undefined` if `scene` is undefined or its tree isn't materialized. |
-| `getVirtualBounds(ctx)` | Helper — `{ width, height }` of the scene-root coord space (= `renderer.virtualSize`). |
+| Function                                                       | Description                                                                                                                                                                                                                                                                                                    |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fade({ duration?, color?, coverScreen? })`                    | Triangle alpha ramp: fade out → fade in. Scene swap happens under the fully-opaque mid-point. Default 0.3s, black, play-area-only.                                                                                                                                                                             |
+| `flash({ duration?, color?, coverScreen? })`                   | Overlay decays from alpha 1→0. Scene swap happens under the opaque peak at begin. Default 0.2s, white, play-area-only.                                                                                                                                                                                         |
+| `crossFade({ duration? })`                                     | Cross-dissolve: outgoing alpha 1→0 while incoming alpha 0→1. Both visible throughout. Default 0.4s.                                                                                                                                                                                                            |
+| `iris({ duration?, color?, center?, coverScreen? })`           | Circular cut-out shrinks to zero (closing iris) over the first half, then grows back (opening iris) to reveal the destination. Mask-based; redrawn each frame. `center` is in virtual pixels. Default 0.6s, black, virtual-center, play-area-only.                                                             |
+| `irisReveal({ duration?, center?, easing? })`                  | One-way variant of `iris` — the destination scene's container is masked by an expanding circle so the new scene "blooms" over the previous one. No color overlay, no mid-point swap. Default 0.6s, virtual-center, linear.                                                                                     |
+| `chessboard({ duration?, rows?, cols? })`                      | Reveals the destination through a staggered checkerboard mask painted onto the incoming scene's container. Even-parity cells grow over `[0, 0.7]`, odd-parity over `[0.3, 1]` (0.4-wide overlap, smoothstep-eased); the previous scene stays visible underneath until each cell covers it. Default 0.7s, 6×10. |
+| `slidePush({ duration?, direction?, reverseOnPop?, easing? })` | Both scenes translate in lockstep — the incoming scene pushes the outgoing one off the opposite edge. `direction` is the outgoing scene's exit direction (default `"left"`). `reverseOnPop` (default `true`) mirrors the motion on `pop`. Default 0.5s, cubic ease-out.                                        |
+| `getSceneContainer(ctx, scene)`                                | Helper — resolves a scene's PIXI root container. Returns `undefined` if `scene` is undefined or its tree isn't materialized.                                                                                                                                                                                   |
+| `getVirtualBounds(ctx)`                                        | Helper — `{ width, height }` of the scene-root coord space (= `renderer.virtualSize`).                                                                                                                                                                                                                         |
 
 `fade` / `flash` / `iris` parent their overlay to `renderer.worldRoot` and size against `renderer.visibleCanvasRect`, so under `letterbox` the overlay covers the play area (bars stay visible) and under `expand` it paints into the bars too. Pass `coverScreen: true` to parent on `app.stage` instead and cover the canvas including bars even under letterbox — useful when the host page background is jarring.
 
@@ -134,9 +151,9 @@ Concurrent `push`/`pop`/`replace`/`popAll` calls queue via `_pendingChain`. Re-e
 
 ## Checking State
 
-```ts
-engine.scenes.isTransitioning  // true during any active transition
-scene.isTransitioning           // same, accessible from the scene
+```ts yage-context="engine,scene"
+engine.scenes.isTransitioning; // true during any active transition
+scene.isTransitioning; // same, accessible from the scene
 ```
 
 ## Custom Transitions
@@ -148,11 +165,11 @@ Two helpers cover most needs:
 
 Coordinate-space rule: pick the parent and size source for what your transition needs to cover.
 
-| Parent                       | Coord space        | Size source                               | Covers                                |
-| ---------------------------- | ------------------ | ----------------------------------------- | ------------------------------------- |
-| Scene root                   | virtual pixels     | `getVirtualBounds(ctx)`                   | one scene only (clipped to virtual)   |
-| `renderer.worldRoot`         | virtual pixels     | `renderer.visibleCanvasRect`              | virtual rect under letterbox; virtual + bars under expand |
-| `app.stage` (direct)         | canvas / CSS px    | `app.screen.width / .height`              | full canvas including letterbox bars  |
+| Parent               | Coord space     | Size source                  | Covers                                                    |
+| -------------------- | --------------- | ---------------------------- | --------------------------------------------------------- |
+| Scene root           | virtual pixels  | `getVirtualBounds(ctx)`      | one scene only (clipped to virtual)                       |
+| `renderer.worldRoot` | virtual pixels  | `renderer.visibleCanvasRect` | virtual rect under letterbox; virtual + bars under expand |
+| `app.stage` (direct) | canvas / CSS px | `app.screen.width / .height` | full canvas including letterbox bars                      |
 
 `worldRoot`-parented overlays are the safer default for full-screen effects because they paint into the bars under `expand` (where the game treats them as drawable area) and stay clipped to the play area under `letterbox`. Use `app.stage` only when you also need to obscure the letterbox bars — e.g., the host page background is jarring during a dip-to-black. The built-in `fade` / `flash` / `iris` expose this via `coverScreen?: boolean`.
 
@@ -185,6 +202,7 @@ function slideIn(duration: number): SceneTransition {
 ```
 
 Notes:
+
 - `begin` fires synchronously when `SceneManager` starts the transition, before any frame is rendered — paint your start state here (hide incoming scene, offset it, etc.) to avoid a flash.
 - `end` always fires at the end of the duration, never mid-run. Restore any persistent properties (visibility, alpha) on surviving scenes as good practice.
 - **Read the right dimension source for the right parent.** Scene-root masks and translations (chessboard / irisReveal / slidePush) live in virtual pixels — size them from `getVirtualBounds(ctx)`. Overlays on `renderer.worldRoot` (fade / flash / iris by default) also live in virtual pixels — size them from `renderer.visibleCanvasRect`. Only stage-direct overlays on `app.stage` (fade / flash / iris under `coverScreen: true`) live in canvas pixels — size those from `app.screen`. Mixing the two silently mis-scales under non-1.0 fit ratios.
@@ -193,9 +211,22 @@ Notes:
 
 `LoadingScene` (core) carries its own `transition` — the one used for the handoff to its target. That transition composes with any call-site transition passed to `push`/`replace`:
 
-```ts
+```ts yage-context="engine"
+import { LoadingScene, Scene } from "@yagejs/core";
+import { fade } from "@yagejs/renderer";
+class GameScene extends Scene {
+  readonly name = "game";
+}
+class Boot extends LoadingScene {
+  readonly target = new GameScene();
+  readonly transition = fade({ duration: 0.3 });
+  onEnter() {
+    this.startLoading();
+  }
+}
+
 await engine.scenes.replace(new Boot(), {
-  transition: fade({ duration: 0.4 }),    // mount Boot with this fade
+  transition: fade({ duration: 0.4 }), // mount Boot with this fade
 });
 // Boot.transition fires separately when Boot hands off to its target.
 ```

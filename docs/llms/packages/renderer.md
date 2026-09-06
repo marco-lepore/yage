@@ -33,7 +33,7 @@ The aliases are transparent (`type DisplayContainer = Container`) and provide no
 
 ## Setup
 
-```ts
+```ts yage-context="engine"
 import { RendererPlugin } from "@yagejs/renderer";
 
 engine.use(
@@ -63,6 +63,9 @@ One flag for pixel-art games. When `true`, the plugin:
 Default: `false`. Composes with `pixi`: explicit `pixi: { roundPixels: false }` wins over the preset, so games can opt parts back out. The preset only sets the _default_, so a per-texture `texture(path, { scaleMode })` still decides for that image.
 
 ```ts
+import { RendererPlugin } from "@yagejs/renderer";
+const host = document.getElementById("game")!;
+
 new RendererPlugin({
   width: 320,
   height: 240,
@@ -80,6 +83,9 @@ The adapter contract (`RendererAdapter` in `@yagejs/core`) carries `canvas`, `ca
 The canvas is **responsive by default** — it tracks a host element and re-maps the virtual rectangle on every resize. Without an explicit `fit` config, the renderer defaults to `{ mode: "letterbox" }` against the configured `container`, falling back to `canvas.parentElement`. There is no `document.body` fallback: a `ResizeObserver` on `body` fires on any page layout change, not just viewport resizes. With no host to observe, the fit applies once against `config.width × config.height`. Pass `fit: { target: document.body }` to opt in explicitly. `setFit({ mode })` changes the mode and keeps the current target. Fixed-size canvases are achieved via fixed CSS dimensions on the container.
 
 ```ts
+import { RendererPlugin } from "@yagejs/renderer";
+const host = document.getElementById("game")!;
+
 new RendererPlugin({
   width: 800,
   height: 600,
@@ -105,12 +111,15 @@ A `ResizeObserver` drives updates; it's disposed in `onDestroy`. In headless env
 
 Runtime API on the plugin:
 
-```ts
+```ts yage-context="engine"
+import { RendererKey } from "@yagejs/renderer";
+const renderer = engine.context.resolve(RendererKey);
+
 renderer.setFit({ mode: "expand" }); // swap modes / target
 renderer.fit; // current { mode, target? }
 renderer.canvasSize; // current CSS { width, height }
-renderer.canvasToVirtual(cssX, cssY); // canvas CSS px → virtual (Vec2)
-renderer.virtualToCanvas(x, y); // virtual → canvas CSS px (Vec2)
+renderer.canvasToVirtual(120, 80); // canvas CSS px → virtual (Vec2)
+renderer.virtualToCanvas(100, 50); // virtual → canvas CSS px (Vec2)
 renderer.visibleVirtualRect; // on-screen sub-rect of virtual (clamped)
 renderer.croppedVirtualRects; // parts of virtual that are off-screen
 renderer.virtualCanvasRect; // where virtual sits on the canvas (CSS px)
@@ -157,7 +166,11 @@ Under `expand` these are the play-adjacent strips the game is expected to draw i
 
 Under `letterbox` the same rects only report where the `backgroundColor` bars land. That mode clips every scene layer to the virtual rect, so content placed at these coordinates on a scene layer is invisible. To draw in the bars, parent a container directly on `renderer.application.stage` and position it in **canvas pixels**:
 
-```ts
+```ts yage-context="engine"
+import { Container, Graphics } from "pixi.js";
+import { RendererKey } from "@yagejs/renderer";
+const renderer = engine.context.resolve(RendererKey);
+
 const bars = new Container();
 renderer.application.stage.addChild(bars); // canvas px, above the fit transform
 const { width } = renderer.canvasSize;
@@ -189,13 +202,22 @@ Emits on the engine `EventBus`:
 | `screen:fullscreen`  | `{ active: boolean }`       | `fullscreenchange` / `webkitfullscreenchange` (entering, exiting, Esc, browser UI). |
 | `screen:orientation` | `{ type: OrientationType }` | `screen.orientation.change` if available, else `window.orientationchange` fallback. |
 
-```ts
+```ts yage-context="engine"
+import { RendererPlugin } from "@yagejs/renderer";
+const host = document.getElementById("game")!;
+const button = document.createElement("button");
+
 import { EventBusKey } from "@yagejs/core";
-const renderer = engine.use(
-  new RendererPlugin({ width: 800, height: 600, container: host }),
-);
+const renderer = new RendererPlugin({
+  width: 800,
+  height: 600,
+  container: host,
+});
+engine.use(renderer);
 const bus = engine.context.resolve(EventBusKey);
-bus.on("screen:orientation", ({ type }) => layoutHud(type));
+bus.on("screen:orientation", ({ type }) => {
+  document.body.dataset.orientation = type;
+});
 button.addEventListener("click", () => renderer.requestFullscreen());
 ```
 
@@ -222,7 +244,9 @@ For procedural shapes plus a label, use a parent entity with `GraphicsComponent`
 
 All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitText) accept the same `visible` / `tint` / `alpha` / `blendMode` / `interactive` options, with runtime accessors for the first four. Pixi's `Container` carries all five natively, so the behavior is identical across every component:
 
-```ts
+```ts yage-context="type"
+import type { ColorValue, BlendMode } from "@yagejs/renderer";
+
 {
   visible?: boolean;   // initial visibility, default true
   tint?: ColorValue;    // number (0xff0000) or CSS color string ("red", "#ff0000")
@@ -241,11 +265,18 @@ the computed render values. `interactive` is set once at construction.
 
 Every visual component also exposes `comp.modifiers: VisualModifierHost`:
 
-```ts
-const motion = comp.modifiers.addTransform({ position, rotation, scale });
-motion.setPosition(nextOffset);
-motion.setRotation(nextRadians);
-motion.setScale(nextFactor);
+```ts yage-context="entity"
+import { SpriteComponent } from "@yagejs/renderer";
+const comp = entity.get(SpriteComponent);
+
+const motion = comp.modifiers.addTransform({
+  position: { x: 2, y: -2 },
+  rotation: 0.1,
+  scale: { x: 1.1, y: 1.1 },
+});
+motion.setPosition({ x: 4, y: 0 });
+motion.setRotation(0.2);
+motion.setScale({ x: 1, y: 1 });
 motion.remove();
 
 const opacity = comp.modifiers.addOpacity(0.5); // multiplicative
@@ -268,7 +299,7 @@ Pixi constructs every display object at `"inherit"`, not `"normal"` — inherite
 
 ### SpriteComponent
 
-```ts
+```ts yage-context="entity"
 import { SpriteComponent } from "@yagejs/renderer";
 
 entity.add(
@@ -292,7 +323,7 @@ entity.add(
 
 Procedural drawing via PixiJS Graphics API:
 
-```ts
+```ts yage-context="entity"
 import { GraphicsComponent } from "@yagejs/renderer";
 
 entity.add(
@@ -312,7 +343,7 @@ Gradient fills: use `linearGradient` / `radialGradient` (see below) instead of r
 
 Renders text on a layer, Transform-synced like sprites. For free-positioned strings only — for laid-out text widgets, use `UISurface` + `UIText` from `@yagejs/ui` (see "Pick a component" above).
 
-```ts
+```ts yage-context="entity"
 import { TextComponent } from "@yagejs/renderer";
 
 entity.add(
@@ -336,6 +367,8 @@ entity.add(
 **Pixel-art text — `bitmap`.** Canvas-rasterised `Text` is bilinear-sampled by the GPU, so it goes blurry at non-integer scale (camera zoom, pixel-art upscaling) on non-Retina displays. Set `bitmap` to draw pre-baked glyph quads instead:
 
 ```ts
+import { TextComponent } from "@yagejs/renderer";
+
 // `bitmap: true` bakes (or looks up) the atlas from `style.fontFamily`
 // at `style.fontSize` — the font is a normal style property.
 new TextComponent({
@@ -361,6 +394,8 @@ new TextComponent({
 **`resolution` gotcha (Pixi v8).** `resolution` is a `Text` _constructor_ option, NOT a `TextStyle` property. Setting `TextStyle.defaultTextStyle.resolution` does nothing. Pass it explicitly to get crisp canvas text without a prototype patch — or use `bitmap` for pixel-perfect rendering:
 
 ```ts
+import { TextComponent } from "@yagejs/renderer";
+
 new TextComponent({ text: "HUD", resolution: window.devicePixelRatio });
 ```
 
@@ -374,7 +409,7 @@ new TextComponent({ text: "HUD", resolution: window.devicePixelRatio });
 
 Per-glyph / animated text — typewriter reveals, per-letter colour/wave, staggered line entrances. Wraps Pixi v8's **experimental** `SplitText` / `SplitBitmapText`; exposes the text as arrays of individually transformable display objects. Transform-synced and layer-attached like `TextComponent`.
 
-```ts
+```ts yage-context="entity"
 import { SplitTextComponent } from "@yagejs/renderer";
 import { Tween, ProcessComponent } from "@yagejs/core";
 
@@ -413,7 +448,7 @@ API: `chars` / `words` / `lines` (getters), `setText(v)`, `content` (reads the c
 
 Every slicing entry (`sliceGrid`, `sliceSheet`, `sliceTextureFrames`, and a `SheetFrameSource`) validates its options: each field must be a finite number at or above its minimum, and the resulting grid must fit inside the texture. A failure throws naming the function and the offending field. Slicing does not change how the texture is sampled — turn on `pixelArtPreset` for the whole project, or `texture(path, { scaleMode: "nearest" })` for one sheet.
 
-```ts
+```ts yage-context="entity"
 import { AnimatedSpriteComponent } from "@yagejs/renderer";
 
 const player = entity.add(
@@ -449,11 +484,15 @@ non-looping animation.
 
 `onFrameChange(listener)` subscribes to frame changes and returns an unsubscribe function, so `this.addCleanup(sprite.onFrameChange(fn))` drops the listener with the component. Any number of listeners can subscribe; each receives the new frame index. Pixi delivers a frame change on play, on every advance, and on the frame reset an animation switch performs, so a listener sees controller switches too. Assigning `animatedSprite.onFrameChange` directly replaces the engine's dispatcher and silences every subscriber.
 
-```ts
-const sprite = entity.get(AnimatedSpriteComponent);
+```ts yage-context="component"
+import { AnimatedSpriteComponent } from "@yagejs/renderer";
+import { AudioManagerKey } from "@yagejs/audio";
+const audio = this.use(AudioManagerKey);
+
+const sprite = this.entity.get(AnimatedSpriteComponent);
 this.addCleanup(
   sprite.onFrameChange((frame) => {
-    if (frame === 4) playFootstep();
+    if (frame === 4) audio.play("footstep");
   }),
 );
 ```
@@ -470,7 +509,7 @@ gameplay is frozen.
 
 Named animation state machine with one-shot locking:
 
-```ts
+```ts yage-context="entity"
 import { AnimationController } from "@yagejs/renderer";
 
 entity.add(
@@ -496,6 +535,9 @@ anim.playOneShot("attack"); // locks until complete; the sprite holds the last f
 `AnimationController<T extends string = string>` is generic on the animation-name union — `play("walk")` autocompletes, and a typo like `play("wal")` is a compile error. But the runtime class isn't generic: there's no `AnimationController<HeroAnim>` expression to pass to `entity.get()` or `Component.sibling()`, and a default `AnimationController<string>` isn't sound-assignable to `AnimationController<HeroAnim>` (the `current: T | ""` getter is covariant on `T`, so a string-returning instance can't substitute for one promising the narrow union). Annotate the field with an `as` cast — the cast is required because the type parameter is type-only, and the field annotation makes every downstream call site narrow automatically:
 
 ```ts
+import { Component } from "@yagejs/core";
+import { AnimationController } from "@yagejs/renderer";
+
 type HeroAnim = "idle" | "walk" | "attack";
 
 class HeroController extends Component {
@@ -526,12 +568,29 @@ Writing `controller.speed` updates the animation currently playing. An automatic
 
 Fans `play()` / `playOneShot()` across N sibling `AnimationController` instances with a single shared lock timer. Use this when a character is composed of multiple sprite layers (head + body + outfit) that must animate in lockstep:
 
-```ts
+```ts yage-context="scene"
+import { Entity, Transform } from "@yagejs/core";
+
 import {
   AnimatedSpriteComponent,
   AnimationController,
   LayeredAnimationController,
 } from "@yagejs/renderer";
+
+class HeroLayer extends Entity {
+  setup({ sheet }: { sheet: string }) {
+    this.add(new Transform());
+    this.add(
+      new AnimatedSpriteComponent({ source: { sheet, frameWidth: 48 } }),
+    );
+    this.add(
+      new AnimationController({
+        idle: { source: { sheet, frameWidth: 48 }, speed: 0.15 },
+        attack: { source: { sheet, frameWidth: 48 }, speed: 0.25, loop: false },
+      }),
+    );
+  }
+}
 
 class Hero extends Entity {
   setup() {
@@ -553,6 +612,7 @@ class Hero extends Entity {
   }
 }
 
+const hero = scene.spawn(Hero);
 const layered = hero.get(LayeredAnimationController);
 layered.play("idle");
 layered.speed = 1.5; // applies to every child
@@ -574,6 +634,8 @@ Use the first controller's automatic timer and keep the other controllers
 locked until it completes:
 
 ```ts
+import { AnimationController } from "@yagejs/renderer";
+
 function playOneShotLayered(
   controllers: AnimationController<string>[],
   name: string,
@@ -591,7 +653,9 @@ function playOneShotLayered(
   }
 }
 
-playOneShotLayered([bodyAnim, headAnim, outfitAnim], "attack");
+function attack(controllers: AnimationController<string>[]): void {
+  playOneShotLayered(controllers, "attack");
+}
 ```
 
 `calcDuration(name, options?)` is public on `AnimationController`, takes the same `startFrame` / `speed` as a one-shot, and rejects speeds that cannot produce a valid automatic duration.
@@ -600,7 +664,7 @@ playOneShotLayered([bodyAnim, headAnim, outfitAnim], "attack");
 
 `linearGradient` and `radialGradient` return a `GradientFill` (pixi `FillGradient` internally) usable anywhere a graphics fill style is accepted. Stops use yage-style numeric color + alpha pairs — no CSS color strings needed.
 
-```ts
+```ts yage-context="entity"
 import {
   linearGradient,
   radialGradient,
@@ -643,10 +707,13 @@ const spotlight = radialGradient({
 The camera is an entity, not a service. Spawn a `CameraEntity` in your scene
 and use it directly for follow, shake, zoom, and bounds — all convenience methods are on the entity.
 
-```ts
+```ts yage-context="scene-enter"
+import { Transform, Vec2, easeOutQuad } from "@yagejs/core";
+
 import { CameraEntity } from "@yagejs/renderer";
 
-// In a scene's onEnter():
+const player = this.spawn("player");
+const transform = player.add(new Transform({ position: new Vec2(400, 300) }));
 const cam = this.spawn(CameraEntity, {
   follow: player.get(Transform),
   smoothing: 0.1,
@@ -670,8 +737,8 @@ modifier.remove();
 
 cam.bounds = { minX: 0, minY: 0, maxX: 2000, maxY: 1000 };
 
-const world = cam.screenToWorld(mouseX, mouseY);
-const screen = cam.worldToScreen(entity.x, entity.y);
+const world = cam.screenToWorld(100, 200);
+const screen = cam.worldToScreen(transform.position.x, transform.position.y);
 ```
 
 `effectivePosition`, `effectiveRotation`, and `effectiveZoom` combine the
@@ -684,10 +751,12 @@ not restore a snapshot or affect other modifiers. Modifiers are transient.
 `CameraComponent` and `CameraEntity` also accept caller-owned `Vec2Buffer`
 outputs from `@yagejs/core`:
 
-```ts
-camera.getEffectivePositionInto(out: Vec2Buffer): Vec2Buffer
-camera.screenToWorldInto(out: Vec2Buffer, screenX: number, screenY: number): Vec2Buffer
-camera.worldToScreenInto(out: Vec2Buffer, worldX: number, worldY: number): Vec2Buffer
+```ts yage-context="object-member"
+import type { Vec2Buffer } from "@yagejs/core";
+
+getEffectivePositionInto(out: Vec2Buffer): Vec2Buffer;
+screenToWorldInto(out: Vec2Buffer, screenX: number, screenY: number): Vec2Buffer;
+worldToScreenInto(out: Vec2Buffer, worldX: number, worldY: number): Vec2Buffer
 ```
 
 Each method overwrites and returns `out` without constructing a `Vec2`.
@@ -714,6 +783,9 @@ Camera position `(0, 0)` places the **world origin at the center of the viewport
 For top-left-origin games (tilemap editors, classic arcade layouts), offset the camera by half the viewport so that world `(0, 0)` aligns with the screen's top-left corner — or use `fitTo` (below) to frame the whole level in one call.
 
 ```ts
+import { Scene, Vec2 } from "@yagejs/core";
+import { CameraEntity } from "@yagejs/renderer";
+
 class GameScene extends Scene {
   readonly name = "game";
 
@@ -730,7 +802,9 @@ class GameScene extends Scene {
 
 Use for puzzle boards, arcade-style single-screen layouts, dialog-scene insets — anywhere the framed area is known up front. Pair with no `follow` and the camera never moves; pair with `follow` and the camera starts framing the rect, then tracks the target from there.
 
-```ts
+```ts yage-context="scene-enter"
+import { CameraEntity } from "@yagejs/renderer";
+
 this.spawn(CameraEntity, {
   fitTo: { x: 0, y: 0, width: 800, height: 600 },
 });
@@ -776,11 +850,17 @@ default). Declare a layer with `space: "screen"` to keep it fixed to the
 viewport — cameras skip it on auto-bind.
 
 ```ts
-readonly layers: readonly LayerDef[] = [
-  { name: "background", order: -10 },                  // world-space (default)
-  { name: "world",      order: 0 },                    // world-space
-  { name: "hud",        order: 100, space: "screen" }, // screen-space HUD
-];
+import { Scene } from "@yagejs/core";
+import type { LayerDef } from "@yagejs/renderer";
+
+class LayeredScene extends Scene {
+  readonly name = "layered";
+  readonly layers: readonly LayerDef[] = [
+    { name: "background", order: -10 }, // world-space (default)
+    { name: "world", order: 0 }, // world-space
+    { name: "hud", order: 100, space: "screen" }, // screen-space HUD
+  ];
+}
 ```
 
 Plugins auto-provision screen-space layers via
@@ -810,12 +890,16 @@ Two built-in helpers cover the common cases:
 | `ySortBy(offsetOf)` | `c.position.y + offsetOf(c)` — each container can provide a per-sprite Y offset (Godot's `y_sort_origin`) so the depth key tracks the visual "footprint" instead of the top-left. `offsetOf` returns `undefined` to fall through to plain `position.y`. |
 
 ```ts
+import { Scene } from "@yagejs/core";
 import { ySort, ySortBy, type LayerDef } from "@yagejs/renderer";
 
-readonly layers: readonly LayerDef[] = [
-  { name: "ground", order: -10 },
-  { name: "characters", order: 0, sort: ySort },
-];
+class LayeredScene extends Scene {
+  readonly name = "layered";
+  readonly layers: readonly LayerDef[] = [
+    { name: "ground", order: -10 },
+    { name: "characters", order: 0, sort: ySort },
+  ];
+}
 
 // Per-sprite offset variant — read off a custom field on the display object:
 const sort = ySortBy((c) => (c as { depthOffset?: number }).depthOffset);
@@ -830,11 +914,26 @@ Under a layer `sort`, every visual is a flat child of the layer with its own ind
 `SortGroupComponent` gives an entity its own Pixi sub-container. Its members sort _within_ the group; the group sorts as **one unit** against the rest of the layer.
 
 ```ts
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+
 import { SortGroupComponent, SpriteComponent } from "@yagejs/renderer";
+
+class Weapon extends Entity {
+  setup() {
+    this.add(new Transform({ position: new Vec2(12, 4) }));
+    this.add(new SpriteComponent({ texture: "sword", layer: "world" }));
+  }
+}
+class Plume extends Entity {
+  setup() {
+    this.add(new Transform({ position: new Vec2(0, -16) }));
+    this.add(new SpriteComponent({ texture: "plume", layer: "world" }));
+  }
+}
 
 class Knight extends Entity {
   setup() {
-    this.add(new Transform({ position: { x: 200, y: 200 } }));
+    this.add(new Transform({ position: new Vec2(200, 200) }));
     this.add(new SortGroupComponent({ layer: "world" })); // add BEFORE the visuals
     this.add(new SpriteComponent({ texture: "knight-body", layer: "world" }));
     this.spawnChild("weapon", Weapon); // a "world" sprite offset toward the camera
@@ -871,11 +970,17 @@ render pass + instruction set) — only flip on layers where you've
 measured a benefit.
 
 ```ts
-readonly layers: readonly LayerDef[] = [
-  { name: "ground",  order: -10 },
-  { name: "actors",  order: 0,   isRenderGroup: true },
-  { name: "hud",     order: 100, space: "screen" },
-];
+import { Scene } from "@yagejs/core";
+import type { LayerDef } from "@yagejs/renderer";
+
+class LayeredScene extends Scene {
+  readonly name = "layered";
+  readonly layers: readonly LayerDef[] = [
+    { name: "ground", order: -10 },
+    { name: "actors", order: 0, isRenderGroup: true },
+    { name: "hud", order: 100, space: "screen" },
+  ];
+}
 ```
 
 **Not** required for filter isolation around tilemaps. `@yagejs/tilemap`'s
@@ -908,18 +1013,27 @@ transform separates the UI from its target under zoom. For that, see
 Recipes:
 
 ```ts
-// Parallax (translate-dampened)
-{ layer: "background", translateRatio: 0.5 }
+import type { CameraBinding } from "@yagejs/renderer";
 
-// Camera-agnostic minimap (ignores every camera axis)
-{ layer: "minimap", translateRatio: 0, rotateRatio: 0, scaleRatio: 0 }
+const bindings = [
+  // Parallax (translate-dampened)
+  { layer: "background", translateRatio: 0.5 },
+
+  // Camera-agnostic minimap (ignores every camera axis)
+  { layer: "minimap", translateRatio: 0, rotateRatio: 0, scaleRatio: 0 },
+] satisfies CameraBinding[];
 ```
 
 ### `syncCameraTransform`
 
 Apply a camera pose to a custom display container:
 
-```ts
+```ts yage-context="entity"
+import { Container } from "pixi.js";
+import { CameraComponent } from "@yagejs/renderer";
+const container = new Container();
+const cameraComponent = entity.get(CameraComponent);
+
 import { syncCameraTransform } from "@yagejs/renderer";
 
 syncCameraTransform(container, cameraComponent);
@@ -942,6 +1056,9 @@ renderer fit transform. `DisplaySystem` uses the same calculation for layers.
 Component. Each frame projects a world source through a camera and writes the resulting screen coord to this entity's `Transform.worldPosition`. The canonical billboard primitive — pair with `UISurface`/`UIRoot` on a screen-space layer using `positioning: "transform"` and the UI tracks the target while staying axis-aligned and constant-size under any camera zoom or rotation.
 
 ```ts
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { CameraEntity } from "@yagejs/renderer";
+
 import { ScreenFollow } from "@yagejs/renderer";
 import { UISurface, Anchor } from "@yagejs/ui";
 
@@ -981,7 +1098,12 @@ class Nameplate extends Entity {
 
 `offset` is in **screen pixels**, applied _after_ projection: `cam.worldToScreen(target) + offset`. The visual gap between UI and target stays fixed under any camera zoom or rotation. Rotation is optional: set `trackRotation: true` when `target` is an `Entity` to copy its `worldRotation` (useful for UI that should rotate with the target itself, like a vehicle HUD).
 
-```ts
+```ts yage-context="component"
+import { Scene } from "@yagejs/core";
+import { Container } from "pixi.js";
+import { crt } from "@yagejs/effects";
+const myDisplayObject = new Container();
+
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 
 // Inside a Component:
@@ -992,8 +1114,9 @@ layer.container.addChild(myDisplayObject);
 // Also resolvable from a Scene subclass (onEnter onward) — Scene.use is
 // scope-aware, so a scene-scoped effect/mask can be attached at setup:
 class MyScene extends Scene {
+  readonly name = "custom";
   onEnter() {
-    this.use(SceneRenderTreeKey).fx.addEffect(crt());
+    this.use(SceneRenderTreeKey).fx.addEffect(crt({}));
   }
 }
 ```
@@ -1015,17 +1138,22 @@ Runs in `Phase.Render`. Syncs entity `Transform` to PixiJS display object positi
 
 Built-in visual transitions. Use with `SceneManager.push/pop/replace({ transition })`.
 
-```ts
+```ts yage-context="engine"
+import { Scene } from "@yagejs/core";
+class Level extends Scene {
+  readonly name = "level";
+}
+
 import { crossFade, fade, flash } from "@yagejs/renderer";
 
-await engine.scenes.push(nextScene, { transition: fade({ duration: 0.4 }) });
-await engine.scenes.push(nextScene, {
+await engine.scenes.push(new Level(), { transition: fade({ duration: 0.4 }) });
+await engine.scenes.push(new Level(), {
   transition: crossFade({ duration: 0.5 }),
 });
 await engine.scenes.pop({
   transition: flash({ duration: 0.2, color: 0xff0000 }),
 });
-await engine.scenes.replace(newScene, {
+await engine.scenes.replace(new Level(), {
   transition: crossFade({ duration: 0.5 }),
 });
 ```
@@ -1043,14 +1171,21 @@ await engine.scenes.replace(newScene, {
 
 Handle-based filter API. Same shape at four scopes — component, layer, scene, screen — exposed uniformly as `.fx` at every scope. The renderer ships only the primitives; pre-built presets live in `@yagejs/effects`.
 
-```ts
+```ts yage-context="component"
+import {
+  SpriteComponent,
+  SceneRenderTreeKey,
+  RendererKey,
+} from "@yagejs/renderer";
+const sprite = this.entity.get(SpriteComponent);
+
 import { rawFilter } from "@yagejs/renderer";
 import { hitFlash, bloom, crt, vignette } from "@yagejs/effects";
 
 // Component scope (Sprite / Graphics / Text / AnimatedSprite)
 const flash = sprite.fx.addEffect(hitFlash({ color: 0xffffff }));
 flash.trigger();
-flash.fadeOut(200); // returns a Process
+flash.fadeOut(0.2); // returns a Process
 
 // Layer scope
 this.use(SceneRenderTreeKey)
@@ -1058,7 +1193,9 @@ this.use(SceneRenderTreeKey)
   .fx.addEffect(bloom({ threshold: 0.8 }));
 
 // Scene scope (the per-scene root)
-this.use(SceneRenderTreeKey).fx.addEffect(crt({ scanlines: true }));
+this.use(SceneRenderTreeKey).fx.addEffect(
+  crt({ lineWidth: 1, lineContrast: 0.25 }),
+);
 
 // Screen scope (cross-scene; on app.stage)
 this.use(RendererKey).fx.addEffect(vignette({ alpha: 0.4 }));
@@ -1089,17 +1226,27 @@ const existing = sprite.fx.findEffect(hitFlash); // EffectHandle | null
 
 ## Masks
 
-```ts
+```ts yage-context="component"
+import { SpriteComponent, SceneRenderTreeKey } from "@yagejs/renderer";
+const sprite = this.entity.get(SpriteComponent);
+const tree = this.use(SceneRenderTreeKey);
+
 import { rectMask, spriteMask, graphicsMask } from "@yagejs/renderer";
 
 // Component scope (4 visual components)
-const handle = sprite.setMask(rectMask({ x: 0, y: 0, width: 200, height: 200 }));
+const handle = sprite.setMask(
+  rectMask({ x: 0, y: 0, width: 200, height: 200 }),
+);
 handle.setInverse(true);
 sprite.clearMask();
 
 // Layer + scene scope share the same setMask / clearMask shape.
-tree.get("hud").setMask(rectMask({ ... }));
-tree.setMask(graphicsMask((g) => { g.circle(0, 0, 100).fill(0xffffff); }));
+tree.get("hud").setMask(rectMask({ x: 0, y: 0, width: 800, height: 100 }));
+tree.setMask(
+  graphicsMask((g) => {
+    g.circle(0, 0, 100).fill(0xffffff);
+  }),
+);
 ```
 
 | Export                                  | Signature                                                               | Description                                                                                                                                                                                                                            |
@@ -1119,7 +1266,15 @@ Mask coordinates are the masked object's own local space: world pixels on a worl
 
 `renderer.createRenderTarget(source, options)` draws a container into a texture the game owns and redraws on its own schedule. Use it when several objects must composite against each other before reaching the screen (a light buffer, a trail buffer, a downscaled blur source), or to cache expensive static content as one texture.
 
-```ts
+```ts yage-context="scene-enter"
+import { Transform, Vec2 } from "@yagejs/core";
+const overlay = this.spawn("light-overlay");
+overlay.add(new Transform());
+const player = this.spawn("player");
+const playerTransform = player.add(
+  new Transform({ position: new Vec2(400, 300) }),
+);
+
 import { Container, Graphics } from "pixi.js";
 import {
   RendererKey,
@@ -1149,7 +1304,7 @@ registerTexture("lighting", target.texture);
 overlay.add(new SpriteComponent({ texture: "lighting", layer: "overlay" }));
 
 // In a component's update: redraw only when the content changed.
-hole.position.set(player.x, player.y);
+hole.position.set(playerTransform.position.x, playerTransform.position.y);
 target.invalidate();
 target.renderIfNeeded();
 ```
@@ -1189,6 +1344,8 @@ component setup after load.
 ## Asset Factories
 
 ```ts
+import { Scene } from "@yagejs/core";
+
 import {
   texture,
   spritesheet,
@@ -1223,6 +1380,7 @@ const dualFont = webFont("fonts/Inter.woff2", {
 
 // Use in Scene.preload:
 class MyScene extends Scene {
+  readonly name = "assets";
   readonly preload = [heroTex, sheet, pixelFont, uiFont];
 }
 ```
@@ -1231,7 +1389,13 @@ class MyScene extends Scene {
 
 **`registerTexture(key, texture)` / `unregisterTexture(key)`** — register a runtime-created texture under an asset key so every key-based surface resolves it exactly like a preloaded asset: `texture: key` on `SpriteComponent` and on a particle emitter, `{ sheet: key, frameWidth }` on any `FrameSource`.
 
-```ts
+```ts yage-context="scene-enter"
+import { Transform } from "@yagejs/core";
+const entity = this.spawn("marker");
+entity.add(new Transform());
+const boss = this.spawn("boss");
+boss.add(new Transform());
+
 import {
   registerTexture,
   RendererKey,
@@ -1271,7 +1435,7 @@ Semantics:
 
 **`installBitmapFont(source, opts)`** — bake a bitmap glyph atlas from a `.ttf`/`.woff` at runtime via Pixi v8's `BitmapFont.install`. Returns the registered font name, ready to pass as `style.fontFamily` (with `bitmap: true`):
 
-```ts
+```ts yage-context="entity"
 import { installBitmapFont, TextComponent } from "@yagejs/renderer";
 
 const font = await installBitmapFont("fonts/PressStart2P.ttf", {
@@ -1297,6 +1461,8 @@ Glyphs bake **white** by default so a per-text `fill` / `tint` (multiplied over 
 **Synthetic bold / italic — `variants`.** Plain `BitmapText` ignores `style.fontWeight` / `fontStyle` (only canvas `Text` honours them). Pass `variants` to bake emphasis atlases from the same `.ttf` alongside the base; a `BitmapText` whose style asks for bold/italic then renders from the matching atlas automatically. Variants register under derived names internally — you never name or select them by hand:
 
 ```ts
+import { installBitmapFont, TextComponent } from "@yagejs/renderer";
+
 await installBitmapFont("fonts/Body.ttf", {
   name: "Body",
   variants: [
@@ -1321,9 +1487,12 @@ All variants are **baseline-aligned** to the base atlas at bake time: each varia
 **Declarative bitmap bake — `webFont({ bitmap })`.** A `webFont` can bake a bitmap atlas from the same loaded face during the scene's `preload`, so one declared font is usable as both canvas `Text` and `BitmapText` under a single family — no separate `installBitmapFont` call, no second name. The canvas face and the baked atlas live in separate Pixi registries, so there's no collision.
 
 ```ts
+import { Scene } from "@yagejs/core";
+
 import { webFont, TextComponent } from "@yagejs/renderer";
 
 class HudScene extends Scene {
+  readonly name = "hud";
   readonly preload = [
     // `bitmap: true` bakes with defaults; pass an object to tune it.
     webFont("fonts/Inter.woff2", {

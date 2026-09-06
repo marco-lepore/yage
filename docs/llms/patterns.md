@@ -5,6 +5,11 @@
 ### Service and sibling resolution
 
 ```ts
+import { Component } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
+import { RigidBodyComponent } from "@yagejs/physics";
+import type { CameraEntity } from "@yagejs/renderer";
+
 class PlayerController extends Component {
   // Lazy proxy -- safe at field-declaration time, resolves on first access
   private input = this.service(InputManagerKey);
@@ -21,7 +26,7 @@ class PlayerController extends Component {
     const dir = this.input.getVector("left", "right", "up", "down");
     const speed = 200 / (this.camera?.zoom ?? 1);
     this.rb.setVelocity(dir.scale(speed));
-    // For non-physics entities, use: this.entity.get(Transform).translate(dir.scale(200 * dt)); // dt is seconds
+    // For non-physics entities, use: this.entity.get(Transform).translate(dir.x * 200 * dt, dir.y * 200 * dt); // dt is seconds
   }
 }
 ```
@@ -29,7 +34,12 @@ class PlayerController extends Component {
 ### Event subscriptions with auto-cleanup
 
 ```ts
+import { Component, defineEvent } from "@yagejs/core";
+const HitEvent = defineEvent<{ damage: number }>("hit");
+const SpawnEvent = defineEvent<void>("spawn");
+
 class DamageReceiver extends Component {
+  health = 100;
   onAdd() {
     // Auto-unsubscribes when component is removed/destroyed
     this.listen(this.entity, HitEvent, ({ damage }) => {
@@ -56,6 +66,8 @@ Systems are for engine-level cross-cutting concerns (rendering, physics, audio s
 ### Writing a System
 
 ```ts
+import { SpriteComponent } from "@yagejs/renderer";
+
 import {
   System,
   Phase,
@@ -82,15 +94,12 @@ class DisplaySyncSystem extends System {
     for (const entity of this.bodies) {
       const transform = entity.get(Transform);
       const sprite = entity.get(SpriteComponent);
-      sprite.pixiSprite.position.set(
-        transform.position.x,
-        transform.position.y,
-      );
+      sprite.sprite.position.set(transform.position.x, transform.position.y);
     }
   }
 
   onUnregister() {
-    // Cleanup when system is removed
+    this.use(QueryCacheKey).unregister(this.bodies);
   }
 }
 ```
@@ -112,11 +121,14 @@ class DisplaySyncSystem extends System {
 
 Register a query once, get a live result set that updates automatically as components are added/removed.
 
-```ts
+```ts yage-context="context"
+import { Component } from "@yagejs/core";
+class EnemyTag extends Component {}
+
 import { QueryCacheKey, Transform } from "@yagejs/core";
 
 // In a System's onRegister:
-const cache = this.use(QueryCacheKey);
+const cache = context.resolve(QueryCacheKey);
 const enemies = cache.register([Transform, EnemyTag]);
 
 // In update:
@@ -128,6 +140,7 @@ for (const entity of enemies) {
 enemies.size; // current count
 enemies.first; // first match or undefined
 enemies.toArray(); // snapshot as array (allocates)
+cache.unregister(enemies);
 ```
 
 ## Entity Patterns
@@ -136,7 +149,18 @@ enemies.toArray(); // snapshot as array (allocates)
 
 `setup()` runs after the entity is added to the scene. Services and `onAdd` hooks work inside it. The constructor does not have scene access.
 
-```ts
+```ts yage-context="scene"
+import { Component, Entity, Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+class EnemyAI extends Component {
+  constructor(readonly kind: string) {
+    super();
+  }
+  update(dt: number) {
+    this.entity.get(Transform).translate(-30 * dt, 0);
+  }
+}
+
 class Enemy extends Entity {
   setup({ type, pos }: { type: string; pos: Vec2 }) {
     this.add(new Transform({ position: pos }));
@@ -157,6 +181,9 @@ separately-transformed part — a turret barrel that aims while the base stays
 put.
 
 ```ts
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
 class Turret extends Entity {
   private barrel!: Entity;
 
@@ -178,7 +205,9 @@ class Turret extends Entity {
 
 ### Traits for polymorphic behavior
 
-```ts
+```ts yage-context="scene"
+import { Entity, defineTrait, trait } from "@yagejs/core";
+
 const Damageable = defineTrait<{ takeDamage(n: number): void }>("Damageable");
 
 @trait(Damageable)
@@ -208,6 +237,15 @@ for (const e of scene.findEntities({ trait: Damageable })) {
 ### Cooldown slot
 
 ```ts
+import {
+  Component,
+  ProcessComponent,
+  Transform,
+  Vec2,
+  type ProcessSlot,
+} from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
+
 class Weapon extends Component {
   private pc = this.sibling(ProcessComponent);
   private cooldown!: ProcessSlot;
@@ -217,6 +255,15 @@ class Weapon extends Component {
     if (!this.entity.tryGet(ProcessComponent))
       this.entity.add(new ProcessComponent());
     this.cooldown = this.pc.slot({ duration: 0.5 });
+  }
+
+  private spawnBullet() {
+    const bullet = this.scene.spawn("bullet");
+    bullet.add(
+      new Transform({ position: this.entity.get(Transform).worldPosition }),
+    );
+    const body = bullet.add(new RigidBodyComponent({ type: "dynamic" }));
+    body.setVelocity(new Vec2(900, 0));
   }
 
   fire() {
@@ -230,28 +277,59 @@ class Weapon extends Component {
 ### Sequence for cutscenes
 
 ```ts
-const bossT = boss.get(Transform);
-const seq = new Sequence()
-  .call(() => ui.showDialogue("Watch out!"))
-  .wait(2)
-  .then(
-    Tween.vec2(
-      (v) => bossT.setPosition(v.x, v.y),
-      bossT.position,
-      new Vec2(bossT.position.x, 100),
-      0.8,
-      easeOutQuad,
-    ),
-  )
-  .call(() => ui.hideDialogue())
-  .then(Tween.custom((v) => (camera.zoom = v), 1, 1.5, 0.5));
+import {
+  Transform,
+  Sequence,
+  Tween,
+  Vec2,
+  easeOutQuad,
+  type Entity,
+  type ProcessComponent,
+} from "@yagejs/core";
+import type { CameraEntity } from "@yagejs/renderer";
 
-pc.run(seq.start());
+function playIntro(
+  boss: Entity,
+  camera: CameraEntity,
+  pc: ProcessComponent,
+  ui: { showDialogue(text: string): void; hideDialogue(): void },
+) {
+  const bossT = boss.get(Transform);
+  const seq = new Sequence()
+    .call(() => ui.showDialogue("Watch out!"))
+    .wait(2)
+    .then(
+      Tween.vec2(
+        (v) => bossT.setPosition(v.x, v.y),
+        bossT.position,
+        new Vec2(bossT.position.x, 100),
+        0.8,
+        easeOutQuad,
+      ),
+    )
+    .call(() => ui.hideDialogue())
+    .then(Tween.custom((v) => (camera.zoom = v), 1, 1.5, 0.5));
+
+  pc.run(seq.start());
+}
 ```
 
 ### Tween animation
 
-```ts
+```ts yage-context="entity"
+import {
+  Transform,
+  ProcessComponent,
+  Tween,
+  Vec2,
+  easeInOutQuad,
+  easeOutBounce,
+} from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+const transform = entity.get(Transform);
+const sprite = entity.get(SpriteComponent);
+const pc = entity.get(ProcessComponent);
+
 // Rotate over time. Tween.to only accepts a plain Record<string, number>
 // target, so a Transform (a class instance) uses Tween.custom with a setter.
 pc.run(
@@ -275,7 +353,10 @@ pc.run(
 
 ### Process.delay for one-shots
 
-```ts
+```ts yage-context="entity"
+import { Process, ProcessComponent } from "@yagejs/core";
+const pc = entity.get(ProcessComponent);
+
 pc.run(Process.delay(1, () => entity.destroy()));
 ```
 
@@ -298,7 +379,14 @@ Use `createMockEntity` for isolated component tests — no Engine overhead, but 
 
 ```ts
 import { describe, it, expect } from "vitest";
-import { createMockEntity, Transform, Component } from "@yagejs/core";
+import {
+  createMockEntity,
+  createTestEngine,
+  advanceFrames,
+  Scene,
+  Transform,
+  Component,
+} from "@yagejs/core";
 
 class Gravity extends Component {
   fixedUpdate(dt: number) {
@@ -314,22 +402,29 @@ describe("Gravity", () => {
     const gravity = new Gravity();
     entity.add(gravity);
 
-    gravity.fixedUpdate(16);
+    gravity.fixedUpdate(1 / 60);
 
     const pos = entity.get(Transform).position;
     expect(pos.y).toBeGreaterThan(0);
   });
 
-  it("does nothing when disabled", () => {
-    const { entity } = createMockEntity("ball");
+  it("does nothing when disabled", async () => {
+    class TestScene extends Scene {
+      readonly name = "test";
+    }
+    const engine = await createTestEngine();
+    const scene = new TestScene();
+    await engine.scenes.push(scene);
+    const entity = scene.spawn("ball");
     entity.add(new Transform());
     const gravity = new Gravity();
     gravity.enabled = false;
     entity.add(gravity);
 
-    gravity.fixedUpdate(16);
+    advanceFrames(engine, 1);
 
     expect(entity.get(Transform).position.y).toBe(0);
+    engine.destroy();
   });
 });
 ```
@@ -340,7 +435,7 @@ Use `createMockScene` to set up a system without a full Engine:
 
 ```ts
 import { describe, it, expect } from "vitest";
-import { createMockScene, SceneManagerKey, Phase, System } from "@yagejs/core";
+import { createMockScene, Phase, System } from "@yagejs/core";
 
 class CountSystem extends System {
   readonly phase = Phase.Update;
@@ -353,13 +448,6 @@ class CountSystem extends System {
 describe("CountSystem", () => {
   function setup() {
     const { scene, context } = createMockScene();
-    // Systems need SceneManager — mock it
-    const sceneManager = {
-      get active() {
-        return scene;
-      },
-    };
-    context.register(SceneManagerKey, sceneManager as never);
 
     const sys = new CountSystem();
     sys._setContext(context);
@@ -369,8 +457,8 @@ describe("CountSystem", () => {
 
   it("increments count each update", () => {
     const { sys } = setup();
-    sys.update(16);
-    sys.update(16);
+    sys.update();
+    sys.update();
     expect(sys.count).toBe(2);
   });
 });
@@ -469,8 +557,8 @@ describe("Sequence", () => {
       .call(() => order.push("b"))
       ._build();
 
-    seq._update(16);
-    seq._update(16);
+    seq._update(1 / 60);
+    seq._update(1 / 60);
     expect(order).toEqual(["a", "b"]);
   });
 });
@@ -521,7 +609,10 @@ describe("FooPlugin", () => {
 ### Pause menu
 
 ```ts
+import { Scene } from "@yagejs/core";
+
 class PauseScene extends Scene {
+  readonly name = "pause";
   override readonly pauseBelow = true; // freeze scene below
   override readonly transparentBelow = true; // keep rendering below
 
@@ -534,7 +625,7 @@ class PauseScene extends Scene {
 
 ### Time scale
 
-```ts
+```ts yage-context="scene,entity"
 scene.timeScale = 0.25; // slow-mo (persistent option)
 scene.timeScale = 2; // fast-forward
 
@@ -554,7 +645,15 @@ entity.timeScale = 2; // ...or speed it up
 An entity excluded from a slow-motion effect still has its body integrated at
 the slowed rate. Scale velocity writes by the ratio of the two rates:
 
-```ts
+```ts yage-context="component"
+import { SceneTimeKey, Vec2 } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
+const entity = this.entity;
+const time = this.use(SceneTimeKey);
+const rb = entity.get(RigidBodyComponent);
+const dir = new Vec2(1, 0);
+const speed = 200;
+
 const world = time.effectiveScale;
 const factor = world > 0 ? time.effectiveScaleForUpdates(entity) / world : 1;
 rb.setVelocity(dir.scale(speed * factor));
@@ -564,7 +663,12 @@ The factor is `1` while the scene is frozen — nothing integrates then.
 
 ### Hitstop, slow motion, bullet time, freeze frames (SceneTime)
 
-```ts
+```ts yage-context="component"
+const player = this.entity;
+const enemy = this.scene.spawn("enemy");
+const feedbackHost = this.scene.spawn("feedback");
+const entity = this.entity;
+
 import { SceneTimeKey } from "@yagejs/core";
 
 // Per-scene service; arbitrates competing time effects so callers never
@@ -604,53 +708,85 @@ time.fixedElapsed; // simulation seconds on the fixed timestep — stamp/compare
 
 ### Cross-scene access
 
-```ts
-const game = engine.scenes.all.find((s) => s.name === "game") as GameScene;
+```ts yage-context="engine"
+const game = engine.scenes.all.find((s) => s.name === "game");
+if (!game) throw new Error("The game scene is missing.");
 game.timeScale = 0.25;
 ```
 
 ## State Management Patterns
 
-Do not use module-level `let` variables for game state (e.g. `let score = 0`). Module-level state breaks save/load, prevents scene isolation, and cannot be reset on restart. Use `ServiceKey` + DI registration or `createRecord()` instead.
+Create game-owned state once per run and pass it to scenes, components and UI.
+Service keys are for plugin infrastructure, not game-state lookup. Direct
+model and component references are valid; avoid module-global mutable state
+that couples independent runs.
 
-### DI service for game state
+```tsx
+import { Component, Scene, createRecord, defineEvent } from "@yagejs/core";
+import { Text, useStore } from "@yagejs/ui-react";
 
-```ts
-const GameStateKey = new ServiceKey<GameState>("gameState");
-this.context.register(GameStateKey, { score: 0, health: 100 });
-// Access: this.use(GameStateKey).score
+function createGameState() {
+  return createRecord({ default: () => ({ score: 0, health: 100 }) });
+}
+type GameState = ReturnType<typeof createGameState>;
+
+const PointsAwarded = defineEvent<{ points: number }>("my-game:points-awarded");
+
+class ScoreTracker extends Component {
+  constructor(private readonly state: GameState) {
+    super();
+  }
+
+  onAdd(): void {
+    this.listenScene(PointsAwarded, ({ points }) => {
+      this.state.set({ score: this.state.get().score + points });
+    });
+  }
+}
+
+class GameScene extends Scene {
+  readonly name = "game";
+  constructor(private readonly state: GameState) {
+    super();
+  }
+  onEnter(): void {
+    this.spawn("score-tracker").add(new ScoreTracker(this.state));
+  }
+}
+
+function HUD({ state }: { state: GameState }) {
+  const score = useStore(state, (source) => source.get().score);
+  return <Text>{`Score: ${score}`}</Text>;
+}
+
+const state = createGameState();
+const scene = new GameScene(state);
+// Push scene onto the engine; render <HUD state={state} /> in a UIRoot.
 ```
 
-### Reactive store (for React UI)
+Emit `PointsAwarded` on the entered scene to update that same root.
+`listenScene` unsubscribes on component removal; use `addCleanup` for
+subscriptions from other APIs. Events notify consumers, not a second UI copy.
+Use `set()`, not mutation of `get()`, to notify store subscribers.
 
-```ts
-import { createRecord } from "@yagejs/core";
-import { useStore } from "@yagejs/ui-react";
-
-const store = createRecord({ default: () => ({ score: 0 }) });
-store.set({ score: 10 }); // ECS writes
-const score = useStore(store, (src) => src.get().score); // React reads (selector takes source)
-```
-
-### Event-driven state
-
-```ts
-const CoinCollected = defineEvent("coin:collected");
-this.on(CoinCollected, () => {
-  state.score += 10;
-});
-entity.emit(CoinCollected); // from trigger handler
-```
+Core state factories implement `Serializable`: persist the root with
+`@yagejs/save`, then restore it before constructing runtime consumers.
+See the human [state management guide](https://yage.dev/patterns/state-management/)
+for scene and HUD assembly.
 
 ## Common Game Patterns
 
 ### Blueprints for spawning
 
-```ts
+```ts yage-context="scene"
+import { defineBlueprint, Transform, Vec2 } from "@yagejs/core";
+import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
+
 const CoinBP = defineBlueprint<{ x: number; y: number }>(
   "coin",
   (entity, { x, y }) => {
     entity.add(new Transform({ position: new Vec2(x, y) }));
+    entity.add(new RigidBodyComponent({ type: "kinematic" }));
     entity.add(
       new ColliderComponent({
         shape: { type: "circle", radius: 10 },
@@ -665,6 +801,9 @@ scene.spawn(CoinBP, { x: 200, y: 300 });
 ### Health/damage
 
 ```ts
+import { Component, defineEvent } from "@yagejs/core";
+const EntityDied = defineEvent<void>("entity:died");
+
 class HealthComponent extends Component {
   hp: number;
   constructor(public readonly maxHp: number) {
@@ -680,9 +819,16 @@ class HealthComponent extends Component {
 
 ### Ground detection (raycast)
 
-```ts
+```ts yage-context="component"
+import { PhysicsWorldKey, RigidBodyComponent } from "@yagejs/physics";
+const world = this.use(PhysicsWorldKey);
+const position = this.entity.get(RigidBodyComponent).position;
+const halfHeight = 16;
+
 // Sensors are skipped by default, so a trigger zone underfoot is not ground.
-const hit = world.raycast(position, { x: 0, y: 1 }, halfHeight + 2);
+const hit = world.raycast(position, { x: 0, y: 1 }, halfHeight + 2, {
+  excludeEntity: this.entity,
+});
 const grounded = hit !== null; // add coyote timer for better feel
 ```
 

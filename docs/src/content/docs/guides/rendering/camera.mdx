@@ -8,8 +8,8 @@ description: "CameraEntity, follow / shake / zoom, bindings, ScreenFollow"
 The camera controls the viewport into your game world. Spawn a `CameraEntity`
 in your scene to create it:
 
-```typescript
-import { Vec2 } from "@yagejs/core";
+```typescript yage-group="camera" yage-context="scene-enter"
+import { Vec2, easeOutQuad } from "@yagejs/core";
 import { CameraEntity } from "@yagejs/renderer";
 
 const camera = this.spawn(CameraEntity, { position: new Vec2(400, 300) });
@@ -35,6 +35,9 @@ anchors, and typical 2D art tools line up the way you'd expect. Offset the
 camera by half the viewport in `onEnter`:
 
 ```typescript
+import { Scene, Vec2 } from "@yagejs/core";
+import { CameraEntity } from "@yagejs/renderer";
+
 class GameScene extends Scene {
   readonly name = "game";
 
@@ -56,7 +59,9 @@ games, dialog-scene insets — the ergonomic gap is "frame this
 rectangle": position **and** zoom together so a known world area fills
 the viewport. `fitTo: { x, y, width, height }` does both in one call:
 
-```typescript
+```typescript yage-context="scene-enter"
+import { CameraEntity } from "@yagejs/renderer";
+
 this.spawn(CameraEntity, {
   fitTo: { x: 0, y: 0, width: 800, height: 600 },
 });
@@ -79,7 +84,12 @@ mode was redundant with that and has been dropped.
 
 ### Following a Target
 
-```typescript
+```typescript yage-group="follow" yage-context="scene-enter"
+import { Transform } from "@yagejs/core";
+import { CameraEntity } from "@yagejs/renderer";
+
+const player = this.spawn("player");
+player.add(new Transform());
 const cam = this.spawn(CameraEntity, {
   follow: player.get(Transform),
   smoothing: 0.1,
@@ -103,21 +113,21 @@ effect from the next frame.
 `snapToTarget()` does the same cut mid-game, for a room change or a respawn
 where the target jumps across the map:
 
-```typescript
+```typescript yage-group="follow" yage-context="scene-enter"
 player.get(Transform).setPosition(1600, 900);
 cam.snapToTarget();
 ```
 
 ### Zoom and Rotation
 
-```typescript
+```typescript yage-group="camera" yage-context="scene-enter"
 camera.zoomTo(2.0, 0.5, easeOutQuad); // zoom to 2x over 0.5s
 camera.rotation = Math.PI / 12; // tilt the camera
 ```
 
 ### Screen Shake
 
-```typescript
+```typescript yage-group="camera" yage-context="scene-enter"
 camera.shake(8, 0.4, { decay: 1 });
 ```
 
@@ -133,7 +143,7 @@ until it ends, `1` fades linearly to zero over the duration, and values above
 Use `camera.modifiers` when several temporary camera effects need independent
 ownership:
 
-```typescript
+```typescript yage-group="camera" yage-context="scene-enter"
 const impact = camera.modifiers.add({
   position: { x: 4, y: 0 },
   rotation: 0.02,
@@ -155,7 +165,9 @@ this host, so it composes with other modifiers.
 
 Convert between screen (pixel) space and world space:
 
-```typescript
+```typescript yage-group="camera" yage-context="scene-enter"
+const screenX = 400;
+const screenY = 300;
 const worldPos = camera.screenToWorld(screenX, screenY);
 const screenPos = camera.worldToScreen(worldPos.x, worldPos.y);
 ```
@@ -168,7 +180,7 @@ does not name a point on that layer.
 For repeated queries, keep a `Vec2Buffer` and pass it to the corresponding
 `Into` method:
 
-```typescript
+```typescript yage-group="camera" yage-context="scene-enter"
 import { Vec2Buffer } from "@yagejs/core";
 
 const point = new Vec2Buffer(); // keep between updates
@@ -188,7 +200,7 @@ queries for values you want to keep or share.
 
 Constrain the camera to a region so it never shows areas outside the level:
 
-```typescript
+```typescript yage-group="camera" yage-context="scene-enter"
 camera.bounds = { minX: 0, minY: 0, maxX: 4000, maxY: 2000 };
 ```
 
@@ -203,22 +215,28 @@ binding has three independent ratios:
 interface CameraBinding {
   layer: string;
   translateRatio?: number; // default 1 — follows the camera position
-  rotateRatio?: number;    // default 1 — rotates with the camera
-  scaleRatio?: number;     // default 1 — zooms with the camera
+  rotateRatio?: number; // default 1 — rotates with the camera
+  scaleRatio?: number; // default 1 — zooms with the camera
 }
 ```
 
 Each ratio is a linear blend from identity (`0`, ignores that axis of the
 camera) to full effect (`1`, fully follows that axis).
 
-```typescript
+```typescript yage-context="scene-enter"
+import { CameraEntity } from "@yagejs/renderer";
+
 this.spawn(CameraEntity, {
   bindings: [
-    { layer: "sky", translateRatio: 0.1 },  // slow parallax
-    { layer: "mid", translateRatio: 0.6 },  // medium parallax
-    { layer: "world" },                     // full transform (default)
-    { layer: "minimap",                     // camera-agnostic overlay painted on a world layer
-      translateRatio: 0, rotateRatio: 0, scaleRatio: 0 },
+    { layer: "sky", translateRatio: 0.1 }, // slow parallax
+    { layer: "mid", translateRatio: 0.6 }, // medium parallax
+    { layer: "world" }, // full transform (default)
+    {
+      layer: "minimap", // camera-agnostic overlay painted on a world layer
+      translateRatio: 0,
+      rotateRatio: 0,
+      scaleRatio: 0,
+    },
   ],
 });
 ```
@@ -237,9 +255,11 @@ case, see [`ScreenFollow`](#screenfollow-entity-anchored-ui) below.
 including its active modifiers. Use it when writing a rendering tool that
 owns its own container:
 
-```typescript
+```typescript yage-group="camera" yage-context="scene-enter"
+import { Container } from "pixi.js";
 import { CameraComponent, syncCameraTransform } from "@yagejs/renderer";
 
+const container = new Container();
 syncCameraTransform(container, camera.get(CameraComponent));
 ```
 
@@ -264,23 +284,28 @@ rotation — the canonical "billboard" primitive for nameplates, health
 bars, damage numbers, and interaction prompts.
 
 ```typescript
-import { ScreenFollow } from "@yagejs/renderer";
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { ScreenFollow, type CameraEntity } from "@yagejs/renderer";
 import { UISurface, Anchor } from "@yagejs/ui";
 
 class EnemyNameplate extends Entity {
   setup(params: { target: Entity; camera: CameraEntity; label: string }) {
     this.add(new Transform());
-    this.add(new ScreenFollow({
-      target: params.target,
-      camera: params.camera,
-      offset: new Vec2(0, -40), // 40 screen pixels above the target, at any zoom
-    }));
-    const panel = this.add(new UISurface({
-      positioning: "transform",  // read Transform.worldPosition
-      anchor: Anchor.BottomCenter, // pivot on the panel
-      padding: 4,
-      background: { color: 0x000000, alpha: 0.6, radius: 4 },
-    }));
+    this.add(
+      new ScreenFollow({
+        target: params.target,
+        camera: params.camera,
+        offset: new Vec2(0, -40), // 40 screen pixels above the target, at any zoom
+      }),
+    );
+    const panel = this.add(
+      new UISurface({
+        positioning: "transform", // read Transform.worldPosition
+        anchor: Anchor.BottomCenter, // pivot on the panel
+        padding: 4,
+        background: { color: 0x000000, alpha: 0.6, radius: 4 },
+      }),
+    );
     panel.text(params.label, { fontSize: 11, fill: 0xffffff });
   }
 }
@@ -319,11 +344,13 @@ component with the underlying PixiJS display object. When you update position,
 rotation, or scale on a `Transform`, the corresponding Pixi sprite or graphic
 moves to match — no manual syncing required.
 
-```typescript
+```typescript yage-context="entity"
+import { Transform } from "@yagejs/core";
+
 // Moving the transform moves the sprite on screen
-entity.transform.setPosition(200, 300);
-entity.transform.rotate(0.5);
-entity.transform.setScale(2, 2);
+entity.get(Transform).setPosition(200, 300);
+entity.get(Transform).rotate(0.5);
+entity.get(Transform).setScale(2, 2);
 ```
 
 This one-way sync (ECS to Pixi) runs once per frame after all component updates

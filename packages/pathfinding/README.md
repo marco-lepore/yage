@@ -1,6 +1,6 @@
 # @yagejs/pathfinding
 
-Grid A* pathfinding for the [YAGE](https://yage.dev) 2D game engine.
+Grid A\* pathfinding for the [YAGE](https://yage.dev) 2D game engine.
 
 ## Install
 
@@ -30,7 +30,10 @@ const path = grid.findPath({ x: 48, y: 48 }, { x: 600, y: 400 });
 A tilemap adapter is available behind a subpath so a grid-only consumer never
 pulls in `@yagejs/tilemap`:
 
-```ts
+```ts yage-context="entity"
+import { TilemapComponent } from "@yagejs/tilemap";
+const tilemap = entity.get(TilemapComponent);
+
 import { gridFromTilemap } from "@yagejs/pathfinding/tilemap";
 
 const grid = gridFromTilemap(tilemap.data, { layers: ["collision"] });
@@ -39,7 +42,10 @@ const grid = gridFromTilemap(tilemap.data, { layers: ["collision"] });
 The same subpath also builds a grid from Tiled object-layer shapes (rects,
 circles, capsules, polygons, polylines) instead of tile gids:
 
-```ts
+```ts yage-context="entity"
+import { TilemapComponent } from "@yagejs/tilemap";
+const tilemap = entity.get(TilemapComponent);
+
 import { gridFromColliders } from "@yagejs/pathfinding/tilemap";
 
 const grid = gridFromColliders(tilemap.data, {

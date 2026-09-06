@@ -14,15 +14,17 @@ Every `fx.addEffect(...)` call returns a typed `EffectHandle` you keep around
 to control the effect later. Components, layers, scenes, and the renderer
 all expose effects through the same `.fx` property:
 
-```ts
+```ts yage-context="component"
 import { hitFlash } from "@yagejs/effects";
+import { SpriteComponent } from "@yagejs/renderer";
 
+const sprite = this.sibling(SpriteComponent);
 const flash = sprite.fx.addEffect(hitFlash({ color: 0xffffff, duration: 0.1 }));
-flash.trigger();         // one-shot ramp up + down
+flash.trigger(); // one-shot ramp up + down
 flash.setIntensity(0.5); // set half strength immediately
-flash.fadeOut(0.2);      // returns a Process
+flash.fadeOut(0.2); // returns a Process
 flash.setEnabled(false); // toggle without removing
-flash.remove();          // detach + destroy
+flash.remove(); // detach + destroy
 ```
 
 The base handle is shared across every preset:
@@ -45,18 +47,29 @@ means while preserving the current intensity ratio.
 
 ## Four scopes
 
-```ts
+```ts yage-context="component"
+import {
+  SpriteComponent,
+  SceneRenderTreeKey,
+  RendererKey,
+} from "@yagejs/renderer";
+import { hitFlash, bloom, crt, vignette } from "@yagejs/effects";
+
+const sprite = this.sibling(SpriteComponent);
+
 // 1. Component scope — sprite / graphics / text / animatedSprite.
-sprite.fx.addEffect(hitFlash({ ... }));
+sprite.fx.addEffect(hitFlash({ duration: 0.1 }));
 
 // 2. Layer scope — every entity in this layer.
-this.use(SceneRenderTreeKey).get("world").fx.addEffect(bloom({ ... }));
+this.use(SceneRenderTreeKey)
+  .get("world")
+  .fx.addEffect(bloom({ blur: 8 }));
 
 // 3. Scene scope — the entire per-scene root.
-this.use(SceneRenderTreeKey).fx.addEffect(crt({ ... }));
+this.use(SceneRenderTreeKey).fx.addEffect(crt({ lineContrast: 0.25 }));
 
 // 4. Screen scope — cross-scene, on app.stage.
-this.use(RendererKey).fx.addEffect(vignette({ ... }));
+this.use(RendererKey).fx.addEffect(vignette({ alpha: 0.3 }));
 ```
 
 Pixi processes filters bottom-up the display tree, so an outer scope
@@ -95,13 +108,30 @@ protocol:
 ```ts
 import {
   // Originals
-  hitFlash, bloom, outline, dropShadow, pixelate,
-  glow, crt, chromaticAberration, vignette, colorGrade,
+  hitFlash,
+  bloom,
+  outline,
+  dropShadow,
+  pixelate,
+  glow,
+  crt,
+  chromaticAberration,
+  vignette,
+  colorGrade,
   // Added in 0.5.x
-  godRay, shockwave, motionBlur, oldFilm, bulgePinch,
-  halftone, wave,
+  godRay,
+  shockwave,
+  motionBlur,
+  oldFilm,
+  bulgePinch,
+  halftone,
+  wave,
   colorize,
-  glitch, zoomBlur, axisBlur, implosion, dissolve,
+  glitch,
+  zoomBlur,
+  axisBlur,
+  implosion,
+  dissolve,
 } from "@yagejs/effects";
 ```
 
@@ -161,13 +191,15 @@ reads as olive, not yellow. `colorize` is the replace-style answer:
 black stays black, white reaches the target colour, midtones blend
 proportionally, source alpha is preserved unchanged.
 
-```ts
+```ts yage-context="component"
 import { colorize } from "@yagejs/effects";
+import { SpriteComponent } from "@yagejs/renderer";
 
+const sprite = this.sibling(SpriteComponent);
 const recolour = sprite.fx.addEffect(colorize({ color: 0xf2c14e }));
-recolour.setColor("#d94a4a");  // numbers or strings ("#…", "red", "rgb(…)")
-recolour.setStrength(0.6);     // rebases full ceiling; preserves ratio
-recolour.fadeOut(0.2);         // strength → 0 cross-fades back to the source
+recolour.setColor("#d94a4a"); // numbers or strings ("#…", "red", "rgb(…)")
+recolour.setStrength(0.6); // rebases full ceiling; preserves ratio
+recolour.fadeOut(0.2); // strength → 0 cross-fades back to the source
 ```
 
 Output per pixel is `mix(sourceRGB, tintColor * L, strength)` where `L`
@@ -180,7 +212,29 @@ the two.
 
 A few presets behave differently from the steady-state pattern:
 
-```ts
+```ts yage-context="component"
+import { SpriteComponent, SceneRenderTreeKey } from "@yagejs/renderer";
+import {
+  shockwave,
+  godRay,
+  oldFilm,
+  wave,
+  motionBlur,
+  bulgePinch,
+  glitch,
+  zoomBlur,
+  axisBlur,
+  implosion,
+  dissolve,
+} from "@yagejs/effects";
+
+const sprite = this.sibling(SpriteComponent);
+const scene = this.use(SceneRenderTreeKey);
+const layer = scene.get("world");
+const heroX = 400;
+const heroY = 300;
+const playerPosition = { x: heroX, y: heroY };
+
 // shockwave — parks at "off" until you call trigger(); re-trigger cancels
 // any in-flight ramp.
 const sw = scene.fx.addEffect(shockwave({ amplitude: 40 }));
@@ -200,7 +254,7 @@ mb.setVelocity(50, 12);
 
 // bulgePinch.center is normalized 0..1 screen coords (resolution-independent).
 const bp = scene.fx.addEffect(bulgePinch({ strength: 1, radius: 200 }));
-bp.setStrength(-0.8);   // flips bulge → pinch; intensity ratio preserved
+bp.setStrength(-0.8); // flips bulge → pinch; intensity ratio preserved
 bp.setCenter(0.5, 0.5);
 
 // glitch keeps one deterministic pattern until refresh() is called.
@@ -310,16 +364,19 @@ at the call site.
 For one-off shaders or `pixi-filters` imports the engine doesn't wrap, use
 `rawFilter`:
 
-```ts
+```ts yage-context="component"
 import { BlurFilter } from "pixi.js";
-import { rawFilter } from "@yagejs/renderer";
+import { rawFilter, SpriteComponent } from "@yagejs/renderer";
 
+const sprite = this.sibling(SpriteComponent);
 const blur = new BlurFilter({ strength: 8 });
 const handle = sprite.fx.addEffect(
   rawFilter(blur, {
     intensity: {
       get: () => blur.strength,
-      set: (v) => { blur.strength = v * 8; },
+      set: (v) => {
+        blur.strength = v * 8;
+      },
     },
   }),
 );
@@ -337,7 +394,9 @@ import { defineEffect } from "@yagejs/renderer";
 import type { EffectHandle } from "@yagejs/renderer";
 import { ShockwaveFilter } from "pixi-filters";
 
-interface ShockOptions { strength: number; }
+interface ShockOptions {
+  strength: number;
+}
 
 export const shock = defineEffect<EffectHandle, ShockOptions>({
   name: "myGame:shockwave",
@@ -346,7 +405,9 @@ export const shock = defineEffect<EffectHandle, ShockOptions>({
     return {
       filter,
       getIntensity: () => filter.amplitude / opts.strength,
-      setIntensity: (v) => { filter.amplitude = opts.strength * v; },
+      setIntensity: (v) => {
+        filter.amplitude = opts.strength * v;
+      },
     };
   },
 });
@@ -358,18 +419,31 @@ The returned `shock` is callable like any preset: `sprite.fx.addEffect(shock({ s
 
 Masks are exclusive (one per container) and use a parallel API:
 
-```ts
-import { rectMask, graphicsMask } from "@yagejs/renderer";
+```ts yage-context="component"
+import {
+  rectMask,
+  graphicsMask,
+  SpriteComponent,
+  SceneRenderTreeKey,
+} from "@yagejs/renderer";
 
-const handle = sprite.setMask(rectMask({ x: 0, y: 0, width: 200, height: 200 }));
+const sprite = this.sibling(SpriteComponent);
+const tree = this.use(SceneRenderTreeKey);
+const layout = { x: 100, y: 100 };
+
+const handle = sprite.setMask(
+  rectMask({ x: 0, y: 0, width: 200, height: 200 }),
+);
 handle.setInverse(true);
 sprite.clearMask();
 
 // Layer + scene scope share the same shape.
-tree.get("hud").setMask(graphicsMask((g) => {
-  g.clear();                                    // pixi commands accumulate
-  g.circle(layout.x, layout.y, 100).fill(0xffffff); // read live state, don't snapshot
-}));
+tree.get("hud").setMask(
+  graphicsMask((g) => {
+    g.clear(); // pixi commands accumulate
+    g.circle(layout.x, layout.y, 100).fill(0xffffff); // read live state, don't snapshot
+  }),
+);
 // After layout changes, call .redraw() to re-run the closure.
 ```
 
@@ -398,11 +472,13 @@ The default is `"inherit"` — the mode of the nearest ancestor that sets one,
 which is `"normal"` unless a parent changed it. Set `"normal"` explicitly on
 a child inside a group that uses another mode.
 
-```ts
+```ts yage-context="entity"
 import { SpriteComponent } from "@yagejs/renderer";
 
 // A muzzle flash that brightens whatever it lands on.
-entity.add(new SpriteComponent({ texture: "flash", blendMode: "add" }));
+const sprite = entity.add(
+  new SpriteComponent({ texture: "flash", blendMode: "add" }),
+);
 
 // Later, back to plain compositing.
 sprite.blendMode = "normal";
@@ -438,11 +514,16 @@ schedule you control. Reach for it when several objects need to composite
 against each other before they reach the screen, or when redrawing expensive
 static content every frame is wasteful.
 
-```ts
+```ts yage-group="render-target" yage-context="context,entity"
 import { Container, Graphics } from "pixi.js";
-import { RendererKey, SpriteComponent, registerTexture } from "@yagejs/renderer";
+import {
+  RendererKey,
+  SpriteComponent,
+  registerTexture,
+} from "@yagejs/renderer";
 
-const renderer = this.context.resolve(RendererKey);
+const renderer = context.resolve(RendererKey);
+const overlay = entity;
 
 // The offscreen content. Not part of the scene render tree.
 const buffer = new Container();
@@ -467,8 +548,12 @@ overlay.add(new SpriteComponent({ texture: "lighting", layer: "overlay" }));
 A registered key outlives the target it came from. `destroy()` frees the GPU
 texture but leaves the key resolving to it, so tear the two down together:
 
-```ts
-onExit(): void {
+Call this cleanup from the owning scene's `onExit()`:
+
+```ts yage-group="render-target" yage-context="context,entity"
+import { unregisterTexture } from "@yagejs/renderer";
+
+function disposeLighting(): void {
   unregisterTexture("lighting");
   target.destroy();
 }
@@ -476,11 +561,12 @@ onExit(): void {
 
 The buffer starts out needing a draw and is redrawn only when you ask:
 
-```ts
+```ts yage-group="render-target" yage-context="context,entity"
 // In a component's update:
+const player = { x: 400, y: 300 };
 lamp.position.set(player.x, player.y);
-target.invalidate();       // the content changed
-target.renderIfNeeded();   // draws, and returns true because it did
+target.invalidate(); // the content changed
+target.renderIfNeeded(); // draws, and returns true because it did
 ```
 
 For content that changes rarely — a baked background, a fog-of-war map

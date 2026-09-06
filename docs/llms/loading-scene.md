@@ -4,7 +4,12 @@
 
 ## Usage
 
-```ts
+```ts yage-context="engine"
+import { Scene } from "@yagejs/core";
+class GameScene extends Scene {
+  readonly name = "game";
+}
+
 import { LoadingScene } from "@yagejs/core";
 import { fade } from "@yagejs/renderer";
 import { LoadingSceneProgressBar } from "@yagejs/ui";
@@ -28,13 +33,15 @@ Loading does not start automatically — call `this.startLoading()` when you wan
 ## API
 
 ```ts
-abstract class LoadingScene extends Scene {
-  readonly name: string;                           // default "loading"
+import { Scene, type SceneTransition } from "@yagejs/core";
+
+declare abstract class LoadingScene extends Scene {
+  readonly name: string; // default "loading"
   abstract readonly target: Scene | (() => Scene);
-  readonly minDuration: number;                    // default 0
+  readonly minDuration: number; // default 0
   readonly transition?: SceneTransition;
-  readonly autoContinue: boolean;                  // default true
-  readonly progress: number;                       // getter, 0 → 1
+  readonly autoContinue: boolean; // default true
+  readonly progress: number; // getter, 0 → 1
 
   /**
    * Start asset loading. No-op while a load is in flight or after a
@@ -61,10 +68,10 @@ abstract class LoadingScene extends Scene {
 
 Both fire on the engine `EventBus`. Payload `scene` is the `LoadingScene` that fired the event — use strict identity (`ev.scene === this.scene`) to filter if multiple loading scenes could coexist.
 
-| Event | Payload | When |
-|---|---|---|
-| `scene:loading:progress` | `{ scene, ratio }` | Every `AssetManager` progress update, 0 → 1 |
-| `scene:loading:done` | `{ scene }` | After preload finishes AND `minDuration` elapses, before the handoff begins |
+| Event                    | Payload            | When                                                                        |
+| ------------------------ | ------------------ | --------------------------------------------------------------------------- |
+| `scene:loading:progress` | `{ scene, ratio }` | Every `AssetManager` progress update, 0 → 1                                 |
+| `scene:loading:done`     | `{ scene }`        | After preload finishes AND `minDuration` elapses, before the handoff begins |
 
 ## Custom visual
 
@@ -82,8 +89,12 @@ class MyLoadingSpinner extends Component {
       this.redraw(ev.ratio);
     });
   }
-  override onDestroy() { this.unsub?.(); }
-  private redraw(r: number) { /* ... */ }
+  override onDestroy() {
+    this.unsub?.();
+  }
+  private redraw(r: number) {
+    /* ... */
+  }
 }
 ```
 
@@ -91,20 +102,65 @@ A constantly-animated visual (rotating spinner) does its own per-frame animation
 
 ## Press-any-key flow
 
-```ts
+```ts yage-context="engine"
+import {
+  Component,
+  Entity,
+  LoadingScene,
+  Scene,
+  Transform,
+} from "@yagejs/core";
+import { InputPlugin, InputManagerKey } from "@yagejs/input";
+import { TextComponent } from "@yagejs/renderer";
+import { LoadingSceneProgressBar } from "@yagejs/ui";
+class GameScene extends Scene {
+  readonly name = "game";
+}
+
+// Configure the action before engine.start().
+engine.use(new InputPlugin({ actions: { confirm: ["Space"] } }));
+
+class ContinueOnSpace extends Component {
+  private ready = false;
+  onAdd() {
+    this.listenBus("scene:loading:done", (ev) => {
+      if (ev.scene !== this.scene) return;
+      this.ready = true;
+      this.entity.add(new TextComponent({ text: "Press space" }));
+    });
+  }
+  update() {
+    if (
+      this.ready &&
+      this.use(InputManagerKey).isJustPressed("confirm") &&
+      this.scene instanceof LoadingScene
+    ) {
+      this.scene.continue();
+    }
+  }
+}
+class PressAnyKeyPrompt extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.add(new ContinueOnSpace());
+  }
+}
+
 class Boot extends LoadingScene {
   readonly target = new GameScene();
-  readonly autoContinue = false;        // gate the handoff
+  readonly autoContinue = false; // gate the handoff
 
   override onEnter() {
     this.spawn(LoadingSceneProgressBar);
-    this.spawn(PressAnyKeyPrompt);      // game-specific; calls scene.continue() on input
+    this.spawn(PressAnyKeyPrompt); // game-specific; calls scene.continue() on input
     this.startLoading();
   }
 }
 ```
 
-`PressAnyKeyPrompt` is a normal component: listens for `scene:loading:done` to show its "press space" text, polls input in `update()`, calls `(this.scene as LoadingScene).continue()` when the key is pressed.
+`PressAnyKeyPrompt` adds a `ContinueOnSpace` component. The component shows its
+text after `scene:loading:done`, then calls the loading scene's `continue()`
+when the player presses Space.
 
 ## Notes
 
@@ -114,14 +170,17 @@ class Boot extends LoadingScene {
 ## LoadingSceneProgressBar (`@yagejs/ui`)
 
 ```ts
-class LoadingSceneProgressBar extends Entity {
+import { Entity } from "@yagejs/core";
+import type { BackgroundOptions, Anchor } from "@yagejs/ui";
+
+declare class LoadingSceneProgressBar extends Entity {
   setup(opts?: {
-    width?: number;                  // default 400
-    height?: number;                 // default 16
-    track?: BackgroundOptions;       // default dark slate
-    fill?: BackgroundOptions;        // default cyan
-    backdrop?: BackgroundOptions;    // full-viewport bg; default: none (transparent)
-    anchor?: Anchor;                 // default Anchor.Center
+    width?: number; // default 400
+    height?: number; // default 16
+    track?: BackgroundOptions; // default dark slate
+    fill?: BackgroundOptions; // default cyan
+    backdrop?: BackgroundOptions; // full-viewport bg; default: none (transparent)
+    anchor?: Anchor; // default Anchor.Center
     offset?: { x: number; y: number };
     layer?: string;
   }): void;

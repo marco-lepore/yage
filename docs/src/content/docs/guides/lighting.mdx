@@ -21,7 +21,7 @@ import { LightingPlugin } from "@yagejs/lighting";
 import { RendererPlugin } from "@yagejs/renderer";
 
 const engine = new Engine();
-engine.use(new RendererPlugin());
+engine.use(new RendererPlugin({ width: 800, height: 600 }));
 engine.use(
   new LightingPlugin({
     ambient: {
@@ -40,7 +40,7 @@ no light reaches. Both `level` and light `intensity` use a range from `0` to
 
 A light follows the world position of the `Transform` on the same entity:
 
-```typescript
+```typescript yage-group="torch" yage-context="scene-enter"
 import { Transform, Vec2 } from "@yagejs/core";
 import { LightSource } from "@yagejs/lighting";
 
@@ -60,7 +60,7 @@ const light = torch.add(
 transform scale does not resize it. Change the light directly when its
 gameplay radius changes:
 
-```typescript
+```typescript yage-group="torch" yage-context="scene-enter"
 light.radius = 240;
 light.intensity = 0.7;
 light.color = 0x80aaff;
@@ -96,7 +96,9 @@ light colours do not affect it.
 
 Change the scene's ambient light at runtime:
 
-```typescript
+```typescript yage-context="component"
+import { LightingWorldKey } from "@yagejs/lighting";
+
 const lighting = this.service(LightingWorldKey);
 
 lighting.setAmbient(0.05);
@@ -109,7 +111,7 @@ The default renderer draws ambient colour and radial lights into an offscreen
 buffer, then multiplies it over the scene. Coloured lights tint the surfaces
 they reach, as real coloured illumination does.
 
-```typescript
+```typescript yage-context="engine"
 import { LightingPlugin, overlayLighting } from "@yagejs/lighting";
 
 engine.use(
@@ -141,8 +143,16 @@ backend.
 `LightOccluder` stores geometry for a lighting renderer without tying the
 component to Pixi:
 
-```typescript
+```typescript yage-context="scene"
+import { Transform } from "@yagejs/core";
 import { LightOccluder } from "@yagejs/lighting";
+
+const wall = scene.spawn("wall");
+const pillar = scene.spawn("pillar");
+const rock = scene.spawn("rock");
+wall.add(new Transform());
+pillar.add(new Transform());
+rock.add(new Transform());
 
 wall.add(
   new LightOccluder({
@@ -183,7 +193,8 @@ The built-in overlay does not cast shadows, and occluders do not change
 
 Set `renderer` to a factory when a game needs a different visual result:
 
-```typescript
+```typescript yage-context="engine"
+import { LightingPlugin } from "@yagejs/lighting";
 import type { LightingRendererFactory } from "@yagejs/lighting";
 
 const customLighting: LightingRendererFactory = ({
@@ -213,8 +224,12 @@ Both `LightSource` and `LightOccluder` expose an immutable `position` in world
 pixels. For coordinate reads inside a render loop, keep a `Vec2Buffer` and
 reuse it:
 
-```typescript
+```typescript yage-context="entity"
 import { Vec2Buffer } from "@yagejs/core";
+import { LightSource, LightOccluder } from "@yagejs/lighting";
+
+const light = entity.get(LightSource);
+const occluder = entity.get(LightOccluder);
 
 const position = new Vec2Buffer(); // keep between render calls
 light.getPositionInto(position);

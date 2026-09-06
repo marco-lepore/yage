@@ -37,6 +37,11 @@ Fixed timestep default: `1/60` s. Max steps per frame: 5 (prevents spiral of dea
 ## Engine Setup
 
 ```ts
+import { Scene } from "@yagejs/core";
+class MyScene extends Scene {
+  readonly name = "game";
+}
+
 import { Engine } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 
@@ -59,6 +64,8 @@ To restart gameplay, keep the engine running and reset the scene stack: `scenes.
 ## Plugin Interface
 
 ```ts
+import type { EngineContext, SystemScheduler } from "@yagejs/core";
+
 interface Plugin {
   readonly name: string;
   readonly version: string;
@@ -75,6 +82,10 @@ interface Plugin {
 ## Component Lifecycle
 
 ```ts
+import { Component } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
+import { SpriteComponent } from "@yagejs/renderer";
+
 class MyComponent extends Component {
   // Lazy DI resolution (cached after first call)
   private input = this.service(InputManagerKey);
@@ -83,8 +94,8 @@ class MyComponent extends Component {
   private sprite = this.sibling(SpriteComponent);
 
   onAdd() {} // added to entity
-  update(dt) {} // every frame (variable dt in seconds)
-  fixedUpdate(dt) {} // every fixed step (fixed dt in seconds)
+  update(dt: number) {} // every frame (variable dt in seconds)
+  fixedUpdate(dt: number) {} // every fixed step (fixed dt in seconds)
   onDestroy() {} // entity destroyed or component removed
 }
 ```
@@ -99,7 +110,16 @@ class MyComponent extends Component {
 
 ## Entity Operations
 
-```ts
+```ts yage-context="scene"
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+class PlayerEntity extends Entity {
+  setup({ x, y }: { x: number; y: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+  }
+}
+const parent = scene.spawn("parent");
+const childEntity = scene.spawn("child");
+
 // Spawn
 const e = scene.spawn("name"); // plain entity
 const p = scene.spawn(PlayerEntity, { x: 0, y: 0 }); // subclass with setup()
@@ -114,8 +134,8 @@ e.remove(Transform); // remove + call onDestroy
 // having to name its own class — useful under subclassing.
 
 // Tags
-const e = new Entity("enemy", ["hostile", "npc"]);
-e.tags.has("hostile");
+const enemy = new Entity("enemy", ["hostile", "npc"]);
+enemy.tags.has("hostile");
 
 // Hierarchy
 parent.addChild("arm", childEntity);
@@ -140,6 +160,9 @@ e.destroy();
 Use `setup()` instead of the constructor -- it runs after the entity is attached to its scene, so services and `onAdd` hooks work.
 
 ```ts
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
 class Player extends Entity {
   setup({ x, y }: { x: number; y: number }) {
     this.add(new Transform({ position: new Vec2(x, y) }));
@@ -156,7 +179,9 @@ Entity subclasses have no `use()` / `service()` / `context` of their own — onl
 
 Compile-time enforced, runtime-queryable capabilities on entity subclasses.
 
-```ts
+```ts yage-context="entity"
+import { defineTrait, trait, Entity } from "@yagejs/core";
+
 const Interactable = defineTrait<{ interact(): void }>("Interactable");
 
 @trait(Interactable)
@@ -179,7 +204,15 @@ if (entity.hasTrait(Interactable)) {
 
 Stack-based via `SceneManager`:
 
-```ts
+```ts yage-context="engine"
+import { Scene } from "@yagejs/core";
+class GameScene extends Scene {
+  readonly name = "game";
+}
+class MenuScene extends Scene {
+  readonly name = "menu";
+}
+
 await engine.scenes.push(new GameScene()); // enters scene
 await engine.scenes.pop(); // exits top scene
 await engine.scenes.replace(new MenuScene()); // swap top
@@ -203,7 +236,9 @@ Entity queries: `scene.findEntity(name)`, `scene.findEntitiesByTag(tag)`, `scene
 
 ### Entity events (defineEvent / entity.on / entity.emit)
 
-```ts
+```ts yage-context="entity"
+import { defineEvent } from "@yagejs/core";
+
 const HitEvent = defineEvent<{ damage: number }>("hit");
 
 entity.on(HitEvent, ({ damage }) => {
@@ -214,7 +249,10 @@ entity.emit(HitEvent, { damage: 10 });
 
 Entity events bubble to the scene:
 
-```ts
+```ts yage-context="scene"
+import { defineEvent } from "@yagejs/core";
+const HitEvent = defineEvent<{ damage: number }>("hit");
+
 scene.on(HitEvent, (data, emittingEntity) => {
   /* ... */
 });
@@ -222,7 +260,9 @@ scene.on(HitEvent, (data, emittingEntity) => {
 
 ### Engine EventBus (global)
 
-```ts
+```ts yage-context="context"
+import { EventBusKey } from "@yagejs/core";
+
 const bus = context.resolve(EventBusKey);
 const unsub = bus.on("entity:created", ({ entity }) => {
   /* ... */
@@ -236,13 +276,15 @@ Built-in events: `entity:created`, `entity:destroyed`, `component:added`, `compo
 
 ## Dependency Injection
 
-`EngineContext` is a typed DI container using `ServiceKey<T>`.
+`EngineContext` resolves plugin-owned infrastructure through `ServiceKey<T>`.
+Pass game-owned state by reference; see [State Management Patterns](./patterns.md#state-management-patterns).
 
-```ts
-const MyServiceKey = new ServiceKey<MyService>("myService");
-context.register(MyServiceKey, new MyService());
-const svc = context.resolve(MyServiceKey); // throws if missing
-const svc2 = context.tryResolve(MyServiceKey); // undefined if missing
+```ts yage-context="context"
+import { InputManagerKey } from "@yagejs/input";
+
+// InputPlugin registers this infrastructure during engine startup.
+const input = context.resolve(InputManagerKey); // throws if missing
+const optionalInput = context.tryResolve(InputManagerKey); // undefined if missing
 ```
 
 Well-known keys: `EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`, `SceneTimeKey` (per-scene, registered by the engine itself).
@@ -265,9 +307,12 @@ when the scene is pushed. Components specify `{ layer: "world" }` to attach
 to a specific layer.
 
 ```ts
+import { Scene } from "@yagejs/core";
+
 import type { LayerDef } from "@yagejs/renderer";
 
 class GameScene extends Scene {
+  readonly name = "game";
   readonly layers: readonly LayerDef[] = [
     { name: "bg", order: -10 },
     { name: "world", order: 0 },
@@ -282,7 +327,11 @@ Note: `push`/`replace` are async — `await` them to ensure `onEnter` has fired.
 
 Ongoing actions updated each frame, managed by `ProcessComponent`.
 
-```ts
+```ts yage-context="entity"
+import { ProcessComponent, Process, Tween, easeOutQuad } from "@yagejs/core";
+const obj = { x: 0 };
+const fire = () => console.log("Fire");
+
 // Add ProcessComponent to entity
 const pc = entity.add(new ProcessComponent());
 
@@ -302,14 +351,37 @@ cd.cancel();
 ### Tween
 
 ```ts
+import { Tween, Vec2, easeOutQuad } from "@yagejs/core";
+const target = { property: 0 };
+const toValue = 100,
+  durationSeconds = 0.3;
+const easing = easeOutQuad;
+const setter = (value: number) => {
+  target.property = value;
+};
+const from = 0,
+  to = 1;
+let position = new Vec2(0, 0);
+const setPosition = (value: Vec2) => {
+  position = value;
+};
+const fromVec = new Vec2(0, 0),
+  toVec = new Vec2(100, 0);
+
 Tween.to(target, "property", toValue, durationSeconds, easing);
 Tween.custom(setter, from, to, durationSeconds, easing);
-Tween.vec2(setter, fromVec, toVec, durationSeconds, easing);
+Tween.vec2(setPosition, fromVec, toVec, durationSeconds, easing);
 ```
 
 ### Sequence
 
-```ts
+```ts yage-context="entity"
+import { Sequence, Tween, ProcessComponent } from "@yagejs/core";
+const obj = { alpha: 1, x: 0, y: 0 };
+const tweenA = Tween.to(obj, "x", 100, 0.3);
+const tweenB = Tween.to(obj, "y", 100, 0.3);
+const pc = entity.get(ProcessComponent);
+
 const seq = new Sequence()
   .then(Tween.to(obj, "alpha", 0, 0.3))
   .wait(0.2)
@@ -324,7 +396,9 @@ pc.run(seq.start());
 
 Pre-built entity with `ProcessComponent` API. No manual component setup:
 
-```ts
+```ts yage-context="scene"
+import { TimerEntity, Process } from "@yagejs/core";
+
 const timers = scene.spawn(TimerEntity);
 timers.run(
   Process.delay(0.5, () => {
@@ -363,7 +437,7 @@ rethrown — a scene half-built by a throwing hook must not look like it
 mounted cleanly. A rejected async hook is reported only, not rethrown, since
 the call has already returned by the time the rejection settles.
 
-```ts
+```ts yage-context="engine"
 // Every recorded failure:
 const { callbackErrors } = engine.inspector.getErrors();
 // [{ kind: "Collision handler", entity: "DoorPad", error: "..." }]

@@ -22,15 +22,6 @@ export const fonts = {
 } as const;
 
 /**
- * @deprecated Fonts now load declaratively via the `fonts` handles in
- * `allAssets` (scene `preload`). Kept as a no-op so existing call sites still
- * work; safe to drop.
- */
-export function loadFonts(): Promise<void> {
-  return Promise.resolve();
-}
-
-/**
  * Engine-level default text style — pass to `new UIPlugin({ defaultTextStyle })`
  * so UI text without an explicit `fontFamily` / `fill` inherits the theme base
  * instead of Pixi's default. Per-text `style` still wins.

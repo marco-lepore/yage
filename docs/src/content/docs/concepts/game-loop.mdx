@@ -74,6 +74,8 @@ The `FixedUpdate` phase uses an accumulator to deliver a deterministic timestep
 regardless of frame rate:
 
 ```typescript
+import { Engine } from "@yagejs/core";
+
 const engine = new Engine({
   fixedTimestep: 1 / 60, // ~0.0167 s per tick (default)
   maxFixedStepsPerFrame: 5, // cap to prevent spiral of death
@@ -109,11 +111,21 @@ All phases except `FixedUpdate` receive the real elapsed time since the last
 frame as `dt` (in seconds). This value fluctuates with frame rate:
 
 ```typescript
+import { Component, Transform } from "@yagejs/core";
+import type { CameraComponent } from "@yagejs/renderer";
+
 class CameraFollow extends Component {
+  constructor(private readonly camera: CameraComponent) {
+    super();
+  }
+
   update(dt: number) {
     // dt varies each frame — smooth but not deterministic
     const target = this.sibling(Transform).position;
-    this.camera.lerp(target, 5 * dt);
+    this.camera.position = this.camera.position.lerp(
+      target,
+      Math.min(1, 5 * dt),
+    );
   }
 }
 ```

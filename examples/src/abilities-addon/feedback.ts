@@ -80,7 +80,7 @@ export function runInvulnFlash(
 
 /** Approximates the world-space impact point: the spot on the victim's
  *  body-collider circle facing wherever the hit came from. `Hit` carries no
- *  impact position of its own (see the friction log) — but `hit.direction`
+ *  impact position of its own, but `hit.direction`
  *  already IS the unit vector from that origin toward the victim, resolved
  *  at delivery time against the actual attacking collider's position (the
  *  hitbox's spawn point for a melee swing, the projectile's own position at
@@ -186,13 +186,11 @@ export function flashAttacker(
 }
 
 // ---------------------------------------------------------------------------
-// VFX hub — two scene-wide particle emitters (impact / charge-burst), shared
-// by every combatant rather than one instance per entity: `burst()` takes
+// VFX hub — three scene-wide particle emitters (impact / charge / parry), shared
+// by every combatant: `burst()` takes
 // explicit world coordinates, so a single emitter can fire at any position
 // without tracking a sibling Transform. The player's own charge-hold visual
-// is a hand-rolled converging effect on `PlayerController` instead (see
-// `ChargeSpark` below) — the particle package's emitter config can't express
-// it (see that section's doc comment) — so this hub's `charge` emitter is
+// uses a local emitter on `PlayerController`, so this hub's `charge` emitter is
 // used only for `chargeBurst`'s one-shot bursts (the enemy melee/cast
 // telegraph's "energy building" tell).
 // ---------------------------------------------------------------------------

@@ -36,7 +36,9 @@ npm install @yagejs/core @yagejs/input
 There is a single entry point — no `./presenters` subpath, because the addon
 draws nothing:
 
-```ts
+```ts yage-group="interaction"
+import type { Entity, Scene, Vec2Like } from "@yagejs/core";
+import type { TextComponent } from "@yagejs/renderer";
 import {
   Interactable,
   Interactor,
@@ -66,19 +68,24 @@ games never leave the first row.
 
 1. **Mark anything the player can interact with.**
 
-   ```ts
-   chest.add(
-     new Interactable({
-       prompt: "Open",
-       onInteract: () => chest.open(),
-     }),
-   );
+   ```ts yage-group="interaction"
+   function setupInteraction(
+     chest: Entity & { open(): void },
+     player: Entity,
+     promptLabel: TextComponent,
+   ) {
+     chest.add(
+       new Interactable({
+         prompt: "Open",
+         onInteract: () => chest.open(),
+       }),
+     );
    ```
 
 2. **Give the player (or any detector entity) an `Interactor`.** Defaults:
    48px range, the `"interact"` action, nearest-in-range focus.
 
-   ```ts
+   ```ts yage-group="interaction"
    const interactor = player.add(new Interactor({ range: 70 }));
    ```
 
@@ -86,11 +93,13 @@ games never leave the first row.
    render step — the event fires only when the focus (or its prompt text)
    actually changes.
 
-   ```ts
-   player.on(InteractionFocusChangedEvent, ({ prompt }) => {
-     promptLabel.text.text = prompt ?? "";
-     promptLabel.text.visible = prompt !== null;
-   });
+   ```ts yage-group="interaction"
+     player.on(InteractionFocusChangedEvent, ({ prompt }) => {
+       promptLabel.text.text = prompt ?? "";
+       promptLabel.text.visible = prompt !== null;
+     });
+     return interactor;
+   }
    ```
 
 </Steps>
@@ -113,19 +122,24 @@ orphaned prompt).
 
 ## Per-interactable overrides
 
-Every field on `InteractableOptions` is optional — configure per interactable, no
-subclassing:
+`onInteract` supplies the action. The other `InteractableOptions` fields are
+optional:
 
-```ts
-lever.add(
-  new Interactable({
-    prompt: () => (lever.on ? "Turn off" : "Turn on"), // re-read live, every frame
-    radius: 40,       // this interactable's own reach, added to the interactor's range
-    priority: 10,     // wins focus ties over a nearer, lower-priority thing
-    enabled: () => !player.isBusy(), // false → dropped from focus entirely
-    onInteract: () => lever.toggle(),
-  }),
-);
+```ts yage-group="interaction"
+function configureLever(
+  lever: Entity & { isOn: boolean; toggle(): void },
+  player: Entity & { isBusy(): boolean },
+) {
+  lever.add(
+    new Interactable({
+      prompt: () => (lever.isOn ? "Turn off" : "Turn on"), // re-read live, every frame
+      radius: 40, // this interactable's own reach, added to the interactor's range
+      priority: 10, // wins focus ties over a nearer, lower-priority thing
+      enabled: () => !player.isBusy(), // false → dropped from focus entirely
+      onInteract: () => lever.toggle(),
+    }),
+  );
+}
 ```
 
 `prompt` and `enabled` both accept a static value or a `() => value`
@@ -138,33 +152,56 @@ extra setup when the underlying state changes.
 call the built-in input path makes, so a custom controller or a test drives
 it with no synthetic device input:
 
-```ts
-const interactor = player.add(new Interactor({ range: 70, action: null }));
+```ts yage-group="interaction"
+function driveInteraction(
+  interactor: Interactor,
+  myInput: { isJustPressed(action: string): boolean },
+) {
+  // your own controller detects the press:
+  if (myInput.isJustPressed("interact")) interactor.interact();
 
-// your own controller detects the press:
-if (myInput.isJustPressed("interact")) interactor.interact();
-
-interactor.focus; // the focused Interactable | null — read for a custom prompt
+  interactor.focus; // the focused Interactable | null — read for a custom prompt
+}
 ```
+
+Add the `Interactor` once with `action: null`. Call `driveInteraction` after
+the interactor's normal update has populated `focus` and `inRange`.
 
 ## Cross-addon composition
 
 An interactable's `onInteract` is a plain closure — connecting another addon
 takes one line, with no addon-to-addon dependency:
 
-```ts
-npc.add(
-  new Interactable({ prompt: "Talk", onInteract: () => dialogue.play(script) }),
-);
-coin.add(
-  new Interactable({
-    prompt: "Pick up",
-    onInteract: () => {
-      inventory.add("coin");
-      coin.destroy();
-    },
-  }),
-);
+```ts yage-group="interaction"
+import type {
+  DialogueController,
+  DialogueScript,
+} from "@yagejs-addons/dialogue";
+import type { Inventory } from "@yagejs-addons/inventory";
+
+function connectAddons(
+  npc: Entity,
+  coin: Entity,
+  dialogue: DialogueController,
+  script: DialogueScript,
+  inventory: Inventory<"coin">,
+) {
+  npc.add(
+    new Interactable({
+      prompt: "Talk",
+      onInteract: () => dialogue.play(script),
+    }),
+  );
+  coin.add(
+    new Interactable({
+      prompt: "Pick up",
+      onInteract: () => {
+        const result = inventory.add("coin");
+        if (result.added === 1) coin.destroy();
+      },
+    }),
+  );
+}
 ```
 
 ## Focus rules
@@ -193,14 +230,22 @@ Use it when several things overlap and the player should choose — the pickup
 selection in games like Genshin. Listen to `InteractionInRangeChangedEvent`,
 show your own list or wheel, then pass the chosen one back to `interact`:
 
-```ts
-player.on(InteractionInRangeChangedEvent, ({ inRange }) => {
-  if (inRange.length > 1) wheel.show(inRange); // ranked; inRange[0] is the focus
-  else wheel.hide();
-});
+```ts yage-group="interaction"
+function connectSelection(
+  player: Entity,
+  interactor: Interactor,
+  wheel: { show(targets: readonly Interactable[]): void; hide(): void },
+) {
+  player.on(InteractionInRangeChangedEvent, ({ inRange }) => {
+    if (inRange.length > 1)
+      wheel.show(inRange); // ranked; inRange[0] is the focus
+    else wheel.hide();
+  });
 
-function confirm(chosen: Interactable) {
-  interactor.interact(chosen);
+  function confirm(chosen: Interactable) {
+    interactor.interact(chosen);
+  }
+  return confirm;
 }
 ```
 
@@ -222,17 +267,23 @@ For a scene-wide reveal — an observation skill that highlights everything
 interactable, whatever the interactor's range — enumerate by scene with
 `interactablesIn`:
 
-```ts
-import { interactablesIn, rankInteractables } from "@yagejs-addons/interaction";
+```ts yage-group="interaction"
+import { rankInteractables } from "@yagejs-addons/interaction";
 
-// interactablesIn drops destroyed hosts but keeps DISABLED ones, since whether
-// an ungated target is still worth revealing is the game's call.
-const live = interactablesIn(scene).filter((it) => it.isEnabled());
+function revealNearby(
+  scene: Scene,
+  playerPos: Vec2Like,
+  outline: (entity: Entity) => void,
+) {
+  // Only active hosts and enabled components are returned; apply the game's gate too.
+  const live = interactablesIn(scene).filter((it) => it.isEnabled());
 
-for (const it of live) outline(it.entity); // it.entity is the host to draw the outline on
+  for (const it of live) outline(it.entity); // it.entity is the host to draw the outline on
 
-// rankInteractables is geometry only, so filter the enabled gate first:
-const nearby = rankInteractables({ position: playerPos, range: 200 }, live);
+  // rankInteractables is geometry only, so filter the enabled gate first:
+  const nearby = rankInteractables({ position: playerPos, range: 200 }, live);
+  return nearby;
+}
 ```
 
 Each `Interactable` exposes read-only `position`, `radius`, `priority`,
@@ -250,10 +301,12 @@ the outline shader, and the icon; the addon tells you what and where.
 the tracking toggle — flip it to pause one interactor during a cutscene, or to
 switch tracking between several:
 
-```ts
-interactor.enabled = false; // empties the snapshot immediately (emitting the
-                            // transitions), then halts tracking, input polling,
-                            // and interact()
+```ts yage-group="interaction"
+function pauseTracking(interactor: Interactor) {
+  interactor.enabled = false; // empties the snapshot immediately (emitting the
+  // transitions), then halts tracking, input polling,
+  // and interact()
+}
 ```
 
 A disabled interactor interacts with nothing, even when handed an explicit
@@ -262,9 +315,11 @@ target — the pause is not something an argument can bypass.
 Deactivating an entity has the same effect on both sides, so an entity you
 turn off or hand back to a pool leaves nothing behind:
 
-```ts
-player.setActive(false); // its interactor drops the snapshot and stops tracking
-chest.setActive(false);  // no interactor can focus or interact with the chest
+```ts yage-group="interaction"
+function deactivateParticipants(player: Entity, chest: Entity) {
+  player.setActive(false); // its interactor drops the snapshot and stops tracking
+  chest.setActive(false); // no interactor can focus or interact with the chest
+}
 ```
 
 Turn the entity back on and it picks up where it left off, including its place

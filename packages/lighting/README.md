@@ -13,7 +13,7 @@ import {
 import { RendererPlugin } from "@yagejs/renderer";
 
 const engine = new Engine();
-engine.use(new RendererPlugin());
+engine.use(new RendererPlugin({ width: 800, height: 600 }));
 engine.use(
   new LightingPlugin({
     ambient: { level: 0.2, color: 0xb0b8cc },
@@ -41,6 +41,9 @@ The built-in renderer draws coloured, soft-edged light over an ambient floor.
 Use the scene-scoped `LightingWorldKey` for gameplay queries:
 
 ```ts
+import { Component } from "@yagejs/core";
+import { LightingWorldKey } from "@yagejs/lighting";
+
 class LightSensor extends Component {
   private readonly lighting = this.service(LightingWorldKey);
 

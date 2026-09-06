@@ -18,7 +18,7 @@ import {
 } from "@yagejs/ui-react";
 import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap";
 import {
-  textStyle, loadFonts, assets, allAssets,
+  textStyle, assets, allAssets,
   nineSlice, btnTextOffset, panelBg,
 } from "../shared/ui-theme";
 
@@ -309,7 +309,6 @@ async function main() {
   engine.use(new UIReactPlugin());
   await installDebugFromUrl(engine);
 
-  await loadFonts();
   await engine.start();
   await engine.scenes.push(new KitchenSinkScene());
 }

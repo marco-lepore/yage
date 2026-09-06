@@ -1,12 +1,12 @@
 ---
 title: "Your First Game"
-description: "Create a spinning triangle in under 30 lines of code"
+description: "Create a spinning triangle with a scene and a component"
 ---
 
 import GameEmbed from '../../../components/GameEmbed.astro';
 
-In this guide you will create a spinning green triangle from scratch. The
-finished example is under 30 lines of TypeScript.
+In this guide you will create a spinning green triangle from scratch with
+a scene and a component that rotates the triangle each frame.
 
 <GameEmbed demo="first-game" width={800} height={600} />
 
@@ -14,7 +14,11 @@ finished example is under 30 lines of TypeScript.
 
 ```typescript
 import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
-import { GraphicsComponent, RendererPlugin, CameraEntity } from "@yagejs/renderer";
+import {
+  GraphicsComponent,
+  RendererPlugin,
+  CameraEntity,
+} from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
 
 class Spin extends Component {
@@ -47,11 +51,13 @@ class HelloWorldScene extends Scene {
 }
 
 const engine = new Engine({ debug: true });
-engine.use(new RendererPlugin({
-  width: 800,
-  height: 600,
-  backgroundColor: 0x0a0a0a,
-}));
+engine.use(
+  new RendererPlugin({
+    width: 800,
+    height: 600,
+    backgroundColor: 0x0a0a0a,
+  }),
+);
 engine.use(new DebugPlugin());
 await engine.start();
 engine.scenes.push(new HelloWorldScene());
@@ -61,9 +67,13 @@ engine.scenes.push(new HelloWorldScene());
 
 ### 1. Imports
 
-```typescript
+```typescript yage-group="walkthrough" yage-context="scene"
 import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
-import { GraphicsComponent, RendererPlugin, CameraEntity } from "@yagejs/renderer";
+import {
+  GraphicsComponent,
+  RendererPlugin,
+  CameraEntity,
+} from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
 ```
 
@@ -79,7 +89,7 @@ import { DebugPlugin } from "@yagejs/debug";
 
 ### 2. A Custom Component — `Spin`
 
-```typescript
+```typescript yage-group="walkthrough" yage-context="scene"
 class Spin extends Component {
   private readonly transform = this.sibling(Transform);
   private speed: number;
@@ -99,16 +109,20 @@ speed stays consistent regardless of frame rate.
 
 ### 3. Setting Up the Engine
 
-```typescript
-const engine = new Engine({ debug: true });
-engine.use(new RendererPlugin({
-  width: 800,
-  height: 600,
-  backgroundColor: 0x0a0a0a,
-}));
-engine.use(new DebugPlugin());
-await engine.start();
-engine.scenes.push(new HelloWorldScene());
+```typescript yage-group="walkthrough" yage-context="scene"
+async function startGame() {
+  const engine = new Engine({ debug: true });
+  engine.use(
+    new RendererPlugin({
+      width: 800,
+      height: 600,
+      backgroundColor: 0x0a0a0a,
+    }),
+  );
+  engine.use(new DebugPlugin());
+  await engine.start();
+  engine.scenes.push(new HelloWorldScene());
+}
 ```
 
 - **`new Engine({ debug: true })`** creates the engine with debug mode enabled.
@@ -118,7 +132,7 @@ engine.scenes.push(new HelloWorldScene());
 
 ### 4. Setting Up the Scene
 
-```typescript
+```typescript yage-group="walkthrough" yage-context="scene"
 class HelloWorldScene extends Scene {
   readonly name = "hello-world";
 
@@ -142,7 +156,7 @@ in the Rendering guide for the full explanation.
 
 ### 5. Spawning an Entity
 
-```typescript
+```typescript yage-group="walkthrough" yage-context="scene"
 const tri = scene.spawn("triangle");
 ```
 
@@ -151,7 +165,7 @@ name used by the debug tools.
 
 ### 6. Adding Components
 
-```typescript
+```typescript yage-group="walkthrough" yage-context="scene"
 tri.add(new Transform({ position: new Vec2(400, 300) }));
 tri.add(
   new GraphicsComponent().draw((g) => {

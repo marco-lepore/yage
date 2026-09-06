@@ -35,18 +35,11 @@ const AGENT_RADIUS = 6;
 const CAMERA_ZOOM = 1.75;
 
 // ---------------------------------------------------------------------------
-// AgentController — walks the current path's waypoints in order and keeps
-// the camera centred on the agent
+// AgentController — walks the current path's waypoints in order
 // ---------------------------------------------------------------------------
 class AgentController extends Component {
-  private readonly camera: CameraEntity;
   private path: Vec2[] = [];
   private index = 0;
-
-  constructor(camera: CameraEntity) {
-    super();
-    this.camera = camera;
-  }
 
   setPath(waypoints: Vec2[]): void {
     this.path = waypoints;
@@ -65,12 +58,11 @@ class AgentController extends Component {
       transform.setPosition(next.x, next.y);
       if (next.x === target.x && next.y === target.y) this.index++;
     }
-    this.camera.position = transform.position;
   }
 }
 
 class AgentEntity extends Entity {
-  setup(params: { position: Vec2; camera: CameraEntity }): void {
+  setup(params: { position: Vec2 }): void {
     this.add(new Transform({ position: params.position }));
     this.add(
       new GraphicsComponent().draw((g) => {
@@ -78,7 +70,7 @@ class AgentEntity extends Entity {
         g.circle(0, 0, AGENT_RADIUS).stroke({ color: 0x0ea5e9, width: 2 });
       }),
     );
-    this.add(new AgentController(params.camera));
+    this.add(new AgentController());
   }
 }
 
@@ -111,17 +103,17 @@ class GameController extends Component {
   }
 
   override onAdd(): void {
-    this.input.onPointerDown((p) => {
-      if (p.button !== 0) return;
-      const start = this.agentEntity.get(Transform).position;
-      // getPointerPosition() runs the click through the camera set via
-      // InputManager.setCamera, so the goal lands in world (map) pixels
-      // instead of screen pixels.
-      const goal = this.input.getPointerPosition();
-      const path = this.grid.findPath(start, goal);
-      this.drawPath(path);
-      if (path) this.agent.setPath(path.waypoints);
-    });
+    this.addCleanup(
+      this.input.onPointerDown((p) => {
+        if (p.button !== 0) return;
+        const start = this.agentEntity.get(Transform).position;
+        // The camera maps the pointer into world (map) pixels.
+        const goal = this.input.getPointerPosition();
+        const path = this.grid.findPath(start, goal);
+        this.drawPath(path);
+        if (path) this.agent.setPath(path.waypoints);
+      }),
+    );
   }
 
   private drawPath(path: Path | null): void {
@@ -159,13 +151,6 @@ class PathfindingScene extends Scene {
       shapes: tilemap.getCollisionShapes("walls"),
     });
 
-    const cam = this.spawn(CameraEntity, {
-      position: new Vec2(mapW / 2, mapH / 2),
-      zoom: CAMERA_ZOOM,
-      bounds: { minX: 0, minY: 0, maxX: mapW, maxY: mapH },
-    });
-    this.context.resolve(InputManagerKey).setCamera(cam);
-
     const playerObj = tilemap.findObjectByName("Player");
     if (!playerObj) {
       throw new Error(
@@ -174,8 +159,14 @@ class PathfindingScene extends Scene {
     }
     const agent = this.spawn(AgentEntity, {
       position: new Vec2(playerObj.x, playerObj.y),
-      camera: cam,
     });
+
+    const cam = this.spawn(CameraEntity, {
+      zoom: CAMERA_ZOOM,
+      bounds: { minX: 0, minY: 0, maxX: mapW, maxY: mapH },
+    });
+    cam.follow(agent.get(Transform), { snap: true });
+    this.context.resolve(InputManagerKey).setCamera(cam);
 
     const controller = this.spawn("controller");
     controller.add(new Transform());

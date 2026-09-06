@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "lab": "yage-lab dev",
     "lab:test": "yage-lab test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "yage-lab": {
     "scenarios": [

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import type { DebugDiagnostics } from "@yagejs/debug";
 import { mkdirSync, readdirSync, writeFileSync } from "fs";
 import { dirname, join, resolve } from "path";
@@ -9,6 +9,42 @@ import {
   type AtlasAction,
   type ExampleScript,
 } from "./examples-atlas.js";
+import { stepFrames, waitForClock, waitForTopScene } from "./helpers.js";
+
+async function seedExample(page: Page): Promise<void> {
+  // Some examples use Math.random directly rather than the engine RNG.
+  await page.addInitScript(() => {
+    let s = 1 >>> 0;
+    Math.random = () => {
+      s = (s + 0x6d2b79f5) | 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  });
+}
+
+async function openExample(
+  page: Page,
+  slug: string,
+  scene = slug,
+): Promise<void> {
+  await seedExample(page);
+  await page.goto(`/${slug}.html?test`);
+  await waitForClock(page);
+  await waitForTopScene(page, scene);
+  await stepFrames(page, 1);
+}
+
+async function tapKey(page: Page, key: string): Promise<void> {
+  await page.evaluate(async (code) => {
+    const inspector = window.__yage__!.inspector;
+    inspector.input.keyDown(code);
+    await inspector.time.stepAsync(1);
+    inspector.input.keyUp(code);
+    await inspector.time.stepAsync(1);
+  }, key);
+}
 
 // Auto-discover every shipped example so new ones are covered without editing
 // this file — mirrors how examples/vite.config.ts enumerates HTML inputs.
@@ -54,21 +90,7 @@ test.describe("Examples", () => {
       });
       page.on("pageerror", (err) => errors.push(err.message));
 
-      // Seed Math.random before any example code runs. The engine's own RNG is
-      // seeded via DebugPlugin's deterministicSeed, but several examples scatter
-      // entities with bare Math.random(); overriding it here (mulberry32) makes
-      // their layout reproducible without rewriting the examples. Frozen-clock
-      // execution is deterministic, so the call order — and thus the sequence —
-      // is identical across runs.
-      await page.addInitScript(() => {
-        let s = 1 >>> 0;
-        Math.random = () => {
-          s = (s + 0x6d2b79f5) | 0;
-          let t = Math.imul(s ^ (s >>> 15), 1 | s);
-          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-        };
-      });
+      await seedExample(page);
 
       await page.goto(`/${slug}.html?test`);
 
@@ -152,6 +174,328 @@ test.describe("Examples", () => {
       expect(errors, `console/page errors in ${slug}`).toEqual([]);
     });
   }
+
+  test("gamepad aims at the pointer unless the right stick is active", async ({
+    page,
+  }) => {
+    await openExample(page, "gamepad");
+    const angles = await page.evaluate(() => {
+      const inspector = window.__yage__!.inspector;
+      const rotation = () =>
+        inspector
+          .snapshotScene("gamepad")
+          .entities.find((entity) => entity.name === "ship")!.transform!
+          .rotation;
+      inspector.input.mouseMove(400, 500);
+      inspector.time.step(10);
+      const mouse = rotation();
+      inspector.input.gamepadAxis("rightX", 1);
+      inspector.time.step(10);
+      const stick = rotation();
+      inspector.input.gamepadAxis("rightX", 0);
+      inspector.time.step(10);
+      const fallback = rotation();
+      inspector.input.mouseMove(400, 300);
+      inspector.time.step(10);
+      return { mouse, stick, fallback, coincident: rotation() };
+    });
+    expect(angles.mouse).toBeCloseTo(Math.PI / 2);
+    expect(angles.stick).toBeCloseTo(0);
+    expect(angles.fallback).toBeCloseTo(Math.PI / 2);
+    expect(angles.coincident).toBeCloseTo(angles.fallback);
+  });
+
+  test("multitouch draws a released contact for exactly one final frame", async ({
+    page,
+  }) => {
+    await openExample(page, "multitouch");
+    const frames = await page.evaluate(() => {
+      const inspector = window.__yage__!.inspector;
+      const bounds = () =>
+        inspector
+          .snapshotScene("multitouch")
+          .entities.find((entity) => entity.name === "visualizer")!
+          .components.find(
+            (component) => component.type === "GraphicsComponent",
+          )!.facets!.render!.bounds;
+      inspector.input.pointerMove(200, 300, {
+        id: 21,
+        type: "touch",
+        isPrimary: true,
+      });
+      inspector.input.pointerDown(0, {
+        id: 21,
+        type: "touch",
+        isPrimary: true,
+      });
+      inspector.input.pointerMove(500, 300, {
+        id: 22,
+        type: "touch",
+        isPrimary: false,
+      });
+      inspector.input.pointerDown(0, {
+        id: 22,
+        type: "touch",
+        isPrimary: false,
+      });
+      inspector.time.step(40);
+      const held = bounds();
+      inspector.input.pointerUp(0, { id: 21 });
+      inspector.time.step(1);
+      const released = bounds();
+      inspector.time.step(1);
+      const remaining = bounds();
+      inspector.input.pointerUp(0, { id: 22 });
+      inspector.time.step(1);
+      const lastRelease = bounds();
+      inspector.time.step(1);
+      return { held, released, remaining, lastRelease, cleared: bounds() };
+    });
+    expect(frames.held).not.toBeNull();
+    expect(frames.held!.x).toBeLessThan(200);
+    expect(frames.released).toEqual(frames.held);
+    expect(frames.remaining!.x).toBeGreaterThan(450);
+    expect(frames.lastRelease).toEqual(frames.remaining);
+    expect(frames.cleared).toBeNull();
+  });
+
+  for (const slug of ["pathfinding", "tilemap"] as const) {
+    test(`${slug} camera follows the current frame and respects map bounds`, async ({
+      page,
+    }) => {
+      await openExample(page, slug);
+      const result = await page.evaluate((example) => {
+        const inspector = window.__yage__!.inspector;
+        const name = example === "pathfinding" ? "AgentEntity" : "PlayerEntity";
+        const start = inspector.getEntityPosition(name)!;
+        if (example === "pathfinding") {
+          const camera = inspector.snapshot().camera!;
+          inspector.input.mouseMove(
+            (280 - camera.position.x) * camera.zoom + 400,
+            (300 - camera.position.y) * camera.zoom + 300,
+          );
+          inspector.input.mouseDown(0);
+        } else inspector.input.keyDown("KeyD");
+        const samples = [];
+        for (let frame = 0; frame < 120; frame++) {
+          inspector.time.step(1);
+          if (frame === 0 && example === "pathfinding")
+            inspector.input.mouseUp(0);
+          samples.push({
+            target: inspector.getEntityPosition(name)!,
+            camera: inspector.snapshot().camera!,
+          });
+        }
+        inspector.input.keyUp("KeyD");
+        if (example === "tilemap") {
+          inspector.input.keyDown("KeyA");
+          for (let frame = 0; frame < 160; frame++) {
+            inspector.time.step(1);
+            samples.push({
+              target: inspector.getEntityPosition(name)!,
+              camera: inspector.snapshot().camera!,
+            });
+          }
+          inspector.input.keyUp("KeyA");
+        }
+        return { start, samples };
+      }, slug);
+      expect(
+        result.samples.some(
+          ({ target }) =>
+            Math.hypot(target.x - result.start.x, target.y - result.start.y) >
+            40,
+        ),
+      ).toBe(true);
+      for (const { target, camera } of result.samples) {
+        const halfWidth = 400 / camera.zoom;
+        const halfHeight = 300 / camera.zoom;
+        expect(camera.position.x).toBeCloseTo(
+          Math.max(halfWidth, Math.min(1600 - halfWidth, target.x)),
+          5,
+        );
+        expect(camera.position.y).toBeCloseTo(
+          Math.max(halfHeight, Math.min(1600 - halfHeight, target.y)),
+          5,
+        );
+      }
+      if (slug === "tilemap")
+        expect(result.samples.at(-1)!.camera.position.x).toBeCloseTo(
+          400 / 1.75,
+        );
+    });
+  }
+
+  test("effects sidebar supports native wheel, pan, collapse, and action buttons", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await openExample(page, "effects-showcase");
+    const sidebar = () =>
+      page.evaluate(() => {
+        const root =
+          window.__yage__!.inspector.snapshotScene("effects-showcase").ui!.root;
+        const viewport = root.children[0]!;
+        const content = viewport.children[0]!;
+        return { root, viewport, content };
+      });
+    const canvas = (await page.locator("canvas").first().boundingBox())!;
+    const point = (x: number, y: number) => ({
+      x: canvas.x + (x * canvas.width) / 900,
+      y: canvas.y + (y * canvas.height) / 640,
+    });
+    const wheel = async (deltaY: number) => {
+      await Promise.all([
+        page
+          .locator("canvas")
+          .first()
+          .evaluate(
+            (canvas) =>
+              new Promise<void>((resolve) =>
+                canvas.addEventListener("wheel", () => resolve(), {
+                  once: true,
+                }),
+              ),
+          ),
+        page.mouse.wheel(0, deltaY),
+      ]);
+      await stepFrames(page, 2);
+    };
+    const clickNode = async (section: number, child?: number, offset = 0) => {
+      const { root, viewport, content } = await sidebar();
+      const parent = content.children[section]!;
+      const node = child === undefined ? parent : parent.children[child]!;
+      const virtualY =
+        8 +
+        viewport.layout.y +
+        content.layout.y +
+        parent.layout.y +
+        (child === undefined ? 0 : node.layout.y) +
+        node.layout.height / 2 -
+        offset;
+      expect(virtualY).toBeGreaterThan(18);
+      expect(virtualY).toBeLessThan(622);
+      const target = point(900 - 8 - root.layout.width / 2, virtualY);
+      await page.mouse.click(target.x, target.y);
+      await stepFrames(page, 2);
+    };
+    const initial = await sidebar();
+    expect(initial.viewport.type).toBe("UIScrollView");
+    expect(initial.root.layout.height).toBe(624);
+    for (const header of [11, 9, 7, 5, 3]) {
+      await clickNode(header);
+      expect(
+        (await sidebar()).content.children[header + 1]!.layout.height,
+      ).toBeGreaterThan(0);
+    }
+    const expanded = await sidebar();
+    const maxScroll =
+      expanded.content.layout.height - expanded.viewport.layout.height;
+    expect(maxScroll).toBeGreaterThan(100);
+    const middle = point(780, 320);
+    await page.mouse.move(middle.x, middle.y);
+    await wheel(10000);
+    await clickNode(10, 0, maxScroll);
+    const toast = () =>
+      page.evaluate(
+        () =>
+          window.__yage__!.inspector.getComponentData(
+            "toast",
+            "TextComponent",
+          ) as { content: string; visible: boolean },
+      );
+    expect(await toast()).toMatchObject({
+      content: "Toggle bloom on first",
+      visible: true,
+    });
+
+    // A downward drag reveals earlier controls without activating a button.
+    const dragStart = point(870, 80);
+    const dragEnd = point(870, 610);
+    await page.mouse.move(dragStart.x, dragStart.y);
+    await page.mouse.down();
+    await page.mouse.move(dragEnd.x, dragEnd.y, { steps: 12 });
+    await page.mouse.up();
+    await stepFrames(page, 2);
+    const offsetAfterPan = Math.max(0, maxScroll - 530);
+    await clickNode(3, undefined, offsetAfterPan);
+    expect((await sidebar()).content.children[4]!.layout.height).toBe(0);
+    await page.mouse.move(middle.x, middle.y);
+    await wheel(-10000);
+    await clickNode(1);
+    expect((await sidebar()).content.children[2]!.layout.height).toBe(0);
+    await clickNode(1);
+    expect(
+      (await sidebar()).content.children[2]!.layout.height,
+    ).toBeGreaterThan(0);
+  });
+
+  test("abilities charge particles restart and kick playback starts at the authored frame", async ({
+    page,
+  }) => {
+    await openExample(page, "abilities-addon", "abilities-addon-demo");
+    await tapKey(page, "KeyE");
+    const result = await page.evaluate(async () => {
+      const inspector = window.__yage__!.inspector;
+      const emitter = () =>
+        inspector.getComponentData(
+          "PlayerEntity",
+          "ParticleEmitterComponent",
+        ) as { activeCount: number } | undefined;
+      const animation = () =>
+        inspector.getComponentData("PlayerEntity", "AnimationController") as {
+          current: string;
+          frame: number;
+          locked: boolean;
+        };
+      inspector.input.keyDown("Space");
+      await inspector.time.stepAsync(35);
+      const first = emitter();
+      const hold = animation();
+      inspector.input.keyUp("Space");
+      await inspector.time.stepAsync(1);
+      const released = inspector.hasComponent(
+        "PlayerEntity",
+        "ParticleEmitterComponent",
+      );
+      for (
+        let i = 0;
+        i < 90 && !animation().current.startsWith("chargeRelease");
+        i++
+      )
+        await inspector.time.stepAsync(1);
+      const kick = animation();
+      await inspector.time.stepAsync(180);
+      const finished = animation();
+      inspector.input.keyDown("Space");
+      await inspector.time.stepAsync(35);
+      const restarted = emitter();
+      inspector.input.keyUp("Space");
+      await inspector.time.stepAsync(1);
+      return {
+        first,
+        hold,
+        released,
+        kick,
+        finished,
+        restarted,
+        ended: inspector.hasComponent(
+          "PlayerEntity",
+          "ParticleEmitterComponent",
+        ),
+      };
+    });
+    expect(result.first?.activeCount).toBe(10);
+    expect(result.hold.current).toMatch(/^chargeHold_dir/);
+    expect(result.released).toBe(false);
+    expect(result.kick.current).toMatch(/^chargeRelease_dir/);
+    expect(result.kick.frame).toBeGreaterThanOrEqual(6);
+    expect(result.kick.frame).toBeLessThanOrEqual(7);
+    expect(result.kick.locked).toBe(true);
+    expect(result.finished.locked).toBe(false);
+    expect(result.restarted?.activeCount).toBe(10);
+    expect(result.ended).toBe(false);
+  });
 
   test("abilities-addon replaces active loadouts cleanly", async ({ page }) => {
     const errors: string[] = [];

@@ -17,7 +17,7 @@ per-frame), call them once and reuse the result.
 - **`RigidBodyComponent.getVelocity()` builds a new `Vec2` each call.** Read it
   once per frame and reuse the value.
 - **Query iteration.** Iterate a `QueryResult` directly (`for (const e of
-  query)`). `query.toArray()` allocates a fresh array snapshot on every call —
+query)`). `query.toArray()` allocates a fresh array snapshot on every call —
   use it when you need a stable list, not in the loop body.
 
 ## Effects cost
@@ -50,24 +50,46 @@ stopped — while keeping the Rapier body, the Pixi display object, and the
 component instances allocated:
 
 ```ts
-// Recycling a bullet: no spawn, no destroy queue, no reallocation.
-bullet.setActive(false);
+import type { Entity } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
 
-// ...on the next shot. Reposition through the body, not the Transform:
-// physics owns a dynamic body's transform and overwrites a direct write.
-const rb = bullet.get(RigidBodyComponent);
-rb.setPosition(muzzleX, muzzleY);
-rb.setVelocity({ x: dirX * 900, y: dirY * 900 });
-bullet.setActive(true);
+function recycle(
+  bullet: Entity,
+  muzzleX: number,
+  muzzleY: number,
+  dirX: number,
+  dirY: number,
+) {
+  // Recycling a bullet: no spawn, no destroy queue, no reallocation.
+  bullet.setActive(false);
+
+  // ...on the next shot. Reposition through the body, not the Transform:
+  // physics owns a dynamic body's transform and overwrites a direct write.
+  const rb = bullet.get(RigidBodyComponent);
+  rb.setPosition(muzzleX, muzzleY);
+  rb.setVelocity({ x: dirX * 900, y: dirY * 900 });
+  bullet.setActive(true);
+}
 ```
 
 `EntityPool` keeps that bookkeeping for a group of them. It tracks which
 members are out and which are free, grows or caps the group, and calls the
 entity's own `onAcquire` each time one is handed out:
 
-```ts
+```ts yage-context="scene"
+import { Entity, EntityPool, Transform } from "@yagejs/core";
+import { GraphicsComponent } from "@yagejs/renderer";
+import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
+
 class Bullet extends Entity {
-  setup() { /* Transform, GraphicsComponent, RigidBodyComponent, collider */ }
+  setup() {
+    this.add(new Transform());
+    this.add(
+      new GraphicsComponent().draw((g) => g.circle(0, 0, 4).fill(0xffffff)),
+    );
+    this.add(new RigidBodyComponent({ type: "dynamic" }));
+    this.add(new ColliderComponent({ shape: { type: "circle", radius: 4 } }));
+  }
   onAcquire(x: number, y: number, dirX: number, dirY: number) {
     const rb = this.get(RigidBodyComponent);
     rb.setPosition(x, y);
@@ -75,11 +97,11 @@ class Bullet extends Entity {
   }
 }
 
-// In the scene's onEnter.
-this.bullets = new EntityPool(this, Bullet, { prewarm: 32 });
+// Create once per scene and retain the pool for subsequent shots.
+const bullets = new EntityPool(scene, Bullet, { prewarm: 32 });
 
-const bullet = this.bullets.acquire(muzzleX, muzzleY, dirX, dirY);
-this.bullets.release(bullet);        // dormant, ready for the next shot
+const bullet = bullets.acquire(100, 200, 1, 0);
+bullets.release(bullet); // dormant, ready for the next shot
 ```
 
 See the core package reference for the full API, and the `pooling` example for

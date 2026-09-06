@@ -8,7 +8,7 @@ pooled rendering, configurable emitters, and built-in presets for common effects
 
 ## ParticlesPlugin Setup
 
-```typescript
+```typescript yage-context="engine"
 import { ParticlesPlugin } from "@yagejs/particles";
 
 engine.use(new ParticlesPlugin());
@@ -31,16 +31,18 @@ The smallest emitter needs only a lifetime — with no texture, particles are
 white squares you can color with `tint`. The default shape is a single pixel,
 so set `scale` to the size you want:
 
-```typescript
+```typescript yage-context="entity"
 import { ParticleEmitterComponent } from "@yagejs/particles";
 
-const sparkle = entity.add(new ParticleEmitterComponent({
-  lifetime: [0.3, 0.6],
-  speed: [60, 120],
-  angle: [0, Math.PI * 2],
-  scale: [2, 4],
-  tint: 0xffdd55,
-}));
+const sparkle = entity.add(
+  new ParticleEmitterComponent({
+    lifetime: [0.3, 0.6],
+    speed: [60, 120],
+    angle: [0, Math.PI * 2],
+    scale: [2, 4],
+    tint: 0xffdd55,
+  }),
+);
 
 sparkle.burst(20);
 ```
@@ -48,18 +50,19 @@ sparkle.burst(20);
 For an image asset, pass `texture` — a texture, a texture handle, or an
 asset key string:
 
-```typescript
+```typescript yage-group="emitter" yage-context="entity"
 import { texture } from "@yagejs/renderer";
+import { ParticleEmitterComponent } from "@yagejs/particles";
 
 const Particle = texture("assets/particle.png");
 
 const emitter = new ParticleEmitterComponent({
   texture: Particle,
   maxParticles: 200,
-  rate: 20,                 // particles per second
-  lifetime: [0.5, 1.5],    // seconds (random range)
-  speed: [50, 150],         // px/s
-  angle: [-Math.PI, Math.PI],  // emission direction (radians)
+  rate: 20, // particles per second
+  lifetime: [0.5, 1.5], // seconds (random range)
+  speed: [50, 150], // px/s
+  angle: [-Math.PI, Math.PI], // emission direction (radians)
   scale: { start: 1, end: 0 },
   alpha: { start: 1, end: 0 },
   tint: 0xff6600,
@@ -68,7 +71,7 @@ const emitter = new ParticleEmitterComponent({
 });
 
 entity.add(emitter);
-emitter.emit();  // start continuous emission
+emitter.emit(); // start continuous emission
 ```
 
 ## Emitter Config
@@ -105,8 +108,12 @@ option and the value, instead of turning particle positions into `NaN` later.
 **Lerped** interpolates from start to end over the particle's lifetime:
 
 ```typescript
-scale: { start: [0.8, 1.2], end: 0 }   // shrink to nothing
-alpha: { start: 1, end: [0, 0.3] }     // fade out with variation
+import type { EmitterConfig } from "@yagejs/particles";
+
+const fade: Pick<EmitterConfig, "scale" | "alpha"> = {
+  scale: { start: [0.8, 1.2], end: 0 }, // shrink to nothing
+  alpha: { start: 1, end: [0, 0.3] }, // fade out with variation
+};
 ```
 
 The three texture options are mutually exclusive: setting more than one is a
@@ -119,12 +126,14 @@ beneath them. Fire, sparks, and magic usually want `"add"`, which brightens
 the background instead of covering it:
 
 ```typescript
+import { ParticleEmitterComponent, ParticlePresets } from "@yagejs/particles";
+
 const emitter = new ParticleEmitterComponent({
   ...ParticlePresets.fire(),
   blendMode: "add",
 });
 
-emitter.blendMode = "normal";  // also a live accessor
+emitter.blendMode = "normal"; // also a live accessor
 ```
 
 The mode applies to the emitter as a whole, so every one of its particles
@@ -145,16 +154,20 @@ Six shapes ship with the package, so effects work before you have any art:
 | `"softDiamond"` | A diamond fading to transparent, which reads as a four-point sparkle | 64×64 |
 | `"line"` | A filled streak — rain, speed trails | 64×8 |
 
-```typescript
-entity.add(new ParticleEmitterComponent({
-  shape: "softCircle",
-  lifetime: [0.6, 1.2],
-  speed: [30, 60],
-  angle: [-Math.PI / 2 - 0.3, -Math.PI / 2 + 0.3],
-  scale: { start: 0.5, end: 1.2 },
-  alpha: { start: 0.5, end: 0 },
-  tint: 0x888888,   // shapes are white; tint gives them their color
-}));
+```typescript yage-context="entity"
+import { ParticleEmitterComponent } from "@yagejs/particles";
+
+entity.add(
+  new ParticleEmitterComponent({
+    shape: "softCircle",
+    lifetime: [0.6, 1.2],
+    speed: [30, 60],
+    angle: [-Math.PI / 2 - 0.3, -Math.PI / 2 + 0.3],
+    scale: { start: 0.5, end: 1.2 },
+    alpha: { start: 0.5, end: 0 },
+    tint: 0x888888, // shapes are white; tint gives them their color
+  }),
+);
 ```
 
 Every shape is white so `tint` fully controls the color. The first emitter to
@@ -166,10 +179,14 @@ Pass an object instead of the shape name to choose the texture size — one
 number for a square, or `[width, height]`:
 
 ```typescript
-{ shape: "softCircle" }                        // 64×64
-{ shape: { type: "softCircle", size: 16 } }    // 16×16 texture
-{ shape: { type: "circle", size: [32, 16] } }  // an ellipse
-{ shape: { type: "line", size: [4, 32] } }     // a vertical streak, for rain
+import type { EmitterConfig } from "@yagejs/particles";
+
+const shapes = [
+  { lifetime: 1, shape: "softCircle" }, // 64×64
+  { lifetime: 1, shape: { type: "softCircle", size: 16 } }, // 16×16 texture
+  { lifetime: 1, shape: { type: "circle", size: [32, 16] } }, // an ellipse
+  { lifetime: 1, shape: { type: "line", size: [4, 32] } }, // a vertical streak
+] satisfies EmitterConfig[];
 ```
 
 `size` is the generated texture's size in pixels, which at the default
@@ -200,17 +217,17 @@ configuration share one texture.
 
 ## Runtime Control
 
-```typescript
-emitter.emit();              // start continuous emission
-emitter.stop();              // stop emission started by emit()
+```typescript yage-group="emitter" yage-context="entity"
+emitter.emit(); // start continuous emission
+emitter.stop(); // stop emission started by emit()
 const request = emitter.requestEmission(); // independent temporary request
-request.release();           // release only this request
-emitter.burst(50);           // spawn 50 at the entity's world position
+request.release(); // release only this request
+emitter.burst(50); // spawn 50 at the entity's world position
 emitter.burst(10, 400, 300); // burst at an explicit world position
 
-emitter.isEmitting;          // boolean
-emitter.activeCount;         // number of live particles
-emitter.blendMode = "add";   // read/write
+emitter.isEmitting; // boolean
+emitter.activeCount; // number of live particles
+emitter.blendMode = "add"; // read/write
 ```
 
 `emit()` and `stop()` control the emitter's manual state. Temporary systems
@@ -224,8 +241,8 @@ end of life.
 `ParticlePresets` provides ready-made configs for common effects. Each preset
 returns a complete `EmitterConfig` and works with no arguments at all:
 
-```typescript
-import { ParticlePresets } from "@yagejs/particles";
+```typescript yage-context="entity"
+import { ParticleEmitterComponent, ParticlePresets } from "@yagejs/particles";
 
 // Fire — upward, warm colors, shrinking
 entity.add(new ParticleEmitterComponent(ParticlePresets.fire()));
@@ -245,9 +262,15 @@ for fire, a 40px one for smoke, a 10×3 streak for sparks, a 2×20 one for rain.
 
 Pass your own art as the argument — a texture, a texture handle, or an asset key:
 
-```typescript
+```typescript yage-context="entity"
+import { ParticleEmitterComponent, ParticlePresets } from "@yagejs/particles";
+import { texture } from "@yagejs/renderer";
+
+const Particle = texture("assets/particle.png");
 entity.add(new ParticleEmitterComponent(ParticlePresets.fire(Particle)));
-entity.add(new ParticleEmitterComponent(ParticlePresets.fire("assets/flame.png")));
+entity.add(
+  new ParticleEmitterComponent(ParticlePresets.fire("assets/flame.png")),
+);
 ```
 
 The presets keep on-screen size in the shape's `size` and use `scale` only for
@@ -259,23 +282,33 @@ at its natural size instead of scaling it against a size the preset guessed.
 
 Spread a preset to override anything except where its particles get their look:
 
-```typescript
-entity.add(new ParticleEmitterComponent({
-  ...ParticlePresets.fire(),
-  rate: 50,
-  tint: 0x00ccff,  // blue fire
-}));
+```typescript yage-context="entity"
+import { ParticleEmitterComponent, ParticlePresets } from "@yagejs/particles";
+
+entity.add(
+  new ParticleEmitterComponent({
+    ...ParticlePresets.fire(),
+    rate: 50,
+    tint: 0x00ccff, // blue fire
+  }),
+);
 ```
 
 A preset already sets a texture source, and the two sources are mutually
 exclusive, so adding another by spreading does not compile:
 
 ```typescript
+import { ParticleEmitterComponent, ParticlePresets } from "@yagejs/particles";
+import { texture } from "@yagejs/renderer";
+
+const Particle = texture("assets/particle.png");
+
 // Type error — the preset's shape and your texture are both sources
-{ ...ParticlePresets.fire(), texture: Particle }
+// yage-expect-error TS2379
+new ParticleEmitterComponent({ ...ParticlePresets.fire(), texture: Particle });
 
 // Pass it as the argument instead
-{ ...ParticlePresets.fire(Particle), rate: 50 }
+new ParticleEmitterComponent({ ...ParticlePresets.fire(Particle), rate: 50 });
 ```
 
 ## Converging and exploding rings
@@ -286,6 +319,8 @@ direction from the emitter to where it spawned: negative converges on the
 emitter, positive explodes outward.
 
 ```typescript
+import { ParticleEmitterComponent } from "@yagejs/particles";
+
 // Sparks that rush inward to the caster while a spell charges.
 const charge = new ParticleEmitterComponent({
   shape: { type: "line", size: [6, 2] },
@@ -309,6 +344,8 @@ a moving character. It follows position only; the emitter's rotation and scale
 are not applied.
 
 ```typescript
+import { ParticleEmitterComponent, ParticlePresets } from "@yagejs/particles";
+
 const aura = new ParticleEmitterComponent({
   ...ParticlePresets.fire(),
   simulationSpace: "local",

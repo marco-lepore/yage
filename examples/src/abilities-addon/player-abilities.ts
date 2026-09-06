@@ -36,7 +36,10 @@ import {
 import { byAtk, hasten } from "./stats.js";
 import { INVULN_FLASH_INTERVAL } from "./feedback.js";
 
-export function nearestLivingEnemy(scene: Scene, position: Vec2): Entity | null {
+export function nearestLivingEnemy(
+  scene: Scene,
+  position: Vec2,
+): Entity | null {
   let nearest: Entity | null = null;
   let nearestDistance = Infinity;
   for (const enemy of scene.findEntitiesByTag("enemy")) {
@@ -101,9 +104,6 @@ export class HomingFireballProjectile extends Projectile {
 // ever starts. The enemy's `melee`/`shoot` carry no `priority` at all
 // (default 0, below `REACTION_PRIORITY`) — a landed hit always interrupts a
 // telegraphed swing, punishing the tell instead of just chipping through it.
-// See `07-reactions.md`'s evidence note for the diagnosis that led here: the
-// two were symmetric until a playtest pass found enemy attacks never
-// flinching or losing ground even when hit mid-telegraph.
 // ---------------------------------------------------------------------------
 
 export const SUPER_ARMOR_PRIORITY = REACTION_PRIORITY + 10;
@@ -283,9 +283,8 @@ export const FIST_CHARGE: AbilityDef = {
  *  visual extension frame — ~0.18s after release (measured end-to-end from
  *  a real keyup event to the hit landing: ~0.19-0.22s, the extra few ms
  *  being real dispatch/physics-step latency on top of the timeline's own
- *  0.18s). `lockDuration` matches the trimmed total so
- *  `AnimationController.locked` clears on schedule instead of holding for
- *  the un-skipped clip's full length. `lungeMove` covers the kick's drive
+ *  0.18s). The animation lock lasts for the remaining clip.
+ *  `lungeMove` covers the kick's drive
  *  (starting a touch before the hitbox opens, closing a touch after it
  *  does) so the heavy release closes distance instead of landing on a
  *  stationary-legged kick — ~72px in free space at this speed (measured
@@ -326,7 +325,6 @@ export const KICK_CHARGE: AbilityDef = {
           at: 0,
           name: "chargeRelease",
           startFrame: 6,
-          lockDuration: 0.751,
         }),
         lungeMove({ from: 0.08, to: 0.32, speed: 300 }),
         hitbox({
@@ -464,7 +462,7 @@ export const KICK_COMBO: AbilityDef = {
       },
       cancels: [{ from: 0.34, into: ["dash"] }],
       timeline: [
-        spriteAnim({ at: 0, name: "melee", startFrame: 7, lockDuration: 0.65 }),
+        spriteAnim({ at: 0, name: "melee", startFrame: 7 }),
         lungeMove({ from: 0.1, to: 0.34, speed: 240 }),
         hitbox({
           from: 0.17,
@@ -491,7 +489,6 @@ export const KICK_COMBO: AbilityDef = {
           at: 0,
           name: "chargeRelease",
           startFrame: 6,
-          lockDuration: 0.66,
         }),
         lungeMove({ from: 0.1, to: 0.34, speed: 270 }),
         hitbox({

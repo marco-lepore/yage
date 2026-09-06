@@ -1,3 +1,4 @@
+import { createVfxHub, type VfxHub } from "./particles.js";
 import { Scene, Entity, Transform, Vec2 } from "@yagejs/core";
 import {
   GraphicsComponent,
@@ -178,8 +179,9 @@ export class ShooterScene extends Scene {
 
     this.drawBackground();
     this.buildLevel();
-    this.spawnEnemies(cam);
-    this.spawn(PlayerEntity, { camera: cam });
+    const vfx = createVfxHub(this);
+    this.spawnEnemies(cam, vfx);
+    this.spawn(PlayerEntity, { camera: cam, vfx });
   }
 
   // -- Background --
@@ -232,18 +234,19 @@ export class ShooterScene extends Scene {
   }
 
   // -- Enemies --
-  private spawnEnemies(camera: CameraEntity): void {
-    this.spawn(EnemyEntity, { x: 350, y: 680, patrolLeft: 200, patrolRight: 450, camera }); // ground left
-    this.spawn(EnemyEntity, { x: 600, y: 680, patrolLeft: 450, patrolRight: 750, camera }); // ground mid
-    this.spawn(EnemyEntity, { x: 950, y: 680, patrolLeft: 800, patrolRight: 1100, camera }); // ground right
-    this.spawn(EnemyEntity, { x: 550, y: 470, patrolLeft: 500, patrolRight: 600, camera }); // on mid-left platform
-    this.spawn(EnemyEntity, { x: 850, y: 530, patrolLeft: 770, patrolRight: 940, camera }); // on mid-right platform
+  private spawnEnemies(camera: CameraEntity, vfx: VfxHub): void {
+    this.spawn(EnemyEntity, { x: 350, y: 680, patrolLeft: 200, patrolRight: 450, camera, vfx }); // ground left
+    this.spawn(EnemyEntity, { x: 600, y: 680, patrolLeft: 450, patrolRight: 750, camera, vfx }); // ground mid
+    this.spawn(EnemyEntity, { x: 950, y: 680, patrolLeft: 800, patrolRight: 1100, camera, vfx }); // ground right
+    this.spawn(EnemyEntity, { x: 550, y: 470, patrolLeft: 500, patrolRight: 600, camera, vfx }); // on mid-left platform
+    this.spawn(EnemyEntity, { x: 850, y: 530, patrolLeft: 770, patrolRight: 940, camera, vfx }); // on mid-right platform
     this.spawn(EnemyEntity, {
       x: 1050,
       y: 450,
       patrolLeft: 940,
       patrolRight: 1150,
       camera,
+      vfx,
     }); // on upper-right platform
   }
 }

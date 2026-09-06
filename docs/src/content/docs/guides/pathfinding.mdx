@@ -49,9 +49,12 @@ one would otherwise make every `findPath` return `null` with no explanation.
 `gridFromTilemap` lives behind a `./tilemap` subpath so a grid-only consumer
 of the root `@yagejs/pathfinding` entry never pulls in `@yagejs/tilemap`.
 
-```typescript
+```typescript yage-context="entity"
 import { Transform } from "@yagejs/core";
 import { gridFromTilemap } from "@yagejs/pathfinding/tilemap";
+import { TilemapComponent } from "@yagejs/tilemap";
+
+const tilemap = entity.get(TilemapComponent);
 
 // tilemap is a TilemapComponent; tilemap.data is its parsed TilemapData.
 const grid = gridFromTilemap(tilemap.data, {
@@ -60,7 +63,7 @@ const grid = gridFromTilemap(tilemap.data, {
   origin: tilemap.entity.get(Transform).position, // map placement offset
 });
 
-const path = grid.findPath(agent.position, target.position);
+const path = grid.findPath({ x: 48, y: 48 }, { x: 600, y: 400 });
 ```
 
 `layers` chooses which tile layers are read, and is required — reading every
@@ -79,8 +82,12 @@ Some maps author walkability as Tiled objects (rects, ellipses, capsules,
 polygons) instead of, or alongside, tile layers. `gridFromColliders` builds a
 grid from those shapes:
 
-```typescript
+```typescript yage-context="entity"
+import { Transform } from "@yagejs/core";
+import { TilemapComponent } from "@yagejs/tilemap";
 import { gridFromColliders } from "@yagejs/pathfinding/tilemap";
+
+const tilemap = entity.get(TilemapComponent);
 
 const grid = gridFromColliders(tilemap.data, {
   shapes: tilemap.getCollisionShapes("pathfinding"), // an object layer
@@ -116,23 +123,31 @@ walkability from. `GridGraph` doesn't need one: build the `isWalkable`
 predicate yourself with `PhysicsWorld.queryShape`, one query per cell, when
 the level loads:
 
-```typescript
+```typescript yage-context="scene-enter"
 import { GridGraph } from "@yagejs/pathfinding";
 import { PhysicsWorldKey } from "@yagejs/physics";
 
-const cols = 40, rows = 30, cell = 32;
+const cols = 40,
+  rows = 30,
+  cell = 32;
 const world = this.use(PhysicsWorldKey); // in a Scene's onEnter, or a Component
 const blocked = new Set<number>();
 
 const grid = new GridGraph({
-  cols, rows, tileWidth: cell, tileHeight: cell,
+  cols,
+  rows,
+  tileWidth: cell,
+  tileHeight: cell,
   isWalkable: (col, row) => !blocked.has(row * cols + col),
 });
 
 for (let row = 0; row < rows; row++) {
   for (let col = 0; col < cols; col++) {
     const centre = grid.cellToWorld(col, row);
-    if (world.queryShape({ type: "box", width: cell, height: cell }, centre).length > 0) {
+    if (
+      world.queryShape({ type: "box", width: cell, height: cell }, centre)
+        .length > 0
+    ) {
       blocked.add(row * cols + col);
     }
   }
@@ -154,13 +169,22 @@ loop only adds cells, so without the clear a removed wall stays blocked.
 Both live on the same options object as `isWalkable`:
 
 ```typescript
+import { GridGraph } from "@yagejs/pathfinding";
+
+const cols = 20;
+const rows = 15;
+const tileWidth = 32;
+const tileHeight = 32;
+const terrain = new Float32Array(cols * rows).fill(1);
+const isWalkable = (col: number, row: number) => terrain[row * cols + col]! > 0;
+
 const grid = new GridGraph({
   cols,
   rows,
   tileWidth,
   tileHeight,
   isWalkable,
-  cost: (col, row) => terrain[row * cols + col], // 1 = normal, 3 = mud, ...
+  cost: (col, row) => terrain[row * cols + col]!, // 1 = normal, 3 = mud, ...
   diagonalMovement: "no-corner-cutting", // "never" | "always" | "no-corner-cutting"
   heuristic: "octile", // omit to auto-pick: octile with diagonals, else manhattan
 });
@@ -186,6 +210,9 @@ const grid = new GridGraph({
 ## Path result
 
 ```typescript
+import type { Vec2 } from "@yagejs/core";
+import type { GridCell } from "@yagejs/pathfinding";
+
 interface Path {
   waypoints: Vec2[]; // tile centres, world pixels, start cell through goal cell
   cells: GridCell[]; // { col, row }, parallel to waypoints

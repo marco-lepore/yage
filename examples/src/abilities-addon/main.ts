@@ -29,8 +29,7 @@
  *   the player and carrying the same telegraph through its cast. Unlike the
  *   player, enemies carry no `priority` (super armor) on these defs — a
  *   landed hit interrupts a telegraphed swing at any point, so punishing the
- *   tell actually stops the attack instead of only chipping through it (see
- *   `07-reactions.md`'s evidence note for the diagnosis). An engagement
+ *   tell stops the attack. An engagement
  *   token (`EngagementToken`) lets only one enemy hold it at a time: the
  *   holder runs the melee / close-in / shoot logic below, everyone else
  *   orbits/strafes at mid range instead of piling onto the player.
@@ -45,7 +44,7 @@
  *   `PlayerController.resampleFacing` aims the action in the direction held
  *   when it fires rather than when it queued.
  *   Death turns an entity into an inert corpse — dead-specific
- *   components removed, body translation locked — instead of leaving it
+ *   components removed, body made static — instead of leaving it
  *   dealing damage or sliding around. A pale strobe on the sprite marks
  *   invulnerability from any source — the def-authored windows on dash and
  *   the parry counter (paired `invulnFlash` window steps at the same
@@ -59,10 +58,8 @@
  *   sized by the landed hit's damage (`damageWeight`/`SHAKE_BY_WEIGHT`). Every
  *   landed hit bursts impact particles sized by damage and plays a thock, a
  *   parry sparks and rings, a blocked hit thuds, death booms, and the charge
- *   attack draws a hand-rolled ring of sparks converging on the caster
- *   (`ChargeSpark` — `@yagejs/particles`' emitter config can't correlate a
- *   particle's spawn position with its travel direction, so a converging
- *   effect isn't expressible through it) — see `VfxHub` and the SFX section.
+ *   attack emits a ring of sparks converging on the caster through a local
+ *   particle emitter — see `PlayerController`, `VfxHub` and the SFX section.
  * - A `CameraEntity` zoomed in and softly following the player, clamped to
  *   the arena; the hotbar/HP/log HUD lives on its own screen-space layer
  *   (`HUD_LAYER`) so it stays viewport-fixed under the zoom/follow — see
@@ -90,8 +87,7 @@
  * H toggles the engine's built-in physics debug overlay (`DebugPlugin`'s
  * `toggleKey`) — collider wireframes for every body, including the
  * sensors `hitbox`/`projectile` spawn, colored by body type (yellow for
- * sensors). No example-side hitbox overlay was needed; see the evidence
- * note on `20-example-ergonomics-batch.md`.
+ * sensors).
  */
 
 import { Engine } from "@yagejs/core";

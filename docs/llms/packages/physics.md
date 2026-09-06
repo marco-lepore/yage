@@ -4,7 +4,7 @@ Depends on `@yagejs/core`. Rapier2D physics with pixel-based API. All values in 
 
 ## Setup
 
-```ts
+```ts yage-context="engine"
 import { PhysicsPlugin } from "@yagejs/physics";
 
 engine.use(
@@ -39,7 +39,7 @@ Every `ColliderComponent` needs a sibling `RigidBodyComponent`, including a `sen
 
 ## RigidBodyComponent
 
-```ts
+```ts yage-context="entity"
 import { RigidBodyComponent } from "@yagejs/physics";
 
 entity.add(
@@ -92,7 +92,11 @@ Interpolation runs at the start of `Update`, so the `Transform` a component's `u
 
 For repeated reads, create `Vec2Buffer` instances from `@yagejs/core` once:
 
-```ts
+```ts yage-context="entity"
+import { Vec2Buffer, Transform } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
+const rb = entity.get(RigidBodyComponent);
+
 const velocity = new Vec2Buffer();
 const simulated = new Vec2Buffer();
 const drawn = new Vec2Buffer();
@@ -118,7 +122,14 @@ A static body never reads its `Transform`; `rb.setPosition` / `rb.setRotation` m
 
 Physics runs at the scene's effective time scale, and an entity excluded from a slow-motion effect still has its velocity integrated at the slowed rate. Scale velocity writes by the ratio of the two rates:
 
-```ts
+```ts yage-context="component"
+import { SceneTimeKey, Vec2 } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
+const entity = this.entity;
+const rb = entity.get(RigidBodyComponent);
+const dir = new Vec2(1, 0);
+const speed = 120;
+
 const time = this.use(SceneTimeKey);
 
 const world = time.effectiveScale;
@@ -134,7 +145,10 @@ Write the `Transform` (`setPosition`, `translate`) in `fixedUpdate`; the body re
 
 ## ColliderComponent
 
-```ts
+```ts yage-context="entity"
+const LAYER_PLAYER = 1;
+const LAYER_WALL = 2;
+
 import { ColliderComponent } from "@yagejs/physics";
 
 entity.add(
@@ -162,7 +176,11 @@ One component can attach several ordered shapes to the same body. Each part
 has its own shape, offset, and rotation. The other settings apply to every
 part, and Rapier sums their mass:
 
-```ts
+```ts yage-context="entity"
+import { ColliderComponent } from "@yagejs/physics";
+const LAYER_PLAYER = 1;
+const LAYER_WALL = 2;
+
 entity.add(
   new ColliderComponent({
     parts: [
@@ -235,7 +253,10 @@ A `sensor: true` collider fires only `onTrigger`; a solid collider fires only `o
 
 Events are collected after every physics step and delivered after that step, so a scene running above `timeScale` 1 receives every transition, in order, each with its own step's contact data. Handlers run with Transforms synced to the step that produced the contact, and a handler's `setVelocity` or `destroy` takes effect before the next step of the same tick.
 
-```ts
+```ts yage-context="entity"
+import { ColliderComponent } from "@yagejs/physics";
+const collider = entity.get(ColliderComponent);
+
 collider.onTrigger((ev) => {
   ev.other;
   ev.selfShapeIndex;
@@ -271,7 +292,11 @@ Score impacts with `contactImpulse` — velocity read inside the handler is meas
 
 Knockback example:
 
-```ts
+```ts yage-context="entity"
+import { RigidBodyComponent } from "@yagejs/physics";
+import { ColliderComponent } from "@yagejs/physics";
+const collider = entity.get(ColliderComponent);
+
 collider.onCollision((ev) => {
   if (!ev.started || !ev.contactNormal) return;
   const knockback = ev.contactNormal.scale(-300); // push this entity away from `other`
@@ -281,7 +306,15 @@ collider.onCollision((ev) => {
 
 Overlap queries report only pairs where this collider or the other is `sensor: true`; two solid colliders never report, however deeply they penetrate. For solid-vs-solid contact (contact damage, say) use `onCollision`. This is the one query that is about sensors: `PhysicsWorld`'s `raycast`, `castShape`, `queryShape` and `queryRadius` skip sensor colliders unless asked for them.
 
-```ts
+```ts yage-context="entity"
+import { Component } from "@yagejs/core";
+class Health extends Component {
+  hp = 100;
+}
+
+import { ColliderComponent } from "@yagejs/physics";
+const collider = entity.get(ColliderComponent);
+
 collider.getOverlapping(); // Entity[]
 collider.getOverlapping({ tags: ["enemy"] }); // filtered
 collider.getOverlappingComponents(Health); // Component[]
@@ -289,7 +322,13 @@ collider.getOverlappingComponents(Health); // Component[]
 
 Resizing:
 
-```ts
+```ts yage-context="entity"
+import { ColliderComponent } from "@yagejs/physics";
+const collider = entity.get(ColliderComponent);
+
+import type { ColliderShape } from "@yagejs/physics";
+const newHeadShape: ColliderShape = { type: "circle", radius: 12 };
+
 collider.setShape(
   { type: "box", width: 20, height: 20 },
   { offset: { x: 0, y: -10 } },
@@ -309,7 +348,14 @@ anything is stored. The component copies a supplied offset object.
 
 The body keeps its mass. A collider is a collision proxy, not a measure of matter, so a crouching character takes the same `applyImpulse` knockback as a standing one. Pass `{ recomputeMass: true }` when the shape change means genuinely more or less matter and mass should come back from density × the new shape.
 
-```ts
+```ts yage-context="entity"
+import { ColliderComponent } from "@yagejs/physics";
+const collider = entity.get(ColliderComponent);
+
+import type { ColliderShape } from "@yagejs/physics";
+const small: ColliderShape = { type: "box", width: 16, height: 16 };
+const big: ColliderShape = { type: "box", width: 32, height: 32 };
+
 collider.setShape(small); // same mass
 collider.setShape(big, { recomputeMass: true }); // heavier
 ```
@@ -319,7 +365,17 @@ For a feet-origin character, query only the headroom that standing will newly
 occupy. Querying the full standing collider also touches the floor and can
 report a false blocker.
 
-```ts
+```ts yage-context="component"
+import {
+  RigidBodyComponent,
+  ColliderComponent,
+  PhysicsWorldKey,
+} from "@yagejs/physics";
+const entity = this.entity;
+const rb = entity.get(RigidBodyComponent);
+const collider = entity.get(ColliderComponent);
+const world = this.use(PhysicsWorldKey);
+
 const STAND_WIDTH = 20;
 const CROUCH_HEIGHT = 20;
 const STAND_HEIGHT = 40;
@@ -358,7 +414,10 @@ width. Keep the target collider at its full width.
 
 Switching kinds:
 
-```ts
+```ts yage-context="entity"
+import { ColliderComponent } from "@yagejs/physics";
+const collider = entity.get(ColliderComponent);
+
 collider.setSensor(true); // solid → sensor: falls through what it rested on
 collider.setSensor(false); // sensor → solid: pushed out to rest
 ```
@@ -367,7 +426,10 @@ collider.setSensor(false); // sensor → solid: pushed out to rest
 
 Material values can change without recreating the collider:
 
-```ts
+```ts yage-context="entity"
+import { ColliderComponent } from "@yagejs/physics";
+const collider = entity.get(ColliderComponent);
+
 collider.setRestitution(0.8);
 collider.setFriction(0.1);
 ```
@@ -383,19 +445,24 @@ Removing just the collider (`entity.remove(ColliderComponent)`) frees the Rapier
 ## One-Way Platforms
 
 ```ts
-platform.add(
-  new ColliderComponent({
-    shape: { type: "box", width: 96, height: 8 },
-    oneWay: {}, // solid from above, passable from below
-    // oneWay: {
-    //   direction: { x: 0, y: -1 },          // solid-face direction, body-local; default up; non-zero, both finite
-    //   margin: 4,                           // px of overlap that still lands; default 4; finite
-    // }
-  }),
-);
+import type { Entity } from "@yagejs/core";
+import { ColliderComponent } from "@yagejs/physics";
 
-riderCollider.dropThrough(0.2); // this body falls through one-way platforms for 0.2s
-riderCollider.isDroppingThrough; // boolean, true while the window is open
+function makeOneWay(platform: Entity, riderCollider: ColliderComponent) {
+  platform.add(
+    new ColliderComponent({
+      shape: { type: "box", width: 96, height: 8 },
+      oneWay: {}, // solid from above, passable from below
+      // oneWay: {
+      //   direction: { x: 0, y: -1 },          // solid-face direction, body-local; default up; non-zero, both finite
+      //   margin: 4,                           // px of overlap that still lands; default 4; finite
+      // }
+    }),
+  );
+
+  riderCollider.dropThrough(0.2); // this body falls through one-way platforms for 0.2s
+  riderCollider.isDroppingThrough; // boolean, true while the window is open
+}
 ```
 
 - A body lands on the face `direction` points at, passes through from every other side, and a body already inside the platform keeps passing until clear — it is never snapped to the surface.
@@ -408,7 +475,10 @@ riderCollider.isDroppingThrough; // boolean, true while the window is open
 
 Decide per pair, per step, whether two colliders collide. `oneWay` is built on this; use it directly for rules `oneWay` can't express:
 
-```ts
+```ts yage-context="entity"
+import { ColliderComponent } from "@yagejs/physics";
+const collider = entity.get(ColliderComponent);
+
 collider.setContactFilter((contact) => {
   contact.other; // Entity on the other side
   contact.otherCollider; // its ColliderComponent
@@ -448,7 +518,21 @@ const WALL = layers.define("wall");
 
 ## PhysicsWorld
 
-```ts
+```ts yage-context="component"
+import { Vec2 } from "@yagejs/core";
+import type { ColliderShape, QuerySensorMode } from "@yagejs/physics";
+const origin = new Vec2(0, 0);
+const direction = new Vec2(1, 0);
+const maxDistance = 500;
+const filterGroups = 0xffffffff;
+const sensors: QuerySensorMode = "exclude";
+const shape: ColliderShape = { type: "box", width: 32, height: 32 };
+const position = origin;
+const center = origin;
+const radius = 64;
+const rotation = 0;
+const excludeEntity = this.entity;
+
 import { PhysicsWorldKey } from "@yagejs/physics";
 
 // Scene-scoped key: the physics plugin's `beforeEnter` hook registers
@@ -475,7 +559,9 @@ world.queryShape(shape, position, {
   sensors,
 }); // Entity[]
 world.queryRadius(center, radius, { filterGroups, excludeEntity, sensors }); // Entity[]
-world.queryOverlapping(colliderHandle); // Entity[]
+// Given a collider handle returned by the physics integration:
+const queryOverlaps = (colliderHandle: number) =>
+  world.queryOverlapping(colliderHandle);
 
 // sensors: "exclude" (default) reports solid colliders only, "include" reports
 // both, "only" reports sensors. On raycast, castShape, queryShape, queryRadius.
@@ -520,19 +606,28 @@ Connect two rigid bodies in the same scene's physics world. Both bodies must
 already be added to that world, and both entities must be active:
 
 ```ts
-const rope = world.addJoint(playerBody, anchorBody, {
-  type: "rope",
-  length: 120, // maximum distance, pixels
-  anchorA: { x: 0, y: 0 }, // local pixels, optional
-  anchorB: { x: 0, y: 0 }, // local pixels, optional
-});
+import type { PhysicsWorld, RigidBodyComponent } from "@yagejs/physics";
 
-const spring = world.addJoint(playerBody, companionBody, {
-  type: "spring",
-  restLength: 80, // pixels
-  stiffness: 40,
-  damping: 4,
-});
+function tether(
+  world: PhysicsWorld,
+  playerBody: RigidBodyComponent,
+  anchorBody: RigidBodyComponent,
+  companionBody: RigidBodyComponent,
+) {
+  const rope = world.addJoint(playerBody, anchorBody, {
+    type: "rope",
+    length: 120, // maximum distance, pixels
+    anchorA: { x: 0, y: 0 }, // local pixels, optional
+    anchorB: { x: 0, y: 0 }, // local pixels, optional
+  });
+
+  const spring = world.addJoint(playerBody, companionBody, {
+    type: "spring",
+    restLength: 80, // pixels
+    stiffness: 40,
+    damping: 4,
+  });
+}
 ```
 
 `addJoint(bodyA, bodyB, config)` returns a `JointHandle`. `attached` is `true`

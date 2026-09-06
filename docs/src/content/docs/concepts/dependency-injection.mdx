@@ -6,8 +6,9 @@ description: "Typed service container with ServiceKey"
 ## EngineContext
 
 `EngineContext` is the typed dependency injection container at the heart of
-YAGE. Plugins register services during `install()`, and the rest of the engine
-resolves them by key.
+YAGE. Plugins register infrastructure during `install()`, and consumers resolve
+it by key. Keep game-owned score, inventory and quest state in explicit models
+or components passed by reference; see [State Management](/patterns/state-management/).
 
 ```typescript
 import { EngineContext, ServiceKey } from "@yagejs/core";
@@ -18,8 +19,12 @@ import { EngineContext, ServiceKey } from "@yagejs/core";
 Every service is identified by a `ServiceKey<T>`. The type parameter ensures
 that `resolve()` returns the correct type without casts:
 
-```typescript
+```typescript yage-group="mixer" yage-context="context"
 import { ServiceKey } from "@yagejs/core";
+
+class AudioMixer {
+  readonly output = new AudioContext();
+}
 
 // Define a key with a descriptive label
 const AudioMixerKey = new ServiceKey<AudioMixer>("AudioMixer");
@@ -35,7 +40,9 @@ the key.
 
 ## Registering and Resolving
 
-```typescript
+```typescript yage-group="mixer" yage-context="context"
+import type { EngineContext } from "@yagejs/core";
+
 // In a plugin's install():
 function install(context: EngineContext) {
   const mixer = new AudioMixer();
@@ -46,7 +53,7 @@ function install(context: EngineContext) {
 const mixer = context.resolve(AudioMixerKey);
 
 // Try resolve (returns undefined if not registered)
-const mixer = context.tryResolve(AudioMixerKey);
+const optionalMixer = context.tryResolve(AudioMixerKey);
 
 // Check existence
 if (context.has(AudioMixerKey)) {
@@ -78,13 +85,13 @@ YAGE's core and official plugins register these services:
 
 ## Accessing Services from Components
 
-Inside a component, use `this.use(key)`. The result is cached after the first
-call so repeated access is free:
+Inside an attached component, use `this.use(key)` from `onAdd()` or later.
+The result is cached after the first call:
 
 ```typescript
 import { Component } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
-import { PhysicsWorldKey } from "@yagejs/physics";
+import { PhysicsWorldKey, RigidBodyComponent } from "@yagejs/physics";
 
 class PlayerController extends Component {
   update(dt: number) {
@@ -92,7 +99,7 @@ class PlayerController extends Component {
     const physics = this.use(PhysicsWorldKey);
 
     if (input.isPressed("jump")) {
-      const body = this.sibling(RigidBody);
+      const body = this.sibling(RigidBodyComponent);
       body.setVelocityY(-600);
     }
   }
@@ -109,7 +116,13 @@ Systems receive the `EngineContext` in `onRegister`. Store references there or
 call `this.use(key)` during `update`:
 
 ```typescript
-import { System, Phase, EngineContext } from "@yagejs/core";
+import {
+  System,
+  Phase,
+  LoggerKey,
+  type EngineContext,
+  type Logger,
+} from "@yagejs/core";
 
 class DebugOverlaySystem extends System {
   readonly phase = Phase.Render;
@@ -122,67 +135,72 @@ class DebugOverlaySystem extends System {
   }
 
   update(dt: number) {
-    const stats = this.use(GameLoopKey).stats;
-    this.logger.debug(`FPS: ${stats.fps}`);
+    this.logger.debug("performance", `Frame delta: ${dt} seconds`);
   }
 }
 ```
 
 ## Custom Services
 
-Register your own services for shared game state:
+A custom plugin can provide infrastructure such as asset URL resolution:
 
 ```typescript
-import { ServiceKey, Plugin, EngineContext } from "@yagejs/core";
+import { ServiceKey, type Plugin, type EngineContext } from "@yagejs/core";
 
-interface Inventory {
-  items: string[];
-  add(item: string): void;
-  has(item: string): boolean;
+interface AssetURLs {
+  resolve(path: string): string;
 }
 
-export const InventoryKey = new ServiceKey<Inventory>("Inventory");
+export const AssetURLsKey = new ServiceKey<AssetURLs>("my-game:asset-urls");
 
-export function inventoryPlugin(): Plugin {
+export function assetURLsPlugin(baseURL: string): Plugin {
+  const base = new URL(baseURL);
   return {
-    name: "inventory",
+    name: "my-game-asset-urls",
+    version: "1.0.0",
     install(context: EngineContext) {
-      context.register(InventoryKey, {
-        items: [],
-        add(item) { this.items.push(item); },
-        has(item) { return this.items.includes(item); },
+      context.register(AssetURLsKey, {
+        resolve: (path) => new URL(path, base).href,
       });
     },
   };
 }
 ```
 
-Any component or system can then `this.use(InventoryKey)` to access the shared
-inventory.
+Install the plugin with an absolute base URL, including a trailing slash for a
+directory: `engine.use(assetURLsPlugin("https://assets.example.com/game/"))`.
+After startup, `this.use(AssetURLsKey).resolve("hero.png")` returns the asset's
+absolute URL. The plugin owns one engine-wide service; scene entry does not
+register another instance.
 
 ## Scene-Scoped Services
 
-`context.register` services live for the engine's lifetime. For state that
-belongs to a single scene, call `scene.registerScoped(key, value)` — plugins
-typically do this from their `beforeEnter` hook, but game code can use it
-directly to attach scene-local services:
+Engine services registered with `context.register()` live for the engine's
+lifetime. Per-scene infrastructure uses `scene.registerScoped(key, value)`;
+plugins register it in `beforeEnter` and dispose their resources at exit.
+Scoped registrations are cleared after `onExit` and plugin `afterExit`
+hooks.
+
+Use the existing scene clock for scene time rather than registering a parallel
+clock:
 
 ```typescript
-import { Scene, ServiceKey } from "@yagejs/core";
-
-const LevelClockKey = new ServiceKey<{ elapsed: number }>("LevelClock");
+import { Scene, SceneTimeKey } from "@yagejs/core";
 
 class LevelScene extends Scene {
-  override onEnter() {
-    this.registerScoped(LevelClockKey, { elapsed: 0 });
+  readonly name = "level";
+
+  onEnter(): void {
+    const time = this.use(SceneTimeKey);
+    time.scaleBy(0.5, { for: 2 });
   }
 }
 ```
 
-Components resolve it the same way as any other service (`this.use(LevelClockKey)`).
-Every key registered this way is automatically unregistered when the scene
-exits (after `onExit` and plugin `afterExit` hooks run), so the next scene
-starts with a clean slate and there's no cross-scene leakage.
+The engine provides `SceneTimeKey` before scene entry. Components resolve it
+through `this.use(SceneTimeKey)` too. Its `elapsed` and `fixedElapsed`
+readings belong to different update streams; compare timestamps from the same
+stream.
 
 ### Resolving scene-scoped services from the scene itself
 
@@ -199,10 +217,11 @@ import { SceneRenderTreeKey } from "@yagejs/renderer";
 import { crt } from "@yagejs/effects";
 
 class LevelScene extends Scene {
+  readonly name = "level";
   override onEnter() {
     // Resolves this scene's render tree — registered by RendererPlugin's
     // beforeEnter hook, which ran before onEnter.
-    this.use(SceneRenderTreeKey).fx.addEffect(crt({ scanlines: true }));
+    this.use(SceneRenderTreeKey).fx.addEffect(crt({ lineContrast: 0.25 }));
   }
 }
 ```

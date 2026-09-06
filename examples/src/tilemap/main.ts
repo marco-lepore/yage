@@ -50,20 +50,15 @@ const ENEMY_COLORS: Record<string, number> = {
 class Player extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly walls: readonly RectColliderConfig[];
-  private readonly camera: CameraEntity;
 
-  constructor(walls: readonly RectColliderConfig[], camera: CameraEntity) {
+  constructor(walls: readonly RectColliderConfig[]) {
     super();
     this.walls = walls;
-    this.camera = camera;
   }
 
   update(dt: number): void {
     const dir = this.input.getVector("left", "right", "up", "down");
-    if (dir.x === 0 && dir.y === 0) {
-      this.camera.position = this.entity.get(Transform).position;
-      return;
-    }
+    if (dir.x === 0 && dir.y === 0) return;
 
     const move = dir.normalize().scale(PLAYER_SPEED * dt);
     const t = this.entity.get(Transform);
@@ -78,8 +73,6 @@ class Player extends Component {
     if (!this._hits(t.position.x, nextY)) {
       t.setPosition(t.position.x, nextY);
     }
-
-    this.camera.position = t.position;
   }
 
   private _hits(x: number, y: number): boolean {
@@ -104,7 +97,6 @@ class PlayerEntity extends Entity {
   setup(params: {
     object: MapObject;
     walls: readonly RectColliderConfig[];
-    camera: CameraEntity;
   }): void {
     this.add(new Transform({ position: new Vec2(params.object.x, params.object.y) }));
     this.add(
@@ -115,7 +107,7 @@ class PlayerEntity extends Entity {
         }),
       ),
     );
-    this.add(new Player(params.walls, params.camera));
+    this.add(new Player(params.walls));
   }
 }
 
@@ -234,23 +226,24 @@ class TilemapScene extends Scene {
       .getCollisionShapes("walls")
       .filter((s): s is RectColliderConfig => s.type === "rect");
 
-    // Camera anchored to the player.
+    // Spawn the player at the Tiled "Player" point object, with an auto-key
+    // derived from the map asset path + Tiled object id.
+    const playerObj = tilemap.findObjectByName("Player");
+    let player: PlayerEntity | undefined;
+    if (playerObj) {
+      player = this.spawn(
+        PlayerEntity,
+        { object: playerObj, walls },
+        { key: tilemap.objectKey(playerObj) },
+      );
+    }
+
     const cam = this.spawn(CameraEntity, {
       position: new Vec2(mapW / 2, mapH / 2),
       zoom: CAMERA_ZOOM,
       bounds: { minX: 0, minY: 0, maxX: mapW, maxY: mapH },
     });
-
-    // Spawn the player at the Tiled "Player" point object, with an auto-key
-    // derived from the map asset path + Tiled object id.
-    const playerObj = tilemap.findObjectByName("Player");
-    if (playerObj) {
-      this.spawn(
-        PlayerEntity,
-        { object: playerObj, walls, camera: cam },
-        { key: tilemap.objectKey(playerObj) },
-      );
-    }
+    if (player) cam.follow(player.get(Transform), { snap: true });
 
     // Spawn one enemy per EnemySpawn point. The `type` custom property
     // comes back as a comma-separated string in this map; split and pick

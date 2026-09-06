@@ -5,11 +5,11 @@ light-level queries, and per-scene renderer backends.
 
 ## Setup
 
-```ts
+```ts yage-context="engine"
 import { LightingPlugin } from "@yagejs/lighting";
 import { RendererPlugin } from "@yagejs/renderer";
 
-engine.use(new RendererPlugin());
+engine.use(new RendererPlugin({ width: 800, height: 600 }));
 engine.use(
   new LightingPlugin({
     ambient: {
@@ -27,7 +27,7 @@ reach. UI on the conventional order `1000` remains above the lighting layer.
 
 Configure the built-in renderer:
 
-```ts
+```ts yage-context="engine"
 import { LightingPlugin, overlayLighting } from "@yagejs/lighting";
 
 engine.use(
@@ -49,7 +49,7 @@ Pass `renderer: null` to keep `levelAt()` and disable visual output. The
 
 Add `LightSource` to an entity with a `Transform`:
 
-```ts
+```ts yage-context="scene"
 import { Transform, Vec2 } from "@yagejs/core";
 import { LightSource } from "@yagejs/lighting";
 
@@ -100,7 +100,10 @@ change the scalar query.
 
 `LightingWorld` also exposes:
 
-```ts
+```ts yage-context="component"
+import { LightingWorldKey } from "@yagejs/lighting";
+const lighting = this.use(LightingWorldKey);
+
 lighting.sources; // ReadonlySet<LightSource>
 lighting.occluders; // ReadonlySet<LightOccluder>
 lighting.ambientLevel;
@@ -111,7 +114,13 @@ lighting.ambientColor;
 
 Occluders are renderer-neutral data centred on an entity's `Transform`:
 
-```ts
+```ts yage-context="scene"
+import { Transform } from "@yagejs/core";
+const wall = scene.spawn("wall");
+const pillar = scene.spawn("pillar");
+const rock = scene.spawn("rock");
+for (const entity of [wall, pillar, rock]) entity.add(new Transform());
+
 import { LightOccluder } from "@yagejs/lighting";
 
 wall.add(
@@ -151,9 +160,14 @@ Both `LightSource` and `LightOccluder` expose world coordinates as an immutable
 For repeated reads, reuse a buffer from `@yagejs/core`:
 
 ```ts
-const position = new Vec2Buffer();
-light.getPositionInto(position);
-occluder.getPositionInto(position);
+import { Vec2Buffer } from "@yagejs/core";
+import type { LightSource, LightOccluder } from "@yagejs/lighting";
+
+function readPositions(light: LightSource, occluder: LightOccluder) {
+  const position = new Vec2Buffer();
+  light.getPositionInto(position);
+  occluder.getPositionInto(position);
+}
 ```
 
 `getPositionInto` overwrites and returns the supplied buffer without
@@ -165,7 +179,9 @@ immutable value you retain or share.
 
 `LightingConfig.renderer` accepts a per-scene `LightingRendererFactory`:
 
-```ts
+```ts yage-context="engine"
+import { LightingPlugin } from "@yagejs/lighting";
+
 import type {
   LightingRenderer,
   LightingRendererFactory,

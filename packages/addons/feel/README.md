@@ -11,6 +11,10 @@ practical recipes, and a custom effect. Press `N` or `P` to move between scenes
 with a slide transition.
 
 ```ts
+import type { Entity } from "@yagejs/core";
+import { CameraComponent } from "@yagejs/renderer";
+import { SpriteComponent } from "@yagejs/renderer";
+
 import { Feel, feelHitStop, feelParallel } from "@yagejs-addons/feel";
 import {
   feelCameraShake,
@@ -19,18 +23,21 @@ import {
   feelSquash,
 } from "@yagejs-addons/feel/renderer";
 
-enemy.add(
-  new Feel({
-    hit: feelParallel(
-      feelSquash({ target: enemySprite, amount: 0.2 }),
-      feelHitStop({ duration: 0.05 }),
-      feelCameraShake({ camera, intensity: 5 }),
-      feelHitFlash(enemySprite.fx, { color: 0xffffff }),
-    ),
-  }),
-);
+function addHitCue(enemy: Entity, camera: CameraComponent) {
+  const enemySprite = enemy.get(SpriteComponent);
+  enemy.add(
+    new Feel({
+      hit: feelParallel(
+        feelSquash({ target: enemySprite, amount: 0.2 }),
+        feelHitStop({ duration: 0.05 }),
+        feelCameraShake({ camera, intensity: 5 }),
+        feelHitFlash(enemySprite.fx, { color: 0xffffff }),
+      ),
+    }),
+  );
 
-enemy.get(Feel).play("hit");
+  enemy.get(Feel).play("hit");
+}
 ```
 
 ## Install
@@ -59,7 +66,13 @@ recipes have separate entry points.
 
 Each cue also accepts trigger policy:
 
-```ts
+```ts yage-context="entity"
+import { SpriteComponent } from "@yagejs/renderer";
+import type { Entity } from "@yagejs/core";
+import { Feel } from "@yagejs-addons/feel";
+import { feelScalePunch } from "@yagejs-addons/feel/renderer";
+const playerSprite = entity.get(SpriteComponent);
+
 const feel = entity.add(
   new Feel({
     hit: {
@@ -87,6 +100,8 @@ immediately.
 pulses:
 
 ```ts
+import type { EasingFunction } from "@yagejs/core";
+
 interface FeelPulseTiming {
   duration?: number;
   peakAt?: number;
@@ -114,10 +129,10 @@ Cue definitions, cooldown clocks, and active playbacks are runtime-only. Normal
 entity setup constructs `Feel` when the game builds a scene, with no cue in
 progress.
 
-Renderer and camera modifiers, temporary filter attachments, time requests,
-particle-emission requests, live particles, and transient visual entities are
-also omitted. The saved base transform, camera, and visual properties remain
-unchanged by these effects.
+Keep renderer and camera modifiers, temporary filter attachments, time requests,
+particle-emission requests, live particles, and transient visual entities out
+of explicit saved roots. These effects leave base transform, camera, and visual
+properties unchanged.
 
 `feelCall`, `defineFeelEffect`, `feelKeyframeAnimation`, and
 `feelSpriteAnimation` can run user-supplied code. If that code writes to
@@ -151,7 +166,16 @@ The entity's `Transform`, rigid body, collider, and depth-sort position remain
 unchanged. Overlapping effects own separate modifiers and remove only their
 own values.
 
-```ts
+```ts yage-context="entity"
+import { SpriteComponent } from "@yagejs/renderer";
+import { feelParallel } from "@yagejs-addons/feel";
+import {
+  feelPositionSpring,
+  feelRotationSpring,
+  feelScaleSpring,
+} from "@yagejs-addons/feel/renderer";
+const enemySprite = entity.get(SpriteComponent);
+
 const springHit = feelParallel(
   feelPositionSpring({ target: enemySprite, offset: { x: -12, y: 0 } }),
   feelRotationSpring({ target: enemySprite, radians: 0.15 }),
@@ -163,7 +187,10 @@ Spring cues begin at the requested visual displacement and oscillate back to
 the live base value. `duration` sets the settling time, `oscillations` sets the
 number of rebounds, and `decay` controls how quickly the rebounds weaken.
 
-```ts
+```ts yage-context="component"
+import { SceneRenderTreeKey } from "@yagejs/renderer";
+const worldLayer = this.use(SceneRenderTreeKey).get("world");
+
 import { easeOutQuad } from "@yagejs/core";
 import { bloom } from "@yagejs/effects";
 import { feelEffect } from "@yagejs-addons/feel/renderer";
@@ -194,26 +221,38 @@ recipe returns a normal `FeelNode` for the existing `Feel` component. The
 separate import distinguishes recipes from basic `feelX` nodes.
 
 ```ts
+import { SpriteComponent } from "@yagejs/renderer";
+import type { Entity } from "@yagejs/core";
+import { Feel } from "@yagejs-addons/feel";
+
 import {
   damageImpact,
   dashBurst,
   enemyDeath,
 } from "@yagejs-addons/feel/recipes";
 
-const feel = entity.add(
-  new Feel({
-    hurt: damageImpact({ target: enemySprite, value: () => lastDamage }),
-    dash: dashBurst({
-      target: playerSprite,
-      direction: { x: 1, y: 0 },
-      peakAt: 0.45,
+function addCombatCues(
+  entity: Entity,
+  enemySprite: SpriteComponent,
+  playerSprite: SpriteComponent,
+  readDamage: () => number,
+) {
+  const feel = entity.add(
+    new Feel({
+      hurt: damageImpact({ target: enemySprite, value: readDamage }),
+      dash: dashBurst({
+        target: playerSprite,
+        direction: { x: 1, y: 0 },
+        peakAt: 0.45,
+      }),
+      die: enemyDeath({
+        target: enemySprite,
+        onComplete: ({ entity }) => entity.destroy(),
+      }),
     }),
-    die: enemyDeath({
-      target: enemySprite,
-      onComplete: ({ entity }) => entity.destroy(),
-    }),
-  }),
-);
+  );
+  return feel;
+}
 ```
 
 | Recipe         | Composition                                                         |
@@ -237,26 +276,43 @@ at `0.3`, and `easeOutQuad` for both phases.
 
 Outline, glow, and colorize effects pulse a filter on one visual. Floating
 text, damage numbers, and impact rings spawn independent world-space visuals,
-so retriggers can overlap without sharing state. Feel-owned filter pulses are
-omitted from save snapshots.
+so retriggers can overlap without sharing state. Keep filter handles and
+active callouts out of the game's explicit saved state. Save the game fact
+that should recreate an effect after load.
 
 ```ts
-const criticalHit = feelParallel(
-  feelOutline({
-    target: enemySprite,
-    color: 0xffd54a,
-    thickness: 3,
-    duration: 0.25,
-  }),
-  feelGlow({ target: enemySprite, color: 0xff8800, duration: 0.3 }),
-  feelDamageNumber({
-    value: () => lastDamage,
-    critical: () => lastHitWasCritical,
-    prefix: "-",
-    layer: "effects",
-  }),
-  feelImpactRing({ color: 0xffd54a, layer: "effects" }),
-);
+import { SpriteComponent } from "@yagejs/renderer";
+import { feelParallel } from "@yagejs-addons/feel";
+import {
+  feelOutline,
+  feelGlow,
+  feelDamageNumber,
+  feelImpactRing,
+} from "@yagejs-addons/feel/renderer";
+
+function makeCriticalHit(
+  enemySprite: SpriteComponent,
+  readDamage: () => number,
+  readCritical: () => boolean,
+) {
+  const criticalHit = feelParallel(
+    feelOutline({
+      target: enemySprite,
+      color: 0xffd54a,
+      thickness: 3,
+      duration: 0.25,
+    }),
+    feelGlow({ target: enemySprite, color: 0xff8800, duration: 0.3 }),
+    feelDamageNumber({
+      value: readDamage,
+      critical: readCritical,
+      prefix: "-",
+      layer: "effects",
+    }),
+    feelImpactRing({ color: 0xffd54a, layer: "effects" }),
+  );
+  return criticalHit;
+}
 ```
 
 ## Flight lines, motion trails, and afterimages
@@ -268,20 +324,33 @@ rendered pose. All three effects own temporary entities and leave gameplay
 transforms unchanged.
 
 ```ts
-const dash = feelParallel(
-  feelFlightLines({ direction: () => velocity, duration: 0.25 }),
-  feelMotionTrail({
-    position: () => player.get(Transform).worldPosition,
-    duration: "held",
-    lifetime: 0.18,
-  }),
-  feelAfterimage({
-    target: playerSprite,
-    count: 5,
-    interval: 0.05,
-    tint: 0x1e3a8a,
-  }),
-);
+import { SpriteComponent } from "@yagejs/renderer";
+import { Transform, type Entity, type Vec2 } from "@yagejs/core";
+import { feelParallel } from "@yagejs-addons/feel";
+import {
+  feelFlightLines,
+  feelMotionTrail,
+  feelAfterimage,
+} from "@yagejs-addons/feel/renderer";
+
+function makeDash(player: Entity, readVelocity: () => Vec2) {
+  const playerSprite = player.get(SpriteComponent);
+  const dash = feelParallel(
+    feelFlightLines({ direction: readVelocity, duration: 0.25 }),
+    feelMotionTrail({
+      position: () => player.get(Transform).worldPosition,
+      duration: "held",
+      lifetime: 0.18,
+    }),
+    feelAfterimage({
+      target: playerSprite,
+      count: 5,
+      interval: 0.05,
+      tint: 0x1e3a8a,
+    }),
+  );
+  return dash;
+}
 ```
 
 A fixed flight-line direction must be finite with a magnitude greater than
@@ -301,23 +370,32 @@ while its last points fade.
 `feelFloatingText` and `feelDamageNumber` use the cue entity's world
 `Transform` by default. Pass `position` to spawn elsewhere. Each playback
 creates one temporary entity and destroys it when the effect completes or is
-cancelled. Active callouts are omitted from save snapshots. Use a custom pool
+cancelled. Keep active callouts out of saved state. Use a custom pool
 instead when a game displays very large numbers of callouts every frame.
 
 ## Audio and particles
 
 ```ts
+import { ParticleEmitterComponent } from "@yagejs/particles";
+import { feelParallel } from "@yagejs-addons/feel";
+
 import { feelSound } from "@yagejs-addons/feel/audio";
 import {
   feelParticleBurst,
   feelParticleEmit,
 } from "@yagejs-addons/feel/particles";
 
-const impact = feelParallel(
-  feelSound({ alias: "impact", speed: [0.95, 1.05] }),
-  feelParticleBurst({ emitter: sparks, count: [8, 12] }),
-  feelParticleEmit({ emitter: smoke, duration: 0.2 }),
-);
+function makeImpact(
+  sparks: ParticleEmitterComponent,
+  smoke: ParticleEmitterComponent,
+) {
+  const impact = feelParallel(
+    feelSound({ alias: "impact", speed: [0.95, 1.05] }),
+    feelParticleBurst({ emitter: sparks, count: [8, 12] }),
+    feelParticleEmit({ emitter: smoke, duration: 0.2 }),
+  );
+  return impact;
+}
 ```
 
 Sounds keep the overall playback active until natural completion, release, or

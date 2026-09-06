@@ -105,7 +105,7 @@ sibling path you reference). Watching for this saves a frustrating
 
 ## TilemapPlugin Setup
 
-```typescript
+```typescript yage-context="engine"
 import { TilemapPlugin } from "@yagejs/tilemap";
 
 engine.use(new TilemapPlugin());
@@ -119,11 +119,13 @@ Use the `tiledMap()` asset factory and put the handle in your scene's
 `preload` array:
 
 ```typescript
+import { Scene } from "@yagejs/core";
 import { tiledMap } from "@yagejs/tilemap";
 
 const MapData = tiledMap("assets/level.json");
 
 class LevelScene extends Scene {
+  readonly name = "level";
   readonly preload = [MapData];
 }
 ```
@@ -132,7 +134,13 @@ The map handle owns its tileset images. Loading it loads every single-image
 tileset the map references, and `assets.unload(MapData)` releases them again:
 
 ```typescript
+import { Scene } from "@yagejs/core";
+import { tiledMap } from "@yagejs/tilemap";
+
+const MapData = tiledMap("assets/level.json");
+
 class LevelScene extends Scene {
+  readonly name = "level";
   readonly preload = [MapData];
   onExit() {
     this.assets.unload(MapData); // frees the map and its tileset images
@@ -160,8 +168,10 @@ Add a `TilemapComponent` to an entity to render the map:
 
 ```typescript
 import { Scene, Transform } from "@yagejs/core";
-import { TilemapComponent } from "@yagejs/tilemap";
+import { TilemapComponent, tiledMap } from "@yagejs/tilemap";
 import type { LayerDef } from "@yagejs/renderer";
+
+const MapData = tiledMap("assets/level.json");
 
 class LevelScene extends Scene {
   readonly name = "level";
@@ -169,18 +179,18 @@ class LevelScene extends Scene {
 
   // Declare the scene's layers — the renderer plugin materializes them
   // automatically when the scene is pushed.
-  readonly layers: readonly LayerDef[] = [
-    { name: "map", order: -10 },
-  ];
+  readonly layers: readonly LayerDef[] = [{ name: "map", order: -10 }];
 
   onEnter(): void {
     const map = this.spawn("map");
     map.add(new Transform());
-    map.add(new TilemapComponent({
-      source: MapData,              // asset handle — preferred form
-      layers: ["ground", "walls"],  // which tile layers to render (omit for all)
-      layer: "map",                 // render layer name
-    }));
+    map.add(
+      new TilemapComponent({
+        source: MapData, // asset handle — preferred form
+        layers: ["ground", "walls"], // which tile layers to render (omit for all)
+        layer: "map", // render layer name
+      }),
+    );
   }
 }
 ```
@@ -199,12 +209,15 @@ Without it the component throws when it is added, naming the image.
 
 Query map dimensions from the component:
 
-```typescript
+```typescript yage-context="entity"
+import { TilemapComponent } from "@yagejs/tilemap";
+
+const map = entity;
 const tilemap = map.get(TilemapComponent);
-tilemap.widthPx;      // total width in pixels
-tilemap.heightPx;     // total height in pixels
-tilemap.tileWidth;    // single tile width
-tilemap.tileHeight;   // single tile height
+tilemap.widthPx; // total width in pixels
+tilemap.heightPx; // total height in pixels
+tilemap.tileWidth; // single tile width
+tilemap.tileHeight; // single tile height
 ```
 
 ### Tinting, fading and effects
@@ -213,17 +226,24 @@ tilemap.tileHeight;   // single tile height
 the same visual options and exposes the same vocabulary — tint, alpha, blend
 mode, visibility, masks, and a component-scope effects host:
 
-```typescript
-map.add(new TilemapComponent({
-  source: MapData,
-  layer: "map",
-  tint: 0x5566aa,     // wash the whole map cold
-  alpha: 0.85,
-}));
+```typescript yage-context="entity"
+import { TilemapComponent, tiledMap } from "@yagejs/tilemap";
+import { bloom } from "@yagejs/effects";
+
+const map = entity;
+const MapData = tiledMap("assets/level.json");
+map.add(
+  new TilemapComponent({
+    source: MapData,
+    layer: "map",
+    tint: 0x5566aa, // wash the whole map cold
+    alpha: 0.85,
+  }),
+);
 
 const tilemap = map.get(TilemapComponent);
-tilemap.tint = 0xffffff;                        // back to untinted
-tilemap.fx.addEffect(bloom({ strength: 1.5 }));  // effects on the map alone
+tilemap.tint = 0xffffff; // back to untinted
+tilemap.fx.addEffect(bloom({ bloomScale: 1.5 })); // effects on the map alone
 ```
 
 Tint and alpha reach the tiles through a colour filter on the map's container,
@@ -235,7 +255,10 @@ and full opacity has no filter attached, so an untinted map costs nothing.
 A Tiled map can use features this package does not render. Rather than
 dropping them quietly, the loader collects them:
 
-```typescript
+```typescript yage-context="entity"
+import { TilemapComponent } from "@yagejs/tilemap";
+
+const map = entity;
 const tilemap = map.get(TilemapComponent);
 
 for (const d of tilemap.data.diagnostics) {
@@ -253,13 +276,16 @@ To check a map before building anything from it — in a content pipeline, an
 asset test, or a level editor — run the validator over the raw JSON:
 
 ```typescript
-import { validateTiledMap } from "@yagejs/tilemap";
+import { validateTiledMap, type TiledMapData } from "@yagejs/tilemap";
 
-const problems = validateTiledMap(rawTiledJson)
-  .filter((d) => d.severity === "error");
+function checkMap(rawTiledJson: TiledMapData) {
+  const problems = validateTiledMap(rawTiledJson).filter(
+    (d) => d.severity === "error",
+  );
 
-if (problems.length > 0) {
-  throw new Error(problems.map((d) => d.message).join("\n"));
+  if (problems.length > 0) {
+    throw new Error(problems.map((d) => d.message).join("\n"));
+  }
 }
 ```
 
@@ -298,6 +324,10 @@ in-memory `map` object when you already have parsed data, or a `mapKey` asset
 path that the component resolves through the `AssetManager`.
 
 ```typescript
+import type { AssetHandle } from "@yagejs/core";
+import type { VisualComponentOptions } from "@yagejs/renderer";
+import type { TiledMapData } from "@yagejs/tilemap";
+
 interface TilemapComponentOptions extends VisualComponentOptions {
   /** Asset handle — preferred. Captures both data and path in one place. */
   source?: AssetHandle<TiledMapData>;
@@ -319,19 +349,29 @@ asset path is in scope. Use `map` for generated or already parsed data; add a
 `keyPrefix` if Tiled object ids need stable game-wide keys:
 
 ```typescript
-// Preferred for preloaded assets; enables auto-keys for Tiled objects.
-map.add(new TilemapComponent({
-  source: MapData,
-  layers: ["ground", "walls"],
-  layer: "map",
-}));
+import type { Entity } from "@yagejs/core";
+import { TilemapComponent, tiledMap, type TiledMapData } from "@yagejs/tilemap";
 
-// Generated or already parsed data. Add keyPrefix to enable auto-keys.
-map.add(new TilemapComponent({
-  map: parsedTiledJson,
-  keyPrefix: "generated-level-1",
-  layer: "map",
-}));
+function addMaps(map: Entity, parsedTiledJson: TiledMapData) {
+  const MapData = tiledMap("assets/level.json");
+  // Preferred for preloaded assets; enables auto-keys for Tiled objects.
+  map.add(
+    new TilemapComponent({
+      source: MapData,
+      layers: ["ground", "walls"],
+      layer: "map",
+    }),
+  );
+
+  // Generated or already parsed data. Add keyPrefix to enable auto-keys.
+  map.add(
+    new TilemapComponent({
+      map: parsedTiledJson,
+      keyPrefix: "generated-level-1",
+      layer: "map",
+    }),
+  );
+}
 ```
 
 ## Map Data Structure
@@ -341,7 +381,10 @@ building a pathfinding grid, counting tile types, or driving custom gameplay
 off tile positions. `TilemapComponent` exposes a format-agnostic snapshot of
 the parsed map on its `data` property:
 
-```typescript
+```typescript yage-context="entity"
+import { TilemapComponent } from "@yagejs/tilemap";
+
+const map = entity;
 const tilemap = map.get(TilemapComponent);
 const data = tilemap.data; // TilemapData
 
@@ -357,12 +400,18 @@ format — you can build your own parser for a different editor and reuse the
 same downstream consumers.
 
 ```typescript
+import type {
+  MapObjectProperty,
+  MapObject,
+  TilemapDiagnostic,
+} from "@yagejs/tilemap";
+
 interface TilemapData {
-  width: number;           // tiles wide
-  height: number;          // tiles tall
-  tileWidth: number;       // pixel width of one tile
+  width: number; // tiles wide
+  height: number; // tiles tall
+  tileWidth: number; // pixel width of one tile
   tileHeight: number;
-  properties?: MapObjectProperty[];   // the map's own custom properties
+  properties?: MapObjectProperty[]; // the map's own custom properties
   tileLayers: TileLayerData[];
   objectLayers: ObjectLayerData[];
   tilesets: TilesetInfo[];
@@ -371,18 +420,18 @@ interface TilemapData {
 
 interface TileLayerData {
   name: string;
-  data: number[];          // flat, row-major tile GIDs (0 = empty)
+  data: number[]; // flat, row-major tile GIDs (0 = empty)
   width: number;
   height: number;
   visible: boolean;
-  offsetX: number;         // the layer's Tiled draw offset, in pixels
+  offsetX: number; // the layer's Tiled draw offset, in pixels
   offsetY: number;
   properties?: MapObjectProperty[];
 }
 
 interface ObjectLayerData {
   name: string;
-  objects: MapObject[];    // coordinates already include offsetX/offsetY
+  objects: MapObject[]; // coordinates already include offsetX/offsetY
   visible: boolean;
   offsetX: number;
   offsetY: number;
@@ -401,8 +450,12 @@ carry its own identity — a biome, a music track, a level index — without a
 marker object standing in for it:
 
 ```typescript
-const biome = tilemap.getProperty<string>(tilemap.data, "biome");
-const track = tilemap.getProperty<string>(tilemap.data, "music");
+import { TilemapComponent } from "@yagejs/tilemap";
+
+function queryMap(tilemap: TilemapComponent) {
+  const biome = tilemap.getProperty<string>(tilemap.data, "biome");
+  const track = tilemap.getProperty<string>(tilemap.data, "music");
+}
 ```
 
 `TileLayerData.data` is a single flat array in row-major order. To read the
@@ -411,11 +464,15 @@ of `0` means "no tile at this position". That flat layout makes it cheap to
 iterate for pathfinding or damage maps:
 
 ```typescript
-// Count all solid tiles in the "walls" layer
-const walls = data.tileLayers.find((l) => l.name === "walls")!;
-let solidCount = 0;
-for (const gid of walls.data) {
-  if (gid !== 0) solidCount++;
+import type { TilemapData } from "@yagejs/tilemap";
+
+function countSolidTiles(data: TilemapData) {
+  // Count all solid tiles in the "walls" layer
+  const walls = data.tileLayers.find((l) => l.name === "walls")!;
+  let solidCount = 0;
+  for (const gid of walls.data) {
+    if (gid !== 0) solidCount++;
+  }
 }
 ```
 
@@ -430,8 +487,12 @@ Tiled custom properties — covered in detail below.
 Look up tile data at a world position:
 
 ```typescript
-const id = tilemap.getTileAt(worldX, worldY, "ground");
-// Returns the tile id, or null if the position is empty
+import { TilemapComponent } from "@yagejs/tilemap";
+
+function queryTile(tilemap: TilemapComponent, worldX: number, worldY: number) {
+  const id = tilemap.getTileAt(worldX, worldY, "ground");
+  // Returns the tile id, or null if the position is empty
+}
 ```
 
 The point is converted through the inverse of the entity's world transform
@@ -479,20 +540,38 @@ Tiled packs that orientation into the high bits of the tile's GID. `getTileAt`
 strips them, so a comparison works whichever way a tile faces:
 
 ```typescript
-if (tilemap.getTileAt(x, y, "walls") === WALL_CORNER) { /* … */ }
+import { TilemapComponent } from "@yagejs/tilemap";
+
+function isWallCorner(
+  tilemap: TilemapComponent,
+  x: number,
+  y: number,
+  WALL_CORNER: number,
+) {
+  return tilemap.getTileAt(x, y, "walls") === WALL_CORNER;
+}
 ```
 
 Raw layer data keeps the bits, because the orientation is sometimes the point
 — a one-way conveyor tile, say, whose direction comes from how it was placed:
 
 ```typescript
-import { readTileGid } from "@yagejs/tilemap";
+import { readTileGid, type TilemapComponent } from "@yagejs/tilemap";
 
-const layer = tilemap.data.tileLayers.find((l) => l.name === "machinery")!;
-const { id, flippedHorizontally } = readTileGid(layer.data[row * layer.width + col]!);
+function conveyorDirection(
+  tilemap: TilemapComponent,
+  row: number,
+  col: number,
+  CONVEYOR: number,
+) {
+  const layer = tilemap.data.tileLayers.find((l) => l.name === "machinery")!;
+  const { id, flippedHorizontally } = readTileGid(
+    layer.data[row * layer.width + col]!,
+  );
 
-if (id === CONVEYOR) {
-  direction = flippedHorizontally ? -1 : 1;
+  if (id === CONVEYOR) {
+    return flippedHorizontally ? -1 : 1;
+  }
 }
 ```
 
@@ -527,18 +606,31 @@ Tiled object layers contain spawn points, triggers, and other game data.
 Extract objects grouped by their class or name:
 
 ```typescript
-const objects = tilemap.getObjects("spawns");
-// Returns: Record<string, MapObject[]>
-// e.g. { "player": [{ x, y, ... }], "enemy": [{ x, y, width, height, ... }] }
+import { Entity, Transform, Vec2, type Scene } from "@yagejs/core";
+import { TilemapComponent } from "@yagejs/tilemap";
 
-for (const obj of objects["enemy"] ?? []) {
-  this.spawn(EnemyBP, { x: obj.x, y: obj.y });
+class Enemy extends Entity {
+  setup({ x, y }: { x: number; y: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+  }
+}
+
+function spawnEnemies(scene: Scene, tilemap: TilemapComponent) {
+  const objects = tilemap.getObjects("spawns");
+  // Returns: Record<string, MapObject[]>
+  // e.g. { "player": [{ x, y, ... }], "enemy": [{ x, y, width, height, ... }] }
+
+  for (const obj of objects["enemy"] ?? []) {
+    scene.spawn(Enemy, { x: obj.x, y: obj.y });
+  }
 }
 ```
 
 Each `MapObject` has:
 
 ```typescript
+import type { MapObjectProperty } from "@yagejs/tilemap";
+
 interface MapObject {
   id: number;
   name: string;
@@ -549,7 +641,7 @@ interface MapObject {
   height: number;
   rotation: number;
   visible: boolean;
-  gid?: number;            // set only on an object that draws a tile
+  gid?: number; // set only on an object that draws a tile
   point?: boolean;
   polygon?: { x: number; y: number }[];
   polyline?: { x: number; y: number }[];
@@ -563,12 +655,16 @@ the same class or when a class and an object share a spelling. Use
 `getObjectGroups()` when the layer matters:
 
 ```typescript
-for (const group of tilemap.getObjectGroups()) {
-  console.log(group.layer, group.class, group.objects.length);
+import { TilemapComponent } from "@yagejs/tilemap";
+
+function queryMap(tilemap: TilemapComponent) {
+  for (const group of tilemap.getObjectGroups()) {
+    console.log(group.layer, group.class, group.objects.length);
+  }
+  // "spawns"   "EnemySpawn"  4
+  // "spawns"   undefined     1     ← objects authored without a class
+  // "patrol"   "EnemySpawn"  2     ← same class, different layer, kept apart
 }
-// "spawns"   "EnemySpawn"  4
-// "spawns"   undefined     1     ← objects authored without a class
-// "patrol"   "EnemySpawn"  2     ← same class, different layer, kept apart
 ```
 
 Each entry is `{ layer, class?, objects }`, grouped by layer and class.
@@ -591,18 +687,31 @@ whichever corner the tileset's `objectalignment` names — and the parser moves
 the position for you. A spawn reads it directly:
 
 ```typescript
-import { readTileGid } from "@yagejs/tilemap";
+import { Entity, type Scene } from "@yagejs/core";
+import { readTileGid, type TilemapComponent } from "@yagejs/tilemap";
 
-for (const obj of tilemap.getObjects("props")["Tree"] ?? []) {
-  if (obj.gid === undefined) continue;   // authored as a plain rectangle
+// Game-specific tree rendering reads the selected tile from its tileset.
+declare class TreeEntity extends Entity {
+  setup(params: {
+    tileId: number;
+    x: number;
+    y: number;
+    flippedHorizontally: boolean;
+  }): void;
+}
 
-  const { id, flippedHorizontally } = readTileGid(obj.gid);
-  this.spawn(TreeEntity, {
-    tileId: id,
-    x: obj.x,
-    y: obj.y,
-    flippedHorizontally,
-  });
+function spawnTrees(scene: Scene, tilemap: TilemapComponent) {
+  for (const obj of tilemap.getObjects("props")["Tree"] ?? []) {
+    if (obj.gid === undefined) continue; // authored as a plain rectangle
+
+    const { id, flippedHorizontally } = readTileGid(obj.gid);
+    scene.spawn(TreeEntity, {
+      tileId: id,
+      x: obj.x,
+      y: obj.y,
+      flippedHorizontally,
+    });
+  }
 }
 ```
 
@@ -613,15 +722,22 @@ rotation belong on the Transform — the renderer copies them onto the sprite
 every frame, so a `rotation` set on the sprite is overwritten.
 
 ```typescript
-import { MathUtils, Transform } from "@yagejs/core";
-import { SpriteComponent } from "@yagejs/renderer";
+import { Entity, MathUtils, Transform } from "@yagejs/core";
+import { SpriteComponent, type TextureRef } from "@yagejs/renderer";
 
-// inside the spawned entity's setup(), for the tile object it came from
-this.add(new Transform({
-  position: { x: obj.x, y: obj.y },
-  rotation: MathUtils.degToRad(obj.rotation),  // Tiled stores degrees
-}));
-this.add(new SpriteComponent({ texture, anchor: { x: 0, y: 0 } }));
+import type { MapObject } from "@yagejs/tilemap";
+
+class TileObject extends Entity {
+  setup({ obj, texture }: { obj: MapObject; texture: TextureRef }) {
+    this.add(
+      new Transform({
+        position: { x: obj.x, y: obj.y },
+        rotation: MathUtils.degToRad(obj.rotation), // Tiled stores degrees
+      }),
+    );
+    this.add(new SpriteComponent({ texture, anchor: { x: 0, y: 0 } }));
+  }
+}
 ```
 
 [Collision extraction](#collision-extraction) reads the same corner, so its
@@ -641,9 +757,13 @@ The component exposes a few direct accessors so you don't have to flatten
 `getObjects()` for one-off lookups:
 
 ```typescript
-tilemap.getAllObjects();              // flat list across every layer
-tilemap.findObject(42);               // by Tiled id
-tilemap.findObjectByName("Player");   // first match across all layers
+import { TilemapComponent } from "@yagejs/tilemap";
+
+function queryMap(tilemap: TilemapComponent) {
+  tilemap.getAllObjects(); // flat list across every layer
+  tilemap.findObject(42); // by Tiled id
+  tilemap.findObjectByName("Player"); // first match across all layers
+}
 ```
 
 ## Spawning Entities from Tiled Objects (auto-keys)
@@ -655,20 +775,32 @@ content without your game inventing its own naming scheme. The component
 exposes the prefix wiring as `objectKey()` and `forEachObject()`:
 
 ```typescript
-import { tiledObjectKey, TilemapComponent } from "@yagejs/tilemap";
+import { Entity, type Scene } from "@yagejs/core";
+import {
+  tiledObjectKey,
+  TilemapComponent,
+  type MapObject,
+} from "@yagejs/tilemap";
 
-// Standalone helper, format: "<prefix>#object:<id>"
-tiledObjectKey("/assets/dungeon.json", 42);
-// → "/assets/dungeon.json#object:42"
+// The game supplies EnemyEntity's components and behavior.
+declare class EnemyEntity extends Entity {
+  setup(params: { object: MapObject }): void;
+}
 
-// On the component — prefix already wired up from `source` / `mapKey`:
-tilemap.objectKey(obj);
+function spawnObjects(scene: Scene, tilemap: TilemapComponent, obj: MapObject) {
+  // Standalone helper, format: "<prefix>#object:<id>"
+  tiledObjectKey("/assets/dungeon.json", 42);
+  // → "/assets/dungeon.json#object:42"
 
-tilemap.forEachObject("interactables", (obj, key) => {
-  if (obj.class === "EnemySpawn") {
-    this.spawn(EnemyEntity, { object: obj }, { key });
-  }
-});
+  // On the component — prefix already wired up from `source` / `mapKey`:
+  tilemap.objectKey(obj);
+
+  tilemap.forEachObject("interactables", (obj, key) => {
+    if (obj.class === "EnemySpawn") {
+      scene.spawn(EnemyEntity, { object: obj }, { key });
+    }
+  });
+}
 ```
 
 Pass `keyPrefix: "level1"` to the component constructor when multiple
@@ -692,23 +824,34 @@ component-method variants are typed and discoverable; the standalone helpers
 exist for cases where you've already collected an object pool yourself.
 
 ```typescript
-// On the component (preferred)
-tilemap.getProperty<number>(obj, "speed");
-tilemap.getPropertyArray<number>(obj, "point");
-tilemap.resolveRef(obj, "target");          // walks every layer
-tilemap.resolveRefArray(obj, "spawns");
+import {
+  getProperty,
+  getPropertyArray,
+  resolveObjectRef,
+  resolveObjectRefArray,
+  type MapObject,
+  type TilemapComponent,
+} from "@yagejs/tilemap";
 
-// The same helpers on the map, a layer, or a tileset
-tilemap.getProperty<string>(tilemap.data, "biome");
-tilemap.getProperty<number>(tilemap.data.tileLayers[0], "damage");
-tilemap.getProperty<string>(tilemap.data.tilesets[0], "material");
+function readProperties(tilemap: TilemapComponent, obj: MapObject) {
+  const allObjs = tilemap.getAllObjects();
+  // On the component (preferred)
+  tilemap.getProperty<number>(obj, "speed");
+  tilemap.getPropertyArray<number>(obj, "point");
+  tilemap.resolveRef(obj, "target"); // walks every layer
+  tilemap.resolveRefArray(obj, "spawns");
 
-// Standalone (caller supplies the pool)
-import { getProperty, getPropertyArray, resolveObjectRef, resolveObjectRefArray } from "@yagejs/tilemap";
-getProperty<number>(obj, "speed");
-getPropertyArray<number>(obj, "point");
-resolveObjectRef(obj, "target", allObjs);
-resolveObjectRefArray(obj, "path", allObjs);
+  // The same helpers on the map, a layer, or a tileset
+  tilemap.getProperty<string>(tilemap.data, "biome");
+  tilemap.getProperty<number>(tilemap.data.tileLayers[0]!, "damage");
+  tilemap.getProperty<string>(tilemap.data.tilesets[0]!, "material");
+
+  // Standalone (caller supplies the pool)
+  getProperty<number>(obj, "speed");
+  getPropertyArray<number>(obj, "point");
+  resolveObjectRef(obj, "target", allObjs);
+  resolveObjectRefArray(obj, "path", allObjs);
+}
 ```
 
 `getPropertyArray` and `resolveRefArray` read the `name[0]`, `name[1]`
@@ -756,15 +899,21 @@ Install `@yagejs/physics` and import the adapter from
 only load and render maps.
 
 ```typescript
+import { Transform, type Scene } from "@yagejs/core";
+import { TilemapComponent } from "@yagejs/tilemap";
 import { toPhysicsColliders } from "@yagejs/tilemap/physics";
 import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 
-const walls = this.spawn("walls");
-walls.add(new Transform());
-walls.add(new RigidBodyComponent({ type: "static" }));
-walls.add(new ColliderComponent({
-  parts: toPhysicsColliders(tilemap.getCollisionShapes("walls")),
-}));
+function addWalls(scene: Scene, tilemap: TilemapComponent) {
+  const walls = scene.spawn("walls");
+  walls.add(new Transform());
+  walls.add(new RigidBodyComponent({ type: "static" }));
+  walls.add(
+    new ColliderComponent({
+      parts: toPhysicsColliders(tilemap.getCollisionShapes("walls")),
+    }),
+  );
+}
 ```
 
 Each part's own offset places its shape. A static body reads its world position
@@ -794,15 +943,19 @@ Use the tilemap dimensions to constrain the camera. The camera is an entity
 you spawn in the scene:
 
 ```typescript
+import { Transform, type Entity, type Scene } from "@yagejs/core";
+import { TilemapComponent } from "@yagejs/tilemap";
 import { CameraEntity } from "@yagejs/renderer";
 
-const cam = this.spawn(CameraEntity, { follow: player.get(Transform) });
-cam.bounds = {
-  minX: 0,
-  minY: 0,
-  maxX: tilemap.widthPx,
-  maxY: tilemap.heightPx,
-};
+function addCamera(scene: Scene, tilemap: TilemapComponent, player: Entity) {
+  const cam = scene.spawn(CameraEntity, { follow: player.get(Transform) });
+  cam.bounds = {
+    minX: 0,
+    minY: 0,
+    maxX: tilemap.widthPx,
+    maxY: tilemap.heightPx,
+  };
+}
 ```
 
 This prevents the camera from scrolling past the map edges.

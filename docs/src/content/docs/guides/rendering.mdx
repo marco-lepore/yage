@@ -12,7 +12,7 @@ the rest.
 
 Register the renderer when creating your engine:
 
-```typescript
+```typescript yage-context="engine"
 import { RendererPlugin } from "@yagejs/renderer";
 
 engine.use(
@@ -41,7 +41,10 @@ the three settings that otherwise need to be tracked down individually:
   Safari fallback) on the canvas element — the browser scales the
   backing store with nearest-neighbor instead of bicubic.
 
-```typescript
+```typescript yage-context="engine"
+import { RendererPlugin } from "@yagejs/renderer";
+
+const host = document.getElementById("game")!;
 engine.use(
   new RendererPlugin({
     width: 320,

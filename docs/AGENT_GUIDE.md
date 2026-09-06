@@ -344,11 +344,12 @@ window.__yage__.inspector.getErrors();
 
 ### In Playwright Tests
 
-```typescript
+```typescript yage-context="playwright,browser"
 const pos = await page.evaluate(() =>
   window.__yage__.inspector.getEntityPosition("ball"),
 );
-expect(pos!.y).toBeGreaterThan(100);
+expect(pos).not.toBeNull();
+expect(pos?.y).toBeGreaterThan(100);
 ```
 
 ### Clock ownership and snapshot readings
@@ -423,7 +424,7 @@ const physics = logs.filter((e) => e.category === "physics");
 
 1. Create `packages/<plugin>/src/MyComponent.ts`:
 
-```typescript
+```typescript yage-group="component-system" yage-file="MyComponent.ts"
 import { Component } from "@yagejs/core";
 
 export class MyComponent extends Component {
@@ -451,10 +452,15 @@ export class MyComponent extends Component {
 
 1. Create `packages/<plugin>/src/MySystem.ts`:
 
-```typescript
-import { System, Phase, EngineContext, QueryResult } from "@yagejs/core";
+```typescript yage-group="component-system" yage-file="MySystem.ts"
+import {
+  System,
+  Phase,
+  type EngineContext,
+  type QueryResult,
+} from "@yagejs/core";
 import { QueryCacheKey } from "@yagejs/core";
-import { MyComponent } from "./MyComponent";
+import { MyComponent } from "./MyComponent.js";
 import { Transform } from "@yagejs/core";
 
 export class MySystem extends System {
@@ -466,6 +472,10 @@ export class MySystem extends System {
   onRegister(context: EngineContext) {
     const cache = context.resolve(QueryCacheKey);
     this.query = cache.register([Transform, MyComponent]);
+  }
+
+  onUnregister() {
+    this.use(QueryCacheKey).unregister(this.query);
   }
 
   update(dt: number) {
@@ -483,7 +493,7 @@ export class MySystem extends System {
 
 ### Add a New Plugin
 
-Follow the step-by-step guide in [ARCHITECTURE.md](./ARCHITECTURE.md#8-creating-a-custom-plugin-step-by-step).
+Follow the step-by-step guide in [Engine and plugins](./src/content/docs/concepts/engine-and-plugins.mdx).
 
 Summary:
 
@@ -507,7 +517,7 @@ under `examples/src/`. The HTML's URL is `/<name>.html`; the source lives at
    `./foo.js` form. Shared helpers come from `../shared/bootstrap.js`
    (`installDebugFromUrl`, `setupGameContainer`, `getContainer`). Boot with:
 
-```typescript
+```typescript yage-group="example-boot" yage-file="my-example/main.ts"
 import { Engine, Scene } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import {
@@ -541,6 +551,19 @@ async function main(): Promise<void> {
 main().catch(console.error);
 ```
 
+The imported helpers have these signatures. Reuse their implementation in
+[`examples/src/shared/bootstrap.ts`](../examples/src/shared/bootstrap.ts).
+
+```typescript yage-group="example-boot" yage-file="shared/bootstrap.ts"
+import type { Engine } from "@yagejs/core";
+
+export declare function installDebugFromUrl(engine: Engine): Promise<void>;
+export declare function setupGameContainer(
+  width: number,
+  height: number,
+): HTMLElement;
+```
+
 2. Create `examples/<name>.html` at the root. It links `/shared.css`, holds a
    `#game-container`, and loads the module — e.g.
    `<script type="module" src="/src/<name>/main.ts"></script>`. Copy an existing
@@ -560,8 +583,12 @@ main().catch(console.error);
 
 1. In your plugin package, create a factory function:
 
-```typescript
+```typescript yage-group="asset-loader" yage-file="asset.ts"
 import { AssetHandle } from "@yagejs/core";
+
+export interface MyAssetType {
+  lines: string[];
+}
 
 export function myAsset(path: string): AssetHandle<MyAssetType> {
   return new AssetHandle<MyAssetType>("myType", path);
@@ -570,13 +597,24 @@ export function myAsset(path: string): AssetHandle<MyAssetType> {
 
 2. Register the loader in your plugin's `install()`:
 
-```typescript
-install(context: EngineContext) {
-  const assets = context.resolve(AssetManagerKey);
-  assets.registerLoader('myType', {
-    load: async (path) => { /* load and return asset */ },
-    unload: (path, asset) => { /* cleanup */ },
-  });
+```typescript yage-group="asset-loader" yage-file="plugin.ts"
+import { AssetManagerKey, type EngineContext, type Plugin } from "@yagejs/core";
+import type { MyAssetType } from "./asset.js";
+
+class MyAssetPlugin implements Plugin {
+  readonly name = "my-assets";
+  readonly version = "1.0.0";
+
+  install(context: EngineContext) {
+    const assets = context.resolve(AssetManagerKey);
+    assets.registerLoader("myType", {
+      load: async (path): Promise<MyAssetType> => {
+        const response = await fetch(path);
+        return { lines: (await response.text()).split("\n") };
+      },
+      unload: () => {}, // Plain data has no external resources to release.
+    });
+  }
 }
 ```
 
@@ -609,8 +647,8 @@ class MyEntity extends Entity {
 
 Traits declare capabilities that are enforced at compile time (via the `@trait()` decorator) and queryable at runtime via `hasTrait()`.
 
-```typescript
-import { Entity, defineTrait, trait } from "@yagejs/core";
+```typescript yage-context="scene"
+import { Entity, Transform, Vec2, defineTrait, trait } from "@yagejs/core";
 
 const Interactable = defineTrait<{ interact(): void; priority: number }>(
   "Interactable",
@@ -675,14 +713,9 @@ and entity setup reconstructs runtime objects from the restored facts.
 
 Use one `Save` instance with an explicit state root:
 
-```typescript
+```typescript yage-context="engine"
 import { createStore, createRecord } from "@yagejs/core";
-import {
-  createSave,
-  SavePlugin,
-  localStorageAdapter,
-  SaveServiceKey,
-} from "@yagejs/save";
+import { createSave, SavePlugin, localStorageAdapter } from "@yagejs/save";
 
 // Compound — bundles many leaves into one save document.
 const game = createStore((s) => ({
@@ -706,12 +739,10 @@ save.autoPersist("game", game);
 save.autoPersist("settings", settings);
 engine.use(new SavePlugin({ save }));
 
-// In game code:
-const save = this.service(SaveServiceKey);
+// In game code, pass the same Save and state roots to the scene.
+// Alternatively, resolve SaveServiceKey from the installed plugin.
 await save.saveSlot("game", "manual-1", game, {
-  metadata: {
-    /* ... */
-  },
+  metadata: { label: "Before the boss" },
 });
 await save.loadSlot("game", "manual-1", game);
 ```
@@ -729,7 +760,7 @@ the same durable state model.
 Blueprints still work but entity subclasses are preferred for new code.
 
 ```typescript
-import { defineBlueprint, Transform } from "@yagejs/core";
+import { defineBlueprint, Transform, Vec2 } from "@yagejs/core";
 import { SpriteComponent } from "@yagejs/renderer";
 
 export const MyBlueprint = defineBlueprint<{ x: number; y: number }>(
@@ -747,10 +778,16 @@ export const MyBlueprint = defineBlueprint<{ x: number; y: number }>(
 
 Use a Scene subclass when you need full lifecycle hooks, asset preloading, or reusable/testable scenes. Services are accessed via `this.service(Key)` which returns a lazy proxy safe to assign as a field.
 
-```typescript
-import { Scene, Transform, Vec2 } from "@yagejs/core";
+```typescript yage-context="engine"
+import { Entity, Scene, Transform, Vec2 } from "@yagejs/core";
 import { CameraEntity } from "@yagejs/renderer";
 import { InputManagerKey } from "@yagejs/input";
+
+class PlayerEntity extends Entity {
+  setup({ x, y }: { x: number; y: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+  }
+}
 
 class GameScene extends Scene {
   readonly name = "game";
@@ -776,6 +813,7 @@ engine.scenes.push(new GameScene());
 > direct world access (raycasts, gravity) resolve once in `onAdd()`:
 >
 > ```typescript
+> import { Component } from "@yagejs/core";
 > import { PhysicsWorldKey } from "@yagejs/physics";
 > import type { PhysicsWorld } from "@yagejs/physics";
 >
@@ -792,11 +830,15 @@ engine.scenes.push(new GameScene());
 Create an `Engine`, register plugins with `engine.use()`, then start and push a scene:
 
 ```typescript
-import { Engine } from "@yagejs/core";
+import { Engine, Scene } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
 import { InputPlugin } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
 
 const engine = new Engine({ debug: true });
 engine.use(new RendererPlugin({ width: 800, height: 600 }));
@@ -830,7 +872,7 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 | **Immutable Vec2 by default**      | Keep or share values as `Vec2`; its vector operations return immutable values. For repeated calculations, reuse a caller-owned `Vec2Buffer` with `Into` methods. Never mutate a `Vec2` or pass it as an output.                                                               |
 | **Transform is mutable**           | Use scalar writes such as `setPosition`, `setWorldPosition`, and `translate`. `Into` getters copy into a caller-owned buffer without constructing `Vec2`; ordinary vector getters return lazy immutable snapshots that never change after being returned.                     |
 | **Components own game logic**      | Components can have `update(dt)` and `fixedUpdate(dt)` methods — the built-in `ComponentUpdateSystem` calls them, per entity in ascending `updatePriority` (add order by default). Systems are for engine internals and cross-cutting concerns (physics, rendering).          |
-| **Phase assignment**               | Physics in `FixedUpdate`. Input polling in `EarlyUpdate`. Rendering in `Render`. Cleanup in `EndOfFrame`.                                                                                                                                                                     |
+| **Phase assignment**               | Use the canonical [frame-order table](./llms/packages/core.md#frame-order) for phases, priorities, ties and runtime registration rules.                                                                                                                                                                     |
 | **ServiceKey for DI**              | Always use `ServiceKey<T>` for type-safe service resolution. Keys use their id string for identity. A repeated id is allowed only for the same contract when avoiding an optional runtime dependency, with a nearby comment naming the owner. Never use string keys directly. |
 | **Plain objects for config**       | Plugin configs, action maps, collider shapes -- all plain objects. No `Map`, no classes for config.                                                                                                                                                                           |
 | **Pixels everywhere**              | All user-facing APIs work in pixels. Physics coordinate conversion is internal to `PhysicsWorld`.                                                                                                                                                                             |
@@ -917,7 +959,7 @@ Two kinds of fix are always in scope:
 
 `NaN` fails every comparison, so a guard like `value <= 0` lets it through, and once it reaches position, velocity, a cooldown, or particle state, nothing recovers it. The response depends on where the number enters. Three cases:
 
-- **Two already-legal inputs combine into a non-finite result.** Example: a documented `Infinity` option multiplied by a `dt` of `0` from a time-scale freeze. Define the result at that point instead of throwing; a throw here would fire on ordinary, documented usage. When the defined result drops what the caller asked for, emit a one-shot `devWarn` naming what could not be honoured. When the result is exact (`dt = 0` meaning nothing changes), stay silent. `devWarn` is internal to `@yagejs/core`, so only core sites can warn this way. A package without it stays silent on this edge; that is fine as long as its own result is exact rather than lossy.
+- **Two already-legal inputs combine into a non-finite result.** Example: a documented `Infinity` option multiplied by a `dt` of `0` from a time-scale freeze. Define the result at that point instead of throwing; a throw here would fire on ordinary, documented usage. When the defined result drops what the caller asked for, emit a one-shot `devWarn` naming what could not be honoured. When the result is exact (`dt = 0` meaning nothing changes), stay silent. `devWarn` is exported from `@yagejs/core` for use by engine packages.
 - **A single game-supplied number is about to be written into simulation state**, through a setter, constructor config, or a value returned from a game-authored callback. Throw a plain `Error` at that write site before the value is stored, naming the offending input and the constraint it violates. The message follows the style already shipped for scene-time and entity-pool validation: `Context.method: constraint, got ${x}`.
 - **A non-finite input only changes what a read-only query returns** and is never stored anywhere. Leave it unguarded and document that the result is undefined for non-finite input. Don't add a branch for it.
 
@@ -925,4 +967,4 @@ Two kinds of fix are always in scope:
 
 ## References
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md) -- Plugin system specification
+- [ARCHITECTURE.md](./ARCHITECTURE.md) -- Architectural constraints and their reasons

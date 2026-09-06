@@ -1,36 +1,11 @@
-import { Component, MathUtils, Transform, Vec2 } from "@yagejs/core";
+import { Component, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
 import { InputManagerKey } from "@yagejs/input";
 import type { InventorySource } from "@yagejs-addons/inventory";
-import { HEIGHT, HUD_LAYER, PLAYER_SPEED, ROOM_LAYER, WIDTH } from "./constants.js";
+import { HEIGHT, HUD_LAYER, ROOM_LAYER, WIDTH } from "./constants.js";
 import { CATALOG, type DemoState, type ItemId } from "./catalog.js";
 
 // ── world components ──────────────────────────────────────────────────────────
-
-/** WASD/arrow movement, frozen while any inventory panel is open (the same
- *  arrows navigate the panel then — host policy, one predicate). */
-export class PlayerMover extends Component {
-  private readonly input = this.service(InputManagerKey);
-  private readonly transform = this.sibling(Transform);
-
-  constructor(private readonly isBusy: () => boolean) {
-    super();
-  }
-
-  update(dt: number): void {
-    if (this.isBusy()) return;
-    const dx = this.input.getAxis("move-left", "move-right");
-    const dy = this.input.getAxis("move-up", "move-down");
-    if (dx === 0 && dy === 0) return;
-    const len = Math.hypot(dx, dy) || 1;
-    const step = PLAYER_SPEED * dt;
-    const p = this.transform.position;
-    this.transform.setPosition(
-      MathUtils.clamp(p.x + (dx / len) * step, 40, WIDTH - 40),
-      MathUtils.clamp(p.y + (dy / len) * step, 110, HEIGHT - 90),
-    );
-  }
-}
 
 /** A floor bundle: walk over it and it pours into the right inventory.
  *  Partial acceptance is the point — only what fits leaves the floor. */

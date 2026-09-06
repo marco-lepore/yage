@@ -27,8 +27,21 @@ reused.
 ## Quick start
 
 ```ts
-import { defineItems, instanceData, Inventory, InventoryController, InventoryActionEvent } from "@yagejs-addons/inventory";
-import { createInventoryPanel, INVENTORY_LAYERS } from "@yagejs-addons/inventory/presenters";
+import { Scene } from "@yagejs/core";
+
+const player = { hp: 50, equipped: "", bossDoorOpen: false };
+
+import {
+  defineItems,
+  instanceData,
+  Inventory,
+  InventoryController,
+  InventoryActionEvent,
+} from "@yagejs-addons/inventory";
+import {
+  createInventoryPanel,
+  INVENTORY_LAYERS,
+} from "@yagejs-addons/inventory/presenters";
 
 const catalog = defineItems({
   potion: { name: "Potion", maxStack: 5, description: "Heals 20 HP." },
@@ -39,25 +52,32 @@ const catalog = defineItems({
 const inventory = new Inventory({
   catalog,
   capacity: 15,
-  actions: [{ id: "use", label: "Use", consumes: true }, { id: "drop", label: "Drop" }],
+  actions: [
+    { id: "use", label: "Use", consumes: true },
+    { id: "drop", label: "Drop" },
+  ],
 });
 
 class MyScene extends Scene {
+  readonly name = "inventory";
   readonly layers = [...INVENTORY_LAYERS];
   onEnter() {
     const bundle = createInventoryPanel(); // zero-asset default theme
     const host = this.spawn("inventory");
     // Default input = keyboard/gamepad + mouse/touch, already wired.
-    const controller = host.add(new InventoryController({ ...bundle, inventory }));
+    const controller = host.add(
+      new InventoryController({ ...bundle, inventory }),
+    );
     host.on(InventoryActionEvent, (e) => {
-      if (e.actionId === "use" && e.itemId === "potion") healPlayer(20);
+      if (e.actionId === "use" && e.itemId === "potion")
+        player.hp = Math.min(100, player.hp + 20);
     });
   }
 }
 
 // Anywhere in game logic — UI open or not:
 inventory.add("potion", 3);
-if (inventory.has("sword")) equip();
+if (inventory.has("sword")) player.equipped = "sword";
 
 // Per-instance items (durability, rolled stats) carry a `data` payload.
 // Query or grab them by a data predicate, then act on the exact stack:
@@ -65,7 +85,7 @@ inventory.add("key", 1, { data: { opens: "boss-lair" } });
 const bossKey = inventory.find("key", (d) => d.opens === "boss-lair");
 if (bossKey) {
   inventory.remove(bossKey); // returns { removed, stacks } — the payload comes back
-  openDoor();
+  player.bossDoorOpen = true;
 }
 ```
 

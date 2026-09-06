@@ -11,6 +11,7 @@ import {
   AnimatedSpriteComponent,
   AnimationController,
   type CameraEntity,
+  type VisualTransformModifierHandle,
 } from "@yagejs/renderer";
 import {
   RigidBodyComponent,
@@ -38,12 +39,11 @@ import {
   HurtSfx,
   ExplosionSfx,
 } from "./assets.js";
-import { spawnEnemyDeathParticles } from "./particles.js";
+import type { VfxHub } from "./particles.js";
 
 // ---------------------------------------------------------------------------
 // EnemyController — state machine with animated sprites
 // ---------------------------------------------------------------------------
-const ENEMY_COLOR = 0xe11d48;
 
 type EnemyState = "patrol" | "react" | "attack" | "cooldown" | "hit" | "die";
 type EnemyAnim = "idle" | "walk" | "react" | "attack" | "hit" | "die";
@@ -79,6 +79,7 @@ class EnemyController extends Component {
   // Slots
   private flashSlot!: ProcessSlot;
   private shakeSlot!: ProcessSlot;
+  private shakeModifier!: VisualTransformModifierHandle;
 
   private static readonly SPEED = 60;
   private static readonly CHARGE_SPEED = 350;
@@ -90,7 +91,12 @@ class EnemyController extends Component {
   private static readonly SLASH_FRAME_END = 9;
   private static readonly COOLDOWN_DURATION = 0.5;
 
-  constructor(patrolLeft: number, patrolRight: number, camera: CameraEntity) {
+  constructor(
+    patrolLeft: number,
+    patrolRight: number,
+    camera: CameraEntity,
+    private readonly vfx: VfxHub,
+  ) {
     super();
     this.patrolLeft = patrolLeft;
     this.patrolRight = patrolRight;
@@ -105,16 +111,18 @@ class EnemyController extends Component {
       duration: 0.08,
       cleanup: () => { this.sprite.animatedSprite.tint = 0xffffff; },
     });
+    this.shakeModifier = this.sprite.modifiers.addTransform();
+    this.addCleanup(() => this.shakeModifier.remove());
     this.shakeSlot = this.pc.slot({
       duration: 0.15,
       update: () => {
-        const s = this.sprite.animatedSprite;
-        s.position.set(
-          (Math.random() - 0.5) * 4,
-          (Math.random() - 0.5) * 4,
+        this.shakeModifier.setPosition(
+          new Vec2((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4),
         );
       },
-      cleanup: () => { this.sprite.animatedSprite.position.set(0, 0); },
+      cleanup: () => {
+        this.shakeModifier.setPosition(Vec2.ZERO);
+      },
     });
 
     // AnimationController auto-plays "idle"; switch to walk for patrol
@@ -323,13 +331,10 @@ class EnemyController extends Component {
 
     const s = this.sprite.animatedSprite;
     s.tint = 0xffffff;
-    s.position.set(0, 0);
+    this.shakeModifier.setPosition(Vec2.ZERO);
 
     const pos = this.transform.position;
-    const scene = this.entity.tryScene;
-    if (scene) {
-      spawnEnemyDeathParticles(scene, pos.x, pos.y, ENEMY_COLOR);
-    }
+    this.vfx.enemyDeath(pos.x, pos.y);
     this.camera.shake(6, 0.25, { decay: 0.7 });
 
     // Play die animation, then destroy
@@ -352,6 +357,7 @@ export class EnemyEntity extends Entity {
     patrolLeft: number;
     patrolRight: number;
     camera: CameraEntity;
+    vfx: VfxHub;
   }): void {
     const { x, y, patrolLeft, patrolRight, camera } = params;
     this.tags.add("enemy");
@@ -411,6 +417,6 @@ export class EnemyEntity extends Entity {
       }),
     );
     this.add(new ProcessComponent());
-    this.add(new EnemyController(patrolLeft, patrolRight, camera));
+    this.add(new EnemyController(patrolLeft, patrolRight, camera, params.vfx));
   }
 }

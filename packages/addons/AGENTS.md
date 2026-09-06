@@ -61,8 +61,10 @@ An addon uses **only the layers its pattern needs**.
     behavior requires (for example physics or input). Zero setup: user
     `entity.add()`s it; `ComponentUpdateSystem` drives it.
   - **L2b Plugin (+ System + Service)** — cross-cutting orchestration: a System
-    for cross-entity per-frame work, a `ServiceKey` Service for global shared
-    state, scene hooks, DOM/gamepad/loop wiring. User must `engine.use(...)`.
+    for cross-entity per-frame work, a `ServiceKey` service for plugin-owned
+    infrastructure, scene hooks, and DOM/gamepad/loop integration. Game-owned
+    state stays in explicit model references or entity components. User must
+    call `engine.use(...)`.
     Config/presets flow through the **plugin constructor** (like
     `InputPlugin`/`AudioPlugin`).
 - **L3 View** — presentation behind an interface, with a default presenter,
@@ -202,8 +204,7 @@ A theme is a plain data object (no behavior), serializable, authored inline or s
   player-controllers). Usually L0/L2a/L3, light on L1.
 - **Single system** — one cohesive installed system (dialogue, combat). Usually
   L1 + L2a-or-L2b (+ L3). _Dialogue's shape:_ L1 headless core + **L2a
-  Component** (host owns focus/pause) + **L3 capability channels** + an
-  explicit domain `snapshot()` / `restore()` pair for durable state.
+  Component** (host owns focus/pause) + **L3 capability channels**.
 - **Pure library** — headless logic only (stats-formula). L1 only.
 
 Single _tiny_ mechanics (e.g. bullet-time) are usually **recipes/examples** (a
@@ -313,15 +314,10 @@ domain state**. The game decides which addon state belongs in a save and adapts
 it into its explicit `Serializable<TEncoded>` root. The addon does not register
 itself with `@yagejs/save`, traverse the entity graph, or own a save slot.
 
-**Capture the whole cursor, not just the obvious bits.** For dialogue that means
-`{ nodeId, stepIndex, vars, chosenOnce }` — omitting `chosenOnce` silently
-resurrects spent "once"-choices after a load. Restoring mid-line re-presents the
-current line.
-
-For dialogue, keep the entire runner cursor reachable through read-only getters:
-`getVars()`, `getNodeId()`, `getStepIndex()`, and `getChosenOnce()`. A domain
-snapshot API can then capture the cursor without coupling dialogue to
-`@yagejs/save`.
+A snapshot must include every durable fact needed to resume the domain,
+including consumed one-time choices when the domain supports them. Document
+only the round-trip behavior the public API provides. Dialogue variable
+storage persists variables; it does not restore an active runner cursor.
 
 ## Reference files
 
@@ -362,10 +358,6 @@ Renderer API name drift to watch: the brief named `bakeBitmapFont` / `BitmapFont
 
 Texture-driven re-theming (`TexturedChrome` / `TexturedBubble`) uses `@yagejs/renderer`'s `createNineSlice` primitive — **not** a direct `pixi.js` import. **Lesson (general):** when a presenter needs a pixi display primitive the renderer doesn't expose, ADD it to `@yagejs/renderer` (it owns the pixi abstraction) rather than importing `pixi.js` inside the addon. Reaching past renderer to pixi works mechanically (pixi is a transitive dep) but bypasses the engine's abstraction and saddles the addon with a second `pixi.js` peer + version surface to keep in lockstep. `createNineSlice` (+ `NineSliceOptions`, and a re-exported `NineSliceSprite` type) was added to renderer for exactly this — so the addon declares **no** `pixi.js` peer at all. Do NOT pull `@yagejs/ui` for nine-slice either — verify `grep -rc "@yagejs/ui" packages/addons/dialogue` returns 0. These textured variants are opt-in: reachable only via the `./presenters` barrel + the optional `theme.textured` field; no default bundle or factory references them.
 
-### Dialogue save state
-
-Keep the runner cursor reachable so a complete domain snapshot API can be added without changing the runner again. `runner.ts` exposes read-only `getVars()`, `getNodeId()`, `getStepIndex()`, and `getChosenOnce()`.
-
 ### Glossary terms were CUT from the first release (2026-06-11)
 
 The `[term=id]`/`[gloss=id]` markup, the text-view hit-testing/underline machinery, the `TermTarget`/`setTermSink` binding seam, and `DialogueTermActivatedEvent` were removed before first publish — the feature crossed all three layers (presenter -> input -> controller) and generated a disproportionate share of review findings for a phase-1 addon. Unknown tags drop silently, so scripts containing `[term]` still parse. If re-introduced, design it post-Design-C with the theming/extensibility story, mirroring `PointerChoiceTarget` the way the original did (see git history on `feat/dialogue-addon`).
@@ -382,7 +374,7 @@ The addon is EXCLUDED from `.changeset/config.json`'s `fixed` group (the `@yagej
 
 ### Docs co-locate + sync (addons differ from engine packages)
 
-Unlike the conceptual docs at the repo's `docs/llms/`, an addon's LLM doc source is **co-located inside the package** at `packages/addons/<name>/docs/llms/<name>.md`. `docs/scripts/copy-llms.mjs` harvests three source trees — `docs/llms/` (conceptual), `packages/*/docs/llms/` (engine packages → `public/llms/packages/`), and `packages/addons/*/docs/llms/` (addons → `public/llms/addons/`) — into the GENERATED `docs/public/llms/` tree. Never edit `docs/public/llms/...` directly; edit the co-located source. The human/narrative surface for an addon is `docs/src/content/docs/addons/<name>.mdx` (Astro/Starlight). Rebuild both surfaces with `npx turbo run build --filter=@yagejs/docs`.
+Unlike the conceptual docs at the repo's `docs/llms/`, an addon's LLM doc source is **co-located inside the package** at `packages/addons/<name>/docs/llms/<name>.md`. `docs/scripts/copy-llms.mjs` harvests three source trees — `docs/llms/` (concepts and engine package references), `packages/addons/*/docs/llms/` (addons → `public/llms/addons/`), and `packages/tools/*/docs/llms/` (tools → `public/llms/tools/`) — into the GENERATED `docs/public/llms/` tree. Never edit `docs/public/llms/...` directly; edit the co-located source. The human/narrative surface for an addon is `docs/src/content/docs/addons/<name>.mdx` (Astro/Starlight). Rebuild both surfaces with `npx turbo run build --filter=@yagejs/docs`.
 
 ### Lint baseline
 

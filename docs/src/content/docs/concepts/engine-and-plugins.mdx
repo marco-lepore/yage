@@ -14,7 +14,7 @@ import { Engine } from "@yagejs/core";
 const engine = new Engine({
   debug: true,
   fixedTimestep: 1 / 60, // ~0.0167 s (default)
-  maxFixedStepsPerFrame: 5,  // spiral-of-death protection
+  maxFixedStepsPerFrame: 5, // spiral-of-death protection
 });
 ```
 
@@ -31,9 +31,19 @@ rethrown — see [Errors](/guides/debug/#errors).
 
 The three-step lifecycle is intentionally simple:
 
-```typescript
+```typescript yage-context="engine"
+import { RendererPlugin } from "@yagejs/renderer";
+import { PhysicsPlugin } from "@yagejs/physics";
+import { InputPlugin } from "@yagejs/input";
+
 // 1. Register plugins
-engine.use(new RendererPlugin({ width: 800, height: 600, container: document.getElementById("game")! }));
+engine.use(
+  new RendererPlugin({
+    width: 800,
+    height: 600,
+    container: document.getElementById("game")!,
+  }),
+);
 engine.use(new PhysicsPlugin());
 engine.use(new InputPlugin());
 
@@ -67,7 +77,16 @@ of startup — the loop never starts and no further plugin hook runs.
 Restarting the *game* is a different operation, and the engine stays up for it.
 Reset the scene stack instead:
 
-```typescript
+```typescript yage-context="engine"
+import { Scene } from "@yagejs/core";
+
+class GameScene extends Scene {
+  readonly name = "game";
+}
+class MenuScene extends Scene {
+  readonly name = "menu";
+}
+
 // Restart the level
 await engine.scenes.replace(new GameScene());
 
@@ -84,7 +103,27 @@ the scene manager logs a warning naming the call it dropped.
 A plugin is a plain object that implements the `Plugin` interface:
 
 ```typescript
-import { Plugin, EngineContext, SystemScheduler } from "@yagejs/core";
+import {
+  Phase,
+  ServiceKey,
+  System,
+  type Plugin,
+  type EngineContext,
+  type SystemScheduler,
+} from "@yagejs/core";
+
+class MyService {
+  spritesDrawn = 0;
+}
+
+const MyServiceKey = new ServiceKey<MyService>("my-plugin:renderer-stats");
+
+class MySpriteSystem extends System {
+  readonly phase = Phase.Render;
+  update(): void {
+    // Update the plugin's rendering statistics here.
+  }
+}
 
 const myPlugin: Plugin = {
   name: "my-plugin",
@@ -111,16 +150,20 @@ const myPlugin: Plugin = {
 };
 ```
 
-Every field except `name` is optional. A minimal plugin can be just
-`{ name: "hello" }`.
+Only `name` and `version` are required. A minimal plugin is
+`{ name: "hello", version: "1.0.0" }`.
 
 The scheduler also reports where the current call is executing, for plugin
 code that can be reached from more than one phase:
 
 ```typescript
-scheduler.currentPhase;   // the Phase running right now, or null outside any phase
+import { SystemScheduler } from "@yagejs/core";
+
+const scheduler = new SystemScheduler();
+
+scheduler.currentPhase; // the Phase running right now, or null outside any phase
 scheduler.fixedStepIndex; // monotonic count of fixed steps started — a frame can
-                          // run several fixed steps, or none
+// run several fixed steps, or none
 ```
 
 `@yagejs/input` reads these to scope its edge queries to the caller's frame or
@@ -148,7 +191,7 @@ When `engine.start()` is called the engine processes plugins in this sequence:
 
 Built-in plugins accept configuration via their constructor:
 
-```typescript
+```typescript yage-context="engine"
 import { RendererPlugin } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
 
@@ -175,8 +218,11 @@ before running the lifecycle so that a plugin's dependencies are always
 installed first:
 
 ```typescript
+import type { Plugin } from "@yagejs/core";
+
 const uiPlugin: Plugin = {
   name: "ui",
+  version: "1.0.0",
   dependencies: ["renderer", "input"],
   // ...
 };

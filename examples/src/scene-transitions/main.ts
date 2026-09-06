@@ -1,6 +1,7 @@
 import {
   AssetHandle,
   Engine,
+  EventBusKey,
   LoadingScene,
   Scene,
   Transform,
@@ -326,6 +327,11 @@ function wireControls(): void {
       `Stack:         ${names}\n` + `Transitioning: ${transitioning}`;
   }
 
-  setInterval(renderStatus, 50);
+  const bus = engine.context.resolve(EventBusKey);
+  bus.on("scene:pushed", renderStatus);
+  bus.on("scene:popped", renderStatus);
+  bus.on("scene:replaced", renderStatus);
+  bus.on("scene:transition:started", renderStatus);
+  bus.on("scene:transition:ended", renderStatus);
   renderStatus();
 }

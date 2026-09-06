@@ -29,11 +29,17 @@ engine.use(new DebugPlugin());
 
 `@yagejs/debug/api` exposes hooks for other packages to register debug contributors:
 
-```ts
+```ts yage-context="engine"
 import { DebugRegistryKey } from "@yagejs/debug/api";
 
 const registry = engine.context.resolve(DebugRegistryKey);
-registry.registerContributor({ /* ... */ });
+registry.register({
+  name: "game",
+  flags: [],
+  drawHud(api) {
+    api.addLine("Game debug overlay");
+  },
+});
 ```
 
 ## Docs

@@ -1,6 +1,6 @@
 # @yagejs/pathfinding
 
-Depends on `@yagejs/core`. Grid A* pathfinding, pixels in and out.
+Depends on `@yagejs/core`. Grid A\* pathfinding, pixels in and out.
 
 ## GridGraph
 
@@ -43,7 +43,11 @@ Diagonal policy: `"never"` = 4-connected. `"always"` = 8-connected, cuts wall co
 
 ## gridFromTilemap
 
-```ts
+```ts yage-context="entity"
+import { TilemapComponent } from "@yagejs/tilemap";
+import { Transform } from "@yagejs/core";
+const tilemap = entity.get(TilemapComponent);
+
 import { gridFromTilemap } from "@yagejs/pathfinding/tilemap";
 
 // tilemap.data is @yagejs/tilemap's TilemapData
@@ -59,7 +63,11 @@ Callbacks receive base tile ids — Tiled flip/rotation flag bits are masked off
 
 ## gridFromColliders
 
-```ts
+```ts yage-context="entity"
+import { TilemapComponent } from "@yagejs/tilemap";
+import { Transform } from "@yagejs/core";
+const tilemap = entity.get(TilemapComponent);
+
 import { gridFromColliders } from "@yagejs/pathfinding/tilemap";
 
 // tilemap is a TilemapComponent; shapes are map-local px, physics-agnostic
@@ -78,23 +86,31 @@ Shape overlap is exact per cell, not bounding-box: a rotated rect uses its true 
 
 No adapter reads `@yagejs/physics` collider shapes directly. Build `isWalkable` yourself with `PhysicsWorld.queryShape`, one query per cell, at level-build time:
 
-```ts
+```ts yage-context="scene-enter"
 import { GridGraph } from "@yagejs/pathfinding";
 import { PhysicsWorldKey } from "@yagejs/physics";
 
-const cols = 40, rows = 30, cell = 32;
+const cols = 40,
+  rows = 30,
+  cell = 32;
 const world = this.use(PhysicsWorldKey);
 const blocked = new Set<number>();
 
 const grid = new GridGraph({
-  cols, rows, tileWidth: cell, tileHeight: cell,
+  cols,
+  rows,
+  tileWidth: cell,
+  tileHeight: cell,
   isWalkable: (col, row) => !blocked.has(row * cols + col),
 });
 
 for (let row = 0; row < rows; row++) {
   for (let col = 0; col < cols; col++) {
     const centre = grid.cellToWorld(col, row);
-    if (world.queryShape({ type: "box", width: cell, height: cell }, centre).length > 0) {
+    if (
+      world.queryShape({ type: "box", width: cell, height: cell }, centre)
+        .length > 0
+    ) {
       blocked.add(row * cols + col);
     }
   }

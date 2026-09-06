@@ -28,7 +28,9 @@ optional peer (only the `./presenters` subpath needs it).
   pixi): `createControlsPresenter(theme?)`, `defaultControlsTheme()`,
   `GraphicsStickView` / `GraphicsButtonView`, `VIRTUAL_CONTROLS_LAYER(S)`.
 
-```ts
+```ts yage-group="controls" yage-context="engine"
+import { Scene } from "@yagejs/core";
+import { InputPlugin } from "@yagejs/input";
 import {
   VirtualControls,
   prefersTouchControls,
@@ -42,7 +44,7 @@ Bound action names must exist in the `InputPlugin` action map — the overlay
 drives existing actions, it does not define them (an unknown name warns and
 is skipped until it exists):
 
-```ts
+```ts yage-group="controls" yage-context="engine"
 engine.use(
   new InputPlugin({
     actions: {
@@ -57,6 +59,7 @@ engine.use(
 );
 
 class GameScene extends Scene {
+  readonly name = "game";
   onEnter() {
     this.spawn("touch-controls").add(
       new VirtualControls({
@@ -103,9 +106,15 @@ host entity and add a fresh component.
 
 Change one configured button without rebuilding the overlay:
 
-```ts
-controls.setButtonVisible("restart", gameOver);
-controls.setButtonEnabled("jump", canJump);
+```ts yage-group="controls" yage-context="engine"
+function syncButtons(
+  controls: VirtualControls,
+  showDash: boolean,
+  canJump: boolean,
+) {
+  controls.setButtonVisible("b", showDash);
+  controls.setButtonEnabled("a", canJump);
+}
 ```
 
 `controls.enabled` controls the whole overlay. `setButtonEnabled` affects only
@@ -156,7 +165,7 @@ update after the action exists.
 
 ## Config surface
 
-```ts
+```ts yage-group="controls" yage-context="engine"
 new VirtualControls({
   stick: {
     // or sticks: [ … ] for twin-stick
@@ -218,6 +227,12 @@ Implement two pixi-free contracts from the root entry and hit-testing/routing
 stays in the model (views only draw):
 
 ```ts
+import type { Scene } from "@yagejs/core";
+import type {
+  VirtualStick,
+  VirtualButton,
+} from "@yagejs-addons/virtual-controls";
+
 interface ControlsPresenter {
   mount(scene: Scene): void;
   createStickView(stick: VirtualStick): ControlView; // poll stick.basePos/knobPos/active/layout
@@ -225,8 +240,8 @@ interface ControlsPresenter {
   dispose(): void;
 }
 interface ControlView {
-  update(dt): void;
-  setVisible(v): void;
+  update(dt: number): void;
+  setVisible(v: boolean): void;
   dispose(): void;
 }
 ```

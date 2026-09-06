@@ -274,9 +274,9 @@ export class ChoiceTimer extends Component {
     );
     this.label.text.visible = false;
 
-    this.entity.on(DialogueChoiceShownEvent, () => this.onShown());
-    this.entity.on(DialogueChoiceMadeEvent, () => this.cancel());
-    this.entity.on(DialogueEndedEvent, () => this.cancel());
+    this.listen(this.entity, DialogueChoiceShownEvent, () => this.onShown());
+    this.listen(this.entity, DialogueChoiceMadeEvent, () => this.cancel());
+    this.listen(this.entity, DialogueEndedEvent, () => this.cancel());
   }
 
   /** The `choice-timer` command handler stashes its params here. */

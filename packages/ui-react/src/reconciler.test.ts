@@ -649,6 +649,48 @@ describe("reconciler dev-warnings", () => {
   });
 
   describe("prop removal (commitUpdate diff)", () => {
+    it("resets an explicit undefined Panel background without replacing the host", () => {
+      const container = new mocks.MockContainer();
+      const root = createRoot(container as never);
+      root.render(createElement(Panel, { bg: { color: 0xff0000 } }));
+      const panel = getRootInstances(container as never)![0]!;
+      expect(panel).toHaveProperty("bgRenderer", expect.anything());
+
+      root.render(createElement(Panel, { bg: undefined }));
+      expect(getRootInstances(container as never)![0]).toBe(panel);
+      expect(panel).toHaveProperty("bgRenderer", undefined);
+
+      root.render(createElement(Panel, {}));
+      expect(getRootInstances(container as never)![0]).toBe(panel);
+      expect(panel).toHaveProperty("bgRenderer", undefined);
+    });
+
+    it("resets an explicit undefined Button handler without replacing the host", () => {
+      const container = new mocks.MockContainer();
+      const root = createRoot(container as never);
+      const onClick = vi.fn();
+      root.render(createElement(Button, { onClick }, "Click"));
+      const button = getRootInstances(container as never)![0]!;
+      expect(button).toHaveProperty("onClick", onClick);
+      button.container.emit("pointerdown");
+      button.container.emit("pointerup");
+      expect(onClick).toHaveBeenCalledTimes(1);
+
+      root.render(createElement(Button, { onClick: undefined }, "Click"));
+      expect(getRootInstances(container as never)![0]).toBe(button);
+      expect(button).toHaveProperty("onClick", undefined);
+      button.container.emit("pointerdown");
+      button.container.emit("pointerup");
+      expect(onClick).toHaveBeenCalledTimes(1);
+
+      root.render(createElement(Button, {}, "Click"));
+      expect(getRootInstances(container as never)![0]).toBe(button);
+      expect(button).toHaveProperty("onClick", undefined);
+      button.container.emit("pointerdown");
+      button.container.emit("pointerup");
+      expect(onClick).toHaveBeenCalledTimes(1);
+    });
+
     it("resets a removed prop to its default instead of leaving the old value", () => {
       const container = new mocks.MockContainer();
       const root = createRoot(container as never);

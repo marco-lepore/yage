@@ -55,16 +55,22 @@ play verbs, and reports the run as one object. It restores the clock to the
 state it found and releases every synthetic input afterwards, so a run leaves
 no key held:
 
-```typescript
-const run = await window.__yage__.inspector.drive(async (ctx) => {
-  const i = window.__yage__.inspector;
-  ctx.input.keyDown("KeyD");
-  const frames = await ctx.until(() => i.getEntityPosition("player").x > 950, {
-    maxFrames: 240,
-  });
-  ctx.input.clearAll();
-  return { frames };
-}, { maxFrames: 900 });
+```typescript yage-context="browser"
+const run = await window.__yage__.inspector.drive(
+  async (ctx) => {
+    const i = window.__yage__.inspector;
+    ctx.input.keyDown("KeyD");
+    const frames = await ctx.until(
+      () => i.getEntityPosition("player")!.x > 950,
+      {
+        maxFrames: 240,
+      },
+    );
+    ctx.input.clearAll();
+    return { frames };
+  },
+  { maxFrames: 900 },
+);
 
 run.framesUsed; // frames the whole run issued
 run.state; // { keys, actions, scenes } at the moment the run ended
@@ -93,7 +99,27 @@ and reaches situations too long to script. The shape is a `while` loop
 with an `if` chain for priority, `continue` to restart it, and
 `input.whileHolding` for a key that stays down across everything inside:
 
-```typescript title="src/levels/gauntlet.scenario.ts"
+```typescript title="src/levels/gauntlet.scenario.ts" yage-group="gauntlet"
+import { Component, Scene } from "@yagejs/core";
+import { RigidBodyComponent } from "@yagejs/physics";
+import { defineScenario } from "@yagejs-tools/lab";
+
+// Contracts of the game scene, ground sensor, and level-specific queries.
+// Their implementations belong beside the level this scenario exercises.
+declare class GauntletScene extends Scene {
+  readonly name: string;
+}
+declare class GroundProbe extends Component {
+  readonly grounded: boolean;
+}
+declare function atExit(body: RigidBodyComponent): boolean;
+declare function gapAhead(body: RigidBodyComponent, distance: number): boolean;
+declare function overTarget(body: RigidBodyComponent): boolean;
+declare function enemyAhead(
+  body: RigidBodyComponent,
+  distance: number,
+): boolean;
+
 export default defineScenario({
   scene: () => new GauntletScene(),
 
@@ -101,7 +127,7 @@ export default defineScenario({
     const player = ctx.scene.findByKey("player");
     if (!player) throw new Error("the scene has no player");
     const body = player.get(RigidBodyComponent);
-    const ground = player.get(GroundProbe);   // this game's own component
+    const ground = player.get(GroundProbe); // this game's own component
 
     await ctx.input.whileHolding(["KeyD"], async () => {
       while (ctx.framesUsed < 900 && !atExit(body)) {
@@ -129,7 +155,7 @@ Four things make that loop work.
 **A maneuver is an ordinary async function.** It awaits its own frames, so it
 needs no state machine and no phase counter — the sequence reads top to bottom:
 
-```typescript
+```typescript yage-group="gauntlet"
 import type { DriveContext } from "@yagejs-tools/lab";
 
 async function diveAttack(
@@ -139,7 +165,7 @@ async function diveAttack(
 ) {
   await ctx.input.whileHolding(["Space"], async () => {
     await ctx.step(4);
-    await ctx.until(() => body.velocityY > -20);          // rising to the apex
+    await ctx.until(() => body.velocityY > -20); // rising to the apex
     await ctx.input.whileHolding(["KeyS", "KeyJ"], () =>
       ctx.until(() => ground.grounded, { maxFrames: 60 }),
     );
@@ -187,16 +213,21 @@ A run stopped by its budget unwinds the callback, so its return value is lost.
 Assign anything you want to see either way to a variable in the enclosing
 scope, which keeps its last value:
 
-```typescript
-const i = window.__yage__.inspector;
-let lastX = 0;
-const run = await i.drive(async (ctx) => {
-  while (!atExit()) {
-    lastX = i.getEntityPosition("player").x;
-    await ctx.step(1);
-  }
-}, { maxFrames: 600 });
-// run.timedOut === true, run.value === undefined, lastX === how far it got
+```typescript yage-context="browser"
+async function measureRun(atExit: () => boolean) {
+  const i = window.__yage__.inspector;
+  let lastX = 0;
+  const run = await i.drive(
+    async (ctx) => {
+      while (!atExit()) {
+        lastX = i.getEntityPosition("player")!.x;
+        await ctx.step(1);
+      }
+    },
+    { maxFrames: 600 },
+  );
+  // run.timedOut === true, run.value === undefined, lastX === how far it got
+}
 ```
 
 ## Frame budgets come from the game's own numbers
@@ -206,7 +237,12 @@ gap crossed at 300px/s takes 3 seconds, which is 180 frames at 1/60 — so wait
 on the predicate and cap it a little above the derived number:
 
 ```typescript
-await ctx.until(() => body.positionX > 900, { maxFrames: 240 });
+import type { DriveContext } from "@yagejs-tools/lab";
+import type { RigidBodyComponent } from "@yagejs/physics";
+
+async function crossGap(ctx: DriveContext, body: RigidBodyComponent) {
+  await ctx.until(() => body.positionX > 900, { maxFrames: 240 });
+}
 ```
 
 The predicate decides when the run moves on; the cap only decides when to give
@@ -222,11 +258,15 @@ numbers and the frames behind them. A frozen clock means the image is the exact
 frame you stepped to.
 
 ```typescript
-const run = await inspector.drive(async (ctx) => {
-  await ctx.until(() => doorOpen(), { maxFrames: 240 });
-  await ctx.capture("door-open");
-});
-run.captures; // [{ label: "door-open", dataUrl: "data:image/png;base64,..." }]
+import type { Inspector } from "@yagejs/core";
+
+async function captureOpenDoor(inspector: Inspector, doorOpen: () => boolean) {
+  const run = await inspector.drive(async (ctx) => {
+    await ctx.until(() => doorOpen(), { maxFrames: 240 });
+    await ctx.capture("door-open");
+  });
+  run.captures; // [{ label: "door-open", dataUrl: "data:image/png;base64,..." }]
+}
 ```
 
 The standalone `inspector.capture` API, its `RendererPlugin` requirement, and

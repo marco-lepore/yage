@@ -31,7 +31,7 @@ const ROTATE_SNAP = 4 * Math.PI; // rad/s — how fast the ship rotates toward t
 
 // ---------------------------------------------------------------------------
 // Ship — moves with the left stick, rotates toward the right stick.
-// Falls back to WASD + mouse when no controller is connected.
+// WASD moves while the left stick is idle; the mouse aims while the right stick is idle.
 // ---------------------------------------------------------------------------
 
 class ShipController extends Component {
@@ -58,7 +58,10 @@ class ShipController extends Component {
     }
 
     // -- Aim: right stick OR mouse direction (when stick idle) --
-    const aim = this.input.getStick("right");
+    let aim = this.input.getStick("right");
+    if (aim.x === 0 && aim.y === 0) {
+      aim = this.input.getPointerPosition().sub(this.transform.position);
+    }
     if (aim.x !== 0 || aim.y !== 0) {
       const target = aim.angle();
       this.transform.rotation = stepTowardAngle(
@@ -136,7 +139,7 @@ class GamepadHud extends Component {
       );
     } else {
       this.headerText.setText(
-        "Plug in a controller and press any button. Keyboard fallback: WASD to move.",
+        "Plug in a controller and press any button. WASD moves; the mouse aims.",
       );
     }
 
@@ -272,7 +275,7 @@ class GamepadScene extends Scene {
     footer.add(new Transform({ position: new Vec2(20, HEIGHT - 48) }));
     footer.add(
       new TextComponent({
-        text: "Left stick / WASD: move    ·    Right stick: aim    ·    A or Space or RT: boost",
+        text: "Left stick / WASD: move    ·    Right stick / mouse: aim    ·    A or Space or RT: boost",
         style: {
           fontFamily: "system-ui, sans-serif",
           fontSize: 12,

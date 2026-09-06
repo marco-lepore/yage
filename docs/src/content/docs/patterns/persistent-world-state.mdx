@@ -27,7 +27,13 @@ general-purpose lookup and keeps the base `Entity` lean.
 
 ## Spawning a keyed entity
 
-```typescript
+```typescript yage-group="world" yage-file="example-1.ts" yage-context="scene,entity"
+import { Entity } from "@yagejs/core";
+import { Chest } from "./entities/Chest.js";
+
+class SpawnAnchor extends Entity {}
+const parent = entity;
+
 // Class with setup params + key:
 scene.spawn(Chest, { content: ["potion"] }, { key: "forest/chest-01" });
 
@@ -38,7 +44,12 @@ scene.spawn(SpawnAnchor, { key: "anchors/forest" });
 scene.spawn("village-bell", { key: "village/bell" });
 
 // Keyed child (4-arg form: name, Class, setup params, options):
-parent.spawnChild("treasure", Chest, { content: ["potion"] }, { key: "manor/chest-attic" });
+parent.spawnChild(
+  "treasure",
+  Chest,
+  { content: ["potion"] },
+  { key: "manor/chest-attic" },
+);
 ```
 
 The 4-argument `spawnChild` form mirrors `scene.spawn(Class, params, options)`:
@@ -48,7 +59,9 @@ is the spawn options object.
 
 Look it up later, anywhere in the scene:
 
-```typescript
+```typescript yage-group="world" yage-file="example-2.ts" yage-context="scene"
+import type { Chest } from "./entities/Chest.js";
+
 const chest = scene.findByKey<Chest>("forest/chest-01");
 ```
 
@@ -62,7 +75,7 @@ A chest that remembers it has been opened. Three pieces:
 
 ### 1. A reactive set, keyed by entity id
 
-```typescript
+```typescript yage-group="world" yage-file="world/persistence.ts"
 // game/world/persistence.ts
 import { createSet } from "@yagejs/core";
 
@@ -76,7 +89,7 @@ meaningful.
 
 ### 2. A trait — an interface contract
 
-```typescript
+```typescript yage-group="world" yage-file="traits/Openable.ts"
 // game/traits/Openable.ts
 import { defineTrait } from "@yagejs/core";
 
@@ -89,22 +102,21 @@ export const Openable = defineTrait<Openable>("Openable");
 
 Traits are *queryable interface contracts*, not custom Components. Different
 entities can satisfy the same trait via different components — chests,
-treasure piles, secret doors — and `scene.query(Openable)` returns all of
+treasure piles, secret doors — and `scene.findEntities({ trait: Openable })` returns all of
 them.
 
 ### 3. A component that wires identity + store + trait
 
-```typescript
+```typescript yage-group="world" yage-file="components/OpenableState.ts"
 // game/components/OpenableState.ts
-import { Component, trait, defineEvent } from "@yagejs/core";
+import { Component, defineEvent } from "@yagejs/core";
 import { opened } from "../world/persistence.js";
 import { Openable } from "../traits/Openable.js";
 
 export const Opened = defineEvent<{ silent?: boolean }>("opened");
 
-@trait(Openable)
 export class OpenableState extends Component implements Openable {
-  override setup(): void {
+  override onAdd(): void {
     const id = this.entity.requireKey();
     if (opened.has(id)) {
       this.entity.emit(Opened, { silent: true });
@@ -129,26 +141,54 @@ loud behaviour is intentional: a component that depends on identity should
 crash early rather than silently mishandle keyless entities.
 
 The component is set up *after* the key is assigned, so `requireKey()` is safe
-inside `setup()`.
+inside `onAdd()`.
 
 ### Putting it together
 
-```typescript
-class Chest extends Entity {
-  override setup(params: { content: string[] }): void {
-    this.add(new OpenableState());
-    this.add(new ChestSprite(params.content));
+```typescript yage-group="world" yage-file="entities/Chest.ts"
+import { Component, Entity, Transform, trait, type Scene } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+import { Openable } from "../traits/Openable.js";
+import { OpenableState, Opened } from "../components/OpenableState.js";
+
+class ChestContents extends Component {
+  constructor(readonly content: string[]) {
+    super();
+  }
+  onAdd() {
+    this.entity.on(Opened, () =>
+      this.entity.get(SpriteComponent).setTexture("chest-open"),
+    );
   }
 }
 
-// Game code:
-scene.spawn(Chest, { content: ["potion"] }, { key: "forest/chest-01" });
+@trait(Openable)
+export class Chest extends Entity implements Openable {
+  override setup(params: { content: string[] }): void {
+    this.add(new Transform());
+    this.add(new SpriteComponent({ texture: "chest-closed" }));
+    this.add(new ChestContents(params.content));
+    this.add(new OpenableState());
+  }
+  isOpen() {
+    return this.get(OpenableState).isOpen();
+  }
+  open() {
+    this.get(OpenableState).open();
+  }
+}
 
-// Player opens the chest:
-scene.findByKey<Chest>("forest/chest-01")?.get(OpenableState).open();
+// Game code, after preloading chest-closed and chest-open textures:
+function openForestChest(scene: Scene) {
+  const chest = scene.spawn(
+    Chest,
+    { content: ["potion"] },
+    { key: "forest/chest-01" },
+  );
+  chest.open();
+}
 
-// Later (e.g. after save/load), the same chest skips the open animation
-// because `opened` already contains its key.
+// Reconstructing the same keyed chest restores its open texture.
 ```
 
 ## Variants
@@ -157,7 +197,11 @@ The same composition handles more than chests.
 
 ### One-shot cutscene flag
 
-```typescript
+```typescript yage-group="world" yage-file="example-7.ts" yage-context="scene"
+import { Component, Entity, createSet, defineEvent } from "@yagejs/core";
+
+const Triggered = defineEvent("triggered");
+
 // game/world/persistence.ts
 export const triggered = createSet<string>();
 
@@ -171,12 +215,20 @@ class OneShotTrigger extends Component {
   }
 }
 
+class StoryTrigger extends Entity {
+  setup() {
+    this.add(new OneShotTrigger());
+  }
+}
+
 scene.spawn(StoryTrigger, { key: "intro/meet-elder" });
 ```
 
 ### Respawnable resource node
 
-```typescript
+```typescript yage-group="world" yage-file="example-8.ts"
+import { Component, createMap } from "@yagejs/core";
+
 // "harvested at frame N" → respawns after some interval
 export const harvestedAt = createMap<string, number>();
 
@@ -228,13 +280,19 @@ covers `tilemap.objectKey(obj)` and `tilemap.forEachObject(layer, cb)`, which
 derive a deterministic key from the map asset + Tiled object id and let you
 spawn keyed entities straight from the level file:
 
-```typescript
-tilemap.forEachObject("interactables", (obj, key) => {
-  if (obj.class === "Chest") {
-    const content = tilemap.getPropertyArray<string>(obj, "content") ?? [];
-    scene.spawn(Chest, { content }, { key });
-  }
-});
+```typescript yage-group="world" yage-file="example-9.ts"
+import type { Scene } from "@yagejs/core";
+import type { TilemapComponent } from "@yagejs/tilemap";
+import { Chest } from "./entities/Chest.js";
+
+function spawnChests(scene: Scene, tilemap: TilemapComponent) {
+  tilemap.forEachObject("interactables", (obj, key) => {
+    if (obj.class === "Chest") {
+      const content = tilemap.getPropertyArray<string>(obj, "content") ?? [];
+      scene.spawn(Chest, { content }, { key });
+    }
+  });
+}
 ```
 
 The key shape is `<prefix>#object:<id>` and stays stable across re-saves of the

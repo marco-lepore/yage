@@ -1,3 +1,5 @@
+import { registerTexture } from "@yagejs/renderer";
+import { TopDownPlayerMover } from "../shared/TopDownPlayerMover.js";
 import { Scene, Transform, Vec2 } from "@yagejs/core";
 import { CameraEntity, GraphicsComponent, TextComponent } from "@yagejs/renderer";
 import {
@@ -18,9 +20,9 @@ import {
   defaultInventoryTheme,
   rowCell,
 } from "@yagejs-addons/inventory/presenters";
-import { Assets } from "pixi.js";
 import {
   HEIGHT,
+  PLAYER_SPEED,
   HOTBAR_BOUNDS,
   HOTBAR_SLOTS,
   HUD_LAYER,
@@ -30,7 +32,7 @@ import {
   WIDTH,
 } from "./constants.js";
 import { CATALOG, type DemoState, type ItemId, isUsable, itemActions, makePotionIcon } from "./catalog.js";
-import { HotbarQuickUse, Hud, Pickup, PlayerMover, VaultDoor } from "./components.js";
+import { HotbarQuickUse, Hud, Pickup, VaultDoor } from "./components.js";
 import { exposeProbe } from "./probe.js";
 
 // ── the scene ─────────────────────────────────────────────────────────────────
@@ -41,7 +43,7 @@ export class InventoryRoomScene extends Scene {
 
   onEnter(): void {
     this.drawRoom();
-    Assets.cache.set(ICON_POTION, makePotionIcon());
+    registerTexture(ICON_POTION, makePotionIcon());
 
     const state: DemoState = { hp: 55, equipped: null, potions: 0, lastToast: "" };
 
@@ -271,7 +273,13 @@ export class InventoryRoomScene extends Scene {
       }),
     );
 
-    player.add(new PlayerMover(anyPanelOpen));
+    player.add(
+      new TopDownPlayerMover({
+        speed: PLAYER_SPEED,
+        bounds: { minX: 40, maxX: WIDTH - 40, minY: 110, maxY: HEIGHT - 90 },
+        isBlocked: anyPanelOpen,
+      }),
+    );
 
     // E2E / console handle.
     exposeProbe({

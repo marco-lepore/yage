@@ -59,13 +59,11 @@ class MultitouchVisualizer extends Component {
   private readonly trails = new Map<number, PointerTrail>();
   private readonly ripples: Ripple[] = [];
   private elapsed = 0;
-  private disposers: Array<() => void> = [];
-  private pendingRemovals = new Set<ReturnType<typeof setTimeout>>();
 
   override onAdd(): void {
-    this.disposers.push(
+    this.addCleanup(
       this.input.onPointerDown((p) => {
-        this.upsertTrail(p);
+        this.upsertTrail(p, true);
         this.ripples.push({
           position: new Vec2(p.screenPos.x, p.screenPos.y),
           start: this.elapsed,
@@ -73,45 +71,30 @@ class MultitouchVisualizer extends Component {
         });
         if (this.ripples.length > 32) this.ripples.shift();
       }),
-      this.input.onPointerMove((p) => this.upsertTrail(p)),
+    );
+    this.addCleanup(this.input.onPointerMove((p) => this.upsertTrail(p)));
+    this.addCleanup(
       this.input.onPointerUp((p) => {
         const trail = this.trails.get(p.id);
         if (trail) trail.isDown = false;
-        // Touches vanish from getPointers() once they release; drop the trail
-        // shortly after so the user sees the release without a stale finger.
-        // (Mouse stays in getPointers naturally, so we keep its trail.)
-        if (p.type !== "mouse") {
-          const handle = setTimeout(() => {
-            this.pendingRemovals.delete(handle);
-            this.trails.delete(p.id);
-          }, 0);
-          this.pendingRemovals.add(handle);
-        }
       }),
     );
   }
 
-  override onDestroy(): void {
-    for (const off of this.disposers) off();
-    this.disposers.length = 0;
-    for (const handle of this.pendingRemovals) clearTimeout(handle);
-    this.pendingRemovals.clear();
-  }
-
-  private upsertTrail(p: PointerInfo): void {
+  private upsertTrail(p: PointerInfo, isDown = p.isDown): void {
     let trail = this.trails.get(p.id);
     if (!trail) {
       trail = {
         positions: [],
         type: p.type,
         isPrimary: p.isPrimary,
-        isDown: p.isDown,
+        isDown,
       };
       this.trails.set(p.id, trail);
     } else {
       trail.type = p.type;
       trail.isPrimary = p.isPrimary;
-      trail.isDown = p.isDown;
+      trail.isDown = isDown;
     }
     trail.positions.push(new Vec2(p.screenPos.x, p.screenPos.y));
     if (trail.positions.length > TRAIL_LENGTH) trail.positions.shift();
@@ -179,6 +162,8 @@ class MultitouchVisualizer extends Component {
           color: 0xffffff,
           width: 1,
         });
+        // Keep the release drawing until the next frame clears the graphics.
+        if (!trail.isDown && trail.type !== "mouse") this.trails.delete(id);
       }
     });
   }
