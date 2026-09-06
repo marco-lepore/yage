@@ -542,6 +542,11 @@ describe("Scene.spawnBatch", () => {
     expect(events).toContain("cleanup:dynamic-cleanup");
     expect(boundary.getCallbackErrors()).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          kind: "Entity setup() hook",
+          entity: "Failing",
+          error: "setup remained primary",
+        }),
         expect.objectContaining({ error: "cleanup:cleanup failed" }),
         expect.objectContaining({ error: "cleanup:destroy failed" }),
       ]),

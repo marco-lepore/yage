@@ -93,7 +93,21 @@ export class SpawnBatchRunner implements SpawnBatch {
   setup<E extends Entity>(entity: E, ...rest: SetupArgs<E>): void {
     this.assertOpen();
     this.assertOwned(entity, "entity");
-    entity.setup?.(rest[0]);
+    const setup = entity.setup;
+    if (!setup) return;
+    // The same attribution `Scene.spawn` gives a setup hook: the throw is
+    // recorded against the entity before it reaches the batch and rolls it
+    // back, so the culprit is the hook and not the batch that ran it.
+    const boundary = this.scene.context.tryResolve(ErrorBoundaryKey);
+    if (boundary) {
+      boundary.wrapCallback(() => setup.call(entity, rest[0]), {
+        kind: "Entity setup() hook",
+        entity: entity.name,
+        scene: this.scene.name,
+      });
+    } else {
+      setup.call(entity, rest[0]);
+    }
   }
 
   /**
