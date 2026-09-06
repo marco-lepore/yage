@@ -78,8 +78,10 @@ dependencies you already have.
 
 </Steps>
 
-`yage-editor` takes two commands: `init`, which sets the project up and takes
-`--force`, and `dev`, which starts the editor and is what you get by default.
+`yage-editor` takes three commands: `init`, which sets the project up and
+takes `--force`; `dev`, which starts the editor and is what you get by
+default; and `validate`, which checks your level files and is meant for
+[CI](#checking-levels-in-ci).
 
 The editor opens on `http://127.0.0.1:5211`. Pass `--port` to move it,
 `--no-open` to keep it from opening a browser, and `--config` to name a config
@@ -1198,3 +1200,76 @@ Your game page needs a URL of its own. The editor answers `/`, `/index.html`,
 resolves onto it — is refused when the server starts, rather than quietly
 shadowing your page. Write the path the way your own source does; if your Vite
 config sets a `base`, the editor resolves it under that.
+
+## Checking levels in CI
+
+A level file goes stale on its own. Delete an entity class, rename a
+parameter, or raise a type's version, and the level that named the old thing
+is still on disk — you find out when someone opens it in the editor, or when
+the game refuses to load it. `yage-editor validate` finds it first, without a
+browser:
+
+```bash
+npx yage-editor validate
+```
+
+It reads `editor/config.ts`, imports your level project through your own Vite
+config, builds the catalog, and checks every file your level globs match.
+Each problem is printed under its file, with the placement it belongs to, the
+parameter path, the code, and the message:
+
+```
+  yage-editor validate
+
+  levels/forest.yage-level.json
+    01J000000000000000000STALE  -      migration-failed   Parameters were authored against type version 2, and "game.crate" declares version 1. This level is newer than the game.
+    01J0000000000000000SLIME01  speed  parameter-invalid  Parameter "speed" must be at most 200.
+
+  2 problems in 1 of 3 level files.
+```
+
+The command exits 1 when anything is wrong and 0 when every level is clean, so
+it is a CI step on its own:
+
+```yaml title=".github/workflows/ci.yml"
+- run: npx yage-editor validate
+```
+
+The findings are the ones `validateLevel` makes: an unknown type, a parameter a
+declaration no longer accepts, a version no migration reaches, a reference
+pointing at nothing. Nothing is rendered and no `setup()` runs. The editor's
+problems list also shows what its preview found — a missing asset file, a
+`setup()` that threw — and this command builds no preview, so those are not
+among its findings. A problem with a declaration itself is reported against
+your project module, and no level is checked, since there is no catalog to
+check one against. A project whose globs match no file exits 0 and says so.
+Pass `--config` to name a config file other than `editor/config.ts`.
+
+### The same check as a test
+
+If you would rather have it in your test run than as a CI step of its own,
+the three calls the command makes are public API — import your project, build
+the catalog once, and expect no diagnostics per file. Your entity modules run
+in Node with no browser, so one that touches `window` at import time fails:
+
+```typescript title="src/levels.test.ts"
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { buildLevelCatalog, validateLevel } from "@yagejs/level";
+import { readLevel } from "@yagejs/level/document";
+import { expect, it } from "vitest";
+import project from "./levelProject.js";
+
+const built = buildLevelCatalog(project);
+if (!built.ok) throw new Error(built.errors[0]?.message);
+
+const levels = readdirSync("levels").filter((name) =>
+  name.endsWith(".yage-level.json"),
+);
+
+it.each(levels)("%s matches the catalog", (name) => {
+  const read = readLevel(readFileSync(path.join("levels", name), "utf8"));
+  if (!read.ok) throw new Error(read.errors[0]?.message);
+  expect(validateLevel(read.document, built.catalog)).toEqual([]);
+});
+```

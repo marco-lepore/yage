@@ -7,6 +7,7 @@ export {
 } from "./argv.js";
 export { runDev, type DevOptions } from "./dev.js";
 export { runInit, type InitOptions } from "./init.js";
+export { runValidate, type ValidateOptions } from "./validate.js";
 export {
   createEditorViteConfig,
   type EditorViteConfig,

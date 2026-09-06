@@ -75,50 +75,6 @@ describe("ProjectCoordinator", () => {
     expect(entry?.packageName).toBe("@yagejs/tilemap");
   });
 
-  it("takes a package the project also lists exactly once", () => {
-    const shared = contribution("@yagejs/tilemap", "tilemap.layer");
-    const coordinator = new ProjectCoordinator();
-    const result = coordinator.initialize({
-      project: {
-        entities: [entityClass("game.crate")],
-        contributions: [shared],
-      },
-      contributions: [shared],
-    });
-
-    // Composing it twice would declare tilemap.layer twice, which the catalog
-    // reports as a duplicate type id rather than building.
-    expect(result.ok).toBe(true);
-  });
-
-  it("reports a project module that is not a level project", () => {
-    const coordinator = new ProjectCoordinator();
-    const result = coordinator.initialize({
-      project: { notAProject: true },
-      contributions: [],
-    });
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.diagnostics[0]?.source).toBe("catalog");
-    expect(coordinator.current.catalog).toBeUndefined();
-  });
-
-  it("reports a contribution that is not one and builds the rest", () => {
-    const coordinator = new ProjectCoordinator();
-    const result = coordinator.initialize({
-      project: { entities: [entityClass("game.crate")] },
-      contributions: [{ packageName: "@broken/pkg" }],
-    });
-
-    expect(result.ok).toBe(true);
-    expect(coordinator.current.catalog?.get("game.crate")).toBeDefined();
-    // Skipping it in silence would leave that package's entity types missing
-    // from the Actors panel with nothing said about why.
-    expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0]?.message).toContain("Package contribution 0");
-  });
-
   it("says nothing when everything declared is usable", () => {
     const coordinator = new ProjectCoordinator();
     const result = coordinator.initialize({
@@ -295,10 +251,7 @@ describe("ProjectCoordinator", () => {
       coordinator.initialize({
         project: {
           entities: [
-            withParams(
-              "game.slime",
-              defineParams({ speed: param.number(40) }),
-            ),
+            withParams("game.slime", defineParams({ speed: param.number(40) })),
           ],
         },
         contributions: [],

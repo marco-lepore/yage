@@ -33,9 +33,16 @@ describe("parseArgs", () => {
     expect(parseArgs(argv)).toMatchObject(expected);
   });
 
+  it("reads the validate command and its flag", () => {
+    expect(parseArgs(["validate"])).toMatchObject({ command: "validate" });
+    expect(
+      parseArgs(["validate", "--config", "tools/editor.ts"]),
+    ).toMatchObject({ command: "validate", config: "tools/editor.ts" });
+  });
+
   it.each([
     ["an unknown option", ["--scenarios", "a"]],
-    ["an unknown command", ["validate"]],
+    ["an unknown command", ["check"]],
     ["a port that is not a number", ["--port", "http"]],
     ["a port outside the range", ["--port", "70000"]],
     ["a flag with no value", ["--config"]],
@@ -43,6 +50,7 @@ describe("parseArgs", () => {
     ["a second command word", ["init", "dev"]],
     ["a dev option passed to init", ["init", "--port", "3000"]],
     ["--force passed to dev", ["--force"]],
+    ["a dev option passed to validate", ["validate", "--port", "3000"]],
   ])("refuses %s rather than falling back to a default", (_name, argv) => {
     expect(parseArgs(argv).error).toBeTruthy();
   });

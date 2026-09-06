@@ -4,21 +4,14 @@ import {
   describeParams,
   type AssetFrames,
   type LevelCatalog,
-  type LevelEntityClass,
   type LevelEntityDeclaration,
-  type LevelProject,
-  type PackageContribution,
   type ParamFieldDescription,
 } from "@yagejs/level";
 import type { EditorDiagnostic } from "../../shared/diagnostics/index.js";
-
-/** What the generated entry imported: the project module and each contribution. */
-export interface EditorProjectModules {
-  /** The `LevelProject` a game's own scenes use. */
-  readonly project: unknown;
-  /** One `PackageContribution` per dependency that declared level entities. */
-  readonly contributions: readonly unknown[];
-}
+import {
+  assembleProject,
+  type EditorProjectModules,
+} from "../../shared/project/index.js";
 
 /**
  * The asset kind whose default path the Actors panel shows as a picture. It is
@@ -125,19 +118,11 @@ export class ProjectCoordinator {
   }
 
   initialize(modules: EditorProjectModules): ProjectResult {
-    const diagnostics: EditorDiagnostic[] = [];
-    const project = asLevelProject(modules.project, diagnostics);
-    const contributions = modules.contributions
-      .map((value, index) => asContribution(value, index, diagnostics))
-      .filter((value): value is PackageContribution => value !== undefined);
-    if (!project) return { ok: false, diagnostics };
+    const assembled = assembleProject(modules);
+    if (!assembled.ok) return { ok: false, diagnostics: assembled.diagnostics };
+    const diagnostics = assembled.diagnostics;
 
-    const result = buildLevelCatalog(
-      defineLevelProject({
-        entities: project.entities,
-        contributions: merge(project.contributions, contributions),
-      }),
-    );
+    const result = buildLevelCatalog(defineLevelProject(assembled.project));
     if (!result.ok) {
       return {
         ok: false,
@@ -185,72 +170,6 @@ function firstTexture(
   return describeParams(params).find(
     (description) => description.assetKind === TEXTURE_ASSET_KIND,
   );
-}
-
-/**
- * A package listed by the project and discovered from its manifest is one
- * contribution, not two. Composing both would declare every one of its
- * entities twice, which the catalog reports as duplicate type ids.
- */
-function merge(
-  declared: readonly PackageContribution[],
-  discovered: readonly PackageContribution[],
-): readonly PackageContribution[] {
-  const names = new Set(declared.map((entry) => entry.packageName));
-  return [
-    ...declared,
-    ...discovered.filter((entry) => !names.has(entry.packageName)),
-  ];
-}
-
-function asLevelProject(
-  value: unknown,
-  diagnostics: EditorDiagnostic[],
-): LevelProject | undefined {
-  if (!isObject(value) || !Array.isArray(value.entities)) {
-    diagnostics.push(
-      catalogDiagnostic(
-        "The project module's default export is not a level project. " +
-          "Export defineLevelProject({ entities: [...] }) from it.",
-      ),
-    );
-    return undefined;
-  }
-  const contributions = Array.isArray(value.contributions)
-    ? (value.contributions as readonly PackageContribution[])
-    : [];
-  return {
-    entities: value.entities as readonly LevelEntityClass[],
-    contributions,
-  };
-}
-
-function asContribution(
-  value: unknown,
-  index: number,
-  diagnostics: EditorDiagnostic[],
-): PackageContribution | undefined {
-  if (
-    !isObject(value) ||
-    typeof value.packageName !== "string" ||
-    !Array.isArray(value.entities)
-  ) {
-    diagnostics.push(
-      catalogDiagnostic(
-        `Package contribution ${String(index)} is not a level contribution. ` +
-          "Its module must default-export { packageName, entities }.",
-      ),
-    );
-    return undefined;
-  }
-  return {
-    packageName: value.packageName,
-    entities: value.entities as readonly LevelEntityClass[],
-  };
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function catalogDiagnostic(message: string): EditorDiagnostic {

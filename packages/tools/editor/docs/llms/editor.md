@@ -6,8 +6,9 @@ level, build it up, and save it back. The game loads the same file through
 
 ```bash
 npm install -D @yagejs-tools/editor
-npx yage-editor init   # write the config, the harness, the level project, the script
-npm run editor         # start it
+npx yage-editor init       # write the config, the harness, the level project, the script
+npm run editor             # start it
+npx yage-editor validate   # check every level file against the project, for CI
 ```
 
 `yage-editor` starts a Vite dev server on `127.0.0.1:5211` built from the
@@ -16,8 +17,9 @@ the game. The editor is served at the project's Vite `base` — `/` unless the
 project set one — and at the `index.html` there; every other path is the
 project's.
 
-Commands: `init` (`--force`), and `dev`, the default. Flags:
-`--port <number>`, `--no-open`, `--config <path>`, `-h`, `-v`.
+Commands: `init` (`--force`), `validate` (`--config`), and `dev`, the default.
+Flags: `--port <number>`, `--no-open`, `--config <path>`, `-h`, `-v`. A flag
+outside its command's set is an error.
 
 ## `yage-editor init`
 
@@ -54,6 +56,55 @@ or `.mjs` — `editor/harness.ts` is written as `export { default } from
 "../lab/harness.js"` instead of a second plugin list. The two tools have no
 dependency on each other: they accept the same object, and the link is a line
 of the project's own code.
+
+## `yage-editor validate`
+
+Checks every level file against the project's declarations, headless. Reads the
+config, imports `modules.project` through the project's own Vite config with
+Vite's SSR loader, builds the catalog, and runs `readLevel` + `validateLevel`
+over every file the level globs match. Nothing renders and no `setup()` runs.
+
+Problems print grouped by file — placement id, parameter path, diagnostic code,
+message — then a count line. Exit 1 on any catalog problem, structural error,
+import failure or diagnostic; exit 0 when every level is clean, and 0 with a
+line when the globs match no file. A catalog problem is reported against the
+project module and stops the run, since there is no catalog to check against.
+
+```
+  yage-editor validate
+
+  levels/forest.yage-level.json
+    01J000000000000000000STALE  -      migration-failed   Parameters were authored against type version 2, and "game.crate" declares version 1. This level is newer than the game.
+    01J0000000000000000SLIME01  speed  parameter-invalid  Parameter "speed" must be at most 200.
+
+  2 problems in 1 of 3 level files.
+```
+
+The same check as a test, for a project that wants it in its own test run —
+the calls are `@yagejs/level` public API. The entity modules run in Node with no
+browser, so one that touches `window` at import time fails:
+
+```ts
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { buildLevelCatalog, validateLevel } from "@yagejs/level";
+import { readLevel } from "@yagejs/level/document";
+import { expect, it } from "vitest";
+import project from "./levelProject.js";
+
+const built = buildLevelCatalog(project);
+if (!built.ok) throw new Error(built.errors[0]?.message);
+
+const levels = readdirSync("levels").filter((name) =>
+  name.endsWith(".yage-level.json"),
+);
+
+it.each(levels)("%s matches the catalog", (name) => {
+  const read = readLevel(readFileSync(path.join("levels", name), "utf8"));
+  if (!read.ok) throw new Error(read.errors[0]?.message);
+  expect(validateLevel(read.document, built.catalog)).toEqual([]);
+});
+```
 
 ## Configuration
 

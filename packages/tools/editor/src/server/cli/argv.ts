@@ -1,4 +1,4 @@
-export type EditorCommand = "dev" | "init";
+export type EditorCommand = "dev" | "init" | "validate";
 
 export interface ParsedArgs {
   readonly command: EditorCommand;
@@ -24,6 +24,7 @@ export const DEFAULT_PORT = 5211;
 const COMMAND_FLAGS = {
   dev: ["--port", "--no-open", "--config"],
   init: ["--force"],
+  validate: ["--config"],
 } as const satisfies Record<EditorCommand, readonly string[]>;
 
 const COMMANDS = Object.keys(COMMAND_FLAGS) as readonly EditorCommand[];
@@ -35,6 +36,9 @@ Usage
                                editor/harness.ts, src/levelProject.ts, and an
                                "editor" script, prefilled from the project
   yage-editor [dev] [options]  Start the editor
+  yage-editor validate         Check every level file against the project's
+                               entity declarations and exit non-zero when
+                               anything is wrong
 
 Options
   --port <number>   Port for the editor server (default ${DEFAULT_PORT})
@@ -116,7 +120,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     const named = COMMANDS.find((name) => name === arg);
     if (named === undefined) {
       return fail(
-        `Unknown command "${arg}". Expected ${COMMANDS.join(" or ")}; ` +
+        `Unknown command "${arg}". Expected ${listed(COMMANDS)}; ` +
           `"yage-editor" on its own starts the editor.`,
       );
     }
@@ -131,6 +135,12 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   }
 
   return { command, port, open, config, force, help, version };
+}
+
+/** The command names as a sentence reads them: `a`, `b` or `c`. */
+function listed(names: readonly string[]): string {
+  if (names.length < 2) return names.join("");
+  return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1] as string}`;
 }
 
 /**
