@@ -1,5 +1,121 @@
 # @yagejs/tilemap
 
+## 0.11.0
+
+### Minor Changes
+
+- [#315](https://github.com/marco-lepore/yage/pull/315) [`dc42ba4`](https://github.com/marco-lepore/yage/commit/dc42ba40cd3bbd04c8ff27bf4e8721f274dde034) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A map owns its tileset images: loading the map loads them, unloading it frees them, and two maps no longer share tiles by accident.
+  - The `tiledMap` handle loads every single-image tileset the map references, as
+    ordinary counted `texture()` handles, and `assets.unload(mapHandle)` releases
+    them. The images were loaded outside the asset manager's reference counts and
+    the map's `unload` was empty, so a level-selection loop grew the texture cache
+    without bound. Counting them means a second map on the same tileset, or a
+    sprite drawing from the same sheet, keeps the image alive until it too
+    releases it. Drop the separate `renderAsset(tilesetPath)` handle from your
+    scene's `preload` — declaring one file twice is what makes one unload destroy
+    it for the other.
+  - Two maps whose tilesets share an image _file name_ no longer draw each other's
+    tiles. Tile frames were written into the global Pixi cache under the image
+    name as written in the map file, so `forest/terrain.png` and
+    `cave/terrain.png` collided and the second map reused the first map's art. The
+    same cache also handed back frames whose image had already been unloaded.
+    Frames are now cut per component from the loaded image and destroyed with the
+    component.
+  - Breaking: `createTilemapLayers` returns `{ layers, textures }` rather than an
+    array of layers. `textures` holds the frames the call cut; a caller building
+    layers directly owns them and calls `destroy(false)` on each when the layers
+    go. `TilemapComponent` does this for the layers it builds.
+  - Unloading a map also drops the external tileset (`.tsj`) files it inlined,
+    which nothing released before. A tileset file is plain data — a map that
+    inlined it holds its own copy — so a second map sharing it keeps drawing and
+    re-fetches the file only if it is loaded again.
+  - `TilesetData` gains `resolvedImage`, the image path joined against the folder
+    of the file that names it, which is the key the image loads under.
+    `TilesetRef` gains `resolvedSource`, the same for an external tileset's JSON.
+  - Docs: both surfaces show a map's preload as the map handle alone, state that
+    unloading it releases its images, and carry the rule that one file gets one
+    declaration form.
+
+- [#304](https://github.com/marco-lepore/yage/pull/304) [`daa8214`](https://github.com/marco-lepore/yage/commit/daa821458a69d14176f5c5aebc3f4204348ddb0c) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Remove `TilemapComponent` snapshot methods and serialized data types. Persist
+  the map identity and game-owned mutations explicitly, then reconstruct the
+  tilemap from its asset. The parsed map (`data`) stays out of Inspector
+  component state.
+
+- [#324](https://github.com/marco-lepore/yage/pull/324) [`a7eda5d`](https://github.com/marco-lepore/yage/commit/a7eda5d7cee1e163ea09362709d7ab35687f0fb6) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add compound colliders and keep collider geometry aligned with entity scale.
+  - Return collider parts from `toPhysicsColliders` so the result can be passed directly to one compound collider.
+
+- [#310](https://github.com/marco-lepore/yage/pull/310) [`8064fa6`](https://github.com/marco-lepore/yage/commit/8064fa64099feeb1d164360b668e0721a14b7bbe) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Component lookup and queries match subclasses, so a base class can name a family.
+  - Breaking: `TilemapRenderSystem` is removed, along with its export and its
+    registration. `TilemapComponent` extends `VisualComponent`, so `DisplaySystem`
+    syncs it directly. Draw order comes from the render tree and `zIndex`, which
+    the removed system did not affect.
+  - A tilemap in a depth-sorted layer keys off its unmodified position, so a
+    render-only modifier offset no longer shifts its depth.
+
+- [#314](https://github.com/marco-lepore/yage/pull/314) [`8f11936`](https://github.com/marco-lepore/yage/commit/8f119362281bf31ab59b8b907816886922aaf18f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A map answers and draws where its tiles are, and a map with one bad tileset or one bad tile still renders.
+  - An external tileset's `image` resolves against the tileset file's own folder,
+    which is the path Tiled writes there. Both doc surfaces already stated that
+    rule; the loader read it against the map's folder instead, so the standard
+    shared-tileset layout — `maps/level.json` referencing `../tilesets/terrain.tsj`
+    whose image sits beside it — requested `maps/terrain.png` and every tile
+    rendered blank. An embedded tileset still resolves against the map's folder.
+    Both paths go through Pixi's `path.join`, so `..` segments collapse and one
+    file yields one cache entry.
+  - `getTileAt` converts the query point through the inverse of the entity's world
+    transform. It subtracted the entity's local position, while the renderer draws
+    from the world transform, so a map parented under another entity or given a
+    scale answered for cells that are not where it drew: a child map under a
+    parent at x=100 returned `null` over drawn tiles, and a map at scale 2
+    returned the second column for a point inside the first. A world scale of 0
+    collapses the map and the method returns `null`.
+  - No map-authoring mistake stops a map from building. A tile whose tileset never
+    resolved (`tsx-tileset`, `unresolved-tileset`) and a tile whose id belongs to
+    no tileset are skipped, and the rest of the map draws — matching the seven
+    other `error` diagnostics, which have always dropped the content they name and
+    kept going. Two of them killed the whole component instead, from inside
+    `TilemapComponent.onAdd`. A tileset image that is not loaded when the
+    component is added still throws, naming the image and its tileset: that is a
+    load-order mistake, fixed by preloading the image, not a property of the map.
+  - New `unknown-gid` diagnostic (severity `error`) reports the cells a layer
+    fills with a tile id no tileset owns, naming the layer and, per distinct id,
+    the first cell it appears in. A single-image tileset owns the ids its
+    `tilecount` covers, and a collection-of-images tileset owns exactly the ids it
+    lists — Tiled preserves the other tiles' ids when an image is deleted, so a
+    collection's ids are neither dense nor bounded by `tilecount`. An id past a
+    tileset's own is no longer attributed to it.
+  - `encoded-layer-data` fires on layer data that is not a flat number array. It
+    also fired on the presence of an `encoding` field, so a CSV-encoded layer —
+    a flat number array that renders correctly — was reported as dropped content.
+  - Breaking: `getPropertyArray` (and `resolveRefArray` through it) throws when
+    the indices skip one, naming the missing index. It returned a sparse array
+    typed as dense, so `point[0]` plus `point[2]` handed back a hole typed as a
+    value.
+  - Docs: the collision recipe on both surfaces spawns one static entity per
+    converted shape under a grouping parent. It looped `walls.add(new
+ColliderComponent(cfg))` over the configs, and an entity holds one component
+    per class, so any map with two or more collision objects threw during the
+    scene's `onEnter`. Both surfaces also gain the `unknown-gid` code, the rule
+    that no diagnostic stops a map from rendering, and the limit that a diagonal
+    flip on a non-square tile draws unrotated.
+
+- [#318](https://github.com/marco-lepore/yage/pull/318) [`33d00e3`](https://github.com/marco-lepore/yage/commit/33d00e37801a300710cc10de0352b1aa1b1ba2f1) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Export `toPhysicsColliders` from `@yagejs/tilemap/physics`. The root tilemap
+  entry remains usable without installing the optional `@yagejs/physics` peer.
+
+### Patch Changes
+
+- [#294](https://github.com/marco-lepore/yage/pull/294) [`9b9fe07`](https://github.com/marco-lepore/yage/commit/9b9fe07d7f32219c0e9aa37265b526cdc5924ce8) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add composable game-feel cues with visual, time, camera, audio, filter, and
+  particle effects.
+  - Keep tilemap base alpha separate from inherited visual opacity modifiers.
+  - Combine tilemap transforms with inherited visual position, rotation, and
+    scale modifiers during rendering.
+  - Apply effective alpha through the tilemap color filter without changing the
+    serialized base value.
+
+- Updated dependencies [[`d2adfed`](https://github.com/marco-lepore/yage/commit/d2adfedb0e5d15269fe941a3a24f23ddb0126aa4), [`dc42ba4`](https://github.com/marco-lepore/yage/commit/dc42ba40cd3bbd04c8ff27bf4e8721f274dde034), [`dc42ba4`](https://github.com/marco-lepore/yage/commit/dc42ba40cd3bbd04c8ff27bf4e8721f274dde034), [`daa8214`](https://github.com/marco-lepore/yage/commit/daa821458a69d14176f5c5aebc3f4204348ddb0c), [`daa8214`](https://github.com/marco-lepore/yage/commit/daa821458a69d14176f5c5aebc3f4204348ddb0c), [`daa8214`](https://github.com/marco-lepore/yage/commit/daa821458a69d14176f5c5aebc3f4204348ddb0c), [`c105024`](https://github.com/marco-lepore/yage/commit/c105024b5402c11dc36da52b08f6ab39354da8a5), [`c8ad215`](https://github.com/marco-lepore/yage/commit/c8ad215530681caeb63484cc07b118cd977a5ba5), [`08b0d06`](https://github.com/marco-lepore/yage/commit/08b0d06b63a44a51bd6f8e8308574fd41c96af59), [`08b0d06`](https://github.com/marco-lepore/yage/commit/08b0d06b63a44a51bd6f8e8308574fd41c96af59), [`33d00e3`](https://github.com/marco-lepore/yage/commit/33d00e37801a300710cc10de0352b1aa1b1ba2f1), [`7275620`](https://github.com/marco-lepore/yage/commit/7275620756183b22de3df1009e1e07615db9b40e), [`4bab66f`](https://github.com/marco-lepore/yage/commit/4bab66f0e34a387155bbc7168b048dcac167525f), [`cfde97d`](https://github.com/marco-lepore/yage/commit/cfde97de2c94416cb5bbab26a12f9c290e6b66cf), [`9b9fe07`](https://github.com/marco-lepore/yage/commit/9b9fe07d7f32219c0e9aa37265b526cdc5924ce8), [`9e194ec`](https://github.com/marco-lepore/yage/commit/9e194ec386a74c0f1ad5699c3c0db183aa86f1b1), [`9e194ec`](https://github.com/marco-lepore/yage/commit/9e194ec386a74c0f1ad5699c3c0db183aa86f1b1), [`05492cb`](https://github.com/marco-lepore/yage/commit/05492cb8e27f89fe82fedd6e307afa2f90d1f68f), [`05492cb`](https://github.com/marco-lepore/yage/commit/05492cb8e27f89fe82fedd6e307afa2f90d1f68f), [`05492cb`](https://github.com/marco-lepore/yage/commit/05492cb8e27f89fe82fedd6e307afa2f90d1f68f), [`aed53f7`](https://github.com/marco-lepore/yage/commit/aed53f7f5679f824846dee3c55c0342f7f07cf98), [`01f3944`](https://github.com/marco-lepore/yage/commit/01f39449f8856d1ed0e3e842a6ea1173a7a49ec6), [`01f3944`](https://github.com/marco-lepore/yage/commit/01f39449f8856d1ed0e3e842a6ea1173a7a49ec6), [`33d00e3`](https://github.com/marco-lepore/yage/commit/33d00e37801a300710cc10de0352b1aa1b1ba2f1), [`ba57361`](https://github.com/marco-lepore/yage/commit/ba5736175e8b3e06157e680b4b66d10eb8d06823), [`aa5b78e`](https://github.com/marco-lepore/yage/commit/aa5b78e18b56d17bdca4ffb8299c8ea83979e05a), [`439d0e2`](https://github.com/marco-lepore/yage/commit/439d0e205228bee15d8d79607abdba5731b0873b), [`0273a69`](https://github.com/marco-lepore/yage/commit/0273a69dfe675e636e1488c6c81c9072c1e64b35), [`a7eda5d`](https://github.com/marco-lepore/yage/commit/a7eda5d7cee1e163ea09362709d7ab35687f0fb6), [`aaf1279`](https://github.com/marco-lepore/yage/commit/aaf1279455bc655681cf15c8edc64b1407b2a823), [`0bc41ac`](https://github.com/marco-lepore/yage/commit/0bc41ac6c3cce2770a588d90f2662b21c458ed71), [`8064fa6`](https://github.com/marco-lepore/yage/commit/8064fa64099feeb1d164360b668e0721a14b7bbe), [`8064fa6`](https://github.com/marco-lepore/yage/commit/8064fa64099feeb1d164360b668e0721a14b7bbe), [`8f11936`](https://github.com/marco-lepore/yage/commit/8f119362281bf31ab59b8b907816886922aaf18f), [`b087462`](https://github.com/marco-lepore/yage/commit/b087462ab2ae27bebb7ce274402c9e278f6d472a), [`8bb9e0b`](https://github.com/marco-lepore/yage/commit/8bb9e0b905017ac724f70fc8fe55014605563e88), [`8d7b5e3`](https://github.com/marco-lepore/yage/commit/8d7b5e3fe395898c7f4cbde0b352acc2713e6559), [`8d7b5e3`](https://github.com/marco-lepore/yage/commit/8d7b5e3fe395898c7f4cbde0b352acc2713e6559), [`8d7b5e3`](https://github.com/marco-lepore/yage/commit/8d7b5e3fe395898c7f4cbde0b352acc2713e6559), [`b64cd45`](https://github.com/marco-lepore/yage/commit/b64cd453a65a83899b9e8d5fecf4ad43bf1eb3d4), [`ff52a8a`](https://github.com/marco-lepore/yage/commit/ff52a8a4816b18f7de5309ab08606183db67e071)]:
+  - @yagejs/renderer@0.11.0
+  - @yagejs/core@0.11.0
+  - @yagejs/physics@0.11.0
+
 ## 0.10.4
 
 ### Patch Changes

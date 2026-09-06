@@ -1,5 +1,294 @@
 # @yagejs/core
 
+## 0.11.0
+
+### Minor Changes
+
+- [#315](https://github.com/marco-lepore/yage/pull/315) [`dc42ba4`](https://github.com/marco-lepore/yage/commit/dc42ba40cd3bbd04c8ff27bf4e8721f274dde034) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A scene's preloaded assets have one owner, so the documented per-level unload frees them.
+  - New `SceneManager.preload(scene, onProgress?)` loads a scene's manifest ahead
+    of time and marks the scene; the next `push`/`replace` of it consumes the
+    mark instead of loading again. Use it to pay for a level's assets while the
+    player is still on the menu.
+  - `LoadingScene` loads its target through that method. It called
+    `assets.loadAll` itself and the following `replace` acquired the same handles
+    a second time, so every preloaded asset carried two references and never
+    reached zero: a game unloading one reference per manifest entry in `onExit`
+    freed nothing.
+  - `AssetManager.loadAll` takes its references in one pass, after every load in
+    the call has resolved. A call that rejects now takes none, so its
+    already-loaded siblings stay cached and uncounted and a retry counts each of
+    them exactly once. Previously the cached ones were counted during the
+    pre-scan, so any retry of a partially failed manifest left references nothing
+    released.
+  - A second declaration of one path under one handle type with different loader
+    options warns in development and names both declarations. The cache is keyed
+    by type and path, so the second declaration's options were dropped in
+    silence — `webFont(p, { family })` followed by `webFont(p, { family, bitmap })`
+    loaded once with no atlas baked and no warning. The first load still wins.
+  - A second request for an asset already loading joins that load instead of
+    starting its own. A rejected `loadAll` leaves its slower siblings loading, so
+    the retry that follows started a second load for one of them: two completions
+    writing one cache slot, and the asset that lost never reaching `unload`.
+  - `clear()` empties its bookkeeping before running any loader, so an asset held
+    by another asset's loader — a Tiled map's tileset images — is freed once. The
+    map's `unload` releases its images from inside the same pass that had already
+    freed them, which unloaded each image twice.
+  - Attribution: a throw from `Scene.onProgress`, from a `LoadingScene` target
+    factory, or from an `onLoadError` hook is recorded against its source and
+    readable through `Inspector.getErrors().callbackErrors`. Propagation is
+    unchanged.
+
+- [#304](https://github.com/marco-lepore/yage/pull/304) [`daa8214`](https://github.com/marco-lepore/yage/commit/daa821458a69d14176f5c5aebc3f4204348ddb0c) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Remove the `@serializable` decorator, runtime type registry, restore priorities,
+  and ECS snapshot hooks. `Serializable<TEncoded>` remains available for explicit
+  save roots and reactive state.
+
+  Inspector component state now clones field by field: a field that cannot be
+  JSON-cloned drops on its own instead of blanking the whole component's
+  reported state, and class instances nested inside a field (an array of pixi
+  display objects, say) read as compact refs such as `{ _type: "Sprite" }`. It
+  reflects `Vec2`
+  fields and getters as `{ x, y }`, summarizes engine objects nested inside a
+  field the way the event log does (an entity reads as `{ id, name }`), skips
+  fields declared with `this.sibling()` / `this.service()`, and leaves
+  `undefined` values out. A component keeps bulk data out of its reflected state
+  with `static inspectExclude = ["field"]`; lists merge down the class chain.
+  `inspector.getEntityCount()` counts live entities without building a snapshot.
+
+- [#307](https://github.com/marco-lepore/yage/pull/307) [`c105024`](https://github.com/marco-lepore/yage/commit/c105024b5402c11dc36da52b08f6ab39354da8a5) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Scene emits reach the Inspector event log, engine event payloads carry the `Entity`, `defineEvent` validates its name, and components get `listenBus`.
+  - `scene.emit(token, data)` is recorded in `Inspector.events.getLog()` as `source: "scene"` with no `targetId`, and `events.waitFor(pattern, { source: "scene" })` matches it. `EventLogEntry.source` is `"bus" | "entity" | "scene"`. The log used to skip scene emits while the docs said it covered them.
+  - The `entity` field of `entity:created`, `entity:destroyed`, `component:added` and `component:removed` is typed as `Entity`. The runtime payload was always the live entity; the type said `{ id, name }`, so `entity.tags.has("enemy")` in a listener did not compile.
+  - `defineEvent` throws on an empty or non-string name. Entity and scene events dispatch by name, so two tokens with one name share a channel whose payload types are not checked against each other; in dev builds the second definition of a name logs a warning that says so.
+  - `entity.addChild(name, child)` throws when the child belongs to a different scene than the parent. Such a child kept bubbling its events to its original scene, and that scene's teardown destroyed it while the parent still listed it as a child. A scene-less child still joins the parent's scene.
+  - `Component.listenBus(event, handler)` subscribes to an engine `EventBus` event and releases the subscription when the component is removed or its entity is destroyed, like `listen` and `listenScene`.
+  - A throwing token-event observer (the Inspector log's hook on a scene) is recorded in `Inspector.getErrors().callbackErrors` as `"Scene event observer"` and rethrown; it used to escape unattributed.
+  - Fixed: an `EventBus` unsubscribe called twice removed a second, live registration of the same handler function, and an unsubscribe held across `clear(event)` removed a registration made after the clear. Each unsubscribe now removes only its own entry, once.
+  - Fixed: a `bus.once` handler fired twice when an earlier handler of the same emit re-emitted the event.
+  - `EventBus.tap` is documented as it behaves: observers run inside the same error boundary as handlers, so a throwing observer stops that emit's handlers.
+
+  **Breaking**, all pre-1.0: `addChild` throws on a cross-scene child it used to accept. Code that narrows `EventLogEntry.source` to two values sees a third. The `entity:*`/`component:*` payload type widens from `{ id, name }` to `Entity`, which only adds members.
+
+- [#306](https://github.com/marco-lepore/yage/pull/306) [`c8ad215`](https://github.com/marco-lepore/yage/commit/c8ad215530681caeb63484cc07b118cd977a5ba5) Thanks [@marco-lepore](https://github.com/marco-lepore)! - The frame ends at a phase boundary on `stop()`, a pool member updates in the pass that acquired it, and the scheduler's runtime add/remove rules are defined and documented.
+  - `GameLoop.stop()` — and `Engine.destroy()`, which calls it — from inside a phase takes effect at that phase's boundary: the systems of the running phase finish, and the phases after it are skipped, remaining fixed steps included. A `destroy()` made from a component `update` used to let `LateUpdate`, `Render` and `EndOfFrame` run every system after each plugin's `onDestroy` had already freed its resources.
+  - Fixed: whether a pool member updated on the frame it was acquired depended on where the member sat in the scene's entity set. A prewarmed member acquired from a component `update` got no update that frame while a member the same call had to grow got one, and the split followed each member's original insertion position for the life of the pool. `acquire` now moves the member and its children to the end of the set, the position a fresh `spawn` gets, so the member's components run in the acquiring pass, after the acquirer's.
+  - Fixed: a system whose `onRegister` threw stayed scheduled and registered. It ran every frame afterwards when the caller caught the throw, and `destroy()` still called its `onUnregister`. The hook now runs before the system enters the phase list, so a throw leaves it out of both.
+  - Fixed: a system added to its own phase while that phase was running could run the adding system a second time in the same frame, and could skip a system further down the list. Phase lists are replaced rather than sorted in place: a system added while its own phase runs first runs at that phase's next run; added during an earlier phase of the same frame, it runs this frame; a system removed while its phase runs does not run again.
+  - Fixed: `Engine.destroy()` called while `start()` was awaiting a plugin's `install()` ran `onDestroy` on the plugins that had not installed yet. `onDestroy` now runs only for plugins whose `install()` was called, in reverse install order.
+  - Fixed: a burst of `logger.error()` calls against an async `output` sink that rejects printed the "disabled" console message once per call. The sink is disabled from its first observed failure on, with one message; calls received before that rejection settles still run.
+  - `GameLoop.tick(dtMs)` throws unless `dtMs` is a finite number >= 0, naming the value it was given. A `NaN` used to stop fixed stepping for the rest of the session and turn `interpolationAlpha` into `NaN`; an `Infinity` pinned every later frame at `maxFixedStepsPerFrame` steps. `0` stays legal as a frame with no fixed step. The loop's own `requestAnimationFrame` path clamps a first timestamp that precedes the start time to a 0 delta.
+  - Docs: the order every shipped system runs in, the priority bands, and the rules that follow (ties, runtime add, live entity set, one-pass-later scheduling) are published on the game-loop page and in the `@yagejs/core` LLM reference.
+
+  **Breaking**, all pre-1.0: a system that called `loop.stop()` or `engine.destroy()` from inside a phase no longer sees the later phases of that frame run. `loop.tick()` throws on `NaN`, `Infinity` or a negative delta it used to accept silently. A system added to the phase currently running first runs at that phase's next run rather than, depending on its priority, later in the same run. A plugin `onDestroy` no longer runs when the plugin's `install()` never ran.
+
+- [#300](https://github.com/marco-lepore/yage/pull/300) [`08b0d06`](https://github.com/marco-lepore/yage/commit/08b0d06b63a44a51bd6f8e8308574fd41c96af59) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Entity destroy, pool release, and component teardown converge on one model instead of three overlapping ones.
+  - `destroy()` now deactivates the entity immediately: `isActive` reads `false`, the entity leaves every query, and component `onDisable` fires in the same call — the same as `setActive(false)`. `onDestroy` and detaching from the scene still wait for the end-of-frame flush.
+  - `EntityPool` release now cancels the member's `ProcessComponent`, so a `Process.delay` or tween scheduled before release no longer survives the park and fires against the next lease.
+  - Added `Component.destroy()`: ends the component's own life the same as `entity.remove(SomeClass)`, without having to name its own class from inside itself, which broke under subclassing.
+  - Removed `Component.onRemove` — `onDestroy` is the one teardown hook. `onRemove` always fired alongside `onDestroy` and no component could tell the two apart.
+  - Removed `Scene.destroyEntity` — a one-line alias for `entity.destroy()`.
+  - Fixed: a pool member that picked up a parent while leased (via `addChild`) now gets detached when its lease ends, so the next lease never inherits a stale parent — on an ordinary `release()` and on a `forceAcquire()` that reclaims it.
+  - `EntityPool` warns in dev when a release hook leaves a member unfit for its next lease — re-parented, still active, or with work still scheduled. A `ProcessSlot` cleanup runs inside the cancel, after the member has been detached and put to sleep, so it can undo the close-out; the pool reports that rather than cleaning up a second time.
+  - Fixed: `ProcessComponent.cancel()` cancels slots before draining one-off processes. A slot's `cleanup` is game code that can schedule again, and in the old order anything it queued survived the cancel.
+  - Fixed: `_applyActive` no longer propagates a stale activeness value to children when an `onEnable`/`onDisable` hook changes activeness again during propagation.
+  - Fixed: a `setup()` that throws during `scene.spawn()` is no longer rolled back. The half-built entity, and anything it already spawned, stays in the scene for inspection — matching how a throwing `onAdd` is already handled.
+  - Fixed: pool disposal during scene teardown now runs after every entity is marked destroyed, not before, so a developer `onRelease` hook no longer observes a scene where some entities are marked and others are not.
+  - Fixed: an entity spawned by a component's `onDestroy` during scene teardown is now marked destroyed and torn down like every other entity, instead of being gutted without ever being marked.
+
+  **Breaking**, all pre-1.0: an entity now leaves queries at `destroy()` instead of at the end-of-frame flush — code that assumed an entity stays queryable until the flush needs to account for the gap. A component overriding `onRemove` must rename it to `onDestroy`. Code calling `scene.destroyEntity(entity)` must call `entity.destroy()` instead. A game relying on a scheduled process surviving pool release must reschedule it in `onAcquire`. `Entity.add()` now throws when passed a component instance that was already removed or destroyed — components are terminal, so an instance whose cleanups already ran can no longer be silently re-attached to a different entity. A pool member nested under another pool member no longer receives `onRelease` during scene teardown: the pool is being disposed rather than reused, so the member is torn down through `onDestroy` instead — move any teardown work that lived only in `onRelease`.
+
+- [#302](https://github.com/marco-lepore/yage/pull/302) [`7275620`](https://github.com/marco-lepore/yage/commit/7275620756183b22de3df1009e1e07615db9b40e) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A duration completes on the step that reaches it, cancelling a sequence cancels the tweens it started, and the timing primitives reject values they cannot run.
+  - Fixed: a duration built from whole steps no longer runs one step long. Elapsed time accumulates by adding each frame's delta, so six steps of 1/60 s sum to just under 0.1 s — a 0.1 s window used to need a seventh step, a 0.25 s window a sixteenth. A duration now completes on the tick that reaches it, within a relative float tolerance, across `Process`, `ProcessSlot`, `Tween` and keyframe tracks. `elapsed` still reports the time that actually accumulated, and a looping process carries only its overshoot into the next pass.
+  - Fixed: a keyframe track whose first keyframe sits past time 0 no longer extrapolates backwards through the lead-in. A position track starting at 0.2 s ran its target from −92 px up to the first keyframe's value; it now holds that value until playback reaches it.
+  - Fixed: cancelling a `Sequence` cancels the step it is running. A `Tween` instance the game built, passed to `.then()` or `.parallel()`, and still held read `completed === false` forever after the sequence was cancelled — including on entity destroy — and its `toPromise()` never settled.
+  - Fixed: a sequence built with `Sequence.start()` can be reused. Passed as a step of another sequence, it ran its steps once and then completed without running anything on every later use. `Tween.stagger` returns such processes, so its output was affected too.
+  - Fixed: `Process` no longer fires `onComplete` when its own `update` callback cancelled it on the tick that would also have completed it. `ProcessSlot` already behaved this way.
+  - Fixed: `slot.start(overrides)` applies the overrides to that run only. A one-off `start({ duration: 0.02 })` used to overwrite the slot's stored config, so every later bare `start()` ran for 0.02 s; `tags`, which `cancel(tag)` matches on, behaved the same way.
+  - Fixed: `ProcessSlot.cancel()` and `restart()` mark the slot completed before running `cleanup`. A `cleanup` that restarted its own slot recursed until the stack overflowed, and a throwing one left the slot ticking as if the cancel never happened.
+  - Fixed: a throwing `onComplete` no longer leaves a caller awaiting `Process.toPromise()` waiting forever. The throw still propagates.
+  - A slot `cleanup` invoked outside a tick, and a `KeyframeAnimator` `onEnter`/`onExit`, now run through the error boundary: a throw is attributed to the slot or the animator and recorded in `Inspector.getErrors().callbackErrors` instead of being reported against whatever called `cancel()` or `play()`.
+  - Added `onCancel` and `onReset` to `ProcessOptions`. Implement them on a process that owns other processes, or that keeps state outside its `update` callback, so cancelling and re-running it reach that state. `Sequence` supplies both.
+
+  **Breaking**, all pre-1.0: durations must be finite and greater than 0 — `new Process({ duration })`, `Process.delay`, `Sequence.wait`, `Tween.to`/`custom`/`vec2`, `pc.slot({ duration })` and `slot.start({ duration })` throw otherwise, naming the value they were given, and the `Tween` factories throw on non-finite endpoints. `Tween.stagger` throws unless `stepSeconds` is finite and zero or greater; `0` keeps its meaning of starting every item at once. `createKeyframeTrack`, and so `KeyframeAnimator.play`, throws unless the track has at least 2 keyframes, every keyframe `time` is finite and sorted ascending, and `speed` is finite and greater than 0. Timing that used to land one step late now lands on the step the duration names, which shifts any sequence tuned around the old behaviour. A game that relied on `slot.start(overrides)` persisting must pass the overrides on each start or change the slot's own config.
+
+- [#296](https://github.com/marco-lepore/yage/pull/296) [`9e194ec`](https://github.com/marco-lepore/yage/commit/9e194ec386a74c0f1ad5699c3c0db183aa86f1b1) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Expand timing and animation support for feedback cues.
+  - Add composable, raw-timed `SceneTime` requests for one entity's updates.
+  - Let scene freeze requests keep selected entity updates running while physics remains frozen.
+  - End entity requests and update exclusions when a pooled entity's current life ends.
+
+- [#328](https://github.com/marco-lepore/yage/pull/328) [`05492cb`](https://github.com/marco-lepore/yage/commit/05492cb8e27f89fe82fedd6e307afa2f90d1f68f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Keep diagnostic frames, clock control, and scene state consistent.
+  - Use the engine frame count for Inspector readings and expire event waits at frame completion, including freely running games. Validate deadlines before history lookup, match regular expressions without changing their state, and reject pending waits when logging stops or the Inspector is disposed.
+  - Add exclusive time leases. Drives and asynchronous stepping hold clock ownership until they finish; competing clock mutations fail before issuing frames.
+  - Include entity names, keys, generations and pool membership, plus scene and engine clock readings, in snapshots. Exclude destroy-pending entities from every count and retain their scene identity in destruction events.
+  - Accept `transition: null` on scene push, pop and replace to skip the destination's default transition for one operation.
+
+- [#310](https://github.com/marco-lepore/yage/pull/310) [`8064fa6`](https://github.com/marco-lepore/yage/commit/8064fa64099feeb1d164360b668e0721a14b7bbe) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Component lookup and queries match subclasses, so a base class can name a family.
+  - `entity.has(Cls)` is true when the entity carries `Cls` or any subclass of
+    it, and a `QueryCache` filter matches the same way — `register([Transform,
+VisualComponent])` now finds an entity carrying a `SpriteComponent`.
+  - Add `entity.getAll(Cls)`: every component assignable to `Cls`, in add order,
+    as a read-only view. Removing a component replaces the list rather than
+    mutating it, so a walk already in flight visits every member it started
+    with. A `QueryResult` holds entities, not components, so this is how a
+    system reads several matching components off one entity.
+  - `entity.get(Cls)` and `tryGet(Cls)` prefer an exact match, then return the
+    single assignable component. They throw when more than one is assignable,
+    naming the candidates and pointing at `getAll`.
+  - `ComponentClass` accepts an abstract constructor, so an abstract base works
+    as a query filter and as a `getAll` argument.
+  - Breaking: `get`/`tryGet` throw on an ambiguous base class, and `has` and
+    queries report entities they previously missed. Uniqueness is unchanged —
+    `add` still rejects a second instance of the same exact class.
+  - A throwing scene-transition `begin`, `tick`, `end`, or finalize step is
+    reported through the error boundary, so it reaches
+    `Inspector.getErrors().callbackErrors` instead of only the log. The
+    transition still continues, as documented.
+
+### Patch Changes
+
+- [#318](https://github.com/marco-lepore/yage/pull/318) [`33d00e3`](https://github.com/marco-lepore/yage/commit/33d00e37801a300710cc10de0352b1aa1b1ba2f1) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Document string-id service-key interoperability and warn once in development
+  when an application loads multiple copies of `@yagejs/core`.
+
+- [#305](https://github.com/marco-lepore/yage/pull/305) [`4bab66f`](https://github.com/marco-lepore/yage/commit/4bab66f0e34a387155bbc7168b048dcac167525f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fix dev-mode warnings and the default `Logger` console sink running in production browser builds.
+
+  `isDev()` reads the bare `process.env.NODE_ENV` expression, which bundlers replace with a string literal at build time, so a Vite production build folds the predicate to `false`. No warning fires, and nothing behind an `isDev()` guard runs. Before this fix the check was guarded by `typeof process !== "undefined"`, and a browser bundle has no `process` global, so the check returned `true` and every `[yage]` warning fired in shipped games.
+  - `devWarn` no longer warns in production browser builds. The message strings and the `devWarn` calls stay in the bundle; each call returns before reaching `console.warn`.
+  - `Logger` no longer writes to the console by default in production browser builds. It writes to its ring buffer only unless `logger: { output }` is supplied, which is what the docs already describe.
+  - Precondition: the packages must go through a bundler (Vite, esbuild, webpack). Loading them in a browser without one throws `ReferenceError: process is not defined` on the first `isDev()` call.
+
+- [#301](https://github.com/marco-lepore/yage/pull/301) [`cfde97d`](https://github.com/marco-lepore/yage/commit/cfde97de2c94416cb5bbab26a12f9c290e6b66cf) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Let `input.whileHolding` return its callback's value
+
+  `whileHolding(codes, fn)` typed `fn` as `() => Promise<void>`, so wrapping a
+  verb that reports something needed a block that threw the value away:
+
+  ```ts
+  await ctx.input.whileHolding(["KeyS"], async () => {
+    await ctx.until(() => grounded());
+  });
+  ```
+
+  It is now generic over what `fn` resolves with and passes that value through,
+  so the direct form works and the measurement survives:
+
+  ```ts
+  const frames = await ctx.input.whileHolding(["KeyS"], () =>
+    ctx.until(() => grounded()),
+  );
+  ```
+
+  Holding, release and nesting are unchanged. Existing calls keep compiling — a
+  callback resolving with `void` still gives a `Promise<void>`.
+
+- [#295](https://github.com/marco-lepore/yage/pull/295) [`aed53f7`](https://github.com/marco-lepore/yage/commit/aed53f7f5679f824846dee3c55c0342f7f07cf98) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add a frame budget and scoped key holds to `inspector.drive`
+
+  `drive(fn, { maxFrames })` bounds a whole run. Once the budget is spent, the
+  frame-advancing calls stop the callback and the result comes back as
+  `{ ok: false, timedOut: true }` instead of running until a tool call gives up.
+  It defaults to 10,000 frames; pass `Infinity` to disable it. Any other value
+  has to be a non-negative integer — a budget the guard could not act on is
+  rejected at the call rather than leaving the run unbounded.
+
+  Every result now carries `state` — the keys and actions held when the run
+  ended, plus the scene stack — read before the drive releases its synthetic
+  input, so a run that stalled says what it was pressing and where it was:
+
+  ```ts
+  const run = await inspector.drive(
+    async (ctx) => {
+      await ctx.input.whileHolding(["KeyD"], async () => {
+        while (ctx.framesUsed < 900 && !atExit()) await ctx.step(1);
+      });
+    },
+    { maxFrames: 1200 },
+  );
+  // { ok: false, timedOut: true, framesUsed: 1200,
+  //   state: { keys: ["KeyD"], actions: [], scenes: [...] }, ... }
+  ```
+
+  `input.whileHolding(codes, fn)` holds `codes` for the duration of `fn`, then
+  restores what was held before — including when `fn` throws. A code already down
+  on entry is left alone at both ends, so nesting layers holds by scope even when
+  the code sets overlap: an inner maneuver adds keys without dropping the ones
+  already held, which `input.clearAll()` would. `ctx.framesUsed` reports frames
+  spent so far, so a loop guard can bound frames rather than iterations.
+
+  `getInputState()` reads the input snapshot on its own, without the full
+  `snapshot()` walk over every scene and entity.
+
+- [#299](https://github.com/marco-lepore/yage/pull/299) [`ba57361`](https://github.com/marco-lepore/yage/commit/ba5736175e8b3e06157e680b4b66d10eb8d06823) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Report two error paths that were invisible.
+  - `ErrorBoundary.wrapSystem` / `wrapComponent` now detect a rejected thenable,
+    so an `async update()` — which compiles against the void-returning signature
+    without a diagnostic — is recorded in
+    `Inspector.getErrors().callbackErrors` and logged instead of failing
+    silently.
+  - A throwing plugin `afterExit` hook is reported through the error boundary
+    rather than written straight to `Logger`, so it lands on the same error
+    surface as every other callback failure. The remaining plugins still tear
+    their scene state down.
+
+- [#338](https://github.com/marco-lepore/yage/pull/338) [`aaf1279`](https://github.com/marco-lepore/yage/commit/aaf1279455bc655681cf15c8edc64b1407b2a823) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `scene.spawnBatch(build)` creates a set of entities that all exist before any of them is set up, and that arrive in the scene together or not at all.
+  - `batch.reserve(Class, options?)` constructs and keys an entity without running `setup()`, `batch.addChild(parent, name, child)` links two reserved entities before setup so a child can read its parent, and `batch.setup(entity, params?)` runs one entity's `setup()` with the trailing arguments its signature declares. A reserved entity belongs to the scene but stays out of `scene.getEntities()`, `findByKey()`, and every query until the batch commits.
+  - Commit registers the complete entity and key set before publishing `entity:created` and `component:added` in reservation order, then activates parent-first. Any throw — from `setup()`, a lifecycle-event subscriber, or an `onEnable()` hook — discards the whole batch synchronously, so the same keys can be reserved again immediately. Teardown failures after the first error are reported through `Inspector.getErrors().callbackErrors` and never replace it.
+  - Inside the callback `entity.spawnChild(...)` joins the batch in every form; a top-level `scene.spawn()` throws, since the batch could not roll it back.
+  - `SpawnOptions` gains `active`. `scene.spawn(Class, params?, { active: false })` runs `setup()` and every `onAdd()` without firing `onEnable()`, and the entity joins no query until `setActive(true)`. Note that the two-argument `spawn(Class, X)` form now routes an `X` whose only own key is `active` to options rather than to setup params, the way it already does for `key`.
+
+  A `setup()` hook run by `batch.setup()` is attributed through the error boundary the way `Scene.spawn()` attributes it, so a throw during a batch appears in `Inspector.getErrors().callbackErrors` against the entity before the batch rolls back.
+
+- [#314](https://github.com/marco-lepore/yage/pull/314) [`8f11936`](https://github.com/marco-lepore/yage/commit/8f119362281bf31ab59b8b907816886922aaf18f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `Transform` can convert a world-space point into an entity's own local space.
+  - `Transform.worldToLocal(point)` converts a world-space point into the
+    entity's own local space, reversing its world position, rotation and scale.
+    Use it to ask where a world point falls inside an entity that is parented,
+    rotated or scaled. On an axis whose world scale is 0 the result is
+    non-finite, because the world transform collapses that axis.
+  - The `worldPosition` setter back-computes the local position through the
+    parent's `worldToLocal`, so the inverse transform is written once.
+
+- [#338](https://github.com/marco-lepore/yage/pull/338) [`b087462`](https://github.com/marco-lepore/yage/commit/b087462ab2ae27bebb7ce274402c9e278f6d472a) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add `Transform.localToWorld(point)`, the inverse of `Transform.worldToLocal(point)`: it scales the point by `worldScale`, turns it by `worldRotation`, and offsets it by `worldPosition` — the same composition a child transform goes through — so an offset authored beside the entity, such as a muzzle or a hardpoint, follows it however the parent chain turns or scales it. It takes a `Vec2Like` and returns a `Vec2`.
+
+- [#298](https://github.com/marco-lepore/yage/pull/298) [`8bb9e0b`](https://github.com/marco-lepore/yage/commit/8bb9e0b905017ac724f70fc8fe55014605563e88) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fix `Transform.worldPosition` writing `Infinity`/`NaN` into the local position when an ancestor has a zero scale component.
+  - On an axis where the parent's world scale is 0, the setter keeps the child's local value unchanged instead of dividing by zero. Nothing under a flattened parent can move along that axis, so the entity keeps rendering at the parent's origin and recovers a correct pose as soon as the scale is non-zero again.
+  - A dev-mode warning reports which axis could not take the assignment.
+
+- [#329](https://github.com/marco-lepore/yage/pull/329) [`8d7b5e3`](https://github.com/marco-lepore/yage/commit/8d7b5e3fe395898c7f4cbde0b352acc2713e6559) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add caller-owned vector buffers and coordinate reads without Vec2 construction.
+  - Add `Vec2Buffer`, alias-safe `Vec2` Into math, scalar Transform setters, and Into getters while preserving immutable snapshot identity.
+  - Reject non-finite Transform inputs and overflowing pose writes before state changes.
+
+- [#289](https://github.com/marco-lepore/yage/pull/289) [`ff52a8a`](https://github.com/marco-lepore/yage/commit/ff52a8a4816b18f7de5309ab08606183db67e071) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add `window.__yage__.ready` and `inspector.drive(fn)` for driving a running game
+
+  An engine built with `debug: true` now publishes `window.__yage__` as `start()`
+  begins, and the object carries a `ready` promise that settles when `start()`
+  finishes — plugins installed, loop running, `onStart` hooks done. A driver that
+  reloads the page awaits `ready` instead of guessing a sleep, and a boot failure
+  rejects it with the error that stopped startup rather than leaving a poller to
+  time out. The first scene is pushed by the host after `await engine.start()`, so
+  waiting for a scene stays a separate step.
+
+  `inspector.drive(fn)` runs a callback with the clock held still and reports the
+  outcome as one object:
+
+  ```ts
+  const run = await inspector.drive(async ({ input, until }) => {
+    input.keyDown("KeyD");
+    return await until(() => inspector.getEntityPosition("player").x > 950, {
+      maxFrames: 240,
+    });
+  });
+  // { ok: true, value: 137, framesUsed: 137, durationMs, captures: [] }
+  ```
+
+  The context carries `step`, `until`, `input`, `events` and `capture`. Every
+  frame-advancing call is awaitable and drains async work between frames, so a
+  sequence crossing a scene transition advances instead of stalling — including
+  `input.tap`, `input.hold` and `input.fireAction`, whose `inspector.input`
+  versions are synchronous and do not. The clock is frozen for the duration and
+  returned to the state it was in, and synthetic input is released afterwards, so
+  a drive leaves no key held. A throw inside the callback comes back as
+  `{ ok: false, error }`; a missing `DebugPlugin` throws from the `drive()` call.
+
+  The context is shaped like `@yagejs-tools/lab`'s scenario `drive`, so a probe
+  worth keeping moves into a scenario file with little edited — assert with the
+  lab's `expect` instead of returning a measurement, since a scenario's `drive`
+  returns `void`, and note that `fireAction` pulses the action once per frame
+  here where the lab holds it down for the whole span.
+
 ## 0.10.4
 
 ### Patch Changes
