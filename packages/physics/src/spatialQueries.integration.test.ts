@@ -377,6 +377,39 @@ describe("spatial queries (real Rapier)", () => {
 
   describe("Transform channel", () => {
     it.each(["static", "dynamic", "kinematic"] as const)(
+      "refreshes queries after component-only %s activation teleports",
+      async (type) => {
+        const { scene, physicsWorld } = await createPhysicsTestContext({
+          gravity: { x: 0, y: 0 },
+        });
+        const wall = spawnBody(scene, "wall", 100, 100, type, {
+          shape: { type: "box", width: 80, height: 10 },
+        });
+        step(physicsWorld, 1);
+        const elapsed = physicsWorld.elapsed;
+
+        wall.rb.enabled = false;
+        wall.transform.setPosition(300, 120);
+        wall.rb.enabled = true;
+
+        expect(physicsWorld.queryShape(PROBE, { x: 330, y: 120 })).toEqual([
+          wall.entity,
+        ]);
+        expect(physicsWorld.queryShape(PROBE, { x: 100, y: 100 })).toEqual([]);
+
+        wall.rb.enabled = false;
+        wall.transform.rotation = Math.PI / 2;
+        wall.rb.enabled = true;
+
+        expect(physicsWorld.queryShape(PROBE, { x: 300, y: 150 })).toEqual([
+          wall.entity,
+        ]);
+        expect(physicsWorld.queryShape(PROBE, { x: 330, y: 120 })).toEqual([]);
+        expect(physicsWorld.elapsed).toBe(elapsed);
+      },
+    );
+
+    it.each(["static", "dynamic", "kinematic"] as const)(
       "places a dormant %s body and its collider at the written pose on activation",
       async (type) => {
         const ctx = await createPhysicsTestContext({ gravity: { x: 0, y: 0 } });

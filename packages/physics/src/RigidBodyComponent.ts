@@ -186,6 +186,7 @@ export class RigidBodyComponent extends Component {
         },
         true,
       );
+      this.physicsWorld._markQueriesStale();
       this._kinematicTargetPositionX = target.x;
       this._kinematicTargetPositionY = target.y;
       this._lastWrittenPositionX = target.x;
@@ -194,6 +195,7 @@ export class RigidBodyComponent extends Component {
     if (this._hasPendingTargetRotation()) {
       const target = this.transform.worldRotation;
       body.setRotation(target, true);
+      this.physicsWorld._markQueriesStale();
       this._kinematicTargetRotation = target;
       this._lastWrittenRotation = target;
     }
