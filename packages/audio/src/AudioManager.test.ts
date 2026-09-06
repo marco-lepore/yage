@@ -1,12 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { SoundLibrary, IMediaInstance } from "@pixi/sound";
 
-// `sound()` lives beside `registerSound`, which imports `@pixi/sound`'s
-// singleton — it constructs an `AudioContext` unavailable under Vitest. The
-// manager under test is driven by its own fake library, so the singleton only
-// has to exist.
-vi.mock("@pixi/sound", () => ({ sound: {} }));
-
 import { ErrorBoundary, Logger, LogLevel } from "@yagejs/core";
 import { AudioManager } from "./AudioManager.js";
 import { sound } from "./assets.js";

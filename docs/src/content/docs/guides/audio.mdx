@@ -239,6 +239,9 @@ const audio = this.use(AudioManagerKey);
 audio.play("shoot");
 ```
 
+You can call `registerSound` at module scope, before `AudioPlugin` installs:
+the alias is held and added to the audio library the plugin loads.
+
 Registered aliases are engine-global and live until you call
 `unregisterSound(alias)`. Re-registering an alias replaces the entry.
 Registering an alias already used by a loaded sound asset throws, since

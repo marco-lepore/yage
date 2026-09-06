@@ -94,6 +94,15 @@ export async function runValidate(options: ValidateOptions): Promise<number> {
       // browser joins this run. Left on, it writes a cache directory into the
       // project that nothing reads.
       optimizeDeps: { noDiscovery: true, include: [] },
+      // Vite transforms the engine packages rather than handing them to Node.
+      // `@dimforge/rapier2d`, which `@yagejs/physics` imports, declares only
+      // `module` in its manifest, so Node's resolver finds no entry point for
+      // it; Vite resolves it through that field. Both this file's
+      // `@yagejs/level` and the project module's take the inlined copy, which
+      // is what keeps parameter kinds comparable by identity.
+      environments: {
+        ssr: { resolve: { noExternal: [/^@yagejs\//, "@dimforge/rapier2d"] } },
+      },
     } satisfies InlineConfig),
   );
 
@@ -239,10 +248,28 @@ async function importProject(
     const module = await server.ssrLoadModule(modulePath);
     return module["default"];
   } catch (error) {
-    throw new Error(`Failed to import ${modulePath}: ${firstLine(error)}`, {
-      cause: error,
-    });
+    const reason = firstLine(error);
+    throw new Error(
+      `Failed to import ${modulePath}: ${reason}${browserHint(reason)}`,
+      { cause: error },
+    );
   }
+}
+
+/**
+ * What to do about an import that reached for a browser. Nothing in this
+ * command runs in one, so the module has to stop needing it at import time.
+ */
+function browserHint(reason: string): string {
+  if (!/\b(?:document|window) is not defined\b/.test(reason)) return "";
+  // The reason is a bare clause more often than a sentence, and the hint reads
+  // as a second sentence after it.
+  const stop = /[.!?]$/.test(reason) ? "" : ".";
+  return (
+    `${stop} The project module reached code that needs a browser at import` +
+    " time. Move that import out of the entity modules, or import it where" +
+    " it is used."
+  );
 }
 
 /**

@@ -3,9 +3,10 @@ import { synthPresets } from "./core/presets.js";
 import { SYNTH_SAMPLE_RATE } from "./core/render.js";
 import { SynthPlugin } from "./SynthPlugin.js";
 
-// The real `registerSound` reaches @pixi/sound's singleton, which needs a
-// browser (it type-checks `instanceof AudioBuffer` and builds an
-// AudioContext). Stand in for it and assert what the plugin hands over.
+// The real `registerSound` adds to the audio library `AudioPlugin.install`
+// loads, and that library needs a browser: it type-checks
+// `instanceof AudioBuffer` and builds an `AudioContext`. Stand in for
+// `@yagejs/audio` and assert what the plugin hands over.
 const audio = vi.hoisted(() => ({
   registered: new Map<string, AudioBuffer>(),
   registerSound: vi.fn(),
@@ -45,9 +46,11 @@ beforeEach(() => {
   audio.registered.clear();
   audio.registerSound.mockReset();
   audio.unregisterSound.mockReset();
-  audio.registerSound.mockImplementation((alias: string, buffer: AudioBuffer) => {
-    audio.registered.set(alias, buffer);
-  });
+  audio.registerSound.mockImplementation(
+    (alias: string, buffer: AudioBuffer) => {
+      audio.registered.set(alias, buffer);
+    },
+  );
   audio.unregisterSound.mockImplementation((alias: string) => {
     audio.registered.delete(alias);
   });

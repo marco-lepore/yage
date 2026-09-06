@@ -1,13 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// `@pixi/sound`'s singleton only runs in a real browser (it constructs an
-// `AudioContext`, unavailable under Vitest's node/happy-dom environments), so
-// `registerSound`/`unregisterSound` — free functions that import the
-// singleton directly, the same way `AudioPlugin.ts` does — are tested against
-// a fake `SoundLibrary` instead, mirroring `AudioPlugin.test.ts`'s
-// `vi.mock("@pixi/sound", ...)`. `AudioManager` is constructed around the
-// same fake so the round-trip test exercises the real ledger + `sound.add`/
-// `find`/`exists`/`remove` contract, not just the mock's bookkeeping.
+// `@pixi/sound`'s singleton only runs in a real browser: it constructs an
+// `AudioContext`, which Vitest's node and happy-dom environments do not
+// provide. `AudioPlugin.install` is what loads it, so this fake `SoundLibrary`
+// stands in for the module, the way `AudioPlugin.test.ts` mocks it too.
+// `AudioManager` is constructed around the same fake so the round-trip test
+// exercises the real ledger + `sound.add`/`find`/`exists`/`remove` contract,
+// not just the mock's bookkeeping.
 const { mockLibrary } = vi.hoisted(() => {
   const sounds = new Map<string, { alias: string; destroy: () => void }>();
 
@@ -53,10 +52,15 @@ vi.mock("@pixi/sound", () => ({ sound: mockLibrary }));
 
 import { AudioManager } from "./AudioManager.js";
 import {
+  _setSoundLibrary,
   clearRegisteredSounds,
   registerSound,
   unregisterSound,
 } from "./assets.js";
+
+// The library reaches these functions from `AudioPlugin.install`, which loads
+// it; nothing installs a plugin here, so the fake is handed over directly.
+_setSoundLibrary(mockLibrary as never);
 
 /** A stand-in `AudioBuffer` — never decoded, just an identity for the ledger. */
 function makeBuffer(): AudioBuffer {
@@ -114,9 +118,7 @@ describe("registerSound() / unregisterSound()", () => {
     // evict it.
     mockLibrary.add("shared", {});
     const assetEntry = mockLibrary.find("shared");
-    expect(() => registerSound("shared", makeBuffer())).toThrowError(
-      /shared/,
-    );
+    expect(() => registerSound("shared", makeBuffer())).toThrowError(/shared/);
     expect(mockLibrary.find("shared")).toBe(assetEntry);
   });
 
@@ -142,5 +144,62 @@ describe("registerSound() / unregisterSound()", () => {
     const assetEntry = mockLibrary.find("shared");
     unregisterSound("shared");
     expect(mockLibrary.find("shared")).toBe(assetEntry);
+  });
+});
+
+describe("registering before AudioPlugin installs", () => {
+  /**
+   * A copy of the modules with nothing handed over yet: the slot the plugin
+   * fills is module state, and the file above filled this file's copy.
+   */
+  async function freshModules(): Promise<{
+    assets: typeof import("./assets.js");
+    install: () => Promise<void>;
+  }> {
+    vi.resetModules();
+    const [assets, { AudioPlugin }, { EngineContext }] = await Promise.all([
+      import("./assets.js"),
+      import("./AudioPlugin.js"),
+      import("@yagejs/core"),
+    ]);
+    return {
+      assets,
+      install: () => new AudioPlugin().install(new EngineContext()),
+    };
+  }
+
+  beforeEach(() => {
+    mockLibrary.sounds.clear();
+    vi.clearAllMocks();
+  });
+
+  it("adds the held sound to the library when the plugin installs", async () => {
+    const { assets, install } = await freshModules();
+    const buffer = makeBuffer();
+
+    assets.registerSound("boom", buffer);
+    expect(mockLibrary.exists("boom")).toBe(false);
+
+    await install();
+
+    expect(mockLibrary.exists("boom")).toBe(true);
+    expect(mockLibrary.add).toHaveBeenCalledWith("boom", {
+      source: buffer,
+      preload: true,
+    });
+    expect(() =>
+      new AudioManager(mockLibrary as never).play("boom"),
+    ).not.toThrow();
+  });
+
+  it("drops a sound unregistered before the plugin installs", async () => {
+    const { assets, install } = await freshModules();
+
+    assets.registerSound("boom", makeBuffer());
+    assets.unregisterSound("boom");
+
+    await install();
+
+    expect(mockLibrary.exists("boom")).toBe(false);
   });
 });

@@ -1260,12 +1260,20 @@ your project module, and no level is checked, since there is no catalog to
 check one against. A project whose globs match no file exits 0 and says so.
 Pass `--config` to name a config file other than `editor/config.ts`.
 
+The `@yagejs/*` packages your modules import are transformed by Vite as well,
+rather than loaded by Node, so a module that imports `@yagejs/physics` (whose
+`@dimforge/rapier2d` Node cannot resolve) or `@yagejs/audio` is checked like any
+other. A module that reads `window` or `document` while it is being imported is
+the case that fails: the command names the module and the error, and says to
+move that import out of your entity modules or into the code that uses it.
+
 ### The same check as a test
 
 If you would rather have it in your test run than as a CI step of its own,
 the three calls the command makes are public API — import your project, build
-the catalog once, and expect no diagnostics per file. Your entity modules run
-in Node with no browser, so one that touches `window` at import time fails:
+the catalog once, and expect no diagnostics per file. Your entity modules load
+through your test runner rather than through the editor's server, in Node, with
+no browser, so one that touches `window` at import time fails:
 
 ```typescript title="src/levels.test.ts"
 import { readdirSync, readFileSync } from "node:fs";
@@ -1287,4 +1295,22 @@ it.each(levels)("%s matches the catalog", (name) => {
   if (!read.ok) throw new Error(read.errors[0]?.message);
   expect(validateLevel(read.document, built.catalog)).toEqual([]);
 });
+```
+
+A project whose entities import `@yagejs/physics` also needs this config,
+because Vitest cannot otherwise resolve `@dimforge/rapier2d`:
+
+```typescript title="vitest.config.ts"
+import { defineConfig, mergeConfig } from "vitest/config";
+import viteConfig from "./vite.config.js";
+
+export default mergeConfig(
+  viteConfig,
+  defineConfig({
+    environments: { ssr: { resolve: { mainFields: ["module", "main"] } } },
+    test: {
+      server: { deps: { inline: ["@yagejs/physics", "@dimforge/rapier2d"] } },
+    },
+  }),
+);
 ```

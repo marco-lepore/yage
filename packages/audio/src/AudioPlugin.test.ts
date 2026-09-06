@@ -43,25 +43,45 @@ describe("AudioPlugin", () => {
 
   it("has no dependencies", () => {
     const plugin = new AudioPlugin();
-    expect((plugin as unknown as Record<string, unknown>).dependencies).toBeUndefined();
+    expect(
+      (plugin as unknown as Record<string, unknown>).dependencies,
+    ).toBeUndefined();
   });
 
-  it("install() registers AudioManager on context", () => {
+  it("install() registers AudioManager on context", async () => {
     const plugin = new AudioPlugin();
     const context = new EngineContext();
-    plugin.install(context);
+    await plugin.install(context);
 
     const manager = context.resolve(AudioManagerKey);
     expect(manager).toBeInstanceOf(AudioManager);
     plugin.onDestroy();
   });
 
-  it("onDestroy() calls sound.close()", () => {
+  it("onDestroy() calls sound.close()", async () => {
     const plugin = new AudioPlugin();
     const context = new EngineContext();
-    plugin.install(context);
+    await plugin.install(context);
     plugin.onDestroy();
     expect(mockSound.close).toHaveBeenCalled();
+  });
+
+  it("registers nothing when destroyed while the library is loading", async () => {
+    const addSpy = vi.spyOn(document, "addEventListener");
+    const plugin = new AudioPlugin();
+    const context = new EngineContext();
+
+    const installing = plugin.install(context);
+    plugin.onDestroy();
+    await installing;
+
+    expect(context.tryResolve(AudioManagerKey)).toBeUndefined();
+    expect(mockSound.close).toHaveBeenCalledTimes(1);
+    const gestureEvents = new Set(["pointerdown", "keydown", "touchstart"]);
+    expect(
+      addSpy.mock.calls.filter((args) => gestureEvents.has(args[0])),
+    ).toHaveLength(0);
+    addSpy.mockRestore();
   });
 
   describe("autoMuteOnBlur runtime toggle", () => {
@@ -72,11 +92,11 @@ describe("AudioPlugin", () => {
       });
     }
 
-    it("toggling off while window is unfocused resumes immediately", () => {
+    it("toggling off while window is unfocused resumes immediately", async () => {
       mockSound.context.paused = true;
       const plugin = new AudioPlugin();
       const context = new EngineContext();
-      plugin.install(context);
+      await plugin.install(context);
       const manager = context.resolve(AudioManagerKey);
 
       setHasFocus(false);
@@ -88,10 +108,10 @@ describe("AudioPlugin", () => {
       plugin.onDestroy();
     });
 
-    it("toggling on while window is unfocused pauses immediately", () => {
+    it("toggling on while window is unfocused pauses immediately", async () => {
       const plugin = new AudioPlugin({ autoMuteOnBlur: false });
       const context = new EngineContext();
-      plugin.install(context);
+      await plugin.install(context);
       const manager = context.resolve(AudioManagerKey);
 
       setHasFocus(false);
@@ -103,10 +123,10 @@ describe("AudioPlugin", () => {
       plugin.onDestroy();
     });
 
-    it("toggling while focused does not touch paused state", () => {
+    it("toggling while focused does not touch paused state", async () => {
       const plugin = new AudioPlugin();
       const context = new EngineContext();
-      plugin.install(context);
+      await plugin.install(context);
       const manager = context.resolve(AudioManagerKey);
 
       setHasFocus(true);
@@ -118,11 +138,11 @@ describe("AudioPlugin", () => {
   });
 
   describe("unlock gesture wiring", () => {
-    it("fires onUnlock listeners once the context reports running", () => {
+    it("fires onUnlock listeners once the context reports running", async () => {
       mockSound.context.audioContext.state = "suspended";
       const plugin = new AudioPlugin();
       const context = new EngineContext();
-      plugin.install(context);
+      await plugin.install(context);
       const manager = context.resolve(AudioManagerKey);
 
       const cb = vi.fn();
@@ -138,13 +158,13 @@ describe("AudioPlugin", () => {
       plugin.onDestroy();
     });
 
-    it("skips gesture listeners if already unlocked at install", () => {
+    it("skips gesture listeners if already unlocked at install", async () => {
       mockSound.context.audioContext.state = "running";
       const addSpy = vi.spyOn(document, "addEventListener");
 
       const plugin = new AudioPlugin();
       const context = new EngineContext();
-      plugin.install(context);
+      await plugin.install(context);
 
       const gestureEvents = new Set(["pointerdown", "keydown", "touchstart"]);
       const attachedGestureCalls = addSpy.mock.calls.filter((args) =>
@@ -156,11 +176,11 @@ describe("AudioPlugin", () => {
       plugin.onDestroy();
     });
 
-    it("removes gesture listeners after first successful unlock", () => {
+    it("removes gesture listeners after first successful unlock", async () => {
       mockSound.context.audioContext.state = "suspended";
       const plugin = new AudioPlugin();
       const context = new EngineContext();
-      plugin.install(context);
+      await plugin.install(context);
       const manager = context.resolve(AudioManagerKey);
 
       mockSound.context.audioContext.state = "running";

@@ -72,6 +72,13 @@ import failure or diagnostic; exit 0 when every level is clean, and 0 with a
 line when the globs match no file. A catalog problem is reported against the
 project module and stops the run, since there is no catalog to check against.
 
+The `@yagejs/*` packages the modules import are transformed by Vite as well,
+rather than loaded by Node, so a module that imports `@yagejs/physics` (whose
+`@dimforge/rapier2d` Node cannot resolve) or `@yagejs/audio` is checked like any
+other. A module that reads `window` or `document` at import time fails: the
+error names the module, and says to move that import out of the entity modules
+or into the code that uses it.
+
 ```
   yage-editor validate
 
@@ -83,8 +90,9 @@ project module and stops the run, since there is no catalog to check against.
 ```
 
 The same check as a test, for a project that wants it in its own test run —
-the calls are `@yagejs/level` public API. The entity modules run in Node with no
-browser, so one that touches `window` at import time fails:
+the calls are `@yagejs/level` public API. The entity modules load through the
+test runner rather than through the editor's server, in Node, with no browser,
+so one that touches `window` at import time fails:
 
 ```ts
 import { readdirSync, readFileSync } from "node:fs";
@@ -106,6 +114,25 @@ it.each(levels)("%s matches the catalog", (name) => {
   if (!read.ok) throw new Error(read.errors[0]?.message);
   expect(validateLevel(read.document, built.catalog)).toEqual([]);
 });
+```
+
+A project whose entities import `@yagejs/physics` also needs this config,
+because Vitest cannot otherwise resolve `@dimforge/rapier2d`:
+
+```ts
+// vitest.config.ts
+import { defineConfig, mergeConfig } from "vitest/config";
+import viteConfig from "./vite.config.js";
+
+export default mergeConfig(
+  viteConfig,
+  defineConfig({
+    environments: { ssr: { resolve: { mainFields: ["module", "main"] } } },
+    test: {
+      server: { deps: { inline: ["@yagejs/physics", "@dimforge/rapier2d"] } },
+    },
+  }),
+);
 ```
 
 ## Configuration
