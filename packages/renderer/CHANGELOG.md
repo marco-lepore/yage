@@ -1,5 +1,154 @@
 # @yagejs/renderer
 
+## 0.11.0
+
+### Minor Changes
+
+- [#304](https://github.com/marco-lepore/yage/pull/304) [`daa8214`](https://github.com/marco-lepore/yage/commit/daa821458a69d14176f5c5aebc3f4204348ddb0c) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Remove component snapshot methods, snapshot data types, runtime effect and mask
+  restoration registries, and the optional `@yagejs/save` integration. Rebuild
+  renderer resources from explicit game state when constructing a scene.
+
+  Add `TextComponent.content` and `SplitTextComponent.content`, which read the
+  displayed string back — `.text` / `.splitText` hold the pixi display object, so
+  these are what the Inspector reports for those components.
+
+  `addEffect(factory)` no longer takes an attachment-options argument, and the
+  `restoreMask` export is gone.
+
+- [#294](https://github.com/marco-lepore/yage/pull/294) [`9b9fe07`](https://github.com/marco-lepore/yage/commit/9b9fe07d7f32219c0e9aa37265b526cdc5924ce8) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add composable game-feel cues with visual, time, camera, audio, filter, and
+  particle effects.
+  - Add independently removable visual modifiers for position, rotation, scale,
+    opacity, and visibility.
+  - Add camera modifiers for position, rotation, and zoom, and expose effective
+    camera values to rendering and coordinate conversion.
+  - Make built-in camera shake contribute through the camera modifier host.
+  - Let effect attachments opt out of save snapshots for owner-managed runtime
+    pulses.
+
+- [#328](https://github.com/marco-lepore/yage/pull/328) [`05492cb`](https://github.com/marco-lepore/yage/commit/05492cb8e27f89fe82fedd6e307afa2f90d1f68f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Keep diagnostic frames, clock control, and scene state consistent.
+  - Export `syncCameraTransform(target, camera?, binding?)` to apply an effective camera pose and optional binding ratios. Renderer layers and scene debug drawing use the same camera transform.
+
+- [#311](https://github.com/marco-lepore/yage/pull/311) [`aa5b78e`](https://github.com/marco-lepore/yage/commit/aa5b78e18b56d17bdca4ffb8299c8ea83979e05a) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Signal interrupted one-shots, validate animation names and sheet grids, and stop forcing nearest sampling.
+  - Add `onCancel` to `playOneShot` options on `AnimationController` and
+    `LayeredAnimationController`. Exactly one of `onComplete` and `onCancel`
+    runs per one-shot: `onComplete` when the lock plays out, `onCancel` when a
+    second one-shot, `forcePlay()`, `unlock()` or destroying the component ends
+    it first. A game can now release what the one-shot was holding instead of
+    losing the callback silently. A cancel callback runs after the new state is
+    installed, so calling `playOneShot` from inside it takes effect.
+  - `play`, `playOneShot`, `forcePlay` and `calcDuration` throw naming the
+    method, the unknown name and the defined set instead of failing with a
+    `TypeError` and leaving the controller reporting an animation it is not
+    drawing. Add `AnimationController.has(name)` to ask first when names come
+    from data.
+  - `LayeredAnimationController.play`, `playOneShot` and `forcePlay` throw
+    naming the layer that lacks the animation before any layer switches, so the
+    layers can no longer end up on different animations. `playOneShot` checks the shared
+    `startFrame` and `speed` against every layer the same way, an explicit
+    duration included, which matters when layers define the same name with
+    different frame counts.
+  - Add `startFrame` and `speed` to `playOneShot` (and to `calcDuration`). The
+    automatic lock duration is derived from the frames that will actually play,
+    so the lock and the visible clip end together.
+  - Add `AnimatedSpriteComponent.onFrameChange(listener)`, a multi-subscriber
+    subscription returning an unsubscribe function. It owns Pixi's single
+    frame-change slot, which one raw assignment used to take for itself.
+  - `AnimatedSpriteComponent.play()` owns its `onComplete`: a play without one
+    clears the previous callback, and an animation switch clears it too, so it
+    cannot fire for an animation its author never saw.
+  - Move the grid validation into the step every slicing entry shares.
+    `sliceGrid`, `sliceSheet` and `sliceTextureFrames` now check that each field
+    is a finite number at or above its minimum, that `columns` and `count` are
+    whole numbers, and that the grid fits inside the texture, throwing naming
+    the function and the offending field. A
+    `frameWidth` of 0 previously derived an infinite frame count and looped
+    forever; an oversize grid produced frames that read past the image.
+  - Sheet slicing no longer switches the shared texture source to nearest
+    sampling. That mutation re-sampled every other sprite cut from the same
+    file, including smooth art. Turn on `pixelArtPreset` in the renderer config
+    for nearest sampling.
+  - An atlas animation with no frames throws naming the atlas and the animation,
+    instead of failing inside Pixi's `AnimatedSprite` constructor.
+  - Re-baking a bitmap font clears the previous bake's bold/italic
+    registrations even when the new bake supplies no variants, so a stale
+    emphasis atlas no longer keeps resolving.
+  - Route the animation callbacks the engine invokes — `onComplete`, `onCancel`
+    and frame listeners — through the error boundary, so a throw is recorded
+    against the callback in `Inspector.getErrors().callbackErrors`.
+
+- [#310](https://github.com/marco-lepore/yage/pull/310) [`8064fa6`](https://github.com/marco-lepore/yage/commit/8064fa64099feeb1d164360b668e0721a14b7bbe) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Component lookup and queries match subclasses, so a base class can name a family.
+  - `DisplaySystem` runs one query on `[Transform, VisualComponent]` instead of
+    one per concrete visual class. Every `VisualComponent` subclass is synced,
+    including subclasses declared in other packages, and an entity carrying
+    several visuals of different classes has all of them synced and modified
+    rather than only the first.
+  - The sync and modifier passes gate on `effectiveEnabled`, so a visual on a
+    dormant entity is skipped. The `innerSort` pass skips a disabled sort group,
+    matching its sibling passes.
+  - Add `FollowTarget` — an `Entity`, a `Transform`, a world point, or a
+    function returning one — shared by `CameraFollow`, `CameraComponent.follow`,
+    `CameraEntity.follow` and `ScreenFollow`. Entity and Transform targets are
+    read through `worldPosition`, so a camera following a target parented under
+    a moving platform tracks where the target actually is.
+  - Breaking: the structural `{ position: Vec2Like }` follow target no longer
+    compiles. Pass the `Transform` itself, the entity, or a point.
+  - `CameraBoundsComponent` declares `static updatePriority = 10`, so the bounds
+    clamp sees this frame's position and zoom. An animated zoom-out at a level
+    edge no longer shows a few pixels beyond the bounds each frame.
+  - `setFit({ mode })` keeps the element the fit currently observes instead of
+    re-resolving the default host.
+  - Reading a destroyed `RenderTargetHandle` throws
+    `RenderTargetHandle.<member>: the handle is destroyed.` instead of a bare
+    `Cannot read properties of null` from inside Pixi.
+  - `CameraFollow.start`, `CameraZoom.start` and `CameraEntity`'s `fitTo` reject
+    a non-finite or out-of-range number at the call, naming the input, instead
+    of writing it into camera state where nothing recovers it.
+  - A throwing layer depth-key function, sort-group `innerSort`, follow-target
+    function, zoom easing, transition easing, or mask draw callback is attributed
+    to that callback in `Inspector.getErrors().callbackErrors` and rethrown.
+  - Docs: under `letterbox` every scene layer is clipped to the virtual rect, so
+    `extendedVirtualRects` only reports where the bars are — bar content is
+    parented on the Pixi stage in canvas pixels. `screenToWorld` /
+    `worldToScreen` use the camera's transform, not a layer's. Shake intensity,
+    follow offset and deadzone are world pixels; mask coordinates are the masked
+    object's local space. There is no `document.body` fit fallback, and the
+    default blend mode is `"inherit"`.
+
+### Patch Changes
+
+- [#327](https://github.com/marco-lepore/yage/pull/327) [`d2adfed`](https://github.com/marco-lepore/yage/commit/d2adfedb0e5d15269fe941a3a24f23ddb0126aa4) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Clarify addon composition and lifecycle contracts.
+  - Warn in development when `ensureLayer` requests an order different from an existing layer. Preserve the host's layer and order, and report each scene-tree, layer-name, requested-order mismatch only once.
+
+- [#315](https://github.com/marco-lepore/yage/pull/315) [`dc42ba4`](https://github.com/marco-lepore/yage/commit/dc42ba40cd3bbd04c8ff27bf4e8721f274dde034) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `texture(path, { scaleMode })` sets how one image is sampled.
+
+  `texture("tiles.png", { scaleMode: "nearest" })` loads that sheet with
+  nearest-neighbour sampling, for pixel art in a project that is otherwise
+  smooth; `pixelArtPreset` remains the switch for a whole project. The setting
+  applies to the loaded image, so every sprite drawing from it samples the same
+  way.
+
+- [#300](https://github.com/marco-lepore/yage/pull/300) [`08b0d06`](https://github.com/marco-lepore/yage/commit/08b0d06b63a44a51bd6f8e8308574fd41c96af59) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fix a `linearGradient` doc comment that pointed at the removed `Component.onRemove` hook — destroy a gradient's backing texture in `onDestroy()` instead.
+
+- [#296](https://github.com/marco-lepore/yage/pull/296) [`9e194ec`](https://github.com/marco-lepore/yage/commit/9e194ec386a74c0f1ad5699c3c0db183aa86f1b1) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Expand timing and animation support for feedback cues.
+  - Apply live speed changes to active sprites and automatically timed one-shot locks. Layered controllers share the first controller's retimed lock and provide one speed multiplier for every layer.
+
+- [#312](https://github.com/marco-lepore/yage/pull/312) [`439d0e2`](https://github.com/marco-lepore/yage/commit/439d0e205228bee15d8d79607abdba5731b0873b) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `registerTexture`'s doc comment names the particle emitter's `texture` option as the key-based surface it feeds; the emitter's separate `textureKey` option is gone.
+
+- [#329](https://github.com/marco-lepore/yage/pull/329) [`8d7b5e3`](https://github.com/marco-lepore/yage/commit/8d7b5e3fe395898c7f4cbde0b352acc2713e6559) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add caller-owned vector buffers and coordinate reads without Vec2 construction.
+  - Add effective-position and coordinate-projection Into queries to cameras.
+  - Reuse coordinate buffers for display synchronization, sort groups, follow targets, and shared camera transforms.
+
+- [#338](https://github.com/marco-lepore/yage/pull/338) [`b64cd45`](https://github.com/marco-lepore/yage/commit/b64cd453a65a83899b9e8d5fecf4ad43bf1eb3d4) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `VisualComponent.setLayer(name)` moves a visual to another render layer.
+  - The render object is detached and re-parented through the same resolution the
+    initial add uses, so a `SortGroupComponent` on the new layer claims it. Called
+    before the component reaches an entity, it records the name and moves nothing.
+  - The visual joins its new parent last, which on a layer with no `sort` means it
+    draws in front of everything already there.
+  - `layerName` is now a getter over the same value; it was a readonly field.
+
+- Updated dependencies [[`dc42ba4`](https://github.com/marco-lepore/yage/commit/dc42ba40cd3bbd04c8ff27bf4e8721f274dde034), [`daa8214`](https://github.com/marco-lepore/yage/commit/daa821458a69d14176f5c5aebc3f4204348ddb0c), [`c105024`](https://github.com/marco-lepore/yage/commit/c105024b5402c11dc36da52b08f6ab39354da8a5), [`c8ad215`](https://github.com/marco-lepore/yage/commit/c8ad215530681caeb63484cc07b118cd977a5ba5), [`08b0d06`](https://github.com/marco-lepore/yage/commit/08b0d06b63a44a51bd6f8e8308574fd41c96af59), [`33d00e3`](https://github.com/marco-lepore/yage/commit/33d00e37801a300710cc10de0352b1aa1b1ba2f1), [`7275620`](https://github.com/marco-lepore/yage/commit/7275620756183b22de3df1009e1e07615db9b40e), [`4bab66f`](https://github.com/marco-lepore/yage/commit/4bab66f0e34a387155bbc7168b048dcac167525f), [`cfde97d`](https://github.com/marco-lepore/yage/commit/cfde97de2c94416cb5bbab26a12f9c290e6b66cf), [`9e194ec`](https://github.com/marco-lepore/yage/commit/9e194ec386a74c0f1ad5699c3c0db183aa86f1b1), [`05492cb`](https://github.com/marco-lepore/yage/commit/05492cb8e27f89fe82fedd6e307afa2f90d1f68f), [`aed53f7`](https://github.com/marco-lepore/yage/commit/aed53f7f5679f824846dee3c55c0342f7f07cf98), [`ba57361`](https://github.com/marco-lepore/yage/commit/ba5736175e8b3e06157e680b4b66d10eb8d06823), [`aaf1279`](https://github.com/marco-lepore/yage/commit/aaf1279455bc655681cf15c8edc64b1407b2a823), [`8064fa6`](https://github.com/marco-lepore/yage/commit/8064fa64099feeb1d164360b668e0721a14b7bbe), [`8f11936`](https://github.com/marco-lepore/yage/commit/8f119362281bf31ab59b8b907816886922aaf18f), [`b087462`](https://github.com/marco-lepore/yage/commit/b087462ab2ae27bebb7ce274402c9e278f6d472a), [`8bb9e0b`](https://github.com/marco-lepore/yage/commit/8bb9e0b905017ac724f70fc8fe55014605563e88), [`8d7b5e3`](https://github.com/marco-lepore/yage/commit/8d7b5e3fe395898c7f4cbde0b352acc2713e6559), [`ff52a8a`](https://github.com/marco-lepore/yage/commit/ff52a8a4816b18f7de5309ab08606183db67e071)]:
+  - @yagejs/core@0.11.0
+
 ## 0.10.4
 
 ### Patch Changes

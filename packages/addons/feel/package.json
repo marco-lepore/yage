@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-addons/feel",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Composable game-feel cues for YAGE: visual motion, time, camera, audio, particles, and renderer effects",
   "keywords": [
     "yage",
@@ -91,11 +91,11 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@yagejs/audio": ">=0.10.0 <0.11.0",
-    "@yagejs/core": ">=0.10.0 <0.11.0",
-    "@yagejs/effects": ">=0.10.0 <0.11.0",
-    "@yagejs/particles": ">=0.10.0 <0.11.0",
-    "@yagejs/renderer": ">=0.10.0 <0.11.0"
+    "@yagejs/audio": ">=0.11.0 <0.12.0",
+    "@yagejs/core": ">=0.11.0 <0.12.0",
+    "@yagejs/effects": ">=0.11.0 <0.12.0",
+    "@yagejs/particles": ">=0.11.0 <0.12.0",
+    "@yagejs/renderer": ">=0.11.0 <0.12.0"
   },
   "peerDependenciesMeta": {
     "@yagejs/audio": {
@@ -113,10 +113,10 @@
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.18",
-    "@yagejs/audio": ">=0.10.0",
-    "@yagejs/core": ">=0.10.0",
-    "@yagejs/effects": ">=0.10.0",
-    "@yagejs/particles": ">=0.10.0",
-    "@yagejs/renderer": ">=0.10.0"
+    "@yagejs/audio": ">=0.11.0",
+    "@yagejs/core": ">=0.11.0",
+    "@yagejs/effects": ">=0.11.0",
+    "@yagejs/particles": ">=0.11.0",
+    "@yagejs/renderer": ">=0.11.0"
   }
 }

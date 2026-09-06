@@ -1,5 +1,44 @@
 # @yagejs/audio
 
+## 0.11.0
+
+### Minor Changes
+
+- [#304](https://github.com/marco-lepore/yage/pull/304) [`daa8214`](https://github.com/marco-lepore/yage/commit/daa821458a69d14176f5c5aebc3f4204348ddb0c) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Remove automatic `SoundComponent` snapshot support and its serialized data
+  type. Reconstruct playback from game-owned save state and registered asset
+  aliases.
+
+  Add `SoundComponent.alias` / `.channel` / `.loop` / `.volume` for reading the
+  component's playback config back — also what the Inspector now reports for it.
+
+- [#321](https://github.com/marco-lepore/yage/pull/321) [`d557809`](https://github.com/marco-lepore/yage/commit/d557809b68735d1acb639dd9c56e00dec16920d0) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Let independent callers share and release one-shot audio safely.
+  - Add `AudioManager.requestOnce()` and `SoundRequestHandle` for one releasable
+    request on playback shared by alias and channel.
+  - Keep `playOnce()` idempotent while request callbacks and force-stop cleanup
+    follow the shared playback lifetime.
+
+### Patch Changes
+
+- [#319](https://github.com/marco-lepore/yage/pull/319) [`19c794e`](https://github.com/marco-lepore/yage/commit/19c794e7afa941539efcb4d23d8a9ec49a5233b6) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Playback names an unknown alias, attributes a throwing `onEnd`, and accepts `sound()` handles.
+  - `play`, `playOnce` and `playRandom` check the alias before playing and throw
+    `AudioManager.play: no sound registered as "<alias>"`. The common failure —
+    a typo, or playing before the asset preloaded — used to surface as
+    `TypeError: Cannot read properties of undefined (reading 'play')`, with the
+    alias nowhere in the message.
+  - A throwing `onEnd` callback is recorded on
+    `Inspector.getErrors().callbackErrors` as `"Audio onEnd callback"` and
+    rethrown, instead of escaping unattributed into `@pixi/sound`'s emitter.
+  - The three playback methods take the handle `sound()` returns as well as the
+    alias string it registers: `audio.play(CoinSfx)` alongside
+    `audio.play(CoinSfx.path)`. The `SoundRef` type is exported.
+
+- [#338](https://github.com/marco-lepore/yage/pull/338) [`b73bc32`](https://github.com/marco-lepore/yage/commit/b73bc32e433f234871bec29ba4a9916194019200) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Import `@yagejs/audio` outside a browser. `AudioPlugin` loads `@pixi/sound` when it installs, so nothing in the package reaches `document` while it is being imported — a level check or a test run in Node can import a module that uses `sound()` or `SoundComponent`.
+
+  `registerSound` and `unregisterSound` keep their signatures. A registration made before the plugin installs is applied when it does, so a call at module scope still works.
+
+- Updated dependencies [[`dc42ba4`](https://github.com/marco-lepore/yage/commit/dc42ba40cd3bbd04c8ff27bf4e8721f274dde034), [`daa8214`](https://github.com/marco-lepore/yage/commit/daa821458a69d14176f5c5aebc3f4204348ddb0c), [`c105024`](https://github.com/marco-lepore/yage/commit/c105024b5402c11dc36da52b08f6ab39354da8a5), [`c8ad215`](https://github.com/marco-lepore/yage/commit/c8ad215530681caeb63484cc07b118cd977a5ba5), [`08b0d06`](https://github.com/marco-lepore/yage/commit/08b0d06b63a44a51bd6f8e8308574fd41c96af59), [`33d00e3`](https://github.com/marco-lepore/yage/commit/33d00e37801a300710cc10de0352b1aa1b1ba2f1), [`7275620`](https://github.com/marco-lepore/yage/commit/7275620756183b22de3df1009e1e07615db9b40e), [`4bab66f`](https://github.com/marco-lepore/yage/commit/4bab66f0e34a387155bbc7168b048dcac167525f), [`cfde97d`](https://github.com/marco-lepore/yage/commit/cfde97de2c94416cb5bbab26a12f9c290e6b66cf), [`9e194ec`](https://github.com/marco-lepore/yage/commit/9e194ec386a74c0f1ad5699c3c0db183aa86f1b1), [`05492cb`](https://github.com/marco-lepore/yage/commit/05492cb8e27f89fe82fedd6e307afa2f90d1f68f), [`aed53f7`](https://github.com/marco-lepore/yage/commit/aed53f7f5679f824846dee3c55c0342f7f07cf98), [`ba57361`](https://github.com/marco-lepore/yage/commit/ba5736175e8b3e06157e680b4b66d10eb8d06823), [`aaf1279`](https://github.com/marco-lepore/yage/commit/aaf1279455bc655681cf15c8edc64b1407b2a823), [`8064fa6`](https://github.com/marco-lepore/yage/commit/8064fa64099feeb1d164360b668e0721a14b7bbe), [`8f11936`](https://github.com/marco-lepore/yage/commit/8f119362281bf31ab59b8b907816886922aaf18f), [`b087462`](https://github.com/marco-lepore/yage/commit/b087462ab2ae27bebb7ce274402c9e278f6d472a), [`8bb9e0b`](https://github.com/marco-lepore/yage/commit/8bb9e0b905017ac724f70fc8fe55014605563e88), [`8d7b5e3`](https://github.com/marco-lepore/yage/commit/8d7b5e3fe395898c7f4cbde0b352acc2713e6559), [`ff52a8a`](https://github.com/marco-lepore/yage/commit/ff52a8a4816b18f7de5309ab08606183db67e071)]:
+  - @yagejs/core@0.11.0
+
 ## 0.10.4
 
 ### Patch Changes

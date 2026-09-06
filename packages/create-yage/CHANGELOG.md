@@ -1,5 +1,27 @@
 # create-yage
 
+## 0.11.0
+
+### Patch Changes
+
+- [#338](https://github.com/marco-lepore/yage/pull/338) [`cbce01f`](https://github.com/marco-lepore/yage/commit/cbce01f44d4f21a13839bce5a1ab04f5c022eadd) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add an `editor` entry to `--features`. `npx create-yage my-game --features editor` puts `@yagejs/level` in the project's dependencies and `@yagejs-tools/editor` in its devDependencies, adds an `"editor": "yage-editor"` script, and prints `npx yage-editor init` among the next steps — that command writes the editor's config, harness and project files itself.
+
+  A feature can now carry `scripts` and `nextSteps` alongside its dependencies. Feature scripts are appended after the template's own, which keep their order.
+
+- [#338](https://github.com/marco-lepore/yage/pull/338) [`cbce01f`](https://github.com/marco-lepore/yage/commit/cbce01f44d4f21a13839bce5a1ab04f5c022eadd) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Take `Oscillate`'s centre on its first update instead of in `onAdd`, so a coin or a hazard placed by a level bobs around where the level put it. A level applies a placement's transform after `setup()` returns, so the position `onAdd` read was the one the entity had before it was placed, and the first update wrote that position back.
+
+- [#311](https://github.com/marco-lepore/yage/pull/311) [`aa5b78e`](https://github.com/marco-lepore/yage/commit/aa5b78e18b56d17bdca4ffb8299c8ea83979e05a) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Turn on `pixelArtPreset` in the scaffolded renderer config. The template's
+  sprites are pixel art, and sheet slicing no longer forces nearest sampling on
+  its own.
+
+- [#304](https://github.com/marco-lepore/yage/pull/304) [`daa8214`](https://github.com/marco-lepore/yage/commit/daa821458a69d14176f5c5aebc3f4204348ddb0c) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Template guidance describes the explicit save-root model, and the vite config
+  comments explain the decorator and `keepNames` options on their own terms.
+
+- [#317](https://github.com/marco-lepore/yage/pull/317) [`cfd041d`](https://github.com/marco-lepore/yage/commit/cfd041db1ad682f13f633852b9bbb55f2c91008d) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fix create-yage scaffolding across supported environments.
+  - Resolve bundled templates on Windows and when the install path contains spaces.
+  - Preserve an existing `.git` directory during forced overwrite and report file targets accurately.
+  - Update generated guidance, sprite anchors, and Node.js requirements.
+
 ## 0.10.4
 
 ## 0.10.3

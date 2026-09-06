@@ -1,5 +1,83 @@
 # @yagejs/physics
 
+## 0.11.0
+
+### Minor Changes
+
+- [#304](https://github.com/marco-lepore/yage/pull/304) [`daa8214`](https://github.com/marco-lepore/yage/commit/daa821458a69d14176f5c5aebc3f4204348ddb0c) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Remove automatic rigid-body and collider snapshot methods and their serialized
+  data types. Rebuild physics components from explicit domain state when loading
+  a scene.
+
+- [#328](https://github.com/marco-lepore/yage/pull/328) [`05492cb`](https://github.com/marco-lepore/yage/commit/05492cb8e27f89fe82fedd6e307afa2f90d1f68f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Keep diagnostic frames, clock control, and scene state consistent.
+  - Draw collider diagnostics through the owning scene's camera and omit hidden scenes.
+  - Include physics elapsed time in diagnostic snapshots.
+
+- [#308](https://github.com/marco-lepore/yage/pull/308) [`01f3944`](https://github.com/marco-lepore/yage/commit/01f39449f8856d1ed0e3e842a6ea1173a7a49ec6) Thanks [@marco-lepore](https://github.com/marco-lepore)! - A destroyed body reference no longer drives another entity, spatial queries skip sensors and see colliders spawned this frame, and `setType` changes a body's type at runtime.
+  - Fixed: a reference held past `entity.destroy()` no longer reads and writes the first body in the world. `RigidBodyComponent` holds `-1` before it is added and after it is destroyed, and Rapier decodes that handle to whichever body sits at index 0, so `bullet.rb.position` returned the player's pose and `bullet.rb.applyImpulse({ x: 1000 })` launched the player at 6250 px/s. `PhysicsWorld.getBody` and `getCollider` now resolve only handles this world issued and has not freed — a handle Rapier has reused, or one from another scene's world, resolves to `undefined`, which makes the documented fall-back to the entity's own `Transform` position real.
+  - Fixed: `entity.remove(RigidBodyComponent)` no longer leaves the sibling `ColliderComponent` holding a handle the next collider reuses. The stale component's `setShape` shrank an unrelated fresh collider, its `setSensor(true)` made that collider a sensor, and its teardown detached it from its own body. Removing a body now clears each attached collider component's handle, so its later calls do nothing.
+  - Fixed: `setEnabledTranslations` and `lockRotations` work before `entity.add()` and survive body creation. Both threw a `TypeError` before the component was added, and neither wrote the construction config, so a lock applied at runtime was lost whenever the body was recreated. They now write config first, like `setGravityScale`, `setSensor` and `setShape`.
+  - Fixed: `rb.setPosition` and `rb.setRotation` on a static body move the entity's `Transform` with the body. The collider moved and the sprite stayed behind, though the docs recommend `setPosition` for a moving platform, which is usually a static body.
+  - Fixed: a `Transform` write made while a dynamic entity is inactive teleports the body there when the entity is enabled again, as it already did for kinematic bodies. Repositioning a pooled member through its `Transform` was silently lost on re-acquire.
+  - Fixed: a rejected `setShape` no longer leaves the component's config describing a shape the collider does not have. The shape is validated before it is stored.
+  - Added: `RigidBodyComponent.setType(type)` switches a body between `"dynamic"`, `"static"` and `"kinematic"` at runtime — a corpse nothing can shove, a crate carried as kinematic, a door knocked loose. Linear and angular velocity are cleared by the switch; locks, gravity scale, damping, colliders and mass are kept, and the drawn pose is the pose at the switch. Callable before `entity.add()`.
+  - Changed: creating a collider compares its layers and mask against each distinct layer signature in the world instead of against every existing collider. The scan cost grew with the square of the collider count; building a 6000-collider level now takes 51 ms instead of 85 ms, and the scan itself no longer grows. The asymmetric-mask dev warning is unchanged.
+  - Documented: a capsule's `halfHeight` is half the straight section and each cap adds `radius`, so `{ halfHeight: 20, radius: 10 }` stands 60 px tall while boxes and circles take outer dimensions.
+  - Documented: `applyTorque` and `setAngularVelocity` are in Rapier's native units. Angular inertia scales with `pixelsPerMeter`⁻⁴, so the same torque spins a body 16× faster at 100 px/m than at 50.
+  - Documented: a dynamic body's `Transform` is engine-written while the entity is active — move it with `setVelocity`, `applyImpulse` or `rb.setPosition` — plus the velocity factor that compensates a scene slow an entity is excluded from.
+
+  **Breaking**, all pre-1.0:
+  - `raycast`, `castShape`, `queryShape` and `queryRadius` skip sensor colliders by default. A ground check standing in a coin's trigger zone reported the coin as ground, and no option could exclude it. Pass `sensors: "include"` for the previous behaviour, or `"only"` for trigger zones alone. `collider.getOverlapping` still reports sensor pairs only.
+  - Those four queries and `queryOverlapping` now report every live collider at its current pose. They read Rapier's query index, which only a physics step rebuilds, so a collider created, re-shaped, enabled or teleported since the last step was invisible, and one disabled since then was still reported — a wall spawned this frame did not block a ray, a pathfinding grid built at level-build time read every cell as empty, and a bullet released to its pool still blocked a query. A query on such a frame first runs a zero-duration step: it moves nothing, advances no simulated time, keeps sleeping bodies asleep, and collects contact events for pairs that already overlap, which arrive at the next delivery with `contactImpulse` 0. It costs one extra step (0.2 ms at 3000 colliders) on a frame that both changed colliders and queried.
+  - Every entry that takes a collider shape — `new ColliderComponent`, `setShape`, `castShape`, `queryShape`, `queryRadius` — throws unless each dimension is finite and above 0 (a capsule's `halfHeight` may be 0, which is a circle), a box `borderRadius` is at least 0 and smaller than half the shorter side, a polygon has at least 3 vertices not all on one line, and a polyline has at least 2. Rapier accepted all of these and failed later: a zero extent gave a body zero mass that gravity could not move, a negative one made it fall through solid ground, a non-finite one wrote `NaN` into the body's position every step, and a degenerate polygon trapped the WebAssembly module. `queryRadius` requires a finite radius above 0.
+  - `RigidBodyComponent.setGravityScale` throws unless `scale` is finite. `NaN` corrupted the body's position permanently — resetting the scale and zeroing velocity did not recover it.
+  - `PhysicsWorld.step(dt)` throws unless `dt` is finite and at least 0.
+  - `RigidBodyComponent.type` is a getter backed by `setType`, so a subclass can no longer assign it.
+
+- [#308](https://github.com/marco-lepore/yage/pull/308) [`01f3944`](https://github.com/marco-lepore/yage/commit/01f39449f8856d1ed0e3e842a6ea1173a7a49ec6) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Collision events are delivered after every physics step, rounded boxes weigh what their footprint covers, `setSensor` takes effect on existing contacts, and the physics constructors reject numbers they cannot simulate.
+  - Fixed: a scene running above `timeScale` 1 no longer loses collision and trigger events. Rapier's event queue was drained once per fixed tick after up to eight steps, and the queue discards undrained events at the start of each step, so only the last step's transitions survived: at 3 steps per tick a box landing on the ground reported nothing, and a bullet crossing a sensor band lost its exit. Events are now collected after every step, with that step's contact data, and delivered after that step. Handlers run with Transforms synced to the step that produced the contact, and a handler's `setVelocity` or `destroy` takes effect before the next step of the same tick.
+  - Fixed: a one-way platform no longer locks solid from below, or drops its rider, after a lost event. The platform's landed-rider set is maintained from the events, so the same loss left a rider registered after it had left (a later jump from below was blocked, and stayed blocked after the time scale returned to 1) or never registered at all (a rider fell through a `margin: 0` platform).
+  - Fixed: a box with `borderRadius` now weighs what its footprint covers. Rapier weighs a rounded box by its inner rectangle alone, so a 20×20 box with `borderRadius: 5` had a quarter of the mass of a plain one, and the same `applyImpulse` moved it four times as fast. The collider's density is now scaled so the mass is the rounded footprint's area at the configured `density`; angular inertia is the inner rectangle's scaled by the same ratio, an approximation the docs name. `setShape(shape, { recomputeMass: true })` reapplies the factor for the new shape.
+  - Fixed: `setShape` without `recomputeMass` keeps the body's mass in every case. A body that had not stepped yet, or was asleep, had its mass recomputed from density × the new shape at the next step.
+  - Fixed: `ColliderComponent.setSensor` now takes effect on the collider's existing contacts. Rapier does not apply a sensor-flag change to an awake body's existing pairs, so a solid box flipped to a sensor stayed resting on the ground, and a sensor flipped to solid fell through it. The Rapier collider is now recreated with the new flag: every pair it is in ends with a `stop`/`exit` at the next step and re-forms as the new kind, `getMass()` and the contact filter and every subscription are unchanged, and the collider handle changes. A same-value call does nothing. Dev builds warn when the flip leaves handlers of the silenced kind registered.
+  - Fixed: both contact filters run for every candidate pair. When the first filter Rapier consulted vetoed the pair, the other collider's filter was skipped, and which one came first was Rapier's handle order.
+  - Documented: while any collider has a contact filter (a `oneWay` platform counts), every step reads every collider's pose before stepping — about 0.8 ms per step at 2000 colliders.
+
+  **Breaking**, all pre-1.0:
+  - `new PhysicsPlugin(config)` and `new PhysicsWorld(config)` throw unless `pixelsPerMeter` is finite and above 0, and both gravity components are finite. A `pixelsPerMeter` of `0` produced a `NaN` world.
+  - `new RigidBodyComponent(config)` throws unless `linearDamping` and `angularDamping` are finite and at least 0, and `gravityScale` is finite. A negative damping grew a body's speed without bound.
+  - `new ColliderComponent(config)` throws unless `restitution`, `friction`, `density` and `contactSkin` are finite and at least 0, `oneWay.margin` and `oneWay.direction` are finite, and `oneWay.direction` is not the zero vector. A zero direction made the platform solid from every side.
+  - `PhysicsWorld.addJoint` throws unless every number in the config is finite and `length`, `restLength`, `stiffness` and `damping` are at least 0. A negative spring `damping` diverged.
+  - `PhysicsWorld.addJoint` throws when either entity is inactive. A joint added to a dormant body skipped the detach that disabling performs and survived into the entity's next life. For a pooled entity, add the joint in `onAcquire`.
+  - Every error names the input and the constraint.
+  - Collision handlers run more than once per fixed tick above `timeScale` 1.
+  - `getMass()` changes for every rounded box.
+
+- [#326](https://github.com/marco-lepore/yage/pull/326) [`0273a69`](https://github.com/marco-lepore/yage/commit/0273a69dfe675e636e1488c6c81c9072c1e64b35) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add runtime controls for body damping, collider materials, and collider shape placement.
+  - Add `setLinearDamping` and `setAngularDamping` to `RigidBodyComponent`.
+  - Add `setRestitution` and `setFriction` to `ColliderComponent`, applying each value to every compound part.
+  - Let `ColliderComponent.setShape` change a selected part's body-local offset with its shape in one validated call.
+  - Reject non-finite scaled collider geometry before initial attachment or a runtime `Transform` scale change reaches Rapier.
+
+- [#324](https://github.com/marco-lepore/yage/pull/324) [`a7eda5d`](https://github.com/marco-lepore/yage/commit/a7eda5d7cee1e163ea09362709d7ab35687f0fb6) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add compound colliders and keep collider geometry aligned with entity scale.
+  - Add ordered collider parts, per-part contact indices, and indexed shape replacement.
+  - Apply live world scale to collider geometry, offsets, mass, and one-way directions.
+
+### Patch Changes
+
+- [#318](https://github.com/marco-lepore/yage/pull/318) [`33d00e3`](https://github.com/marco-lepore/yage/commit/33d00e37801a300710cc10de0352b1aa1b1ba2f1) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Keep debug-overlay contributions available without adding `@yagejs/debug` to
+  the physics package's runtime install graph.
+
+- [#336](https://github.com/marco-lepore/yage/pull/336) [`0bc41ac`](https://github.com/marco-lepore/yage/commit/0bc41ac6c3cce2770a588d90f2662b21c458ed71) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Apply position and rotation written to a static body's Transform while its entity is inactive when the entity is activated. This keeps the collider aligned with dormant level placement and prewarmed pool setup. Active static bodies still move through `setPosition` and `setRotation` on the rigid body.
+
+  Refresh spatial queries after activation teleports for every body type, including when only the rigid-body component is re-enabled.
+
+- [#329](https://github.com/marco-lepore/yage/pull/329) [`8d7b5e3`](https://github.com/marco-lepore/yage/commit/8d7b5e3fe395898c7f4cbde0b352acc2713e6559) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add caller-owned vector buffers and coordinate reads without Vec2 construction.
+  - Add `getVelocityInto` and `getPositionInto` and preserve the other velocity coordinate with one Rapier read in scalar setters.
+  - Store interpolation positions as numbers and synchronize Transform poses and collider scales without constructing vectors.
+
+- Updated dependencies [[`dc42ba4`](https://github.com/marco-lepore/yage/commit/dc42ba40cd3bbd04c8ff27bf4e8721f274dde034), [`daa8214`](https://github.com/marco-lepore/yage/commit/daa821458a69d14176f5c5aebc3f4204348ddb0c), [`c105024`](https://github.com/marco-lepore/yage/commit/c105024b5402c11dc36da52b08f6ab39354da8a5), [`c8ad215`](https://github.com/marco-lepore/yage/commit/c8ad215530681caeb63484cc07b118cd977a5ba5), [`08b0d06`](https://github.com/marco-lepore/yage/commit/08b0d06b63a44a51bd6f8e8308574fd41c96af59), [`33d00e3`](https://github.com/marco-lepore/yage/commit/33d00e37801a300710cc10de0352b1aa1b1ba2f1), [`7275620`](https://github.com/marco-lepore/yage/commit/7275620756183b22de3df1009e1e07615db9b40e), [`4bab66f`](https://github.com/marco-lepore/yage/commit/4bab66f0e34a387155bbc7168b048dcac167525f), [`cfde97d`](https://github.com/marco-lepore/yage/commit/cfde97de2c94416cb5bbab26a12f9c290e6b66cf), [`9e194ec`](https://github.com/marco-lepore/yage/commit/9e194ec386a74c0f1ad5699c3c0db183aa86f1b1), [`05492cb`](https://github.com/marco-lepore/yage/commit/05492cb8e27f89fe82fedd6e307afa2f90d1f68f), [`aed53f7`](https://github.com/marco-lepore/yage/commit/aed53f7f5679f824846dee3c55c0342f7f07cf98), [`ba57361`](https://github.com/marco-lepore/yage/commit/ba5736175e8b3e06157e680b4b66d10eb8d06823), [`aaf1279`](https://github.com/marco-lepore/yage/commit/aaf1279455bc655681cf15c8edc64b1407b2a823), [`8064fa6`](https://github.com/marco-lepore/yage/commit/8064fa64099feeb1d164360b668e0721a14b7bbe), [`8f11936`](https://github.com/marco-lepore/yage/commit/8f119362281bf31ab59b8b907816886922aaf18f), [`b087462`](https://github.com/marco-lepore/yage/commit/b087462ab2ae27bebb7ce274402c9e278f6d472a), [`8bb9e0b`](https://github.com/marco-lepore/yage/commit/8bb9e0b905017ac724f70fc8fe55014605563e88), [`8d7b5e3`](https://github.com/marco-lepore/yage/commit/8d7b5e3fe395898c7f4cbde0b352acc2713e6559), [`ff52a8a`](https://github.com/marco-lepore/yage/commit/ff52a8a4816b18f7de5309ab08606183db67e071)]:
+  - @yagejs/core@0.11.0
+
 ## 0.10.4
 
 ### Patch Changes

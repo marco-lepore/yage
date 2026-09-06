@@ -1,6 +1,6 @@
 {
   "name": "@yagejs/particles",
-  "version": "0.10.4",
+  "version": "0.11.0",
   "description": "Particle emitters and visual effects for YAGE",
   "keywords": [
     "yage",
@@ -48,8 +48,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yagejs/core": "^0.10.4",
-    "@yagejs/renderer": "^0.10.4",
+    "@yagejs/core": "^0.11.0",
+    "@yagejs/renderer": "^0.11.0",
     "pixi.js": "^8.5.0"
   }
 }
