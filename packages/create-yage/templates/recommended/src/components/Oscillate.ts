@@ -1,8 +1,13 @@
-import { Component, Transform } from "@yagejs/core";
+import { Component, Transform, type Vec2 } from "@yagejs/core";
 
 /**
- * Oscillates a kinematic entity along one axis on a sine wave. Captures the
- * spawn position at `onAdd` and oscillates around it.
+ * Oscillates a kinematic entity along one axis on a sine wave, around the
+ * position it holds on its first update.
+ *
+ * The first update is the earliest moment that position is the final one: a
+ * level applies a placement's transform after `setup()` returns, so a position
+ * read while the components are being added is the one the entity had before
+ * it was placed.
  *
  * Used by `Coin` (vertical bob) and `Hazard` (horizontal slide).
  */
@@ -24,8 +29,7 @@ export class Oscillate extends Component {
   private readonly period: number;
   private readonly phase: number;
 
-  private originX = 0;
-  private originY = 0;
+  private origin?: Vec2;
   private elapsed = 0;
 
   constructor(options: OscillateOptions) {
@@ -36,20 +40,15 @@ export class Oscillate extends Component {
     this.phase = options.phase ?? 0;
   }
 
-  onAdd(): void {
-    const pos = this.transform.position;
-    this.originX = pos.x;
-    this.originY = pos.y;
-  }
-
   update(dt: number): void {
+    const origin = (this.origin ??= this.transform.position);
     this.elapsed += dt;
     const t = (this.elapsed * Math.PI * 2) / this.period + this.phase;
     const offset = Math.sin(t) * this.amplitude;
     if (this.axis === "x") {
-      this.transform.setPosition(this.originX + offset, this.originY);
+      this.transform.setPosition(origin.x + offset, origin.y);
     } else {
-      this.transform.setPosition(this.originX, this.originY + offset);
+      this.transform.setPosition(origin.x, origin.y + offset);
     }
   }
 }

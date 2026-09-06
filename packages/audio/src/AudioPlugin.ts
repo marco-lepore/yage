@@ -1,8 +1,8 @@
 import { AssetManagerKey, ErrorBoundaryKey, globalRandom } from "@yagejs/core";
 import type { EngineContext, Plugin } from "@yagejs/core";
-import { sound } from "@pixi/sound";
-import type { Sound as PixiSound } from "@pixi/sound";
+import type { Sound as PixiSound, SoundLibrary } from "@pixi/sound";
 import { AudioManager } from "./AudioManager.js";
+import { _setSoundLibrary } from "./assets.js";
 import { AudioManagerKey, type AudioConfig } from "./types.js";
 
 const GESTURE_EVENTS = ["pointerdown", "keydown", "touchstart"] as const;
@@ -13,12 +13,31 @@ export class AudioPlugin implements Plugin {
 
   private readonly _config: AudioConfig;
   private _cleanupFns: Array<() => void> = [];
+  private _sound: SoundLibrary | undefined;
+  private _destroyed = false;
 
   constructor(config?: AudioConfig) {
     this._config = config ?? {};
   }
 
-  install(context: EngineContext): void {
+  /**
+   * Importing `@yagejs/audio` needs no browser: the audio library it plays
+   * through is loaded here, when the plugin installs. Sounds registered with
+   * `registerSound` before that are added to the library at the same point.
+   */
+  async install(context: EngineContext): Promise<void> {
+    const { sound } = await import("@pixi/sound");
+    // The engine can be destroyed while the library is still loading, and
+    // `onDestroy` then runs with nothing to tear down. Registering into a
+    // context that is already gone would leave the manager and the gesture
+    // listeners behind.
+    if (this._destroyed) {
+      sound.close();
+      return;
+    }
+    this._sound = sound;
+    _setSoundLibrary(sound);
+
     const manager = new AudioManager(sound, this._config, globalRandom);
     manager._setErrorBoundary(context.tryResolve(ErrorBoundaryKey));
     context.register(AudioManagerKey, manager);
@@ -68,8 +87,9 @@ export class AudioPlugin implements Plugin {
   }
 
   onDestroy(): void {
+    this._destroyed = true;
     for (const cleanup of this._cleanupFns) cleanup();
     this._cleanupFns.length = 0;
-    sound.close();
+    this._sound?.close();
   }
 }

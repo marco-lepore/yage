@@ -38,6 +38,9 @@ coverage
 # Playwright
 test-results
 playwright-report
+# The editor E2E path writes one of these from forest.template.json before each
+# test and saves over it, so an interrupted run leaves nothing to clean up.
+e2e/editor-project/levels/*.yage-level.json
 .playwright-mcp/
 .playwright-cli/
 .claude/launch.json

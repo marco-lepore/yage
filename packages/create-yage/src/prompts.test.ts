@@ -109,6 +109,21 @@ describe("reportSuccess", () => {
     );
   });
 
+  it("prints the editor feature's own next step", () => {
+    reportSuccess({
+      projectName: "game",
+      targetDir: join(process.cwd(), "game"),
+      installSucceeded: true,
+      gitSucceeded: true,
+      features: ["editor"],
+    });
+
+    expect(promptMocks.note).toHaveBeenCalledWith(
+      expect.stringContaining("npx yage-editor init"),
+      "Done",
+    );
+  });
+
   it("quotes a target path that contains spaces", () => {
     const targetDir = join(process.cwd(), "nested dir", "my game");
 

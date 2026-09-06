@@ -2,7 +2,12 @@ import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { HELP_TEXT, parseArgs } from "./argv.js";
-import { runPrompts, reportFailure, reportStart, reportSuccess } from "./prompts.js";
+import {
+  runPrompts,
+  reportFailure,
+  reportStart,
+  reportSuccess,
+} from "./prompts.js";
 import { scaffold } from "./scaffold.js";
 import { inspectDirectory, resolveTemplatesRoot } from "./utils.js";
 
@@ -62,6 +67,7 @@ async function main(): Promise<number> {
       targetDir: options.targetDir,
       installSucceeded: result.installSucceeded,
       gitSucceeded: result.gitSucceeded,
+      features: options.features,
     });
     return 0;
   } catch (err) {

@@ -21,6 +21,7 @@
       "@yagejs/save",
       "@yagejs/effects",
       "@yagejs/lighting",
+      "@yagejs/level",
       "create-yage"
     ]
   ],

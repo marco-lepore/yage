@@ -707,6 +707,72 @@ describe("DisplaySystem", () => {
         .position.x,
     ).toBe(30);
   });
+
+  /**
+   * A dormant entity is drawn by writing its pose and visibility straight onto
+   * the render object, which works only because this pass never touches one —
+   * the queries exclude a dormant entity. These cases pin that outcome, so a
+   * change to how the pass selects entities fails here.
+   */
+  describe("dormant entities", () => {
+    it("leaves an externally written pose, visibility and opacity alone", () => {
+      const { scene } = setup();
+      const entity = scene.spawn("dormant", { active: false });
+      // Deliberately unlike the pose written below: a pass that synced dormant
+      // entities would overwrite the written one with this.
+      entity.add(new Transform({ position: new Vec2(100, 200) }));
+      const spriteComp = entity.add(
+        new SpriteComponent({ texture: {} as never }),
+      );
+
+      const sprite = spriteComp.sprite as unknown as InstanceType<
+        typeof mocks.MockContainer
+      >;
+      sprite.position.set(10, 20);
+      sprite.rotation = 0.5;
+      sprite.scale.set(2, 3);
+      sprite.visible = true;
+      sprite.alpha = 0.25;
+
+      system.update();
+
+      expect(sprite.position).toMatchObject({ x: 10, y: 20 });
+      expect(sprite.rotation).toBe(0.5);
+      expect(sprite.scale).toMatchObject({ x: 2, y: 3 });
+      expect(sprite.visible).toBe(true);
+      expect(sprite.alpha).toBe(0.25);
+      expect(entity.isActive).toBe(false);
+    });
+
+    it("syncs an active entity in the same pass", () => {
+      const { scene } = setup();
+
+      const dormant = scene.spawn("dormant", { active: false });
+      dormant.add(new Transform({ position: new Vec2(100, 200) }));
+      const dormantSprite = dormant.add(
+        new SpriteComponent({ texture: {} as never }),
+      );
+      const written = dormantSprite.sprite as unknown as InstanceType<
+        typeof mocks.MockContainer
+      >;
+      written.position.set(10, 20);
+
+      const overlay = spawnEntityInScene(scene, "overlay");
+      overlay.add(new Transform({ position: new Vec2(30, 40) }));
+      const overlayGfx = overlay.add(new GraphicsComponent());
+
+      system.update();
+
+      expect(written.position).toMatchObject({ x: 10, y: 20 });
+      expect(
+        (
+          overlayGfx.graphics as unknown as InstanceType<
+            typeof mocks.MockContainer
+          >
+        ).position,
+      ).toMatchObject({ x: 30, y: 40 });
+    });
+  });
 });
 
 describe("DisplaySystem visual coverage", () => {

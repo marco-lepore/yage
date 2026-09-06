@@ -239,6 +239,59 @@ For a whole group of short-lived entities, `EntityPool` keeps the bookkeeping �
 which ones are out, which are ready, how many exist — and calls a per-reuse
 reset hook on each one. See [Entity Pooling](/patterns/entity-pooling).
 
+An entity can also start asleep. `{ active: false }` in the spawn options runs
+`setup()` and every `onAdd()` without a single `onEnable()`, and the entity
+joins no query until you switch it on:
+
+```typescript
+const ambush = scene.spawn(AmbushGroup, { active: false });
+
+// when the player opens the door
+ambush.setActive(true);
+```
+
+### Spawning a Group at Once
+
+`scene.spawn` finishes one entity before starting the next, which is a problem
+when two entities need each other: the second one does not exist yet while the
+first runs `setup()`. `scene.spawnBatch` builds a whole set instead. Every
+entity is created first, so any of them can be handed to any other, and the
+group joins the scene together or not at all:
+
+```typescript
+const { turret, target } = scene.spawnBatch((batch) => {
+  const turret = batch.reserve(Turret, { key: "level/turret" });
+  const target = batch.reserve(Dummy, { key: "level/dummy" });
+
+  batch.addChild(turret, "mount", target);      // linked before setup runs
+  batch.setup(turret, { aimAt: target.handle() });
+  batch.setup(target);
+
+  return { turret, target };
+});
+```
+
+`reserve` constructs an entity and registers its key without running `setup()`.
+The entity already belongs to the scene — `entity.scene`, `entity.handle()`,
+and `entity.requireKey()` all work — but nothing else can see it: it is absent
+from `scene.getEntities()`, from `findByKey`, and from every query until the
+batch commits. `spawnBatch` returns whatever the callback returns.
+
+The all-or-nothing part is what makes this worth using. If anything throws —
+a `setup()` method, an `entity:created` subscriber, an `onEnable()` hook — the
+entire batch is torn down on the spot and the scene is left exactly as it was,
+with the keys free for another attempt. Your error reaches the caller
+unchanged; anything that fails during the teardown afterwards is recorded in
+`Inspector.getErrors().callbackErrors` instead of replacing it.
+
+Inside the callback, `entity.spawnChild(...)` joins the batch and is rolled
+back with it. `scene.spawn(...)` throws, because a batch cannot roll back an
+entity it does not own — build such an entity before the batch, or after it.
+
+Reserving with `{ active: false }` commits an entity dormant, together with
+everything under it. That is how a level can be built up in full and stay
+asleep until the game is ready to run it.
+
 ## Components
 
 Components hold state and game logic. Extend the `Component` base class:

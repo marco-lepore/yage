@@ -35,6 +35,14 @@ not systems are in italics.
 | **Render** | `DisplaySystem` (0, renderer) → `LightingSystem` (100, lighting) → `DebugRenderSystem` (9999, debug) |
 | **EndOfFrame** | `InputClearSystem` (9000, input) → *destroy-queue flush* |
 
+The level editor's preview scene adds three systems of its own to that order.
+A game never sees them.
+
+| Phase | Editor systems |
+|---|---|
+| **EarlyUpdate** | `DestroyFlushSystem` (0, editor), which runs asset releases after the flush that took their entities out |
+| **Render** | `DormantVisualSystem` (100, editor), which draws the dormant placements after the renderer's pass, then `OverlaySystem` (110, editor), which redraws the editor's grid, gizmo, and handles |
+
 The priorities fall into bands. Pick the band a new system belongs to and
 choose a number inside it:
 

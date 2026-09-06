@@ -1,0 +1,63 @@
+{
+  "name": "@yagejs/level",
+  "version": "0.10.2",
+  "description": "Level documents for YAGE — read, validate, prepare and instantiate authored levels",
+  "keywords": [
+    "yage",
+    "game-engine",
+    "2d",
+    "typescript",
+    "level",
+    "level-editor",
+    "tilemap",
+    "scene"
+  ],
+  "license": "MIT",
+  "author": "Marco Lepore",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
+    "directory": "packages/level"
+  },
+  "homepage": "https://yage.dev",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./document": {
+      "import": {
+        "types": "./dist/document.d.ts",
+        "default": "./dist/document.js"
+      },
+      "require": {
+        "types": "./dist/document.d.cts",
+        "default": "./dist/document.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@yagejs/core": "^0.10.2"
+  }
+}

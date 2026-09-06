@@ -98,6 +98,7 @@ bullet.setActive(true); // back in play, nothing reallocated
 - A dormant entity drops out of every `QueryCache` query, and out of `scene.findEntity`, `scene.findEntitiesByTag`, `scene.findEntities`, and `filterEntities`. `scene.getEntities()` still returns it for lifecycle tooling and teardown. `scene.findByKey` also still returns it — key lookup is identity, not a search.
 - Components keep their own `enabled` flags. A component you disabled by hand is still disabled after the entity comes back.
 - Adding a component to a dormant entity runs `onAdd()` but not `onEnable()`, and the entity joins no queries until it is activated.
+- `scene.spawn(Class, params?, { active: false })` starts an entity dormant, so `setup()` and every `onAdd()` run without a single `onEnable()` and the entity never joins a query on the way in. `setActive(true)` wakes it. Building a spawner, a room's contents, or a level ahead of time costs nothing until it is switched on.
 - A dormant entity's components and its `ProcessComponent` stop being ticked, so tweens and coroutines pause where they are and resume on reactivation.
 - Reuse resets nothing: `entity.timeScale`, animation position, process progress, entity event listeners and addon state all survive. Register listeners in `setup()`, and reset game state yourself when you bring an entity back.
 - `destroy()` also runs through this same activeness state (`isActive` reads `false` right away, `activeSelf` is untouched), so any code that checks `isActive` to decide whether an entity is "in play" sees a destroyed entity the same way it sees a dormant one.
@@ -348,13 +349,13 @@ Composition: each `key` is a channel. Within a channel, the latest active reques
 
 ### Math
 
-| Export             | Purpose                                                                                                                                                                                                                                                                              |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Vec2`             | Immutable 2D vector (`add`, `sub`, `scale`, `normalize`, `lerp`, `dot`, `distance`, static `moveTowards`)                                                                                                                                                                            |
-| `Vec2Buffer`       | Caller-owned mutable coordinates for `Into` results; `new Vec2Buffer(x = 0, y = 0)`, writable `x` / `y`, `set(x, y): this`                                                                                                                                                           |
-| `Transform`        | Mutable position/rotation/scale component (`setPosition`, `translate`, `rotate`); `worldPosition` / `worldRotation` / `worldScale` are lazily computed and cache-invalidate on local mutation or reparenting; `worldToLocal(point)` maps a world point into the entity's local space |
-| `MathUtils`        | `lerp`, `inverseLerp`, `lerpAngle`, `shortestAngleBetween`, `pingPong`, `smoothDamp`, `clamp`, etc.                                                                                                                                                                                  |
-| `SmoothDampResult` | `{ value, velocity }` returned by `MathUtils.smoothDamp()`                                                                                                                                                                                                                           |
+| Export             | Purpose                                                                                                                                                                                                                                                                                                                    |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Vec2`             | Immutable 2D vector (`add`, `sub`, `scale`, `normalize`, `lerp`, `dot`, `distance`, static `moveTowards`)                                                                                                                                                                                                                  |
+| `Vec2Buffer`       | Caller-owned mutable coordinates for `Into` results; `new Vec2Buffer(x = 0, y = 0)`, writable `x` / `y`, `set(x, y): this`                                                                                                                                                                                                 |
+| `Transform`        | Mutable position/rotation/scale component (`setPosition`, `translate`, `rotate`); `worldPosition` / `worldRotation` / `worldScale` are lazily computed and cache-invalidate on local mutation or reparenting; `localToWorld(point)` / `worldToLocal(point)` convert a point between the entity's own space and the world's |
+| `MathUtils`        | `lerp`, `inverseLerp`, `lerpAngle`, `shortestAngleBetween`, `pingPong`, `smoothDamp`, `clamp`, etc.                                                                                                                                                                                                                        |
+| `SmoothDampResult` | `{ value, velocity }` returned by `MathUtils.smoothDamp()`                                                                                                                                                                                                                                                                 |
 
 Math signatures:
 
@@ -430,6 +431,17 @@ Transform position, scale, and rotation writes require finite numbers and
 reject invalid inputs or non-finite computed local values before storing the
 operation's values. Zero and negative scale are legal. Read-only conversions
 and derived world values do not validate non-finite results.
+
+### Points in an entity's own space
+
+`localToWorld(point)` scales a point by `worldScale`, turns it by `worldRotation`, and offsets it by `worldPosition` — the same composition a child transform goes through. `worldToLocal(point)` is the inverse. Both take a `Vec2Like` and return a `Vec2`.
+
+```ts
+const muzzle = this.get(Transform).localToWorld({ x: 24, y: -6 });
+scene.spawn(Bullet, { position: muzzle });
+```
+
+Use it for an offset authored beside the entity — a muzzle, a spawn point — so it follows the entity however the parent chain turns or scales it. On an axis whose world scale is 0 no local point maps back, so `worldToLocal` is non-finite there; check `Number.isFinite` if such a transform can reach you.
 
 ### Scale inheritance
 
@@ -700,12 +712,12 @@ A filter class matches the class itself and any subclass of it, so `register([Tr
 
 Opt-in per-scene entity keys. Most entities (bullets, particles, transient enemies) don't need them; pass `{ key }` only for entities whose state should persist (chests, doors, named NPCs).
 
-| Export                    | Purpose                                                                  |
-| ------------------------- | ------------------------------------------------------------------------ |
-| `SpawnOptions`            | `{ key?: string }` — trailing arg of `scene.spawn` / `entity.spawnChild` |
-| `entity.key`              | `string \| undefined` — the assigned key                                 |
-| `entity.requireKey()`     | Returns `key` or throws (use in component `setup()`)                     |
-| `scene.findByKey<E>(key)` | Look up entity by key, scene-scoped, hides destroyed entities            |
+| Export                    | Purpose                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------ |
+| `SpawnOptions`            | `{ key?: string; active?: boolean }` — trailing arg of `scene.spawn` / `entity.spawnChild` |
+| `entity.key`              | `string \| undefined` — the assigned key                                                   |
+| `entity.requireKey()`     | Returns `key` or throws (use in component `setup()`)                                       |
+| `scene.findByKey<E>(key)` | Look up entity by key, scene-scoped, hides destroyed entities                              |
 
 ```ts
 scene.spawn(Chest, { content: ["potion"] }, { key: "forest/chest-01" });
@@ -723,6 +735,36 @@ The params slot takes the setup param type, not `SpawnOptions`, so a `SpawnOptio
 If a class entity's `setup()` method throws, `scene.spawn()` destroys and removes the entity immediately, including its components and stable-key entry, then rethrows the original error.
 
 Duplicate keys throw at spawn time with no orphan side-effect — the entity is not added to `scene.entities` and `entity:created` is not emitted. Keys are immutable for an entity's lifetime; destroy + respawn to swap. The index is per-scene and clears on scene teardown. Identity is independent of `@yagejs/save` — game code uses `entity.key` as a stable id in persistent stores (`createSet<string>()`).
+
+### Spawn batches
+
+`scene.spawnBatch(build)` creates a set of entities that all exist before any of them is set up, and that arrive in the scene together or not at all. Use it when entities must reference each other, or when a half-built group would be worse than none.
+
+```ts
+const { turret, target } = scene.spawnBatch((batch) => {
+  const turret = batch.reserve(Turret, { key: "level/turret" });
+  const target = batch.reserve(Dummy, { key: "level/dummy" });
+  batch.addChild(turret, "mount", target); // links before setup runs
+  batch.setup(turret, { aimAt: target.handle() });
+  batch.setup(target);
+  return { turret, target }; // spawnBatch returns this
+});
+```
+
+| Operation                             | Purpose                                                                    |
+| ------------------------------------- | -------------------------------------------------------------------------- |
+| `batch.reserve(Class, options?)`      | Construct and key an entity without running `setup()`. Returns the entity. |
+| `batch.addChild(parent, name, child)` | Link two reserved entities, so `setup()` can read `this.parent`.           |
+| `batch.setup(entity, params?)`        | Run one reserved entity's `setup()`; trailing args follow its signature.   |
+
+- A reserved entity belongs to the scene — `entity.scene`, `entity.handle()`, `entity.requireKey()` all work — but stays out of `scene.getEntities()`, `findByKey()`, and every query until the batch commits. Nothing running in the scene can observe a half-built set.
+- On commit, every entity and key is registered first, then `entity:created` and `component:added` publish in reservation order. So the first subscriber already sees the complete set. Activation runs last, parent-first.
+- `{ active: false }` on a reservation commits that entity dormant, and everything under it stays dormant too. That is how a level loads without waking up.
+- Any throw — from `setup()`, from a lifecycle-event subscriber, from an `onEnable()` hook — discards the whole batch synchronously: components are torn down, keys are released, and no entity is left in the scene. The throw reaches the caller unchanged; teardown failures after it are reported through `Inspector.getErrors().callbackErrors` and never replace it. Rollback is synchronous rather than end-of-frame, so the same keys can be reused in the same scene immediately.
+- Inside the callback, `entity.spawnChild(...)` joins the batch and rolls back with it, in every form (anonymous, class, blueprint, keyed). A top-level `scene.spawn()` throws instead, because a batch cannot roll back an entity it does not own. `EntityPool.acquire()` is the same rule seen twice: waking a member the pool already has is an ordinary side effect and works, while one that has to grow the pool spawns a new member and throws. Prewarm the pool outside the batch.
+- The callback is the transaction. `entity:created`, `component:added`, and `onEnable()` all run after the entities are in the scene, so a subscriber or hook that spawns is doing ordinary work.
+- Developer-emitted events and other side effects a `setup()` performs are outside the transaction. Reserve irreversible work for `onEnable()`.
+- The batch is only usable inside the callback. Its operations throw afterwards.
 
 ### Assets
 
@@ -1069,6 +1111,12 @@ before `UIRootLayoutSystem` because `ui-react` depends on `ui`).
 - `LateUpdate`: `ParticleSystem (0, particles)` → `UILayoutSystem (200, ui)` → `UIRootLayoutSystem (200, ui-react)` → `FloatingOverlaySystem (201, ui)`
 - `Render`: `DisplaySystem (0, renderer)` → `LightingSystem (100, lighting)` → `DebugRenderSystem (9999, debug)`
 - `EndOfFrame`: `InputClearSystem (9000, input)` → _destroy-queue flush_
+
+The level editor's preview scene adds three systems of its own to that
+order, none of which a game sees:
+
+- `EarlyUpdate`: `DestroyFlushSystem (0, editor)`, which runs asset releases after the flush that took their entities out
+- `Render`: `DormantVisualSystem (100, editor)`, which draws the dormant placements after the renderer's pass, then `OverlaySystem (110, editor)`, which redraws the editor's grid, gizmo, and handles
 
 Priority bands, for placing a new system:
 

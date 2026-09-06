@@ -1,5 +1,9 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  // `dev` is persistent in every package, and turbo refuses to start when it
+  // has more persistent tasks than slots. The count is one per workspace, so
+  // this is raised when a package is added.
+  "concurrency": "40",
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -14,7 +18,8 @@
     },
     "//#measure": {},
     "lint": {
-      "dependsOn": ["//#measure"]
+      "dependsOn": ["//#measure"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/eslint.config.mjs"]
     },
     "test": {
       "dependsOn": ["^build"]

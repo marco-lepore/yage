@@ -22,7 +22,11 @@ import {
   ErrorBoundaryKey,
 } from "./EngineContext.js";
 import type { ErrorBoundary } from "./ErrorBoundary.js";
+import type { ComponentClass } from "./types.js";
+import type { SpawnBatch } from "./SpawnBatch.js";
+import { SpawnBatchRunner } from "./SpawnBatch.js";
 import { devWarn } from "./internal/dev.js";
+import { isolate } from "./internal/isolate.js";
 
 /**
  * Options accepted by the trailing argument of `Scene.spawn` and
@@ -45,6 +49,22 @@ export interface SpawnOptions {
    * use the explicit 3-arg form `spawn(Class, params, options)`.
    */
   key?: string;
+
+  /**
+   * The state the entity starts in. Default: `true`.
+   *
+   * `false` spawns it dormant — the state `setActive(false)` produces, but
+   * from the start, so `setup()` and component `onAdd()` run without any
+   * `onEnable` firing and the entity never joins a query on the way in. Wake
+   * it later with `setActive(true)`.
+   *
+   * ```ts
+   * const spawner = scene.spawn(EnemySpawner, { active: false });
+   * // ... later, when the room is entered:
+   * spawner.setActive(true);
+   * ```
+   */
+  active?: boolean;
 }
 
 /**
@@ -103,19 +123,33 @@ export type ClassSpawnArgs<E> = [SetupParamTuple<E>] extends [never]
       : [params: SetupParams<E>, options?: SpawnOptions];
 
 /**
+ * Trailing arguments of `SpawnBatch.setup`, derived from the entity's `setup()`
+ * signature the same way {@link ClassSpawnArgs} is, minus the options slot —
+ * `reserve()` has already taken the options.
+ */
+export type SetupArgs<E> = [SetupParamTuple<E>] extends [never]
+  ? []
+  : SetupParamTuple<E> extends readonly []
+    ? []
+    : [] extends SetupParamTuple<E>
+      ? [params?: SetupParams<E>]
+      : [params: SetupParams<E>];
+
+/**
  * Heuristic: is this object exactly the shape of `SpawnOptions`? Used by the
  * runtime to disambiguate the 2-arg `spawn(Class, X)` / `spawn(Blueprint, X)`
  * forms when both params and options are plausible.
  *
- * Rule: a plain object whose only own keys are SpawnOptions fields. As of
- * today, that's just `key`. If `SpawnOptions` grows, extend the allow-list.
+ * Rule: a plain object whose only own keys are SpawnOptions fields — `key`
+ * and `active`. If `SpawnOptions` grows, extend the allow-list.
  *
- * Trade-off: a params shape with a top-level `key` and nothing else is
- * misrouted to options — the "reserved-keys-in-options" footgun called out
- * in the design memo. Mitigation: don't name a top-level setup-params field
- * `key`. Use the 3-arg form (`spawn(Class, params, options)`) when in doubt.
+ * Trade-off: a params shape built only from those names is misrouted to
+ * options — the "reserved-keys-in-options" footgun called out in the design
+ * memo. Mitigation: don't name a top-level setup-params field `key` or
+ * `active`. Use the 3-arg form (`spawn(Class, params, options)`) when in
+ * doubt.
  */
-const _SPAWN_OPTION_KEYS: ReadonlySet<string> = new Set(["key"]);
+const _SPAWN_OPTION_KEYS: ReadonlySet<string> = new Set(["key", "active"]);
 function _looksLikeSpawnOptions(v: unknown): v is SpawnOptions {
   if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
   const keys = Object.keys(v);
@@ -269,6 +303,18 @@ export abstract class Scene {
    */
   _spawnInert = false;
 
+  /**
+   * Set by `Entity.spawnChild` for the duration of its `spawn` call, and
+   * consumed by that call. It marks the one spawn a child creation is allowed
+   * to make while a batch is open; anything else reaching `spawn` then is a
+   * top-level entity the batch could not roll back.
+   * @internal
+   */
+  _childSpawn = false;
+
+  /** The batch currently reserving entities, if `spawnBatch` is running. */
+  private _batch: SpawnBatchRunner | null = null;
+
   /** Access the EngineContext. */
   get context(): EngineContext {
     return this._context;
@@ -416,6 +462,18 @@ export abstract class Scene {
     paramsOrOptions?: unknown,
     maybeOptions?: SpawnOptions,
   ): Entity {
+    // Before any entity is constructed: a batch owns a closed set, and a
+    // top-level entity created while it is open would survive a rollback.
+    const childSpawn = this._childSpawn;
+    this._childSpawn = false;
+    if (this._batch && !childSpawn) {
+      throw new Error(
+        `Scene "${this.name}" is running a spawn batch, so spawn() cannot ` +
+          `create a top-level entity. Reserve it with batch.reserve(), or use ` +
+          `entity.spawnChild() to attach it to an entity the batch owns.`,
+      );
+    }
+
     // Class-based spawn: argument is a constructor function for an Entity subclass
     if (typeof nameOrBlueprintOrClass === "function") {
       const Ctor = nameOrBlueprintOrClass;
@@ -448,16 +506,7 @@ export abstract class Scene {
       }
 
       const entity = new Ctor();
-      if (this._spawnInert) {
-        this._spawnInert = false;
-        entity._setActiveSuppressed(true);
-      }
-      entity._setScene(this, this.entityCallbacks);
-      // Register key BEFORE adding to entities/emitting created — a duplicate
-      // key throw must not leave a half-spawned entity in the scene.
-      if (options?.key !== undefined) this._registerKey(entity, options.key);
-      this.entities.add(entity);
-      this.bus?.emit("entity:created", { entity });
+      this._attachSpawnedEntity(entity, options);
       const setup = entity.setup;
       if (setup) {
         const boundary = this.context.tryResolve(ErrorBoundaryKey);
@@ -512,14 +561,7 @@ export abstract class Scene {
     }
 
     const entity = new Entity(name);
-    if (this._spawnInert) {
-      this._spawnInert = false;
-      entity._setActiveSuppressed(true);
-    }
-    entity._setScene(this, this.entityCallbacks);
-    if (options?.key !== undefined) this._registerKey(entity, options.key);
-    this.entities.add(entity);
-    this.bus?.emit("entity:created", { entity });
+    this._attachSpawnedEntity(entity, options);
 
     if (isBlueprint) {
       (nameOrBlueprintOrClass as Blueprint<unknown>).build(
@@ -529,6 +571,92 @@ export abstract class Scene {
     }
 
     return entity;
+  }
+
+  /**
+   * Attach a freshly constructed entity to this scene. Returns whether an open
+   * batch took it, in which case the entity is reserved rather than published.
+   */
+  private _attachSpawnedEntity(
+    entity: Entity,
+    options: SpawnOptions | undefined,
+  ): boolean {
+    const inert = this._spawnInert;
+    this._spawnInert = false;
+
+    if (this._batch) {
+      this._batch._adopt(entity, options ?? {});
+      return true;
+    }
+
+    if (options?.active === false) entity._setActiveSuppressed(false);
+    else if (inert) entity._setActiveSuppressed(true);
+
+    entity._setScene(this, this.entityCallbacks);
+    // Register key BEFORE adding to entities/emitting created — a duplicate
+    // key throw must not leave a half-spawned entity in the scene.
+    if (options?.key !== undefined) this._registerKey(entity, options.key);
+    this.entities.add(entity);
+    this.bus?.emit("entity:created", { entity });
+    return false;
+  }
+
+  /**
+   * Build a set of entities that all exist before any of them is set up, and
+   * that arrive in the scene together or not at all.
+   *
+   * `spawn()` finishes one entity at a time, so the second entity does not
+   * exist while the first runs `setup()`, and a failure halfway leaves the
+   * entities before it in the scene. A batch reserves every entity first, so
+   * setup parameters can carry handles in any direction, and a throw anywhere
+   * — in `setup()`, in a lifecycle-event subscriber, in an `onEnable` hook —
+   * discards the whole set synchronously and publishes nothing.
+   *
+   * ```ts
+   * const { turret, target } = scene.spawnBatch((batch) => {
+   *   const turret = batch.reserve(Turret, { key: "level/turret" });
+   *   const target = batch.reserve(Dummy, { key: "level/dummy" });
+   *   batch.setup(turret, { aimAt: target.handle() });
+   *   batch.setup(target);
+   *   return { turret, target };
+   * });
+   * ```
+   *
+   * The callback returns whatever the caller needs; `spawnBatch` returns it
+   * once the batch commits. Reserved entities stay out of
+   * `scene.getEntities()`, `findByKey()`, and every query until then, so
+   * nothing running in the scene can observe a half-built set. `entity:created`
+   * and `component:added` publish afterwards, in reservation order.
+   *
+   * Inside the callback, `entity.spawnChild()` joins the batch and is rolled
+   * back with it. A top-level `scene.spawn()` throws instead — a batch cannot
+   * roll back an entity it does not own.
+   */
+  spawnBatch<T>(build: (batch: SpawnBatch) => T): T {
+    if (this._batch) {
+      throw new Error(
+        `Scene "${this.name}" is already running a spawn batch. Reserve every ` +
+          `entity in one batch instead of nesting two.`,
+      );
+    }
+    const batch = new SpawnBatchRunner(this);
+    this._batch = batch;
+    try {
+      const result = build(batch);
+      batch._register();
+      // The transaction ends once the entities are in the scene. Everything
+      // after this — the lifecycle events, the activation hooks — is ordinary
+      // engine work that may spawn, and a failure in it disposes a committed
+      // set rather than rolling an unpublished one back.
+      this._batch = null;
+      batch._announce();
+      batch._activate();
+      return result;
+    } catch (error) {
+      this._batch = null;
+      batch._dispose(error);
+      throw error;
+    }
   }
 
   /**
@@ -548,16 +676,68 @@ export abstract class Scene {
    * @internal
    */
   _registerKey(entity: Entity, key: string): void {
-    this._identityIndex ??= new Map();
-    const existing = this._identityIndex.get(key);
+    this._assertKeyFree(key);
+    entity._setKey(key);
+    (this._identityIndex ??= new Map()).set(key, entity);
+  }
+
+  /**
+   * Internal: throw if a live entity already holds `key`. A spawn batch checks
+   * it when reserving, long before the key reaches the index.
+   * @internal
+   */
+  _assertKeyFree(key: string): void {
+    const existing = this._identityIndex?.get(key);
     if (existing && !existing.isDestroyed) {
       throw new Error(
         `Scene "${this.name}" already has an entity with key "${key}". ` +
           `Destroy it before spawning a duplicate.`,
       );
     }
-    entity._setKey(key);
-    this._identityIndex.set(key, entity);
+  }
+
+  /**
+   * Internal: put a committed batch's entities in the scene. Keys land here
+   * too, so the first `entity:created` subscriber can already find any of
+   * them by key.
+   * @internal
+   */
+  _registerBatchEntities(entities: readonly Entity[]): void {
+    for (const entity of entities) {
+      entity._setScene(this, this.entityCallbacks);
+      this.entities.add(entity);
+      if (entity.key !== undefined) {
+        (this._identityIndex ??= new Map()).set(entity.key, entity);
+      }
+    }
+  }
+
+  /**
+   * Internal: announce one committed batch entity. The entity is dormant, so
+   * `component:added` joins no query — activation does that.
+   * @internal
+   */
+  _announceBatchEntity(entity: Entity): void {
+    this.bus?.emit("entity:created", { entity });
+    for (const component of entity.getAll()) {
+      this.entityCallbacks.onComponentAdded(
+        entity,
+        component.constructor as ComponentClass,
+      );
+    }
+  }
+
+  /**
+   * Internal: drop entities a spawn batch discarded from the destroy queue.
+   * They are already fully torn down, and the end-of-frame flush would run
+   * their teardown a second time.
+   * @internal
+   */
+  _dropFromDestroyQueue(entities: ReadonlySet<Entity>): void {
+    if (this.destroyQueue.length === 0) return;
+    this.destroyQueue = this.destroyQueue.filter(
+      (pending) => !entities.has(pending),
+    );
   }
 
   /**
@@ -582,6 +762,13 @@ export abstract class Scene {
    * @internal
    */
   _addExistingEntity(entity: Entity): void {
+    if (this._batch) {
+      throw new Error(
+        `Entity "${entity.name}" was added to a scene running a spawn batch. ` +
+          `The batch can only roll back entities it reserved, so an outside ` +
+          `entity cannot join the hierarchy it is building.`,
+      );
+    }
     entity._setScene(this, this.entityCallbacks);
     this.entities.add(entity);
     this.bus?.emit("entity:created", { entity });
@@ -894,9 +1081,23 @@ export abstract class Scene {
     this.destroyQueue.length = 0;
   }
 
-  private _finalizeEntityDestroy(entity: Entity): void {
-    entity._performDestroy();
-    this.queryCache?.onEntityDestroyed(entity);
+  /**
+   * Internal: tear an entity down and take it out of the scene.
+   *
+   * A spawn batch rolling back passes `announce: false` for entities it never
+   * published, and an `onError` handler: its teardown has to finish whatever
+   * throws, because the error the caller is waiting for is the one that
+   * started the rollback.
+   * @internal
+   */
+  _finalizeEntityDestroy(
+    entity: Entity,
+    announce = true,
+    onError?: (error: unknown) => void,
+  ): void {
+    const run = isolate(onError);
+    entity._performDestroy(onError);
+    run(() => this.queryCache?.onEntityDestroyed(entity));
     this.entities.delete(entity);
     if (
       entity.key !== undefined &&
@@ -906,7 +1107,8 @@ export abstract class Scene {
       // destroy + respawn can replace the map entry before destruction flushes.
       this._identityIndex.delete(entity.key);
     }
-    this.bus?.emit("entity:destroyed", { entity, scene: this });
+    if (announce)
+      run(() => this.bus?.emit("entity:destroyed", { entity, scene: this }));
   }
 
   /**

@@ -513,6 +513,64 @@ describe("Transform dirty-flag propagation", () => {
   });
 });
 
+describe("Transform point conversion", () => {
+  beforeEach(() => {
+    _resetEntityIdCounter();
+  });
+
+  /** One transform, turned and scaled, under a parent that is too. */
+  function turned(): Transform {
+    const parent = new Entity("parent");
+    parent.add(
+      new Transform({
+        position: { x: 100, y: 50 },
+        rotation: Math.PI / 3,
+        scale: { x: 2, y: 3 },
+      }),
+    );
+    const child = new Entity("child");
+    child.add(
+      new Transform({
+        position: { x: 20, y: -10 },
+        rotation: -Math.PI / 7,
+        scale: { x: 0.5, y: 4 },
+      }),
+    );
+    parent.addChild("arm", child);
+    return child.get(Transform);
+  }
+
+  it("puts the local origin at the world position", () => {
+    const transform = turned();
+    const at = transform.localToWorld({ x: 0, y: 0 });
+    expect(at.equals(transform.worldPosition)).toBe(true);
+  });
+
+  it("round-trips a point through rotation and scale", () => {
+    const transform = turned();
+    const local = { x: 120, y: -40 };
+    const back = transform.worldToLocal(transform.localToWorld(local));
+    expect(back.x).toBeCloseTo(local.x, 6);
+    expect(back.y).toBeCloseTo(local.y, 6);
+  });
+
+  it("composes scale, then rotation, then position", () => {
+    const entity = new Entity("solo");
+    entity.add(
+      new Transform({
+        position: { x: 10, y: 5 },
+        rotation: Math.PI / 2,
+        scale: { x: 2, y: 3 },
+      }),
+    );
+    // (4, 0) scaled to (8, 0), turned a quarter turn to (0, 8), offset by the
+    // world position.
+    const at = entity.get(Transform).localToWorld({ x: 4, y: 0 });
+    expect(at.x).toBeCloseTo(10, 6);
+    expect(at.y).toBeCloseTo(13, 6);
+  });
+});
+
 describe("Entity hierarchy", () => {
   beforeEach(() => {
     _resetEntityIdCounter();

@@ -1,0 +1,826 @@
+---
+title: "Levels"
+description: "Author entity placements in a level file and load them into a scene"
+---
+
+A level file says which entities a scene starts with: their types, their setup
+parameters, their hierarchy, their active state, and where they sit. It holds
+no scene code and no runtime state, so a scene that loads one is still an
+ordinary scene — it just does not hand-write the twenty `spawn()` calls that
+put the level on screen.
+
+`@yagejs/level` is the package that reads those files. It works on its own; the
+[level editor](/tooling/level-editor/) writes the same format.
+
+```bash
+npm install @yagejs/level
+```
+
+## Declare what can be placed
+
+An entity class becomes placeable by declaring itself:
+
+```typescript
+import { Entity, Transform } from "@yagejs/core";
+import {
+  defineLevelAsset,
+  defineLevelEntity,
+  defineParams,
+  param,
+  type ParamsOf,
+} from "@yagejs/level";
+import { SpriteComponent, texture } from "@yagejs/renderer";
+
+const textureAsset = defineLevelAsset({ kind: "texture", create: texture });
+
+const CrateParams = defineParams({
+  sprite: param.asset(textureAsset, "sprites/crate.png"),
+});
+
+export class Crate extends Entity {
+  static readonly level = defineLevelEntity({
+    id: "game.crate",
+    version: 1,
+    params: CrateParams,
+  });
+
+  setup(params: ParamsOf<typeof CrateParams>): void {
+    this.add(new Transform());
+    this.add(new SpriteComponent({ texture: params.sprite }));
+  }
+}
+```
+
+`id` is what a level file stores, so renaming the class later does not break a
+saved level. `version` is the parameter schema's version: a level records the
+version its parameters were written against, and `migrations` carries them
+forward when the schema changes.
+
+A parameter is a typed field with a default. `param.number`,
+`param.integer`, `param.boolean`, `param.string` and `param.select` carry the
+values a game is made of, and are [their own section
+below](#numbers-switches-names-and-choices). `param.asset` names a file — the
+level stores a project-relative path and `setup()` receives the loaded handle.
+`defineLevelAsset` is what says how a path becomes a handle, and its `create`
+function comes from the package that owns the asset: `texture` from
+`@yagejs/renderer`. `param.vec2` and `param.point` carry a pair of numbers, and are [their own
+section below](#pairs-and-places). `param.object`, `param.array` and
+`param.json` carry a value with members, a list of them, and anything else, and
+are [their own section below](#values-with-a-shape). `param.custom` carries a
+value your game decodes and `param.color` a colour, and they are [their own
+section below](#values-your-game-decodes). `param.entityRef` names another
+placement in the same level, and is [its own section
+below](#point-one-placement-at-another).
+
+### Say how a sheet is cut
+
+When the file a parameter names is a sprite sheet, give `param.asset` a third
+argument saying how it is cut into frames. Its members are the renderer's
+`TextureSliceOptions`, so you state the grid once and spread the same object
+into the frame source your `setup()` builds:
+
+```typescript title="src/Torch.ts"
+const TORCH_FRAMES = { frameWidth: 48 };
+
+const TorchParams = defineParams({
+  sprite: param.asset(textureAsset, "assets/torch.png", TORCH_FRAMES),
+});
+
+export class Torch extends Entity {
+  static readonly level = defineLevelEntity({
+    id: "game.torch",
+    version: 1,
+    params: TorchParams,
+  });
+
+  setup(params: ParamsOf<typeof TorchParams>): void {
+    this.add(new Transform());
+    this.add(
+      new AnimatedSpriteComponent({
+        source: { sheet: params.sprite.path, ...TORCH_FRAMES },
+        anchor: { x: 0.5, y: 0.5 },
+      }),
+    );
+  }
+}
+```
+
+The grid is for whoever is authoring: `setup()` still receives the same asset
+handle, and the level file still stores the path alone. What it buys is a
+truthful picture in a tool — the level editor's Actors panel shows the first
+frame instead of the whole strip. A grid that could not slice anything, such as
+a `frameWidth` below 1, is reported by `buildLevelCatalog` along with every
+other declaration problem, so a bad number lists rather than throws.
+
+### Numbers, switches, names and choices
+
+A slime has a speed, a chest has a number of coins, a door is locked or it is
+not. Each is a parameter whose authored value is the value itself:
+
+```typescript title="src/Slime.ts"
+const SlimeParams = defineParams({
+  speed: param.number(40, { min: 5, max: 200, step: 5 }),
+  coins: param.integer(3, { min: 0 }),
+  awake: param.boolean(true),
+  title: param.string("Slime"),
+  notes: param.string("", { multiline: true, optional: true }),
+  facing: param.select("left", ["left", "right"]),
+});
+
+export class Slime extends Entity {
+  static readonly level = defineLevelEntity({
+    id: "game.slime",
+    version: 1,
+    params: SlimeParams,
+  });
+
+  setup(params: ParamsOf<typeof SlimeParams>): void {
+    // params.speed is a number, params.awake a boolean, params.title a string,
+    // params.notes a string or undefined, and params.facing is exactly
+    // "left" | "right".
+    this.add(new SlimeBrain(params.speed, params.facing));
+  }
+}
+```
+
+`param.select` reads its list literally, so what `setup()` gets is the union of
+the values you wrote and a `switch` over it is exhaustive. A misspelled value
+in a level file is refused before the level loads.
+
+`integer` is a kind of its own rather than a rounding option on `number`,
+because `2.5` where a whole number belongs is a mistake worth reporting rather
+than a number to correct behind your back.
+
+`min` and `max` are checked when the level is prepared: a value outside them is
+listed against that placement, and the editor marks the field. `step` and
+`multiline` are for whoever is authoring — `step` sizes one press of the
+editor's control and `multiline` gives the box room for several lines. Neither
+changes what a level may hold, so a typed value between two steps is accepted.
+
+Any of them can be `optional`, which makes "nothing at all" a value:
+
+```typescript
+const SlimeParams = defineParams({
+  patience: param.number(3, { optional: true }),
+});
+
+setup(params: ParamsOf<typeof SlimeParams>): void {
+  // params.patience is number | undefined
+  this.add(new SlimeBrain(params.patience ?? Number.POSITIVE_INFINITY));
+}
+```
+
+The level file stores `null` there and the editor's field gets a **Clear**
+button. Leaving the key out altogether is still an error: a placement says what
+it holds, including that it holds nothing.
+
+#### Name a behaviour with a choice
+
+Give `param.select` an object instead of a list and the choices are its keys.
+That is how a level names one of several things your code can do: the level
+file stores the name, and the same object turns the name back into the
+function.
+
+```typescript title="src/Door.ts"
+const ON_OPEN = {
+  nothing: () => {},
+  vanish: (door: Door) => door.destroy(),
+  ringAlarm: (door: Door) => door.add(new Alarm()),
+};
+
+const DoorParams = defineParams({
+  onOpen: param.select("nothing", ON_OPEN),
+});
+
+export class Door extends Entity {
+  static readonly level = defineLevelEntity({
+    id: "game.door",
+    version: 1,
+    params: DoorParams,
+  });
+
+  private onOpen: (door: Door) => void = ON_OPEN.nothing;
+
+  setup(params: ParamsOf<typeof DoorParams>): void {
+    // params.onOpen is exactly "nothing" | "vanish" | "ringAlarm"
+    this.onOpen = ON_OPEN[params.onOpen];
+  }
+
+  open(): void {
+    this.onOpen(this);
+  }
+}
+```
+
+The editor offers those three names, and a level file holding any other name
+is refused when the level is prepared, exactly as a value outside a list is.
+Because the choices come from the object, `ON_OPEN[params.onOpen]` is always a
+function — there is no second list to keep in step with it. Export the object
+if another placement type offers the same behaviours.
+
+The keys are read once, where you call `param.select`, so a function added to
+the object afterwards is not a choice. A key has to be a string: write `"1"`,
+not `1`. Names like that are offered first whatever order you wrote them in,
+because that is how JavaScript lists an object's keys.
+
+Behaviour that belongs to one level rather than to a type is a different
+question: point the placement at another placement with `param.entityRef`,
+[below](#point-one-placement-at-another).
+
+### Pairs and places
+
+A drift, a size, a patrol end: two numbers that belong together. `param.vec2`
+carries a pair, and `param.point` carries a pair that is a *place* — which is
+what lets the level editor draw a handle on it, so the author points at the
+ground instead of typing where the ground is.
+
+```typescript title="src/Slime.ts"
+const SlimeParams = defineParams({
+  drift: param.vec2({ x: 0, y: -12 }),
+  patrolEnd: param.point({ x: 120, y: 0 }, { relative: true }),
+  home: param.point({ x: 0, y: 0 }, { optional: true }),
+});
+```
+
+The level file stores `{ "x": 120, "y": 0 }` and `setup()` receives a `Vec2`.
+Both members must be finite, and nothing else may be in the object.
+
+`relative: true` stores the point in the placement's own frame, so it travels
+with the placement: move the slime in the editor and its patrol end moves with
+it. Without `relative` the value is a world point, and it stays exactly where
+it is when the placement moves — which is what a shared destination, a gate or
+a drop site, usually means.
+
+That is where the value is *stored*. What `setup()` receives is a world point
+either way, because the level converts through where the placement ends up in
+the world, the instance transform composed with every parent above it:
+
+```typescript
+setup(params: ParamsOf<typeof SlimeParams>): void {
+  this.add(new Transform());
+  // A world position, whatever the level did with this slime.
+  this.add(new Patrol(params.patrolEnd));
+}
+```
+
+#### When you want the offset instead
+
+Some points are not a destination but a part of the entity: a muzzle, a
+hardpoint, the place a pickup pops out of. Those have to keep following the
+entity, so ask for the placement's own frame with `space: "local"`:
+
+```typescript
+const TurretParams = defineParams({
+  muzzle: param.point({ x: 24, y: -6 }, { relative: true, space: "local" }),
+});
+```
+
+`setup()` then receives the offset unchanged, and you turn it into a world
+point where you use it:
+
+```typescript
+class Gun extends Component {
+  constructor(private readonly muzzle: Vec2) {
+    super();
+  }
+
+  fire(): void {
+    const from = this.entity.get(Transform).localToWorld(this.muzzle);
+    // …spawn a bullet at from
+  }
+}
+```
+
+Compose it there rather than in `setup()`: a level applies the placement's own
+transform after `setup()` returns, so a point composed in `setup()` would use
+the transform the entity had before it was placed.
+
+`relative` and `space` are independent, and all four pairings work. A world
+point asked for as `"local"` arrives as an offset from the placement; a
+relative one asked for as `"world"` arrives as a position.
+
+### Values with a shape
+
+A wave has a list of spawns. A spawn has a type and a delay. `param.object`
+declares a value with members, and `param.array` a list of them:
+
+```ts
+const WaveParams = defineParams({
+  loot: param.object({
+    item: param.string("coin"),
+    count: param.integer(1, { min: 1 }),
+  }),
+  spawns: param.array(
+    param.object({
+      type: param.select("slime", ["slime", "bat"]),
+      delay: param.number(1, { min: 0 }),
+    }),
+    { default: [{ type: "slime", delay: 1 }], min: 1 },
+  ),
+});
+
+class Wave extends Entity {
+  static readonly level = defineLevelEntity({
+    id: "game.wave",
+    version: 1,
+    params: WaveParams,
+  });
+
+  setup(params: ParamsOf<typeof WaveParams>): void {
+    this.add(new Chest(params.loot.item, params.loot.count));
+    for (const spawn of params.spawns) {
+      this.add(new Spawner(spawn.type, spawn.delay));
+    }
+  }
+}
+```
+
+The members are declared the way the schema's own fields are, and every one is
+checked by its own kind — `count` below 1 is a finding on that placement,
+naming the member it is about. `min` and `max` on a list are how many elements
+it may hold, and the list a placement starts with is checked against them too,
+so a `min` above zero needs a `default`. In the editor an object draws its members as a group, and a list
+draws a row per element with buttons to reorder it, remove it, and add one
+holding the value the declaration gives an element.
+
+A member is required the way a parameter is: a level that leaves one out is
+reported rather than filled in from the default. Make it `optional` to let it
+hold nothing.
+
+Nesting is capped at four levels of objects and lists — deep enough for a wave
+of spawns of drops. A deeper declaration is a catalog error, listed with the
+other declaration problems. A reference belongs at the top: `param.entityRef`
+inside an object or a list is a catalog error too.
+
+For a shape the kinds cannot describe, `param.json` takes any JSON value and
+hands it over unchanged:
+
+```ts
+const TerrainParams = defineParams({
+  noise: param.json({ default: { seed: 1, octaves: 3 } }),
+});
+```
+
+Nothing checks what is inside it and the editor offers only the text of it, so
+use it when the shape is open — a table another tool exports, a blob a system
+of your own parses. Declare the shape for everything else, and you get controls
+and findings with it.
+
+### Values your game decodes
+
+Sometimes the value your game needs is not the value a file can hold. A facing
+is a `Direction` object; a tint is a number the renderer takes and a name a
+person reads. `param.custom` names both halves: the JSON the level stores, and
+the function that turns it into what `setup()` receives.
+
+```ts
+const SlimeParams = defineParams({
+  facing: param.custom<Direction>({
+    default: "left",
+    decode: (value) => Direction.fromName(value as string),
+    editor: { kind: "select", options: ["left", "right"] },
+  }),
+});
+
+class Slime extends Entity {
+  static readonly level = defineLevelEntity({
+    id: "game.slime",
+    version: 1,
+    params: SlimeParams,
+  });
+
+  setup(params: ParamsOf<typeof SlimeParams>): void {
+    this.add(new Walk(params.facing)); // a Direction, not a string
+  }
+}
+```
+
+`editor` says which control the editor draws, borrowed from one of the plain
+kinds, and the JSON that control produces is what `decode` receives. Leave
+`editor` out and the value is edited as its own JSON text.
+
+Two checks run before your `decode` does: the control's own kind first — a
+`select` editor accepts only the names it lists, a `number` editor applies its
+`min` and `max` — then a `validate` of your own, if you gave one, over a value
+that passed. Both report; neither corrects. Those checks are what makes the
+cast above safe: a level naming a third direction is refused when it is
+prepared, however it came to say so.
+
+`optional: true` makes "nothing at all" a value here as it is for the plain
+kinds: the file stores `null`, the field gets a **Clear** button, neither your
+`validate` nor your `decode` is called for it, and `setup()` receives
+`undefined`.
+
+Your `decode` runs while a level loads in the game, while the editor rebuilds
+its preview, and in a check run from the command line, so keep it deterministic
+and free of side effects. Reaching a scene, a clock or a random number from it
+is a bug. Throwing fails the load with an error naming the parameter.
+
+A colour is common enough to have a kind of its own:
+
+```ts
+const LampParams = defineParams({
+  tint: param.color("#ffcc88"),
+});
+
+setup(params: ParamsOf<typeof LampParams>): void {
+  this.add(new SpriteComponent({ texture, tint: params.tint })); // 0xffcc88
+}
+```
+
+The level file holds `"#rgb"` or `"#rrggbb"`, so it reads as the colours it
+sets, and `setup()` receives the number every drawing API here takes. Opacity
+is not part of it — `"#rrggbbaa"` is refused — because the number carries three
+channels and the renderer takes alpha of its own. In the editor the field is a
+box of text with a colour picker beside it, and the two show one value.
+
+### Point one placement at another
+
+A switch that opens a door, a spawner that feeds an arena, a camera that
+follows the player: each needs a slot the level author fills in with another
+placement. `param.entityRef` is that slot.
+
+```typescript title="src/Switch.ts"
+const SwitchParams = defineParams({
+  door: param.entityRef<Door>({ types: ["game.door"] }),
+  chime: param.entityRef<Chime>({ types: ["game.chime"], optional: true }),
+});
+
+export class Switch extends Entity {
+  static readonly level = defineLevelEntity({
+    id: "game.switch",
+    version: 1,
+    params: SwitchParams,
+  });
+
+  private door?: EntityHandle<Door>;
+
+  setup(params: ParamsOf<typeof SwitchParams>): void {
+    this.door = params.door;
+    this.add(new SwitchMechanism(this.door));
+  }
+
+  open(): void {
+    // Read when the switch is used, not while the level is being built.
+    this.door?.current?.open();
+  }
+}
+```
+
+`types` lists the entity type ids the slot accepts. In the level editor that is
+what the picker offers; in `buildLevelCatalog` it is checked against the
+project, so a type id nothing declares is a listed problem rather than a
+surprise at load time. `optional: true` lets the slot stay empty, and widens
+what `setup()` receives to `EntityHandle<Door> | undefined`.
+
+**Store the handle in `setup()`, and read `.current` later — from a component's
+`onEnable()`, from an update, or from a method your game calls.** Every
+placement in a level is reserved before any `setup()` runs, so two placements
+can point at each other and a slot can point at a placement further down the
+file. What that costs is that the target's own `setup()` may not have run when
+yours does. The whole document has set up by the time any of its components is
+enabled, which is the first moment the handle's entity is fully built.
+
+A slot that accepts the type declaring it — a waypoint pointing at the next
+waypoint, or two types pointing at each other — needs the schema's type written
+out. Without it the class's type is inferred from `ParamsOf<typeof …Params>`
+and the schema's from the class, and TypeScript reports `TS7022` on the schema
+and `TS2502` on `setup()`:
+
+```typescript title="src/Waypoint.ts"
+import { Entity, type EntityHandle } from "@yagejs/core";
+import {
+  defineLevelEntity,
+  defineParams,
+  param,
+  type ParamKind,
+  type ParamsOf,
+  type ParamsSchema,
+} from "@yagejs/level";
+
+const WaypointParams: ParamsSchema<{
+  wait: ParamKind<number>;
+  next: ParamKind<EntityHandle<Waypoint> | undefined>;
+}> = defineParams({
+  wait: param.number(1),
+  next: param.entityRef<Waypoint>({
+    types: ["game.waypoint"],
+    optional: true,
+  }),
+});
+
+export class Waypoint extends Entity {
+  static readonly level = defineLevelEntity({
+    id: "game.waypoint",
+    version: 1,
+    params: WaypointParams,
+  });
+
+  private next: EntityHandle<Waypoint> | undefined;
+
+  setup(params: ParamsOf<typeof WaypointParams>): void {
+    this.next = params.next;
+  }
+
+  /** Where whatever is following this route goes next. */
+  following(): Waypoint | undefined {
+    return this.next?.current;
+  }
+}
+```
+
+The annotation is on the schema alone: `setup()` keeps its ordinary
+`ParamsOf<typeof WaypointParams>` signature and receives the same typed handle,
+and nothing about the level file or the loaded entity changes.
+
+The handle expires when the target entity is destroyed, the way every
+`EntityHandle` does, and never points at anything else. Nothing about it is
+saved: to persist a reference, save the target's placement id — the same string
+the level file holds — and resolve it again with `LevelInstance.get(id)` once
+the level is loaded.
+
+Then list the classes once:
+
+```typescript title="src/levelProject.ts"
+import { defineLevelProject } from "@yagejs/level";
+import { Crate } from "./Crate.js";
+import { Torch } from "./Torch.js";
+
+export default defineLevelProject({ entities: [Crate, Torch] });
+```
+
+## Load one into a scene
+
+```typescript
+import { Scene } from "@yagejs/core";
+import {
+  buildLevelCatalog,
+  instantiateLevel,
+  levelAssets,
+  prepareLevel,
+  readLevel,
+} from "@yagejs/level";
+import raw from "./levels/forest.yage-level.json";
+import levelProject from "./levelProject.js";
+
+const built = buildLevelCatalog(levelProject);
+if (!built.ok) throw new Error(built.errors[0].message);
+
+const read = readLevel(raw);
+if (!read.ok) throw new Error(read.errors[0].message);
+
+const forest = prepareLevel(read.document, built.catalog);
+
+export class ForestScene extends Scene {
+  readonly name = "forest";
+  readonly preload = levelAssets(forest);
+
+  onEnter(): void {
+    instantiateLevel(this, forest, { namespace: "forest" });
+  }
+
+  onExit(): void {
+    for (const handle of this.preload) this.assets.unload(handle);
+  }
+}
+```
+
+Four steps, and only the last one touches a scene:
+
+1. **`readLevel`** parses the file. It accepts the text or an already-parsed
+   object, and returns every structural problem rather than throwing on the
+   first.
+2. **`prepareLevel`** checks the document against the catalog, migrates
+   parameters to the versions the declarations are at now, and works out which
+   assets the level needs. It reports and never throws.
+3. **`levelAssets`** hands those assets to `preload`, so they are loaded before
+   `onEnter` runs.
+4. **`instantiateLevel`** creates the entities. Keep what it returns when your
+   scene needs to reach them later — see [the returned
+   `LevelInstance`](#placing-the-same-level-twice).
+
+Steps 1 to 3 are pure and run once, at module scope. Repeating them per scene
+instance would repeat the parse and the validation for no benefit.
+
+## Loading is all or nothing
+
+`instantiateLevel` is the one function here that throws, and it refuses more
+than it accepts:
+
+- A prepared level carrying any diagnostic is refused outright — a level with
+  one unknown entity type does not load nineteen twentieths of itself.
+- A failure while building throws `LevelLoadError` and leaves the scene exactly
+  as it was: every entity is reserved first, and a failure rolls the whole
+  batch back before it publishes.
+- A failure while activating disposes the instance that had already been
+  committed.
+
+`LevelLoadError` names the document, the placement, the entity type, and the
+parameter path where each applies.
+
+Every entity exists before any `setup()` runs, which is what lets a setup
+parameter refer to a placement further down the file and lets `setup()` read
+its authored parent.
+
+## Placing the same level twice
+
+```typescript
+instantiateLevel(this, room, { namespace: "room-west" });
+instantiateLevel(this, room, {
+  namespace: "room-east",
+  transform: { position: { x: 1920, y: 0 } },
+});
+```
+
+`namespace` prefixes the scene key every placement gets, so two copies of one
+document coexist without colliding. `transform` composes into each top-level
+placement — no root entity is created for it, and moving it afterwards means
+moving the entities.
+
+The returned `LevelInstance` is how you reach what was loaded:
+
+```typescript
+const level = instantiateLevel(this, room, { namespace: "room-west" });
+
+const boss = level.get("01J8Z...");
+level.entities; // parent before child
+level.dispose(); // destroys this instance's entities and nothing else
+```
+
+## Choosing what draws on top
+
+Inside one render layer, what a level lists later draws over what it lists
+earlier. That is the order entities are created in, and same-layer draw order
+in YAGE is creation order. Placements are created by depth, so every child
+draws over every root that shares its layer, whatever the hierarchy shows.
+
+A placement can also name the layer its visuals join:
+
+```json
+{
+  "id": "01J8Z...",
+  "type": "game.sign",
+  "typeVersion": 1,
+  "layer": "props"
+}
+```
+
+The name has to be one the scene declares in its `layers`. It moves every
+visual the entity type left on the `"default"` layer; a visual the type
+deliberately put somewhere else — a health bar on `"ui"` — stays there. A name
+no scene declares logs a warning in development and falls back to `"default"`.
+
+The [level editor](/tooling/level-editor/) writes this field from a picker, and
+it needs to know which layers your scene has: name the module that exports them
+beside the level glob in `editor/config.ts`.
+
+## Fetching a level instead of importing it
+
+`readLevel` takes a parsed body, so a level fetched at runtime goes through the
+same parser and loader:
+
+```typescript
+const response = await fetch("/levels/forest.yage-level.json");
+const read = readLevel(await response.json());
+```
+
+## Checking a level without loading it
+
+```typescript
+import { validateLevel } from "@yagejs/level";
+
+const problems = validateLevel(document, catalog);
+```
+
+This is `prepareLevel` asked for its diagnostics alone: unknown types,
+parameters that do not match a declaration, a version no migration reaches. A
+tool that revalidates after every edit uses it; a game prepares once and loads
+the result.
+
+Each diagnostic has a stable `code`: `"unknown-type"`, `"migration-failed"`,
+`"parameter-invalid"`, `"asset-derivation-failed"`, or one of the three about
+a reference — `"reference-unset"` for a required slot nobody filled,
+`"reference-missing"` for an id no placement in the file holds, and
+`"reference-type"` for a target the slot does not accept. A tool uses the code
+and parameter path when it offers a corrective action. The message is for the
+developer to read. Every diagnostic blocks loading, so there is no warning
+severity.
+
+The reference codes are separate from `"parameter-invalid"` because the repair
+differs: writing a reference back to its default means "nothing chosen", which
+fixes none of the three. A reference to a placement that itself failed to
+prepare is not a problem — the check runs against what the file says, not
+against what loaded.
+
+## Writing a placement from a tool
+
+If you are building something that authors levels — the
+[level editor](/tooling/level-editor/) is one — `defaultParams` gives you the
+parameter object a new placement starts with:
+
+```typescript
+import { defaultParams } from "@yagejs/level";
+
+const entry = catalog.get("game.crate");
+const params = entry.declaration.params
+  ? defaultParams(entry.declaration.params)
+  : {};
+```
+
+Write that result into the placement. Resolving the defaults at creation is
+what keeps the promise in the gotcha below: the level file holds the values it
+was authored with, so changing a default afterwards leaves it alone.
+
+An authoring tool can also ask which controls the schema needs:
+
+```typescript
+import { describeParams } from "@yagejs/level";
+
+const fields = entry.declaration.params
+  ? describeParams(entry.declaration.params)
+  : [];
+```
+
+Each result carries the field's name, its kind, whatever that kind needs, and
+its default:
+
+```ts
+// [{
+//   name: "sprite",
+//   kind: "asset",
+//   assetKind: "texture",
+//   frames: { frameWidth: 48 },
+//   defaultValue: "assets/torch.png",
+// }]
+```
+
+The list is immutable and follows declaration order. `kind` says which control
+the field needs, and it is a closed set — `"asset"`, `"entityRef"`, `"number"`,
+`"integer"`, `"boolean"`, `"string"`, `"select"`, `"vec2"`, `"point"`,
+`"object"`, `"array"`, `"json"`, `"custom"` and `"color"` — so a tool can switch
+on it exhaustively.
+
+A description is a tree, and `kind` is flat at every node of it. An `object`
+field carries `fields`, its members with names of their own, and an `array`
+field carries `item`, one description with no name, because an element is named
+by its position. Switch on `kind` the same way at every depth.
+
+Beside `kind` sits whatever that kind needs: `optional` on every kind but
+`asset`, `min`, `max` and `step` on a number, `min` and `max` on a whole
+number, `multiline` on a string, `options` on a choice, `min` and `max` on a
+list as how many elements it may hold, `relative` on a point, and `editor` on a
+`custom` field — the name of the plain kind whose control edits its JSON. A
+`custom` field also carries whatever the control it named needs, in that kind's
+own slots: a `select` editor's `options`, a number editor's `min`, `max` and
+`step`, a string editor's `multiline`.
+
+An asset field carries `assetKind`, the `kind` you gave `defineLevelAsset`, so
+a tool can tell a texture from a sound — the editor's Actors panel uses it to
+show a type's default art. `frames` is there only when the declaration gave
+one, and it says what one frame of that art is.
+
+A reference field carries `types`, the entity type ids it accepts, and
+`optional`; its `defaultValue` is `null`. To find what a level's placements
+already point at, read `references` off each `PreparedPlacement` — one entry
+per filled slot, in field order, carrying the parameter path and the target's
+placement id.
+
+Parameter kinds come from `param`; a hand-built kind object is rejected when
+the catalog is built.
+
+## Reading level files outside the engine
+
+```typescript
+import {
+  emptyLevelDocument,
+  formatLevel,
+  readLevel,
+} from "@yagejs/level/document";
+
+// A level file with nothing in it, for a tool that creates one.
+writeFileSync("levels/forest.yage-level.json", formatLevel(emptyLevelDocument("forest")));
+```
+
+The `/document` subpath is the parser and the canonical writer with no
+dependency on `@yagejs/core`, so a Node script can read and rewrite level files
+without evaluating engine code. `formatLevel` produces one canonical text per
+document, so a file written by two different tools compares byte for byte, and
+`emptyLevelDocument` gives you a level at the current format version with no
+placements in it.
+
+## Gotchas
+
+- **A missing parameter is an error, not a default.** Defaults are written when
+  a placement is created, so changing a default later cannot silently change a
+  level that already exists.
+- **Pass `levelAssets()` straight to `preload`.** It deduplicates by loader
+  type and path, which is what `AssetManager` counts references by; building
+  your own list can retain an asset twice and release it once.
+- **A placement's name is not the entity's name.** `Entity.name` is the class
+  name; use `instance.get(placementId)` to find one.
+- **The placement's transform arrives after `setup()` returns.** Anything that
+  reads `Transform.position` in `setup()`, or in a component's `onAdd()`, sees
+  where the entity was before the level placed it — and a component that
+  captures a position there and writes it back every frame moves the placement
+  to the wrong place with no error anywhere. Read the placed pose from a
+  component's `onEnable()` or from an update.

@@ -1,0 +1,23 @@
+{
+  "format": "yage-level",
+  "version": 1,
+  "id": "forest",
+  "metadata": {},
+  "entities": [
+    {
+      "id": "01J00000000000000000FLAT01",
+      "type": "game.crate",
+      "typeVersion": 1,
+      "name": "Popped in",
+      "active": true,
+      "transform": {
+        "position": { "x": -120, "y": -80 },
+        "rotation": 0,
+        "scale": { "x": 0, "y": 0 }
+      },
+      "params": { "sprite": "assets/player_idle.png" },
+      "extensions": {}
+    }
+  ],
+  "extensions": {}
+}

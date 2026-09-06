@@ -12,6 +12,7 @@ import {
   type EntityHandle,
 } from "./EntityHandle.js";
 import { devWarn } from "./internal/dev.js";
+import { isolate } from "./internal/isolate.js";
 
 /**
  * The pool side of member ownership, kept structural so `Entity` does not
@@ -421,6 +422,9 @@ export class Entity {
     // `addChild`'s resync settle the subtree once.
     const inert = !this._activeInHierarchy;
     if (inert) scene._spawnInert = true;
+    // Marks this one spawn as a child creation. A batch rejects every other
+    // spawn while it is open, and a child joins it instead.
+    scene._childSpawn = true;
     let child: Entity;
     try {
       if (classOrBlueprintOrOptions === undefined) {
@@ -438,6 +442,7 @@ export class Entity {
       }
     } finally {
       if (inert) scene._spawnInert = false;
+      scene._childSpawn = false;
     }
     this.addChild(name, child);
     return child;
@@ -874,18 +879,22 @@ export class Entity {
    * Called by Scene during endOfFrame flush.
    * @internal
    */
-  _performDestroy(): void {
+  _performDestroy(onError?: (error: unknown) => void): void {
+    // A spawn batch rolling back passes `onError`: every component still has
+    // to be torn down after one of them throws.
+    const run = isolate(onError);
+
     this._detachFromParent();
 
     // Clear own children references (they are destroyed separately via cascade)
     this._children?.clear();
 
     for (const [cls, comp] of this.components) {
-      comp._applyEnabled(false);
-      comp._runCleanups();
-      comp.onDestroy?.();
+      run(() => comp._applyEnabled(false));
+      comp._runCleanups(onError);
+      run(() => comp.onDestroy?.());
       comp._markTornDown();
-      this.callbacks?.onComponentRemoved(this, cls);
+      run(() => this.callbacks?.onComponentRemoved(this, cls));
     }
     this.components.clear();
     this.byClass.clear();

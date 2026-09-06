@@ -1,0 +1,23 @@
+{
+  "format": "yage-level",
+  "version": 1,
+  "id": "meadow",
+  "metadata": {},
+  "entities": [
+    {
+      "id": "01J000000000000000MEADOW01",
+      "type": "game.crate",
+      "typeVersion": 1,
+      "name": "Meadow",
+      "active": true,
+      "transform": {
+        "position": { "x": 240, "y": 40 },
+        "rotation": 0,
+        "scale": { "x": 1, "y": 1 }
+      },
+      "params": { "sprite": "assets/player_idle.png" },
+      "extensions": {}
+    }
+  ],
+  "extensions": {}
+}

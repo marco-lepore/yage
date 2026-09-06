@@ -2,6 +2,11 @@
 
 Depends on `@yagejs/core`, `@pixi/sound`. Channel-based audio playback.
 
+`AudioPlugin` loads `@pixi/sound` when it installs, so the package imports
+outside a browser too — a level check or a test run in Node can import a module
+that uses `sound()` or `SoundComponent`. A registration made before the plugin
+installs is applied when it does.
+
 ## Setup
 
 ```ts
@@ -126,6 +131,7 @@ Semantics:
 - Runtime buffers are not persisted by YAGE. If game-owned save data contains
   an alias, re-register the buffer under that alias before reconstructing
   playback.
+- Callable at module scope, before `AudioPlugin` installs: the alias is held and added to the library the plugin loads.
 - Registered aliases are engine-global and live until `unregisterSound(alias)`.
 - `unregisterSound` is a no-op for aliases it never registered. An `AudioBuffer` has no destroy step, so unlike `unregisterTexture` there is nothing to release beyond the alias itself.
 - Re-registering an alias replaces the entry.

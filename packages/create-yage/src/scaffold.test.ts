@@ -75,4 +75,36 @@ describe("scaffold overwrite", () => {
       "from template",
     );
   });
+
+  it("writes the editor feature's deps and script into package.json", async () => {
+    const templateDir = join(templatesRoot, "minimal");
+    writeFileSync(
+      join(templateDir, "_package.json"),
+      '{"name":"my-yage-game","scripts":{"dev":"vite"}}',
+    );
+    writeFileSync(join(templateDir, "tsconfig.json"), "{}");
+    const targetDir = join(workDir, "game");
+
+    await scaffold({
+      targetDir,
+      projectName: "game",
+      template: "minimal",
+      templatesRoot,
+      features: ["editor"],
+      overwrite: false,
+      install: false,
+      git: false,
+    });
+
+    const pkg = JSON.parse(
+      readFileSync(join(targetDir, "package.json"), "utf8"),
+    ) as {
+      dependencies: Record<string, string>;
+      devDependencies: Record<string, string>;
+      scripts: Record<string, string>;
+    };
+    expect(pkg.dependencies).toHaveProperty("@yagejs/level");
+    expect(pkg.devDependencies).toHaveProperty("@yagejs-tools/editor");
+    expect(pkg.scripts).toEqual({ dev: "vite", editor: "yage-editor" });
+  });
 });

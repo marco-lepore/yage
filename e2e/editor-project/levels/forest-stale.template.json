@@ -1,0 +1,37 @@
+{
+  "format": "yage-level",
+  "version": 1,
+  "id": "forest-stale",
+  "metadata": {},
+  "entities": [
+    {
+      "id": "01J000000000000000000STALE",
+      "type": "game.crate",
+      "typeVersion": 2,
+      "name": "Stale",
+      "active": true,
+      "transform": {
+        "position": { "x": 0, "y": -80 },
+        "rotation": 0,
+        "scale": { "x": 1, "y": 1 }
+      },
+      "params": { "sprite": "assets/skeleton_idle.png", "shadow": true },
+      "extensions": {}
+    },
+    {
+      "id": "01J00000000000000000ABSENT",
+      "type": "game.crate",
+      "typeVersion": 1,
+      "name": "Missing",
+      "active": true,
+      "transform": {
+        "position": { "x": 0, "y": 120 },
+        "rotation": 0,
+        "scale": { "x": 1, "y": 1 }
+      },
+      "params": { "sprite": "assets/no-such-texture.png" },
+      "extensions": {}
+    }
+  ],
+  "extensions": {}
+}
