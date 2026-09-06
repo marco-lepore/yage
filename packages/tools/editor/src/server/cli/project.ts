@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { loadConfigFromFile, type ConfigEnv, type UserConfig } from "vite";
 
@@ -13,7 +13,7 @@ const VITE_CONFIG_NAMES = [
 ];
 
 /** The project's Vite config file, or `undefined` when it has none. */
-export function findViteConfig(dir: string): string | undefined {
+function findViteConfig(dir: string): string | undefined {
   for (const name of VITE_CONFIG_NAMES) {
     const file = path.join(dir, name);
     if (existsSync(file)) return file;
@@ -31,7 +31,7 @@ export function findViteConfig(dir: string): string | undefined {
  * would drop exactly those transforms and fail later as a runtime error nobody
  * can trace back to here.
  */
-export async function loadProjectViteConfig(
+async function loadProjectViteConfig(
   file: string,
   env: ConfigEnv,
   root: string,
@@ -47,4 +47,62 @@ export async function loadProjectViteConfig(
   }
   if (!loaded) throw new Error(`Failed to load ${file}.`);
   return loaded.config;
+}
+
+/** The project's own Vite config, and the directory it serves from. */
+export interface ProjectViteConfig {
+  /** The config file, or `undefined` when the project has none. */
+  readonly file: string | undefined;
+  /** Its config, empty when there is no file. */
+  readonly config: UserConfig;
+  /** The directory it serves from, as an absolute path. */
+  readonly root: string;
+}
+
+/**
+ * Read the project's Vite config and resolve the root it serves from.
+ *
+ * Every path in an editor config is resolved against this root, and Vite
+ * resolves a relative `root` against the working directory, so the value is
+ * resolved here rather than passed through.
+ */
+export async function resolveViteRoot(
+  cwd: string,
+  env: ConfigEnv,
+): Promise<ProjectViteConfig> {
+  const file = findViteConfig(cwd);
+  const config = file ? await loadProjectViteConfig(file, env, cwd) : {};
+  return { file, config, root: path.resolve(cwd, config.root ?? ".") };
+}
+
+/**
+ * Every `@yagejs/*` package the project declares, from any dependency field —
+ * a game that pulls the engine in as a peer or a dev dependency still runs
+ * against it. `undefined` when the directory holds no package.json.
+ */
+export function readEngineDependencies(
+  dir: string,
+): ReadonlySet<string> | undefined {
+  const file = path.join(dir, "package.json");
+  if (!existsSync(file)) return undefined;
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(readFileSync(file, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `Failed to read ${file}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+  const fields = manifest as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+    peerDependencies?: Record<string, string>;
+  };
+  const names = [
+    ...Object.keys(fields.dependencies ?? {}),
+    ...Object.keys(fields.devDependencies ?? {}),
+    ...Object.keys(fields.peerDependencies ?? {}),
+  ];
+  return new Set(names.filter((name) => name.startsWith("@yagejs/")));
 }

@@ -1,9 +1,13 @@
+export type EditorCommand = "dev" | "init";
+
 export interface ParsedArgs {
-  readonly command: "dev";
+  readonly command: EditorCommand;
   readonly port?: number | undefined;
   readonly open?: boolean | undefined;
   /** An explicit config file, overriding the probe for `editor/config.ts`. */
   readonly config?: string | undefined;
+  /** `init` only: rewrite the files it would otherwise keep. */
+  readonly force?: boolean | undefined;
   readonly help: boolean;
   readonly version: boolean;
   /** Set when argv could not be parsed. */
@@ -12,15 +16,31 @@ export interface ParsedArgs {
 
 export const DEFAULT_PORT = 5211;
 
+/**
+ * The flags each command takes. A flag outside its command's set is the typo
+ * the unknown-flag check catches, one step later: `yage-editor init --port
+ * 3000` would otherwise write files and say nothing about the port.
+ */
+const COMMAND_FLAGS = {
+  dev: ["--port", "--no-open", "--config"],
+  init: ["--force"],
+} as const satisfies Record<EditorCommand, readonly string[]>;
+
+const COMMANDS = Object.keys(COMMAND_FLAGS) as readonly EditorCommand[];
+
 export const HELP_TEXT = `yage-editor — the YAGE level editor
 
 Usage
-  yage-editor [dev] [options]
+  yage-editor init [--force]   Set the project up: editor/config.ts,
+                               editor/harness.ts, src/levelProject.ts, and an
+                               "editor" script, prefilled from the project
+  yage-editor [dev] [options]  Start the editor
 
 Options
   --port <number>   Port for the editor server (default ${DEFAULT_PORT})
   --no-open         Do not open a browser
   --config <path>   Editor config file (default editor/config.ts)
+  --force           Rewrite the files init would otherwise keep
   -h, --help        Show this help
   -v, --version     Show the package version
 `;
@@ -35,12 +55,16 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   let port: number | undefined;
   let open: boolean | undefined;
   let config: string | undefined;
+  let force: boolean | undefined;
+  let command: EditorCommand = "dev";
   let help = false;
   let version = false;
   let sawCommand = false;
+  /** Every flag read, so the command can be checked against its own set. */
+  const flags: string[] = [];
 
   const fail = (error: string): ParsedArgs => ({
-    command: "dev",
+    command,
     help,
     version,
     error,
@@ -59,6 +83,12 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     }
     if (arg === "--no-open") {
       open = false;
+      flags.push(arg);
+      continue;
+    }
+    if (arg === "--force") {
+      force = true;
+      flags.push(arg);
       continue;
     }
     if (arg === "--port" || arg.startsWith("--port=")) {
@@ -70,6 +100,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
         return fail(`"${value.text}" is not a port number.`);
       }
       port = parsed;
+      flags.push("--port");
       continue;
     }
     if (arg === "--config" || arg.startsWith("--config=")) {
@@ -77,17 +108,29 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       if (value === undefined) return fail("--config needs a file path.");
       i += value.consumed;
       config = value.text;
+      flags.push("--config");
       continue;
     }
     if (arg.startsWith("-")) return fail(`Unknown option "${arg}".`);
-    if (arg === "dev" && !sawCommand) {
-      sawCommand = true;
-      continue;
+    if (sawCommand) return fail(`Unexpected argument "${arg}".`);
+    const named = COMMANDS.find((name) => name === arg);
+    if (named === undefined) {
+      return fail(
+        `Unknown command "${arg}". Expected ${COMMANDS.join(" or ")}; ` +
+          `"yage-editor" on its own starts the editor.`,
+      );
     }
-    return fail(`Unknown command "${arg}". The editor runs as "yage-editor".`);
+    command = named;
+    sawCommand = true;
   }
 
-  return { command: "dev", port, open, config, help, version };
+  const allowed: readonly string[] = COMMAND_FLAGS[command];
+  const offender = flags.find((flag) => !allowed.includes(flag));
+  if (offender !== undefined) {
+    return fail(`${offender} is not an option of \`yage-editor ${command}\`.`);
+  }
+
+  return { command, port, open, config, force, help, version };
 }
 
 /**

@@ -13,6 +13,14 @@ describe("parseArgs", () => {
     expect(parseArgs(["dev"])).toMatchObject({ command: "dev" });
   });
 
+  it("reads the init command and its flag", () => {
+    expect(parseArgs(["init"])).toMatchObject({ command: "init" });
+    expect(parseArgs(["init", "--force"])).toMatchObject({
+      command: "init",
+      force: true,
+    });
+  });
+
   it.each([
     [["--port", "3000"], { port: 3000 }],
     [["--port=3000"], { port: 3000 }],
@@ -32,6 +40,9 @@ describe("parseArgs", () => {
     ["a port outside the range", ["--port", "70000"]],
     ["a flag with no value", ["--config"]],
     ["a flag with an empty value", ["--config="]],
+    ["a second command word", ["init", "dev"]],
+    ["a dev option passed to init", ["init", "--port", "3000"]],
+    ["--force passed to dev", ["--force"]],
   ])("refuses %s rather than falling back to a default", (_name, argv) => {
     expect(parseArgs(argv).error).toBeTruthy();
   });

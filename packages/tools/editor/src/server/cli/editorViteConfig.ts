@@ -5,7 +5,7 @@ import {
   type ResolvedEditorConfig,
 } from "../config/index.js";
 import { yageEditor } from "../vite/index.js";
-import { findViteConfig, loadProjectViteConfig } from "./project.js";
+import { resolveViteRoot } from "./project.js";
 
 export interface EditorViteConfigOptions {
   /** The project directory. Its Vite config and editor config are read here. */
@@ -33,14 +33,11 @@ export interface EditorViteConfig {
 export async function createEditorViteConfig(
   options: EditorViteConfigOptions,
 ): Promise<EditorViteConfig> {
-  const projectConfigFile = findViteConfig(options.cwd);
-  const project = projectConfigFile
-    ? await loadProjectViteConfig(projectConfigFile, options.env, options.cwd)
-    : {};
-
-  // Resolved rather than passed through: Vite resolves a relative root against
-  // the working directory, and every editor path is resolved against this.
-  const root = path.resolve(options.cwd, project.root ?? ".");
+  const {
+    file: projectConfigFile,
+    config: project,
+    root,
+  } = await resolveViteRoot(options.cwd, options.env);
   const editor = await loadEditorConfig({
     cwd: options.cwd,
     root,

@@ -6,7 +6,8 @@ level, build it up, and save it back. The game loads the same file through
 
 ```bash
 npm install -D @yagejs-tools/editor
-npx yage-editor
+npx yage-editor init   # write the config, the harness, the level project, the script
+npm run editor         # start it
 ```
 
 `yage-editor` starts a Vite dev server on `127.0.0.1:5211` built from the
@@ -15,7 +16,44 @@ the game. The editor is served at the project's Vite `base` — `/` unless the
 project set one — and at the `index.html` there; every other path is the
 project's.
 
-Flags: `--port <number>`, `--no-open`, `--config <path>`, `-h`, `-v`.
+Commands: `init` (`--force`), and `dev`, the default. Flags:
+`--port <number>`, `--no-open`, `--config <path>`, `-h`, `-v`.
+
+## `yage-editor init`
+
+Writes, under the project's Vite root, and adds `"editor": "yage-editor"` to
+the project's `scripts`:
+
+| File                  | Contents                                                          |
+| --------------------- | ----------------------------------------------------------------- |
+| `editor/config.ts`    | `defineEditorConfig`, prefilled from the project                  |
+| `editor/harness.ts`   | a plain `{ engine, plugins }` object, or a re-export of the lab's |
+| `src/levelProject.ts` | `defineLevelProject({ entities: [] })`                            |
+
+Prefilled: the harness carries a plugin for each `@yagejs/*` package the
+project declares in any dependency field, apart from `save`, `level`,
+`pathfinding` and `effects`, which contribute none. `levels` names each
+directory already holding `*.yage-level.json` files
+(`levels/*.yage-level.json` when there are none), `layers` is
+`../src/layers.ts` when that file exists, and `assets` is `public/**/*.png`
+when `public/` exists. `entities` and `gamePage` are never
+guessed: nothing in a project says which classes are placeable, and a
+`gamePage` naming a page that does not exist is refused at startup.
+
+`@yagejs/core` and `@yagejs/renderer` must be declared, or the command refuses.
+An undeclared `@yagejs/level` is a note rather than a refusal, since installing
+the editor pulls its peers in without declaring them.
+
+A file that is already there is kept and named in the output; `--force`
+rewrites it. That covers `editor/config.ts` under any of the four extensions
+the CLI probes, and a `scripts.editor` the project already declares. A kept
+config names the harness the editor loads, so none is written beside it.
+
+When the project has a scenario lab harness — `lab/harness.ts`, `.mts`, `.js`
+or `.mjs` — `editor/harness.ts` is written as `export { default } from
+"../lab/harness.js"` instead of a second plugin list. The two tools have no
+dependency on each other: they accept the same object, and the link is a line
+of the project's own code.
 
 ## Configuration
 
@@ -27,7 +65,7 @@ import { defineEditorConfig } from "@yagejs-tools/editor";
 export default defineEditorConfig({
   modules: {
     project: "../src/levelProject.ts", // default-exports the LevelProject a game also uses
-    harness: "../lab/harness.ts", // engine + plugin factories, the lab harness shape
+    harness: "./harness.ts", // engine + plugin factories, the scenario lab's shape
   },
   levels: [
     // a glob, or a glob plus the layers its levels are authored against
@@ -80,8 +118,8 @@ Vite `base` the project set. It needs a page of its own: the editor answers
 that resolves onto one, such as `/play` for `/play.html` — is refused at
 startup. Without a `gamePage` there is no Run control; Play needs none.
 
-The harness has the same shape the scenario lab uses, so a project with a
-`lab/harness.ts` points both tools at it:
+The harness has the same shape the scenario lab uses, so one file can serve
+both tools:
 
 ```ts
 export default {

@@ -1,5 +1,6 @@
 import { DEFAULT_PORT, HELP_TEXT, parseArgs } from "./argv.js";
 import { runDev } from "./dev.js";
+import { runInit } from "./init.js";
 
 /**
  * The `yage-editor` command. Returns the process exit code.
@@ -28,12 +29,16 @@ export async function runCli(
   }
 
   try {
-    await runDev({
-      cwd: process.cwd(),
-      port: parsed.port ?? DEFAULT_PORT,
-      open: parsed.open ?? true,
-      configFile: parsed.config,
-    });
+    if (parsed.command === "init") {
+      await runInit({ cwd: process.cwd(), force: parsed.force ?? false });
+    } else {
+      await runDev({
+        cwd: process.cwd(),
+        port: parsed.port ?? DEFAULT_PORT,
+        open: parsed.open ?? true,
+        configFile: parsed.config,
+      });
+    }
     return 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

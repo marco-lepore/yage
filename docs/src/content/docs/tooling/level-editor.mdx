@@ -35,9 +35,32 @@ dependencies you already have.
 
 <Steps>
 
-1. **Declare what can be placed.** Every entity the editor can put in a level
-   declares itself, and the project lists them once. This is the same
-   declaration a game uses to load the file — see
+1. **Set the project up:**
+
+   ```bash
+   npx yage-editor init
+   ```
+
+   This writes `editor/config.ts`, `editor/harness.ts` and
+   `src/levelProject.ts`, and adds an `editor` script to your `package.json`.
+   Everything the command can read off the project is filled in: the harness
+   lists a plugin for each `@yagejs/*` package you depend on that has one
+   (`save`, `level`, `pathfinding` and `effects` have none), the level globs
+   point at the directories already holding `*.yage-level.json` files, and a
+   `src/layers.ts` becomes the layers module each glob is paired with. A file
+   that is already there is left alone and named in the output, so running this
+   in a project you set up by hand fills in what is missing. A config you
+   already have names its own harness, so the command leaves that file to it.
+   Pass `--force` to rewrite the files it would otherwise keep.
+
+   A project that already has a `lab/harness.ts` for the
+   [scenario lab](/tooling/scenario-lab/) gets a one-line `editor/harness.ts`
+   that re-exports it, so both tools run the same engine and the plugin list is
+   written once.
+
+2. **List what can be placed.** Every entity the editor can put in a level
+   declares itself, and the project lists them in the file the command wrote.
+   This is the same declaration a game uses to load the file — see
    [Levels](/guides/levels/) for the full shape:
 
    ```typescript title="src/levelProject.ts"
@@ -47,94 +70,112 @@ dependencies you already have.
    export default defineLevelProject({ entities: [Crate] });
    ```
 
-2. **Write `editor/config.ts`:**
-
-   ```typescript title="editor/config.ts"
-   import { defineEditorConfig } from "@yagejs-tools/editor";
-
-   export default defineEditorConfig({
-     modules: {
-       project: "../src/levelProject.ts",
-       harness: "../lab/harness.ts",
-     },
-     levels: [
-       {
-         glob: "src/levels/forest/*.yage-level.json",
-         layers: "../src/forestLayers.ts",
-       },
-       "src/levels/menu/*.yage-level.json",
-     ],
-     assets: ["public/sprites/**/*.png"],
-     gamePage: "/game.html",
-   });
-   ```
-
-   A `levels` entry is either a glob on its own or a glob plus the render
-   layers the levels it matches are authored against. `layers` names a module
-   that default-exports the same `LayerDef[]` your scene spreads into its own
-   `layers`:
-
-   ```typescript title="src/forestLayers.ts"
-   import { ySort, type LayerDef } from "@yagejs/renderer";
-
-   const FOREST_LAYERS: readonly LayerDef[] = [
-     { name: "bg", order: -10 },
-     { name: "world", order: 0, sort: ySort },
-     { name: "props", order: 10 },
-   ];
-
-   export default FOREST_LAYERS;
-   ```
-
-   Export the array once and import it in both places, so the editor's preview
-   draws the level the way your game will. Without it the preview puts every
-   placement on the `default` layer in creation order, which is rarely what the
-   running game shows. It is a path rather than the array itself because the
-   editor reads this config in Node before it starts, and a `sort` has to stay
-   a real function by the time it reaches the browser.
-
-   Layers belong to the entry rather than to the project because each scene
-   declares its own set, and they stay out of the level file because which
-   scene a level loads into is your game's decision, not the file's.
-
-   `assets` is optional and lists what the asset picker offers. The editor
-   cannot tell which files a given parameter would accept, so these globs are
-   the whole filter: what they match is what the list shows. Leave them out and
-   asset paths are typed by hand.
-
-   The globs match a file where it sits on disk, and the picker offers the path
-   the browser fetches — which is the path a level stores. Vite serves the
-   contents of `publicDir` at the server root, so the glob above lists
-   `sprites/hero.png`, one segment shorter than the glob that matched it.
-
-3. **Point it at a harness.** The harness builds the engine the editor's
-   viewport runs — the same shape the
-   [scenario lab](/tooling/scenario-lab/) uses, so a project with a
-   `lab/harness.ts` points both tools at it:
-
-   ```typescript title="lab/harness.ts"
-   import { Engine } from "@yagejs/core";
-   import { RendererPlugin } from "@yagejs/renderer";
-
-   export default {
-     engine: () => new Engine({ debug: true }),
-     plugins: ({ container }: { container: HTMLElement }) => [
-       new RendererPlugin({ width: 960, height: 600, container }),
-     ],
-   };
-   ```
-
-4. **Start it:**
+3. **Start it:**
 
    ```bash
-   npx yage-editor
+   npm run editor
    ```
 
 </Steps>
 
+`yage-editor` takes two commands: `init`, which sets the project up and takes
+`--force`, and `dev`, which starts the editor and is what you get by default.
+
 The editor opens on `http://127.0.0.1:5211`. Pass `--port` to move it,
 `--no-open` to keep it from opening a browser, and `--config` to name a config
 file other than `editor/config.ts`.
+
+## The files it sets up
+
+Read this section to change what `init` filled in, or to set a project up by
+hand.
+
+### `editor/config.ts`
+
+Which levels the editor opens, what the asset picker offers, and where the two
+project modules are:
+
+```typescript title="editor/config.ts"
+import { defineEditorConfig } from "@yagejs-tools/editor";
+
+export default defineEditorConfig({
+  modules: {
+    project: "../src/levelProject.ts",
+    harness: "./harness.ts",
+  },
+  levels: [
+    {
+      glob: "src/levels/forest/*.yage-level.json",
+      layers: "../src/forestLayers.ts",
+    },
+    "src/levels/menu/*.yage-level.json",
+  ],
+  assets: ["public/sprites/**/*.png"],
+  gamePage: "/game.html",
+});
+```
+
+A `levels` entry is either a glob on its own or a glob plus the render layers
+the levels it matches are authored against. `layers` names a module that
+default-exports the same `LayerDef[]` your scene spreads into its own `layers`:
+
+```typescript title="src/forestLayers.ts"
+import { ySort, type LayerDef } from "@yagejs/renderer";
+
+const FOREST_LAYERS: readonly LayerDef[] = [
+  { name: "bg", order: -10 },
+  { name: "world", order: 0, sort: ySort },
+  { name: "props", order: 10 },
+];
+
+export default FOREST_LAYERS;
+```
+
+Export the array once and import it in both places, so the editor's preview
+draws the level the way your game will. Without it the preview puts every
+placement on the `default` layer in creation order, which is rarely what the
+running game shows. It is a path rather than the array itself because the
+editor reads this config in Node before it starts, and a `sort` has to stay a
+real function by the time it reaches the browser.
+
+Layers belong to the entry rather than to the project because each scene
+declares its own set, and they stay out of the level file because which scene a
+level loads into is your game's decision, not the file's.
+
+`assets` is optional and lists what the asset picker offers. The editor cannot
+tell which files a given parameter would accept, so these globs are the whole
+filter: what they match is what the list shows. Leave them out and asset paths
+are typed by hand.
+
+The globs match a file where it sits on disk, and the picker offers the path
+the browser fetches — which is the path a level stores. Vite serves the
+contents of `publicDir` at the server root, so the glob above lists
+`sprites/hero.png`, one segment shorter than the glob that matched it.
+
+`gamePage` is optional and names the page the **Run** control opens on the
+saved level file. `init` leaves it out, because a page that does not exist is
+refused at startup.
+
+### `editor/harness.ts`
+
+The harness builds the engine the editor's viewport runs. It has the same shape
+the [scenario lab](/tooling/scenario-lab/) uses, so one file can serve both
+tools:
+
+```typescript title="editor/harness.ts"
+import { Engine } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
+
+export default {
+  engine: () => new Engine({ debug: true }),
+  plugins: ({ container }: { container: HTMLElement }) => [
+    new RendererPlugin({ width: 1280, height: 720, container }),
+  ],
+};
+```
+
+Keep it in step with the game's own boot. A preview built from a different set
+of plugins draws a level your game will not.
 
 ## What you get
 

@@ -9,7 +9,8 @@ a bump here, and vice versa.
 
 ```bash
 npm install -D @yagejs-tools/editor
-npx yage-editor
+npx yage-editor init
+npm run editor
 ```
 
 Configuration, the harness, and what the editor can do today are documented at
