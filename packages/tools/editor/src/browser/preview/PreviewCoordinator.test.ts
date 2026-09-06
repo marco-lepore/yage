@@ -36,7 +36,7 @@ import {
   type GizmoMode,
   type HandleId,
 } from "../store/index.js";
-import { DestroyFlushQueue } from "./DestroyFlushQueue.js";
+import { DestroyFlushSystem } from "./DestroyFlushSystem.js";
 import type { OrientedBox } from "./box.js";
 import type { OverlayGizmo } from "./overlay.js";
 import {
@@ -2925,7 +2925,7 @@ describe("a parameter you can drag", () => {
 
 describe("scheduleRelease", () => {
   it("releases nothing in the frame the build finished in", () => {
-    const flushes = new DestroyFlushQueue();
+    const flushes = new DestroyFlushSystem();
     const lease = createLease();
     scheduleRelease(flushes, lease, 1, () => 1);
 
@@ -2937,7 +2937,7 @@ describe("scheduleRelease", () => {
   });
 
   it("releases once that frame's destroys have been flushed", () => {
-    const flushes = new DestroyFlushQueue();
+    const flushes = new DestroyFlushSystem();
     const lease = createLease();
     scheduleRelease(flushes, lease, 1, () => 1);
 
@@ -2948,7 +2948,7 @@ describe("scheduleRelease", () => {
   });
 
   it("skips a release a newer build has overtaken", () => {
-    const flushes = new DestroyFlushQueue();
+    const flushes = new DestroyFlushSystem();
     const lease = createLease();
     let revision = 1;
     scheduleRelease(flushes, lease, 1, () => revision);
@@ -2966,7 +2966,7 @@ describe("scheduleRelease", () => {
   });
 
   it("lets the newest build's own release through", () => {
-    const flushes = new DestroyFlushQueue();
+    const flushes = new DestroyFlushSystem();
     const lease = createLease();
     let revision = 1;
     scheduleRelease(flushes, lease, 1, () => revision);

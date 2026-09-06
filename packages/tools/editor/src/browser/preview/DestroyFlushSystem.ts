@@ -19,8 +19,9 @@ import { Phase, System } from "@yagejs/core";
  * work released an asset, and holding one longer costs memory rather than
  * correctness.
  */
-export class DestroyFlushQueue extends System {
+export class DestroyFlushSystem extends System {
   readonly phase = Phase.EarlyUpdate;
+  readonly priority = 0;
   private due: Array<() => void> = [];
   private waiting: Array<() => void> = [];
 

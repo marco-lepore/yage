@@ -90,7 +90,7 @@ import {
   localBoxOf,
   worldBoundsOf,
 } from "./bounds.js";
-import { DestroyFlushQueue } from "./DestroyFlushQueue.js";
+import { DestroyFlushSystem } from "./DestroyFlushSystem.js";
 import type { DormantPlacement } from "./dormant.js";
 import {
   EditPreviewScene,
@@ -199,7 +199,7 @@ export class PreviewCoordinator {
    * it.
    */
   private provisionedSorts: ReadonlySet<string> = new Set();
-  private readonly flushes = new DestroyFlushQueue();
+  private readonly flushes = new DestroyFlushSystem();
   /** Rises on every request, and names the namespace each build's keys take. */
   private revision = 0;
   /**
@@ -1526,7 +1526,7 @@ export class PreviewCoordinator {
  * Two rules, and each removes a way to destroy an asset something still draws
  * with.
  *
- * The wait is what {@link DestroyFlushQueue} provides: the build tore its
+ * The wait is what {@link DestroyFlushSystem} provides: the build tore its
  * predecessor's entities down with `entity.destroy()`, which marks them and
  * leaves their render objects parented until the engine's end-of-frame flush,
  * so a release in the same frame unloads a texture a live render object is
@@ -1540,7 +1540,7 @@ export class PreviewCoordinator {
  * nothing: the newer build queued its own, which keeps the same set.
  */
 export function scheduleRelease(
-  flushes: DestroyFlushQueue,
+  flushes: DestroyFlushSystem,
   lease: Pick<PreviewAssetLease, "release">,
   revision: number,
   currentRevision: () => number,

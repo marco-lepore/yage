@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { DestroyFlushQueue } from "./DestroyFlushQueue.js";
+import { DestroyFlushSystem } from "./DestroyFlushSystem.js";
 
-describe("DestroyFlushQueue", () => {
+describe("DestroyFlushSystem", () => {
   it("holds work through one whole frame before running it", () => {
-    const queue = new DestroyFlushQueue();
+    const queue = new DestroyFlushSystem();
     const ran: string[] = [];
     queue.add(() => ran.push("release"));
 
@@ -17,7 +17,7 @@ describe("DestroyFlushQueue", () => {
   });
 
   it("runs each piece of work once", () => {
-    const queue = new DestroyFlushQueue();
+    const queue = new DestroyFlushSystem();
     const ran: string[] = [];
     queue.add(() => ran.push("first"));
 
@@ -30,7 +30,7 @@ describe("DestroyFlushQueue", () => {
   });
 
   it("keeps work queued in a later frame waiting its own frame out", () => {
-    const queue = new DestroyFlushQueue();
+    const queue = new DestroyFlushSystem();
     const ran: string[] = [];
 
     queue.add(() => ran.push("first"));

@@ -1112,6 +1112,12 @@ before `UIRootLayoutSystem` because `ui-react` depends on `ui`).
 - `Render`: `DisplaySystem (0, renderer)` → `LightingSystem (100, lighting)` → `DebugRenderSystem (9999, debug)`
 - `EndOfFrame`: `InputClearSystem (9000, input)` → _destroy-queue flush_
 
+The level editor's preview scene adds three systems of its own to that
+order, none of which a game sees:
+
+- `EarlyUpdate`: `DestroyFlushSystem (0, editor)`, which runs asset releases after the flush that took their entities out
+- `Render`: `DormantVisualSystem (100, editor)`, which draws the dormant placements after the renderer's pass, then `OverlaySystem (110, editor)`, which redraws the editor's grid, gizmo, and handles
+
 Priority bands, for placing a new system:
 
 | Band       | Runs                                                                             | Shipped systems                   |

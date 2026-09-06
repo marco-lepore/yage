@@ -6,7 +6,7 @@ import {
   type SystemScheduler,
 } from "@yagejs/core";
 import { CameraEntity } from "@yagejs/renderer";
-import type { DestroyFlushQueue } from "./DestroyFlushQueue.js";
+import type { DestroyFlushSystem } from "./DestroyFlushSystem.js";
 import { synchronizeDormantVisuals, type DormantPlacement } from "./dormant.js";
 
 /** Where the editor's own scene keys live, kept clear of a game's. */
@@ -127,7 +127,7 @@ export class EditorPreviewPlugin implements Plugin {
     placements: () => readonly DormantPlacement[],
     dimmed: () => ReadonlySet<string>,
     hidden: () => ReadonlySet<string>,
-    private readonly flushes: DestroyFlushQueue,
+    private readonly flushes: DestroyFlushSystem,
     draw: () => void,
   ) {
     this.visuals = new DormantVisualSystem(placements, dimmed, hidden);
