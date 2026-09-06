@@ -68,8 +68,8 @@ export class RigidBodyComponent extends Component {
   /**
    * @internal Position physics last wrote to the Transform. A Transform
    * that still holds it carries no game write to capture. Kept per frame
-   * for kinematic bodies; for dynamic bodies it is seeded on disable, so a
-   * Transform write while dormant reads as pending on enable.
+   * for kinematic bodies; for dynamic and static bodies it is seeded on
+   * disable, so a Transform write while dormant reads as pending on enable.
    */
   _lastWrittenPositionX = 0;
   /** @internal */
@@ -144,14 +144,13 @@ export class RigidBodyComponent extends Component {
    * forces/torques are cleared and joints are detached, so waking the body
    * cannot resume a motion — or a tether — that started a life ago.
    *
-   * A dynamic body's Transform holds the pose physics last drew; it is
-   * recorded here as the last-written pose so that a Transform write made
-   * while the entity is dormant reads as pending when it is enabled again.
+   * Record dynamic and static Transforms so only dormant writes count on
+   * enable. Kinematic bodies keep pending targets written while active.
    */
   onDisable(): void {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return;
-    if (this._type === "dynamic") {
+    if (this._type !== "kinematic") {
       this.transform.getWorldPositionInto(this.positionScratch);
       this._lastWrittenPositionX = this.positionScratch.x;
       this._lastWrittenPositionY = this.positionScratch.y;
@@ -176,34 +175,29 @@ export class RigidBodyComponent extends Component {
     body.setEnabled(true);
     body.wakeUp();
 
-    // A Transform write made while a dynamic or kinematic entity was dormant
-    // is the game repositioning it for reuse. Teleport the body there —
-    // gliding from where it slept would streak across the map, and the
-    // first drawn frame would show the stale sleep pose. A static body never
-    // reads its Transform.
-    if (this._type !== "static") {
-      if (this._hasPendingTargetPosition()) {
-        const target = this.transform.getWorldPositionInto(
-          this.positionScratch,
-        );
-        body.setTranslation(
-          {
-            x: this.physicsWorld.toMeters(target.x),
-            y: this.physicsWorld.toMeters(target.y),
-          },
-          true,
-        );
-        this._kinematicTargetPositionX = target.x;
-        this._kinematicTargetPositionY = target.y;
-        this._lastWrittenPositionX = target.x;
-        this._lastWrittenPositionY = target.y;
-      }
-      if (this._hasPendingTargetRotation()) {
-        const target = this.transform.worldRotation;
-        body.setRotation(target, true);
-        this._kinematicTargetRotation = target;
-        this._lastWrittenRotation = target;
-      }
+    // Dormant Transform writes reposition every body type immediately, so
+    // the first active frame and collision queries use the intended pose.
+    if (this._hasPendingTargetPosition()) {
+      const target = this.transform.getWorldPositionInto(this.positionScratch);
+      body.setTranslation(
+        {
+          x: this.physicsWorld.toMeters(target.x),
+          y: this.physicsWorld.toMeters(target.y),
+        },
+        true,
+      );
+      this.physicsWorld._markQueriesStale();
+      this._kinematicTargetPositionX = target.x;
+      this._kinematicTargetPositionY = target.y;
+      this._lastWrittenPositionX = target.x;
+      this._lastWrittenPositionY = target.y;
+    }
+    if (this._hasPendingTargetRotation()) {
+      const target = this.transform.worldRotation;
+      body.setRotation(target, true);
+      this.physicsWorld._markQueriesStale();
+      this._kinematicTargetRotation = target;
+      this._lastWrittenRotation = target;
     }
 
     const translation = body.translation();
