@@ -1,4 +1,4 @@
-import { Transform, type Engine } from "@yagejs/core";
+import { Transform, Vec2, type Engine } from "@yagejs/core";
 import { SpriteComponent } from "@yagejs/renderer";
 import { Crate } from "./Crate.js";
 import { Slime } from "./Slime.js";
@@ -51,15 +51,15 @@ export interface SwitchFact {
   readonly chime: string | null;
 }
 
-/** What a test can read about one slime and the place it was set up with. */
+/** What a test can read about one slime and the parameters it was set up with. */
 export interface SlimeFact {
   readonly sceneId: string;
   /**
-   * Where `setup()` was told to walk to, in world space. The document holds
-   * the value relative to the slime; this is what says the level converted it
-   * through where the slime ended up.
+   * Every parameter as `setup()` received it, keyed by field name, so a test
+   * compares what the declaration decoded to rather than what the file holds.
+   * See {@link plainValue} for the two values that are written differently.
    */
-  readonly patrolTarget: { readonly x: number; readonly y: number } | null;
+  readonly params: Readonly<Record<string, unknown>>;
 }
 
 /** The read-only API {@link exposeLevelFacts} registers. */
@@ -68,7 +68,7 @@ export interface LevelFacts {
   placements(): PlacementFact[];
   /** Every loaded switch and what its two reference parameters resolved to. */
   switches(): SwitchFact[];
-  /** Every loaded slime and the world point its `setup()` received. */
+  /** Every loaded slime and every parameter its `setup()` received. */
   slimes(): SlimeFact[];
 }
 
@@ -138,10 +138,9 @@ export function exposeLevelFacts(engine: Engine): void {
         if (entity.isDestroyed || !(entity instanceof Slime)) continue;
         const sceneId = sceneIdOf(entity.key);
         if (sceneId === undefined) continue;
-        const target = entity.patrolTarget;
         facts.push({
           sceneId,
-          patrolTarget: target ? { x: target.x, y: target.y } : null,
+          params: plainValue(entity.params ?? {}) as Record<string, unknown>,
         });
       }
       return facts;
@@ -160,4 +159,25 @@ function sceneIdOf(key: string | undefined): string | undefined {
   if (key === undefined) return undefined;
   const separator = key.indexOf("/");
   return separator === -1 ? undefined : key.slice(separator + 1);
+}
+
+/**
+ * One decoded value in a shape a test can compare against.
+ *
+ * Two of them are not JSON: a `Vec2` is written as its two numbers in an
+ * array, since the class does not survive the trip out of the page and a plain
+ * object of `x` and `y` would otherwise read as one, and a value an optional
+ * field holds nothing for is written as `null`, since a member holding
+ * `undefined` and a member that is absent read alike on the test side.
+ */
+function plainValue(value: unknown): unknown {
+  if (value === undefined) return null;
+  if (value instanceof Vec2) return [value.x, value.y];
+  if (Array.isArray(value)) return value.map(plainValue);
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, member]) => [key, plainValue(member)]),
+    );
+  }
+  return value;
 }

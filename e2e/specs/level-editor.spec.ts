@@ -156,11 +156,15 @@ interface SwitchFact {
   readonly chime: string | null;
 }
 
-/** What the same extension reports about one slime's place-valued parameter. */
+/** What the same extension reports about one slime's decoded parameters. */
 interface SlimeFact {
   readonly sceneId: string;
-  /** The world point `setup()` received for `patrolEnd`, `null` if it held nothing. */
-  readonly patrolTarget: Point | null;
+  /**
+   * Every parameter as `setup()` received it, with each `Vec2` written as its
+   * two numbers in an array and a value an optional field holds nothing for as
+   * `null`.
+   */
+  readonly params: Readonly<Record<string, unknown>>;
 }
 
 interface Point {
@@ -553,18 +557,23 @@ async function panelHeight(page: Page, testId: string): Promise<number> {
   return box.height;
 }
 
-/** Drag one placement by a client-pixel delta, pressing where it is drawn. */
-async function dragPlacement(page: Page, id: string, by: Point): Promise<void> {
-  const facts = await placementsIn(page);
-  const fact = facts.find((one) => one.sceneId === id);
-  if (!fact) throw new Error(`the preview has no placement ${id}`);
-  const from = await clientPointOf(page, fact.world);
+/** Press on a world point and drag by a client-pixel delta. */
+async function dragFrom(page: Page, world: Point, by: Point): Promise<void> {
+  const from = await clientPointOf(page, world);
 
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.mouse.move(from.x + by.x / 2, from.y + by.y / 2);
   await page.mouse.move(from.x + by.x, from.y + by.y);
   await page.mouse.up();
+}
+
+/** Drag one placement by a client-pixel delta, pressing where it is drawn. */
+async function dragPlacement(page: Page, id: string, by: Point): Promise<void> {
+  const facts = await placementsIn(page);
+  const fact = facts.find((one) => one.sceneId === id);
+  if (!fact) throw new Error(`the preview has no placement ${id}`);
+  await dragFrom(page, fact.world, by);
 }
 
 /**
@@ -599,7 +608,7 @@ function fixed(value: number): string {
 }
 
 /**
- * Every slime the page loaded and the world point its `setup()` was handed.
+ * Every slime the page loaded and every parameter its `setup()` was handed.
  *
  * The document stores `patrolEnd` relative to the slime. This is what says the
  * level converted it through where the slime ended up, on the page that set
@@ -614,12 +623,26 @@ async function slimesIn(page: Page): Promise<SlimeFact[]> {
   });
 }
 
+/**
+ * The point a decoded `Vec2` crossed as, and nothing for any other value.
+ *
+ * The fixture writes a `Vec2` as its two numbers in an array and leaves a
+ * plain object an object, so a parameter that stopped decoding to a `Vec2`
+ * arrives here as something this cannot read.
+ */
+function decodedPoint(value: unknown): Point | undefined {
+  if (!Array.isArray(value) || value.length !== 2) return undefined;
+  const [x, y] = value as readonly unknown[];
+  if (typeof x !== "number" || typeof y !== "number") return undefined;
+  return { x, y };
+}
+
 /** Waits for the page's one slime to have been set up with `target`. */
 async function expectSlimeTarget(page: Page, target: Point): Promise<void> {
   await expect
     .poll(async () => {
       const [slime] = await slimesIn(page);
-      const at = slime?.patrolTarget;
+      const at = decodedPoint(slime?.params["patrolEnd"]);
       return at ? Math.hypot(at.x - target.x, at.y - target.y) < 0.5 : false;
     })
     .toBe(true);
@@ -3031,15 +3054,10 @@ test.describe("level editor", () => {
     // which an unturned, unscaled placement draws in world space unchanged.
     const origin = slime.transform.position;
     const handle = offset(origin, SLIME_PATROL_END);
-    const from = await clientPointOf(page, handle);
     const drag = { x: 90, y: -50 };
     const reached = offset(handle, await expectedWorldDelta(page, drag));
 
-    await page.mouse.move(from.x, from.y);
-    await page.mouse.down();
-    await page.mouse.move(from.x + drag.x / 2, from.y + drag.y / 2);
-    await page.mouse.move(from.x + drag.x, from.y + drag.y);
-    await page.mouse.up();
+    await dragFrom(page, handle, drag);
 
     // One drag is one edit and one undo entry, the way a pose drag is.
     await draftAfter(request, token, { undoDepth: 2, redoDepth: 0 });
@@ -3063,12 +3081,7 @@ test.describe("level editor", () => {
     const carried = await expectedWorldDelta(page, nudge);
     // Pressed on the selected slime's own origin, where its gizmo's centre
     // grip is, which moves it the way a press on its body would.
-    const grip = await clientPointOf(page, origin);
-    await page.mouse.move(grip.x, grip.y);
-    await page.mouse.down();
-    await page.mouse.move(grip.x + nudge.x / 2, grip.y + nudge.y / 2);
-    await page.mouse.move(grip.x + nudge.x, grip.y + nudge.y);
-    await page.mouse.up();
+    await dragFrom(page, origin, nudge);
     await draftAfter(request, token, { undoDepth: 3, redoDepth: 0 });
     await expectSlimeTarget(page, offset(reached, carried));
 
@@ -3077,6 +3090,186 @@ test.describe("level editor", () => {
 
     const saved = savedPlacement(slime.id).params["patrolEnd"] as Point;
     expectPoint(saved, local);
+  });
+
+  test("edits one parameter of every kind, and the game decodes what it saved", async ({
+    page,
+    context,
+    request,
+  }) => {
+    // The width of the parameter system in one pass: a level made from
+    // nothing, a placement declaring one field of every kind the inspector
+    // draws a control for, an edit through each of those controls, three of
+    // them taken back and put forward, and the running game read for what its
+    // `setup()` received.
+    await openEditor(page);
+    const token = await tokenOf(page);
+
+    const name = `params-${String(levelCount)}`;
+    const made = `levels/${name}.yage-level.json`;
+    await page.getByTestId("new-level").click();
+    await page.getByTestId("level-name").fill(name);
+    await page.getByTestId("create-level").click();
+    await expect(page.getByTestId("level-picker")).toHaveValue(made);
+    await expectPlacements(page, []);
+    await withoutSnapping(page);
+
+    await openActors(page);
+    await page.getByTestId("place-game.slime").click();
+    const placed = await draftAfter(
+      request,
+      token,
+      { undoDepth: 1, redoDepth: 0 },
+      made,
+    );
+    const slime = placed.document.entities[0];
+    if (!slime) throw new Error("the Actors strip placed no slime.");
+
+    // Every step below is one edit, and waiting for the depth it produces is
+    // what says so: a control that wrote twice, or not at all, fails here
+    // rather than in the value the game reads at the end.
+    let edits = 1;
+    const edited = async (): Promise<void> => {
+      edits += 1;
+      await draftAfter(
+        request,
+        token,
+        { undoDepth: edits, redoDepth: 0 },
+        made,
+      );
+    };
+
+    // A number, inside the range its declaration names.
+    await page.getByTestId("field-speed").fill("65");
+    await page.getByTestId("field-speed").press("Enter");
+    await edited();
+
+    // A switch.
+    await page.getByTestId("field-awake").uncheck();
+    await edited();
+
+    // One of the names the declaration lists.
+    await page.getByTestId("field-facing").selectOption("right");
+    await edited();
+
+    // A pair of numbers, a box each. Two edits: a member commits at its own
+    // path, so typing one leaves the other as it stands.
+    await page.getByTestId("field-drift-x").fill("7");
+    await page.getByTestId("field-drift-x").press("Enter");
+    await edited();
+    await page.getByTestId("field-drift-y").fill("-3");
+    await page.getByTestId("field-drift-y").press("Enter");
+    await edited();
+
+    // The place the point names, moved by its handle in the viewport rather
+    // than by its boxes.
+    const origin = slime.transform.position;
+    const handle = offset(origin, SLIME_PATROL_END);
+    const drag = { x: 90, y: -50 };
+    const patrolEnd = offset(handle, await expectedWorldDelta(page, drag));
+    await dragFrom(page, handle, drag);
+    await edited();
+
+    // A list: two rows added, the first one changed so the order is visible,
+    // and the two swapped.
+    await page.getByTestId("field-spawns-add").click();
+    await edited();
+    await page.getByTestId("field-spawns-add").click();
+    await edited();
+    await page.getByTestId("field-spawns.0.type").selectOption("bat");
+    await edited();
+    await page.getByTestId("field-spawns-down-0").click();
+    await edited();
+
+    // A colour, typed as the hex the file keeps.
+    await page.getByTestId("field-tint").fill("#ff8800");
+    await page.getByTestId("field-tint").press("Enter");
+    await edited();
+
+    // A value the game decodes for itself, edited through the control its
+    // declaration named.
+    await page.getByTestId("field-pace").selectOption("fast");
+    await edited();
+
+    // The last three back, and forward again. Each control shows the state at
+    // the depth it is standing on, which is what says the inverse was exact.
+    const total = edits;
+    for (let depth = total - 1; depth >= total - 3; depth -= 1) {
+      await page.getByTestId("undo").click();
+      await draftAfter(
+        request,
+        token,
+        { undoDepth: depth, redoDepth: total - depth },
+        made,
+      );
+    }
+    await expect(page.getByTestId("field-pace")).toHaveValue("slow");
+    await expect(page.getByTestId("field-tint")).toHaveValue("#88ff88");
+    await expect(page.getByTestId("field-spawns.0.type")).toHaveValue("bat");
+
+    for (let depth = total - 2; depth <= total; depth += 1) {
+      await page.getByTestId("redo").click();
+      await draftAfter(
+        request,
+        token,
+        { undoDepth: depth, redoDepth: total - depth },
+        made,
+      );
+    }
+    await expect(page.getByTestId("field-pace")).toHaveValue("fast");
+    await expect(page.getByTestId("field-tint")).toHaveValue("#ff8800");
+    await expect(page.getByTestId("field-spawns.0.type")).toHaveValue("slime");
+
+    await page.getByTestId("save-level").click();
+    await expect(page.getByTestId("dirty-marker")).toBeHidden();
+
+    // The file keeps what was authored: the point in the slime's own frame,
+    // the colour as its text, and the custom value as the name the control
+    // offered.
+    const saved = savedPlacement(slime.id, made).params;
+    expectPoint(saved["patrolEnd"] as Point, {
+      x: patrolEnd.x - origin.x,
+      y: patrolEnd.y - origin.y,
+    });
+    expect(saved["tint"]).toBe("#ff8800");
+    expect(saved["pace"]).toBe("fast");
+
+    const [run] = await Promise.all([
+      context.waitForEvent("page"),
+      page.getByTestId("run-level").click(),
+    ]);
+    expect(new URL(run.url()).searchParams.get("level")).toBe(made);
+    await waitForInspector(run);
+    await expectSlimeTarget(run, patrolEnd);
+
+    // What `setup()` was handed, every field of it: the eight that were edited
+    // and the seven left at the declaration's default, each decoded to the
+    // type its kind promises rather than to the JSON the file holds.
+    const [fact] = await slimesIn(run);
+    if (!fact) throw new Error("the game page loaded no slime.");
+    const { patrolEnd: decoded, ...rest } = fact.params;
+    expect(rest).toEqual({
+      speed: 65,
+      coins: 3,
+      awake: false,
+      title: "Slime",
+      notes: "",
+      facing: "right",
+      mood: "calm",
+      drift: [7, -3],
+      home: [0, 0],
+      loot: { item: "coin", count: 1 },
+      spawns: [
+        { type: "slime", delay: 1 },
+        { type: "bat", delay: 1 },
+      ],
+      noise: { seed: 1 },
+      tint: 0xff8800,
+      pace: 120,
+    });
+    expectPoint(decodedPoint(decoded), patrolEnd);
+
+    await expect(page.getByTestId("diagnostics")).toBeHidden();
   });
 
   test("hides a placement out of the way and never out of the file", async ({

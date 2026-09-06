@@ -1264,6 +1264,36 @@ describe("values with a shape", () => {
     ).toBeUndefined();
   });
 
+  it("describes a json field and an object declared as a field of its own", () => {
+    const schema = defineParams({
+      noise: param.json({ default: { seed: 1 }, optional: true }),
+      loot: param.object({ item: param.string("coin") }),
+    });
+
+    expect(describeParams(schema)).toEqual([
+      {
+        name: "noise",
+        kind: "json",
+        optional: true,
+        defaultValue: { seed: 1 },
+      },
+      {
+        name: "loot",
+        kind: "object",
+        optional: false,
+        fields: [
+          {
+            name: "item",
+            kind: "string",
+            optional: false,
+            defaultValue: "coin",
+          },
+        ],
+        defaultValue: { item: "coin" },
+      },
+    ] satisfies readonly ParamFieldDescription[]);
+  });
+
   it("reports a bad default inside a value with members", () => {
     const schema = defineParams({
       loot: param.object({ count: param.integer(0, { min: 1 }) }),

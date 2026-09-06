@@ -50,12 +50,8 @@ export class Slime extends Entity {
   /** What the placement was set up with, held for a check that reads it. */
   params: ParamsOf<typeof SlimeParams> | undefined;
 
-  /** Where the slime walks to, in world space, as `setup()` received it. */
-  patrolTarget: Vec2 | undefined;
-
   setup(params: ParamsOf<typeof SlimeParams>): void {
     this.params = params;
-    this.patrolTarget = params.patrolEnd;
     this.add(new Transform({ position: new Vec2(0, 0) }));
     this.add(new SlimeBody());
   }

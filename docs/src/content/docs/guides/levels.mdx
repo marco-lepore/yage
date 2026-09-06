@@ -687,8 +687,8 @@ const fields = entry.declaration.params
   : [];
 ```
 
-Each result contains a field name, its kind, the kind of asset it names, any
-declared frame grid, and its default:
+Each result carries the field's name, its kind, whatever that kind needs, and
+its default:
 
 ```ts
 // [{
@@ -701,8 +701,24 @@ declared frame grid, and its default:
 ```
 
 The list is immutable and follows declaration order. `kind` says which control
-the field needs, and it is a closed set — `"asset"` and `"entityRef"` — so a
-tool can switch on it exhaustively.
+the field needs, and it is a closed set — `"asset"`, `"entityRef"`, `"number"`,
+`"integer"`, `"boolean"`, `"string"`, `"select"`, `"vec2"`, `"point"`,
+`"object"`, `"array"`, `"json"`, `"custom"` and `"color"` — so a tool can switch
+on it exhaustively.
+
+A description is a tree, and `kind` is flat at every node of it. An `object`
+field carries `fields`, its members with names of their own, and an `array`
+field carries `item`, one description with no name, because an element is named
+by its position. Switch on `kind` the same way at every depth.
+
+Beside `kind` sits whatever that kind needs: `optional` on every kind but
+`asset`, `min`, `max` and `step` on a number, `min` and `max` on a whole
+number, `multiline` on a string, `options` on a choice, `min` and `max` on a
+list as how many elements it may hold, `relative` on a point, and `editor` on a
+`custom` field — the name of the plain kind whose control edits its JSON. A
+`custom` field also carries whatever the control it named needs, in that kind's
+own slots: a `select` editor's `options`, a number editor's `min`, `max` and
+`step`, a string editor's `multiline`.
 
 An asset field carries `assetKind`, the `kind` you gave `defineLevelAsset`, so
 a tool can tell a texture from a sound — the editor's Actors panel uses it to

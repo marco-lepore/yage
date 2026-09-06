@@ -48,7 +48,7 @@ export interface ControlBarProps {
  * under the toolbar.
  *
  * These are the numbers a developer reaches for while working the viewport,
- * and there are always exactly six of them, which is what a bar can hold. The
+ * and there are at most six of them, which is what a bar can hold. The
  * declared parameters vary in count and an asset path needs width, so they
  * stay in the inspector panel at the side.
  *

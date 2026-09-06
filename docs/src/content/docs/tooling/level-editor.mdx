@@ -614,9 +614,9 @@ that runs off the edge of the file the browser loaded is refused the same way,
 and the whole image shows instead.
 
 A new placement is written with every parameter its declaration declares, each
-at the default you gave `param.asset(…)`. Those defaults are resolved once,
-when you place it. Changing a default later moves nothing in the levels you
-already built.
+at the default you gave its `param.*` call. Those defaults are resolved
+once, when you place it. Changing a default later moves nothing in the levels
+you already built.
 
 **Delete** — the button, or the <kbd>Delete</kbd> or <kbd>Backspace</kbd> key
 while the viewport has focus — removes what is selected, and everything you
@@ -709,11 +709,12 @@ only what the editor draws.
 
 ### The control bar
 
-Select exactly one placement and the bar under the toolbar fills in with its
-**Name** and its five transform numbers. Those six are what you reach for while
-you work the viewport, and there are always exactly six of them, which is why
-they are on a bar rather than in a panel. Everything about a placement that
-varies in size — its parameters, its key — is in the inspector on the right.
+Select something and the bar under the toolbar fills in. The five transform
+numbers show for any selection whose placements are under the same parent, and
+a **Name** box joins them when exactly one placement is selected. That is at
+most six fields, which is why they are on a bar rather than in a panel.
+Everything about a placement that varies in size — its parameters, its key — is
+in the inspector on the right.
 
 Every field in both works the same way. Type, then press <kbd>Enter</kbd> or
 click elsewhere to commit; <kbd>Escape</kbd> puts back what the level holds. A
@@ -813,7 +814,10 @@ do nothing there, because a step needs a number to start from.
 
 #### Parameters
 
-What a field looks like follows the kind its declaration gave it.
+What a field looks like follows the kind its declaration gave it. The `Slime`
+under [Declare what can be placed](/guides/levels/#declare-what-can-be-placed)
+in the Levels guide declares one parameter with each builder below, so it shows
+what any row here was authored from.
 
 | Declared as | You edit it with |
 | --- | --- |
@@ -822,7 +826,7 @@ What a field looks like follows the kind its declaration gave it.
 | `param.boolean(…)` | A checkbox. |
 | `param.string(…)` | A box, or a text area when the declaration says `multiline`. |
 | `param.select(…)` | A dropdown of the values the declaration listed. |
-| `param.vec2(…)` | Two boxes, **x** and **y**. Typing into one writes the whole pair. |
+| `param.vec2(…)` | Two boxes, **x** and **y**. Typing into one writes that member and leaves the other as it stands. |
 | `param.point(…)` | The same two boxes, and a ring in the level you can drag. |
 | `param.asset(…)` | A path, with your project's files behind **▾**. |
 | `param.entityRef(…)` | Another placement, from a dropdown or by **Pick** and a click in the level. |
