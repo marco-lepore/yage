@@ -1,17 +1,26 @@
 /**
  * Optional feature add-ons that `--features` can layer onto a scaffolded
  * project. Each feature appends to `package.json` dependencies (and, where
- * needed, devDependencies) and may toggle `tsconfig.json` compiler options.
+ * needed, devDependencies and scripts), may toggle `tsconfig.json` compiler
+ * options, and may add lines to the next steps the CLI prints.
  *
  * Adding a new feature: append an entry to `FEATURES`, list it in
  * `FEATURE_IDS`, and add coverage in `features.test.ts`. The `--features`
  * CLI flag accepts a comma-separated list of these ids.
  */
 
-export type FeatureId = "ui" | "save" | "effects";
+export type FeatureId = "ui" | "save" | "effects" | "editor";
 
 /** Range used for `@yagejs/*` deps the features add. Mirrors the templates. */
 export const YAGE_RANGE = "^0.10.4";
+
+/**
+ * Range used for `@yagejs-tools/editor`. The tools packages are versioned
+ * apart from the engine, so `scripts/sync-template-versions.mjs` — which
+ * rewrites `YAGE_RANGE` and the template deps from `@yagejs/core`'s version —
+ * leaves this one alone. It spans every 0.x release from the first one.
+ */
+export const EDITOR_RANGE = ">=0.1.0 <1.0.0";
 
 /** React versions used by the `ui` feature. Matches `@yagejs/ui-react`. */
 const REACT_RANGE = "^19.0.0";
@@ -24,8 +33,12 @@ export interface FeatureSpec {
   dependencies: Readonly<Record<string, string>>;
   /** Dev deps added to package.json. */
   devDependencies?: Readonly<Record<string, string>>;
+  /** Entries added to the package.json `scripts` block. */
+  scripts?: Readonly<Record<string, string>>;
   /** Compiler options applied to tsconfig.json. */
   tsconfigOptions?: Readonly<Record<string, unknown>>;
+  /** Commands to print under "Next steps" once the scaffold is written. */
+  nextSteps?: readonly string[];
 }
 
 export const FEATURES: Readonly<Record<FeatureId, FeatureSpec>> = {
@@ -51,6 +64,16 @@ export const FEATURES: Readonly<Record<FeatureId, FeatureSpec>> = {
   effects: {
     id: "effects",
     dependencies: { "@yagejs/effects": YAGE_RANGE },
+  },
+  editor: {
+    id: "editor",
+    // `@yagejs/level` is a runtime dep: the entity declarations the editor
+    // places import `defineLevelEntity` from it, and so does the scene that
+    // loads the saved file.
+    dependencies: { "@yagejs/level": YAGE_RANGE },
+    devDependencies: { "@yagejs-tools/editor": EDITOR_RANGE },
+    scripts: { editor: "yage-editor" },
+    nextSteps: ["npx yage-editor init"],
   },
 };
 

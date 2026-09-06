@@ -159,6 +159,70 @@ describe("runInit", () => {
     );
   });
 
+  // `src/layers.ts` is a name two different modules answer to: the render
+  // layers the editor loads, and the physics collision layers a project can
+  // keep under it. Only the first one default-exports.
+  it("passes over a layers module that default-exports nothing", async () => {
+    const cwd = writeProject({
+      "package.json": MINIMAL,
+      "src/layers.ts": [
+        'import { CollisionLayers } from "@yagejs/physics";',
+        "const layers = new CollisionLayers();",
+        'export const LAYER_PLAYER = layers.define("player");',
+      ].join("\n"),
+    });
+
+    await runInit({ cwd, force: false });
+
+    // The bare-glob form: no entry names a layers module.
+    expect(read(cwd, "editor/config.ts")).toContain(
+      '    "levels/*.yage-level.json",',
+    );
+    expect(written.join("")).toContain("src/layers.ts has no default export");
+  });
+
+  it("names a layers module that exports its array under another name", async () => {
+    const cwd = writeProject({
+      "package.json": MINIMAL,
+      "src/layers.ts": "const LAYERS = [];\nexport { LAYERS as default };",
+    });
+
+    await runInit({ cwd, force: false });
+
+    expect(read(cwd, "editor/config.ts")).toContain(
+      'layers: "../src/layers.ts"',
+    );
+  });
+
+  it("names a layers module that passes another module's default on", async () => {
+    const cwd = writeProject({
+      "package.json": MINIMAL,
+      "src/layers.ts": 'export { default } from "./render-layers.js";',
+      "src/render-layers.ts": "export default [];",
+    });
+
+    await runInit({ cwd, force: false });
+
+    expect(read(cwd, "editor/config.ts")).toContain(
+      'layers: "../src/layers.ts"',
+    );
+  });
+
+  it("passes over a layers module that renames a default away", async () => {
+    const cwd = writeProject({
+      "package.json": MINIMAL,
+      "src/layers.ts": 'export { default as layers } from "./collision.js";',
+    });
+
+    await runInit({ cwd, force: false });
+
+    // No entry names a layers module.
+    expect(read(cwd, "editor/config.ts")).toContain(
+      '    "levels/*.yage-level.json",',
+    );
+    expect(written.join("")).toContain("src/layers.ts has no default export");
+  });
+
   // Both tools accept the same object, so the project links its two harnesses
   // rather than listing the same plugins twice.
   it("re-exports a scenario lab harness that is already there", async () => {

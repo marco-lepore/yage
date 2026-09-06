@@ -36,13 +36,15 @@ type ParameterizedEntity = Entity & { setup(params: unknown): void };
  * ```ts
  * export class ForestScene extends Scene {
  *   readonly preload = levelAssets(forest);
- *   private level?: LevelInstance;
  *
  *   onEnter(): void {
- *     this.level = instantiateLevel(this, forest, { namespace: "forest" });
+ *     instantiateLevel(this, forest, { namespace: "forest" });
  *   }
  * }
  * ```
+ *
+ * Keep the {@link LevelInstance} it returns when the scene reaches the
+ * entities later.
  *
  * Loading is strict: a prepared level carrying any diagnostic is refused
  * outright, and a failure while building throws {@link LevelLoadError} with

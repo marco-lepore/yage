@@ -51,6 +51,22 @@ const LEVEL_SUFFIX = ".yage-level.json";
 /** The layers module a level entry names, when the project has one. */
 const LAYERS_FILE = "src/layers.ts";
 
+/**
+ * What a module that default-exports looks like, in source. A render layers
+ * module default-exports its `LayerDef[]`; a `src/layers.ts` holding something
+ * else — physics collision layers go by the same name — exports named
+ * constants and nothing else.
+ *
+ * Both spellings of a default count: `export default`, and a braced clause
+ * whose exported name is `default` (`export { layers as default }`,
+ * `export { default } from "./render-layers.js"`). A clause that renames a
+ * default away, `export { default as layers }`, provides none and does not
+ * count. This reads source rather than the module, so a commented-out
+ * `export default` counts too — the cost of not importing a project's file to
+ * decide whether to name it.
+ */
+const DEFAULT_EXPORT = /^\s*export\s+(?:default\b|\{[^}]*\bdefault\s*[,}])/m;
+
 /** Where Vite serves static files from, by default. */
 const PUBLIC_DIRECTORY = "public";
 
@@ -116,9 +132,15 @@ export async function runInit(options: InitOptions): Promise<void> {
   const script = addScript(options.cwd, command, options.force);
 
   const levels = findLevelGlobs(root);
-  const layers = existsSync(path.join(root, LAYERS_FILE))
-    ? `../${LAYERS_FILE}`
-    : undefined;
+  const layersFile = path.join(root, LAYERS_FILE);
+  const hasLayersFile = existsSync(layersFile);
+  // The file counts by what it exports, not by its name: `src/layers.ts` is
+  // also what a physics `CollisionLayers` module is called, and the editor
+  // imports this one for its default, so only a file that has one is named.
+  const layers =
+    hasLayersFile && DEFAULT_EXPORT.test(readFileSync(layersFile, "utf8"))
+      ? `../${LAYERS_FILE}`
+      : undefined;
   const assets = existsSync(path.join(root, PUBLIC_DIRECTORY))
     ? [`${PUBLIC_DIRECTORY}/**/*.png`]
     : [];
@@ -165,6 +187,7 @@ export async function runInit(options: InitOptions): Promise<void> {
     dependencies,
     levels,
     layers,
+    layersDeclined: layers === undefined && hasLayersFile,
     harness: writesHarness
       ? {
           labHarness:
@@ -288,6 +311,8 @@ interface InitReport {
   readonly dependencies: ReadonlySet<string>;
   readonly levels: readonly string[];
   readonly layers: string | undefined;
+  /** Whether a `src/layers.ts` was passed over for having no default export. */
+  readonly layersDeclined: boolean;
   readonly harness: HarnessReport | undefined;
   /** The config file, for the line that says it decides the harness. */
   readonly configFile: string;
@@ -331,7 +356,13 @@ function report(summary: InitReport): void {
   }
   row("levels", summary.levels.join(", "));
   if (summary.layers === undefined) {
-    row("layers", "none declared — every placement draws on the default layer");
+    row(
+      "layers",
+      summary.layersDeclined
+        ? `${LAYERS_FILE} has no default export, so it is not the render ` +
+            `layers — every placement draws on the default layer`
+        : "none declared — every placement draws on the default layer",
+    );
   }
   // Installing the editor pulls its peers in without declaring them, so a
   // project can be missing the package the generated declaration imports.

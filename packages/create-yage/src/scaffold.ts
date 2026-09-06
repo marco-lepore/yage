@@ -133,6 +133,7 @@ interface PackageJson {
   name: string;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  scripts?: Record<string, string>;
   [key: string]: unknown;
 }
 
@@ -142,8 +143,10 @@ interface TsConfigJson {
 }
 
 /**
- * Merges feature deps into `package.json`, preserving any existing entries.
- * Sorted alphabetically per npm convention so diffs stay stable.
+ * Merges feature deps and scripts into `package.json`, preserving any existing
+ * entries. Deps are sorted alphabetically per npm convention so diffs stay
+ * stable; scripts keep the template's order with the feature's appended, since
+ * a scripts block reads as a list of things to run rather than an index.
  */
 export function applyFeaturesToPackageJson(
   pkg: PackageJson,
@@ -153,6 +156,7 @@ export function applyFeaturesToPackageJson(
 
   const deps: Record<string, string> = { ...(pkg.dependencies ?? {}) };
   const devDeps: Record<string, string> = { ...(pkg.devDependencies ?? {}) };
+  const scripts: Record<string, string> = { ...(pkg.scripts ?? {}) };
 
   for (const id of features) {
     const spec = FEATURES[id];
@@ -164,19 +168,28 @@ export function applyFeaturesToPackageJson(
         devDeps[name] = range;
       }
     }
+    if (spec.scripts) {
+      for (const [name, command] of Object.entries(spec.scripts)) {
+        scripts[name] = command;
+      }
+    }
   }
 
   // Suppress empty `devDependencies` for templates/features that don't
   // need any — emitting `"devDependencies": {}` is harmless to npm but
   // unexpected noise in a fresh project. Keep the key if the template
   // already declared one so we never quietly drop user-visible state.
+  // `scripts` follows the same rule.
   const sortedDev = sortObject(devDeps);
   const hasDev =
     Object.keys(sortedDev).length > 0 || pkg.devDependencies !== undefined;
+  const hasScripts =
+    Object.keys(scripts).length > 0 || pkg.scripts !== undefined;
   return {
     ...pkg,
     dependencies: sortObject(deps),
     ...(hasDev ? { devDependencies: sortedDev } : {}),
+    ...(hasScripts ? { scripts } : {}),
   };
 }
 

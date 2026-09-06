@@ -12,6 +12,7 @@ import pc from "picocolors";
 import type { TemplateId } from "./templates.js";
 import { DEFAULT_TEMPLATE, TEMPLATES } from "./templates.js";
 import type { FeatureId } from "./features.js";
+import { FEATURES } from "./features.js";
 import type { DirectoryState } from "./utils.js";
 import {
   deriveProjectName,
@@ -199,6 +200,8 @@ export interface SuccessReport {
   targetDir: string;
   installSucceeded: boolean | null;
   gitSucceeded: boolean | null;
+  /** Features the project was scaffolded with, for their own next steps. */
+  features?: readonly FeatureId[];
 }
 
 function quotePosixShellPath(path: string): string {
@@ -262,6 +265,11 @@ export function reportSuccess(report: SuccessReport): void {
     );
   }
   lines.push(`  ${pc.cyan("npm run dev")}`);
+  for (const id of report.features ?? []) {
+    for (const step of FEATURES[id].nextSteps ?? []) {
+      lines.push(`  ${pc.cyan(step)}`);
+    }
+  }
   lines.push("");
   lines.push(
     `Docs: ${pc.underline("https://yage.dev")}  •  LLM context: ${pc.underline("https://yage.dev/llms.txt")}`,

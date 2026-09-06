@@ -82,6 +82,7 @@ describe("buildBestEffort", () => {
     const outcome = buildBestEffort(
       prepared([{ id: "a" }, { id: "b" }]),
       [],
+      new Map(),
       loaderRefusing(),
       describeFailure,
     );
@@ -95,6 +96,7 @@ describe("buildBestEffort", () => {
     const outcome = buildBestEffort(
       prepared([{ id: "a" }, { id: "broken" }, { id: "c" }]),
       [],
+      new Map(),
       loaderRefusing("broken"),
       describeFailure,
     );
@@ -102,6 +104,7 @@ describe("buildBestEffort", () => {
     expect(outcome.built).toEqual(["a", "c"]);
     expect([...outcome.excluded]).toEqual(["broken"]);
     expect(outcome.attempts).toBe(2);
+    expect(outcome.reasons.get("broken")).toBe("broken failed.");
   });
 
   it("excludes the children of a placement that failed", () => {
@@ -113,6 +116,7 @@ describe("buildBestEffort", () => {
         { id: "other" },
       ]),
       [],
+      new Map(),
       loaderRefusing("broken"),
       describeFailure,
     );
@@ -123,6 +127,52 @@ describe("buildBestEffort", () => {
       "child",
       "grandchild",
     ]);
+    expect(outcome.reasons.get("broken")).toBe("broken failed.");
+    // The two that went with it name the placement that took them out, which
+    // carries its own reason in the same report.
+    expect(outcome.reasons.get("child")).toBe(
+      'Placement "child" was left out with its parent "broken".',
+    );
+    expect(outcome.reasons.get("grandchild")).toBe(
+      'Placement "grandchild" was left out with its parent "child".',
+    );
+  });
+
+  it("names the reference target a placement went out with", () => {
+    const outcome = buildBestEffort(
+      prepared([{ id: "door" }, { id: "switch", refs: ["door"] }]),
+      [],
+      new Map(),
+      loaderRefusing("door"),
+      describeFailure,
+    );
+
+    expect(outcome.built).toBeUndefined();
+    expect(outcome.reasons.get("switch")).toBe(
+      'Placement "switch" was left out with "door", which it points at.',
+    );
+  });
+
+  it("keeps the reason for a placement the caller already ruled out", () => {
+    const outcome = buildBestEffort(
+      prepared([
+        { id: "a" },
+        { id: "noArt" },
+        { id: "child", parent: "noArt" },
+      ]),
+      [],
+      new Map([["noArt", 'Asset "/coin.png" failed to load.']]),
+      loaderRefusing(),
+      describeFailure,
+    );
+
+    expect(outcome.built).toEqual(["a"]);
+    expect(outcome.reasons.get("noArt")).toBe(
+      'Asset "/coin.png" failed to load.',
+    );
+    expect(outcome.reasons.get("child")).toBe(
+      'Placement "child" was left out with its parent "noArt".',
+    );
   });
 
   it("starts from the placements preparation already rejected", () => {
@@ -130,6 +180,7 @@ describe("buildBestEffort", () => {
     const outcome = buildBestEffort(
       level,
       level.diagnostics.map((diagnostic) => diagnostic.placementId),
+      new Map(),
       loaderRefusing(),
       describeFailure,
     );
@@ -142,6 +193,7 @@ describe("buildBestEffort", () => {
     const outcome = buildBestEffort(
       prepared([{ id: "a" }, { id: "b" }]),
       [],
+      new Map(),
       loaderRefusing("a", "b"),
       describeFailure,
     );
@@ -157,6 +209,7 @@ describe("buildBestEffort", () => {
       buildBestEffort(
         prepared([{ id: "a" }]),
         [],
+        new Map(),
         () => {
           throw new Error("The renderer is gone.");
         },
@@ -173,6 +226,7 @@ describe("buildBestEffort", () => {
     const outcome = buildBestEffort(
       prepared(ids.map((id) => ({ id }))),
       [],
+      new Map(),
       loaderRefusing(...ids),
       describeFailure,
     );
@@ -201,6 +255,7 @@ describe("closeDependents", () => {
     closeDependents(
       prepared([{ id: "a" }, { id: "b", parent: "a" }]).placements,
       excluded,
+      new Map(),
     );
 
     expect(excluded.size).toBe(0);
@@ -208,12 +263,17 @@ describe("closeDependents", () => {
 
   it("excludes a placement whose reference target is excluded", () => {
     const excluded = new Set(["door"]);
+    const reasons = new Map<string, string>();
     closeDependents(
       prepared([{ id: "door" }, { id: "switch", refs: ["door"] }]).placements,
       excluded,
+      reasons,
     );
 
     expect([...excluded]).toEqual(["door", "switch"]);
+    expect(reasons.get("switch")).toBe(
+      'Placement "switch" was left out with "door", which it points at.',
+    );
   });
 
   it("follows a chain of references", () => {
@@ -225,6 +285,7 @@ describe("closeDependents", () => {
         { id: "c", refs: ["b"] },
       ]).placements,
       excluded,
+      new Map(),
     );
 
     expect([...excluded]).toEqual(["a", "b", "c"]);
@@ -238,6 +299,7 @@ describe("closeDependents", () => {
         { id: "b", refs: ["a"] },
       ]).placements,
       excluded,
+      new Map(),
     );
 
     expect([...excluded]).toEqual(["outside"]);
@@ -251,6 +313,7 @@ describe("closeDependents", () => {
         { id: "b", refs: ["a"] },
       ]).placements,
       excluded,
+      new Map(),
     );
 
     expect([...excluded]).toEqual(["a", "b"]);

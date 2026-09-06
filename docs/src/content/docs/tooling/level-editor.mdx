@@ -47,7 +47,9 @@ dependencies you already have.
    lists a plugin for each `@yagejs/*` package you depend on that has one
    (`save`, `level`, `pathfinding` and `effects` have none), the level globs
    point at the directories already holding `*.yage-level.json` files, and a
-   `src/layers.ts` becomes the layers module each glob is paired with. A file
+   `src/layers.ts` becomes the layers module each glob is paired with when it
+   default-exports — the name belongs to a physics `CollisionLayers` module in
+   some projects, and the command says when it passed one over. A file
    that is already there is left alone and named in the output, so running this
    in a project you set up by hand fills in what is missing. A config you
    already have names its own harness, so the command leaves that file to it.
@@ -201,11 +203,21 @@ viewport that starts closed and opens when you click its header. Nothing here
 can be dragged wider or narrower.
 
 A placement the editor cannot build — a type the project no longer declares, a
-parameter that does not match its schema — is left out and listed in the
-**Problems** band, which appears under the Actors strip with the first finding
-and goes away with the last. Its header puts a long list away and keeps saying
+parameter that does not match its schema, a `setup()` that threw — is left out
+and listed in the **Problems** band, which appears under the Actors strip with
+the first finding and goes away with the last. Every finding says why: the
+reason the load gave, or — for a placement that only went out with its parent
+or with something it points at — which placement took it out, whose own finding
+is in the same list. The band's header puts a long list away and keeps saying
 how many there are. The rest of the level still draws, so one broken entity
 does not cost you the view of everything else.
+
+The assets loaded before a placement is built are the ones the level names:
+the files its `param.asset` parameters hold. There is no scene here to run a
+`preload`, so an entity that reaches for a texture through a handle its scene
+loads finds nothing in the cache, throws, and lands in Problems. Declaring the
+file with [`param.asset`](/guides/levels/#declare-what-can-be-placed) is what
+makes an entity draw in the editor as well as in the game.
 
 Both bands take their height from the viewport rather than covering it. Nothing
 you were working on ends up behind a panel, a finding arriving never resizes
@@ -929,12 +941,16 @@ values you are happy to lose. It asks first: every parameter goes back to its
 default and the placement is marked as authored against the current version,
 in one edit, and undo is the only way back.
 
-A reference parameter — `param.entityRef()` — is a list of the other placements
-in this level that the parameter accepts, named by whatever you would recognise
+A reference parameter — `param.entityRef()` — is a list of the placements in
+this level that the parameter accepts, named by whatever you would recognise
 them as: their name, else their key, else their id. Two that would read the
 same both get their id shown. Picking one is a single edit. A slot the type
 marked optional has a **Clear** beside it; a required one does not, because
 "nothing chosen" is a problem there rather than a value.
+
+A slot that accepts its own placement's type offers that placement, in the list
+and to **Pick**: a reference is allowed to point at itself, the way it is
+allowed to close a cycle with another placement.
 
 The slot never blanks. If the placement it points at is gone the list shows
 `Missing: <id>` as its first row, and if that placement is there but of a type
@@ -946,11 +962,10 @@ wanted.
 Choosing from a list means knowing which door is which before you open it, so
 there is a second way. **Pick**, beside the list, waits for you to click the
 target in the viewport or in the hierarchy. While it waits, everything the slot
-cannot take fades to a quarter of itself, including the placement you are
-editing — the selection box stays at full strength, so it is still easy to
-find. A press on a faded placement does nothing at all, which means a near miss
-costs you a second click rather than the mode. Clicking a target writes it and
-stops waiting.
+cannot take fades to a quarter of itself — the selection box stays at full
+strength, so the placement you are editing is still easy to find. A press on a
+faded placement does nothing at all, which means a near miss costs you a second
+click rather than the mode. Clicking a target writes it and stops waiting.
 
 Anything authored under a placement the slot accepts chooses that placement, so
 clicking a door's handle picks the door however the door is built. The

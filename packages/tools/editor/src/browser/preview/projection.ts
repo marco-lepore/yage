@@ -13,6 +13,12 @@ export interface ProjectionOutcome<T> {
   readonly built?: T;
   /** Placements left out, whether they failed themselves or depend on one that did. */
   readonly excluded: ReadonlySet<string>;
+  /**
+   * Why each excluded placement was left out: what the caller already knew
+   * before the first attempt, what a failed attempt said, or which placement
+   * it went out with.
+   */
+  readonly reasons: ReadonlyMap<string, string>;
   readonly attempts: number;
 }
 
@@ -35,15 +41,21 @@ export interface AttemptFailure {
  * `attempt` is passed a subset and either returns the built preview or throws
  * a failure naming one placement. A failure that names none ends the loop:
  * removing an arbitrary placement would not make it more likely to succeed.
+ *
+ * `initiallyExcluded` names placements the caller rules out before the first
+ * attempt; `blocked` names the ones it rules out and can already say why, so
+ * the outcome's `reasons` answers for every exclusion in one map.
  */
 export function buildBestEffort<T>(
   prepared: PreparedLevel,
   initiallyExcluded: Iterable<string>,
+  blocked: ReadonlyMap<string, string>,
   attempt: (subset: PreparedLevel) => T,
   describeFailure: (error: unknown) => AttemptFailure | undefined,
 ): ProjectionOutcome<T> {
-  const excluded = new Set(initiallyExcluded);
-  closeDependents(prepared.placements, excluded);
+  const excluded = new Set([...initiallyExcluded, ...blocked.keys()]);
+  const reasons = new Map<string, string>(blocked);
+  closeDependents(prepared.placements, excluded, reasons);
   const maxAttempts = Math.min(
     prepared.placements.length + 1,
     MAX_PREVIEW_ATTEMPTS,
@@ -57,22 +69,23 @@ export function buildBestEffort<T>(
     if (subset.placements.length === 0) break;
     attempts += 1;
     try {
-      return { built: attempt(subset), excluded, attempts };
+      return { built: attempt(subset), excluded, reasons, attempts };
     } catch (error) {
       const failure = describeFailure(error);
       if (failure?.placementId === undefined) throw error;
       excluded.add(failure.placementId);
-      closeDependents(prepared.placements, excluded);
+      reasons.set(failure.placementId, failure.message);
+      closeDependents(prepared.placements, excluded, reasons);
     }
   }
-  return { excluded, attempts };
+  return { excluded, reasons, attempts };
 }
 
 /**
- * Exclude every placement that cannot load without an excluded one. A child
- * whose parent is gone has nothing to be positioned against, and a placement
- * whose reference target is gone would decode to a handle on nothing; the
- * loader refuses both.
+ * Exclude every placement that cannot load without an excluded one, recording
+ * in `reasons` which placement took it out. A child whose parent is gone has
+ * nothing to be positioned against, and a placement whose reference target is
+ * gone would decode to a handle on nothing; the loader refuses both.
  *
  * An optional reference is closed over as well. A handle that resolves in the
  * game and not in the preview would send `setup()` down a different branch in
@@ -82,26 +95,39 @@ export function buildBestEffort<T>(
 export function closeDependents(
   placements: readonly PreparedPlacement[],
   excluded: Set<string>,
+  reasons: Map<string, string>,
 ): void {
   let changed = true;
   while (changed) {
     changed = false;
     for (const entry of placements) {
       if (excluded.has(entry.placement.id)) continue;
-      if (!dependsOnExcluded(entry, excluded)) continue;
+      const reason = dependencyReason(entry, excluded);
+      if (reason === undefined) continue;
       excluded.add(entry.placement.id);
+      reasons.set(entry.placement.id, reason);
       changed = true;
     }
   }
 }
 
-function dependsOnExcluded(
+/**
+ * The placement this one cannot load without, as a sentence, or `undefined`
+ * when every placement it depends on is still there. The placement it names
+ * carries its own reason in the same report, so this one only has to point.
+ */
+function dependencyReason(
   entry: PreparedPlacement,
   excluded: ReadonlySet<string>,
-): boolean {
+): string | undefined {
+  const id = entry.placement.id;
   const parent = entry.placement.parent;
-  if (parent !== undefined && excluded.has(parent)) return true;
-  return entry.references.some((one) => excluded.has(one.targetId));
+  if (parent !== undefined && excluded.has(parent)) {
+    return `Placement "${id}" was left out with its parent "${parent}".`;
+  }
+  const reference = entry.references.find((one) => excluded.has(one.targetId));
+  if (reference === undefined) return undefined;
+  return `Placement "${id}" was left out with "${reference.targetId}", which it points at.`;
 }
 
 /** The prepared level minus the excluded placements, ready for a strict load. */

@@ -393,6 +393,25 @@ export class Switch extends Entity {
   `setup()` may not have run yet. `LevelInstance.activate()` runs after the
   whole document has set up, so the first `onEnable()` any authored placement
   sees is later than every `setup()`.
+- **A slot that accepts its own declaring type needs the schema annotated.**
+  A self-reference or a mutual pair makes the class's type and the schema's
+  type depend on each other, and TypeScript reports `TS7022` on the schema and
+  `TS2502` on `setup()`. Write the schema's type out and `setup()` keeps
+  `ParamsOf`:
+
+  ```ts
+  const WaypointParams: ParamsSchema<{
+    wait: ParamKind<number>;
+    next: ParamKind<EntityHandle<Waypoint> | undefined>;
+  }> = defineParams({
+    wait: param.number(1),
+    next: param.entityRef<Waypoint>({
+      types: ["game.waypoint"],
+      optional: true,
+    }),
+  });
+  ```
+
 - The handle expires when the target entity is destroyed, which is
   `EntityHandle`'s ordinary contract. It never retargets.
 - **Saving a reference:** a handle is not part of a save. Persist the target's
@@ -426,10 +445,9 @@ declaration's schema migrate placements authored against the other.
 ```ts
 class ForestScene extends Scene {
   readonly preload = levelAssets(forest);
-  private level?: LevelInstance;
 
   onEnter(): void {
-    this.level = instantiateLevel(this, forest, { namespace: "forest" });
+    instantiateLevel(this, forest, { namespace: "forest" });
   }
 
   onExit(): void {
@@ -681,6 +699,11 @@ names an entity that exists is a question for a catalog.
   `AssetManager` counts references by. Pass its result to `preload` as-is.
 - A placement's authored `name` does not reach `Entity.name`; the entity is
   named after its class.
+- The placement's transform is applied after `setup()` returns, so `setup()`
+  and a component's `onAdd()` both read the pose the entity had before it was
+  placed. A component that captures a position there and writes it back every
+  frame puts the placement where it was before, with no error anywhere. Read
+  the placed pose from `onEnable()` or an update.
 - A placement's `layer` reaches the renderer through `VisualComponent.setLayer`,
   which `@yagejs/level` finds by shape rather than by import. A game with no
   renderer has no component that answers it, and the field does nothing.

@@ -50,58 +50,77 @@ import {
  * loaded, when it tore the previous level down, and what it let go. The order
  * is the contract, so one log is what the assertions read.
  */
-const { events, entities } = vi.hoisted(() => ({
+const { events, entities, loadFailures } = vi.hoisted(() => ({
   events: [] as string[],
   /** What a built placement resolves to, for the cases that need an entity. */
   entities: new Map<string, unknown>(),
+  /** Placements the stand-in loader refuses, by the message it refuses with. */
+  loadFailures: new Map<string, string>(),
 }));
 
 // The level package is the preview's whole input: preparation, the assets a
 // document needs, and the loader. Standing in for it is what lets the
 // coordinator's own sequencing be driven without an engine — the parts it
 // replaces have their own tests in `packages/level`.
-vi.mock("@yagejs/level", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@yagejs/level")>()),
-  // A placement whose `params.texture` is not a string fails preparation the
-  // way the real one does: a `parameter-invalid` finding at that field, and
-  // no prepared placement.
-  prepareLevel: (document: LevelDocument): PreparedLevel => ({
-    document,
-    placements: document.entities
-      .filter((placement) => typeof placement.params.texture === "string")
-      .map((placement) => ({
-        placement,
-        entry: {} as PreparedLevel["placements"][number]["entry"],
-        assets: [
-          {
-            type: "texture",
-            path: texturePathOf(placement),
-          } as AssetHandle<unknown>,
-        ],
-        references: [],
-      })),
-    diagnostics: document.entities
-      .filter((placement) => typeof placement.params.texture !== "string")
-      .map((placement) => ({
-        code: "parameter-invalid" as const,
-        placementId: placement.id,
-        path: ["texture"],
-        message: 'Parameter "texture" must be a string.',
-      })),
-  }),
-  levelAssets: (prepared: PreparedLevel) =>
-    prepared.placements.flatMap((entry) => entry.assets),
-  instantiateLevel: (_scene: unknown, subset: PreparedLevel): LevelInstance =>
-    ({
-      get: (id: string) => entities.get(id),
-      dispose: () =>
-        events.push(
-          `dispose ${subset.placements
-            .map((entry) => entry.placement.id)
-            .join(",")}`,
-        ),
-    }) as unknown as LevelInstance,
-}));
+vi.mock("@yagejs/level", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@yagejs/level")>();
+  return {
+    ...original,
+    // A placement whose `params.texture` is not a string fails preparation the
+    // way the real one does: a `parameter-invalid` finding at that field, and
+    // no prepared placement.
+    prepareLevel: (document: LevelDocument): PreparedLevel => ({
+      document,
+      placements: document.entities
+        .filter((placement) => typeof placement.params.texture === "string")
+        .map((placement) => ({
+          placement,
+          entry: {} as PreparedLevel["placements"][number]["entry"],
+          assets: [
+            {
+              type: "texture",
+              path: texturePathOf(placement),
+            } as AssetHandle<unknown>,
+          ],
+          references: [],
+        })),
+      diagnostics: document.entities
+        .filter((placement) => typeof placement.params.texture !== "string")
+        .map((placement) => ({
+          code: "parameter-invalid" as const,
+          placementId: placement.id,
+          path: ["texture"],
+          message: 'Parameter "texture" must be a string.',
+        })),
+    }),
+    levelAssets: (prepared: PreparedLevel) =>
+      prepared.placements.flatMap((entry) => entry.assets),
+    instantiateLevel: (
+      _scene: unknown,
+      subset: PreparedLevel,
+    ): LevelInstance => {
+      const refused = subset.placements.find((entry) =>
+        loadFailures.has(entry.placement.id),
+      );
+      if (refused) {
+        const id = refused.placement.id;
+        throw new original.LevelLoadError(loadFailures.get(id) ?? "", {
+          documentId: subset.document.id,
+          placementId: id,
+        });
+      }
+      return {
+        get: (id: string) => entities.get(id),
+        dispose: () =>
+          events.push(
+            `dispose ${subset.placements
+              .map((entry) => entry.placement.id)
+              .join(",")}`,
+          ),
+      } as unknown as LevelInstance;
+    },
+  };
+});
 
 /** A placement's texture is its id, so a document names what it needs. */
 function texturePathOf(placement: LevelPlacement): string {
@@ -345,6 +364,7 @@ function createParts(
 } {
   events.length = 0;
   entities.clear();
+  loadFailures.clear();
   const assets = {
     loadAll: (handles: readonly AssetHandle<unknown>[]) => {
       for (const handle of handles) events.push(`load ${handle.path}`);
@@ -531,6 +551,43 @@ describe("PreviewCoordinator", () => {
     // The rest of the level still built.
     expect(harness.events).toContain("load crate.png");
     expect(harness.events).not.toContain("load barrel.png");
+  });
+
+  it("reports an excluded placement with the reason the load gave", async () => {
+    const harness = await createHarness();
+    loadFailures.set("barrel", 'Texture "barrel.png" is not loaded.');
+    await harness.build(document("crate", "barrel"));
+
+    expect(harness.store.getState().diagnostics.get("preview")).toEqual([
+      {
+        code: "placement-excluded",
+        severity: "error",
+        source: "preview",
+        message: 'Texture "barrel.png" is not loaded.',
+        revision: 1,
+        placementId: "barrel",
+      },
+    ]);
+  });
+
+  it("names the placement a dependent went out with", async () => {
+    const harness = await createHarness();
+    loadFailures.set("barrel", 'Texture "barrel.png" is not loaded.');
+    await harness.build(
+      document("crate", "barrel", { ...placement("lid"), parent: "barrel" }),
+    );
+
+    // The child was never loaded on its own, so it points at the placement
+    // that took it out — which carries the load's own reason beside it.
+    expect(
+      harness.store
+        .getState()
+        .diagnostics.get("preview")
+        ?.map((one) => one.message),
+    ).toEqual([
+      'Texture "barrel.png" is not loaded.',
+      'Placement "lid" was left out with its parent "barrel".',
+    ]);
   });
 
   it("takes everything back when the editor closes", async () => {

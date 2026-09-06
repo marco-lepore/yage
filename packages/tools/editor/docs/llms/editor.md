@@ -37,7 +37,9 @@ project declares in any dependency field, apart from `save`, `level`,
 `pathfinding` and `effects`, which contribute none. `levels` names each
 directory already holding `*.yage-level.json` files
 (`levels/*.yage-level.json` when there are none), `layers` is
-`../src/layers.ts` when that file exists, and `assets` is `public/**/*.png`
+`../src/layers.ts` when that file exists **and default-exports** — the same
+name holds a physics `CollisionLayers` module in some projects, and the report
+says when one was passed over — and `assets` is `public/**/*.png`
 when `public/` exists. `entities` and `gamePage` are never
 guessed: nothing in a project says which classes are placeable, and a
 `gamePage` naming a page that does not exist is refused at startup.
@@ -210,8 +212,17 @@ lists, plus the level contributions of the project's direct dependencies. See
 
 The viewport draws the level as a real engine scene, with every placement
 inactive — constructors, `setup()`, and `onAdd()` run, nothing else does.
-A placement the preview cannot build is left out and reported, and the rest of
-the level still draws.
+A placement the preview cannot build is left out and reported as
+`placement-excluded`, carrying the reason the load gave — the asset lease's
+where an asset failed, else the strict load's own message — and the rest of the
+level still draws. A placement left out only because it hangs off an excluded
+one names that placement instead, which carries the real reason in the same
+report.
+
+The only assets loaded are the ones the level names through `param.asset`.
+There is no scene to run a `preload`, so an entity that builds a visual from a
+handle its game scene loads throws on a texture that is not in the cache and
+its placement is excluded.
 
 The zoom is the developer's alone: it is canvas pixels per world unit, so the
 size the level is drawn at is the same in a narrow pane and a wide one. A band
@@ -264,7 +275,7 @@ The controls:
 | Hierarchy drag of a selected row                                       | Moves the whole selection, in one command; a row outside the selection moves alone                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | Hierarchy row eye                                                      | Hides that placement and everything under it, or shows it again. Selects nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Inspector asset field                                                  | Text path; Enter or blur commits, Escape restores; **Reset** puts the declared default back                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Inspector reference field                                              | A list of the level's placements of the types the parameter accepts, by `name` / `key` / `id`; picking one commits at once. **Clear** beside an optional field empties it. A held id the document cannot account for stays as the first row, `Missing: <id>` or `Wrong type: <label>`. No candidates switches the list off and says which types it wanted. **Pick** beside the list waits for the target to be pointed at                                                                                                                                                                                                                                      |
+| Inspector reference field                                              | A list of the level's placements of the types the parameter accepts — the holder among them when the slot accepts its own type — by `name` / `key` / `id`; picking one commits at once. **Clear** beside an optional field empties it. A held id the document cannot account for stays as the first row, `Missing: <id>` or `Wrong type: <label>`. No candidates switches the list off and says which types it wanted. **Pick** beside the list waits for the target to be pointed at                                                                                                                                                                          |
 | Inspector reference field **Pick**                                     | Waits for the target to be clicked in the viewport or in the hierarchy. Everything the slot cannot accept — every placement of an unaccepted type, and everything authored under one — fades to a quarter of its own opacity and its component marks are not drawn; the gizmo is put away, since a press on a handle would do nothing. A press on a faded placement is ignored, so a near miss costs a second click. It ends by choosing a target in the viewport or a row, by `Escape`, by a second press of **Pick**, by choosing a row from the list, by selecting anything but the holder, by opening another level, or by the holder leaving the document |
 | Inspector number field                                                 | Type it, `ArrowUp` / `ArrowDown`, or drag its label. `Shift` takes ten steps, `Alt` a tenth of one, and a step stops at the declared `min` or `max`. Text this field cannot take stays in the box with the reason under it, and nothing is sent                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Inspector whole-number field                                           | The number field with a step of one, refusing a fraction. `Alt` steps by one, since a whole number has no tenth                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |

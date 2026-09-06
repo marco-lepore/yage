@@ -664,18 +664,13 @@ export class PreviewCoordinator {
     // are torn down: a texture both documents use must never drop to zero
     // references in between.
     await lease.acquire(levelAssets(prepared));
-    const { blocked, projection } = this.replaceScene(
-      scene,
-      prepared,
-      lease,
-      revision,
-    );
+    const projection = this.replaceScene(scene, prepared, lease, revision);
 
     if (projection.built) {
       this.instance = projection.built;
       this.adoptPlacements(projection.built, request.document);
     }
-    this.publish(prepared.diagnostics, blocked, projection.excluded, revision);
+    this.publish(prepared.diagnostics, projection, revision);
 
     scheduleRelease(this.flushes, lease, revision, () => this.revision);
   }
@@ -689,10 +684,7 @@ export class PreviewCoordinator {
     prepared: PreparedLevel,
     lease: PreviewAssetLease,
     revision: number,
-  ): {
-    blocked: ReadonlyMap<string, string>;
-    projection: ProjectionOutcome<LevelInstance>;
-  } {
+  ): ProjectionOutcome<LevelInstance> {
     const blocked = placementsMissingAssets(prepared, lease.failures);
     this.instance?.dispose();
     this.instance = undefined;
@@ -700,12 +692,10 @@ export class PreviewCoordinator {
     this.byPlacementId = new Map();
     this.marked = [];
 
-    const projection = buildBestEffort(
+    return buildBestEffort(
       prepared,
-      [
-        ...prepared.diagnostics.map((diagnostic) => diagnostic.placementId),
-        ...blocked.keys(),
-      ],
+      prepared.diagnostics.map((diagnostic) => diagnostic.placementId),
+      blocked,
       (subset) =>
         instantiateLevel(scene, subset, {
           // A fresh namespace per build: the previous instance's entities
@@ -716,7 +706,6 @@ export class PreviewCoordinator {
         }),
       describeFailure,
     );
-    return { blocked, projection };
   }
 
   private adoptPlacements(
@@ -1481,12 +1470,13 @@ export class PreviewCoordinator {
    * A finding preparation made keeps its own code and path — a repair control
    * switches on those, never on the message. What the preview itself refused
    * (an asset that failed to load, a `setup()` that threw) has no level code
-   * and is reported as `placement-excluded`.
+   * and is reported as `placement-excluded`, carrying the projection's reason:
+   * the asset lease's, the strict load's own message, or the placement it went
+   * out with.
    */
   private publish(
     diagnostics: readonly LevelDiagnostic[],
-    blocked: ReadonlyMap<string, string>,
-    excluded: ReadonlySet<string>,
+    projection: ProjectionOutcome<LevelInstance>,
     revision: number,
   ): void {
     const reported: EditorDiagnostic[] = diagnostics.map((diagnostic) => ({
@@ -1499,14 +1489,14 @@ export class PreviewCoordinator {
       path: diagnostic.path,
     }));
     const explained = new Set(diagnostics.map((one) => one.placementId));
-    for (const id of excluded) {
+    for (const id of projection.excluded) {
       if (explained.has(id)) continue;
       reported.push({
         code: "placement-excluded",
         severity: "error",
         source: "preview",
         message:
-          blocked.get(id) ??
+          projection.reasons.get(id) ??
           `Placement "${id}" could not be built and is not shown.`,
         revision,
         placementId: id,

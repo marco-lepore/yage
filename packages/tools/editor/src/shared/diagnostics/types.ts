@@ -32,8 +32,8 @@ export type DiagnosticCode =
   | "catalog-invalid"
   /**
    * A placement could not be built into the preview and was left out, for a
-   * reason preparation did not report: an asset that failed to load, or a
-   * `setup()` that threw.
+   * reason preparation did not report: an asset that failed to load, a
+   * `setup()` that threw, or a placement it cannot exist without going out.
    */
   | "placement-excluded"
   /** The preview could not be built at all. */
