@@ -550,9 +550,10 @@ while the entity is active is overwritten before the next step and never
 reaches the body — move a dynamic body with `setVelocity`, `applyImpulse`, or
 `rb.setPosition`.
 
-A write made while the entity is **inactive** is a different thing: that is the
-game repositioning a pooled member, and the body teleports there when the
-entity is enabled again. It works the same for dynamic and kinematic bodies:
+A position or rotation written to the `Transform` while the entity is
+**inactive** teleports the body to that world pose when the entity is enabled
+again. This works for static, dynamic, and kinematic bodies, including writes
+during dormant setup of a prewarmed pool member:
 
 ```typescript
 bullet.setActive(false);
@@ -561,7 +562,21 @@ bullet.get(Transform).setPosition(x, y);
 bullet.setActive(true);   // the body is at (x, y), not where it slept
 ```
 
-A static body never reads its `Transform` at all; `rb.setPosition` moves both.
+Position and rotation are checked independently. An unchanged value keeps the
+body's current value.
+
+An active static body does not follow `Transform` writes. Use `rb.setPosition`
+and `rb.setRotation` to move it immediately. Both update the `Transform` too,
+except rotation when `syncRotation` is `false`.
+
+`EntityPool` activates a member **before** calling its `onAcquire` hook. Use
+the body methods in that hook to place a static or dynamic member immediately:
+
+```typescript
+onAcquire(x: number, y: number) {
+  this.get(RigidBodyComponent).setPosition(x, y);
+}
+```
 
 ## Raycasting
 

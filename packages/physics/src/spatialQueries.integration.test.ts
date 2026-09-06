@@ -16,8 +16,8 @@ vi.mock("@dimforge/rapier2d", async () => {
   return { default: RAPIER };
 });
 
-import { Transform, Vec2 } from "@yagejs/core";
-import type { Entity, Scene } from "@yagejs/core";
+import { Entity, EntityPool, Transform, Vec2 } from "@yagejs/core";
+import type { Scene } from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { ColliderComponent } from "./ColliderComponent.js";
 import { PhysicsSystem } from "./PhysicsSystem.js";
@@ -376,6 +376,145 @@ describe("spatial queries (real Rapier)", () => {
   });
 
   describe("Transform channel", () => {
+    it.each(["static", "dynamic", "kinematic"] as const)(
+      "places a dormant %s body and its collider at the written pose on activation",
+      async (type) => {
+        const ctx = await createPhysicsTestContext({ gravity: { x: 0, y: 0 } });
+        const { scene, physicsWorld } = ctx;
+        const entity = spawnEntityInScene(scene, "parked");
+        entity.setActive(false);
+        const transform = entity.add(new Transform());
+        const rb = entity.add(new RigidBodyComponent({ type }));
+        entity.add(
+          new ColliderComponent({
+            shape: { type: "box", width: 80, height: 10 },
+          }),
+        );
+        transform.setPosition(300, 120);
+        transform.rotation = Math.PI / 2;
+        expect(physicsWorld.queryShape(PROBE, { x: 300, y: 150 })).toEqual([]);
+
+        entity.setActive(true);
+
+        expect(rb.positionX).toBeCloseTo(300);
+        expect(rb.positionY).toBeCloseTo(120);
+        expect(rb.rotation).toBeCloseTo(Math.PI / 2);
+        expect(physicsWorld.queryShape(PROBE, { x: 300, y: 150 })).toEqual([
+          entity,
+        ]);
+        expect(physicsWorld.queryShape(PROBE, { x: 330, y: 120 })).toEqual([]);
+        expect(physicsWorld.queryShape(PROBE, Vec2.ZERO)).toEqual([]);
+        systemsFor(ctx).tick(2);
+        expect(transform.worldPosition.x).toBeCloseTo(300);
+        expect(transform.worldPosition.y).toBeCloseTo(120);
+        expect(transform.worldRotation).toBeCloseTo(Math.PI / 2);
+      },
+    );
+
+    it("places a prewarmed static member from dormant setup and reuses its allocation", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      class Wall extends Entity {
+        override setup(): void {
+          const transform = this.add(new Transform());
+          this.add(new RigidBodyComponent({ type: "static" }));
+          this.add(
+            new ColliderComponent({
+              shape: { type: "box", width: 20, height: 20 },
+            }),
+          );
+          transform.setPosition(300, 120);
+        }
+        onAcquire(position?: Vec2): void {
+          if (position)
+            this.get(RigidBodyComponent).setPosition(position.x, position.y);
+        }
+      }
+      const pool = new EntityPool(scene, Wall, { prewarm: 1 });
+      expect(physicsWorld.queryShape(PROBE, { x: 300, y: 120 })).toEqual([]);
+      const member = pool.acquire();
+      const rb = member.get(RigidBodyComponent);
+      const handle = rb._bodyHandle;
+      expect(rb.positionX).toBeCloseTo(300);
+      expect(rb.positionY).toBeCloseTo(120);
+      expect(physicsWorld.queryShape(PROBE, { x: 300, y: 120 })).toEqual([
+        member,
+      ]);
+
+      pool.release(member);
+      member.get(Transform).setPosition(500, 240);
+      expect(pool.acquire()).toBe(member);
+      expect(rb.positionX).toBeCloseTo(500);
+      expect(rb.positionY).toBeCloseTo(240);
+      expect(physicsWorld.queryShape(PROBE, { x: 300, y: 120 })).toEqual([]);
+      expect(physicsWorld.queryShape(PROBE, { x: 500, y: 240 })).toEqual([
+        member,
+      ]);
+
+      pool.release(member);
+      expect(pool.acquire(new Vec2(700, 360))).toBe(member);
+      expect(rb._bodyHandle).toBe(handle);
+      expect(rb.positionX).toBeCloseTo(700);
+      expect(rb.positionY).toBeCloseTo(360);
+      expect(member.get(Transform).worldPosition).toEqual(new Vec2(700, 360));
+      pool.dispose();
+    });
+
+    it("does not adopt an active static Transform write on a later enable", async () => {
+      const ctx = await createPhysicsTestContext();
+      const wall = spawnStaticBox(ctx.scene, "wall", 100, 100);
+      wall.transform.setPosition(300, 120);
+      wall.transform.rotation = 0.5;
+      systemsFor(ctx).tick(2);
+      wall.entity.setActive(false);
+      wall.entity.setActive(true);
+      expect(wall.rb.positionX).toBeCloseTo(100);
+      expect(wall.rb.positionY).toBeCloseTo(100);
+      expect(wall.rb.rotation).toBeCloseTo(0);
+
+      wall.entity.setActive(false);
+      wall.transform.setPosition(500, 240);
+      wall.transform.rotation = 1;
+      wall.entity.setActive(true);
+      expect(wall.rb.positionX).toBeCloseTo(500);
+      expect(wall.rb.positionY).toBeCloseTo(240);
+      expect(wall.rb.rotation).toBeCloseTo(1);
+    });
+
+    it("adopts a parent's world pose changes while a static child is dormant", async () => {
+      const { scene } = await createPhysicsTestContext();
+      const parent = spawnEntityInScene(scene, "parent");
+      const parentTransform = parent.add(new Transform());
+      const wall = spawnStaticBox(scene, "wall", 20, 0);
+      parent.addChild("wall", wall.entity);
+      parent.setActive(false);
+      parentTransform.setPosition(300, 120);
+      parentTransform.rotation = Math.PI / 2;
+      parent.setActive(true);
+      expect(wall.rb.positionX).toBeCloseTo(300);
+      expect(wall.rb.positionY).toBeCloseTo(140);
+      expect(wall.rb.rotation).toBeCloseTo(Math.PI / 2);
+    });
+
+    it.each([true, false])(
+      "preserves dormant static body teleports with syncRotation=%s",
+      async (syncRotation) => {
+        const { scene } = await createPhysicsTestContext();
+        const wall = spawnStaticBox(scene, "wall", 100, 100);
+        wall.rb.syncRotation = syncRotation;
+        wall.entity.setActive(false);
+        wall.transform.setPosition(300, 120);
+        wall.transform.rotation = 0.5;
+        wall.rb.setPosition(500, 240);
+        wall.rb.setRotation(1);
+        wall.entity.setActive(true);
+        wall.entity.setActive(false);
+        wall.entity.setActive(true);
+        expect(wall.rb.positionX).toBeCloseTo(500);
+        expect(wall.rb.positionY).toBeCloseTo(240);
+        expect(wall.rb.rotation).toBeCloseTo(1);
+      },
+    );
+
     it("moves a static body's Transform with setPosition", async () => {
       const ctx = await createPhysicsTestContext();
       const { scene } = ctx;

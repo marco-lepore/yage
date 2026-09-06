@@ -110,9 +110,11 @@ immutable getters.
 
 ### Writing positions
 
-A dynamic body's `Transform` is written by physics every frame. A write to it while the entity is active is overwritten before the next step and never reaches the body — move a dynamic body with `setVelocity`, `applyImpulse` or `rb.setPosition`. A write made while the entity is inactive is the game repositioning a pooled member: it teleports the body there when the entity is enabled again, for dynamic and kinematic bodies alike.
+A dynamic body's `Transform` is written by physics every frame. A write to it while the entity is active is overwritten before the next step and never reaches the body — move a dynamic body with `setVelocity`, `applyImpulse` or `rb.setPosition`.
 
-A static body never reads its `Transform`; `rb.setPosition` / `rb.setRotation` move body and `Transform` together.
+For every body type, a position or rotation written to the `Transform` while the entity is inactive teleports the body to that world pose on activation. Position and rotation are checked independently; an unchanged value keeps the body's current value. This also applies during dormant setup of a prewarmed pool member.
+
+An active static body does not follow `Transform` writes; `rb.setPosition` / `rb.setRotation` move body and `Transform` together (`setRotation` updates the `Transform` only with `syncRotation: true`). A pool member's `onAcquire` runs after activation: use these body methods there to place static or dynamic members immediately.
 
 ### Velocity while the scene is slowed
 
