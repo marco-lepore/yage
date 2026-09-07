@@ -484,6 +484,31 @@ start. The win: any listener that wants to claim the event (UI auto-consume,
 to run before action edges fire — eliminating the historical "Pixi must
 register listeners before YAGE" load-bearing assumption.
 
+A key that goes down and up between two drains keeps both edges. The drain
+applies the queued events in the order they arrived, and a release never
+clears the press edge before it:
+
+```
+F0  browser dispatches keydown, then keyup
+    -> InputPlugin queues both
+F0  rAF tick — InputPollSystem drains the queue
+    -> key edges applied in order
+    -> isJustPressed("jump") and isJustReleased("jump") both true,
+       isPressed("jump") already false
+```
+
+That window is the current frame for `update` code and listeners, and the next
+fixed step to run for `fixedUpdate` code. A script that sends a press as one
+down+up pair — Playwright's `page.keyboard.press`, or `mouse.down()` followed
+by `mouse.up()` — needs no delay between the two calls.
+
+The window closes at the end of that frame, when `InputClearSystem` clears the
+edge sets. Code running between frames, such as a `page.evaluate` after the
+frame completed, is in no window: for input a frame already drained, it reads
+`false` for both edges. To observe an edge from a script, record it inside the
+frame — a component that stores `isJustPressed("jump")` during its `update` —
+and read that record afterwards.
+
 Synthetic injection (`fireKeyDown`, `firePointerDown`, …) bypasses the queue
 and applies state synchronously, so existing tests using these helpers don't
 need to change. Tests that drive `dispatchEvent` directly need an explicit

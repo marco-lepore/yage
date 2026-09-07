@@ -439,16 +439,16 @@ export function playBoxerAnim(
 export const STAGGER_SPEED_MIN = 0.32;
 export const STAGGER_SPEED_MAX = 0.7;
 
-/** Plays the stagger reaction at whatever `AnimatedSprite.animationSpeed`
- *  makes its full playthrough take about as long as the hit's actual `stun`
- *  — mechanic and animation agree instead of the anim running on a fixed
- *  clock unrelated to how long the character is actually stunned for.
- *  Clamped to stay in a readable range regardless of how short or long a
- *  given hit's stun is (a very brief stun still gets a legible flinch; a
- *  long one doesn't turn into slow motion). Setting `animationSpeed`
- *  directly (rather than `AnimationController.speed`, which is shared by
- *  every animation on the controller) confines the override to this one
- *  play — the next `playOneShot`/`play` call recomputes it fresh. */
+/** Plays the stagger reaction at whatever playback `speed` makes its full
+ *  playthrough take about as long as the hit's actual `stun` — mechanic and
+ *  animation agree instead of the anim running on a fixed clock unrelated to
+ *  how long the character is actually stunned for. Clamped to stay in a
+ *  readable range regardless of how short or long a given hit's stun is (a
+ *  very brief stun still gets a legible flinch; a long one doesn't turn into
+ *  slow motion). Setting the component's `speed` (rather than
+ *  `AnimationController.speed`, which is shared by every animation on the
+ *  controller) confines the override to this one play — the next
+ *  `playOneShot`/`play` call recomputes it fresh. */
 export function playStaggerAnim(entity: Entity, stun: number): void {
   playBoxerAnim(entity, "stagger", { oneShot: true });
   const frames = BOXER_ANIM_SPECS.stagger.frames;
@@ -457,5 +457,5 @@ export function playStaggerAnim(entity: Entity, stun: number): void {
     STAGGER_SPEED_MAX,
     Math.max(STAGGER_SPEED_MIN, rawSpeed),
   );
-  entity.get(AnimatedSpriteComponent).animatedSprite.animationSpeed = speed;
+  entity.get(AnimatedSpriteComponent).speed = speed;
 }

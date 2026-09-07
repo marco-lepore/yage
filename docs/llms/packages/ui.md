@@ -164,6 +164,29 @@ Fixes: give the container more room, set `maxWidth`/`maxHeight`, mark the child
 `flexShrink: 1` / `flex: <n>` so it gives space back and wraps, or use
 `truncate: "clip" | "ellipsis"` on text (and `UIButton`).
 
+## UIImage sizing
+
+```ts
+new UIImage({ texture: "card-art", height: 58 }); // width follows the picture
+new UIImage({ texture: "card-art", width: 120 }); // height follows the picture
+new UIImage({ texture: "banner", width: 180, height: 58 }); // stretched to the box
+new UIImage({ texture: "icon" }); // the texture's own pixel size
+```
+
+Sizing exactly one axis gives the element the texture's aspect ratio, so a flex
+parent's cross-axis stretch cannot squash the picture.
+
+- The derived axis follows the texture, not the room left in the parent, so the
+  image can overflow its container. The dev-mode overflow warning reports it.
+- Sizing both axes is the only way to distort the texture. `flexGrow`, `flex`
+  and `flexBasis` count as sizing the main axis, so an image with one of those
+  set stretches as if both axes were sized.
+- With neither axis sized the image measures at the texture's pixel size and is
+  a normal flex child: a parent's `alignItems: "stretch"` stretches it. Size one
+  axis, or set `alignSelf: "flex-start"`, to keep the proportions.
+- `maxWidth` / `maxHeight` shrink both axes when one axis is sized: a 100 × 50
+  texture at `height: 50, maxWidth: 40` computes 40 × 20.
+
 ## UIText: bitmap & resolution
 
 `UIText` (and the `panel.text(...)` builder, `UIButton` labels, the React `<Text>`) accept two extra props for crisp pixel-art text. Yoga measurement — the default word-wrap and the `truncate?: "clip" | "ellipsis"` modes — is unchanged on the bitmap path.

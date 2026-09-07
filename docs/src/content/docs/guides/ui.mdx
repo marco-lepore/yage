@@ -489,6 +489,32 @@ panel.addElement(img);
 `UIImage`, `UINineSlice`, and texture backgrounds accept `TextureInput`: a
 registered asset key, a texture handle, or a raw renderer texture.
 
+#### Sizing
+
+Set one of `width` / `height` and the other follows the texture's aspect ratio,
+so a fixed-height card keeps the picture's proportions. Set both and the texture
+stretches to that box:
+
+```typescript
+// 58 px tall, as wide as the picture needs.
+panel.addElement(new UIImage({ texture: "card-art", height: 58 }));
+
+// Exactly 180 x 58, whatever shape the texture has.
+panel.addElement(new UIImage({ texture: "banner", width: 180, height: 58 }));
+```
+
+`flexGrow`, `flex` and `flexBasis` size the main axis too, so an image with one
+of those set stretches to its box as if both dimensions were given.
+
+An image with neither dimension set measures at the texture's own pixel size and
+behaves like any other flex child, so a column's default `alignItems: "stretch"`
+stretches it across the cross axis. Sizing one axis keeps the proportions, and
+so does `alignSelf: "flex-start"`.
+
+The derived axis follows the texture rather than the room left in the parent, so
+a wide picture can overflow. `maxWidth` and `maxHeight` shrink both axes
+together: a 100 x 50 texture at `height: 50, maxWidth: 40` renders 40 x 20.
+
 ### Progress Bars
 
 ```typescript

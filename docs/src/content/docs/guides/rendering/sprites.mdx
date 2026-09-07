@@ -167,8 +167,8 @@ playback. Put an animation in a separate active overlay scene when it must keep
 playing while gameplay is frozen.
 
 **Escape hatch:** `.animatedSprite` is the underlying pixi `AnimatedSprite`.
-Frame selection and restart control are available directly on the component —
-see below. Use `.animatedSprite` for other pixi features.
+Frame selection, playback rate, and restart control are available directly on
+the component — see below. Use `.animatedSprite` for other pixi features.
 
 ### Hold a frame or restart playback
 
@@ -188,6 +188,34 @@ sprite.play({ speed: 0.12, loop: false, fromStart: true });
 engine updates. A bare `play()` resumes from the current frame after `stop()`.
 Pass `fromStart: true` to start at frame 0, which is what replaying a completed
 non-looping animation needs.
+
+### Change the playback rate
+
+```typescript
+const sprite = entity.get(AnimatedSpriteComponent);
+
+sprite.speed = 0.3; // slower: about one frame every third tick
+sprite.speed = 0; // hold the current frame, without stopping playback
+sprite.speed = -0.15; // play backwards
+```
+
+`speed` counts frames advanced per tick at 60 fps, so `1` moves one frame every
+tick and `0.15` moves one frame about every seventh tick. It defaults to `1`.
+Writing it retimes the clip that is already running, without restarting it, and
+reads back the same number `play({ speed })` writes. A non-finite value throws
+from both. Scene and entity `timeScale` multiply it.
+
+With an `AnimationController` on the entity, `speed` reads the rate the sprite
+is actually running at: the animation definition's `speed`, times the
+controller's `speed`, times the `playOneShot({ speed })` factor. The controller
+writes the rate again at its next animation switch and whenever its own `speed`
+is written. Set `AnimationController.speed` to retime every animation on the
+controller, and the component's `speed` to retime only the clip on screen — so
+a stagger reaction can last exactly as long as the hit that caused it.
+
+The component's `speed` does not retime a running one-shot's lock. The lock
+keeps the duration computed when the one-shot started, so after a component
+`speed` write the clip and the lock can end at different times.
 
 ### Typing the controller
 

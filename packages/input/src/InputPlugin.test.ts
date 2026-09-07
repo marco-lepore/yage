@@ -214,6 +214,27 @@ describe("InputPlugin", () => {
     expect(manager.isPressed("fire")).toBe(false);
   });
 
+  it("same-tick DOM keydown+keyup both fire action edges on next drain", () => {
+    // A scripted driver sending a press as one down+up pair (Playwright's
+    // `page.keyboard.press`) fires both events before the next rAF. The drain
+    // replays both, so the frame that drains them sees both edges.
+    context = createContext();
+    plugin = new InputPlugin({ actions: { jump: ["Space"] } });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }));
+    window.dispatchEvent(new KeyboardEvent("keyup", { code: "Space" }));
+    // Pre-drain: nothing applied yet
+    expect(manager.isJustPressed("jump")).toBe(false);
+
+    manager._drainInputQueue();
+
+    expect(manager.isJustPressed("jump")).toBe(true);
+    expect(manager.isJustReleased("jump")).toBe(true);
+    expect(manager.isPressed("jump")).toBe(false);
+  });
+
   it("cleans up listeners on destroy", () => {
     context = createContext();
     plugin = new InputPlugin({

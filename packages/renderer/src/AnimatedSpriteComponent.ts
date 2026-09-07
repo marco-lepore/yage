@@ -4,6 +4,7 @@ import type { DisplayAnimatedSprite } from "./public-types.js";
 import { resolveFrames } from "./spritesheet.js";
 import type { FrameSource } from "./spritesheet.js";
 import { runAttributed } from "./internal/attribution.js";
+import { assertFiniteNumber } from "./internal/validate.js";
 import {
   VisualComponent,
   type VisualComponentOptions,
@@ -52,6 +53,9 @@ export class AnimatedSpriteComponent extends VisualComponent {
    * `speed` and `loop` are sticky — the next play keeps whatever this one set.
    * `onComplete` is not: a play owns its completion callback, so a play
    * without one clears the callback the previous play installed.
+   *
+   * Use the {@link AnimatedSpriteComponent.speed} property to retime a clip
+   * that is already running.
    */
   play(options?: {
     speed?: number;
@@ -60,6 +64,11 @@ export class AnimatedSpriteComponent extends VisualComponent {
     fromStart?: boolean;
   }): void {
     if (options?.speed !== undefined) {
+      assertFiniteNumber(
+        "AnimatedSpriteComponent.play",
+        "speed",
+        options.speed,
+      );
       this.animatedSprite.animationSpeed = options.speed;
     }
     if (options?.loop !== undefined) {
@@ -130,6 +139,36 @@ export class AnimatedSpriteComponent extends VisualComponent {
   /** Whether the animation is currently playing. */
   get isPlaying(): boolean {
     return this.animatedSprite.playing;
+  }
+
+  /**
+   * Playback rate of the underlying sprite: frames advanced per tick at 60
+   * fps, so `0.15` moves on about every seventh tick and `1` on every tick.
+   * Defaults to `1`. Writing it retimes the clip that is already running,
+   * without restarting it, and reads back the same number `play({ speed })`
+   * writes.
+   *
+   * `0` holds the current frame while {@link isPlaying} stays `true`, and a
+   * negative value plays backwards. Scene and entity `timeScale` multiply
+   * this. A non-finite value throws.
+   *
+   * With an {@link AnimationController} on the entity this reads the rate the
+   * sprite is actually running at: the animation definition's `speed`, times
+   * the controller's `speed`, times the `playOneShot({ speed })` factor. The
+   * controller writes it again at its next animation switch and whenever its
+   * own `speed` is written. Set `AnimationController.speed` to retime every
+   * animation; set this to retime only the clip on screen. Writing this does
+   * not retime a running one-shot's lock: the lock keeps the duration computed
+   * when the one-shot started, so the clip and the lock can end at different
+   * times.
+   */
+  get speed(): number {
+    return this.animatedSprite.animationSpeed;
+  }
+
+  set speed(value: number) {
+    assertFiniteNumber("AnimatedSpriteComponent.speed", "speed", value);
+    this.animatedSprite.animationSpeed = value;
   }
 
   /** Advance playback using engine-scaled time. */

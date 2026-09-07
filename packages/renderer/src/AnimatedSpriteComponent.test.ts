@@ -319,6 +319,52 @@ describe("AnimatedSpriteComponent", () => {
     expect(comp.animatedSprite.animationSpeed).toBe(0.5);
   });
 
+  it("speed reads and writes the sprite's playback rate", () => {
+    const comp = new AnimatedSpriteComponent({ source: SOURCE });
+    expect(comp.speed).toBe(1);
+
+    comp.speed = 0.5;
+
+    expect(comp.speed).toBe(0.5);
+    expect(comp.animatedSprite.animationSpeed).toBe(0.5);
+  });
+
+  it("play({ speed }) and the speed property write the same value", () => {
+    const comp = new AnimatedSpriteComponent({ source: SOURCE });
+    comp.play({ speed: 0.25 });
+    expect(comp.speed).toBe(0.25);
+
+    comp.speed = 2;
+
+    expect(comp.animatedSprite.animationSpeed).toBe(2);
+    expect(comp.isPlaying).toBe(true);
+  });
+
+  it("speed rejects a non-finite value and leaves the rate alone", () => {
+    const comp = new AnimatedSpriteComponent({ source: SOURCE });
+    comp.speed = 0.5;
+
+    expect(() => {
+      comp.speed = Number.NaN;
+    }).toThrow("AnimatedSpriteComponent.speed: speed must be finite, got NaN.");
+    expect(() => {
+      comp.speed = Number.POSITIVE_INFINITY;
+    }).toThrow(
+      "AnimatedSpriteComponent.speed: speed must be finite, got Infinity.",
+    );
+    expect(comp.speed).toBe(0.5);
+  });
+
+  it("play() rejects a non-finite speed before starting the animation", () => {
+    const comp = new AnimatedSpriteComponent({ source: SOURCE });
+
+    expect(() => comp.play({ speed: Number.NaN })).toThrow(
+      "AnimatedSpriteComponent.play: speed must be finite, got NaN.",
+    );
+    expect(comp.speed).toBe(1);
+    expect(comp.isPlaying).toBe(false);
+  });
+
   it("play() sets loop when provided", () => {
     const comp = new AnimatedSpriteComponent({ source: SOURCE });
     comp.play({ loop: false });
@@ -357,6 +403,28 @@ describe("AnimatedSpriteComponent", () => {
     entity.get(AnimationController).play("walk");
 
     expect(comp.animatedSprite.onComplete).toBeUndefined();
+  });
+
+  it("a controller switch replaces a component-level speed", () => {
+    const { scene } = createRendererTestContext();
+    const entity = spawnEntityInScene(scene);
+    entity.add(new Transform());
+    const comp = entity.add(new AnimatedSpriteComponent({ source: SOURCE }));
+    const anim = entity.add(
+      new AnimationController<"idle" | "walk">({
+        idle: { source: SOURCE, speed: 0.2 },
+        walk: { source: PLAYBACK_SOURCE, speed: 0.3 },
+      }),
+    );
+    comp.speed = 3;
+    expect(anim.speed).toBe(1);
+
+    anim.play("walk");
+    expect(comp.speed).toBe(0.3);
+
+    anim.speed = 2;
+    expect(comp.speed).toBe(0.6);
+    expect(anim.speed).toBe(2);
   });
 
   it("onFrameChange delivers to every subscriber until it unsubscribes", () => {
@@ -516,6 +584,37 @@ describe("AnimatedSpriteComponent", () => {
       expect(sprite.currentFrame).toBe(0);
       comp.update(1 / 60);
       expect(sprite.currentFrame).toBe(1);
+    });
+
+    it("changing speed retimes the running clip without restarting it", () => {
+      const comp = new AnimatedSpriteComponent({ source: PLAYBACK_SOURCE });
+      comp.play();
+      comp.update(1 / 60);
+      expect(comp.frame).toBe(1);
+
+      comp.speed = 2;
+      expect(comp.frame).toBe(1);
+
+      comp.update(1 / 60);
+      expect(comp.frame).toBe(3);
+    });
+
+    it("speed 0 holds the frame and a negative speed runs backwards", () => {
+      const comp = new AnimatedSpriteComponent({ source: PLAYBACK_SOURCE });
+      comp.play();
+      comp.update(1 / 60);
+      expect(comp.frame).toBe(1);
+
+      comp.speed = 0;
+      comp.update(1 / 60);
+      expect(comp.frame).toBe(1);
+      expect(comp.isPlaying).toBe(true);
+
+      comp.speed = -1;
+      comp.update(1 / 60);
+      expect(comp.frame).toBe(0);
+      comp.update(1 / 60);
+      expect(comp.frame).toBe(3);
     });
 
     it("does not advance while stopped and resumes from the same frame", () => {

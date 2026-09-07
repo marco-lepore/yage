@@ -441,6 +441,7 @@ new AnimatedSpriteComponent({
 });
 
 player.play({ speed: 0.15, loop: true });
+player.speed = 0.3; // retime the running clip, no restart
 player.gotoFrame(3); // stop and hold a pose
 player.play({ speed: 0.2, loop: false, fromStart: true }); // one-shot from frame 0
 ```
@@ -451,6 +452,8 @@ index through `frame`. A bare `play()` resumes from the current frame. Pass
 non-looping animation.
 
 `play(options?)` owns its completion callback: a play with no `onComplete` clears the one the previous play installed, and an `AnimationController` animation switch clears it too. `speed` and `loop` are sticky — the next play keeps them.
+
+`speed` (get/set) is the live playback rate, and the same number `play({ speed })` writes: frames advanced per tick at 60 fps, default `1`. Writing it retimes a running clip without restarting it. `0` holds the current frame while `isPlaying` stays `true`, and a negative value plays backwards. A non-finite value throws from the property and from `play({ speed })` alike. With an `AnimationController` on the entity, `speed` reads the composed rate: the animation definition's `speed` times `controller.speed` times the `playOneShot({ speed })` factor. The controller writes the rate again at its next animation switch and whenever `controller.speed` is written, so set `AnimationController.speed` to retime every animation and the component's `speed` to retime only the clip on screen. The component's `speed` does not retime a running one-shot's lock: the lock keeps the duration computed when the one-shot started, so the clip and the lock can end at different times.
 
 `onFrameChange(listener)` subscribes to frame changes and returns an unsubscribe function, so `this.addCleanup(sprite.onFrameChange(fn))` drops the listener with the component. Any number of listeners can subscribe; each receives the new frame index. Pixi delivers a frame change on play, on every advance, and on the frame reset an animation switch performs, so a listener sees controller switches too. Assigning `animatedSprite.onFrameChange` directly replaces the engine's dispatcher and silences every subscriber.
 

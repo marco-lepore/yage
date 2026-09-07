@@ -1,6 +1,6 @@
 import { Sprite } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
-import { Display, MeasureMode } from "yoga-layout";
+import { Display, MeasureMode, Unit } from "yoga-layout";
 import type {
   DisplayContainer,
   DisplaySprite,
@@ -12,7 +12,21 @@ import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
 
-/** Displays a texture as a UI element, scaling to fit Yoga-computed dimensions. */
+/** A dimension the caller sized. `auto` and unset leave the size to layout. */
+function isSizedDimension(value: { readonly unit: Unit }): boolean {
+  return value.unit === Unit.Point || value.unit === Unit.Percent;
+}
+
+/**
+ * Displays a texture as a UI element.
+ *
+ * Size it on one axis and the other follows the texture's aspect ratio, even
+ * where a flex parent would stretch it. Size both axes and the texture
+ * stretches to that box. Size neither and it measures at the texture's own
+ * pixel size, and its parent can stretch it like any other flex child. A
+ * `flexGrow`, `flex` or `flexBasis` sizes the main axis as well, so with one
+ * of those set the texture stretches as if both axes were sized.
+ */
 export class UIImage implements UIElement {
   readonly container: DisplaySprite;
   readonly yogaNode: YogaNode;
@@ -42,7 +56,7 @@ export class UIImage implements UIElement {
     this.yogaNode.setMeasureFunc((width, widthMode, height, heightMode) => {
       const texW = sprite.texture.width;
       const texH = sprite.texture.height;
-      const aspect = texH > 0 ? texW / texH : 1;
+      const aspect = texW > 0 && texH > 0 ? texW / texH : 1;
 
       let measuredWidth = texW;
       let measuredHeight = texH;
@@ -65,6 +79,7 @@ export class UIImage implements UIElement {
     });
 
     applyLayoutProps(this.yogaNode, props);
+    this.syncAspectRatio();
 
     if (props.visible === false) {
       this.container.visible = false;
@@ -78,6 +93,28 @@ export class UIImage implements UIElement {
     const h = this.yogaNode.getComputedHeight();
     this.container.width = w;
     this.container.height = h;
+  }
+
+  /**
+   * Give Yoga the texture's aspect ratio when exactly one of `width` /
+   * `height` is sized, so the other dimension follows the picture — including
+   * where a flex parent would otherwise stretch the element. Cleared when both
+   * are sized (the caller asked for that box) and when neither is (the element
+   * measures at the texture's own size). Also cleared when `flexGrow` or a
+   * definite `flexBasis` sizes the main axis: the node cannot tell which axis
+   * its parent lays out along, and a ratio applied against a flex-sized main
+   * axis discards the dimension the caller did set.
+   */
+  private syncAspectRatio(): void {
+    const { width: texW, height: texH } = this.container.texture;
+    const widthSized = isSizedDimension(this.yogaNode.getWidth());
+    const heightSized = isSizedDimension(this.yogaNode.getHeight());
+    const flexSized =
+      this.yogaNode.getFlexGrow() > 0 ||
+      isSizedDimension(this.yogaNode.getFlexBasis());
+    const derives =
+      widthSized !== heightSized && !flexSized && texW > 0 && texH > 0;
+    this.yogaNode.setAspectRatio(derives ? texW / texH : undefined);
   }
 
   get visible(): boolean {
@@ -102,6 +139,7 @@ export class UIImage implements UIElement {
     this.pointerEvents.set(p);
 
     applyLayoutProps(this.yogaNode, p);
+    this.syncAspectRatio();
 
     if ("visible" in p) {
       this.visible = p.visible ?? true;
