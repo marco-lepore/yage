@@ -35,7 +35,6 @@ export default defineConfig({
         "bitmap-text": resolve(__dirname, "bitmap-text.html"),
         "input-ui-consume": resolve(__dirname, "input-ui-consume.html"),
         "camera-parallax": resolve(__dirname, "camera-parallax.html"),
-        "effect-scoping": resolve(__dirname, "effect-scoping.html"),
         "camera-lifecycle": resolve(__dirname, "camera-lifecycle.html"),
         "loading-scene": resolve(__dirname, "loading-scene.html"),
         "split-text-reveal": resolve(__dirname, "split-text-reveal.html"),
