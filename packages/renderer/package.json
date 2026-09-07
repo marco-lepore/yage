@@ -60,6 +60,6 @@
   },
   "dependencies": {
     "@yagejs/core": "^0.10.4",
-    "pixi.js": "^8.5.0"
+    "pixi.js": "^8.8.0"
   }
 }
