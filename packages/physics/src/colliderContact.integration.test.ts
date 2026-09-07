@@ -19,7 +19,10 @@ import { Transform, Vec2 } from "@yagejs/core";
 import type { Scene } from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { ColliderComponent } from "./ColliderComponent.js";
-import { createPhysicsTestContext, spawnEntityInScene } from "./test-helpers.js";
+import {
+  createPhysicsTestContext,
+  spawnEntityInScene,
+} from "./test-helpers.js";
 import type { ColliderConfig, ColliderContact } from "./types.js";
 
 function spawnCollider(
@@ -156,12 +159,29 @@ describe("ColliderComponent.contactWith", () => {
       probe.contactWith(target, { selfShapeIndex: 0, otherShapeIndex: 0 }),
     ).toBeUndefined(); // 35px from the body, beyond prediction 0
 
-    const closest = expectFinite(probe.contactWith(target, { prediction: 100 }));
+    const closest = expectFinite(
+      probe.contactWith(target, { prediction: 100 }),
+    );
     expect(closest.distance).toBeCloseTo(-5, 4);
 
-    expect(
+    expect(() =>
       probe.contactWith(target, { selfShapeIndex: 0, otherShapeIndex: 5 }),
-    ).toBeUndefined();
+    ).toThrow(
+      "ColliderComponent.contactWith: otherShapeIndex must be an integer in [0, 2), got 5.",
+    );
+    expect(() => probe.contactWith(target, { selfShapeIndex: 1 })).toThrow(
+      "ColliderComponent.contactWith: selfShapeIndex must be an integer in [0, 1), got 1.",
+    );
+  });
+
+  it("rejects a collider from another scene's physics world", async () => {
+    const { scene } = await createPhysicsTestContext();
+    const here = spawnCollider(scene, "here", 0, 0, { shape: BOX });
+    const elsewhere = await createPhysicsTestContext();
+    const there = spawnCollider(elsewhere.scene, "there", 0, 0, { shape: BOX });
+    expect(() => here.contactWith(there)).toThrow(
+      "ColliderComponent.contactWith: other belongs to a different physics world (scene).",
+    );
   });
 
   it("returns undefined before the collider is added and rejects a bad prediction", async () => {

@@ -365,7 +365,8 @@ export class ColliderComponent extends Component {
    * With `selfShapeIndex` / `otherShapeIndex` it measures that one shape
    * pair; pass the indices from a `TriggerEvent` or `CollisionEvent` to
    * measure the pair that fired it. Without them, compound colliders report
-   * the closest pair among all their parts.
+   * the closest pair among all their parts. An index outside the component's
+   * parts throws, as does `other` from a different scene's physics world.
    *
    * ```ts
    * collider.onTrigger((ev) => {
@@ -382,6 +383,25 @@ export class ColliderComponent extends Component {
       prediction?: number;
     },
   ): ColliderContact | undefined {
+    const context = "ColliderComponent.contactWith";
+    assertShapeIndex(context, "selfShapeIndex", options?.selfShapeIndex, this);
+    assertShapeIndex(
+      context,
+      "otherShapeIndex",
+      options?.otherShapeIndex,
+      other,
+    );
+    // Rapier handles are per world: a handle from another scene's world
+    // would resolve to an unrelated collider here.
+    if (
+      this.physicsWorld !== undefined &&
+      other.physicsWorld !== undefined &&
+      this.physicsWorld !== other.physicsWorld
+    ) {
+      throw new Error(
+        `${context}: other belongs to a different physics world (scene).`,
+      );
+    }
     const selfHandles =
       options?.selfShapeIndex === undefined
         ? this._colliderHandles
@@ -807,4 +827,19 @@ export class ColliderComponent extends Component {
       }
     }
   }
+}
+
+/** Throws unless `index` is `undefined` or names one of `collider`'s parts. */
+function assertShapeIndex(
+  context: string,
+  name: string,
+  index: number | undefined,
+  collider: ColliderComponent,
+): void {
+  if (index === undefined) return;
+  const count = collider.colliderCount;
+  if (Number.isInteger(index) && index >= 0 && index < count) return;
+  throw new Error(
+    `${context}: ${name} must be an integer in [0, ${count}), got ${index}.`,
+  );
 }
