@@ -40,7 +40,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      - run: npx turbo test
+      # Capped because the runner has four cores and every package's suite
+      # spawns its own vitest workers on top of this. Uncapped, a warm cache
+      # starts all thirty suites at once, each test gets a fraction of a core,
+      # and the slower CPU-bound ones exceed vitest's five-second timeout.
+      - run: npx turbo test --concurrency=50%
       - run: node --test scripts/clamp-package-versions.test.mjs
 
   e2e:
