@@ -21,6 +21,17 @@ interface FakeTriggerEvent {
   other: Entity;
   entered: boolean;
   otherCollider: { config: { sensor?: boolean } };
+  selfShapeIndex?: number;
+  otherShapeIndex?: number;
+  contactPoint?: Vec2;
+  contactNormal?: Vec2;
+}
+
+interface FakeContact {
+  point: Vec2;
+  otherPoint: Vec2;
+  normal: Vec2;
+  distance: number;
 }
 
 // Projectile needs no real Rapier world — replace the physics classes with
@@ -28,6 +39,9 @@ interface FakeTriggerEvent {
 // maps, never a property the real classes don't declare).
 const captured = vi.hoisted(() => ({
   velocities: [] as { x: number; y: number }[],
+  // What the stubbed `contactWith` answers, and the pairs it was asked for.
+  contact: undefined as FakeContact | undefined,
+  contactQueries: [] as { other: object; options: unknown }[],
   triggerHandlers: new WeakMap<object, (ev: FakeTriggerEvent) => void>(),
   collisionHandlers: new WeakMap<
     object,
@@ -66,6 +80,10 @@ vi.mock("@yagejs/physics", async () => {
       captured.collisionHandlers.set(this, handler);
       return () => captured.collisionHandlers.delete(this);
     }
+    contactWith(other: object, options: unknown): FakeContact | undefined {
+      captured.contactQueries.push({ other, options });
+      return captured.contact;
+    }
   }
 
   return { RigidBodyComponent, ColliderComponent };
@@ -77,6 +95,8 @@ function fireTrigger(collider: ColliderComponent, ev: FakeTriggerEvent): void {
 
 beforeEach(() => {
   captured.velocities.length = 0;
+  captured.contact = undefined;
+  captured.contactQueries.length = 0;
 });
 
 @trait(Hittable)
@@ -144,6 +164,48 @@ describe("Projectile solid contacts", () => {
     captured.collisionHandlers.get(collider)?.({ ...contact, started: true });
     expect(consume).toHaveBeenCalledWith("ignored", false);
     expect(projectile.isDestroyed).toBe(false);
+  });
+
+  it("passes a solid collision's contact to the delivery, and measures a sensor overlap", () => {
+    const { scene } = createMockScene();
+    const solidHit = spawnProjectile(scene, { sensor: false });
+    const target = scene.spawn(Target);
+    target.add(new Transform({ position: new Vec2(20, 0) }));
+    captured.collisionHandlers.get(
+      solidHit.projectile.get(ColliderComponent),
+    )?.({
+      other: target,
+      otherCollider: { config: { sensor: false } },
+      started: true,
+      contactPoint: new Vec2(15, 1),
+      contactNormal: new Vec2(1, 0),
+    });
+    expect(captured.contactQueries).toHaveLength(0);
+    expect(target.received[0]!.contact?.point).toEqual(new Vec2(15, 1));
+    expect(target.received[0]!.contact?.normal.x).toBe(-1);
+
+    const sensorHit = spawnProjectile(scene);
+    const otherCollider = { config: { sensor: false } };
+    captured.contact = {
+      point: new Vec2(0, 0),
+      otherPoint: new Vec2(16, 2),
+      normal: new Vec2(1, 0),
+      distance: -1,
+    };
+    fireTrigger(sensorHit.projectile.get(ColliderComponent), {
+      other: target,
+      entered: true,
+      otherCollider,
+      selfShapeIndex: 0,
+      otherShapeIndex: 0,
+    });
+    expect(captured.contactQueries).toEqual([
+      {
+        other: otherCollider,
+        options: { selfShapeIndex: 0, otherShapeIndex: 0 },
+      },
+    ]);
+    expect(target.received[1]!.contact?.point).toEqual(new Vec2(16, 2));
   });
 
   it("attributes a custom consume throw and preserves its identity", () => {

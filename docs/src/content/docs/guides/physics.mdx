@@ -420,6 +420,32 @@ deeply they penetrate — for solid-vs-solid contact such as contact damage, use
 below (`raycast`, `castShape`, `queryShape`, `queryRadius`) skip sensors
 unless you ask for them.
 
+## Measuring a Contact
+
+Trigger events carry no contact data, because a sensor overlap has no solver
+contact. `contactWith` measures the geometry of any pair at its current pose,
+sensors included:
+
+```typescript
+collider.onTrigger((ev) => {
+  const contact = collider.contactWith(ev.otherCollider, ev);
+  if (contact) spawnSparks(contact.otherPoint, contact.normal.scale(-1));
+});
+```
+
+The result has `point` on this collider's surface, `otherPoint` on the
+other's, a unit `normal` from this collider toward the other, and a
+`distance` in pixels between the two points. Overlapping shapes report a
+negative distance, the penetration depth, and a normal along the shortest way
+out. Passing the event's `selfShapeIndex` and `otherShapeIndex` measures the
+shape pair that fired it; without them, a compound collider reports the
+closest pair among all its parts. `prediction` (pixels, default 0) also
+reports pairs separated by up to that distance; further apart, or when either
+component has no live collider, the result is `undefined`.
+
+The same query is available by handle as `world.contactBetween(handle,
+otherHandle, prediction?)`.
+
 ## Velocity and Forces
 
 Prefer `setVelocity` for direct control. Use `applyImpulse` or `applyForce`

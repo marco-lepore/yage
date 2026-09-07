@@ -6,6 +6,11 @@ import type {
   DeliveryColliderGroups,
   HitDelivery,
 } from "../core/hit/delivery.js";
+import {
+  queryHitContact,
+  resolveHitContact,
+} from "../components/hitContact.js";
+import type { HitContactPair } from "../components/hitContact.js";
 
 export interface HitboxConfig {
   /** Body world position; also the delivery `from` (knockback origin). */
@@ -39,8 +44,10 @@ export interface HitboxConfig {
 export class Hitbox extends Entity {
   private delivery!: HitDelivery;
   private from!: Vec2;
+  private collider!: ColliderComponent;
   private readonly hit = new Set<Entity>();
-  private readonly overlapping = new Set<Entity>();
+  /** Targets in contact, each with the shape pair that first fired. */
+  private readonly overlapping = new Map<Entity, HitContactPair>();
   private repeats = false;
 
   setup(config: HitboxConfig): void {
@@ -48,7 +55,7 @@ export class Hitbox extends Entity {
     this.from = new Vec2(config.position.x, config.position.y);
     this.add(new Transform({ position: this.from, rotation: config.rotation }));
     this.add(new RigidBodyComponent({ type: "kinematic", gravityScale: 0 }));
-    const collider = this.add(
+    this.collider = this.add(
       new ColliderComponent({
         shape: config.shape,
         sensor: true,
@@ -63,16 +70,22 @@ export class Hitbox extends Entity {
           : {}),
       }),
     );
+    const collider = this.collider;
     collider.onTrigger((ev) => {
       if (!ev.entered) {
         this.overlapping.delete(ev.other);
         if (this.repeats) this.hit.delete(ev.other);
         return;
       }
-      this.overlapping.add(ev.other);
+      if (!this.overlapping.has(ev.other)) this.overlapping.set(ev.other, ev);
       if (this.hit.has(ev.other)) return;
       this.hit.add(ev.other); // once per target per window; deliver() re-excludes source
-      this.delivery.deliver(ev.other, this.from);
+      // Measured before delivery: damage or death may change the target.
+      this.delivery.deliver(
+        ev.other,
+        this.from,
+        resolveHitContact(collider, ev),
+      );
     });
     if (config.follow) {
       if (!config.caster) {
@@ -94,8 +107,12 @@ export class Hitbox extends Entity {
 
   /** Deliver another hit to every target that still overlaps this hitbox. */
   repeatHits(): void {
-    for (const target of this.overlapping) {
-      this.delivery.deliver(target, this.from);
+    for (const [target, pair] of this.overlapping) {
+      this.delivery.deliver(
+        target,
+        this.from,
+        queryHitContact(this.collider, pair),
+      );
     }
   }
 

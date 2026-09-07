@@ -333,7 +333,9 @@ then ordered consequence stages. The default stages subtract
 `knockback`/`stun` through `Stagger`.
 
 `Hit` carries the source entity, unit direction, optional team, string tags,
-and typed data. The default data fields are:
+typed data, and, when the delivery could measure it, a `contact`: the
+world-pixel point on the target collider's surface and the unit normal out of
+that surface toward the attacking shape. The default data fields are:
 
 ```ts
 interface StandardHitData {
@@ -363,8 +365,42 @@ The built-in delivery paths share one `HitDelivery` contract:
 `HitReceived` fires on the victim with `{ hit, guardOutcomes }` after a hit
 lands. `HitGuarded` fires for an engaged guard. `createReportingDelivery` also
 emits `HitDealt` on the original attacker with the result, typed default
-fire-time data, target, and optional ability provenance. Reporting deliveries
-inherit the source `HitReceiver.team`; an explicit delivery team wins.
+fire-time data, target, optional ability provenance, and the hit's `contact`.
+Reporting deliveries inherit the source `HitReceiver.team`; an explicit
+delivery team wins.
+
+### Where a hit landed
+
+`hit.contact` places impact effects on the struck surface instead of at an
+authored offset. `hitbox` and a sensor `Projectile` measure the sensor and
+target collider pair that fired the trigger, a solid `Projectile` or
+`TouchDamage` body uses the collision's own contact, and repeat hits measure
+again. The geometry is captured before damage or death changes the target, so
+a killing hit reports it on `HitDealt` too. It is absent when nothing could be
+measured, and `direction` keeps its meaning: from the delivery origin toward
+the target's position.
+
+```ts
+attacker.on(HitDealt, ({ target, contact }) => {
+  const at = contact?.point ?? target.get(Transform).worldPosition;
+  sparks.burstAt(at, contact?.normal);
+});
+```
+
+A hitbox whose window opens already overlapping the target reports a point on
+the target's surface from the current overlap. It cannot reconstruct where an
+animated swing first touched.
+
+A custom overlap source passes what it knows as the third argument of
+`deliver`. `resolveHitContact(collider, event)` turns a trigger or collision
+event into that value; `queryHitContact` re-measures a remembered pair for a
+repeat delivery.
+
+```ts
+collider.onTrigger((ev) => {
+  if (ev.entered) delivery.deliver(ev.other, origin, resolveHitContact(collider, ev));
+});
+```
 
 Destroyed targets return `"ignored"` and receive no hit callbacks, even before
 their deferred teardown runs. An attack can still hit after its caster dies.

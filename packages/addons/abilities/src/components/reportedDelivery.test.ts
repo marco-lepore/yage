@@ -36,6 +36,38 @@ function spawnTarget(scene: Scene, x: number, y: number): Target {
 }
 
 describe("createReportingDelivery", () => {
+  it("carries the delivery's contact into HitDealt, including for a hit that destroys the target", () => {
+    const { scene } = createMockScene();
+    const source = scene.spawn("attacker");
+    const target = spawnTarget(scene, 10, 0);
+    const events: { target: Entity; contact?: unknown }[] = [];
+    source.on(HitDealt, (payload) => events.push(payload));
+    const contact = { point: new Vec2(6, 0), normal: new Vec2(-1, 0) };
+    const delivery = createReportingDelivery({ source });
+    target.receiveHit = (hit) => {
+      target.received.push(hit);
+      target.destroy(); // a killing hit
+      return "hit";
+    };
+
+    delivery.deliver(target, Vec2.ZERO, contact);
+
+    expect(target.received[0]!.contact).toBe(contact);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.contact).toBe(contact);
+    expect(target.isDestroyed).toBe(true);
+  });
+
+  it("omits contact from HitDealt when the delivery had none", () => {
+    const { scene } = createMockScene();
+    const source = scene.spawn("attacker");
+    const target = spawnTarget(scene, 10, 0);
+    const events: object[] = [];
+    source.on(HitDealt, (payload) => events.push(payload));
+    createReportingDelivery({ source }).deliver(target, Vec2.ZERO);
+    expect("contact" in events[0]!).toBe(false);
+  });
+
   it("emits HitDealt on the source with the target and result when a hit lands", () => {
     const { scene } = createMockScene();
     const source = scene.spawn("attacker");

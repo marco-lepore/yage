@@ -1,14 +1,17 @@
 import { Component, Transform, Vec2 } from "@yagejs/core";
 import type { Entity } from "@yagejs/core";
 import { ColliderComponent } from "@yagejs/physics";
+import type { CollisionEvent, TriggerEvent } from "@yagejs/physics";
 import {
   resolveAbilitySource,
   resolveAbilityTeam,
 } from "../core/AbilitySpawned.js";
 import type { HitDelivery } from "../core/hit/delivery.js";
-import type { StandardHitData } from "../core/hit/types.js";
+import type { HitContact, StandardHitData } from "../core/hit/types.js";
 import { HitReceiver } from "./HitReceiver.js";
 import { createReportingDelivery } from "./reportedDelivery.js";
+import { queryHitContact, resolveHitContact } from "./hitContact.js";
+import type { HitContactPair } from "./hitContact.js";
 
 export interface TouchDamageOptions {
   /** Hit payload delivered on contact. Static — touch is continuous, no StepContext. */
@@ -32,7 +35,11 @@ export interface TouchDamageOptions {
  */
 export class TouchDamage extends Component {
   private readonly collider = this.sibling(ColliderComponent);
-  private readonly last = new Map<Entity, number>();
+  /** Targets in contact: last delivery time and the shape pair that fired. */
+  private readonly last = new Map<
+    Entity,
+    { at: number; pair: HitContactPair }
+  >();
   private readonly interval: number;
   private elapsed = 0;
   private delivery!: HitDelivery;
@@ -60,8 +67,8 @@ export class TouchDamage extends Component {
     if (this.unsubscribe) return;
     this.unsubscribe =
       this.collider.config.sensor === true
-        ? this.collider.onTrigger((ev) => this.contact(ev.other, ev.entered))
-        : this.collider.onCollision((ev) => this.contact(ev.other, ev.started));
+        ? this.collider.onTrigger((ev) => this.contact(ev, ev.entered))
+        : this.collider.onCollision((ev) => this.contact(ev, ev.started));
   }
 
   onDisable(): void {
@@ -76,30 +83,30 @@ export class TouchDamage extends Component {
 
   fixedUpdate(dt: number): void {
     this.elapsed += dt;
-    for (const [other, t] of this.last) {
+    for (const [other, entry] of this.last) {
       if (other.isDestroyed) {
         this.last.delete(other);
         continue;
       }
-      if (this.elapsed - t >= this.interval) {
-        this.deliver(other);
-        this.last.set(other, this.elapsed);
+      if (this.elapsed - entry.at >= this.interval) {
+        this.deliver(other, queryHitContact(this.collider, entry.pair));
+        entry.at = this.elapsed;
       }
     }
   }
 
-  private contact(other: Entity, begin: boolean): void {
+  private contact(ev: TriggerEvent | CollisionEvent, begin: boolean): void {
     if (!this.effectiveEnabled) return;
     if (begin) {
-      this.deliver(other);
-      this.last.set(other, this.elapsed);
+      this.deliver(ev.other, resolveHitContact(this.collider, ev));
+      this.last.set(ev.other, { at: this.elapsed, pair: ev });
     } else {
-      this.last.delete(other);
+      this.last.delete(ev.other);
     }
   }
 
-  private deliver(other: Entity): void {
+  private deliver(other: Entity, contact: HitContact | undefined): void {
     const from = this.entity.tryGet(Transform)?.worldPosition ?? Vec2.ZERO;
-    this.delivery.deliver(other, from); // Hittable-gated; non-receivers no-op
+    this.delivery.deliver(other, from, contact); // Hittable-gated; non-receivers no-op
   }
 }

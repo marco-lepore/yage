@@ -2,7 +2,11 @@ import type { Entity } from "@yagejs/core";
 import { defineEvent } from "@yagejs/core";
 import { createHitDelivery } from "../core/hit/delivery.js";
 import type { HitDelivery, HitDeliveryOptions } from "../core/hit/delivery.js";
-import type { HitResult, StandardHitData } from "../core/hit/types.js";
+import type {
+  HitContact,
+  HitResult,
+  StandardHitData,
+} from "../core/hit/types.js";
 import type { AbilityDef } from "../core/types.js";
 import { HitReceiver } from "./HitReceiver.js";
 
@@ -22,12 +26,16 @@ import { HitReceiver } from "./HitReceiver.js";
  * the payload at this boundary with their own predicate. For a delivery
  * fired by an ability step, `ability` is the def that fired
  * (`StepContext.def`); continuous sources like `TouchDamage` omit it.
+ * `contact` is the hit's `HitContact` when the delivery measured one: it is
+ * captured before the receiver runs, so a killing hit still reports where
+ * it landed.
  */
 export interface HitDealtPayload {
   target: Entity;
   result: HitResult;
   data: StandardHitData;
   ability?: AbilityDef;
+  contact?: HitContact;
 }
 
 export const HitDealt = defineEvent<HitDealtPayload>("abilities:hit:dealt");
@@ -63,14 +71,15 @@ export function createReportingDelivery<TData = StandardHitData>(
   const data = { ...(options.data ?? {}) } as StandardHitData;
   const ability = provenance?.ability;
   return {
-    deliver(target, from) {
-      const result = delivery.deliver(target, from);
+    deliver(target, from, contact) {
+      const result = delivery.deliver(target, from, contact);
       if (result !== "ignored") {
         source.emit(HitDealt, {
           target,
           result,
           data,
           ...(ability !== undefined ? { ability } : {}),
+          ...(contact !== undefined ? { contact } : {}),
         });
       }
       return result;

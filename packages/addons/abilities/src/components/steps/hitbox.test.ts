@@ -23,6 +23,9 @@ import { hitbox } from "./hitbox.js";
 interface FakeTriggerEvent {
   other: Entity;
   entered: boolean;
+  otherCollider?: object;
+  selfShapeIndex?: number;
+  otherShapeIndex?: number;
 }
 
 // The step spawns a real Hitbox entity (kinematic body + sensor collider) —
@@ -49,8 +52,19 @@ vi.mock("@yagejs/physics", async () => {
       super();
     }
     onTrigger(handler: (ev: FakeTriggerEvent) => void): () => void {
-      captured.triggerHandlers.set(this, handler);
+      // A real TriggerEvent names the shape pair; fill it in for the tests.
+      captured.triggerHandlers.set(this, (ev) =>
+        handler({
+          otherCollider: this,
+          selfShapeIndex: 0,
+          otherShapeIndex: 0,
+          ...ev,
+        }),
+      );
       return () => captured.triggerHandlers.delete(this);
+    }
+    contactWith(): undefined {
+      return undefined;
     }
   }
 

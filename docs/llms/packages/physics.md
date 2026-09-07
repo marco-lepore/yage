@@ -289,6 +289,25 @@ collider.getOverlapping({ tags: ["enemy"] }); // filtered
 collider.getOverlappingComponents(Health); // Component[]
 ```
 
+Contact geometry for any pair, sensors included (trigger events carry none):
+
+```ts
+collider.contactWith(other, {
+  selfShapeIndex, // measure one shape pair; pass the indices from the event
+  otherShapeIndex, // that fired. Omitted: the closest pair among all parts
+  prediction, // px, default 0: touching or overlapping only
+}); // ColliderContact | undefined (further apart than prediction, or no live collider)
+// { point, otherPoint, normal, distance }: world px; point on this collider's
+// surface, otherPoint on the other's; normal unit, from this collider toward
+// the other (the shortest way out when overlapping); distance negative by the
+// penetration depth when overlapping. A geometric query on current poses, no step needed.
+collider.onTrigger((ev) => {
+  const c = collider.contactWith(ev.otherCollider, ev);
+  if (c) spawnSparks(c.otherPoint, c.normal.scale(-1)); // on the other's surface, facing out
+});
+world.contactBetween(handle, otherHandle, prediction?); // same, by Rapier handle
+```
+
 Resizing:
 
 ```ts

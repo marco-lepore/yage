@@ -20,6 +20,7 @@ import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { PhysicsWorldKey } from "./types.js";
 import type {
   ColliderConfig,
+  ColliderContact,
   ColliderShape,
   CollisionEvent,
   ContactCandidate,
@@ -351,6 +352,78 @@ export class ColliderComponent extends Component {
       if (comp) result.push(comp);
     }
     return result;
+  }
+
+  /**
+   * The closest points between this collider and `other` at their current
+   * poses, or `undefined` when they are further apart than `prediction`
+   * (pixels, default 0: touching or overlapping only) or either component
+   * has no live collider. A geometric query on the shapes, so it answers for
+   * sensors, which never get contact data on their events, and for a pair
+   * that never collided.
+   *
+   * With `selfShapeIndex` / `otherShapeIndex` it measures that one shape
+   * pair; pass the indices from a `TriggerEvent` or `CollisionEvent` to
+   * measure the pair that fired it. Without them, compound colliders report
+   * the closest pair among all their parts. An index outside the component's
+   * parts throws, as does `other` from a different scene's physics world.
+   *
+   * ```ts
+   * collider.onTrigger((ev) => {
+   *   const contact = collider.contactWith(ev.otherCollider, ev);
+   *   if (contact) spawnSparks(contact.otherPoint, contact.normal);
+   * });
+   * ```
+   */
+  contactWith(
+    other: ColliderComponent,
+    options?: {
+      selfShapeIndex?: number;
+      otherShapeIndex?: number;
+      prediction?: number;
+    },
+  ): ColliderContact | undefined {
+    const context = "ColliderComponent.contactWith";
+    assertShapeIndex(context, "selfShapeIndex", options?.selfShapeIndex, this);
+    assertShapeIndex(
+      context,
+      "otherShapeIndex",
+      options?.otherShapeIndex,
+      other,
+    );
+    // Rapier handles are per world: a handle from another scene's world
+    // would resolve to an unrelated collider here.
+    if (
+      this.physicsWorld !== undefined &&
+      other.physicsWorld !== undefined &&
+      this.physicsWorld !== other.physicsWorld
+    ) {
+      throw new Error(
+        `${context}: other belongs to a different physics world (scene).`,
+      );
+    }
+    const selfHandles =
+      options?.selfShapeIndex === undefined
+        ? this._colliderHandles
+        : [this._colliderHandles[options.selfShapeIndex] ?? -1];
+    const otherHandles =
+      options?.otherShapeIndex === undefined
+        ? other._colliderHandles
+        : [other._colliderHandles[options.otherShapeIndex] ?? -1];
+    let closest: ColliderContact | undefined;
+    for (const handle of selfHandles) {
+      for (const otherHandle of otherHandles) {
+        const contact = this.physicsWorld.contactBetween(
+          handle,
+          otherHandle,
+          options?.prediction,
+        );
+        if (contact && (!closest || contact.distance < closest.distance)) {
+          closest = contact;
+        }
+      }
+    }
+    return closest;
   }
 
   /**
@@ -754,4 +827,19 @@ export class ColliderComponent extends Component {
       }
     }
   }
+}
+
+/** Throws unless `index` is `undefined` or names one of `collider`'s parts. */
+function assertShapeIndex(
+  context: string,
+  name: string,
+  index: number | undefined,
+  collider: ColliderComponent,
+): void {
+  if (index === undefined) return;
+  const count = collider.colliderCount;
+  if (Number.isInteger(index) && index >= 0 && index < count) return;
+  throw new Error(
+    `${context}: ${name} must be an integer in [0, ${count}), got ${index}.`,
+  );
 }

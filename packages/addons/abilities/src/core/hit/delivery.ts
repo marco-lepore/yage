@@ -2,7 +2,7 @@ import { Transform, Vec2 } from "@yagejs/core";
 import type { Entity, Vec2Like } from "@yagejs/core";
 import type { StepContext } from "../types.js";
 import { Hittable } from "./types.js";
-import type { Hit, HitResult, StandardHitData } from "./types.js";
+import type { Hit, HitContact, HitResult, StandardHitData } from "./types.js";
 
 /**
  * Authored hit data on a delivery step: static fields, or a builder resolved
@@ -57,11 +57,14 @@ export interface HitDelivery {
   /**
    * Deliver to one contact. `from` is the world-space position the hit comes
    * from (the hitbox owner or the projectile itself); the payload direction
-   * is the unit vector from `from` to the target's position. Returns
-   * `"ignored"` for destroyed targets, the delivery's own source and entities without the
-   * `Hittable` trait; otherwise whatever the receiver decides.
+   * is the unit vector from `from` to the target's position. `contact` is
+   * the geometry the caller knows (see `HitContact`; `resolveHitContact`
+   * measures it from a physics event) and travels on the hit unchanged.
+   * Returns `"ignored"` for destroyed targets, the delivery's own source and
+   * entities without the `Hittable` trait; otherwise whatever the receiver
+   * decides.
    */
-  deliver(target: Entity, from: Vec2Like): HitResult;
+  deliver(target: Entity, from: Vec2Like, contact?: HitContact): HitResult;
 }
 
 /** Create the delivery for one fired hit source (hitbox, projectile, touch). */
@@ -70,7 +73,7 @@ export function createHitDelivery<TData = StandardHitData>(
 ): HitDelivery {
   const { source, team, tags = [] } = options;
   return {
-    deliver(target, from) {
+    deliver(target, from, contact) {
       if (target.isDestroyed) return "ignored";
       if (target === source) return "ignored";
       if (!target.hasTrait(Hittable)) return "ignored";
@@ -88,6 +91,7 @@ export function createHitDelivery<TData = StandardHitData>(
         // here and receivers narrow them behind their own type guard.
         data: { ...(options.data ?? {}) } as StandardHitData,
         ...(team !== undefined ? { team } : {}),
+        ...(contact !== undefined ? { contact } : {}),
       };
       return target.receiveHit(hit);
     },

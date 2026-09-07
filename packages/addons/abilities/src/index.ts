@@ -46,6 +46,7 @@ export type { Scalar } from "./core/scalar.js";
 export { Hittable } from "./core/hit/types.js";
 export type {
   Hit,
+  HitContact,
   HitOutcomes,
   HitResult,
   StandardHitData,
@@ -105,6 +106,8 @@ export type {
   DeliveryProvenance,
   HitDealtPayload,
 } from "./components/reportedDelivery.js";
+export { queryHitContact, resolveHitContact } from "./components/hitContact.js";
+export type { HitContactPair } from "./components/hitContact.js";
 export { aimAt, resolveAim } from "./components/aim.js";
 export type { Aim } from "./components/aim.js";
 export { anim } from "./components/steps/anim.js";

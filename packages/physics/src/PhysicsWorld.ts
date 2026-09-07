@@ -10,6 +10,7 @@ import type {
   PhysicsConfig,
   RigidBodyConfig,
   ColliderConfig,
+  ColliderContact,
   ColliderPartConfig,
   ColliderShape,
   BodyType,
@@ -1239,6 +1240,46 @@ export class PhysicsWorld {
   ): Entity[] {
     assertPositiveNumber("PhysicsWorld.queryRadius", "radius", radius);
     return this.queryShape({ type: "circle", radius }, center, options);
+  }
+
+  /**
+   * The closest points between two colliders at their current poses, or
+   * `undefined` when either handle is unknown or the shapes are further apart
+   * than `prediction` (pixels, default 0: touching or overlapping only). A
+   * geometric query, so it answers for sensors and for pairs that never
+   * formed a contact, and needs no step first. `prediction` must be finite
+   * and at least 0. `normal` points from the first collider toward the
+   * second. Colliders whose shapes coincide exactly report an arbitrary
+   * direction.
+   */
+  contactBetween(
+    handle: number,
+    otherHandle: number,
+    prediction = 0,
+  ): ColliderContact | undefined {
+    assertFiniteNumber(
+      "PhysicsWorld.contactBetween",
+      "prediction",
+      prediction,
+      0,
+    );
+    const collider = this.getCollider(handle);
+    const other = this.getCollider(otherHandle);
+    if (!collider || !other) return undefined;
+    const contact = collider.contactCollider(other, this.toMeters(prediction));
+    if (!contact) return undefined;
+    return {
+      point: new Vec2(
+        this.toPixels(contact.point1.x),
+        this.toPixels(contact.point1.y),
+      ),
+      otherPoint: new Vec2(
+        this.toPixels(contact.point2.x),
+        this.toPixels(contact.point2.y),
+      ),
+      normal: new Vec2(contact.normal1.x, contact.normal1.y),
+      distance: this.toPixels(contact.distance),
+    };
   }
 
   /**

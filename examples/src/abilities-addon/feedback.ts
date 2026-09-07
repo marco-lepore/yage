@@ -78,18 +78,17 @@ export function runInvulnFlash(
   );
 }
 
-/** Approximates the world-space impact point: the spot on the victim's
- *  body-collider circle facing wherever the hit came from. `Hit` carries no
- *  impact position of its own (see the friction log) — but `hit.direction`
- *  already IS the unit vector from that origin toward the victim, resolved
- *  at delivery time against the actual attacking collider's position (the
- *  hitbox's spawn point for a melee swing, the projectile's own position at
- *  contact for a projectile — not `hit.source`'s position, which for a
- *  projectile is the caster who fired it, long gone from the impact site).
- *  Walking back from the collider center by the radius along `-direction`
- *  lands on the struck side without ever needing the source entity's own
- *  position. */
+/** The world-space impact point: the measured `hit.contact` when the
+ *  delivery had a collider pair to measure (every hitbox swing and
+ *  projectile here), else the spot on the victim's body-collider circle
+ *  facing wherever the hit came from. `hit.direction` is the unit vector
+ *  from the delivery origin toward the victim (the hitbox's spawn point for
+ *  a melee swing, the projectile's own position at contact — not
+ *  `hit.source`'s position, which for a projectile is the caster who fired
+ *  it), so walking back from the collider center by the radius along
+ *  `-direction` lands on the struck side. */
 export function contactPoint(entity: Entity, hit: Hit): Vec2 {
+  if (hit.contact) return hit.contact.point;
   const bodyCenter = entity.get(Transform).worldPosition;
   return bodyCenter.sub(hit.direction.scale(BODY_COLLIDER_RADIUS));
 }

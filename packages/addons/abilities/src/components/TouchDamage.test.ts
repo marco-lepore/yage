@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   Entity,
   Transform,
@@ -20,11 +20,26 @@ import type { TouchDamageOptions } from "./TouchDamage.js";
 interface FakeTriggerEvent {
   other: Entity;
   entered: boolean;
+  otherCollider?: object;
+  selfShapeIndex?: number;
+  otherShapeIndex?: number;
 }
 
 interface FakeCollisionEvent {
   other: Entity;
   started: boolean;
+  otherCollider?: object;
+  selfShapeIndex?: number;
+  otherShapeIndex?: number;
+  contactPoint?: Vec2;
+  contactNormal?: Vec2;
+}
+
+interface FakeContact {
+  point: Vec2;
+  otherPoint: Vec2;
+  normal: Vec2;
+  distance: number;
 }
 
 // TouchDamage reads a sibling ColliderComponent and (via HitReceiver's
@@ -34,6 +49,9 @@ interface FakeCollisionEvent {
 const captured = vi.hoisted(() => ({
   triggerHandlers: new WeakMap<object, (ev: FakeTriggerEvent) => void>(),
   collisionHandlers: new WeakMap<object, (ev: FakeCollisionEvent) => void>(),
+  // What the stubbed `contactWith` answers, and the pairs it was asked for.
+  contact: undefined as FakeContact | undefined,
+  contactQueries: [] as { other: object; options: unknown }[],
 }));
 
 vi.mock("@yagejs/physics", async () => {
@@ -49,16 +67,40 @@ vi.mock("@yagejs/physics", async () => {
       super();
     }
     onTrigger(handler: (ev: FakeTriggerEvent) => void): () => void {
-      captured.triggerHandlers.set(this, handler);
+      // A real event names the shape pair; fill it in for the tests.
+      captured.triggerHandlers.set(this, (ev) =>
+        handler({
+          otherCollider: this,
+          selfShapeIndex: 0,
+          otherShapeIndex: 0,
+          ...ev,
+        }),
+      );
       return () => captured.triggerHandlers.delete(this);
     }
     onCollision(handler: (ev: FakeCollisionEvent) => void): () => void {
-      captured.collisionHandlers.set(this, handler);
+      captured.collisionHandlers.set(this, (ev) =>
+        handler({
+          otherCollider: this,
+          selfShapeIndex: 0,
+          otherShapeIndex: 0,
+          ...ev,
+        }),
+      );
       return () => captured.collisionHandlers.delete(this);
+    }
+    contactWith(other: object, options: unknown): FakeContact | undefined {
+      captured.contactQueries.push({ other, options });
+      return captured.contact;
     }
   }
 
   return { RigidBodyComponent, ColliderComponent };
+});
+
+beforeEach(() => {
+  captured.contact = undefined;
+  captured.contactQueries.length = 0;
 });
 
 @trait(Hittable)
@@ -155,6 +197,61 @@ describe("TouchDamage", () => {
 
     expect(() => touch.fixedUpdate(2)).not.toThrow();
     expect(target.received).toHaveLength(1); // no re-hit after destroy
+  });
+
+  it("measures the sensor pair on contact-begin and again for each interval re-hit", () => {
+    const { scene, collider, touch } = setup(true, { interval: 1 });
+    const target = spawnTarget(scene);
+    const otherCollider = {};
+    captured.contact = {
+      point: new Vec2(0, 0),
+      otherPoint: new Vec2(12, 3),
+      normal: new Vec2(1, 0),
+      distance: -2,
+    };
+
+    captured.triggerHandlers.get(collider)?.({
+      other: target,
+      entered: true,
+      otherCollider,
+      otherShapeIndex: 1,
+    });
+    expect(target.received[0]!.contact?.point).toEqual(new Vec2(12, 3));
+    expect(target.received[0]!.contact?.normal.x).toBe(-1);
+
+    captured.contact = {
+      point: new Vec2(0, 0),
+      otherPoint: new Vec2(14, 3),
+      normal: new Vec2(1, 0),
+      distance: -4,
+    };
+    touch.fixedUpdate(1);
+    expect(target.received).toHaveLength(2);
+    expect(target.received[1]!.contact?.point).toEqual(new Vec2(14, 3));
+    expect(captured.contactQueries).toEqual([
+      {
+        other: otherCollider,
+        options: { selfShapeIndex: 0, otherShapeIndex: 1 },
+      },
+      {
+        other: otherCollider,
+        options: { selfShapeIndex: 0, otherShapeIndex: 1 },
+      },
+    ]);
+  });
+
+  it("uses a solid collision's own contact data instead of a query", () => {
+    const { scene, collider } = setup(false);
+    const target = spawnTarget(scene);
+    captured.collisionHandlers.get(collider)?.({
+      other: target,
+      started: true,
+      contactPoint: new Vec2(5, 5),
+      contactNormal: new Vec2(0, 1),
+    });
+    expect(captured.contactQueries).toHaveLength(0);
+    expect(target.received[0]!.contact?.point).toEqual(new Vec2(5, 5));
+    expect(target.received[0]!.contact?.normal.y).toBe(-1);
   });
 
   it("subscribes onTrigger for a sensor host, not onCollision", () => {
