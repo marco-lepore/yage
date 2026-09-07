@@ -1,1 +1,17 @@
+# MDX is formatted by hand; Prettier's MDX support breaks Starlight components.
 *.mdx
+
+# Generated at build time. Gitignored in docs/.gitignore, which Prettier
+# does not read: it reads the root .gitignore only.
+docs/public/llms/
+docs/src/content/docs/api/
+dist-lab/
+
+# Tool-exported data: Tiled writes these maps in its own layout and
+# rewrites them on every export.
+examples/public/assets/**/*.json
+
+# Local-only material that never reaches the remote.
+plans/
+.claude/
+_reference/

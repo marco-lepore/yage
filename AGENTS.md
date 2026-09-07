@@ -128,6 +128,7 @@ Docs are for the **user of the API**, not its author. Focus on the available API
 ```bash
 npx turbo typecheck     # Type-check all packages
 npx turbo lint          # Lint all packages
+npm run format          # Format the repo with Prettier (CI runs format:check)
 npx turbo test          # Run all unit tests
 npx turbo build         # Build all packages
 npx playwright test     # E2E tests (requires build first)
