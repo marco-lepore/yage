@@ -4,6 +4,9 @@
   // has more persistent tasks than slots. The count is one per workspace, so
   // this is raised when a package is added.
   "concurrency": "40",
+  // Hashed into every task: a compiler-option change must miss the cache for
+  // every package, and the base config is outside every package directory.
+  "globalDependencies": ["tsconfig.base.json"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -13,10 +16,30 @@
       "dependsOn": ["^build"],
       "outputs": ["fixtures/dist/**"]
     },
+    "@yagejs/examples#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"],
+      // Baked into asset URLs; the docs site builds with `/examples/`, the
+      // standalone examples site with the default `/`.
+      "env": ["VITE_BASE"]
+    },
     "typecheck": {
       "dependsOn": ["^build"]
     },
-    "//#measure": {},
+    "//#measure": {
+      // The script walks every package's sources and manifest itself; the
+      // root package would otherwise hash only root files.
+      "inputs": [
+        "scripts/**",
+        "packages/**/*.ts",
+        "packages/**/*.tsx",
+        "packages/**/package.json",
+        "!packages/**/dist/**",
+        "!packages/**/node_modules/**",
+        "docs/llms/**",
+        "docs/src/content/docs/**"
+      ]
+    },
     "lint": {
       "dependsOn": ["//#measure"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/eslint.config.mjs"]
@@ -24,15 +47,35 @@
     "test": {
       "dependsOn": ["^build"]
     },
+    "@yagejs-tools/editor#test": {
+      "dependsOn": ["^build"],
+      // The CLI validation tests read the shared editor project fixture, and
+      // the browser-boundary test runs ESLint with the repository config.
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/eslint.config.mjs",
+        "$TURBO_ROOT$/e2e/editor-project/**",
+        "!$TURBO_ROOT$/e2e/editor-project/node_modules/**",
+        "!$TURBO_ROOT$/e2e/editor-project/levels/*.yage-level.json"
+      ]
+    },
     "e2e": {
       "dependsOn": ["^build"],
       "cache": false
     },
-    "docs#build": {
+    "@yagejs/docs#build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**"],
+      // The site copies each addon's and tool's LLM docs and runs typedoc
+      // over the lab, none of which are dependencies of the docs package.
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/addons/*/docs/llms/**",
+        "$TURBO_ROOT$/packages/tools/*/docs/llms/**",
+        "$TURBO_ROOT$/packages/tools/lab/src/**"
+      ]
     },
-    "docs#dev": {
+    "@yagejs/docs#dev": {
       "cache": false,
       "persistent": true
     },

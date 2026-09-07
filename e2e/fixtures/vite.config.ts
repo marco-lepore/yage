@@ -1,6 +1,16 @@
 import { defineConfig } from "vite";
+import { readdirSync } from "fs";
 import { resolve } from "path";
 import wasm from "vite-plugin-wasm";
+
+// Every *.html in this directory is a fixture page. Discovered so a new
+// fixture is in the built output without a config change. The E2E web server
+// serves the pages from source, so a page missing here does not fail a spec.
+const htmlInputs = Object.fromEntries(
+  readdirSync(__dirname)
+    .filter((f) => f.endsWith(".html"))
+    .map((f) => [f.slice(0, -".html".length), resolve(__dirname, f)]),
+);
 
 export default defineConfig({
   root: __dirname,
@@ -24,27 +34,7 @@ export default defineConfig({
       output: {
         keepNames: true,
       },
-      input: {
-        input: resolve(__dirname, "input.html"),
-        "inspector-scene": resolve(__dirname, "inspector-scene.html"),
-        "physics-bounce": resolve(__dirname, "physics-bounce.html"),
-        "scene-stack": resolve(__dirname, "scene-stack.html"),
-        "save-load": resolve(__dirname, "save-load.html"),
-        "ui-button": resolve(__dirname, "ui-button.html"),
-        "scroll-view": resolve(__dirname, "scroll-view.html"),
-        "bitmap-text": resolve(__dirname, "bitmap-text.html"),
-        "input-ui-consume": resolve(__dirname, "input-ui-consume.html"),
-        "camera-parallax": resolve(__dirname, "camera-parallax.html"),
-        "camera-lifecycle": resolve(__dirname, "camera-lifecycle.html"),
-        "loading-scene": resolve(__dirname, "loading-scene.html"),
-        "split-text-reveal": resolve(__dirname, "split-text-reveal.html"),
-        "tooltip-glued": resolve(__dirname, "tooltip-glued.html"),
-        platformer: resolve(__dirname, "platformer.html"),
-        "dialogue-addon": resolve(__dirname, "dialogue-addon.html"),
-        "abilities-addon": resolve(__dirname, "abilities-addon.html"),
-        interaction: resolve(__dirname, "interaction.html"),
-        steering: resolve(__dirname, "steering.html"),
-      },
+      input: htmlInputs,
     },
   },
 });
