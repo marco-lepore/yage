@@ -25,6 +25,7 @@
     "@yagejs-addons/interaction": "^0.2.0",
     "@yagejs/core": "^0.10.4",
     "@yagejs/debug": "^0.10.4",
+    "@yagejs/effects": "^0.10.4",
     "@yagejs/input": "^0.10.4",
     "@yagejs/level": "^0.10.2",
     "@yagejs/pathfinding": "^0.10.4",

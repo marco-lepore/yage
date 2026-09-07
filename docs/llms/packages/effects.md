@@ -32,10 +32,10 @@ Each preset returns the same `EffectHandle` shape (`remove`, `setEnabled`, `enab
 | `vignette`            | `{ radius?, alpha?, blur? }`                                                                                               | `CRTFilter` (with CRT features zeroed) | `vignettingAlpha`                                  |
 | `colorGrade`          | `{ preset?, amount? }`                                                                                                     | built-in `ColorMatrixFilter`           | filter `alpha` (cross-fades to identity)           |
 | `godRay`              | `{ angle?, gain?, lacunarity?, alpha? }`                                                                                   | `pixi-filters` `GodrayFilter`          | `gain` (rays scale 0 → full)                       |
-| `shockwave`           | `{ speed?, amplitude?, wavelength?, brightness?, radius?, duration? }`                                                     | `pixi-filters` `ShockwaveFilter`       | `amplitude × brightness` (zero until `trigger`)    |
+| `shockwave`           | `{ speed?, amplitude?, wavelength?, brightness?, radius?, direction?, duration? }`                                         | `pixi-filters` `ShockwaveFilter`       | `amplitude × brightness` (zero until `trigger`)    |
 | `motionBlur`          | `{ velocity?, kernelSize?, offset? }`                                                                                      | `pixi-filters` `MotionBlurFilter`      | configured `velocity` magnitude                    |
 | `oldFilm`             | `{ sepia?, noise?, noiseSize?, scratch?, scratchDensity?, scratchWidth?, vignetting?, vignettingAlpha?, vignettingBlur? }` | `pixi-filters` `OldFilmFilter`         | filter `alpha` (whole effect; noise self-animates) |
-| `bulgePinch`          | `{ strength?, radius?, center? }`                                                                                          | `pixi-filters` `BulgePinchFilter`      | configured `strength` (sign preserved)             |
+| `bulgePinch`          | `{ strength?, radius?, center? }` (host-local coords)                                                                      | `pixi-filters` `BulgePinchFilter`      | configured `strength` (sign preserved)             |
 | `halftone`            | `{ size?, amount?, angle? }`                                                                                               | custom WebGL+WGSL                      | `amount` (cross-fades back to source)              |
 | `wave`                | `{ amplitude?, wavelength?, speed? }`                                                                                      | custom WebGL+WGSL                      | configured `amplitude`                             |
 | `colorize`            | `{ color, strength? }`                                                                                                     | custom WebGL+WGSL                      | `strength` (cross-fades back to source)            |
@@ -49,13 +49,13 @@ All `duration` options and `fadeIn`/`fadeOut` arguments are in seconds (`hitFlas
 
 Color-grade presets: `"neutral"` (identity), `"sepia"`, `"grayscale"`, `"negative"`, `"night"`, `"warm"` (orange tint + brightness boost), `"cool"` (blue tint).
 
-`motionBlur.kernelSize` must be odd and ≥ 5. Invalid values are coerced up to the nearest valid kernel and a one-shot `console.warn` fires naming the requested + final value. `bulgePinch.strength` is signed: negative pinches, positive bulges. A fade scales the magnitude while preserving the sign, so a pinch fades flat → pinch, not flat → bulge → pinch. `bulgePinch.center` is normalized 0..1 screen coords (`{ x: 0.5, y: 0.5 }` is the host's middle). `zoomBlur.strength` is also signed: positive values streak outward and negative values pull inward. `axisBlur` is symmetric around each source pixel; use `motionBlur` for a directional trailing smear.
+`motionBlur.kernelSize` must be odd and ≥ 5. Invalid values are coerced up to the nearest valid kernel and a one-shot `console.warn` fires naming the requested + final value. `bulgePinch.strength` is signed: negative pinches, positive bulges. A fade scales the magnitude while preserving the sign, so a pinch fades flat → pinch, not flat → bulge → pinch. `bulgePinch.center` and `bulgePinch.radius` are in the effect host's local pixels; omit `center` to sit in the middle of the filtered region. `zoomBlur.strength` is also signed: positive values streak outward and negative values pull inward. `axisBlur` is symmetric around each source pixel; use `motionBlur` for a directional trailing smear.
 
 `zoomBlur.expandFromCenter` grows a finite `radius` outward with intensity. A
 negative, unlimited radius cannot expand. `implosion.expandFromCenter` applies
 the same center-first progression to its pull, darkness, and swirl.
 
-`glitch`, `zoomBlur`, `axisBlur`, `implosion`, and `dissolve` reject a
+`glitch`, `zoomBlur`, `axisBlur`, `implosion`, `dissolve`, and `bulgePinch` reject a
 non-finite or out-of-range number at the call that supplies it — options,
 `setIntensity`, and the per-preset setters alike — and throw naming the input
 and the constraint (`implosion: radius must be >= 1, got 0.`). A `NaN` written
@@ -64,7 +64,7 @@ its source, so these throw instead of clamping. Range-bound inputs:
 `implosion.radius` ≥ 1, `implosion.darkness` 0–1, `zoomBlur.innerRadius` ≥ 0,
 `glitch.slices` and `glitch.sampleSize` integers ≥ 1, `axisBlur.quality` an
 integer ≥ 1, `dissolve.edgeWidth` 0.001–0.5, `dissolve.noiseScale` ≥ 1,
-`dissolve.softness` 0.001–0.25.
+`dissolve.softness` 0.001–0.25, `bulgePinch.radius` ≥ 0.
 
 The public handle controls an effect's strength three ways. `setIntensity(value)` sets the primary intensity immediately and clamps the value to 0–1. `fadeIn(seconds)` and `fadeOut(seconds)` tween that same value and return a `Process`. The per-preset `set*` setters that change a preset's "full" value (`bloom.setBloomScale`, `glow.setOuterStrength`, `outline.setThickness`, `dropShadow.setAlpha`, `vignette.setStrength`, `chromaticAberration.setSeparation`, `pixelate.setSize`, `glow.setInnerStrength`, `godRay.setGain`, `motionBlur.setVelocity`, `bulgePinch.setStrength`, `halftone.setAmount`, `wave.setAmplitude`, `colorize.setStrength`) rebase that ceiling while preserving the current intensity ratio. For example, `bloom.setIntensity(0.5)` displays half of the configured bloom scale, while `bloom.setBloomScale(2)` changes what full strength means. For a custom timed animation, pass a tween to `run`; the process is scoped to the effect and stops on `.remove()`.
 
@@ -74,7 +74,7 @@ Three presets work best at scene scope (or higher) rather than on a single compo
 
 - `godRay` — its alpha-aware fragment shader treats fully transparent host pixels as black, so on a per-component sprite the rays render against a black box. At scene scope, the layer rasterizes alpha=1 across the visible area, and the rays blend into the world as intended.
 - `bulgePinch` — distortion samples outside the host's bounding rect, so a sprite-scoped bulge clips at the sprite edges. Apply at scene/layer scope so the lens has room to bend pixels around its `radius`.
-- `shockwave` — the ring expands outward from `center` and is naturally clipped at the host's bounds, so a component-scoped shockwave on a small sprite looks like a tiny "bump" rather than a ring. Scene scope makes `trigger(heroX, heroY)` line up with the entity's transform.
+- `shockwave` — the ring travels between `center` and the host's bounds and is naturally clipped there, so a component-scoped shockwave on a small sprite looks like a tiny "bump" rather than a ring. Scene scope makes `trigger(heroX, heroY)` line up with the entity's transform.
 
 The `examples/src/effects-showcase/main.ts` demo sets up each of these at the recommended scope — copy that as the worked-out reference.
 
@@ -86,7 +86,7 @@ Pixel-valued options on older presets and `axisBlur` are in **input-texture pixe
 
 Six presets ship with built-in resolution-stability:
 
-- `bulgePinch.center` is normalized 0..1 (resolution-independent by construction).
+- `bulgePinch` interprets its center and radius in host-local pixels.
 - `shockwave` accepts container-local coords for `trigger(x, y)` AND for every dimensional option, and converts each frame against the filter target's live `worldTransform`. **This is experimental** — don't depend on `shockwave`'s exact unit behavior across versions.
 - `glitch` interprets band displacement and RGB offsets in host-local pixels.
 - `zoomBlur` interprets its center and radii in host-local pixels.
@@ -152,6 +152,16 @@ sw.trigger(heroX, heroY); // ALL pixel-valued inputs (center, amplitude,
 // / travel speed at any size.
 // Re-trigger cancels any in-flight ramp.
 
+const vortex = scene.fx.addEffect(
+  shockwave({ direction: "in", speed: 400, duration: 1.5 }),
+);
+vortex.trigger(drainX, drainY); // direction: "in" starts the ring
+// speed × duration = 600 host-local px out
+// and contracts it onto the trigger point.
+// A configured `radius` hides the ring until
+// it reaches that radius, then strengthens as
+// it closes in. Default is "out".
+
 const mb = sprite.fx.addEffect(motionBlur({ velocity: { x: 30, y: 0 } }));
 mb.setVelocity(50, 12); // rebases full vector; preserves intensity ratio
 
@@ -159,10 +169,13 @@ scene.fx.addEffect(oldFilm({ sepia: 0.4, noise: 0.4 }));
 // noise self-animates; only the base
 // EffectHandle surface is exposed
 
-const bp = scene.fx.addEffect(bulgePinch({ strength: 1, radius: 200 }));
+const bp = scene.fx.addEffect(
+  bulgePinch({ strength: 1, radius: 200, center: { x: 640, y: 360 } }),
+);
 bp.setStrength(-0.8); // flips bulge → pinch; intensity ratio preserved
-bp.setCenter(0.5, 0.5); // normalized screen coords
-bp.setRadius(300); // distortion radius in pixels
+bp.setCenter(heroX, heroY); // host-local coordinates
+bp.useHostCenter(); // back to the middle of the filtered region
+bp.setRadius(300); // distortion radius in host-local pixels
 
 const ht = layer.fx.addEffect(halftone({ size: 6, angle: Math.PI / 4 }));
 ht.setSize(10);

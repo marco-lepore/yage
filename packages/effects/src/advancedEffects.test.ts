@@ -129,14 +129,143 @@ vi.mock("pixi-filters", () => {
     apply(): void {}
   }
 
-  return { GlitchFilter, ZoomBlurFilter };
+  class BulgePinchFilter {
+    enabled = true;
+    alpha = 1;
+    uniforms: {
+      uDimensions: number[];
+      uCenter: { x: number; y: number };
+      uRadius: number;
+      uStrength: number;
+    };
+
+    constructor(options: {
+      strength: number;
+      radius: number;
+      center: { x: number; y: number };
+    }) {
+      this.uniforms = {
+        uDimensions: [0, 0],
+        uCenter: options.center,
+        uRadius: options.radius,
+        uStrength: options.strength,
+      };
+    }
+
+    get center(): { x: number; y: number } {
+      return this.uniforms.uCenter;
+    }
+
+    set center(value: { x: number; y: number }) {
+      this.uniforms.uCenter = value;
+    }
+
+    get radius(): number {
+      return this.uniforms.uRadius;
+    }
+
+    set radius(value: number) {
+      this.uniforms.uRadius = value;
+    }
+
+    get strength(): number {
+      return this.uniforms.uStrength;
+    }
+
+    set strength(value: number) {
+      this.uniforms.uStrength = value;
+    }
+
+    apply(
+      _filterManager: unknown,
+      input: { frame: { width: number; height: number } },
+    ): void {
+      this.uniforms.uDimensions[0] = input.frame.width;
+      this.uniforms.uDimensions[1] = input.frame.height;
+    }
+  }
+
+  class ShockwaveFilter {
+    enabled = true;
+    alpha = 1;
+    time: number;
+    center: { x: number; y: number };
+    speed: number;
+    amplitude: number;
+    wavelength: number;
+    brightness: number;
+    radius: number;
+
+    constructor(options: {
+      speed: number;
+      amplitude: number;
+      wavelength: number;
+      brightness: number;
+      radius: number;
+      time: number;
+    }) {
+      this.speed = options.speed;
+      this.amplitude = options.amplitude;
+      this.wavelength = options.wavelength;
+      this.brightness = options.brightness;
+      this.radius = options.radius;
+      this.time = options.time;
+      this.center = { x: 0, y: 0 };
+    }
+
+    apply(): void {}
+  }
+
+  return { GlitchFilter, ZoomBlurFilter, BulgePinchFilter, ShockwaveFilter };
 });
 
+import type { Process } from "@yagejs/core";
 import { axisBlur } from "./axisBlur.js";
+import { bulgePinch } from "./bulgePinch.js";
 import { dissolve } from "./dissolve.js";
 import { glitch } from "./glitch.js";
 import { implosion } from "./implosion.js";
+import { shockwave } from "./shockwave.js";
+import type { ShockwaveDirection } from "./shockwave.js";
 import { zoomBlur } from "./zoomBlur.js";
+
+/** `time` the preset parks the ring at while no ramp is running. */
+const PARKED_TIME = 1e6;
+
+/**
+ * Arm a shockwave and hand back its filter plus the ramp the trigger
+ * scheduled, so a test can step the ramp without an engine.
+ */
+function armShockwave(
+  options: Parameters<typeof shockwave>[0],
+  x = 0,
+  y = 0,
+): {
+  filter: { time: number; centerLocal: { x: number; y: number } };
+  ramp: Process;
+  trigger(x?: number, y?: number): void;
+} {
+  const effect = shockwave(options)();
+  let scheduled: Process | undefined;
+  const base = {
+    run: (process: Process) => {
+      scheduled = process;
+      return process;
+    },
+  } as never;
+  const handle = effect.buildExtras?.(base);
+  if (!handle?.trigger) throw new Error("Expected a shockwave handle.");
+  handle.trigger(x, y);
+  if (!scheduled) throw new Error("Expected the trigger to schedule a ramp.");
+  return {
+    filter: effect.filter as unknown as {
+      time: number;
+      centerLocal: { x: number; y: number };
+    },
+    ramp: scheduled,
+    trigger: handle.trigger,
+  };
+}
 
 describe("advanced effects", () => {
   it("rejects fractional glitch slice counts", () => {
@@ -465,5 +594,158 @@ describe("advanced effects", () => {
     expect(() => handle.setDarkness(-0.1)).toThrow(/darkness/);
     expect(() => handle.setSwirl(Number.NaN)).toThrow(/swirl/);
     expect(() => handle.setCenter(0, Number.NaN)).toThrow(/center\.y/);
+  });
+  it("maps a bulge-pinch center from host-local pixels onto the filter region", () => {
+    const effect = bulgePinch({ radius: 100, center: { x: 120, y: 80 } })();
+    effect.onAttach?.({
+      displayObject: {
+        worldTransform: { a: 0.5, b: 0, c: 0, d: 0.5, tx: 100, ty: 20 },
+      } as never,
+      scope: "component",
+    });
+    const filter = effect.filter as unknown as {
+      uniforms: { uCenter: { x: number; y: number }; uRadius: number };
+      apply(...args: unknown[]): void;
+    };
+
+    filter.apply(
+      { _activeFilterData: { bounds: { minX: 40, minY: 10 } } },
+      { frame: { width: 400, height: 200 } },
+      {},
+      false,
+    );
+
+    expect(filter.uniforms.uCenter.x).toBeCloseTo(0.3, 10);
+    expect(filter.uniforms.uCenter.y).toBeCloseTo(0.25, 10);
+    // Radius is host-local too: 100 local px under a half-scale host.
+    expect(filter.uniforms.uRadius).toBe(50);
+  });
+
+  it("centers bulge-pinch on the filtered region without a host-local point", () => {
+    const attach = {
+      displayObject: {
+        worldTransform: { a: 0.5, b: 0, c: 0, d: 0.5, tx: 100, ty: 20 },
+      } as never,
+      scope: "component" as const,
+    };
+    const manager = { _activeFilterData: { bounds: { minX: 40, minY: 10 } } };
+    const input = { frame: { width: 400, height: 200 } };
+
+    const noCenter = bulgePinch({})();
+    noCenter.onAttach?.(attach);
+    const noCenterFilter = noCenter.filter as unknown as {
+      uniforms: { uCenter: { x: number; y: number } };
+      apply(...args: unknown[]): void;
+    };
+    noCenterFilter.apply(manager, input, {}, false);
+    expect(noCenterFilter.uniforms.uCenter).toEqual({ x: 0.5, y: 0.5 });
+
+    const detached = bulgePinch({ center: { x: 120, y: 80 } })();
+    detached.onAttach?.(attach);
+    detached.onDetach?.();
+    const detachedFilter = detached.filter as unknown as {
+      uniforms: { uCenter: { x: number; y: number } };
+      apply(...args: unknown[]): void;
+    };
+    detachedFilter.apply(manager, input, {}, false);
+    expect(detachedFilter.uniforms.uCenter).toEqual({ x: 0.5, y: 0.5 });
+  });
+
+  it("returns a bulge-pinch lens to the region center on useHostCenter", () => {
+    const effect = bulgePinch({})();
+    effect.onAttach?.({
+      displayObject: {
+        worldTransform: { a: 0.5, b: 0, c: 0, d: 0.5, tx: 100, ty: 20 },
+      } as never,
+      scope: "component",
+    });
+    const filter = effect.filter as unknown as {
+      uniforms: { uCenter: { x: number; y: number } };
+      apply(...args: unknown[]): void;
+    };
+    const manager = { _activeFilterData: { bounds: { minX: 40, minY: 10 } } };
+    const input = { frame: { width: 400, height: 200 } };
+
+    const handle = effect.buildExtras?.(null as never);
+    if (!handle?.useHostCenter) {
+      throw new Error("Expected a bulge pinch handle.");
+    }
+    handle.setCenter(120, 80);
+    filter.apply(manager, input, {}, false);
+    expect(filter.uniforms.uCenter.x).toBeCloseTo(0.3, 10);
+
+    handle.useHostCenter();
+    filter.apply(manager, input, {}, false);
+    expect(filter.uniforms.uCenter).toEqual({ x: 0.5, y: 0.5 });
+  });
+
+  it("rejects invalid bulge pinch options and runtime values", () => {
+    expect(() => bulgePinch({ radius: -1 })()).toThrow(/radius/);
+    expect(() => bulgePinch({ center: { x: Number.NaN, y: 0 } })()).toThrow(
+      /center\.x/,
+    );
+    expect(() => bulgePinch({ strength: Number.POSITIVE_INFINITY })()).toThrow(
+      /strength/,
+    );
+
+    const effect = bulgePinch({})();
+    const handle = effect.buildExtras?.(null as never);
+    if (!handle?.setRadius) {
+      throw new Error("Expected a bulge pinch handle.");
+    }
+    expect(() => effect.setIntensity(Number.NaN)).toThrow(/intensity/);
+    expect(() => handle.setStrength(Number.NaN)).toThrow(/strength/);
+    expect(() => handle.setRadius(-1)).toThrow(/radius/);
+    expect(() => handle.setCenter(0, Number.NaN)).toThrow(/center\.y/);
+  });
+
+  it("runs an outward shockwave from the trigger point", () => {
+    const { filter, ramp } = armShockwave({ duration: 1 }, 10, 20);
+    expect(filter.time).toBe(0);
+    expect(filter.centerLocal).toEqual({ x: 10, y: 20 });
+
+    ramp._update(0.25);
+    ramp._update(0.25);
+    expect(filter.time).toBeCloseTo(0.5, 10);
+  });
+
+  it("runs an inward shockwave from a full duration out", () => {
+    const { filter, ramp } = armShockwave({
+      direction: "in",
+      duration: 0.5,
+    });
+    expect(filter.time).toBe(0.5);
+
+    ramp._update(0.2);
+    expect(filter.time).toBeCloseTo(0.3, 10);
+  });
+
+  it("parks the shockwave ring when either ramp completes", () => {
+    const outward = armShockwave({ duration: 0.5 });
+    outward.ramp._update(0.6);
+    expect(outward.filter.time).toBe(PARKED_TIME);
+
+    const inward = armShockwave({ direction: "in", duration: 0.5 });
+    inward.ramp._update(0.6);
+    expect(inward.filter.time).toBe(PARKED_TIME);
+  });
+
+  it("restarts a shockwave ramp from the configured direction's start", () => {
+    const { filter, ramp, trigger } = armShockwave({
+      direction: "in",
+      duration: 0.5,
+    });
+    ramp._update(0.25);
+    expect(filter.time).toBeCloseTo(0.25, 10);
+
+    trigger();
+    expect(filter.time).toBe(0.5);
+    expect(ramp.completed).toBe(true);
+  });
+
+  it("rejects an unknown shockwave direction", () => {
+    expect(() =>
+      shockwave({ direction: "sideways" as ShockwaveDirection })(),
+    ).toThrow(/direction/);
   });
 });

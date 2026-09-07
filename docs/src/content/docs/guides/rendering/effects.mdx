@@ -118,7 +118,7 @@ import {
 | `vignette` | Edge darkening | vignette alpha |
 | `colorGrade` | Sepia / grayscale / negative / night / warm / cool | filter alpha |
 | `godRay` | Animated volumetric light rays (self-scheduling time) | `gain` (rays scale 0 → full) |
-| `shockwave` | One-shot ripple at `(x, y)` via `trigger()` | `amplitude × brightness` (parked off until trigger) |
+| `shockwave` | One-shot ripple at `(x, y)` via `trigger()`, expanding or contracting | `amplitude × brightness` (parked off until trigger) |
 | `motionBlur` | Directional smear along a velocity vector | velocity magnitude |
 | `oldFilm` | Sepia + grain + scratches + animated seed | filter alpha |
 | `bulgePinch` | Lens distortion — sign-preserving (negative pinches, positive bulges) | `strength` (sign preserved) |
@@ -186,6 +186,13 @@ A few presets behave differently from the steady-state pattern:
 const sw = scene.fx.addEffect(shockwave({ amplitude: 40 }));
 sw.trigger(heroX, heroY);
 
+// direction: "in" reverses the travel — the ring starts speed × duration
+// host-local pixels out and contracts onto the trigger point.
+const vortex = scene.fx.addEffect(
+  shockwave({ direction: "in", speed: 400, duration: 1.5 }),
+);
+vortex.trigger(drainX, drainY);
+
 // godRay / oldFilm / wave self-advance their internal time uniform from
 // scene time, so they keep animating without any caller wiring. Pause
 // with the scene; time-scale with it.
@@ -198,10 +205,13 @@ layer.fx.addEffect(wave({ amplitude: 6, speed: 2 }));
 const mb = sprite.fx.addEffect(motionBlur({ velocity: { x: 30, y: 0 } }));
 mb.setVelocity(50, 12);
 
-// bulgePinch.center is normalized 0..1 screen coords (resolution-independent).
-const bp = scene.fx.addEffect(bulgePinch({ strength: 1, radius: 200 }));
+// bulgePinch takes its center and radius in host-local pixels.
+const bp = scene.fx.addEffect(
+  bulgePinch({ strength: 1, radius: 200, center: { x: 640, y: 360 } }),
+);
 bp.setStrength(-0.8);   // flips bulge → pinch; intensity ratio preserved
-bp.setCenter(0.5, 0.5);
+bp.setCenter(heroX, heroY);
+bp.useHostCenter();     // back to the middle of the filtered region
 
 // glitch keeps one deterministic pattern until refresh() is called.
 const digital = sprite.fx.addEffect(glitch({ slices: 8, offset: 24 }));
@@ -263,8 +273,8 @@ on a single component:
   so a sprite-scoped bulge clips at the sprite edges. Apply at
   scene/layer scope so the lens has room to bend pixels around its
   `radius`.
-- **`shockwave`** — the ring expands outward from `center` and is
-  naturally clipped at the host's bounds, so a component-scoped
+- **`shockwave`** — the ring travels between `center` and the host's
+  bounds and is naturally clipped there, so a component-scoped
   shockwave on a small sprite reads as a tiny "bump" rather than a
   ring. Scene scope makes `trigger(heroX, heroY)` line up with the
   entity's transform.
@@ -285,7 +295,7 @@ visibly "scale up" on smaller canvases.
 
 Six presets use stable host coordinates:
 
-- `bulgePinch.center` is normalized 0..1.
+- `bulgePinch` interprets its center and radius in host-local pixels.
 - `shockwave` accepts container-local coords for `trigger(x, y)` AND for
   every dimensional option, and converts each frame against the filter
   target's live `worldTransform`. **This wrapper pattern is
