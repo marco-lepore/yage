@@ -28,7 +28,7 @@ import {
   spawnEntityInScene,
 } from "./test-helpers.js";
 import type { PhysicsTestContext } from "./test-helpers.js";
-import type { BodyType, ColliderConfig } from "./types.js";
+import type { BodyType, ColliderConfig, ColliderShape } from "./types.js";
 
 const DT = 1 / 60;
 
@@ -137,6 +137,127 @@ function everything(world: PhysicsWorld, at: Vec2) {
 }
 
 describe("spatial queries (real Rapier)", () => {
+  describe.each(["box", "polygon"] as const)(
+    "castShape initial overlap with %s terrain",
+    (terrainType) => {
+      describe.each([
+        {
+          face: "wall",
+          origin: new Vec2(1350.088, 260),
+          direction: new Vec2(-1, 0),
+        },
+        {
+          face: "floor",
+          origin: new Vec2(1405, 195.088),
+          direction: new Vec2(0, -1),
+        },
+      ])("$face", ({ origin, direction }) => {
+        const shape = { type: "box", width: 20, height: 20 } as const;
+
+        async function overlapScene() {
+          const ctx = await createPhysicsTestContext({
+            gravity: { x: 0, y: 0 },
+          });
+          // Terrain spans x=1360..1450, y=205..320. The probe overlaps by 0.088px.
+          const terrainShape: ColliderShape =
+            terrainType === "box"
+              ? { type: "box", width: 90, height: 115 }
+              : {
+                  type: "polygon",
+                  vertices: [
+                    { x: -45, y: -57.5 },
+                    { x: 45, y: -57.5 },
+                    { x: 45, y: 57.5 },
+                    { x: -45, y: 57.5 },
+                  ],
+                };
+          const terrain = spawnBody(
+            ctx.scene,
+            "terrain",
+            1405,
+            262.5,
+            "static",
+            { shape: terrainShape },
+          );
+          const mover = spawnBox(ctx.scene, "mover", origin.x, origin.y);
+          const options = { excludeEntity: mover.entity };
+          expect(ctx.physicsWorld.queryShape(shape, origin, options)).toEqual([
+            terrain.entity,
+          ]);
+          return { ...ctx, terrain, options };
+        }
+
+        it("stops at the initial overlap by default and with explicit true", async () => {
+          const { physicsWorld, terrain, options } = await overlapScene();
+          for (const castOptions of [
+            options,
+            { ...options, stopAtPenetration: true },
+          ]) {
+            const hit = physicsWorld.castShape(
+              shape,
+              origin,
+              direction,
+              20,
+              castOptions,
+            );
+            expect(hit?.entity).toBe(terrain.entity);
+            expect(hit?.distance).toBe(0);
+          }
+        });
+
+        it("allows an outward cast to reach a clear position with false", async () => {
+          const { physicsWorld, options } = await overlapScene();
+          const destination = origin.add(direction.scale(20));
+          expect(physicsWorld.queryShape(shape, destination, options)).toEqual(
+            [],
+          );
+          expect(
+            physicsWorld.castShape(shape, origin, direction, 20, {
+              ...options,
+              stopAtPenetration: false,
+            }),
+          ).toBeNull();
+        });
+
+        it("still detects an obstacle farther along the escape route", async () => {
+          const { scene, physicsWorld, options } = await overlapScene();
+          const obstaclePosition = origin.add(direction.scale(50));
+          const obstacle = spawnStaticBox(
+            scene,
+            "obstacle",
+            obstaclePosition.x,
+            obstaclePosition.y,
+            20,
+          );
+          const hit = physicsWorld.castShape(shape, origin, direction, 100, {
+            ...options,
+            stopAtPenetration: false,
+          });
+          expect(hit?.entity).toBe(obstacle.entity);
+          expect(hit?.distance).toBeCloseTo(30, 2);
+          expect(hit?.normal.x).toBeCloseTo(-direction.x);
+          expect(hit?.normal.y).toBeCloseTo(-direction.y);
+        });
+
+        it("still blocks movement deeper into the initial overlap with false", async () => {
+          const { physicsWorld, terrain, options } = await overlapScene();
+          const hit = physicsWorld.castShape(
+            shape,
+            origin,
+            direction.scale(-1),
+            20,
+            {
+              ...options,
+              stopAtPenetration: false,
+            },
+          );
+          expect(hit?.entity).toBe(terrain.entity);
+          expect(hit?.distance).toBe(0);
+        });
+      });
+    },
+  );
+
   describe("sensor mode", () => {
     async function coinScene() {
       const ctx = await createPhysicsTestContext();

@@ -522,15 +522,23 @@ world.step(dt);
 // Shape cast — sweep a shape along a direction and report the first hit.
 // Same result shape as raycast: `distance` is how far the shape travelled,
 // `point` the world contact point, `normal` the surface normal on the entity
-// hit. A shape already overlapping something at `origin` reports distance 0.
+// hit. With stopAtPenetration: true (default), an initial overlap reports distance 0.
 // Direction is normalized internally; a zero-length direction throws.
 const swept = world.castShape(shape, origin, direction, maxDistance, {
   rotation,
   filterGroups,
   excludeEntity, // pass the mover when the sweep starts inside its own collider
   sensors,
+  stopAtPenetration: true, // false allows movement out of an initial overlap
 });
 ```
+
+`castShape` accepts `stopAtPenetration?: boolean` (default `true`). Set it to
+`false` for clearance checks that move out of shallow wall or floor overlap.
+The cast still reports obstacles farther along the route and movement deeper
+into the initial overlap. For a move that requires a clear destination, also
+check that position with `queryShape`. The option affects only the cast, not
+body collisions.
 
 `filterGroups` runs the same two-way test as collider-vs-collider filtering: a
 collider is reported only when the query's membership bit is in that collider's
