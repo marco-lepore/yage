@@ -30,7 +30,10 @@ export class BinaryHeap<T> {
     return top.value;
   }
 
-  private less(a: { value: T; seq: number }, b: { value: T; seq: number }): boolean {
+  private less(
+    a: { value: T; seq: number },
+    b: { value: T; seq: number },
+  ): boolean {
     const c = this.compare(a.value, b.value);
     return c !== 0 ? c < 0 : a.seq < b.seq;
   }
@@ -54,8 +57,10 @@ export class BinaryHeap<T> {
       const left = i * 2 + 1;
       const right = i * 2 + 2;
       let smallest = i;
-      if (left < n && this.less(items[left]!, items[smallest]!)) smallest = left;
-      if (right < n && this.less(items[right]!, items[smallest]!)) smallest = right;
+      if (left < n && this.less(items[left]!, items[smallest]!))
+        smallest = left;
+      if (right < n && this.less(items[right]!, items[smallest]!))
+        smallest = right;
       if (smallest === i) break;
       [items[i], items[smallest]] = [items[smallest]!, items[i]!];
       i = smallest;

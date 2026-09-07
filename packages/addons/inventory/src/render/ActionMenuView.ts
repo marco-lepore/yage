@@ -11,7 +11,13 @@
 import type { Scene } from "@yagejs/core";
 import { measureWrappedText, RendererKey } from "@yagejs/renderer";
 import type { PresentedAction } from "../core/session.js";
-import type { ActionMenuPresenter, MenuSkinHandle, MenuSkinPresenter, MenuSkinRow, Rect } from "../adapter.js";
+import type {
+  ActionMenuPresenter,
+  MenuSkinHandle,
+  MenuSkinPresenter,
+  MenuSkinRow,
+  Rect,
+} from "../adapter.js";
 import type { PanelLayout } from "./PanelLayout.js";
 import { layoutActionMenu } from "./menuLayout.js";
 import type { FontConfig } from "./textOptions.js";
@@ -52,7 +58,11 @@ export class ActionMenuView implements ActionMenuPresenter {
   mount(scene: Scene): void {
     this.scene = scene;
     const renderer = scene.context.tryResolve(RendererKey);
-    if (renderer) this.layout.setViewport(renderer.virtualSize.width, renderer.virtualSize.height);
+    if (renderer)
+      this.layout.setViewport(
+        renderer.virtualSize.width,
+        renderer.virtualSize.height,
+      );
   }
 
   // Implements (actions, slot) — the slot isn't needed: the anchor provider
@@ -97,7 +107,14 @@ export class ActionMenuView implements ActionMenuPresenter {
   actionAtPoint(x: number, y: number): number | undefined {
     for (let i = 0; i < this.rows.length; i++) {
       const r = this.rows[i]?.rect;
-      if (r && x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height) return i;
+      if (
+        r &&
+        x >= r.x &&
+        x <= r.x + r.width &&
+        y >= r.y &&
+        y <= r.y + r.height
+      )
+        return i;
     }
     return undefined;
   }

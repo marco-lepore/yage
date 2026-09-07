@@ -11,7 +11,11 @@ import type { Scene } from "@yagejs/core";
 import type { PresentedLine } from "../core/session.js";
 import type { RevealBeat } from "../core/LineReveal.js";
 import type { TextPresenter } from "../chrome/DialogueUiAdapter.js";
-import { makeDefaultRoute, lineRoutesToBubble, type MountRoute } from "./route.js";
+import {
+  makeDefaultRoute,
+  lineRoutesToBubble,
+  type MountRoute,
+} from "./route.js";
 
 export class CompositeTextPresenter implements TextPresenter {
   private active?: TextPresenter | undefined;
@@ -65,7 +69,9 @@ export class CompositeTextPresenter implements TextPresenter {
   }
 
   present(line: PresentedLine): void {
-    const target = lineRoutesToBubble(this.routing.route, line) ? this.bubble : this.box;
+    const target = lineRoutesToBubble(this.routing.route, line)
+      ? this.bubble
+      : this.box;
     const other = target === this.box ? this.bubble : this.box;
     other.clear();
     this.active = target;

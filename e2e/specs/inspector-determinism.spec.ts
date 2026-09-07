@@ -17,7 +17,8 @@ test.describe("Inspector determinism", () => {
       await waitForInspector(page);
       await waitForClock(page);
       await page.waitForFunction(
-        () => window.__yage__?.inspector.getSceneStack()[0]?.name === "platformer",
+        () =>
+          window.__yage__?.inspector.getSceneStack()[0]?.name === "platformer",
       );
 
       const snapshot = await page.evaluate(async () => {

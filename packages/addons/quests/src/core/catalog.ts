@@ -8,7 +8,12 @@
  * "wolf")` doesn't.
  */
 
-import type { ObjectiveDef, ObjectiveDefInput, QuestDef, QuestDefInput } from "./types.js";
+import type {
+  ObjectiveDef,
+  ObjectiveDefInput,
+  QuestDef,
+  QuestDefInput,
+} from "./types.js";
 
 /** The quest-id literal union a {@link defineQuests} call captures. */
 export type QuestId<TDefs> = Extract<keyof TDefs, string>;
@@ -47,7 +52,8 @@ export class QuestCatalog<
    *  error, not a data condition. */
   get(quest: QuestId<TDefs>): QuestDef {
     const def = this.byId.get(quest);
-    if (!def) throw new Error(`unknown quest id "${quest}" — not in this catalog`);
+    if (!def)
+      throw new Error(`unknown quest id "${quest}" — not in this catalog`);
     return def;
   }
 
@@ -63,7 +69,9 @@ export class QuestCatalog<
   }
 
   /** Objective ids declared under `quest`, in authoring order. */
-  objectiveIds<Q extends QuestId<TDefs>>(quest: Q): readonly ObjectiveIdOf<TDefs, Q>[] {
+  objectiveIds<Q extends QuestId<TDefs>>(
+    quest: Q,
+  ): readonly ObjectiveIdOf<TDefs, Q>[] {
     return this.get(quest).objectiveIds as ObjectiveIdOf<TDefs, Q>[];
   }
 }
@@ -122,9 +130,13 @@ export function defineQuests<const TDefs extends Record<string, QuestDefInput>>(
       }
       objectives.set(objId, Object.freeze({ ...objInput, id: objId, count }));
     }
-    const hasNonOptionalObjective = [...objectives.values()].some((o) => !o.optional);
+    const hasNonOptionalObjective = [...objectives.values()].some(
+      (o) => !o.optional,
+    );
     if (!hasNonOptionalObjective) {
-      throw new Error(`quest "${id}": must declare at least one non-optional objective`);
+      throw new Error(
+        `quest "${id}": must declare at least one non-optional objective`,
+      );
     }
     out.set(
       id,
@@ -140,7 +152,8 @@ export function defineQuests<const TDefs extends Record<string, QuestDefInput>>(
   }
   for (const [id, def] of out) {
     for (const reqId of def.requires) {
-      if (!out.has(reqId)) throw new Error(`quest "${id}": requires unknown quest "${reqId}"`);
+      if (!out.has(reqId))
+        throw new Error(`quest "${id}": requires unknown quest "${reqId}"`);
     }
   }
   return new QuestCatalog<TDefs>(out);

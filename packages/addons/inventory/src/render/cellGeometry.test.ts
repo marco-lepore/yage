@@ -15,8 +15,11 @@ import {
 //   6 7 8
 //   9
 describe("cellNavigate (3 columns, 10 cells)", () => {
-  const nav = (from: number, dir: "up" | "down" | "left" | "right", wrap = false) =>
-    cellNavigate(from, dir, 10, 3, wrap);
+  const nav = (
+    from: number,
+    dir: "up" | "down" | "left" | "right",
+    wrap = false,
+  ) => cellNavigate(from, dir, 10, 3, wrap);
 
   it("moves by column vertically and by one horizontally", () => {
     expect(nav(4, "up")).toBe(1);
@@ -82,9 +85,19 @@ describe("cell rects and hit-testing (rectangular cells)", () => {
 
   it("places cells on the per-axis gap grid, windowed by scroll", () => {
     // col 1 -> x 100 + 60; row 1 -> y 200 + 48.
-    expect(cellRect(4, spec, origin, 0)).toEqual({ x: 160, y: 248, width: 50, height: 40 });
+    expect(cellRect(4, spec, origin, 0)).toEqual({
+      x: 160,
+      y: 248,
+      width: 50,
+      height: 40,
+    });
     expect(cellRect(7, spec, origin, 0)).toBeNull(); // row 2, outside window
-    expect(cellRect(7, spec, origin, 1)).toEqual({ x: 160, y: 248, width: 50, height: 40 });
+    expect(cellRect(7, spec, origin, 1)).toEqual({
+      x: 160,
+      y: 248,
+      width: 50,
+      height: 40,
+    });
   });
 
   it("hit-tests invert placement, with distinct x- and y-gap dead zones", () => {
@@ -107,8 +120,11 @@ describe("cell rects and hit-testing (rectangular cells)", () => {
 // A list is columns:1 with wide, short cells and no gaps. These are the old
 // dedicated list-geometry cases, now the degenerate case of the shared math.
 describe("cell math at columns:1 (a list)", () => {
-  const nav = (from: number, dir: "up" | "down" | "left" | "right", wrap = false) =>
-    cellNavigate(from, dir, 5, 1, wrap);
+  const nav = (
+    from: number,
+    dir: "up" | "down" | "left" | "right",
+    wrap = false,
+  ) => cellNavigate(from, dir, 5, 1, wrap);
 
   it("navigates linearly, clamps at ends, ignores left/right", () => {
     expect(nav(2, "down")).toBe(3);
@@ -142,12 +158,19 @@ describe("cell math at columns:1 (a list)", () => {
   const origin = { x: 50, y: 100 };
 
   it("full-width rows window with the scroll; hit-test inverts them", () => {
-    expect(cellRect(3, spec, origin, 2)).toEqual({ x: 50, y: 124, width: 200, height: 24 });
+    expect(cellRect(3, spec, origin, 2)).toEqual({
+      x: 50,
+      y: 124,
+      width: 200,
+      height: 24,
+    });
     expect(cellRect(1, spec, origin, 2)).toBeNull();
     expect(cellAtPoint(60, 130, spec, origin, 2, 8)).toBe(3);
     expect(cellAtPoint(60, 90, spec, origin, 2, 8)).toBeUndefined();
     expect(cellAtPoint(300, 130, spec, origin, 2, 8)).toBeUndefined();
-    expect(cellAtPoint(60, 100 + 3 * 24 + 1, spec, origin, 2, 8)).toBeUndefined(); // past window
+    expect(
+      cellAtPoint(60, 100 + 3 * 24 + 1, spec, origin, 2, 8),
+    ).toBeUndefined(); // past window
   });
 
   it("rejects the exact right edge (1px stricter than the old list hit-test)", () => {

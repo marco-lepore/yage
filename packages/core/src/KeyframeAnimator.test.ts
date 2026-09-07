@@ -25,7 +25,9 @@ describe("KeyframeAnimator", () => {
             { time: 0, data: 0 },
             { time: 100, data: 10 },
           ],
-          setter: (v) => { value = v as number; },
+          setter: (v) => {
+            value = v as number;
+          },
         },
       }),
     );
@@ -147,14 +149,18 @@ describe("KeyframeAnimator", () => {
             { time: 0, data: 0 },
             { time: 100, data: 10 },
           ],
-          setter: (v) => { bobVal = v as number; },
+          setter: (v) => {
+            bobVal = v as number;
+          },
         },
         pulse: {
           keyframes: [
             { time: 0, data: 1 },
             { time: 100, data: 2 },
           ],
-          setter: (v) => { pulseVal = v as number; },
+          setter: (v) => {
+            pulseVal = v as number;
+          },
         },
       }),
     );
@@ -178,7 +184,9 @@ describe("KeyframeAnimator", () => {
             { time: 0, data: 0 },
             { time: 100, data: 10 },
           ],
-          setter: (v) => { value = v as number; },
+          setter: (v) => {
+            value = v as number;
+          },
           onEnter,
           onExit,
         },

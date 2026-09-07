@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMockScene, Logger, LoggerKey, LogLevel, Transform } from "@yagejs/core";
+import {
+  createMockScene,
+  Logger,
+  LoggerKey,
+  LogLevel,
+  Transform,
+} from "@yagejs/core";
 import { Interactable } from "./Interactable.js";
 import { interactableRegistryFor, interactablesIn } from "./core/registry.js";
 
@@ -51,11 +57,15 @@ describe("Interactable", () => {
     const { scene } = createMockScene();
     const first = scene.spawn("first");
     first.add(new Transform());
-    const firstInteractable = first.add(new Interactable({ onInteract: () => {} }));
+    const firstInteractable = first.add(
+      new Interactable({ onInteract: () => {} }),
+    );
 
     const second = scene.spawn("second");
     second.add(new Transform());
-    const secondInteractable = second.add(new Interactable({ onInteract: () => {} }));
+    const secondInteractable = second.add(
+      new Interactable({ onInteract: () => {} }),
+    );
 
     expect(firstInteractable.order).toBe(0);
     expect(secondInteractable.order).toBe(1);
@@ -91,7 +101,9 @@ describe("Interactable", () => {
     const { scene } = createMockScene();
     const entity = scene.spawn("chest");
     entity.add(new Transform());
-    const interactable = entity.add(new Interactable({ onInteract: () => {}, prompt: "Open" }));
+    const interactable = entity.add(
+      new Interactable({ onInteract: () => {}, prompt: "Open" }),
+    );
     expect(interactable.prompt).toBe("Open");
   });
 
@@ -101,7 +113,10 @@ describe("Interactable", () => {
     entity.add(new Transform());
     let on = false;
     const interactable = entity.add(
-      new Interactable({ onInteract: () => {}, prompt: () => (on ? "Turn off" : "Turn on") }),
+      new Interactable({
+        onInteract: () => {},
+        prompt: () => (on ? "Turn off" : "Turn on"),
+      }),
     );
     expect(interactable.prompt).toBe("Turn on");
     on = true;
@@ -120,12 +135,16 @@ describe("Interactable", () => {
     const { scene } = createMockScene();
     const entity = scene.spawn("chest");
     entity.add(new Transform());
-    const enabledDefault = entity.add(new Interactable({ onInteract: () => {} }));
+    const enabledDefault = entity.add(
+      new Interactable({ onInteract: () => {} }),
+    );
     expect(enabledDefault.isEnabled()).toBe(true);
 
     const other = scene.spawn("locked-chest");
     other.add(new Transform());
-    const disabled = other.add(new Interactable({ onInteract: () => {}, enabled: false }));
+    const disabled = other.add(
+      new Interactable({ onInteract: () => {}, enabled: false }),
+    );
     expect(disabled.isEnabled()).toBe(false);
   });
 
@@ -177,6 +196,8 @@ describe("Interactable", () => {
     entity.add(new Transform());
     entity.add(new Interactable({ onInteract: () => {}, radius: 0 }));
 
-    expect(warn.mock.calls.filter((c) => c[0] === "interaction")).toHaveLength(0);
+    expect(warn.mock.calls.filter((c) => c[0] === "interaction")).toHaveLength(
+      0,
+    );
   });
 });

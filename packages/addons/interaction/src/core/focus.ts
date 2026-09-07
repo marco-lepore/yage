@@ -5,7 +5,10 @@ import type { FocusQuery, InteractCandidate } from "./types.js";
  * is in range, else `null`. In range means `distance <= query.range +
  * candidate.radius`. Squared throughout to avoid a `sqrt` per candidate.
  */
-function inRangeDistanceSq(query: FocusQuery, candidate: InteractCandidate): number | null {
+function inRangeDistanceSq(
+  query: FocusQuery,
+  candidate: InteractCandidate,
+): number | null {
   const dx = query.position.x - candidate.position.x;
   const dy = query.position.y - candidate.position.y;
   const distanceSq = dx * dx + dy * dy;
@@ -47,7 +50,10 @@ export function selectInteractionFocus<C extends InteractCandidate>(
   for (const candidate of candidates) {
     const distanceSq = inRangeDistanceSq(query, candidate);
     if (distanceSq === null) continue;
-    if (best === null || byFocusOrder(candidate, distanceSq, best, bestDistanceSq) < 0) {
+    if (
+      best === null ||
+      byFocusOrder(candidate, distanceSq, best, bestDistanceSq) < 0
+    ) {
       best = candidate;
       bestDistanceSq = distanceSq;
     }
@@ -76,6 +82,8 @@ export function rankInteractables<C extends InteractCandidate>(
     const distanceSq = inRangeDistanceSq(query, candidate);
     if (distanceSq !== null) scored.push({ candidate, distanceSq });
   }
-  scored.sort((a, b) => byFocusOrder(a.candidate, a.distanceSq, b.candidate, b.distanceSq));
+  scored.sort((a, b) =>
+    byFocusOrder(a.candidate, a.distanceSq, b.candidate, b.distanceSq),
+  );
   return scored.map((entry) => entry.candidate);
 }

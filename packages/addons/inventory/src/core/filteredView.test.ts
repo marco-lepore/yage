@@ -17,7 +17,13 @@ const isConsumable = (
 ): boolean => def.category === "consumable";
 
 function setup(): { inventory: Inventory<Id> } {
-  return { inventory: new Inventory<Id>({ catalog, capacity: 6, actions: [{ id: "use", label: "Use" }] }) };
+  return {
+    inventory: new Inventory<Id>({
+      catalog,
+      capacity: 6,
+      actions: [{ id: "use", label: "Use" }],
+    }),
+  };
 }
 
 describe("filteredView — the projected read surface", () => {
@@ -76,7 +82,9 @@ describe("filteredView — actions operate on presented indices", () => {
     inventory.on("action", invoked);
     const result = view.invokeAction("use", 0);
     expect(result).toEqual({ ok: true });
-    expect(invoked).toHaveBeenCalledWith(expect.objectContaining({ slot: 1, itemId: "potion" }));
+    expect(invoked).toHaveBeenCalledWith(
+      expect.objectContaining({ slot: 1, itemId: "potion" }),
+    );
   });
 
   it("invokeAction past the compacted end reports empty, without touching the model", () => {

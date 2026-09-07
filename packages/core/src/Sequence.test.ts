@@ -186,12 +186,11 @@ describe("Sequence", () => {
     let count = 0;
     const inner = new Process({
       duration: 50,
-      update: () => { count++; },
+      update: () => {
+        count++;
+      },
     });
-    const proc = new Sequence()
-      .then(inner)
-      .loop()
-      ._build();
+    const proc = new Sequence().then(inner).loop()._build();
 
     // Iteration 1: inner runs for 50ms
     proc._update(50);
@@ -207,12 +206,12 @@ describe("Sequence", () => {
   it("repeat() resets direct Process instances between iterations", () => {
     let count = 0;
     const inner = new Process({
-      update: () => { count++; return true; },
+      update: () => {
+        count++;
+        return true;
+      },
     });
-    const proc = new Sequence()
-      .then(inner)
-      .repeat(3)
-      ._build();
+    const proc = new Sequence().then(inner).repeat(3)._build();
 
     proc._update(0); // iteration 1
     proc._update(0); // iteration 2
@@ -224,13 +223,20 @@ describe("Sequence", () => {
   it("parallel() resets direct Process instances on loop", () => {
     let a = 0;
     let b = 0;
-    const procA = new Process({ update: () => { a++; return true; } });
-    const procB = new Process({ update: () => { b++; return true; } });
+    const procA = new Process({
+      update: () => {
+        a++;
+        return true;
+      },
+    });
+    const procB = new Process({
+      update: () => {
+        b++;
+        return true;
+      },
+    });
 
-    const seq = new Sequence()
-      .parallel(procA, procB)
-      .loop()
-      ._build();
+    const seq = new Sequence().parallel(procA, procB).loop()._build();
 
     seq._update(0); // iteration 1: both run and complete
     seq._update(0); // iteration 2: both should be reset and run again

@@ -59,11 +59,13 @@ class DefaultedSetup extends Entity {
 
 function assertTypes(): void {
   // Scene.spawn — params inferred from setup(); complete object accepted.
-  expectTypeOf(scene.spawn(Enemy, {
-    archetype: "goblin",
-    hp: 10,
-    spawnPoint: { x: 0, y: 0 },
-  })).toEqualTypeOf<Enemy>();
+  expectTypeOf(
+    scene.spawn(Enemy, {
+      archetype: "goblin",
+      hp: 10,
+      spawnPoint: { x: 0, y: 0 },
+    }),
+  ).toEqualTypeOf<Enemy>();
 
   // Omitting a required field surfaces "Property 'spawnPoint' is missing" on
   // the params object — not a misleading "X does not exist on SpawnOptions".
@@ -122,11 +124,13 @@ function assertTypes(): void {
   );
 
   // Entity.spawnChild mirrors the same class-form shape.
-  expectTypeOf(parent.spawnChild("foe", Enemy, {
-    archetype: "goblin",
-    hp: 10,
-    spawnPoint: { x: 0, y: 0 },
-  })).toEqualTypeOf<Enemy>();
+  expectTypeOf(
+    parent.spawnChild("foe", Enemy, {
+      archetype: "goblin",
+      hp: 10,
+      spawnPoint: { x: 0, y: 0 },
+    }),
+  ).toEqualTypeOf<Enemy>();
 
   // @ts-expect-error spawnPoint is required by Enemy.setup()
   parent.spawnChild("foe", Enemy, { archetype: "goblin", hp: 10 });

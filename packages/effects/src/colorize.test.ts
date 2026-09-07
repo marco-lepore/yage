@@ -13,7 +13,9 @@ vi.mock("pixi.js", async () => {
       enabled = true;
       alpha = 1;
       resources: Record<string, { uniforms: Record<string, unknown> }>;
-      constructor(opts: { resources: Record<string, Record<string, { value: unknown }>> }) {
+      constructor(opts: {
+        resources: Record<string, Record<string, { value: unknown }>>;
+      }) {
         const flat: Record<string, { uniforms: Record<string, unknown> }> = {};
         for (const [group, fields] of Object.entries(opts.resources)) {
           const uniforms: Record<string, unknown> = {};
@@ -77,8 +79,9 @@ function uniformsOf(filter: Filter): {
   uColor: Float32Array | number[];
   uStrength: number;
 } {
-  const resources = (filter as unknown as { resources: Record<string, { uniforms: unknown }> })
-    .resources;
+  const resources = (
+    filter as unknown as { resources: Record<string, { uniforms: unknown }> }
+  ).resources;
   return resources.colorizeUniforms!.uniforms as {
     uColor: Float32Array | number[];
     uStrength: number;

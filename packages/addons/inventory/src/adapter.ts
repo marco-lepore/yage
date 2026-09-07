@@ -49,8 +49,8 @@ export interface Mountable {
 export interface SlotsPresenter<
   TId extends string = string,
   TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
-> extends SlotsChannel<TId, TData>,
-    Mountable {
+>
+  extends SlotsChannel<TId, TData>, Mountable {
   /** Slot index under this point, or undefined. Omit for no pointer support. */
   slotAtPoint?(x: number, y: number): number | undefined;
   /** Coordinate space `slotAtPoint` expects. Default "screen". */
@@ -101,7 +101,12 @@ export interface CellPresenter<
    * its background and can be selected. Spawn order inside the handle is paint
    * order: background/selection graphics first, content on top.
    */
-  renderCell(scene: Scene, view: SlotView<TId, TData>, rect: Rect, selected: boolean): CellHandle;
+  renderCell(
+    scene: Scene,
+    view: SlotView<TId, TData>,
+    rect: Rect,
+    selected: boolean,
+  ): CellHandle;
   /** Optional diagnostics sink pass-through (e.g. an unresolvable icon key). */
   setDiagnostics?(warn: DiagnosticSink): void;
   /** Optional preset-level teardown (a texture cache, say). */
@@ -135,7 +140,11 @@ export interface MenuSkinHandle {
 export interface MenuSkinPresenter {
   /** Draw the menu frame and its rows. `menu` is the outer frame rect; each
    *  `rows[i].rect` is the same rect the view hit-tests. */
-  renderMenu(scene: Scene, menu: Rect, rows: readonly MenuSkinRow[]): MenuSkinHandle;
+  renderMenu(
+    scene: Scene,
+    menu: Rect,
+    rows: readonly MenuSkinRow[],
+  ): MenuSkinHandle;
 }
 
 /** Which scroll directions have rows past the window, plus the cell-window
@@ -169,8 +178,8 @@ export interface HintsPresenter {
 export interface DetailPresenter<
   TId extends string = string,
   TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
-> extends DetailChannel<TId, TData>,
-    Mountable {}
+>
+  extends DetailChannel<TId, TData>, Mountable {}
 
 /** The per-item action popup, with the pointer hit-test seam for its rows. */
 export interface ActionMenuPresenter extends ActionMenuChannel, Mountable {

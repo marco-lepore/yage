@@ -83,7 +83,9 @@ export interface VoiceChannelOptions {
  * fires again here — it stops any active clip first, so a restore restarts the
  * line's clip cleanly (the restore-safety property).
  */
-export function createVoiceChannel(opts: VoiceChannelOptions): DialogueExtraChannel {
+export function createVoiceChannel(
+  opts: VoiceChannelOptions,
+): DialogueExtraChannel {
   const { play, onSkip = "cut", liveness, onError } = opts;
   const pauseClip = opts.pauseWithConversation ?? true;
 

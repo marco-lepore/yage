@@ -1,4 +1,12 @@
-import { Engine, Scene, Entity, Component, Transform, Vec2, defineEvent } from "@yagejs/core";
+import {
+  Engine,
+  Scene,
+  Entity,
+  Component,
+  Transform,
+  Vec2,
+  defineEvent,
+} from "@yagejs/core";
 import {
   RendererPlugin,
   GraphicsComponent,
@@ -13,7 +21,10 @@ import {
 } from "@yagejs/physics";
 import { AudioPlugin, AudioManagerKey, sound } from "@yagejs/audio";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+import {
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -234,14 +245,32 @@ class CollisionsScene extends Scene {
 
     // Walls
     this.spawn(WallEntity, { x: WIDTH / 2, y: WALL / 2, w: WIDTH, h: WALL });
-    this.spawn(WallEntity, { x: WIDTH / 2, y: HEIGHT - WALL / 2, w: WIDTH, h: WALL });
+    this.spawn(WallEntity, {
+      x: WIDTH / 2,
+      y: HEIGHT - WALL / 2,
+      w: WIDTH,
+      h: WALL,
+    });
     this.spawn(WallEntity, { x: WALL / 2, y: HEIGHT / 2, w: WALL, h: HEIGHT });
-    this.spawn(WallEntity, { x: WIDTH - WALL / 2, y: HEIGHT / 2, w: WALL, h: HEIGHT });
+    this.spawn(WallEntity, {
+      x: WIDTH - WALL / 2,
+      y: HEIGHT / 2,
+      w: WALL,
+      h: HEIGHT,
+    });
 
     // Coins
     const coinPositions = [
-      [150, 150], [650, 150], [400, 100], [200, 450], [600, 450],
-      [100, 300], [700, 300], [350, 500], [450, 200], [300, 350],
+      [150, 150],
+      [650, 150],
+      [400, 100],
+      [200, 450],
+      [600, 450],
+      [100, 300],
+      [700, 300],
+      [350, 500],
+      [450, 200],
+      [300, 350],
     ];
     for (const [x, y] of coinPositions) {
       this.spawn(CoinEntity, { x: x!, y: y! });
@@ -260,22 +289,26 @@ class CollisionsScene extends Scene {
 async function main() {
   const engine = new Engine({ debug: true });
 
-  engine.use(new RendererPlugin({
-    width: WIDTH,
-    height: HEIGHT,
-    backgroundColor: 0x0a0a0a,
-    container: setupGameContainer(WIDTH, HEIGHT),
-  }));
+  engine.use(
+    new RendererPlugin({
+      width: WIDTH,
+      height: HEIGHT,
+      backgroundColor: 0x0a0a0a,
+      container: setupGameContainer(WIDTH, HEIGHT),
+    }),
+  );
   engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 0 } }));
   engine.use(new AudioPlugin());
-  engine.use(new InputPlugin({
-    actions: {
-      up: ["KeyW", "ArrowUp"],
-      down: ["KeyS", "ArrowDown"],
-      left: ["KeyA", "ArrowLeft"],
-      right: ["KeyD", "ArrowRight"],
-    },
-  }));
+  engine.use(
+    new InputPlugin({
+      actions: {
+        up: ["KeyW", "ArrowUp"],
+        down: ["KeyS", "ArrowDown"],
+        left: ["KeyA", "ArrowLeft"],
+        right: ["KeyD", "ArrowRight"],
+      },
+    }),
+  );
   await installDebugFromUrl(engine);
 
   await engine.start();

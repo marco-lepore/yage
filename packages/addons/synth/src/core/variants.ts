@@ -55,7 +55,9 @@ export function synthVariantAliases(alias: string, count: number): string[] {
 
 function assertCount(fn: string, count: number): void {
   if (!Number.isInteger(count) || count < 1) {
-    throw new Error(`${fn}: count must be an integer of at least 1 (got ${count}).`);
+    throw new Error(
+      `${fn}: count must be an integer of at least 1 (got ${count}).`,
+    );
   }
 }
 
@@ -86,10 +88,14 @@ function shiftPatch(
   factor: number,
   seedOffset: number,
 ): SynthPatch {
-  const shifted: SynthPatch = { ...patch, seed: (patch.seed ?? 1) + seedOffset };
+  const shifted: SynthPatch = {
+    ...patch,
+    seed: (patch.seed ?? 1) + seedOffset,
+  };
   // Materialize the default pitch: a tonal patch that leaves `frequency`
   // unset must still land on a different pitch per take.
-  if (patch.wave !== "noise") shifted.frequency = (patch.frequency ?? 440) * factor;
+  if (patch.wave !== "noise")
+    shifted.frequency = (patch.frequency ?? 440) * factor;
   if (patch.glideTo !== undefined) shifted.glideTo = patch.glideTo * factor;
   return shifted;
 }

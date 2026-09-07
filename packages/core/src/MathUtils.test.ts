@@ -63,9 +63,7 @@ describe("MathUtils", () => {
 
     it("preserves half-turn direction when the shortest path is ambiguous", () => {
       expect(MathUtils.shortestAngleBetween(0, Math.PI)).toBeCloseTo(Math.PI);
-      expect(MathUtils.shortestAngleBetween(0, -Math.PI)).toBeCloseTo(
-        -Math.PI,
-      );
+      expect(MathUtils.shortestAngleBetween(0, -Math.PI)).toBeCloseTo(-Math.PI);
     });
 
     it("interpolates angles along the shortest path through pi", () => {

@@ -32,12 +32,14 @@ export class Interactable extends Component {
     // one shrinks the reach, and once the total drops below zero the squaring
     // silently makes distant targets selectable.
     if (isDev() && this.radius < 0) {
-      this.context.tryResolve(LoggerKey)?.warn(
-        "interaction",
-        `Interactable radius is ${this.radius}. Radius is a reach bonus in world px added to ` +
-          `the interactor's range and cannot be negative: once the total reach goes below ` +
-          `zero, the in-range test squares it and matches distant targets. Use 0 for no bonus.`,
-      );
+      this.context
+        .tryResolve(LoggerKey)
+        ?.warn(
+          "interaction",
+          `Interactable radius is ${this.radius}. Radius is a reach bonus in world px added to ` +
+            `the interactor's range and cannot be negative: once the total reach goes below ` +
+            `zero, the in-range test squares it and matches distant targets. Use 0 for no bonus.`,
+        );
     }
   }
 

@@ -80,8 +80,7 @@ export function linearGradient(options: LinearGradientOptions): GradientFill {
   const axis = options.axis ?? "vertical";
   const start = options.start ?? { x: 0, y: 0 };
   const end =
-    options.end ??
-    (axis === "horizontal" ? { x: 1, y: 0 } : { x: 0, y: 1 });
+    options.end ?? (axis === "horizontal" ? { x: 1, y: 0 } : { x: 0, y: 1 });
   return new FillGradient({
     type: "linear",
     start,

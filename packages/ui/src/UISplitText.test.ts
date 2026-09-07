@@ -3,7 +3,14 @@ import { describe, it, expect, vi, beforeAll } from "vitest";
 const { mocks } = vi.hoisted(() => {
   class MockContainer {
     children: MockContainer[] = [];
-    position = { x: 0, y: 0, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    position = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
     visible = true;
     parent: MockContainer | null = null;
     destroyed = false;
@@ -79,8 +86,13 @@ const { mocks } = vi.hoisted(() => {
     }
     split(): void {
       this.splitCalls++;
-      this.chars = [...this._text].filter((c) => c !== " ").map((c) => new MockText(c));
-      this.words = this._text.split(/\s+/).filter(Boolean).map(() => new MockContainer());
+      this.chars = [...this._text]
+        .filter((c) => c !== " ")
+        .map((c) => new MockText(c));
+      this.words = this._text
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(() => new MockContainer());
       this.lines = [new MockContainer()];
     }
     get text(): string {
@@ -97,7 +109,12 @@ const { mocks } = vi.hoisted(() => {
 
   return {
     mocks: {
-      MockContainer, MockText, MockBitmapText, MockSplitText, MockSplitBitmapText, measure,
+      MockContainer,
+      MockText,
+      MockBitmapText,
+      MockSplitText,
+      MockSplitBitmapText,
+      measure,
     },
   };
 });
@@ -120,7 +137,10 @@ beforeAll(() => {
   setYoga(Yoga);
 });
 
-function layout(el: UISplitText, containerWidth?: number): { width: number; height: number } {
+function layout(
+  el: UISplitText,
+  containerWidth?: number,
+): { width: number; height: number } {
   const parent = Yoga.Node.create();
   if (containerWidth !== undefined) parent.setWidth(containerWidth);
   parent.insertChild(el.yogaNode, 0);
@@ -171,12 +191,16 @@ describe("UISplitText", () => {
 
   it("measures natural size via metrics (stable, no resplit)", () => {
     const t = new UISplitText({ children: "hello" });
-    const splitsBefore = (t.splitText as InstanceType<typeof mocks.MockSplitText>).splitCalls;
+    const splitsBefore = (
+      t.splitText as InstanceType<typeof mocks.MockSplitText>
+    ).splitCalls;
     const out = layout(t, undefined);
     expect(out.width).toBe(5 * 10);
     expect(out.height).toBe(16);
     // measuring must not trigger a re-split
-    expect((t.splitText as InstanceType<typeof mocks.MockSplitText>).splitCalls).toBe(splitsBefore);
+    expect(
+      (t.splitText as InstanceType<typeof mocks.MockSplitText>).splitCalls,
+    ).toBe(splitsBefore);
   });
 
   it("setText re-splits and fires onSplit with fresh segments", () => {
@@ -219,19 +243,25 @@ describe("UISplitText", () => {
     const t = new UISplitText({ children: "hi", autoSplit: false });
     let fired = 0;
     t.onSplit(() => fired++);
-    const before = (t.splitText as InstanceType<typeof mocks.MockSplitText>).splitCalls;
+    const before = (t.splitText as InstanceType<typeof mocks.MockSplitText>)
+      .splitCalls;
     t.resplit();
-    expect((t.splitText as InstanceType<typeof mocks.MockSplitText>).splitCalls).toBe(before + 1);
+    expect(
+      (t.splitText as InstanceType<typeof mocks.MockSplitText>).splitCalls,
+    ).toBe(before + 1);
     expect(fired).toBe(1);
   });
 
   it("forwards segment anchors via getters/setters (no resplit)", () => {
     const t = new UISplitText({ children: "hi", charAnchor: 0.5 });
     expect(t.charAnchor).toBe(0.5);
-    const before = (t.splitText as InstanceType<typeof mocks.MockSplitText>).splitCalls;
+    const before = (t.splitText as InstanceType<typeof mocks.MockSplitText>)
+      .splitCalls;
     t.lineAnchor = { x: 1, y: 0 };
     expect(t.splitText.lineAnchor).toEqual({ x: 1, y: 0 });
-    expect((t.splitText as InstanceType<typeof mocks.MockSplitText>).splitCalls).toBe(before);
+    expect(
+      (t.splitText as InstanceType<typeof mocks.MockSplitText>).splitCalls,
+    ).toBe(before);
   });
 
   it("setText with autoSplit:false defers onSplit (no empty-segment emit)", () => {
@@ -248,11 +278,14 @@ describe("UISplitText", () => {
     const t = new UISplitText({ children: "hi", style: { fill: 0xffffff } });
     let fired = 0;
     t.onSplit(() => fired++);
-    const before = (t.splitText as InstanceType<typeof mocks.MockSplitText>).splitCalls;
+    const before = (t.splitText as InstanceType<typeof mocks.MockSplitText>)
+      .splitCalls;
     // Fresh object literal, same content — the React re-render case.
     t.update({ style: { fill: 0xffffff } });
     expect(fired).toBe(0);
-    expect((t.splitText as InstanceType<typeof mocks.MockSplitText>).splitCalls).toBe(before);
+    expect(
+      (t.splitText as InstanceType<typeof mocks.MockSplitText>).splitCalls,
+    ).toBe(before);
     // A genuine change does re-style and notify.
     t.update({ style: { fill: 0xff0000 } });
     expect(fired).toBe(1);
@@ -288,7 +321,9 @@ describe("UISplitText", () => {
     const t = new UISplitText({ children: "hi" });
     let fired = 0;
     t.onSplit(() => fired++);
-    const obj = t.splitText as unknown as InstanceType<typeof mocks.MockContainer>;
+    const obj = t.splitText as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
     t.destroy();
     expect(obj.destroyed).toBe(true);
   });

@@ -14,15 +14,21 @@ Bundles PixiJS v8 - no separate install required.
 
 ```ts
 import { Engine } from "@yagejs/core";
-import { RendererPlugin, SpriteComponent, GraphicsComponent } from "@yagejs/renderer";
+import {
+  RendererPlugin,
+  SpriteComponent,
+  GraphicsComponent,
+} from "@yagejs/renderer";
 
 const engine = new Engine();
-engine.use(new RendererPlugin({
-  width: 800,
-  height: 600,
-  backgroundColor: 0x0a0a0a,
-  container: document.getElementById("game")!,
-}));
+engine.use(
+  new RendererPlugin({
+    width: 800,
+    height: 600,
+    backgroundColor: 0x0a0a0a,
+    container: document.getElementById("game")!,
+  }),
+);
 await engine.start();
 ```
 

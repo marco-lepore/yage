@@ -6,9 +6,7 @@ export interface NineSliceViewOptions {
   texture: TextureInput;
   width: number;
   height: number;
-  insets:
-    | number
-    | { left: number; top: number; right: number; bottom: number };
+  insets: number | { left: number; top: number; right: number; bottom: number };
 }
 
 /** Create a resizable nine-slice display view without exposing Pixi types. */

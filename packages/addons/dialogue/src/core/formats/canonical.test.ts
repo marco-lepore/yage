@@ -20,7 +20,10 @@ function loadCondition(condition: Condition): Condition | undefined {
   const s = loadScript(
     script({
       nodes: {
-        a: { id: "a", steps: [{ kind: "command", commands: [], condition, target: "a" }] },
+        a: {
+          id: "a",
+          steps: [{ kind: "command", commands: [], condition, target: "a" }],
+        },
       },
     }),
   );
@@ -37,7 +40,9 @@ describe("loadScript — structural validation", () => {
       nodes: {
         a: {
           id: "a",
-          steps: [{ kind: "goto" } as unknown as { kind: "goto"; target: string }],
+          steps: [
+            { kind: "goto" } as unknown as { kind: "goto"; target: string },
+          ],
         },
       },
     });
@@ -68,11 +73,18 @@ describe("loadScript — structural validation", () => {
 describe("loadScript — speaker validation", () => {
   it("stamps each speaker's id from its map key", () => {
     const s = script({
-      speakers: { gwen: { name: "Gwen" }, mara: { name: "Mara", color: 0xff0000 } },
+      speakers: {
+        gwen: { name: "Gwen" },
+        mara: { name: "Mara", color: 0xff0000 },
+      },
     });
     const loaded = loadScript(s);
     expect(loaded.speakers?.gwen).toEqual({ id: "gwen", name: "Gwen" });
-    expect(loaded.speakers?.mara).toEqual({ id: "mara", name: "Mara", color: 0xff0000 });
+    expect(loaded.speakers?.mara).toEqual({
+      id: "mara",
+      name: "Mara",
+      color: 0xff0000,
+    });
   });
 
   it("rejects a say.speaker that is not in script.speakers", () => {
@@ -82,7 +94,9 @@ describe("loadScript — speaker validation", () => {
         a: { id: "a", steps: [{ kind: "say", speaker: "gwne", text: "typo" }] },
       },
     });
-    expect(() => loadScript(s)).toThrow(/speaker "gwne" is not in script.speakers/);
+    expect(() => loadScript(s)).toThrow(
+      /speaker "gwne" is not in script.speakers/,
+    );
   });
 
   it("rejects a choice.speaker that is not in script.speakers", () => {
@@ -90,7 +104,9 @@ describe("loadScript — speaker validation", () => {
       nodes: {
         a: {
           id: "a",
-          steps: [{ kind: "choice", speaker: "ghost", options: [{ text: "x" }] }],
+          steps: [
+            { kind: "choice", speaker: "ghost", options: [{ text: "x" }] },
+          ],
         },
       },
     });
@@ -125,8 +141,15 @@ describe("loadScript — string conditions / set values unify to Expr", () => {
 
   it("operator-bearing condition strings now parse (`not greeted`)", () => {
     const condition = loadCondition("not greeted");
-    expect(condition).toEqual({ kind: "unary", op: "!", operand: { kind: "varRef", name: "greeted" } });
-    const scope = createScope(new MemoryVariableStorage({ greeted: false }), {});
+    expect(condition).toEqual({
+      kind: "unary",
+      op: "!",
+      operand: { kind: "varRef", name: "greeted" },
+    });
+    const scope = createScope(
+      new MemoryVariableStorage({ greeted: false }),
+      {},
+    );
     expect(evalCondition(condition!, scope)).toBe(true);
   });
 
@@ -158,7 +181,10 @@ describe("loadScript — string conditions / set values unify to Expr", () => {
           a: {
             id: "a",
             steps: [
-              { kind: "command", commands: [{ type: "set", var: "gold", value: "gold - 50" }] },
+              {
+                kind: "command",
+                commands: [{ type: "set", var: "gold", value: "gold - 50" }],
+              },
               { kind: "end" },
             ],
           },

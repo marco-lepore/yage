@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>YAGE — Scene Transitions</title>
-    <link rel="stylesheet" href="/shared.css">
+    <link rel="stylesheet" href="/shared.css" />
   </head>
   <body>
     <a class="back-link" href="/">&larr; All Examples</a>
@@ -13,7 +13,14 @@
     <div class="controls">
       <div class="slider-row">
         <label for="duration">Duration:</label>
-        <input id="duration" type="range" min="100" max="2000" step="50" value="400" />
+        <input
+          id="duration"
+          type="range"
+          min="100"
+          max="2000"
+          step="50"
+          value="400"
+        />
         <span id="duration-label">400ms</span>
       </div>
       <div class="row">
@@ -37,8 +44,7 @@
       <div class="row">
         <button id="btn-push-load">Replace via loading scene</button>
       </div>
-      <div id="status">Stack:
-Transitioning:</div>
+      <div id="status">Stack: Transitioning:</div>
     </div>
     <script type="module" src="/src/scene-transitions/main.ts"></script>
   </body>

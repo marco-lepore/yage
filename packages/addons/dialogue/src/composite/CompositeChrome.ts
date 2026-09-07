@@ -13,11 +13,18 @@
 import type { Scene } from "@yagejs/core";
 import type { PresentedLine } from "../core/session.js";
 import type { ChromePresenter } from "../chrome/DialogueUiAdapter.js";
-import { makeDefaultRoute, lineRoutesToBubble, type MountRoute } from "./route.js";
+import {
+  makeDefaultRoute,
+  lineRoutesToBubble,
+  type MountRoute,
+} from "./route.js";
 
 export class CompositeChrome implements ChromePresenter {
   private active?: ChromePresenter | undefined;
-  private pendingName: { name?: string | undefined; color?: number | undefined } = {};
+  private pendingName: {
+    name?: string | undefined;
+    color?: number | undefined;
+  } = {};
   private pendingContinue = false;
   /** Master gate from the Session's setVisible — composed with the active
    *  variant's own content state. Hidden at mount. */
@@ -63,7 +70,9 @@ export class CompositeChrome implements ChromePresenter {
       this.active?.present?.(undefined);
       return;
     }
-    const target = lineRoutesToBubble(this.routing.route, line) ? this.bubble : this.box;
+    const target = lineRoutesToBubble(this.routing.route, line)
+      ? this.bubble
+      : this.box;
     const other = target === this.box ? this.bubble : this.box;
     other.setVisible(false);
 

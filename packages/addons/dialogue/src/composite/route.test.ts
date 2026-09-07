@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { routeWithActor, makeDefaultRoute, fixedRoute, choiceAsLine } from "./route.js";
+import {
+  routeWithActor,
+  makeDefaultRoute,
+  fixedRoute,
+  choiceAsLine,
+} from "./route.js";
 import type { PresentedLine, SpeakerView } from "../core/session.js";
 
 /**
@@ -32,14 +37,20 @@ describe("routeWithActor — default precedence", () => {
   });
 
   it("explicit view wins for a real speaker", () => {
-    expect(routeWithActor(line({ speaker: npc, view: "bubble" }), none)).toBe("bubble");
+    expect(routeWithActor(line({ speaker: npc, view: "bubble" }), none)).toBe(
+      "bubble",
+    );
     // view:'bubble' wins even when the actor is missing (renders at the fallback
     // anchor rather than vanishing).
-    expect(routeWithActor(line({ speaker: npc, view: "box" }), hasActor("npc"))).toBe("box");
+    expect(
+      routeWithActor(line({ speaker: npc, view: "box" }), hasActor("npc")),
+    ).toBe("box");
   });
 
   it("no view → a registered actor floats in a bubble; an unregistered one stays in the box", () => {
-    expect(routeWithActor(line({ speaker: npc }), hasActor("npc"))).toBe("bubble");
+    expect(routeWithActor(line({ speaker: npc }), hasActor("npc"))).toBe(
+      "bubble",
+    );
     expect(routeWithActor(line({ speaker: npc }), none)).toBe("box");
   });
 });
@@ -56,10 +67,14 @@ describe("fixedRoute — one-place override", () => {
   it("routes by a custom policy and ignores the scene", () => {
     // "All of the boss's lines in bubbles, everything else in the box."
     const r = fixedRoute((l) => (l?.speaker?.id === "boss" ? "bubble" : "box"));
-    expect(r.route(line({ speaker: { id: "boss", name: "Boss" } }))).toBe("bubble");
+    expect(r.route(line({ speaker: { id: "boss", name: "Boss" } }))).toBe(
+      "bubble",
+    );
     expect(r.route(line({ speaker: npc, view: "bubble" }))).toBe("box"); // override beats view
     r.bind({} as never); // no-op; never throws
-    expect(r.route(line({ speaker: { id: "boss", name: "Boss" } }))).toBe("bubble");
+    expect(r.route(line({ speaker: { id: "boss", name: "Boss" } }))).toBe(
+      "bubble",
+    );
   });
 });
 

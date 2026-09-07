@@ -39,8 +39,6 @@ describe("RenderFacetContributor", () => {
   });
 
   it("returns undefined when no component painted", () => {
-    expect(
-      contributor.inspectEntity([undefined, undefined]),
-    ).toBeUndefined();
+    expect(contributor.inspectEntity([undefined, undefined])).toBeUndefined();
   });
 });

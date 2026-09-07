@@ -1,4 +1,8 @@
-import { defineItems, type ItemActionDef, type ItemDef } from "@yagejs-addons/inventory";
+import {
+  defineItems,
+  type ItemActionDef,
+  type ItemDef,
+} from "@yagejs-addons/inventory";
 import { Texture } from "pixi.js";
 import { ICON_POTION } from "./constants.js";
 

@@ -44,9 +44,19 @@ const container = setupContainer(WIDTH, HEIGHT);
 
 // Catalog order matters: the sort spec asserts potion < gem < sword.
 const CATALOG = defineItems({
-  potion: { name: "Potion", maxStack: 5, category: "consumable", actions: ["use", "drop"] },
+  potion: {
+    name: "Potion",
+    maxStack: 5,
+    category: "consumable",
+    actions: ["use", "drop"],
+  },
   gem: { name: "Gem", maxStack: 99, category: "treasure", actions: ["drop"] },
-  arrows: { name: "Arrows", maxStack: 30, stacking: "single", actions: ["drop"] },
+  arrows: {
+    name: "Arrows",
+    maxStack: 30,
+    stacking: "single",
+    actions: ["drop"],
+  },
   sword: { name: "Iron Sword", category: "gear", actions: ["equip", "drop"] },
   goldKey: { name: "Gold Key", category: "key", actions: [] },
 });
@@ -82,7 +92,10 @@ class InventoryScene extends Scene {
 
     this.spawn(CameraEntity, { position: new Vec2(WIDTH / 2, HEIGHT / 2) });
 
-    const backpackBundle = createInventoryPanel(undefined, { columns: 5, visibleRows: 3 });
+    const backpackBundle = createInventoryPanel(undefined, {
+      columns: 5,
+      visibleRows: 3,
+    });
     const backpackHost = this.spawn("backpack-ui");
     const backpackCtrl = backpackHost.add(
       new InventoryController({
@@ -93,7 +106,10 @@ class InventoryScene extends Scene {
       }),
     );
 
-    const pouchBundle = createInventoryPanel(undefined, { cell: rowCell, visibleRows: 6 });
+    const pouchBundle = createInventoryPanel(undefined, {
+      cell: rowCell,
+      visibleRows: 6,
+    });
     const pouchHost = this.spawn("pouch-ui");
     const pouchCtrl = pouchHost.add(
       new InventoryController({
@@ -110,7 +126,10 @@ class InventoryScene extends Scene {
     // the width). `input: null` + `closeOnCancel: false` + `openOnAdd` hand
     // all driving to the host.
     let hotbarCancels = 0;
-    const usableItems = filteredView(backpack, (_stack, def) => def.actions?.includes("use") ?? false);
+    const usableItems = filteredView(
+      backpack,
+      (_stack, def) => def.actions?.includes("use") ?? false,
+    );
     const hotbarBundle = createInventoryPanel(undefined, {
       bounds: { x: (WIDTH - 300) / 2, y: HEIGHT - 90, width: 300, height: 66 },
       chrome: false,
@@ -150,7 +169,11 @@ class InventoryScene extends Scene {
         toast(`Equipped ${def.name}`);
       }
     });
-    const rejectionToast = (e: { itemId: string; quantity: number; reason: RejectReason }): void => {
+    const rejectionToast = (e: {
+      itemId: string;
+      quantity: number;
+      reason: RejectReason;
+    }): void => {
       if (!CATALOG.has(e.itemId)) return;
       const def = CATALOG.get(e.itemId);
       toast(

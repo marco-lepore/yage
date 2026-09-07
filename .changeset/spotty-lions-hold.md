@@ -21,7 +21,10 @@ and `framesUsed`, a live count of the frames the run has spent:
 ```ts
 await ctx.input.whileHolding(["KeyD"], async () => {
   while (ctx.framesUsed < 900 && !atExit()) {
-    if (ground.grounded && gapAhead(body, 48)) { await jumpGap(ctx); continue; }
+    if (ground.grounded && gapAhead(body, 48)) {
+      await jumpGap(ctx);
+      continue;
+    }
     await ctx.step(1);
   }
 });

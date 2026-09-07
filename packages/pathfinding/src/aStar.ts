@@ -51,8 +51,18 @@ const DIAGONAL_OFFSETS: readonly (readonly [number, number])[] = [
  * produce identical output.
  */
 export function aStar(options: AStarOptions): AStarResult | null {
-  const { cols, rows, startCol, startRow, goalCol, goalRow, isWalkable, cost, diagonalMovement, heuristic } =
-    options;
+  const {
+    cols,
+    rows,
+    startCol,
+    startRow,
+    goalCol,
+    goalRow,
+    isWalkable,
+    cost,
+    diagonalMovement,
+    heuristic,
+  } = options;
 
   const startIndex = startRow * cols + startCol;
   const goalIndex = goalRow * cols + goalCol;
@@ -67,18 +77,28 @@ export function aStar(options: AStarOptions): AStarResult | null {
   const closed = new Uint8Array(size);
   gScore[startIndex] = 0;
 
-  const open = new BinaryHeap<OpenNode>((a, b) => (a.f !== b.f ? a.f - b.f : a.h - b.h));
-  const startH = heuristic(Math.abs(goalCol - startCol), Math.abs(goalRow - startRow));
+  const open = new BinaryHeap<OpenNode>((a, b) =>
+    a.f !== b.f ? a.f - b.f : a.h - b.h,
+  );
+  const startH = heuristic(
+    Math.abs(goalCol - startCol),
+    Math.abs(goalRow - startRow),
+  );
   open.push({ index: startIndex, g: 0, h: startH, f: startH });
 
   const offsets =
-    diagonalMovement === "never" ? ORTHOGONAL_OFFSETS : [...ORTHOGONAL_OFFSETS, ...DIAGONAL_OFFSETS];
+    diagonalMovement === "never"
+      ? ORTHOGONAL_OFFSETS
+      : [...ORTHOGONAL_OFFSETS, ...DIAGONAL_OFFSETS];
 
   let node: OpenNode | undefined;
   while ((node = open.pop()) !== undefined) {
     if (closed[node.index]) continue; // stale entry superseded by a cheaper one
     if (node.index === goalIndex) {
-      return { cells: reconstructPath(parent, goalIndex, cols), cost: gScore[goalIndex]! };
+      return {
+        cells: reconstructPath(parent, goalIndex, cols),
+        cost: gScore[goalIndex]!,
+      };
     }
     closed[node.index] = 1;
 
@@ -117,7 +137,11 @@ export function aStar(options: AStarOptions): AStarResult | null {
   return null;
 }
 
-function reconstructPath(parent: Int32Array, goalIndex: number, cols: number): GridCell[] {
+function reconstructPath(
+  parent: Int32Array,
+  goalIndex: number,
+  cols: number,
+): GridCell[] {
   const cells: GridCell[] = [];
   let index = goalIndex;
   for (;;) {

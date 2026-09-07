@@ -21,7 +21,10 @@ describe("BubbleAnchorResolver — live actor", () => {
   it("uses a live actor's head anchor", () => {
     const { scene } = createMockScene();
     actorRegistryFor(scene).register("npc", fakeActor(10, 20));
-    expect(new BubbleAnchorResolver().resolve(scene, "npc")).toEqual({ x: 10, y: 20 });
+    expect(new BubbleAnchorResolver().resolve(scene, "npc")).toEqual({
+      x: 10,
+      y: 20,
+    });
   });
 });
 
@@ -52,7 +55,10 @@ describe("BubbleAnchorResolver — missing actor", () => {
 
   it("defaults the fallback to the world origin", () => {
     const { scene } = createMockScene();
-    expect(new BubbleAnchorResolver().resolve(scene, "ghost")).toEqual({ x: 0, y: 0 });
+    expect(new BubbleAnchorResolver().resolve(scene, "ghost")).toEqual({
+      x: 0,
+      y: 0,
+    });
   });
 });
 

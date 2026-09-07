@@ -29,12 +29,7 @@ if (!coreVersion) {
   throw new Error(`Could not read version from ${corePkgPath}`);
 }
 
-const templatesRoot = join(
-  repoRoot,
-  "packages",
-  "create-yage",
-  "templates",
-);
+const templatesRoot = join(repoRoot, "packages", "create-yage", "templates");
 
 const templates = ["recommended", "minimal"];
 const versionSpec = `^${coreVersion}`;
@@ -73,12 +68,7 @@ console.log(
 
 // features.ts hardcodes the @yagejs/* range for the `--features` add-on deps
 // in a single `YAGE_RANGE` constant; rewrite it the same way.
-const featuresPath = join(
-  templatesRoot,
-  "..",
-  "src",
-  "features.ts",
-);
+const featuresPath = join(templatesRoot, "..", "src", "features.ts");
 const featuresSrc = readFileSync(featuresPath, "utf8");
 const rangeRe = /(const YAGE_RANGE = )"[^"]*"(;)/;
 if (!rangeRe.test(featuresSrc)) {
@@ -87,10 +77,7 @@ if (!rangeRe.test(featuresSrc)) {
       `did its declaration change?`,
   );
 }
-const nextFeaturesSrc = featuresSrc.replace(
-  rangeRe,
-  `$1"${versionSpec}"$2`,
-);
+const nextFeaturesSrc = featuresSrc.replace(rangeRe, `$1"${versionSpec}"$2`);
 if (nextFeaturesSrc !== featuresSrc) {
   writeFileSync(featuresPath, nextFeaturesSrc);
   console.log(`  updated src/features.ts YAGE_RANGE → ${versionSpec}`);

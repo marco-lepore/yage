@@ -101,8 +101,14 @@ import { Engine } from "@yagejs/core";
 import { RendererPlugin, installBitmapFont } from "@yagejs/renderer";
 import { InputPlugin } from "@yagejs/input";
 import { AudioPlugin } from "@yagejs/audio";
-import { defaultDialogueTheme, type DialogueTheme } from "@yagejs-addons/dialogue/presenters";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+import {
+  defaultDialogueTheme,
+  type DialogueTheme,
+} from "@yagejs-addons/dialogue/presenters";
+import {
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
 import { WIDTH, HEIGHT } from "./constants.js";
 import { RoomScene } from "./scene.js";
 import { THEME_PRESETS } from "./theme.js";
@@ -133,7 +139,13 @@ async function main(): Promise<void> {
         pause: ["KeyP"], // setPaused — freeze the conversation + world
         hide: ["KeyH"], // setHidden — hide the dialogue UI mid-line
       },
-      preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
+      preventDefaultKeys: [
+        "Space",
+        "ArrowUp",
+        "ArrowDown",
+        "ArrowLeft",
+        "ArrowRight",
+      ],
     }),
   );
   // A dedicated "voice" channel for Sage's clips (own volume, mute, pause).
@@ -157,9 +169,12 @@ function wireControls(engine: Engine): void {
   let bitmap = false;
   let fontName: string | undefined;
   let themeIndex = 0;
-  let themeBuild: () => DialogueTheme = THEME_PRESETS[0]?.build ?? defaultDialogueTheme;
+  let themeBuild: () => DialogueTheme =
+    THEME_PRESETS[0]?.build ?? defaultDialogueTheme;
   const rebuild = (): Promise<void> =>
-    engine.scenes.replace(new RoomScene(themeBuild, bitmap ? fontName : undefined));
+    engine.scenes.replace(
+      new RoomScene(themeBuild, bitmap ? fontName : undefined),
+    );
 
   const fontBtn = document.getElementById("font-toggle");
   if (fontBtn instanceof HTMLButtonElement) {

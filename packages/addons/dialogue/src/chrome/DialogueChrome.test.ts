@@ -16,7 +16,10 @@ describe("resolveActiveFrame (meta.chrome → frame)", () => {
   const noStyles = new Map<string, unknown>();
 
   it("selects a named textured style", () => {
-    expect(resolveActiveFrame("wood", withStyles)).toEqual({ kind: "nineSlice", key: "wood" });
+    expect(resolveActiveFrame("wood", withStyles)).toEqual({
+      kind: "nineSlice",
+      key: "wood",
+    });
   });
 
   it("falls back to the default textured style when the line names none", () => {
@@ -34,19 +37,30 @@ describe("resolveActiveFrame (meta.chrome → frame)", () => {
   });
 
   it('hides the frame for the built-in "none" style, even with no textured map', () => {
-    expect(resolveActiveFrame(CHROME_STYLE_NONE, withStyles)).toEqual({ kind: "none" });
-    expect(resolveActiveFrame(CHROME_STYLE_NONE, noStyles)).toEqual({ kind: "none" });
+    expect(resolveActiveFrame(CHROME_STYLE_NONE, withStyles)).toEqual({
+      kind: "none",
+    });
+    expect(resolveActiveFrame(CHROME_STYLE_NONE, noStyles)).toEqual({
+      kind: "none",
+    });
   });
 
   it("draws the Graphics rect when there is no textured map", () => {
-    expect(resolveActiveFrame(undefined, noStyles)).toEqual({ kind: "graphics" });
+    expect(resolveActiveFrame(undefined, noStyles)).toEqual({
+      kind: "graphics",
+    });
     // A named style with no map also falls through to Graphics (and warns).
     expect(resolveActiveFrame("wood", noStyles)).toEqual({ kind: "graphics" });
   });
 
   it("draws the Graphics rect when a map has no default and the line names none", () => {
     const onlyWood = new Map<string, unknown>([["wood", {}]]);
-    expect(resolveActiveFrame(undefined, onlyWood)).toEqual({ kind: "graphics" });
-    expect(resolveActiveFrame("wood", onlyWood)).toEqual({ kind: "nineSlice", key: "wood" });
+    expect(resolveActiveFrame(undefined, onlyWood)).toEqual({
+      kind: "graphics",
+    });
+    expect(resolveActiveFrame("wood", onlyWood)).toEqual({
+      kind: "nineSlice",
+      key: "wood",
+    });
   });
 });

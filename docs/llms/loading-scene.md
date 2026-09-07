@@ -29,12 +29,12 @@ Loading does not start automatically — call `this.startLoading()` when you wan
 
 ```ts
 abstract class LoadingScene extends Scene {
-  readonly name: string;                           // default "loading"
+  readonly name: string; // default "loading"
   abstract readonly target: Scene | (() => Scene);
-  readonly minDuration: number;                    // default 0
+  readonly minDuration: number; // default 0
   readonly transition?: SceneTransition;
-  readonly autoContinue: boolean;                  // default true
-  readonly progress: number;                       // getter, 0 → 1
+  readonly autoContinue: boolean; // default true
+  readonly progress: number; // getter, 0 → 1
 
   /**
    * Start asset loading. No-op while a load is in flight or after a
@@ -61,10 +61,10 @@ abstract class LoadingScene extends Scene {
 
 Both fire on the engine `EventBus`. Payload `scene` is the `LoadingScene` that fired the event — use strict identity (`ev.scene === this.scene`) to filter if multiple loading scenes could coexist.
 
-| Event | Payload | When |
-|---|---|---|
-| `scene:loading:progress` | `{ scene, ratio }` | Every `AssetManager` progress update, 0 → 1 |
-| `scene:loading:done` | `{ scene }` | After preload finishes AND `minDuration` elapses, before the handoff begins |
+| Event                    | Payload            | When                                                                        |
+| ------------------------ | ------------------ | --------------------------------------------------------------------------- |
+| `scene:loading:progress` | `{ scene, ratio }` | Every `AssetManager` progress update, 0 → 1                                 |
+| `scene:loading:done`     | `{ scene }`        | After preload finishes AND `minDuration` elapses, before the handoff begins |
 
 ## Custom visual
 
@@ -82,8 +82,12 @@ class MyLoadingSpinner extends Component {
       this.redraw(ev.ratio);
     });
   }
-  override onDestroy() { this.unsub?.(); }
-  private redraw(r: number) { /* ... */ }
+  override onDestroy() {
+    this.unsub?.();
+  }
+  private redraw(r: number) {
+    /* ... */
+  }
 }
 ```
 
@@ -94,11 +98,11 @@ A constantly-animated visual (rotating spinner) does its own per-frame animation
 ```ts
 class Boot extends LoadingScene {
   readonly target = new GameScene();
-  readonly autoContinue = false;        // gate the handoff
+  readonly autoContinue = false; // gate the handoff
 
   override onEnter() {
     this.spawn(LoadingSceneProgressBar);
-    this.spawn(PressAnyKeyPrompt);      // game-specific; calls scene.continue() on input
+    this.spawn(PressAnyKeyPrompt); // game-specific; calls scene.continue() on input
     this.startLoading();
   }
 }
@@ -116,12 +120,12 @@ class Boot extends LoadingScene {
 ```ts
 class LoadingSceneProgressBar extends Entity {
   setup(opts?: {
-    width?: number;                  // default 400
-    height?: number;                 // default 16
-    track?: BackgroundOptions;       // default dark slate
-    fill?: BackgroundOptions;        // default cyan
-    backdrop?: BackgroundOptions;    // full-viewport bg; default: none (transparent)
-    anchor?: Anchor;                 // default Anchor.Center
+    width?: number; // default 400
+    height?: number; // default 16
+    track?: BackgroundOptions; // default dark slate
+    fill?: BackgroundOptions; // default cyan
+    backdrop?: BackgroundOptions; // full-viewport bg; default: none (transparent)
+    anchor?: Anchor; // default Anchor.Center
     offset?: { x: number; y: number };
     layer?: string;
   }): void;

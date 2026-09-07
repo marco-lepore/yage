@@ -33,10 +33,10 @@ import { Anchor, UISurface, UIPlugin } from "@yagejs/ui";
 import { getContainer, installDebugFromUrl } from "../shared/bootstrap.js";
 import "./styles.css";
 
-
 const readout = document.createElement("div");
 readout.id = "readout";
-readout.textContent = "Resize the browser — the grid extends into the bars, fog marks the out-of-bounds area";
+readout.textContent =
+  "Resize the browser — the grid extends into the bars, fog marks the out-of-bounds area";
 document.body.appendChild(readout);
 
 const VIRTUAL_WIDTH = 800;
@@ -190,9 +190,18 @@ class FogOverlay extends Component {
   private readonly renderer = this.service(RendererKey);
   private readonly graphics = this.sibling(GraphicsComponent);
   private readonly gradTopInner = makeFogGradient("vertical", "opaqueToClear");
-  private readonly gradBottomInner = makeFogGradient("vertical", "clearToOpaque");
-  private readonly gradLeftInner = makeFogGradient("horizontal", "opaqueToClear");
-  private readonly gradRightInner = makeFogGradient("horizontal", "clearToOpaque");
+  private readonly gradBottomInner = makeFogGradient(
+    "vertical",
+    "clearToOpaque",
+  );
+  private readonly gradLeftInner = makeFogGradient(
+    "horizontal",
+    "opaqueToClear",
+  );
+  private readonly gradRightInner = makeFogGradient(
+    "horizontal",
+    "clearToOpaque",
+  );
   private lastKey = "";
 
   update(): void {
@@ -222,23 +231,35 @@ class FogOverlay extends Component {
 
       if (atTop) {
         if (bulk > 0) {
-          g.rect(r.x, r.y, r.width, bulk).fill({ color: 0x000000, alpha: FOG_ALPHA });
+          g.rect(r.x, r.y, r.width, bulk).fill({
+            color: 0x000000,
+            alpha: FOG_ALPHA,
+          });
         }
         g.rect(r.x, r.y + bulk, r.width, gradW).fill(this.gradTopInner);
       } else if (atBottom) {
         g.rect(r.x, r.y, r.width, gradW).fill(this.gradBottomInner);
         if (bulk > 0) {
-          g.rect(r.x, r.y + gradW, r.width, bulk).fill({ color: 0x000000, alpha: FOG_ALPHA });
+          g.rect(r.x, r.y + gradW, r.width, bulk).fill({
+            color: 0x000000,
+            alpha: FOG_ALPHA,
+          });
         }
       } else if (atLeft) {
         if (bulk > 0) {
-          g.rect(r.x, r.y, bulk, r.height).fill({ color: 0x000000, alpha: FOG_ALPHA });
+          g.rect(r.x, r.y, bulk, r.height).fill({
+            color: 0x000000,
+            alpha: FOG_ALPHA,
+          });
         }
         g.rect(r.x + bulk, r.y, gradW, r.height).fill(this.gradLeftInner);
       } else if (atRight) {
         g.rect(r.x, r.y, gradW, r.height).fill(this.gradRightInner);
         if (bulk > 0) {
-          g.rect(r.x + gradW, r.y, bulk, r.height).fill({ color: 0x000000, alpha: FOG_ALPHA });
+          g.rect(r.x + gradW, r.y, bulk, r.height).fill({
+            color: 0x000000,
+            alpha: FOG_ALPHA,
+          });
         }
       }
     }
@@ -285,10 +306,20 @@ const HUD_CARDS: Record<
   Corner,
   { fill: number; stroke: number; label: string; value: string }
 > = {
-  topLeft: { fill: 0x22c55e, stroke: 0x16a34a, label: "SCORE", value: "12,340" },
+  topLeft: {
+    fill: 0x22c55e,
+    stroke: 0x16a34a,
+    label: "SCORE",
+    value: "12,340",
+  },
   topRight: { fill: 0xf97316, stroke: 0xea580c, label: "WAVE", value: "03" },
   bottomLeft: { fill: 0x38bdf8, stroke: 0x0ea5e9, label: "HP", value: "78%" },
-  bottomRight: { fill: 0xa78bfa, stroke: 0x7c3aed, label: "TIME", value: "01:42" },
+  bottomRight: {
+    fill: 0xa78bfa,
+    stroke: 0x7c3aed,
+    label: "TIME",
+    value: "01:42",
+  },
 };
 
 class ResponsiveUIScene extends Scene {
@@ -323,7 +354,11 @@ class ResponsiveUIScene extends Scene {
       ball.add(
         new GraphicsComponent({ layer: "balls" }).draw((g) => {
           g.circle(0, 0, radius).fill({ color, alpha: 0.95 });
-          g.circle(0, 0, radius).stroke({ color: 0xffffff, width: 1, alpha: 0.5 });
+          g.circle(0, 0, radius).stroke({
+            color: 0xffffff,
+            width: 1,
+            alpha: 0.5,
+          });
         }),
       );
       ball.add(new BouncingBall(vx, vy, radius));

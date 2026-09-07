@@ -18,7 +18,11 @@ describe("factory bounds integration", () => {
   it("icon-grid and row-list panels build against explicit bounds without throwing", () => {
     const theme = defaultInventoryTheme();
     const bounds = { x: 10, y: 10, width: 360, height: 320 };
-    expect(() => createInventoryPanel(theme, { bounds, chrome: false })).not.toThrow();
-    expect(() => createInventoryPanel(theme, { cell: rowCell, bounds })).not.toThrow();
+    expect(() =>
+      createInventoryPanel(theme, { bounds, chrome: false }),
+    ).not.toThrow();
+    expect(() =>
+      createInventoryPanel(theme, { cell: rowCell, bounds }),
+    ).not.toThrow();
   });
 });

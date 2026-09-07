@@ -18,9 +18,11 @@ import {
   UISurface,
   UIPlugin,
 } from "@yagejs/ui";
-import { setupGameContainer, installDebugFromUrl } from "../shared/bootstrap.js";
+import {
+  setupGameContainer,
+  installDebugFromUrl,
+} from "../shared/bootstrap.js";
 import "./styles.css";
-
 
 const WIDTH = 640;
 const HEIGHT = 360;
@@ -204,9 +206,11 @@ async function main(): Promise<void> {
     void engine.scenes.replace(new AutoBoot());
   });
 
-  document.getElementById("btn-press-any-key")?.addEventListener("click", () => {
-    void engine.scenes.replace(new PressAnyKeyBoot());
-  });
+  document
+    .getElementById("btn-press-any-key")
+    ?.addEventListener("click", () => {
+      void engine.scenes.replace(new PressAnyKeyBoot());
+    });
 
   document.getElementById("btn-uncache")?.addEventListener("click", () => {
     const salt = Math.random().toString(36).slice(2, 6);

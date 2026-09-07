@@ -27,8 +27,17 @@ reused.
 ## Quick start
 
 ```ts
-import { defineItems, instanceData, Inventory, InventoryController, InventoryActionEvent } from "@yagejs-addons/inventory";
-import { createInventoryPanel, INVENTORY_LAYERS } from "@yagejs-addons/inventory/presenters";
+import {
+  defineItems,
+  instanceData,
+  Inventory,
+  InventoryController,
+  InventoryActionEvent,
+} from "@yagejs-addons/inventory";
+import {
+  createInventoryPanel,
+  INVENTORY_LAYERS,
+} from "@yagejs-addons/inventory/presenters";
 
 const catalog = defineItems({
   potion: { name: "Potion", maxStack: 5, description: "Heals 20 HP." },
@@ -39,7 +48,10 @@ const catalog = defineItems({
 const inventory = new Inventory({
   catalog,
   capacity: 15,
-  actions: [{ id: "use", label: "Use", consumes: true }, { id: "drop", label: "Drop" }],
+  actions: [
+    { id: "use", label: "Use", consumes: true },
+    { id: "drop", label: "Drop" },
+  ],
 });
 
 class MyScene extends Scene {
@@ -48,7 +60,9 @@ class MyScene extends Scene {
     const bundle = createInventoryPanel(); // zero-asset default theme
     const host = this.spawn("inventory");
     // Default input = keyboard/gamepad + mouse/touch, already wired.
-    const controller = host.add(new InventoryController({ ...bundle, inventory }));
+    const controller = host.add(
+      new InventoryController({ ...bundle, inventory }),
+    );
     host.on(InventoryActionEvent, (e) => {
       if (e.actionId === "use" && e.itemId === "potion") healPlayer(20);
     });

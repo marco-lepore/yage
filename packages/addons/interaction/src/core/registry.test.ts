@@ -19,7 +19,9 @@ describe("interactableRegistryFor", () => {
   it("returns a distinct instance per scene", () => {
     const { scene: sceneA } = createMockScene("a");
     const { scene: sceneB } = createMockScene("b");
-    expect(interactableRegistryFor(sceneA)).not.toBe(interactableRegistryFor(sceneB));
+    expect(interactableRegistryFor(sceneA)).not.toBe(
+      interactableRegistryFor(sceneB),
+    );
   });
 
   it("iterating reflects the live registered set", () => {

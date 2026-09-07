@@ -66,7 +66,11 @@ class PathfindingScene extends Scene {
   onEnter(): void {
     const agent = this.spawn("agent");
     agent.add(new Transform({ position: grid.cellToWorld(0, 0) }));
-    agent.add(new GraphicsComponent().draw((g) => g.circle(0, 0, 5).fill({ color: 0x38bdf8 })));
+    agent.add(
+      new GraphicsComponent().draw((g) =>
+        g.circle(0, 0, 5).fill({ color: 0x38bdf8 }),
+      ),
+    );
     const controller = agent.add(new AgentController());
 
     (window as unknown as { __pathfinding__: unknown }).__pathfinding__ = {

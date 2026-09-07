@@ -1,6 +1,6 @@
 # @yagejs/pathfinding
 
-Grid A* pathfinding for the [YAGE](https://yage.dev) 2D game engine.
+Grid A\* pathfinding for the [YAGE](https://yage.dev) 2D game engine.
 
 ## Install
 

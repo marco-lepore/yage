@@ -130,9 +130,7 @@ interface SceneTransitionTestApi {
       transition: makeTransition(kind, duration),
     }),
   popWithTransition: (duration) =>
-    engine.scenes
-      .pop({ transition: fade({ duration }) })
-      .then(() => undefined),
+    engine.scenes.pop({ transition: fade({ duration }) }).then(() => undefined),
   replaceWithTransition: (duration) =>
     engine.scenes.replace(new ColorScene(nextName(), nextColor()), {
       transition: fade({ duration }),

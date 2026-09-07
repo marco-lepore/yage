@@ -98,9 +98,7 @@ function place(
     return { x, y };
   }
   const x =
-    side === "left"
-      ? ref.x - flt.width - offset
-      : ref.x + ref.width + offset;
+    side === "left" ? ref.x - flt.width - offset : ref.x + ref.width + offset;
   const y =
     align === "start"
       ? ref.y
@@ -133,15 +131,11 @@ function availableAt(
 ): Dimensions {
   if (isVertical(side)) {
     const height =
-      side === "top"
-        ? ref.y - pad
-        : vp.height - (ref.y + ref.height) - pad;
+      side === "top" ? ref.y - pad : vp.height - (ref.y + ref.height) - pad;
     return { width: vp.width - pad * 2, height };
   }
   const width =
-    side === "left"
-      ? ref.x - pad
-      : vp.width - (ref.x + ref.width) - pad;
+    side === "left" ? ref.x - pad : vp.width - (ref.x + ref.width) - pad;
   return { width, height: vp.height - pad * 2 };
 }
 

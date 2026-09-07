@@ -105,7 +105,9 @@ async function advanceUntilChoosing(page: Page, maxSteps = 200): Promise<void> {
 async function setHidden(page: Page, hidden: boolean): Promise<void> {
   await page.evaluate(
     (h) =>
-      (window as unknown as { __dialogue__: HostHandle }).__dialogue__.setHidden(h),
+      (
+        window as unknown as { __dialogue__: HostHandle }
+      ).__dialogue__.setHidden(h),
     hidden,
   );
 }

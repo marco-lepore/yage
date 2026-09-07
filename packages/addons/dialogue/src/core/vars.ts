@@ -25,7 +25,11 @@
  * storage — these just hold values.
  */
 
-import { STATE_KIND, type ReactiveMap, type ReactiveRecord } from "@yagejs/core";
+import {
+  STATE_KIND,
+  type ReactiveMap,
+  type ReactiveRecord,
+} from "@yagejs/core";
 
 import type { VariableStorage, VarMap, VarValue } from "./types.js";
 
@@ -42,7 +46,9 @@ export class MemoryVariableStorage implements VariableStorage {
   private readonly map = new Map<string, VarValue>();
 
   constructor(initial?: Readonly<VarMap>) {
-    if (initial) for (const [name, value] of Object.entries(initial)) this.map.set(name, value);
+    if (initial)
+      for (const [name, value] of Object.entries(initial))
+        this.map.set(name, value);
   }
 
   get(name: string): VarValue | undefined {
@@ -149,7 +155,8 @@ export function createRecordStorage(
       return Object.hasOwn(record, name);
     },
     *entries() {
-      for (const [name, value] of Object.entries(record)) yield [name, value] as const;
+      for (const [name, value] of Object.entries(record))
+        yield [name, value] as const;
     },
   };
 }
@@ -222,7 +229,8 @@ export function createStoreStorage(leaf: VariableLeaf): VariableStorage {
       return Object.hasOwn(leaf.get(), name);
     },
     *entries() {
-      for (const [name, value] of Object.entries(leaf.get())) yield [name, value] as const;
+      for (const [name, value] of Object.entries(leaf.get()))
+        yield [name, value] as const;
     },
   };
 }
@@ -234,7 +242,9 @@ export function createStoreStorage(leaf: VariableLeaf): VariableStorage {
  * whatever writable store you put last. Typical: `compose(cells(...game), new
  * MemoryVariableStorage())`.
  */
-export function compose(...storages: readonly VariableStorage[]): VariableStorage {
+export function compose(
+  ...storages: readonly VariableStorage[]
+): VariableStorage {
   if (storages.length === 0) {
     throw new Error("dialogue: compose() needs at least one storage");
   }

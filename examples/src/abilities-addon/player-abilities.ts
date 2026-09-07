@@ -36,7 +36,10 @@ import {
 import { byAtk, hasten } from "./stats.js";
 import { INVULN_FLASH_INTERVAL } from "./feedback.js";
 
-export function nearestLivingEnemy(scene: Scene, position: Vec2): Entity | null {
+export function nearestLivingEnemy(
+  scene: Scene,
+  position: Vec2,
+): Entity | null {
   let nearest: Entity | null = null;
   let nearestDistance = Infinity;
   for (const enemy of scene.findEntitiesByTag("enemy")) {

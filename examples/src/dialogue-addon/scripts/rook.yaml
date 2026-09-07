@@ -26,10 +26,18 @@ nodes:
   bluff:
     id: bluff
     steps:
-      - { kind: say, speaker: rook, text: "Ha — smooth. The guard waved us right through." }
+      - {
+          kind: say,
+          speaker: rook,
+          text: "Ha — smooth. The guard waved us right through.",
+        }
       - { kind: end }
   freeze:
     id: freeze
     steps:
-      - { kind: say, speaker: rook, text: "…You froze. We got lucky the guard was bored." }
+      - {
+          kind: say,
+          speaker: rook,
+          text: "…You froze. We got lucky the guard was bored.",
+        }
       - { kind: end }

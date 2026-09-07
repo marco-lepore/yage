@@ -80,18 +80,26 @@ its helpers, and they nest under the file:
 
 ```ts
 // src/entities/slime.scenario.ts  →  entities › slime › { idle, chase }
-export const idle = defineScenario({ setup(scene) { arena(scene); /* ... */ } });
-export const chase = defineScenario({ setup(scene) { arena(scene); /* ... */ } });
+export const idle = defineScenario({
+  setup(scene) {
+    arena(scene); /* ... */
+  },
+});
+export const chase = defineScenario({
+  setup(scene) {
+    arena(scene); /* ... */
+  },
+});
 ```
 
 ## Commands
 
-| Command | What it does |
-| --- | --- |
-| `yage-lab init` | Write `lab/harness.ts`, prefilled from your dependencies |
-| `yage-lab [dev]` | Start the scenario browser (port 5210) |
-| `yage-lab build` | Build it as a static site |
-| `yage-lab test` | Run every scenario headless, exiting non-zero if one failed |
+| Command          | What it does                                                |
+| ---------------- | ----------------------------------------------------------- |
+| `yage-lab init`  | Write `lab/harness.ts`, prefilled from your dependencies    |
+| `yage-lab [dev]` | Start the scenario browser (port 5210)                      |
+| `yage-lab build` | Build it as a static site                                   |
+| `yage-lab test`  | Run every scenario headless, exiting non-zero if one failed |
 
 Every command loads your own `vite.config.ts` and merges the lab into it, so
 scenarios run under the same plugins and transforms your game uses.

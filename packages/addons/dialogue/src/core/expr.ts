@@ -49,7 +49,10 @@ export function createScope(
 /** A condition (or none) holds against `scope`: an absent condition always holds;
  *  otherwise it's evaluated via {@link evalCondition}. The one no-condition gate
  *  shared by the runner and the session's preview walk. */
-export function holds(condition: Condition | undefined, scope: EvalScope): boolean {
+export function holds(
+  condition: Condition | undefined,
+  scope: EvalScope,
+): boolean {
   return condition === undefined ? true : evalCondition(condition, scope);
 }
 
@@ -100,12 +103,22 @@ export function evaluate(expr: Expr, scope: EvalScope): VarValue {
       // throw) when the item is absent. `xor` and the rest need both operands.
       const { op } = expr;
       if (op === "and" || op === "&&") {
-        return truthy(evaluate(expr.left, scope)) && truthy(evaluate(expr.right, scope));
+        return (
+          truthy(evaluate(expr.left, scope)) &&
+          truthy(evaluate(expr.right, scope))
+        );
       }
       if (op === "or" || op === "||") {
-        return truthy(evaluate(expr.left, scope)) || truthy(evaluate(expr.right, scope));
+        return (
+          truthy(evaluate(expr.left, scope)) ||
+          truthy(evaluate(expr.right, scope))
+        );
       }
-      return applyBinary(op, evaluate(expr.left, scope), evaluate(expr.right, scope));
+      return applyBinary(
+        op,
+        evaluate(expr.left, scope),
+        evaluate(expr.right, scope),
+      );
     }
   }
 }

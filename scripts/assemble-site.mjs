@@ -21,6 +21,8 @@ mkdirSync(out, { recursive: true });
 cpSync(resolve(root, "docs/dist"), out, { recursive: true });
 
 // 2. Copy examples under /examples/
-cpSync(resolve(root, "examples/dist"), resolve(out, "examples"), { recursive: true });
+cpSync(resolve(root, "examples/dist"), resolve(out, "examples"), {
+  recursive: true,
+});
 
 console.log("Site assembled at dist/site/");

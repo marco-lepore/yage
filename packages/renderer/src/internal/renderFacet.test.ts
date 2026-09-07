@@ -103,12 +103,16 @@ describe("computeRenderFacet — coordinate-space mapping", () => {
     // it is null per the "zero-area object" contract — not just a zero-size point.
     expect(
       computeRenderFacet(
-        fakeDisplayObject({ localBounds: { x: 0, y: 0, width: 40, height: 0 } }),
+        fakeDisplayObject({
+          localBounds: { x: 0, y: 0, width: 40, height: 0 },
+        }),
       ).bounds,
     ).toBeNull();
     expect(
       computeRenderFacet(
-        fakeDisplayObject({ localBounds: { x: 0, y: 0, width: 0, height: 25 } }),
+        fakeDisplayObject({
+          localBounds: { x: 0, y: 0, width: 0, height: 25 },
+        }),
       ).bounds,
     ).toBeNull();
   });

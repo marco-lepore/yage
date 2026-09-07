@@ -1,1 +1,4 @@
-.controls kbd { min-width: 24px; text-align: center; }
+.controls kbd {
+  min-width: 24px;
+  text-align: center;
+}

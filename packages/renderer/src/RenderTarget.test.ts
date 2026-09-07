@@ -231,7 +231,9 @@ describe("createRenderTarget", () => {
 
     // Without the guard this surfaces as a TypeError from inside Pixi's own
     // transform update, naming nothing the caller can act on.
-    expect(() => target.render()).toThrow(/source container has been destroyed/);
+    expect(() => target.render()).toThrow(
+      /source container has been destroyed/,
+    );
     expect(() => target.renderIfNeeded()).toThrow(
       /source container has been destroyed/,
     );

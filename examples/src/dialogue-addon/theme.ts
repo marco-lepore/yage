@@ -1,5 +1,8 @@
 import { Assets, Texture } from "pixi.js";
-import { defaultDialogueTheme, type DialogueTheme } from "@yagejs-addons/dialogue/presenters";
+import {
+  defaultDialogueTheme,
+  type DialogueTheme,
+} from "@yagejs-addons/dialogue/presenters";
 import {
   FACE_NEUTRAL,
   FACE_STERN,
@@ -62,7 +65,8 @@ function makeFace(skin: number, stern: boolean): Texture {
     ctx.lineTo(s * 0.56, s * browY);
     ctx.stroke();
     ctx.beginPath();
-    if (stern) ctx.arc(s / 2, s * 0.82, 9, Math.PI * 1.15, Math.PI * 1.85); // frown
+    if (stern)
+      ctx.arc(s / 2, s * 0.82, 9, Math.PI * 1.15, Math.PI * 1.85); // frown
     else ctx.arc(s / 2, s * 0.62, 9, Math.PI * 0.15, Math.PI * 0.85); // smile
     ctx.stroke();
   }
@@ -91,7 +95,9 @@ export function registerPortraitTextures(): void {
   Assets.cache.set(FACE_PIP_THINK, facePipThink);
 }
 
-const insets = (n: number): { left: number; top: number; right: number; bottom: number } => ({
+const insets = (
+  n: number,
+): { left: number; top: number; right: number; bottom: number } => ({
   left: n,
   top: n,
   right: n,

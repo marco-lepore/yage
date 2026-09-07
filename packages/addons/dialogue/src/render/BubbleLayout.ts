@@ -108,7 +108,12 @@ export class BubbleLayout {
   }
 
   private setActive(size: BubbleSize): void {
-    if (this.active && this.active.width === size.width && this.active.height === size.height) return;
+    if (
+      this.active &&
+      this.active.width === size.width &&
+      this.active.height === size.height
+    )
+      return;
     this.active = size;
     for (const fn of this.listeners) fn();
   }
@@ -149,7 +154,10 @@ export class BubbleLayout {
     });
     const size: BubbleSize = {
       width: textSize.width + reserve,
-      height: Math.max(textSize.height, (this.inset?.height ?? 0) + 2 * this.cfg.padding),
+      height: Math.max(
+        textSize.height,
+        (this.inset?.height ?? 0) + 2 * this.cfg.padding,
+      ),
     };
     this.memoLine = line;
     this.memoSize = size;
@@ -176,6 +184,9 @@ export class BubbleLayout {
   originFor(anchor: AnchorPoint, size: BubbleSize): { x: number; y: number } {
     let x = anchor.x - size.width / 2 + this.cfg.padding;
     if (this.inset?.side === "left") x += this.inset.width;
-    return { x, y: anchor.y - (this.cfg.offsetY + size.height) + this.cfg.padding };
+    return {
+      x,
+      y: anchor.y - (this.cfg.offsetY + size.height) + this.cfg.padding,
+    };
   }
 }

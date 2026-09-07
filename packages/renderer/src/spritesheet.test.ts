@@ -189,14 +189,24 @@ describe("resolveFrames — sheet sources", () => {
   it("throws when explicit columns push the grid past the texture edge", () => {
     // 96px wide: two 48px frames fit, a third column would start at x=96
     expect(() =>
-      resolveFrames({ sheet: "player.png", frameWidth: 48, columns: 3, count: 3 }),
+      resolveFrames({
+        sheet: "player.png",
+        frameWidth: 48,
+        columns: 3,
+        count: 3,
+      }),
     ).toThrow(/exceeding/);
   });
 
   it("throws when count implies more rows than the texture height", () => {
     // 96×48: one 48px row exists, count 3 over 2 columns needs two rows
     expect(() =>
-      resolveFrames({ sheet: "player.png", frameWidth: 48, columns: 2, count: 3 }),
+      resolveFrames({
+        sheet: "player.png",
+        frameWidth: 48,
+        columns: 2,
+        count: 3,
+      }),
     ).toThrow(/exceeding/);
   });
 
@@ -214,10 +224,22 @@ describe("resolveFrames — sheet sources", () => {
 
   it("rejects negative offsets and gaps", () => {
     expect(() =>
-      resolveFrames({ sheet: "s.png", frameWidth: 48, startX: -100, columns: 1, count: 1 }),
+      resolveFrames({
+        sheet: "s.png",
+        frameWidth: 48,
+        startX: -100,
+        columns: 1,
+        count: 1,
+      }),
     ).toThrow(/startX must be finite and >= 0/);
     expect(() =>
-      resolveFrames({ sheet: "s.png", frameWidth: 48, gapX: -100, columns: 2, count: 2 }),
+      resolveFrames({
+        sheet: "s.png",
+        frameWidth: 48,
+        gapX: -100,
+        columns: 2,
+        count: 2,
+      }),
     ).toThrow(/gapX must be finite and >= 0/);
   });
 
@@ -268,8 +290,8 @@ describe("resolveFrames — atlas sources", () => {
 
   it("throws for an animation with no frames, naming atlas and animation", () => {
     state.atlas = { animations: { walk: [] } };
-    expect(() =>
-      resolveFrames({ atlas: "a.json", animation: "walk" }),
-    ).toThrow(/animation "walk" in atlas "a.json" has no frames/);
+    expect(() => resolveFrames({ atlas: "a.json", animation: "walk" })).toThrow(
+      /animation "walk" in atlas "a.json" has no frames/,
+    );
   });
 });

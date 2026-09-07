@@ -8,8 +8,10 @@ import {
 } from "@yagejs/physics";
 import type { PhysicsWorld } from "@yagejs/physics";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
-
+import {
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -135,7 +137,14 @@ class InputController extends Component {
         ];
         e.add(
           new GraphicsComponent().draw((g) => {
-            g.poly([verts[0]!.x, verts[0]!.y, verts[1]!.x, verts[1]!.y, verts[2]!.x, verts[2]!.y])
+            g.poly([
+              verts[0]!.x,
+              verts[0]!.y,
+              verts[1]!.x,
+              verts[1]!.y,
+              verts[2]!.x,
+              verts[2]!.y,
+            ])
               .fill({ color, alpha: 0.85 })
               .stroke({
                 color: bouncy ? 0xffffff : 0x666666,
@@ -224,7 +233,10 @@ class PhysicsBasicsScene extends Scene {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-const PALETTE = [0xff6b6b, 0x4ecdc4, 0xffe66d, 0xa78bfa, 0xf97316, 0x38bdf8, 0xfb7185, 0x34d399];
+const PALETTE = [
+  0xff6b6b, 0x4ecdc4, 0xffe66d, 0xa78bfa, 0xf97316, 0x38bdf8, 0xfb7185,
+  0x34d399,
+];
 function randomColor(): number {
   return PALETTE[Math.floor(Math.random() * PALETTE.length)]!;
 }
@@ -235,21 +247,25 @@ function randomColor(): number {
 async function main() {
   const engine = new Engine({ debug: true });
 
-  engine.use(new RendererPlugin({
-    width: WIDTH,
-    height: HEIGHT,
-    backgroundColor: 0x0a0a0a,
-    container: setupGameContainer(WIDTH, HEIGHT),
-  }));
+  engine.use(
+    new RendererPlugin({
+      width: WIDTH,
+      height: HEIGHT,
+      backgroundColor: 0x0a0a0a,
+      container: setupGameContainer(WIDTH, HEIGHT),
+    }),
+  );
   engine.use(new PhysicsPlugin());
-  engine.use(new InputPlugin({
-    actions: {
-      spawn: ["Space"],
-      impulse: ["KeyF"],
-      gravity: ["KeyG"],
-    },
-    preventDefaultKeys: ["Space"],
-  }));
+  engine.use(
+    new InputPlugin({
+      actions: {
+        spawn: ["Space"],
+        impulse: ["KeyF"],
+        gravity: ["KeyG"],
+      },
+      preventDefaultKeys: ["Space"],
+    }),
+  );
   await installDebugFromUrl(engine);
 
   await engine.start();

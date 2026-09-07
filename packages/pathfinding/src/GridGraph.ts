@@ -1,7 +1,12 @@
 import { Vec2, type Vec2Like } from "@yagejs/core";
 import { aStar } from "./aStar.js";
 import { resolveHeuristic } from "./heuristics.js";
-import type { DiagonalMovement, GridCell, HeuristicName, Path } from "./types.js";
+import type {
+  DiagonalMovement,
+  GridCell,
+  HeuristicName,
+  Path,
+} from "./types.js";
 import {
   assertFinite,
   assertFiniteCost,
@@ -78,11 +83,16 @@ export class GridGraph {
     this.rows = options.rows;
     this.tileWidth = options.tileWidth;
     this.tileHeight = options.tileHeight;
-    this.origin = options.origin ? new Vec2(options.origin.x, options.origin.y) : Vec2.ZERO;
+    this.origin = options.origin
+      ? new Vec2(options.origin.x, options.origin.y)
+      : Vec2.ZERO;
     this.isWalkableFn = options.isWalkable;
     this.costFn = options.cost ? guardCost(options.cost) : DEFAULT_COST;
     this.diagonalMovement = options.diagonalMovement ?? "no-corner-cutting";
-    this.heuristicFn = resolveHeuristic(options.heuristic, this.diagonalMovement);
+    this.heuristicFn = resolveHeuristic(
+      options.heuristic,
+      this.diagonalMovement,
+    );
   }
 
   inBounds(col: number, row: number): boolean {
@@ -115,7 +125,10 @@ export class GridGraph {
     const start = this.worldToCell(startWorld);
     const goal = this.worldToCell(goalWorld);
 
-    if (!this.inBounds(start.col, start.row) || !this.inBounds(goal.col, goal.row)) {
+    if (
+      !this.inBounds(start.col, start.row) ||
+      !this.inBounds(goal.col, goal.row)
+    ) {
       return null;
     }
 

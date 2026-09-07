@@ -205,7 +205,10 @@ describe("DialogueSession — extra channels", () => {
       id: "o",
       start: "n",
       nodes: {
-        n: { id: "n", steps: [{ kind: "say", text: "Only line." }, { kind: "end" }] },
+        n: {
+          id: "n",
+          steps: [{ kind: "say", text: "Only line." }, { kind: "end" }],
+        },
       },
     });
 
@@ -382,7 +385,9 @@ describe("DialogueSession — extra channels", () => {
     const text = new StubText();
     const session = new DialogueSession({ text, choices: new StubChoices() });
     const completed: string[] = [];
-    session.addChannel({ revealComplete: (line) => completed.push(lastText(line)) });
+    session.addChannel({
+      revealComplete: (line) => completed.push(lastText(line)),
+    });
     session.play(oneLine);
     expect(completed).toHaveLength(0); // not yet revealed
     text.finishReveal();

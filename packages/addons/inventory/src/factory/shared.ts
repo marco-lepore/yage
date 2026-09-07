@@ -50,7 +50,11 @@ export function chromeFor(
   );
 }
 
-export function detailFor(theme: InventoryTheme, layout: PanelLayout, fonts: FontConfig): DetailView {
+export function detailFor(
+  theme: InventoryTheme,
+  layout: PanelLayout,
+  fonts: FontConfig,
+): DetailView {
   return new DetailView(
     {
       textSize: theme.textSize,

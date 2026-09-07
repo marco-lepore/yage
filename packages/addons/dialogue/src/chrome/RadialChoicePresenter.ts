@@ -168,13 +168,11 @@ export class RadialChoicePresenter implements ChoicePresenter {
     this.hub.gfx.draw((g) => {
       g.clear();
       if (active) {
-        g.moveTo(c.x, c.y)
-          .lineTo(active.x, active.y)
-          .stroke({
-            color: this.cfg.choiceSelectedColor,
-            width: 2,
-            alpha: 0.7,
-          });
+        g.moveTo(c.x, c.y).lineTo(active.x, active.y).stroke({
+          color: this.cfg.choiceSelectedColor,
+          width: 2,
+          alpha: 0.7,
+        });
       }
       g.circle(c.x, c.y, 4).fill({ color: this.cfg.hubColor, alpha: 1 });
     });

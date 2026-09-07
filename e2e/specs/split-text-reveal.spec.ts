@@ -12,9 +12,12 @@ type RenderFacet = SplitTextRenderFacet;
  * path: per-glyph reveal state is observable purely from
  * `snapshotScene().entities[].facets.render`.
  */
-async function readReveal(
-  page: Page,
-): Promise<{ entity: RenderFacet | undefined; component: RenderFacet | undefined }> {
+interface RevealFacets {
+  entity: RenderFacet | undefined;
+  component: RenderFacet | undefined;
+}
+
+async function readReveal(page: Page): Promise<RevealFacets> {
   return page.evaluate(() => {
     const inspector = window.__yage__?.inspector;
     if (!inspector) throw new Error("__yage__.inspector is not available.");

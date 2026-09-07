@@ -3,7 +3,14 @@ import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 const { mocks } = vi.hoisted(() => {
   class MockContainer {
     children: MockContainer[] = [];
-    position = { x: 0, y: 0, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    position = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
     scale = { x: 1, y: 1 };
     rotation = 0;
     visible = true;
@@ -60,13 +67,21 @@ const { mocks } = vi.hoisted(() => {
   }
 
   class MockGraphics extends MockContainer {
-    clear(): MockGraphics { return this; }
+    clear(): MockGraphics {
+      return this;
+    }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    rect(...args: unknown[]): MockGraphics { return this; }
+    rect(...args: unknown[]): MockGraphics {
+      return this;
+    }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    roundRect(...args: unknown[]): MockGraphics { return this; }
+    roundRect(...args: unknown[]): MockGraphics {
+      return this;
+    }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    fill(...args: unknown[]): MockGraphics { return this; }
+    fill(...args: unknown[]): MockGraphics {
+      return this;
+    }
   }
 
   class MockText extends MockContainer {
@@ -74,7 +89,14 @@ const { mocks } = vi.hoisted(() => {
     style: Record<string, unknown>;
     width: number;
     height: number;
-    anchor = { x: 0, y: 0, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    anchor = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
 
     constructor(opts?: { text?: string; style?: Record<string, unknown> }) {
       super();
@@ -248,7 +270,9 @@ describe("UILayoutSystem", () => {
   it("applies offset to anchor position", () => {
     const { scene } = setup();
     const entity = spawnEntityInScene(scene);
-    const panel = entity.add(new UISurface({ anchor: Anchor.TopLeft, offset: { x: 10, y: 20 } }));
+    const panel = entity.add(
+      new UISurface({ anchor: Anchor.TopLeft, offset: { x: 10, y: 20 } }),
+    );
     panel.button("A", { width: 100, height: 30 });
 
     system.update(16);
@@ -286,7 +310,9 @@ describe("UILayoutSystem", () => {
   it("skips hidden panels", () => {
     const { scene } = setup();
     const entity = spawnEntityInScene(scene);
-    const panel = entity.add(new UISurface({ anchor: Anchor.Center, visible: false }));
+    const panel = entity.add(
+      new UISurface({ anchor: Anchor.Center, visible: false }),
+    );
     panel.button("A", { width: 100, height: 30 });
 
     system.update(16);

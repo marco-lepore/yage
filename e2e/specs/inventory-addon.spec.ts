@@ -11,13 +11,19 @@ import { gotoFixture, stepFrames, waitForClock } from "./helpers.js";
 interface Handle {
   backpack: {
     add(id: string, quantity?: number): { added: number };
-    setSlot(slot: number, stack: { itemId: string; quantity: number } | null): void;
+    setSlot(
+      slot: number,
+      stack: { itemId: string; quantity: number } | null,
+    ): void;
     count(id: string): number;
     used: number;
     isFull: boolean;
     snapshot(): { slots: ({ itemId: string; quantity: number } | null)[] };
   };
-  keyItems: { add(id: string, quantity?: number): { added: number }; count(id: string): number };
+  keyItems: {
+    add(id: string, quantity?: number): { added: number };
+    count(id: string): number;
+  };
   backpackCtrl: {
     open(): void;
     close(): void;
@@ -37,7 +43,12 @@ interface Handle {
 }
 
 /** The embedded hotbar's pinned rect (fixture: bottom-center, chrome-less). */
-const HOTBAR_BOUNDS = { x: (800 - 300) / 2, y: 600 - 90, width: 300, height: 66 };
+const HOTBAR_BOUNDS = {
+  x: (800 - 300) / 2,
+  y: 600 - 90,
+  width: 300,
+  height: 66,
+};
 
 interface ProbeData {
   potions: number;
@@ -77,7 +88,12 @@ function probe(page: Page): Promise<ProbeData> {
   });
 }
 
-async function add(page: Page, itemId: string, quantity: number, target: "backpack" | "keyItems" = "backpack"): Promise<void> {
+async function add(
+  page: Page,
+  itemId: string,
+  quantity: number,
+  target: "backpack" | "keyItems" = "backpack",
+): Promise<void> {
   await page.evaluate(
     ({ itemId: id, quantity: q, target: t }) => {
       const h = (window as unknown as { __inventory__: Handle }).__inventory__;
@@ -97,7 +113,10 @@ async function ctrl(
   }, method);
 }
 
-async function move(page: Page, dir: "up" | "down" | "left" | "right"): Promise<void> {
+async function move(
+  page: Page,
+  dir: "up" | "down" | "left" | "right",
+): Promise<void> {
   await page.evaluate((d) => {
     const h = (window as unknown as { __inventory__: Handle }).__inventory__;
     h.backpackCtrl.move(d);
@@ -108,7 +127,9 @@ async function boot(page: Page): Promise<void> {
   await gotoFixture(page, "/inventory-addon.html");
   await waitForClock(page);
   await page.waitForFunction(
-    () => (window as unknown as { __inventory__?: unknown }).__inventory__ !== undefined,
+    () =>
+      (window as unknown as { __inventory__?: unknown }).__inventory__ !==
+      undefined,
   );
   await stepFrames(page, 2);
 }
@@ -153,12 +174,16 @@ test.describe("@yagejs-addons/inventory addon", () => {
     expect((await probe(page)).isOpen).toBe(false);
   });
 
-  test("opening one panel closes the other (host exclusivity policy)", async ({ page }) => {
+  test("opening one panel closes the other (host exclusivity policy)", async ({
+    page,
+  }) => {
     await boot(page);
 
     await ctrl(page, "open");
     await page.evaluate(() => {
-      (window as unknown as { __inventory__: Handle }).__inventory__.pouchCtrl.open();
+      (
+        window as unknown as { __inventory__: Handle }
+      ).__inventory__.pouchCtrl.open();
     });
     const p = await probe(page);
     expect(p.pouchOpen).toBe(true);
@@ -206,7 +231,9 @@ test.describe("@yagejs-addons/inventory addon", () => {
     expect(p.isOpen).toBe(false);
   });
 
-  test("single-stacking arrows cap at 30 total and reject the excess", async ({ page }) => {
+  test("single-stacking arrows cap at 30 total and reject the excess", async ({
+    page,
+  }) => {
     await boot(page);
 
     await add(page, "arrows", 20);
@@ -217,7 +244,9 @@ test.describe("@yagejs-addons/inventory addon", () => {
     expect(p.lastToast).toContain("Can't carry more Arrows");
   });
 
-  test("a full backpack accepts partially and reports the rejection", async ({ page }) => {
+  test("a full backpack accepts partially and reports the rejection", async ({
+    page,
+  }) => {
     await boot(page);
 
     // 15 unstackable swords fill all 15 slots.
@@ -243,7 +272,9 @@ test.describe("@yagejs-addons/inventory addon", () => {
     expect(p.keyCount).toBe(1);
   });
 
-  test("sort consolidates partial stacks and orders by catalog order", async ({ page }) => {
+  test("sort consolidates partial stacks and orders by catalog order", async ({
+    page,
+  }) => {
     await boot(page);
 
     // Scatter: two partial potion stacks around a sword and a gem pile.
@@ -273,13 +304,17 @@ test.describe("@yagejs-addons/inventory addon", () => {
   }) => {
     await boot(page);
 
-    const openAtBoot = await page.evaluate(
-      () => (window as unknown as { __inventory__: Handle }).__inventory__.hotbarCtrl.isOpen(),
+    const openAtBoot = await page.evaluate(() =>
+      (
+        window as unknown as { __inventory__: Handle }
+      ).__inventory__.hotbarCtrl.isOpen(),
     );
     expect(openAtBoot).toBe(true); // openOnAdd, no toggle needed
 
     await page.evaluate(() =>
-      (window as unknown as { __inventory__: Handle }).__inventory__.hotbarCtrl.cancel(),
+      (
+        window as unknown as { __inventory__: Handle }
+      ).__inventory__.hotbarCtrl.cancel(),
     );
     const after = await page.evaluate(() => {
       const h = (window as unknown as { __inventory__: Handle }).__inventory__;
@@ -297,7 +332,14 @@ test.describe("@yagejs-addons/inventory addon", () => {
     return page.evaluate((b) => {
       const ents = (
         window as unknown as {
-          __yage__: { inspector: { getEntities(): { name: string; position?: { x: number; y: number } }[] } };
+          __yage__: {
+            inspector: {
+              getEntities(): {
+                name: string;
+                position?: { x: number; y: number };
+              }[];
+            };
+          };
         }
       ).__yage__.inspector.getEntities();
       return ents.filter(
@@ -328,7 +370,9 @@ test.describe("@yagejs-addons/inventory addon", () => {
     expect(await contentEntitiesInStrip(page)).toBe(2);
   });
 
-  test("embedded hotbar's filteredView excludes non-usable stacks entirely", async ({ page }) => {
+  test("embedded hotbar's filteredView excludes non-usable stacks entirely", async ({
+    page,
+  }) => {
     await boot(page);
 
     // Gear and treasure don't offer "use" — the strip renders no cell at all

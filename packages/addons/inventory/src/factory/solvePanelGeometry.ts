@@ -44,7 +44,11 @@ export function solveAxis(c: AxisConstraints): AxisSolution {
   const { count, extent, gap, defaultCount, defaultExtent, available } = c;
 
   if (available === undefined) {
-    return { count: count ?? defaultCount, extent: extent ?? defaultExtent, overdetermined: false };
+    return {
+      count: count ?? defaultCount,
+      extent: extent ?? defaultExtent,
+      overdetermined: false,
+    };
   }
 
   if (count !== undefined && extent !== undefined) {
@@ -57,13 +61,18 @@ export function solveAxis(c: AxisConstraints): AxisSolution {
   }
 
   if (extent !== undefined) {
-    return { count: fitCount(available, extent, gap), extent, overdetermined: false };
+    return {
+      count: fitCount(available, extent, gap),
+      extent,
+      overdetermined: false,
+    };
   }
 
   // Neither given: auto-fit the default extent, then shrink it if a single
   // default-extent cell already overflows the bounds.
   const fitted = fitCount(available, defaultExtent, gap);
-  const shrunk = fitted === 1 && defaultExtent > available ? available : defaultExtent;
+  const shrunk =
+    fitted === 1 && defaultExtent > available ? available : defaultExtent;
   return { count: fitted, extent: shrunk, overdetermined: false };
 }
 

@@ -54,23 +54,32 @@ export interface FilteredInventoryView<
  * so a handful of pre-built, currently-inactive tab views cost nothing beyond
  * existing.
  */
-export function filteredView<TId extends string, TData extends InstanceDataMap<TId> = LooseDataMap<TId>>(
+export function filteredView<
+  TId extends string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+>(
   inventory: Inventory<TId, TData>,
   predicate: SourceFilter<TId, TData>,
 ): FilteredInventoryView<TId, TData> {
   return new FilteredView(inventory, predicate);
 }
 
-class FilteredView<TId extends string, TData extends InstanceDataMap<TId>>
-  implements FilteredInventoryView<TId, TData>
-{
+class FilteredView<
+  TId extends string,
+  TData extends InstanceDataMap<TId>,
+> implements FilteredInventoryView<TId, TData> {
   readonly source: Inventory<TId, TData>;
   private readonly predicate: SourceFilter<TId, TData>;
-  private readonly emitter = new Emitter<Pick<InventoryEvents<TId>, "changed">>();
+  private readonly emitter = new Emitter<
+    Pick<InventoryEvents<TId>, "changed">
+  >();
   private listenerCount = 0;
   private modelUnsub: (() => void) | undefined;
 
-  constructor(source: Inventory<TId, TData>, predicate: SourceFilter<TId, TData>) {
+  constructor(
+    source: Inventory<TId, TData>,
+    predicate: SourceFilter<TId, TData>,
+  ) {
     this.source = source;
     this.predicate = predicate;
   }
@@ -82,7 +91,8 @@ class FilteredView<TId extends string, TData extends InstanceDataMap<TId>>
     const slots = this.source.slots;
     for (let i = 0; i < slots.length; i++) {
       const stack = slots[i];
-      if (stack && this.predicate(stack, this.source.catalog.get(stack.itemId))) out.push(i);
+      if (stack && this.predicate(stack, this.source.catalog.get(stack.itemId)))
+        out.push(i);
     }
     return out;
   }
@@ -119,7 +129,10 @@ class FilteredView<TId extends string, TData extends InstanceDataMap<TId>>
       : this.source.invokeAction(actionId, modelSlot);
   }
 
-  sort(comparator?: StackComparator<TId, TData>, opts?: { readonly consolidate?: boolean }): void {
+  sort(
+    comparator?: StackComparator<TId, TData>,
+    opts?: { readonly consolidate?: boolean },
+  ): void {
     this.source.sort(comparator, opts);
   }
 
@@ -131,12 +144,17 @@ class FilteredView<TId extends string, TData extends InstanceDataMap<TId>>
     // presented position) — forward it verbatim, no remapping.
     if (event !== "changed") return this.source.on(event, fn);
     if (this.listenerCount === 0) {
-      this.modelUnsub = this.source.on("changed", () => this.emitter.emit("changed", { slots: [] }));
+      this.modelUnsub = this.source.on("changed", () =>
+        this.emitter.emit("changed", { slots: [] }),
+      );
     }
     this.listenerCount++;
     // The view's own "changed" carries no payload sessions read (they only
     // use it as a re-render signal) — cast at this one boundary.
-    const unsub = this.emitter.on("changed", fn as (payload: InventoryEvents<TId>["changed"]) => void);
+    const unsub = this.emitter.on(
+      "changed",
+      fn as (payload: InventoryEvents<TId>["changed"]) => void,
+    );
     // Unsubscribes are idempotent (see Emitter.on) — guard so a repeat call
     // can't drive the refcount negative and permanently detach model
     // forwarding for later subscribers.

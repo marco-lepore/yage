@@ -135,9 +135,7 @@ describe("SystemScheduler", () => {
 
   it("uses ErrorBoundary when set", () => {
     const scheduler = new SystemScheduler();
-    const wrapSystem = vi.fn(
-      (_system: System, fn: () => void) => fn(),
-    );
+    const wrapSystem = vi.fn((_system: System, fn: () => void) => fn());
     scheduler.setErrorBoundary({ wrapSystem } as unknown as ErrorBoundary);
     const sys = new UpdateSystemA();
     scheduler.add(sys);

@@ -28,8 +28,20 @@
  * Controls: WASD/arrows walk · E interact/take · Q cycle the selection.
  */
 
-import { Component, Engine, type Entity, MathUtils, Scene, Transform, Vec2 } from "@yagejs/core";
-import { GraphicsComponent, RendererPlugin, TextComponent } from "@yagejs/renderer";
+import {
+  Component,
+  Engine,
+  type Entity,
+  MathUtils,
+  Scene,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
+import {
+  GraphicsComponent,
+  RendererPlugin,
+  TextComponent,
+} from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import {
   Interactable,
@@ -38,7 +50,6 @@ import {
   Interactor,
 } from "@yagejs-addons/interaction";
 import { setupGameContainer } from "../shared/bootstrap.js";
-
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -131,7 +142,8 @@ class InteractionMenu extends Component {
     this.listen(this.entity, InteractionInRangeChangedEvent, ({ inRange }) => {
       this.options = inRange;
       // Drop a pick that walked out of reach; a re-rank alone keeps it.
-      if (this.selected && !inRange.includes(this.selected)) this.selected = null;
+      if (this.selected && !inRange.includes(this.selected))
+        this.selected = null;
       this.render();
     });
     // The focus or its prompt text changed — the door's live "Open"/"Close".
@@ -173,7 +185,12 @@ class InteractionRoomScene extends Scene {
   readonly name = "interaction-room";
 
   onEnter(): void {
-    const state: DemoState = { npcTalks: 0, coinsCollected: 0, gemsTaken: 0, doorOpen: false };
+    const state: DemoState = {
+      npcTalks: 0,
+      coinsCollected: 0,
+      gemsTaken: 0,
+      doorOpen: false,
+    };
 
     this.drawRoom();
 
@@ -197,7 +214,9 @@ class InteractionRoomScene extends Scene {
         prompt: "Talk",
         onInteract: () => {
           state.npcTalks++;
-          console.log(`[npc] "Nice weather for scavenging." (talked ${state.npcTalks}x)`);
+          console.log(
+            `[npc] "Nice weather for scavenging." (talked ${state.npcTalks}x)`,
+          );
         },
       }),
     );
@@ -256,13 +275,22 @@ class InteractionRoomScene extends Scene {
     exposeProbe({ interactor, state });
   }
 
-  private spawnMarker(name: string, x: number, y: number, color: number): Entity {
+  private spawnMarker(
+    name: string,
+    x: number,
+    y: number,
+    color: number,
+  ): Entity {
     const e = this.spawn(name);
     e.add(new Transform({ position: new Vec2(x, y) }));
     e.add(
       new GraphicsComponent().draw((g) => {
         g.roundRect(-14, -14, 28, 28, 6).fill({ color, alpha: 0.9 });
-        g.roundRect(-14, -14, 28, 28, 6).stroke({ color: 0xffffff, width: 1.5, alpha: 0.5 });
+        g.roundRect(-14, -14, 28, 28, 6).stroke({
+          color: 0xffffff,
+          width: 1.5,
+          alpha: 0.5,
+        });
       }),
     );
     return e;
@@ -305,8 +333,13 @@ class InteractionRoomScene extends Scene {
     bg.add(
       new GraphicsComponent().draw((g) => {
         g.rect(0, 0, WIDTH, HEIGHT).fill({ color: 0x0a0a0a });
-        g.roundRect(24, 90, WIDTH - 48, HEIGHT - 140, 12).fill({ color: 0x14141f });
-        g.roundRect(24, 90, WIDTH - 48, HEIGHT - 140, 12).stroke({ color: 0x2c2c4a, width: 2 });
+        g.roundRect(24, 90, WIDTH - 48, HEIGHT - 140, 12).fill({
+          color: 0x14141f,
+        });
+        g.roundRect(24, 90, WIDTH - 48, HEIGHT - 140, 12).stroke({
+          color: 0x2c2c4a,
+          width: 2,
+        });
       }),
     );
     const title = this.spawn("room-title");
@@ -329,7 +362,9 @@ interface InteractionProbeHandle {
 }
 
 function exposeProbe(handle: InteractionProbeHandle): void {
-  (window as unknown as { __interaction__: InteractionProbeHandle }).__interaction__ = handle;
+  (
+    window as unknown as { __interaction__: InteractionProbeHandle }
+  ).__interaction__ = handle;
 }
 
 // ── boot ─────────────────────────────────────────────────────────────────────
@@ -354,7 +389,14 @@ async function main(): Promise<void> {
         "move-left": ["ArrowLeft", "KeyA"],
         "move-right": ["ArrowRight", "KeyD"],
       },
-      preventDefaultKeys: ["Space", "Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
+      preventDefaultKeys: [
+        "Space",
+        "Tab",
+        "ArrowUp",
+        "ArrowDown",
+        "ArrowLeft",
+        "ArrowRight",
+      ],
     }),
   );
   await engine.start();

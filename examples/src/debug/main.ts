@@ -9,7 +9,6 @@ import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
 import { setupGameContainer } from "../shared/bootstrap.js";
 
-
 const WIDTH = 800;
 const HEIGHT = 600;
 const WALL = 20;
@@ -165,7 +164,10 @@ class DebugDemoScene extends Scene {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-const PALETTE = [0xff6b6b, 0x4ecdc4, 0xffe66d, 0xa78bfa, 0xf97316, 0x38bdf8, 0xfb7185, 0x34d399];
+const PALETTE = [
+  0xff6b6b, 0x4ecdc4, 0xffe66d, 0xa78bfa, 0xf97316, 0x38bdf8, 0xfb7185,
+  0x34d399,
+];
 
 // ---------------------------------------------------------------------------
 // Boot

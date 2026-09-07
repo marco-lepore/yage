@@ -150,7 +150,8 @@ export interface InventoryTheme {
 
 /** Default fallback tile palette (icon-less items pick a stable entry by id). */
 export const DEFAULT_TILE_COLORS: readonly number[] = [
-  0x7ec8ff, 0xffa07a, 0x98e698, 0xd8a0ff, 0xffd866, 0xff8899, 0x88ddd0, 0xc9c9de,
+  0x7ec8ff, 0xffa07a, 0x98e698, 0xd8a0ff, 0xffd866, 0xff8899, 0x88ddd0,
+  0xc9c9de,
 ];
 
 /** Cell background + tile corner radius: `cellRadius`, else `cornerRadius / 2`. */

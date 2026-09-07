@@ -70,7 +70,7 @@ export function effectDrivesTint(effect: string | undefined): boolean {
 function pseudoNoise(time: number, seed: number): number {
   const t = Math.floor(time * 30);
   const x = Math.sin(t * 12.9898 + seed * 78.233) * 43758.5453;
-  return (x - Math.floor(x)) - 0.5;
+  return x - Math.floor(x) - 0.5;
 }
 
 function hsv(h: number, s: number, v: number): number {

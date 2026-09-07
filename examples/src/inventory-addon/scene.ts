@@ -1,5 +1,9 @@
 import { Scene, Transform, Vec2 } from "@yagejs/core";
-import { CameraEntity, GraphicsComponent, TextComponent } from "@yagejs/renderer";
+import {
+  CameraEntity,
+  GraphicsComponent,
+  TextComponent,
+} from "@yagejs/renderer";
 import {
   INVENTORY_ACTIONS,
   filteredView,
@@ -29,8 +33,21 @@ import {
   ROOM_LAYER,
   WIDTH,
 } from "./constants.js";
-import { CATALOG, type DemoState, type ItemId, isUsable, itemActions, makePotionIcon } from "./catalog.js";
-import { HotbarQuickUse, Hud, Pickup, PlayerMover, VaultDoor } from "./components.js";
+import {
+  CATALOG,
+  type DemoState,
+  type ItemId,
+  isUsable,
+  itemActions,
+  makePotionIcon,
+} from "./catalog.js";
+import {
+  HotbarQuickUse,
+  Hud,
+  Pickup,
+  PlayerMover,
+  VaultDoor,
+} from "./components.js";
 import { exposeProbe } from "./probe.js";
 
 // ── the scene ─────────────────────────────────────────────────────────────────
@@ -43,7 +60,12 @@ export class InventoryRoomScene extends Scene {
     this.drawRoom();
     Assets.cache.set(ICON_POTION, makePotionIcon());
 
-    const state: DemoState = { hp: 55, equipped: null, potions: 0, lastToast: "" };
+    const state: DemoState = {
+      hp: 55,
+      equipped: null,
+      potions: 0,
+      lastToast: "",
+    };
 
     // ── the two inventories: rules in (capacity, stacking, filters, actions) ──
     const actions = itemActions(state);
@@ -65,7 +87,9 @@ export class InventoryRoomScene extends Scene {
         g.circle(0, 0, 13).fill({ color: 0x6be08a });
         g.circle(0, 0, 13).stroke({ color: 0xffffff, width: 2, alpha: 0.7 });
         if (state.equipped === "sword") {
-          g.moveTo(10, -4).lineTo(22, -16).stroke({ color: 0xc9c9de, width: 3 });
+          g.moveTo(10, -4)
+            .lineTo(22, -16)
+            .stroke({ color: 0xc9c9de, width: 3 });
         } else if (state.equipped === "shield") {
           g.roundRect(10, -8, 8, 16, 3).fill({ color: 0xffa07a });
         }
@@ -77,7 +101,10 @@ export class InventoryRoomScene extends Scene {
     this.spawn(CameraEntity, { position: new Vec2(WIDTH / 2, HEIGHT / 2) });
 
     // ── the two panels: icon grid for the backpack, text rows for the pouch ───
-    const backpackBundle = createInventoryPanel(undefined, { columns: 5, visibleRows: 3 });
+    const backpackBundle = createInventoryPanel(undefined, {
+      columns: 5,
+      visibleRows: 3,
+    });
     const backpackHost = this.spawn("backpack-ui");
     const backpackCtrl = backpackHost.add(
       new InventoryController({
@@ -89,7 +116,10 @@ export class InventoryRoomScene extends Scene {
       }),
     );
 
-    const pouchBundle = createInventoryPanel(undefined, { cell: rowCell, visibleRows: 6 });
+    const pouchBundle = createInventoryPanel(undefined, {
+      cell: rowCell,
+      visibleRows: 6,
+    });
     const pouchHost = this.spawn("pouch-ui");
     const pouchCtrl = pouchHost.add(
       new InventoryController({
@@ -141,7 +171,9 @@ export class InventoryRoomScene extends Scene {
     );
     // Label the strip as an interactive belt so its number-key controls read.
     const caption = this.spawn("hotbar-caption");
-    caption.add(new Transform({ position: new Vec2(WIDTH / 2, HOTBAR_BOUNDS.y - 10) }));
+    caption.add(
+      new Transform({ position: new Vec2(WIDTH / 2, HOTBAR_BOUNDS.y - 10) }),
+    );
     caption.add(
       new TextComponent({
         text: `Quick-use · 1–${HOTBAR_SLOTS}`,
@@ -155,11 +187,16 @@ export class InventoryRoomScene extends Scene {
     // always-on and outside this policy.)
     backpackHost.on(InventoryOpenedEvent, () => pouchCtrl.close());
     pouchHost.on(InventoryOpenedEvent, () => backpackCtrl.close());
-    const anyPanelOpen = (): boolean => backpackCtrl.isOpen() || pouchCtrl.isOpen();
+    const anyPanelOpen = (): boolean =>
+      backpackCtrl.isOpen() || pouchCtrl.isOpen();
 
     // Number keys 1–HOTBAR_SLOTS use the matching hotbar cell (backpack slots 0..N-1).
     this.spawn("hotbar-input").add(
-      new HotbarQuickUse({ inventory: usableItems, slots: HOTBAR_SLOTS, isBusy: anyPanelOpen }),
+      new HotbarQuickUse({
+        inventory: usableItems,
+        slots: HOTBAR_SLOTS,
+        isBusy: anyPanelOpen,
+      }),
     );
 
     // HUD + toasts.
@@ -171,7 +208,9 @@ export class InventoryRoomScene extends Scene {
       const target = def.category === "key" ? keyItems : backpack;
       const res = target.add(itemId, quantity);
       if (res.added > 0) {
-        hud.toast(`+${res.added} ${def.name}${def.category === "key" ? " (pouch)" : ""}`);
+        hud.toast(
+          `+${res.added} ${def.name}${def.category === "key" ? " (pouch)" : ""}`,
+        );
       }
       return res.added;
     };
@@ -212,7 +251,11 @@ export class InventoryRoomScene extends Scene {
     });
 
     // Rejections + live counters — model events fire with the UI closed too.
-    const rejectionToast = (e: { itemId: string; quantity: number; reason: RejectReason }): void => {
+    const rejectionToast = (e: {
+      itemId: string;
+      quantity: number;
+      reason: RejectReason;
+    }): void => {
       if (!CATALOG.has(e.itemId)) return;
       const def = CATALOG.get(e.itemId);
       hud.toast(
@@ -246,7 +289,8 @@ export class InventoryRoomScene extends Scene {
       ["goldKey", 1, 640, 480],
       ["oldMap", 1, 300, 500],
     ];
-    for (const [id, qty, x, y] of drops) this.spawnPickup(id, qty, x, y, playerPos, collect);
+    for (const [id, qty, x, y] of drops)
+      this.spawnPickup(id, qty, x, y, playerPos, collect);
 
     // ── the vault door: works entirely against the CLOSED key-items model ─────
     const door = this.spawn("vault-door");
@@ -298,8 +342,15 @@ export class InventoryRoomScene extends Scene {
     e.add(new Transform({ position: new Vec2(x, y) }));
     e.add(
       new GraphicsComponent({ layer: ROOM_LAYER }).draw((g) => {
-        g.roundRect(-9, -9, 18, 18, 5).fill({ color: def.color ?? 0xc9c9de, alpha: 0.95 });
-        g.roundRect(-9, -9, 18, 18, 5).stroke({ color: 0xffffff, width: 1.5, alpha: 0.5 });
+        g.roundRect(-9, -9, 18, 18, 5).fill({
+          color: def.color ?? 0xc9c9de,
+          alpha: 0.95,
+        });
+        g.roundRect(-9, -9, 18, 18, 5).stroke({
+          color: 0xffffff,
+          width: 1.5,
+          alpha: 0.5,
+        });
       }),
     );
     e.add(new Pickup({ itemId, quantity, playerPos, collect }));
@@ -311,8 +362,13 @@ export class InventoryRoomScene extends Scene {
     bg.add(
       new GraphicsComponent({ layer: ROOM_LAYER }).draw((g) => {
         g.rect(0, 0, WIDTH, HEIGHT).fill({ color: 0x10101c });
-        g.roundRect(24, 90, WIDTH - 48, HEIGHT - 160, 12).fill({ color: 0x181828 });
-        g.roundRect(24, 90, WIDTH - 48, HEIGHT - 160, 12).stroke({ color: 0x2c2c4a, width: 2 });
+        g.roundRect(24, 90, WIDTH - 48, HEIGHT - 160, 12).fill({
+          color: 0x181828,
+        });
+        g.roundRect(24, 90, WIDTH - 48, HEIGHT - 160, 12).stroke({
+          color: 0x2c2c4a,
+          width: 2,
+        });
         for (let x = 70; x < WIDTH - 60; x += 90) {
           for (let y = 140; y < HEIGHT - 110; y += 80) {
             g.circle(x, y, 1.6).fill({ color: 0x232338 });

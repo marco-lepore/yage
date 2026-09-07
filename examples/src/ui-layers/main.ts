@@ -2,9 +2,17 @@ import { Engine, Scene, Transform, Vec2, Component } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
-import { textStyle, loadFonts, allAssets, nineSliceBtn, panelBg } from "../shared/ui-theme.js";
-
+import {
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
+import {
+  textStyle,
+  loadFonts,
+  allAssets,
+  nineSliceBtn,
+  panelBg,
+} from "../shared/ui-theme.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -69,7 +77,8 @@ class UILayersScene extends Scene {
     hud.text("Score: 1,234", textStyle("body", { fill: 0xfacc15 }));
 
     hud.button("Toggle Menu (order 20)", {
-      width: 260, height: 44,
+      width: 260,
+      height: 44,
       textStyle: textStyle("button"),
       onClick: () => {
         menuVisible = !menuVisible;
@@ -79,7 +88,8 @@ class UILayersScene extends Scene {
     });
 
     hud.button("Toggle Dialog (order 30)", {
-      width: 260, height: 44,
+      width: 260,
+      height: 44,
       textStyle: textStyle("button"),
       onClick: () => {
         dialogVisible = !dialogVisible;
@@ -107,19 +117,22 @@ class UILayersScene extends Scene {
     menuPanel.text("Renders above HUD, below Dialog", textStyle("body"));
 
     menuPanel.button("Settings", {
-      width: 220, height: 44,
+      width: 220,
+      height: 44,
       textStyle: textStyle("button"),
       onClick: () => console.log("Settings clicked"),
       ...nineSliceBtn,
     });
     menuPanel.button("Inventory", {
-      width: 220, height: 44,
+      width: 220,
+      height: 44,
       textStyle: textStyle("button"),
       onClick: () => console.log("Inventory clicked"),
       ...nineSliceBtn,
     });
     menuPanel.button("Close Menu", {
-      width: 220, height: 44,
+      width: 220,
+      height: 44,
       textStyle: textStyle("button"),
       onClick: () => {
         menuVisible = false;
@@ -149,7 +162,8 @@ class UILayersScene extends Scene {
 
     const btnRow = dialogPanel.panel({ direction: "row", gap: 10 });
     btnRow.button("Yes", {
-      width: 110, height: 44,
+      width: 110,
+      height: 44,
       textStyle: textStyle("button"),
       onClick: () => {
         dialogVisible = false;
@@ -159,7 +173,8 @@ class UILayersScene extends Scene {
       ...nineSliceBtn,
     });
     btnRow.button("No", {
-      width: 110, height: 44,
+      width: 110,
+      height: 44,
       textStyle: textStyle("button"),
       onClick: () => {
         dialogVisible = false;
@@ -176,12 +191,16 @@ class UILayersScene extends Scene {
 async function main() {
   const engine = new Engine({ debug: true });
 
-  engine.use(new RendererPlugin({
-    width: WIDTH, height: HEIGHT,
-    virtualWidth: WIDTH, virtualHeight: HEIGHT,
-    backgroundColor: 0x0a0a0a,
-    container: setupGameContainer(WIDTH, HEIGHT),
-  }));
+  engine.use(
+    new RendererPlugin({
+      width: WIDTH,
+      height: HEIGHT,
+      virtualWidth: WIDTH,
+      virtualHeight: HEIGHT,
+      backgroundColor: 0x0a0a0a,
+      container: setupGameContainer(WIDTH, HEIGHT),
+    }),
+  );
   engine.use(new UIPlugin());
   await installDebugFromUrl(engine);
 

@@ -171,7 +171,10 @@ export const HOTBAR_RADIUS = HOTBAR_SLOT_SIZE / 2 - 4;
  *  cooldown — `GUARD_HOLD_ID`, not the literal kind string — since that's
  *  the actual gate on whether pressing the key does anything; the parry it
  *  can cancel into shares the same press and isn't shown separately. */
-export const HOTBAR_COOLDOWN_ID: Record<Exclude<HotbarKind, "attack">, string> = {
+export const HOTBAR_COOLDOWN_ID: Record<
+  Exclude<HotbarKind, "attack">,
+  string
+> = {
   dash: "dash",
   guard: GUARD_HOLD_ID,
   potion: "potion",

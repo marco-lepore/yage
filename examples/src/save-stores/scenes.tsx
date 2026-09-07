@@ -86,7 +86,9 @@ class CoinDisplay extends Component {
 
   onAdd(): void {
     const apply = (): void => {
-      this.graphics.draw((g) => CoinDisplay.draw(g, game.progression.get().coins));
+      this.graphics.draw((g) =>
+        CoinDisplay.draw(g, game.progression.get().coins),
+      );
     };
     apply();
     // Subscribe to the leaf rather than the whole compound — keeps the redraw
@@ -129,7 +131,9 @@ class GameplayScene extends Scene {
     hud.add(new UIRoot({ anchor: Anchor.TopLeft })).render(<GameplayHUD />);
 
     const actions = this.spawn("actions");
-    actions.add(new UIRoot({ anchor: Anchor.BottomCenter })).render(<GameplayActions />);
+    actions
+      .add(new UIRoot({ anchor: Anchor.BottomCenter }))
+      .render(<GameplayActions />);
   }
 }
 

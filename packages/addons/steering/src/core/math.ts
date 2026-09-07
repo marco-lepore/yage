@@ -2,7 +2,10 @@ import { Vec2 } from "@yagejs/core";
 import type { AgentState } from "./types.js";
 
 /** Read a static value or a live provider — used for targets, obstacles, neighbors. */
-export function resolve<T>(source: T | ((agent: AgentState) => T), agent: AgentState): T {
+export function resolve<T>(
+  source: T | ((agent: AgentState) => T),
+  agent: AgentState,
+): T {
   return typeof source === "function"
     ? (source as (agent: AgentState) => T)(agent)
     : source;

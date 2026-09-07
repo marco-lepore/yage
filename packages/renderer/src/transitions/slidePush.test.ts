@@ -272,18 +272,13 @@ describe("slidePush", () => {
     const toScene = { name: "to" } as Scene;
 
     t.begin!(makeCtx({ elapsed: 0, kind: "push", toScene, toContainer }));
-    t.tick(
-      500,
-      makeCtx({ elapsed: 500, kind: "push", toScene, toContainer }),
-    );
+    t.tick(500, makeCtx({ elapsed: 500, kind: "push", toScene, toContainer }));
     expect(toContainer.x).toBe(0);
   });
 
   it("tolerates an undefined toScene container on first push", () => {
     const t = slidePush({ duration: 100 });
-    expect(() =>
-      t.begin!(makeCtx({ elapsed: 0, kind: "push" })),
-    ).not.toThrow();
+    expect(() => t.begin!(makeCtx({ elapsed: 0, kind: "push" }))).not.toThrow();
     expect(() =>
       t.tick(50, makeCtx({ elapsed: 50, kind: "push" })),
     ).not.toThrow();

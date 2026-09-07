@@ -1,11 +1,27 @@
-import { Engine, Scene, Component, Transform, Vec2, ProcessComponent, KeyframeAnimator, easeInOutQuad } from "@yagejs/core";
+import {
+  Engine,
+  Scene,
+  Component,
+  Transform,
+  Vec2,
+  ProcessComponent,
+  KeyframeAnimator,
+  easeInOutQuad,
+} from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { AudioPlugin, AudioManagerKey, SoundComponent, sound } from "@yagejs/audio";
+import {
+  AudioPlugin,
+  AudioManagerKey,
+  SoundComponent,
+  sound,
+} from "@yagejs/audio";
 import type { SoundHandle } from "@yagejs/audio";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+import {
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
 import "./styles.css";
-
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -106,7 +122,9 @@ class VolumeBar extends Component {
 // ---------------------------------------------------------------------------
 class MusicIndicator extends Component {
   private readonly _gfx = this.sibling(GraphicsComponent);
-  private readonly _anim = this.sibling(KeyframeAnimator) as KeyframeAnimator<"pulse">;
+  private readonly _anim = this.sibling(
+    KeyframeAnimator,
+  ) as KeyframeAnimator<"pulse">;
 
   setPlaying(v: boolean): void {
     if (v) {
@@ -160,14 +178,11 @@ class AudioController extends Component {
     if (this._input.isJustPressed("music")) this._toggleMusic();
 
     // Volume controls
-    if (this._input.isJustPressed("musicUp"))
-      this._adjustVolume("music", 0.1);
+    if (this._input.isJustPressed("musicUp")) this._adjustVolume("music", 0.1);
     if (this._input.isJustPressed("musicDown"))
       this._adjustVolume("music", -0.1);
-    if (this._input.isJustPressed("sfxUp"))
-      this._adjustVolume("sfx", 0.1);
-    if (this._input.isJustPressed("sfxDown"))
-      this._adjustVolume("sfx", -0.1);
+    if (this._input.isJustPressed("sfxUp")) this._adjustVolume("sfx", 0.1);
+    if (this._input.isJustPressed("sfxDown")) this._adjustVolume("sfx", -0.1);
 
     // Master mute
     if (this._input.isJustPressed("muteAll")) {
@@ -270,18 +285,22 @@ class AudioScene extends Scene {
       }),
     );
     musicEnt.add(new ProcessComponent());
-    musicEnt.add(new KeyframeAnimator({
-      pulse: {
-        keyframes: [
-          { time: 0, data: 0.6 },
-          { time: 525, data: 1.0 },
-          { time: 1050, data: 0.6 },
-        ],
-        setter: (alpha) => { musicGfx.graphics.alpha = alpha as number; },
-        loop: true,
-        easing: easeInOutQuad,
-      },
-    }));
+    musicEnt.add(
+      new KeyframeAnimator({
+        pulse: {
+          keyframes: [
+            { time: 0, data: 0.6 },
+            { time: 525, data: 1.0 },
+            { time: 1050, data: 0.6 },
+          ],
+          setter: (alpha) => {
+            musicGfx.graphics.alpha = alpha as number;
+          },
+          loop: true,
+          easing: easeInOutQuad,
+        },
+      }),
+    );
     const musicIndicator = musicEnt.add(new MusicIndicator());
     musicIndicator.setPlaying(false);
 
@@ -290,9 +309,7 @@ class AudioScene extends Scene {
 
     // Music volume
     const musicBar = this.spawn("music-vol");
-    musicBar.add(
-      new Transform({ position: new Vec2(WIDTH / 2 - 220, barY) }),
-    );
+    musicBar.add(new Transform({ position: new Vec2(WIDTH / 2 - 220, barY) }));
     musicBar.add(new GraphicsComponent());
     musicBar.add(new VolumeBar("music", 0xa78bfa));
 
@@ -309,9 +326,7 @@ class AudioScene extends Scene {
 
     // SFX volume
     const sfxBar = this.spawn("sfx-vol");
-    sfxBar.add(
-      new Transform({ position: new Vec2(WIDTH / 2 + 20, barY) }),
-    );
+    sfxBar.add(new Transform({ position: new Vec2(WIDTH / 2 + 20, barY) }));
     sfxBar.add(new GraphicsComponent());
     sfxBar.add(new VolumeBar("sfx", 0x38bdf8));
 
@@ -362,28 +377,32 @@ class AudioScene extends Scene {
 async function main() {
   const engine = new Engine({ debug: true });
 
-  engine.use(new RendererPlugin({
-    width: WIDTH,
-    height: HEIGHT,
-    backgroundColor: 0x0a0a0a,
-    container: setupGameContainer(WIDTH, HEIGHT),
-  }));
-  engine.use(new InputPlugin({
-    actions: {
-      sfx1: ["Digit1"],
-      sfx2: ["Digit2"],
-      sfx3: ["Digit3"],
-      random: ["KeyR"],
-      music: ["KeyM"],
-      musicUp: ["ArrowUp"],
-      musicDown: ["ArrowDown"],
-      sfxUp: ["ArrowRight"],
-      sfxDown: ["ArrowLeft"],
-      muteAll: ["Space"],
-      toggleBlurMute: ["KeyB"],
-    },
-    preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown"],
-  }));
+  engine.use(
+    new RendererPlugin({
+      width: WIDTH,
+      height: HEIGHT,
+      backgroundColor: 0x0a0a0a,
+      container: setupGameContainer(WIDTH, HEIGHT),
+    }),
+  );
+  engine.use(
+    new InputPlugin({
+      actions: {
+        sfx1: ["Digit1"],
+        sfx2: ["Digit2"],
+        sfx3: ["Digit3"],
+        random: ["KeyR"],
+        music: ["KeyM"],
+        musicUp: ["ArrowUp"],
+        musicDown: ["ArrowDown"],
+        sfxUp: ["ArrowRight"],
+        sfxDown: ["ArrowLeft"],
+        muteAll: ["Space"],
+        toggleBlurMute: ["KeyB"],
+      },
+      preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown"],
+    }),
+  );
   engine.use(new AudioPlugin());
   await installDebugFromUrl(engine);
 

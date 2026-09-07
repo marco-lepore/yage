@@ -16,7 +16,9 @@ interface SceneStackTestApi {
 type Win = Window & { __sceneStackTest__?: SceneStackTestApi };
 
 test.describe("Scene stack fixture", () => {
-  test("pushes, pops, and replaces scenes deterministically", async ({ page }) => {
+  test("pushes, pops, and replaces scenes deterministically", async ({
+    page,
+  }) => {
     await gotoFixture(page, "/scene-stack.html");
     // The fixture pushes base-scene after engine.start() resolves; gotoFixture
     // only waits for the inspector to exist, so gate on the scene being present.

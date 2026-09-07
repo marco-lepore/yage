@@ -213,7 +213,10 @@ export class BoxLayout {
 
   /** Top-left of the nameplate inside the current frame. */
   nameplatePos(): { x: number; y: number } {
-    return { x: this.frame.x + this.cfg.padding, y: this.frame.y + this.cfg.padding - 1 };
+    return {
+      x: this.frame.x + this.cfg.padding,
+      y: this.frame.y + this.cfg.padding - 1,
+    };
   }
 
   /** Bottom-right continue-caret position inside the current frame. */
@@ -241,7 +244,8 @@ export class BoxLayout {
    *  place itself in the column it reserved. */
   insetWidth(side: "left" | "right"): number {
     let w = 0;
-    for (const inset of this.insets.values()) if (inset.side === side) w += inset.width;
+    for (const inset of this.insets.values())
+      if (inset.side === side) w += inset.width;
     return w;
   }
 
@@ -296,10 +300,15 @@ function positionOf(line: PresentedLine | undefined): BoxPosition {
 }
 
 function sameRect(a: Rect, b: Rect): boolean {
-  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+  return (
+    a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
+  );
 }
 
-function sameInset(a: TextInset | undefined, b: TextInset | undefined): boolean {
+function sameInset(
+  a: TextInset | undefined,
+  b: TextInset | undefined,
+): boolean {
   if (a === undefined || b === undefined) return a === b;
   return a.side === b.side && a.width === b.width;
 }

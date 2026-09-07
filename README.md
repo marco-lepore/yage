@@ -48,21 +48,21 @@ for Vite configuration and bundler setup.
 
 ## Packages
 
-| Package           | Description                                      |
-| ----------------- | ------------------------------------------------ |
-| `@yagejs/core`      | ECS, scenes, game loop, animation, serialization |
-| `@yagejs/renderer`  | PixiJS rendering integration                     |
-| `@yagejs/lighting`  | Radial lights and light-level queries            |
-| `@yagejs/physics`   | Rapier2D physics integration                     |
-| `@yagejs/input`     | Keyboard and pointer input                       |
-| `@yagejs/audio`     | Audio playback                                   |
-| `@yagejs/particles` | Particle effects                                 |
-| `@yagejs/tilemap`   | Tilemap support                                  |
-| `@yagejs/pathfinding` | Grid A* pathfinding                            |
-| `@yagejs/ui`        | UI components                                    |
-| `@yagejs/ui-react`  | React-based UI                                   |
-| `@yagejs/save`      | Save/load system                                 |
-| `@yagejs/debug`     | Debug overlay and inspector                      |
+| Package               | Description                                      |
+| --------------------- | ------------------------------------------------ |
+| `@yagejs/core`        | ECS, scenes, game loop, animation, serialization |
+| `@yagejs/renderer`    | PixiJS rendering integration                     |
+| `@yagejs/lighting`    | Radial lights and light-level queries            |
+| `@yagejs/physics`     | Rapier2D physics integration                     |
+| `@yagejs/input`       | Keyboard and pointer input                       |
+| `@yagejs/audio`       | Audio playback                                   |
+| `@yagejs/particles`   | Particle effects                                 |
+| `@yagejs/tilemap`     | Tilemap support                                  |
+| `@yagejs/pathfinding` | Grid A\* pathfinding                             |
+| `@yagejs/ui`          | UI components                                    |
+| `@yagejs/ui-react`    | React-based UI                                   |
+| `@yagejs/save`        | Save/load system                                 |
+| `@yagejs/debug`       | Debug overlay and inspector                      |
 
 ## Development
 

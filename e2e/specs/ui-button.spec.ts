@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { getComponentData, gotoFixture, stepFrames, waitForClock } from "./helpers.js";
+import {
+  getComponentData,
+  gotoFixture,
+  stepFrames,
+  waitForClock,
+} from "./helpers.js";
 
 interface ClickTrackerData {
   clicks: number;

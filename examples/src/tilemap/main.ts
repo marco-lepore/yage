@@ -1,4 +1,11 @@
-import { Engine, Scene, Entity, Component, Transform, Vec2 } from "@yagejs/core";
+import {
+  Engine,
+  Scene,
+  Entity,
+  Component,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
 import {
   RendererPlugin,
   CameraEntity,
@@ -22,7 +29,6 @@ import type {
   WorldDebugApi,
 } from "@yagejs/debug/api";
 import { setupGameContainer } from "../shared/bootstrap.js";
-
 
 // ---------------------------------------------------------------------------
 // Asset handles
@@ -106,7 +112,9 @@ class PlayerEntity extends Entity {
     walls: readonly RectColliderConfig[];
     camera: CameraEntity;
   }): void {
-    this.add(new Transform({ position: new Vec2(params.object.x, params.object.y) }));
+    this.add(
+      new Transform({ position: new Vec2(params.object.x, params.object.y) }),
+    );
     this.add(
       new GraphicsComponent({ layer: "actors" }).draw((g) =>
         g.circle(0, 0, PLAYER_RADIUS).fill({ color: 0x6dc1f5 }).stroke({
@@ -121,7 +129,9 @@ class PlayerEntity extends Entity {
 
 class EnemyEntity extends Entity {
   setup(params: { object: MapObject; type: string }): void {
-    this.add(new Transform({ position: new Vec2(params.object.x, params.object.y) }));
+    this.add(
+      new Transform({ position: new Vec2(params.object.x, params.object.y) }),
+    );
     const color = ENEMY_COLORS[params.type] ?? 0x999999;
     this.add(
       new GraphicsComponent({ layer: "actors" }).draw((g) =>

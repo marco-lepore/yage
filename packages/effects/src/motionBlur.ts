@@ -52,7 +52,8 @@ export const motionBlur = defineEffect<MotionBlurHandle, MotionBlurOptions>({
       offset: options.offset ?? 0,
     });
     const baseMag = (): number => Math.hypot(baseVx, baseVy);
-    const liveMag = (): number => Math.hypot(filter.velocityX, filter.velocityY);
+    const liveMag = (): number =>
+      Math.hypot(filter.velocityX, filter.velocityY);
     const effect: Effect<MotionBlurHandle> = {
       filter,
       getIntensity: () => liveMag() / Math.max(baseMag(), 1e-6),

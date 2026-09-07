@@ -15,9 +15,8 @@ export function getSceneContainer(
   scene: Scene | undefined,
 ): DisplayContainer | undefined {
   if (!scene) return undefined;
-  return ctx.engineContext
-    .resolve(SceneRenderTreeProviderKey)
-    .getTree(scene)?.root;
+  return ctx.engineContext.resolve(SceneRenderTreeProviderKey).getTree(scene)
+    ?.root;
 }
 
 /**

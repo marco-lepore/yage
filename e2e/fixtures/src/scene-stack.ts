@@ -1,9 +1,4 @@
-import {
-  Engine,
-  Scene,
-  Transform,
-  Vec2,
-} from "@yagejs/core";
+import { Engine, Scene, Transform, Vec2 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, setupContainer } from "./shared.js";
@@ -71,13 +66,15 @@ await engine.start();
 engine.inspector.time.freeze();
 await engine.scenes.push(new BaseScene());
 
-(window as Window & {
-  __sceneStackTest__?: {
-    pushOverlay(): Promise<void>;
-    popTop(): Promise<void>;
-    replaceWithReplacement(): Promise<void>;
-  };
-}).__sceneStackTest__ = {
+(
+  window as Window & {
+    __sceneStackTest__?: {
+      pushOverlay(): Promise<void>;
+      popTop(): Promise<void>;
+      replaceWithReplacement(): Promise<void>;
+    };
+  }
+).__sceneStackTest__ = {
   pushOverlay: () => engine.scenes.push(new OverlayScene()),
   popTop: async () => {
     await engine.scenes.pop();

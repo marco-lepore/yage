@@ -50,7 +50,9 @@ describe("stackChoiceRows", () => {
     expect(rects[8]!.y + rects[8]!.height).toBe(BOTTOM); // bottom-anchored
     // No two rows overlap.
     for (let i = 0; i < rects.length - 1; i++) {
-      expect(rects[i]!.y + rects[i]!.height).toBeLessThanOrEqual(rects[i + 1]!.y);
+      expect(rects[i]!.y + rects[i]!.height).toBeLessThanOrEqual(
+        rects[i + 1]!.y,
+      );
     }
   });
 

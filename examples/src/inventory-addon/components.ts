@@ -2,7 +2,13 @@ import { Component, MathUtils, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
 import { InputManagerKey } from "@yagejs/input";
 import type { InventorySource } from "@yagejs-addons/inventory";
-import { HEIGHT, HUD_LAYER, PLAYER_SPEED, ROOM_LAYER, WIDTH } from "./constants.js";
+import {
+  HEIGHT,
+  HUD_LAYER,
+  PLAYER_SPEED,
+  ROOM_LAYER,
+  WIDTH,
+} from "./constants.js";
 import { CATALOG, type DemoState, type ItemId } from "./catalog.js";
 
 // ── world components ──────────────────────────────────────────────────────────
@@ -136,7 +142,8 @@ export class VaultDoor extends Component {
     if (this.open) return;
     const me = this.entity.get(Transform).position;
     const pp = this.cfg.playerPos();
-    const near = !this.cfg.isBusy() && Math.hypot(me.x - pp.x, me.y - pp.y) <= 70;
+    const near =
+      !this.cfg.isBusy() && Math.hypot(me.x - pp.x, me.y - pp.y) <= 70;
     this.prompt.text.visible = near;
     if (near && this.input.isJustPressed("interact") && this.cfg.tryUnlock()) {
       this.open = true;
@@ -149,7 +156,9 @@ export class VaultDoor extends Component {
   private draw(): void {
     this.gfx.draw((g) => {
       g.clear();
-      g.roundRect(-16, -52, 32, 104, 4).fill({ color: this.open ? 0x1d3320 : 0x4a3826 });
+      g.roundRect(-16, -52, 32, 104, 4).fill({
+        color: this.open ? 0x1d3320 : 0x4a3826,
+      });
       g.roundRect(-16, -52, 32, 104, 4).stroke({
         color: this.open ? 0x6be08a : 0xffd866,
         width: 2,
@@ -229,7 +238,13 @@ export class Hud extends Component {
       g.clear();
       g.roundRect(16, 14, 160, 14, 4).fill({ color: 0x26263e });
       if (this.state.hp > 0) {
-        g.roundRect(16, 14, Math.max(8, 160 * (this.state.hp / 100)), 14, 4).fill({
+        g.roundRect(
+          16,
+          14,
+          Math.max(8, 160 * (this.state.hp / 100)),
+          14,
+          4,
+        ).fill({
           color: 0xff5566,
         });
       }
@@ -259,7 +274,8 @@ export class HotbarQuickUse extends Component {
   update(): void {
     if (this.cfg.isBusy()) return;
     for (let i = 0; i < this.cfg.slots; i++) {
-      if (this.input.isJustPressed(`quick-${i + 1}`)) this.cfg.inventory.invokeAction("use", i);
+      if (this.input.isJustPressed(`quick-${i + 1}`))
+        this.cfg.inventory.invokeAction("use", i);
     }
   }
 }

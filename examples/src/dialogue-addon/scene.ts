@@ -1,5 +1,9 @@
 import { Scene, Transform, Vec2 } from "@yagejs/core";
-import { CameraEntity, GraphicsComponent, TextComponent } from "@yagejs/renderer";
+import {
+  CameraEntity,
+  GraphicsComponent,
+  TextComponent,
+} from "@yagejs/renderer";
 import { InputManagerKey } from "@yagejs/input";
 import { AudioManagerKey } from "@yagejs/audio";
 import {
@@ -52,7 +56,13 @@ import {
   SAGE,
   GOSSIP,
 } from "./scripts.js";
-import { PlayerMover, ProximityInteract, ProximityZone, Gate, spawnNpc } from "./town.js";
+import {
+  PlayerMover,
+  ProximityInteract,
+  ProximityZone,
+  Gate,
+  spawnNpc,
+} from "./town.js";
 import { Hud, DialogueProbe, LifecycleControls, ChoiceTimer } from "./hud.js";
 import { VOICE, BlipSynth, TranscriptChannel } from "./channels.js";
 import { registerPortraitTextures } from "./theme.js";
@@ -126,7 +136,9 @@ export class RoomScene extends Scene {
     // ── the game-state seam, installed ONCE on the interactive controller ──
     const storage: VariableStorage = compose(
       // Two-way: the script can read AND spend `gold`; writes go back to the game.
-      cells({ gold: { get: () => state.gold, set: (v) => (state.gold = Number(v)) } }),
+      cells({
+        gold: { get: () => state.gold, set: (v) => (state.gold = Number(v)) },
+      }),
       // Declared flags/counters (paid, opened, timesTalked) live here and persist.
       new MemoryVariableStorage(),
     );
@@ -148,7 +160,8 @@ export class RoomScene extends Scene {
       },
       "open-gate": () => gate.open(),
       // Timed-choice recipe: just stash the params; ChoiceTimer arms on show.
-      "choice-timer": (cmd) => choiceTimer?.arm(Number(cmd.seconds), Number(cmd.default)),
+      "choice-timer": (cmd) =>
+        choiceTimer?.arm(Number(cmd.seconds), Number(cmd.default)),
     };
 
     const bitmapFont = this.bitmapFont;
@@ -194,7 +207,12 @@ export class RoomScene extends Scene {
 
     const host = this.spawn("dialogue-host");
     const probe = host.add(new DialogueProbe());
-    const hud = host.add(new Hud(() => state.gold, () => [...state.inventory]));
+    const hud = host.add(
+      new Hud(
+        () => state.gold,
+        () => [...state.inventory],
+      ),
+    );
 
     // Two registered extra channels (the open-ended companion to the trio):
     //  • a BUILT-IN voice-over channel — plays each line's `voice` clip over
@@ -249,7 +267,8 @@ export class RoomScene extends Scene {
         },
       }),
     );
-    hud.onAutoToggle = (on) => interactive.setAutoAdvance(on ? AUTO_ADVANCE : null);
+    hud.onAutoToggle = (on) =>
+      interactive.setAutoAdvance(on ? AUTO_ADVANCE : null);
     host.on(DialogueLineEvent, (e) => {
       probe.onLine(e.text);
       // `onRevealTick` indexes the parsed line in graphemes; the event's plain
@@ -269,7 +288,9 @@ export class RoomScene extends Scene {
 
     // Host-owned timer for Rook's timed choice. Gated on `lifecycle.paused`
     // so P freezes the countdown along with the conversation.
-    choiceTimer = host.add(new ChoiceTimer(interactive, () => lifecycle.paused));
+    choiceTimer = host.add(
+      new ChoiceTimer(interactive, () => lifecycle.paused),
+    );
 
     // The player idles while a conversation owns input, and while paused.
     const busy = (): boolean => interactive.isActive() || lifecycle.paused;
@@ -309,14 +330,26 @@ export class RoomScene extends Scene {
 
     talker(200, 0x86c5ff, "Vow", "Captain Vow (F)", CAPTAIN);
     talker(320, 0xffd866, "Mira", "Talk to Mira (F)", MIRA);
-    talker(520, 0x9ad17e, "Quinn", "Talk to the Quartermaster (F)", QUARTERMASTER);
+    talker(
+      520,
+      0x9ad17e,
+      "Quinn",
+      "Talk to the Quartermaster (F)",
+      QUARTERMASTER,
+    );
     talker(640, 0xffb86b, "Pip", "Talk to Pip the Locksmith (F)", LOCKSMITH);
     talker(760, 0xe6a3ff, "Vex", "Trade with Vex (F)", MERCHANT);
     talker(1040, 0xff6b6b, "Rook", "Talk to Rook (F)", ROOK);
     talker(GATE_X - 70, 0xff9a6b, "Bron", "Talk to the Guard (F)", GUARD);
 
     // Sage (bubble) on his own bench.
-    const sage = spawnNpc(this, { x: 980, y: 300, color: 0x7ec8ff, name: "Sage", speaker: "sage" });
+    const sage = spawnNpc(this, {
+      x: 980,
+      y: 300,
+      color: 0x7ec8ff,
+      name: "Sage",
+      speaker: "sage",
+    });
     sage.add(
       new ProximityInteract({
         label: "Talk to Sage (F)",
@@ -328,8 +361,20 @@ export class RoomScene extends Scene {
     );
 
     // Eavesdrop pair: Ann & Bert chat on their own when you get close.
-    spawnNpc(this, { x: 1110, y: 300, color: 0xf5a168, name: "Ann", speaker: "ann" });
-    spawnNpc(this, { x: 1180, y: 300, color: 0xaaaaaa, name: "Bert", speaker: "bert" });
+    spawnNpc(this, {
+      x: 1110,
+      y: 300,
+      color: 0xf5a168,
+      name: "Ann",
+      speaker: "ann",
+    });
+    spawnNpc(this, {
+      x: 1180,
+      y: 300,
+      color: 0xaaaaaa,
+      name: "Bert",
+      speaker: "bert",
+    });
     const zone = this.spawn("gossip-zone");
     zone.add(new Transform({ position: new Vec2(1145, 310) }));
     zone.add(
@@ -357,7 +402,9 @@ export class RoomScene extends Scene {
           .fill({ color: 0x16181f })
           .stroke({ color: 0x33384a, width: 2 });
         // The vault, east of the gate.
-        g.roundRect(GATE_X + 30, 80, WORLD_WIDTH - GATE_X - 70, 300, 10).fill({ color: 0x1d2233 });
+        g.roundRect(GATE_X + 30, 80, WORLD_WIDTH - GATE_X - 70, 300, 10).fill({
+          color: 0x1d2233,
+        });
         for (let x = 24; x <= WORLD_WIDTH - 24; x += 48) {
           g.moveTo(x, 70).lineTo(x, 390);
         }
@@ -373,7 +420,9 @@ export class RoomScene extends Scene {
     vault.add(new Transform({ position: new Vec2(WORLD_WIDTH - 110, 225) }));
     vault.add(
       new GraphicsComponent({ layer: ROOM_LAYER }).draw((g) => {
-        g.roundRect(-26, -18, 52, 36, 5).fill({ color: 0xcaa24a }).stroke({ color: 0xffe08a, width: 2 });
+        g.roundRect(-26, -18, 52, 36, 5)
+          .fill({ color: 0xcaa24a })
+          .stroke({ color: 0xffe08a, width: 2 });
         g.rect(-26, -4, 52, 4).fill({ color: 0x7a5e22 });
       }),
     );

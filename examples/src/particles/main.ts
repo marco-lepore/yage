@@ -8,10 +8,20 @@ import {
   type TextureResource,
 } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { ParticlesPlugin, ParticleEmitterComponent, ParticlePresets } from "@yagejs/particles";
-import type { EmitterConfig, ShapeConfig, TextureSource } from "@yagejs/particles";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
-
+import {
+  ParticlesPlugin,
+  ParticleEmitterComponent,
+  ParticlePresets,
+} from "@yagejs/particles";
+import type {
+  EmitterConfig,
+  ShapeConfig,
+  TextureSource,
+} from "@yagejs/particles";
+import {
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
 
 // ---------------------------------------------------------------------------
 // Demos (name → emitter config)
@@ -81,28 +91,26 @@ function shapeDemo(shape: ShapeConfig, tint: number): EmitterConfig {
   return demoWith({ shape }, tint);
 }
 
-const DEMO_CONFIGS: Record<
-  DemoName,
-  (tex: TextureResource) => EmitterConfig
-> = {
-  // fire and sparks emit light: additive blending brightens the background
-  // where their particles overlap instead of covering it.
-  fire: () => ({ ...ParticlePresets.fire(), blendMode: "add" }),
-  smoke: () => ParticlePresets.smoke(),
-  sparks: () => ({ ...ParticlePresets.sparks(), blendMode: "add" }),
-  rain: () => ParticlePresets.rain(),
+const DEMO_CONFIGS: Record<DemoName, (tex: TextureResource) => EmitterConfig> =
+  {
+    // fire and sparks emit light: additive blending brightens the background
+    // where their particles overlap instead of covering it.
+    fire: () => ({ ...ParticlePresets.fire(), blendMode: "add" }),
+    smoke: () => ParticlePresets.smoke(),
+    sparks: () => ({ ...ParticlePresets.sparks(), blendMode: "add" }),
+    rain: () => ParticlePresets.rain(),
 
-  pixel: () => shapeDemo({ type: "pixel", size: 4 }, 0xffffff),
-  circle: () => shapeDemo({ type: "circle", size: 14 }, 0x66ddff),
-  softCircle: () => shapeDemo({ type: "softCircle", size: 22 }, 0xff88cc),
-  diamond: () => shapeDemo({ type: "diamond", size: 14 }, 0x88ff88),
-  softDiamond: () => shapeDemo({ type: "softDiamond", size: 22 }, 0xffdd55),
-  // A non-square size: the texture is taller than it is wide, so the streak
-  // falls vertically without any rotation.
-  line: () => shapeDemo({ type: "line", size: [3, 20] }, 0x99ffcc),
+    pixel: () => shapeDemo({ type: "pixel", size: 4 }, 0xffffff),
+    circle: () => shapeDemo({ type: "circle", size: 14 }, 0x66ddff),
+    softCircle: () => shapeDemo({ type: "softCircle", size: 22 }, 0xff88cc),
+    diamond: () => shapeDemo({ type: "diamond", size: 14 }, 0x88ff88),
+    softDiamond: () => shapeDemo({ type: "softDiamond", size: 22 }, 0xffdd55),
+    // A non-square size: the texture is taller than it is wide, so the streak
+    // falls vertically without any rotation.
+    line: () => shapeDemo({ type: "line", size: [3, 20] }, 0x99ffcc),
 
-  texture: (tex) => demoWith({ texture: tex }, 0xffaa66),
-};
+    texture: (tex) => demoWith({ texture: tex }, 0xffaa66),
+  };
 
 // ---------------------------------------------------------------------------
 // ParticleController — follows mouse, hold to emit, space to burst,
@@ -192,8 +200,12 @@ class ParticlesScene extends Scene {
     crosshair.add(
       new GraphicsComponent().draw((g) => {
         g.circle(0, 0, 6).stroke({ color: 0xffffff, width: 1, alpha: 0.4 });
-        g.moveTo(-10, 0).lineTo(10, 0).stroke({ color: 0xffffff, width: 1, alpha: 0.25 });
-        g.moveTo(0, -10).lineTo(0, 10).stroke({ color: 0xffffff, width: 1, alpha: 0.25 });
+        g.moveTo(-10, 0)
+          .lineTo(10, 0)
+          .stroke({ color: 0xffffff, width: 1, alpha: 0.25 });
+        g.moveTo(0, -10)
+          .lineTo(0, 10)
+          .stroke({ color: 0xffffff, width: 1, alpha: 0.25 });
       }),
     );
     crosshair.add(new CrosshairFollow());
@@ -288,29 +300,33 @@ class CrosshairFollow extends Component {
 async function main() {
   const engine = new Engine({ debug: true });
 
-  engine.use(new RendererPlugin({
-    width: 800,
-    height: 600,
-    backgroundColor: 0x0a0a0a,
-    container: setupGameContainer(800, 600),
-  }));
-  engine.use(new InputPlugin({
-    actions: {
-      burst: ["Space"],
-      demo_fire: ["Digit1"],
-      demo_smoke: ["Digit2"],
-      demo_sparks: ["Digit3"],
-      demo_rain: ["Digit4"],
-      demo_pixel: ["Digit5"],
-      demo_circle: ["Digit6"],
-      demo_soft_circle: ["Digit7"],
-      demo_diamond: ["Digit8"],
-      demo_soft_diamond: ["Digit9"],
-      demo_line: ["Digit0"],
-      demo_texture: ["KeyT"],
-    },
-    preventDefaultKeys: ["Space"],
-  }));
+  engine.use(
+    new RendererPlugin({
+      width: 800,
+      height: 600,
+      backgroundColor: 0x0a0a0a,
+      container: setupGameContainer(800, 600),
+    }),
+  );
+  engine.use(
+    new InputPlugin({
+      actions: {
+        burst: ["Space"],
+        demo_fire: ["Digit1"],
+        demo_smoke: ["Digit2"],
+        demo_sparks: ["Digit3"],
+        demo_rain: ["Digit4"],
+        demo_pixel: ["Digit5"],
+        demo_circle: ["Digit6"],
+        demo_soft_circle: ["Digit7"],
+        demo_diamond: ["Digit8"],
+        demo_soft_diamond: ["Digit9"],
+        demo_line: ["Digit0"],
+        demo_texture: ["KeyT"],
+      },
+      preventDefaultKeys: ["Space"],
+    }),
+  );
   engine.use(new ParticlesPlugin());
   await installDebugFromUrl(engine);
 

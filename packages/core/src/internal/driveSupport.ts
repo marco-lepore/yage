@@ -7,7 +7,10 @@
  */
 
 /** Frames a drive has spent so far: `getFrame() - startFrame`. */
-export function driveFramesUsed(getFrame: () => number, startFrame: number): number {
+export function driveFramesUsed(
+  getFrame: () => number,
+  startFrame: number,
+): number {
   return getFrame() - startFrame;
 }
 
@@ -22,7 +25,9 @@ export const DEFAULT_DRIVE_MAX_FRAMES = 10_000;
 export function assertDriveMaxFrames(maxFrames: number, call: string): void {
   if (maxFrames === Number.POSITIVE_INFINITY) return;
   if (!Number.isInteger(maxFrames) || maxFrames < 0) {
-    throw new Error(`${call}: maxFrames must be a non-negative integer or Infinity.`);
+    throw new Error(
+      `${call}: maxFrames must be a non-negative integer or Infinity.`,
+    );
   }
 }
 

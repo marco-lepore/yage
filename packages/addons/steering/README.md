@@ -23,8 +23,27 @@ No `/presenters` subpath — steering has no view to swap, only a velocity to
 compute. The `/physics` entry exists so the root stays physics-free:
 
 ```ts
-import { SteeringAgent, seek, flee, arrive, wander, pursue, evade, avoidObstacles, separation, alignment, cohesion, followPath, contain, Steering } from "@yagejs-addons/steering";
-import { avoidColliders, physicsNeighbors, PhysicsSteeringAgent } from "@yagejs-addons/steering/physics";
+import {
+  SteeringAgent,
+  seek,
+  flee,
+  arrive,
+  wander,
+  pursue,
+  evade,
+  avoidObstacles,
+  separation,
+  alignment,
+  cohesion,
+  followPath,
+  contain,
+  Steering,
+} from "@yagejs-addons/steering";
+import {
+  avoidColliders,
+  physicsNeighbors,
+  PhysicsSteeringAgent,
+} from "@yagejs-addons/steering/physics";
 ```
 
 ## 5-minute setup

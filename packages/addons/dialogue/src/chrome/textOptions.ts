@@ -37,7 +37,12 @@ export function makeTextOptions(
   const style: TextStyle = { fontSize: size, fill: color };
   if (fonts.bitmapFont) style.fontFamily = fonts.bitmapFont;
   else if (fonts.fontFamily) style.fontFamily = fonts.fontFamily;
-  const base: TextComponentOptions & { style: TextStyle } = { text, style, layer, anchor };
+  const base: TextComponentOptions & { style: TextStyle } = {
+    text,
+    style,
+    layer,
+    anchor,
+  };
   if (fonts.bitmapFont) base.bitmap = true;
   else if (fonts.resolution !== undefined) base.resolution = fonts.resolution;
   return base;

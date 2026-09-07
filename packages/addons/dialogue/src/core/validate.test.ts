@@ -40,11 +40,18 @@ describe("analyzeScript — load-time walk + internal type checks", () => {
             id: "a",
             steps: [
               { kind: "say", text: "You have {gold} gold." },
-              { kind: "command", commands: [{ type: "set", var: "greeted", value: true }] },
+              {
+                kind: "command",
+                commands: [{ type: "set", var: "greeted", value: true }],
+              },
               {
                 kind: "command",
                 commands: [],
-                condition: { kind: "call", fn: "has_item", args: [{ kind: "literal", value: "key" }] },
+                condition: {
+                  kind: "call",
+                  fn: "has_item",
+                  args: [{ kind: "literal", value: "key" }],
+                },
                 target: "b",
               },
               { kind: "command", commands: [{ type: "give-item", id: "key" }] },
@@ -65,7 +72,12 @@ describe("analyzeScript — load-time walk + internal type checks", () => {
   it("does NOT reject an undeclared reference (storage may provide it at play)", () => {
     const s = script({
       nodes: {
-        a: { id: "a", steps: [{ kind: "command", commands: [], condition: "ghost", target: "a" }] },
+        a: {
+          id: "a",
+          steps: [
+            { kind: "command", commands: [], condition: "ghost", target: "a" },
+          ],
+        },
       },
     });
     // Load-time is environment-free — the typo surfaces at play, not here.
@@ -79,7 +91,12 @@ describe("analyzeScript — load-time walk + internal type checks", () => {
         a: {
           id: "a",
           steps: [
-            { kind: "command", commands: [], condition: { var: "flag", op: ">", value: 1 }, target: "a" },
+            {
+              kind: "command",
+              commands: [],
+              condition: { var: "flag", op: ">", value: 1 },
+              target: "a",
+            },
           ],
         },
       },
@@ -94,12 +111,19 @@ describe("analyzeScript — load-time walk + internal type checks", () => {
         a: {
           id: "a",
           steps: [
-            { kind: "command", commands: [], condition: { var: "n", op: ">", value: "x" }, target: "a" },
+            {
+              kind: "command",
+              commands: [],
+              condition: { var: "n", op: ">", value: "x" },
+              target: "a",
+            },
           ],
         },
       },
     });
-    expect(() => loadScript(s)).toThrow(/compares against a number, got string/);
+    expect(() => loadScript(s)).toThrow(
+      /compares against a number, got string/,
+    );
   });
 
   it("rejects a set whose literal value type mismatches the declared default", () => {
@@ -111,11 +135,18 @@ describe("analyzeScript — load-time walk + internal type checks", () => {
       nodes: {
         a: {
           id: "a",
-          steps: [{ kind: "command", commands: [{ type: "set", var: "gold", value: "'lots'" }] }],
+          steps: [
+            {
+              kind: "command",
+              commands: [{ type: "set", var: "gold", value: "'lots'" }],
+            },
+          ],
         },
       },
     });
-    expect(() => loadScript(s)).toThrow(/set "gold" expects number, got string/);
+    expect(() => loadScript(s)).toThrow(
+      /set "gold" expects number, got string/,
+    );
   });
 
   it("type-checks a string comparison's literal operand (Expr-path parity)", () => {
@@ -126,11 +157,20 @@ describe("analyzeScript — load-time walk + internal type checks", () => {
       nodes: {
         a: {
           id: "a",
-          steps: [{ kind: "command", commands: [], condition: "gold >= 'foo'", target: "a" }],
+          steps: [
+            {
+              kind: "command",
+              commands: [],
+              condition: "gold >= 'foo'",
+              target: "a",
+            },
+          ],
         },
       },
     });
-    expect(() => loadScript(s)).toThrow(/operator ">=" expects a number, got string/);
+    expect(() => loadScript(s)).toThrow(
+      /operator ">=" expects a number, got string/,
+    );
   });
 
   it("type-checks an arithmetic op's literal operand (gold + true)", () => {
@@ -139,11 +179,18 @@ describe("analyzeScript — load-time walk + internal type checks", () => {
       nodes: {
         a: {
           id: "a",
-          steps: [{ kind: "command", commands: [{ type: "set", var: "gold", value: "gold + true" }] }],
+          steps: [
+            {
+              kind: "command",
+              commands: [{ type: "set", var: "gold", value: "gold + true" }],
+            },
+          ],
         },
       },
     });
-    expect(() => loadScript(s)).toThrow(/operator "\+" expects a number or string, got boolean/);
+    expect(() => loadScript(s)).toThrow(
+      /operator "\+" expects a number or string, got boolean/,
+    );
   });
 
   it("rejects a numeric op against a declared non-number var (Expr path)", () => {
@@ -152,7 +199,14 @@ describe("analyzeScript — load-time walk + internal type checks", () => {
       nodes: {
         a: {
           id: "a",
-          steps: [{ kind: "command", commands: [], condition: "flag > 1", target: "a" }],
+          steps: [
+            {
+              kind: "command",
+              commands: [],
+              condition: "flag > 1",
+              target: "a",
+            },
+          ],
         },
       },
     });
@@ -165,7 +219,12 @@ describe("analyzeScript — load-time walk + internal type checks", () => {
       nodes: {
         a: {
           id: "a",
-          steps: [{ kind: "command", commands: [{ type: "set", var: "note", value: "name + '!'" }] }],
+          steps: [
+            {
+              kind: "command",
+              commands: [{ type: "set", var: "note", value: "name + '!'" }],
+            },
+          ],
         },
       },
     });
@@ -177,7 +236,9 @@ describe("analyzeScript — load-time walk + internal type checks", () => {
       nodes: {
         a: {
           id: "a",
-          steps: [{ kind: "command", commands: [{ type: "set", var: "gold" }] }],
+          steps: [
+            { kind: "command", commands: [{ type: "set", var: "gold" }] },
+          ],
         },
       },
     });
@@ -190,7 +251,12 @@ describe("analyzeScript — load-time walk + internal type checks", () => {
       nodes: {
         a: {
           id: "a",
-          steps: [{ kind: "command", commands: [{ type: "set", var: "note", value: null }] }],
+          steps: [
+            {
+              kind: "command",
+              commands: [{ type: "set", var: "note", value: null }],
+            },
+          ],
         },
       },
     });
@@ -202,7 +268,12 @@ describe("analyzeScript — load-time walk + internal type checks", () => {
       nodes: {
         a: {
           id: "a",
-          steps: [{ kind: "command", commands: [{ type: "set", var: "local", value: true }] }],
+          steps: [
+            {
+              kind: "command",
+              commands: [{ type: "set", var: "local", value: true }],
+            },
+          ],
         },
       },
     });
@@ -214,7 +285,9 @@ describe("validatePlay — play-time environment check", () => {
   const reads = (): DialogueScript =>
     loadScript(
       script({
-        nodes: { a: { id: "a", steps: [{ kind: "say", text: "{gold} {name}" }] } },
+        nodes: {
+          a: { id: "a", steps: [{ kind: "say", text: "{gold} {name}" }] },
+        },
       }),
     );
 
@@ -240,7 +313,10 @@ describe("validatePlay — play-time environment check", () => {
           a: {
             id: "a",
             steps: [
-              { kind: "command", commands: [{ type: "set", var: "quest_stage", value: 1 }] },
+              {
+                kind: "command",
+                commands: [{ type: "set", var: "quest_stage", value: 1 }],
+              },
               {
                 kind: "command",
                 commands: [],
@@ -261,7 +337,9 @@ describe("validatePlay — play-time environment check", () => {
     const s = loadScript(
       script({
         declare: { gold: 0, name: "stranger" },
-        nodes: { a: { id: "a", steps: [{ kind: "say", text: "{gold} {name}" }] } },
+        nodes: {
+          a: { id: "a", steps: [{ kind: "say", text: "{gold} {name}" }] },
+        },
       }),
     );
     expect(() => validatePlay(analyzeScript(s), env())).not.toThrow();
@@ -277,7 +355,11 @@ describe("validatePlay — play-time environment check", () => {
               {
                 kind: "command",
                 commands: [],
-                condition: { kind: "call", fn: "has_item", args: [{ kind: "literal", value: "key" }] },
+                condition: {
+                  kind: "call",
+                  fn: "has_item",
+                  args: [{ kind: "literal", value: "key" }],
+                },
                 target: "a",
               },
             ],
@@ -289,7 +371,10 @@ describe("validatePlay — play-time environment check", () => {
       /calls function "has_item"/,
     );
     expect(() =>
-      validatePlay(analyzeScript(s), env({ functions: { has_item: () => true } })),
+      validatePlay(
+        analyzeScript(s),
+        env({ functions: { has_item: () => true } }),
+      ),
     ).not.toThrow();
   });
 
@@ -299,7 +384,12 @@ describe("validatePlay — play-time environment check", () => {
         nodes: {
           a: {
             id: "a",
-            steps: [{ kind: "command", commands: [{ type: "set", var: "score", value: 1 }] }],
+            steps: [
+              {
+                kind: "command",
+                commands: [{ type: "set", var: "score", value: 1 }],
+              },
+            ],
           },
         },
       }),
@@ -317,7 +407,10 @@ describe("validatePlay — play-time environment check", () => {
       }),
     );
     // The host already holds `gold` as a string via a cell — a type clash.
-    const storage = compose(cells({ gold: () => "lots" }), new MemoryVariableStorage());
+    const storage = compose(
+      cells({ gold: () => "lots" }),
+      new MemoryVariableStorage(),
+    );
     expect(() => validatePlay(analyzeScript(s), env({ storage }))).toThrow(
       /declared default for "gold" is number but storage already holds string/,
     );
@@ -338,7 +431,9 @@ describe("validatePlay — play-time environment check", () => {
       }),
     );
     const a = analyzeScript(s);
-    expect(() => validatePlay(a, env({ fallbackCommand: () => {} }))).not.toThrow();
+    expect(() =>
+      validatePlay(a, env({ fallbackCommand: () => {} })),
+    ).not.toThrow();
     expect(() => validatePlay(a, env())).toThrow(/no handler for command type/);
   });
 });

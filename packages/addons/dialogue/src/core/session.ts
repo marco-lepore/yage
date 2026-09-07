@@ -293,7 +293,10 @@ export interface DialogueSessionOptions {
   readonly onEnded?: (e: { scriptId: string }) => void;
   /** A line finished its typewriter reveal — the "typing finished" hook
    *  (audio blip, etc.). Plain (markup-stripped) text, like {@link onLine}. */
-  readonly onRevealCompleted?: (e: { speaker?: string | undefined; text: string }) => void;
+  readonly onRevealCompleted?: (e: {
+    speaker?: string | undefined;
+    text: string;
+  }) => void;
   /**
    * Per-grapheme typewriter tick — a direct CALLBACK only (NOT forwarded to an
    * entity event; it fires hundreds of times per line). `index` is the 0-based
@@ -397,7 +400,9 @@ export class DialogueSession {
   private choiceShowsBody = false;
   /** Plain (speaker, text) of the line on screen — for the reveal-completed
    *  event, which fires after `present` has discarded the resolved string. */
-  private currentLine: { speaker?: string | undefined; text: string } | undefined;
+  private currentLine:
+    | { speaker?: string | undefined; text: string }
+    | undefined;
   /** The full {@link PresentedLine} on screen — handed to an extra channel's
    *  `revealComplete` (the session discards the local `line` after present). */
   private currentPresented: PresentedLine | undefined;
@@ -425,7 +430,8 @@ export class DialogueSession {
     // Pointer/touch commit from a presenter that owns its own hit-testing.
     // Routes through confirmAt so a tap on a disabled row is refused (it would
     // otherwise commit the previously-highlighted enabled row).
-    this.channels.choices.onChoiceChosen = (position) => this.confirmAt(position);
+    this.channels.choices.onChoiceChosen = (position) =>
+      this.confirmAt(position);
   }
 
   /**
@@ -541,9 +547,9 @@ export class DialogueSession {
     return {
       setVar: (name, value) => guarded.set(name, value),
       getVars: () =>
-        (gen === this.generation ? materialize(storage) : EMPTY_VARS) as Readonly<
-          VarsOf<S>
-        >,
+        (gen === this.generation
+          ? materialize(storage)
+          : EMPTY_VARS) as Readonly<VarsOf<S>>,
     };
   }
 
@@ -651,9 +657,13 @@ export class DialogueSession {
     const shown = !this.hidden;
     const saying = this.mode === "saying";
     const choosing = this.mode === "choosing";
-    this.channels.text.setVisible(shown && (saying || (choosing && this.choiceShowsBody)));
+    this.channels.text.setVisible(
+      shown && (saying || (choosing && this.choiceShowsBody)),
+    );
     this.channels.choices.setVisible(shown && choosing);
-    this.channels.chrome?.setVisible(shown && (saying || (choosing && this.choiceShowsChrome)));
+    this.channels.chrome?.setVisible(
+      shown && (saying || (choosing && this.choiceShowsChrome)),
+    );
     this.channels.avatar?.setVisible?.(shown && (saying || choosing));
     // Extras track the host-hidden lever directly (they aren't mode-bound
     // content): the whole UI shown/hidden, not per-line visibility.
@@ -804,7 +814,10 @@ export class DialogueSession {
           try {
             ch.completeReveal?.();
           } catch (error) {
-            this.opts.onError?.("dialogue: channel completeReveal() failed", error);
+            this.opts.onError?.(
+              "dialogue: channel completeReveal() failed",
+              error,
+            );
           }
         }
       } else void this.advanceLine();
@@ -1031,7 +1044,11 @@ export class DialogueSession {
     if (!chosen || chosen.disabled) return; // never commit a missing or disabled row
     this.selected = position;
     this.confirming = true;
-    const text = this.i18n.t(chosen.option.key, chosen.option.text, this.readView());
+    const text = this.i18n.t(
+      chosen.option.key,
+      chosen.option.text,
+      this.readView(),
+    );
     this.opts.onChoiceMade?.({ index: chosen.index, text });
     this.runner?.choose(chosen.index);
   }
@@ -1112,7 +1129,10 @@ export class DialogueSession {
     }
 
     const plain = stripMarkup(resolved);
-    this.currentLine = { speaker: this.speakerName(speaker, view), text: plain };
+    this.currentLine = {
+      speaker: this.speakerName(speaker, view),
+      text: plain,
+    };
     this.opts.onLine?.({ speaker: this.currentLine.speaker, text: plain });
 
     // A saying line shows the chrome + body text (gated by the host-hidden lever).
@@ -1274,7 +1294,10 @@ export class DialogueSession {
         try {
           ch.revealComplete?.(presented);
         } catch (error) {
-          this.opts.onError?.("dialogue: channel revealComplete() failed", error);
+          this.opts.onError?.(
+            "dialogue: channel revealComplete() failed",
+            error,
+          );
         }
       }
     }
@@ -1314,7 +1337,10 @@ export class DialogueSession {
    * `mode` overrides the runner's run mode (skip() fires the displayed line's
    * batches in skip mode).
    */
-  private async fireLineCommands(at: CommandTiming, mode?: RunMode): Promise<void> {
+  private async fireLineCommands(
+    at: CommandTiming,
+    mode?: RunMode,
+  ): Promise<void> {
     const all = this.saying?.commands;
     if (!all || !this.runner) return;
     const batch = all.filter((c) => (c.at ?? "show") === at);

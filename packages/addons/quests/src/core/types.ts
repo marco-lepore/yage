@@ -52,7 +52,12 @@ export interface QuestDef {
   readonly requires: readonly string[];
 }
 
-export type QuestStatus = "locked" | "available" | "active" | "completed" | "failed";
+export type QuestStatus =
+  | "locked"
+  | "available"
+  | "active"
+  | "completed"
+  | "failed";
 
 /** The full readable state of one quest — what a journal/tracker reads. */
 export interface QuestState {
@@ -63,7 +68,11 @@ export interface QuestState {
 
 export interface QuestStartResult {
   readonly ok: boolean;
-  readonly reason?: "locked" | "already-active" | "already-completed" | "unknown-quest";
+  readonly reason?:
+    | "locked"
+    | "already-active"
+    | "already-completed"
+    | "unknown-quest";
 }
 
 /** {@link QuestLog}'s model events (`log.on(event, fn)`). */

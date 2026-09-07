@@ -57,7 +57,8 @@ for (const file of readdirSync(src)) {
   if (file.endsWith(".md")) cpSync(join(src, file), join(dest, file));
 }
 for (const file of readdirSync(join(src, "packages"))) {
-  if (file.endsWith(".md")) cpSync(join(src, "packages", file), join(dest, "packages", file));
+  if (file.endsWith(".md"))
+    cpSync(join(src, "packages", file), join(dest, "packages", file));
 }
 
 // Copy co-located docs into public/llms/<group>/.

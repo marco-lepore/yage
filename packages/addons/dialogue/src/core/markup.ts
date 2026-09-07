@@ -172,7 +172,8 @@ export function parseMarkup(input: string): ParsedText {
     // instead of acting on it. An even count is just escaped backslashes
     // (`\\[b]` → "\" + a REAL [b] tag), handled by unescape() as usual.
     let backslashes = 0;
-    for (let i = m.index - 1; i >= lastIndex && input[i] === "\\"; i--) backslashes++;
+    for (let i = m.index - 1; i >= lastIndex && input[i] === "\\"; i--)
+      backslashes++;
     if (backslashes % 2 === 1) {
       buffer += unescape(input.slice(lastIndex, m.index - 1)) + m[0];
       lastIndex = TAG_RE.lastIndex;
@@ -366,7 +367,8 @@ export function firstUnknownTag(input: string): string | null {
   while ((m = TAG_RE.exec(input)) !== null) {
     // Same odd-backslash escape test parseMarkup uses: an escaped `\[` is text.
     let backslashes = 0;
-    for (let i = m.index - 1; i >= lastIndex && input[i] === "\\"; i--) backslashes++;
+    for (let i = m.index - 1; i >= lastIndex && input[i] === "\\"; i--)
+      backslashes++;
     lastIndex = TAG_RE.lastIndex;
     if (backslashes % 2 === 1) continue;
     // None of these is dropped, so none is a typo: a closing tag (`m[1]`) pops a

@@ -72,9 +72,7 @@ export class UIText implements UIElement {
         this.applyTruncate(maxWidth, suffix);
         const w = this.text.width;
         const measuredWidth =
-          widthMode === MeasureMode.Exactly
-            ? width
-            : Math.min(w, maxWidth);
+          widthMode === MeasureMode.Exactly ? width : Math.min(w, maxWidth);
         return { width: measuredWidth, height: this.text.height };
       }
 

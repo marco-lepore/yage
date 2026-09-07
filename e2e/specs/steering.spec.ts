@@ -1,5 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { gotoFixture, getEntityPosition, stepFrames, waitForClock } from "./helpers.js";
+import {
+  gotoFixture,
+  getEntityPosition,
+  stepFrames,
+  waitForClock,
+} from "./helpers.js";
 
 /**
  * The fixture (`e2e/fixtures/src/steering.ts`) exposes fixed targets and
@@ -24,7 +29,10 @@ function fixtureData(page: Page): Promise<FixtureData> {
   );
 }
 
-function dist(a: { x: number; y: number }, b: { x: number; y: number }): number {
+function dist(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
@@ -56,7 +64,9 @@ test.describe("Steering addon fixture", () => {
     expect(dist(finalPos!, seekTarget)).toBeLessThan(20);
   });
 
-  test("a flee agent's distance from a fixed target grows", async ({ page }) => {
+  test("a flee agent's distance from a fixed target grows", async ({
+    page,
+  }) => {
     await gotoFixture(page, "/steering.html");
     await waitForClock(page);
     const { fleeTarget } = await fixtureData(page);
@@ -162,7 +172,9 @@ test.describe("Steering addon fixture", () => {
     expect(dist(agentEnd!, impulseTarget)).toBeLessThan(30); // and still arrived
   });
 
-  test("a knockback deflects the impulse agent and steering pulls it back", async ({ page }) => {
+  test("a knockback deflects the impulse agent and steering pulls it back", async ({
+    page,
+  }) => {
     await gotoFixture(page, "/steering.html");
     await waitForClock(page);
     const { impulseTarget } = await fixtureData(page);
@@ -174,7 +186,9 @@ test.describe("Steering addon fixture", () => {
     expect(Math.abs(before!.y - 100)).toBeLessThan(5);
 
     await page.evaluate(() =>
-      (window as unknown as { __steering__: { knockback: () => void } }).__steering__.knockback(),
+      (
+        window as unknown as { __steering__: { knockback: () => void } }
+      ).__steering__.knockback(),
     );
 
     // The impulse persists: the agent is visibly off its lane...
@@ -218,26 +232,37 @@ test.describe("Steering addon fixture", () => {
       const pts = samples.get(name)!;
       let maxTurn = 0;
       for (let i = 2; i < pts.length; i++) {
-        const d1 = { x: pts[i - 1]!.x - pts[i - 2]!.x, y: pts[i - 1]!.y - pts[i - 2]!.y };
-        const d2 = { x: pts[i]!.x - pts[i - 1]!.x, y: pts[i]!.y - pts[i - 1]!.y };
+        const d1 = {
+          x: pts[i - 1]!.x - pts[i - 2]!.x,
+          y: pts[i - 1]!.y - pts[i - 2]!.y,
+        };
+        const d2 = {
+          x: pts[i]!.x - pts[i - 1]!.x,
+          y: pts[i]!.y - pts[i - 1]!.y,
+        };
         const l1 = Math.hypot(d1.x, d1.y);
         const l2 = Math.hypot(d2.x, d2.y);
         if (l1 < 1 || l2 < 1) continue; // turning in place is allowed
         const cos = (d1.x * d2.x + d1.y * d2.y) / (l1 * l2);
-        const turn = (Math.acos(Math.max(-1, Math.min(1, cos))) * 180) / Math.PI;
+        const turn =
+          (Math.acos(Math.max(-1, Math.min(1, cos))) * 180) / Math.PI;
         maxTurn = Math.max(maxTurn, turn);
       }
       expect(maxTurn, `${name} max per-frame turn`).toBeLessThan(30);
     }
   });
 
-  test("a boid flock's mean pairwise distance stays bounded", async ({ page }) => {
+  test("a boid flock's mean pairwise distance stays bounded", async ({
+    page,
+  }) => {
     await gotoFixture(page, "/steering.html");
     await waitForClock(page);
     const { boidNames } = await fixtureData(page);
 
     async function meanPairwiseDistance(): Promise<number> {
-      const positions = await Promise.all(boidNames.map((name) => getEntityPosition(page, name)));
+      const positions = await Promise.all(
+        boidNames.map((name) => getEntityPosition(page, name)),
+      );
       for (const pos of positions) expect(pos).toBeDefined();
       let sum = 0;
       let count = 0;

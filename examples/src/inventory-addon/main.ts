@@ -38,10 +38,12 @@
 import { Engine } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { InputPlugin } from "@yagejs/input";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+import {
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
 import { HEIGHT, WIDTH } from "./constants.js";
 import { InventoryRoomScene } from "./scene.js";
-
 
 // ── boot ─────────────────────────────────────────────────────────────────────
 
@@ -73,7 +75,13 @@ async function main(): Promise<void> {
         "quick-4": ["Digit4"],
         "quick-5": ["Digit5"],
       },
-      preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
+      preventDefaultKeys: [
+        "Space",
+        "ArrowUp",
+        "ArrowDown",
+        "ArrowLeft",
+        "ArrowRight",
+      ],
     }),
   );
   await installDebugFromUrl(engine);

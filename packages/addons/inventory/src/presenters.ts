@@ -14,8 +14,15 @@ export { rowCell } from "./render/rowCell.js";
 export { menuSkin } from "./render/menuSkin.js";
 export { hints } from "./render/hints.js";
 export { DetailView, type DetailConfig } from "./render/DetailView.js";
-export { ActionMenuView, type ActionMenuConfig, type ActionMenuViewOptions } from "./render/ActionMenuView.js";
-export { InventoryChrome, type InventoryChromeConfig } from "./render/InventoryChrome.js";
+export {
+  ActionMenuView,
+  type ActionMenuConfig,
+  type ActionMenuViewOptions,
+} from "./render/ActionMenuView.js";
+export {
+  InventoryChrome,
+  type InventoryChromeConfig,
+} from "./render/InventoryChrome.js";
 export { PanelLayout, type PanelLayoutConfig } from "./render/PanelLayout.js";
 export {
   cellAtPoint,
@@ -26,7 +33,11 @@ export {
   cellWindowSize,
   type CellGridSpec,
 } from "./render/cellGeometry.js";
-export { layoutActionMenu, type MenuLayout, type MenuLayoutInput } from "./render/menuLayout.js";
+export {
+  layoutActionMenu,
+  type MenuLayout,
+  type MenuLayoutInput,
+} from "./render/menuLayout.js";
 export { makeTextOptions, type FontConfig } from "./render/textOptions.js";
 export {
   INVENTORY_LAYERS,

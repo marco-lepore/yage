@@ -1,5 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { gotoFixture, waitForClock, stepFrames, getEntityPosition } from "./helpers.js";
+import {
+  gotoFixture,
+  waitForClock,
+  stepFrames,
+  getEntityPosition,
+} from "./helpers.js";
 
 /**
  * The fixture (`e2e/fixtures/src/pathfinding.ts`) builds a fixed 6x4 grid
@@ -14,7 +19,11 @@ interface Handle {
   walkTo(
     x: number,
     y: number,
-  ): { waypoints: { x: number; y: number }[]; cells: { col: number; row: number }[]; cost: number } | null;
+  ): {
+    waypoints: { x: number; y: number }[];
+    cells: { col: number; row: number }[];
+    cost: number;
+  } | null;
   isMoving(): boolean;
 }
 
@@ -23,15 +32,25 @@ async function boot(page: Page): Promise<void> {
   await waitForClock(page);
 }
 
-function walkTo(page: Page, x: number, y: number): Promise<ReturnType<Handle["walkTo"]>> {
+function walkTo(
+  page: Page,
+  x: number,
+  y: number,
+): Promise<ReturnType<Handle["walkTo"]>> {
   return page.evaluate(
-    ({ x, y }) => (window as unknown as { __pathfinding__: Handle }).__pathfinding__.walkTo(x, y),
+    ({ x, y }) =>
+      (window as unknown as { __pathfinding__: Handle }).__pathfinding__.walkTo(
+        x,
+        y,
+      ),
     { x, y },
   );
 }
 
 test.describe("@yagejs/pathfinding", () => {
-  test("routes around the wall through its gap and reports the expected cost", async ({ page }) => {
+  test("routes around the wall through its gap and reports the expected cost", async ({
+    page,
+  }) => {
     await boot(page);
 
     // Start (0,0) [world (10,10)] to goal (5,0) [world (110,10)]: the wall at
@@ -66,8 +85,10 @@ test.describe("@yagejs/pathfinding", () => {
     await walkTo(page, 50, 10); // (0,0) -> (2,0), a clear 2-step straight line
     await stepFrames(page, 60); // more than enough time at 200px/s over 40px
 
-    const moving = await page.evaluate(
-      () => (window as unknown as { __pathfinding__: Handle }).__pathfinding__.isMoving(),
+    const moving = await page.evaluate(() =>
+      (
+        window as unknown as { __pathfinding__: Handle }
+      ).__pathfinding__.isMoving(),
     );
     expect(moving).toBe(false);
 

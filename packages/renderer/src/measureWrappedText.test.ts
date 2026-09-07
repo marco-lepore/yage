@@ -191,7 +191,11 @@ describe("measureWrappedText", () => {
     registerBitmapFontVariant("Pixel", { fontWeight: "bold" }, "Pixel bold");
     try {
       setDefaultTextStyle({ fontWeight: "bold" });
-      measureWrappedText("ab", { fontSize: 20, fontFamily: "Pixel", bitmap: true });
+      measureWrappedText("ab", {
+        fontSize: 20,
+        fontFamily: "Pixel",
+        bitmap: true,
+      });
       const last = layoutFonts.at(-1);
       // The render path's selectBitmapVariant redirect: family swapped to the
       // bold atlas, fontWeight dropped (the variant already baked its weight).
@@ -224,8 +228,8 @@ describe("measureWrappedText", () => {
     expect(plain.width).toBe(16);
 
     // All of the above shared one TextStyle instance.
-    expect(
-      (MockTextStyle as unknown as { instances: number }).instances,
-    ).toBe(1);
+    expect((MockTextStyle as unknown as { instances: number }).instances).toBe(
+      1,
+    );
   });
 });

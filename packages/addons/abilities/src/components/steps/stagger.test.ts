@@ -86,7 +86,9 @@ describe("staggerMotion (via force)", () => {
     abilities.force(
       staggerReaction({ direction: new Vec2(1, 0), knockback: 10, stun: 0.1 }),
     );
-    expect(() => pc._tick(0.01, undefined, "fixed")).toThrow(/requires a Stagger component/);
+    expect(() => pc._tick(0.01, undefined, "fixed")).toThrow(
+      /requires a Stagger component/,
+    );
   });
 
   it("disables stagger output while abilities are disabled", () => {

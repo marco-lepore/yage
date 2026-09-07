@@ -2,7 +2,12 @@ import { Engine } from "./Engine.js";
 import type { EngineConfig } from "./Engine.js";
 import { Scene } from "./Scene.js";
 import { Entity, _resetEntityIdCounter } from "./Entity.js";
-import { EngineContext, QueryCacheKey, EventBusKey, ErrorBoundaryKey } from "./EngineContext.js";
+import {
+  EngineContext,
+  QueryCacheKey,
+  EventBusKey,
+  ErrorBoundaryKey,
+} from "./EngineContext.js";
 import { QueryCache } from "./QueryCache.js";
 import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
@@ -20,9 +25,7 @@ class _TestScene extends Scene {
 }
 
 /** Create a fully wired Engine for integration tests. */
-export async function createTestEngine(
-  config?: EngineConfig,
-): Promise<Engine> {
+export async function createTestEngine(config?: EngineConfig): Promise<Engine> {
   _resetEntityIdCounter();
   const engine = new Engine(config);
   await engine.start();

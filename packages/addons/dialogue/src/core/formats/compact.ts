@@ -100,7 +100,8 @@ export function parseCompact(text: string): DialogueScript {
   const declares: Record<string, VarValue> = {};
 
   const flushChoice = (): void => {
-    if (choiceRun && current) current.steps.push({ kind: "choice", options: choiceRun });
+    if (choiceRun && current)
+      current.steps.push({ kind: "choice", options: choiceRun });
     choiceRun = null;
   };
 
@@ -115,7 +116,8 @@ export function parseCompact(text: string): DialogueScript {
       flushChoice();
       const newId = line.slice(1).trim();
       if (!newId) fail(lineNo, "'#' script id directive needs an id");
-      if (id !== undefined) fail(lineNo, `duplicate '#' script id directive (already "${id}")`);
+      if (id !== undefined)
+        fail(lineNo, `duplicate '#' script id directive (already "${id}")`);
       id = newId;
       return;
     }
@@ -124,7 +126,8 @@ export function parseCompact(text: string): DialogueScript {
       flushChoice();
       const nodeId = line.slice(2).trim();
       if (!nodeId) fail(lineNo, "':: ' node directive needs an id");
-      if (Object.hasOwn(nodes, nodeId)) fail(lineNo, `duplicate node "${nodeId}"`);
+      if (Object.hasOwn(nodes, nodeId))
+        fail(lineNo, `duplicate node "${nodeId}"`);
       current = { id: nodeId, steps: [] };
       nodes[nodeId] = current;
       nodeOrder.push(nodeId);
@@ -149,7 +152,8 @@ export function parseCompact(text: string): DialogueScript {
 
     // The remaining leaders are node steps.
     const node = current;
-    if (!node) fail(lineNo, `dialogue line appears before any ':: <node>'  ("${line}")`);
+    if (!node)
+      fail(lineNo, `dialogue line appears before any ':: <node>'  ("${line}")`);
 
     if (line.startsWith("->")) {
       node.steps.push(parseGoto(line, lineNo));
@@ -174,9 +178,12 @@ export function parseCompact(text: string): DialogueScript {
 
   flushChoice();
 
-  if (id === undefined) throw new DialogueScriptError("compact: missing '# <id>' script directive");
+  if (id === undefined)
+    throw new DialogueScriptError("compact: missing '# <id>' script directive");
   if (nodeOrder.length === 0) {
-    throw new DialogueScriptError(`compact: script "${id}" has no ':: <node>' nodes`);
+    throw new DialogueScriptError(
+      `compact: script "${id}" has no ':: <node>' nodes`,
+    );
   }
 
   return {
@@ -230,13 +237,22 @@ function hexColor(token: string): number {
 
 function parseGoto(line: string, lineNo: number): Step {
   const m = /^->\s*(\S+)(?:\s+if:\s*(.+))?\s*$/.exec(line);
-  if (!m) fail(lineNo, "'->' goto needs a target node id (optionally `-> node if: cond`)");
+  if (!m)
+    fail(
+      lineNo,
+      "'->' goto needs a target node id (optionally `-> node if: cond`)",
+    );
   const target = m[1]!;
   // `-> node if: cond` is a conditional jump (a CommandStep with no commands):
   // take the jump only if the condition holds, else fall through to the next
   // step. Bare `-> node` is an unconditional GotoStep.
   if (m[2] !== undefined) {
-    return { kind: "command", commands: [], condition: parseExpr(m[2].trim()), target };
+    return {
+      kind: "command",
+      commands: [],
+      condition: parseExpr(m[2].trim()),
+      target,
+    };
   }
   return { kind: "goto", target };
 }
@@ -286,7 +302,8 @@ function parseDo(line: string, lineNo: number): Step | null {
   if (!/^do(\s|$)/.test(line)) return null;
   const tokens = splitArgs(line.slice(2).trim());
   const type = tokens[0];
-  if (type === undefined || !/^[A-Za-z_][A-Za-z0-9_-]*$/.test(type)) return null;
+  if (type === undefined || !/^[A-Za-z_][A-Za-z0-9_-]*$/.test(type))
+    return null;
   const command: Record<string, unknown> = { type };
   // `type` is the command's dispatch key (the leading token); a `type=` data key
   // OR a `#type` flag would overwrite it. Flag either form, but only fail once the
@@ -308,14 +325,21 @@ function parseDo(line: string, lineNo: number): Step | null {
     else command[key] = scalar(tok.slice(eq + 1));
   }
   if (typeKeyCollision) {
-    fail(lineNo, `'do' data key "type" collides with the command type (the leading token); rename it`);
+    fail(
+      lineNo,
+      `'do' data key "type" collides with the command type (the leading token); rename it`,
+    );
   }
   return { kind: "command", commands: [command as Command] };
 }
 
 // ── Say / narrator lines ─────────────────────────────────────────────────────
 
-function parseSay(line: string, lineNo: number, speakers: Record<string, SpeakerDef>): SayStep {
+function parseSay(
+  line: string,
+  lineNo: number,
+  speakers: Record<string, SpeakerDef>,
+): SayStep {
   let speaker: string | undefined;
   let expression: string | undefined;
   let body = line;
@@ -329,7 +353,10 @@ function parseSay(line: string, lineNo: number, speakers: Record<string, Speaker
     // speaker; otherwise the colon belongs to narrator prose ("Warning: …").
     if (first !== undefined && Object.hasOwn(speakers, first)) {
       if (tokens.length > 2) {
-        fail(lineNo, `speaker header "${header}" has too many tokens (use "speaker [face]: text")`);
+        fail(
+          lineNo,
+          `speaker header "${header}" has too many tokens (use "speaker [face]: text")`,
+        );
       }
       speaker = first;
       expression = tokens[1];
@@ -362,7 +389,11 @@ interface SayFields {
 function peelSayHints(
   body: string,
   lineNo: number,
-): { text: string; fields: SayFields; meta: Record<string, unknown> | undefined } {
+): {
+  text: string;
+  fields: SayFields;
+  meta: Record<string, unknown> | undefined;
+} {
   let rest = body;
   const fields: SayFields = {};
   const meta: Record<string, unknown> = {};
@@ -373,7 +404,8 @@ function peelSayHints(
     if (hash) {
       const tag = hash[2]!;
       const lk = lineKey(tag);
-      if (lk !== undefined) fields.key = lk; // #line:id → SayStep.key (i18n)
+      if (lk !== undefined)
+        fields.key = lk; // #line:id → SayStep.key (i18n)
       else metaCount += applyHashtag(meta, tag);
       rest = rest.slice(0, hash.index).replace(/\s+$/, "");
       continue;
@@ -390,7 +422,12 @@ function peelSayHints(
   return { text: rest, fields, meta: metaCount > 0 ? meta : undefined };
 }
 
-function applySayField(fields: SayFields, key: string, value: string, lineNo: number): void {
+function applySayField(
+  fields: SayFields,
+  key: string,
+  value: string,
+  lineNo: number,
+): void {
   switch (key) {
     case "view":
       fields.view = unquote(value);
@@ -409,7 +446,8 @@ function applySayField(fields: SayFields, key: string, value: string, lineNo: nu
 
 function numberHint(value: string, lineNo: number, key: string): number {
   const n = Number(value);
-  if (!Number.isFinite(n)) fail(lineNo, `'${key}=' expects a number, got "${value}"`);
+  if (!Number.isFinite(n))
+    fail(lineNo, `'${key}=' expects a number, got "${value}"`);
   return n;
 }
 
@@ -434,7 +472,8 @@ function parseChoice(body: string, lineNo: number): ChoiceOption {
     const lk = lineKey(tag);
     if (tag === "once") once = true;
     else if (tag === "disabled") disabled = true;
-    else if (lk !== undefined) key = lk; // #line:id → ChoiceOption.key (i18n)
+    else if (lk !== undefined)
+      key = lk; // #line:id → ChoiceOption.key (i18n)
     else metaCount += applyHashtag(meta, tag);
     rest = rest.slice(0, hash.index).replace(/\s+$/, "");
   }
@@ -496,7 +535,9 @@ function applyHashtag(meta: Record<string, unknown>, tag: string): 1 {
  *  tag (which routes to `meta` as usual). */
 function lineKey(tag: string): string | undefined {
   const colon = tag.indexOf(":");
-  return colon > 0 && tag.slice(0, colon) === "line" ? tag.slice(colon + 1) : undefined;
+  return colon > 0 && tag.slice(0, colon) === "line"
+    ? tag.slice(colon + 1)
+    : undefined;
 }
 
 /** Sentinel: `numberBoolNull` returns this when the source is not one of the
@@ -523,7 +564,8 @@ function scalar(raw: string): VarValue {
 function unquote(raw: string): string {
   if (
     raw.length >= 2 &&
-    ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'")))
+    ((raw.startsWith('"') && raw.endsWith('"')) ||
+      (raw.startsWith("'") && raw.endsWith("'")))
   ) {
     return raw.slice(1, -1);
   }

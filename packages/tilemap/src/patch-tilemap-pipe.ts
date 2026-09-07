@@ -51,9 +51,8 @@ interface PipeClassShape {
   prototype: { execute: (instruction: { tilemap: unknown }) => void };
 }
 
-const TilemapPipeClass = (
-  tilemap as unknown as { TilemapPipe: PipeClassShape }
-).TilemapPipe;
+const TilemapPipeClass = (tilemap as unknown as { TilemapPipe: PipeClassShape })
+  .TilemapPipe;
 
 const PATCHED_FLAG = Symbol.for("yage:tilemap-pipe-patched");
 

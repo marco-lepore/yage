@@ -24,7 +24,9 @@ await engine.start();
 function HUD({ score }: { score: number }) {
   return (
     <Panel anchor="TopCenter" direction="row" gap={16}>
-      <Text fontSize={32} fill={0xffffff}>Score: {score}</Text>
+      <Text fontSize={32} fill={0xffffff}>
+        Score: {score}
+      </Text>
       <Button onPress={() => console.log("pause")}>Pause</Button>
     </Panel>
   );

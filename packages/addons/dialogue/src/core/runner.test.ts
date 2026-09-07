@@ -2,8 +2,17 @@ import { createRecord } from "@yagejs/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createScope, evalCondition } from "./expr.js";
-import { DialogueRunner, type ResolvedChoice, type RunnerHandlers } from "./runner.js";
-import { MemoryVariableStorage, cells, compose, createStoreStorage } from "./vars.js";
+import {
+  DialogueRunner,
+  type ResolvedChoice,
+  type RunnerHandlers,
+} from "./runner.js";
+import {
+  MemoryVariableStorage,
+  cells,
+  compose,
+  createStoreStorage,
+} from "./vars.js";
 import type {
   ChoiceStep,
   Command,
@@ -64,7 +73,10 @@ function asLoaded(script: DialogueScript): LoadedScript {
 interface Recorder {
   readonly handlers: RunnerHandlers;
   readonly says: SayStep[];
-  readonly choiceSets: { step: ChoiceStep; choices: readonly ResolvedChoice[] }[];
+  readonly choiceSets: {
+    step: ChoiceStep;
+    choices: readonly ResolvedChoice[];
+  }[];
   readonly commands: { command: Command; ctx: CommandContext }[];
   ended: number;
 }
@@ -73,7 +85,8 @@ function makeRecorder(
   onCommand?: (command: Command, ctx: CommandContext) => void | Promise<void>,
 ): Recorder {
   const says: SayStep[] = [];
-  const choiceSets: { step: ChoiceStep; choices: readonly ResolvedChoice[] }[] = [];
+  const choiceSets: { step: ChoiceStep; choices: readonly ResolvedChoice[] }[] =
+    [];
   const commands: { command: Command; ctx: CommandContext }[] = [];
   const rec: Recorder = {
     says,
@@ -202,7 +215,10 @@ describe("DialogueRunner — goto and branching", () => {
       nodes: {
         a: {
           id: "a",
-          steps: [{ kind: "say", text: "a1" }, { kind: "goto", target: "b" }],
+          steps: [
+            { kind: "say", text: "a1" },
+            { kind: "goto", target: "b" },
+          ],
         },
         b: { id: "b", steps: [{ kind: "say", text: "b1" }] },
       },
@@ -255,7 +271,10 @@ describe("DialogueRunner — set / vars", () => {
         a: {
           id: "a",
           steps: [
-            { kind: "command", commands: [{ type: "set", var: "flag", value: true }] },
+            {
+              kind: "command",
+              commands: [{ type: "set", var: "flag", value: true }],
+            },
             { kind: "command", commands: [], condition: "flag", target: "b" },
             { kind: "say", text: "no" },
           ],
@@ -397,8 +416,16 @@ describe("DialogueRunner — storage + functions", () => {
         a: {
           id: "a",
           steps: [
-            { kind: "command", commands: [{ type: "skill-check", blocking: true }] },
-            { kind: "command", commands: [], condition: "passed", target: "win" },
+            {
+              kind: "command",
+              commands: [{ type: "skill-check", blocking: true }],
+            },
+            {
+              kind: "command",
+              commands: [],
+              condition: "passed",
+              target: "win",
+            },
             { kind: "say", text: "lose" },
           ],
         },
@@ -420,7 +447,12 @@ describe("DialogueRunner — storage + functions", () => {
       nodes: {
         a: {
           id: "a",
-          steps: [{ kind: "command", commands: [{ type: "set", var: "greeted", value: false }] }],
+          steps: [
+            {
+              kind: "command",
+              commands: [{ type: "set", var: "greeted", value: false }],
+            },
+          ],
         },
       },
     };
@@ -469,7 +501,10 @@ describe("DialogueRunner — storage + functions", () => {
         a: {
           id: "a",
           steps: [
-            { kind: "command", commands: [{ type: "set", var: "metMira", value: true }] },
+            {
+              kind: "command",
+              commands: [{ type: "set", var: "metMira", value: true }],
+            },
           ],
         },
       },
@@ -525,7 +560,10 @@ describe("DialogueRunner — choices", () => {
     const runner = makeRunner(choiceScript(), rec.handlers);
     runner.start();
     expect(rec.choiceSets).toHaveLength(1);
-    expect(rec.choiceSets[0]!.choices.map((c) => c.option.text)).toEqual(["left", "right"]);
+    expect(rec.choiceSets[0]!.choices.map((c) => c.option.text)).toEqual([
+      "left",
+      "right",
+    ]);
 
     await runner.choose(1);
     expect(lineTexts(rec)).toEqual(["went-right"]);
@@ -653,13 +691,18 @@ describe("DialogueRunner — `once` choices", () => {
     const rec = makeRecorder();
     const runner = makeRunner(script, rec.handlers);
     runner.start();
-    expect(rec.choiceSets[0]!.choices.map((c) => c.option.text)).toEqual(["ask-once", "leave"]);
+    expect(rec.choiceSets[0]!.choices.map((c) => c.option.text)).toEqual([
+      "ask-once",
+      "leave",
+    ]);
     expect(runner.getChosenOnce().size).toBe(0);
 
     await runner.choose(0); // pick the once option → loops back to hub
     expect(runner.getChosenOnce().size).toBe(1);
     // Re-presented choice now omits the consumed once option.
-    expect(rec.choiceSets[1]!.choices.map((c) => c.option.text)).toEqual(["leave"]);
+    expect(rec.choiceSets[1]!.choices.map((c) => c.option.text)).toEqual([
+      "leave",
+    ]);
   });
 });
 
@@ -717,7 +760,12 @@ describe("DialogueRunner — disabled choices (presentation)", () => {
               kind: "choice",
               options: [
                 { text: "hidden-locked", target: "L", condition: "hasKey" },
-                { text: "shown-locked", target: "L", condition: "hasKey", presentation: "disabled" },
+                {
+                  text: "shown-locked",
+                  target: "L",
+                  condition: "hasKey",
+                  presentation: "disabled",
+                },
                 { text: "open", target: "O" },
               ],
             },
@@ -731,7 +779,10 @@ describe("DialogueRunner — disabled choices (presentation)", () => {
     makeRunner(script, rec.handlers).start();
     const presented = rec.choiceSets[0]!.choices;
     // The default-hidden one is filtered; the disabled one is kept; open enabled.
-    expect(presented.map((c) => c.option.text)).toEqual(["shown-locked", "open"]);
+    expect(presented.map((c) => c.option.text)).toEqual([
+      "shown-locked",
+      "open",
+    ]);
     expect(presented[0]).toMatchObject({ index: 1, disabled: true });
   });
 
@@ -757,7 +808,12 @@ describe("DialogueRunner — disabled choices (presentation)", () => {
             {
               kind: "choice",
               options: [
-                { text: "x", condition: "ok", presentation: "disabled", disabledReason: "nope" },
+                {
+                  text: "x",
+                  condition: "ok",
+                  presentation: "disabled",
+                  disabledReason: "nope",
+                },
               ],
             },
             { kind: "say", text: "fallthrough" },
@@ -783,7 +839,12 @@ describe("DialogueRunner — disabled choices (presentation)", () => {
             {
               kind: "choice",
               options: [
-                { text: "ask-once", target: "answer", once: true, presentation: "disabled" },
+                {
+                  text: "ask-once",
+                  target: "answer",
+                  once: true,
+                  presentation: "disabled",
+                },
                 { text: "leave", target: "end" },
               ],
             },
@@ -796,12 +857,17 @@ describe("DialogueRunner — disabled choices (presentation)", () => {
     const rec = makeRecorder();
     const runner = makeRunner(script, rec.handlers);
     runner.start();
-    expect(rec.choiceSets[0]!.choices.map((c) => c.option.text)).toEqual(["ask-once", "leave"]);
+    expect(rec.choiceSets[0]!.choices.map((c) => c.option.text)).toEqual([
+      "ask-once",
+      "leave",
+    ]);
 
     await runner.choose(0); // spend the once option → loop back to hub
     // Re-presented: the once option is HIDDEN (not a disabled row) — `once`
     // governs over `presentation`.
-    expect(rec.choiceSets[1]!.choices.map((c) => c.option.text)).toEqual(["leave"]);
+    expect(rec.choiceSets[1]!.choices.map((c) => c.option.text)).toEqual([
+      "leave",
+    ]);
     expect(rec.choiceSets[1]!.choices[0]!.disabled).toBeUndefined();
   });
 });
@@ -1010,7 +1076,10 @@ describe("DialogueRunner — skip / fast-forward", () => {
       nodes: {
         a: {
           id: "a",
-          steps: [{ kind: "say", text: "one" }, { kind: "say", text: "two" }],
+          steps: [
+            { kind: "say", text: "one" },
+            { kind: "say", text: "two" },
+          ],
         },
       },
     };
@@ -1084,8 +1153,12 @@ describe("evalCondition", () => {
     expect(evalCondition({ var: "n", op: ">=", value: 5 }, scope)).toBe(true);
     expect(evalCondition({ var: "n", op: "<", value: 6 }, scope)).toBe(true);
     expect(evalCondition({ var: "n", op: "<=", value: 5 }, scope)).toBe(true);
-    expect(evalCondition({ var: "flag", op: "truthy", value: null }, scope)).toBe(true);
-    expect(evalCondition({ var: "zero", op: "falsy", value: null }, scope)).toBe(true);
+    expect(
+      evalCondition({ var: "flag", op: "truthy", value: null }, scope),
+    ).toBe(true);
+    expect(
+      evalCondition({ var: "zero", op: "falsy", value: null }, scope),
+    ).toBe(true);
   });
 
   it("expression trees — logic, grouping, word forms, function calls", () => {
@@ -1097,9 +1170,18 @@ describe("evalCondition", () => {
           op: "and",
           left: {
             kind: "group",
-            expr: { kind: "binary", op: "gte", left: { kind: "varRef", name: "n" }, right: { kind: "literal", value: 5 } },
+            expr: {
+              kind: "binary",
+              op: "gte",
+              left: { kind: "varRef", name: "n" },
+              right: { kind: "literal", value: 5 },
+            },
           },
-          right: { kind: "unary", op: "not", operand: { kind: "varRef", name: "zero" } },
+          right: {
+            kind: "unary",
+            op: "not",
+            operand: { kind: "varRef", name: "zero" },
+          },
         },
         scope,
       ),
@@ -1110,7 +1192,11 @@ describe("evalCondition", () => {
         {
           kind: "binary",
           op: "==",
-          left: { kind: "call", fn: "half", args: [{ kind: "varRef", name: "n" }] },
+          left: {
+            kind: "call",
+            fn: "half",
+            args: [{ kind: "varRef", name: "n" }],
+          },
           right: { kind: "literal", value: 2.5 },
         },
         scope,
@@ -1136,7 +1222,9 @@ describe("DialogueRunner — a synchronously-throwing command handler", () => {
           steps: [
             {
               kind: "choice",
-              options: [{ text: "go", commands: [{ type: "boom" }], target: "b" }],
+              options: [
+                { text: "go", commands: [{ type: "boom" }], target: "b" },
+              ],
             },
           ],
         },

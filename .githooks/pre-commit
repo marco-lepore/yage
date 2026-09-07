@@ -1,0 +1,66 @@
+#!/bin/sh
+# Formats staged files with Prettier, so an unformatted commit is not created
+# in the first place. Installed by the root `prepare` script, which points
+# core.hooksPath at this directory.
+#
+# A file that is also changed in the working tree is checked rather than
+# written: writing it would either stage those unstaged edits or discard the
+# fix, and a file deleted from the working tree cannot be written at all. Such
+# a file fails the commit with the command that fixes it. The check reads the
+# staged blob rather than the file on disk, because the staged blob is what the
+# commit will contain.
+#
+# `git merge` runs no pre-commit hook, so a merge commit reaches CI unchecked.
+# Skip a single commit with `git commit --no-verify`.
+set -e
+
+# core.quotePath=false keeps non-ASCII paths unquoted. Renames count: Git
+# reports one as R, and the printed path is the destination.
+staged=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR)
+[ -n "$staged" ] || exit 0
+unstaged=$(git -c core.quotePath=false diff --name-only --diff-filter=MRD)
+
+# Split on newlines alone, so a path containing spaces survives. A path
+# containing a newline does not, and is not supported.
+IFS='
+'
+
+clean=""
+dirty=""
+for f in $staged; do
+  if printf '%s\n' "$unstaged" | grep -qxF "$f"; then
+    dirty="$dirty$f
+"
+  else
+    clean="$clean$f
+"
+  fi
+done
+
+if [ -n "$clean" ]; then
+  # --ignore-unknown skips extensions Prettier has no parser for.
+  # .prettierignore still applies, so ignored paths are left alone.
+  npx prettier --write --ignore-unknown --log-level warn $clean
+  git add $clean
+fi
+
+failed=""
+for f in $dirty; do
+  # `git show :path` reads the staged blob. --stdin-filepath gives Prettier the
+  # name it needs to pick a parser and to apply .prettierignore.
+  if ! git show ":$f" |
+    npx prettier --check --ignore-unknown --stdin-filepath "$f" >/dev/null 2>&1; then
+    failed="$failed  $f
+"
+  fi
+done
+
+if [ -n "$failed" ]; then
+  echo "Staged but unformatted, and also changed in the working tree:"
+  echo "$failed"
+  echo "The hook did not rewrite them. Format and stage them yourself:"
+  echo
+  echo "  npx prettier --write --ignore-unknown <path>"
+  echo
+  exit 1
+fi

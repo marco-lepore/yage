@@ -25,11 +25,19 @@ const line = (meta?: Record<string, unknown>): PresentedLine => ({
   ...(meta ? { meta } : {}),
 });
 
-function setup(): { layout: BoxLayout; avatar: InBoxAvatarPresenter; fullWidth: number } {
+function setup(): {
+  layout: BoxLayout;
+  avatar: InBoxAvatarPresenter;
+  fullWidth: number;
+} {
   const layout = new BoxLayout(CFG);
   layout.setViewport(800, 600); // the mount step
   layout.layoutLine(line());
-  const avatar = new InBoxAvatarPresenter(layout, { layer: "dialogue-avatar", width: 96, gap: 8 });
+  const avatar = new InBoxAvatarPresenter(layout, {
+    layer: "dialogue-avatar",
+    width: 96,
+    gap: 8,
+  });
   return { layout, avatar, fullWidth: layout.textRegion().width };
 }
 
@@ -78,7 +86,10 @@ describe("InBoxAvatarPresenter — line-driven reflow", () => {
     try {
       const layout = new BoxLayout(CFG);
       layout.setViewport(800, 600);
-      const avatar = new InBoxAvatarPresenter(layout, { layer: "dialogue-avatar", width: 96 });
+      const avatar = new InBoxAvatarPresenter(layout, {
+        layer: "dialogue-avatar",
+        width: 96,
+      });
 
       // Real session order: present() runs BEFORE the chrome commits this line's
       // frame, so the avatar must follow the later commit (a stale present-time

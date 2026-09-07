@@ -247,12 +247,10 @@ describe("EventBus", () => {
       const rejection = new Promise<unknown>((resolve) => {
         process.once("unhandledRejection", resolve);
       });
-      bus.once(
-        "greet",
-        (() => Promise.reject(new Error("async boom"))) as unknown as (
-          data: TestEvents["greet"],
-        ) => void,
-      );
+      bus.once("greet", (() =>
+        Promise.reject(new Error("async boom"))) as unknown as (
+        data: TestEvents["greet"],
+      ) => void);
 
       bus.emit("greet", { name: "a" });
       const reason = await rejection;

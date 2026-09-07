@@ -33,7 +33,9 @@ engine.use(new DebugPlugin());
 import { DebugRegistryKey } from "@yagejs/debug/api";
 
 const registry = engine.context.resolve(DebugRegistryKey);
-registry.registerContributor({ /* ... */ });
+registry.registerContributor({
+  /* ... */
+});
 ```
 
 ## Docs

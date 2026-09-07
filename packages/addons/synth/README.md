@@ -22,7 +22,11 @@ subpath — there is nothing to draw.
 
 ```ts
 import { AudioPlugin, AudioManagerKey } from "@yagejs/audio";
-import { SynthPlugin, synthPresets, synthVariantAliases } from "@yagejs-addons/synth";
+import {
+  SynthPlugin,
+  synthPresets,
+  synthVariantAliases,
+} from "@yagejs-addons/synth";
 
 engine.use(new AudioPlugin());
 engine.use(
@@ -63,7 +67,12 @@ Or write the patch yourself:
 import { renderSynthPatch, synthBuffer } from "@yagejs-addons/synth";
 import { registerSound } from "@yagejs/audio";
 
-const zap = { wave: "square", frequency: 1200, glideTo: 200, duration: 0.09 } as const;
+const zap = {
+  wave: "square",
+  frequency: 1200,
+  glideTo: 200,
+  duration: 0.09,
+} as const;
 
 registerSound("zap", synthBuffer(zap)); // outside the plugin config
 const samples = renderSynthPatch(zap); // plain Float32Array — assert on it in a test

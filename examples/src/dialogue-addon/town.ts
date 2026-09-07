@@ -1,8 +1,20 @@
-import { Component, MathUtils, Transform, Vec2, type Entity, type Scene } from "@yagejs/core";
+import {
+  Component,
+  MathUtils,
+  Transform,
+  Vec2,
+  type Entity,
+  type Scene,
+} from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
 import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
 import { DialogueActor } from "@yagejs-addons/dialogue/presenters";
-import { PLAYER_SPEED, BUBBLE_LAYER, ROOM_LAYER, type Bounds } from "./constants.js";
+import {
+  PLAYER_SPEED,
+  BUBBLE_LAYER,
+  ROOM_LAYER,
+  type Bounds,
+} from "./constants.js";
 
 // ── world entities (all Graphics, no assets) ─────────────────────────────────
 
@@ -28,8 +40,16 @@ export class PlayerMover extends Component {
     const step = PLAYER_SPEED * dt;
     const p = this.transform.position;
     this.transform.setPosition(
-      MathUtils.clamp(p.x + (dx / len) * step, this.bounds.minX, this.bounds.maxX),
-      MathUtils.clamp(p.y + (dy / len) * step, this.bounds.minY, this.bounds.maxY),
+      MathUtils.clamp(
+        p.x + (dx / len) * step,
+        this.bounds.minX,
+        this.bounds.maxX,
+      ),
+      MathUtils.clamp(
+        p.y + (dy / len) * step,
+        this.bounds.minY,
+        this.bounds.maxY,
+      ),
     );
   }
 }
@@ -71,7 +91,8 @@ export class ProximityInteract extends Component {
     const me = this.entity.get(Transform).position;
     const pp = this.cfg.playerPos();
     const near =
-      !this.cfg.isBusy() && Math.hypot(me.x - pp.x, me.y - pp.y) <= this.cfg.radius;
+      !this.cfg.isBusy() &&
+      Math.hypot(me.x - pp.x, me.y - pp.y) <= this.cfg.radius;
     if (near !== this.near) {
       this.near = near;
       this.prompt.text.visible = near;
@@ -142,10 +163,12 @@ export class Gate extends Component {
         g.rect(-26, -138, 52, 6).fill({ color: 0x5fae5f });
       } else {
         // A barred red gate filling the walkable band.
-        g.rect(-26, -135, 52, 270).fill({ color: 0x5a2424, alpha: 0.92 }).stroke({
-          color: 0xc05a5a,
-          width: 2,
-        });
+        g.rect(-26, -135, 52, 270)
+          .fill({ color: 0x5a2424, alpha: 0.92 })
+          .stroke({
+            color: 0xc05a5a,
+            width: 2,
+          });
         for (let y = -126; y < 135; y += 26) {
           g.rect(-26, y, 52, 4).fill({ color: 0x3a1414 });
         }
@@ -187,7 +210,9 @@ export function spawnNpc(
     );
   }
   if (opts.speaker) {
-    npc.add(new DialogueActor({ speaker: opts.speaker, anchor: { x: 0, y: -22 } }));
+    npc.add(
+      new DialogueActor({ speaker: opts.speaker, anchor: { x: 0, y: -22 } }),
+    );
   }
   return npc;
 }

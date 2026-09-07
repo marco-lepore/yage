@@ -62,7 +62,10 @@ export function statsOf(entity: Entity): Stats | undefined {
   return entity.tryGet(Stats);
 }
 
-export function scaleHitByAtk(entity: Entity, base: StandardHitData): StandardHitData {
+export function scaleHitByAtk(
+  entity: Entity,
+  base: StandardHitData,
+): StandardHitData {
   const atk = statsOf(entity)?.atk ?? BASE_ATK;
   return {
     ...base,
@@ -98,10 +101,8 @@ export const defenseStage: HitStage<StandardHitData, HitReceiver> = (
 
 /** The player's apply-stage list: armor first, then the addon defaults
  *  (damage, reaction). */
-export const playerHitSteps: readonly HitStage<StandardHitData, HitReceiver>[] = [
-  defenseStage,
-  ...defaultHitSteps,
-];
+export const playerHitSteps: readonly HitStage<StandardHitData, HitReceiver>[] =
+  [defenseStage, ...defaultHitSteps];
 
 /** maxHp hook: push the derived cap into `Health.max`, healing the headroom a
  *  raise opened (a level-up reads as a bigger, fuller bar) or clamping hp

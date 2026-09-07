@@ -9,7 +9,11 @@
 import type { Scene } from "@yagejs/core";
 import type { ChoiceContext, PresentedChoice } from "../core/session.js";
 import type { ChoicePresenter } from "../chrome/DialogueUiAdapter.js";
-import { choiceRoutesToBubble, makeDefaultRoute, type MountRoute } from "./route.js";
+import {
+  choiceRoutesToBubble,
+  makeDefaultRoute,
+  type MountRoute,
+} from "./route.js";
 
 export class CompositeChoicePresenter implements ChoicePresenter {
   private active?: ChoicePresenter | undefined;
@@ -40,7 +44,9 @@ export class CompositeChoicePresenter implements ChoicePresenter {
   /** Routes to the variant this choice will use, so the Session knows whether
    *  to suppress its chrome/body prompt before `present` picks the active one. */
   ownsPrompt(context?: ChoiceContext): boolean {
-    const target = choiceRoutesToBubble(this.routing.route, context) ? this.bubble : this.box;
+    const target = choiceRoutesToBubble(this.routing.route, context)
+      ? this.bubble
+      : this.box;
     return target.ownsPrompt?.(context) ?? false;
   }
 
@@ -53,7 +59,9 @@ export class CompositeChoicePresenter implements ChoicePresenter {
   present(choices: readonly PresentedChoice[], context?: ChoiceContext): void {
     // Disabled rows (and the choice `meta`) ride through untouched — the active
     // leaf presenter is the one that greys/skips them.
-    const target = choiceRoutesToBubble(this.routing.route, context) ? this.bubble : this.box;
+    const target = choiceRoutesToBubble(this.routing.route, context)
+      ? this.bubble
+      : this.box;
     const other = target === this.box ? this.bubble : this.box;
     other.clear();
     this.active = target;

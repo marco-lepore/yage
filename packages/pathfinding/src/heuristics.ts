@@ -24,5 +24,7 @@ export function resolveHeuristic(
   diagonalMovement: DiagonalMovement,
 ): HeuristicFn {
   if (name) return heuristics[name];
-  return diagonalMovement === "never" ? heuristics.manhattan : heuristics.octile;
+  return diagonalMovement === "never"
+    ? heuristics.manhattan
+    : heuristics.octile;
 }

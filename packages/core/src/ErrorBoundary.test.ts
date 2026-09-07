@@ -42,7 +42,10 @@ describe("ErrorBoundary", () => {
       expect(sys.enabled).toBe(true);
       const errors = boundary.getCallbackErrors();
       expect(errors).toHaveLength(1);
-      expect(errors[0]).toMatchObject({ kind: "System TestSystem", error: "boom" });
+      expect(errors[0]).toMatchObject({
+        kind: "System TestSystem",
+        error: "boom",
+      });
       const logs = logger.getRecent(1);
       expect(logs[0]?.level).toBe(LogLevel.Error);
       expect(logs[0]?.message).toContain("TestSystem");
@@ -132,7 +135,9 @@ describe("ErrorBoundary", () => {
           throw "string component error";
         }),
       ).toThrow();
-      expect(boundary.getCallbackErrors()[0]?.error).toBe("string component error");
+      expect(boundary.getCallbackErrors()[0]?.error).toBe(
+        "string component error",
+      );
     });
 
     it("catches a rejected thenable from an async update, re-raising it as a new unhandled rejection", async () => {
@@ -241,9 +246,12 @@ describe("ErrorBoundary", () => {
       const { boundary, logger } = createBoundary();
       const original = new Error("boom");
       expect(() =>
-        boundary.wrapCallback(() => {
-          throw original;
-        }, { kind: "Test callback" }),
+        boundary.wrapCallback(
+          () => {
+            throw original;
+          },
+          { kind: "Test callback" },
+        ),
       ).toThrow(original);
       const logs = logger.getRecent(1);
       const data = logs[0]?.data as { error: unknown } | undefined;
@@ -254,9 +262,12 @@ describe("ErrorBoundary", () => {
     it("clearCallbackErrors empties the recorded list", () => {
       const { boundary } = createBoundary();
       expect(() =>
-        boundary.wrapCallback(() => {
-          throw new Error("boom");
-        }, { kind: "Test callback" }),
+        boundary.wrapCallback(
+          () => {
+            throw new Error("boom");
+          },
+          { kind: "Test callback" },
+        ),
       ).toThrow("boom");
       expect(boundary.getCallbackErrors()).toHaveLength(1);
       boundary.clearCallbackErrors();
@@ -293,7 +304,10 @@ describe("ErrorBoundary", () => {
     it("executes fn normally when no error", () => {
       const { boundary } = createBoundary();
       const fn = vi.fn();
-      boundary.wrapLifecycleHook(fn, { kind: "Scene onEnter hook", scene: "Game" });
+      boundary.wrapLifecycleHook(fn, {
+        kind: "Scene onEnter hook",
+        scene: "Game",
+      });
       expect(fn).toHaveBeenCalledOnce();
     });
 

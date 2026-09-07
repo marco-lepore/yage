@@ -142,24 +142,37 @@ export class ShooterScene extends Scene {
     );
 
     const banner = this.spawn("win-banner");
-    banner.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2 - 12) }));
+    banner.add(
+      new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2 - 12) }),
+    );
     const bannerText = banner.add(
       new TextComponent({
         text: "You Win!",
         anchor: { x: 0.5, y: 0.5 },
-        style: { fontFamily: "system-ui, sans-serif", fontSize: 32, fill: 0x22c55e, fontWeight: "bold" },
+        style: {
+          fontFamily: "system-ui, sans-serif",
+          fontSize: 32,
+          fill: 0x22c55e,
+          fontWeight: "bold",
+        },
         layer: HUD_LAYER,
         visible: false,
       }),
     );
 
     const bannerSubEntity = this.spawn("win-banner-sub");
-    bannerSubEntity.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2 + 22) }));
+    bannerSubEntity.add(
+      new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2 + 22) }),
+    );
     const bannerSub = bannerSubEntity.add(
       new TextComponent({
         text: "All enemies defeated",
         anchor: { x: 0.5, y: 0.5 },
-        style: { fontFamily: "system-ui, sans-serif", fontSize: 14, fill: 0x38bdf8 },
+        style: {
+          fontFamily: "system-ui, sans-serif",
+          fontSize: 14,
+          fill: 0x38bdf8,
+        },
         layer: HUD_LAYER,
         visible: false,
       }),
@@ -233,11 +246,41 @@ export class ShooterScene extends Scene {
 
   // -- Enemies --
   private spawnEnemies(camera: CameraEntity): void {
-    this.spawn(EnemyEntity, { x: 350, y: 680, patrolLeft: 200, patrolRight: 450, camera }); // ground left
-    this.spawn(EnemyEntity, { x: 600, y: 680, patrolLeft: 450, patrolRight: 750, camera }); // ground mid
-    this.spawn(EnemyEntity, { x: 950, y: 680, patrolLeft: 800, patrolRight: 1100, camera }); // ground right
-    this.spawn(EnemyEntity, { x: 550, y: 470, patrolLeft: 500, patrolRight: 600, camera }); // on mid-left platform
-    this.spawn(EnemyEntity, { x: 850, y: 530, patrolLeft: 770, patrolRight: 940, camera }); // on mid-right platform
+    this.spawn(EnemyEntity, {
+      x: 350,
+      y: 680,
+      patrolLeft: 200,
+      patrolRight: 450,
+      camera,
+    }); // ground left
+    this.spawn(EnemyEntity, {
+      x: 600,
+      y: 680,
+      patrolLeft: 450,
+      patrolRight: 750,
+      camera,
+    }); // ground mid
+    this.spawn(EnemyEntity, {
+      x: 950,
+      y: 680,
+      patrolLeft: 800,
+      patrolRight: 1100,
+      camera,
+    }); // ground right
+    this.spawn(EnemyEntity, {
+      x: 550,
+      y: 470,
+      patrolLeft: 500,
+      patrolRight: 600,
+      camera,
+    }); // on mid-left platform
+    this.spawn(EnemyEntity, {
+      x: 850,
+      y: 530,
+      patrolLeft: 770,
+      patrolRight: 940,
+      camera,
+    }); // on mid-right platform
     this.spawn(EnemyEntity, {
       x: 1050,
       y: 450,

@@ -147,7 +147,8 @@ export class LayeredAnimationController<
     // duration drives the shared timer on its own, so those layers are only
     // checked for the frame and speed they will play at.
     for (const controller of this._controllers) {
-      if (options?.duration === undefined) controller.calcDuration(name, timing);
+      if (options?.duration === undefined)
+        controller.calcDuration(name, timing);
       else controller._assertTiming(name, timing);
     }
 

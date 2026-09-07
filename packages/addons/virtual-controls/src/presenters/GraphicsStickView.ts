@@ -36,9 +36,7 @@ export class GraphicsStickView implements ControlView {
     private readonly theme: ControlsTheme,
   ) {
     this.entity = scene.spawn(`vc-stick-${stick.id}`);
-    this.gfx = this.entity.add(
-      new GraphicsComponent({ layer: theme.layer }),
-    );
+    this.gfx = this.entity.add(new GraphicsComponent({ layer: theme.layer }));
     const knob = stick.knobPos;
     this.knobX = knob.x;
     this.knobY = knob.y;

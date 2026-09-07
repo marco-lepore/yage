@@ -87,7 +87,11 @@ class MockApp {
   renderer = {
     width: 800,
     height: 600,
-    resize: vi.fn(function (this: { width: number; height: number }, w: number, h: number) {
+    resize: vi.fn(function (
+      this: { width: number; height: number },
+      w: number,
+      h: number,
+    ) {
       this.width = w;
       this.height = h;
     }),
@@ -150,15 +154,17 @@ describe("FitController", () => {
   beforeEach(() => {
     observers.length = 0;
     originalRO = globalThis.ResizeObserver;
-    (globalThis as unknown as { ResizeObserver: typeof MockResizeObserver }).ResizeObserver =
-      MockResizeObserver;
+    (
+      globalThis as unknown as { ResizeObserver: typeof MockResizeObserver }
+    ).ResizeObserver = MockResizeObserver;
   });
 
   afterEach(() => {
     if (originalRO) {
       globalThis.ResizeObserver = originalRO;
     } else {
-      delete (globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver;
+      delete (globalThis as unknown as { ResizeObserver?: unknown })
+        .ResizeObserver;
     }
   });
 
@@ -231,7 +237,9 @@ describe("FitController", () => {
       // virtual rect after the stage scale/offset is applied.
       expect(app.stage.mask).toBeInstanceOf(Graphics);
       expect(app.stage.children).toContain(app.stage.mask);
-      expect((app.stage.mask as MaskGraphics).rects).toEqual([[0, 0, 400, 300]]);
+      expect((app.stage.mask as MaskGraphics).rects).toEqual([
+        [0, 0, 400, 300],
+      ]);
     });
 
     it("installs the mask even though an unmasked container reports `undefined`", () => {

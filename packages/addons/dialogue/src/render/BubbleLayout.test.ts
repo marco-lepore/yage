@@ -9,9 +9,15 @@ vi.mock("@yagejs/renderer", () => ({
     calls.push({ text });
     const charW = 8;
     const wrap = typeof options.wordWrapWidth === "number";
-    const perLine = wrap ? Math.max(1, Math.floor((options.wordWrapWidth as number) / charW)) : 1e9;
+    const perLine = wrap
+      ? Math.max(1, Math.floor((options.wordWrapWidth as number) / charW))
+      : 1e9;
     const lineCount = wrap ? Math.max(1, Math.ceil(text.length / perLine)) : 1;
-    return { width: Math.min(text.length, perLine) * charW, height: lineCount * 20, lineCount };
+    return {
+      width: Math.min(text.length, perLine) * charW,
+      height: lineCount * 20,
+      lineCount,
+    };
   },
 }));
 
@@ -29,7 +35,11 @@ const CFG: BubbleLayoutConfig = {
 };
 
 const line = (text: string): PresentedLine => ({
-  text: { runs: [{ text, style: {}, graphemeCount: text.length }], tokens: [], length: text.length },
+  text: {
+    runs: [{ text, style: {}, graphemeCount: text.length }],
+    tokens: [],
+    length: text.length,
+  },
   speed: 1,
   speaker: { id: "npc", name: "NPC" },
 });
@@ -119,8 +129,12 @@ describe("BubbleLayout — in-bubble portrait inset", () => {
     owner.setPortraitInset({ side: "right", width: 64, height: 56 });
     const withInset = owner.sizeFor(l);
     // x is still anchor.x - w/2 + padding (no shift), just a wider bubble.
-    expect(owner.originFor({ x: 500, y: 300 }, withInset).x).toBe(500 - withInset.width / 2 + 10);
-    expect(owner.textWrapWidth(withInset)).toBeLessThan(withInset.width - 2 * 10);
+    expect(owner.originFor({ x: 500, y: 300 }, withInset).x).toBe(
+      500 - withInset.width / 2 + 10,
+    );
+    expect(owner.textWrapWidth(withInset)).toBeLessThan(
+      withInset.width - 2 * 10,
+    );
     expect(baseOrigin.y).toBeLessThan(300); // (sanity: bubble sits above the anchor)
   });
 });

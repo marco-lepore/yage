@@ -47,7 +47,14 @@ describe("GameLoop", () => {
       });
       loop.start();
       loop.tick(16);
-      expect(order).toEqual(["early", "fixed", "update", "late", "render", "end"]);
+      expect(order).toEqual([
+        "early",
+        "fixed",
+        "update",
+        "late",
+        "render",
+        "end",
+      ]);
     });
 
     it("converts the incoming ms delta to seconds for variable phases", () => {
@@ -85,7 +92,10 @@ describe("GameLoop", () => {
     });
 
     it("caps fixed steps at maxFixedStepsPerFrame", () => {
-      const loop = new GameLoop({ fixedTimestep: 0.01, maxFixedStepsPerFrame: 3 });
+      const loop = new GameLoop({
+        fixedTimestep: 0.01,
+        maxFixedStepsPerFrame: 3,
+      });
       const cbs = createCallbacks();
       loop.setCallbacks(cbs);
       loop.start();
@@ -301,12 +311,16 @@ describe("GameLoop", () => {
         if (originalRAF) {
           globalThis.requestAnimationFrame = originalRAF;
         } else {
-          delete (globalThis as Record<string, unknown>)["requestAnimationFrame"];
+          delete (globalThis as Record<string, unknown>)[
+            "requestAnimationFrame"
+          ];
         }
         if (originalCAF) {
           globalThis.cancelAnimationFrame = originalCAF;
         } else {
-          delete (globalThis as Record<string, unknown>)["cancelAnimationFrame"];
+          delete (globalThis as Record<string, unknown>)[
+            "cancelAnimationFrame"
+          ];
         }
         if (originalPerf !== globalThis.performance) {
           (globalThis as Record<string, unknown>)["performance"] = originalPerf;
@@ -348,12 +362,16 @@ describe("GameLoop", () => {
         if (originalRAF) {
           globalThis.requestAnimationFrame = originalRAF;
         } else {
-          delete (globalThis as Record<string, unknown>)["requestAnimationFrame"];
+          delete (globalThis as Record<string, unknown>)[
+            "requestAnimationFrame"
+          ];
         }
         if (originalCAF) {
           globalThis.cancelAnimationFrame = originalCAF;
         } else {
-          delete (globalThis as Record<string, unknown>)["cancelAnimationFrame"];
+          delete (globalThis as Record<string, unknown>)[
+            "cancelAnimationFrame"
+          ];
         }
       }
     });
@@ -516,12 +534,16 @@ describe("GameLoop", () => {
         if (originalRAF) {
           globalThis.requestAnimationFrame = originalRAF;
         } else {
-          delete (globalThis as Record<string, unknown>)["requestAnimationFrame"];
+          delete (globalThis as Record<string, unknown>)[
+            "requestAnimationFrame"
+          ];
         }
         if (originalCAF) {
           globalThis.cancelAnimationFrame = originalCAF;
         } else {
-          delete (globalThis as Record<string, unknown>)["cancelAnimationFrame"];
+          delete (globalThis as Record<string, unknown>)[
+            "cancelAnimationFrame"
+          ];
         }
       }
     });

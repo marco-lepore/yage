@@ -31,7 +31,14 @@
  * Controls: WASD/arrows walk · E interact/talk/defeat.
  */
 
-import { Component, Engine, MathUtils, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  Component,
+  Engine,
+  MathUtils,
+  Scene,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
 import {
   CameraEntity,
   GraphicsComponent,
@@ -43,7 +50,10 @@ import { DebugPlugin } from "@yagejs/debug";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import { defineItems, Inventory } from "@yagejs-addons/inventory";
 import { DialogueController, defineScript } from "@yagejs-addons/dialogue";
-import { createBoxDialogue, DIALOGUE_LAYERS } from "@yagejs-addons/dialogue/presenters";
+import {
+  createBoxDialogue,
+  DIALOGUE_LAYERS,
+} from "@yagejs-addons/dialogue/presenters";
 import {
   defineQuests,
   QuestCatalog,
@@ -123,14 +133,21 @@ class PlayerMover extends Component {
  *  drives the quest objective — this just makes the herb collectible. */
 class HerbPickup extends Component {
   constructor(
-    private readonly cfg: { readonly playerPos: () => Vec2; readonly inventory: Inventory<"redHerb"> },
+    private readonly cfg: {
+      readonly playerPos: () => Vec2;
+      readonly inventory: Inventory<"redHerb">;
+    },
   ) {
     super();
   }
 
   update(): void {
     const me = this.entity.get(Transform).position;
-    if (Math.hypot(me.x - this.cfg.playerPos().x, me.y - this.cfg.playerPos().y) > 20) return;
+    if (
+      Math.hypot(me.x - this.cfg.playerPos().x, me.y - this.cfg.playerPos().y) >
+      20
+    )
+      return;
     this.cfg.inventory.add("redHerb", 1);
     this.entity.destroy();
   }
@@ -173,7 +190,12 @@ class Wolf extends Component {
 
   update(): void {
     const me = this.entity.get(Transform).position;
-    const near = !this.cfg.isBusy() && Math.hypot(me.x - this.cfg.playerPos().x, me.y - this.cfg.playerPos().y) <= 30;
+    const near =
+      !this.cfg.isBusy() &&
+      Math.hypot(
+        me.x - this.cfg.playerPos().x,
+        me.y - this.cfg.playerPos().y,
+      ) <= 30;
     this.prompt.text.visible = near;
     if (near && this.input.isJustPressed("interact")) {
       this.cfg.onDefeated();
@@ -213,9 +235,15 @@ class Healer extends Component {
 
   update(): void {
     const me = this.entity.get(Transform).position;
-    const near = !this.cfg.dialogue.isActive() && Math.hypot(me.x - this.cfg.playerPos().x, me.y - this.cfg.playerPos().y) <= 34;
+    const near =
+      !this.cfg.dialogue.isActive() &&
+      Math.hypot(
+        me.x - this.cfg.playerPos().x,
+        me.y - this.cfg.playerPos().y,
+      ) <= 34;
     this.prompt.text.visible = near;
-    if (near && this.input.isJustPressed("interact")) this.cfg.dialogue.play(healerScript);
+    if (near && this.input.isJustPressed("interact"))
+      this.cfg.dialogue.play(healerScript);
   }
 }
 
@@ -277,7 +305,12 @@ const healerScript = defineScript({
     greet: {
       id: "greet",
       steps: [
-        { kind: "command", commands: [], condition: "herbsDone()", target: "turnIn" },
+        {
+          kind: "command",
+          commands: [],
+          condition: "herbsDone()",
+          target: "turnIn",
+        },
         {
           kind: "say",
           speaker: "healer",
@@ -290,7 +323,11 @@ const healerScript = defineScript({
     turnIn: {
       id: "turnIn",
       steps: [
-        { kind: "say", speaker: "healer", text: "You found them all! Thank you, traveler." },
+        {
+          kind: "say",
+          speaker: "healer",
+          text: "You found them all! Thank you, traveler.",
+        },
         { kind: "command", commands: [{ type: "turnIn" }] },
         { kind: "end" },
       ],
@@ -327,7 +364,9 @@ class QuestsRoomScene extends Scene {
     const dialogue = dialogueHost.add(
       new DialogueController({
         ...createBoxDialogue(),
-        functions: { herbsDone: () => log.objectiveDone("gatherHerbs", "herb") },
+        functions: {
+          herbsDone: () => log.objectiveDone("gatherHerbs", "herb"),
+        },
         commands: {
           acceptQuest: () => {
             log.start("gatherHerbs");
@@ -351,12 +390,15 @@ class QuestsRoomScene extends Scene {
     this.on(QuestCompletedEvent, ({ questId }) => {
       // Bus payloads carry `string` ids (event tokens can't be generic);
       // `tryGet` reads the title without narrowing back to the literal union.
-      hud.showToast(`Quest complete: ${QUESTS.tryGet(questId)?.title ?? questId}`);
+      hud.showToast(
+        `Quest complete: ${QUESTS.tryGet(questId)?.title ?? questId}`,
+      );
     });
 
     // ── the binding wires: three unrelated event sources, one guardless line each ──
     inventory.on("itemAdded", (e) => {
-      if (e.itemId === "redHerb") log.advance("gatherHerbs", "herb", e.quantity);
+      if (e.itemId === "redHerb")
+        log.advance("gatherHerbs", "herb", e.quantity);
     });
     log.on("questCompleted", ({ questId }) => {
       if (questId === "gatherHerbs") log.start("thinThePack");
@@ -388,7 +430,11 @@ class QuestsRoomScene extends Scene {
     healer.add(
       new GraphicsComponent({ layer: ROOM_LAYER }).draw((g) => {
         g.roundRect(-11, -16, 22, 32, 6).fill({ color: 0xffd866 });
-        g.roundRect(-11, -16, 22, 32, 6).stroke({ color: 0xffffff, width: 1.5, alpha: 0.6 });
+        g.roundRect(-11, -16, 22, 32, 6).stroke({
+          color: 0xffffff,
+          width: 1.5,
+          alpha: 0.6,
+        });
       }),
     );
     healer.add(new Healer({ playerPos, dialogue }));
@@ -406,10 +452,20 @@ class QuestsRoomScene extends Scene {
       w.add(
         new GraphicsComponent({ layer: ROOM_LAYER }).draw((g) => {
           g.roundRect(-13, -8, 26, 16, 5).fill({ color: 0x555566 });
-          g.roundRect(-13, -8, 26, 16, 5).stroke({ color: 0xcccccc, width: 1, alpha: 0.6 });
+          g.roundRect(-13, -8, 26, 16, 5).stroke({
+            color: 0xcccccc,
+            width: 1,
+            alpha: 0.6,
+          });
         }),
       );
-      w.add(new Wolf({ playerPos, isBusy: busy, onDefeated: () => log.advance("thinThePack", "wolf") }));
+      w.add(
+        new Wolf({
+          playerPos,
+          isBusy: busy,
+          onDefeated: () => log.advance("thinThePack", "wolf"),
+        }),
+      );
     }
 
     player.add(new PlayerMover(busy));
@@ -424,8 +480,13 @@ class QuestsRoomScene extends Scene {
     bg.add(
       new GraphicsComponent({ layer: ROOM_LAYER }).draw((g) => {
         g.rect(0, 0, WIDTH, HEIGHT).fill({ color: 0x10101c });
-        g.roundRect(16, 90, WIDTH - 32, HEIGHT - 106, 12).fill({ color: 0x181828 });
-        g.roundRect(16, 90, WIDTH - 32, HEIGHT - 106, 12).stroke({ color: 0x2c2c4a, width: 2 });
+        g.roundRect(16, 90, WIDTH - 32, HEIGHT - 106, 12).fill({
+          color: 0x181828,
+        });
+        g.roundRect(16, 90, WIDTH - 32, HEIGHT - 106, 12).stroke({
+          color: 0x2c2c4a,
+          width: 2,
+        });
       }),
     );
     const title = this.spawn("room-title");

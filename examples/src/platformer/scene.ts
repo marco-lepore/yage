@@ -65,24 +65,37 @@ export class PlatformerScene extends Scene {
     );
 
     const banner = this.spawn("win-banner");
-    banner.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2 - 12) }));
+    banner.add(
+      new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2 - 12) }),
+    );
     const bannerText = banner.add(
       new TextComponent({
         text: "You Win!",
         anchor: { x: 0.5, y: 0.5 },
-        style: { fontFamily: "system-ui, sans-serif", fontSize: 32, fill: 0x22c55e, fontWeight: "bold" },
+        style: {
+          fontFamily: "system-ui, sans-serif",
+          fontSize: 32,
+          fill: 0x22c55e,
+          fontWeight: "bold",
+        },
         layer: HUD_LAYER,
         visible: false,
       }),
     );
 
     const bannerSubEntity = this.spawn("win-banner-sub");
-    bannerSubEntity.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2 + 22) }));
+    bannerSubEntity.add(
+      new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2 + 22) }),
+    );
     const bannerSub = bannerSubEntity.add(
       new TextComponent({
         text: "",
         anchor: { x: 0.5, y: 0.5 },
-        style: { fontFamily: "system-ui, sans-serif", fontSize: 14, fill: 0xffe66d },
+        style: {
+          fontFamily: "system-ui, sans-serif",
+          fontSize: 14,
+          fill: 0xffe66d,
+        },
         layer: HUD_LAYER,
         visible: false,
       }),
@@ -234,6 +247,11 @@ export class PlatformerScene extends Scene {
     // Left wall
     this.spawn(PlatformEntity, { x: -5, y: WORLD_H / 2, w: 10, h: WORLD_H });
     // Right wall
-    this.spawn(PlatformEntity, { x: WORLD_W + 5, y: WORLD_H / 2, w: 10, h: WORLD_H });
+    this.spawn(PlatformEntity, {
+      x: WORLD_W + 5,
+      y: WORLD_H / 2,
+      w: 10,
+      h: WORLD_H,
+    });
   }
 }

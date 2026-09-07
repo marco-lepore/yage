@@ -95,7 +95,10 @@ export class GameLoop {
     this.accumulator = 0;
 
     // If no external ticker, use rAF (only in browser environments)
-    if (!this.tickerUnsubscribe && typeof requestAnimationFrame !== "undefined") {
+    if (
+      !this.tickerUnsubscribe &&
+      typeof requestAnimationFrame !== "undefined"
+    ) {
       this.lastTime = performance.now();
       const loop = (now: number) => {
         if (!this.running) return;

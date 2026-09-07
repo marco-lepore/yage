@@ -81,7 +81,8 @@ class SchedulesOnRelease extends Entity {
 class SchedulesOnDisable extends Component {
   work?: () => void;
   override onDisable(): void {
-    if (this.work) this.entity.get(ProcessComponent).run(Process.delay(1, this.work));
+    if (this.work)
+      this.entity.get(ProcessComponent).run(Process.delay(1, this.work));
   }
 }
 
@@ -397,7 +398,7 @@ describe("EntityPool", () => {
       pool.release(member);
 
       expect(warn).toHaveBeenCalledWith(
-        expect.stringContaining("attached \"DirtyCleanup\" to \"grabber\""),
+        expect.stringContaining('attached "DirtyCleanup" to "grabber"'),
       );
     });
 

@@ -120,12 +120,16 @@ export class PanelLayout {
 
   /** Header band height + its bottom gap (0 without a header). */
   headerOffset(): number {
-    return this.cfg.headerHeight > 0 ? this.cfg.headerHeight + (this.cfg.headerGap ?? HEADER_GAP) : 0;
+    return this.cfg.headerHeight > 0
+      ? this.cfg.headerHeight + (this.cfg.headerGap ?? HEADER_GAP)
+      : 0;
   }
 
   /** Detail band height + its top gap (0 without a detail pane). */
   detailOffset(): number {
-    return this.cfg.detailHeight > 0 ? this.cfg.detailHeight + (this.cfg.detailGap ?? DETAIL_GAP) : 0;
+    return this.cfg.detailHeight > 0
+      ? this.cfg.detailHeight + (this.cfg.detailGap ?? DETAIL_GAP)
+      : 0;
   }
 }
 

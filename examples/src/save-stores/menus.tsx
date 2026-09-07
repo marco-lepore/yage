@@ -91,7 +91,11 @@ export function MainMenuPanel(props: {
 
       <Panel direction="column" gap={8} alignItems="center">
         <MenuButton
-          label={latest ? `Continue (Ch. ${latest.metadata?.chapter ?? "?"})` : "Continue"}
+          label={
+            latest
+              ? `Continue (Ch. ${latest.metadata?.chapter ?? "?"})`
+              : "Continue"
+          }
           onClick={() => latest && props.onContinue(latest)}
         />
         <MenuButton label="New Game" onClick={props.onStartNew} />
@@ -114,7 +118,9 @@ export function MainMenuPanel(props: {
                 {`${slot.metadata?.label ?? slot.name} · Ch. ${slot.metadata?.chapter ?? "?"} · ${slot.metadata?.coins ?? 0}c`}
               </Text>
               <Panel direction="row" gap={6} alignItems="center">
-                <Text style={textStyle("caption")}>{formatTime(slot.savedAt)}</Text>
+                <Text style={textStyle("caption")}>
+                  {formatTime(slot.savedAt)}
+                </Text>
                 <SmallButton
                   label="Load"
                   width={56}
@@ -141,12 +147,7 @@ export function GameplayHUD() {
   const run = useStore(game.progression);
   const deathCount = useStore(game.deaths);
   return (
-    <Panel
-      direction="row"
-      gap={12}
-      padding={8}
-      bg={PANEL_BG}
-    >
+    <Panel direction="row" gap={12} padding={8} bg={PANEL_BG}>
       <Text style={textStyle("body")}>{`Ch. ${run.chapter}`}</Text>
       <Text style={textStyle("body", { fill: 0xfacc15 })}>
         {`Coins: ${run.coins}`}
@@ -160,12 +161,7 @@ export function GameplayHUD() {
 
 export function GameplayActions() {
   return (
-    <Panel
-      direction="row"
-      gap={8}
-      padding={10}
-      bg={PANEL_BG}
-    >
+    <Panel direction="row" gap={8} padding={10} bg={PANEL_BG}>
       <SmallButton
         label="Collect"
         width={90}
@@ -221,12 +217,7 @@ export function PauseMenuPanel(props: {
             ? `${existing.metadata?.label ?? name} · Ch. ${existing.metadata?.chapter ?? "?"} · ${existing.metadata?.coins ?? 0}c`
             : `${name} · empty`;
           return (
-            <Panel
-              key={name}
-              direction="row"
-              gap={6}
-              alignItems="center"
-            >
+            <Panel key={name} direction="row" gap={6} alignItems="center">
               <Text style={textStyle("body", { fontSize: 12 })}>{summary}</Text>
               <SmallButton
                 label="Save"

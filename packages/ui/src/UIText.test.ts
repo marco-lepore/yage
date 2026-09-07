@@ -99,7 +99,10 @@ const { mocks } = vi.hoisted(() => {
     }
 
     private wrappedLines(maxWidth: number): string[] {
-      const charsPerLine = Math.max(1, Math.floor(maxWidth / MockText.charWidth));
+      const charsPerLine = Math.max(
+        1,
+        Math.floor(maxWidth / MockText.charWidth),
+      );
       const words = this._text.split(" ");
       const out: string[] = [];
       let current = "";
@@ -458,7 +461,11 @@ describe("UIText bitmap + resolution", () => {
 
 describe("UIText default text style", () => {
   it("layers the UI default over the renderer default; per-text wins", () => {
-    setDefaultTextStyle({ fontFamily: "Renderer", fill: 0x111111, fontSize: 10 });
+    setDefaultTextStyle({
+      fontFamily: "Renderer",
+      fill: 0x111111,
+      fontSize: 10,
+    });
     setUIDefaultTextStyle({ fontFamily: "UI", fontSize: 14 });
     const t = new UIText({ children: "hi", style: { fill: 0xff0000 } });
     expect(textObject(t).style).toMatchObject({

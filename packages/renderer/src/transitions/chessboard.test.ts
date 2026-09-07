@@ -115,9 +115,7 @@ describe("chessboard", () => {
 
   it("tolerates undefined scenes on either side", () => {
     const t = chessboard({ duration: 100 });
-    expect(() =>
-      t.begin!(makeCtx({ elapsed: 0, kind: "push" })),
-    ).not.toThrow();
+    expect(() => t.begin!(makeCtx({ elapsed: 0, kind: "push" }))).not.toThrow();
     expect(() =>
       t.tick(50, makeCtx({ elapsed: 50, kind: "push" })),
     ).not.toThrow();

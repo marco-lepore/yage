@@ -1,12 +1,10 @@
-import {
-  Engine,
-  Component,
-  Scene,
-  Transform,
-  Vec2,
-} from "@yagejs/core";
+import { Engine, Component, Scene, Transform, Vec2 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
-import { PhysicsPlugin, RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
+import {
+  PhysicsPlugin,
+  RigidBodyComponent,
+  ColliderComponent,
+} from "@yagejs/physics";
 import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, setupContainer } from "./shared.js";
 

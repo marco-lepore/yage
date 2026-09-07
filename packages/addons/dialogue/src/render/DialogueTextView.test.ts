@@ -98,7 +98,9 @@ describe("DialogueTextView — grapheme reveal units", () => {
     // Graphemes: 🔥, ␠, n, o, w — the style fan-out must skip the space and
     // stay aligned after the astral char (code-point iteration would emit an
     // extra entry and shift every style after the emoji).
-    const styles = internals.buildRevealTables(parseMarkup("🔥 [color=gold]now[/color]"));
+    const styles = internals.buildRevealTables(
+      parseMarkup("🔥 [color=gold]now[/color]"),
+    );
     expect(styles).toHaveLength(4); // one per NON-SPACE glyph
     expect(styles[0]).toEqual({});
     expect(styles[1]).toEqual({ color: 0xffd25a });
@@ -153,14 +155,33 @@ describe("DialogueTextView — delta reveal", () => {
     internals.buildRevealTables(parsed);
     const counter = { writes: 0 };
     const chars = Array.from({ length: 6 }, () => instrumentedChar(counter));
-    internals.line = { entity: undefined, comp: undefined, chars, effectMetas: [] };
+    internals.line = {
+      entity: undefined,
+      comp: undefined,
+      chars,
+      effectMetas: [],
+    };
 
     view.update(2); // 1 grapheme/s → 2 shown; writes [0, 2)
-    expect(chars.map((c) => c.visible)).toEqual([true, true, false, false, false, false]);
+    expect(chars.map((c) => c.visible)).toEqual([
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+    ]);
     expect(counter.writes).toBe(2);
 
     view.update(2); // 4 shown; writes only the delta [2, 4)
-    expect(chars.map((c) => c.visible)).toEqual([true, true, true, true, false, false]);
+    expect(chars.map((c) => c.visible)).toEqual([
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+    ]);
     expect(counter.writes).toBe(4);
 
     view.skipToEnd(); // writes only [4, 6)
@@ -177,7 +198,8 @@ describe("DialogueTextView — reveal seam", () => {
     view.setRevealListener(() => real++);
     // A game's mistaken "hook reveal" via a public field (there is none) must
     // NOT detach the session-owned listener.
-    (view as unknown as { onRevealComplete?: () => void }).onRevealComplete = () => ghost++;
+    (view as unknown as { onRevealComplete?: () => void }).onRevealComplete =
+      () => ghost++;
     view.show(parseMarkup("hi"));
     view.update(100); // finish the reveal
     expect(real).toBe(1); // session-owned listener fired

@@ -437,10 +437,11 @@ describe("ProcessComponent", () => {
       const rejection = new Promise<unknown>((resolve) => {
         process.once("unhandledRejection", resolve);
       });
+      // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
+      type UpdateFn = (dt: number, elapsed: number) => boolean | void;
       const proc = new Process({
-        update: (() => Promise.reject(new Error("async boom"))) as unknown as
-          // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
-          (dt: number, elapsed: number) => boolean | void,
+        update: (() =>
+          Promise.reject(new Error("async boom"))) as unknown as UpdateFn,
       });
       pc.run(proc);
 

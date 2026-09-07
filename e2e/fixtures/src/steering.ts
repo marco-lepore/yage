@@ -13,7 +13,12 @@
 
 import { Engine, Scene, Transform, Vec2 } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
-import { ColliderComponent, PhysicsPlugin, PhysicsWorldKey, RigidBodyComponent } from "@yagejs/physics";
+import {
+  ColliderComponent,
+  PhysicsPlugin,
+  PhysicsWorldKey,
+  RigidBodyComponent,
+} from "@yagejs/physics";
 import { DebugPlugin } from "@yagejs/debug";
 import {
   alignment,
@@ -27,7 +32,10 @@ import {
   SteeringAgent,
   wander,
 } from "@yagejs-addons/steering";
-import { avoidColliders, PhysicsSteeringAgent } from "@yagejs-addons/steering/physics";
+import {
+  avoidColliders,
+  PhysicsSteeringAgent,
+} from "@yagejs-addons/steering/physics";
 import type { Kinematic, Obstacle } from "@yagejs-addons/steering";
 import { injectStyles, setupContainer } from "./shared.js";
 
@@ -43,7 +51,11 @@ const AVOID_TARGET = new Vec2(750, 500);
 const OBSTACLES: Obstacle[] = [{ position: new Vec2(350, 485), radius: 35 }];
 const BOID_COUNT = 6;
 const BOID_NAMES = Array.from({ length: BOID_COUNT }, (_, i) => `boid-${i}`);
-const PATH_WAYPOINTS = [new Vec2(100, 560), new Vec2(400, 520), new Vec2(700, 560)];
+const PATH_WAYPOINTS = [
+  new Vec2(100, 560),
+  new Vec2(400, 520),
+  new Vec2(700, 560),
+];
 const IMPULSE_TARGET = new Vec2(700, 100);
 const CRATE_START = new Vec2(400, 100);
 const COLLIDER_AVOID_TARGET = new Vec2(750, 200);
@@ -77,7 +89,11 @@ class SteeringE2EScene extends Scene {
     (window as unknown as { __steering__: unknown }).__steering__ = {
       seekTarget: { x: SEEK_TARGET.x, y: SEEK_TARGET.y },
       fleeTarget: { x: FLEE_TARGET.x, y: FLEE_TARGET.y },
-      obstacles: OBSTACLES.map((o) => ({ x: o.position.x, y: o.position.y, radius: o.radius })),
+      obstacles: OBSTACLES.map((o) => ({
+        x: o.position.x,
+        y: o.position.y,
+        radius: o.radius,
+      })),
       boidNames: BOID_NAMES,
       pathWaypoints: PATH_WAYPOINTS.map((w) => ({ x: w.x, y: w.y })),
       impulseTarget: { x: IMPULSE_TARGET.x, y: IMPULSE_TARGET.y },
@@ -94,13 +110,17 @@ class SteeringE2EScene extends Scene {
   private spawnSeeker(): void {
     const entity = this.spawn("seeker");
     entity.add(new Transform({ position: new Vec2(50, 100) }));
-    entity.add(new SteeringAgent({ maxSpeed: 150, behaviors: [seek(SEEK_TARGET)] }));
+    entity.add(
+      new SteeringAgent({ maxSpeed: 150, behaviors: [seek(SEEK_TARGET)] }),
+    );
   }
 
   private spawnFleer(): void {
     const entity = this.spawn("fleer");
     entity.add(new Transform({ position: new Vec2(420, 300) }));
-    entity.add(new SteeringAgent({ maxSpeed: 130, behaviors: [flee(FLEE_TARGET)] }));
+    entity.add(
+      new SteeringAgent({ maxSpeed: 130, behaviors: [flee(FLEE_TARGET)] }),
+    );
   }
 
   private spawnAvoider(): void {
@@ -111,7 +131,11 @@ class SteeringE2EScene extends Scene {
         maxSpeed: 140,
         behaviors: [
           seek(AVOID_TARGET),
-          avoidObstacles(OBSTACLES, { lookAhead: 120, agentRadius: 8, priority: 1 }),
+          avoidObstacles(OBSTACLES, {
+            lookAhead: 120,
+            agentRadius: 8,
+            priority: 1,
+          }),
         ],
       }),
     );
@@ -121,7 +145,10 @@ class SteeringE2EScene extends Scene {
     const boidRefs: { transform: Transform; agent: SteeringAgent }[] = [];
     for (let i = 0; i < BOID_COUNT; i++) {
       const angle = (i / BOID_COUNT) * Math.PI * 2;
-      const position = new Vec2(200 + Math.cos(angle) * 50, 200 + Math.sin(angle) * 50);
+      const position = new Vec2(
+        200 + Math.cos(angle) * 50,
+        200 + Math.sin(angle) * 50,
+      );
       const entity = this.spawn(`boid-${i}`);
       entity.add(new Transform({ position }));
       const agent = new SteeringAgent({ maxSpeed: 95, behaviors: [] });
@@ -132,7 +159,10 @@ class SteeringE2EScene extends Scene {
       const neighbors = (): Kinematic[] =>
         boidRefs
           .filter((b) => b !== self)
-          .map((b) => ({ position: b.transform.position, velocity: b.agent.velocity }));
+          .map((b) => ({
+            position: b.transform.position,
+            velocity: b.agent.velocity,
+          }));
       self.agent.setBehaviors([
         separation(neighbors, { radius: 28, weight: 1.5 }),
         alignment(neighbors, { radius: 60 }),
@@ -145,7 +175,10 @@ class SteeringE2EScene extends Scene {
     const entity = this.spawn("wanderer");
     entity.add(new Transform({ position: new Vec2(600, 300) }));
     entity.add(
-      new SteeringAgent({ maxSpeed: 60, behaviors: [wander({ random: seededRandom(42) })] }),
+      new SteeringAgent({
+        maxSpeed: 60,
+        behaviors: [wander({ random: seededRandom(42) })],
+      }),
     );
   }
 
@@ -169,7 +202,9 @@ class SteeringE2EScene extends Scene {
     rock.add(new Transform({ position: WALL_ROCK.position }));
     rock.add(new RigidBodyComponent({ type: "static" }));
     rock.add(
-      new ColliderComponent({ shape: { type: "circle", radius: WALL_ROCK.radius } }),
+      new ColliderComponent({
+        shape: { type: "circle", radius: WALL_ROCK.radius },
+      }),
     );
 
     const world = this.use(PhysicsWorldKey);
@@ -194,15 +229,35 @@ class SteeringE2EScene extends Scene {
   private spawnImpulseAgent(): () => void {
     const crate = this.spawn("crate-0");
     crate.add(new Transform({ position: CRATE_START }));
-    crate.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0, linearDamping: 3 }));
     crate.add(
-      new ColliderComponent({ shape: { type: "box", width: 20, height: 20 }, density: 0.4 }),
+      new RigidBodyComponent({
+        type: "dynamic",
+        gravityScale: 0,
+        linearDamping: 3,
+      }),
+    );
+    crate.add(
+      new ColliderComponent({
+        shape: { type: "box", width: 20, height: 20 },
+        density: 0.4,
+      }),
     );
 
     const entity = this.spawn("impulse-agent");
     entity.add(new Transform({ position: new Vec2(100, 100) }));
-    entity.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0, linearDamping: 0 }));
-    entity.add(new ColliderComponent({ shape: { type: "circle", radius: 10 }, density: 1 }));
+    entity.add(
+      new RigidBodyComponent({
+        type: "dynamic",
+        gravityScale: 0,
+        linearDamping: 0,
+      }),
+    );
+    entity.add(
+      new ColliderComponent({
+        shape: { type: "circle", radius: 10 },
+        density: 1,
+      }),
+    );
     entity.add(
       new PhysicsSteeringAgent({
         maxSpeed: 150,

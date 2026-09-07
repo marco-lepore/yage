@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMockScene, Logger, LoggerKey, LogLevel, Transform } from "@yagejs/core";
+import {
+  createMockScene,
+  Logger,
+  LoggerKey,
+  LogLevel,
+  Transform,
+} from "@yagejs/core";
 import { InputManagerKey, type InputManager } from "@yagejs/input";
 import { Interactor } from "./Interactor.js";
 import { Interactable } from "./Interactable.js";
@@ -28,7 +34,9 @@ describe("Interactor", () => {
 
     const near = scene.spawn("near");
     near.add(new Transform({ position: { x: 200, y: 0 } }));
-    const nearInteractable = near.add(new Interactable({ onInteract: () => {} }));
+    const nearInteractable = near.add(
+      new Interactable({ onInteract: () => {} }),
+    );
 
     interactor.update();
     expect(interactor.focus).toBeNull(); // out of range at 200px
@@ -66,7 +74,12 @@ describe("Interactor", () => {
     const lever = scene.spawn("lever");
     lever.add(new Transform({ position: { x: 10, y: 0 } }));
     let on = false;
-    lever.add(new Interactable({ onInteract: () => {}, prompt: () => (on ? "Turn off" : "Turn on") }));
+    lever.add(
+      new Interactable({
+        onInteract: () => {},
+        prompt: () => (on ? "Turn off" : "Turn on"),
+      }),
+    );
 
     const prompts: (string | null)[] = [];
     player.on(InteractionFocusChangedEvent, (e) => prompts.push(e.prompt));
@@ -87,10 +100,15 @@ describe("Interactor", () => {
     const interactor = player.add(new Interactor({ range: 100 }));
 
     const chest = scene.spawn("chest");
-    const chestTransform = chest.add(new Transform({ position: { x: 10, y: 0 } }));
+    const chestTransform = chest.add(
+      new Transform({ position: { x: 10, y: 0 } }),
+    );
     chest.add(new Interactable({ onInteract: () => {} }));
 
-    const events: { interactable: Interactable | null; prompt: string | null }[] = [];
+    const events: {
+      interactable: Interactable | null;
+      prompt: string | null;
+    }[] = [];
     player.on(InteractionFocusChangedEvent, (e) => events.push(e));
 
     interactor.update();
@@ -120,7 +138,9 @@ describe("Interactor", () => {
     interactor.interact();
 
     expect(onInteract).toHaveBeenCalledTimes(1);
-    expect(interacted).toHaveBeenCalledWith({ interactable: chestInteractable });
+    expect(interacted).toHaveBeenCalledWith({
+      interactable: chestInteractable,
+    });
   });
 
   it("interact() with no focus is a no-op", () => {
@@ -138,7 +158,10 @@ describe("Interactor", () => {
 
   it("action: null skips auto-input entirely", () => {
     const { scene } = createMockScene();
-    scene.context.register(InputManagerKey, fakeInputManager(new Set(["interact"])));
+    scene.context.register(
+      InputManagerKey,
+      fakeInputManager(new Set(["interact"])),
+    );
     const player = scene.spawn("player");
     player.add(new Transform());
     const interactor = player.add(new Interactor({ range: 100, action: null }));
@@ -180,7 +203,9 @@ describe("Interactor", () => {
     const interactor = player.add(new Interactor({ range: 100 }));
 
     const chest = scene.spawn("chest");
-    const chestTransform = chest.add(new Transform({ position: { x: 10, y: 0 } }));
+    const chestTransform = chest.add(
+      new Transform({ position: { x: 10, y: 0 } }),
+    );
     chest.add(new Interactable({ onInteract: () => {} }));
 
     const events: unknown[] = [];
@@ -205,7 +230,9 @@ describe("Interactor", () => {
     const { scene } = createMockScene();
     const player = scene.spawn("player");
     player.add(new Transform());
-    const interactor = player.add(new Interactor({ range: 100, enabled: false }));
+    const interactor = player.add(
+      new Interactor({ range: 100, enabled: false }),
+    );
 
     const chest = scene.spawn("chest");
     chest.add(new Transform({ position: { x: 10, y: 0 } }));
@@ -230,7 +257,9 @@ describe("Interactor", () => {
 
     const chest = scene.spawn("chest");
     chest.add(new Transform({ position: { x: 10, y: 0 } }));
-    const chestInteractable = chest.add(new Interactable({ onInteract: () => {} }));
+    const chestInteractable = chest.add(
+      new Interactable({ onInteract: () => {} }),
+    );
 
     interactor.update();
     expect(interactor.focus).toBe(chestInteractable);
@@ -276,7 +305,9 @@ describe("Interactor", () => {
 
     const chest = scene.spawn("chest");
     chest.add(new Transform({ position: { x: 10, y: 0 } }));
-    const chestInteractable = chest.add(new Interactable({ onInteract: () => {} }));
+    const chestInteractable = chest.add(
+      new Interactable({ onInteract: () => {} }),
+    );
 
     interactor.update();
     expect(interactor.focus).toBe(chestInteractable);
@@ -306,7 +337,10 @@ describe("Interactor", () => {
     chest.add(new Transform({ position: { x: 10, y: 0 } }));
     chest.add(new Interactable({ onInteract: () => {} }));
 
-    const events: { interactable: Interactable | null; prompt: string | null }[] = [];
+    const events: {
+      interactable: Interactable | null;
+      prompt: string | null;
+    }[] = [];
     player.on(InteractionFocusChangedEvent, (e) => events.push(e));
 
     interactor.update();
@@ -335,7 +369,10 @@ describe("Interactor", () => {
     const logger = new Logger({ level: LogLevel.Debug });
     scene.context.register(LoggerKey, logger);
     const warn = vi.spyOn(logger, "warn");
-    scene.context.register(InputManagerKey, fakeInputManager(new Set(), new Set()));
+    scene.context.register(
+      InputManagerKey,
+      fakeInputManager(new Set(), new Set()),
+    );
 
     const player = scene.spawn("player");
     player.add(new Transform());
@@ -349,7 +386,9 @@ describe("Interactor", () => {
     interactor.update();
     interactor.update();
 
-    const interactionWarns = warn.mock.calls.filter((c) => c[0] === "interaction");
+    const interactionWarns = warn.mock.calls.filter(
+      (c) => c[0] === "interaction",
+    );
     expect(interactionWarns).toHaveLength(1);
     expect(interactionWarns[0]?.[1]).toMatch(/action "interact"/);
   });
@@ -379,7 +418,9 @@ describe("Interactor", () => {
     player.add(new Transform());
     player.add(new Interactor({ range: 0, action: null }));
 
-    expect(warn.mock.calls.filter((c) => c[0] === "interaction")).toHaveLength(0);
+    expect(warn.mock.calls.filter((c) => c[0] === "interaction")).toHaveLength(
+      0,
+    );
   });
 
   it("does not warn when the action is mapped", () => {
@@ -399,7 +440,9 @@ describe("Interactor", () => {
 
     interactor.update();
 
-    expect(warn.mock.calls.filter((c) => c[0] === "interaction")).toHaveLength(0);
+    expect(warn.mock.calls.filter((c) => c[0] === "interaction")).toHaveLength(
+      0,
+    );
   });
 
   it("a target destroyed earlier in the frame is not selectable and cannot be interacted with", () => {
@@ -495,7 +538,9 @@ describe("Interactor", () => {
 
     const near = scene.spawn("near");
     near.add(new Transform({ position: { x: 10, y: 0 } }));
-    const nearInteractable = near.add(new Interactable({ onInteract: () => {} }));
+    const nearInteractable = near.add(
+      new Interactable({ onInteract: () => {} }),
+    );
 
     const far = scene.spawn("far");
     far.add(new Transform({ position: { x: 40, y: 0 } }));
@@ -510,7 +555,11 @@ describe("Interactor", () => {
     interactor.update();
 
     // Priority chest first, then the two priority-0 by nearest distance.
-    expect(interactor.inRange).toEqual([chestInteractable, nearInteractable, farInteractable]);
+    expect(interactor.inRange).toEqual([
+      chestInteractable,
+      nearInteractable,
+      farInteractable,
+    ]);
     expect(interactor.inRange[0]).toBe(interactor.focus);
   });
 
@@ -522,7 +571,9 @@ describe("Interactor", () => {
 
     const inRange = scene.spawn("in");
     inRange.add(new Transform({ position: { x: 10, y: 0 } }));
-    const inRangeInteractable = inRange.add(new Interactable({ onInteract: () => {} }));
+    const inRangeInteractable = inRange.add(
+      new Interactable({ onInteract: () => {} }),
+    );
 
     const disabled = scene.spawn("disabled");
     disabled.add(new Transform({ position: { x: 12, y: 0 } }));
@@ -562,12 +613,16 @@ describe("Interactor", () => {
     const chest = scene.spawn("chest");
     chest.add(new Transform({ position: { x: 10, y: 0 } }));
     const chestOnInteract = vi.fn();
-    const chestInteractable = chest.add(new Interactable({ onInteract: chestOnInteract, priority: 10 }));
+    const chestInteractable = chest.add(
+      new Interactable({ onInteract: chestOnInteract, priority: 10 }),
+    );
 
     const coin = scene.spawn("coin");
     coin.add(new Transform({ position: { x: 20, y: 0 } }));
     const coinOnInteract = vi.fn();
-    const coinInteractable = coin.add(new Interactable({ onInteract: coinOnInteract }));
+    const coinInteractable = coin.add(
+      new Interactable({ onInteract: coinOnInteract }),
+    );
 
     interactor.update();
     expect(interactor.focus).toBe(chestInteractable); // higher priority
@@ -620,7 +675,9 @@ describe("Interactor", () => {
 
     const near = scene.spawn("near");
     near.add(new Transform({ position: { x: 10, y: 0 } }));
-    const nearInteractable = near.add(new Interactable({ onInteract: () => {} }));
+    const nearInteractable = near.add(
+      new Interactable({ onInteract: () => {} }),
+    );
 
     interactor.update();
     expect(interactor.inRange).toEqual([nearInteractable, farInteractable]);
@@ -684,16 +741,24 @@ describe("Interactor", () => {
 
     const chest = scene.spawn("chest");
     chest.add(new Transform({ position: { x: 10, y: 0 } }));
-    const chestInteractable = chest.add(new Interactable({ onInteract: () => {}, priority: 10 }));
+    const chestInteractable = chest.add(
+      new Interactable({ onInteract: () => {}, priority: 10 }),
+    );
 
     const coin = scene.spawn("coin");
-    const coinTransform = coin.add(new Transform({ position: { x: 9999, y: 0 } }));
-    const coinInteractable = coin.add(new Interactable({ onInteract: () => {} }));
+    const coinTransform = coin.add(
+      new Transform({ position: { x: 9999, y: 0 } }),
+    );
+    const coinInteractable = coin.add(
+      new Interactable({ onInteract: () => {} }),
+    );
 
     const focusEvents: unknown[] = [];
     const inRangeEvents: (readonly Interactable[])[] = [];
     player.on(InteractionFocusChangedEvent, (e) => focusEvents.push(e));
-    player.on(InteractionInRangeChangedEvent, ({ inRange }) => inRangeEvents.push(inRange));
+    player.on(InteractionInRangeChangedEvent, ({ inRange }) =>
+      inRangeEvents.push(inRange),
+    );
 
     interactor.update();
     expect(inRangeEvents).toEqual([[chestInteractable]]);
@@ -732,7 +797,9 @@ describe("Interactor", () => {
     const bInteractable = b.add(new Interactable({ onInteract: () => {} }));
 
     const inRangeEvents: (readonly Interactable[])[] = [];
-    player.on(InteractionInRangeChangedEvent, ({ inRange }) => inRangeEvents.push(inRange));
+    player.on(InteractionInRangeChangedEvent, ({ inRange }) =>
+      inRangeEvents.push(inRange),
+    );
 
     interactor.update();
     expect(inRangeEvents.at(-1)).toEqual([aInteractable, bInteractable]);
@@ -778,10 +845,14 @@ describe("Interactor", () => {
 
     const chest = scene.spawn("chest");
     chest.add(new Transform({ position: { x: 10, y: 0 } }));
-    const chestInteractable = chest.add(new Interactable({ onInteract: () => {} }));
+    const chestInteractable = chest.add(
+      new Interactable({ onInteract: () => {} }),
+    );
 
     const announced: Interactable[] = [];
-    player.on(InteractionInRangeChangedEvent, ({ inRange }) => announced.push(...inRange));
+    player.on(InteractionInRangeChangedEvent, ({ inRange }) =>
+      announced.push(...inRange),
+    );
     // Re-enters setInRange from inside the focus emit: the interactor empties
     // its snapshot before the outer call reaches its own in-range emit.
     player.on(InteractionFocusChangedEvent, () => {

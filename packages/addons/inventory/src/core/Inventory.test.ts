@@ -14,7 +14,9 @@ const catalog = defineItems({
 
 type Id = "potion" | "gem" | "sword" | "arrows" | "goldKey";
 
-function make(opts: Partial<ConstructorParameters<typeof Inventory<Id>>[0]> = {}): Inventory<Id> {
+function make(
+  opts: Partial<ConstructorParameters<typeof Inventory<Id>>[0]> = {},
+): Inventory<Id> {
   return new Inventory<Id>({ catalog, ...opts });
 }
 
@@ -101,7 +103,11 @@ describe("add — single stacking (total cap)", () => {
     // Rejected, not folded into the instance stack — otherwise remove() (which
     // skips data stacks) could never take the anonymous units back out.
     expect(res).toMatchObject({ added: 0, rejected: 3, reason: "stack-cap" });
-    expect(inv.slots[0]).toEqual({ itemId: "arrows", quantity: 5, data: { enchant: "fire" } });
+    expect(inv.slots[0]).toEqual({
+      itemId: "arrows",
+      quantity: 5,
+      data: { enchant: "fire" },
+    });
     expect(inv.used).toBe(1);
   });
 });
@@ -141,14 +147,19 @@ describe("add — acceptance policy", () => {
   it("accepts predicate refuses with reason filtered", () => {
     const inv = make({ accepts: (def) => def.category === "key" });
     const refused = inv.add("potion", 3);
-    expect(refused).toMatchObject({ added: 0, rejected: 3, reason: "filtered" });
+    expect(refused).toMatchObject({
+      added: 0,
+      rejected: 3,
+      reason: "filtered",
+    });
     expect(inv.add("goldKey").added).toBe(1);
   });
 
   it("constraints clip the request with reason constraint and the clipping id", () => {
     const maxUnits3: InventoryConstraint<Id> = {
       id: "max-3-total",
-      maxAcceptable: (_def, inv) => 3 - inv.slots.reduce((n, s) => n + (s?.quantity ?? 0), 0),
+      maxAcceptable: (_def, inv) =>
+        3 - inv.slots.reduce((n, s) => n + (s?.quantity ?? 0), 0),
     };
     const inv = make({ constraints: [maxUnits3] });
     const rejections: unknown[] = [];
@@ -160,8 +171,14 @@ describe("add — acceptance policy", () => {
       reason: "constraint",
       constraintId: "max-3-total",
     });
-    expect(inv.add("potion", 1)).toMatchObject({ added: 0, reason: "constraint" });
-    expect(rejections[0]).toMatchObject({ reason: "constraint", constraintId: "max-3-total" });
+    expect(inv.add("potion", 1)).toMatchObject({
+      added: 0,
+      reason: "constraint",
+    });
+    expect(rejections[0]).toMatchObject({
+      reason: "constraint",
+      constraintId: "max-3-total",
+    });
   });
 
   it("names the MOST limiting constraint when several clip", () => {
@@ -170,11 +187,17 @@ describe("add — acceptance policy", () => {
       maxAcceptable: () => n,
     });
     const inv = make({ constraints: [cap("loose", 4), cap("tight", 2)] });
-    expect(inv.add("potion", 5)).toMatchObject({ added: 2, constraintId: "tight" });
+    expect(inv.add("potion", 5)).toMatchObject({
+      added: 2,
+      constraintId: "tight",
+    });
   });
 
   it("treats a NaN-returning constraint as 0 instead of poisoning the result", () => {
-    const broken: InventoryConstraint<Id> = { id: "broken", maxAcceptable: () => Number.NaN };
+    const broken: InventoryConstraint<Id> = {
+      id: "broken",
+      maxAcceptable: () => Number.NaN,
+    };
     const inv = make({ constraints: [broken] });
     const res = inv.add("potion", 3);
     expect(res).toEqual({
@@ -309,7 +332,9 @@ describe("data stacks — predicate queries + find/remove by ref", () => {
     expect(boss?.slot).toBe(0);
     const res = inv.remove(found(boss));
     expect(res.removed).toBe(1);
-    expect(res.stacks).toEqual([{ itemId: "goldKey", quantity: 1, data: { opens: "boss-lair" } }]);
+    expect(res.stacks).toEqual([
+      { itemId: "goldKey", quantity: 1, data: { opens: "boss-lair" } },
+    ]);
     // The other key is untouched.
     expect(inv.count("goldKey")).toBe(1);
     expect(inv.find("goldKey", (d) => d.opens === "cellar")).toBeDefined();
@@ -321,10 +346,14 @@ describe("data stacks — predicate queries + find/remove by ref", () => {
     inv.add("gem", 8, { data: { quality: 40 } });
     inv.add("gem", 3); // anonymous
     expect(inv.findAll("gem")).toHaveLength(3);
-    expect(inv.findAll("gem", (d) => (d.quality as number) < 50)).toHaveLength(1);
+    expect(inv.findAll("gem", (d) => (d.quality as number) < 50)).toHaveLength(
+      1,
+    );
     const res = inv.remove("gem", 99, (d) => (d.quality as number) < 50);
     expect(res.removed).toBe(8);
-    expect(res.stacks).toEqual([{ itemId: "gem", quantity: 8, data: { quality: 40 } }]);
+    expect(res.stacks).toEqual([
+      { itemId: "gem", quantity: 8, data: { quality: 40 } },
+    ]);
     // The good gems and the anonymous stack survive.
     expect(inv.count("gem")).toBe(8);
   });
@@ -346,7 +375,9 @@ describe("data stacks — predicate queries + find/remove by ref", () => {
     inv.remove("potion", 3); // slot 0 empties; autoCompact shifts gem to slot 0
     const res = inv.remove(gem); // resolves by identity despite the moved index
     expect(res.removed).toBe(1);
-    expect(res.stacks).toEqual([{ itemId: "gem", quantity: 1, data: { quality: 90 } }]);
+    expect(res.stacks).toEqual([
+      { itemId: "gem", quantity: 1, data: { quality: 90 } },
+    ]);
     expect(inv.used).toBe(0);
   });
 });
@@ -357,8 +388,12 @@ describe("setSlot / clear", () => {
     inv.setSlot(2, { itemId: "potion", quantity: 42 }); // beyond maxStack — verbatim
     expect(inv.slots[2]?.quantity).toBe(42);
     expect(() => inv.setSlot(3, null)).toThrow(/out of range/);
-    expect(() => inv.setSlot(0, { itemId: "nope" as Id, quantity: 1 })).toThrow(/unknown item/);
-    expect(() => inv.setSlot(0, { itemId: "potion", quantity: 0 })).toThrow(/positive integer/);
+    expect(() => inv.setSlot(0, { itemId: "nope" as Id, quantity: 1 })).toThrow(
+      /unknown item/,
+    );
+    expect(() => inv.setSlot(0, { itemId: "potion", quantity: 0 })).toThrow(
+      /positive integer/,
+    );
   });
 
   it("clear empties everything with a single changed event", () => {
@@ -485,9 +520,17 @@ describe("sort", () => {
     inv.add("gem", 3);
     inv.add("potion", 2);
     inv.sort(byName);
-    expect(inv.slots.slice(0, 3).map((s) => s?.itemId)).toEqual(["gem", "sword", "potion"]);
+    expect(inv.slots.slice(0, 3).map((s) => s?.itemId)).toEqual([
+      "gem",
+      "sword",
+      "potion",
+    ]);
     inv.sort(byQuantity);
-    expect(inv.slots.slice(0, 3).map((s) => s?.itemId)).toEqual(["gem", "potion", "sword"]);
+    expect(inv.slots.slice(0, 3).map((s) => s?.itemId)).toEqual([
+      "gem",
+      "potion",
+      "sword",
+    ]);
   });
 
   it("keeps data stacks and single-stacking items unconsolidated", () => {
@@ -508,7 +551,11 @@ describe("transfer", () => {
     const dst = make({ capacity: 1 });
     src.add("potion", 12); // 5/5/2
     const res = src.transfer(dst, "potion", 12);
-    expect(res).toMatchObject({ transferred: 5, rejected: 7, reason: "capacity" });
+    expect(res).toMatchObject({
+      transferred: 5,
+      rejected: 7,
+      reason: "capacity",
+    });
     expect(src.count("potion")).toBe(7);
     expect(dst.count("potion")).toBe(5);
   });
@@ -518,7 +565,11 @@ describe("transfer", () => {
     const pouch = make({ accepts: (def) => def.category === "key" });
     src.add("potion", 2);
     const res = src.transfer(pouch, "potion", 2);
-    expect(res).toMatchObject({ transferred: 0, rejected: 2, reason: "filtered" });
+    expect(res).toMatchObject({
+      transferred: 0,
+      rejected: 2,
+      reason: "filtered",
+    });
     expect(src.count("potion")).toBe(2);
   });
 
@@ -569,7 +620,10 @@ describe("transfer", () => {
   it("self-transfer is a no-op", () => {
     const inv = make();
     inv.add("potion", 2);
-    expect(inv.transfer(inv, "potion", 2)).toEqual({ transferred: 0, rejected: 0 });
+    expect(inv.transfer(inv, "potion", 2)).toEqual({
+      transferred: 0,
+      rejected: 0,
+    });
     expect(inv.count("potion")).toBe(2);
   });
 });
@@ -595,7 +649,11 @@ describe("actions", () => {
     });
     inv.add("potion");
     inv.add("sword");
-    expect(inv.getActions(0).map((a) => a.id)).toEqual(["use", "drop", "inspect"]);
+    expect(inv.getActions(0).map((a) => a.id)).toEqual([
+      "use",
+      "drop",
+      "inspect",
+    ]);
     expect(inv.getActions(1).map((a) => a.id)).toEqual(["drop"]);
     expect(inv.getActions(5)).toEqual([]);
   });
@@ -604,11 +662,20 @@ describe("actions", () => {
     const inv = make({ actions: [use, drop] });
     inv.add("potion", 3);
     const seen: unknown[] = [];
-    inv.on("action", (e) => seen.push({ ...e, countAtEmit: inv.count("potion") }));
+    inv.on("action", (e) =>
+      seen.push({ ...e, countAtEmit: inv.count("potion") }),
+    );
     expect(inv.invokeAction("use", 0)).toEqual({ ok: true });
     // The event fires BEFORE the consume removal (quantity is pre-consume).
     expect(seen).toEqual([
-      { actionId: "use", slot: 0, itemId: "potion", quantity: 3, consumes: true, countAtEmit: 3 },
+      {
+        actionId: "use",
+        slot: 0,
+        itemId: "potion",
+        quantity: 3,
+        consumes: true,
+        countAtEmit: 3,
+      },
     ]);
     expect(inv.count("potion")).toBe(2);
   });
@@ -616,7 +683,10 @@ describe("actions", () => {
   it("refuses actions that aren't currently offered, and empty slots", () => {
     const inv = make({ actions: [use] });
     inv.add("sword"); // not a consumable -> use unavailable
-    expect(inv.invokeAction("use", 0)).toEqual({ ok: false, reason: "no-action" });
+    expect(inv.invokeAction("use", 0)).toEqual({
+      ok: false,
+      reason: "no-action",
+    });
     expect(inv.invokeAction("use", 3)).toEqual({ ok: false, reason: "empty" });
   });
 });
@@ -625,11 +695,19 @@ describe("events", () => {
   it("emits itemAdded/rejected and a single changed per add", () => {
     const inv = make({ capacity: 2 });
     const events: string[] = [];
-    inv.on("itemAdded", (e) => events.push(`added:${e.quantity}@${e.slots.join(",")}`));
-    inv.on("rejected", (e) => events.push(`rejected:${e.quantity}:${e.reason}`));
+    inv.on("itemAdded", (e) =>
+      events.push(`added:${e.quantity}@${e.slots.join(",")}`),
+    );
+    inv.on("rejected", (e) =>
+      events.push(`rejected:${e.quantity}:${e.reason}`),
+    );
     inv.on("changed", (e) => events.push(`changed:${e.slots.join(",")}`));
     inv.add("potion", 12);
-    expect(events).toEqual(["added:10@0,1", "rejected:2:capacity", "changed:0,1"]);
+    expect(events).toEqual([
+      "added:10@0,1",
+      "rejected:2:capacity",
+      "changed:0,1",
+    ]);
   });
 
   it("emits one aggregated itemRemoved per remove()", () => {
@@ -693,7 +771,13 @@ describe("snapshot / restore", () => {
     // all still fit the smaller bag, so nothing is lost.
     const inv = make({ capacity: 3 });
     const { dropped } = inv.restore({
-      slots: [null, null, null, { itemId: "sword", quantity: 1 }, { itemId: "gem", quantity: 4 }],
+      slots: [
+        null,
+        null,
+        null,
+        { itemId: "sword", quantity: 1 },
+        { itemId: "gem", quantity: 4 },
+      ],
     });
     expect(dropped).toEqual([]);
     // Overflow lands in slot order: first overflow entry → first free slot.
@@ -756,8 +840,15 @@ describe("typed per-item data (instanceData inference)", () => {
   // inferred from the catalog, so `data` narrows per item at the call site.
   const typedCatalog = defineItems({
     potion: { name: "Potion", maxStack: 5 }, // no instance → `data` is never
-    herb: { name: "Herb", maxStack: 20, instance: instanceData<{ quality: number }>() },
-    sword: { name: "Iron Sword", instance: instanceData<{ durability: number }>() },
+    herb: {
+      name: "Herb",
+      maxStack: 20,
+      instance: instanceData<{ quality: number }>(),
+    },
+    sword: {
+      name: "Iron Sword",
+      instance: instanceData<{ durability: number }>(),
+    },
   });
 
   it("carries typed instance data through add, predicates, find, and remove", () => {

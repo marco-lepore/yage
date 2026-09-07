@@ -29,7 +29,9 @@ const [, , baseDir, targetDir, baseLabel = "base", targetLabel = "target"] =
   process.argv;
 
 if (!baseDir || !targetDir) {
-  console.error("usage: diff-snapshots.mjs <baseDir> <targetDir> [baseLabel] [targetLabel]");
+  console.error(
+    "usage: diff-snapshots.mjs <baseDir> <targetDir> [baseLabel] [targetLabel]",
+  );
   process.exit(2);
 }
 
@@ -56,8 +58,10 @@ function unifiedDiff(slug) {
   try {
     execFileSync("diff", [
       "-u",
-      "--label", `${baseLabel}/${slug}`,
-      "--label", `${targetLabel}/${slug}`,
+      "--label",
+      `${baseLabel}/${slug}`,
+      "--label",
+      `${targetLabel}/${slug}`,
       join(baseDir, `${slug}.json`),
       join(targetDir, `${slug}.json`),
     ]);
@@ -92,7 +96,10 @@ function imageDiff(slug) {
       });
       PNG.bitblt(a, composite, 0, 0, a.width, a.height, 0, 0);
       PNG.bitblt(b, composite, 0, 0, b.width, b.height, a.width, 0);
-      writeFileSync(join(imageDiffDir, `${slug}.png`), PNG.sync.write(composite));
+      writeFileSync(
+        join(imageDiffDir, `${slug}.png`),
+        PNG.sync.write(composite),
+      );
     }
     return { dims: `${a.width}×${a.height} → ${b.width}×${b.height}` };
   }
@@ -157,7 +164,9 @@ const visuallyChanged = [...images].filter(
 const out = [];
 out.push(`## Example snapshot diff`);
 out.push("");
-out.push(`Comparing \`${targetLabel}\` (target) against \`${baseLabel}\` (base).`);
+out.push(
+  `Comparing \`${targetLabel}\` (target) against \`${baseLabel}\` (base).`,
+);
 out.push("");
 out.push(`| Result | Count |`);
 out.push(`| --- | --- |`);
@@ -168,11 +177,15 @@ out.push(`| Removed (base only) | ${removed.length} |`);
 out.push(`| Unchanged | ${unchanged} |`);
 out.push("");
 
-if (added.length) out.push(`**Added:** ${added.map((s) => `\`${s}\``).join(", ")}\n`);
-if (removed.length) out.push(`**Removed:** ${removed.map((s) => `\`${s}\``).join(", ")}\n`);
+if (added.length)
+  out.push(`**Added:** ${added.map((s) => `\`${s}\``).join(", ")}\n`);
+if (removed.length)
+  out.push(`**Removed:** ${removed.map((s) => `\`${s}\``).join(", ")}\n`);
 
 if (changed.length === 0 && visualOnly.length === 0) {
-  out.push(added.length || removed.length ? "" : "No behavioral differences. ✅");
+  out.push(
+    added.length || removed.length ? "" : "No behavioral differences. ✅",
+  );
 } else {
   if (changed.length > 0) {
     out.push(`### Changed examples`);
@@ -187,7 +200,8 @@ if (changed.length === 0 && visualOnly.length === 0) {
       out.push(`<details><summary><code>${slug}</code></summary>`);
       out.push("");
       const note = imageNote(images.get(slug));
-      if (note) out.push(`**Image:** ${note} — composite in the run artifacts.\n`);
+      if (note)
+        out.push(`**Image:** ${note} — composite in the run artifacts.\n`);
       out.push("```diff");
       out.push(patch.join("\n").trimEnd() + truncated);
       out.push("```");

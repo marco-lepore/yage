@@ -10,9 +10,18 @@
  */
 
 // --- Headless model (L1) ---
-export { defineItems, instanceData, ItemCatalog, type DataMapOf } from "./core/catalog.js";
+export {
+  defineItems,
+  instanceData,
+  ItemCatalog,
+  type DataMapOf,
+} from "./core/catalog.js";
 export { Inventory, type InventoryOptions } from "./core/Inventory.js";
-export { filteredView, type FilteredInventoryView, type SourceFilter } from "./core/filteredView.js";
+export {
+  filteredView,
+  type FilteredInventoryView,
+  type SourceFilter,
+} from "./core/filteredView.js";
 export type { InventorySource } from "./core/InventorySource.js";
 export {
   byCatalogOrder,
@@ -87,7 +96,10 @@ export type {
 } from "./adapter.js";
 
 // --- YAGE integration (L2) ---
-export { InventoryController, type InventoryControllerOptions } from "./InventoryController.js";
+export {
+  InventoryController,
+  type InventoryControllerOptions,
+} from "./InventoryController.js";
 export {
   InventoryActionEvent,
   InventoryChangedEvent,

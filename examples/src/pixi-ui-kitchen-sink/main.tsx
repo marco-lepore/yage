@@ -18,10 +18,14 @@ import {
 } from "@yagejs/ui-react";
 import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap";
 import {
-  textStyle, loadFonts, assets, allAssets,
-  nineSlice, btnTextOffset, panelBg,
+  textStyle,
+  loadFonts,
+  assets,
+  allAssets,
+  nineSlice,
+  btnTextOffset,
+  panelBg,
 } from "../shared/ui-theme";
-
 
 /** Create a NineSliceSprite at a specific size (for composite widgets like Select
  *  where we can't rely on applyLayout to resize). */
@@ -42,9 +46,23 @@ function makeNineSlice(
 // ---------------------------------------------------------------------------
 // Section wrapper
 // ---------------------------------------------------------------------------
-function Section({ title, children, width = 340 }: { title: string; children: React.ReactNode; width?: number }) {
+function Section({
+  title,
+  children,
+  width = 340,
+}: {
+  title: string;
+  children: React.ReactNode;
+  width?: number;
+}) {
   return (
-    <Panel direction="column" gap={8} padding={12} bg={{ color: 0x111827, alpha: 0.9, radius: 6 }} width={width}>
+    <Panel
+      direction="column"
+      gap={8}
+      padding={12}
+      bg={{ color: 0x111827, alpha: 0.9, radius: 6 }}
+      width={width}
+    >
       <Text style={textStyle("label")}>{title}</Text>
       {children}
     </Panel>
@@ -65,12 +83,21 @@ function KitchenSink() {
 
   // ProgressBar
   const [progress, setProgress] = useState(65);
-  const decProgress = useCallback(() => setProgress((v) => Math.max(0, v - 10)), []);
-  const incProgress = useCallback(() => setProgress((v) => Math.min(100, v + 10)), []);
+  const decProgress = useCallback(
+    () => setProgress((v) => Math.max(0, v - 10)),
+    [],
+  );
+  const incProgress = useCallback(
+    () => setProgress((v) => Math.min(100, v + 10)),
+    [],
+  );
 
   // Slider
   const [sliderVal, setSliderVal] = useState(50);
-  const onSliderChange = useCallback((v: number) => setSliderVal(Math.round(v)), []);
+  const onSliderChange = useCallback(
+    (v: number) => setSliderVal(Math.round(v)),
+    [],
+  );
 
   // Input
   const [inputText, setInputText] = useState("");
@@ -85,10 +112,13 @@ function KitchenSink() {
   const onRadioChange = useCallback((idx: number) => setRadioIdx(idx), []);
 
   // NineSliceSprite views for Select trigger (composite widget, can't resize via applyLayout)
-  const selectViews = useMemo(() => ({
-    closed: makeNineSlice(assets.selectClosed, 180, 36),
-    open: makeNineSlice(assets.selectOpen, 180, 36),
-  }), []);
+  const selectViews = useMemo(
+    () => ({
+      closed: makeNineSlice(assets.selectClosed, 180, 36),
+      open: makeNineSlice(assets.selectOpen, 180, 36),
+    }),
+    [],
+  );
 
   return (
     <Panel
@@ -241,23 +271,43 @@ function KitchenSink() {
       </Panel>
 
       {/* Row 4: RadioGroup — aligned left so the Select dropdown above is visible */}
-      <Panel direction="row" gap={12} alignItems="flex-start" alignSelf="flex-start">
-      <Section title="Pixi RadioGroup" width={380}>
-        <PixiRadioGroup
-          items={[
-            { checkedView: assets.radioChecked, uncheckedView: assets.radioUnchecked, text: "Warrior", textStyle: textStyle("body") },
-            { checkedView: assets.radioChecked, uncheckedView: assets.radioUnchecked, text: "Mage", textStyle: textStyle("body") },
-            { checkedView: assets.radioChecked, uncheckedView: assets.radioUnchecked, text: "Rogue", textStyle: textStyle("body") },
-          ]}
-          type="horizontal"
-          elementsMargin={12}
-          selected={radioIdx}
-          onChange={onRadioChange}
-        />
-        <Text style={textStyle("caption")}>
-          {`Class: ${["Warrior", "Mage", "Rogue"][radioIdx]}`}
-        </Text>
-      </Section>
+      <Panel
+        direction="row"
+        gap={12}
+        alignItems="flex-start"
+        alignSelf="flex-start"
+      >
+        <Section title="Pixi RadioGroup" width={380}>
+          <PixiRadioGroup
+            items={[
+              {
+                checkedView: assets.radioChecked,
+                uncheckedView: assets.radioUnchecked,
+                text: "Warrior",
+                textStyle: textStyle("body"),
+              },
+              {
+                checkedView: assets.radioChecked,
+                uncheckedView: assets.radioUnchecked,
+                text: "Mage",
+                textStyle: textStyle("body"),
+              },
+              {
+                checkedView: assets.radioChecked,
+                uncheckedView: assets.radioUnchecked,
+                text: "Rogue",
+                textStyle: textStyle("body"),
+              },
+            ]}
+            type="horizontal"
+            elementsMargin={12}
+            selected={radioIdx}
+            onChange={onRadioChange}
+          />
+          <Text style={textStyle("caption")}>
+            {`Class: ${["Warrior", "Mage", "Rogue"][radioIdx]}`}
+          </Text>
+        </Section>
       </Panel>
     </Panel>
   );
