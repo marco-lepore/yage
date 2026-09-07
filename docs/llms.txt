@@ -12,6 +12,7 @@
 - [Assets](llms/assets.md): Asset handles, scene preload, manifests, cache lifetime, base path
 - [Loading Scene](llms/loading-scene.md): Loading-scene orchestration, progress events, error handling
 - [Scene Transitions](llms/scene-transitions.md): Built-in transitions and the SceneTransition contract
+- [Local Engine](llms/local-engine.md): Running a game against an unreleased engine build from a local clone — path links, one Pixi install, install flags, Playwright browsers
 - [Troubleshooting](llms/troubleshooting.md): Dev-mode `[yage]` warnings and what each one means
 
 ## Packages

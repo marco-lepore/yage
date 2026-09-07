@@ -308,6 +308,8 @@ Graphics and their draw callbacks are runtime resources. Save the durable game f
 
 Gradient fills: use `linearGradient` / `radialGradient` (see below) instead of reaching into `pixi.js` for `FillGradient`.
 
+Texture fills: `.fill({ texture, textureSpace: "global" })` tiles a texture across the shape — see "Texture fills" below.
+
 ### TextComponent
 
 Renders text on a layer, Transform-synced like sprites. For free-positioned strings only — for laid-out text widgets, use `UISurface` + `UIText` from `@yagejs/ui` (see "Pick a component" above).
@@ -637,6 +639,61 @@ const spotlight = radialGradient({
 `GradientFill` owns a GPU texture; call `.destroy()` in `onDestroy()` when the owning component tears down. Components can safely build gradients in field initializers — just destroy them in `onDestroy()`.
 
 **Re-export:** `GradientFill` IS pixi `FillGradient`. The factories convert yage's numeric stops to pixi color stops and forward the rest as-is. See [pixi FillGradient docs](https://pixijs.download/release/docs/scene.FillGradient.html).
+
+## Texture fills
+
+`.fill()` takes a texture as well as a colour or a gradient, and the texture
+tiles across the shape — a 64x32 strip fills a 1200-pixel band with a repeating
+pattern, not one stretched copy.
+
+```ts
+import { Component } from "@yagejs/core";
+import { GraphicsComponent, RendererKey } from "@yagejs/renderer";
+import type { TextureResource } from "@yagejs/renderer";
+
+// createTexture returns a caller-owned GPU texture, so a component bakes it
+// and destroys it again.
+class SkyBand extends Component {
+  private band!: TextureResource;
+
+  onAdd(): void {
+    this.band = this.use(RendererKey).createTexture((g) => {
+      g.rect(0, 0, 64, 16).fill(0x1b3a5c);
+      g.rect(0, 16, 64, 16).fill(0x24507d);
+    });
+
+    this.entity.add(
+      new GraphicsComponent({ layer: "sky" }).draw((g) => {
+        g.rect(0, 0, 1200, 400).fill({
+          texture: this.band,
+          textureSpace: "global",
+        });
+      }),
+    );
+  }
+
+  onDestroy(): void {
+    this.band.destroy();
+  }
+}
+```
+
+- `textureSpace: "global"` measures the texture in the shape's own
+  coordinates, so the pattern repeats every `texture.source.width` pixels no
+  matter how large the shape is. A texture from `createTexture` is its own
+  source, so that is `texture.width`. A frame cut from a spritesheet fills with
+  the whole sheet, not the frame. The default, `"local"`, stretches exactly
+  one copy over the shape's bounds.
+- `matrix` moves the pattern under the shape. `new Matrix().translate(-x, 0)`,
+  redrawn each frame with a growing `x`, scrolls it sideways. `Matrix` is
+  imported from `pixi.js`, like the `Graphics` object `.draw()` hands you.
+- There is no wrap mode to set. Pixi switches the fill texture's address mode
+  to `repeat` when it builds the geometry, so `texture.source.addressMode`
+  needs no help.
+- Never call `texture.source.update()` on a texture from `createTexture`. That
+  texture's pixels live only on the GPU, so the re-upload `update()` triggers
+  writes an empty image over them. Everything drawn from the texture then
+  renders transparent, permanently.
 
 ## Camera
 
@@ -1149,52 +1206,91 @@ Mask coordinates are the masked object's own local space: world pixels on a worl
 `renderer.createRenderTarget(source, options)` draws a container into a texture the game owns and redraws on its own schedule. Use it when several objects must composite against each other before reaching the screen (a light buffer, a trail buffer, a downscaled blur source), or to cache expensive static content as one texture.
 
 ```ts
+import { Component, Transform } from "@yagejs/core";
 import { Container, Graphics } from "pixi.js";
 import {
   RendererKey,
   SpriteComponent,
   registerTexture,
+  unregisterTexture,
 } from "@yagejs/renderer";
+import type { RenderTargetHandle } from "@yagejs/renderer";
 
-const renderer = this.context.resolve(RendererKey); // in a Scene
+// One component owns all three resources — the source container, the buffer
+// and the registered key — and frees them in onDestroy.
+class LightBuffer extends Component {
+  private readonly source = new Container();
+  private readonly hole = new Graphics().circle(0, 0, 120).fill(0xffffff);
+  private target!: RenderTargetHandle;
 
-// Build the offscreen content. Keep it out of the scene render tree.
-const buffer = new Container();
-const darkness = new Graphics()
-  .rect(0, 0, 1280, 720)
-  .fill({ color: 0x05060a, alpha: 0.85 });
-const hole = new Graphics().circle(400, 300, 120).fill({ color: 0xffffff });
-hole.blendMode = "erase"; // cuts the darkness INSIDE the buffer
-buffer.addChild(darkness, hole);
+  /** Registered keys are engine-global, so give each buffer its own. */
+  constructor(private readonly key: string) {
+    super();
+  }
 
-const target = renderer.createRenderTarget(buffer, {
-  width: 1280,
-  height: 720,
-  resolutionScale: 0.5, // quarter the texels; invisible on soft gradients
-});
+  onAdd(): void {
+    const darkness = new Graphics()
+      .rect(0, 0, 1280, 720)
+      .fill({ color: 0x05060a, alpha: 0.85 });
+    this.hole.blendMode = "erase"; // cuts the darkness INSIDE the buffer
+    this.source.addChild(darkness, this.hole); // never added to the scene tree
 
-// Show the result like any other texture.
-registerTexture("lighting", target.texture);
-overlay.add(new SpriteComponent({ texture: "lighting", layer: "overlay" }));
+    this.target = this.use(RendererKey).createRenderTarget(this.source, {
+      width: 1280,
+      height: 720,
+      resolutionScale: 0.5, // quarter the texels; invisible on soft gradients
+    });
+    registerTexture(this.key, this.target.texture);
+  }
 
-// In a component's update: redraw only when the content changed.
-hole.position.set(player.x, player.y);
-target.invalidate();
-target.renderIfNeeded();
+  /** Move the lit spot. Coordinates are buffer pixels, not world pixels. */
+  moveLight(x: number, y: number): void {
+    this.hole.position.set(x, y);
+    this.target.invalidate();
+  }
+
+  update(): void {
+    this.target.renderIfNeeded(); // draws only when a redraw is pending
+  }
+
+  onDestroy(): void {
+    unregisterTexture(this.key); // the key outlives the texture
+    this.target.destroy(); // frees the buffer's GPU memory
+    this.source.destroy({ children: true }); // frees the offscreen content
+  }
+}
+
+// In a Scene. The owner is added first, so the key resolves for the sprite.
+const LIGHTING = "arena:lighting";
+
+const lights = this.spawn("lights");
+lights.add(new Transform());
+lights.add(new LightBuffer(LIGHTING));
+lights.add(new SpriteComponent({ texture: LIGHTING, layer: "overlay" }));
 ```
 
-| Member                                   | Signature                                                                        | Description                                                                                                                                                                                                                         |
-| ---------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RendererPlugin.createRenderTarget`      | `(source: DisplayContainer, options: RenderTargetOptions) => RenderTargetHandle` | Allocate the buffer. The repeatable counterpart of `createTexture`, which bakes once and never changes.                                                                                                                             |
-| `RenderTargetOptions`                    | `{ width, height, resolutionScale?, antialias?, clearColor?, label? }`           | `width` / `height` are in source coordinates. `resolutionScale` (default `1`) multiplies the renderer's own resolution. `clearColor` defaults to transparent.                                                                       |
-| `handle.texture`                         | `TextureResource`                                                                | What the buffer draws into. Feed it to `SpriteComponent` (via `registerTexture`), `spriteMask`, or a filter uniform.                                                                                                                |
-| `handle.render()`                        | `() => void`                                                                     | Draw now and clear the pending flag.                                                                                                                                                                                                |
-| `handle.renderIfNeeded()`                | `() => boolean`                                                                  | Draw only when pending; returns whether it drew.                                                                                                                                                                                    |
-| `handle.invalidate()`                    | `() => void`                                                                     | Mark the buffer stale.                                                                                                                                                                                                              |
-| `handle.needsRender`                     | `boolean`                                                                        | Whether a render is pending.                                                                                                                                                                                                        |
-| `handle.resize(w, h, scale?)`            | `(number, number, number?) => void`                                              | Resize and mark stale. Anything showing the texture picks up the new size on its next draw. Omitting `scale` keeps the configured `resolutionScale`, re-derived against the renderer's current resolution; passing one replaces it. |
-| `handle.width` / `height` / `resolution` | `number`                                                                         | Measured size in source coordinates, and the texels-per-pixel actually allocated.                                                                                                                                                   |
-| `handle.destroy()`                       | `() => void`                                                                     | Free the texture's GPU memory. Repeatable. Every other member throws `RenderTargetHandle.<member>: the handle is destroyed.` afterwards.                                                                                            |
+Destroying that entity runs `onDestroy` and releases all three; so does
+exiting the scene, which destroys its entities. Own the buffer on a scene's
+`onEnter` / `onExit` pair instead when its lifetime is exactly the scene's.
+
+Give each buffer its own key rather than a shared constant. Registrations are
+engine-global, and a `replace` transition keeps both scenes alive at once, so
+two scenes registering `"lighting"` leave one `unregisterTexture` call to
+remove the other scene's entry. Every later lookup of that key then throws.
+
+| Member                                   | Signature                                                                        | Description                                                                                                                                                                                                                                                                                              |
+| ---------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RendererPlugin.createRenderTarget`      | `(source: DisplayContainer, options: RenderTargetOptions) => RenderTargetHandle` | Allocate the buffer. The repeatable counterpart of `createTexture`, which bakes once and never changes.                                                                                                                                                                                                  |
+| `RenderTargetOptions`                    | `{ width, height, resolutionScale?, antialias?, clearColor?, label? }`           | `width` / `height` are in source coordinates. `resolutionScale` (default `1`) multiplies the renderer's own resolution. `clearColor` defaults to transparent.                                                                                                                                            |
+| `handle.texture`                         | `TextureResource`                                                                | What the buffer draws into. Feed it to `SpriteComponent` (via `registerTexture`), `spriteMask`, or a filter uniform.                                                                                                                                                                                     |
+| `handle.source`                          | `DisplayContainer`                                                               | The container passed to `createRenderTarget`. `destroy()` leaves it alone — freeing it is the game's job.                                                                                                                                                                                                |
+| `handle.render()`                        | `() => void`                                                                     | Draw now and clear the pending flag.                                                                                                                                                                                                                                                                     |
+| `handle.renderIfNeeded()`                | `() => boolean`                                                                  | Draw only when pending; returns whether it drew.                                                                                                                                                                                                                                                         |
+| `handle.invalidate()`                    | `() => void`                                                                     | Mark the buffer stale.                                                                                                                                                                                                                                                                                   |
+| `handle.needsRender`                     | `boolean`                                                                        | Whether a render is pending.                                                                                                                                                                                                                                                                             |
+| `handle.resize(w, h, scale?)`            | `(number, number, number?) => void`                                              | Resize and mark stale. Anything showing the texture picks up the new size on its next draw. Omitting `scale` keeps the configured `resolutionScale`, re-derived against the renderer's current resolution; passing one replaces it.                                                                      |
+| `handle.width` / `height` / `resolution` | `number`                                                                         | Measured size in source coordinates, and the texels-per-pixel actually allocated.                                                                                                                                                                                                                        |
+| `handle.destroy()`                       | `() => void`                                                                     | Free the texture's GPU memory. Repeatable. The source container is untouched — destroy that as well. Afterwards `texture`, `width`, `height`, `resolution`, `render()` and `resize()` throw `RenderTargetHandle.<member>: the handle is destroyed.`; so does `renderIfNeeded()` while a draw is pending. |
 
 Semantics:
 
@@ -1204,7 +1300,7 @@ Semantics:
 - **A hidden source draws nothing.** Pixi skips a container with `visible === false`; the pending flag is kept — and set, if the draw was forced — so the buffer catches up when it is shown again.
 - **A destroyed source throws.** Once the source container is destroyed the buffer can never draw again, so `render()` and `renderIfNeeded()` throw a named error rather than leaving a permanently stale texture. Destroy the target alongside its source.
 - **`resolutionScale` costs sharpness, not layout.** Only the texel count drops. The one exception is rounding: Pixi stores whole texels, so a `width × resolution` that lands between them is rounded up and the measured size grows to match — at `resolutionScale: 0.25` on a resolution-2 renderer, `resize(1279, 719)` measures `1280 × 720`. Use sizes that divide evenly by the effective resolution if the exact measurement matters. Worth it for gradients and glows, not for text or pixel art.
-- **A registered key outlives the target.** `registerTexture(key, handle.texture)` keeps handing out that texture after `destroy()` — pair the teardown with `unregisterTexture(key)` or the next lookup resolves a destroyed texture.
+- **One owner frees three things.** A render target is the texture (`handle.destroy()`), the source container (`source.destroy({ children: true })` — `handle.destroy()` never touches it) and any key it was registered under (`unregisterTexture(key)`, or that key keeps resolving a destroyed texture). Put all three in one component's `onDestroy`, which runs when its entity is destroyed or when the scene tears down. A scene's `onEnter` / `onExit` pair is the alternative for a buffer whose lifetime is the whole scene.
 - **Cost.** Every `render()` is a full draw of the source plus a render-target switch. A buffer that only changes when the game state does should be invalidated on that change, not every frame. A buffer that tracks moving content pays that cost per frame — `resolutionScale` is the lever there.
 - **Backends.** Pixi's default backend order is WebGL first, so a game that doesn't pass `pixi: { preference: "webgpu" }` runs on WebGL. Blend behaviour inside a render target, `"erase"` included, is verified on WebGL and unmeasured on WebGPU.
 
@@ -1297,6 +1393,7 @@ Semantics:
 - `unregisterTexture` never destroys the texture — the creator owns the GPU resource; call `texture.destroy()` once nothing draws it. No-op for keys it never registered.
 - Re-registering a key replaces the entry; components constructed before the replacement keep the old texture instance (resolution happens at construction).
 - Registering a key already used by a loaded asset (or any cache entry the API didn't create) throws — shadowing a loaded asset would let that asset's unload destroy the registered texture.
+- A runtime texture also works as a graphics fill — `g.rect(...).fill({ texture, textureSpace: "global" })` tiles it across the shape. See "Texture fills". Do not call `update()` on the `source` of a `createTexture` result: that re-uploads the texture empty and it stays blank.
 
 **`installBitmapFont(source, opts)`** — bake a bitmap glyph atlas from a `.ttf`/`.woff` at runtime via Pixi v8's `BitmapFont.install`. Returns the registered font name, ready to pass as `style.fontFamily` (with `bitmap: true`):
 

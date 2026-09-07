@@ -107,6 +107,11 @@ class Character extends Entity {
 }
 ```
 
+`spawnChild` links the child after building it, so a child's `setup()` reads
+`this.parent` as `null`. Pass the parent as a setup param, or use a
+[spawn batch](#spawning-a-group-at-once) when `setup()` must read the parent
+itself.
+
 Negative scale composes through nested entities too — a child at
 `(-1, 1)` under a parent already at `(-1, 1)` ends up at
 `worldScale = (1, 1)` (the mirrors cancel out). Positive non-unit scale
@@ -383,8 +388,9 @@ class Follower extends Component {
 The throw is attributed to the component and recorded in
 `Inspector.getErrors().callbackErrors`, the same treatment `onEnable` and
 `update` get, then rethrown so it reaches whoever called `entity.add()`. When
-the add happens in `setup()`, that caller is `scene.spawn`, which destroys the
-half-built entity and its children before rethrowing.
+the add happens in `setup()`, that caller is `scene.spawn`, which lets the
+throw through unchanged and leaves the half-built entity in the scene for you
+to inspect.
 
 `onEnable` sees whatever state the component held while it was dormant, so use
 it for live resources — a looping sound, a physics body, a display object —

@@ -55,7 +55,10 @@ export interface RenderTargetOptions {
 export interface RenderTargetHandle {
   /** The texture the buffer draws into. Show it with a `SpriteComponent`, a mask, or a filter. */
   readonly texture: TextureResource;
-  /** The container drawn into the buffer. */
+  /**
+   * The container drawn into the buffer. The game owns it: {@link destroy}
+   * frees the texture and leaves this container alone.
+   */
   readonly source: DisplayContainer;
   /** Buffer width in source coordinates. */
   readonly width: number;
@@ -88,7 +91,12 @@ export interface RenderTargetHandle {
    */
   resize(width: number, height: number, resolutionScale?: number): void;
 
-  /** Destroy the texture and its GPU memory. Safe to call repeatedly. */
+  /**
+   * Destroy the texture and its GPU memory. Safe to call repeatedly. Frees
+   * the texture only: destroy the source container yourself, and call
+   * `unregisterTexture(key)` for any key the texture was registered under, or
+   * that key keeps resolving a destroyed texture.
+   */
   destroy(): void;
 }
 

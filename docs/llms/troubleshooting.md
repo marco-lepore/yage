@@ -16,7 +16,10 @@ dependency problem.
 
 Deduplicate `@yagejs/renderer` and `pixi.js` in the package-manager tree.
 If an addon brings its own copies, it should declare the YAGE renderer and
-Pixi as peer dependencies instead of regular dependencies.
+Pixi as peer dependencies instead of regular dependencies. Linking the engine
+from a local clone without linking `pixi.js` from the same clone can leave the
+game with a second Pixi, a failure this warning does not report —
+`llms/local-engine.md` has the link set.
 
 ## Component.use(...) called before the component is bound to an entity
 

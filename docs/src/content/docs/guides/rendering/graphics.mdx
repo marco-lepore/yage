@@ -1,6 +1,6 @@
 ---
 title: "Graphics"
-description: "GraphicsComponent for procedural shapes, plus linear and radial gradient fills"
+description: "GraphicsComponent for procedural shapes, plus gradient and tiled-texture fills"
 ---
 
 `GraphicsComponent` is the right primitive when you need to draw shapes
@@ -78,3 +78,65 @@ Gradients own a GPU texture — call `.destroy()` in a component's
 **Re-export:** `GradientFill` IS pixi `FillGradient`. The factories convert
 yage's numeric stops to pixi color stops and forward the rest as-is. See
 the [pixi FillGradient docs](https://pixijs.download/release/docs/scene.FillGradient.html).
+
+## Texture fills
+
+A fill also takes a texture, and the texture tiles across the shape. A small
+baked strip covers a shape of any size with a repeating pattern — you do not
+need one texture per band, and you do not need a tiling sprite:
+
+`createTexture` hands back a GPU texture the caller owns, so bake it inside a
+component that destroys it again:
+
+```typescript
+import { Component } from "@yagejs/core";
+import { GraphicsComponent, RendererKey } from "@yagejs/renderer";
+import type { TextureResource } from "@yagejs/renderer";
+
+class SkyBand extends Component {
+  private band!: TextureResource;
+
+  onAdd(): void {
+    // Bake the tile once, then fill a much larger shape with it.
+    this.band = this.use(RendererKey).createTexture((g) => {
+      g.rect(0, 0, 64, 16).fill(0x1b3a5c);
+      g.rect(0, 16, 64, 16).fill(0x24507d);
+    });
+
+    this.entity.add(
+      new GraphicsComponent({ layer: "sky" }).draw((g) => {
+        g.rect(0, 0, 1200, 400).fill({
+          texture: this.band,
+          textureSpace: "global",
+        });
+      }),
+    );
+  }
+
+  onDestroy(): void {
+    this.band.destroy(); // nothing draws it after the owner goes
+  }
+}
+```
+
+`textureSpace: "global"` measures the texture in the shape's own coordinates,
+so the pattern repeats every `texture.source.width` pixels however large the
+shape is. A texture from `createTexture` is its own source, so that is
+`texture.width`. A frame cut from a spritesheet fills with the whole sheet,
+not the frame. The default, `"local"`, stretches exactly one copy over the shape's
+bounds — useful when you want the texture to fit the shape rather than tile
+inside it.
+
+To scroll the pattern, pass a `matrix` and redraw:
+`new Matrix().translate(-offset, 0)` moves it sideways. `Matrix` comes from
+`pixi.js`, like the `Graphics` object `.draw()` hands you.
+
+:::caution[Two things not to do]
+There is no wrap mode to set. Pixi switches the fill texture's address mode to
+`repeat` when it builds the shape, so `texture.source.addressMode` needs no
+help.
+
+Never call `texture.source.update()` on a texture from `createTexture`. Those
+pixels live only on the GPU, so the re-upload writes an empty image over them
+and everything drawn from the texture turns transparent permanently.
+:::

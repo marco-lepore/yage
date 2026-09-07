@@ -156,6 +156,11 @@ independently while still following the parent. Use it when one object needs a
 separately-transformed part — a turret barrel that aims while the base stays
 put.
 
+The parent link is made when `spawnChild` returns, so a child's `setup()` reads
+`this.parent` as `null`. Pass the parent as a setup param, or reserve both
+entities in a `scene.spawnBatch` and call `batch.addChild` before
+`batch.setup`.
+
 ```ts
 class Turret extends Entity {
   private barrel!: Entity;

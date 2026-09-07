@@ -267,7 +267,7 @@ returns a non-zero steer.
 `/physics` entry additions (value-import physics; optional peer):
 
 - `avoidColliders(world: PhysicsWorld | (agent) => PhysicsWorld, opts?)` — `{ lookAhead = 100, whiskerAngle = π/6, whiskerLength = 0.7·lookAhead }` (+ weight/priority). Raycasts the real world along the heading (center ray + two whiskers; `whiskerLength: 0` disables); steers away from the closest hit along the hit normal's lateral component (perpendicular tie-break on a dead-center wall hit). Excludes the agent's own collider via `AgentState.entity`. ZERO when stationary or clear. Pair with `priority: 1`.
-- `physicsNeighbors(world, opts?)` — `{ radius = 80, filterGroups? }`. A `NeighborsSource` over `PhysicsWorld.queryRadius` around the agent: entities with a collider in range become Kinematics (no body = stationary), agent excluded. Note: each flock rule resolves the source in every `compute` call — three rules = three queries.
+- `physicsNeighbors(world, opts?)` — `{ radius = 80, filterGroups? }`. A `NeighborsSource` over `PhysicsWorld.queryRadius` around the agent: entities with a collider in range become Kinematics (no body = stationary), agent excluded. `filterGroups` is `PhysicsWorld`'s packed layer pair — build it with `CollisionLayers.interactionGroups(membership, filter)`; a raw layer bit matches nothing. Note: each flock rule resolves the source in every `compute` call — three rules = three queries.
 
 ## Headless / manual drive
 

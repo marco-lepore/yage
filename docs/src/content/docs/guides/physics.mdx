@@ -247,6 +247,38 @@ coinEntity.add(new ColliderComponent({
 An object on layer A with mask B will only interact with objects on layer B that
 also have A in their mask.
 
+### Filtering a world query
+
+`raycast`, `castShape`, `queryShape`, and `queryRadius` take the same layer
+pair as a collider, packed into one `filterGroups` number.
+`CollisionLayers.interactionGroups(membership, filter)` builds it:
+
+```typescript
+const hit = world.raycast(pos, { x: 0, y: 1 }, 40, {
+  filterGroups: CollisionLayers.interactionGroups(LAYER_PLAYER, LAYER_WALL),
+});
+```
+
+That casts as if the ray were on the player layer looking for walls, so the
+two-way rule above applies to it: a wall is reported only if `LAYER_PLAYER` is
+in that wall's own `mask`. To report every collider on a layer regardless of
+which layers its own `mask` names, pass `0xffff` as the membership (a collider
+with `mask: 0` matches no query and is never reported):
+
+```typescript
+const walls = world.queryRadius(pos, 120, {
+  filterGroups: CollisionLayers.interactionGroups(0xffff, LAYER_WALL),
+});
+```
+
+Passing a `layers.define()` value straight to `filterGroups` matches nothing. A
+layer bit sits in the lower 16 bits, which the packed form reads as the filter
+half, leaving the membership at 0 — and a query with no membership bit fails
+the layer test against every collider. The query returns `null` or an empty
+array with no error. Omit `filterGroups` to skip the layer test only; the other
+query options, such as `excludeEntity` and the sensor mode described below,
+still apply.
+
 ## Sensors and Trigger Events
 
 A **sensor** collider detects overlaps without producing a physical response.
@@ -601,6 +633,9 @@ if (hit) {
   console.log(hit.distance);  // number — distance in pixels
 }
 ```
+
+`filterGroups` is the packed layer pair described under
+[Filtering a world query](#filtering-a-world-query).
 
 A common use case is ground detection for platformers. A coin's trigger zone
 underfoot is not ground, and the default sensor mode keeps it out of the

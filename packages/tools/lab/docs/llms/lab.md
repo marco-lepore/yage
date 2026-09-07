@@ -22,7 +22,10 @@ npm install -D @playwright/test
 
 Peers are `@yagejs/core`, `@yagejs/renderer`, `@yagejs/debug` and `vite ^8`.
 `@playwright/test` is an **optional** peer — `init`, `dev` and `build` work
-without it; only `test` needs it and a chromium binary.
+without it; only `test` needs it and a chromium binary. Each Playwright release
+pins a browser build, so run `npx playwright install chromium` again after an
+upgrade or `test` fails with a missing executable. Running the lab against a
+local engine clone: `llms/local-engine.md`.
 
 ## Commands
 

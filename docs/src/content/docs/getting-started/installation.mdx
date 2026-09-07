@@ -67,6 +67,14 @@ Deduplicate `@yagejs/renderer` and `pixi.js`. Addons should declare both as
 peer dependencies so they reuse the game's copies.
 :::
 
+## Option 3: A local engine checkout
+
+To run your game against an unreleased engine build — a change you are making,
+or one that is merged but not released — link the packages from a clone of the
+engine repo instead of installing them. [Local Engine
+Checkout](/tooling/local-engine/) has the link set, the Pixi rule and the
+install flags.
+
 ## Upgrading
 
 The `@yagejs/*` packages are released as a set. Every release publishes all of

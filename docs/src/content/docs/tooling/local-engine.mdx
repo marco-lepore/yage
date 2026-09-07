@@ -1,0 +1,121 @@
+---
+title: Local Engine Checkout
+description: Run your game against an unreleased engine build from a local clone of the engine repo
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+To try an engine change before it ships — one you are making yourself, or one
+that is merged but not released — point your game at a local clone of the engine
+repo instead of the published packages. The link set is the part that is easy to
+get wrong: done naively it can leave your game with a second copy of Pixi, and
+every Pixi type in your game stops matching the engine's.
+
+## Link the packages
+
+<Steps>
+
+1. **Build the clone.** A linked package serves its `dist/` folder and the repo
+   commits no built output, so an unbuilt clone links to nothing:
+
+   ```bash
+   cd ~/code/yage
+   npm install
+   npx turbo run build
+   ```
+
+2. **Point your game's dependencies at it.** Replace the version of every
+   `@yagejs/*`, `@yagejs-addons/*` and `@yagejs-tools/*` package your game
+   depends on with a `file:` path, and point the `pixi.js` entry at the clone's
+   own copy (add the entry if your game has none):
+
+   ```json title="package.json"
+   {
+     "dependencies": {
+       "@yagejs/audio": "file:../yage/packages/audio",
+       "@yagejs/core": "file:../yage/packages/core",
+       "@yagejs/debug": "file:../yage/packages/debug",
+       "@yagejs/input": "file:../yage/packages/input",
+       "@yagejs/physics": "file:../yage/packages/physics",
+       "@yagejs/renderer": "file:../yage/packages/renderer",
+       "pixi.js": "file:../yage/node_modules/pixi.js"
+     }
+   }
+   ```
+
+   Paths are relative to your game's `package.json`; an absolute path works too.
+   Addons live at `packages/addons/<name>`, tools at `packages/tools/<name>`.
+
+3. **Install without scripts.**
+
+   ```bash
+   npm install --ignore-scripts
+   ```
+
+   npm runs the `prepare` script of a package linked by path, and Pixi's runs
+   husky, which a published copy does not have — the install fails on it. No
+   `@yagejs/*` package has an install script, so the flag skips nothing on the
+   engine side. It does skip Playwright's browser download, and any other
+   dependency's install script: run `npm rebuild <package>` for those.
+
+</Steps>
+
+## Why Pixi has to be linked too
+
+A game that imports Pixi itself — `Container`, `Graphics`, `Texture` — lists
+`pixi.js` as its own dependency. npm resolves that entry from the registry
+independently of the clone, often at a newer version, while the linked renderer
+keeps resolving the clone's copy through the link's real path. Two installs mean
+two module identities: `instanceof` checks fail, and in the type checker every
+Pixi type your game imports is a different type from the one the engine's
+signatures use. Pointing that entry at the clone's copy leaves one install, and
+both problems go away. A game with no `pixi.js` entry of its own gets no second
+copy; the linked entry is harmless there and takes effect as soon as the game
+imports Pixi directly.
+
+<Aside type="caution" title="The warning you will see">
+A dev build prints `[yage] Multiple copies of @yagejs/renderer are loaded` when
+the renderer is the duplicated package. A duplicated Pixi produces the same class
+of failure with no warning of its own.
+</Aside>
+
+Vite's `resolve.dedupe` is not a substitute. It changes what Vite bundles, while
+TypeScript resolves `node_modules` on its own and still sees two copies, so the
+type errors stay.
+
+## Playwright browsers
+
+`yage-lab test` needs Playwright and a matching browser build:
+
+```bash
+npx playwright install chromium
+```
+
+Each Playwright release pins a browser build, and the download is keyed to that
+build, so two releases share a download only when they pin the same one. A game
+whose `@playwright/test` resolves to a release pinning a build you have not
+downloaded fails with a missing executable. Run the command above after a
+Playwright upgrade, or pin
+`@playwright/test` to the version the clone has installed so both reuse one
+download.
+
+## While you work
+
+Rebuild the package you changed, then reload the game:
+
+```bash
+npx turbo run build --filter=@yagejs/renderer
+```
+
+`npx turbo run dev --filter=@yagejs/renderer` in the clone rebuilds that package
+on every save instead. Run `npm install` in your game again only when you add or
+remove a link.
+
+## Going back to a release
+
+Replace the `file:` entries with version ranges — `pixi.js` included, or remove
+that entry if you added it only for the link — and install:
+
+```bash
+npm install
+```
