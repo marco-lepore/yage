@@ -2,6 +2,8 @@ import { ServiceKey } from "@yagejs/core";
 import type { Scene } from "@yagejs/core";
 import type { LayerDef } from "./LayerDef.js";
 import type { RenderLayer, CreateLayerOptions } from "./RenderLayer.js";
+import type { EffectFactory } from "./effects/Effect.js";
+import type { EffectHandle } from "./effects/EffectHandle.js";
 import type { EffectsHost } from "./effects/EffectsHost.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle } from "./masks/MaskHandle.js";
@@ -54,12 +56,50 @@ export interface SceneRenderTree {
    */
   readonly fx: EffectsHost;
   /**
+   * Attach one effect to several layers and control it through one handle.
+   * The factory is called once per layer, so this is one filter pass per
+   * listed layer: N fullscreen layers cost N fullscreen passes per frame. For
+   * a single layer prefer `tree.get(name).fx.addEffect(...)`.
+   *
+   * Handle methods fan out to every layer; values (`enabled`, return values
+   * of extras such as `trigger`) come from the first listed layer. Layers
+   * with different camera bindings receive the same layer-local arguments.
+   * Throws when `layers` is empty or names a layer the scene does not have.
+   *
+   * ```ts
+   * const grade = tree.addLayerEffect(colorGrade({ preset: "night" }), [
+   *   "background",
+   *   "world",
+   *   "props",
+   * ]);
+   * grade.fadeOut(1); // fades on all three
+   * ```
+   */
+  addLayerEffect<H extends EffectHandle>(
+    factory: EffectFactory<H>,
+    layers: readonly string[],
+  ): H;
+  /**
    * Attach a scene-scope mask, replacing any existing one. Clips the entire
    * per-scene root. Torn down on scene exit.
    */
   setMask(factory: MaskFactory): MaskHandle;
   /** Detach and destroy the scene-scope mask, if any. */
   clearMask(): void;
+  /**
+   * Draw `node` after this scene's layers, outside every layer- and
+   * scene-scope effect and mask, while it keeps its logical parent (position,
+   * alpha, visibility, camera). Screen-scope effects still cover it. Draw
+   * order among nodes attached this way is attach order. `node` must be in
+   * this scene's tree.
+   *
+   * Visual components expose the same thing as
+   * `VisualComponentOptions.renderAboveEffects`; use this for a display
+   * object the game parents into the tree itself.
+   */
+  renderAboveEffects(node: DisplayContainer): void;
+  /** Undo `renderAboveEffects`. No-op when `node` is not attached. */
+  renderWithEffects(node: DisplayContainer): void;
 }
 
 /**

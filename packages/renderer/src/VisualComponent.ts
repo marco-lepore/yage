@@ -66,6 +66,12 @@ export interface VisualComponentOptions {
    * both Pixi events AND the action map" use case.
    */
   interactive?: VisualInteractiveOptions;
+  /**
+   * Draw this visual after the scene's layers, outside every layer- and
+   * scene-scope effect and mask. Default `false`. See
+   * {@link VisualComponent.renderAboveEffects}.
+   */
+  renderAboveEffects?: boolean;
 }
 
 /**
@@ -106,6 +112,8 @@ export abstract class VisualComponent extends Component {
   private _userVisible = true;
   /** The alpha requested by the game, before transient opacity modifiers. */
   private _userAlpha = 1;
+  /** See {@link renderAboveEffects}. */
+  private _renderAboveEffects = false;
 
   constructor(layer: string | undefined) {
     super();
@@ -136,6 +144,35 @@ export abstract class VisualComponent extends Component {
         markPointerConsumeContainer(this.renderObject);
       }
     }
+    if (options.renderAboveEffects !== undefined) {
+      this.renderAboveEffects = options.renderAboveEffects;
+    }
+  }
+
+  /**
+   * Whether this visual draws after the scene's layers, outside every layer-
+   * and scene-scope effect and mask, while keeping its logical parent
+   * (position, alpha, visibility, camera). Screen-scope effects still cover
+   * it, and hit testing follows the logical tree — a UI element drawn under
+   * an escaped visual still receives the pointer first.
+   *
+   * Set while the visual is out of the display tree — in a subclass
+   * constructor, or on a component not yet added — it records the flag and
+   * applies it on add.
+   */
+  get renderAboveEffects(): boolean {
+    return this._renderAboveEffects;
+  }
+
+  set renderAboveEffects(value: boolean) {
+    if (value === this._renderAboveEffects) return;
+    this._renderAboveEffects = value;
+    // Out of the tree: `onAdd` applies the recorded flag when the object
+    // reaches its layer.
+    if (!this.renderObject.parent) return;
+    const tree = this.use(SceneRenderTreeKey);
+    if (value) tree.renderAboveEffects(this.renderObject);
+    else tree.renderWithEffects(this.renderObject);
   }
 
   /** The layer this visual draws on. See {@link setLayer}. */
@@ -252,6 +289,7 @@ export abstract class VisualComponent extends Component {
     resolveRenderParent(this.entity, this._layerName, tree).addChild(
       this.renderObject,
     );
+    if (this._renderAboveEffects) tree.renderAboveEffects(this.renderObject);
     // A component is never effectively enabled during `onAdd` — `onEnable`
     // runs right after, and only for an active entity. Start hidden so a
     // component added to a dormant entity doesn't inherit Pixi's

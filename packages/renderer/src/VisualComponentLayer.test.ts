@@ -145,3 +145,48 @@ describe("VisualComponent.setLayer", () => {
     );
   });
 });
+
+describe("VisualComponent.renderAboveEffects", () => {
+  it("applies the option when the component reaches the tree", () => {
+    const { scene, provider } = createRendererTestContext();
+    const entity = spawnEntityInScene(scene, "crate");
+    entity.add(new Transform({ position: new Vec2(0, 0) }));
+
+    const sprite = entity.add(
+      new SpriteComponent({
+        texture: {} as never,
+        renderAboveEffects: true,
+      }),
+    );
+
+    expect(sprite.renderAboveEffects).toBe(true);
+    expect(provider.aboveNodesFor(scene)).toContain(sprite.sprite as never);
+  });
+
+  it("records the flag out of the tree and applies it on add", () => {
+    const { scene, provider } = createRendererTestContext();
+    const entity = spawnEntityInScene(scene, "crate");
+    entity.add(new Transform({ position: new Vec2(0, 0) }));
+    const sprite = new SpriteComponent({ texture: {} as never });
+
+    sprite.renderAboveEffects = true;
+    expect(provider.aboveNodesFor(scene).size).toBe(0);
+
+    entity.add(sprite);
+    expect(provider.aboveNodesFor(scene)).toContain(sprite.sprite as never);
+  });
+
+  it("toggles a live component both ways", () => {
+    const { scene, provider } = createRendererTestContext();
+    const entity = spawnEntityInScene(scene, "crate");
+    entity.add(new Transform({ position: new Vec2(0, 0) }));
+    const sprite = entity.add(new SpriteComponent({ texture: {} as never }));
+    expect(provider.aboveNodesFor(scene).size).toBe(0);
+
+    sprite.renderAboveEffects = true;
+    expect(provider.aboveNodesFor(scene)).toContain(sprite.sprite as never);
+
+    sprite.renderAboveEffects = false;
+    expect(provider.aboveNodesFor(scene).size).toBe(0);
+  });
+});

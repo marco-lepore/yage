@@ -24,7 +24,10 @@ import {
   SceneRenderTreeKey,
   SceneRenderTreeProviderKey,
 } from "./SceneRenderTree.js";
+import type { EffectFactory } from "./effects/Effect.js";
+import type { EffectHandle } from "./effects/EffectHandle.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
+import { fanOutHandle } from "./effects/fanOutHandle.js";
 import { attachMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle } from "./masks/MaskHandle.js";
@@ -138,6 +141,7 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       manager: RenderLayerManager;
       tree: SceneRenderTree;
       root: MockContainer;
+      aboveNodes: Set<MockContainer>;
       destroyEffects: () => void;
       destroyMasks: () => void;
     }
@@ -176,6 +180,9 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       queueFactory,
     );
     let sceneMask: MaskHandle | undefined;
+    // Stand-in for the production Pixi `RenderLayer`: the mock containers
+    // have no renderer, so membership is all a test can observe.
+    const aboveNodes = new Set<MockContainer>();
     const tree: SceneRenderTree = {
       root: root as never,
       get: (name) => manager.get(name),
@@ -187,6 +194,14 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       ensureLayer: (def, opts) =>
         manager.tryGet(def.name) ?? manager.createFromDef(def, opts),
       fx: sceneFx,
+      addLayerEffect<H extends EffectHandle>(
+        factory: EffectFactory<H>,
+        layers: readonly string[],
+      ): H {
+        return fanOutHandle(
+          layers.map((name) => manager.get(name).fx.addEffect(factory)),
+        );
+      },
       setMask(factory: MaskFactory): MaskHandle {
         sceneMask?.remove();
         sceneMask = attachMask(root as never, factory);
@@ -195,6 +210,12 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       clearMask(): void {
         sceneMask?.remove();
         sceneMask = undefined;
+      },
+      renderAboveEffects(node): void {
+        aboveNodes.add(node as never);
+      },
+      renderWithEffects(node): void {
+        aboveNodes.delete(node as never);
       },
     };
 
@@ -213,6 +234,7 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       manager,
       tree,
       root,
+      aboveNodes,
       destroyEffects,
       destroyMasks,
     });
@@ -255,6 +277,11 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
 
   rootFor(scene: Scene): MockContainer | undefined {
     return this.trees.get(scene)?.root;
+  }
+
+  /** Render objects the scene's tree draws above its layer- and scene-scope effects. */
+  aboveNodesFor(scene: Scene): ReadonlySet<MockContainer> {
+    return this.trees.get(scene)?.aboveNodes ?? new Set();
   }
 }
 

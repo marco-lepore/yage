@@ -1,4 +1,4 @@
-import { Container } from "pixi.js";
+import { Container, RenderLayer as PixiRenderLayer } from "pixi.js";
 import type { ProcessSystem, Scene } from "@yagejs/core";
 import { devWarn, isDev, makeSceneScopedQueue } from "@yagejs/core";
 import type { LayerDef } from "./LayerDef.js";
@@ -9,7 +9,10 @@ import type {
 } from "./SceneRenderTree.js";
 import { RenderLayerManager, layerDefToOptions } from "./RenderLayer.js";
 import type { EffectQueueFactory, RenderLayer } from "./RenderLayer.js";
+import type { EffectFactory } from "./effects/Effect.js";
+import type { EffectHandle } from "./effects/EffectHandle.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
+import { fanOutHandle } from "./effects/fanOutHandle.js";
 import { attachMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle } from "./masks/MaskHandle.js";
@@ -25,6 +28,20 @@ class SceneRenderTreeImpl implements SceneRenderTree {
   readonly fx: EffectsHost;
   private _mask: MaskHandle | undefined;
   private readonly warnedOrders = new Map<string, Set<number>>();
+  /**
+   * Pixi render layer holding the nodes drawn after this scene's layers.
+   * Built on the first `renderAboveEffects` call.
+   */
+  private _aboveLayer: PixiRenderLayer | undefined;
+  /**
+   * Attached node → the listener that re-attaches it after a re-parent.
+   * Pixi drops a render-layer attachment in `removeChild`, which every
+   * re-parent (`setLayer`, a sort group claiming a visual) goes through.
+   */
+  private readonly _aboveListeners = new WeakMap<
+    DisplayContainer,
+    () => void
+  >();
 
   constructor(
     readonly root: DisplayContainer,
@@ -69,6 +86,41 @@ class SceneRenderTreeImpl implements SceneRenderTree {
     return existing;
   }
 
+  addLayerEffect<H extends EffectHandle>(
+    factory: EffectFactory<H>,
+    layers: readonly string[],
+  ): H {
+    if (layers.length === 0) {
+      throw new Error(
+        "SceneRenderTree.addLayerEffect: layers must name at least one layer, got [].",
+      );
+    }
+    // Resolve every name before attaching anything, so an unknown name
+    // leaves no half-applied effect behind.
+    const targets: RenderLayer[] = [];
+    for (const name of layers) {
+      if (targets.some((t) => t.name === name)) {
+        throw new Error(
+          `SceneRenderTree.addLayerEffect: layer "${name}" is listed twice; ` +
+            `each layer gets one filter pass.`,
+        );
+      }
+      const layer = this.manager.tryGet(name);
+      if (!layer) {
+        const declared = this.manager
+          .getAll()
+          .map((l) => l.name)
+          .join(", ");
+        throw new Error(
+          `SceneRenderTree.addLayerEffect: unknown layer "${name}". ` +
+            `Declared layers: ${declared}.`,
+        );
+      }
+      targets.push(layer);
+    }
+    return fanOutHandle(targets.map((layer) => layer.fx.addEffect(factory)));
+  }
+
   setMask(factory: MaskFactory): MaskHandle {
     this._mask?.remove();
     this._mask = attachMask(this.root, factory);
@@ -80,10 +132,73 @@ class SceneRenderTreeImpl implements SceneRenderTree {
     this._mask = undefined;
   }
 
+  renderAboveEffects(node: DisplayContainer): void {
+    if (this._aboveListeners.has(node)) return;
+    if (!this.contains(node)) {
+      throw new Error(
+        `SceneRenderTree.renderAboveEffects: node "${node.label}" is not in ` +
+          `the "${this.root.label}" tree. Add it to a layer first.`,
+      );
+    }
+    const reattach = (): void => {
+      this._aboveLayer?.attach(node);
+    };
+    this._aboveListeners.set(node, reattach);
+    node.on("added", reattach);
+    this.ensureAboveLayer().attach(node);
+  }
+
+  renderWithEffects(node: DisplayContainer): void {
+    const reattach = this._aboveListeners.get(node);
+    if (!reattach) return;
+    this._aboveListeners.delete(node);
+    node.off("added", reattach);
+    this._aboveLayer?.detach(node);
+  }
+
   /** @internal — called by the provider before container teardown. */
   _destroyMask(): void {
     this._mask?.remove();
     this._mask = undefined;
+  }
+
+  /**
+   * Re-seat the render layer immediately after the scene root. Called after
+   * the provider moves the root among its siblings.
+   * @internal
+   */
+  _placeAboveLayer(): void {
+    const layer = this._aboveLayer;
+    const parent = this.root.parent;
+    if (!layer || !parent) return;
+    layer.removeFromParent();
+    parent.addChildAt(layer, parent.children.indexOf(this.root) + 1);
+  }
+
+  /** @internal — called by the provider after the root is destroyed. */
+  _destroyAboveLayer(): void {
+    if (!this._aboveLayer) return;
+    this._aboveLayer.detachAll();
+    this._aboveLayer.removeFromParent();
+    this._aboveLayer.destroy();
+    this._aboveLayer = undefined;
+  }
+
+  private ensureAboveLayer(): PixiRenderLayer {
+    if (this._aboveLayer) return this._aboveLayer;
+    const layer = new PixiRenderLayer({ sortableChildren: false });
+    layer.label = `${this.root.label}:above`;
+    this._aboveLayer = layer;
+    this._placeAboveLayer();
+    return layer;
+  }
+
+  /** Whether `node` sits somewhere under this scene's root. */
+  private contains(node: DisplayContainer): boolean {
+    for (let current = node.parent; current != null; current = current.parent) {
+      if (current === this.root) return true;
+    }
+    return false;
   }
 }
 
@@ -104,6 +219,10 @@ class SceneRenderTreeImpl implements SceneRenderTree {
  *       └── scene B root
  *            └── ...
  * ```
+ *
+ * A scene that uses `renderAboveEffects` also owns a Pixi `RenderLayer`
+ * placed immediately after its root, so the nodes attached to it draw after
+ * the scene's layers and outside the scene root's filters and mask.
  */
 export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
   private entries = new Map<Scene, SceneEntry>();
@@ -169,6 +288,7 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
     entry.manager.destroyMasks();
     entry.root.removeFromParent();
     entry.root.destroy({ children: true });
+    entry.tree._destroyAboveLayer();
     entry.manager.destroy();
     this.entries.delete(scene);
   }
@@ -190,6 +310,7 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
     if (parent) {
       parent.removeChild(entry.root);
       parent.addChild(entry.root);
+      entry.tree._placeAboveLayer();
     }
   }
 

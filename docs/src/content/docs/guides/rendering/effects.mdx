@@ -70,10 +70,53 @@ units. Plan accordingly when zooming.
 :::caution[Scene and screen scope also filter the UI]
 `@yagejs/ui` mounts its screen-space `"ui"` layer inside the scene's
 render tree, so a scene-scope effect (`tree.fx.addEffect(...)`) and a
-screen-scope effect both post-process the HUD along with the world. To
-keep an effect off the HUD, attach it at the content layer instead —
-`tree.get("world").fx.addEffect(...)` — so only that layer is filtered.
+screen-scope effect both post-process the HUD along with the world.
 :::
+
+## Covering some layers, or all but one visual
+
+A screen-wide look usually belongs on the world and not on the HUD.
+`addLayerEffect` names the layers it covers and hands back one handle for
+all of them:
+
+```ts
+const tree = this.use(SceneRenderTreeKey);
+
+const grade = tree.addLayerEffect(colorGrade({ preset: "night" }), [
+  "background",
+  "world",
+  "props",
+]);
+grade.fadeOut(1); // fades on all three
+grade.remove(); // removes all three
+```
+
+The factory runs once per layer, so this is one filter pass per listed
+layer: three fullscreen layers cost three fullscreen passes per frame. For
+a single layer use `tree.get("world").fx.addEffect(...)` instead.
+
+Going the other way, `renderAboveEffects` lifts one visual out of every
+layer- and scene-scope effect — a cursor, a boss-fight portrait, a tutorial
+arrow that should stay crisp under a full-screen grade:
+
+```ts
+this.add(new SpriteComponent({ texture: "cursor", renderAboveEffects: true }));
+
+// or at runtime
+cursor.renderAboveEffects = false;
+```
+
+The visual draws after the scene's layers while its logical parent still
+drives position, alpha, visibility, and camera. It escapes layer and scene
+filters, `layer.setMask`, `tree.setMask`, and the `irisReveal` /
+`chessboard` transition masks — during those reveals it shows at once. A
+screen-scope effect still covers it. Hit testing follows the logical tree,
+so a UI element drawn under it still receives the pointer first.
+
+On a `SortGroupComponent` the flag applies to the component's own render
+object; the group's container is not lifted. A layer declared with
+`isRenderGroup: true` is unsupported for lifted visuals (a Pixi
+restriction).
 
 ## Lifecycle
 

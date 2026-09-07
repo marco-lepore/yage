@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { MockContainer } = vi.hoisted(() => {
+const { MockContainer, MockRenderLayer } = vi.hoisted(() => {
   class MockContainer {
     children: MockContainer[] = [];
     position = { x: 0, y: 0 };
@@ -15,10 +15,41 @@ const { MockContainer } = vi.hoisted(() => {
     zIndex = 0;
     label = "";
     eventMode = "passive";
+    destroyed = false;
+    /** Set by `MockRenderLayer.attach`, mirroring Pixi's own field. */
+    parentRenderLayer: MockRenderLayer | null = null;
+    private listeners = new Map<string, Set<() => void>>();
+
+    on(event: string, fn: () => void): void {
+      let set = this.listeners.get(event);
+      if (!set) {
+        set = new Set();
+        this.listeners.set(event, set);
+      }
+      set.add(fn);
+    }
+
+    off(event: string, fn: () => void): void {
+      this.listeners.get(event)?.delete(fn);
+    }
+
+    emit(event: string): void {
+      for (const fn of this.listeners.get(event) ?? []) fn();
+    }
 
     addChild(child: MockContainer): MockContainer {
+      child.removeFromParent();
       this.children.push(child);
       child.parent = this;
+      child.emit("added");
+      return child;
+    }
+
+    addChildAt(child: MockContainer, index: number): MockContainer {
+      child.removeFromParent();
+      this.children.splice(index, 0, child);
+      child.parent = this;
+      child.emit("added");
       return child;
     }
 
@@ -27,6 +58,9 @@ const { MockContainer } = vi.hoisted(() => {
       if (idx !== -1) {
         this.children.splice(idx, 1);
         child.parent = null;
+        // Pixi drops a render-layer attachment on removeChild, so every
+        // re-parent goes through a detach.
+        child.parentRenderLayer?.detach(child);
       }
       return child;
     }
@@ -40,17 +74,49 @@ const { MockContainer } = vi.hoisted(() => {
       this.children.sort((a, b) => a.zIndex - b.zIndex);
     }
 
-    destroy(): void {}
+    destroy(): void {
+      this.destroyed = true;
+    }
   }
-  return { MockContainer };
+
+  class MockRenderLayer extends MockContainer {
+    renderLayerChildren: MockContainer[] = [];
+
+    attach(child: MockContainer): MockContainer {
+      if (!this.renderLayerChildren.includes(child)) {
+        this.renderLayerChildren.push(child);
+      }
+      child.parentRenderLayer = this;
+      return child;
+    }
+
+    detach(child: MockContainer): MockContainer {
+      const idx = this.renderLayerChildren.indexOf(child);
+      if (idx !== -1) this.renderLayerChildren.splice(idx, 1);
+      child.parentRenderLayer = null;
+      return child;
+    }
+
+    detachAll(): void {
+      for (const child of this.renderLayerChildren) {
+        child.parentRenderLayer = null;
+      }
+      this.renderLayerChildren.length = 0;
+    }
+  }
+
+  return { MockContainer, MockRenderLayer };
 });
 
 vi.mock("pixi.js", () => ({
   Container: MockContainer,
+  RenderLayer: MockRenderLayer,
 }));
 
-import { Scene } from "@yagejs/core";
+import { ProcessSystem, Scene } from "@yagejs/core";
 import type { LayerDef } from "./LayerDef.js";
+import type { SceneRenderTree } from "./SceneRenderTree.js";
+import type { EffectFactory } from "./effects/Effect.js";
 import { SceneRenderTreeProviderImpl } from "./SceneRenderTreeProvider.js";
 
 function makeFakeScene(name: string, layers?: LayerDef[]): Scene {
@@ -338,5 +404,206 @@ describe("SceneRenderTreeProviderImpl", () => {
           .visible,
       ).toBe(false);
     });
+  });
+});
+
+describe("addLayerEffect", () => {
+  function setup(layers: LayerDef[]): {
+    provider: SceneRenderTreeProviderImpl;
+    tree: SceneRenderTree;
+  } {
+    const provider = new SceneRenderTreeProviderImpl(
+      new MockContainer() as never,
+      new ProcessSystem(),
+    );
+    return {
+      provider,
+      tree: provider.createForScene(makeFakeScene("s", layers)),
+    };
+  }
+
+  /** Minimal effect: one filter, intensity backed by a local number. */
+  function testEffect(): EffectFactory {
+    return () => {
+      let intensity = 1;
+      return {
+        filter: { enabled: true } as never,
+        getIntensity: () => intensity,
+        setIntensity: (v: number) => {
+          intensity = v;
+        },
+      };
+    };
+  }
+
+  function filterCount(tree: SceneRenderTree, name: string): number {
+    const { filters } = tree.get(name).container as unknown as {
+      filters: unknown;
+    };
+    return Array.isArray(filters) ? filters.length : 0;
+  }
+
+  it("attaches one filter per listed layer and removes them all through one handle", () => {
+    const { tree } = setup([
+      { name: "bg", order: -10 },
+      { name: "world", order: 0 },
+      { name: "ui", order: 100, space: "screen" },
+    ]);
+
+    const handle = tree.addLayerEffect(testEffect(), ["bg", "world"]);
+
+    expect(filterCount(tree, "bg")).toBe(1);
+    expect(filterCount(tree, "world")).toBe(1);
+    expect(filterCount(tree, "ui")).toBe(0);
+
+    handle.remove();
+
+    expect(filterCount(tree, "bg")).toBe(0);
+    expect(filterCount(tree, "world")).toBe(0);
+  });
+
+  it("throws on an empty layer list", () => {
+    const { tree } = setup([{ name: "world", order: 0 }]);
+
+    expect(() => tree.addLayerEffect(testEffect(), [])).toThrow(
+      "SceneRenderTree.addLayerEffect: layers must name at least one layer, got [].",
+    );
+  });
+
+  it("throws on an unknown layer before attaching to any layer", () => {
+    const { tree } = setup([{ name: "world", order: 0 }]);
+
+    expect(() => tree.addLayerEffect(testEffect(), ["world", "nope"])).toThrow(
+      'SceneRenderTree.addLayerEffect: unknown layer "nope". Declared layers: default, world.',
+    );
+    expect(filterCount(tree, "world")).toBe(0);
+  });
+
+  it("throws on a repeated layer name before attaching to any layer", () => {
+    const { tree } = setup([{ name: "world", order: 0 }]);
+
+    expect(() => tree.addLayerEffect(testEffect(), ["world", "world"])).toThrow(
+      'SceneRenderTree.addLayerEffect: layer "world" is listed twice; each layer gets one filter pass.',
+    );
+    expect(filterCount(tree, "world")).toBe(0);
+  });
+});
+
+describe("renderAboveEffects", () => {
+  function setup(): {
+    provider: SceneRenderTreeProviderImpl;
+    stage: InstanceType<typeof MockContainer>;
+    scene: Scene;
+    tree: SceneRenderTree;
+  } {
+    const stage = new MockContainer();
+    const provider = new SceneRenderTreeProviderImpl(stage as never);
+    const scene = makeFakeScene("s", [{ name: "world", order: 0 }]);
+    return { provider, stage, scene, tree: provider.createForScene(scene) };
+  }
+
+  function spawn(
+    tree: SceneRenderTree,
+    layer: string,
+  ): InstanceType<typeof MockContainer> {
+    const node = new MockContainer();
+    (
+      tree.get(layer).container as unknown as InstanceType<typeof MockContainer>
+    ).addChild(node);
+    return node;
+  }
+
+  function aboveLayer(
+    stage: InstanceType<typeof MockContainer>,
+  ): InstanceType<typeof MockRenderLayer> | undefined {
+    return stage.children.find((c) => c instanceof MockRenderLayer) as
+      | InstanceType<typeof MockRenderLayer>
+      | undefined;
+  }
+
+  it("attaches the node to a render layer seated right after the scene root", () => {
+    const { stage, tree } = setup();
+    const node = spawn(tree, "world");
+
+    tree.renderAboveEffects(node as never);
+
+    const layer = aboveLayer(stage)!;
+    expect(layer.renderLayerChildren).toEqual([node]);
+    expect(stage.children.indexOf(layer)).toBe(
+      stage.children.indexOf(tree.root as never) + 1,
+    );
+    expect(layer.label).toBe("scene:s:above");
+  });
+
+  it("keeps the attachment across a re-parent", () => {
+    const { stage, tree } = setup();
+    const node = spawn(tree, "world");
+    tree.renderAboveEffects(node as never);
+
+    // Pixi detaches on removeChild; a group or `setLayer` re-parent must not
+    // silently drop the node out of the render layer.
+    (
+      tree.defaultLayer.container as unknown as InstanceType<
+        typeof MockContainer
+      >
+    ).addChild(node);
+
+    expect(aboveLayer(stage)!.renderLayerChildren).toEqual([node]);
+  });
+
+  it("detaches through renderWithEffects and ignores an unattached node", () => {
+    const { stage, tree } = setup();
+    const node = spawn(tree, "world");
+    const other = spawn(tree, "world");
+
+    tree.renderAboveEffects(node as never);
+    tree.renderWithEffects(other as never);
+    expect(aboveLayer(stage)!.renderLayerChildren).toEqual([node]);
+
+    tree.renderWithEffects(node as never);
+    expect(aboveLayer(stage)!.renderLayerChildren).toEqual([]);
+
+    // Detached for good: a later re-parent does not resurrect the attachment.
+    (
+      tree.defaultLayer.container as unknown as InstanceType<
+        typeof MockContainer
+      >
+    ).addChild(node);
+    expect(aboveLayer(stage)!.renderLayerChildren).toEqual([]);
+  });
+
+  it("throws for a node outside this scene's tree", () => {
+    const { tree } = setup();
+    const orphan = new MockContainer();
+
+    expect(() => tree.renderAboveEffects(orphan as never)).toThrow(
+      /is not in the "scene:s" tree/,
+    );
+  });
+
+  it("keeps the render layer next to the root after bringSceneToFront", () => {
+    const { provider, stage, scene, tree } = setup();
+    tree.renderAboveEffects(spawn(tree, "world") as never);
+    provider.createForScene(makeFakeScene("other"));
+
+    provider.bringSceneToFront(scene);
+
+    const layer = aboveLayer(stage)!;
+    expect(stage.children.indexOf(layer)).toBe(
+      stage.children.indexOf(tree.root as never) + 1,
+    );
+    expect(stage.children.at(-1)).toBe(layer);
+  });
+
+  it("destroys the render layer with the scene", () => {
+    const { provider, stage, scene, tree } = setup();
+    tree.renderAboveEffects(spawn(tree, "world") as never);
+    const layer = aboveLayer(stage)!;
+
+    provider.destroyForScene(scene);
+
+    expect(layer.destroyed).toBe(true);
+    expect(layer.renderLayerChildren).toEqual([]);
+    expect(stage.children).toEqual([]);
   });
 });
