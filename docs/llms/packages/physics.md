@@ -444,9 +444,19 @@ import { CollisionLayers } from "@yagejs/physics";
 const layers = new CollisionLayers();
 const PLAYER = layers.define("player"); // bitmask value
 const WALL = layers.define("wall");
-// Use as: layers: PLAYER, mask: WALL | COIN
-// Static helper: CollisionLayers.interactionGroups(membership, filter)
+// On a collider: layers: PLAYER, mask: WALL | COIN
+// On a world query: filterGroups: CollisionLayers.interactionGroups(PLAYER, WALL)
 ```
+
+A collider takes `layers` and `mask` as two numbers. A world query takes the
+same pair packed into one number as `filterGroups`, and
+`CollisionLayers.interactionGroups(membership, filter)` builds it: membership
+in the upper 16 bits, filter in the lower 16.
+
+Passing a `define()` value straight to `filterGroups` matches nothing. A layer
+bit sits in the lower 16 bits, so the packed membership is 0, and a query with
+no membership bit fails the layer test against every collider. The query
+returns `null` or an empty array with no error.
 
 ## PhysicsWorld
 
@@ -463,6 +473,8 @@ world.setGravity(0, -980);
 
 // Raycast direction can be any non-zero vector (normalized internally,
 // e.g. target.sub(origin) works). A zero-length direction throws.
+// filterGroups is a packed membership+filter pair, not a layer bitmask.
+// Build it with CollisionLayers.interactionGroups; a raw layer bit matches nothing.
 const hit = world.raycast(origin, direction, maxDistance, {
   filterGroups,
   sensors,
@@ -500,6 +512,25 @@ const swept = world.castShape(shape, origin, direction, maxDistance, {
   sensors,
 });
 ```
+
+`filterGroups` runs the same two-way test as collider-vs-collider filtering: a
+collider is reported only when the query's membership bit is in that collider's
+`mask` and that collider's `layers` bit is in the query's filter. So
+`interactionGroups(LAYER_PLAYER, LAYER_WALL)` casts as if the ray were the
+player, and skips a wall whose own `mask` leaves the player out. Pass `0xffff`
+as the membership to report every collider on a layer regardless of which
+layers its own `mask` names (a collider with `mask: 0` matches no query and is
+never reported):
+
+```ts
+// walls whose own mask includes the player layer
+{ filterGroups: CollisionLayers.interactionGroups(LAYER_PLAYER, LAYER_WALL) }
+// every wall, whichever layers its own mask names
+{ filterGroups: CollisionLayers.interactionGroups(0xffff, LAYER_WALL) }
+```
+
+Omit `filterGroups` to skip the layer test; `sensors` and `excludeEntity` still
+apply.
 
 `raycast`, `castShape`, `queryShape` and `queryRadius` skip sensor colliders
 unless `sensors` says otherwise, so a ground check or a line of sight reports

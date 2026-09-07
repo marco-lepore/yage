@@ -439,55 +439,80 @@ against each other before they reach the screen, or when redrawing expensive
 static content every frame is wasteful.
 
 ```ts
+import { Component } from "@yagejs/core";
 import { Container, Graphics } from "pixi.js";
-import { RendererKey, SpriteComponent, registerTexture } from "@yagejs/renderer";
+import { RendererKey, registerTexture, unregisterTexture } from "@yagejs/renderer";
+import type { RenderTargetHandle } from "@yagejs/renderer";
 
-const renderer = this.context.resolve(RendererKey);
+const LIGHTING = "lighting";
 
-// The offscreen content. Not part of the scene render tree.
-const buffer = new Container();
-const darkness = new Graphics()
-  .rect(0, 0, 1280, 720)
-  .fill({ color: 0x05060a, alpha: 0.85 });
-const lamp = new Graphics().circle(400, 300, 120).fill({ color: 0xffffff });
-lamp.blendMode = "erase"; // only reaches `darkness`, because both live in the buffer
-buffer.addChild(darkness, lamp);
+class LightBuffer extends Component {
+  private readonly source = new Container();
+  private readonly lamp = new Graphics().circle(0, 0, 120).fill(0xffffff);
+  private target!: RenderTargetHandle;
 
-const target = renderer.createRenderTarget(buffer, {
-  width: 1280,
-  height: 720,
-  resolutionScale: 0.5, // a quarter of the texels — invisible on a soft gradient
-});
+  onAdd(): void {
+    const darkness = new Graphics()
+      .rect(0, 0, 1280, 720)
+      .fill({ color: 0x05060a, alpha: 0.85 });
+    // `erase` only reaches `darkness`, because both live in the buffer.
+    this.lamp.blendMode = "erase";
+    this.source.addChild(darkness, this.lamp);
 
-// Show the texture like any other.
-registerTexture("lighting", target.texture);
-overlay.add(new SpriteComponent({ texture: "lighting", layer: "overlay" }));
-```
+    this.target = this.use(RendererKey).createRenderTarget(this.source, {
+      width: 1280,
+      height: 720,
+      resolutionScale: 0.5, // a quarter of the texels — invisible on a soft gradient
+    });
+    registerTexture(LIGHTING, this.target.texture);
+  }
 
-A registered key outlives the target it came from. `destroy()` frees the GPU
-texture but leaves the key resolving to it, so tear the two down together:
+  /** Move the lit spot. Coordinates are buffer pixels, not world pixels. */
+  moveLamp(x: number, y: number): void {
+    this.lamp.position.set(x, y);
+    this.target.invalidate(); // the content changed
+  }
 
-```ts
-onExit(): void {
-  unregisterTexture("lighting");
-  target.destroy();
+  update(): void {
+    this.target.renderIfNeeded(); // draws only when a redraw is pending
+  }
+
+  onDestroy(): void {
+    unregisterTexture(LIGHTING);
+    this.target.destroy();
+    this.source.destroy({ children: true });
+  }
 }
 ```
 
-The buffer starts out needing a draw and is redrawn only when you ask:
+The buffer starts out needing a draw and is redrawn only when you ask.
+`moveLamp` calls `invalidate()` from the event that changed the content and
+`update` leaves the drawing to `renderIfNeeded()` — the right shape for a
+baked background or a fog-of-war map revealed on discovery. For content that
+moves every frame, call `render()` directly and use `resolutionScale` to keep
+the cost down.
+
+Add the owner before anything that shows the texture, so the key already
+resolves:
 
 ```ts
-// In a component's update:
-lamp.position.set(player.x, player.y);
-target.invalidate();       // the content changed
-target.renderIfNeeded();   // draws, and returns true because it did
+import { Transform } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
+const lights = this.spawn("lights");
+lights.add(new Transform());
+lights.add(new LightBuffer());
+lights.add(new SpriteComponent({ texture: LIGHTING, layer: "overlay" }));
 ```
 
-For content that changes rarely — a baked background, a fog-of-war map
-revealed on discovery — call `invalidate()` from the event that changes it
-and leave `renderIfNeeded()` in the update. For content that moves every
-frame, call `render()` directly and use `resolutionScale` to keep the cost
-down.
+A render target is three resources, and one object should free all three: the
+texture (`handle.destroy()`), the source container
+(`source.destroy({ children: true })`, which `handle.destroy()` does not touch)
+and the registered key (`unregisterTexture(key)`, or the key keeps resolving a
+destroyed texture). A component's `onDestroy` runs when its entity is
+destroyed or when the scene tears down, so it covers both exits. Own
+the buffer on a scene's `onEnter` / `onExit` pair instead when its lifetime is
+exactly the scene's.
 
 ### Where things land inside the buffer
 
@@ -525,8 +550,9 @@ moves or resizes what you draw. Two consequences:
 - **`resize()` keeps the density you asked for.** Omit the third argument
   and the buffer re-derives its resolution from the renderer's current one
   using the configured `resolutionScale`; pass one to replace that scale.
-- **`destroy()` frees the GPU memory.** Call it when the buffer's owner goes
-  away — nothing reclaims it automatically.
+- **`destroy()` frees the texture only.** The source container and any
+  registered key are still yours to release — see the owner component above.
+  Nothing is reclaimed automatically.
 - **WebGPU is unverified.** PixiJS tries WebGL first unless you pass
   `pixi: { preference: "webgpu" }`, and blend behaviour inside a render
   target has only been checked on WebGL.

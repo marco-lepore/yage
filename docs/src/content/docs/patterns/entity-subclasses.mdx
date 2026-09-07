@@ -56,9 +56,11 @@ can safely:
 - Emit events that other entities can receive
 - Add components that depend on the scene context
 
-If `setup()` throws, `scene.spawn()` removes the entity, its components, and
-its stable-key entry before it rethrows the original error. Callers never see
-a partly initialized entity left in the scene.
+If `setup()` throws, the error reaches the `scene.spawn()` caller unchanged and
+the entity stays in the scene, holding the components it managed to add and any
+children it already spawned. It is left there to be inspected. Use
+`scene.spawnBatch` when a half-built entity would be worse than none; a batch
+discards everything it reserved.
 
 ```typescript
 class Enemy extends Entity<EnemyParams> {
@@ -71,6 +73,39 @@ class Enemy extends Entity<EnemyParams> {
   }
 }
 ```
+
+One thing `setup()` cannot do is reach its parent. `parent.spawnChild(name,
+Class, params)` builds the child first and links it afterwards, so
+`this.parent` is `null` for the whole of `setup()`, including the `onAdd()` of
+every component that setup adds. The link exists as soon as `spawnChild`
+returns.
+
+Pass the parent in as a setup param when the child needs it. The param also
+types it as the concrete parent class, which `this.parent` (typed
+`Entity | null`) does not:
+
+```typescript
+class Turret extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.spawnChild("barrel", Barrel, { owner: this });
+  }
+}
+
+class Barrel extends Entity {
+  private owner!: Turret;
+
+  setup({ owner }: { owner: Turret }) {
+    this.owner = owner; // usable immediately
+    this.add(new Transform({ position: new Vec2(0, -8) }));
+  }
+}
+```
+
+When `setup()` has to read `this.parent` itself, build the pair in a
+[spawn batch](/concepts/entities-and-components/#spawning-a-group-at-once):
+`batch.addChild` links two reserved entities before `batch.setup` runs either
+one.
 
 An entity subclass exposes only `this.scene` — there is no `use()`,
 `service()`, or `context` on the entity itself. To reach an engine-scope

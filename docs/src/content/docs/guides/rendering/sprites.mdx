@@ -458,3 +458,9 @@ The rules that make this safe:
 - Registering a key that collides with a loaded asset's path throws;
   re-registering your own key replaces the entry (components built earlier
   keep the old texture instance).
+- Never call `update()` on the `source` of a texture from `createTexture`.
+  Those pixels live only on the GPU, so the re-upload writes an empty image
+  over them and the texture stays blank.
+
+A runtime texture also works as a fill for a procedural shape, where it tiles
+across the shape — see [texture fills](/guides/rendering/graphics/#texture-fills).

@@ -295,7 +295,11 @@ export class Entity {
     this._resyncActive();
   }
 
-  /** The parent entity, or null if this is a root entity. */
+  /**
+   * The parent entity, or null if this is a root entity. A child created by
+   * {@link Entity.spawnChild} reads `null` until that call returns, so its
+   * `setup()` cannot reach the parent through it.
+   */
   get parent(): Entity | null {
     return this._parent;
   }
@@ -364,6 +368,13 @@ export class Entity {
    * Mirrors the overload shape of `Scene.spawn`: pass an Entity subclass
    * (with optional setup params), a `Blueprint`, or omit for an anonymous
    * base Entity.
+   *
+   * The parent link is made after the child is built: `child.parent` is
+   * `null` for the whole of its `setup()`, including the `onAdd()` of every
+   * component that setup adds, and holds the parent once this call
+   * returns. Pass the parent as a setup param when the child
+   * needs it. To have `setup()` read `this.parent`, reserve both entities in
+   * a `scene.spawnBatch` and call `batch.addChild` before `batch.setup`.
    *
    * ```ts
    * this.spawnChild("body", EnemyBody, { color: 0xff6b6b });

@@ -440,8 +440,8 @@ export abstract class Scene {
    *     params and `setup()` (no real params) keyed.
    *   - Else → `X` is params (forwarded to `setup`).
    * The 3-arg form is always unambiguous: `spawn(Class, params, options)`.
-   * If `setup()` throws, the entity is destroyed and removed before the
-   * error is rethrown.
+   * If `setup()` throws, the error reaches the caller unchanged and the
+   * entity stays in the scene with whatever setup had added so far.
    *
    * Don't name a top-level setup-params field `key` — the shape check would
    * misroute it. If you must, use the 3-arg form.

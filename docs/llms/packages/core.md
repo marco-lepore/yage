@@ -61,6 +61,7 @@ class Entity {
 - `entity.isDestroyed` is true after `destroy()` and for entities torn down with their scene on exit. Teardown also emits `entity:destroyed` once per entity, so listeners tracking entity lifetimes are notified of every destruction, including destruction caused by scene exit.
 - `destroy()` deactivates immediately: `isActive` reads `false`, the entity leaves every query, and component `onDisable` fires in the same call. The rest of teardown — `onDestroy`, detaching from the scene — waits for the end-of-frame flush, so `isDestroyed` and component removal still happen later.
 - `entity.spawnChild(name, Class, params?)` combines `scene.spawn(...)` + `this.addChild(name, ...)`. Child is auto-added to the parent's scene. Use for sub-entities owned by a parent (enemy body + health bar, player + weapon, etc.).
+- `spawnChild` links the parent after the child is built. `this.parent` is `null` for the whole of the child's `setup()` (`entity.parent` in a blueprint's `build()`), including the `onAdd()` of every component that setup adds. It holds the parent once `spawnChild` returns. Pass the parent as a setup param when the child needs it — `this.spawnChild("barrel", Barrel, { owner: this })` — which also gives the child the concrete parent type rather than `Entity | null`. When `setup()` itself must read `this.parent`, reserve both entities in a `scene.spawnBatch` and call `batch.addChild` before `batch.setup`.
 - `entity.addChild(name, child)` adopts an existing entity. A scene-less child joins the parent's scene; a child that belongs to a different scene is rejected with an error, because its events bubble to its own scene and that scene's teardown destroys it.
 
 ### Component lookup
@@ -140,7 +141,7 @@ class Turret extends Component {
 
 - Order on add: `onAdd()`, then query join, then `onEnable()`. Order on remove or destroy: `onDisable()`, then cleanups, then `onDestroy()`.
 - `component.destroy()` ends its own life — the same as `entity.remove(SomeClass)`, without having to name its own class from inside itself, which breaks under subclassing.
-- Validate dependencies by throwing from `onAdd()`. The throw is attributed to the component, recorded in `Inspector.getErrors().callbackErrors`, and rethrown to the caller of `entity.add()`. Called from `setup()`, that caller is `scene.spawn`, which destroys the half-built entity and its children before rethrowing.
+- Validate dependencies by throwing from `onAdd()`. The throw is attributed to the component, recorded in `Inspector.getErrors().callbackErrors`, and rethrown to the caller of `entity.add()`. Called from `setup()`, that caller is `scene.spawn`, which lets the throw through unchanged and leaves the half-built entity in the scene.
 - `onEnable()` sees whatever state the component held while dormant. Put live resources there (sounds, bodies, display objects), not game-state resets.
 - Writing `component.enabled` fires the hooks too, so a component disabled by hand releases its resources the same way.
 - A throwing hook is attributed to its component and rethrown, like a throwing `update()`. A throw from `onDisable()` during scene teardown stops teardown at that entity.
@@ -732,7 +733,7 @@ The class form derives its trailing args from the entity's `setup` PARAMETER. No
 
 The params slot takes the setup param type, not `SpawnOptions`, so a `SpawnOptions`-shaped literal (e.g. `{ key }`) is rejected there; assign a key to an all-optional-param class via the 3-arg form `spawn(Class, {}, { key })`. Edge case: if the setup param type itself declares an optional `key`, `{ key }` satisfies the params slot and the runtime routes it to options — don't name a top-level setup-params field `key`; if you must, use the 3-arg form. The 3-arg form `spawn(Class, params, options)` is always unambiguous.
 
-If a class entity's `setup()` method throws, `scene.spawn()` destroys and removes the entity immediately, including its components and stable-key entry, then rethrows the original error.
+A throwing `setup()` is terminal. The error reaches the `scene.spawn()` caller unchanged, and the entity stays in the scene holding the components it managed to add, its stable key, and any children its setup already spawned. It is left there to be inspected. Use `scene.spawnBatch` when a half-built entity would be worse than none — a batch discards everything it reserved.
 
 Duplicate keys throw at spawn time with no orphan side-effect — the entity is not added to `scene.entities` and `entity:created` is not emitted. Keys are immutable for an entity's lifetime; destroy + respawn to swap. The index is per-scene and clears on scene teardown. Identity is independent of `@yagejs/save` — game code uses `entity.key` as a stable id in persistent stores (`createSet<string>()`).
 

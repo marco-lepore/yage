@@ -326,6 +326,31 @@ describe("Entity", () => {
       expect(child.tryScene).toBe(scene);
     });
 
+    it("links the parent only after the child's setup() has run", () => {
+      const { scene } = createMockScene();
+      const parent = scene.spawn("parent");
+
+      let parentDuringSetup: Entity | null | undefined;
+      let parentDuringOnAdd: Entity | null | undefined;
+      class Probe extends Component {
+        onAdd() {
+          parentDuringOnAdd = this.entity.parent;
+        }
+      }
+      class Kid extends Entity {
+        setup() {
+          parentDuringSetup = this.parent;
+          this.add(new Probe());
+        }
+      }
+
+      const child = parent.spawnChild("kid", Kid);
+
+      expect(parentDuringSetup).toBeNull();
+      expect(parentDuringOnAdd).toBeNull();
+      expect(child.parent).toBe(parent);
+    });
+
     it("forwards the child name as the entity name when no factory is given", () => {
       const { scene } = createMockScene();
       const parent = scene.spawn("parent");

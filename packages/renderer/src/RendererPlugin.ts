@@ -601,6 +601,10 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * Bake a texture once by drawing into a temporary graphics context. The
    * result never changes again; for a buffer the game redraws, use
    * {@link createRenderTarget}.
+   *
+   * The pixels live only on the GPU, with no image to reload from. Calling
+   * `update()` on the returned texture's `source` re-uploads it empty and
+   * everything drawn from it turns transparent.
    */
   createTexture(draw: (graphics: GraphicsContext) => void): TextureResource {
     const graphics = new Graphics();
