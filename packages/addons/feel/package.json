@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-addons/feel",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Composable game-feel cues for YAGE: visual motion, time, camera, audio, particles, and renderer effects",
   "keywords": [
     "yage",
