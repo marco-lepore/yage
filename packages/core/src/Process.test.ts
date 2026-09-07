@@ -1,12 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import {
-  Process,
-  easeLinear,
-  easeInQuad,
-  easeOutQuad,
-  easeInOutQuad,
-  easeOutBounce,
-} from "./Process.js";
+import { Process } from "./Process.js";
 
 describe("Process", () => {
   it("calls update function each tick", () => {
@@ -324,47 +317,5 @@ describe("Process", () => {
       tags: ["effect", "ui"],
     });
     expect(proc.tags).toEqual(["effect", "ui"]);
-  });
-});
-
-describe("Easing functions", () => {
-  it("easeLinear", () => {
-    expect(easeLinear(0)).toBe(0);
-    expect(easeLinear(0.5)).toBe(0.5);
-    expect(easeLinear(1)).toBe(1);
-  });
-
-  it("easeInQuad", () => {
-    expect(easeInQuad(0)).toBe(0);
-    expect(easeInQuad(1)).toBe(1);
-    expect(easeInQuad(0.5)).toBeCloseTo(0.25);
-  });
-
-  it("easeOutQuad", () => {
-    expect(easeOutQuad(0)).toBe(0);
-    expect(easeOutQuad(1)).toBe(1);
-    expect(easeOutQuad(0.5)).toBeCloseTo(0.75);
-  });
-
-  it("easeInOutQuad", () => {
-    expect(easeInOutQuad(0)).toBe(0);
-    expect(easeInOutQuad(1)).toBe(1);
-    expect(easeInOutQuad(0.5)).toBeCloseTo(0.5);
-  });
-
-  it("easeOutBounce", () => {
-    expect(easeOutBounce(0)).toBe(0);
-    expect(easeOutBounce(1)).toBeCloseTo(1);
-    // Mid-values should be reasonable
-    expect(easeOutBounce(0.5)).toBeGreaterThan(0);
-    expect(easeOutBounce(0.5)).toBeLessThanOrEqual(1);
-  });
-
-  it("easeOutBounce covers all branches", () => {
-    // Each branch based on t thresholds
-    expect(easeOutBounce(0.2)).toBeGreaterThan(0); // t < 1/2.75
-    expect(easeOutBounce(0.5)).toBeGreaterThan(0); // t < 2/2.75
-    expect(easeOutBounce(0.8)).toBeGreaterThan(0); // t < 2.5/2.75
-    expect(easeOutBounce(0.97)).toBeGreaterThan(0); // t >= 2.5/2.75
   });
 });

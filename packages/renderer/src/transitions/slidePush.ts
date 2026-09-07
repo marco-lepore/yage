@@ -1,5 +1,9 @@
-import { ErrorBoundaryKey } from "@yagejs/core";
-import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
+import { easeOutCubic, ErrorBoundaryKey } from "@yagejs/core";
+import type {
+  EasingFunction,
+  SceneTransition,
+  SceneTransitionContext,
+} from "@yagejs/core";
 import { attributed } from "../internal/attribution.js";
 import type { Container } from "pixi.js";
 import { getSceneContainer, getVirtualBounds } from "./helpers.js";
@@ -23,8 +27,8 @@ export interface SlidePushOptions {
    * already authored for a specific kind.
    */
   reverseOnPop?: boolean;
-  /** Easing function applied to the slide progress. Default: cubic ease-out. */
-  easing?: (t: number) => number;
+  /** Easing function applied to the slide progress. Default: `easeOutCubic`. */
+  easing?: EasingFunction;
 }
 
 /**
@@ -44,7 +48,7 @@ export function slidePush(opts: SlidePushOptions = {}): SceneTransition {
   const duration = opts.duration ?? 0.5;
   const direction = opts.direction ?? "left";
   const reverseOnPop = opts.reverseOnPop ?? true;
-  const easing = opts.easing ?? ((t) => 1 - Math.pow(1 - t, 3));
+  const easing = opts.easing ?? easeOutCubic;
 
   let toContainer: Container | undefined;
   let fromContainer: Container | undefined;

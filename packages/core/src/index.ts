@@ -167,11 +167,37 @@ export { Process } from "./Process.js";
 export type { ProcessOptions, ProcessClock } from "./Process.js";
 export {
   easeLinear,
+  easeInSine,
+  easeOutSine,
+  easeInOutSine,
   easeInQuad,
   easeOutQuad,
   easeInOutQuad,
+  easeInCubic,
+  easeOutCubic,
+  easeInOutCubic,
+  easeInQuart,
+  easeOutQuart,
+  easeInOutQuart,
+  easeInQuint,
+  easeOutQuint,
+  easeInOutQuint,
+  easeInExpo,
+  easeOutExpo,
+  easeInOutExpo,
+  easeInCirc,
+  easeOutCirc,
+  easeInOutCirc,
+  easeInBack,
+  easeOutBack,
+  easeInOutBack,
+  easeInElastic,
+  easeOutElastic,
+  easeInOutElastic,
+  easeInBounce,
   easeOutBounce,
-} from "./Process.js";
+  easeInOutBounce,
+} from "./easing.js";
 
 export { Tween } from "./Tween.js";
 

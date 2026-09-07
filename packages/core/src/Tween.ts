@@ -1,7 +1,5 @@
-import {
-  Process,
-  easeLinear,
-} from "./Process.js";
+import { Process } from "./Process.js";
+import { easeLinear } from "./easing.js";
 import { assertDuration, durationProgress } from "./internal/duration.js";
 import { Sequence } from "./Sequence.js";
 import { Vec2 } from "./Vec2.js";

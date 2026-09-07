@@ -683,7 +683,31 @@ a dropped promise can hide errors). Production builds suppress the warning.
 
 ### Easing
 
-`easeLinear`, `easeInQuad`, `easeOutQuad`, `easeInOutQuad`, `easeOutBounce`
+An `EasingFunction` is `(t: number) => number`. Every built-in takes `t` in
+`[0,1]` and returns `0` at `t = 0` and `1` at `t = 1`; the result for `t`
+outside `[0,1]` is not specified. `easeLinear` plus ten families:
+
+| Family  | Ease in         | Ease out         | Ease in-out        |
+| ------- | --------------- | ---------------- | ------------------ |
+| sine    | `easeInSine`    | `easeOutSine`    | `easeInOutSine`    |
+| quad    | `easeInQuad`    | `easeOutQuad`    | `easeInOutQuad`    |
+| cubic   | `easeInCubic`   | `easeOutCubic`   | `easeInOutCubic`   |
+| quart   | `easeInQuart`   | `easeOutQuart`   | `easeInOutQuart`   |
+| quint   | `easeInQuint`   | `easeOutQuint`   | `easeInOutQuint`   |
+| expo    | `easeInExpo`    | `easeOutExpo`    | `easeInOutExpo`    |
+| circ    | `easeInCirc`    | `easeOutCirc`    | `easeInOutCirc`    |
+| back    | `easeInBack`    | `easeOutBack`    | `easeInOutBack`    |
+| elastic | `easeInElastic` | `easeOutElastic` | `easeInOutElastic` |
+| bounce  | `easeInBounce`  | `easeOutBounce`  | `easeInOutBounce`  |
+
+`easeInBack`, `easeOutBack`, `easeInOutBack`, `easeInElastic`,
+`easeOutElastic` and `easeInOutElastic` leave `[0,1]` between the endpoints —
+back reaches ±0.1 past an endpoint, `easeInElastic` and `easeOutElastic`
+±0.37, `easeInOutElastic` ±0.12. The interpolated value goes with them, so
+pair an overshooting easing with a target that tolerates the excursion:
+`camera.zoomTo(0.1, 1, easeOutElastic)` drives `zoom` briefly negative and
+flips the view for those frames. `easeInBounce`, `easeOutBounce`
+and `easeInOutBounce` stay inside `[0,1]` but are not monotonic.
 
 ### Traits
 

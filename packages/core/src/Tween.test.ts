@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { Tween } from "./Tween.js";
 import { Vec2 } from "./Vec2.js";
-import { Process, easeInQuad } from "./Process.js";
+import { Process } from "./Process.js";
+import { easeInQuad } from "./easing.js";
 
 describe("Tween", () => {
   describe("to()", () => {
@@ -164,11 +165,7 @@ describe("Tween", () => {
 
     it("delays each item's start by stepMs (item 0 starts immediately)", () => {
       const objs = [{ a: 0 }, { a: 0 }, { a: 0 }];
-      const procs = Tween.stagger(
-        objs,
-        (o) => Tween.to(o, "a", 1, 100),
-        100,
-      );
+      const procs = Tween.stagger(objs, (o) => Tween.to(o, "a", 1, 100), 100);
 
       // First frame: only item 0's tween is live; later items are still waiting.
       procs.forEach((p) => p._update(50));

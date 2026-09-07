@@ -1,5 +1,9 @@
-import { ErrorBoundaryKey } from "@yagejs/core";
-import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
+import { easeLinear, ErrorBoundaryKey } from "@yagejs/core";
+import type {
+  EasingFunction,
+  SceneTransition,
+  SceneTransitionContext,
+} from "@yagejs/core";
 import { attributed } from "../internal/attribution.js";
 import { Graphics } from "pixi.js";
 import type { Container } from "pixi.js";
@@ -16,8 +20,8 @@ export interface IrisRevealOptions {
    * canvas at `t = 1`.
    */
   center?: { x: number; y: number };
-  /** Easing function applied to the radius. Default: linear. */
-  easing?: (t: number) => number;
+  /** Easing function applied to the radius. Default: `easeLinear`. */
+  easing?: EasingFunction;
 }
 
 /**
@@ -38,7 +42,7 @@ export interface IrisRevealOptions {
  */
 export function irisReveal(opts: IrisRevealOptions = {}): SceneTransition {
   const duration = opts.duration ?? 0.6;
-  const easing = opts.easing ?? ((t) => t);
+  const easing = opts.easing ?? easeLinear;
 
   let toContainer: Container | undefined;
   let maskGfx: Graphics | undefined;

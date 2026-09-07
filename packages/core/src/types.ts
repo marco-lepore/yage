@@ -39,5 +39,10 @@ export interface Plugin {
   onDestroy?(): void;
 }
 
-/** An easing function mapping t in [0,1] to a value in [0,1]. */
+/**
+ * An easing function mapping `t` in `[0,1]` to an eased value. The built-in
+ * easings return `0` at `t = 0` and `1` at `t = 1`; the `back` and `elastic`
+ * families leave `[0,1]` in between, by design. The result for `t` outside
+ * `[0,1]` is not specified.
+ */
 export type EasingFunction = (t: number) => number;
