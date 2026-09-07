@@ -16,6 +16,9 @@ import type { EngineEvents } from "./EventBus.js";
 import { Entity, _resetEntityIdCounter } from "./Entity.js";
 import { defineBlueprint } from "./Blueprint.js";
 import { EntityPool } from "./EntityPool.js";
+import { RandomKey } from "./Random.js";
+import type { RandomService } from "./Random.js";
+import { createMockScene } from "./test-utils.js";
 
 class TestScene extends Scene {
   readonly name = "test";
@@ -652,13 +655,6 @@ const SceneScopedKey = new ServiceKey<FakeService>("test.sceneScoped", {
 
 class ResolverScene extends Scene {
   readonly name = "resolver";
-  // Expose protected resolution helpers for testing.
-  pubUse<T>(key: ServiceKey<T>): T {
-    return this.use(key);
-  }
-  pubService<T extends object>(key: ServiceKey<T>): T {
-    return this.service(key);
-  }
 }
 
 describe("Scene service resolution", () => {
@@ -668,7 +664,7 @@ describe("Scene service resolution", () => {
     ctx.register(EngineScopedKey, svc);
     const scene = new ResolverScene();
     scene._setContext(ctx);
-    expect(scene.pubUse(EngineScopedKey)).toBe(svc);
+    expect(scene.use(EngineScopedKey)).toBe(svc);
   });
 
   it("use() resolves scene-scoped services registered via registerScoped", () => {
@@ -677,9 +673,9 @@ describe("Scene service resolution", () => {
     scene._setContext(ctx);
     const tree: FakeService = { tag: "scene-tree" };
     scene.registerScoped(SceneScopedKey, tree);
-    // This is the issue #93 case: resolvable from the scene itself, the way
-    // onEnter would, without reaching for a provider key.
-    expect(scene.pubUse(SceneScopedKey)).toBe(tree);
+    // Resolvable from the scene itself, the way onEnter would, without
+    // reaching for a provider key.
+    expect(scene.use(SceneScopedKey)).toBe(tree);
   });
 
   it("use() prefers scene scope over engine scope for the same key", () => {
@@ -690,14 +686,14 @@ describe("Scene service resolution", () => {
     const scene = new ResolverScene();
     scene._setContext(ctx);
     scene.registerScoped(SceneScopedKey, sceneVal);
-    expect(scene.pubUse(SceneScopedKey)).toBe(sceneVal);
+    expect(scene.use(SceneScopedKey)).toBe(sceneVal);
   });
 
   it("use() throws a helpful message for an unregistered scene-scoped key", () => {
     const { ctx } = createContext();
     const scene = new ResolverScene();
     scene._setContext(ctx);
-    expect(() => scene.pubUse(SceneScopedKey)).toThrow(
+    expect(() => scene.use(SceneScopedKey)).toThrow(
       /Scene-scoped service "test\.sceneScoped" is not registered for scene "resolver"/,
     );
   });
@@ -711,7 +707,7 @@ describe("Scene service resolution", () => {
     const scene = new ResolverScene();
     scene._setContext(ctx);
     // No registerScoped → only the engine registration exists.
-    expect(scene.pubUse(SceneScopedKey)).toBe(engineVal);
+    expect(scene.use(SceneScopedKey)).toBe(engineVal);
     expect(warn).toHaveBeenCalledOnce();
   });
 
@@ -721,8 +717,36 @@ describe("Scene service resolution", () => {
     scene._setContext(ctx);
     const tree: FakeService = { tag: "scene-tree" };
     scene.registerScoped(SceneScopedKey, tree);
-    const proxy = scene.pubService(SceneScopedKey);
+    const proxy = scene.service(SceneScopedKey);
     expect(proxy.tag).toBe("scene-tree");
+  });
+
+  it("use() resolves a scene-scoped service from entity code", () => {
+    const { scene } = createMockScene();
+    let resolved: RandomService | undefined;
+    class Dresser extends Entity {
+      setup(): void {
+        resolved = this.scene.use(RandomKey);
+      }
+    }
+    scene.spawn(Dresser);
+    expect(resolved).toBe(scene.tryResolveScoped(RandomKey));
+    expect(resolved).toBeDefined();
+  });
+
+  it("use() throws a named error before the scene has a context", () => {
+    const scene = new ResolverScene();
+    expect(() => scene.use(EngineScopedKey)).toThrow(
+      /Scene\.use\(test\.engineScoped\) called before scene "resolver"/,
+    );
+  });
+
+  it("service() defers the missing-context error to first property access", () => {
+    const scene = new ResolverScene();
+    const proxy = scene.service(EngineScopedKey);
+    expect(() => proxy.tag).toThrow(
+      /Scene\.use\(test\.engineScoped\) called before scene "resolver"/,
+    );
   });
   describe("dormant entities and lookups", () => {
     it("getEntities() keeps dormant entities, the lookups drop them", () => {

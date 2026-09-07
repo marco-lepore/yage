@@ -82,7 +82,7 @@ class TooltipScene extends Scene {
     // attachTooltip wires no input itself — drive it from the trigger's hover.
     panel.setPointerHandlers({ onHover: tip.setActive });
 
-    const overlay = this._resolveScoped(FloatingOverlayKey)!;
+    const overlay = this.use(FloatingOverlayKey);
     const triggerContainer = panel.container;
 
     // Probe for the spec. `show`/`hide` fire the trigger's Pixi pointer

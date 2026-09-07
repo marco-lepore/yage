@@ -326,12 +326,19 @@ const all = window.__yage__.inspector.getEntities();
 const enemies = all.filter((e) => e.tags.includes("enemy"));
 
 // Look up a specific entity by name
-const player = window.__yage__.inspector.getEntityByName("player");
+const player = window.__yage__.inspector.getEntity("player");
 
 // Inspect a single component's state
 const spriteState = window.__yage__.inspector.getComponentData(
   "player",
   "SpriteComponent",
+);
+
+// Or address one specific entity by its id, when several share a name
+const lantern = all.filter((e) => e.name === "lantern")[2];
+const lightState = window.__yage__.inspector.getComponentData(
+  lantern.id,
+  "LightSource",
 );
 ```
 
@@ -343,12 +350,21 @@ const spriteState = window.__yage__.inspector.getComponentData(
 | `getSceneStack()` | All scenes with their pause state and entity counts |
 | `getEntityCount()` | Total entities across the stack, excluding destroyed entities and including inactive ones |
 | `getEntities()` | Every entity in the active scene — `id`, `name`, `tags`, `components`, `position` |
-| `getEntityByName(name)` | First active entity with that name. Destroyed and deactivated entities are skipped |
-| `getEntityPosition(name)` | Shortcut: `Transform` position for a named entity |
-| `hasComponent(name, componentName)` | Boolean: does the named entity have this component? Both arguments are strings |
-| `getComponentData(name, componentName)` | Reflected public fields and getters from the live component. Typed `unknown`, and `null` when nothing is inspectable |
+| `getEntity(nameOrId)` | One entity, addressed by name or by entity id |
+| `getEntityPosition(nameOrId)` | Shortcut: `Transform` position for that entity |
+| `hasComponent(nameOrId, componentName)` | Boolean: does that entity have this component? |
+| `getComponentData(nameOrId, componentName)` | Reflected public fields and getters from the live component. Typed `unknown`, and `null` when nothing is inspectable |
 | `getSystems()` | Every registered system, with phase/priority/enabled flags |
 | `getErrors()` | Recorded failures from the error boundary (`callbackErrors`) — system, component, and callback throws, most recent last |
+
+The four per-entity helpers take either address form. A name resolves the
+first *active* entity with that name in the *active* scene, so a deactivated
+entity reads as absent under its name. An entity id resolves one entity
+anywhere on the scene stack, dormant and inactive ones included and destroyed
+ones excluded — the same population `getEntityCount()` counts. The id is a
+number from `getEntities()[].id` or a string from
+`snapshot().scenes[].entities[].id`; both spellings work. A string is matched
+as a name first, so a name wins over an id with the same spelling.
 
 `getEntities()` returns plain `EntitySnapshot` objects carrying class-name
 strings in `components` (not class references), so filtering by component
@@ -464,9 +480,9 @@ minutes.
 
 ### Known Limitations
 
-- **Names are not unique keys.** If two entities share a name,
-  `getEntityByName` returns the first active one it encounters. Either use
-  unique names, or iterate `getEntities()` and filter by `id`.
+- **Names are not unique keys.** If two entities share a name, the name form
+  returns the first active one it encounters. Pass the entity id instead to
+  reach a specific one.
 - **Mutation is scoped to debug tooling.** The Inspector can freeze time,
   inject input, and step frames, but it is not a general-purpose world editor.
   Use normal engine APIs for structural scene changes.

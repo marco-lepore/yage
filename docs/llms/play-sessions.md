@@ -268,12 +268,21 @@ inspector.getInputState();                       // { keys, actions, mouse, poin
 inspector.snapshotJSON();                        // whole world, sorted, for diffing
 inspector.events.getLog();                       // bus, entity and scene events
 await ctx.events.waitFor("enemy:hit", { withinFrames: 60 });
+
+// Same-named entities are told apart by id.
+const lanterns = inspector.getEntities().filter((e) => e.name === "lantern");
+inspector.getComponentData(lanterns[2].id, "Health");
 ```
 
 `getComponentData` reflects a component's enumerable fields and public
 getters, so any component is readable without diagnostic code of its own.
 `getInputState()` is the cheap way to check what is held — `snapshotJSON()`
 walks every scene and entity.
+
+`getComponentData`, `getEntity`, `getEntityPosition` and `hasComponent` take a
+name or an entity id. A name reads the first active entity with that name; an
+id reads exactly the entity `getEntities()` or `snapshot()` handed that id out
+for, wherever it sits on the scene stack.
 
 `events.waitFor` has to be started before the frames that satisfy it, because
 the run is the only thing issuing frames:

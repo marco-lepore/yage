@@ -19,10 +19,10 @@ export interface CreateLayerOptions {
   /** Per-layer override for PixiJS event mode. Falls back to the manager default. */
   eventMode?: EventMode;
   /**
-   * Coordinate space. `"world"` (default) layers are picked up by cameras
-   * spawned without explicit `bindings`; `"screen"` layers are skipped so
-   * they stay fixed to the viewport. Cameras can still explicitly bind
-   * screen-space layers by naming them in `bindings`.
+   * Coordinate space. `"world"` (default) layers are auto-bound by every
+   * camera unless it sets `autoBind: false`; `"screen"` layers are skipped
+   * so they stay fixed to the viewport. Cameras can still explicitly bind screen-space layers by
+   * naming them in `bindings`.
    */
   space?: LayerSpace;
   /**

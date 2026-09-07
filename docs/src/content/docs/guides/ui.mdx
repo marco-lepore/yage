@@ -283,7 +283,7 @@ tooltip has a shorter lifetime. `setActive` is a safe no-op after disposal, so
 a lingering hover handler cannot touch a freed tooltip.
 
 For fully custom popovers / menus, drop to the primitives: acquire a slot
-with `scene._resolveScoped(FloatingOverlayKey).acquire()` for a
+with `scene.use(FloatingOverlayKey).acquire()` for a
 `FloatingHandle`, and position with the pure `computePosition()` engine
 (`offset → flip → shift → size`). The React `<Tooltip>` / `useFloating`
 build on this exact overlay — see the

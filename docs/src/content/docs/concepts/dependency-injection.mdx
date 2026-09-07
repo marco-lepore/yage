@@ -184,7 +184,7 @@ Every key registered this way is automatically unregistered when the scene
 exits (after `onExit` and plugin `afterExit` hooks run), so the next scene
 starts with a clean slate and there's no cross-scene leakage.
 
-### Resolving scene-scoped services from the scene itself
+### Resolving scene-scoped services from anything holding the scene
 
 `Scene.use(key)` and `Scene.service(key)` are scope-aware: they check scene
 scope first, then engine scope — exactly like `Component.use`. Plugin
@@ -203,6 +203,21 @@ class LevelScene extends Scene {
     // Resolves this scene's render tree — registered by RendererPlugin's
     // beforeEnter hook, which ran before onEnter.
     this.use(SceneRenderTreeKey).fx.addEffect(crt({ scanlines: true }));
+  }
+}
+```
+
+Both are public, so any holder of a scene reference resolves the same way —
+an entity's `setup()`, a helper function that takes a `scene`, an addon:
+
+```typescript
+import { Entity, RandomKey, Transform, Vec2 } from "@yagejs/core";
+
+class Grass extends Entity {
+  setup({ position }: { position: Vec2 }) {
+    // RandomKey is scene-scoped, so every scene gets its own seeded stream.
+    const rng = this.scene.use(RandomKey);
+    this.add(new Transform({ position, rotation: rng.range(-0.2, 0.2) }));
   }
 }
 ```

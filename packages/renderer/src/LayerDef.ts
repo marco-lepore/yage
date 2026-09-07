@@ -29,8 +29,8 @@ export type LayerSortFn = (c: DisplayContainer) => number;
  * on renderer.
  *
  * A layer's `space` controls whether cameras transform it:
- * - `"world"` (default) — cameras spawned without explicit `bindings`
- *   auto-bind the layer, so it scrolls/zooms with the world.
+ * - `"world"` (default) — cameras auto-bind the layer (unless spawned with
+ *   `autoBind: false`), so it scrolls/zooms with the world.
  * - `"screen"` — cameras skip the layer on auto-bind, so it stays fixed
  *   to the viewport. Use for HUD, menus, dialogs, or any UI you want
  *   anchored to the screen.
@@ -59,6 +59,8 @@ export interface LayerDef {
    * - `"world"`: included in a camera's auto-bindings, so it scrolls and
    *   zooms with the camera. Use for gameplay layers (background, entities,
    *   foreground), parallax, and diegetic UI that should follow an entity.
+   *   Naming the layer in a camera's `bindings` changes how it follows,
+   *   not whether it does, unless the camera sets `autoBind: false`.
    * - `"screen"`: excluded from auto-bindings; stays fixed to the viewport.
    *   Use for HUD, menus, dialogs, and other screen-anchored UI. Cameras
    *   can still opt in explicitly by naming the layer in their `bindings`.

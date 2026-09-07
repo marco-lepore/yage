@@ -82,12 +82,16 @@ export interface CameraComponentOptions {
   zoom?: number;
   rotation?: number;
   bindings?: CameraBinding[];
+  autoBind?: boolean;
   priority?: number;
   name?: string;
 }
 
 /** Frame-rate-independent reference timestep (seconds). */
 export const CAMERA_REFERENCE_DT = 1 / 60;
+
+/** Shared empty result for a camera that binds nothing. */
+const NO_BINDINGS: readonly CameraBinding[] = [];
 
 /**
  * Core camera state component. Added by `CameraEntity`; holds position,
@@ -106,6 +110,8 @@ export class CameraComponent extends Component {
   readonly modifiers = new CameraModifierHost();
 
   readonly bindings: CameraBinding[] | null;
+  /** Bind every world-space layer before applying `bindings`. Default: `true`. */
+  readonly autoBind: boolean;
   readonly priority: number;
   readonly cameraName: string | undefined;
 
@@ -115,6 +121,7 @@ export class CameraComponent extends Component {
     this.zoom = options?.zoom ?? 1;
     this.rotation = options?.rotation ?? 0;
     this.bindings = options?.bindings ?? null;
+    this.autoBind = options?.autoBind ?? true;
     this.priority = options?.priority ?? 0;
     this.cameraName = options?.name;
   }
@@ -262,19 +269,42 @@ export class CameraComponent extends Component {
   /**
    * Resolve bindings for this camera against the given render tree.
    *
-   * If no explicit `bindings` were passed, auto-binds every world-space
-   * layer (`LayerDef.space === "world"`, the default). Screen-space layers
-   * — declared with `space: "screen"` or auto-provisioned by plugins via
-   * `ensureLayer(def, { space: "screen" })`, e.g. the UI layer — are
-   * skipped so they stay fixed to the viewport. Cameras can still
-   * explicitly bind a screen-space layer by naming it in `bindings`.
+   * Every world-space layer (`LayerDef.space === "world"`, the default) is
+   * bound at full strength. Screen-space layers — declared with
+   * `space: "screen"` or auto-provisioned by plugins via
+   * `ensureLayer(def, { space: "screen" })`, e.g. the UI layer — are skipped
+   * so they stay fixed to the viewport.
+   *
+   * An entry in `bindings` replaces the binding for the layer it names; an
+   * entry naming a screen-space layer, or a layer the tree does not hold,
+   * is added. With `autoBind: false` the camera binds exactly the entries in
+   * `bindings` and nothing else — the only way to leave a world-space layer
+   * untransformed, since a binding with all three ratios at `0` centres the
+   * layer on the viewport instead.
+   *
+   * Called once per camera per frame, so a layer created after the camera
+   * spawned is bound on the next frame.
    */
   getResolvedBindings(tree: SceneRenderTree): readonly CameraBinding[] {
-    if (this.bindings) return this.bindings;
-    return tree
+    const explicit = this.bindings;
+    if (!this.autoBind) return explicit ?? NO_BINDINGS;
+
+    const worldLayers = tree
       .getAll()
-      .filter((layer) => layer.space === "world")
-      .map((layer) => ({ layer: layer.name, translateRatio: 1 }));
+      .filter((layer) => layer.space === "world");
+    if (!explicit || explicit.length === 0) {
+      return worldLayers.map((layer) => ({
+        layer: layer.name,
+        translateRatio: 1,
+      }));
+    }
+
+    const resolved = new Map<string, CameraBinding>();
+    for (const layer of worldLayers) {
+      resolved.set(layer.name, { layer: layer.name, translateRatio: 1 });
+    }
+    for (const binding of explicit) resolved.set(binding.layer, binding);
+    return [...resolved.values()];
   }
   onDestroy(): void {
     this.modifiers._destroy();

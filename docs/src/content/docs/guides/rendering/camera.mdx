@@ -194,10 +194,11 @@ camera.bounds = { minX: 0, minY: 0, maxX: 4000, maxY: 2000 };
 
 ### Camera bindings
 
-A `CameraEntity` spawned without `bindings` auto-binds every
-`space: "world"` layer at full strength. For finer control — parallax,
-minimaps, decoupled HUDs — pass an explicit `bindings` array. Each
-binding has three independent ratios:
+A `CameraEntity` auto-binds every `space: "world"` layer at full
+strength, including layers created after it spawned. For finer control —
+parallax, minimaps, decoupled HUDs — pass a `bindings` array. Each entry
+replaces the auto-binding for the layer it names and has three
+independent ratios:
 
 ```typescript
 interface CameraBinding {
@@ -216,12 +217,33 @@ this.spawn(CameraEntity, {
   bindings: [
     { layer: "sky", translateRatio: 0.1 },  // slow parallax
     { layer: "mid", translateRatio: 0.6 },  // medium parallax
-    { layer: "world" },                     // full transform (default)
-    { layer: "minimap",                     // camera-agnostic overlay painted on a world layer
-      translateRatio: 0, rotateRatio: 0, scaleRatio: 0 },
   ],
 });
 ```
+
+Every other world layer — `"world"`, and any world-space layer a plugin
+or a later `ensureLayer` call adds — keeps following at full strength. An entry
+naming a `space: "screen"` layer adds it to the set.
+
+Pass `autoBind: false` to drop the auto-bound set, so the camera drives
+exactly the layers you name:
+
+```typescript
+// Drives "sky", "mid" and "world"; the world-space "minimap" layer,
+// left out of the list, stays untransformed.
+this.spawn(CameraEntity, {
+  autoBind: false,
+  bindings: [
+    { layer: "sky", translateRatio: 0.1 },
+    { layer: "mid", translateRatio: 0.6 },
+    { layer: "world" },
+  ],
+});
+```
+
+That is the only way to leave a world-space layer untransformed. A
+binding with all three ratios at `0` is a different result: the layer
+stops following the camera but its origin sits at the viewport centre.
 
 These ratios are **layer-level decoupling primitives**: they're the
 right answer for parallax, minimaps, and other content whose position

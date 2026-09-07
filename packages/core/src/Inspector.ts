@@ -136,8 +136,9 @@ export interface EntitySnapshot {
   position?: { x: number; y: number };
   /**
    * `entity.isActive` — own activeness AND every ancestor's. `getEntities()`
-   * lists dormant entities; the name-based lookups do not, so this is how a
-   * caller tells "asleep and reusable" from "gone".
+   * lists dormant entities and a lookup by entity id reaches them; a lookup
+   * by name does not, so this is how a caller tells "asleep and reusable"
+   * from "gone".
    */
   active: boolean;
 }
@@ -1266,30 +1267,48 @@ export class Inspector {
     return this.sceneToWorldSnapshot(scene);
   }
 
-  /** Find entity by name in the active scene. */
-  getEntityByName(name: string): EntitySnapshot | undefined {
-    const entity = this.findActiveEntity(name);
+  /**
+   * Find one entity by name or by `entity.id`. A name matches the first
+   * active entity of the active scene. An id (a number, or the string form
+   * `snapshot()` and the event log use) reaches any entity on the scene
+   * stack, dormant and inactive included, destroyed excluded. A string is
+   * tried as a name first, so a name wins over an id with the same spelling.
+   */
+  getEntity(nameOrId: string | number): EntitySnapshot | undefined {
+    const entity = this.resolveEntity(nameOrId);
     if (!entity) return undefined;
     return this.entityToQuerySnapshot(entity);
   }
 
-  /** Get entity position (from Transform component). */
-  getEntityPosition(name: string): { x: number; y: number } | undefined {
-    const entity = this.findActiveEntity(name);
+  /**
+   * Get entity position (from Transform component), addressing the entity by
+   * name or by `entity.id`.
+   */
+  getEntityPosition(
+    nameOrId: string | number,
+  ): { x: number; y: number } | undefined {
+    const entity = this.resolveEntity(nameOrId);
     if (!entity) return undefined;
     const transform = this.getTransform(entity);
     if (!transform) return undefined;
     return { x: transform.position.x, y: transform.position.y };
   }
 
-  /** Check if an entity has a component by class name string. */
-  hasComponent(entityName: string, componentClass: string): boolean {
-    return this.findComponentByName(entityName, componentClass) !== undefined;
+  /**
+   * Check if an entity has a component by class name string. The entity is
+   * addressed by name or by `entity.id`.
+   */
+  hasComponent(nameOrId: string | number, componentClass: string): boolean {
+    return this.resolveComponent(nameOrId, componentClass) !== undefined;
   }
 
-  /** Get inspectable component data by class name string. */
-  getComponentData(entityName: string, componentClass: string): unknown {
-    const comp = this.findComponentByName(entityName, componentClass);
+  /**
+   * Get inspectable component data by class name string. The entity is
+   * addressed by name or by `entity.id`, so several same-named entities are
+   * individually readable.
+   */
+  getComponentData(nameOrId: string | number, componentClass: string): unknown {
+    const comp = this.resolveComponent(nameOrId, componentClass);
     if (!comp) return undefined;
     return this.reflectComponentState(comp);
   }
@@ -1889,19 +1908,41 @@ export class Inspector {
   }
 
   /**
-   * Name lookup for the query helpers. `findEntity` skips dormant entities,
-   * so a deactivated entity reads as absent here — `getEntities()` is where
-   * its `active: false` entry shows up.
+   * Entity lookup shared by the query helpers. A `number` is an `entity.id`;
+   * a string is matched against `entity.name` first and then against
+   * `String(entity.id)`, the spelling `snapshot()`, `snapshotScene()` and the
+   * event log's `targetId` use. A name therefore wins over an id with the
+   * same spelling.
+   *
+   * A name resolves to the first active entity of the active scene, the way
+   * `Scene.findEntity` does, so a deactivated entity reads as absent under
+   * its name. An id resolves any entity `getEntityCount()` counts: anywhere
+   * on the scene stack, dormant and inactive included, destroyed excluded —
+   * the set `getEntities()` and `snapshot()` hand ids out of.
    */
-  private findActiveEntity(name: string): Entity | undefined {
-    return this.engine.scenes.active?.findEntity(name);
+  private resolveEntity(nameOrId: string | number): Entity | undefined {
+    if (typeof nameOrId === "string") {
+      const named = this.engine.scenes.active?.findEntity(nameOrId);
+      if (named) return named;
+    }
+    for (const scene of this.engine.scenes.all) {
+      for (const entity of scene.getEntities()) {
+        if (entity.isDestroyed) continue;
+        const matches =
+          typeof nameOrId === "number"
+            ? entity.id === nameOrId
+            : String(entity.id) === nameOrId;
+        if (matches) return entity;
+      }
+    }
+    return undefined;
   }
 
-  private findComponentByName(
-    entityName: string,
+  private resolveComponent(
+    nameOrId: string | number,
     componentClass: string,
   ): Component | undefined {
-    const entity = this.findActiveEntity(entityName);
+    const entity = this.resolveEntity(nameOrId);
     if (!entity) return undefined;
     for (const comp of entity.getAll()) {
       if (comp.constructor.name === componentClass) return comp;

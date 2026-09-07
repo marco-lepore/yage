@@ -549,6 +549,13 @@ class Cooldown extends Component {
 // The reflected state shows up without save-specific code:
 window.__yage__.inspector.getComponentData("turret", "Cooldown");
 // { isReady: true }
+
+// A name reads the first active match, so pass an entity id when several
+// entities share a name:
+const turrets = window.__yage__.inspector
+  .getEntities()
+  .filter((e) => e.name === "turret");
+window.__yage__.inspector.getComponentData(turrets[1].id, "Cooldown");
 ```
 
 Fields and getters starting with `_` are excluded, along with functions and
@@ -675,7 +682,15 @@ of guessing — pass the id in that case.
 
 Scene ids identify instances for the Inspector's lifetime. A rebuilt scene
 gets a new id even with the same name, so compare selected fields when testing
-repeated runs. Entity name helpers return the first active match.
+repeated runs.
+
+The per-entity query helpers (`getEntity`, `getEntityPosition`,
+`hasComponent`, `getComponentData`) take a name or an entity id. A name
+resolves the first active entity of the active scene. An id resolves one
+entity anywhere on the scene stack, dormant and inactive included, destroyed
+excluded. The id may be a number (`getEntities()[].id`) or a string
+(`snapshot().scenes[].entities[].id`, an event log `targetId`). A string is
+matched as a name first, so a name wins over an id with the same spelling.
 
 All snapshot entity counts and per-scene lists exclude destroyed entities and
 include dormant or inactive ones. Each world-entity snapshot reports `name`,

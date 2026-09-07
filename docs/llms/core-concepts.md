@@ -150,7 +150,7 @@ class Player extends Entity {
 // scene.spawn(Player, { x: 100, y: 200 });
 ```
 
-Entity subclasses have no `use()` / `service()` / `context` of their own — only `this.scene`. From an entity method, resolve an engine-scope service through the scene: `this.scene.context.resolve(key)` (throws if missing) or `this.scene.context.tryResolve(key)` (undefined if missing). Per-scene infrastructure (physics world, render tree) and any service-heavy logic belong in a `Component`, where `this.use(key)` resolves the correct scope automatically.
+Entity subclasses have no `use()` / `service()` / `context` of their own — only `this.scene`. From an entity method, `this.scene.use(key)` resolves any service: it checks scene scope first (physics world, render tree, scene RNG), then engine scope, and throws when the key resolves nowhere. Use `this.scene.context.tryResolve(key)` when `undefined` is the wanted answer for a missing engine-scope key. `Component.use(key)` caches its result and `Scene.use(key)` does not, so a lookup that runs every frame belongs in a component.
 
 ## Traits
 
@@ -251,7 +251,7 @@ Plugin keys: `RendererKey`, `RendererAdapterKey` (cross-package pointer-input co
 
 Some keys (`PhysicsWorldKey`, `SceneRenderTreeKey`, `SceneTimeKey`) are per-scene —
 `this.use(key)` resolves the correct scene's instance automatically. This
-works from both `Component` code and from a `Scene` subclass: `Scene.use(key)`
+works from `Component` code and from anything holding the scene: `Scene.use(key)`
 / `Scene.service(key)` are scope-aware, so `this.use(SceneRenderTreeKey)`
 resolves from `onEnter` onward (scene-scoped values are registered by plugin
 `beforeEnter` hooks, which run before `onEnter`). Don't use the

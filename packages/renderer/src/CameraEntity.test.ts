@@ -126,6 +126,15 @@ describe("CameraEntity", () => {
     expect(cam.zoom).toBe(comp.zoom);
   });
 
+  it("passes autoBind through to CameraComponent, defaulting to true", () => {
+    const { scene } = createRendererTestContext();
+    expect(scene.spawn(CameraEntity).get(CameraComponent).autoBind).toBe(true);
+    expect(
+      scene.spawn(CameraEntity, { autoBind: false }).get(CameraComponent)
+        .autoBind,
+    ).toBe(false);
+  });
+
   it("screenToWorld satisfies CameraLike directly on the entity", () => {
     const { scene } = createRendererTestContext();
     const cam = scene.spawn(CameraEntity);

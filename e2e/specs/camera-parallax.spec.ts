@@ -94,7 +94,13 @@ test.describe("Camera parallax — per-layer translateRatio bindings", () => {
     expect(sky!.x).toBe(400 - 100 * 0.1); // 390
     expect(far!.x).toBe(400 - 100 * 0.3); // 370
     expect(mid!.x).toBe(400 - 100 * 0.6); // 340
+    // "world" carries no binding in the fixture and is auto-bound at 1.
     expect(world!.x).toBe(400 - 100 * 1); // 300
+
+    // The auto-created "default" layer is never declared or named by the
+    // fixture, and still follows the camera at full strength.
+    const auto = await getLayer(page, "default");
+    expect(auto!.x).toBe(400 - 100 * 1);
 
     // Far layers move less than near layers under horizontal motion.
     expect(Math.abs(sky!.x - 400)).toBeLessThan(Math.abs(far!.x - 400));

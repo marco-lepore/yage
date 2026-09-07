@@ -80,7 +80,7 @@ export interface TooltipHandle {
  * Requires the scene to have a `FloatingOverlay` (registered by `UIPlugin`);
  * throws otherwise. Call `dispose()` to release the overlay slot. For custom
  * popovers/menus reach for
- * `scene._resolveScoped(FloatingOverlayKey).acquire()` + `computePosition()`
+ * `scene.use(FloatingOverlayKey).acquire()` + `computePosition()`
  * directly.
  */
 export function attachTooltip(
