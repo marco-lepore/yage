@@ -75,6 +75,6 @@
     "@yagejs/core": ">=0.10.0",
     "@yagejs/input": ">=0.10.0",
     "@yagejs/renderer": ">=0.10.0",
-    "pixi.js": "^8.5.0"
+    "pixi.js": "^8.8.0"
   }
 }

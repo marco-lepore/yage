@@ -51,7 +51,7 @@
     "@yagejs/core": "^0.10.4",
     "@yagejs/renderer": "^0.10.4",
     "@yagejs/ui": "^0.10.4",
-    "pixi.js": "^8.5.0",
+    "pixi.js": "^8.8.0",
     "react-reconciler": "^0.31.0"
   },
   "peerDependencies": {
