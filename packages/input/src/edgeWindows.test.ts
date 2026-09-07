@@ -143,6 +143,30 @@ describe("edge queries from a fixed-phase system", () => {
     engine.destroy();
   });
 
+  it("a DOM key tap inside one frame shows both edges to that frame's step", async () => {
+    const { engine, input, scheduler } = await startEngine();
+    const pressed = new QueryReader(Phase.FixedUpdate, () =>
+      input.isJustPressed("jump"),
+    );
+    const released = new QueryReader(Phase.FixedUpdate, () =>
+      input.isJustReleased("jump"),
+    );
+    scheduler.add(pressed);
+    scheduler.add(released);
+
+    input._enqueueKeyDown("Space");
+    input._enqueueKeyUp("Space");
+    engine.loop.tick(16); // one step: EarlyUpdate drains the pair before it runs
+    // Between frames there is no window: the end-of-frame clear has run.
+    expect(input.isJustPressed("jump")).toBe(false);
+    expect(input.isJustReleased("jump")).toBe(false);
+    engine.loop.tick(16); // the next step is past the window
+
+    expect(pressed.readings).toEqual([true, false]);
+    expect(released.readings).toEqual([true, false]);
+    engine.destroy();
+  });
+
   it("a fixed-phase poller that starts mid-hold sees no phantom crossing", async () => {
     const { engine, input, scheduler } = await startEngine();
     let armed = false;

@@ -413,6 +413,17 @@ belongs in one call, as above, not one call per value.
   left to play on its own stops advancing. Frames issued by `drive`, `step` and
   `until` are direct calls and advance either way. Never wait on wall-clock
   time for progress.
+- **Real DOM key events apply at the next frame's drain, and their edges are
+  gone by the time that frame ends.** `page.keyboard.press` queues a keydown
+  and a keyup; both apply at the next `EarlyUpdate` drain and both edges are
+  true for code running inside that frame, so a press sent as a pair needs no
+  delay between the two. Nothing drains while the clock is frozen and no frame
+  is stepped, and reading `isJustPressed` after the step returns `false` — the
+  end-of-frame clear has already run. Read the edge through a component that
+  recorded it during the frame. `inspector.input.tap` makes a press land
+  inside the frame it steps, without the queue; it is not a way to read the
+  edge back, because it returns after that frame's clear. A blurred or hidden
+  tab discards whatever is still queued.
 - **A `const` or `let` typed straight into the browser console stays declared
   in the page**, so running the same lines twice fails with a redeclaration
   error. Wrap console work in `(async () => { … })()`. Code inside a

@@ -1,5 +1,5 @@
 /**
- * Numeric gates for game-supplied values entering camera state. Each throws a
+ * Numeric gates for game-supplied values entering engine state. Each throws a
  * plain `Error` naming the input and the constraint it violates, before the
  * value is stored — a `NaN` written into position, zoom, or an animation
  * clock never recovers, since every later comparison against it is false.

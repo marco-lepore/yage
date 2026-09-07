@@ -845,6 +845,25 @@ describe("InputManager", () => {
       expect(ups).toEqual(["fire"]);
     });
 
+    it("same-frame DOM keydown+keyup still fires both jump edges", () => {
+      const downs: string[] = [];
+      const ups: string[] = [];
+      input.onAction("jump", (n) => downs.push(n));
+      input.onActionReleased("jump", (n) => ups.push(n));
+
+      input._enqueueKeyDown("Space");
+      input._enqueueKeyUp("Space");
+      expect(input.isJustPressed("jump")).toBe(false);
+
+      input._drainInputQueue();
+
+      expect(input.isJustPressed("jump")).toBe(true);
+      expect(input.isJustReleased("jump")).toBe(true);
+      expect(input.isPressed("jump")).toBe(false);
+      expect(downs).toEqual(["jump"]);
+      expect(ups).toEqual(["jump"]);
+    });
+
     it("exposes the triggering button via info.button before the edge is drained", () => {
       const downButtons: number[] = [];
       const downSawInButtons: boolean[] = [];

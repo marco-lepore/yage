@@ -323,6 +323,22 @@ F0:  user systems read state
 
 Why: any listener that wants to claim the event (`consumePointer`, the renderer's UI hit-test fallback) gets a chance to run before action-map edges fire. Removes the assumption that Pixi must register listeners before YAGE.
 
+A down and an up that reach the queue before the same drain both take effect.
+The drain applies queued events in arrival order and a release never clears
+the press edge before it, so `isJustPressed` and `isJustReleased` are both
+true in one window — the drained frame for frame-phase callers, the next
+fixed step to run for fixed-step callers — while `isPressed` is already
+false. A driver that sends a press as one down+up pair (Playwright's
+`page.keyboard.press`, or `mouse.down()` then `mouse.up()`) needs no delay
+between the two.
+
+The window closes at `Phase.EndOfFrame`, where `InputClearSystem` clears the
+frame's edge sets. Code that runs between frames — a console snippet, a
+`page.evaluate` after the frame completed — is in no window: for input a
+frame already drained, it reads `false` for both edges. Sample the edge from
+inside the frame (a component that records `isJustPressed("jump")` in its
+`update`) and read the record afterwards.
+
 Synthetic injection bypasses the queue and applies state synchronously — tests using `fireKeyDown` / `firePointerDown` / `fireGamepadButton` read updated state immediately. Tests that drive `dispatchEvent` directly need an explicit `manager._drainInputQueue()` (or a frame step) before assertions.
 
 Window blur and page hide release held keyboard, gamepad, and pointer input

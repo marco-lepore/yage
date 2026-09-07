@@ -333,7 +333,15 @@ export interface UIPanelProps
   background?: BackgroundOptions;
 }
 
-/** Props for UIImage. */
+/**
+ * Props for UIImage.
+ *
+ * Size one of `width` / `height` and the other follows the texture's aspect
+ * ratio, even where a flex parent would stretch it. Size both and the texture
+ * stretches to that box. Size neither and the element takes the texture's own
+ * pixel size. `flexGrow`, `flex` and `flexBasis` size the main axis too, so
+ * with one of those set the texture stretches as if both axes were sized.
+ */
 export interface UIImageProps
   extends LayoutProps, ConsumeInputProps, PointerEventProps {
   texture: TextureInput;
