@@ -260,6 +260,37 @@ export class ShowcaseScene extends Scene {
         .fx.addEffect(wave({ amplitude: 5, wavelength: 60, speed: 0.8 })),
     );
 
+    // ---- Layer sets and per-visual escapes ----
+    // `addLayerEffect` covers a named set of layers behind one handle, so a
+    // world-wide grade leaves the sidebar alone. Cost is one filter pass per
+    // listed layer. `renderAboveEffects` goes the other way: it lifts one
+    // visual out of every layer- and scene-scope effect and mask.
+    const setSection = section("Layer sets & escapes");
+    mkToggle(setSection, "colorGrade: night (bg + world)", "nightGrade", () =>
+      tree.addLayerEffect(colorGrade({ preset: "night" }), [
+        "background",
+        "world",
+      ]),
+    );
+    {
+      let gemLifted = false;
+      const liftGem = setSection.button("gem: renderAboveEffects", {
+        height: 22,
+        width: SIDEBAR_WIDTH - 28,
+        background: BTN_OFF,
+        hoverBackground: BTN_OFF_HOVER,
+        pressBackground: BTN_OFF_HOVER,
+        textStyle: TXT_LABEL,
+        onClick: () => {
+          const g = this.gem?.tryGet(GraphicsComponent);
+          if (!g) throw new Error("gem graphics missing");
+          gemLifted = !gemLifted;
+          g.renderAboveEffects = gemLifted;
+          paintButton(liftGem, gemLifted);
+        },
+      });
+    }
+
     // ---- Scene (covers UI too) ----
     // godRay, bulgePinch, shockwave attach here rather than to the world
     // layer:

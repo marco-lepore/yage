@@ -17,7 +17,7 @@ per-frame), call them once and reuse the result.
 - **`RigidBodyComponent.getVelocity()` builds a new `Vec2` each call.** Read it
   once per frame and reuse the value.
 - **Query iteration.** Iterate a `QueryResult` directly (`for (const e of
-  query)`). `query.toArray()` allocates a fresh array snapshot on every call —
+query)`). `query.toArray()` allocates a fresh array snapshot on every call —
   use it when you need a stable list, not in the loop body.
 
 ## Effects cost
@@ -25,8 +25,9 @@ per-frame), call them once and reuse the result.
 Screen-space filters from `@yagejs/effects` run every frame on the GPU. Attach an
 effect at the narrowest scope that covers what you need — a content layer such as
 `tree.get("world").fx`, not the whole scene — so you neither pay for pixels you
-don't want processed nor post-process the HUD. See the effects doc for scope
-options.
+don't want processed nor post-process the HUD. `tree.addLayerEffect(factory, layers)`
+covers several layers with one handle but still runs one filter pass per listed
+layer. See the effects doc for scope options.
 
 ## Debug mode cost
 
@@ -67,7 +68,9 @@ entity's own `onAcquire` each time one is handed out:
 
 ```ts
 class Bullet extends Entity {
-  setup() { /* Transform, GraphicsComponent, RigidBodyComponent, collider */ }
+  setup() {
+    /* Transform, GraphicsComponent, RigidBodyComponent, collider */
+  }
   onAcquire(x: number, y: number, dirX: number, dirY: number) {
     const rb = this.get(RigidBodyComponent);
     rb.setPosition(x, y);
@@ -79,7 +82,7 @@ class Bullet extends Entity {
 this.bullets = new EntityPool(this, Bullet, { prewarm: 32 });
 
 const bullet = this.bullets.acquire(muzzleX, muzzleY, dirX, dirY);
-this.bullets.release(bullet);        // dormant, ready for the next shot
+this.bullets.release(bullet); // dormant, ready for the next shot
 ```
 
 See the core package reference for the full API, and the `pooling` example for

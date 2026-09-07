@@ -78,7 +78,23 @@ Three presets work best at scene scope (or higher) rather than on a single compo
 
 The `examples/src/effects-showcase/main.ts` demo sets up each of these at the recommended scope — copy that as the worked-out reference.
 
-Scene scope and screen scope also post-process the UI. `@yagejs/ui` mounts its screen-space `"ui"` layer inside the scene's render tree, so `tree.fx.addEffect(...)` (scene scope) and a renderer-level effect (screen scope) both filter the HUD along with the world. To keep an effect off the HUD, attach it at the content layer instead — `tree.get("world").fx.addEffect(...)` (layer scope, per the Setup examples) — so only that layer is filtered.
+Scene scope and screen scope also post-process the UI. `@yagejs/ui` mounts its screen-space `"ui"` layer inside the scene's render tree, so `tree.fx.addEffect(...)` (scene scope) and a renderer-level effect (screen scope) both filter the HUD along with the world. Two ways to keep an effect off the HUD:
+
+```ts
+// 1. Name the layers it covers. One handle, one filter pass per listed
+//    layer — three layers cost three fullscreen passes per frame.
+const grade = tree.addLayerEffect(colorGrade({ preset: "night" }), [
+  "background",
+  "world",
+  "props",
+]);
+grade.fadeOut(1); // fans out to all three
+
+// 2. Lift one visual out of every layer- and scene-scope effect.
+this.add(new SpriteComponent({ texture: "cursor", renderAboveEffects: true }));
+```
+
+`renderAboveEffects` draws the visual after the scene's layers while its logical parent still drives position, alpha, visibility, and camera. It escapes layer and scene filters, `layer.setMask`, `tree.setMask`, and the `irisReveal` / `chessboard` transition masks — during those reveals the visual shows at once. A screen-scope effect still covers it. Hit testing follows the logical tree, so a UI element drawn under it still receives the pointer first. Toggle it at runtime with `sprite.renderAboveEffects = false`. On a `SortGroupComponent` the flag applies to the component's own render object; the group's container is not lifted. A layer declared with `isRenderGroup: true` is unsupported for lifted visuals (a Pixi restriction).
 
 ## Unit reference (and a known limitation)
 

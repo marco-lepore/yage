@@ -32,10 +32,17 @@ function createRenderedHost() {
     ensureLayer: (def, options) =>
       layers.tryGet(def.name) ?? layers.createFromDef(def, options),
     fx: root.fx,
+    addLayerEffect: () => {
+      throw new Error("This test tree does not support addLayerEffect.");
+    },
     setMask: () => {
       throw new Error("Masks are not used by this test.");
     },
     clearMask: () => {},
+    renderAboveEffects: () => {
+      throw new Error("This test tree does not support renderAboveEffects.");
+    },
+    renderWithEffects: () => undefined,
   };
   setup.scene._registerScoped(SceneRenderTreeKey, tree);
   setup.entity.add(new Transform({ position: { x: 100, y: 80 } }));

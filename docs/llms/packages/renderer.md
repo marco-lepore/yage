@@ -232,12 +232,15 @@ All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitT
     eventMode?: "static" | "dynamic"; // default "static" when the object is set
     consumeOnInteraction?: boolean;    // claim the press for @yagejs/input's action map
   };
+  renderAboveEffects?: boolean; // draw outside layer/scene effects, default false
 }
 ```
 
 `comp.tint` and `comp.blendMode` read/write the live object. `comp.visible` and
 `comp.alpha` read/write the game's base values; active modifiers affect only
 the computed render values. `interactive` is set once at construction.
+`comp.renderAboveEffects` toggles at runtime — see [Effects](#effects) for what
+it escapes.
 
 Every visual component also exposes `comp.modifiers: VisualModifierHost`:
 
@@ -1151,6 +1154,16 @@ this.use(RendererKey).fx.addEffect(vignette({ alpha: 0.4 }));
 
 // Recover a handle by its named definition.
 const existing = sprite.fx.findEffect(hitFlash); // EffectHandle | null
+
+// A set of layers behind one handle — the world layers but not the HUD.
+const grade = this.use(SceneRenderTreeKey).addLayerEffect(
+  colorGrade({ preset: "night" }),
+  ["background", "world", "props"],
+);
+grade.fadeOut(1); // fans out to all three
+
+// One visual, out of every layer- and scene-scope effect and mask.
+this.add(new SpriteComponent({ texture: "cursor", renderAboveEffects: true }));
 ```
 
 | Export                     | Signature                                                                            | Description                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -1162,10 +1175,14 @@ const existing = sprite.fx.findEffect(hitFlash); // EffectHandle | null
 | `defineEffect`             | `<H, O>({ name, factory: (opts: O) => Effect<H> }) => (opts: O) => EffectFactory<H>` | Define a reusable named preset with typed options.                                                                                                                                                                                                                                                                                                                                               |
 | `rawFilter`                | `(filter: Filter, opts?: { intensity?: { get, set } }) => EffectFactory`             | Escape hatch for any pixi `Filter`. Without `intensity`, fade calls no-op + warn once.                                                                                                                                                                                                                                                                                                           |
 | `EffectStack`              | class                                                                                | Internal stack owned by `EffectsHost`.                                                                                                                                                                                                                                                                                                                                                           |
+| `tree.addLayerEffect`      | `<H>(factory: EffectFactory<H>, layers: readonly string[]) => H`                     | One effect over several layers, controlled through one handle. The factory runs once per layer, so this is one filter pass per listed layer — for a single layer use `tree.get(name).fx.addEffect`. Handle methods fan out; values (`enabled`, an extra's return value) come from the first listed layer. Throws on an empty list or an unknown layer name, before attaching anything. |
+| `tree.renderAboveEffects`  | `(node: DisplayContainer) => void`                                                   | Draw `node` after the scene's layers, outside every layer- and scene-scope effect and mask, keeping its logical parent. `tree.renderWithEffects(node)` undoes it. Visual components expose the same thing as the `renderAboveEffects` option; use these for a display object the game parents in itself. |
 
 **Filter ordering:** pixi processes filters bottom-up the display tree — component → layer → scene → screen. Each outer scope sees the previous scope's rasterized output, so screen-scope `pixelate` will pixelate already-bloomed gameplay.
 
 **Layer-scope coordinate space:** layer / scene / screen filters operate on screen-space pixels post-camera-transform. A bloom radius is in screen pixels, not world units.
+
+**Lifted visuals:** `renderAboveEffects` puts a visual outside layer and scene filters, `layer.setMask`, `tree.setMask`, and the `irisReveal` / `chessboard` transition masks (it shows at once during those reveals). A screen-scope effect still covers it, and hit testing follows the logical tree, so a UI element drawn under it still receives the pointer first. Draw order among lifted visuals is attach order. On a `SortGroupComponent` the flag applies to the component's own render object, not the group container. A layer declared with `isRenderGroup: true` is unsupported for lifted visuals (a Pixi restriction).
 
 **Lifecycle:**
 
