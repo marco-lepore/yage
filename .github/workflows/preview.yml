@@ -39,10 +39,9 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
       - uses: ./.github/actions/setup
 
-      # Builds every package, then assembles dist/site: the docs at the root
-      # with a copy of the examples under /examples/. The examples are built
-      # once here, with the default asset base, and both deploys use that
-      # output — the same thing production does.
+      # Builds every package, then assembles dist/site (the docs site). Both
+      # Pages projects take their output from this one build, with the same
+      # commands and directories their production builds use.
       - name: Build the site
         run: npm run build:site
 
