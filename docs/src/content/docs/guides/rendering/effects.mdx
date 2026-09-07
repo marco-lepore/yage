@@ -444,12 +444,15 @@ import { Container, Graphics } from "pixi.js";
 import { RendererKey, registerTexture, unregisterTexture } from "@yagejs/renderer";
 import type { RenderTargetHandle } from "@yagejs/renderer";
 
-const LIGHTING = "lighting";
-
 class LightBuffer extends Component {
   private readonly source = new Container();
   private readonly lamp = new Graphics().circle(0, 0, 120).fill(0xffffff);
   private target!: RenderTargetHandle;
+
+  /** Registered keys are engine-global, so give each buffer its own. */
+  constructor(private readonly key: string) {
+    super();
+  }
 
   onAdd(): void {
     const darkness = new Graphics()
@@ -464,7 +467,7 @@ class LightBuffer extends Component {
       height: 720,
       resolutionScale: 0.5, // a quarter of the texels — invisible on a soft gradient
     });
-    registerTexture(LIGHTING, this.target.texture);
+    registerTexture(this.key, this.target.texture);
   }
 
   /** Move the lit spot. Coordinates are buffer pixels, not world pixels. */
@@ -478,7 +481,7 @@ class LightBuffer extends Component {
   }
 
   onDestroy(): void {
-    unregisterTexture(LIGHTING);
+    unregisterTexture(this.key);
     this.target.destroy();
     this.source.destroy({ children: true });
   }
@@ -499,9 +502,11 @@ resolves:
 import { Transform } from "@yagejs/core";
 import { SpriteComponent } from "@yagejs/renderer";
 
+const LIGHTING = "arena:lighting";
+
 const lights = this.spawn("lights");
 lights.add(new Transform());
-lights.add(new LightBuffer());
+lights.add(new LightBuffer(LIGHTING));
 lights.add(new SpriteComponent({ texture: LIGHTING, layer: "overlay" }));
 ```
 
@@ -513,6 +518,14 @@ destroyed texture). A component's `onDestroy` runs when its entity is
 destroyed or when the scene tears down, so it covers both exits. Own
 the buffer on a scene's `onEnter` / `onExit` pair instead when its lifetime is
 exactly the scene's.
+
+:::caution[Give each buffer its own key]
+Registrations are engine-global, and a `replace` transition keeps both scenes
+alive at once. If two scenes register the same `"lighting"` key, the outgoing
+scene's `unregisterTexture` removes the incoming scene's entry, and every later
+lookup of that key throws. Derive the key from the owner, as `"arena:lighting"`
+does here.
+:::
 
 ### Where things land inside the buffer
 

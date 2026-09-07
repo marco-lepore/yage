@@ -85,21 +85,38 @@ A fill also takes a texture, and the texture tiles across the shape. A small
 baked strip covers a shape of any size with a repeating pattern — you do not
 need one texture per band, and you do not need a tiling sprite:
 
+`createTexture` hands back a GPU texture the caller owns, so bake it inside a
+component that destroys it again:
+
 ```typescript
+import { Component } from "@yagejs/core";
 import { GraphicsComponent, RendererKey } from "@yagejs/renderer";
+import type { TextureResource } from "@yagejs/renderer";
 
-// In a Scene: bake the tile once, then fill a much larger shape with it.
-const renderer = this.context.resolve(RendererKey);
-const band = renderer.createTexture((g) => {
-  g.rect(0, 0, 64, 16).fill(0x1b3a5c);
-  g.rect(0, 16, 64, 16).fill(0x24507d);
-});
+class SkyBand extends Component {
+  private band!: TextureResource;
 
-entity.add(
-  new GraphicsComponent({ layer: "sky" }).draw((g) => {
-    g.rect(0, 0, 1200, 400).fill({ texture: band, textureSpace: "global" });
-  }),
-);
+  onAdd(): void {
+    // Bake the tile once, then fill a much larger shape with it.
+    this.band = this.use(RendererKey).createTexture((g) => {
+      g.rect(0, 0, 64, 16).fill(0x1b3a5c);
+      g.rect(0, 16, 64, 16).fill(0x24507d);
+    });
+
+    this.entity.add(
+      new GraphicsComponent({ layer: "sky" }).draw((g) => {
+        g.rect(0, 0, 1200, 400).fill({
+          texture: this.band,
+          textureSpace: "global",
+        });
+      }),
+    );
+  }
+
+  onDestroy(): void {
+    this.band.destroy(); // nothing draws it after the owner goes
+  }
+}
 ```
 
 `textureSpace: "global"` measures the texture in the shape's own coordinates,

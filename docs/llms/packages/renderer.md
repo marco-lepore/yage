@@ -647,20 +647,35 @@ tiles across the shape — a 64x32 strip fills a 1200-pixel band with a repeatin
 pattern, not one stretched copy.
 
 ```ts
+import { Component } from "@yagejs/core";
 import { GraphicsComponent, RendererKey } from "@yagejs/renderer";
+import type { TextureResource } from "@yagejs/renderer";
 
-// In a Scene: bake the tile once, then fill a much larger shape with it.
-const renderer = this.context.resolve(RendererKey);
-const band = renderer.createTexture((g) => {
-  g.rect(0, 0, 64, 16).fill(0x1b3a5c);
-  g.rect(0, 16, 64, 16).fill(0x24507d);
-});
+// createTexture returns a caller-owned GPU texture, so a component bakes it
+// and destroys it again.
+class SkyBand extends Component {
+  private band!: TextureResource;
 
-entity.add(
-  new GraphicsComponent({ layer: "sky" }).draw((g) => {
-    g.rect(0, 0, 1200, 400).fill({ texture: band, textureSpace: "global" });
-  }),
-);
+  onAdd(): void {
+    this.band = this.use(RendererKey).createTexture((g) => {
+      g.rect(0, 0, 64, 16).fill(0x1b3a5c);
+      g.rect(0, 16, 64, 16).fill(0x24507d);
+    });
+
+    this.entity.add(
+      new GraphicsComponent({ layer: "sky" }).draw((g) => {
+        g.rect(0, 0, 1200, 400).fill({
+          texture: this.band,
+          textureSpace: "global",
+        });
+      }),
+    );
+  }
+
+  onDestroy(): void {
+    this.band.destroy();
+  }
+}
 ```
 
 - `textureSpace: "global"` measures the texture in the shape's own
@@ -1174,14 +1189,17 @@ import {
 } from "@yagejs/renderer";
 import type { RenderTargetHandle } from "@yagejs/renderer";
 
-const LIGHTING = "lighting";
-
 // One component owns all three resources — the source container, the buffer
 // and the registered key — and frees them in onDestroy.
 class LightBuffer extends Component {
   private readonly source = new Container();
   private readonly hole = new Graphics().circle(0, 0, 120).fill(0xffffff);
   private target!: RenderTargetHandle;
+
+  /** Registered keys are engine-global, so give each buffer its own. */
+  constructor(private readonly key: string) {
+    super();
+  }
 
   onAdd(): void {
     const darkness = new Graphics()
@@ -1195,7 +1213,7 @@ class LightBuffer extends Component {
       height: 720,
       resolutionScale: 0.5, // quarter the texels; invisible on soft gradients
     });
-    registerTexture(LIGHTING, this.target.texture);
+    registerTexture(this.key, this.target.texture);
   }
 
   /** Move the lit spot. Coordinates are buffer pixels, not world pixels. */
@@ -1209,22 +1227,29 @@ class LightBuffer extends Component {
   }
 
   onDestroy(): void {
-    unregisterTexture(LIGHTING); // the key outlives the texture
+    unregisterTexture(this.key); // the key outlives the texture
     this.target.destroy(); // frees the buffer's GPU memory
     this.source.destroy({ children: true }); // frees the offscreen content
   }
 }
 
 // In a Scene. The owner is added first, so the key resolves for the sprite.
+const LIGHTING = "arena:lighting";
+
 const lights = this.spawn("lights");
 lights.add(new Transform());
-lights.add(new LightBuffer());
+lights.add(new LightBuffer(LIGHTING));
 lights.add(new SpriteComponent({ texture: LIGHTING, layer: "overlay" }));
 ```
 
 Destroying that entity runs `onDestroy` and releases all three; so does
 exiting the scene, which destroys its entities. Own the buffer on a scene's
 `onEnter` / `onExit` pair instead when its lifetime is exactly the scene's.
+
+Give each buffer its own key rather than a shared constant. Registrations are
+engine-global, and a `replace` transition keeps both scenes alive at once, so
+two scenes registering `"lighting"` leave one `unregisterTexture` call to
+remove the other scene's entry. Every later lookup of that key then throws.
 
 | Member                                   | Signature                                                                        | Description                                                                                                                                                                                                                                                                                              |
 | ---------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
