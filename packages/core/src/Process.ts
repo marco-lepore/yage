@@ -3,7 +3,6 @@ import {
   durationReached,
   loopRemainder,
 } from "./internal/duration.js";
-import type { EasingFunction } from "./types.js";
 import type { ErrorBoundary, CallbackErrorInfo } from "./ErrorBoundary.js";
 
 /**
@@ -93,7 +92,11 @@ export class Process {
   private resolvePromise?: () => void;
 
   /** Create a timer that fires `onComplete` after `duration` seconds, finite and > 0. */
-  static delay(duration: number, onComplete?: () => void, tags?: string[]): Process {
+  static delay(
+    duration: number,
+    onComplete?: () => void,
+    tags?: string[],
+  ): Process {
     const opts: ProcessOptions = { duration };
     if (onComplete !== undefined) opts.onComplete = onComplete;
     if (tags !== undefined) opts.tags = tags;
@@ -240,34 +243,3 @@ export class Process {
     }
   }
 }
-
-// ---- Built-in easing functions ----
-
-/** Linear easing (no easing). */
-export const easeLinear: EasingFunction = (t) => t;
-
-/** Ease in quadratic. */
-export const easeInQuad: EasingFunction = (t) => t * t;
-
-/** Ease out quadratic. */
-export const easeOutQuad: EasingFunction = (t) => t * (2 - t);
-
-/** Ease in-out quadratic. */
-export const easeInOutQuad: EasingFunction = (t) =>
-  t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-
-/** Ease out bounce. */
-export const easeOutBounce: EasingFunction = (t) => {
-  if (t < 1 / 2.75) {
-    return 7.5625 * t * t;
-  } else if (t < 2 / 2.75) {
-    const t2 = t - 1.5 / 2.75;
-    return 7.5625 * t2 * t2 + 0.75;
-  } else if (t < 2.5 / 2.75) {
-    const t2 = t - 2.25 / 2.75;
-    return 7.5625 * t2 * t2 + 0.9375;
-  } else {
-    const t2 = t - 2.625 / 2.75;
-    return 7.5625 * t2 * t2 + 0.984375;
-  }
-};

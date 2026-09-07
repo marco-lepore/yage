@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createKeyframeTrack } from "./KeyframeTrack.js";
-import { easeInQuad } from "./Process.js";
+import { easeInQuad } from "./easing.js";
 
 describe("createKeyframeTrack", () => {
   it("interpolates between 2 keyframes", () => {
@@ -10,7 +10,9 @@ describe("createKeyframeTrack", () => {
         { time: 0, data: 0 },
         { time: 100, data: 10 },
       ],
-      setter: (v) => { value = v; },
+      setter: (v) => {
+        value = v;
+      },
     });
     proc._update(50);
     expect(value).toBeCloseTo(5);
@@ -24,7 +26,9 @@ describe("createKeyframeTrack", () => {
         { time: 0, data: 0 },
         { time: 100, data: 10 },
       ],
-      setter: (v) => { value = v; },
+      setter: (v) => {
+        value = v;
+      },
       onComplete,
     });
     proc._update(100);
@@ -41,7 +45,9 @@ describe("createKeyframeTrack", () => {
         { time: 100, data: 10 },
         { time: 200, data: 30 },
       ],
-      setter: (v) => { value = v; },
+      setter: (v) => {
+        value = v;
+      },
     });
     // At t=150, we're in segment [100→200], halfway: 10 + (30-10)*0.5 = 20
     proc._update(150);
@@ -55,7 +61,9 @@ describe("createKeyframeTrack", () => {
         { time: 0, data: 0, easing: easeInQuad },
         { time: 100, data: 100 },
       ],
-      setter: (v) => { value = v; },
+      setter: (v) => {
+        value = v;
+      },
     });
     // At t=50, segT=0.5, easeInQuad(0.5)=0.25 → value=25
     proc._update(50);
@@ -69,7 +77,9 @@ describe("createKeyframeTrack", () => {
         { time: 0, data: 0 },
         { time: 100, data: 100 },
       ],
-      setter: (v) => { value = v; },
+      setter: (v) => {
+        value = v;
+      },
       easing: easeInQuad,
     });
     proc._update(50);
@@ -84,7 +94,9 @@ describe("createKeyframeTrack", () => {
         { time: 0, data: 0, easing: (t) => t },
         { time: 100, data: 100 },
       ],
-      setter: (v) => { value = v; },
+      setter: (v) => {
+        value = v;
+      },
       easing: easeInQuad,
     });
     proc._update(50);
@@ -135,7 +147,9 @@ describe("createKeyframeTrack", () => {
         { time: 0, data: 0 },
         { time: 100, data: 10 },
       ],
-      setter: (v) => { value = v; },
+      setter: (v) => {
+        value = v;
+      },
       loop: true,
     });
     proc._update(150); // wraps to 50 (setter skipped on wrap frame)
@@ -151,7 +165,9 @@ describe("createKeyframeTrack", () => {
         { time: 0, data: 0 },
         { time: 100, data: 10 },
       ],
-      setter: (v) => { value = v; },
+      setter: (v) => {
+        value = v;
+      },
       speed: 2,
     });
     // dt=25, but speed=2 → internal elapsed = 50
@@ -166,7 +182,9 @@ describe("createKeyframeTrack", () => {
         { time: 0, data: 0 },
         { time: 50, data: 10 },
       ],
-      setter: (v) => { value = v; },
+      setter: (v) => {
+        value = v;
+      },
       duration: 100,
     });
     // At t=50, reaches last keyframe value=10
@@ -280,7 +298,9 @@ describe("createKeyframeTrack", () => {
         ],
         duration: 1,
       }),
-    ).toThrow("keyframes must be sorted by time, but keyframe 2 is at 0.3 after 0.8");
+    ).toThrow(
+      "keyframes must be sorted by time, but keyframe 2 is at 0.3 after 0.8",
+    );
   });
 
   it("accepts two keyframes at the same time", () => {
@@ -307,7 +327,9 @@ describe("createKeyframeTrack", () => {
         { time: 0.2, data: 0 },
         { time: 0.4, data: 100 },
       ],
-      setter: (v) => { values.push(v); },
+      setter: (v) => {
+        values.push(v);
+      },
     });
     for (let i = 0; i < 6; i++) proc._update(1 / 60);
     // Every tick inside the lead-in sits at the first keyframe, never below it.

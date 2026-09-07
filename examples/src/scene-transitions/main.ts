@@ -5,6 +5,7 @@ import {
   Scene,
   Transform,
   Vec2,
+  easeOutCubic,
   type AssetLoader,
   type SceneTransition,
   type SceneTransitionContext,
@@ -28,9 +29,11 @@ import {
   UISurface,
   UIPlugin,
 } from "@yagejs/ui";
-import { setupGameContainer, installDebugFromUrl } from "../shared/bootstrap.js";
+import {
+  setupGameContainer,
+  installDebugFromUrl,
+} from "../shared/bootstrap.js";
 import "./styles.css";
-
 
 const WIDTH = 640;
 const HEIGHT = 360;
@@ -50,7 +53,7 @@ function slideIn(duration: number): SceneTransition {
     tick(_dt, ctx) {
       if (!toRoot) return;
       const t = Math.min(ctx.elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - t, 3);
+      const eased = easeOutCubic(t);
       toRoot.x = WIDTH * (1 - eased);
     },
     end() {
@@ -210,8 +213,12 @@ main().catch(console.error);
 // runs a scene operation before the engine has started.
 function wireControls(): void {
   // ----- UI wiring -----------------------------------------------------------
-  const durationSlider = document.getElementById("duration") as HTMLInputElement;
-  const durationLabel = document.getElementById("duration-label") as HTMLElement;
+  const durationSlider = document.getElementById(
+    "duration",
+  ) as HTMLInputElement;
+  const durationLabel = document.getElementById(
+    "duration-label",
+  ) as HTMLElement;
   const statusEl = document.getElementById("status") as HTMLElement;
 
   // The slider is labeled in milliseconds (human-friendly); the engine works in
@@ -294,7 +301,9 @@ function wireControls(): void {
   });
 
   bind("btn-pop", () => {
-    void engine.scenes.pop({ transition: fade({ duration: currentDuration() }) });
+    void engine.scenes.pop({
+      transition: fade({ duration: currentDuration() }),
+    });
   });
 
   bind("btn-replace", () => {

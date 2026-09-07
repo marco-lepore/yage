@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { interpolate } from "./interpolate.js";
 import { Vec2 } from "./Vec2.js";
-import { easeInQuad } from "./Process.js";
+import { easeInQuad } from "./easing.js";
 
 describe("interpolate", () => {
   describe("number", () => {

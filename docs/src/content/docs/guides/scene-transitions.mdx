@@ -94,13 +94,14 @@ visible outside the circle until the iris covers it. Reach for
 want the retro hard-cut feel.
 
 ```typescript
+import { easeOutCubic } from "@yagejs/core";
 import { irisReveal } from "@yagejs/renderer";
 
 irisReveal() // 0.6s reveal from the center
 irisReveal({
   duration: 0.8,
   center: { x: 0, y: 0 },           // bloom from the top-left (virtual px)
-  easing: (t) => 1 - Math.pow(1 - t, 3),
+  easing: easeOutCubic,
 })
 ```
 
@@ -124,9 +125,10 @@ outgoing one off the opposite edge. `direction` is the outgoing scene's
 exit direction (`"left" | "right" | "up" | "down"`, default `"left"`).
 On `pop` the direction is mirrored automatically so back motion reverses
 forward motion — opt out with `reverseOnPop: false`. Defaults to 0.5s,
-cubic ease-out.
+`easeOutCubic`.
 
 ```typescript
+import { easeInQuad } from "@yagejs/core";
 import { slidePush } from "@yagejs/renderer";
 
 slidePush() // 0.5s left push
@@ -134,7 +136,7 @@ slidePush({ direction: "up", duration: 0.4 })
 slidePush({
   direction: "right",
   reverseOnPop: false, // pop also slides right
-  easing: (t) => t * t,
+  easing: easeInQuad,
 })
 ```
 

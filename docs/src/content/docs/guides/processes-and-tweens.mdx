@@ -280,13 +280,39 @@ pc.run(
 
 ### Built-In Easings
 
-| Function | Curve |
-|---|---|
-| `easeLinear` | Constant speed |
-| `easeInQuad` | Accelerate |
-| `easeOutQuad` | Decelerate |
-| `easeInOutQuad` | Accelerate then decelerate |
-| `easeOutBounce` | Bounce at the end |
+An easing takes `t` in `[0,1]` and returns `0` at `t = 0` and `1` at `t = 1`.
+`easeLinear` holds a constant speed; the ten families below each come in an
+ease-in form (slow start), an ease-out form (slow finish) and an ease-in-out
+form (slow at both ends).
+
+| Family | Ease in | Ease out | Ease in-out |
+| --- | --- | --- | --- |
+| sine | `easeInSine` | `easeOutSine` | `easeInOutSine` |
+| quad | `easeInQuad` | `easeOutQuad` | `easeInOutQuad` |
+| cubic | `easeInCubic` | `easeOutCubic` | `easeInOutCubic` |
+| quart | `easeInQuart` | `easeOutQuart` | `easeInOutQuart` |
+| quint | `easeInQuint` | `easeOutQuint` | `easeInOutQuint` |
+| expo | `easeInExpo` | `easeOutExpo` | `easeInOutExpo` |
+| circ | `easeInCirc` | `easeOutCirc` | `easeInOutCirc` |
+| back | `easeInBack` | `easeOutBack` | `easeInOutBack` |
+| elastic | `easeInElastic` | `easeOutElastic` | `easeInOutElastic` |
+| bounce | `easeInBounce` | `easeOutBounce` | `easeInOutBounce` |
+
+The `back` and `elastic` families leave `[0,1]` between the endpoints, which is
+the point of them — back reaches about 0.1 past an endpoint, `easeInElastic`
+and `easeOutElastic` about 0.37, `easeInOutElastic` about 0.12. That overshoot
+carries the interpolated value with it, so pair them with a target that
+tolerates the excursion. A scale pop is the classic fit:
+
+```typescript
+import { Tween, easeOutBack } from "@yagejs/core";
+
+pc.run(Tween.custom((v) => t.setScale(v, v), 0, 1, 0.35, easeOutBack));
+```
+
+A camera zoom is not: `camera.zoomTo(0.1, 1, easeOutElastic)` drives `zoom`
+briefly negative and flips the view for those frames. The `bounce` family stays
+inside `[0,1]` but rises, falls back and rises again.
 
 Import any easing from `@yagejs/core`.
 

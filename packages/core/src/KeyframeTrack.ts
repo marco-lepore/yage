@@ -1,4 +1,5 @@
-import { Process, easeLinear } from "./Process.js";
+import { Process } from "./Process.js";
+import { easeLinear } from "./easing.js";
 import {
   assertDuration,
   durationReached,
