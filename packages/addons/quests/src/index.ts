@@ -30,7 +30,10 @@ export {
 } from "./core/index.js";
 
 // --- YAGE integration (L2a, optional) ---
-export { QuestController, type QuestControllerOptions } from "./QuestController.js";
+export {
+  QuestController,
+  type QuestControllerOptions,
+} from "./QuestController.js";
 export {
   QuestChangedEvent,
   QuestCompletedEvent,

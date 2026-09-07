@@ -6,7 +6,11 @@
  */
 import { Transform, Vec2 } from "@yagejs/core";
 import { RigidBodyComponent } from "@yagejs/physics";
-import type { PhysicsWorld, QuerySensorMode, RaycastHit } from "@yagejs/physics";
+import type {
+  PhysicsWorld,
+  QuerySensorMode,
+  RaycastHit,
+} from "@yagejs/physics";
 import { SteeringAgent } from "./SteeringAgent.js";
 import type { SteeringAgentOptions } from "./SteeringAgent.js";
 import { resolve } from "./core/math.js";
@@ -21,7 +25,10 @@ import type {
 /** A world to query, or a provider resolved in each `compute` call from the agent. */
 export type WorldSource = PhysicsWorld | ((agent: AgentState) => PhysicsWorld);
 
-export type PhysicsSteeringAgentOptions = Omit<SteeringAgentOptions, "body" | "apply">;
+export type PhysicsSteeringAgentOptions = Omit<
+  SteeringAgentOptions,
+  "body" | "apply"
+>;
 
 /**
  * `SteeringAgent` that drives the entity's own `RigidBodyComponent` — mount
@@ -108,7 +115,9 @@ export function avoidColliders(
       if (heading.lengthSq() === 0) return Vec2.ZERO;
 
       const physicsWorld = resolve(world, agent);
-      const rayOptions = agent.entity ? { excludeEntity: agent.entity } : undefined;
+      const rayOptions = agent.entity
+        ? { excludeEntity: agent.entity }
+        : undefined;
       const rays = [{ direction: heading, length: lookAhead }];
       if (whiskerLength > 0 && whiskerAngle > 0) {
         rays.push(
@@ -119,7 +128,12 @@ export function avoidColliders(
 
       let closest: RaycastHit | null = null;
       for (const ray of rays) {
-        const hit = physicsWorld.raycast(agent.position, ray.direction, ray.length, rayOptions);
+        const hit = physicsWorld.raycast(
+          agent.position,
+          ray.direction,
+          ray.length,
+          rayOptions,
+        );
         if (hit && (!closest || hit.distance < closest.distance)) closest = hit;
       }
       if (!closest) return Vec2.ZERO;
@@ -167,7 +181,9 @@ export function physicsNeighbors(
     const physicsWorld = resolve(world, agent);
     const queryOptions = {
       ...(agent.entity ? { excludeEntity: agent.entity } : {}),
-      ...(opts.filterGroups !== undefined ? { filterGroups: opts.filterGroups } : {}),
+      ...(opts.filterGroups !== undefined
+        ? { filterGroups: opts.filterGroups }
+        : {}),
       ...(opts.sensors !== undefined ? { sensors: opts.sensors } : {}),
     };
     return physicsWorld.queryRadius(agent.position, radius, queryOptions).map(

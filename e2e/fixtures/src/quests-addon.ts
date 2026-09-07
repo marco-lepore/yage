@@ -53,13 +53,17 @@ class QuestsScene extends Scene {
     // The binding under test: a game-authored one-liner, no active-state
     // guard, no addon dependency (inventory's model event -> the quest log).
     inventory.on("itemAdded", (e) => {
-      if (e.itemId === "redHerb") log.advance("gatherHerbs", "herb", e.quantity);
+      if (e.itemId === "redHerb")
+        log.advance("gatherHerbs", "herb", e.quantity);
     });
     log.on("questCompleted", ({ questId }) => {
       if (questId === "gatherHerbs") log.start("thinThePack");
     });
 
-    (window as unknown as { __quests__: unknown }).__quests__ = { log, inventory };
+    (window as unknown as { __quests__: unknown }).__quests__ = {
+      log,
+      inventory,
+    };
   }
 }
 

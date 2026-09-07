@@ -129,8 +129,7 @@ class YageShockwaveFilter extends ShockwaveFilter {
       // frame so visual ring size/speed track the user's intent at any fit
       // ratio. setIntensity is folded in here too — keeps "amplitude" and
       // "brightness" scaling on a single per-frame writeback.
-      this.amplitude =
-        this.baseAmplitudeLocal * this.intensity * sizeScale;
+      this.amplitude = this.baseAmplitudeLocal * this.intensity * sizeScale;
       this.brightness = this.baseBrightness * this.intensity;
       this.wavelength = this.baseWavelengthLocal * sizeScale;
       this.speed = this.baseSpeedLocal * scaleX;

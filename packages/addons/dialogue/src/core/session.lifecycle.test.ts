@@ -111,13 +111,21 @@ interface Harness {
   avatar: StubAvatar;
 }
 
-function makeHarness(opts?: ConstructorParameters<typeof DialogueSession>[1]): Harness {
+function makeHarness(
+  opts?: ConstructorParameters<typeof DialogueSession>[1],
+): Harness {
   const text = new StubText();
   const choices = new StubChoices();
   const chrome = new StubChrome();
   const avatar = new StubAvatar();
   const channels: DialogueChannels = { text, choices, avatar, chrome };
-  return { session: new DialogueSession(channels, opts), text, choices, chrome, avatar };
+  return {
+    session: new DialogueSession(channels, opts),
+    text,
+    choices,
+    chrome,
+    avatar,
+  };
 }
 
 async function flush(): Promise<void> {
@@ -130,7 +138,9 @@ async function flush(): Promise<void> {
 function gatedCommand(type: string) {
   let open!: () => void;
   const gate = new Promise<void>((r) => (open = r));
-  const onCommand = vi.fn((cmd: Command) => (cmd.type === type ? gate : undefined));
+  const onCommand = vi.fn((cmd: Command) =>
+    cmd.type === type ? gate : undefined,
+  );
   return { onCommand, open, gate };
 }
 
@@ -256,7 +266,9 @@ describe("DialogueSession — setPaused (world pause)", () => {
       declare: { gold: 0 },
       nodes: { a: { id: "a", steps: [{ kind: "say", text: "x" }] } },
     };
-    const handle = h.session.play(script, { storage: new MemoryVariableStorage() });
+    const handle = h.session.play(script, {
+      storage: new MemoryVariableStorage(),
+    });
     h.session.setPaused(true);
     handle.setVar("gold", 42);
     expect(handle.getVars().gold).toBe(42); // writes through despite the pause
@@ -337,13 +349,21 @@ describe("DialogueSession — observation events (audio/FX hooks)", () => {
       id: "rc",
       start: "a",
       speakers: { npc: { name: "Bee" } },
-      nodes: { a: { id: "a", steps: [{ kind: "say", speaker: "npc", text: "[b]hi[/b] there" }] } },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [{ kind: "say", speaker: "npc", text: "[b]hi[/b] there" }],
+        },
+      },
     };
     h.session.play(script);
     expect(onRevealCompleted).not.toHaveBeenCalled(); // still revealing
     h.text.finishReveal();
     await flush();
-    expect(onRevealCompleted).toHaveBeenCalledWith({ speaker: "Bee", text: "hi there" });
+    expect(onRevealCompleted).toHaveBeenCalledWith({
+      speaker: "Bee",
+      text: "hi there",
+    });
   });
 
   it("fires onSelectionChanged for keyboard nav AND pointer hover", () => {
@@ -358,11 +378,7 @@ describe("DialogueSession — observation events (audio/FX hooks)", () => {
           steps: [
             {
               kind: "choice",
-              options: [
-                { text: "left" },
-                { text: "right" },
-                { text: "down" },
-              ],
+              options: [{ text: "left" }, { text: "right" }, { text: "down" }],
             },
           ],
         },
@@ -370,9 +386,15 @@ describe("DialogueSession — observation events (audio/FX hooks)", () => {
     };
     h.session.play(script);
     h.session.moveSelection(1); // keyboard → option 1
-    expect(onSelectionChanged).toHaveBeenLastCalledWith({ index: 1, text: "right" });
+    expect(onSelectionChanged).toHaveBeenLastCalledWith({
+      index: 1,
+      text: "right",
+    });
     h.session.selectAt(2); // pointer hover → option 2
-    expect(onSelectionChanged).toHaveBeenLastCalledWith({ index: 2, text: "down" });
+    expect(onSelectionChanged).toHaveBeenLastCalledWith({
+      index: 2,
+      text: "down",
+    });
   });
 
   it("does not fire onSelectionChanged when the cursor cannot actually move", () => {
@@ -381,7 +403,9 @@ describe("DialogueSession — observation events (audio/FX hooks)", () => {
     const script: DialogueScript = {
       id: "one-opt",
       start: "a",
-      nodes: { a: { id: "a", steps: [{ kind: "choice", options: [{ text: "ok" }] }] } },
+      nodes: {
+        a: { id: "a", steps: [{ kind: "choice", options: [{ text: "ok" }] }] },
+      },
     };
     h.session.play(script);
     h.session.moveSelection(1); // wraps 0 → 0 on a 1-option list: no real move

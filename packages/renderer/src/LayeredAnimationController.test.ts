@@ -418,9 +418,9 @@ describe("LayeredAnimationController", () => {
   });
 
   it("throws when constructed with no controllers", () => {
-    expect(
-      () => new LayeredAnimationController({ controllers: [] }),
-    ).toThrow(/at least one controller/);
+    expect(() => new LayeredAnimationController({ controllers: [] })).toThrow(
+      /at least one controller/,
+    );
   });
 
   it("throws naming the layer when one layer lacks the animation, leaving every layer untouched", () => {

@@ -25,14 +25,16 @@ function rms(samples: Float32Array): number {
 function crossings(samples: Float32Array, from: number, to: number): number {
   let count = 0;
   for (let i = from + 1; i < to; i++) {
-    if ((samples[i - 1] ?? 0) < 0 !== ((samples[i] ?? 0) < 0)) count++;
+    if ((samples[i - 1] ?? 0) < 0 !== (samples[i] ?? 0) < 0) count++;
   }
   return count;
 }
 
 describe("renderSynthPatch", () => {
   it("renders duration * sampleRate samples", () => {
-    expect(renderSynthPatch({ duration: 0.25 }, RATE)).toHaveLength(0.25 * RATE);
+    expect(renderSynthPatch({ duration: 0.25 }, RATE)).toHaveLength(
+      0.25 * RATE,
+    );
     expect(renderSynthPatch({ duration: 0.1 }, 8000)).toHaveLength(800);
   });
 
@@ -49,20 +51,22 @@ describe("renderSynthPatch", () => {
       RATE,
     );
     const attackStart = peak(samples.slice(0, 0.02 * RATE));
-    const attackEnd = peak(
-      samples.slice(0.08 * RATE, Math.round(0.1 * RATE)),
-    );
+    const attackEnd = peak(samples.slice(0.08 * RATE, Math.round(0.1 * RATE)));
     expect(attackStart).toBeLessThan(attackEnd);
     expect(peak(samples.slice(-64))).toBeLessThan(0.01);
   });
 
   it("stays within the patch volume", () => {
-    expect(peak(renderSynthPatch({ volume: 0.2, duration: 0.2 }, RATE))).toBeLessThanOrEqual(0.2);
+    expect(
+      peak(renderSynthPatch({ volume: 0.2, duration: 0.2 }, RATE)),
+    ).toBeLessThanOrEqual(0.2);
   });
 
   it("is deterministic, and the seed is what changes the noise", () => {
     const patch: SynthPatch = { wave: "noise", duration: 0.05 };
-    expect(renderSynthPatch(patch, RATE)).toEqual(renderSynthPatch(patch, RATE));
+    expect(renderSynthPatch(patch, RATE)).toEqual(
+      renderSynthPatch(patch, RATE),
+    );
     expect(renderSynthPatch({ ...patch, seed: 7 }, RATE)).not.toEqual(
       renderSynthPatch(patch, RATE),
     );
@@ -82,10 +86,16 @@ describe("renderSynthPatch", () => {
   it("filters: a lowpass keeps less of a noise burst than a highpass", () => {
     const base: SynthPatch = { wave: "noise", duration: 0.2, volume: 1 };
     const low = rms(
-      renderSynthPatch({ ...base, filter: { type: "lowpass", frequency: 400 } }, RATE),
+      renderSynthPatch(
+        { ...base, filter: { type: "lowpass", frequency: 400 } },
+        RATE,
+      ),
     );
     const high = rms(
-      renderSynthPatch({ ...base, filter: { type: "highpass", frequency: 400 } }, RATE),
+      renderSynthPatch(
+        { ...base, filter: { type: "highpass", frequency: 400 } },
+        RATE,
+      ),
     );
     expect(low).toBeLessThan(high);
   });
@@ -154,15 +164,28 @@ describe("renderSynthPatch", () => {
   });
 
   it("rejects out-of-range numeric fields, naming the field", () => {
-    expect(() => renderSynthPatch({ duration: 0 }, RATE)).toThrowError(/duration/);
-    expect(() => renderSynthPatch({ duration: Infinity }, RATE)).toThrowError(/duration/);
-    expect(() => renderSynthPatch({ frequency: 0 }, RATE)).toThrowError(/frequency/);
-    expect(() => renderSynthPatch({ glideTo: -10 }, RATE)).toThrowError(/glideTo/);
-    expect(() => renderSynthPatch({ volume: Number.NaN }, RATE)).toThrowError(/volume/);
+    expect(() => renderSynthPatch({ duration: 0 }, RATE)).toThrowError(
+      /duration/,
+    );
+    expect(() => renderSynthPatch({ duration: Infinity }, RATE)).toThrowError(
+      /duration/,
+    );
+    expect(() => renderSynthPatch({ frequency: 0 }, RATE)).toThrowError(
+      /frequency/,
+    );
+    expect(() => renderSynthPatch({ glideTo: -10 }, RATE)).toThrowError(
+      /glideTo/,
+    );
+    expect(() => renderSynthPatch({ volume: Number.NaN }, RATE)).toThrowError(
+      /volume/,
+    );
     expect(() => renderSynthPatch({ noise: 2 }, RATE)).toThrowError(/noise/);
     expect(() => renderSynthPatch({}, 0)).toThrowError(/sampleRate/);
     expect(() =>
-      renderSynthPatch({ filter: { type: "lowpass", frequency: Number.NaN } }, RATE),
+      renderSynthPatch(
+        { filter: { type: "lowpass", frequency: Number.NaN } },
+        RATE,
+      ),
     ).toThrowError(/filter\.frequency/);
     // "noise" has no pitch, so its frequency fields are ignored, not checked.
     expect(() =>
@@ -212,12 +235,16 @@ describe("renderSynthSound", () => {
 
   it("never leaves the [-1, 1] range when layers sum past it", () => {
     const loud: SynthPatch = { frequency: 300, duration: 0.1, volume: 1 };
-    expect(peak(renderSynthSound([loud, loud, loud], RATE))).toBeLessThanOrEqual(1);
+    expect(
+      peak(renderSynthSound([loud, loud, loud], RATE)),
+    ).toBeLessThanOrEqual(1);
   });
 
   it("dispatches a jingle by its notes", () => {
     const sound = { notes: [440, 660], noteDuration: 0.1 };
-    expect(renderSynthSound(sound, RATE)).toEqual(renderSynthJingle(sound, RATE));
+    expect(renderSynthSound(sound, RATE)).toEqual(
+      renderSynthJingle(sound, RATE),
+    );
   });
 });
 

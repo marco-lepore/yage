@@ -57,7 +57,9 @@ export function dateCodec(): Codec<Date, string> {
       }
       const d = new Date(raw);
       if (Number.isNaN(d.getTime())) {
-        throw new Error(`dateCodec.decode: invalid ISO string ${JSON.stringify(raw)}`);
+        throw new Error(
+          `dateCodec.decode: invalid ISO string ${JSON.stringify(raw)}`,
+        );
       }
       return d;
     },

@@ -1,20 +1,16 @@
-import {
-  Engine,
-  Component,
-  Scene,
-  Transform,
-  Vec2,
-} from "@yagejs/core";
+import { Engine, Component, Scene, Transform, Vec2 } from "@yagejs/core";
 import {
   RendererPlugin,
   SplitTextComponent,
   TextComponent,
 } from "@yagejs/renderer";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+import {
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
-
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -261,7 +257,9 @@ class SplitTextScene extends Scene {
   onEnter(): void {
     // Effect-name label, centered near the bottom.
     const labelEntity = this.spawn("label");
-    labelEntity.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT - 70) }));
+    labelEntity.add(
+      new Transform({ position: new Vec2(WIDTH / 2, HEIGHT - 70) }),
+    );
     const label = labelEntity.add(
       new TextComponent({
         text: "",
@@ -278,7 +276,9 @@ class SplitTextScene extends Scene {
 
     // The animated title.
     const title = this.spawn("title");
-    title.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2 - 20) }));
+    title.add(
+      new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2 - 20) }),
+    );
     title.add(
       new SplitTextComponent({
         text: "SPLIT TEXT",

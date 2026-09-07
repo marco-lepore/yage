@@ -45,7 +45,9 @@ describe("synthPresets", () => {
     const spaced = renderSynthSound(
       synthPresets.victory({ noteDuration: 0.05, noteSpacing: 0.2 }),
     );
-    expect(spaced).toHaveLength(Math.round((0.2 * 3 + 0.05) * SYNTH_SAMPLE_RATE));
+    expect(spaced).toHaveLength(
+      Math.round((0.2 * 3 + 0.05) * SYNTH_SAMPLE_RATE),
+    );
   });
 
   it("scales every voice of a layered preset with gain, not just the lead", () => {
@@ -90,14 +92,20 @@ describe("synthPresets", () => {
   it("rejects a gain that isn't a finite level", () => {
     expect(() => synthPresets.hit({ gain: -1 })).toThrowError(/gain/);
     // -0 volume slips past the renderer's own check, so gain is validated here.
-    expect(() => synthPresets.hit({ volume: 0, gain: -1 })).toThrowError(/gain/);
-    expect(() => synthPresets.victory({ gain: Number.NaN })).toThrowError(/gain/);
+    expect(() => synthPresets.hit({ volume: 0, gain: -1 })).toThrowError(
+      /gain/,
+    );
+    expect(() => synthPresets.victory({ gain: Number.NaN })).toThrowError(
+      /gain/,
+    );
   });
 
   it("keeps the dialogue phrase seed separate from the voice's noise seed", () => {
     const a = renderSynthSound(synthPresets.dialogueBeeps({ phraseSeed: 4 }));
     const b = renderSynthSound(synthPresets.dialogueBeeps({ phraseSeed: 4 }));
-    const other = renderSynthSound(synthPresets.dialogueBeeps({ phraseSeed: 9 }));
+    const other = renderSynthSound(
+      synthPresets.dialogueBeeps({ phraseSeed: 9 }),
+    );
     expect(a).toEqual(b);
     expect(other).not.toEqual(a);
     // `seed` still means the voice's noise seed, and reaches it.
@@ -130,7 +138,9 @@ describe("synthPresets", () => {
   it("renders the room tone loop-clean and long", () => {
     const samples = renderSynthSound(synthPresets.roomTone());
     expect(samples.length).toBeGreaterThan(2 * SYNTH_SAMPLE_RATE);
-    expect(Math.abs((samples.at(-1) ?? 0) - (samples[0] ?? 0))).toBeLessThan(0.01);
+    expect(Math.abs((samples.at(-1) ?? 0) - (samples[0] ?? 0))).toBeLessThan(
+      0.01,
+    );
   });
 
   it("renders wind loop-clean, with the gusts decayed before the loop point", () => {
@@ -138,13 +148,17 @@ describe("synthPresets", () => {
     expect(samples.length).toBeGreaterThan(5 * SYNTH_SAMPLE_RATE);
     // The bed sits in a higher band than room tone, so adjacent samples move
     // more — the wrap step just has to stay inaudibly small.
-    expect(Math.abs((samples.at(-1) ?? 0) - (samples[0] ?? 0))).toBeLessThan(0.05);
+    expect(Math.abs((samples.at(-1) ?? 0) - (samples[0] ?? 0))).toBeLessThan(
+      0.05,
+    );
   });
 
   it("speaks the same dialogue-beeps phrase per seed and ends on the pad slot", () => {
     const a = renderSynthSound(synthPresets.dialogueBeeps());
     const b = renderSynthSound(synthPresets.dialogueBeeps());
-    const other = renderSynthSound(synthPresets.dialogueBeeps({ phraseSeed: 9 }));
+    const other = renderSynthSound(
+      synthPresets.dialogueBeeps({ phraseSeed: 9 }),
+    );
     expect(a).toEqual(b);
     expect(other).not.toEqual(a);
     // The trailing silent note pads the loop, so the buffer ends at zero.

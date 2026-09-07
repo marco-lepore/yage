@@ -57,7 +57,9 @@ class EnemyController extends Component {
   private physicsWorld!: PhysicsWorld;
   private readonly camera: CameraEntity;
   private readonly audio = this.service(AudioManagerKey);
-  private readonly anim = this.sibling(AnimationController) as AnimationController<EnemyAnim>;
+  private readonly anim = this.sibling(
+    AnimationController,
+  ) as AnimationController<EnemyAnim>;
   private readonly sprite = this.sibling(AnimatedSpriteComponent);
   private readonly transform = this.sibling(Transform);
   private readonly rb = this.sibling(RigidBodyComponent);
@@ -103,18 +105,19 @@ class EnemyController extends Component {
     // Slots
     this.flashSlot = this.pc.slot({
       duration: 0.08,
-      cleanup: () => { this.sprite.animatedSprite.tint = 0xffffff; },
+      cleanup: () => {
+        this.sprite.animatedSprite.tint = 0xffffff;
+      },
     });
     this.shakeSlot = this.pc.slot({
       duration: 0.15,
       update: () => {
         const s = this.sprite.animatedSprite;
-        s.position.set(
-          (Math.random() - 0.5) * 4,
-          (Math.random() - 0.5) * 4,
-        );
+        s.position.set((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
       },
-      cleanup: () => { this.sprite.animatedSprite.position.set(0, 0); },
+      cleanup: () => {
+        this.sprite.animatedSprite.position.set(0, 0);
+      },
     });
 
     // AnimationController auto-plays "idle"; switch to walk for patrol
@@ -356,8 +359,14 @@ export class EnemyEntity extends Entity {
     const { x, y, patrolLeft, patrolRight, camera } = params;
     this.tags.add("enemy");
     this.add(new Transform({ position: new Vec2(x, y) }));
-    const idleSource = { sheet: EnemyIdleTex.path, frameWidth: 24, frameHeight: 32 };
-    this.add(new AnimatedSpriteComponent({ source: idleSource, layer: "world" }));
+    const idleSource = {
+      sheet: EnemyIdleTex.path,
+      frameWidth: 24,
+      frameHeight: 32,
+    };
+    this.add(
+      new AnimatedSpriteComponent({ source: idleSource, layer: "world" }),
+    );
     this.add(
       new AnimationController<EnemyAnim>({
         idle: {
@@ -371,13 +380,21 @@ export class EnemyEntity extends Entity {
           anchor: { x: ENEMY_BODY_CENTER_X / 22, y: 1 - ENEMY_HALF_H / 33 },
         },
         react: {
-          source: { sheet: EnemyReactTex.path, frameWidth: 22, frameHeight: 32 },
+          source: {
+            sheet: EnemyReactTex.path,
+            frameWidth: 22,
+            frameHeight: 32,
+          },
           speed: 0.2,
           loop: false,
           anchor: { x: ENEMY_BODY_CENTER_X / 22, y: 1 - ENEMY_HALF_H / 32 },
         },
         attack: {
-          source: { sheet: EnemyAttackTex.path, frameWidth: 43, frameHeight: 37 },
+          source: {
+            sheet: EnemyAttackTex.path,
+            frameWidth: 43,
+            frameHeight: 37,
+          },
           speed: 0.3,
           loop: false,
           anchor: { x: ENEMY_BODY_CENTER_X / 43, y: 1 - ENEMY_HALF_H / 37 },

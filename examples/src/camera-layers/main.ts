@@ -8,13 +8,7 @@
  *     overlay follows the topmost camera and that removing cameras resets
  *     layer transforms (no stale pan/zoom).
  */
-import {
-  Engine,
-  Scene,
-  Component,
-  Transform,
-  Vec2,
-} from "@yagejs/core";
+import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
 import {
   RendererPlugin,
   GraphicsComponent,
@@ -24,8 +18,10 @@ import type { LayerDef } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
 import type { UIText } from "@yagejs/ui";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
-
+import {
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;

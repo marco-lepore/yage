@@ -31,8 +31,15 @@ addon's one bundled runtime dep, pulled ONLY by the `./yaml` subpath.
   tree-shaken).
 
 ```ts
-import { DialogueController, parseExpr, loadCompact } from "@yagejs-addons/dialogue";
-import { defaultDialogueTheme, createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+import {
+  DialogueController,
+  parseExpr,
+  loadCompact,
+} from "@yagejs-addons/dialogue";
+import {
+  defaultDialogueTheme,
+  createBoxDialogue,
+} from "@yagejs-addons/dialogue/presenters";
 import { loadYaml } from "@yagejs-addons/dialogue/yaml";
 ```
 
@@ -48,8 +55,14 @@ warn once per scene tree, name, and requested order in development.
 
 ```ts
 import { Scene, Entity } from "@yagejs/core";
-import { DialogueController, DialogueEndedEvent } from "@yagejs-addons/dialogue";
-import { createBoxDialogue, DIALOGUE_LAYERS } from "@yagejs-addons/dialogue/presenters";
+import {
+  DialogueController,
+  DialogueEndedEvent,
+} from "@yagejs-addons/dialogue";
+import {
+  createBoxDialogue,
+  DIALOGUE_LAYERS,
+} from "@yagejs-addons/dialogue/presenters";
 
 class TalkScene extends Scene {
   readonly layers = [...DIALOGUE_LAYERS]; // optional: declare the default orders explicitly
@@ -79,17 +92,35 @@ compile-time only.
 const script = defineScript({
   id: "intro",
   start: "n1",
-  declare: { rude: false, timesTalked: 0 },   // variable defaults (seed-if-absent)
+  declare: { rude: false, timesTalked: 0 }, // variable defaults (seed-if-absent)
   speakers: { gwen: { name: "Gwen", color: 0xffd866 } },
   nodes: {
-    n1: { id: "n1", steps: [
-      { kind: "say", speaker: "gwen", text: "You carry {gold} gold, [b]traveler[/b]." },
-      { kind: "choice", text: "Well?", options: [
-        { text: "Hi.", target: "n2" },
-        { text: "Leave.", once: true, commands: [{ type: "set", var: "rude", value: true }] },
-      ] },
-    ] },
-    n2: { id: "n2", steps: [{ kind: "say", text: "Safe travels." }, { kind: "end" }] },
+    n1: {
+      id: "n1",
+      steps: [
+        {
+          kind: "say",
+          speaker: "gwen",
+          text: "You carry {gold} gold, [b]traveler[/b].",
+        },
+        {
+          kind: "choice",
+          text: "Well?",
+          options: [
+            { text: "Hi.", target: "n2" },
+            {
+              text: "Leave.",
+              once: true,
+              commands: [{ type: "set", var: "rude", value: true }],
+            },
+          ],
+        },
+      ],
+    },
+    n2: {
+      id: "n2",
+      steps: [{ kind: "say", text: "Safe travels." }, { kind: "end" }],
+    },
   },
 });
 ```
@@ -99,6 +130,7 @@ key** in `speakers` — steps reference it (`speaker: "gwen"`) and presenters an
 actors by it; the loader stamps it on, so never write `id` inside the entry.
 
 Step kinds: `say` | `choice` | `command` | `goto` | `end`.
+
 - `SayStep`: `text` (+ optional i18n `key`), `speaker?`, `expression?`, `speed?`,
   `autoAdvance?` (seconds), `commands?`, `view?`, `meta?`, `voice?`.
 - `ChoiceOption`: `text`, `target?`, `condition?`, `once?`, `presentation?`
@@ -106,7 +138,7 @@ Step kinds: `say` | `choice` | `command` | `goto` | `end`.
 - `CommandStep`: `commands` (+ optional `condition`/`target` conditional jump).
 - `Condition`: a **string expression** (`"hp > 0 and has_item('key')"`, parsed at
   load — see below), the atomic `{ var, op, value }` (op = `== != > >= < <= truthy
-  falsy`), an `Expr` tree, or `(vars) => boolean` (TS-only, not JSON; receives a
+falsy`), an `Expr` tree, or `(vars) => boolean` (TS-only, not JSON; receives a
   materialized snapshot). A bare name (`"greeted"`) is the degenerate string
   expression → a truthy read (back-compat).
 
@@ -117,7 +149,7 @@ ONE opaque name namespace lives in a **`VariableStorage`** (Yarn-shaped:
 characters — scoping/prefixing is the host's policy. Storage is **installed once
 on the controller** and **persists across plays** — so cycling-NPC counters,
 quest flags, and anything written by `set` survive. (A choice's `once` flag is
-*per-conversation*, not stored — a fresh `play()` clears it; it belongs to the
+_per-conversation_, not stored — a fresh `play()` clears it; it belongs to the
 future save cursor.) `play(script)` is **content-only**.
 
 - `script.declare` holds variable **defaults** (Yarn `<<declare>>` / `InitialValues`).
@@ -138,7 +170,7 @@ future save cursor.) `play(script)` is **content-only**.
   that object on every `set`/`hydrate`/`reset`, so writes land on the discarded
   one; use `createStoreStorage` instead.
 - `createStoreStorage(leaf: ReactiveRecord<Record<string, VarValue>> |
-  ReactiveMap<string, VarValue>)` — `VariableStorage` over a `@yagejs/core`
+ReactiveMap<string, VarValue>)` — `VariableStorage` over a `@yagejs/core`
   reactive store leaf, so dialogue variables live in the game store: they ride the
   store's `serialize`/`hydrate` (survive save/load) and a dialogue write that
   changes a value notifies the leaf, so `useStore`, `autoPersist`, and the compound
@@ -211,9 +243,9 @@ parseExpr("hp > 0 and has_item('key')");
   value `"gold"` reads variable `gold`; `"'gold'"` is the literal text. Operator
   strings (`"not rude"`, `"a or b"`) that the old runtime silently failed on now
   work.
-- **Reserved words** (can't be referenced *bare in a string* — use `{ var, op,
-  value }`, `defineScript`, or rename): `and or not xor is eq neq gt lt gte lte
-  true false null`.
+- **Reserved words** (can't be referenced _bare in a string_ — use `{ var, op,
+value }`, `defineScript`, or rename): `and or not xor is eq neq gt lt gte lte
+true false null`.
 - v1 wires `or/|| and/&& not/!`, the comparisons (+ word forms), unary `-`, binary
   `+ -`, calls, and parens. `xor/^` and `* / %` are reserved but unwired (additive
   later — the IR + evaluator already accept them). Word forms normalise to symbols
@@ -256,19 +288,19 @@ DialogueScript` builds the model; `loadCompact(text)` runs it through `loadScrip
 dep. One statement per line; blank lines and `// comment` lines are ignored;
 indentation is insignificant.
 
-| Line | → |
-| --- | --- |
-| `# id` | script id (required, once); start node = the first `::` node |
-| `@ id Name [#hex]` | a speaker: opaque id, display name (spaces ok), optional nameplate colour (`#ffcc00` / `#fc0`) |
-| `:: nodeId` | open a node; following step lines belong to it |
-| `speaker: text` · `speaker face: text` | a `say` line — ONLY when the first token is a declared `@`-speaker; a 2nd header token → `SayStep.expression` (the avatar face) |
-| `text` | a narrator `say` line (no declared-speaker prefix — colons and all stay in the text) |
-| `? text …` | a choice option; consecutive `?` lines coalesce into one `choice` step |
-| `-> nodeId [if: cond]` | a jump — unconditional, or conditional (taken only if `cond` holds, else fall through to the next step) |
-| `declare v = value` | a script-level variable default (a literal scalar; `parseExpr` is NOT applied — declare values are plain values, seeded if-absent) |
-| `set v = rhs` | write a variable (bare number / `true` / `false` / `null` stays literal, else `parseExpr`) |
-| `do type k=v … #flag` | a host command — `type`, then `key=value` data and `#flag` booleans (a data key can't be `type` — that's the dispatch key; a `type=` collision is a load error) |
-| `end` | end the conversation |
+| Line                                   | →                                                                                                                                                               |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `# id`                                 | script id (required, once); start node = the first `::` node                                                                                                    |
+| `@ id Name [#hex]`                     | a speaker: opaque id, display name (spaces ok), optional nameplate colour (`#ffcc00` / `#fc0`)                                                                  |
+| `:: nodeId`                            | open a node; following step lines belong to it                                                                                                                  |
+| `speaker: text` · `speaker face: text` | a `say` line — ONLY when the first token is a declared `@`-speaker; a 2nd header token → `SayStep.expression` (the avatar face)                                 |
+| `text`                                 | a narrator `say` line (no declared-speaker prefix — colons and all stay in the text)                                                                            |
+| `? text …`                             | a choice option; consecutive `?` lines coalesce into one `choice` step                                                                                          |
+| `-> nodeId [if: cond]`                 | a jump — unconditional, or conditional (taken only if `cond` holds, else fall through to the next step)                                                         |
+| `declare v = value`                    | a script-level variable default (a literal scalar; `parseExpr` is NOT applied — declare values are plain values, seeded if-absent)                              |
+| `set v = rhs`                          | write a variable (bare number / `true` / `false` / `null` stays literal, else `parseExpr`)                                                                      |
+| `do type k=v … #flag`                  | a host command — `type`, then `key=value` data and `#flag` booleans (a data key can't be `type` — that's the dispatch key; a `type=` collision is a load error) |
+| `end`                                  | end the conversation                                                                                                                                            |
 
 **Say-line hints** ride the end of the line: `view=` / `voice=` / `speed=` / `auto=`
 → the first-class `SayStep` fields; trailing `#key:value` / bare `#flag` → `SayStep.meta`
@@ -320,12 +352,13 @@ end
 ```
 
 ### Validation (two hard-error stages)
+
 - **Load-time** (`loadScript` / `defineScript`, environment-free): collects the
   names read/written, functions called, command types fired; type-checks what's
   statically knowable (a numeric/arithmetic op — atomic OR inside an expression
   tree — with a wrong-type literal operand or a declared-non-number var operand; a
   literal `set` value vs the target's declared type). Throws `DialogueScriptError`.
-  Undeclared *references* are NOT rejected here — the storage/functions may provide
+  Undeclared _references_ are NOT rejected here — the storage/functions may provide
   them.
 - **Play-time** (`validatePlay`, on `play()`): every read name must be provided
   (declared default or `storage.has`), every called function installed, every
@@ -369,6 +402,7 @@ renders as plain text, so old scripts still parse.)
 `[pause=0.6/]` hold and a `[name k=v/]` marker. They share **one ordered stream**
 (`ParsedText.tokens: RevealToken[]`, each `{ kind: "pause" | "marker", atChar, … }`),
 so **source order is drain order**:
+
 - `[pause=0.6/]` holds the typewriter 0.6s at its offset (the only pause spelling
   now — a bare `[pause=0.6]` without the slash opens an effect span named `pause`,
   not a hold).
@@ -382,7 +416,7 @@ so **source order is drain order**:
   non-blocking; the pause is the only timing primitive (no combined `[shake hold/]`).
 
 Translators **must keep the trailing `/`** so a token survives a re-order. A
-*non*-self-closing tag that isn't a built-in styling attribute opens an effect span
+_non_-self-closing tag that isn't a built-in styling attribute opens an effect span
 (open vocabulary); a self-closing token is never dropped.
 See **Reveal events** below for where markers surface.
 
@@ -395,6 +429,7 @@ base+combining-mark cluster counts as 1. `splitGraphemes(str)` is exported.
 ### Reveal events (per-grapheme ticks + inline markers)
 
 The headless `LineReveal` clock emits a `RevealBeat` stream as the cursor advances:
+
 - a **`tick`** per revealed grapheme — surfaced as the controller `onRevealTick(index)`
   **callback** (NOT an entity event; it fires hundreds of times per line). `index` is the
   raw grapheme index, whitespace included — the host filters. Wire a typewriter SFX here.
@@ -417,22 +452,28 @@ Per-`play()` `overrides` layer on top (a scoped `storage` replaces; `functions`/
 `commands` merge, call site wins).
 
 ```ts
-const dlg = host.add(new DialogueController({
-  ...createBoxDialogue(),
-  storage: compose(
-    cells({ gold: { get: () => player.gold, set: (v) => (player.gold = +v) } }), // two-way
-    new MemoryVariableStorage(),                                                  // locals + seeds
-  ),
-  functions: { has_item: (id) => player.has(String(id)) },   // argument-read for conditions
-  commands: {                                                 // game logic (rules in)
-    "give-item": (cmd) => player.give(cmd.id),
-    "skill-check": async (cmd, ctx) => ctx.setVar("passed", await roll(cmd.stat)),
-  },
-  fallbackCommand: (cmd) => log(cmd),                         // optional catch-all
-}));
-const handle = dlg.play(script);       // content-only
-handle.setVar("rude", true);           // live poke (typed keyof declare); no-ops after stop/replay
-handle.getVars();                      // snapshot of the storage's variables
+const dlg = host.add(
+  new DialogueController({
+    ...createBoxDialogue(),
+    storage: compose(
+      cells({
+        gold: { get: () => player.gold, set: (v) => (player.gold = +v) },
+      }), // two-way
+      new MemoryVariableStorage(), // locals + seeds
+    ),
+    functions: { has_item: (id) => player.has(String(id)) }, // argument-read for conditions
+    commands: {
+      // game logic (rules in)
+      "give-item": (cmd) => player.give(cmd.id),
+      "skill-check": async (cmd, ctx) =>
+        ctx.setVar("passed", await roll(cmd.stat)),
+    },
+    fallbackCommand: (cmd) => log(cmd), // optional catch-all
+  }),
+);
+const handle = dlg.play(script); // content-only
+handle.setVar("rude", true); // live poke (typed keyof declare); no-ops after stop/replay
+handle.getVars(); // snapshot of the storage's variables
 ```
 
 - **`cells` getters/functions must be cheap + side-effect-free** — called on
@@ -440,7 +481,7 @@ handle.getVars();                      // snapshot of the storage's variables
 - **`ctx.setVar` / `handle.setVar` / `set`** all write through the storage
   (guarded). A read-only `cells` getter (no setter) throws. The **preferred path
   for game mutations is a command** (so game rules run): write-through `cells` is
-  for when the *script* owns the arithmetic (`set gold = gold - 50`).
+  for when the _script_ owns the arithmetic (`set gold = gold - 50`).
 - `ctx.setVar(key, value)` is the skill-check seam — a blocking command computes a
   result a later condition reads.
 
@@ -460,11 +501,14 @@ must resolve to a handler/fallback, else play-time error. (There is **no**
 
 ```ts
 new DialogueController({
-  ...createBoxDialogue(theme),    // DialogueBundle: { chrome, text, choices, avatar?, skipMultiplier? }
-  avatar,                          // optional AvatarPresenter override
-  i18n,                            // optional I18nAdapter
-  storage, functions, commands, fallbackCommand,  // installed once (see Game state)
-  input,                           // InputBinding | null (default: keyboard + pointer wired to the bundled choices; null = no device input)
+  ...createBoxDialogue(theme), // DialogueBundle: { chrome, text, choices, avatar?, skipMultiplier? }
+  avatar, // optional AvatarPresenter override
+  i18n, // optional I18nAdapter
+  storage,
+  functions,
+  commands,
+  fallbackCommand, // installed once (see Game state)
+  input, // InputBinding | null (default: keyboard + pointer wired to the bundled choices; null = no device input)
   onEnded: () => {},
 });
 ```
@@ -508,13 +552,20 @@ Enabling the component again restores the same conversation and settings.
 // Two conversations, one interactive — focus is the game's one-liner.
 // (YAGE input is non-consuming, so two ENABLED controllers both advance on one
 // key press; focus is the game's policy by design.)
-if (near(npcA)) { a.setInputEnabled(true);  b.setInputEnabled(false); }
-else            { a.setInputEnabled(false); b.setInputEnabled(true);  }
+if (near(npcA)) {
+  a.setInputEnabled(true);
+  b.setInputEnabled(false);
+} else {
+  a.setInputEnabled(false);
+  b.setInputEnabled(true);
+}
 
 // Cutscene takeover: hide + pause, pan the camera, then restore.
-dlg.setHidden(true); dlg.setPaused(true);
+dlg.setHidden(true);
+dlg.setPaused(true);
 await camera.panTo(spot);
-dlg.setPaused(false); dlg.setHidden(false); // the bubble line + caret reappear
+dlg.setPaused(false);
+dlg.setHidden(false); // the bubble line + caret reappear
 ```
 
 Channels carry a `setVisible(bool)` verb (the headless half of `setHidden`):
@@ -527,7 +578,7 @@ gone (it now means only "no name").
 
 A **speakerless narrator** line routes to the **box** in a mixed bundle
 (`defaultCompositeRoute`, the genre convention) regardless of `view`; a
-*positioned* narrator is the documented **invisible-anchor** recipe — give the
+_positioned_ narrator is the documented **invisible-anchor** recipe — give the
 narrator a `speaker` whose `DialogueActor` rides an invisible entity, and it
 floats like any other speaker. A **missing actor** (speaker declared but the
 `DialogueActor` despawned/unregistered) no longer renders invisibly at world
@@ -654,29 +705,52 @@ per-word / accessibility presenter then only maps its grapheme cursor onto its o
 rendering:
 
 ```ts
-import { LineReveal, splitGraphemes, type TextChannel, type PresentedLine } from "@yagejs-addons/dialogue";
+import {
+  LineReveal,
+  splitGraphemes,
+  type TextChannel,
+  type PresentedLine,
+} from "@yagejs-addons/dialogue";
 
 class DomTextPresenter implements TextChannel {
   private reveal = new LineReveal(/* charsPerSec */ 45);
   private graphemes: string[] = [];
   private el = document.querySelector("#line")!;
-  constructor() { this.reveal.setCompletionListener(() => this.onDone?.()); }
+  constructor() {
+    this.reveal.setCompletionListener(() => this.onDone?.());
+  }
   private onDone?: () => void;
-  setRevealListener(fn: (() => void) | undefined) { this.onDone = fn; }
+  setRevealListener(fn: (() => void) | undefined) {
+    this.onDone = fn;
+  }
   present(line: PresentedLine) {
     this.graphemes = splitGraphemes(line.text.runs.map((r) => r.text).join(""));
     this.reveal.begin(line.text, line.speed);
   }
   update(dt: number) {
     this.reveal.update(dt);
-    this.el.textContent = this.graphemes.slice(0, Math.floor(this.reveal.revealed)).join("");
+    this.el.textContent = this.graphemes
+      .slice(0, Math.floor(this.reveal.revealed))
+      .join("");
   }
-  completeReveal() { this.reveal.complete(); }
-  isRevealComplete() { return this.reveal.isComplete(); }
-  isRevealing() { return this.reveal.isRevealing(); }
-  setSpeedMultiplier(m: number) { this.reveal.setSpeedMultiplier(m); }
-  setVisible(v: boolean) { (this.el as HTMLElement).style.visibility = v ? "visible" : "hidden"; }
-  clear() { this.el.textContent = ""; }
+  completeReveal() {
+    this.reveal.complete();
+  }
+  isRevealComplete() {
+    return this.reveal.isComplete();
+  }
+  isRevealing() {
+    return this.reveal.isRevealing();
+  }
+  setSpeedMultiplier(m: number) {
+    this.reveal.setSpeedMultiplier(m);
+  }
+  setVisible(v: boolean) {
+    (this.el as HTMLElement).style.visibility = v ? "visible" : "hidden";
+  }
+  clear() {
+    this.el.textContent = "";
+  }
 }
 ```
 
@@ -692,8 +766,14 @@ routes box-vs-bubble like the other composites:
 createMixedDialogue(theme, {
   worldLayer: "world",
   avatar: {
-    box: (layout) => new InBoxAvatarPresenter(layout, { layer, width: 84, background: { color } }),
-    bubble: (layout) => new BubbleAvatarPresenter(layout, { layer: "world", size: 56 }),
+    box: (layout) =>
+      new InBoxAvatarPresenter(layout, {
+        layer,
+        width: 84,
+        background: { color },
+      }),
+    bubble: (layout) =>
+      new BubbleAvatarPresenter(layout, { layer: "world", size: 56 }),
   },
 });
 // box-only: createBoxDialogue(theme, { avatar: (layout) => new InBoxAvatarPresenter(...) })
@@ -708,26 +788,26 @@ implements just what it needs. Purely additive (the trio is untouched).
 
 ```ts
 interface DialogueExtraChannel {
-  present?(line: PresentedLine): void;        // a say line presented (read line.voice/meta) — NOT choices
+  present?(line: PresentedLine): void; // a say line presented (read line.voice/meta) — NOT choices
   revealComplete?(line: PresentedLine): void; // the say line finished revealing
-  revealBeat?(beat: RevealBeat): void;        // a per-grapheme tick or an inline [name k=v/] marker
-  command?(command, ctx): void;               // a non-built-in command fired (never set)
-  clear?(): void;                             // conversation stopped/ended (per-conversation reset)
-  setVisible?(visible: boolean): void;        // the host setHidden lever
-  setPaused?(paused: boolean): void;          // the conversation paused/resumed
-  completeReveal?(): void;                    // player skipped the typewriter / section
-  update?(dt: number): void;                  // per-frame (already gated by pause)
-  dispose?(): void;                           // final teardown (distinct from clear)
-  isRevealComplete?(): boolean;               // gates auto-advance (see below); omit → pure observer
+  revealBeat?(beat: RevealBeat): void; // a per-grapheme tick or an inline [name k=v/] marker
+  command?(command, ctx): void; // a non-built-in command fired (never set)
+  clear?(): void; // conversation stopped/ended (per-conversation reset)
+  setVisible?(visible: boolean): void; // the host setHidden lever
+  setPaused?(paused: boolean): void; // the conversation paused/resumed
+  completeReveal?(): void; // player skipped the typewriter / section
+  update?(dt: number): void; // per-frame (already gated by pause)
+  dispose?(): void; // final teardown (distinct from clear)
+  isRevealComplete?(): boolean; // gates auto-advance (see below); omit → pure observer
 }
 ```
 
 Register via the controller (mounts a scene-needing channel, returns a disposer):
 
 ```ts
-const off = controller.addChannel(channel);  // or: new DialogueController({ ..., channels: [voice] })
+const off = controller.addChannel(channel); // or: new DialogueController({ ..., channels: [voice] })
 // ...later:
-off();                                        // unregister + dispose
+off(); // unregister + dispose
 ```
 
 - A channel that also needs the scene implements `Mountable` (`mount(scene)` /
@@ -763,11 +843,15 @@ const voice = createVoiceChannel({
   // NATURAL completion (not on stop()). Pause/resume is the handle's `paused` setter.
   play: (id, onEnded) => {
     const h = audio.play(clips[id], { channel: "voice", onEnd: onEnded });
-    return { stop: () => h.stop(), pause: () => (h.paused = true), resume: () => (h.paused = false) };
+    return {
+      stop: () => h.stop(),
+      pause: () => (h.paused = true),
+      resume: () => (h.paused = false),
+    };
   },
-  onSkip: "cut",                  // "cut" (default) stops + releases on skip; "ring" plays out
-  pauseWithConversation: true,    // default: pause the clip when the conversation pauses
-  liveness: 30,                   // optional safety cap (seconds): force-release if onEnded never arrives
+  onSkip: "cut", // "cut" (default) stops + releases on skip; "ring" plays out
+  pauseWithConversation: true, // default: pause the clip when the conversation pauses
+  liveness: 30, // optional safety cap (seconds): force-release if onEnded never arrives
   onError: (m, e) => log.warn(m), // liveness diagnostics
 });
 controller.addChannel(voice);
@@ -787,11 +871,11 @@ auto-advance.
 controller.addChannel({
   command(cmd, ctx) {
     if (cmd.type !== "buy") return;
-    ctx.setVar("owns_" + cmd.item, true);   // consequence-out (write-only ctx)
+    ctx.setVar("owns_" + cmd.item, true); // consequence-out (write-only ctx)
   },
 });
 const handle = controller.play(shopScript); // script fires { type: "buy", item: "sword" }
-handle?.getVars();                           // host reads { owns_sword: true } back
+handle?.getVars(); // host reads { owns_sword: true } back
 ```
 
 The `buy` type still needs a registered handler/fallback to validate — the channel
@@ -804,7 +888,9 @@ A `{ type: "shake" }` command in the script reaches a channel's `command?()` wit
 
 ```ts
 controller.addChannel({
-  command: (cmd) => { if (cmd.type === "shake") camera.shake(Number(cmd.power ?? 8)); },
+  command: (cmd) => {
+    if (cmd.type === "shake") camera.shake(Number(cmd.power ?? 8));
+  },
 });
 // script: { kind: "command", commands: [{ type: "shake", power: 12 }] }
 ```
@@ -834,7 +920,11 @@ uses `#key:value` hashtags (unrecognised hashtags already fold into `meta`).
 
 ```yaml
 - { speaker: hero, text: "From up top.", meta: { position: top } }
-- { speaker: hero, text: "You made it.", meta: { portrait: hero_smug, side: right } }
+- {
+    speaker: hero,
+    text: "You made it.",
+    meta: { portrait: hero_smug, side: right },
+  }
 ```
 
 ```
@@ -850,6 +940,7 @@ hints within a variant.
 `KeyboardInputBinding(actions?, skipHold?)`, `PointerInputBinding(choiceTarget?)`,
 `CompositeInputBinding`, `dialogueControls(choiceTarget?, { actions?, skipHold? })`.
 The `input` option has three modes:
+
 - omitted: `dialogueControls(choices)` wired to the bundle's own choices presenter —
   keyboard + pointer (tap to advance, tap/hover choice rows). A custom presenter
   without `choiceAtPoint` degrades the pointer side to tap-to-advance only.
@@ -858,14 +949,14 @@ The `input` option has three modes:
   hold-to-skip.
 - `null`: NO device input — ambient/cutscene/host-driven mode; the host calls
   `advance()`/`moveSelection()`/`choose()`/`skip()` itself (`setInputEnabled` is a no-op).
-Actions: `DEFAULT_DIALOGUE_ACTIONS` (advance/speed/up/down), `FULL_DIALOGUE_ACTIONS` (+ skip). Default keyboard
-action names are kebab-case (`interact`/`attack`/`move-up`/`move-down`/`skip`) — an
-unmapped name silently never fires; a FULL mismatch with the live `InputManager` map
-logs a dev-mode warning at startup. `KeyboardInputBinding.actionNames()` and
-`CompositeInputBinding.actionNames()` expose the polled names. `skipHold > 0` (seconds) is the
-classic hold-to-confirm skip (default `0` = fire on press); fast-forward is the
-`speed` action held. `PointerChoiceTarget` lets a pointer binding hit-test choice
-rows without owning geometry.
+  Actions: `DEFAULT_DIALOGUE_ACTIONS` (advance/speed/up/down), `FULL_DIALOGUE_ACTIONS` (+ skip). Default keyboard
+  action names are kebab-case (`interact`/`attack`/`move-up`/`move-down`/`skip`) — an
+  unmapped name silently never fires; a FULL mismatch with the live `InputManager` map
+  logs a dev-mode warning at startup. `KeyboardInputBinding.actionNames()` and
+  `CompositeInputBinding.actionNames()` expose the polled names. `skipHold > 0` (seconds) is the
+  classic hold-to-confirm skip (default `0` = fire on press); fast-forward is the
+  `speed` action held. `PointerChoiceTarget` lets a pointer binding hit-test choice
+  rows without owning geometry.
 
 ## Theming
 
@@ -903,10 +994,21 @@ const theme = {
   ...defaultDialogueTheme(),
   textured: {
     default: {
-      frame: { texture: "ui/box", insets: { left: 16, top: 16, right: 16, bottom: 16 } },
-      bubble: { texture: "ui/bubble", insets: { left: 12, top: 12, right: 12, bottom: 12 } },
+      frame: {
+        texture: "ui/box",
+        insets: { left: 16, top: 16, right: 16, bottom: 16 },
+      },
+      bubble: {
+        texture: "ui/bubble",
+        insets: { left: 12, top: 12, right: 12, bottom: 12 },
+      },
     },
-    parchment: { frame: { texture: "ui/parchment", insets: { left: 16, top: 16, right: 16, bottom: 16 } } },
+    parchment: {
+      frame: {
+        texture: "ui/parchment",
+        insets: { left: 16, top: 16, right: 16, bottom: 16 },
+      },
+    },
   },
 };
 ```
@@ -915,7 +1017,11 @@ The `meta.chrome` key — YAML writes `meta` directly; Yarn uses a `#chrome:`
 hashtag (unrecognised hashtags already fold into `meta`):
 
 ```yaml
-- { speaker: hero, text: "An ornate proclamation.", meta: { chrome: parchment } }
+- {
+    speaker: hero,
+    text: "An ornate proclamation.",
+    meta: { chrome: parchment },
+  }
 - { text: "The cave swallows your words.", meta: { chrome: none } }
 ```
 
@@ -941,7 +1047,7 @@ bundle, unpolished, geometry/API may change. Opt-in only.
 
 ## Save / load — DEFERRED to v1.1
 
-Mid-dialogue *cursor* save/restore is NOT supported yet: no snapshot/restore
+Mid-dialogue _cursor_ save/restore is NOT supported yet: no snapshot/restore
 exists, `@yagejs/save` is NOT a dependency, and the runner's positional getters
 (`getNodeId()`, `getStepIndex()`, `getChosenOnce()`) are NOT reachable through
 `DialogueController`/`DialogueSession` — do not try to capture a conversation

@@ -17,12 +17,14 @@ import { Engine } from "@yagejs/core";
 import { AudioPlugin, sound } from "@yagejs/audio";
 
 const engine = new Engine();
-engine.use(new AudioPlugin({
-  channels: {
-    music: { volume: 0.7 },
-    sfx: { volume: 1.0 },
-  },
-}));
+engine.use(
+  new AudioPlugin({
+    channels: {
+      music: { volume: 0.7 },
+      sfx: { volume: 1.0 },
+    },
+  }),
+);
 ```
 
 Play sounds via the asset system or a `SoundComponent`:

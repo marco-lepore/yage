@@ -25,7 +25,12 @@ import type {
 import type { AvatarPresenter } from "../avatar/AvatarPresenter.js";
 import type { RevealBeat } from "../core/LineReveal.js";
 import type { MarkerToken } from "../core/types.js";
-import type { ChoiceContext, PresentedChoice, PresentedLine, SpeakerView } from "../core/session.js";
+import type {
+  ChoiceContext,
+  PresentedChoice,
+  PresentedLine,
+  SpeakerView,
+} from "../core/session.js";
 
 const SCENE = {} as unknown as Scene; // the recording stubs ignore the scene
 const speaker: SpeakerView = { id: "npc", name: "NPC" };
@@ -252,7 +257,11 @@ describe("composite matrix — chrome-specific verbs", () => {
     const bubble = new RecChrome();
     const c = new CompositeChrome(box, bubble);
     c.mount(SCENE);
-    c.present({ text: { runs: [], tokens: [], length: 0 }, speed: 1, view: "bubble" });
+    c.present({
+      text: { runs: [], tokens: [], length: 0 },
+      speed: 1,
+      view: "bubble",
+    });
     c.setVisible(true);
     expect(box.visible).toBe(true);
     expect(bubble.visible).toBe(false);
@@ -320,7 +329,12 @@ describe("composite matrix — avatar routes + forwards", () => {
     c.setExpression(undefined);
     c.setSpeaking(true);
     c.setVisible(false);
-    const marker: MarkerToken = { kind: "marker", atChar: 3, name: "expression", props: { expression: "happy" } };
+    const marker: MarkerToken = {
+      kind: "marker",
+      atChar: 3,
+      name: "expression",
+      props: { expression: "happy" },
+    };
     c.marker(marker); // an inline reveal marker reaches both sides
     for (const a of [box, bubble]) {
       expect(a.speakers).toBe(1);
@@ -376,7 +390,10 @@ describe("composite matrix — routing: all three agree", () => {
 
     chrome.present(registeredLine());
     text.present(registeredLine());
-    choices.present([] as readonly PresentedChoice[], { speaker } as ChoiceContext);
+    choices.present(
+      [] as readonly PresentedChoice[],
+      { speaker } as ChoiceContext,
+    );
 
     expect(bubC.presents.length).toBeGreaterThan(0); // chrome → bubble
     expect(bubT.presents).toBeGreaterThan(0); // text → bubble
@@ -442,7 +459,12 @@ describe("composite matrix — text reveal seam", () => {
     expect(beats).toEqual([{ kind: "tick", index: 0 }]);
 
     c.present(bubbleLine()); // active = bubble
-    const marker: MarkerToken = { kind: "marker", atChar: 2, name: "sfx", props: { sfx: "ding" } };
+    const marker: MarkerToken = {
+      kind: "marker",
+      atChar: 2,
+      name: "sfx",
+      props: { sfx: "ding" },
+    };
     bubble.fireBeat({ kind: "marker", marker, viaSkip: false });
     box.fireBeat({ kind: "tick", index: 1 }); // now inactive → ignored
     expect(beats).toEqual([

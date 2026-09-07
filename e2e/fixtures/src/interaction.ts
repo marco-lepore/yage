@@ -10,10 +10,18 @@
  */
 
 import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
-import { RendererPlugin, CameraEntity, GraphicsComponent } from "@yagejs/renderer";
+import {
+  RendererPlugin,
+  CameraEntity,
+  GraphicsComponent,
+} from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
-import { Interactable, Interactor, InteractionFocusChangedEvent } from "@yagejs-addons/interaction";
+import {
+  Interactable,
+  Interactor,
+  InteractionFocusChangedEvent,
+} from "@yagejs-addons/interaction";
 import { injectStyles, setupContainer } from "./shared.js";
 
 injectStyles();
@@ -41,7 +49,10 @@ class PlayerMover extends Component {
     const len = Math.hypot(dx, dy) || 1;
     const step = PLAYER_SPEED * dt;
     const p = this.transform.position;
-    this.transform.setPosition(p.x + (dx / len) * step, p.y + (dy / len) * step);
+    this.transform.setPosition(
+      p.x + (dx / len) * step,
+      p.y + (dy / len) * step,
+    );
   }
 }
 
@@ -55,7 +66,11 @@ class InteractionScene extends Scene {
 
     const player = this.spawn("player");
     player.add(new Transform({ position: new Vec2(400, 300) }));
-    player.add(new GraphicsComponent().draw((g) => g.circle(0, 0, 12).fill({ color: 0x38bdf8 })));
+    player.add(
+      new GraphicsComponent().draw((g) =>
+        g.circle(0, 0, 12).fill({ color: 0x38bdf8 }),
+      ),
+    );
     player.add(new PlayerMover());
     const interactor = player.add(new Interactor({ range: 80 }));
     player.on(InteractionFocusChangedEvent, ({ prompt }) => {
@@ -64,7 +79,11 @@ class InteractionScene extends Scene {
 
     const coin = this.spawn("coin");
     coin.add(new Transform({ position: new Vec2(400, 460) })); // 160px below start
-    coin.add(new GraphicsComponent().draw((g) => g.circle(0, 0, 8).fill({ color: 0xfacc15 })));
+    coin.add(
+      new GraphicsComponent().draw((g) =>
+        g.circle(0, 0, 8).fill({ color: 0xfacc15 }),
+      ),
+    );
     const coinInteractable = coin.add(
       new Interactable({
         prompt: "Pick up",
@@ -78,15 +97,27 @@ class InteractionScene extends Scene {
     // Same position, different priority — the chest must always win.
     const crate = this.spawn("crate");
     crate.add(new Transform({ position: new Vec2(400, 140) })); // 160px above start
-    crate.add(new GraphicsComponent().draw((g) => g.circle(0, 0, 8).fill({ color: 0x94a3b8 })));
+    crate.add(
+      new GraphicsComponent().draw((g) =>
+        g.circle(0, 0, 8).fill({ color: 0x94a3b8 }),
+      ),
+    );
     const crateInteractable = crate.add(
       new Interactable({ prompt: "Search crate", onInteract: () => {} }),
     );
     const chest = this.spawn("chest");
     chest.add(new Transform({ position: new Vec2(400, 140) }));
-    chest.add(new GraphicsComponent().draw((g) => g.circle(0, 0, 8).fill({ color: 0xf59e0b })));
+    chest.add(
+      new GraphicsComponent().draw((g) =>
+        g.circle(0, 0, 8).fill({ color: 0xf59e0b }),
+      ),
+    );
     const chestInteractable = chest.add(
-      new Interactable({ prompt: "Open quest chest", priority: 10, onInteract: () => {} }),
+      new Interactable({
+        prompt: "Open quest chest",
+        priority: 10,
+        onInteract: () => {},
+      }),
     );
 
     (window as unknown as { __interaction__: unknown }).__interaction__ = {

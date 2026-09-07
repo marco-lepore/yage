@@ -111,9 +111,9 @@ describe("Engine", () => {
     it("throws on use() after start()", async () => {
       const engine = new Engine();
       await engine.start();
-      expect(() =>
-        engine.use({ name: "late", version: "1.0.0" }),
-      ).toThrow("Cannot register plugins after engine has started.");
+      expect(() => engine.use({ name: "late", version: "1.0.0" })).toThrow(
+        "Cannot register plugins after engine has started.",
+      );
       engine.destroy();
     });
 
@@ -654,9 +654,9 @@ describe("Engine", () => {
 
     it("exposes __yage__ before plugin onStart hooks run", async () => {
       const onStart = vi.fn(() => {
-        const yageGlobal = (globalThis as Record<string, unknown>)["__yage__"] as
-          | Record<string, unknown>
-          | undefined;
+        const yageGlobal = (globalThis as Record<string, unknown>)[
+          "__yage__"
+        ] as Record<string, unknown> | undefined;
         expect(yageGlobal).toBeDefined();
         yageGlobal!["clock"] = { ready: true };
       });

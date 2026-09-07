@@ -194,7 +194,11 @@ class NameplateTooltip extends Component {
         card.addElement(
           new UIText({
             children: this.params.label,
-            style: { fontSize: 13, fill: this.params.color, fontWeight: "bold" },
+            style: {
+              fontSize: 13,
+              fill: this.params.color,
+              fontWeight: "bold",
+            },
           }),
         );
         this.hpText = new UIText({

@@ -71,17 +71,15 @@ export function renderSynthPatch(
     if (patch.filter.sweepTo !== undefined) {
       assertPositive("filter.sweepTo", patch.filter.sweepTo);
     }
-    if (patch.filter.q !== undefined) assertPositive("filter.q", patch.filter.q);
+    if (patch.filter.q !== undefined)
+      assertPositive("filter.q", patch.filter.q);
   }
 
   const voiceLength = Math.max(1, Math.round(duration * sampleRate));
   const offset = Math.round(delay * sampleRate);
   const out = new Float32Array(offset + voiceLength);
   const attack = Math.min(rawAttack, duration);
-  const attackSamples = Math.min(
-    Math.round(attack * sampleRate),
-    voiceLength,
-  );
+  const attackSamples = Math.min(Math.round(attack * sampleRate), voiceLength);
   const glide = wave === "noise" ? 1 : endFreq / startFreq;
 
   const random = createRandom(patch.seed ?? 1);
@@ -93,8 +91,7 @@ export function renderSynthPatch(
     phase += (startFreq * glide ** progress) / sampleRate;
     phase -= Math.floor(phase);
 
-    let sample =
-      wave === "noise" ? random() * 2 - 1 : oscillate(wave, phase);
+    let sample = wave === "noise" ? random() * 2 - 1 : oscillate(wave, phase);
     if (noiseMix > 0 && wave !== "noise") {
       sample += (random() * 2 - 1 - sample) * noiseMix;
     }
@@ -194,7 +191,9 @@ export function renderSynthSound(
  * `readonly` array out of the union, so the check goes through here.
  * @internal
  */
-export function isPatchStack(sound: SynthSound): sound is readonly SynthPatch[] {
+export function isPatchStack(
+  sound: SynthSound,
+): sound is readonly SynthPatch[] {
   return Array.isArray(sound);
 }
 
@@ -281,7 +280,11 @@ function createFilter(
       band += f * high;
       low += f * band;
     }
-    return spec.type === "lowpass" ? low : spec.type === "highpass" ? high : band;
+    return spec.type === "lowpass"
+      ? low
+      : spec.type === "highpass"
+        ? high
+        : band;
   };
 }
 

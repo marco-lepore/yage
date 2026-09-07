@@ -58,8 +58,7 @@ export interface CreateValueOptions<T, TEncoded = T> {
 export function createValue<T, TEncoded = T>(
   opts: CreateValueOptions<T, TEncoded>,
 ): ReactiveValue<T, TEncoded> {
-  const codec =
-    opts.codec ?? (jsonCodec<T>() as unknown as Codec<T, TEncoded>);
+  const codec = opts.codec ?? (jsonCodec<T>() as unknown as Codec<T, TEncoded>);
   const makeDefault = toFactory(opts.default);
   const atom: Atom<T> = createAtom<T>(makeDefault());
 
@@ -132,8 +131,7 @@ export interface CreateRecordOptions<T extends object, TEncoded = T> {
 export function createRecord<T extends object, TEncoded = T>(
   opts: CreateRecordOptions<T, TEncoded>,
 ): ReactiveRecord<T, TEncoded> {
-  const codec =
-    opts.codec ?? (jsonCodec<T>() as unknown as Codec<T, TEncoded>);
+  const codec = opts.codec ?? (jsonCodec<T>() as unknown as Codec<T, TEncoded>);
   const makeDefault = toFactory(opts.default);
   let snapshot: T = { ...makeDefault() };
   const listeners = new Set<() => void>();
@@ -563,7 +561,11 @@ export function createList<T>(opts?: CreateListOptions<T>): ReactiveList<T> {
           throw new Error("createList.hydrate: malformed item");
         }
         const e = entry as { id?: unknown; value?: unknown };
-        if (typeof e.id !== "number" || !Number.isSafeInteger(e.id) || e.id < 1) {
+        if (
+          typeof e.id !== "number" ||
+          !Number.isSafeInteger(e.id) ||
+          e.id < 1
+        ) {
           throw new Error(
             `createList.hydrate: item id must be a safe integer ≥ 1, got ${String(e.id)}`,
           );

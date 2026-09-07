@@ -31,7 +31,11 @@ describe("defineQuests", () => {
   it("defaults autoComplete to true and preserves false", () => {
     const catalog = defineQuests({
       automatic: { title: "Automatic", objectives: { step: {} } },
-      manual: { title: "Manual", autoComplete: false, objectives: { step: {} } },
+      manual: {
+        title: "Manual",
+        autoComplete: false,
+        objectives: { step: {} },
+      },
     });
     expect(catalog.get("automatic").autoComplete).toBe(true);
     expect(catalog.get("manual").autoComplete).toBe(false);
@@ -44,7 +48,9 @@ describe("defineQuests", () => {
   });
 
   it("rejects an empty title", () => {
-    expect(() => defineQuests({ q: { title: "", objectives: {} } })).toThrow(/title is required/);
+    expect(() => defineQuests({ q: { title: "", objectives: {} } })).toThrow(
+      /title is required/,
+    );
   });
 
   it("rejects a non-integer or < 1 objective count", () => {
@@ -67,7 +73,11 @@ describe("defineQuests", () => {
   it("allows a requires forward reference to a later-declared quest", () => {
     expect(() =>
       defineQuests({
-        first: { title: "First", objectives: { step: {} }, requires: ["second"] },
+        first: {
+          title: "First",
+          objectives: { step: {} },
+          requires: ["second"],
+        },
         second: { title: "Second", objectives: { step: {} } },
       }),
     ).not.toThrow();
@@ -99,7 +109,9 @@ describe("defineQuests", () => {
   });
 
   it("get throws on unknown ids; tryGet returns undefined; has narrows", () => {
-    const catalog = defineQuests({ q: { title: "Q", objectives: { step: {} } } });
+    const catalog = defineQuests({
+      q: { title: "Q", objectives: { step: {} } },
+    });
     expect(() => catalog.get("nope" as never)).toThrow(/unknown quest id/);
     expect(catalog.tryGet("nope")).toBeUndefined();
     expect(catalog.has("nope")).toBe(false);

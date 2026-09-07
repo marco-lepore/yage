@@ -10,7 +10,10 @@ import { RendererPlugin } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
 import { AudioPlugin } from "@yagejs/audio";
 import { InputPlugin } from "@yagejs/input";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+import {
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
 import { WIDTH, HEIGHT } from "./constants.js";
 import { fullscreenBtn } from "./ui.js";
 import { ShooterScene } from "./scene.js";
@@ -38,16 +41,18 @@ async function main() {
   engine.use(renderer);
   engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
   engine.use(new AudioPlugin());
-  engine.use(new InputPlugin({
-    actions: {
-      left: ["KeyA", "ArrowLeft"],
-      right: ["KeyD", "ArrowRight"],
-      jump: ["Space"],
-      shoot: ["KeyJ", "KeyK"],
-      down: ["KeyS", "ArrowDown"],
-    },
-    preventDefaultKeys: ["Space", "ArrowDown"],
-  }));
+  engine.use(
+    new InputPlugin({
+      actions: {
+        left: ["KeyA", "ArrowLeft"],
+        right: ["KeyD", "ArrowRight"],
+        jump: ["Space"],
+        shoot: ["KeyJ", "KeyK"],
+        down: ["KeyS", "ArrowDown"],
+      },
+      preventDefaultKeys: ["Space", "ArrowDown"],
+    }),
+  );
   await installDebugFromUrl(engine);
 
   await engine.start();

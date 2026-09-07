@@ -6,7 +6,12 @@
  * the sort itself is stable, so equal entries keep their relative placement.
  */
 
-import type { InstanceDataMap, ItemDef, ItemStack, LooseDataMap } from "./types.js";
+import type {
+  InstanceDataMap,
+  ItemDef,
+  ItemStack,
+  LooseDataMap,
+} from "./types.js";
 
 /** What a {@link StackComparator} compares. */
 export interface SortEntry<
@@ -29,7 +34,11 @@ export const byCatalogOrder: StackComparator = (a, b) => a.order - b.order;
 
 /** Display name, ascending. */
 export const byName: StackComparator = (a, b) =>
-  a.def.name < b.def.name ? -1 : a.def.name > b.def.name ? 1 : a.order - b.order;
+  a.def.name < b.def.name
+    ? -1
+    : a.def.name > b.def.name
+      ? 1
+      : a.order - b.order;
 
 /** Category ascending (undefined categories last), then catalog order. */
 export const byCategory: StackComparator = (a, b) => {

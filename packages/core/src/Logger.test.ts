@@ -172,7 +172,9 @@ describe("Logger", () => {
       const original = new Error("boom");
       logger.error("core", "something broke", { error: original });
       expect(spy.mock.calls[0]?.[1]).toEqual({ error: original });
-      expect((spy.mock.calls[0]?.[1] as { error: unknown }).error).toBeInstanceOf(Error);
+      expect(
+        (spy.mock.calls[0]?.[1] as { error: unknown }).error,
+      ).toBeInstanceOf(Error);
       spy.mockRestore();
     });
 
@@ -187,7 +189,9 @@ describe("Logger", () => {
     });
 
     it("guards a throwing output sink and mutes it after the first failure", () => {
-      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const consoleSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
       const output = vi.fn(() => {
         throw new Error("sink boom");
       });
@@ -199,12 +203,17 @@ describe("Logger", () => {
       // The sink itself only ran once — it's disabled after its first failure.
       expect(output).toHaveBeenCalledOnce();
       // Both entries are still buffered even though the sink is disabled.
-      expect(logger.getRecent().map((e) => e.message)).toEqual(["first", "second"]);
+      expect(logger.getRecent().map((e) => e.message)).toEqual([
+        "first",
+        "second",
+      ]);
       consoleSpy.mockRestore();
     });
 
     it("guards an async output sink that rejects and mutes it once the rejection settles", async () => {
-      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const consoleSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
       const output = vi.fn(() => Promise.reject(new Error("async sink boom")));
       const logger = new Logger({ level: LogLevel.Debug, output });
 
@@ -217,7 +226,10 @@ describe("Logger", () => {
       logger.error("core", "second");
       // Disabled once the rejection was observed — not called again.
       expect(output).toHaveBeenCalledOnce();
-      expect(logger.getRecent().map((e) => e.message)).toEqual(["first", "second"]);
+      expect(logger.getRecent().map((e) => e.message)).toEqual([
+        "first",
+        "second",
+      ]);
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining("disabled"),
         expect.any(Error),
@@ -226,7 +238,9 @@ describe("Logger", () => {
     });
 
     it("a burst against a rejecting async sink reports the sink once", async () => {
-      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const consoleSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
       const output = vi.fn(() => Promise.reject(new Error("async sink boom")));
       const logger = new Logger({ level: LogLevel.Debug, output });
 
@@ -250,7 +264,9 @@ describe("Logger", () => {
     const logger = new Logger({ level: LogLevel.Debug, bufferSize: 4 });
     logger.info("test", "msg");
     // Corrupt the log level to trigger the ?? "UNKNOWN" fallback
-    const buffer = (logger as unknown as { buffer: Array<{ level: number }> })["buffer"];
+    const buffer = (logger as unknown as { buffer: Array<{ level: number }> })[
+      "buffer"
+    ];
     const entry = buffer[0];
     if (entry) {
       entry.level = 999 as LogLevel;

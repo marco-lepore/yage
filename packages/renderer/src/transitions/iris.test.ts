@@ -130,9 +130,7 @@ describe("iris", () => {
 
   it("tolerates undefined scenes on either side", () => {
     const t = iris({ duration: 100 });
-    expect(() =>
-      t.begin!(makeCtx({ elapsed: 0, kind: "push" })),
-    ).not.toThrow();
+    expect(() => t.begin!(makeCtx({ elapsed: 0, kind: "push" }))).not.toThrow();
     expect(() =>
       t.tick(50, makeCtx({ elapsed: 50, kind: "push" })),
     ).not.toThrow();
@@ -141,9 +139,7 @@ describe("iris", () => {
 
   it("accepts a custom center without throwing", () => {
     const t = iris({ duration: 100, center: { x: 0, y: 0 } });
-    expect(() =>
-      t.begin!(makeCtx({ elapsed: 0, kind: "push" })),
-    ).not.toThrow();
+    expect(() => t.begin!(makeCtx({ elapsed: 0, kind: "push" }))).not.toThrow();
     expect(() =>
       t.tick(50, makeCtx({ elapsed: 50, kind: "push" })),
     ).not.toThrow();

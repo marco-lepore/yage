@@ -543,9 +543,13 @@ never reported):
 
 ```ts
 // walls whose own mask includes the player layer
-{ filterGroups: CollisionLayers.interactionGroups(LAYER_PLAYER, LAYER_WALL) }
+{
+  filterGroups: CollisionLayers.interactionGroups(LAYER_PLAYER, LAYER_WALL);
+}
 // every wall, whichever layers its own mask names
-{ filterGroups: CollisionLayers.interactionGroups(0xffff, LAYER_WALL) }
+{
+  filterGroups: CollisionLayers.interactionGroups(0xffff, LAYER_WALL);
+}
 ```
 
 Omit `filterGroups` to skip the layer test; `sensors` and `excludeEntity` still

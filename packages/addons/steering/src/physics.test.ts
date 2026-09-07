@@ -8,14 +8,20 @@ import type { BodyType, PhysicsWorld, RaycastHit } from "@yagejs/physics";
 vi.mock("@dimforge/rapier2d", () => ({ default: {} }));
 import { PhysicsWorldKey, RigidBodyComponent } from "@yagejs/physics";
 import type { ImpulseBody, VelocityBody } from "./SteeringAgent.js";
-import { PhysicsSteeringAgent, avoidColliders, physicsNeighbors } from "./physics.js";
+import {
+  PhysicsSteeringAgent,
+  avoidColliders,
+  physicsNeighbors,
+} from "./physics.js";
 import { seek } from "./core/behaviors.js";
 import type { AgentState } from "./core/types.js";
 
 // Pins the structural contract: `body` accepts a RigidBodyComponent as-is.
 // If the physics API drifts, these conditional types become `never` and the
 // assignments below stop typechecking.
-type VelocityConformance = RigidBodyComponent extends VelocityBody ? true : never;
+type VelocityConformance = RigidBodyComponent extends VelocityBody
+  ? true
+  : never;
 type ImpulseConformance = RigidBodyComponent extends ImpulseBody ? true : never;
 
 describe("RigidBodyComponent body conformance", () => {
@@ -110,8 +116,16 @@ describe("avoidColliders", () => {
   });
 
   it("picks the closest hit across rays and excludes the agent's entity", () => {
-    const far = { point: new Vec2(90, 0), normal: new Vec2(0, -1), distance: 90 } as RaycastHit;
-    const near = { point: new Vec2(30, 20), normal: new Vec2(0, 1), distance: 30 } as RaycastHit;
+    const far = {
+      point: new Vec2(90, 0),
+      normal: new Vec2(0, -1),
+      distance: 90,
+    } as RaycastHit;
+    const near = {
+      point: new Vec2(30, 20),
+      normal: new Vec2(0, 1),
+      distance: 30,
+    } as RaycastHit;
     const { raycast, world } = fakeWorld([far, near, null]);
     const { entity } = createMockEntity("self");
 
@@ -166,22 +180,25 @@ describe("PhysicsSteeringAgent", () => {
 
   it("static body throws at add", () => {
     const { entity } = physicsEntity("static");
-    expect(() => entity.add(new PhysicsSteeringAgent({ maxSpeed: 60 }))).toThrow(
-      /static/,
-    );
+    expect(() =>
+      entity.add(new PhysicsSteeringAgent({ maxSpeed: 60 })),
+    ).toThrow(/static/);
   });
 
   it("missing body sibling throws at add with an ordering hint", () => {
     const { entity } = createMockEntity("no-body-host");
     entity.add(new Transform({ position: Vec2.ZERO }));
-    expect(() => entity.add(new PhysicsSteeringAgent({ maxSpeed: 60 }))).toThrow(
-      /before the agent/,
-    );
+    expect(() =>
+      entity.add(new PhysicsSteeringAgent({ maxSpeed: 60 })),
+    ).toThrow(/before the agent/);
   });
 
   it("dynamic body keeps impulse drive against the body", () => {
     const { entity } = physicsEntity("dynamic");
-    const applyImpulse = vi.spyOn(entity.get(RigidBodyComponent), "applyImpulse");
+    const applyImpulse = vi.spyOn(
+      entity.get(RigidBodyComponent),
+      "applyImpulse",
+    );
     const agent = new PhysicsSteeringAgent({
       maxSpeed: 60,
       behaviors: [seek(new Vec2(1000, 0))],
@@ -209,7 +226,9 @@ describe("physicsNeighbors", () => {
       agentState(new Vec2(10, 10), Vec2.ZERO, 100, self),
     );
 
-    expect(result).toEqual([{ position: new Vec2(30, 40), velocity: Vec2.ZERO }]);
+    expect(result).toEqual([
+      { position: new Vec2(30, 40), velocity: Vec2.ZERO },
+    ]);
     expect(queryRadius).toHaveBeenCalledWith(new Vec2(10, 10), 50, {
       excludeEntity: self,
     });

@@ -27,7 +27,9 @@ describe("MemoryVariableStorage", () => {
 describe("cells", () => {
   it("reads through the getter live and writes through the setter", () => {
     let gold = 100;
-    const s = cells({ gold: { get: () => gold, set: (v) => (gold = Number(v)) } });
+    const s = cells({
+      gold: { get: () => gold, set: (v) => (gold = Number(v)) },
+    });
     expect(s.has("gold")).toBe(true);
     expect(s.get("gold")).toBe(100);
     gold = 75;
@@ -75,7 +77,9 @@ describe("compose", () => {
 
   it("routes a write to the first storage that has the name, else the last", () => {
     let gold = 10;
-    const game = cells({ gold: { get: () => gold, set: (v) => (gold = Number(v)) } });
+    const game = cells({
+      gold: { get: () => gold, set: (v) => (gold = Number(v)) },
+    });
     const mem = new MemoryVariableStorage();
     const s = compose(game, mem);
 
@@ -140,7 +144,10 @@ describe("createRecordStorage", () => {
   });
 
   it("materializes to the backing non-null record", () => {
-    const rec: Record<string, string | number | boolean> = { gold: 5, greeted: true };
+    const rec: Record<string, string | number | boolean> = {
+      gold: 5,
+      greeted: true,
+    };
     expect(materialize(createRecordStorage(rec))).toEqual(rec);
   });
 });

@@ -52,18 +52,26 @@ describe("loadYaml — YAML-literal front-end", () => {
 
   it("rejects an array root with a clear, YAML-specific error", () => {
     expect(() => loadYaml("- a\n- b")).toThrow(DialogueScriptError);
-    expect(() => loadYaml("- a\n- b")).toThrow(/root must be a mapping.*an array/s);
+    expect(() => loadYaml("- a\n- b")).toThrow(
+      /root must be a mapping.*an array/s,
+    );
   });
 
   it("rejects a scalar root", () => {
     expect(() => loadYaml("42")).toThrow(/root must be a mapping.*a number/s);
-    expect(() => loadYaml("just a string")).toThrow(/root must be a mapping.*a string/s);
+    expect(() => loadYaml("just a string")).toThrow(
+      /root must be a mapping.*a string/s,
+    );
   });
 
   it("rejects an empty / blank document with a dedicated message", () => {
     // `yaml.parse` collapses both to null; the loader still tells them apart.
-    expect(() => loadYaml("")).toThrow(/root must be a mapping.*an empty document/s);
-    expect(() => loadYaml("   \n  ")).toThrow(/root must be a mapping.*an empty document/s);
+    expect(() => loadYaml("")).toThrow(
+      /root must be a mapping.*an empty document/s,
+    );
+    expect(() => loadYaml("   \n  ")).toThrow(
+      /root must be a mapping.*an empty document/s,
+    );
   });
 
   it("rejects an explicit null root", () => {

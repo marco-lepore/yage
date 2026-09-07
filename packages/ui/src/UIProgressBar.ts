@@ -2,7 +2,11 @@ import { Container } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display } from "yoga-layout";
 import type { DisplayContainer } from "@yagejs/renderer";
-import type { BackgroundOptions, UIElement, UIProgressBarProps } from "./types.js";
+import type {
+  BackgroundOptions,
+  UIElement,
+  UIProgressBarProps,
+} from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { BackgroundRenderer } from "./background-renderer.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
@@ -41,11 +45,19 @@ export class UIProgressBar implements UIElement {
 
     // Track (background)
     this.trackRenderer = new BackgroundRenderer();
-    this.trackRenderer.set(props.trackBackground ?? DEFAULT_TRACK, this.container, 0);
+    this.trackRenderer.set(
+      props.trackBackground ?? DEFAULT_TRACK,
+      this.container,
+      0,
+    );
 
     // Fill (foreground)
     this.fillRenderer = new BackgroundRenderer();
-    this.fillRenderer.set(props.fillBackground ?? DEFAULT_FILL, this.container, 1);
+    this.fillRenderer.set(
+      props.fillBackground ?? DEFAULT_FILL,
+      this.container,
+      1,
+    );
 
     applyLayoutProps(this.yogaNode, props);
 
@@ -85,11 +97,19 @@ export class UIProgressBar implements UIElement {
     }
 
     if ("trackBackground" in p) {
-      this.trackRenderer.set(p.trackBackground ?? DEFAULT_TRACK, this.container, 0);
+      this.trackRenderer.set(
+        p.trackBackground ?? DEFAULT_TRACK,
+        this.container,
+        0,
+      );
     }
 
     if ("fillBackground" in p) {
-      this.fillRenderer.set(p.fillBackground ?? DEFAULT_FILL, this.container, 1);
+      this.fillRenderer.set(
+        p.fillBackground ?? DEFAULT_FILL,
+        this.container,
+        1,
+      );
     }
 
     if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);

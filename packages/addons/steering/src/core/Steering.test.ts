@@ -59,17 +59,23 @@ describe("Steering.compute", () => {
   it("add/remove/clear change the blend", () => {
     const behavior = constant(new Vec2(10, 0));
     const steering = new Steering();
-    expect(steering.compute(agentAt(Vec2.ZERO, 100), 1 / 60)).toEqual(Vec2.ZERO);
+    expect(steering.compute(agentAt(Vec2.ZERO, 100), 1 / 60)).toEqual(
+      Vec2.ZERO,
+    );
 
     steering.add(behavior);
     expect(steering.compute(agentAt(Vec2.ZERO, 100), 1 / 60).x).toBeCloseTo(10);
 
     steering.remove(behavior);
-    expect(steering.compute(agentAt(Vec2.ZERO, 100), 1 / 60)).toEqual(Vec2.ZERO);
+    expect(steering.compute(agentAt(Vec2.ZERO, 100), 1 / 60)).toEqual(
+      Vec2.ZERO,
+    );
 
     steering.add(behavior).add(constant(new Vec2(0, 10)));
     steering.clear();
-    expect(steering.compute(agentAt(Vec2.ZERO, 100), 1 / 60)).toEqual(Vec2.ZERO);
+    expect(steering.compute(agentAt(Vec2.ZERO, 100), 1 / 60)).toEqual(
+      Vec2.ZERO,
+    );
   });
 
   it("a non-zero higher tier overrides the lower tier outright", () => {

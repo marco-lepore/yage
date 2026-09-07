@@ -163,7 +163,12 @@ function tokenize(src: string): Token[] {
           advance();
         }
       }
-      tokens.push({ kind: "number", value: Number(text), line: startLine, col: startCol });
+      tokens.push({
+        kind: "number",
+        value: Number(text),
+        line: startLine,
+        col: startCol,
+      });
       continue;
     }
 
@@ -183,10 +188,19 @@ function tokenize(src: string): Token[] {
         advance();
       }
       if (src[i] !== quote) {
-        throw new DialogueExprError("unterminated string literal", startLine, startCol);
+        throw new DialogueExprError(
+          "unterminated string literal",
+          startLine,
+          startCol,
+        );
       }
       advance(); // closing quote
-      tokens.push({ kind: "string", value: text, line: startLine, col: startCol });
+      tokens.push({
+        kind: "string",
+        value: text,
+        line: startLine,
+        col: startCol,
+      });
       continue;
     }
 
@@ -199,10 +213,20 @@ function tokenize(src: string): Token[] {
       }
       const keyword = KEYWORDS[text];
       if (keyword === undefined) {
-        tokens.push({ kind: "ident", value: text, line: startLine, col: startCol });
-      } else if (keyword === "true" || keyword === "false" || keyword === "null") {
+        tokens.push({
+          kind: "ident",
+          value: text,
+          line: startLine,
+          col: startCol,
+        });
+      } else if (
+        keyword === "true" ||
+        keyword === "false" ||
+        keyword === "null"
+      ) {
         // Literal keywords carry a value; the operator keywords are bare.
-        const value: VarValue = keyword === "true" ? true : keyword === "false" ? false : null;
+        const value: VarValue =
+          keyword === "true" ? true : keyword === "false" ? false : null;
         tokens.push({ kind: keyword, value, line: startLine, col: startCol });
       } else {
         tokens.push({ kind: keyword, line: startLine, col: startCol });
@@ -212,20 +236,40 @@ function tokenize(src: string): Token[] {
 
     // Two-char operators.
     const two = src.slice(i, i + 2);
-    if (two === "&&" || two === "||" || two === "==" || two === "!=" || two === ">=" || two === "<=") {
+    if (
+      two === "&&" ||
+      two === "||" ||
+      two === "==" ||
+      two === "!=" ||
+      two === ">=" ||
+      two === "<="
+    ) {
       tokens.push({ kind: two, line: startLine, col: startCol });
       advance(2);
       continue;
     }
 
     // One-char operators / punctuation.
-    if (c === ">" || c === "<" || c === "!" || c === "+" || c === "-" || c === "(" || c === ")" || c === ",") {
+    if (
+      c === ">" ||
+      c === "<" ||
+      c === "!" ||
+      c === "+" ||
+      c === "-" ||
+      c === "(" ||
+      c === ")" ||
+      c === ","
+    ) {
       tokens.push({ kind: c, line: startLine, col: startCol });
       advance();
       continue;
     }
 
-    throw new DialogueExprError(`unexpected character "${c}"`, startLine, startCol);
+    throw new DialogueExprError(
+      `unexpected character "${c}"`,
+      startLine,
+      startCol,
+    );
   }
 
   tokens.push({ kind: "eof", line, col });
@@ -269,7 +313,11 @@ class Parser {
     const expr = this.parseBinary(0);
     const t = this.peek();
     if (t.kind !== "eof") {
-      throw new DialogueExprError(`unexpected trailing token "${describe(t)}"`, t.line, t.col);
+      throw new DialogueExprError(
+        `unexpected trailing token "${describe(t)}"`,
+        t.line,
+        t.col,
+      );
     }
     return expr;
   }
@@ -349,14 +397,22 @@ class Parser {
         this.next();
         return args;
       }
-      throw new DialogueExprError(`expected "," or ")" in argument list, got ${describe(t)}`, t.line, t.col);
+      throw new DialogueExprError(
+        `expected "," or ")" in argument list, got ${describe(t)}`,
+        t.line,
+        t.col,
+      );
     }
   }
 
   private expect(kind: TokenKind): void {
     const t = this.peek();
     if (t.kind !== kind) {
-      throw new DialogueExprError(`expected "${kind}", got ${describe(t)}`, t.line, t.col);
+      throw new DialogueExprError(
+        `expected "${kind}", got ${describe(t)}`,
+        t.line,
+        t.col,
+      );
     }
     this.next();
   }

@@ -11,9 +11,15 @@ const { mocks } = vi.hoisted(() => {
     texture: unknown;
     _tint = 0xffffff;
     color = 0xffffffff;
-    constructor(t: unknown) { this.texture = t; }
-    get tint(): number { return this._tint; }
-    set tint(v: number) { this._tint = v; }
+    constructor(t: unknown) {
+      this.texture = t;
+    }
+    get tint(): number {
+      return this._tint;
+    }
+    set tint(v: number) {
+      this._tint = v;
+    }
   }
 
   class MockParticleContainer {
@@ -28,14 +34,19 @@ const { mocks } = vi.hoisted(() => {
     };
     parent: unknown = null;
     destroyed = false;
-    addParticle(p: unknown): unknown { this.children.push(p); return p; }
+    addParticle(p: unknown): unknown {
+      this.children.push(p);
+      return p;
+    }
     removeParticle(p: unknown): unknown {
       const idx = this.children.indexOf(p);
       if (idx !== -1) this.children.splice(idx, 1);
       return p;
     }
     removeFromParent(): void {}
-    destroy(): void { this.destroyed = true; }
+    destroy(): void {
+      this.destroyed = true;
+    }
   }
 
   class MockContainer {
@@ -52,7 +63,8 @@ const { mocks } = vi.hoisted(() => {
     destroyed = false;
     addChild(child: unknown): unknown {
       this.children.push(child);
-      if (child && typeof child === "object") (child as Record<string, unknown>).parent = this;
+      if (child && typeof child === "object")
+        (child as Record<string, unknown>).parent = this;
       return child;
     }
     removeChild(child: unknown): unknown {
@@ -62,7 +74,9 @@ const { mocks } = vi.hoisted(() => {
     }
     removeFromParent(): void {}
     sortChildren(): void {}
-    destroy(): void { this.destroyed = true; }
+    destroy(): void {
+      this.destroyed = true;
+    }
   }
 
   return { mocks: { MockParticle, MockParticleContainer, MockContainer } };
@@ -75,7 +89,10 @@ vi.mock("pixi.js", () => ({
 }));
 
 import { Transform, Vec2, Phase, SceneTime, SceneTimeKey } from "@yagejs/core";
-import { createParticlesTestContext, spawnEntityInScene } from "./test-helpers.js";
+import {
+  createParticlesTestContext,
+  spawnEntityInScene,
+} from "./test-helpers.js";
 import { ParticleSystem } from "./ParticleSystem.js";
 import { ParticleEmitterComponent } from "./ParticleEmitterComponent.js";
 
@@ -181,11 +198,15 @@ describe("ParticleSystem", () => {
 
     const e1 = spawnEntityInScene(ctx.scene, "e1");
     e1.add(new Transform({ position: new Vec2(10, 20) }));
-    const em1 = e1.add(new ParticleEmitterComponent({ texture: tex, lifetime: 1 }));
+    const em1 = e1.add(
+      new ParticleEmitterComponent({ texture: tex, lifetime: 1 }),
+    );
 
     const e2 = spawnEntityInScene(ctx.scene, "e2");
     e2.add(new Transform({ position: new Vec2(30, 40) }));
-    const em2 = e2.add(new ParticleEmitterComponent({ texture: tex, lifetime: 1 }));
+    const em2 = e2.add(
+      new ParticleEmitterComponent({ texture: tex, lifetime: 1 }),
+    );
 
     const spy1 = vi.spyOn(em1, "_update");
     const spy2 = vi.spyOn(em2, "_update");

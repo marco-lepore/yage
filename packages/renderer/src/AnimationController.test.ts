@@ -412,9 +412,7 @@ describe("AnimationController", () => {
     const { ctrl } = setup();
 
     ctrl.speed = 0;
-    expect(() => ctrl.playOneShot("shoot")).toThrow(
-      /positive effective speed/,
-    );
+    expect(() => ctrl.playOneShot("shoot")).toThrow(/positive effective speed/);
     ctrl.playOneShot("shoot", { duration: 1 });
     ctrl.speed = -1;
     expect(ctrl.speed).toBe(-1);

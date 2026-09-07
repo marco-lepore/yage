@@ -29,7 +29,8 @@ function collectLeaves(
   if (typeof value !== "object" || value === null) return into;
   if (seen.has(value)) return into;
   seen.add(value);
-  for (const v of Object.values(value as Record<string, unknown>)) collectLeaves(v, into, seen);
+  for (const v of Object.values(value as Record<string, unknown>))
+    collectLeaves(v, into, seen);
   return into;
 }
 
@@ -115,14 +116,25 @@ describe("theme exhaustiveness (drift-guard)", () => {
 
 describe("textured chrome-style wiring", () => {
   const style = (name: string): ChromeStyle => ({
-    frame: { texture: `${name}-frame`, insets: { left: 8, top: 8, right: 8, bottom: 8 } },
+    frame: {
+      texture: `${name}-frame`,
+      insets: { left: 8, top: 8, right: 8, bottom: 8 },
+    },
     ...(name === CHROME_STYLE_DEFAULT
-      ? { bubble: { texture: "default-bubble", insets: { left: 6, top: 6, right: 6, bottom: 6 } } }
+      ? {
+          bubble: {
+            texture: "default-bubble",
+            insets: { left: 6, top: 6, right: 6, bottom: 6 },
+          },
+        }
       : {}),
   });
 
   it("boxFrameStyles maps each named style to its box frame", () => {
-    const textured = { [CHROME_STYLE_DEFAULT]: style(CHROME_STYLE_DEFAULT), wood: style("wood") };
+    const textured = {
+      [CHROME_STYLE_DEFAULT]: style(CHROME_STYLE_DEFAULT),
+      wood: style("wood"),
+    };
     const styles = boxFrameStyles(textured);
     expect(styles?.[CHROME_STYLE_DEFAULT]?.texture).toBe("default-frame");
     expect(styles?.["wood"]?.texture).toBe("wood-frame");
@@ -130,7 +142,10 @@ describe("textured chrome-style wiring", () => {
   });
 
   it("defaultBubbleFrame reads only the default style's bubble", () => {
-    const textured = { [CHROME_STYLE_DEFAULT]: style(CHROME_STYLE_DEFAULT), wood: style("wood") };
+    const textured = {
+      [CHROME_STYLE_DEFAULT]: style(CHROME_STYLE_DEFAULT),
+      wood: style("wood"),
+    };
     expect(defaultBubbleFrame(textured)?.texture).toBe("default-bubble");
     // A textured theme with no default bubble → Graphics bubble (undefined).
     expect(defaultBubbleFrame({ wood: style("wood") })).toBeUndefined();

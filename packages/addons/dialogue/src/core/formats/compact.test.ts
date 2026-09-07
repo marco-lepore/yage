@@ -15,7 +15,12 @@ import type {
 // Terse Expr builders (mirroring expr-parse.test.ts).
 const lit = (value: VarValue): Expr => ({ kind: "literal", value });
 const v = (name: string): Expr => ({ kind: "varRef", name });
-const bin = (op: BinaryOp, left: Expr, right: Expr): Expr => ({ kind: "binary", op, left, right });
+const bin = (op: BinaryOp, left: Expr, right: Expr): Expr => ({
+  kind: "binary",
+  op,
+  left,
+  right,
+});
 
 /** The worked example shown in the docs — exercises every leader. */
 const SHOP = `
@@ -53,7 +58,12 @@ describe("loadCompact — the worked shop script round-trips to IR", () => {
   it("carries the id, implicit start (first node), and speakers", () => {
     expect(script.id).toBe("shop");
     expect(script.start).toBe("start"); // first `::` node
-    expect(Object.keys(script.nodes)).toEqual(["start", "buy", "rumors", "done"]);
+    expect(Object.keys(script.nodes)).toEqual([
+      "start",
+      "buy",
+      "rumors",
+      "done",
+    ]);
     expect(script.speakers).toEqual({
       mira: { id: "mira", name: "Mira Brightwater", color: 0xffcc00 },
       guard: { id: "guard", name: "Guard" },
@@ -65,7 +75,10 @@ describe("loadCompact — the worked shop script round-trips to IR", () => {
     const parsed = parseCompact(SHOP);
     expect(Object.keys(parsed.speakers ?? {})).toEqual(["mira", "guard"]);
     // The id is loader-derived: the raw parse carries only authored fields.
-    expect(parsed.speakers?.mira).toEqual({ name: "Mira Brightwater", color: 0xffcc00 });
+    expect(parsed.speakers?.mira).toEqual({
+      name: "Mira Brightwater",
+      color: 0xffcc00,
+    });
     expect(parsed.speakers?.guard).toEqual({ name: "Guard" });
   });
 
@@ -85,7 +98,10 @@ describe("loadCompact — the worked shop script round-trips to IR", () => {
     });
     // A line with no declared-speaker prefix is a narrator line.
     const rumors = script.nodes.rumors!.steps;
-    expect(rumors[1]).toEqual({ kind: "say", text: "The tavern falls silent for a moment." });
+    expect(rumors[1]).toEqual({
+      kind: "say",
+      text: "The tavern falls silent for a moment.",
+    });
   });
 
   it("reads `set` literals and expressions, and a `do` command", () => {
@@ -96,7 +112,9 @@ describe("loadCompact — the worked shop script round-trips to IR", () => {
     const buy = script.nodes.buy!.steps;
     expect(buy[0]).toEqual({
       kind: "command",
-      commands: [{ type: "set", var: "gold", value: bin("-", v("gold"), lit(50)) }],
+      commands: [
+        { type: "set", var: "gold", value: bin("-", v("gold"), lit(50)) },
+      ],
     });
     expect(buy[2]).toEqual({
       kind: "command",
@@ -115,7 +133,11 @@ describe("loadCompact — the worked shop script round-trips to IR", () => {
         target: "buy",
         once: true,
       },
-      { text: "Ask about the [i]rumors[/i]", target: "rumors", meta: { side: "right" } },
+      {
+        text: "Ask about the [i]rumors[/i]",
+        target: "rumors",
+        meta: { side: "right" },
+      },
       { text: "Just browsing", target: "done" },
     ]);
   });
@@ -134,7 +156,10 @@ describe("loadCompact — choice text vs choice attributes", () => {
     expect(opt.target).toBe("hatch");
     // The retained markup still renders bold (and the flag never leaks into it).
     const parsed = parseMarkup(opt.text);
-    expect(parsed.runs[0]).toMatchObject({ text: "Force", style: { bold: true } });
+    expect(parsed.runs[0]).toMatchObject({
+      text: "Force",
+      style: { bold: true },
+    });
     expect(opt.text).not.toContain("#disabled");
   });
 
@@ -149,13 +174,21 @@ describe("loadCompact — choice text vs choice attributes", () => {
   it("ERRORS on a malformed built-in markup tag (a typo'd choice attribute)", () => {
     // The one tag markup still drops silently is a built-in styling tag the parser
     // can't act on (here a bad color), so the choice grammar surfaces it.
-    expect(() => wrap("? Pick the lock [color=notacolor] -> done")).toThrow(DialogueScriptError);
-    expect(() => wrap("? Pick the lock [color=notacolor] -> done")).toThrow(/markup only|\[color\]/);
+    expect(() => wrap("? Pick the lock [color=notacolor] -> done")).toThrow(
+      DialogueScriptError,
+    );
+    expect(() => wrap("? Pick the lock [color=notacolor] -> done")).toThrow(
+      /markup only|\[color\]/,
+    );
   });
 
   it("lexes `#once` / `#disabled` flags and `#key:value` meta off the text", () => {
     const opt = wrap("? Open it #once #side:right").options[0]!;
-    expect(opt).toEqual({ text: "Open it", once: true, meta: { side: "right" } });
+    expect(opt).toEqual({
+      text: "Open it",
+      once: true,
+      meta: { side: "right" },
+    });
   });
 
   it("parses `if:` (anywhere a space-bounded token) into an Expr condition", () => {
@@ -189,7 +222,12 @@ describe("parseCompact — say lines", () => {
 
   it("`speaker face: text` puts the face on SayStep.expression (Q4)", () => {
     const say = firstSay("hero happy: At last!", "@ hero Hero\n");
-    expect(say).toEqual({ kind: "say", speaker: "hero", expression: "happy", text: "At last!" });
+    expect(say).toEqual({
+      kind: "say",
+      speaker: "hero",
+      expression: "happy",
+      text: "At last!",
+    });
   });
 
   it("trailing `#key:value` → SayStep.meta", () => {
@@ -206,7 +244,10 @@ describe("parseCompact — say lines", () => {
   });
 
   it("first-class hints view/voice/speed/auto map to SayStep fields", () => {
-    const say = firstSay("hero: Whispered… speed=0.5 voice=vo_42 view=bubble auto=2", "@ hero Hero\n");
+    const say = firstSay(
+      "hero: Whispered… speed=0.5 voice=vo_42 view=bubble auto=2",
+      "@ hero Hero\n",
+    );
     expect(say).toMatchObject({
       speaker: "hero",
       text: "Whispered…",
@@ -218,12 +259,15 @@ describe("parseCompact — say lines", () => {
   });
 
   it("rejects a non-numeric speed= / auto= hint", () => {
-    expect(() => firstSay("hero: Hi speed=fast", "@ hero Hero\n")).toThrow(/speed.*number/);
+    expect(() => firstSay("hero: Hi speed=fast", "@ hero Hero\n")).toThrow(
+      /speed.*number/,
+    );
   });
 });
 
 describe("parseCompact — set / do disambiguation", () => {
-  const firstStep = (line: string) => parseCompact(`# t\n:: n\n${line}\nend\n`).nodes.n!.steps[0]!;
+  const firstStep = (line: string) =>
+    parseCompact(`# t\n:: n\n${line}\nend\n`).nodes.n!.steps[0]!;
 
   it("`set hp = hp-1` → a `set` command whose value is binary minus", () => {
     expect(firstStep("set hp = hp-1")).toEqual({
@@ -244,17 +288,22 @@ describe("parseCompact — set / do disambiguation", () => {
   });
 
   it("`set the table` (no `=`) is NOT a command — it falls through to narrator", () => {
-    expect(firstStep("set the table")).toEqual({ kind: "say", text: "set the table" });
+    expect(firstStep("set the table")).toEqual({
+      kind: "say",
+      text: "set the table",
+    });
   });
 
   it("`do type k=v #flag` builds a host command with typed values", () => {
     expect(firstStep("do give-item id=rusty-key count=2 #blocking")).toEqual({
       kind: "command",
-      commands: [{ type: "give-item", id: "rusty-key", count: 2, blocking: true }],
+      commands: [
+        { type: "give-item", id: "rusty-key", count: 2, blocking: true },
+      ],
     });
   });
 
-  it("`do msg=\"two words\"` keeps a quoted value together", () => {
+  it('`do msg="two words"` keeps a quoted value together', () => {
     expect(firstStep('do log msg="two words"')).toEqual({
       kind: "command",
       commands: [{ type: "log", msg: "two words" }],
@@ -262,13 +311,20 @@ describe("parseCompact — set / do disambiguation", () => {
   });
 
   it("`do you agree?` is not a command shape — it falls through to narrator", () => {
-    expect(firstStep("do you agree?")).toEqual({ kind: "say", text: "do you agree?" });
+    expect(firstStep("do you agree?")).toEqual({
+      kind: "say",
+      text: "do you agree?",
+    });
   });
 
   it("ERRORS when a `do` data key collides with the command type", () => {
     // `type=` would overwrite the dispatch type — caught as a load error, not silently.
-    expect(() => firstStep("do spawn type=goblin")).toThrow(DialogueScriptError);
-    expect(() => firstStep("do spawn type=goblin")).toThrow(/collides with the command type/);
+    expect(() => firstStep("do spawn type=goblin")).toThrow(
+      DialogueScriptError,
+    );
+    expect(() => firstStep("do spawn type=goblin")).toThrow(
+      /collides with the command type/,
+    );
   });
 
   it("a `do`-shaped line with a trailing bare token stays narrator (no false error)", () => {
@@ -283,18 +339,30 @@ describe("parseCompact — set / do disambiguation", () => {
   it("ERRORS on the `#type` flag form too (same dispatch-type collision)", () => {
     // `#type` would set command.type = true; guard it like `type=`.
     expect(() => firstStep("do spawn #type")).toThrow(DialogueScriptError);
-    expect(() => firstStep("do spawn #type")).toThrow(/collides with the command type/);
+    expect(() => firstStep("do spawn #type")).toThrow(
+      /collides with the command type/,
+    );
   });
 
   it("a `#type` flag with a trailing bare token also stays narrator", () => {
-    expect(firstStep("do spawn #type extra")).toEqual({ kind: "say", text: "do spawn #type extra" });
+    expect(firstStep("do spawn #type extra")).toEqual({
+      kind: "say",
+      text: "do spawn #type extra",
+    });
   });
 });
 
 describe("parseCompact — conditional goto + declare", () => {
   it("`-> node if: cond` is a conditional jump (CommandStep); the next step is the else path", () => {
     const steps = parseCompact(
-      ["# t", ":: n", "-> rich if: gold > 100", "Still poor.", ":: rich", "end"].join("\n"),
+      [
+        "# t",
+        ":: n",
+        "-> rich if: gold > 100",
+        "Still poor.",
+        ":: rich",
+        "end",
+      ].join("\n"),
     ).nodes.n!.steps;
     expect(steps[0]).toEqual({
       kind: "command",
@@ -306,25 +374,36 @@ describe("parseCompact — conditional goto + declare", () => {
   });
 
   it("bare `-> node` stays an unconditional goto", () => {
-    const steps = parseCompact(["# t", ":: n", "-> done", ":: done", "end"].join("\n")).nodes.n!.steps;
+    const steps = parseCompact(
+      ["# t", ":: n", "-> done", ":: done", "end"].join("\n"),
+    ).nodes.n!.steps;
     expect(steps[0]).toEqual({ kind: "goto", target: "done" });
   });
 
   it("loadCompact still validates a conditional jump's target", () => {
-    expect(() => loadCompact(["# t", ":: n", "-> nowhere if: x", "end"].join("\n"))).toThrow(
-      /jump target "nowhere"/,
-    );
+    expect(() =>
+      loadCompact(["# t", ":: n", "-> nowhere if: x", "end"].join("\n")),
+    ).toThrow(/jump target "nowhere"/);
   });
 
   it("`declare` sets script-level defaults (literal scalars), in the preamble or inside a node", () => {
     const script = parseCompact(
-      ["# t", "declare gold = 100", 'declare name = "Hero"', ":: n", "declare ready = false", "end"].join("\n"),
+      [
+        "# t",
+        "declare gold = 100",
+        'declare name = "Hero"',
+        ":: n",
+        "declare ready = false",
+        "end",
+      ].join("\n"),
     );
     expect(script.declare).toEqual({ gold: 100, name: "Hero", ready: false });
   });
 
   it("`declare your intentions` (no `=`) is not a declare — narrator fallthrough", () => {
-    const step = parseCompact(["# t", ":: n", "declare your intentions", "end"].join("\n")).nodes.n!.steps[0];
+    const step = parseCompact(
+      ["# t", ":: n", "declare your intentions", "end"].join("\n"),
+    ).nodes.n!.steps[0];
     expect(step).toEqual({ kind: "say", text: "declare your intentions" });
   });
 });
@@ -332,15 +411,27 @@ describe("parseCompact — conditional goto + declare", () => {
 describe("parseCompact — structure, comments, errors", () => {
   it("ignores blank lines, `// comments`, and indentation", () => {
     const script = parseCompact(
-      ["# t", "", "// a leading comment", ":: n", "  A narrated line.", "  end"].join("\n"),
+      [
+        "# t",
+        "",
+        "// a leading comment",
+        ":: n",
+        "  A narrated line.",
+        "  end",
+      ].join("\n"),
     );
     // The comment line is dropped; the indented step still lands in node "n".
     expect(script.nodes.n!.steps).toHaveLength(2);
-    expect(script.nodes.n!.steps[0]).toEqual({ kind: "say", text: "A narrated line." });
+    expect(script.nodes.n!.steps[0]).toEqual({
+      kind: "say",
+      text: "A narrated line.",
+    });
   });
 
   it("ends a choice run when a non-`?` line follows", () => {
-    const script = parseCompact(`# t\n:: n\n? A -> x\n? B -> y\nNarration after.\nend\n`);
+    const script = parseCompact(
+      `# t\n:: n\n? A -> x\n? B -> y\nNarration after.\nend\n`,
+    );
     const steps = script.nodes.n!.steps;
     expect(steps[0]!.kind).toBe("choice");
     expect((steps[0] as ChoiceStep).options).toHaveLength(2);
@@ -352,7 +443,9 @@ describe("parseCompact — structure, comments, errors", () => {
   });
 
   it("rejects a step before any `:: node`", () => {
-    expect(() => parseCompact("# t\nhero: stray\n")).toThrow(/before any ':: <node>'/);
+    expect(() => parseCompact("# t\nhero: stray\n")).toThrow(
+      /before any ':: <node>'/,
+    );
   });
 
   it("rejects a script with an id but no `:: node`", () => {
@@ -360,21 +453,33 @@ describe("parseCompact — structure, comments, errors", () => {
   });
 
   it("rejects a speaker header with too many tokens", () => {
-    expect(() => parseCompact("# t\n@ h H\n:: n\nh one two: hi\n")).toThrow(/too many tokens/);
+    expect(() => parseCompact("# t\n@ h H\n:: n\nh one two: hi\n")).toThrow(
+      /too many tokens/,
+    );
   });
 
   it("rejects duplicate ids, nodes, and speakers with the line number", () => {
-    expect(() => parseCompact("# a\n# b\n:: n\nend\n")).toThrow(/line 2: duplicate '#'/);
-    expect(() => parseCompact("# t\n:: n\nend\n:: n\nend\n")).toThrow(/duplicate node "n"/);
-    expect(() => parseCompact("# t\n@ x A\n@ x B\n:: n\nend\n")).toThrow(/duplicate speaker "x"/);
+    expect(() => parseCompact("# a\n# b\n:: n\nend\n")).toThrow(
+      /line 2: duplicate '#'/,
+    );
+    expect(() => parseCompact("# t\n:: n\nend\n:: n\nend\n")).toThrow(
+      /duplicate node "n"/,
+    );
+    expect(() => parseCompact("# t\n@ x A\n@ x B\n:: n\nend\n")).toThrow(
+      /duplicate speaker "x"/,
+    );
   });
 
   it("surfaces a malformed `if:` expression as a DialogueExprError (a script error)", () => {
-    expect(() => parseCompact("# t\n:: n\n? Bad if: gold >= -> x\n")).toThrow(DialogueScriptError);
+    expect(() => parseCompact("# t\n:: n\n? Bad if: gold >= -> x\n")).toThrow(
+      DialogueScriptError,
+    );
   });
 
   it("still validates downstream — a goto to a missing node dies in loadScript", () => {
-    expect(() => loadCompact("# t\n:: n\n-> nowhere\n")).toThrow(/jump target "nowhere"/);
+    expect(() => loadCompact("# t\n:: n\n-> nowhere\n")).toThrow(
+      /jump target "nowhere"/,
+    );
   });
 
   it("parseCompact output is mutable; loadCompact freezes it", () => {

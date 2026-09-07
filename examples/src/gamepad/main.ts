@@ -12,13 +12,11 @@ import {
   RendererPlugin,
   TextComponent,
 } from "@yagejs/renderer";
+import { InputManagerKey, InputPlugin, getKeyDisplayName } from "@yagejs/input";
 import {
-  InputManagerKey,
-  InputPlugin,
-  getKeyDisplayName,
-} from "@yagejs/input";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
-
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
 
 // ---------------------------------------------------------------------------
 // Tuning
@@ -47,7 +45,10 @@ class ShipController extends Component {
       move = this.input.getVector("kbLeft", "kbRight", "kbUp", "kbDown");
       if (move.lengthSq() > 1) move = move.normalize();
     }
-    this.transform.translate(move.x * SHIP_SPEED * dt, move.y * SHIP_SPEED * dt);
+    this.transform.translate(
+      move.x * SHIP_SPEED * dt,
+      move.y * SHIP_SPEED * dt,
+    );
 
     // Keep ship in bounds
     const pos = this.transform.position;
@@ -98,7 +99,11 @@ class ShipController extends Component {
   }
 }
 
-function stepTowardAngle(current: number, target: number, maxStep: number): number {
+function stepTowardAngle(
+  current: number,
+  target: number,
+  maxStep: number,
+): number {
   const delta = MathUtils.shortestAngleBetween(current, target);
   if (Math.abs(delta) < maxStep) return target;
   return current + Math.sign(delta) * maxStep;
@@ -176,14 +181,18 @@ function drawStick(
   value: Vec2,
 ): void {
   g.circle(cx, cy, radius).stroke({ color: 0x475569, width: 1.5 });
-  g.moveTo(cx - radius, cy).lineTo(cx + radius, cy).stroke({
-    color: 0x334155,
-    width: 1,
-  });
-  g.moveTo(cx, cy - radius).lineTo(cx, cy + radius).stroke({
-    color: 0x334155,
-    width: 1,
-  });
+  g.moveTo(cx - radius, cy)
+    .lineTo(cx + radius, cy)
+    .stroke({
+      color: 0x334155,
+      width: 1,
+    });
+  g.moveTo(cx, cy - radius)
+    .lineTo(cx, cy + radius)
+    .stroke({
+      color: 0x334155,
+      width: 1,
+    });
   const isActive = value.lengthSq() > 0;
   g.circle(cx + value.x * radius, cy + value.y * radius, 5).fill({
     color: isActive ? 0x22d3ee : 0x64748b,
@@ -226,7 +235,11 @@ class GamepadScene extends Scene {
     const headerText = headerEntity.add(
       new TextComponent({
         text: "",
-        style: { fontFamily: "system-ui, sans-serif", fontSize: 14, fill: 0xe2e8f0 },
+        style: {
+          fontFamily: "system-ui, sans-serif",
+          fontSize: 14,
+          fill: 0xe2e8f0,
+        },
       }),
     );
 
@@ -243,15 +256,17 @@ class GamepadScene extends Scene {
 
     // Held-buttons text — anchored bottom-right of HUD strip
     const buttonsEntity = this.spawn("buttons");
-    buttonsEntity.add(
-      new Transform({ position: new Vec2(450, HEIGHT - 95) }),
-    );
+    buttonsEntity.add(new Transform({ position: new Vec2(450, HEIGHT - 95) }));
     const buttonsLabel = this.spawn("buttons-label");
     buttonsLabel.add(new Transform({ position: new Vec2(450, HEIGHT - 115) }));
     buttonsLabel.add(
       new TextComponent({
         text: "Buttons held",
-        style: { fontFamily: "system-ui, sans-serif", fontSize: 11, fill: 0x94a3b8 },
+        style: {
+          fontFamily: "system-ui, sans-serif",
+          fontSize: 11,
+          fill: 0x94a3b8,
+        },
       }),
     );
     const buttonsText = buttonsEntity.add(
@@ -326,7 +341,13 @@ async function main() {
         // Boost works from keyboard, mouse, or gamepad.
         boost: ["Space", "MouseLeft", "GamepadA"],
       },
-      preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
+      preventDefaultKeys: [
+        "Space",
+        "ArrowUp",
+        "ArrowDown",
+        "ArrowLeft",
+        "ArrowRight",
+      ],
     }),
   );
 

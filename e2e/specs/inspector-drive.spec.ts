@@ -24,7 +24,9 @@ async function waitForSceneApi(page: Page): Promise<void> {
 }
 
 test.describe("Inspector.drive", () => {
-  test("holds a key across frames and reports the outcome", async ({ page }) => {
+  test("holds a key across frames and reports the outcome", async ({
+    page,
+  }) => {
     await gotoFixture(page, "/input.html");
     await waitForClock(page);
 

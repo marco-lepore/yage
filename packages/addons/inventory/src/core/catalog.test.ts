@@ -19,8 +19,12 @@ describe("defineItems", () => {
 
   it("rejects an empty name and a non-positive maxStack", () => {
     expect(() => defineItems({ x: { name: "" } })).toThrow(/name is required/);
-    expect(() => defineItems({ x: { name: "X", maxStack: 0 } })).toThrow(/maxStack/);
-    expect(() => defineItems({ x: { name: "X", maxStack: 2.5 } })).toThrow(/maxStack/);
+    expect(() => defineItems({ x: { name: "X", maxStack: 0 } })).toThrow(
+      /maxStack/,
+    );
+    expect(() => defineItems({ x: { name: "X", maxStack: 2.5 } })).toThrow(
+      /maxStack/,
+    );
   });
 
   it("get throws on unknown ids; tryGet and has don't", () => {

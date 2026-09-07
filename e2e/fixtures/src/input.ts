@@ -1,9 +1,4 @@
-import {
-  Engine,
-  Component,
-  Scene,
-  Transform,
-} from "@yagejs/core";
+import { Engine, Component, Scene, Transform } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
@@ -46,11 +41,13 @@ engine.use(
     container,
   }),
 );
-engine.use(new InputPlugin({
-  actions: {
-    jump: ["Space"],
-  },
-}));
+engine.use(
+  new InputPlugin({
+    actions: {
+      jump: ["Space"],
+    },
+  }),
+);
 engine.use(new DebugPlugin());
 await engine.start();
 engine.inspector.time.freeze();

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { firstUnknownTag, parseMarkup, splitGraphemes, stripMarkup } from "./markup.js";
+import {
+  firstUnknownTag,
+  parseMarkup,
+  splitGraphemes,
+  stripMarkup,
+} from "./markup.js";
 import type { RunStyle, TextRun } from "./types.js";
 
 /** Expected-run helper for ASCII-only cases, where graphemes = code units. */
@@ -52,18 +57,28 @@ describe("parseMarkup — basic styles", () => {
 
 describe("parseMarkup — color parsing", () => {
   it("parses #rrggbb and the [c] alias", () => {
-    expect(parseMarkup("[color=#00ff00]g[/color]").runs[0]!.style.color).toBe(0x00ff00);
+    expect(parseMarkup("[color=#00ff00]g[/color]").runs[0]!.style.color).toBe(
+      0x00ff00,
+    );
     expect(parseMarkup("[c=#0000ff]b[/c]").runs[0]!.style.color).toBe(0x0000ff);
   });
 
   it("expands #rgb shorthand", () => {
-    expect(parseMarkup("[color=#f00]x[/color]").runs[0]!.style.color).toBe(0xff0000);
+    expect(parseMarkup("[color=#f00]x[/color]").runs[0]!.style.color).toBe(
+      0xff0000,
+    );
   });
 
   it("parses 0xRRGGBB and named colors", () => {
-    expect(parseMarkup("[color=0xffd25a]x[/color]").runs[0]!.style.color).toBe(0xffd25a);
-    expect(parseMarkup("[color=gold]x[/color]").runs[0]!.style.color).toBe(0xffd25a);
-    expect(parseMarkup("[color=GOLD]x[/color]").runs[0]!.style.color).toBe(0xffd25a);
+    expect(parseMarkup("[color=0xffd25a]x[/color]").runs[0]!.style.color).toBe(
+      0xffd25a,
+    );
+    expect(parseMarkup("[color=gold]x[/color]").runs[0]!.style.color).toBe(
+      0xffd25a,
+    );
+    expect(parseMarkup("[color=GOLD]x[/color]").runs[0]!.style.color).toBe(
+      0xffd25a,
+    );
   });
 
   it("drops a color tag with an unparseable argument (no style applied)", () => {
@@ -83,8 +98,12 @@ describe("parseMarkup — effects", () => {
   it("opens an effect span for ANY tag name (open vocabulary)", () => {
     // The four built-ins aren't special to the parser — any [name]…[/name] opens
     // an effect span carrying that name; the presenter decides what to animate.
-    expect(parseMarkup("[glitch]x[/glitch]").runs[0]!.style.effect).toBe("glitch");
-    expect(parseMarkup("[sparkle=2]y[/sparkle]").runs[0]!.style.effect).toBe("sparkle");
+    expect(parseMarkup("[glitch]x[/glitch]").runs[0]!.style.effect).toBe(
+      "glitch",
+    );
+    expect(parseMarkup("[sparkle=2]y[/sparkle]").runs[0]!.style.effect).toBe(
+      "sparkle",
+    );
   });
 });
 
@@ -99,8 +118,12 @@ describe("parseMarkup — speed", () => {
   });
 
   it("ignores a non-positive or non-finite speed", () => {
-    expect(parseMarkup("[speed=0]x[/speed]").runs[0]!.style.speed).toBeUndefined();
-    expect(parseMarkup("[speed=abc]x[/speed]").runs[0]!.style.speed).toBeUndefined();
+    expect(
+      parseMarkup("[speed=0]x[/speed]").runs[0]!.style.speed,
+    ).toBeUndefined();
+    expect(
+      parseMarkup("[speed=abc]x[/speed]").runs[0]!.style.speed,
+    ).toBeUndefined();
   });
 });
 
@@ -175,7 +198,9 @@ describe("parseMarkup — grapheme counting", () => {
 
   it("sums grapheme counts when adjacent same-style runs merge", () => {
     const r = parseMarkup("[b]🔥[/b][b]🔥[/b]");
-    expect(r.runs).toEqual([{ text: "🔥🔥", style: { bold: true }, graphemeCount: 2 }]);
+    expect(r.runs).toEqual([
+      { text: "🔥🔥", style: { bold: true }, graphemeCount: 2 },
+    ]);
     expect(r.length).toBe(2);
   });
 });
@@ -185,26 +210,45 @@ describe("parseMarkup — self-closing markers", () => {
     const r = parseMarkup("ab[sfx/]cd");
     expect(r.runs).toEqual([run("abcd")]); // marker is zero-width
     expect(r.length).toBe(4);
-    expect(r.tokens).toEqual([{ kind: "marker", atChar: 2, name: "sfx", props: {} }]);
+    expect(r.tokens).toEqual([
+      { kind: "marker", atChar: 2, name: "sfx", props: {} },
+    ]);
   });
 
   it("the self-named shortcut [name=val/] → props { name: val }", () => {
     const r = parseMarkup("[expression=happy/]hi");
-    expect(r.tokens).toEqual([{ kind: "marker", atChar: 0, name: "expression", props: { expression: "happy" } }]);
+    expect(r.tokens).toEqual([
+      {
+        kind: "marker",
+        atChar: 0,
+        name: "expression",
+        props: { expression: "happy" },
+      },
+    ]);
     expect(r.runs).toEqual([run("hi")]);
   });
 
   it("explicit space-separated key=value props", () => {
     const r = parseMarkup("x[shake amount=3 speed=2/]y");
     expect(r.tokens).toEqual([
-      { kind: "marker", atChar: 1, name: "shake", props: { amount: "3", speed: "2" } },
+      {
+        kind: "marker",
+        atChar: 1,
+        name: "shake",
+        props: { amount: "3", speed: "2" },
+      },
     ]);
   });
 
   it("the self-named shortcut composes with explicit props (Yarn [name=val] ≡ [name name=val])", () => {
     const r = parseMarkup("[shake=500 amount=3/]go");
     expect(r.tokens).toEqual([
-      { kind: "marker", atChar: 0, name: "shake", props: { shake: "500", amount: "3" } },
+      {
+        kind: "marker",
+        atChar: 0,
+        name: "shake",
+        props: { shake: "500", amount: "3" },
+      },
     ]);
   });
 
@@ -216,7 +260,12 @@ describe("parseMarkup — self-closing markers", () => {
     expect(r.tokens).toEqual([
       { kind: "marker", atChar: 1, name: "sfx", props: { sfx: "a" } },
       { kind: "pause", atChar: 3, seconds: 0.1 },
-      { kind: "marker", atChar: 3, name: "expression", props: { expression: "sad" } },
+      {
+        kind: "marker",
+        atChar: 3,
+        name: "expression",
+        props: { expression: "sad" },
+      },
     ]);
   });
 
@@ -224,7 +273,9 @@ describe("parseMarkup — self-closing markers", () => {
     const r = parseMarkup("a[shake/]b");
     expect(r.runs).toEqual([run("ab")]); // no effect style applied
     expect(r.runs.every((x) => x.style.effect === undefined)).toBe(true);
-    expect(r.tokens).toEqual([{ kind: "marker", atChar: 1, name: "shake", props: {} }]);
+    expect(r.tokens).toEqual([
+      { kind: "marker", atChar: 1, name: "shake", props: {} },
+    ]);
   });
 
   it("a props-bearing tag with NO trailing slash stays literal (forgotten `/`)", () => {
@@ -260,7 +311,9 @@ describe("parseMarkup — term / glossary is REMOVED", () => {
     // span the bundled presenter renders as plain styled text. Text flows intact.
     const r = parseMarkup("a [term=cauldron]cauldron[/term] b");
     expect(r.runs.map((x) => x.text).join("")).toBe("a cauldron b");
-    expect(stripMarkup("a [term=cauldron]cauldron[/term] b")).toBe("a cauldron b");
+    expect(stripMarkup("a [term=cauldron]cauldron[/term] b")).toBe(
+      "a cauldron b",
+    );
     expect(stripMarkup("[gloss=mana]mana[/gloss]")).toBe("mana");
   });
 });
@@ -270,7 +323,9 @@ describe("parseMarkup — ruby/furigana is REMOVED", () => {
     const r = parseMarkup("[ruby]kanji[rt]reading[/rt][/ruby]");
     // No ruby style key exists on RunStyle, and the tags are not recognised, so
     // the text is concatenated with no styling.
-    expect(stripMarkup("[ruby]kanji[rt]reading[/rt][/ruby]")).toBe("kanjireading");
+    expect(stripMarkup("[ruby]kanji[rt]reading[/rt][/ruby]")).toBe(
+      "kanjireading",
+    );
     for (const run of r.runs) {
       expect(run.style).not.toHaveProperty("ruby");
     }
@@ -359,7 +414,11 @@ describe("stripMarkup", () => {
 describe("firstUnknownTag", () => {
   it("returns null when every tag is meaningful markup", () => {
     expect(firstUnknownTag("plain text")).toBeNull();
-    expect(firstUnknownTag("[b]x[/b] [color=#f00]y[/color] [wave]z[/wave] [pause=0.1/][speed=2]w[/speed]")).toBeNull();
+    expect(
+      firstUnknownTag(
+        "[b]x[/b] [color=#f00]y[/color] [wave]z[/wave] [pause=0.1/][speed=2]w[/speed]",
+      ),
+    ).toBeNull();
   });
 
   it("does NOT flag an unknown effect span — the vocabulary is open", () => {

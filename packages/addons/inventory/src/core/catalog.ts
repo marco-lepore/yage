@@ -27,13 +27,17 @@ import type {
  * });
  * ```
  */
-export function instanceData<T extends Readonly<Record<string, unknown>>>(): InstanceToken<T> {
+export function instanceData<
+  T extends Readonly<Record<string, unknown>>,
+>(): InstanceToken<T> {
   return undefined as unknown as InstanceToken<T>;
 }
 
 /** The instance-data type a def declares via {@link instanceData}, or `never`
  *  when it declares none. */
-type InstanceDataOf<D> = D extends { readonly instance: InstanceToken<infer T> } ? T : never;
+type InstanceDataOf<D> = D extends { readonly instance: InstanceToken<infer T> }
+  ? T
+  : never;
 
 /** The per-item data map {@link defineItems} derives from a def map — each id
  *  mapped to its declared instance-data type. Threads into `Inventory` as its

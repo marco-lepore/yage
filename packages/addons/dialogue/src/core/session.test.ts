@@ -87,7 +87,10 @@ class StubText implements TextChannel {
 }
 
 class StubChoices implements ChoiceChannel {
-  presented: { choices: readonly PresentedChoice[]; context: ChoiceContext | undefined }[] = [];
+  presented: {
+    choices: readonly PresentedChoice[];
+    context: ChoiceContext | undefined;
+  }[] = [];
   highlights: number[] = [];
   cleared = 0;
   /** Recorded setVisible(...) calls. */
@@ -143,7 +146,8 @@ class StubAvatar implements AvatarChannel {
   /** Interprets the `[expression=…/]` marker itself, like the bundled presenters. */
   marker(marker: MarkerToken): void {
     this.markers.push(marker);
-    if (marker.name === "expression") this.setExpression(marker.props["expression"]);
+    if (marker.name === "expression")
+      this.setExpression(marker.props["expression"]);
   }
   setVisible(visible: boolean): void {
     this.visibles.push(visible);
@@ -284,7 +288,10 @@ describe("DialogueSession — line sequencing & reveal gating", () => {
     };
     h.session.play(script);
     expect(onStarted).toHaveBeenCalledWith({ scriptId: "events" });
-    expect(onLine).toHaveBeenCalledWith({ speaker: undefined, text: "bold line" });
+    expect(onLine).toHaveBeenCalledWith({
+      speaker: undefined,
+      text: "bold line",
+    });
     h.text.finishReveal();
     h.session.advance();
     await flush();
@@ -408,11 +415,21 @@ describe("DialogueSession — i18n & interpolation", () => {
       start: "a",
       speakers: { hero },
       nodes: {
-        a: { id: "a", steps: [{ kind: "say", speaker: "hero", text: "Hi, I am {playerName}" }] },
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", speaker: "hero", text: "Hi, I am {playerName}" },
+          ],
+        },
       },
     };
-    h.session.play(script, { storage: new MemoryVariableStorage({ playerName: "Mara" }) });
-    expect(onLine).toHaveBeenCalledWith({ speaker: "Mara", text: "Hi, I am Mara" });
+    h.session.play(script, {
+      storage: new MemoryVariableStorage({ playerName: "Mara" }),
+    });
+    expect(onLine).toHaveBeenCalledWith({
+      speaker: "Mara",
+      text: "Hi, I am Mara",
+    });
     expect(h.chrome.nameplates.at(-1)).toEqual({ name: "Mara" });
   });
 
@@ -443,7 +460,10 @@ describe("DialogueSession — i18n & interpolation", () => {
     h.session.advance();
     await flush();
     // The already-shown line never re-renders; the NEXT line sees the new value.
-    expect(onLine).toHaveBeenLastCalledWith({ speaker: undefined, text: "Now 9." });
+    expect(onLine).toHaveBeenLastCalledWith({
+      speaker: undefined,
+      text: "Now 9.",
+    });
   });
 
   it("a stored value wins over a declared default (seed-if-absent)", () => {
@@ -455,8 +475,13 @@ describe("DialogueSession — i18n & interpolation", () => {
       declare: { name: "stranger" },
       nodes: { a: { id: "a", steps: [{ kind: "say", text: "Hi, {name}." }] } },
     };
-    h.session.play(script, { storage: new MemoryVariableStorage({ name: "Mara" }) });
-    expect(onLine).toHaveBeenCalledWith({ speaker: undefined, text: "Hi, Mara." });
+    h.session.play(script, {
+      storage: new MemoryVariableStorage({ name: "Mara" }),
+    });
+    expect(onLine).toHaveBeenCalledWith({
+      speaker: undefined,
+      text: "Hi, Mara.",
+    });
   });
 });
 
@@ -601,7 +626,9 @@ describe("DialogueSession — disabled choices", () => {
     // Initial highlight lands on the first ENABLED row (index 1), not row 0.
     expect(h.choices.highlights.at(-1)).toBe(1);
     // The shown-options event still lists every visible label.
-    expect(onChoiceShown).toHaveBeenCalledWith({ options: ["Force the door", "Walk away"] });
+    expect(onChoiceShown).toHaveBeenCalledWith({
+      options: ["Force the door", "Walk away"],
+    });
   });
 
   it("confirm / choose / pointer-commit all refuse a disabled row", async () => {
@@ -645,7 +672,12 @@ describe("DialogueSession — disabled choices", () => {
               kind: "choice",
               options: [
                 { text: "a", target: "z" },
-                { text: "b", target: "z", condition: "gate", presentation: "disabled" },
+                {
+                  text: "b",
+                  target: "z",
+                  condition: "gate",
+                  presentation: "disabled",
+                },
                 { text: "c", target: "z" },
               ],
             },
@@ -710,7 +742,13 @@ describe("DialogueSession — disabled choices", () => {
             {
               kind: "choice",
               options: [
-                { text: "x", target: "z", condition: "ok", presentation: "disabled", disabledReason: "no" },
+                {
+                  text: "x",
+                  target: "z",
+                  condition: "ok",
+                  presentation: "disabled",
+                  disabledReason: "no",
+                },
               ],
             },
             { kind: "say", text: "fallthrough" },
@@ -792,7 +830,10 @@ describe("DialogueSession — timed-choice recipe", () => {
       a: {
         id: "a",
         steps: [
-          { kind: "command", commands: [{ type: "choice-timer", seconds: TIMEOUT, default: 1 }] },
+          {
+            kind: "command",
+            commands: [{ type: "choice-timer", seconds: TIMEOUT, default: 1 }],
+          },
           {
             kind: "choice",
             text: "Quick — what do you do?",
@@ -812,7 +853,10 @@ describe("DialogueSession — timed-choice recipe", () => {
   it("commits the default option on expiry and passes meta.timeout to the presenter", async () => {
     const timer = new ChoiceTimer();
     const h = makeHarness({
-      commands: { "choice-timer": (cmd) => timer.arm(Number(cmd.seconds), Number(cmd.default)) },
+      commands: {
+        "choice-timer": (cmd) =>
+          timer.arm(Number(cmd.seconds), Number(cmd.default)),
+      },
       onChoiceShown: () => timer.onChoiceShown(),
       onChoiceMade: () => timer.onChoiceMade(),
       onEnded: () => timer.onEnded(),
@@ -823,7 +867,9 @@ describe("DialogueSession — timed-choice recipe", () => {
 
     expect(h.session.isChoosing()).toBe(true);
     // The step's meta rides through to the presenter for a countdown.
-    expect(h.choices.presented.at(-1)?.context?.meta).toEqual({ timeout: TIMEOUT });
+    expect(h.choices.presented.at(-1)?.context?.meta).toEqual({
+      timeout: TIMEOUT,
+    });
     expect(timer.armed).toBe(true);
 
     // No player input: the timer expires and fires the default (index 1).
@@ -835,7 +881,10 @@ describe("DialogueSession — timed-choice recipe", () => {
   it("a manual pick before expiry cancels the timer (default never fires)", async () => {
     const timer = new ChoiceTimer();
     const h = makeHarness({
-      commands: { "choice-timer": (cmd) => timer.arm(Number(cmd.seconds), Number(cmd.default)) },
+      commands: {
+        "choice-timer": (cmd) =>
+          timer.arm(Number(cmd.seconds), Number(cmd.default)),
+      },
       onChoiceShown: () => timer.onChoiceShown(),
       onChoiceMade: () => timer.onChoiceMade(),
       onEnded: () => timer.onEnded(),
@@ -863,7 +912,10 @@ describe("DialogueSession — timed-choice recipe", () => {
         a: {
           id: "a",
           steps: [
-            { kind: "command", commands: [{ type: "choice-timer", seconds: 0.1, default: 1 }] },
+            {
+              kind: "command",
+              commands: [{ type: "choice-timer", seconds: 0.1, default: 1 }],
+            },
             {
               kind: "choice",
               text: "A (timed)",
@@ -893,7 +945,10 @@ describe("DialogueSession — timed-choice recipe", () => {
     };
     const timer = new ChoiceTimer(false); // deliberately NO onChoiceMade cancel
     const h = makeHarness({
-      commands: { "choice-timer": (cmd) => timer.arm(Number(cmd.seconds), Number(cmd.default)) },
+      commands: {
+        "choice-timer": (cmd) =>
+          timer.arm(Number(cmd.seconds), Number(cmd.default)),
+      },
       onChoiceShown: () => timer.onChoiceShown(),
       onEnded: () => timer.onEnded(),
     });
@@ -926,7 +981,9 @@ describe("DialogueSession — commands by timing", () => {
       nodes: {
         a: {
           id: "a",
-          steps: [{ kind: "say", text: "x", commands: [{ type: "sfx", at: "show" }] }],
+          steps: [
+            { kind: "say", text: "x", commands: [{ type: "sfx", at: "show" }] },
+          ],
         },
       },
     };
@@ -945,7 +1002,13 @@ describe("DialogueSession — commands by timing", () => {
       nodes: {
         a: {
           id: "a",
-          steps: [{ kind: "say", text: "x", commands: [{ type: "boom", at: "afterReveal" }] }],
+          steps: [
+            {
+              kind: "say",
+              text: "x",
+              commands: [{ type: "boom", at: "afterReveal" }],
+            },
+          ],
         },
       },
     };
@@ -967,7 +1030,11 @@ describe("DialogueSession — commands by timing", () => {
         a: {
           id: "a",
           steps: [
-            { kind: "say", text: "x", commands: [{ type: "leave", at: "advance" }] },
+            {
+              kind: "say",
+              text: "x",
+              commands: [{ type: "leave", at: "advance" }],
+            },
             { kind: "say", text: "y" },
           ],
         },
@@ -996,7 +1063,11 @@ describe("DialogueSession — commands by timing", () => {
         a: {
           id: "a",
           steps: [
-            { kind: "say", text: "one", commands: [{ type: "wait", at: "afterReveal", blocking: true }] },
+            {
+              kind: "say",
+              text: "one",
+              commands: [{ type: "wait", at: "afterReveal", blocking: true }],
+            },
             { kind: "say", text: "two" },
           ],
         },
@@ -1026,7 +1097,10 @@ describe("DialogueSession — commands by timing", () => {
         a: {
           id: "a",
           steps: [
-            { kind: "command", commands: [{ type: "expression", value: "happy" }] },
+            {
+              kind: "command",
+              commands: [{ type: "expression", value: "happy" }],
+            },
             { kind: "say", text: "x" },
           ],
         },
@@ -1044,7 +1118,10 @@ describe("DialogueSession — commands by timing", () => {
       id: "face",
       start: "a",
       nodes: {
-        a: { id: "a", steps: [{ kind: "say", text: "x", expression: "happy" }] },
+        a: {
+          id: "a",
+          steps: [{ kind: "say", text: "x", expression: "happy" }],
+        },
       },
     });
     // The typed setExpression call on present stays — only the COMMAND is gone.
@@ -1063,7 +1140,12 @@ describe("DialogueSession — reveal beats (ticks + markers)", () => {
     const onRevealMarker = vi.fn();
     const h = makeHarness({ onRevealMarker });
     h.session.play(oneLine);
-    const marker: MarkerToken = { kind: "marker", atChar: 0, name: "expression", props: { expression: "happy" } };
+    const marker: MarkerToken = {
+      kind: "marker",
+      atChar: 0,
+      name: "expression",
+      props: { expression: "happy" },
+    };
     h.text.fireBeat({ kind: "marker", marker, viaSkip: false });
     // The avatar got the RAW marker and interpreted it ITSELF — the session never
     // name-matches; it just hands the marker over.
@@ -1080,7 +1162,12 @@ describe("DialogueSession — reveal beats (ticks + markers)", () => {
     h.session.addChannel({ revealBeat: (beat) => seen.push(beat) });
     h.session.play(oneLine);
     const before = h.avatar.expressions.length;
-    const marker: MarkerToken = { kind: "marker", atChar: 1, name: "sfx", props: { sfx: "ding" } };
+    const marker: MarkerToken = {
+      kind: "marker",
+      atChar: 1,
+      name: "sfx",
+      props: { sfx: "ding" },
+    };
     h.text.fireBeat({ kind: "marker", marker, viaSkip: false });
     expect(seen).toEqual([{ kind: "marker", marker, viaSkip: false }]);
     expect(onRevealMarker).toHaveBeenCalledWith(marker, false);
@@ -1154,7 +1241,9 @@ describe("DialogueSession — fast-forward & skip", () => {
     await flush();
     expect(h.session.isChoosing()).toBe(true);
     // Only the first line was ever presented; "two" was skipped.
-    expect(h.text.presented.map((l) => l.text.runs.map((r) => r.text).join(""))).toEqual(["one"]);
+    expect(
+      h.text.presented.map((l) => l.text.runs.map((r) => r.text).join("")),
+    ).toEqual(["one"]);
   });
 });
 
@@ -1218,7 +1307,9 @@ describe("DialogueSession — stop / restart", () => {
     const script: DialogueScript = {
       id: "stop",
       start: "a",
-      nodes: { a: { id: "a", steps: [{ kind: "say", speaker: "s", text: "x" }] } },
+      nodes: {
+        a: { id: "a", steps: [{ kind: "say", speaker: "s", text: "x" }] },
+      },
       speakers: { s: { name: "S" } },
     };
     h.session.play(script);
@@ -1371,7 +1462,11 @@ describe("DialogueSession — command-gate races (regressions)", () => {
         a: {
           id: "a",
           steps: [
-            { kind: "say", text: "one", commands: [{ type: "give", at: "advance" }] },
+            {
+              kind: "say",
+              text: "one",
+              commands: [{ type: "give", at: "advance" }],
+            },
             { kind: "command", commands: [{ type: "wait", blocking: true }] },
             { kind: "say", text: "two" },
           ],
@@ -1447,7 +1542,11 @@ describe("DialogueSession — command-gate races (regressions)", () => {
         a: {
           id: "a",
           steps: [
-            { kind: "say", text: "one", commands: [{ type: "after", at: "afterReveal" }] },
+            {
+              kind: "say",
+              text: "one",
+              commands: [{ type: "after", at: "afterReveal" }],
+            },
             { kind: "choice", options: [{ text: "ok" }] },
           ],
         },
@@ -1474,7 +1573,11 @@ describe("DialogueSession — confirm latch (regressions)", () => {
           {
             kind: "choice",
             options: [
-              { text: "left", commands: [{ type: "wait", blocking: true }], target: "L" },
+              {
+                text: "left",
+                commands: [{ type: "wait", blocking: true }],
+                target: "L",
+              },
               { text: "right", target: "R" },
             ],
           },
@@ -1488,7 +1591,9 @@ describe("DialogueSession — confirm latch (regressions)", () => {
   it("mashing confirm during a blocking choice command emits onChoiceMade once", async () => {
     let open!: () => void;
     const gate = new Promise<void>((r) => (open = r));
-    const onCommand = vi.fn((cmd: Command) => (cmd.type === "wait" ? gate : undefined));
+    const onCommand = vi.fn((cmd: Command) =>
+      cmd.type === "wait" ? gate : undefined,
+    );
     const onChoiceMade = vi.fn();
     const h = makeHarness({ onChoiceMade });
     h.session.play(blockingChoice, { fallbackCommand: onCommand });
@@ -1613,7 +1718,9 @@ describe("DialogueSession — handle & play-time validation", () => {
       // between the two conversations (which would make `setVar` visible).
       nodes: { a: { id: "a", steps: [{ kind: "say", text: "x" }] } },
     };
-    const first = h.session.play(script, { storage: new MemoryVariableStorage() });
+    const first = h.session.play(script, {
+      storage: new MemoryVariableStorage(),
+    });
     h.session.play(script, { storage: new MemoryVariableStorage() }); // bumps generation
     first.setVar("n", 99); // stale → no-op
     expect(first.getVars()).toEqual({}); // stale → empty snapshot
@@ -1737,7 +1844,9 @@ describe("DialogueSession — handle & play-time validation", () => {
       declare: { greeted: false },
       nodes: { a: { id: "a", steps: [{ kind: "say", text: "hi" }] } },
     };
-    expect(() => h.session.play(needsSeed, { storage: readonly })).toThrow(DialoguePlayError);
+    expect(() => h.session.play(needsSeed, { storage: readonly })).toThrow(
+      DialoguePlayError,
+    );
     expect(() => h.session.play(needsSeed, { storage: readonly })).toThrow(
       /seed declared default "greeted"/,
     );
@@ -1767,11 +1876,18 @@ describe("DialogueSession — storage model", () => {
         a: {
           id: "a",
           steps: [
-            { kind: "command", commands: [{ type: "give-item", id: "rusty-key" }] },
+            {
+              kind: "command",
+              commands: [{ type: "give-item", id: "rusty-key" }],
+            },
             {
               kind: "choice",
               options: [
-                { text: "Hand over the rusty key", target: "give", condition: gate },
+                {
+                  text: "Hand over the rusty key",
+                  target: "give",
+                  condition: gate,
+                },
                 { text: "Say nothing", target: "none" },
               ],
             },
@@ -1784,7 +1900,10 @@ describe("DialogueSession — storage model", () => {
     h.session.play(script);
     await flush();
     // Both options are reachable — the key was granted by the earlier command.
-    expect(h.choices.lastLabels).toEqual(["Hand over the rusty key", "Say nothing"]);
+    expect(h.choices.lastLabels).toEqual([
+      "Hand over the rusty key",
+      "Say nothing",
+    ]);
     h.session.choose(0);
     await flush();
     expect(h.text.lastText).toBe("handed-over");
@@ -1807,8 +1926,18 @@ describe("DialogueSession — storage model", () => {
         a: {
           id: "a",
           steps: [
-            { kind: "command", commands: [{ type: "skill-check", stat: "strength", blocking: true }] },
-            { kind: "command", commands: [], condition: "passed", target: "win" },
+            {
+              kind: "command",
+              commands: [
+                { type: "skill-check", stat: "strength", blocking: true },
+              ],
+            },
+            {
+              kind: "command",
+              commands: [],
+              condition: "passed",
+              target: "win",
+            },
             { kind: "say", text: "lose" },
           ],
         },
@@ -1875,8 +2004,16 @@ describe("DialogueSession — storage model", () => {
           id: "a",
           steps: [
             // Increment on entry, then gate on the (now-persisted) prior count.
-            { kind: "command", commands: [{ type: "set", var: "timesTalked", value: incr }] },
-            { kind: "command", commands: [], condition: { var: "timesTalked", op: ">", value: 1 }, target: "again" },
+            {
+              kind: "command",
+              commands: [{ type: "set", var: "timesTalked", value: incr }],
+            },
+            {
+              kind: "command",
+              commands: [],
+              condition: { var: "timesTalked", op: ">", value: 1 },
+              target: "again",
+            },
             { kind: "say", text: "first-meeting" },
           ],
         },
@@ -1931,7 +2068,10 @@ describe("DialogueSession — storage model", () => {
     h.session.play(script);
     await flush();
     expect(gold).toBe(50); // written through the cells setter
-    expect(onLine).toHaveBeenLastCalledWith({ speaker: undefined, text: "You have 50 gold." });
+    expect(onLine).toHaveBeenLastCalledWith({
+      speaker: undefined,
+      text: "You have 50 gold.",
+    });
   });
 
   it("a read-only `set` in an option's commands is reported, not a wedge", async () => {
@@ -1953,7 +2093,11 @@ describe("DialogueSession — storage model", () => {
             {
               kind: "choice",
               options: [
-                { text: "poke", target: "next", commands: [{ type: "set", var: "hp", value: 5 }] },
+                {
+                  text: "poke",
+                  target: "next",
+                  commands: [{ type: "set", var: "hp", value: 5 }],
+                },
               ],
             },
           ],
@@ -1989,8 +2133,16 @@ describe("DialogueSession — storage model", () => {
               condition: {
                 kind: "binary",
                 op: "and",
-                left: { kind: "call", fn: "afford", args: [{ kind: "literal", value: 50 }] },
-                right: { kind: "unary", op: "not", operand: { kind: "varRef", name: "rude" } },
+                left: {
+                  kind: "call",
+                  fn: "afford",
+                  args: [{ kind: "literal", value: 50 }],
+                },
+                right: {
+                  kind: "unary",
+                  op: "not",
+                  operand: { kind: "varRef", name: "rude" },
+                },
               },
               target: "ok",
             },

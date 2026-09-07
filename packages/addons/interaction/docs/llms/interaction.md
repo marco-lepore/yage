@@ -40,15 +40,15 @@ import {
 
 Three scopes. Start at the top row — most games never leave it.
 
-| Use case | Pull | Push | Interact |
-| --- | --- | --- | --- |
-| Prompt + press E (the default) | `interactor.focus` | `InteractionFocusChangedEvent` | `interactor.interact()` |
-| Multi-target selection UI | `interactor.inRange` | `InteractionInRangeChangedEvent` | `interactor.interact(chosen)` |
-| Scene-wide / custom query | `interactablesIn(scene)`, `rankInteractables`, `selectInteractionFocus` | none — query on demand | `interactable.interact()` (scripted bypass) |
+| Use case                       | Pull                                                                    | Push                             | Interact                                    |
+| ------------------------------ | ----------------------------------------------------------------------- | -------------------------------- | ------------------------------------------- |
+| Prompt + press E (the default) | `interactor.focus`                                                      | `InteractionFocusChangedEvent`   | `interactor.interact()`                     |
+| Multi-target selection UI      | `interactor.inRange`                                                    | `InteractionInRangeChangedEvent` | `interactor.interact(chosen)`               |
+| Scene-wide / custom query      | `interactablesIn(scene)`, `rankInteractables`, `selectInteractionFocus` | none — query on demand           | `interactable.interact()` (scripted bypass) |
 
 `focus` is `inRange[0]` — the same snapshot, not a second source of truth. A
 selection UI must listen to `InteractionInRangeChangedEvent`, not the focus
-event: a *non-focused* target entering or leaving range never changes the focus.
+event: a _non-focused_ target entering or leaving range never changes the focus.
 
 ## 5-minute setup
 
@@ -72,9 +72,9 @@ player.on(InteractionFocusChangedEvent, ({ prompt }) => {
 ```ts
 interface InteractableOptions {
   onInteract: () => void;
-  prompt?: string | (() => string);   // undefined = focusable, no label
-  radius?: number;                    // own reach bonus, default 0
-  priority?: number;                  // focus tie-break weight, default 0
+  prompt?: string | (() => string); // undefined = focusable, no label
+  radius?: number; // own reach bonus, default 0
+  priority?: number; // focus tie-break weight, default 0
   enabled?: boolean | (() => boolean); // default true
 }
 ```
@@ -93,9 +93,9 @@ round trip.
 
 ```ts
 interface InteractorOptions {
-  range?: number;         // world px, default 48
+  range?: number; // world px, default 48
   action?: string | null; // default "interact"; null = no auto-input
-  enabled?: boolean;       // default true
+  enabled?: boolean; // default true
 }
 ```
 
@@ -155,7 +155,7 @@ State is assigned before any event emits: a handler reading `focus`/`inRange`
 sees the new values, never the old.
 
 - `InteractionFocusChangedEvent` — `{ interactable: Interactable | null,
-  prompt: string | null }`. Fires ONLY on a transition: the focused
+prompt: string | null }`. Fires ONLY on a transition: the focused
   interactable changes, or its resolved prompt text changes. Leaving all
   ranges emits `{ interactable: null, prompt: null }`.
 - `InteractionInRangeChangedEvent` — `{ inRange: readonly Interactable[] }`.
@@ -171,11 +171,18 @@ An interactable's `onInteract` is a plain closure — connect dialogue, inventor
 or anything else from it directly:
 
 ```ts
-npc.add(new Interactable({ prompt: "Talk", onInteract: () => dialogue.play(script) }));
-coin.add(new Interactable({
-  prompt: "Pick up",
-  onInteract: () => { inventory.add("coin"); coin.destroy(); },
-}));
+npc.add(
+  new Interactable({ prompt: "Talk", onInteract: () => dialogue.play(script) }),
+);
+coin.add(
+  new Interactable({
+    prompt: "Pick up",
+    onInteract: () => {
+      inventory.add("coin");
+      coin.destroy();
+    },
+  }),
+);
 ```
 
 ## Multiple targets, selection UI, and highlighting
@@ -188,7 +195,8 @@ lower-ranked target entering or leaving leaves the focus untouched.
 ```ts
 // Overlapping loot: show a wheel when 2+ are in range, interact the chosen one.
 player.on(InteractionInRangeChangedEvent, ({ inRange }) => {
-  if (inRange.length > 1) wheel.show(inRange); // ranked; inRange[0] is the focus
+  if (inRange.length > 1)
+    wheel.show(inRange); // ranked; inRange[0] is the focus
   else wheel.hide();
 });
 function confirm(chosen: Interactable) {
@@ -229,8 +237,16 @@ function rankInteractables<C extends InteractCandidate>(
   candidates: Iterable<C>,
 ): C[]; // full in-range set best-first; rankInteractables(...)[0] === selectInteractionFocus(...)
 
-interface FocusQuery { position: Vec2Like; range: number; }
-interface InteractCandidate { position: Vec2Like; radius: number; priority: number; order: number; }
+interface FocusQuery {
+  position: Vec2Like;
+  range: number;
+}
+interface InteractCandidate {
+  position: Vec2Like;
+  radius: number;
+  priority: number;
+  order: number;
+}
 ```
 
 Both pure, no engine dependency — unit-test selection without a scene. Both

@@ -49,7 +49,18 @@ const NUMERIC_OPS: ReadonlySet<string> = new Set([">", ">=", "<", "<="]);
 /** Binary ops (symbol + word forms) whose operands must be numbers. `+` is
  *  handled separately — it also accepts strings (concatenation). */
 const NUMERIC_EXPR_OPS: ReadonlySet<string> = new Set([
-  ">", "<", ">=", "<=", "gt", "lt", "gte", "lte", "-", "*", "/", "%",
+  ">",
+  "<",
+  ">=",
+  "<=",
+  "gt",
+  "lt",
+  "gte",
+  "lte",
+  "-",
+  "*",
+  "/",
+  "%",
 ]);
 /** Built-in command types the runner handles — exempt from the "must have a
  *  handler" check. Only `set` (runner-owned flow op); every other command type,
@@ -136,11 +147,13 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
   ): void => {
     const req = operandRequirement(expr.op);
     if (!req) return;
-    const expected = req === "numberOrString" ? "a number or string" : "a number";
+    const expected =
+      req === "numberOrString" ? "a number or string" : "a number";
     for (const operand of [expr.left, expr.right]) {
       if (operand.kind === "literal") {
         const t = valueType(operand.value);
-        if (t === "number" || (req === "numberOrString" && t === "string")) continue;
+        if (t === "number" || (req === "numberOrString" && t === "string"))
+          continue;
         throw new DialogueScriptError(
           `${where}: operator "${expr.op}" expects ${expected}, got ${t}`,
         );
@@ -161,7 +174,10 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
     for (const token of tokensIn(text)) readVars.add(token);
   };
 
-  const checkCondition = (condition: Condition | undefined, where: string): void => {
+  const checkCondition = (
+    condition: Condition | undefined,
+    where: string,
+  ): void => {
     if (condition === undefined || typeof condition === "function") return;
     if (typeof condition === "string") {
       readVars.add(condition);
@@ -192,7 +208,11 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
   // A literal `set` value must match its target's declared default type (e.g.
   // `set gold = "lots"` against a numeric `gold`). `null` clears; an undeclared
   // target is a local with no type to clash against.
-  const checkSetLiteralType = (target: string, value: unknown, where: string): void => {
+  const checkSetLiteralType = (
+    target: string,
+    value: unknown,
+    where: string,
+  ): void => {
     const declared = declaredTypes.get(target);
     if (
       declared !== undefined &&
@@ -206,12 +226,17 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
     }
   };
 
-  const checkCommands = (commands: readonly Command[] | undefined, where: string): void => {
+  const checkCommands = (
+    commands: readonly Command[] | undefined,
+    where: string,
+  ): void => {
     for (const cmd of commands ?? []) {
       if (cmd.type === "set") {
         const target = cmd["var"];
         if (typeof target !== "string") {
-          throw new DialogueScriptError(`${where}: set command has no string "var"`);
+          throw new DialogueScriptError(
+            `${where}: set command has no string "var"`,
+          );
         }
         setTargets.add(target);
         const value = cmd["value"];
@@ -220,14 +245,17 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
         // seed-if-absent on the next play. Die here. (`value: null` is allowed —
         // an intentional clear.)
         if (value === undefined) {
-          throw new DialogueScriptError(`${where}: set "${target}" has no value`);
+          throw new DialogueScriptError(
+            `${where}: set "${target}" has no value`,
+          );
         }
         if (isExpr(value)) {
           collectExpr(value, where);
           // A bare literal RHS (incl. a quoted-string literal from the pre-walk,
           // e.g. `set gold = "'lots'"`) is type-checked against the target like a
           // raw literal would be.
-          if (value.kind === "literal") checkSetLiteralType(target, value.value, where);
+          if (value.kind === "literal")
+            checkSetLiteralType(target, value.value, where);
         } else {
           // Raw literal value (number/boolean/null — strings were pre-walked to
           // an Expr): type-check against the target's declared default.
@@ -259,7 +287,10 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
           for (const opt of c.options) {
             checkTokens(opt.text);
             checkTokens(opt.disabledReason);
-            checkCondition(opt.condition, `${where} choice option "${opt.text}"`);
+            checkCondition(
+              opt.condition,
+              `${where} choice option "${opt.text}"`,
+            );
             checkCommands(opt.commands, `${where} choice option "${opt.text}"`);
           }
           break;
@@ -345,7 +376,9 @@ export function validatePlay(analysis: ScriptAnalysis, env: PlayEnv): void {
 
   // 5. Every non-built-in command type must resolve to a handler or the fallback.
   if (env.fallbackCommand === undefined) {
-    const unhandled = [...analysis.commandTypes].filter((t) => !Object.hasOwn(env.commands, t));
+    const unhandled = [...analysis.commandTypes].filter(
+      (t) => !Object.hasOwn(env.commands, t),
+    );
     if (unhandled.length > 0) {
       throw new DialoguePlayError(
         `no handler for command type(s): ${unhandled.join(", ")} ` +

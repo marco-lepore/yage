@@ -164,6 +164,8 @@ describe("slowmo step", () => {
     );
 
     abilities.send("stop");
-    expect(() => pc._tick(0.01, undefined, "fixed")).toThrow(/factor must be finite and > 0/);
+    expect(() => pc._tick(0.01, undefined, "fixed")).toThrow(
+      /factor must be finite and > 0/,
+    );
   });
 });

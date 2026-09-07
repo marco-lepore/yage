@@ -1,4 +1,11 @@
-import { Component, LoggerKey, ServiceKey, Transform, isDev, type Logger } from "@yagejs/core";
+import {
+  Component,
+  LoggerKey,
+  ServiceKey,
+  Transform,
+  isDev,
+  type Logger,
+} from "@yagejs/core";
 import type { InputManager } from "@yagejs/input";
 import { rankInteractables } from "./core/focus.js";
 import { interactableRegistryFor } from "./core/registry.js";
@@ -24,7 +31,10 @@ const DEFAULT_ACTION = "interact";
 const INPUT_MANAGER_KEY = new ServiceKey<InputManager>("inputManager");
 
 /** Whether two ranked snapshots hold the same interactables in the same order. */
-function sameRanking(a: readonly Interactable[], b: readonly Interactable[]): boolean {
+function sameRanking(
+  a: readonly Interactable[],
+  b: readonly Interactable[],
+): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
     if (a[i] !== b[i]) return false;
@@ -112,7 +122,10 @@ export class Interactor extends Component {
 
     const registry = interactableRegistryFor(this.scene);
     const position = this.ownTransform.worldPosition;
-    const query: FocusQuery = { position: { x: position.x, y: position.y }, range: this.range };
+    const query: FocusQuery = {
+      position: { x: position.x, y: position.y },
+      range: this.range,
+    };
     const candidates: Interactable[] = [];
     for (const interactable of registry) {
       // A destroyed host stays registered until the end-of-frame flush; skip
@@ -192,7 +205,10 @@ export class Interactor extends Component {
     if (focus !== this.emittedFocus || prompt !== this.emittedPrompt) {
       this.emittedFocus = focus;
       this.emittedPrompt = prompt;
-      this.entity.emit(InteractionFocusChangedEvent, { interactable: focus, prompt });
+      this.entity.emit(InteractionFocusChangedEvent, {
+        interactable: focus,
+        prompt,
+      });
 
       // A handler can re-enter and install a newer snapshot — disabling the
       // interactor, say. `next` is then already history, so announcing it would
@@ -227,7 +243,11 @@ export class Interactor extends Component {
     // Dev-only, once: the default action name (or a custom one) may not
     // exist in the game's action map — the silent-no-op trap, mirroring
     // the inventory addon's `warnIfActionsUnmapped`.
-    if (this.action !== null && !this.warnedUnmappedAction && !input.hasAction(this.action)) {
+    if (
+      this.action !== null &&
+      !this.warnedUnmappedAction &&
+      !input.hasAction(this.action)
+    ) {
       this.warnedUnmappedAction = true;
       this.logger?.warn(
         "interaction",

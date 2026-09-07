@@ -178,7 +178,8 @@ describe("extractCollisionShapes", () => {
     expect(shape.x).toBe(50);
     expect(shape.y).toBe(60);
 
-    const vertices = (shape as { vertices: { x: number; y: number }[] }).vertices;
+    const vertices = (shape as { vertices: { x: number; y: number }[] })
+      .vertices;
     expect(vertices.length).toBeGreaterThanOrEqual(12);
     // Every vertex lies on the ellipse centered at (w/2, h/2) with radii
     // (w/2, h/2), in coordinates relative to the object's top-left.
@@ -470,7 +471,8 @@ describe("extractCollisionShapes", () => {
     expect(shape.y).toBe(20);
     // 90° clockwise in y-down coordinates: (x, y) -> (-y, x). Closing
     // vertex included.
-    const vertices = (shape as { vertices: { x: number; y: number }[] }).vertices;
+    const vertices = (shape as { vertices: { x: number; y: number }[] })
+      .vertices;
     const expected = [
       { x: 0, y: 0 },
       { x: 0, y: 32 },
@@ -621,7 +623,8 @@ describe("extractCollisionShapes", () => {
     const shape = shapes[0]!;
     expect(shape.type).toBe("polyline");
     // Vertices preserved (no convex-hull widening), plus the closing vertex.
-    const vertices = (shape as { vertices: { x: number; y: number }[] }).vertices;
+    const vertices = (shape as { vertices: { x: number; y: number }[] })
+      .vertices;
     expect(vertices).toHaveLength(9);
     expect(vertices[8]).toEqual(vertices[0]);
   });

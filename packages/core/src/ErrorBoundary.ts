@@ -120,7 +120,9 @@ export class ErrorBoundary {
     try {
       const result = fn() as unknown;
       if (isThenable(result)) {
-        result.then(undefined, (err: unknown) => this.reportLifecycleError(err, info));
+        result.then(undefined, (err: unknown) =>
+          this.reportLifecycleError(err, info),
+        );
       }
     } catch (err) {
       this.reportLifecycleError(err, info);

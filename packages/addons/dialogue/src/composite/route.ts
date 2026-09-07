@@ -20,7 +20,9 @@ import type { PresentedLine, ChoiceContext } from "../core/session.js";
 
 /** Decides which variant a line renders in. Reads `view`/`speaker`/`meta`; a
  *  custom route can key off any of them (e.g. `meta.aside → bubble`). */
-export type CompositeRoute = (line: PresentedLine | undefined) => "box" | "bubble";
+export type CompositeRoute = (
+  line: PresentedLine | undefined,
+) => "box" | "bubble";
 
 /**
  * A route paired with a scene-bind hook the composites call at `mount`. The
@@ -81,7 +83,9 @@ export function fixedRoute(route: CompositeRoute): MountRoute {
 
 /** A choice's routing inputs as a (partial) line — the route only reads
  *  `view`/`speaker`/`meta`, all of which a {@link ChoiceContext} carries. */
-export function choiceAsLine(context: ChoiceContext | undefined): PresentedLine {
+export function choiceAsLine(
+  context: ChoiceContext | undefined,
+): PresentedLine {
   return {
     view: context?.view,
     speaker: context?.speaker,

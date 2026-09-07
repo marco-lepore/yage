@@ -21,11 +21,9 @@ describe("synthVariants", () => {
   });
 
   it("names the takes alias.1 … alias.n", () => {
-    expect(synthVariants("shoot", { frequency: 400 }, 3).map((v) => v.alias)).toEqual([
-      "shoot.1",
-      "shoot.2",
-      "shoot.3",
-    ]);
+    expect(
+      synthVariants("shoot", { frequency: 400 }, 3).map((v) => v.alias),
+    ).toEqual(["shoot.1", "shoot.2", "shoot.3"]);
     expect(synthVariantAliases("shoot", 3)).toEqual([
       "shoot.1",
       "shoot.2",

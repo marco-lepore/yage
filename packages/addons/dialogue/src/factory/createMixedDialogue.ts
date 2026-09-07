@@ -13,15 +13,28 @@ import { CompositeChrome } from "../composite/CompositeChrome.js";
 import { CompositeChoicePresenter } from "../composite/CompositeChoicePresenter.js";
 import { CompositeTextPresenter } from "../composite/CompositeTextPresenter.js";
 import { CompositeAvatarPresenter } from "../composite/CompositeAvatarPresenter.js";
-import { makeDefaultRoute, fixedRoute, type CompositeRoute } from "../composite/route.js";
+import {
+  makeDefaultRoute,
+  fixedRoute,
+  type CompositeRoute,
+} from "../composite/route.js";
 import type { AvatarPresenter } from "../avatar/AvatarPresenter.js";
 import type { DialogueBundle } from "../DialogueController.js";
-import { createBoxDialogue, type BoxDialogueOptions } from "./createBoxDialogue.js";
-import { createBubbleDialogue, type BubbleDialogueOptions } from "./createBubbleDialogue.js";
+import {
+  createBoxDialogue,
+  type BoxDialogueOptions,
+} from "./createBoxDialogue.js";
+import {
+  createBubbleDialogue,
+  type BubbleDialogueOptions,
+} from "./createBubbleDialogue.js";
 import type { DialogueTheme } from "./theme.js";
 import { defaultDialogueTheme } from "./defaultTheme.js";
 
-export interface MixedDialogueOptions extends Omit<BubbleDialogueOptions, "avatar"> {
+export interface MixedDialogueOptions extends Omit<
+  BubbleDialogueOptions,
+  "avatar"
+> {
   /**
    * Override the box-vs-bubble routing policy for this bundle. The default is
    * speaker-aware (narrator → box; explicit `view` wins; else a registered
@@ -47,11 +60,16 @@ export function createMixedDialogue(
   theme: DialogueTheme = defaultDialogueTheme(),
   opts: MixedDialogueOptions,
 ): DialogueBundle {
-  const box = createBoxDialogue(theme, opts.avatar?.box ? { avatar: opts.avatar.box } : {});
+  const box = createBoxDialogue(
+    theme,
+    opts.avatar?.box ? { avatar: opts.avatar.box } : {},
+  );
   const bubble = createBubbleDialogue(theme, {
     worldLayer: opts.worldLayer,
     ...(opts.bubble !== undefined ? { bubble: opts.bubble } : {}),
-    ...(opts.fallbackAnchor !== undefined ? { fallbackAnchor: opts.fallbackAnchor } : {}),
+    ...(opts.fallbackAnchor !== undefined
+      ? { fallbackAnchor: opts.fallbackAnchor }
+      : {}),
     ...(opts.avatar?.bubble ? { avatar: opts.avatar.bubble } : {}),
   });
   // ONE route shared across the composites (+ the avatar) — per-presenter

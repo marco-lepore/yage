@@ -46,7 +46,10 @@ import {
   LandSfx,
 } from "./assets.js";
 import { isWon } from "./ui.js";
-import { spawnBulletImpactParticles, spawnEnemyHitParticles } from "./particles.js";
+import {
+  spawnBulletImpactParticles,
+  spawnEnemyHitParticles,
+} from "./particles.js";
 
 // ---------------------------------------------------------------------------
 // PlayerController
@@ -58,7 +61,9 @@ class PlayerController extends Component {
   private readonly camera: CameraEntity;
   private physicsWorld!: PhysicsWorld;
   private readonly audio = this.service(AudioManagerKey);
-  private readonly anim = this.sibling(AnimationController) as AnimationController<PlayerAnim>;
+  private readonly anim = this.sibling(
+    AnimationController,
+  ) as AnimationController<PlayerAnim>;
   private readonly sprite = this.sibling(AnimatedSpriteComponent);
   private readonly transform = this.sibling(Transform);
   private readonly rb = this.sibling(RigidBodyComponent);
@@ -97,7 +102,9 @@ class PlayerController extends Component {
     this.physicsWorld = this.use(PhysicsWorldKey);
 
     // Slots
-    this.shootCd = this.pc.slot({ duration: PlayerController.SHOOT_COOLDOWN_SECONDS });
+    this.shootCd = this.pc.slot({
+      duration: PlayerController.SHOOT_COOLDOWN_SECONDS,
+    });
     this.invincibility = this.pc.slot({
       duration: 0.5,
       cleanup: () => {
@@ -111,10 +118,14 @@ class PlayerController extends Component {
     this.stun = this.pc.slot({ duration: PlayerController.STUN_SECONDS });
     this.flash = this.pc.slot({
       duration: 0.1,
-      cleanup: () => { this.sprite.animatedSprite.tint = 0xffffff; },
+      cleanup: () => {
+        this.sprite.animatedSprite.tint = 0xffffff;
+      },
     });
     this.squash = this.pc.slot({
-      cleanup: () => { this.transform.setScale(1, 1); },
+      cleanup: () => {
+        this.transform.setScale(1, 1);
+      },
     });
 
     this.camera.follow(this.transform, {
@@ -232,7 +243,10 @@ class PlayerController extends Component {
     // frame; the input manager holds the buffer and claim-once prevents refire.
     if (
       this.grounded &&
-      this.input.consumeBufferedPress("jump", PlayerController.JUMP_BUFFER_SECONDS)
+      this.input.consumeBufferedPress(
+        "jump",
+        PlayerController.JUMP_BUFFER_SECONDS,
+      )
     ) {
       this.rb.setVelocityY(-PlayerController.JUMP_VELOCITY);
       this.grounded = false;
@@ -247,7 +261,9 @@ class PlayerController extends Component {
     if (this.input.isJustPressed("shoot") && this.shootCd.completed) {
       this.shootCd.start();
       this.spawnBullet();
-      this.anim.playOneShot("shoot", { duration: PlayerController.SHOOT_COOLDOWN_SECONDS });
+      this.anim.playOneShot("shoot", {
+        duration: PlayerController.SHOOT_COOLDOWN_SECONDS,
+      });
       this.audio.play(ShootSfx.path, { channel: "sfx" });
       this.camera.shake(2, 0.1, { decay: 0.8 });
     }
@@ -342,11 +358,30 @@ export class PlayerEntity extends Entity {
     this.add(
       new AnimationController<PlayerAnim>({
         idle: { source: idleSource, speed: 0.15 },
-        walk: { source: { sheet: PlayerWalkTex.path, frameWidth: FRAME_SIZE }, speed: 0.2 },
-        jump: { source: { sheet: PlayerJumpTex.path, frameWidth: FRAME_SIZE }, speed: 0.12, loop: false },
-        land: { source: { sheet: PlayerLandTex.path, frameWidth: FRAME_SIZE }, speed: 0.5, loop: false },
-        shoot: { source: { sheet: PlayerShootTex.path, frameWidth: FRAME_SIZE }, speed: 0.4, loop: false },
-        hurt: { source: { sheet: PlayerHurtTex.path, frameWidth: FRAME_SIZE }, speed: 0.3, loop: false },
+        walk: {
+          source: { sheet: PlayerWalkTex.path, frameWidth: FRAME_SIZE },
+          speed: 0.2,
+        },
+        jump: {
+          source: { sheet: PlayerJumpTex.path, frameWidth: FRAME_SIZE },
+          speed: 0.12,
+          loop: false,
+        },
+        land: {
+          source: { sheet: PlayerLandTex.path, frameWidth: FRAME_SIZE },
+          speed: 0.5,
+          loop: false,
+        },
+        shoot: {
+          source: { sheet: PlayerShootTex.path, frameWidth: FRAME_SIZE },
+          speed: 0.4,
+          loop: false,
+        },
+        hurt: {
+          source: { sheet: PlayerHurtTex.path, frameWidth: FRAME_SIZE },
+          speed: 0.3,
+          loop: false,
+        },
       }),
     );
     this.add(

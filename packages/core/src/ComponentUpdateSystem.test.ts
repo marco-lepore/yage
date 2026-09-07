@@ -7,7 +7,11 @@ import { Component } from "./Component.js";
 import { Entity, _resetEntityIdCounter } from "./Entity.js";
 import { ErrorBoundary } from "./ErrorBoundary.js";
 import { Logger, LogLevel } from "./Logger.js";
-import { EngineContext, SceneManagerKey, ErrorBoundaryKey } from "./EngineContext.js";
+import {
+  EngineContext,
+  SceneManagerKey,
+  ErrorBoundaryKey,
+} from "./EngineContext.js";
 import { Phase } from "./types.js";
 
 // Minimal SceneManager mock

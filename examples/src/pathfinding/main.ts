@@ -19,7 +19,6 @@ import { gridFromColliders } from "@yagejs/pathfinding/tilemap";
 import { DebugPlugin } from "@yagejs/debug";
 import { setupGameContainer } from "../shared/bootstrap.js";
 
-
 // ---------------------------------------------------------------------------
 // Asset handles
 // ---------------------------------------------------------------------------

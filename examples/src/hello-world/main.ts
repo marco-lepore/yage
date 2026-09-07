@@ -1,7 +1,9 @@
 import { Engine, Component, Scene, Transform, Vec2 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
-
+import {
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
 
 // ---------------------------------------------------------------------------
 // Spin — rotates an entity at a constant rate
@@ -78,12 +80,14 @@ class HelloWorldScene extends Scene {
 async function main() {
   const engine = new Engine({ debug: true });
 
-  engine.use(new RendererPlugin({
-    width: 800,
-    height: 600,
-    backgroundColor: 0x0a0a0a,
-    container: setupGameContainer(800, 600),
-  }));
+  engine.use(
+    new RendererPlugin({
+      width: 800,
+      height: 600,
+      backgroundColor: 0x0a0a0a,
+      container: setupGameContainer(800, 600),
+    }),
+  );
   await installDebugFromUrl(engine);
 
   await engine.start();

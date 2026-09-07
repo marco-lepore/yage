@@ -23,7 +23,13 @@
  * a host menu's layout, and the controller's `input: null` hands driving over.
  */
 
-import type { CellPresenter, HintsPresenter, InventoryBundle, MenuSkinPresenter, Rect } from "../adapter.js";
+import type {
+  CellPresenter,
+  HintsPresenter,
+  InventoryBundle,
+  MenuSkinPresenter,
+  Rect,
+} from "../adapter.js";
 import { SlotsView } from "../render/SlotsView.js";
 import { iconCell } from "../render/iconCell.js";
 import { hints as defaultHints } from "../render/hints.js";
@@ -32,7 +38,13 @@ import { cellWindowSize } from "../render/cellGeometry.js";
 import { DETAIL_GAP, HEADER_GAP, PanelLayout } from "../render/PanelLayout.js";
 import type { InventoryTheme } from "./theme.js";
 import { defaultInventoryTheme } from "./defaultTheme.js";
-import { chromeFor, contentHeight, detailFor, menuFor, themeFonts } from "./shared.js";
+import {
+  chromeFor,
+  contentHeight,
+  detailFor,
+  menuFor,
+  themeFonts,
+} from "./shared.js";
 import { normalizeGap, solveAxis } from "./solvePanelGeometry.js";
 
 /** Builds a cell preset from a theme. Assign it uncalled (`{ cell: rowCell }`);
@@ -103,9 +115,18 @@ export function createInventoryPanel(
 
   // `bounds` pins the panel and adds a per-axis size constraint; the solver
   // fills whatever count/extent the caller left unset.
-  const availX = opts.bounds ? opts.bounds.width - 2 * theme.padding : undefined;
+  const availX = opts.bounds
+    ? opts.bounds.width - 2 * theme.padding
+    : undefined;
   const availY = opts.bounds
-    ? contentHeight(opts.bounds.height, theme.padding, headerHeight, detailHeight, headerGap, detailGap)
+    ? contentHeight(
+        opts.bounds.height,
+        theme.padding,
+        headerHeight,
+        detailHeight,
+        headerGap,
+        detailGap,
+      )
     : undefined;
   const x = solveAxis({
     count: opts.columns,
@@ -194,8 +215,12 @@ export function createInventoryPanel(
     ...(withDetail ? { detail: detailFor(theme, layout, fonts) } : {}),
     ...((opts.actionMenu ?? true)
       ? {
-          actionMenu: menuFor(theme, layout, fonts, (opts.menuSkin ?? defaultMenuSkin)(theme), () =>
-            slots.selectionAnchor(),
+          actionMenu: menuFor(
+            theme,
+            layout,
+            fonts,
+            (opts.menuSkin ?? defaultMenuSkin)(theme),
+            () => slots.selectionAnchor(),
           ),
         }
       : {}),

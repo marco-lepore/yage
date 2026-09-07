@@ -23,7 +23,10 @@ export async function installDebugFromUrl(engine: Engine): Promise<void> {
   } catch (err) {
     // Debug support is opt-in sugar; a failed chunk load (offline, stale
     // deployment) must not keep the example from booting.
-    console.warn("[examples] ?debug requested but @yagejs/debug failed to load:", err);
+    console.warn(
+      "[examples] ?debug requested but @yagejs/debug failed to load:",
+      err,
+    );
   }
 }
 
@@ -40,10 +43,7 @@ export function getContainer(): HTMLElement {
  * `RendererPlugin` defaults to letterbox fit against the container, so the
  * canvas stays pinned to it at every size.
  */
-export function setupGameContainer(
-  width: number,
-  height: number,
-): HTMLElement {
+export function setupGameContainer(width: number, height: number): HTMLElement {
   const container = getContainer();
   container.style.aspectRatio = `${width} / ${height}`;
   container.style.maxWidth = `${width}px`;

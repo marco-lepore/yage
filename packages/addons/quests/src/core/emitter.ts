@@ -4,10 +4,16 @@
  * `@yagejs/core`, which the core layer deliberately doesn't import).
  */
 export class Emitter<TEvents extends object> {
-  private readonly listeners = new Map<keyof TEvents, Set<(payload: never) => void>>();
+  private readonly listeners = new Map<
+    keyof TEvents,
+    Set<(payload: never) => void>
+  >();
 
   /** Subscribe; returns an idempotent unsubscribe. */
-  on<K extends keyof TEvents>(event: K, fn: (payload: TEvents[K]) => void): () => void {
+  on<K extends keyof TEvents>(
+    event: K,
+    fn: (payload: TEvents[K]) => void,
+  ): () => void {
     let set = this.listeners.get(event);
     if (!set) {
       set = new Set();

@@ -202,9 +202,7 @@ describe("crossFade", () => {
     const toScene = { name: "to" } as Scene;
 
     expect(() =>
-      t.begin!(
-        makeCtx({ elapsed: 0, kind: "push", toScene, toContainer }),
-      ),
+      t.begin!(makeCtx({ elapsed: 0, kind: "push", toScene, toContainer })),
     ).not.toThrow();
     expect(toContainer.alpha).toBe(0);
 

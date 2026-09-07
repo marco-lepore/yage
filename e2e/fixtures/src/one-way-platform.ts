@@ -67,10 +67,11 @@ class OneWayScene extends Scene {
     );
     jumperBody.setVelocity({ x: 0, y: -1000 });
 
-    (window as unknown as { __oneWay__: { dropThrough: () => void } }).__oneWay__ =
-      {
-        dropThrough: () => riderCollider.dropThrough(0.3),
-      };
+    (
+      window as unknown as { __oneWay__: { dropThrough: () => void } }
+    ).__oneWay__ = {
+      dropThrough: () => riderCollider.dropThrough(0.3),
+    };
   }
 }
 

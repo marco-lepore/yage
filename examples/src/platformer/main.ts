@@ -21,23 +21,27 @@ import { PlatformerScene } from "./scene.js";
 async function main() {
   const engine = new Engine({ debug: true });
 
-  engine.use(new RendererPlugin({
-    width: WIDTH,
-    height: HEIGHT,
-    backgroundColor: 0x0f172a,
-    container: setupGameContainer(WIDTH, HEIGHT),
-  }));
+  engine.use(
+    new RendererPlugin({
+      width: WIDTH,
+      height: HEIGHT,
+      backgroundColor: 0x0f172a,
+      container: setupGameContainer(WIDTH, HEIGHT),
+    }),
+  );
   engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
   engine.use(new AudioPlugin());
-  engine.use(new InputPlugin({
-    actions: {
-      left: ["KeyA", "ArrowLeft", "GamepadDPadLeft"],
-      right: ["KeyD", "ArrowRight", "GamepadDPadRight"],
-      jump: ["Space", "GamepadA"],
-      down: ["KeyS", "ArrowDown", "GamepadDPadDown"],
-    },
-    preventDefaultKeys: ["Space", "ArrowDown"],
-  }));
+  engine.use(
+    new InputPlugin({
+      actions: {
+        left: ["KeyA", "ArrowLeft", "GamepadDPadLeft"],
+        right: ["KeyD", "ArrowRight", "GamepadDPadRight"],
+        jump: ["Space", "GamepadA"],
+        down: ["KeyS", "ArrowDown", "GamepadDPadDown"],
+      },
+      preventDefaultKeys: ["Space", "ArrowDown"],
+    }),
+  );
   // Test fixtures opt into a fixed RNG seed and a paused-from-frame-zero
   // clock so playback snapshots are bit-identical across runs. Production
   // builds leave both unset. `startFrozen` runs at plugin `install()` so

@@ -1,4 +1,13 @@
-import { Engine, Scene, Component, Transform, Vec2, ProcessComponent, createKeyframeTrack, easeInOutQuad } from "@yagejs/core";
+import {
+  Engine,
+  Scene,
+  Component,
+  Transform,
+  Vec2,
+  ProcessComponent,
+  createKeyframeTrack,
+  easeInOutQuad,
+} from "@yagejs/core";
 import {
   RendererPlugin,
   GraphicsComponent,
@@ -6,8 +15,10 @@ import {
 } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
-
+import {
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
 
 // ---------------------------------------------------------------------------
 // PlayerController — moves with WASD, triggers shake/zoom
@@ -143,18 +154,21 @@ class CameraScene extends Scene {
       const origin = new Vec2(x, y);
       const transform = e.get(Transform);
       const pc = e.add(new ProcessComponent());
-      pc.run(createKeyframeTrack({
-        keyframes: [
-          { time: 0, data: 0 },
-          { time: period / 4, data: -amplitude },
-          { time: period / 2, data: 0 },
-          { time: period * 3 / 4, data: amplitude },
-          { time: period, data: 0 },
-        ],
-        setter: (offsetY) => transform.setPosition(origin.x, origin.y + offsetY),
-        loop: true,
-        easing: easeInOutQuad,
-      }));
+      pc.run(
+        createKeyframeTrack({
+          keyframes: [
+            { time: 0, data: 0 },
+            { time: period / 4, data: -amplitude },
+            { time: period / 2, data: 0 },
+            { time: (period * 3) / 4, data: amplitude },
+            { time: period, data: 0 },
+          ],
+          setter: (offsetY) =>
+            transform.setPosition(origin.x, origin.y + offsetY),
+          loop: true,
+          easing: easeInOutQuad,
+        }),
+      );
     }
 
     // A few rectangular "buildings"
@@ -183,25 +197,29 @@ class CameraScene extends Scene {
 async function main() {
   const engine = new Engine({ debug: true });
 
-  engine.use(new RendererPlugin({
-    width: 800,
-    height: 600,
-    backgroundColor: 0x0a0a0a,
-    container: setupGameContainer(800, 600),
-  }));
-  engine.use(new InputPlugin({
-    actions: {
-      up: ["KeyW", "ArrowUp"],
-      down: ["KeyS", "ArrowDown"],
-      left: ["KeyA", "ArrowLeft"],
-      right: ["KeyD", "ArrowRight"],
-      shake: ["Space"],
-      zoomIn: ["KeyQ"],
-      zoomOut: ["KeyE"],
-      zoomReset: ["KeyR"],
-    },
-    preventDefaultKeys: ["Space"],
-  }));
+  engine.use(
+    new RendererPlugin({
+      width: 800,
+      height: 600,
+      backgroundColor: 0x0a0a0a,
+      container: setupGameContainer(800, 600),
+    }),
+  );
+  engine.use(
+    new InputPlugin({
+      actions: {
+        up: ["KeyW", "ArrowUp"],
+        down: ["KeyS", "ArrowDown"],
+        left: ["KeyA", "ArrowLeft"],
+        right: ["KeyD", "ArrowRight"],
+        shake: ["Space"],
+        zoomIn: ["KeyQ"],
+        zoomOut: ["KeyE"],
+        zoomReset: ["KeyR"],
+      },
+      preventDefaultKeys: ["Space"],
+    }),
+  );
   await installDebugFromUrl(engine);
 
   await engine.start();

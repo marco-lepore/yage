@@ -2,10 +2,7 @@ import { describe, it, expect } from "vitest";
 import { DebugRegistryImpl } from "./DebugRegistryImpl.js";
 import type { DebugContributor } from "./types.js";
 
-function makeContributor(
-  name: string,
-  flags: string[] = [],
-): DebugContributor {
+function makeContributor(name: string, flags: string[] = []): DebugContributor {
   return { name, flags };
 }
 

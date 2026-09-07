@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { DETAIL_GAP, HEADER_GAP, PanelLayout } from "./PanelLayout.js";
 
-function make(over: Partial<ConstructorParameters<typeof PanelLayout>[0]> = {}): PanelLayout {
+function make(
+  over: Partial<ConstructorParameters<typeof PanelLayout>[0]> = {},
+): PanelLayout {
   return new PanelLayout({
     width: 400,
     height: 300,
@@ -16,17 +18,29 @@ describe("PanelLayout", () => {
   it("centers the panel in the viewport and carves the bands", () => {
     const layout = make();
     layout.setViewport(800, 600);
-    expect(layout.panelRect()).toEqual({ x: 200, y: 150, width: 400, height: 300 });
+    expect(layout.panelRect()).toEqual({
+      x: 200,
+      y: 150,
+      width: 400,
+      height: 300,
+    });
     const content = layout.contentRect();
     expect(content.y).toBe(150 + 16 + 20 + HEADER_GAP);
-    expect(content.height).toBe(300 - 2 * 16 - (20 + HEADER_GAP) - (60 + DETAIL_GAP));
+    expect(content.height).toBe(
+      300 - 2 * 16 - (20 + HEADER_GAP) - (60 + DETAIL_GAP),
+    );
     expect(layout.detailRect().height).toBe(60);
   });
 
   it("explicit bounds pin the panel regardless of viewport", () => {
     const layout = make({ bounds: { x: 10, y: 20, width: 200, height: 150 } });
     layout.setViewport(800, 600);
-    expect(layout.panelRect()).toEqual({ x: 10, y: 20, width: 200, height: 150 });
+    expect(layout.panelRect()).toEqual({
+      x: 10,
+      y: 20,
+      width: 200,
+      height: 150,
+    });
   });
 
   it("zero-height bands carve nothing", () => {

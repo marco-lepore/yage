@@ -9,10 +9,23 @@ import type { BinaryOp, Expr, UnaryOp, VarValue } from "./types.js";
 // Terse Expr builders (mirroring expr.test.ts).
 const lit = (value: VarValue): Expr => ({ kind: "literal", value });
 const v = (name: string): Expr => ({ kind: "varRef", name });
-const bin = (op: BinaryOp, left: Expr, right: Expr): Expr => ({ kind: "binary", op, left, right });
-const un = (op: UnaryOp, operand: Expr): Expr => ({ kind: "unary", op, operand });
+const bin = (op: BinaryOp, left: Expr, right: Expr): Expr => ({
+  kind: "binary",
+  op,
+  left,
+  right,
+});
+const un = (op: UnaryOp, operand: Expr): Expr => ({
+  kind: "unary",
+  op,
+  operand,
+});
 const grp = (expr: Expr): Expr => ({ kind: "group", expr });
-const call = (fn: string, ...args: Expr[]): Expr => ({ kind: "call", fn, args });
+const call = (fn: string, ...args: Expr[]): Expr => ({
+  kind: "call",
+  fn,
+  args,
+});
 
 /** Capture the thrown error so its line/col can be asserted. */
 function caught(src: string): DialogueExprError {
@@ -54,7 +67,9 @@ describe("parseExpr — leaves", () => {
 
 describe("parseExpr — calls", () => {
   it("IDENT'('args')' → a call", () => {
-    expect(parseExpr("has_item('rusty-key')")).toEqual(call("has_item", lit("rusty-key")));
+    expect(parseExpr("has_item('rusty-key')")).toEqual(
+      call("has_item", lit("rusty-key")),
+    );
   });
 
   it("zero-arg and multi-arg calls", () => {
@@ -107,17 +122,25 @@ describe("parseExpr — operators", () => {
 
   it("precedence: or < and < comparison < additive", () => {
     // a or b and c  →  a or (b and c)
-    expect(parseExpr("a or b and c")).toEqual(bin("||", v("a"), bin("&&", v("b"), v("c"))));
+    expect(parseExpr("a or b and c")).toEqual(
+      bin("||", v("a"), bin("&&", v("b"), v("c"))),
+    );
     // 1 + 2 == 3  →  (1 + 2) == 3
-    expect(parseExpr("1 + 2 == 3")).toEqual(bin("==", bin("+", lit(1), lit(2)), lit(3)));
+    expect(parseExpr("1 + 2 == 3")).toEqual(
+      bin("==", bin("+", lit(1), lit(2)), lit(3)),
+    );
   });
 
   it("additive is left-associative", () => {
-    expect(parseExpr("a - b - c")).toEqual(bin("-", bin("-", v("a"), v("b")), v("c")));
+    expect(parseExpr("a - b - c")).toEqual(
+      bin("-", bin("-", v("a"), v("b")), v("c")),
+    );
   });
 
   it("parentheses group and override precedence", () => {
-    expect(parseExpr("(a or b) and c")).toEqual(bin("&&", grp(bin("||", v("a"), v("b"))), v("c")));
+    expect(parseExpr("(a or b) and c")).toEqual(
+      bin("&&", grp(bin("||", v("a"), v("b"))), v("c")),
+    );
   });
 });
 

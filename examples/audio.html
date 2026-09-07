@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>YAGE — Audio</title>
-      <link rel="stylesheet" href="/shared.css">
+    <link rel="stylesheet" href="/shared.css" />
   </head>
   <body>
     <a class="back-link" href="/">&larr; All Examples</a>
@@ -27,13 +27,24 @@
     </div>
     <style>
       #audio-status {
-        display: flex; gap: 1rem; font-size: 0.8rem; color: #888;
+        display: flex;
+        gap: 1rem;
+        font-size: 0.8rem;
+        color: #888;
         font-family: monospace;
       }
-      #audio-status b { color: #ccc; }
-      #audio-status b.locked { color: #f97316; }
-      #audio-status b.unlocked { color: #22c55e; }
-      #audio-status b.off { color: #888; }
+      #audio-status b {
+        color: #ccc;
+      }
+      #audio-status b.locked {
+        color: #f97316;
+      }
+      #audio-status b.unlocked {
+        color: #22c55e;
+      }
+      #audio-status b.off {
+        color: #888;
+      }
     </style>
     <script type="module" src="/src/audio/main.ts"></script>
   </body>

@@ -42,7 +42,9 @@ export function loadScript(raw: DialogueScript): LoadedScript {
   }
   const start = raw.start ?? nodeIds[0]!;
   if (!raw.nodes[start]) {
-    throw new DialogueScriptError(`start node "${start}" not found in "${raw.id}"`);
+    throw new DialogueScriptError(
+      `start node "${start}" not found in "${raw.id}"`,
+    );
   }
 
   // The speaker's id is its map key. Stamp it onto each def so the runtime
@@ -90,7 +92,11 @@ function normalizeSpeakers(
   return out;
 }
 
-function validateNode(script: DialogueScript, id: string, node: DialogueNode): void {
+function validateNode(
+  script: DialogueScript,
+  id: string,
+  node: DialogueNode,
+): void {
   if (node.id !== id) {
     throw new DialogueScriptError(`node key "${id}" != node.id "${node.id}"`);
   }
@@ -100,7 +106,11 @@ function validateNode(script: DialogueScript, id: string, node: DialogueNode): v
   for (const step of node.steps) validateStep(script, id, step);
 }
 
-function validateStep(script: DialogueScript, nodeId: string, step: Step): void {
+function validateStep(
+  script: DialogueScript,
+  nodeId: string,
+  step: Step,
+): void {
   const targetExists = (t: string | undefined): void => {
     if (t !== undefined && !script.nodes[t]) {
       throw new DialogueScriptError(
@@ -120,13 +130,17 @@ function validateStep(script: DialogueScript, nodeId: string, step: Step): void 
   switch (step.kind) {
     case "say":
       if (typeof step.text !== "string") {
-        throw new DialogueScriptError(`node "${nodeId}": say.text must be a string`);
+        throw new DialogueScriptError(
+          `node "${nodeId}": say.text must be a string`,
+        );
       }
       speakerExists(step.speaker);
       break;
     case "choice":
       if (!Array.isArray(step.options) || step.options.length === 0) {
-        throw new DialogueScriptError(`node "${nodeId}": choice has no options`);
+        throw new DialogueScriptError(
+          `node "${nodeId}": choice has no options`,
+        );
       }
       speakerExists(step.speaker);
       for (const opt of step.options) targetExists(opt.target);

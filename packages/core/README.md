@@ -23,7 +23,14 @@ npm install @yagejs/core
 ## Usage
 
 ```ts
-import { Engine, Scene, Entity, Component, Transform, Vec2 } from "@yagejs/core";
+import {
+  Engine,
+  Scene,
+  Entity,
+  Component,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
 
 class Player extends Entity {
   setup() {

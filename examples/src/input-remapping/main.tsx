@@ -1,15 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import {
-  Component,
-  Engine,
-  Scene,
-  Transform,
-  Vec2,
-} from "@yagejs/core";
-import {
-  RendererPlugin,
-  GraphicsComponent,
-} from "@yagejs/renderer";
+import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import {
   InputPlugin,
   InputManager,
@@ -32,7 +23,6 @@ import {
 import { createRecord } from "@yagejs/core";
 import type { ReactiveRecord } from "@yagejs/core";
 import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap";
-
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -139,12 +129,13 @@ type ConflictState = {
   resolveVersion: number;
 };
 
-const conflictStore: ReactiveRecord<ConflictState> = createRecord<ConflictState>({
-  default: () => ({
-    conflict: null,
-    resolveVersion: 0,
-  }),
-});
+const conflictStore: ReactiveRecord<ConflictState> =
+  createRecord<ConflictState>({
+    default: () => ({
+      conflict: null,
+      resolveVersion: 0,
+    }),
+  });
 
 // ---------------------------------------------------------------------------
 // React UI — Binding row
@@ -168,7 +159,9 @@ function BindingRow({
   // gamepad). Each is independently rebindable to any input code.
   return (
     <Panel direction="row" gap={6} alignItems="center">
-      <Text style={{ fontSize: 13, fill: 0xbbbbbb, wordWrapWidth: 50 }}>{label}</Text>
+      <Text style={{ fontSize: 13, fill: 0xbbbbbb, wordWrapWidth: 50 }}>
+        {label}
+      </Text>
       <SlotButton
         label={bindings[0] ? getKeyDisplayName(bindings[0]) : "—"}
         listening={listeningSlot === 0}
@@ -297,9 +290,7 @@ function GroupSection({
           key={action}
           action={action}
           input={input}
-          listeningSlot={
-            listening?.action === action ? listening.slot : null
-          }
+          listeningSlot={listening?.action === action ? listening.slot : null}
           onRebind={onRebind}
         />
       ))}
@@ -401,9 +392,10 @@ function RebindPanel() {
   const input = useMemo(() => ctx.resolve(InputManagerKey), [ctx]);
 
   const [version, setVersion] = useState(0);
-  const [listening, setListening] = useState<{ action: string; slot: number } | null>(
-    null,
-  );
+  const [listening, setListening] = useState<{
+    action: string;
+    slot: number;
+  } | null>(null);
   const [activePad, setActivePad] = useState<GamepadInfo | null>(() =>
     input.getActivePad(),
   );
@@ -589,9 +581,7 @@ class InputRemappingScene extends Scene {
 
     // Mount conflict modal (separate UIRoot, centered)
     const modalEntity = this.spawn("ui-modal");
-    const modalRoot = modalEntity.add(
-      new UIRoot({ anchor: Anchor.Center }),
-    );
+    const modalRoot = modalEntity.add(new UIRoot({ anchor: Anchor.Center }));
     modalRoot.render(<ConflictModal />);
   }
 }

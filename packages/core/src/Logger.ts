@@ -59,7 +59,10 @@ function consoleOutput(entry: LogEntry): void {
   const method = CONSOLE_METHODS[entry.level] ?? "log";
   const label = LEVEL_LABELS[entry.level] ?? "LOG";
   if (entry.data !== undefined) {
-    console[method](`[yage] ${label} ${entry.category}  ${entry.message}`, entry.data);
+    console[method](
+      `[yage] ${label} ${entry.category}  ${entry.message}`,
+      entry.data,
+    );
   } else {
     console[method](`[yage] ${label} ${entry.category}  ${entry.message}`);
   }
@@ -120,8 +123,7 @@ export class Logger {
     const result: LogEntry[] = [];
     // Read the most recent n entries
     for (let i = 0; i < n; i++) {
-      const idx =
-        (this.writeIndex - n + i + this.bufferSize) % this.bufferSize;
+      const idx = (this.writeIndex - n + i + this.bufferSize) % this.bufferSize;
       const entry = this.buffer[idx];
       if (entry) result.push(entry);
     }

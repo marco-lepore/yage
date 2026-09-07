@@ -8,7 +8,9 @@ import { defineEvent } from "@yagejs/core";
  * HUD/achievements listener doesn't need the game's literal quest-id union.
  */
 
-export const QuestStartedEvent = defineEvent<{ questId: string }>("quest:started");
+export const QuestStartedEvent = defineEvent<{ questId: string }>(
+  "quest:started",
+);
 
 export const QuestObjectiveProgressChangedEvent = defineEvent<{
   questId: string;
@@ -23,9 +25,15 @@ export const QuestObjectiveCompletedEvent = defineEvent<{
   objectiveId: string;
 }>("quest:objective-completed");
 
-export const QuestCompletedEvent = defineEvent<{ questId: string }>("quest:completed");
+export const QuestCompletedEvent = defineEvent<{ questId: string }>(
+  "quest:completed",
+);
 
-export const QuestFailedEvent = defineEvent<{ questId: string }>("quest:failed");
+export const QuestFailedEvent = defineEvent<{ questId: string }>(
+  "quest:failed",
+);
 
 /** Coarse re-render signal — mirrors the model's `changed` event. */
-export const QuestChangedEvent = defineEvent<{ questId: string }>("quest:changed");
+export const QuestChangedEvent = defineEvent<{ questId: string }>(
+  "quest:changed",
+);

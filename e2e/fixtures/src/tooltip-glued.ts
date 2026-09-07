@@ -71,10 +71,16 @@ class TooltipScene extends Scene {
           background: { color: 0x111827, alpha: 0.95, radius: 6 },
         });
         card.addElement(
-          new UIText({ children: "Goblin", style: { fontSize: 13, fill: 0xffffff } }),
+          new UIText({
+            children: "Goblin",
+            style: { fontSize: 13, fill: 0xffffff },
+          }),
         );
         card.addElement(
-          new UIText({ children: "HP 100 / 100", style: { fontSize: 11, fill: 0xe5e7eb } }),
+          new UIText({
+            children: "HP 100 / 100",
+            style: { fontSize: 11, fill: 0xe5e7eb },
+          }),
         );
         return card;
       },
@@ -101,7 +107,10 @@ class TooltipScene extends Scene {
             position: { x: number; y: number };
             getLocalBounds(): { width: number; height: number };
           }>;
-          toLocal(p: { x: number; y: number }, from: unknown): { x: number; y: number };
+          toLocal(
+            p: { x: number; y: number },
+            from: unknown,
+          ): { x: number; y: number };
         };
         const bubble = layer.children.find((c) => c.visible) ?? null;
         const triggerDO = panel.root.displayObject;

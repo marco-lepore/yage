@@ -13,14 +13,14 @@ to write the run.
 
 ## Pick a mechanism
 
-| Situation | Use |
-| --- | --- |
-| One question about the game as it is running | one `inspector.drive()` call on the game page |
-| A bug whose situation you can build from nothing | a scenario file, rerun with `yage-lab test --scenarios <file>` |
-| Rerunning the same probe while iterating on a fix | move it out of the console into a scenario file |
-| State only the real game reaches: progression, saves, the room graph | the Inspector on the game page |
-| Tuning a number by feel, with a person watching | a lab scenario with `controls` |
-| Behavior a person accepted and wants kept true | a scenario committed next to the code it exercises |
+| Situation                                                            | Use                                                            |
+| -------------------------------------------------------------------- | -------------------------------------------------------------- |
+| One question about the game as it is running                         | one `inspector.drive()` call on the game page                  |
+| A bug whose situation you can build from nothing                     | a scenario file, rerun with `yage-lab test --scenarios <file>` |
+| Rerunning the same probe while iterating on a fix                    | move it out of the console into a scenario file                |
+| State only the real game reaches: progression, saves, the room graph | the Inspector on the game page                                 |
+| Tuning a number by feel, with a person watching                      | a lab scenario with `controls`                                 |
+| Behavior a person accepted and wants kept true                       | a scenario committed next to the code it exercises             |
 
 A scenario written to reproduce a bug mid-session is throwaway. Mixing it in
 with the scenarios the project keeps makes both the lab's sidebar and a
@@ -60,15 +60,21 @@ play verbs, and reports the run as one object. It restores the clock to the
 state it found and releases every synthetic input afterwards.
 
 ```ts
-const run = await window.__yage__.inspector.drive(async (ctx) => {
-  const i = window.__yage__.inspector;
-  ctx.input.keyDown("KeyD");
-  const frames = await ctx.until(() => i.getEntityPosition("player").x > 950, {
-    maxFrames: 240,
-  });
-  ctx.input.clearAll();
-  return { frames, x: i.getEntityPosition("player").x };
-}, { maxFrames: 900 });
+const run = await window.__yage__.inspector.drive(
+  async (ctx) => {
+    const i = window.__yage__.inspector;
+    ctx.input.keyDown("KeyD");
+    const frames = await ctx.until(
+      () => i.getEntityPosition("player").x > 950,
+      {
+        maxFrames: 240,
+      },
+    );
+    ctx.input.clearAll();
+    return { frames, x: i.getEntityPosition("player").x };
+  },
+  { maxFrames: 900 },
+);
 
 run.framesUsed; // frames the whole run issued
 run.state; // { keys, actions, scenes } at the moment the run ended
@@ -146,7 +152,7 @@ export default defineScenario({
     const player = ctx.scene.findByKey("player");
     if (!player) throw new Error("the scene has no player");
     const body = player.get(RigidBodyComponent);
-    const ground = player.get(GroundProbe);   // this game's own component
+    const ground = player.get(GroundProbe); // this game's own component
 
     await ctx.input.whileHolding(["KeyD"], async () => {
       while (ctx.framesUsed < 900 && !atExit(body)) {
@@ -183,7 +189,7 @@ async function diveAttack(
 ) {
   await ctx.input.whileHolding(["Space"], async () => {
     await ctx.step(4);
-    await ctx.until(() => body.velocityY > -20);          // rising to the apex
+    await ctx.until(() => body.velocityY > -20); // rising to the apex
     await ctx.input.whileHolding(["KeyS", "KeyJ"], () =>
       ctx.until(() => ground.grounded, { maxFrames: 60 }),
     );
@@ -234,12 +240,15 @@ assignment:
 ```ts
 const i = window.__yage__.inspector;
 let lastX = 0;
-const run = await i.drive(async (ctx) => {
-  while (!atExit()) {
-    lastX = i.getEntityPosition("player").x;
-    await ctx.step(1);
-  }
-}, { maxFrames: 600 });
+const run = await i.drive(
+  async (ctx) => {
+    while (!atExit()) {
+      lastX = i.getEntityPosition("player").x;
+      await ctx.step(1);
+    }
+  },
+  { maxFrames: 600 },
+);
 // run.timedOut === true, run.value === undefined, lastX === how far it got
 ```
 
@@ -261,12 +270,12 @@ measurement worth returning.
 ## Reading the state back
 
 ```ts
-inspector.getEntityPosition("player");           // { x, y } | undefined
-inspector.getComponentData("player", "Health");  // reflected fields and getters
-inspector.getSceneStack();                       // scene snapshots, bottom to top
-inspector.getInputState();                       // { keys, actions, mouse, pointers, gamepad }
-inspector.snapshotJSON();                        // whole world, sorted, for diffing
-inspector.events.getLog();                       // bus, entity and scene events
+inspector.getEntityPosition("player"); // { x, y } | undefined
+inspector.getComponentData("player", "Health"); // reflected fields and getters
+inspector.getSceneStack(); // scene snapshots, bottom to top
+inspector.getInputState(); // { keys, actions, mouse, pointers, gamepad }
+inspector.snapshotJSON(); // whole world, sorted, for diffing
+inspector.events.getLog(); // bus, entity and scene events
 await ctx.events.waitFor("enemy:hit", { withinFrames: 60 });
 
 // Same-named entities are told apart by id.

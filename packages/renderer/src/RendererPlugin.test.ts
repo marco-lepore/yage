@@ -3,8 +3,30 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const { mocks } = vi.hoisted(() => {
   class MockContainer {
     children: MockContainer[] = [];
-    position = { x: 0, y: 0, set: vi.fn(function(this: { x: number; y: number }, x: number, y: number) { this.x = x; this.y = y; }) };
-    scale = { x: 1, y: 1, set: vi.fn(function(this: { x: number; y: number }, x: number, y: number) { this.x = x; this.y = y; }) };
+    position = {
+      x: 0,
+      y: 0,
+      set: vi.fn(function (
+        this: { x: number; y: number },
+        x: number,
+        y: number,
+      ) {
+        this.x = x;
+        this.y = y;
+      }),
+    };
+    scale = {
+      x: 1,
+      y: 1,
+      set: vi.fn(function (
+        this: { x: number; y: number },
+        x: number,
+        y: number,
+      ) {
+        this.x = x;
+        this.y = y;
+      }),
+    };
     rotation = 0;
     visible = true;
     alpha = 1;
@@ -213,7 +235,9 @@ describe("RendererPlugin", () => {
       // GameLoop should have a ticker attached (check that loop doesn't use rAF)
       // The ticker was attached via attachTicker(), so starting the loop
       // should not throw. We can verify by checking the app ticker callbacks.
-      const app = plugin.application as unknown as InstanceType<typeof mocks.MockApplication>;
+      const app = plugin.application as unknown as InstanceType<
+        typeof mocks.MockApplication
+      >;
       expect(app.ticker.callbacks).toHaveLength(1);
     });
 
@@ -226,7 +250,10 @@ describe("RendererPlugin", () => {
       const plugin = new RendererPlugin({ ...defaultConfig, container });
       await plugin.install(context);
 
-      expect((container as unknown as { appendChild: ReturnType<typeof vi.fn> }).appendChild).toHaveBeenCalledWith(plugin.canvas);
+      expect(
+        (container as unknown as { appendChild: ReturnType<typeof vi.fn> })
+          .appendChild,
+      ).toHaveBeenCalledWith(plugin.canvas);
     });
 
     it("initializes PixiJS Application", async () => {
@@ -234,7 +261,9 @@ describe("RendererPlugin", () => {
       const plugin = new RendererPlugin(defaultConfig);
       await plugin.install(context);
 
-      const app = plugin.application as unknown as InstanceType<typeof mocks.MockApplication>;
+      const app = plugin.application as unknown as InstanceType<
+        typeof mocks.MockApplication
+      >;
       expect(app.initialized).toBe(true);
     });
   });
@@ -257,7 +286,9 @@ describe("RendererPlugin", () => {
       const plugin = new RendererPlugin(defaultConfig);
       await plugin.install(context);
 
-      const app = plugin.application as unknown as InstanceType<typeof mocks.MockApplication>;
+      const app = plugin.application as unknown as InstanceType<
+        typeof mocks.MockApplication
+      >;
       plugin.onDestroy?.();
       expect(app.destroyCalled).toBe(true);
     });
@@ -267,7 +298,9 @@ describe("RendererPlugin", () => {
       const plugin = new RendererPlugin(defaultConfig);
       await plugin.install(context);
 
-      const app = plugin.application as unknown as InstanceType<typeof mocks.MockApplication>;
+      const app = plugin.application as unknown as InstanceType<
+        typeof mocks.MockApplication
+      >;
       expect(app.ticker.callbacks).toHaveLength(1);
 
       plugin.onDestroy?.();
@@ -309,7 +342,9 @@ describe("RendererPlugin", () => {
       // scale = min(800/400, 600/300) = min(2, 2) = 2
       // The fit transform lives on the renderer's `_worldRoot` (first child
       // of stage), not on stage itself — see RendererPlugin._worldRoot.
-      const app = plugin.application as unknown as InstanceType<typeof mocks.MockApplication>;
+      const app = plugin.application as unknown as InstanceType<
+        typeof mocks.MockApplication
+      >;
       const worldRoot = app.stage.children[0]!;
       expect(worldRoot.scale.x).toBe(2);
       expect(worldRoot.scale.y).toBe(2);
@@ -329,7 +364,9 @@ describe("RendererPlugin", () => {
       await plugin.install(context);
 
       // scale = min(1000/400, 600/300) = min(2.5, 2) = 2
-      const app = plugin.application as unknown as InstanceType<typeof mocks.MockApplication>;
+      const app = plugin.application as unknown as InstanceType<
+        typeof mocks.MockApplication
+      >;
       const worldRoot = app.stage.children[0]!;
       expect(worldRoot.scale.x).toBe(2);
       expect(worldRoot.scale.y).toBe(2);
@@ -348,7 +385,9 @@ describe("RendererPlugin", () => {
       await plugin.install(context);
 
       // scale = min(800/400, 800/300) = min(2, 2.667) = 2
-      const app = plugin.application as unknown as InstanceType<typeof mocks.MockApplication>;
+      const app = plugin.application as unknown as InstanceType<
+        typeof mocks.MockApplication
+      >;
       const worldRoot = app.stage.children[0]!;
       expect(worldRoot.scale.x).toBe(2);
       expect(worldRoot.scale.y).toBe(2);
@@ -464,7 +503,8 @@ describe("RendererPlugin", () => {
         readonly name = name;
       }
       const scene = new TestScene();
-      (scene as { transparentBelow: boolean }).transparentBelow = transparentBelow;
+      (scene as { transparentBelow: boolean }).transparentBelow =
+        transparentBelow;
       return scene;
     }
 
@@ -490,10 +530,14 @@ describe("RendererPlugin", () => {
 
       await scenes.push(below);
       const belowTree = plugin.sceneRenderTrees.getTree(below)!;
-      expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(true);
+      expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(
+        true,
+      );
 
       await scenes.push(top);
-      expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(false);
+      expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(
+        false,
+      );
     });
 
     it("keeps the below scene visible when the top scene is transparentBelow=true", async () => {
@@ -505,7 +549,9 @@ describe("RendererPlugin", () => {
       await scenes.push(top);
 
       const belowTree = plugin.sceneRenderTrees.getTree(below)!;
-      expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(true);
+      expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(
+        true,
+      );
     });
 
     it("re-shows a hidden below scene when the opaque cover is popped", async () => {
@@ -516,10 +562,14 @@ describe("RendererPlugin", () => {
       await scenes.push(below);
       await scenes.push(top);
       const belowTree = plugin.sceneRenderTrees.getTree(below)!;
-      expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(false);
+      expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(
+        false,
+      );
 
       await scenes.pop();
-      expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(true);
+      expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(
+        true,
+      );
     });
 
     it("keeps the outgoing scene visible during a push-with-transition", async () => {
@@ -541,9 +591,8 @@ describe("RendererPlugin", () => {
       const transition: SceneTransition = {
         duration: 100,
         begin: () => {
-          visibleAtBegin = (
-            belowTree.root as unknown as { visible: boolean }
-          ).visible;
+          visibleAtBegin = (belowTree.root as unknown as { visible: boolean })
+            .visible;
         },
         tick: () => {},
       };
@@ -560,7 +609,9 @@ describe("RendererPlugin", () => {
 
       // After scene:transition:ended fires recompute, the chain settles
       // with `below` hidden under the opaque `top`.
-      expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(false);
+      expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(
+        false,
+      );
     });
 
     it("does not re-show the outgoing scene on the frame a pop transition ends (#102)", async () => {
@@ -594,7 +645,9 @@ describe("RendererPlugin", () => {
 
       expect(bStillOnStackAtEnd).toBe(false);
       expect(aVisibleAtEnd).toBe(true);
-      expect((aTree.root as unknown as { visible: boolean }).visible).toBe(true);
+      expect((aTree.root as unknown as { visible: boolean }).visible).toBe(
+        true,
+      );
     });
   });
 
@@ -899,11 +952,9 @@ describe("RendererPlugin", () => {
       let changeHandler: (() => void) | null = null;
       const orientationMock = {
         type: "landscape-primary",
-        addEventListener: vi.fn(
-          (event: string, fn: () => void) => {
-            if (event === "change") changeHandler = fn;
-          },
-        ),
+        addEventListener: vi.fn((event: string, fn: () => void) => {
+          if (event === "change") changeHandler = fn;
+        }),
         removeEventListener: vi.fn(),
       };
       vi.stubGlobal("window", {
@@ -934,11 +985,9 @@ describe("RendererPlugin", () => {
 
     it("falls back to window.orientationchange on browsers without screen.orientation", async () => {
       let changeHandler: (() => void) | null = null;
-      const windowAddEventListener = vi.fn(
-        (event: string, fn: () => void) => {
-          if (event === "orientationchange") changeHandler = fn;
-        },
-      );
+      const windowAddEventListener = vi.fn((event: string, fn: () => void) => {
+        if (event === "orientationchange") changeHandler = fn;
+      });
       vi.stubGlobal("window", {
         screen: {},
         orientation: 90,

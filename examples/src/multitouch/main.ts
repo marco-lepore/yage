@@ -11,14 +11,12 @@ import {
   RendererPlugin,
   TextComponent,
 } from "@yagejs/renderer";
+import { InputManagerKey, InputPlugin, type PointerInfo } from "@yagejs/input";
 import {
-  InputManagerKey,
-  InputPlugin,
-  type PointerInfo,
-} from "@yagejs/input";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
 import "./styles.css";
-
 
 const orientationBadge = document.createElement("div");
 orientationBadge.id = "orientation-badge";
@@ -28,7 +26,7 @@ document.body.appendChild(orientationBadge);
 const WIDTH = 800;
 const HEIGHT = 600;
 const TRAIL_LENGTH = 24;
-const RIPPLE_DURATION = 0.6;        // seconds
+const RIPPLE_DURATION = 0.6; // seconds
 
 interface PointerTrail {
   /** Recent screen-space positions for this pointer, newest at the end. */
@@ -153,11 +151,13 @@ class MultitouchVisualizer extends Component {
           const a = trail.positions[i - 1]!;
           const b = trail.positions[i]!;
           const alpha = i / trail.positions.length;
-          g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({
-            color,
-            width: 3,
-            alpha: alpha * 0.6,
-          });
+          g.moveTo(a.x, a.y)
+            .lineTo(b.x, b.y)
+            .stroke({
+              color,
+              width: 3,
+              alpha: alpha * 0.6,
+            });
         }
 
         // Disk under the pointer — solid when down, hollow when hovering.
@@ -171,14 +171,18 @@ class MultitouchVisualizer extends Component {
         });
 
         // Crosshair at center
-        g.moveTo(head.x - 6, head.y).lineTo(head.x + 6, head.y).stroke({
-          color: 0xffffff,
-          width: 1,
-        });
-        g.moveTo(head.x, head.y - 6).lineTo(head.x, head.y + 6).stroke({
-          color: 0xffffff,
-          width: 1,
-        });
+        g.moveTo(head.x - 6, head.y)
+          .lineTo(head.x + 6, head.y)
+          .stroke({
+            color: 0xffffff,
+            width: 1,
+          });
+        g.moveTo(head.x, head.y - 6)
+          .lineTo(head.x, head.y + 6)
+          .stroke({
+            color: 0xffffff,
+            width: 1,
+          });
       }
     });
   }
@@ -254,7 +258,11 @@ class MultitouchScene extends Scene {
     const headerText = headerEntity.add(
       new TextComponent({
         text: "",
-        style: { fontFamily: "system-ui, sans-serif", fontSize: 14, fill: 0xe2e8f0 },
+        style: {
+          fontFamily: "system-ui, sans-serif",
+          fontSize: 14,
+          fill: 0xe2e8f0,
+        },
       }),
     );
 

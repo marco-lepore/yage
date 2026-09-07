@@ -1,5 +1,10 @@
 export * from "./types.js";
-export { parseMarkup, stripMarkup, splitGraphemes, EMPTY_PARSED } from "./markup.js";
+export {
+  parseMarkup,
+  stripMarkup,
+  splitGraphemes,
+  EMPTY_PARSED,
+} from "./markup.js";
 // Headless typewriter clock — a custom text presenter reuses it to honour
 // reveal timing / pauses / per-run speed / completion / reveal beats without
 // re-implementing.

@@ -19,10 +19,14 @@ import {
 import type { Placement } from "@yagejs/ui-react";
 import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap";
 import {
-  textStyle, allAssets, defaultTextStyle, nineSliceBtnReact, panelBg,
-  sprites as S, nineSlice,
+  textStyle,
+  allAssets,
+  defaultTextStyle,
+  nineSliceBtnReact,
+  panelBg,
+  sprites as S,
+  nineSlice,
 } from "../shared/ui-theme";
-
 
 // ---------------------------------------------------------------------------
 // Additional assets for this example
@@ -107,171 +111,173 @@ function MainMenu() {
           viewport. The inner panel keeps everything centered (the
           ScrollView's content stack is start-aligned). */}
       <ScrollView flexGrow={1}>
-      <Panel direction="column" gap={12} alignItems="center">
-      {/* Themed string tooltip via the local StyledTooltip wrapper. */}
-      <StyledTooltip
-        content="YAGE — Yet Another Game Engine"
-        placement="bottom"
-      >
-        <Image texture={Logo} width={180} height={58} />
-      </StyledTooltip>
-
-      <Text style={textStyle("title", { fontSize: 28 })}>UI Demo</Text>
-      <Text style={textStyle("subtitle")}>React API</Text>
-
-      {/* HP bar with controls — the buttons shrink-to-fit their labels */}
-      <Panel direction="column" gap={4} alignItems="center">
-        <Text style={textStyle("body", { fill: 0x22c55e })}>
-          {`HP: ${Math.round(hp * 100)}%`}
-        </Text>
-        <PixiProgressBar
-          bg={S.sliderTrack}
-          fill={S.sliderFillGreen}
-          nineSliceSprite={nineSlice.track}
-          value={hp * 100}
-          width={200}
-          height={12}
-        />
-        <Panel direction="row" gap={6}>
-          <StyledTooltip content="-15% HP" placement="top">
-            <Button
-              bg={{ color: 0x661111, alpha: 1, radius: 4 }}
-              hoverBg={{ color: 0x882222, alpha: 1, radius: 4 }}
-              textStyle={textStyle("caption")}
-              onClick={() => setHp((v) => Math.max(0, v - 0.15))}
-            >
-              Take Damage
-            </Button>
+        <Panel direction="column" gap={12} alignItems="center">
+          {/* Themed string tooltip via the local StyledTooltip wrapper. */}
+          <StyledTooltip
+            content="YAGE — Yet Another Game Engine"
+            placement="bottom"
+          >
+            <Image texture={Logo} width={180} height={58} />
           </StyledTooltip>
-          <StyledTooltip content="+15% HP" placement="top">
+
+          <Text style={textStyle("title", { fontSize: 28 })}>UI Demo</Text>
+          <Text style={textStyle("subtitle")}>React API</Text>
+
+          {/* HP bar with controls — the buttons shrink-to-fit their labels */}
+          <Panel direction="column" gap={4} alignItems="center">
+            <Text style={textStyle("body", { fill: 0x22c55e })}>
+              {`HP: ${Math.round(hp * 100)}%`}
+            </Text>
+            <PixiProgressBar
+              bg={S.sliderTrack}
+              fill={S.sliderFillGreen}
+              nineSliceSprite={nineSlice.track}
+              value={hp * 100}
+              width={200}
+              height={12}
+            />
+            <Panel direction="row" gap={6}>
+              <StyledTooltip content="-15% HP" placement="top">
+                <Button
+                  bg={{ color: 0x661111, alpha: 1, radius: 4 }}
+                  hoverBg={{ color: 0x882222, alpha: 1, radius: 4 }}
+                  textStyle={textStyle("caption")}
+                  onClick={() => setHp((v) => Math.max(0, v - 0.15))}
+                >
+                  Take Damage
+                </Button>
+              </StyledTooltip>
+              <StyledTooltip content="+15% HP" placement="top">
+                <Button
+                  bg={{ color: 0x115511, alpha: 1, radius: 4 }}
+                  hoverBg={{ color: 0x228822, alpha: 1, radius: 4 }}
+                  textStyle={textStyle("caption")}
+                  onClick={() => setHp((v) => Math.min(1, v + 0.15))}
+                >
+                  Heal
+                </Button>
+              </StyledTooltip>
+            </Panel>
+          </Panel>
+
+          {/* XP bar (auto-fills) */}
+          <Panel direction="column" gap={4} alignItems="center">
+            <Text style={textStyle("body", { fill: 0x3b82f6 })}>
+              {`XP: ${Math.round(xp * 100)}%`}
+            </Text>
+            <PixiProgressBar
+              bg={S.sliderTrack}
+              fill={S.sliderFillBlue}
+              nineSliceSprite={nineSlice.track}
+              value={xp * 100}
+              width={200}
+              height={12}
+            />
+          </Panel>
+
+          <Button
+            width={200}
+            height={40}
+            textStyle={textStyle("button")}
+            onClick={() => console.log("Start!")}
+            {...nineSliceBtnReact}
+          >
+            Start Game
+          </Button>
+
+          <Button
+            width={200}
+            height={40}
+            textStyle={textStyle("button")}
+            onClick={() => setShowSaves((s) => !s)}
+            {...nineSliceBtnReact}
+          >
+            Continue
+          </Button>
+
+          {showSaves && (
+            <Panel direction="column" gap={6}>
+              {[1, 2, 3].map((i) => (
+                <Button
+                  key={i}
+                  width={180}
+                  height={32}
+                  textStyle={textStyle("buttonSmall")}
+                  onClick={() => console.log(`Load save ${i}`)}
+                  {...nineSliceBtnReact}
+                >
+                  {`Save ${i}`}
+                </Button>
+              ))}
+            </Panel>
+          )}
+
+          {/* Rich tooltip: the headless bubble is styled entirely by passing a
+          themed <Panel> as `content` (no bg/padding props on Tooltip). */}
+          <Tooltip
+            placement="right"
+            content={
+              <Panel
+                direction="column"
+                gap={2}
+                bg={panelBg}
+                padding={{ left: 10, right: 10, top: 8, bottom: 8 }}
+              >
+                <Text style={textStyle("caption", { fill: 0xffffff })}>
+                  Audio & display
+                </Text>
+                <Text
+                  style={textStyle("caption", { fontSize: 10, fill: 0x9ca3af })}
+                >
+                  Toggle to expand
+                </Text>
+              </Panel>
+            }
+          >
             <Button
-              bg={{ color: 0x115511, alpha: 1, radius: 4 }}
-              hoverBg={{ color: 0x228822, alpha: 1, radius: 4 }}
-              textStyle={textStyle("caption")}
-              onClick={() => setHp((v) => Math.min(1, v + 0.15))}
-            >
-              Heal
-            </Button>
-          </StyledTooltip>
-        </Panel>
-      </Panel>
-
-      {/* XP bar (auto-fills) */}
-      <Panel direction="column" gap={4} alignItems="center">
-        <Text style={textStyle("body", { fill: 0x3b82f6 })}>
-          {`XP: ${Math.round(xp * 100)}%`}
-        </Text>
-        <PixiProgressBar
-          bg={S.sliderTrack}
-          fill={S.sliderFillBlue}
-          nineSliceSprite={nineSlice.track}
-          value={xp * 100}
-          width={200}
-          height={12}
-        />
-      </Panel>
-
-      <Button
-        width={200}
-        height={40}
-        textStyle={textStyle("button")}
-        onClick={() => console.log("Start!")}
-        {...nineSliceBtnReact}
-      >
-        Start Game
-      </Button>
-
-      <Button
-        width={200}
-        height={40}
-        textStyle={textStyle("button")}
-        onClick={() => setShowSaves((s) => !s)}
-        {...nineSliceBtnReact}
-      >
-        Continue
-      </Button>
-
-      {showSaves && (
-        <Panel direction="column" gap={6}>
-          {[1, 2, 3].map((i) => (
-            <Button
-              key={i}
-              width={180}
-              height={32}
-              textStyle={textStyle("buttonSmall")}
-              onClick={() => console.log(`Load save ${i}`)}
+              width={200}
+              height={40}
+              textStyle={textStyle("button")}
+              onClick={() => setShowSettings((s) => !s)}
               {...nineSliceBtnReact}
             >
-              {`Save ${i}`}
+              Settings
             </Button>
-          ))}
-        </Panel>
-      )}
+          </Tooltip>
 
-      {/* Rich tooltip: the headless bubble is styled entirely by passing a
-          themed <Panel> as `content` (no bg/padding props on Tooltip). */}
-      <Tooltip
-        placement="right"
-        content={
-          <Panel
-            direction="column"
-            gap={2}
-            bg={panelBg}
-            padding={{ left: 10, right: 10, top: 8, bottom: 8 }}
+          {showSettings && (
+            <Panel direction="column" gap={8} padding={8}>
+              <Checkbox
+                label="Sound"
+                labelStyle={textStyle("body")}
+                checked={sound}
+                onChange={(v) => {
+                  setSound(v);
+                  console.log("Sound:", v);
+                }}
+              />
+              <Checkbox
+                label="Fullscreen"
+                labelStyle={textStyle("body")}
+                checked={fullscreen}
+                onChange={(v) => {
+                  setFullscreen(v);
+                  console.log("Fullscreen:", v);
+                }}
+              />
+            </Panel>
+          )}
+
+          <Button
+            width={200}
+            height={40}
+            textStyle={textStyle("button")}
+            onClick={() => console.log("Exit!")}
+            {...nineSliceBtnReact}
           >
-            <Text style={textStyle("caption", { fill: 0xffffff })}>
-              Audio & display
-            </Text>
-            <Text style={textStyle("caption", { fontSize: 10, fill: 0x9ca3af })}>
-              Toggle to expand
-            </Text>
-          </Panel>
-        }
-      >
-        <Button
-          width={200}
-          height={40}
-          textStyle={textStyle("button")}
-          onClick={() => setShowSettings((s) => !s)}
-          {...nineSliceBtnReact}
-        >
-          Settings
-        </Button>
-      </Tooltip>
-
-      {showSettings && (
-        <Panel direction="column" gap={8} padding={8}>
-          <Checkbox
-            label="Sound"
-            labelStyle={textStyle("body")}
-            checked={sound}
-            onChange={(v) => {
-              setSound(v);
-              console.log("Sound:", v);
-            }}
-          />
-          <Checkbox
-            label="Fullscreen"
-            labelStyle={textStyle("body")}
-            checked={fullscreen}
-            onChange={(v) => {
-              setFullscreen(v);
-              console.log("Fullscreen:", v);
-            }}
-          />
+            Exit
+          </Button>
         </Panel>
-      )}
-
-      <Button
-        width={200}
-        height={40}
-        textStyle={textStyle("button")}
-        onClick={() => console.log("Exit!")}
-        {...nineSliceBtnReact}
-      >
-        Exit
-      </Button>
-      </Panel>
       </ScrollView>
     </Panel>
   );

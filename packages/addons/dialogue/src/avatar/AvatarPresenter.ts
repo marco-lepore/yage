@@ -32,7 +32,8 @@ export function applyExpressionMarker(
   avatar: Pick<AvatarChannel, "setExpression">,
   marker: MarkerToken,
 ): void {
-  if (marker.name === "expression") avatar.setExpression(marker.props["expression"]);
+  if (marker.name === "expression")
+    avatar.setExpression(marker.props["expression"]);
 }
 
 /** No-op presenter — the default when a script has no avatars. */

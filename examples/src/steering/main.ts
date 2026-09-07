@@ -1,4 +1,11 @@
-import { Component, Engine, MathUtils, Scene, Transform, Vec2 } from "@yagejs/core";
+import {
+  Component,
+  Engine,
+  MathUtils,
+  Scene,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
 import type { Entity } from "@yagejs/core";
 import { GraphicsComponent, RendererPlugin } from "@yagejs/renderer";
 import {
@@ -22,10 +29,16 @@ import {
   SteeringAgent,
   wander,
 } from "@yagejs-addons/steering";
-import { avoidColliders, PhysicsSteeringAgent } from "@yagejs-addons/steering/physics";
-import type { Kinematic, SteeringAgentOptions, SteeringBehavior } from "@yagejs-addons/steering";
+import {
+  avoidColliders,
+  PhysicsSteeringAgent,
+} from "@yagejs-addons/steering/physics";
+import type {
+  Kinematic,
+  SteeringAgentOptions,
+  SteeringBehavior,
+} from "@yagejs-addons/steering";
 import { setupGameContainer } from "../shared/bootstrap.js";
-
 
 const WIDTH = 900;
 const HEIGHT = 600;
@@ -114,7 +127,10 @@ class ToggleController extends Component {
 
   constructor(
     private readonly groups: SteeringAgent[][],
-    private readonly flockRules: Record<"separation" | "alignment" | "cohesion", FlockRule>,
+    private readonly flockRules: Record<
+      "separation" | "alignment" | "cohesion",
+      FlockRule
+    >,
   ) {
     super();
   }
@@ -271,11 +287,21 @@ class SteeringScene extends Scene {
     const count = 10;
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2;
-      const position = new Vec2(720 + Math.cos(angle) * 60, 420 + Math.sin(angle) * 60);
-      const { entity, agent } = spawnAgent(this, `boid-${i}`, position, 0xc084fc, 6, {
-        maxSpeed: 95,
-        behaviors: [],
-      });
+      const position = new Vec2(
+        720 + Math.cos(angle) * 60,
+        420 + Math.sin(angle) * 60,
+      );
+      const { entity, agent } = spawnAgent(
+        this,
+        `boid-${i}`,
+        position,
+        0xc084fc,
+        6,
+        {
+          maxSpeed: 95,
+          behaviors: [],
+        },
+      );
       boidRefs.push({ transform: entity.get(Transform), agent });
     }
 
@@ -288,11 +314,19 @@ class SteeringScene extends Scene {
       const neighbors = (): Kinematic[] =>
         boidRefs
           .filter((b) => b !== self)
-          .map((b) => ({ position: b.transform.position, velocity: b.agent.velocity }));
+          .map((b) => ({
+            position: b.transform.position,
+            velocity: b.agent.velocity,
+          }));
       const sep = separation(neighbors, { radius: 28, weight: 1.5 });
       const align = alignment(neighbors, { radius: 60 });
       const coh = cohesion(neighbors, { radius: 70, weight: 0.8 });
-      self.agent.setBehaviors([sep, align, coh, contain(FIELD, { weight: 1.5 })]);
+      self.agent.setBehaviors([
+        sep,
+        align,
+        coh,
+        contain(FIELD, { weight: 1.5 }),
+      ]);
       rules.separation.perBoid.push({ agent: self.agent, behavior: sep });
       rules.alignment.perBoid.push({ agent: self.agent, behavior: align });
       rules.cohesion.perBoid.push({ agent: self.agent, behavior: coh });
@@ -313,7 +347,9 @@ class SteeringScene extends Scene {
       );
       entity.add(new RigidBodyComponent({ type: "static" }));
       entity.add(
-        new ColliderComponent({ shape: { type: "circle", radius: rock.radius } }),
+        new ColliderComponent({
+          shape: { type: "circle", radius: rock.radius },
+        }),
       );
     }
   }
@@ -337,17 +373,37 @@ class SteeringScene extends Scene {
           g.rect(-10, -10, 20, 20).stroke({ color: 0x713f12, width: 2 });
         }),
       );
-      crate.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0, linearDamping: 3 }));
       crate.add(
-        new ColliderComponent({ shape: { type: "box", width: 20, height: 20 }, density: 0.4 }),
+        new RigidBodyComponent({
+          type: "dynamic",
+          gravityScale: 0,
+          linearDamping: 3,
+        }),
+      );
+      crate.add(
+        new ColliderComponent({
+          shape: { type: "box", width: 20, height: 20 },
+          density: 0.4,
+        }),
       );
     }
 
     const entity = this.spawn("physics-arrive");
     entity.add(new Transform({ position: new Vec2(800, 100) }));
     entity.add(new GraphicsComponent());
-    entity.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0, linearDamping: 0 }));
-    entity.add(new ColliderComponent({ shape: { type: "circle", radius: 10 }, density: 1 }));
+    entity.add(
+      new RigidBodyComponent({
+        type: "dynamic",
+        gravityScale: 0,
+        linearDamping: 0,
+      }),
+    );
+    entity.add(
+      new ColliderComponent({
+        shape: { type: "circle", radius: 10 },
+        density: 1,
+      }),
+    );
     const agent = new PhysicsSteeringAgent({
       maxSpeed: 130,
       maxAcceleration: 400,

@@ -50,9 +50,39 @@ interface EnemySpec {
 }
 
 const ENEMIES: EnemySpec[] = [
-  { name: "Grunt", color: 0xff6b6b, hp: 0.8, stats: { lvl: 3, atk: 12, def: 8, spd: 5 }, cx: 300, cy: 300, radius: 90, speed: 0.5, phase: 0 },
-  { name: "Scout", color: 0x4ecdc4, hp: 0.55, stats: { lvl: 5, atk: 9, def: 4, spd: 11 }, cx: 600, cy: 320, radius: 70, speed: 0.8, phase: 2 },
-  { name: "Brute", color: 0xffe66d, hp: 1, stats: { lvl: 7, atk: 18, def: 14, spd: 3 }, cx: 470, cy: 430, radius: 55, speed: 0.35, phase: 4 },
+  {
+    name: "Grunt",
+    color: 0xff6b6b,
+    hp: 0.8,
+    stats: { lvl: 3, atk: 12, def: 8, spd: 5 },
+    cx: 300,
+    cy: 300,
+    radius: 90,
+    speed: 0.5,
+    phase: 0,
+  },
+  {
+    name: "Scout",
+    color: 0x4ecdc4,
+    hp: 0.55,
+    stats: { lvl: 5, atk: 9, def: 4, spd: 11 },
+    cx: 600,
+    cy: 320,
+    radius: 70,
+    speed: 0.8,
+    phase: 2,
+  },
+  {
+    name: "Brute",
+    color: 0xffe66d,
+    hp: 1,
+    stats: { lvl: 7, atk: 18, def: 14, spd: 3 },
+    cx: 470,
+    cy: 430,
+    radius: 55,
+    speed: 0.35,
+    phase: 4,
+  },
 ];
 
 /** Orbit the entity around a center so its namecard glides across-screen. */
@@ -137,7 +167,9 @@ class DemoScene extends Scene {
       new GraphicsComponent({ layer: "bg" }).draw((g) => {
         g.rect(0, 0, WIDTH, HEIGHT).fill({ color: 0x0f172a, alpha: 1 });
         for (let x = 0; x <= WIDTH; x += 100)
-          g.moveTo(x, 0).lineTo(x, HEIGHT).stroke({ color: 0x1e293b, width: 1 });
+          g.moveTo(x, 0)
+            .lineTo(x, HEIGHT)
+            .stroke({ color: 0x1e293b, width: 1 });
         for (let y = 0; y <= HEIGHT; y += 100)
           g.moveTo(0, y).lineTo(WIDTH, y).stroke({ color: 0x1e293b, width: 1 });
       }),
@@ -171,7 +203,9 @@ class DemoScene extends Scene {
         }),
       );
       plate
-        .add(new UIRoot({ positioning: "transform", anchor: Anchor.BottomCenter }))
+        .add(
+          new UIRoot({ positioning: "transform", anchor: Anchor.BottomCenter }),
+        )
         .render(<Namecard {...spec} />);
     }
   }

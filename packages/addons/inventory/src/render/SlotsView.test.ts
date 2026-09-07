@@ -8,7 +8,13 @@ import { hints } from "./hints.js";
 import { PanelLayout } from "./PanelLayout.js";
 import { GraphicsComponent } from "./rendererTestStubs.js";
 import { defaultInventoryTheme } from "../factory/defaultTheme.js";
-import type { CellDefaults, CellHandle, CellPresenter, DiagnosticSink, Rect } from "../adapter.js";
+import type {
+  CellDefaults,
+  CellHandle,
+  CellPresenter,
+  DiagnosticSink,
+  Rect,
+} from "../adapter.js";
 import type { SlotView } from "../core/session.js";
 
 /** A recording cell presenter — the view's collaborator under test. */
@@ -21,7 +27,12 @@ class FakeCell implements CellPresenter {
     gapX: 4,
     gapY: 4,
   };
-  readonly renders: Array<{ slot: number; selected: boolean; empty: boolean; rect: Rect }> = [];
+  readonly renders: Array<{
+    slot: number;
+    selected: boolean;
+    empty: boolean;
+    rect: Rect;
+  }> = [];
   readonly selects: Array<{ slot: number; selected: boolean }> = [];
   readonly disposed: number[] = [];
   live = 0;
@@ -31,8 +42,18 @@ class FakeCell implements CellPresenter {
     this.warn = warn;
   }
 
-  renderCell(_scene: unknown, view: SlotView, rect: Rect, selected: boolean): CellHandle {
-    this.renders.push({ slot: view.slot, selected, empty: view.stack === null, rect });
+  renderCell(
+    _scene: unknown,
+    view: SlotView,
+    rect: Rect,
+    selected: boolean,
+  ): CellHandle {
+    this.renders.push({
+      slot: view.slot,
+      selected,
+      empty: view.stack === null,
+      rect,
+    });
     this.live++;
     const slot = view.slot;
     return {
@@ -53,8 +74,12 @@ function slotViews(count: number, emptyAt: readonly number[] = []): SlotView[] {
     const filled = !emptyAt.includes(i);
     return {
       slot: i,
-      stack: filled ? ({ itemId: "x", quantity: 1 } as unknown as SlotView["stack"]) : null,
-      def: filled ? ({ id: "x", name: "X" } as unknown as SlotView["def"]) : null,
+      stack: filled
+        ? ({ itemId: "x", quantity: 1 } as unknown as SlotView["stack"])
+        : null,
+      def: filled
+        ? ({ id: "x", name: "X" } as unknown as SlotView["def"])
+        : null,
     };
   });
 }
@@ -84,7 +109,11 @@ function makeView(cfgOverride: Partial<SlotsViewConfig> = {}): {
     layerContent: "content",
     ...cfgOverride,
   };
-  return { view: new SlotsView(cfg, cell, hints(defaultInventoryTheme()), layout), cell, layout };
+  return {
+    view: new SlotsView(cfg, cell, hints(defaultInventoryTheme()), layout),
+    cell,
+    layout,
+  };
 }
 
 describe("SlotsView present / rebuild", () => {
@@ -100,7 +129,12 @@ describe("SlotsView present / rebuild", () => {
     // Slot 2 is empty but still rendered (blank, selectable cell).
     expect(cell.renders.find((r) => r.slot === 2)?.empty).toBe(true);
     // Origin centers the 128×84 window in the 180×180 content rect.
-    expect(cell.renders[0]?.rect).toEqual({ x: 36, y: 58, width: 40, height: 40 });
+    expect(cell.renders[0]?.rect).toEqual({
+      x: 36,
+      y: 58,
+      width: 40,
+      height: 40,
+    });
   });
 });
 
@@ -131,7 +165,9 @@ describe("SlotsView selection", () => {
     view.setSelected(7); // row 2 -> scrolls; window moves
     expect(cell.disposed).toHaveLength(6); // all prior cells disposed
     // Rows 1..2 now visible: slots 3,4,5,6,7.
-    expect(cell.renders.slice(spawned).map((r) => r.slot)).toEqual([3, 4, 5, 6, 7]);
+    expect(cell.renders.slice(spawned).map((r) => r.slot)).toEqual([
+      3, 4, 5, 6, 7,
+    ]);
     expect(cell.selects).toEqual([]); // re-window, not the cheap path
   });
 });
@@ -152,7 +188,12 @@ describe("SlotsView geometry seams", () => {
     const { scene } = createMockScene();
     view.mount(scene);
     view.present(slotViews(8));
-    expect(view.selectionAnchor()).toEqual({ x: 36, y: 58, width: 40, height: 40 });
+    expect(view.selectionAnchor()).toEqual({
+      x: 36,
+      y: 58,
+      width: 40,
+      height: 40,
+    });
 
     view.setSelected(7);
     view.present(slotViews(3)); // selection (7) now beyond the slots
@@ -186,14 +227,18 @@ describe("SlotsView lifecycle + diagnostics", () => {
     const messages: string[] = [];
     view.setDiagnostics((m) => messages.push(m));
     view.mount(scene);
-    expect(messages.some((m) => m.includes("overflows its panel content area"))).toBe(true);
+    expect(
+      messages.some((m) => m.includes("overflows its panel content area")),
+    ).toBe(true);
   });
 
   it("clear/dispose disposes every cell and the hints entity", () => {
     const { view, cell } = makeView();
     const { scene } = createMockScene();
     const liveHints = (): number =>
-      [...scene.getEntities()].filter((e) => !e.isDestroyed && e.name === "inv-slots-hints").length;
+      [...scene.getEntities()].filter(
+        (e) => !e.isDestroyed && e.name === "inv-slots-hints",
+      ).length;
 
     view.mount(scene);
     expect(liveHints()).toBe(1);
@@ -213,7 +258,9 @@ describe("SlotsView lifecycle + diagnostics", () => {
     const { scene } = createMockScene();
     view.mount(scene);
     view.present(slotViews(8));
-    const hints = [...scene.getEntities()].find((e) => e.name === "inv-slots-hints");
+    const hints = [...scene.getEntities()].find(
+      (e) => e.name === "inv-slots-hints",
+    );
     const gfx = hints?.get(GraphicsComponent);
     view.setVisible(false);
     expect(gfx?.graphics.visible).toBe(false);

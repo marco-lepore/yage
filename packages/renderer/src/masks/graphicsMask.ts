@@ -46,9 +46,7 @@ import type { MaskFactory } from "./MaskFactory.js";
  *    });
  *    ```
  */
-export function graphicsMask(
-  draw: (g: GraphicsContext) => void,
-): MaskFactory {
+export function graphicsMask(draw: (g: GraphicsContext) => void): MaskFactory {
   return () => {
     const g = new Graphics();
     draw(g);

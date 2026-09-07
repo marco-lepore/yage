@@ -38,7 +38,12 @@ describe("BoxLayout — viewport-relative box (works at any resolution)", () => 
   it("resolves a full-width bottom bar at 800×600", () => {
     const owner = atViewport(800, 600);
     // x = marginX; width = 800 - 2*32; bottom anchored marginY from the bottom.
-    expect(owner.layoutLine(line())).toEqual({ x: 32, y: 600 - 24 - 160, width: 736, height: 160 });
+    expect(owner.layoutLine(line())).toEqual({
+      x: 32,
+      y: 600 - 24 - 160,
+      width: 736,
+      height: 160,
+    });
   });
 
   it("stays a full-width bottom bar at a different resolution — no override", () => {
@@ -151,7 +156,9 @@ describe("BoxLayout — unified panel grow", () => {
 
     // Nameplate + caret follow the grown frame (one panel).
     expect(owner.nameplatePos().y).toBe(f.y + 16 - 1);
-    expect(owner.caretPos({ width: 7, height: 5 }).y).toBe(f.y + f.height - 16 - 5 - 1);
+    expect(owner.caretPos({ width: 7, height: 5 }).y).toBe(
+      f.y + f.height - 16 - 5 - 1,
+    );
 
     // Rows sit inside, contiguous, below the band, last pinned to the inner bottom.
     expect(rects[0]!.y).toBe(f.y + 16 + BODY_OFFSET);

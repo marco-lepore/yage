@@ -71,10 +71,9 @@ test.describe("Camera lifecycle", () => {
     await stepFrames(page, 1);
 
     let world = await page.evaluate(() =>
-      (window as LifecycleWin).__yage__?.inspector.getExtension<DebugDiagnostics>("debug")?.getLayerTransform(
-        "base",
-        "world",
-      ),
+      (window as LifecycleWin).__yage__?.inspector
+        .getExtension<DebugDiagnostics>("debug")
+        ?.getLayerTransform("base", "world"),
     );
     expect(world!.scaleX).toBe(2);
     // position.x = viewportW/2 - camX * zoom = 400 - 200*2 = 0
@@ -89,10 +88,9 @@ test.describe("Camera lifecycle", () => {
     await stepFrames(page, 1);
 
     world = await page.evaluate(() =>
-      (window as LifecycleWin).__yage__?.inspector.getExtension<DebugDiagnostics>("debug")?.getLayerTransform(
-        "base",
-        "world",
-      ),
+      (window as LifecycleWin).__yage__?.inspector
+        .getExtension<DebugDiagnostics>("debug")
+        ?.getLayerTransform("base", "world"),
     );
     expect(world!.x).toBe(0);
     expect(world!.y).toBe(0);
@@ -108,10 +106,9 @@ test.describe("Camera lifecycle", () => {
     });
     await stepFrames(page, 1);
     world = await page.evaluate(() =>
-      (window as LifecycleWin).__yage__?.inspector.getExtension<DebugDiagnostics>("debug")?.getLayerTransform(
-        "base",
-        "world",
-      ),
+      (window as LifecycleWin).__yage__?.inspector
+        .getExtension<DebugDiagnostics>("debug")
+        ?.getLayerTransform("base", "world"),
     );
     expect(world!.scaleX).toBe(2);
   });
@@ -132,10 +129,9 @@ test.describe("Camera lifecycle", () => {
     await stepFrames(page, 1);
 
     const ui = await page.evaluate(() =>
-      (window as LifecycleWin).__yage__?.inspector.getExtension<DebugDiagnostics>("debug")?.getLayerTransform(
-        "base",
-        "ui",
-      ),
+      (window as LifecycleWin).__yage__?.inspector
+        .getExtension<DebugDiagnostics>("debug")
+        ?.getLayerTransform("base", "ui"),
     );
     expect(
       ui,
@@ -163,10 +159,9 @@ test.describe("Camera lifecycle", () => {
     await stepFrames(page, 1);
 
     const before = await page.evaluate(() =>
-      (window as LifecycleWin).__yage__?.inspector.getExtension<DebugDiagnostics>("debug")?.getLayerTransform(
-        "base",
-        "world",
-      ),
+      (window as LifecycleWin).__yage__?.inspector
+        .getExtension<DebugDiagnostics>("debug")
+        ?.getLayerTransform("base", "world"),
     );
     // position.x = 400 - 100*1 = 300
     expect(before!.x).toBe(300);
@@ -198,19 +193,17 @@ test.describe("Camera lifecycle", () => {
     // The base scene's world layer keeps its transform — separate render
     // trees per scene means the overlay camera cannot disturb it.
     const baseAfter = await page.evaluate(() =>
-      (window as LifecycleWin).__yage__?.inspector.getExtension<DebugDiagnostics>("debug")?.getLayerTransform(
-        "base",
-        "world",
-      ),
+      (window as LifecycleWin).__yage__?.inspector
+        .getExtension<DebugDiagnostics>("debug")
+        ?.getLayerTransform("base", "world"),
     );
     expect(baseAfter!.x).toBe(300);
 
     // The overlay's own camera (position 0,0) centers its own layer.
     const overlayLayer = await page.evaluate(() =>
-      (window as LifecycleWin).__yage__?.inspector.getExtension<DebugDiagnostics>("debug")?.getLayerTransform(
-        "overlay",
-        "overlay-content",
-      ),
+      (window as LifecycleWin).__yage__?.inspector
+        .getExtension<DebugDiagnostics>("debug")
+        ?.getLayerTransform("overlay", "overlay-content"),
     );
     expect(overlayLayer!.x).toBe(400);
     expect(overlayLayer!.y).toBe(300);
@@ -224,10 +217,9 @@ test.describe("Camera lifecycle", () => {
     await stepFrames(page, 1);
 
     const baseFinal = await page.evaluate(() =>
-      (window as LifecycleWin).__yage__?.inspector.getExtension<DebugDiagnostics>("debug")?.getLayerTransform(
-        "base",
-        "world",
-      ),
+      (window as LifecycleWin).__yage__?.inspector
+        .getExtension<DebugDiagnostics>("debug")
+        ?.getLayerTransform("base", "world"),
     );
     expect(baseFinal!.x).toBe(300);
   });

@@ -34,9 +34,9 @@ describe("Engine startup", () => {
 
       expect(engine.loop.frameCount).toBe(0);
       expect(engine.inspector.getErrors().callbackErrors).toEqual([]);
-      expect(engine.inspector.getSystems().every((system) => system.enabled)).toBe(
-        true,
-      );
+      expect(
+        engine.inspector.getSystems().every((system) => system.enabled),
+      ).toBe(true);
     } finally {
       engine.destroy();
       vi.useRealTimers();

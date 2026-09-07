@@ -29,7 +29,7 @@ entity.add(new TilemapComponent({ map }));
 
 > **Tileset format:** export tilesets as **JSON** (`.tsj` or `.json`).
 > Tiled's default XML `.tsx` format is not supported by the loader. In Tiled,
-> use *Edit Tileset → File → Export As → JSON*.
+> use _Edit Tileset → File → Export As → JSON_.
 
 ## What's in the box
 

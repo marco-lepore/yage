@@ -60,25 +60,21 @@ async function setup(cap = 8) {
   const top = new TestScene();
   await engine.scenes.push(bottom);
   await engine.scenes.push(top);
-  const lowerCamera = bottom
-    .spawn("lower-camera")
-    .add(
-      new CameraComponent({
-        position: new Vec2(30, 40),
-        zoom: 2,
-        rotation: 0.5,
-        autoBind: false,
-      }),
-    );
-  const upperCamera = top
-    .spawn("upper-camera")
-    .add(
-      new CameraComponent({
-        position: new Vec2(-10, 20),
-        zoom: 3,
-        rotation: -0.3,
-      }),
-    );
+  const lowerCamera = bottom.spawn("lower-camera").add(
+    new CameraComponent({
+      position: new Vec2(30, 40),
+      zoom: 2,
+      rotation: 0.5,
+      autoBind: false,
+    }),
+  );
+  const upperCamera = top.spawn("upper-camera").add(
+    new CameraComponent({
+      position: new Vec2(-10, 20),
+      zoom: 3,
+      rotation: -0.3,
+    }),
+  );
   api.prepareFrame();
   return {
     engine,

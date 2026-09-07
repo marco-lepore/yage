@@ -11,7 +11,10 @@ import { LineReveal, type RevealBeat } from "./LineReveal.js";
  */
 
 /** A reveal clock + a counter for its completion firings. */
-function clock(charsPerSec: number): { reveal: LineReveal; completed: () => number } {
+function clock(charsPerSec: number): {
+  reveal: LineReveal;
+  completed: () => number;
+} {
   const reveal = new LineReveal(charsPerSec);
   let completed = 0;
   reveal.setCompletionListener(() => completed++);
@@ -52,7 +55,9 @@ describe("LineReveal — cursor + completion", () => {
 
   it("complete() jumps to the end and fires once", () => {
     const { reveal, completed } = clock(1);
-    reveal.begin(parseMarkup("a very long line that has not been revealed yet"));
+    reveal.begin(
+      parseMarkup("a very long line that has not been revealed yet"),
+    );
     reveal.complete();
     expect(reveal.isComplete()).toBe(true);
     expect(completed()).toBe(1);
@@ -122,14 +127,18 @@ describe("LineReveal — speed", () => {
 });
 
 /** A reveal clock that records every beat (ticks + markers) it emits. */
-function beatClock(charsPerSec: number): { reveal: LineReveal; beats: () => RevealBeat[] } {
+function beatClock(charsPerSec: number): {
+  reveal: LineReveal;
+  beats: () => RevealBeat[];
+} {
   const reveal = new LineReveal(charsPerSec);
   const recorded: RevealBeat[] = [];
   reveal.setBeatListener((beat) => recorded.push(beat));
   return { reveal, beats: () => recorded };
 }
 
-const markerBeats = (beats: RevealBeat[]): RevealBeat[] => beats.filter((b) => b.kind === "marker");
+const markerBeats = (beats: RevealBeat[]): RevealBeat[] =>
+  beats.filter((b) => b.kind === "marker");
 const tickIndexes = (beats: RevealBeat[]): number[] =>
   beats.flatMap((b) => (b.kind === "tick" ? [b.index] : []));
 
@@ -154,7 +163,16 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
     expect(markerBeats(beats())).toEqual([]);
     reveal.update(1); // cursor 2 — reaches the marker
     expect(markerBeats(beats())).toEqual([
-      { kind: "marker", marker: { kind: "marker", atChar: 2, name: "sfx", props: { sfx: "ding" } }, viaSkip: false },
+      {
+        kind: "marker",
+        marker: {
+          kind: "marker",
+          atChar: 2,
+          name: "sfx",
+          props: { sfx: "ding" },
+        },
+        viaSkip: false,
+      },
     ]);
   });
 
@@ -171,7 +189,16 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
     expect(tickIndexes(beats())).toEqual([0, 1]);
     reveal.update(1); // resume: the marker at the offset fires now, then 'c' reveals
     expect(markerBeats(beats())).toEqual([
-      { kind: "marker", marker: { kind: "marker", atChar: 2, name: "sfx", props: { sfx: "ding" } }, viaSkip: false },
+      {
+        kind: "marker",
+        marker: {
+          kind: "marker",
+          atChar: 2,
+          name: "sfx",
+          props: { sfx: "ding" },
+        },
+        viaSkip: false,
+      },
     ]);
     expect(tickIndexes(beats())).toEqual([0, 1, 2]);
   });
@@ -182,7 +209,16 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
     reveal.update(3); // reach offset 2: the marker fires, then the pause arms + clamps
     expect(reveal.revealed).toBe(2);
     expect(markerBeats(beats())).toEqual([
-      { kind: "marker", marker: { kind: "marker", atChar: 2, name: "sfx", props: { sfx: "ding" } }, viaSkip: false },
+      {
+        kind: "marker",
+        marker: {
+          kind: "marker",
+          atChar: 2,
+          name: "sfx",
+          props: { sfx: "ding" },
+        },
+        viaSkip: false,
+      },
     ]);
     expect(tickIndexes(beats())).toEqual([0, 1]); // held at the pause, nothing past it
   });
@@ -196,7 +232,16 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
     reveal.update(3); // reveal "hi", fire shake, arm the 0.5s hold
     expect(reveal.revealed).toBe(2);
     expect(markerBeats(beats())).toEqual([
-      { kind: "marker", marker: { kind: "marker", atChar: 2, name: "shake", props: { shake: "500" } }, viaSkip: false },
+      {
+        kind: "marker",
+        marker: {
+          kind: "marker",
+          atChar: 2,
+          name: "shake",
+          props: { shake: "500" },
+        },
+        viaSkip: false,
+      },
     ]);
     expect(tickIndexes(beats())).toEqual([0, 1]); // held — "there" not revealing yet
     reveal.update(0.5); // sit out the hold
@@ -213,8 +258,26 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
     reveal.complete(); // skip to end
     expect(tickIndexes(beats())).toEqual([0]); // only the pre-skip tick — no machine-gun
     expect(markerBeats(beats())).toEqual([
-      { kind: "marker", marker: { kind: "marker", atChar: 2, name: "sfx", props: { sfx: "one" } }, viaSkip: true },
-      { kind: "marker", marker: { kind: "marker", atChar: 6, name: "expression", props: { expression: "sad" } }, viaSkip: true },
+      {
+        kind: "marker",
+        marker: {
+          kind: "marker",
+          atChar: 2,
+          name: "sfx",
+          props: { sfx: "one" },
+        },
+        viaSkip: true,
+      },
+      {
+        kind: "marker",
+        marker: {
+          kind: "marker",
+          atChar: 6,
+          name: "expression",
+          props: { expression: "sad" },
+        },
+        viaSkip: true,
+      },
     ]);
   });
 
@@ -223,7 +286,16 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
     reveal.begin(parseMarkup("[sfx=ding/]")); // length 0, marker at 0
     expect(reveal.isComplete()).toBe(true);
     expect(beats()).toEqual([
-      { kind: "marker", marker: { kind: "marker", atChar: 0, name: "sfx", props: { sfx: "ding" } }, viaSkip: false },
+      {
+        kind: "marker",
+        marker: {
+          kind: "marker",
+          atChar: 0,
+          name: "sfx",
+          props: { sfx: "ding" },
+        },
+        viaSkip: false,
+      },
     ]);
   });
 
@@ -231,7 +303,16 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
     const { reveal, beats } = beatClock(1);
     reveal.begin(parseMarkup("[expression=happy/]hi")); // marker at 0, then 2 graphemes
     expect(markerBeats(beats())).toEqual([
-      { kind: "marker", marker: { kind: "marker", atChar: 0, name: "expression", props: { expression: "happy" } }, viaSkip: false },
+      {
+        kind: "marker",
+        marker: {
+          kind: "marker",
+          atChar: 0,
+          name: "expression",
+          props: { expression: "happy" },
+        },
+        viaSkip: false,
+      },
     ]);
     expect(tickIndexes(beats())).toEqual([]); // begin() reveals nothing yet
   });

@@ -111,7 +111,9 @@ test.describe("quests addon", () => {
     expect(state.active).toEqual(["thinThePack"]);
   });
 
-  test("a snapshot -> restore round trip preserves quest state", async ({ page }) => {
+  test("a snapshot -> restore round trip preserves quest state", async ({
+    page,
+  }) => {
     await page.evaluate(() => {
       const h = (window as unknown as { __quests__: Handle }).__quests__;
       h.log.start("gatherHerbs");

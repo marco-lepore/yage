@@ -40,5 +40,8 @@ export interface InventorySource<
   invokeAction(actionId: string, slot: number): ActionResult;
   /** Sort/consolidate the source. A {@link filteredView} forwards this to its
    *  whole underlying model — a projection can't reorder only its subset. */
-  sort(comparator?: StackComparator<TId, TData>, opts?: { readonly consolidate?: boolean }): void;
+  sort(
+    comparator?: StackComparator<TId, TData>,
+    opts?: { readonly consolidate?: boolean },
+  ): void;
 }

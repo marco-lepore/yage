@@ -81,7 +81,15 @@ export type Condition =
 
 /** Operators for the atomic `{ var, op, value }` condition (the degenerate
  *  comparison tree). Full expression trees use {@link BinaryOp}/{@link UnaryOp}. */
-export type CompareOp = "==" | "!=" | ">" | ">=" | "<" | "<=" | "truthy" | "falsy";
+export type CompareOp =
+  | "=="
+  | "!="
+  | ">"
+  | ">="
+  | "<"
+  | "<="
+  | "truthy"
+  | "falsy";
 
 export type VarValue = string | number | boolean | null;
 export type VarMap = Record<string, VarValue>;
@@ -94,8 +102,19 @@ export type VarMap = Record<string, VarValue>;
 
 /** Comparison operators (symbol + Yarn word forms). `is`/`eq` ≡ `==`. */
 export type ComparisonOp =
-  | "==" | "!=" | ">" | "<" | ">=" | "<="
-  | "eq" | "neq" | "gt" | "lt" | "gte" | "lte" | "is";
+  | "=="
+  | "!="
+  | ">"
+  | "<"
+  | ">="
+  | "<="
+  | "eq"
+  | "neq"
+  | "gt"
+  | "lt"
+  | "gte"
+  | "lte"
+  | "is";
 /** Boolean operators (symbol + word forms). */
 export type LogicalOp = "and" | "&&" | "or" | "||" | "xor" | "^";
 /** Arithmetic operators. `+` concatenates when either operand is a string. */
@@ -109,7 +128,11 @@ export type UnaryOp = "not" | "!" | "-";
 export type Expr =
   | { readonly kind: "literal"; readonly value: VarValue }
   | { readonly kind: "varRef"; readonly name: string }
-  | { readonly kind: "call"; readonly fn: string; readonly args?: readonly Expr[] }
+  | {
+      readonly kind: "call";
+      readonly fn: string;
+      readonly args?: readonly Expr[];
+    }
   | { readonly kind: "unary"; readonly op: UnaryOp; readonly operand: Expr }
   | {
       readonly kind: "binary";

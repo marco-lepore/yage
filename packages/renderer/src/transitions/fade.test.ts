@@ -71,9 +71,7 @@ describe("fade", () => {
     const toContainer = { visible: true };
     const toScene = { name: "to" } as Scene;
 
-    t.begin!(
-      makeCtx({ elapsed: 0, kind: "push", toScene, toContainer }),
-    );
+    t.begin!(makeCtx({ elapsed: 0, kind: "push", toScene, toContainer }));
     expect(toContainer.visible).toBe(false);
 
     // Before half-way: still hidden.
@@ -97,39 +95,26 @@ describe("fade", () => {
     const fromContainer = { visible: true };
     const fromScene = { name: "from" } as Scene;
 
-    t.begin!(
-      makeCtx({ elapsed: 0, kind: "pop", fromScene, fromContainer }),
-    );
+    t.begin!(makeCtx({ elapsed: 0, kind: "pop", fromScene, fromContainer }));
     // Fade-out phase: outgoing scene should stay visible so we see it fade.
     expect(fromContainer.visible).toBe(true);
 
-    t.tick(
-      25,
-      makeCtx({ elapsed: 25, kind: "pop", fromScene, fromContainer }),
-    );
+    t.tick(25, makeCtx({ elapsed: 25, kind: "pop", fromScene, fromContainer }));
     expect(fromContainer.visible).toBe(true);
 
     // Half-way: overlay is fully opaque, hide the outgoing scene so the
     // fade-in half reveals the destination instead.
-    t.tick(
-      25,
-      makeCtx({ elapsed: 50, kind: "pop", fromScene, fromContainer }),
-    );
+    t.tick(25, makeCtx({ elapsed: 50, kind: "pop", fromScene, fromContainer }));
     expect(fromContainer.visible).toBe(false);
 
-    t.tick(
-      25,
-      makeCtx({ elapsed: 75, kind: "pop", fromScene, fromContainer }),
-    );
+    t.tick(25, makeCtx({ elapsed: 75, kind: "pop", fromScene, fromContainer }));
     expect(fromContainer.visible).toBe(false);
 
     // end() does NOT restore visibility — the outgoing scene is about to
     // be destroyed synchronously after teardown, but PIXI renders between
     // end() and that teardown, so restoring here would produce a visible
     // last-frame pop.
-    t.end!(
-      makeCtx({ elapsed: 100, kind: "pop", fromScene, fromContainer }),
-    );
+    t.end!(makeCtx({ elapsed: 100, kind: "pop", fromScene, fromContainer }));
     expect(fromContainer.visible).toBe(false);
   });
 
@@ -148,9 +133,7 @@ describe("fade", () => {
 
   it("tolerates an undefined toScene container", () => {
     const t = fade({ duration: 100 });
-    expect(() =>
-      t.begin!(makeCtx({ elapsed: 0, kind: "push" })),
-    ).not.toThrow();
+    expect(() => t.begin!(makeCtx({ elapsed: 0, kind: "push" }))).not.toThrow();
     expect(() =>
       t.tick(50, makeCtx({ elapsed: 50, kind: "push" })),
     ).not.toThrow();

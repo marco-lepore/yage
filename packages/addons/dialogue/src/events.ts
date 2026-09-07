@@ -7,7 +7,9 @@ import type { Command, MarkerToken, RunMode } from "./core/types.js";
  * entity → scene). `DialogueCommandEvent` is the main game hook: every script
  * command that isn't a built-in (`set`) arrives here for the game to interpret.
  */
-export const DialogueStartedEvent = defineEvent<{ scriptId: string }>("dialogue:started");
+export const DialogueStartedEvent = defineEvent<{ scriptId: string }>(
+  "dialogue:started",
+);
 
 export const DialogueLineEvent = defineEvent<{
   speaker?: string | undefined;
@@ -15,19 +17,23 @@ export const DialogueLineEvent = defineEvent<{
   text: string;
 }>("dialogue:line");
 
-export const DialogueChoiceShownEvent = defineEvent<{ options: readonly string[] }>(
-  "dialogue:choice-shown",
-);
+export const DialogueChoiceShownEvent = defineEvent<{
+  options: readonly string[];
+}>("dialogue:choice-shown");
 
-export const DialogueChoiceMadeEvent = defineEvent<{ index: number; text: string }>(
-  "dialogue:choice-made",
-);
+export const DialogueChoiceMadeEvent = defineEvent<{
+  index: number;
+  text: string;
+}>("dialogue:choice-made");
 
-export const DialogueCommandEvent = defineEvent<{ command: Command; mode: RunMode }>(
-  "dialogue:command",
-);
+export const DialogueCommandEvent = defineEvent<{
+  command: Command;
+  mode: RunMode;
+}>("dialogue:command");
 
-export const DialogueEndedEvent = defineEvent<{ scriptId: string }>("dialogue:ended");
+export const DialogueEndedEvent = defineEvent<{ scriptId: string }>(
+  "dialogue:ended",
+);
 
 /**
  * Lifecycle observation events. These are the moments games
@@ -46,9 +52,10 @@ export const DialogueRevealCompletedEvent = defineEvent<{
 
 /** The choice cursor moved (keyboard nav OR pointer hover) — `index` is the
  *  original option index, `text` its plain label. */
-export const DialogueSelectionChangedEvent = defineEvent<{ index: number; text: string }>(
-  "dialogue:selection-changed",
-);
+export const DialogueSelectionChangedEvent = defineEvent<{
+  index: number;
+  text: string;
+}>("dialogue:selection-changed");
 
 /** The player skipped the current section (skip-used analytics). */
 export const DialogueSkipUsedEvent = defineEvent<{ scriptId: string }>(

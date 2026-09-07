@@ -34,7 +34,9 @@ describe("heuristics", () => {
   describe("resolveHeuristic", () => {
     it("defaults to octile when diagonals are allowed", () => {
       expect(resolveHeuristic(undefined, "always")).toBe(heuristics.octile);
-      expect(resolveHeuristic(undefined, "no-corner-cutting")).toBe(heuristics.octile);
+      expect(resolveHeuristic(undefined, "no-corner-cutting")).toBe(
+        heuristics.octile,
+      );
     });
 
     it("defaults to manhattan when diagonals are disabled", () => {

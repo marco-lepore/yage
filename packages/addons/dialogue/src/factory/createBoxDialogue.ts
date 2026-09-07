@@ -21,7 +21,11 @@ import { BoxTextView } from "../render/BoxTextView.js";
 import { BoxLayout } from "../render/BoxLayout.js";
 import type { AvatarPresenter } from "../avatar/AvatarPresenter.js";
 import type { DialogueBundle } from "../DialogueController.js";
-import { boxFrameStyles, DEFAULT_CHOICE_GAP, type DialogueTheme } from "./theme.js";
+import {
+  boxFrameStyles,
+  DEFAULT_CHOICE_GAP,
+  type DialogueTheme,
+} from "./theme.js";
 import { defaultDialogueTheme } from "./defaultTheme.js";
 import { themeFonts } from "./themeFonts.js";
 

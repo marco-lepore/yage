@@ -85,20 +85,13 @@ describe("flash", () => {
     const fromContainer = { visible: true };
     const fromScene = { name: "from" } as Scene;
 
-    t.begin!(
-      makeCtx({ elapsed: 0, kind: "pop", fromScene, fromContainer }),
-    );
+    t.begin!(makeCtx({ elapsed: 0, kind: "pop", fromScene, fromContainer }));
     expect(fromContainer.visible).toBe(false);
 
-    t.tick(
-      50,
-      makeCtx({ elapsed: 50, kind: "pop", fromScene, fromContainer }),
-    );
+    t.tick(50, makeCtx({ elapsed: 50, kind: "pop", fromScene, fromContainer }));
     expect(fromContainer.visible).toBe(false);
 
-    t.end!(
-      makeCtx({ elapsed: 100, kind: "pop", fromScene, fromContainer }),
-    );
+    t.end!(makeCtx({ elapsed: 100, kind: "pop", fromScene, fromContainer }));
     // end() deliberately leaves fromContainer hidden — a restore here
     // would paint it for one frame before _popScene tears it down.
     expect(fromContainer.visible).toBe(false);
@@ -106,9 +99,7 @@ describe("flash", () => {
 
   it("tolerates an undefined fromScene container on pop", () => {
     const t = flash({ duration: 100 });
-    expect(() =>
-      t.begin!(makeCtx({ elapsed: 0, kind: "pop" })),
-    ).not.toThrow();
+    expect(() => t.begin!(makeCtx({ elapsed: 0, kind: "pop" }))).not.toThrow();
     expect(() =>
       t.tick(50, makeCtx({ elapsed: 50, kind: "pop" })),
     ).not.toThrow();
@@ -117,9 +108,7 @@ describe("flash", () => {
 
   it("tolerates an undefined toScene container on push", () => {
     const t = flash({ duration: 100 });
-    expect(() =>
-      t.begin!(makeCtx({ elapsed: 0, kind: "push" })),
-    ).not.toThrow();
+    expect(() => t.begin!(makeCtx({ elapsed: 0, kind: "push" }))).not.toThrow();
     expect(() =>
       t.tick(50, makeCtx({ elapsed: 50, kind: "push" })),
     ).not.toThrow();

@@ -50,7 +50,9 @@ export class BubbleAnchorResolver {
    *   pure-bubble bundle that shows narrator lines should point this at its
    *   camera centre so a speakerless line lands on screen.
    */
-  constructor(private readonly fallback: () => AnchorPoint = () => ({ x: 0, y: 0 })) {}
+  constructor(
+    private readonly fallback: () => AnchorPoint = () => ({ x: 0, y: 0 }),
+  ) {}
 
   /** Wire the diagnostics sink (the controller injects the engine-Logger one). */
   setDiagnostics(warn: DiagnosticSink): void {
@@ -83,7 +85,8 @@ export class BubbleAnchorResolver {
           `(even on an invisible entity) to place it deliberately.`,
       );
     }
-    const known = speakerId !== undefined ? this.lastKnown.get(speakerId) : undefined;
+    const known =
+      speakerId !== undefined ? this.lastKnown.get(speakerId) : undefined;
     return known ?? this.lastAnchor ?? this.fallback();
   }
 }

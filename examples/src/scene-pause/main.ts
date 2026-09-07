@@ -11,13 +11,25 @@
  */
 import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
-import { PhysicsPlugin, RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
+import {
+  PhysicsPlugin,
+  RigidBodyComponent,
+  ColliderComponent,
+} from "@yagejs/physics";
 import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
 import type { UIText } from "@yagejs/ui";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
-import { textStyle, loadFonts, allAssets, nineSliceBtn, panelBg } from "../shared/ui-theme.js";
-
+import {
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
+import {
+  textStyle,
+  loadFonts,
+  allAssets,
+  nineSliceBtn,
+  panelBg,
+} from "../shared/ui-theme.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -68,8 +80,14 @@ class GameScene extends Scene {
       }),
     );
     hud.text("Scene Pause Demo", textStyle("title", { fontSize: 16 }));
-    this.tsText = hud.text("TimeScale: 1.0x", textStyle("body", { fill: 0xfacc15 }));
-    this.statusText = hud.text("Status: Running", textStyle("body", { fill: 0x22c55e }));
+    this.tsText = hud.text(
+      "TimeScale: 1.0x",
+      textStyle("body", { fill: 0xfacc15 }),
+    );
+    this.statusText = hud.text(
+      "Status: Running",
+      textStyle("body", { fill: 0x22c55e }),
+    );
 
     hudEntity.add(new HudUpdater());
   }
@@ -88,7 +106,13 @@ class GameScene extends Scene {
       }),
     );
     e.add(new RigidBodyComponent({ type: "dynamic", ccd: true }));
-    e.add(new ColliderComponent({ shape: { type: "circle", radius: r }, restitution: 0.7, density: 1 }));
+    e.add(
+      new ColliderComponent({
+        shape: { type: "circle", radius: r },
+        restitution: 0.7,
+        density: 1,
+      }),
+    );
   }
 
   private wall(x: number, y: number, w: number, h: number): void {
@@ -100,7 +124,12 @@ class GameScene extends Scene {
       }),
     );
     e.add(new RigidBodyComponent({ type: "static" }));
-    e.add(new ColliderComponent({ shape: { type: "box", width: w, height: h }, restitution: 0.5 }));
+    e.add(
+      new ColliderComponent({
+        shape: { type: "box", width: w, height: h },
+        restitution: 0.5,
+      }),
+    );
   }
 }
 
@@ -150,7 +179,9 @@ class PauseScene extends Scene {
 
   onEnter(): void {
     // Update HUD status text directly (since HudUpdater is paused)
-    const game = engine.scenes.all.find((s) => s.name === "game") as GameScene | undefined;
+    const game = engine.scenes.all.find((s) => s.name === "game") as
+      | GameScene
+      | undefined;
     game?.statusText.setText("Status: PAUSED");
 
     const entity = this.spawn("pause-ui");
@@ -215,7 +246,9 @@ class PauseScene extends Scene {
   }
 
   onExit(): void {
-    const game = engine.scenes.all.find((s) => s.name === "game") as GameScene | undefined;
+    const game = engine.scenes.all.find((s) => s.name === "game") as
+      | GameScene
+      | undefined;
     game?.statusText.setText("Status: Running");
   }
 }
@@ -289,23 +322,29 @@ let engine: Engine;
 async function main() {
   engine = new Engine({ debug: true });
 
-  engine.use(new RendererPlugin({
-    width: WIDTH, height: HEIGHT,
-    virtualWidth: WIDTH, virtualHeight: HEIGHT,
-    backgroundColor: 0x0a0a0a,
-    container: setupGameContainer(WIDTH, HEIGHT),
-  }));
+  engine.use(
+    new RendererPlugin({
+      width: WIDTH,
+      height: HEIGHT,
+      virtualWidth: WIDTH,
+      virtualHeight: HEIGHT,
+      backgroundColor: 0x0a0a0a,
+      container: setupGameContainer(WIDTH, HEIGHT),
+    }),
+  );
   engine.use(new PhysicsPlugin());
-  engine.use(new InputPlugin({
-    actions: {
-      slowMo: ["Digit1"],
-      normal: ["Digit2"],
-      fast: ["Digit3"],
-      pause: ["Escape"],
-      spawn: ["Space"],
-    },
-    preventDefaultKeys: ["Space"],
-  }));
+  engine.use(
+    new InputPlugin({
+      actions: {
+        slowMo: ["Digit1"],
+        normal: ["Digit2"],
+        fast: ["Digit3"],
+        pause: ["Escape"],
+        spawn: ["Space"],
+      },
+      preventDefaultKeys: ["Space"],
+    }),
+  );
   engine.use(new UIPlugin());
   await installDebugFromUrl(engine);
 

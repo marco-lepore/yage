@@ -58,7 +58,9 @@ describe("TextPool", () => {
     pool.addLine("world");
     pool.resetFrame();
 
-    const children = container.children as unknown as Array<{ visible: boolean }>;
+    const children = container.children as unknown as Array<{
+      visible: boolean;
+    }>;
     expect(children[0]!.visible).toBe(false);
     expect(children[1]!.visible).toBe(false);
   });

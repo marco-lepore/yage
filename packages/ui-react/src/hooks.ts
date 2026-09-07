@@ -1,4 +1,11 @@
-import { createContext, useContext, useCallback, useEffect, useRef, useMemo } from "react";
+import {
+  createContext,
+  useContext,
+  useCallback,
+  useEffect,
+  useRef,
+  useMemo,
+} from "react";
 import { useSyncExternalStore } from "react";
 import type {
   EngineContext,
@@ -153,9 +160,7 @@ export function useStore(
  * source's `[STATE_KIND]` brand. Throws if the source has no brand — every
  * source produced by a `create*` factory carries one.
  */
-function defaultSnapshotReader(
-  source: Reactive,
-): (s: Reactive) => unknown {
+function defaultSnapshotReader(source: Reactive): (s: Reactive) => unknown {
   const kind = (source as { [STATE_KIND]?: string })[STATE_KIND];
   switch (kind) {
     case "counter":
@@ -208,10 +213,7 @@ export function useQuery<R>(
   isEqual: (a: R, b: R) => boolean = shallowEqual as (a: R, b: R) => boolean,
 ): R {
   const ctx = useEngine();
-  const queryCache = useMemo(
-    () => ctx.resolve(QueryCacheKey),
-    [ctx],
-  );
+  const queryCache = useMemo(() => ctx.resolve(QueryCacheKey), [ctx]);
 
   // Inline array literals are the common authoring shape (`useQuery([Foo,
   // Bar], ...)`), which gives `filter` a new identity on every render. Only

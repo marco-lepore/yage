@@ -1,5 +1,13 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach, afterEach, beforeAll, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  beforeAll,
+  vi,
+} from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createRoot as createDomRoot } from "react-dom/client";
@@ -44,7 +52,9 @@ describe("hooks", () => {
 
     expect(() => {
       renderToStaticMarkup(createElement(TestComp));
-    }).toThrow("useEngine() must be called inside a React tree rendered by UIRoot.");
+    }).toThrow(
+      "useEngine() must be called inside a React tree rendered by UIRoot.",
+    );
   });
 
   it("useScene throws when not inside context", () => {
@@ -55,7 +65,9 @@ describe("hooks", () => {
 
     expect(() => {
       renderToStaticMarkup(createElement(TestComp));
-    }).toThrow("useScene() must be called inside a React tree rendered by UIRoot.");
+    }).toThrow(
+      "useScene() must be called inside a React tree rendered by UIRoot.",
+    );
   });
 
   it("useEngine returns context when provided", () => {

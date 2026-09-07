@@ -3,53 +3,132 @@ import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 const { mocks } = vi.hoisted(() => {
   class MockContainer {
     children: MockContainer[] = [];
-    position = { x: 0, y: 0, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    position = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
     visible = true;
     alpha = 1;
     parent: MockContainer | null = null;
     destroyed = false;
     eventMode = "auto";
 
-    addChild(child: MockContainer): MockContainer { this.children.push(child); child.parent = this; return child; }
-    addChildAt(child: MockContainer, index: number): MockContainer { this.children.splice(index, 0, child); child.parent = this; return child; }
-    removeChild(child: MockContainer): MockContainer { const i = this.children.indexOf(child); if (i !== -1) { this.children.splice(i, 1); child.parent = null; } return child; }
-    removeFromParent(): void { this.parent?.removeChild(this); }
+    addChild(child: MockContainer): MockContainer {
+      this.children.push(child);
+      child.parent = this;
+      return child;
+    }
+    addChildAt(child: MockContainer, index: number): MockContainer {
+      this.children.splice(index, 0, child);
+      child.parent = this;
+      return child;
+    }
+    removeChild(child: MockContainer): MockContainer {
+      const i = this.children.indexOf(child);
+      if (i !== -1) {
+        this.children.splice(i, 1);
+        child.parent = null;
+      }
+      return child;
+    }
+    removeFromParent(): void {
+      this.parent?.removeChild(this);
+    }
     private _listeners = new Map<string, Set<(...args: unknown[]) => void>>();
-    on(event: string, fn: (...args: unknown[]) => void): this { if (!this._listeners.has(event)) this._listeners.set(event, new Set()); this._listeners.get(event)!.add(fn); return this; }
-    emit(event: string, ...args: unknown[]): void { for (const fn of this._listeners.get(event) ?? []) fn(...args); }
-    destroy(): void { this.destroyed = true; this.removeFromParent(); }
+    on(event: string, fn: (...args: unknown[]) => void): this {
+      if (!this._listeners.has(event)) this._listeners.set(event, new Set());
+      this._listeners.get(event)!.add(fn);
+      return this;
+    }
+    emit(event: string, ...args: unknown[]): void {
+      for (const fn of this._listeners.get(event) ?? []) fn(...args);
+    }
+    destroy(): void {
+      this.destroyed = true;
+      this.removeFromParent();
+    }
   }
 
   class MockGraphics extends MockContainer {
     private _lastFillW = 0;
     private _lastFillH = 0;
-    clear(): MockGraphics { return this; }
-    rect(_x: number, _y: number, w: number, h: number): MockGraphics { this._lastFillW = w; this._lastFillH = h; return this; }
-    roundRect(_x: number, _y: number, w: number, h: number): MockGraphics { this._lastFillW = w; this._lastFillH = h; return this; }
-    fill(): MockGraphics { return this; }
-    get lastWidth() { return this._lastFillW; }
-    get lastHeight() { return this._lastFillH; }
+    clear(): MockGraphics {
+      return this;
+    }
+    rect(_x: number, _y: number, w: number, h: number): MockGraphics {
+      this._lastFillW = w;
+      this._lastFillH = h;
+      return this;
+    }
+    roundRect(_x: number, _y: number, w: number, h: number): MockGraphics {
+      this._lastFillW = w;
+      this._lastFillH = h;
+      return this;
+    }
+    fill(): MockGraphics {
+      return this;
+    }
+    get lastWidth() {
+      return this._lastFillW;
+    }
+    get lastHeight() {
+      return this._lastFillH;
+    }
   }
 
   class MockSprite extends MockContainer {
     texture: unknown;
     width = 0;
     height = 0;
-    constructor(texture?: unknown) { super(); this.texture = texture; }
+    constructor(texture?: unknown) {
+      super();
+      this.texture = texture;
+    }
   }
 
   class MockNineSliceSprite extends MockContainer {
-    texture: unknown; width = 0; height = 0;
-    constructor(opts?: Record<string, unknown>) { super(); if (opts) this.texture = opts.texture; }
+    texture: unknown;
+    width = 0;
+    height = 0;
+    constructor(opts?: Record<string, unknown>) {
+      super();
+      if (opts) this.texture = opts.texture;
+    }
   }
 
   class MockTilingSprite extends MockContainer {
-    texture: unknown; width = 0; height = 0;
-    tileScale = { x: 1, y: 1, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
-    constructor(opts?: Record<string, unknown>) { super(); if (opts) { this.texture = opts.texture; } }
+    texture: unknown;
+    width = 0;
+    height = 0;
+    tileScale = {
+      x: 1,
+      y: 1,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
+    constructor(opts?: Record<string, unknown>) {
+      super();
+      if (opts) {
+        this.texture = opts.texture;
+      }
+    }
   }
 
-  return { mocks: { MockContainer, MockGraphics, MockSprite, MockNineSliceSprite, MockTilingSprite } };
+  return {
+    mocks: {
+      MockContainer,
+      MockGraphics,
+      MockSprite,
+      MockNineSliceSprite,
+      MockTilingSprite,
+    },
+  };
 });
 
 vi.mock("pixi.js", () => ({
@@ -78,7 +157,9 @@ describe("UIProgressBar", () => {
     expect(bar.displayObject).toBeDefined();
     expect(bar.visible).toBe(true);
     // Should have 2 children (track + fill)
-    const container = bar.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = bar.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
     expect(container.children.length).toBe(2);
   });
 
@@ -87,7 +168,9 @@ describe("UIProgressBar", () => {
     bar.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     bar.applyLayout();
     // Fill should not exceed track width
-    const fill = (bar.container as unknown as InstanceType<typeof mocks.MockContainer>).children[1] as unknown as InstanceType<typeof mocks.MockGraphics>;
+    const fill = (
+      bar.container as unknown as InstanceType<typeof mocks.MockContainer>
+    ).children[1] as unknown as InstanceType<typeof mocks.MockGraphics>;
     expect(fill.lastWidth).toBe(200); // clamped to 1.0 * 200
   });
 
@@ -95,7 +178,9 @@ describe("UIProgressBar", () => {
     const bar = new UIProgressBar({ value: -0.5, width: 200, height: 20 });
     bar.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     bar.applyLayout();
-    const fill = (bar.container as unknown as InstanceType<typeof mocks.MockContainer>).children[1] as unknown as InstanceType<typeof mocks.MockGraphics>;
+    const fill = (
+      bar.container as unknown as InstanceType<typeof mocks.MockContainer>
+    ).children[1] as unknown as InstanceType<typeof mocks.MockGraphics>;
     expect(fill.lastWidth).toBe(0);
   });
 
@@ -104,8 +189,12 @@ describe("UIProgressBar", () => {
     bar.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     bar.applyLayout();
 
-    const track = (bar.container as unknown as InstanceType<typeof mocks.MockContainer>).children[0] as unknown as InstanceType<typeof mocks.MockGraphics>;
-    const fill = (bar.container as unknown as InstanceType<typeof mocks.MockContainer>).children[1] as unknown as InstanceType<typeof mocks.MockGraphics>;
+    const track = (
+      bar.container as unknown as InstanceType<typeof mocks.MockContainer>
+    ).children[0] as unknown as InstanceType<typeof mocks.MockGraphics>;
+    const fill = (
+      bar.container as unknown as InstanceType<typeof mocks.MockContainer>
+    ).children[1] as unknown as InstanceType<typeof mocks.MockGraphics>;
     expect(track.lastWidth).toBe(200);
     expect(track.lastHeight).toBe(20);
     expect(fill.lastWidth).toBe(100); // 0.5 * 200
@@ -113,11 +202,18 @@ describe("UIProgressBar", () => {
   });
 
   it("vertical direction sizes fill height proportionally", () => {
-    const bar = new UIProgressBar({ value: 0.75, width: 20, height: 200, direction: "vertical" });
+    const bar = new UIProgressBar({
+      value: 0.75,
+      width: 20,
+      height: 200,
+      direction: "vertical",
+    });
     bar.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     bar.applyLayout();
 
-    const fill = (bar.container as unknown as InstanceType<typeof mocks.MockContainer>).children[1] as unknown as InstanceType<typeof mocks.MockGraphics>;
+    const fill = (
+      bar.container as unknown as InstanceType<typeof mocks.MockContainer>
+    ).children[1] as unknown as InstanceType<typeof mocks.MockGraphics>;
     expect(fill.lastWidth).toBe(20);
     expect(fill.lastHeight).toBe(150); // 0.75 * 200
   });
@@ -128,7 +224,9 @@ describe("UIProgressBar", () => {
     bar.applyLayout();
 
     bar.update({ value: 0.25 });
-    const fill = (bar.container as unknown as InstanceType<typeof mocks.MockContainer>).children[1] as unknown as InstanceType<typeof mocks.MockGraphics>;
+    const fill = (
+      bar.container as unknown as InstanceType<typeof mocks.MockContainer>
+    ).children[1] as unknown as InstanceType<typeof mocks.MockGraphics>;
     expect(fill.lastWidth).toBe(50); // 0.25 * 200
   });
 
@@ -143,7 +241,9 @@ describe("UIProgressBar", () => {
   it("destroy cleans up", () => {
     const bar = new UIProgressBar({ value: 0.5, width: 100, height: 10 });
     bar.destroy();
-    const container = bar.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = bar.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
     expect(container.destroyed).toBe(true);
   });
 });

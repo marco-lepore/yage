@@ -365,7 +365,10 @@ describe("intensity model", () => {
     it("setIntensity(0.5) scales BOTH outerStrength AND innerStrength to half", () => {
       const e = buildGlow({ outerStrength: 4, innerStrength: 2 });
       e.setIntensity(0.5);
-      const f = e.filter as unknown as { outerStrength: number; innerStrength: number };
+      const f = e.filter as unknown as {
+        outerStrength: number;
+        innerStrength: number;
+      };
       expect(f.outerStrength).toBe(2);
       expect(f.innerStrength).toBe(1);
     });
@@ -373,7 +376,10 @@ describe("intensity model", () => {
     it("setIntensity(0) zeroes both strengths so no halo is visible", () => {
       const e = buildGlow({ outerStrength: 4, innerStrength: 2 });
       e.setIntensity(0);
-      const f = e.filter as unknown as { outerStrength: number; innerStrength: number };
+      const f = e.filter as unknown as {
+        outerStrength: number;
+        innerStrength: number;
+      };
       expect(f.outerStrength).toBe(0);
       expect(f.innerStrength).toBe(0);
     });
@@ -423,7 +429,9 @@ describe("intensity model", () => {
       e.setIntensity(0.4);
       e.buildExtras!(null as never).setBloomScale!(2);
       expect(e.getIntensity()).toBeCloseTo(0.4, 5);
-      expect((e.filter as unknown as { bloomScale: number }).bloomScale).toBeCloseTo(0.8, 5);
+      expect(
+        (e.filter as unknown as { bloomScale: number }).bloomScale,
+      ).toBeCloseTo(0.8, 5);
     });
 
     it("vignette.setStrength preserves intensity ratio", () => {
@@ -431,10 +439,9 @@ describe("intensity model", () => {
       e.setIntensity(0.5);
       e.buildExtras!(null as never).setStrength!(0.3);
       expect(e.getIntensity()).toBeCloseTo(0.5, 5);
-      expect((e.filter as unknown as { vignettingAlpha: number }).vignettingAlpha).toBeCloseTo(
-        0.15,
-        5,
-      );
+      expect(
+        (e.filter as unknown as { vignettingAlpha: number }).vignettingAlpha,
+      ).toBeCloseTo(0.15, 5);
     });
 
     it("outline.setThickness preserves intensity ratio", () => {
@@ -442,7 +449,9 @@ describe("intensity model", () => {
       e.setIntensity(0.25);
       e.buildExtras!(null as never).setThickness!(8);
       expect(e.getIntensity()).toBeCloseTo(0.25, 5);
-      expect((e.filter as unknown as { thickness: number }).thickness).toBeCloseTo(2, 5);
+      expect(
+        (e.filter as unknown as { thickness: number }).thickness,
+      ).toBeCloseTo(2, 5);
     });
 
     it("dropShadow.setAlpha preserves intensity ratio", () => {
@@ -450,7 +459,10 @@ describe("intensity model", () => {
       e.setIntensity(0.4);
       e.buildExtras!(null as never).setAlpha!(1);
       expect(e.getIntensity()).toBeCloseTo(0.4, 5);
-      expect((e.filter as unknown as { alpha: number }).alpha).toBeCloseTo(0.4, 5);
+      expect((e.filter as unknown as { alpha: number }).alpha).toBeCloseTo(
+        0.4,
+        5,
+      );
     });
 
     it("chromaticAberration.setSeparation preserves intensity ratio", () => {
@@ -480,7 +492,10 @@ describe("intensity model", () => {
     it("setIntensity(0.5) halves gain", () => {
       const e = godRay({ gain: 0.6 })();
       e.setIntensity(0.5);
-      expect((e.filter as unknown as { gain: number }).gain).toBeCloseTo(0.3, 5);
+      expect((e.filter as unknown as { gain: number }).gain).toBeCloseTo(
+        0.3,
+        5,
+      );
     });
 
     it("setGain preserves intensity ratio", () => {
@@ -488,7 +503,10 @@ describe("intensity model", () => {
       e.setIntensity(0.5);
       e.buildExtras!(null as never).setGain!(1);
       expect(e.getIntensity()).toBeCloseTo(0.5, 5);
-      expect((e.filter as unknown as { gain: number }).gain).toBeCloseTo(0.5, 5);
+      expect((e.filter as unknown as { gain: number }).gain).toBeCloseTo(
+        0.5,
+        5,
+      );
     });
   });
 
@@ -519,10 +537,9 @@ describe("intensity model", () => {
     it("setIntensity(0.5) halves strength magnitude, keeps sign for pinch", () => {
       const e = bulgePinch({ strength: -0.8 })();
       e.setIntensity(0.5);
-      expect((e.filter as unknown as { strength: number }).strength).toBeCloseTo(
-        -0.4,
-        5,
-      );
+      expect(
+        (e.filter as unknown as { strength: number }).strength,
+      ).toBeCloseTo(-0.4, 5);
     });
 
     it("setStrength preserves intensity ratio", () => {
@@ -530,10 +547,9 @@ describe("intensity model", () => {
       e.setIntensity(0.4);
       e.buildExtras!(null as never).setStrength!(0.5);
       expect(e.getIntensity()).toBeCloseTo(0.4, 5);
-      expect((e.filter as unknown as { strength: number }).strength).toBeCloseTo(
-        0.2,
-        5,
-      );
+      expect(
+        (e.filter as unknown as { strength: number }).strength,
+      ).toBeCloseTo(0.2, 5);
     });
   });
 
@@ -555,7 +571,9 @@ describe("intensity model", () => {
     it("setIntensity(0.5) parks the multiplier at 0.5", () => {
       const e = shockwave({ amplitude: 30, brightness: 1 })();
       e.setIntensity(0.5);
-      expect((e.filter as unknown as { intensity: number }).intensity).toBe(0.5);
+      expect((e.filter as unknown as { intensity: number }).intensity).toBe(
+        0.5,
+      );
       expect(e.getIntensity()).toBe(0.5);
     });
   });

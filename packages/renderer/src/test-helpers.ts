@@ -164,9 +164,7 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
     this.stage.addChild(root);
 
     const ps = this.processSystem;
-    const queueFactory = ps
-      ? () => makeSceneScopedQueue(ps, scene)
-      : undefined;
+    const queueFactory = ps ? () => makeSceneScopedQueue(ps, scene) : undefined;
 
     const manager = new RenderLayerManager(
       root as never,
@@ -174,11 +172,7 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       queueFactory,
     );
 
-    const sceneFx = new EffectsHost(
-      () => root as never,
-      "scene",
-      queueFactory,
-    );
+    const sceneFx = new EffectsHost(() => root as never, "scene", queueFactory);
     let sceneMask: MaskHandle | undefined;
     // Stand-in for the production Pixi `RenderLayer`: the mock containers
     // have no renderer, so membership is all a test can observe.
@@ -329,8 +323,9 @@ export function createRendererTestContext(options?: {
       // Cast-and-poke is contained here so tests don't reach into
       // ProcessSystem internals directly. If `sceneManager` is renamed,
       // only this line needs updating.
-      (processSystem as unknown as { sceneManager: MockSceneManagerLike }).sceneManager =
-        sm;
+      (
+        processSystem as unknown as { sceneManager: MockSceneManagerLike }
+      ).sceneManager = sm;
     },
   };
 }

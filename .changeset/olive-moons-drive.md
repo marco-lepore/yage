@@ -16,11 +16,14 @@ ended, plus the scene stack — read before the drive releases its synthetic
 input, so a run that stalled says what it was pressing and where it was:
 
 ```ts
-const run = await inspector.drive(async (ctx) => {
-  await ctx.input.whileHolding(["KeyD"], async () => {
-    while (ctx.framesUsed < 900 && !atExit()) await ctx.step(1);
-  });
-}, { maxFrames: 1200 });
+const run = await inspector.drive(
+  async (ctx) => {
+    await ctx.input.whileHolding(["KeyD"], async () => {
+      while (ctx.framesUsed < 900 && !atExit()) await ctx.step(1);
+    });
+  },
+  { maxFrames: 1200 },
+);
 // { ok: false, timedOut: true, framesUsed: 1200,
 //   state: { keys: ["KeyD"], actions: [], scenes: [...] }, ... }
 ```

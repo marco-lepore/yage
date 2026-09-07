@@ -41,7 +41,9 @@ class Foo extends Component {
 // ✅ Resolves at lifecycle time
 class Foo extends Component {
   private input!: InputManager;
-  onAdd() { this.input = this.use(InputManagerKey); }
+  onAdd() {
+    this.input = this.use(InputManagerKey);
+  }
 }
 ```
 
@@ -51,11 +53,15 @@ Sensor colliders never fire `onCollision`; non-sensor colliders never fire
 `onTrigger`. The warning flags a handler attached to the wrong channel.
 
 ```ts
-const col = entity.add(new ColliderComponent({
-  shape: { type: "box", width: 32, height: 32 },
-  sensor: true,
-}));
-col.onTrigger(({ other, entered }) => { /* ... */ });
+const col = entity.add(
+  new ColliderComponent({
+    shape: { type: "box", width: 32, height: 32 },
+    sensor: true,
+  }),
+);
+col.onTrigger(({ other, entered }) => {
+  /* ... */
+});
 ```
 
 ## Asymmetric collision masks
@@ -75,9 +81,7 @@ layer with a world-space one — UI then scrolls and zooms with the camera.
 
 ```ts
 class GameScene extends Scene {
-  readonly layers = [
-    { name: "ui", order: 1000, space: "screen" as const },
-  ];
+  readonly layers = [{ name: "ui", order: 1000, space: "screen" as const }];
 }
 ```
 

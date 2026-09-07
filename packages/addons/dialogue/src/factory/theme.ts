@@ -186,14 +186,20 @@ export interface ChromeStyle {
 /** Default continue-caret blink time constant (seconds). */
 export const DEFAULT_CARET_BLINK = 0.26;
 /** Default continue-caret triangle size (px), pointing down. */
-export const DEFAULT_CARET_SIZE: { readonly width: number; readonly height: number } = {
+export const DEFAULT_CARET_SIZE: {
+  readonly width: number;
+  readonly height: number;
+} = {
   width: 7,
   height: 5,
 };
 /** Default vertical gap (px) between choice rows (box + bubble). */
 export const DEFAULT_CHOICE_GAP = 6;
 /** Default bubble tail tip offset from the speaker anchor (px). */
-export const DEFAULT_TAIL_LEAN: { readonly x: number; readonly y: number } = { x: -3, y: -2 };
+export const DEFAULT_TAIL_LEAN: { readonly x: number; readonly y: number } = {
+  x: -3,
+  y: -2,
+};
 
 /** Reserved `meta.chrome` / {@link DialogueTheme.textured} key: the box look
  *  used when a line carries no (or an unknown) `meta.chrome`. */
@@ -215,6 +221,8 @@ export function boxFrameStyles(
 
 /** The speech-bubble nine-slice from the `"default"` style, for the bubble
  *  chrome config. Undefined when there is no textured `"default"` bubble. */
-export function defaultBubbleFrame(textured: DialogueTheme["textured"]): NineSliceFrame | undefined {
+export function defaultBubbleFrame(
+  textured: DialogueTheme["textured"],
+): NineSliceFrame | undefined {
   return textured?.[CHROME_STYLE_DEFAULT]?.bubble;
 }

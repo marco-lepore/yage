@@ -46,7 +46,12 @@ export class BlipSynth {
     return this.ctx;
   }
 
-  private blip(freq: number, ms: number, gain: number, type: OscillatorType): void {
+  private blip(
+    freq: number,
+    ms: number,
+    gain: number,
+    type: OscillatorType,
+  ): void {
     const ctx = this.ac();
     if (!ctx) return;
     const t = ctx.currentTime;
@@ -120,11 +125,18 @@ export class TranscriptChannel implements DialogueExtraChannel, Mountable {
     );
     // Text on top — spawned after the panel, so it renders above it in the layer.
     this.textEntity = scene.spawn("transcript-text");
-    this.textEntity.add(new Transform({ position: new Vec2(x + PAD, y + PAD) }));
+    this.textEntity.add(
+      new Transform({ position: new Vec2(x + PAD, y + PAD) }),
+    );
     this.panel = this.textEntity.add(
       new TextComponent({
         text: "",
-        style: { fontSize: 11, fill: 0xaab2c6, fontFamily: "sans-serif", lineHeight: ROW },
+        style: {
+          fontSize: 11,
+          fill: 0xaab2c6,
+          fontFamily: "sans-serif",
+          lineHeight: ROW,
+        },
         layer: HUD_LAYER,
         anchor: { x: 0, y: 0 },
       }),

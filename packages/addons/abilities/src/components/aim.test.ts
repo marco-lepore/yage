@@ -52,9 +52,9 @@ describe("resolveAim", () => {
   });
 
   it("throws when an explicit aim resolves to a zero vector", () => {
-    expect(() =>
-      resolveAim({ x: 0, y: 0 }, {} as StepContext),
-    ).toThrow(/zero vector/);
+    expect(() => resolveAim({ x: 0, y: 0 }, {} as StepContext)).toThrow(
+      /zero vector/,
+    );
   });
 });
 

@@ -94,8 +94,8 @@ test.describe("Inspector async stepping (stepUntil / stepAsync)", () => {
     const stack = await getSceneStack(page);
     expect(stack).toHaveLength(2);
     expect(
-      await page.evaluate(
-        () => (window as Win).__sceneTransitionTest__!.getIsTransitioning(),
+      await page.evaluate(() =>
+        (window as Win).__sceneTransitionTest__!.getIsTransitioning(),
       ),
     ).toBe(false);
   });

@@ -133,7 +133,8 @@ describe("Component", () => {
       }
 
       const c = new UseComponent();
-      c.entity = { tryScene: { context: ctx, _resolveScoped: () => undefined },
+      c.entity = {
+        tryScene: { context: ctx, _resolveScoped: () => undefined },
       } as never;
       return { c, logger };
     }
@@ -163,7 +164,8 @@ describe("Component", () => {
       }
 
       const c = new ScopedComponent();
-      c.entity = { tryScene: {
+      c.entity = {
+        tryScene: {
           context: ctx,
           _resolveScoped: (k: ServiceKey<unknown>) =>
             k.id === "svc" ? "scene-value" : undefined,
@@ -185,7 +187,8 @@ describe("Component", () => {
       }
 
       const c = new FallbackComponent();
-      c.entity = { tryScene: {
+      c.entity = {
+        tryScene: {
           context: ctx,
           _resolveScoped: () => undefined,
         },
@@ -208,7 +211,8 @@ describe("Component", () => {
       }
 
       const c = new LateComponent();
-      c.entity = { tryScene: {
+      c.entity = {
+        tryScene: {
           context: ctx,
           _resolveScoped: (k: ServiceKey<unknown>) =>
             k.id === "late-scoped" ? state.scoped : undefined,
@@ -257,7 +261,8 @@ describe("Component", () => {
       }
 
       const c = new WarnComponent();
-      c.entity = { tryScene: {
+      c.entity = {
+        tryScene: {
           context: ctx,
           _resolveScoped: () => undefined,
         },

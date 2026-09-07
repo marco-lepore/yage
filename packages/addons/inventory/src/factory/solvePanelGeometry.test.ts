@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { normalizeGap, solveAxis, type AxisConstraints } from "./solvePanelGeometry.js";
+import {
+  normalizeGap,
+  solveAxis,
+  type AxisConstraints,
+} from "./solvePanelGeometry.js";
 import type { CellDefaults } from "../adapter.js";
 
 const base: Omit<AxisConstraints, "count" | "extent" | "available"> = {
@@ -10,7 +14,14 @@ const base: Omit<AxisConstraints, "count" | "extent" | "available"> = {
 
 describe("solveAxis — no bounds (intrinsic panel)", () => {
   it("fills unset knobs from the defaults", () => {
-    expect(solveAxis({ ...base, count: undefined, extent: undefined, available: undefined })).toEqual({
+    expect(
+      solveAxis({
+        ...base,
+        count: undefined,
+        extent: undefined,
+        available: undefined,
+      }),
+    ).toEqual({
       count: 5,
       extent: 56,
       overdetermined: false,
@@ -18,7 +29,9 @@ describe("solveAxis — no bounds (intrinsic panel)", () => {
   });
 
   it("keeps explicit count and extent (no bounds = no conflict)", () => {
-    expect(solveAxis({ ...base, count: 8, extent: 48, available: undefined })).toEqual({
+    expect(
+      solveAxis({ ...base, count: 8, extent: 48, available: undefined }),
+    ).toEqual({
       count: 8,
       extent: 48,
       overdetermined: false,
@@ -29,7 +42,9 @@ describe("solveAxis — no bounds (intrinsic panel)", () => {
 describe("solveAxis — bounds + one knob", () => {
   it("derives the extent from an explicit count, floored to fit", () => {
     // (328 - 4*6) / 5 = 60.8 -> 60; window 5*60 + 4*6 = 324 <= 328.
-    expect(solveAxis({ ...base, count: 5, extent: undefined, available: 328 })).toEqual({
+    expect(
+      solveAxis({ ...base, count: 5, extent: undefined, available: 328 }),
+    ).toEqual({
       count: 5,
       extent: 60,
       overdetermined: false,
@@ -38,7 +53,9 @@ describe("solveAxis — bounds + one knob", () => {
 
   it("derives the count from an explicit extent", () => {
     // floor((328 + 6) / (60 + 6)) = floor(5.06) = 5.
-    expect(solveAxis({ ...base, count: undefined, extent: 60, available: 328 })).toEqual({
+    expect(
+      solveAxis({ ...base, count: undefined, extent: 60, available: 328 }),
+    ).toEqual({
       count: 5,
       extent: 60,
       overdetermined: false,
@@ -46,18 +63,29 @@ describe("solveAxis — bounds + one knob", () => {
   });
 
   it("never derives a count below 1", () => {
-    expect(solveAxis({ ...base, count: undefined, extent: 60, available: 40 }).count).toBe(1);
+    expect(
+      solveAxis({ ...base, count: undefined, extent: 60, available: 40 }).count,
+    ).toBe(1);
   });
 
   it("never derives an extent below 1", () => {
-    expect(solveAxis({ ...base, count: 10, extent: undefined, available: 8 }).extent).toBe(1);
+    expect(
+      solveAxis({ ...base, count: 10, extent: undefined, available: 8 }).extent,
+    ).toBe(1);
   });
 });
 
 describe("solveAxis — bounds + neither (auto-fit)", () => {
   it("uses the default extent and derives the count", () => {
     // floor((328 + 6) / (56 + 6)) = floor(5.38) = 5.
-    expect(solveAxis({ ...base, count: undefined, extent: undefined, available: 328 })).toEqual({
+    expect(
+      solveAxis({
+        ...base,
+        count: undefined,
+        extent: undefined,
+        available: 328,
+      }),
+    ).toEqual({
       count: 5,
       extent: 56,
       overdetermined: false,
@@ -81,7 +109,9 @@ describe("solveAxis — bounds + neither (auto-fit)", () => {
 
 describe("solveAxis — bounds + both (overdetermined)", () => {
   it("keeps the declared values and flags the conflict", () => {
-    expect(solveAxis({ ...base, count: 7, extent: 56, available: 328 })).toEqual({
+    expect(
+      solveAxis({ ...base, count: 7, extent: 56, available: 328 }),
+    ).toEqual({
       count: 7,
       extent: 56,
       overdetermined: true,

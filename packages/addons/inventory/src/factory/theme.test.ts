@@ -26,7 +26,8 @@ function collectLeaves(
   if (typeof value !== "object" || value === null) return into;
   if (seen.has(value)) return into;
   seen.add(value);
-  for (const v of Object.values(value as Record<string, unknown>)) collectLeaves(v, into, seen);
+  for (const v of Object.values(value as Record<string, unknown>))
+    collectLeaves(v, into, seen);
   return into;
 }
 
@@ -74,8 +75,14 @@ function sentinelTheme(): InventoryTheme {
     tileColors: [n(), n()],
     tileLetterColor: n(),
     textured: {
-      panel: { texture: "sentinel-panel-texture", insets: { left: n(), top: n(), right: n(), bottom: n() } },
-      menu: { texture: "sentinel-menu-texture", insets: { left: n(), top: n(), right: n(), bottom: n() } },
+      panel: {
+        texture: "sentinel-panel-texture",
+        insets: { left: n(), top: n(), right: n(), bottom: n() },
+      },
+      menu: {
+        texture: "sentinel-menu-texture",
+        insets: { left: n(), top: n(), right: n(), bottom: n() },
+      },
     },
     bitmapFont: "sentinel-bitmapFont",
     fontFamily: "sentinel-fontFamily",
@@ -94,7 +101,10 @@ describe("theme exhaustiveness (drift-guard)", () => {
     // Both presets: iconCell carries cellColor/cellBorderColor/tileColors/
     // tileLetterColor; rowCell carries textColor. Chrome/detail/menu carry the
     // rest and exist in both bundles.
-    const bundles = [createInventoryPanel(theme), createInventoryPanel(theme, { cell: rowCell })];
+    const bundles = [
+      createInventoryPanel(theme),
+      createInventoryPanel(theme, { cell: rowCell }),
+    ];
     const configLeaves = collectLeaves(bundles);
 
     const missing = [...themeLeaves].filter((leaf) => !configLeaves.has(leaf));
@@ -118,7 +128,9 @@ describe("geometry-option exhaustiveness (drift-guard)", () => {
       gap: { x: g(), y: g() },
     };
     const geomLeaves = collectLeaves(geom);
-    const configLeaves = collectLeaves(createInventoryPanel(defaultInventoryTheme(), geom));
+    const configLeaves = collectLeaves(
+      createInventoryPanel(defaultInventoryTheme(), geom),
+    );
 
     const missing = [...geomLeaves].filter((leaf) => !configLeaves.has(leaf));
     // If this fails, a geometry option was added without threading it into the
@@ -169,7 +181,9 @@ describe("optional-derived field defaults", () => {
   });
 
   it("rowHighlightAlpha defaults to 0.22", () => {
-    const bundle = createInventoryPanel(defaultInventoryTheme(), { cell: rowCell });
+    const bundle = createInventoryPanel(defaultInventoryTheme(), {
+      cell: rowCell,
+    });
     expect(cfg(field(bundle.slots, "cell")).rowHighlightAlpha).toBe(0.22);
   });
 
@@ -185,6 +199,8 @@ describe("optional-derived field defaults", () => {
 
   it("borderWidth defaults to 1.5", () => {
     const bundle = createInventoryPanel(defaultInventoryTheme());
-    expect(cfg(bundle.chrome as InventoryBundle["chrome"]).borderWidth).toBe(1.5);
+    expect(cfg(bundle.chrome as InventoryBundle["chrome"]).borderWidth).toBe(
+      1.5,
+    );
   });
 });

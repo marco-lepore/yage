@@ -75,7 +75,9 @@ describe("linearGradient", () => {
         { offset: 1, color: 0x102030 },
       ],
     });
-    const opts = captured.calls[0] as { colorStops: { offset: number; color: string }[] };
+    const opts = captured.calls[0] as {
+      colorStops: { offset: number; color: string }[];
+    };
     expect(opts.colorStops).toEqual([
       { offset: 0, color: "rgba(255,128,64,0.5)" },
       { offset: 1, color: "rgba(16,32,48,1)" },

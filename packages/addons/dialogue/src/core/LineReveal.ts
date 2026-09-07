@@ -36,7 +36,11 @@ import type { MarkerToken, ParsedText } from "./types.js";
  */
 export type RevealBeat =
   | { readonly kind: "tick"; readonly index: number }
-  | { readonly kind: "marker"; readonly marker: MarkerToken; readonly viaSkip: boolean };
+  | {
+      readonly kind: "marker";
+      readonly marker: MarkerToken;
+      readonly viaSkip: boolean;
+    };
 
 export class LineReveal {
   private parsed: ParsedText | undefined;
@@ -130,7 +134,10 @@ export class LineReveal {
       this.drainTokens();
       if (this.pauseTimer === 0) {
         const rate =
-          this.charsPerSec * this.speedMul * this.lineSpeed * this.runSpeedAt(this.cursor);
+          this.charsPerSec *
+          this.speedMul *
+          this.lineSpeed *
+          this.runSpeedAt(this.cursor);
         this.cursor = Math.min(parsed.length, this.cursor + rate * dt);
         // Drain tokens up to the new cursor IN SOURCE ORDER: a marker fires, a
         // pause clamps the cursor back to its offset and stops the drain (so a
@@ -193,7 +200,10 @@ export class LineReveal {
   private drainTokens(viaSkip = false): void {
     const tokens = this.parsed?.tokens;
     if (!tokens) return;
-    while (this.tokenIdx < tokens.length && this.cursor >= tokens[this.tokenIdx]!.atChar) {
+    while (
+      this.tokenIdx < tokens.length &&
+      this.cursor >= tokens[this.tokenIdx]!.atChar
+    ) {
       const tok = tokens[this.tokenIdx]!;
       this.tokenIdx++;
       if (tok.kind === "marker") {

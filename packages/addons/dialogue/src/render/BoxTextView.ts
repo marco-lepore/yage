@@ -10,7 +10,10 @@
 
 import type { PresentedLine } from "../core/session.js";
 import type { BoxLayout } from "./BoxLayout.js";
-import { DialogueTextView, type DialogueTextConfig } from "./DialogueTextView.js";
+import {
+  DialogueTextView,
+  type DialogueTextConfig,
+} from "./DialogueTextView.js";
 
 export class BoxTextView extends DialogueTextView {
   constructor(

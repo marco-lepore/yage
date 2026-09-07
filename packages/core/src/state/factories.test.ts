@@ -488,9 +488,9 @@ describe("createList", () => {
   describe("hydrate validation", () => {
     it("rejects NaN nextId", () => {
       const l = createList<string>();
-      expect(() =>
-        l.hydrate({ items: [], nextId: Number.NaN }),
-      ).toThrow(/nextId/);
+      expect(() => l.hydrate({ items: [], nextId: Number.NaN })).toThrow(
+        /nextId/,
+      );
     });
 
     it("rejects fractional nextId", () => {
@@ -553,8 +553,7 @@ describe("createList", () => {
       quantity: number;
     }
 
-    const makeInventory = () =>
-      createList<Slot>({ keyBy: (s) => s.itemId });
+    const makeInventory = () => createList<Slot>({ keyBy: (s) => s.itemId });
 
     it("findId / getByKey resolve by domain key; miss returns undefined", () => {
       const inv = makeInventory();
@@ -719,9 +718,9 @@ describe("createList", () => {
 
     it("upsert throws when the item's key does not match the lookup key", () => {
       const inv = makeInventory();
-      expect(() =>
-        inv.upsert("sword", { itemId: "axe", quantity: 1 }),
-      ).toThrow(/keyBy\(item\) === key/);
+      expect(() => inv.upsert("sword", { itemId: "axe", quantity: 1 })).toThrow(
+        /keyBy\(item\) === key/,
+      );
       // Nothing was inserted under either key.
       expect(inv.size()).toBe(0);
       expect(inv.findId("sword")).toBeUndefined();
@@ -886,9 +885,9 @@ describe("createStore (compound)", () => {
   });
 
   it("rejects leaf keys that collide with reserved members", () => {
-    expect(() =>
-      createStore((s) => ({ reset: s.counter() } as never)),
-    ).toThrow(/reserved/);
+    expect(() => createStore((s) => ({ reset: s.counter() }) as never)).toThrow(
+      /reserved/,
+    );
   });
 
   it("rejects dict entries not produced by this builder", () => {
@@ -955,7 +954,10 @@ describe("createStore (compound)", () => {
     game.bag.upsert("sword", { itemId: "sword", quantity: 1 });
     game.bag.upsert("sword", { itemId: "sword", quantity: 3 });
     expect(game.bag.findId("sword")).toBe(1);
-    expect(game.bag.getByKey("sword")).toEqual({ itemId: "sword", quantity: 3 });
+    expect(game.bag.getByKey("sword")).toEqual({
+      itemId: "sword",
+      quantity: 3,
+    });
 
     const restored = make();
     restored.hydrate(game.serialize());

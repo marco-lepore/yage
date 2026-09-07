@@ -31,7 +31,8 @@ export interface MenuLayout {
 
 /** Menu frame rect + one rect per row, from measured label widths. */
 export function layoutActionMenu(input: MenuLayoutInput): MenuLayout {
-  const { labels, labelWidths, anchor, panel, padding, rowGap, textSize } = input;
+  const { labels, labelWidths, anchor, panel, padding, rowGap, textSize } =
+    input;
   const rowHeight = textSize + rowGap;
   const widest = labelWidths.length > 0 ? Math.max(...labelWidths) : 0;
   const menuW = Math.ceil(widest) + 2 * padding + 8;

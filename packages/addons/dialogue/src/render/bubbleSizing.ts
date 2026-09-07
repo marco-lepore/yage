@@ -41,7 +41,10 @@ export interface BubbleSize {
  * text up to `maxWidth`, then wrap and grow height. Both clamped to the configured
  * minimums.
  */
-export function bubbleSize(plainText: string, cfg: BubbleSizeInput): BubbleSize {
+export function bubbleSize(
+  plainText: string,
+  cfg: BubbleSizeInput,
+): BubbleSize {
   const oneLine = cfg.lineHeight + 2 * cfg.padding;
   const font = cfg.bitmapFont ?? cfg.fontFamily;
   const fontOpt = font !== undefined ? { fontFamily: font } : {};
@@ -73,6 +76,9 @@ export function bubbleSize(plainText: string, cfg: BubbleSizeInput): BubbleSize 
   });
   return {
     width: cfg.maxWidth,
-    height: Math.max(cfg.minHeight, wrapped.lineCount * cfg.lineHeight + 2 * cfg.padding),
+    height: Math.max(
+      cfg.minHeight,
+      wrapped.lineCount * cfg.lineHeight + 2 * cfg.padding,
+    ),
   };
 }

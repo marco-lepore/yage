@@ -137,13 +137,17 @@ export function cellAtPoint(
   if (col >= spec.columns || row >= spec.visibleRows) return undefined;
   // Points inside a cell's gap fall between cells and miss. With `gap: 0`
   // (flush rows/cells) this never triggers — the whole step is the cell.
-  if (lx - col * stepX > spec.cellWidth || ly - row * stepY > spec.cellHeight) return undefined;
+  if (lx - col * stepX > spec.cellWidth || ly - row * stepY > spec.cellHeight)
+    return undefined;
   const index = (row + scrollRow) * spec.columns + col;
   return index < count ? index : undefined;
 }
 
 /** Pixel size of the visible cell window. */
-export function cellWindowSize(spec: CellGridSpec): { width: number; height: number } {
+export function cellWindowSize(spec: CellGridSpec): {
+  width: number;
+  height: number;
+} {
   return {
     width: spec.columns * (spec.cellWidth + spec.gapX) - spec.gapX,
     height: spec.visibleRows * (spec.cellHeight + spec.gapY) - spec.gapY,

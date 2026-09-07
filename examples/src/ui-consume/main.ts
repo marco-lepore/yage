@@ -24,14 +24,14 @@ import {
   Transform,
   Vec2,
 } from "@yagejs/core";
-import {
-  GraphicsComponent,
-  RendererPlugin,
-} from "@yagejs/renderer";
+import { GraphicsComponent, RendererPlugin } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import { Anchor, UISurface, UIPlugin, UIText } from "@yagejs/ui";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+import {
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -129,9 +129,7 @@ class HudUpdater extends Component {
 class DemoScene extends Scene {
   readonly name = "ui-consume";
 
-  readonly layers: readonly LayerDef[] = [
-    { name: "world", order: 0 },
-  ];
+  readonly layers: readonly LayerDef[] = [{ name: "world", order: 0 }];
 
   onEnter(): void {
     // -- Counters --
@@ -151,9 +149,7 @@ class DemoScene extends Scene {
             .stroke({ color: 0x1e293b, width: 1 });
         }
         for (let y = 0; y <= HEIGHT; y += 50) {
-          g.moveTo(0, y)
-            .lineTo(WIDTH, y)
-            .stroke({ color: 0x1e293b, width: 1 });
+          g.moveTo(0, y).lineTo(WIDTH, y).stroke({ color: 0x1e293b, width: 1 });
         }
       }),
     );

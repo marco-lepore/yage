@@ -1,11 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createScope, evalCondition, evaluate, isExpr, truthy } from "./expr.js";
+import {
+  createScope,
+  evalCondition,
+  evaluate,
+  isExpr,
+  truthy,
+} from "./expr.js";
 import { MemoryVariableStorage } from "./vars.js";
 import type { BinaryOp, Expr, UnaryOp, VarMap, VarValue } from "./types.js";
 
 const scope = createScope(
-  new MemoryVariableStorage({ n: 5, s: "hi", t: true, f: false, zero: 0, empty: "" }),
+  new MemoryVariableStorage({
+    n: 5,
+    s: "hi",
+    t: true,
+    f: false,
+    zero: 0,
+    empty: "",
+  }),
   {
     double: (v) => Number(v) * 2,
     always: () => true,
@@ -15,10 +28,23 @@ const scope = createScope(
 // Terse Expr builders.
 const lit = (value: VarValue): Expr => ({ kind: "literal", value });
 const v = (name: string): Expr => ({ kind: "varRef", name });
-const bin = (op: BinaryOp, left: Expr, right: Expr): Expr => ({ kind: "binary", op, left, right });
-const un = (op: UnaryOp, operand: Expr): Expr => ({ kind: "unary", op, operand });
+const bin = (op: BinaryOp, left: Expr, right: Expr): Expr => ({
+  kind: "binary",
+  op,
+  left,
+  right,
+});
+const un = (op: UnaryOp, operand: Expr): Expr => ({
+  kind: "unary",
+  op,
+  operand,
+});
 const grp = (expr: Expr): Expr => ({ kind: "group", expr });
-const call = (fn: string, ...args: Expr[]): Expr => ({ kind: "call", fn, args });
+const call = (fn: string, ...args: Expr[]): Expr => ({
+  kind: "call",
+  fn,
+  args,
+});
 const ev = (e: Expr): VarValue => evaluate(e, scope);
 
 describe("evaluate — leaf nodes", () => {
@@ -95,7 +121,9 @@ describe("evaluate — logical operators (symbol + word form)", () => {
     const boom = vi.fn((): VarValue => {
       throw new Error("should not run");
     });
-    const s = createScope(new MemoryVariableStorage({ f: false, t: true }), { boom });
+    const s = createScope(new MemoryVariableStorage({ f: false, t: true }), {
+      boom,
+    });
     // `false and boom()` → false without calling boom; `true or boom()` → true.
     expect(evaluate(bin("and", v("f"), call("boom")), s)).toBe(false);
     expect(evaluate(bin("or", v("t"), call("boom")), s)).toBe(true);
@@ -153,8 +181,12 @@ describe("evalCondition", () => {
 
   it("atomic { var, op, value } including truthy / falsy", () => {
     expect(evalCondition({ var: "n", op: ">", value: 4 }, scope)).toBe(true);
-    expect(evalCondition({ var: "f", op: "truthy", value: null }, scope)).toBe(false);
-    expect(evalCondition({ var: "zero", op: "falsy", value: null }, scope)).toBe(true);
+    expect(evalCondition({ var: "f", op: "truthy", value: null }, scope)).toBe(
+      false,
+    );
+    expect(
+      evalCondition({ var: "zero", op: "falsy", value: null }, scope),
+    ).toBe(true);
   });
 
   it("expression tree → truthiness of the evaluated value", () => {
@@ -180,7 +212,8 @@ describe("isExpr / truthy", () => {
   });
 
   it("truthy follows JS falsiness", () => {
-    for (const falsy of [null, false, 0, ""] as VarValue[]) expect(truthy(falsy)).toBe(false);
+    for (const falsy of [null, false, 0, ""] as VarValue[])
+      expect(truthy(falsy)).toBe(false);
     for (const t of [true, 1, "x"] as VarValue[]) expect(truthy(t)).toBe(true);
   });
 });

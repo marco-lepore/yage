@@ -7,7 +7,11 @@
  */
 
 import type { Scene } from "@yagejs/core";
-import type { ChromeChannel, ChoiceChannel, TextChannel } from "../core/session.js";
+import type {
+  ChromeChannel,
+  ChoiceChannel,
+  TextChannel,
+} from "../core/session.js";
 
 /** A dev-facing diagnostics sink — the controller wires this to the engine
  *  Logger (the same seam as the session's `onError`), so a presenter-level

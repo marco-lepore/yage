@@ -120,11 +120,7 @@ fn mainFragment(
 /** Normalise a `number | string` colour to a `[r, g, b]` triple in 0..1. */
 function colorToVec3(color: number | string): [number, number, number] {
   const n = typeof color === "number" ? color : new Color(color).toNumber();
-  return [
-    ((n >> 16) & 0xff) / 255,
-    ((n >> 8) & 0xff) / 255,
-    (n & 0xff) / 255,
-  ];
+  return [((n >> 16) & 0xff) / 255, ((n >> 8) & 0xff) / 255, (n & 0xff) / 255];
 }
 
 /** @internal */

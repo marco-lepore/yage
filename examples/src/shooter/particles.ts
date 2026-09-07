@@ -73,7 +73,11 @@ export function spawnBulletImpactParticles(
   );
 }
 
-export function spawnEnemyHitParticles(scene: Scene, x: number, y: number): void {
+export function spawnEnemyHitParticles(
+  scene: Scene,
+  x: number,
+  y: number,
+): void {
   spawnParticles(
     scene,
     x,

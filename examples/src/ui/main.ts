@@ -10,11 +10,17 @@ import {
   Anchor,
 } from "@yagejs/ui";
 import { Transform } from "@yagejs/core";
-import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 import {
-  textStyle, allAssets, defaultTextStyle, nineSliceBtn, panelBg,
+  installDebugFromUrl,
+  setupGameContainer,
+} from "../shared/bootstrap.js";
+import {
+  textStyle,
+  allAssets,
+  defaultTextStyle,
+  nineSliceBtn,
+  panelBg,
 } from "../shared/ui-theme.js";
-
 
 // ---------------------------------------------------------------------------
 // Additional assets for this example
@@ -235,7 +241,7 @@ class UIExampleScene extends Scene {
     overflowPanel.addElement(wrap);
 
     const clipLabel = new UIText({
-      children: "truncate: \"clip\":",
+      children: 'truncate: "clip":',
       style: captionStyle,
     });
     overflowPanel.addElement(clipLabel);
@@ -248,7 +254,7 @@ class UIExampleScene extends Scene {
     overflowPanel.addElement(clip);
 
     const ellipsisLabel = new UIText({
-      children: "truncate: \"ellipsis\":",
+      children: 'truncate: "ellipsis":',
       style: captionStyle,
     });
     overflowPanel.addElement(ellipsisLabel);

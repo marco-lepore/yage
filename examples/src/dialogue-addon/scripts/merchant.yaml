@@ -38,7 +38,11 @@ nodes:
   have:
     id: have
     steps:
-      - { kind: say, speaker: vex, text: "You've got it already. Go find that gate." }
+      - {
+          kind: say,
+          speaker: vex,
+          text: "You've got it already. Go find that gate.",
+        }
       - { kind: end }
   bye:
     id: bye

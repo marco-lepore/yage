@@ -32,12 +32,20 @@ nodes:
           - { type: take-item, id: rusty-key }
           - { type: open-gate }
           - { type: set, var: opened, value: true }
-      - { kind: say, speaker: bron, text: "Gate's open. The vault's all yours." }
+      - {
+          kind: say,
+          speaker: bron,
+          text: "Gate's open. The vault's all yours.",
+        }
       - { kind: end }
   thanks:
     id: thanks
     steps:
-      - { kind: say, speaker: bron, text: "Gate's already open, friend. Mind the step." }
+      - {
+          kind: say,
+          speaker: bron,
+          text: "Gate's already open, friend. Mind the step.",
+        }
       - { kind: end }
   bye:
     id: bye

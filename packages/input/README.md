@@ -15,13 +15,15 @@ import { Engine } from "@yagejs/core";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 
 const engine = new Engine();
-engine.use(new InputPlugin({
-  actions: {
-    jump: ["Space", "KeyW"],
-    left: ["ArrowLeft", "KeyA"],
-    right: ["ArrowRight", "KeyD"],
-  },
-}));
+engine.use(
+  new InputPlugin({
+    actions: {
+      jump: ["Space", "KeyW"],
+      left: ["ArrowLeft", "KeyA"],
+      right: ["ArrowRight", "KeyD"],
+    },
+  }),
+);
 ```
 
 Read input inside a component:

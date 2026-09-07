@@ -1,5 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { getComponentData, gotoFixture, stepFrames, waitForClock } from "./helpers.js";
+import {
+  getComponentData,
+  gotoFixture,
+  stepFrames,
+  waitForClock,
+} from "./helpers.js";
 
 interface ProbeData {
   hp: number;
@@ -45,14 +50,17 @@ async function send(page: Page, who: Who, id: string): Promise<boolean> {
   );
 }
 
-async function teleport(page: Page, who: Who, x: number, y: number): Promise<void> {
+async function teleport(
+  page: Page,
+  who: Who,
+  x: number,
+  y: number,
+): Promise<void> {
   await page.evaluate(
     ({ who: w, x: px, y: py }) =>
-      (window as unknown as { __abilities__: HostHandle }).__abilities__.teleport(
-        w,
-        px,
-        py,
-      ),
+      (
+        window as unknown as { __abilities__: HostHandle }
+      ).__abilities__.teleport(w, px, py),
     { who, x, y },
   );
 }
@@ -65,12 +73,18 @@ async function setStat(
 ): Promise<void> {
   await page.evaluate(
     ({ who: w, kind: k, value: v }) =>
-      (window as unknown as { __abilities__: HostHandle }).__abilities__.setStat(w, k, v),
+      (
+        window as unknown as { __abilities__: HostHandle }
+      ).__abilities__.setStat(w, k, v),
     { who, kind, value },
   );
 }
 
-async function cooldownRemaining(page: Page, who: Who, id: string): Promise<number> {
+async function cooldownRemaining(
+  page: Page,
+  who: Who,
+  id: string,
+): Promise<number> {
   return page.evaluate(
     ({ who: w, id: abilityId }) =>
       (
@@ -99,7 +113,9 @@ test.describe("@yagejs-addons/abilities addon", () => {
     expect(enemy?.hp).toBe(32); // 50 max - 18 slash damage
   });
 
-  test("an enemy's touch damage lands on an undefended player", async ({ page }) => {
+  test("an enemy's touch damage lands on an undefended player", async ({
+    page,
+  }) => {
     await gotoFixture(page, "/abilities-addon.html");
     await waitForClock(page);
 
@@ -186,7 +202,9 @@ test.describe("@yagejs-addons/abilities addon", () => {
     expect(healed?.hp).toBe(100); // healed back to max (30 requested, clamped)
   });
 
-  test("an enemy projectile travels to the player and lands", async ({ page }) => {
+  test("an enemy projectile travels to the player and lands", async ({
+    page,
+  }) => {
     await gotoFixture(page, "/abilities-addon.html");
     await waitForClock(page);
 

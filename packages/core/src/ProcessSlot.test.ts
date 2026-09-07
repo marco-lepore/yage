@@ -273,7 +273,7 @@ describe("ProcessSlot", () => {
 
     // Cancel while running
     slot.restart(); // restart from completed — no cleanup (nothing to clean up)
-    slot.cancel();  // cancel while running — cleanup fires
+    slot.cancel(); // cancel while running — cleanup fires
     expect(cleanup).toHaveBeenCalledTimes(2);
 
     // Restart while running
@@ -292,9 +292,10 @@ describe("ProcessSlot", () => {
 
     it("returns a rejected thenable from an async update callback unchanged, so a caller can attach a rejection handler", async () => {
       const rejection = Promise.reject(new Error("boom"));
+      // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
+      type UpdateFn = (dt: number, elapsed: number) => boolean | void;
       const slot = new ProcessSlot({
-        // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
-        update: (() => rejection) as unknown as (dt: number, elapsed: number) => boolean | void,
+        update: (() => rejection) as unknown as UpdateFn,
       });
       slot.start();
 
