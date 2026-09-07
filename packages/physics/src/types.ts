@@ -386,6 +386,29 @@ export interface TriggerEvent {
   entered: boolean;
 }
 
+/**
+ * The closest points between two colliders, from
+ * `ColliderComponent.contactWith` / `PhysicsWorld.contactBetween`. A
+ * geometric query on the colliders' current poses, not a solver manifold, so
+ * it works for sensors and for pairs that never collided.
+ */
+export interface ColliderContact {
+  /** Point on this collider's surface, in world pixels. */
+  point: Vec2;
+  /** Point on the other collider's surface, in world pixels. */
+  otherPoint: Vec2;
+  /**
+   * Unit vector from this collider toward the other: the direction that
+   * separates the pair. Overlapping shapes report the shortest way out.
+   */
+  normal: Vec2;
+  /**
+   * Distance between `point` and `otherPoint` in pixels; negative when the
+   * shapes overlap, by the penetration depth.
+   */
+  distance: number;
+}
+
 /** Result of a raycast query. */
 export interface RaycastHit {
   /** The entity that was hit. */

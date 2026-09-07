@@ -49,6 +49,30 @@ export interface StandardHitData {
 }
 
 /**
+ * Where a hit touched its target, in world pixels. Present on hits whose
+ * delivery could measure the contact: a `hitbox` or sensor `Projectile`
+ * measures the sensor/target collider pair that fired the trigger, a solid
+ * `Projectile` or `TouchDamage` body uses the collision's own contact, and
+ * a manual `HitDelivery.deliver` passes what it knows. Absent when the
+ * delivery had no collider pair to measure. A hitbox that starts its window
+ * already overlapping the target reports a surface point from the current
+ * overlap, not the first impact of an animated swing.
+ */
+export interface HitContact {
+  /**
+   * A point on the target collider's surface (for a solid collision, the
+   * pair's deepest contact point).
+   */
+  readonly point: Vec2;
+  /**
+   * Unit normal of the target's surface at `point`, pointing out of the
+   * target toward the attacking shape. Independent of `Hit.direction`, which
+   * still runs from the delivery origin toward the target's position.
+   */
+  readonly normal: Vec2;
+}
+
+/**
  * The payload delivered to a `Hittable` receiver. `TData` types the `data`
  * field per combat system; the default is `StandardHitData`
  * (damage/knockback/stun). A game with one hit vocabulary extends it
@@ -90,6 +114,8 @@ export interface Hit<TData = StandardHitData> {
   readonly tags: readonly string[];
   /** Vocabulary fields (see `StandardHitData`); never read by delivery. */
   readonly data: TData;
+  /** Where the hit touched the target, when the delivery could measure it. */
+  readonly contact?: HitContact;
 }
 
 /**

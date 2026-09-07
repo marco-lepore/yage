@@ -29,6 +29,19 @@ function spawnTarget(scene: Scene, x: number, y: number): Target {
 }
 
 describe("createHitDelivery", () => {
+  it("stamps the caller's contact on the hit and omits the field without one", () => {
+    const { scene } = createMockScene();
+    const source = scene.spawn("source");
+    const target = spawnTarget(scene, 10, 0);
+    const delivery = createHitDelivery({ source });
+    const contact = { point: new Vec2(7, 0), normal: new Vec2(-1, 0) };
+    delivery.deliver(target, Vec2.ZERO, contact);
+    delivery.deliver(target, Vec2.ZERO);
+    expect(target.received[0]!.contact).toBe(contact);
+    expect(target.received[0]!.direction).toEqual(new Vec2(1, 0));
+    expect("contact" in target.received[1]!).toBe(false);
+  });
+
   it("ignores a destroyed target before and after teardown while allowing a dead source's hit", () => {
     const { scene } = createMockScene();
     const source = scene.spawn("source");

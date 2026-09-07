@@ -20,6 +20,7 @@ import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { PhysicsWorldKey } from "./types.js";
 import type {
   ColliderConfig,
+  ColliderContact,
   ColliderShape,
   CollisionEvent,
   ContactCandidate,
@@ -351,6 +352,58 @@ export class ColliderComponent extends Component {
       if (comp) result.push(comp);
     }
     return result;
+  }
+
+  /**
+   * The closest points between this collider and `other` at their current
+   * poses, or `undefined` when they are further apart than `prediction`
+   * (pixels, default 0: touching or overlapping only) or either component
+   * has no live collider. A geometric query on the shapes, so it answers for
+   * sensors, which never get contact data on their events, and for a pair
+   * that never collided.
+   *
+   * With `selfShapeIndex` / `otherShapeIndex` it measures that one shape
+   * pair; pass the indices from a `TriggerEvent` or `CollisionEvent` to
+   * measure the pair that fired it. Without them, compound colliders report
+   * the closest pair among all their parts.
+   *
+   * ```ts
+   * collider.onTrigger((ev) => {
+   *   const contact = collider.contactWith(ev.otherCollider, ev);
+   *   if (contact) spawnSparks(contact.otherPoint, contact.normal);
+   * });
+   * ```
+   */
+  contactWith(
+    other: ColliderComponent,
+    options?: {
+      selfShapeIndex?: number;
+      otherShapeIndex?: number;
+      prediction?: number;
+    },
+  ): ColliderContact | undefined {
+    const selfHandles =
+      options?.selfShapeIndex === undefined
+        ? this._colliderHandles
+        : [this._colliderHandles[options.selfShapeIndex] ?? -1];
+    const otherHandles =
+      options?.otherShapeIndex === undefined
+        ? other._colliderHandles
+        : [other._colliderHandles[options.otherShapeIndex] ?? -1];
+    let closest: ColliderContact | undefined;
+    for (const handle of selfHandles) {
+      for (const otherHandle of otherHandles) {
+        const contact = this.physicsWorld.contactBetween(
+          handle,
+          otherHandle,
+          options?.prediction,
+        );
+        if (contact && (!closest || contact.distance < closest.distance)) {
+          closest = contact;
+        }
+      }
+    }
+    return closest;
   }
 
   /**

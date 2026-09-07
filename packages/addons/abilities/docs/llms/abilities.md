@@ -477,10 +477,16 @@ interface StandardHitData {
 
 interface Hit<TData = StandardHitData> {
   readonly source: Entity;
-  readonly direction: Vec2;
+  readonly direction: Vec2; // unit, from the delivery origin toward the target
   readonly team?: string;
   readonly tags: readonly string[];
   readonly data: TData;
+  readonly contact?: HitContact; // where the hit touched the target, when measured
+}
+
+interface HitContact {
+  readonly point: Vec2; // world px, on the target collider's surface
+  readonly normal: Vec2; // unit, out of the target's surface toward the attacking shape
 }
 
 type HitResult = "hit" | "ignored" | "blocked" | "parried";
@@ -488,9 +494,40 @@ const Hittable: TraitToken<{ receiveHit(hit: Hit): HitResult }>;
 ```
 
 `createHitDelivery({ source, team?, tags?, data? })` returns
-`{ deliver(target, from): HitResult }`. It skips the source and non-`Hittable`
-entities. Data is shallow-copied per victim so mutating stages do not leak
-between contacts.
+`{ deliver(target, from, contact?): HitResult }`. It skips the source and
+non-`Hittable` entities. Data is shallow-copied per victim so mutating stages
+do not leak between contacts. `contact` travels on the hit unchanged.
+
+Contact geometry. `hitbox` and a sensor `Projectile` measure the sensor/target
+collider pair that fired the trigger (`ColliderComponent.contactWith`); a
+solid `Projectile` or `TouchDamage` body uses the collision's own contact;
+repeat hits (`every`, the touch interval) measure again. `hit.contact` is
+absent when nothing could be measured. A hitbox whose window opens already
+overlapping the target reports a surface point from the current overlap, not
+the first impact of the swing. `direction` is unchanged by all of this. For a
+custom overlap source:
+
+```ts
+import { queryHitContact, resolveHitContact } from "@yagejs-addons/abilities";
+
+collider.onTrigger((ev) => {
+  if (ev.entered)
+    delivery.deliver(ev.other, origin, resolveHitContact(collider, ev));
+});
+// resolveHitContact(self, ev): a CollisionEvent's contactPoint/contactNormal
+// when present, else contactWith on the event's shape pair.
+// queryHitContact(self, { otherCollider, selfShapeIndex, otherShapeIndex }):
+// re-measure a remembered pair for a repeat delivery.
+```
+
+Presentation reads it from either side:
+
+```ts
+attacker.on(HitDealt, ({ target, contact }) => {
+  const at = contact?.point ?? target.get(Transform).worldPosition;
+  sparks.burstAt(at, contact?.normal);
+});
+```
 
 ```ts
 interface HitReceiverOptions<TData = StandardHitData> {
@@ -520,8 +557,9 @@ Events:
 
 - `HitReceived`: `{ hit, guardOutcomes }` after a hit lands and stages run.
 - `HitGuarded`: `{ hit, outcome }` for every engaged guard.
-- `HitDealt`: attacker-side `{ result, data, target, ability? }` from
-  `createReportingDelivery` and built-in reporting paths.
+- `HitDealt`: attacker-side `{ result, data, target, ability?, contact? }`
+  from `createReportingDelivery` and built-in reporting paths. `contact` is
+  captured before the receiver runs, so a killing hit still carries it.
 - `HealthDamaged`: `{ amount, hp }`.
 - `HealthHealed`: `{ amount, hp }`.
 - `HealthDied`: no payload; once when HP reaches 0.
@@ -671,6 +709,7 @@ import {
 import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 import {
   AbilitySpawned,
+  resolveHitContact,
   spawn,
   type AbilitySpawnContext,
 } from "@yagejs-addons/abilities";
@@ -702,6 +741,7 @@ class PooledAttack extends Entity {
       const result = shot.delivery?.deliver(
         event.other,
         this.get(Transform).worldPosition,
+        resolveHitContact(this.get(ColliderComponent), event),
       );
       if (result === undefined || result === "ignored") return;
       this.spent = true;
@@ -876,11 +916,12 @@ Root entry, hit delivery and receipt:
 
 - Values: `Hittable`, `createHitDelivery`, `createReportingDelivery`,
   `resolveHitSpec`, `shouldConsumeProjectile`, `resolveHit`, `HitReceiver`,
-  `HitReceived`, `HitGuarded`, `HitDealt`, `createHitTools`.
-- Envelope and delivery types: `Hit`, `HitResult`, `HitOutcomes`,
-  `StandardHitData`, `HitSpec`, `HitDelivery`, `HitDeliveryOptions`,
-  `DeliveryColliderGroups`, `HitStage`, `DeliveryProvenance`,
-  `HitDealtPayload`.
+  `HitReceived`, `HitGuarded`, `HitDealt`, `createHitTools`,
+  `resolveHitContact`, `queryHitContact`.
+- Envelope and delivery types: `Hit`, `HitContact`, `HitContactPair`,
+  `HitResult`, `HitOutcomes`, `StandardHitData`, `HitSpec`, `HitDelivery`,
+  `HitDeliveryOptions`, `DeliveryColliderGroups`, `HitStage`,
+  `DeliveryProvenance`, `HitDealtPayload`.
 - Receiver and typed-tool types: `HitReceiverOptions`, `HitFilter`,
   `HitReceivedPayload`, `GuardOutcome`, `GuardParams`, `GuardPolicy`,
   `CreateHitToolsOptions`, `HitDataPredicate`, `HitTools`.

@@ -14,6 +14,7 @@ export type {
   ColliderShape,
   ColliderPartConfig,
   ColliderConfig,
+  ColliderContact,
   CollisionEvent,
   ContactCandidate,
   ContactFilter,

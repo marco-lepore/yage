@@ -16,6 +16,7 @@ import type {
 import { AbilitySpawned } from "../core/AbilitySpawned.js";
 import type { AbilitySpawnContext } from "../core/AbilitySpawned.js";
 import { shouldConsumeProjectile } from "../core/hit/delivery.js";
+import { resolveHitContact } from "../components/hitContact.js";
 import type { DeliveryColliderGroups } from "../core/hit/delivery.js";
 import type { HitResult } from "../core/hit/types.js";
 
@@ -105,6 +106,7 @@ export class Projectile extends Entity {
       const result = delivery.deliver(
         ev.other,
         this.get(Transform).worldPosition,
+        resolveHitContact(collider, ev),
       );
       const otherIsSensor = ev.otherCollider.config.sensor === true;
       let consume = false;
