@@ -772,10 +772,10 @@ their configured layer names.
 
 ### Camera binding rule
 
-A `CameraEntity` spawned without explicit `bindings` auto-binds every
-world-space layer in the scene tree (`LayerDef.space === "world"`, the
-default). Declare a layer with `space: "screen"` to keep it fixed to the
-viewport — cameras skip it on auto-bind.
+A `CameraEntity` auto-binds every world-space layer in the scene tree
+(`LayerDef.space === "world"`, the default), including layers created after
+the camera spawned. Declare a layer with `space: "screen"` to keep it fixed
+to the viewport — cameras skip it on auto-bind.
 
 ```ts
 readonly layers: readonly LayerDef[] = [
@@ -796,9 +796,31 @@ legitimate use case: declare a world-space layer and parent a
 `UISurface({ layer: "..." })` into it — the panel's container scrolls and
 zooms with the camera.
 
-To override: pass explicit `bindings` on the camera. Explicit bindings
-ignore `space` and target exactly the layers named, which is how you
-bind a screen-space layer to a second camera or build parallax.
+To override: pass `bindings` on the camera. Each entry replaces the
+auto-binding for the layer it names, so one entry buys one parallax layer
+and every other world layer keeps following at full strength. An entry
+naming a screen-space layer adds it.
+
+```ts
+// "sky" drifts at a tenth of the camera; every other world layer follows.
+this.spawn(CameraEntity, {
+  bindings: [{ layer: "sky", translateRatio: 0.1 }],
+});
+```
+
+`autoBind: false` drops the auto-bound set, so the camera drives exactly
+the layers `bindings` names. That is the only way to leave a world-space
+layer untransformed — a binding with all three ratios at `0` centres the
+layer on the viewport instead of leaving it alone.
+
+```ts
+// Drives "sky" and "world" only; the world-space "minimap" layer, left out
+// of the list, stays untransformed.
+this.spawn(CameraEntity, {
+  autoBind: false,
+  bindings: [{ layer: "sky", translateRatio: 0.1 }, { layer: "world" }],
+});
+```
 
 ### `LayerDef.sort` — per-frame paint order
 
@@ -913,8 +935,13 @@ Recipes:
 // Parallax (translate-dampened)
 { layer: "background", translateRatio: 0.5 }
 
-// Camera-agnostic minimap (ignores every camera axis)
+// Camera-agnostic minimap (ignores every camera axis; the layer origin
+// sits at the viewport centre)
 { layer: "minimap", translateRatio: 0, rotateRatio: 0, scaleRatio: 0 }
+
+// One parallax layer on top of the auto-bound set — the whole `bindings`
+// array for a scene where every other world layer follows at ratio 1
+[{ layer: "clouds", translateRatio: 1.4 }]
 ```
 
 ### `syncCameraTransform`
@@ -991,7 +1018,7 @@ const tree = this.use(SceneRenderTreeKey);
 const layer = tree.get("world");
 layer.container.addChild(myDisplayObject);
 
-// Also resolvable from a Scene subclass (onEnter onward) — Scene.use is
+// Also resolvable from anything holding the scene (onEnter onward) — Scene.use is
 // scope-aware, so a scene-scoped effect/mask can be attached at setup:
 class MyScene extends Scene {
   onEnter() {

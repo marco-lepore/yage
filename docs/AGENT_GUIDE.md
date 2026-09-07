@@ -324,8 +324,8 @@ The Inspector is your primary debugging tool. An engine created with `debug: tru
 // Full state snapshot
 window.__yage__.inspector.snapshot();
 
-// Find entity
-window.__yage__.inspector.getEntityByName("player");
+// Find entity, by name or by entity id
+window.__yage__.inspector.getEntity("player");
 
 // Check position
 window.__yage__.inspector.getEntityPosition("ball");

@@ -174,7 +174,7 @@ describe("Inspector", () => {
     );
   });
 
-  it("getEntityByName finds entity", async () => {
+  it("getEntity finds entity", async () => {
     const { inspector, scenes } = setup();
     const scene = new TestScene("game");
     await scenes.push(scene);
@@ -182,7 +182,7 @@ describe("Inspector", () => {
     e.tags.add("hero");
     e.add(new Transform({ position: new Vec2(10, 20) }));
 
-    const snap = inspector.getEntityByName("player");
+    const snap = inspector.getEntity("player");
     expect(snap).toBeDefined();
     expect(snap?.name).toBe("player");
     expect(snap?.tags).toContain("hero");
@@ -190,15 +190,142 @@ describe("Inspector", () => {
     expect(snap?.components).toContain("Transform");
   });
 
-  it("getEntityByName returns undefined for missing", async () => {
+  it("getEntity returns undefined for missing", async () => {
     const { inspector, scenes } = setup();
     await scenes.push(new TestScene("game"));
-    expect(inspector.getEntityByName("nope")).toBeUndefined();
+    expect(inspector.getEntity("nope")).toBeUndefined();
   });
 
-  it("getEntityByName returns undefined with no active scene", async () => {
+  it("getEntity returns undefined with no active scene", async () => {
     const { inspector } = setup();
-    expect(inspector.getEntityByName("anything")).toBeUndefined();
+    expect(inspector.getEntity("anything")).toBeUndefined();
+  });
+
+  it("getEntity resolves one of several same-named entities by id", async () => {
+    const { inspector, scenes } = setup();
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    for (let i = 0; i < 3; i++) {
+      scene
+        .spawn("lantern")
+        .add(new Transform({ position: new Vec2(i * 10, i * 20) }));
+    }
+
+    const third = inspector.getEntities()[2];
+    expect(third).toBeDefined();
+    const snap = inspector.getEntity(third!.id);
+    expect(snap?.position).toEqual({ x: 20, y: 40 });
+    // The name form still answers with the first match.
+    expect(inspector.getEntity("lantern")?.position).toEqual({ x: 0, y: 0 });
+  });
+
+  it("getComponentData reads a specific same-named entity by id", async () => {
+    const { inspector, scenes } = setup();
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    for (const hp of [10, 20, 30]) {
+      scene.spawn("lantern").add(new Health(hp));
+    }
+
+    const second = inspector.getEntities()[1];
+    expect(second).toBeDefined();
+    const byId = inspector.getComponentData(second!.id, "Health") as Record<
+      string,
+      unknown
+    >;
+    expect(byId["hp"]).toBe(20);
+    const byName = inspector.getComponentData("lantern", "Health") as Record<
+      string,
+      unknown
+    >;
+    expect(byName["hp"]).toBe(10);
+  });
+
+  it("hasComponent and getEntityPosition accept an entity id", async () => {
+    const { inspector, scenes } = setup();
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    const e = scene.spawn("turret");
+    e.add(new Health(5));
+    e.add(new Transform({ position: new Vec2(7, 9) }));
+
+    expect(inspector.hasComponent(e.id, "Health")).toBe(true);
+    expect(inspector.hasComponent(e.id, "Sprite")).toBe(false);
+    expect(inspector.getEntityPosition(e.id)).toEqual({ x: 7, y: 9 });
+
+    const unknownId = e.id + 1000;
+    expect(inspector.hasComponent(unknownId, "Health")).toBe(false);
+    expect(inspector.getEntityPosition(unknownId)).toBeUndefined();
+    expect(inspector.getEntity(unknownId)).toBeUndefined();
+  });
+
+  it("resolves an entity id spelled as a string", async () => {
+    const { inspector, scenes } = setup();
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    scene.spawn("player").add(new Health(42));
+
+    const world = inspector.snapshot();
+    const idString = world.scenes[0]?.entities[0]?.id;
+    expect(typeof idString).toBe("string");
+    expect(inspector.getComponentData(idString!, "Health")).toEqual(
+      inspector.getComponentData(Number(idString), "Health"),
+    );
+  });
+
+  it("a name wins over an entity id with the same spelling", async () => {
+    const { inspector, scenes } = setup();
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    const target = scene.spawn("target");
+    target.add(new Health(1));
+    const impostor = scene.spawn(String(target.id));
+    impostor.add(new Health(2));
+
+    const data = inspector.getComponentData(
+      String(target.id),
+      "Health",
+    ) as Record<string, unknown>;
+    expect(data["hp"]).toBe(2);
+    expect(inspector.getEntity(String(target.id))?.name).toBe(
+      String(target.id),
+    );
+    expect(inspector.getEntity(target.id)?.name).toBe("target");
+  });
+
+  it("an entity id reaches a dormant entity that its name does not", async () => {
+    const { inspector, scenes } = setup();
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    const e = scene.spawn("ghost");
+    e.setActive(false);
+
+    expect(inspector.getEntity("ghost")).toBeUndefined();
+    expect(inspector.getEntity(e.id)?.active).toBe(false);
+  });
+
+  it("an entity id reaches a scene below the active one", async () => {
+    const { inspector, scenes } = setup();
+    const base = new TestScene("base");
+    await scenes.push(base);
+    const marker = base.spawn("base-marker");
+    await scenes.push(new TestScene("overlay"));
+
+    expect(inspector.getEntity("base-marker")).toBeUndefined();
+    expect(inspector.getEntity(marker.id)?.name).toBe("base-marker");
+  });
+
+  it("a destroyed entity does not resolve by id", async () => {
+    const { inspector, scenes } = setup();
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    const e = scene.spawn("doomed");
+    const id = e.id;
+    e.destroy();
+    expect(inspector.getEntity(id)).toBeUndefined();
+
+    scene._flushDestroyQueue();
+    expect(inspector.getEntity(id)).toBeUndefined();
   });
 
   it("getEntityPosition returns position", async () => {
@@ -883,6 +1010,10 @@ describe("Inspector", () => {
         readonly other = this.sibling(Other);
         readonly bus = this.service(EventBusKey);
         label = "lazy";
+        sceneBus?: object;
+        onAdd(): void {
+          this.sceneBus = this.scene.service(EventBusKey);
+        }
       }
 
       const { inspector, scenes } = setup();
@@ -898,6 +1029,7 @@ describe("Inspector", () => {
       >;
       expect("other" in data).toBe(false);
       expect("bus" in data).toBe(false);
+      expect("sceneBus" in data).toBe(false);
       expect(data["label"]).toBe("lazy");
     });
   });

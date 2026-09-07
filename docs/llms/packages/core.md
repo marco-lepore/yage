@@ -326,7 +326,7 @@ someEntity.emit(DamagedEvent, { amount: 10 }); // handler runs with entity = som
 
 Scene-level subscriptions are released when the scene exits, together with its entities, so subscribe in `onEnter` (or from a component through `listenScene`). A scene instance pushed again starts with none.
 
-`Scene.registerScoped<T>(key: ServiceKey<T>, value: T)` (public) attaches a scene-scoped service resolvable via `Component.use(key)`, and via `Scene.use(key)` / `Scene.service(key)` from the scene itself. Both are scope-aware: scene scope first, then engine. Plugins call it from `beforeEnter`; game code can call it from `onEnter` for scene-local state. Every key registered this way is auto-unregistered on scene exit (after `onExit` and plugin `afterExit` hooks), so scenes don't leak services into one another. `Scene.tryResolveScoped<T>(key)` (public) reads a scene-scoped service without engine-scope fallback, returning `undefined` when absent. Use it in systems that iterate scenes. `_registerScoped` / `_resolveScoped` are kept internal aliases — prefer the public names in new code.
+`Scene.registerScoped<T>(key: ServiceKey<T>, value: T)` (public) attaches a scene-scoped service resolvable via `Component.use(key)`, and via `Scene.use(key)` / `Scene.service(key)`. Both are public and scope-aware — scene scope first, then engine — so any holder of a scene reference resolves through them, not only the scene subclass: an entity's `setup()` calls `this.scene.use(RandomKey)`. `use` throws when the key resolves nowhere; `service` returns a lazy proxy that resolves on first property access. Plugins call it from `beforeEnter`; game code can call it from `onEnter` for scene-local state. Every key registered this way is auto-unregistered on scene exit (after `onExit` and plugin `afterExit` hooks), so scenes don't leak services into one another. `Scene.tryResolveScoped<T>(key)` (public) reads a scene-scoped service without engine-scope fallback, returning `undefined` when absent. Use it in systems that iterate scenes. `_registerScoped` / `_resolveScoped` are kept internal aliases — prefer the public names in new code.
 
 ### SceneTime — hitstop, slow motion, bullet time, freeze frames
 
@@ -855,9 +855,14 @@ Snapshot readings:
 | `PhysicsSnapshot.elapsed`                    | Physics-world seconds, or `0` without physics   |
 
 All entity counts exclude destroyed entities and include dormant/inactive
-ones. Entity name helpers return the first active match. Scene ids remain
-unique for the Inspector lifetime, so rebuilt scene instances get different
-ids; do not use them as cross-run golden keys. Compare elapsed timestamps
+ones. The per-entity query helpers (`getEntity`, `getEntityPosition`,
+`hasComponent`, `getComponentData`) take a name or an entity id: a name
+resolves the first active entity of the active scene; an id (a number from
+`getEntities()`, or the string form from `snapshot()` and the event log)
+resolves one entity anywhere on the scene stack, dormant and inactive
+included, destroyed excluded. A string is matched as a name first. Scene ids
+remain unique for the Inspector lifetime, so rebuilt scene instances get
+different ids; do not use them as cross-run golden keys. Compare elapsed timestamps
 only with readings from the same clock. Inspector snapshots are diagnostics,
 not save data. See `debug.md` for event and drive examples.
 

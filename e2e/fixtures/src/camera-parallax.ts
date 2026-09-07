@@ -49,11 +49,12 @@ class ParallaxScene extends Scene {
 
     this.camera = this.spawn(CameraEntity, {
       position: new Vec2(0, 0),
+      // "world" and the auto-created "default" layer are left out: they
+      // stay auto-bound at full strength.
       bindings: [
         { layer: "sky", translateRatio: 0.1 },
         { layer: "far", translateRatio: 0.3 },
         { layer: "mid", translateRatio: 0.6 },
-        { layer: "world", translateRatio: 1 },
       ],
     });
 

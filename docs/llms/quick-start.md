@@ -116,8 +116,10 @@ await engine.start();
 // In the browser console:
 window.__yage__.inspector.snapshot(); // full engine state
 window.__yage__.inspector.getEntities(); // all entities in active scene
-window.__yage__.inspector.getEntityByName("player"); // first active entity with this name
+window.__yage__.inspector.getEntity("player"); // first active entity with this name
 window.__yage__.inspector.getComponentData("player", "SpriteComponent");
+const id = window.__yage__.inspector.getEntities()[0].id; // entity id
+window.__yage__.inspector.getComponentData(id, "SpriteComponent"); // one specific entity
 window.__yage__.inspector.getSceneStack(); // scenes + pause state
 window.__yage__.inspector.getErrors(); // failures recorded by ErrorBoundary
 window.__yage__.inspector.time.freeze(); // stop auto-advance

@@ -67,7 +67,7 @@ async function setup(cap = 8) {
         position: new Vec2(30, 40),
         zoom: 2,
         rotation: 0.5,
-        bindings: [],
+        autoBind: false,
       }),
     );
   const upperCamera = top
@@ -94,7 +94,7 @@ async function setup(cap = 8) {
 }
 
 describe("scene debug targets", () => {
-  it("draws stacked vectors through their scene's effective camera despite explicit bindings", async () => {
+  it("draws stacked vectors through their scene's effective camera even when it binds no layer", async () => {
     const {
       engine,
       api,

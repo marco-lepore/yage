@@ -141,7 +141,7 @@ export async function getEntityByName(
   return page.evaluate((entityName) => {
     const g = window.__yage__;
     if (!g) throw new Error("__yage__ not available");
-    return g.inspector.getEntityByName(entityName);
+    return g.inspector.getEntity(entityName);
   }, name);
 }
 

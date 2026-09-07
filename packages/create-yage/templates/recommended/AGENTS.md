@@ -118,6 +118,6 @@ in the browser console:
 ```js
 window.__yage__.inspector.snapshot();
 window.__yage__.inspector.getEntities();
-window.__yage__.inspector.getEntityByName("player");
+window.__yage__.inspector.getEntity("player"); // name, or an entity id
 window.__yage__.inspector.getComponentData("player", "RigidBodyComponent");
 ```

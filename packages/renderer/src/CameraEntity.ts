@@ -52,8 +52,18 @@ export interface CameraEntityParams {
   bounds?: CameraBounds;
   /** Initial zoom level. Default: 1. */
   zoom?: number;
-  /** Per-layer bindings. Omit to auto-bind all layers. */
+  /**
+   * Per-layer bindings applied on top of the auto-bound world layers. An
+   * entry replaces the binding for the layer it names; an entry naming a
+   * screen-space layer adds it.
+   */
   bindings?: CameraBinding[];
+  /**
+   * Bind every world-space layer at full strength before applying
+   * `bindings`. Default: `true`. `false` binds exactly what `bindings`
+   * names, and nothing else.
+   */
+  autoBind?: boolean;
   /** Camera priority (lower = processed first). Default: 0. */
   priority?: number;
   /** Camera name (for multi-camera lookup). */
@@ -123,6 +133,7 @@ export class CameraEntity extends Entity {
       );
     }
     if (params.bindings !== undefined) camOpts.bindings = params.bindings;
+    if (params.autoBind !== undefined) camOpts.autoBind = params.autoBind;
     if (params.priority !== undefined) camOpts.priority = params.priority;
     if (params.name !== undefined) camOpts.name = params.name;
     this.cam = this.add(new CameraComponent(camOpts));

@@ -100,15 +100,14 @@ class WorldScene extends Scene {
     this.drawMid();
     this.drawWorld();
 
-    // Camera with explicit bindings so each layer can have its own
-    // translateRatio — classic parallax. Omit `bindings` and you'd get
-    // the default "follow every declared layer at ratio 1".
+    // Every world-space layer is auto-bound at ratio 1; a binding gives
+    // one layer its own translateRatio — classic parallax. "world" is not
+    // listed, so it follows the camera at full strength.
     const cam = this.spawn(CameraEntity, {
       bindings: [
         { layer: "sky", translateRatio: 0.1 },
         { layer: "far", translateRatio: 0.3 },
         { layer: "mid", translateRatio: 0.6 },
-        { layer: "world", translateRatio: 1 },
       ],
     });
 

@@ -64,10 +64,9 @@ that controls whether cameras transform it:
   gameplay layers (background, tiles, characters, fx), parallax, and
   entity-anchored UI (interaction prompts, health bars, damage numbers).
 - **`"screen"`** — layers stay fixed to the viewport. Use for HUD,
-  menus, dialogs, and any UI you want anchored to the screen. A
-  `CameraEntity` spawned without explicit `bindings` skips screen-space
-  layers on auto-bind; you can still bind one explicitly by naming it
-  in `bindings`.
+  menus, dialogs, and any UI you want anchored to the screen. Cameras
+  skip screen-space layers on auto-bind; you can still bind one by
+  naming it in a camera's `bindings`.
 
 If no `"ui"` layer is declared, `@yagejs/ui` auto-provisions one as
 `space: "screen"` the first time a `UISurface` is added, so HUDs just

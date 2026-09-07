@@ -27,6 +27,7 @@ import type { SpawnBatch } from "./SpawnBatch.js";
 import { SpawnBatchRunner } from "./SpawnBatch.js";
 import { devWarn } from "./internal/dev.js";
 import { isolate } from "./internal/isolate.js";
+import { lazyRefPrototype } from "./internal/lazyRef.js";
 
 /**
  * Options accepted by the trailing argument of `Scene.spawn` and
@@ -349,11 +350,19 @@ export abstract class Scene {
    * Resolve a service by key. Scene-scoped values (registered via
    * `registerScoped` — e.g. the renderer's per-scene render tree) take
    * precedence over engine scope, so the obvious call works in the obvious
-   * place:
+   * place. Callable from the scene itself and from anything holding a scene
+   * reference — an entity's `setup()`, a helper function, an addon:
    * ```ts
-   * onEnter() {
-   *   const tree = this.use(SceneRenderTreeKey); // resolvable from onEnter on
-   *   tree.fx.addEffect(crt());
+   * class LevelScene extends Scene {
+   *   onEnter() {
+   *     this.use(SceneRenderTreeKey).fx.addEffect(crt());
+   *   }
+   * }
+   *
+   * class Torch extends Entity {
+   *   setup() {
+   *     const lighting = this.scene.use(LightingWorldKey);
+   *   }
    * }
    * ```
    * Scene-scoped values are registered by plugin `beforeEnter` hooks, which
@@ -361,7 +370,18 @@ export abstract class Scene {
    * lifecycle. Throws if the key resolves nowhere. For lazy resolution at
    * field-declaration time, use `service()`.
    */
-  protected use<T>(key: ServiceKey<T>): T {
+  use<T>(key: ServiceKey<T>): T {
+    // The engine context is set when the SceneManager pushes the scene. A
+    // call from a subclass constructor, or on a scene that was never pushed,
+    // would otherwise throw a `TypeError` from dereferencing `this._context`.
+    if (!this._context) {
+      throw new Error(
+        `Scene.use(${key.id}) called before scene "${this.name}" has an engine context. ` +
+          `The context is set when the scene is pushed, so resolve services from ` +
+          `onEnter() or later, not from the scene's constructor.`,
+      );
+    }
+
     const scoped = this._resolveScoped(key);
     if (scoped !== undefined) return scoped;
 
@@ -404,9 +424,9 @@ export abstract class Scene {
    * caches the first resolved value, which would go stale if the scene is
    * exited and re-entered (the scoped value is recreated each enter).
    */
-  protected service<T extends object>(key: ServiceKey<T>): T {
+  service<T extends object>(key: ServiceKey<T>): T {
     let resolved: T | undefined;
-    return new Proxy({} as object, {
+    return new Proxy(Object.create(lazyRefPrototype) as object, {
       get: (_target, prop) => {
         resolved ??= this.use(key);
         const value = (resolved as Record<string | symbol, unknown>)[prop];

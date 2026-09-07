@@ -118,6 +118,8 @@ inspector.events.isEnabled(); // current on/off state
 inspector.events.clearLog(); // discard retained entries before observing another action
 inspector.snapshotJSON(); // stable, sorted JSON for diffing
 inspector.snapshotScene("level2"); // one scene's snapshot, by name or by id
+inspector.getEntity(42); // one entity, by name or by entity id
+inspector.getComponentData(42, "Health"); // same addressing for the component reads
 inspector.getEntityCount(); // live entities across the scene stack, no snapshot built
 inspector.time.isAdvancing(); // true if a real frame ticked within the last 250ms
 ```
@@ -163,10 +165,20 @@ Engine events carry live objects — `component:added` passes the `Component` it
 
 Scene ids identify scene instances for the Inspector's lifetime. New instances
 receive new ids even when they have the same name, so ids are not stable keys
-for comparing rebuilt runs. Entity name helpers keep first-active-match
-semantics. All entity counts exclude destroyed entities and include dormant
-and inactive ones. `WorldEntitySnapshot` includes `name`, optional `key`,
-`generation` and `pooled` alongside `id` and `active`.
+for comparing rebuilt runs. All entity counts exclude destroyed entities and
+include dormant and inactive ones.
+
+The per-entity query helpers (`getEntity`, `getEntityPosition`,
+`hasComponent`, `getComponentData`) take a name or an entity id. A name
+resolves the first active entity of the active scene. An id resolves one
+entity anywhere on the scene stack, dormant and inactive included, destroyed
+excluded — the population `getEntityCount()` counts. The id may be a number
+(`getEntities()[].id`) or a string (`snapshot().scenes[].entities[].id`, an
+event log `targetId`). A string is matched as a name first, so a name wins
+over an id with the same spelling.
+
+`WorldEntitySnapshot` includes `name`, optional `key`, `generation` and
+`pooled` alongside `id` and `active`.
 
 Snapshot clock readings come from their runtime owners: `fixedStepIndex` from
 the scheduler, `interpolationAlpha` from the game loop, each scene's `elapsed`

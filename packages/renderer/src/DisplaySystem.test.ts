@@ -638,6 +638,180 @@ describe("DisplaySystem", () => {
     >;
     expect(ui.scale.x).toBe(2);
     expect(ui.position.x).toBe(200);
+    // Naming a screen-space layer adds it; the world layers stay auto-bound.
+    const def = tree.defaultLayer.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    expect(def.scale.x).toBe(2);
+    expect(def.position.x).toBe(200);
+  });
+
+  it("one explicit binding leaves the other world layers auto-bound", () => {
+    const { scene, tree } = setup();
+    tree.ensureLayer({ name: "world", order: 0 });
+    tree.ensureLayer({ name: "parallax", order: 10 });
+
+    const camEntity = spawnEntityInScene(scene, "camera");
+    camEntity.add(
+      new CameraComponent({
+        position: new Vec2(100, 50),
+        zoom: 2,
+        bindings: [{ layer: "parallax", translateRatio: 0.5 }],
+      }),
+    );
+
+    system.update();
+
+    const parallax = tree.get("parallax").container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    // translationScale = 2 * 0.5 = 1: 400 - 100 = 300, 300 - 50 = 250
+    expect(parallax.position.x).toBe(300);
+    expect(parallax.position.y).toBe(250);
+
+    for (const name of ["world", "default"]) {
+      const layer = tree.get(name).container as unknown as InstanceType<
+        typeof mocks.MockContainer
+      >;
+      expect(layer.scale.x).toBe(2);
+      expect(layer.position.x).toBe(200);
+      expect(layer.position.y).toBe(200);
+    }
+  });
+
+  it("binds a world layer created after the camera on the next frame", () => {
+    const { scene, tree } = setup();
+    tree.ensureLayer({ name: "parallax", order: 10 });
+
+    const camEntity = spawnEntityInScene(scene, "camera");
+    camEntity.add(
+      new CameraComponent({
+        position: new Vec2(100, 50),
+        zoom: 2,
+        bindings: [{ layer: "parallax", translateRatio: 0.5 }],
+      }),
+    );
+
+    system.update();
+
+    tree.ensureLayer({ name: "late", order: 5 });
+    system.update();
+
+    const late = tree.get("late").container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    expect(late.scale.x).toBe(2);
+    expect(late.position.x).toBe(200);
+    expect(late.position.y).toBe(200);
+  });
+
+  it("autoBind: false binds exactly the listed layers", () => {
+    const { scene, tree } = setup();
+    tree.ensureLayer({ name: "world", order: 0 });
+    tree.ensureLayer({ name: "parallax", order: 10 });
+
+    const camEntity = spawnEntityInScene(scene, "camera");
+    camEntity.add(
+      new CameraComponent({
+        position: new Vec2(100, 50),
+        zoom: 2,
+        autoBind: false,
+        bindings: [{ layer: "parallax", translateRatio: 0.5 }],
+      }),
+    );
+
+    system.update();
+
+    const parallax = tree.get("parallax").container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    expect(parallax.scale.x).toBe(2);
+    expect(parallax.position.x).toBe(300);
+
+    for (const name of ["world", "default"]) {
+      const layer = tree.get(name).container as unknown as InstanceType<
+        typeof mocks.MockContainer
+      >;
+      expect(layer.scale.x).toBe(1);
+      expect(layer.position.x).toBe(0);
+      expect(layer.position.y).toBe(0);
+      expect(layer.rotation).toBe(0);
+    }
+  });
+
+  it("autoBind: false without bindings leaves every layer at identity", () => {
+    const { scene, tree } = setup();
+    tree.ensureLayer({ name: "world", order: 0 });
+
+    const camEntity = spawnEntityInScene(scene, "camera");
+    camEntity.add(
+      new CameraComponent({
+        position: new Vec2(100, 50),
+        zoom: 2,
+        autoBind: false,
+      }),
+    );
+
+    system.update();
+
+    for (const name of ["world", "default"]) {
+      const layer = tree.get(name).container as unknown as InstanceType<
+        typeof mocks.MockContainer
+      >;
+      expect(layer.scale.x).toBe(1);
+      expect(layer.position.x).toBe(0);
+      expect(layer.position.y).toBe(0);
+      expect(layer.rotation).toBe(0);
+    }
+  });
+
+  it("an empty bindings array binds every world layer, like omitting it", () => {
+    const { scene, tree } = setup();
+    tree.ensureLayer({ name: "world", order: 0 });
+
+    const camEntity = spawnEntityInScene(scene, "camera");
+    camEntity.add(
+      new CameraComponent({
+        position: new Vec2(100, 50),
+        zoom: 2,
+        bindings: [],
+      }),
+    );
+
+    system.update();
+
+    for (const name of ["world", "default"]) {
+      const layer = tree.get(name).container as unknown as InstanceType<
+        typeof mocks.MockContainer
+      >;
+      expect(layer.scale.x).toBe(2);
+      expect(layer.position.x).toBe(200);
+      expect(layer.position.y).toBe(200);
+    }
+  });
+
+  it("the last of two bindings naming one layer wins", () => {
+    const { scene, tree } = setup();
+    tree.ensureLayer({ name: "parallax", order: 10 });
+
+    const camEntity = spawnEntityInScene(scene, "camera");
+    camEntity.add(
+      new CameraComponent({
+        position: new Vec2(100, 50),
+        zoom: 2,
+        bindings: [
+          { layer: "parallax", translateRatio: 0.25 },
+          { layer: "parallax", translateRatio: 0.5 },
+        ],
+      }),
+    );
+
+    system.update();
+
+    const parallax = tree.get("parallax").container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    expect(parallax.position.x).toBe(300);
   });
 
   it("resets layers to identity when the last camera is disabled", () => {

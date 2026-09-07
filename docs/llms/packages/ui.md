@@ -376,7 +376,7 @@ on each (re)open.
 
 For custom popovers / menus, use the lower-level pieces directly:
 
-- `scene._resolveScoped(FloatingOverlayKey).acquire()` → a
+- `scene.use(FloatingOverlayKey).acquire()` → a
   `FloatingHandle` with `setReference(get)`, `setConfig(FloatConfig)`,
   `setLayout(fn)`, `invalidateLayout()`, `setActive(bool)`,
   `bringToFront()`, `release()`, and a `container` to add content to.
