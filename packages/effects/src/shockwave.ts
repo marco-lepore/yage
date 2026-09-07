@@ -4,6 +4,10 @@ import type { Effect } from "@yagejs/renderer";
 import { ShockwaveFilter } from "pixi-filters";
 import type { Container, FilterSystem, RenderSurface, Texture } from "pixi.js";
 import type { ShockwaveHandle } from "./handles.js";
+import { validateOneOf } from "./validate.js";
+
+/** Which way a {@link shockwave} ring travels. */
+export type ShockwaveDirection = "in" | "out";
 
 /** Options for the {@link shockwave} preset. */
 export interface ShockwaveOptions {
@@ -20,7 +24,12 @@ export interface ShockwaveOptions {
    * `-1` (default) keeps the ring expanding forever (no max-radius fade).
    */
   radius?: number;
-  /** Auto-trigger duration in seconds — ramp `time` from 0 then idle. Default: 1. */
+  /**
+   * Ring travel. `"out"` expands from the trigger point. `"in"` starts
+   * `speed × duration` pixels away and contracts onto it. Default: `"out"`.
+   */
+  direction?: ShockwaveDirection;
+  /** Auto-trigger duration in seconds — ramp `time` between 0 and `duration` then idle. Default: 1. */
   duration?: number;
 }
 
@@ -144,9 +153,13 @@ const PARKED_TIME = 1e6;
  * Concentric-ring ripple via pixi-filters' ShockwaveFilter — the impact
  * polish for explosions, slams, blast waves.
  *
- * Best applied at scene scope: the ring expands outward from `center` and
- * is naturally clipped at the host's bounds, so a component-scoped
+ * Best applied at scene scope: the ring travels between `center` and the
+ * host's bounds and is naturally clipped there, so a component-scoped
  * shockwave on a small sprite reads as a tiny "bump" rather than a ring.
+ *
+ * `direction: "in"` mirrors the ramp — the ring starts `speed × duration`
+ * local pixels from the trigger point and contracts onto it. With a
+ * configured `radius` it stays hidden until it reaches that radius.
  *
  * **Coords are in the filter target's local space** — virtual pixels for
  * scene/layer-scope effects, sprite-local for component-scope. Applies
@@ -169,6 +182,11 @@ export const shockwave = defineEffect<ShockwaveHandle, ShockwaveOptions>({
   name: "yage:shockwave",
   factory: (options) => {
     const duration = options.duration ?? 1;
+    const inward =
+      validateOneOf("shockwave", "direction", options.direction ?? "out", [
+        "in",
+        "out",
+      ] as const) === "in";
     const filter = new YageShockwaveFilter({
       // Constructor needs SOMETHING for these to satisfy upstream init,
       // but our apply() override rewrites all five each frame from the
@@ -231,12 +249,15 @@ export const shockwave = defineEffect<ShockwaveHandle, ShockwaveOptions>({
           // mid-frame and produce a visible glitch.
           inFlight?.cancel();
           filter.centerLocal = { x, y };
-          filter.time = 0;
+          // An inward ring is the outward ramp mirrored: the same clock runs
+          // from `duration` down to zero, so the ring starts `speed × duration`
+          // local px out and closes onto the trigger point.
+          filter.time = inward ? duration : 0;
           inFlight = base.run(
             new Process({
               duration,
-              update: (dt) => {
-                filter.time += dt;
+              update: (_dt, elapsed) => {
+                filter.time = inward ? duration - elapsed : elapsed;
               },
               onComplete: () => {
                 filter.time = PARKED_TIME;

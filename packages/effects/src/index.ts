@@ -32,7 +32,7 @@ export { godRay } from "./godRay.js";
 export type { GodRayOptions } from "./godRay.js";
 
 export { shockwave } from "./shockwave.js";
-export type { ShockwaveOptions } from "./shockwave.js";
+export type { ShockwaveDirection, ShockwaveOptions } from "./shockwave.js";
 
 export { motionBlur } from "./motionBlur.js";
 export type { MotionBlurOptions } from "./motionBlur.js";

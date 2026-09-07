@@ -6,7 +6,9 @@
  * host renders undefined output with nothing pointing back at the call that
  * caused it. Every public numeric entry point — preset options and handle
  * setters alike — runs through these helpers so the throw names the effect and
- * the offending input instead of surfacing later as a blank sprite.
+ * the offending input instead of surfacing later as a blank sprite. The same
+ * applies to a string option drawn from a fixed set, where the alternative is a
+ * silent fall back to the default.
  *
  * @internal
  */
@@ -78,4 +80,20 @@ export function validatePoint<T extends { x: number; y: number }>(
   validateFinite(effect, `${label}.x`, point.x);
   validateFinite(effect, `${label}.y`, point.y);
   return point;
+}
+
+/** Reject a value outside `allowed`. */
+export function validateOneOf<T extends string>(
+  effect: string,
+  label: string,
+  value: string,
+  allowed: readonly T[],
+): T {
+  if (!(allowed as readonly string[]).includes(value)) {
+    const list = allowed.map((v) => `"${v}"`).join(", ");
+    throw new Error(
+      `${effect}: ${label} must be one of ${list}, got ${value}.`,
+    );
+  }
+  return value as T;
 }

@@ -288,12 +288,12 @@ export class ShowcaseScene extends Scene {
     );
     mkToggle(sceneSection, "bulgePinch", "bulgePinch", () =>
       tree.fx.addEffect(
-        // Center is normalized scene coords (0..1), so { 0.5, 0.5 } is
-        // dead-center of the canvas regardless of resolution.
+        // Center and radius are in virtual pixels, the scene's own
+        // coordinates.
         bulgePinch({
           strength: 0.6,
           radius: 260,
-          center: { x: 0.4, y: 0.5 },
+          center: { x: 360, y: 320 },
         }),
       ),
     );
