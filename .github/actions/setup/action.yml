@@ -1,0 +1,38 @@
+name: Setup
+description: >-
+  Node, dependencies, and the Turbo cache. Every job starts with this so the
+  cache key layout lives in one place.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 24
+        cache: npm
+
+    - run: npm ci
+      shell: bash
+
+    # Turbo hashes each task's declared inputs itself, so the cache is only a
+    # store of verified artifacts; a stale entry is a miss, never a wrong hit.
+    # Keys are per job so a restore prefers that job's own artifacts; the last
+    # restore key falls back to any job's cache (a new job name, a fresh
+    # fork). Same-key saves are skipped, hence the SHA.
+    - uses: actions/cache@v4
+      with:
+        path: .turbo/cache
+        key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+        restore-keys: |
+          turbo-${{ runner.os }}-${{ github.job }}-
+          turbo-${{ runner.os }}-
+
+    # Each save re-uploads everything restored plus the new entries, so the
+    # cache grows with every run. Drop entries written more than two weeks
+    # ago (a hit does not touch an entry, so this is a rebuild cadence, not an
+    # LRU); the tar preserves modification times across round trips.
+    - run: |
+        if [ -d .turbo/cache ]; then
+          find .turbo/cache -type f -mtime +14 -delete
+        fi
+      shell: bash

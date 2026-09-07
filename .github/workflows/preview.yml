@@ -1,0 +1,115 @@
+name: Preview
+
+# On-demand preview deploys of the docs site and the examples to Cloudflare
+# Pages. Add the `preview` label to a pull request to get one; every later
+# push to that PR redeploys it, and removing the label stops the deploys.
+# Production stays on Cloudflare's Git integration (the `docs-release`
+# branch, pushed by the release workflow). Both Pages projects need their
+# automatic preview deployments turned off in the Cloudflare dashboard, or
+# they keep building every branch push on their own.
+
+on:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  deployments: write
+  pull-requests: write
+
+jobs:
+  deploy:
+    name: Deploy preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Fork PRs get no secrets, so the upload could not run for them anyway.
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'preview') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      # The docs site serves the examples under /examples/, so their asset
+      # URLs are built with that base. dist/site is the assembled site.
+      - name: Build the site
+        run: npm run build:site
+        env:
+          VITE_BASE: /examples/
+
+      - name: Deploy the site
+        id: site
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          gitHubToken: ${{ github.token }}
+          command: >-
+            pages deploy dist/site
+            --project-name=yage
+            --branch=${{ github.head_ref }}
+            --commit-hash=${{ github.event.pull_request.head.sha }}
+            --commit-dirty=true
+
+      # The standalone examples site serves them at the root, so this is a
+      # second examples build with the default base.
+      - name: Build the standalone examples
+        run: npx turbo build --filter=@yagejs/examples
+
+      - name: Deploy the standalone examples
+        id: examples
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          gitHubToken: ${{ github.token }}
+          command: >-
+            pages deploy examples/dist
+            --project-name=yage-examples
+            --branch=${{ github.head_ref }}
+            --commit-hash=${{ github.event.pull_request.head.sha }}
+            --commit-dirty=true
+
+      # One comment per PR, found by its marker and edited in place on every
+      # redeploy. Other workflows comment as the same bot, so "last comment"
+      # is not a safe handle.
+      - name: Comment the preview URLs
+        uses: actions/github-script@v7
+        env:
+          SITE_URL: ${{ steps.site.outputs.deployment-url }}
+          SITE_ALIAS: ${{ steps.site.outputs.pages-deployment-alias-url }}
+          EXAMPLES_URL: ${{ steps.examples.outputs.deployment-url }}
+          EXAMPLES_ALIAS: ${{ steps.examples.outputs.pages-deployment-alias-url }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        with:
+          script: |
+            const marker = "<!-- preview-deploy -->";
+            const e = process.env;
+            const body = [
+              marker,
+              "### Preview",
+              "",
+              "| Site | Branch alias | This commit |",
+              "| --- | --- | --- |",
+              `| Docs + examples | ${e.SITE_ALIAS} | ${e.SITE_URL} |`,
+              `| Standalone examples | ${e.EXAMPLES_ALIAS} | ${e.EXAMPLES_URL} |`,
+              "",
+              `Built from ${e.SHA}. Redeploys on every push while the \`preview\` label is on.`,
+            ].join("\n");
+
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find((c) => c.body && c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number, body });
+            }

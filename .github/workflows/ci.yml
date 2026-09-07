@@ -10,6 +10,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Every job is independent and starts at once; Turbo's cache (restored by
+# .github/actions/setup) is what keeps the repeated package builds cheap.
+# The docs site is built by the `docs` job only, and only when docs changed.
 jobs:
   lint:
     name: Lint
@@ -17,70 +20,39 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup
       - run: npx turbo lint
       - run: npm run format:check
 
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
-    needs: [lint]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup
       - run: npx turbo typecheck
 
   test:
     name: Test
     runs-on: ubuntu-latest
-    needs: [lint]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup
       - run: npx turbo test
       - run: node --test scripts/clamp-package-versions.test.mjs
-
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    needs: [typecheck, test]
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npx turbo build
 
   e2e:
     name: E2E
     runs-on: ubuntu-latest
-    needs: [build]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npx turbo build
+      - uses: ./.github/actions/setup
+      # Builds every package except the docs site, so this job is also the
+      # check that everything publishable builds.
+      - run: npx turbo build --filter='!@yagejs/docs'
       # Cache the downloaded browsers keyed on the lockfile (which pins the
       # Playwright version). Most runs restore from cache and skip the
       # flaky cdn.playwright.dev download entirely.
@@ -110,3 +82,37 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
       - run: npx turbo e2e
+
+  changes:
+    name: Changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request'
+    outputs:
+      docs: ${{ steps.docs.outputs.changed }}
+    steps:
+      - id: docs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        # A failed listing must fail the step, not read as "nothing changed".
+        run: |
+          files=$(gh pr diff "$PR" --repo "$GITHUB_REPOSITORY" --name-only)
+          if grep -qE '^docs/' <<< "$files"; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [changes]
+    # `!cancelled()` keeps the job eligible on pushes, where `changes` is
+    # skipped, without also running it after a superseded run is cancelled.
+    if: "!cancelled() && (github.event_name == 'push' || needs.changes.outputs.docs == 'true')"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: npx turbo build --filter=@yagejs/docs
