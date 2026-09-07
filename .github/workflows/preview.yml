@@ -31,15 +31,20 @@ jobs:
       contains(github.event.pull_request.labels.*.name, 'preview') &&
       github.event.pull_request.head.repo.full_name == github.repository
     steps:
+      # The branch head, not the merge commit a pull_request event checks out
+      # by default: the deploy is labelled with the branch and the comment
+      # names this commit, and both must be what was actually built.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
       - uses: ./.github/actions/setup
 
-      # The docs site serves the examples under /examples/, so their asset
-      # URLs are built with that base. dist/site is the assembled site.
+      # Builds every package, then assembles dist/site: the docs at the root
+      # with a copy of the examples under /examples/. The examples are built
+      # once here, with the default asset base, and both deploys use that
+      # output — the same thing production does.
       - name: Build the site
         run: npm run build:site
-        env:
-          VITE_BASE: /examples/
 
       - name: Deploy the site
         id: site
@@ -54,11 +59,6 @@ jobs:
             --branch=${{ github.head_ref }}
             --commit-hash=${{ github.event.pull_request.head.sha }}
             --commit-dirty=true
-
-      # The standalone examples site serves them at the root, so this is a
-      # second examples build with the default base.
-      - name: Build the standalone examples
-        run: npx turbo build --filter=@yagejs/examples
 
       - name: Deploy the standalone examples
         id: examples
