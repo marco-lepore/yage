@@ -70,48 +70,85 @@ export interface RigidBodyConfig {
   syncRotation?: boolean;
 }
 
-/** Elastic connection between two bodies. Pulls together when stretched past
- * restLength, pushes apart when compressed below it. Every number is finite;
- * `restLength`, `stiffness` and `damping` are >= 0. */
-export interface SpringJointConfig {
+/** Options shared by every joint. All numbers must be finite. */
+export interface JointConfigBase {
+  /** Attachment point on body A in local pixels. Default: body origin. */
+  anchorA?: Vec2Like;
+  /** Attachment point on body B in local pixels. Default: body origin. */
+  anchorB?: Vec2Like;
+  /** Whether the connected bodies collide. Default: false for fixed joints, true otherwise. */
+  collide?: boolean;
+}
+
+/** Elastic connection that holds a rest length in pixels. */
+export interface SpringJointConfig extends JointConfigBase {
   type: "spring";
-  /** Distance the spring tries to hold, in pixels. */
   restLength: number;
-  /**
-   * Spring strength, mass-relative: a body of mass m stretched by d pixels
-   * accelerates at stiffness * d / m px/s². Passed to the solver unconverted,
-   * and collider mass depends on pixelsPerMeter (density × area in meters) —
-   * retune after changing the scale.
-   */
+  /** Non-negative spring stiffness in mass/s². */
   stiffness: number;
-  /** Resists relative motion along the spring axis. Same mass-relative units as stiffness. */
+  /** Non-negative damping along the spring axis, in mass/s. */
   damping: number;
-  /** Attachment point on body A in pixels, local to the body. Default: body origin. */
-  anchorA?: Vec2Like;
-  /** Attachment point on body B in pixels, local to the body. Default: body origin. */
-  anchorB?: Vec2Like;
 }
 
-/** Inextensible tether that keeps the anchor points within length. Every
- * number is finite; `length` is >= 0. */
-export interface RopeJointConfig {
+/** Tether that keeps the anchors within a maximum distance in pixels. */
+export interface RopeJointConfig extends JointConfigBase {
   type: "rope";
-  /** Maximum distance between the anchor points, in pixels. */
   length: number;
-  /** Attachment point on body A in pixels, local to the body. Default: body origin. */
-  anchorA?: Vec2Like;
-  /** Attachment point on body B in pixels, local to the body. Default: body origin. */
-  anchorB?: Vec2Like;
 }
 
-export type JointConfig = SpringJointConfig | RopeJointConfig;
+/** Weld that joins the anchors and aligns the bodies' rotations. */
+export interface FixedJointConfig extends JointConfigBase {
+  type: "fixed";
+}
 
-/** Live joint created by `PhysicsWorld.addJoint`. */
+/** Finite bounds with min <= max. */
+export interface JointLimits {
+  min: number;
+  max: number;
+}
+
+/** At least one target is required. All numbers must be finite. */
+export interface JointMotorConfig {
+  /** Target speed in rad/s for revolute joints or px/s for prismatic joints. */
+  velocity?: number;
+  /** Target angle in radians or distance along a prismatic axis in pixels. */
+  position?: number;
+  /** Non-negative acceleration-based strength, passed to the solver without conversion. Default: 0. */
+  stiffness?: number;
+  /** Non-negative damping. A velocity-only motor needs a positive value. Default: 0. */
+  damping?: number;
+}
+
+/** Pivot with optional relative-angle limits in radians. */
+export interface RevoluteJointConfig extends JointConfigBase {
+  type: "revolute";
+  limits?: JointLimits;
+  motor?: JointMotorConfig;
+}
+
+/** Slider with optional limits in pixels along its axis. */
+export interface PrismaticJointConfig extends JointConfigBase {
+  type: "prismatic";
+  /** Non-zero axis local to body A, normalized internally. */
+  axis: Vec2Like;
+  limits?: JointLimits;
+  motor?: JointMotorConfig;
+}
+
+export type JointConfig =
+  | SpringJointConfig
+  | RopeJointConfig
+  | FixedJointConfig
+  | RevoluteJointConfig
+  | PrismaticJointConfig;
+
+/** Live joint created by PhysicsWorld.addJoint. */
 export interface JointHandle {
-  /** True while the joint exists in the simulation. Becomes false after remove(), or when either jointed body is disabled or removed. */
   readonly attached: boolean;
   /** Detach and free the joint. Safe to call more than once. */
   remove(): void;
+  /** Replace the motor settings. Throws for joints without a motor. */
+  setMotor(motor: JointMotorConfig): void;
 }
 
 /**

@@ -307,3 +307,138 @@ describe("spring and rope joints (real Rapier)", () => {
     expect(distance(anchor.rb, member.rb)).toBeCloseTo(60, 0);
   });
 });
+
+function freeBody(scene: Scene, name: string, x = 0, y = 0): SpawnedBody {
+  const body = spawnBody(scene, name, x, y, "dynamic");
+  body.rb.lockRotations(false);
+  return body;
+}
+
+describe("fixed, revolute and prismatic joints (real Rapier)", () => {
+  it("fixed holds the anchor offset and angle under gravity", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext();
+    const anchor = spawnBody(scene, "anchor", 0, 0, "static");
+    const ball = freeBody(scene, "ball", 0, 100);
+    physicsWorld.addJoint(anchor.rb, ball.rb, {
+      type: "fixed",
+      anchorA: { x: 0, y: 100 },
+    });
+    step(physicsWorld, 60);
+    expect(ball.rb.positionY).toBeCloseTo(100, 0);
+    expect(ball.rb.rotation).toBeCloseTo(0, 2);
+  });
+
+  it.each([false, true])(
+    "fixed collide: %s controls overlapping collider contacts",
+    async (collide) => {
+      const { scene, physicsWorld } = await createPhysicsTestContext({
+        gravity: { x: 0, y: 0 },
+      });
+      const anchor = spawnBody(scene, "anchor", 0, 0, "static");
+      anchor.entity.add(
+        new ColliderComponent({ shape: { type: "circle", radius: 10 } }),
+      );
+      const ball = freeBody(scene, "ball");
+      const handler = vi.fn();
+      ball.entity.get(ColliderComponent)!.onCollision(handler);
+      physicsWorld.addJoint(anchor.rb, ball.rb, {
+        type: "fixed",
+        ...(collide ? { collide } : {}),
+      });
+      step(physicsWorld, 10);
+      expect(handler.mock.calls.length > 0).toBe(collide);
+    },
+  );
+
+  it("revolute swings around a pin and obeys angular limits", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext();
+    const anchor = spawnBody(scene, "anchor", 0, 0, "static");
+    const ball = freeBody(scene, "ball", 100, 0);
+    physicsWorld.addJoint(anchor.rb, ball.rb, {
+      type: "revolute",
+      anchorB: { x: -100, y: 0 },
+      limits: { min: -0.5, max: 0.5 },
+    });
+    step(physicsWorld, 180);
+    expect(distance(anchor.rb, ball.rb)).toBeCloseTo(100, 0);
+    expect(ball.rb.positionY).toBeGreaterThan(10);
+    expect(ball.rb.rotation).toBeGreaterThanOrEqual(-0.51);
+    expect(ball.rb.rotation).toBeLessThanOrEqual(0.51);
+  });
+
+  it("revolute motor reaches its target speed and can reverse", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext({
+      gravity: { x: 0, y: 0 },
+    });
+    const anchor = spawnBody(scene, "anchor", 0, 0, "static");
+    const ball = freeBody(scene, "ball");
+    const joint = physicsWorld.addJoint(anchor.rb, ball.rb, {
+      type: "revolute",
+      motor: { velocity: 2, damping: 10 },
+    });
+    step(physicsWorld, 120);
+    expect(ball.rb.getAngularVelocity()).toBeCloseTo(2, 1);
+    joint.setMotor({ velocity: -3, damping: 10 });
+    step(physicsWorld, 120);
+    expect(ball.rb.getAngularVelocity()).toBeCloseTo(-3, 1);
+  });
+
+  it("prismatic follows its normalized axis and stops at pixel limits", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext();
+    const anchor = spawnBody(scene, "anchor", 0, 0, "static");
+    const ball = freeBody(scene, "ball");
+    physicsWorld.addJoint(anchor.rb, ball.rb, {
+      type: "prismatic",
+      axis: { x: 0, y: 5 },
+      limits: { min: 0, max: 100 },
+    });
+    step(physicsWorld, 180);
+    expect(ball.rb.positionX).toBeCloseTo(0, 2);
+    expect(ball.rb.positionY).toBeCloseTo(100, 0);
+    expect(ball.rb.rotation).toBeCloseTo(0, 2);
+  });
+
+  it("prismatic converts motor positions and velocities to pixels", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext({
+      gravity: { x: 0, y: 0 },
+    });
+    const anchor = spawnBody(scene, "anchor", 0, 0, "static");
+    const ball = freeBody(scene, "ball");
+    const joint = physicsWorld.addJoint(anchor.rb, ball.rb, {
+      type: "prismatic",
+      axis: { x: 1, y: 0 },
+      motor: { velocity: 50, damping: 10 },
+    });
+    step(physicsWorld, 60);
+    expect(ball.rb.positionX).toBeCloseTo(50, -1);
+    joint.setMotor({ position: 100, stiffness: 40, damping: 10 });
+    step(physicsWorld, 240);
+    expect(ball.rb.positionX).toBeCloseTo(100, 0);
+  });
+});
+
+describe("joint motors", () => {
+  it("rejects a motor on a rope and rejects reconfiguration after detachment", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext();
+    const anchor = spawnBody(scene, "anchor", 0, 0, "static");
+    const ball = freeBody(scene, "ball");
+    const rope = physicsWorld.addJoint(anchor.rb, ball.rb, {
+      type: "rope",
+      length: 100,
+    });
+    expect(() => rope.setMotor({ velocity: 1 })).toThrow(
+      'PhysicsWorld.setMotor: joint type "rope" has no motor.',
+    );
+    rope.remove();
+    const pivot = physicsWorld.addJoint(anchor.rb, ball.rb, {
+      type: "revolute",
+    });
+    expect(() => pivot.setMotor({ velocity: NaN })).toThrow(
+      "PhysicsWorld.setMotor: motor.velocity must be finite",
+    );
+    pivot.remove();
+    expect(() => pivot.setMotor({ velocity: 1 })).toThrow(
+      "joint must be attached",
+    );
+  });
+});

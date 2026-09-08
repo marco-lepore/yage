@@ -1048,40 +1048,128 @@ diagnostics use the engine-scope `PhysicsWorldManagerKey` instead.
 
 ## Joints
 
-Joints connect two rigid bodies in the same scene. Lengths and anchor points
-use pixels. A rope limits the distance between two bodies; a spring pulls them
-toward its `restLength` and also resists relative motion.
+Joints connect bodies to make swings, hinges, sliding platforms, and welded
+structures. Both rigid bodies must already belong to the same scene and their
+entities must be active.
+
+A rope limits the distance between its attachment points. A spring pulls those
+points toward a rest length:
 
 ```typescript
 const world = this.use(PhysicsWorldKey);
-
 const tether = world.addJoint(playerBody, anchorBody, {
   type: "rope",
   length: 140,
 });
-
-// A static anchor makes a simple swing. Release the rope when the player lets go.
-if (input.isJustPressed("release")) tether.remove();
-
 world.addJoint(playerBody, companionBody, {
   type: "spring",
   restLength: 80,
   stiffness: 40,
   damping: 4,
 });
+
+if (input.isJustPressed("release")) tether.remove();
 ```
 
-`addJoint` returns a handle with an `attached` flag and a `remove()` method
-that is safe to call more than once. The handle detaches when either jointed
-entity is destroyed or disabled (for example, released to a pool); re-enabling
-the entity does not restore the joint, and `addJoint` throws when either
-entity is inactive. For a pooled entity, add the joint in `onAcquire`, where
-the entity is already active. Lengths and anchors are always in pixels. Every
-number must be finite, and `length`, `restLength`, `stiffness` and `damping`
-at least 0. `stiffness` and `damping` are mass-relative and passed to the
-solver unconverted — collider mass depends on `pixelsPerMeter`, so retune
-them after changing the scale.
+Every joint accepts `anchorA` and `anchorB`: attachment points in each body's
+local pixels, defaulting to the body origin. `collide` controls whether the
+connected bodies collide with each other. It defaults to `false` for fixed
+joints and `true` for the other types. Collision layers still apply.
 
-Joints are runtime objects. If a connection is durable game state, save the
-stable ids and joint configuration in the game's state root, then recreate the
-joint while constructing the scene after load.
+### Weld bodies together
+
+A fixed joint holds its anchors together and keeps the two bodies at the same
+angle. Set the anchors to the intended attachment point so the solver does
+not need to pull separated anchors together:
+
+```typescript
+const weld = world.addJoint(wallBody, brickBody, {
+  type: "fixed",
+  anchorA: { x: 0, y: 20 },
+  anchorB: { x: 0, y: 0 },
+});
+```
+
+Here the brick's origin attaches 20 pixels below the wall body's origin.
+
+### Hinges and rotating motors
+
+A revolute joint holds the anchors together but lets one body rotate around
+the other. The rotating body needs `fixedRotation: false` (the default).
+A motor can drive a windmill sail around a static tower:
+
+```typescript
+const hub = world.addJoint(towerBody, sailBody, {
+  type: "revolute",
+  motor: { velocity: 2, damping: 10 }, // radians per second
+});
+hub.setMotor({ velocity: -2, damping: 10 });
+```
+
+Use limits for a drawbridge. The limits measure body B's angle relative to
+body A, in radians:
+
+```typescript
+const bridge = world.addJoint(bankBody, bridgeBody, {
+  type: "revolute",
+  anchorB: { x: -60, y: 0 },
+  limits: { min: -Math.PI / 2, max: 0 },
+});
+```
+
+### Sliding platforms
+
+A prismatic joint allows movement along a rail and holds the bodies at the
+same angle. Its `axis` is local to body A and is normalized automatically.
+Limits and motor position use pixels of anchor separation along that axis:
+
+```typescript
+const elevator = world.addJoint(railBody, platformBody, {
+  type: "prismatic",
+  axis: { x: 0, y: 1 },
+  limits: { min: 0, max: 240 },
+  motor: { position: 120, stiffness: 40, damping: 8 },
+});
+elevator.setMotor({ position: 240, stiffness: 40, damping: 8 });
+```
+
+Revolute and prismatic joints accept `motor` and support `setMotor()`.
+The joint must be attached when calling `setMotor()`. Each call replaces the
+motor settings. Specify `position`, `velocity`, or
+both; omitted targets, `stiffness`, and `damping` default to 0. Revolute
+velocity uses radians/s; prismatic velocity uses pixels/s. A velocity-only
+motor needs positive `damping` to move.
+
+Every numeric setting must be finite. Lengths, spring stiffness and damping,
+and motor stiffness and damping must be at least 0. Limits require
+`min <= max`, and the prismatic axis must be non-zero. Spring stiffness uses mass/s² and spring damping uses mass/s. Motor stiffness
+and damping are acceleration-based. Both are passed to the solver without
+conversion. Retune them after changing `pixelsPerMeter`.
+
+### Destruction on impact
+
+Remove a joint from a collision handler when an impact exceeds the game's
+threshold:
+
+```typescript
+brickCollider.onCollision((event) => {
+  if (event.started && (event.contactImpulse ?? 0) > 100) {
+    weld.remove();
+  }
+});
+```
+
+For an authored collapse, create pre-cut pieces with static bodies and call
+`pieceBody.setType("dynamic")` on the pieces the hit releases. That approach
+lets game rules choose which pieces fall without measuring joint forces.
+
+### Joint lifetime and save state
+
+`attached` is true while a joint is live. `remove()` is safe to call more than
+once. Destroying or disabling either entity detaches its joints; re-enabling
+it does not restore them. For a pooled entity, create joints in `onAcquire`,
+when the entity is active. `addJoint` throws for inactive entities.
+
+Joints are runtime objects. Save stable body ids, joint configurations, and
+broken state in the game's state root. Recreate the connections while
+constructing the scene after load.
