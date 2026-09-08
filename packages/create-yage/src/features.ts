@@ -12,7 +12,7 @@
 export type FeatureId = "ui" | "save" | "effects" | "editor";
 
 /** Range used for `@yagejs/*` deps the features add. Mirrors the templates. */
-export const YAGE_RANGE = "^0.10.4";
+export const YAGE_RANGE = "^0.11.0";
 
 /**
  * Range used for `@yagejs-tools/editor`. The tools packages are versioned

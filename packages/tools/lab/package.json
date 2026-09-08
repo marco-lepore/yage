@@ -1,6 +1,6 @@
 {
   "name": "@yagejs-tools/lab",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Scenario browser for YAGE games — mount entities and scenes in a real engine and tune them with controls",
   "keywords": [
     "yage",
@@ -59,9 +59,9 @@
   },
   "peerDependencies": {
     "@playwright/test": "^1.60.0",
-    "@yagejs/core": ">=0.10.2 <0.11.0",
-    "@yagejs/debug": ">=0.10.2 <0.11.0",
-    "@yagejs/renderer": ">=0.10.2 <0.11.0",
+    "@yagejs/core": ">=0.11.0 <0.12.0",
+    "@yagejs/debug": ">=0.11.0 <0.12.0",
+    "@yagejs/renderer": ">=0.11.0 <0.12.0",
     "vite": "^8.0.0"
   },
   "peerDependenciesMeta": {
@@ -72,9 +72,9 @@
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "@types/node": "^22.0.0",
-    "@yagejs/core": ">=0.10.2",
-    "@yagejs/debug": ">=0.10.2",
-    "@yagejs/renderer": ">=0.10.2",
+    "@yagejs/core": ">=0.11.0",
+    "@yagejs/debug": ">=0.11.0",
+    "@yagejs/renderer": ">=0.11.0",
     "vite": "^8.0.0"
   }
 }

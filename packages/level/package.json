@@ -1,6 +1,6 @@
 {
   "name": "@yagejs/level",
-  "version": "0.10.2",
+  "version": "0.11.0",
   "description": "Level documents for YAGE — read, validate, prepare and instantiate authored levels",
   "keywords": [
     "yage",
@@ -58,6 +58,6 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yagejs/core": "^0.10.2"
+    "@yagejs/core": "^0.11.0"
   }
 }
