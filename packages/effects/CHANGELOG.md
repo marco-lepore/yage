@@ -1,5 +1,72 @@
 # @yagejs/effects
 
+## 0.11.0
+
+### Minor Changes
+
+- [#303](https://github.com/marco-lepore/yage/pull/303) [`7e500d6`](https://github.com/marco-lepore/yage/commit/7e500d635ebde8d9ef63b073234ee285d9176576) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add advanced visual feedback primitives for Feel cues and direct renderer use.
+  - Add deterministic glitch displacement with refreshable band patterns.
+  - Add signed zoom blur with host-local centers, radii, and an optional radius
+    that expands from the center with intensity.
+  - Add symmetric horizontal or vertical axis blur.
+  - Add a focused implosion shader with inward pull, darkening, swirl, and an
+    optional radius that expands from the center with intensity.
+  - Add a noise-driven dissolve shader with a configurable bright edge.
+  - Reject non-finite and out-of-range numbers at the call that supplies them,
+    across every option, `setIntensity`, and setter on the five new presets. The
+    error names the input and the constraint. `implosion` previously clamped
+    `radius` and `darkness` silently and now throws instead, which also stops a
+    `NaN` from slipping past the clamp into a filter uniform.
+
+- [#341](https://github.com/marco-lepore/yage/pull/341) [`656e64e`](https://github.com/marco-lepore/yage/commit/656e64e34a1580b93455dcb5ab11f8b9c4340944) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `bulgePinch` takes its center and radius in the effect host's local pixels.
+
+  The center was passed to the underlying filter unchanged, where it is
+  normalized against the rasterized filter region — the region moves with the
+  content, the camera and the letterbox bars, so no value a game computes from
+  its virtual size lands on the intended point. The preset now converts a
+  host-local point through the target's world transform every frame, the way
+  `zoomBlur`, `implosion` and `shockwave` already do, and scales `radius` by the
+  target's world scale.
+
+  Callers convert: a center of `{ x: 0.5, y: 0.5 }` on a 1280x720 host becomes
+  `{ x: 640, y: 360 }`, and `setCenter` takes the same coordinates. `center` is
+  now optional — omit it, or call the new `useHostCenter()`, to sit in the
+  middle of the filtered region. A radius keeps its number but is measured in
+  host pixels, so it no longer grows relative to the content on a smaller
+  window.
+
+  `bulgePinch` also rejects non-finite and out-of-range numbers at the call that
+  supplies them — options, `setIntensity` and every setter — naming the input
+  and the constraint.
+
+  `shockwave` takes a `direction`. The ring only ever expanded: `trigger()` set
+  the filter's clock to zero and counted up, and no caller-side value turned it
+  around. `direction: "in"` runs the same clock from `duration` down to zero, so
+  the ring starts `speed × duration` host-local pixels from the trigger point and
+  contracts onto it — a vortex or a charge-up, rather than a blast. With a
+  configured `radius` the inward ring stays hidden until it reaches that radius.
+  The default is `"out"`, so existing calls are unchanged. An unrecognised
+  direction throws when the effect is added to a host, naming the option and
+  the two accepted values.
+
+- [#342](https://github.com/marco-lepore/yage/pull/342) [`72c2d67`](https://github.com/marco-lepore/yage/commit/72c2d6752afd33de8e616626d436b4b85d4512bf) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Raise the PixiJS peer floor from `^8.5.0` to `^8.8.0`.
+
+  **Breaking:** a game on PixiJS 8.5 to 8.7 must upgrade to 8.8 or newer.
+
+  `textureSpace`, the Graphics fill property that selects how a texture or a
+  gradient maps onto a shape, does not exist before PixiJS 8.8.0. Older versions
+  ignore it, so the `space` option on `linearGradient` and `radialGradient` has
+  no effect there and the gradient renders in whichever mapping that version
+  applies. The old floor admitted versions the engine has never supported.
+
+### Patch Changes
+
+- [#318](https://github.com/marco-lepore/yage/pull/318) [`33d00e3`](https://github.com/marco-lepore/yage/commit/33d00e37801a300710cc10de0352b1aa1b1ba2f1) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Declare `@yagejs/core` as a peer dependency so effect bundles use the
+  application's core instance instead of including a second copy.
+- Updated dependencies [[`d2adfed`](https://github.com/marco-lepore/yage/commit/d2adfedb0e5d15269fe941a3a24f23ddb0126aa4), [`d951322`](https://github.com/marco-lepore/yage/commit/d951322da3dff3adfc532732f1578cc6f1149fa7), [`dc42ba4`](https://github.com/marco-lepore/yage/commit/dc42ba40cd3bbd04c8ff27bf4e8721f274dde034), [`dc42ba4`](https://github.com/marco-lepore/yage/commit/dc42ba40cd3bbd04c8ff27bf4e8721f274dde034), [`56570ae`](https://github.com/marco-lepore/yage/commit/56570ae539b98d2eefa000898c71eabea28df571), [`daa8214`](https://github.com/marco-lepore/yage/commit/daa821458a69d14176f5c5aebc3f4204348ddb0c), [`daa8214`](https://github.com/marco-lepore/yage/commit/daa821458a69d14176f5c5aebc3f4204348ddb0c), [`c105024`](https://github.com/marco-lepore/yage/commit/c105024b5402c11dc36da52b08f6ab39354da8a5), [`c8ad215`](https://github.com/marco-lepore/yage/commit/c8ad215530681caeb63484cc07b118cd977a5ba5), [`08b0d06`](https://github.com/marco-lepore/yage/commit/08b0d06b63a44a51bd6f8e8308574fd41c96af59), [`08b0d06`](https://github.com/marco-lepore/yage/commit/08b0d06b63a44a51bd6f8e8308574fd41c96af59), [`33d00e3`](https://github.com/marco-lepore/yage/commit/33d00e37801a300710cc10de0352b1aa1b1ba2f1), [`1b12043`](https://github.com/marco-lepore/yage/commit/1b120433e9570b21f5748c8cfaaf98bc781c4a62), [`7275620`](https://github.com/marco-lepore/yage/commit/7275620756183b22de3df1009e1e07615db9b40e), [`4bab66f`](https://github.com/marco-lepore/yage/commit/4bab66f0e34a387155bbc7168b048dcac167525f), [`cfde97d`](https://github.com/marco-lepore/yage/commit/cfde97de2c94416cb5bbab26a12f9c290e6b66cf), [`47bf729`](https://github.com/marco-lepore/yage/commit/47bf7297056a506d5d21cbedaa3568a363d22051), [`9b9fe07`](https://github.com/marco-lepore/yage/commit/9b9fe07d7f32219c0e9aa37265b526cdc5924ce8), [`9e194ec`](https://github.com/marco-lepore/yage/commit/9e194ec386a74c0f1ad5699c3c0db183aa86f1b1), [`9e194ec`](https://github.com/marco-lepore/yage/commit/9e194ec386a74c0f1ad5699c3c0db183aa86f1b1), [`05492cb`](https://github.com/marco-lepore/yage/commit/05492cb8e27f89fe82fedd6e307afa2f90d1f68f), [`05492cb`](https://github.com/marco-lepore/yage/commit/05492cb8e27f89fe82fedd6e307afa2f90d1f68f), [`56570ae`](https://github.com/marco-lepore/yage/commit/56570ae539b98d2eefa000898c71eabea28df571), [`aed53f7`](https://github.com/marco-lepore/yage/commit/aed53f7f5679f824846dee3c55c0342f7f07cf98), [`72c2d67`](https://github.com/marco-lepore/yage/commit/72c2d6752afd33de8e616626d436b4b85d4512bf), [`ba57361`](https://github.com/marco-lepore/yage/commit/ba5736175e8b3e06157e680b4b66d10eb8d06823), [`aa5b78e`](https://github.com/marco-lepore/yage/commit/aa5b78e18b56d17bdca4ffb8299c8ea83979e05a), [`439d0e2`](https://github.com/marco-lepore/yage/commit/439d0e205228bee15d8d79607abdba5731b0873b), [`1b12043`](https://github.com/marco-lepore/yage/commit/1b120433e9570b21f5748c8cfaaf98bc781c4a62), [`56570ae`](https://github.com/marco-lepore/yage/commit/56570ae539b98d2eefa000898c71eabea28df571), [`aaf1279`](https://github.com/marco-lepore/yage/commit/aaf1279455bc655681cf15c8edc64b1407b2a823), [`8064fa6`](https://github.com/marco-lepore/yage/commit/8064fa64099feeb1d164360b668e0721a14b7bbe), [`8064fa6`](https://github.com/marco-lepore/yage/commit/8064fa64099feeb1d164360b668e0721a14b7bbe), [`8f11936`](https://github.com/marco-lepore/yage/commit/8f119362281bf31ab59b8b907816886922aaf18f), [`b087462`](https://github.com/marco-lepore/yage/commit/b087462ab2ae27bebb7ce274402c9e278f6d472a), [`8bb9e0b`](https://github.com/marco-lepore/yage/commit/8bb9e0b905017ac724f70fc8fe55014605563e88), [`8d7b5e3`](https://github.com/marco-lepore/yage/commit/8d7b5e3fe395898c7f4cbde0b352acc2713e6559), [`8d7b5e3`](https://github.com/marco-lepore/yage/commit/8d7b5e3fe395898c7f4cbde0b352acc2713e6559), [`b64cd45`](https://github.com/marco-lepore/yage/commit/b64cd453a65a83899b9e8d5fecf4ad43bf1eb3d4), [`ff52a8a`](https://github.com/marco-lepore/yage/commit/ff52a8a4816b18f7de5309ab08606183db67e071)]:
+  - @yagejs/renderer@0.11.0
+  - @yagejs/core@0.11.0
+
 ## 0.10.4
 
 ## 0.10.3
