@@ -389,12 +389,25 @@ test("tilemap keeps its physics adapter behind the optional physics entry", () =
       default: "./dist/physics.cjs",
     },
   });
+  // Derived from the physics version rather than pinned, so a release bump
+  // does not have to edit this test. A release caps an engine-on-engine peer
+  // to one release line: below 1.0 the breaking bump is the next minor, from
+  // 1.x it is the major.
+  const physicsVersion = JSON.parse(
+    readRepositoryFile("packages/physics/package.json"),
+  ).version;
+  const [physicsMajor, physicsMinor] = physicsVersion.split(".").map(Number);
+  const breaking =
+    physicsMajor === 0 ? `0.${physicsMinor + 1}.0` : `${physicsMajor + 1}.0.0`;
   assert.equal(
     manifest.peerDependencies["@yagejs/physics"],
-    ">=0.10.4 <0.11.0",
+    `>=${physicsVersion} <${breaking}`,
   );
   assert.equal(manifest.peerDependenciesMeta["@yagejs/physics"].optional, true);
-  assert.equal(manifest.devDependencies["@yagejs/physics"], "^0.10.4");
+  assert.equal(
+    manifest.devDependencies["@yagejs/physics"],
+    `^${physicsVersion}`,
+  );
   assert.match(buildConfig, /"src\/physics\.ts"/);
 });
 
