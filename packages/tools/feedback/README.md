@@ -217,9 +217,6 @@ in [the demo harness](demo/lab/harness.ts).
   audio. Comments display an immutable captured image.
 - The package is private and does not apply fixes or run an agent.
 
-See [the technical design and measured findings](../../../docs/design/feedback-tdd.md)
-for the acceptance record and integration requirements.
-
 ## Verify
 
 ```sh
@@ -253,10 +250,7 @@ playwright-cli run-code --filename packages/tools/feedback/checks/lab.js
 ```
 
 The scripts create real comments and save screenshots under
-`output/playwright/`. CLI retrieval and the server outage/restart checks are
-recorded in the technical design.
-
-See [module ownership and workflow contracts](../../../docs/design/feedback-module-architecture.md).
+`output/playwright/`.
 
 Uploads can be cancelled with **Cancel save**, **Return to view**, or Escape.
 Requests time out after 30 seconds. A pending draft keeps its original capture,
