@@ -1,5 +1,5 @@
 export const CSS = `
-.yage-feedback-launch {position:fixed;right:18px;bottom:18px;z-index:10000;display:flex;gap:6px;opacity:.4;transition:opacity .15s}
+.yage-feedback-launch {position:fixed;right:18px;bottom:18px;z-index:10000;display:flex;flex-wrap:wrap;justify-content:flex-end;max-width:calc(100vw - 36px);gap:6px;opacity:.4;transition:opacity .15s}
 .yage-feedback-launch:hover,.yage-feedback-launch:focus-within {opacity:1}
 .yage-feedback-launch button {padding:8px 12px;border:1px solid #87a8ff;border-radius:8px;background:#203665;color:white;font:14px system-ui;cursor:pointer}
 @media(hover:none){.yage-feedback-launch{opacity:1}}

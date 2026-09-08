@@ -88,6 +88,9 @@ In the lab, press **Pause** before **Leave feedback**. In either host:
 4. Resume and capture another frame to collect more observations in the same
    session.
 
+The demo also accepts `?shortcuts=custom` to try Shift+K for feedback, Shift+P
+for freeze, and Period/Shift+Period for stepping.
+
 The entity dropdown filters by name, ID, or scene and displays 50 results per
 page. Filtering preserves selected entities; their summary stays visible below
 the dropdown.
@@ -166,6 +169,35 @@ or keyboard listeners. The compact controls become fully visible on hover or
 focus. F8 opens feedback and F9 toggles freeze; `shortcuts: false` disables
 those keys. Shortcuts ignore editable fields and open dialogs.
 
+Override keyboard bindings in the runtime plugin:
+
+```ts
+new FeedbackPlugin({
+  enabled: debug,
+  shortcuts: {
+    feedback: { code: "KeyF", shift: true },
+    freeze: { code: "KeyP", shift: true },
+    stepFrame: { code: "Period" },
+    stepTenFrames: { code: "Period", shift: true },
+  },
+});
+```
+
+Bindings use physical `KeyboardEvent.code` values, such as `KeyF`, `Space`,
+or `Backquote`. Optional `ctrl`, `alt`, `shift`, and `meta` modifiers must
+match exactly; omitted modifiers are false. Omitted actions keep F8/F9 and F10/Shift+F10.
+Set an action to `false` to disable only its shortcut, or use `shortcuts: false`
+to disable all feedback shortcuts. Buttons remain available and tooltips show each
+configured binding. Duplicate bindings are rejected. Choose combinations that
+your browser and OS do not reserve. Configured step keys stay reserved even
+when stepping is unavailable, except while typing or in a dialog.
+
+Once the game is frozen, **+1 frame** and **+10 frames** advance it and leave
+it frozen. Their default keys are F10 and Shift+F10. Stepping uses the
+inspector's configured frame delta, clears held input, and is unavailable
+while a comment dialog is open or another tool owns the clock. Return to the
+game before stepping; saved captures and pending comment evidence stay unchanged.
+
 Install RendererPlugin and DebugPlugin on that engine. Feedback uses the
 existing inspector time lease and never advances simulation during capture.
 InputPlugin is optional; when present, held input is cleared on entry and
@@ -210,6 +242,7 @@ playwright-cli open http://127.0.0.1:5213
 playwright-cli snapshot
 playwright-cli run-code --filename packages/tools/feedback/checks/runtime.js
 playwright-cli run-code --filename packages/tools/feedback/checks/controls.js
+playwright-cli run-code --filename packages/tools/feedback/checks/shortcuts.js
 playwright-cli goto http://127.0.0.1:5213/__yage/feedback/
 playwright-cli run-code --filename packages/tools/feedback/checks/gallery.js
 playwright-cli goto "http://127.0.0.1:5213/?debug=false"

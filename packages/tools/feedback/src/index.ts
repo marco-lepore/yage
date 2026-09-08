@@ -14,3 +14,7 @@ export type {
   Json,
   Rect,
 } from "./shared/protocol.js";
+export type {
+  FeedbackShortcut,
+  FeedbackShortcuts,
+} from "./shared/shortcuts.js";

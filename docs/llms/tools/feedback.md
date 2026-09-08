@@ -63,6 +63,21 @@ timers/audio/network are not frozen. Feedback collects evidence and tracks work;
 `enabled: false` mounts no UI or listeners. Compact DOM feedback/freeze controls
 support F8/F9. `shortcuts: false` reserves keys for the host. Editable fields
 and open dialogs ignore shortcuts.
+`shortcuts?: boolean | FeedbackShortcuts`; `true` or omitted uses F8/F9 and F10/Shift+F10.
+Example: `shortcuts: { feedback: { code: "KeyF", shift: true },
+freeze: { code: "KeyP", shift: true }, stepFrame: { code: "Period" },
+stepTenFrames: { code: "Period", shift: true } }`.
+`FeedbackShortcut` uses physical `KeyboardEvent.code` and optional boolean
+`ctrl`, `alt`, `shift`, `meta`. Modifiers match exactly; omitted means false.
+Omitted actions keep defaults; an action set to false disables only its key.
+Buttons remain available. Tooltips show bindings. Duplicate bindings reject at
+plugin construction. Avoid browser/OS-reserved combinations. Configuration is
+copied at construction; edits to the supplied object do not rebind a live plugin.
+Frozen view: +1/+10 controls call inspector stepping with its configured delta,
+clear held input, and leave time frozen. F10 steps one; Shift+F10 steps ten.
+Stepping is blocked while a comment dialog is open or another clock owner holds
+a lease. Configured step keys remain reserved outside editable fields/dialogs
+even when stepping is unavailable. Captured evidence remains immutable; return to the game before stepping.
 
 Workflow: open → ingested → addressed → resolved; reopen any non-open comment.
 `yage-feedback ingest|address|resolve|reopen ID --revision N --by ACTOR

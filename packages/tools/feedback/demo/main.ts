@@ -21,6 +21,15 @@ engine.use(new DebugPlugin());
 engine.use(
   new FeedbackPlugin({
     enabled: debug,
+    shortcuts:
+      new URLSearchParams(location.search).get("shortcuts") === "custom"
+        ? {
+            feedback: { code: "KeyK", shift: true },
+            freeze: { code: "KeyP", shift: true },
+            stepFrame: { code: "Period" },
+            stepTenFrames: { code: "Period", shift: true },
+          }
+        : true,
     context: () => ({
       host: "runtime",
       example: "formation",

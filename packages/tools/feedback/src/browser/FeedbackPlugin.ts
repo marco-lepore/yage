@@ -1,3 +1,8 @@
+import { resolveShortcuts } from "../shared/shortcuts.js";
+import type {
+  FeedbackShortcuts,
+  ResolvedFeedbackShortcuts,
+} from "../shared/shortcuts.js";
 import type { EngineContext, Plugin } from "@yagejs/core";
 import type { Json } from "../shared/protocol.js";
 import { FeedbackClient } from "../client/FeedbackClient.js";
@@ -10,8 +15,8 @@ export interface FeedbackOptions {
   enabled: boolean;
   /** Full API base URL. Defaults to dev-server metadata, then localhost:5212. */
   server?: string;
-  /** F8 opens feedback; F9 toggles freeze. Disable for hosts that own shortcuts. */
-  shortcuts?: boolean;
+  /** Defaults to F8/F9 for feedback/freeze and F10/Shift+F10 for stepping. Override individual bindings or pass false to disable all. */
+  shortcuts?: boolean | FeedbackShortcuts;
   context?: () => Json;
 }
 /** Composes the runtime adapter, session, transport, and DOM interface. */
@@ -22,7 +27,9 @@ export class FeedbackPlugin implements Plugin {
   private context: EngineContext | undefined;
   private panel: FeedbackPanel | undefined;
   private readonly client: FeedbackClient;
+  private readonly shortcuts: ResolvedFeedbackShortcuts;
   constructor(private readonly options: FeedbackOptions) {
+    this.shortcuts = resolveShortcuts(options.shortcuts);
     const configured =
       typeof document === "undefined"
         ? undefined
@@ -42,7 +49,7 @@ export class FeedbackPlugin implements Plugin {
     const host = new RuntimeFeedbackHost(this.context, this.options.context);
     this.panel = new FeedbackPanel(
       new FeedbackSession(host, this.client),
-      this.options.shortcuts ?? true,
+      this.shortcuts,
       this.client.galleryUrl,
     );
   }

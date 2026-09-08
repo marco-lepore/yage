@@ -1,3 +1,4 @@
+import type { ResolvedFeedbackShortcuts } from "../../shared/shortcuts.js";
 import { FeedbackLauncher } from "./FeedbackLauncher.js";
 import { CSS } from "./styles.js";
 import type { FeedbackSession } from "../session/FeedbackSession.js";
@@ -17,14 +18,18 @@ export class FeedbackPanel {
   private destroyed = false;
   constructor(
     private readonly session: FeedbackSession,
-    shortcuts: boolean,
+    shortcuts: ResolvedFeedbackShortcuts,
     galleryUrl?: string,
   ) {
     this.style.textContent = CSS;
     document.head.append(this.style);
     this.launcher = new FeedbackLauncher(
-      () => this.open(),
-      () => this.session.toggleFreeze(),
+      {
+        open: () => this.open(),
+        toggleFreeze: () => this.session.toggleFreeze(),
+        canStep: () => this.session.canStep(),
+        step: (frames) => this.session.step(frames),
+      },
       shortcuts,
       galleryUrl,
     );

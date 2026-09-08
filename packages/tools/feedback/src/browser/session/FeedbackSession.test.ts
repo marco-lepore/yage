@@ -66,6 +66,8 @@ async function setup(timeout = 30000) {
       frozen = false;
     },
     toggleFreeze: () => (frozen = !frozen),
+    canStep: () => frozen,
+    step: () => {},
   };
   const session = new FeedbackSession(
     host,

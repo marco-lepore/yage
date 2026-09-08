@@ -65,6 +65,27 @@ export class RuntimeFeedbackHost implements FeedbackHost {
     lease.release();
     return frozen;
   }
+  canStep(): boolean {
+    const time = this.engine.inspector.time;
+    return time.isFrozen() && !time.isOwned();
+  }
+  step(frames: 1 | 10): void {
+    if (frames !== 1 && frames !== 10)
+      throw new Error(
+        `RuntimeFeedbackHost.step: expected 1 or 10 frames, got ${frames}.`,
+      );
+    if (!this.canStep())
+      throw new Error(
+        "Freeze the game and pause any other clock owner before stepping.",
+      );
+    const lease = this.engine.inspector.time.acquire();
+    try {
+      this.context.tryResolve(InputKey)?.clearAll();
+      lease.step(frames);
+    } finally {
+      lease.release();
+    }
+  }
   release(): void {
     if (!this.lease) return;
     this.context.tryResolve(InputKey)?.clearAll();

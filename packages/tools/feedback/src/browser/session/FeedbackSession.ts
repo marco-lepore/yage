@@ -15,6 +15,8 @@ export interface FeedbackHost {
   release(): void;
   freeze(): void;
   toggleFreeze(): boolean;
+  canStep(): boolean;
+  step(frames: 1 | 10): void;
 }
 
 /** Owns observation lifetime and retry identity independently of DOM rendering. */
@@ -84,6 +86,14 @@ export class FeedbackSession {
     if (this.abort)
       throw new Error("Wait for the current save before discarding.");
     this.draft = undefined;
+  }
+  canStep(): boolean {
+    return !this.observation && this.host.canStep();
+  }
+  step(frames: 1 | 10): void {
+    if (this.observation)
+      throw new Error("Return to the game view before stepping.");
+    this.host.step(frames);
   }
   toggleFreeze(): boolean {
     return this.host.toggleFreeze();

@@ -84,6 +84,36 @@ adds no DOM controls or keyboard listeners. The compact controls become fully
 visible on hover or keyboard focus. F8 opens feedback; F9 toggles freeze.
 Set `shortcuts: false` if your host reserves those keys.
 
+Override keyboard bindings in the runtime plugin:
+
+```ts
+new FeedbackPlugin({
+  enabled: debug,
+  shortcuts: {
+    feedback: { code: "KeyF", shift: true },
+    freeze: { code: "KeyP", shift: true },
+    stepFrame: { code: "Period" },
+    stepTenFrames: { code: "Period", shift: true },
+  },
+});
+```
+
+Bindings use physical `KeyboardEvent.code` values, such as `KeyF`, `Space`,
+or `Backquote`. Optional `ctrl`, `alt`, `shift`, and `meta` modifiers must
+match exactly; omitted modifiers are false. Omitted actions keep F8/F9 and F10/Shift+F10.
+Set an action to `false` to disable only its shortcut, or use `shortcuts: false`
+to disable all feedback shortcuts. Buttons remain available and tooltips show each
+configured binding. Duplicate bindings are rejected. Choose combinations that
+your browser and OS do not reserve. Configured step keys stay reserved even
+when stepping is unavailable, except while typing or in a dialog.
+
+Once the game is frozen, **+1 frame** and **+10 frames** advance it and leave
+it frozen. Their default keys are F10 and Shift+F10. Stepping uses the
+inspector's configured frame delta, clears held input, and is unavailable
+while a comment dialog is open or another tool owns the clock. Return to the
+game before stepping; saved captures and pending comment evidence stay unchanged.
+
+
 Opening feedback freezes engine time and displays an immutable capture. The
 screenshot hides the debug HUD and restores its previous visibility afterward.
 Select a target, write a comment, and save. You can leave several comments on
