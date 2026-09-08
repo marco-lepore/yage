@@ -186,9 +186,18 @@ it("releases the directory after a terminal port conflict", async () => {
   });
   servers.push(failed);
   await expect(failed.listen()).rejects.toThrow("already in use");
-  await expect(
-    readFile(path.join(directory, ".yage/feedback/.server.lock")),
-  ).rejects.toMatchObject({ code: "ENOENT" });
+  // The HTTP error listener starts cleanup independently of Vite's rejection.
+  await expect
+    .poll(async () => {
+      try {
+        await readFile(path.join(directory, ".yage/feedback/.server.lock"));
+        return false;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+        throw error;
+      }
+    })
+    .toBe(true);
   const reopened = await startFeedbackServer({
     directory: path.join(directory, ".yage/feedback"),
     port: 0,
