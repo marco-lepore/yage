@@ -70,3 +70,41 @@ test("tests and the random seed source remain exempt", async () => {
     [],
   );
 });
+
+test("feedback modules enforce responsibility boundaries", async () => {
+  for (const [directory, forbidden] of [
+    [
+      "browser/ui",
+      [
+        "../../client/FeedbackClient.js",
+        "../runtime/capture.js",
+        "@yagejs/core",
+        "node:fs",
+      ],
+    ],
+    ["browser/session", ["../runtime/capture.js", "../ui/FeedbackPanel.js"]],
+    [
+      "browser/runtime",
+      ["../../client/FeedbackClient.js", "../ui/FeedbackPanel.js"],
+    ],
+    ["server/service", ["node:fs/promises", "../http/server.js"]],
+    [
+      "server/cli",
+      ["../files/FeedbackFiles.js", "../service/FeedbackService.js"],
+    ],
+    ["shared", ["@yagejs/core", "../server/files/FeedbackFiles.js"]],
+  ]) {
+    for (const specifier of forbidden) {
+      const [result] = await eslint.lintText(`import "${specifier}";`, {
+        filePath: `packages/tools/feedback/src/${directory}/probe.ts`,
+      });
+      assert.ok(
+        result.messages.some(
+          (message) =>
+            message.ruleId === "@typescript-eslint/no-restricted-imports",
+        ),
+        `${directory} allowed ${specifier}`,
+      );
+    }
+  }
+});

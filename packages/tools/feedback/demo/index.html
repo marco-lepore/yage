@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>YAGE feedback · Formation study</title>
+    <style>
+      body {
+        margin: 0;
+        background: #0b1424;
+        color: #e6efff;
+        font: 16px/1.5 system-ui;
+      }
+      main {
+        max-width: 960px;
+        margin: 50px auto;
+        padding: 0 24px;
+      }
+      small {
+        color: #82a9e6;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+      }
+      h1 {
+        font-size: 36px;
+        margin: 8px 0;
+      }
+      p {
+        color: #a8bbd7;
+      }
+      #game {
+        width: 100%;
+        aspect-ratio: 16/9;
+        border: 1px solid #304867;
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      #game canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      nav {
+        display: flex;
+        gap: 12px;
+        margin-top: 18px;
+      }
+      button,
+      a {
+        font: inherit;
+        padding: 8px 14px;
+        border: 1px solid #49658d;
+        border-radius: 6px;
+        background: #1c304e;
+        color: #dceaff;
+        cursor: pointer;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <small>YAGE feedback / feasibility study</small>
+      <h1>A formation worth discussing</h1>
+      <p>
+        Three moving scouts, a camp, and room for more detail. Leave feedback on
+        a scout, a group, an empty area, or the whole view.
+      </p>
+      <div id="game"></div>
+      <nav>
+        <button id="destroy">Destroy engine</button
+        ><a href="http://127.0.0.1:5214" target="_blank">Open lab</a>
+      </nav>
+      <p>
+        Press Space to count a gameplay action. Feedback typing and selection
+        should not count as gameplay input.
+      </p>
+    </main>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>

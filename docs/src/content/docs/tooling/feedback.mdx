@@ -1,0 +1,99 @@
+---
+title: Runtime feedback
+description: Capture comments, screenshots, and inspector state for a coding agent.
+---
+
+Feedback lets you annotate a frozen game view and read the evidence from a
+local CLI. Select entities, draw an area, or comment on the whole view. Each
+observation includes a PNG, inspector snapshot, and optional project context.
+
+The feedback package is private and currently available from the YAGE
+workspace. Build it from the repository root:
+
+```sh
+npm install
+npx turbo run build --filter=@yagejs-tools/feedback
+node packages/tools/feedback/dist/cli.js serve --dir .yage/feedback \
+  --origin http://localhost:5173
+```
+
+Keep the server running and install the plugin alongside RendererPlugin and
+DebugPlugin in your game:
+
+```ts
+import { Engine } from "@yagejs/core";
+import { FeedbackPlugin } from "@yagejs-tools/feedback";
+
+const debug = import.meta.env.DEV;
+const engine = new Engine({ debug });
+// Install RendererPlugin and DebugPlugin before starting the engine.
+engine.use(new FeedbackPlugin({
+  enabled: debug,
+  context: () => ({ host: "runtime", example: "patrol" }),
+}));
+```
+
+Use the same debug flag for the engine and feedback. When disabled, feedback
+adds no DOM controls or keyboard listeners. The compact controls become fully
+visible on hover or keyboard focus. F8 opens feedback; F9 toggles freeze.
+Set `shortcuts: false` if your host reserves those keys.
+
+Opening feedback freezes engine time and displays an immutable capture. The
+screenshot hides the debug HUD and restores its previous visibility afterward.
+Select a target, write a comment, and save. You can leave several comments on
+one capture, return to the view, and capture another frame in the same session.
+The entity dropdown filters by name, ID, or scene and retains selections across
+filters. Failed saves retain their draft for retry.
+
+Read saved evidence from another terminal:
+
+```sh
+node packages/tools/feedback/dist/cli.js list --status open
+node packages/tools/feedback/dist/cli.js show COMMENT_ID
+```
+
+`show` returns JSON containing the comment, target, capture metadata, full
+inspector snapshot, and absolute screenshot path. Reads leave status unchanged.
+The files remain readable after closing the game or restarting the server.
+
+Track work with `ingest`, `address`, `resolve`, and `reopen`:
+
+```sh
+node packages/tools/feedback/dist/cli.js ingest COMMENT_ID \
+  --revision 0 --by codex/session-name \
+  --request-id 7582a71c-ffab-4b16-b7d3-145b34fafac5
+```
+
+Use `comment.revision` from `show` and a new request UUID for each new action.
+Retry an uncertain action with the same UUID and arguments. The server rejects
+stale revisions and records actor, time, status, and optional `--note TEXT` in
+`comment.history`. The sequence is open → ingested → addressed → resolved;
+reopening any non-open comment returns it to open. Status changes preserve the
+original evidence.
+
+The same plugin works in a lab harness. Pause lab playback before opening
+feedback because playback owns the inspector clock. Screenshots cover the game
+canvas. Selection uses rendered bounding boxes; the dropdown helps distinguish
+overlapping objects. Freezing engine time does not stop external timers,
+network callbacks, or audio.
+
+Use one server per data directory. Graceful shutdown releases its directory
+lock. After a crash, check the PID in `.server.lock` before removing a stale
+lock. The server binds loopback; repeat `--origin URL` for each permitted browser
+origin. The tool collects evidence and tracks its status; it does not run an
+agent or apply game changes.
+
+
+Uploads can be cancelled with **Cancel save**, **Return to view**, or Escape.
+Requests time out after 30 seconds. A pending draft keeps its original capture,
+text, target, and request identity when you return to the game; reopen feedback
+to retry it. The draft lasts until saved, discarded, or the plugin is destroyed
+(including a page reload). Cancellation cannot undo a completed server write.
+
+The server validates PNG checksums and decodes the pixels before saving.
+Screenshots must be non-interlaced and contain at most 16,777,216 pixels. The
+server accepts only loopback Host headers, including CLI requests without an
+Origin header. Object-property order does not affect upload retry identity.
+
+Feedback requires engine packages at `>=0.11.0 <0.12.0`. The published 0.10
+packages do not provide the inspector clock leases used for comment mode.

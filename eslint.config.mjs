@@ -662,4 +662,163 @@ export default tseslint.config(
       ],
     },
   },
+  // Feedback follows the editor's ownership model. Each directory has one
+  // import rule; the UI cannot reach transport or runtime infrastructure.
+  ...[
+    [
+      "shared",
+      [
+        NO_NODE,
+        NO_SERVER,
+        NO_BROWSER,
+        {
+          group: ["**/client/**", "@yagejs/*", "pixi.js"],
+          message: "Shared feedback data is environment independent.",
+        },
+      ],
+    ],
+    [
+      "client",
+      [
+        NO_NODE,
+        NO_SERVER,
+        NO_BROWSER,
+        {
+          group: ["@yagejs/*", "pixi.js"],
+          message: "The feedback client only transports shared DTOs.",
+        },
+      ],
+    ],
+    [
+      "browser/ui",
+      [
+        NO_NODE,
+        NO_SERVER,
+        {
+          group: ["**/client/**", "**/runtime/**", "@yagejs/*", "pixi.js"],
+          message: "Feedback UI only calls its session and renders DOM.",
+        },
+      ],
+    ],
+    [
+      "browser/session",
+      [
+        NO_NODE,
+        NO_SERVER,
+        {
+          group: ["**/ui/**", "**/runtime/**", "@yagejs/*", "pixi.js"],
+          message:
+            "Feedback sessions depend on host contracts, not host implementations.",
+        },
+      ],
+    ],
+    [
+      "browser/runtime",
+      [
+        NO_NODE,
+        NO_SERVER,
+        {
+          group: ["**/ui/**", "**/client/**"],
+          message:
+            "Runtime capture never renders feedback UI or sends HTTP requests.",
+        },
+      ],
+    ],
+    [
+      "server/files",
+      [
+        NO_BROWSER,
+        {
+          group: [
+            "**/client/**",
+            "**/service/**",
+            "**/http/**",
+            "**/cli/**",
+            "@yagejs/*",
+            "pixi.js",
+          ],
+          message:
+            "Feedback files own persistence and cannot call their consumers.",
+        },
+      ],
+    ],
+    [
+      "server/service",
+      [
+        NO_BROWSER,
+        {
+          group: [
+            "node:fs",
+            "node:fs/**",
+            "fs",
+            "fs/**",
+            "**/client/**",
+            "**/http/**",
+            "**/cli/**",
+            "@yagejs/*",
+            "pixi.js",
+          ],
+          message: "Feedback service commits through its file layer.",
+        },
+      ],
+    ],
+    [
+      "server/http",
+      [
+        NO_BROWSER,
+        {
+          group: [
+            "node:fs",
+            "node:fs/**",
+            "fs",
+            "fs/**",
+            "**/client/**",
+            "**/cli/**",
+            "@yagejs/*",
+            "pixi.js",
+          ],
+          message:
+            "Feedback HTTP delegates persistence to the service and directory lock.",
+        },
+      ],
+    ],
+    [
+      "server/cli",
+      [
+        NO_BROWSER,
+        {
+          group: [
+            "node:fs",
+            "node:fs/**",
+            "fs",
+            "fs/**",
+            "**/files/**",
+            "**/service/**",
+            "@yagejs/*",
+            "pixi.js",
+          ],
+          message: "The feedback CLI reads and changes comments through HTTP.",
+        },
+      ],
+    ],
+  ].map(([directory, patterns]) => ({
+    files: [`packages/tools/feedback/src/${directory}/**/*.ts`],
+    ignores: ["**/*.test.ts"],
+    rules: {
+      "@typescript-eslint/no-restricted-imports": ["error", { patterns }],
+    },
+  })),
+  {
+    files: ["packages/tools/feedback/src/browser/{ui,session,runtime}/**/*.ts"],
+    ignores: ["**/*.test.ts"],
+    rules: {
+      "no-restricted-globals": [
+        "error",
+        {
+          name: "fetch",
+          message: "Only FeedbackClient sends feedback HTTP requests.",
+        },
+      ],
+    },
+  },
 );

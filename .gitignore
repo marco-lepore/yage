@@ -44,4 +44,5 @@ playwright-report
 e2e/editor-project/levels/*.yage-level.json
 .playwright-mcp/
 .playwright-cli/
+output/playwright/
 .claude/launch.json
