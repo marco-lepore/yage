@@ -1945,6 +1945,28 @@ describe("PhysicsWorld", () => {
       expect(hit?.normal.y).toBeCloseTo(-1);
     });
 
+    it("defaults stopAtPenetration to true and passes explicit choices to Rapier", () => {
+      const pw = new PhysicsWorld();
+      const { captured } = setupCast(pw);
+      const shape = { type: "box", width: 20, height: 20 } as const;
+
+      for (const options of [
+        undefined,
+        {},
+        { stopAtPenetration: true },
+        { stopAtPenetration: false },
+      ]) {
+        pw.castShape(shape, new Vec2(0, 0), new Vec2(1, 0), 100, options);
+      }
+
+      expect(captured.map((args) => args[6])).toEqual([
+        true,
+        true,
+        true,
+        false,
+      ]);
+    });
+
     it("normalizes the direction, so hit distance ignores its length", () => {
       const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
       const { captured } = setupCast(pw);

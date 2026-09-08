@@ -1150,7 +1150,10 @@ export class PhysicsWorld {
    * `distance` is how far the shape travelled, `point` the world contact
    * point, and `normal` the surface normal on the entity that was hit. A
    * shape already overlapping something at `origin` reports that hit at
-   * `distance: 0`. The direction is normalized internally, so any non-zero
+   * `distance: 0` by default. Set `stopAtPenetration: false` to allow movement
+   * out of an initial overlap while still detecting obstacles along the route.
+   * Movement deeper into the overlap still reports a hit.
+   * The direction is normalized internally, so any non-zero
    * vector works; a zero-length direction throws, and so does a shape with
    * a dimension that is not finite and above 0. `excludeEntity` skips every
    * collider of that entity — pass the mover when the sweep starts inside its
@@ -1166,6 +1169,8 @@ export class PhysicsWorld {
     maxDistance: number,
     options?: {
       rotation?: number;
+      /** Stop at an initial overlap (default true). False allows escape. */
+      stopAtPenetration?: boolean;
       filterGroups?: number;
       excludeEntity?: Entity;
       sensors?: QuerySensorMode;
@@ -1193,7 +1198,7 @@ export class PhysicsWorld {
       desc.shape,
       0,
       this.toMeters(maxDistance),
-      true,
+      options?.stopAtPenetration ?? true,
       this._queryFlags(options?.sensors),
       options?.filterGroups,
       undefined,

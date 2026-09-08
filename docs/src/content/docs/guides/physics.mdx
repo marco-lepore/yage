@@ -704,10 +704,26 @@ if (hit) {
 }
 ```
 
-The result has the same shape as a raycast hit. A shape that already overlaps
-something where it starts reports that hit at `distance: 0`. Sensors are
+The result has the same shape as a raycast hit. With `stopAtPenetration: true`
+(the default), a shape that already overlaps something where it starts reports
+that hit at `distance: 0`. Sensors are
 skipped here too; `sensors: "include"` and `"only"` work as on `raycast`. A
 shape with a dimension that is not finite and above 0 throws.
+
+For ledge or step clearance, a resting character may slightly overlap a wall
+or floor. Set `stopAtPenetration: false` to check movement out of that overlap:
+
+```typescript
+const hit = world.castShape(shape, rb.position, outward, distance, {
+  excludeEntity: player,
+  stopAtPenetration: false,
+});
+```
+
+The cast still reports obstacles farther along the route and movement deeper
+into the initial overlap. If the move requires a clear destination, also check
+that position with `queryShape`. The option affects only the cast; body
+collisions still apply normally.
 
 Use this to test a move before committing to it. A fast-falling player can land
 on the floor it would otherwise pass through in one frame:
