@@ -32,7 +32,7 @@ const upload = {
     status: "open",
   },
 };
-const posted = await fetch(new URL("/comments", server), {
+const posted = await fetch(new URL("comments", server.replace(/\/?$/, "/")), {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(upload),
@@ -86,7 +86,7 @@ await assert.rejects(
   ),
   /current revision is 4/,
 );
-const retry = await fetch(new URL("/comments", server), {
+const retry = await fetch(new URL("comments", server.replace(/\/?$/, "/")), {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(upload),

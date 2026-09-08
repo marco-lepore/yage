@@ -13,12 +13,58 @@ workspace. Build it from the repository root:
 ```sh
 npm install
 npx turbo run build --filter=@yagejs-tools/feedback
-node packages/tools/feedback/dist/cli.js serve --dir .yage/feedback \
-  --origin http://localhost:5173
 ```
 
-Keep the server running and install the plugin alongside RendererPlugin and
-DebugPlugin in your game:
+## Start feedback with a Vite game
+
+Add the dev-server plugin to `vite.config.ts` (Vite 8):
+
+```ts
+import { defineConfig } from "vite";
+import { yageFeedback } from "@yagejs-tools/feedback/vite";
+
+export default defineConfig({ plugins: [yageFeedback()] });
+```
+
+Keep `FeedbackPlugin({ enabled: debug })` in the game and omit `server`.
+Starting Vite starts feedback on the same port. The browser plugin discovers
+its API automatically. An explicit `server` option overrides discovery.
+Production builds contain no feedback server routes or discovery metadata.
+
+Open **Feedback gallery** from the game controls, or visit
+`/__yage/feedback/` on the game's origin. The API is at
+`/__yage/feedback/api/`. Both paths include Vite's configured `base`, and follow
+its actual port if the preferred port is occupied. Use that full API URL in
+CLI `--server` arguments, including the path.
+
+`yageFeedback({ directory: ".yage/feedback", basePath: "/__yage/feedback/" })`
+configures storage relative to Vite's root and routes relative to Vite's base.
+Add `.yage/feedback/` to your project's `.gitignore` if captures should stay local.
+Each running server must own a different storage directory. A second owner
+fails with a lock error; it never creates a different directory silently.
+Restarting Vite preserves comments and releases/reacquires the lock.
+
+The integration requires local HTTP. Feedback routes reject nonlocal clients
+even when the game dev server is exposed on the network. Closing Vite stops
+feedback; use the standalone server with the same directory to review saved
+comments afterward.
+
+## Review and hand off comments
+
+The gallery defaults to **Pending** (open and ingested). Filter by status,
+search text or entity names, and open **View evidence** for the original image,
+target outlines, inspector snapshot, host context, and status history.
+Cards show 24 comments per page. **Refresh** reloads saved comments and status.
+
+Select comments, then choose **Copy for Codex** or **Copy for Claude**.
+The instruction includes the skill invocation, project directory, actual API
+URL, and explicit comment IDs. Paste it into an agent session opened in that
+project. Install the `yage-feedback` skill separately in that agent first.
+If clipboard access fails, a dialog offers selectable text. Reading, selecting,
+and copying do not ingest comments. Changing the filter clears selection;
+changing pages retains it.
+
+Install the runtime plugin alongside RendererPlugin and DebugPlugin in your game:
 
 ```ts
 import { Engine } from "@yagejs/core";
@@ -48,18 +94,26 @@ filters. Failed saves retain their draft for retry.
 Read saved evidence from another terminal:
 
 ```sh
-node packages/tools/feedback/dist/cli.js list --status open
-node packages/tools/feedback/dist/cli.js show COMMENT_ID
+node packages/tools/feedback/dist/cli.js list --status open --server http://localhost:5173/__yage/feedback/api/
+node packages/tools/feedback/dist/cli.js show COMMENT_ID --server http://localhost:5173/__yage/feedback/api/
 ```
 
 `show` returns JSON containing the comment, target, capture metadata, full
 inspector snapshot, and absolute screenshot path. Reads leave status unchanged.
 The files remain readable after closing the game or restarting the server.
 
+Use the actual origin printed by Vite if its port differs. Without Vite, start
+`yage-feedback serve --dir .yage/feedback --origin http://localhost:5173`
+and set the runtime plugin's `server` to the printed API URL. `--port 0`
+allocates an available port. `--base-path /review/api/` sets an API prefix;
+the standalone gallery is at `/review/api/gallery/`. `--project PATH` sets
+the project used in copied instructions and defaults to the working directory.
+
 Track work with `ingest`, `address`, `resolve`, and `reopen`:
 
 ```sh
 node packages/tools/feedback/dist/cli.js ingest COMMENT_ID \
+  --server http://localhost:5173/__yage/feedback/api/ \
   --revision 0 --by codex/session-name \
   --request-id 7582a71c-ffab-4b16-b7d3-145b34fafac5
 ```

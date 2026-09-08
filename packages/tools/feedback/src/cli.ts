@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { runCli } from "./server/cli/run.js";
 try {
   await runCli(process.argv.slice(2));

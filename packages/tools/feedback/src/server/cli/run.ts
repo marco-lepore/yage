@@ -5,7 +5,7 @@ import { FeedbackClient } from "../../client/FeedbackClient.js";
 import { isAction, isStatus, parseTransition } from "../../shared/workflow.js";
 import { validId } from "../../shared/protocol.js";
 
-const HELP = `yage-feedback serve [--dir .yage/feedback] [--port 5212] [--origin URL ...]
+const HELP = `yage-feedback serve [--dir .yage/feedback] [--port 5212] [--base-path /] [--project PATH] [--origin URL ...]
 yage-feedback list [--status open|ingested|addressed|resolved] [--server URL]
 yage-feedback show ID [--server URL]
 yage-feedback ingest|address|resolve|reopen ID --revision N --by ACTOR --request-id UUID [--note TEXT] [--server URL]
@@ -21,7 +21,9 @@ export async function runCli(args: string[]): Promise<void> {
     allowPositionals: true,
     options: {
       dir: { type: "string" },
+      project: { type: "string" },
       port: { type: "string" },
+      "base-path": { type: "string" },
       server: { type: "string" },
       origin: { type: "string", multiple: true },
       help: { type: "boolean" },
@@ -39,7 +41,7 @@ export async function runCli(args: string[]): Promise<void> {
   }
   const allowed =
     command === "serve"
-      ? ["dir", "port", "origin"]
+      ? ["dir", "port", "origin", "base-path", "project"]
       : command === "list"
         ? ["server", "status"]
         : command === "show"
@@ -52,15 +54,19 @@ export async function runCli(args: string[]): Promise<void> {
       throw new Error(`--${option} is not supported by ${command}.`);
   if (command === "serve" && positionals.length === 1) {
     const port = Number(values.port ?? 5212);
-    if (!Number.isInteger(port) || port < 1 || port > 65535)
-      throw new Error("--port must be an integer from 1 to 65535.");
+    if (!Number.isInteger(port) || port < 0 || port > 65535)
+      throw new Error(
+        "--port must be an integer from 0 to 65535 (0 selects an available port).",
+      );
     const directory = path.resolve(values.dir ?? ".yage/feedback");
     const server = await startFeedbackServer({
       directory,
+      project: path.resolve(values.project ?? "."),
       port,
+      ...(values["base-path"] ? { basePath: values["base-path"] } : {}),
       ...(values.origin ? { origins: values.origin } : {}),
     });
-    console.log(`YAGE feedback: http://127.0.0.1:${port}\nData: ${directory}`);
+    console.log(`YAGE feedback: ${server.url}\nData: ${directory}`);
     const shutdown = (): void => {
       void server.close().catch((error: unknown) => {
         console.error(error instanceof Error ? error.message : String(error));

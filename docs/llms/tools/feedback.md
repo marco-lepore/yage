@@ -26,11 +26,31 @@ Targets: `global`, `entities` (scene ID, runtime ID, generation, name, bounds),
 Resume/re-enter creates a new capture in the same plugin session. Snapshot
 camera and world state are evidence; no world-region conversion is inferred.
 
-CLI: `yage-feedback serve --dir PATH [--port 5212] [--origin URL]`,
+Vite 8: `import { yageFeedback } from "@yagejs-tools/feedback/vite"`;
+add `yageFeedback()` to Vite plugins. Omit runtime `server` for automatic
+discovery; explicit `server` wins. Dev only, local HTTP only. No production
+routes or metadata. Options: `directory` relative to Vite root (default
+`.yage/feedback`), `basePath` relative to Vite base (default `/__yage/feedback/`).
+Gallery: `<origin><vite-base>__yage/feedback/`; API: gallery URL + `api/`.
+Shares Vite's actual port, including port fallback. One owner per storage
+directory; shutdown/restart releases ownership. Ignore `.yage/feedback/` in git.
+
+Gallery filters pending (open+ingested), each status, or all; text/entity search;
+24 cards/page. Detail includes target outlines, snapshot/context, and history.
+Refresh reloads records. Select IDs and copy Codex/Claude skill instructions
+with project and full API URL. Clipboard denial offers selectable text. No
+read/copy operation mutates status. Agent skill is installed separately.
+
+CLI: `yage-feedback serve --dir PATH [--port 5212] [--origin URL]
+[--base-path /] [--project PATH]`,
 `yage-feedback list [--status STATUS] [--server URL]`, `yage-feedback show ID [--server URL]`.
 Repository invocation: `node packages/tools/feedback/dist/cli.js ...`.
 `show` returns JSON with comment, capture (full snapshot/context), absolute
-PNG path, and HTTP image path. Data remains readable after browser/server
+PNG path, and HTTP image path including the API prefix. `--server` accepts
+full local HTTP base URLs with paths, with or without trailing slash.
+`serve --port 0` prints an OS-allocated port. Standalone gallery is API base +
+`gallery/`; project defaults to working directory. Stop Vite before opening the
+same storage with `serve`. Data remains readable after browser/server
 restart. One server per directory. Retries are idempotent; conflicting IDs
 reject. Server binds loopback; repeated `--origin` overrides allowed origins.
 

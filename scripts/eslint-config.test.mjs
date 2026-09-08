@@ -82,6 +82,18 @@ test("feedback modules enforce responsibility boundaries", async () => {
         "node:fs",
       ],
     ],
+    [
+      "gallery",
+      ["node:fs", "../browser/runtime/capture.js", "../server/http/server.js"],
+    ],
+    [
+      "dev",
+      [
+        "node:fs/promises",
+        "../server/files/FeedbackFiles.js",
+        "../browser/FeedbackPlugin.js",
+      ],
+    ],
     ["browser/session", ["../runtime/capture.js", "../ui/FeedbackPanel.js"]],
     [
       "browser/runtime",

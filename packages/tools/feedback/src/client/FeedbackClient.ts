@@ -22,14 +22,17 @@ export class FeedbackClient {
         "Feedback request timeout must be an integer from 1 to 300000 ms.",
       );
     this.base = new URL(server);
+    this.base.pathname = this.base.pathname.replace(/\/?$/, "/");
     if (
       this.base.protocol !== "http:" ||
       !["localhost", "127.0.0.1", "[::1]"].includes(this.base.hostname) ||
       this.base.username ||
-      this.base.password
+      this.base.password ||
+      this.base.search ||
+      this.base.hash
     )
       throw new Error(
-        "Feedback server must be a loopback HTTP URL without credentials.",
+        "Feedback server must be a loopback HTTP URL without credentials, query, or fragment.",
       );
   }
   private async request<T>(
@@ -38,7 +41,7 @@ export class FeedbackClient {
     signal?: AbortSignal,
   ): Promise<T> {
     const timeout = AbortSignal.timeout(this.timeoutMs);
-    const response = await fetch(new URL(route, this.base), {
+    const response = await fetch(new URL(route.replace(/^\//, ""), this.base), {
       ...(body !== undefined
         ? {
             method: "POST",
@@ -53,6 +56,16 @@ export class FeedbackClient {
         `Feedback server returned ${response.status}: ${await response.text()}`,
       );
     return (await response.json()) as T;
+  }
+  get galleryUrl(): string {
+    return new URL("gallery/", this.base).href;
+  }
+  session(): Promise<{
+    directory: string;
+    project: string;
+    galleryPath: string;
+  }> {
+    return this.request("session");
   }
   list(status?: FeedbackStatus): Promise<FeedbackComment[]> {
     return this.request(`/comments${status ? `?status=${status}` : ""}`);

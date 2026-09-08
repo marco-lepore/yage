@@ -4,6 +4,55 @@ Leave comments on a running YAGE view and read them from a local CLI. The
 private package contains one DOM interface, a YAGE plugin, a filesystem
 server, and the `yage-feedback` executable.
 
+## Start feedback with a Vite game
+
+Add the dev-server plugin to `vite.config.ts` (Vite 8):
+
+```ts
+import { defineConfig } from "vite";
+import { yageFeedback } from "@yagejs-tools/feedback/vite";
+
+export default defineConfig({ plugins: [yageFeedback()] });
+```
+
+Keep `FeedbackPlugin({ enabled: debug })` in the game and omit `server`.
+Starting Vite starts feedback on the same port. The browser plugin discovers
+its API automatically. An explicit `server` option overrides discovery.
+Production builds contain no feedback server routes or discovery metadata.
+
+Open **Feedback gallery** from the game controls, or visit
+`/__yage/feedback/` on the game's origin. The API is at
+`/__yage/feedback/api/`. Both paths include Vite's configured `base`, and follow
+its actual port if the preferred port is occupied. Use that full API URL in
+CLI `--server` arguments, including the path.
+
+`yageFeedback({ directory: ".yage/feedback", basePath: "/__yage/feedback/" })`
+configures storage relative to Vite's root and routes relative to Vite's base.
+Add `.yage/feedback/` to your project's `.gitignore` if captures should stay local.
+Each running server must own a different storage directory. A second owner
+fails with a lock error; it never creates a different directory silently.
+Restarting Vite preserves comments and releases/reacquires the lock.
+
+The integration requires local HTTP. Feedback routes reject nonlocal clients
+even when the game dev server is exposed on the network. Closing Vite stops
+feedback; use the standalone server with the same directory to review saved
+comments afterward.
+
+## Review and hand off comments
+
+The gallery defaults to **Pending** (open and ingested). Filter by status,
+search text or entity names, and open **View evidence** for the original image,
+target outlines, inspector snapshot, host context, and status history.
+Cards show 24 comments per page. **Refresh** reloads saved comments and status.
+
+Select comments, then choose **Copy for Codex** or **Copy for Claude**.
+The instruction includes the skill invocation, project directory, actual API
+URL, and explicit comment IDs. Paste it into an agent session opened in that
+project. Install the `yage-feedback` skill separately in that agent first.
+If clipboard access fails, a dialog offers selectable text. Reading, selecting,
+and copying do not ingest comments. Changing the filter clears selection;
+changing pages retains it.
+
 ## Run the demo
 
 From the repository root, install dependencies and build:
@@ -13,15 +62,23 @@ npm install
 npx turbo run build --filter=@yagejs-tools/feedback --filter=@yagejs-tools/lab
 ```
 
-Start these in separate terminals:
+Start the game; its Vite plugin starts feedback automatically:
+
+```sh
+npm run demo --workspace=@yagejs-tools/feedback
+```
+
+Open [the game](http://127.0.0.1:5213). Its data is in
+`packages/tools/feedback/demo/.yage/feedback`.
+
+The lab harness uses the standalone server. Start these in separate terminals:
 
 ```sh
 node packages/tools/feedback/dist/cli.js serve --dir output/playwright/feedback-data
-npm run demo --workspace=@yagejs-tools/feedback
 npm run lab --workspace=@yagejs-tools/feedback
 ```
 
-Open [the game](http://127.0.0.1:5213) or [the lab](http://127.0.0.1:5214).
+Open [the lab](http://127.0.0.1:5214).
 In the lab, press **Pause** before **Leave feedback**. In either host:
 
 1. Open **Leave feedback**. The game freezes and a captured image appears.
@@ -46,15 +103,15 @@ the local draft does not delete anything already stored on the server.
 ## Read the evidence
 
 ```sh
-node packages/tools/feedback/dist/cli.js list --status open
-node packages/tools/feedback/dist/cli.js show COMMENT_ID
+node packages/tools/feedback/dist/cli.js list --status open --server http://127.0.0.1:5213/__yage/feedback/api/
+node packages/tools/feedback/dist/cli.js show COMMENT_ID --server http://127.0.0.1:5213/__yage/feedback/api/
 ```
 
 These invoke the same CLI exported as `yage-feedback`. Output is JSON.
 `show` includes the original comment, target, capture metadata, full inspector
 snapshot, and absolute screenshot path. The browser can close before the CLI
 reads the data. Restart the server with the same directory to read earlier
-comments. Use `--server URL` to read a server on another local port.
+comments. Use `--server URL` to read another local endpoint, including its base path.
 
 ## Track agent work
 
@@ -64,6 +121,7 @@ verification. `reopen` returns any non-open comment to `open`.
 
 ```sh
 node packages/tools/feedback/dist/cli.js ingest COMMENT_ID \
+  --server http://127.0.0.1:5213/__yage/feedback/api/ \
   --revision 0 --by codex/session-name \
   --request-id 7582a71c-ffab-4b16-b7d3-145b34fafac5
 ```
@@ -79,7 +137,11 @@ The server records actor, timestamp, status, revision, and request ID in
 `comment.history`. Earlier MVP comments read as revision 0 without rewriting
 their files. Retrying an upload preserves existing workflow state.
 
-The server binds `127.0.0.1:5212`. Its default allowed origins cover the demo
+The standalone server binds `127.0.0.1:5212`. `--port 0` asks the OS for an
+available port and prints the actual API URL. `--base-path /review/api/`
+changes its API prefix; its gallery is under `/review/api/gallery/`.
+`--project PATH` sets the project directory used in copied instructions;
+it defaults to the working directory. Its default allowed origins cover the demo
 and lab. Supply repeatable `--origin URL` arguments for another project;
 supplying any replaces the defaults. A directory lock prevents simultaneous
 servers. Graceful shutdown releases it. After a crash, check the PID recorded
@@ -135,7 +197,7 @@ npx turbo run typecheck lint test build --filter=@yagejs-tools/feedback
 For CLI lifecycle verification after saving a browser comment:
 
 ```sh
-node packages/tools/feedback/checks/cli.mjs
+node packages/tools/feedback/checks/cli.mjs http://127.0.0.1:5213/__yage/feedback/api/
 ```
 
 This creates one acceptance comment using existing captured evidence and checks
@@ -148,6 +210,8 @@ playwright-cli open http://127.0.0.1:5213
 playwright-cli snapshot
 playwright-cli run-code --filename packages/tools/feedback/checks/runtime.js
 playwright-cli run-code --filename packages/tools/feedback/checks/controls.js
+playwright-cli goto http://127.0.0.1:5213/__yage/feedback/
+playwright-cli run-code --filename packages/tools/feedback/checks/gallery.js
 playwright-cli goto "http://127.0.0.1:5213/?debug=false"
 playwright-cli run-code --filename packages/tools/feedback/checks/disabled.js
 playwright-cli goto http://127.0.0.1:5214

@@ -8,6 +8,7 @@ import { FeedbackPanel } from "./ui/FeedbackPanel.js";
 export interface FeedbackOptions {
   /** Use the same debug flag supplied to Engine. Disabled plugins mount no UI. */
   enabled: boolean;
+  /** Full API base URL. Defaults to dev-server metadata, then localhost:5212. */
   server?: string;
   /** F8 opens feedback; F9 toggles freeze. Disable for hosts that own shortcuts. */
   shortcuts?: boolean;
@@ -22,7 +23,16 @@ export class FeedbackPlugin implements Plugin {
   private panel: FeedbackPanel | undefined;
   private readonly client: FeedbackClient;
   constructor(private readonly options: FeedbackOptions) {
-    this.client = new FeedbackClient(options.server);
+    const configured =
+      typeof document === "undefined"
+        ? undefined
+        : document.querySelector<HTMLMetaElement>(
+            'meta[name="yage-feedback-server"]',
+          )?.content;
+    this.client = new FeedbackClient(
+      options.server ??
+        (configured ? new URL(configured, location.href).href : undefined),
+    );
   }
   install(context: EngineContext): void {
     this.context = context;
@@ -33,6 +43,7 @@ export class FeedbackPlugin implements Plugin {
     this.panel = new FeedbackPanel(
       new FeedbackSession(host, this.client),
       this.options.shortcuts ?? true,
+      this.client.galleryUrl,
     );
   }
   onDestroy(): void {

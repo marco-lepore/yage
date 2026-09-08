@@ -18,6 +18,7 @@ export class FeedbackPanel {
   constructor(
     private readonly session: FeedbackSession,
     shortcuts: boolean,
+    galleryUrl?: string,
   ) {
     this.style.textContent = CSS;
     document.head.append(this.style);
@@ -25,6 +26,7 @@ export class FeedbackPanel {
       () => this.open(),
       () => this.session.toggleFreeze(),
       shortcuts,
+      galleryUrl,
     );
   }
   open(): void {

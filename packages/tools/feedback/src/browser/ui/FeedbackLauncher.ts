@@ -27,6 +27,7 @@ export class FeedbackLauncher {
     private readonly open: () => void,
     private readonly toggleFreeze: () => boolean,
     private readonly shortcuts: boolean,
+    galleryUrl?: string,
   ) {
     this.element.className = "yage-feedback-launch";
     this.element.setAttribute("aria-label", "Feedback controls");
@@ -37,6 +38,14 @@ export class FeedbackLauncher {
     this.feedback.onclick = open;
     this.freeze.onclick = () => this.toggle();
     this.element.append(this.feedback, this.freeze);
+    if (galleryUrl) {
+      const gallery = document.createElement("button");
+      gallery.textContent = "Feedback gallery";
+      gallery.onclick = () => {
+        window.open(galleryUrl, "_blank", "noopener,noreferrer");
+      };
+      this.element.append(gallery);
+    }
     for (const type of [
       "keydown",
       "keyup",

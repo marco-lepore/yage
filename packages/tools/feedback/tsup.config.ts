@@ -1,17 +1,18 @@
 import { defineConfig } from "tsup";
-export default defineConfig([
-  {
-    entry: ["src/index.ts", "src/server.ts"],
-    format: ["esm"],
-    dts: true,
-    clean: true,
-    target: "es2022",
+
+export default defineConfig({
+  entry: {
+    index: "src/index.ts",
+    server: "src/server.ts",
+    vite: "src/vite.ts",
+    cli: "src/cli.ts",
+    gallery: "src/gallery/main.ts",
   },
-  {
-    entry: ["src/cli.ts"],
-    format: ["esm"],
-    clean: false,
-    target: "node20",
-    banner: { js: "#!/usr/bin/env node" },
-  },
-]);
+  format: ["esm"],
+  loader: { ".html": "text" },
+  // The HTTP application serves the gallery as one standalone browser asset.
+  splitting: false,
+  dts: true,
+  clean: true,
+  target: "es2022",
+});

@@ -690,6 +690,38 @@ export default tseslint.config(
       ],
     ],
     [
+      "gallery",
+      [
+        NO_NODE,
+        NO_SERVER,
+        NO_BROWSER,
+        {
+          group: ["@yagejs/*", "pixi.js"],
+          message: "The gallery reads evidence through the shared HTTP client.",
+        },
+      ],
+    ],
+    [
+      "dev",
+      [
+        NO_BROWSER,
+        {
+          group: [
+            "node:fs",
+            "node:fs/**",
+            "fs",
+            "fs/**",
+            "**/service/**",
+            "**/files/**",
+            "@yagejs/*",
+            "pixi.js",
+          ],
+          message:
+            "Dev adapters own hosting; the HTTP application owns feedback storage.",
+        },
+      ],
+    ],
+    [
       "browser/ui",
       [
         NO_NODE,
@@ -809,7 +841,10 @@ export default tseslint.config(
     },
   })),
   {
-    files: ["packages/tools/feedback/src/browser/{ui,session,runtime}/**/*.ts"],
+    files: [
+      "packages/tools/feedback/src/browser/{ui,session,runtime}/**/*.ts",
+      "packages/tools/feedback/src/gallery/**/*.ts",
+    ],
     ignores: ["**/*.test.ts"],
     rules: {
       "no-restricted-globals": [
