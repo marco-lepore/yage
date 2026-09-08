@@ -550,6 +550,20 @@ describe("PhysicsWorld", () => {
     // The config is checked before the bodies, so no body is needed here.
     const unused = {} as RigidBodyComponent;
 
+    it.each([
+      { type: "revolute" as const, limits: { min: 2, max: 1 } },
+      { type: "prismatic" as const, axis: { x: 0, y: 0 } },
+      { type: "revolute" as const, motor: { damping: 1 } },
+      { type: "revolute" as const, motor: { velocity: 1, stiffness: -1 } },
+      { type: "prismatic" as const, axis: { x: 1, y: Infinity } },
+    ])("rejects invalid joint config %j before creating a joint", (config) => {
+      const pw = new PhysicsWorld();
+      expect(() => pw.addJoint(unused, unused, config)).toThrow(
+        "PhysicsWorld.addJoint:",
+      );
+      expect(pw._jointsByBody.size).toBe(0);
+    });
+
     it("rejects a negative spring damping", () => {
       const pw = new PhysicsWorld();
       expect(() =>

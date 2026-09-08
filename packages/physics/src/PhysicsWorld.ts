@@ -17,6 +17,7 @@ import type {
   RaycastHit,
   JointConfig,
   JointHandle,
+  JointMotorConfig,
   QuerySensorMode,
 } from "./types.js";
 import type { ColliderComponent } from "./ColliderComponent.js";
@@ -79,6 +80,7 @@ interface JointRecord {
   readonly bodyA: number;
   readonly bodyB: number;
   attached: boolean;
+  readonly type: JointConfig["type"];
 }
 
 class PhysicsJointHandle implements JointHandle {
@@ -93,6 +95,10 @@ class PhysicsJointHandle implements JointHandle {
 
   remove(): void {
     this.world._removeJoint(this.record);
+  }
+
+  setMotor(motor: JointMotorConfig): void {
+    this.world._setJointMotor(this.record, motor);
   }
 }
 
@@ -604,7 +610,7 @@ export class PhysicsWorld {
   }
 
   /**
-   * Connect two live, active rigid bodies with a spring or rope joint. All
+   * Connect two live, active rigid bodies with a joint. All
    * lengths and anchors are in pixels; every number must be finite, and
    * lengths, stiffness and damping at least 0.
    */
@@ -632,27 +638,75 @@ export class PhysicsWorld {
       x: this.toMeters(anchorB.x),
       y: this.toMeters(anchorB.y),
     };
-    const data =
-      config.type === "spring"
-        ? RAPIER.JointData.spring(
-            this.toMeters(config.restLength),
-            config.stiffness,
-            config.damping,
-            rapierAnchorA,
-            rapierAnchorB,
-          )
-        : RAPIER.JointData.rope(
-            this.toMeters(config.length),
-            rapierAnchorA,
-            rapierAnchorB,
-          );
+    let data: RAPIER.JointData;
+    switch (config.type) {
+      case "spring":
+        data = RAPIER.JointData.spring(
+          this.toMeters(config.restLength),
+          config.stiffness,
+          config.damping,
+          rapierAnchorA,
+          rapierAnchorB,
+        );
+        break;
+      case "rope":
+        data = RAPIER.JointData.rope(
+          this.toMeters(config.length),
+          rapierAnchorA,
+          rapierAnchorB,
+        );
+        break;
+      case "fixed":
+        data = RAPIER.JointData.fixed(rapierAnchorA, 0, rapierAnchorB, 0);
+        break;
+      case "revolute":
+        data = RAPIER.JointData.revolute(rapierAnchorA, rapierAnchorB);
+        break;
+      case "prismatic": {
+        const scale = Math.max(
+          Math.abs(config.axis.x),
+          Math.abs(config.axis.y),
+        );
+        const x = config.axis.x / scale;
+        const y = config.axis.y / scale;
+        const length = Math.hypot(x, y);
+        data = RAPIER.JointData.prismatic(rapierAnchorA, rapierAnchorB, {
+          x: x / length,
+          y: y / length,
+        });
+        break;
+      }
+    }
+    if (
+      (config.type === "revolute" || config.type === "prismatic") &&
+      config.limits
+    ) {
+      const scale = config.type === "prismatic" ? this.pixelsPerMeter : 1;
+      data.limitsEnabled = true;
+      data.limits = [config.limits.min / scale, config.limits.max / scale];
+    }
     const joint = this.world.createImpulseJoint(data, rawBodyA, rawBodyB, true);
+    joint.setContactsEnabled(config.collide ?? config.type !== "fixed");
+    // Rapier's revolute JointData ignores limits during creation.
+    if (config.type === "revolute" && config.limits) {
+      (joint as RAPIER.RevoluteImpulseJoint).setLimits(
+        config.limits.min,
+        config.limits.max,
+      );
+    }
     const record: JointRecord = {
       rawHandle: joint.handle,
       bodyA: bodyAHandle,
       bodyB: bodyBHandle,
       attached: true,
+      type: config.type,
     };
+    if (
+      (config.type === "revolute" || config.type === "prismatic") &&
+      config.motor
+    ) {
+      this._setJointMotor(record, config.motor);
+    }
     this._linkJoint(record);
     return new PhysicsJointHandle(this, record);
   }
@@ -1486,14 +1540,68 @@ export class PhysicsWorld {
     return density * getBoxColliderGeometry(shape).areaScale;
   }
 
+  private _validateMotor(context: string, motor: JointMotorConfig): void {
+    if (motor.velocity === undefined && motor.position === undefined) {
+      throw new Error(
+        `${context}: motor requires velocity or position, got neither.`,
+      );
+    }
+    assertFiniteNumber(context, "motor.velocity", motor.velocity);
+    assertFiniteNumber(context, "motor.position", motor.position);
+    assertFiniteNumber(context, "motor.stiffness", motor.stiffness, 0);
+    assertFiniteNumber(context, "motor.damping", motor.damping, 0);
+  }
+
+  /** @internal Reconfigure an attached joint's motor. */
+  _setJointMotor(record: JointRecord, motor: JointMotorConfig): void {
+    if (record.type !== "revolute" && record.type !== "prismatic") {
+      throw new Error(
+        `PhysicsWorld.setMotor: joint type "${record.type}" has no motor.`,
+      );
+    }
+    this._validateMotor("PhysicsWorld.setMotor", motor);
+    if (!record.attached)
+      throw new Error("PhysicsWorld.setMotor: joint must be attached.");
+    const joint = this.world.getImpulseJoint(
+      record.rawHandle,
+    ) as RAPIER.UnitImpulseJoint;
+    const scale = record.type === "prismatic" ? this.pixelsPerMeter : 1;
+    joint.configureMotor(
+      (motor.position ?? 0) / scale,
+      (motor.velocity ?? 0) / scale,
+      motor.stiffness ?? 0,
+      motor.damping ?? 0,
+    );
+    this.world.getRigidBody(record.bodyA).wakeUp();
+    this.world.getRigidBody(record.bodyB).wakeUp();
+  }
+
   private _validateJointConfig(config: JointConfig): void {
     const context = "PhysicsWorld.addJoint";
     if (config.type === "spring") {
       assertFiniteNumber(context, "restLength", config.restLength, 0);
       assertFiniteNumber(context, "stiffness", config.stiffness, 0);
       assertFiniteNumber(context, "damping", config.damping, 0);
-    } else {
+    } else if (config.type === "rope") {
       assertFiniteNumber(context, "length", config.length, 0);
+    }
+    if (config.type === "prismatic") {
+      assertFiniteNumber(context, "axis.x", config.axis.x);
+      assertFiniteNumber(context, "axis.y", config.axis.y);
+      if (Math.hypot(config.axis.x, config.axis.y) === 0) {
+        throw new Error(`${context}: axis must be non-zero, got (0, 0).`);
+      }
+    }
+    if (config.type === "revolute" || config.type === "prismatic") {
+      if (config.limits) {
+        assertFiniteNumber(context, "limits.min", config.limits.min);
+        assertFiniteNumber(context, "limits.max", config.limits.max);
+        if (config.limits.min > config.limits.max)
+          throw new Error(
+            `${context}: limits.min must be <= limits.max, got ${config.limits.min}.`,
+          );
+      }
+      if (config.motor) this._validateMotor(context, config.motor);
     }
     assertFiniteNumber(context, "anchorA.x", config.anchorA?.x);
     assertFiniteNumber(context, "anchorA.y", config.anchorA?.y);

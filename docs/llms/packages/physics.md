@@ -580,36 +580,83 @@ Use `castShape` to test a move before committing to it: carrying a rider on a mo
 
 ## Joints
 
-Connect two rigid bodies in the same scene's physics world. Both bodies must
-already be added to that world, and both entities must be active:
+`world.addJoint(bodyA, bodyB, config): JointHandle` connects two different
+rigid bodies already added to the same world. Both entities must be active.
 
 ```ts
 const rope = world.addJoint(playerBody, anchorBody, {
   type: "rope",
-  length: 120, // maximum distance, pixels
-  anchorA: { x: 0, y: 0 }, // local pixels, optional
-  anchorB: { x: 0, y: 0 }, // local pixels, optional
+  length: 120, // maximum anchor distance, px
 });
-
 const spring = world.addJoint(playerBody, companionBody, {
   type: "spring",
-  restLength: 80, // pixels
+  restLength: 80, // px
   stiffness: 40,
   damping: 4,
 });
+const weld = world.addJoint(wallBody, brickBody, {
+  type: "fixed",
+  anchorA: { x: 0, y: 20 },
+});
+const hub = world.addJoint(towerBody, sailBody, {
+  type: "revolute",
+  motor: { velocity: 2, damping: 10 }, // rad/s
+});
+const bridge = world.addJoint(bankBody, bridgeBody, {
+  type: "revolute",
+  anchorB: { x: -60, y: 0 },
+  limits: { min: -Math.PI / 2, max: 0 }, // relative radians, B minus A
+});
+const elevator = world.addJoint(railBody, platformBody, {
+  type: "prismatic",
+  axis: { x: 0, y: 1 }, // body A local direction, normalized internally
+  limits: { min: 0, max: 240 }, // anchor separation along axis, px
+  motor: { position: 120, stiffness: 40, damping: 8 },
+});
 ```
 
-`addJoint(bodyA, bodyB, config)` returns a `JointHandle`. `attached` is `true`
-while the joint is live. `remove()` detaches it; calling it again does nothing.
-Destroying or disabling either jointed entity (e.g. releasing it to a pool)
-detaches the joint automatically — re-enabling does not restore it, and
-`addJoint` throws for an inactive entity (add the joint in `onAcquire`, where
-the entity is already active). A rope to a static body is the usual pattern
-for a tether or swing. Lengths and anchors are in pixels; every number must be
-finite, and `length`, `restLength`, `stiffness` and `damping` at least 0.
-Spring `stiffness` and `damping` are mass-relative and passed to the solver
-unconverted; collider mass depends on `pixelsPerMeter` (density × area in
-meters), so retune them after changing the scale.
+- `rope` caps anchor separation; `spring` pulls toward `restLength`.
+- `fixed` aligns the two anchors and holds both bodies at the same angle.
+  Place local anchors at the intended attachment point before stepping.
+- `revolute` aligns anchors but allows relative rotation. Disable
+  `fixedRotation` on the rotating body.
+- `prismatic` allows motion along `axis` while holding relative rotation at 0.
+- Every type accepts `anchorA?`, `anchorB?` (body-local px, default origin),
+  and `collide?` (default `false` for fixed, `true` otherwise).
+  `collide` controls contacts between the two connected bodies; collision
+  layers still apply.
+- Every number must be finite. Lengths and spring/motor stiffness and damping
+  must be >= 0. Limits require `min <= max`; `axis`
+  must be non-zero.
+
+`JointMotorConfig` has `position?`, `velocity?`, `stiffness?`, `damping?`;
+at least one target is required, and omitted fields default to 0. Revolute
+position/velocity use radians and rad/s; prismatic uses px and px/s. A
+velocity-only motor needs `damping > 0` to move. Spring stiffness uses mass/s²
+and spring damping uses mass/s. Motor stiffness and damping are acceleration-based. Both are passed to the solver
+without conversion; retune after changing `pixelsPerMeter`.
+
+```ts
+hub.setMotor({ velocity: -2, damping: 10 }); // replaces all motor settings
+weld.attached; // false after removal, body disable or destruction
+weld.remove(); // idempotent
+```
+
+`setMotor` requires an attached revolute or prismatic joint. Destroying or
+disabling either entity detaches the joint; enabling the entity again does not restore
+it. For a pooled entity, create the joint in `onAcquire`.
+
+For impact-triggered destruction, remove a joint from a collision handler:
+
+```ts
+brickCollider.onCollision((event) => {
+  if (event.started && (event.contactImpulse ?? 0) > 100) weld.remove();
+});
+```
+
+For authored destruction without joints, create pre-cut pieces as static
+bodies, then call `pieceBody.setType("dynamic")` when hit. Save the broken
+state in game data and restore the appropriate body types on load.
 
 ## Save state
 
