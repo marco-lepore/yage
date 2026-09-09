@@ -2,6 +2,13 @@
 
 > A modular 2D game engine for TypeScript: hybrid OOP+ECS architecture, plugin-based, built on PixiJS v8 and Rapier2D.
 
+## For coding agents
+
+- This file is the canonical documentation index for coding agents. Prefer the Markdown references linked here over the human-facing HTML pages at https://yage.dev.
+- For implementation questions, read Core Concepts plus the reference for each package, tool, or addon involved.
+- Do not infer API details from examples when a dedicated reference exists.
+- Use [llms-full.txt](llms-full.txt), every reference concatenated, only when engine-wide context is genuinely useful.
+
 ## Docs
 
 - [Core Concepts](llms/core-concepts.md): Architecture, lifecycle, ECS, scenes, events, DI, processes, save-state boundary
@@ -41,6 +48,7 @@ Installable, opinionated gameplay patterns (`@yagejs-addons` scope), independent
 - [dialogue](llms/addons/dialogue.md): Branching runner, typewriter box & bubbles, markup, themeable presenters
 - [inventory](llms/addons/inventory.md): Slot inventory — stacking, item actions, sorting, one slot view with swappable cell presets
 - [abilities](llms/addons/abilities.md): Phase-based abilities, input intent mapping, and a concrete hit contract
+- [feel](llms/addons/feel.md): Game feel — squash, flash, shake, hit-stop, sound, and particles composed into one named trigger
 - [interaction](llms/addons/interaction.md): Proximity interaction — walk up, see a prompt, press E; headless
 - [quests](llms/addons/quests.md): Headless quest log — objectives and progression
 - [steering](llms/addons/steering.md): Movement AI — seek, flee, arrive, wander, pursue/evade, obstacle avoidance, flocking, path-following

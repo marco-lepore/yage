@@ -8,7 +8,8 @@
   },
   "scripts": {
     "dev": "astro dev",
-    "build": "node scripts/copy-llms.mjs && astro build",
+    "build": "node scripts/copy-llms.mjs && astro build && node scripts/verify-dist.mjs",
+    "test": "node --test scripts/*.test.mjs",
     "preview": "astro preview",
     "clean": "rm -rf dist .astro"
   },
