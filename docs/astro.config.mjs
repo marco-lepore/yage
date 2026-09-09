@@ -177,6 +177,7 @@ export default defineConfig({
           items: [
             { label: "Scenario Lab", slug: "tooling/scenario-lab" },
             { label: "Level Editor", slug: "tooling/level-editor" },
+            { label: "Runtime Feedback", slug: "tooling/feedback" },
             { label: "Local Engine Checkout", slug: "tooling/local-engine" },
           ],
         },

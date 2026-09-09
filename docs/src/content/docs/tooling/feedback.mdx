@@ -1,0 +1,183 @@
+---
+title: Runtime feedback
+description: Capture comments, screenshots, and inspector state for a coding agent.
+---
+
+Feedback lets you annotate a frozen game view and read the evidence from a
+local CLI. Select entities, draw an area, or comment on the whole view. Each
+observation includes a PNG, inspector snapshot, and optional project context.
+
+The feedback package is private and currently available from the YAGE
+workspace. Build it from the repository root:
+
+```sh
+npm install
+npx turbo run build --filter=@yagejs-tools/feedback
+```
+
+## Start feedback with a Vite game
+
+Add the dev-server plugin to `vite.config.ts` (Vite 8):
+
+```ts
+import { defineConfig } from "vite";
+import { yageFeedback } from "@yagejs-tools/feedback/vite";
+
+export default defineConfig({ plugins: [yageFeedback()] });
+```
+
+Keep `FeedbackPlugin({ enabled: debug })` in the game and omit `server`.
+Starting Vite starts feedback on the same port. The browser plugin discovers
+its API automatically. An explicit `server` option overrides discovery.
+Production builds contain no feedback server routes or discovery metadata.
+
+Open **Feedback gallery** from the game controls, or visit
+`/__yage/feedback/` on the game's origin. The API is at
+`/__yage/feedback/api/`. Both paths include Vite's configured `base`, and follow
+its actual port if the preferred port is occupied. Use that full API URL in
+CLI `--server` arguments, including the path.
+
+`yageFeedback({ directory: ".yage/feedback", basePath: "/__yage/feedback/" })`
+configures storage relative to Vite's root and routes relative to Vite's base.
+Add `.yage/feedback/` to your project's `.gitignore` if captures should stay local.
+Each running server must own a different storage directory. A second owner
+fails with a lock error; it never creates a different directory silently.
+Restarting Vite preserves comments and releases/reacquires the lock.
+
+The integration requires local HTTP. Feedback routes reject nonlocal clients
+even when the game dev server is exposed on the network. Closing Vite stops
+feedback; use the standalone server with the same directory to review saved
+comments afterward.
+
+## Review and hand off comments
+
+The gallery defaults to **Pending** (open and ingested). Filter by status,
+search text or entity names, and open **View evidence** for the original image,
+target outlines, inspector snapshot, host context, and status history.
+Cards show 24 comments per page. **Refresh** reloads saved comments and status.
+
+Select comments, then choose **Copy for Codex** or **Copy for Claude**.
+The instruction includes the skill invocation, project directory, actual API
+URL, and explicit comment IDs. Paste it into an agent session opened in that
+project. Install the `yage-feedback` skill separately in that agent first.
+If clipboard access fails, a dialog offers selectable text. Reading, selecting,
+and copying do not ingest comments. Changing the filter clears selection;
+changing pages retains it.
+
+Install the runtime plugin alongside RendererPlugin and DebugPlugin in your game:
+
+```ts
+import { Engine } from "@yagejs/core";
+import { FeedbackPlugin } from "@yagejs-tools/feedback";
+
+const debug = import.meta.env.DEV;
+const engine = new Engine({ debug });
+// Install RendererPlugin and DebugPlugin before starting the engine.
+engine.use(new FeedbackPlugin({
+  enabled: debug,
+  context: () => ({ host: "runtime", example: "patrol" }),
+}));
+```
+
+Use the same debug flag for the engine and feedback. When disabled, feedback
+adds no DOM controls or keyboard listeners. The compact controls become fully
+visible on hover or keyboard focus. F8 opens feedback; F9 toggles freeze.
+Set `shortcuts: false` if your host reserves those keys.
+
+Override keyboard bindings in the runtime plugin:
+
+```ts
+new FeedbackPlugin({
+  enabled: debug,
+  shortcuts: {
+    feedback: { code: "KeyF", shift: true },
+    freeze: { code: "KeyP", shift: true },
+    stepFrame: { code: "Period" },
+    stepTenFrames: { code: "Period", shift: true },
+  },
+});
+```
+
+Bindings use physical `KeyboardEvent.code` values, such as `KeyF`, `Space`,
+or `Backquote`. Optional `ctrl`, `alt`, `shift`, and `meta` modifiers must
+match exactly; omitted modifiers are false. Omitted actions keep F8/F9 and F10/Shift+F10.
+Set an action to `false` to disable only its shortcut, or use `shortcuts: false`
+to disable all feedback shortcuts. Buttons remain available and tooltips show each
+configured binding. Duplicate bindings are rejected. Choose combinations that
+your browser and OS do not reserve. Configured step keys stay reserved even
+when stepping is unavailable, except while typing or in a dialog.
+
+Once the game is frozen, **+1 frame** and **+10 frames** advance it and leave
+it frozen. Their default keys are F10 and Shift+F10. Stepping uses the
+inspector's configured frame delta, clears held input, and is unavailable
+while a comment dialog is open or another tool owns the clock. Return to the
+game before stepping; saved captures and pending comment evidence stay unchanged.
+
+
+Opening feedback freezes engine time and displays an immutable capture. The
+screenshot hides the debug HUD and restores its previous visibility afterward.
+Select a target, write a comment, and save. You can leave several comments on
+one capture, return to the view, and capture another frame in the same session.
+The entity dropdown filters by name, ID, or scene and retains selections across
+filters. Failed saves retain their draft for retry.
+
+Read saved evidence from another terminal:
+
+```sh
+node packages/tools/feedback/dist/cli.js list --status open --server http://localhost:5173/__yage/feedback/api/
+node packages/tools/feedback/dist/cli.js show COMMENT_ID --server http://localhost:5173/__yage/feedback/api/
+```
+
+`show` returns JSON containing the comment, target, capture metadata, full
+inspector snapshot, and absolute screenshot path. Reads leave status unchanged.
+The files remain readable after closing the game or restarting the server.
+
+Use the actual origin printed by Vite if its port differs. Without Vite, start
+`yage-feedback serve --dir .yage/feedback --origin http://localhost:5173`
+and set the runtime plugin's `server` to the printed API URL. `--port 0`
+allocates an available port. `--base-path /review/api/` sets an API prefix;
+the standalone gallery is at `/review/api/gallery/`. `--project PATH` sets
+the project used in copied instructions and defaults to the working directory.
+
+Track work with `ingest`, `address`, `resolve`, and `reopen`:
+
+```sh
+node packages/tools/feedback/dist/cli.js ingest COMMENT_ID \
+  --server http://localhost:5173/__yage/feedback/api/ \
+  --revision 0 --by codex/session-name \
+  --request-id 7582a71c-ffab-4b16-b7d3-145b34fafac5
+```
+
+Use `comment.revision` from `show` and a new request UUID for each new action.
+Retry an uncertain action with the same UUID and arguments. The server rejects
+stale revisions and records actor, time, status, and optional `--note TEXT` in
+`comment.history`. The sequence is open → ingested → addressed → resolved;
+reopening any non-open comment returns it to open. Status changes preserve the
+original evidence.
+
+The same plugin works in a lab harness. Pause lab playback before opening
+feedback because playback owns the inspector clock. Screenshots cover the game
+canvas. Selection uses rendered bounding boxes; the dropdown helps distinguish
+overlapping objects. Freezing engine time does not stop external timers,
+network callbacks, or audio.
+
+Use one server per data directory. Graceful shutdown releases its directory
+lock. After a crash, check the PID in `.server.lock` before removing a stale
+lock. The server binds loopback; repeat `--origin URL` for each permitted browser
+origin. The tool collects evidence and tracks its status; it does not run an
+agent or apply game changes.
+
+
+Uploads can be cancelled with **Cancel save**, **Return to view**, or Escape.
+Requests time out after 30 seconds. A pending draft keeps its original capture,
+text, target, and request identity when you return to the game; reopen feedback
+to retry it. The draft lasts until saved, discarded, or the plugin is destroyed
+(including a page reload). Cancellation cannot undo a completed server write.
+
+The server validates PNG checksums and decodes the pixels before saving.
+Screenshots must be non-interlaced and contain at most 16,777,216 pixels. The
+server accepts only loopback Host headers, including CLI requests without an
+Origin header. Object-property order does not affect upload retry identity.
+
+Feedback requires engine packages at `>=0.11.0 <0.12.0`. The published 0.10
+packages do not provide the inspector clock leases used for comment mode.
