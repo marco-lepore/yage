@@ -41,9 +41,19 @@ export function yageFeedback(options: YageFeedbackOptions = {}): Plugin {
           galleryPath: basePath,
         });
       };
-      // The directory lock is taken once the port is bound, so a failed
-      // listen (for example a strict-port conflict) leaves no stale lock.
-      if (server.httpServer) server.httpServer.once("listening", start);
+      // The directory lock is taken once the port is bound, so a failed bind
+      // (for example a strict-port conflict) leaves no stale lock. Vite adds
+      // its own bind handlers later, so an error raised from here rejects
+      // listen() instead of crashing the process.
+      const http = server.httpServer;
+      if (http)
+        http.once("listening", () => {
+          try {
+            start();
+          } catch (error) {
+            http.emit("error", error);
+          }
+        });
       else start();
       server.middlewares.use((request, response, next) => {
         const pathname = new URL(request.url ?? "/", "http://localhost")

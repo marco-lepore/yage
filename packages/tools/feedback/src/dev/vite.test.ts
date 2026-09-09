@@ -125,7 +125,9 @@ it("shares Vite's selected port, preserves nested paths and evidence, and releas
       port: 0,
     }),
   ).rejects.toThrow("locked");
+  const before = first.config;
   await first.restart();
+  expect(first.config).not.toBe(before);
   expect(await client.list()).toHaveLength(1);
   await first.close();
   const standalone = await startFeedbackServer({
@@ -194,4 +196,22 @@ it("leaves no directory lock when the port is already in use", async () => {
     port: 0,
   });
   await reopened.close();
+});
+
+it("rejects listen while another server owns the directory", async () => {
+  const directory = await root();
+  const first = await dev(directory);
+  const second = await createServer({
+    configFile: false,
+    root: directory,
+    logLevel: "silent",
+    plugins: [yageFeedback()],
+    server: { host: "127.0.0.1", port: 0, watch: null },
+  });
+  servers.push(second);
+  await expect(second.listen()).rejects.toThrow("locked");
+  const health = await fetch(
+    origin(first) + "/game/__yage/feedback/api/health",
+  );
+  expect(health.status).toBe(200);
 });
