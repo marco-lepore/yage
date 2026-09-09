@@ -30,27 +30,29 @@ export function yageFeedback(options: YageFeedbackOptions = {}): Plugin {
         normalizeBasePath(options.basePath ?? "/__yage/feedback/").slice(1);
     },
     configureServer(server) {
-      application = createFeedbackApplication({
-        directory: path.resolve(
-          config.root,
-          options.directory ?? ".yage/feedback",
-        ),
-        project: config.root,
-        basePath: basePath + "api/",
-        galleryPath: basePath,
-      });
-      const current = application;
-      server.httpServer?.on("error", (failure: NodeJS.ErrnoException) => {
-        if (failure.code === "EADDRINUSE" && !config.server.strictPort) return;
-        void current
-          .close()
-          .catch((error: unknown) => server.config.logger.error(String(error)));
-      });
+      const start = (): void => {
+        application = createFeedbackApplication({
+          directory: path.resolve(
+            config.root,
+            options.directory ?? ".yage/feedback",
+          ),
+          project: config.root,
+          basePath: basePath + "api/",
+          galleryPath: basePath,
+        });
+      };
+      // The directory lock is taken once the port is bound, so a failed
+      // listen (for example a strict-port conflict) leaves no stale lock.
+      if (server.httpServer) server.httpServer.once("listening", start);
+      else start();
       server.middlewares.use((request, response, next) => {
         const pathname = new URL(request.url ?? "/", "http://localhost")
           .pathname;
-        if (pathname === basePath.slice(0, -1) || pathname.startsWith(basePath))
-          current.handle(request, response);
+        if (
+          application &&
+          (pathname === basePath.slice(0, -1) || pathname.startsWith(basePath))
+        )
+          application.handle(request, response);
         else next();
       });
       server.config.logger.info(`YAGE feedback gallery: ${basePath}`);
