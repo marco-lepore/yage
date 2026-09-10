@@ -20,12 +20,13 @@ function* htmlPages(dir = dist) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) yield* htmlPages(path);
-    else if (entry.name === "index.html") yield path;
+    else if (entry.name.endsWith(".html")) yield path;
   }
 }
 
-/** Route id of a rendered page: dist/guides/physics/index.html -> guides/physics. */
-const routeId = (page) => relative(dist, page).replace(/\/?index\.html$/, "");
+/** Route id of a rendered page: guides/physics/index.html -> guides/physics, 404.html -> 404. */
+const routeId = (page) =>
+  relative(dist, page).replace(/(?:\/|^)index\.html$|\.html$/, "");
 
 for (const file of ["llms.txt", "llms-full.txt", "llms/core-concepts.md"]) {
   assert.ok(existsSync(join(dist, file)), `dist/${file} is missing`);
@@ -37,7 +38,6 @@ for (const page of htmlPages()) {
   pages += 1;
   const id = routeId(page);
   const html = readFileSync(page, "utf8");
-  if (id === "404") continue;
   if (!html.includes(DESCRIBEDBY)) problems.push(`${id}: no describedby link`);
   if (!html.includes(AGENT_NOTE)) problems.push(`${id}: no agent note`);
   const alternates = [...html.matchAll(ALTERNATE)].map((m) => m[1]);
