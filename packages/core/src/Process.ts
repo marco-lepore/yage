@@ -234,6 +234,19 @@ export class Process {
     this.onResetFn?.();
   }
 
+  /**
+   * Restore elapsed time without running callbacks or changing completion.
+   * @internal Used by stateful owners that implement Serializable.
+   */
+  _hydrateElapsed(elapsed: number): void {
+    if (!Number.isFinite(elapsed) || elapsed < 0) {
+      throw new Error(
+        `Process._hydrateElapsed: elapsed must be a finite number >= 0 in seconds, got ${elapsed}.`,
+      );
+    }
+    this._elapsed = elapsed;
+  }
+
   private complete(): void {
     this._completed = true;
     try {

@@ -68,6 +68,15 @@ export type { EntityFilter } from "./EntityFilter.js";
 
 export { Component } from "./Component.js";
 
+export { StateMachine, defineStates } from "./StateMachine.js";
+export type {
+  StateDefinition,
+  StateDefinitions,
+  StateMachineInspection,
+  StateMachineSnapshot,
+  StateTransition,
+} from "./StateMachine.js";
+
 export { Transform } from "./Transform.js";
 
 export { Entity, _resetEntityIdCounter } from "./Entity.js";

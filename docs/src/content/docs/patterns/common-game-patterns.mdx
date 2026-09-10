@@ -131,6 +131,68 @@ wave.start();
 wave.restart();
 ```
 
+## Named states
+
+`StateMachine` keeps a component's valid modes and transitions in one table.
+Use it when a string field would otherwise be assigned from several places.
+
+```typescript
+import { Component, defineStates } from "@yagejs/core";
+
+class GuardBrain extends Component {
+  readonly mode = this.stateMachine(
+    defineStates({
+      patrol: { to: ["suspicious"] },
+      suspicious: { to: ["patrol", "alert"], for: 0.5, next: "alert" },
+      alert: { to: ["patrol"] },
+    }),
+    "patrol",
+  );
+
+  onAdd(): void {
+    this.mode.start();
+  }
+
+  fixedUpdate(dt: number): void {
+    if (this.mode.is("patrol") && this.seesPlayer()) {
+      this.mode.go("suspicious");
+    }
+    if (this.mode.is("alert") && !this.seesPlayer()) {
+      this.mode.go("patrol");
+    }
+    this.mode.tick(dt);
+  }
+}
+```
+
+The keys passed to `defineStates` become the state-name type. TypeScript rejects
+unknown names in `to`, `next`, and `go()`. `go()` also checks the current
+state's `to` list at runtime.
+
+Call `start()` after the component has its entity and sibling dependencies.
+`start()` runs the initial state's `enter` hook. Construction and `hydrate()`
+do not run hooks. The machine starts timing after `start()`, `hydrate()`, or a
+`go()` to a different state. Enter and exit hooks from
+`this.stateMachine(...)` are attributed to the owning component when they
+throw.
+
+A timed state needs a finite positive `for` and a different `next`. The next
+state must appear in `to`. Pass the component's `dt` directly to `tick()`. The
+engine has already applied scene and entity time scaling. Time past a state
+boundary is discarded, so a large tick enters at most one state. Calling
+`go()` with the current state is a no-op and does not restart its timer.
+Untimed elapsed time is capped at `Number.MAX_VALUE` if finite ticks overflow.
+
+The machine implements `Serializable<{ state, elapsed }>`, so a chosen save
+root can include it. `hydrate()` restores the state and timer without running
+hooks. A component field without a leading underscore also appears in the
+Inspector with its current state, elapsed time, and last transition.
+
+Use separate machines for independent modes such as movement, control, and
+attachment. Leave values derived from other state as getters. The abilities
+addon remains the better fit for actions that need input intents, lanes,
+priorities, holds, or timed step windows.
+
 ## Health and Damage
 
 A simple health component:

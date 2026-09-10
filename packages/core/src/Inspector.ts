@@ -3,6 +3,7 @@ import { Entity } from "./Entity.js";
 import { Component } from "./Component.js";
 import { Scene } from "./Scene.js";
 import { Vec2 } from "./Vec2.js";
+import { StateMachine } from "./StateMachine.js";
 import type { SceneManager } from "./SceneManager.js";
 import type { GameLoop } from "./GameLoop.js";
 import type { EventBus, EngineEvents } from "./EventBus.js";
@@ -2129,6 +2130,7 @@ function isSerializableValue(value: unknown): boolean {
   if (Array.isArray(value)) return true;
   // The engine's own value type reads as `{ x, y }`, so it counts as data.
   if (value instanceof Vec2) return true;
+  if (value instanceof StateMachine) return true;
   // Plain objects pass; class instances (Pixi, Rapier, Yoga, etc.) don't.
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;

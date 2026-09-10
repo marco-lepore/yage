@@ -49,6 +49,42 @@ class DamageReceiver extends Component {
 
 If `update()` or `fixedUpdate()` throws, the error is attributed to the component, logged, recorded (`Inspector.getErrors().callbackErrors`), and rethrown. `GameLoop.tick()` stops the loop if the error escapes the whole frame unhandled.
 
+### Stored modes and state machines
+
+Use `StateMachine` when a component has named modes and only specific moves
+between them are valid. Keep condition checks beside the probes and inputs that
+produce them, then call `go()`.
+
+```ts
+class EnemyBrain extends Component {
+  readonly mode = this.stateMachine(
+    defineStates({
+      patrol: { to: ["windup"] },
+      windup: { to: ["attack"], for: 0.2, next: "attack" },
+      attack: { to: ["patrol"] },
+    }),
+    "patrol",
+  );
+
+  onAdd() {
+    this.mode.start();
+  }
+  fixedUpdate(dt: number) {
+    if (this.mode.is("patrol") && this.canAttack()) this.mode.go("windup");
+    this.mode.tick(dt);
+  }
+}
+```
+
+The component's fixed-step `dt` already includes scene and entity time scaling.
+Passing it to `tick()` makes timed states pause during a freeze. Call `tick()`
+from `update()` for a frame-clock presentation mode. Call `start()` after the
+owner is ready. State machines do not poll conditions themselves.
+
+Use ordinary getters for derived or combined facts. Use one machine per
+independent state axis. Use `@yagejs-addons/abilities` for actions that need
+input intents, lanes, priorities, holds, or timed step windows.
+
 ## System Patterns
 
 Systems are for engine-level cross-cutting concerns (rendering, physics, audio sync). Game developers typically write Components instead. Use Systems when you need efficient cross-entity iteration via `QueryCache` and strict phase ordering.

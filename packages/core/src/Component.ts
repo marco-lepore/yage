@@ -5,6 +5,8 @@ import type { EventToken } from "./EventToken.js";
 import type { Logger } from "./Logger.js";
 import type { Scene } from "./Scene.js";
 import type { ComponentClass } from "./types.js";
+import { StateMachine } from "./StateMachine.js";
+import type { StateDefinitions } from "./StateMachine.js";
 import { LoggerKey, ErrorBoundaryKey, EventBusKey } from "./EngineContext.js";
 import { isolate } from "./internal/isolate.js";
 import { lazyRefPrototype } from "./internal/lazyRef.js";
@@ -259,6 +261,34 @@ export abstract class Component {
   protected addCleanup(fn: () => void): void {
     this._cleanups ??= [];
     this._cleanups.push(fn);
+  }
+
+  /**
+   * Create a state machine whose hooks are attributed to this component.
+   * The machine can be declared as a field because service lookup waits until
+   * a hook runs.
+   */
+  protected stateMachine<const S extends string>(
+    states: StateDefinitions<S>,
+    initial: NoInfer<S>,
+  ): StateMachine<S> {
+    return new StateMachine(states, initial)._setHookRunner(
+      (kind, transition, hook) => {
+        const entity = this.entity as Entity | undefined;
+        const scene = entity?.tryScene;
+        const boundary = scene?.context.tryResolve(ErrorBoundaryKey);
+        if (!boundary) {
+          hook();
+          return;
+        }
+        boundary.wrapCallback(hook, {
+          kind: `StateMachine ${kind} hook (${this.constructor.name})`,
+          ...(entity && { entity: entity.name }),
+          ...(scene && { scene: scene.name }),
+          event: transition,
+        });
+      },
+    );
   }
 
   /**

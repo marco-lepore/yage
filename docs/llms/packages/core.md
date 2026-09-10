@@ -17,6 +17,7 @@ Zero runtime dependencies. ECS foundation, DI, game loop, scenes, events, proces
 | `EntityPool`      | Reuses entities instead of spawning and destroying them; grows on demand unless capped |
 | `EntityHandle<T>` | Reference to one life of an entity; reads `undefined` once that life ends              |
 | `Component`       | Base class for game logic                                                              |
+| `StateMachine`    | Typed transition table with owner-driven timing, hooks, inspection, and save data      |
 | `System`          | Base class for engine-level systems                                                    |
 | `Phase`           | Enum: EarlyUpdate, FixedUpdate, Update, LateUpdate, Render, EndOfFrame                 |
 
@@ -164,6 +165,42 @@ this.add(new Brain()).updatePriority = -1; // per instance: decides before Mover
 
 - `component.updatePriority` is writable at any time, before or after `add()`; the instance value overrides the class's `static updatePriority`, which subclasses inherit.
 - `entity.getAll()` and `entity.getAll(Cls)` stay in add order.
+
+### State machines
+
+Use `StateMachine` for stored modes with a fixed set of legal transitions.
+`defineStates` preserves the state-name union, so unknown targets and calls such
+as `go("jmup")` fail type checking.
+
+```ts
+class GuardBrain extends Component {
+  readonly brain = this.stateMachine(
+    defineStates({
+      patrol: { to: ["alert"] },
+      alert: { to: ["patrol"], for: 1, next: "patrol" },
+    }),
+    "patrol",
+  );
+
+  onAdd() {
+    this.brain.start();
+  }
+  fixedUpdate(dt: number) {
+    if (this.seesPlayer()) this.brain.go("alert");
+    this.brain.tick(dt);
+  }
+}
+```
+
+- `start()` runs the initial `enter` hook. Construction and `hydrate()` run no hooks. A machine starts timing after `start()`, `hydrate()`, or a `go()` to a different state.
+- `go(state)` throws for an undeclared edge. Going to the current state is a no-op and does not restart its timer.
+- A timed state declares a finite positive `for` and a different `next`; `next` must appear in `to`. A tick that crosses the boundary discards excess time. Pass the `dt` received by the owning component without applying time scaling again.
+- Untimed states accumulate elapsed time. If two finite values overflow, elapsed time is capped at `Number.MAX_VALUE` and development builds warn once for that machine.
+- `this.stateMachine(...)` attributes `enter` and `exit` hook failures to the component. A standalone `new StateMachine(states, initial)` works in headless code and calls hooks directly.
+- A transition cannot start from inside an `enter` or `exit` hook. An exit-hook throw keeps the source state. An enter-hook throw leaves the committed target state in place and propagates.
+- `serialize()` returns `{ state, elapsed }`; `hydrate()` restores it without hooks. A restored state runs its exit hook on a later transition.
+- A machine stored in a component field without a leading underscore appears in Inspector component state as `{ state, elapsed, lastTransition }`. TypeScript `private` fields are included. Normal underscore and `inspectExclude` rules still apply.
+- Use several machines for independent state axes. Keep derived facts as getters. Use the abilities addon when lanes, priorities, input intents, holds, or timed action steps are part of the behavior.
 
 ### EntityPool
 
