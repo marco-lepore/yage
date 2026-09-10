@@ -20,10 +20,10 @@ export async function startFeedbackServer(
     throw new Error("Feedback port must be an integer from 0 to 65535.");
   const app = createFeedbackApplication({
     ...options,
+    // Vite's default dev origins, so a game on `vite` needs no --origin.
     origins: options.origins ?? [
-      "http://127.0.0.1:5213",
-      "http://127.0.0.1:5214",
-      "http://localhost:5214",
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
     ],
   });
   const server = createServer(app.handle);

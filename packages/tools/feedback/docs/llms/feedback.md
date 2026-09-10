@@ -1,7 +1,23 @@
-# @yagejs-tools/feedback (private workspace package)
+# @yagejs-tools/feedback
+
+Runtime feedback for YAGE games (`@yagejs-tools` scope, independently
+versioned, NOT in the engine `fixed` group). Freeze the view, comment on the
+whole view, entities, or an area, and read each comment with its PNG and
+inspector snapshot from the `yage-feedback` CLI. Dev tool: nothing reaches
+the game bundle when `enabled` is false.
+
+## Install
+
+```bash
+npm install -D @yagejs-tools/feedback
+# engine peers, already in a YAGE game (>=0.11.0 <0.12.0):
+# @yagejs/core, @yagejs/renderer, @yagejs/debug, vite
+# optional peer: @yagejs/input (held input is cleared on entry/exit)
+```
+
+## Runtime plugin
 
 DOM feedback UI over a real YAGE view. Requires RendererPlugin and DebugPlugin.
-No runtime dependency from engine packages to feedback.
 
 ```ts
 import { FeedbackPlugin } from "@yagejs-tools/feedback";
@@ -26,6 +42,8 @@ Targets: `global`, `entities` (scene ID, runtime ID, generation, name, bounds),
 Resume/re-enter creates a new capture in the same plugin session. Snapshot
 camera and world state are evidence; no world-region conversion is inferred.
 
+## Vite plugin
+
 Vite 8: `import { yageFeedback } from "@yagejs-tools/feedback/vite"`;
 add `yageFeedback()` to Vite plugins. Omit runtime `server` for automatic
 discovery; explicit `server` wins. Dev only, local HTTP only. No production
@@ -41,10 +59,11 @@ Refresh reloads records. Select IDs and copy Codex/Claude skill instructions
 with project and full API URL. Clipboard denial offers selectable text. No
 read/copy operation mutates status. Agent skill is installed separately.
 
-CLI: `yage-feedback serve --dir PATH [--port 5212] [--origin URL]
+## CLI
+
+`npx yage-feedback serve --dir PATH [--port 5212] [--origin URL]
 [--base-path /] [--project PATH]`,
-`yage-feedback list [--status STATUS] [--server URL]`, `yage-feedback show ID [--server URL]`.
-Repository invocation: `node packages/tools/feedback/dist/cli.js ...`.
+`npx yage-feedback list [--status STATUS] [--server URL]`, `npx yage-feedback show ID [--server URL]`.
 `show` returns JSON with comment, capture (full snapshot/context), absolute
 PNG path, and HTTP image path including the API prefix. `--server` accepts
 full local HTTP base URLs with paths, with or without trailing slash.
@@ -52,7 +71,10 @@ full local HTTP base URLs with paths, with or without trailing slash.
 `gallery/`; project defaults to working directory. Stop Vite before opening the
 same storage with `serve`. Data remains readable after browser/server
 restart. One server per directory. Retries are idempotent; conflicting IDs
-reject. Server binds loopback; repeated `--origin` overrides allowed origins.
+reject. Server binds loopback. Default allowed cross-origin browsers:
+`http://localhost:5173` and `http://127.0.0.1:5173`; repeated `--origin`
+replaces them. Set the plugin's `server` to the printed API URL when Vite
+does not host feedback.
 
 Lab harnesses can include the same plugin. Pause LabClock first: its play
 lease prevents feedback entry. Selection is bounding-box based, with a
@@ -79,8 +101,10 @@ Stepping is blocked while a comment dialog is open or another clock owner holds
 a lease. Configured step keys remain reserved outside editable fields/dialogs
 even when stepping is unavailable. Captured evidence remains immutable; return to the game before stepping.
 
-Workflow: open → ingested → addressed → resolved; reopen any non-open comment.
-`yage-feedback ingest|address|resolve|reopen ID --revision N --by ACTOR
+## Workflow
+
+open → ingested → addressed → resolved; reopen any non-open comment.
+`npx yage-feedback ingest|address|resolve|reopen ID --revision N --by ACTOR
 --request-id UUID [--note TEXT] [--server URL]`.
 Read `comment.revision` with show first. Reads never acknowledge. Use a new
 request UUID for each new action; retry the same action with unchanged args and
@@ -101,5 +125,5 @@ Screenshots must be non-interlaced and contain at most 16,777,216 pixels. The
 server accepts only loopback Host headers, including CLI requests without an
 Origin header. Object-property order does not affect upload retry identity.
 
-Feedback requires engine packages at `>=0.11.0 <0.12.0`. The published 0.10
-packages do not provide the inspector clock leases used for comment mode.
+The 0.10 engine packages do not provide the inspector clock leases used for
+comment mode, which is why the peer range starts at 0.11.

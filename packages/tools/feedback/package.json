@@ -1,8 +1,27 @@
 {
   "name": "@yagejs-tools/feedback",
   "version": "0.0.0",
-  "private": true,
+  "description": "Runtime feedback for YAGE games — freeze the view, comment on entities or areas, and read the captures from a CLI",
+  "keywords": [
+    "yage",
+    "yage-tool",
+    "game-engine",
+    "2d",
+    "typescript",
+    "feedback",
+    "annotation",
+    "devtools"
+  ],
+  "license": "MIT",
+  "author": "Marco Lepore",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
+    "directory": "packages/tools/feedback"
+  },
+  "homepage": "https://yage.dev",
   "type": "module",
+  "types": "./dist/index.d.ts",
   "bin": {
     "yage-feedback": "dist/cli.js"
   },
@@ -20,13 +39,24 @@
       "import": "./dist/vite.js"
     }
   },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
+    "dev": "tsup --watch",
     "typecheck": "tsc --noEmit && tsc -p demo/tsconfig.json --noEmit",
     "lint": "eslint src/",
     "test": "vitest run",
+    "clean": "rm -rf dist",
     "demo": "vite demo --host 127.0.0.1 --port 5213 --strictPort",
-    "lab": "cd demo && node ../../lab/dist/cli.js dev --port 5214 --no-open"
+    "lab": "cd demo && yage-lab dev --port 5214 --no-open"
+  },
+  "dependencies": {
+    "pngjs": "^7.0.0"
   },
   "peerDependencies": {
     "@yagejs/core": ">=0.11.0 <0.12.0",
@@ -44,15 +74,13 @@
     }
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "@types/pngjs": "^6.0.5",
     "@yagejs-tools/lab": "^0.2.0",
-    "@yagejs/core": ">=0.11.0 <0.12.0",
-    "@yagejs/debug": ">=0.11.0 <0.12.0",
-    "@yagejs/input": ">=0.11.0 <0.12.0",
-    "@yagejs/renderer": ">=0.11.0 <0.12.0",
+    "@yagejs/core": ">=0.11.0",
+    "@yagejs/debug": ">=0.11.0",
+    "@yagejs/input": ">=0.11.0",
+    "@yagejs/renderer": ">=0.11.0",
     "vite": "^8.0.0"
-  },
-  "dependencies": {
-    "pngjs": "^7.0.0"
   }
 }
