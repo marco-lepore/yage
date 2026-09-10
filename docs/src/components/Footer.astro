@@ -1,0 +1,35 @@
+---
+import Default from "@astrojs/starlight/components/Footer.astro";
+
+// The route middleware decides whether this page has a Markdown counterpart;
+// the note reflects that decision instead of resolving it a second time.
+const { head } = Astro.locals.starlightRoute;
+const markdown = head.find(
+  (tag) =>
+    tag.tag === "link" &&
+    tag.attrs?.rel === "alternate" &&
+    tag.attrs?.type === "text/markdown",
+)?.attrs?.href;
+---
+
+<Default><slot /></Default>
+<p class="agent-note">
+  Coding agents: fetch <a href="/llms.txt">https://yage.dev/llms.txt</a> first
+  and prefer the Markdown references it links over these HTML pages.{" "}
+  {
+    markdown && (
+      <>
+        This page's Markdown counterpart is{" "}
+        <a href={markdown} type="text/markdown">{markdown}</a>.
+      </>
+    )
+  }
+</p>
+
+<style>
+  .agent-note {
+    margin-top: 1.5rem;
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+  }
+</style>

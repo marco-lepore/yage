@@ -2,10 +2,17 @@ import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import starlightTypeDoc, { typeDocSidebarGroup } from "starlight-typedoc";
 import wasm from "vite-plugin-wasm";
+import { fileURLToPath } from "node:url";
+
+// The route middleware checks public/llms/ before advertising a Markdown
+// counterpart. It is bundled at build time, so its own import.meta.url does
+// not locate this directory; the config injects the path instead.
+const publicDir = fileURLToPath(new URL("./public/", import.meta.url));
 
 export default defineConfig({
   vite: {
     plugins: [wasm()],
+    define: { __DOCS_PUBLIC_DIR__: JSON.stringify(publicDir) },
   },
   site: "https://yage.dev",
   integrations: [
@@ -19,6 +26,11 @@ export default defineConfig({
       },
       favicon: "/logo.svg",
       customCss: ["./src/styles/custom.css"],
+      // Agent discovery: every page links /llms.txt and, when one exists, its
+      // Markdown counterpart (mapping in scripts/llm-docs.mjs). The footer
+      // repeats the pointer as text so it survives HTML-to-text extraction.
+      routeMiddleware: "./src/starlightRouteData.ts",
+      components: { Footer: "./src/components/Footer.astro" },
       plugins: [
         starlightTypeDoc({
           entryPoints: [

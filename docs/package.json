@@ -7,8 +7,9 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "astro dev",
-    "build": "node scripts/copy-llms.mjs && astro build",
+    "dev": "node scripts/copy-llms.mjs && astro dev",
+    "build": "node scripts/copy-llms.mjs && astro build && node scripts/verify-dist.mjs",
+    "test": "node --test scripts/*.test.mjs",
     "preview": "astro preview",
     "clean": "rm -rf dist .astro"
   },

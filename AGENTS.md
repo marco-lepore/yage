@@ -101,6 +101,8 @@ YAGE maintains two parallel documentation surfaces. When you ship a new public A
 - **LLM docs** — `docs/llms/` (source). Terse, signature-forward reference material optimised for context windows. **Never edit `docs/public/llms/` directly** — it's regenerated from `docs/llms/` by `docs/scripts/copy-llms.mjs` on every docs build and edits to the generated copy are silently overwritten.
 - **Human docs (yage.dev)** — `docs/src/content/docs/` Astro + Starlight `.mdx` files. More narrative; can embed images, diagrams, and inline playable examples.
 
+Every rendered page links `/llms.txt`, and pages with a Markdown counterpart also link it with `<link rel="alternate" type="text/markdown">`. The page-to-Markdown mapping lives in `docs/scripts/llm-docs.mjs`; a new human docs page must be mapped there (or listed as having no counterpart in `docs/scripts/llm-docs.test.mjs`), and every served Markdown file must be linked from `docs/llms.txt`, or the docs tests fail.
+
 The two do NOT need 1:1 parity — human docs can be longer and more visual, LLM docs can skip prose that doesn't help an agent. But _something_ should land in each surface when a feature becomes user-visible. A missing LLM entry makes agents write broken code against a feature that exists; a missing human entry makes humans fail to discover one.
 
 Rebuild both after changes:
