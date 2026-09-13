@@ -21,16 +21,11 @@ export class BackgroundRenderer {
     | TilingSprite
     | undefined;
   private opts: BackgroundOptions | undefined;
-  private lastWidth = 0;
-  private lastHeight = 0;
-  // Raised whenever the drawn content would differ at an unchanged size: a
-  // new options object, a newly created display object, or a destroyed one.
-  // `resize` skips its redraw only while this is down AND the size matches
-  // the last draw, so a same-size colour swap (a button's hover state) still
-  // repaints. A `NaN` size sentinel cannot stand in for this flag, because
-  // `set` re-applies the cached size under `lastWidth > 0 || lastHeight > 0`
-  // and `NaN > 0` is false.
-  private needsRedraw = true;
+  // Size the current drawing was made at. `NaN` never equals a computed size,
+  // so writing it forces the next `resize` to draw — which is how a same-size
+  // colour swap, such as a button's hover state, still repaints.
+  private lastWidth = Number.NaN;
+  private lastHeight = Number.NaN;
 
   /** Create or replace the background display object. */
   set(
@@ -38,7 +33,10 @@ export class BackgroundRenderer {
     parent: DisplayContainer,
     insertIndex = 0,
   ): void {
-    this.needsRedraw = true;
+    // The size to redraw at, read before the new options invalidate it.
+    const w = this.lastWidth;
+    const h = this.lastHeight;
+    this.invalidate();
 
     // If the type of background changed, destroy the old one
     if (this.displayObject) {
@@ -70,9 +68,10 @@ export class BackgroundRenderer {
       this.applyTextureProps(opts);
     }
 
-    // If we have a cached size, resize immediately
-    if (this.lastWidth > 0 || this.lastHeight > 0) {
-      this.resize(this.lastWidth, this.lastHeight);
+    // Repaint at the size already computed, so the new options land in this
+    // call rather than a frame later.
+    if (!Number.isNaN(w)) {
+      this.resize(w, h);
     }
   }
 
@@ -82,14 +81,9 @@ export class BackgroundRenderer {
    * rectangle every frame is the package's largest per-frame allocation.
    */
   resize(w: number, h: number): void {
-    if (!this.needsRedraw && w === this.lastWidth && h === this.lastHeight) {
-      return;
-    }
+    if (w === this.lastWidth && h === this.lastHeight) return;
 
-    this.lastWidth = w;
-    this.lastHeight = h;
-
-    // Nothing to draw yet. Leave the flag raised so the first draw after
+    // Nothing to draw yet. The sizes stay invalid, so the first draw after
     // `set` creates the display object still gets through.
     if (!this.displayObject || !this.opts) return;
 
@@ -99,7 +93,8 @@ export class BackgroundRenderer {
       this.drawColor(this.opts, w, h);
     }
 
-    this.needsRedraw = false;
+    this.lastWidth = w;
+    this.lastHeight = h;
   }
 
   /** Clean up the display object. */
@@ -206,8 +201,14 @@ export class BackgroundRenderer {
     g.fill({ color: opts.color ?? 0x000000, alpha: opts.alpha ?? 1 });
   }
 
+  /** Forget the drawn size, so the next `resize` redraws whatever it is given. */
+  private invalidate(): void {
+    this.lastWidth = Number.NaN;
+    this.lastHeight = Number.NaN;
+  }
+
   private destroyDisplayObject(): void {
-    this.needsRedraw = true;
+    this.invalidate();
     if (this.displayObject) {
       (this.displayObject as unknown as DisplayContainer).removeFromParent();
       (this.displayObject as unknown as DisplayContainer).destroy();

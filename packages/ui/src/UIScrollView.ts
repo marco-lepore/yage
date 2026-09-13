@@ -107,15 +107,14 @@ export class UIScrollView implements UIContainerElement {
   private _maskWidth = Number.NaN;
   private _maskHeight = Number.NaN;
 
-  // State the scrollbar thumb was last drawn from. `_sbDirty` covers the
-  // inputs that are not numbers on this list: a replaced scrollbar style, a
-  // direction flip, a freshly created Graphics, and coming back from the
-  // hidden branch (where the bar is disabled or the content fits).
+  // State the scrollbar thumb was last drawn from. `NaN` never equals a
+  // computed number, so writing it forces the next draw — which is how the
+  // two inputs that are not numbers on this list get through: a replaced
+  // scrollbar style and a direction flip.
   private _sbViewportMain = Number.NaN;
   private _sbViewportCross = Number.NaN;
   private _sbOffset = Number.NaN;
   private _sbMaxScroll = Number.NaN;
-  private _sbDirty = true;
 
   private _dragging = false;
   private _panning = false;
@@ -345,16 +344,14 @@ export class UIScrollView implements UIContainerElement {
 
   private _drawScrollbar(viewportMain: number, contentMain: number): void {
     if (!this._sb.enabled || this._maxScroll <= 0) {
+      // Hiding keeps the geometry, so a bar that comes back at the state it
+      // was hidden in needs no redraw.
       if (this.scrollbarGfx) this.scrollbarGfx.visible = false;
-      // The bar is hidden. Force the next visible draw so a bar that comes
-      // back at the state it was hidden in is redrawn rather than gated out.
-      this._sbDirty = true;
       return;
     }
     if (!this.scrollbarGfx) {
       this.scrollbarGfx = new Graphics();
       this.viewport.addChild(this.scrollbarGfx);
-      this._sbDirty = true;
     }
     const g = this.scrollbarGfx;
     g.visible = true;
@@ -365,7 +362,6 @@ export class UIScrollView implements UIContainerElement {
     // cross-axis-only resize moves the thumb.
     const viewportCross = this.vertical ? this._vw : this._vh;
     if (
-      !this._sbDirty &&
       viewportMain === this._sbViewportMain &&
       viewportCross === this._sbViewportCross &&
       this._offset === this._sbOffset &&
@@ -377,7 +373,6 @@ export class UIScrollView implements UIContainerElement {
     this._sbViewportCross = viewportCross;
     this._sbOffset = this._offset;
     this._sbMaxScroll = this._maxScroll;
-    this._sbDirty = false;
 
     const { thickness, margin, radius, color, alpha, minThumb } = this._sb;
     const thumbLen = Math.max(
@@ -505,7 +500,7 @@ export class UIScrollView implements UIContainerElement {
       // minimum thumb length without moving the viewport, the offset or the
       // scroll range, so the numeric gate alone would keep the old thumb.
       this._sb = resolveScrollbar(props.scrollbar);
-      this._sbDirty = true;
+      this._sbViewportMain = Number.NaN;
     }
     if ("consumeInput" in props) {
       applyConsumeInput(this.viewport, props.consumeInput);
@@ -532,7 +527,7 @@ export class UIScrollView implements UIContainerElement {
         this.content.update({ direction: vertical ? "column" : "row" });
         // Main and cross swap, so the cached pair no longer describes the
         // thumb even on a square viewport.
-        this._sbDirty = true;
+        this._sbViewportMain = Number.NaN;
         // The scroll axis changed — the old offset is meaningless on it.
         // Leave _lastNotified untouched so the next _notify() (in
         // applyLayout) emits the reset to onScroll consumers.
